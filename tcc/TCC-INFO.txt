@@ -1,0 +1,4 @@
+Tiny C compiler
+https://bellard.org/tcc/
+Licensed under LGPL, see COPYING.txt for license and website for full source.
+This specific version was pulled from the Git repo on 2/2/2021 and compiled with MSVC 19.00.24210 for Windows x86.

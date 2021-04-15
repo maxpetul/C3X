@@ -1,0 +1,25 @@
+#C3X_DISORDER_WARNING_ONE
+#map_center 0
+#advisor Domestic Angry
+Wait! We can't end the turn just yet.
+^$CITY0 is unhappy.
+#itemlist
+Let them riot! I don't care.
+OK, I'll deal with this.
+Zoom to $CITY0
+#active 1
+
+#C3X_DISORDER_WARNING_MULTIPLE
+#map_center 0
+#advisor Domestic Angry
+Wait! We can't end the turn just yet.
+^$CITY0 and {$NUM1 other $<#1:city:cities>} are unhappy.
+#itemlist
+Let them riot! I don't care.
+OK, I'll deal with this.
+Zoom to $CITY0
+#active 1
+
+# ; This line must remain at end of file
+
+

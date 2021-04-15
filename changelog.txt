@@ -1,0 +1,48 @@
+* RELEASE 6
+- TODO
+  - Credit Civinator in the readme for the German translation that I assume he'll do
+  - Add a note about Romulo's experience with the MSVC++ redists to the readme
+
+* RELEASE 5
+- Stack worker commands
+- Skip repeated popups asking to replace a tile improvement
+- Enable free improvements from small wonders
+- Disorder warning recomputes city happiness before running its check
+- Stack bombard won't interrupt interception or auto bombard missions
+- Mod loads its labels from a file, for translatability
+- Renamed script.txt to avoid confusion with base game files
+
+* RELEASE 4B
+- Fix city prod info confusing units with Wealth
+
+* RELEASE 4
+- Detailed city production info
+- Option to limit railroad movement
+- Removed unit limit
+- Altered scripts so they work when run as administrator.
+- Bypassed era number check (not yet a real implementation of no era limit)
+- Warning message instead of crash if config file is not found
+
+* RELEASE 3
+- Ability to install mod into the Civ executable
+- Ability to dynamically change mod settings based on text config file
+- Disorder warning
+- Fix for 'pedia pink line bug
+- Stealth attack activates even when there's only one target
+
+* RELEASE 2
+- UI button for stack bombard
+- Smarter rules for stack bombard
+  - Considers improvements when attacking a city
+  - Many other cases handled, e.g. knows not to attack aircraft in airbase, aircraft with land artillery, airbase with aircraft on it, ...
+- Fix for science age bug
+
+* RELEASE 1
+- Mod renamed to C3X (used to just be called "sub bug fix")
+- Option to prevent autoraze and razing by AI players
+  - Enable prevention of one or both of these by editing config.txt. Not enabled by default.
+- First version of stack bombard
+  - Activated by CTRL+click on tile when bombarding
+
+* RELEASE "0"
+- Fix for submarine bug

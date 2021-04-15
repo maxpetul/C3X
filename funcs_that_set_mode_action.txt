@@ -1,0 +1,20 @@
+Functions that set main_screen_form.Mode_Action (0x9FD5CC):
+FUN_004D8620 (when right clicking to cancel)
+	calls set or clear cursor then FUN_006268A0
+FUN_004DF510 (when cancelling with other command e.g. press F to fortify)
+	if main_screen_form.Mode_Action != 0, calls clear cursor then FUN_006268A0
+FUN_004D8690 (to activate e.g. after pressing B)
+	calls FUN_006268A0 unless call is redundant
+FUN_004D8790 (after clicking to bombard)
+	same as prev
+FUN_004D9620 (after cancelling normal bombard by pressing Shift+B)
+	calls FUN_6268A0 if it sets Mode_Action
+Main_Screen_Form::handle_key_down (after cancelling bombard by skipping turn)
+	calls FUN_6268A0 if it sets Mode_Action
+
+
+
+Alright, this should work:
+button press on SB button sets SB flag
+call to handle_cursor_change checks Mode_Action and clears SB if it isn't (air) bombard
+call to handle_key_down clears SB flag. This one is too aggressive, what if the key down is to pan the map or open an adivor screen? Should we compare the key to a white or black list? I think it's best to have the key only clear the flag when it's something that wouldn't change the cursor b/c otherwise we would catch it. So we need to catch B and (for precision strike) P.

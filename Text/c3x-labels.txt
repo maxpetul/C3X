@@ -1,0 +1,20 @@
+; This file works like labels.txt in the base game, each line contains a small snippet of text and the program relies on the lines
+; being in the correct order to know which is which. Empty lines and ones starting with a semicolon are ignored.
+
+; Displayed in place of "Completes in __ turns" when the city is building Wealth
+Never Completes
+
+; Displayed in place of "Completes in __ turns" when a city is generating no shields
+Halted
+
+; "Surplus" shields are those wasted b/c they overflow the box
+Surplus
+
+; Zero surplus
+Surplus: None
+
+; Info about surplus not available
+Surplus: N/A
+
+; Tooltip for stack bombard button. Follows the same format as the tooltip for the regular bombard button.
+Stack Bombard: Select a target (B then CTRL+Click target)

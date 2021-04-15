@@ -1,0 +1,5 @@
+To crop video (note: produces a lossless x264 file):
+ffmpeg.exe -i "U:\\SWC Teaser\\raw.avi" -ss 00:01:17 -to 00:01:26 -filter:v "crop=290:290:1540:1154" -c:v libx264 -preset veryslow -qp 0 -an cropped.mp4
+
+Convert to GIF:
+ffmpeg.exe -i cropped.mp4 -vf "fps=10,split[aa][bb];[aa]palettegen[pp];[bb][pp]paletteuse" -loop 1 output.gif

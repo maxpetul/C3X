@@ -1,0 +1,25 @@
+* Buff fascism
+  - Permanent mobilization bonus? Not too interesting.
+  - Military police also reduce corruption like police specialists
+    - Mostly useful in second tier cities so fits nicely with fascism as the small civ war govt vs communism for large
+      civs
+    - Undermines fascism as a war time govt b/c when you're at war you want your units fighting not sitting in cities
+  - The problem is that fascism needs a "thing," some big benefit that is highly valuable depending on circumstances &
+    goals. It could be the "oh shit I'm behind, bet everything on a huge war" govt, that would have nice historical
+    flavor. The problem is that the way you'd do that is by rushing for rep. parts then flight, i.e., you need research,
+    i.e., you need to stay in republic.
+  - Also need to consider its place on the tech tree. Even if it were a good govt, it might still not be worth pursuing
+    b/c you'd have to put off railroads, factories, rep. parts, and ToE.
+
+* Military great leader can perform coup when in the capital, allowing player to change govt w/o anarchy.
+  - Makes govt changes more viable in the late game
+  - Mostly pointless unless govts besides republic are buffed because as it is there's rarely any reason to switch into
+    them even if it weren't for the lost turns.
+
+* Universal Suffrage reduces WW by one level instead of by one unhappy face.
+
+* Similar to the idea w/ military great leaders, could add a wonder that gives free govt changes. Call it "Constitution"
+  and have it unlocked with Democracy, that way the tech is valuable for something other than trading and it comes just
+  in time for the last govt techs. The historical flavor doesn't really make sense, though, since constitutions are
+  supposed to make the govt's principles more permanent and this wonder would make them less so but I don't know what
+  else to call it, maybe something French, like to do with Napoleon?

@@ -1,0 +1,1556 @@
+
+#include "stdlib.h"
+#include "stdio.h"
+
+#include "C3X.h"
+
+void (__stdcall ** p_OutputDebugStringA) (char * lpOutputString) = ADDR_ADDR_OUTPUTDEBUGSTRINGA;
+
+short (__stdcall ** p_GetAsyncKeyState) (int vKey) = ADDR_ADDR_GETASYNCKEYSTATE;
+
+FARPROC (__stdcall ** p_GetProcAddress) (HMODULE hModule, char const * lpProcName) = ADDR_ADDR_GETPROCADDRESS;
+
+HMODULE (__stdcall ** p_GetModuleHandleA) (char const * lpModuleName) = ADDR_ADDR_GETMODULEHANDLEA;
+
+void (__stdcall * init_floating_point) (void) = ADDR_INIT_FLOATING_POINT;
+
+// void (__fastcall * Leader_update_preproduction) (Leader * this) = ADDR_EXTRACTED_LEADER_UPDATE_PREPRODUCTION;
+
+char (__fastcall * Leader_impl_would_raze_city) (Leader * this, int edx, City * city) = ADDR_LEADER_IMPL_WOULD_RAZE_CITY;
+
+void (__fastcall * Main_Screen_Form_handle_left_click_on_map_1) (Main_Screen_Form * this, int edx, int param_1, int param_2) = ADDR_MAIN_SCREEN_FORM_HANDLE_LEFT_CLICK_ON_MAP_1;
+
+struct injected_state * is = ADDR_INJECTED_STATE;
+
+// To be used as placeholder second argument so that we can imitate thiscall convention with fastcall
+#define __ 0
+
+// Need to define memmove for use by TCC when generated code for functions that return a struct
+void *
+memmove (void * dest, void const * src, size_t size)
+{
+	char const * _src = src;
+	char * _dest = dest, * tr = dest;
+	for (char const * src_end = _src + size; _src != src_end; _src++, _dest++)
+		*_dest = *_src;
+	return tr;
+}
+
+// Also need to define memset for some reason
+void *
+memset (void * dest, int ch, size_t count)
+{
+	for (size_t n = 0; n < count; n++)
+		((char *)dest)[n] = ch;
+	return dest;
+}
+
+int
+square (int x)
+{
+	return x * x;
+}
+
+int
+int_abs (int x)
+{
+	return (x >= 0) ? x : (0 - x);
+}
+
+char *
+file_to_string (char const * filepath)
+{
+	HANDLE file = is->CreateFileA (filepath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (file == INVALID_HANDLE_VALUE)
+		goto err_in_CreateFileA;
+	DWORD size = is->GetFileSize (file, NULL);
+	char * tr = is->malloc (size + 1);
+	if (tr == NULL)
+		goto err_in_malloc;
+	DWORD size_read = 0;
+	int success = is->ReadFile (file, tr, size, &size_read, NULL);
+	if ((! success) || (size_read != size))
+		goto err_in_ReadFile;
+	tr[size] = '\0';
+	is->CloseHandle (file);
+	return tr;
+
+err_in_ReadFile:
+	is->free (tr);
+err_in_malloc:
+	is->CloseHandle (file);
+err_in_CreateFileA:
+	return NULL;
+}
+
+int
+is_horiz_space (char c)
+{
+	return ((c == ' ') || (c == '\t') || (c == '\r'));
+}
+
+void
+skip_horiz_space (char ** p_cursor)
+{
+	char * cur = *p_cursor;
+	while (is_horiz_space (*cur))
+		cur++;
+	*p_cursor = cur;
+}
+
+void
+skip_to_line_end (char ** p_cursor)
+{
+	char * cur = *p_cursor;
+	while ((*cur != '\n') && (*cur != '\0'))
+		cur++;
+	*p_cursor = cur;
+}
+
+void
+trim_string_slice (char ** str, int * str_len, int remove_quotes)
+{
+	while ((*str_len > 0) && (is_horiz_space (**str))) {
+		(*str)++;
+		(*str_len)--;
+	}
+	while ((*str_len > 0) && (is_horiz_space ((*str)[*str_len-1])))
+		(*str_len)--;
+	if (remove_quotes &&
+	    (*str_len >= 2) &&
+	    ((**str == '"') && ((*str)[*str_len-1] == '"'))) {
+		(*str)++;
+		(*str_len) -= 2;
+	}
+}
+
+int
+parse_int (char * str, int str_len, int * out_val)
+{
+	if ((*str == '-') || ((*str >= '0') && (*str <= '9'))) {
+		char * end;
+		int res = is->strtol (str, &end, 10);
+		if (end == str + str_len) {
+			*out_val = res;
+			return 1;
+		} else
+			return 0;
+	} else if ((str_len == 4) &&
+		   ((0 == is->strncmp (str, "true", 4)) ||
+		    (0 == is->strncmp (str, "True", 4)) ||
+		    (0 == is->strncmp (str, "TRUE", 4)))) {
+		*out_val = 1;
+		return 1;
+	} else if ((str_len == 5) &&
+		   ((0 == is->strncmp (str, "false", 5)) ||
+		    (0 == is->strncmp (str, "False", 5)) ||
+		    (0 == is->strncmp (str, "FALSE", 5)))) {
+		*out_val = 0;
+		return 1;
+	} else
+		return 0;
+}
+
+// What an ugly function. I hate writing parsers.
+int
+parse_key_value_pair (char ** p_cursor, char ** out_key, int * out_key_len, char ** out_value, int * out_value_len)
+{
+	char * cur = *p_cursor;
+	char * key, * value;
+	int key_len, value_len;
+	key = cur;
+	while (1) {
+		char c = *cur;
+		if ((c == '_') || ((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z')) || ((c >= '0') && (c <= '9')))
+			cur++;
+		else
+			break;
+	}
+	key_len = cur - key;
+	skip_horiz_space (&cur);
+	if (*cur != '=')
+		return 0;
+	cur++;
+	value = cur;
+	skip_to_line_end (&cur);
+	value_len = cur - value;
+	trim_string_slice (&value, &value_len, 1);
+	if ((key_len <= 0) || (value_len <= 0))
+		return 0;
+	*out_key = key;
+	*out_key_len = key_len;
+	*out_value = value;
+	*out_value_len = value_len;
+	*p_cursor = cur;
+	return 1;
+}
+
+char *
+load_text_file (char const * filename, char const * description, char const * additional_error_info)
+{
+	char temp_path[2*MAX_PATH];
+	is->snprintf (temp_path, sizeof temp_path, "%s\\%s", is->mod_rel_dir, filename);
+	char * tr = file_to_string (temp_path);
+	if (tr == NULL) {
+		char err_msg[1000];
+		is->snprintf (err_msg, sizeof err_msg, "Couldn't read %s from %s\nPlease make sure the file exists, if you moved the patched EXE you must move the mod folder as well.%s", description, temp_path, additional_error_info);
+		err_msg[(sizeof err_msg) - 1] = '\0';
+		is->MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
+	}
+	return tr;
+}
+
+void
+load_config (char const * filename, struct c3x_config * cfg)
+{
+	char * text = load_text_file ("default.c3x_config.ini", "config info", "\nThe game & mod can run anyway but any changes made to this file will not apply.");
+	if (text == NULL)
+		return;
+
+	char * cursor = text;
+	while (1) {
+		skip_horiz_space (&cursor);
+		if (*cursor == '\0')
+			break;
+		else if (*cursor == '\n')
+			cursor++; // Continue to next line
+		else if (*cursor == ';')
+			skip_to_line_end (&cursor); // Skip comment line
+		else if (*cursor == '[')
+			skip_to_line_end (&cursor); // Skip section line
+		else { // parse key-value pair
+			char * key, * value;
+			int key_len, value_len;
+			if (parse_key_value_pair (&cursor, &key, &key_len, &value, &value_len)) {
+				int ival;
+				if ((0 == is->strncmp (key, "enable_stack_bombard", key_len)) && parse_int (value, value_len, &ival))
+					cfg->enable_stack_bombard = ival != 0;
+				else if ((0 == is->strncmp (key, "enable_disorder_warning", key_len)) && parse_int (value, value_len, &ival))
+					cfg->enable_disorder_warning = ival != 0;
+				else if ((0 == is->strncmp (key, "allow_stealth_attack_against_single_unit", key_len)) && parse_int (value, value_len, &ival))
+					cfg->allow_stealth_attack_against_single_unit = ival != 0;
+				else if ((0 == is->strncmp (key, "show_detailed_city_production_info", key_len)) && parse_int (value, value_len, &ival))
+					cfg->show_detailed_city_production_info = ival != 0;
+				else if ((0 == is->strncmp (key, "limit_railroad_movement", key_len)) && parse_int (value, value_len, &ival))
+					cfg->limit_railroad_movement = ival;
+				else if ((0 == is->strncmp (key, "enable_free_buildings_from_small_wonders", key_len)) && parse_int (value, value_len, &ival))
+					cfg->enable_free_buildings_from_small_wonders = ival != 0;
+				else if ((0 == is->strncmp (key, "enable_stack_worker_commands", key_len)) && parse_int (value, value_len, &ival))
+					cfg->enable_stack_worker_commands = ival != 0;
+				else if ((0 == is->strncmp (key, "skip_repeated_tile_improv_replacement_asks", key_len)) && parse_int (value, value_len, &ival))
+					cfg->skip_repeated_tile_improv_replacement_asks = ival != 0;
+
+				else if ((0 == is->strncmp (key, "use_offensive_artillery_ai", key_len)) && parse_int (value, value_len, &ival))
+					cfg->use_offensive_artillery_ai = ival != 0;
+				else if ((0 == is->strncmp (key, "ai_build_artillery_ratio", key_len)) && parse_int (value, value_len, &ival))
+					cfg->ai_build_artillery_ratio = ival;
+
+				else if ((0 == is->strncmp (key, "remove_unit_limit", key_len)) && parse_int (value, value_len, &ival))
+					cfg->remove_unit_limit = ival != 0;
+				else if ((0 == is->strncmp (key, "remove_era_limit", key_len)) && parse_int (value, value_len, &ival))
+					cfg->remove_era_limit = ival != 0;
+
+				else if ((0 == is->strncmp (key, "patch_submarine_bug", key_len)) && parse_int (value, value_len, &ival))
+					cfg->patch_submarine_bug = ival != 0;
+				else if ((0 == is->strncmp (key, "patch_science_age_bug", key_len)) && parse_int (value, value_len, &ival))
+					cfg->patch_science_age_bug = ival != 0;
+				else if ((0 == is->strncmp (key, "patch_pedia_texture_bug", key_len)) && parse_int (value, value_len, &ival))
+					cfg->patch_pedia_texture_bug = ival != 0;
+
+				else if ((0 == is->strncmp (key, "prevent_autorazing", key_len)) && parse_int (value, value_len, &ival))
+					cfg->prevent_autorazing = ival != 0;
+				else if ((0 == is->strncmp (key, "prevent_razing_by_ai_players", key_len)) && parse_int (value, value_len, &ival))
+					cfg->prevent_razing_by_ai_players = ival != 0;
+
+				else
+					(*p_OutputDebugStringA) ("Invalid line in config file");
+			} else {
+				(*p_OutputDebugStringA) ("Invalid line in config file");
+				skip_to_line_end (&cursor);
+			}
+		}
+	}
+	
+	is->free (text);
+}
+
+char __fastcall
+patch_Leader_impl_would_raze_city (Leader * this, int edx, City * city)
+{
+	return is->current_config.prevent_razing_by_ai_players ? 0 : Leader_impl_would_raze_city (this, __, city);
+}
+
+// Just calls VirtualProtect and displays an error message if it fails. Made for use by the WITH_MEM_PROTECTION macro.
+int
+check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect)
+{
+	if (is->VirtualProtect (addr, size, flags, old_protect))
+		return 1;
+	else {
+		char err_msg[1000];
+		is->snprintf (err_msg, sizeof err_msg, "VirtualProtect failed! Args:\n  Address: 0x%p\n  Size: %d\n  Flags: 0x%x", addr, size, flags);
+		err_msg[(sizeof err_msg) - 1] = '\0';
+		is->MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
+		return 0;
+	}
+}
+
+#define WITH_MEM_PROTECTION(addr, size, flags)				                \
+	for (DWORD old_protect, unused, iter_count = 0;			                \
+	     (iter_count == 0) && check_virtual_protect (addr, size, flags, &old_protect); \
+	     is->VirtualProtect (addr, size, old_protect, &unused), iter_count++)
+
+void
+apply_config (struct c3x_config * cfg)
+{
+	DWORD old_protect, unused;
+
+	// Allow stealth attack against single unit
+	WITH_MEM_PROTECTION (ADDR_STEALTH_ATTACK_TARGET_COUNT_CHECK, 1, PAGE_EXECUTE_READWRITE)
+		*(byte *)ADDR_STEALTH_ATTACK_TARGET_COUNT_CHECK = cfg->allow_stealth_attack_against_single_unit ? 0 : 1;
+
+	// Enable small wonders providing free buildings
+	WITH_MEM_PROTECTION (ADDR_RECOMPUTE_AUTO_IMPROVS_FILTER, 10, PAGE_EXECUTE_READWRITE) {
+		byte normal[8] = {0x83, 0xE1, 0x04, 0x80, 0xF9, 0x04, 0x0F, 0x85}; // and ecx,  4; cmp ecx, 4; jnz [offset]
+		byte modded[8] = {0x83, 0xE1, 0x0C, 0x80, 0xF9, 0x00, 0x0F, 0x84}; // and ecx, 12; cmp ecx, 0; jz  [offset]
+		for (int n = 0; n < 8; n++)
+			((byte *)ADDR_RECOMPUTE_AUTO_IMPROVS_FILTER)[n] = cfg->enable_free_buildings_from_small_wonders ? modded[n] : normal[n];
+	}
+
+	// Bypass artillery in city check
+	// replacing 0x74 (= jump if [city ptr is] zero) with 0xEB (= uncond. jump)
+	WITH_MEM_PROTECTION (ADDR_CHECK_ARTILLERY_IN_CITY, 1, PAGE_EXECUTE_READWRITE)
+		*(byte *)ADDR_CHECK_ARTILLERY_IN_CITY = cfg->use_offensive_artillery_ai ? 0xEB : 0x74;
+	
+	// Remove unit limit
+	// replacing 0x7C (= jump if less than [unit limit]) with 0xEB (= uncond. jump)
+	WITH_MEM_PROTECTION (ADDR_UNIT_COUNT_CHECK, 1, PAGE_EXECUTE_READWRITE)
+		*(byte *)ADDR_UNIT_COUNT_CHECK = cfg->remove_unit_limit ? 0xEB : 0x7C;
+
+	// Remove era limit
+	// replacing 0x74 (= jump if zero [after cmp'ing era count with 4]) with 0xEB
+	WITH_MEM_PROTECTION (ADDR_ERA_COUNT_CHECK, 1, PAGE_EXECUTE_READWRITE)
+		*(byte *)ADDR_ERA_COUNT_CHECK = cfg->remove_era_limit ? 0xEB : 0x74;
+
+	// Bug fixes
+	WITH_MEM_PROTECTION (ADDR_SUB_BUG_PATCH, 1, PAGE_EXECUTE_READWRITE)
+		*(byte *)ADDR_SUB_BUG_PATCH = cfg->patch_submarine_bug ? 0 : 1;
+	WITH_MEM_PROTECTION (ADDR_SCIENCE_AGE_BUG_PATCH, 1, PAGE_EXECUTE_READWRITE)
+		*(byte *)ADDR_SCIENCE_AGE_BUG_PATCH = cfg->patch_science_age_bug ? 1 : 0;
+	WITH_MEM_PROTECTION (ADDR_PEDIA_TEXTURE_BUG_PATCH, 1, PAGE_EXECUTE_READWRITE)
+		*(byte *)ADDR_PEDIA_TEXTURE_BUG_PATCH = cfg->patch_pedia_texture_bug ? 0xA6 : 0xA5;
+
+	// NoRaze
+	WITH_MEM_PROTECTION (ADDR_AUTORAZE_BYPASS, 2, PAGE_EXECUTE_READWRITE) {
+		byte normal[2] = {0x0F, 0x85}; // jnz
+		byte bypass[2] = {0x90, 0xE9}; // nop, jmp
+		for (int n = 0; n < 2; n++)
+			((byte *)ADDR_AUTORAZE_BYPASS)[n] = cfg->prevent_autorazing ? bypass[n] : normal[n];
+	}
+}
+
+void
+patch_init_floating_point ()
+{
+	init_floating_point ();
+
+	// NOTE: At this point the program is done with the CRT initialization stuff and will start calling constructors for global
+	// objects as soon as this function returns. This is a good place to inject code that will run at program start.
+
+	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
+	is->user32   = (*p_GetModuleHandleA) ("user32.dll");
+	is->msvcrt   = (*p_GetModuleHandleA) ("msvcrt.dll");
+
+	is->VirtualProtect = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualProtect");
+	is->CloseHandle    = (void *)(*p_GetProcAddress) (is->kernel32, "CloseHandle");
+	is->CreateFileA    = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
+	is->GetFileSize    = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
+	is->ReadFile       = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
+
+	is->MessageBoxA = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
+
+	is->snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
+	is->malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
+	is->free     = (void *)(*p_GetProcAddress) (is->msvcrt, "free");
+	is->strtol   = (void *)(*p_GetProcAddress) (is->msvcrt, "strtol");
+	is->strncmp  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncmp");
+	is->strlen   = (void *)(*p_GetProcAddress) (is->msvcrt, "strlen");
+	is->strncpy  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncpy");
+	is->qsort    = (void *)(*p_GetProcAddress) (is->msvcrt, "qsort");
+	is->memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
+
+	memmove (&is->current_config, &is->base_config, sizeof is->current_config);
+	load_config ("default.c3x_config.ini", &is->current_config);
+	apply_config (&is->current_config);
+
+	// Load labels
+	{
+		for (int n = 0; n < COUNT_LABELS; n++)
+			is->labels[n] = "";
+		char * labels_file_contents = load_text_file ("Text\\c3x-labels.txt", "labels", "");
+		if (labels_file_contents != NULL) {
+			char * cursor = labels_file_contents;
+			int n = 0;
+			while ((n < COUNT_LABELS) && (*cursor != '\0')) {
+				if (*cursor == '\n')
+					cursor++;
+				else if ((cursor[0] == '\r') && (cursor[1] == '\n'))
+					cursor += 2;
+				else if (*cursor == ';') {
+					while ((*cursor != '\0') && (*cursor != '\n'))
+						cursor++;
+				} else {
+					char * line_start = cursor;
+					while ((*cursor != '\0') && (*cursor != '\r') && (*cursor != '\n'))
+						cursor++;
+					int line_len = cursor - line_start;
+					if (NULL != (is->labels[n] = is->malloc (line_len + 1))) {
+						is->strncpy (is->labels[n], line_start, line_len);
+						is->labels[n][line_len] = '\0';
+					}
+					n++;
+				}
+			}
+			is->free (labels_file_contents);
+		}
+	}
+
+	// Initialize to zero
+	is->have_job_and_loc_to_skip = 0;
+
+	// Initialize to empty
+	is->frontlineness = (struct frontlineness) { .capacity = 0, .save_len = 0, .saved_for_civ_id = -1, .saves = NULL, .cons = NULL };
+}
+
+void
+init_stackable_command_buttons ()
+{
+	if (is->sc_img_state == SC_IMG_UNINITED) {
+		char temp_path[2*MAX_PATH];
+
+		is->sb_activated_by_button = 0;
+		is->sc_img_state = SC_IMG_LOAD_FAILED;
+
+		char const * filenames[4] = {"StackedNormButtons", "StackedRolloverButtons", "StackedHighlightedButtons", "StackedButtonsAlpha"};
+		for (int n = 0; n < 4; n++) {
+			PCX_Image * pcx = &is->sc_button_sheets[n];
+			PCX_Image_construct (pcx);
+			is->snprintf (temp_path, sizeof temp_path, "%s\\Art\\%s.pcx", is->mod_rel_dir, filenames[n]);
+			temp_path[(sizeof temp_path) - 1] = '\0';
+			PCX_Image_read_file (pcx, __, temp_path, NULL, 0, 0x100, 2);
+			if (pcx->JGL.Image == NULL) {
+				(*p_OutputDebugStringA) ("[C3X] Failed to load stacked command buttons sprite sheet.");
+				return;
+			}
+		}
+		
+		for (int sc = 0; sc < COUNT_STACKABLE_COMMANDS; sc++) {
+			int x = 32 * sc_button_infos[sc].tile_sheet_column,
+			    y = 32 * sc_button_infos[sc].tile_sheet_row;
+			for (int n = 0; n < 4; n++)
+				Tile_Image_Info_slice_pcx (&is->sc_button_image_sets[sc].imgs[n], __, &is->sc_button_sheets[n], x, y, 32, 32, 1, 0);
+		}
+
+		is->sc_img_state = SC_IMG_OK;
+	}
+}
+
+// Prints x to str and appends null terminator. Assumes str has enough space. Returns pointer to null terminator
+char *
+print_unsigned (char * str, unsigned x)
+{
+	char t[20];
+	int n = 0;
+	do {
+		t[n++] = '0' + (x % 10);
+		x /= 10;
+	} while (x > 0);
+	for (; n >= 0; n--)
+		*str++ = t[n-1];
+	*str = '\0';
+	return str;
+}
+
+char *
+print_int (char * str, int x)
+{
+	if (x < 0) {
+		*str++ = '-';
+		x = 0 - x;
+	}
+	return print_unsigned (str, x);
+}
+
+void
+wrap_tile_coords (Map * map, int * x, int * y)
+{
+	if (map->Flags & 1) {
+		if      (*x < 0)           *x += map->Width;
+		else if (*x >= map->Width) *x -= map->Width;
+	}
+	if (map->Flags & 2) {
+		if      (*y < 0)            *y += map->Height;
+		else if (*y >= map->Height) *y -= map->Height;
+	}
+}
+
+void
+get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y)
+{
+	int dx, dy;
+	neighbor_index_to_displacement (neighbor_index, &dx, &dy);
+	*out_x = x + dx;
+	*out_y = y + dy;
+	wrap_tile_coords (map, out_x, out_y);
+}
+
+Unit *
+get_unit_ptr (int id)
+{
+	if ((p_units->Units != NULL) &&
+	    (id >= 0) && (id <= p_units->LastIndex)) {
+		Unit_Body * body = p_units->Units[id].Unit;
+		if (body != NULL) {
+			Unit * unit = (Unit *)((char *)body - offsetof (Unit, Body));
+			if (unit != NULL)
+				return unit;
+		}
+	}
+	return NULL;
+}
+
+City *
+get_city_ptr (int id)
+{
+	if ((p_cities->Cities != NULL) &&
+	    (id >= 0) && (id <= p_cities->LastIndex)) {
+		City_Body * body = p_cities->Cities[id].City;
+		if (body != NULL) {
+			City * city = (City *)((char *)body - offsetof (City, Body));
+			if (city != NULL)
+				return city;
+		}
+	}
+	return NULL;
+}
+
+City *
+city_at (int x, int y)
+{
+	Tile * tile = tile_at (x, y);
+	return get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
+}
+
+struct unit_tile_iter {
+	int id;
+	int item_index;
+	Unit * unit;
+};
+
+void
+uti_next (struct unit_tile_iter * uti)
+{
+	if (((p_tile_units->Base.Items == NULL) || (uti->item_index < 0)) ||
+	    (uti->item_index >= p_tile_units->Base.LastIndex)) {
+		uti->item_index = -1;
+		uti->id = p_tile_units->DefaultValue;
+	} else {
+		Base_List_Item * item = &p_tile_units->Base.Items[uti->item_index];
+		uti->item_index = item->V;
+		uti->id = (int)item->Object;
+	}
+	uti->unit = get_unit_ptr (uti->id);
+}
+
+struct unit_tile_iter
+uti_init (Tile * tile)
+{
+	struct unit_tile_iter tr;
+	int tile_unit_id = tile->vtable->m40_get_TileUnit_ID (tile);
+	tr.id = TileUnits_TileUnitID_to_UnitID (p_tile_units, __, tile_unit_id, &tr.item_index);
+	tr.unit = get_unit_ptr (tr.id);
+	return tr;
+}
+
+#define FOR_UNITS_ON(uti_name, tile) for (struct unit_tile_iter uti_name = uti_init (tile); uti_name.id != -1; uti_next (&uti_name))
+
+struct citizen_iter {
+	int index;
+	Citizens * list;
+	Citizen_Base * ctzn;
+};
+
+void
+ci_next (struct citizen_iter * ci)
+{
+	while (1) {
+		ci->index++;
+		if (ci->index > ci->list->LastIndex) {
+			ci->ctzn = NULL;
+			break;
+		} else {
+			Citizen_Body * body = ci->list->Items[ci->index].Body;
+			if ((body != NULL) && ((int)body != offsetof (Citizen_Base, Body))) {
+				ci->ctzn = (Citizen_Base *)((int)body - offsetof (Citizen_Base, Body));
+				break;
+			}
+		}
+	}
+}
+
+struct citizen_iter
+ci_init (City * city)
+{
+	struct citizen_iter tr;
+	tr.index = -1;
+	tr.list = &city->Body.Citizens;
+	tr.ctzn = NULL;
+	if (city->Body.Citizens.Items != NULL)
+		ci_next (&tr);
+	return tr;
+}
+
+#define FOR_CITIZENS_IN(ci_name, city) for (struct citizen_iter ci_name = ci_init (city); (ci_name.list->Items != NULL) && (ci_name.index <= ci.list->LastIndex); ci_next (&ci_name))
+
+struct tiles_around_iter {
+	int center_x, center_y;
+	int n, num_tiles;
+	Tile * tile;
+};
+
+void
+tai_next (struct tiles_around_iter * tai)
+{
+	tai->tile = NULL;
+	while ((tai->n < tai->num_tiles) && (tai->tile == NULL)) {
+		tai->n += 1;
+		int tx, ty;
+		get_neighbor_coords (&p_bic_data->Map, tai->center_x, tai->center_y, tai->n, &tx, &ty);
+		if ((tx >= 0) && (tx < p_bic_data->Map.Width) && (ty >= 0) && (ty < p_bic_data->Map.Height))
+			tai->tile = tile_at (tx, ty);
+	}
+}
+
+struct tiles_around_iter
+tai_init (int num_tiles, int x, int y)
+{
+	struct tiles_around_iter tr;
+	tr.center_x = x;
+	tr.center_y = y;
+	tr.n = 0;
+	tr.num_tiles = num_tiles;
+	tr.tile = tile_at (x, y);
+	return tr;
+}
+
+#define FOR_TILES_AROUND(tai_name, _num_tiles, _x, _y) for (struct tiles_around_iter tai_name = tai_init (_num_tiles, _x, _y); (tai_name.n < tai_name.num_tiles); tai_next (&tai_name))
+
+int
+can_attack_this_turn (Unit * unit)
+{
+	// return unit has moves left AND (unit hasn't attacked this turn OR unit has blitz ability)
+	return (unit->Body.Moves < Unit_get_max_move_points (unit)) &&
+		(((unit->Body.Status & 4) == 0) ||
+		 UnitType_has_ability (&p_bic_data->UnitTypes[unit->Body.UnitTypeID], __, UTA_Blitz));
+}
+
+int
+can_damage_bombarding (UnitType * attacker_type, Unit * defender, Tile * defender_tile)
+{
+	UnitType * defender_type = &p_bic_data->UnitTypes[defender->Body.UnitTypeID];
+	if (defender_type->Unit_Class == UTC_Land) {
+		int has_lethal_land_bombard = UnitType_has_ability (attacker_type, __, UTA_Lethal_Land_Bombardment);
+		return defender->Body.Damage + (! has_lethal_land_bombard) < Unit_get_max_hp (defender);
+	} else if (defender_type->Unit_Class == UTC_Sea) {
+		// Land artillery can't damage ships in port
+		if ((attacker_type->Unit_Class == UTC_Land) && Tile_has_city (defender_tile))
+			return 0;
+		int has_lethal_sea_bombard = UnitType_has_ability (attacker_type, __, UTA_Lethal_Sea_Bombardment);
+		return defender->Body.Damage + (! has_lethal_sea_bombard) < Unit_get_max_hp (defender);
+	} else if (defender_type->Unit_Class == UTC_Air) {
+		// Can't damage aircraft in an airfield by bombarding, the attack doesn't even go off
+		if ((defender_tile->vtable->m42_Get_Overlays (defender_tile, __, 0) & 0x20000000) != 0)
+			return 0;
+		// Land artillery can't damage aircraft but naval artillery and other aircraft can. Lethal bombard doesn't
+		// apply; anything that can damage can kill.
+		return attacker_type->Unit_Class != UTC_Land;
+	} else // UTC_Space? UTC_Alternate_Dimension???
+		return 0;
+}
+
+int
+has_any_destructible_improvements (City * city)
+{
+	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+		Improvement * improv = &p_bic_data->Improvements[n];
+		if (((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) == 0) && // if improv is not a wonder AND
+		    ((improv->ImprovementFlags & ITF_Center_of_Empire) == 0) && // it's not the palace AND
+		    (improv->SpaceshipPart < 0) && // it's not a spaceship part AND
+		    City_has_improvement (city, __, n, 0)) // it's present in the city ignoring free improvements
+			return 1;
+	}
+	return 0;
+}
+
+#define SB_MANIFEST_LENGTH 400
+
+void __fastcall
+patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx, enum Unit_Mode_Actions action, int x, int y)
+{
+	if ((! is->current_config.enable_stack_bombard) || // if stack bombard is disabled OR
+	    (! ((action == UMA_Bombard) || (action == UMA_Air_Bombard))) || // action is not bombard OR
+	    ((((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0) &&  // (control key is not down AND
+	     ((is->sc_img_state != SB_UNINITED) && (is->sb_activated_by_button == 0))) || // (button flag is valid AND not set)) OR
+	    is_game_type_4_or_5 ()) { // is online game
+		Main_Screen_Form_perform_action_on_tile (this, __, action, x, y);
+		return;
+	}
+
+	int attackers[SB_MANIFEST_LENGTH];
+	int targets[SB_MANIFEST_LENGTH];
+	int count_attackers = 0, count_targets = 0;
+
+	wrap_tile_coords (&p_bic_data->Map, &x, &y);
+	Tile * base_tile = tile_at (this->Current_Unit->Body.X, this->Current_Unit->Body.Y);
+	Tile * target_tile = tile_at (x, y);
+	int attacker_type_id = this->Current_Unit->Body.UnitTypeID;
+	UnitType * attacker_type = &p_bic_data->UnitTypes[attacker_type_id];
+	int civ_id = this->Current_Unit->Body.CivID;
+
+	int selected_unit_id = this->Current_Unit->Body.ID;
+	FOR_UNITS_ON (uti, base_tile)
+		if ((count_attackers < SB_MANIFEST_LENGTH) &&
+		    (uti.id != selected_unit_id) &&
+		    (uti.unit->Body.UnitTypeID == attacker_type_id) &&
+		    ((uti.unit->Body.Container_Unit < 0) || (attacker_type->Unit_Class == UTC_Air)) &&
+		    (uti.unit->Body.UnitState == 0) &&
+		    can_attack_this_turn (uti.unit))
+			attackers[count_attackers++] = uti.id;
+	
+	int num_air_units_on_target_tile = 0;
+	FOR_UNITS_ON (uti, target_tile) {
+		num_air_units_on_target_tile += UTC_Air == p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Unit_Class;
+		if ((count_targets < SB_MANIFEST_LENGTH) &&
+		    (Unit_get_defense_strength (uti.unit) > 0) &&
+		    (uti.unit->Body.Container_Unit < 0) &&
+		    Unit_is_visible_to_civ (uti.unit, __, civ_id, 0) &&
+		    can_damage_bombarding (attacker_type, uti.unit, target_tile))
+			targets[count_targets++] = uti.id;
+	}
+
+	int attacking_units = 0, attacking_tile = 0;
+	City * target_city = NULL;
+	if (count_targets > 0)
+		attacking_units = 1;
+	else if (Tile_has_city (target_tile))
+		target_city = get_city_ptr (target_tile->vtable->m45_Get_City_ID (target_tile));
+	else {
+		// Make sure not to set attacking_tile when the tile has an airfield and air units (but no land units) on
+		// it. In that case we can't damage the airfield and if we try to anyway, the units will waste their moves
+		// without attacking.
+		int has_airfield = (target_tile->vtable->m42_Get_Overlays (target_tile, __, 0) & 0x20000000) != 0;
+		attacking_tile = (! has_airfield) || (num_air_units_on_target_tile == 0);
+	}
+
+	Unit * next_up = this->Current_Unit;
+	int i_next_attacker = 0;
+	int anything_left_to_attack;
+	int last_attack_didnt_happen;
+	do {
+		int moves_before_bombard = next_up->Body.Moves;
+
+		Unit_bombard_tile (next_up, __, x, y);
+
+		// Check if the last unit sent into battle actually did anything. If it didn't we should at least skip over
+		// it to avoid an infinite loop, but actually the only time this should happen is if the player is not at
+		// war with the targetted civ and chose not to declare when prompted. In this case it's better to just stop
+		// trying to attack so as to not spam the player with prompts.
+		last_attack_didnt_happen = (next_up->Body.Moves == moves_before_bombard);
+
+		if (! can_attack_this_turn (next_up)) {
+			next_up = NULL;
+			while ((i_next_attacker < count_attackers) && (next_up == NULL))
+				next_up = get_unit_ptr (attackers[i_next_attacker++]);
+		}
+		
+		if (attacking_units) {
+			anything_left_to_attack = 0;
+			for (int n = 0; n < count_targets; n++) {
+				Unit * unit = get_unit_ptr (targets[n]);
+				if (unit != NULL) {
+					if (can_damage_bombarding (attacker_type, unit, target_tile)) {
+						anything_left_to_attack = 1;
+						break;
+					}
+				}
+			}
+		} else if (target_city != NULL) {
+			anything_left_to_attack =
+				(target_city->Body.Population.Size > 1) ||
+				has_any_destructible_improvements (target_city);
+		} else if (attacking_tile) {
+			int destructible_overlays =
+				0x00000003 | // road, railroad
+				0x00000004 | // mine
+				0x00000008 | // irrigation
+				0x00000010 | // fortress
+				0x10000000 | // barricade
+				0x20000000 | // airfield
+				0x40000000 | // radar
+				0x80000000;  // outpost
+			anything_left_to_attack = (target_tile->vtable->m42_Get_Overlays (target_tile, __, 0) & destructible_overlays) != 0;
+		} else
+			anything_left_to_attack = 0;
+	} while ((next_up != NULL) && anything_left_to_attack && (! last_attack_didnt_happen));
+
+	is->sb_activated_by_button = 0;
+}
+
+void
+set_up_stack_bombard_buttons (Main_GUI * this)
+{
+	if (is_game_type_4_or_5 () || (! is->current_config.enable_stack_bombard))
+		return;
+
+	init_stackable_command_buttons ();
+	if (is->sc_img_state != SC_IMG_OK)
+		return;
+
+	// Find button that the original method set to (air) bombard, then find the next unused button after that.
+	Command_Button * bombard_button = NULL, * free_button = NULL; {
+		int i_bombard_button;
+		for (int n = 0; n < 42; n++)
+			if (((this->Unit_Command_Buttons[n].Button.Base_Data.Status2 & 1) != 0) &&
+			    (this->Unit_Command_Buttons[n].Command == UCV_Bombard || this->Unit_Command_Buttons[n].Command == UCV_Bombing)) {
+				bombard_button = &this->Unit_Command_Buttons[n];
+				i_bombard_button = n;
+				break;
+			}
+		if (bombard_button != NULL)
+			for (int n = i_bombard_button + 1; n < 42; n++)
+				if ((this->Unit_Command_Buttons[n].Button.Base_Data.Status2 & 1) == 0) {
+					free_button = &this->Unit_Command_Buttons[n];
+					break;
+				}
+	}
+
+	if ((bombard_button == NULL) || (free_button == NULL))
+		return;
+
+	// Set up free button for stack bombard
+	free_button->Command   = bombard_button->Command;
+	free_button->field_6D8 = bombard_button->field_6D8;
+	struct sc_button_image_set * img_set  =
+		(bombard_button->Command == UCV_Bombing) ? &is->sc_button_image_sets[SC_BOMB] : &is->sc_button_image_sets[SC_BOMBARD];
+	for (int n = 0; n < 4; n++)
+		free_button->Button.Images[n] = &img_set->imgs[n];
+	free_button->Button.field_664 = bombard_button->Button.field_664;
+	// FUN_005559E0 is also called in the original code. I don't know what it actually does but I'm pretty sure it doesn't
+	// matter for our purposes.
+	Button_set_tooltip (&free_button->Button, __, is->labels[LAB_SB_TOOLTIP]);
+	free_button->Button.field_5FC[13] = bombard_button->Button.field_5FC[13];
+	free_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&free_button->Button, __, 0);
+}
+
+void
+set_up_stack_worker_buttons (Main_GUI * this)
+{
+	if ((((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0) ||  // (control key is not down OR
+	    (! is->current_config.enable_stack_worker_commands) || // stack worker commands not enabled OR
+	    is_game_type_4_or_5 ()) // is online game
+		return;
+
+	init_stackable_command_buttons ();
+	if (is->sc_img_state != SC_IMG_OK)
+		return;
+
+	// For each unit command button
+	for (int n = 0; n < 42; n++) {
+		Command_Button * cb = &this->Unit_Command_Buttons[n];
+
+		// If it's enabled and not a bombard button (those are handled in the function above)
+		if (((cb->Button.Base_Data.Status2 & 1) != 0) &&
+		    (cb->Command != UCV_Bombard) && (cb->Command != UCV_Bombing)) {
+
+			// Find the stackable worker command that this button controls, if there is one, and check that
+			// the button isn't already showing the stack image for that command. Note: this check is important
+			// b/c this function gets called repeatedly while the CTRL key is held down.
+			for (int sc = 0; sc < COUNT_STACKABLE_COMMANDS; sc++)
+				if ((cb->Command == sc_button_infos[sc].command) &&
+				    (cb->Button.Images[0] != &is->sc_button_image_sets[sc].imgs[0])) {
+
+					// Replace the button's image with the stack image. Disabling & re-enabling and
+					// clearing field_5FC[13] are all necessary to trigger a redraw.
+					cb->Button.vtable->m02_Show_Disabled ((Base_Form *)&cb->Button);
+					for (int k = 0; k < 4; k++)
+						cb->Button.Images[k] = &is->sc_button_image_sets[sc].imgs[k];
+					cb->Button.field_5FC[13] = 0;
+					cb->Button.vtable->m01_Show_Enabled ((Base_Form *)&cb->Button, __, 0);
+
+					break;
+				}
+		}
+	}
+}
+
+void __fastcall
+patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
+{
+	Main_GUI_set_up_unit_command_buttons (this);
+	set_up_stack_bombard_buttons (this);
+	set_up_stack_worker_buttons (this);
+}
+
+void
+check_happiness_at_end_of_turn ()
+{
+	int num_unhappy_cities = 0;
+	City * first_unhappy_city = NULL;
+	if (p_cities->Cities != NULL)
+		for (int n = 0; n <= p_cities->LastIndex; n++) {
+			City * city = get_city_ptr (n);
+			if ((city != NULL) && (city->Body.CivID == p_main_screen_form->Player_CivID)) {
+				City_recompute_happiness (city);
+				int num_happy = 0, num_unhappy = 0;
+				FOR_CITIZENS_IN (ci, city) {
+					num_happy   += ci.ctzn->Body.Mood == CMT_Happy;
+					num_unhappy += ci.ctzn->Body.Mood == CMT_Unhappy;
+				}
+				if (num_unhappy > num_happy) {
+					num_unhappy_cities++;
+					if (first_unhappy_city == NULL)
+						first_unhappy_city = city;
+				}
+			}
+		}
+
+	if (first_unhappy_city != NULL) {
+		PopupForm * popup = get_popup_form ();
+		set_popup_str_param (0, first_unhappy_city->Body.CityName, -1, -1);
+		if (num_unhappy_cities > 1)
+			set_popup_int_param (1, num_unhappy_cities - 1);
+		char * key = (num_unhappy_cities > 1) ? "C3X_DISORDER_WARNING_MULTIPLE" : "C3X_DISORDER_WARNING_ONE";
+		char script_file_path[MAX_PATH];
+		is->snprintf (script_file_path, sizeof script_file_path, "%s\\Text\\c3x-script.txt", is->mod_rel_dir);
+		script_file_path[(sizeof script_file_path) - 1] = '\0';
+		popup->vtable->set_text_key_and_flags (popup, __, script_file_path, key, -1, 0, 0, 0);
+		int response = show_popup (popup, __, 0, 0);
+
+		if (response == 2) { // zoom to city
+			p_main_screen_form->turn_end_flag = 1;
+			City_zoom_to (first_unhappy_city, __, 0);
+		} else if (response == 1) // just cancel turn end
+			p_main_screen_form->turn_end_flag = 1;
+		// else do nothing, let turn end
+			
+	}
+}
+
+void
+intercept_end_of_turn ()
+{
+	if (is->current_config.enable_disorder_warning) {
+		check_happiness_at_end_of_turn ();
+		if (p_main_screen_form->turn_end_flag == 1) // Check if player cancelled turn ending in the disorder warning popup
+			return;
+	}
+
+	// Clear things that don't apply across turns
+	is->have_job_and_loc_to_skip = 0;
+	is->frontlineness.save_len = 0;
+	is->frontlineness.saved_for_civ_id = -1;
+}
+
+int
+compare_helpers (void const * vp_a, void const * vp_b)
+{
+	Unit * a = get_unit_ptr (*(int *)vp_a),
+	     * b = get_unit_ptr (*(int *)vp_b);
+	if ((a != NULL) && (b != NULL)) {
+		// Compute how many movement points each has left (ML = moves left)
+		int ml_a = Unit_get_max_move_points (a) - a->Body.Moves,
+		    ml_b = Unit_get_max_move_points (b) - b->Body.Moves;
+
+		// Whichever one has more MP left comes first in the array
+		if      (ml_a > ml_b) return  1;
+		else if (ml_b > ml_a) return -1;
+		else 		      return  0;
+	} else
+		// If at least one of the unit ids is invalid, might as well sort it later in the array
+		return (a != NULL) ? -1 : ((b != NULL) ? 1 : 0);
+}
+
+#define SWC_MANIFEST_LENGTH 100
+
+void __fastcall
+patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
+{
+	// Set SB flag according to case (2)
+	if (button_id < 42) {
+		if ((is->sc_img_state == SC_IMG_OK) &&
+		    ((this->Unit_Command_Buttons[button_id].Button.Images[0] == &is->sc_button_image_sets[SC_BOMBARD].imgs[0]) ||
+		     (this->Unit_Command_Buttons[button_id].Button.Images[0] == &is->sc_button_image_sets[SC_BOMB   ].imgs[0])))
+			is->sb_activated_by_button = 1;
+		else
+			is->sb_activated_by_button = 0;
+	}
+
+	int is_stackable_worker_command; {
+		is_stackable_worker_command = 0;
+		if (button_id < 42)
+			for (int n = 0; n < COUNT_STACKABLE_COMMANDS; n++)
+				if (this->Unit_Command_Buttons[button_id].Command == sc_button_infos[n].command) {
+					is_stackable_worker_command = 1;
+					break;
+				}
+	}
+
+	if ((! is_stackable_worker_command) || // If button doesn't control a stackable worker command OR
+	    (! is->current_config.enable_stack_worker_commands) || // stack worker commands are not enabled OR
+	    (((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0) || // CTRL key is not down OR
+	    (p_main_screen_form->Current_Unit == NULL) || // no unit is selected OR
+	    is_game_type_4_or_5 ()) { // is online game
+		Main_GUI_handle_button_press (this, __, button_id);
+		return;
+	}
+
+	// I don't know what these functions do but we have to call them to replicate the behavior of the function we're replacing
+	clear_something_1 ();
+	clear_something_2 (&this->Data_30_1);
+
+	int helpers[SWC_MANIFEST_LENGTH];
+	int count_helpers = 0;
+
+	Unit * selected_unit = p_main_screen_form->Current_Unit;
+	Tile * tile = tile_at (selected_unit->Body.X, selected_unit->Body.Y);
+	int selected_unit_type_id = selected_unit->Body.UnitTypeID;
+	int selected_unit_id = selected_unit->Body.ID;
+
+	FOR_UNITS_ON (uti, tile)
+		if ((count_helpers < SWC_MANIFEST_LENGTH) &&
+		    (uti.id != selected_unit_id) &&
+		    (uti.unit->Body.UnitTypeID == selected_unit_type_id) &&
+		    (uti.unit->Body.Container_Unit < 0) &&
+		    (uti.unit->Body.UnitState == 0) &&
+		    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit)))
+			helpers[count_helpers++] = uti.id;
+	
+	// Sort the list of helpers so that the ones with the fewest remaining movement points are listed first.
+	is->qsort (helpers, count_helpers, sizeof helpers[0], compare_helpers);
+
+	Unit * next_up = selected_unit;
+	int i_next_helper = 0;
+	int last_action_didnt_happen;
+	do {
+		int state_before_action = next_up->Body.UnitState;
+		Main_Screen_Form_issue_command (p_main_screen_form, __, this->Unit_Command_Buttons[button_id].Command, next_up);
+		last_action_didnt_happen = (next_up->Body.UnitState == state_before_action);
+
+		// Call this update function to cause the worker to actually perform the action. Otherwise
+		// it only gets queued, the worker keeps is movement points, and the action doesn't get done
+		// until the interturn.
+		if (! last_action_didnt_happen)
+			next_up->vtable->update_while_selected (next_up);
+
+		next_up = NULL;
+		while ((i_next_helper < count_helpers) && (next_up == NULL))
+			next_up = get_unit_ptr (helpers[i_next_helper++]);
+	} while ((next_up != NULL) && (! last_action_didnt_happen));
+}
+
+int __fastcall
+patch_Main_Screen_Form_handle_key_down (Main_Screen_Form * this, int edx, int char_code, int virtual_key_code)
+{
+	// Set SB flag according to case (4)
+	int precision_strike_is_available = 0;
+	for (int n = 0; n < 42; n++)
+		if (((this->GUI.Unit_Command_Buttons[n].Button.Base_Data.Status2 & 1) != 0) &&
+		    (this->GUI.Unit_Command_Buttons[n].Command == UCV_Precision_Bombing)) {
+			precision_strike_is_available = 1;
+			break;
+		}
+	if ((virtual_key_code == VK_B) || (precision_strike_is_available && (virtual_key_code == VK_P)))
+		is->sb_activated_by_button = 0;
+
+	if ((virtual_key_code & 0xFF) == VK_CONTROL)
+		set_up_stack_worker_buttons (&this->GUI);
+
+	char original_turn_end_flag = this->turn_end_flag;
+	int tr = Main_Screen_Form_handle_key_down (this, __, char_code, virtual_key_code);
+	if ((original_turn_end_flag == 1) && (this->turn_end_flag == 0))
+		intercept_end_of_turn ();
+
+	return tr;
+}
+
+int
+patch_handle_cursor_change_in_jgl ()
+{
+	// Set SB flag according to case (3) and the annoying state
+	if ((is->sb_activated_by_button != 2) &&
+	    (p_main_screen_form->Mode_Action != UMA_Bombard) &&
+	    (p_main_screen_form->Mode_Action != UMA_Air_Bombard))
+		is->sb_activated_by_button = 0;
+
+	return handle_cursor_change_in_jgl ();
+}
+
+void __fastcall
+patch_Main_Screen_Form_handle_left_click_on_map_1 (Main_Screen_Form * this, int edx, int param_1, int param_2)
+{
+	if (is->sb_activated_by_button == 1)
+		is->sb_activated_by_button = 2;
+	Main_Screen_Form_handle_left_click_on_map_1 (this, __, param_1, param_2);
+	is->sb_activated_by_button = 0;
+}
+
+
+void __fastcall 
+patch_Main_GUI_handle_click_in_status_panel (Main_GUI * this, int edx, int mouse_x, int mouse_y)
+{
+	char original_turn_end_flag = p_main_screen_form->turn_end_flag;
+	Main_GUI_handle_click_in_status_panel (this, __, mouse_x, mouse_y);
+	if ((original_turn_end_flag == 1) && (p_main_screen_form->turn_end_flag == 0))
+		intercept_end_of_turn ();
+}
+
+// Gets effective shields generated per turn, including civil engineers, disorder, and anarchy.
+int
+get_city_production_rate (City * city, enum City_Order_Types order_type, int order_id)
+{
+	int in_disorder = city->Body.Status & 1,
+	    in_anarchy = p_bic_data->Governments[leaders[city->Body.CivID].GovenmentType].b_Transition_Type,
+	    getting_tile_shields = (! in_disorder) && (! in_anarchy);
+
+	if (order_type == COT_Improvement) {
+		int building_wealth = (p_bic_data->Improvements[order_id].ImprovementFlags & ITF_Capitalization) != 0;
+		int specialist_shields = 0;
+		FOR_CITIZENS_IN (ci, city)
+			if ((ci.ctzn->Body.field_20[0] & 0xFF) == 0) // I don't know what is check is for but it's done in the base code
+				specialist_shields += p_bic_data->CitizenTypes[ci.ctzn->Body.WorkerType].Construction;
+		return (getting_tile_shields ? city->Body.ProductionIncome : 0) + ((! building_wealth) ? specialist_shields : 0);
+	} else if ((order_type == COT_Unit) && getting_tile_shields)
+		return city->Body.ProductionIncome;
+	else
+		return 0;
+}
+
+void __fastcall
+patch_City_Form_draw (City_Form * this)
+{
+	// Recompute city form production rect location every time because the config might have changed. Doing it here is also easier than
+	// patching the constructor.
+	int form_top = (p_bic_data->ScreenHeight - this->Background_Image.Height) / 2;
+	this->Production_Storage_Indicator.top = form_top + 621 + (is->current_config.show_detailed_city_production_info ? 34 : 0);
+
+	City_Form_draw (this);
+
+	if (is->current_config.show_detailed_city_production_info) {
+		City * city = this->CurrentCity;
+		int order_type = city->Body.Order_Type,
+		    order_id = city->Body.Order_ID,
+		    order_progress = City_get_order_progress (city),
+		    order_cost = City_get_order_cost (city),
+		    prod_rate = get_city_production_rate (city, order_type, order_id),
+		    building_wealth = (order_type == COT_Improvement) && ((p_bic_data->Improvements[order_id].ImprovementFlags & ITF_Capitalization) != 0);
+
+		int turns_left, surplus; {
+			if (prod_rate > 0) {
+				turns_left = (order_cost - order_progress) / prod_rate;
+				if ((order_cost - order_progress) % prod_rate != 0)
+					turns_left++;
+				if (turns_left < 1)
+					turns_left = 1;
+				surplus = (turns_left * prod_rate) - (order_cost - order_progress);
+			} else {
+				turns_left = 9999;
+				surplus = 0;
+			}
+		}
+
+		char line1[100]; {
+			if (prod_rate > 0) {
+				if (! building_wealth)
+					is->snprintf (line1, sizeof line1, "%s %d %s", this->Labels.To_Build, turns_left, (turns_left == 1) ? this->Labels.Single_Turn : this->Labels.Multiple_Turns);
+				else
+					is->snprintf (line1, sizeof line1, "%s", is->labels[LAB_NEVER_COMPLETES]);
+			} else
+				is->snprintf (line1, sizeof line1, "%s", is->labels[LAB_HALTED]);
+			line1[(sizeof line1) - 1] = '\0';
+		}
+
+		char line2[100]; {
+			if (! building_wealth) {
+				int percent_complete = order_cost > 0 ? ((10000 * order_progress) / order_cost + 50) / 100 : 100;
+				is->snprintf (line2, sizeof line2, "%d / %d (%d%s)", order_progress, order_cost, percent_complete, this->Labels.Percent);
+			} else
+				is->snprintf (line2, sizeof line2, "---");
+			line2[(sizeof line2) - 1] = '\0';
+		}
+
+		char line3[100]; {
+			if ((! building_wealth) && (prod_rate > 0)) {
+				int s_per, s_rem; {
+					if (turns_left > 1) {
+						s_per = surplus / turns_left;
+						s_rem = surplus % turns_left;
+					} else {
+						s_per = surplus;
+						s_rem = 0;
+					}
+				}
+				char * s_lab = is->labels[LAB_SURPLUS];
+				if      ((s_per != 0) && (s_rem != 0)) is->snprintf (line3, sizeof line3, "%s: %d + %d %s", s_lab, s_rem, s_per, this->Labels.Per_Turn);
+				else if ((s_per == 0) && (s_rem != 0)) is->snprintf (line3, sizeof line3, "%s: %d",         s_lab, s_rem);
+				else if ((s_per != 0) && (s_rem == 0)) is->snprintf (line3, sizeof line3, "%s: %d %s",      s_lab, s_per, this->Labels.Per_Turn);
+				else                                   is->snprintf (line3, sizeof line3, "%s", is->labels[LAB_SURPLUS_NONE]);
+			} else
+				is->snprintf (line3, sizeof line3, "%s", is->labels[LAB_SURPLUS_NA]);
+			line3[(sizeof line3) - 1] = '\0';
+		}
+
+		Object_66C3FC * font = get_font (10, FSF_NONE);
+		int left = this->Production_Storage_Indicator.left,
+		    top = this->Production_Storage_Indicator.top,
+		    width = this->Production_Storage_Indicator.right - left;
+		PCX_Image_draw_centered_text (&this->Base.Data.Canvas, __, font, line1, left, top - 42, width, is->strlen (line1));
+		PCX_Image_draw_centered_text (&this->Base.Data.Canvas, __, font, line2, left, top - 28, width, is->strlen (line2));
+		PCX_Image_draw_centered_text (&this->Base.Data.Canvas, __, font, line3, left, top - 14, width, is->strlen (line3));
+	}
+}
+
+void __fastcall
+patch_City_Form_print_production_info (City_Form *this, int edx, String256 * out_strs, int str_capacity)
+{
+	City_Form_print_production_info (this, __, out_strs, str_capacity);
+	if (is->current_config.show_detailed_city_production_info)
+		out_strs[1].S[0] = '\0';
+}
+
+int __fastcall
+patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned param_7, int neighbor_index, int param_9)
+{
+	int base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, param_7, neighbor_index, param_9);
+	if ((is->current_config.limit_railroad_movement > 0) && (is->saved_road_movement_rate > 0)) {
+		if ((unit != NULL) && (base_cost == 0))
+			return Unit_get_max_move_points (unit) / is->current_config.limit_railroad_movement;
+		else if (base_cost == 1)
+			return p_bic_data->General.RoadsMovementRate / is->saved_road_movement_rate;
+	}
+	return base_cost;
+}
+
+int __cdecl
+patch_do_save_game (char * file_path, char param_2, GUID * guid)
+{
+	if ((is->current_config.limit_railroad_movement <= 0) || (is->saved_road_movement_rate <= 0))
+		return do_save_game (file_path, param_2, guid);
+	else {
+		int rmr = p_bic_data->General.RoadsMovementRate;
+		p_bic_data->General.RoadsMovementRate = is->saved_road_movement_rate;
+		int tr = do_save_game (file_path, param_2, guid);
+		p_bic_data->General.RoadsMovementRate = rmr;
+		return tr;
+	}
+}
+
+void __fastcall
+patch_General_clear (General * this)
+{
+	General_clear (this);
+	is->saved_road_movement_rate = -1;
+}
+
+void __fastcall
+patch_General_load (General * this, int edx, byte ** buffer)
+{
+	General_load (this, __, buffer);
+	if (is->current_config.limit_railroad_movement > 0) {
+		is->saved_road_movement_rate = p_bic_data->General.RoadsMovementRate;
+		p_bic_data->General.RoadsMovementRate *= is->current_config.limit_railroad_movement;
+	}
+}
+
+void __fastcall
+patch_Leader_recompute_auto_improvements (Leader * this)
+{
+	is->leader_param_for_patch_get_wonder_city_id = this;
+	Leader_recompute_auto_improvements (this);
+}
+
+int __fastcall
+patch_get_wonder_city_id (void * this, int edx, int wonder_improvement_id)
+{
+	int ret_addr = ((int *)&wonder_improvement_id)[-1];
+	if ((is->current_config.enable_free_buildings_from_small_wonders) && (ret_addr == ADDR_SMALL_WONDER_FREE_IMPROVS_RETURN)) {
+		Leader * leader = is->leader_param_for_patch_get_wonder_city_id;
+		Improvement * improv = &p_bic_data->Improvements[wonder_improvement_id];
+		if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
+			// Need to check if Small_Wonders array is NULL b/c recompute_auto_improvements gets called with leaders that are absent/dead.
+			return (leader->Small_Wonders != NULL) ? leader->Small_Wonders[wonder_improvement_id] : -1;
+		}
+	}
+	return get_wonder_city_id (this, __, wonder_improvement_id);
+}
+
+int __fastcall
+patch_Main_Screen_Form_handle_key_up (Main_Screen_Form * this, int edx, int virtual_key_code)
+{
+	if ((virtual_key_code & 0xFF) == VK_CONTROL)
+		patch_Main_GUI_set_up_unit_command_buttons (&this->GUI);
+
+	return Main_Screen_Form_handle_key_up (this, __, virtual_key_code);
+}
+
+int __fastcall
+patch_show_popup (void * this, int edx, int param_1, int param_2)
+{
+	is->show_popup_was_called = 1;
+	return show_popup (this, __, param_1, param_2);
+}
+
+char __fastcall
+patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing)
+{
+	if ((p_main_screen_form->Player_CivID != this->ID) || (! is->current_config.skip_repeated_tile_improv_replacement_asks))
+		return Leader_can_do_worker_job (this, __, job, tile_x, tile_y, ask_if_replacing);
+	else if (is->have_job_and_loc_to_skip &&
+		 (is->to_skip.job == job) && (is->to_skip.tile_x == tile_x) && (is->to_skip.tile_y == tile_y))
+		return Leader_can_do_worker_job (this, __, job, tile_x, tile_y, 0);
+	else {
+		is->show_popup_was_called = 0;
+		int tr = Leader_can_do_worker_job (this, __, job, tile_x, tile_y, ask_if_replacing);
+		if (is->show_popup_was_called && tr) { // Check that the popup was shown and the playeer chose to replace
+			is->to_skip = (struct worker_job_and_location) { .job = job, .tile_x = tile_x, .tile_y = tile_y };
+			is->have_job_and_loc_to_skip = 1;
+		}
+		return tr;
+	}
+}
+
+City *
+get_city_near (int x, int y)
+{
+	FOR_TILES_AROUND (tai, 9, x, y) {
+		City * city = get_city_ptr (tai.tile->vtable->m45_Get_City_ID (tai.tile));
+		if (city != NULL)
+			return city;
+	}
+	return NULL;
+}
+
+int
+eval_frontlineness (City * city)
+{
+	int tr = 0;
+	Leader * me = &leaders[city->Body.CivID];
+	FOR_TILES_AROUND (tai, 37, city->Body.X, city->Body.Y) { // 37 tiles = all in 3rd ring or closer
+		int tile_owner = tai.tile->vtable->m38_Get_Territory_OwnerID (tai.tile);
+		if ((tile_owner > 0) && (tile_owner < 32) && (me->At_War[tile_owner] != 0))
+			tr += 8;
+		else if ((tile_owner == 0) && (! tai.tile->vtable->m35_Check_Is_Water (tai.tile)))
+			tr += 1;
+		FOR_UNITS_ON (uti, tai.tile) {
+			if (Unit_is_visible_to_civ (uti.unit, __, me->ID, 0) && Leader_is_enemy_unit (me, __, uti.unit))
+				tr += 16;
+		}
+	}
+	return (tr + 4) / 8;
+}
+
+void __fastcall
+patch_Unit_ai_move_artillery (Unit * this)
+{
+	Tile * on_tile = tile_at (this->Body.X, this->Body.Y);
+	int in_city_id = on_tile->vtable->m45_Get_City_ID (on_tile);
+
+	if ((! is->current_config.use_offensive_artillery_ai) ||
+	    ((this->Body.UnitTypeID < 0) || (this->Body.UnitTypeID >= p_bic_data->UnitTypeCount))) { // Check for invalid unit type id which appears sometimes, IDK why
+		Unit_ai_move_artillery (this);
+		return;
+	}
+
+	Leader const * me = &leaders[this->Body.CivID];
+	UnitType const * this_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+	struct frontlineness * fl = &is->frontlineness;
+
+	if (is->frontlineness.saved_for_civ_id != me->ID) {
+		// Expand capacity of lists if necessary
+		if (me->Cities_Count > fl->capacity) {
+			int new_capacity = fl->capacity * 2;
+			if (new_capacity < me->Cities_Count)
+				new_capacity = me->Cities_Count + 100;
+			is->free (fl->saves);
+			fl->saves = is->malloc (new_capacity * sizeof fl->saves[0]);
+			is->free (fl->cons);
+			fl->cons = is->malloc (new_capacity * sizeof fl->cons[0]);
+			fl->capacity = new_capacity;
+		}
+
+		// Recalculate frontlineness for this Civ
+		fl->save_len = 0;
+		if ((p_cities->Cities != NULL) && (fl->saves != NULL))
+			for (int n = 0; n <= p_cities->LastIndex; n++) {
+				City * city = get_city_ptr (n);
+				if ((city != NULL) && (city->Body.CivID == me->ID)) {
+					Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
+					fl->saves[fl->save_len] = (struct fl_save) {
+						.city_id = n,
+						.continent_id = city_tile->vtable->m46_Get_ContinentID (city_tile),
+						.frontlineness = eval_frontlineness (city)
+					};
+					fl->save_len += 1;
+				}
+			}
+		
+	}
+
+	int any_enemies_near; {
+		any_enemies_near = 0;
+		int at_war = 0;
+		for (int n = 1; n < 32; n++)
+			at_war |= me->At_War[n];
+		FOR_TILES_AROUND (tai, 21, this->Body.X, this->Body.Y) {
+			int enemy_on_this_tile = 0;
+			FOR_UNITS_ON (uti, tai.tile) {
+				if (Unit_is_visible_to_civ (uti.unit, __, me->ID, 0)) {
+					if (me->At_War[uti.unit->Body.CivID]) {
+						UnitType const * unit_type = &p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID];
+						if ((unit_type->Defence > 0) || (unit_type->Attack > 0)) {
+							enemy_on_this_tile = 1;
+							break;
+						}
+					} else
+						break;
+				}
+			}
+			if (enemy_on_this_tile) {
+				any_enemies_near = 1;
+				break;
+			}
+		}
+	}
+
+	if (! any_enemies_near) {
+
+		// Move along pre-set path if we have one
+		byte next_move = Unit_pop_next_move_from_path (this);
+		if (next_move > 0) {
+			this->vtable->Move (this, __, next_move, 0);
+			return;
+		}
+
+		// Otherwise find a frontline city to move to
+
+		int on_continent_id; {
+			Tile * t = tile_at (this->Body.X, this->Body.Y);
+			on_continent_id = (t != NULL) ? t->vtable->m46_Get_ContinentID (t) : -1;
+		}
+
+		int total_at = 0,
+		    cons_len = 0;
+		for (int n = 0; n < fl->save_len; n++)
+			if (fl->saves[n].continent_id == on_continent_id) {
+				int at = fl->saves[n].frontlineness;
+				City * cons_city;
+				if (fl->saves[n].city_id == in_city_id)
+					at *= 5;
+				else if (NULL != (cons_city = get_city_ptr (fl->saves[n].city_id))) {
+					int dist = int_abs (cons_city->Body.X - this->Body.X) + int_abs (cons_city->Body.Y - this->Body.Y);
+					at = (10 * at) / (10 + dist);
+				}
+				total_at += at;
+				fl->cons[cons_len++] = (struct fl_consideration) { .city_id = fl->saves[n].city_id, .total_attractiveness = total_at };
+			}
+
+		if ((cons_len > 0) && (total_at > 0)) {
+			int rv = 1 + rand_int (p_rand_object, __, total_at);
+			int move_to_city_id = -1;
+			for (int n = 0; n < cons_len; n++)
+				if (rv <= fl->cons[n].total_attractiveness) {
+					move_to_city_id = fl->cons[n].city_id;
+					break;
+				}
+			City * move_to_city;
+			if ((move_to_city_id != in_city_id) && (NULL != (move_to_city = get_city_ptr (move_to_city_id)))) {
+				int first_move = Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, move_to_city->Body.X, move_to_city->Body.Y, this, this->Body.CivID, 0x301, NULL);
+				if (first_move > 0) {
+
+					char str[1000];
+					City * near_city = get_city_near (this->Body.X, this->Body.Y);
+					is->snprintf (str, sizeof str, "Moving arty from (%d, %d) (near %s) to %s", this->Body.X, this->Body.Y, (near_city != NULL) ? near_city->Body.CityName : "", move_to_city->Body.CityName);
+					(*p_OutputDebugStringA) (str);
+
+					Unit_reset_animation (this, __, -1);
+					this->vtable->Move (this, __, first_move, 0);
+					return;
+				}
+			}
+		}
+	}
+
+	// If any of the above logic didn't apply or failed for some reason, just fall back on the base impl
+	Unit_ai_move_artillery (this);
+}
+
+int
+rate_artillery (UnitType * type)
+{
+	int tr = type->Attack + type->Defence + 2 * type->Bombard_Strength * type->FireRate;
+
+	// include movement
+	int moves = type->Movement;
+	if (moves >= 2)
+		tr = tr * (moves + 1) / 2;
+
+	// include range
+	int range = type->Bombard_Range;
+	if (range >= 2)
+		tr = tr * (range + 1) / 2;
+
+	// include extra hp
+	if (type->Hit_Point_Bonus > 0)
+		tr = tr * (4 + type->Hit_Point_Bonus) / 4;
+
+	return tr;
+}
+
+void __fastcall
+patch_City_ai_choose_production (City * this, int edx, City_Order * out)
+{
+	City_ai_choose_production (this, __, out);
+	int ratio = is->current_config.ai_build_artillery_ratio;
+	if ((ratio > 0) &&
+	    (out->OrderType == COT_Unit) &&
+	    (out->OrderID >= 0) && (out->OrderID < p_bic_data->UnitTypeCount) &&
+	    (p_bic_data->UnitTypes[out->OrderID].AI_Strategy & (UTAI_Offence | UTAI_Defence))) {
+		Leader * me = &leaders[this->Body.CivID];
+		UnitType * type = &p_bic_data->UnitTypes[out->OrderID];
+		int num_attackers = me->AI_Strategy_Unit_Counts[0],
+		    num_defenders = me->AI_Strategy_Unit_Counts[1],
+		    num_artillery = me->AI_Strategy_Unit_Counts[2];
+		int chance = 12 * ratio / 10;
+		if ((num_attackers > me->Cities_Count / 2) &&
+		    (num_defenders > me->Cities_Count) &&
+		    (100*num_artillery < ratio*(num_attackers + num_defenders)) &&
+		    (rand_int (p_rand_object, __, 100) < chance)) {
+			int best_arty_type_id = -1;
+			int best_arty_rating = -1;
+			for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
+				if ((p_bic_data->UnitTypes[n].AI_Strategy & UTAI_Artillery) &&
+				    City_can_build_unit (this, __, n, 1, 0, 0)) {
+					int this_rating = rate_artillery (&p_bic_data->UnitTypes[n]);
+					if (this_rating > best_arty_rating) {
+						best_arty_type_id = n;
+						best_arty_rating = this_rating;
+					}
+				}
+			}
+			if (best_arty_type_id != -1)
+				out->OrderID = best_arty_type_id;
+		}
+	}
+}
+
+// TCC requires a main function be defined even though it's never used.
+int main () { return 0; }
