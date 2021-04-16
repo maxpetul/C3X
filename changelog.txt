@@ -1,5 +1,8 @@
 * RELEASE 6
+- Add option to force the AI to build more artillery
+- Implement/enable offensive artillery AI
 - TODO
+  - AI should not build more artillery if the arty it can build would slow down its army, i.e., if it can or has already built faster units
   - Credit Civinator in the readme for the German translation that I assume he'll do
   - Add a note about Romulo's experience with the MSVC++ redists to the readme
 
