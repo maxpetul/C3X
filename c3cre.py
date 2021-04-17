@@ -28,6 +28,8 @@ unit_layout = {"ID"        : 0x1C + 0x4,
                "Job_ID"    : 0x1C + 0x3C,
                "UnitState" : 0x1C + 0x48}
 
+city_layout = {"ID": 0x1C + 0x4}
+
 class GameObject:
         def __init__ (self, civ_proc, address, size):
                 self.civ_proc = civ_proc
@@ -72,6 +74,9 @@ class City(GameObject):
         def __init__ (self, civ_proc, address):
                 GameObject.__init__ (self, civ_proc, address, 0x544)
 
+        def get (self, field_name):
+                return self.get_int (city_layout[field_name])
+
 def fit_offset (game_objects, observations, size=4):
         """ Finds offsets whose values match all observations. Observations is a list of (name, value) tuples """
         go0, val0 = observations[0]
@@ -111,6 +116,9 @@ class CivProc:
 
         def write_memory (self, address, buf):
                 return winproc.WriteProcessMemory (self.proc_handle, address, buf)
+
+        def read_int (self, address, size=4, unsigned=False):
+                return int.from_bytes (self.read_memory (address, size), byteorder = "little", signed = not unsigned)
 
         def memcpy (self, dest_addr, source_addr, num_bytes):
                 read = self.read_memory (source_addr, num_bytes)
@@ -170,11 +178,22 @@ class CivProc:
                                         tr[go.name] = go
                 return tr
 
-        def find_units (self):
-                pass
-# "p_bic_data", 0x9C3508
-# "p_units", 0xA52E80
-# "p_cities", 0xA52E68
+        def read_game_objects_from_list (self, list_object_addr, type_tag):
+                items = self.read_int (list_object_addr + 0x4)
+                last_index = self.read_int (list_object_addr + 0x10)
+                tr = {}
+                for n in range (last_index + 1):
+                        body = self.read_int (items + 8 * n + 4)
+                        if (body != 0) and (body != 0x1C):
+                                obj = self.read_thing (type_tag, body - 0x1C)
+                                tr[obj.get ("ID")] = obj
+                return tr
+
+        def get_city_by_name (self, name):
+                for c in self.cities.values ():
+                        if c.name == name:
+                                return c
+                return None
 
         def find_data_objects (self, data_type):
                 tr_id = []
@@ -191,11 +210,11 @@ class CivProc:
                 return (tr_id, tr_name)
 
         def find_everything (self):
-                print ("Reading units...")
-                self.units = self.find_game_things ( b"UNIT")
-                print ("Reading cities...")
-                self.cities = self.find_game_things (b"CITY")
-                print ("Reading unit types...")
+                self.units = self.read_game_objects_from_list (0xA52E80, b"UNIT")
+                print ("Found %d units" % len (self.units.values ()))
+                self.cities = self.read_game_objects_from_list (0xA52E68, b"CITY")
+                print ("Found %d cities" % len (self.cities.values ()))
                 self.unit_types_by_id, self.unit_types_by_name = self.find_data_objects (unit_type)
-                print ("Reading difficulties...")
+                print ("Found %d unit types" % len (self.unit_types_by_id))
                 self.difficulties_by_id, self.difficulties_by_name = self.find_data_objects (difficulty)
+                print ("Found %d difficulties" % len (self.difficulties_by_id))
