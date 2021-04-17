@@ -8,7 +8,6 @@ from commonre import *
 
 go_to_conquests_directory ()
 
-game_object_sizes = {b"CITY": 0x544, b"UNIT": 0x404}
 vtable_pointers = {b"CITY": 0x66dc78, b"UNIT": 0x66DCF0}
 
 # global_location is the address of the global variable that stores the pointer to the array of data objects.
@@ -18,7 +17,24 @@ difficulty = {"global_location": 0x9C40C0, "size": 0x7C , "name_offset": 4, "nam
 
 unnamed_unit_counter = 1
 
+unit_layout = {"ID"        : 0x1C + 0x4,
+               "X"         : 0x1C + 0x8,
+               "Y"         : 0x1C + 0xC,
+               "CivID"     : 0x1C + 0x18,
+               "RaceID"    : 0x1C + 0x1C,
+               "UnitTypeID": 0x1C + 0x24,
+               "Status"    : 0x1C + 0x2C,
+               "Job_Value" : 0x1C + 0x38,
+               "Job_ID"    : 0x1C + 0x3C,
+               "UnitState" : 0x1C + 0x48}
+
 class GameObject:
+        def __init__ (self, civ_proc, address, size):
+                self.civ_proc = civ_proc
+                self.address = address
+                self.size = size
+                self.mem_bytes = civ_proc.read_memory (address, size)
+
         def reread (self):
                 self.mem_bytes = self.civ_proc.read_memory (self.address, self.size)
                 return self
@@ -35,23 +51,26 @@ class GameObject:
                                 tr.append (size * n)
                 return tr
 
-unit_fields = {"ID"        : 0x1C + 0x4,
-               "X"         : 0x1C + 0x8,
-               "Y"         : 0x1C + 0xC,
-               "CivID"     : 0x1C + 0x18,
-               "RaceID"    : 0x1C + 0x1C,
-               "UnitTypeID": 0x1C + 0x24,
-               "Status"    : 0x1C + 0x2C,
-               "Job_Value" : 0x1C + 0x38,
-               "Job_ID"    : 0x1C + 0x3C,
-               "UnitState" : 0x1C + 0x48}
-
 class Unit(GameObject):
+        def __init__ (self, civ_proc, address):
+                GameObject.__init__ (self, civ_proc, address, 0x404)
+
         def get (self, field_name):
-                return self.get_int (unit_fields[field_name])
+                return self.get_int (unit_layout[field_name])
         
         def get_location (self):
                 return (self.get_int (0x1C + 0x8), self.get_int (0x1C + 0xC))
+
+        def get_type (self):
+                i = self.get ("UnitTypeID")
+                if (i >= 0) and (i < len (self.civ_proc.unit_types_by_id)):
+                        return self.civ_proc.unit_types_by_id[i]
+                else:
+                        return None
+
+class City(GameObject):
+        def __init__ (self, civ_proc, address):
+                GameObject.__init__ (self, civ_proc, address, 0x544)
 
 def fit_offset (game_objects, observations, size=4):
         """ Finds offsets whose values match all observations. Observations is a list of (name, value) tuples """
@@ -77,8 +96,10 @@ class CivProc:
                 self.proc_handle, self.thread_handle, self.proc_id, self.thread_id = proc_handles
                 self.units = None
                 self.cities = None
-                self.unit_types = None
-                self.difficulties = None
+                self.unit_types_by_id = None
+                self.unit_types_by_name = None
+                self.difficulties_by_id = None
+                self.difficulties_by_name = None
                 if not start_suspended:
                         self.unsuspend ()
 
@@ -112,30 +133,22 @@ class CivProc:
                 return tr
 
         def read_thing (self, type_tag, address):
-                tr = Unit () if type_tag == b"UNIT" else GameObject ()
                 global unnamed_unit_counter
-                tr.civ_proc = self
-                tr.type_tag = type_tag
-                tr.address = address
-                tr.size = game_object_sizes[type_tag]
-                tr.mem_bytes = self.read_memory (address, tr.size)
-                if type_tag == b"CITY":
-                        tr.name = str_from_bytes (tr.mem_bytes[0x1E0 : 0x1E0+24])
-                elif type_tag == b"UNIT":
+                if type_tag == b"UNIT":
+                        tr = Unit (self, address)
                         tr.name = str_from_bytes (tr.mem_bytes[0x74 : 0x74+24])
                         if tr.name == "":
                                 tr.name = "unnamed_" + str (unnamed_unit_counter)
                                 unnamed_unit_counter += 1
+                elif type_tag == b"CITY":
+                        tr = City (self, address)
+                        tr.name = str_from_bytes (tr.mem_bytes[0x1E0 : 0x1E0+24])
                 else:
-                        raise Exception ("name detection not implemented for type \"" + type_tag + "\"")
+                        raise Exception ("type creation not implemented for: \"" + type_tag + "\"")
                 return tr
 
         def read_data (self, data_type, address):
-                tr = GameObject ()
-                tr.civ_proc = self
-                tr.address = address
-                tr.size = data_type["size"]
-                tr.mem_bytes = self.read_memory (address, tr.size)
+                tr = GameObject (self, address, data_type["size"])
                 tr.name = str_from_bytes (tr.mem_bytes[data_type["name_offset"] : data_type["name_offset"] + data_type["name_size"]])
                 return tr
 
@@ -157,17 +170,25 @@ class CivProc:
                                         tr[go.name] = go
                 return tr
 
+        def find_units (self):
+                pass
+# "p_bic_data", 0x9C3508
+# "p_units", 0xA52E80
+# "p_cities", 0xA52E68
+
         def find_data_objects (self, data_type):
+                tr_id = []
+                tr_name = {}
                 p = int.from_bytes (self.read_memory (data_type["global_location"], 4), "little")
-                tr = {}
                 n = 0
                 while (True):
-                        ut = self.read_data (data_type, p + n * data_type["size"])
-                        tr[ut.name] = ut
-                        if ut.name == data_type["final_name"]:
+                        do = self.read_data (data_type, p + n * data_type["size"])
+                        tr_id.append (do)
+                        tr_name[do.name] = do
+                        if do.name == data_type["final_name"]:
                                 break
                         n += 1
-                return tr
+                return (tr_id, tr_name)
 
         def find_everything (self):
                 print ("Reading units...")
@@ -175,6 +196,6 @@ class CivProc:
                 print ("Reading cities...")
                 self.cities = self.find_game_things (b"CITY")
                 print ("Reading unit types...")
-                self.unit_types = self.find_data_objects (unit_type)
+                self.unit_types_by_id, self.unit_types_by_name = self.find_data_objects (unit_type)
                 print ("Reading difficulties...")
-                self.unit_types = self.find_data_objects (difficulty)
+                self.difficulties_by_id, self.difficulties_by_name = self.find_data_objects (difficulty)
