@@ -4541,7 +4541,7 @@ struct Unit_Body
   int field_9C[2];
   unsigned char path[256]; // List of neighbor indices, consumed back to front
   int path_len;
-  int field_1A8;
+  int escortee;
   int Auto_CityID;
   int field_1B0[10];
   int field_1D8;

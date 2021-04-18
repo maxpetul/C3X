@@ -200,6 +200,9 @@ class CivProc:
                                 return c
                 return None
 
+        def get_units_at (self, x, y):
+                return [u for u in self.units.values () if u.get ("X") == x and u.get ("Y") == y]
+
         def find_data_objects (self, data_type):
                 tr_id = []
                 tr_name = {}
