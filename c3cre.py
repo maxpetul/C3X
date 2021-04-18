@@ -73,7 +73,7 @@ class Unit(GameObject):
         def describe (self):
                 unit_type = self.get_type ()
                 type_name = unit_type.name if unit_type is not None else "N/A"
-                return "%d\t%s\t%s" % (self.get ("ID"), type_name, hex (self.get ("UnitState"))
+                return "%d\t%s\t%s" % (self.get ("ID"), type_name, hex (self.get ("UnitState")))
 
 class City(GameObject):
         def __init__ (self, civ_proc, address):
