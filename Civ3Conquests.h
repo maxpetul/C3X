@@ -2297,7 +2297,7 @@ struct Unit_vtable
   int m12;
   int m13;
   int m14;
-  int m15;
+  byte (__fastcall * is_enemy_of) (Unit *, int, int, byte);
   int m16;
   int m17;
   int m18;
