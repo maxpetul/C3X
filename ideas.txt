@@ -4,7 +4,7 @@ Ideas:
 - Cities do not unassign citizens from polluted tiles (arguably not convenient since you're potentially losing the specialist yield)
 - [from tjs282] Assign the minimum number of workers necessary to clean pollution
 - [from tjs282] Scroll wheel to set gold amount in trade window
-- [form Tsubasanut] "Forbid to place a city near enemy city, a request from Civinator, makes total sense."
+- [form Tsubasanut, Civinator, Nanuk] Increase min city distance especially from enemy cities
 - [from MartinLuther] "I think an interesting addition would be getting an Advisor Popup whenever another civilization enters a new era."
 - [from tjs282] Group units with the same type/health/moves/status on the right click menu
 - [from Ares de Borg] "it would be cool to investigate how the AI chooses to build units and if there is a chance to put some kind of ratio to it"
@@ -32,3 +32,10 @@ Ideas:
   - Era graphics changes for mines, radar towers, etc.
   - "Decoupling city icons from current building mechanics and assigning them elsewhere"
   - Interception mission takes effect immediately
+- [from ynot56] Stop AI suiciding low health units, stop attacking with weak units before strong ones
+- [from Sutsuj]
+  - Allow teleportation of immobile units
+    - As Alternative/addition make removing go-to action also immobilize units
+  - Allow unit to retreat as long as it's faster than its opponent
+  - Fix game crash on unload immobile unit from ship
+  - Limit unit stacking with per-unit weight, per-terrain capacities, etc. See: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-8#post-16077019
