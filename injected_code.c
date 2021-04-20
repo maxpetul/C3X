@@ -1050,7 +1050,7 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 		// it only gets queued, the worker keeps is movement points, and the action doesn't get done
 		// until the interturn.
 		if (! last_action_didnt_happen)
-			next_up->vtable->update_while_selected (next_up);
+			next_up->vtable->update_while_active (next_up);
 
 		next_up = NULL;
 		while ((i_next_helper < count_helpers) && (next_up == NULL))
@@ -1481,7 +1481,7 @@ patch_Unit_ai_move_artillery (Unit * this)
 					is->snprintf (str, sizeof str, "Moving arty from (%d, %d) (near %s) to %s", this->Body.X, this->Body.Y, (near_city != NULL) ? near_city->Body.CityName : "", move_to_city->Body.CityName);
 					(*p_OutputDebugStringA) (str);
 
-					Unit_reset_animation (this, __, -1);
+					Unit_set_escortee (this, __, -1);
 					this->vtable->Move (this, __, first_move, 0);
 					return;
 				}

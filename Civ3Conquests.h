@@ -1162,9 +1162,9 @@ struct IntList
   int field_0;
   int length;
   int field_8;
-  int *items;
-  int *items_end;
-  int *also_items_end;
+  int * contents;
+  int * contents_end;
+  int * also_contents_end;
 };
 
 struct City_Base_vtable
@@ -2303,7 +2303,7 @@ struct Unit_vtable
   int m18;
   int (__fastcall * Move) (Unit *, int, int, char);
   int m20;
-  void (__fastcall * update_while_selected) (Unit *);
+  void (__fastcall * update_while_active) (Unit *);
   int m22;
 //  int (__thiscall *m23_Do_Work)(Unit *);
   void *m23_Do_Work;
@@ -3633,12 +3633,7 @@ struct Animation_Data_60_vtable
 struct IDLS
 {
   Base Base;
-  int field_1C;
-  int field_20;
-  int field_24;
-  int field_28;
-  int field_2C;
-  int field_30;
+  IntList escorters;
 };
 
 struct FLIC_HEADER
