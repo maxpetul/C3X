@@ -26,7 +26,8 @@ unit_layout = {"ID"        : 0x1C + 0x4,
                "Status"    : 0x1C + 0x2C,
                "Job_Value" : 0x1C + 0x38,
                "Job_ID"    : 0x1C + 0x3C,
-               "UnitState" : 0x1C + 0x48}
+               "UnitState" : 0x1C + 0x48,
+               "escortee"  : 0x1C + 0x1A8}
 
 city_layout = {"ID": 0x1C + 0x4}
 
@@ -74,6 +75,25 @@ class Unit(GameObject):
                 unit_type = self.get_type ()
                 type_name = unit_type.name if unit_type is not None else "N/A"
                 return "%d\t%s\t%s" % (self.get ("ID"), type_name, hex (self.get ("UnitState")))
+
+        def get_escortee (self):
+                escortee_id = self.get ("escortee")
+                if escortee_id in self.civ_proc.units:
+                        return self.civ_proc.units[escortee_id]
+                else:
+                        return None
+
+        def list_escorters (self):
+                p_escorter = self.get_int (0x1C + 0x1DC + 0x1C + 0xC)
+                list_end   = self.get_int (0x1C + 0x1DC + 0x1C + 0x10)
+                tr = []
+                if p_escorter != 0:
+                        while p_escorter < list_end:
+                                escorter_id = self.civ_proc.read_int (p_escorter)
+                                if escorter_id in self.civ_proc.units:
+                                        tr.append (self.civ_proc.units[escorter_id])
+                                p_escorter += 4
+                return tr
 
 class City(GameObject):
         def __init__ (self, civ_proc, address):
