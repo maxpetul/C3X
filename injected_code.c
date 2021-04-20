@@ -1361,6 +1361,8 @@ eval_frontlineness (City * city)
 void __fastcall
 patch_Unit_ai_move_artillery (Unit * this)
 {
+	/*
+
 	Tile * on_tile = tile_at (this->Body.X, this->Body.Y);
 	int in_city_id = on_tile->vtable->m45_Get_City_ID (on_tile);
 
@@ -1488,6 +1490,8 @@ patch_Unit_ai_move_artillery (Unit * this)
 			}
 		}
 	}
+
+	*/
 
 	// If any of the above logic didn't apply or failed for some reason, just fall back on the base impl
 	Unit_ai_move_artillery (this);
