@@ -84,6 +84,8 @@ struct civ_prog_object {
 	{OJ_INLEAD, "City_ai_choose_production", "void (__fastcall *) (City * this, int edx, City_Order * out)", 0x42C8A0, 0x0},
 	{OJ_DEFINE,	"City_can_build_unit",				"byte (__fastcall *) (City * this, int edx, int unit_type_id, byte exclude_upgradable, int param_3, byte allow_kings)",								0x4C04E0,	0x0},
 
+	{OJ_REPL_VPTR, "Unit_eval_escort_requirement", "int (__fastcall *) (Unit *)", 0x66DD04, 0x0},
+
 	// {OJ_DEFINE,	"City_get_turns_to_build",			"int (__fastcall *) (City * this, int edx, int order_type, int order_id, char param_3)",											0x4BFD40,	0x0},
 	// {OJ_INLEAD,	"City_can_build_improvement",			"char (__fastcall *) (City * this, int edx, int i_improv, char param_2)",													0x4BFF80,	0x0},
 };

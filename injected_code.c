@@ -1497,6 +1497,20 @@ patch_Unit_ai_move_artillery (Unit * this)
 	Unit_ai_move_artillery (this);
 }
 
+int __fastcall
+patch_Unit_eval_escort_requirement (Unit * this)
+{
+	// Set land artillery escort requirement to 2 units
+	int type_id = this->Body.UnitTypeID;
+	if (is->current_config.use_offensive_artillery_ai &&
+	    (type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
+	    (p_bic_data->UnitTypes[type_id].Unit_Class & UTC_Land) &&
+	    (p_bic_data->UnitTypes[type_id].AI_Strategy & UTAI_Artillery))
+		return 2;
+	else
+		return Unit_eval_escort_requirement (this);
+}
+
 int
 rate_artillery (UnitType * type)
 {
