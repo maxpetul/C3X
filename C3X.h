@@ -29,6 +29,7 @@ struct c3x_config {
 	char patch_submarine_bug;
 	char patch_science_age_bug;
 	char patch_pedia_texture_bug;
+	char patch_disembark_immobile_bug;
 
 	char prevent_autorazing;
 	char prevent_razing_by_ai_players;

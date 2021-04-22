@@ -256,6 +256,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->patch_science_age_bug = ival != 0;
 				else if ((0 == is->strncmp (key, "patch_pedia_texture_bug", key_len)) && parse_int (value, value_len, &ival))
 					cfg->patch_pedia_texture_bug = ival != 0;
+				else if ((0 == is->strncmp (key, "patch_disembark_immobile_bug", key_len)) && parse_int (value, value_len, &ival))
+					cfg->patch_disembark_immobile_bug = ival != 0;
 
 				else if ((0 == is->strncmp (key, "prevent_autorazing", key_len)) && parse_int (value, value_len, &ival))
 					cfg->prevent_autorazing = ival != 0;
@@ -278,6 +280,22 @@ char __fastcall
 patch_Leader_impl_would_raze_city (Leader * this, int edx, City * city)
 {
 	return is->current_config.prevent_razing_by_ai_players ? 0 : Leader_impl_would_raze_city (this, __, city);
+}
+
+// This function is used to fix a bug where the game would crash when using disembark all on a transport that contained an immobile unit. The bug
+// comes from the fact that the function to disembark all units loops continuously over units in the transport until there are none left that
+// can be disembarked. The problem is the logic to check disembarkability erroneously reports immobile units as disembarkable when they're not,
+// so the program gets stuck in an infinite loop. The fix affects the function that checks disembarkability, replacing a call to
+// Unit_get_max_move_points with a call to the function below. This function returns zero for immobile units, causing the caller to report
+// (correctly) that the unit cannot be disembarked.
+int __fastcall
+Unit_get_max_move_points_for_disembarking (Unit * this)
+{
+	UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+	if (! UnitType_has_ability (type, __, UTA_Immobile))
+		return Unit_get_max_move_points (this);
+	else
+		return 0;
 }
 
 // Just calls VirtualProtect and displays an error message if it fails. Made for use by the WITH_MEM_PROTECTION macro.
@@ -332,13 +350,22 @@ apply_config (struct c3x_config * cfg)
 	WITH_MEM_PROTECTION (ADDR_ERA_COUNT_CHECK, 1, PAGE_EXECUTE_READWRITE)
 		*(byte *)ADDR_ERA_COUNT_CHECK = cfg->remove_era_limit ? 0xEB : 0x74;
 
-	// Bug fixes
+	// Single-byte bug fixes
 	WITH_MEM_PROTECTION (ADDR_SUB_BUG_PATCH, 1, PAGE_EXECUTE_READWRITE)
 		*(byte *)ADDR_SUB_BUG_PATCH = cfg->patch_submarine_bug ? 0 : 1;
 	WITH_MEM_PROTECTION (ADDR_SCIENCE_AGE_BUG_PATCH, 1, PAGE_EXECUTE_READWRITE)
 		*(byte *)ADDR_SCIENCE_AGE_BUG_PATCH = cfg->patch_science_age_bug ? 1 : 0;
 	WITH_MEM_PROTECTION (ADDR_PEDIA_TEXTURE_BUG_PATCH, 1, PAGE_EXECUTE_READWRITE)
 		*(byte *)ADDR_PEDIA_TEXTURE_BUG_PATCH = cfg->patch_pedia_texture_bug ? 0xA6 : 0xA5;
+
+	// Fix for disembark immobile bug
+	// See Unit_get_max_move_points_for_disembarking for explanation.
+	WITH_MEM_PROTECTION (ADDR_DISEMBARK_IMMOBILE_BUG_PATCH, 4, PAGE_EXECUTE_READWRITE) {
+		int offset = (cfg->patch_disembark_immobile_bug) ?
+			(int)&Unit_get_max_move_points_for_disembarking - ((int)ADDR_DISEMBARK_IMMOBILE_BUG_PATCH + 4) :
+			DISEMBARK_IMMOBILE_BUG_PATCH_ORIGINAL_OFFSET;
+		int_to_bytes (ADDR_DISEMBARK_IMMOBILE_BUG_PATCH, offset);
+	}
 
 	// NoRaze
 	WITH_MEM_PROTECTION (ADDR_AUTORAZE_BYPASS, 2, PAGE_EXECUTE_READWRITE) {
