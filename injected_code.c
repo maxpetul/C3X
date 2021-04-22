@@ -673,6 +673,19 @@ tai_init (int num_tiles, int x, int y)
 #define FOR_TILES_AROUND(tai_name, _num_tiles, _x, _y) for (struct tiles_around_iter tai_name = tai_init (_num_tiles, _x, _y); (tai_name.n < tai_name.num_tiles); tai_next (&tai_name))
 
 int
+count_escorters (Unit * unit)
+{
+	IDLS * idls = &unit->Body.IDLS;
+	if (idls->escorters.contents != NULL) {
+		int tr = 0;
+		for (int * p_escorter_id = idls->escorters.contents; p_escorter_id < idls->escorters.contents_end; p_escorter_id++)
+			tr += NULL != get_unit_ptr (*p_escorter_id);
+		return tr;
+	} else
+		return 0;
+}
+
+int
 can_attack_this_turn (Unit * unit)
 {
 	// return unit has moves left AND (unit hasn't attacked this turn OR unit has blitz ability)
@@ -1388,19 +1401,39 @@ eval_frontlineness (City * city)
 void __fastcall
 patch_Unit_ai_move_artillery (Unit * this)
 {
-	/*
-
-	Tile * on_tile = tile_at (this->Body.X, this->Body.Y);
-	int in_city_id = on_tile->vtable->m45_Get_City_ID (on_tile);
-
 	if ((! is->current_config.use_offensive_artillery_ai) ||
 	    ((this->Body.UnitTypeID < 0) || (this->Body.UnitTypeID >= p_bic_data->UnitTypeCount))) { // Check for invalid unit type id which appears sometimes, IDK why
 		Unit_ai_move_artillery (this);
 		return;
 	}
 
+	Tile * on_tile = tile_at (this->Body.X, this->Body.Y);
+	City * in_city = get_city_ptr (on_tile->vtable->m45_Get_City_ID (on_tile));
 	Leader const * me = &leaders[this->Body.CivID];
 	UnitType const * this_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+	int num_escorters_req = this->vtable->eval_escort_requirement (this);
+
+	if ((in_city == NULL) || (count_escorters (this) >= num_escorters_req)) {
+		Unit_ai_move_artillery (this);
+		return;
+	}
+
+	FOR_UNITS_ON (uti, on_tile) {
+		Unit_Body * body = &uti.unit->Body;
+		if ((p_bic_data->UnitTypes[body->UnitTypeID].AI_Strategy & (UTAI_Offence | UTAI_Defence)) &&
+		    (body->Moves == 0) &&
+		    (body->Damage == 0) &&
+		    ((body->UnitState == 0) || (body->UnitState == UnitState_Fortifying)) &&
+		    (body->escortee < 0)) {
+			Unit_set_state (uti.unit, __, 0);
+			Unit_set_escortee (uti.unit, __, this->Body.ID);
+			if (count_escorters (this) >= num_escorters_req)
+				break;
+		}
+	}
+
+	/*
+
 	struct frontlineness * fl = &is->frontlineness;
 
 	if (is->frontlineness.saved_for_civ_id != me->ID) {
