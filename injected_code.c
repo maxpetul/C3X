@@ -1634,8 +1634,11 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 int __fastcall
 patch_Unit_disembark_passengers (Unit * this, int edx, int tile_x, int tile_y)
 {
-	Tile * tile = tile_at (tile_x, tile_y);
-	if (tile != NULL)
+	// It's also impossible to disemark units that are being escorted by an immobile unit. I think this is because the movement code will try to
+	// move the escorter first. To fix this, break escort relationships with immobile units before disembarking.
+	Tile * tile = tile_at (this->Body.X, this->Body.Y);
+	if ((is->current_config.patch_disembark_immobile_bug) &&
+	    (tile != NULL))
 		FOR_UNITS_ON (uti, tile) {
 			Unit * escortee = get_unit_ptr (uti.unit->Body.escortee);
 			if ((escortee != NULL) &&
