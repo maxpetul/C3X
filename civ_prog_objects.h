@@ -88,6 +88,7 @@ struct civ_prog_object {
 
 	{OJ_DEFINE, "ADDR_DISEMBARK_IMMOBILE_BUG_PATCH", "void *", 0x5C536D, 0x0},
 	{OJ_DEFINE, "DISEMBARK_IMMOBILE_BUG_PATCH_ORIGINAL_OFFSET", "int", 0xFFFF90FF, 0x0},
+	{OJ_INLEAD, "Unit_disembark_passengers", "int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)", 0x5C5420, 0x0},
 
 	// {OJ_DEFINE,	"City_get_turns_to_build",			"int (__fastcall *) (City * this, int edx, int order_type, int order_id, char param_3)",											0x4BFD40,	0x0},
 	// {OJ_INLEAD,	"City_can_build_improvement",			"char (__fastcall *) (City * this, int edx, int i_improv, char param_2)",													0x4BFF80,	0x0},
