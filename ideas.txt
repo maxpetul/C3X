@@ -39,3 +39,9 @@ Ideas:
   - Allow unit to retreat as long as it's faster than its opponent
   - Fix game crash on unload immobile unit from ship
   - Limit unit stacking with per-unit weight, per-terrain capacities, etc. See: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-8#post-16077019
+- [from tjs282] Stop AI from signing dumb MPPs, silence war declared & alliance signed popups that don't involve the player
+- [from Nanuk] Option to disable the various other per-turn agreements (already it's possible to disable MPPs through the editor)
+- [from WildWeasel] Prevent endless sea transport chaining
+- [from Vuldacon] Create self-escorting artillery units by giving them attack + defense and some kind of hybrid AI routine (like the offense AI but bombards instead of entering combat)
+- [from ynot56] Allow clearing jungle/marsh underneath pollution
+- [from Vuldacon] Fix bug regarding wheeled unit movement (described here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-9#post-16082663)
