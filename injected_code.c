@@ -1402,10 +1402,8 @@ void __fastcall
 patch_Unit_ai_move_artillery (Unit * this)
 {
 	if ((! is->current_config.use_offensive_artillery_ai) ||
-	    ((this->Body.UnitTypeID < 0) || (this->Body.UnitTypeID >= p_bic_data->UnitTypeCount))) { // Check for invalid unit type id which appears sometimes, IDK why
-		Unit_ai_move_artillery (this);
-		return;
-	}
+	    ((this->Body.UnitTypeID < 0) || (this->Body.UnitTypeID >= p_bic_data->UnitTypeCount))) // Check for invalid unit type id which appears sometimes, IDK why
+		goto base_impl;
 
 	Tile * on_tile = tile_at (this->Body.X, this->Body.Y);
 	City * in_city = get_city_ptr (on_tile->vtable->m45_Get_City_ID (on_tile));
@@ -1413,23 +1411,60 @@ patch_Unit_ai_move_artillery (Unit * this)
 	UnitType const * this_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
 	int num_escorters_req = this->vtable->eval_escort_requirement (this);
 
-	if ((in_city == NULL) || (count_escorters (this) >= num_escorters_req)) {
-		Unit_ai_move_artillery (this);
-		return;
-	}
+	if ((in_city == NULL) || (count_escorters (this) >= num_escorters_req))
+		goto base_impl;
 
+	// Don't assign escort if there are any enemies around because in that case it might be a serious mistake to take a defender out of the city
+	int any_enemies_near; {
+		any_enemies_near = 0;
+		FOR_TILES_AROUND (tai, 37, this->Body.X, this->Body.Y) {
+			int enemy_on_this_tile = 0;
+			FOR_UNITS_ON (uti, tai.tile) {
+				if (Unit_is_visible_to_civ (uti.unit, __, me->ID, 0)) {
+					if (me->At_War[uti.unit->Body.CivID]) {
+						UnitType const * unit_type = &p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID];
+						if ((unit_type->Defence > 0) || (unit_type->Attack > 0)) {
+							enemy_on_this_tile = 1;
+							break;
+						}
+					} else
+						break;
+				}
+			}
+			if (enemy_on_this_tile) {
+				any_enemies_near = 1;
+				break;
+			}
+		}
+	}
+	if (any_enemies_near)
+		goto base_impl;
+
+	// Find the strongest healthy defender the city has and assign that unit as an escort but make sure doing so doesn't leave the city
+	// defenseless. I think picking the strongest defender is the right choice here because the artillery pair is more likely to come under
+	// attack than a city and also leaving obsolete units in the city gives them a chance to upgrade.
+	int num_defenders = 0;
+	Unit * best_defender = NULL;
+	int best_defender_strength = -1;
 	FOR_UNITS_ON (uti, on_tile) {
 		Unit_Body * body = &uti.unit->Body;
-		if ((p_bic_data->UnitTypes[body->UnitTypeID].AI_Strategy & (UTAI_Offence | UTAI_Defence)) &&
-		    (body->Moves == 0) &&
+		UnitType * type = &p_bic_data->UnitTypes[body->UnitTypeID];
+		if ((type->AI_Strategy & UTAI_Defence) &&
+		    (! UnitType_has_ability (type, __, UTA_Immobile)) &&
 		    (body->Damage == 0) &&
 		    ((body->UnitState == 0) || (body->UnitState == UnitState_Fortifying)) &&
 		    (body->escortee < 0)) {
-			Unit_set_state (uti.unit, __, 0);
-			Unit_set_escortee (uti.unit, __, this->Body.ID);
-			if (count_escorters (this) >= num_escorters_req)
-				break;
+			num_defenders++;
+			int str = type->Defence * Unit_get_max_hp (uti.unit);
+			if (str > best_defender_strength) {
+				best_defender = uti.unit;
+				best_defender_strength = str;
+			}
 		}
+	}
+	if ((num_defenders >= 2) && (best_defender != NULL)) {
+		Unit_set_state (best_defender, __, 0);
+		Unit_set_escortee (best_defender, __, this->Body.ID);
 	}
 
 	/*
@@ -1465,32 +1500,6 @@ patch_Unit_ai_move_artillery (Unit * this)
 				}
 			}
 		
-	}
-
-	int any_enemies_near; {
-		any_enemies_near = 0;
-		int at_war = 0;
-		for (int n = 1; n < 32; n++)
-			at_war |= me->At_War[n];
-		FOR_TILES_AROUND (tai, 21, this->Body.X, this->Body.Y) {
-			int enemy_on_this_tile = 0;
-			FOR_UNITS_ON (uti, tai.tile) {
-				if (Unit_is_visible_to_civ (uti.unit, __, me->ID, 0)) {
-					if (me->At_War[uti.unit->Body.CivID]) {
-						UnitType const * unit_type = &p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID];
-						if ((unit_type->Defence > 0) || (unit_type->Attack > 0)) {
-							enemy_on_this_tile = 1;
-							break;
-						}
-					} else
-						break;
-				}
-			}
-			if (enemy_on_this_tile) {
-				any_enemies_near = 1;
-				break;
-			}
-		}
 	}
 
 	if (! any_enemies_near) {
@@ -1553,14 +1562,17 @@ patch_Unit_ai_move_artillery (Unit * this)
 
 	*/
 
-	// If any of the above logic didn't apply or failed for some reason, just fall back on the base impl
+base_impl:
 	Unit_ai_move_artillery (this);
 }
 
 int __fastcall
 patch_Unit_eval_escort_requirement (Unit * this)
 {
+	return Unit_eval_escort_requirement (this);
+
 	// Set land artillery escort requirement to 2 units
+	/*
 	int type_id = this->Body.UnitTypeID;
 	if (is->current_config.use_offensive_artillery_ai &&
 	    (type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
@@ -1569,6 +1581,7 @@ patch_Unit_eval_escort_requirement (Unit * this)
 		return 2;
 	else
 		return Unit_eval_escort_requirement (this);
+	*/
 }
 
 int
