@@ -45,3 +45,4 @@ Ideas:
 - [from Vuldacon] Create self-escorting artillery units by giving them attack + defense and some kind of hybrid AI routine (like the offense AI but bombards instead of entering combat)
 - [from ynot56] Allow clearing jungle/marsh underneath pollution
 - [from Vuldacon] Fix bug regarding wheeled unit movement (described here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-9#post-16082663)
+- [from Nanuk] Prevent pollution from spawning on impassable terrain
