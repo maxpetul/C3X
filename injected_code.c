@@ -379,6 +379,9 @@ apply_config (struct c3x_config * cfg)
 	}
 
 	// Fix for houseboat bug
+	// See my posts on CFC for an explanation of the bug and its fix:
+	// https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-10#post-16084386
+	// https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-10#post-16085242
 	WITH_MEM_PROTECTION (ADDR_HOUSEBOAT_BUG_PATCH, ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH, PAGE_EXECUTE_READWRITE) {
 		if (cfg->patch_houseboat_bug) {
 			byte * cursor = ADDR_HOUSEBOAT_BUG_PATCH;
