@@ -258,6 +258,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->patch_pedia_texture_bug = ival != 0;
 				else if ((0 == is->strncmp (key, "patch_disembark_immobile_bug", key_len)) && parse_int (value, value_len, &ival))
 					cfg->patch_disembark_immobile_bug = ival != 0;
+				else if ((0 == is->strncmp (key, "patch_houseboat_bug", key_len)) && parse_int (value, value_len, &ival))
+					cfg->patch_houseboat_bug = ival != 0;
 
 				else if ((0 == is->strncmp (key, "prevent_autorazing", key_len)) && parse_int (value, value_len, &ival))
 					cfg->prevent_autorazing = ival != 0;
@@ -296,6 +298,15 @@ Unit_get_max_move_points_for_disembarking (Unit * this)
 		return Unit_get_max_move_points (this);
 	else
 		return 0;
+}
+
+Tile * __stdcall
+tile_at_city_or_null (City * city_or_null)
+{
+	if (city_or_null)
+		return tile_at (city_or_null->Body.X, city_or_null->Body.Y);
+	else
+		return p_null_tile;
 }
 
 // Just calls VirtualProtect and displays an error message if it fails. Made for use by the WITH_MEM_PROTECTION macro.
@@ -367,6 +378,22 @@ apply_config (struct c3x_config * cfg)
 		int_to_bytes (ADDR_DISEMBARK_IMMOBILE_BUG_PATCH, offset);
 	}
 
+	// Fix for houseboat bug
+	WITH_MEM_PROTECTION (ADDR_HOUSEBOAT_BUG_PATCH, ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH, PAGE_EXECUTE_READWRITE) {
+		if (cfg->patch_houseboat_bug) {
+			byte * cursor = ADDR_HOUSEBOAT_BUG_PATCH;
+			*cursor++ = 0x50; // push eax
+			int call_offset = (int)&tile_at_city_or_null - ((int)cursor + 5);
+			*cursor++ = 0xE8; // call
+			cursor = int_to_bytes (cursor, call_offset);
+			for (; cursor < ADDR_HOUSEBOAT_BUG_PATCH_END; cursor++)
+				*cursor = 0x90; // nop
+		} else
+			memmove (ADDR_HOUSEBOAT_BUG_PATCH,
+				 is->houseboat_patch_area_original_contents,
+				 ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH);
+	}
+
 	// NoRaze
 	WITH_MEM_PROTECTION (ADDR_AUTORAZE_BYPASS, 2, PAGE_EXECUTE_READWRITE) {
 		byte normal[2] = {0x0F, 0x85}; // jnz
@@ -406,10 +433,6 @@ patch_init_floating_point ()
 	is->qsort    = (void *)(*p_GetProcAddress) (is->msvcrt, "qsort");
 	is->memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
 
-	memmove (&is->current_config, &is->base_config, sizeof is->current_config);
-	load_config ("default.c3x_config.ini", &is->current_config);
-	apply_config (&is->current_config);
-
 	// Load labels
 	{
 		for (int n = 0; n < COUNT_LABELS; n++)
@@ -447,6 +470,15 @@ patch_init_floating_point ()
 
 	// Initialize to empty
 	is->frontlineness = (struct frontlineness) { .capacity = 0, .save_len = 0, .saved_for_civ_id = -1, .saves = NULL, .cons = NULL };
+
+	// Read contents of region potentially overwritten by patch
+	memmove (is->houseboat_patch_area_original_contents,
+		 ADDR_HOUSEBOAT_BUG_PATCH,
+		 ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH);
+
+	memmove (&is->current_config, &is->base_config, sizeof is->current_config);
+	load_config ("default.c3x_config.ini", &is->current_config);
+	apply_config (&is->current_config);
 }
 
 void

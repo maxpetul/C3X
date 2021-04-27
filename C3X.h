@@ -30,6 +30,7 @@ struct c3x_config {
 	char patch_science_age_bug;
 	char patch_pedia_texture_bug;
 	char patch_disembark_immobile_bug;
+	char patch_houseboat_bug;
 
 	char prevent_autorazing;
 	char prevent_razing_by_ai_players;
@@ -162,6 +163,8 @@ struct injected_state {
 			int total_attractiveness;
 		} * cons;
 	} frontlineness;
+
+	byte houseboat_patch_area_original_contents[50];
 
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {
