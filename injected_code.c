@@ -1414,6 +1414,7 @@ get_city_near (int x, int y)
 	return NULL;
 }
 
+/*
 int
 eval_frontlineness (City * city)
 {
@@ -1432,6 +1433,7 @@ eval_frontlineness (City * city)
 	}
 	return (tr + 4) / 8;
 }
+*/
 
 void __fastcall
 patch_Unit_ai_move_artillery (Unit * this)
