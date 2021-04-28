@@ -46,3 +46,4 @@ Ideas:
 - [from ynot56] Allow clearing jungle/marsh underneath pollution
 - [from Vuldacon] Fix bug regarding wheeled unit movement (described here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-9#post-16082663)
 - [from Nanuk] Prevent pollution from spawning on impassable terrain
+- [from Nanuk] Stop AI from loading hidden nationality units into armies. Improve AI handling of HN units in general, stop its beelining toward them anywhere on the map (the AI does this b/c it thinks they're barbs), stop it from building so many
