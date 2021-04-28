@@ -937,7 +937,7 @@ main (int argc, char ** argv)
 	}
 
 	// List symbol locations for debugging
-#if 1
+#if 0
 	tcc__list_symbols (tcc, NULL, print_symbol_location);
 #endif
 	
