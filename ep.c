@@ -810,11 +810,16 @@ main (int argc, char ** argv)
 		bin_file = INVALID_HANDLE_VALUE;
 	}
 
-	// Disable digital signature
-	// NOTE: I don't know if this really matters since the executable works anyway even with an invalid signature. I'm just guessing since we're
-	// invalidating the signature it's best to stub it out so Windows doesn't look for it.
-	if (job == JOB_INSTALL)
+	// Make changes to the EXE if we'll be writing out a new one
+	if (job == JOB_INSTALL) {
+		// Disable digital signature
+		// NOTE: I don't know if this really matters since the executable works anyway even with an invalid signature. I'm
+		// just guessing since we're invalidating the signature it's best to stub it out so Windows doesn't look for it.
 		memset (&civ_exe.opt->DataDirectory[DF_CERTIFICATE_TABLE], 0, sizeof civ_exe.opt->DataDirectory[DF_CERTIFICATE_TABLE]);
+
+		// Set LAA bit
+		civ_exe.coff->Characteristics |= IMAGE_FILE_LARGE_ADDRESS_AWARE;
+	}
 
 	for (int n = 0; n < ARRAY_LEN (civ_prog_objects); n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
