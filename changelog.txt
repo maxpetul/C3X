@@ -2,7 +2,8 @@
 - Add option to force the AI to build more artillery
 - Implement/enable offensive artillery AI
 - Fix for immobile unit disembark crash
-- For for houseboat bug
+- Fix for for houseboat bug
+- Set LAA bit when creating modded EXE
 - TODO
   - AI should not build more artillery if the arty it can build would slow down its army, i.e., if it can or has already built faster units
   - Credit Civinator in the readme for the German translation that I assume he'll do
