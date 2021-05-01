@@ -9,8 +9,6 @@
 
 // BOOL WINAPI EnumProcessModulesEx(HANDLE hProcess, HMODULE *lphModule, DWORD cb, LPDWORD lpcbNeeded, DWORD dwFilterFlag);
 
-#define ARRAY_LEN(a) ((sizeof a) / (sizeof a[0]))
-
 // Large (30 MB) buffer whose job is to occupy the lower portion of this process' virtual address space. This is necessary
 // for installing the mod into the Civ EXE because we need space in this area to relocate the code that is to be injected
 // into the EXE.
@@ -738,6 +736,7 @@ main (int argc, char ** argv)
 	tcc__add_include_path (tcc, combine_strs (mod_full_dir, "\\tcc\\include"));
 	tcc__add_include_path (tcc, combine_strs (mod_full_dir, "\\tcc\\include\\winapi"));
 	tcc__add_library_path (tcc, combine_strs (mod_full_dir, "\\tcc\\lib"));
+	tcc__add_include_path (tcc, combine_strs (mod_full_dir, "\\lua\\include"));
 
 	// Locate compatible, unmodded executable to work on
 	enum bin_id bin_id;

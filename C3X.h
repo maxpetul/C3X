@@ -2,6 +2,11 @@
 #define NOVIRTUALKEYCODES // Keycodes defined in Civ3Conquests.h instead
 #include "windows.h"
 
+#include "luajit.h"
+#include "lauxlib.h"
+
+#define ARRAY_LEN(a) ((sizeof a) / (sizeof a[0]))
+
 typedef unsigned char byte;
 
 // Use fastcall as substitute for thiscall because TCC doesn't recognize thiscall
@@ -126,6 +131,7 @@ struct injected_state {
 	HANDLE (WINAPI * CreateFileA) (LPCSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
 	DWORD (WINAPI * GetFileSize) (HANDLE, LPDWORD);
 	WINBOOL (WINAPI * ReadFile) (HANDLE, LPVOID, DWORD, LPDWORD, LPOVERLAPPED);
+	HMODULE (WINAPI * LoadLibraryA) (LPCSTR);
 
 	// Win32 funcs from user32.dll
 	int (WINAPI * MessageBoxA) (HWND, LPCSTR, LPCSTR, UINT);
@@ -140,6 +146,18 @@ struct injected_state {
 	char * (* strncpy) (char *, char const *, size_t);
 	void (* qsort) (void *, size_t, size_t, int (*) (void const *, void const *));
 	int (* memcmp) (void const *, void const *, size_t);
+
+	// Lua functions
+	struct is_lua_funcs {
+		lua_State * state;
+		lua_State * (* newstate) ();
+		void (* close) (lua_State *);
+		int (* loadstring) (lua_State *, char const *);
+		int (* pcall) (lua_State *, int, int, int);
+		void (* getfield) (lua_State *, int, char const *);
+		int (* gettop) (lua_State *);
+		lua_Integer (* tointeger) (lua_State *, int);
+	} lua;
 
 	struct c3x_config current_config;
 

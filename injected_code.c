@@ -423,6 +423,7 @@ patch_init_floating_point ()
 	is->CreateFileA    = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
 	is->GetFileSize    = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
 	is->ReadFile       = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
+	is->LoadLibraryA   = (void *)(*p_GetProcAddress) (is->kernel32, "LoadLibraryA");
 
 	is->MessageBoxA = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
 
@@ -435,6 +436,51 @@ patch_init_floating_point ()
 	is->strncpy  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncpy");
 	is->qsort    = (void *)(*p_GetProcAddress) (is->msvcrt, "qsort");
 	is->memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
+
+	// Initialize Lua
+	{
+		char lua_lib_path[2*MAX_PATH];
+		is->snprintf (lua_lib_path, sizeof lua_lib_path, "%s\\%s", is->mod_rel_dir, "lua\\lua51.dll");
+		lua_lib_path[(sizeof lua_lib_path) - 1] = '\0';
+		HMODULE lua_module = is->LoadLibraryA (lua_lib_path);
+		if (lua_module == NULL)
+			is->MessageBoxA (NULL, "Failed to load lua51.dll", NULL, MB_ICONERROR);
+
+		is->lua.newstate   = (void *)(*p_GetProcAddress) (lua_module, "luaL_newstate");
+		is->lua.close      = (void *)(*p_GetProcAddress) (lua_module, "lua_close");
+		is->lua.loadstring = (void *)(*p_GetProcAddress) (lua_module, "luaL_loadstring");
+		is->lua.pcall      = (void *)(*p_GetProcAddress) (lua_module, "lua_pcall");
+		is->lua.getfield   = (void *)(*p_GetProcAddress) (lua_module, "lua_getfield");
+		is->lua.gettop     = (void *)(*p_GetProcAddress) (lua_module, "lua_gettop");
+		is->lua.tointeger  = (void *)(*p_GetProcAddress) (lua_module, "lua_tointeger");
+		is->lua.state = is->lua.newstate ();
+		if (is->lua.state == NULL)
+			is->MessageBoxA (NULL, "Failed to initialize Lua", NULL, MB_ICONERROR);
+
+		// Open Lua built-in libraries
+		char const * lib_names[] = {"base", "math", "string", "table", "jit", "ffi"};
+		for (int n = 0; n < ARRAY_LEN (lib_names); n++) {
+			char opener_name[30];
+			is->snprintf (opener_name, sizeof opener_name, "luaopen_%s", lib_names[n]);
+			opener_name[(sizeof opener_name) - 1] = '\0';
+			int (* opener) (lua_State *) = (void *)(*p_GetProcAddress) (lua_module, opener_name);
+			opener (is->lua.state);
+			// TODO: Give error message if opener is NULL or if opening lib failed
+		}
+
+		char const * lua_code = "magic_number = 7*6*5*4*3*2";
+
+		is->lua.loadstring (is->lua.state, lua_code);
+		is->lua.pcall (is->lua.state, 0, LUA_MULTRET, 0);
+		is->lua.getfield (is->lua.state, LUA_GLOBALSINDEX, "magic_number");
+		int top = is->lua.gettop (is->lua.state);
+		lua_Integer mn = is->lua.tointeger (is->lua.state, top);
+
+		char sss[100];
+		is->snprintf (sss, sizeof sss, "Magic number is: %d", (int)mn);
+		is->MessageBoxA (NULL, sss, "Test", MB_ICONINFORMATION);
+
+	}
 
 	// Load labels
 	{
