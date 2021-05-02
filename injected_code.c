@@ -1700,5 +1700,13 @@ patch_Unit_disembark_passengers (Unit * this, int edx, int tile_x, int tile_y)
 	return Unit_disembark_passengers (this, __, tile_x, tile_y);
 }
 
+void __fastcall
+patch_Unit_set_state (Unit * this, int edx, int new_state)
+{
+	if ((new_state == 0x1C) && (this->Body.UnitState != 0x1C))
+		Main_Screen_Form_show_map_message (p_main_screen_form, __, this->Body.X, this->Body.Y, "C3X_SHOW_STATE_0X1C", 1);
+	Unit_set_state (this, __, new_state);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

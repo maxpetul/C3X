@@ -77,7 +77,7 @@ struct civ_prog_object {
 	// {OJ_DEFINE,	"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)",																		0x4507B0,	0x0},
 	// {OJ_DEFINE,	"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)",												0x44C340,	0x0},
 	{OJ_DEFINE,	"neighbor_index_to_displacement",		"void (__cdecl *) (int neighbor_index, int * out_x, int * out_y)",														0x5E6E50,	0x5F66A0},
-	{OJ_DEFINE,	"Unit_set_state",				"void (__fastcall *) (Unit * this, int edx, int new_state)",															0x5B3040,	0x5C1970},
+	{OJ_INLEAD,	"Unit_set_state",				"void (__fastcall *) (Unit * this, int edx, int new_state)",															0x5B3040,	0x5C1970},
 	{OJ_DEFINE,	"Unit_set_escortee",				"void (__fastcall *) (Unit * this, int edx, int escortee)",															0x5B2F10,	0x5C1840},
 	{OJ_DEFINE,	"p_rand_object",				"void *",																					0xA526B4,	0xA74EAC},
 	{OJ_DEFINE,	"rand_int",					"int (__fastcall *) (void * this, int edx, int lim)",																0x60BAB0,	0x626440},
@@ -91,6 +91,8 @@ struct civ_prog_object {
 	{OJ_DEFINE,	"p_null_tile",					"Tile *",																					0xCAA330,	0xCCCB98},
 	{OJ_DEFINE,	"ADDR_HOUSEBOAT_BUG_PATCH",			"byte *",																					0x45A35F,	0x45C56F},
 	{OJ_DEFINE,	"ADDR_HOUSEBOAT_BUG_PATCH_END",			"byte *",																					0x45A386,	0x45C596},
+
+	{OJ_DEFINE, "Main_Screen_Form_show_map_message", "void (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, int param_4)", 0x4ED220, 0x0},
 
 	// {OJ_DEFINE,	"City_get_turns_to_build",			"int (__fastcall *) (City * this, int edx, int order_type, int order_id, char param_3)",											0x4BFD40,	0x0},
 	// {OJ_INLEAD,	"City_can_build_improvement",			"char (__fastcall *) (City * this, int edx, int i_improv, char param_2)",													0x4BFF80,	0x0},
