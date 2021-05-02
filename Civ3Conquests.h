@@ -1157,6 +1157,12 @@ typedef enum unit_filter
 	UF_22
 } UnitFilter;
 
+typedef enum leader_kind
+{
+	LK_Military = 1,
+	LK_Scientific = 2
+} LeaderKind;
+
 struct IntList
 {
   int field_0;
@@ -4538,7 +4544,7 @@ struct Unit_Body
   int escortee;
   int Auto_CityID;
   int field_1B0[10];
-  int field_1D8;
+  LeaderKind leader_kind;
   IDLS IDLS;
   int field_210[12];
   RECT Rect;
