@@ -1703,8 +1703,14 @@ patch_Unit_disembark_passengers (Unit * this, int edx, int tile_x, int tile_y)
 void __fastcall
 patch_Unit_set_state (Unit * this, int edx, int new_state)
 {
-	if ((new_state == 0x1C) && (this->Body.UnitState != 0x1C))
-		Main_Screen_Form_show_map_message (p_main_screen_form, __, this->Body.X, this->Body.Y, "C3X_SHOW_STATE_0X1C", 1);
+	if ((new_state == 0x1C) && (this->Body.UnitState != 0x1C)) {
+		char str[500];
+		UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+		is->snprintf (str, sizeof str, "(%d, %d)\t%s\tPut in state 0x1C", this->Body.X, this->Body.Y, type->Name);
+		str[(sizeof str) - 1] = '\0';
+		(*p_OutputDebugStringA) (str);
+		Main_Screen_Form_show_map_message (p_main_screen_form, __, this->Body.X, this->Body.Y, "C3X_SHOW_STATE_0x1C", 1);
+	}
 	Unit_set_state (this, __, new_state);
 }
 
