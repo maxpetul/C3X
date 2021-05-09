@@ -1435,6 +1435,40 @@ eval_frontlineness (City * city)
 }
 */
 
+int
+any_enemies_near (Leader const * me, int tile_x, int tile_y, enum UnitTypeClasses class, int num_tiles)
+{
+	int tr = 0;
+	FOR_TILES_AROUND (tai, num_tiles, tile_x, tile_y) {
+		int enemy_on_this_tile = 0;
+		FOR_UNITS_ON (uti, tai.tile) {
+			UnitType const * unit_type = &p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID];
+			if (Unit_is_visible_to_civ (uti.unit, __, me->ID, 0) &&
+			    (((int)class < 0) || (unit_type->Unit_Class == class))) {
+				if (me->At_War[uti.unit->Body.CivID]) {
+					if ((unit_type->Defence > 0) || (unit_type->Attack > 0)) {
+						enemy_on_this_tile = 1;
+						break;
+					}
+				} else
+					break;
+			}
+		}
+		if (enemy_on_this_tile) {
+			tr = 1;
+			break;
+		}
+	}
+	return tr;
+}
+
+int
+any_enemies_near_unit (Unit * unit, int num_tiles)
+{
+	UnitType * unit_type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
+	return any_enemies_near (&leaders[unit->Body.CivID], unit->Body.X, unit->Body.Y, unit_type->Unit_Class, num_tiles);
+}
+
 void __fastcall
 patch_Unit_ai_move_artillery (Unit * this)
 {
@@ -1444,7 +1478,6 @@ patch_Unit_ai_move_artillery (Unit * this)
 
 	Tile * on_tile = tile_at (this->Body.X, this->Body.Y);
 	City * in_city = get_city_ptr (on_tile->vtable->m45_Get_City_ID (on_tile));
-	Leader const * me = &leaders[this->Body.CivID];
 	UnitType const * this_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
 	int num_escorters_req = this->vtable->eval_escort_requirement (this);
 
@@ -1452,29 +1485,7 @@ patch_Unit_ai_move_artillery (Unit * this)
 		goto base_impl;
 
 	// Don't assign escort if there are any enemies around because in that case it might be a serious mistake to take a defender out of the city
-	int any_enemies_near; {
-		any_enemies_near = 0;
-		FOR_TILES_AROUND (tai, 37, this->Body.X, this->Body.Y) {
-			int enemy_on_this_tile = 0;
-			FOR_UNITS_ON (uti, tai.tile) {
-				if (Unit_is_visible_to_civ (uti.unit, __, me->ID, 0)) {
-					if (me->At_War[uti.unit->Body.CivID]) {
-						UnitType const * unit_type = &p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID];
-						if ((unit_type->Defence > 0) || (unit_type->Attack > 0)) {
-							enemy_on_this_tile = 1;
-							break;
-						}
-					} else
-						break;
-				}
-			}
-			if (enemy_on_this_tile) {
-				any_enemies_near = 1;
-				break;
-			}
-		}
-	}
-	if (any_enemies_near)
+	if (any_enemies_near_unit (this, 37))
 		goto base_impl;
 
 	// Find the strongest healthy defender the city has and assign that unit as an escort but make sure doing so doesn't leave the city
@@ -1506,6 +1517,7 @@ patch_Unit_ai_move_artillery (Unit * this)
 
 	/*
 
+	Leader const * me = &leaders[this->Body.CivID];
 	struct frontlineness * fl = &is->frontlineness;
 
 	if (is->frontlineness.saved_for_civ_id != me->ID) {
@@ -1603,13 +1615,222 @@ base_impl:
 	Unit_ai_move_artillery (this);
 }
 
+void __fastcall
+patch_Unit_ai_move_leader (Unit * this)
+{
+	Tile * tile = tile_at (this->Body.X, this->Body.Y);
+	int continent_id = tile->vtable->m46_Get_ContinentID (tile);
+
+	// Duplicate some logic from the base function. I'm pretty sure this disbands the unit if it's on a continent with no cities of the same civ.
+	if (leaders[this->Body.CivID].ContinentStat1[continent_id] == 0) {
+		Unit_disband (this);
+		return;
+	}
+
+	// Flee if the unit is near an enemy without adequate escort
+	int has_adequate_escort; {
+		int escorter_count = 0;
+		int any_healthy_escorters = 0;
+		int index;
+		for (int escorter_id = Unit_next_escorter_id (this, __, &index, 1); escorter_id >= 0; escorter_id = Unit_next_escorter_id (this, __, &index, 0)) {
+			Unit * escorter = get_unit_ptr (escorter_id);
+			if ((escorter != NULL) && (escorter->Body.X == this->Body.X) && (escorter->Body.Y == this->Body.Y)) {
+				escorter_count++;
+				int remaining_health = Unit_get_max_hp (escorter) - escorter->Body.Damage;
+				any_healthy_escorters |= remaining_health >= 3;
+			}
+		}
+		has_adequate_escort = (escorter_count > 0) && any_healthy_escorters;
+	}
+	if ((! has_adequate_escort) && any_enemies_near_unit (this, 49)) {
+		Unit_set_state (this, __, UnitState_Fleeing);
+		byte done = this->vtable->work (this);
+		if (done || (this->Body.UnitState != 0))
+			return;
+	}
+
+	// Move along path if the unit already has one set
+	byte next_move = Unit_pop_next_move_from_path (this);
+	if (next_move > 0) {
+		this->vtable->Move (this, __, next_move, 0);
+		return;
+	}
+
+	// Start a science age if we can
+	// It would be nice to compute a value for this and compare it to the option of rushing production but it's hard to come up with a valuation
+	if (is->current_config.patch_science_age_bug && Unit_ai_can_start_science_age (this)) {
+		Unit_start_science_age (this);
+		return;
+	}
+
+	// Estimate the value of creating an army. First test if that's even a possiblity and if not leave the value at -1 so rushing production is
+	// always preferable (note we can't use Unit_ai_can_form_army for this b/c it returns false for units not in a city). The value of forming
+	// an army is "infinite" if we don't already have one and otherwise it depends on the army unit's shield cost +/- 25% for each point of
+	// aggression divided by the number of armies already in the field.
+	int num_armies = leaders[this->Body.CivID].Armies_Count;
+	int form_army_value = -1;
+	if ((this->Body.leader_kind & LK_Military) &&
+	    ((num_armies + 1) * p_bic_data->General.ArmySupportCities <= leaders[this->Body.CivID].Cities_Count) &&
+	    (p_bic_data->General.BuildArmyUnitID >= 0) &&
+	    (p_bic_data->General.BuildArmyUnitID < p_bic_data->UnitTypeCount)) {
+		if (num_armies < 1)
+			form_army_value = INT_MAX;
+		else {
+			form_army_value = p_bic_data->UnitTypes[p_bic_data->General.BuildArmyUnitID].Cost;
+			int aggression_level = p_bic_data->Races[leaders[this->Body.CivID].RaceID].AggressionLevel; // aggression level varies between -2 and +2
+			form_army_value = (form_army_value * (4 + aggression_level)) / 4;
+			if (num_armies > 1)
+				form_army_value /= num_armies;
+		}
+	}
+
+	// Estimate the value of rushing production in every city on this continent and remember the highest one
+	City * best_rush_loc = NULL;
+	int best_rush_value = -1;
+	if (p_cities->Cities != NULL)
+		for (int n = 0; n <= p_cities->LastIndex; n++) {
+			City * city = get_city_ptr (n);
+			if ((city != NULL) && (city->Body.CivID == this->Body.CivID)) {
+				Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
+				if ((continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) &&
+				    Unit_can_hurry_production (this, __, city, 0)) {
+					// Base value is equal to the number of shields rushing would save
+					int value = City_get_order_cost (city) - City_get_order_progress (city) - city->Body.ProductionIncome;
+					if (value <= 0)
+						continue;
+
+					// Consider distance: Reduce the value by the number of shields produced while the leader is en route to rush.
+					// This isn't an exact measure b/c the unit can spend more than its max MP per turn but it should be a close
+					// estimate.
+					int dist_in_turns; {
+						int dist_in_mp;
+						Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, city->Body.X, city->Body.Y, this, this->Body.CivID, 1, &dist_in_mp);
+						dist_in_mp += this->Body.Moves; // Add MP already spent this turn to the distance
+						int max_mp = Unit_get_max_move_points (this);
+						if ((dist_in_mp >= 0) && (max_mp > 0))
+							dist_in_turns = dist_in_mp / max_mp;
+						else
+							continue; // No path or unit cannot move
+					}
+					value -= dist_in_turns * city->Body.ProductionIncome;
+					if (value <= 0)
+						continue;
+
+					// Consider corruption: Scale down the value of rushing an improvement by the corruption rate of the city.
+					// This is to reflect the fact that infrastructure is more valuable in less corrupt cities. But do not apply
+					// this to wonders since their benefit is in most cases not lessened by local corruption.
+					Improvement * improv = (city->Body.Order_Type == COT_Improvement) ? &p_bic_data->Improvements[city->Body.Order_ID] : NULL;
+					int is_wonder = (improv != NULL) && (0 != (improv->Characteristics & (ITC_Small_Wonder | ITC_Wonder)));
+					if ((improv != NULL) && (! is_wonder)) {
+						int good_shields = city->Body.ProductionIncome;
+						int corrupt_shields = city->Body.ProductionLoss;
+						if (good_shields + corrupt_shields > 0)
+							value = (value * good_shields) / (good_shields + corrupt_shields);
+						else
+							continue;
+					}
+
+					if ((value > 0) && (value > best_rush_value)) {
+						best_rush_loc = city;
+						best_rush_value = value;
+					}
+				}
+			}
+		}
+
+	// Hurry production or form an army depending on the estimated values of doing so. We might have to move to a (different) city if that's where
+	// we want to rush production or if we want to form an army but aren't already in a city.
+	City * in_city = get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
+	City * moving_to_city = NULL;
+	if ((best_rush_loc != NULL) && (best_rush_value > form_army_value)) {
+		if (best_rush_loc == in_city) {
+			Unit_hurry_production (this);
+			return;
+		} else
+			moving_to_city = best_rush_loc;
+	} else if ((form_army_value > -1) && (Unit_ai_can_form_army (this))) {
+		Unit_form_army (this);
+		return;
+	} else if (in_city == NULL) {
+		// Nothing to do. Try to find a close, established city to move to & wait in.
+		int lowest_unattractiveness = INT_MAX;
+		if ((in_city == NULL) && (p_cities->Cities != NULL))
+			for (int n = 0; n <= p_cities->LastIndex; n++) {
+				City * city = get_city_ptr (n);
+				if ((city != NULL) && (city->Body.CivID == this->Body.CivID)) {
+					Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
+					if (continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) {
+						// TODO: Technically this distance calculation should account for edge wrapping
+						int unattractiveness = 10 * (int_abs (this->Body.X - city->Body.X) + int_abs (this->Body.Y - city->Body.Y));
+						unattractiveness = (10 + unattractiveness) / (10 + city->Body.Population.Size);
+						if (city->Body.CultureIncome > 0)
+							unattractiveness /= 5;
+						if (unattractiveness < lowest_unattractiveness) {
+							lowest_unattractiveness = unattractiveness;
+							moving_to_city = city;
+						}
+					}
+				}
+			}
+	}
+	if (moving_to_city) {
+		int first_move = Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
+		if (first_move > 0) {
+			Unit_set_escortee (this, __, -1);
+			this->vtable->Move (this, __, first_move, 0);
+			return;
+		}
+	}
+
+	// Nothing to do, nowhere to go, just fortify in place.
+	Unit_set_escortee (this, __, -1);
+	Unit_set_state (this, __, UnitState_Fortifying);
+}
+
+int
+measure_strength_in_army (UnitType * type)
+{
+	return ((type->Attack + type->Defence) * (4 + type->Hit_Point_Bonus)) / 4;
+}
+
+byte __fastcall
+patch_impl_ai_is_good_army_addition (Unit * this, int edx, Unit * candidate)
+{
+	UnitType * candidate_type = &p_bic_data->UnitTypes[candidate->Body.UnitTypeID];
+	Tile * tile = tile_at (this->Body.X, this->Body.Y);
+
+	if (((candidate_type->AI_Strategy & UTAI_Offence) == 0) ||
+	    UnitType_has_ability (candidate_type, __, UTA_Hidden_Nationality))
+		return 0;
+
+	int num_units_in_army = 0,
+	    army_min_speed = INT_MAX,
+	    army_min_strength = INT_MAX;
+	FOR_UNITS_ON (uti, tile) {
+		if (uti.unit->Body.Container_Unit == this->Body.ID) {
+			num_units_in_army++;
+			if (uti.unit->Body.Moves < army_min_speed)
+				army_min_speed = uti.unit->Body.Moves;
+			int member_strength = measure_strength_in_army (&p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID]);
+			if (member_strength < army_min_strength)
+				army_min_strength = member_strength;
+		}
+	}
+
+	return (num_units_in_army == 0) ||
+		((candidate->Body.Moves >= army_min_speed) &&
+		 (measure_strength_in_army (candidate_type) >= army_min_strength));
+}
+
+/*
 int __fastcall
 patch_Unit_eval_escort_requirement (Unit * this)
 {
 	return Unit_eval_escort_requirement (this);
 
 	// Set land artillery escort requirement to 2 units
-	/*
+	// Note: this is not sufficient to cause the AI to escort its artillery with 2 units even if 2 units are assigned as escorts (in the code that
+	// pulls escorters from city defenders)
 	int type_id = this->Body.UnitTypeID;
 	if (is->current_config.use_offensive_artillery_ai &&
 	    (type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
@@ -1618,8 +1839,8 @@ patch_Unit_eval_escort_requirement (Unit * this)
 		return 2;
 	else
 		return Unit_eval_escort_requirement (this);
-	*/
 }
+*/
 
 int
 rate_artillery (UnitType * type)
@@ -1700,9 +1921,11 @@ patch_Unit_disembark_passengers (Unit * this, int edx, int tile_x, int tile_y)
 	return Unit_disembark_passengers (this, __, tile_x, tile_y);
 }
 
+/*
 void __fastcall
 patch_Unit_set_state (Unit * this, int edx, int new_state)
 {
+	// Monitior when state 0x1C is assigned to learn about what it's for
 	if ((new_state == 0x1C) && (this->Body.UnitState != 0x1C)) {
 		char str[500];
 		UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
@@ -1713,6 +1936,7 @@ patch_Unit_set_state (Unit * this, int edx, int new_state)
 	}
 	Unit_set_state (this, __, new_state);
 }
+*/
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

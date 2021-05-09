@@ -911,7 +911,7 @@ enum UnitStateType
   UnitState_Auto_Save_City_Tiles = 0x19,
   UnitState_Explore = 0x1A,
   UnitState_1B = 0x1B,
-  UnitState_1C = 0x1C,
+  UnitState_Fleeing = 0x1C,
   UnitState_1D = 0x1D,
   UnitState_1E = 0x1E,
   UnitState_Auto_Bombard = 0x1F,
@@ -2302,7 +2302,7 @@ struct Unit_vtable
   int m11;
   int m12;
   int m13;
-  int m14;
+  byte (__fastcall * ai_is_good_army_addition) (Unit *, int, Unit *);
   byte (__fastcall * is_enemy_of_civ) (Unit *, int, int, byte);
   byte (__fastcall * is_enemy_of_unit) (Unit *, int, Unit *, int);
   int m17;

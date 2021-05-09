@@ -29,7 +29,12 @@ unit_layout = {"ID"        : 0x1C + 0x4,
                "UnitState" : 0x1C + 0x48,
                "escortee"  : 0x1C + 0x1A8}
 
-city_layout = {"ID": 0x1C + 0x4}
+city_layout = {"ID"              : 0x1C + 0x4,
+               "ProductionLoss"  : 0x1C + 0x22C,
+               "Corruption"      : 0x1C + 0x230,
+               "FoodIncome"      : 0x1C + 0x234,
+               "ProductionIncome": 0x1C + 0x238,
+               "CashIncome"      : 0x1C + 0x23C}
 
 class GameObject:
         def __init__ (self, civ_proc, address, size):
