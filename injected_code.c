@@ -1637,7 +1637,7 @@ patch_Unit_ai_move_leader (Unit * this)
 			if ((escorter != NULL) && (escorter->Body.X == this->Body.X) && (escorter->Body.Y == this->Body.Y)) {
 				escorter_count++;
 				int remaining_health = Unit_get_max_hp (escorter) - escorter->Body.Damage;
-				any_healthy_escorters |= remaining_health >= 3;
+				any_healthy_escorters |= (remaining_health >= 3) || (escorter->Body.Damage == 0);
 			}
 		}
 		has_adequate_escort = (escorter_count > 0) && any_healthy_escorters;
