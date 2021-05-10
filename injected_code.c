@@ -1869,34 +1869,68 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 {
 	City_ai_choose_production (this, __, out);
 	int ratio = is->current_config.ai_build_artillery_ratio;
+
+	// Check if AI-build-more-artillery mod option is activated and this city is building something that we might want to switch to artillery
 	if ((ratio > 0) &&
 	    (out->OrderType == COT_Unit) &&
 	    (out->OrderID >= 0) && (out->OrderID < p_bic_data->UnitTypeCount) &&
 	    (p_bic_data->UnitTypes[out->OrderID].AI_Strategy & (UTAI_Offence | UTAI_Defence))) {
+
+		// Check how many offense/defense/artillery units this AI has already built. We'll only force it to build arty if it has a minimum
+		// of one defender per city, one attacker per two cities, and of course if it's below the ratio limit.
 		Leader * me = &leaders[this->Body.CivID];
-		UnitType * type = &p_bic_data->UnitTypes[out->OrderID];
 		int num_attackers = me->AI_Strategy_Unit_Counts[0],
 		    num_defenders = me->AI_Strategy_Unit_Counts[1],
 		    num_artillery = me->AI_Strategy_Unit_Counts[2];
-		int chance = 12 * ratio / 10;
 		if ((num_attackers > me->Cities_Count / 2) &&
 		    (num_defenders > me->Cities_Count) &&
-		    (100*num_artillery < ratio*(num_attackers + num_defenders)) &&
-		    (rand_int (p_rand_object, __, 100) < chance)) {
-			int best_arty_type_id = -1;
-			int best_arty_rating = -1;
+		    (100*num_artillery < ratio*(num_attackers + num_defenders))) {
+
+			// Loop over all build options to determine the best artillery unit available. Record its attack power and also find & record
+			// the highest attack power available from any offensive unit so we can compare them.
+			int best_arty_type_id = -1,
+			    best_arty_rating = -1,
+			    best_arty_strength = -1,
+			    best_attacker_strength = -1;
 			for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
-				if ((p_bic_data->UnitTypes[n].AI_Strategy & UTAI_Artillery) &&
+				UnitType * type = &p_bic_data->UnitTypes[n];
+				if ((type->AI_Strategy & (UTAI_Artillery | UTAI_Offence)) &&
 				    City_can_build_unit (this, __, n, 1, 0, 0)) {
-					int this_rating = rate_artillery (&p_bic_data->UnitTypes[n]);
-					if (this_rating > best_arty_rating) {
-						best_arty_type_id = n;
-						best_arty_rating = this_rating;
+					if (type->AI_Strategy & UTAI_Artillery) {
+						int this_rating = rate_artillery (&p_bic_data->UnitTypes[n]);
+						if (this_rating > best_arty_rating) {
+							best_arty_type_id = n;
+							best_arty_rating = this_rating;
+							best_arty_strength = type->Bombard_Strength * type->FireRate;
+						}
+					} else { // attacker
+						int this_strength = (type->Attack * (4 + type->Hit_Point_Bonus)) / 4;
+						if (this_strength > best_attacker_strength)
+							best_attacker_strength = this_strength;
 					}
 				}
 			}
-			if (best_arty_type_id != -1)
-				out->OrderID = best_arty_type_id;
+
+			// Randomly switch city production to the artillery unit if we found one
+			if (best_arty_type_id != -1) {
+				int chance = 12 * ratio / 10;
+
+				// Scale the chance of switching by the ratio of the attack power the artillery would provide to the attack power
+				// of the strongest offensive unit. This way the AI will rapidly build artillery up to the ratio limit only when
+				// artillery are its best way of dealing damage.
+				// Some example numbers:
+				// | Best attacker (str) | Best arty (str) | Chance w/ ratio = 15
+				// | Swordsman (3)       | Catapult (4)    | 16
+				// | Knight (4)          | Trebuchet (6)   | 18
+				// | Cavalry (6)         | Cannon (8)      | 16
+				// | Cavalry (6)         | Artillery (24)  | 48
+				// | Tank (16)           | Artillery (24)  | 18
+				if (best_attacker_strength > 0)
+					chance = (chance * best_arty_strength * 2) / (best_attacker_strength * 3);
+
+				if (rand_int (p_rand_object, __, 100) < chance)
+					out->OrderID = best_arty_type_id;
+			}
 		}
 	}
 }
