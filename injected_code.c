@@ -244,6 +244,10 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->use_offensive_artillery_ai = ival != 0;
 				else if ((0 == is->strncmp (key, "ai_build_artillery_ratio", key_len)) && parse_int (value, value_len, &ival))
 					cfg->ai_build_artillery_ratio = ival;
+				else if ((0 == is->strncmp (key, "replace_leader_unit_ai", key_len)) && parse_int (value, value_len, &ival))
+					cfg->replace_leader_unit_ai = ival != 0;
+				else if ((0 == is->strncmp (key, "fix_ai_army_composition", key_len)) && parse_int (value, value_len, &ival))
+					cfg->fix_ai_army_composition = ival != 0;
 
 				else if ((0 == is->strncmp (key, "remove_unit_limit", key_len)) && parse_int (value, value_len, &ival))
 					cfg->remove_unit_limit = ival != 0;
@@ -1618,6 +1622,9 @@ base_impl:
 void __fastcall
 patch_Unit_ai_move_leader (Unit * this)
 {
+	if (! is->current_config.replace_leader_unit_ai)
+		return Unit_ai_move_leader (this);
+
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
 	int continent_id = tile->vtable->m46_Get_ContinentID (tile);
 
@@ -1796,6 +1803,9 @@ measure_strength_in_army (UnitType * type)
 byte __fastcall
 patch_impl_ai_is_good_army_addition (Unit * this, int edx, Unit * candidate)
 {
+	if (! is->current_config.fix_ai_army_composition)
+		return impl_ai_is_good_army_addition (this, __, candidate);
+
 	UnitType * candidate_type = &p_bic_data->UnitTypes[candidate->Body.UnitTypeID];
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
 

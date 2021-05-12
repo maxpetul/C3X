@@ -1,3 +1,4 @@
+
 #include "stdlib.h"
 #include "stdio.h"
 
@@ -878,6 +879,8 @@ main (int argc, char ** argv)
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 0,
+		.replace_leader_unit_ai = 1,
+		.fix_ai_army_composition = 1,
 
 		.remove_unit_limit = 1,
 		.remove_era_limit = 0,
