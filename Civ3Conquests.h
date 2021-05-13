@@ -1163,6 +1163,16 @@ typedef enum leader_kind
 	LK_Scientific = 2
 } LeaderKind;
 
+typedef enum city_loc_validity
+{
+	CLV_OK = 0,
+	CLV_1,
+	CLV_BLOCKED,
+	CLV_WATER,
+	CLV_INVALID_TERRAIN,
+	CLV_CITY_TOO_CLOSE
+} CityLocValidity;
+
 struct IntList
 {
   int field_0;
