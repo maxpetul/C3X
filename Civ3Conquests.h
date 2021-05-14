@@ -2311,7 +2311,7 @@ struct Unit_vtable
   int m10;
   int m11;
   int m12;
-  int m13;
+  int (__fastcall * get_sea_id) (Unit *);
   byte (__fastcall * ai_is_good_army_addition) (Unit *, int, Unit *);
   byte (__fastcall * is_enemy_of_civ) (Unit *, int, int, byte);
   byte (__fastcall * is_enemy_of_unit) (Unit *, int, Unit *, int);
