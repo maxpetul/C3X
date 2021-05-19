@@ -1982,5 +1982,63 @@ patch_Unit_set_state (Unit * this, int edx, int new_state)
 }
 */
 
+CityLocValidity __fastcall
+patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int civ_id, byte check_for_city_on_tile)
+{
+	int const adjustment_to_min_city_distance = 2; // TODO: Load this from the config file
+	CityLocValidity base_result = Map_check_city_location (this, __, tile_x, tile_y, civ_id, check_for_city_on_tile);
+
+	// If adjustment is zero, make no change
+	if (adjustment_to_min_city_distance == 0)
+		return base_result;
+
+	// If adjustment is negative, ignore the CITY_TOO_CLOSE objection to city placement. The base code enforces a minimum separation of 1 and the
+	// separation cannot go below zero.
+	else if (adjustment_to_min_city_distance < 0)
+		return (base_result == CLV_CITY_TOO_CLOSE) ? CLV_OK : base_result;
+
+	// If we have an increased separation we might have to exclude some locations the base code allows.
+	else if ((adjustment_to_min_city_distance > 0) && (base_result == CLV_OK)) {
+		// Check tiles around (x, y) for a city. Because the base result is CLV_OK, we don't have to check neighboring tiles, just those at
+		// distance 2, 3, ... up to (an including) the adjustment + 1
+		for (int dist = 2; dist <= adjustment_to_min_city_distance + 1; dist++) {
+
+			// vertices stores the unwrapped coords of the tiles at the vertices of the square of tiles at distance "dist" around
+			// (tile_x, tile_y). The order of the vertices is north, east, south, west.
+			struct vertex {
+				int x, y;
+			} vertices[4] = {
+				{tile_x         , tile_y - 2*dist},
+				{tile_x + 2*dist, tile_y         },
+				{tile_x         , tile_y + 2*dist},
+				{tile_x - 2*dist, tile_y         }
+			};
+
+			// neighbor index for direction of tiles along edge starting from each vertex
+			// values correspond to directions: southeast, southwest, northwest, northeast
+			int edge_dirs[4] = {3, 5, 7, 1};
+
+			// Loop over verts and check tiles along their associated edges. The N vert is associated with the NE edge, the E vert with
+			// the SE edge, etc.
+			for (int vert = 0; vert < 4; vert++) {
+				wrap_tile_coords (&p_bic_data->Map, &vertices[vert].x, &vertices[vert].y);
+				int  dx, dy;
+				neighbor_index_to_displacement (edge_dirs[vert], &dx, &dy);
+				for (int j = 0; j < 2*dist; j++) { // loop over tiles along this edge
+					int cx = vertices[vert].x + j * dx,
+					    cy = vertices[vert].y + j * dy;
+					wrap_tile_coords (&p_bic_data->Map, &cx, &cy);
+					if (city_at (cx, cy))
+						return CLV_CITY_TOO_CLOSE;
+				}
+			}
+
+		}
+		return base_result;
+
+	} else
+		return base_result;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
