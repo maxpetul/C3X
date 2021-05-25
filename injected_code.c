@@ -244,6 +244,10 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->use_offensive_artillery_ai = ival != 0;
 				else if ((0 == is->strncmp (key, "ai_build_artillery_ratio", key_len)) && parse_int (value, value_len, &ival))
 					cfg->ai_build_artillery_ratio = ival;
+				else if ((0 == is->strncmp (key, "ai_artillery_value_damage_percent", key_len)) && parse_int (value, value_len, &ival))
+					cfg->ai_artillery_value_damage_percent = ival;
+				else if ((0 == is->strncmp (key, "ai_build_bomber_ratio", key_len)) && parse_int (value, value_len, &ival))
+					cfg->ai_build_bomber_ratio = ival;
 				else if ((0 == is->strncmp (key, "replace_leader_unit_ai", key_len)) && parse_int (value, value_len, &ival))
 					cfg->replace_leader_unit_ai = ival != 0;
 				else if ((0 == is->strncmp (key, "fix_ai_army_composition", key_len)) && parse_int (value, value_len, &ival))
@@ -1874,27 +1878,56 @@ rate_artillery (UnitType * type)
 	return tr;
 }
 
+int
+rate_bomber (UnitType * type)
+{
+	int tr = type->Bombard_Strength * type->FireRate + type->Defence;
+
+	// include range
+	tr = tr * (10 + type->OperationalRange) / 10;
+
+	// include cost
+	tr = (tr * 100) / (100 + type->Cost);
+
+	// include abilities
+	if (UnitType_has_ability (type, __, UTA_Blitz))
+		tr = tr * (type->Movement + 1) / 2;
+	if (UnitType_has_ability (type, __, UTA_Lethal_Land_Bombardment))
+		tr = tr * 3 / 2;
+	if (UnitType_has_ability (type, __, UTA_Lethal_Sea_Bombardment))
+		tr = tr * 5 / 4;
+	if (UnitType_has_ability (type, __, UTA_Stealth))
+		tr = tr * 3 / 2;
+
+	// include extra hp
+	if (type->Hit_Point_Bonus > 0)
+		tr = tr * (4 + type->Hit_Point_Bonus) / 4;
+
+	return tr;
+}
+
 void __fastcall
 patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 {
 	City_ai_choose_production (this, __, out);
-	int ratio = is->current_config.ai_build_artillery_ratio;
+	Leader * me = &leaders[this->Body.CivID];
+	int arty_ratio = is->current_config.ai_build_artillery_ratio;
+	int bomber_ratio = is->current_config.ai_build_bomber_ratio;
 
 	// Check if AI-build-more-artillery mod option is activated and this city is building something that we might want to switch to artillery
-	if ((ratio > 0) &&
+	if ((arty_ratio > 0) &&
 	    (out->OrderType == COT_Unit) &&
 	    (out->OrderID >= 0) && (out->OrderID < p_bic_data->UnitTypeCount) &&
 	    (p_bic_data->UnitTypes[out->OrderID].AI_Strategy & (UTAI_Offence | UTAI_Defence))) {
 
 		// Check how many offense/defense/artillery units this AI has already built. We'll only force it to build arty if it has a minimum
 		// of one defender per city, one attacker per two cities, and of course if it's below the ratio limit.
-		Leader * me = &leaders[this->Body.CivID];
 		int num_attackers = me->AI_Strategy_Unit_Counts[0],
 		    num_defenders = me->AI_Strategy_Unit_Counts[1],
 		    num_artillery = me->AI_Strategy_Unit_Counts[2];
 		if ((num_attackers > me->Cities_Count / 2) &&
 		    (num_defenders > me->Cities_Count) &&
-		    (100*num_artillery < ratio*(num_attackers + num_defenders))) {
+		    (100*num_artillery < arty_ratio*(num_attackers + num_defenders))) {
 
 			// Loop over all build options to determine the best artillery unit available. Record its attack power and also find & record
 			// the highest attack power available from any offensive unit so we can compare them.
@@ -1922,24 +1955,52 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 			}
 
 			// Randomly switch city production to the artillery unit if we found one
-			if (best_arty_type_id != -1) {
-				int chance = 12 * ratio / 10;
+			if (best_arty_type_id >= 0) {
+				int chance = 12 * arty_ratio / 10;
 
 				// Scale the chance of switching by the ratio of the attack power the artillery would provide to the attack power
 				// of the strongest offensive unit. This way the AI will rapidly build artillery up to the ratio limit only when
 				// artillery are its best way of dealing damage.
 				// Some example numbers:
-				// | Best attacker (str) | Best arty (str) | Chance w/ ratio = 15
+				// | Best attacker (str) | Best arty (str) | Chance w/ ratio = 20, damage% = 50
 				// | Swordsman (3)       | Catapult (4)    | 16
 				// | Knight (4)          | Trebuchet (6)   | 18
 				// | Cavalry (6)         | Cannon (8)      | 16
 				// | Cavalry (6)         | Artillery (24)  | 48
 				// | Tank (16)           | Artillery (24)  | 18
 				if (best_attacker_strength > 0)
-					chance = (chance * best_arty_strength * 2) / (best_attacker_strength * 3);
+					chance = (chance * best_arty_strength * is->current_config.ai_artillery_value_damage_percent) / (best_attacker_strength * 100);
 
 				if (rand_int (p_rand_object, __, 100) < chance)
 					out->OrderID = best_arty_type_id;
+			}
+		}
+
+	} else if ((bomber_ratio > 0) &&
+		   (out->OrderType == COT_Unit) &&
+		   (out->OrderID >= 0) && (out->OrderID < p_bic_data->UnitTypeCount) &&
+		   (p_bic_data->UnitTypes[out->OrderID].AI_Strategy & UTAI_Air_Defence)) {
+		int num_fighters = me->AI_Strategy_Unit_Counts[7],
+		    num_bombers = me->AI_Strategy_Unit_Counts[6];
+		if (100 * num_bombers < bomber_ratio * num_fighters) {
+			int best_bomber_type_id = -1,
+			    best_bomber_rating = -1;
+			for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
+				UnitType * type = &p_bic_data->UnitTypes[n];
+				if ((type->AI_Strategy & UTAI_Air_Bombard) &&
+				    City_can_build_unit (this, __, n, 1, 0, 0)) {
+					int this_rating = rate_bomber (&p_bic_data->UnitTypes[n]);
+					if (this_rating > best_bomber_rating) {
+						best_bomber_type_id = n;
+						best_bomber_rating = this_rating;
+					}
+				}
+			}
+
+			if (best_bomber_type_id >= 0) {
+				int chance = 12 * bomber_ratio / 10;
+				if (rand_int (p_rand_object, __, 100) < chance)
+					out->OrderID = best_bomber_type_id;
 			}
 		}
 	}

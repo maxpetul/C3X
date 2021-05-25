@@ -878,7 +878,9 @@ main (int argc, char ** argv)
 		.skip_repeated_tile_improv_replacement_asks = 1,
 
 		.use_offensive_artillery_ai = 1,
-		.ai_build_artillery_ratio = 0,
+		.ai_build_artillery_ratio = 20,
+		.ai_artillery_value_damage_percent = 50,
+		.ai_build_bomber_ratio = 100,
 		.replace_leader_unit_ai = 1,
 		.fix_ai_army_composition = 1,
 

@@ -22,6 +22,8 @@ struct c3x_config {
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
+	int ai_artillery_value_damage_percent;
+	int ai_build_bomber_ratio;
 	char replace_leader_unit_ai;
 	char fix_ai_army_composition;
 
