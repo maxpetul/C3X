@@ -1364,7 +1364,7 @@ struct Tile_vtable
   int (__fastcall *m43_Get_field_30)(Tile *);
   short (__fastcall *m44_Get_Barbarian_TribeID)(Tile *);
   short (__fastcall *m45_Get_City_ID)(Tile *);
-  int (__fastcall *m46_Get_ContinentID)(Tile *);
+  short (__fastcall *m46_Get_ContinentID)(Tile *);
   short (__fastcall *m47_Get_Tile_BuildingID)(Tile *);
   short (__fastcall *m48_Get_field_20_hiword)(Tile *);
   int (__fastcall *m49_Get_Square_RealType)(int);
