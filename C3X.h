@@ -218,6 +218,8 @@ struct injected_state {
 	int show_popup_was_called; // Set to 1 in show_popup. Used in patch_Leader_can_do_worker_job to check if the replacement
 	// popup was shown.
 
+	char ask_gold_default[32];
+
 	// ==========
 	// }
 	// ==========

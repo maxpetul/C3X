@@ -96,6 +96,8 @@ struct civ_prog_object {
 	{OJ_DEFINE,	"Unit_form_army",				"Unit * (__fastcall *) (Unit * this)",																		0x5BCA20,	0x5CB5B0},
 	{OJ_REPL_VPTR,	"impl_ai_is_good_army_addition",		"byte (__fastcall *) (Unit * this, int edx, Unit * candidate)",															0x66DD28,	0x68AE08},
 
+	{OJ_REPL_VPTR, "PopupForm_set_text_key_and_flags", "void (__fastcall *) (PopupForm * this, int edx, char * script_path, char * text_key, int param_3, int param_4, int param_5, int param_6)", 0x666578, 0x0},
+
 
 	// {OJ_DEFINE,	"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)",																		0x4507B0,	0x0},
 	// {OJ_DEFINE,	"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)",												0x44C340,	0x0},

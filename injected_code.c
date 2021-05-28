@@ -2043,5 +2043,17 @@ patch_Unit_set_state (Unit * this, int edx, int new_state)
 }
 */
 
+void __fastcall
+patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script_path, char * text_key, int param_3, int param_4, int param_5, int param_6)
+{
+	int ret_addr = ((int *)&script_path)[-1];
+	if ((ret_addr == 0x509325) || (ret_addr == 0x509669)) {
+		is->snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "test test test");
+		is->ask_gold_default[(sizeof is->ask_gold_default) - 1] = '\0';
+		PopupForm_set_text_key_and_flags (this, __, script_path, text_key, param_3, (int)is->ask_gold_default, param_5, param_6);
+	} else
+		PopupForm_set_text_key_and_flags (this, __, script_path, text_key, param_3, param_4, param_5, param_6);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
