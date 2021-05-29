@@ -4,7 +4,7 @@
 
 * RELEASE 6
 - Add option to increase AI artillery and bomber production
-- Allow AI to grab artillery escorts from city defenders so its arty can be used offensively
+- Allow AI to grab artillery escorts from city defenders so its arty can be used in the field
 - Improve leader unit AI: fix bug allowing rush of any city build, prefer forming armies, select better rush targets
 - Improve AI army inclusion critera: exclude HN & defensive units, fix movement check
 - Fix for immobile unit disembark crash

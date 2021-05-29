@@ -3,11 +3,11 @@ Release 5
 
 INCLUDES (* = new in latest version):
 * AI enhancements:
-  - Allow AI to use artillery offensively
+  - Allow AI to use artillery in the field
   - Force AI to build more artillery and bombers
   - Replace leader unit AI to fix bugs and improve behavior
   - Fix bug preventing AI from filling its armies
-  - Discourage AI from mixing unit types in armies, prevent it from adding HN units
+  - Improve AI army composition to discourage mixing types & exclude HN units
 * Fix for immobile unit disembark crash
 * Fix for for houseboat bug
 Stack bombard
@@ -47,6 +47,9 @@ If you try to end the turn with unhappy cities, the domestic advisor will pop up
 
 STACK WORKER BUTTONS:
 Hold the control key to turn all standard worker buttons into stack buttons. Clicking a stack button will issue the command to all workers on the same tile.
+
+AI ENHANCEMENTS:
+Numerous changes have been made to improve the AI's behavior, especially in combat. It can now use its artillery units in the field, i.e., it will take them out of its cities to bombard enemy cities or incoming enemy units. The AI's production of artillery has been significantly increased so that it can take advantage of this ability. The other major change is that the AI can now use armies properly, it builds them when it can and fills them with units, usually the strongest available. There are many smaller changes as well to fix bugs and improve heuristics. Some more details are available as comments in the config file.
 
 LIMITED RAILROAD MOVEMENT:
 The mod adds the option to limit railroad movement to a certain number of tiles. To enable this, edit the config file. The limitation works like in Civ 4, i.e., moving along a railroad consumes movement points like moving along a road except the cost of moving along a railroad is scaled by the unit's total moves so all units are limited to the same distance. Be advised, because this setting affects how movement is calculated, changing it in the middle of a turn (i.e. after some units have already moved) is likely to cause units to have extra or missing moves.
