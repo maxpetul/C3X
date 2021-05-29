@@ -880,7 +880,7 @@ main (int argc, char ** argv)
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,
 		.ai_artillery_value_damage_percent = 50,
-		.ai_build_bomber_ratio = 100,
+		.ai_build_bomber_ratio = 70,
 		.replace_leader_unit_ai = 1,
 		.fix_ai_army_composition = 1,
 
