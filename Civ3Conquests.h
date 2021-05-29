@@ -5734,6 +5734,12 @@ typedef struct Object_66C3FC Object_66C3FC;
 typedef struct Object_66D520 Object_66D520;
 typedef struct PopupFormVTable PopupFormVTable;
 typedef struct PopupForm PopupForm;
+typedef struct StrWithJunk StrWithJunk;
+typedef struct TradeOfferVTable TradeOfferVTable;
+typedef struct TradeOffer TradeOffer;
+typedef struct TradeOfferList TradeOfferList;
+typedef struct Object_667188 Object_667188;
+typedef struct DiploForm DiploForm;
 
 // Contains font info for a particular size & style
 struct Object_66C3FC
@@ -5768,4 +5774,76 @@ struct PopupForm
 	Button ok_button;
 	Button cancel_button;
 	int unk1[877];
+};
+
+struct StrWithJunk
+{
+	char * str;
+	byte junk_1[4];
+	int junk_2;
+};
+
+struct TradeOfferVTable
+{
+	TradeOffer * (__fastcall * destruct) (TradeOffer *, __, byte);
+};
+
+struct TradeOffer
+{
+	TradeOfferVTable * vtable;
+	int kind;
+	int param_1;
+	int param_2;
+	TradeOffer * next;
+	TradeOffer * prev;
+};
+
+struct TradeOfferList
+{
+	void * vtable;
+	int length;
+	TradeOffer * first;
+	TradeOffer * last;
+};
+
+struct Object_667188
+{
+	void * vtable; // = 0x667188
+	int field_4[1628];
+};
+
+struct DiploForm
+{
+	void * vtable; // = 0x66C0D8
+	int field_4[991];
+	TradeOfferList their_offer_lists[32];
+	TradeOfferList our_offer_lists[32];
+	int field_1380[4];
+	int field_1390[3];
+	StrWithJunk * headings;
+	StrWithJunk * agreements;
+	StrWithJunk * alliances;
+	StrWithJunk * embargoes;
+	void * field_13AC;
+	StrWithJunk * communications;
+	int field_13B4;
+	int field_13B8;
+	int field_13BC;
+	int field_13C0;
+	int field_13C4;
+	int field_13C8;
+	char * attitudes[5]; // polite, annoyed, etc.
+	int field_13E0[24];
+	Tile_Image_Info talk_offer_img;
+	Tile_Image_Info consider_img;
+	Tile_Image_Info counter_img;
+	Tile_Image_Info uparrow_img;
+	Tile_Image_Info downarrow_img;
+	Tile_Image_Info MPcounter_img;
+	Tile_Image_Info large_icons[11];
+	Tile_Image_Info small_icons[11];
+	Tile_Image_Info diplowinbox_img;
+	PCX_Image field_193C;
+	int field_1BF4[287];
+	Object_667188 field_2070;
 };
