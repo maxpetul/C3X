@@ -26,6 +26,7 @@ Notes about installation:
 3. It is not necessary to uninstall the mod before installing a different version; the installer knows to check for the backed up EXE.
 4. Even after installation, the mod still depends on some files in the mod folder, specifically the config file and the Art & Text folders.
 5. I've received multiple reports that RUN.bat doesn't work while installing does, so know that installation is the more reliable option.
+6. Rômulo Prado reports that RUN.bat started working for him after he installed the MS Visual C++ Redistributables versions 2005 and 2019 (while installing GOG Galaxy).
 
 COMPATIBILITY:
 The mod is only officially compatible with the GOG and Steam versions of Civ 3 Complete. It may be compatible with other versions if they use the same executable as one of those two. Multiplayer is untested. The mod works with existing save files and saves made with the mod active will still work in the base game.
@@ -59,3 +60,4 @@ See my thread on CivFanatics: https://forums.civfanatics.com/threads/sub-bug-fix
 SPECIAL THANKS:
 1. Antal1987 for his work reverse engineering Civ3. See: https://github.com/Antal1987/C3CPatchFramework
 2. Rômulo Prado for his help testing the mod
+3. Civinator for the German translation (still in progress)

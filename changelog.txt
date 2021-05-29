@@ -10,9 +10,6 @@
 - Fix for immobile unit disembark crash
 - Fix for for houseboat bug
 - Set LAA bit when creating modded EXE
-- TODO
-  - Credit Civinator in the readme for the German translation that I assume he'll do
-  - Add a note about Romulo's experience with the MSVC++ redists to the readme
 
 * RELEASE 5
 - Stack worker commands
