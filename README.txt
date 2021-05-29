@@ -2,20 +2,28 @@ C3X: Executable Mod for Civ 3 Complete
 Release 5
 
 INCLUDES (* = new in latest version):
-* Stack worker buttons
-* Skip repeated popups asking to replace a tile improvement
-* Enable free improvements from small wonders
+* AI enhancements:
+  - Allow AI to use artillery offensively
+  - Force AI to build more artillery and bombers
+  - Replace leader unit AI to fix bugs and improve behavior
+  - Fix bug preventing AI from filling its armies
+  - Discourage AI from mixing unit types in armies, prevent it from adding HN units
+* Fix for immobile unit disembark crash
+* Fix for for houseboat bug
 Stack bombard
 Disorder warning
+Stack worker buttons
 Detailed city production info
 Option to limit railroad movement
 Removed unit limit
+Enable free improvements from small wonders
 Bugs fixed:
   - AI pathfinding collides with invisible units (called the "submarine bug")
   - Science age beakers not actually awarded
   - Pink line in Civilopedia
 Option to prevent autoraze and razing by AIs
 Stealth attack activates even when there's only one target
+Skip repeated popups asking to replace a tile improvement
 
 INSTALLATION AND USAGE:
 Begin by extracting the mod and copying its folder into the Civ install directory (that is, the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustible by editing a text configuration file. It is named "default.c3x_config.ini".
