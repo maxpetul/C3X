@@ -6,7 +6,7 @@
 - Add option to increase AI artillery and bomber production
 - Allow AI to grab artillery escorts from city defenders so its arty can be used in the field
 - Improve leader unit AI: fix bug allowing rush of any city build, prefer forming armies, select better rush targets
-- Improve AI army inclusion critera: exclude HN & defensive units, fix movement check
+- Improve AI army inclusion criteria: exclude HN & defensive units, fix movement check
 - Fix for immobile unit disembark crash
 - Fix for for houseboat bug
 - Set LAA bit when creating modded EXE
