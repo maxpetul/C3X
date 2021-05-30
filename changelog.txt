@@ -1,7 +1,3 @@
-* RELEASE 7
-- TODO
-  - Add option to prevent city founding next to a city owned by another civ even when normal min separation is removed
-
 * RELEASE 6
 - Add option to increase AI artillery and bomber production
 - Allow AI to grab artillery escorts from city defenders so its arty can be used in the field
