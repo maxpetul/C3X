@@ -1,5 +1,5 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 5
+Release 6
 
 INCLUDES (* = new in latest version):
 * AI enhancements:
