@@ -2047,8 +2047,45 @@ void __fastcall
 patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script_path, char * text_key, int param_3, int param_4, int param_5, int param_6)
 {
 	int ret_addr = ((int *)&script_path)[-1];
-	if ((ret_addr == 0x509325) || (ret_addr == 0x509669)) {
-		is->snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "test test test");
+	// ret_addr is 0x509325 when we're asking for gold from the AI and 0x509669 when we're offering gold to the AI
+	if (ret_addr == 0x509325) {
+		int their_id = p_diplo_form->other_party_civ_id;
+		TradeOfferList * offers = &p_diplo_form->their_offer_lists[their_id];
+
+		int their_advantage;
+		Leader_consider_trade (
+			&leaders[their_id],
+			__,
+			&p_diplo_form->our_offer_lists[their_id],
+			&p_diplo_form->their_offer_lists[their_id],
+			p_main_screen_form->Player_CivID,
+			0, 1, 0, 0,
+			&their_advantage,
+			NULL, NULL);
+
+		/*
+		TradeOffer * new_offer = new (sizeof *new_offer);
+		*new_offer = (struct TradeOffer) {
+			.vtable = p_trade_offer_vtable,
+			.kind = 7, // TODO: Replace with enum
+			.param_1 = 1, // TODO: Replace with enum
+			.param_2 = 432,
+			.next = NULL,
+			.prev = NULL
+		};
+
+		if (offers->length > 0) {
+			new_offer->prev = offers->last;
+			offers->last->next = new_offer;
+			offers->last = new_offer;
+			offers->length += 1;
+		} else {
+			offers->last = offers->first = new_offer;
+			offers->length = 1;
+		}
+		*/
+
+		is->snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "%d", (their_advantage >= 0) ? their_advantage : 0);
 		is->ask_gold_default[(sizeof is->ask_gold_default) - 1] = '\0';
 		PopupForm_set_text_key_and_flags (this, __, script_path, text_key, param_3, (int)is->ask_gold_default, param_5, param_6);
 	} else

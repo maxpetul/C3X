@@ -5815,7 +5815,9 @@ struct Object_667188
 struct DiploForm
 {
 	void * vtable; // = 0x66C0D8
-	int field_4[991];
+	int field_4[933];
+	int other_party_civ_id;
+	int field_E9C[57];
 	TradeOfferList their_offer_lists[32];
 	TradeOfferList our_offer_lists[32];
 	int field_1380[4];
