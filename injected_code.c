@@ -2043,49 +2043,142 @@ patch_Unit_set_state (Unit * this, int edx, int new_state)
 }
 */
 
+// Returns whether or not the current deal being offered to the AI on the trade screen would be accepted. How advantageous the AI thinks the
+// trade is for itself is stored in out_their_advantage if it's not NULL. This advantage is measured in gold, if it's positive it means the
+// AI thinks it's gaining that much value from the trade and if it's negative it thinks it would be losing that much. I don't know what would
+// happen if this function were called while the trade screen is not active.
+int
+is_current_offer_acceptable (int * out_their_advantage)
+{
+	int their_id = p_diplo_form->other_party_civ_id;
+
+	int consideration = Leader_consider_trade (
+		&leaders[their_id],
+		__,
+		&p_diplo_form->our_offer_lists[their_id],
+		&p_diplo_form->their_offer_lists[their_id],
+		p_main_screen_form->Player_CivID,
+		0, 1, 0, 0,
+		out_their_advantage,
+		NULL, NULL);
+
+	return consideration == 0x24; // TODO: Replace with an enum
+}
+
+// Adds an offer of gold to the list and returns it. If one already exists in the list, returns a pointer to it.
+TradeOffer *
+offer_gold (TradeOfferList * list, int is_lump_sum)
+{
+	if (list->length > 0)
+		for (TradeOffer * offer = list->first; offer != NULL; offer = offer->next)
+			if ((offer->kind == 7) && (offer->param_1 == is_lump_sum))
+				return offer;
+
+	TradeOffer * tr = new (sizeof *tr);
+	*tr = (struct TradeOffer) {
+		.vtable = p_trade_offer_vtable,
+		.kind = 7, // TODO: Replace with enum
+		.param_1 = is_lump_sum,
+		.param_2 = 0,
+		.next = NULL,
+		.prev = NULL
+	};
+
+	if (list->length > 0) {
+		tr->prev = list->last;
+		list->last->next = tr;
+		list->last = tr;
+		list->length += 1;
+	} else {
+		list->last = list->first = tr;
+		list->length = 1;
+	}
+
+	return tr;
+}
+
+// Removes offer from list of offers but does not free it. Assumes offer is in the list.
+void
+remove_offer (TradeOfferList * list, TradeOffer * offer)
+{
+	if (list->length == 1) {
+		list->first = list->last = NULL;
+		list->length = 0;
+	} else if (list->length > 1) {
+		TradeOffer * prev = offer->prev, * next = offer->next;
+		if (prev)
+			prev->next = next;
+		if (next)
+			next->prev = prev;
+		if (list->first == offer)
+			list->first = next;
+		if (list->last == offer)
+			list->last = prev;
+		list->length -= 1;
+	}
+	offer->prev = offer->next = NULL;
+}
+
 void __fastcall
 patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script_path, char * text_key, int param_3, int param_4, int param_5, int param_6)
 {
-	int ret_addr = ((int *)&script_path)[-1];
+	int * p_stack = (int *)&script_path;
+	int ret_addr = p_stack[-1];
+
 	// ret_addr is 0x509325 when we're asking for gold from the AI and 0x509669 when we're offering gold to the AI
 	if (ret_addr == 0x509325) {
+		int is_lump_sum = p_stack[14]; // TODO: This will be different for the Steam binary, maybe
+
 		int their_id = p_diplo_form->other_party_civ_id;
-		TradeOfferList * offers = &p_diplo_form->their_offer_lists[their_id];
 
 		int their_advantage;
-		Leader_consider_trade (
-			&leaders[their_id],
-			__,
-			&p_diplo_form->our_offer_lists[their_id],
-			&p_diplo_form->their_offer_lists[their_id],
-			p_main_screen_form->Player_CivID,
-			0, 1, 0, 0,
-			&their_advantage,
-			NULL, NULL);
+		is_current_offer_acceptable (&their_advantage);
 
-		/*
-		TradeOffer * new_offer = new (sizeof *new_offer);
-		*new_offer = (struct TradeOffer) {
-			.vtable = p_trade_offer_vtable,
-			.kind = 7, // TODO: Replace with enum
-			.param_1 = 1, // TODO: Replace with enum
-			.param_2 = 432,
-			.next = NULL,
-			.prev = NULL
-		};
+		TradeOfferList * offers = &p_diplo_form->their_offer_lists[their_id];
+		TradeOffer * test_offer = offer_gold (offers, is_lump_sum);
 
-		if (offers->length > 0) {
-			new_offer->prev = offers->last;
-			offers->last->next = new_offer;
-			offers->last = new_offer;
-			offers->length += 1;
-		} else {
-			offers->last = offers->first = new_offer;
-			offers->length = 1;
+		// First guess some amount to ask for. Store the guess amount in the test offer
+		if (is_lump_sum) {
+			int guess = (their_advantage > 0) ? their_advantage : 0;
+			int their_treasury = leaders[their_id].Gold_Encoded + leaders[their_id].Gold_Decrement;
+			guess = (guess <= their_treasury) ? guess : their_treasury;
+			test_offer->param_2 = guess;
+		} else
+			test_offer->param_2 = (their_advantage > 0) ? their_advantage / 18 : 0;
+
+		// If this guess does not lead to an acceptable deal, reduce it until we get an offer that is acceptable
+		if (! is_current_offer_acceptable (NULL)) {
+			int step_size = test_offer->param_2 / 10;
+			step_size = (step_size >= 1) ? step_size : 1;
+			while (1) {
+				test_offer->param_2 -= step_size;
+				if (test_offer->param_2 <= 0) {
+					test_offer->param_2 = 0;
+					break;
+				} else if (is_current_offer_acceptable (NULL))
+					break;
+			}
 		}
-		*/
 
-		is->snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "%d", (their_advantage >= 0) ? their_advantage : 0);
+		// If this offer is acceptable then refine it by trying to ask for more
+		int best_amount = test_offer->param_2;
+		if (is_current_offer_acceptable (NULL))
+			for (int step_size = 100; step_size >= 1; step_size /= 10) {
+				test_offer->param_2 = best_amount;
+				while (1) {
+					test_offer->param_2 += step_size;
+					if (is_current_offer_acceptable (NULL)) {
+						best_amount = test_offer->param_2;
+					} else
+						break;
+				}
+			}
+
+		remove_offer (offers, test_offer);
+		test_offer->vtable->destruct (test_offer, __, 1);
+
+		is->snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "%d", best_amount);
+		// is->snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "%s", is_lump_sum ? "lump" : "pert");
 		is->ask_gold_default[(sizeof is->ask_gold_default) - 1] = '\0';
 		PopupForm_set_text_key_and_flags (this, __, script_path, text_key, param_3, (int)is->ask_gold_default, param_5, param_6);
 	} else
