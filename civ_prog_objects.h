@@ -96,11 +96,11 @@ struct civ_prog_object {
 	{OJ_DEFINE,	"Unit_form_army",				"Unit * (__fastcall *) (Unit * this)",																		0x5BCA20,	0x5CB5B0},
 	{OJ_REPL_VPTR,	"impl_ai_is_good_army_addition",		"byte (__fastcall *) (Unit * this, int edx, Unit * candidate)",															0x66DD28,	0x68AE08},
 
-	{OJ_REPL_VPTR, "PopupForm_set_text_key_and_flags", "void (__fastcall *) (PopupForm * this, int edx, char * script_path, char * text_key, int param_3, int param_4, int param_5, int param_6)", 0x666578, 0x0},
-	{OJ_DEFINE, "p_diplo_form", "DiploForm *", 0xA35200, 0x0},
-	{OJ_DEFINE, "new", "void * (__cdecl *) (unsigned num_bytes)", 0x649A8B, 0x0},
-	{OJ_DEFINE, "p_trade_offer_vtable", "TradeOfferVTable *", 0x666AC4, 0x0},
-	{OJ_DEFINE, "Leader_consider_trade", "int (__fastcall *) (Leader * this, int edx, TradeOfferList * receiving, TradeOfferList * paying, int other_party_civ_id, byte param_4, byte param_5, byte param_6, byte param_7, int * out_advantage, int * param_9, int * param_10)", 0x440EE0, 0x0},
+	{OJ_REPL_VPTR, "PopupForm_set_text_key_and_flags", "void (__fastcall *) (PopupForm * this, int edx, char * script_path, char * text_key, int param_3, int param_4, int param_5, int param_6)", 0x666578, 0x6835CC},
+	{OJ_DEFINE, "p_diplo_form", "DiploForm *", 0xA35200, 0xA57A00},
+	{OJ_DEFINE, "new", "void * (__cdecl *) (unsigned num_bytes)", 0x649A8B, 0x6683E1},
+	{OJ_DEFINE, "p_trade_offer_vtable", "TradeOfferVTable *", 0x666AC4, 0x683B1C},
+	{OJ_DEFINE, "Leader_consider_trade", "int (__fastcall *) (Leader * this, int edx, TradeOfferList * receiving, TradeOfferList * paying, int other_party_civ_id, byte param_4, byte param_5, byte param_6, byte param_7, int * out_advantage, int * param_9, int * param_10)", 0x440EE0, 0x442CD0},
 
 
 	// {OJ_DEFINE,	"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)",																		0x4507B0,	0x0},
