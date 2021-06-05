@@ -2146,7 +2146,63 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 		    our_id = p_main_screen_form->Player_CivID;
 
 		int their_advantage;
-		is_current_offer_acceptable (&their_advantage);
+		int is_original_acceptable = is_current_offer_acceptable (&their_advantage);
+
+		int best_amount = 0;
+
+		if ((p_diplo_form->their_offer_lists[their_id].length + p_diplo_form->our_offer_lists[their_id].length > 0) && // if anything is on the table AND
+		    ((asking && is_original_acceptable) || // (we're asking for money on an acceptable trade OR
+		     ((! asking) && (! is_original_acceptable)))) { // we're offering money on an unacceptable trade)
+
+			TradeOfferList * offers = asking ? &p_diplo_form->their_offer_lists[their_id] : &p_diplo_form->our_offer_lists[their_id];
+			TradeOffer * test_offer = offer_gold (offers, is_lump_sum);
+
+			// When asking for gold, start at zero and work upwards. When offering gold it's more complicated. For lump sum
+			// offers, start with our entire treasury and work downward. For GPT offers, start with an upper bound and work
+			// downward. The upper bound depends on how much the AI thinks it's losing on the trade (in gold) divided by 20
+			// (b/c 20 turn deal) with a lot of extra headroom just to make sure.
+			int starting_amount; {
+				if (asking)
+					starting_amount = 0;
+				else {
+					if (is_lump_sum)
+						starting_amount = leaders[our_id].Gold_Encoded + leaders[our_id].Gold_Decrement;
+					else {
+						int guess = not_below (0, 0 - their_advantage) / 20;
+						starting_amount = 10 + guess * 2;
+					}
+				}
+			}
+
+			// Check if optimization is still possible. It's not if we're offering gold and our maximum offer is unacceptable
+			if (asking || is_current_offer_acceptable (NULL)) {
+
+				best_amount = test_offer->param_2 = starting_amount;
+				for (int step_size = asking ? 1000 : -1000; step_size != 0; step_size /= 10) {
+					test_offer->param_2 = best_amount;
+					while (1) {
+						test_offer->param_2 += step_size;
+						if (test_offer->param_2 < 0)
+							break;
+						else if (is_current_offer_acceptable (NULL))
+							best_amount = test_offer->param_2;
+						else
+							break;
+					}
+				}
+			}
+
+			// Annoying little edge case: The limitation on AIs not to trade more than their entire treasury is handled in the
+			// interface not the trade evaluation logic so we have to limit our gold request here to their treasury (otherwise
+			// the amount will default to how much they would pay if they had infinite money).
+			int their_treasury = leaders[our_id].Gold_Encoded + leaders[our_id].Gold_Decrement;
+			if (asking && is_lump_sum && (best_amount > their_treasury))
+				best_amount = their_treasury;
+
+			remove_offer (offers, test_offer);
+			test_offer->vtable->destruct (test_offer, __, 1);
+		}
+		/*
 
 		TradeOfferList * offers = asking ? &p_diplo_form->their_offer_lists[their_id] : &p_diplo_form->our_offer_lists[their_id];
 		TradeOffer * test_offer = offer_gold (offers, is_lump_sum);
@@ -2221,6 +2277,8 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 
 		remove_offer (offers, test_offer);
 		test_offer->vtable->destruct (test_offer, __, 1);
+
+		*/
 
 		is->snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "%d", best_amount);
 		// is->snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "%s", is_lump_sum ? "lump" : "pert");
