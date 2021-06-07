@@ -96,7 +96,7 @@ struct civ_prog_object {
 	{OJ_DEFINE,	"Unit_form_army",				"Unit * (__fastcall *) (Unit * this)",																		0x5BCA20,	0x5CB5B0},
 	{OJ_REPL_VPTR,	"impl_ai_is_good_army_addition",		"byte (__fastcall *) (Unit * this, int edx, Unit * candidate)",															0x66DD28,	0x68AE08},
 
-	{OJ_INLEAD, "Map_check_city_location", "CityLocValidity (__fastcall *) (Map *this, int edx, int tile_x, int tile_y, int civ_id, byte check_for_city_on_tile)", 0x5F3160, 0x0},
+	{OJ_INLEAD, "Map_check_city_location", "CityLocValidity (__fastcall *) (Map *this, int edx, int tile_x, int tile_y, int civ_id, byte check_for_city_on_tile)", 0x5F3160, 0x603000},
 
 	// {OJ_DEFINE,	"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)",																		0x4507B0,	0x0},
 	// {OJ_DEFINE,	"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)",												0x44C340,	0x0},
