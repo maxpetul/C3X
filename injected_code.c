@@ -1986,19 +1986,28 @@ CityLocValidity __fastcall
 patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int civ_id, byte check_for_city_on_tile)
 {
 	int const adjustment_to_min_city_distance = 2; // TODO: Load this from the config file
+	char const disallow_founding_next_to_foreign_cities = 1; // TODO: This too
 	CityLocValidity base_result = Map_check_city_location (this, __, tile_x, tile_y, civ_id, check_for_city_on_tile);
 
 	// If adjustment is zero, make no change
 	if (adjustment_to_min_city_distance == 0)
 		return base_result;
 
-	// If adjustment is negative, ignore the CITY_TOO_CLOSE objection to city placement. The base code enforces a minimum separation of 1 and the
-	// separation cannot go below zero.
-	else if (adjustment_to_min_city_distance < 0)
-		return (base_result == CLV_CITY_TOO_CLOSE) ? CLV_OK : base_result;
+	// If adjustment is negative, ignore the CITY_TOO_CLOSE objection to city placement unless the location is next to a city belonging to
+	// another civ and the settings forbid founding there.
+	else if ((adjustment_to_min_city_distance < 0) && (base_result == CLV_CITY_TOO_CLOSE)) {
+		if (disallow_founding_next_to_foreign_cities)
+			for (int n = 1; n <= 8; n++) {
+				int x, y;
+				get_neighbor_coords (&p_bic_data->Map, tile_x, tile_y, n, &x, &y);
+				City * city = city_at (x, y);
+				if ((city != NULL) && (city->Body.CivID != civ_id))
+					return CLV_CITY_TOO_CLOSE;
+			}
+		return CLV_OK;
 
 	// If we have an increased separation we might have to exclude some locations the base code allows.
-	else if ((adjustment_to_min_city_distance > 0) && (base_result == CLV_OK)) {
+	} else if ((adjustment_to_min_city_distance > 0) && (base_result == CLV_OK)) {
 		// Check tiles around (x, y) for a city. Because the base result is CLV_OK, we don't have to check neighboring tiles, just those at
 		// distance 2, 3, ... up to (an including) the adjustment + 1
 		for (int dist = 2; dist <= adjustment_to_min_city_distance + 1; dist++) {
