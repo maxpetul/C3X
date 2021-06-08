@@ -876,6 +876,9 @@ main (int argc, char ** argv)
 		.enable_free_buildings_from_small_wonders = 1,
 		.enable_stack_worker_commands = 1,
 		.skip_repeated_tile_improv_replacement_asks = 1,
+		.autofill_best_gold_amount_when_trading = 1,
+		.adjust_minimum_city_separation = 0,
+		.disallow_founding_next_to_foreign_city = 1,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,

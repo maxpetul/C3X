@@ -19,6 +19,9 @@ struct c3x_config {
 	char enable_free_buildings_from_small_wonders;
 	char enable_stack_worker_commands;
 	char skip_repeated_tile_improv_replacement_asks;
+	char autofill_best_gold_amount_when_trading;
+	int adjust_minimum_city_separation;
+	char disallow_founding_next_to_foreign_city;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;

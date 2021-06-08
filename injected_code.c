@@ -239,6 +239,12 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->enable_stack_worker_commands = ival != 0;
 				else if ((0 == is->strncmp (key, "skip_repeated_tile_improv_replacement_asks", key_len)) && parse_int (value, value_len, &ival))
 					cfg->skip_repeated_tile_improv_replacement_asks = ival != 0;
+				else if ((0 == is->strncmp (key, "autofill_best_gold_amount_when_trading", key_len)) && parse_int (value, value_len, &ival))
+					cfg->autofill_best_gold_amount_when_trading = ival != 0;
+				else if ((0 == is->strncmp (key, "adjust_minimum_city_separation", key_len)) && parse_int (value, value_len, &ival))
+					cfg->adjust_minimum_city_separation = ival;
+				else if ((0 == is->strncmp (key, "disallow_founding_next_to_foreign_city", key_len)) && parse_int (value, value_len, &ival))
+					cfg->disallow_founding_next_to_foreign_city = ival != 0;
 
 				else if ((0 == is->strncmp (key, "use_offensive_artillery_ai", key_len)) && parse_int (value, value_len, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -2138,7 +2144,8 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 	int ret_addr = p_stack[-1];
 
 	// This function gets called from all over the place, check that it's being called to setup the set gold amount popup in the trade screen
-	if ((ret_addr == ADDR_SETUP_ASKING_GOLD_RETURN) || (ret_addr == ADDR_SETUP_OFFERING_GOLD_RETURN)) {
+	if (is->current_config.autofill_best_gold_amount_when_trading &&
+	    (ret_addr == ADDR_SETUP_ASKING_GOLD_RETURN) || (ret_addr == ADDR_SETUP_OFFERING_GOLD_RETURN)) {
 		int asking = ret_addr == ADDR_SETUP_ASKING_GOLD_RETURN;
 		int is_lump_sum = p_stack[TRADE_GOLD_SETTER_IS_LUMP_SUM_OFFSET]; // Read this variable from the caller's frame
 
@@ -2292,18 +2299,17 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 CityLocValidity __fastcall
 patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int civ_id, byte check_for_city_on_tile)
 {
-	int const adjustment_to_min_city_distance = 2; // TODO: Load this from the config file
-	char const disallow_founding_next_to_foreign_cities = 1; // TODO: This too
+	int adjustment = is->current_config.adjust_minimum_city_separation;
 	CityLocValidity base_result = Map_check_city_location (this, __, tile_x, tile_y, civ_id, check_for_city_on_tile);
 
 	// If adjustment is zero, make no change
-	if (adjustment_to_min_city_distance == 0)
+	if (adjustment == 0)
 		return base_result;
 
 	// If adjustment is negative, ignore the CITY_TOO_CLOSE objection to city placement unless the location is next to a city belonging to
 	// another civ and the settings forbid founding there.
-	else if ((adjustment_to_min_city_distance < 0) && (base_result == CLV_CITY_TOO_CLOSE)) {
-		if (disallow_founding_next_to_foreign_cities)
+	else if ((adjustment < 0) && (base_result == CLV_CITY_TOO_CLOSE)) {
+		if (is->current_config.disallow_founding_next_to_foreign_city)
 			for (int n = 1; n <= 8; n++) {
 				int x, y;
 				get_neighbor_coords (&p_bic_data->Map, tile_x, tile_y, n, &x, &y);
@@ -2314,10 +2320,10 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 		return CLV_OK;
 
 	// If we have an increased separation we might have to exclude some locations the base code allows.
-	} else if ((adjustment_to_min_city_distance > 0) && (base_result == CLV_OK)) {
+	} else if ((adjustment > 0) && (base_result == CLV_OK)) {
 		// Check tiles around (x, y) for a city. Because the base result is CLV_OK, we don't have to check neighboring tiles, just those at
 		// distance 2, 3, ... up to (an including) the adjustment + 1
-		for (int dist = 2; dist <= adjustment_to_min_city_distance + 1; dist++) {
+		for (int dist = 2; dist <= adjustment + 1; dist++) {
 
 			// vertices stores the unwrapped coords of the tiles at the vertices of the square of tiles at distance "dist" around
 			// (tile_x, tile_y). The order of the vertices is north, east, south, west.
