@@ -102,6 +102,9 @@ struct civ_prog_object {
 	{OJ_DEFINE, "p_trade_offer_vtable", "TradeOfferVTable *", 0x666AC4, 0x683B1C},
 	{OJ_DEFINE, "Leader_consider_trade", "int (__fastcall *) (Leader * this, int edx, TradeOfferList * receiving, TradeOfferList * paying, int other_party_civ_id, byte param_4, byte param_5, byte param_6, byte param_7, int * out_advantage, int * param_9, int * param_10)", 0x440EE0, 0x442CD0},
 
+	{OJ_DEFINE, "ADDR_SETUP_ASKING_GOLD_RETURN", "int", 0x509325, 0x51334D},
+	{OJ_DEFINE, "ADDR_SETUP_OFFERING_GOLD_RETURN", "int", 0x509669, 0x51366E},
+	{OJ_DEFINE, "TRADE_GOLD_SETTER_IS_LUMP_SUM_OFFSET", "int", 14, 14},
 
 	// {OJ_DEFINE,	"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)",																		0x4507B0,	0x0},
 	// {OJ_DEFINE,	"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)",												0x44C340,	0x0},

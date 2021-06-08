@@ -2137,10 +2137,10 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 	int * p_stack = (int *)&script_path;
 	int ret_addr = p_stack[-1];
 
-	// ret_addr is 0x509325 when we're asking for gold from the AI and 0x509669 when we're offering gold to the AI
-	if ((ret_addr == 0x509325) || (ret_addr == 0x509669)) {
-		int asking = ret_addr == 0x509325;
-		int is_lump_sum = p_stack[14]; // TODO: This will be different for the Steam binary, maybe. On GOG it's the same for both call sites
+	// This function gets called from all over the place, check that it's being called to setup the set gold amount popup in the trade screen
+	if ((ret_addr == ADDR_SETUP_ASKING_GOLD_RETURN) || (ret_addr == ADDR_SETUP_OFFERING_GOLD_RETURN)) {
+		int asking = ret_addr == ADDR_SETUP_ASKING_GOLD_RETURN;
+		int is_lump_sum = p_stack[TRADE_GOLD_SETTER_IS_LUMP_SUM_OFFSET]; // Read this variable from the caller's frame
 
 		int their_id = p_diplo_form->other_party_civ_id,
 		    our_id = p_main_screen_form->Player_CivID;
@@ -2175,9 +2175,10 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 			}
 
 			// Check if optimization is still possible. It's not if we're offering gold and our maximum offer is unacceptable
+			test_offer->param_2 = starting_amount;
 			if (asking || is_current_offer_acceptable (NULL)) {
 
-				best_amount = test_offer->param_2 = starting_amount;
+				best_amount = starting_amount;
 				for (int step_size = asking ? 1000 : -1000; step_size != 0; step_size /= 10) {
 					test_offer->param_2 = best_amount;
 					while (1) {
@@ -2195,7 +2196,7 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 			// Annoying little edge case: The limitation on AIs not to trade more than their entire treasury is handled in the
 			// interface not the trade evaluation logic so we have to limit our gold request here to their treasury (otherwise
 			// the amount will default to how much they would pay if they had infinite money).
-			int their_treasury = leaders[our_id].Gold_Encoded + leaders[our_id].Gold_Decrement;
+			int their_treasury = leaders[their_id].Gold_Encoded + leaders[their_id].Gold_Decrement;
 			if (asking && is_lump_sum && (best_amount > their_treasury))
 				best_amount = their_treasury;
 
