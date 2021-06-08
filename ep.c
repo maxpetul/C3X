@@ -12,6 +12,10 @@
 
 #define ARRAY_LEN(a) ((sizeof a) / (sizeof a[0]))
 
+#if (!defined(C3X_RUN) && !defined(C3X_INSTALL)) || (defined(C3X_RUN) && defined(C3X_INSTALL))
+#error "Must #define exactly one of C3X_RUN or C3X_INSTALL"
+#endif
+
 // Large (30 MB) buffer whose job is to occupy the lower portion of this process' virtual address space. This is necessary
 // for installing the mod into the Civ EXE because we need space in this area to relocate the code that is to be injected
 // into the EXE.
@@ -403,20 +407,18 @@ va_to_file_ptr (struct civ_pe const * pe, void const * virt_addr, int * out_sect
 
 
 
-#define TARGET_PROCESS 0
-#define TARGET_EXE_FILE 1
-int target;
-// if target == TARGET_PROCESS, use this:
+#ifdef C3X_RUN
 HANDLE civ_proc;
-// else target == TARGET_EXE_FILE, use these:
+#else
 struct civ_pe civ_exe;
 byte * civ_exe_contents; // Buffer contains the contents of the EXE file
 int civ_exe_buf_size;
 int civ_exe_buf_occupied_size;
+#endif
 
 
 
-
+#ifdef C3X_INSTALL
 byte *
 get_exe_ptr (void const * virt_addr)
 {
@@ -425,22 +427,19 @@ get_exe_ptr (void const * virt_addr)
 	REQUIRE (i_section >= 0, format ("Virtual address %p does not correspond to any data in EXE file", virt_addr));
 	return civ_exe_contents + offset;
 }
-
-
-
-
-
+#endif
 
 byte *
 read_prog_memory (void const * addr, int size)
 {
 	byte * tr = malloc (size);
-	if (target == TARGET_PROCESS) {
-		SIZE_T size_read;
-		int success = ReadProcessMemory (civ_proc, addr, tr, size, &size_read);
-		ASSERT (success && ((int)size_read == size));
-	} else
-		memcpy (tr, get_exe_ptr (addr), size);
+#ifdef C3X_RUN
+	SIZE_T size_read;
+	int success = ReadProcessMemory (civ_proc, addr, tr, size, &size_read);
+	ASSERT (success && ((int)size_read == size));
+#else
+	memcpy (tr, get_exe_ptr (addr), size);
+#endif
 	return tr;
 }
 
@@ -448,24 +447,26 @@ int
 read_prog_int (void const * addr)
 {
 	int tr;
-	if (target == TARGET_PROCESS) {
-		SIZE_T size_read;
-		int success = ReadProcessMemory (civ_proc, addr, &tr, sizeof tr, &size_read);
-		ASSERT (success && (size_read == sizeof tr));
-	} else
-		tr = int_from_bytes (get_exe_ptr (addr));
+#ifdef C3X_RUN
+	SIZE_T size_read;
+	int success = ReadProcessMemory (civ_proc, addr, &tr, sizeof tr, &size_read);
+	ASSERT (success && (size_read == sizeof tr));
+#else
+	tr = int_from_bytes (get_exe_ptr (addr));
+#endif
 	return tr;
 }
 
 void
 write_prog_memory (void * addr, byte const  * buf, int size)
 {
-	if (target == TARGET_PROCESS) {
-		SIZE_T size_written;
-		int success = WriteProcessMemory (civ_proc, addr, buf, size, &size_written);
-		ASSERT (success && ((int)size_written == size));
-	} else
-		memcpy (get_exe_ptr (addr), buf, size);
+#ifdef C3X_RUN
+	SIZE_T size_written;
+	int success = WriteProcessMemory (civ_proc, addr, buf, size, &size_written);
+	ASSERT (success && ((int)size_written == size));
+#else
+	memcpy (get_exe_ptr (addr), buf, size);
+#endif
 }
 
 void
@@ -525,61 +526,61 @@ recompute_civ_pe_sizes (struct civ_pe * pe)
 void *
 alloc_prog_memory (char const * name, void * location, int size, enum mem_access access)
 {
-	if (target == TARGET_PROCESS) {
-		void * tr = VirtualAllocEx (civ_proc, location, size, MEM_RESERVE | MEM_COMMIT, page_prot_flags[access]);
-		REQUIRE (tr != NULL, format ("Bad in-program alloc (location: %p, size: %d, access: %d)", location, size, access));
-		return tr;
-	} else {
-		REQUIRE (location == NULL, "Can't specify location of alloc inside PE file");
-		int virt_addr; {
-			IMAGE_SECTION_HEADER * last_sect = &civ_exe.sections[civ_exe.coff->NumberOfSections - 1];
-			virt_addr = align_pow2 (civ_exe.opt->SectionAlignment, last_sect->VirtualAddress + last_sect->Misc.VirtualSize);
-		}
-
-		size = align_pow2 (civ_exe.opt->FileAlignment, size);
-
-		civ_exe_buf_occupied_size = align_pow2 (civ_exe.opt->FileAlignment, civ_exe_buf_occupied_size);
-		int raw_ptr = civ_exe_buf_occupied_size;
-		civ_exe_buf_occupied_size += size;
-
-		IMAGE_SECTION_HEADER new_section = {
-			.Name = {0},
-			.Misc.VirtualSize = size,
-			.VirtualAddress = virt_addr,
-			.SizeOfRawData = size,
-			.PointerToRawData = raw_ptr,
-			.PointerToRelocations = 0,
-			.PointerToLinenumbers = 0,
-			.NumberOfRelocations = 0,
-			.NumberOfLinenumbers = 0,
-			.Characteristics = section_flags[access]
-		};
-		strncpy (new_section.Name, name, IMAGE_SIZEOF_SHORT_NAME);
-		int i_new_section = (civ_exe.coff->NumberOfSections)++;
-		memcpy (&civ_exe.sections[i_new_section], &new_section, sizeof new_section);
-
-		recompute_civ_pe_sizes (&civ_exe);
-
-		return (void *)(virt_addr + civ_exe.opt->ImageBase);
+#ifdef C3X_RUN
+	void * tr = VirtualAllocEx (civ_proc, location, size, MEM_RESERVE | MEM_COMMIT, page_prot_flags[access]);
+	REQUIRE (tr != NULL, format ("Bad in-program alloc (location: %p, size: %d, access: %d)", location, size, access));
+	return tr;
+#else
+	REQUIRE (location == NULL, "Can't specify location of alloc inside PE file");
+	int virt_addr; {
+		IMAGE_SECTION_HEADER * last_sect = &civ_exe.sections[civ_exe.coff->NumberOfSections - 1];
+		virt_addr = align_pow2 (civ_exe.opt->SectionAlignment, last_sect->VirtualAddress + last_sect->Misc.VirtualSize);
 	}
+
+	size = align_pow2 (civ_exe.opt->FileAlignment, size);
+
+	civ_exe_buf_occupied_size = align_pow2 (civ_exe.opt->FileAlignment, civ_exe_buf_occupied_size);
+	int raw_ptr = civ_exe_buf_occupied_size;
+	civ_exe_buf_occupied_size += size;
+
+	IMAGE_SECTION_HEADER new_section = {
+		.Name = {0},
+		.Misc.VirtualSize = size,
+		.VirtualAddress = virt_addr,
+		.SizeOfRawData = size,
+		.PointerToRawData = raw_ptr,
+		.PointerToRelocations = 0,
+		.PointerToLinenumbers = 0,
+		.NumberOfRelocations = 0,
+		.NumberOfLinenumbers = 0,
+		.Characteristics = section_flags[access]
+	};
+	strncpy (new_section.Name, name, IMAGE_SIZEOF_SHORT_NAME);
+	int i_new_section = (civ_exe.coff->NumberOfSections)++;
+	memcpy (&civ_exe.sections[i_new_section], &new_section, sizeof new_section);
+
+	recompute_civ_pe_sizes (&civ_exe);
+
+	return (void *)(virt_addr + civ_exe.opt->ImageBase);
+#endif
 }
 
 void
 set_prog_mem_protection (void * addr, int size, enum mem_access access)
 {
-	if (target == TARGET_PROCESS) {
-		DWORD unused;
-		int success = VirtualProtectEx (civ_proc, addr, size, page_prot_flags[access], &unused);
-		REQUIRE (success, format ("Failed to set mem access at %p to kind %d", addr, access));
-	} else {
-		size = align_pow2 (civ_exe.opt->FileAlignment, size);
-		int i_section;
-		va_to_file_ptr (&civ_exe, addr, &i_section);
-		REQUIRE (i_section >= 0, format ("Virtual address %p does not correspond to any data in EXE file", addr));
-		REQUIRE (size == civ_exe.sections[i_section].Misc.VirtualSize, "Size mismatch when modifying section characteristics");
-		civ_exe.sections[i_section].Characteristics = section_flags[access];
-		recompute_civ_pe_sizes (&civ_exe);
-	}
+#ifdef C3X_RUN
+	DWORD unused;
+	int success = VirtualProtectEx (civ_proc, addr, size, page_prot_flags[access], &unused);
+	REQUIRE (success, format ("Failed to set mem access at %p to kind %d", addr, access));
+#else
+	size = align_pow2 (civ_exe.opt->FileAlignment, size);
+	int i_section;
+	va_to_file_ptr (&civ_exe, addr, &i_section);
+	REQUIRE (i_section >= 0, format ("Virtual address %p does not correspond to any data in EXE file", addr));
+	REQUIRE (size == civ_exe.sections[i_section].Misc.VirtualSize, "Size mismatch when modifying section characteristics");
+	civ_exe.sections[i_section].Characteristics = section_flags[access];
+	recompute_civ_pe_sizes (&civ_exe);
+#endif
 }
 
 void
@@ -679,25 +680,11 @@ print_symbol_location (void * context, char const * name, void const * val)
 	printf ("%p\t%s\n", val, name);
 }
 
-enum job {
-	JOB_RUN = 0,
-	JOB_INSTALL
-};
-
 int
 main (int argc, char ** argv)
 {
 	DWORD unused;
 	int success;
-
-	enum job job;
-	REQUIRE (argc == 2, "Expected exactly one argument");
-	if (strcmp (argv[1], "--run") == 0)
-		job = JOB_RUN;
-	else if (strcmp (argv[1], "--install") == 0)
-		job = JOB_INSTALL;
-	else
-		THROW (format ("Unrecognized argument: \"%s\"", argv[1]));
 
 	// Change to Conquests directory
 	char mod_full_dir[MAX_PATH],
@@ -775,8 +762,9 @@ main (int argc, char ** argv)
 		THROW ("Did the impossible, and not in a good way.");
 
 	PROCESS_INFORMATION civ_proc_info = {0};
-	if (job == JOB_RUN) {
-		target = TARGET_PROCESS;
+
+#ifdef C3X_RUN
+	{
 		STARTUPINFO civ_startup_info = {0};
 		civ_startup_info.cb = sizeof (civ_startup_info);
 		CloseHandle (bin_file);
@@ -795,9 +783,9 @@ main (int argc, char ** argv)
 			);
 		free (cmd_line);
 		civ_proc = civ_proc_info.hProcess;
-
-	} else if (job == JOB_INSTALL) {
-		target = TARGET_EXE_FILE;
+	}
+#else
+	{
 		DWORD bin_file_size = GetFileSize (bin_file, NULL);
 		int civ_exe_buf_size = 10 * bin_file_size;
 		civ_exe_contents = malloc (civ_exe_buf_size);
@@ -810,17 +798,18 @@ main (int argc, char ** argv)
 		CloseHandle (bin_file);
 		bin_file = INVALID_HANDLE_VALUE;
 	}
+#endif
 
 	// Make changes to the EXE if we'll be writing out a new one
-	if (job == JOB_INSTALL) {
-		// Disable digital signature
-		// NOTE: I don't know if this really matters since the executable works anyway even with an invalid signature. I'm
-		// just guessing since we're invalidating the signature it's best to stub it out so Windows doesn't look for it.
-		memset (&civ_exe.opt->DataDirectory[DF_CERTIFICATE_TABLE], 0, sizeof civ_exe.opt->DataDirectory[DF_CERTIFICATE_TABLE]);
+#ifdef C3X_INSTALL
+	// Disable digital signature
+	// NOTE: I don't know if this really matters since the executable works anyway even with an invalid signature. I'm just guessing since we're
+	// invalidating the signature it's best to stub it out so Windows doesn't look for it.
+	memset (&civ_exe.opt->DataDirectory[DF_CERTIFICATE_TABLE], 0, sizeof civ_exe.opt->DataDirectory[DF_CERTIFICATE_TABLE]);
 
-		// Set LAA bit
-		civ_exe.coff->Characteristics |= IMAGE_FILE_LARGE_ADDRESS_AWARE;
-	}
+	// Set LAA bit
+	civ_exe.coff->Characteristics |= IMAGE_FILE_LARGE_ADDRESS_AWARE;
+#endif
 
 	for (int n = 0; n < ARRAY_LEN (civ_prog_objects); n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
@@ -853,8 +842,9 @@ main (int argc, char ** argv)
 	tcc_define_pointer (tcc, "ADDR_MAIN_SCREEN_FORM_HANDLE_LEFT_CLICK_ON_MAP_1", bin->addr_Main_Screen_Form_handle_left_click_on_map_1);
 
 	// Get write access to rdata section so we can replace entries in the vtables. Only necessary if we're modifying a live process.
-	if (target == TARGET_PROCESS)
-		set_prog_mem_protection (bin->addr_rdata, bin->size_rdata, MAA_READ_WRITE);
+#ifdef C3X_RUN
+	set_prog_mem_protection (bin->addr_rdata, bin->size_rdata, MAA_READ_WRITE);
+#endif
 
 	// Allocate space for inleads
 	int inleads_size = 100 * sizeof (struct inlead);
@@ -907,16 +897,16 @@ main (int argc, char ** argv)
 	// machine code into the Civ process and have it work.
 	int inject_size = 0xA000;
 	byte * civ_inject_mem, * our_inject_mem; {
-		if (target == TARGET_PROCESS) {
-			civ_inject_mem = alloc_prog_memory (".c3xtxt", (void *)0x22220000, inject_size, MAA_READ_WRITE_EXECUTE);
-			our_inject_mem = VirtualAlloc (civ_inject_mem, inject_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-			ASSERT (our_inject_mem == civ_inject_mem);
-		} else if (target == TARGET_EXE_FILE) {
-			civ_inject_mem = alloc_prog_memory (".c3xtxt", NULL, inject_size, MAA_READ_WRITE_EXECUTE);
-			REQUIRE (((int)civ_inject_mem >= (int)low_addr_buf) && ((int)civ_inject_mem + inject_size < (int)low_addr_buf + sizeof low_addr_buf),
-				 "Code inject area does not fit in low_addr_buf.");
-			our_inject_mem = civ_inject_mem;
-		}
+#ifdef C3X_RUN
+		civ_inject_mem = alloc_prog_memory (".c3xtxt", (void *)0x22220000, inject_size, MAA_READ_WRITE_EXECUTE);
+		our_inject_mem = VirtualAlloc (civ_inject_mem, inject_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+		ASSERT (our_inject_mem == civ_inject_mem);
+#else
+		civ_inject_mem = alloc_prog_memory (".c3xtxt", NULL, inject_size, MAA_READ_WRITE_EXECUTE);
+		REQUIRE (((int)civ_inject_mem >= (int)low_addr_buf) && ((int)civ_inject_mem + inject_size < (int)low_addr_buf + sizeof low_addr_buf),
+			 "Code inject area does not fit in low_addr_buf.");
+		our_inject_mem = civ_inject_mem;
+#endif
 	}
 	
 	// Pass through prog objects before compiling to set things up for compilation
@@ -983,26 +973,28 @@ main (int argc, char ** argv)
 	set_prog_mem_protection (inleads, inleads_size, MAA_READ_EXECUTE);
 
 	// Give up write permission on rdata section
-	if (target == TARGET_PROCESS)
-		set_prog_mem_protection (bin->addr_rdata, bin->size_rdata, MAA_READ);
+#ifdef C3X_RUN
+	set_prog_mem_protection (bin->addr_rdata, bin->size_rdata, MAA_READ);
+#endif
 
-	if (job == JOB_RUN) {
-		ResumeThread (civ_proc_info.hThread);
+#ifdef C3X_RUN
+	ResumeThread (civ_proc_info.hThread);
 
-		WaitForSingleObject (civ_proc, INFINITE);
-		CloseHandle (civ_proc_info.hProcess);
-		CloseHandle (civ_proc_info.hThread);
+	WaitForSingleObject (civ_proc, INFINITE);
+	CloseHandle (civ_proc_info.hProcess);
+	CloseHandle (civ_proc_info.hThread);
 
-	} else if (job == JOB_INSTALL) {
-		// If about to overwrite the standard EXE, make a backup copy first
-		if (bin_file_name == standard_exe_filename) {
-			success = CopyFile (standard_exe_filename, backup_exe_filename, 0);
-			REQUIRE (success, "Failed to create backup of unmodded EXE file");
-		}
-		buffer_to_file (civ_exe_contents, civ_exe_buf_occupied_size, ".", standard_exe_filename);
-		MessageBox (NULL, format ("Mod installed successfully"), "Success", MB_ICONINFORMATION);
-		free (civ_exe_contents);
+#else
+	// If about to overwrite the standard EXE, make a backup copy first
+	if (bin_file_name == standard_exe_filename) {
+		success = CopyFile (standard_exe_filename, backup_exe_filename, 0);
+		REQUIRE (success, "Failed to create backup of unmodded EXE file");
 	}
+
+	buffer_to_file (civ_exe_contents, civ_exe_buf_occupied_size, ".", standard_exe_filename);
+	MessageBox (NULL, format ("Mod installed successfully"), "Success", MB_ICONINFORMATION);
+	free (civ_exe_contents);
+#endif
 
 	if (tcc)
 		tcc__delete (tcc);
