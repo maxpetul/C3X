@@ -106,6 +106,8 @@ struct civ_prog_object {
 	{OJ_DEFINE, "ADDR_SETUP_OFFERING_GOLD_RETURN", "int", 0x509669, 0x51366E},
 	{OJ_DEFINE, "TRADE_GOLD_SETTER_IS_LUMP_SUM_OFFSET", "int", 14, 14},
 
+	{OJ_INLEAD, "Map_check_city_location", "CityLocValidity (__fastcall *) (Map *this, int edx, int tile_x, int tile_y, int civ_id, byte check_for_city_on_tile)", 0x5F3160, 0x603000},
+
 	// {OJ_DEFINE,	"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)",																		0x4507B0,	0x0},
 	// {OJ_DEFINE,	"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)",												0x44C340,	0x0},
 	// {OJ_REPL_VPTR,	"Unit_eval_escort_requirement",		"int (__fastcall *) (Unit *)",																			0x66DD04,	0x0},
