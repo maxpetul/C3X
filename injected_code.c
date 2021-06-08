@@ -2043,5 +2043,251 @@ patch_Unit_set_state (Unit * this, int edx, int new_state)
 }
 */
 
+// Returns whether or not the current deal being offered to the AI on the trade screen would be accepted. How advantageous the AI thinks the
+// trade is for itself is stored in out_their_advantage if it's not NULL. This advantage is measured in gold, if it's positive it means the
+// AI thinks it's gaining that much value from the trade and if it's negative it thinks it would be losing that much. I don't know what would
+// happen if this function were called while the trade screen is not active.
+int
+is_current_offer_acceptable (int * out_their_advantage)
+{
+	int their_id = p_diplo_form->other_party_civ_id;
+
+	int consideration = Leader_consider_trade (
+		&leaders[their_id],
+		__,
+		&p_diplo_form->our_offer_lists[their_id],
+		&p_diplo_form->their_offer_lists[their_id],
+		p_main_screen_form->Player_CivID,
+		0, 1, 0, 0,
+		out_their_advantage,
+		NULL, NULL);
+
+	return consideration == 0x24; // TODO: Replace with an enum
+}
+
+// Adds an offer of gold to the list and returns it. If one already exists in the list, returns a pointer to it.
+TradeOffer *
+offer_gold (TradeOfferList * list, int is_lump_sum)
+{
+	if (list->length > 0)
+		for (TradeOffer * offer = list->first; offer != NULL; offer = offer->next)
+			if ((offer->kind == 7) && (offer->param_1 == is_lump_sum))
+				return offer;
+
+	TradeOffer * tr = new (sizeof *tr);
+	*tr = (struct TradeOffer) {
+		.vtable = p_trade_offer_vtable,
+		.kind = 7, // TODO: Replace with enum
+		.param_1 = is_lump_sum,
+		.param_2 = 0,
+		.next = NULL,
+		.prev = NULL
+	};
+
+	if (list->length > 0) {
+		tr->prev = list->last;
+		list->last->next = tr;
+		list->last = tr;
+		list->length += 1;
+	} else {
+		list->last = list->first = tr;
+		list->length = 1;
+	}
+
+	return tr;
+}
+
+// Removes offer from list of offers but does not free it. Assumes offer is in the list.
+void
+remove_offer (TradeOfferList * list, TradeOffer * offer)
+{
+	if (list->length == 1) {
+		list->first = list->last = NULL;
+		list->length = 0;
+	} else if (list->length > 1) {
+		TradeOffer * prev = offer->prev, * next = offer->next;
+		if (prev)
+			prev->next = next;
+		if (next)
+			next->prev = prev;
+		if (list->first == offer)
+			list->first = next;
+		if (list->last == offer)
+			list->last = prev;
+		list->length -= 1;
+	}
+	offer->prev = offer->next = NULL;
+}
+
+int
+not_below (int lim, int x)
+{
+	return (x >= lim) ? x : lim;
+}
+
+int
+not_above (int lim, int x)
+{
+	return (x <= lim) ? x : lim;
+}
+
+void __fastcall
+patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script_path, char * text_key, int param_3, int param_4, int param_5, int param_6)
+{
+	int * p_stack = (int *)&script_path;
+	int ret_addr = p_stack[-1];
+
+	// This function gets called from all over the place, check that it's being called to setup the set gold amount popup in the trade screen
+	if ((ret_addr == ADDR_SETUP_ASKING_GOLD_RETURN) || (ret_addr == ADDR_SETUP_OFFERING_GOLD_RETURN)) {
+		int asking = ret_addr == ADDR_SETUP_ASKING_GOLD_RETURN;
+		int is_lump_sum = p_stack[TRADE_GOLD_SETTER_IS_LUMP_SUM_OFFSET]; // Read this variable from the caller's frame
+
+		int their_id = p_diplo_form->other_party_civ_id,
+		    our_id = p_main_screen_form->Player_CivID;
+
+		int their_advantage;
+		int is_original_acceptable = is_current_offer_acceptable (&their_advantage);
+
+		int best_amount = 0;
+
+		if ((p_diplo_form->their_offer_lists[their_id].length + p_diplo_form->our_offer_lists[their_id].length > 0) && // if anything is on the table AND
+		    ((asking && is_original_acceptable) || // (we're asking for money on an acceptable trade OR
+		     ((! asking) && (! is_original_acceptable)))) { // we're offering money on an unacceptable trade)
+
+			TradeOfferList * offers = asking ? &p_diplo_form->their_offer_lists[their_id] : &p_diplo_form->our_offer_lists[their_id];
+			TradeOffer * test_offer = offer_gold (offers, is_lump_sum);
+
+			// When asking for gold, start at zero and work upwards. When offering gold it's more complicated. For lump sum
+			// offers, start with our entire treasury and work downward. For GPT offers, start with an upper bound and work
+			// downward. The upper bound depends on how much the AI thinks it's losing on the trade (in gold) divided by 20
+			// (b/c 20 turn deal) with a lot of extra headroom just to make sure.
+			int starting_amount; {
+				if (asking)
+					starting_amount = 0;
+				else {
+					if (is_lump_sum)
+						starting_amount = leaders[our_id].Gold_Encoded + leaders[our_id].Gold_Decrement;
+					else {
+						int guess = not_below (0, 0 - their_advantage) / 20;
+						starting_amount = 10 + guess * 2;
+					}
+				}
+			}
+
+			// Check if optimization is still possible. It's not if we're offering gold and our maximum offer is unacceptable
+			test_offer->param_2 = starting_amount;
+			if (asking || is_current_offer_acceptable (NULL)) {
+
+				best_amount = starting_amount;
+				for (int step_size = asking ? 1000 : -1000; step_size != 0; step_size /= 10) {
+					test_offer->param_2 = best_amount;
+					while (1) {
+						test_offer->param_2 += step_size;
+						if (test_offer->param_2 < 0)
+							break;
+						else if (is_current_offer_acceptable (NULL))
+							best_amount = test_offer->param_2;
+						else
+							break;
+					}
+				}
+			}
+
+			// Annoying little edge case: The limitation on AIs not to trade more than their entire treasury is handled in the
+			// interface not the trade evaluation logic so we have to limit our gold request here to their treasury (otherwise
+			// the amount will default to how much they would pay if they had infinite money).
+			int their_treasury = leaders[their_id].Gold_Encoded + leaders[their_id].Gold_Decrement;
+			if (asking && is_lump_sum && (best_amount > their_treasury))
+				best_amount = their_treasury;
+
+			remove_offer (offers, test_offer);
+			test_offer->vtable->destruct (test_offer, __, 1);
+		}
+		/*
+
+		TradeOfferList * offers = asking ? &p_diplo_form->their_offer_lists[their_id] : &p_diplo_form->our_offer_lists[their_id];
+		TradeOffer * test_offer = offer_gold (offers, is_lump_sum);
+
+		// int max_amount_to_give = (! is_lump_sum) ? 9999 : leaders[our_id].Gold_Encoded + leaders[our_id].Gold_Decrement;
+
+		// First guess some amount to ask/offer. Store the guess amount in the test offer
+		int max_amount;
+		if (asking) {
+			int guess = not_below (0, their_advantage);
+			if (is_lump_sum) {
+				int their_treasury = leaders[their_id].Gold_Encoded + leaders[their_id].Gold_Decrement;
+				test_offer->param_2 = not_above (their_treasury, guess);
+				max_amount = their_treasury;
+			} else {
+				guess /= 20;
+				test_offer->param_2 = not_below (1, guess);
+				max_amount = 10 + test_offer->param_2 * 2;
+			}
+		} else {
+			int guess = not_below (0, 0 - their_advantage);
+			if (is_lump_sum) {
+				int our_treasury = leaders[our_id].Gold_Encoded + leaders[our_id].Gold_Decrement;
+				test_offer->param_2 = not_above (our_treasury, guess);
+				max_amount = our_treasury;
+			} else {
+				guess /= 20;
+				test_offer->param_2 = not_below (1, guess);
+				max_amount = 10 + test_offer->param_2 * 2;
+			}
+		}
+
+		// If this guess does not lead to an acceptable deal, ask for less or offer more until we get a trade that is acceptable
+		if (! is_current_offer_acceptable (NULL)) {
+			int step_size = test_offer->param_2 / 10;
+			step_size = (step_size >= 1) ? step_size : 1;
+			if (asking) // if asking reduce amount, otherwise increase it with each step
+				step_size = 0 - step_size;
+			while (1) {
+				test_offer->param_2 += step_size;
+				if (asking && (test_offer->param_2 <= 0)) {
+					test_offer->param_2 = 0;
+					break;
+				} else if ((! asking) && (test_offer->param_2 >= max_amount)) {
+					test_offer->param_2 = max_amount;
+					break;
+				} else if (is_current_offer_acceptable (NULL))
+					break;
+			}
+		}
+
+		// Now determine the final amount by refining the guess upward or downward by increments as small as one gold while maintaining
+		// acceptability. If we never got an acceptable guess then, for lump sum, use the closest we got (which will be the entire
+		// treasury), for per turn just default to zero because the player's trade rep might be ruined.
+		int best_amount;
+		if (is_current_offer_acceptable (NULL)) {
+			best_amount = test_offer->param_2;
+			for (int step_size = asking ? 100 : -100; step_size != 0; step_size /= 10) {
+				test_offer->param_2 = best_amount;
+				while (1) {
+					test_offer->param_2 += step_size;
+					if ((test_offer->param_2 < 0) || (test_offer->param_2 > max_amount))
+						break;
+					else if (is_current_offer_acceptable (NULL))
+						best_amount = test_offer->param_2;
+					else
+						break;
+				}
+			}
+		} else
+			best_amount = (is_lump_sum) ? test_offer->param_2 : 0;
+
+		remove_offer (offers, test_offer);
+		test_offer->vtable->destruct (test_offer, __, 1);
+
+		*/
+
+		is->snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "%d", best_amount);
+		// is->snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "%s", is_lump_sum ? "lump" : "pert");
+		is->ask_gold_default[(sizeof is->ask_gold_default) - 1] = '\0';
+		PopupForm_set_text_key_and_flags (this, __, script_path, text_key, param_3, (int)is->ask_gold_default, param_5, param_6);
+	} else
+		PopupForm_set_text_key_and_flags (this, __, script_path, text_key, param_3, param_4, param_5, param_6);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

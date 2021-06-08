@@ -49,3 +49,4 @@ Ideas:
 - [from Nanuk] Stop AI from loading hidden nationality units into armies. Improve AI handling of HN units in general, stop its beelining toward them anywhere on the map (the AI does this b/c it thinks they're barbs), stop it from building so many
 - [from Civinator] Give defensive bombard multiple chances to hit up to the fire rate of the bombarding unit.
 - [from Nanuk] Enable city view button in scenarios
+- [from Romulo Prado] AI bombers should target barricades, particularly ones placed along its border
