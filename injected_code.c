@@ -1035,6 +1035,47 @@ check_happiness_at_end_of_turn ()
 	}
 }
 
+/*
+int __fastcall
+patch_DiploForm_m68_Show_Dialog (DiploForm * this, int edx, int param_1, void * param_2, void * param_3)
+{
+	this->field_E9C[0xF] = 2;
+	return DiploForm_m68_Show_Dialog (this, __, param_1, param_2, param_3);
+
+
+
+	void (__fastcall * begin_diplomacy) (DiploForm *, int, int, int, int, int, int, int, int, int) = 0x505F40;
+	void (__cdecl * FUN_00537700) (int) = 0x537700;
+	int (__fastcall * FUN_005161C0) (DiploForm *, int, int, int, int) = 0x5161C0;
+	void (__fastcall * FUN_00516260) (DiploForm *) = 0x516260;
+	void (__fastcall * FUN_004C89A0) (void *) = 0x4C89A0;
+
+	void (__fastcall * DiploForm_handle_left_click) (DiploForm *, int, int, int) = 0x507600;
+	DiploForm_handle_left_click (p_diplo_form, __, 357, 494);
+
+	DiploForm * this_00 = p_diplo_form;
+	FUN_00537700 (0x15);
+	this_00->field_E9C[0] = this_00->field_E9C[0] + 1;
+
+
+	I'm pretty sure that this vvv is what we want. 
+	But I think begin_diplomacy only returns once the window is closed.
+	Maybe it should be renamed something like do diplomacy
+	this_00->field_E9C[0xf] = 2;
+
+
+	Also I think A526BC stores which players are AIs
+
+	int iVar35 = FUN_005161C0 (this_00, __, 0x2F, 0, 0x1A8);
+	this_00->field_1390[0] = 0x2f;
+	this_00->field_1390[1] = 0;
+	this_00->field_1390[2] = iVar35;
+	FUN_00516260 (this_00);
+	FUN_004C89A0 (&this_00->field_1BF4[0]);
+
+}
+*/
+
 void
 intercept_end_of_turn ()
 {
@@ -1043,6 +1084,21 @@ intercept_end_of_turn ()
 		if (p_main_screen_form->turn_end_flag == 1) // Check if player cancelled turn ending in the disorder warning popup
 			return;
 	}
+
+	/*
+	int their_id = 6;
+	begin_diplomacy (p_diplo_form,
+			 __,
+			 0xC, // message
+			 0, // ?
+			 their_id, // civ id
+			 1, // if this is 0 you get the "X has requested an audience" popup
+			 0, // if this is 1 the peace treaty is cancelled and renegotiated, I think it's supposed to be used during war?
+			 0, // if this is 1 the "propose deal" option doesn't appear for the player
+			 NULL, // &p_diplo_form->our_offer_lists[their_id], // TradeOfferList * player_offers
+			 NULL); // &p_diplo_form->their_offer_lists[their_id]); // TradeOfferList * ai_offers
+	*/
+
 
 	// Clear things that don't apply across turns
 	is->have_job_and_loc_to_skip = 0;
