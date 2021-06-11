@@ -50,3 +50,5 @@ Ideas:
 - [from Civinator] Give defensive bombard multiple chances to hit up to the fire rate of the bombarding unit.
 - [from Nanuk] Enable city view button in scenarios
 - [from Romulo Prado] AI bombers should target barricades, particularly ones placed along its border
+- [from ynot56] Automatically reduce science spending as much as possible when one turn is left on research
+- [from vxma] Disable worker automation
