@@ -10,7 +10,8 @@ Ideas:
 - [from Ares de Borg] "it would be cool to investigate how the AI chooses to build units and if there is a chance to put some kind of ratio to it"
 - [from Civinator] Lots in this post: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-4#post-16049378
 - [from Virote_Considon] Requests for more complex build requirements: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-4#post-16049440
-- [from tjs282] Fix barb diagonal attack bug https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-4#post-16050292, there's a link to another thread with info about the bug in that post
+- [from tjs282 and vmxa] Fix barb diagonal attack bug https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-4#post-16050292, there's a link to another thread with info about the bug in that post
+  - vmxa says: "The barb diagonal bug was caused by a patch we asked for long ago to fix the AI marching units from tile to tile and back again, till all movement was used. This broke the barbs hunting and they ignore units if they were on the wrong diag path. It can be corrected with a setting in the ini that turns the marching back on. At least that is what I recall from many years ago. The marching was only an issue in huge games."
 - [from Node60 and Civinator] More types of barbs and barbs that evolve over the eras
 - [from Shmelkin] Show invisible units when they're engaged in combat
 - [from Civinator] Rename civs depending on their era
@@ -39,7 +40,8 @@ Ideas:
   - Allow unit to retreat as long as it's faster than its opponent
   - Fix game crash on unload immobile unit from ship
   - Limit unit stacking with per-unit weight, per-terrain capacities, etc. See: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-8#post-16077019
-- [from tjs282] Stop AI from signing dumb MPPs, silence war declared & alliance signed popups that don't involve the player
+- [from tjs282 and vmxa] Stop AI from signing dumb MPPs
+- [from tjs282] Silence war declared & alliance signed popups that don't involve the player
 - [from Nanuk] Option to disable the various other per-turn agreements (already it's possible to disable MPPs through the editor)
 - [from WildWeasel] Prevent endless sea transport chaining
 - [from Vuldacon] Create self-escorting artillery units by giving them attack + defense and some kind of hybrid AI routine (like the offense AI but bombards instead of entering combat)
