@@ -25,6 +25,9 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 // To be used as placeholder second argument so that we can imitate thiscall convention with fastcall
 #define __ 0
 
+#define TRADE_SCROLL_BUTTON_ID_LEFT  0x222001
+#define TRADE_SCROLL_BUTTON_ID_RIGHT 0x222002
+
 // Need to define memmove for use by TCC when generated code for functions that return a struct
 void *
 memmove (void * dest, void const * src, size_t size)
@@ -488,6 +491,13 @@ patch_init_floating_point ()
 	// Initialize to empty
 	is->frontlineness = (struct frontlineness) { .capacity = 0, .save_len = 0, .saved_for_civ_id = -1, .saves = NULL, .cons = NULL };
 
+	// Initialize trade screen scroll vars
+	is->open_diplo_form_straight_to_trade = 0;
+	is->trade_screen_scroll_to_id = -1;
+	is->trade_scroll_button_left = is->trade_scroll_button_right = NULL;
+	is->trade_scroll_button_state = IS_UNINITED;
+	is->eligible_for_trade_scroll = 0;
+
 	// Read contents of region potentially overwritten by patch
 	memmove (is->houseboat_patch_area_original_contents,
 		 ADDR_HOUSEBOAT_BUG_PATCH,
@@ -501,11 +511,11 @@ patch_init_floating_point ()
 void
 init_stackable_command_buttons ()
 {
-	if (is->sc_img_state == SC_IMG_UNINITED) {
+	if (is->sc_img_state == IS_UNINITED) {
 		char temp_path[2*MAX_PATH];
 
 		is->sb_activated_by_button = 0;
-		is->sc_img_state = SC_IMG_LOAD_FAILED;
+		is->sc_img_state = IS_INIT_FAILED;
 
 		char const * filenames[4] = {"StackedNormButtons", "StackedRolloverButtons", "StackedHighlightedButtons", "StackedButtonsAlpha"};
 		for (int n = 0; n < 4; n++) {
@@ -527,8 +537,66 @@ init_stackable_command_buttons ()
 				Tile_Image_Info_slice_pcx (&is->sc_button_image_sets[sc].imgs[n], __, &is->sc_button_sheets[n], x, y, 32, 32, 1, 0);
 		}
 
-		is->sc_img_state = SC_IMG_OK;
+		is->sc_img_state = IS_OK;
 	}
+}
+
+void do_trade_scroll (DiploForm * diplo, int forward);
+
+void __cdecl
+activate_trade_scroll_button (int control_id)
+{
+	do_trade_scroll (p_diplo_form, control_id == TRADE_SCROLL_BUTTON_ID_RIGHT);
+}
+
+void
+init_trade_scroll_buttons (DiploForm * diplo_form)
+{
+	if (is->trade_scroll_button_state != IS_UNINITED)
+		return;
+
+	char temp_path[2*MAX_PATH];
+	PCX_Image * pcx = new (sizeof *pcx);
+	PCX_Image_construct (pcx);
+	is->snprintf (temp_path, sizeof temp_path, "%s\\Art\\TradeScrollButtons.pcx", is->mod_rel_dir);
+	temp_path[(sizeof temp_path) - 1] = '\0';
+	PCX_Image_read_file (pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if (pcx->JGL.Image == NULL) {
+		is->trade_scroll_button_state = IS_INIT_FAILED;
+		(*p_OutputDebugStringA) ("[C3X] Failed to load TradeScrollButtons.pcx");
+		return;
+	}
+
+	// imgs stores normal, rollover, and highlight images, in that order, first for the left button then for the right
+	Tile_Image_Info * imgs[6];
+	for (int n = 0; n < (sizeof imgs) / (sizeof imgs[0]); n++) {
+		imgs[n] = new (sizeof **imgs);
+		Tile_Image_Info_construct (imgs[n]);
+	}
+
+	for (int right = 0; right < 2; right++)
+		for (int n = 0; n < 3; n++)
+			Tile_Image_Info_slice_pcx (imgs[n + 3*right], __, pcx, right ? 44 : 0, 1 + 48*n, 43, 47, 1, 1);
+
+	for (int right = 0; right < 2; right++) {
+		Button * b = new (sizeof *b);
+
+		Button_construct (b);
+		int id = right ? TRADE_SCROLL_BUTTON_ID_RIGHT : TRADE_SCROLL_BUTTON_ID_LEFT;
+		Button_initialize (b, __, NULL, id, right ? 622 : 358, 50, 43, 47, diplo_form, 0);
+		for (int n = 0; n < 3; n++)
+			b->Images[n] = imgs[n + 3*right];
+
+		b->activation_handler = &activate_trade_scroll_button;
+		b->field_630[0] = 0; // TODO: Is this necessary? It's done by the base game code when creating the city screen scroll buttons
+
+		if (! right)
+			is->trade_scroll_button_left = b;
+		else
+			is->trade_scroll_button_right = b;
+	}
+
+	is->trade_scroll_button_state = IS_OK;
 }
 
 // Prints x to str and appends null terminator. Assumes str has enough space. Returns pointer to null terminator
@@ -789,7 +857,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 	if ((! is->current_config.enable_stack_bombard) || // if stack bombard is disabled OR
 	    (! ((action == UMA_Bombard) || (action == UMA_Air_Bombard))) || // action is not bombard OR
 	    ((((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0) &&  // (control key is not down AND
-	     ((is->sc_img_state != SB_UNINITED) && (is->sb_activated_by_button == 0))) || // (button flag is valid AND not set)) OR
+	     ((is->sc_img_state != IS_UNINITED) && (is->sb_activated_by_button == 0))) || // (button flag is valid AND not set)) OR
 	    is_game_type_4_or_5 ()) { // is online game
 		Main_Screen_Form_perform_action_on_tile (this, __, action, x, y);
 		return;
@@ -902,7 +970,7 @@ set_up_stack_bombard_buttons (Main_GUI * this)
 		return;
 
 	init_stackable_command_buttons ();
-	if (is->sc_img_state != SC_IMG_OK)
+	if (is->sc_img_state != IS_OK)
 		return;
 
 	// Find button that the original method set to (air) bombard, then find the next unused button after that.
@@ -950,7 +1018,7 @@ set_up_stack_worker_buttons (Main_GUI * this)
 		return;
 
 	init_stackable_command_buttons ();
-	if (is->sc_img_state != SC_IMG_OK)
+	if (is->sc_img_state != IS_OK)
 		return;
 
 	// For each unit command button
@@ -1035,46 +1103,141 @@ check_happiness_at_end_of_turn ()
 	}
 }
 
-/*
+void
+do_trade_scroll (DiploForm * diplo, int forward)
+{
+	int increment = forward ? 1 : -1;
+	int id = -1;
+	for (int n = (diplo->other_party_civ_id + increment) & 31; n != diplo->other_party_civ_id; n = (n + increment) & 31)
+		if ((n != 0) && // if N is not barbs AND
+		    (n != p_main_screen_form->Player_CivID) && // N is not the player's AND
+		    (*p_player_bits & (1U << n)) && // N belongs to an active player AND
+		    (leaders[p_main_screen_form->Player_CivID].Contacts[n] & 1) && // N has contact with the player AND
+		    Leader_ai_would_meet_with (&leaders[n], __, p_main_screen_form->Player_CivID)) { // AI is willing to meet
+			id = n;
+			break;
+		}
+
+	if (id >= 0) {
+		is->trade_screen_scroll_to_id = id;
+		DiploForm_close (diplo);
+		// Note extra code needs to get run here if the other player is not an AI
+	}
+}
+
+void __fastcall
+patch_DiploForm_m82_handle_key_event (DiploForm * this, int edx, int virtual_key_code, int is_down)
+{
+	/*
+	This doesn't work. It incompletely closes the form.
+	if ((virtual_key_code == VK_LEFT) && is_down) {
+		this->vtable->m69_Close_Dialog (this);
+		return;
+	}
+	*/
+
+	/*
+	This doesn't work. It does nothing.
+	if ((virtual_key_code == VK_LEFT) && is_down) {
+		DiploForm_m82_handle_key_event (this, __, VK_ESCAPE, 1);
+		return;
+	}
+	*/
+
+	// FUN_0050d830 maybe related to closing the form
+	// after that we call func at 0x51CAD0
+	// then m22_draw (at 0x509200)
+	// after that return
+
+	if (is->eligible_for_trade_scroll &&
+	    (this->mode == 2) &&
+	    ((virtual_key_code == VK_LEFT) || (virtual_key_code == VK_RIGHT)) &&
+	    (! is_down))
+		do_trade_scroll (this, virtual_key_code == VK_RIGHT);
+	else
+		DiploForm_m82_handle_key_event (this, __, virtual_key_code, is_down);
+}
+
 int __fastcall
 patch_DiploForm_m68_Show_Dialog (DiploForm * this, int edx, int param_1, void * param_2, void * param_3)
 {
-	this->field_E9C[0xF] = 2;
+	if (is->open_diplo_form_straight_to_trade) {
+		is->open_diplo_form_straight_to_trade = 0;
+
+		// Done by the base game but not necessary as far as I can tell
+		// void (__cdecl * FUN_00537700) (int) = 0x537700;
+		// FUN_00537700 (0x15);
+		// this->field_E9C[0] = this->field_E9C[0] + 1;
+
+		// Set diplo screen mode to two-way trade negotation
+		this->mode = 2;
+
+		// Set AI's diplo message to something like "what did you have in mind"
+		int iVar35 = DiploForm_set_their_message (this, __, DM_AI_PROPOSAL_RESPONSE, 0, 0x1A8);
+		this->field_1390[0] = DM_AI_PROPOSAL_RESPONSE;
+		this->field_1390[1] = 0;
+		this->field_1390[2] = iVar35;
+
+		// Reset player message options. This will replace the propose deal, declare war, and leave options with the usual "nevermind" option
+		// that appears for negotiations.
+		DiploForm_reset_our_message_choices (this);
+
+		// Done by the base game but not necessary as far as I can tell
+		// void (__fastcall * FUN_004C89A0) (void *) = 0x4C89A0;
+		// FUN_004C89A0 (&this->field_1BF4[0]);
+
+	}
+
 	return DiploForm_m68_Show_Dialog (this, __, param_1, param_2, param_3);
-
-
-
-	void (__fastcall * begin_diplomacy) (DiploForm *, int, int, int, int, int, int, int, int, int) = 0x505F40;
-	void (__cdecl * FUN_00537700) (int) = 0x537700;
-	int (__fastcall * FUN_005161C0) (DiploForm *, int, int, int, int) = 0x5161C0;
-	void (__fastcall * FUN_00516260) (DiploForm *) = 0x516260;
-	void (__fastcall * FUN_004C89A0) (void *) = 0x4C89A0;
-
-	void (__fastcall * DiploForm_handle_left_click) (DiploForm *, int, int, int) = 0x507600;
-	DiploForm_handle_left_click (p_diplo_form, __, 357, 494);
-
-	DiploForm * this_00 = p_diplo_form;
-	FUN_00537700 (0x15);
-	this_00->field_E9C[0] = this_00->field_E9C[0] + 1;
-
-
-	I'm pretty sure that this vvv is what we want. 
-	But I think begin_diplomacy only returns once the window is closed.
-	Maybe it should be renamed something like do diplomacy
-	this_00->field_E9C[0xf] = 2;
-
-
-	Also I think A526BC stores which players are AIs
-
-	int iVar35 = FUN_005161C0 (this_00, __, 0x2F, 0, 0x1A8);
-	this_00->field_1390[0] = 0x2f;
-	this_00->field_1390[1] = 0;
-	this_00->field_1390[2] = iVar35;
-	FUN_00516260 (this_00);
-	FUN_004C89A0 (&this_00->field_1BF4[0]);
-
 }
-*/
+
+void __fastcall
+patch_DiploForm_do_diplomacy (DiploForm * this, int edx, int diplo_message, int param_2, int civ_id, int do_not_request_audience, int war_negotiation, int disallow_proposal, TradeOfferList * our_offers, TradeOfferList * their_offers)
+{
+	is->open_diplo_form_straight_to_trade = 0;
+	is->trade_screen_scroll_to_id = -1;
+
+	// Trade scroll is limited to single player games and meetings requested by the player. It's disabled in MP b/c I think there's extra
+	// synchronization you need to do when closing the diplo screen with a human player that I haven't implemented. For SP, the scroll is limited
+	// to meetings requested by the player b/c I'm sure that won't cause any bugs or expoits. TODO: It would be nice to enable scroll in other
+	// cases but we need to take care not to, e.g., allow the player to get out of AI demands by scrolling away from them.
+	is->eligible_for_trade_scroll = (! is_game_type_4_or_5 ()) && ((civ_id == -1) || (diplo_message == -1));
+
+	if (is->eligible_for_trade_scroll && (is->trade_scroll_button_state == IS_UNINITED))
+		init_trade_scroll_buttons (this);
+
+	DiploForm_do_diplomacy (this, __, diplo_message, param_2, civ_id, do_not_request_audience, war_negotiation, disallow_proposal, our_offers, their_offers);
+
+	while (is->trade_screen_scroll_to_id >= 0) {
+		int scroll_to_id = is->trade_screen_scroll_to_id;
+		is->trade_screen_scroll_to_id = -1;
+		is->open_diplo_form_straight_to_trade = 1;
+		DiploForm_do_diplomacy (this, __, DM_AI_COUNTER, 0, scroll_to_id, 1, 0, 0, NULL, NULL);
+	}
+
+	is->open_diplo_form_straight_to_trade = 0;
+	is->eligible_for_trade_scroll = 0;
+}
+
+void __fastcall
+patch_DiploForm_m22_Draw (DiploForm * this)
+{
+	if (is->trade_scroll_button_state == IS_OK) {
+		Button * left  = is->trade_scroll_button_left,
+		       * right = is->trade_scroll_button_right;
+		if (is->eligible_for_trade_scroll && (this->mode == 2)) {
+			left ->vtable->m01_Show_Enabled (left , __, 0);
+			right->vtable->m01_Show_Enabled (right, __, 0);
+			left ->vtable->m73_call_m22_Draw (left);
+			right->vtable->m73_call_m22_Draw (right);
+		} else {
+			left ->vtable->m02_Show_Disabled (left);
+			right->vtable->m02_Show_Disabled (right);
+		}
+	}
+
+	DiploForm_m22_Draw (this);
+}
 
 void
 intercept_end_of_turn ()
@@ -1084,21 +1247,6 @@ intercept_end_of_turn ()
 		if (p_main_screen_form->turn_end_flag == 1) // Check if player cancelled turn ending in the disorder warning popup
 			return;
 	}
-
-	/*
-	int their_id = 6;
-	begin_diplomacy (p_diplo_form,
-			 __,
-			 0xC, // message
-			 0, // ?
-			 their_id, // civ id
-			 1, // if this is 0 you get the "X has requested an audience" popup
-			 0, // if this is 1 the peace treaty is cancelled and renegotiated, I think it's supposed to be used during war?
-			 0, // if this is 1 the "propose deal" option doesn't appear for the player
-			 NULL, // &p_diplo_form->our_offer_lists[their_id], // TradeOfferList * player_offers
-			 NULL); // &p_diplo_form->their_offer_lists[their_id]); // TradeOfferList * ai_offers
-	*/
-
 
 	// Clear things that don't apply across turns
 	is->have_job_and_loc_to_skip = 0;
@@ -1132,7 +1280,7 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 {
 	// Set SB flag according to case (2)
 	if (button_id < 42) {
-		if ((is->sc_img_state == SC_IMG_OK) &&
+		if ((is->sc_img_state == IS_OK) &&
 		    ((this->Unit_Command_Buttons[button_id].Button.Images[0] == &is->sc_button_image_sets[SC_BOMBARD].imgs[0]) ||
 		     (this->Unit_Command_Buttons[button_id].Button.Images[0] == &is->sc_button_image_sets[SC_BOMB   ].imgs[0])))
 			is->sb_activated_by_button = 1;

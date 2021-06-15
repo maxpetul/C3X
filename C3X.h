@@ -58,12 +58,6 @@ enum stackable_command {
 	COUNT_STACKABLE_COMMANDS
 };
 
-enum sc_img_state {
-	SC_IMG_UNINITED = 0,
-	SC_IMG_OK,
-	SC_IMG_LOAD_FAILED
-};
-
 struct sc_button_info {
 	enum Unit_Command_Values command;
 	int tile_sheet_column,
@@ -82,10 +76,10 @@ struct sc_button_info {
 	/* Railroad */   { .command = UCV_Build_Railroad , .tile_sheet_column = 7, .tile_sheet_row = 2 },
 };
 
-enum sb_state {
-	SB_UNINITED = 0,
-	SB_OK,
-	SB_LOAD_IMAGES_FAILED
+enum init_state {
+	IS_UNINITED = 0,
+	IS_OK,
+	IS_INIT_FAILED
 };
 
 enum label {
@@ -113,8 +107,7 @@ struct injected_state {
 	// It must be non-empty and must not have an ending backslash.
 	char mod_rel_dir[MAX_PATH];
 
-	// enum sb_state sb_state;
-	enum sc_img_state sc_img_state;
+	enum init_state sc_img_state;
 
 	struct c3x_config base_config;
 
@@ -220,6 +213,16 @@ struct injected_state {
 
 	int show_popup_was_called; // Set to 1 in show_popup. Used in patch_Leader_can_do_worker_job to check if the replacement
 	// popup was shown.
+
+	// Used to control trade screen scroll
+	int open_diplo_form_straight_to_trade; // Initialized to 0, gets set to 1 by patch_DiploForm_do_diplomacy to signal
+	// to patch_DiploForm_m68_Show_Dialog to open the diplo form straight into trade mode.
+	int trade_screen_scroll_to_id; // Set by patch_DiploForm_m82_handle_key_event to signal to do_diplomacy that the form
+	// was closed in order to scroll to the civ with the set ID. -1 indicates no scrolling.
+	Button * trade_scroll_button_left; // initialized to NULL
+	Button * trade_scroll_button_right; // initialized to NULL
+	enum init_state trade_scroll_button_state;
+	int eligible_for_trade_scroll;
 
 	char ask_gold_default[32];
 

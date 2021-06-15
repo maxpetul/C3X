@@ -2744,8 +2744,8 @@ struct GUI_Form_1_vtable
 struct Base_Form_vtable
 {
   int m00;
-  void (__fastcall *m01_Show_Enabled)(Base_Form *, __, int);
-  void (__fastcall *m02_Show_Disabled)(Base_Form *);
+  void (__fastcall * m01_Show_Enabled) (Base_Form *, __, byte);
+  void (__fastcall * m02_Show_Disabled) (Base_Form *);
   int m03;
   int m04;
   int m05;
@@ -2765,7 +2765,7 @@ struct Base_Form_vtable
   int m19;
   int m20;
   int m21;
-  int m22_Draw;
+  void (__fastcall * m22_Draw) (Base_Form *);
   int m23;
   int m24;
   int m25_Process_Mouse_Wheel;
@@ -2779,7 +2779,7 @@ struct Base_Form_vtable
   int m32_On_Right_Click;
   int m33_Process_Right_Click;
   int m34;
-  int m35;
+  int (__fastcall * m35_handle_key_down) (Base_Form *, __, int, int);
   int m36;
   int m37;
   int m38_On_Double_Click;
@@ -2817,20 +2817,19 @@ struct Base_Form_vtable
   int m70;
   int m71;
   int m72;
-//  void (__thiscall *m73_call_m22_Draw)(Base_Form *);
-  void *m73_call_m22_Draw;
+  void (__fastcall * m73_call_m22_Draw) (Base_Form *);
   int m74;
-  int m75;
+  void (__fastcall * m75) (Base_Form *);
   int m76;
   int m77;
   int m78;
   int m79;
   int m80;
   int m81;
-  int m82_On_Key_Down;
+  void (__fastcall * m82_handle_key_event) (Base_Form *, __, int, int);
   int m83_On_Char;
   int m84_On_Mouse_Left_Down;
-  int m85_On_Mouse_Left_Up;
+  void (__fastcall * m85_On_Mouse_Left_Up) (Base_Form *, __, int, int, int);
 //  void (__thiscall *m86_On_Mouse_Right_Down)(Base_Form *, int, int, int, int);
   void *m86_On_Mouse_Right_Down;
 //  void (__thiscall *m87_On_Mouse_Right_Up)(Base_Form *this, int, int, int);
@@ -4448,7 +4447,10 @@ struct Button
   int field_5F0;
   int Text;
   char *ToolTip;
-  int field_5FC[19];
+  int field_5FC[11];
+  void (__cdecl * activation_handler) (int control_id);
+  void (__cdecl * mouse_drag_handler) (int control_id);
+  int field_630[6];
   Tile_Image_Info **Border_Images[3];
   Tile_Image_Info *Images[4]; // Norm, Rollover, Highlighted, Alpha
   int field_664;
@@ -5895,10 +5897,12 @@ struct Object_667188
 
 struct DiploForm
 {
-	void * vtable; // = 0x66C0D8
+	Base_Form_vtable * vtable; // = 0x66C0D8
 	int field_4[933];
 	int other_party_civ_id;
-	int field_E9C[57];
+	int field_E9C[15];
+	int mode;
+	int field_EDC[41];
 	TradeOfferList their_offer_lists[32];
 	TradeOfferList our_offer_lists[32];
 	int field_1380[4];

@@ -855,8 +855,7 @@ main (int argc, char ** argv)
 	struct injected_state * injected_state = alloc_prog_memory (".c3xdat", NULL, sizeof (struct injected_state), MAA_READ_WRITE);
 	write_prog_int (&injected_state->mod_version, MOD_VERSION);
 	write_prog_memory (&injected_state->mod_rel_dir, mod_rel_dir, strlen (mod_rel_dir) + 1);
-	// write_prog_int (&injected_state->sb_state, SB_UNINITED);
-	write_prog_int (&injected_state->sc_img_state, SC_IMG_UNINITED);
+	write_prog_int (&injected_state->sc_img_state, IS_UNINITED);
 	struct c3x_config base_config = {
 		.enable_stack_bombard = 1,
 		.enable_disorder_warning = 1,
