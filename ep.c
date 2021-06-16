@@ -868,6 +868,7 @@ main (int argc, char ** argv)
 		.autofill_best_gold_amount_when_trading = 1,
 		.adjust_minimum_city_separation = 0,
 		.disallow_founding_next_to_foreign_city = 1,
+		.enable_trade_screen_scroll = 1,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,

@@ -248,6 +248,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->adjust_minimum_city_separation = ival;
 				else if ((0 == is->strncmp (key, "disallow_founding_next_to_foreign_city", key_len)) && parse_int (value, value_len, &ival))
 					cfg->disallow_founding_next_to_foreign_city = ival != 0;
+				else if ((0 == is->strncmp (key, "enable_trade_screen_scroll", key_len)) && parse_int (value, value_len, &ival))
+					cfg->enable_trade_screen_scroll = ival != 0;
 
 				else if ((0 == is->strncmp (key, "use_offensive_artillery_ai", key_len)) && parse_int (value, value_len, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -1201,7 +1203,9 @@ patch_DiploForm_do_diplomacy (DiploForm * this, int edx, int diplo_message, int 
 	// synchronization you need to do when closing the diplo screen with a human player that I haven't implemented. For SP, the scroll is limited
 	// to meetings requested by the player b/c I'm sure that won't cause any bugs or expoits. TODO: It would be nice to enable scroll in other
 	// cases but we need to take care not to, e.g., allow the player to get out of AI demands by scrolling away from them.
-	is->eligible_for_trade_scroll = (! is_game_type_4_or_5 ()) && ((civ_id == -1) || (diplo_message == -1));
+	// NOTE: I'm going to try allowing this even in meetings not requested by the player because I think limiting the scroll to DiploForm mode 2
+	// might be enough.
+	is->eligible_for_trade_scroll = is->current_config.enable_trade_screen_scroll && (! is_game_type_4_or_5 ()); // && ((civ_id == -1) || (diplo_message == -1));
 
 	if (is->eligible_for_trade_scroll && (is->trade_scroll_button_state == IS_UNINITED))
 		init_trade_scroll_buttons (this);
