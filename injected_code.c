@@ -1127,27 +1127,6 @@ do_trade_scroll (DiploForm * diplo, int forward)
 void __fastcall
 patch_DiploForm_m82_handle_key_event (DiploForm * this, int edx, int virtual_key_code, int is_down)
 {
-	/*
-	This doesn't work. It incompletely closes the form.
-	if ((virtual_key_code == VK_LEFT) && is_down) {
-		this->vtable->m69_Close_Dialog (this);
-		return;
-	}
-	*/
-
-	/*
-	This doesn't work. It does nothing.
-	if ((virtual_key_code == VK_LEFT) && is_down) {
-		DiploForm_m82_handle_key_event (this, __, VK_ESCAPE, 1);
-		return;
-	}
-	*/
-
-	// FUN_0050d830 maybe related to closing the form
-	// after that we call func at 0x51CAD0
-	// then m22_draw (at 0x509200)
-	// after that return
-
 	if (is->eligible_for_trade_scroll &&
 	    (this->mode == 2) &&
 	    ((virtual_key_code == VK_LEFT) || (virtual_key_code == VK_RIGHT)) &&
@@ -1928,26 +1907,6 @@ patch_impl_ai_is_good_army_addition (Unit * this, int edx, Unit * candidate)
 		 (measure_strength_in_army (candidate_type) >= army_min_strength));
 }
 
-/*
-int __fastcall
-patch_Unit_eval_escort_requirement (Unit * this)
-{
-	return Unit_eval_escort_requirement (this);
-
-	// Set land artillery escort requirement to 2 units
-	// Note: this is not sufficient to cause the AI to escort its artillery with 2 units even if 2 units are assigned as escorts (in the code that
-	// pulls escorters from city defenders)
-	int type_id = this->Body.UnitTypeID;
-	if (is->current_config.use_offensive_artillery_ai &&
-	    (type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
-	    (p_bic_data->UnitTypes[type_id].Unit_Class & UTC_Land) &&
-	    (p_bic_data->UnitTypes[type_id].AI_Strategy & UTAI_Artillery))
-		return 2;
-	else
-		return Unit_eval_escort_requirement (this);
-}
-*/
-
 int
 rate_artillery (UnitType * type)
 {
@@ -2118,23 +2077,6 @@ patch_Unit_disembark_passengers (Unit * this, int edx, int tile_x, int tile_y)
 	return Unit_disembark_passengers (this, __, tile_x, tile_y);
 }
 
-/*
-void __fastcall
-patch_Unit_set_state (Unit * this, int edx, int new_state)
-{
-	// Monitior when state 0x1C is assigned to learn about what it's for
-	if ((new_state == 0x1C) && (this->Body.UnitState != 0x1C)) {
-		char str[500];
-		UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
-		is->snprintf (str, sizeof str, "(%d, %d)\t%s\tPut in state 0x1C", this->Body.X, this->Body.Y, type->Name);
-		str[(sizeof str) - 1] = '\0';
-		(*p_OutputDebugStringA) (str);
-		Main_Screen_Form_show_map_message (p_main_screen_form, __, this->Body.X, this->Body.Y, "C3X_SHOW_STATE_0x1C", 1);
-	}
-	Unit_set_state (this, __, new_state);
-}
-*/
-
 // Returns whether or not the current deal being offered to the AI on the trade screen would be accepted. How advantageous the AI thinks the
 // trade is for itself is stored in out_their_advantage if it's not NULL. This advantage is measured in gold, if it's positive it means the
 // AI thinks it's gaining that much value from the trade and if it's negative it thinks it would be losing that much. I don't know what would
@@ -2296,86 +2238,8 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 			remove_offer (offers, test_offer);
 			test_offer->vtable->destruct (test_offer, __, 1);
 		}
-		/*
-
-		TradeOfferList * offers = asking ? &p_diplo_form->their_offer_lists[their_id] : &p_diplo_form->our_offer_lists[their_id];
-		TradeOffer * test_offer = offer_gold (offers, is_lump_sum);
-
-		// int max_amount_to_give = (! is_lump_sum) ? 9999 : leaders[our_id].Gold_Encoded + leaders[our_id].Gold_Decrement;
-
-		// First guess some amount to ask/offer. Store the guess amount in the test offer
-		int max_amount;
-		if (asking) {
-			int guess = not_below (0, their_advantage);
-			if (is_lump_sum) {
-				int their_treasury = leaders[their_id].Gold_Encoded + leaders[their_id].Gold_Decrement;
-				test_offer->param_2 = not_above (their_treasury, guess);
-				max_amount = their_treasury;
-			} else {
-				guess /= 20;
-				test_offer->param_2 = not_below (1, guess);
-				max_amount = 10 + test_offer->param_2 * 2;
-			}
-		} else {
-			int guess = not_below (0, 0 - their_advantage);
-			if (is_lump_sum) {
-				int our_treasury = leaders[our_id].Gold_Encoded + leaders[our_id].Gold_Decrement;
-				test_offer->param_2 = not_above (our_treasury, guess);
-				max_amount = our_treasury;
-			} else {
-				guess /= 20;
-				test_offer->param_2 = not_below (1, guess);
-				max_amount = 10 + test_offer->param_2 * 2;
-			}
-		}
-
-		// If this guess does not lead to an acceptable deal, ask for less or offer more until we get a trade that is acceptable
-		if (! is_current_offer_acceptable (NULL)) {
-			int step_size = test_offer->param_2 / 10;
-			step_size = (step_size >= 1) ? step_size : 1;
-			if (asking) // if asking reduce amount, otherwise increase it with each step
-				step_size = 0 - step_size;
-			while (1) {
-				test_offer->param_2 += step_size;
-				if (asking && (test_offer->param_2 <= 0)) {
-					test_offer->param_2 = 0;
-					break;
-				} else if ((! asking) && (test_offer->param_2 >= max_amount)) {
-					test_offer->param_2 = max_amount;
-					break;
-				} else if (is_current_offer_acceptable (NULL))
-					break;
-			}
-		}
-
-		// Now determine the final amount by refining the guess upward or downward by increments as small as one gold while maintaining
-		// acceptability. If we never got an acceptable guess then, for lump sum, use the closest we got (which will be the entire
-		// treasury), for per turn just default to zero because the player's trade rep might be ruined.
-		int best_amount;
-		if (is_current_offer_acceptable (NULL)) {
-			best_amount = test_offer->param_2;
-			for (int step_size = asking ? 100 : -100; step_size != 0; step_size /= 10) {
-				test_offer->param_2 = best_amount;
-				while (1) {
-					test_offer->param_2 += step_size;
-					if ((test_offer->param_2 < 0) || (test_offer->param_2 > max_amount))
-						break;
-					else if (is_current_offer_acceptable (NULL))
-						best_amount = test_offer->param_2;
-					else
-						break;
-				}
-			}
-		} else
-			best_amount = (is_lump_sum) ? test_offer->param_2 : 0;
-
-		remove_offer (offers, test_offer);
-		test_offer->vtable->destruct (test_offer, __, 1);
-
-		*/
 
 		is->snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "%d", best_amount);
-		// is->snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "%s", is_lump_sum ? "lump" : "pert");
 		is->ask_gold_default[(sizeof is->ask_gold_default) - 1] = '\0';
 		PopupForm_set_text_key_and_flags (this, __, script_path, text_key, param_3, (int)is->ask_gold_default, param_5, param_6);
 	} else
