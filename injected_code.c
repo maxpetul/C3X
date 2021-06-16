@@ -490,9 +490,6 @@ patch_init_floating_point ()
 	// Initialize to zero
 	is->have_job_and_loc_to_skip = 0;
 
-	// Initialize to empty
-	is->frontlineness = (struct frontlineness) { .capacity = 0, .save_len = 0, .saved_for_civ_id = -1, .saves = NULL, .cons = NULL };
-
 	// Initialize trade screen scroll vars
 	is->open_diplo_form_straight_to_trade = 0;
 	is->trade_screen_scroll_to_id = -1;
@@ -1254,8 +1251,6 @@ intercept_end_of_turn ()
 
 	// Clear things that don't apply across turns
 	is->have_job_and_loc_to_skip = 0;
-	is->frontlineness.save_len = 0;
-	is->frontlineness.saved_for_civ_id = -1;
 }
 
 int
@@ -1636,27 +1631,6 @@ get_city_near (int x, int y)
 	return NULL;
 }
 
-/*
-int
-eval_frontlineness (City * city)
-{
-	int tr = 0;
-	Leader * me = &leaders[city->Body.CivID];
-	FOR_TILES_AROUND (tai, 37, city->Body.X, city->Body.Y) { // 37 tiles = all in 3rd ring or closer
-		int tile_owner = tai.tile->vtable->m38_Get_Territory_OwnerID (tai.tile);
-		if ((tile_owner > 0) && (tile_owner < 32) && (me->At_War[tile_owner] != 0))
-			tr += 8;
-		else if ((tile_owner == 0) && (! tai.tile->vtable->m35_Check_Is_Water (tai.tile)))
-			tr += 1;
-		FOR_UNITS_ON (uti, tai.tile) {
-			if (Unit_is_visible_to_civ (uti.unit, __, me->ID, 0) && Leader_is_enemy_unit (me, __, uti.unit))
-				tr += 16;
-		}
-	}
-	return (tr + 4) / 8;
-}
-*/
-
 int
 any_enemies_near (Leader const * me, int tile_x, int tile_y, enum UnitTypeClasses class, int num_tiles)
 {
@@ -1736,102 +1710,6 @@ patch_Unit_ai_move_artillery (Unit * this)
 		Unit_set_state (best_defender, __, 0);
 		Unit_set_escortee (best_defender, __, this->Body.ID);
 	}
-
-	/*
-
-	Leader const * me = &leaders[this->Body.CivID];
-	struct frontlineness * fl = &is->frontlineness;
-
-	if (is->frontlineness.saved_for_civ_id != me->ID) {
-		// Expand capacity of lists if necessary
-		if (me->Cities_Count > fl->capacity) {
-			int new_capacity = fl->capacity * 2;
-			if (new_capacity < me->Cities_Count)
-				new_capacity = me->Cities_Count + 100;
-			is->free (fl->saves);
-			fl->saves = is->malloc (new_capacity * sizeof fl->saves[0]);
-			is->free (fl->cons);
-			fl->cons = is->malloc (new_capacity * sizeof fl->cons[0]);
-			fl->capacity = new_capacity;
-		}
-
-		// Recalculate frontlineness for this Civ
-		fl->save_len = 0;
-		if ((p_cities->Cities != NULL) && (fl->saves != NULL))
-			for (int n = 0; n <= p_cities->LastIndex; n++) {
-				City * city = get_city_ptr (n);
-				if ((city != NULL) && (city->Body.CivID == me->ID)) {
-					Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
-					fl->saves[fl->save_len] = (struct fl_save) {
-						.city_id = n,
-						.continent_id = city_tile->vtable->m46_Get_ContinentID (city_tile),
-						.frontlineness = eval_frontlineness (city)
-					};
-					fl->save_len += 1;
-				}
-			}
-		
-	}
-
-	if (! any_enemies_near) {
-
-		// Move along pre-set path if we have one
-		byte next_move = Unit_pop_next_move_from_path (this);
-		if (next_move > 0) {
-			this->vtable->Move (this, __, next_move, 0);
-			return;
-		}
-
-		// Otherwise find a frontline city to move to
-
-		int on_continent_id; {
-			Tile * t = tile_at (this->Body.X, this->Body.Y);
-			on_continent_id = (t != NULL) ? t->vtable->m46_Get_ContinentID (t) : -1;
-		}
-
-		int total_at = 0,
-		    cons_len = 0;
-		for (int n = 0; n < fl->save_len; n++)
-			if (fl->saves[n].continent_id == on_continent_id) {
-				int at = fl->saves[n].frontlineness;
-				City * cons_city;
-				if (fl->saves[n].city_id == in_city_id)
-					at *= 5;
-				else if (NULL != (cons_city = get_city_ptr (fl->saves[n].city_id))) {
-					int dist = int_abs (cons_city->Body.X - this->Body.X) + int_abs (cons_city->Body.Y - this->Body.Y);
-					at = (10 * at) / (10 + dist);
-				}
-				total_at += at;
-				fl->cons[cons_len++] = (struct fl_consideration) { .city_id = fl->saves[n].city_id, .total_attractiveness = total_at };
-			}
-
-		if ((cons_len > 0) && (total_at > 0)) {
-			int rv = 1 + rand_int (p_rand_object, __, total_at);
-			int move_to_city_id = -1;
-			for (int n = 0; n < cons_len; n++)
-				if (rv <= fl->cons[n].total_attractiveness) {
-					move_to_city_id = fl->cons[n].city_id;
-					break;
-				}
-			City * move_to_city;
-			if ((move_to_city_id != in_city_id) && (NULL != (move_to_city = get_city_ptr (move_to_city_id)))) {
-				int first_move = Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, move_to_city->Body.X, move_to_city->Body.Y, this, this->Body.CivID, 0x301, NULL);
-				if (first_move > 0) {
-
-					char str[1000];
-					City * near_city = get_city_near (this->Body.X, this->Body.Y);
-					is->snprintf (str, sizeof str, "Moving arty from (%d, %d) (near %s) to %s", this->Body.X, this->Body.Y, (near_city != NULL) ? near_city->Body.CityName : "", move_to_city->Body.CityName);
-					(*p_OutputDebugStringA) (str);
-
-					Unit_set_escortee (this, __, -1);
-					this->vtable->Move (this, __, first_move, 0);
-					return;
-				}
-			}
-		}
-	}
-
-	*/
 
 base_impl:
 	Unit_ai_move_artillery (this);

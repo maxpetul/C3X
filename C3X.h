@@ -150,21 +150,6 @@ struct injected_state {
 	// every turn.
 	struct worker_job_and_location to_skip;
 
-	struct frontlineness {
-		int capacity; // capacity of "saves" and "cons" lists
-		int save_len; // number of entries in "saves" list
-		int saved_for_civ_id; // all saves are cities belonging to this civ id
-		struct fl_save {
-			int city_id;
-			int continent_id;
-			int frontlineness;
-		} * saves;
-		struct fl_consideration {
-			int city_id;
-			int total_attractiveness;
-		} * cons;
-	} frontlineness;
-
 	byte houseboat_patch_area_original_contents[50];
 
 	// ==========
