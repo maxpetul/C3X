@@ -582,7 +582,7 @@ init_trade_scroll_buttons (DiploForm * diplo_form)
 
 		Button_construct (b);
 		int id = right ? TRADE_SCROLL_BUTTON_ID_RIGHT : TRADE_SCROLL_BUTTON_ID_LEFT;
-		Button_initialize (b, __, NULL, id, right ? 622 : 358, 50, 43, 47, diplo_form, 0);
+		Button_initialize (b, __, NULL, id, right ? 622 : 358, 50, 43, 47, (Base_Form *)diplo_form, 0);
 		for (int n = 0; n < 3; n++)
 			b->Images[n] = imgs[n + 3*right];
 
@@ -1206,13 +1206,13 @@ patch_DiploForm_m22_Draw (DiploForm * this)
 		Button * left  = is->trade_scroll_button_left,
 		       * right = is->trade_scroll_button_right;
 		if (is->eligible_for_trade_scroll && (this->mode == 2)) {
-			left ->vtable->m01_Show_Enabled (left , __, 0);
-			right->vtable->m01_Show_Enabled (right, __, 0);
-			left ->vtable->m73_call_m22_Draw (left);
-			right->vtable->m73_call_m22_Draw (right);
+			left ->vtable->m01_Show_Enabled ((Base_Form *)left , __, 0);
+			right->vtable->m01_Show_Enabled ((Base_Form *)right, __, 0);
+			left ->vtable->m73_call_m22_Draw ((Base_Form *)left);
+			right->vtable->m73_call_m22_Draw ((Base_Form *)right);
 		} else {
-			left ->vtable->m02_Show_Disabled (left);
-			right->vtable->m02_Show_Disabled (right);
+			left ->vtable->m02_Show_Disabled ((Base_Form *)left);
+			right->vtable->m02_Show_Disabled ((Base_Form *)right);
 		}
 	}
 
