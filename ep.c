@@ -47,136 +47,18 @@ struct c3c_binary {
 	int file_size;
 	void * addr_rdata;
 	int    size_rdata;
-
-	// Address of Windows functions in the relocation table
-	void * addr_addr_OutputDebugStringA;
-	void * addr_addr_GetAsyncKeyState;
-	void * addr_addr_GetProcAddress;
-	void * addr_addr_GetModuleHandleA;
-
-	void * addr_addr_init_floating_point;
-	
-	void * addr_stealth_attack_target_count_check;
-	void * addr_unit_count_check;
-	void * addr_era_count_check;
-
-	// Address to patch to fix the submarine bug. This is the address of the last parameter (respect_unit_visiblity) for
-	// a call to Unit::is_visible_to_civ inside some kind of pathfinding function. addr_b is another address that does
-	// the same thing and also fixes the bug, based on my limited testing. I didn't look into it much since patching the
-	// first address alone seems to work fine. The other fields here are for other tests I was running that did not lead
-	// to a fix.
-	void * addr_sub_bug_patch;
-	// void * addr_sub_bug_patch_b;
-	// void * addr_vptr_move_along_path;
-	// void * addr_Unit_is_visible_to_civ;
-	// int    size_Unit_is_visible_to_civ;
-
-	// Address to patch to fix the science age bug. Actually similar in nature to the sub bug, the function that measures
-	// a city's research output accepts a flag that determines whether or not it takes science ages into account. It's
-	// mistakenly not set by the code that gathers all research points to increment tech progress (but it is set elsewhere
-	// in code for the interface). The patch simply sets this flag.
-	void * addr_science_age_bug_patch;
-
-	// The size of the pedia background texture is hard-coded into the EXE and in the base game it's one pixel too small.
-	// This shows up in game as a one pixel wide pink line along the right edge of the civilopedia. This patch simply
-	// increases the texture width by one.
-	void * addr_pedia_texture_bug_patch;
-
-	void * addr_autoraze_bypass;
-	void * addr_vptr_Leader_would_raze_city;
-
-	// void * addr_Main_Screen_Form_perform_action_on_tile;
-	// int    size_Main_Screen_Form_perform_action_on_tile;
-
-	// void * addr_Leader_update_preproduction;
-	// int    size_Leader_update_preproduction;
-
-	void * addr_Main_Screen_Form_handle_left_click_on_map_1;
-	void * addr_vptr_Main_Screen_Form_handle_left_click_on_map_1;
-
-	// void * addr_Main_GUI_set_up_unit_command_buttons;
 } * bin;
 
 struct c3c_binary gog_binary = {
 	.file_size = 3417464,
 	.addr_rdata = (void *)0x665000,
 	.size_rdata = 0x1B000,
-	
-	.addr_addr_OutputDebugStringA = (void *)0x665188,
-	.addr_addr_GetAsyncKeyState = (void *)0x665280,
-	.addr_addr_GetProcAddress = (void *)0x665168,
-	.addr_addr_GetModuleHandleA = (void *)0x6650E4,
-
-	.addr_addr_init_floating_point = (void *)0x73A8FC,
-
-	.addr_stealth_attack_target_count_check = (void *)0x5B6B01,
-	.addr_unit_count_check = (void *)0x569503,
-	.addr_era_count_check = (void *)0x594B35,
-
-	.addr_sub_bug_patch = (void *)0x57F623,
-	// .addr_sub_bug_patch_b = (void *)0x57FDB6,
-	// .addr_vptr_move_along_path = 0x66DD3C,
-	// .addr_Unit_is_visible_to_civ = 0x5BB650,
-	// .size_Unit_is_visible_to_civ = 0x9DA - 0x650,
-
-	.addr_science_age_bug_patch = (void *)0x5601EF,
-
-	.addr_pedia_texture_bug_patch = (void *)0x4CD0B1,
-
-	.addr_autoraze_bypass = (void *)0x5640AC,
-	.addr_vptr_Leader_would_raze_city = (void *)0x66CB50,
-
-	// .addr_Main_Screen_Form_perform_action_on_tile = (void *)0x4E6DB0,
-	// .size_Main_Screen_Form_perform_action_on_tile = 0x7538 - 0x6DB0,
-
-	// .addr_Leader_update_preproduction = (void *)0x5604B0,
-	// .size_Leader_update_preproduction = 0x1216 - 0x04B0,
-
-	.addr_Main_Screen_Form_handle_left_click_on_map_1 = (void *)0x4EB1D0,
-	.addr_vptr_Main_Screen_Form_handle_left_click_on_map_1 = (void *)0x66B44C,
-
-	// .addr_Main_GUI_set_up_unit_command_buttons = (void *)0x550BB0,
 };
 
 struct c3c_binary steam_binary = {
 	.file_size = 3518464,
 	.addr_rdata = (void *)0x682000,
 	.size_rdata = 0x1B000,
-	
-	.addr_addr_OutputDebugStringA = (void *)0x68219C,
-	.addr_addr_GetAsyncKeyState = (void *)0x6822E0,
-	.addr_addr_GetProcAddress = (void *)0x682130,
-	.addr_addr_GetModuleHandleA = (void *)0x6820B8,
-
-	.addr_addr_init_floating_point = (void *)0x756C74,
-
-	.addr_stealth_attack_target_count_check = (void *)0x5C5458,
-	.addr_unit_count_check = (void *)0x575933,
-	.addr_era_count_check = (void *)0x5A2357,
-
-	.addr_sub_bug_patch = (void *)0x58C352,
-	// .addr_sub_bug_patch_b = ???,
-	// .addr_vptr_move_along_path = ???,
-	// .addr_Unit_is_visible_to_civ = ???,
-	// .size_Unit_is_visible_to_civ = ???,
-
-	.addr_science_age_bug_patch = (void *)0x56C2E3,
-
-	.addr_pedia_texture_bug_patch = (void *)0x4D5151,
-
-	.addr_autoraze_bypass = (void *)0x570385,
-	.addr_vptr_Leader_would_raze_city = (void *)0x689C3C,
-
-	// .addr_Main_Screen_Form_perform_action_on_tile = (void *)0x4EF820,
-	// .size_Main_Screen_Form_perform_action_on_tile = 0xFFCC - 0xF820,
-
-	// .addr_Leader_update_preproduction = (void *)0x0,
-	// .size_Leader_update_preproduction = 0,
-
-	.addr_Main_Screen_Form_handle_left_click_on_map_1 = (void *)0x4F4020,
-	.addr_vptr_Main_Screen_Form_handle_left_click_on_map_1 = (void *)0x68854C,
-
-	// .addr_Main_GUI_set_up_unit_command_buttons = (void *)0x55BCE0,
 };
 
 char const * standard_exe_filename = "Civ3Conquests.exe";
@@ -821,26 +703,6 @@ main (int argc, char ** argv)
 		}
 	}
 	
-	tcc_define_pointer (tcc, "ADDR_ADDR_OUTPUTDEBUGSTRINGA", bin->addr_addr_OutputDebugStringA);
-	tcc_define_pointer (tcc, "ADDR_ADDR_GETASYNCKEYSTATE"  , bin->addr_addr_GetAsyncKeyState);
-	tcc_define_pointer (tcc, "ADDR_ADDR_GETPROCADDRESS"    , bin->addr_addr_GetProcAddress);
-	tcc_define_pointer (tcc, "ADDR_ADDR_GETMODULEHANDLEA"  , bin->addr_addr_GetModuleHandleA);
-
-	void * addr_init_floating_point = (void *)read_prog_int (bin->addr_addr_init_floating_point);
-	tcc_define_pointer (tcc, "ADDR_INIT_FLOATING_POINT", addr_init_floating_point);
-	void * addr_Leader_impl_would_raze_city = (void *)read_prog_int (bin->addr_vptr_Leader_would_raze_city);
-	tcc_define_pointer (tcc, "ADDR_LEADER_IMPL_WOULD_RAZE_CITY", addr_Leader_impl_would_raze_city);
-
-	tcc_define_pointer (tcc, "ADDR_STEALTH_ATTACK_TARGET_COUNT_CHECK", bin->addr_stealth_attack_target_count_check);
-	tcc_define_pointer (tcc, "ADDR_UNIT_COUNT_CHECK"                 , bin->addr_unit_count_check);
-	tcc_define_pointer (tcc, "ADDR_ERA_COUNT_CHECK "                 , bin->addr_era_count_check);
-	tcc_define_pointer (tcc, "ADDR_SUB_BUG_PATCH"                    , bin->addr_sub_bug_patch);
-	tcc_define_pointer (tcc, "ADDR_SCIENCE_AGE_BUG_PATCH"            , bin->addr_science_age_bug_patch);
-	tcc_define_pointer (tcc, "ADDR_PEDIA_TEXTURE_BUG_PATCH"          , bin->addr_pedia_texture_bug_patch);
-	tcc_define_pointer (tcc, "ADDR_AUTORAZE_BYPASS"                  , bin->addr_autoraze_bypass);
-
-	tcc_define_pointer (tcc, "ADDR_MAIN_SCREEN_FORM_HANDLE_LEFT_CLICK_ON_MAP_1", bin->addr_Main_Screen_Form_handle_left_click_on_map_1);
-
 	// Get write access to rdata section so we can replace entries in the vtables. Only necessary if we're modifying a live process.
 #ifdef C3X_RUN
 	set_prog_mem_protection (bin->addr_rdata, bin->size_rdata, MAA_READ_WRITE);
@@ -960,11 +822,6 @@ main (int argc, char ** argv)
 			write_prog_int ((void *)func_addr, (int)tcc__get_symbol (tcc, sym));
 		}
 	}
-
-	// Replace v-pointers with patched functions (init_floating_point isn't technically a vptr, it's a global function pointer but the same technique applies)
-	write_prog_int (bin->addr_addr_init_floating_point, (int)tcc__get_symbol (tcc, "patch_init_floating_point"));
-	write_prog_int (bin->addr_vptr_Main_Screen_Form_handle_left_click_on_map_1, (int)tcc__get_symbol (tcc, "patch_Main_Screen_Form_handle_left_click_on_map_1"));
-	write_prog_int (bin->addr_vptr_Leader_would_raze_city, (int)tcc__get_symbol (tcc, "patch_Leader_impl_would_raze_city"));
 
 	// Give up write permission on Civ proc's code injection pages
 	set_prog_mem_protection (civ_inject_mem, inject_size, MAA_READ_EXECUTE);

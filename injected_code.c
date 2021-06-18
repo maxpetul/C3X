@@ -12,14 +12,6 @@ FARPROC (__stdcall ** p_GetProcAddress) (HMODULE hModule, char const * lpProcNam
 
 HMODULE (__stdcall ** p_GetModuleHandleA) (char const * lpModuleName) = ADDR_ADDR_GETMODULEHANDLEA;
 
-void (__stdcall * init_floating_point) (void) = ADDR_INIT_FLOATING_POINT;
-
-// void (__fastcall * Leader_update_preproduction) (Leader * this) = ADDR_EXTRACTED_LEADER_UPDATE_PREPRODUCTION;
-
-char (__fastcall * Leader_impl_would_raze_city) (Leader * this, int edx, City * city) = ADDR_LEADER_IMPL_WOULD_RAZE_CITY;
-
-void (__fastcall * Main_Screen_Form_handle_left_click_on_map_1) (Main_Screen_Form * this, int edx, int param_1, int param_2) = ADDR_MAIN_SCREEN_FORM_HANDLE_LEFT_CLICK_ON_MAP_1;
-
 struct injected_state * is = ADDR_INJECTED_STATE;
 
 // To be used as placeholder second argument so that we can imitate thiscall convention with fastcall
@@ -380,11 +372,22 @@ apply_config (struct c3x_config * cfg)
 	WITH_MEM_PROTECTION (ADDR_ERA_COUNT_CHECK, 1, PAGE_EXECUTE_READWRITE)
 		*(byte *)ADDR_ERA_COUNT_CHECK = cfg->remove_era_limit ? 0xEB : 0x74;
 
-	// Single-byte bug fixes
+	// Fix submarine bug
+	// Address refers to the last parameter (respect_unit_visiblity) for a call to Unit::is_visible_to_civ inside some kind of pathfinding
+	// function.
 	WITH_MEM_PROTECTION (ADDR_SUB_BUG_PATCH, 1, PAGE_EXECUTE_READWRITE)
 		*(byte *)ADDR_SUB_BUG_PATCH = cfg->patch_submarine_bug ? 0 : 1;
+
+	// Fix science age bug
+	// Similar in nature to the sub bug, the function that measures a city's research output accepts a flag that determines whether or not it
+	// takes science ages into account. It's mistakenly not set by the code that gathers all research points to increment tech progress (but it
+	// is set elsewhere in code for the interface). The patch simply sets this flag.
 	WITH_MEM_PROTECTION (ADDR_SCIENCE_AGE_BUG_PATCH, 1, PAGE_EXECUTE_READWRITE)
 		*(byte *)ADDR_SCIENCE_AGE_BUG_PATCH = cfg->patch_science_age_bug ? 1 : 0;
+
+	// Pedia pink line bug fix
+	// The size of the pedia background texture is hard-coded into the EXE and in the base game it's one pixel too small. This shows up in game as
+	// a one pixel wide pink line along the right edge of the civilopedia. This patch simply increases the texture width by one.
 	WITH_MEM_PROTECTION (ADDR_PEDIA_TEXTURE_BUG_PATCH, 1, PAGE_EXECUTE_READWRITE)
 		*(byte *)ADDR_PEDIA_TEXTURE_BUG_PATCH = cfg->patch_pedia_texture_bug ? 0xA6 : 0xA5;
 
