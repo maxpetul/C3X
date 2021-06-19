@@ -538,7 +538,7 @@ identify_binary (char const * file_name, HANDLE * out_file_handle)
 		return BIN_ID_NOT_FOUND;
 	DWORD size = GetFileSize (file, NULL);
 	DWORD size_read;
-	byte header[5000];
+	static byte header[5000]; // This was only make static so it doesn't take up too much stack space
 	if (size == gog_binary.file_size)
 		return BIN_ID_GOG;
 	else if (size == steam_binary.file_size)
@@ -562,8 +562,16 @@ print_symbol_location (void * context, char const * name, void const * val)
 	printf ("%p\t%s\n", val, name);
 }
 
-int
-main (int argc, char ** argv)
+// Because we're compiling with -nostdlib the entry point isn't main but is rather _runmain (if running immediately like a script) or _start (if
+// compiling to an EXE file)
+#ifdef C3X_INSTALL
+#define ENTRY_POINT _start
+#else
+#define ENTRY_POINT _runmain
+#endif
+
+void
+ENTRY_POINT ()
 {
 	DWORD unused;
 	int success;
