@@ -66,7 +66,7 @@ read_int (char * str, int str_len, int * out_val)
 	if ((str_len > 0) && (*str == '-') || ((*str >= '0') && (*str <= '9'))) {
 		char * end;
 		int base = 10;
-		if ((str[0] = '0') && ((str[1] == 'x') || (str[1] == 'X'))) {
+		if ((str[0] == '0') && ((str[1] == 'x') || (str[1] == 'X'))) {
 			base = 16;
 			str += 2;
 			str_len -= 2;
