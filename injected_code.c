@@ -17,6 +17,21 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 // To be used as placeholder second argument so that we can imitate thiscall convention with fastcall
 #define __ 0
 
+// C standard library functions have to be loaded dynamically with GetProcAddress and the addresses are stored in the injected state. This is covered
+// up with macros, which is not something I would normally do, but in this case it's very useful because it means the code in parse.c can be shared
+// by the patcher and the injected code.
+#define snprintf is->snprintf
+#define malloc is->malloc
+#define free is->free
+#define strtol is->strtol
+#define strncmp is->strncmp
+#define strlen is->strlen
+#define strncpy is->strncpy
+#define qsort is->qsort
+#define memcmp is->memcmp
+
+#include "parse.c"
+
 #define TRADE_SCROLL_BUTTON_ID_LEFT  0x222001
 #define TRADE_SCROLL_BUTTON_ID_RIGHT 0x222002
 
@@ -59,7 +74,7 @@ file_to_string (char const * filepath)
 	if (file == INVALID_HANDLE_VALUE)
 		goto err_in_CreateFileA;
 	DWORD size = is->GetFileSize (file, NULL);
-	char * tr = is->malloc (size + 1);
+	char * tr = malloc (size + 1);
 	if (tr == NULL)
 		goto err_in_malloc;
 	DWORD size_read = 0;
@@ -71,124 +86,22 @@ file_to_string (char const * filepath)
 	return tr;
 
 err_in_ReadFile:
-	is->free (tr);
+	free (tr);
 err_in_malloc:
 	is->CloseHandle (file);
 err_in_CreateFileA:
 	return NULL;
 }
 
-int
-is_horiz_space (char c)
-{
-	return ((c == ' ') || (c == '\t') || (c == '\r'));
-}
-
-void
-skip_horiz_space (char ** p_cursor)
-{
-	char * cur = *p_cursor;
-	while (is_horiz_space (*cur))
-		cur++;
-	*p_cursor = cur;
-}
-
-void
-skip_to_line_end (char ** p_cursor)
-{
-	char * cur = *p_cursor;
-	while ((*cur != '\n') && (*cur != '\0'))
-		cur++;
-	*p_cursor = cur;
-}
-
-void
-trim_string_slice (char ** str, int * str_len, int remove_quotes)
-{
-	while ((*str_len > 0) && (is_horiz_space (**str))) {
-		(*str)++;
-		(*str_len)--;
-	}
-	while ((*str_len > 0) && (is_horiz_space ((*str)[*str_len-1])))
-		(*str_len)--;
-	if (remove_quotes &&
-	    (*str_len >= 2) &&
-	    ((**str == '"') && ((*str)[*str_len-1] == '"'))) {
-		(*str)++;
-		(*str_len) -= 2;
-	}
-}
-
-int
-parse_int (char * str, int str_len, int * out_val)
-{
-	if ((*str == '-') || ((*str >= '0') && (*str <= '9'))) {
-		char * end;
-		int res = is->strtol (str, &end, 10);
-		if (end == str + str_len) {
-			*out_val = res;
-			return 1;
-		} else
-			return 0;
-	} else if ((str_len == 4) &&
-		   ((0 == is->strncmp (str, "true", 4)) ||
-		    (0 == is->strncmp (str, "True", 4)) ||
-		    (0 == is->strncmp (str, "TRUE", 4)))) {
-		*out_val = 1;
-		return 1;
-	} else if ((str_len == 5) &&
-		   ((0 == is->strncmp (str, "false", 5)) ||
-		    (0 == is->strncmp (str, "False", 5)) ||
-		    (0 == is->strncmp (str, "FALSE", 5)))) {
-		*out_val = 0;
-		return 1;
-	} else
-		return 0;
-}
-
-// What an ugly function. I hate writing parsers.
-int
-parse_key_value_pair (char ** p_cursor, char ** out_key, int * out_key_len, char ** out_value, int * out_value_len)
-{
-	char * cur = *p_cursor;
-	char * key, * value;
-	int key_len, value_len;
-	key = cur;
-	while (1) {
-		char c = *cur;
-		if ((c == '_') || ((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z')) || ((c >= '0') && (c <= '9')))
-			cur++;
-		else
-			break;
-	}
-	key_len = cur - key;
-	skip_horiz_space (&cur);
-	if (*cur != '=')
-		return 0;
-	cur++;
-	value = cur;
-	skip_to_line_end (&cur);
-	value_len = cur - value;
-	trim_string_slice (&value, &value_len, 1);
-	if ((key_len <= 0) || (value_len <= 0))
-		return 0;
-	*out_key = key;
-	*out_key_len = key_len;
-	*out_value = value;
-	*out_value_len = value_len;
-	*p_cursor = cur;
-	return 1;
-}
-
 char *
 load_text_file (char const * filename, char const * description, char const * additional_error_info)
 {
 	char temp_path[2*MAX_PATH];
-	is->snprintf (temp_path, sizeof temp_path, "%s\\%s", is->mod_rel_dir, filename);
+	snprintf (temp_path, sizeof temp_path, "%s\\%s", is->mod_rel_dir, filename);
 	char * tr = file_to_string (temp_path);
 	if (tr == NULL) {
 		char err_msg[1000];
-		is->snprintf (err_msg, sizeof err_msg, "Couldn't read %s from %s\nPlease make sure the file exists, if you moved the patched EXE you must move the mod folder as well.%s", description, temp_path, additional_error_info);
+		snprintf (err_msg, sizeof err_msg, "Couldn't read %s from %s\nPlease make sure the file exists, if you moved the patched EXE you must move the mod folder as well.%s", description, temp_path, additional_error_info);
 		err_msg[(sizeof err_msg) - 1] = '\0';
 		is->MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
 	}
@@ -218,63 +131,63 @@ load_config (char const * filename, struct c3x_config * cfg)
 			int key_len, value_len;
 			if (parse_key_value_pair (&cursor, &key, &key_len, &value, &value_len)) {
 				int ival;
-				if ((0 == is->strncmp (key, "enable_stack_bombard", key_len)) && parse_int (value, value_len, &ival))
+				if ((0 == strncmp (key, "enable_stack_bombard", key_len)) && read_int (value, value_len, &ival))
 					cfg->enable_stack_bombard = ival != 0;
-				else if ((0 == is->strncmp (key, "enable_disorder_warning", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "enable_disorder_warning", key_len)) && read_int (value, value_len, &ival))
 					cfg->enable_disorder_warning = ival != 0;
-				else if ((0 == is->strncmp (key, "allow_stealth_attack_against_single_unit", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "allow_stealth_attack_against_single_unit", key_len)) && read_int (value, value_len, &ival))
 					cfg->allow_stealth_attack_against_single_unit = ival != 0;
-				else if ((0 == is->strncmp (key, "show_detailed_city_production_info", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "show_detailed_city_production_info", key_len)) && read_int (value, value_len, &ival))
 					cfg->show_detailed_city_production_info = ival != 0;
-				else if ((0 == is->strncmp (key, "limit_railroad_movement", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "limit_railroad_movement", key_len)) && read_int (value, value_len, &ival))
 					cfg->limit_railroad_movement = ival;
-				else if ((0 == is->strncmp (key, "enable_free_buildings_from_small_wonders", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "enable_free_buildings_from_small_wonders", key_len)) && read_int (value, value_len, &ival))
 					cfg->enable_free_buildings_from_small_wonders = ival != 0;
-				else if ((0 == is->strncmp (key, "enable_stack_worker_commands", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "enable_stack_worker_commands", key_len)) && read_int (value, value_len, &ival))
 					cfg->enable_stack_worker_commands = ival != 0;
-				else if ((0 == is->strncmp (key, "skip_repeated_tile_improv_replacement_asks", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "skip_repeated_tile_improv_replacement_asks", key_len)) && read_int (value, value_len, &ival))
 					cfg->skip_repeated_tile_improv_replacement_asks = ival != 0;
-				else if ((0 == is->strncmp (key, "autofill_best_gold_amount_when_trading", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "autofill_best_gold_amount_when_trading", key_len)) && read_int (value, value_len, &ival))
 					cfg->autofill_best_gold_amount_when_trading = ival != 0;
-				else if ((0 == is->strncmp (key, "adjust_minimum_city_separation", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "adjust_minimum_city_separation", key_len)) && read_int (value, value_len, &ival))
 					cfg->adjust_minimum_city_separation = ival;
-				else if ((0 == is->strncmp (key, "disallow_founding_next_to_foreign_city", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "disallow_founding_next_to_foreign_city", key_len)) && read_int (value, value_len, &ival))
 					cfg->disallow_founding_next_to_foreign_city = ival != 0;
-				else if ((0 == is->strncmp (key, "enable_trade_screen_scroll", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "enable_trade_screen_scroll", key_len)) && read_int (value, value_len, &ival))
 					cfg->enable_trade_screen_scroll = ival != 0;
 
-				else if ((0 == is->strncmp (key, "use_offensive_artillery_ai", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "use_offensive_artillery_ai", key_len)) && read_int (value, value_len, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
-				else if ((0 == is->strncmp (key, "ai_build_artillery_ratio", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "ai_build_artillery_ratio", key_len)) && read_int (value, value_len, &ival))
 					cfg->ai_build_artillery_ratio = ival;
-				else if ((0 == is->strncmp (key, "ai_artillery_value_damage_percent", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "ai_artillery_value_damage_percent", key_len)) && read_int (value, value_len, &ival))
 					cfg->ai_artillery_value_damage_percent = ival;
-				else if ((0 == is->strncmp (key, "ai_build_bomber_ratio", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "ai_build_bomber_ratio", key_len)) && read_int (value, value_len, &ival))
 					cfg->ai_build_bomber_ratio = ival;
-				else if ((0 == is->strncmp (key, "replace_leader_unit_ai", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "replace_leader_unit_ai", key_len)) && read_int (value, value_len, &ival))
 					cfg->replace_leader_unit_ai = ival != 0;
-				else if ((0 == is->strncmp (key, "fix_ai_army_composition", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "fix_ai_army_composition", key_len)) && read_int (value, value_len, &ival))
 					cfg->fix_ai_army_composition = ival != 0;
 
-				else if ((0 == is->strncmp (key, "remove_unit_limit", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "remove_unit_limit", key_len)) && read_int (value, value_len, &ival))
 					cfg->remove_unit_limit = ival != 0;
-				else if ((0 == is->strncmp (key, "remove_era_limit", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "remove_era_limit", key_len)) && read_int (value, value_len, &ival))
 					cfg->remove_era_limit = ival != 0;
 
-				else if ((0 == is->strncmp (key, "patch_submarine_bug", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "patch_submarine_bug", key_len)) && read_int (value, value_len, &ival))
 					cfg->patch_submarine_bug = ival != 0;
-				else if ((0 == is->strncmp (key, "patch_science_age_bug", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "patch_science_age_bug", key_len)) && read_int (value, value_len, &ival))
 					cfg->patch_science_age_bug = ival != 0;
-				else if ((0 == is->strncmp (key, "patch_pedia_texture_bug", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "patch_pedia_texture_bug", key_len)) && read_int (value, value_len, &ival))
 					cfg->patch_pedia_texture_bug = ival != 0;
-				else if ((0 == is->strncmp (key, "patch_disembark_immobile_bug", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "patch_disembark_immobile_bug", key_len)) && read_int (value, value_len, &ival))
 					cfg->patch_disembark_immobile_bug = ival != 0;
-				else if ((0 == is->strncmp (key, "patch_houseboat_bug", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "patch_houseboat_bug", key_len)) && read_int (value, value_len, &ival))
 					cfg->patch_houseboat_bug = ival != 0;
 
-				else if ((0 == is->strncmp (key, "prevent_autorazing", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "prevent_autorazing", key_len)) && read_int (value, value_len, &ival))
 					cfg->prevent_autorazing = ival != 0;
-				else if ((0 == is->strncmp (key, "prevent_razing_by_ai_players", key_len)) && parse_int (value, value_len, &ival))
+				else if ((0 == strncmp (key, "prevent_razing_by_ai_players", key_len)) && read_int (value, value_len, &ival))
 					cfg->prevent_razing_by_ai_players = ival != 0;
 
 				else
@@ -286,7 +199,7 @@ load_config (char const * filename, struct c3x_config * cfg)
 		}
 	}
 	
-	is->free (text);
+	free (text);
 }
 
 char __fastcall
@@ -328,7 +241,7 @@ check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect
 		return 1;
 	else {
 		char err_msg[1000];
-		is->snprintf (err_msg, sizeof err_msg, "VirtualProtect failed! Args:\n  Address: 0x%p\n  Size: %d\n  Flags: 0x%x", addr, size, flags);
+		snprintf (err_msg, sizeof err_msg, "VirtualProtect failed! Args:\n  Address: 0x%p\n  Size: %d\n  Flags: 0x%x", addr, size, flags);
 		err_msg[(sizeof err_msg) - 1] = '\0';
 		is->MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
 		return 0;
@@ -448,15 +361,16 @@ patch_init_floating_point ()
 
 	is->MessageBoxA = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
 
-	is->snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
-	is->malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
-	is->free     = (void *)(*p_GetProcAddress) (is->msvcrt, "free");
-	is->strtol   = (void *)(*p_GetProcAddress) (is->msvcrt, "strtol");
-	is->strncmp  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncmp");
-	is->strlen   = (void *)(*p_GetProcAddress) (is->msvcrt, "strlen");
-	is->strncpy  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncpy");
-	is->qsort    = (void *)(*p_GetProcAddress) (is->msvcrt, "qsort");
-	is->memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
+	// Remember the C std lib function names are macros that expand to is->...
+	snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
+	malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
+	free     = (void *)(*p_GetProcAddress) (is->msvcrt, "free");
+	strtol   = (void *)(*p_GetProcAddress) (is->msvcrt, "strtol");
+	strncmp  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncmp");
+	strlen   = (void *)(*p_GetProcAddress) (is->msvcrt, "strlen");
+	strncpy  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncpy");
+	qsort    = (void *)(*p_GetProcAddress) (is->msvcrt, "qsort");
+	memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
 
 	// Load labels
 	{
@@ -479,14 +393,14 @@ patch_init_floating_point ()
 					while ((*cursor != '\0') && (*cursor != '\r') && (*cursor != '\n'))
 						cursor++;
 					int line_len = cursor - line_start;
-					if (NULL != (is->labels[n] = is->malloc (line_len + 1))) {
-						is->strncpy (is->labels[n], line_start, line_len);
+					if (NULL != (is->labels[n] = malloc (line_len + 1))) {
+						strncpy (is->labels[n], line_start, line_len);
 						is->labels[n][line_len] = '\0';
 					}
 					n++;
 				}
 			}
-			is->free (labels_file_contents);
+			free (labels_file_contents);
 		}
 	}
 
@@ -523,7 +437,7 @@ init_stackable_command_buttons ()
 		for (int n = 0; n < 4; n++) {
 			PCX_Image * pcx = &is->sc_button_sheets[n];
 			PCX_Image_construct (pcx);
-			is->snprintf (temp_path, sizeof temp_path, "%s\\Art\\%s.pcx", is->mod_rel_dir, filenames[n]);
+			snprintf (temp_path, sizeof temp_path, "%s\\Art\\%s.pcx", is->mod_rel_dir, filenames[n]);
 			temp_path[(sizeof temp_path) - 1] = '\0';
 			PCX_Image_read_file (pcx, __, temp_path, NULL, 0, 0x100, 2);
 			if (pcx->JGL.Image == NULL) {
@@ -560,7 +474,7 @@ init_trade_scroll_buttons (DiploForm * diplo_form)
 	char temp_path[2*MAX_PATH];
 	PCX_Image * pcx = new (sizeof *pcx);
 	PCX_Image_construct (pcx);
-	is->snprintf (temp_path, sizeof temp_path, "%s\\Art\\TradeScrollButtons.pcx", is->mod_rel_dir);
+	snprintf (temp_path, sizeof temp_path, "%s\\Art\\TradeScrollButtons.pcx", is->mod_rel_dir);
 	temp_path[(sizeof temp_path) - 1] = '\0';
 	PCX_Image_read_file (pcx, __, temp_path, NULL, 0, 0x100, 2);
 	if (pcx->JGL.Image == NULL) {
@@ -1090,7 +1004,7 @@ check_happiness_at_end_of_turn ()
 			set_popup_int_param (1, num_unhappy_cities - 1);
 		char * key = (num_unhappy_cities > 1) ? "C3X_DISORDER_WARNING_MULTIPLE" : "C3X_DISORDER_WARNING_ONE";
 		char script_file_path[MAX_PATH];
-		is->snprintf (script_file_path, sizeof script_file_path, "%s\\Text\\c3x-script.txt", is->mod_rel_dir);
+		snprintf (script_file_path, sizeof script_file_path, "%s\\Text\\c3x-script.txt", is->mod_rel_dir);
 		script_file_path[(sizeof script_file_path) - 1] = '\0';
 		popup->vtable->set_text_key_and_flags (popup, __, script_file_path, key, -1, 0, 0, 0);
 		int response = show_popup (popup, __, 0, 0);
@@ -1310,7 +1224,7 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 			helpers[count_helpers++] = uti.id;
 	
 	// Sort the list of helpers so that the ones with the fewest remaining movement points are listed first.
-	is->qsort (helpers, count_helpers, sizeof helpers[0], compare_helpers);
+	qsort (helpers, count_helpers, sizeof helpers[0], compare_helpers);
 
 	Unit * next_up = selected_unit;
 	int i_next_helper = 0;
@@ -1445,20 +1359,20 @@ patch_City_Form_draw (City_Form * this)
 		char line1[100]; {
 			if (prod_rate > 0) {
 				if (! building_wealth)
-					is->snprintf (line1, sizeof line1, "%s %d %s", this->Labels.To_Build, turns_left, (turns_left == 1) ? this->Labels.Single_Turn : this->Labels.Multiple_Turns);
+					snprintf (line1, sizeof line1, "%s %d %s", this->Labels.To_Build, turns_left, (turns_left == 1) ? this->Labels.Single_Turn : this->Labels.Multiple_Turns);
 				else
-					is->snprintf (line1, sizeof line1, "%s", is->labels[LAB_NEVER_COMPLETES]);
+					snprintf (line1, sizeof line1, "%s", is->labels[LAB_NEVER_COMPLETES]);
 			} else
-				is->snprintf (line1, sizeof line1, "%s", is->labels[LAB_HALTED]);
+				snprintf (line1, sizeof line1, "%s", is->labels[LAB_HALTED]);
 			line1[(sizeof line1) - 1] = '\0';
 		}
 
 		char line2[100]; {
 			if (! building_wealth) {
 				int percent_complete = order_cost > 0 ? ((10000 * order_progress) / order_cost + 50) / 100 : 100;
-				is->snprintf (line2, sizeof line2, "%d / %d (%d%s)", order_progress, order_cost, percent_complete, this->Labels.Percent);
+				snprintf (line2, sizeof line2, "%d / %d (%d%s)", order_progress, order_cost, percent_complete, this->Labels.Percent);
 			} else
-				is->snprintf (line2, sizeof line2, "---");
+				snprintf (line2, sizeof line2, "---");
 			line2[(sizeof line2) - 1] = '\0';
 		}
 
@@ -1474,12 +1388,12 @@ patch_City_Form_draw (City_Form * this)
 					}
 				}
 				char * s_lab = is->labels[LAB_SURPLUS];
-				if      ((s_per != 0) && (s_rem != 0)) is->snprintf (line3, sizeof line3, "%s: %d + %d %s", s_lab, s_rem, s_per, this->Labels.Per_Turn);
-				else if ((s_per == 0) && (s_rem != 0)) is->snprintf (line3, sizeof line3, "%s: %d",         s_lab, s_rem);
-				else if ((s_per != 0) && (s_rem == 0)) is->snprintf (line3, sizeof line3, "%s: %d %s",      s_lab, s_per, this->Labels.Per_Turn);
-				else                                   is->snprintf (line3, sizeof line3, "%s", is->labels[LAB_SURPLUS_NONE]);
+				if      ((s_per != 0) && (s_rem != 0)) snprintf (line3, sizeof line3, "%s: %d + %d %s", s_lab, s_rem, s_per, this->Labels.Per_Turn);
+				else if ((s_per == 0) && (s_rem != 0)) snprintf (line3, sizeof line3, "%s: %d",         s_lab, s_rem);
+				else if ((s_per != 0) && (s_rem == 0)) snprintf (line3, sizeof line3, "%s: %d %s",      s_lab, s_per, this->Labels.Per_Turn);
+				else                                   snprintf (line3, sizeof line3, "%s", is->labels[LAB_SURPLUS_NONE]);
 			} else
-				is->snprintf (line3, sizeof line3, "%s", is->labels[LAB_SURPLUS_NA]);
+				snprintf (line3, sizeof line3, "%s", is->labels[LAB_SURPLUS_NA]);
 			line3[(sizeof line3) - 1] = '\0';
 		}
 
@@ -1487,9 +1401,9 @@ patch_City_Form_draw (City_Form * this)
 		int left = this->Production_Storage_Indicator.left,
 		    top = this->Production_Storage_Indicator.top,
 		    width = this->Production_Storage_Indicator.right - left;
-		PCX_Image_draw_centered_text (&this->Base.Data.Canvas, __, font, line1, left, top - 42, width, is->strlen (line1));
-		PCX_Image_draw_centered_text (&this->Base.Data.Canvas, __, font, line2, left, top - 28, width, is->strlen (line2));
-		PCX_Image_draw_centered_text (&this->Base.Data.Canvas, __, font, line3, left, top - 14, width, is->strlen (line3));
+		PCX_Image_draw_centered_text (&this->Base.Data.Canvas, __, font, line1, left, top - 42, width, strlen (line1));
+		PCX_Image_draw_centered_text (&this->Base.Data.Canvas, __, font, line2, left, top - 28, width, strlen (line2));
+		PCX_Image_draw_centered_text (&this->Base.Data.Canvas, __, font, line3, left, top - 14, width, strlen (line3));
 	}
 }
 
@@ -2242,7 +2156,7 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 			test_offer->vtable->destruct (test_offer, __, 1);
 		}
 
-		is->snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "%d", best_amount);
+		snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "%d", best_amount);
 		is->ask_gold_default[(sizeof is->ask_gold_default) - 1] = '\0';
 		PopupForm_set_text_key_and_flags (this, __, script_path, text_key, param_3, (int)is->ask_gold_default, param_5, param_6);
 	} else

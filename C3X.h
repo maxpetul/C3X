@@ -217,6 +217,21 @@ struct injected_state {
 	// ==========
 };
 
+enum object_job {
+	OJ_DEFINE = 0,
+	OJ_INLEAD, // Patch this function with an inlead
+	OJ_REPL_VPTR, // Patch this function by replacing a pointer to it. NOTE: The address column is the addr of the VPTR not the function itself.
+	OJ_IGNORE
+};
+
+struct civ_prog_object {
+	enum object_job job;
+	int gog_addr;
+	int steam_addr;
+	char const * name;
+	char const * type;
+};
+
 // Putting code in a header file like an absolute madman
 
 // Writes an integer to a byte buffer. buf need not be aligned but it must have at least four bytes of free space. Written little-endian.

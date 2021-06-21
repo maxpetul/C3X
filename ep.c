@@ -6,7 +6,9 @@
 #include "lend/ld32.c"
 #include "C3X.h"
 
-#include "civ_prog_objects.h"
+// #include "civ_prog_objects.h"
+
+#include "parse.c"
 
 // BOOL WINAPI EnumProcessModulesEx(HANDLE hProcess, HMODULE *lphModule, DWORD cb, LPDWORD lpcbNeeded, DWORD dwFilterFlag);
 
@@ -617,6 +619,36 @@ ENTRY_POINT ()
 	tcc__add_include_path (tcc, combine_strs (mod_full_dir, "\\tcc\\include\\winapi"));
 	tcc__add_library_path (tcc, combine_strs (mod_full_dir, "\\tcc\\lib"));
 
+	// Load civ_prog_objects.csv
+	struct civ_prog_object * civ_prog_objects;
+	int count_civ_prog_objects; {
+		char * const prog_objs_text = file_to_string (mod_full_dir, "civ_prog_objects.csv");
+		int count_lines = 0;
+		for (char * c = prog_objs_text; *c != '\0'; c++)
+			count_lines += (*c == '\n');
+		civ_prog_objects = calloc (count_lines, sizeof *civ_prog_objects);
+		count_civ_prog_objects = 0;
+		char * cursor = prog_objs_text;
+		skip_line (&cursor); // Skip the first line containing column labels
+		while (1) {
+			skip_horiz_space (&cursor);
+			struct civ_prog_object obj;
+			if (*cursor == '\0')
+				break;
+			else if (*cursor  == '\n')
+				cursor++; // Skip empty line
+			else if (parse_civ_prog_object (&cursor, &obj))
+				civ_prog_objects[count_civ_prog_objects++] = obj;
+			else {
+				int count_newlines = 0;
+				for (char * c = prog_objs_text; c < cursor; c++)
+					count_newlines += (*c == '\n');
+				THROW (format ("Line %d in civ_prog_objects.csv is invalid", 1 + count_newlines));
+			}
+		}
+		free (prog_objs_text);
+	}
+
 	// Locate compatible, unmodded executable to work on
 	enum bin_id bin_id;
 	char const * bin_file_name;
@@ -701,7 +733,7 @@ ENTRY_POINT ()
 	civ_exe.coff->Characteristics |= IMAGE_FILE_LARGE_ADDRESS_AWARE;
 #endif
 
-	for (int n = 0; n < ARRAY_LEN (civ_prog_objects); n++) {
+	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
 		if (obj->job == OJ_DEFINE) {
 			char val[1000];
@@ -717,9 +749,10 @@ ENTRY_POINT ()
 #endif
 
 	// Allocate space for inleads
-	int inleads_size = 100 * sizeof (struct inlead);
+	int inleads_capacity = 100,
+	    inleads_size = inleads_capacity * sizeof (struct inlead);
 	struct inlead * inleads = alloc_prog_memory (".c3xinl", NULL, inleads_size, MAA_READ_WRITE_EXECUTE);
-	struct inlead * next_free_inlead = inleads;
+	int i_next_free_inlead = 0;
 
 	// Create injected state
 	struct injected_state * injected_state = alloc_prog_memory (".c3xdat", NULL, sizeof (struct injected_state), MAA_READ_WRITE);
@@ -780,12 +813,13 @@ ENTRY_POINT ()
 	}
 	
 	// Pass through prog objects before compiling to set things up for compilation
-	for (int n = 0; n < ARRAY_LEN (civ_prog_objects); n++) {
+	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
 
 		// Initialize inlead
 		if (obj->job == OJ_INLEAD) {
-			struct inlead * inlead = next_free_inlead++;
+			ASSERT (i_next_free_inlead < inleads_capacity);
+			struct inlead * inlead = &inleads[i_next_free_inlead++];
 			int func_addr = (bin == &gog_binary) ? obj->gog_addr : obj->steam_addr;
 			ASSERT (func_addr != 0);
 			init_inlead (inlead, func_addr);
@@ -815,19 +849,21 @@ ENTRY_POINT ()
 #endif
 	
 	// Pass through prog objects after compiling to redirect control flow to patches
-	for (int n = 0; n < ARRAY_LEN (civ_prog_objects); n++) {
+	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
-		int func_addr = (bin == &gog_binary) ? obj->gog_addr : obj->steam_addr;
-		ASSERT (func_addr != 0);
-		char * sym = temp_format ("patch_%s", obj->name);
+		if (obj->job != OJ_IGNORE) {
+			int func_addr = (bin == &gog_binary) ? obj->gog_addr : obj->steam_addr;
+			ASSERT (func_addr != 0);
+			char * sym = temp_format ("patch_%s", obj->name);
 
-		// Write trampoline to redirect calls to original function to patched version
-		if (obj->job == OJ_INLEAD) {
-			put_trampoline ((void *)func_addr, tcc__get_symbol (tcc, sym));
+			// Write trampoline to redirect calls to original function to patched version
+			if (obj->job == OJ_INLEAD) {
+				put_trampoline ((void *)func_addr, tcc__get_symbol (tcc, sym));
 
-		// Replace vptr
-		} else if (obj->job == OJ_REPL_VPTR) {
-			write_prog_int ((void *)func_addr, (int)tcc__get_symbol (tcc, sym));
+			// Replace vptr
+			} else if (obj->job == OJ_REPL_VPTR) {
+				write_prog_int ((void *)func_addr, (int)tcc__get_symbol (tcc, sym));
+			}
 		}
 	}
 
