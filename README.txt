@@ -22,8 +22,8 @@ Bugs fixed:
   - AI pathfinding collides with invisible units (called the "submarine bug")
   - Science age beakers not actually awarded
   - Pink line in Civilopedia
-  - Fix for immobile unit disembark crash
-  - Fix for for houseboat bug
+  - Crash when doing disembark-all on transport containing immobile unit(s)
+  - Crash possible when AI civ is left alive with only a settler on a transport (called the "houseboat bug")
 Option to prevent autoraze and razing by AIs
 Stealth attack activates even when there's only one target
 Skip repeated popups asking to replace a tile improvement
