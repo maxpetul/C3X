@@ -8,7 +8,7 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
-#define MOD_VERSION 600
+#define MOD_VERSION 700
 
 struct c3x_config {
 	char enable_stack_bombard;

@@ -1,6 +1,7 @@
 * RELEASE 7
-- TODO
-  - Add option to prevent city founding next to a city owned by another civ even when normal min separation is removed
+- Buttons on trade screen to quickly switch between civs
+- Ask/offer gold popup autofills best amount
+- Adjustable minimum city distance
 
 * RELEASE 6
 - Add option to increase AI artillery and bomber production
