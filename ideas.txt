@@ -53,4 +53,14 @@ Ideas:
 - [from Nanuk] Enable city view button in scenarios
 - [from Romulo Prado] AI bombers should target barricades, particularly ones placed along its border
 - [from ynot56] Automatically reduce science spending as much as possible when one turn is left on research
-- [from vxma] Disable worker automation
+- [from vxma]
+  - Disable worker automation
+  - AI's settler+escort combos don't do a good job of keeping out of danger
+  - AI removes units from a city under threat even when the city doesn't have adequate defense
+- [from Takeo] Make spawn frequency of military & scientific leaders and frequency of unit promotions adjustable
+- [from haluu]
+  - "AI ability to try to detect and attack invisible units that are pillaging improvements (if it has detector units)"
+  - "AI ability to strategically attack undamaged army units"
+  - Enable AI to use join city function on modded units that can't perform any other function
+  - "A fix for Trade route calculations (e.g. Harbors) slowing down the game and causing lag in between turns"
+- [from Barret] Change the "OFF" corruption setting for governments to really have zero corruption
