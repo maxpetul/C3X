@@ -64,3 +64,10 @@ Ideas:
   - Enable AI to use join city function on modded units that can't perform any other function
   - "A fix for Trade route calculations (e.g. Harbors) slowing down the game and causing lag in between turns"
 - [from Barret] Change the "OFF" corruption setting for governments to really have zero corruption
+- [from Predator145]
+  - Improve AI usage of cruise & tactical missiles
+  - Enable AI to bring artillery & missiles along for naval invasions
+  - Improve AI's usage of airlift, or enable it do so if it can't
+  - Improve AI's building of fortresses & radar towers, enable it to build airfields
+- [from register] More culture groups
+- [from Civinator] Add way to easily view technologies available to trade; add way to view turns of golden age left. Both features from CivAssist II
