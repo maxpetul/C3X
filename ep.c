@@ -772,6 +772,7 @@ ENTRY_POINT ()
 		.adjust_minimum_city_separation = 0,
 		.disallow_founding_next_to_foreign_city = 1,
 		.enable_trade_screen_scroll = 1,
+		.group_units_on_right_click_menu = 1,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,
@@ -798,7 +799,7 @@ ENTRY_POINT ()
 	// Allocate pages for C code injection. This is a set of pages that is located at the same location in this process'
 	// memory as in the Civ process' memory so that we can use our memory as a relocation target for TCC then copy the
 	// machine code into the Civ process and have it work.
-	int inject_size = 0xA000;
+	int inject_size = 0xB000;
 	byte * civ_inject_mem, * our_inject_mem; {
 #ifdef C3X_RUN
 		civ_inject_mem = alloc_prog_memory (".c3xtxt", (void *)0x22220000, inject_size, MAA_READ_WRITE_EXECUTE);
