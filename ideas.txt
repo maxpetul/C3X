@@ -71,3 +71,8 @@ Ideas:
   - Improve AI's building of fortresses & radar towers, enable it to build airfields
 - [from register] More culture groups
 - [from Civinator] Add way to easily view technologies available to trade; add way to view turns of golden age left. Both features from CivAssist II
+- [from Romulo Prado] Show tile coords on the right click terrain info popup
+- [from ynot56]
+  - Make pollution rate adjustable
+  - Add terraforming (example, in Civ 2 it's possible to turn mountains into hills and tundra into plains)
+  - Add button to reassign all citizens in all cities b/c citizens get unassigned from tiles by pollution and sometimes are needlessly assigned as entertainers
