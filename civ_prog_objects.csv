@@ -122,3 +122,6 @@ ignore,    0x558F70,	0x0,		"Leader_is_enemy_unit",				"char (__fastcall *) (Lead
 ignore,    0x4ED220,	0x0,		"Main_Screen_Form_show_map_message",		"void (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, int param_4)"
 ignore,	   0x4BFD40,	0x0,		"City_get_turns_to_build",			"int (__fastcall *) (City * this, int edx, int order_type, int order_id, char param_3)"
 ignore,    0x4BFF80,	0x0,		"City_can_build_improvement",			"char (__fastcall *) (City * this, int edx, int i_improv, char param_2)"
+
+inlead,	   0x45C750,	0x0,		"Unit_ai_move_terraformer",			"void (__fastcall *) (Unit * this)"
+define,	   0x4B1DC0,	0x0,		"City_requires_improvement_to_grow",		"int (__fastcall *) (City * this)"

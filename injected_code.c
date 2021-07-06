@@ -1611,6 +1611,22 @@ base_impl:
 	Unit_ai_move_artillery (this);
 }
 
+// Estimates the number of turns necessary to move the given unit to the given tile and writes it to *out_num_turns. Returns 0 if there is no path
+// from the unit's current position to the given tile, 1 otherwise.
+int
+estimate_travel_time (Unit * unit, int to_tile_x, int to_tile_y, int * out_num_turns)
+{
+	int dist_in_mp;
+	Trade_Net_set_unit_path (p_trade_net, __, unit->Body.X, unit->Body.Y, to_tile_x, to_tile_y, unit, unit->Body.CivID, 1, &dist_in_mp);
+	dist_in_mp += unit->Body.Moves; // Add MP already spent this turn to the distance
+	int max_mp = Unit_get_max_move_points (unit);
+	if ((dist_in_mp >= 0) && (max_mp > 0)) {
+		*out_num_turns = dist_in_mp / max_mp;
+		return 1;
+	} else
+		return 0; // No path or unit cannot move
+}
+
 void __fastcall
 patch_Unit_ai_move_leader (Unit * this)
 {
@@ -1699,18 +1715,9 @@ patch_Unit_ai_move_leader (Unit * this)
 						continue;
 
 					// Consider distance: Reduce the value by the number of shields produced while the leader is en route to rush.
-					// This isn't an exact measure b/c the unit can spend more than its max MP per turn but it should be a close
-					// estimate.
-					int dist_in_turns; {
-						int dist_in_mp;
-						Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, city->Body.X, city->Body.Y, this, this->Body.CivID, 1, &dist_in_mp);
-						dist_in_mp += this->Body.Moves; // Add MP already spent this turn to the distance
-						int max_mp = Unit_get_max_move_points (this);
-						if ((dist_in_mp >= 0) && (max_mp > 0))
-							dist_in_turns = dist_in_mp / max_mp;
-						else
-							continue; // No path or unit cannot move
-					}
+					int dist_in_turns;
+					if (! estimate_travel_time (this, city->Body.X, city->Body.Y, &dist_in_turns))
+						continue; // no path or unit cannot move
 					value -= dist_in_turns * city->Body.ProductionIncome;
 					if (value <= 0)
 						continue;
@@ -2227,6 +2234,83 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 
 	} else
 		return base_result;
+}
+
+void __fastcall
+patch_Unit_ai_move_terraformer (Unit * this)
+{
+	int type_id = this->Body.UnitTypeID;
+	Tile * tile = tile_at (this->Body.X, this->Body.Y);
+	UnitType * type = &p_bic_data->UnitTypes[type_id];
+	if ((type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
+	    (tile != NULL) && (tile != p_null_tile) &&
+	    (type->PopulationCost > 0) &&
+	    (type->Worker_Actions == UCV_Join_City)) {
+
+		int continent_id = tile->vtable->m46_Get_ContinentID (tile);
+
+		// This part of the code follows how the replacement leader AI works. Basically it disbands the unit if it's on a continent with no
+		// friendly cities, then flees if it's in danger, then moves it along a set path if it has one.
+		if (leaders[this->Body.CivID].ContinentStat1[continent_id] == 0) {
+			Unit_disband (this);
+			return;
+		}
+		if (any_enemies_near_unit (this, 49)) {
+			Unit_set_state (this, __, UnitState_Fleeing);
+			byte done = this->vtable->work (this);
+			if (done || (this->Body.UnitState != 0))
+				return;
+		}
+		byte next_move = Unit_pop_next_move_from_path (this);
+		if (next_move > 0) {
+			this->vtable->Move (this, __, next_move, 0);
+			return;
+		}
+
+		// Find the best city to join
+		City * best_join_loc = NULL;
+		int best_join_value = -1;
+		if (p_cities->Cities != NULL)
+			for (int n = 0; n <= p_cities->LastIndex; n++) {
+				City * city = get_city_ptr (n);
+				if ((city != NULL) && (city->Body.CivID == this->Body.CivID)) {
+					Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
+					if (continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) {
+
+						// Skip this city if it can't support another citizen
+						if ((city->Body.FoodIncome <= 0) ||
+						    (City_requires_improvement_to_grow (city) > -1))
+							continue;
+
+						int value = 100;
+
+						// Consider distance.
+						int dist_in_turns;
+						if (! estimate_travel_time (this, city->Body.X, city->Body.Y, &dist_in_turns))
+							continue; // No path or unit cannot move
+						value = (value * 10) / (10 + dist_in_turns);
+
+						// Scale value by city corruption rate.
+						int good_shields    = city->Body.ProductionIncome,
+						    corrupt_shields = city->Body.ProductionLoss;
+						if (good_shields + corruption_shields > 0)
+							value = (value * good_shields) / (good_shields + corrupt_shields);
+						else
+							continue;
+
+						if (value > best_join_value) {
+							best_join_loc = city;
+							best_join_value = value;
+						}
+					}
+				}
+			}
+
+		osnfesno // continue here. Actually move the unit to the best city.
+
+	}
+
+	Unit_ai_move_terraformer (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
