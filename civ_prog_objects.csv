@@ -125,3 +125,5 @@ ignore,    0x4BFF80,	0x0,		"City_can_build_improvement",			"char (__fastcall *) 
 
 inlead,	   0x45C750,	0x0,		"Unit_ai_move_terraformer",			"void (__fastcall *) (Unit * this)"
 define,	   0x4B1DC0,	0x0,		"City_requires_improvement_to_grow",		"int (__fastcall *) (City * this)"
+define,	   0x5C1AD0,	0x0,		"Unit_can_perform_command",			"byte (__fastcall *) (Unit * this, int edx, int unit_command_value)"
+define,	   0x5B39D0,	0x0,		"Unit_join_city",				"void (__fastcall *) (Unit * this, int edx, City * city)"

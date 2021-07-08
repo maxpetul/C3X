@@ -1627,6 +1627,35 @@ estimate_travel_time (Unit * unit, int to_tile_x, int to_tile_y, int * out_num_t
 		return 0; // No path or unit cannot move
 }
 
+City *
+find_nearest_established_city (Unit * unit, int continent_id)
+{
+	int lowest_unattractiveness = INT_MAX;
+	City * least_unattractive_city = NULL;
+	if (p_cities->Cities != NULL)
+		for (int n = 0; n <= p_cities->LastIndex; n++) {
+			City * city = get_city_ptr (n);
+			if ((city != NULL) && (city->Body.CivID == unit->Body.CivID)) {
+				Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
+				if (continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) {
+					// TODO: Technically this distance calculation should account for edge wrapping
+					int dist_in_turns;
+					if (! estimate_travel_time (unit, city->Body.X, city->Body.Y, &dist_in_turns))
+						continue;
+					int unattractiveness = 10 * dist_in_turns;
+					unattractiveness = (10 + unattractiveness) / (10 + city->Body.Population.Size);
+					if (city->Body.CultureIncome > 0)
+						unattractiveness /= 5;
+					if (unattractiveness < lowest_unattractiveness) {
+						lowest_unattractiveness = unattractiveness;
+						least_unattractive_city = city;
+					}
+				}
+			}
+		}
+	return least_unattractive_city;
+}
+
 void __fastcall
 patch_Unit_ai_move_leader (Unit * this)
 {
@@ -1759,25 +1788,7 @@ patch_Unit_ai_move_leader (Unit * this)
 		return;
 	} else if (in_city == NULL) {
 		// Nothing to do. Try to find a close, established city to move to & wait in.
-		int lowest_unattractiveness = INT_MAX;
-		if ((in_city == NULL) && (p_cities->Cities != NULL))
-			for (int n = 0; n <= p_cities->LastIndex; n++) {
-				City * city = get_city_ptr (n);
-				if ((city != NULL) && (city->Body.CivID == this->Body.CivID)) {
-					Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
-					if (continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) {
-						// TODO: Technically this distance calculation should account for edge wrapping
-						int unattractiveness = 10 * (int_abs (this->Body.X - city->Body.X) + int_abs (this->Body.Y - city->Body.Y));
-						unattractiveness = (10 + unattractiveness) / (10 + city->Body.Population.Size);
-						if (city->Body.CultureIncome > 0)
-							unattractiveness /= 5;
-						if (unattractiveness < lowest_unattractiveness) {
-							lowest_unattractiveness = unattractiveness;
-							moving_to_city = city;
-						}
-					}
-				}
-			}
+		moving_to_city = find_nearest_established_city (this, continent_id);
 	}
 	if (moving_to_city) {
 		int first_move = Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
@@ -2293,7 +2304,7 @@ patch_Unit_ai_move_terraformer (Unit * this)
 						// Scale value by city corruption rate.
 						int good_shields    = city->Body.ProductionIncome,
 						    corrupt_shields = city->Body.ProductionLoss;
-						if (good_shields + corruption_shields > 0)
+						if (good_shields + corrupt_shields > 0)
 							value = (value * good_shields) / (good_shields + corrupt_shields);
 						else
 							continue;
@@ -2306,8 +2317,33 @@ patch_Unit_ai_move_terraformer (Unit * this)
 				}
 			}
 
-		osnfesno // continue here. Actually move the unit to the best city.
+		// Join city if we're already in the city we want to join, otherwise move to that city. If we couldn't find a city to join, go to the
+		// nearest established city and wait.
+		City * in_city = get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
+		City * moving_to_city = NULL;
+		if (best_join_loc != NULL) {
+			if ((best_join_loc == in_city) &&
+			    Unit_can_perform_command (this, __, UCV_Join_City)) {
+				Unit_join_city (this, __, in_city);
+				return;
+			} else
+				moving_to_city = best_join_loc;
+		} else if (in_city == NULL)
+			moving_to_city = find_nearest_established_city (this, continent_id);
 
+		if (moving_to_city) {
+			int first_move = Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
+			if (first_move > 0) {
+				Unit_set_escortee (this, __, -1);
+				this->vtable->Move (this, __, first_move, 0);
+				return;
+			}
+		}
+
+		// Nothing to do, nowhere to go, just fortify in place.
+		Unit_set_escortee (this, __, -1);
+		Unit_set_state (this, __, UnitState_Fortifying);
+		return;
 	}
 
 	Unit_ai_move_terraformer (this);
