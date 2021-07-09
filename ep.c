@@ -795,23 +795,6 @@ ENTRY_POINT ()
 	write_prog_memory (&injected_state->base_config, (byte const *)&base_config, sizeof base_config);
 	tcc_define_pointer (tcc, "ADDR_INJECTED_STATE", injected_state);
 	
-	// Allocate pages for C code injection. This is a set of pages that is located at the same location in this process'
-	// memory as in the Civ process' memory so that we can use our memory as a relocation target for TCC then copy the
-	// machine code into the Civ process and have it work.
-	int inject_size = 0xA000;
-	byte * civ_inject_mem, * our_inject_mem; {
-#ifdef C3X_RUN
-		civ_inject_mem = alloc_prog_memory (".c3xtxt", (void *)0x22220000, inject_size, MAA_READ_WRITE_EXECUTE);
-		our_inject_mem = VirtualAlloc (civ_inject_mem, inject_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-		ASSERT (our_inject_mem == civ_inject_mem);
-#else
-		civ_inject_mem = alloc_prog_memory (".c3xtxt", NULL, inject_size, MAA_READ_WRITE_EXECUTE);
-		REQUIRE (((int)civ_inject_mem >= (int)low_addr_buf) && ((int)civ_inject_mem + inject_size < (int)low_addr_buf + sizeof low_addr_buf),
-			 "Code inject area does not fit in low_addr_buf.");
-		our_inject_mem = civ_inject_mem;
-#endif
-	}
-	
 	// Pass through prog objects before compiling to set things up for compilation
 	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
@@ -832,16 +815,39 @@ ENTRY_POINT ()
 		}
 	}
 
-	// Compile C code to inject then copy it into the Civ process
+	// Compile C code to inject
 	{
 		char * source = file_to_string (mod_full_dir, "injected_code.c");
 		success = tcc__compile_string (tcc, source);
 		ASSERT (success != -1);
-		success = tcc__relocate (tcc, our_inject_mem);
-		ASSERT (success != -1);
-		write_prog_memory (civ_inject_mem, our_inject_mem, inject_size);
 		free (source);
 	}
+
+	// Allocate pages for C code injection. This is a set of pages that is located at the same location in this process'
+	// memory as in the Civ process' memory so that we can use our memory as a relocation target for TCC then copy the
+	// machine code into the Civ process and have it work.
+	int inject_size; {
+		int min_size = tcc__relocate (tcc, NULL);
+		ASSERT (min_size >= 0);
+		inject_size = align_pow2 (0x1000, min_size);
+	}
+	byte * civ_inject_mem, * our_inject_mem; {
+#ifdef C3X_RUN
+		civ_inject_mem = alloc_prog_memory (".c3xtxt", (void *)0x22220000, inject_size, MAA_READ_WRITE_EXECUTE);
+		our_inject_mem = VirtualAlloc (civ_inject_mem, inject_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+		ASSERT (our_inject_mem == civ_inject_mem);
+#else
+		civ_inject_mem = alloc_prog_memory (".c3xtxt", NULL, inject_size, MAA_READ_WRITE_EXECUTE);
+		REQUIRE (((int)civ_inject_mem >= (int)low_addr_buf) && ((int)civ_inject_mem + inject_size < (int)low_addr_buf + sizeof low_addr_buf),
+			 "Code inject area does not fit in low_addr_buf.");
+		our_inject_mem = civ_inject_mem;
+#endif
+	}
+
+	// Finish compilation then copy over the compiled code.
+	success = tcc__relocate (tcc, our_inject_mem);
+	ASSERT (success != -1);
+	write_prog_memory (civ_inject_mem, our_inject_mem, inject_size);
 
 	// List symbol locations for debugging
 #if 0
