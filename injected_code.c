@@ -2247,6 +2247,100 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 		return base_result;
 }
 
+void
+ai_move_pop_unit (Unit * this)
+{
+	int type_id = this->Body.UnitTypeID;
+	Tile * tile = tile_at (this->Body.X, this->Body.Y);
+	UnitType * type = &p_bic_data->UnitTypes[type_id];
+
+	int continent_id = tile->vtable->m46_Get_ContinentID (tile);
+
+	// This part of the code follows how the replacement leader AI works. Basically it disbands the unit if it's on a continent with no
+	// friendly cities, then flees if it's in danger, then moves it along a set path if it has one.
+	if (leaders[this->Body.CivID].ContinentStat1[continent_id] == 0) {
+		Unit_disband (this);
+		return;
+	}
+	if (any_enemies_near_unit (this, 49)) {
+		Unit_set_state (this, __, UnitState_Fleeing);
+		byte done = this->vtable->work (this);
+		if (done || (this->Body.UnitState != 0))
+			return;
+	}
+	byte next_move = Unit_pop_next_move_from_path (this);
+	if (next_move > 0) {
+		this->vtable->Move (this, __, next_move, 0);
+		return;
+	}
+
+	// Find the best city to join
+	City * best_join_loc = NULL;
+	int best_join_value = -1;
+	if (p_cities->Cities != NULL)
+		for (int n = 0; n <= p_cities->LastIndex; n++) {
+			City * city = get_city_ptr (n);
+			if ((city != NULL) && (city->Body.CivID == this->Body.CivID)) {
+				Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
+				if (continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) {
+
+					// Skip this city if it can't support another citizen
+					if ((city->Body.FoodIncome <= 0) ||
+					    (City_requires_improvement_to_grow (city) > -1))
+						continue;
+
+					int value = 100;
+
+					// Consider distance.
+					int dist_in_turns;
+					if (! estimate_travel_time (this, city->Body.X, city->Body.Y, &dist_in_turns))
+						continue; // No path or unit cannot move
+					value = (value * 10) / (10 + dist_in_turns);
+
+					// Scale value by city corruption rate.
+					int good_shields    = city->Body.ProductionIncome,
+						corrupt_shields = city->Body.ProductionLoss;
+					if (good_shields + corrupt_shields > 0)
+						value = (value * good_shields) / (good_shields + corrupt_shields);
+					else
+						continue;
+
+					if (value > best_join_value) {
+						best_join_loc = city;
+						best_join_value = value;
+					}
+				}
+			}
+		}
+
+	// Join city if we're already in the city we want to join, otherwise move to that city. If we couldn't find a city to join, go to the
+	// nearest established city and wait.
+	City * in_city = get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
+	City * moving_to_city = NULL;
+	if (best_join_loc != NULL) {
+		if ((best_join_loc == in_city) &&
+		    Unit_can_perform_command (this, __, UCV_Join_City)) {
+			Unit_join_city (this, __, in_city);
+			return;
+		} else
+			moving_to_city = best_join_loc;
+	} else if (in_city == NULL)
+		moving_to_city = find_nearest_established_city (this, continent_id);
+
+	if (moving_to_city) {
+		int first_move = Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
+		if (first_move > 0) {
+			Unit_set_escortee (this, __, -1);
+			this->vtable->Move (this, __, first_move, 0);
+			return;
+		}
+	}
+
+	// Nothing to do, nowhere to go, just fortify in place.
+	Unit_set_escortee (this, __, -1);
+	Unit_set_state (this, __, UnitState_Fortifying);
+}
+
 void __fastcall
 patch_Unit_ai_move_terraformer (Unit * this)
 {
@@ -2258,6 +2352,10 @@ patch_Unit_ai_move_terraformer (Unit * this)
 	    (type->PopulationCost > 0) &&
 	    (type->Worker_Actions == UCV_Join_City)) {
 
+		ai_move_pop_unit (this);
+		return;
+
+		/*
 		int continent_id = tile->vtable->m46_Get_ContinentID (tile);
 
 		// This part of the code follows how the replacement leader AI works. Basically it disbands the unit if it's on a continent with no
@@ -2344,9 +2442,33 @@ patch_Unit_ai_move_terraformer (Unit * this)
 		Unit_set_escortee (this, __, -1);
 		Unit_set_state (this, __, UnitState_Fortifying);
 		return;
+		*/
 	}
 
 	Unit_ai_move_terraformer (this);
+}
+
+void __fastcall
+patch_ai_move_defensive_unit (Unit * this)
+{
+	int type_id = this->Body.UnitTypeID;
+	Tile * tile = tile_at (this->Body.X, this->Body.Y);
+	UnitType * type = &p_bic_data->UnitTypes[type_id];
+	if ((type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
+	    (tile != NULL) && (tile != p_null_tile) &&
+	    (type->Defence == 0) &&
+	    (type->PopulationCost > 0) &&
+	    (type->Worker_Actions == UCV_Join_City)) {
+		Main_Screen_Form_show_map_message (p_main_screen_form, __, this->Body.X, this->Body.Y, "C3X_SHOW_POP_UNIT", 1);
+		Unit_set_escortee (this, __, -1);
+		Unit_set_state (this, __, UnitState_Fortifying);
+		return;
+		/*
+		ai_move_pop_unit (this);
+		return;
+		*/
+	}
+	ai_move_defensive_unit (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
