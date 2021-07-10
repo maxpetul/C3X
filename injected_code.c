@@ -2454,19 +2454,15 @@ patch_ai_move_defensive_unit (Unit * this)
 	int type_id = this->Body.UnitTypeID;
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
 	UnitType * type = &p_bic_data->UnitTypes[type_id];
+	int join_city_action = UCV_Join_City & 0x0FFFFFFF; // To get the join city action code, use the command value and mask out the top 4 category bits
 	if ((type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
 	    (tile != NULL) && (tile != p_null_tile) &&
 	    (type->Defence == 0) &&
 	    (type->PopulationCost > 0) &&
-	    (type->Worker_Actions == UCV_Join_City)) {
+	    (type->Worker_Actions == join_city_action)) {
 		Main_Screen_Form_show_map_message (p_main_screen_form, __, this->Body.X, this->Body.Y, "C3X_SHOW_POP_UNIT", 1);
-		Unit_set_escortee (this, __, -1);
-		Unit_set_state (this, __, UnitState_Fortifying);
-		return;
-		/*
 		ai_move_pop_unit (this);
 		return;
-		*/
 	}
 	ai_move_defensive_unit (this);
 }
