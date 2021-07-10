@@ -123,8 +123,8 @@ define,    0x4ED220,	0x0,		"Main_Screen_Form_show_map_message",		"void (__fastca
 ignore,	   0x4BFD40,	0x0,		"City_get_turns_to_build",			"int (__fastcall *) (City * this, int edx, int order_type, int order_id, char param_3)"
 ignore,    0x4BFF80,	0x0,		"City_can_build_improvement",			"char (__fastcall *) (City * this, int edx, int i_improv, char param_2)"
 
-inlead,	   0x45C750,	0x0,		"Unit_ai_move_terraformer",			"void (__fastcall *) (Unit * this)"
-define,	   0x4B1DC0,	0x0,		"City_requires_improvement_to_grow",		"int (__fastcall *) (City * this)"
-define,	   0x5C1AD0,	0x0,		"Unit_can_perform_command",			"byte (__fastcall *) (Unit * this, int edx, int unit_command_value)"
-define,	   0x5B39D0,	0x0,		"Unit_join_city",				"void (__fastcall *) (Unit * this, int edx, City * city)"
-inlead,	   0x452510,	0x0,		"ai_move_defensive_unit",			"void (__fastcall *) (Unit * this)"
+inlead,	   0x45C750,	0x45EA70,	"Unit_ai_move_terraformer",			"void (__fastcall *) (Unit * this)"
+define,	   0x4B1DC0,	0x4B8D50,	"City_requires_improvement_to_grow",		"int (__fastcall *) (City * this)"
+define,	   0x5C1AD0,	0x5D0670,	"Unit_can_perform_command",			"byte (__fastcall *) (Unit * this, int edx, int unit_command_value)"
+define,	   0x5B39D0,	0x5C2320,	"Unit_join_city",				"void (__fastcall *) (Unit * this, int edx, City * city)"
+inlead,	   0x452510,	0x454600,	"ai_move_defensive_unit",			"void (__fastcall *) (Unit * this)"
