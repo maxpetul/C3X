@@ -780,6 +780,7 @@ ENTRY_POINT ()
 		.ai_build_bomber_ratio = 70,
 		.replace_leader_unit_ai = 1,
 		.fix_ai_army_composition = 1,
+		.enable_pop_unit_ai = 1,
 
 		.remove_unit_limit = 1,
 		.remove_era_limit = 0,
@@ -795,7 +796,7 @@ ENTRY_POINT ()
 	};
 	write_prog_memory (&injected_state->base_config, (byte const *)&base_config, sizeof base_config);
 	tcc_define_pointer (tcc, "ADDR_INJECTED_STATE", injected_state);
-	
+
 	// Pass through prog objects before compiling to set things up for compilation
 	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
