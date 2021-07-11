@@ -2550,7 +2550,6 @@ patch_ai_move_defensive_unit (Unit * this)
 	    (type->Defence == 0) &&
 	    (type->PopulationCost > 0) &&
 	    (type->Worker_Actions == join_city_action)) {
-		Main_Screen_Form_show_map_message (p_main_screen_form, __, this->Body.X, this->Body.Y, "C3X_SHOW_POP_UNIT", 1);
 		ai_move_pop_unit (this);
 		return;
 	}
