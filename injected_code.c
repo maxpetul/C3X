@@ -155,6 +155,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->disallow_founding_next_to_foreign_city = ival != 0;
 				else if ((0 == strncmp (key, "enable_trade_screen_scroll", key_len)) && read_int (value, value_len, &ival))
 					cfg->enable_trade_screen_scroll = ival != 0;
+				else if ((0 == strncmp (key, "group_units_on_right_click_menu", key_len)) && read_int (value, value_len, &ival))
+					cfg->group_units_on_right_click_menu = ival != 0;
 
 				else if ((0 == strncmp (key, "use_offensive_artillery_ai", key_len)) && read_int (value, value_len, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -418,6 +420,15 @@ patch_init_floating_point ()
 	memmove (is->houseboat_patch_area_original_contents,
 		 ADDR_HOUSEBOAT_BUG_PATCH,
 		 ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH);
+
+	is->units_to_list = NULL;
+	is->count_units_to_list = 0;
+	is->units_to_list_capacity = 0;
+
+	is->cm_temp_items = NULL;
+	is->cm_temp_items_capacity = 0;
+
+	is->unit_menu_duplicates = NULL;
 
 	memmove (&is->current_config, &is->base_config, sizeof is->current_config);
 	load_config ("default.c3x_config.ini", &is->current_config);
@@ -2227,6 +2238,88 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 
 	} else
 		return base_result;
+}
+
+int __fastcall
+patch_Context_Menu_add_item_and_set_field_18 (Context_Menu * this, int edx, int item_id, char * text, int field_18)
+{
+	// Initialize the array of duplicate counts. The array is 0x100 items long because that's the maximum number of items a menu can have.
+	if (is->current_config.group_units_on_right_click_menu &&
+	    (is->unit_menu_duplicates == NULL)) {
+		unsigned dups_size = 0x100 * sizeof is->unit_menu_duplicates[0];
+		is->unit_menu_duplicates = malloc (dups_size);
+		memset (is->unit_menu_duplicates, 0, dups_size);
+	}
+
+	// Check if this menu item is a valid unit and grab pointers to its info
+	int unit_id;
+	Unit_Body * unit_body;
+	if (is->current_config.group_units_on_right_click_menu &&
+	    (0 <= (unit_id = item_id - (0x13 + p_bic_data->UnitTypeCount))) &&
+	    (NULL != (unit_body = p_units->Units[unit_id].Unit)) &&
+	    (unit_body->UnitTypeID >= 0) && (unit_body->UnitTypeID < p_bic_data->UnitTypeCount)) {
+		UnitType * unit_type = &p_bic_data->UnitTypes[unit_body->UnitTypeID];
+
+		// Don't group transports because they might be carrying units. It would be nice to group up empty transports but this is good enough
+		// for now.
+		if (unit_type->Transport_Capacity == 0) {
+
+			// Loop over all existing menu items and check if any of them is a unit that's a duplicate of the one being added
+			for (int n = 0; n < this->Item_Count; n++) {
+				Context_Menu_Item * item = &this->Items[n];
+				int dup_unit_id = this->Items[n].Menu_Item_ID - (0x13 + p_bic_data->UnitTypeCount);
+				Unit_Body * dup_body;
+				if ((dup_unit_id >= 0) &&
+				    (NULL != (dup_body = p_units->Units[dup_unit_id].Unit)) &&
+				    (unit_body->UnitTypeID == dup_body->UnitTypeID) &&
+				    (unit_body->Damage == dup_body->Damage) &&
+				    (unit_body->Moves == dup_body->Moves) &&
+				    (unit_body->Status == dup_body->Status) &&
+				    (unit_body->UnitState == dup_body->UnitState) &&
+				    (unit_body->Combat_Experience == dup_body->Combat_Experience) &&
+				    (((unit_body->Container_Unit < 0) && (dup_body->Container_Unit < 0)) ||
+				     (unit_body->Container_Unit == dup_body->Container_Unit))) {
+					// The new item is a duplicate of the nth. Mark that in the duplicate counts array and return without actually
+					// adding the item. It doesn't matter what value we return because the caller doesn't use it.
+					is->unit_menu_duplicates[n] += 1;
+					return 0;
+				}
+			}
+		}
+	}
+
+	return Context_Menu_add_item_and_set_field_18 (this, __, item_id, text, field_18);
+}
+
+int __fastcall
+patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3)
+{
+	int * p_stack = (int *)&x;
+	int ret_addr = p_stack[-1];
+
+	if (is->current_config.group_units_on_right_click_menu &&
+	    (ret_addr == ADDR_OPEN_UNIT_MENU_RETURN)) {
+
+		// Change the menu text to include the duplicate counts. This is pretty straight forward except for a couple little issues: we must
+		// use the game's internal malloc & free for compatibility with the base code and must call a function that widens the menu form,
+		// as necessary, to accommodate the longer strings.
+		for (int n = 0; n < this->Item_Count; n++)
+			if (is->unit_menu_duplicates[n] > 0) {
+				Context_Menu_Item * item = &this->Items[n];
+				unsigned new_text_len = strlen (item->Text) + 10;
+				char * new_text = civ_prog_malloc (new_text_len);
+				snprintf (new_text, new_text_len, "%dx %s", is->unit_menu_duplicates[n] + 1, item->Text);
+				new_text[new_text_len - 1] = '\0';
+				civ_prog_free (item->Text);
+				item->Text = new_text;
+				Context_Menu_widen_for_text (this, __, new_text);
+			}
+
+		// Clear the duplicate counts
+		memset (is->unit_menu_duplicates, 0, 0x100 * sizeof is->unit_menu_duplicates[0]);
+	}
+
+	return Context_Menu_open (this, __, x, y, param_3);
 }
 
 // TCC requires a main function be defined even though it's never used.

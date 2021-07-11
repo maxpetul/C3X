@@ -772,6 +772,7 @@ ENTRY_POINT ()
 		.adjust_minimum_city_separation = 0,
 		.disallow_founding_next_to_foreign_city = 1,
 		.enable_trade_screen_scroll = 1,
+		.group_units_on_right_click_menu = 1,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,

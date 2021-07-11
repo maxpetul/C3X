@@ -115,10 +115,22 @@ define,    0x609F50,	0x623C40,	"Button_construct",				"Button * (__fastcall *) (
 define,    0x60B050,	0x625450,	"Button_initialize",				"int (__fastcall *) (Button * this, int edx, char * param_1, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)"
 define,    0x5161C0,	0x51F9B0,	"DiploForm_set_their_message",			"int (__fastcall *) (DiploForm * this, int edx, DiploMessage msg, int message_arg, int param_3)"
 define,    0x516260,	0x51FA50,	"DiploForm_reset_our_message_choices",		"void (__fastcall *) (DiploForm *)"
-ignore,	   0x4507B0,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
+
+inlead,	   0x61A480,	0x63B9F0,	"Context_Menu_open",				"int (__fastcall *) (Context_Menu * this, int edx, int x, int y, int param_3)"
+define,	   0x4E993C,	0x4F273A,	"ADDR_OPEN_UNIT_MENU_RETURN",			"int"
+define,	   0x61B0C0,	0x63C940,	"Context_Menu_widen_for_text",			"void (__fastcall *) (Context_Menu * this, int edx, char * text)"
+inlead,	   0x61A110,	0x63B420,	"Context_Menu_add_item_and_set_field_18",	"int (__fastcall *)  (Context_Menu * this, int edx, int item_id, char * text, int field_18)"
+
+ignore,	   0x4507B0,	0x452860,	"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
 ignore,	   0x66DD04,	0x0,		"Unit_eval_escort_requirement",			"int (__fastcall *) (Unit *)"
 ignore,    0x558F70,	0x0,		"Leader_is_enemy_unit",				"char (__fastcall *) (Leader * this, int edx, Unit * unit)"
 ignore,    0x4ED220,	0x0,		"Main_Screen_Form_show_map_message",		"void (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, int param_4)"
 ignore,	   0x4BFD40,	0x0,		"City_get_turns_to_build",			"int (__fastcall *) (City * this, int edx, int order_type, int order_id, char param_3)"
 ignore,    0x4BFF80,	0x0,		"City_can_build_improvement",			"char (__fastcall *) (City * this, int edx, int i_improv, char param_2)"
+ignore,	   0x619E70,	0x63B090,	"Context_Menu_add_item",			"int (__fastcall *) (Context_Menu * this, int edx, int item_id, char * text, byte param_3, int param_4)"
+ignore,	   0x4E3D90,	0x0,		"Main_Screen_Form_is_unit_hidden_from_player",	"byte (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit)"
+ignore,	   0x4E8850,	0x4F14E0,	"Main_Screen_Form_open_right_click_unit_menu",	"void (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)"
+
+define,	   0x649FA7,	0x6076E0,	"civ_prog_malloc",				"void * (__cdecl *) (unsigned _Size)"
+define,	   0x649EBE,	0x668816,	"civ_prog_free",				"void (__cdecl *) (void * p)"

@@ -4998,10 +4998,10 @@ struct Context_Menu
   Context_Menu_Item Items[256];
   int field_2178[3];
   int Item_Count;
-  int field_2188;
+  int widest_item;
   int ItemHeight;
   int Selected_Item;
-  int field_2194;
+  int separator_item_count;
   int field_2198[6];
   int Last;
 };
