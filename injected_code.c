@@ -421,13 +421,6 @@ patch_init_floating_point ()
 		 ADDR_HOUSEBOAT_BUG_PATCH,
 		 ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH);
 
-	is->units_to_list = NULL;
-	is->count_units_to_list = 0;
-	is->units_to_list_capacity = 0;
-
-	is->cm_temp_items = NULL;
-	is->cm_temp_items_capacity = 0;
-
 	is->unit_menu_duplicates = NULL;
 
 	memmove (&is->current_config, &is->base_config, sizeof is->current_config);

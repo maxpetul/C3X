@@ -99,13 +99,6 @@ struct worker_job_and_location {
 	int tile_x, tile_y;
 };
 
-struct unit_to_list {
-	int id;
-	int type_id;
-	int moves_remaining;
-	int damage;
-};
-
 struct injected_state {
 	// ==========
 	// These fields are valid at any time in the injected code because they're set by the patcher {
@@ -159,13 +152,6 @@ struct injected_state {
 	struct worker_job_and_location to_skip;
 
 	byte houseboat_patch_area_original_contents[50];
-
-	struct unit_to_list * units_to_list;
-	int count_units_to_list;
-	int units_to_list_capacity;
-
-	Context_Menu_Item * cm_temp_items;
-	int cm_temp_items_capacity;
 
 	int * unit_menu_duplicates; // NULL initialized, allocated to an array of 0x100 ints when needed
 
