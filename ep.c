@@ -779,6 +779,7 @@ ENTRY_POINT ()
 		.ai_build_bomber_ratio = 70,
 		.replace_leader_unit_ai = 1,
 		.fix_ai_army_composition = 1,
+		.enable_pop_unit_ai = 1,
 
 		.remove_unit_limit = 1,
 		.remove_era_limit = 0,

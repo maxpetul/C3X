@@ -30,6 +30,7 @@ struct c3x_config {
 	int ai_build_bomber_ratio;
 	char replace_leader_unit_ai;
 	char fix_ai_army_composition;
+	char enable_pop_unit_ai;
 
 	char remove_unit_limit;
 	char remove_era_limit;

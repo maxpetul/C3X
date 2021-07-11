@@ -168,6 +168,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->replace_leader_unit_ai = ival != 0;
 				else if ((0 == strncmp (key, "fix_ai_army_composition", key_len)) && read_int (value, value_len, &ival))
 					cfg->fix_ai_army_composition = ival != 0;
+				else if ((0 == strncmp (key, "enable_pop_unit_ai", key_len)) && read_int (value, value_len, &ival))
+					cfg->enable_pop_unit_ai = ival != 0;
 
 				else if ((0 == strncmp (key, "remove_unit_limit", key_len)) && read_int (value, value_len, &ival))
 					cfg->remove_unit_limit = ival != 0;
@@ -2347,7 +2349,8 @@ patch_Unit_ai_move_terraformer (Unit * this)
 	int type_id = this->Body.UnitTypeID;
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
 	UnitType * type = &p_bic_data->UnitTypes[type_id];
-	if ((type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
+	if (is->current_config.enable_pop_unit_ai &&
+	    (type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
 	    (tile != NULL) && (tile != p_null_tile) &&
 	    (type->PopulationCost > 0) &&
 	    (type->Worker_Actions == UCV_Join_City)) {
@@ -2455,7 +2458,8 @@ patch_ai_move_defensive_unit (Unit * this)
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
 	UnitType * type = &p_bic_data->UnitTypes[type_id];
 	int join_city_action = UCV_Join_City & 0x0FFFFFFF; // To get the join city action code, use the command value and mask out the top 4 category bits
-	if ((type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
+	if (is->current_config.enable_pop_unit_ai &&
+	    (type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
 	    (tile != NULL) && (tile != p_null_tile) &&
 	    (type->Defence == 0) &&
 	    (type->PopulationCost > 0) &&
