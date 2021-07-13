@@ -1,3 +1,7 @@
+* RELEASE 8
+- Pop unit AI
+- Group units on right click menu
+
 * RELEASE 7
 - Buttons on trade screen to quickly switch between civs
 - Ask/offer gold popup autofills best amount
