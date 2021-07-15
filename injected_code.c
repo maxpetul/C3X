@@ -1189,11 +1189,14 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 			is->sb_activated_by_button = 0;
 	}
 
+	int command = this->Unit_Command_Buttons[button_id].Command;
+
 	int is_stackable_worker_command; {
 		is_stackable_worker_command = 0;
-		if (button_id < 42)
+		if ((button_id < 42) && // If button pressed was a unit command button AND
+		    (command >> 28 == 2)) // Command category is worker action
 			for (int n = 0; n < COUNT_STACKABLE_COMMANDS; n++)
-				if (this->Unit_Command_Buttons[button_id].Command == sc_button_infos[n].command) {
+				if (command == sc_button_infos[n].command) {
 					is_stackable_worker_command = 1;
 					break;
 				}
@@ -1223,11 +1226,15 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 	FOR_UNITS_ON (uti, tile)
 		if ((count_helpers < SWC_MANIFEST_LENGTH) &&
 		    (uti.id != selected_unit_id) &&
-		    (uti.unit->Body.UnitTypeID == selected_unit_type_id) &&
 		    (uti.unit->Body.Container_Unit < 0) &&
 		    (uti.unit->Body.UnitState == 0) &&
-		    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit)))
-			helpers[count_helpers++] = uti.id;
+		    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit))) {
+			// check if the clicked command is among worker actions that this unit type can perform
+			int actions = p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Worker_Actions;
+			int command_without_category = command & 0x0FFFFFFF;
+			if ((actions & command_without_category) == command_without_category)
+				helpers[count_helpers++] = uti.id;
+		}
 	
 	// Sort the list of helpers so that the ones with the fewest remaining movement points are listed first.
 	qsort (helpers, count_helpers, sizeof helpers[0], compare_helpers);
