@@ -137,3 +137,5 @@ ignore,    0x4BFF80,	0x0,		"City_can_build_improvement",			"char (__fastcall *) 
 ignore,	   0x619E70,	0x63B090,	"Context_Menu_add_item",			"int (__fastcall *) (Context_Menu * this, int edx, int item_id, char * text, byte param_3, int param_4)"
 ignore,	   0x4E3D90,	0x0,		"Main_Screen_Form_is_unit_hidden_from_player",	"byte (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit)"
 ignore,	   0x4E8850,	0x4F14E0,	"Main_Screen_Form_open_right_click_unit_menu",	"void (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)"
+
+define,	   0x4D8870,	0x0,		"Main_Screen_Form_issue_fortify_command",	"void (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit)"

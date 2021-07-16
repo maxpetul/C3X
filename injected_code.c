@@ -1176,6 +1176,73 @@ compare_helpers (void const * vp_a, void const * vp_b)
 
 #define SWC_MANIFEST_LENGTH 100
 
+void
+issue_stack_worker_command (Unit * unit, int command)
+{
+	int helpers[SWC_MANIFEST_LENGTH];
+	int count_helpers = 0;
+
+	Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
+	int unit_type_id = unit->Body.UnitTypeID;
+	int unit_id = unit->Body.ID;
+
+	FOR_UNITS_ON (uti, tile)
+		if ((count_helpers < SWC_MANIFEST_LENGTH) &&
+		    (uti.id != unit_id) &&
+		    (uti.unit->Body.Container_Unit < 0) &&
+		    (uti.unit->Body.UnitState == 0) &&
+		    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit))) {
+			// check if the clicked command is among worker actions that this unit type can perform
+			int actions = p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Worker_Actions;
+			int command_without_category = command & 0x0FFFFFFF;
+			if ((actions & command_without_category) == command_without_category)
+				helpers[count_helpers++] = uti.id;
+		}
+	
+	// Sort the list of helpers so that the ones with the fewest remaining movement points are listed first.
+	qsort (helpers, count_helpers, sizeof helpers[0], compare_helpers);
+
+	Unit * next_up = unit;
+	int i_next_helper = 0;
+	int last_action_didnt_happen;
+	do {
+		int state_before_action = next_up->Body.UnitState;
+		Main_Screen_Form_issue_command (p_main_screen_form, __, command, next_up);
+		last_action_didnt_happen = (next_up->Body.UnitState == state_before_action);
+
+		// Call this update function to cause the worker to actually perform the action. Otherwise
+		// it only gets queued, the worker keeps is movement points, and the action doesn't get done
+		// until the interturn.
+		if (! last_action_didnt_happen)
+			next_up->vtable->update_while_active (next_up);
+
+		next_up = NULL;
+		while ((i_next_helper < count_helpers) && (next_up == NULL))
+			next_up = get_unit_ptr (helpers[i_next_helper++]);
+	} while ((next_up != NULL) && (! last_action_didnt_happen));
+}
+
+void
+issue_stack_unit_mgmt_command (Unit * unit, int command)
+{
+	Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
+	int unit_type_id = unit->Body.UnitTypeID;
+	int unit_id = unit->Body.ID;
+
+	if (command == UCV_Fortify) {
+		FOR_UNITS_ON (uti, tile)
+			if ((uti.id != unit_id) &&
+			    (uti.unit->Body.UnitTypeID == unit_type_id) &&
+			    (uti.unit->Body.Container_Unit < 0) &&
+			    (uti.unit->Body.UnitState == 0) &&
+			    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit))) {
+				// Set state directly instead of using the issue_fortify_command function to avoid playing animation for each unit
+				Unit_set_state (uti.unit, __, UnitState_Fortifying);
+			}
+		Main_Screen_Form_issue_fortify_command (p_main_screen_form, __, unit);
+	}
+}
+
 void __fastcall
 patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 {
@@ -1191,18 +1258,17 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 
 	int command = this->Unit_Command_Buttons[button_id].Command;
 
-	int is_stackable_worker_command; {
-		is_stackable_worker_command = 0;
-		if ((button_id < 42) && // If button pressed was a unit command button AND
-		    (command >> 28 == 2)) // Command category is worker action
+	struct sc_button_info const * stack_button_info; {
+		stack_button_info = NULL;
+		if (button_id < 42) // If button pressed was a unit command button
 			for (int n = 0; n < COUNT_STACKABLE_COMMANDS; n++)
 				if (command == sc_button_infos[n].command) {
-					is_stackable_worker_command = 1;
+					stack_button_info = &sc_button_infos[n];
 					break;
 				}
 	}
 
-	if ((! is_stackable_worker_command) || // If button doesn't control a stackable worker command OR
+	if ((stack_button_info == NULL) || // If there's no stack command for the pressed button OR
 	    (! is->current_config.enable_stack_worker_commands) || // stack worker commands are not enabled OR
 	    (((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0) || // CTRL key is not down OR
 	    (p_main_screen_form->Current_Unit == NULL) || // no unit is selected OR
@@ -1211,52 +1277,18 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 		return;
 	}
 
-	// I don't know what these functions do but we have to call them to replicate the behavior of the function we're replacing
-	clear_something_1 ();
-	clear_something_2 (&this->Data_30_1);
+	enum stackable_command_kind kind = stack_button_info->kind;
+	if ((kind == SCK_TERRAFORM) || (kind == SCK_UNIT_MGMT)) {
+		// I don't know what these functions do but we have to call them to replicate the behavior of the function we're replacing
+		clear_something_1 ();
+		clear_something_2 (&this->Data_30_1);
 
-	int helpers[SWC_MANIFEST_LENGTH];
-	int count_helpers = 0;
-
-	Unit * selected_unit = p_main_screen_form->Current_Unit;
-	Tile * tile = tile_at (selected_unit->Body.X, selected_unit->Body.Y);
-	int selected_unit_type_id = selected_unit->Body.UnitTypeID;
-	int selected_unit_id = selected_unit->Body.ID;
-
-	FOR_UNITS_ON (uti, tile)
-		if ((count_helpers < SWC_MANIFEST_LENGTH) &&
-		    (uti.id != selected_unit_id) &&
-		    (uti.unit->Body.Container_Unit < 0) &&
-		    (uti.unit->Body.UnitState == 0) &&
-		    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit))) {
-			// check if the clicked command is among worker actions that this unit type can perform
-			int actions = p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Worker_Actions;
-			int command_without_category = command & 0x0FFFFFFF;
-			if ((actions & command_without_category) == command_without_category)
-				helpers[count_helpers++] = uti.id;
-		}
-	
-	// Sort the list of helpers so that the ones with the fewest remaining movement points are listed first.
-	qsort (helpers, count_helpers, sizeof helpers[0], compare_helpers);
-
-	Unit * next_up = selected_unit;
-	int i_next_helper = 0;
-	int last_action_didnt_happen;
-	do {
-		int state_before_action = next_up->Body.UnitState;
-		Main_Screen_Form_issue_command (p_main_screen_form, __, this->Unit_Command_Buttons[button_id].Command, next_up);
-		last_action_didnt_happen = (next_up->Body.UnitState == state_before_action);
-
-		// Call this update function to cause the worker to actually perform the action. Otherwise
-		// it only gets queued, the worker keeps is movement points, and the action doesn't get done
-		// until the interturn.
-		if (! last_action_didnt_happen)
-			next_up->vtable->update_while_active (next_up);
-
-		next_up = NULL;
-		while ((i_next_helper < count_helpers) && (next_up == NULL))
-			next_up = get_unit_ptr (helpers[i_next_helper++]);
-	} while ((next_up != NULL) && (! last_action_didnt_happen));
+		if (kind == SCK_TERRAFORM)
+			issue_stack_worker_command (p_main_screen_form->Current_Unit, stack_button_info->command);
+		else if (kind == SCK_UNIT_MGMT)
+			issue_stack_unit_mgmt_command (p_main_screen_form->Current_Unit, stack_button_info->command);
+	} else
+		Main_GUI_handle_button_press (this, __, button_id);
 }
 
 int __fastcall

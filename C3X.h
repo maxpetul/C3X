@@ -58,25 +58,35 @@ enum stackable_command {
 	SC_CLEAN_POLLUTION,
 	SC_ROAD,
 	SC_RAILROAD,
+	SC_FORTIFY,
 	COUNT_STACKABLE_COMMANDS
+};
+
+enum stackable_command_kind {
+	SCK_BOMBARD = 0,
+	SCK_TERRAFORM,
+	SCK_UNIT_MGMT,
+	COUNT_STACKABLE_COMMAND_KINDS
 };
 
 struct sc_button_info {
 	enum Unit_Command_Values command;
+	enum stackable_command_kind kind;
 	int tile_sheet_column,
 	    tile_sheet_row;
 } const sc_button_infos[COUNT_STACKABLE_COMMANDS] = {
-	/* Bombard */    { .command = UCV_Bombard        , .tile_sheet_column = 3, .tile_sheet_row = 1 },
-	/* Bomb */       { .command = UCV_Bombing        , .tile_sheet_column = 5, .tile_sheet_row = 4 },
-	/* Fortress */   { .command = UCV_Build_Fortress , .tile_sheet_column = 0, .tile_sheet_row = 3 },
-	/* Mine */       { .command = UCV_Build_Mine     , .tile_sheet_column = 1, .tile_sheet_row = 3 },
-	/* Irrigate */   { .command = UCV_Irrigate       , .tile_sheet_column = 2, .tile_sheet_row = 3 },
-	/* Chop For. */  { .command = UCV_Clear_Forest   , .tile_sheet_column = 3, .tile_sheet_row = 3 },
-	/* Chop Jun. */  { .command = UCV_Clear_Jungle   , .tile_sheet_column = 4, .tile_sheet_row = 3 },
-	/* Plant */      { .command = UCV_Plant_Forest   , .tile_sheet_column = 5, .tile_sheet_row = 3 },
-	/* Clean Pol. */ { .command = UCV_Clear_Pollution, .tile_sheet_column = 6, .tile_sheet_row = 3 },
-	/* Road */       { .command = UCV_Build_Road     , .tile_sheet_column = 6, .tile_sheet_row = 2 },
-	/* Railroad */   { .command = UCV_Build_Railroad , .tile_sheet_column = 7, .tile_sheet_row = 2 },
+	/* Bombard */    { .command = UCV_Bombard        , .kind = SCK_BOMBARD  , .tile_sheet_column = 3, .tile_sheet_row = 1 },
+	/* Bomb */       { .command = UCV_Bombing        , .kind = SCK_BOMBARD  , .tile_sheet_column = 5, .tile_sheet_row = 4 },
+	/* Fortress */   { .command = UCV_Build_Fortress , .kind = SCK_TERRAFORM, .tile_sheet_column = 0, .tile_sheet_row = 3 },
+	/* Mine */       { .command = UCV_Build_Mine     , .kind = SCK_TERRAFORM, .tile_sheet_column = 1, .tile_sheet_row = 3 },
+	/* Irrigate */   { .command = UCV_Irrigate       , .kind = SCK_TERRAFORM, .tile_sheet_column = 2, .tile_sheet_row = 3 },
+	/* Chop For. */  { .command = UCV_Clear_Forest   , .kind = SCK_TERRAFORM, .tile_sheet_column = 3, .tile_sheet_row = 3 },
+	/* Chop Jun. */  { .command = UCV_Clear_Jungle   , .kind = SCK_TERRAFORM, .tile_sheet_column = 4, .tile_sheet_row = 3 },
+	/* Plant */      { .command = UCV_Plant_Forest   , .kind = SCK_TERRAFORM, .tile_sheet_column = 5, .tile_sheet_row = 3 },
+	/* Clean Pol. */ { .command = UCV_Clear_Pollution, .kind = SCK_TERRAFORM, .tile_sheet_column = 6, .tile_sheet_row = 3 },
+	/* Road */       { .command = UCV_Build_Road     , .kind = SCK_TERRAFORM, .tile_sheet_column = 6, .tile_sheet_row = 2 },
+	/* Railroad */   { .command = UCV_Build_Railroad , .kind = SCK_TERRAFORM, .tile_sheet_column = 7, .tile_sheet_row = 2 },
+	/* Fortify */    { .command = UCV_Fortify        , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 2, .tile_sheet_row = 0 },
 };
 
 enum init_state {
