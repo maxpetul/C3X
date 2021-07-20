@@ -139,3 +139,7 @@ ignore,	   0x4E3D90,	0x0,		"Main_Screen_Form_is_unit_hidden_from_player",	"byte 
 ignore,	   0x4E8850,	0x4F14E0,	"Main_Screen_Form_open_right_click_unit_menu",	"void (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)"
 
 define,	   0x4D8870,	0x0,		"Main_Screen_Form_issue_fortify_command",	"void (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit)"
+define,	   0x5C0740,	0x0,		"Unit_upgrade",					"Unit * (__fastcall *) (Unit * this, int edx, byte ignore_cost)"
+define,	   0x5C04D0,	0x0,		"Unit_get_upgrade_cost",			"int (__fastcall *) (Unit * this)"
+define,	   0x4DBA70,	0x0,		"Main_Screen_Form_set_selected_unit",		"void (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit, byte param_2)"
+define,	   0xCADC18,	0x0,		"script_dot_txt_file_path",			"char *"

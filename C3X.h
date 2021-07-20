@@ -59,6 +59,7 @@ enum stackable_command {
 	SC_ROAD,
 	SC_RAILROAD,
 	SC_FORTIFY,
+	SC_UPGRADE,
 	COUNT_STACKABLE_COMMANDS
 };
 
@@ -87,6 +88,7 @@ struct sc_button_info {
 	/* Road */       { .command = UCV_Build_Road     , .kind = SCK_TERRAFORM, .tile_sheet_column = 6, .tile_sheet_row = 2 },
 	/* Railroad */   { .command = UCV_Build_Railroad , .kind = SCK_TERRAFORM, .tile_sheet_column = 7, .tile_sheet_row = 2 },
 	/* Fortify */    { .command = UCV_Fortify        , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 2, .tile_sheet_row = 0 },
+	/* Upgrade */    { .command = UCV_Upgrade_Unit   , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 7, .tile_sheet_row = 1 },
 };
 
 enum init_state {

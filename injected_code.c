@@ -1222,6 +1222,47 @@ issue_stack_worker_command (Unit * unit, int command)
 	} while ((next_up != NULL) && (! last_action_didnt_happen));
 }
 
+enum tile_upgrade_process {
+	TUP_MEASURE_COST,
+	TUP_PERFORM_UPGRADE
+};
+
+#define PTU_MANIFEST_LENGTH 500
+
+int
+process_tile_upgrades (Tile * tile, int type_id, enum tile_upgrade_process proc, int * out_unit_count)
+{
+	int cost = 0;
+	int unit_count = 0;
+	int ids_to_upgrade[PTU_MANIFEST_LENGTH]; // TODO: It would be better if this were dynamically sized
+
+	FOR_UNITS_ON (uti, tile)
+		if ((unit_count < PTU_MANIFEST_LENGTH) &&
+		    (uti.unit->Body.UnitTypeID == type_id) &&
+		    (uti.unit->Body.Container_Unit < 0) &&
+		    (uti.unit->Body.UnitState == 0) &&
+		    Unit_can_perform_command (uti.unit, __, UCV_Upgrade_Unit)) {
+			if (proc == TUP_MEASURE_COST)
+				cost += Unit_get_upgrade_cost (uti.unit);
+			else if (proc == TUP_PERFORM_UPGRADE)
+				ids_to_upgrade[unit_count] = uti.id;
+			unit_count++;
+		}
+
+	if (proc == TUP_PERFORM_UPGRADE) {
+		Main_Screen_Form_set_selected_unit (p_main_screen_form, __, NULL, 0);
+		for (int n = 0; n < unit_count; n++) {
+			Unit * to_upgrade = get_unit_ptr (ids_to_upgrade[n]);
+			if (to_upgrade != NULL)
+				Unit_upgrade (to_upgrade, __, 0);
+		}
+	}
+
+	if (out_unit_count)
+		*out_unit_count = unit_count;
+	return (proc == TUP_MEASURE_COST) ? cost : 0;
+}
+
 void
 issue_stack_unit_mgmt_command (Unit * unit, int command)
 {
@@ -1240,6 +1281,25 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 				Unit_set_state (uti.unit, __, UnitState_Fortifying);
 			}
 		Main_Screen_Form_issue_fortify_command (p_main_screen_form, __, unit);
+
+	} else if (command == UCV_Upgrade_Unit) {
+		PopupForm * popup = get_popup_form ();
+		int our_treasury = leaders[unit->Body.CivID].Gold_Encoded + leaders[unit->Body.CivID].Gold_Decrement;
+		int unit_count;
+		int cost = process_tile_upgrades (tile, unit_type_id, TUP_MEASURE_COST, &unit_count);
+		if (cost <= our_treasury) {
+			set_popup_str_param (0, p_bic_data->UnitTypes[unit_type_id].Name, -1, -1);
+			set_popup_int_param (0, unit_count);
+			set_popup_int_param (1, cost);
+			popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "UPGRADE_ALL", -1, 0, 0, 0);
+			if (show_popup (popup, __, 0, 0) == 0)
+				process_tile_upgrades (tile, unit_type_id, TUP_PERFORM_UPGRADE, NULL);
+		} else {
+			set_popup_int_param (0, cost);
+			int param_5 = is_game_type_4_or_5 () ? 0x4000 : 0; // As in base code
+			popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "NO_GOLD_TO_UPGRADE_ALL", -1, 0, param_5, 0);
+			show_popup (popup, __, 0, 0);
+		}
 	}
 }
 
