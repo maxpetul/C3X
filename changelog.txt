@@ -1,4 +1,9 @@
+* TODO
+- Fix animation issue with stack fortify
+- Fix pop unit AI not working on terraform strategy
+
 * RELEASE 8
+- Stack fortify, upgrade, and disband
 - Pop unit AI
 - Group units on right click menu
 - Stack worker commands apply across unit types
