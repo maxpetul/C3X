@@ -621,7 +621,7 @@ void
 uti_next (struct unit_tile_iter * uti)
 {
 	if (((p_tile_units->Base.Items == NULL) || (uti->item_index < 0)) ||
-	    (uti->item_index >= p_tile_units->Base.LastIndex)) {
+	    (uti->item_index > p_tile_units->Base.LastIndex)) {
 		uti->item_index = -1;
 		uti->id = p_tile_units->DefaultValue;
 	} else {
