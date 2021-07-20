@@ -376,6 +376,10 @@ patch_init_floating_point ()
 	qsort    = (void *)(*p_GetProcAddress) (is->msvcrt, "qsort");
 	memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
 
+	// Set file path to mod's script.txt
+	snprintf (is->mod_script_path, sizeof is->mod_script_path, "%s\\Text\\c3x-script.txt", is->mod_rel_dir);
+	is->mod_script_path[(sizeof is->mod_script_path) - 1] = '\0';
+
 	// Load labels
 	{
 		for (int n = 0; n < COUNT_LABELS; n++)
@@ -1009,10 +1013,7 @@ check_happiness_at_end_of_turn ()
 		if (num_unhappy_cities > 1)
 			set_popup_int_param (1, num_unhappy_cities - 1);
 		char * key = (num_unhappy_cities > 1) ? "C3X_DISORDER_WARNING_MULTIPLE" : "C3X_DISORDER_WARNING_ONE";
-		char script_file_path[MAX_PATH];
-		snprintf (script_file_path, sizeof script_file_path, "%s\\Text\\c3x-script.txt", is->mod_rel_dir);
-		script_file_path[(sizeof script_file_path) - 1] = '\0';
-		popup->vtable->set_text_key_and_flags (popup, __, script_file_path, key, -1, 0, 0, 0);
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, key, -1, 0, 0, 0);
 		int response = show_popup (popup, __, 0, 0);
 
 		if (response == 2) { // zoom to city
@@ -1270,6 +1271,11 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 	int unit_type_id = unit->Body.UnitTypeID;
 	int unit_id = unit->Body.ID;
 
+	PopupForm * popup = get_popup_form ();
+
+	Unit * tabled_units[PTU_MANIFEST_LENGTH];
+	int count_tabled_units = 0;
+
 	if (command == UCV_Fortify) {
 		FOR_UNITS_ON (uti, tile)
 			if ((uti.id != unit_id) &&
@@ -1283,7 +1289,6 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 		Main_Screen_Form_issue_fortify_command (p_main_screen_form, __, unit);
 
 	} else if (command == UCV_Upgrade_Unit) {
-		PopupForm * popup = get_popup_form ();
 		int our_treasury = leaders[unit->Body.CivID].Gold_Encoded + leaders[unit->Body.CivID].Gold_Decrement;
 		int unit_count;
 		int cost = process_tile_upgrades (tile, unit_type_id, TUP_MEASURE_COST, &unit_count);
@@ -1299,6 +1304,27 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 			int param_5 = is_game_type_4_or_5 () ? 0x4000 : 0; // As in base code
 			popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "NO_GOLD_TO_UPGRADE_ALL", -1, 0, param_5, 0);
 			show_popup (popup, __, 0, 0);
+		}
+
+	} else if (command == UCV_Disband) {
+		FOR_UNITS_ON (uti, tile)
+			if ((uti.unit->Body.UnitTypeID == unit_type_id) &&
+			    (uti.unit->Body.Container_Unit < 0) &&
+			    (uti.unit->Body.UnitState == 0) &&
+			    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit))) {
+				tabled_units[count_tabled_units++] = uti.unit;
+				if (count_tabled_units >= (sizeof tabled_units) / (sizeof tabled_units[0]))
+					break;
+			}
+
+		if (count_tabled_units > 0) {
+			set_popup_int_param (0, count_tabled_units);
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_STACK_DISBAND", -1, 0, 0, 0);
+			if (show_popup (popup, __, 0, 0) == 0) {
+				Main_Screen_Form_set_selected_unit (p_main_screen_form, __, NULL, 0);
+				for (int n = 0; n < count_tabled_units; n++)
+					Unit_disband (tabled_units[n]);
+			}
 		}
 	}
 }

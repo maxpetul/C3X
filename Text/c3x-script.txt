@@ -20,6 +20,13 @@ OK, I'll deal with this.
 Zoom to $CITY0
 #active 1
 
+#C3X_CONFIRM_STACK_DISBAND
+#xs 320
+#advisor Military Surprised
+Really disband $NUM0 $<#0:unit:units>?
+#itemlist
+Do it!
+Nevermind
+#active 1
+
 # ; This line must remain at end of file
-
-

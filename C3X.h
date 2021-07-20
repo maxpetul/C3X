@@ -60,6 +60,7 @@ enum stackable_command {
 	SC_RAILROAD,
 	SC_FORTIFY,
 	SC_UPGRADE,
+	SC_DISBAND,
 	COUNT_STACKABLE_COMMANDS
 };
 
@@ -89,6 +90,7 @@ struct sc_button_info {
 	/* Railroad */   { .command = UCV_Build_Railroad , .kind = SCK_TERRAFORM, .tile_sheet_column = 7, .tile_sheet_row = 2 },
 	/* Fortify */    { .command = UCV_Fortify        , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 2, .tile_sheet_row = 0 },
 	/* Upgrade */    { .command = UCV_Upgrade_Unit   , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 7, .tile_sheet_row = 1 },
+	/* Disband */    { .command = UCV_Disband        , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 3, .tile_sheet_row = 0 },
 };
 
 enum init_state {
@@ -157,6 +159,8 @@ struct injected_state {
 	int (* memcmp) (void const *, void const *, size_t);
 
 	struct c3x_config current_config;
+
+	char mod_script_path[MAX_PATH];
 
 	char * labels[COUNT_LABELS];
 
