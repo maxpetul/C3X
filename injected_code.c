@@ -1277,16 +1277,17 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 	int count_tabled_units = 0;
 
 	if (command == UCV_Fortify) {
+		// This probably won't work for online games since "fortify all" does additional work in that case. See Main_Screen_Form::fortify_all.
+		// I don't like how this method doesn't place units in the fortified pose. One workaround is so use
+		// Main_Screen_Form::issue_fortify_command, but that plays the entire fortify animation for each unit which is a major annoyance for
+		// large stacks. The base game's "fortify all" function also doesn't set the pose so I don't see any easy way to fix this.
 		FOR_UNITS_ON (uti, tile)
-			if ((uti.id != unit_id) &&
-			    (uti.unit->Body.UnitTypeID == unit_type_id) &&
+			if ((uti.unit->Body.UnitTypeID == unit_type_id) &&
 			    (uti.unit->Body.Container_Unit < 0) &&
 			    (uti.unit->Body.UnitState == 0) &&
-			    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit))) {
-				// Set state directly instead of using the issue_fortify_command function to avoid playing animation for each unit
+			    (uti.unit->Body.CivID == unit->Body.CivID) &&
+			    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit)))
 				Unit_set_state (uti.unit, __, UnitState_Fortifying);
-			}
-		Main_Screen_Form_issue_fortify_command (p_main_screen_form, __, unit);
 
 	} else if (command == UCV_Upgrade_Unit) {
 		int our_treasury = leaders[unit->Body.CivID].Gold_Encoded + leaders[unit->Body.CivID].Gold_Decrement;
