@@ -1,4 +1,5 @@
 * TODO
+- Rename stack worker commands config option to something more generic
 - Use memo instead of static array for stack bombard
 - Fix pop unit AI not working on terraform strategy
 
