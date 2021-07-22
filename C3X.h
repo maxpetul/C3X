@@ -172,6 +172,11 @@ struct injected_state {
 
 	int * unit_menu_duplicates; // NULL initialized, allocated to an array of 0x100 ints when needed
 
+	// List of temporary ints. Initializes to NULL/0/0, used with functions "memoize" and "clear_memo"
+	int * memo;
+	int memo_len;
+	int memo_capacity;
+
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {
 	// ==========

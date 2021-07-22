@@ -56,6 +56,18 @@ memset (void * dest, int ch, size_t count)
 }
 
 int
+not_below (int lim, int x)
+{
+	return (x >= lim) ? x : lim;
+}
+
+int
+not_above (int lim, int x)
+{
+	return (x <= lim) ? x : lim;
+}
+
+int
 square (int x)
 {
 	return x * x;
@@ -429,9 +441,38 @@ patch_init_floating_point ()
 
 	is->unit_menu_duplicates = NULL;
 
+	is->memo = NULL;
+	is->memo_len = 0;
+	is->memo_capacity = 0;
+
 	memmove (&is->current_config, &is->base_config, sizeof is->current_config);
 	load_config ("default.c3x_config.ini", &is->current_config);
 	apply_config (&is->current_config);
+}
+
+void
+memoize (int val)
+{
+	if (is->memo_len < is->memo_capacity)
+		is->memo[is->memo_len++] = val;
+	else {
+		int new_capacity = not_below (100, 2 * is->memo_capacity);
+		int * new_memo = malloc (new_capacity * sizeof is->memo[0]);
+		if (new_memo != NULL) {
+			for (int n = 0; n < is->memo_len; n++)
+				new_memo[n] = is->memo[n];
+			free (is->memo);
+			is->memo = new_memo;
+			is->memo_capacity = new_capacity;
+			is->memo[is->memo_len++] = val;
+		}
+	}
+}
+
+void
+clear_memo ()
+{
+	is->memo_len = 0;
 }
 
 void
@@ -1223,8 +1264,6 @@ issue_stack_worker_command (Unit * unit, int command)
 	} while ((next_up != NULL) && (! last_action_didnt_happen));
 }
 
-#define PTU_MANIFEST_LENGTH 500
-
 void
 issue_stack_unit_mgmt_command (Unit * unit, int command)
 {
@@ -1234,8 +1273,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 
 	PopupForm * popup = get_popup_form ();
 
-	Unit * tabled_units[PTU_MANIFEST_LENGTH];
-	int count_tabled_units = 0;
+	clear_memo ();
 
 	if (command == UCV_Fortify) {
 		// This probably won't work for online games since "fortify all" does additional work in that case. See Main_Screen_Form::fortify_all.
@@ -1260,19 +1298,20 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 			    (uti.unit->Body.UnitState == 0) &&
 			    Unit_can_perform_command (uti.unit, __, UCV_Upgrade_Unit)) {
 				cost += Unit_get_upgrade_cost (uti.unit);
-				tabled_units[count_tabled_units++] = uti.unit;
-				if (count_tabled_units >= (sizeof tabled_units) / (sizeof tabled_units[0]))
-					break;
+				memoize (uti.id);
 			}
 
 		if (cost <= our_treasury) {
 			set_popup_str_param (0, p_bic_data->UnitTypes[unit_type_id].Name, -1, -1);
-			set_popup_int_param (0, count_tabled_units);
+			set_popup_int_param (0, is->memo_len);
 			set_popup_int_param (1, cost);
 			popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "UPGRADE_ALL", -1, 0, 0, 0);
 			if (show_popup (popup, __, 0, 0) == 0)
-				for (int n = 0; n < count_tabled_units; n++)
-					Unit_upgrade (tabled_units[n], __, 0);
+				for (int n = 0; n < is->memo_len; n++) {
+					Unit * to_upgrade = get_unit_ptr (is->memo[n]);
+					if (to_upgrade != NULL)
+						Unit_upgrade (to_upgrade, __, 0);
+				}
 
 		} else {
 			set_popup_int_param (0, cost);
@@ -1286,19 +1325,19 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 			if ((uti.unit->Body.UnitTypeID == unit_type_id) &&
 			    (uti.unit->Body.Container_Unit < 0) &&
 			    (uti.unit->Body.UnitState == 0) &&
-			    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit))) {
-				tabled_units[count_tabled_units++] = uti.unit;
-				if (count_tabled_units >= (sizeof tabled_units) / (sizeof tabled_units[0]))
-					break;
-			}
+			    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit)))
+				memoize (uti.id);
 
-		if (count_tabled_units > 0) {
-			set_popup_int_param (0, count_tabled_units);
+		if (is->memo_len > 0) {
+			set_popup_int_param (0, is->memo_len);
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_STACK_DISBAND", -1, 0, 0, 0);
 			if (show_popup (popup, __, 0, 0) == 0) {
 				Main_Screen_Form_set_selected_unit (p_main_screen_form, __, NULL, 0);
-				for (int n = 0; n < count_tabled_units; n++)
-					Unit_disband (tabled_units[n]);
+				for (int n = 0; n < is->memo_len; n++) {
+					Unit * to_disband = get_unit_ptr (is->memo[n]);
+					if (to_disband)
+						Unit_disband (to_disband);
+				}
 			}
 		}
 	}
@@ -2192,18 +2231,6 @@ remove_offer (TradeOfferList * list, TradeOffer * offer)
 		list->length -= 1;
 	}
 	offer->prev = offer->next = NULL;
-}
-
-int
-not_below (int lim, int x)
-{
-	return (x >= lim) ? x : lim;
-}
-
-int
-not_above (int lim, int x)
-{
-	return (x <= lim) ? x : lim;
 }
 
 void __fastcall
