@@ -1,5 +1,5 @@
 * TODO
-- Use memo instead of static arrays for stack worker commands and stack bombard
+- Use memo instead of static array for stack bombard
 - Fix pop unit AI not working on terraform strategy
 
 * RELEASE 8

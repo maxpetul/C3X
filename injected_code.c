@@ -1216,21 +1216,17 @@ compare_helpers (void const * vp_a, void const * vp_b)
 		return (a != NULL) ? -1 : ((b != NULL) ? 1 : 0);
 }
 
-#define SWC_MANIFEST_LENGTH 100
-
 void
 issue_stack_worker_command (Unit * unit, int command)
 {
-	int helpers[SWC_MANIFEST_LENGTH];
-	int count_helpers = 0;
-
 	Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
 	int unit_type_id = unit->Body.UnitTypeID;
 	int unit_id = unit->Body.ID;
 
+	// Put together a list of helpers and store it on the memo. Helpers are just other workers on the same tile that can be issued the same command.
+	clear_memo ();
 	FOR_UNITS_ON (uti, tile)
-		if ((count_helpers < SWC_MANIFEST_LENGTH) &&
-		    (uti.id != unit_id) &&
+		if ((uti.id != unit_id) &&
 		    (uti.unit->Body.Container_Unit < 0) &&
 		    (uti.unit->Body.UnitState == 0) &&
 		    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit))) {
@@ -1238,11 +1234,11 @@ issue_stack_worker_command (Unit * unit, int command)
 			int actions = p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Worker_Actions;
 			int command_without_category = command & 0x0FFFFFFF;
 			if ((actions & command_without_category) == command_without_category)
-				helpers[count_helpers++] = uti.id;
+				memoize (uti.id);
 		}
 	
 	// Sort the list of helpers so that the ones with the fewest remaining movement points are listed first.
-	qsort (helpers, count_helpers, sizeof helpers[0], compare_helpers);
+	qsort (is->memo, is->memo_len, sizeof is->memo[0], compare_helpers);
 
 	Unit * next_up = unit;
 	int i_next_helper = 0;
@@ -1259,8 +1255,8 @@ issue_stack_worker_command (Unit * unit, int command)
 			next_up->vtable->update_while_active (next_up);
 
 		next_up = NULL;
-		while ((i_next_helper < count_helpers) && (next_up == NULL))
-			next_up = get_unit_ptr (helpers[i_next_helper++]);
+		while ((i_next_helper < is->memo_len) && (next_up == NULL))
+			next_up = get_unit_ptr (is->memo[i_next_helper++]);
 	} while ((next_up != NULL) && (! last_action_didnt_happen));
 }
 
