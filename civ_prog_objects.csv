@@ -126,6 +126,9 @@ define,	   0x4B1DC0,	0x4B8D50,	"City_requires_improvement_to_grow",		"int (__fas
 define,	   0x5C1AD0,	0x5D0670,	"Unit_can_perform_command",			"byte (__fastcall *) (Unit * this, int edx, int unit_command_value)"
 define,	   0x5B39D0,	0x5C2320,	"Unit_join_city",				"void (__fastcall *) (Unit * this, int edx, City * city)"
 inlead,	   0x452510,	0x454600,	"ai_move_defensive_unit",			"void (__fastcall *) (Unit * this)"
+define,	   0x5C0740,	0x5CF2E0,	"Unit_upgrade",					"Unit * (__fastcall *) (Unit * this, int edx, byte ignore_cost)"
+define,	   0x5C04D0,	0x5CF070,	"Unit_get_upgrade_cost",			"int (__fastcall *) (Unit * this)"
+define,	   0xCADC18,	0xCD0510,	"script_dot_txt_file_path",			"char *"
 
 ignore,	   0x4507B0,	0x452860,	"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
@@ -137,8 +140,4 @@ ignore,    0x4BFF80,	0x0,		"City_can_build_improvement",			"char (__fastcall *) 
 ignore,	   0x619E70,	0x63B090,	"Context_Menu_add_item",			"int (__fastcall *) (Context_Menu * this, int edx, int item_id, char * text, byte param_3, int param_4)"
 ignore,	   0x4E3D90,	0x0,		"Main_Screen_Form_is_unit_hidden_from_player",	"byte (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit)"
 ignore,	   0x4E8850,	0x4F14E0,	"Main_Screen_Form_open_right_click_unit_menu",	"void (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)"
-
-define,	   0x5C0740,	0x0,		"Unit_upgrade",					"Unit * (__fastcall *) (Unit * this, int edx, byte ignore_cost)"
-define,	   0x5C04D0,	0x0,		"Unit_get_upgrade_cost",			"int (__fastcall *) (Unit * this)"
-define,	   0x4DBA70,	0x0,		"Main_Screen_Form_set_selected_unit",		"void (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit, byte param_2)"
-define,	   0xCADC18,	0x0,		"script_dot_txt_file_path",			"char *"
+ignore,	   0x4DBA70,	0x0,		"Main_Screen_Form_set_selected_unit",		"void (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit, byte param_2)"

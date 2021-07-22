@@ -1328,7 +1328,6 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 			set_popup_int_param (0, is->memo_len);
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_STACK_DISBAND", -1, 0, 0, 0);
 			if (show_popup (popup, __, 0, 0) == 0) {
-				Main_Screen_Form_set_selected_unit (p_main_screen_form, __, NULL, 0);
 				for (int n = 0; n < is->memo_len; n++) {
 					Unit * to_disband = get_unit_ptr (is->memo[n]);
 					if (to_disband)
