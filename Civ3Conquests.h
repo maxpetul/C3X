@@ -3936,7 +3936,8 @@ struct Leader
   int Status;
   int Gold_Decrement;
   int Gold_Encoded;
-  int field_4C[21];
+  int field_4C[20];
+  int anarchy_turns_remaining;
   int GovenmentType;
   int Mobilization_Level;
   int Tiles_Discovered;

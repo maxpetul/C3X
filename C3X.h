@@ -24,6 +24,7 @@ struct c3x_config {
 	char disallow_founding_next_to_foreign_city;
 	char enable_trade_screen_scroll;
 	char group_units_on_right_click_menu;
+	int anarchy_length_reduction_percent;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;

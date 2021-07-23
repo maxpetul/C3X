@@ -7,6 +7,7 @@
 - Stack fortify, upgrade, and disband
 - Pop unit AI
 - Group units on right click menu
+- Adjustable anarchy length
 - Stack worker commands apply across unit types
 
 * RELEASE 7

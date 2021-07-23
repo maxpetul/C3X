@@ -564,6 +564,48 @@ print_symbol_location (void * context, char const * name, void const * val)
 	printf ("%p\t%s\n", val, name);
 }
 
+struct mangled_symbol_search {
+	char * sym_name;
+	int sym_name_len;
+	void * matching_val;
+	int count_matches;
+};
+
+void
+match_mangled_symbol (void * vp_mss, char const * name, void const * val)
+{
+	struct mangled_symbol_search * mss = vp_mss;
+	// Match against the name with '_' or '@' prepended and possibly followed by '@'. This isn't an exhaustive pattern so that's why we also track
+	// ambiguities. The patterns are from here: https://docs.microsoft.com/en-us/cpp/build/reference/decorated-names?view=msvc-160 under "Format
+	// of a C decorated name"
+	if (((name[0] == '_') || (name[0] == '@')) &&
+	    (0 == strncmp (&name[1], mss->sym_name, mss->sym_name_len)) &&
+	    ((name[mss->sym_name_len + 1] == '\0') ||
+	     (name[mss->sym_name_len + 1] == '@'))) {
+		mss->matching_val = (void *)val;
+		mss->count_matches++;
+	}
+}
+
+// Returns the address of the patch function with the given name in the compiled code. Will automatically prepend "patch_" to the name and attempt to
+// compensate for name mangling.
+void *
+find_patch_function (TCCState * tcc, char const * obj_name)
+{
+	char * sym_name = temp_format ("patch_%s", obj_name);
+
+	void * val = tcc__get_symbol (tcc, sym_name);
+	if (val != NULL)
+		return val;
+
+	struct mangled_symbol_search mss = {.sym_name = sym_name, .sym_name_len = strlen (sym_name), .matching_val = NULL, .count_matches = 0};
+	tcc__list_symbols (tcc, &mss, match_mangled_symbol);
+	REQUIRE (mss.count_matches > 0, format ("Symbol %s not found in compiled code", sym_name));
+	REQUIRE (mss.count_matches < 2, format ("Symbol %s is ambiguous", sym_name));
+	return mss.matching_val;
+}
+
+
 // Because we're compiling with -nostdlib the entry point isn't main but is rather _runmain (if running immediately like a script) or _start (if
 // compiling to an EXE file)
 #ifdef C3X_INSTALL
@@ -773,6 +815,7 @@ ENTRY_POINT ()
 		.disallow_founding_next_to_foreign_city = 1,
 		.enable_trade_screen_scroll = 1,
 		.group_units_on_right_click_menu = 1,
+		.anarchy_length_reduction_percent = 0,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,
@@ -862,15 +905,14 @@ ENTRY_POINT ()
 		if (obj->job != OJ_IGNORE) {
 			int func_addr = (bin == &gog_binary) ? obj->gog_addr : obj->steam_addr;
 			ASSERT (func_addr != 0);
-			char * sym = temp_format ("patch_%s", obj->name);
 
 			// Write trampoline to redirect calls to original function to patched version
 			if (obj->job == OJ_INLEAD) {
-				put_trampoline ((void *)func_addr, tcc__get_symbol (tcc, sym));
+				put_trampoline ((void *)func_addr, find_patch_function (tcc, obj->name));
 
 			// Replace vptr
 			} else if (obj->job == OJ_REPL_VPTR) {
-				write_prog_int ((void *)func_addr, (int)tcc__get_symbol (tcc, sym));
+				write_prog_int ((void *)func_addr, (int)find_patch_function (tcc, obj->name));
 			}
 		}
 	}

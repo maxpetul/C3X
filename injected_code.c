@@ -79,6 +79,16 @@ int_abs (int x)
 	return (x >= 0) ? x : (0 - x);
 }
 
+// Computes num/denom randomly rounded off so that E[rand_div (x,y)] = (float)x/y
+// As an example: E[rand_div (6, 5)] = 1.2, it will return 1 with 80% probability and 2 with 20% prob.
+int
+rand_div (int num, int denom)
+{
+	int q = num / denom,
+	    r = num % denom;
+	return q + (rand_int (p_rand_object, __, denom) < r);
+}
+
 char *
 file_to_string (char const * filepath)
 {
@@ -169,6 +179,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->enable_trade_screen_scroll = ival != 0;
 				else if ((0 == strncmp (key, "group_units_on_right_click_menu", key_len)) && read_int (value, value_len, &ival))
 					cfg->group_units_on_right_click_menu = ival != 0;
+				else if ((0 == strncmp (key, "anarchy_length_reduction_percent", key_len)) && read_int (value, value_len, &ival))
+					cfg->anarchy_length_reduction_percent = ival;
 
 				else if ((0 == strncmp (key, "use_offensive_artillery_ai", key_len)) && read_int (value, value_len, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -2676,6 +2688,24 @@ patch_ai_move_defensive_unit (Unit * this)
 		return;
 	}
 	ai_move_defensive_unit (this);
+}
+
+int __stdcall
+patch_get_anarchy_length (int leader_id)
+{
+	int base = get_anarchy_length (leader_id);
+	int reduction = is->current_config.anarchy_length_reduction_percent;
+	if (reduction > 0) {
+		// Anarchy cannot be less than 2 turns or you'll get an instant government switch. Only let that happen when the reduction is set
+		// above 100%, indicating a desire for no anarchy. Otherwise we can't reduce anarchy below 2 turns.
+		if (reduction > 100)
+			return 1;
+		else if (base <= 2)
+			return base;
+		else
+			return not_below (2, rand_div (base * (100 - reduction), 100));
+	} else
+		return base;
 }
 
 // TCC requires a main function be defined even though it's never used.
