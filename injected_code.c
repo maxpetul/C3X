@@ -2478,6 +2478,16 @@ patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3
 	return Context_Menu_open (this, __, x, y, param_3);
 }
 
+int
+is_pop_unit (UnitType const * type)
+{
+	int join_city_action = UCV_Join_City & 0x0FFFFFFF; // To get the join city action code, use the command value and mask out the top 4 category bits
+	int noncombat = (type->Attack | type->Defence | type->Bombard_Strength) == 0;
+	return noncombat &&
+		(type->PopulationCost > 0) &&
+		(type->Worker_Actions == join_city_action);
+}
+
 void
 ai_move_pop_unit (Unit * this)
 {
@@ -2577,12 +2587,10 @@ patch_Unit_ai_move_terraformer (Unit * this)
 {
 	int type_id = this->Body.UnitTypeID;
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
-	UnitType * type = &p_bic_data->UnitTypes[type_id];
 	if (is->current_config.enable_pop_unit_ai &&
-	    (type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
 	    (tile != NULL) && (tile != p_null_tile) &&
-	    (type->PopulationCost > 0) &&
-	    (type->Worker_Actions == UCV_Join_City)) {
+	    (type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
+	    is_pop_unit (&p_bic_data->UnitTypes[type_id])) {
 
 		ai_move_pop_unit (this);
 		return;
@@ -2685,14 +2693,10 @@ patch_ai_move_defensive_unit (Unit * this)
 {
 	int type_id = this->Body.UnitTypeID;
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
-	UnitType * type = &p_bic_data->UnitTypes[type_id];
-	int join_city_action = UCV_Join_City & 0x0FFFFFFF; // To get the join city action code, use the command value and mask out the top 4 category bits
 	if (is->current_config.enable_pop_unit_ai &&
-	    (type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
 	    (tile != NULL) && (tile != p_null_tile) &&
-	    (type->Defence == 0) &&
-	    (type->PopulationCost > 0) &&
-	    (type->Worker_Actions == join_city_action)) {
+	    (type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
+	    is_pop_unit (&p_bic_data->UnitTypes[type_id])) {
 		ai_move_pop_unit (this);
 		return;
 	}
