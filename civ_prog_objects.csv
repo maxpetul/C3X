@@ -142,4 +142,4 @@ ignore,	   0x4E3D90,	0x0,		"Main_Screen_Form_is_unit_hidden_from_player",	"byte 
 ignore,	   0x4E8850,	0x4F14E0,	"Main_Screen_Form_open_right_click_unit_menu",	"void (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)"
 ignore,	   0x4DBA70,	0x0,		"Main_Screen_Form_set_selected_unit",		"void (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit, byte param_2)"
 
-inlead,	   0x53A860,	0x0,		"get_anarchy_length",				"int (__stdcall *) (int leader_id)"
+inlead,	   0x53A860,	0x544B80,	"get_anarchy_length",				"int (__stdcall *) (int leader_id)"
