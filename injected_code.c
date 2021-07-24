@@ -2453,10 +2453,19 @@ patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3
 		for (int n = 0; n < this->Item_Count; n++)
 			if (is->unit_menu_duplicates[n] > 0) {
 				Context_Menu_Item * item = &this->Items[n];
-				unsigned new_text_len = strlen (item->Text) + 10;
+				unsigned new_text_len = strlen (item->Text) + 20;
 				char * new_text = civ_prog_malloc (new_text_len);
-				snprintf (new_text, new_text_len, "%dx %s", is->unit_menu_duplicates[n] + 1, item->Text);
-				new_text[new_text_len - 1] = '\0';
+
+				// Print entry text including dup count to new_text. Biggest complication here is that we want to print the dup count
+				// after any leading spaces to preserve indentation.
+				{
+					int num_spaces = 0;
+					while (item->Text[num_spaces] == ' ')
+						num_spaces++;
+					snprintf (new_text, new_text_len, "%.*s%dx %s", num_spaces, item->Text, is->unit_menu_duplicates[n] + 1, &item->Text[num_spaces]);
+					new_text[new_text_len - 1] = '\0';
+				}
+
 				civ_prog_free (item->Text);
 				item->Text = new_text;
 				Context_Menu_widen_for_text (this, __, new_text);
