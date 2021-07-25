@@ -17,7 +17,7 @@ struct c3x_config {
 	char show_detailed_city_production_info;
 	int limit_railroad_movement;
 	char enable_free_buildings_from_small_wonders;
-	char enable_stack_worker_commands;
+	char enable_stack_unit_commands;
 	char skip_repeated_tile_improv_replacement_asks;
 	char autofill_best_gold_amount_when_trading;
 	int adjust_minimum_city_separation;

@@ -165,8 +165,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->limit_railroad_movement = ival;
 				else if ((0 == strncmp (key, "enable_free_buildings_from_small_wonders", key_len)) && read_int (value, value_len, &ival))
 					cfg->enable_free_buildings_from_small_wonders = ival != 0;
-				else if ((0 == strncmp (key, "enable_stack_worker_commands", key_len)) && read_int (value, value_len, &ival))
-					cfg->enable_stack_worker_commands = ival != 0;
+				else if ((0 == strncmp (key, "enable_stack_unit_commands", key_len)) && read_int (value, value_len, &ival))
+					cfg->enable_stack_unit_commands = ival != 0;
 				else if ((0 == strncmp (key, "skip_repeated_tile_improv_replacement_asks", key_len)) && read_int (value, value_len, &ival))
 					cfg->skip_repeated_tile_improv_replacement_asks = ival != 0;
 				else if ((0 == strncmp (key, "autofill_best_gold_amount_when_trading", key_len)) && read_int (value, value_len, &ival))
@@ -992,7 +992,7 @@ void
 set_up_stack_worker_buttons (Main_GUI * this)
 {
 	if ((((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0) ||  // (control key is not down OR
-	    (! is->current_config.enable_stack_worker_commands) || // stack worker commands not enabled OR
+	    (! is->current_config.enable_stack_unit_commands) || // stack worker commands not enabled OR
 	    is_game_type_4_or_5 ()) // is online game
 		return;
 
@@ -1376,7 +1376,7 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 	}
 
 	if ((stack_button_info == NULL) || // If there's no stack command for the pressed button OR
-	    (! is->current_config.enable_stack_worker_commands) || // stack worker commands are not enabled OR
+	    (! is->current_config.enable_stack_unit_commands) || // stack unit commands are not enabled OR
 	    (((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0) || // CTRL key is not down OR
 	    (p_main_screen_form->Current_Unit == NULL) || // no unit is selected OR
 	    is_game_type_4_or_5 ()) { // is online game
