@@ -828,8 +828,6 @@ has_any_destructible_improvements (City * city)
 	return 0;
 }
 
-#define SB_MANIFEST_LENGTH 400
-
 void __fastcall
 patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx, enum Unit_Mode_Actions action, int x, int y)
 {
@@ -842,9 +840,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 		return;
 	}
 
-	int attackers[SB_MANIFEST_LENGTH];
-	int targets[SB_MANIFEST_LENGTH];
-	int count_attackers = 0, count_targets = 0;
+	clear_memo ();
 
 	wrap_tile_coords (&p_bic_data->Map, &x, &y);
 	Tile * base_tile = tile_at (this->Current_Unit->Body.X, this->Current_Unit->Body.Y);
@@ -853,26 +849,31 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 	UnitType * attacker_type = &p_bic_data->UnitTypes[attacker_type_id];
 	int civ_id = this->Current_Unit->Body.CivID;
 
+	// Count & memoize attackers
 	int selected_unit_id = this->Current_Unit->Body.ID;
 	FOR_UNITS_ON (uti, base_tile)
-		if ((count_attackers < SB_MANIFEST_LENGTH) &&
-		    (uti.id != selected_unit_id) &&
+		if ((uti.id != selected_unit_id) &&
 		    (uti.unit->Body.UnitTypeID == attacker_type_id) &&
 		    ((uti.unit->Body.Container_Unit < 0) || (attacker_type->Unit_Class == UTC_Air)) &&
 		    (uti.unit->Body.UnitState == 0) &&
 		    can_attack_this_turn (uti.unit))
-			attackers[count_attackers++] = uti.id;
+			memoize (uti.id);
+	int count_attackers = is->memo_len;
 	
+	// Count & memoize targets (also count air units while we're at it)
 	int num_air_units_on_target_tile = 0;
 	FOR_UNITS_ON (uti, target_tile) {
 		num_air_units_on_target_tile += UTC_Air == p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Unit_Class;
-		if ((count_targets < SB_MANIFEST_LENGTH) &&
-		    (Unit_get_defense_strength (uti.unit) > 0) &&
+		if ((Unit_get_defense_strength (uti.unit) > 0) &&
 		    (uti.unit->Body.Container_Unit < 0) &&
 		    Unit_is_visible_to_civ (uti.unit, __, civ_id, 0) &&
 		    can_damage_bombarding (attacker_type, uti.unit, target_tile))
-			targets[count_targets++] = uti.id;
+			memoize (uti.id);
 	}
+	int count_targets = is->memo_len - count_attackers;
+
+	// Now our attackers and targets arrays will just be pointers into the memo
+	int * attackers = &is->memo[0], * targets = &is->memo[count_attackers];
 
 	int attacking_units = 0, attacking_tile = 0;
 	City * target_city = NULL;
