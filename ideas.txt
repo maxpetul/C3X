@@ -4,9 +4,7 @@ Ideas:
 - Cities do not unassign citizens from polluted tiles (arguably not convenient since you're potentially losing the specialist yield)
 - [from tjs282] Assign the minimum number of workers necessary to clean pollution
 - [from tjs282] Scroll wheel to set gold amount in trade window
-- [form Tsubasanut, Civinator, Nanuk] Increase min city distance especially from enemy cities
 - [from MartinLuther] "I think an interesting addition would be getting an Advisor Popup whenever another civilization enters a new era."
-- [from tjs282] Group units with the same type/health/moves/status on the right click menu
 - [from Ares de Borg] "it would be cool to investigate how the AI chooses to build units and if there is a chance to put some kind of ratio to it"
 - [from Civinator] Lots in this post: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-4#post-16049378
 - [from Virote_Considon] Requests for more complex build requirements: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-4#post-16049440
@@ -18,13 +16,8 @@ Ideas:
 - [from Romulo Prado] Change stack bombard behavior when blitz is involved to use each unit once before using the same unit twice.
 - [from Shmelkin] Prevent AI from pathfinding through the player's borders when at peace w/o ROP
 - [from tjs282] Transport box render bug (right sliver of the box persists for some time after it disappears)
-- [from tjs282] Bugs with MGLs and armies, some introduced in Conquests:
-  - The AI "can't/won't use MGLs to build Armies anymore (but can allegedly still rush Wonders with them, which the human can't)"
-  - The AI "can't/won't finish loading (multi-unit) Armies that it's been given (e.g. at Scenario-start, or via autoproduction) so rarely/never sends them out to fight"
 - [from ynot56] Unload units from armies and/or upgrade them inside armies
-- [from Predator145] Change anarchy length
 - [from miggi03] Give each Civ its own diplo music
-- [from register] Stack delete
 - [from Kirejara] "move the 'Wake all' and 'Wake transported' to the top of list in the unit menu.", "add a 'Wake by unit type'"
 - [from Sutsuj] Allow online MP games to have more than 8 players
 - [from AnthonyBoscia]
@@ -38,7 +31,6 @@ Ideas:
   - Allow teleportation of immobile units
     - As Alternative/addition make removing go-to action also immobilize units
   - Allow unit to retreat as long as it's faster than its opponent
-  - Fix game crash on unload immobile unit from ship
   - Limit unit stacking with per-unit weight, per-terrain capacities, etc. See: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-8#post-16077019
 - [from tjs282 and vmxa] Stop AI from signing dumb MPPs
 - [from tjs282] Silence war declared & alliance signed popups that don't involve the player
@@ -48,7 +40,7 @@ Ideas:
 - [from ynot56] Allow clearing jungle/marsh underneath pollution
 - [from Vuldacon] Fix bug regarding wheeled unit movement (described here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-9#post-16082663)
 - [from Nanuk] Prevent pollution from spawning on impassable terrain
-- [from Nanuk] Stop AI from loading hidden nationality units into armies. Improve AI handling of HN units in general, stop its beelining toward them anywhere on the map (the AI does this b/c it thinks they're barbs), stop it from building so many
+- [from Nanuk] Stop AI from beelining toward HN units anywhere on the map (the AI does this b/c it thinks they're barbs), stop it from building so many
 - [from Civinator] Give defensive bombard multiple chances to hit up to the fire rate of the bombarding unit.
 - [from Nanuk] Enable city view button in scenarios
 - [from Romulo Prado] AI bombers should target barricades, particularly ones placed along its border
@@ -61,7 +53,6 @@ Ideas:
 - [from haluu]
   - "AI ability to try to detect and attack invisible units that are pillaging improvements (if it has detector units)"
   - "AI ability to strategically attack undamaged army units"
-  - Enable AI to use join city function on modded units that can't perform any other function
   - "A fix for Trade route calculations (e.g. Harbors) slowing down the game and causing lag in between turns"
 - [from Barret] Change the "OFF" corruption setting for governments to really have zero corruption
 - [from Predator145]
