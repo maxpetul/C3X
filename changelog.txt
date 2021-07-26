@@ -1,4 +1,4 @@
-* RELEASE 8
+* RELEASE 7C
 - Stack fortify, upgrade, and disband
 - Pop unit AI
 - Group units on right click menu
