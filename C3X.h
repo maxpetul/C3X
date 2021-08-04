@@ -100,14 +100,14 @@ enum init_state {
 	IS_INIT_FAILED
 };
 
-enum label {
-	LAB_NEVER_COMPLETES = 0,
-	LAB_HALTED,
-	LAB_SURPLUS,
-	LAB_SURPLUS_NONE,
-	LAB_SURPLUS_NA,
-	LAB_SB_TOOLTIP,
-	COUNT_LABELS
+enum c3x_label {
+	CL_NEVER_COMPLETES = 0,
+	CL_HALTED,
+	CL_SURPLUS,
+	CL_SURPLUS_NONE,
+	CL_SURPLUS_NA,
+	CL_SB_TOOLTIP,
+	COUNT_C3X_LABELS
 };
 
 struct worker_job_and_location {
@@ -156,6 +156,7 @@ struct injected_state {
 	int (* strncmp) (char const *, char const *, size_t);
 	size_t (* strlen) (char const *);
 	char * (* strncpy) (char *, char const *, size_t);
+	char * (* strstr) (char const *, char const *);
 	void (* qsort) (void *, size_t, size_t, int (*) (void const *, void const *));
 	int (* memcmp) (void const *, void const *, size_t);
 
@@ -163,7 +164,7 @@ struct injected_state {
 
 	char mod_script_path[MAX_PATH];
 
-	char * labels[COUNT_LABELS];
+	char * c3x_labels[COUNT_C3X_LABELS];
 
 	int have_job_and_loc_to_skip; // 0 or 1 if the variable below has anything actionable in it. Gets cleared to 0 after
 	// every turn.

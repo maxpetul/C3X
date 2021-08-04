@@ -27,6 +27,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define strncmp is->strncmp
 #define strlen is->strlen
 #define strncpy is->strncpy
+#define strstr is->strstr
 #define qsort is->qsort
 #define memcmp is->memcmp
 
@@ -252,6 +253,28 @@ Unit_get_max_move_points_for_disembarking (Unit * this)
 		return 0;
 }
 
+int __fastcall
+PCX_Image_process_tech_ga_status (PCX_Image * this, int edx, char * str)
+{
+	Leader * player = &leaders[p_main_screen_form->Player_CivID];
+	if (*p_current_turn_no < player->Golden_Age_End) {
+		int turns_left = player->Golden_Age_End - *p_current_turn_no;
+		char const * ga_str_start = strstr (temp_str, labels[LBL_GOLDEN_AGE]);
+		/*
+		if (ga_str_start != NULL) {
+			char s[250];
+			char const * ga_str_end = ga_str_start + strlen (labels[LBL_GOLDEN_AGE]);
+			// snprintf (s, sizeof s, "%.*s (%d)%s", ga_str_end - temp_str, temp_str, turns_left, ga_str_end);
+			snprintf (s, sizeof s, "testing 1 2 3...");
+			s[(sizeof s) - 1] = '\0';
+			strncpy (temp_str, s, sizeof s);
+		}
+		*/
+		strncpy (temp_str, "testing 1 2 3...", 100);
+	}
+	return PCX_Image_process_text (this, __, temp_str);
+}
+
 Tile * __stdcall
 tile_at_city_or_null (City * city_or_null)
 {
@@ -367,6 +390,12 @@ apply_config (struct c3x_config * cfg)
 		for (int n = 0; n < 2; n++)
 			((byte *)ADDR_AUTORAZE_BYPASS)[n] = cfg->prevent_autorazing ? bypass[n] : normal[n];
 	}
+
+	// Show GA remaining turns
+	WITH_MEM_PROTECTION (ADDR_CALL_OFFSET_PROCESS_TECH_GA_STATUS, 4, PAGE_EXECUTE_READWRITE) {
+		int offset = (int)&PCX_Image_process_tech_ga_status - ((int)ADDR_CALL_OFFSET_PROCESS_TECH_GA_STATUS + 4);
+		int_to_bytes (ADDR_CALL_OFFSET_PROCESS_TECH_GA_STATUS, offset);
+	}
 }
 
 void
@@ -397,6 +426,7 @@ patch_init_floating_point ()
 	strncmp  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncmp");
 	strlen   = (void *)(*p_GetProcAddress) (is->msvcrt, "strlen");
 	strncpy  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncpy");
+	strstr   = (void *)(*p_GetProcAddress) (is->msvcrt, "strstr");
 	qsort    = (void *)(*p_GetProcAddress) (is->msvcrt, "qsort");
 	memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
 
@@ -406,13 +436,13 @@ patch_init_floating_point ()
 
 	// Load labels
 	{
-		for (int n = 0; n < COUNT_LABELS; n++)
-			is->labels[n] = "";
+		for (int n = 0; n < COUNT_C3X_LABELS; n++)
+			is->c3x_labels[n] = "";
 		char * labels_file_contents = load_text_file ("Text\\c3x-labels.txt", "labels", "");
 		if (labels_file_contents != NULL) {
 			char * cursor = labels_file_contents;
 			int n = 0;
-			while ((n < COUNT_LABELS) && (*cursor != '\0')) {
+			while ((n < COUNT_C3X_LABELS) && (*cursor != '\0')) {
 				if (*cursor == '\n')
 					cursor++;
 				else if ((cursor[0] == '\r') && (cursor[1] == '\n'))
@@ -425,9 +455,9 @@ patch_init_floating_point ()
 					while ((*cursor != '\0') && (*cursor != '\r') && (*cursor != '\n'))
 						cursor++;
 					int line_len = cursor - line_start;
-					if (NULL != (is->labels[n] = malloc (line_len + 1))) {
-						strncpy (is->labels[n], line_start, line_len);
-						is->labels[n][line_len] = '\0';
+					if (NULL != (is->c3x_labels[n] = malloc (line_len + 1))) {
+						strncpy (is->c3x_labels[n], line_start, line_len);
+						is->c3x_labels[n][line_len] = '\0';
 					}
 					n++;
 				}
@@ -984,7 +1014,7 @@ set_up_stack_bombard_buttons (Main_GUI * this)
 	free_button->Button.field_664 = bombard_button->Button.field_664;
 	// FUN_005559E0 is also called in the original code. I don't know what it actually does but I'm pretty sure it doesn't
 	// matter for our purposes.
-	Button_set_tooltip (&free_button->Button, __, is->labels[LAB_SB_TOOLTIP]);
+	Button_set_tooltip (&free_button->Button, __, is->c3x_labels[CL_SB_TOOLTIP]);
 	free_button->Button.field_5FC[13] = bombard_button->Button.field_5FC[13];
 	free_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&free_button->Button, __, 0);
 }
@@ -1514,9 +1544,9 @@ patch_City_Form_draw (City_Form * this)
 				if (! building_wealth)
 					snprintf (line1, sizeof line1, "%s %d %s", this->Labels.To_Build, turns_left, (turns_left == 1) ? this->Labels.Single_Turn : this->Labels.Multiple_Turns);
 				else
-					snprintf (line1, sizeof line1, "%s", is->labels[LAB_NEVER_COMPLETES]);
+					snprintf (line1, sizeof line1, "%s", is->c3x_labels[CL_NEVER_COMPLETES]);
 			} else
-				snprintf (line1, sizeof line1, "%s", is->labels[LAB_HALTED]);
+				snprintf (line1, sizeof line1, "%s", is->c3x_labels[CL_HALTED]);
 			line1[(sizeof line1) - 1] = '\0';
 		}
 
@@ -1540,13 +1570,13 @@ patch_City_Form_draw (City_Form * this)
 						s_rem = 0;
 					}
 				}
-				char * s_lab = is->labels[LAB_SURPLUS];
+				char * s_lab = is->c3x_labels[CL_SURPLUS];
 				if      ((s_per != 0) && (s_rem != 0)) snprintf (line3, sizeof line3, "%s: %d + %d %s", s_lab, s_rem, s_per, this->Labels.Per_Turn);
 				else if ((s_per == 0) && (s_rem != 0)) snprintf (line3, sizeof line3, "%s: %d",         s_lab, s_rem);
 				else if ((s_per != 0) && (s_rem == 0)) snprintf (line3, sizeof line3, "%s: %d %s",      s_lab, s_per, this->Labels.Per_Turn);
-				else                                   snprintf (line3, sizeof line3, "%s", is->labels[LAB_SURPLUS_NONE]);
+				else                                   snprintf (line3, sizeof line3, "%s", is->c3x_labels[CL_SURPLUS_NONE]);
 			} else
-				snprintf (line3, sizeof line3, "%s", is->labels[LAB_SURPLUS_NA]);
+				snprintf (line3, sizeof line3, "%s", is->c3x_labels[CL_SURPLUS_NA]);
 			line3[(sizeof line3) - 1] = '\0';
 		}
 
