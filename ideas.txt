@@ -68,3 +68,6 @@ Ideas:
   - Add terraforming (example, in Civ 2 it's possible to turn mountains into hills and tundra into plains)
   - Add button to reassign all citizens in all cities b/c citizens get unassigned from tiles by pollution and sometimes are needlessly assigned as entertainers
 - [from haluu] Stop AI from naming king units after its leader when game mode is not (mass) regicide
+- [from EPW] Change movement rules to require RoP or war decl to enter foreign territory
+- [from Civinator] Land/sea intersections
+- [from drmihnea] Increase rate of AI building workers
