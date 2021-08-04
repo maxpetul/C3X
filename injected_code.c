@@ -259,18 +259,15 @@ PCX_Image_process_tech_ga_status (PCX_Image * this, int edx, char * str)
 	Leader * player = &leaders[p_main_screen_form->Player_CivID];
 	if (*p_current_turn_no < player->Golden_Age_End) {
 		int turns_left = player->Golden_Age_End - *p_current_turn_no;
-		char const * ga_str_start = strstr (temp_str, labels[LBL_GOLDEN_AGE]);
-		/*
+		char const * ga_label = (*p_labels)[LBL_GOLDEN_AGE];
+		char const * ga_str_start = strstr (temp_str, ga_label);
 		if (ga_str_start != NULL) {
 			char s[250];
-			char const * ga_str_end = ga_str_start + strlen (labels[LBL_GOLDEN_AGE]);
-			// snprintf (s, sizeof s, "%.*s (%d)%s", ga_str_end - temp_str, temp_str, turns_left, ga_str_end);
-			snprintf (s, sizeof s, "testing 1 2 3...");
+			char const * ga_str_end = ga_str_start + strlen (ga_label);
+			snprintf (s, sizeof s, "%.*s (%d)%s", ga_str_end - temp_str, temp_str, turns_left, ga_str_end);
 			s[(sizeof s) - 1] = '\0';
 			strncpy (temp_str, s, sizeof s);
 		}
-		*/
-		strncpy (temp_str, "testing 1 2 3...", 100);
 	}
 	return PCX_Image_process_text (this, __, temp_str);
 }
