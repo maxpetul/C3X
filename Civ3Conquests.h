@@ -1510,17 +1510,15 @@ struct String16
 
 struct Race_vtable
 {
-//  int (__thiscall *CheckBonus)(Race *this, int BonusID);
-  void *CheckBonus;
-  int GetBonuses;
-  int GetAdjectiveName;
-  int GetCountryName;
-  int GetLeaderName;
-  int GetTitle;
-//  char *(__thiscall *GetSingularName)(Race *);
-  void *GetSingularName;
-  int GetStartupAdvance;
-  int f1;
+  byte (__fastcall * CheckBonus) (Race *, int, int);
+  int (__fastcall * GetBonuses) (Race *);
+  char * (__fastcall * GetAdjectiveName) (Race *);
+  char * (__fastcall * GetCountryName) (Race *);
+  char * (__fastcall * GetLeaderName) (Race *);
+  char * (__fastcall * GetTitle) (Race *);
+  char * (__fastcall * GetSingularName) (Race *);
+  int (__fastcall * GetStartupAdvance) (Race *, int, int);
+  int (__fastcall * f1) (Race *);
 };
 
 struct Citizens
