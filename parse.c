@@ -160,6 +160,7 @@ read_object_job (char * str, int str_len, enum object_job * out)
 	if      (0 == strncmp ("define"   , str, str_len)) *out = OJ_DEFINE;
 	else if (0 == strncmp ("inlead"   , str, str_len)) *out = OJ_INLEAD;
 	else if (0 == strncmp ("repl vptr", str, str_len)) *out = OJ_REPL_VPTR;
+	else if (0 == strncmp ("repl call", str, str_len)) *out = OJ_REPL_CALL;
 	else if (0 == strncmp ("ignore"   , str, str_len)) *out = OJ_IGNORE;
 	else
 		return 0;

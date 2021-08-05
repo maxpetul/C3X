@@ -144,7 +144,7 @@ ignore,	   0x4DBA70,	0x0,		"Main_Screen_Form_set_selected_unit",		"void (__fastc
 ignore,	   0xCAB2D8,	0xCCDB88,	"temp_str",					"char[4096]"
 
 inlead,	   0x53A860,	0x544B80,	"get_anarchy_length",				"int (__stdcall *) (int leader_id)"
-define,	   0x5557DF,	0x56136F,	"ADDR_CALL_OFFSET_PROCESS_TECH_GA_STATUS",	"void *"
+repl call, 0x5557DE,	0x56136E,	"PCX_Image_process_tech_ga_status",		""
 define,	   0x5FE560,	0x612F50,	"PCX_Image_process_text",			"int (__fastcall *) (PCX_Image * this, int edx, char * str)"
 define,	   0xA526AC,	0xA74EA4,	"p_current_turn_no",				"int *"
 define,	   0xCADC0C,	0xCD0504,	"p_labels",					"char ***"

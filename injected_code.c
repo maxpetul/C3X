@@ -258,7 +258,7 @@ Unit_get_max_move_points_for_disembarking (Unit * this)
 // This func implements GA remaining turns indicator. It intercepts a call to some kind of text processing function when it's called to process the
 // text in the lower right (containing current research, GA status, & mobilization) and splices in the number of remaining GA turns if in a GA.
 int __fastcall
-PCX_Image_process_tech_ga_status (PCX_Image * this, int edx, char * str)
+patch_PCX_Image_process_tech_ga_status (PCX_Image * this, int edx, char * str)
 {
 	Leader * player = &leaders[p_main_screen_form->Player_CivID];
 	if (is->current_config.show_golden_age_turns_remaining &&
@@ -391,12 +391,6 @@ apply_config (struct c3x_config * cfg)
 		byte bypass[2] = {0x90, 0xE9}; // nop, jmp
 		for (int n = 0; n < 2; n++)
 			((byte *)ADDR_AUTORAZE_BYPASS)[n] = cfg->prevent_autorazing ? bypass[n] : normal[n];
-	}
-
-	// Show GA remaining turns
-	WITH_MEM_PROTECTION (ADDR_CALL_OFFSET_PROCESS_TECH_GA_STATUS, 4, PAGE_EXECUTE_READWRITE) {
-		int offset = (int)&PCX_Image_process_tech_ga_status - ((int)ADDR_CALL_OFFSET_PROCESS_TECH_GA_STATUS + 4);
-		int_to_bytes (ADDR_CALL_OFFSET_PROCESS_TECH_GA_STATUS, offset);
 	}
 }
 

@@ -248,7 +248,8 @@ struct injected_state {
 enum object_job {
 	OJ_DEFINE = 0,
 	OJ_INLEAD, // Patch this function with an inlead
-	OJ_REPL_VPTR, // Patch this function by replacing a pointer to it. NOTE: The address column is the addr of the VPTR not the function itself.
+	OJ_REPL_VPTR, // Patch this function by replacing a pointer to it. The address column is the addr of the VPTR not the function itself.
+	OJ_REPL_CALL, // Patch a single function call. The address column is the addr of the call instruction, name refers to the new target function, type is not used.
 	OJ_IGNORE
 };
 

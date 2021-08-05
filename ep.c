@@ -467,11 +467,12 @@ set_prog_mem_protection (void * addr, int size, enum mem_access access)
 #endif
 }
 
+// Writes an instruction redirecting control flow from "from" to "to". If "use_call_instr" is 1, a call is used, otherwise a jump is.
 void
-put_trampoline (void * from, void * to)
+put_trampoline (void * from, void * to, int use_call_instr)
 {
 	byte code[5];
-	code[0] = 0xE9; // jmp
+	code[0] = use_call_instr ? 0xE8 : 0xE9;
 	int_to_bytes (&code[1], (int)to - ((int)from + 5));
 	write_prog_memory (from, code, sizeof code);
 }
@@ -904,17 +905,15 @@ ENTRY_POINT ()
 	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
 		if (obj->job != OJ_IGNORE) {
-			int func_addr = (bin == &gog_binary) ? obj->gog_addr : obj->steam_addr;
-			ASSERT (func_addr != 0);
+			int addr = (bin == &gog_binary) ? obj->gog_addr : obj->steam_addr;
+			ASSERT (addr != 0);
 
-			// Write trampoline to redirect calls to original function to patched version
-			if (obj->job == OJ_INLEAD) {
-				put_trampoline ((void *)func_addr, find_patch_function (tcc, obj->name));
-
-			// Replace vptr
-			} else if (obj->job == OJ_REPL_VPTR) {
-				write_prog_int ((void *)func_addr, (int)find_patch_function (tcc, obj->name));
-			}
+			if (obj->job == OJ_INLEAD)
+				put_trampoline ((void *)addr, find_patch_function (tcc, obj->name), 0);
+			else if (obj->job == OJ_REPL_VPTR)
+				write_prog_int ((void *)addr, (int)find_patch_function (tcc, obj->name));
+			else if (obj->job == OJ_REPL_CALL)
+				put_trampoline ((void *)addr, find_patch_function (tcc, obj->name), 1);
 		}
 	}
 
