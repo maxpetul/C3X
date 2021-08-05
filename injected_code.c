@@ -255,6 +255,8 @@ Unit_get_max_move_points_for_disembarking (Unit * this)
 		return 0;
 }
 
+// This func implements GA remaining turns indicator. It intercepts a call to some kind of text processing function when it's called to process the
+// text in the lower right (containing current research, GA status, & mobilization) and splices in the number of remaining GA turns if in a GA.
 int __fastcall
 PCX_Image_process_tech_ga_status (PCX_Image * this, int edx, char * str)
 {
@@ -263,16 +265,16 @@ PCX_Image_process_tech_ga_status (PCX_Image * this, int edx, char * str)
 	    (*p_current_turn_no < player->Golden_Age_End)) {
 		int turns_left = player->Golden_Age_End - *p_current_turn_no;
 		char const * ga_label = (*p_labels)[LBL_GOLDEN_AGE];
-		char const * ga_str_start = strstr (temp_str, ga_label);
+		char const * ga_str_start = strstr (str, ga_label);
 		if (ga_str_start != NULL) {
 			char s[250];
 			char const * ga_str_end = ga_str_start + strlen (ga_label);
-			snprintf (s, sizeof s, "%.*s (%d)%s", ga_str_end - temp_str, temp_str, turns_left, ga_str_end);
+			snprintf (s, sizeof s, "%.*s (%d)%s", ga_str_end - str, str, turns_left, ga_str_end);
 			s[(sizeof s) - 1] = '\0';
-			strncpy (temp_str, s, sizeof s);
+			strncpy (str, s, sizeof s);
 		}
 	}
-	return PCX_Image_process_text (this, __, temp_str);
+	return PCX_Image_process_text (this, __, str);
 }
 
 Tile * __stdcall
