@@ -182,6 +182,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->group_units_on_right_click_menu = ival != 0;
 				else if ((0 == strncmp (key, "anarchy_length_reduction_percent", key_len)) && read_int (value, value_len, &ival))
 					cfg->anarchy_length_reduction_percent = ival;
+				else if ((0 == strncmp (key, "show_golden_age_turns_remaining", key_len)) && read_int (value, value_len, &ival))
+					cfg->show_golden_age_turns_remaining = ival != 0;
 
 				else if ((0 == strncmp (key, "use_offensive_artillery_ai", key_len)) && read_int (value, value_len, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -257,7 +259,8 @@ int __fastcall
 PCX_Image_process_tech_ga_status (PCX_Image * this, int edx, char * str)
 {
 	Leader * player = &leaders[p_main_screen_form->Player_CivID];
-	if (*p_current_turn_no < player->Golden_Age_End) {
+	if (is->current_config.show_golden_age_turns_remaining &&
+	    (*p_current_turn_no < player->Golden_Age_End)) {
 		int turns_left = player->Golden_Age_End - *p_current_turn_no;
 		char const * ga_label = (*p_labels)[LBL_GOLDEN_AGE];
 		char const * ga_str_start = strstr (temp_str, ga_label);

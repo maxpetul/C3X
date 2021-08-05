@@ -25,6 +25,7 @@ struct c3x_config {
 	char enable_trade_screen_scroll;
 	char group_units_on_right_click_menu;
 	int anarchy_length_reduction_percent;
+	char show_golden_age_turns_remaining;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
