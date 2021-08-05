@@ -246,13 +246,13 @@ patch_Leader_impl_would_raze_city (Leader * this, int edx, City * city)
 // Unit_get_max_move_points with a call to the function below. This function returns zero for immobile units, causing the caller to report
 // (correctly) that the unit cannot be disembarked.
 int __fastcall
-Unit_get_max_move_points_for_disembarking (Unit * this)
+patch_Unit_get_max_move_points_for_disembarking (Unit * this)
 {
-	UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
-	if (! UnitType_has_ability (type, __, UTA_Immobile))
-		return Unit_get_max_move_points (this);
-	else
+	if (is->current_config.patch_disembark_immobile_bug &&
+	    UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Immobile))
 		return 0;
+	else
+		return Unit_get_max_move_points (this);
 }
 
 // This func implements GA remaining turns indicator. It intercepts a call to some kind of text processing function when it's called to process the
@@ -356,15 +356,6 @@ apply_config (struct c3x_config * cfg)
 	// a one pixel wide pink line along the right edge of the civilopedia. This patch simply increases the texture width by one.
 	WITH_MEM_PROTECTION (ADDR_PEDIA_TEXTURE_BUG_PATCH, 1, PAGE_EXECUTE_READWRITE)
 		*(byte *)ADDR_PEDIA_TEXTURE_BUG_PATCH = cfg->patch_pedia_texture_bug ? 0xA6 : 0xA5;
-
-	// Fix for disembark immobile bug
-	// See Unit_get_max_move_points_for_disembarking for explanation.
-	WITH_MEM_PROTECTION (ADDR_DISEMBARK_IMMOBILE_BUG_PATCH, 4, PAGE_EXECUTE_READWRITE) {
-		int offset = (cfg->patch_disembark_immobile_bug) ?
-			(int)&Unit_get_max_move_points_for_disembarking - ((int)ADDR_DISEMBARK_IMMOBILE_BUG_PATCH + 4) :
-			DISEMBARK_IMMOBILE_BUG_PATCH_ORIGINAL_OFFSET;
-		int_to_bytes (ADDR_DISEMBARK_IMMOBILE_BUG_PATCH, offset);
-	}
 
 	// Fix for houseboat bug
 	// See my posts on CFC for an explanation of the bug and its fix:
