@@ -148,3 +148,5 @@ define,	   0x5FE560,	0x612F50,	"PCX_Image_process_text",			"int (__fastcall *) (
 define,	   0xA526AC,	0xA74EA4,	"p_current_turn_no",				"int *"
 define,	   0xCADC0C,	0xCD0504,	"p_labels",					"char ***"
 define,	   497,		498,		"LBL_GOLDEN_AGE",				"int"
+
+define,	   0xA5267C,	0x0,		"p_toggleable_rules",				"int *"
