@@ -818,6 +818,7 @@ ENTRY_POINT ()
 		.group_units_on_right_click_menu = 1,
 		.anarchy_length_reduction_percent = 0,
 		.show_golden_age_turns_remaining = 1,
+		.dont_give_king_names_in_non_regicide_games = 1,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,

@@ -150,3 +150,5 @@ define,	   0xCADC0C,	0xCD0504,	"p_labels",					"char ***"
 define,	   497,		498,		"LBL_GOLDEN_AGE",				"int"
 
 define,	   0xA5267C,	0x0,		"p_toggleable_rules",				"int *"
+repl call, 0x569A10,	0x0,		"Unit_check_king_ability_while_spawning",	""
+define,	   0x5BC8B0,	0x0,		"Unit_has_ability",				"byte (__fastcall *) (Unit * this, int edx, enum UnitTypeAbilities a)"

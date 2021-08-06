@@ -184,6 +184,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->anarchy_length_reduction_percent = ival;
 				else if ((0 == strncmp (key, "show_golden_age_turns_remaining", key_len)) && read_int (value, value_len, &ival))
 					cfg->show_golden_age_turns_remaining = ival != 0;
+				else if ((0 == strncmp (key, "dont_give_king_names_in_non_regicide_games", key_len)) && read_int (value, value_len, &ival))
+					cfg->dont_give_king_names_in_non_regicide_games = ival != 0;
 
 				else if ((0 == strncmp (key, "use_offensive_artillery_ai", key_len)) && read_int (value, value_len, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -2737,6 +2739,16 @@ patch_get_anarchy_length (int leader_id)
 			return not_below (2, rand_div (base * (100 - reduction), 100));
 	} else
 		return base;
+}
+
+byte __fastcall
+patch_Unit_check_king_ability_while_spawning (Unit * this, int edx, enum UnitTypeAbilities a)
+{
+	if (is->current_config.dont_give_king_names_in_non_regicide_games &&
+	    ((*p_toggleable_rules & (TR_REGICIDE | TR_MASS_REGICIDE)) == 0))
+		return 0;
+	else
+		return Unit_has_ability (this, __, a);
 }
 
 // TCC requires a main function be defined even though it's never used.

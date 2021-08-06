@@ -26,6 +26,7 @@ struct c3x_config {
 	char group_units_on_right_click_menu;
 	int anarchy_length_reduction_percent;
 	char show_golden_age_turns_remaining;
+	char dont_give_king_names_in_non_regicide_games;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;

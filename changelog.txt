@@ -1,6 +1,5 @@
 * TODO
 - Remove pop unit behavior from defensive strategy
-- Look into the king unit naming issue
 
 * RELEASE 7C
 - Stack fortify, upgrade, and disband
