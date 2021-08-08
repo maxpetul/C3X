@@ -1172,13 +1172,9 @@ patch_DiploForm_do_diplomacy (DiploForm * this, int edx, int diplo_message, int 
 	is->open_diplo_form_straight_to_trade = 0;
 	is->trade_screen_scroll_to_id = -1;
 
-	// Trade scroll is limited to single player games and meetings requested by the player. It's disabled in MP b/c I think there's extra
-	// synchronization you need to do when closing the diplo screen with a human player that I haven't implemented. For SP, the scroll is limited
-	// to meetings requested by the player b/c I'm sure that won't cause any bugs or expoits. TODO: It would be nice to enable scroll in other
-	// cases but we need to take care not to, e.g., allow the player to get out of AI demands by scrolling away from them.
-	// NOTE: I'm going to try allowing this even in meetings not requested by the player because I think limiting the scroll to DiploForm mode 2
-	// might be enough.
-	is->eligible_for_trade_scroll = is->current_config.enable_trade_screen_scroll && (! is_game_type_4_or_5 ()); // && ((civ_id == -1) || (diplo_message == -1));
+	// Trade screen scroll is disabled in online games b/c there's extra synchronization we'd need to do to open or close the diplo screen with
+	// a human player.
+	is->eligible_for_trade_scroll = is->current_config.enable_trade_screen_scroll && (! is_game_type_4_or_5 ());
 
 	if (is->eligible_for_trade_scroll && (is->trade_scroll_button_state == IS_UNINITED))
 		init_trade_scroll_buttons (this);
