@@ -2189,7 +2189,7 @@ is_current_offer_acceptable (int * out_their_advantage)
 {
 	int their_id = p_diplo_form->other_party_civ_id;
 
-	int consideration = Leader_consider_trade (
+	DiploMessage consideration = Leader_consider_trade (
 		&leaders[their_id],
 		__,
 		&p_diplo_form->our_offer_lists[their_id],
@@ -2199,7 +2199,7 @@ is_current_offer_acceptable (int * out_their_advantage)
 		out_their_advantage,
 		NULL, NULL);
 
-	return consideration == 0x24; // TODO: Replace with an enum
+	return consideration == DM_AI_ACCEPT;
 }
 
 // Adds an offer of gold to the list and returns it. If one already exists in the list, returns a pointer to it.

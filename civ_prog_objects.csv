@@ -98,7 +98,7 @@ repl vptr, 0x666578,	0x6835CC,	"PopupForm_set_text_key_and_flags",		"void (__fas
 define,    0xA35200,	0xA57A00,	"p_diplo_form",					"DiploForm *"
 define,    0x649A8B,	0x6683E1,	"new",						"void * (__cdecl *) (unsigned num_bytes)"
 define,    0x666AC4,	0x683B1C,	"p_trade_offer_vtable",				"TradeOfferVTable *"
-define,    0x440EE0,	0x442CD0,	"Leader_consider_trade",			"int (__fastcall *) (Leader * this, int edx, TradeOfferList * receiving, TradeOfferList * paying, int other_party_civ_id, byte param_4, byte param_5, byte param_6, byte param_7, int * out_advantage, int * param_9, int * param_10)"
+define,    0x440EE0,	0x442CD0,	"Leader_consider_trade",			"DiploMessage (__fastcall *) (Leader * this, int edx, TradeOfferList * receiving, TradeOfferList * paying, int other_party_civ_id, byte param_4, byte param_5, byte param_6, byte param_7, int * out_advantage, int * param_9, int * param_10)"
 define,    0x509325,	0x51334D,	"ADDR_SETUP_ASKING_GOLD_RETURN",		"int"
 define,    0x509669,	0x51366E,	"ADDR_SETUP_OFFERING_GOLD_RETURN",		"int"
 define,    14,		14,		"TRADE_GOLD_SETTER_IS_LUMP_SUM_OFFSET", 	"int"
