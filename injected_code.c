@@ -1586,7 +1586,23 @@ patch_City_Form_print_production_info (City_Form *this, int edx, String256 * out
 int __fastcall
 patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned param_7, int neighbor_index, int param_9)
 {
-	int base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, param_7, neighbor_index, param_9);
+	int const base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, param_7, neighbor_index, param_9);
+
+	// Disallow trespassing
+	// BUG: This doesn't prevent movement using the keypad
+	{
+		Tile * from = tile_at (from_x, from_y),
+		     * to   = tile_at (to_x  , to_y);
+		int from_territory_id = from->vtable->m38_Get_Territory_OwnerID (from),
+		    to_territory_id   = to  ->vtable->m38_Get_Territory_OwnerID (to);
+		if ((to_territory_id != from_territory_id) &&
+		    (to_territory_id > 0) &&
+		    (! leaders[civ_id].At_War[to_territory_id]))
+			// TODO: Check that there is no right of passage
+			return -1;
+	}
+
+	// Adjust movement cost to enforce limited railroad movement
 	int rail_limit = is->current_config.limit_railroad_movement;
 	if ((rail_limit > 0) && (is->saved_road_movement_rate > 0)) {
 		if ((unit != NULL) && (base_cost == 0))
@@ -1594,6 +1610,7 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 		else if (base_cost == 1)
 			return rail_limit; // = p_bic_data->General.RoadsMovementRate / is->saved_road_movement_rate;
 	}
+
 	return base_cost;
 }
 
