@@ -1587,11 +1587,12 @@ int __fastcall
 patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned param_7, int neighbor_index, int param_9)
 {
 	int base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, param_7, neighbor_index, param_9);
-	if ((is->current_config.limit_railroad_movement > 0) && (is->saved_road_movement_rate > 0)) {
+	int rail_limit = is->current_config.limit_railroad_movement;
+	if ((rail_limit > 0) && (is->saved_road_movement_rate > 0)) {
 		if ((unit != NULL) && (base_cost == 0))
-			return Unit_get_max_move_points (unit) / is->current_config.limit_railroad_movement;
+			return Unit_get_max_move_points (unit) / rail_limit;
 		else if (base_cost == 1)
-			return p_bic_data->General.RoadsMovementRate / is->saved_road_movement_rate;
+			return rail_limit; // = p_bic_data->General.RoadsMovementRate / is->saved_road_movement_rate;
 	}
 	return base_cost;
 }
