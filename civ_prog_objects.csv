@@ -142,7 +142,8 @@ ignore,	   0x4E8850,	0x4F14E0,	"Main_Screen_Form_open_right_click_unit_menu",	"v
 ignore,	   0x4DBA70,	0x0,		"Main_Screen_Form_set_selected_unit",		"void (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit, byte param_2)"
 ignore,	   0xCAB2D8,	0xCCDB88,	"temp_str",					"char[4096]"
 ignore,	   0x5CCBB0,	0x0,		"Unit_can_pass_between",			"PassBetweenValidity (__fastcall *) (Unit * this, int edx, int from_x, int from_y, int to_x, int to_y, byte param_5)"
-ignore,	   0x5B5CD0,	0x0,		"Unit_can_move_to_adjacent_tile",		"AdjacentMoveValidity (__fastcall *) (Unit * this, int edx, int neighbor_index, int param_2)"
+
+inlead,	   0x5B5CD0,	0x0,		"Unit_can_move_to_adjacent_tile",		"AdjacentMoveValidity (__fastcall *) (Unit * this, int edx, int neighbor_index, int param_2)"
 
 inlead,	   0x53A860,	0x544B80,	"get_anarchy_length",				"int (__stdcall *) (int leader_id)"
 repl call, 0x5557DE,	0x56136E,	"PCX_Image_process_tech_ga_status",		""
