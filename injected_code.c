@@ -1588,11 +1588,12 @@ is_trespassing (int civ_id, Tile * from, Tile * to)
 {
 	int from_territory_id = from->vtable->m38_Get_Territory_OwnerID (from),
 	    to_territory_id   = to  ->vtable->m38_Get_Territory_OwnerID (to);
-	return (to_territory_id != civ_id) &&
+	return (civ_id > 0) &&
+		(to_territory_id != civ_id) &&
 		(to_territory_id > 0) &&
 		(to_territory_id != from_territory_id) &&
-		(! leaders[civ_id].At_War[to_territory_id]);
-	        // TODO: Check that there is no right of passage
+		(! leaders[civ_id].At_War[to_territory_id]) &&
+		((leaders[civ_id].Relation_Treaties[to_territory_id] & 2) == 0); // Check right of passage
 }
 
 AdjacentMoveValidity __fastcall
@@ -1843,7 +1844,6 @@ find_nearest_established_city (Unit * unit, int continent_id)
 			if ((city != NULL) && (city->Body.CivID == unit->Body.CivID)) {
 				Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
 				if (continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) {
-					// TODO: Technically this distance calculation should account for edge wrapping
 					int dist_in_turns;
 					if (! estimate_travel_time (unit, city->Body.X, city->Body.Y, &dist_in_turns))
 						continue;
