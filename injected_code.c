@@ -186,6 +186,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->show_golden_age_turns_remaining = ival != 0;
 				else if ((0 == strncmp (key, "dont_give_king_names_in_non_regicide_games", key_len)) && read_int (value, value_len, &ival))
 					cfg->dont_give_king_names_in_non_regicide_games = ival != 0;
+				else if ((0 == strncmp (key, "enable_land_sea_intersections", key_len)) && read_int (value, value_len, &ival))
+					cfg->enable_land_sea_intersections = ival != 0;
 
 				else if ((0 == strncmp (key, "use_offensive_artillery_ai", key_len)) && read_int (value, value_len, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -2782,6 +2784,15 @@ patch_Unit_check_king_ability_while_spawning (Unit * this, int edx, enum UnitTyp
 		return 0;
 	else
 		return Unit_has_ability (this, __, a);
+}
+
+int __fastcall
+patch_Map_compute_neighbor_index_for_pass_between (Map * this, int edx, int x_home, int y_home, int x_neigh, int y_neigh, int lim)
+{
+	if (is->current_config.enable_land_sea_intersections)
+		return 0;
+	else
+		return Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, lim);
 }
 
 // TCC requires a main function be defined even though it's never used.
