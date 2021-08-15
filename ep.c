@@ -820,6 +820,7 @@ ENTRY_POINT ()
 		.show_golden_age_turns_remaining = 1,
 		.dont_give_king_names_in_non_regicide_games = 1,
 		.enable_land_sea_intersections = 0,
+		.disallow_trespassing = 0,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,

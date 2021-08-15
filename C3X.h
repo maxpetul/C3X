@@ -28,6 +28,7 @@ struct c3x_config {
 	char show_golden_age_turns_remaining;
 	char dont_give_king_names_in_non_regicide_games;
 	char enable_land_sea_intersections;
+	char disallow_trespassing;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;

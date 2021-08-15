@@ -188,6 +188,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->dont_give_king_names_in_non_regicide_games = ival != 0;
 				else if ((0 == strncmp (key, "enable_land_sea_intersections", key_len)) && read_int (value, value_len, &ival))
 					cfg->enable_land_sea_intersections = ival != 0;
+				else if ((0 == strncmp (key, "disallow_trespassing", key_len)) && read_int (value, value_len, &ival))
+					cfg->disallow_trespassing = ival != 0;
 
 				else if ((0 == strncmp (key, "use_offensive_artillery_ai", key_len)) && read_int (value, value_len, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -1603,8 +1605,8 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 {
 	AdjacentMoveValidity base_validity = Unit_can_move_to_adjacent_tile (this, __, neighbor_index, param_2);
 
-	// Disallow trespassing
-	if (base_validity == AMV_OK) {
+	// Apply trespassing restriction
+	if (is->current_config.disallow_trespassing && (base_validity == AMV_OK)) {
 		Tile * from = tile_at (this->Body.X, this->Body.Y);
 		int nx, ny;
 		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
@@ -1620,8 +1622,9 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 {
 	int const base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, param_7, neighbor_index, param_9);
 
-	// Disallow trespassing
-	if (is_trespassing (civ_id, tile_at (from_x, from_y), tile_at (to_x, to_y)))
+	// Apply trespassing restriction
+	if (is->current_config.disallow_trespassing &&
+	    is_trespassing (civ_id, tile_at (from_x, from_y), tile_at (to_x, to_y)))
 		return -1;
 
 	// Adjust movement cost to enforce limited railroad movement
