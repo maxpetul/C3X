@@ -243,6 +243,9 @@ struct injected_state {
 
 	char ask_gold_default[32];
 
+	// Used in the code that modifies how the AI values improvements when considering what to build.
+	Improvement * ai_considering_improvement;
+
 	// ==========
 	// }
 	// ==========

@@ -148,6 +148,8 @@ ignore,	   0x437970,	0x0,		"Map_get_y_dist",				"int (__fastcall *) (Map * this,
 inlead,	   0x5B5CD0,	0x0,		"Unit_can_move_to_adjacent_tile",		"AdjacentMoveValidity (__fastcall *) (Unit * this, int edx, int neighbor_index, int param_2)"
 define,	   0x5F3F50,	0x0,		"Map_compute_neighbor_index",			"int (__fastcall *) (Map * this, int edx, int x_home, int y_home, int x_neigh, int y_neigh, int lim)"
 repl call, 0x5CCC85,	0x0,		"Map_compute_neighbor_index_for_pass_between",	""
+repl call, 0x42FC69,	0x0,		"Improvement_has_wonder_com_bonus_for_ai_prod",	""
+repl call, 0x42FC74,	0x0,		"City_get_pop_size_for_com_bonus_value",	""
 
 inlead,	   0x53A860,	0x544B80,	"get_anarchy_length",				"int (__stdcall *) (int leader_id)"
 repl call, 0x5557DE,	0x56136E,	"PCX_Image_process_tech_ga_status",		""

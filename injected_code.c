@@ -2798,5 +2798,32 @@ patch_Map_compute_neighbor_index_for_pass_between (Map * this, int edx, int x_ho
 		return Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, lim);
 }
 
+byte __fastcall
+patch_Improvement_has_wonder_com_bonus_for_ai_prod (Improvement * this, int edx, enum ImprovementTypeWonderFeatures flag)
+{
+	// Save pointer to improvement b/c it isn't passed to the next function where it's needed.
+	is->ai_considering_improvement = this;
+
+	// Always return true because otherwise the next function (get_pop_size_for_com_bonus_value) won't get called. We preserve the original
+	// behavior by checking the flag in that function and having it return zero if the flag is not present.
+	return 1;
+}
+
+int __fastcall
+patch_City_get_pop_size_for_com_bonus_value (City * this)
+{
+	Improvement * improv = is->ai_considering_improvement;
+
+	// Replicate the behavior from the original code we're replacing. The AI values wonders with the +1 commerce per tile effect with points equal
+	// to the population of the city.
+	int tr = (improv->WonderFlags & ITW_Trade_In_Each_Tile_inc_1) ? this->Body.Population.Size : 0;
+
+	// Implement building "perfuming" by adding extra points.
+	if (strncmp (improv->Name.S, "500 Holes Dug and Filled In", 25) == 0)
+		tr += 1000;
+
+	return tr;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
