@@ -1,34 +1,48 @@
 
+struct string_slice {
+	char * str;
+	int len;
+};
+
 int
 is_horiz_space (char c)
 {
 	return ((c == ' ') || (c == '\t') || (c == '\r'));
 }
 
-void
+int
+is_alpha_num (char c)
+{
+	return (c == '_') || ((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z')) || ((c >= '0') && (c <= '9'));
+}
+
+int
 skip_horiz_space (char ** p_cursor)
 {
 	char * cur = *p_cursor;
 	while (is_horiz_space (*cur))
 		cur++;
 	*p_cursor = cur;
+	return 1;
 }
 
-void
+int
 skip_to_line_end (char ** p_cursor)
 {
 	char * cur = *p_cursor;
 	while ((*cur != '\n') && (*cur != '\0'))
 		cur++;
 	*p_cursor = cur;
+	return 1;
 }
 
-void
+int
 skip_line (char ** p_cursor)
 {
 	skip_to_line_end (p_cursor);
 	if (**p_cursor == '\n')
 		*p_cursor += 1;
+	return 1;
 }
 
 void
@@ -51,7 +65,6 @@ trim_string_slice (char ** str, int * str_len, int remove_quotes)
 char *
 extract_slice (char * str, int str_len)
 {
-	trim_string_slice (&str, &str_len, 1);
 	char * tr = malloc (str_len + 1);
 	for (int n = 0; n < str_len; n++)
 		tr[n] = str[n];
@@ -93,38 +106,48 @@ read_int (char * str, int str_len, int * out_val)
 		return 0;
 }
 
-// What an ugly function. I hate writing parsers.
 int
-parse_key_value_pair (char ** p_cursor, char ** out_key, int * out_key_len, char ** out_value, int * out_value_len)
+parse_string_slice (char ** p_cursor, struct string_slice * out)
 {
 	char * cur = *p_cursor;
-	char * key, * value;
-	int key_len, value_len;
-	key = cur;
-	while (1) {
-		char c = *cur;
-		if ((c == '_') || ((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z')) || ((c >= '0') && (c <= '9')))
-			cur++;
-		else
-			break;
-	}
-	key_len = cur - key;
 	skip_horiz_space (&cur);
-	if (*cur != '=')
+	int quoted = *cur == '"';
+	char * str_start;
+	if (quoted) {
+		cur++;
+		str_start = cur;
+		while ((*cur != '"') && (*cur != '\0'))
+			cur++;
+	} else {
+		str_start = cur;
+		while (is_alpha_num (*cur))
+			cur++;
+	}
+	int str_len = cur - str_start;
+	if ((str_len == 0) && (! quoted))
 		return 0;
-	cur++;
-	value = cur;
-	skip_to_line_end (&cur);
-	value_len = cur - value;
-	trim_string_slice (&value, &value_len, 1);
-	if ((key_len <= 0) || (value_len <= 0))
-		return 0;
-	*out_key = key;
-	*out_key_len = key_len;
-	*out_value = value;
-	*out_value_len = value_len;
-	*p_cursor = cur;
+	out->str = str_start;
+	out->len = str_len;
+	*p_cursor = cur + (quoted && (*cur == '"'));
 	return 1;
+}
+
+int
+parse_key_value_pair (char ** p_cursor, struct string_slice * out_key, struct string_slice * out_value)
+{
+	char * cur = *p_cursor;
+	struct string_slice key, value;
+	if (parse_string_slice (&cur, &key) &&
+	    skip_horiz_space (&cur) &&
+	    (*cur++ == '=') &&
+	    parse_string_slice (&cur, &value)) {
+		*out_key = key;
+		*out_value = value;
+		skip_to_line_end (&cur);
+		*p_cursor = cur;
+		return 1;
+	} else
+		return 0;
 }
 
 int
@@ -167,14 +190,20 @@ read_object_job (char * str, int str_len, enum object_job * out)
 	return 1;
 }
 
+char *
+trim_and_extract_slice (char * str, int str_len, int remove_quotes)
+{
+	trim_string_slice (&str, &str_len, remove_quotes);
+	return extract_slice (str, str_len);
+}
+
 int
 parse_civ_prog_object (char ** p_cursor, struct civ_prog_object * out)
 {
 	char * cursor = *p_cursor;
-	char * vals[5];
-	int lens[5];
+	struct string_slice columns[5];
 	for (int n = 0; n < 5; n++) {
-		if (parse_csv_value (&cursor, &vals[n], &lens[n])) {
+		if (parse_csv_value (&cursor, &columns[n].str, &columns[n].len)) {
 			char c = *cursor; // Check character after value for errors & to skip if necessary
 			if ((n < 4) && (c == ',')) // Before the last column, the value must end in a comma. Skip it if it's present.
 				cursor++;
@@ -189,11 +218,11 @@ parse_civ_prog_object (char ** p_cursor, struct civ_prog_object * out)
 	}
 
 	struct civ_prog_object tr;
-	if (read_object_job (vals[0], lens[0], &tr.job) &&
-	    read_int (vals[1], lens[1], &tr.gog_addr) &&
-	    read_int (vals[2], lens[2], &tr.steam_addr)) {
-		tr.name = extract_slice (vals[3], lens[3]);
-		tr.type = extract_slice (vals[4], lens[4]);
+	if (read_object_job (columns[0].str, columns[0].len, &tr.job) &&
+	    read_int (columns[1].str, columns[1].len, &tr.gog_addr) &&
+	    read_int (columns[2].str, columns[2].len, &tr.steam_addr)) {
+		tr.name = trim_and_extract_slice (columns[3].str, columns[3].len, 1);
+		tr.type = trim_and_extract_slice (columns[4].str, columns[4].len, 1);
 		*out = tr;
 		*p_cursor = cursor;
 		return 1;

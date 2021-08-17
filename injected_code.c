@@ -150,81 +150,80 @@ load_config (char const * filename, struct c3x_config * cfg)
 		else if (*cursor == '[')
 			skip_to_line_end (&cursor); // Skip section line
 		else { // parse key-value pair
-			char * key, * value;
-			int key_len, value_len;
-			if (parse_key_value_pair (&cursor, &key, &key_len, &value, &value_len)) {
+			struct string_slice key, value;
+			if (parse_key_value_pair (&cursor, &key, &value)) {
 				int ival;
-				if ((0 == strncmp (key, "enable_stack_bombard", key_len)) && read_int (value, value_len, &ival))
+				if ((0 == strncmp (key.str, "enable_stack_bombard", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->enable_stack_bombard = ival != 0;
-				else if ((0 == strncmp (key, "enable_disorder_warning", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "enable_disorder_warning", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->enable_disorder_warning = ival != 0;
-				else if ((0 == strncmp (key, "allow_stealth_attack_against_single_unit", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "allow_stealth_attack_against_single_unit", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->allow_stealth_attack_against_single_unit = ival != 0;
-				else if ((0 == strncmp (key, "show_detailed_city_production_info", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "show_detailed_city_production_info", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->show_detailed_city_production_info = ival != 0;
-				else if ((0 == strncmp (key, "limit_railroad_movement", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "limit_railroad_movement", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->limit_railroad_movement = ival;
-				else if ((0 == strncmp (key, "enable_free_buildings_from_small_wonders", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "enable_free_buildings_from_small_wonders", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->enable_free_buildings_from_small_wonders = ival != 0;
-				else if ((0 == strncmp (key, "enable_stack_unit_commands", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "enable_stack_unit_commands", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->enable_stack_unit_commands = ival != 0;
-				else if ((0 == strncmp (key, "skip_repeated_tile_improv_replacement_asks", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "skip_repeated_tile_improv_replacement_asks", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->skip_repeated_tile_improv_replacement_asks = ival != 0;
-				else if ((0 == strncmp (key, "autofill_best_gold_amount_when_trading", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "autofill_best_gold_amount_when_trading", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->autofill_best_gold_amount_when_trading = ival != 0;
-				else if ((0 == strncmp (key, "adjust_minimum_city_separation", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "adjust_minimum_city_separation", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->adjust_minimum_city_separation = ival;
-				else if ((0 == strncmp (key, "disallow_founding_next_to_foreign_city", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "disallow_founding_next_to_foreign_city", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->disallow_founding_next_to_foreign_city = ival != 0;
-				else if ((0 == strncmp (key, "enable_trade_screen_scroll", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "enable_trade_screen_scroll", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->enable_trade_screen_scroll = ival != 0;
-				else if ((0 == strncmp (key, "group_units_on_right_click_menu", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "group_units_on_right_click_menu", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->group_units_on_right_click_menu = ival != 0;
-				else if ((0 == strncmp (key, "anarchy_length_reduction_percent", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "anarchy_length_reduction_percent", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->anarchy_length_reduction_percent = ival;
-				else if ((0 == strncmp (key, "show_golden_age_turns_remaining", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "show_golden_age_turns_remaining", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->show_golden_age_turns_remaining = ival != 0;
-				else if ((0 == strncmp (key, "dont_give_king_names_in_non_regicide_games", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "dont_give_king_names_in_non_regicide_games", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->dont_give_king_names_in_non_regicide_games = ival != 0;
-				else if ((0 == strncmp (key, "enable_land_sea_intersections", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "enable_land_sea_intersections", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->enable_land_sea_intersections = ival != 0;
-				else if ((0 == strncmp (key, "disallow_trespassing", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "disallow_trespassing", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->disallow_trespassing = ival != 0;
 
-				else if ((0 == strncmp (key, "use_offensive_artillery_ai", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
-				else if ((0 == strncmp (key, "ai_build_artillery_ratio", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "ai_build_artillery_ratio", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->ai_build_artillery_ratio = ival;
-				else if ((0 == strncmp (key, "ai_artillery_value_damage_percent", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "ai_artillery_value_damage_percent", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->ai_artillery_value_damage_percent = ival;
-				else if ((0 == strncmp (key, "ai_build_bomber_ratio", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "ai_build_bomber_ratio", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->ai_build_bomber_ratio = ival;
-				else if ((0 == strncmp (key, "replace_leader_unit_ai", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "replace_leader_unit_ai", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->replace_leader_unit_ai = ival != 0;
-				else if ((0 == strncmp (key, "fix_ai_army_composition", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "fix_ai_army_composition", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->fix_ai_army_composition = ival != 0;
-				else if ((0 == strncmp (key, "enable_pop_unit_ai", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "enable_pop_unit_ai", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->enable_pop_unit_ai = ival != 0;
 
-				else if ((0 == strncmp (key, "remove_unit_limit", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "remove_unit_limit", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->remove_unit_limit = ival != 0;
-				else if ((0 == strncmp (key, "remove_era_limit", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "remove_era_limit", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->remove_era_limit = ival != 0;
 
-				else if ((0 == strncmp (key, "patch_submarine_bug", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "patch_submarine_bug", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->patch_submarine_bug = ival != 0;
-				else if ((0 == strncmp (key, "patch_science_age_bug", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "patch_science_age_bug", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->patch_science_age_bug = ival != 0;
-				else if ((0 == strncmp (key, "patch_pedia_texture_bug", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "patch_pedia_texture_bug", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->patch_pedia_texture_bug = ival != 0;
-				else if ((0 == strncmp (key, "patch_disembark_immobile_bug", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "patch_disembark_immobile_bug", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->patch_disembark_immobile_bug = ival != 0;
-				else if ((0 == strncmp (key, "patch_houseboat_bug", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "patch_houseboat_bug", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->patch_houseboat_bug = ival != 0;
 
-				else if ((0 == strncmp (key, "prevent_autorazing", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "prevent_autorazing", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->prevent_autorazing = ival != 0;
-				else if ((0 == strncmp (key, "prevent_razing_by_ai_players", key_len)) && read_int (value, value_len, &ival))
+				else if ((0 == strncmp (key.str, "prevent_razing_by_ai_players", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->prevent_razing_by_ai_players = ival != 0;
 
 				else
