@@ -71,3 +71,5 @@ Ideas:
 - [from EPW] Change movement rules to require RoP or war decl to enter foreign territory
 - [from Civinator] Land/sea intersections
 - [from drmihnea] Increase rate of AI building workers
+- [from Predator145] Revert AI naval behavior to pre-Conquests where AI would use its combat ships against enemy ships instead of locking them in escort mode
+- [from tjs282] Show whether or not a tile can have a forest harvested for shields
