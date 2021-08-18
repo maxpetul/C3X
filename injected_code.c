@@ -189,6 +189,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->enable_land_sea_intersections = ival != 0;
 				else if ((0 == strncmp (key.str, "disallow_trespassing", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->disallow_trespassing = ival != 0;
+				else if ((0 == strncmp (key.str, "show_detailed_tile_info", key.len)) && read_int (value.str, value.len, &ival))
+					cfg->show_detailed_tile_info = ival != 0;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (value.str, value.len, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -2822,6 +2824,58 @@ patch_City_get_pop_size_for_com_bonus_value (City * this)
 		tr += 1000;
 
 	return tr;
+}
+
+int
+can_harvest_shields_from_forest (Tile * tile)
+{
+	int flags = tile->vtable->m43_Get_field_30 (tile);
+	return (flags & 0x10000000) == 0;
+}
+
+void __fastcall
+patch_open_tile_info (void * this, int edx, int mouse_x, int mouse_y, int civ_id)
+{
+	int tx, ty;
+	if (is->current_config.show_detailed_tile_info &&
+	    (! Main_Screen_Form_get_tile_coords_under_mouse (p_main_screen_form, __, mouse_x, mouse_y, &tx, &ty))) {
+		is->viewing_tile_info_x = tx;
+		is->viewing_tile_info_y = ty;
+	} else
+		is->viewing_tile_info_x = is->viewing_tile_info_y = -1;
+
+	return open_tile_info (this, __, mouse_x, mouse_y, civ_id);
+}
+
+int __fastcall
+patch_PCX_Image_draw_no_tile_info (PCX_Image * this, int edx, char * str, int x, int y, int str_len)
+{
+	Tile * tile = tile_at (is->viewing_tile_info_x, is->viewing_tile_info_y);
+	if (tile != p_null_tile) {
+		char s[100];
+		snprintf (s, sizeof s, "(%d, %d)", is->viewing_tile_info_x, is->viewing_tile_info_y);
+		s[(sizeof s) - 1] = '\0';
+		return PCX_Image_draw_text (this, __, s, x, y, strlen (s));
+	} else
+		return PCX_Image_draw_text (this, __, str, x, y, str_len);
+}
+
+int __fastcall
+patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, int x, int y, int str_len)
+{
+	Tile * tile = tile_at (is->viewing_tile_info_x, is->viewing_tile_info_y);
+	if (tile != p_null_tile) {
+		// Draw tile coords on line below terrain name
+		char s[100];
+		snprintf (s, sizeof s, "(%d, %d)", is->viewing_tile_info_x, is->viewing_tile_info_y);
+		s[(sizeof s) - 1] = '\0';
+		PCX_Image_draw_text (this, __, s, x, y + 14, strlen (s));
+
+		// If tile has been chopped, indicate that to the right of the terrain name
+		if (! can_harvest_shields_from_forest (tile))
+			PCX_Image_draw_text (this, __, is->c3x_labels[CL_CHOPPED], x + 145, y, strlen (is->c3x_labels[CL_CHOPPED]));
+	}
+	return PCX_Image_draw_text (this, __, str, x, y, str_len);
 }
 
 // TCC requires a main function be defined even though it's never used.

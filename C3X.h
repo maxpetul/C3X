@@ -29,6 +29,7 @@ struct c3x_config {
 	char dont_give_king_names_in_non_regicide_games;
 	char enable_land_sea_intersections;
 	char disallow_trespassing;
+	char show_detailed_tile_info;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
@@ -111,6 +112,7 @@ enum c3x_label {
 	CL_SURPLUS_NONE,
 	CL_SURPLUS_NA,
 	CL_SB_TOOLTIP,
+	CL_CHOPPED,
 	COUNT_C3X_LABELS
 };
 
@@ -245,6 +247,9 @@ struct injected_state {
 
 	// Used in the code that modifies how the AI values improvements when considering what to build.
 	Improvement * ai_considering_improvement;
+
+	// Used in the code that adds additional info to the tile info box
+	int viewing_tile_info_x, viewing_tile_info_y;
 
 	// ==========
 	// }

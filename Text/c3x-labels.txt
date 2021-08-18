@@ -18,3 +18,6 @@ Surplus: N/A
 
 ; Tooltip for stack bombard button. Follows the same format as the tooltip for the regular bombard button.
 Stack Bombard: Select a target (B then CTRL+Click target)
+
+; Appears in tile info to indicate that forests harvested from this tile won't produce shields anymore
+Chopped
