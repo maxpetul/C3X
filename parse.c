@@ -63,12 +63,12 @@ trim_string_slice (char ** str, int * str_len, int remove_quotes)
 }
 
 char *
-extract_slice (char * str, int str_len)
+extract_slice (struct string_slice const * s)
 {
-	char * tr = malloc (str_len + 1);
-	for (int n = 0; n < str_len; n++)
-		tr[n] = str[n];
-	tr[str_len] = '\0';
+	char * tr = malloc (s->len + 1);
+	for (int n = 0; n < s->len; n++)
+		tr[n] = s->str[n];
+	tr[s->len] = '\0';
 	return tr;
 }
 
@@ -191,10 +191,11 @@ read_object_job (char * str, int str_len, enum object_job * out)
 }
 
 char *
-trim_and_extract_slice (char * str, int str_len, int remove_quotes)
+trim_and_extract_slice (struct string_slice const * s, int remove_quotes)
 {
-	trim_string_slice (&str, &str_len, remove_quotes);
-	return extract_slice (str, str_len);
+	struct string_slice trimmed = *s;
+	trim_string_slice (&trimmed.str, &trimmed.len, remove_quotes);
+	return extract_slice (&trimmed);
 }
 
 int
@@ -221,8 +222,8 @@ parse_civ_prog_object (char ** p_cursor, struct civ_prog_object * out)
 	if (read_object_job (columns[0].str, columns[0].len, &tr.job) &&
 	    read_int (columns[1].str, columns[1].len, &tr.gog_addr) &&
 	    read_int (columns[2].str, columns[2].len, &tr.steam_addr)) {
-		tr.name = trim_and_extract_slice (columns[3].str, columns[3].len, 1);
-		tr.type = trim_and_extract_slice (columns[4].str, columns[4].len, 1);
+		tr.name = trim_and_extract_slice (&columns[3], 1);
+		tr.type = trim_and_extract_slice (&columns[4], 1);
 		*out = tr;
 		*p_cursor = cursor;
 		return 1;
