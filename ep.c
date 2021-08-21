@@ -822,6 +822,8 @@ ENTRY_POINT ()
 		.enable_land_sea_intersections = 0,
 		.disallow_trespassing = 0,
 		.show_detailed_tile_info = 1,
+		.perfume_improvement_name = NULL,
+		.perfume_amount = 0,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,

@@ -191,6 +191,11 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->disallow_trespassing = ival != 0;
 				else if ((0 == strncmp (key.str, "show_detailed_tile_info", key.len)) && read_int (&value, &ival))
 					cfg->show_detailed_tile_info = ival != 0;
+				else if (0 == strncmp (key.str, "perfume_improvement_name", key.len)) {
+					struct string_slice trimmed = trim_string_slice (&value, 1);
+					cfg->perfume_improvement_name = (trimmed.len > 0) ? extract_slice (&trimmed) : NULL;
+				} else if ((0 == strncmp (key.str, "perfume_amount", key.len)) && read_int (&value, &ival))
+					cfg->perfume_amount = ival;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -2715,8 +2720,9 @@ patch_City_get_pop_size_for_com_bonus_value (City * this)
 	int tr = (improv->WonderFlags & ITW_Trade_In_Each_Tile_inc_1) ? this->Body.Population.Size : 0;
 
 	// Implement building "perfuming" by adding extra points.
-	if (strncmp (improv->Name.S, "500 Holes Dug and Filled In", 25) == 0)
-		tr += 1000;
+	if ((is->current_config.perfume_improvement_name != NULL) &&
+	    (strncmp (improv->Name.S, is->current_config.perfume_improvement_name, sizeof improv->Name) == 0))
+		tr += is->current_config.perfume_amount;
 
 	return tr;
 }
