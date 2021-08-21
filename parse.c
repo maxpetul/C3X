@@ -45,21 +45,26 @@ skip_line (char ** p_cursor)
 	return 1;
 }
 
-void
-trim_string_slice (char ** str, int * str_len, int remove_quotes)
+struct string_slice
+trim_string_slice (struct string_slice const * s, int remove_quotes)
 {
-	while ((*str_len > 0) && (is_horiz_space (**str))) {
-		(*str)++;
-		(*str_len)--;
+	char * str = s->str;
+	int len = s->len;
+
+	while ((len > 0) && (is_horiz_space (*str))) {
+		str++;
+		len--;
 	}
-	while ((*str_len > 0) && (is_horiz_space ((*str)[*str_len-1])))
-		(*str_len)--;
+	while ((len > 0) && (is_horiz_space (str[len-1])))
+		len--;
 	if (remove_quotes &&
-	    (*str_len >= 2) &&
-	    ((**str == '"') && ((*str)[*str_len-1] == '"'))) {
-		(*str)++;
-		(*str_len) -= 2;
+	    (len >= 2) &&
+	    ((*str == '"') && (str[len-1] == '"'))) {
+		str++;
+		len -= 2;
 	}
+
+	return (struct string_slice) { .str = str, .len = len };
 }
 
 char *
@@ -73,30 +78,33 @@ extract_slice (struct string_slice const * s)
 }
 
 int
-read_int (char * str, int str_len, int * out_val)
+read_int (struct string_slice const * s, int * out_val)
 {
-	trim_string_slice (&str, &str_len, 1);
-	if ((str_len > 0) && (*str == '-') || ((*str >= '0') && (*str <= '9'))) {
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	char * str = trimmed.str;
+	int len = trimmed.len;
+
+	if ((len > 0) && (*str == '-') || ((*str >= '0') && (*str <= '9'))) {
 		char * end;
 		int base = 10;
 		if ((str[0] == '0') && ((str[1] == 'x') || (str[1] == 'X'))) {
 			base = 16;
 			str += 2;
-			str_len -= 2;
+			len -= 2;
 		}
 		int res = strtol (str, &end, base);
-		if (end == str + str_len) {
+		if (end == str + len) {
 			*out_val = res;
 			return 1;
 		} else
 			return 0;
-	} else if ((str_len == 4) &&
+	} else if ((len == 4) &&
 		   ((0 == strncmp (str, "true", 4)) ||
 		    (0 == strncmp (str, "True", 4)) ||
 		    (0 == strncmp (str, "TRUE", 4)))) {
 		*out_val = 1;
 		return 1;
-	} else if ((str_len == 5) &&
+	} else if ((len == 5) &&
 		   ((0 == strncmp (str, "false", 5)) ||
 		    (0 == strncmp (str, "False", 5)) ||
 		    (0 == strncmp (str, "FALSE", 5)))) {
@@ -177,14 +185,15 @@ parse_csv_value (char ** p_cursor, char ** out_val, int * out_len)
 }
 
 int
-read_object_job (char * str, int str_len, enum object_job * out)
+read_object_job (struct string_slice const * s, enum object_job * out)
 {
-	trim_string_slice (&str, &str_len, 1);
-	if      (0 == strncmp ("define"   , str, str_len)) *out = OJ_DEFINE;
-	else if (0 == strncmp ("inlead"   , str, str_len)) *out = OJ_INLEAD;
-	else if (0 == strncmp ("repl vptr", str, str_len)) *out = OJ_REPL_VPTR;
-	else if (0 == strncmp ("repl call", str, str_len)) *out = OJ_REPL_CALL;
-	else if (0 == strncmp ("ignore"   , str, str_len)) *out = OJ_IGNORE;
+	struct string_slice trimmed = trim_string_slice (s, 1);
+
+	if      (0 == strncmp ("define"   , trimmed.str, trimmed.len)) *out = OJ_DEFINE;
+	else if (0 == strncmp ("inlead"   , trimmed.str, trimmed.len)) *out = OJ_INLEAD;
+	else if (0 == strncmp ("repl vptr", trimmed.str, trimmed.len)) *out = OJ_REPL_VPTR;
+	else if (0 == strncmp ("repl call", trimmed.str, trimmed.len)) *out = OJ_REPL_CALL;
+	else if (0 == strncmp ("ignore"   , trimmed.str, trimmed.len)) *out = OJ_IGNORE;
 	else
 		return 0;
 	return 1;
@@ -193,8 +202,7 @@ read_object_job (char * str, int str_len, enum object_job * out)
 char *
 trim_and_extract_slice (struct string_slice const * s, int remove_quotes)
 {
-	struct string_slice trimmed = *s;
-	trim_string_slice (&trimmed.str, &trimmed.len, remove_quotes);
+	struct string_slice trimmed = trim_string_slice (s, remove_quotes);
 	return extract_slice (&trimmed);
 }
 
@@ -219,9 +227,9 @@ parse_civ_prog_object (char ** p_cursor, struct civ_prog_object * out)
 	}
 
 	struct civ_prog_object tr;
-	if (read_object_job (columns[0].str, columns[0].len, &tr.job) &&
-	    read_int (columns[1].str, columns[1].len, &tr.gog_addr) &&
-	    read_int (columns[2].str, columns[2].len, &tr.steam_addr)) {
+	if (read_object_job (&columns[0], &tr.job) &&
+	    read_int (&columns[1], &tr.gog_addr) &&
+	    read_int (&columns[2], &tr.steam_addr)) {
 		tr.name = trim_and_extract_slice (&columns[3], 1);
 		tr.type = trim_and_extract_slice (&columns[4], 1);
 		*out = tr;
