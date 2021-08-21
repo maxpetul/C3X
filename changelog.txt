@@ -1,7 +1,6 @@
 * TODO
 - Log new features
 - Reorganize README
-- Read perfumed building from config
 
 * RELEASE 7C
 - Stack fortify, upgrade, and disband
