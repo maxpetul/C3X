@@ -1,17 +1,14 @@
-* TODO
-- Reorganize README
-
 * RELEASE 8
 - Stack fortify, upgrade, and disband
-- Pop unit AI
+- AI routine for "pop units" that may appear in mods
 - Group units on right click menu
-- Improvement perfuming
 - Show coordinates and chopped status in tile info box
 - Show golden age turns remaining
 - Trespassing prevention (experimental)
 - Land/sea intersections
-- No special king unit names in non-regicide games
 - Adjustable anarchy length
+- "Perfume" an improvement to make it more appealing to the AI
+- No special king unit names in non-regicide games
 - Stack worker commands apply across unit types
 
 * RELEASE 7

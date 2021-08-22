@@ -1,32 +1,46 @@
 C3X: Executable Mod for Civ 3 Complete
 Release 7C
 
-INCLUDES (* = new in latest version):
-* Buttons on trade screen to quickly switch between civs
-* Ask/offer gold popup autofills best amount
-* Adjustable minimum city distance
-Stack bombard
-Disorder warning
-Stack worker buttons
+INCLUDES (** = new in latest version):
+Convenience features:
+ - Stack unit commands
+  - Stack bombard
+  - Worker buttons (irrigate, road, etc.) become stack buttons by holding CTRL
+  - ** Same for fortify, upgrade, and disband
+ - Disorder warning
+ - Stack worker buttons
+ - Detailed city production info
+ - Buttons on trade screen to quickly switch between civs
+ - Ask/offer gold popup autofills best amount
+ - Skip repeated popups asking to replace a tile improvement
+ - ** Group units on right click menu
+ - ** Show coordinates and chopped status in tile info box
+ - ** Show golden age turns remaining
+ - ** No special king unit names in non-regicide games
 AI enhancements:
-  - Allow AI to use artillery in the field
-  - Force AI to build more artillery and bombers
-  - Replace leader unit AI to fix bugs and improve behavior
-  - Fix bug preventing AI from filling its armies
-  - Improve AI army composition to discourage mixing types & exclude HN units
-Detailed city production info
-Option to limit railroad movement
-Removed unit limit
-Enable free improvements from small wonders
+ - Allow AI to use artillery in the field
+ - Force AI to build more artillery and bombers
+ - Replace leader unit AI to fix bugs and improve behavior
+ - Fix bug preventing AI from filling its armies
+ - Improve AI army composition to discourage mixing types & exclude HN units
+ - ** AI routine for "pop units" that may appear in mods
 Bugs fixed:
-  - AI pathfinding collides with invisible units (called the "submarine bug")
-  - Science age beakers not actually awarded
-  - Pink line in Civilopedia
-  - Crash when doing disembark-all on transport containing immobile unit(s)
-  - Crash possible when AI civ is left alive with only a settler on a transport (called the "houseboat bug")
-Option to prevent autoraze and razing by AIs
-Stealth attack activates even when there's only one target
-Skip repeated popups asking to replace a tile improvement
+ - AI pathfinding collides with invisible units (called the "submarine bug")
+ - Science age beakers not actually awarded
+ - Pink line in Civilopedia
+ - Crash when doing disembark-all on transport containing immobile unit(s)
+ - Crash possible when AI civ is left alive with only a settler on a transport (called the "houseboat bug")
+Engine extensions:
+ - Adjustable minimum city distance
+ - Option to limit railroad movement
+ - Removed unit limit
+ - Enable free improvements from small wonders
+ - Option to prevent autoraze and razing by AIs
+ - Stealth attack activates even when there's only one target
+ - ** Trespassing prevention (experimental)
+ - ** Land/sea intersections
+ - ** Adjustable anarchy length
+ - ** "Perfume" an improvement to make it more appealing to the AI
 
 INSTALLATION AND USAGE:
 Begin by extracting the mod and copying its folder into the Civ install directory (that is, the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustible by editing a text configuration file. It is named "default.c3x_config.ini".
