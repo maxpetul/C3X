@@ -43,27 +43,27 @@ Engine extensions:
  - ** "Perfume" an improvement to make it more appealing to the AI
 
 INSTALLATION AND USAGE:
-Begin by extracting the mod and copying its folder into the Civ install directory (that is, the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustible by editing a text configuration file. It is named "default.c3x_config.ini".
+Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustible by editing the config file named "default.c3x_config.ini". Also the config file contains explanations of some mod features that aren't explained in this README.
 
 Notes about installation:
-1. When installing, the original executable will be copied over to "Civ3Conquests-Unmodded.exe".
+1. When installing, the mod will create a backup of the original unmodded executable named "Civ3Conquests-Unmodded.exe".
 2. To uninstall the mod, delete the modded executable then rename the backed up version mentioned above to "Civ3Conquests.exe".
-3. It is not necessary to uninstall the mod before installing a different version; the installer knows to check for the backed up EXE.
+3. It is not necessary to uninstall the mod before installing a different version.
 4. Even after installation, the mod still depends on some files in the mod folder, specifically the config file and the Art & Text folders.
 5. I've received multiple reports that RUN.bat doesn't work while installing does, so know that installation is the more reliable option.
 6. Rômulo Prado reports that RUN.bat started working for him after he installed the MS Visual C++ Redistributables versions 2005 and 2019 (while installing GOG Galaxy).
 
 COMPATIBILITY:
-The mod is only officially compatible with the GOG and Steam versions of Civ 3 Complete. It may be compatible with other versions if they use the same executable as one of those two. Multiplayer is untested. The mod works with existing save files and saves made with the mod active will still work in the base game.
+The mod is only compatible with the GOG and Steam versions of Civ 3 Complete. It works with existing save files and saves made with the mod active will still work in the base game. Multiplayer is not officially supported but some features will work in MP, see this post: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-16#post-16126470.
 
 STACK BOMBARD:
 Activate stack bombard on any unit capable of bombarding by clicking the stack bombard button or by activating normal bombard then CTRL+clicking the target tile. The selected unit will bombard the tile, then all other units of the same type on the same tile will automatically bombard the target as well. Stack bombard is pretty smart and will stop bombarding once it can no longer do any damage, and it knows about lethal bombard, that you can't damage air units in an airfield, etc.
 
+OTHER STACK UNIT COMMANDS:
+Hold the control key to turn all standard worker buttons into stack buttons. Clicking a stack button will issue the command to all workers on the same tile. ** NEW IN RELEASE 8 ** This also works for fortify, upgrade, and disband.
+
 DISORDER WARNING:
 If you try to end the turn with unhappy cities, the domestic advisor will pop up to warn you and give you the option to continue that turn. One minor annoyance is that the game does not recompute city happiness when you sign a deal to import a luxury, so doing so won't remove the warnings. To make the game recompute city happiness, simply bump the luxury slider back and forth. I hope to fix this annoyance for the next version (this time for sure).
-
-STACK WORKER BUTTONS:
-Hold the control key to turn all standard worker buttons into stack buttons. Clicking a stack button will issue the command to all workers on the same tile.
 
 AI ENHANCEMENTS:
 Numerous changes have been made to improve the AI's behavior, especially in combat. It can now use its artillery units in the field, i.e., it will take them out of its cities to bombard enemy cities or incoming enemy units. The AI's production of artillery has been significantly increased so that it can take advantage of this ability. The other major change is that the AI can now use armies properly, it builds them when it can and fills them with units, usually the strongest available. There are many smaller changes as well to fix bugs and improve heuristics. Some more details are available as comments in the config file.
