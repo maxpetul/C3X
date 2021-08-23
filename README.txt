@@ -43,7 +43,7 @@ Engine extensions:
  - ** "Perfume" an improvement to make it more appealing to the AI
 
 INSTALLATION AND USAGE:
-Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustible by editing the config file named "default.c3x_config.ini". Also the config file contains explanations of some mod features that aren't explained in this README.
+Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustible by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.
 
 Notes about installation:
 1. When installing, the mod will create a backup of the original unmodded executable named "Civ3Conquests-Unmodded.exe".
@@ -71,8 +71,14 @@ Numerous changes have been made to improve the AI's behavior, especially in comb
 TRADE SCREEN IMPROVEMENTS:
 When negotiating with the AI, you can quickly switch back and forth between civs using the added arrow buttons (arrow keys work as well). When asking for or offering gold, the set amount popup will appear with the best amount already filled in. Best amount means, when asking for gold on an acceptable trade, the most you could get, and when offering gold on an unacceptable trade, the least you need to pay.
 
-LIMITED RAILROAD MOVEMENT:
-The mod adds the option to limit railroad movement to a certain number of tiles. To enable this, edit the config file. The limitation works like in Civ 4, i.e., moving along a railroad consumes movement points like moving along a road except the cost of moving along a railroad is scaled by the unit's total moves so all units are limited to the same distance. Be advised, because this setting affects how movement is calculated, changing it in the middle of a turn (i.e. after some units have already moved) is likely to cause units to have extra or missing moves.
+ADJUSTABLE MOVEMENT RULES:
+The functions governing unit movement have been modified to enable various adjustments to the game's movement rules not possible through the editor. As with all other engine extensions, the rules are not changed from vanilla Conquests unless the config file is edited.
+
+Railroad movement can be limited to a certain number of tiles by setting the "limit_railroad_movement" variable. The limitation works like in Civ 4, i.e., moving along a railroad consumes movement points like moving along a road except the cost of moving along a railroad is scaled by the unit's total moves so all units are limited to the same distance. Be advised, because this setting affects how movement is measured, changing it in the middle of a turn (i.e. after some units have already moved) is likely to cause units to have extra or missing moves.
+
+Enabling land/sea intersections allows sea units to travel over the thin isthmus that exists on the diagonal path between two land tiles. More specifically, imagine a diamond of four tiles with land terrain on the north & south tiles and water on the east & west ones. With land/sea intersections enabled, naval units can pass between the east and west tiles.
+
+Disallowing trespassing prevents civs from entering each other's borders while at peace without a right of passage, similar to the rules in Civ 4. I consider this to be an experimental feature in this release. I have done some testing to verify that the rule is applied correctly, including on the AI, but I haven't checked that the AI can handle the rule properly, for example it might prevent the AI from declaring war.
 
 SMALL WONDER FREE IMPROVEMENTS:
 The free improvements wonder effect (granaries from Pyramids etc.) now works on small wonders. Note to modders, to set this effect you must use a third party editor like Quintillus' (https://forums.civfanatics.com/threads/cross-platform-editor-for-conquests-now-available.377188/) because the option is grayed out in the standard editor. Even worse, if you set the effect then work on the BIQ in the standard editor, the effect won't be saved, so you'd need to set it every time or work exclusively in Quintillus' editor.
