@@ -8,7 +8,6 @@ Convenience features:
   - Worker buttons (irrigate, road, etc.) become stack buttons by holding CTRL
   - ** Same for fortify, upgrade, and disband
  - Disorder warning
- - Stack worker buttons
  - Detailed city production info
  - Buttons on trade screen to quickly switch between civs
  - Ask/offer gold popup autofills best amount
