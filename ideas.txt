@@ -68,3 +68,4 @@ Ideas:
 - [from drmihnea] Increase rate of AI building workers
 - [from Predator145] Revert AI naval behavior to pre-Conquests where AI would use its combat ships against enemy ships instead of locking them in escort mode
 - [from Predator145] AI doesn't value courthouses highly enough
+- [from ynot56] Add option to bring up those top-10 lists (most advanced, powerful, happy, etc) on demand
