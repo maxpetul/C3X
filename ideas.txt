@@ -70,3 +70,11 @@ Ideas:
 - [from Predator145] AI doesn't value courthouses highly enough
 - [from ynot56] Add option to bring up those top-10 lists (most advanced, powerful, happy, etc) on demand
 - [from haluu] King units should not be last to defend in non-regicide games
+- [from LordBaal]
+  - Variable unit maintenance costs per type
+  - Cap unit production to certain number per player, like missionaries in Civ 4
+  - Make some units upgradeable only when elite
+- [from Predator145]
+  - Return to PTW AI worker behavior, specifically stop it from irrigating grassland in despotism
+  - Remove bonus food from agricultural
+  - Stop AI from founding cities one tile off the coast, especially when playing a civ with seafaring
