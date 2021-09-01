@@ -298,6 +298,31 @@ tile_at_city_or_null (City * city_or_null)
 		return p_null_tile;
 }
 
+void __stdcall
+do_show_improv_val (int valuation)
+{
+	Improvement * improv = is->ai_considering_improvement;
+	char s[200];
+	snprintf (s, sizeof s, "%s: %d", improv->Name.S, valuation);
+	(*p_OutputDebugStringA) (s);
+}
+
+void
+show_improv_val ()
+{
+	//    push  %ebp
+	//    mov   %esp, %ebp
+	//    sub   $0, %esp
+	asm ("pusha                    \n"
+	     "push  %ebx               \n"
+	     "call  do_show_improv_val \n"
+	     "popa                     \n"
+	     "cmp   0x98(%esp), %ebx   \n"
+	);
+	//    leave
+	//    ret
+}
+
 // Just calls VirtualProtect and displays an error message if it fails. Made for use by the WITH_MEM_PROTECTION macro.
 int
 check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect)
@@ -394,6 +419,15 @@ apply_config (struct c3x_config * cfg)
 		byte bypass[2] = {0x90, 0xE9}; // nop, jmp
 		for (int n = 0; n < 2; n++)
 			((byte *)ADDR_AUTORAZE_BYPASS)[n] = cfg->prevent_autorazing ? bypass[n] : normal[n];
+	}
+
+	// Show AI improvement valuation
+	WITH_MEM_PROTECTION (ADDR_AI_IMPROV_VALUE, 7, PAGE_EXECUTE_READWRITE) {
+		byte call[7] = {0xE8, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90}; // call [4-byte offset], nop, nop
+		int offset = (int)&show_improv_val - ((int)ADDR_AI_IMPROV_VALUE + 5);
+		int_to_bytes (&call[1], offset);
+		for (int n = 0; n < 7; n++)
+			((byte *)ADDR_AI_IMPROV_VALUE)[n] = call[n];
 	}
 }
 

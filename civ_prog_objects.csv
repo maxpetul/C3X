@@ -163,3 +163,5 @@ ignore,	   0x5CCBB0,	0x0,		"Unit_can_pass_between",			"PassBetweenValidity (__fa
 ignore,	   0x441ED0,	0x0,		"Map_get_x_dist",				"int (__fastcall *) (Map * this, int edx, int x1, int x2)"
 ignore,	   0x437970,	0x0,		"Map_get_y_dist",				"int (__fastcall *) (Map * this, int edx, int y1, int y2)"
 ignore,	   0x452510,	0x454600,	"ai_move_defensive_unit",			"void (__fastcall *) (Unit * this)"
+
+define,	   0x430FBA,	0x0,		"ADDR_AI_IMPROV_VALUE",				"void *"
