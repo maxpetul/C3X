@@ -247,8 +247,16 @@ struct injected_state {
 
 	char ask_gold_default[32];
 
-	// Used in the code that modifies how the AI values improvements when considering what to build.
+	// Set in patch_ai_choose_production, used by the various bits of injected code that run during the AI production choosing process.
+	City * ai_considering_production_for_city;
+
+	// This variable is set by the first piece of code that intercepts the AI's improvement consideration logic, in
+	// patch_Improvement_has_wonder_com_bonus_for_ai_prod, and is used by all later funcs that interact with AI improv consideration.
 	Improvement * ai_considering_improvement;
+
+	// Set & used by the code that shows the AI's valuation of its production options. Initialized to -1.
+	int showing_consideration_on_turn;
+	int showing_consideration_for_city_id;
 
 	// Used in the code that adds additional info to the tile info box
 	int viewing_tile_info_x, viewing_tile_info_y;

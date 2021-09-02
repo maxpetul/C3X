@@ -299,11 +299,20 @@ tile_at_city_or_null (City * city_or_null)
 }
 
 void __stdcall
-do_show_improv_val (int valuation)
+do_show_improv_val (unsigned valuation)
 {
+	City * city = is->ai_considering_production_for_city;
+	char s[300];
+
+	if ((city->Body.ID != is->showing_consideration_for_city_id) || (*p_current_turn_no != is->showing_consideration_on_turn)) {
+		snprintf (s, sizeof s, "%s (turn %d):", city->Body.CityName, *p_current_turn_no);
+		(*p_OutputDebugStringA) (s);
+		is->showing_consideration_for_city_id = city->Body.ID;
+		is->showing_consideration_on_turn = *p_current_turn_no;
+	}
+
 	Improvement * improv = is->ai_considering_improvement;
-	char s[200];
-	snprintf (s, sizeof s, "%s: %d", improv->Name.S, valuation);
+	snprintf (s, sizeof s, "    %s  %u", improv->Name.S, valuation);
 	(*p_OutputDebugStringA) (s);
 }
 
@@ -317,7 +326,7 @@ show_improv_val ()
 	     "push  %ebx               \n"
 	     "call  do_show_improv_val \n"
 	     "popa                     \n"
-	     "cmp   0x98(%esp), %ebx   \n"
+	     "cmp   0x9C(%esp), %ebx   \n"
 	);
 	//    leave
 	//    ret
@@ -499,7 +508,6 @@ patch_init_floating_point ()
 		}
 	}
 
-	// Initialize to zero
 	is->have_job_and_loc_to_skip = 0;
 
 	// Initialize trade screen scroll vars
@@ -508,6 +516,9 @@ patch_init_floating_point ()
 	is->trade_scroll_button_left = is->trade_scroll_button_right = NULL;
 	is->trade_scroll_button_state = IS_UNINITED;
 	is->eligible_for_trade_scroll = 0;
+
+	is->showing_consideration_on_turn = -1;
+	is->showing_consideration_for_city_id = -1;
 
 	// Read contents of region potentially overwritten by patch
 	memmove (is->houseboat_patch_area_original_contents,
@@ -2145,7 +2156,10 @@ rate_bomber (UnitType * type)
 void __fastcall
 patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 {
+	is->ai_considering_production_for_city = this;
+
 	City_ai_choose_production (this, __, out);
+
 	Leader * me = &leaders[this->Body.CivID];
 	int arty_ratio = is->current_config.ai_build_artillery_ratio;
 	int bomber_ratio = is->current_config.ai_build_bomber_ratio;
