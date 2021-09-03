@@ -2796,11 +2796,16 @@ patch_open_tile_info (void * this, int edx, int mouse_x, int mouse_y, int civ_id
 	return open_tile_info (this, __, mouse_x, mouse_y, civ_id);
 }
 
+// On the GOG executable, this function intercepts the call to draw the "No information available" text on a fogged (black) tile. In that case we just
+// replace that text with the coords. But on the Steam EXE this func also intercepts the call that draws the resource name on the un-fogged tile info
+// box b/c the call site is reused via a jump. So we must check that the tile is actually fogged before replacing the text so that the resource name
+// doesn't get overwritten.
 int __fastcall
 patch_PCX_Image_draw_no_tile_info (PCX_Image * this, int edx, char * str, int x, int y, int str_len)
 {
 	Tile * tile = tile_at (is->viewing_tile_info_x, is->viewing_tile_info_y);
-	if (tile != p_null_tile) {
+	if ((tile != p_null_tile) &&
+	    (0 == (tile->Body.Fog_Of_War & (1 << p_main_screen_form->Player_CivID)))) { // Check that this tile is actually fogged
 		char s[100];
 		snprintf (s, sizeof s, "(%d, %d)", is->viewing_tile_info_x, is->viewing_tile_info_y);
 		s[(sizeof s) - 1] = '\0';

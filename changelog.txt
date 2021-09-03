@@ -1,3 +1,6 @@
+* RELEASE 8B
+- Fix tile coords replacing resource name in the info box on the Steam version
+
 * RELEASE 8
 - Stack fortify, upgrade, and disband
 - AI routine for "pop units" that may appear in mods
