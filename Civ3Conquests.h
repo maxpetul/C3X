@@ -1561,7 +1561,7 @@ struct String16
 
 struct Race_vtable
 {
-  byte (__fastcall * CheckBonus) (Race *, int, int);
+  byte (__fastcall * CheckBonus) (Race *, int, enum RaceBonuses);
   int (__fastcall * GetBonuses) (Race *);
   char * (__fastcall * GetAdjectiveName) (Race *);
   char * (__fastcall * GetCountryName) (Race *);
@@ -4076,7 +4076,7 @@ struct Government
   String64 Name;
   char Civilipedia_Entry[32];
   RulerTitle RulerTitles[4];
-  int CurruptionAndWaste;
+  enum CorruptionAndWasteTypes CorruptionAndWaste;
   int ImmuneTo;
   int Diplomats_Experience;
   int Spies_Experience;
