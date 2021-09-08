@@ -78,3 +78,11 @@ Ideas:
   - Return to PTW AI worker behavior, specifically stop it from irrigating grassland in despotism
   - Remove bonus food from agricultural
   - Stop AI from founding cities one tile off the coast, especially when playing a civ with seafaring
+- [from BTB]
+  - Change explore key to something other than E
+  - "Default to the cheapest tech available for research when the game starts (prevents you from losing a turn)"
+  - "Standardize the length of anarchy for government transitions instead of having it happen on set turns"
+  - "Cutting a forest/jungle down should destroy any resource in it"
+  - "Allow medicine to disable disease from jungle as well as flood plains"
+  - "Editable odds of sinking in sea/ocean squares"
+- [from tjs282] De-duplicate hotkeys e.g. clear forest and pollution use the same key
