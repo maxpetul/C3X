@@ -165,3 +165,8 @@ ignore,	   0x437970,	0x0,		"Map_get_y_dist",				"int (__fastcall *) (Map * this,
 ignore,	   0x452510,	0x454600,	"ai_move_defensive_unit",			"void (__fastcall *) (Unit * this)"
 
 define,	   0x430FBA,	0x0,		"ADDR_AI_IMPROV_VALUE",				"void *"
+
+define,	   0x55AA10,	0x0,		"Leader_count_wonders_with_small_flag",		"int (__fastcall *) (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null)"
+define,	   0xA526BC,	0x0,		"p_human_player_bit",				"int *"
+define,	   0xA52684,	0x0,		"p_game_difficulty",				"int *"
+inlead,	   0x5676C0,	0x0,		"Leader_get_optimal_city_number",		"int (__fastcall *) (Leader *)"

@@ -431,6 +431,7 @@ apply_config (struct c3x_config * cfg)
 	}
 
 	// Show AI improvement valuation
+	/*
 	WITH_MEM_PROTECTION (ADDR_AI_IMPROV_VALUE, 7, PAGE_EXECUTE_READWRITE) {
 		byte call[7] = {0xE8, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90}; // call [4-byte offset], nop, nop
 		int offset = (int)&show_improv_val - ((int)ADDR_AI_IMPROV_VALUE + 5);
@@ -438,6 +439,7 @@ apply_config (struct c3x_config * cfg)
 		for (int n = 0; n < 7; n++)
 			((byte *)ADDR_AI_IMPROV_VALUE)[n] = call[n];
 	}
+	*/
 }
 
 void
@@ -2830,6 +2832,67 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 			PCX_Image_draw_text (this, __, is->c3x_labels[CL_CHOPPED], x + 145, y, strlen (is->c3x_labels[CL_CHOPPED]));
 	}
 	return PCX_Image_draw_text (this, __, str, x, y, str_len);
+}
+
+int __fastcall
+patch_Leader_get_optimal_city_number (Leader * this)
+{
+	int true_val = Leader_get_optimal_city_number (this);
+
+	int comped_val; {
+		int b = p_bic_data->WorldSizes[p_bic_data->Map.World.World_Size].OptimalCityCount;
+		enum CorruptionAndWasteTypes c = p_bic_data->Governments[this->GovenmentType].CorruptionAndWaste;
+
+		int n_fp; {
+			int f = Leader_count_wonders_with_small_flag (this, __, ITSW_Reduces_Corruption, NULL);
+			int d_fp = (c != CWT_Communal) ? 8 : 1;
+			n_fp = 3*f*b / d_fp;
+		}
+
+		int n_com; {
+			Race * race = &p_bic_data->Races[this->RaceID];
+			int commercial = race->vtable->CheckBonus (race, __, RB_Commercial);
+			n_com = commercial ? b/4 : 0;
+		}
+
+		int n_gov; {
+			if ((c == CWT_Minimal) || (c == CWT_Nuisance))
+				n_gov = b/8;
+			else if (c == CWT_Problematic)
+				n_gov = b/16;
+			else if (c == CWT_Communal)
+				n_gov = 2*b;
+			else
+				n_gov = 0;
+		}
+
+		int n_ai; {
+			if (((1 << this->ID) & *p_human_player_bit) == 0) { // if AI player
+				if (*p_game_difficulty <= 2)
+					n_ai = 0;
+				else if (*p_game_difficulty == 3)
+					n_ai = b/8;
+				else if (*p_game_difficulty == 4)
+					n_ai = b/4;
+				else if (*p_game_difficulty >= 5)
+					n_ai = b/2;
+			} else
+				n_ai = 0;
+		}
+
+		int s_diff = p_bic_data->DifficultyLevels[this->field_30].Optimal_Cities;
+
+		comped_val = not_below (1, s_diff * (b + n_fp + n_com + n_gov + n_ai) / 100);
+	}
+
+	if (true_val != comped_val) {
+		char s[200];
+		char * name = p_bic_data->Races[this->RaceID].LeaderName;
+		snprintf (s, sizeof s, "========= OCN mismatch!!! true_val: %d; comped_val: %d; leader name: %s", true_val, comped_val, name);
+		(*p_OutputDebugStringA) (s);
+	}
+
+	return true_val;
 }
 
 // TCC requires a main function be defined even though it's never used.
