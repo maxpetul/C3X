@@ -196,6 +196,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->perfume_improvement_name = (trimmed.len > 0) ? extract_slice (&trimmed) : NULL;
 				} else if ((0 == strncmp (key.str, "perfume_amount", key.len)) && read_int (&value, &ival))
 					cfg->perfume_amount = ival;
+				else if ((0 == strncmp (key.str, "zero_corruption_when_off", key.len)) && read_int (&value, &ival))
+					cfg->zero_corruption_when_off = ival;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -2830,6 +2832,18 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 			PCX_Image_draw_text (this, __, is->c3x_labels[CL_CHOPPED], x + 145, y, strlen (is->c3x_labels[CL_CHOPPED]));
 	}
 	return PCX_Image_draw_text (this, __, str, x, y, str_len);
+}
+
+int __fastcall
+patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, byte is_production)
+{
+	if (is->current_config.zero_corruption_when_off) {
+		Government * govt = &p_bic_data->Governments[leaders[this->Body.CivID].GovenmentType];
+		if (govt->CorruptionAndWaste == CWT_Off)
+			return 0;
+	}
+
+	return City_compute_corrupted_yield (this, __, gross_yield, is_production);
 }
 
 // TCC requires a main function be defined even though it's never used.

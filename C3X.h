@@ -32,6 +32,7 @@ struct c3x_config {
 	char show_detailed_tile_info;
 	char * perfume_improvement_name;
 	int perfume_amount;
+	char zero_corruption_when_off;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
