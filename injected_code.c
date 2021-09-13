@@ -1272,6 +1272,11 @@ patch_DiploForm_m22_Draw (DiploForm * this)
 void
 intercept_end_of_turn ()
 {
+	PopupForm * popup = get_popup_form ();
+	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_TEST_POPUP_TEXT", -1, 0, 0, 0);
+	PopupForm_add_text (popup, __, "Here's some added text.^^And some more on another line.", 0);
+	show_popup (popup, __, 0, 0);
+
 	if (is->current_config.enable_disorder_warning) {
 		check_happiness_at_end_of_turn ();
 		if (p_main_screen_form->turn_end_flag == 1) // Check if player cancelled turn ending in the disorder warning popup
