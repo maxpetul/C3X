@@ -5899,7 +5899,8 @@ struct Object_66D520
 
 struct PopupFormVTable
 {
-	void * unk0[92];
+	PopupForm * (__fastcall * destruct) (PopupForm *, __, byte);
+	void * unk0[91];
 	void (__fastcall * set_text_key_and_flags) (PopupForm *, __, char *, char *, int, int, int, int);
 	void * unk1[14];
 };
