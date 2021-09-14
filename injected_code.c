@@ -1272,11 +1272,6 @@ patch_DiploForm_m22_Draw (DiploForm * this)
 void
 intercept_end_of_turn ()
 {
-	PopupForm * popup = get_popup_form ();
-	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_TEST_POPUP_TEXT", -1, 0, 0, 0);
-	PopupForm_add_text (popup, __, "Here's some added text.^^And some more on another line.", 0);
-	show_popup (popup, __, 0, 0);
-
 	if (is->current_config.enable_disorder_warning) {
 		check_happiness_at_end_of_turn ();
 		if (p_main_screen_form->turn_end_flag == 1) // Check if player cancelled turn ending in the disorder warning popup
@@ -1722,10 +1717,47 @@ void __fastcall
 patch_General_load (General * this, int edx, byte ** buffer)
 {
 	General_load (this, __, buffer);
+
 	if (is->current_config.limit_railroad_movement > 0) {
 		is->saved_road_movement_rate = p_bic_data->General.RoadsMovementRate;
 		p_bic_data->General.RoadsMovementRate *= is->current_config.limit_railroad_movement;
 	}
+}
+
+unsigned __fastcall
+patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
+{
+	int ret_addr = ((int *)&param_1)[-1];
+
+	unsigned tr = load_scenario (this, __, param_1, param_2);
+
+	// There are some times that load_scenario gets called that we don't want to check if the perfume names match in order to avoid annoying the
+	// player with popups. These times are (1) when a scenario is loaded to generate the preview (map, etc.) for the "Civ Content" or "Conquests"
+	// menu and (2) when a scenario is loaded a second time during the process of loading a saved game. I don't know why load_scenario is called
+	// twice in the second case, but skip it anyway to avoid showing the same popup twice.
+	int is_useful_to_check_perfume_names = (ret_addr != ADDR_LOAD_SCENARIO_PREVIEW_RETURN) && (ret_addr != ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN);
+
+	if (is_useful_to_check_perfume_names && (is->current_config.perfume_improvement_name != NULL)) {
+		int matched = 0;
+		for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+			Improvement * improv = &p_bic_data->Improvements[n];
+			if (strncmp (improv->Name.S, perfume_name, sizeof improv->Name) == 0) {
+				matched = 1;
+				break;
+			}
+		}
+		if (! matched) {
+			PopupForm * popup = get_popup_form ();
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+			char s[200];
+			snprintf (s, sizeof s, "Perfume target \"%s\" does not match the name of any improvement in this scenario. Perfuming will not be applied.", perfume_name);
+			s[(sizeof s) - 1] = '\0';
+			PopupForm_add_text (popup, __, s, 0);
+			show_popup (popup, __, 0, 0);
+		}
+	}
+
+	return tr;
 }
 
 void __fastcall

@@ -29,13 +29,7 @@ Do it!
 Nevermind
 #active 1
 
-#C3X_TEST_POPUP_TEXT
-#caption C3X Error
-#text
-^^
-^^ This is a test of the error popup system
-^^
-^^ Do not be alarmed this is only a test
-^^
+#C3X_WARNING
+#caption C3X Warning
 
 # ; This line must remain at end of file

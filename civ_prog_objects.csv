@@ -167,3 +167,6 @@ ignore,	   0x452510,	0x454600,	"ai_move_defensive_unit",			"void (__fastcall *) 
 define,	   0x430FBA,	0x0,		"ADDR_AI_IMPROV_VALUE",				"void *"
 inlead,	   0x4B1190,	0x0,		"City_compute_corrupted_yield",			"int __fastcall (City * this, int edx, int gross_yield, byte is_production)"
 define,	   0x610B30,	0x0,		"PopupForm_add_text",				"byte __fastcall (PopupForm * this, int edx, char * text, byte param_2)"
+inlead,	   0x59AB50,	0x0,		"load_scenario",				"unsigned __fastcall (void * this, int edx, char * param_1, unsigned * param_2)"
+define,	   0x59B499,	0x0,		"ADDR_LOAD_SCENARIO_PREVIEW_RETURN",		"int"
+define,	   0x59AD27,	0x0,		"ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN",	"int"
