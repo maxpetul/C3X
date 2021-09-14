@@ -124,6 +124,12 @@ struct worker_job_and_location {
 	int tile_x, tile_y;
 };
 
+struct ai_prod_valuation {
+	int order_type;
+	int order_id;
+	int point_value;
+};
+
 struct injected_state {
 	// ==========
 	// These fields are valid at any time in the injected code because they're set by the patcher {
@@ -255,12 +261,15 @@ struct injected_state {
 	// patch_Improvement_has_wonder_com_bonus_for_ai_prod, and is used by all later funcs that interact with AI improv consideration.
 	Improvement * ai_considering_improvement;
 
-	// Set & used by the code that shows the AI's valuation of its production options. Initialized to -1.
-	int showing_consideration_on_turn;
-	int showing_consideration_for_city_id;
-
 	// Used in the code that adds additional info to the tile info box
 	int viewing_tile_info_x, viewing_tile_info_y;
+
+	// Stores a list of the production options in a given city and the point value the AI would assign to each. The list is populated by
+	// rank_ai_production_options, items are added by record_improv_val which gets called by some code injected into one of the loops in
+	// ai_choose_production. These vars are initialized to zero.
+	struct ai_prod_valuation * ai_prod_valuations;
+	int count_ai_prod_valuations;
+	int ai_prod_valuations_capacity;
 
 	// ==========
 	// }

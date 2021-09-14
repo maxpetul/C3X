@@ -170,3 +170,4 @@ define,	   0x610B30,	0x0,		"PopupForm_add_text",				"byte __fastcall (PopupForm 
 inlead,	   0x59AB50,	0x0,		"load_scenario",				"unsigned __fastcall (void * this, int edx, char * param_1, unsigned * param_2)"
 define,	   0x59B499,	0x0,		"ADDR_LOAD_SCENARIO_PREVIEW_RETURN",		"int"
 define,	   0x59AD27,	0x0,		"ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN",	"int"
+repl vptr, 0x6659F8,	0x0,		"City_Form_m82_handle_key_event",		"void __fastcall (City_Form * this, int edx, int virtual_key_code, int is_down)"

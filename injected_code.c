@@ -301,34 +301,41 @@ tile_at_city_or_null (City * city_or_null)
 }
 
 void __stdcall
-do_show_improv_val (unsigned valuation)
+do_record_improv_val (unsigned valuation)
 {
 	City * city = is->ai_considering_production_for_city;
-	char s[300];
+	Improvement * improv = is->ai_considering_improvement;
 
-	if ((city->Body.ID != is->showing_consideration_for_city_id) || (*p_current_turn_no != is->showing_consideration_on_turn)) {
-		snprintf (s, sizeof s, "%s (turn %d):", city->Body.CityName, *p_current_turn_no);
-		(*p_OutputDebugStringA) (s);
-		is->showing_consideration_for_city_id = city->Body.ID;
-		is->showing_consideration_on_turn = *p_current_turn_no;
+	// Expand the list of valuations if necessary
+	if (is->count_ai_prod_valuations >= is->ai_prod_valuations_capacity) {
+		int new_capacity = not_below (10, 2 * is->ai_prod_valuations_capacity);
+		struct ai_prod_valuation * new_vals = malloc (new_capacity * sizeof new_vals[0]);
+		for (int n = 0; n < is->count_ai_prod_valuations; n++)
+			new_vals[n] = is->ai_prod_valuations[n];
+		free (is->ai_prod_valuations);
+		is->ai_prod_valuations = new_vals;
+		is->ai_prod_valuations_capacity = new_capacity;
 	}
 
-	Improvement * improv = is->ai_considering_improvement;
-	snprintf (s, sizeof s, "    %s  %u", improv->Name.S, valuation);
-	(*p_OutputDebugStringA) (s);
+	int n = is->count_ai_prod_valuations++;
+	is->ai_prod_valuations[n] = (struct ai_prod_valuation) {
+		.order_type = COT_Improvement,
+		.order_id = improv - &p_bic_data->Improvements[0],
+		.point_value = valuation
+	};
 }
 
 void
-show_improv_val ()
+record_improv_val ()
 {
 	//    push  %ebp
 	//    mov   %esp, %ebp
 	//    sub   $0, %esp
-	asm ("pusha                    \n"
-	     "push  %ebx               \n"
-	     "call  do_show_improv_val \n"
-	     "popa                     \n"
-	     "cmp   0x9C(%esp), %ebx   \n"
+	asm ("pusha                      \n"
+	     "push  %ebx                 \n"
+	     "call  do_record_improv_val \n"
+	     "popa                       \n"
+	     "cmp   0x9C(%esp), %ebx     \n"
 	);
 	//    leave
 	//    ret
@@ -435,7 +442,7 @@ apply_config (struct c3x_config * cfg)
 	// Show AI improvement valuation
 	WITH_MEM_PROTECTION (ADDR_AI_IMPROV_VALUE, 7, PAGE_EXECUTE_READWRITE) {
 		byte call[7] = {0xE8, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90}; // call [4-byte offset], nop, nop
-		int offset = (int)&show_improv_val - ((int)ADDR_AI_IMPROV_VALUE + 5);
+		int offset = (int)&record_improv_val - ((int)ADDR_AI_IMPROV_VALUE + 5);
 		int_to_bytes (&call[1], offset);
 		for (int n = 0; n < 7; n++)
 			((byte *)ADDR_AI_IMPROV_VALUE)[n] = call[n];
@@ -519,9 +526,6 @@ patch_init_floating_point ()
 	is->trade_scroll_button_state = IS_UNINITED;
 	is->eligible_for_trade_scroll = 0;
 
-	is->showing_consideration_on_turn = -1;
-	is->showing_consideration_for_city_id = -1;
-
 	// Read contents of region potentially overwritten by patch
 	memmove (is->houseboat_patch_area_original_contents,
 		 ADDR_HOUSEBOAT_BUG_PATCH,
@@ -532,6 +536,10 @@ patch_init_floating_point ()
 	is->memo = NULL;
 	is->memo_len = 0;
 	is->memo_capacity = 0;
+
+	is->ai_prod_valuations = NULL;
+	is->count_ai_prod_valuations = 0;
+	is->ai_prod_valuations_capacity = 0;
 
 	memmove (&is->current_config, &is->base_config, sizeof is->current_config);
 	load_config ("default.c3x_config.ini", &is->current_config);
@@ -1737,7 +1745,8 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	// twice in the second case, but skip it anyway to avoid showing the same popup twice.
 	int is_useful_to_check_perfume_names = (ret_addr != ADDR_LOAD_SCENARIO_PREVIEW_RETURN) && (ret_addr != ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN);
 
-	if (is_useful_to_check_perfume_names && (is->current_config.perfume_improvement_name != NULL)) {
+	char * perfume_name = is->current_config.perfume_improvement_name;
+	if (is_useful_to_check_perfume_names && (perfume_name != NULL)) {
 		int matched = 0;
 		for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
 			Improvement * improv = &p_bic_data->Improvements[n];
@@ -2812,6 +2821,45 @@ patch_City_get_pop_size_for_com_bonus_value (City * this)
 		tr += is->current_config.perfume_amount;
 
 	return tr;
+}
+
+int
+compare_ai_prod_valuations (void const * vp_a, void const * vp_b)
+{
+	struct ai_prod_valuation const * a = vp_a,
+		                       * b = vp_b;
+	if      (a->point_value > b->point_value) return -1;
+	else if (b->point_value > a->point_value) return  1;
+	else                                      return  0;
+}
+
+void
+rank_ai_production_options (City * city)
+{
+	is->count_ai_prod_valuations = 0;
+	City_Order unused;
+	patch_City_ai_choose_production (city, __, &unused); // records valuations in is->ai_prod_valuations
+	qsort (is->ai_prod_valuations, is->count_ai_prod_valuations, sizeof is->ai_prod_valuations[0], compare_ai_prod_valuations);
+}
+
+void __fastcall
+patch_City_Form_m82_handle_key_event (City_Form * this, int edx, int virtual_key_code, int is_down)
+{
+	if ((virtual_key_code == VK_P) && is_down) {
+		rank_ai_production_options (this->CurrentCity);
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_AI_PROD_RANKING", -1, 0, 0, 0);
+		char s[200];
+		for (int n = 0; n < is->count_ai_prod_valuations; n++) {
+			char * improv_name = p_bic_data->Improvements[is->ai_prod_valuations[n].order_id].Name.S;
+			snprintf (s, sizeof s, "^%d   %s", is->ai_prod_valuations[n].point_value, improv_name);
+			s[(sizeof s) - 1] = '\0';
+			PopupForm_add_text (popup, __, s, 0);
+		}
+		show_popup (popup, __, 0, 0);
+	}
+
+	City_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
 }
 
 int
