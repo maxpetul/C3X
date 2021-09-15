@@ -300,11 +300,16 @@ tile_at_city_or_null (City * city_or_null)
 		return p_null_tile;
 }
 
-void __stdcall
-do_record_improv_val (unsigned valuation)
+int __stdcall
+do_intercept_improv_consideration (int valuation)
 {
 	City * city = is->ai_considering_production_for_city;
 	Improvement * improv = is->ai_considering_improvement;
+
+	// Apply perfume
+	if ((is->current_config.perfume_improvement_name != NULL) &&
+	    (strncmp (improv->Name.S, is->current_config.perfume_improvement_name, sizeof improv->Name) == 0))
+		valuation += is->current_config.perfume_amount;
 
 	// Expand the list of valuations if necessary
 	if (is->count_ai_prod_valuations >= is->ai_prod_valuations_capacity) {
@@ -317,25 +322,33 @@ do_record_improv_val (unsigned valuation)
 		is->ai_prod_valuations_capacity = new_capacity;
 	}
 
+	// Record this valuation
 	int n = is->count_ai_prod_valuations++;
 	is->ai_prod_valuations[n] = (struct ai_prod_valuation) {
 		.order_type = COT_Improvement,
 		.order_id = improv - &p_bic_data->Improvements[0],
 		.point_value = valuation
 	};
+
+	return valuation;
 }
 
 void
-record_improv_val ()
+intercept_improv_consideration ()
 {
 	//    push  %ebp
 	//    mov   %esp, %ebp
 	//    sub   $0, %esp
-	asm ("pusha                      \n"
-	     "push  %ebx                 \n"
-	     "call  do_record_improv_val \n"
-	     "popa                       \n"
-	     "cmp   0x9C(%esp), %ebx     \n"
+	asm ("push  %eax                              \n"
+	     "push  %ecx                              \n"
+	     "push  %edx                              \n"
+	     "push  %ebx                              \n"
+	     "call  do_intercept_improv_consideration \n"
+	     "mov   %eax, %ebx                        \n"
+	     "pop   %edx                              \n"
+	     "pop   %ecx                              \n"
+	     "pop   %eax                              \n"
+	     "cmp   0x9C(%esp), %ebx                  \n"
 	);
 	//    leave
 	//    ret
@@ -442,7 +455,7 @@ apply_config (struct c3x_config * cfg)
 	// Show AI improvement valuation
 	WITH_MEM_PROTECTION (ADDR_AI_IMPROV_VALUE, 7, PAGE_EXECUTE_READWRITE) {
 		byte call[7] = {0xE8, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90}; // call [4-byte offset], nop, nop
-		int offset = (int)&record_improv_val - ((int)ADDR_AI_IMPROV_VALUE + 5);
+		int offset = (int)&intercept_improv_consideration - ((int)ADDR_AI_IMPROV_VALUE + 5);
 		int_to_bytes (&call[1], offset);
 		for (int n = 0; n < 7; n++)
 			((byte *)ADDR_AI_IMPROV_VALUE)[n] = call[n];
@@ -2795,32 +2808,12 @@ patch_Map_compute_neighbor_index_for_pass_between (Map * this, int edx, int x_ho
 		return Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, lim);
 }
 
+// This call replacement used to be part of improvement perfuming but now its only purpose is to grab a pointer to the improvement under consideration
 byte __fastcall
 patch_Improvement_has_wonder_com_bonus_for_ai_prod (Improvement * this, int edx, enum ImprovementTypeWonderFeatures flag)
 {
-	// Save pointer to improvement b/c it isn't passed to the next function where it's needed.
 	is->ai_considering_improvement = this;
-
-	// Always return true because otherwise the next function (get_pop_size_for_com_bonus_value) won't get called. We preserve the original
-	// behavior by checking the flag in that function and having it return zero if the flag is not present.
-	return 1;
-}
-
-int __fastcall
-patch_City_get_pop_size_for_com_bonus_value (City * this)
-{
-	Improvement * improv = is->ai_considering_improvement;
-
-	// Replicate the behavior from the original code we're replacing. The AI values wonders with the +1 commerce per tile effect with points equal
-	// to the population of the city.
-	int tr = (improv->WonderFlags & ITW_Trade_In_Each_Tile_inc_1) ? this->Body.Population.Size : 0;
-
-	// Implement building "perfuming" by adding extra points.
-	if ((is->current_config.perfume_improvement_name != NULL) &&
-	    (strncmp (improv->Name.S, is->current_config.perfume_improvement_name, sizeof improv->Name) == 0))
-		tr += is->current_config.perfume_amount;
-
-	return tr;
+	return Improvement_has_wonder_flag (this, __, flag);
 }
 
 int
