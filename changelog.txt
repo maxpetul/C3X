@@ -4,6 +4,7 @@
 - Prevent player from seeing AI prod valuations in other players' cities unless in debug mode
 
 * RELEASE 8B
+- Corruption can be completely removed with "OFF" government setting
 - Press P in city screen to see AI point value for each buildable improvement
 - Warn in case perfume target doesn't match any improvement name
 - Fix tile coords replacing resource name in the info box on the Steam version
