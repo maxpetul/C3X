@@ -35,6 +35,6 @@ Nevermind
 #C3X_AI_PROD_RANKING
 #caption AI's Production Ranking
 #text
-This is the point value the AI assigns to each improvement available to be built in this city:
+This is the point value the AI assigns to each available build in this city:
 
 # ; This line must remain at end of file

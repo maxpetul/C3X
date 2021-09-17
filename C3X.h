@@ -257,9 +257,10 @@ struct injected_state {
 	// Set in patch_ai_choose_production, used by the various bits of injected code that run during the AI production choosing process.
 	City * ai_considering_production_for_city;
 
-	// This variable is set by the first piece of code that intercepts the AI's improvement consideration logic, in
-	// patch_Improvement_has_wonder_com_bonus_for_ai_prod, and is used by all later funcs that interact with AI improv consideration.
-	Improvement * ai_considering_improvement;
+	// This variable stores what improvement or unit the AI is evaluating inside ai_choose_production. It gets set inside two call replacements,
+	// first inside the loop over improvements then again inside a loop over unit types. The var is used by the intercept consideration functions
+	// which run at the end of each loop iteration.
+	City_Order ai_considering_order;
 
 	// Used in the code that adds additional info to the tile info box
 	int viewing_tile_info_x, viewing_tile_info_y;

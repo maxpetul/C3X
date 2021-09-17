@@ -301,14 +301,21 @@ tile_at_city_or_null (City * city_or_null)
 }
 
 int __stdcall
-do_intercept_improv_consideration (int valuation)
+do_intercept_consideration (int valuation)
 {
 	City * city = is->ai_considering_production_for_city;
-	Improvement * improv = is->ai_considering_improvement;
+	City_Order * order = &is->ai_considering_order;
+
+	char * order_name; {
+		if (order->OrderType == COT_Improvement)
+			order_name = p_bic_data->Improvements[order->OrderID].Name.S;
+		else
+			order_name = p_bic_data->UnitTypes[order->OrderID].Name;
+	}
 
 	// Apply perfume
 	if ((is->current_config.perfume_improvement_name != NULL) &&
-	    (strncmp (improv->Name.S, is->current_config.perfume_improvement_name, sizeof improv->Name) == 0))
+	    (strncmp (order_name, is->current_config.perfume_improvement_name, 32) == 0)) // in either case the name is at most 32 chars
 		valuation += is->current_config.perfume_amount;
 
 	// Expand the list of valuations if necessary
@@ -325,8 +332,8 @@ do_intercept_improv_consideration (int valuation)
 	// Record this valuation
 	int n = is->count_ai_prod_valuations++;
 	is->ai_prod_valuations[n] = (struct ai_prod_valuation) {
-		.order_type = COT_Improvement,
-		.order_id = improv - &p_bic_data->Improvements[0],
+		.order_type = order->OrderType,
+		.order_id = order->OrderID,
 		.point_value = valuation
 	};
 
@@ -339,19 +346,36 @@ intercept_improv_consideration ()
 	//    push  %ebp
 	//    mov   %esp, %ebp
 	//    sub   $0, %esp
-	asm ("push  %eax                              \n"
-	     "push  %ecx                              \n"
-	     "push  %edx                              \n"
-	     "push  %ebx                              \n"
-	     "call  do_intercept_improv_consideration \n"
-	     "mov   %eax, %ebx                        \n"
-	     "pop   %edx                              \n"
-	     "pop   %ecx                              \n"
-	     "pop   %eax                              \n"
-	     "cmp   0x9C(%esp), %ebx                  \n"
+	asm ("push  %eax                       \n"
+	     "push  %ecx                       \n"
+	     "push  %edx                       \n"
+	     "push  %ebx                       \n"
+	     "call  do_intercept_consideration \n"
+	     "mov   %eax, %ebx                 \n"
+	     "pop   %edx                       \n"
+	     "pop   %ecx                       \n"
+	     "pop   %eax                       \n"
+	     "cmp   0x9C(%esp), %ebx           \n"
 	);
 	//    leave
 	//    ret
+}
+
+void
+intercept_unit_consideration ()
+{
+	// Do the same thing as intercept_improv_consideration except the value is stored in edi this time instead of ebx.
+	asm ("push  %eax                       \n"
+	     "push  %ecx                       \n"
+	     "push  %edx                       \n"
+	     "push  %edi                       \n"
+	     "call  do_intercept_consideration \n"
+	     "mov   %eax, %edi                 \n"
+	     "pop   %edx                       \n"
+	     "pop   %ecx                       \n"
+	     "pop   %eax                       \n"
+	     "cmp   0x9C(%esp), %edi           \n"
+	);
 }
 
 // Just calls VirtualProtect and displays an error message if it fails. Made for use by the WITH_MEM_PROTECTION macro.
@@ -452,13 +476,23 @@ apply_config (struct c3x_config * cfg)
 			((byte *)ADDR_AUTORAZE_BYPASS)[n] = cfg->prevent_autorazing ? bypass[n] : normal[n];
 	}
 
-	// Show AI improvement valuation
+	// At the point in the code where the AI has computed a point value for an improvement it's considering building, overwrite the final compare
+	// instruction (checking if this improv is better than the previous best) with a call to injected code so we can see & modify the value.
 	WITH_MEM_PROTECTION (ADDR_AI_IMPROV_VALUE, 7, PAGE_EXECUTE_READWRITE) {
 		byte call[7] = {0xE8, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90}; // call [4-byte offset], nop, nop
 		int offset = (int)&intercept_improv_consideration - ((int)ADDR_AI_IMPROV_VALUE + 5);
 		int_to_bytes (&call[1], offset);
 		for (int n = 0; n < 7; n++)
 			((byte *)ADDR_AI_IMPROV_VALUE)[n] = call[n];
+	}
+
+	// Similarly for units
+	WITH_MEM_PROTECTION (ADDR_AI_UNIT_VALUE, 7, PAGE_EXECUTE_READWRITE) {
+		byte call[7] = {0xE8, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90}; // call [4-byte offset], nop, nop
+		int offset = (int)&intercept_unit_consideration - ((int)ADDR_AI_UNIT_VALUE + 5);
+		int_to_bytes (&call[1], offset);
+		for (int n = 0; n < 7; n++)
+			((byte *)ADDR_AI_UNIT_VALUE)[n] = call[n];
 	}
 }
 
@@ -1768,6 +1802,14 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 				break;
 			}
 		}
+		if (! matched)
+			for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
+				UnitType * unit_type = &p_bic_data->UnitTypes[n];
+				if (strncmp (unit_type->Name, perfume_name, sizeof unit_type->Name) == 0) {
+					matched = 1;
+					break;
+				}
+			}
 		if (! matched) {
 			PopupForm * popup = get_popup_form ();
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
@@ -2808,12 +2850,23 @@ patch_Map_compute_neighbor_index_for_pass_between (Map * this, int edx, int x_ho
 		return Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, lim);
 }
 
-// This call replacement used to be part of improvement perfuming but now its only purpose is to grab a pointer to the improvement under consideration
+// This call replacement used to be part of improvement perfuming but now its only purpose is to set ai_considering_order when
+// ai_choose_production is looping over improvements.
 byte __fastcall
 patch_Improvement_has_wonder_com_bonus_for_ai_prod (Improvement * this, int edx, enum ImprovementTypeWonderFeatures flag)
 {
-	is->ai_considering_improvement = this;
+	is->ai_considering_order.OrderID = this - p_bic_data->Improvements;
+	is->ai_considering_order.OrderType = COT_Improvement;
 	return Improvement_has_wonder_flag (this, __, flag);
+}
+
+// Similarly, this one sets the var when looping over unit types.
+byte __fastcall
+patch_UnitType_has_strat_0_for_ai_prod (UnitType * this, int edx, byte n)
+{
+	is->ai_considering_order.OrderID = this - p_bic_data->UnitTypes;
+	is->ai_considering_order.OrderType = COT_Unit;
+	return UnitType_has_ai_strategy (this, __, n);
 }
 
 int
@@ -2844,8 +2897,9 @@ patch_City_Form_m82_handle_key_event (City_Form * this, int edx, int virtual_key
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_AI_PROD_RANKING", -1, 0, 0, 0);
 		char s[200];
 		for (int n = 0; n < is->count_ai_prod_valuations; n++) {
-			char * improv_name = p_bic_data->Improvements[is->ai_prod_valuations[n].order_id].Name.S;
-			snprintf (s, sizeof s, "^%d   %s", is->ai_prod_valuations[n].point_value, improv_name);
+			struct ai_prod_valuation const * val = &is->ai_prod_valuations[n];
+			char * name = (val->order_type == COT_Improvement) ? p_bic_data->Improvements[val->order_id].Name.S : p_bic_data->UnitTypes[val->order_id].Name;
+			snprintf (s, sizeof s, "^%d   %s", val->point_value, name);
 			s[(sizeof s) - 1] = '\0';
 			PopupForm_add_text (popup, __, s, 0);
 		}
