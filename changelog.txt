@@ -2,6 +2,10 @@
 - Add toggle for perfume name mismatch warning
 - Add toggle for showing AI prod valuations
 - Prevent player from seeing AI prod valuations in other players' cities unless in debug mode
+- Update description of perfuming in the readme
+- Update error message for unmatched perfume target
+- Add ability to set multiple perfume targets & amounts
+- Test negative perfume amounts with the new implementation
 
 * RELEASE 8B
 - Corruption can be completely removed with "OFF" government setting
