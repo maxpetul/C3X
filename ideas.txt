@@ -86,3 +86,4 @@ Ideas:
   - "Allow medicine to disable disease from jungle as well as flood plains"
   - "Editable odds of sinking in sea/ocean squares"
 - [from tjs282] De-duplicate hotkeys e.g. clear forest and pollution use the same key
+- [from tjs282] Fix culturally-linked starts bug (described here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-21#post-16154963)
