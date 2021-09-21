@@ -1974,6 +1974,17 @@ patch_Unit_ai_move_artillery (Unit * this)
 
 base_impl:
 	Unit_ai_move_artillery (this);
+
+	if (is->current_config.use_offensive_artillery_ai &&
+	    (in_city != NULL) &&
+	    (this->Body.Moves == 0) &&
+	    (this->Body.UnitState == UnitState_Fortifying)) {
+		Unit * transport = Unit_find_transport (this, __, this->Body.X, this->Body.Y);
+		if (transport != NULL) {
+			Unit_set_escortee (best_defender, __, -1);
+			Unit_load (this, __, transport);
+		}
+	}
 }
 
 // Estimates the number of turns necessary to move the given unit to the given tile and writes it to *out_num_turns. Returns 0 if there is no path
