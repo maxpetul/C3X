@@ -1981,7 +1981,7 @@ base_impl:
 	    (this->Body.UnitState == UnitState_Fortifying)) {
 		Unit * transport = Unit_find_transport (this, __, this->Body.X, this->Body.Y);
 		if (transport != NULL) {
-			Unit_set_escortee (best_defender, __, -1);
+			Unit_set_escortee (this, __, -1);
 			Unit_load (this, __, transport);
 		}
 	}
