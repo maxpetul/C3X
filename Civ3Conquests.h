@@ -1356,7 +1356,7 @@ struct City_Base_vtable
   int m25;
 //  char (__thiscall *m26)(City *, int *, char *, char *);
   void *m26;
-  int m27;
+  byte (__fastcall * m27) (City *, int, Unit *, int);
 };
 
 struct Citizen
