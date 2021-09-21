@@ -2193,8 +2193,9 @@ patch_impl_ai_is_good_army_addition (Unit * this, int edx, Unit * candidate)
 	FOR_UNITS_ON (uti, tile) {
 		if (uti.unit->Body.Container_Unit == this->Body.ID) {
 			num_units_in_army++;
-			if (uti.unit->Body.Moves < army_min_speed)
-				army_min_speed = uti.unit->Body.Moves;
+			int movement = p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Movement;
+			if (movement < army_min_speed)
+				army_min_speed = movement;
 			int member_strength = measure_strength_in_army (&p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID]);
 			if (member_strength < army_min_strength)
 				army_min_strength = member_strength;
@@ -2202,7 +2203,7 @@ patch_impl_ai_is_good_army_addition (Unit * this, int edx, Unit * candidate)
 	}
 
 	return (num_units_in_army == 0) ||
-		((candidate->Body.Moves >= army_min_speed) &&
+		((candidate_type->Movement >= army_min_speed) &&
 		 (measure_strength_in_army (candidate_type) >= army_min_strength));
 }
 
