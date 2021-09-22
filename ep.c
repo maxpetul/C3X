@@ -869,6 +869,11 @@ ENTRY_POINT ()
 		}
 	}
 
+	if (bin_id == BIN_ID_GOG)
+		tcc__define_symbol (tcc, "GOG_EXECUTABLE", "1");
+	else if (bin_id == BIN_ID_STEAM)
+		tcc__define_symbol (tcc, "STEAM_EXECUTABLE", "1");
+
 	// Compile C code to inject
 	{
 		char * source = file_to_string (mod_full_dir, "injected_code.c");

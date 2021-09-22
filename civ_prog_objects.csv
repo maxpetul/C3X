@@ -163,7 +163,8 @@ ignore,	   0x441ED0,	0x0,		"Map_get_x_dist",				"int (__fastcall *) (Map * this,
 ignore,	   0x437970,	0x0,		"Map_get_y_dist",				"int (__fastcall *) (Map * this, int edx, int y1, int y2)"
 ignore,	   0x452510,	0x454600,	"ai_move_defensive_unit",			"void (__fastcall *) (Unit * this)"
 
-define,	   0x430FBA,	0x0,		"ADDR_AI_IMPROV_VALUE",				"void *"
+define,	   0x430FBA,	0x432A6D,	"ADDR_INTERCEPT_AI_IMPROV_VALUE",		"void *"
+define,	   7,		26,		"AI_IMPROV_INTERCEPT_LEN",			"int"
 define,	   0x433C7C,	0x0,		"ADDR_AI_UNIT_VALUE",				"void *"
 inlead,	   0x4B1190,	0x4B8140,	"City_compute_corrupted_yield",			"int __fastcall (City * this, int edx, int gross_yield, byte is_production)"
 define,	   0x610B30,	0x62CE00,	"PopupForm_add_text",				"byte __fastcall (PopupForm * this, int edx, char * text, byte param_2)"
