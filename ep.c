@@ -588,12 +588,12 @@ match_mangled_symbol (void * vp_mss, char const * name, void const * val)
 	}
 }
 
-// Returns the address of the patch function with the given name in the compiled code. Will automatically prepend "patch_" to the name and attempt to
-// compensate for name mangling.
+// Returns the address of the patch function with the given name in the compiled code. Will automatically prepend "patch_" to the name (if
+// prepend_patch is set) and attempt to compensate for name mangling.
 void *
-find_patch_function (TCCState * tcc, char const * obj_name)
+find_patch_function (TCCState * tcc, char const * obj_name, int prepend_patch)
 {
-	char * sym_name = temp_format ("patch_%s", obj_name);
+	char * sym_name = prepend_patch ? temp_format ("patch_%s", obj_name) : (char *)obj_name;
 
 	void * val = tcc__get_symbol (tcc, sym_name);
 	if (val != NULL)
@@ -606,6 +606,44 @@ find_patch_function (TCCState * tcc, char const * obj_name)
 	return mss.matching_val;
 }
 
+void
+init_consideration_airlocks (TCCState * tcc, byte * addr_improv_airlock)
+{
+	void * addr_do_intercept_consideration = find_patch_function (tcc, "do_intercept_consideration", 0);
+	ASSERT (addr_do_intercept_consideration != NULL);
+
+	byte code[64] = {0};
+	byte * cursor = code;
+
+	*cursor++ = 0x50; // push eax
+	*cursor++ = 0x51; // push ecx
+	*cursor++ = 0x52; // push edx
+
+	// push ebx
+	// call do_intercept_consideration
+	*cursor++ = 0x53;
+	*cursor++ = 0xE8;
+	cursor = int_to_bytes (cursor, (int)addr_do_intercept_consideration - ((int)addr_improv_airlock + (cursor - code) + 4));
+
+	// mov ebx, eax
+	*cursor++ = 0x89;
+	*cursor++ = 0xC3;
+
+	*cursor++ = 0x5A; // pop edx
+	*cursor++ = 0x59; // pop ecx
+	*cursor++ = 0x58; // pop eax
+
+	// cmp ebx, dword ptr [esp+0x94]
+	byte cmp[] = {0x3B, 0x9C, 0x24, 0x94, 0x00, 0x00, 0x00};
+	for (int n = 0; n < sizeof cmp; n++)
+		*cursor++ = cmp[n];
+
+	// jmp 0x430FC1
+	*cursor++ = 0xE9;
+	cursor = int_to_bytes (cursor, 0x430FC1 - ((int)addr_improv_airlock + (cursor - code) + 4));
+
+	write_prog_memory (addr_improv_airlock, &code[0], sizeof code);
+}
 
 // Because we're compiling with -nostdlib the entry point isn't main but is rather _runmain (if running immediately like a script) or _start (if
 // compiling to an EXE file)
@@ -869,6 +907,17 @@ ENTRY_POINT ()
 		}
 	}
 
+	// Need two small regions of executable memory to write some machine code to enable intercepting the AI's production choices, the easiest way
+	// to get these is to use some of the space reserved for inleads. The contents of these regions are only written after the injected code is
+	// compiled b/c they depend on the address of do_intercept_consideration. The injected code also depends on the addresses (see
+	// apply_config). The regions are filled out by init_consideration_airlocks, part of the patcher.
+	byte * addr_improv_consideration_airlock; {
+		ASSERT (i_next_free_inlead + 1 < inleads_capacity);
+		addr_improv_consideration_airlock = (byte *)&inleads[i_next_free_inlead];
+		i_next_free_inlead += 2;
+		tcc__define_symbol (tcc, "ADDR_IMPROV_CONSIDERATION_AIRLOCK", temp_format ("((void *)0x%x)", (int)addr_improv_consideration_airlock));
+	}
+
 	if (bin_id == BIN_ID_GOG)
 		tcc__define_symbol (tcc, "GOG_EXECUTABLE", "1");
 	else if (bin_id == BIN_ID_STEAM)
@@ -921,13 +970,15 @@ ENTRY_POINT ()
 			ASSERT (addr != 0);
 
 			if (obj->job == OJ_INLEAD)
-				put_trampoline ((void *)addr, find_patch_function (tcc, obj->name), 0);
+				put_trampoline ((void *)addr, find_patch_function (tcc, obj->name, 1), 0);
 			else if (obj->job == OJ_REPL_VPTR)
-				write_prog_int ((void *)addr, (int)find_patch_function (tcc, obj->name));
+				write_prog_int ((void *)addr, (int)find_patch_function (tcc, obj->name, 1));
 			else if (obj->job == OJ_REPL_CALL)
-				put_trampoline ((void *)addr, find_patch_function (tcc, obj->name), 1);
+				put_trampoline ((void *)addr, find_patch_function (tcc, obj->name, 1), 1);
 		}
 	}
+
+	init_consideration_airlocks (tcc, addr_improv_consideration_airlock);
 
 	// Give up write permission on Civ proc's code injection pages
 	set_prog_mem_protection (civ_inject_mem, inject_size, MAA_READ_EXECUTE);

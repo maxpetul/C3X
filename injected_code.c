@@ -340,6 +340,7 @@ do_intercept_consideration (int valuation)
 	return valuation;
 }
 
+/*
 void
 intercept_improv_consideration ()
 {
@@ -389,6 +390,7 @@ intercept_improv_consideration ()
 	//    leave
 	//    ret
 }
+*/
 
 /*
 void
@@ -524,8 +526,21 @@ apply_config (struct c3x_config * cfg)
 			((byte *)ADDR_AUTORAZE_BYPASS)[n] = cfg->prevent_autorazing ? bypass[n] : normal[n];
 	}
 
-	// At the point in the code where the AI has computed a point value for an improvement it's considering building, overwrite the final compare
-	// instruction (checking if this improv is better than the previous best) with a jump to injected code so we can see & modify the value.
+	WITH_MEM_PROTECTION (ADDR_INTERCEPT_AI_IMPROV_VALUE, AI_IMPROV_INTERCEPT_LEN, PAGE_EXECUTE_READWRITE) {
+		// Initialize replacement machine code. Start by filling with NOPs.
+		byte repl[AI_IMPROV_INTERCEPT_LEN];
+		for (int n = 0; n < AI_IMPROV_INTERCEPT_LEN; n++)
+			repl[n] = 0x90; // nop
+
+		repl[0] = 0xE9; // call
+		int offset = (int)ADDR_IMPROV_CONSIDERATION_AIRLOCK - ((int)ADDR_INTERCEPT_AI_IMPROV_VALUE + 5);
+		int_to_bytes (&repl[1], offset);
+
+		// Write the replacement code
+		for (int n = 0; n < AI_IMPROV_INTERCEPT_LEN; n++)
+			((byte *)ADDR_INTERCEPT_AI_IMPROV_VALUE)[n] = repl[n];
+	}
+
 	/*
 	WITH_MEM_PROTECTION (ADDR_INTERCEPT_AI_IMPROV_VALUE, AI_IMPROV_INTERCEPT_LEN, PAGE_EXECUTE_READWRITE) {
 		// Initialize replacement machine code. Start by filling with NOPs.
