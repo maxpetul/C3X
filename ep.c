@@ -607,7 +607,7 @@ find_patch_function (TCCState * tcc, char const * obj_name, int prepend_patch)
 }
 
 void
-init_consideration_airlocks (TCCState * tcc, byte * addr_improv_airlock)
+init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_improv_airlock)
 {
 	void * addr_do_intercept_consideration = find_patch_function (tcc, "do_intercept_consideration", 0);
 	ASSERT (addr_do_intercept_consideration != NULL);
@@ -615,32 +615,75 @@ init_consideration_airlocks (TCCState * tcc, byte * addr_improv_airlock)
 	byte code[64] = {0};
 	byte * cursor = code;
 
-	*cursor++ = 0x50; // push eax
-	*cursor++ = 0x51; // push ecx
-	*cursor++ = 0x52; // push edx
+	if (bin_id == BIN_ID_GOG) {
 
-	// push ebx
-	// call do_intercept_consideration
-	*cursor++ = 0x53;
-	*cursor++ = 0xE8;
-	cursor = int_to_bytes (cursor, (int)addr_do_intercept_consideration - ((int)addr_improv_airlock + (cursor - code) + 4));
+		// valuation stored in ebx
 
-	// mov ebx, eax
-	*cursor++ = 0x89;
-	*cursor++ = 0xC3;
+		*cursor++ = 0x50; // push eax
+		*cursor++ = 0x51; // push ecx
+		*cursor++ = 0x52; // push edx
 
-	*cursor++ = 0x5A; // pop edx
-	*cursor++ = 0x59; // pop ecx
-	*cursor++ = 0x58; // pop eax
+		// push ebx
+		// call do_intercept_consideration
+		*cursor++ = 0x53;
+		*cursor++ = 0xE8;
+		cursor = int_to_bytes (cursor, (int)addr_do_intercept_consideration - ((int)addr_improv_airlock + (cursor - code) + 4));
 
-	// cmp ebx, dword ptr [esp+0x94]
-	byte cmp[] = {0x3B, 0x9C, 0x24, 0x94, 0x00, 0x00, 0x00};
-	for (int n = 0; n < sizeof cmp; n++)
-		*cursor++ = cmp[n];
+		// mov ebx, eax
+		*cursor++ = 0x89;
+		*cursor++ = 0xC3;
 
-	// jmp 0x430FC1
-	*cursor++ = 0xE9;
-	cursor = int_to_bytes (cursor, 0x430FC1 - ((int)addr_improv_airlock + (cursor - code) + 4));
+		*cursor++ = 0x5A; // pop edx
+		*cursor++ = 0x59; // pop ecx
+		*cursor++ = 0x58; // pop eax
+
+		// cmp ebx, dword ptr [esp+0x94]
+		byte cmp[] = {0x3B, 0x9C, 0x24, 0x94, 0x00, 0x00, 0x00};
+		for (int n = 0; n < sizeof cmp; n++)
+			*cursor++ = cmp[n];
+
+		// jmp 0x430FC1
+		*cursor++ = 0xE9;
+		cursor = int_to_bytes (cursor, 0x430FC1 - ((int)addr_improv_airlock + (cursor - code) + 4));
+
+	} else if (bin_id == BIN_ID_STEAM) {
+
+		// valuation stored in edi
+
+		*cursor++ = 0x50; // push eax
+		*cursor++ = 0x51; // push ecx
+		*cursor++ = 0x52; // push edx
+
+		// push edi
+		// call do_intercept_consideration
+		*cursor++ = 0x57;
+		*cursor++ = 0xE8;
+		cursor = int_to_bytes (cursor, (int)addr_do_intercept_consideration - ((int)addr_improv_airlock + (cursor - code) + 4));
+
+		// mov edi, eax
+		*cursor++ = 0x89;
+		*cursor++ = 0xC7;
+
+		*cursor++ = 0x5A; // pop edx
+		*cursor++ = 0x59; // pop ecx
+		*cursor++ = 0x58; // pop eax
+
+		// cmp edi, dword ptr [esp+0x48]
+		byte cmp[] = {0x3B, 0x7C, 0x24, 0x48};
+		for (int n = 0; n < sizeof cmp; n++)
+			*cursor++ = cmp[n];
+
+		// jl 0x432A87
+		*cursor++ = 0x0F;
+		*cursor++ = 0x8C;
+		cursor = int_to_bytes (cursor, 0x432A87 - ((int)addr_improv_airlock + (cursor - code) + 4));
+
+		// jmp 0x432A73
+		*cursor++ = 0xE9;
+		cursor = int_to_bytes (cursor, 0x432A73 - ((int)addr_improv_airlock + (cursor - code) + 4));
+
+	} else
+		THROW ("Invalid bin_id");
 
 	write_prog_memory (addr_improv_airlock, &code[0], sizeof code);
 }
@@ -978,7 +1021,7 @@ ENTRY_POINT ()
 		}
 	}
 
-	init_consideration_airlocks (tcc, addr_improv_consideration_airlock);
+	init_consideration_airlocks (bin_id, tcc, addr_improv_consideration_airlock);
 
 	// Give up write permission on Civ proc's code injection pages
 	set_prog_mem_protection (civ_inject_mem, inject_size, MAA_READ_EXECUTE);
