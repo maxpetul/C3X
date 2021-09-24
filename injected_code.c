@@ -340,94 +340,6 @@ do_intercept_consideration (int valuation)
 	return valuation;
 }
 
-/*
-void
-intercept_improv_consideration ()
-{
-	// A call to this function is injected at the point where the AI compares the value of the improvement it's considering to the value of its
-	// best option so far. Specifically, the cmp instruction is replaced with a call pointing here. The cmp at the end of the ASM block in this
-	// function substitutes for the one that gets overwritten (it's the same instruction except the offset is increased by 8 since the return
-	// address and frame pointer each occupy 4 stack bytes). Other than that, the purpose of this function is to wrap the call to
-	// do_intercept_consideration, passing it the current valuation then replacing that with its return, while preserving the necessary registers.
-
-	//    10-byte function intro skipped by jump:
-	//    push  %ebp
-	//    mov   %esp, %ebp
-	//    sub   $0, %esp
-	//    nop
-
-#if defined(GOG_EXECUTABLE)
-	asm ("push  %eax                       \n"
-	     "push  %ecx                       \n"
-	     "push  %edx                       \n"
-	     "push  %ebx                       \n"
-	     "call  do_intercept_consideration \n"
-	     "mov   %eax, %ebx                 \n"
-	     "pop   %edx                       \n"
-	     "pop   %ecx                       \n"
-	     "pop   %eax                       \n"
-	     "cmp   0x94(%esp), %ebx           \n"
-	     "jmp   0x430FC1                   \n"
-	);
-#elif defined(STEAM_EXECUTABLE)
-	// On the Steam build the cmp instruction is only 4 bytes so we have to replace the previous instruction as well (calls are 5 bytes). So there
-	// are two substitutions at the end of the ASM block. Also different from the GOG code is that the valuation is in %ecx not %ebx.
-	asm ("push  %eax                       \n"
-	     "push  %edx                       \n"
-	     "push  %ecx                       \n"
-	     "call  do_intercept_consideration \n"
-	     "mov   %eax, %ecx                 \n"
-	     "pop   %edx                       \n"
-	     "pop   %eax                       \n"
-	     "mov   %ecx, %edi                 \n"
-	     "cmp   0x50(%esp), %edi           \n"
-	);
-#else
-	#error Must identify executable
-#endif
-
-	//    Function ending not executed:
-	//    leave
-	//    ret
-}
-*/
-
-/*
-void
-intercept_unit_consideration ()
-{
-	// Same idea as intercept_improv_consideration, we even have the same problem that the cmp instruction is only 4 bytes on the Steam build.
-
-#if defined(GOG_EXECUTABLE)
-	asm ("push  %eax                       \n"
-	     "push  %ecx                       \n"
-	     "push  %edx                       \n"
-	     "push  %edi                       \n"
-	     "call  do_intercept_consideration \n"
-	     "mov   %eax, %edi                 \n"
-	     "pop   %edx                       \n"
-	     "pop   %ecx                       \n"
-	     "pop   %eax                       \n"
-	     "cmp   0x9C(%esp), %edi           \n"
-	);
-#elif defined(STEAM_EXECUTABLE)
-	asm ("push  %eax                       \n"
-	     "push  %ecx                       \n"
-	     "push  %edx                       \n"
-	     // push valuation
-	     "call  do_intercept_consideration \n"
-	     // store valuation
-	     "pop   %edx                       \n"
-	     "pop   %ecx                       \n"
-	     "pop   %eax                       \n"
-	     // substitutes
-	);
-#else
-	#error Must identify executable
-#endif
-}
-*/
-
 // Just calls VirtualProtect and displays an error message if it fails. Made for use by the WITH_MEM_PROTECTION macro.
 int
 check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect)
@@ -526,50 +438,23 @@ apply_config (struct c3x_config * cfg)
 			((byte *)ADDR_AUTORAZE_BYPASS)[n] = cfg->prevent_autorazing ? bypass[n] : normal[n];
 	}
 
-	WITH_MEM_PROTECTION (ADDR_INTERCEPT_AI_IMPROV_VALUE, AI_IMPROV_INTERCEPT_LEN, PAGE_EXECUTE_READWRITE) {
-		// Initialize replacement machine code. Start by filling with NOPs.
-		byte repl[AI_IMPROV_INTERCEPT_LEN];
-		for (int n = 0; n < AI_IMPROV_INTERCEPT_LEN; n++)
-			repl[n] = 0x90; // nop
+	for (int n = 0; n < 2; n++) {
+		void * addr_intercept = (n == 0) ? ADDR_INTERCEPT_AI_IMPROV_VALUE    : ADDR_INTERCEPT_AI_UNIT_VALUE;
+		void * addr_airlock   = (n == 0) ? ADDR_IMPROV_CONSIDERATION_AIRLOCK : ADDR_UNIT_CONSIDERATION_AIRLOCK;
 
-		repl[0] = 0xE9; // call
-		int offset = (int)ADDR_IMPROV_CONSIDERATION_AIRLOCK - ((int)ADDR_INTERCEPT_AI_IMPROV_VALUE + 5);
-		int_to_bytes (&repl[1], offset);
+		WITH_MEM_PROTECTION (addr_intercept, AI_CONSIDERATION_INTERCEPT_LEN, PAGE_EXECUTE_READWRITE) {
+			byte * cursor = addr_intercept;
 
-		// Write the replacement code
-		for (int n = 0; n < AI_IMPROV_INTERCEPT_LEN; n++)
-			((byte *)ADDR_INTERCEPT_AI_IMPROV_VALUE)[n] = repl[n];
+			// write jump to airlock
+			*cursor++ = 0xE9;
+			int offset = (int)addr_airlock - ((int)addr_intercept + 5);
+			cursor = int_to_bytes (cursor, offset);
+
+			// fill the rest of the space with NOPs
+			while (cursor < (byte *)addr_intercept + AI_CONSIDERATION_INTERCEPT_LEN)
+				*cursor++ = 0x90; // nop
+		}
 	}
-
-	/*
-	WITH_MEM_PROTECTION (ADDR_INTERCEPT_AI_IMPROV_VALUE, AI_IMPROV_INTERCEPT_LEN, PAGE_EXECUTE_READWRITE) {
-		// Initialize replacement machine code. Start by filling with NOPs.
-		byte repl[AI_IMPROV_INTERCEPT_LEN];
-		for (int n = 0; n < AI_IMPROV_INTERCEPT_LEN; n++)
-			repl[n] = 0x90; // nop
-
-		// Place a jump into the body of the intercept function at the beginning. 10 bytes is added to the address of the function in order to
-		// skip the 10-byte function header.
-		repl[0] = 0xE9; // call
-		int offset = ((int)&intercept_improv_consideration + 10) - ((int)ADDR_INTERCEPT_AI_IMPROV_VALUE + 5);
-		int_to_bytes (&repl[1], offset);
-
-		// Write the replacement code
-		for (int n = 0; n < AI_IMPROV_INTERCEPT_LEN; n++)
-			((byte *)ADDR_INTERCEPT_AI_IMPROV_VALUE)[n] = repl[n];
-	}
-	*/
-
-	// Similarly for units
-	/*
-	WITH_MEM_PROTECTION (ADDR_AI_UNIT_VALUE, 7, PAGE_EXECUTE_READWRITE) {
-		byte call[7] = {0xE8, 0x00, 0x00, 0x00, 0x00, 0x90, 0x90}; // call [4-byte offset], nop, nop
-		int offset = (int)&intercept_unit_consideration - ((int)ADDR_AI_UNIT_VALUE + 5);
-		int_to_bytes (&call[1], offset);
-		for (int n = 0; n < 7; n++)
-			((byte *)ADDR_AI_UNIT_VALUE)[n] = call[n];
-	}
-	*/
 }
 
 void

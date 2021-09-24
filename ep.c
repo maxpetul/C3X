@@ -607,7 +607,7 @@ find_patch_function (TCCState * tcc, char const * obj_name, int prepend_patch)
 }
 
 void
-init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_improv_airlock)
+init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_improv_airlock, byte * addr_unit_airlock)
 {
 	void * addr_do_intercept_consideration = find_patch_function (tcc, "do_intercept_consideration", 0);
 	ASSERT (addr_do_intercept_consideration != NULL);
@@ -686,6 +686,44 @@ init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_imp
 		THROW ("Invalid bin_id");
 
 	write_prog_memory (addr_improv_airlock, &code[0], sizeof code);
+
+	memset (code, 0, sizeof code);
+	cursor = code;
+
+	if (bin_id == BIN_ID_GOG) {
+
+		// valuation stored in edi
+
+		*cursor++ = 0x50; // push eax
+		*cursor++ = 0x51; // push ecx
+		*cursor++ = 0x52; // push edx
+
+		// push edi
+		// call do_intercept_consideration
+		*cursor++ = 0x57;
+		*cursor++ = 0xE8;
+		cursor = int_to_bytes (cursor, (int)addr_do_intercept_consideration - ((int)addr_unit_airlock + (cursor - code) + 4));
+
+		// mov edi, eax
+		*cursor++ = 0x89;
+		*cursor++ = 0xC7;
+
+		*cursor++ = 0x5A; // pop edx
+		*cursor++ = 0x59; // pop ecx
+		*cursor++ = 0x58; // pop eax
+
+		// cmp edi, dword ptr [esp+0x94]
+		byte cmp[] = {0x3B, 0xBC, 0x24, 0x94, 0x00, 0x00, 0x00};
+		for (int n = 0; n < sizeof cmp; n++)
+			*cursor++ = cmp[n];
+
+		// jmp 0x433C83
+		*cursor++ = 0xE9;
+		cursor = int_to_bytes (cursor, 0x433C83 - ((int)addr_unit_airlock + (cursor - code) + 4));
+
+	}
+
+	write_prog_memory (addr_unit_airlock, &code[0], sizeof code);
 }
 
 // Because we're compiling with -nostdlib the entry point isn't main but is rather _runmain (if running immediately like a script) or _start (if
@@ -954,11 +992,13 @@ ENTRY_POINT ()
 	// to get these is to use some of the space reserved for inleads. The contents of these regions are only written after the injected code is
 	// compiled b/c they depend on the address of do_intercept_consideration. The injected code also depends on the addresses (see
 	// apply_config). The regions are filled out by init_consideration_airlocks, part of the patcher.
-	byte * addr_improv_consideration_airlock; {
-		ASSERT (i_next_free_inlead + 1 < inleads_capacity);
+	byte * addr_improv_consideration_airlock, * addr_unit_consideration_airlock; {
+		ASSERT (i_next_free_inlead + 3 < inleads_capacity);
 		addr_improv_consideration_airlock = (byte *)&inleads[i_next_free_inlead];
-		i_next_free_inlead += 2;
+		addr_unit_consideration_airlock   = (byte *)&inleads[i_next_free_inlead + 2];
+		i_next_free_inlead += 4;
 		tcc__define_symbol (tcc, "ADDR_IMPROV_CONSIDERATION_AIRLOCK", temp_format ("((void *)0x%x)", (int)addr_improv_consideration_airlock));
+		tcc__define_symbol (tcc, "ADDR_UNIT_CONSIDERATION_AIRLOCK"  , temp_format ("((void *)0x%x)", (int)addr_unit_consideration_airlock));
 	}
 
 	if (bin_id == BIN_ID_GOG)
@@ -1021,7 +1061,7 @@ ENTRY_POINT ()
 		}
 	}
 
-	init_consideration_airlocks (bin_id, tcc, addr_improv_consideration_airlock);
+	init_consideration_airlocks (bin_id, tcc, addr_improv_consideration_airlock, addr_unit_consideration_airlock);
 
 	// Give up write permission on Civ proc's code injection pages
 	set_prog_mem_protection (civ_inject_mem, inject_size, MAA_READ_EXECUTE);
