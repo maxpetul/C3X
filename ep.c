@@ -606,6 +606,36 @@ find_patch_function (TCCState * tcc, char const * obj_name, int prepend_patch)
 	return mss.matching_val;
 }
 
+enum reg { REG_EAX = 0, REG_ECX, REG_EDX, REG_EBX, REG_EBP, REG_ESI, REG_EDI };
+
+void
+emit_consideration_intercept_call (byte ** p_cursor, byte * code_base, void * addr_intercept_function, byte * addr_airlock, enum reg val_reg)
+{
+	ASSERT ((val_reg == REG_EBX) || (val_reg == REG_EDI));
+
+	byte * cursor = *p_cursor;
+
+	*cursor++ = 0x50; // push eax
+	*cursor++ = 0x51; // push ecx
+	*cursor++ = 0x52; // push edx
+
+	// push val_reg
+	// call do_intercept_consideration
+	*cursor++ = (val_reg == REG_EBX) ? 0x53 : 0x57;
+	*cursor++ = 0xE8;
+	cursor = int_to_bytes (cursor, (int)addr_intercept_function - ((int)addr_airlock + (cursor - code_base) + 4));
+
+	// mov val_reg, eax
+	*cursor++ = 0x89;
+	*cursor++ = (val_reg == REG_EBX) ? 0xC3 : 0xC7;
+
+	*cursor++ = 0x5A; // pop edx
+	*cursor++ = 0x59; // pop ecx
+	*cursor++ = 0x58; // pop eax
+
+	*p_cursor = cursor;
+}
+
 void
 init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_improv_airlock, byte * addr_unit_airlock)
 {
@@ -617,25 +647,7 @@ init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_imp
 
 	if (bin_id == BIN_ID_GOG) {
 
-		// valuation stored in ebx
-
-		*cursor++ = 0x50; // push eax
-		*cursor++ = 0x51; // push ecx
-		*cursor++ = 0x52; // push edx
-
-		// push ebx
-		// call do_intercept_consideration
-		*cursor++ = 0x53;
-		*cursor++ = 0xE8;
-		cursor = int_to_bytes (cursor, (int)addr_do_intercept_consideration - ((int)addr_improv_airlock + (cursor - code) + 4));
-
-		// mov ebx, eax
-		*cursor++ = 0x89;
-		*cursor++ = 0xC3;
-
-		*cursor++ = 0x5A; // pop edx
-		*cursor++ = 0x59; // pop ecx
-		*cursor++ = 0x58; // pop eax
+		emit_consideration_intercept_call (&cursor, code, addr_do_intercept_consideration, addr_improv_airlock, REG_EBX);
 
 		// cmp ebx, dword ptr [esp+0x94]
 		byte cmp[] = {0x3B, 0x9C, 0x24, 0x94, 0x00, 0x00, 0x00};
@@ -648,25 +660,7 @@ init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_imp
 
 	} else if (bin_id == BIN_ID_STEAM) {
 
-		// valuation stored in edi
-
-		*cursor++ = 0x50; // push eax
-		*cursor++ = 0x51; // push ecx
-		*cursor++ = 0x52; // push edx
-
-		// push edi
-		// call do_intercept_consideration
-		*cursor++ = 0x57;
-		*cursor++ = 0xE8;
-		cursor = int_to_bytes (cursor, (int)addr_do_intercept_consideration - ((int)addr_improv_airlock + (cursor - code) + 4));
-
-		// mov edi, eax
-		*cursor++ = 0x89;
-		*cursor++ = 0xC7;
-
-		*cursor++ = 0x5A; // pop edx
-		*cursor++ = 0x59; // pop ecx
-		*cursor++ = 0x58; // pop eax
+		emit_consideration_intercept_call (&cursor, code, addr_do_intercept_consideration, addr_improv_airlock, REG_EDI);
 
 		// cmp edi, dword ptr [esp+0x48]
 		byte cmp[] = {0x3B, 0x7C, 0x24, 0x48};
@@ -692,25 +686,7 @@ init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_imp
 
 	if (bin_id == BIN_ID_GOG) {
 
-		// valuation stored in edi
-
-		*cursor++ = 0x50; // push eax
-		*cursor++ = 0x51; // push ecx
-		*cursor++ = 0x52; // push edx
-
-		// push edi
-		// call do_intercept_consideration
-		*cursor++ = 0x57;
-		*cursor++ = 0xE8;
-		cursor = int_to_bytes (cursor, (int)addr_do_intercept_consideration - ((int)addr_unit_airlock + (cursor - code) + 4));
-
-		// mov edi, eax
-		*cursor++ = 0x89;
-		*cursor++ = 0xC7;
-
-		*cursor++ = 0x5A; // pop edx
-		*cursor++ = 0x59; // pop ecx
-		*cursor++ = 0x58; // pop eax
+		emit_consideration_intercept_call (&cursor, code, addr_do_intercept_consideration, addr_unit_airlock, REG_EDI);
 
 		// cmp edi, dword ptr [esp+0x94]
 		byte cmp[] = {0x3B, 0xBC, 0x24, 0x94, 0x00, 0x00, 0x00};
@@ -723,25 +699,7 @@ init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_imp
 
 	} else if (bin_id == BIN_ID_STEAM) {
 
-		// valuation stored in ebx
-
-		*cursor++ = 0x50; // push eax
-		*cursor++ = 0x51; // push ecx
-		*cursor++ = 0x52; // push edx
-
-		// push ebx
-		// call do_intercept_consideration
-		*cursor++ = 0x53;
-		*cursor++ = 0xE8;
-		cursor = int_to_bytes (cursor, (int)addr_do_intercept_consideration - ((int)addr_unit_airlock + (cursor - code) + 4));
-
-		// mov ebx, eax
-		*cursor++ = 0x89;
-		*cursor++ = 0xC3;
-
-		*cursor++ = 0x5A; // pop edx
-		*cursor++ = 0x59; // pop ecx
-		*cursor++ = 0x58; // pop eax
+		emit_consideration_intercept_call (&cursor, code, addr_do_intercept_consideration, addr_unit_airlock, REG_EBX);
 
 		// cmp ebx, dword ptr [esp+0x48]
 		byte cmp[] = {0x3B, 0x5C, 0x24, 0x48};
