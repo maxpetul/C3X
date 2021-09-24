@@ -721,6 +721,41 @@ init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_imp
 		*cursor++ = 0xE9;
 		cursor = int_to_bytes (cursor, 0x433C83 - ((int)addr_unit_airlock + (cursor - code) + 4));
 
+	} else if (bin_id == BIN_ID_STEAM) {
+
+		// valuation stored in ebx
+
+		*cursor++ = 0x50; // push eax
+		*cursor++ = 0x51; // push ecx
+		*cursor++ = 0x52; // push edx
+
+		// push ebx
+		// call do_intercept_consideration
+		*cursor++ = 0x53;
+		*cursor++ = 0xE8;
+		cursor = int_to_bytes (cursor, (int)addr_do_intercept_consideration - ((int)addr_unit_airlock + (cursor - code) + 4));
+
+		// mov ebx, eax
+		*cursor++ = 0x89;
+		*cursor++ = 0xC3;
+
+		*cursor++ = 0x5A; // pop edx
+		*cursor++ = 0x59; // pop ecx
+		*cursor++ = 0x58; // pop eax
+
+		// cmp ebx, dword ptr [esp+0x48]
+		byte cmp[] = {0x3B, 0x5C, 0x24, 0x48};
+		for (int n = 0; n < sizeof cmp; n++)
+			*cursor++ = cmp[n];
+
+		// jl 0x435730
+		*cursor++ = 0x0F;
+		*cursor++ = 0x8C;
+		cursor = int_to_bytes (cursor, 0x435730 - ((int)addr_unit_airlock + (cursor - code) + 4));
+
+		// jmp 0x435718
+		*cursor++ = 0xE9;
+		cursor = int_to_bytes (cursor, 0x435718 - ((int)addr_unit_airlock + (cursor - code) + 4));
 	}
 
 	write_prog_memory (addr_unit_airlock, &code[0], sizeof code);
