@@ -636,6 +636,22 @@ emit_consideration_intercept_call (byte ** p_cursor, byte * code_base, void * ad
 	*p_cursor = cursor;
 }
 
+enum jump_kind { JK_UNCOND = 0, JK_LESS };
+
+void
+emit_jump (byte ** p_cursor, byte * code_base, int jump_target, byte * addr_airlock, enum jump_kind kind)
+{
+	byte * cursor = *p_cursor;
+	if (kind == JK_UNCOND)
+		*cursor++ = 0xE9; // jmp
+	else if (kind == JK_LESS) {
+		*cursor++ = 0x0F; // | jl
+		*cursor++ = 0x8C; // |
+	}
+	cursor = int_to_bytes (cursor, jump_target - ((int)addr_airlock + (cursor - code_base) + 4));
+	*p_cursor = cursor;
+}
+
 void
 init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_improv_airlock, byte * addr_unit_airlock)
 {
@@ -646,35 +662,19 @@ init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_imp
 	byte * cursor = code;
 
 	if (bin_id == BIN_ID_GOG) {
-
 		emit_consideration_intercept_call (&cursor, code, addr_do_intercept_consideration, addr_improv_airlock, REG_EBX);
-
-		// cmp ebx, dword ptr [esp+0x94]
-		byte cmp[] = {0x3B, 0x9C, 0x24, 0x94, 0x00, 0x00, 0x00};
+		byte cmp[] = {0x3B, 0x9C, 0x24, 0x94, 0x00, 0x00, 0x00}; // cmp ebx, dword ptr [esp+0x94]
 		for (int n = 0; n < sizeof cmp; n++)
 			*cursor++ = cmp[n];
-
-		// jmp 0x430FC1
-		*cursor++ = 0xE9;
-		cursor = int_to_bytes (cursor, 0x430FC1 - ((int)addr_improv_airlock + (cursor - code) + 4));
+		emit_jump (&cursor, code, 0x430FC1, addr_improv_airlock, JK_UNCOND);
 
 	} else if (bin_id == BIN_ID_STEAM) {
-
 		emit_consideration_intercept_call (&cursor, code, addr_do_intercept_consideration, addr_improv_airlock, REG_EDI);
-
-		// cmp edi, dword ptr [esp+0x48]
-		byte cmp[] = {0x3B, 0x7C, 0x24, 0x48};
+		byte cmp[] = {0x3B, 0x7C, 0x24, 0x48}; // cmp edi, dword ptr [esp+0x48]
 		for (int n = 0; n < sizeof cmp; n++)
 			*cursor++ = cmp[n];
-
-		// jl 0x432A87
-		*cursor++ = 0x0F;
-		*cursor++ = 0x8C;
-		cursor = int_to_bytes (cursor, 0x432A87 - ((int)addr_improv_airlock + (cursor - code) + 4));
-
-		// jmp 0x432A73
-		*cursor++ = 0xE9;
-		cursor = int_to_bytes (cursor, 0x432A73 - ((int)addr_improv_airlock + (cursor - code) + 4));
+		emit_jump (&cursor, code, 0x432A87, addr_improv_airlock, JK_LESS);
+		emit_jump (&cursor, code, 0x432A73, addr_improv_airlock, JK_UNCOND);
 
 	} else
 		THROW ("Invalid bin_id");
@@ -685,35 +685,19 @@ init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_imp
 	cursor = code;
 
 	if (bin_id == BIN_ID_GOG) {
-
 		emit_consideration_intercept_call (&cursor, code, addr_do_intercept_consideration, addr_unit_airlock, REG_EDI);
-
-		// cmp edi, dword ptr [esp+0x94]
-		byte cmp[] = {0x3B, 0xBC, 0x24, 0x94, 0x00, 0x00, 0x00};
+		byte cmp[] = {0x3B, 0xBC, 0x24, 0x94, 0x00, 0x00, 0x00}; // cmp edi, dword ptr [esp+0x94]
 		for (int n = 0; n < sizeof cmp; n++)
 			*cursor++ = cmp[n];
-
-		// jmp 0x433C83
-		*cursor++ = 0xE9;
-		cursor = int_to_bytes (cursor, 0x433C83 - ((int)addr_unit_airlock + (cursor - code) + 4));
+		emit_jump (&cursor, code, 0x433C83, addr_unit_airlock, JK_UNCOND);
 
 	} else if (bin_id == BIN_ID_STEAM) {
-
 		emit_consideration_intercept_call (&cursor, code, addr_do_intercept_consideration, addr_unit_airlock, REG_EBX);
-
-		// cmp ebx, dword ptr [esp+0x48]
-		byte cmp[] = {0x3B, 0x5C, 0x24, 0x48};
+		byte cmp[] = {0x3B, 0x5C, 0x24, 0x48}; // cmp ebx, dword ptr [esp+0x48]
 		for (int n = 0; n < sizeof cmp; n++)
 			*cursor++ = cmp[n];
-
-		// jl 0x435730
-		*cursor++ = 0x0F;
-		*cursor++ = 0x8C;
-		cursor = int_to_bytes (cursor, 0x435730 - ((int)addr_unit_airlock + (cursor - code) + 4));
-
-		// jmp 0x435718
-		*cursor++ = 0xE9;
-		cursor = int_to_bytes (cursor, 0x435718 - ((int)addr_unit_airlock + (cursor - code) + 4));
+		emit_jump (&cursor, code, 0x435730, addr_unit_airlock, JK_LESS);
+		emit_jump (&cursor, code, 0x435718, addr_unit_airlock, JK_UNCOND);
 	}
 
 	write_prog_memory (addr_unit_airlock, &code[0], sizeof code);
