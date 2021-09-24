@@ -608,6 +608,9 @@ find_patch_function (TCCState * tcc, char const * obj_name, int prepend_patch)
 
 enum reg { REG_EAX = 0, REG_ECX, REG_EDX, REG_EBX, REG_EBP, REG_ESI, REG_EDI };
 
+// This writes a call to intercept_consideration at the cursor. intercept_consideration takes a single parameter, the point value of the thing being
+// considered and it returns a new, possibly modified, value for it. Because this call gets inserted into a stream of instructions we must take care
+// not to modify any registers other than the one which stores the point value (specified by val_reg, must be either ebx or edi).
 void
 emit_consideration_intercept_call (byte ** p_cursor, byte * code_base, void * addr_intercept_function, byte * addr_airlock, enum reg val_reg)
 {
@@ -652,6 +655,16 @@ emit_jump (byte ** p_cursor, byte * code_base, int jump_target, byte * addr_airl
 	*p_cursor = cursor;
 }
 
+// This function fills out two "airlocks" which are necessary pieces of the process of seeing and modifying the AI's production choices. There are two
+// because the AI production chooser function loops separately over available improvements and units. Each of the airlocks contains instructions that
+// wrap a call to intercept_consideration (which is located in the injected code), then duplicate the instructions that got overwritten by the jump to
+// the airlock, then finally jump back into the original code.
+// There are separate cases for the GOG and Steam builds of the game since those are separate compilations of the same source and so the stack layout
+// and register usage is different. One major difference is that on the Steam build, the central cmp instruction that gets replaced with a jump to an
+// airlock is only 4 bytes in size (unlike 7 on GOG) so b/c a jump occupies 5 bytes we must also overwrite the following instruction which is a jl. So
+// we must replicate the functionality of that second jump, hence in the Steam case there are two jumps at the end of the airlocks. The first jumps
+// past the block that's run if the last candidate has the highest value so far, and the second jumps into that block. This is unlike on GOG where
+// there's only one jump that goes to the equivalent jl instruction in the base code.
 void
 init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_improv_airlock, byte * addr_unit_airlock)
 {

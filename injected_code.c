@@ -438,6 +438,11 @@ apply_config (struct c3x_config * cfg)
 			((byte *)ADDR_AUTORAZE_BYPASS)[n] = cfg->prevent_autorazing ? bypass[n] : normal[n];
 	}
 
+	// Overwrite the instruction(s) where the AI's production choosing code compares the value of what it's currently considering to the best
+	// option so far. This is done twice since improvements and units are handled in separate loops. The instr(s) are overwritten with a jump to
+	// an "airlock", which is a bit of code that wraps the call to intercept_consideration. The contents of the airlocks are prepared by the
+	// patcher in init_consideration_airlocks.
+	// TODO: This instruction replacement could be done in the patcher too and that might be a better place for it. Think about this.
 	for (int n = 0; n < 2; n++) {
 		void * addr_intercept = (n == 0) ? ADDR_INTERCEPT_AI_IMPROV_VALUE    : ADDR_INTERCEPT_AI_UNIT_VALUE;
 		void * addr_airlock   = (n == 0) ? ADDR_IMPROV_CONSIDERATION_AIRLOCK : ADDR_UNIT_CONSIDERATION_AIRLOCK;
