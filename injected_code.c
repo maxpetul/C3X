@@ -301,7 +301,7 @@ tile_at_city_or_null (City * city_or_null)
 }
 
 int __stdcall
-do_intercept_consideration (int valuation)
+intercept_consideration (int valuation)
 {
 	City * city = is->ai_considering_production_for_city;
 	City_Order * order = &is->ai_considering_order;

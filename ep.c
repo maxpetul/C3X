@@ -620,7 +620,7 @@ emit_consideration_intercept_call (byte ** p_cursor, byte * code_base, void * ad
 	*cursor++ = 0x52; // push edx
 
 	// push val_reg
-	// call do_intercept_consideration
+	// call intercept_consideration
 	*cursor++ = (val_reg == REG_EBX) ? 0x53 : 0x57;
 	*cursor++ = 0xE8;
 	cursor = int_to_bytes (cursor, (int)addr_intercept_function - ((int)addr_airlock + (cursor - code_base) + 4));
@@ -655,21 +655,21 @@ emit_jump (byte ** p_cursor, byte * code_base, int jump_target, byte * addr_airl
 void
 init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_improv_airlock, byte * addr_unit_airlock)
 {
-	void * addr_do_intercept_consideration = find_patch_function (tcc, "do_intercept_consideration", 0);
-	ASSERT (addr_do_intercept_consideration != NULL);
+	void * addr_intercept_consideration = find_patch_function (tcc, "intercept_consideration", 0);
+	ASSERT (addr_intercept_consideration != NULL);
 
 	byte code[64] = {0};
 	byte * cursor = code;
 
 	if (bin_id == BIN_ID_GOG) {
-		emit_consideration_intercept_call (&cursor, code, addr_do_intercept_consideration, addr_improv_airlock, REG_EBX);
+		emit_consideration_intercept_call (&cursor, code, addr_intercept_consideration, addr_improv_airlock, REG_EBX);
 		byte cmp[] = {0x3B, 0x9C, 0x24, 0x94, 0x00, 0x00, 0x00}; // cmp ebx, dword ptr [esp+0x94]
 		for (int n = 0; n < sizeof cmp; n++)
 			*cursor++ = cmp[n];
 		emit_jump (&cursor, code, 0x430FC1, addr_improv_airlock, JK_UNCOND);
 
 	} else if (bin_id == BIN_ID_STEAM) {
-		emit_consideration_intercept_call (&cursor, code, addr_do_intercept_consideration, addr_improv_airlock, REG_EDI);
+		emit_consideration_intercept_call (&cursor, code, addr_intercept_consideration, addr_improv_airlock, REG_EDI);
 		byte cmp[] = {0x3B, 0x7C, 0x24, 0x48}; // cmp edi, dword ptr [esp+0x48]
 		for (int n = 0; n < sizeof cmp; n++)
 			*cursor++ = cmp[n];
@@ -685,14 +685,14 @@ init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_imp
 	cursor = code;
 
 	if (bin_id == BIN_ID_GOG) {
-		emit_consideration_intercept_call (&cursor, code, addr_do_intercept_consideration, addr_unit_airlock, REG_EDI);
+		emit_consideration_intercept_call (&cursor, code, addr_intercept_consideration, addr_unit_airlock, REG_EDI);
 		byte cmp[] = {0x3B, 0xBC, 0x24, 0x94, 0x00, 0x00, 0x00}; // cmp edi, dword ptr [esp+0x94]
 		for (int n = 0; n < sizeof cmp; n++)
 			*cursor++ = cmp[n];
 		emit_jump (&cursor, code, 0x433C83, addr_unit_airlock, JK_UNCOND);
 
 	} else if (bin_id == BIN_ID_STEAM) {
-		emit_consideration_intercept_call (&cursor, code, addr_do_intercept_consideration, addr_unit_airlock, REG_EBX);
+		emit_consideration_intercept_call (&cursor, code, addr_intercept_consideration, addr_unit_airlock, REG_EBX);
 		byte cmp[] = {0x3B, 0x5C, 0x24, 0x48}; // cmp ebx, dword ptr [esp+0x48]
 		for (int n = 0; n < sizeof cmp; n++)
 			*cursor++ = cmp[n];
@@ -967,8 +967,8 @@ ENTRY_POINT ()
 
 	// Need two small regions of executable memory to write some machine code to enable intercepting the AI's production choices, the easiest way
 	// to get these is to use some of the space reserved for inleads. The contents of these regions are only written after the injected code is
-	// compiled b/c they depend on the address of do_intercept_consideration. The injected code also depends on the addresses (see
-	// apply_config). The regions are filled out by init_consideration_airlocks, part of the patcher.
+	// compiled b/c they depend on the address of intercept_consideration. The injected code also depends on the addresses (see apply_config). The
+	// regions are filled out by init_consideration_airlocks, part of the patcher.
 	byte * addr_improv_consideration_airlock, * addr_unit_consideration_airlock; {
 		ASSERT (i_next_free_inlead + 3 < inleads_capacity);
 		addr_improv_consideration_airlock = (byte *)&inleads[i_next_free_inlead];
