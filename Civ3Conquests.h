@@ -489,7 +489,7 @@ enum AdvanceTypeFlags
   ATF_Enables_Conscription_Of_Units = 0x10,
   ATF_Enables_Mobilizations_Levels = 0x20,
   ATF_Enables_Recycling = 0x40,
-  ATF_Enables_Precisious_Bombing = 0x80,
+  ATF_Enables_Precision_Bombing = 0x80,
   ATF_Enables_Mutual_Protection_Pacts = 0x100,
   ATF_Enables_Right_Of_Passage_Treaties = 0x200,
   ATF_Enables_Military_Alliances = 0x400,
@@ -501,6 +501,8 @@ enum AdvanceTypeFlags
   ATF_Enables_Communication_Trading = 0x10000,
   ATF_Not_Required_For_Era_Advancement = 0x20000,
   ATF_Doubles_Work_Rate_Of_Workers = 0x40000,
+  ATF_Cannot_Be_Traded = 0x80000,
+  ATF_Permits_Sacrifice = 0x100000,
   ATF_Bonus_Tech = 0x200000,
   ATF_Reveal_Map = 0x400000,
 };
@@ -1614,7 +1616,7 @@ struct Advance
   int X;
   int Y;
   int Reqs[4];
-  int Flags;
+  enum AdvanceTypeFlags Flags;
   int Flavours;
   int field_70;
 };
