@@ -53,14 +53,13 @@ Ideas:
   - "AI ability to try to detect and attack invisible units that are pillaging improvements (if it has detector units)"
   - "AI ability to strategically attack undamaged army units"
   - "A fix for Trade route calculations (e.g. Harbors) slowing down the game and causing lag in between turns"
-- [from Barret] Change the "OFF" corruption setting for governments to really have zero corruption
 - [from Predator145]
   - Improve AI usage of cruise & tactical missiles
   - Enable AI to bring artillery & missiles along for naval invasions
   - Improve AI's usage of airlift, or enable it do so if it can't
   - Improve AI's building of fortresses & radar towers, enable it to build airfields
 - [from register] More culture groups
-- [from Civinator] Add way to easily view technologies available to trade; add way to view turns of golden age left. Both features from CivAssist II
+- [from Civinator] Add way to easily view technologies available to trade (maybe like in CivAssist II)
 - [from ynot56]
   - Make pollution rate adjustable
   - Add terraforming (example, in Civ 2 it's possible to turn mountains into hills and tundra into plains)
@@ -87,3 +86,4 @@ Ideas:
   - "Editable odds of sinking in sea/ocean squares"
 - [from tjs282] De-duplicate hotkeys e.g. clear forest and pollution use the same key
 - [from tjs282] Fix culturally-linked starts bug (described here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-21#post-16154963)
+- [from register] Fix city governor ignoring instruction to never produce artillery or settlers; enable AI to redeem treasury units in its capital (according to Civinator this is only a problem when the units are spawned there)
