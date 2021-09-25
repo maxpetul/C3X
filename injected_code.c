@@ -1940,6 +1940,33 @@ patch_Unit_ai_move_artillery (Unit * this)
 
 base_impl:
 	Unit_ai_move_artillery (this);
+
+	// Load the unit into a transport for a naval invasion if it's just sitting in a city with nothing else to do
+	if (is->current_config.use_offensive_artillery_ai &&
+	    (in_city != NULL) &&
+	    (this->Body.Moves == 0) &&
+	    (this->Body.UnitState == UnitState_Fortifying)) {
+		Unit * transport = Unit_find_transport (this, __, this->Body.X, this->Body.Y);
+		if (transport != NULL) {
+
+			int transport_capacity = p_bic_data->UnitTypes[transport->Body.UnitTypeID].Transport_Capacity;
+			int units_in_transport, arty_in_transport; {
+				FOR_UNITS_ON (uti, on_tile)
+					if (uti.unit->Body.Container_Unit == transport->Body.ID) {
+						units_in_transport++;
+						arty_in_transport += (p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].AI_Strategy & UTAI_Artillery) != 0;
+					}
+			}
+
+			// Check that there's space for the arty unit and an escort, and that the transport does not have more than one arty per three
+			// spaces so we're less likely to assemble invasion forces composed of nothing but artillery.
+			if ((units_in_transport + 2 <= transport_capacity) &&
+			    (arty_in_transport < not_below (1, transport_capacity / 3))) {
+				Unit_set_escortee (this, __, -1);
+				Unit_load (this, __, transport);
+			}
+		}
+	}
 }
 
 // Estimates the number of turns necessary to move the given unit to the given tile and writes it to *out_num_turns. Returns 0 if there is no path

@@ -175,3 +175,5 @@ repl vptr, 0x6659F8,	0x682A5C,	"City_Form_m82_handle_key_event",		"void __fastca
 define,	   0x437540,	0x4390F0,	"Improvement_has_wonder_flag",			"byte __fastcall (Improvement * this, int edx, enum ImprovementTypeWonderFeatures flag)"
 define,	   0x437710,	0x4392F0,	"UnitType_has_ai_strategy",			"byte __fastcall (UnitType * this, int edx, byte n)"
 repl call, 0x431038,	0x432AE7,	"UnitType_has_strat_0_for_ai_prod",		""
+define,	   0x44CE50,	0x44EE40,	"Unit_find_transport",				"Unit * __fastcall (Unit * this, int edx, int tile_x, int tile_y)"
+define,	   0x5C5110,	0x5D3DF0,	"Unit_load",					"void __fastcall (Unit * this, int edx, Unit * transport)"
