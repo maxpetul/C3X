@@ -708,7 +708,7 @@ enum Unit_Command_Values
   UCV_Build_Army	  = 0x10000040,
   UCV_Finish_Improvements = 0x10000080,
   UCV_Upgrade_Unit	  = 0x10000100,
-  UCV_Capture		  = 0x10000200,
+  UCV_Rescue_Princess	  = 0x10000200,
   UCV_Stealth_Attack	  = 0x10001000,
   UCV_Enslave		  = 0x10004000,
   UCV_Unknown		  = 0x10008000,
@@ -1313,6 +1313,7 @@ typedef enum toggleable_rules {
 	TR_CAPTURE_THE_PRINCESS	      = 0x4000,
 	TR_ALLOW_CULTURAL_CONVERSIONS = 0x8000,
 	TR_ALLOW_WONDER_VICTORY	      = 0x10000,
+	TR_REVERSE_CAPTURE_THE_FLAG   = 0x20000,
 	TR_ALLOW_SCIENTIFIC_LEADERS   = 0x40000,
 } ToggleableRules;
 
@@ -2553,8 +2554,8 @@ struct Victory_Point_Body
 {
   int vtable;
   int field_4;
-  int field_8;
-  int field_C;
+  int tile_x;
+  int tile_y;
   int field_10;
 };
 
@@ -4696,7 +4697,10 @@ struct Unit_Body
   int path_len;
   int escortee;
   int Auto_CityID;
-  int field_1B0[10];
+  int field_1B0[8];
+  char carrying_princess_of_race;
+  byte field_1D1[3];
+  int field_1D4;
   LeaderKind leader_kind;
   IDLS IDLS;
   int field_210[12];
