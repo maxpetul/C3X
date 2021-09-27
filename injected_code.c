@@ -191,11 +191,13 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->disallow_trespassing = ival != 0;
 				else if ((0 == strncmp (key.str, "show_detailed_tile_info", key.len)) && read_int (&value, &ival))
 					cfg->show_detailed_tile_info = ival != 0;
-				else if (0 == strncmp (key.str, "perfume_improvement_name", key.len)) {
+				else if (0 == strncmp (key.str, "perfume_target_name", key.len)) {
 					struct string_slice trimmed = trim_string_slice (&value, 1);
-					cfg->perfume_improvement_name = (trimmed.len > 0) ? extract_slice (&trimmed) : NULL;
+					cfg->perfume_target_name = (trimmed.len > 0) ? extract_slice (&trimmed) : NULL;
 				} else if ((0 == strncmp (key.str, "perfume_amount", key.len)) && read_int (&value, &ival))
 					cfg->perfume_amount = ival;
+				else if ((0 == strncmp (key.str, "warn_about_unrecognized_perfume_target", key.len)) && read_int (&value, &ival))
+					cfg->warn_about_unrecognized_perfume_target = ival != 0;
 				else if ((0 == strncmp (key.str, "zero_corruption_when_off", key.len)) && read_int (&value, &ival))
 					cfg->zero_corruption_when_off = ival;
 
@@ -243,7 +245,7 @@ load_config (char const * filename, struct c3x_config * cfg)
 			}
 		}
 	}
-	
+
 	free (text);
 }
 
@@ -314,8 +316,8 @@ intercept_consideration (int valuation)
 	}
 
 	// Apply perfume
-	if ((is->current_config.perfume_improvement_name != NULL) &&
-	    (strncmp (order_name, is->current_config.perfume_improvement_name, 32) == 0)) // in either case the name is at most 32 chars
+	if ((is->current_config.perfume_target_name != NULL) &&
+	    (strncmp (order_name, is->current_config.perfume_target_name, 32) == 0)) // in either case the name is at most 32 chars
 		valuation += is->current_config.perfume_amount;
 
 	// Expand the list of valuations if necessary
@@ -1758,8 +1760,10 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	// twice in the second case, but skip it anyway to avoid showing the same popup twice.
 	int is_useful_to_check_perfume_names = (ret_addr != ADDR_LOAD_SCENARIO_PREVIEW_RETURN) && (ret_addr != ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN);
 
-	char * perfume_name = is->current_config.perfume_improvement_name;
-	if (is_useful_to_check_perfume_names && (perfume_name != NULL)) {
+	char * perfume_name = is->current_config.perfume_target_name;
+	if (is->current_config.warn_about_unrecognized_perfume_target &&
+	    is_useful_to_check_perfume_names &&
+	    (perfume_name != NULL)) {
 		int matched = 0;
 		for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
 			Improvement * improv = &p_bic_data->Improvements[n];

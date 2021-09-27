@@ -30,8 +30,9 @@ struct c3x_config {
 	char enable_land_sea_intersections;
 	char disallow_trespassing;
 	char show_detailed_tile_info;
-	char * perfume_improvement_name;
+	char * perfume_target_name;
 	int perfume_amount;
+	char warn_about_unrecognized_perfume_target;
 	char zero_corruption_when_off;
 
 	char use_offensive_artillery_ai;
