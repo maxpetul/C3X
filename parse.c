@@ -128,7 +128,7 @@ parse_string_slice (char ** p_cursor, struct string_slice * out)
 			cur++;
 	} else {
 		str_start = cur;
-		while (is_alpha_num (*cur))
+		while (is_alpha_num (*cur) || (*cur == '-') || (*cur == '.'))
 			cur++;
 	}
 	int str_len = cur - str_start;
