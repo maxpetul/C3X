@@ -1,0 +1,8 @@
+	new game		0x59B2F5
+	quick start		0x59B2F5
+---	civ-content preview	0x59B499
+	civ-content new game	0x59B10A
+	load game		0x59B10A
+---	load game (2)		0x59AD27
+---	conquests preview	0x59B499
+	conquests new game	0x59B10A

@@ -1,0 +1,31 @@
+ocn: Leader (L) -> int
+ocn = max (1, floor(s_diff * (b + n_fp + n_com + n_gov + n_ai) / 100))
+where
+    b is base OCN from map size
+
+    n_fp is OCN contrib from forbidden palaces:
+      n_fp = floor((3*f*b) / d)
+      where
+        f = number of forbidden palaces in L's empire
+        d = 8 if L's govt does NOT have communal corruption else 1
+
+    n_com is contrib from commercial trait:
+      n_com = floor(b/4) if L has the trait else 0
+
+    n_gov is contrib from govt:
+      n_gov = | floor(b/8) if L's govt has minimal or nuisance corruption
+              | floor(b/16) if problematic
+              | 2*b if communal
+              | 0 otherwise
+
+    n_ai is special contrib for AI players:
+      n_ai = 0 if human player else | 0 if game difficulty set <= 2
+                                    | floor(b/8) if set to 3
+                                    | floor(b/4) if set to 4
+                                    | floor(b/2) if set >= 5
+
+    s_diff is scaling for player's set difficulty. In the editor this is called "percentage of optimal cities" for each difficulty level. The level used here is per-player NOT the overall game difficulty.
+
+
+
+NOTE: This formula assumes that b is non-negative. The actual code does not make this assumption, but the editor only allows b to be set within [1, 1000].
