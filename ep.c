@@ -934,6 +934,7 @@ ENTRY_POINT ()
 		.perfume_target_name = NULL,
 		.perfume_amount = 0,
 		.warn_about_unrecognized_perfume_target = 1,
+		.enable_ai_production_ranking = 1,
 		.zero_corruption_when_off = 0,
 
 		.use_offensive_artillery_ai = 1,

@@ -33,6 +33,7 @@ struct c3x_config {
 	char * perfume_target_name;
 	int perfume_amount;
 	char warn_about_unrecognized_perfume_target;
+	char enable_ai_production_ranking;
 	char zero_corruption_when_off;
 
 	char use_offensive_artillery_ai;

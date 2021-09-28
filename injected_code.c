@@ -198,6 +198,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->perfume_amount = ival;
 				else if ((0 == strncmp (key.str, "warn_about_unrecognized_perfume_target", key.len)) && read_int (&value, &ival))
 					cfg->warn_about_unrecognized_perfume_target = ival != 0;
+				else if ((0 == strncmp (key.str, "enable_ai_production_ranking", key.len)) && read_int (&value, &ival))
+					cfg->enable_ai_production_ranking = ival != 0;
 				else if ((0 == strncmp (key.str, "zero_corruption_when_off", key.len)) && read_int (&value, &ival))
 					cfg->zero_corruption_when_off = ival;
 
@@ -2889,7 +2891,8 @@ rank_ai_production_options (City * city)
 void __fastcall
 patch_City_Form_m82_handle_key_event (City_Form * this, int edx, int virtual_key_code, int is_down)
 {
-	if ((virtual_key_code == VK_P) && is_down) {
+	if (is->current_config.enable_ai_production_ranking &&
+	    (virtual_key_code == VK_P) && is_down) {
 		rank_ai_production_options (this->CurrentCity);
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_AI_PROD_RANKING", -1, 0, 0, 0);
