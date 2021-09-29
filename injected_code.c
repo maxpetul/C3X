@@ -139,6 +139,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 		return;
 
 	char * cursor = text;
+	int displayed_error_message = 0;
+	char err_msg[1000];
 	while (1) {
 		skip_horiz_space (&cursor);
 		if (*cursor == '\0')
@@ -241,10 +243,22 @@ load_config (char const * filename, struct c3x_config * cfg)
 				else if ((0 == strncmp (key.str, "prevent_razing_by_ai_players", key.len)) && read_int (&value, &ival))
 					cfg->prevent_razing_by_ai_players = ival != 0;
 
-				else
-					(*p_OutputDebugStringA) ("Invalid line in config file");
+				else if (! displayed_error_message) {
+					snprintf (err_msg, sizeof err_msg, "Error processing key \"%.*s\" in \"%s\". Either the key is not recognized or the value is invalid.", key.len, key.str, filename);
+					err_msg[(sizeof err_msg) - 1] = '\0';
+					is->MessageBoxA (NULL, err_msg, NULL, MB_ICONERROR);
+					displayed_error_message = 1;
+				}
 			} else {
-				(*p_OutputDebugStringA) ("Invalid line in config file");
+				if (! displayed_error_message) {
+					int line_no = 1;
+					for (char * c = text; c < cursor; c++)
+						line_no += *c == '\n';
+					snprintf (err_msg, sizeof err_msg, "Parse error on line %d of \"%s\".", line_no, filename);
+					err_msg[(sizeof err_msg) - 1] = '\0';
+					is->MessageBoxA (NULL, err_msg, NULL, MB_ICONERROR);
+					displayed_error_message = 1;
+				}
 				skip_to_line_end (&cursor);
 			}
 		}
