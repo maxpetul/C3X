@@ -185,6 +185,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->show_golden_age_turns_remaining = ival != 0;
 				else if ((0 == strncmp (key.str, "dont_give_king_names_in_non_regicide_games", key.len)) && read_int (&value, &ival))
 					cfg->dont_give_king_names_in_non_regicide_games = ival != 0;
+				else if ((0 == strncmp (key.str, "disable_worker_automation", key.len)) && read_int (&value, &ival))
+					cfg->disable_worker_automation = ival != 0;
 				else if ((0 == strncmp (key.str, "enable_land_sea_intersections", key.len)) && read_int (&value, &ival))
 					cfg->enable_land_sea_intersections = ival != 0;
 				else if ((0 == strncmp (key.str, "disallow_trespassing", key.len)) && read_int (&value, &ival))
@@ -1305,6 +1307,17 @@ intercept_end_of_turn ()
 
 	// Clear things that don't apply across turns
 	is->have_job_and_loc_to_skip = 0;
+}
+
+byte __fastcall
+patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
+{
+	if (is->current_config.disable_worker_automation &&
+	    (this->Body.CivID == p_main_screen_form->Player_CivID) &&
+	    (unit_command_value == UCV_Automate))
+		return 0;
+	else
+		return Unit_can_perform_command (this, __, unit_command_value);
 }
 
 int

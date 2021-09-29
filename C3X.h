@@ -27,6 +27,7 @@ struct c3x_config {
 	int anarchy_length_reduction_percent;
 	char show_golden_age_turns_remaining;
 	char dont_give_king_names_in_non_regicide_games;
+	char disable_worker_automation;
 	char enable_land_sea_intersections;
 	char disallow_trespassing;
 	char show_detailed_tile_info;
