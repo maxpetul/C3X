@@ -2008,11 +2008,16 @@ patch_Unit_ai_move_artillery (Unit * this)
 base_impl:
 	Unit_ai_move_artillery (this);
 
+	// Recompute these since the unit might have moved
+	on_tile = tile_at (this->Body.X, this->Body.Y);
+	in_city = get_city_ptr (on_tile->vtable->m45_Get_City_ID (on_tile));
+
 	// Load the unit into a transport for a naval invasion if it's just sitting in a city with nothing else to do
 	if (is->current_config.use_offensive_artillery_ai &&
 	    (in_city != NULL) &&
 	    (this->Body.Moves == 0) &&
-	    (this->Body.UnitState == UnitState_Fortifying)) {
+	    (this->Body.UnitState == UnitState_Fortifying) &&
+	    (this->Body.Container_Unit < 0)) {
 		Unit * transport = Unit_find_transport (this, __, this->Body.X, this->Body.Y);
 		if (transport != NULL) {
 
