@@ -115,6 +115,18 @@ read_int (struct string_slice const * s, int * out_val)
 }
 
 int
+read_perfume_specs (struct string_slice const * s, struct perfume_config_spec ** out_perfume_specs, int * out_count_perfume_specs)
+{
+	// hard coded for now just to test the rest of the system
+	struct perfume_config_spec * tr = malloc (sizeof *tr);
+	tr->target_name = "Catapult";
+	tr->amount = -123;
+	*out_perfume_specs = tr;
+	*out_count_perfume_specs = 1;
+	return 1;
+}
+
+int
 parse_string_slice (char ** p_cursor, struct string_slice * out)
 {
 	char * cur = *p_cursor;

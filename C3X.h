@@ -10,6 +10,16 @@ typedef unsigned char byte;
 
 #define MOD_VERSION 800
 
+struct perfume_config_spec {
+	char * target_name;
+	int amount;
+};
+
+struct perfume_internal_spec {
+	City_Order target_order;
+	int amount;
+};
+
 struct c3x_config {
 	char enable_stack_bombard;
 	char enable_disorder_warning;
@@ -31,8 +41,8 @@ struct c3x_config {
 	char enable_land_sea_intersections;
 	char disallow_trespassing;
 	char show_detailed_tile_info;
-	char * perfume_target_name;
-	int perfume_amount;
+	struct perfume_config_spec * perfume_specs;
+	int count_perfume_specs;
 	char warn_about_unrecognized_perfume_target;
 	char enable_ai_production_ranking;
 	char zero_corruption_when_off;
@@ -196,6 +206,10 @@ struct injected_state {
 	int * memo;
 	int memo_len;
 	int memo_capacity;
+
+	// Initialized to NULL/0, then filled out by load_scenario
+	struct perfume_internal_spec * perfume_specs;
+	int count_perfume_specs;
 
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {

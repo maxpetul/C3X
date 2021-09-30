@@ -153,6 +153,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 			skip_to_line_end (&cursor); // Skip section line
 		else { // parse key-value pair
 			struct string_slice key, value;
+			struct perfume_config_spec * perfume_specs;
+			int count_perfume_specs;
 			if (parse_key_value_pair (&cursor, &key, &value)) {
 				int ival;
 				if ((0 == strncmp (key.str, "enable_stack_bombard", key.len)) && read_int (&value, &ival))
@@ -195,12 +197,10 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->disallow_trespassing = ival != 0;
 				else if ((0 == strncmp (key.str, "show_detailed_tile_info", key.len)) && read_int (&value, &ival))
 					cfg->show_detailed_tile_info = ival != 0;
-				else if (0 == strncmp (key.str, "perfume_target_name", key.len)) {
-					struct string_slice trimmed = trim_string_slice (&value, 1);
-					cfg->perfume_target_name = (trimmed.len > 0) ? extract_slice (&trimmed) : NULL;
-				} else if ((0 == strncmp (key.str, "perfume_amount", key.len)) && read_int (&value, &ival))
-					cfg->perfume_amount = ival;
-				else if ((0 == strncmp (key.str, "warn_about_unrecognized_perfume_target", key.len)) && read_int (&value, &ival))
+				else if ((0 == strncmp (key.str, "perfume_specs", key.len)) && read_perfume_specs (&value, &perfume_specs, &count_perfume_specs)) {
+					cfg->perfume_specs = perfume_specs;
+					cfg->count_perfume_specs = count_perfume_specs;
+				} else if ((0 == strncmp (key.str, "warn_about_unrecognized_perfume_target", key.len)) && read_int (&value, &ival))
 					cfg->warn_about_unrecognized_perfume_target = ival != 0;
 				else if ((0 == strncmp (key.str, "enable_ai_production_ranking", key.len)) && read_int (&value, &ival))
 					cfg->enable_ai_production_ranking = ival != 0;
@@ -334,9 +334,13 @@ intercept_consideration (int valuation)
 	}
 
 	// Apply perfume
-	if ((is->current_config.perfume_target_name != NULL) &&
-	    (strncmp (order_name, is->current_config.perfume_target_name, 32) == 0)) // in either case the name is at most 32 chars
-		valuation += is->current_config.perfume_amount;
+	for (int n = 0; n < is->count_perfume_specs; n++) {
+		struct perfume_internal_spec const * spec = &is->perfume_specs[n];
+		if ((spec->target_order.OrderType == order->OrderType) && (spec->target_order.OrderID == order->OrderID)) {
+			valuation += spec->amount;
+			break;
+		}
+	}
 
 	// Expand the list of valuations if necessary
 	if (is->count_ai_prod_valuations >= is->ai_prod_valuations_capacity) {
@@ -569,6 +573,9 @@ patch_init_floating_point ()
 	is->memo = NULL;
 	is->memo_len = 0;
 	is->memo_capacity = 0;
+
+	is->perfume_specs = NULL;
+	is->count_perfume_specs = 0;
 
 	is->ai_prod_valuations = NULL;
 	is->count_ai_prod_valuations = 0;
@@ -1776,6 +1783,29 @@ patch_General_load (General * this, int edx, byte ** buffer)
 	}
 }
 
+// Converts a build name (like "Spearman" or "Granary") into a City_Order struct. Returns 0 if no matching improvement or unit type was found, else 1.
+int
+find_order_matching_name (char const * name, City_Order * out)
+{
+	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+		Improvement * improv = &p_bic_data->Improvements[n];
+		if (strncmp (improv->Name.S, name, sizeof improv->Name) == 0) {
+			out->OrderID = n;
+			out->OrderType = COT_Improvement;
+			return 1;
+		}
+	}
+	for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
+		UnitType * unit_type = &p_bic_data->UnitTypes[n];
+		if (strncmp (unit_type->Name, name, sizeof unit_type->Name) == 0) {
+			out->OrderID = n;
+			out->OrderType = COT_Unit;
+			return 1;
+		}
+	}
+	return 0;
+}
+
 unsigned __fastcall
 patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 {
@@ -1783,41 +1813,45 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 
 	unsigned tr = load_scenario (this, __, param_1, param_2);
 
-	// There are some times that load_scenario gets called that we don't want to check if the perfume names match in order to avoid annoying the
-	// player with popups. These times are (1) when a scenario is loaded to generate the preview (map, etc.) for the "Civ Content" or "Conquests"
-	// menu and (2) when a scenario is loaded a second time during the process of loading a saved game. I don't know why load_scenario is called
-	// twice in the second case, but skip it anyway to avoid showing the same popup twice.
-	int is_useful_to_check_perfume_names = (ret_addr != ADDR_LOAD_SCENARIO_PREVIEW_RETURN) && (ret_addr != ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN);
+	if (is->current_config.count_perfume_specs > 0) {
+		if (is->perfume_specs != NULL)
+			free (is->perfume_specs);
+		is->perfume_specs = malloc (is->current_config.count_perfume_specs * sizeof is->perfume_specs[0]);
+		is->count_perfume_specs = 0;
 
-	char * perfume_name = is->current_config.perfume_target_name;
-	if (is->current_config.warn_about_unrecognized_perfume_target &&
-	    is_useful_to_check_perfume_names &&
-	    (perfume_name != NULL)) {
-		int matched = 0;
-		for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
-			Improvement * improv = &p_bic_data->Improvements[n];
-			if (strncmp (improv->Name.S, perfume_name, sizeof improv->Name) == 0) {
-				matched = 1;
-				break;
-			}
+		clear_memo (); // Memo stores indices of unmatched specs
+
+		for (int n = 0; n < is->current_config.count_perfume_specs; n++) {
+			struct perfume_config_spec const * spec = &is->current_config.perfume_specs[n];
+			int matched = 0;
+			City_Order match;
+			if (find_order_matching_name (spec->target_name, &match))
+				is->perfume_specs[is->count_perfume_specs++] = (struct perfume_internal_spec) { .target_order = match, .amount = spec->amount };
+			else
+				memoize (n);
 		}
-		if (! matched)
-			for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
-				UnitType * unit_type = &p_bic_data->UnitTypes[n];
-				if (strncmp (unit_type->Name, perfume_name, sizeof unit_type->Name) == 0) {
-					matched = 1;
-					break;
-				}
-			}
-		if (! matched) {
+
+		// There are some times that load_scenario gets called that we don't want to check if the perfume names match in order to avoid
+		// annoying the player with popups. These times are (1) when a scenario is loaded to generate the preview (map, etc.) for the "Civ
+		// Content" or "Conquests" menu and (2) when a scenario is loaded a second time during the process of loading a saved game. I don't
+		// know why load_scenario is called twice in the second case, but skip it anyway to avoid showing the same popup twice.
+		int is_useful_to_check_perfume_names = (ret_addr != ADDR_LOAD_SCENARIO_PREVIEW_RETURN) && (ret_addr != ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN);
+
+		if (is->current_config.warn_about_unrecognized_perfume_target &&
+		    is_useful_to_check_perfume_names &&
+		    (is->memo_len > 0)) {
 			PopupForm * popup = get_popup_form ();
-			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
-			char s[200];
-			snprintf (s, sizeof s, "Perfume target \"%s\" does not match the name of any improvement in this scenario. Perfuming will not be applied.", perfume_name);
-			s[(sizeof s) - 1] = '\0';
-			PopupForm_add_text (popup, __, s, 0);
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_UNMATCHED_PERFUME_TARGET", -1, 0, 0, 0);
+			for (int n = 0; n < is->memo_len; n++)
+				PopupForm_add_text (popup, __, is->current_config.perfume_specs[n].target_name, 0);
 			show_popup (popup, __, 0, 0);
 		}
+
+	} else {
+		if (is->perfume_specs != NULL)
+			free (is->perfume_specs);
+		is->perfume_specs = NULL;
+		is->count_perfume_specs = 0;
 	}
 
 	return tr;

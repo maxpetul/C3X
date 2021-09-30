@@ -32,6 +32,11 @@ Nevermind
 #C3X_WARNING
 #caption C3X Warning
 
+#C3X_UNMATCHED_PERFUME_TARGET
+#caption C3X Warning
+#text
+The following perfume targets do not match any improvement or unit type name in this scenario:
+
 #C3X_AI_PROD_RANKING
 #caption AI's Production Ranking
 #text
