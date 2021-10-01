@@ -87,3 +87,4 @@ Ideas:
 - [from tjs282] De-duplicate hotkeys e.g. clear forest and pollution use the same key
 - [from tjs282] Fix culturally-linked starts bug (described here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-21#post-16154963)
 - [from register] Fix city governor ignoring instruction to never produce artillery or settlers; enable AI to redeem treasury units in its capital (according to Civinator this is only a problem when the units are spawned there)
+- [from ynot56] When moving a group of units, stop the faster ones from losing all their remaining moves after the slowest reach their limit; Preserve surplus shields and beakers for the next project
