@@ -1,4 +1,80 @@
 
+// common.c: Stores various utility functions available to both the injected code (injected_code.c) and the patcher (ep.c). Also includes everything
+// related to text parsing (in fact most of this file is related to parsing).
+
+int
+not_below (int lim, int x)
+{
+	return (x >= lim) ? x : lim;
+}
+
+int
+not_above (int lim, int x)
+{
+	return (x <= lim) ? x : lim;
+}
+
+int
+square (int x)
+{
+	return x * x;
+}
+
+int
+int_abs (int x)
+{
+	return (x >= 0) ? x : (0 - x);
+}
+
+void
+free_perfume_config_specs (struct perfume_config_spec * specs, int count_specs)
+{
+	for (int n = 0; n < count_specs; n++)
+		free (specs[n].target_name);
+	free (specs);
+}
+
+// Writes an integer to a byte buffer. buf need not be aligned but it must have at least four bytes of free space. Written little-endian.
+byte *
+int_to_bytes (byte * buf, int x)
+{
+	buf[0] =  x        & 0xFF;
+	buf[1] = (x >>  8) & 0xFF;
+	buf[2] = (x >> 16) & 0xFF;
+	buf[3] = (x >> 24) & 0xFF;
+	return buf + 4;
+}
+
+// Read a little-endian int from a byte buffer
+int
+int_from_bytes (byte * buf)
+{
+	int lo = buf[0] | ((int)buf[1] << 8);
+	int hi = buf[2] | ((int)buf[3] << 8);
+	return (hi << 16) | lo;
+}
+
+// Ensures there's at least one open spot at the end of a dynamic array, reallocating it if necessary.
+void
+reserve (int item_size, void ** p_items, int * p_capacity, int count)
+{
+	if (count >= *p_capacity) {
+		int new_capacity = not_below (10, *p_capacity * 2);
+		void * new_list = malloc (new_capacity * item_size);
+		if (count > 0)
+			memcpy (new_list, *p_items, item_size * count);
+		free (*p_items);
+		*p_items = new_list;
+		*p_capacity = new_capacity;
+	}
+}
+
+// =============================================================
+// ||                                                         ||
+// ||     FUNCTIONS BELOW ARE ALL RELATED TO TEXT PARSING     ||
+// ||                                                         ||
+// =============================================================
+
 struct string_slice {
 	char * str;
 	int len;
@@ -43,6 +119,18 @@ skip_line (char ** p_cursor)
 	if (**p_cursor == '\n')
 		*p_cursor += 1;
 	return 1;
+}
+
+int
+skip_punctuation (char ** p_cursor, char c)
+{
+	char * cur = *p_cursor;
+	skip_horiz_space (&cur);
+	if (*cur == c) {
+		*p_cursor = cur + 1;
+		return 1;
+	} else
+		return 0;
 }
 
 struct string_slice
@@ -115,19 +203,7 @@ read_int (struct string_slice const * s, int * out_val)
 }
 
 int
-read_perfume_specs (struct string_slice const * s, struct perfume_config_spec ** out_perfume_specs, int * out_count_perfume_specs)
-{
-	// hard coded for now just to test the rest of the system
-	struct perfume_config_spec * tr = malloc (sizeof *tr);
-	tr->target_name = "Catapult";
-	tr->amount = -123;
-	*out_perfume_specs = tr;
-	*out_count_perfume_specs = 1;
-	return 1;
-}
-
-int
-parse_string_slice (char ** p_cursor, struct string_slice * out)
+parse_string (char ** p_cursor, struct string_slice * out)
 {
 	char * cur = *p_cursor;
 	skip_horiz_space (&cur);
@@ -153,14 +229,101 @@ parse_string_slice (char ** p_cursor, struct string_slice * out)
 }
 
 int
+parse_perfume_spec (char ** p_cursor, struct perfume_config_spec * out)
+{
+	char * cur = *p_cursor;
+	struct string_slice name, amount_str;
+	int amount;
+	if (parse_string (&cur, &name) &&
+	    skip_punctuation (&cur, ':') &&
+	    parse_string (&cur, &amount_str) &&
+	    read_int (&amount_str, &amount)) {
+		out->target_name = extract_slice (&name);
+		out->amount = amount;
+		*p_cursor = cur;
+		return 1;
+	} else
+		return 0;
+}
+
+int
+read_perfume_specs (struct string_slice const * s, struct perfume_config_spec ** out_perfume_specs, int * out_count_perfume_specs)
+{
+	if (s->len <= 0) {
+		*out_perfume_specs = NULL;
+		*out_count_perfume_specs = 0;
+		return 1;
+	}
+	char * extracted_slice = extract_slice (s);
+	char * cursor = extracted_slice;
+
+	int success = 0;
+	struct perfume_config_spec * specs = NULL;
+	int count_specs = 0;
+	int specs_capacity = 0;
+
+	while (1) {
+		struct perfume_config_spec temp_spec;
+		if (parse_perfume_spec (&cursor, &temp_spec)) {
+			reserve (sizeof specs[0], (void **)&specs, &specs_capacity, count_specs);
+			specs[count_specs++] = temp_spec;
+
+			if (skip_punctuation (&cursor, ','))
+				continue;
+			else if (skip_horiz_space (&cursor) && (*cursor == '\0')) {
+				success = 1;
+				break;
+			} else
+				break;
+		} else
+			break;
+	}
+
+	if (success) {
+		*out_perfume_specs = specs;
+		*out_count_perfume_specs = count_specs;
+	} else
+		free_perfume_config_specs (specs, count_specs);
+	free (extracted_slice);
+	return success;
+}
+
+int
+parse_bracketed_block (char ** p_cursor, struct string_slice * out)
+{
+	char * cur = *p_cursor;
+	struct string_slice unused;
+	if (skip_punctuation (&cur, '[')) {
+		char * str_start = cur;
+		while (1) {
+			if (*cur == ']') {
+				cur++;
+				break;
+			} else if (*cur == '"') {
+				if (! parse_string (&cur, &unused))
+					return 0;
+			} else if (*cur == '\0')
+				return 0;
+			else
+				cur++;
+		}
+		out->str = str_start;
+		out->len = cur - str_start - 1;
+		*p_cursor = cur;
+		return 1;
+	} else
+		return 0;
+}
+
+int
 parse_key_value_pair (char ** p_cursor, struct string_slice * out_key, struct string_slice * out_value)
 {
 	char * cur = *p_cursor;
 	struct string_slice key, value;
-	if (parse_string_slice (&cur, &key) &&
-	    skip_horiz_space (&cur) &&
-	    (*cur++ == '=') &&
-	    parse_string_slice (&cur, &value)) {
+	if (parse_string (&cur, &key) &&
+	    skip_punctuation (&cur, '=') &&
+	    (parse_string (&cur, &value) ||
+	     parse_bracketed_block (&cur, &value))) {
 		*out_key = key;
 		*out_value = value;
 		skip_to_line_end (&cur);

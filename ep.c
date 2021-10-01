@@ -8,7 +8,7 @@
 
 // #include "civ_prog_objects.h"
 
-#include "parse.c"
+#include "common.c"
 
 // BOOL WINAPI EnumProcessModulesEx(HANDLE hProcess, HMODULE *lphModule, DWORD cb, LPDWORD lpcbNeeded, DWORD dwFilterFlag);
 

@@ -187,6 +187,7 @@ struct injected_state {
 	char * (* strstr) (char const *, char const *);
 	void (* qsort) (void *, size_t, size_t, int (*) (void const *, void const *));
 	int (* memcmp) (void const *, void const *, size_t);
+	void * (* memcpy) (void *, void const *, size_t);
 
 	struct c3x_config current_config;
 
@@ -309,25 +310,3 @@ struct civ_prog_object {
 	char const * name;
 	char const * type;
 };
-
-// Putting code in a header file like an absolute madman
-
-// Writes an integer to a byte buffer. buf need not be aligned but it must have at least four bytes of free space. Written little-endian.
-byte *
-int_to_bytes (byte * buf, int x)
-{
-	buf[0] =  x        & 0xFF;
-	buf[1] = (x >>  8) & 0xFF;
-	buf[2] = (x >> 16) & 0xFF;
-	buf[3] = (x >> 24) & 0xFF;
-	return buf + 4;
-}
-
-// Read a little-endian int from a byte buffer
-int
-int_from_bytes (byte * buf)
-{
-	int lo = buf[0] | ((int)buf[1] << 8);
-	int hi = buf[2] | ((int)buf[3] << 8);
-	return (hi << 16) | lo;
-}

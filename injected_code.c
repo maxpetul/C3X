@@ -30,8 +30,9 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define strstr is->strstr
 #define qsort is->qsort
 #define memcmp is->memcmp
+#define memcpy is->memcpy
 
-#include "parse.c"
+#include "common.c"
 
 #define TRADE_SCROLL_BUTTON_ID_LEFT  0x222001
 #define TRADE_SCROLL_BUTTON_ID_RIGHT 0x222002
@@ -54,30 +55,6 @@ memset (void * dest, int ch, size_t count)
 	for (size_t n = 0; n < count; n++)
 		((char *)dest)[n] = ch;
 	return dest;
-}
-
-int
-not_below (int lim, int x)
-{
-	return (x >= lim) ? x : lim;
-}
-
-int
-not_above (int lim, int x)
-{
-	return (x <= lim) ? x : lim;
-}
-
-int
-square (int x)
-{
-	return x * x;
-}
-
-int
-int_abs (int x)
-{
-	return (x >= 0) ? x : (0 - x);
 }
 
 // Computes num/denom randomly rounded off so that E[rand_div (x,y)] = (float)x/y
@@ -343,15 +320,7 @@ intercept_consideration (int valuation)
 	}
 
 	// Expand the list of valuations if necessary
-	if (is->count_ai_prod_valuations >= is->ai_prod_valuations_capacity) {
-		int new_capacity = not_below (10, 2 * is->ai_prod_valuations_capacity);
-		struct ai_prod_valuation * new_vals = malloc (new_capacity * sizeof new_vals[0]);
-		for (int n = 0; n < is->count_ai_prod_valuations; n++)
-			new_vals[n] = is->ai_prod_valuations[n];
-		free (is->ai_prod_valuations);
-		is->ai_prod_valuations = new_vals;
-		is->ai_prod_valuations_capacity = new_capacity;
-	}
+	reserve (sizeof is->ai_prod_valuations[0], (void **)&is->ai_prod_valuations, &is->ai_prod_valuations_capacity, is->count_ai_prod_valuations);
 
 	// Record this valuation
 	int n = is->count_ai_prod_valuations++;
@@ -517,6 +486,7 @@ patch_init_floating_point ()
 	strstr   = (void *)(*p_GetProcAddress) (is->msvcrt, "strstr");
 	qsort    = (void *)(*p_GetProcAddress) (is->msvcrt, "qsort");
 	memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
+	memcpy   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcpy");
 
 	// Set file path to mod's script.txt
 	snprintf (is->mod_script_path, sizeof is->mod_script_path, "%s\\Text\\c3x-script.txt", is->mod_rel_dir);
@@ -1813,11 +1783,13 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 
 	unsigned tr = load_scenario (this, __, param_1, param_2);
 
+	if (is->perfume_specs != NULL)
+		free (is->perfume_specs);
+	is->perfume_specs = NULL;
+	is->count_perfume_specs = 0;
+
 	if (is->current_config.count_perfume_specs > 0) {
-		if (is->perfume_specs != NULL)
-			free (is->perfume_specs);
 		is->perfume_specs = malloc (is->current_config.count_perfume_specs * sizeof is->perfume_specs[0]);
-		is->count_perfume_specs = 0;
 
 		clear_memo (); // Memo stores indices of unmatched specs
 
@@ -1842,16 +1814,15 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		    (is->memo_len > 0)) {
 			PopupForm * popup = get_popup_form ();
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_UNMATCHED_PERFUME_TARGET", -1, 0, 0, 0);
-			for (int n = 0; n < is->memo_len; n++)
-				PopupForm_add_text (popup, __, is->current_config.perfume_specs[n].target_name, 0);
+			for (int n = 0; n < is->memo_len; n++) {
+				char s[100];
+				snprintf (s, sizeof s, "^  %s", is->current_config.perfume_specs[is->memo[n]].target_name);
+				s[(sizeof s) - 1] = '\0';
+				PopupForm_add_text (popup, __, s, 0);
+			}
 			show_popup (popup, __, 0, 0);
 		}
 
-	} else {
-		if (is->perfume_specs != NULL)
-			free (is->perfume_specs);
-		is->perfume_specs = NULL;
-		is->count_perfume_specs = 0;
 	}
 
 	return tr;
