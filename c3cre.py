@@ -17,17 +17,19 @@ difficulty = {"global_location": 0x9C40C0, "size": 0x7C , "name_offset": 4, "nam
 
 unnamed_unit_counter = 1
 
-unit_layout = {"ID"        : 0x1C + 0x4,
-               "X"         : 0x1C + 0x8,
-               "Y"         : 0x1C + 0xC,
-               "CivID"     : 0x1C + 0x18,
-               "RaceID"    : 0x1C + 0x1C,
-               "UnitTypeID": 0x1C + 0x24,
-               "Status"    : 0x1C + 0x2C,
-               "Job_Value" : 0x1C + 0x38,
-               "Job_ID"    : 0x1C + 0x3C,
-               "UnitState" : 0x1C + 0x48,
-               "escortee"  : 0x1C + 0x1A8}
+unit_layout = {"ID"              : 0x1C + 0x4,
+               "X"               : 0x1C + 0x8,
+               "Y"               : 0x1C + 0xC,
+               "CivID"           : 0x1C + 0x18,
+               "RaceID"          : 0x1C + 0x1C,
+               "UnitTypeID"      : 0x1C + 0x24,
+               "Status"          : 0x1C + 0x2C,
+               "Job_Value"       : 0x1C + 0x38,
+               "Job_ID"          : 0x1C + 0x3C,
+               "UnitState"       : 0x1C + 0x48,
+               "action_target_x" : 0x1C + 0x9C,
+               "action_target_y" : 0x1C + 0xA0,
+               "escortee"        : 0x1C + 0x1A8}
 
 city_layout = {"ID"              : 0x1C + 0x4,
                "ProductionLoss"  : 0x1C + 0x22C,
@@ -69,6 +71,11 @@ class Unit(GameObject):
         def get_location (self):
                 return (self.get_int (0x1C + 0x8), self.get_int (0x1C + 0xC))
 
+        def get_action_target (self):
+                x = self.get ("action_target_x")
+                y = self.get ("action_target_y")
+                return (x, y) if (x >= 0) and (y >= 0) else None
+
         def get_type (self):
                 i = self.get ("UnitTypeID")
                 if (i >= 0) and (i < len (self.civ_proc.unit_types_by_id)):
@@ -79,7 +86,7 @@ class Unit(GameObject):
         def describe (self):
                 unit_type = self.get_type ()
                 type_name = unit_type.name if unit_type is not None else "N/A"
-                return "%d\t%s\t%s" % (self.get ("ID"), type_name, hex (self.get ("UnitState")))
+                return "%d\t(%d,\t%d)\t%s\t%s" % (self.get ("ID"), self.get ("X"), self.get ("Y"), type_name, hex (self.get ("UnitState")))
 
         def get_escortee (self):
                 escortee_id = self.get ("escortee")

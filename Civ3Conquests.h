@@ -4692,7 +4692,8 @@ struct Unit_Body
   int field_98;
   int path_dest_x;
   int path_dest_y;
-  int field_9C[2];
+  int action_target_x; // Action target is city location for settlers, drop location for transports
+  int action_target_y;
   unsigned char path[256]; // List of neighbor indices, consumed back to front
   int path_len;
   int escortee;
