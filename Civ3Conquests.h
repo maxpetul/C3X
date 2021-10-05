@@ -1860,10 +1860,10 @@ struct Map_vtable
 //  int (__thiscall *m19_Create_Tiles)(Map *, Tile **);
   void *m19_Create_Tiles;
   int m20;
-  int m21;
-  int m22;
+  byte (__fastcall * is_near_lake) (Map * this, int edx, int x, int y, int num_tiles);
+  byte (__fastcall * is_near_river) (Map * this, int edx, int x, int y, int num_tiles);
   int m23;
-  int m24;
+  int (__fastcall * has_fresh_water) (Map * this, int edx, int x, int y);
   int m25;
   int m26;
   int m27;
