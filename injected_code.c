@@ -2929,6 +2929,7 @@ void __fastcall
 patch_City_Form_m82_handle_key_event (City_Form * this, int edx, int virtual_key_code, int is_down)
 {
 	if (is->current_config.enable_ai_production_ranking &&
+	    (~*p_human_player_bits & (1 << this->CurrentCity->Body.CivID)) &&
 	    (virtual_key_code == VK_P) && is_down) {
 		rank_ai_production_options (this->CurrentCity);
 		PopupForm * popup = get_popup_form ();
