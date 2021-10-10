@@ -2994,7 +2994,8 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 	if (tile != p_null_tile) {
 		// Draw tile coords on line below terrain name
 		char s[100];
-		snprintf (s, sizeof s, "(%d, %d)", is->viewing_tile_info_x, is->viewing_tile_info_y);
+		snprintf (s, sizeof s, "%d", ai_eval_city_location (is->viewing_tile_info_x, is->viewing_tile_info_y, p_main_screen_form->Player_CivID, 0, NULL));
+		// snprintf (s, sizeof s, "(%d, %d)", is->viewing_tile_info_x, is->viewing_tile_info_y);
 		s[(sizeof s) - 1] = '\0';
 		PCX_Image_draw_text (this, __, s, x, y + 14, strlen (s));
 
