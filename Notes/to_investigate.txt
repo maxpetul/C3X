@@ -2,15 +2,9 @@ Check out the call at 0x466B95. It looks like the parameters are in the wrong or
 
 In a normal single player game, the call to perform_interturn occurs at 0x4F6759. The loop before that is the main interface loop that runs during the player's turn.
 
-DAT_00a526c0 might be a bit field of active/alive players. See its usage in FUN_0057de90.
+0xB71288 has some kind of array with one item per Leader. Each item is 0xB0 bytes large. This info based on the args to the call at 0x560E14
 
-a52e84: pointer to array of UnitItem, each is {int field_0; UnitBody * b;}
-a52e90: Also it's part of some object that gets static init'd at 0x537c00.
-Based on runtime investigation, it's not a pointer. Maybe capacity of something?
-
-5bc8b0: Unit::get_ability with special logic for flags other than army and in special circumstances. Try to figure out what it's doing some time. So far I don't know what the special circumstances are that FUN_005bc6d0 doesn't return -1.
-
-5b2b20: Short leaf function. Looks like it takes Units. Shouldn't be too difficult to figure out.
+Object at 0xCADBF0 has something to do with storing labels. One of its member functions (at 0x60F6A0) is one of the most referenced functions in the entire program. It does some kind of processing of label pointers (looks like it just checks that they're in range? What's the point of that?). For the object itself, its vtable ptr gets set twice, first one is 0x670994 set by function at 0x5F7870. Then 0x6716FC set by func at 0x60F5B0 (looks like constructor, suggests size of 28 bytes).
 
 
 
