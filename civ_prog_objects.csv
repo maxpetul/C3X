@@ -180,3 +180,6 @@ repl call, 0x431038,	0x432AE7,	"UnitType_has_strat_0_for_ai_prod",		""
 define,	   0x44CE50,	0x44EE40,	"Unit_find_transport",				"Unit * __fastcall (Unit * this, int edx, int tile_x, int tile_y)"
 define,	   0x5C5110,	0x5D3DF0,	"Unit_load",					"void __fastcall (Unit * this, int edx, Unit * transport)"
 define,	   0xA526BC,	0xA74EB4,	"p_human_player_bits",				"int *"
+
+define,	   0x5F8130,	0x0,		"Tile_Image_Info_draw_on_map",			"int (__fastcall *) (Tile_Image_Info * this, int edx, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7)"
+repl vptr, 0x66A554,	0x0,		"Map_Renderer_impl_m19_Draw_Tile_by_XY_and_Flags", "void (__fastcall *) (Map_Renderer * this, int edx, int param_1, int pixel_x, int pixel_y, Map_Renderer * map_renderer, int param_5, int tile_x, int tile_y, int param_8)"

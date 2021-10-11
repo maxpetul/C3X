@@ -3030,5 +3030,15 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, byte 
 	return City_compute_corrupted_yield (this, __, gross_yield, is_production);
 }
 
+void __fastcall
+patch_Map_Renderer_impl_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, int param_1, int pixel_x, int pixel_y, Map_Renderer * map_renderer, int param_5, int tile_x, int tile_y, int param_8)
+{
+	Map_Renderer_impl_m19_Draw_Tile_by_XY_and_Flags (this, __, param_1, pixel_x, pixel_y, map_renderer, param_5, tile_x, tile_y, param_8);
+
+	init_stackable_command_buttons ();
+	if (is->sc_img_state == IS_OK)
+		Tile_Image_Info_draw_on_map (&is->sc_button_image_sets[SC_CHOP_FOREST].imgs[0], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
