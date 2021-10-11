@@ -1298,6 +1298,18 @@ intercept_end_of_turn ()
 
 	// Clear things that don't apply across turns
 	is->have_job_and_loc_to_skip = 0;
+
+	// Show AI city location evaluation for all tiles
+	int twice_width = 2 * p_bic_data->Map.Width;
+	for (int y = 0; y < p_bic_data->Map.Height; y++)
+		for (int x = 0; x < p_bic_data->Map.Width; x++) {
+			int eval = ai_eval_city_location (x, y, p_main_screen_form->Player_CivID, 0, NULL);
+			if (eval > 0) {
+				char s[100];
+				snprintf (s, sizeof s, "%d, %d, %d", x, y, eval);
+				(*p_OutputDebugStringA) (s);
+			}
+		}
 }
 
 byte __fastcall
