@@ -163,7 +163,7 @@ ignore,	   0x441ED0,	0x0,		"Map_get_x_dist",				"int (__fastcall *) (Map * this,
 ignore,	   0x437970,	0x0,		"Map_get_y_dist",				"int (__fastcall *) (Map * this, int edx, int y1, int y2)"
 ignore,	   0x452510,	0x454600,	"ai_move_defensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,	   0x56D040,	0x5799C0,	"find_nearest_city",				"City * (__cdecl *) (int tile_x, int tile_y, int owner_id, int continent_id, int ignore_owner_id, int perspective_id, City * ignore_city)"
-ignore,	   0x442480	0x444250,	"ai_eval_city_location",			"int (__stdcall *) ai_eval_city_location (int x, int y, int civ_id, byte param_4, int * out_breakdown)"
+ignore,	   0x442480	0x444250,	"ai_eval_city_location",			"int (__stdcall *) (int x, int y, int civ_id, byte param_4, int * out_breakdown)"
 
 define,	   0x430FBA,	0x432A6D,	"ADDR_INTERCEPT_AI_IMPROV_VALUE",		"void *"
 define,	   7,		6,		"AI_CONSIDERATION_INTERCEPT_LEN",		"int"
