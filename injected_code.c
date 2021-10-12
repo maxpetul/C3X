@@ -614,6 +614,31 @@ init_stackable_command_buttons ()
 	}
 }
 
+void
+init_tile_highlights ()
+{
+	if (is->tile_highlight_state == IS_UNINITED) {
+		char temp_path[2*MAX_PATH];
+
+		is->tile_highlight_state = IS_INIT_FAILED;
+
+		PCX_Image * pcx = &is->tile_highlight_sheet;
+		PCX_Image_construct (pcx);
+		snprintf (temp_path, sizeof temp_path, "%s\\Art\\TileHighlights.pcx", is->mod_rel_dir);
+		temp_path[(sizeof temp_path) - 1] = '\0';
+		PCX_Image_read_file (pcx, __, temp_path, NULL, 0, 0x100, 2);
+		if (pcx->JGL.Image == NULL) {
+			(*p_OutputDebugStringA) ("[C3X] Failed to load stacked command buttons sprite sheet.");
+			return;
+		}
+
+		for (int n = 0; n < COUNT_TILE_HIGHLIGHTS; n++)
+			Tile_Image_Info_slice_pcx (&is->tile_highlights[n], __, pcx, 128*n, 0, 128, 64, 1, 0);
+
+		is->tile_highlight_state = IS_OK;
+	}
+}
+
 void do_trade_scroll (DiploForm * diplo, int forward);
 
 void __cdecl
@@ -3035,9 +3060,9 @@ patch_Map_Renderer_impl_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int 
 {
 	Map_Renderer_impl_m19_Draw_Tile_by_XY_and_Flags (this, __, param_1, pixel_x, pixel_y, map_renderer, param_5, tile_x, tile_y, param_8);
 
-	init_stackable_command_buttons ();
-	if (is->sc_img_state == IS_OK)
-		Tile_Image_Info_draw_on_map (&is->sc_button_image_sets[SC_CHOP_FOREST].imgs[0], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+	init_tile_highlights ();
+	if (is->tile_highlight_state == IS_OK)
+		Tile_Image_Info_draw_on_map (&is->tile_highlights[(tile_x + tile_y) % COUNT_TILE_HIGHLIGHTS], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 }
 
 // TCC requires a main function be defined even though it's never used.

@@ -911,6 +911,7 @@ ENTRY_POINT ()
 	write_prog_int (&injected_state->mod_version, MOD_VERSION);
 	write_prog_memory (&injected_state->mod_rel_dir, mod_rel_dir, strlen (mod_rel_dir) + 1);
 	write_prog_int (&injected_state->sc_img_state, IS_UNINITED);
+	write_prog_int (&injected_state->tile_highlight_state, IS_UNINITED);
 	struct c3x_config base_config = {
 		.enable_stack_bombard = 1,
 		.enable_disorder_warning = 1,

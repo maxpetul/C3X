@@ -10,6 +10,8 @@ typedef unsigned char byte;
 
 #define MOD_VERSION 801
 
+#define COUNT_TILE_HIGHLIGHTS 11
+
 struct perfume_config_spec {
 	char * target_name;
 	int amount;
@@ -154,6 +156,7 @@ struct injected_state {
 	char mod_rel_dir[MAX_PATH];
 
 	enum init_state sc_img_state;
+	enum init_state tile_highlight_state;
 
 	struct c3x_config base_config;
 
@@ -246,6 +249,13 @@ struct injected_state {
 	Tile_Image_Info sb_bard_button_images[4];
 	Tile_Image_Info sb_bomb_button_images[4];
 	*/
+
+	// ==========
+	// } These fields are valid only after init_tile_highlights as been caled. {
+	// ==========
+
+	PCX_Image tile_highlight_sheet;
+	Tile_Image_Info tile_highlights[COUNT_TILE_HIGHLIGHTS];
 
 	// ==========
 	// } These fields are temporary/situational {
