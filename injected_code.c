@@ -3060,9 +3060,17 @@ patch_Map_Renderer_impl_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int 
 {
 	Map_Renderer_impl_m19_Draw_Tile_by_XY_and_Flags (this, __, param_1, pixel_x, pixel_y, map_renderer, param_5, tile_x, tile_y, param_8);
 
-	init_tile_highlights ();
-	if (is->tile_highlight_state == IS_OK)
-		Tile_Image_Info_draw_on_map (&is->tile_highlights[(tile_x + tile_y) % COUNT_TILE_HIGHLIGHTS], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+	if (((tile_x + tile_y) % 2) == 0) { // Replicate a check from the base game code. Without this we'd be drawing additional tiles half-way off the grid.
+
+		init_tile_highlights ();
+		if (is->tile_highlight_state == IS_OK) {
+			int eval = ai_eval_city_location (tile_x, tile_y, p_main_screen_form->Player_CivID, 0, NULL);
+			if (eval > 0) {
+				int i_highlight = clamp (0, COUNT_TILE_HIGHLIGHTS - 1, COUNT_TILE_HIGHLIGHTS/2 + (eval - 1000000)/10);
+				Tile_Image_Info_draw_on_map (&is->tile_highlights[i_highlight], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+			}
+		}
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.

@@ -15,6 +15,18 @@ not_above (int lim, int x)
 }
 
 int
+clamp (int lower_lim, int upper_lim, int x)
+{
+	if (x >= lower_lim) {
+		if (x <= upper_lim)
+			return x;
+		else
+			return upper_lim;
+	} else
+		return lower_lim;
+}
+
+int
 square (int x)
 {
 	return x * x;
