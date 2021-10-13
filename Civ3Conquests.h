@@ -1346,7 +1346,7 @@ struct City_Base_vtable
   void *m13;
 //  int (__thiscall *m14)(int, int);
   void *m14;
-  int m15;
+  enum UnitStateType (__fastcall * instruct_worker) (City * this, int edx, int tile_x, int tile_y, byte param_3, Unit * worker);
   int m16;
   int m17;
   int m18;
