@@ -3066,7 +3066,10 @@ patch_Map_Renderer_impl_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int 
 		if (is->tile_highlight_state == IS_OK) {
 			int eval = ai_eval_city_location (tile_x, tile_y, p_main_screen_form->Player_CivID, 0, NULL);
 			if (eval > 0) {
-				int i_highlight = clamp (0, COUNT_TILE_HIGHLIGHTS - 1, COUNT_TILE_HIGHLIGHTS/2 + (eval - 1000000)/10);
+				int step_size = 10;
+				int midpoint = (COUNT_TILE_HIGHLIGHTS % 2 == 0) ? 1000000 : (1000000 - step_size/2);
+				int grade = (eval >= midpoint) ? (eval - midpoint) / step_size : (eval - midpoint) / step_size - 1;
+				int i_highlight = clamp (0, COUNT_TILE_HIGHLIGHTS - 1, COUNT_TILE_HIGHLIGHTS/2 + grade);
 				Tile_Image_Info_draw_on_map (&is->tile_highlights[i_highlight], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 			}
 		}
