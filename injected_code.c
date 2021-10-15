@@ -3056,9 +3056,9 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, byte 
 }
 
 void __fastcall
-patch_Map_Renderer_impl_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, int param_1, int pixel_x, int pixel_y, Map_Renderer * map_renderer, int param_5, int tile_x, int tile_y, int param_8)
+patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, int param_1, int pixel_x, int pixel_y, Map_Renderer * map_renderer, int param_5, int tile_x, int tile_y, int param_8)
 {
-	Map_Renderer_impl_m19_Draw_Tile_by_XY_and_Flags (this, __, param_1, pixel_x, pixel_y, map_renderer, param_5, tile_x, tile_y, param_8);
+	Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (this, __, param_1, pixel_x, pixel_y, map_renderer, param_5, tile_x, tile_y, param_8);
 
 	if (((tile_x + tile_y) % 2) == 0) { // Replicate a check from the base game code. Without this we'd be drawing additional tiles half-way off the grid.
 
