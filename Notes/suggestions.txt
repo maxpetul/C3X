@@ -89,3 +89,4 @@ Ideas:
 - [from register] Fix city governor ignoring instruction to never produce artillery or settlers; enable AI to redeem treasury units in its capital (according to Civinator this is only a problem when the units are spawned there)
 - [from ynot56] When moving a group of units, stop the faster ones from losing all their remaining moves after the slowest reach their limit; Preserve surplus shields and beakers for the next project
 - [from justanick] Stop the AI from upgrading to units that are strictly inferior
+- [from Ruin] Enable paratroopers to move after landing. (This might already be possible.)
