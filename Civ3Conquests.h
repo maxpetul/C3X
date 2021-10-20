@@ -1346,7 +1346,7 @@ struct City_Base_vtable
   void *m13;
 //  int (__thiscall *m14)(int, int);
   void *m14;
-  int m15;
+  enum UnitStateType (__fastcall * instruct_worker) (City * this, int edx, int tile_x, int tile_y, byte param_3, Unit * worker);
   int m16;
   int m17;
   int m18;
@@ -5880,6 +5880,7 @@ struct New_Era_Form
 
 typedef struct Object_66C3FC Object_66C3FC;
 typedef struct Object_66D520 Object_66D520;
+typedef struct PopupSelection PopupSelection;
 typedef struct PopupFormVTable PopupFormVTable;
 typedef struct PopupForm PopupForm;
 typedef struct StrWithJunk StrWithJunk;
@@ -5904,6 +5905,12 @@ struct Object_66D520
 	Object_66C3FC * object_66C3FCs;
 };
 
+struct PopupSelection
+{
+	void * vtable;
+	int unk[481];
+};
+
 struct PopupFormVTable
 {
 	PopupForm * (__fastcall * destruct) (PopupForm *, __, byte);
@@ -5922,7 +5929,9 @@ struct PopupForm
 	int unk0[26];
 	Button ok_button;
 	Button cancel_button;
-	int unk1[877];
+	int unk1[57];
+	PopupSelection selection;
+	int unk2[338];
 };
 
 struct StrWithJunk
