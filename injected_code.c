@@ -3085,6 +3085,7 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 void __fastcall
 patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, int virtual_key_code, int is_down)
 {
+	char s[200];
 	if ((virtual_key_code == VK_L) && is_down &&
 	    (*p_player_bits != 0)) { // Player bits all zero indicates we aren't currently in a game. Need to check for this because UI events on the
 		                     // main menu also pass through this function.
@@ -3092,12 +3093,13 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 		                                                   // mode bits (4 and 8) and I don't know what the difference is.
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CITY_LOC_HIGHLIGHTS", -1, 0, 0x40, 0);
-		PopupSelection_add_item (&popup->selection, __, " OFF", 0);
+		snprintf (s, sizeof s, " %s", is->c3x_labels[CL_OFF]);
+		s[(sizeof s) - 1] = '\0';
+		PopupSelection_add_item (&popup->selection, __, s, 0);
 		for (int n = 1; n < 32; n++)
 			if ((*p_player_bits & (1 << n)) &&
 			    (is_debug_mode || (n == p_main_screen_form->Player_CivID))) {
 				Race * race = &p_bic_data->Races[leaders[n].RaceID];
-				char s[200];
 				snprintf (s, sizeof s, " (%d) %s", n, race->vtable->GetLeaderName (race));
 				s[(sizeof s) - 1] = '\0';
 				PopupSelection_add_item (&popup->selection, __, s, n);

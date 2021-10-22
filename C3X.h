@@ -131,6 +131,7 @@ enum c3x_label {
 	CL_SURPLUS_NA,
 	CL_SB_TOOLTIP,
 	CL_CHOPPED,
+	CL_OFF,
 	COUNT_C3X_LABELS
 };
 
