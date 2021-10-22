@@ -1844,8 +1844,7 @@ struct Map_vtable
   int m07_Init_Continents2;
   int m08;
   int m09_Init;
-//  char (__thiscall *m10_Get_Map_Zoom)(Map *);
-  void *m10_Get_Map_Zoom;
+  byte (__fastcall * m10_Get_Map_Zoom) (Map * this);
   int m11_Get_Tile_by_XY2;
 //  Tile *(__thiscall *m12_Get_Tile_by_XY)(Map *, int, int);
   void *m12_Get_Tile_by_XY;
