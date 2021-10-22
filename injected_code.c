@@ -3103,8 +3103,10 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 				PopupSelection_add_item (&popup->selection, __, s, n);
 			}
 		int sel = show_popup (popup, __, 0, 0);
-		if (sel >= 0) // -1 indicates popup was closed without making a selection
+		if (sel >= 0) { // -1 indicates popup was closed without making a selection
 			is->city_loc_display_perspective = (sel >= 1) ? sel : -1;
+			this->vtable->m73_call_m22_Draw ((Base_Form *)this); // Trigger map redraw
+		}
 	}
 	Main_Screen_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
 }
