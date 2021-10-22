@@ -215,6 +215,9 @@ struct injected_state {
 	struct perfume_internal_spec * perfume_specs;
 	int count_perfume_specs;
 
+	// The civ ID of the player from whose perspective we're currently showing city loc desirability, or -1 if none. Initialized to -1.
+	int city_loc_display_perspective;
+
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {
 	// ==========

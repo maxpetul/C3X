@@ -547,6 +547,8 @@ patch_init_floating_point ()
 	is->perfume_specs = NULL;
 	is->count_perfume_specs = 0;
 
+	is->city_loc_display_perspective = -1;
+
 	is->ai_prod_valuations = NULL;
 	is->count_ai_prod_valuations = 0;
 	is->ai_prod_valuations_capacity = 0;
@@ -3060,11 +3062,13 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 {
 	Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (this, __, param_1, pixel_x, pixel_y, map_renderer, param_5, tile_x, tile_y, param_8);
 
-	if (((tile_x + tile_y) % 2) == 0) { // Replicate a check from the base game code. Without this we'd be drawing additional tiles half-way off the grid.
+	if ((is->city_loc_display_perspective >= 0) &&
+	    ((1 << is->city_loc_display_perspective) & *p_player_bits) &&
+	    (((tile_x + tile_y) % 2) == 0)) { // Replicate a check from the base game code. Without this we'd be drawing additional tiles half-way off the grid.
 
 		init_tile_highlights ();
 		if (is->tile_highlight_state == IS_OK) {
-			int eval = ai_eval_city_location (tile_x, tile_y, p_main_screen_form->Player_CivID, 0, NULL);
+			int eval = ai_eval_city_location (tile_x, tile_y, is->city_loc_display_perspective, 0, NULL);
 			if (eval > 0) {
 				int step_size = 10;
 				int midpoint = (COUNT_TILE_HIGHLIGHTS % 2 == 0) ? 1000000 : (1000000 - step_size/2);
@@ -3074,6 +3078,33 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 			}
 		}
 	}
+}
+
+void __fastcall
+patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, int virtual_key_code, int is_down)
+{
+	if ((virtual_key_code == VK_L) && is_down &&
+	    (*p_player_bits != 0)) { // Player bits all zero indicates we aren't currently in a game. Need to check for this because UI events on the
+		                     // main menu also pass through this function.
+		int is_debug_mode = (*p_debug_mode_bits & 4) != 0; // This is how the check is done in open_tile_info. Actually there are two debug
+		                                                   // mode bits (4 and 8) and I don't know what the difference is.
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CITY_LOC_HIGHLIGHTS", -1, 0, 0x40, 0);
+		PopupSelection_add_item (&popup->selection, __, " OFF", 0);
+		for (int n = 1; n < 32; n++)
+			if ((*p_player_bits & (1 << n)) &&
+			    (is_debug_mode || (n == p_main_screen_form->Player_CivID))) {
+				Race * race = &p_bic_data->Races[leaders[n].RaceID];
+				char s[200];
+				snprintf (s, sizeof s, " (%d) %s", n, race->vtable->GetLeaderName (race));
+				s[(sizeof s) - 1] = '\0';
+				PopupSelection_add_item (&popup->selection, __, s, n);
+			}
+		int sel = show_popup (popup, __, 0, 0);
+		if (sel >= 0) // -1 indicates popup was closed without making a selection
+			is->city_loc_display_perspective = (sel >= 1) ? sel : -1;
+	}
+	Main_Screen_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
 }
 
 // TCC requires a main function be defined even though it's never used.
