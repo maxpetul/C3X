@@ -2,6 +2,7 @@
 - Perfume can be applied to multiple improvements or unit types
 - Corruption can be completely removed with "OFF" government setting
 - Press P in city screen to see AI point value for each buildable improvement
+- Press L on map to see how desirable the AI finds each tile as a city location
 - AI naval invasion forces can include artillery (with offensive artillery AI enabled)
 - Option to disable worker automation
 - Warn in case perfume target doesn't match any improvement name

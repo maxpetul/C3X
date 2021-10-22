@@ -937,6 +937,7 @@ ENTRY_POINT ()
 		.count_perfume_specs = 0,
 		.warn_about_unrecognized_perfume_target = 1,
 		.enable_ai_production_ranking = 1,
+		.enable_ai_city_location_desirability_display = 1,
 		.zero_corruption_when_off = 0,
 
 		.use_offensive_artillery_ai = 1,

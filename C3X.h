@@ -47,6 +47,7 @@ struct c3x_config {
 	int count_perfume_specs;
 	char warn_about_unrecognized_perfume_target;
 	char enable_ai_production_ranking;
+	char enable_ai_city_location_desirability_display;
 	char zero_corruption_when_off;
 
 	char use_offensive_artillery_ai;
