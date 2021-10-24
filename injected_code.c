@@ -2100,8 +2100,10 @@ find_nearest_established_city (Unit * unit, int continent_id)
 void __fastcall
 patch_Unit_ai_move_leader (Unit * this)
 {
-	if (! is->current_config.replace_leader_unit_ai)
-		return Unit_ai_move_leader (this);
+	if (! is->current_config.replace_leader_unit_ai) {
+		Unit_ai_move_leader (this);
+		return;
+	}
 
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
 	int continent_id = tile->vtable->m46_Get_ContinentID (tile);
