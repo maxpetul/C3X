@@ -249,12 +249,6 @@ struct injected_state {
 	// a total of 4 UI functions patched to make this damn button work. I doubt this is optimal but it works and I've wasted
 	// enough time on this already. That click interceptor sets a flag value of 2 to indicate this annoying state.
 
-	/*
-	PCX_Image sb_command_button_sheets[4]; // TODO: I think we can deconstruct these after creating the tile images
-	Tile_Image_Info sb_bard_button_images[4];
-	Tile_Image_Info sb_bomb_button_images[4];
-	*/
-
 	// ==========
 	// } These fields are valid only after init_tile_highlights as been caled. {
 	// ==========

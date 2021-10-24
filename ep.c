@@ -6,11 +6,7 @@
 #include "lend/ld32.c"
 #include "C3X.h"
 
-// #include "civ_prog_objects.h"
-
 #include "common.c"
-
-// BOOL WINAPI EnumProcessModulesEx(HANDLE hProcess, HMODULE *lphModule, DWORD cb, LPDWORD lpcbNeeded, DWORD dwFilterFlag);
 
 #define ARRAY_LEN(a) ((sizeof a) / (sizeof a[0]))
 
@@ -748,7 +744,7 @@ ENTRY_POINT ()
 	if (*mod_rel_dir == '\0')
 		mod_rel_dir = ".";
 
-	HMODULE libtcc; ;
+	HMODULE libtcc;
 	if ((NULL == (libtcc = GetModuleHandleA ("libtcc.dll"))) &&
 	    (NULL == (libtcc = LoadLibrary ("tcc\\libtcc.dll"))) &&
 	    (NULL == (libtcc = LoadLibrary ("libtcc.dll"))))
