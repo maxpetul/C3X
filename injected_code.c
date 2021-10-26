@@ -3125,5 +3125,14 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 	Main_Screen_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
 }
 
+void __fastcall
+patch_Leader_clear_at_game_start (Leader * this, int edx, int race_id)
+{
+	Leader_initialize_at_game_start (this, __, race_id);
+	// Zero out the RaceID field after clearing the Leader object (which is what the call above does; race_id is set to -1 at the call site that
+	// gets redirected here). If we don't do this the RaceID field will be left as -1.
+	this->RaceID = 0;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
