@@ -2035,6 +2035,7 @@ base_impl:
 
 			int transport_capacity = p_bic_data->UnitTypes[transport->Body.UnitTypeID].Transport_Capacity;
 			int units_in_transport, arty_in_transport; {
+				units_in_transport = arty_in_transport = 0;
 				FOR_UNITS_ON (uti, on_tile)
 					if (uti.unit->Body.Container_Unit == transport->Body.ID) {
 						units_in_transport++;
