@@ -3017,12 +3017,12 @@ struct Leader_vtable
   int m03;
   int m04;
   int m05;
-  int m06;
-  int m07;
+  byte (__fastcall * would_raze_city) (Leader * this, int edx, City * city);
+  int (__fastcall * ai_find_best_government) (Leader * this);
   int m08;
   int m09;
   int m10;
-  int m11;
+  void (__fastcall * ai_adjust_sliders) (Leader * this);
   int m12;
   int m13;
   int m14;
@@ -4016,7 +4016,8 @@ struct Leader
   char At_War[32];
   char field_D50[32];
   char field_D70[32];
-  int field_D90[72];
+  int field_D90[40];
+  int gpt_to_other_civs[32];
   int Contacts[32];
   int Relation_Treaties[32];
   int Military_Allies[32];
@@ -4194,8 +4195,8 @@ struct City_Body
   int Tiles_Production;
   int Tiles_Commerce;
   int field_1B8;
-  int field_1BC;
-  int field_1C0;
+  int rally_point_x;
+  int rally_point_y;
   char CityName[20];
   int field_1D8;
   int Order_Queue_Count;
