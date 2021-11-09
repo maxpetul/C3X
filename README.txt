@@ -41,9 +41,12 @@ Engine extensions:
  - Trespassing prevention (experimental)
  - Land/sea intersections
  - Adjustable anarchy length
- - ** "Perfume" units or improvements to control how likely the AI is to build them
+ - "Perfume" units or improvements to control how likely the AI is to build them
+  - ** Can be applied to units (previous version was only improvements)
+  - ** Can now list multiple targets & amounts
+  - ** Warning message in case perfume target is misspelled
  - Reveal AI logic
-  - ** Press P in city screen to see AI point value for each buildable improvement
+  - ** Press P in city screen to see AI point value for each available build
   - ** Press L on map to see how desirable the AI finds each tile as a city location
  - ** Corruption can be completely removed with "OFF" government setting
  - ** Disallow land settlers from founding on water
