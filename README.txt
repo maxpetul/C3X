@@ -1,28 +1,30 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 8D
+Release 9
 
 INCLUDES (** = new in latest version):
 Convenience features:
  - Stack unit commands
   - Stack bombard
   - Worker buttons (irrigate, road, etc.) become stack buttons by holding CTRL
-  - ** Same for fortify, upgrade, and disband
+  - Stack fortify, upgrade, and disband also with CTRL
  - Disorder warning
  - Detailed city production info
  - Buttons on trade screen to quickly switch between civs
  - Ask/offer gold popup autofills best amount
  - Skip repeated popups asking to replace a tile improvement
- - ** Group units on right click menu
- - ** Show coordinates and chopped status in tile info box
- - ** Show golden age turns remaining
- - ** No special king unit names in non-regicide games
+ - Group units on right click menu
+ - Show coordinates and chopped status in tile info box
+ - Show golden age turns remaining
+ - No special king unit names in non-regicide games
+ - ** Option to disable worker automation
 AI enhancements:
  - Allow AI to use artillery in the field
+  - ** AI can bring artillery along for naval landings
  - Force AI to build more artillery and bombers
  - Replace leader unit AI to fix bugs and improve behavior
  - Fix bug preventing AI from filling its armies
  - Improve AI army composition to discourage mixing types & exclude HN units
- - ** AI routine for "pop units" that may appear in mods
+ - AI routine for "pop units" that may appear in mods
 Bugs fixed:
  - AI pathfinding collides with invisible units (called the "submarine bug")
  - Science age beakers not actually awarded
@@ -36,10 +38,15 @@ Engine extensions:
  - Enable free improvements from small wonders
  - Option to prevent autoraze and razing by AIs
  - Stealth attack activates even when there's only one target
- - ** Trespassing prevention (experimental)
- - ** Land/sea intersections
- - ** Adjustable anarchy length
- - ** "Perfume" an improvement to make it more appealing to the AI
+ - Trespassing prevention (experimental)
+ - Land/sea intersections
+ - Adjustable anarchy length
+ - ** "Perfume" units or improvements to control how likely the AI is to build them
+ - Reveal AI logic
+  - ** Press P in city screen to see AI point value for each buildable improvement
+  - ** Press L on map to see how desirable the AI finds each tile as a city location
+ - ** Corruption can be completely removed with "OFF" government setting
+ - ** Disallow land settlers from founding on water
 
 INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.

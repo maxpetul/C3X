@@ -1,4 +1,4 @@
-* RELEASE 8D
+* RELEASE 9
 - Perfume can be applied to multiple improvements or unit types
 - Corruption can be completely removed with "OFF" government setting
 - Press P in city screen to see AI point value for each buildable improvement
