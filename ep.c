@@ -934,7 +934,8 @@ ENTRY_POINT ()
 		.warn_about_unrecognized_perfume_target = 1,
 		.enable_ai_production_ranking = 1,
 		.enable_ai_city_location_desirability_display = 1,
-		.zero_corruption_when_off = 0,
+		.zero_corruption_when_off = 1,
+		.disallow_land_units_from_settling_water = 1,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,
