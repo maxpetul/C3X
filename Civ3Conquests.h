@@ -3989,7 +3989,7 @@ struct Leader
   int Gold_Encoded;
   int field_4C[20];
   int anarchy_turns_remaining;
-  int GovenmentType;
+  int GovernmentType;
   int Mobilization_Level;
   int Tiles_Discovered;
   int field_AC[14];

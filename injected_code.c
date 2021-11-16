@@ -869,8 +869,8 @@ struct tiles_around_iter {
 void
 tai_next (struct tiles_around_iter * tai)
 {
-	tai->tile = NULL;
-	while ((tai->n < tai->num_tiles) && (tai->tile == NULL)) {
+	tai->tile = p_null_tile;
+	while ((tai->n < tai->num_tiles) && (tai->tile == p_null_tile)) {
 		tai->n += 1;
 		int tx, ty;
 		get_neighbor_coords (&p_bic_data->Map, tai->center_x, tai->center_y, tai->n, &tx, &ty);
@@ -892,6 +892,17 @@ tai_init (int num_tiles, int x, int y)
 }
 
 #define FOR_TILES_AROUND(tai_name, _num_tiles, _x, _y) for (struct tiles_around_iter tai_name = tai_init (_num_tiles, _x, _y); (tai_name.n < tai_name.num_tiles); tai_next (&tai_name))
+
+void
+tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
+{
+	if (tai->tile != p_null_tile)
+		get_neighbor_coords (&p_bic_data->Map, tai->center_x, tai->center_y, tai->n, out_x, out_y);
+	else {
+		*out_x = -1;
+		*out_y = -1;
+	}
+}
 
 int
 count_escorters (Unit * unit)
@@ -1610,7 +1621,7 @@ int
 get_city_production_rate (City * city, enum City_Order_Types order_type, int order_id)
 {
 	int in_disorder = city->Body.Status & 1,
-	    in_anarchy = p_bic_data->Governments[leaders[city->Body.CivID].GovenmentType].b_Transition_Type,
+	    in_anarchy = p_bic_data->Governments[leaders[city->Body.CivID].GovernmentType].b_Transition_Type,
 	    getting_tile_shields = (! in_disorder) && (! in_anarchy);
 
 	if (order_type == COT_Improvement) {
@@ -3076,7 +3087,7 @@ int __fastcall
 patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, byte is_production)
 {
 	if (is->current_config.zero_corruption_when_off) {
-		Government * govt = &p_bic_data->Governments[leaders[this->Body.CivID].GovenmentType];
+		Government * govt = &p_bic_data->Governments[leaders[this->Body.CivID].GovernmentType];
 		if (govt->CorruptionAndWaste == CWT_Off)
 			return 0;
 	}
