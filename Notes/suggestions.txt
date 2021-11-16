@@ -92,3 +92,4 @@ Ideas:
 - [from Ruin] Enable paratroopers to move after landing. (This might already be possible.)
 - [from haluu] Prevent land workers from working water tiles from boats
 - On right click menu, group unit of different experience together if they don't have hit points and separate out captured vs native units
+- [from vmxa] In Civilopedia unit list, remember location in the list when viewing a unit then returning
