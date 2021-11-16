@@ -3152,5 +3152,81 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 	Main_Screen_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
 }
 
+int
+calc_potential_food_gain_from_irrigation (Tile * tile, int tile_x, int tile_y, int current_yield, Leader * leader)
+{
+	if (tile->vtable->m17_Check_Irrigation (tile, __, 0) ||
+	    (! Leader_can_do_worker_job (leader, __, WJ_Irrigate, tile_x, tile_y, 0)))
+		return 0;
+
+	int tr = Tile_get_irrigation_bonus (tile);
+
+	if (tile->vtable->m23_Check_Railroads (tile, __, 0))
+		tr += 1;
+
+	// TODO: current_yield already includes the tile penalty so this check doesn't actually work properly
+	if ((p_bic_data->Governments[leader->GovernmentType].b_Standard_Tile_Penalty != 0) &&
+	    (current_yield < 3) && (current_yield + tr >= 3))
+		tr -= 1;
+
+	return tr;
+}
+
+struct workable_tile {
+	Tile * tile;
+	int current_food;
+	int irrigation_potential;
+};
+
+int
+compare_workable_tiles (void const * vp_a, void const * vp_b)
+{
+	struct workable_tile const * wt_a = vp_a,
+		                   * wt_b = vp_b;
+	return (wt_b->current_food + wt_b->irrigation_potential) - (wt_a->current_food + wt_a->irrigation_potential);
+}
+
+byte __fastcall
+patch_City_should_irrigate (City * this, int edx, int tile_x, int tile_y, int terrain_type_id, int param_4)
+{
+	Tile * tile_to_work = tile_at (tile_x, tile_y);
+
+	struct workable_tile workable_tiles[20];
+	int count_workable_tiles = 0;
+
+	FOR_TILES_AROUND(tai, 21, this->Body.X, this->Body.Y) {
+		Tile * tile = tai.tile;
+
+		// Skip tiles with cities or that do not belong to this city
+		if ((get_city_ptr (tile->vtable->m45_Get_City_ID (tile)) != NULL) ||
+		    (tile->Body.CityAreaID != this->Body.ID))
+			continue;
+
+		int tile_x, tile_y;
+		tai_get_coords (&tai, &tile_x, &tile_y);
+		int tile_terrain_id = tile->vtable->m50_Get_Square_BaseType (tile);
+
+		struct workable_tile w;
+		w.tile = tile;
+		w.current_food = Map_calc_food_yield_at (&p_bic_data->Map, __, tile_x, tile_y, tile_terrain_id, this->Body.CivID, 0, this);
+		w.irrigation_potential = calc_potential_food_gain_from_irrigation (tile, tile_x, tile_y, w.current_food, &leaders[this->Body.CivID]);
+		workable_tiles[count_workable_tiles++] = w;
+	}
+
+	qsort (workable_tiles, count_workable_tiles, sizeof workable_tiles[0], compare_workable_tiles);
+	int running_net_food = -1 * p_bic_data->General.FoodPerCitizen * count_workable_tiles;
+	for (int n = 0; n < count_workable_tiles; n++) {
+		struct workable_tile * w = &workable_tiles[n];
+		if ((w->tile == tile_to_work) &&
+		    ((w->irrigation_potential > 0) || (w->tile->vtable->m17_Check_Irrigation (w->tile, __, 0))))
+			return 1;
+		running_net_food += w->current_food + w->irrigation_potential;
+		if (running_net_food >= 2)
+			break;
+	}
+
+	return 0;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
