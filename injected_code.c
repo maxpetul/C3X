@@ -3191,6 +3191,15 @@ patch_City_should_irrigate (City * this, int edx, int tile_x, int tile_y, int te
 {
 	Tile * tile_to_work = tile_at (tile_x, tile_y);
 
+	// If the tile in question belongs to a different city then let that city determine what to do with it. If the tile doesn't belong to any city
+	// then leave it alone if there's already a mine in place and otherwise irrigate it to potentially spread irrigation somewhere useful. I don't
+	// think it's even possible for this function to be called on a tile outside the range of any city, but handle that just in case.
+	City * tile_owner = get_city_ptr (tile_to_work->Body.CityAreaID);
+	if (tile_owner == NULL)
+		return tile_to_work->vtable->m18_Check_Mines (tile_to_work, __, 0) ? 0 : 1;
+	else if (tile_owner != this)
+		return patch_City_should_irrigate (tile_owner, __, tile_x, tile_y, terrain_type_id, param_4);
+
 	struct workable_tile workable_tiles[20];
 	int count_workable_tiles = 0;
 
