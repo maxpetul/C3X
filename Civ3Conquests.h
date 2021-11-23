@@ -1874,8 +1874,7 @@ struct Map_vtable
   void *m31;
 //  void (__thiscall *m32)(Map *);
   void *m32;
-//  int (__thiscall *m33_Get_Continent)(Map *, int);
-  void *m33_Get_Continent;
+  Continent * (__fastcall * m33_Get_Continent) (Map * this, int edx, int id);
 //  int (__thiscall *m34_Get_Continent_Count)(Map *);
   void *m34_Get_Continent_Count;
 //  int (__thiscall *m35_Get_BIC_Sub_Data)(Map *this, int Object_Type, int Object_Index, void *Object);

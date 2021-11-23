@@ -185,9 +185,12 @@ ignore,	   0x437970,	0x0,		"Map_get_y_dist",				"int (__fastcall *) (Map * this,
 ignore,	   0x452510,	0x454600,	"ai_move_defensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,	   0x56D040,	0x5799C0,	"find_nearest_city",				"City * (__cdecl *) (int tile_x, int tile_y, int owner_id, int continent_id, int ignore_owner_id, int perspective_id, City * ignore_city)"
 ignore,	   0x66DCB4,	0x0,		"City_instruct_worker",				"enum UnitStateType (__fastcall *) (City * this, int edx, int tile_x, int tile_y, byte param_3, Unit * worker)"
+ignore,	   0x5D7180,	0x0,		"Map_calc_food_yield_at",			"int (__fastcall *) (Map * this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city)"
 
 
 
+define,	   0x5DBD80,	0x0,		"Tile_get_base_food",				"int (__fastcall *) (Tile * this)"
 define,	   0x5DBE70,	0x0,		"Tile_get_irrigation_bonus",			"int (__fastcall *) (Tile * this)"
-define,	   0x5D7180,	0x0,		"Map_calc_food_yield_at",			"int (__fastcall *) (Map * this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city)"
+define,	   0x561440,	0x0,		"Leader_has_tech",				"byte (__fastcall *) (Leader * this, int edx, int id)"
 inlead,	   0x42B820,	0x0,		"City_should_irrigate",				"byte (__fastcall *) (City * this, int edx, int tile_x, int tile_y, int terrain_type_id, int param_4)"
+define,	   0x4B1F90,	0x0,		"City_count_improvements_with_flag",		"int (__fastcall *) (City * this, int edx, enum ImprovementTypeFlags flag)"

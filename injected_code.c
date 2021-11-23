@@ -3152,24 +3152,66 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 	Main_Screen_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
 }
 
-int
-calc_potential_food_gain_from_irrigation (Tile * tile, int tile_x, int tile_y, int current_yield, Leader * leader)
+void
+calc_food_yield (Tile * tile, int tile_x, int tile_y, City * city, int * out_base_food, int * out_irrigation_gain)
 {
-	if (tile->vtable->m17_Check_Irrigation (tile, __, 0) ||
-	    (! Leader_can_do_worker_job (leader, __, WJ_Irrigate, tile_x, tile_y, 0)))
-		return 0;
+	Leader * leader = &leaders[city->Body.CivID];
+	Map * map = &p_bic_data->Map;
 
-	int tr = Tile_get_irrigation_bonus (tile);
+	int terrain_food; {
+		terrain_food = Tile_get_base_food (tile);
+		if (tile->vtable->m35_Check_Is_Water (tile)) {
 
-	if (tile->vtable->m23_Check_Railroads (tile, __, 0))
-		tr += 1;
+			// +1 food if lake
+			Continent * cont = map->vtable->m33_Get_Continent (map, __, tile->vtable->m46_Get_ContinentID (tile));
+			if (cont->Body.TileCount <= 20)
+				terrain_food++;
 
-	// TODO: current_yield already includes the tile penalty so this check doesn't actually work properly
-	if ((p_bic_data->Governments[leader->GovernmentType].b_Standard_Tile_Penalty != 0) &&
-	    (current_yield < 3) && (current_yield + tr >= 3))
-		tr -= 1;
+			// +1 for each harbor in the city
+			terrain_food += City_count_improvements_with_flag (city, __, ITF_Increases_Food_In_Water);
+		}
+	}
 
-	return tr;
+	int resource_food; {
+		resource_food = 0;
+		if (tile->ResourceType >= 0) {
+			Resource_Type * resource_type = &p_bic_data->ResourceTypes[tile->ResourceType];
+			if (Leader_has_tech (leader, __, resource_type->RequireID))
+				resource_food = resource_type->Food;
+		}
+	}
+
+	int irrigation_gain; {
+		if (tile->vtable->m17_Check_Irrigation (tile, __, 0) || Leader_can_do_worker_job (leader, __, WJ_Irrigate, tile_x, tile_y, 0)) {
+			irrigation_gain = Tile_get_irrigation_bonus (tile);
+
+			// +1 if railroaded
+			if (tile->vtable->m23_Check_Railroads (tile, __, 0) &&
+			    Leader_has_tech (leader, __, p_bic_data->WorkerJobs[WJ_Build_Railroad].RequireID))
+				irrigation_gain++;
+
+			// +1 if desert and city belongs to an agri civ
+			if (tile->vtable->m50_Get_Square_BaseType (tile) == SQ_Desert) {
+				Race * race = &p_bic_data->Races[leader->RaceID];
+				if (race->vtable->CheckBonus (race, __, RB_Agricultural))
+					irrigation_gain++;
+			}
+		} else
+			irrigation_gain = 0;
+	}
+
+	int base_food = terrain_food + resource_food;
+
+	// Consider despotism tile penalty
+	if (p_bic_data->Governments[leader->GovernmentType].b_Standard_Tile_Penalty) {
+		if (base_food >= 3)
+			base_food--;
+		else if (base_food + irrigation_gain >= 3)
+			irrigation_gain--;
+	}
+
+	*out_base_food = base_food;
+	*out_irrigation_gain = irrigation_gain;
 }
 
 struct workable_tile {
@@ -3213,12 +3255,19 @@ patch_City_should_irrigate (City * this, int edx, int tile_x, int tile_y, int te
 
 		int tile_x, tile_y;
 		tai_get_coords (&tai, &tile_x, &tile_y);
-		int tile_terrain_id = tile->vtable->m50_Get_Square_BaseType (tile);
+
+		int base_food, irrigation_gain;
+		calc_food_yield (tile, tile_x, tile_y, this, &base_food, &irrigation_gain);
 
 		struct workable_tile w;
 		w.tile = tile;
-		w.current_food = Map_calc_food_yield_at (&p_bic_data->Map, __, tile_x, tile_y, tile_terrain_id, this->Body.CivID, 0, this);
-		w.irrigation_potential = calc_potential_food_gain_from_irrigation (tile, tile_x, tile_y, w.current_food, &leaders[this->Body.CivID]);
+		if (tile->vtable->m17_Check_Irrigation (tile, __, 0)) {
+			w.current_food = base_food + irrigation_gain;
+			w.irrigation_potential = 0;
+		} else {
+			w.current_food = base_food;
+			w.irrigation_potential = irrigation_gain;
+		}
 		workable_tiles[count_workable_tiles++] = w;
 	}
 
