@@ -3152,6 +3152,27 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 	Main_Screen_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
 }
 
+City *
+find_nearest_city_in_working_range (int tile_x, int tile_y)
+{
+	int nearest_dist = INT_MAX;
+	City * nearest_city = NULL;
+	FOR_TILES_AROUND(tai, 21, tile_x, tile_y) {
+		City * city_here = get_city_ptr (tai.tile->vtable->m45_Get_City_ID (tai.tile));
+		if (city_here != NULL) {
+			int ring_no = (tai.n == 0) ? 0 : ((tai.n <= 8) ? 1 : 2);
+			// Add ID to give priority to cities founded first. Technically we should use the founding date but that's not stored in a
+			// form where it can be easily used so this is good enough.
+			int dist_here = (ring_no << 16) + city_here->Body.ID;
+			if (dist_here < nearest_dist) {
+				nearest_dist = dist_here;
+				nearest_city = city_here;
+			}
+		}
+	}
+	return nearest_city;
+}
+
 void
 calc_food_yield (Tile * tile, int tile_x, int tile_y, City * city, int * out_base_food, int * out_irrigation_gain)
 {
@@ -3236,7 +3257,7 @@ patch_City_should_irrigate (City * this, int edx, int tile_x, int tile_y, int te
 	// If the tile in question belongs to a different city then let that city determine what to do with it. If the tile doesn't belong to any city
 	// then leave it alone if there's already a mine in place and otherwise irrigate it to potentially spread irrigation somewhere useful. I don't
 	// think it's even possible for this function to be called on a tile outside the range of any city, but handle that just in case.
-	City * tile_owner = get_city_ptr (tile_to_work->Body.CityAreaID);
+	City * tile_owner = find_nearest_city_in_working_range (tile_x, tile_y);
 	if (tile_owner == NULL)
 		return tile_to_work->vtable->m18_Check_Mines (tile_to_work, __, 0) ? 0 : 1;
 	else if (tile_owner != this)
@@ -3246,22 +3267,19 @@ patch_City_should_irrigate (City * this, int edx, int tile_x, int tile_y, int te
 	int count_workable_tiles = 0;
 
 	FOR_TILES_AROUND(tai, 21, this->Body.X, this->Body.Y) {
-		Tile * tile = tai.tile;
+		int tai_x, tai_y;
+		tai_get_coords (&tai, &tai_x, &tai_y);
 
 		// Skip tiles with cities or that do not belong to this city
-		if ((get_city_ptr (tile->vtable->m45_Get_City_ID (tile)) != NULL) ||
-		    (tile->Body.CityAreaID != this->Body.ID))
+		if (find_nearest_city_in_working_range (tai_x, tai_y) != this)
 			continue;
 
-		int tile_x, tile_y;
-		tai_get_coords (&tai, &tile_x, &tile_y);
-
 		int base_food, irrigation_gain;
-		calc_food_yield (tile, tile_x, tile_y, this, &base_food, &irrigation_gain);
+		calc_food_yield (tai.tile, tai_x, tai_y, this, &base_food, &irrigation_gain);
 
 		struct workable_tile w;
-		w.tile = tile;
-		if (tile->vtable->m17_Check_Irrigation (tile, __, 0)) {
+		w.tile = tai.tile;
+		if (tai.tile->vtable->m17_Check_Irrigation (tai.tile, __, 0)) {
 			w.current_food = base_food + irrigation_gain;
 			w.irrigation_potential = 0;
 		} else {
