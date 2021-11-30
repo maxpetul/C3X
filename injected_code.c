@@ -3237,8 +3237,9 @@ calc_food_yield (Tile * tile, int tile_x, int tile_y, City * city, int * out_bas
 
 struct workable_tile {
 	Tile * tile;
-	int current_food;
-	int irrigation_potential;
+	int base_food;
+	int irrigation_gain;
+	int is_irrigated;
 };
 
 int
@@ -3246,7 +3247,9 @@ compare_workable_tiles (void const * vp_a, void const * vp_b)
 {
 	struct workable_tile const * wt_a = vp_a,
 		                   * wt_b = vp_b;
-	return (wt_b->current_food + wt_b->irrigation_potential) - (wt_a->current_food + wt_a->irrigation_potential);
+	// Sort by irrigation gain in descending order and use is_irrigated as a tie-breaker, placing already irrigated tiles earlier in the list
+	return ((wt_b->irrigation_gain << 1) + wt_b->is_irrigated) -
+	       ((wt_a->irrigation_gain << 1) + wt_a->is_irrigated);
 }
 
 byte __fastcall
@@ -3266,6 +3269,7 @@ patch_City_should_irrigate (City * this, int edx, int tile_x, int tile_y, int te
 	struct workable_tile workable_tiles[20];
 	int count_workable_tiles = 0;
 
+	int total_base_food = 0;
 	FOR_TILES_AROUND(tai, 21, this->Body.X, this->Body.Y) {
 		int tai_x, tai_y;
 		tai_get_coords (&tai, &tai_x, &tai_y);
@@ -3276,27 +3280,23 @@ patch_City_should_irrigate (City * this, int edx, int tile_x, int tile_y, int te
 
 		int base_food, irrigation_gain;
 		calc_food_yield (tai.tile, tai_x, tai_y, this, &base_food, &irrigation_gain);
+		total_base_food += base_food;
 
 		struct workable_tile w;
 		w.tile = tai.tile;
-		if (tai.tile->vtable->m17_Check_Irrigation (tai.tile, __, 0)) {
-			w.current_food = base_food + irrigation_gain;
-			w.irrigation_potential = 0;
-		} else {
-			w.current_food = base_food;
-			w.irrigation_potential = irrigation_gain;
-		}
+		w.base_food = base_food;
+		w.irrigation_gain = irrigation_gain;
+		w.is_irrigated = tai.tile->vtable->m17_Check_Irrigation (tai.tile, __, 0);
 		workable_tiles[count_workable_tiles++] = w;
 	}
 
+	int running_net_food = total_base_food - count_workable_tiles * p_bic_data->General.FoodPerCitizen;
 	qsort (workable_tiles, count_workable_tiles, sizeof workable_tiles[0], compare_workable_tiles);
-	int running_net_food = -1 * p_bic_data->General.FoodPerCitizen * count_workable_tiles;
 	for (int n = 0; n < count_workable_tiles; n++) {
 		struct workable_tile * w = &workable_tiles[n];
-		if ((w->tile == tile_to_work) &&
-		    ((w->irrigation_potential > 0) || (w->tile->vtable->m17_Check_Irrigation (w->tile, __, 0))))
+		if ((w->tile == tile_to_work) && ((w->irrigation_gain > 0) || w->is_irrigated))
 			return 1;
-		running_net_food += w->current_food + w->irrigation_potential;
+		running_net_food += w->irrigation_gain;
 		if (running_net_food >= 2)
 			break;
 	}
