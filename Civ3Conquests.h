@@ -336,19 +336,19 @@ enum City_Icons_Small
   CIS_Treasury_2 = 0x18,
 };
 
-enum AnimationTypes
+enum AnimatedEffect
 {
-  Anim_Disorder = 0x1,
-  Anim_Fireworks = 0x2,
-  Anim_Hit = 0x3,
-  Anim_Hit2 = 0x4,
-  Anim_Hit3 = 0x5,
-  Anim_Hit5 = 0x6,
-  Anim_Miss = 0x7,
-  Anim_WaterMiss = 0x8,
-  Anim_Smolder = 0x9,
-  Anim_Eruption = 0xA,
-  Anim_Plague = 0xB,
+  AE_Disorder = 0x1,
+  AE_Fireworks = 0x2,
+  AE_Hit = 0x3,
+  AE_Hit2 = 0x4,
+  AE_Hit3 = 0x5,
+  AE_Hit5 = 0x6,
+  AE_Miss = 0x7,
+  AE_WaterMiss = 0x8,
+  AE_Smolder = 0x9,
+  AE_Eruption = 0xA,
+  AE_Plague = 0xB,
 };
 
 enum ImprovementTypeFlags
