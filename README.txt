@@ -109,4 +109,4 @@ See my thread on CivFanatics: https://forums.civfanatics.com/threads/sub-bug-fix
 SPECIAL THANKS:
 1. Antal1987 for his work reverse engineering Civ3. See: https://github.com/Antal1987/C3CPatchFramework
 2. Rômulo Prado for his help testing the mod
-3. Civinator for the German translation (still in progress)
+3. Civinator for the German translation. See: https://www.civforum.de/showthread.php?113285-Der-Flintlock-Deutsch-Patch

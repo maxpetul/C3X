@@ -94,3 +94,6 @@ Ideas:
 - On right click menu, group unit of different experience together if they don't have hit points and separate out captured vs native units
 - [from vmxa] In Civilopedia unit list, remember location in the list when viewing a unit then returning
 - [from Takeo] Easier way to pick specialist type, e.g. from a menu, to solve the problem of accidentally scrolling past the one you want
+- [from Lord Malbeth]
+  - Make HN unit city capturing rules consistent for both human and AI players. Right now AIs can capture cities with HN units without declaring war but human players cannot.
+  - When players lose due to their king(s) dying, wait until the end of the turn to eliminate them from the game
