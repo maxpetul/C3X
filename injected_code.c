@@ -3235,11 +3235,24 @@ calc_food_yield (Tile * tile, int tile_x, int tile_y, City * city, int * out_bas
 	*out_irrigation_gain = irrigation_gain;
 }
 
+int
+has_improv_with_flag_or_none_in_game (City * city, enum ImprovementTypeFlags flag)
+{
+	int any_in_game = 0;
+	for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
+		if (p_bic_data->Improvements[n].ImprovementFlags & flag) {
+			any_in_game = 1;
+			if (City_has_improvement (city, __, n, 1))
+				return 1;
+		}
+	return ! any_in_game;
+}
+
 struct workable_tile {
 	Tile * tile;
 	int base_food;
 	int irrigation_gain;
-	int is_irrigated;
+	char is_irrigated, is_or_can_be_mined;
 };
 
 int
@@ -3248,8 +3261,8 @@ compare_workable_tiles (void const * vp_a, void const * vp_b)
 	struct workable_tile const * wt_a = vp_a,
 		                   * wt_b = vp_b;
 	// Sort by irrigation gain in descending order and use is_irrigated as a tie-breaker, placing already irrigated tiles earlier in the list
-	return ((wt_b->irrigation_gain << 1) + wt_b->is_irrigated) -
-	       ((wt_a->irrigation_gain << 1) + wt_a->is_irrigated);
+	return (((int)(! wt_b->is_or_can_be_mined) << 10) + (wt_b->irrigation_gain << 1) + wt_b->is_irrigated) -
+	       (((int)(! wt_a->is_or_can_be_mined) << 10) + (wt_a->irrigation_gain << 1) + wt_a->is_irrigated);
 }
 
 byte __fastcall
@@ -3266,32 +3279,62 @@ patch_City_should_irrigate (City * this, int edx, int tile_x, int tile_y, int te
 	else if (tile_owner != this)
 		return patch_City_should_irrigate (tile_owner, __, tile_x, tile_y, terrain_type_id, param_4);
 
+	// Put together list of workable tiles
 	struct workable_tile workable_tiles[20];
 	int count_workable_tiles = 0;
-
-	int total_base_food = 0;
 	FOR_TILES_AROUND(tai, 21, this->Body.X, this->Body.Y) {
 		int tai_x, tai_y;
 		tai_get_coords (&tai, &tai_x, &tai_y);
 
 		// Skip tiles with cities or that do not belong to this city
-		if (find_nearest_city_in_working_range (tai_x, tai_y) != this)
+		if (Tile_has_city (tai.tile) || (find_nearest_city_in_working_range (tai_x, tai_y) != this))
 			continue;
 
 		int base_food, irrigation_gain;
 		calc_food_yield (tai.tile, tai_x, tai_y, this, &base_food, &irrigation_gain);
-		total_base_food += base_food;
 
 		struct workable_tile w;
 		w.tile = tai.tile;
 		w.base_food = base_food;
 		w.irrigation_gain = irrigation_gain;
 		w.is_irrigated = tai.tile->vtable->m17_Check_Irrigation (tai.tile, __, 0);
+		w.is_or_can_be_mined = tai.tile->vtable->m18_Check_Mines (tai.tile, __, 0) ||
+			Leader_can_do_worker_job (&leaders[this->Body.CivID], __, WJ_Build_Mines, tai_x, tai_y, 0);
 		workable_tiles[count_workable_tiles++] = w;
 	}
-
-	int running_net_food = total_base_food - count_workable_tiles * p_bic_data->General.FoodPerCitizen;
 	qsort (workable_tiles, count_workable_tiles, sizeof workable_tiles[0], compare_workable_tiles);
+
+	int target_pop; {
+		int current_pop = this->Body.Population.Size;
+		Map * map = &p_bic_data->Map;
+
+		int pop_cap; {
+			if (current_pop <= p_bic_data->General.MaximumSize_Town) {
+				if (map->vtable->has_fresh_water (map, __, this->Body.X, this->Body.Y) ||
+				    has_improv_with_flag_or_none_in_game (this, ITF_Allows_City_Level_2))
+					pop_cap = p_bic_data->General.MaximumSize_City;
+				else
+					pop_cap = p_bic_data->General.MaximumSize_Town;
+			} else if (current_pop <= p_bic_data->General.MaximumSize_City) {
+				if (has_improv_with_flag_or_none_in_game (this, ITF_Allows_City_Level_3))
+					pop_cap = 255;
+				else
+					pop_cap = p_bic_data->General.MaximumSize_City;
+			} else
+				pop_cap = 255;
+		}
+
+		target_pop = count_workable_tiles;
+		target_pop = not_above (pop_cap, target_pop);
+		target_pop = not_below (current_pop, target_pop);
+	}
+
+	int total_base_food = 0; {
+		for (int n = 0; (n < count_workable_tiles) && (n < target_pop); n++)
+			total_base_food += workable_tiles[n].base_food;
+	}
+
+	int running_net_food = total_base_food - target_pop * p_bic_data->General.FoodPerCitizen;
 	for (int n = 0; n < count_workable_tiles; n++) {
 		struct workable_tile * w = &workable_tiles[n];
 		if ((w->tile == tile_to_work) && ((w->irrigation_gain > 0) || w->is_irrigated))
