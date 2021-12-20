@@ -164,6 +164,7 @@ typedef struct Control_Tooltip Control_Tooltip;
 typedef struct City_Order City_Order;
 typedef struct Trade_Net_Distance_Info Trade_Net_Distance_Info;
 typedef struct City_Form_vtable City_Form_vtable;
+typedef struct Reputation Reputation;
 typedef struct Leader Leader;
 typedef struct Government Government;
 typedef struct Tile_Body Tile_Body;
@@ -3972,6 +3973,24 @@ struct City_Form_vtable
   Base_Form_vtable m00;
 };
 
+struct Reputation
+{
+	int field_0;
+	int cancelled_deal;
+	int field_8;
+	int field_C;
+	int caught_spy;
+	int field_14;
+	int tribute;
+	int field_1C;
+	int field_20;
+	int gift;
+	int field_28;
+	int icbm;
+	int icbm_other;
+	int field_34[6];
+};
+
 struct Leader
 {
   Leader_vtable *vtable;
@@ -4012,7 +4031,9 @@ struct Leader
   int Tax_Luxury;
   int Tax_Cash;
   int Tax_Science;
-  int field_1B0[736];
+  Reputation reputations[32];
+  int field_B30[96];
+  int war_weariness[32];
   char At_War[32];
   char field_D50[32];
   char field_D70[32];
