@@ -3988,7 +3988,9 @@ struct Reputation
 	int field_28;
 	int icbm;
 	int icbm_other;
-	int field_34[6];
+	int recent_ww_given;
+	int recent_ww_taken; // war weariness inflicted on us (= Leader object) by this player (= index in the reputations array) during the last turn
+	int field_3C[4];
 };
 
 struct Leader
