@@ -101,3 +101,7 @@ Ideas:
   - Fix bug in AI war weariness.
   - Fix "maximum hypertext links exceeded"
   - More details in post here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-26#post-16197906
+- [from Civinator]
+  - Activate gold autofill when editing an amount of gold already on the table
+  - Enable buildings to produce resources
+  - Add ability to restrict unit types to being built in cities only with a certain improvement
