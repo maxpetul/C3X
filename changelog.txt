@@ -1,3 +1,5 @@
+- Better logic for grouping units on right click menu
+
 * RELEASE 9
 - Perfume can be applied to multiple improvements or unit types
 - Corruption can be completely removed with "OFF" government setting

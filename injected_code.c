@@ -2690,6 +2690,51 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 		return base_result;
 }
 
+int
+is_zero_strength (UnitType * ut)
+{
+	return (ut->Attack == 0) && (ut->Defence == 0) && (ut->Bombard_Strength == 0) && (ut->Air_Defence == 0);
+}
+
+int
+is_captured (Unit_Body * u)
+{
+	return (u->RaceID >= 0) && (u->CivID >= 0) && (u->CivID < 32) && leaders[u->CivID].RaceID != u->RaceID;
+}
+
+// Decides whether or not units "a" and "b" are duplicates, i.e., whether they are completely interchangeable.
+int
+are_units_duplicate (Unit_Body * a, Unit_Body * b)
+{
+	UnitType * a_type = &p_bic_data->UnitTypes[a->UnitTypeID],
+	         * b_type = &p_bic_data->UnitTypes[b->UnitTypeID];
+
+	// a and b are duplicates if...
+	return
+		// ... they have the same type that is not [a leader OR army] AND not a transport AND ...
+		(a_type == b_type) &&
+		(! (UnitType_has_ability (a_type, __, UTA_Leader) || UnitType_has_ability (a_type, __, UTA_Army))) &&
+		(a_type->Transport_Capacity == 0) &&
+
+		// ... they've taken the same amount of damage AND used up the same number of moves AND ...
+		(a->Damage == b->Damage) && (a->Moves == b->Moves) &&
+
+		// ... they have matching statuses (has attacked this turn, etc.) AND states (is fortified, is doing worker action, etc.) AND ...
+		(a->Status == b->Status) && (a->UnitState == b->UnitState) &&
+
+		// ... [they have the same experience level OR are both zero strength units] AND ...
+		((a->Combat_Experience == b->Combat_Experience) || (is_zero_strength (a_type) && is_zero_strength (b_type))) &&
+
+		// ... [they are both not contained in any unit OR they are both contained in the same unit] AND ...
+		(((a->Container_Unit < 0) && (b->Container_Unit < 0)) || (a->Container_Unit == b->Container_Unit)) &&
+
+		// ... neither one is carrying a princess AND ...
+		((a->carrying_princess_of_race < 0) && (b->carrying_princess_of_race < 0)) &&
+
+		// ... [they are both captured units OR are both native units].
+		(! (is_captured (a) ^ is_captured (b)));
+}
+
 int __fastcall
 patch_Context_Menu_add_item_and_set_field_18 (Context_Menu * this, int edx, int item_id, char * text, int field_18)
 {
@@ -2708,32 +2753,19 @@ patch_Context_Menu_add_item_and_set_field_18 (Context_Menu * this, int edx, int 
 	    (0 <= (unit_id = item_id - (0x13 + p_bic_data->UnitTypeCount))) &&
 	    (NULL != (unit_body = p_units->Units[unit_id].Unit)) &&
 	    (unit_body->UnitTypeID >= 0) && (unit_body->UnitTypeID < p_bic_data->UnitTypeCount)) {
-		UnitType * unit_type = &p_bic_data->UnitTypes[unit_body->UnitTypeID];
 
-		// Don't group transports because they might be carrying units. It would be nice to group up empty transports but this is good enough
-		// for now.
-		if (unit_type->Transport_Capacity == 0) {
-
-			// Loop over all existing menu items and check if any of them is a unit that's a duplicate of the one being added
-			for (int n = 0; n < this->Item_Count; n++) {
-				Context_Menu_Item * item = &this->Items[n];
-				int dup_unit_id = this->Items[n].Menu_Item_ID - (0x13 + p_bic_data->UnitTypeCount);
-				Unit_Body * dup_body;
-				if ((dup_unit_id >= 0) &&
-				    (NULL != (dup_body = p_units->Units[dup_unit_id].Unit)) &&
-				    (unit_body->UnitTypeID == dup_body->UnitTypeID) &&
-				    (unit_body->Damage == dup_body->Damage) &&
-				    (unit_body->Moves == dup_body->Moves) &&
-				    (unit_body->Status == dup_body->Status) &&
-				    (unit_body->UnitState == dup_body->UnitState) &&
-				    (unit_body->Combat_Experience == dup_body->Combat_Experience) &&
-				    (((unit_body->Container_Unit < 0) && (dup_body->Container_Unit < 0)) ||
-				     (unit_body->Container_Unit == dup_body->Container_Unit))) {
-					// The new item is a duplicate of the nth. Mark that in the duplicate counts array and return without actually
-					// adding the item. It doesn't matter what value we return because the caller doesn't use it.
-					is->unit_menu_duplicates[n] += 1;
-					return 0;
-				}
+		// Loop over all existing menu items and check if any of them is a unit that's a duplicate of the one being added
+		for (int n = 0; n < this->Item_Count; n++) {
+			Context_Menu_Item * item = &this->Items[n];
+			int dup_unit_id = this->Items[n].Menu_Item_ID - (0x13 + p_bic_data->UnitTypeCount);
+			Unit_Body * dup_body;
+			if ((dup_unit_id >= 0) &&
+			    (NULL != (dup_body = p_units->Units[dup_unit_id].Unit)) &&
+			    are_units_duplicate (unit_body, dup_body)) {
+				// The new item is a duplicate of the nth. Mark that in the duplicate counts array and return without actually
+				// adding the item. It doesn't matter what value we return because the caller doesn't use it.
+				is->unit_menu_duplicates[n] += 1;
+				return 0;
 			}
 		}
 	}
