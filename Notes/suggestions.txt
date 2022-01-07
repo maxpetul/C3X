@@ -89,7 +89,7 @@ Ideas:
 - [from register] Fix city governor ignoring instruction to never produce artillery or settlers; enable AI to redeem treasury units in its capital (according to Civinator this is only a problem when the units are spawned there)
 - [from ynot56] When moving a group of units, stop the faster ones from losing all their remaining moves after the slowest reach their limit; Preserve surplus shields and beakers for the next project
 - [from justanick] Stop the AI from upgrading to units that are strictly inferior
-- [from Ruin] Enable paratroopers to move after landing. (This might already be possible.)
+- [from Ruin and Alekseyev_] Enable paratroopers to move after landing. (This might already be possible.)
 - [from haluu] Prevent land workers from working water tiles from boats
 - On right click menu, group unit of different experience together if they don't have hit points and separate out captured vs native units
 - [from vmxa] In Civilopedia unit list, remember location in the list when viewing a unit then returning
@@ -105,3 +105,8 @@ Ideas:
   - Activate gold autofill when editing an amount of gold already on the table
   - Enable buildings to produce resources
   - Add ability to restrict unit types to being built in cities only with a certain improvement
+- [from Alekseyev_]
+  - Workers set to auto clean pollution don't drop that setting when there's no pollution left
+  - Shield and science overflow
+  - Allow cities founded on resources to benefit from bonus food
+  - Play unit attack animation instead of missile animation when a flak or mobile SAM shoots down an aircraft
