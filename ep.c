@@ -936,6 +936,7 @@ ENTRY_POINT ()
 		.enable_ai_city_location_desirability_display = 1,
 		.zero_corruption_when_off = 1,
 		.disallow_land_units_from_settling_water = 1,
+		.dont_end_units_turn_after_airdrop = 0,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,

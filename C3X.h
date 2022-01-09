@@ -50,6 +50,7 @@ struct c3x_config {
 	char enable_ai_city_location_desirability_display;
 	char zero_corruption_when_off;
 	char disallow_land_units_from_settling_water;
+	char dont_end_units_turn_after_airdrop;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;

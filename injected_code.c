@@ -187,6 +187,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->zero_corruption_when_off = ival;
 				else if ((0 == strncmp (key.str, "disallow_land_units_from_settling_water", key.len)) && read_int (&value, &ival))
 					cfg->disallow_land_units_from_settling_water = ival;
+				else if ((0 == strncmp (key.str, "dont_end_units_turn_after_airdrop", key.len)) && read_int (&value, &ival))
+					cfg->dont_end_units_turn_after_airdrop = ival;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -3170,6 +3172,12 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 		}
 	}
 	Main_Screen_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
+}
+
+int __fastcall
+patch_Unit_get_move_points_after_airdrop (Unit * this)
+{
+	return is->current_config.dont_end_units_turn_after_airdrop ? this->Body.Moves : Unit_get_max_move_points (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
