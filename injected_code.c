@@ -220,6 +220,8 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->patch_disembark_immobile_bug = ival != 0;
 				else if ((0 == strncmp (key.str, "patch_houseboat_bug", key.len)) && read_int (&value, &ival))
 					cfg->patch_houseboat_bug = ival != 0;
+				else if ((0 == strncmp (key.str, "patch_intercept_lost_turn_bug", key.len)) && read_int (&value, &ival))
+					cfg->patch_intercept_lost_turn_bug = ival != 0;
 
 				else if ((0 == strncmp (key.str, "prevent_autorazing", key.len)) && read_int (&value, &ival))
 					cfg->prevent_autorazing = ival != 0;
@@ -3178,6 +3180,12 @@ int __fastcall
 patch_Unit_get_move_points_after_airdrop (Unit * this)
 {
 	return is->current_config.dont_end_units_turn_after_airdrop ? this->Body.Moves : Unit_get_max_move_points (this);
+}
+
+int __fastcall
+patch_Unit_get_move_points_after_set_to_intercept (Unit * this)
+{
+	return is->current_config.patch_intercept_lost_turn_bug ? this->Body.Moves : Unit_get_max_move_points (this);
 }
 
 // TCC requires a main function be defined even though it's never used.

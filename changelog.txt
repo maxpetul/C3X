@@ -1,5 +1,6 @@
 - Better logic for grouping units on right click menu
 - Option to let units move after airdropping
+- Fix air units losing a turn after being set to intercept
 
 * RELEASE 9
 - Perfume can be applied to multiple improvements or unit types

@@ -68,6 +68,7 @@ struct c3x_config {
 	char patch_pedia_texture_bug;
 	char patch_disembark_immobile_bug;
 	char patch_houseboat_bug;
+	char patch_intercept_lost_turn_bug;
 
 	char prevent_autorazing;
 	char prevent_razing_by_ai_players;

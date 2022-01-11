@@ -187,3 +187,4 @@ ignore,	   0x56D040,	0x5799C0,	"find_nearest_city",				"City * (__cdecl *) (int 
 
 define,	   0x5BE470,	0x5CD030,	"Unit_get_max_move_points",			"int (__fastcall *) (Unit * this)"
 repl call, 0x5C190B,	0x5D0493,	"Unit_get_move_points_after_airdrop",		""
+repl call, 0x4D93E0,	0x4E1D70,	"Unit_get_move_points_after_set_to_intercept",	""

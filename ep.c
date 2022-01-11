@@ -954,6 +954,7 @@ ENTRY_POINT ()
 		.patch_pedia_texture_bug = 1,
 		.patch_disembark_immobile_bug = 1,
 		.patch_houseboat_bug = 1,
+		.patch_intercept_lost_turn_bug = 1,
 
 		.prevent_autorazing = 0,
 		.prevent_razing_by_ai_players = 0,
