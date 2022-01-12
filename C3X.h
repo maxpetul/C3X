@@ -162,6 +162,7 @@ struct injected_state {
 
 	enum init_state sc_img_state;
 	enum init_state tile_highlight_state;
+	enum init_state mod_info_button_images_state;
 
 	struct c3x_config base_config;
 
@@ -253,11 +254,17 @@ struct injected_state {
 	// enough time on this already. That click interceptor sets a flag value of 2 to indicate this annoying state.
 
 	// ==========
-	// } These fields are valid only after init_tile_highlights as been caled. {
+	// } These fields are valid only after init_tile_highlights as been called. {
 	// ==========
 
 	PCX_Image tile_highlight_sheet;
 	Tile_Image_Info tile_highlights[COUNT_TILE_HIGHLIGHTS];
+
+	// ==========
+	// } This one is valid only if init_mod_info_button_images has been called and mod_info_button_images_state equals IS_OK {
+	// ==========
+
+	Tile_Image_Info mod_info_button_images[3];
 
 	// ==========
 	// } These fields are temporary/situational {

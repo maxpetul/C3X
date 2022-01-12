@@ -2803,7 +2803,7 @@ struct GUI_Form_1_vtable
 
 struct Base_Form_vtable
 {
-  int m00;
+  Base_Form * (__fastcall * destruct) (Base_Form *, __, byte);
   void (__fastcall * m01_Show_Enabled) (Base_Form *, __, byte);
   void (__fastcall * m02_Show_Disabled) (Base_Form *);
   int m03;

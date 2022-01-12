@@ -37,6 +37,12 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define TRADE_SCROLL_BUTTON_ID_LEFT  0x222001
 #define TRADE_SCROLL_BUTTON_ID_RIGHT 0x222002
 
+// Must match size of button images in descbox.pcx
+#define MOD_INFO_BUTTON_WIDTH 102
+#define MOD_INFO_BUTTON_HEIGHT 17
+
+#define MOD_INFO_BUTTON_ID 0x222003
+
 // Need to define memmove for use by TCC when generated code for functions that return a struct
 void *
 memmove (void * dest, void const * src, size_t size)
@@ -705,6 +711,32 @@ init_trade_scroll_buttons (DiploForm * diplo_form)
 	}
 
 	is->trade_scroll_button_state = IS_OK;
+}
+
+void
+init_mod_info_button_images ()
+{
+	if (is->mod_info_button_images_state != IS_UNINITED)
+		return;
+
+	is->mod_info_button_images_state = IS_INIT_FAILED;
+
+	PCX_Image * descbox_pcx = new (sizeof *descbox_pcx);
+	PCX_Image_construct (descbox_pcx);
+	char * descbox_path = BIC_get_asset_path (p_bic_data, __, "art\\civilopedia\\descbox.pcx", 1);
+	PCX_Image_read_file (descbox_pcx, __, descbox_path, NULL, 0, 0x100, 1);
+	if (descbox_pcx->JGL.Image == NULL) {
+		(*p_OutputDebugStringA) ("[C3X] Failed to load descbox.pcx");
+		return;
+	}
+
+	for (int n = 0; n < 3; n++) {
+		Tile_Image_Info_construct (&is->mod_info_button_images[n]);
+		Tile_Image_Info_slice_pcx_with_color_table (&is->mod_info_button_images[n], __, descbox_pcx, 1 + n * 103, 1, MOD_INFO_BUTTON_WIDTH,
+							    MOD_INFO_BUTTON_HEIGHT, 1, 1);
+	}
+
+	is->mod_info_button_images_state = IS_OK;
 }
 
 // Prints x to str and appends null terminator. Assumes str has enough space. Returns pointer to null terminator
@@ -3186,6 +3218,46 @@ int __fastcall
 patch_Unit_get_move_points_after_set_to_intercept (Unit * this)
 {
 	return is->current_config.patch_intercept_lost_turn_bug ? this->Body.Moves : Unit_get_max_move_points (this);
+}
+
+int __fastcall
+patch_Parameters_Form_m68_Show_Dialog (Parameters_Form * this, int edx, int param_1, void * param_2, void * param_3)
+{
+	init_mod_info_button_images ();
+
+	// "b" is the mod info button. It's created each time the preferences form (or "parameters" form as Antal called it) is opened and destroyed
+	// every time the form is closed. This is the easiest way since it matches how the base game works. At first I tried creating the button once
+	// but then it will only appear once since its attachment to the prefs form is lost when the form is destroyed on closure. I tried reattaching
+	// the button to each newly created form but wasn't able to make that work.
+	Button * b = NULL;
+	if (is->mod_info_button_images_state == IS_OK) {
+		b = malloc (sizeof *b);
+		Button_construct (b);
+
+		Button_initialize (b, __,
+				   "C3X Info", // text
+				   MOD_INFO_BUTTON_ID, // control ID
+				   24, 716, // location x, y
+				   MOD_INFO_BUTTON_WIDTH, MOD_INFO_BUTTON_HEIGHT, // width, height
+				   (Base_Form *)this, // parent
+				   0); // ?
+
+		for (int n = 0; n < 3; n++)
+			b->Images[n] = &is->mod_info_button_images[n];
+		PCX_Image_set_font (&b->Base_Data.Canvas, __, get_font (15, FSF_NONE), 0, 0, 0);
+
+		// Need to draw once manually or the button won't look right
+		b->vtable->m73_call_m22_Draw ((Base_Form *)b);
+	}
+
+	int tr = Parameters_Form_m68_Show_Dialog (this, __, param_1, param_2, param_3);
+
+	if (b != NULL) {
+		b->vtable->destruct ((Base_Form *)b, __, 0);
+		free (b);
+	}
+
+	return tr;
 }
 
 // TCC requires a main function be defined even though it's never used.
