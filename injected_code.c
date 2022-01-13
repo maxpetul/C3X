@@ -3227,7 +3227,7 @@ activate_mod_info_button (int control_id)
 	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
 	char s[500];
 	char version_letter = 'A' + MOD_VERSION%100;
-	snprintf (s, sizeof s, "Version: %d%c", MOD_VERSION/100, MOD_VERSION%100 != 0 ? version_letter : ' ');
+	snprintf (s, sizeof s, "%s: %d%c", is->c3x_labels[CL_VERSION], MOD_VERSION/100, MOD_VERSION%100 != 0 ? version_letter : ' ');
 	s[(sizeof s) - 1] = '\0';
 	PopupForm_add_text (popup, __, s, 0);
 	show_popup (popup, __, 0, 0);
@@ -3248,7 +3248,7 @@ patch_Parameters_Form_m68_Show_Dialog (Parameters_Form * this, int edx, int para
 		Button_construct (b);
 
 		Button_initialize (b, __,
-				   "C3X Info", // text
+				   is->c3x_labels[CL_MOD_INFO_BUTTON_TEXT], // text
 				   MOD_INFO_BUTTON_ID, // control ID
 				   891, 31, // location x, y
 				   MOD_INFO_BUTTON_WIDTH, MOD_INFO_BUTTON_HEIGHT, // width, height

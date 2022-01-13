@@ -24,3 +24,9 @@ Chopped
 
 ; As in turn off, disable, deactivate
 OFF
+
+; Text on button that opens the mod info popup
+C3X Info
+
+; Used on mod info popup
+Version
