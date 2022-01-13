@@ -3250,7 +3250,7 @@ patch_Parameters_Form_m68_Show_Dialog (Parameters_Form * this, int edx, int para
 		Button_initialize (b, __,
 				   "C3X Info", // text
 				   MOD_INFO_BUTTON_ID, // control ID
-				   24, 716, // location x, y
+				   891, 31, // location x, y
 				   MOD_INFO_BUTTON_WIDTH, MOD_INFO_BUTTON_HEIGHT, // width, height
 				   (Base_Form *)this, // parent
 				   0); // ?
