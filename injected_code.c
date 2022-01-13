@@ -3220,6 +3220,19 @@ patch_Unit_get_move_points_after_set_to_intercept (Unit * this)
 	return is->current_config.patch_intercept_lost_turn_bug ? this->Body.Moves : Unit_get_max_move_points (this);
 }
 
+void __cdecl
+activate_mod_info_button (int control_id)
+{
+	PopupForm * popup = get_popup_form ();
+	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
+	char s[500];
+	char version_letter = 'A' + MOD_VERSION%100;
+	snprintf (s, sizeof s, "Version: %d%c", MOD_VERSION/100, MOD_VERSION%100 != 0 ? version_letter : ' ');
+	s[(sizeof s) - 1] = '\0';
+	PopupForm_add_text (popup, __, s, 0);
+	show_popup (popup, __, 0, 0);
+}
+
 int __fastcall
 patch_Parameters_Form_m68_Show_Dialog (Parameters_Form * this, int edx, int param_1, void * param_2, void * param_3)
 {
@@ -3245,6 +3258,7 @@ patch_Parameters_Form_m68_Show_Dialog (Parameters_Form * this, int edx, int para
 		for (int n = 0; n < 3; n++)
 			b->Images[n] = &is->mod_info_button_images[n];
 		PCX_Image_set_font (&b->Base_Data.Canvas, __, get_font (15, FSF_NONE), 0, 0, 0);
+		b->activation_handler = &activate_mod_info_button;
 
 		// Need to draw once manually or the button won't look right
 		b->vtable->m73_call_m22_Draw ((Base_Form *)b);

@@ -32,6 +32,9 @@ Nevermind
 #C3X_WARNING
 #caption C3X Warning
 
+#C3X_INFO
+#caption C3X Info
+
 #C3X_UNMATCHED_PERFUME_TARGET
 #caption C3X Warning
 #text
