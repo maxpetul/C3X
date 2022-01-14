@@ -202,6 +202,13 @@ struct injected_state {
 
 	struct c3x_config current_config;
 
+	// Keeps a record of all configs currently loaded. Useful to know. "name" is the file name for configs that come from files, which is all of
+	// them except for the base config, whose name is "(base)".
+	struct loaded_config_name {
+		char * name;
+		struct loaded_config_name * next;
+	} * loaded_config_names;
+
 	char mod_script_path[MAX_PATH];
 
 	char * c3x_labels[COUNT_C3X_LABELS];

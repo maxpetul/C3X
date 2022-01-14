@@ -100,14 +100,18 @@ err_in_CreateFileA:
 }
 
 char *
-load_text_file (char const * filename, char const * description, char const * additional_error_info)
+load_text_file (char const * file_path, int path_is_relative_to_mod_dir, char const * description, int show_error_popup)
 {
 	char temp_path[2*MAX_PATH];
-	snprintf (temp_path, sizeof temp_path, "%s\\%s", is->mod_rel_dir, filename);
-	char * tr = file_to_string (temp_path);
-	if (tr == NULL) {
+	if (path_is_relative_to_mod_dir) {
+		snprintf (temp_path, sizeof temp_path, "%s\\%s", is->mod_rel_dir, file_path);
+		temp_path[(sizeof temp_path) - 1] = '\0';
+		file_path = temp_path;
+	}
+	char * tr = file_to_string (file_path);
+	if ((tr == NULL) && show_error_popup) {
 		char err_msg[1000];
-		snprintf (err_msg, sizeof err_msg, "Couldn't read %s from %s\nPlease make sure the file exists, if you moved the patched EXE you must move the mod folder as well.%s", description, temp_path, additional_error_info);
+		snprintf (err_msg, sizeof err_msg, "Couldn't read %s from %s\nPlease make sure the file exists, if you moved the patched EXE you must move the mod folder as well.", description, temp_path);
 		err_msg[(sizeof err_msg) - 1] = '\0';
 		is->MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
 	}
@@ -115,11 +119,21 @@ load_text_file (char const * filename, char const * description, char const * ad
 }
 
 void
-load_config (char const * filename, struct c3x_config * cfg)
+load_config (char const * file_path, int path_is_relative_to_mod_dir, struct c3x_config * cfg)
 {
-	char * text = load_text_file ("default.c3x_config.ini", "config info", "\nThe game & mod can run anyway but any changes made to this file will not apply.");
-	if (text == NULL)
+	int full_path_size = 2 * MAX_PATH;
+	char * full_path = malloc (full_path_size);
+	if (path_is_relative_to_mod_dir)
+		snprintf (full_path, full_path_size, "%s\\%s", is->mod_rel_dir, file_path);
+	else
+		strncpy (full_path, file_path, full_path_size);
+	full_path[full_path_size - 1] = '\0';
+
+	char * text = file_to_string (full_path);
+	if (text == NULL) {
+		free (full_path);
 		return;
+	}
 
 	char * cursor = text;
 	int displayed_error_message = 0;
@@ -235,7 +249,7 @@ load_config (char const * filename, struct c3x_config * cfg)
 					cfg->prevent_razing_by_ai_players = ival != 0;
 
 				else if (! displayed_error_message) {
-					snprintf (err_msg, sizeof err_msg, "Error processing key \"%.*s\" in \"%s\". Either the key is not recognized or the value is invalid.", key.len, key.str, filename);
+					snprintf (err_msg, sizeof err_msg, "Error processing key \"%.*s\" in \"%s\". Either the key is not recognized or the value is invalid.", key.len, key.str, full_path);
 					err_msg[(sizeof err_msg) - 1] = '\0';
 					is->MessageBoxA (NULL, err_msg, NULL, MB_ICONERROR);
 					displayed_error_message = 1;
@@ -245,7 +259,7 @@ load_config (char const * filename, struct c3x_config * cfg)
 					int line_no = 1;
 					for (char * c = text; c < cursor; c++)
 						line_no += *c == '\n';
-					snprintf (err_msg, sizeof err_msg, "Parse error on line %d of \"%s\".", line_no, filename);
+					snprintf (err_msg, sizeof err_msg, "Parse error on line %d of \"%s\".", line_no, full_path);
 					err_msg[(sizeof err_msg) - 1] = '\0';
 					is->MessageBoxA (NULL, err_msg, NULL, MB_ICONERROR);
 					displayed_error_message = 1;
@@ -256,6 +270,16 @@ load_config (char const * filename, struct c3x_config * cfg)
 	}
 
 	free (text);
+
+	struct loaded_config_name * top_lcn = is->loaded_config_names;
+	while (top_lcn->next != NULL)
+		top_lcn = top_lcn->next;
+
+	struct loaded_config_name * new_lcn = malloc (sizeof *new_lcn);
+	new_lcn->name = full_path;
+	new_lcn->next = NULL;
+
+	top_lcn->next = new_lcn;
 }
 
 char __fastcall
@@ -368,7 +392,7 @@ check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect
 	     is->VirtualProtect (addr, size, old_protect, &unused), iter_count++)
 
 void
-apply_config (struct c3x_config * cfg)
+apply_machine_code_edits (struct c3x_config const * cfg)
 {
 	DWORD old_protect, unused;
 
@@ -510,7 +534,7 @@ patch_init_floating_point ()
 	{
 		for (int n = 0; n < COUNT_C3X_LABELS; n++)
 			is->c3x_labels[n] = "";
-		char * labels_file_contents = load_text_file ("Text\\c3x-labels.txt", "labels", "");
+		char * labels_file_contents = load_text_file ("Text\\c3x-labels.txt", 1, "labels", 1);
 		if (labels_file_contents != NULL) {
 			char * cursor = labels_file_contents;
 			int n = 0;
@@ -567,9 +591,12 @@ patch_init_floating_point ()
 	is->count_ai_prod_valuations = 0;
 	is->ai_prod_valuations_capacity = 0;
 
+	is->loaded_config_names = malloc (sizeof *is->loaded_config_names);
+	is->loaded_config_names->name = "(base)";
+	is->loaded_config_names->next = NULL;
 	memmove (&is->current_config, &is->base_config, sizeof is->current_config);
-	load_config ("default.c3x_config.ini", &is->current_config);
-	apply_config (&is->current_config);
+	load_config ("default.c3x_config.ini", 1, &is->current_config);
+	apply_machine_code_edits (&is->current_config);
 }
 
 void
@@ -3227,9 +3254,21 @@ activate_mod_info_button (int control_id)
 	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
 	char s[500];
 	char version_letter = 'A' + MOD_VERSION%100;
+
 	snprintf (s, sizeof s, "%s: %d%c", is->c3x_labels[CL_VERSION], MOD_VERSION/100, MOD_VERSION%100 != 0 ? version_letter : ' ');
 	s[(sizeof s) - 1] = '\0';
 	PopupForm_add_text (popup, __, s, 0);
+
+	PopupForm_add_text (popup, __, "^Config files loaded:", 0);
+
+	int n = 1;
+	for (struct loaded_config_name * lcn = is->loaded_config_names; lcn != NULL; lcn = lcn->next) {
+		snprintf (s, sizeof s, "^  %d. %s", n, lcn->name);
+		s[(sizeof s) - 1] = '\0';
+		n++;
+		PopupForm_add_text (popup, __, s, 0);
+	}
+
 	show_popup (popup, __, 0, 0);
 }
 
