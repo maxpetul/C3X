@@ -99,25 +99,6 @@ err_in_CreateFileA:
 	return NULL;
 }
 
-char *
-load_text_file (char const * file_path, int path_is_relative_to_mod_dir, char const * description, int show_error_popup)
-{
-	char temp_path[2*MAX_PATH];
-	if (path_is_relative_to_mod_dir) {
-		snprintf (temp_path, sizeof temp_path, "%s\\%s", is->mod_rel_dir, file_path);
-		temp_path[(sizeof temp_path) - 1] = '\0';
-		file_path = temp_path;
-	}
-	char * tr = file_to_string (file_path);
-	if ((tr == NULL) && show_error_popup) {
-		char err_msg[1000];
-		snprintf (err_msg, sizeof err_msg, "Couldn't read %s from %s\nPlease make sure the file exists, if you moved the patched EXE you must move the mod folder as well.", description, temp_path);
-		err_msg[(sizeof err_msg) - 1] = '\0';
-		is->MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
-	}
-	return tr;
-}
-
 void
 load_config (char const * file_path, int path_is_relative_to_mod_dir, struct c3x_config * cfg)
 {
@@ -534,7 +515,12 @@ patch_init_floating_point ()
 	{
 		for (int n = 0; n < COUNT_C3X_LABELS; n++)
 			is->c3x_labels[n] = "";
-		char * labels_file_contents = load_text_file ("Text\\c3x-labels.txt", 1, "labels", 1);
+
+		char labels_path[MAX_PATH];
+		snprintf (labels_path, sizeof labels_path, "%s\\Text\\c3x-labels.txt", is->mod_rel_dir);
+		labels_path[(sizeof labels_path) - 1] = '\0';
+		char * labels_file_contents = file_to_string (labels_path);
+
 		if (labels_file_contents != NULL) {
 			char * cursor = labels_file_contents;
 			int n = 0;
@@ -559,6 +545,12 @@ patch_init_floating_point ()
 				}
 			}
 			free (labels_file_contents);
+
+		} else {
+			char err_msg[500];
+			snprintf (err_msg, sizeof err_msg, "Couldn't read labels from %s\nPlease make sure the file exists. If you moved the modded EXE you must move the mod folder after it.", labels_path);
+			err_msg[(sizeof err_msg) - 1] = '\0';
+			is->MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
 		}
 	}
 
