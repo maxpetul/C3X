@@ -3251,7 +3251,9 @@ activate_mod_info_button (int control_id)
 	s[(sizeof s) - 1] = '\0';
 	PopupForm_add_text (popup, __, s, 0);
 
-	PopupForm_add_text (popup, __, "^Config files loaded:", 0);
+	snprintf (s, sizeof s, "^%s:", is->c3x_labels[CL_CONFIG_FILES_LOADED]);
+	s[(sizeof s) - 1] = '\0';
+	PopupForm_add_text (popup, __, s, 0);
 
 	int n = 1;
 	for (struct loaded_config_name * lcn = is->loaded_config_names; lcn != NULL; lcn = lcn->next) {

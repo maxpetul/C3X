@@ -30,3 +30,6 @@ C3X Info
 
 ; Used on mod info popup
 Version
+
+; Also used on mod info popup
+Config files loaded
