@@ -196,6 +196,7 @@ struct injected_state {
 	int (* strncmp) (char const *, char const *, size_t);
 	size_t (* strlen) (char const *);
 	char * (* strncpy) (char *, char const *, size_t);
+	char * (* strdup) (char const *);
 	char * (* strstr) (char const *, char const *);
 	void (* qsort) (void *, size_t, size_t, int (*) (void const *, void const *));
 	int (* memcmp) (void const *, void const *, size_t);

@@ -27,6 +27,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define strncmp is->strncmp
 #define strlen is->strlen
 #define strncpy is->strncpy
+#define strdup is->strdup
 #define strstr is->strstr
 #define qsort is->qsort
 #define memcmp is->memcmp
@@ -99,9 +100,37 @@ err_in_CreateFileA:
 	return NULL;
 }
 
+// Resets is->current_config to the base config and updates the list of config names. Does NOT re-apply machine code edits.
 void
-load_config (char const * file_path, int path_is_relative_to_mod_dir, struct c3x_config * cfg)
+reset_to_base_config ()
 {
+	// Free the linked list of loaded config names and the string name contained in each one
+	if (is->loaded_config_names != NULL) {
+		struct loaded_config_name * next = is->loaded_config_names;
+		while (next != NULL) {
+			struct loaded_config_name * to_free = next;
+			next = next->next;
+			free (to_free->name);
+			free (to_free);
+		}
+	}
+
+	// Overwrite the current config with the base config
+	memcpy (&is->current_config, &is->base_config, sizeof is->current_config);
+
+	// Recreate loaded config names list with just the base config
+	is->loaded_config_names = malloc (sizeof *is->loaded_config_names);
+	is->loaded_config_names->name = strdup ("(base)");
+	is->loaded_config_names->next = NULL;
+}
+
+// Loads a config from the given file, layering it on top of is->current_config and appending its name to the list of loaded configs. Does NOT
+// re-apply machine code edits.
+void
+load_config (char const * file_path, int path_is_relative_to_mod_dir)
+{
+	struct c3x_config * cfg = &is->current_config;
+
 	int full_path_size = 2 * MAX_PATH;
 	char * full_path = malloc (full_path_size);
 	if (path_is_relative_to_mod_dir)
@@ -502,6 +531,7 @@ patch_init_floating_point ()
 	strncmp  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncmp");
 	strlen   = (void *)(*p_GetProcAddress) (is->msvcrt, "strlen");
 	strncpy  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncpy");
+	strdup   = (void *)(*p_GetProcAddress) (is->msvcrt, "_strdup");
 	strstr   = (void *)(*p_GetProcAddress) (is->msvcrt, "strstr");
 	qsort    = (void *)(*p_GetProcAddress) (is->msvcrt, "qsort");
 	memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
@@ -583,11 +613,9 @@ patch_init_floating_point ()
 	is->count_ai_prod_valuations = 0;
 	is->ai_prod_valuations_capacity = 0;
 
-	is->loaded_config_names = malloc (sizeof *is->loaded_config_names);
-	is->loaded_config_names->name = "(base)";
-	is->loaded_config_names->next = NULL;
-	memmove (&is->current_config, &is->base_config, sizeof is->current_config);
-	load_config ("default.c3x_config.ini", 1, &is->current_config);
+	is->loaded_config_names = NULL;
+	reset_to_base_config ();
+	load_config ("default.c3x_config.ini", 1);
 	apply_machine_code_edits (&is->current_config);
 }
 
