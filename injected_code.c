@@ -1929,6 +1929,11 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 
 	reset_to_base_config ();
 	load_config ("default.c3x_config.ini", 1);
+	char * scenario_config_file_name = "scenario.c3x_config.ini";
+	char * scenario_config_path = BIC_get_asset_path (p_bic_data, __, scenario_config_file_name, 0);
+	// BIC_get_asset_path returns the file name when it can't find the file
+	if (0 != strncmp (scenario_config_file_name, scenario_config_path, strlen (scenario_config_file_name)))
+		load_config (scenario_config_path, 0);
 	apply_machine_code_edits (&is->current_config);
 
 	if (is->current_config.count_perfume_specs > 0) {
