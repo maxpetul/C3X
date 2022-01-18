@@ -104,6 +104,13 @@ err_in_CreateFileA:
 void
 reset_to_base_config ()
 {
+	// Free list of perfume specs since these come from the config
+	if (is->perfume_specs != NULL) {
+		free (is->perfume_specs);
+		is->perfume_specs = NULL;
+		is->count_perfume_specs = 0;
+	}
+
 	// Free the linked list of loaded config names and the string name contained in each one
 	if (is->loaded_config_names != NULL) {
 		struct loaded_config_name * next = is->loaded_config_names;
@@ -615,7 +622,6 @@ patch_init_floating_point ()
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
-	load_config ("default.c3x_config.ini", 1);
 	apply_machine_code_edits (&is->current_config);
 }
 
@@ -1914,10 +1920,16 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 
 	unsigned tr = load_scenario (this, __, param_1, param_2);
 
-	if (is->perfume_specs != NULL)
-		free (is->perfume_specs);
-	is->perfume_specs = NULL;
-	is->count_perfume_specs = 0;
+	// There are two cases when load_scenario is called that we don't want to run our own code. These are (1) when the scenario is loaded to
+	// generate a preview (map, etc.) for the "Civ Content" or "Conquests" menu and (2) when the function is called recursively. The recursive
+	// call is done, I believe, only when loading saves using the default rules. The game first tries to load custom rules then falls back on
+	// loading the default rules. In any case, we want to ignore that call so we don't run the same code twice.
+	if ((ret_addr == ADDR_LOAD_SCENARIO_PREVIEW_RETURN) || (ret_addr == ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN))
+		return tr;
+
+	reset_to_base_config ();
+	load_config ("default.c3x_config.ini", 1);
+	apply_machine_code_edits (&is->current_config);
 
 	if (is->current_config.count_perfume_specs > 0) {
 		is->perfume_specs = malloc (is->current_config.count_perfume_specs * sizeof is->perfume_specs[0]);
@@ -1934,14 +1946,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 				memoize (n);
 		}
 
-		// There are some times that load_scenario gets called that we don't want to check if the perfume names match in order to avoid
-		// annoying the player with popups. These times are (1) when a scenario is loaded to generate the preview (map, etc.) for the "Civ
-		// Content" or "Conquests" menu and (2) when a scenario is loaded a second time during the process of loading a saved game. I don't
-		// know why load_scenario is called twice in the second case, but skip it anyway to avoid showing the same popup twice.
-		int is_useful_to_check_perfume_names = (ret_addr != ADDR_LOAD_SCENARIO_PREVIEW_RETURN) && (ret_addr != ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN);
-
 		if (is->current_config.warn_about_unrecognized_perfume_target &&
-		    is_useful_to_check_perfume_names &&
 		    (is->memo_len > 0)) {
 			PopupForm * popup = get_popup_form ();
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_UNMATCHED_PERFUME_TARGET", -1, 0, 0, 0);
