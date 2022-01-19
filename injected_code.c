@@ -1864,29 +1864,12 @@ patch_do_save_game (char * file_path, char param_2, GUID * guid)
 	if ((is->current_config.limit_railroad_movement <= 0) || (is->saved_road_movement_rate <= 0))
 		return do_save_game (file_path, param_2, guid);
 	else {
+		// If the BIC's road-movement-rate was changed to limit railroad movement, avoid writing the changed value into the save
 		int rmr = p_bic_data->General.RoadsMovementRate;
 		p_bic_data->General.RoadsMovementRate = is->saved_road_movement_rate;
 		int tr = do_save_game (file_path, param_2, guid);
 		p_bic_data->General.RoadsMovementRate = rmr;
 		return tr;
-	}
-}
-
-void __fastcall
-patch_General_clear (General * this)
-{
-	General_clear (this);
-	is->saved_road_movement_rate = -1;
-}
-
-void __fastcall
-patch_General_load (General * this, int edx, byte ** buffer)
-{
-	General_load (this, __, buffer);
-
-	if (is->current_config.limit_railroad_movement > 0) {
-		is->saved_road_movement_rate = p_bic_data->General.RoadsMovementRate;
-		p_bic_data->General.RoadsMovementRate *= is->current_config.limit_railroad_movement;
 	}
 }
 
@@ -1935,6 +1918,13 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	if (0 != strncmp (scenario_config_file_name, scenario_config_path, strlen (scenario_config_file_name)))
 		load_config (scenario_config_path, 0);
 	apply_machine_code_edits (&is->current_config);
+
+	// Set up for limiting railroad movement, if enabled
+	if (is->current_config.limit_railroad_movement > 0) {
+		is->saved_road_movement_rate = p_bic_data->General.RoadsMovementRate;
+		p_bic_data->General.RoadsMovementRate *= is->current_config.limit_railroad_movement;
+	} else
+		is->saved_road_movement_rate = -1;
 
 	if (is->current_config.count_perfume_specs > 0) {
 		is->perfume_specs = malloc (is->current_config.count_perfume_specs * sizeof is->perfume_specs[0]);
