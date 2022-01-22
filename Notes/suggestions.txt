@@ -110,3 +110,13 @@ Ideas:
   - Shield and science overflow
   - Allow cities founded on resources to benefit from bonus food
   - Play unit attack animation instead of missile animation when a flak or mobile SAM shoots down an aircraft
+- [from adz1061]
+  - Stop air units from losing the rest of their moves when set to intercept
+  - Enable cities to expand cultural borders beyond 100000 culture
+- [from Meteor Man]
+  - Easy way to un-group units on right click menu and/or separate out units with custom names
+  - Make rally points affect units spawned from buildings
+  - Improve AI usage of flag units. It should redeem them more quickly.
+  - Stop submarines (maybe all invisible naval units) from bombarding land & city tiles
+  - Fix unit go-to ETA display is wrong when using limited railroad movement
+- [from Alekseyev_ and Civinator] Restrict units to bombarding only sea or land for, e.g, submarines and torpedo bombers
