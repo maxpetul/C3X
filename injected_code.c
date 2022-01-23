@@ -388,6 +388,12 @@ intercept_consideration (int valuation)
 	return valuation;
 }
 
+void __stdcall
+intercept_set_resource_bit (City * city, int resource_id)
+{
+	city->Body.Available_Resources |= 1 << (resource_id & 31);
+}
+
 // Just calls VirtualProtect and displays an error message if it fails. Made for use by the WITH_MEM_PROTECTION macro.
 int
 check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect)
@@ -507,6 +513,15 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 			while (cursor < (byte *)addr_intercept + AI_CONSIDERATION_INTERCEPT_LEN)
 				*cursor++ = 0x90; // nop
 		}
+	}
+
+	// Overwrite instruction that sets bits in City.Body.Available_Resources with a jump to the airlock
+	WITH_MEM_PROTECTION (ADDR_INTERCEPT_SET_RESOURCE_BIT, 6, PAGE_EXECUTE_READWRITE) {
+		byte * cursor = ADDR_INTERCEPT_SET_RESOURCE_BIT;
+		*cursor++ = 0xE9;
+		int offset = (int)ADDR_SET_RESOURCE_BIT_AIRLOCK - ((int)ADDR_INTERCEPT_SET_RESOURCE_BIT + 5);
+		cursor = int_to_bytes (cursor, offset);
+		*cursor++ = 0x90; // nop
 	}
 }
 

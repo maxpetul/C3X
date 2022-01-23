@@ -192,3 +192,4 @@ repl vptr, 0x66E738,	0x0,		"Parameters_Form_m68_Show_Dialog",		"int (__fastcall 
 define,	   0x598580,	0x5A5E30,	"BIC_get_asset_path",				"char * (__fastcall *) (BIC * this, int edx, char * str, byte show_error_popup)"
 define,    0x5F8080,	0x0,		"Tile_Image_Info_slice_pcx_with_color_table",	"int (__fastcall *) (Tile_Image_Info * this, int edx, PCX_Image * img, int up_left_x, int up_left_y, int w, int h, int arg6, int arg7)"
 define,	   0x5FD320,	0x0,		"PCX_Image_set_font",				"int (__fastcall *) (PCX_Image * this, int edx, Object_66C3FC * font, int arg_2, int arg_3, int arg_4)"
+define,	   0x57EEC4,	0x0,		"ADDR_INTERCEPT_SET_RESOURCE_BIT",		"void *"

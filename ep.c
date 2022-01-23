@@ -712,6 +712,42 @@ init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_imp
 	write_prog_memory (addr_unit_airlock, &code[0], sizeof code);
 }
 
+void
+init_set_resource_bit_airlock (enum bin_id bin_id, TCCState * tcc, byte * addr_airlock)
+{
+	void * addr_intercept_function = find_patch_function (tcc, "intercept_set_resource_bit", 0);
+	ASSERT (addr_intercept_function != NULL);
+
+	byte code[64] = {0};
+	byte * cursor = code;
+
+	if (bin_id == BIN_ID_GOG) {
+
+		*cursor++ = 0x50; // push eax
+		*cursor++ = 0x51; // push ecx
+		*cursor++ = 0x52; // push edx
+
+		*cursor++ = 0x51; // push resource_id arg (in ecx)
+		*cursor++ = 0x50; // push city arg (in eax)
+
+		// call intercept_set_resource_bit
+		*cursor++ = 0xE8;
+		cursor = int_to_bytes (cursor, (int)addr_intercept_function - ((int)addr_airlock + (cursor - code) + 4));
+
+		*cursor++ = 0x5A; // pop edx
+		*cursor++ = 0x59; // pop ecx
+		*cursor++ = 0x58; // pop eax
+
+		emit_jump (&cursor, code, 0x57EECA, addr_airlock, JK_UNCOND);
+
+	} else if (bin_id == BIN_ID_STEAM) {
+		THROW ("TODO: Implement this");
+	} else
+		THROW ("Invalid bin_id");
+
+	write_prog_memory (addr_airlock, &code[0], sizeof code);
+}
+
 // Because we're compiling with -nostdlib the entry point isn't main but is rather _runmain (if running immediately like a script) or _start (if
 // compiling to an EXE file)
 #ifdef C3X_INSTALL
@@ -985,8 +1021,8 @@ ENTRY_POINT ()
 
 	// Need two small regions of executable memory to write some machine code to enable intercepting the AI's production choices, the easiest way
 	// to get these is to use some of the space reserved for inleads. The contents of these regions are only written after the injected code is
-	// compiled b/c they depend on the address of intercept_consideration. The injected code also depends on the addresses (see apply_config). The
-	// regions are filled out by init_consideration_airlocks, part of the patcher.
+	// compiled b/c they depend on the address of intercept_consideration. The injected code also depends on the addresses (see
+	// apply_machine_code_edits). The regions are filled out by init_consideration_airlocks, part of the patcher.
 	byte * addr_improv_consideration_airlock, * addr_unit_consideration_airlock; {
 		ASSERT (i_next_free_inlead + 3 < inleads_capacity);
 		addr_improv_consideration_airlock = (byte *)&inleads[i_next_free_inlead];
@@ -994,6 +1030,14 @@ ENTRY_POINT ()
 		i_next_free_inlead += 4;
 		tcc__define_symbol (tcc, "ADDR_IMPROV_CONSIDERATION_AIRLOCK", temp_format ("((void *)0x%x)", (int)addr_improv_consideration_airlock));
 		tcc__define_symbol (tcc, "ADDR_UNIT_CONSIDERATION_AIRLOCK"  , temp_format ("((void *)0x%x)", (int)addr_unit_consideration_airlock));
+	}
+
+	// Same as above, this time for the set resource bit airlock. In this case we only need one.
+	byte * addr_set_resource_bit_airlock; {
+		ASSERT (i_next_free_inlead + 1 < inleads_capacity);
+		addr_set_resource_bit_airlock = (byte *)&inleads[i_next_free_inlead];
+		i_next_free_inlead += 2;
+		tcc__define_symbol (tcc, "ADDR_SET_RESOURCE_BIT_AIRLOCK", temp_format ("((void *)0x%x)", (int)addr_set_resource_bit_airlock));
 	}
 
 	if (bin_id == BIN_ID_GOG)
@@ -1057,6 +1101,7 @@ ENTRY_POINT ()
 	}
 
 	init_consideration_airlocks (bin_id, tcc, addr_improv_consideration_airlock, addr_unit_consideration_airlock);
+	init_set_resource_bit_airlock (bin_id, tcc, addr_set_resource_bit_airlock);
 
 	// Give up write permission on Civ proc's code injection pages
 	set_prog_mem_protection (civ_inject_mem, inject_size, MAA_READ_EXECUTE);
