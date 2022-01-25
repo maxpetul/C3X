@@ -259,6 +259,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->patch_houseboat_bug = ival != 0;
 				else if ((0 == strncmp (key.str, "patch_intercept_lost_turn_bug", key.len)) && read_int (&value, &ival))
 					cfg->patch_intercept_lost_turn_bug = ival != 0;
+				else if ((0 == strncmp (key.str, "patch_phantom_resource_bug", key.len)) && read_int (&value, &ival))
+					cfg->patch_phantom_resource_bug = ival != 0;
 
 				else if ((0 == strncmp (key.str, "prevent_autorazing", key.len)) && read_int (&value, &ival))
 					cfg->prevent_autorazing = ival != 0;
@@ -388,10 +390,57 @@ intercept_consideration (int valuation)
 	return valuation;
 }
 
+// Returns a pointer to a bitfield that can be used to record resource access for resource IDs >= 32. This procedure can work with any city ID since
+// it allocates and zero-initializes these bit fields as necessary. The given resource ID must be at least 32. The index of the bit for that resource
+// within the field is resource_id%32.
+unsigned *
+get_extra_resource_bits (int city_id, int resource_id)
+{
+	int extra_resource_count = not_below (0, p_bic_data->ResourceTypeCount - 32);
+	int ints_per_city = 1 + extra_resource_count/32;
+	if (city_id >= is->extra_available_resources_capacity) {
+		int new_capacity = city_id + 100;
+		unsigned * new_array = malloc (new_capacity * ints_per_city);
+		memset (new_array, 0, new_capacity * ints_per_city * sizeof (unsigned));
+		if (is->extra_available_resources != NULL) {
+			memcpy (new_array, is->extra_available_resources, is->extra_available_resources_capacity * ints_per_city * sizeof (unsigned));
+			free (is->extra_available_resources);
+		}
+		is->extra_available_resources = new_array;
+		is->extra_available_resources_capacity = new_capacity;
+	}
+	return &is->extra_available_resources[city_id * ints_per_city + (resource_id-32)/32];
+}
+
 void __stdcall
 intercept_set_resource_bit (City * city, int resource_id)
 {
-	city->Body.Available_Resources |= 1 << (resource_id & 31);
+	if (resource_id < 32)
+		city->Body.Available_Resources |= 1 << resource_id;
+	else
+		*get_extra_resource_bits (city->Body.ID, resource_id) |= 1 << resource_id%32;
+}
+
+byte __fastcall
+patch_City_has_resource (City * this, int edx, int resource_id)
+{
+	byte base = City_has_resource (this, __, resource_id);
+	if (is->current_config.patch_phantom_resource_bug &&
+	    (resource_id >= 32) && (resource_id < p_bic_data->ResourceTypeCount) &&
+	    (! City_has_trade_connection_to_capital (this))) {
+		unsigned bits = (this->Body.ID < is->extra_available_resources_capacity) ? *get_extra_resource_bits (this->Body.ID, resource_id) : 0;
+		return (bits >> resource_id) & 1;
+	} else
+		return base;
+}
+
+void __fastcall
+patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, byte skip_popups)
+{
+	int extra_resource_count = not_below (0, p_bic_data->ResourceTypeCount - 32);
+	int ints_per_city = 1 + extra_resource_count/32;
+	memset (is->extra_available_resources, 0, is->extra_available_resources_capacity * ints_per_city * sizeof (unsigned));
+	Trade_Net_recompute_resources (this, __, skip_popups);
 }
 
 // Just calls VirtualProtect and displays an error message if it fails. Made for use by the WITH_MEM_PROTECTION macro.
@@ -518,10 +567,16 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	// Overwrite instruction that sets bits in City.Body.Available_Resources with a jump to the airlock
 	WITH_MEM_PROTECTION (ADDR_INTERCEPT_SET_RESOURCE_BIT, 6, PAGE_EXECUTE_READWRITE) {
 		byte * cursor = ADDR_INTERCEPT_SET_RESOURCE_BIT;
-		*cursor++ = 0xE9;
-		int offset = (int)ADDR_SET_RESOURCE_BIT_AIRLOCK - ((int)ADDR_INTERCEPT_SET_RESOURCE_BIT + 5);
-		cursor = int_to_bytes (cursor, offset);
-		*cursor++ = 0x90; // nop
+		if (cfg->patch_phantom_resource_bug) {
+			*cursor++ = 0xE9;
+			int offset = (int)ADDR_SET_RESOURCE_BIT_AIRLOCK - ((int)ADDR_INTERCEPT_SET_RESOURCE_BIT + 5);
+			cursor = int_to_bytes (cursor, offset);
+			*cursor++ = 0x90; // nop
+		} else {
+			byte original[6] = {0x09, 0xB0, 0x9C, 0x00, 0x00, 0x00}; // or dword ptr [eax+0x9C], esi
+			for (int n = 0; n < 6; n++)
+				cursor[n] = original[n];
+		}
 	}
 }
 
@@ -630,6 +685,9 @@ patch_init_floating_point ()
 	is->count_perfume_specs = 0;
 
 	is->city_loc_display_perspective = -1;
+
+	is->extra_available_resources = NULL;
+	is->extra_available_resources_capacity = 0;
 
 	is->ai_prod_valuations = NULL;
 	is->count_ai_prod_valuations = 0;
@@ -1933,6 +1991,13 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	if (0 != strncmp (scenario_config_file_name, scenario_config_path, strlen (scenario_config_file_name)))
 		load_config (scenario_config_path, 0);
 	apply_machine_code_edits (&is->current_config);
+
+	// Need to clear this since the resource count might have changed
+	if (is->extra_available_resources != NULL) {
+		free (is->extra_available_resources);
+		is->extra_available_resources = NULL;
+		is->extra_available_resources_capacity = 0;
+	}
 
 	// Set up for limiting railroad movement, if enabled
 	if (is->current_config.limit_railroad_movement > 0) {

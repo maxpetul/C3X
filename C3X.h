@@ -69,6 +69,7 @@ struct c3x_config {
 	char patch_disembark_immobile_bug;
 	char patch_houseboat_bug;
 	char patch_intercept_lost_turn_bug;
+	char patch_phantom_resource_bug;
 
 	char prevent_autorazing;
 	char prevent_razing_by_ai_players;
@@ -234,6 +235,13 @@ struct injected_state {
 
 	// The civ ID of the player from whose perspective we're currently showing city loc desirability, or -1 if none. Initialized to -1.
 	int city_loc_display_perspective;
+
+	// Stores resource access bits for resources beyond the first 32, used to fix the phantom resource bug. Initialized to NULL/0 and allocated as
+	// necessary by get_extra_resource_bits. Contains an array of groups of unsigned ints. There is one group per city (allocated lazily so you
+	// must use the getter) and the number of ints in each group depends on the number of resources defined in the scenario, one for every 32
+	// after the first 32.
+	unsigned * extra_available_resources;
+	int extra_available_resources_capacity; // In number of cities.
 
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {
