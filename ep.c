@@ -713,7 +713,7 @@ init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_imp
 }
 
 void
-init_set_resource_bit_airlock (enum bin_id bin_id, TCCState * tcc, byte * addr_airlock)
+init_set_resource_bit_airlock (TCCState * tcc, byte * addr_airlock, int addr_intercept_set_resource_bit)
 {
 	void * addr_intercept_function = find_patch_function (tcc, "intercept_set_resource_bit", 0);
 	ASSERT (addr_intercept_function != NULL);
@@ -721,29 +721,23 @@ init_set_resource_bit_airlock (enum bin_id bin_id, TCCState * tcc, byte * addr_a
 	byte code[64] = {0};
 	byte * cursor = code;
 
-	if (bin_id == BIN_ID_GOG) {
+	*cursor++ = 0x50; // push eax
+	*cursor++ = 0x51; // push ecx
+	*cursor++ = 0x52; // push edx
 
-		*cursor++ = 0x50; // push eax
-		*cursor++ = 0x51; // push ecx
-		*cursor++ = 0x52; // push edx
+	*cursor++ = 0x51; // push resource_id arg (in ecx)
+	*cursor++ = 0x50; // push city arg (in eax)
 
-		*cursor++ = 0x51; // push resource_id arg (in ecx)
-		*cursor++ = 0x50; // push city arg (in eax)
+	// call intercept_set_resource_bit
+	*cursor++ = 0xE8;
+	cursor = int_to_bytes (cursor, (int)addr_intercept_function - ((int)addr_airlock + (cursor - code) + 4));
 
-		// call intercept_set_resource_bit
-		*cursor++ = 0xE8;
-		cursor = int_to_bytes (cursor, (int)addr_intercept_function - ((int)addr_airlock + (cursor - code) + 4));
+	*cursor++ = 0x5A; // pop edx
+	*cursor++ = 0x59; // pop ecx
+	*cursor++ = 0x58; // pop eax
 
-		*cursor++ = 0x5A; // pop edx
-		*cursor++ = 0x59; // pop ecx
-		*cursor++ = 0x58; // pop eax
-
-		emit_jump (&cursor, code, 0x57EECA, addr_airlock, JK_UNCOND);
-
-	} else if (bin_id == BIN_ID_STEAM) {
-		THROW ("TODO: Implement this");
-	} else
-		THROW ("Invalid bin_id");
+	// jump back to the original game code
+	emit_jump (&cursor, code, addr_intercept_set_resource_bit + 6, addr_airlock, JK_UNCOND);
 
 	write_prog_memory (addr_airlock, &code[0], sizeof code);
 }
@@ -1102,7 +1096,18 @@ ENTRY_POINT ()
 	}
 
 	init_consideration_airlocks (bin_id, tcc, addr_improv_consideration_airlock, addr_unit_consideration_airlock);
-	init_set_resource_bit_airlock (bin_id, tcc, addr_set_resource_bit_airlock);
+	{
+		int addr_intercept_set_resource_bit = 0;
+		for (int n = count_civ_prog_objects - 1; n >= 0; n--) {
+			struct civ_prog_object const * obj = &civ_prog_objects[n];
+			if (0 == strcmp (obj->name, "ADDR_INTERCEPT_SET_RESOURCE_BIT")) {
+				addr_intercept_set_resource_bit = (bin == &gog_binary) ? obj->gog_addr : obj->steam_addr;
+				break;
+			}
+		}
+		REQUIRE (addr_intercept_set_resource_bit != 0, "Couldn't find ADDR_INTERCEPT_SET_RESOURCE_BIT in prog objects");
+		init_set_resource_bit_airlock (tcc, addr_set_resource_bit_airlock, addr_intercept_set_resource_bit);
+	}
 
 	// Give up write permission on Civ proc's code injection pages
 	set_prog_mem_protection (civ_inject_mem, inject_size, MAA_READ_EXECUTE);
