@@ -3391,7 +3391,8 @@ patch_Parameters_Form_m68_Show_Dialog (Parameters_Form * this, int edx, int para
 		Button_initialize (b, __,
 				   is->c3x_labels[CL_MOD_INFO_BUTTON_TEXT], // text
 				   MOD_INFO_BUTTON_ID, // control ID
-				   891, 31, // location x, y
+				   (p_bic_data->ScreenWidth - 1024) / 2 + 891, // location x
+				   (p_bic_data->ScreenHeight - 768) / 2 + 31,  // location y
 				   MOD_INFO_BUTTON_WIDTH, MOD_INFO_BUTTON_HEIGHT, // width, height
 				   (Base_Form *)this, // parent
 				   0); // ?
