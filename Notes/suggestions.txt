@@ -120,3 +120,6 @@ Ideas:
   - Stop submarines (maybe all invisible naval units) from bombarding land & city tiles
   - Fix unit go-to ETA display is wrong when using limited railroad movement
 - [from Alekseyev_ and Civinator] Restrict units to bombarding only sea or land for, e.g, submarines and torpedo bombers
+- [from Sutsuj]
+  - Investigate trade routes through land/sea intersections
+  - Allow construction of naval units in cities on lakes if that lake is connected to a sea through an intersection
