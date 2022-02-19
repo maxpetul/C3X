@@ -8,7 +8,7 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
-#define MOD_VERSION 900
+#define MOD_VERSION 901
 
 #define COUNT_TILE_HIGHLIGHTS 11
 

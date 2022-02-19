@@ -1,3 +1,4 @@
+* RELEASE 9B
 - Scenario-specific mod configurations (see README for more info)
 - Mod info button
   - Tells the mod version and file names of currently loaded configs

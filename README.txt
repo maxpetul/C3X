@@ -1,5 +1,5 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 9
+Release 9B
 
 INCLUDES (** = new in latest version):
 ** Mod config can be set separately for each scenario (see below for details)
