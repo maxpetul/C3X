@@ -2,6 +2,8 @@ C3X: Executable Mod for Civ 3 Complete
 Release 9
 
 INCLUDES (** = new in latest version):
+** Mod config can be set separately for each scenario (see below for details)
+** Mod info button on preferences screen
 Convenience features:
  - Stack unit commands
   - Stack bombard
@@ -13,13 +15,13 @@ Convenience features:
  - Ask/offer gold popup autofills best amount
  - Skip repeated popups asking to replace a tile improvement
  - Group units on right click menu
+  - ** Improved logic: now separates captured and native units, units carrying a princess, and more
  - Show coordinates and chopped status in tile info box
  - Show golden age turns remaining
  - No special king unit names in non-regicide games
- - ** Option to disable worker automation
+ - Option to disable worker automation
 AI enhancements:
  - Allow AI to use artillery in the field
-  - ** AI can bring artillery along for naval landings
  - Force AI to build more artillery and bombers
  - Replace leader unit AI to fix bugs and improve behavior
  - Fix bug preventing AI from filling its armies
@@ -31,6 +33,8 @@ Bugs fixed:
  - Pink line in Civilopedia
  - Crash when doing disembark-all on transport containing immobile unit(s)
  - Crash possible when AI civ is left alive with only a settler on a transport (called the "houseboat bug")
+ - ** Resources beyond the first 32 share access records in cities not on the main trade network (called the "phantom resource bug")
+ - ** Air units lose a turn after being set to intercept
 Engine extensions:
  - Adjustable minimum city distance
  - Option to limit railroad movement
@@ -42,14 +46,12 @@ Engine extensions:
  - Land/sea intersections
  - Adjustable anarchy length
  - "Perfume" units or improvements to control how likely the AI is to build them
-  - ** Can be applied to units (previous version was only improvements)
-  - ** Can now list multiple targets & amounts
-  - ** Warning message in case perfume target is misspelled
  - Reveal AI logic
-  - ** Press P in city screen to see AI point value for each available build
-  - ** Press L on map to see how desirable the AI finds each tile as a city location
- - ** Corruption can be completely removed with "OFF" government setting
- - ** Disallow land settlers from founding on water
+  - Press P in city screen to see AI point value for each available build
+  - Press L on map to see how desirable the AI finds each tile as a city location
+ - Corruption can be completely removed with "OFF" government setting
+ - Disallow land settlers from founding on water
+ - ** Option to let units move after airdropping
 
 INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.
@@ -69,7 +71,7 @@ STACK BOMBARD:
 Activate stack bombard on any unit capable of bombarding by clicking the stack bombard button or by activating normal bombard then CTRL+clicking the target tile. The selected unit will bombard the tile, then all other units of the same type on the same tile will automatically bombard the target as well. Stack bombard is pretty smart and will stop bombarding once it can no longer do any damage, and it knows about lethal bombard, that you can't damage air units in an airfield, etc.
 
 OTHER STACK UNIT COMMANDS:
-Hold the control key to turn all standard worker buttons into stack buttons. Clicking a stack button will issue the command to all workers on the same tile. ** NEW IN RELEASE 8 ** This also works for fortify, upgrade, and disband.
+Hold the control key to turn most unit command buttons into stack buttons that when pressed will issue a command to all units of the same type on the same tile. This works for fortity, upgrade, and disband, as well as all worker commands.
 
 DISORDER WARNING:
 If you try to end the turn with unhappy cities, the domestic advisor will pop up to warn you and give you the option to continue that turn. One minor annoyance is that the game does not recompute city happiness when you sign a deal to import a luxury, so doing so won't remove the warnings. To make the game recompute city happiness, simply bump the luxury slider back and forth. I hope to fix this annoyance for the next version (this time for sure).
@@ -88,6 +90,9 @@ Railroad movement can be limited to a certain number of tiles by setting the "li
 Enabling land/sea intersections allows sea units to travel over the thin isthmus that exists on the diagonal path between two land tiles. More specifically, imagine a diamond of four tiles with land terrain on the north & south tiles and water on the east & west ones. With land/sea intersections enabled, naval units can pass between the east and west tiles.
 
 Disallowing trespassing prevents civs from entering each other's borders while at peace without a right of passage, similar to the rules in Civ 4. I consider this to be an experimental feature in this release. I have done some testing to verify that the rule is applied correctly, including on the AI, but I haven't checked that the AI can handle the rule properly, for example it might prevent the AI from declaring war.
+
+** NEW ** PER-SCENARIO CONFIG:
+Mod config settings can now be set on a per-scenario basis. To do this, create a "scenario.c3x_config.ini" file inside the scenario's folder (the same place that would contain the scenario's Art and Text folders) and fill it in like the "default.c3x_config.ini" file included with the mod. The scenario settings will be layered on top of the default settings so you only need to include the ones that are relevant to the scenario. You can verify in-game that the scenario config was loaded by checking the mod info popup, it's accessible through the button on the top right of the preferences screen. For an example, see: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-28#post-16212316.
 
 SMALL WONDER FREE IMPROVEMENTS:
 The free improvements wonder effect (granaries from Pyramids etc.) now works on small wonders. Note to modders, to set this effect you must use a third party editor like Quintillus' (https://forums.civfanatics.com/threads/cross-platform-editor-for-conquests-now-available.377188/) because the option is grayed out in the standard editor. Even worse, if you set the effect then work on the BIQ in the standard editor, the effect won't be saved, so you'd need to set it every time or work exclusively in Quintillus' editor.
