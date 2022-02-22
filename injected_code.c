@@ -1710,17 +1710,21 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 		Main_GUI_handle_button_press (this, __, button_id);
 }
 
+int
+is_command_button_active (Main_GUI * main_gui, enum Unit_Command_Values command)
+{
+	Command_Button * buttons = main_gui->Unit_Command_Buttons;
+	for (int n = 0; n < 42; n++)
+		if (((buttons[n].Button.Base_Data.Status2 & 1) != 0) && (buttons[n].Command == command))
+			return 1;
+	return 0;
+}
+
 int __fastcall
 patch_Main_Screen_Form_handle_key_down (Main_Screen_Form * this, int edx, int char_code, int virtual_key_code)
 {
 	// Set SB flag according to case (4)
-	int precision_strike_is_available = 0;
-	for (int n = 0; n < 42; n++)
-		if (((this->GUI.Unit_Command_Buttons[n].Button.Base_Data.Status2 & 1) != 0) &&
-		    (this->GUI.Unit_Command_Buttons[n].Command == UCV_Precision_Bombing)) {
-			precision_strike_is_available = 1;
-			break;
-		}
+	int precision_strike_is_available = is_command_button_active (&this->GUI, UCV_Precision_Bombing);
 	if ((virtual_key_code == VK_B) || (precision_strike_is_available && (virtual_key_code == VK_P)))
 		is->sb_activated_by_button = 0;
 
@@ -3309,6 +3313,7 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 	char s[200];
 	if (is->current_config.enable_ai_city_location_desirability_display &&
 	    (virtual_key_code == VK_L) && is_down &&
+	    (! is_command_button_active (&this->GUI, UCV_Load)) &&
 	    (*p_player_bits != 0)) { // Player bits all zero indicates we aren't currently in a game. Need to check for this because UI events on the
 		                     // main menu also pass through this function.
 		int is_debug_mode = (*p_debug_mode_bits & 4) != 0; // This is how the check is done in open_tile_info. Actually there are two debug

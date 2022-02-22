@@ -7,6 +7,7 @@
 - Option to let units move after airdropping
 - Fix phantom resource bug
 - Fix air units losing a turn after being set to intercept
+- L key loads unit over activating AI city loc highlighter
 
 * RELEASE 9
 - Perfume can be applied to multiple improvements or unit types
