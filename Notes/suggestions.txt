@@ -24,7 +24,6 @@ Ideas:
   - Resource in city radius prereq for same
   - Era graphics changes for mines, radar towers, etc.
   - "Decoupling city icons from current building mechanics and assigning them elsewhere"
-  - Interception mission takes effect immediately
 - [from ynot56] Stop AI suiciding low health units, stop attacking with weak units before strong ones
 - [from Sutsuj]
   - Allow teleportation of immobile units
@@ -89,9 +88,7 @@ Ideas:
 - [from register] Fix city governor ignoring instruction to never produce artillery or settlers; enable AI to redeem treasury units in its capital (according to Civinator this is only a problem when the units are spawned there)
 - [from ynot56] When moving a group of units, stop the faster ones from losing all their remaining moves after the slowest reach their limit; Preserve surplus shields and beakers for the next project
 - [from justanick] Stop the AI from upgrading to units that are strictly inferior
-- [from Ruin and Alekseyev_] Enable paratroopers to move after landing. (This might already be possible.)
 - [from haluu] Prevent land workers from working water tiles from boats
-- On right click menu, group unit of different experience together if they don't have hit points and separate out captured vs native units
 - [from vmxa] In Civilopedia unit list, remember location in the list when viewing a unit then returning
 - [from Takeo] Easier way to pick specialist type, e.g. from a menu, to solve the problem of accidentally scrolling past the one you want
 - [from Lord Malbeth]
@@ -110,9 +107,7 @@ Ideas:
   - Shield and science overflow
   - Allow cities founded on resources to benefit from bonus food
   - Play unit attack animation instead of missile animation when a flak or mobile SAM shoots down an aircraft
-- [from adz1061]
-  - Stop air units from losing the rest of their moves when set to intercept
-  - Enable cities to expand cultural borders beyond 100000 culture
+- [from adz1061] Enable cities to expand cultural borders beyond 100000 culture
 - [from Meteor Man]
   - Easy way to un-group units on right click menu and/or separate out units with custom names
   - Make rally points affect units spawned from buildings
@@ -123,3 +118,5 @@ Ideas:
 - [from Sutsuj]
   - Investigate trade routes through land/sea intersections
   - Allow construction of naval units in cities on lakes if that lake is connected to a sea through an intersection
+- [from Arcangelus] Allow buildings to reduce pollution to zero
+- [from tjs282] Fix B key being bound to both join city and bombard
