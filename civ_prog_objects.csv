@@ -201,3 +201,4 @@ inlead,	   0x4B1C10,	0x0,		"City_get_total_pollution",			"int (__fastcall *) (Ci
 define,	   0x4B1B40,	0x0,		"City_get_pollution_from_buildings",		"int (__fastcall *) (City * this)"
 inlead,	   0x4B1A50,	0x0,		"City_get_pollution_from_pop",			"int (__fastcall *) (City * this)"
 define,	   0x561440,	0x0,		"Leader_has_tech",				"byte (__fastcall *) (Leader * this, int edx, int id)"
+inlead,	   0x4ACF40,	0x0,		"City_add_or_remove_improvement",		"void (__fastcall *) (City * this, int edx, int improv_id, int add, byte param_3)"

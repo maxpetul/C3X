@@ -3465,5 +3465,24 @@ patch_City_get_total_pollution (City * this)
 	return City_get_pollution_from_buildings (this) + patch_City_get_pollution_from_pop (this);
 }
 
+
+void __fastcall
+patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int add, byte param_3)
+{
+	// The enable_negative_pop_pollution feature changes the rules so that improvements flagged as removing pop pollution and having a negative
+	// pollution amount contribute to the city's pop pollution instead of building pollution. Here we make sure that such improvements do not
+	// contribute to building pollution by temporarily zeroing out their pollution stat when they're added to or removed from a city.
+	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	if (is->current_config.enable_negative_pop_pollution &&
+	    (improv->ImprovementFlags & ITF_Removes_Population_Pollution) &&
+	    (improv->Pollution < 0)) {
+		int saved_pollution_amount = improv->Pollution;
+		improv->Pollution = 0;
+		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
+		improv->Pollution = saved_pollution_amount;
+	} else
+		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
