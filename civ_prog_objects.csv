@@ -197,8 +197,8 @@ inlead,	   0x4ADE30,	0x4B4E10,	"City_has_resource",				"byte (__fastcall *) (Cit
 define,	   0x4ADDC0,	0x4B4DA0,	"City_has_trade_connection_to_capital",		"byte (__fastcall *) (City * this)"
 inlead,	   0x57E450,	0x58B1A0,	"Trade_Net_recompute_resources",		"void (__fastcall *) (Trade_Net * this, int edx, byte skip_popups)"
 
-inlead,	   0x4B1C10,	0x0,		"City_get_total_pollution",			"int (__fastcall *) (City * this)"
-define,	   0x4B1B40,	0x0,		"City_get_pollution_from_buildings",		"int (__fastcall *) (City * this)"
-inlead,	   0x4B1A50,	0x0,		"City_get_pollution_from_pop",			"int (__fastcall *) (City * this)"
-define,	   0x561440,	0x0,		"Leader_has_tech",				"byte (__fastcall *) (Leader * this, int edx, int id)"
-inlead,	   0x4ACF40,	0x0,		"City_add_or_remove_improvement",		"void (__fastcall *) (City * this, int edx, int improv_id, int add, byte param_3)"
+inlead,	   0x4B1C10,	0x4B8BC0,	"City_get_total_pollution",			"int (__fastcall *) (City * this)"
+define,	   0x4B1B40,	0x4B8B00,	"City_get_pollution_from_buildings",		"int (__fastcall *) (City * this)"
+inlead,	   0x4B1A50,	0x4B8A10,	"City_get_pollution_from_pop",			"int (__fastcall *) (City * this)"
+define,	   0x561440,	0x56D5A0,	"Leader_has_tech",				"byte (__fastcall *) (Leader * this, int edx, int id)"
+inlead,	   0x4ACF40,	0x4B3F20,	"City_add_or_remove_improvement",		"void (__fastcall *) (City * this, int edx, int improv_id, int add, byte param_3)"
