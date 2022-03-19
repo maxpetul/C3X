@@ -226,6 +226,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->disallow_land_units_from_settling_water = ival;
 				else if ((0 == strncmp (key.str, "dont_end_units_turn_after_airdrop", key.len)) && read_int (&value, &ival))
 					cfg->dont_end_units_turn_after_airdrop = ival;
+				else if ((0 == strncmp (key.str, "enable_negative_pop_pollution", key.len)) && read_int (&value, &ival))
+					cfg->enable_negative_pop_pollution = ival;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -3424,6 +3426,9 @@ patch_Parameters_Form_m68_Show_Dialog (Parameters_Form * this, int edx, int para
 int __fastcall
 patch_City_get_pollution_from_pop (City * this)
 {
+	if (! is->current_config.enable_negative_pop_pollution)
+		return City_get_pollution_from_pop (this);
+
 	int base_pollution = this->Body.Population.Size - p_bic_data->General.MaximumSize_City;
 	if (base_pollution <= 0)
 		return 0;
