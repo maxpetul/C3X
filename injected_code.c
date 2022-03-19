@@ -3421,5 +3421,44 @@ patch_Parameters_Form_m68_Show_Dialog (Parameters_Form * this, int edx, int para
 	return tr;
 }
 
+int __fastcall
+patch_City_get_pollution_from_pop (City * this)
+{
+	int base_pollution = this->Body.Population.Size - p_bic_data->General.MaximumSize_City;
+	if (base_pollution <= 0)
+		return 0;
+
+	// Consider improvements
+	int net_pollution = base_pollution;
+	int any_cleaning_improvs = 0;
+	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+		Improvement * improv = &p_bic_data->Improvements[n];
+		if ((improv->ImprovementFlags & ITF_Removes_Population_Pollution) &&
+		    City_has_improvement (this, __, n, 1) &&
+		    ((improv->ObsoleteID < 0) || (! Leader_has_tech (&leaders[this->Body.CivID], __, improv->ObsoleteID)))) {
+			any_cleaning_improvs = 1;
+			if (improv->Pollution < 0)
+				net_pollution += improv->Pollution;
+		}
+	}
+
+	if (net_pollution <= 0)
+		return 0;
+	else if (any_cleaning_improvs)
+		return 1;
+	else
+		return net_pollution;
+}
+
+// The original version of this function in the base game contains a duplicate of the logic that computes the total pollution from buildings and
+// pop. By re-implementing it to use the get_pollution_from_* functions, we ensure that our changes to get_pollution_from_pop will be accounted for.
+// Note: This function is called from two places, one is the city screen and the other I'm not sure about. The pollution spawning logic works by
+// calling the get_pollution_from_* funcs directly.
+int __fastcall
+patch_City_get_total_pollution (City * this)
+{
+	return City_get_pollution_from_buildings (this) + patch_City_get_pollution_from_pop (this);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
