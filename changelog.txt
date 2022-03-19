@@ -1,3 +1,5 @@
+- Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
+
 * RELEASE 9B
 - Scenario-specific mod configurations (see README for more info)
 - Mod info button
