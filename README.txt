@@ -1,5 +1,5 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 9B
+Release 10
 
 INCLUDES (** = new in latest version):
 ** Mod config can be set separately for each scenario (see below for details)
@@ -71,10 +71,10 @@ STACK BOMBARD:
 Activate stack bombard on any unit capable of bombarding by clicking the stack bombard button or by activating normal bombard then CTRL+clicking the target tile. The selected unit will bombard the tile, then all other units of the same type on the same tile will automatically bombard the target as well. Stack bombard is pretty smart and will stop bombarding once it can no longer do any damage, and it knows about lethal bombard, that you can't damage air units in an airfield, etc.
 
 OTHER STACK UNIT COMMANDS:
-Hold the control key to turn most unit command buttons into stack buttons that when pressed will issue a command to all units of the same type on the same tile. This works for fortity, upgrade, and disband, as well as all worker commands.
+Hold the control key to turn most unit command buttons into stack buttons that when pressed will issue a command to all units of the same type on the same tile. This works for fortify, upgrade, and disband, as well as all worker commands.
 
 DISORDER WARNING:
-If you try to end the turn with unhappy cities, the domestic advisor will pop up to warn you and give you the option to continue that turn. One minor annoyance is that the game does not recompute city happiness when you sign a deal to import a luxury, so doing so won't remove the warnings. To make the game recompute city happiness, simply bump the luxury slider back and forth. I hope to fix this annoyance for the next version (this time for sure).
+If you try to end the turn with unhappy cities, the domestic advisor will pop up to warn you and give you the option to continue that turn.
 
 AI ENHANCEMENTS:
 Numerous changes have been made to improve the AI's behavior, especially in combat. It can now use its artillery units in the field, i.e., it will take them out of its cities to bombard enemy cities or incoming enemy units. The AI's production of artillery has been significantly increased so that it can take advantage of this ability. The other major change is that the AI can now use armies properly, it builds them when it can and fills them with units, usually the strongest available. There are many smaller changes as well to fix bugs and improve heuristics. Some more details are available as comments in the config file.
