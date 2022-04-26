@@ -380,7 +380,7 @@ enum ImprovementTypeFlags
   ITF_Increases_Shields_In_Water	    = 0x800000,
   ITF_Increases_Food_In_Water		    = 0x1000000,
   ITF_Increases_Trade_In_Water		    = 0x2000000,
-  ITF_4000000				    = 0x4000000,
+  ITF_Vulnerable_To_Charm_Bombard	    = 0x4000000,
   ITF_8000000				    = 0x8000000,
   ITF_10000000				    = 0x10000000,
   ITF_20000000				    = 0x20000000,
@@ -713,6 +713,7 @@ enum Unit_Command_Values
   UCV_Stealth_Attack	  = 0x10001000,
   UCV_Enslave		  = 0x10004000,
   UCV_Unknown		  = 0x10008000,
+  UCV_Charm_Bombard       = 0x10020000,
   UCV_Sacrifice		  = 0x10100000,
   UCV_Science_Age	  = 0x10200000,
 
@@ -4723,7 +4724,9 @@ struct Unit_Body
   int Auto_CityID;
   int field_1B0[8];
   char carrying_princess_of_race;
-  byte field_1D1[3];
+  byte charmed;
+  byte field_1D2;
+  byte field_1D3;
   int field_1D4;
   LeaderKind leader_kind;
   IDLS IDLS;
