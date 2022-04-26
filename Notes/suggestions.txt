@@ -120,3 +120,4 @@ Ideas:
   - Allow construction of naval units in cities on lakes if that lake is connected to a sea through an intersection
 - [from Arcangelus] Allow buildings to reduce pollution to zero
 - [from tjs282] Fix B key being bound to both join city and bombard
+- [from Predator145] Restore PTW artillery and bomber targetting rules
