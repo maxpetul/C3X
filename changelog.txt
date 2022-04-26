@@ -1,3 +1,5 @@
+- Do not group units with differing charm statuses
+
 * RELEASE 10
 - Scenario-specific mod configurations (see README for more info)
 - Mod info button
