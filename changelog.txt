@@ -1,3 +1,4 @@
+- On the city screen, hold shift when clicking a specialist to switch to the previous type
 - Do not group units with differing charm statuses
 
 * RELEASE 10

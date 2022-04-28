@@ -955,6 +955,7 @@ ENTRY_POINT ()
 		.group_units_on_right_click_menu = 1,
 		.anarchy_length_reduction_percent = 0,
 		.show_golden_age_turns_remaining = 1,
+		.reverse_specialist_order_with_shift = 1,
 		.dont_give_king_names_in_non_regicide_games = 1,
 		.disable_worker_automation = 0,
 		.enable_land_sea_intersections = 0,

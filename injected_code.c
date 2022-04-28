@@ -201,6 +201,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->anarchy_length_reduction_percent = ival;
 				else if ((0 == strncmp (key.str, "show_golden_age_turns_remaining", key.len)) && read_int (&value, &ival))
 					cfg->show_golden_age_turns_remaining = ival != 0;
+				else if ((0 == strncmp (key.str, "reverse_specialist_order_with_shift", key.len)) && read_int (&value, &ival))
+					cfg->reverse_specialist_order_with_shift = ival != 0;
 				else if ((0 == strncmp (key.str, "dont_give_king_names_in_non_regicide_games", key.len)) && read_int (&value, &ival))
 					cfg->dont_give_king_names_in_non_regicide_games = ival != 0;
 				else if ((0 == strncmp (key.str, "disable_worker_automation", key.len)) && read_int (&value, &ival))
@@ -3439,7 +3441,8 @@ patch_City_cycle_specialist_type (City * this, int edx, int mouse_x, int mouse_y
 	// Cycle all the way around back to the previous specialist type, if appropriate.
 	// If the worker type was not changed after the first call to cycle_specialist_type, that indicates that the player was asked to disable
 	// governor management and chose not to. Do not try to cycle backwards in that case or else we'll spam the player with more popups.
-	if (shift_down && (specialist_count > 2) && (citizen->WorkerType != original_worker_type)) {
+	if (is->current_config.reverse_specialist_order_with_shift &&
+	    shift_down && (specialist_count > 2) && (citizen->WorkerType != original_worker_type)) {
 		for (int n = 0; n < specialist_count - 2; n++)
 			City_cycle_specialist_type (this, __, mouse_x, mouse_y, citizen, city_form);
 	}

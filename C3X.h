@@ -38,6 +38,7 @@ struct c3x_config {
 	char group_units_on_right_click_menu;
 	int anarchy_length_reduction_percent;
 	char show_golden_age_turns_remaining;
+	char reverse_specialist_order_with_shift;
 	char dont_give_king_names_in_non_regicide_games;
 	char disable_worker_automation;
 	char enable_land_sea_intersections;
