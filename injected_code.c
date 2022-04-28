@@ -3424,22 +3424,27 @@ patch_Parameters_Form_m68_Show_Dialog (Parameters_Form * this, int edx, int para
 byte __fastcall
 patch_City_cycle_specialist_type (City * this, int edx, int mouse_x, int mouse_y, Citizen * citizen, City_Form * city_form)
 {
-	Leader * city_owner = &leaders[this->Body.CivID];
-	int specialist_count = 0;
-	for (int n = 0; n < p_bic_data->CitizenTypeCount; n++)
-		specialist_count += (n != p_bic_data->default_citizen_type) && Leader_has_tech (city_owner, __, p_bic_data->CitizenTypes[n].RequireID);
-	if ((((*p_GetAsyncKeyState) (VK_SHIFT)) >> 8) &&
-	    (specialist_count > 2)) {
-		int original_worker_type = citizen->WorkerType;
-		byte tr = City_cycle_specialist_type (this, __, mouse_x, mouse_y, citizen, city_form);
-		// If the worker type was not changed after the first call to cycle_specialist_type, that indicates that the player was asked to
-		// disable governor management and chose not to. Stop or else we'll spam the player with more popups asking to disable.
-		if (citizen->WorkerType != original_worker_type)
-			for (int n = 0; n < specialist_count - 2; n++)
-				City_cycle_specialist_type (this, __, mouse_x, mouse_y, citizen, city_form);
-		return tr;
-	} else
-		return City_cycle_specialist_type (this, __, mouse_x, mouse_y, citizen, city_form);
+	int specialist_count = 0; {
+		Leader * city_owner = &leaders[this->Body.CivID];
+		for (int n = 0; n < p_bic_data->CitizenTypeCount; n++)
+			specialist_count += (n != p_bic_data->default_citizen_type) &&
+				Leader_has_tech (city_owner, __, p_bic_data->CitizenTypes[n].RequireID);
+	}
+	int shift_down = (*p_GetAsyncKeyState) (VK_SHIFT) >> 8;
+	int original_worker_type = citizen->WorkerType;
+
+	// The return value of this function is not actually used by either of the two original callers.
+	byte tr = City_cycle_specialist_type (this, __, mouse_x, mouse_y, citizen, city_form);
+
+	// Cycle all the way around back to the previous specialist type, if appropriate.
+	// If the worker type was not changed after the first call to cycle_specialist_type, that indicates that the player was asked to disable
+	// governor management and chose not to. Do not try to cycle backwards in that case or else we'll spam the player with more popups.
+	if (shift_down && (specialist_count > 2) && (citizen->WorkerType != original_worker_type)) {
+		for (int n = 0; n < specialist_count - 2; n++)
+			City_cycle_specialist_type (this, __, mouse_x, mouse_y, citizen, city_form);
+	}
+
+	return tr;
 }
 
 // TCC requires a main function be defined even though it's never used.
