@@ -4798,7 +4798,9 @@ struct BIC
   int field_1C[523];
   int field_848;
   int field_84C;
-  int field_850[10];
+  int unk0[3];
+  int default_citizen_type;
+  int unk1[6];
   int ImprovementsCount;
   int CitiesCount;
   int CitizenTypeCount;

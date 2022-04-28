@@ -3421,5 +3421,22 @@ patch_Parameters_Form_m68_Show_Dialog (Parameters_Form * this, int edx, int para
 	return tr;
 }
 
+byte __fastcall
+patch_City_cycle_specialist_type (City * this, int edx, int mouse_x, int mouse_y, Citizen * citizen, City_Form * city_form)
+{
+	Leader * city_owner = &leaders[this->Body.CivID];
+	int specialist_count = 0;
+	for (int n = 0; n < p_bic_data->CitizenTypeCount; n++)
+		specialist_count += (n != p_bic_data->default_citizen_type) && Leader_has_tech (city_owner, __, p_bic_data->CitizenTypes[n].RequireID);
+	if ((((*p_GetAsyncKeyState) (VK_SHIFT)) >> 8) &&
+	    (specialist_count > 2)) {
+		byte tr = 0;
+		for (int n = 0; n < specialist_count - 1; n++)
+			tr = City_cycle_specialist_type (this, __, mouse_x, mouse_y, citizen, city_form);
+		return tr;
+	} else
+		return City_cycle_specialist_type (this, __, mouse_x, mouse_y, citizen, city_form);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
