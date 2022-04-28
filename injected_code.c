@@ -3430,9 +3430,13 @@ patch_City_cycle_specialist_type (City * this, int edx, int mouse_x, int mouse_y
 		specialist_count += (n != p_bic_data->default_citizen_type) && Leader_has_tech (city_owner, __, p_bic_data->CitizenTypes[n].RequireID);
 	if ((((*p_GetAsyncKeyState) (VK_SHIFT)) >> 8) &&
 	    (specialist_count > 2)) {
-		byte tr = 0;
-		for (int n = 0; n < specialist_count - 1; n++)
-			tr = City_cycle_specialist_type (this, __, mouse_x, mouse_y, citizen, city_form);
+		int original_worker_type = citizen->WorkerType;
+		byte tr = City_cycle_specialist_type (this, __, mouse_x, mouse_y, citizen, city_form);
+		// If the worker type was not changed after the first call to cycle_specialist_type, that indicates that the player was asked to
+		// disable governor management and chose not to. Stop or else we'll spam the player with more popups asking to disable.
+		if (citizen->WorkerType != original_worker_type)
+			for (int n = 0; n < specialist_count - 2; n++)
+				City_cycle_specialist_type (this, __, mouse_x, mouse_y, citizen, city_form);
 		return tr;
 	} else
 		return City_cycle_specialist_type (this, __, mouse_x, mouse_y, citizen, city_form);
