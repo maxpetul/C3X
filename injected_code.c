@@ -228,6 +228,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->disallow_land_units_from_affecting_water_tiles = ival;
 				else if ((0 == strncmp (key.str, "dont_end_units_turn_after_airdrop", key.len)) && read_int (&value, &ival))
 					cfg->dont_end_units_turn_after_airdrop = ival;
+				else if ((0 == strncmp (key.str, "enable_negative_pop_pollution", key.len)) && read_int (&value, &ival))
+					cfg->enable_negative_pop_pollution = ival;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -3448,6 +3450,66 @@ patch_City_cycle_specialist_type (City * this, int edx, int mouse_x, int mouse_y
 	}
 
 	return tr;
+}
+
+int __fastcall
+patch_City_get_pollution_from_pop (City * this)
+{
+	if (! is->current_config.enable_negative_pop_pollution)
+		return City_get_pollution_from_pop (this);
+
+	int base_pollution = this->Body.Population.Size - p_bic_data->General.MaximumSize_City;
+	if (base_pollution <= 0)
+		return 0;
+
+	// Consider improvements
+	int net_pollution = base_pollution;
+	int any_cleaning_improvs = 0;
+	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+		Improvement * improv = &p_bic_data->Improvements[n];
+		if ((improv->ImprovementFlags & ITF_Removes_Population_Pollution) &&
+		    City_has_improvement (this, __, n, 1) &&
+		    ((improv->ObsoleteID < 0) || (! Leader_has_tech (&leaders[this->Body.CivID], __, improv->ObsoleteID)))) {
+			any_cleaning_improvs = 1;
+			if (improv->Pollution < 0)
+				net_pollution += improv->Pollution;
+		}
+	}
+
+	if (net_pollution <= 0)
+		return 0;
+	else if (any_cleaning_improvs)
+		return 1;
+	else
+		return net_pollution;
+}
+
+// The original version of this function in the base game contains a duplicate of the logic that computes the total pollution from buildings and
+// pop. By re-implementing it to use the get_pollution_from_* functions, we ensure that our changes to get_pollution_from_pop will be accounted for.
+// Note: This function is called from two places, one is the city screen and the other I'm not sure about. The pollution spawning logic works by
+// calling the get_pollution_from_* funcs directly.
+int __fastcall
+patch_City_get_total_pollution (City * this)
+{
+	return City_get_pollution_from_buildings (this) + patch_City_get_pollution_from_pop (this);
+}
+
+void __fastcall
+patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int add, byte param_3)
+{
+	// The enable_negative_pop_pollution feature changes the rules so that improvements flagged as removing pop pollution and having a negative
+	// pollution amount contribute to the city's pop pollution instead of building pollution. Here we make sure that such improvements do not
+	// contribute to building pollution by temporarily zeroing out their pollution stat when they're added to or removed from a city.
+	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	if (is->current_config.enable_negative_pop_pollution &&
+	    (improv->ImprovementFlags & ITF_Removes_Population_Pollution) &&
+	    (improv->Pollution < 0)) {
+		int saved_pollution_amount = improv->Pollution;
+		improv->Pollution = 0;
+		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
+		improv->Pollution = saved_pollution_amount;
+	} else
+		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
 }
 
 // TCC requires a main function be defined even though it's never used.

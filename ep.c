@@ -969,6 +969,7 @@ ENTRY_POINT ()
 		.zero_corruption_when_off = 1,
 		.disallow_land_units_from_affecting_water_tiles = 1,
 		.dont_end_units_turn_after_airdrop = 0,
+		.enable_negative_pop_pollution = 1,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,
