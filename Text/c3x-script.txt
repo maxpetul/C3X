@@ -29,6 +29,9 @@ Do it!
 Nevermind
 #active 1
 
+#C3X_ERROR
+#caption C3X Error
+
 #C3X_WARNING
 #caption C3X Warning
 

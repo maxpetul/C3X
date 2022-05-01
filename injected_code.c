@@ -74,6 +74,15 @@ rand_div (int num, int denom)
 	return q + (rand_int (p_rand_object, __, denom) < r);
 }
 
+void
+pop_up_in_game_error (char const * msg)
+{
+	PopupForm * popup = get_popup_form ();
+	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
+	PopupForm_add_text (popup, __, (char *)msg, 0);
+	show_popup (popup, __, 0, 0);
+}
+
 char *
 file_to_string (char const * filepath)
 {
@@ -274,7 +283,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				else if (! displayed_error_message) {
 					snprintf (err_msg, sizeof err_msg, "Error processing key \"%.*s\" in \"%s\". Either the key is not recognized or the value is invalid.", key.len, key.str, full_path);
 					err_msg[(sizeof err_msg) - 1] = '\0';
-					is->MessageBoxA (NULL, err_msg, NULL, MB_ICONERROR);
+					pop_up_in_game_error (err_msg);
 					displayed_error_message = 1;
 				}
 			} else {
@@ -284,7 +293,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						line_no += *c == '\n';
 					snprintf (err_msg, sizeof err_msg, "Parse error on line %d of \"%s\".", line_no, full_path);
 					err_msg[(sizeof err_msg) - 1] = '\0';
-					is->MessageBoxA (NULL, err_msg, NULL, MB_ICONERROR);
+					pop_up_in_game_error (err_msg);
 					displayed_error_message = 1;
 				}
 				skip_to_line_end (&cursor);
