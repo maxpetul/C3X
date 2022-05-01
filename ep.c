@@ -967,7 +967,7 @@ ENTRY_POINT ()
 		.enable_ai_production_ranking = 1,
 		.enable_ai_city_location_desirability_display = 1,
 		.zero_corruption_when_off = 1,
-		.disallow_land_units_from_settling_water = 1,
+		.disallow_land_units_from_affecting_water_tiles = 1,
 		.dont_end_units_turn_after_airdrop = 0,
 
 		.use_offensive_artillery_ai = 1,

@@ -1,4 +1,5 @@
 - On the city screen, hold shift when clicking a specialist to switch to the previous type
+- Disallow workers from improving water tiles
 - Do not group units with differing charm statuses
 
 * RELEASE 10

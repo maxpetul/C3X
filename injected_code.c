@@ -224,8 +224,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->enable_ai_city_location_desirability_display = ival != 0;
 				else if ((0 == strncmp (key.str, "zero_corruption_when_off", key.len)) && read_int (&value, &ival))
 					cfg->zero_corruption_when_off = ival;
-				else if ((0 == strncmp (key.str, "disallow_land_units_from_settling_water", key.len)) && read_int (&value, &ival))
-					cfg->disallow_land_units_from_settling_water = ival;
+				else if ((0 == strncmp (key.str, "disallow_land_units_from_affecting_water_tiles", key.len)) && read_int (&value, &ival))
+					cfg->disallow_land_units_from_affecting_water_tiles = ival;
 				else if ((0 == strncmp (key.str, "dont_end_units_turn_after_airdrop", key.len)) && read_int (&value, &ival))
 					cfg->dont_end_units_turn_after_airdrop = ival;
 
@@ -1513,8 +1513,8 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 	    (this->Body.CivID == p_main_screen_form->Player_CivID) &&
 	    (unit_command_value == UCV_Automate))
 		return 0;
-	else if (is->current_config.disallow_land_units_from_settling_water &&
-		 (unit_command_value == UCV_Build_City)) {
+	else if (is->current_config.disallow_land_units_from_affecting_water_tiles &&
+		 (unit_command_value & 0x20000000)) { // checks if the command value is in the worker/settler category
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
 		enum UnitTypeClasses class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
 		return ((class != UTC_Land) || (! tile->vtable->m35_Check_Is_Water (tile))) &&
