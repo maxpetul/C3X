@@ -22,6 +22,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 // by the patcher and the injected code.
 #define snprintf is->snprintf
 #define malloc is->malloc
+#define calloc is->calloc
 #define free is->free
 #define strtol is->strtol
 #define strncmp is->strncmp
@@ -413,8 +414,7 @@ get_extra_resource_bits (int city_id, int resource_id)
 	int ints_per_city = 1 + extra_resource_count/32;
 	if (city_id >= is->extra_available_resources_capacity) {
 		int new_capacity = city_id + 100;
-		unsigned * new_array = malloc (new_capacity * ints_per_city);
-		memset (new_array, 0, new_capacity * ints_per_city * sizeof (unsigned));
+		unsigned * new_array = calloc (new_capacity * ints_per_city, sizeof new_array[0]);
 		if (is->extra_available_resources != NULL) {
 			memcpy (new_array, is->extra_available_resources, is->extra_available_resources_capacity * ints_per_city * sizeof (unsigned));
 			free (is->extra_available_resources);
@@ -616,6 +616,7 @@ patch_init_floating_point ()
 	// Remember the C std lib function names are macros that expand to is->...
 	snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
 	malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
+	calloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "calloc");
 	free     = (void *)(*p_GetProcAddress) (is->msvcrt, "free");
 	strtol   = (void *)(*p_GetProcAddress) (is->msvcrt, "strtol");
 	strncmp  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncmp");

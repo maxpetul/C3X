@@ -194,6 +194,7 @@ struct injected_state {
 	// C standard library functions
 	int (* snprintf) (char *, size_t, char const *, ...);
 	void * (* malloc) (size_t);
+	void * (* calloc) (size_t, size_t);
 	void (* free) (void *);
 	long (* strtol) (char const *, char **, int);
 	int (* strncmp) (char const *, char const *, size_t);
