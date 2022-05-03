@@ -3,6 +3,9 @@
 - Disallow workers from improving water tiles
 - Do not group units with differing charm statuses
 
+* RELEASE 10B
+- Fix crash caused by patch for phantom resource bug
+
 * RELEASE 10
 - Scenario-specific mod configurations (see README for more info)
 - Mod info button
