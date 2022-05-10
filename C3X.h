@@ -12,12 +12,7 @@ typedef unsigned char byte;
 
 #define COUNT_TILE_HIGHLIGHTS 11
 
-struct perfume_config_spec {
-	char * target_name;
-	int amount;
-};
-
-struct perfume_internal_spec {
+struct perfume_spec {
 	City_Order target_order;
 	int amount;
 };
@@ -44,7 +39,7 @@ struct c3x_config {
 	char enable_land_sea_intersections;
 	char disallow_trespassing;
 	char show_detailed_tile_info;
-	struct perfume_internal_spec * perfume_specs;
+	struct perfume_spec * perfume_specs;
 	int count_perfume_specs;
 	char warn_about_unrecognized_perfume_target;
 	char enable_ai_production_ranking;

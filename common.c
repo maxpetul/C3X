@@ -38,14 +38,6 @@ int_abs (int x)
 	return (x >= 0) ? x : (0 - x);
 }
 
-void
-free_perfume_config_specs (struct perfume_config_spec * specs, int count_specs)
-{
-	for (int n = 0; n < count_specs; n++)
-		free (specs[n].target_name);
-	free (specs);
-}
-
 // Writes an integer to a byte buffer. buf need not be aligned but it must have at least four bytes of free space. Written little-endian.
 byte *
 int_to_bytes (byte * buf, int x)

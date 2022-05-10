@@ -197,7 +197,7 @@ find_order_matching_name (struct string_slice const * name, City_Order * out)
 }
 
 int
-parse_perfume_spec (char ** p_cursor, struct perfume_internal_spec * out)
+parse_perfume_spec (char ** p_cursor, struct perfume_spec * out)
 {
 	char * cur = *p_cursor;
 	struct string_slice name, amount_str;
@@ -218,7 +218,7 @@ parse_perfume_spec (char ** p_cursor, struct perfume_internal_spec * out)
 
 // Specs read in are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
 int
-read_perfume_specs (struct string_slice const * s, struct perfume_internal_spec ** inout_list, int * inout_count)
+read_perfume_specs (struct string_slice const * s, struct perfume_spec ** inout_list, int * inout_count)
 {
 	if (s->len <= 0)
 		return 1;
@@ -226,12 +226,12 @@ read_perfume_specs (struct string_slice const * s, struct perfume_internal_spec 
 	char * cursor = extracted_slice;
 
 	int success = 0;
-	struct perfume_internal_spec * new_specs = NULL;
+	struct perfume_spec * new_specs = NULL;
 	int count_new_specs = 0;
 	int new_specs_capacity = 0;
 
 	while (1) {
-		struct perfume_internal_spec temp_spec;
+		struct perfume_spec temp_spec;
 		if (parse_perfume_spec (&cursor, &temp_spec)) {
 			reserve (sizeof new_specs[0], (void **)&new_specs, &new_specs_capacity, count_new_specs);
 			new_specs[count_new_specs++] = temp_spec;
@@ -430,7 +430,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 			struct perfume_config_spec const * spec = &cfg->perfume_specs[n];
 			City_Order match;
 			if (find_order_matching_name (spec->target_name, &match))
-				is->perfume_specs[is->count_perfume_specs++] = (struct perfume_internal_spec) { .target_order = match, .amount = spec->amount };
+				is->perfume_specs[is->count_perfume_specs++] = (struct perfume_spec) { .target_order = match, .amount = spec->amount };
 			else
 				memoize (n);
 		}
@@ -528,7 +528,7 @@ intercept_consideration (int valuation)
 
 	// Apply perfume
 	for (int n = 0; n < is->current_config.count_perfume_specs; n++) {
-		struct perfume_internal_spec const * spec = &is->current_config.perfume_specs[n];
+		struct perfume_spec const * spec = &is->current_config.perfume_specs[n];
 		if ((spec->target_order.OrderType == order->OrderType) && (spec->target_order.OrderID == order->OrderID)) {
 			valuation += spec->amount;
 			break;
