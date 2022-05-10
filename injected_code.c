@@ -190,6 +190,66 @@ find_order_matching_name (char const * name, City_Order * out)
 	return 0;
 }
 
+int
+parse_perfume_spec (char ** p_cursor, struct perfume_config_spec * out)
+{
+	char * cur = *p_cursor;
+	struct string_slice name, amount_str;
+	int amount;
+	if (parse_string (&cur, &name) &&
+	    skip_punctuation (&cur, ':') &&
+	    parse_string (&cur, &amount_str) &&
+	    read_int (&amount_str, &amount)) {
+		out->target_name = extract_slice (&name);
+		out->amount = amount;
+		*p_cursor = cur;
+		return 1;
+	} else
+		return 0;
+}
+
+int
+read_perfume_specs (struct string_slice const * s, struct perfume_config_spec ** out_perfume_specs, int * out_count_perfume_specs)
+{
+	if (s->len <= 0) {
+		*out_perfume_specs = NULL;
+		*out_count_perfume_specs = 0;
+		return 1;
+	}
+	char * extracted_slice = extract_slice (s);
+	char * cursor = extracted_slice;
+
+	int success = 0;
+	struct perfume_config_spec * specs = NULL;
+	int count_specs = 0;
+	int specs_capacity = 0;
+
+	while (1) {
+		struct perfume_config_spec temp_spec;
+		if (parse_perfume_spec (&cursor, &temp_spec)) {
+			reserve (sizeof specs[0], (void **)&specs, &specs_capacity, count_specs);
+			specs[count_specs++] = temp_spec;
+
+			if (skip_punctuation (&cursor, ','))
+				continue;
+			else if (skip_horiz_space (&cursor) && (*cursor == '\0')) {
+				success = 1;
+				break;
+			} else
+				break;
+		} else
+			break;
+	}
+
+	if (success) {
+		*out_perfume_specs = specs;
+		*out_count_perfume_specs = count_specs;
+	} else
+		free_perfume_config_specs (specs, count_specs);
+	free (extracted_slice);
+	return success;
+}
+
 // Loads a config from the given file, layering it on top of is->current_config and appending its name to the list of loaded configs. Does NOT
 // re-apply machine code edits.
 void
