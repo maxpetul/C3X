@@ -44,7 +44,7 @@ struct c3x_config {
 	char enable_land_sea_intersections;
 	char disallow_trespassing;
 	char show_detailed_tile_info;
-	struct perfume_config_spec * perfume_specs;
+	struct perfume_internal_spec * perfume_specs;
 	int count_perfume_specs;
 	char warn_about_unrecognized_perfume_target;
 	char enable_ai_production_ranking;
@@ -232,10 +232,6 @@ struct injected_state {
 	int * memo;
 	int memo_len;
 	int memo_capacity;
-
-	// Initialized to NULL/0, then filled out by load_scenario
-	struct perfume_internal_spec * perfume_specs;
-	int count_perfume_specs;
 
 	// The civ ID of the player from whose perspective we're currently showing city loc desirability, or -1 if none. Initialized to -1.
 	int city_loc_display_perspective;

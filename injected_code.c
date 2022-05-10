@@ -140,11 +140,11 @@ clear_memo ()
 void
 reset_to_base_config ()
 {
-	// Free list of perfume specs since these come from the config
-	if (is->perfume_specs != NULL) {
-		free (is->perfume_specs);
-		is->perfume_specs = NULL;
-		is->count_perfume_specs = 0;
+	// Free list of perfume specs
+	if (is->current_config.perfume_specs != NULL) {
+		free (is->current_config.perfume_specs);
+		is->current_config.perfume_specs = NULL;
+		is->current_config.count_perfume_specs = 0;
 	}
 
 	// Free the linked list of loaded config names and the string name contained in each one
@@ -169,38 +169,46 @@ reset_to_base_config ()
 
 // Converts a build name (like "Spearman" or "Granary") into a City_Order struct. Returns 0 if no matching improvement or unit type was found, else 1.
 int
-find_order_matching_name (char const * name, City_Order * out)
+find_order_matching_name (struct string_slice const * name, City_Order * out)
 {
-	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
-		Improvement * improv = &p_bic_data->Improvements[n];
-		if (strncmp (improv->Name.S, name, sizeof improv->Name) == 0) {
-			out->OrderID = n;
-			out->OrderType = COT_Improvement;
-			return 1;
+	Improvement * improv;
+	if (name->len <= sizeof improv->Name)
+		for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+			improv = &p_bic_data->Improvements[n];
+			if (strncmp (improv->Name.S, name->str, name->len) == 0) {
+				out->OrderID = n;
+				out->OrderType = COT_Improvement;
+				return 1;
+			}
 		}
-	}
-	for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
-		UnitType * unit_type = &p_bic_data->UnitTypes[n];
-		if (strncmp (unit_type->Name, name, sizeof unit_type->Name) == 0) {
-			out->OrderID = n;
-			out->OrderType = COT_Unit;
-			return 1;
+
+	UnitType * unit_type;
+	if (name->len <= sizeof unit_type->Name)
+		for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
+			unit_type = &p_bic_data->UnitTypes[n];
+			if (strncmp (unit_type->Name, name->str, name->len) == 0) {
+				out->OrderID = n;
+				out->OrderType = COT_Unit;
+				return 1;
+			}
 		}
-	}
+
 	return 0;
 }
 
 int
-parse_perfume_spec (char ** p_cursor, struct perfume_config_spec * out)
+parse_perfume_spec (char ** p_cursor, struct perfume_internal_spec * out)
 {
 	char * cur = *p_cursor;
 	struct string_slice name, amount_str;
+	City_Order order;
 	int amount;
 	if (parse_string (&cur, &name) &&
+	    find_order_matching_name (&name, &order) &&
 	    skip_punctuation (&cur, ':') &&
 	    parse_string (&cur, &amount_str) &&
 	    read_int (&amount_str, &amount)) {
-		out->target_name = extract_slice (&name);
+		out->target_order = order;
 		out->amount = amount;
 		*p_cursor = cur;
 		return 1;
@@ -208,27 +216,25 @@ parse_perfume_spec (char ** p_cursor, struct perfume_config_spec * out)
 		return 0;
 }
 
+// Specs read in are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
 int
-read_perfume_specs (struct string_slice const * s, struct perfume_config_spec ** out_perfume_specs, int * out_count_perfume_specs)
+read_perfume_specs (struct string_slice const * s, struct perfume_internal_spec ** inout_list, int * inout_count)
 {
-	if (s->len <= 0) {
-		*out_perfume_specs = NULL;
-		*out_count_perfume_specs = 0;
+	if (s->len <= 0)
 		return 1;
-	}
 	char * extracted_slice = extract_slice (s);
 	char * cursor = extracted_slice;
 
 	int success = 0;
-	struct perfume_config_spec * specs = NULL;
-	int count_specs = 0;
-	int specs_capacity = 0;
+	struct perfume_internal_spec * new_specs = NULL;
+	int count_new_specs = 0;
+	int new_specs_capacity = 0;
 
 	while (1) {
-		struct perfume_config_spec temp_spec;
+		struct perfume_internal_spec temp_spec;
 		if (parse_perfume_spec (&cursor, &temp_spec)) {
-			reserve (sizeof specs[0], (void **)&specs, &specs_capacity, count_specs);
-			specs[count_specs++] = temp_spec;
+			reserve (sizeof new_specs[0], (void **)&new_specs, &new_specs_capacity, count_new_specs);
+			new_specs[count_new_specs++] = temp_spec;
 
 			if (skip_punctuation (&cursor, ','))
 				continue;
@@ -241,11 +247,14 @@ read_perfume_specs (struct string_slice const * s, struct perfume_config_spec **
 			break;
 	}
 
-	if (success) {
-		*out_perfume_specs = specs;
-		*out_count_perfume_specs = count_specs;
-	} else
-		free_perfume_config_specs (specs, count_specs);
+	if (success && (count_new_specs > 0)) {
+		*inout_list = realloc (*inout_list, (*inout_count + count_new_specs) * sizeof **inout_list);
+		for (int n = 0; n < count_new_specs; n++) {
+			(*inout_list)[*inout_count] = new_specs[n];
+			*inout_count += 1;
+		}
+	}
+	free (new_specs);
 	free (extracted_slice);
 	return success;
 }
@@ -286,8 +295,6 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 			skip_to_line_end (&cursor); // Skip section line
 		else { // parse key-value pair
 			struct string_slice key, value;
-			struct perfume_config_spec * perfume_specs;
-			int count_perfume_specs;
 			if (parse_key_value_pair (&cursor, &key, &value)) {
 				int ival;
 				if ((0 == strncmp (key.str, "enable_stack_bombard", key.len)) && read_int (&value, &ival))
@@ -332,10 +339,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->disallow_trespassing = ival != 0;
 				else if ((0 == strncmp (key.str, "show_detailed_tile_info", key.len)) && read_int (&value, &ival))
 					cfg->show_detailed_tile_info = ival != 0;
-				else if ((0 == strncmp (key.str, "perfume_specs", key.len)) && read_perfume_specs (&value, &perfume_specs, &count_perfume_specs)) {
-					cfg->perfume_specs = perfume_specs;
-					cfg->count_perfume_specs = count_perfume_specs;
-				} else if ((0 == strncmp (key.str, "warn_about_unrecognized_perfume_target", key.len)) && read_int (&value, &ival))
+				else if ((0 == strncmp (key.str, "perfume_specs", key.len)) && read_perfume_specs (&value, &cfg->perfume_specs, &cfg->count_perfume_specs))
+					;
+				else if ((0 == strncmp (key.str, "warn_about_unrecognized_perfume_target", key.len)) && read_int (&value, &ival))
 					cfg->warn_about_unrecognized_perfume_target = ival != 0;
 				else if ((0 == strncmp (key.str, "enable_ai_production_ranking", key.len)) && read_int (&value, &ival))
 					cfg->enable_ai_production_ranking = ival != 0;
@@ -414,6 +420,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 	free (text);
 
 	// Look up names for perfume targets
+/*
 	if (cfg->count_perfume_specs > 0) {
 		is->perfume_specs = realloc (is->perfume_specs, (is->count_perfume_specs + cfg->count_perfume_specs) * sizeof is->perfume_specs[0]);
 
@@ -440,6 +447,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 			show_popup (popup, __, 0, 0);
 		}
 	}
+*/
 
 	struct loaded_config_name * top_lcn = is->loaded_config_names;
 	while (top_lcn->next != NULL)
@@ -519,8 +527,8 @@ intercept_consideration (int valuation)
 	}
 
 	// Apply perfume
-	for (int n = 0; n < is->count_perfume_specs; n++) {
-		struct perfume_internal_spec const * spec = &is->perfume_specs[n];
+	for (int n = 0; n < is->current_config.count_perfume_specs; n++) {
+		struct perfume_internal_spec const * spec = &is->current_config.perfume_specs[n];
 		if ((spec->target_order.OrderType == order->OrderType) && (spec->target_order.OrderID == order->OrderID)) {
 			valuation += spec->amount;
 			break;
@@ -832,9 +840,6 @@ patch_init_floating_point ()
 	is->memo = NULL;
 	is->memo_len = 0;
 	is->memo_capacity = 0;
-
-	is->perfume_specs = NULL;
-	is->count_perfume_specs = 0;
 
 	is->city_loc_display_perspective = -1;
 
