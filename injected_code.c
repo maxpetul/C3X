@@ -23,6 +23,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define snprintf is->snprintf
 #define malloc is->malloc
 #define calloc is->calloc
+#define realloc is->realloc
 #define free is->free
 #define strtol is->strtol
 #define strncmp is->strncmp
@@ -617,6 +618,7 @@ patch_init_floating_point ()
 	snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
 	malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
 	calloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "calloc");
+	realloc  = (void *)(*p_GetProcAddress) (is->msvcrt, "realloc");
 	free     = (void *)(*p_GetProcAddress) (is->msvcrt, "free");
 	strtol   = (void *)(*p_GetProcAddress) (is->msvcrt, "strtol");
 	strncmp  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncmp");
