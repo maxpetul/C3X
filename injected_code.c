@@ -111,6 +111,31 @@ err_in_CreateFileA:
 	return NULL;
 }
 
+void
+memoize (int val)
+{
+	if (is->memo_len < is->memo_capacity)
+		is->memo[is->memo_len++] = val;
+	else {
+		int new_capacity = not_below (100, 2 * is->memo_capacity);
+		int * new_memo = malloc (new_capacity * sizeof is->memo[0]);
+		if (new_memo != NULL) {
+			for (int n = 0; n < is->memo_len; n++)
+				new_memo[n] = is->memo[n];
+			free (is->memo);
+			is->memo = new_memo;
+			is->memo_capacity = new_capacity;
+			is->memo[is->memo_len++] = val;
+		}
+	}
+}
+
+void
+clear_memo ()
+{
+	is->memo_len = 0;
+}
+
 // Resets is->current_config to the base config and updates the list of config names. Does NOT re-apply machine code edits.
 void
 reset_to_base_config ()
@@ -140,6 +165,29 @@ reset_to_base_config ()
 	is->loaded_config_names = malloc (sizeof *is->loaded_config_names);
 	is->loaded_config_names->name = strdup ("(base)");
 	is->loaded_config_names->next = NULL;
+}
+
+// Converts a build name (like "Spearman" or "Granary") into a City_Order struct. Returns 0 if no matching improvement or unit type was found, else 1.
+int
+find_order_matching_name (char const * name, City_Order * out)
+{
+	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+		Improvement * improv = &p_bic_data->Improvements[n];
+		if (strncmp (improv->Name.S, name, sizeof improv->Name) == 0) {
+			out->OrderID = n;
+			out->OrderType = COT_Improvement;
+			return 1;
+		}
+	}
+	for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
+		UnitType * unit_type = &p_bic_data->UnitTypes[n];
+		if (strncmp (unit_type->Name, name, sizeof unit_type->Name) == 0) {
+			out->OrderID = n;
+			out->OrderType = COT_Unit;
+			return 1;
+		}
+	}
+	return 0;
 }
 
 // Loads a config from the given file, layering it on top of is->current_config and appending its name to the list of loaded configs. Does NOT
@@ -304,6 +352,34 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 	}
 
 	free (text);
+
+	// Look up names for perfume targets
+	if (cfg->count_perfume_specs > 0) {
+		is->perfume_specs = realloc (is->perfume_specs, (is->count_perfume_specs + cfg->count_perfume_specs) * sizeof is->perfume_specs[0]);
+
+		clear_memo (); // Memo stores indices of unmatched specs
+
+		for (int n = 0; n < cfg->count_perfume_specs; n++) {
+			struct perfume_config_spec const * spec = &cfg->perfume_specs[n];
+			City_Order match;
+			if (find_order_matching_name (spec->target_name, &match))
+				is->perfume_specs[is->count_perfume_specs++] = (struct perfume_internal_spec) { .target_order = match, .amount = spec->amount };
+			else
+				memoize (n);
+		}
+
+		if (cfg->warn_about_unrecognized_perfume_target && (is->memo_len > 0)) {
+			PopupForm * popup = get_popup_form ();
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_UNMATCHED_PERFUME_TARGET", -1, 0, 0, 0);
+			for (int n = 0; n < is->memo_len; n++) {
+				char s[100];
+				snprintf (s, sizeof s, "^  %s", cfg->perfume_specs[is->memo[n]].target_name);
+				s[(sizeof s) - 1] = '\0';
+				PopupForm_add_text (popup, __, s, 0);
+			}
+			show_popup (popup, __, 0, 0);
+		}
+	}
 
 	struct loaded_config_name * top_lcn = is->loaded_config_names;
 	while (top_lcn->next != NULL)
@@ -712,31 +788,6 @@ patch_init_floating_point ()
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config);
-}
-
-void
-memoize (int val)
-{
-	if (is->memo_len < is->memo_capacity)
-		is->memo[is->memo_len++] = val;
-	else {
-		int new_capacity = not_below (100, 2 * is->memo_capacity);
-		int * new_memo = malloc (new_capacity * sizeof is->memo[0]);
-		if (new_memo != NULL) {
-			for (int n = 0; n < is->memo_len; n++)
-				new_memo[n] = is->memo[n];
-			free (is->memo);
-			is->memo = new_memo;
-			is->memo_capacity = new_capacity;
-			is->memo[is->memo_len++] = val;
-		}
-	}
-}
-
-void
-clear_memo ()
-{
-	is->memo_len = 0;
 }
 
 void
@@ -1966,29 +2017,6 @@ patch_do_save_game (char * file_path, char param_2, GUID * guid)
 	}
 }
 
-// Converts a build name (like "Spearman" or "Granary") into a City_Order struct. Returns 0 if no matching improvement or unit type was found, else 1.
-int
-find_order_matching_name (char const * name, City_Order * out)
-{
-	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
-		Improvement * improv = &p_bic_data->Improvements[n];
-		if (strncmp (improv->Name.S, name, sizeof improv->Name) == 0) {
-			out->OrderID = n;
-			out->OrderType = COT_Improvement;
-			return 1;
-		}
-	}
-	for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
-		UnitType * unit_type = &p_bic_data->UnitTypes[n];
-		if (strncmp (unit_type->Name, name, sizeof unit_type->Name) == 0) {
-			out->OrderID = n;
-			out->OrderType = COT_Unit;
-			return 1;
-		}
-	}
-	return 0;
-}
-
 unsigned __fastcall
 patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 {
@@ -2025,36 +2053,6 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		p_bic_data->General.RoadsMovementRate *= is->current_config.limit_railroad_movement;
 	} else
 		is->saved_road_movement_rate = -1;
-
-	if (is->current_config.count_perfume_specs > 0) {
-		is->perfume_specs = malloc (is->current_config.count_perfume_specs * sizeof is->perfume_specs[0]);
-
-		clear_memo (); // Memo stores indices of unmatched specs
-
-		for (int n = 0; n < is->current_config.count_perfume_specs; n++) {
-			struct perfume_config_spec const * spec = &is->current_config.perfume_specs[n];
-			int matched = 0;
-			City_Order match;
-			if (find_order_matching_name (spec->target_name, &match))
-				is->perfume_specs[is->count_perfume_specs++] = (struct perfume_internal_spec) { .target_order = match, .amount = spec->amount };
-			else
-				memoize (n);
-		}
-
-		if (is->current_config.warn_about_unrecognized_perfume_target &&
-		    (is->memo_len > 0)) {
-			PopupForm * popup = get_popup_form ();
-			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_UNMATCHED_PERFUME_TARGET", -1, 0, 0, 0);
-			for (int n = 0; n < is->memo_len; n++) {
-				char s[100];
-				snprintf (s, sizeof s, "^  %s", is->current_config.perfume_specs[is->memo[n]].target_name);
-				s[(sizeof s) - 1] = '\0';
-				PopupForm_add_text (popup, __, s, 0);
-			}
-			show_popup (popup, __, 0, 0);
-		}
-
-	}
 
 	return tr;
 }
