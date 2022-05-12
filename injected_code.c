@@ -167,6 +167,34 @@ reset_to_base_config ()
 	is->loaded_config_names->next = NULL;
 }
 
+struct error_line {
+	char text[200];
+	struct error_line * next;
+};
+
+struct error_line *
+add_error_line (struct error_line ** p_lines)
+{
+	struct error_line * tr = calloc (1, sizeof *tr);
+
+	struct error_line ** p_prev = p_lines;
+	while (*p_prev != NULL)
+		p_prev = &(*p_prev)->next;
+	*p_prev = tr;
+
+	return tr;
+}
+
+void
+free_error_lines (struct error_line * lines)
+{
+	while (lines != NULL) {
+		struct error_line * next = lines->next;
+		free (lines);
+		lines = next;
+	}
+}
+
 // Converts a build name (like "Spearman" or "Granary") into a City_Order struct. Returns 0 if no matching improvement or unit type was found, else 1.
 int
 find_order_matching_name (struct string_slice const * name, City_Order * out)
@@ -196,29 +224,42 @@ find_order_matching_name (struct string_slice const * name, City_Order * out)
 	return 0;
 }
 
-int
-parse_perfume_spec (char ** p_cursor, struct perfume_spec * out)
+enum perfume_spec_parse_result {
+	PSPR_OK = 0,
+	PSPR_UNRECOGNIZED, // Grammatically OK but couldn't find a unit or building with the provided name
+	PSPR_ERROR
+};
+
+enum perfume_spec_parse_result
+parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines, struct perfume_spec * out)
 {
 	char * cur = *p_cursor;
 	struct string_slice name, amount_str;
 	City_Order order;
 	int amount;
 	if (parse_string (&cur, &name) &&
-	    find_order_matching_name (&name, &order) &&
 	    skip_punctuation (&cur, ':') &&
 	    parse_string (&cur, &amount_str) &&
 	    read_int (&amount_str, &amount)) {
-		out->target_order = order;
-		out->amount = amount;
 		*p_cursor = cur;
-		return 1;
+		if (find_order_matching_name (&name, &order)) {
+			out->target_order = order;
+			out->amount = amount;
+			return PSPR_OK;
+		} else {
+			struct error_line * line = add_error_line (p_unrecognized_lines);
+			char s[100];
+			snprintf (line->text, sizeof line->text, "^  %.*s", name.len, name.str);
+			line->text[(sizeof line->text) - 1] = '\0';
+			return PSPR_UNRECOGNIZED;
+		}
 	} else
-		return 0;
+		return PSPR_ERROR;
 }
 
 // Specs read in are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
 int
-read_perfume_specs (struct string_slice const * s, struct perfume_spec ** inout_list, int * inout_count)
+read_perfume_specs (struct string_slice const * s, struct error_line ** p_unrecognized_lines, struct perfume_spec ** inout_list, int * inout_count)
 {
 	if (s->len <= 0)
 		return 1;
@@ -232,9 +273,12 @@ read_perfume_specs (struct string_slice const * s, struct perfume_spec ** inout_
 
 	while (1) {
 		struct perfume_spec temp_spec;
-		if (parse_perfume_spec (&cursor, &temp_spec)) {
-			reserve (sizeof new_specs[0], (void **)&new_specs, &new_specs_capacity, count_new_specs);
-			new_specs[count_new_specs++] = temp_spec;
+		enum perfume_spec_parse_result result = parse_perfume_spec (&cursor, p_unrecognized_lines, &temp_spec);
+		if (result != PSPR_ERROR) {
+			if (result == PSPR_OK) {
+				reserve (sizeof new_specs[0], (void **)&new_specs, &new_specs_capacity, count_new_specs);
+				new_specs[count_new_specs++] = temp_spec;
+			}
 
 			if (skip_punctuation (&cursor, ','))
 				continue;
@@ -283,6 +327,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 	char * cursor = text;
 	int displayed_error_message = 0;
 	char err_msg[1000];
+	struct error_line * unrecognized_lines = NULL;
 	while (1) {
 		skip_horiz_space (&cursor);
 		if (*cursor == '\0')
@@ -339,7 +384,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->disallow_trespassing = ival != 0;
 				else if ((0 == strncmp (key.str, "show_detailed_tile_info", key.len)) && read_int (&value, &ival))
 					cfg->show_detailed_tile_info = ival != 0;
-				else if ((0 == strncmp (key.str, "perfume_specs", key.len)) && read_perfume_specs (&value, &cfg->perfume_specs, &cfg->count_perfume_specs))
+				else if ((0 == strncmp (key.str, "perfume_specs", key.len)) && read_perfume_specs (&value, &unrecognized_lines, &cfg->perfume_specs, &cfg->count_perfume_specs))
 					;
 				else if ((0 == strncmp (key.str, "warn_about_unrecognized_perfume_target", key.len)) && read_int (&value, &ival))
 					cfg->warn_about_unrecognized_perfume_target = ival != 0;
@@ -417,37 +462,20 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		}
 	}
 
-	free (text);
-
-	// Look up names for perfume targets
-/*
-	if (cfg->count_perfume_specs > 0) {
-		is->perfume_specs = realloc (is->perfume_specs, (is->count_perfume_specs + cfg->count_perfume_specs) * sizeof is->perfume_specs[0]);
-
-		clear_memo (); // Memo stores indices of unmatched specs
-
-		for (int n = 0; n < cfg->count_perfume_specs; n++) {
-			struct perfume_config_spec const * spec = &cfg->perfume_specs[n];
-			City_Order match;
-			if (find_order_matching_name (spec->target_name, &match))
-				is->perfume_specs[is->count_perfume_specs++] = (struct perfume_spec) { .target_order = match, .amount = spec->amount };
-			else
-				memoize (n);
-		}
-
-		if (cfg->warn_about_unrecognized_perfume_target && (is->memo_len > 0)) {
-			PopupForm * popup = get_popup_form ();
-			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_UNMATCHED_PERFUME_TARGET", -1, 0, 0, 0);
-			for (int n = 0; n < is->memo_len; n++) {
-				char s[100];
-				snprintf (s, sizeof s, "^  %s", cfg->perfume_specs[is->memo[n]].target_name);
-				s[(sizeof s) - 1] = '\0';
-				PopupForm_add_text (popup, __, s, 0);
-			}
-			show_popup (popup, __, 0, 0);
-		}
+	if (cfg->warn_about_unrecognized_perfume_target && (unrecognized_lines != NULL)) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "Unrecognized names in %s:", full_path);
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, 0);
+		for (struct error_line * line = unrecognized_lines; line != NULL; line = line->next)
+			PopupForm_add_text (popup, __, line->text, 0);
+		show_popup (popup, __, 0, 0);
 	}
-*/
+
+	free (text);
+	free_error_lines (unrecognized_lines);
 
 	struct loaded_config_name * top_lcn = is->loaded_config_names;
 	while (top_lcn->next != NULL)
