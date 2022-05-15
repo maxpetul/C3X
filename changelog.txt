@@ -1,6 +1,7 @@
 - On the city screen, hold shift when clicking a specialist to switch to the previous type
 - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
 - Disallow workers from improving water tiles
+- Exempt invisible and hidden nationality units from trespassing restriction
 - Do not group units with differing charm statuses
 
 * RELEASE 10B

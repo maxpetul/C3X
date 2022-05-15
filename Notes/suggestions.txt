@@ -122,4 +122,3 @@ Ideas:
 - [from Predator145] Restore PTW artillery and bomber targetting rules
 - [from Hazem]
   - Improve defensive unit AI so it stands in threatened cities intead of nearby
-  - Allow hidden nationality & invisible units to trespass

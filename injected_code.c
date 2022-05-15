@@ -2056,6 +2056,17 @@ is_trespassing (int civ_id, Tile * from, Tile * to)
 		((leaders[civ_id].Relation_Treaties[to_territory_id] & 2) == 0); // Check right of passage
 }
 
+int
+is_allowed_to_trespass (Unit * unit)
+{
+	int type_id = unit->Body.UnitTypeID;
+	if ((type_id >= 0) && (type_id < p_bic_data->UnitTypeCount)) {
+		UnitType * type = &p_bic_data->UnitTypes[type_id];
+		return UnitType_has_ability (type, __, UTA_Hidden_Nationality) || UnitType_has_ability (type, __, UTA_Invisible);
+	} else
+		return 0;
+}
+
 AdjacentMoveValidity __fastcall
 patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, int param_2)
 {
@@ -2066,7 +2077,7 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 		Tile * from = tile_at (this->Body.X, this->Body.Y);
 		int nx, ny;
 		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
-		if (is_trespassing (this->Body.CivID, from, tile_at (nx, ny)))
+		if (is_trespassing (this->Body.CivID, from, tile_at (nx, ny)) && (! is_allowed_to_trespass (this)))
 			return AMV_TRIGGERS_WAR;
 	}
 
@@ -2080,7 +2091,8 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 
 	// Apply trespassing restriction
 	if (is->current_config.disallow_trespassing &&
-	    is_trespassing (civ_id, tile_at (from_x, from_y), tile_at (to_x, to_y)))
+	    is_trespassing (civ_id, tile_at (from_x, from_y), tile_at (to_x, to_y)) &&
+	    ((unit == NULL) || (! is_allowed_to_trespass (unit))))
 		return -1;
 
 	// Adjust movement cost to enforce limited railroad movement
