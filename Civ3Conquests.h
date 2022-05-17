@@ -2830,12 +2830,12 @@ struct Base_Form_vtable
   int m23;
   int m24;
   int m25_Process_Mouse_Wheel;
-  int m26;
+  void (__fastcall * m26_on_mouse_hover) (Base_Form * this, __, int local_x, int local_y, int param_3);
   int m27;
   int m28;
 //  void (__thiscall *m29_On_Left_Click)(Base_Form *, int, int);
   void *m29_On_Left_Click;
-  int m30;
+  void (__fastcall * m30_Process_Left_Click) (Base_Form *, __, int, int);
   int m31;
   int m32_On_Right_Click;
   int m33_Process_Right_Click;
@@ -2889,7 +2889,7 @@ struct Base_Form_vtable
   int m81;
   void (__fastcall * m82_handle_key_event) (Base_Form *, __, int, int);
   int m83_On_Char;
-  int m84_On_Mouse_Left_Down;
+  void (__fastcall * m84_On_Mouse_Left_Down) (Base_Form *, __, int, int, int, int);
   void (__fastcall * m85_On_Mouse_Left_Up) (Base_Form *, __, int, int, int);
 //  void (__thiscall *m86_On_Mouse_Right_Down)(Base_Form *, int, int, int, int);
   void *m86_On_Mouse_Right_Down;
@@ -5112,7 +5112,12 @@ struct Base_List_Box
 {
   int vtable;
   Control_Data_Offsets *Offsets;
-  int field_8[23];
+  int field_8[7];
+  int mouse_x;
+  int mouse_y;
+  int first_item_shown;
+  int shown_item_count;
+  int field_34[12];
   int Data1;
   int field_68;
   int Parent;
@@ -5589,7 +5594,10 @@ struct City_Form
 {
   Base_Form Base;
   City_Screen_FileNames Files;
-  int Production_Queue_Form_Status;
+  byte field_19C4;
+  byte production_selector_open;
+  byte field_19C6;
+  byte field_19C7;
   int field_19C8[3];
   int Current_Era;
   int Current_Era2;
