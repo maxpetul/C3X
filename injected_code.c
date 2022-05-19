@@ -234,7 +234,7 @@ enum recognizable_parse_result {
 };
 
 enum recognizable_parse_result
-parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines, struct perfume_spec * out)
+parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_perfume_spec)
 {
 	char * cur = *p_cursor;
 	struct string_slice name, amount_str;
@@ -246,6 +246,7 @@ parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines,
 	    read_int (&amount_str, &amount)) {
 		*p_cursor = cur;
 		if (find_order_matching_name (&name, &order)) {
+			struct perfume_spec * out = out_perfume_spec;
 			out->target_order = order;
 			out->amount = amount;
 			return RPR_OK;
@@ -260,9 +261,14 @@ parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines,
 		return RPR_PARSE_ERROR;
 }
 
-// Specs read in are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
+// Recognizable items are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
 int
-read_perfume_specs (struct string_slice const * s, struct error_line ** p_unrecognized_lines, struct perfume_spec ** inout_list, int * inout_count)
+read_recognizables (struct string_slice const * s,
+		    struct error_line ** p_unrecognized_lines,
+		    int item_size,
+		    enum recognizable_parse_result (* parse_item) (char **, struct error_line **, void *),
+		    void ** inout_list,
+		    int * inout_count)
 {
 	if (s->len <= 0)
 		return 1;
@@ -270,17 +276,18 @@ read_perfume_specs (struct string_slice const * s, struct error_line ** p_unreco
 	char * cursor = extracted_slice;
 
 	int success = 0;
-	struct perfume_spec * new_specs = NULL;
-	int count_new_specs = 0;
-	int new_specs_capacity = 0;
+	void * new_items = NULL;
+	int count_new_items = 0;
+	int new_items_capacity = 0;
+	void * temp_item = malloc (item_size);
 
 	while (1) {
-		struct perfume_spec temp_spec;
-		enum recognizable_parse_result result = parse_perfume_spec (&cursor, p_unrecognized_lines, &temp_spec);
+		enum recognizable_parse_result result = parse_item (&cursor, p_unrecognized_lines, temp_item);
 		if (result != RPR_PARSE_ERROR) {
 			if (result == RPR_OK) {
-				reserve (sizeof new_specs[0], (void **)&new_specs, &new_specs_capacity, count_new_specs);
-				new_specs[count_new_specs++] = temp_spec;
+				reserve (item_size, &new_items, &new_items_capacity, count_new_items);
+				memcpy ((byte *)new_items + count_new_items * item_size, temp_item, item_size);
+				count_new_items++;
 			}
 
 			if (skip_punctuation (&cursor, ','))
@@ -294,14 +301,13 @@ read_perfume_specs (struct string_slice const * s, struct error_line ** p_unreco
 			break;
 	}
 
-	if (success && (count_new_specs > 0)) {
-		*inout_list = realloc (*inout_list, (*inout_count + count_new_specs) * sizeof **inout_list);
-		for (int n = 0; n < count_new_specs; n++) {
-			(*inout_list)[*inout_count] = new_specs[n];
-			*inout_count += 1;
-		}
+	if (success && (count_new_items > 0)) {
+		*inout_list = realloc (*inout_list, (*inout_count + count_new_items) * item_size);
+		memcpy ((byte *)*inout_list + *inout_count * item_size, new_items, count_new_items * item_size);
+		*inout_count += count_new_items;
 	}
-	free (new_specs);
+	free (temp_item);
+	free (new_items);
 	free (extracted_slice);
 	return success;
 }
@@ -387,7 +393,13 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->disallow_trespassing = ival != 0;
 				else if ((0 == strncmp (key.str, "show_detailed_tile_info", key.len)) && read_int (&value, &ival))
 					cfg->show_detailed_tile_info = ival != 0;
-				else if ((0 == strncmp (key.str, "perfume_specs", key.len)) && read_perfume_specs (&value, &unrecognized_lines, &cfg->perfume_specs, &cfg->count_perfume_specs))
+				else if ((0 == strncmp (key.str, "perfume_specs", key.len)) &&
+					 read_recognizables (&value,
+							     &unrecognized_lines,
+							     sizeof (struct perfume_spec),
+							     parse_perfume_spec,
+							     (void **)&cfg->perfume_specs,
+							     &cfg->count_perfume_specs))
 					;
 				else if ((0 == strncmp (key.str, "warn_about_unrecognized_perfume_target", key.len)) && read_int (&value, &ival))
 					cfg->warn_about_unrecognized_perfume_target = ival != 0;
