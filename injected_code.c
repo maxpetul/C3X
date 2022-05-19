@@ -224,13 +224,16 @@ find_order_matching_name (struct string_slice const * name, City_Order * out)
 	return 0;
 }
 
-enum perfume_spec_parse_result {
-	PSPR_OK = 0,
-	PSPR_UNRECOGNIZED, // Grammatically OK but couldn't find a unit or building with the provided name
-	PSPR_ERROR
+// A "recognizable" is something that contains the name of a unit, building, etc. When parsing one, it's possible for it to be grammatically valid but
+// contain a name that doesn't match anything in the scenario data. That's a special kind of error. In that case, we record the error to report in a
+// popup and continue parsing.
+enum recognizable_parse_result {
+	RPR_OK = 0,
+	RPR_UNRECOGNIZED,
+	RPR_PARSE_ERROR
 };
 
-enum perfume_spec_parse_result
+enum recognizable_parse_result
 parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines, struct perfume_spec * out)
 {
 	char * cur = *p_cursor;
@@ -245,16 +248,16 @@ parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines,
 		if (find_order_matching_name (&name, &order)) {
 			out->target_order = order;
 			out->amount = amount;
-			return PSPR_OK;
+			return RPR_OK;
 		} else {
 			struct error_line * line = add_error_line (p_unrecognized_lines);
 			char s[100];
 			snprintf (line->text, sizeof line->text, "^  %.*s", name.len, name.str);
 			line->text[(sizeof line->text) - 1] = '\0';
-			return PSPR_UNRECOGNIZED;
+			return RPR_UNRECOGNIZED;
 		}
 	} else
-		return PSPR_ERROR;
+		return RPR_PARSE_ERROR;
 }
 
 // Specs read in are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
@@ -273,9 +276,9 @@ read_perfume_specs (struct string_slice const * s, struct error_line ** p_unreco
 
 	while (1) {
 		struct perfume_spec temp_spec;
-		enum perfume_spec_parse_result result = parse_perfume_spec (&cursor, p_unrecognized_lines, &temp_spec);
-		if (result != PSPR_ERROR) {
-			if (result == PSPR_OK) {
+		enum recognizable_parse_result result = parse_perfume_spec (&cursor, p_unrecognized_lines, &temp_spec);
+		if (result != RPR_PARSE_ERROR) {
+			if (result == RPR_OK) {
 				reserve (sizeof new_specs[0], (void **)&new_specs, &new_specs_capacity, count_new_specs);
 				new_specs[count_new_specs++] = temp_spec;
 			}
