@@ -24,6 +24,8 @@ Ideas:
   - Resource in city radius prereq for same
   - Era graphics changes for mines, radar towers, etc.
   - "Decoupling city icons from current building mechanics and assigning them elsewhere"
+  - Bonus food, etc. for buildings
+  - "Limited number of improvements (e.g. max of 6 barracks)"
 - [from ynot56] Stop AI suiciding low health units, stop attacking with weak units before strong ones
 - [from Sutsuj]
   - Allow teleportation of immobile units
@@ -122,3 +124,6 @@ Ideas:
 - [from Predator145] Restore PTW artillery and bomber targetting rules
 - [from Hazem]
   - Improve defensive unit AI so it stands in threatened cities intead of nearby
+- [from CivFan94]
+  - Allow improvements as prereqs for unit construction
+  - Make adjustable the duration before an improvement/wonder becomes a tourist attraction

@@ -1,3 +1,7 @@
+* TODO
+- Buildings as prereqs for unit construction
+- Enable buildings to grant resource access
+
 - On the city screen, hold shift when clicking a specialist to switch to the previous type
 - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
 - Disallow workers from improving water tiles
