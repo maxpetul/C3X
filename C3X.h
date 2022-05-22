@@ -46,6 +46,8 @@ struct c3x_config {
 	char show_detailed_tile_info;
 	struct perfume_spec * perfume_specs;
 	int count_perfume_specs;
+	struct building_unit_prereq * building_unit_prereqs;
+	int count_building_unit_prereqs;
 	char warn_about_unrecognized_perfume_target;
 	char enable_ai_production_ranking;
 	char enable_ai_city_location_desirability_display;

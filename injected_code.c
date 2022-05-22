@@ -147,6 +147,13 @@ reset_to_base_config ()
 		is->current_config.count_perfume_specs = 0;
 	}
 
+	// Free list of building-unit prereqs
+	if (is->current_config.building_unit_prereqs != NULL) {
+		free (is->current_config.building_unit_prereqs);
+		is->current_config.building_unit_prereqs = NULL;
+		is->current_config.count_building_unit_prereqs = 0;
+	}
+
 	// Free the linked list of loaded config names and the string name contained in each one
 	if (is->loaded_config_names != NULL) {
 		struct loaded_config_name * next = is->loaded_config_names;
@@ -450,6 +457,14 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 							     parse_perfume_spec,
 							     (void **)&cfg->perfume_specs,
 							     &cfg->count_perfume_specs))
+					;
+				else if ((0 == strncmp (key.str, "building_unit_prereqs", key.len)) &&
+					 read_recognizables (&value,
+							     &unrecognized_lines,
+							     sizeof (struct building_unit_prereq),
+							     parse_building_unit_prereq,
+							     (void **)&cfg->building_unit_prereqs,
+							     &cfg->count_building_unit_prereqs))
 					;
 				else if ((0 == strncmp (key.str, "warn_about_unrecognized_perfume_target", key.len)) && read_int (&value, &ival))
 					cfg->warn_about_unrecognized_perfume_target = ival != 0;

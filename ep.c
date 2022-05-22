@@ -963,6 +963,8 @@ ENTRY_POINT ()
 		.show_detailed_tile_info = 1,
 		.perfume_specs = NULL,
 		.count_perfume_specs = 0,
+		.building_unit_prereqs = NULL,
+		.count_building_unit_prereqs = 0,
 		.warn_about_unrecognized_perfume_target = 1,
 		.enable_ai_production_ranking = 1,
 		.enable_ai_city_location_desirability_display = 1,
