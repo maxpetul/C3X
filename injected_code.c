@@ -186,6 +186,15 @@ add_error_line (struct error_line ** p_lines)
 }
 
 void
+add_unrecognized_line (struct error_line ** p_lines, struct string_slice const * name)
+{
+	struct error_line * line = add_error_line (p_lines);
+	char s[100];
+	snprintf (line->text, sizeof line->text, "^  %.*s", name->len, name->str);
+	line->text[(sizeof line->text) - 1] = '\0';
+}
+
+void
 free_error_lines (struct error_line * lines)
 {
 	while (lines != NULL) {
@@ -195,33 +204,51 @@ free_error_lines (struct error_line * lines)
 	}
 }
 
-// Converts a build name (like "Spearman" or "Granary") into a City_Order struct. Returns 0 if no matching improvement or unit type was found, else 1.
 int
-find_order_matching_name (struct string_slice const * name, City_Order * out)
+find_improv_id_by_name (struct string_slice const * name, int * out)
 {
 	Improvement * improv;
 	if (name->len <= sizeof improv->Name)
 		for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
 			improv = &p_bic_data->Improvements[n];
 			if (strncmp (improv->Name.S, name->str, name->len) == 0) {
-				out->OrderID = n;
-				out->OrderType = COT_Improvement;
+				*out = n;
 				return 1;
 			}
 		}
+	return 0;
+}
 
+int
+find_unit_type_id_by_name (struct string_slice const * name, int * out)
+{
 	UnitType * unit_type;
 	if (name->len <= sizeof unit_type->Name)
 		for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
 			unit_type = &p_bic_data->UnitTypes[n];
 			if (strncmp (unit_type->Name, name->str, name->len) == 0) {
-				out->OrderID = n;
-				out->OrderType = COT_Unit;
+				*out = n;
 				return 1;
 			}
 		}
-
 	return 0;
+}
+
+// Converts a build name (like "Spearman" or "Granary") into a City_Order struct. Returns 0 if no by improvement or unit type was found, else 1.
+int
+find_city_order_by_name (struct string_slice const * name, City_Order * out)
+{
+	int id;
+	if (find_improv_id_by_name (name, &id)) {
+		out->OrderID = id;
+		out->OrderType = COT_Improvement;
+		return 1;
+	} else if (find_unit_type_id_by_name (name, &id)) {
+		out->OrderID = id;
+		out->OrderType = COT_Unit;
+		return 1;
+	} else
+		return 0;
 }
 
 // A "recognizable" is something that contains the name of a unit, building, etc. When parsing one, it's possible for it to be grammatically valid but
@@ -245,17 +272,40 @@ parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines,
 	    parse_string (&cur, &amount_str) &&
 	    read_int (&amount_str, &amount)) {
 		*p_cursor = cur;
-		if (find_order_matching_name (&name, &order)) {
+		if (find_city_order_by_name (&name, &order)) {
 			struct perfume_spec * out = out_perfume_spec;
 			out->target_order = order;
 			out->amount = amount;
 			return RPR_OK;
 		} else {
-			struct error_line * line = add_error_line (p_unrecognized_lines);
-			char s[100];
-			snprintf (line->text, sizeof line->text, "^  %.*s", name.len, name.str);
-			line->text[(sizeof line->text) - 1] = '\0';
+			add_unrecognized_line (p_unrecognized_lines, &name);
 			return RPR_UNRECOGNIZED;
+		}
+	} else
+		return RPR_PARSE_ERROR;
+}
+
+enum recognizable_parse_result
+parse_building_unit_prereq (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_building_unit_preq)
+{
+	char * cur = *p_cursor;
+	struct string_slice building_name, unit_type_name;
+	if (parse_string (&cur, &building_name) &&
+	    skip_punctuation (&cur, ':') &&
+	    parse_string (&cur, &unit_type_name)) {
+		*p_cursor = cur;
+		int building_id, unit_type_id;
+		if (! find_improv_id_by_name (&building_name, &building_id)) {
+			add_unrecognized_line (p_unrecognized_lines, &building_name);
+			return RPR_UNRECOGNIZED;
+		} else if (! find_unit_type_id_by_name (&unit_type_name, &unit_type_id)) {
+			add_unrecognized_line (p_unrecognized_lines, &unit_type_name);
+			return RPR_UNRECOGNIZED;
+		} else {
+			struct building_unit_prereq * out = out_building_unit_preq;
+			out->building_id = building_id;
+			out->unit_type_id = unit_type_id;
+			return RPR_OK;
 		}
 	} else
 		return RPR_PARSE_ERROR;

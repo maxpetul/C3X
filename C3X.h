@@ -17,6 +17,11 @@ struct perfume_spec {
 	int amount;
 };
 
+struct building_unit_prereq {
+	int building_id;
+	int unit_type_id;
+};
+
 struct c3x_config {
 	char enable_stack_bombard;
 	char enable_disorder_warning;
