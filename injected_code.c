@@ -458,7 +458,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 							     (void **)&cfg->perfume_specs,
 							     &cfg->count_perfume_specs))
 					;
-				else if ((0 == strncmp (key.str, "building_unit_prereqs", key.len)) &&
+				else if ((0 == strncmp (key.str, "building_prereqs_for_units", key.len)) &&
 					 read_recognizables (&value,
 							     &unrecognized_lines,
 							     sizeof (struct building_unit_prereq),
