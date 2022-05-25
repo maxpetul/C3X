@@ -2710,10 +2710,30 @@ rate_bomber (UnitType * type)
 	return tr;
 }
 
+int
+has_active_building (City * city, Improvement * improv)
+{
+	Leader * owner = &leaders[city->Body.CivID];
+	return City_has_improvement (city, __, improv->ImprovementID, 1) && // building is physically present in city AND
+		((improv->ObsoleteID < 0) || (! Leader_has_tech (owner, __, improv->ObsoleteID))) && // building is not obsolete AND
+		((improv->GovernmentID < 0) || (improv->GovernmentID == owner->GovernmentType)); // building is not restricted to a different govt
+}
+
+
 byte __fastcall
 patch_City_can_build_unit (City * this, int edx, int unit_type_id, byte exclude_upgradable, int param_3, byte allow_kings)
 {
-	return City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
+	byte base = City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
+
+	// Apply building prereqs
+	if (base)
+		for (int n = 0; n < is->current_config.count_building_unit_prereqs; n++) {
+			struct building_unit_prereq * prereq = &is->current_config.building_unit_prereqs[n];
+			if ((prereq->unit_type_id == unit_type_id) && (! has_active_building (this, &p_bic_data->Improvements[prereq->building_id])))
+				return 0;
+		}
+
+	return base;
 }
 
 void __fastcall
@@ -3668,9 +3688,7 @@ patch_City_get_pollution_from_pop (City * this)
 	int any_cleaning_improvs = 0;
 	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
 		Improvement * improv = &p_bic_data->Improvements[n];
-		if ((improv->ImprovementFlags & ITF_Removes_Population_Pollution) &&
-		    City_has_improvement (this, __, n, 1) &&
-		    ((improv->ObsoleteID < 0) || (! Leader_has_tech (&leaders[this->Body.CivID], __, improv->ObsoleteID)))) {
+		if ((improv->ImprovementFlags & ITF_Removes_Population_Pollution) && has_active_building (this, improv)) {
 			any_cleaning_improvs = 1;
 			if (improv->Pollution < 0)
 				net_pollution += improv->Pollution;
