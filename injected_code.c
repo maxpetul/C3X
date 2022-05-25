@@ -2710,6 +2710,12 @@ rate_bomber (UnitType * type)
 	return tr;
 }
 
+byte __fastcall
+patch_City_can_build_unit (City * this, int edx, int unit_type_id, byte exclude_upgradable, int param_3, byte allow_kings)
+{
+	return City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
+}
+
 void __fastcall
 patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 {
@@ -2745,7 +2751,7 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 			for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
 				UnitType * type = &p_bic_data->UnitTypes[n];
 				if ((type->AI_Strategy & (UTAI_Artillery | UTAI_Offence)) &&
-				    City_can_build_unit (this, __, n, 1, 0, 0)) {
+				    patch_City_can_build_unit (this, __, n, 1, 0, 0)) {
 					if (type->AI_Strategy & UTAI_Artillery) {
 						int this_rating = rate_artillery (&p_bic_data->UnitTypes[n]);
 						if (this_rating > best_arty_rating) {
@@ -2795,7 +2801,7 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 			for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
 				UnitType * type = &p_bic_data->UnitTypes[n];
 				if ((type->AI_Strategy & UTAI_Air_Bombard) &&
-				    City_can_build_unit (this, __, n, 1, 0, 0)) {
+				    patch_City_can_build_unit (this, __, n, 1, 0, 0)) {
 					int this_rating = rate_bomber (&p_bic_data->UnitTypes[n]);
 					if (this_rating > best_bomber_rating) {
 						best_bomber_type_id = n;
