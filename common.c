@@ -73,11 +73,136 @@ reserve (int item_size, void ** p_items, int * p_capacity, int count)
 	}
 }
 
-// =============================================================
-// ||                                                         ||
-// ||     FUNCTIONS BELOW ARE ALL RELATED TO TEXT PARSING     ||
-// ||                                                         ||
-// =============================================================
+
+
+// ===================================
+// ||                               ||
+// ||     SIMPLE INT HASH TABLE     ||
+// ||                               ||
+// ===================================
+
+// Initialize to zero
+struct table {
+	void * block;
+	size_t capacity_exponent; // Actual capacity is 1 << capacity_exponent
+	size_t len;
+};
+
+void
+table_deinit (struct table * t)
+{
+	free (t->block);
+	memset (t, 0, sizeof *t);
+}
+
+size_t
+table_capacity (struct table const * t)
+{
+	return (t->block != NULL) ? (size_t)1 << t->capacity_exponent : 0;
+}
+
+#define TABLE__BASE(table) ((int *)((char *)(table)->block + (table_capacity (table) / 8)))
+#define TABLE__OCCUPANCIES(table) ((unsigned char *)(table)->block)
+
+int
+table__is_occupied (struct table const * t, size_t index)
+{
+    int b = (TABLE__OCCUPANCIES (t))[index >> 3];
+    int mask = 1 << (index & 7);
+    return b & mask;
+}
+
+void
+table__set_occupation (struct table * t, size_t index, int occupied)
+{
+    unsigned char * b = &((TABLE__OCCUPANCIES (t))[index >> 3]);
+    unsigned char mask = 1 << (index & 7);
+    *b = occupied ? (*b | mask) : (*b & ~mask);
+}
+
+// Finds an appropriate index for a given key in the table. If the key is already present in the table, the index of its entry will be returned. If
+// it's not present, the index of where it would be is returned. This function assumes that the table is not full and that it has been allocated.
+size_t
+table__place (struct table const * t, int key)
+{
+	size_t mask = ((size_t)1 << t->capacity_exponent) - 1;
+	size_t index = (size_t)key & mask;
+	int * base = TABLE__BASE (t);
+	while (1) {
+		int * entry = &base[2*index];
+		if ((! table__is_occupied (t, index)) || (key == entry[0]))
+			return index;
+		else
+			index = (index + 1) & mask;
+	}
+}
+
+void
+table__expand (struct table * t)
+{
+	size_t new_capacity_exponent = (t->capacity_exponent > 0) ? (t->capacity_exponent + 1) : 5;
+	void * new_block; {
+		size_t new_capacity = (size_t)1 << new_capacity_exponent;
+		size_t new_block_size = new_capacity/8 + new_capacity*2*sizeof(int);
+		new_block = malloc (new_block_size);
+		memset (new_block, 0, new_block_size); // Clear new block to zero (this is important)
+	}
+
+	struct table new_table = { .block = new_block, .capacity_exponent = new_capacity_exponent, .len = 0 };
+
+	// Copy contents of the old table into the new one
+	size_t old_capacity = table_capacity (t);
+	int * old_base = TABLE__BASE (t);
+	for (size_t n = 0; n < old_capacity; n++)
+		if (table__is_occupied (t, n)) {
+			int * old_entry = &old_base[2*n];
+			size_t new_index = table__place (&new_table, old_entry[0]);
+			int * new_entry = &((int *)TABLE__BASE (&new_table))[2*new_index];
+			new_entry[0] = old_entry[0]; // copy key
+			new_entry[1] = old_entry[1]; // copy value
+			table__set_occupation (&new_table, new_index, 1);
+			++new_table.len;
+		}
+
+	table_deinit (t);
+	*t = new_table;
+}
+
+void
+table_insert (struct table * t, int key, int value)
+{
+	if (t->len >= table_capacity (t) / 2)
+		table__expand (t);
+
+	size_t index = table__place (t, key);
+	int * entry = &((int *)TABLE__BASE (t))[2*index];
+	entry[0] = key;
+	entry[1] = value;
+	if (! table__is_occupied (t, index)) {
+		table__set_occupation (t, index, 1);
+		++t->len;
+	}
+}
+
+int
+table_look_up (struct table const * t, int key, int * out_value)
+{
+	size_t index = table__place (t, key);
+	if (table__is_occupied (t, index)) {
+		int * entry = &((int *)TABLE__BASE (t))[2*index];
+		*out_value = entry[1];
+		return 1;
+	} else
+		return 0;
+}
+
+
+
+// ===============================
+// ||                           ||
+// ||     PARSING FUNCTIONS     ||
+// ||                           ||
+// ===============================
 
 struct string_slice {
 	char * str;
