@@ -81,13 +81,6 @@ reserve (int item_size, void ** p_items, int * p_capacity, int count)
 // ||                               ||
 // ===================================
 
-// Initialize to zero
-struct table {
-	void * block;
-	size_t capacity_exponent; // Actual capacity is 1 << capacity_exponent
-	size_t len;
-};
-
 void
 table_deinit (struct table * t)
 {

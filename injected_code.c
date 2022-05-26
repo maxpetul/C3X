@@ -147,12 +147,7 @@ reset_to_base_config ()
 		is->current_config.count_perfume_specs = 0;
 	}
 
-	// Free list of building-unit prereqs
-	if (is->current_config.building_unit_prereqs != NULL) {
-		free (is->current_config.building_unit_prereqs);
-		is->current_config.building_unit_prereqs = NULL;
-		is->current_config.count_building_unit_prereqs = 0;
-	}
+	table_deinit (&is->current_config.building_unit_prereqs);
 
 	// Free the linked list of loaded config names and the string name contained in each one
 	if (is->loaded_config_names != NULL) {
@@ -292,32 +287,6 @@ parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines,
 		return RPR_PARSE_ERROR;
 }
 
-enum recognizable_parse_result
-parse_building_unit_prereq (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_building_unit_preq)
-{
-	char * cur = *p_cursor;
-	struct string_slice building_name, unit_type_name;
-	if (parse_string (&cur, &building_name) &&
-	    skip_punctuation (&cur, ':') &&
-	    parse_string (&cur, &unit_type_name)) {
-		*p_cursor = cur;
-		int building_id, unit_type_id;
-		if (! find_improv_id_by_name (&building_name, &building_id)) {
-			add_unrecognized_line (p_unrecognized_lines, &building_name);
-			return RPR_UNRECOGNIZED;
-		} else if (! find_unit_type_id_by_name (&unit_type_name, &unit_type_id)) {
-			add_unrecognized_line (p_unrecognized_lines, &unit_type_name);
-			return RPR_UNRECOGNIZED;
-		} else {
-			struct building_unit_prereq * out = out_building_unit_preq;
-			out->building_id = building_id;
-			out->unit_type_id = unit_type_id;
-			return RPR_OK;
-		}
-	} else
-		return RPR_PARSE_ERROR;
-}
-
 // Recognizable items are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
 int
 read_recognizables (struct string_slice const * s,
@@ -365,6 +334,47 @@ read_recognizables (struct string_slice const * s,
 	}
 	free (temp_item);
 	free (new_items);
+	free (extracted_slice);
+	return success;
+}
+
+int
+read_building_unit_prereqs (struct string_slice const * s,
+			    struct error_line ** p_unrecognized_lines,
+			    struct table * building_unit_prereqs)
+{
+	if (s->len <= 0)
+		return 1;
+	char * extracted_slice = extract_slice (s);
+	char * cursor = extracted_slice;
+	int success = 0;
+
+	while (1) {
+		struct string_slice building_name;
+		if (parse_string (&cursor, &building_name)) {
+			int building_id;
+			int have_building_id = find_improv_id_by_name (&building_name, &building_id);
+			if (! have_building_id)
+				add_unrecognized_line (p_unrecognized_lines, &building_name);
+			if (! skip_punctuation (&cursor, ':'))
+				break;
+			struct string_slice unit_type_name;
+			while (parse_string (&cursor, &unit_type_name)) {
+				int unit_type_id;
+				if (find_unit_type_id_by_name (&unit_type_name, &unit_type_id)) {
+					if (have_building_id)
+						table_insert (building_unit_prereqs, unit_type_id, building_id); // TODO: Create/append to list if key already present in table
+				} else
+					add_unrecognized_line (p_unrecognized_lines, &unit_type_name);
+			}
+			skip_punctuation (&cursor, ',');
+			skip_white_space (&cursor);
+		} else {
+			success = (*cursor == '\0');
+			break;
+		}
+	}
+
 	free (extracted_slice);
 	return success;
 }
@@ -458,13 +468,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 							     (void **)&cfg->perfume_specs,
 							     &cfg->count_perfume_specs))
 					;
-				else if ((0 == strncmp (key.str, "building_prereqs_for_units", key.len)) &&
-					 read_recognizables (&value,
-							     &unrecognized_lines,
-							     sizeof (struct building_unit_prereq),
-							     parse_building_unit_prereq,
-							     (void **)&cfg->building_unit_prereqs,
-							     &cfg->count_building_unit_prereqs))
+				else if ((0 == strncmp (key.str, "building_prereqs_for_units", key.len)) && read_building_unit_prereqs (&value, &unrecognized_lines, &cfg->building_unit_prereqs))
 					;
 				else if ((0 == strncmp (key.str, "warn_about_unrecognized_perfume_target", key.len)) && read_int (&value, &ival))
 					cfg->warn_about_unrecognized_perfume_target = ival != 0;
@@ -2727,12 +2731,13 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, byte exclude_
 	byte base = City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
 
 	// Apply building prereqs
-	if (base)
-		for (int n = 0; n < is->current_config.count_building_unit_prereqs; n++) {
-			struct building_unit_prereq * prereq = &is->current_config.building_unit_prereqs[n];
-			if ((prereq->unit_type_id == unit_type_id) && (! has_active_building (this, prereq->building_id)))
-				return 0;
-		}
+	if (base) {
+		// TODO: Allow for multiple buildings
+		int building_id;
+		if (table_look_up (&is->current_config.building_unit_prereqs, unit_type_id, &building_id) &&
+		    (! has_active_building (this, building_id)))
+			return 0;
+	}
 
 	return base;
 }

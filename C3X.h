@@ -12,14 +12,16 @@ typedef unsigned char byte;
 
 #define COUNT_TILE_HIGHLIGHTS 11
 
+// Initialize to zero. Implementation is in common.c
+struct table {
+	void * block;
+	size_t capacity_exponent; // Actual capacity is 1 << capacity_exponent
+	size_t len;
+};
+
 struct perfume_spec {
 	City_Order target_order;
 	int amount;
-};
-
-struct building_unit_prereq {
-	int building_id;
-	int unit_type_id;
 };
 
 struct c3x_config {
@@ -46,8 +48,7 @@ struct c3x_config {
 	char show_detailed_tile_info;
 	struct perfume_spec * perfume_specs;
 	int count_perfume_specs;
-	struct building_unit_prereq * building_unit_prereqs;
-	int count_building_unit_prereqs;
+	struct table building_unit_prereqs;
 	char warn_about_unrecognized_perfume_target;
 	char enable_ai_production_ranking;
 	char enable_ai_city_location_desirability_display;

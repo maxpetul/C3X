@@ -4,8 +4,8 @@
 
 #include "tcc/libtcc/libtcc.h"
 #include "lend/ld32.c"
-#include "C3X.h"
 
+#include "C3X.h"
 #include "common.c"
 
 #define ARRAY_LEN(a) ((sizeof a) / (sizeof a[0]))
@@ -963,8 +963,7 @@ ENTRY_POINT ()
 		.show_detailed_tile_info = 1,
 		.perfume_specs = NULL,
 		.count_perfume_specs = 0,
-		.building_unit_prereqs = NULL,
-		.count_building_unit_prereqs = 0,
+		.building_unit_prereqs = (struct table) {0},
 		.warn_about_unrecognized_perfume_target = 1,
 		.enable_ai_production_ranking = 1,
 		.enable_ai_city_location_desirability_display = 1,
