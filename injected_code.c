@@ -349,6 +349,13 @@ read_building_unit_prereqs (struct string_slice const * s,
 	char * cursor = extracted_slice;
 	int success = 0;
 
+	struct prereq {
+		int building_id;
+		int unit_type_id;
+	} * new_prereqs = NULL;
+	int new_prereqs_capacity = 0;
+	int count_new_prereqs = 0;
+
 	while (1) {
 		struct string_slice building_name;
 		if (parse_string (&cursor, &building_name)) {
@@ -362,8 +369,10 @@ read_building_unit_prereqs (struct string_slice const * s,
 			while (parse_string (&cursor, &unit_type_name)) {
 				int unit_type_id;
 				if (find_unit_type_id_by_name (&unit_type_name, &unit_type_id)) {
-					if (have_building_id)
-						table_insert (building_unit_prereqs, unit_type_id, building_id); // TODO: Create/append to list if key already present in table
+					if (have_building_id) {
+						reserve (sizeof new_prereqs[0], (void **)&new_prereqs, &new_prereqs_capacity, count_new_prereqs);
+						new_prereqs[count_new_prereqs++] = (struct prereq) { .building_id = building_id, .unit_type_id = unit_type_id };
+					}
 				} else
 					add_unrecognized_line (p_unrecognized_lines, &unit_type_name);
 			}
@@ -375,6 +384,11 @@ read_building_unit_prereqs (struct string_slice const * s,
 		}
 	}
 
+	if (success)
+		for (int n = 0; n < count_new_prereqs; n++)
+			table_insert (building_unit_prereqs, new_prereqs[n].unit_type_id, new_prereqs[n].building_id); // TODO: Create/append to list if key already present in table
+
+	free (new_prereqs);
 	free (extracted_slice);
 	return success;
 }
