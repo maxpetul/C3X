@@ -187,13 +187,15 @@ table_insert (struct table * t, int key, int value)
 int
 table_look_up (struct table const * t, int key, int * out_value)
 {
-	size_t index = table__place (t, key);
-	if (table__is_occupied (t, index)) {
-		int * entry = &((int *)TABLE__BASE (t))[2*index];
-		*out_value = entry[1];
-		return 1;
-	} else
-		return 0;
+	if (t->len > 0) {
+		size_t index = table__place (t, key);
+		if (table__is_occupied (t, index)) {
+			int * entry = &((int *)TABLE__BASE (t))[2*index];
+			*out_value = entry[1];
+			return 1;
+		}
+	}
+	return 0;
 }
 
 
@@ -226,6 +228,16 @@ skip_horiz_space (char ** p_cursor)
 {
 	char * cur = *p_cursor;
 	while (is_horiz_space (*cur))
+		cur++;
+	*p_cursor = cur;
+	return 1;
+}
+
+int
+skip_white_space (char ** p_cursor)
+{
+	char * cur = *p_cursor;
+	while (is_horiz_space (*cur) || (*cur == '\n'))
 		cur++;
 	*p_cursor = cur;
 	return 1;
