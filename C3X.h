@@ -11,6 +11,7 @@ typedef unsigned char byte;
 #define MOD_VERSION 1000
 
 #define COUNT_TILE_HIGHLIGHTS 11
+#define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
 // Initialize to zero. Implementation is in common.c
 struct table {

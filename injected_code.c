@@ -384,9 +384,36 @@ read_building_unit_prereqs (struct string_slice const * s,
 		}
 	}
 
+	// If parsing succeeded, add the new prereq rules to the table
 	if (success)
-		for (int n = 0; n < count_new_prereqs; n++)
-			table_insert (building_unit_prereqs, new_prereqs[n].unit_type_id, new_prereqs[n].building_id); // TODO: Create/append to list if key already present in table
+		for (int n = 0; n < count_new_prereqs; n++) {
+			struct prereq * prereq = &new_prereqs[n];
+
+			// If this unit type ID is not already in the table, insert it paired with the building ID
+			int prev_val;
+			if (! table_look_up (building_unit_prereqs, prereq->unit_type_id, &prev_val))
+				table_insert (building_unit_prereqs, prereq->unit_type_id, prereq->building_id);
+
+			// If the unit type ID is already associated with a building ID, create a list for both the old and new building IDs
+			else if ((prev_val >= 0) && (prev_val < p_bic_data->ImprovementsCount)) {
+				int * list = malloc (MAX_BUILDING_PREREQS_FOR_UNIT * sizeof *list);
+				for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
+					list[n] = -1;
+				list[0] = prev_val;
+				list[1] = prereq->building_id;
+				table_insert (building_unit_prereqs, new_prereqs[n].unit_type_id, (int)list);
+
+			// Otherwise, it's already associated with a list. Search the list for a free spot and fill it with the new building ID
+			} else {
+				int * list = (int *)prev_val;
+				for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
+					if (list[n] < 0) {
+						list[n] = prereq->building_id;
+						break;
+					}
+			}
+		}
+
 
 	free (new_prereqs);
 	free (extracted_slice);
@@ -2746,11 +2773,20 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, byte exclude_
 
 	// Apply building prereqs
 	if (base) {
-		// TODO: Allow for multiple buildings
-		int building_id;
-		if (table_look_up (&is->current_config.building_unit_prereqs, unit_type_id, &building_id) &&
-		    (! has_active_building (this, building_id)))
-			return 0;
+		int building_prereq;
+		if (table_look_up (&is->current_config.building_unit_prereqs, unit_type_id, &building_prereq)) {
+			// If the prereq is simply a building ID
+			if ((building_prereq >= 0) && (building_prereq < p_bic_data->ImprovementsCount))
+				return has_active_building (this, building_prereq);
+
+			// Else it's a pointer to a list of building IDs
+			else {
+				int * list = (int *)building_prereq;
+				for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
+					if ((list[n] >= 0) && ! has_active_building (this, list[n]))
+						return 0;
+			}
+		}
 	}
 
 	return base;
