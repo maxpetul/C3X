@@ -147,6 +147,13 @@ reset_to_base_config ()
 		is->current_config.count_perfume_specs = 0;
 	}
 
+	// Free building-unit prereqs table
+	size_t building_unit_prereqs_capacity = table_capacity (&is->current_config.building_unit_prereqs);
+	for (size_t n = 0; n < building_unit_prereqs_capacity; n++) {
+		int ptr;
+		if (table_get_by_index (&is->current_config.building_unit_prereqs, n, &ptr) && ((ptr & 1) == 0))
+			free ((void *)ptr);
+	}
 	table_deinit (&is->current_config.building_unit_prereqs);
 
 	// Free the linked list of loaded config names and the string name contained in each one

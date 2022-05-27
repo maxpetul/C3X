@@ -191,6 +191,17 @@ table_look_up (struct table const * t, int key, int * out_value)
 	return 0;
 }
 
+int
+table_get_by_index (struct table * const t, size_t index, int * out_value)
+{
+	if ((t->len > 0) && table__is_occupied (t, index)) {
+		int * entry = &((int *)TABLE__BASE (t))[2*index];
+		*out_value = entry[1];
+		return 1;
+	}
+	return 0;
+}
+
 
 
 // ===============================
