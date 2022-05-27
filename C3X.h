@@ -49,7 +49,12 @@ struct c3x_config {
 	char show_detailed_tile_info;
 	struct perfume_spec * perfume_specs;
 	int count_perfume_specs;
-	struct table building_unit_prereqs;
+	struct table building_unit_prereqs; // A mapping from int keys to int values. The keys are unit type IDs. If an ID is present as a key in the
+					    // table that means that unit type has one or more prereq buildings. The associated value is either a
+					    // pointer to a list of MAX_BUILDING_PREREQS_FOR_UNITS improvement IDs or a single encoded improv ID. The
+					    // contents of the list are NOT encoded and unused slots store -1. Encoding an ID is done by left-shifting
+					    // it one place then inserting a 1 in the LSB. This way encoded IDs can be told apart from list pointers
+					    // by checking the LSB (1 => encoded improv ID, 0 => list pointer).
 	char warn_about_unrecognized_perfume_target;
 	char enable_ai_production_ranking;
 	char enable_ai_city_location_desirability_display;
