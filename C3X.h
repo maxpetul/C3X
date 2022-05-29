@@ -25,6 +25,14 @@ struct perfume_spec {
 	int amount;
 };
 
+// A mill is a city improvement that spawns a resource. These are read from the "buildings_generating_resources" key in the config but are called
+// "mills" internally for brevity.
+struct mill {
+	int improv_id;
+	int resource_id;
+	int is_local;
+};
+
 struct c3x_config {
 	char enable_stack_bombard;
 	char enable_disorder_warning;
@@ -55,6 +63,8 @@ struct c3x_config {
 					    // contents of the list are NOT encoded and unused slots store -1. Encoding an ID is done by left-shifting
 					    // it one place then inserting a 1 in the LSB. This way encoded IDs can be told apart from list pointers
 					    // by checking the LSB (1 => encoded improv ID, 0 => list pointer).
+	struct mill * mills;
+	int count_mills;
 	char warn_about_unrecognized_perfume_target;
 	char enable_ai_production_ranking;
 	char enable_ai_city_location_desirability_display;

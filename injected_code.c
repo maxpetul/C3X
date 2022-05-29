@@ -156,6 +156,13 @@ reset_to_base_config ()
 	}
 	table_deinit (&is->current_config.building_unit_prereqs);
 
+	// Free list of mills
+	if (is->current_config.mills != NULL) {
+		free (is->current_config.mills);
+		is->current_config.mills = NULL;
+		is->current_config.count_mills = 0;
+	}
+
 	// Free the linked list of loaded config names and the string name contained in each one
 	if (is->loaded_config_names != NULL) {
 		struct loaded_config_name * next = is->loaded_config_names;

@@ -964,6 +964,8 @@ ENTRY_POINT ()
 		.perfume_specs = NULL,
 		.count_perfume_specs = 0,
 		.building_unit_prereqs = (struct table) {0},
+		.mills = NULL,
+		.count_mills = 0,
 		.warn_about_unrecognized_perfume_target = 1,
 		.enable_ai_production_ranking = 1,
 		.enable_ai_city_location_desirability_display = 1,
