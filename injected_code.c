@@ -250,6 +250,21 @@ find_unit_type_id_by_name (struct string_slice const * name, int * out)
 	return 0;
 }
 
+int
+find_resource_id_by_name (struct string_slice const * name, int * out)
+{
+	Resource_Type * res_type;
+	if (name->len <= sizeof res_type->Name)
+		for (int n = 0; n < p_bic_data->ResourceTypeCount; n++) {
+			res_type = &p_bic_data->ResourceTypes[n];
+			if (strncmp (res_type->Name, name->str, name->len) == 0) {
+				*out = n;
+				return 1;
+			}
+		}
+	return 0;
+}
+
 // Converts a build name (like "Spearman" or "Granary") into a City_Order struct. Returns 0 if no by improvement or unit type was found, else 1.
 int
 find_city_order_by_name (struct string_slice const * name, City_Order * out)
@@ -296,6 +311,38 @@ parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines,
 		} else {
 			add_unrecognized_line (p_unrecognized_lines, &name);
 			return RPR_UNRECOGNIZED;
+		}
+	} else
+		return RPR_PARSE_ERROR;
+}
+
+enum recognizable_parse_result
+parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_mill)
+{
+	char * cur = *p_cursor;
+	struct string_slice improv_name, resource_name;
+	if (parse_string (&cur, &improv_name) &&
+	    skip_punctuation (&cur, ':') &&
+	    parse_string (&cur, &resource_name)) {
+		*p_cursor = cur;
+		int improv_id, resource_id;
+		int any_unrecognized = 0;
+		if (! find_improv_id_by_name (&improv_name, &improv_id)) {
+			add_unrecognized_line (p_unrecognized_lines, &improv_name);
+			any_unrecognized = 1;
+		}
+		if (! find_resource_id_by_name (&resource_name, &resource_id)) {
+			add_unrecognized_line (p_unrecognized_lines, &resource_name);
+			any_unrecognized = 1;
+		}
+		if (any_unrecognized)
+			return RPR_UNRECOGNIZED;
+		else {
+			struct mill * out = out_mill;
+			out->improv_id = improv_id;
+			out->resource_id = resource_id;
+			out->is_local = 0;
+			return RPR_OK;
 		}
 	} else
 		return RPR_PARSE_ERROR;
@@ -524,6 +571,14 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 							     &cfg->count_perfume_specs))
 					;
 				else if ((0 == strncmp (key.str, "building_prereqs_for_units", key.len)) && read_building_unit_prereqs (&value, &unrecognized_lines, &cfg->building_unit_prereqs))
+					;
+				else if ((0 == strncmp (key.str, "buildings_generating_resources", key.len)) &&
+					 read_recognizables (&value,
+							     &unrecognized_lines,
+							     sizeof (struct mill),
+							     parse_mill,
+							     (void **)&cfg->mills,
+							     &cfg->count_mills))
 					;
 				else if ((0 == strncmp (key.str, "warn_about_unrecognized_perfume_target", key.len)) && read_int (&value, &ival))
 					cfg->warn_about_unrecognized_perfume_target = ival != 0;
