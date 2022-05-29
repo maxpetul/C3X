@@ -798,7 +798,7 @@ intercept_set_resource_bit (City * city, int resource_id)
 	if (resource_id < 32)
 		city->Body.Available_Resources |= 1 << resource_id;
 	else
-		*get_extra_resource_bits (city->Body.ID, resource_id) |= 1 << resource_id%32;
+		*get_extra_resource_bits (city->Body.ID, resource_id) |= 1 << (resource_id&31);
 }
 
 byte __fastcall
@@ -809,7 +809,7 @@ patch_City_has_resource (City * this, int edx, int resource_id)
 	    (resource_id >= 32) && (resource_id < p_bic_data->ResourceTypeCount) &&
 	    (! City_has_trade_connection_to_capital (this))) {
 		unsigned bits = (this->Body.ID < is->extra_available_resources_capacity) ? *get_extra_resource_bits (this->Body.ID, resource_id) : 0;
-		return (bits >> resource_id%32) & 1;
+		return (bits >> (resource_id&31)) & 1;
 	} else
 		return base;
 }
