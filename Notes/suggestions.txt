@@ -127,3 +127,4 @@ Ideas:
 - [from CivFan94]
   - Allow improvements as prereqs for unit construction
   - Make adjustable the duration before an improvement/wonder becomes a tourist attraction
+- [from Spoonwood] Stack sentry

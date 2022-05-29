@@ -1,6 +1,8 @@
 * TODO
-- Buildings as prereqs for unit construction
 - Enable buildings to grant resource access
+- Reword the trespassing prevention feature description. It's not experimental any more.
+- Consider how pop pollution removing buildings work when they become inactive (obsolete, govt req not met)
+- Rename warn about unrecognized perfume target to be more generic
 
 - On the city screen, hold shift when clicking a specialist to switch to the previous type
 - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
