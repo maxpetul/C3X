@@ -991,6 +991,12 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 				cursor[n] = original[n];
 		}
 	}
+
+	// Enlarge the mask that's applied to p_bic_data->Map.TileCount in the loop over lines in Trade_Net::recompute_resources. This lets us loop
+	// over more than 0xFFFF tiles.
+	WITH_MEM_PROTECTION (ADDR_RESOURCE_TILE_COUNT_MASK, 1, PAGE_EXECUTE_READWRITE) {
+		*(byte *)ADDR_RESOURCE_TILE_COUNT_MASK = (cfg->count_mills > 0) ? 0xFF : 0x00;
+	}
 }
 
 void
