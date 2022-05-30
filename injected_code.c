@@ -341,7 +341,7 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 			struct mill * out = out_mill;
 			out->improv_id = improv_id;
 			out->resource_id = resource_id;
-			out->is_local = 0;
+			out->is_local = 1;
 			return RPR_OK;
 		}
 	} else
@@ -735,6 +735,16 @@ tile_at_city_or_null (City * city_or_null)
 		return p_null_tile;
 }
 
+int
+has_active_building (City * city, int improv_id)
+{
+	Leader * owner = &leaders[city->Body.CivID];
+	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	return City_has_improvement (city, __, improv_id, 1) && // building is physically present in city AND
+		((improv->ObsoleteID < 0) || (! Leader_has_tech (owner, __, improv->ObsoleteID))) && // building is not obsolete AND
+		((improv->GovernmentID < 0) || (improv->GovernmentID == owner->GovernmentType)); // building is not restricted to a different govt
+}
+
 int __stdcall
 intercept_consideration (int valuation)
 {
@@ -804,14 +814,25 @@ intercept_set_resource_bit (City * city, int resource_id)
 byte __fastcall
 patch_City_has_resource (City * this, int edx, int resource_id)
 {
-	byte base = City_has_resource (this, __, resource_id);
+	byte tr;
 	if (is->current_config.patch_phantom_resource_bug &&
 	    (resource_id >= 32) && (resource_id < p_bic_data->ResourceTypeCount) &&
 	    (! City_has_trade_connection_to_capital (this))) {
 		unsigned bits = (this->Body.ID < is->extra_available_resources_capacity) ? *get_extra_resource_bits (this->Body.ID, resource_id) : 0;
-		return (bits >> (resource_id&31)) & 1;
+		tr = (bits >> (resource_id&31)) & 1;
 	} else
-		return base;
+		tr = City_has_resource (this, __, resource_id);
+
+	if (! tr)
+		for (int n = 0; n < is->current_config.count_mills; n++) {
+			struct mill * mill = &is->current_config.mills[n];
+			if ((mill->resource_id == resource_id) && mill->is_local && has_active_building (this, mill->improv_id)) {
+				tr = 1;
+				break;
+			}
+		}
+
+	return tr;
 }
 
 void __fastcall
@@ -2823,17 +2844,6 @@ rate_bomber (UnitType * type)
 
 	return tr;
 }
-
-int
-has_active_building (City * city, int improv_id)
-{
-	Leader * owner = &leaders[city->Body.CivID];
-	Improvement * improv = &p_bic_data->Improvements[improv_id];
-	return City_has_improvement (city, __, improv_id, 1) && // building is physically present in city AND
-		((improv->ObsoleteID < 0) || (! Leader_has_tech (owner, __, improv->ObsoleteID))) && // building is not obsolete AND
-		((improv->GovernmentID < 0) || (improv->GovernmentID == owner->GovernmentType)); // building is not restricted to a different govt
-}
-
 
 byte __fastcall
 patch_City_can_build_unit (City * this, int edx, int unit_type_id, byte exclude_upgradable, int param_3, byte allow_kings)
