@@ -320,10 +320,22 @@ enum recognizable_parse_result
 parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_mill)
 {
 	char * cur = *p_cursor;
-	struct string_slice improv_name, resource_name;
+	struct string_slice improv_name, second;
 	if (parse_string (&cur, &improv_name) &&
 	    skip_punctuation (&cur, ':') &&
-	    parse_string (&cur, &resource_name)) {
+	    parse_string (&cur, &second)) {
+
+		int is_local;
+		struct string_slice resource_name;
+		if (strncmp ("local", second.str, second.len) == 0) {
+			if (! parse_string (&cur, &resource_name))
+				return RPR_PARSE_ERROR;
+			is_local = 1;
+		} else {
+			is_local = 0;
+			resource_name = second;
+		}
+
 		*p_cursor = cur;
 		int improv_id, resource_id;
 		int any_unrecognized = 0;
@@ -341,7 +353,7 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 			struct mill * out = out_mill;
 			out->improv_id = improv_id;
 			out->resource_id = resource_id;
-			out->is_local = 1;
+			out->is_local = is_local;
 			return RPR_OK;
 		}
 	} else
