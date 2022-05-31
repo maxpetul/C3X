@@ -835,6 +835,7 @@ patch_City_has_resource (City * this, int edx, int resource_id)
 	} else
 		tr = City_has_resource (this, __, resource_id);
 
+	// Check if access to this resource is provided by a building in the city
 	if (! tr)
 		for (int n = 0; n < is->current_config.count_mills; n++) {
 			struct mill * mill = &is->current_config.mills[n];
