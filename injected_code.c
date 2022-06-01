@@ -738,6 +738,28 @@ patch_PCX_Image_process_tech_ga_status (PCX_Image * this, int edx, char * str)
 	return PCX_Image_process_text (this, __, str);
 }
 
+City *
+get_city_ptr (int id)
+{
+	if ((p_cities->Cities != NULL) &&
+	    (id >= 0) && (id <= p_cities->LastIndex)) {
+		City_Body * body = p_cities->Cities[id].City;
+		if (body != NULL) {
+			City * city = (City *)((char *)body - offsetof (City, Body));
+			if (city != NULL)
+				return city;
+		}
+	}
+	return NULL;
+}
+
+City *
+city_at (int x, int y)
+{
+	Tile * tile = tile_at (x, y);
+	return get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
+}
+
 Tile * __stdcall
 tile_at_city_or_null (City * city_or_null)
 {
@@ -854,6 +876,28 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, byte skip_popups
 	int extra_resource_count = not_below (0, p_bic_data->ResourceTypeCount - 32);
 	int ints_per_city = 1 + extra_resource_count/32;
 	memset (is->extra_available_resources, 0, is->extra_available_resources_capacity * ints_per_city * sizeof (unsigned));
+
+	// Assemble list of mill tiles
+	is->count_mill_tiles = 0;
+	if (p_cities->Cities != NULL)
+		for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+			City * city = get_city_ptr (city_index);
+			if (city != NULL)
+				for (int n = 0; n < is->current_config.count_mills; n++) {
+					struct mill * mill = &is->current_config.mills[n];
+					if ((! mill->is_local) && has_active_building (city, mill->improv_id)) {
+						reserve (sizeof is->mill_tiles[0],
+							 (void **)&is->mill_tiles,
+							 &is->mill_tiles_capacity,
+							 is->count_mill_tiles);
+						is->mill_tiles[is->count_mill_tiles++] = (struct mill_tile) {
+							.tile = tile_at (city->Body.X, city->Body.Y),
+							.resource_id = mill->resource_id
+						};
+					}
+				}
+		}
+
 	Trade_Net_recompute_resources (this, __, skip_popups);
 }
 
@@ -1112,6 +1156,10 @@ patch_init_floating_point ()
 	is->count_ai_prod_valuations = 0;
 	is->ai_prod_valuations_capacity = 0;
 
+	is->mill_tiles = NULL;
+	is->count_mill_tiles = 0;
+	is->mill_tiles_capacity = 0;
+
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config);
@@ -1321,28 +1369,6 @@ get_unit_ptr (int id)
 		}
 	}
 	return NULL;
-}
-
-City *
-get_city_ptr (int id)
-{
-	if ((p_cities->Cities != NULL) &&
-	    (id >= 0) && (id <= p_cities->LastIndex)) {
-		City_Body * body = p_cities->Cities[id].City;
-		if (body != NULL) {
-			City * city = (City *)((char *)body - offsetof (City, Body));
-			if (city != NULL)
-				return city;
-		}
-	}
-	return NULL;
-}
-
-City *
-city_at (int x, int y)
-{
-	Tile * tile = tile_at (x, y);
-	return get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
 }
 
 struct unit_tile_iter {

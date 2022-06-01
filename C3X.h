@@ -347,6 +347,14 @@ struct injected_state {
 	int count_ai_prod_valuations;
 	int ai_prod_valuations_capacity;
 
+	// Used for generating resources from buildings
+	struct mill_tile {
+		Tile * tile;
+		int resource_id;
+	} * mill_tiles;
+	int count_mill_tiles;
+	int mill_tiles_capacity;
+
 	// ==========
 	// }
 	// ==========
