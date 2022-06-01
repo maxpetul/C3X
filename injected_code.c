@@ -898,7 +898,37 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, byte skip_popups
 				}
 		}
 
+	is->mill_tile_resource_id = -1;
+	is->saved_tile_count = p_bic_data->Map.TileCount;
+	p_bic_data->Map.TileCount += is->count_mill_tiles;
 	Trade_Net_recompute_resources (this, __, skip_popups);
+	p_bic_data->Map.TileCount = is->saved_tile_count;
+}
+
+Tile *
+get_mill_tile (int index)
+{
+	struct mill_tile * mt = &is->mill_tiles[index];
+	is->mill_tile_resource_id = mt->resource_id;
+	return mt->tile;
+}
+
+Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_1 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_mill_tile (index - is->saved_tile_count); }
+Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_2 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_mill_tile (index - is->saved_tile_count); }
+Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_3 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_mill_tile (index - is->saved_tile_count); }
+Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_4 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_mill_tile (index - is->saved_tile_count); }
+Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_5 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_mill_tile (index - is->saved_tile_count); }
+
+int __fastcall
+patch_Tile_get_visible_resource_when_recomputing (Tile * tile, int edx, int civ_id)
+{
+	if (is->mill_tile_resource_id < 0)
+		return Tile_get_resource_visible_to (tile, __, civ_id);
+	else {
+		int tr = is->mill_tile_resource_id;
+		is->mill_tile_resource_id = -1;
+		return tr;
+	}
 }
 
 // Just calls VirtualProtect and displays an error message if it fails. Made for use by the WITH_MEM_PROTECTION macro.

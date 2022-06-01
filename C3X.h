@@ -354,6 +354,8 @@ struct injected_state {
 	} * mill_tiles;
 	int count_mill_tiles;
 	int mill_tiles_capacity;
+	int mill_tile_resource_id;
+	int saved_tile_count;
 
 	// ==========
 	// }
