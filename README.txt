@@ -42,7 +42,7 @@ Engine extensions:
  - Enable free improvements from small wonders
  - Option to prevent autoraze and razing by AIs
  - Stealth attack activates even when there's only one target
- - Trespassing prevention (experimental)
+ - Trespassing prevention
  - Land/sea intersections
  - Adjustable anarchy length
  - "Perfume" units or improvements to control how likely the AI is to build them
@@ -89,7 +89,7 @@ Railroad movement can be limited to a certain number of tiles by setting the "li
 
 Enabling land/sea intersections allows sea units to travel over the thin isthmus that exists on the diagonal path between two land tiles. More specifically, imagine a diamond of four tiles with land terrain on the north & south tiles and water on the east & west ones. With land/sea intersections enabled, naval units can pass between the east and west tiles.
 
-Disallowing trespassing prevents civs from entering each other's borders while at peace without a right of passage, similar to the rules in Civ 4. I consider this to be an experimental feature in this release. I have done some testing to verify that the rule is applied correctly, including on the AI, but I haven't checked that the AI can handle the rule properly, for example it might prevent the AI from declaring war.
+Disallowing trespassing prevents civs from entering each other's borders while at peace without a right of passage, similar to the rules in Civ 4. Invisible and hidden nationality units are exempted from the restriction.
 
 ** NEW ** PER-SCENARIO CONFIG:
 Mod config settings can now be set on a per-scenario basis. To do this, create a "scenario.c3x_config.ini" file inside the scenario's folder (the same place that would contain the scenario's Art and Text folders) and fill it in like the "default.c3x_config.ini" file included with the mod. The scenario settings will be layered on top of the default settings so you only need to include the ones that are relevant to the scenario. You can verify in-game that the scenario config was loaded by checking the mod info popup, it's accessible through the button on the top right of the preferences screen. For an example, see: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-28#post-16212316.

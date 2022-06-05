@@ -1,9 +1,13 @@
 * TODO
-- Enable buildings to grant resource access
-- Reword the trespassing prevention feature description. It's not experimental any more.
 - Consider how pop pollution removing buildings work when they become inactive (obsolete, govt req not met)
 - Rename warn about unrecognized perfume target to be more generic
+- Add case for building spawning resource that owner doesn't have tech for
+- Recompute resource access when a mill is lost
+- Mills that require resources should stop working when their resource isn't available
+  - Need to address the issue of resource processing order
 
+- Buildings can generate resources
+- Buildings can be set as prerequisites for unit production
 - On the city screen, hold shift when clicking a specialist to switch to the previous type
 - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
 - Disallow workers from improving water tiles
