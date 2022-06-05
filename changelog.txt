@@ -1,7 +1,6 @@
 * TODO
 - Consider how pop pollution removing buildings work when they become inactive (obsolete, govt req not met)
 - Add case for building spawning resource that owner doesn't have tech for
-- Recompute resource access when a mill is lost
 - Description for mills in default config
 - Mills that require resources should stop working when their resource isn't available
   - Need to address the issue of resource processing order

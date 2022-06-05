@@ -3939,6 +3939,19 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 		improv->Pollution = saved_pollution_amount;
 	} else
 		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
+
+	// Recompute available resources if this improvement has the ability to generate a traded resource. Don't bother if the improvement also
+	// enables trade b/c then the recomputation would have already been done in the base game's add_or_remove_improvement method.
+	if (((improv->ImprovementFlags & ITF_Allows_Water_Trade) == 0) &&
+	    ((improv->ImprovementFlags & ITF_Allows_Air_Trade)   == 0) &&
+	    ((improv->WonderFlags      & ITW_Safe_Sea_Travel)    == 0)) {
+		for (int n = 0; n < is->current_config.count_mills; n++)
+			if ((improv_id == is->current_config.mills[n].improv_id) &&
+			    (! is->current_config.mills[n].is_local)) {
+				patch_Trade_Net_recompute_resources (p_trade_net, __, 0);
+				break;
+			}
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.
