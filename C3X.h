@@ -65,7 +65,7 @@ struct c3x_config {
 					    // by checking the LSB (1 => encoded improv ID, 0 => list pointer).
 	struct mill * mills;
 	int count_mills;
-	char warn_about_unrecognized_perfume_target;
+	char warn_about_unrecognized_names;
 	char enable_ai_production_ranking;
 	char enable_ai_city_location_desirability_display;
 	char zero_corruption_when_off;

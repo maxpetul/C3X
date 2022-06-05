@@ -592,8 +592,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 							     (void **)&cfg->mills,
 							     &cfg->count_mills))
 					;
-				else if ((0 == strncmp (key.str, "warn_about_unrecognized_perfume_target", key.len)) && read_int (&value, &ival))
-					cfg->warn_about_unrecognized_perfume_target = ival != 0;
+				else if ((0 == strncmp (key.str, "warn_about_unrecognized_names", key.len)) && read_int (&value, &ival))
+					cfg->warn_about_unrecognized_names = ival != 0;
 				else if ((0 == strncmp (key.str, "enable_ai_production_ranking", key.len)) && read_int (&value, &ival))
 					cfg->enable_ai_production_ranking = ival != 0;
 				else if ((0 == strncmp (key.str, "enable_ai_city_location_desirability_display", key.len)) && read_int (&value, &ival))
@@ -668,7 +668,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		}
 	}
 
-	if (cfg->warn_about_unrecognized_perfume_target && (unrecognized_lines != NULL)) {
+	if (cfg->warn_about_unrecognized_names && (unrecognized_lines != NULL)) {
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
 		char s[200];
