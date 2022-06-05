@@ -128,3 +128,5 @@ Ideas:
   - Allow improvements as prereqs for unit construction
   - Make adjustable the duration before an improvement/wonder becomes a tourist attraction
 - [from Spoonwood] Stack sentry
+- [from Civinator]
+  - Fix maximum hypertext links exceeded bug. More info here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-37#post-16283222, with an existing fix by editing the executable
