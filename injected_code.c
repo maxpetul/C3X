@@ -845,6 +845,9 @@ intercept_set_resource_bit (City * city, int resource_id)
 		*get_extra_resource_bits (city->Body.ID, resource_id) |= 1 << (resource_id&31);
 }
 
+// Must forward declare this function since there's a circular dependency between it and patch_City_has_resource
+int has_resources_required_by_building_r (City * city, int improv_id, int max_req_resource_id);
+
 byte __fastcall
 patch_City_has_resource (City * this, int edx, int resource_id)
 {
@@ -861,13 +864,34 @@ patch_City_has_resource (City * this, int edx, int resource_id)
 	if (! tr)
 		for (int n = 0; n < is->current_config.count_mills; n++) {
 			struct mill * mill = &is->current_config.mills[n];
-			if ((mill->resource_id == resource_id) && mill->is_local && has_active_building (this, mill->improv_id)) {
+			if ((mill->resource_id == resource_id) &&
+			    mill->is_local &&
+			    has_active_building (this, mill->improv_id) &&
+			    has_resources_required_by_building_r (this, mill->improv_id, mill->resource_id - 1)) {
 				tr = 1;
 				break;
 			}
 		}
 
 	return tr;
+}
+
+// Checks if the resource requirements for an improvement are satisfied in a given city. The "max_req_resource_id" parameter is to guard against
+// infinite loops in case of circular resource dependencies due to mills. The way it works is that resource requirements can only be satisfied if
+// their ID is not greater than that limit. This function is called recursively by patch_City_has_resource and in the recursive calls, the limit is
+// set to be below the resource ID provided by the mill being considered. So, when considering resource production chains, the limit approaches zero
+// with each recursive call, hence infinite loops are not possible.
+int
+has_resources_required_by_building_r (City * city, int improv_id, int max_req_resource_id)
+{
+	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	for (int n = 0; n < 2; n++) {
+		int res_id = (&improv->Resource1ID)[n];
+		if ((res_id >= 0) &&
+		    ((res_id > max_req_resource_id) || (! patch_City_has_resource (city, __, res_id))))
+			return 0;
+	}
+	return 1;
 }
 
 void __fastcall
