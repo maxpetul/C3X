@@ -350,11 +350,12 @@ struct injected_state {
 	// Used for generating resources from buildings
 	struct mill_tile {
 		Tile * tile;
-		int resource_id;
+		City * city;
+		struct mill * mill;
 	} * mill_tiles;
 	int count_mill_tiles;
 	int mill_tiles_capacity;
-	int mill_tile_resource_id;
+	struct mill_tile * got_mill_tile;
 	int saved_tile_count;
 
 	// ==========

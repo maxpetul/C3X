@@ -894,6 +894,12 @@ has_resources_required_by_building_r (City * city, int improv_id, int max_req_re
 	return 1;
 }
 
+int
+has_resources_required_by_building (City * city, int improv_id)
+{
+	return has_resources_required_by_building_r (city, improv_id, INT_MAX);
+}
+
 void __fastcall
 patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, byte skip_popups)
 {
@@ -916,13 +922,14 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, byte skip_popups
 							 is->count_mill_tiles);
 						is->mill_tiles[is->count_mill_tiles++] = (struct mill_tile) {
 							.tile = tile_at (city->Body.X, city->Body.Y),
-							.resource_id = mill->resource_id
+							.city = city,
+							.mill = mill
 						};
 					}
 				}
 		}
 
-	is->mill_tile_resource_id = -1;
+	is->got_mill_tile = NULL;
 	is->saved_tile_count = p_bic_data->Map.TileCount;
 	p_bic_data->Map.TileCount += is->count_mill_tiles;
 	Trade_Net_recompute_resources (this, __, skip_popups);
@@ -933,7 +940,7 @@ Tile *
 get_mill_tile (int index)
 {
 	struct mill_tile * mt = &is->mill_tiles[index];
-	is->mill_tile_resource_id = mt->resource_id;
+	is->got_mill_tile = mt;
 	return mt->tile;
 }
 
@@ -946,12 +953,15 @@ Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_5 (Map * map, in
 int __fastcall
 patch_Tile_get_visible_resource_when_recomputing (Tile * tile, int edx, int civ_id)
 {
-	if (is->mill_tile_resource_id < 0)
+	if (is->got_mill_tile == NULL)
 		return Tile_get_resource_visible_to (tile, __, civ_id);
 	else {
-		int tr = is->mill_tile_resource_id;
-		is->mill_tile_resource_id = -1;
-		return tr;
+		struct mill_tile * mt = is->got_mill_tile;
+		is->got_mill_tile = NULL;
+		if (has_resources_required_by_building (mt->city, mt->mill->improv_id))
+			return mt->mill->resource_id;
+		else
+			return -1;
 	}
 }
 
