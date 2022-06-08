@@ -3,7 +3,7 @@
 - Add case for building spawning resource that owner doesn't have tech for
 - Description for mills in default config
 - Mills that require resources should stop working when their resource isn't available
-  - Need to address the issue of resource processing order
+  - Resource requirements might be for city area
 
 - Buildings can generate resources
 - Buildings can be set as prerequisites for unit production

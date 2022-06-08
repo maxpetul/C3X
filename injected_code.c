@@ -900,6 +900,13 @@ has_resources_required_by_building (City * city, int improv_id)
 	return has_resources_required_by_building_r (city, improv_id, INT_MAX);
 }
 
+int
+compare_mill_tiles (void const * vp_a, void const * vp_b)
+{
+	struct mill_tile const * a = vp_a, * b = vp_b;
+	return a->mill->resource_id - b->mill->resource_id;
+}
+
 void __fastcall
 patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, byte skip_popups)
 {
@@ -928,6 +935,7 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, byte skip_popups
 					}
 				}
 		}
+	qsort (is->mill_tiles, is->count_mill_tiles, sizeof is->mill_tiles[0], compare_mill_tiles);
 
 	is->got_mill_tile = NULL;
 	is->saved_tile_count = p_bic_data->Map.TileCount;
