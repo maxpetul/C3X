@@ -738,6 +738,55 @@ patch_PCX_Image_process_tech_ga_status (PCX_Image * this, int edx, char * str)
 	return PCX_Image_process_text (this, __, str);
 }
 
+// Prints x to str and appends null terminator. Assumes str has enough space. Returns pointer to null terminator
+char *
+print_unsigned (char * str, unsigned x)
+{
+	char t[20];
+	int n = 0;
+	do {
+		t[n++] = '0' + (x % 10);
+		x /= 10;
+	} while (x > 0);
+	for (; n >= 0; n--)
+		*str++ = t[n-1];
+	*str = '\0';
+	return str;
+}
+
+char *
+print_int (char * str, int x)
+{
+	if (x < 0) {
+		*str++ = '-';
+		x = 0 - x;
+	}
+	return print_unsigned (str, x);
+}
+
+void
+wrap_tile_coords (Map * map, int * x, int * y)
+{
+	if (map->Flags & 1) {
+		if      (*x < 0)           *x += map->Width;
+		else if (*x >= map->Width) *x -= map->Width;
+	}
+	if (map->Flags & 2) {
+		if      (*y < 0)            *y += map->Height;
+		else if (*y >= map->Height) *y -= map->Height;
+	}
+}
+
+void
+get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y)
+{
+	int dx, dy;
+	neighbor_index_to_displacement (neighbor_index, &dx, &dy);
+	*out_x = x + dx;
+	*out_y = y + dy;
+	wrap_tile_coords (map, out_x, out_y);
+}
+
 City *
 get_city_ptr (int id)
 {
@@ -767,6 +816,136 @@ tile_at_city_or_null (City * city_or_null)
 		return tile_at (city_or_null->Body.X, city_or_null->Body.Y);
 	else
 		return p_null_tile;
+}
+
+Unit *
+get_unit_ptr (int id)
+{
+	if ((p_units->Units != NULL) &&
+	    (id >= 0) && (id <= p_units->LastIndex)) {
+		Unit_Body * body = p_units->Units[id].Unit;
+		if (body != NULL) {
+			Unit * unit = (Unit *)((char *)body - offsetof (Unit, Body));
+			if (unit != NULL)
+				return unit;
+		}
+	}
+	return NULL;
+}
+
+struct unit_tile_iter {
+	int id;
+	int item_index;
+	Unit * unit;
+};
+
+void
+uti_next (struct unit_tile_iter * uti)
+{
+	if (((p_tile_units->Base.Items == NULL) || (uti->item_index < 0)) ||
+	    (uti->item_index > p_tile_units->Base.LastIndex)) {
+		uti->item_index = -1;
+		uti->id = p_tile_units->DefaultValue;
+	} else {
+		Base_List_Item * item = &p_tile_units->Base.Items[uti->item_index];
+		uti->item_index = item->V;
+		uti->id = (int)item->Object;
+	}
+	uti->unit = get_unit_ptr (uti->id);
+}
+
+struct unit_tile_iter
+uti_init (Tile * tile)
+{
+	struct unit_tile_iter tr;
+	int tile_unit_id = tile->vtable->m40_get_TileUnit_ID (tile);
+	tr.id = TileUnits_TileUnitID_to_UnitID (p_tile_units, __, tile_unit_id, &tr.item_index);
+	tr.unit = get_unit_ptr (tr.id);
+	return tr;
+}
+
+#define FOR_UNITS_ON(uti_name, tile) for (struct unit_tile_iter uti_name = uti_init (tile); uti_name.id != -1; uti_next (&uti_name))
+
+struct citizen_iter {
+	int index;
+	Citizens * list;
+	Citizen_Base * ctzn;
+};
+
+void
+ci_next (struct citizen_iter * ci)
+{
+	while (1) {
+		ci->index++;
+		if (ci->index > ci->list->LastIndex) {
+			ci->ctzn = NULL;
+			break;
+		} else {
+			Citizen_Body * body = ci->list->Items[ci->index].Body;
+			if ((body != NULL) && ((int)body != offsetof (Citizen_Base, Body))) {
+				ci->ctzn = (Citizen_Base *)((int)body - offsetof (Citizen_Base, Body));
+				break;
+			}
+		}
+	}
+}
+
+struct citizen_iter
+ci_init (City * city)
+{
+	struct citizen_iter tr;
+	tr.index = -1;
+	tr.list = &city->Body.Citizens;
+	tr.ctzn = NULL;
+	if (city->Body.Citizens.Items != NULL)
+		ci_next (&tr);
+	return tr;
+}
+
+#define FOR_CITIZENS_IN(ci_name, city) for (struct citizen_iter ci_name = ci_init (city); (ci_name.list->Items != NULL) && (ci_name.index <= ci.list->LastIndex); ci_next (&ci_name))
+
+struct tiles_around_iter {
+	int center_x, center_y;
+	int n, num_tiles;
+	Tile * tile;
+};
+
+void
+tai_next (struct tiles_around_iter * tai)
+{
+	tai->tile = p_null_tile;
+	while ((tai->n < tai->num_tiles) && (tai->tile == p_null_tile)) {
+		tai->n += 1;
+		int tx, ty;
+		get_neighbor_coords (&p_bic_data->Map, tai->center_x, tai->center_y, tai->n, &tx, &ty);
+		if ((tx >= 0) && (tx < p_bic_data->Map.Width) && (ty >= 0) && (ty < p_bic_data->Map.Height))
+			tai->tile = tile_at (tx, ty);
+	}
+}
+
+struct tiles_around_iter
+tai_init (int num_tiles, int x, int y)
+{
+	struct tiles_around_iter tr;
+	tr.center_x = x;
+	tr.center_y = y;
+	tr.n = 0;
+	tr.num_tiles = num_tiles;
+	tr.tile = tile_at (x, y);
+	return tr;
+}
+
+#define FOR_TILES_AROUND(tai_name, _num_tiles, _x, _y) for (struct tiles_around_iter tai_name = tai_init (_num_tiles, _x, _y); (tai_name.n < tai_name.num_tiles); tai_next (&tai_name))
+
+void
+tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
+{
+	if (tai->tile != p_null_tile)
+		get_neighbor_coords (&p_bic_data->Map, tai->center_x, tai->center_y, tai->n, out_x, out_y);
+	else {
+		*out_x = -1;
+		*out_y = -1;
+	}
 }
 
 int
@@ -885,13 +1064,33 @@ int
 has_resources_required_by_building_r (City * city, int improv_id, int max_req_resource_id)
 {
 	Improvement * improv = &p_bic_data->Improvements[improv_id];
-	for (int n = 0; n < 2; n++) {
-		int res_id = (&improv->Resource1ID)[n];
-		if ((res_id >= 0) &&
-		    ((res_id > max_req_resource_id) || (! patch_City_has_resource (city, __, res_id))))
-			return 0;
+	if (! (improv->ImprovementFlags & ITF_Required_Goods_Must_Be_In_City_Radius)) {
+		for (int n = 0; n < 2; n++) {
+			int res_id = (&improv->Resource1ID)[n];
+			if ((res_id >= 0) &&
+			    ((res_id > max_req_resource_id) || (! patch_City_has_resource (city, __, res_id))))
+				return 0;
+		}
+		return 1;
+	} else {
+		int * targets = &improv->Resource1ID;
+		if ((targets[0] < 0) && (targets[1] < 0))
+			return 1;
+		int finds[2] = {0, 0};
+
+		int civ_id = city->Body.CivID;
+		FOR_TILES_AROUND(tai, 21, city->Body.X, city->Body.Y) {
+			if (tai.tile->vtable->m38_Get_Territory_OwnerID (tai.tile) == civ_id) {
+				int res_here = Tile_get_resource_visible_to (tai.tile, __, civ_id);
+				if (res_here >= 0) {
+					finds[0] |= targets[0] == res_here;
+					finds[1] |= targets[1] == res_here;
+				}
+			}
+		}
+
+		return ((targets[0] < 0) || finds[0]) && ((targets[1] < 0) || finds[1]);
 	}
-	return 1;
 }
 
 int
@@ -1377,185 +1576,6 @@ init_mod_info_button_images ()
 	}
 
 	is->mod_info_button_images_state = IS_OK;
-}
-
-// Prints x to str and appends null terminator. Assumes str has enough space. Returns pointer to null terminator
-char *
-print_unsigned (char * str, unsigned x)
-{
-	char t[20];
-	int n = 0;
-	do {
-		t[n++] = '0' + (x % 10);
-		x /= 10;
-	} while (x > 0);
-	for (; n >= 0; n--)
-		*str++ = t[n-1];
-	*str = '\0';
-	return str;
-}
-
-char *
-print_int (char * str, int x)
-{
-	if (x < 0) {
-		*str++ = '-';
-		x = 0 - x;
-	}
-	return print_unsigned (str, x);
-}
-
-void
-wrap_tile_coords (Map * map, int * x, int * y)
-{
-	if (map->Flags & 1) {
-		if      (*x < 0)           *x += map->Width;
-		else if (*x >= map->Width) *x -= map->Width;
-	}
-	if (map->Flags & 2) {
-		if      (*y < 0)            *y += map->Height;
-		else if (*y >= map->Height) *y -= map->Height;
-	}
-}
-
-void
-get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y)
-{
-	int dx, dy;
-	neighbor_index_to_displacement (neighbor_index, &dx, &dy);
-	*out_x = x + dx;
-	*out_y = y + dy;
-	wrap_tile_coords (map, out_x, out_y);
-}
-
-Unit *
-get_unit_ptr (int id)
-{
-	if ((p_units->Units != NULL) &&
-	    (id >= 0) && (id <= p_units->LastIndex)) {
-		Unit_Body * body = p_units->Units[id].Unit;
-		if (body != NULL) {
-			Unit * unit = (Unit *)((char *)body - offsetof (Unit, Body));
-			if (unit != NULL)
-				return unit;
-		}
-	}
-	return NULL;
-}
-
-struct unit_tile_iter {
-	int id;
-	int item_index;
-	Unit * unit;
-};
-
-void
-uti_next (struct unit_tile_iter * uti)
-{
-	if (((p_tile_units->Base.Items == NULL) || (uti->item_index < 0)) ||
-	    (uti->item_index > p_tile_units->Base.LastIndex)) {
-		uti->item_index = -1;
-		uti->id = p_tile_units->DefaultValue;
-	} else {
-		Base_List_Item * item = &p_tile_units->Base.Items[uti->item_index];
-		uti->item_index = item->V;
-		uti->id = (int)item->Object;
-	}
-	uti->unit = get_unit_ptr (uti->id);
-}
-
-struct unit_tile_iter
-uti_init (Tile * tile)
-{
-	struct unit_tile_iter tr;
-	int tile_unit_id = tile->vtable->m40_get_TileUnit_ID (tile);
-	tr.id = TileUnits_TileUnitID_to_UnitID (p_tile_units, __, tile_unit_id, &tr.item_index);
-	tr.unit = get_unit_ptr (tr.id);
-	return tr;
-}
-
-#define FOR_UNITS_ON(uti_name, tile) for (struct unit_tile_iter uti_name = uti_init (tile); uti_name.id != -1; uti_next (&uti_name))
-
-struct citizen_iter {
-	int index;
-	Citizens * list;
-	Citizen_Base * ctzn;
-};
-
-void
-ci_next (struct citizen_iter * ci)
-{
-	while (1) {
-		ci->index++;
-		if (ci->index > ci->list->LastIndex) {
-			ci->ctzn = NULL;
-			break;
-		} else {
-			Citizen_Body * body = ci->list->Items[ci->index].Body;
-			if ((body != NULL) && ((int)body != offsetof (Citizen_Base, Body))) {
-				ci->ctzn = (Citizen_Base *)((int)body - offsetof (Citizen_Base, Body));
-				break;
-			}
-		}
-	}
-}
-
-struct citizen_iter
-ci_init (City * city)
-{
-	struct citizen_iter tr;
-	tr.index = -1;
-	tr.list = &city->Body.Citizens;
-	tr.ctzn = NULL;
-	if (city->Body.Citizens.Items != NULL)
-		ci_next (&tr);
-	return tr;
-}
-
-#define FOR_CITIZENS_IN(ci_name, city) for (struct citizen_iter ci_name = ci_init (city); (ci_name.list->Items != NULL) && (ci_name.index <= ci.list->LastIndex); ci_next (&ci_name))
-
-struct tiles_around_iter {
-	int center_x, center_y;
-	int n, num_tiles;
-	Tile * tile;
-};
-
-void
-tai_next (struct tiles_around_iter * tai)
-{
-	tai->tile = p_null_tile;
-	while ((tai->n < tai->num_tiles) && (tai->tile == p_null_tile)) {
-		tai->n += 1;
-		int tx, ty;
-		get_neighbor_coords (&p_bic_data->Map, tai->center_x, tai->center_y, tai->n, &tx, &ty);
-		if ((tx >= 0) && (tx < p_bic_data->Map.Width) && (ty >= 0) && (ty < p_bic_data->Map.Height))
-			tai->tile = tile_at (tx, ty);
-	}
-}
-
-struct tiles_around_iter
-tai_init (int num_tiles, int x, int y)
-{
-	struct tiles_around_iter tr;
-	tr.center_x = x;
-	tr.center_y = y;
-	tr.n = 0;
-	tr.num_tiles = num_tiles;
-	tr.tile = tile_at (x, y);
-	return tr;
-}
-
-#define FOR_TILES_AROUND(tai_name, _num_tiles, _x, _y) for (struct tiles_around_iter tai_name = tai_init (_num_tiles, _x, _y); (tai_name.n < tai_name.num_tiles); tai_next (&tai_name))
-
-void
-tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
-{
-	if (tai->tile != p_null_tile)
-		get_neighbor_coords (&p_bic_data->Map, tai->center_x, tai->center_y, tai->n, out_x, out_y);
-	else {
-		*out_x = -1;
-		*out_y = -1;
-	}
 }
 
 int
