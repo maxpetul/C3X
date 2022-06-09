@@ -738,32 +738,6 @@ patch_PCX_Image_process_tech_ga_status (PCX_Image * this, int edx, char * str)
 	return PCX_Image_process_text (this, __, str);
 }
 
-// Prints x to str and appends null terminator. Assumes str has enough space. Returns pointer to null terminator
-char *
-print_unsigned (char * str, unsigned x)
-{
-	char t[20];
-	int n = 0;
-	do {
-		t[n++] = '0' + (x % 10);
-		x /= 10;
-	} while (x > 0);
-	for (; n >= 0; n--)
-		*str++ = t[n-1];
-	*str = '\0';
-	return str;
-}
-
-char *
-print_int (char * str, int x)
-{
-	if (x < 0) {
-		*str++ = '-';
-		x = 0 - x;
-	}
-	return print_unsigned (str, x);
-}
-
 void
 wrap_tile_coords (Map * map, int * x, int * y)
 {
