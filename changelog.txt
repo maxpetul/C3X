@@ -1,7 +1,4 @@
-* TODO
-- Consider how pop pollution removing buildings work when they become inactive (obsolete, govt req not met)
-- Add case for building spawning resource that owner doesn't have tech for
-
+* RELEASE 10C
 - Buildings can generate resources
 - Buildings can be set as prerequisites for unit production
 - On the city screen, hold shift when clicking a specialist to switch to the previous type
