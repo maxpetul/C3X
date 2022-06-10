@@ -1,7 +1,6 @@
 * TODO
 - Consider how pop pollution removing buildings work when they become inactive (obsolete, govt req not met)
 - Add case for building spawning resource that owner doesn't have tech for
-- Description for mills in default config
 
 - Buildings can generate resources
 - Buildings can be set as prerequisites for unit production
