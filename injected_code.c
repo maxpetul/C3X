@@ -932,6 +932,13 @@ has_active_building (City * city, int improv_id)
 		((improv->GovernmentID < 0) || (improv->GovernmentID == owner->GovernmentType)); // building is not restricted to a different govt
 }
 
+int
+can_player_use_resource (int civ_id, int resource_id)
+{
+	Resource_Type * res = &p_bic_data->ResourceTypes[resource_id];
+	return (res->RequireID < 0) || Leader_has_tech (&leaders[civ_id], __, res->RequireID);
+}
+
 int __stdcall
 intercept_consideration (int valuation)
 {
@@ -1014,7 +1021,7 @@ patch_City_has_resource (City * this, int edx, int resource_id)
 		tr = City_has_resource (this, __, resource_id);
 
 	// Check if access to this resource is provided by a building in the city
-	if (! tr)
+	if ((! tr) && can_player_use_resource (this->Body.CivID, resource_id))
 		for (int n = 0; n < is->current_config.count_mills; n++) {
 			struct mill * mill = &is->current_config.mills[n];
 			if ((mill->resource_id == resource_id) &&
@@ -1095,7 +1102,9 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, byte skip_popups
 			if (city != NULL)
 				for (int n = 0; n < is->current_config.count_mills; n++) {
 					struct mill * mill = &is->current_config.mills[n];
-					if ((! mill->is_local) && has_active_building (city, mill->improv_id)) {
+					if ((! mill->is_local) &&
+					    has_active_building (city, mill->improv_id) &&
+					    can_player_use_resource (city->Body.CivID, mill->resource_id)) {
 						reserve (sizeof is->mill_tiles[0],
 							 (void **)&is->mill_tiles,
 							 &is->mill_tiles_capacity,
