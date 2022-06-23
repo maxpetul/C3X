@@ -3999,5 +3999,33 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	}
 }
 
+void __fastcall
+patch_City_Form_initialize (City_Form * this)
+{
+	City_Form_initialize (this);
+
+	int form_left = (p_bic_data->ScreenWidth  - this->Background_Image.Width ) / 2,
+	    form_top  = (p_bic_data->ScreenHeight - this->Background_Image.Height) / 2;
+
+	this->Production_Rect.top    += 100;
+	this->Production_Rect.bottom += 100;
+	/*
+	this->Food_Storage_Rect.left   = form_left + 997;
+	this->Food_Storage_Rect.top    = form_top  + 817;
+	this->Food_Storage_Rect.right  = form_left + 997 + 450;
+	this->Food_Storage_Rect.bottom = form_top  + 817 + 20;
+	*/
+
+	/*
+	char s[200];
+	snprintf (s, sizeof s, "Food_Storage_Rect L,T,R,B: %d, %d, %d, %d", this->Food_Storage_Rect.left, this->Food_Storage_Rect.top, this->Food_Storage_Rect.right, this->Food_Storage_Rect.bottom);
+	s[(sizeof s) - 1] = '\0';
+	(*p_OutputDebugStringA) (s);
+	snprintf (s, sizeof s, "Food_Consumption_Rect L,T,R,B: %d, %d, %d, %d", this->Food_Consumption_Rect.left, this->Food_Consumption_Rect.top, this->Food_Consumption_Rect.right, this->Food_Consumption_Rect.bottom);
+	s[(sizeof s) - 1] = '\0';
+	(*p_OutputDebugStringA) (s);
+	*/
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
