@@ -3999,16 +3999,44 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	}
 }
 
-void __fastcall
-patch_City_Form_initialize (City_Form * this)
+void
+transform_rect (RECT const * ref, RECT const * trans, RECT * inout_rect)
 {
-	City_Form_initialize (this);
+	double horiz_scale = (double)(trans->right  - trans->left) / (ref->right  - ref->left),
+	       vert_scale  = (double)(trans->bottom - trans->top ) / (ref->bottom - ref->top);
+	inout_rect->left  = (inout_rect->left  - ref->left) * horiz_scale + trans->left;
+	inout_rect->right = (inout_rect->right - ref->left) * horiz_scale + trans->left;
+	inout_rect->top    = (inout_rect->top    - ref->top) * vert_scale + trans->top;
+	inout_rect->bottom = (inout_rect->bottom - ref->top) * vert_scale + trans->top;
+}
+
+void __fastcall
+patch_City_Form_initialize_on_game_load (City_Form * this)
+{
+	City_Form_initialize_on_game_load (this);
 
 	int form_left = (p_bic_data->ScreenWidth  - this->Background_Image.Width ) / 2,
 	    form_top  = (p_bic_data->ScreenHeight - this->Background_Image.Height) / 2;
 
-	this->Production_Rect.top    += 100;
-	this->Production_Rect.bottom += 100;
+	RECT ul_small = { .left = form_left, .top = form_top, .right = form_left + 1024, .bottom = form_top + 768  };
+	RECT ul_hd    = { .left = form_left, .top = form_top, .right = form_left + 1920, .bottom = form_top + 1080 };
+
+	int form_center_x = p_bic_data->ScreenWidth  / 2,
+	    form_center_y = p_bic_data->ScreenHeight / 2;
+	RECT center_small = { .left = form_center_x - 1024/2, .top = form_center_y -  768/2, .right = form_center_x + 1024/2, .bottom = form_center_y +  768/2},
+	     center_hd    = { .left = form_center_x - 1920/2, .top = form_center_y - 1080/2, .right = form_center_x + 1920/2, .bottom = form_center_y + 1080/2};
+
+	transform_rect (&center_small, &center_hd, &this->Luxury_Income_Rect);
+	// transform_rect (&ul_small, &ul_hd, &this->Pollution_Wastes_Rect);
+
+	/*
+	RECT * rects = &this->Citizens_Rect;
+	for (int n = 0; n < 30; n++)
+		transform_rect (&ul_small, &ul_hd, &rects[n]);
+	*/
+
+	// this->Production_Rect.top    += 100;
+	// this->Production_Rect.bottom += 100;
 	/*
 	this->Food_Storage_Rect.left   = form_left + 997;
 	this->Food_Storage_Rect.top    = form_top  + 817;
@@ -4016,15 +4044,11 @@ patch_City_Form_initialize (City_Form * this)
 	this->Food_Storage_Rect.bottom = form_top  + 817 + 20;
 	*/
 
-	/*
 	char s[200];
-	snprintf (s, sizeof s, "Food_Storage_Rect L,T,R,B: %d, %d, %d, %d", this->Food_Storage_Rect.left, this->Food_Storage_Rect.top, this->Food_Storage_Rect.right, this->Food_Storage_Rect.bottom);
+	snprintf (s, sizeof s, "Luxury_Income_Rect X,Y,W,H: %d, %d, %d, %d", this->Luxury_Income_Rect.left, this->Luxury_Income_Rect.top,
+		  this->Luxury_Income_Rect.right - this->Luxury_Income_Rect.left, this->Luxury_Income_Rect.bottom - this->Luxury_Income_Rect.top);
 	s[(sizeof s) - 1] = '\0';
-	(*p_OutputDebugStringA) (s);
-	snprintf (s, sizeof s, "Food_Consumption_Rect L,T,R,B: %d, %d, %d, %d", this->Food_Consumption_Rect.left, this->Food_Consumption_Rect.top, this->Food_Consumption_Rect.right, this->Food_Consumption_Rect.bottom);
-	s[(sizeof s) - 1] = '\0';
-	(*p_OutputDebugStringA) (s);
-	*/
+	pop_up_in_game_error (s);
 }
 
 // TCC requires a main function be defined even though it's never used.

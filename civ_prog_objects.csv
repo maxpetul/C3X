@@ -211,4 +211,4 @@ ignore,	   0x56D040,	0x5799C0,	"find_nearest_city",				"City * (__cdecl *) (int 
 ignore,    0x5E78E0,	0x5F7130,	"General_load",					"void (__fastcall *) (General * this, int edx, byte ** buffer)"
 ignore,    0x5E7020,	0x5F6870,	"General_clear",				"void (__fastcall *) (General * this)"
 
-inlead,	   0x416EB0,	0x0,		"City_Form_initialize",				"void (__fastcall *) (City_Form * this)"
+inlead,	   0x417520,	0x0,		"City_Form_initialize_on_game_load",		"void (__fastcall *) (City_Form * this)"
