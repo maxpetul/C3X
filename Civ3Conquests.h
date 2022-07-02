@@ -5590,6 +5590,44 @@ struct Game_Spy_Connection_Form
   short Last;
 };
 
+typedef enum city_form_rect
+{
+  CFR_CITIZENS_RECT = 0,
+  CFR_PRODUCTION_RECT,
+  CFR_UNKNOWN_1, // Zero height
+  CFR_FOOD_STORAGE_RECT,
+  CFR_FOOD_CONSUMPTION_RECT,
+  CFR_INCOME_RECT,
+  CFR_GOLD_INCOME_RECT,
+  CFR_SCIENCE_INCOME_RECT,
+  CFR_LUXURY_INCOME_RECT,
+  CFR_POLLUTION_WASTES_RECT,
+  CFR_FOOD_STORAGE_INDICATOR_RECT,
+  CFR_PRODUCTION_STORAGE_INDICATOR,
+  CFR_PRODUCTION_BUTTON_RECT,
+  CFR_AERIAL_VIEW_BUTTON_RECT,
+  CFR_UNKNOWN_2, // Negative position, zero dimensions
+  CFR_CLOSE_BUTTON_RECT,
+  CFR_LEFT_ARROW_BUTTON_RECT,
+  CFR_RIGHT_ARROW_BUTTON_RECT,
+  CFR_DRAFT_BUTTON_RECT,
+  CFR_GOVERNOR_BUTTON_RECT,
+  CFR_STRATEGIC_RESOURCES_RECT,
+  CFR_HURRY_BUTTON_RECT,
+  CFR_IMPROVEMENTS_RECT,
+  CFR_LUXURIES_RECT, // Negative height
+  CFR_CULTURE_RECT,
+  CFR_UNITS_RECT,
+  CFR_POLLUTION_RECT,
+  CFR_LOWER_PANE_RECT,
+  CFR_ABOVE_LOWER_PANE_RECT,
+  CFR_BELOW_UPPER_PANE_RECT,
+  CFR_PRODUCTION_OPTIONS_RECT,
+  CFR_MAP_VIEW_RECT,
+
+  COUNT_CITY_FORM_RECTS
+} CityFormRect;
+
 struct City_Form
 {
   Base_Form Base;
@@ -5639,34 +5677,7 @@ struct City_Form
   int field_6570[61];
   Tile_Image_Info Image_1;
   Tile_Image_Info Image_2;
-  RECT Citizens_Rect;
-  RECT Production_Rect;
-  RECT Rect1;
-  RECT Food_Storage_Rect;
-  RECT Food_Consumption_Rect;
-  RECT Income_Rect;
-  RECT Gold_Income_Rect;
-  RECT Science_Income_Rect;
-  RECT Luxury_Income_Rect;
-  RECT Pollution_Wastes_Rect;
-  RECT Food_Storage_Indicator_Rect;
-  RECT Production_Storage_Indicator;
-  RECT field_677C;
-  RECT field_678C;
-  RECT field_679C;
-  RECT field_67AC;
-  RECT field_67BC;
-  RECT field_67CC;
-  RECT field_67DC;
-  RECT field_67EC;
-  RECT field_67FC;
-  RECT field_680C;
-  RECT field_681C;
-  RECT field_682C;
-  RECT Culture_Rect;
-  RECT Units_Rect;
-  RECT Pollution_Rect;
-  RECT Rects_2[5];
+  RECT rects[COUNT_CITY_FORM_RECTS];
   Scroll_Bar Units_Scroll_Bar;
   Base_List_Box Order_List;
   Base_List_Box Order_Queue_List;

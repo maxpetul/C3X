@@ -2292,7 +2292,7 @@ patch_City_Form_draw (City_Form * this)
 	// Recompute city form production rect location every time because the config might have changed. Doing it here is also easier than
 	// patching the constructor.
 	int form_top = (p_bic_data->ScreenHeight - this->Background_Image.Height) / 2;
-	this->Production_Storage_Indicator.top = form_top + 621 + (is->current_config.show_detailed_city_production_info ? 34 : 0);
+	this->rects[CFR_PRODUCTION_STORAGE_INDICATOR].top = form_top + 621 + (is->current_config.show_detailed_city_production_info ? 34 : 0);
 
 	City_Form_draw (this);
 
@@ -2361,9 +2361,9 @@ patch_City_Form_draw (City_Form * this)
 		}
 
 		Object_66C3FC * font = get_font (10, FSF_NONE);
-		int left = this->Production_Storage_Indicator.left,
-		    top = this->Production_Storage_Indicator.top,
-		    width = this->Production_Storage_Indicator.right - left;
+		int left = this->rects[CFR_PRODUCTION_STORAGE_INDICATOR].left,
+		    top = this->rects[CFR_PRODUCTION_STORAGE_INDICATOR].top,
+		    width = this->rects[CFR_PRODUCTION_STORAGE_INDICATOR].right - left;
 		PCX_Image_draw_centered_text (&this->Base.Data.Canvas, __, font, line1, left, top - 42, width, strlen (line1));
 		PCX_Image_draw_centered_text (&this->Base.Data.Canvas, __, font, line2, left, top - 28, width, strlen (line2));
 		PCX_Image_draw_centered_text (&this->Base.Data.Canvas, __, font, line3, left, top - 14, width, strlen (line3));
@@ -4026,8 +4026,13 @@ patch_City_Form_initialize_on_game_load (City_Form * this)
 	RECT center_small = { .left = form_center_x - 1024/2, .top = form_center_y -  768/2, .right = form_center_x + 1024/2, .bottom = form_center_y +  768/2},
 	     center_hd    = { .left = form_center_x - 1920/2, .top = form_center_y - 1080/2, .right = form_center_x + 1920/2, .bottom = form_center_y + 1080/2};
 
-	transform_rect (&center_small, &center_hd, &this->Luxury_Income_Rect);
+	// Citizens_Rect: Already placed correctly
+	// Rect1 has zero height (does it ever not?). It's 613x0 at 730,516
+
+	// transform_rect (&center_small, &center_hd, &this->Luxury_Income_Rect);
 	// transform_rect (&ul_small, &ul_hd, &this->Pollution_Wastes_Rect);
+
+
 
 	/*
 	RECT * rects = &this->Citizens_Rect;
@@ -4044,10 +4049,26 @@ patch_City_Form_initialize_on_game_load (City_Form * this)
 	this->Food_Storage_Rect.bottom = form_top  + 817 + 20;
 	*/
 
+	int off_x = (3440 - 1920) / 2, off_y = (1440 - 1080) / 2;
+
 	char s[200];
-	snprintf (s, sizeof s, "Luxury_Income_Rect X,Y,W,H: %d, %d, %d, %d", this->Luxury_Income_Rect.left, this->Luxury_Income_Rect.top,
-		  this->Luxury_Income_Rect.right - this->Luxury_Income_Rect.left, this->Luxury_Income_Rect.bottom - this->Luxury_Income_Rect.top);
-	s[(sizeof s) - 1] = '\0';
+	// RECT * to_show = &this->Rects_2[0];
+	snprintf (s, sizeof s, "sizeof City_Form: %d", (int)(sizeof *this));
+	/*
+	snprintf (s, sizeof s, "Rects_2[0] X,Y,W,H: %d, %d, %d, %d", to_show->left - off_x, to_show->top - off_y, to_show->right - to_show->left, to_show->bottom - to_show->top);
+	pop_up_in_game_error (s);
+	to_show = &this->Rects_2[1];
+	snprintf (s, sizeof s, "Rects_2[1] X,Y,W,H: %d, %d, %d, %d", to_show->left - off_x, to_show->top - off_y, to_show->right - to_show->left, to_show->bottom - to_show->top);
+	pop_up_in_game_error (s);
+	to_show = &this->Rects_2[2];
+	snprintf (s, sizeof s, "Rects_2[2] X,Y,W,H: %d, %d, %d, %d", to_show->left - off_x, to_show->top - off_y, to_show->right - to_show->left, to_show->bottom - to_show->top);
+	pop_up_in_game_error (s);
+	to_show = &this->Rects_2[3];
+	snprintf (s, sizeof s, "Rects_2[3] X,Y,W,H: %d, %d, %d, %d", to_show->left - off_x, to_show->top - off_y, to_show->right - to_show->left, to_show->bottom - to_show->top);
+	pop_up_in_game_error (s);
+	to_show = &this->Rects_2[4];
+	snprintf (s, sizeof s, "Rects_2[4] X,Y,W,H: %d, %d, %d, %d", to_show->left - off_x, to_show->top - off_y, to_show->right - to_show->left, to_show->bottom - to_show->top);
+	*/
 	pop_up_in_game_error (s);
 }
 
