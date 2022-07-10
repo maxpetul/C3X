@@ -439,7 +439,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 			if (! skip_punctuation (&cursor, ':'))
 				break;
 			struct string_slice unit_type_name;
-			while (parse_string (&cursor, &unit_type_name)) {
+			while (skip_white_space (&cursor) && parse_string (&cursor, &unit_type_name)) {
 				int unit_type_id;
 				if (find_unit_type_id_by_name (&unit_type_name, &unit_type_id)) {
 					if (have_building_id) {
