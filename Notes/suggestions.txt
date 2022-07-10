@@ -138,3 +138,4 @@ Ideas:
   - Instead of adding a new command, this could be activated through the right-click menu e.g. by CTRL+clicking a group
 - [from Civinator]
   - Enable enslaving by barbarians
+- [from ynot56] In the popup for a newly available small wonder w/ a resource requirement (e.g. iron works), include city where the build is available
