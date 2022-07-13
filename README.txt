@@ -2,8 +2,6 @@ C3X: Executable Mod for Civ 3 Complete
 Release 11
 
 INCLUDES (** = new in latest version):
-** Mod config can be set separately for each scenario (see below for details)
-** Mod info button on preferences screen
 Convenience features:
  - Stack unit commands
   - Stack bombard
@@ -15,11 +13,12 @@ Convenience features:
  - Ask/offer gold popup autofills best amount
  - Skip repeated popups asking to replace a tile improvement
  - Group units on right click menu
-  - ** Improved logic: now separates captured and native units, units carrying a princess, and more
+  - ** Units with differing charm statuses are not grouped
  - Show coordinates and chopped status in tile info box
  - Show golden age turns remaining
  - No special king unit names in non-regicide games
  - Option to disable worker automation
+ - ** On the city screen, hold shift when clicking a specialist to switch to the previous type
 AI enhancements:
  - Allow AI to use artillery in the field
  - Force AI to build more artillery and bombers
@@ -33,8 +32,8 @@ Bugs fixed:
  - Pink line in Civilopedia
  - Crash when doing disembark-all on transport containing immobile unit(s)
  - Crash possible when AI civ is left alive with only a settler on a transport (called the "houseboat bug")
- - ** Resources beyond the first 32 share access records in cities not on the main trade network (called the "phantom resource bug")
- - ** Air units lose a turn after being set to intercept
+ - Resources beyond the first 32 share access records in cities not on the main trade network (called the "phantom resource bug")
+ - Air units lose a turn after being set to intercept
 Engine extensions:
  - Adjustable minimum city distance
  - Option to limit railroad movement
@@ -43,6 +42,7 @@ Engine extensions:
  - Option to prevent autoraze and razing by AIs
  - Stealth attack activates even when there's only one target
  - Trespassing prevention
+  - ** Invisible and hidden nationality units are exempt
  - Land/sea intersections
  - Adjustable anarchy length
  - "Perfume" units or improvements to control how likely the AI is to build them
@@ -51,7 +51,11 @@ Engine extensions:
   - Press L on map to see how desirable the AI finds each tile as a city location
  - Corruption can be completely removed with "OFF" government setting
  - Disallow land settlers from founding on water
- - ** Option to let units move after airdropping
+  - ** Also stops land workers from improving on water
+ - Option to let units move after airdropping
+ - ** Buildings can generate resources
+ - ** Buildings can be set as prerequisites for unit production
+ - ** Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
 
 INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.
@@ -91,8 +95,8 @@ Enabling land/sea intersections allows sea units to travel over the thin isthmus
 
 Disallowing trespassing prevents civs from entering each other's borders while at peace without a right of passage, similar to the rules in Civ 4. Invisible and hidden nationality units are exempted from the restriction.
 
-** NEW ** PER-SCENARIO CONFIG:
-Mod config settings can now be set on a per-scenario basis. To do this, create a "scenario.c3x_config.ini" file inside the scenario's folder (the same place that would contain the scenario's Art and Text folders) and fill it in like the "default.c3x_config.ini" file included with the mod. The scenario settings will be layered on top of the default settings so you only need to include the ones that are relevant to the scenario. You can verify in-game that the scenario config was loaded by checking the mod info popup, it's accessible through the button on the top right of the preferences screen. For an example, see: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-28#post-16212316.
+PER-SCENARIO CONFIG:
+Mod config settings can be set on a per-scenario basis. To do this, create a "scenario.c3x_config.ini" file inside the scenario's folder (the same place that would contain the scenario's Art and Text folders) and fill it in like the "default.c3x_config.ini" file included with the mod. The scenario settings will be layered on top of the default settings so you only need to include the ones that are relevant to the scenario. You can verify in-game that the scenario config was loaded by checking the mod info popup, it's accessible through the button on the top right of the preferences screen. For an example, see: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-28#post-16212316.
 
 SMALL WONDER FREE IMPROVEMENTS:
 The free improvements wonder effect (granaries from Pyramids etc.) now works on small wonders. Note to modders, to set this effect you must use a third party editor like Quintillus' (https://forums.civfanatics.com/threads/cross-platform-editor-for-conquests-now-available.377188/) because the option is grayed out in the standard editor. Even worse, if you set the effect then work on the BIQ in the standard editor, the effect won't be saved, so you'd need to set it every time or work exclusively in Quintillus' editor.
