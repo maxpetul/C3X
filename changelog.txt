@@ -1,4 +1,4 @@
-* RELEASE 10C
+* RELEASE 11
 - Buildings can generate resources
 - Buildings can be set as prerequisites for unit production
 - On the city screen, hold shift when clicking a specialist to switch to the previous type
