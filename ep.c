@@ -42,28 +42,16 @@ void       (LIBTCCAPI * tcc__define_symbol)    (TCCState *, char const *, char c
 void       (LIBTCCAPI * tcc__list_symbols)     (TCCState *, void *, void (*) (void *, char const *, void const *));
 
 struct c3c_binary {
+	char const * title;
 	int file_size;
 	void * addr_rdata;
 	int    size_rdata;
 } * bin;
 
-struct c3c_binary gog_binary = {
-	.file_size = 3417464,
-	.addr_rdata = (void *)0x665000,
-	.size_rdata = 0x1B000,
-};
-
-struct c3c_binary steam_binary = {
-	.file_size = 3518464,
-	.addr_rdata = (void *)0x682000,
-	.size_rdata = 0x1B000,
-};
-
-struct c3c_binary pcg_binary = {
-	.file_size = 3395072,
-	.addr_rdata = (void *)0x665000,
-	.size_rdata = 0x1A400,
-};
+//                                TITLE         FILE_SIZE   ADDR_RDATA          SIZE_RDATA
+struct c3c_binary gog_binary   = {"GOG",        3417464,    (void *)0x665000,   0x1B000};
+struct c3c_binary steam_binary = {"Steam",      3518464,    (void *)0x682000,   0x1B000};
+struct c3c_binary pcg_binary   = {"PCGames.de", 3395072,    (void *)0x665000,   0x1A400};
 
 char const * standard_exe_filename = "Civ3Conquests.exe";
 char const * backup_exe_filename = "Civ3Conquests-Unmodded.exe";
@@ -838,7 +826,7 @@ ENTRY_POINT ()
 
 	// Locate compatible, unmodded executable to work on
 	enum bin_id bin_id;
-	char const * bin_file_name;
+	char const * bin_file_name = NULL;
 	HANDLE bin_file; {
 		bin_file_name = standard_exe_filename;
 		bin_id = identify_binary (bin_file_name, &bin_file);
@@ -861,17 +849,10 @@ ENTRY_POINT ()
 	}
 
 	// Set "bin" variable appropriately
-	if (bin_id == BIN_ID_GOG) {
-		bin = &gog_binary;
-		printf ("Found GOG executable in \"%s\"\n", bin_file_name);
-	} else if (bin_id == BIN_ID_STEAM) {
-		bin = &steam_binary;
-		printf ("Found Steam executable in \"%s\"\n", bin_file_name);
-	} else if (bin_id == BIN_ID_PCG) {
-		bin = &pcg_binary;
-		printf ("Found PCGames.de executable in \"%s\"\n", bin_file_name);
-	} else
-		THROW ("Did the impossible, and not in a good way.");
+	if      (bin_id == BIN_ID_GOG)   bin = &gog_binary;
+	else if (bin_id == BIN_ID_STEAM) bin = &steam_binary;
+	else if (bin_id == BIN_ID_PCG)   bin = &pcg_binary;
+	printf ("Found %s executable in \"%s\"\n", bin->title, bin_file_name);
 
 	PROCESS_INFORMATION civ_proc_info = {0};
 
