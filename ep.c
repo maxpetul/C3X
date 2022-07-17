@@ -59,6 +59,12 @@ struct c3c_binary steam_binary = {
 	.size_rdata = 0x1B000,
 };
 
+struct c3c_binary pcg_binary = {
+	.file_size = 3395072,
+	.addr_rdata = (void *)0x665000,
+	.size_rdata = 0x1A400,
+};
+
 char const * standard_exe_filename = "Civ3Conquests.exe";
 char const * backup_exe_filename = "Civ3Conquests-Unmodded.exe";
 
@@ -520,13 +526,14 @@ enum bin_id {
 	BIN_ID_NOT_FOUND,
 	BIN_ID_GOG,
 	BIN_ID_STEAM,
+	BIN_ID_PCG,
 	BIN_ID_MODDED,
 	BIN_ID_UNRECOGNIZED,
 
 	COUNT_BIN_IDS
 };
 
-char const * bin_id_strs[COUNT_BIN_IDS] = {"Not found", "GOG Complete", "Steam Complete", "Modded", "Unrecognized"};
+char const * bin_id_strs[COUNT_BIN_IDS] = {"Not found", "GOG Complete", "Steam Complete", "PCGames.de", "Modded", "Unrecognized"};
 
 enum bin_id
 identify_binary (char const * file_name, HANDLE * out_file_handle)
@@ -542,6 +549,8 @@ identify_binary (char const * file_name, HANDLE * out_file_handle)
 		return BIN_ID_GOG;
 	else if (size == steam_binary.file_size)
 		return BIN_ID_STEAM;
+	else if (size == pcg_binary.file_size)
+		return BIN_ID_PCG;
 	else if ((size > sizeof header) && (0 != ReadFile (file, header, sizeof header, &size_read, NULL)) && (size_read == sizeof header)) {
 		int any_modded_sections = 0;
 		struct civ_pe pe = civ_pe_from_file_contents (header);
@@ -833,14 +842,14 @@ ENTRY_POINT ()
 	HANDLE bin_file; {
 		bin_file_name = standard_exe_filename;
 		bin_id = identify_binary (bin_file_name, &bin_file);
-		if ((bin_id != BIN_ID_GOG) && (bin_id != BIN_ID_STEAM)) {
+		if ((bin_id != BIN_ID_GOG) && (bin_id != BIN_ID_STEAM) && (bin_id != BIN_ID_PCG)) {
 			if (bin_file != INVALID_HANDLE_VALUE)
 				CloseHandle (bin_file);
 			bin_file_name = backup_exe_filename;
 			enum bin_id unmod_id = identify_binary (bin_file_name, &bin_file);
-			if ((unmod_id != BIN_ID_GOG) && (unmod_id != BIN_ID_STEAM)) {
+			if ((unmod_id != BIN_ID_GOG) && (unmod_id != BIN_ID_STEAM) && (unmod_id != BIN_ID_PCG)) {
 				char * error_msg = format (
-					"Couldn't find compatible, unmodded executable. Compatible versions are GOG or Steam versions of Civ 3 Complete.\n"
+					"Couldn't find compatible, unmodded executable. This mod is only compatible with Civ3Conquests.exe V1.22 from GOG, Steam, or PCGames.de.\n"
 					"%s: %s\n"
 					"%s: %s\n"
 					"Current directory: %s",
@@ -858,6 +867,9 @@ ENTRY_POINT ()
 	} else if (bin_id == BIN_ID_STEAM) {
 		bin = &steam_binary;
 		printf ("Found Steam executable in \"%s\"\n", bin_file_name);
+	} else if (bin_id == BIN_ID_PCG) {
+		bin = &pcg_binary;
+		printf ("Found PCGames.de executable in \"%s\"\n", bin_file_name);
 	} else
 		THROW ("Did the impossible, and not in a good way.");
 
@@ -1044,6 +1056,8 @@ ENTRY_POINT ()
 		tcc__define_symbol (tcc, "GOG_EXECUTABLE", "1");
 	else if (bin_id == BIN_ID_STEAM)
 		tcc__define_symbol (tcc, "STEAM_EXECUTABLE", "1");
+	else if (bin_id == BIN_ID_PCG)
+		tcc__define_symbol (tcc, "PCG_EXECUTABLE", "1");
 
 	// Compile C code to inject
 	{
@@ -1100,6 +1114,8 @@ ENTRY_POINT ()
 		}
 	}
 
+	printf ("Skipping init_consideration_airlocks..."); // TODO: Re-enable when we have more addresses
+	/*
 	init_consideration_airlocks (bin_id, tcc, addr_improv_consideration_airlock, addr_unit_consideration_airlock);
 	{
 		int addr_intercept_set_resource_bit = 0;
@@ -1113,6 +1129,7 @@ ENTRY_POINT ()
 		REQUIRE (addr_intercept_set_resource_bit != 0, "Couldn't find ADDR_INTERCEPT_SET_RESOURCE_BIT in prog objects");
 		init_set_resource_bit_airlock (tcc, addr_set_resource_bit_airlock, addr_intercept_set_resource_bit);
 	}
+	*/
 
 	// Give up write permission on Civ proc's code injection pages
 	set_prog_mem_protection (civ_inject_mem, inject_size, MAA_READ_EXECUTE);
