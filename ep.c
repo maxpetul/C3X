@@ -46,12 +46,13 @@ struct c3c_binary {
 	int file_size;
 	void * addr_rdata;
 	int    size_rdata;
+	int addr_column; // The index of the column in civ_prog_objects.csv that contains the addresses for this binary
 } * bin;
 
-//                                TITLE         FILE_SIZE   ADDR_RDATA          SIZE_RDATA
-struct c3c_binary gog_binary   = {"GOG",        3417464,    (void *)0x665000,   0x1B000};
-struct c3c_binary steam_binary = {"Steam",      3518464,    (void *)0x682000,   0x1B000};
-struct c3c_binary pcg_binary   = {"PCGames.de", 3395072,    (void *)0x665000,   0x1A400};
+//                                TITLE         FILE_SIZE   ADDR_RDATA          SIZE_RDATA   ADDR_COLUMN
+struct c3c_binary gog_binary   = {"GOG",        3417464,    (void *)0x665000,   0x1B000,     1};
+struct c3c_binary steam_binary = {"Steam",      3518464,    (void *)0x682000,   0x1B000,     2};
+struct c3c_binary pcg_binary   = {"PCGames.de", 3395072,    (void *)0x665000,   0x1A400,     3};
 
 char const * standard_exe_filename = "Civ3Conquests.exe";
 char const * backup_exe_filename = "Civ3Conquests-Unmodded.exe";
@@ -794,36 +795,6 @@ ENTRY_POINT ()
 	tcc__add_include_path (tcc, combine_strs (mod_full_dir, "\\tcc\\include\\winapi"));
 	tcc__add_library_path (tcc, combine_strs (mod_full_dir, "\\tcc\\lib"));
 
-	// Load civ_prog_objects.csv
-	struct civ_prog_object * civ_prog_objects;
-	int count_civ_prog_objects; {
-		char * const prog_objs_text = file_to_string (mod_full_dir, "civ_prog_objects.csv");
-		int count_lines = 0;
-		for (char * c = prog_objs_text; *c != '\0'; c++)
-			count_lines += (*c == '\n');
-		civ_prog_objects = calloc (count_lines, sizeof *civ_prog_objects);
-		count_civ_prog_objects = 0;
-		char * cursor = prog_objs_text;
-		skip_line (&cursor); // Skip the first line containing column labels
-		while (1) {
-			skip_horiz_space (&cursor);
-			struct civ_prog_object obj;
-			if (*cursor == '\0')
-				break;
-			else if (*cursor  == '\n')
-				cursor++; // Skip empty line
-			else if (parse_civ_prog_object (&cursor, &obj))
-				civ_prog_objects[count_civ_prog_objects++] = obj;
-			else {
-				int count_newlines = 0;
-				for (char * c = prog_objs_text; c < cursor; c++)
-					count_newlines += (*c == '\n');
-				THROW (format ("Line %d in civ_prog_objects.csv is invalid", 1 + count_newlines));
-			}
-		}
-		free (prog_objs_text);
-	}
-
 	// Locate compatible, unmodded executable to work on
 	enum bin_id bin_id;
 	char const * bin_file_name = NULL;
@@ -853,6 +824,36 @@ ENTRY_POINT ()
 	else if (bin_id == BIN_ID_STEAM) bin = &steam_binary;
 	else if (bin_id == BIN_ID_PCG)   bin = &pcg_binary;
 	printf ("Found %s executable in \"%s\"\n", bin->title, bin_file_name);
+
+	// Load civ_prog_objects.csv
+	struct civ_prog_object * civ_prog_objects;
+	int count_civ_prog_objects; {
+		char * const prog_objs_text = file_to_string (mod_full_dir, "civ_prog_objects.csv");
+		int count_lines = 0;
+		for (char * c = prog_objs_text; *c != '\0'; c++)
+			count_lines += (*c == '\n');
+		civ_prog_objects = calloc (count_lines, sizeof *civ_prog_objects);
+		count_civ_prog_objects = 0;
+		char * cursor = prog_objs_text;
+		skip_line (&cursor); // Skip the first line containing column labels
+		while (1) {
+			skip_horiz_space (&cursor);
+			struct civ_prog_object obj;
+			if (*cursor == '\0')
+				break;
+			else if (*cursor  == '\n')
+				cursor++; // Skip empty line
+			else if (parse_civ_prog_object (&cursor, bin.addr_column, &obj))
+				civ_prog_objects[count_civ_prog_objects++] = obj;
+			else {
+				int count_newlines = 0;
+				for (char * c = prog_objs_text; c < cursor; c++)
+					count_newlines += (*c == '\n');
+				THROW (format ("Line %d in civ_prog_objects.csv is invalid", 1 + count_newlines));
+			}
+		}
+		free (prog_objs_text);
+	}
 
 	PROCESS_INFORMATION civ_proc_info = {0};
 
@@ -908,7 +909,7 @@ ENTRY_POINT ()
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
 		if (obj->job == OJ_DEFINE) {
 			char val[1000];
-			snprintf (val, sizeof val, "((%s)%d)", obj->type, (bin == &gog_binary) ? obj->gog_addr : obj->steam_addr);
+			snprintf (val, sizeof val, "((%s)%d)", obj->type, obj->addr);
 			val[(sizeof val) - 1] = '\0';
 			tcc__define_symbol (tcc, obj->name, val);
 		}
@@ -1000,14 +1001,14 @@ ENTRY_POINT ()
 		if (obj->job == OJ_INLEAD) {
 			ASSERT (i_next_free_inlead < inleads_capacity);
 			struct inlead * inlead = &inleads[i_next_free_inlead++];
-			int func_addr = (bin == &gog_binary) ? obj->gog_addr : obj->steam_addr;
+			int func_addr = obj->addr;
 			ASSERT (func_addr != 0);
 			init_inlead (inlead, func_addr);
 			tcc__define_symbol (tcc, obj->name, temp_format ("((%s)%d)", obj->type, (int)inlead));
 
 		// Define base func as vptr target
 		} else if (obj->job == OJ_REPL_VPTR) {
-			int impl_addr = read_prog_int ((void *)((bin == &gog_binary) ? obj->gog_addr : obj->steam_addr));
+			int impl_addr = read_prog_int ((void *)obj->addr);
 			tcc__define_symbol (tcc, obj->name, temp_format ("((%s)%d)", obj->type, impl_addr));
 		}
 	}
@@ -1083,15 +1084,14 @@ ENTRY_POINT ()
 	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
 		if (obj->job != OJ_IGNORE) {
-			int addr = (bin == &gog_binary) ? obj->gog_addr : obj->steam_addr;
-			ASSERT (addr != 0);
+			ASSERT (obj->addr != 0);
 
 			if (obj->job == OJ_INLEAD)
-				put_trampoline ((void *)addr, find_patch_function (tcc, obj->name, 1), 0);
+				put_trampoline ((void *)obj->addr, find_patch_function (tcc, obj->name, 1), 0);
 			else if (obj->job == OJ_REPL_VPTR)
-				write_prog_int ((void *)addr, (int)find_patch_function (tcc, obj->name, 1));
+				write_prog_int ((void *)obj->addr, (int)find_patch_function (tcc, obj->name, 1));
 			else if (obj->job == OJ_REPL_CALL)
-				put_trampoline ((void *)addr, find_patch_function (tcc, obj->name, 1), 1);
+				put_trampoline ((void *)obj->addr, find_patch_function (tcc, obj->name, 1), 1);
 		}
 	}
 
@@ -1103,7 +1103,7 @@ ENTRY_POINT ()
 		for (int n = count_civ_prog_objects - 1; n >= 0; n--) {
 			struct civ_prog_object const * obj = &civ_prog_objects[n];
 			if (0 == strcmp (obj->name, "ADDR_INTERCEPT_SET_RESOURCE_BIT")) {
-				addr_intercept_set_resource_bit = (bin == &gog_binary) ? obj->gog_addr : obj->steam_addr;
+				addr_intercept_set_resource_bit = obj->addr;
 				break;
 			}
 		}

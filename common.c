@@ -466,12 +466,14 @@ trim_and_extract_slice (struct string_slice const * s, int remove_quotes)
 	return extract_slice (&trimmed);
 }
 
+// Parses a single row from civ_prog_objects.csv. The CSV file contains multiple columns for addresses but this method only reads one, specified by
+// index in addr_column.
 int
-parse_civ_prog_object (char ** p_cursor, struct civ_prog_object * out)
+parse_civ_prog_object (char ** p_cursor, int addr_column, struct civ_prog_object * out)
 {
 	char * cursor = *p_cursor;
 	struct string_slice columns[6];
-	for (int n = 0; n < 5; n++) {
+	for (int n = 0; n < (sizeof columns) / (sizeof columns[0]); n++) {
 		if (parse_csv_value (&cursor, &columns[n].str, &columns[n].len)) {
 			char c = *cursor; // Check character after value for errors & to skip if necessary
 			if ((n < 4) && (c == ',')) // Before the last column, the value must end in a comma. Skip it if it's present.
@@ -488,9 +490,7 @@ parse_civ_prog_object (char ** p_cursor, struct civ_prog_object * out)
 
 	struct civ_prog_object tr;
 	if (read_object_job (&columns[0], &tr.job) &&
-	    read_int (&columns[1], &tr.gog_addr) &&
-	    read_int (&columns[2], &tr.steam_addr) &&
-	    read_int (&columns[3], &tr.pcg_addr)) {
+	    read_int (&columns[addr_column], &tr.addr))
 		tr.name = trim_and_extract_slice (&columns[4], 1);
 		tr.type = trim_and_extract_slice (&columns[5], 1);
 		*out = tr;

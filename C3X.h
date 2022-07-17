@@ -373,9 +373,7 @@ enum object_job {
 
 struct civ_prog_object {
 	enum object_job job;
-	int gog_addr;
-	int steam_addr;
-	int pcg_addr;
+	int addr;
 	char const * name;
 	char const * type;
 };
