@@ -470,7 +470,7 @@ int
 parse_civ_prog_object (char ** p_cursor, struct civ_prog_object * out)
 {
 	char * cursor = *p_cursor;
-	struct string_slice columns[5];
+	struct string_slice columns[6];
 	for (int n = 0; n < 5; n++) {
 		if (parse_csv_value (&cursor, &columns[n].str, &columns[n].len)) {
 			char c = *cursor; // Check character after value for errors & to skip if necessary
@@ -489,9 +489,10 @@ parse_civ_prog_object (char ** p_cursor, struct civ_prog_object * out)
 	struct civ_prog_object tr;
 	if (read_object_job (&columns[0], &tr.job) &&
 	    read_int (&columns[1], &tr.gog_addr) &&
-	    read_int (&columns[2], &tr.steam_addr)) {
-		tr.name = trim_and_extract_slice (&columns[3], 1);
-		tr.type = trim_and_extract_slice (&columns[4], 1);
+	    read_int (&columns[2], &tr.steam_addr) &&
+	    read_int (&columns[3], &tr.pcg_addr)) {
+		tr.name = trim_and_extract_slice (&columns[4], 1);
+		tr.type = trim_and_extract_slice (&columns[5], 1);
 		*out = tr;
 		*p_cursor = cursor;
 		return 1;
