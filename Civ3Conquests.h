@@ -45,7 +45,7 @@ typedef struct Worker_Job Worker_Job;
 typedef struct World_Size World_Size;
 typedef struct Cultural_Levels Cultural_Levels;
 typedef struct General General;
-typedef struct Unknown_5 Unknown_5;
+typedef struct Fighter Fighter;
 typedef struct Unknown_6 Unknown_6;
 typedef struct Tile_Type_Image Tile_Type_Image;
 typedef struct Improvement Improvement;
@@ -2040,9 +2040,20 @@ struct General
   int FoodUpdateCost;
 };
 
-struct Unknown_5
+struct Fighter
 {
-  int V[9];
+  Unit * attacker;
+  Unit * defender;
+  byte attacker_eligible_to_retreat;
+  byte defender_eligible_to_retreat;
+  byte field_A;
+  byte field_B;
+  int field_C;
+  int field_10;
+  int attacker_location_x;
+  int attacker_location_y;
+  int defender_location_x;
+  int defender_location_y;
 };
 
 struct Unknown_6
@@ -4856,7 +4867,7 @@ struct BIC
   int ScreenHeight;
   int field_3E38;
   int field_3E3C;
-  Unknown_5 Unknown5;
+  Fighter fighter;
   Map Map;
 };
 
