@@ -3999,5 +3999,13 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	}
 }
 
+void __fastcall
+patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direction, Unit * defender)
+{
+	Fighter_begin (this, __, attacker, attack_direction, defender);
+	this->attacker_eligible_to_retreat = 1;
+	this->defender_eligible_to_retreat = 1;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
