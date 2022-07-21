@@ -2048,7 +2048,7 @@ struct Fighter
   byte defender_eligible_to_retreat;
   byte field_A;
   byte field_B;
-  int field_C;
+  int attack_direction;
   int field_10;
   int attacker_location_x;
   int attacker_location_y;
