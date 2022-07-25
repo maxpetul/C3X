@@ -843,7 +843,7 @@ ENTRY_POINT ()
 				break;
 			else if (*cursor  == '\n')
 				cursor++; // Skip empty line
-			else if (parse_civ_prog_object (&cursor, bin.addr_column, &obj))
+			else if (parse_civ_prog_object (&cursor, bin->addr_column, &obj))
 				civ_prog_objects[count_civ_prog_objects++] = obj;
 			else {
 				int count_newlines = 0;
