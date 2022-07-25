@@ -1034,13 +1034,6 @@ ENTRY_POINT ()
 		tcc__define_symbol (tcc, "ADDR_SET_RESOURCE_BIT_AIRLOCK", temp_format ("((void *)0x%x)", (int)addr_set_resource_bit_airlock));
 	}
 
-	if (bin_id == BIN_ID_GOG)
-		tcc__define_symbol (tcc, "GOG_EXECUTABLE", "1");
-	else if (bin_id == BIN_ID_STEAM)
-		tcc__define_symbol (tcc, "STEAM_EXECUTABLE", "1");
-	else if (bin_id == BIN_ID_PCG)
-		tcc__define_symbol (tcc, "PCG_EXECUTABLE", "1");
-
 	// Compile C code to inject
 	{
 		char * source = file_to_string (mod_full_dir, "injected_code.c");
@@ -1095,8 +1088,6 @@ ENTRY_POINT ()
 		}
 	}
 
-	printf ("Skipping init_consideration_airlocks..."); // TODO: Re-enable when we have more addresses
-	/*
 	init_consideration_airlocks (bin_id, tcc, addr_improv_consideration_airlock, addr_unit_consideration_airlock);
 	{
 		int addr_intercept_set_resource_bit = 0;
@@ -1110,7 +1101,6 @@ ENTRY_POINT ()
 		REQUIRE (addr_intercept_set_resource_bit != 0, "Couldn't find ADDR_INTERCEPT_SET_RESOURCE_BIT in prog objects");
 		init_set_resource_bit_airlock (tcc, addr_set_resource_bit_airlock, addr_intercept_set_resource_bit);
 	}
-	*/
 
 	// Give up write permission on Civ proc's code injection pages
 	set_prog_mem_protection (civ_inject_mem, inject_size, MAA_READ_EXECUTE);
