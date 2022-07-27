@@ -17,9 +17,15 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 // To be used as placeholder second argument so that we can imitate thiscall convention with fastcall
 #define __ 0
 
-// C standard library functions have to be loaded dynamically with GetProcAddress and the addresses are stored in the injected state. This is covered
-// up with macros, which is not something I would normally do, but in this case it's very useful because it means the code in parse.c can be shared
-// by the patcher and the injected code.
+// Many Windows and C standard library functions have to be loaded dynamically with GetProcAddress and the addresses are stored in the injected
+// state. This is covered up with macros, which is not something I would normally do, but in this case it's very useful because it means the code in
+// common.c can be shared by the patcher and the injected code.
+#define VirtualProtect is->VirtualProtect
+#define CloseHandle is->CloseHandle
+#define CreateFileA is->CreateFileA
+#define GetFileSize is->GetFileSize
+#define ReadFile is->ReadFile
+#define MessageBoxA is->MessageBoxA
 #define snprintf is->snprintf
 #define malloc is->malloc
 #define calloc is->calloc
@@ -88,25 +94,25 @@ pop_up_in_game_error (char const * msg)
 char *
 file_to_string (char const * filepath)
 {
-	HANDLE file = is->CreateFileA (filepath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	HANDLE file = CreateFileA (filepath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (file == INVALID_HANDLE_VALUE)
 		goto err_in_CreateFileA;
-	DWORD size = is->GetFileSize (file, NULL);
+	DWORD size = GetFileSize (file, NULL);
 	char * tr = malloc (size + 1);
 	if (tr == NULL)
 		goto err_in_malloc;
 	DWORD size_read = 0;
-	int success = is->ReadFile (file, tr, size, &size_read, NULL);
+	int success = ReadFile (file, tr, size, &size_read, NULL);
 	if ((! success) || (size_read != size))
 		goto err_in_ReadFile;
 	tr[size] = '\0';
-	is->CloseHandle (file);
+	CloseHandle (file);
 	return tr;
 
 err_in_ReadFile:
 	free (tr);
 err_in_malloc:
-	is->CloseHandle (file);
+	CloseHandle (file);
 err_in_CreateFileA:
 	return NULL;
 }
@@ -1159,13 +1165,13 @@ patch_Tile_get_visible_resource_when_recomputing (Tile * tile, int edx, int civ_
 int
 check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect)
 {
-	if (is->VirtualProtect (addr, size, flags, old_protect))
+	if (VirtualProtect (addr, size, flags, old_protect))
 		return 1;
 	else {
 		char err_msg[1000];
 		snprintf (err_msg, sizeof err_msg, "VirtualProtect failed! Args:\n  Address: 0x%p\n  Size: %d\n  Flags: 0x%x", addr, size, flags);
 		err_msg[(sizeof err_msg) - 1] = '\0';
-		is->MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
+		MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
 		return 0;
 	}
 }
@@ -1173,7 +1179,7 @@ check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect
 #define WITH_MEM_PROTECTION(addr, size, flags)				                \
 	for (DWORD old_protect, unused, iter_count = 0;			                \
 	     (iter_count == 0) && check_virtual_protect (addr, size, flags, &old_protect); \
-	     is->VirtualProtect (addr, size, old_protect, &unused), iter_count++)
+	     VirtualProtect (addr, size, old_protect, &unused), iter_count++)
 
 void
 apply_machine_code_edits (struct c3x_config const * cfg)
@@ -1310,15 +1316,13 @@ patch_init_floating_point ()
 	is->user32   = (*p_GetModuleHandleA) ("user32.dll");
 	is->msvcrt   = (*p_GetModuleHandleA) ("msvcrt.dll");
 
-	is->VirtualProtect = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualProtect");
-	is->CloseHandle    = (void *)(*p_GetProcAddress) (is->kernel32, "CloseHandle");
-	is->CreateFileA    = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
-	is->GetFileSize    = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
-	is->ReadFile       = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
-
-	is->MessageBoxA = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
-
-	// Remember the C std lib function names are macros that expand to is->...
+	// Remember the function names here are macros that expand to is->...
+	VirtualProtect = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualProtect");
+	CloseHandle    = (void *)(*p_GetProcAddress) (is->kernel32, "CloseHandle");
+	CreateFileA    = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
+	GetFileSize    = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
+	ReadFile       = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
+	MessageBoxA = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
 	snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
 	malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
 	calloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "calloc");
@@ -1377,7 +1381,7 @@ patch_init_floating_point ()
 			char err_msg[500];
 			snprintf (err_msg, sizeof err_msg, "Couldn't read labels from %s\nPlease make sure the file exists. If you moved the modded EXE you must move the mod folder after it.", labels_path);
 			err_msg[(sizeof err_msg) - 1] = '\0';
-			is->MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
+			MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
 		}
 	}
 
