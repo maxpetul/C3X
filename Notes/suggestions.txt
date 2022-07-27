@@ -102,6 +102,8 @@ Ideas:
   - Shield and science overflow
   - Allow cities founded on resources to benefit from bonus food
   - Play unit attack animation instead of missile animation when a flak or mobile SAM shoots down an aircraft
+  - On the stealth attack target selection popup, include units' HP for easier identification
+  - Investigate sub bug fix for invisible land units
 - [from adz1061] Enable cities to expand cultural borders beyond 100000 culture
 - [from Meteor Man]
   - Easy way to un-group units on right click menu and/or separate out units with custom names
@@ -135,4 +137,9 @@ Ideas:
   - Confirmation pop-up for explore command
 - [from Nathiri] Self-destruct timer for units. See: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-41#post-16305437
 - [from haluu] Allow units to retreat if they're faster than their opponent (e.g. cavalry retreating from knight)
-- [from WildWeazel] More options for retreat behavior, like chance based on relative speeds, any unit can retreat, etc., details here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-43#post-16306973
+- [from WildWeazel]
+  - More options for retreat behavior, like chance based on relative speeds, any unit can retreat, etc., details here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-43#post-16306973
+  - Adjustable defense vs bombardment for tile improvements & individual defense for buildings
+  - Maintenance costs for cities themselves
+  - Stop resources from respawning once exhausted (maybe already possible using the editor)
+  - Better AI logic for when to build settlers (considering pop required vs available)
