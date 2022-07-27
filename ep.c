@@ -160,28 +160,15 @@ combine_strs (char const * a, char const * b)
 	return tr;
 }
 
-HANDLE
-open_file_for_reading (char const * path, char const * filename)
+// A wrapper around file_to_string (defined in common.c) for ep.c. Takes separate path & filename and aborts on error
+char *
+ep_file_to_string (char const * path, char const * filename)
 {
 	char * fullpath = malloc (MAX_PATH + strlen (filename) + 2);
 	sprintf (fullpath, "%s\\%s", path, filename);
-	HANDLE file = CreateFile (fullpath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	REQUIRE (file != INVALID_HANDLE_VALUE, format ("Failed to open file \"%s\"\n", fullpath));
+	char * tr = file_to_string (fullpath);
+	REQUIRE (tr != NULL, format ("Failed to open or read file \"%s\"", fullpath));
 	free (fullpath);
-	return file;
-}
-
-char *
-file_to_string (char const * path, char const * filename)
-{
-	HANDLE file = open_file_for_reading (path, filename);
-	DWORD size = GetFileSize (file, NULL);
-	char * tr = malloc (size + 1);
-	DWORD size_read = 0;
-	ReadFile (file, tr, size, &size_read, NULL);
-	tr[size] = '\0';
-	REQUIRE (size_read == size, format ("Failed to read file \"%s\"", filename));
-	CloseHandle (file);
 	return tr;
 }
 
@@ -800,7 +787,7 @@ ENTRY_POINT ()
 	// Load civ_prog_objects.csv
 	struct civ_prog_object * civ_prog_objects;
 	int count_civ_prog_objects; {
-		char * const prog_objs_text = file_to_string (mod_full_dir, "civ_prog_objects.csv");
+		char * const prog_objs_text = ep_file_to_string (mod_full_dir, "civ_prog_objects.csv");
 		int count_lines = 0;
 		for (char * c = prog_objs_text; *c != '\0'; c++)
 			count_lines += (*c == '\n');
@@ -1047,7 +1034,7 @@ ENTRY_POINT ()
 
 	// Compile C code to inject
 	{
-		char * source = file_to_string (mod_full_dir, "injected_code.c");
+		char * source = ep_file_to_string (mod_full_dir, "injected_code.c");
 		success = tcc__compile_string (tcc, source);
 		ASSERT (success != -1);
 		free (source);

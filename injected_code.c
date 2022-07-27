@@ -91,32 +91,6 @@ pop_up_in_game_error (char const * msg)
 	show_popup (popup, __, 0, 0);
 }
 
-char *
-file_to_string (char const * filepath)
-{
-	HANDLE file = CreateFileA (filepath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (file == INVALID_HANDLE_VALUE)
-		goto err_in_CreateFileA;
-	DWORD size = GetFileSize (file, NULL);
-	char * tr = malloc (size + 1);
-	if (tr == NULL)
-		goto err_in_malloc;
-	DWORD size_read = 0;
-	int success = ReadFile (file, tr, size, &size_read, NULL);
-	if ((! success) || (size_read != size))
-		goto err_in_ReadFile;
-	tr[size] = '\0';
-	CloseHandle (file);
-	return tr;
-
-err_in_ReadFile:
-	free (tr);
-err_in_malloc:
-	CloseHandle (file);
-err_in_CreateFileA:
-	return NULL;
-}
-
 void
 memoize (int val)
 {

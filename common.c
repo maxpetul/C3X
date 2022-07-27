@@ -499,3 +499,37 @@ parse_civ_prog_object (char ** p_cursor, struct civ_prog_object * out)
 		return 0;
 
 }
+
+
+
+// =======================================
+// ||                                   ||
+// ||     TEXT LOADING AND ENCODING     ||
+// ||                                   ||
+// =======================================
+
+char *
+file_to_string (char const * filepath)
+{
+	HANDLE file = CreateFileA (filepath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (file == INVALID_HANDLE_VALUE)
+		goto err_in_CreateFileA;
+	DWORD size = GetFileSize (file, NULL);
+	char * tr = malloc (size + 1);
+	if (tr == NULL)
+		goto err_in_malloc;
+	DWORD size_read = 0;
+	int success = ReadFile (file, tr, size, &size_read, NULL);
+	if ((! success) || (size_read != size))
+		goto err_in_ReadFile;
+	tr[size] = '\0';
+	CloseHandle (file);
+	return tr;
+
+err_in_ReadFile:
+	free (tr);
+err_in_malloc:
+	CloseHandle (file);
+err_in_CreateFileA:
+	return NULL;
+}
