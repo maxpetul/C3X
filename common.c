@@ -533,3 +533,10 @@ err_in_malloc:
 err_in_CreateFileA:
 	return NULL;
 }
+
+char *
+utf8_to_windows1252 (char const * text)
+{
+	// MultiByteToWideChar (0, 0, NULL, 0, NULL, 0);
+	return NULL;
+}

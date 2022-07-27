@@ -26,6 +26,8 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define GetFileSize is->GetFileSize
 #define ReadFile is->ReadFile
 #define MessageBoxA is->MessageBoxA
+#define MultiByteToWideChar is->MultiByteToWideChar
+#define WideCharToMultiByte is->WideCharToMultiByte
 #define snprintf is->snprintf
 #define malloc is->malloc
 #define calloc is->calloc
@@ -478,6 +480,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 void
 load_config (char const * file_path, int path_is_relative_to_mod_dir)
 {
+	char err_msg[1000];
 	struct c3x_config * cfg = &is->current_config;
 
 	int full_path_size = 2 * MAX_PATH;
@@ -488,15 +491,25 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		strncpy (full_path, file_path, full_path_size);
 	full_path[full_path_size - 1] = '\0';
 
-	char * text = file_to_string (full_path);
-	if (text == NULL) {
-		free (full_path);
-		return;
+	char * text; {
+		char * utf8_text = file_to_string (full_path);
+		if (utf8_text == NULL) {
+			free (full_path);
+			return;
+		}
+		text = utf8_to_windows1252 (utf8_text);
+		free (utf8_text);
+		if (text == NULL) {
+			snprintf (err_msg, sizeof err_msg, "Failed to re-encode contents of \"%s\". This file must contain UTF-8 text and only characters usable by Civ 3.", full_path);
+			err_msg[(sizeof err_msg) - 1] = '\0';
+			pop_up_in_game_error (err_msg);
+			free (full_path);
+			return;
+		}
 	}
 
 	char * cursor = text;
 	int displayed_error_message = 0;
-	char err_msg[1000];
 	struct error_line * unrecognized_lines = NULL;
 	while (1) {
 		skip_horiz_space (&cursor);
@@ -1291,11 +1304,13 @@ patch_init_floating_point ()
 	is->msvcrt   = (*p_GetModuleHandleA) ("msvcrt.dll");
 
 	// Remember the function names here are macros that expand to is->...
-	VirtualProtect = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualProtect");
-	CloseHandle    = (void *)(*p_GetProcAddress) (is->kernel32, "CloseHandle");
-	CreateFileA    = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
-	GetFileSize    = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
-	ReadFile       = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
+	VirtualProtect      = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualProtect");
+	CloseHandle         = (void *)(*p_GetProcAddress) (is->kernel32, "CloseHandle");
+	CreateFileA         = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
+	GetFileSize         = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
+	ReadFile            = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
+	MultiByteToWideChar = (void *)(*p_GetProcAddress) (is->kernel32, "MultiByteToWideChar");
+	WideCharToMultiByte = (void *)(*p_GetProcAddress) (is->kernel32, "WideCharToMultiByte");
 	MessageBoxA = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
 	snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
 	malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
