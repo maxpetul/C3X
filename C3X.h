@@ -208,6 +208,7 @@ struct injected_state {
 	WINBOOL (WINAPI * ReadFile) (HANDLE, LPVOID, DWORD, LPDWORD, LPOVERLAPPED);
 	int (WINAPI * MultiByteToWideChar) (UINT, DWORD, LPCCH, int, LPWSTR, int);
 	int (WINAPI * WideCharToMultiByte) (UINT, DWORD, LPCWCH, int, LPSTR, int, LPCCH, LPBOOL);
+	int (WINAPI * GetLastError) ();
 
 	// Win32 funcs from user32.dll
 	int (WINAPI * MessageBoxA) (HWND, LPCSTR, LPCSTR, UINT);

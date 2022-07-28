@@ -28,6 +28,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define MessageBoxA is->MessageBoxA
 #define MultiByteToWideChar is->MultiByteToWideChar
 #define WideCharToMultiByte is->WideCharToMultiByte
+#define GetLastError is->GetLastError
 #define snprintf is->snprintf
 #define malloc is->malloc
 #define calloc is->calloc
@@ -1311,6 +1312,7 @@ patch_init_floating_point ()
 	ReadFile            = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
 	MultiByteToWideChar = (void *)(*p_GetProcAddress) (is->kernel32, "MultiByteToWideChar");
 	WideCharToMultiByte = (void *)(*p_GetProcAddress) (is->kernel32, "WideCharToMultiByte");
+	GetLastError        = (void *)(*p_GetProcAddress) (is->kernel32, "GetLastError");
 	MessageBoxA = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
 	snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
 	malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");

@@ -534,9 +534,28 @@ err_in_CreateFileA:
 	return NULL;
 }
 
+// Re-encodes a text buffer from UTF-8 to Windows-1252, a single-byte encoding used internally by Civ 3.
 char *
 utf8_to_windows1252 (char const * text)
 {
-	// MultiByteToWideChar (0, 0, NULL, 0, NULL, 0);
-	return NULL;
+	int text_len = strlen (text);
+	int wide_text_size = 2 * (text_len + 1); // Size of wide text buffer in bytes. Each char is 2 bytes, +1 char for null terminator
+
+	void * wide_text = malloc (wide_text_size);
+	int wide_text_len = MultiByteToWideChar (CP_UTF8, MB_ERR_INVALID_CHARS | MB_PRECOMPOSED, text, -1, wide_text, text_len + 1);
+	if (wide_text_len == 0) { // Error
+		free (wide_text);
+		return NULL;
+	}
+
+	void * tr = malloc (text_len + 1);
+	int bytes_written = WideCharToMultiByte (1252, 0, wide_text, -1, tr, text_len + 1, NULL, NULL);
+	if (bytes_written == 0) { // Error
+		free (tr);
+		free (wide_text);
+		return NULL;
+	}
+
+	free (wide_text);
+	return tr;
 }
