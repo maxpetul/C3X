@@ -143,3 +143,4 @@ Ideas:
   - Maintenance costs for cities themselves
   - Stop resources from respawning once exhausted (maybe already possible using the editor)
   - Better AI logic for when to build settlers (considering pop required vs available)
+- [from ThesaurusRex] More realistic "actual" population numbers shown in city screen. In particular, make them smaller in the ancient era.
