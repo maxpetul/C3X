@@ -642,7 +642,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->prevent_razing_by_ai_players = ival != 0;
 
 				else if (! displayed_error_message) {
-					snprintf (err_msg, sizeof err_msg, "Error processing key \"%.*s\" in \"%s\". Either the key is not recognized or the value is invalid.", key.len, key.str, full_path);
+					snprintf (err_msg, sizeof err_msg, "Error processing config option \"%.*s\" in \"%s\". Either the name of the option is not recognized or the value is invalid.", key.len, key.str, full_path);
 					err_msg[(sizeof err_msg) - 1] = '\0';
 					pop_up_in_game_error (err_msg);
 					displayed_error_message = 1;

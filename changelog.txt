@@ -2,7 +2,7 @@
   - Config files should be encoded in UTF-8. They will be converted to Windows-1252 when loaded.
 
 * TODO
-- Reword error message about keys/values in config INI
+- Test against German BIQ
 
 * RELEASE 11
 - Buildings can generate resources
