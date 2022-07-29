@@ -222,12 +222,6 @@ is_horiz_space (char c)
 }
 
 int
-is_alpha_num (char c)
-{
-	return (c == '_') || ((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z')) || ((c >= '0') && (c <= '9'));
-}
-
-int
 skip_horiz_space (char ** p_cursor)
 {
 	char * cur = *p_cursor;
@@ -347,6 +341,25 @@ read_int (struct string_slice const * s, int * out_val)
 		return 0;
 }
 
+char const windows1252_alpha_nums[256] = {
+	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, // control chars
+	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, // control chars
+	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, //   ! " #   $ % & '   ( ) * +   , - . /
+	1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 0, 0,   0, 0, 0, 0, // 0 1 2 3   4 5 6 7   8 9 : ;   < = > ?
+	0, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1, // @ A B C   D E F G   H I J K   L M N O
+	1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 0,   0, 0, 0, 1, // P Q R S   T U V W   X Y Z [   \ ] ^ _
+	0, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1, // ` a b c   d e f g   h i j k   l m n o
+	1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 0,   0, 0, 0, 0, // p q r s   t u v w   x y z {   | } ~
+	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 1, 0,   1, 0, 1, 0, // €   ‚ ƒ   „ … † ‡   ˆ ‰ Š ‹   Œ   Ž
+	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 1, 0,   1, 0, 1, 1, //   ‘ ’ “   ” • – —   ˜ ™ š ›   œ   ž Ÿ
+	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, //   ¡ ¢ £   ¤ ¥ ¦ §   ¨ © ª «   ¬   ® ¯
+	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, // ° ± ² ³   ´ µ ¶ ·   ¸ ¹ º »   ¼ ½ ¾ ¿
+	1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1, // À Á Â Ã   Ä Å Æ Ç   È É Ê Ë   Ì Í Î Ï
+	1, 1, 1, 1,   1, 1, 1, 0,   1, 1, 1, 1,   1, 1, 1, 1, // Ð Ñ Ò Ó   Ô Õ Ö ×   Ø Ù Ú Û   Ü Ý Þ ß
+	1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1, // à á â ã   ä å æ ç   è é ê ë   ì í î ï
+	1, 1, 1, 1,   1, 1, 1, 0,   1, 1, 1, 1,   1, 1, 1, 1, // ð ñ ò ó   ô õ ö ÷   ø ù ú û   ü ý þ ÿ
+};
+
 int
 parse_string (char ** p_cursor, struct string_slice * out)
 {
@@ -361,7 +374,7 @@ parse_string (char ** p_cursor, struct string_slice * out)
 			cur++;
 	} else {
 		str_start = cur;
-		while (is_alpha_num (*cur) || (*cur == '-') || (*cur == '.'))
+		while (windows1252_alpha_nums[*(unsigned char *)cur] || (*cur == '_') || (*cur == '-') || (*cur == '.'))
 			cur++;
 	}
 	int str_len = cur - str_start;
