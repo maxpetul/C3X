@@ -1994,6 +1994,13 @@ intercept_end_of_turn ()
 	is->have_job_and_loc_to_skip = 0;
 }
 
+int
+is_worker_or_settler_command (int unit_command_value)
+{
+	return (unit_command_value & 0x20000000) ||
+		((unit_command_value >= UCV_Build_Remote_Colony) && (unit_command_value <= UCV_Auto_Save_Tiles));
+}
+
 byte __fastcall
 patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 {
@@ -2002,7 +2009,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 	    (unit_command_value == UCV_Automate))
 		return 0;
 	else if (is->current_config.disallow_land_units_from_affecting_water_tiles &&
-		 (unit_command_value & 0x20000000)) { // checks if the command value is in the worker/settler category
+		 is_worker_or_settler_command (unit_command_value)) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
 		enum UnitTypeClasses class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
 		return ((class != UTC_Land) || (! tile->vtable->m35_Check_Is_Water (tile))) &&
