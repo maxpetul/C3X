@@ -99,7 +99,7 @@ define,    0x666AC4,	0x683B1C,	0x666AC4,	"p_trade_offer_vtable",				"TradeOfferV
 define,    0x440EE0,	0x442CD0,	0x440f60,	"Leader_consider_trade",			"DiploMessage (__fastcall *) (Leader * this, int edx, TradeOfferList * receiving, TradeOfferList * paying, int other_party_civ_id, byte param_4, byte param_5, byte param_6, byte param_7, int * out_advantage, int * param_9, int * param_10)"
 define,    0x509325,	0x51334D,	0x5093c5,	"ADDR_SETUP_ASKING_GOLD_RETURN",		"int"
 define,    0x509669,	0x51366E,	0x509709,	"ADDR_SETUP_OFFERING_GOLD_RETURN",		"int"
-define,    14,		14,		6,		"TRADE_GOLD_SETTER_IS_LUMP_SUM_OFFSET", 	"int"
+define,    14,		14,		14,		"TRADE_GOLD_SETTER_IS_LUMP_SUM_OFFSET", 	"int"
 inlead,    0x5F3160,	0x603000,	0x5f3090,	"Map_check_city_location",			"CityLocValidity (__fastcall *) (Map *this, int edx, int tile_x, int tile_y, int civ_id, byte check_for_city_on_tile)"
 repl vptr, 0x66C1E8,	0x6892D8,	0x66C1E8,	"DiploForm_m68_Show_Dialog",			"int (__fastcall *) (DiploForm * this, int edx, int param_1, void * param_2, void * param_3)"
 repl vptr, 0x66C220,	0x689310,	0x66C220,	"DiploForm_m82_handle_key_event",		"void (__fastcall *) (DiploForm * this, int edx, int virtual_key_code, int is_down)"
