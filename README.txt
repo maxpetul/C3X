@@ -1,7 +1,8 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 11
+Release 11B
 
 INCLUDES (** = new in latest version):
+- ** Support for the executable from PCGames.de
 Convenience features:
  - Stack unit commands
   - Stack bombard
@@ -13,12 +14,11 @@ Convenience features:
  - Ask/offer gold popup autofills best amount
  - Skip repeated popups asking to replace a tile improvement
  - Group units on right click menu
-  - ** Units with differing charm statuses are not grouped
  - Show coordinates and chopped status in tile info box
  - Show golden age turns remaining
  - No special king unit names in non-regicide games
  - Option to disable worker automation
- - ** On the city screen, hold shift when clicking a specialist to switch to the previous type
+ - On the city screen, hold shift when clicking a specialist to switch to the previous type
 AI enhancements:
  - Allow AI to use artillery in the field
  - Force AI to build more artillery and bombers
@@ -42,7 +42,6 @@ Engine extensions:
  - Option to prevent autoraze and razing by AIs
  - Stealth attack activates even when there's only one target
  - Trespassing prevention
-  - ** Invisible and hidden nationality units are exempt
  - Land/sea intersections
  - Adjustable anarchy length
  - "Perfume" units or improvements to control how likely the AI is to build them
@@ -50,12 +49,11 @@ Engine extensions:
   - Press P in city screen to see AI point value for each available build
   - Press L on map to see how desirable the AI finds each tile as a city location
  - Corruption can be completely removed with "OFF" government setting
- - Disallow land settlers from founding on water
-  - ** Also stops land workers from improving on water
+ - Disallow land units from working or settling water tiles
  - Option to let units move after airdropping
- - ** Buildings can generate resources
- - ** Buildings can be set as prerequisites for unit production
- - ** Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
+ - Buildings can generate resources
+ - Buildings can be set as prerequisites for unit production
+ - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
 
 INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.
@@ -69,7 +67,7 @@ Notes about installation:
 6. Rômulo Prado reports that RUN.bat started working for him after he installed the MS Visual C++ Redistributables versions 2005 and 2019 (while installing GOG Galaxy).
 
 COMPATIBILITY:
-The mod is only compatible with the GOG and Steam versions of Civ 3 Complete. It works with existing save files and saves made with the mod active will still work in the base game. Multiplayer is not officially supported but some features will work in MP, see this post: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-16#post-16126470.
+The mod is compatible with the GOG and Steam versions of Civ 3 Complete, and with the DRM-free executable available through PCGames.de. It works with existing save files and saves made with the mod active will still work in the base game. Multiplayer is not officially supported but some features will work in MP, see this post: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-16#post-16126470. For more info about the PCGames.de executable, see here: https://forums.civfanatics.com/threads/civ-3-windows-update-kb3086255-safedisc.552308/.
 
 STACK BOMBARD:
 Activate stack bombard on any unit capable of bombarding by clicking the stack bombard button or by activating normal bombard then CTRL+clicking the target tile. The selected unit will bombard the tile, then all other units of the same type on the same tile will automatically bombard the target as well. Stack bombard is pretty smart and will stop bombarding once it can no longer do any damage, and it knows about lethal bombard, that you can't damage air units in an airfield, etc.

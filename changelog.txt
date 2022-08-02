@@ -1,3 +1,6 @@
+* RELEASE 11B
+- Support for the executable from PCGames.de
+
 * RELEASE 11
 - Buildings can generate resources
 - Buildings can be set as prerequisites for unit production
