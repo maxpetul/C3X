@@ -3,6 +3,7 @@ Release 11B
 
 INCLUDES (** = new in latest version):
 - ** Support for the executable from PCGames.de
+- ** Address issues with text encoding for non-English games
 Convenience features:
  - Stack unit commands
   - Stack bombard
@@ -50,6 +51,7 @@ Engine extensions:
   - Press L on map to see how desirable the AI finds each tile as a city location
  - Corruption can be completely removed with "OFF" government setting
  - Disallow land units from working or settling water tiles
+   - ** Restriction also applies to "extra" worker jobs like road-to and auto-irrigate
  - Option to let units move after airdropping
  - Buildings can generate resources
  - Buildings can be set as prerequisites for unit production

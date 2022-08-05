@@ -1,5 +1,6 @@
 - Re-encode config file contents to match Civ 3's internal encoding
   - Config files should be encoded in UTF-8. They will be converted to Windows-1252 when loaded.
+- Accented Latin characters no longer separate words
 - Fix workers in boats can do "extra" jobs (road-to, auto-irrigate, etc.) despite restriction
 
 * RELEASE 11B
