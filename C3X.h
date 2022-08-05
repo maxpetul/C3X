@@ -8,7 +8,7 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
-#define MOD_VERSION 1100
+#define MOD_VERSION 1101
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -376,8 +376,7 @@ enum object_job {
 
 struct civ_prog_object {
 	enum object_job job;
-	int gog_addr;
-	int steam_addr;
+	int addr;
 	char const * name;
 	char const * type;
 };

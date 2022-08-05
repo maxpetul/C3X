@@ -42,22 +42,17 @@ void       (LIBTCCAPI * tcc__define_symbol)    (TCCState *, char const *, char c
 void       (LIBTCCAPI * tcc__list_symbols)     (TCCState *, void *, void (*) (void *, char const *, void const *));
 
 struct c3c_binary {
+	char const * title;
 	int file_size;
 	void * addr_rdata;
 	int    size_rdata;
+	int addr_column; // The index of the column in civ_prog_objects.csv that contains the addresses for this binary
 } * bin;
 
-struct c3c_binary gog_binary = {
-	.file_size = 3417464,
-	.addr_rdata = (void *)0x665000,
-	.size_rdata = 0x1B000,
-};
-
-struct c3c_binary steam_binary = {
-	.file_size = 3518464,
-	.addr_rdata = (void *)0x682000,
-	.size_rdata = 0x1B000,
-};
+//                                TITLE         FILE_SIZE   ADDR_RDATA          SIZE_RDATA   ADDR_COLUMN
+struct c3c_binary gog_binary   = {"GOG",        3417464,    (void *)0x665000,   0x1B000,     1};
+struct c3c_binary steam_binary = {"Steam",      3518464,    (void *)0x682000,   0x1B000,     2};
+struct c3c_binary pcg_binary   = {"PCGames.de", 3395072,    (void *)0x665000,   0x1A400,     3};
 
 char const * standard_exe_filename = "Civ3Conquests.exe";
 char const * backup_exe_filename = "Civ3Conquests-Unmodded.exe";
@@ -507,13 +502,14 @@ enum bin_id {
 	BIN_ID_NOT_FOUND,
 	BIN_ID_GOG,
 	BIN_ID_STEAM,
+	BIN_ID_PCG,
 	BIN_ID_MODDED,
 	BIN_ID_UNRECOGNIZED,
 
 	COUNT_BIN_IDS
 };
 
-char const * bin_id_strs[COUNT_BIN_IDS] = {"Not found", "GOG Complete", "Steam Complete", "Modded", "Unrecognized"};
+char const * bin_id_strs[COUNT_BIN_IDS] = {"Not found", "GOG Complete", "Steam Complete", "PCGames.de", "Modded", "Unrecognized"};
 
 enum bin_id
 identify_binary (char const * file_name, HANDLE * out_file_handle)
@@ -529,6 +525,8 @@ identify_binary (char const * file_name, HANDLE * out_file_handle)
 		return BIN_ID_GOG;
 	else if (size == steam_binary.file_size)
 		return BIN_ID_STEAM;
+	else if (size == pcg_binary.file_size)
+		return BIN_ID_PCG;
 	else if ((size > sizeof header) && (0 != ReadFile (file, header, sizeof header, &size_read, NULL)) && (size_read == sizeof header)) {
 		int any_modded_sections = 0;
 		struct civ_pe pe = civ_pe_from_file_contents (header);
@@ -657,12 +655,12 @@ init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_imp
 	byte code[64] = {0};
 	byte * cursor = code;
 
-	if (bin_id == BIN_ID_GOG) {
+	if ((bin_id == BIN_ID_GOG) || (bin_id == BIN_ID_PCG)) {
 		emit_consideration_intercept_call (&cursor, code, addr_intercept_consideration, addr_improv_airlock, REG_EBX);
 		byte cmp[] = {0x3B, 0x9C, 0x24, 0x94, 0x00, 0x00, 0x00}; // cmp ebx, dword ptr [esp+0x94]
 		for (int n = 0; n < sizeof cmp; n++)
 			*cursor++ = cmp[n];
-		emit_jump (&cursor, code, 0x430FC1, addr_improv_airlock, JK_UNCOND);
+		emit_jump (&cursor, code, (bin_id == BIN_ID_GOG) ? 0x430FC1 : 0x431041, addr_improv_airlock, JK_UNCOND);
 
 	} else if (bin_id == BIN_ID_STEAM) {
 		emit_consideration_intercept_call (&cursor, code, addr_intercept_consideration, addr_improv_airlock, REG_EDI);
@@ -680,12 +678,12 @@ init_consideration_airlocks (enum bin_id bin_id, TCCState * tcc, byte * addr_imp
 	memset (code, 0, sizeof code);
 	cursor = code;
 
-	if (bin_id == BIN_ID_GOG) {
+	if ((bin_id == BIN_ID_GOG) || (bin_id == BIN_ID_PCG)) {
 		emit_consideration_intercept_call (&cursor, code, addr_intercept_consideration, addr_unit_airlock, REG_EDI);
 		byte cmp[] = {0x3B, 0xBC, 0x24, 0x94, 0x00, 0x00, 0x00}; // cmp edi, dword ptr [esp+0x94]
 		for (int n = 0; n < sizeof cmp; n++)
 			*cursor++ = cmp[n];
-		emit_jump (&cursor, code, 0x433C83, addr_unit_airlock, JK_UNCOND);
+		emit_jump (&cursor, code, (bin_id == BIN_ID_GOG) ? 0x433C83 : 0x433D03, addr_unit_airlock, JK_UNCOND);
 
 	} else if (bin_id == BIN_ID_STEAM) {
 		emit_consideration_intercept_call (&cursor, code, addr_intercept_consideration, addr_unit_airlock, REG_EBX);
@@ -784,6 +782,36 @@ ENTRY_POINT ()
 	tcc__add_include_path (tcc, combine_strs (mod_full_dir, "\\tcc\\include\\winapi"));
 	tcc__add_library_path (tcc, combine_strs (mod_full_dir, "\\tcc\\lib"));
 
+	// Locate compatible, unmodded executable to work on
+	enum bin_id bin_id;
+	char const * bin_file_name = NULL;
+	HANDLE bin_file; {
+		bin_file_name = standard_exe_filename;
+		bin_id = identify_binary (bin_file_name, &bin_file);
+		if ((bin_id != BIN_ID_GOG) && (bin_id != BIN_ID_STEAM) && (bin_id != BIN_ID_PCG)) {
+			if (bin_file != INVALID_HANDLE_VALUE)
+				CloseHandle (bin_file);
+			bin_file_name = backup_exe_filename;
+			enum bin_id unmod_id = identify_binary (bin_file_name, &bin_file);
+			if ((unmod_id != BIN_ID_GOG) && (unmod_id != BIN_ID_STEAM) && (unmod_id != BIN_ID_PCG)) {
+				char * error_msg = format (
+					"Couldn't find compatible, unmodded executable. This mod is only compatible with Civ3Conquests.exe V1.22 from GOG, Steam, or PCGames.de.\n"
+					"%s: %s\n"
+					"%s: %s\n"
+					"Current directory: %s",
+					standard_exe_filename, bin_id_strs[bin_id], backup_exe_filename, bin_id_strs[unmod_id], conquests_dir);
+				THROW (error_msg);
+			} else
+				bin_id = unmod_id;
+		}
+	}
+
+	// Set "bin" variable appropriately
+	if      (bin_id == BIN_ID_GOG)   bin = &gog_binary;
+	else if (bin_id == BIN_ID_STEAM) bin = &steam_binary;
+	else if (bin_id == BIN_ID_PCG)   bin = &pcg_binary;
+	printf ("Found %s executable in \"%s\"\n", bin->title, bin_file_name);
+
 	// Load civ_prog_objects.csv
 	struct civ_prog_object * civ_prog_objects;
 	int count_civ_prog_objects; {
@@ -802,7 +830,7 @@ ENTRY_POINT ()
 				break;
 			else if (*cursor  == '\n')
 				cursor++; // Skip empty line
-			else if (parse_civ_prog_object (&cursor, &obj))
+			else if (parse_civ_prog_object (&cursor, bin->addr_column, &obj))
 				civ_prog_objects[count_civ_prog_objects++] = obj;
 			else {
 				int count_newlines = 0;
@@ -813,40 +841,6 @@ ENTRY_POINT ()
 		}
 		free (prog_objs_text);
 	}
-
-	// Locate compatible, unmodded executable to work on
-	enum bin_id bin_id;
-	char const * bin_file_name;
-	HANDLE bin_file; {
-		bin_file_name = standard_exe_filename;
-		bin_id = identify_binary (bin_file_name, &bin_file);
-		if ((bin_id != BIN_ID_GOG) && (bin_id != BIN_ID_STEAM)) {
-			if (bin_file != INVALID_HANDLE_VALUE)
-				CloseHandle (bin_file);
-			bin_file_name = backup_exe_filename;
-			enum bin_id unmod_id = identify_binary (bin_file_name, &bin_file);
-			if ((unmod_id != BIN_ID_GOG) && (unmod_id != BIN_ID_STEAM)) {
-				char * error_msg = format (
-					"Couldn't find compatible, unmodded executable. Compatible versions are GOG or Steam versions of Civ 3 Complete.\n"
-					"%s: %s\n"
-					"%s: %s\n"
-					"Current directory: %s",
-					standard_exe_filename, bin_id_strs[bin_id], backup_exe_filename, bin_id_strs[unmod_id], conquests_dir);
-				THROW (error_msg);
-			} else
-				bin_id = unmod_id;
-		}
-	}
-
-	// Set "bin" variable appropriately
-	if (bin_id == BIN_ID_GOG) {
-		bin = &gog_binary;
-		printf ("Found GOG executable in \"%s\"\n", bin_file_name);
-	} else if (bin_id == BIN_ID_STEAM) {
-		bin = &steam_binary;
-		printf ("Found Steam executable in \"%s\"\n", bin_file_name);
-	} else
-		THROW ("Did the impossible, and not in a good way.");
 
 	PROCESS_INFORMATION civ_proc_info = {0};
 
@@ -902,7 +896,7 @@ ENTRY_POINT ()
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
 		if (obj->job == OJ_DEFINE) {
 			char val[1000];
-			snprintf (val, sizeof val, "((%s)%d)", obj->type, (bin == &gog_binary) ? obj->gog_addr : obj->steam_addr);
+			snprintf (val, sizeof val, "((%s)%d)", obj->type, obj->addr);
 			val[(sizeof val) - 1] = '\0';
 			tcc__define_symbol (tcc, obj->name, val);
 		}
@@ -994,14 +988,14 @@ ENTRY_POINT ()
 		if (obj->job == OJ_INLEAD) {
 			ASSERT (i_next_free_inlead < inleads_capacity);
 			struct inlead * inlead = &inleads[i_next_free_inlead++];
-			int func_addr = (bin == &gog_binary) ? obj->gog_addr : obj->steam_addr;
+			int func_addr = obj->addr;
 			ASSERT (func_addr != 0);
 			init_inlead (inlead, func_addr);
 			tcc__define_symbol (tcc, obj->name, temp_format ("((%s)%d)", obj->type, (int)inlead));
 
 		// Define base func as vptr target
 		} else if (obj->job == OJ_REPL_VPTR) {
-			int impl_addr = read_prog_int ((void *)((bin == &gog_binary) ? obj->gog_addr : obj->steam_addr));
+			int impl_addr = read_prog_int ((void *)obj->addr);
 			tcc__define_symbol (tcc, obj->name, temp_format ("((%s)%d)", obj->type, impl_addr));
 		}
 	}
@@ -1026,11 +1020,6 @@ ENTRY_POINT ()
 		i_next_free_inlead += 2;
 		tcc__define_symbol (tcc, "ADDR_SET_RESOURCE_BIT_AIRLOCK", temp_format ("((void *)0x%x)", (int)addr_set_resource_bit_airlock));
 	}
-
-	if (bin_id == BIN_ID_GOG)
-		tcc__define_symbol (tcc, "GOG_EXECUTABLE", "1");
-	else if (bin_id == BIN_ID_STEAM)
-		tcc__define_symbol (tcc, "STEAM_EXECUTABLE", "1");
 
 	// Compile C code to inject
 	{
@@ -1075,15 +1064,14 @@ ENTRY_POINT ()
 	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
 		if (obj->job != OJ_IGNORE) {
-			int addr = (bin == &gog_binary) ? obj->gog_addr : obj->steam_addr;
-			ASSERT (addr != 0);
+			ASSERT (obj->addr != 0);
 
 			if (obj->job == OJ_INLEAD)
-				put_trampoline ((void *)addr, find_patch_function (tcc, obj->name, 1), 0);
+				put_trampoline ((void *)obj->addr, find_patch_function (tcc, obj->name, 1), 0);
 			else if (obj->job == OJ_REPL_VPTR)
-				write_prog_int ((void *)addr, (int)find_patch_function (tcc, obj->name, 1));
+				write_prog_int ((void *)obj->addr, (int)find_patch_function (tcc, obj->name, 1));
 			else if (obj->job == OJ_REPL_CALL)
-				put_trampoline ((void *)addr, find_patch_function (tcc, obj->name, 1), 1);
+				put_trampoline ((void *)obj->addr, find_patch_function (tcc, obj->name, 1), 1);
 		}
 	}
 
@@ -1093,7 +1081,7 @@ ENTRY_POINT ()
 		for (int n = count_civ_prog_objects - 1; n >= 0; n--) {
 			struct civ_prog_object const * obj = &civ_prog_objects[n];
 			if (0 == strcmp (obj->name, "ADDR_INTERCEPT_SET_RESOURCE_BIT")) {
-				addr_intercept_set_resource_bit = (bin == &gog_binary) ? obj->gog_addr : obj->steam_addr;
+				addr_intercept_set_resource_bit = obj->addr;
 				break;
 			}
 		}
