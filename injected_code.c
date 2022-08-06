@@ -4018,8 +4018,23 @@ void __fastcall
 patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direction, Unit * defender)
 {
 	Fighter_begin (this, __, attacker, attack_direction, defender);
-	// this->attacker_eligible_to_retreat = 1;
-	// this->defender_eligible_to_retreat = 1;
+
+	// Apply override of retreat eligibility
+	// Must use this->defender instead of the defender argument since the argument is often NULL, in which case Fighter_begin finds a defender on
+	// the target tile and stores it in this->defender. Also must check that against NULL since Fighter_begin might fail to find a defender.
+	enum retreat_rules retreat_rules = is->current_config.retreat_rules;
+	if ((retreat_rules != RR_STANDARD) && (this->defender != NULL)) {
+		if (retreat_rules == RR_NONE)
+			this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 0;
+		else if (retreat_rules == RR_ALL_UNITS)
+			this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 1;
+		else if (retreat_rules == RR_IF_FASTER) {
+			int diff = Unit_get_max_move_points (this->attacker) - Unit_get_max_move_points (this->defender);
+			this->attacker_eligible_to_retreat = diff > 0;
+			this->defender_eligible_to_retreat = diff < 0;
+		}
+		this->defender_eligible_to_retreat &= city_at (this->defender_location_x, this->defender_location_y) == NULL;
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.
