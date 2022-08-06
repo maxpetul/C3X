@@ -2044,8 +2044,8 @@ struct Fighter
 {
   Unit * attacker;
   Unit * defender;
-  byte attacker_eligible_to_retreat;
   byte defender_eligible_to_retreat;
+  byte attacker_eligible_to_retreat;
   byte field_A;
   byte field_B;
   int attack_direction;
