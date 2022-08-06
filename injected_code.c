@@ -493,6 +493,19 @@ read_building_unit_prereqs (struct string_slice const * s,
 	return success;
 }
 
+int
+read_retreat_rules (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (0 == strncmp (trimmed.str, "standard" , trimmed.len)) { *out_val = RR_STANDARD;  return 1; }
+	else if (0 == strncmp (trimmed.str, "none"     , trimmed.len)) { *out_val = RR_NONE;      return 1; }
+	else if (0 == strncmp (trimmed.str, "all-units", trimmed.len)) { *out_val = RR_ALL_UNITS; return 1; }
+	else if (0 == strncmp (trimmed.str, "if-faster", trimmed.len)) { *out_val = RR_IF_FASTER; return 1; }
+	else
+		return 0;
+
+}
+
 // Loads a config from the given file, layering it on top of is->current_config and appending its name to the list of loaded configs. Does NOT
 // re-apply machine code edits.
 void
@@ -606,6 +619,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->dont_end_units_turn_after_airdrop = ival;
 				else if ((0 == strncmp (key.str, "enable_negative_pop_pollution", key.len)) && read_int (&value, &ival))
 					cfg->enable_negative_pop_pollution = ival;
+				else if ((0 == strncmp (key.str, "retreat_rules", key.len)) && read_retreat_rules (&value, &ival))
+					cfg->retreat_rules = ival;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;

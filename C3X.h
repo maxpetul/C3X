@@ -33,6 +33,13 @@ struct mill {
 	int is_local;
 };
 
+enum retreat_rules {
+	RR_STANDARD = 0,
+	RR_NONE,
+	RR_ALL_UNITS,
+	RR_IF_FASTER
+};
+
 struct c3x_config {
 	char enable_stack_bombard;
 	char enable_disorder_warning;
@@ -72,6 +79,7 @@ struct c3x_config {
 	char disallow_land_units_from_affecting_water_tiles;
 	char dont_end_units_turn_after_airdrop;
 	char enable_negative_pop_pollution;
+	enum retreat_rules retreat_rules;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
