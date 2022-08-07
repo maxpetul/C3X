@@ -190,6 +190,7 @@ repl call, 0x57E618,	0x58B35B,	0x57E378,	"Map_get_tile_when_recomputing_resource
 repl call, 0x57E64A,	0x58B397,	0x57E3AA,	"Map_get_tile_when_recomputing_resources_4",	""
 repl call, 0x57E672,	0x58B3B7,	0x57E3D2,	"Map_get_tile_when_recomputing_resources_5",	""
 repl call, 0x57E679,	0x58B3BE,	0x57E3D9,	"Tile_get_visible_resource_when_recomputing",	""
+inlead,	   0x4A47C0,	0x0,		0x0,		"Fighter_begin",				"void (__fastcall *) (Fighter * this, int edx, Unit * attacker, int attack_direction, Unit * defender)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

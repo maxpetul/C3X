@@ -476,6 +476,19 @@ read_building_unit_prereqs (struct string_slice const * s,
 	return success;
 }
 
+int
+read_retreat_rules (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (0 == strncmp (trimmed.str, "standard" , trimmed.len)) { *out_val = RR_STANDARD;  return 1; }
+	else if (0 == strncmp (trimmed.str, "none"     , trimmed.len)) { *out_val = RR_NONE;      return 1; }
+	else if (0 == strncmp (trimmed.str, "all-units", trimmed.len)) { *out_val = RR_ALL_UNITS; return 1; }
+	else if (0 == strncmp (trimmed.str, "if-faster", trimmed.len)) { *out_val = RR_IF_FASTER; return 1; }
+	else
+		return 0;
+
+}
+
 // Loads a config from the given file, layering it on top of is->current_config and appending its name to the list of loaded configs. Does NOT
 // re-apply machine code edits.
 void
@@ -600,6 +613,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->dont_end_units_turn_after_airdrop = ival;
 				else if ((0 == strncmp (key.str, "enable_negative_pop_pollution", key.len)) && read_int (&value, &ival))
 					cfg->enable_negative_pop_pollution = ival;
+				else if ((0 == strncmp (key.str, "retreat_rules", key.len)) && read_retreat_rules (&value, &ival))
+					cfg->retreat_rules = ival;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -3998,6 +4013,29 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 				patch_Trade_Net_recompute_resources (p_trade_net, __, 0);
 				break;
 			}
+	}
+}
+
+void __fastcall
+patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direction, Unit * defender)
+{
+	Fighter_begin (this, __, attacker, attack_direction, defender);
+
+	// Apply override of retreat eligibility
+	// Must use this->defender instead of the defender argument since the argument is often NULL, in which case Fighter_begin finds a defender on
+	// the target tile and stores it in this->defender. Also must check that against NULL since Fighter_begin might fail to find a defender.
+	enum retreat_rules retreat_rules = is->current_config.retreat_rules;
+	if ((retreat_rules != RR_STANDARD) && (this->defender != NULL)) {
+		if (retreat_rules == RR_NONE)
+			this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 0;
+		else if (retreat_rules == RR_ALL_UNITS)
+			this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 1;
+		else if (retreat_rules == RR_IF_FASTER) {
+			int diff = Unit_get_max_move_points (this->attacker) - Unit_get_max_move_points (this->defender);
+			this->attacker_eligible_to_retreat = diff > 0;
+			this->defender_eligible_to_retreat = diff < 0;
+		}
+		this->defender_eligible_to_retreat &= city_at (this->defender_location_x, this->defender_location_y) == NULL;
 	}
 }
 
