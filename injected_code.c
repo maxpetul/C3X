@@ -1132,7 +1132,13 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, byte skip_popups
 	is->saved_tile_count = p_bic_data->Map.TileCount;
 	p_bic_data->Map.TileCount += is->count_mill_tiles;
 	Trade_Net_recompute_resources (this, __, skip_popups);
-	p_bic_data->Map.TileCount = is->saved_tile_count;
+
+	// Restore the tile count if necessary. It may have already been restored by patch_Map_Renderer_m71_Draw_Tiles. This happens when the call to
+	// recompute_resources above opens a popup message about connecting a resource for the first time, which triggers redraw of the map.
+	if (is->saved_tile_count >= 0) {
+		p_bic_data->Map.TileCount = is->saved_tile_count;
+		is->saved_tile_count = -1;
+	}
 }
 
 Tile *
@@ -1423,6 +1429,7 @@ patch_init_floating_point ()
 	is->mill_tiles = NULL;
 	is->count_mill_tiles = 0;
 	is->mill_tiles_capacity = 0;
+	is->saved_tile_count = -1;
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -4037,6 +4044,18 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 		}
 		this->defender_eligible_to_retreat &= city_at (this->defender_location_x, this->defender_location_y) == NULL;
 	}
+}
+
+void __fastcall
+patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, int param_2, int param_3)
+{
+	// Restore the tile count if it was saved by recompute_resources. This is necessary because the Draw_Tiles method loops over all tiles.
+	if (is->saved_tile_count >= 0) {
+		p_bic_data->Map.TileCount = is->saved_tile_count;
+		is->saved_tile_count = -1;
+	}
+
+	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
 }
 
 // TCC requires a main function be defined even though it's never used.

@@ -367,7 +367,7 @@ struct injected_state {
 	int count_mill_tiles;
 	int mill_tiles_capacity;
 	struct mill_tile * got_mill_tile;
-	int saved_tile_count;
+	int saved_tile_count; // Stores the actual tile count in case p_bic_data->Map.TileCount was temporarily overwritten. Set to -1 when empty.
 
 	// ==========
 	// }
