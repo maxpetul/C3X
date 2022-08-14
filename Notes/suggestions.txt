@@ -147,3 +147,8 @@ Ideas:
   - Restrict detection by unit domain (e.g. so destroyers can't reveal invisible land units)
 - [from ThesaurusRex] More realistic "actual" population numbers shown in city screen. In particular, make them smaller in the ancient era.
 - [from BrensharQuest] Multiple "classes" of the flags impassable-for-wheeled-units and replaces-all-improvs-with-this-flag-checked
+- [from Sutsuj] Enable units to provide free improvements to cities they're stationed in
+- [from Brenshar]
+  - Skip combat animations while shift is held down
+  - Keep combat log, especially useful when animations are off
+  - Enhance culture flip reducing effect of garrison units. Maybe add a cap, like 2 units per citizen guarantees no flip
