@@ -152,3 +152,17 @@ Ideas:
   - Skip combat animations while shift is held down
   - Keep combat log, especially useful when animations are off
   - Enhance culture flip reducing effect of garrison units. Maybe add a cap, like 2 units per citizen guarantees no flip
+- [from sirati97]
+  - Enable carriers to be set to only carry aircraft with the foot unit tag
+  - Stop automated units with bombard ability from attacking friendlies
+  - Land transporters
+  - Enable HN artillery units to attack friendlies
+  - Fix "great wall bug": free walls bounce bombards onto other random building in same city, potentially destroying wonders
+  - Different categories for building "replace others with this flag" flags
+  - Optimize trade network calculation
+  - See for details: https://forums.civfanatics.com/threads/c3x-exe-mod-including-bug-fixes-stack-bombard-and-much-more.666881/page-46#post-16319627
+- [from Alekseyev_]
+  - "Bug report: Using stack-move/stack-rebase on a land unit that is immobile but posesses the 'rebase' ability will crash the game."
+  - "ability hotkeys don't seem to work when from the 'wrong' domain. On a land unit with recon ability, you have to click the recon icon, pressing R does not work"
+  - Stronger barb units unlocked by technologies. The tech level of each barb camp would be copied from the closest city.
+  - Caps lock to quickly skip combat animations instead of shift
