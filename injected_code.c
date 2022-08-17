@@ -761,6 +761,23 @@ wrap_tile_coords (Map * map, int * x, int * y)
 }
 
 void
+tile_index_to_coords (Map * map, int index, int * out_x, int * out_y)
+{
+	if ((index >= 0) && (index < map->TileCount)) {
+		int width = map->Width;
+		int double_row = index / width, double_row_rem = index % width;
+		if (double_row_rem < width/2) {
+			*out_x = 2 * double_row_rem;
+			*out_y = 2 * double_row;
+		} else {
+			*out_x = 1 + 2 * (double_row_rem - width/2);
+			*out_y = 2 * double_row + 1;
+		}
+	} else
+		*out_x = *out_y = -1;
+}
+
+void
 get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y)
 {
 	int dx, dy;
@@ -4056,6 +4073,35 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 	}
 
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
+}
+
+void __cdecl
+patch_init_map_music_after_leaders (int player_civ_id, int era_id, byte param_3)
+{
+	// TODO: Explain why this code is here instead of intercepting the return from initialize_leaders
+
+	Map * map = &p_bic_data->Map;
+
+	// Generate an alternate set of starting locations
+	int alt_starting_locs[32]; {
+		memcpy (alt_starting_locs, map->Starting_Locations, sizeof alt_starting_locs);
+		// Map_generate_starting_locations (map, __, 1, 0, 1, 1, 1); // TODO: Investigate the last 3 params, though they might not matter
+		for (int n = 0; n < 32; n++) {
+			int t = alt_starting_locs[n];
+			alt_starting_locs[n] = map->Starting_Locations[n];
+			map->Starting_Locations[n] = t;
+		}
+	}
+	(*p_OutputDebugStringA) ("Alternate starting locations:");
+	for (int n = 1; n < map->Civ_Count; n++) {
+		char s[300];
+		int x, y;
+		tile_index_to_coords (map, alt_starting_locs[n], &x, &y);
+		snprintf (s, sizeof s, "\t%d. %d, %d", n, x, y);
+		(*p_OutputDebugStringA) (s);
+	}
+
+	initialize_map_music (player_civ_id, era_id, param_3);
 }
 
 // TCC requires a main function be defined even though it's never used.
