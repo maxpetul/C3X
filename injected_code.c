@@ -4075,6 +4075,7 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
 }
 
+// Returns -1 if the location is unusable, 0-9 if it's usable but doesn't satisfy all criteria, and 10 if it couldn't be better
 int
 eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, int tile_y, int civ_id)
 {
@@ -4085,6 +4086,7 @@ eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, in
 	    (tile->vtable->m40_get_TileUnit_ID (tile) == -1)) {
 		int tr = 0;
 
+		// Avoid this location if it's too close to another starting location. If it's much too close, it's ruled out entirely.
 		int closest_dist = INT_MAX;
 		for (int n = 1; n <= map->Civ_Count; n++)
 			if (map->Starting_Locations[n] >= 0) {
@@ -4107,9 +4109,26 @@ eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, in
 		else if (closest_dist >= 2*map->Civ_Distance/3)
 			tr += 1;
 
+		// Avoid tiny islands
 		tr += map->vtable->m33_Get_Continent (map, __, tile->ContinentID)->Body.TileCount >= 20;
 
-		return tr;
+		// Avoid garbage terrain, e.g. all desert or tundra
+		int break_even_food_tiles = 0;
+		FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+			int x, y;
+			tai_get_coords (&tai, &x, &y);
+			int tile_food = Map_calc_food_yield_at (map, __, x, y, tai.tile->vtable->m50_Get_Square_BaseType (tai.tile), civ_id, 0, NULL);
+			int food_required = p_bic_data->General.FoodPerCitizen + (tai.tile->vtable->m35_Check_Is_Water (tai.tile) ? 1 : 0);
+			break_even_food_tiles += tile_food >= food_required;
+		}
+		tr += break_even_food_tiles >= 2;
+
+		// Avoid wasting a food bonus
+		tr += (tile->ResourceType < 0) || (tile->ResourceType >= p_bic_data->ResourceTypeCount) ||
+			(p_bic_data->ResourceTypes[tile->ResourceType].Food == 0);
+
+		int max_score = 4;
+		return (10*tr)/max_score;
 	} else
 		return -1;
 }

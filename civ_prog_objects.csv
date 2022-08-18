@@ -196,6 +196,7 @@ define,	   0x536080,	0x0,		0x0,		"initialize_map_music",				"void (__cdecl *) (i
 repl call, 0x54E9EC,	0x0,		0x0,		"init_map_music_after_leaders",			""
 define,	   0x441ED0,	0x0,		0x0,		"Map_get_x_dist",				"int (__fastcall *) (Map * this, int edx, int x1, int x2)"
 define,	   0x437970,	0x0,		0x0,		"Map_get_y_dist",				"int (__fastcall *) (Map * this, int edx, int y1, int y2)"
+define,	   0x5D7180,	0x0,		0x0,		"Map_calc_food_yield_at",			"int (__fastcall *) (Map * this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
