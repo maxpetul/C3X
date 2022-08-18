@@ -4082,7 +4082,7 @@ eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, in
 	if ((tile != p_null_tile) &&
 	    (patch_Map_check_city_location (map, __, tile_x, tile_y, civ_id, 1) == CLV_OK) &&
 	    (tile->vtable->m15_Check_Goody_Hut (tile, __, 0) == 0) &&
-	    (tile->vtable->m40_get_TileUnit_ID (tile) == -1))
+	    (tile->vtable->m40_get_TileUnit_ID (tile) == -1)) {
 		int tr = 0;
 
 		int closest_dist = INT_MAX;
@@ -4102,11 +4102,12 @@ eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, in
 				if (dist < closest_dist)
 					closest_dist = dist;
 			}
-
-		if (closest_dist < 8)
+		if (closest_dist < map->Civ_Distance/3)
 			return -1;
-		else if (closest_dist >= 15)
+		else if (closest_dist >= 2*map->Civ_Distance/3)
 			tr += 1;
+
+		tr += map->vtable->m33_Get_Continent (map, __, tile->ContinentID)->Body.TileCount >= 20;
 
 		return tr;
 	} else
