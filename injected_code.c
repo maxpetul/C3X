@@ -4075,6 +4075,12 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
 }
 
+int
+eval_starting_location (Map * map, int tile_x, int tile_y, int civ_id)
+{
+	return patch_Map_check_city_location (map, __, tile_x, tile_y, civ_id, 1) == CLV_OK;
+}
+
 void __cdecl
 patch_init_map_music_after_leaders (int player_civ_id, int era_id, byte param_3)
 {
@@ -4084,22 +4090,46 @@ patch_init_map_music_after_leaders (int player_civ_id, int era_id, byte param_3)
 
 	// Generate an alternate set of starting locations
 	int alt_starting_locs[32]; {
-		memcpy (alt_starting_locs, map->Starting_Locations, sizeof alt_starting_locs);
-		// Map_generate_starting_locations (map, __, 1, 0, 1, 1, 1); // TODO: Investigate the last 3 params, though they might not matter
-		for (int n = 0; n < 32; n++) {
-			int t = alt_starting_locs[n];
-			alt_starting_locs[n] = map->Starting_Locations[n];
-			map->Starting_Locations[n] = t;
+		for (int n = 0; n < 32; n++)
+			alt_starting_locs[n] = -1;
+
+		for (int civ_id = 1; civ_id < 32; civ_id++) {
+			if (((*p_player_bits & 1<<civ_id) != 0) &&
+			    ((*p_human_player_bits & 1<<civ_id) == 0)) {
+
+				int best_loc_val   = -1,
+				    best_loc_index = -1;
+
+				for (int try = 0; try < 1000; try++) {
+					int i_loc = rand_int (p_rand_object, __, map->TileCount);
+					int x_loc, y_loc;
+					tile_index_to_coords (map, i_loc, &x_loc, &y_loc);
+					if ((x_loc >= 0) && (y_loc >= 0)) {
+						int val = eval_starting_location (map, x_loc, y_loc, civ_id);
+						if (val >= 10) {
+							best_loc_index = i_loc;
+							break;
+						} else if (val > best_loc_val) {
+							best_loc_val = val;
+							best_loc_index = i_loc;
+						}
+					}
+				}
+
+				if (best_loc_index >= 0)
+					alt_starting_locs[civ_id] = best_loc_index;
+			}
 		}
 	}
 	(*p_OutputDebugStringA) ("Alternate starting locations:");
-	for (int n = 1; n < map->Civ_Count; n++) {
-		char s[300];
-		int x, y;
-		tile_index_to_coords (map, alt_starting_locs[n], &x, &y);
-		snprintf (s, sizeof s, "\t%d. %d, %d", n, x, y);
-		(*p_OutputDebugStringA) (s);
-	}
+	for (int n = 1; n < 32; n++)
+		if (alt_starting_locs[n] != -1) {
+			char s[300];
+			int x, y;
+			tile_index_to_coords (map, alt_starting_locs[n], &x, &y);
+			snprintf (s, sizeof s, "\t%d. %d, %d", n, x, y);
+			(*p_OutputDebugStringA) (s);
+		}
 
 	initialize_map_music (player_civ_id, era_id, param_3);
 }

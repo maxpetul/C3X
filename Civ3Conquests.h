@@ -1850,8 +1850,7 @@ struct Map_vtable
   int m11_Get_Tile_by_XY2;
 //  Tile *(__thiscall *m12_Get_Tile_by_XY)(Map *, int, int);
   void *m12_Get_Tile_by_XY;
-//  Tile *(__thiscall *m13_Get_Tile_by_Index)(Map *, int);
-  void *m13_Get_Tile_by_Index;
+  Tile *(__fastcall * m13_Get_Tile_by_Index) (Map *, int, int);
   int m14;
   int m15_null;
   int m16;
