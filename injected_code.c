@@ -4076,9 +4076,37 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 }
 
 int
-eval_starting_location (Map * map, int tile_x, int tile_y, int civ_id)
+eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, int tile_y, int civ_id)
 {
-	return patch_Map_check_city_location (map, __, tile_x, tile_y, civ_id, 1) == CLV_OK;
+	if (patch_Map_check_city_location (map, __, tile_x, tile_y, civ_id, 1) == CLV_OK) {
+		int tr = 0;
+
+		int closest_dist = INT_MAX;
+		for (int n = 1; n <= map->Civ_Count; n++)
+			if (map->Starting_Locations[n] >= 0) {
+				int other_x, other_y;
+				tile_index_to_coords (map, map->Starting_Locations[n], &other_x, &other_y);
+				int dist = Map_get_x_dist (map, __, tile_x, other_x) + Map_get_y_dist (map, __, tile_y, other_y);
+				if (dist < closest_dist)
+					closest_dist = dist;
+			}
+		for (int n = 0; n < 32; n++)
+			if (alt_starting_locs[n] >= 0) {
+				int other_x, other_y;
+				tile_index_to_coords (map, alt_starting_locs[n], &other_x, &other_y);
+				int dist = Map_get_x_dist (map, __, tile_x, other_x) + Map_get_y_dist (map, __, tile_y, other_y);
+				if (dist < closest_dist)
+					closest_dist = dist;
+			}
+
+		if (closest_dist < 8)
+			return -1;
+		else if (closest_dist >= 15)
+			tr += 1;
+
+		return tr;
+	} else
+		return -1;
 }
 
 void __cdecl
@@ -4105,7 +4133,7 @@ patch_init_map_music_after_leaders (int player_civ_id, int era_id, byte param_3)
 					int x_loc, y_loc;
 					tile_index_to_coords (map, i_loc, &x_loc, &y_loc);
 					if ((x_loc >= 0) && (y_loc >= 0)) {
-						int val = eval_starting_location (map, x_loc, y_loc, civ_id);
+						int val = eval_starting_location (map, alt_starting_locs, x_loc, y_loc, civ_id);
 						if (val >= 10) {
 							best_loc_index = i_loc;
 							break;

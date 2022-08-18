@@ -194,6 +194,8 @@ repl call, 0x57E679,	0x58B3BE,	0x57E3D9,	"Tile_get_visible_resource_when_recompu
 inlead,	   0x4A47C0,	0x4AB470,	0x4A4850,	"Fighter_begin",				"void (__fastcall *) (Fighter * this, int edx, Unit * attacker, int attack_direction, Unit * defender)"
 define,	   0x536080,	0x0,		0x0,		"initialize_map_music",				"void (__cdecl *) (int player_civ_id, int era_id, byte param_3)"
 repl call, 0x54E9EC,	0x0,		0x0,		"init_map_music_after_leaders",			""
+define,	   0x441ED0,	0x0,		0x0,		"Map_get_x_dist",				"int (__fastcall *) (Map * this, int edx, int x1, int x2)"
+define,	   0x437970,	0x0,		0x0,		"Map_get_y_dist",				"int (__fastcall *) (Map * this, int edx, int y1, int y2)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
@@ -208,8 +210,6 @@ ignore,	   0x4E8850,	0x4F14E0,	0x4E8910,	"Main_Screen_Form_open_right_click_unit
 ignore,	   0x4DBA70,	0x0,		0x0,		"Main_Screen_Form_set_selected_unit",		"void (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit, byte param_2)"
 ignore,	   0xCAB2D8,	0xCCDB88,	0xCAB298,	"temp_str",					"char[4096]"
 ignore,	   0x5CCBB0,	0x0,		0x0,		"Unit_can_pass_between",			"PassBetweenValidity (__fastcall *) (Unit * this, int edx, int from_x, int from_y, int to_x, int to_y, byte param_5)"
-ignore,	   0x441ED0,	0x0,		0x0,		"Map_get_x_dist",				"int (__fastcall *) (Map * this, int edx, int x1, int x2)"
-ignore,	   0x437970,	0x0,		0x0,		"Map_get_y_dist",				"int (__fastcall *) (Map * this, int edx, int y1, int y2)"
 ignore,	   0x452510,	0x454600,	0x452590,	"ai_move_defensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,	   0x56D040,	0x5799C0,	0x0,		"find_nearest_city",				"City * (__cdecl *) (int tile_x, int tile_y, int owner_id, int continent_id, int ignore_owner_id, int perspective_id, City * ignore_city)"
 ignore,    0x5E78E0,	0x5F7130,	0x0,		"General_load",					"void (__fastcall *) (General * this, int edx, byte ** buffer)"
