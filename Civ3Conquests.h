@@ -1479,7 +1479,7 @@ struct Tile_vtable
   int (__fastcall *m12_Check_Forest_Pines)(Tile *);
   int (__fastcall *m13_Check_Fortress)(Tile *, __, int);
   char (__fastcall *m14_Check_Barricade)(Tile *, __, int);
-  int (__fastcall *m15_Check_Goody_Hut)(Tile *, __, int);
+  char (__fastcall *m15_Check_Goody_Hut)(Tile *, __, int);
   int m16;
   char (__fastcall *m17_Check_Irrigation)(Tile *, __, int);
   int (__fastcall *m18_Check_Mines)(Tile *, __, int);

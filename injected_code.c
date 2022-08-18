@@ -4078,7 +4078,11 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 int
 eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, int tile_y, int civ_id)
 {
-	if (patch_Map_check_city_location (map, __, tile_x, tile_y, civ_id, 1) == CLV_OK) {
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile != p_null_tile) &&
+	    (patch_Map_check_city_location (map, __, tile_x, tile_y, civ_id, 1) == CLV_OK) &&
+	    (tile->vtable->m15_Check_Goody_Hut (tile, __, 0) == 0) &&
+	    (tile->vtable->m40_get_TileUnit_ID (tile) == -1))
 		int tr = 0;
 
 		int closest_dist = INT_MAX;
