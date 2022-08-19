@@ -4133,31 +4133,27 @@ eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, in
 		return -1;
 }
 
-void __cdecl
-patch_init_map_music_after_leaders (int player_civ_id, int era_id, byte param_3)
+void __fastcall
+patch_Map_process_after_placing (Map * this, int edx, byte param_1)
 {
-	// TODO: Explain why this code is here instead of intercepting the return from initialize_leaders
-
-	Map * map = &p_bic_data->Map;
+	int ai_player_bits = *p_player_bits & ~*p_human_player_bits;
 
 	// Generate an alternate set of starting locations
 	int alt_starting_locs[32]; {
 		for (int n = 0; n < 32; n++)
 			alt_starting_locs[n] = -1;
 
-		for (int civ_id = 1; civ_id < 32; civ_id++) {
-			if (((*p_player_bits & 1<<civ_id) != 0) &&
-			    ((*p_human_player_bits & 1<<civ_id) == 0)) {
-
+		for (int civ_id = 1; civ_id < 32; civ_id++)
+			if ((ai_player_bits & 1<<civ_id) != 0) {
 				int best_loc_val   = -1,
 				    best_loc_index = -1;
 
 				for (int try = 0; try < 1000; try++) {
-					int i_loc = rand_int (p_rand_object, __, map->TileCount);
+					int i_loc = rand_int (p_rand_object, __, this->TileCount);
 					int x_loc, y_loc;
-					tile_index_to_coords (map, i_loc, &x_loc, &y_loc);
+					tile_index_to_coords (this, i_loc, &x_loc, &y_loc);
 					if ((x_loc >= 0) && (y_loc >= 0)) {
-						int val = eval_starting_location (map, alt_starting_locs, x_loc, y_loc, civ_id);
+						int val = eval_starting_location (this, alt_starting_locs, x_loc, y_loc, civ_id);
 						if (val >= 10) {
 							best_loc_index = i_loc;
 							break;
@@ -4171,19 +4167,30 @@ patch_init_map_music_after_leaders (int player_civ_id, int era_id, byte param_3)
 				if (best_loc_index >= 0)
 					alt_starting_locs[civ_id] = best_loc_index;
 			}
-		}
 	}
+
+	for (int civ_id = 1; civ_id < 32; civ_id++)
+		if (((ai_player_bits & 1<<civ_id) != 0) &&
+		    (this->Starting_Locations[civ_id] >= 0) &&
+		    (alt_starting_locs[civ_id] >= 0)) {
+			int capital_x, capital_y;
+			tile_index_to_coords (this, this->Starting_Locations[civ_id], &capital_x, &capital_y);
+			Leader_create_city (&leaders[civ_id], __, capital_x, capital_y, leaders[civ_id].RaceID, -1, NULL, 1);
+		}
+
+	/*
 	(*p_OutputDebugStringA) ("Alternate starting locations:");
 	for (int n = 1; n < 32; n++)
 		if (alt_starting_locs[n] != -1) {
 			char s[300];
 			int x, y;
-			tile_index_to_coords (map, alt_starting_locs[n], &x, &y);
+			tile_index_to_coords (this, alt_starting_locs[n], &x, &y);
 			snprintf (s, sizeof s, "\t%d. %d, %d", n, x, y);
 			(*p_OutputDebugStringA) (s);
 		}
+	*/
 
-	initialize_map_music (player_civ_id, era_id, param_3);
+	Map_process_after_placing (this, __, param_1);
 }
 
 // TCC requires a main function be defined even though it's never used.
