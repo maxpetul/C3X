@@ -4133,6 +4133,15 @@ eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, in
 		return -1;
 }
 
+City *
+create_starter_city (Map * map, int civ_id, int tile_index)
+{
+	int x, y;
+	tile_index_to_coords (map, tile_index, &x, &y);
+	return Leader_create_city (&leaders[civ_id], __, x, y, leaders[civ_id].RaceID, -1, NULL, 1);
+}
+
+
 void __fastcall
 patch_Map_process_after_placing (Map * this, int edx, byte param_1)
 {
@@ -4173,9 +4182,10 @@ patch_Map_process_after_placing (Map * this, int edx, byte param_1)
 		if (((ai_player_bits & 1<<civ_id) != 0) &&
 		    (this->Starting_Locations[civ_id] >= 0) &&
 		    (alt_starting_locs[civ_id] >= 0)) {
-			int capital_x, capital_y;
-			tile_index_to_coords (this, this->Starting_Locations[civ_id], &capital_x, &capital_y);
-			Leader_create_city (&leaders[civ_id], __, capital_x, capital_y, leaders[civ_id].RaceID, -1, NULL, 1);
+			create_starter_city (this, civ_id, this->Starting_Locations[civ_id]);
+			City * fp_city = create_starter_city (this, civ_id, alt_starting_locs[civ_id]);
+			// TODO: Add forbidden palace to FP city
+			// TODO: Delete starter settler
 		}
 
 	/*
