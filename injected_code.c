@@ -4186,6 +4186,11 @@ patch_Map_process_after_placing (Map * this, int edx, byte param_1)
 			}
 	}
 
+	int size_of_unit_counts = p_bic_data->UnitTypeCount * sizeof(int);
+	int * unit_counts = malloc (size_of_unit_counts);
+	int units_to_move_capacity = 100;
+	Unit ** units_to_move = calloc (units_to_move_capacity, sizeof units_to_move[0]);
+
 	for (int civ_id = 1; civ_id < 32; civ_id++)
 		if (((ai_player_bits & 1<<civ_id) != 0) &&
 		    (this->Starting_Locations[civ_id] >= 0) &&
@@ -4221,7 +4226,26 @@ patch_Map_process_after_placing (Map * this, int edx, byte param_1)
 					break;
 				}
 			}
+
+			// Move half of the AI's starting units over to the FP city. Its starting units from difficulty are already spawned at this
+			// point since their spawn is triggered by the creation of the AI's first city.
+			int count_units_to_move = 0;
+			memset (unit_counts, 0, size_of_unit_counts);
+			FOR_UNITS_ON (tai, tile_at_index (this, sloc)) {
+				int * p_count = &unit_counts[tai.unit->Body.UnitTypeID];
+				*p_count += 1;
+				if ((*p_count % 2 == 0) && (count_units_to_move < units_to_move_capacity))
+					units_to_move[count_units_to_move++] = tai.unit;
+			}
+			for (int n = 0; n < count_units_to_move; n++) {
+				int x, y;
+				tile_index_to_coords (this, alt_starting_locs[civ_id], &x, &y);
+				Unit_move (units_to_move[n], __, x, y);
+			}
 		}
+
+	free (units_to_move);
+	free (unit_counts);
 
 	/*
 	(*p_OutputDebugStringA) ("Alternate starting locations:");
