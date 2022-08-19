@@ -4149,11 +4149,28 @@ create_starter_city (Map * map, int civ_id, int tile_index)
 	return Leader_create_city (&leaders[civ_id], __, x, y, leaders[civ_id].RaceID, -1, NULL, 1);
 }
 
-
 void
 set_up_ai_two_city_start (Map * map)
 {
-	int ai_player_bits = *p_player_bits & ~*p_human_player_bits;
+	// Set of bits determining which players are eligible for the two-city start
+	int eligibility_bits = 0,
+	    count_eligible_civs = 0;
+	for (int n = 1; n < 32; n++)
+		if ((*p_player_bits & 1<<n) && // if there is an active player in this slot AND
+		    ((*p_human_player_bits & 1<<n) == 0) && // that player is an AI AND
+		    (leaders[n].Cities_Count == 0) && // does not have any cities AND
+		    (tile_at_index (map, map->Starting_Locations[n]) != p_null_tile)) { // has a valid starting location
+			eligibility_bits |= 1 << n;
+			count_eligible_civs++;
+		}
+
+	if (count_eligible_civs == 0)
+		return;
+
+	char load_text[50];
+	snprintf (load_text, sizeof load_text, "%s...", is->c3x_labels[CL_CREATING_CITIES]);
+	load_text[(sizeof load_text) - 1] = '\0';
+	Main_GUI_label_loading_bar (&p_main_screen_form->GUI, __, 1, load_text);
 
 	// Generate an alternate set of starting locations
 	int alt_starting_locs[32]; {
@@ -4161,7 +4178,7 @@ set_up_ai_two_city_start (Map * map)
 			alt_starting_locs[n] = -1;
 
 		for (int civ_id = 1; civ_id < 32; civ_id++)
-			if ((ai_player_bits & 1<<civ_id) != 0) {
+			if (eligibility_bits & 1<<civ_id) {
 				int best_loc_val   = -1,
 				    best_loc_index = -1;
 
@@ -4191,9 +4208,9 @@ set_up_ai_two_city_start (Map * map)
 	int units_to_move_capacity = 100;
 	Unit ** units_to_move = calloc (units_to_move_capacity, sizeof units_to_move[0]);
 
+	int count_cities_created = 0;
 	for (int civ_id = 1; civ_id < 32; civ_id++)
-		if (((ai_player_bits & 1<<civ_id) != 0) &&
-		    (map->Starting_Locations[civ_id] >= 0) &&
+		if ((eligibility_bits & 1<<civ_id) &&
 		    (alt_starting_locs[civ_id] >= 0)) {
 			int sloc = map->Starting_Locations[civ_id];
 
@@ -4208,6 +4225,14 @@ set_up_ai_two_city_start (Map * map)
 
 			create_starter_city (map, civ_id, sloc); // create capital city
 			City * fp_city = create_starter_city (map, civ_id, alt_starting_locs[civ_id]); // create FP city
+			count_cities_created += 2;
+
+			if (count_cities_created % 4 == 0) {
+				int progress = 100 * count_cities_created / (2 * count_eligible_civs);
+				snprintf (load_text, sizeof load_text, "%s %d%%", is->c3x_labels[CL_CREATING_CITIES], progress);
+				load_text[(sizeof load_text) - 1] = '\0';
+				Main_GUI_label_loading_bar (&p_main_screen_form->GUI, __, 1, load_text);
+			}
 
 			// Delete starting settler so it's as if it was consumed to found the capital
 			if (starting_settler != NULL)
