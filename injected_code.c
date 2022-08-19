@@ -777,6 +777,14 @@ tile_index_to_coords (Map * map, int index, int * out_x, int * out_y)
 		*out_x = *out_y = -1;
 }
 
+Tile *
+tile_at_index (Map * map, int i)
+{
+	int x, y;
+	tile_index_to_coords (map, i, &x, &y);
+	return tile_at (x, y);
+}
+
 void
 get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y)
 {
@@ -4182,10 +4190,37 @@ patch_Map_process_after_placing (Map * this, int edx, byte param_1)
 		if (((ai_player_bits & 1<<civ_id) != 0) &&
 		    (this->Starting_Locations[civ_id] >= 0) &&
 		    (alt_starting_locs[civ_id] >= 0)) {
-			create_starter_city (this, civ_id, this->Starting_Locations[civ_id]);
-			City * fp_city = create_starter_city (this, civ_id, alt_starting_locs[civ_id]);
-			// TODO: Add forbidden palace to FP city
-			// TODO: Delete starter settler
+			int sloc = this->Starting_Locations[civ_id];
+
+			// Identify AI's starting settler
+			Unit * starting_settler = NULL;
+			FOR_UNITS_ON (tai, tile_at_index (this, sloc)) {
+				if (p_bic_data->UnitTypes[tai.unit->Body.UnitTypeID].AI_Strategy & UTAI_Settle) {
+					starting_settler = tai.unit;
+					break;
+				}
+			}
+
+			create_starter_city (this, civ_id, sloc); // create capital city
+			City * fp_city = create_starter_city (this, civ_id, alt_starting_locs[civ_id]); // create FP city
+
+			// Delete starting settler so it's as if it was consumed to found the capital
+			if (starting_settler != NULL)
+				Unit_despawn (starting_settler, __, 0, 1, 0, 0, 0, 0, 0);
+
+			// Add forbidden palace to FP city
+			for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+				Improvement * improv = &p_bic_data->Improvements[n];
+				if ((improv->Characteristics & ITC_Small_Wonder) && // is a small wonder AND
+				    (improv->SmallWonderFlags & ITSW_Reduces_Corruption) && // reduces corruption AND
+				    ((improv->RequiredID < 0) || Leader_has_tech (&leaders[civ_id], __, improv->RequiredID)) && // tech requirement satisfied AND
+				    ((improv->ObsoleteID < 0) || ! Leader_has_tech (&leaders[civ_id], __, improv->ObsoleteID)) && // is not obsolete AND
+				    ((improv->GovernmentID < 0) || (improv->GovernmentID == leaders[civ_id].GovernmentType)) && // is not restricted to another govt AND
+				    (improv->Resource1ID < 0) && (improv->Resource2ID < 0)) { // does not require resources
+					patch_City_add_or_remove_improvement (fp_city, __, n, 1, 1);
+					break;
+				}
+			}
 		}
 
 	/*
