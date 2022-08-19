@@ -4150,8 +4150,8 @@ create_starter_city (Map * map, int civ_id, int tile_index)
 }
 
 
-void __fastcall
-patch_Map_process_after_placing (Map * this, int edx, byte param_1)
+void
+set_up_ai_two_city_start (Map * map)
 {
 	int ai_player_bits = *p_player_bits & ~*p_human_player_bits;
 
@@ -4166,11 +4166,11 @@ patch_Map_process_after_placing (Map * this, int edx, byte param_1)
 				    best_loc_index = -1;
 
 				for (int try = 0; try < 1000; try++) {
-					int i_loc = rand_int (p_rand_object, __, this->TileCount);
+					int i_loc = rand_int (p_rand_object, __, map->TileCount);
 					int x_loc, y_loc;
-					tile_index_to_coords (this, i_loc, &x_loc, &y_loc);
+					tile_index_to_coords (map, i_loc, &x_loc, &y_loc);
 					if ((x_loc >= 0) && (y_loc >= 0)) {
-						int val = eval_starting_location (this, alt_starting_locs, x_loc, y_loc, civ_id);
+						int val = eval_starting_location (map, alt_starting_locs, x_loc, y_loc, civ_id);
 						if (val >= 10) {
 							best_loc_index = i_loc;
 							break;
@@ -4193,21 +4193,21 @@ patch_Map_process_after_placing (Map * this, int edx, byte param_1)
 
 	for (int civ_id = 1; civ_id < 32; civ_id++)
 		if (((ai_player_bits & 1<<civ_id) != 0) &&
-		    (this->Starting_Locations[civ_id] >= 0) &&
+		    (map->Starting_Locations[civ_id] >= 0) &&
 		    (alt_starting_locs[civ_id] >= 0)) {
-			int sloc = this->Starting_Locations[civ_id];
+			int sloc = map->Starting_Locations[civ_id];
 
 			// Identify AI's starting settler
 			Unit * starting_settler = NULL;
-			FOR_UNITS_ON (tai, tile_at_index (this, sloc)) {
+			FOR_UNITS_ON (tai, tile_at_index (map, sloc)) {
 				if (p_bic_data->UnitTypes[tai.unit->Body.UnitTypeID].AI_Strategy & UTAI_Settle) {
 					starting_settler = tai.unit;
 					break;
 				}
 			}
 
-			create_starter_city (this, civ_id, sloc); // create capital city
-			City * fp_city = create_starter_city (this, civ_id, alt_starting_locs[civ_id]); // create FP city
+			create_starter_city (map, civ_id, sloc); // create capital city
+			City * fp_city = create_starter_city (map, civ_id, alt_starting_locs[civ_id]); // create FP city
 
 			// Delete starting settler so it's as if it was consumed to found the capital
 			if (starting_settler != NULL)
@@ -4227,11 +4227,11 @@ patch_Map_process_after_placing (Map * this, int edx, byte param_1)
 				}
 			}
 
-			// Move half of the AI's starting units over to the FP city. Its starting units from difficulty are already spawned at this
+			// Move half of the AI's starting units over to the FP city. Its starting units from difficulty are already spawned at map
 			// point since their spawn is triggered by the creation of the AI's first city.
 			int count_units_to_move = 0;
 			memset (unit_counts, 0, size_of_unit_counts);
-			FOR_UNITS_ON (tai, tile_at_index (this, sloc)) {
+			FOR_UNITS_ON (tai, tile_at_index (map, sloc)) {
 				int * p_count = &unit_counts[tai.unit->Body.UnitTypeID];
 				*p_count += 1;
 				if ((*p_count % 2 == 0) && (count_units_to_move < units_to_move_capacity))
@@ -4239,26 +4239,20 @@ patch_Map_process_after_placing (Map * this, int edx, byte param_1)
 			}
 			for (int n = 0; n < count_units_to_move; n++) {
 				int x, y;
-				tile_index_to_coords (this, alt_starting_locs[civ_id], &x, &y);
+				tile_index_to_coords (map, alt_starting_locs[civ_id], &x, &y);
 				Unit_move (units_to_move[n], __, x, y);
 			}
 		}
 
 	free (units_to_move);
 	free (unit_counts);
+}
 
-	/*
-	(*p_OutputDebugStringA) ("Alternate starting locations:");
-	for (int n = 1; n < 32; n++)
-		if (alt_starting_locs[n] != -1) {
-			char s[300];
-			int x, y;
-			tile_index_to_coords (this, alt_starting_locs[n], &x, &y);
-			snprintf (s, sizeof s, "\t%d. %d, %d", n, x, y);
-			(*p_OutputDebugStringA) (s);
-		}
-	*/
-
+void __fastcall
+patch_Map_process_after_placing (Map * this, int edx, byte param_1)
+{
+	if (*p_current_turn_no == 0)
+		set_up_ai_two_city_start (this);
 	Map_process_after_placing (this, __, param_1);
 }
 
