@@ -4110,7 +4110,7 @@ eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, in
 			tr += 1;
 
 		// Avoid tiny islands
-		tr += map->vtable->m33_Get_Continent (map, __, tile->ContinentID)->Body.TileCount >= 20;
+		// tr += map->vtable->m33_Get_Continent (map, __, tile->ContinentID)->Body.TileCount >= 20;
 
 		// Avoid garbage terrain, e.g. all desert or tundra
 		int break_even_food_tiles = 0;
@@ -4127,7 +4127,7 @@ eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, in
 		tr += (tile->ResourceType < 0) || (tile->ResourceType >= p_bic_data->ResourceTypeCount) ||
 			(p_bic_data->ResourceTypes[tile->ResourceType].Food == 0);
 
-		int max_score = 4;
+		int max_score = 3;
 		return (10*tr)/max_score;
 	} else
 		return -1;
