@@ -615,6 +615,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->enable_negative_pop_pollution = ival;
 				else if ((0 == strncmp (key.str, "retreat_rules", key.len)) && read_retreat_rules (&value, &ival))
 					cfg->retreat_rules = ival;
+				else if ((0 == strncmp (key.str, "enable_ai_two_city_start", key.len)) && read_int (&value, &ival))
+					cfg->enable_ai_two_city_start = ival != 0;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -4276,7 +4278,7 @@ set_up_ai_two_city_start (Map * map)
 void __fastcall
 patch_Map_process_after_placing (Map * this, int edx, byte param_1)
 {
-	if (*p_current_turn_no == 0)
+	if (is->current_config.enable_ai_two_city_start && (*p_current_turn_no == 0))
 		set_up_ai_two_city_start (this);
 	Map_process_after_placing (this, __, param_1);
 }
