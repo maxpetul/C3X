@@ -957,6 +957,7 @@ ENTRY_POINT ()
 		.retreat_rules = RR_STANDARD,
 		.enable_ai_two_city_start = 0,
 		.promote_forbidden_palace_decorruption = 0,
+		.allow_military_leaders_to_hurry_wonders = 0,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,

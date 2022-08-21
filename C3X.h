@@ -82,6 +82,7 @@ struct c3x_config {
 	enum retreat_rules retreat_rules;
 	char enable_ai_two_city_start;
 	char promote_forbidden_palace_decorruption;
+	char allow_military_leaders_to_hurry_wonders;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;

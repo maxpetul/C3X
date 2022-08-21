@@ -619,6 +619,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->enable_ai_two_city_start = ival != 0;
 				else if ((0 == strncmp (key.str, "promote_forbidden_palace_decorruption", key.len)) && read_int (&value, &ival))
 					cfg->promote_forbidden_palace_decorruption = ival != 0;
+				else if ((0 == strncmp (key.str, "allow_military_leaders_to_hurry_wonders", key.len)) && read_int (&value, &ival))
+					cfg->allow_military_leaders_to_hurry_wonders = ival != 0;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -2618,6 +2620,19 @@ get_city_near (int x, int y)
 	return NULL;
 }
 
+byte __fastcall
+patch_Unit_can_hurry_production (Unit * this, int edx, City * city, byte exclude_cheap_improvements)
+{
+	if (is->current_config.allow_military_leaders_to_hurry_wonders && Unit_has_ability (this, __, UTA_Leader)) {
+		LeaderKind actual_kind = this->Body.leader_kind;
+		this->Body.leader_kind = LK_Scientific;
+		byte tr = Unit_can_hurry_production (this, __, city, exclude_cheap_improvements);
+		this->Body.leader_kind = actual_kind;
+		return tr;
+	} else
+		return Unit_can_hurry_production (this, __, city, exclude_cheap_improvements);
+}
+
 int
 any_enemies_near (Leader const * me, int tile_x, int tile_y, enum UnitTypeClasses class, int num_tiles)
 {
@@ -2862,7 +2877,7 @@ patch_Unit_ai_move_leader (Unit * this)
 			if ((city != NULL) && (city->Body.CivID == this->Body.CivID)) {
 				Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
 				if ((continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) &&
-				    Unit_can_hurry_production (this, __, city, 0)) {
+				    patch_Unit_can_hurry_production (this, __, city, 0)) {
 					// Base value is equal to the number of shields rushing would save
 					int value = City_get_order_cost (city) - City_get_order_progress (city) - city->Body.ProductionIncome;
 					if (value <= 0)

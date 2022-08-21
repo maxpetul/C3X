@@ -85,7 +85,7 @@ define,    0x5B3290,	0x5C1BE0,	0x5B2FA0,	"Unit_pop_next_move_from_path",			"byte
 inlead,    0x45FED0,	0x4622A0,	0x45FF50,	"Unit_ai_move_leader",				"void (__fastcall *) (Unit * this)"
 define,    0x5B2B20,	0x5C1440,	0x5B2830,	"Unit_next_escorter_id",			"int (__fastcall *) (Unit * this, int edx, int * index, byte begin_iterating)"
 define,    0x5BC300,	0x5CAE50,	0x5BC010,	"Unit_disband",					"void (__fastcall *) (Unit * this)"
-define,    0x5C00A0,	0x5CEC20,	0x5BFDB0,	"Unit_can_hurry_production",			"byte (__fastcall *) (Unit * this, int edx, City * city, byte exclude_cheap_improvements)"
+inlead,    0x5C00A0,	0x5CEC20,	0x5BFDB0,	"Unit_can_hurry_production",			"byte (__fastcall *) (Unit * this, int edx, City * city, byte exclude_cheap_improvements)"
 define,    0x5C0420,	0x5CEFC0,	0x5C0130,	"Unit_hurry_production",			"void (__fastcall *) (Unit * this)"
 define,    0x5C0300,	0x5CEE90,	0x5C0010,	"Unit_ai_can_start_science_age",		"byte (__fastcall *) (Unit * this)"
 define,    0x5C03B0,	0x5CEF50,	0x5C00C0,	"Unit_start_science_age",			"void (__fastcall *) (Unit * this)"
