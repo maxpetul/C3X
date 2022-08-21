@@ -1479,7 +1479,7 @@ struct Tile_vtable
   int (__fastcall *m12_Check_Forest_Pines)(Tile *);
   int (__fastcall *m13_Check_Fortress)(Tile *, __, int);
   char (__fastcall *m14_Check_Barricade)(Tile *, __, int);
-  int (__fastcall *m15_Check_Goody_Hut)(Tile *, __, int);
+  char (__fastcall *m15_Check_Goody_Hut)(Tile *, __, int);
   int m16;
   char (__fastcall *m17_Check_Irrigation)(Tile *, __, int);
   int (__fastcall *m18_Check_Mines)(Tile *, __, int);
@@ -1850,8 +1850,7 @@ struct Map_vtable
   int m11_Get_Tile_by_XY2;
 //  Tile *(__thiscall *m12_Get_Tile_by_XY)(Map *, int, int);
   void *m12_Get_Tile_by_XY;
-//  Tile *(__thiscall *m13_Get_Tile_by_Index)(Map *, int);
-  void *m13_Get_Tile_by_Index;
+  Tile *(__fastcall * m13_Get_Tile_by_Index) (Map *, int, int);
   int m14;
   int m15_null;
   int m16;
@@ -1876,8 +1875,7 @@ struct Map_vtable
   void *m31;
 //  void (__thiscall *m32)(Map *);
   void *m32;
-//  int (__thiscall *m33_Get_Continent)(Map *, int);
-  void *m33_Get_Continent;
+  Continent * (__fastcall * m33_Get_Continent) (Map *, int, int);
 //  int (__thiscall *m34_Get_Continent_Count)(Map *);
   void *m34_Get_Continent_Count;
 //  int (__thiscall *m35_Get_BIC_Sub_Data)(Map *this, int Object_Type, int Object_Index, void *Object);
