@@ -80,6 +80,7 @@ struct c3x_config {
 	char dont_end_units_turn_after_airdrop;
 	char enable_negative_pop_pollution;
 	enum retreat_rules retreat_rules;
+	char promote_forbidden_palace_decorruption;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;

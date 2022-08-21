@@ -615,6 +615,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->enable_negative_pop_pollution = ival;
 				else if ((0 == strncmp (key.str, "retreat_rules", key.len)) && read_retreat_rules (&value, &ival))
 					cfg->retreat_rules = ival;
+				else if ((0 == strncmp (key.str, "promote_forbidden_palace_decorruption", key.len)) && read_int (&value, &ival))
+					cfg->promote_forbidden_palace_decorruption = ival != 0;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -2059,23 +2061,9 @@ compare_helpers (void const * vp_a, void const * vp_b)
 		return (a != NULL) ? -1 : ((b != NULL) ? 1 : 0);
 }
 
-int __fastcall patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, byte is_production);
-
 void
 issue_stack_worker_command (Unit * unit, int command)
 {
-
-	if (p_cities->Cities != NULL)
-		for (int n = 0; n <= p_cities->LastIndex; n++) {
-			City * city = get_city_ptr (n);
-			if ((city != NULL) && (city->Body.CivID == unit->Body.CivID)) {
-				int corrupted = patch_City_compute_corrupted_yield (city, __, 1000, 1);
-				char s[200];
-				snprintf (s, sizeof s, "%s: %d.%d%%", city->Body.CityName, corrupted/10, corrupted%10);
-				(*p_OutputDebugStringA) (s);
-			}
-		}
-
 	Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
 	int unit_type_id = unit->Body.UnitTypeID;
 	int unit_id = unit->Body.ID;
@@ -3799,19 +3787,21 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, byte 
 
 	int tr = City_compute_corrupted_yield (this, __, gross_yield, is_production);
 
-	int actual_capital_id = leader->CapitalID;
-	for (int improv_id = 0; improv_id < p_bic_data->ImprovementsCount; improv_id++) {
-		Improvement * improv = &p_bic_data->Improvements[improv_id];
-		City * fp_city;
-		if ((improv->SmallWonderFlags & ITSW_Reduces_Corruption) &&
-		    (NULL != (fp_city = get_city_ptr (leader->Small_Wonders[improv_id])))) {
-			leader->CapitalID = fp_city->Body.ID;
-			int fp_corrupted_yield = City_compute_corrupted_yield (this, __, gross_yield, is_production);
-			if (fp_corrupted_yield < tr)
-				tr = fp_corrupted_yield;
+	if (is->current_config.promote_forbidden_palace_decorruption) {
+		int actual_capital_id = leader->CapitalID;
+		for (int improv_id = 0; improv_id < p_bic_data->ImprovementsCount; improv_id++) {
+			Improvement * improv = &p_bic_data->Improvements[improv_id];
+			City * fp_city;
+			if ((improv->SmallWonderFlags & ITSW_Reduces_Corruption) &&
+			    (NULL != (fp_city = get_city_ptr (leader->Small_Wonders[improv_id])))) {
+				leader->CapitalID = fp_city->Body.ID;
+				int fp_corrupted_yield = City_compute_corrupted_yield (this, __, gross_yield, is_production);
+				if (fp_corrupted_yield < tr)
+					tr = fp_corrupted_yield;
+			}
 		}
+		leader->CapitalID = actual_capital_id;
 	}
-	leader->CapitalID = actual_capital_id;
 
 	return tr;
 }
