@@ -617,6 +617,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->retreat_rules = ival;
 				else if ((0 == strncmp (key.str, "enable_ai_two_city_start", key.len)) && read_int (&value, &ival))
 					cfg->enable_ai_two_city_start = ival != 0;
+				else if ((0 == strncmp (key.str, "promote_forbidden_palace_decorruption", key.len)) && read_int (&value, &ival))
+					cfg->promote_forbidden_palace_decorruption = ival != 0;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -3804,13 +3806,31 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 int __fastcall
 patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, byte is_production)
 {
-	if (is->current_config.zero_corruption_when_off) {
-		Government * govt = &p_bic_data->Governments[leaders[this->Body.CivID].GovernmentType];
-		if (govt->CorruptionAndWaste == CWT_Off)
-			return 0;
+	Leader * leader = &leaders[this->Body.CivID];
+
+	if (is->current_config.zero_corruption_when_off &&
+	    (p_bic_data->Governments[leader->GovernmentType].CorruptionAndWaste == CWT_Off))
+		return 0;
+
+	int tr = City_compute_corrupted_yield (this, __, gross_yield, is_production);
+
+	if (is->current_config.promote_forbidden_palace_decorruption) {
+		int actual_capital_id = leader->CapitalID;
+		for (int improv_id = 0; improv_id < p_bic_data->ImprovementsCount; improv_id++) {
+			Improvement * improv = &p_bic_data->Improvements[improv_id];
+			City * fp_city;
+			if ((improv->SmallWonderFlags & ITSW_Reduces_Corruption) &&
+			    (NULL != (fp_city = get_city_ptr (leader->Small_Wonders[improv_id])))) {
+				leader->CapitalID = fp_city->Body.ID;
+				int fp_corrupted_yield = City_compute_corrupted_yield (this, __, gross_yield, is_production);
+				if (fp_corrupted_yield < tr)
+					tr = fp_corrupted_yield;
+			}
+		}
+		leader->CapitalID = actual_capital_id;
 	}
 
-	return City_compute_corrupted_yield (this, __, gross_yield, is_production);
+	return tr;
 }
 
 void __fastcall

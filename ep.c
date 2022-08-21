@@ -956,6 +956,7 @@ ENTRY_POINT ()
 		.enable_negative_pop_pollution = 1,
 		.retreat_rules = RR_STANDARD,
 		.enable_ai_two_city_start = 0,
+		.promote_forbidden_palace_decorruption = 0,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,
