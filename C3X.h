@@ -94,6 +94,7 @@ struct c3x_config {
 
 	char remove_unit_limit;
 	char remove_era_limit;
+	char remove_cap_on_turn_limit;
 
 	char patch_submarine_bug;
 	char patch_science_age_bug;

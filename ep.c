@@ -969,6 +969,7 @@ ENTRY_POINT ()
 
 		.remove_unit_limit = 1,
 		.remove_era_limit = 0,
+		.remove_cap_on_turn_limit = 1,
 
 		.patch_submarine_bug = 1,
 		.patch_science_age_bug = 1,

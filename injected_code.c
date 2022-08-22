@@ -641,6 +641,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->remove_unit_limit = ival != 0;
 				else if ((0 == strncmp (key.str, "remove_era_limit", key.len)) && read_int (&value, &ival))
 					cfg->remove_era_limit = ival != 0;
+				else if ((0 == strncmp (key.str, "remove_cap_on_turn_limit", key.len)) && read_int (&value, &ival))
+					cfg->remove_cap_on_turn_limit = ival != 0;
 
 				else if ((0 == strncmp (key.str, "patch_submarine_bug", key.len)) && read_int (&value, &ival))
 					cfg->patch_submarine_bug = ival != 0;
@@ -1347,7 +1349,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	for (int n = 0; n < (sizeof addr_turn_metalimits) / (sizeof addr_turn_metalimits[0]); n++) {
 		byte * addr = addr_turn_metalimits[n];
 		WITH_MEM_PROTECTION (addr, 4, PAGE_EXECUTE_READWRITE) {
-			int_to_bytes (addr, 1000000);
+			int_to_bytes (addr, cfg->remove_cap_on_turn_limit ? 1000000 : 1000);
 		}
 	}
 }
