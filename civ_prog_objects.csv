@@ -200,6 +200,12 @@ inlead,	   0x5D3030,	0x5E2330,	0x5D2F60,	"Map_process_after_placing",			"void (_
 define,	   0x5BBBC0,	0x5CA720,	0x5BB8D0,	"Unit_despawn",					"void (__fastcall *) (Unit * this, int edx, int param_1, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)"
 define,	   0x5BD220,	0x5CBDE0,	0x5BCF30,	"Unit_move",					"void (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)"
 define,	   0x558700,	0x564590,	0x5586B0,	"Main_GUI_label_loading_bar",			"void (__fastcall *) (Main_GUI * this, int edx, int param_1, char *text)"
+define,	   0x48DE43,	0x0,		0x0,		"ADDR_TURN_METALIMIT_1",			"byte *"
+define,	   0x4946E1,	0x0,		0x0,		"ADDR_TURN_METALIMIT_2",			"byte *"
+define,	   0x54E2E0,	0x0,		0x0,		"ADDR_TURN_METALIMIT_3",			"byte *"
+define,	   0x54E2E6,	0x0,		0x0,		"ADDR_TURN_METALIMIT_4",			"byte *"
+define,	   0x584163,	0x0,		0x0,		"ADDR_TURN_METALIMIT_5",			"byte *"
+define,	   0x5817B2,	0x0,		0x0,		"ADDR_TURN_METALIMIT_6",			"byte *"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
