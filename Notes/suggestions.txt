@@ -1,11 +1,8 @@
 Ideas:
-- AIs propose he most favorable trade they'll accept instead of making the player work for it
 - Cash rush costs are pre-exploited, i.e., you only pay double for shields up to the cost of the cheapest thing you could rush
 - Cities do not unassign citizens from polluted tiles (arguably not convenient since you're potentially losing the specialist yield)
 - [from tjs282] Assign the minimum number of workers necessary to clean pollution
-- [from tjs282] Scroll wheel to set gold amount in trade window
 - [from MartinLuther] "I think an interesting addition would be getting an Advisor Popup whenever another civilization enters a new era."
-- [from Ares de Borg] "it would be cool to investigate how the AI chooses to build units and if there is a chance to put some kind of ratio to it"
 - [from Civinator] Lots in this post: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-4#post-16049378
 - [from Virote_Considon] Requests for more complex build requirements: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-4#post-16049440
 - [from tjs282 and vmxa] Fix barb diagonal attack bug https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-4#post-16050292, there's a link to another thread with info about the bug in that post
@@ -20,7 +17,6 @@ Ideas:
 - [from Kirejara] "move the 'Wake all' and 'Wake transported' to the top of list in the unit menu.", "add a 'Wake by unit type'"
 - [from Sutsuj] Allow online MP games to have more than 8 players
 - [from AnthonyBoscia]
-  - Building prereq to build unit in city
   - Resource in city radius prereq for same
   - Era graphics changes for mines, radar towers, etc.
   - "Decoupling city icons from current building mechanics and assigning them elsewhere"
@@ -46,7 +42,6 @@ Ideas:
 - [from Romulo Prado] AI bombers should target barricades, particularly ones placed along its border
 - [from ynot56] Automatically reduce science spending as much as possible when one turn is left on research
 - [from vxma]
-  - Disable worker automation
   - AI's settler+escort combos don't do a good job of keeping out of danger
   - AI removes units from a city under threat even when the city doesn't have adequate defense
 - [from Takeo] Make spawn frequency of military & scientific leaders and frequency of unit promotions adjustable
@@ -54,9 +49,9 @@ Ideas:
   - "AI ability to try to detect and attack invisible units that are pillaging improvements (if it has detector units)"
   - "AI ability to strategically attack undamaged army units"
   - "A fix for Trade route calculations (e.g. Harbors) slowing down the game and causing lag in between turns"
+  - Perfume technologies
 - [from Predator145]
   - Improve AI usage of cruise & tactical missiles
-  - Enable AI to bring artillery & missiles along for naval invasions
   - Improve AI's usage of airlift, or enable it do so if it can't
   - Improve AI's building of fortresses & radar towers, enable it to build airfields
 - [from register] More culture groups
@@ -91,8 +86,9 @@ Ideas:
 - [from ynot56] When moving a group of units, stop the faster ones from losing all their remaining moves after the slowest reach their limit; Preserve surplus shields and beakers for the next project
 - [from justanick] Stop the AI from upgrading to units that are strictly inferior
 - [from haluu] Prevent land workers from working water tiles from boats
-- [from vmxa] In Civilopedia unit list, remember location in the list when viewing a unit then returning
-- [from Takeo] Easier way to pick specialist type, e.g. from a menu, to solve the problem of accidentally scrolling past the one you want
+- [from vmxa]
+  - In Civilopedia unit list, remember location in the list when viewing a unit then returning
+  - Stack unfortify-and-move units
 - [from Lord Malbeth]
   - Make HN unit city capturing rules consistent for both human and AI players. Right now AIs can capture cities with HN units without declaring war but human players cannot.
   - When players lose due to their king(s) dying, wait until the end of the turn to eliminate them from the game
@@ -100,15 +96,15 @@ Ideas:
   - Fix bug in AI war weariness.
   - Fix "maximum hypertext links exceeded"
   - More details in post here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-26#post-16197906
-- [from Civinator]
-  - Activate gold autofill when editing an amount of gold already on the table
-  - Enable buildings to produce resources
-  - Add ability to restrict unit types to being built in cities only with a certain improvement
+- [from Civinator] Activate gold autofill when editing an amount of gold already on the table
 - [from Alekseyev_]
   - Workers set to auto clean pollution don't drop that setting when there's no pollution left
   - Shield and science overflow
   - Allow cities founded on resources to benefit from bonus food
   - Play unit attack animation instead of missile animation when a flak or mobile SAM shoots down an aircraft
+  - On the stealth attack target selection popup, include units' HP for easier identification
+  - Investigate sub bug fix for invisible land units
+  - Encourage AI to build factory before other improvements. It might be undervaluing production bonuses or overvaluing pollution.
 - [from adz1061] Enable cities to expand cultural borders beyond 100000 culture
 - [from Meteor Man]
   - Easy way to un-group units on right click menu and/or separate out units with custom names
@@ -122,11 +118,51 @@ Ideas:
   - Allow construction of naval units in cities on lakes if that lake is connected to a sea through an intersection
 - [from tjs282] Fix B key being bound to both join city and bombard
 - [from Predator145] Restore PTW artillery and bomber targetting rules
-- [from Hazem]
-  - Improve defensive unit AI so it stands in threatened cities intead of nearby
-- [from CivFan94]
-  - Allow improvements as prereqs for unit construction
-  - Make adjustable the duration before an improvement/wonder becomes a tourist attraction
+- [from Hazem] Improve defensive unit AI so it stands in threatened cities intead of nearby
+- [from CivFan94] Make adjustable the duration before an improvement/wonder becomes a tourist attraction
 - [from Spoonwood] Stack sentry
 - [from Civinator]
   - Fix maximum hypertext links exceeded bug. More info here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-37#post-16283222, with an existing fix by editing the executable. More info about that fix here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-38#post-16285602.
+  - Enable enslaving by barbarians
+[from Chalito] Expand unit trading and/or allow the human player to gift units to the AI
+  - Stack wake
+    - Instead of adding a new command, this could be activated through the right-click menu e.g. by CTRL+clicking a group
+- [from ynot56] In the popup for a newly available small wonder w/ a resource requirement (e.g. iron works), include city where the build is available
+- [from Belofon]
+  - Stack skip turn, sentry, and wait
+  - Enable lethal defensive bombard or multiple points of damage with RoF > 1
+  - "units with "Cruise Missile" setting always have lethal bombardment for both land and sea whenever or not either is on (I recall making fireships
+  with "Cruise Missile" setting and lethal sea bombardment only for one of scenarios and seeing them killing land units);"
+  - Improved nuke targeting & reaction (no instant declarations of war)
+  - Fix freeze when stack moved units can't reach their destination (e.g. b/c they're blocked by a submarine)
+  - Confirmation pop-up for explore command
+- [from Nathiri] Self-destruct timer for units. See: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-41#post-16305437
+- [from haluu] Allow units to retreat if they're faster than their opponent (e.g. cavalry retreating from knight)
+- [from WildWeazel]
+  - More options for retreat behavior, like chance based on relative speeds, any unit can retreat, etc., details here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-43#post-16306973
+  - Increase defense of tile improvements vs bombardment to counterbalance stat inflation
+  - Maintenance costs for cities themselves
+  - Stop resources from respawning once exhausted
+  - Better AI logic for when to build settlers (considering pop required vs available)
+  - Restrict detection by unit domain (e.g. so destroyers can't reveal invisible land units)
+- [from ThesaurusRex] More realistic "actual" population numbers shown in city screen. In particular, make them smaller in the ancient era.
+- [from BrensharQuest] Multiple "classes" of the flags impassable-for-wheeled-units and replaces-all-improvs-with-this-flag-checked
+- [from Sutsuj] Enable units to provide free improvements to cities they're stationed in
+- [from Brenshar]
+  - Skip combat animations while shift is held down
+  - Keep combat log, especially useful when animations are off
+  - Enhance culture flip reducing effect of garrison units. Maybe add a cap, like 2 units per citizen guarantees no flip
+- [from sirati97]
+  - Enable carriers to be set to only carry aircraft with the foot unit tag
+  - Stop automated units with bombard ability from attacking friendlies
+  - Land transporters
+  - Enable HN artillery units to attack friendlies
+  - Fix "great wall bug": free walls bounce bombards onto other random building in same city, potentially destroying wonders
+  - Different categories for building "replace others with this flag" flags
+  - Optimize trade network calculation
+  - See for details: https://forums.civfanatics.com/threads/c3x-exe-mod-including-bug-fixes-stack-bombard-and-much-more.666881/page-46#post-16319627
+- [from Alekseyev_]
+  - "Bug report: Using stack-move/stack-rebase on a land unit that is immobile but posesses the 'rebase' ability will crash the game."
+  - "ability hotkeys don't seem to work when from the 'wrong' domain. On a land unit with recon ability, you have to click the recon icon, pressing R does not work"
+  - Stronger barb units unlocked by technologies. The tech level of each barb camp would be copied from the closest city.
+  - Caps lock to quickly skip combat animations instead of shift

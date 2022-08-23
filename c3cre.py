@@ -215,6 +215,14 @@ class CivProc:
                                         tr[go.name] = go
                 return tr
 
+        def find_int (self, x):
+                for p in self.find_mapped_pages ():
+                        mem_bytes = self.read_memory (p, 0x1000)
+                        mem_ints = [int.from_bytes (mem_bytes[4*n : 4*n+4], "little") for n in range (0x1000 // 4)]
+                        for n in range (len (mem_ints)):
+                                if mem_ints[n] == x:
+                                        print (str (hex (p + 4 * n)) + ": " + str (x))
+
         def read_game_objects_from_list (self, list_object_addr, type_tag):
                 items = self.read_int (list_object_addr + 0x4)
                 last_index = self.read_int (list_object_addr + 0x10)

@@ -17,9 +17,18 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 // To be used as placeholder second argument so that we can imitate thiscall convention with fastcall
 #define __ 0
 
-// C standard library functions have to be loaded dynamically with GetProcAddress and the addresses are stored in the injected state. This is covered
-// up with macros, which is not something I would normally do, but in this case it's very useful because it means the code in parse.c can be shared
-// by the patcher and the injected code.
+// Many Windows and C standard library functions have to be loaded dynamically with GetProcAddress and the addresses are stored in the injected
+// state. This is covered up with macros, which is not something I would normally do, but in this case it's very useful because it means the code in
+// common.c can be shared by the patcher and the injected code.
+#define VirtualProtect is->VirtualProtect
+#define CloseHandle is->CloseHandle
+#define CreateFileA is->CreateFileA
+#define GetFileSize is->GetFileSize
+#define ReadFile is->ReadFile
+#define MessageBoxA is->MessageBoxA
+#define MultiByteToWideChar is->MultiByteToWideChar
+#define WideCharToMultiByte is->WideCharToMultiByte
+#define GetLastError is->GetLastError
 #define snprintf is->snprintf
 #define malloc is->malloc
 #define calloc is->calloc
@@ -83,32 +92,6 @@ pop_up_in_game_error (char const * msg)
 	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
 	PopupForm_add_text (popup, __, (char *)msg, 0);
 	show_popup (popup, __, 0, 0);
-}
-
-char *
-file_to_string (char const * filepath)
-{
-	HANDLE file = is->CreateFileA (filepath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (file == INVALID_HANDLE_VALUE)
-		goto err_in_CreateFileA;
-	DWORD size = is->GetFileSize (file, NULL);
-	char * tr = malloc (size + 1);
-	if (tr == NULL)
-		goto err_in_malloc;
-	DWORD size_read = 0;
-	int success = is->ReadFile (file, tr, size, &size_read, NULL);
-	if ((! success) || (size_read != size))
-		goto err_in_ReadFile;
-	tr[size] = '\0';
-	is->CloseHandle (file);
-	return tr;
-
-err_in_ReadFile:
-	free (tr);
-err_in_malloc:
-	is->CloseHandle (file);
-err_in_CreateFileA:
-	return NULL;
 }
 
 void
@@ -439,7 +422,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 			if (! skip_punctuation (&cursor, ':'))
 				break;
 			struct string_slice unit_type_name;
-			while (parse_string (&cursor, &unit_type_name)) {
+			while (skip_white_space (&cursor) && parse_string (&cursor, &unit_type_name)) {
 				int unit_type_id;
 				if (find_unit_type_id_by_name (&unit_type_name, &unit_type_id)) {
 					if (have_building_id) {
@@ -493,11 +476,25 @@ read_building_unit_prereqs (struct string_slice const * s,
 	return success;
 }
 
+int
+read_retreat_rules (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (0 == strncmp (trimmed.str, "standard" , trimmed.len)) { *out_val = RR_STANDARD;  return 1; }
+	else if (0 == strncmp (trimmed.str, "none"     , trimmed.len)) { *out_val = RR_NONE;      return 1; }
+	else if (0 == strncmp (trimmed.str, "all-units", trimmed.len)) { *out_val = RR_ALL_UNITS; return 1; }
+	else if (0 == strncmp (trimmed.str, "if-faster", trimmed.len)) { *out_val = RR_IF_FASTER; return 1; }
+	else
+		return 0;
+
+}
+
 // Loads a config from the given file, layering it on top of is->current_config and appending its name to the list of loaded configs. Does NOT
 // re-apply machine code edits.
 void
 load_config (char const * file_path, int path_is_relative_to_mod_dir)
 {
+	char err_msg[1000];
 	struct c3x_config * cfg = &is->current_config;
 
 	int full_path_size = 2 * MAX_PATH;
@@ -508,15 +505,25 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		strncpy (full_path, file_path, full_path_size);
 	full_path[full_path_size - 1] = '\0';
 
-	char * text = file_to_string (full_path);
-	if (text == NULL) {
-		free (full_path);
-		return;
+	char * text; {
+		char * utf8_text = file_to_string (full_path);
+		if (utf8_text == NULL) {
+			free (full_path);
+			return;
+		}
+		text = utf8_to_windows1252 (utf8_text);
+		free (utf8_text);
+		if (text == NULL) {
+			snprintf (err_msg, sizeof err_msg, "Failed to re-encode contents of \"%s\". This file must contain UTF-8 text and only characters usable by Civ 3.", full_path);
+			err_msg[(sizeof err_msg) - 1] = '\0';
+			pop_up_in_game_error (err_msg);
+			free (full_path);
+			return;
+		}
 	}
 
 	char * cursor = text;
 	int displayed_error_message = 0;
-	char err_msg[1000];
 	struct error_line * unrecognized_lines = NULL;
 	while (1) {
 		skip_horiz_space (&cursor);
@@ -606,6 +613,14 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->dont_end_units_turn_after_airdrop = ival;
 				else if ((0 == strncmp (key.str, "enable_negative_pop_pollution", key.len)) && read_int (&value, &ival))
 					cfg->enable_negative_pop_pollution = ival;
+				else if ((0 == strncmp (key.str, "retreat_rules", key.len)) && read_retreat_rules (&value, &ival))
+					cfg->retreat_rules = ival;
+				else if ((0 == strncmp (key.str, "enable_ai_two_city_start", key.len)) && read_int (&value, &ival))
+					cfg->enable_ai_two_city_start = ival != 0;
+				else if ((0 == strncmp (key.str, "promote_forbidden_palace_decorruption", key.len)) && read_int (&value, &ival))
+					cfg->promote_forbidden_palace_decorruption = ival != 0;
+				else if ((0 == strncmp (key.str, "allow_military_leaders_to_hurry_wonders", key.len)) && read_int (&value, &ival))
+					cfg->allow_military_leaders_to_hurry_wonders = ival != 0;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -626,6 +641,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->remove_unit_limit = ival != 0;
 				else if ((0 == strncmp (key.str, "remove_era_limit", key.len)) && read_int (&value, &ival))
 					cfg->remove_era_limit = ival != 0;
+				else if ((0 == strncmp (key.str, "remove_cap_on_turn_limit", key.len)) && read_int (&value, &ival))
+					cfg->remove_cap_on_turn_limit = ival != 0;
 
 				else if ((0 == strncmp (key.str, "patch_submarine_bug", key.len)) && read_int (&value, &ival))
 					cfg->patch_submarine_bug = ival != 0;
@@ -648,7 +665,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->prevent_razing_by_ai_players = ival != 0;
 
 				else if (! displayed_error_message) {
-					snprintf (err_msg, sizeof err_msg, "Error processing key \"%.*s\" in \"%s\". Either the key is not recognized or the value is invalid.", key.len, key.str, full_path);
+					snprintf (err_msg, sizeof err_msg, "Error processing config option \"%.*s\" in \"%s\". Either the name of the option is not recognized or the value is invalid.", key.len, key.str, full_path);
 					err_msg[(sizeof err_msg) - 1] = '\0';
 					pop_up_in_game_error (err_msg);
 					displayed_error_message = 1;
@@ -749,6 +766,31 @@ wrap_tile_coords (Map * map, int * x, int * y)
 		if      (*y < 0)            *y += map->Height;
 		else if (*y >= map->Height) *y -= map->Height;
 	}
+}
+
+void
+tile_index_to_coords (Map * map, int index, int * out_x, int * out_y)
+{
+	if ((index >= 0) && (index < map->TileCount)) {
+		int width = map->Width;
+		int double_row = index / width, double_row_rem = index % width;
+		if (double_row_rem < width/2) {
+			*out_x = 2 * double_row_rem;
+			*out_y = 2 * double_row;
+		} else {
+			*out_x = 1 + 2 * (double_row_rem - width/2);
+			*out_y = 2 * double_row + 1;
+		}
+	} else
+		*out_x = *out_y = -1;
+}
+
+Tile *
+tile_at_index (Map * map, int i)
+{
+	int x, y;
+	tile_index_to_coords (map, i, &x, &y);
+	return tile_at (x, y);
 }
 
 void
@@ -1123,7 +1165,13 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, byte skip_popups
 	is->saved_tile_count = p_bic_data->Map.TileCount;
 	p_bic_data->Map.TileCount += is->count_mill_tiles;
 	Trade_Net_recompute_resources (this, __, skip_popups);
-	p_bic_data->Map.TileCount = is->saved_tile_count;
+
+	// Restore the tile count if necessary. It may have already been restored by patch_Map_Renderer_m71_Draw_Tiles. This happens when the call to
+	// recompute_resources above opens a popup message about connecting a resource for the first time, which triggers redraw of the map.
+	if (is->saved_tile_count >= 0) {
+		p_bic_data->Map.TileCount = is->saved_tile_count;
+		is->saved_tile_count = -1;
+	}
 }
 
 Tile *
@@ -1159,13 +1207,13 @@ patch_Tile_get_visible_resource_when_recomputing (Tile * tile, int edx, int civ_
 int
 check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect)
 {
-	if (is->VirtualProtect (addr, size, flags, old_protect))
+	if (VirtualProtect (addr, size, flags, old_protect))
 		return 1;
 	else {
 		char err_msg[1000];
 		snprintf (err_msg, sizeof err_msg, "VirtualProtect failed! Args:\n  Address: 0x%p\n  Size: %d\n  Flags: 0x%x", addr, size, flags);
 		err_msg[(sizeof err_msg) - 1] = '\0';
-		is->MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
+		MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
 		return 0;
 	}
 }
@@ -1173,7 +1221,7 @@ check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect
 #define WITH_MEM_PROTECTION(addr, size, flags)				                \
 	for (DWORD old_protect, unused, iter_count = 0;			                \
 	     (iter_count == 0) && check_virtual_protect (addr, size, flags, &old_protect); \
-	     is->VirtualProtect (addr, size, old_protect, &unused), iter_count++)
+	     VirtualProtect (addr, size, old_protect, &unused), iter_count++)
 
 void
 apply_machine_code_edits (struct c3x_config const * cfg)
@@ -1296,6 +1344,15 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	WITH_MEM_PROTECTION (ADDR_RESOURCE_TILE_COUNT_MASK, 1, PAGE_EXECUTE_READWRITE) {
 		*(byte *)ADDR_RESOURCE_TILE_COUNT_MASK = (cfg->count_mills > 0) ? 0xFF : 0x00;
 	}
+
+	byte * addr_turn_metalimits[] = {ADDR_TURN_METALIMIT_1, ADDR_TURN_METALIMIT_2, ADDR_TURN_METALIMIT_3, ADDR_TURN_METALIMIT_4,
+					 ADDR_TURN_METALIMIT_5, ADDR_TURN_METALIMIT_6, ADDR_TURN_METALIMIT_7};
+	for (int n = 0; n < (sizeof addr_turn_metalimits) / (sizeof addr_turn_metalimits[0]); n++) {
+		byte * addr = addr_turn_metalimits[n];
+		WITH_MEM_PROTECTION (addr, 4, PAGE_EXECUTE_READWRITE) {
+			int_to_bytes (addr, cfg->remove_cap_on_turn_limit ? 1000000 : 1000);
+		}
+	}
 }
 
 void
@@ -1310,15 +1367,16 @@ patch_init_floating_point ()
 	is->user32   = (*p_GetModuleHandleA) ("user32.dll");
 	is->msvcrt   = (*p_GetModuleHandleA) ("msvcrt.dll");
 
-	is->VirtualProtect = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualProtect");
-	is->CloseHandle    = (void *)(*p_GetProcAddress) (is->kernel32, "CloseHandle");
-	is->CreateFileA    = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
-	is->GetFileSize    = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
-	is->ReadFile       = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
-
-	is->MessageBoxA = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
-
-	// Remember the C std lib function names are macros that expand to is->...
+	// Remember the function names here are macros that expand to is->...
+	VirtualProtect      = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualProtect");
+	CloseHandle         = (void *)(*p_GetProcAddress) (is->kernel32, "CloseHandle");
+	CreateFileA         = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
+	GetFileSize         = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
+	ReadFile            = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
+	MultiByteToWideChar = (void *)(*p_GetProcAddress) (is->kernel32, "MultiByteToWideChar");
+	WideCharToMultiByte = (void *)(*p_GetProcAddress) (is->kernel32, "WideCharToMultiByte");
+	GetLastError        = (void *)(*p_GetProcAddress) (is->kernel32, "GetLastError");
+	MessageBoxA = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
 	snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
 	malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
 	calloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "calloc");
@@ -1377,7 +1435,7 @@ patch_init_floating_point ()
 			char err_msg[500];
 			snprintf (err_msg, sizeof err_msg, "Couldn't read labels from %s\nPlease make sure the file exists. If you moved the modded EXE you must move the mod folder after it.", labels_path);
 			err_msg[(sizeof err_msg) - 1] = '\0';
-			is->MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
+			MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
 		}
 	}
 
@@ -1413,6 +1471,7 @@ patch_init_floating_point ()
 	is->mill_tiles = NULL;
 	is->count_mill_tiles = 0;
 	is->mill_tiles_capacity = 0;
+	is->saved_tile_count = -1;
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -1999,6 +2058,13 @@ intercept_end_of_turn ()
 	is->have_job_and_loc_to_skip = 0;
 }
 
+int
+is_worker_or_settler_command (int unit_command_value)
+{
+	return (unit_command_value & 0x20000000) ||
+		((unit_command_value >= UCV_Build_Remote_Colony) && (unit_command_value <= UCV_Auto_Save_Tiles));
+}
+
 byte __fastcall
 patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 {
@@ -2007,7 +2073,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 	    (unit_command_value == UCV_Automate))
 		return 0;
 	else if (is->current_config.disallow_land_units_from_affecting_water_tiles &&
-		 (unit_command_value & 0x20000000)) { // checks if the command value is in the worker/settler category
+		 is_worker_or_settler_command (unit_command_value)) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
 		enum UnitTypeClasses class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
 		return ((class != UTC_Land) || (! tile->vtable->m35_Check_Is_Water (tile))) &&
@@ -2565,6 +2631,19 @@ get_city_near (int x, int y)
 	return NULL;
 }
 
+byte __fastcall
+patch_Unit_can_hurry_production (Unit * this, int edx, City * city, byte exclude_cheap_improvements)
+{
+	if (is->current_config.allow_military_leaders_to_hurry_wonders && Unit_has_ability (this, __, UTA_Leader)) {
+		LeaderKind actual_kind = this->Body.leader_kind;
+		this->Body.leader_kind = LK_Scientific;
+		byte tr = Unit_can_hurry_production (this, __, city, exclude_cheap_improvements);
+		this->Body.leader_kind = actual_kind;
+		return tr;
+	} else
+		return Unit_can_hurry_production (this, __, city, exclude_cheap_improvements);
+}
+
 int
 any_enemies_near (Leader const * me, int tile_x, int tile_y, enum UnitTypeClasses class, int num_tiles)
 {
@@ -2809,7 +2888,7 @@ patch_Unit_ai_move_leader (Unit * this)
 			if ((city != NULL) && (city->Body.CivID == this->Body.CivID)) {
 				Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
 				if ((continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) &&
-				    Unit_can_hurry_production (this, __, city, 0)) {
+				    patch_Unit_can_hurry_production (this, __, city, 0)) {
 					// Base value is equal to the number of shields rushing would save
 					int value = City_get_order_cost (city) - City_get_order_progress (city) - city->Body.ProductionIncome;
 					if (value <= 0)
@@ -3753,13 +3832,31 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 int __fastcall
 patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, byte is_production)
 {
-	if (is->current_config.zero_corruption_when_off) {
-		Government * govt = &p_bic_data->Governments[leaders[this->Body.CivID].GovernmentType];
-		if (govt->CorruptionAndWaste == CWT_Off)
-			return 0;
+	Leader * leader = &leaders[this->Body.CivID];
+
+	if (is->current_config.zero_corruption_when_off &&
+	    (p_bic_data->Governments[leader->GovernmentType].CorruptionAndWaste == CWT_Off))
+		return 0;
+
+	int tr = City_compute_corrupted_yield (this, __, gross_yield, is_production);
+
+	if (is->current_config.promote_forbidden_palace_decorruption) {
+		int actual_capital_id = leader->CapitalID;
+		for (int improv_id = 0; improv_id < p_bic_data->ImprovementsCount; improv_id++) {
+			Improvement * improv = &p_bic_data->Improvements[improv_id];
+			City * fp_city;
+			if ((improv->SmallWonderFlags & ITSW_Reduces_Corruption) &&
+			    (NULL != (fp_city = get_city_ptr (leader->Small_Wonders[improv_id])))) {
+				leader->CapitalID = fp_city->Body.ID;
+				int fp_corrupted_yield = City_compute_corrupted_yield (this, __, gross_yield, is_production);
+				if (fp_corrupted_yield < tr)
+					tr = fp_corrupted_yield;
+			}
+		}
+		leader->CapitalID = actual_capital_id;
 	}
 
-	return City_compute_corrupted_yield (this, __, gross_yield, is_production);
+	return tr;
 }
 
 void __fastcall
@@ -3997,6 +4094,239 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 				break;
 			}
 	}
+}
+
+void __fastcall
+patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direction, Unit * defender)
+{
+	Fighter_begin (this, __, attacker, attack_direction, defender);
+
+	// Apply override of retreat eligibility
+	// Must use this->defender instead of the defender argument since the argument is often NULL, in which case Fighter_begin finds a defender on
+	// the target tile and stores it in this->defender. Also must check that against NULL since Fighter_begin might fail to find a defender.
+	enum retreat_rules retreat_rules = is->current_config.retreat_rules;
+	if ((retreat_rules != RR_STANDARD) && (this->defender != NULL) && (p_bic_data->UnitTypes[this->attacker->Body.UnitTypeID].Unit_Class == UTC_Land)) {
+		if (retreat_rules == RR_NONE)
+			this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 0;
+		else if (retreat_rules == RR_ALL_UNITS)
+			this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 1;
+		else if (retreat_rules == RR_IF_FASTER) {
+			int diff = Unit_get_max_move_points (this->attacker) - Unit_get_max_move_points (this->defender);
+			this->attacker_eligible_to_retreat = diff > 0;
+			this->defender_eligible_to_retreat = diff < 0;
+		}
+		this->defender_eligible_to_retreat &= city_at (this->defender_location_x, this->defender_location_y) == NULL;
+	}
+}
+
+void __fastcall
+patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, int param_2, int param_3)
+{
+	// Restore the tile count if it was saved by recompute_resources. This is necessary because the Draw_Tiles method loops over all tiles.
+	if (is->saved_tile_count >= 0) {
+		p_bic_data->Map.TileCount = is->saved_tile_count;
+		is->saved_tile_count = -1;
+	}
+
+	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
+}
+
+// Returns -1 if the location is unusable, 0-9 if it's usable but doesn't satisfy all criteria, and 10 if it couldn't be better
+int
+eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, int tile_y, int civ_id)
+{
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile != p_null_tile) &&
+	    (patch_Map_check_city_location (map, __, tile_x, tile_y, civ_id, 1) == CLV_OK) &&
+	    (tile->vtable->m15_Check_Goody_Hut (tile, __, 0) == 0) &&
+	    (tile->vtable->m40_get_TileUnit_ID (tile) == -1)) {
+		int tr = 0;
+
+		// Avoid this location if it's too close to another starting location. If it's much too close, it's ruled out entirely.
+		int closest_dist = INT_MAX;
+		for (int n = 1; n <= map->Civ_Count; n++)
+			if (map->Starting_Locations[n] >= 0) {
+				int other_x, other_y;
+				tile_index_to_coords (map, map->Starting_Locations[n], &other_x, &other_y);
+				int dist = Map_get_x_dist (map, __, tile_x, other_x) + Map_get_y_dist (map, __, tile_y, other_y);
+				if (dist < closest_dist)
+					closest_dist = dist;
+			}
+		for (int n = 0; n < 32; n++)
+			if (alt_starting_locs[n] >= 0) {
+				int other_x, other_y;
+				tile_index_to_coords (map, alt_starting_locs[n], &other_x, &other_y);
+				int dist = Map_get_x_dist (map, __, tile_x, other_x) + Map_get_y_dist (map, __, tile_y, other_y);
+				if (dist < closest_dist)
+					closest_dist = dist;
+			}
+		if (closest_dist < map->Civ_Distance/3)
+			return -1;
+		else if (closest_dist >= 2*map->Civ_Distance/3)
+			tr += 1;
+
+		// Avoid tiny islands
+		// tr += map->vtable->m33_Get_Continent (map, __, tile->ContinentID)->Body.TileCount >= 20;
+
+		// Avoid garbage terrain, e.g. all desert or tundra
+		int break_even_food_tiles = 0;
+		FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+			int x, y;
+			tai_get_coords (&tai, &x, &y);
+			int tile_food = Map_calc_food_yield_at (map, __, x, y, tai.tile->vtable->m50_Get_Square_BaseType (tai.tile), civ_id, 0, NULL);
+			int food_required = p_bic_data->General.FoodPerCitizen + (tai.tile->vtable->m35_Check_Is_Water (tai.tile) ? 1 : 0);
+			break_even_food_tiles += tile_food >= food_required;
+		}
+		tr += break_even_food_tiles >= 2;
+
+		// Avoid wasting a food bonus
+		tr += (tile->ResourceType < 0) || (tile->ResourceType >= p_bic_data->ResourceTypeCount) ||
+			(p_bic_data->ResourceTypes[tile->ResourceType].Food == 0);
+
+		int max_score = 3;
+		return (10*tr)/max_score;
+	} else
+		return -1;
+}
+
+City *
+create_starter_city (Map * map, int civ_id, int tile_index)
+{
+	int x, y;
+	tile_index_to_coords (map, tile_index, &x, &y);
+	return Leader_create_city (&leaders[civ_id], __, x, y, leaders[civ_id].RaceID, -1, NULL, 1);
+}
+
+void
+set_up_ai_two_city_start (Map * map)
+{
+	// Set of bits determining which players are eligible for the two-city start
+	int eligibility_bits = 0,
+	    count_eligible_civs = 0;
+	for (int n = 1; n < 32; n++)
+		if ((*p_player_bits & 1<<n) && // if there is an active player in this slot AND
+		    ((*p_human_player_bits & 1<<n) == 0) && // that player is an AI AND
+		    (leaders[n].Cities_Count == 0) && // does not have any cities AND
+		    (tile_at_index (map, map->Starting_Locations[n]) != p_null_tile)) { // has a valid starting location
+			eligibility_bits |= 1 << n;
+			count_eligible_civs++;
+		}
+
+	if (count_eligible_civs == 0)
+		return;
+
+	char load_text[50];
+	snprintf (load_text, sizeof load_text, "%s...", is->c3x_labels[CL_CREATING_CITIES]);
+	load_text[(sizeof load_text) - 1] = '\0';
+	Main_GUI_label_loading_bar (&p_main_screen_form->GUI, __, 1, load_text);
+
+	// Generate an alternate set of starting locations
+	int alt_starting_locs[32]; {
+		for (int n = 0; n < 32; n++)
+			alt_starting_locs[n] = -1;
+
+		for (int civ_id = 1; civ_id < 32; civ_id++)
+			if (eligibility_bits & 1<<civ_id) {
+				int best_loc_val   = -1,
+				    best_loc_index = -1;
+
+				for (int try = 0; try < 1000; try++) {
+					int i_loc = rand_int (p_rand_object, __, map->TileCount);
+					int x_loc, y_loc;
+					tile_index_to_coords (map, i_loc, &x_loc, &y_loc);
+					if ((x_loc >= 0) && (y_loc >= 0)) {
+						int val = eval_starting_location (map, alt_starting_locs, x_loc, y_loc, civ_id);
+						if (val >= 10) {
+							best_loc_index = i_loc;
+							break;
+						} else if (val > best_loc_val) {
+							best_loc_val = val;
+							best_loc_index = i_loc;
+						}
+					}
+				}
+
+				if (best_loc_index >= 0)
+					alt_starting_locs[civ_id] = best_loc_index;
+			}
+	}
+
+	int size_of_unit_counts = p_bic_data->UnitTypeCount * sizeof(int);
+	int * unit_counts = malloc (size_of_unit_counts);
+	int units_to_move_capacity = 100;
+	Unit ** units_to_move = calloc (units_to_move_capacity, sizeof units_to_move[0]);
+
+	int count_cities_created = 0;
+	for (int civ_id = 1; civ_id < 32; civ_id++)
+		if ((eligibility_bits & 1<<civ_id) &&
+		    (alt_starting_locs[civ_id] >= 0)) {
+			int sloc = map->Starting_Locations[civ_id];
+
+			// Identify AI's starting settler
+			Unit * starting_settler = NULL;
+			FOR_UNITS_ON (tai, tile_at_index (map, sloc)) {
+				if (p_bic_data->UnitTypes[tai.unit->Body.UnitTypeID].AI_Strategy & UTAI_Settle) {
+					starting_settler = tai.unit;
+					break;
+				}
+			}
+
+			create_starter_city (map, civ_id, sloc); // create capital city
+			City * fp_city = create_starter_city (map, civ_id, alt_starting_locs[civ_id]); // create FP city
+			count_cities_created += 2;
+
+			if (count_cities_created % 4 == 0) {
+				int progress = 100 * count_cities_created / (2 * count_eligible_civs);
+				snprintf (load_text, sizeof load_text, "%s %d%%", is->c3x_labels[CL_CREATING_CITIES], progress);
+				load_text[(sizeof load_text) - 1] = '\0';
+				Main_GUI_label_loading_bar (&p_main_screen_form->GUI, __, 1, load_text);
+			}
+
+			// Delete starting settler so it's as if it was consumed to found the capital
+			if (starting_settler != NULL)
+				Unit_despawn (starting_settler, __, 0, 1, 0, 0, 0, 0, 0);
+
+			// Add forbidden palace to FP city
+			for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+				Improvement * improv = &p_bic_data->Improvements[n];
+				if ((improv->Characteristics & ITC_Small_Wonder) && // is a small wonder AND
+				    (improv->SmallWonderFlags & ITSW_Reduces_Corruption) && // reduces corruption AND
+				    ((improv->RequiredID < 0) || Leader_has_tech (&leaders[civ_id], __, improv->RequiredID)) && // tech requirement satisfied AND
+				    ((improv->ObsoleteID < 0) || ! Leader_has_tech (&leaders[civ_id], __, improv->ObsoleteID)) && // is not obsolete AND
+				    ((improv->GovernmentID < 0) || (improv->GovernmentID == leaders[civ_id].GovernmentType)) && // is not restricted to another govt AND
+				    (improv->Resource1ID < 0) && (improv->Resource2ID < 0)) { // does not require resources
+					patch_City_add_or_remove_improvement (fp_city, __, n, 1, 1);
+					break;
+				}
+			}
+
+			// Move half of the AI's starting units over to the FP city. Its starting units from difficulty are already spawned at map
+			// point since their spawn is triggered by the creation of the AI's first city.
+			int count_units_to_move = 0;
+			memset (unit_counts, 0, size_of_unit_counts);
+			FOR_UNITS_ON (tai, tile_at_index (map, sloc)) {
+				int * p_count = &unit_counts[tai.unit->Body.UnitTypeID];
+				*p_count += 1;
+				if ((*p_count % 2 == 0) && (count_units_to_move < units_to_move_capacity))
+					units_to_move[count_units_to_move++] = tai.unit;
+			}
+			for (int n = 0; n < count_units_to_move; n++) {
+				int x, y;
+				tile_index_to_coords (map, alt_starting_locs[civ_id], &x, &y);
+				Unit_move (units_to_move[n], __, x, y);
+			}
+		}
+
+	free (units_to_move);
+	free (unit_counts);
+}
+
+void __fastcall
+patch_Map_process_after_placing (Map * this, int edx, byte param_1)
+{
+	if (is->current_config.enable_ai_two_city_start && (*p_current_turn_no == 0))
+		set_up_ai_two_city_start (this);
+	Map_process_after_placing (this, __, param_1);
 }
 
 void

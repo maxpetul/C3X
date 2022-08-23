@@ -33,3 +33,6 @@ Version
 
 ; Also used on mod info popup
 Config files loaded
+
+; Appears on loading bar during setup of two-city start
+Creating cities

@@ -45,7 +45,7 @@ typedef struct Worker_Job Worker_Job;
 typedef struct World_Size World_Size;
 typedef struct Cultural_Levels Cultural_Levels;
 typedef struct General General;
-typedef struct Unknown_5 Unknown_5;
+typedef struct Fighter Fighter;
 typedef struct Unknown_6 Unknown_6;
 typedef struct Tile_Type_Image Tile_Type_Image;
 typedef struct Improvement Improvement;
@@ -1479,7 +1479,7 @@ struct Tile_vtable
   int (__fastcall *m12_Check_Forest_Pines)(Tile *);
   int (__fastcall *m13_Check_Fortress)(Tile *, __, int);
   char (__fastcall *m14_Check_Barricade)(Tile *, __, int);
-  int (__fastcall *m15_Check_Goody_Hut)(Tile *, __, int);
+  char (__fastcall *m15_Check_Goody_Hut)(Tile *, __, int);
   int m16;
   char (__fastcall *m17_Check_Irrigation)(Tile *, __, int);
   int (__fastcall *m18_Check_Mines)(Tile *, __, int);
@@ -1850,8 +1850,7 @@ struct Map_vtable
   int m11_Get_Tile_by_XY2;
 //  Tile *(__thiscall *m12_Get_Tile_by_XY)(Map *, int, int);
   void *m12_Get_Tile_by_XY;
-//  Tile *(__thiscall *m13_Get_Tile_by_Index)(Map *, int);
-  void *m13_Get_Tile_by_Index;
+  Tile *(__fastcall * m13_Get_Tile_by_Index) (Map *, int, int);
   int m14;
   int m15_null;
   int m16;
@@ -1876,8 +1875,7 @@ struct Map_vtable
   void *m31;
 //  void (__thiscall *m32)(Map *);
   void *m32;
-//  int (__thiscall *m33_Get_Continent)(Map *, int);
-  void *m33_Get_Continent;
+  Continent * (__fastcall * m33_Get_Continent) (Map *, int, int);
 //  int (__thiscall *m34_Get_Continent_Count)(Map *);
   void *m34_Get_Continent_Count;
 //  int (__thiscall *m35_Get_BIC_Sub_Data)(Map *this, int Object_Type, int Object_Index, void *Object);
@@ -2040,9 +2038,20 @@ struct General
   int FoodUpdateCost;
 };
 
-struct Unknown_5
+struct Fighter
 {
-  int V[9];
+  Unit * attacker;
+  Unit * defender;
+  byte defender_eligible_to_retreat;
+  byte attacker_eligible_to_retreat;
+  byte field_A;
+  byte field_B;
+  int attack_direction;
+  int field_10;
+  int attacker_location_x;
+  int attacker_location_y;
+  int defender_location_x;
+  int defender_location_y;
 };
 
 struct Unknown_6
@@ -4856,7 +4865,7 @@ struct BIC
   int ScreenHeight;
   int field_3E38;
   int field_3E3C;
-  Unknown_5 Unknown5;
+  Fighter fighter;
   Map Map;
 };
 

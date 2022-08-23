@@ -222,12 +222,6 @@ is_horiz_space (char c)
 }
 
 int
-is_alpha_num (char c)
-{
-	return (c == '_') || ((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z')) || ((c >= '0') && (c <= '9'));
-}
-
-int
 skip_horiz_space (char ** p_cursor)
 {
 	char * cur = *p_cursor;
@@ -347,6 +341,25 @@ read_int (struct string_slice const * s, int * out_val)
 		return 0;
 }
 
+char const windows1252_alpha_nums[256] = {
+	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, // control chars
+	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, // control chars
+	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, //   ! " #   $ % & '   ( ) * +   , - . /
+	1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 0, 0,   0, 0, 0, 0, // 0 1 2 3   4 5 6 7   8 9 : ;   < = > ?
+	0, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1, // @ A B C   D E F G   H I J K   L M N O
+	1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 0,   0, 0, 0, 1, // P Q R S   T U V W   X Y Z [   \ ] ^ _
+	0, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1, // ` a b c   d e f g   h i j k   l m n o
+	1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 0,   0, 0, 0, 0, // p q r s   t u v w   x y z {   | } ~
+	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 1, 0,   1, 0, 1, 0, // €   ‚ ƒ   „ … † ‡   ˆ ‰ Š ‹   Œ   Ž
+	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 1, 0,   1, 0, 1, 1, //   ‘ ’ “   ” • – —   ˜ ™ š ›   œ   ž Ÿ
+	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, //   ¡ ¢ £   ¤ ¥ ¦ §   ¨ © ª «   ¬   ® ¯
+	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, // ° ± ² ³   ´ µ ¶ ·   ¸ ¹ º »   ¼ ½ ¾ ¿
+	1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1, // À Á Â Ã   Ä Å Æ Ç   È É Ê Ë   Ì Í Î Ï
+	1, 1, 1, 1,   1, 1, 1, 0,   1, 1, 1, 1,   1, 1, 1, 1, // Ð Ñ Ò Ó   Ô Õ Ö ×   Ø Ù Ú Û   Ü Ý Þ ß
+	1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1,   1, 1, 1, 1, // à á â ã   ä å æ ç   è é ê ë   ì í î ï
+	1, 1, 1, 1,   1, 1, 1, 0,   1, 1, 1, 1,   1, 1, 1, 1, // ð ñ ò ó   ô õ ö ÷   ø ù ú û   ü ý þ ÿ
+};
+
 int
 parse_string (char ** p_cursor, struct string_slice * out)
 {
@@ -361,7 +374,7 @@ parse_string (char ** p_cursor, struct string_slice * out)
 			cur++;
 	} else {
 		str_start = cur;
-		while (is_alpha_num (*cur) || (*cur == '-') || (*cur == '.'))
+		while (windows1252_alpha_nums[*(unsigned char *)cur] || (*cur == '_') || (*cur == '-') || (*cur == '.'))
 			cur++;
 	}
 	int str_len = cur - str_start;
@@ -466,19 +479,22 @@ trim_and_extract_slice (struct string_slice const * s, int remove_quotes)
 	return extract_slice (&trimmed);
 }
 
+// Parses a single row from civ_prog_objects.csv. The CSV file contains multiple columns for addresses but this method only reads one, specified by
+// index in addr_column.
 int
-parse_civ_prog_object (char ** p_cursor, struct civ_prog_object * out)
+parse_civ_prog_object (char ** p_cursor, int addr_column, struct civ_prog_object * out)
 {
 	char * cursor = *p_cursor;
-	struct string_slice columns[5];
-	for (int n = 0; n < 5; n++) {
+	struct string_slice columns[6];
+	int count_columns = (sizeof columns) / (sizeof columns[0]);
+	for (int n = 0; n < count_columns; n++) {
 		if (parse_csv_value (&cursor, &columns[n].str, &columns[n].len)) {
 			char c = *cursor; // Check character after value for errors & to skip if necessary
-			if ((n < 4) && (c == ',')) // Before the last column, the value must end in a comma. Skip it if it's present.
+			if ((n < count_columns - 1) && (c == ',')) // Before the last column, the value must end in a comma. Skip it if it's present.
 				cursor++;
-			else if ((n == 4) && (c == '\n')) // If the last column ends in a new line, skip it.
+			else if ((n == count_columns - 1) && (c == '\n')) // If the last column ends in a new line, skip it.
 				cursor++;
-			else if ((n == 4) && (c == '\0')) // If it ends in a null terminator that's OK but don't skip it.
+			else if ((n == count_columns - 1) && (c == '\0')) // If it ends in a null terminator that's OK but don't skip it.
 				;
 			else // Anything else is an error
 				return 0;
@@ -488,14 +504,73 @@ parse_civ_prog_object (char ** p_cursor, struct civ_prog_object * out)
 
 	struct civ_prog_object tr;
 	if (read_object_job (&columns[0], &tr.job) &&
-	    read_int (&columns[1], &tr.gog_addr) &&
-	    read_int (&columns[2], &tr.steam_addr)) {
-		tr.name = trim_and_extract_slice (&columns[3], 1);
-		tr.type = trim_and_extract_slice (&columns[4], 1);
+	    read_int (&columns[addr_column], &tr.addr)) {
+		tr.name = trim_and_extract_slice (&columns[4], 1);
+		tr.type = trim_and_extract_slice (&columns[5], 1);
 		*out = tr;
 		*p_cursor = cursor;
 		return 1;
 	} else
 		return 0;
 
+}
+
+
+
+// =======================================
+// ||                                   ||
+// ||     TEXT LOADING AND ENCODING     ||
+// ||                                   ||
+// =======================================
+
+char *
+file_to_string (char const * filepath)
+{
+	HANDLE file = CreateFileA (filepath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (file == INVALID_HANDLE_VALUE)
+		goto err_in_CreateFileA;
+	DWORD size = GetFileSize (file, NULL);
+	char * tr = malloc (size + 1);
+	if (tr == NULL)
+		goto err_in_malloc;
+	DWORD size_read = 0;
+	int success = ReadFile (file, tr, size, &size_read, NULL);
+	if ((! success) || (size_read != size))
+		goto err_in_ReadFile;
+	tr[size] = '\0';
+	CloseHandle (file);
+	return tr;
+
+err_in_ReadFile:
+	free (tr);
+err_in_malloc:
+	CloseHandle (file);
+err_in_CreateFileA:
+	return NULL;
+}
+
+// Re-encodes a text buffer from UTF-8 to Windows-1252, a single-byte encoding used internally by Civ 3.
+char *
+utf8_to_windows1252 (char const * text)
+{
+	int text_len = strlen (text);
+	int wide_text_size = 2 * (text_len + 1); // Size of wide text buffer in bytes. Each char is 2 bytes, +1 char for null terminator
+
+	void * wide_text = malloc (wide_text_size);
+	int wide_text_len = MultiByteToWideChar (CP_UTF8, MB_ERR_INVALID_CHARS | MB_PRECOMPOSED, text, -1, wide_text, text_len + 1);
+	if (wide_text_len == 0) { // Error
+		free (wide_text);
+		return NULL;
+	}
+
+	void * tr = malloc (text_len + 1);
+	int bytes_written = WideCharToMultiByte (1252, 0, wide_text, -1, tr, text_len + 1, NULL, NULL);
+	if (bytes_written == 0) { // Error
+		free (tr);
+		free (wide_text);
+		return NULL;
+	}
+
+	free (wide_text);
+	return tr;
 }

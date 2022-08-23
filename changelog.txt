@@ -1,4 +1,19 @@
-* RELEASE 10C
+* RELEASE 12B
+- AI two-city start
+- Remove cap on turn limit
+- Option to strengthen forbidden palace decorruption effect to match the palace's
+- Option to allow military great leaders to hurry wonders
+
+* RELEASE 12
+- Support for the executable from PCGames.de
+- Option to modify rules for retreat eligibility
+- Re-encode config file contents to match Civ 3's internal encoding
+  - Config files should be encoded in UTF-8. They will be converted to Windows-1252 when loaded.
+- Accented Latin characters no longer separate words
+- Fix crash when a building-generated resource triggers the advisor popup for first connection
+- Fix workers in boats can do "extra" jobs (road-to, auto-irrigate, etc.) despite restriction
+
+* RELEASE 11
 - Buildings can generate resources
 - Buildings can be set as prerequisites for unit production
 - On the city screen, hold shift when clicking a specialist to switch to the previous type

@@ -8,7 +8,7 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
-#define MOD_VERSION 1002
+#define MOD_VERSION 1201
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -31,6 +31,13 @@ struct mill {
 	int improv_id;
 	int resource_id;
 	int is_local;
+};
+
+enum retreat_rules {
+	RR_STANDARD = 0,
+	RR_NONE,
+	RR_ALL_UNITS,
+	RR_IF_FASTER
 };
 
 struct c3x_config {
@@ -72,6 +79,10 @@ struct c3x_config {
 	char disallow_land_units_from_affecting_water_tiles;
 	char dont_end_units_turn_after_airdrop;
 	char enable_negative_pop_pollution;
+	enum retreat_rules retreat_rules;
+	char enable_ai_two_city_start;
+	char promote_forbidden_palace_decorruption;
+	char allow_military_leaders_to_hurry_wonders;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
@@ -83,6 +94,7 @@ struct c3x_config {
 
 	char remove_unit_limit;
 	char remove_era_limit;
+	char remove_cap_on_turn_limit;
 
 	char patch_submarine_bug;
 	char patch_science_age_bug;
@@ -161,6 +173,7 @@ enum c3x_label {
 	CL_MOD_INFO_BUTTON_TEXT,
 	CL_VERSION,
 	CL_CONFIG_FILES_LOADED,
+	CL_CREATING_CITIES,
 	COUNT_C3X_LABELS
 };
 
@@ -206,6 +219,9 @@ struct injected_state {
 	HANDLE (WINAPI * CreateFileA) (LPCSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
 	DWORD (WINAPI * GetFileSize) (HANDLE, LPDWORD);
 	WINBOOL (WINAPI * ReadFile) (HANDLE, LPVOID, DWORD, LPDWORD, LPOVERLAPPED);
+	int (WINAPI * MultiByteToWideChar) (UINT, DWORD, LPCCH, int, LPWSTR, int);
+	int (WINAPI * WideCharToMultiByte) (UINT, DWORD, LPCWCH, int, LPSTR, int, LPCCH, LPBOOL);
+	int (WINAPI * GetLastError) ();
 
 	// Win32 funcs from user32.dll
 	int (WINAPI * MessageBoxA) (HWND, LPCSTR, LPCSTR, UINT);
@@ -356,7 +372,7 @@ struct injected_state {
 	int count_mill_tiles;
 	int mill_tiles_capacity;
 	struct mill_tile * got_mill_tile;
-	int saved_tile_count;
+	int saved_tile_count; // Stores the actual tile count in case p_bic_data->Map.TileCount was temporarily overwritten. Set to -1 when empty.
 
 	// ==========
 	// }
@@ -373,8 +389,7 @@ enum object_job {
 
 struct civ_prog_object {
 	enum object_job job;
-	int gog_addr;
-	int steam_addr;
+	int addr;
 	char const * name;
 	char const * type;
 };
