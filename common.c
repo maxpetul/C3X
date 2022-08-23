@@ -553,11 +553,15 @@ err_in_CreateFileA:
 char *
 utf8_to_windows1252 (char const * text)
 {
+	// Skip the UTF-8 byte order mark, if present
+	if (0 == strncmp (text, "\xEF\xBB\xBF", 3))
+		text += 3;
+
 	int text_len = strlen (text);
 	int wide_text_size = 2 * (text_len + 1); // Size of wide text buffer in bytes. Each char is 2 bytes, +1 char for null terminator
 
 	void * wide_text = malloc (wide_text_size);
-	int wide_text_len = MultiByteToWideChar (CP_UTF8, MB_ERR_INVALID_CHARS | MB_PRECOMPOSED, text, -1, wide_text, text_len + 1);
+	int wide_text_len = MultiByteToWideChar (CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, wide_text, text_len + 1);
 	if (wide_text_len == 0) { // Error
 		free (wide_text);
 		return NULL;
