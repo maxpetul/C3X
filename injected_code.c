@@ -1345,7 +1345,8 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		*(byte *)ADDR_RESOURCE_TILE_COUNT_MASK = (cfg->count_mills > 0) ? 0xFF : 0x00;
 	}
 
-	byte * addr_turn_metalimits[] = {ADDR_TURN_METALIMIT_1, ADDR_TURN_METALIMIT_2, ADDR_TURN_METALIMIT_3, ADDR_TURN_METALIMIT_4, ADDR_TURN_METALIMIT_5, ADDR_TURN_METALIMIT_6};
+	byte * addr_turn_metalimits[] = {ADDR_TURN_METALIMIT_1, ADDR_TURN_METALIMIT_2, ADDR_TURN_METALIMIT_3, ADDR_TURN_METALIMIT_4,
+					 ADDR_TURN_METALIMIT_5, ADDR_TURN_METALIMIT_6, ADDR_TURN_METALIMIT_7};
 	for (int n = 0; n < (sizeof addr_turn_metalimits) / (sizeof addr_turn_metalimits[0]); n++) {
 		byte * addr = addr_turn_metalimits[n];
 		WITH_MEM_PROTECTION (addr, 4, PAGE_EXECUTE_READWRITE) {

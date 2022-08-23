@@ -206,6 +206,7 @@ define,	   0x54E2E0,	0x55925B,	0x54E340,	"ADDR_TURN_METALIMIT_3",			"byte *"
 define,	   0x54E2E7,	0x559262,	0x54E347,	"ADDR_TURN_METALIMIT_4",			"byte *"
 define,	   0x584163,	0x59100F,	0x583EC3,	"ADDR_TURN_METALIMIT_5",			"byte *"
 define,	   0x5817B2,	0x58E4E2,	0x581512,	"ADDR_TURN_METALIMIT_6",			"byte *"
+define,	   0x492100,	0x496751,	0x492190,	"ADDR_TURN_METALIMIT_7",			"byte *"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
