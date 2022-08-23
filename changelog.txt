@@ -1,3 +1,9 @@
+* RELEASE 12B
+- AI two-city start
+- Remove cap on turn limit
+- Option to strengthen forbidden palace decorruption effect to match the palace's
+- Option to allow military great leaders to hurry wonders
+
 * RELEASE 12
 - Support for the executable from PCGames.de
 - Option to modify rules for retreat eligibility
