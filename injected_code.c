@@ -4172,7 +4172,9 @@ eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, in
 
 		// Avoid garbage terrain, e.g. all desert or tundra
 		int break_even_food_tiles = 0;
-		FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+		FOR_TILES_AROUND (tai, 21, tile_x, tile_y) {
+			if (tai.n == 0)
+				continue; // Skip tile that would be covered by the city
 			int x, y;
 			tai_get_coords (&tai, &x, &y);
 			int tile_food = Map_calc_food_yield_at (map, __, x, y, tai.tile->vtable->m50_Get_Square_BaseType (tai.tile), civ_id, 0, NULL);
