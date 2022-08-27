@@ -617,6 +617,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->retreat_rules = ival;
 				else if ((0 == strncmp (key.str, "enable_ai_two_city_start", key.len)) && read_int (&value, &ival))
 					cfg->enable_ai_two_city_start = ival != 0;
+				else if ((0 == strncmp (key.str, "max_tries_to_place_fp_city", key.len)) && read_int (&value, &ival))
+					cfg->max_tries_to_place_fp_city = ival;
 				else if ((0 == strncmp (key.str, "promote_forbidden_palace_decorruption", key.len)) && read_int (&value, &ival))
 					cfg->promote_forbidden_palace_decorruption = ival != 0;
 				else if ((0 == strncmp (key.str, "allow_military_leaders_to_hurry_wonders", key.len)) && read_int (&value, &ival))
@@ -4230,7 +4232,7 @@ set_up_ai_two_city_start (Map * map)
 				int best_loc_val   = -1,
 				    best_loc_index = -1;
 
-				for (int try = 0; try < 1000; try++) {
+				for (int try = 0; try < is->current_config.max_tries_to_place_fp_city; try++) {
 					int i_loc = rand_int (p_rand_object, __, map->TileCount);
 					int x_loc, y_loc;
 					tile_index_to_coords (map, i_loc, &x_loc, &y_loc);

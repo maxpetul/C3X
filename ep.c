@@ -956,6 +956,7 @@ ENTRY_POINT ()
 		.enable_negative_pop_pollution = 1,
 		.retreat_rules = RR_STANDARD,
 		.enable_ai_two_city_start = 0,
+		.max_tries_to_place_fp_city = 10000,
 		.promote_forbidden_palace_decorruption = 0,
 		.allow_military_leaders_to_hurry_wonders = 0,
 

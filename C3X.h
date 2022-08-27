@@ -81,6 +81,7 @@ struct c3x_config {
 	char enable_negative_pop_pollution;
 	enum retreat_rules retreat_rules;
 	char enable_ai_two_city_start;
+	int max_tries_to_place_fp_city;
 	char promote_forbidden_palace_decorruption;
 	char allow_military_leaders_to_hurry_wonders;
 
