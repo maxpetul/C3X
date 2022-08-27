@@ -166,3 +166,5 @@ Ideas:
   - "ability hotkeys don't seem to work when from the 'wrong' domain. On a land unit with recon ability, you have to click the recon icon, pressing R does not work"
   - Stronger barb units unlocked by technologies. The tech level of each barb camp would be copied from the closest city.
   - Caps lock to quickly skip combat animations instead of shift
+- [from Delta_Strife]
+  - Make all units tradeable instead of only workers
