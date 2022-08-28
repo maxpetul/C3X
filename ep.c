@@ -959,6 +959,7 @@ ENTRY_POINT ()
 		.max_tries_to_place_fp_city = 10000,
 		.promote_forbidden_palace_decorruption = 0,
 		.allow_military_leaders_to_hurry_wonders = 0,
+		.halve_ai_research_rate = 0,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,

@@ -623,6 +623,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->promote_forbidden_palace_decorruption = ival != 0;
 				else if ((0 == strncmp (key.str, "allow_military_leaders_to_hurry_wonders", key.len)) && read_int (&value, &ival))
 					cfg->allow_military_leaders_to_hurry_wonders = ival != 0;
+				else if ((0 == strncmp (key.str, "halve_ai_research_rate", key.len)) && read_int (&value, &ival))
+					cfg->halve_ai_research_rate = ival != 0;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -4331,6 +4333,20 @@ patch_Map_process_after_placing (Map * this, int edx, byte param_1)
 	if (is->current_config.enable_ai_two_city_start && (*p_current_turn_no == 0))
 		set_up_ai_two_city_start (this);
 	Map_process_after_placing (this, __, param_1);
+}
+
+int __fastcall
+patch_City_get_net_commerce (City * this, int edx, int kind, byte include_science_age)
+{
+	int base = City_get_net_commerce (this, __, kind, include_science_age);
+
+	if ((kind == 1) && // beakers, as opposed to 2 which is gold
+	    is->current_config.halve_ai_research_rate &&
+	    ((*p_human_player_bits & 1<<this->Body.CivID) == 0) &&
+	    (base > 1))
+		return base/2 + (base & this->Body.ID & 1);
+	else
+		return base;
 }
 
 // TCC requires a main function be defined even though it's never used.

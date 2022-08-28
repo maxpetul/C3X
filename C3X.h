@@ -84,6 +84,7 @@ struct c3x_config {
 	int max_tries_to_place_fp_city;
 	char promote_forbidden_palace_decorruption;
 	char allow_military_leaders_to_hurry_wonders;
+	char halve_ai_research_rate;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
