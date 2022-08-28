@@ -4342,9 +4342,9 @@ patch_City_get_net_commerce (City * this, int edx, int kind, byte include_scienc
 
 	if ((kind == 1) && // beakers, as opposed to 2 which is gold
 	    is->current_config.halve_ai_research_rate &&
-	    ((*p_human_player_bits & 1<<this->Body.CivID) == 0) &&
-	    (base > 1))
-		return base/2 + (base & this->Body.ID & 1);
+	    ((*p_human_player_bits & 1<<this->Body.CivID) == 0))
+		return base/2 + (base & this->Body.ID & 1); // Add one pseudo-randomly half of the time when the base amount is odd so that, overall,
+							    // beakers aren't lost due to integer division by 2 on odd amounts.
 	else
 		return base;
 }
