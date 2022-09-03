@@ -218,12 +218,14 @@ find_improv_id_by_name (struct string_slice const * name, int * out)
 	return 0;
 }
 
+// start_id specifies where the search will start. It's useful for finding multiple type IDs with the same name, which commonly happens due to the
+// game duplicating unit types. (I'm not sure why it does that but I think it's related to unique units.)
 int
-find_unit_type_id_by_name (struct string_slice const * name, int * out)
+find_unit_type_id_by_name (struct string_slice const * name, int start_id, int * out)
 {
 	UnitType * unit_type;
 	if (name->len <= sizeof unit_type->Name)
-		for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
+		for (int n = start_id; n < p_bic_data->UnitTypeCount; n++) {
 			unit_type = &p_bic_data->UnitTypes[n];
 			if (strncmp (unit_type->Name, name->str, name->len) == 0) {
 				*out = n;
@@ -257,7 +259,7 @@ find_city_order_by_name (struct string_slice const * name, City_Order * out)
 		out->OrderID = id;
 		out->OrderType = COT_Improvement;
 		return 1;
-	} else if (find_unit_type_id_by_name (name, &id)) {
+	} else if (find_unit_type_id_by_name (name, 0, &id)) {
 		out->OrderID = id;
 		out->OrderType = COT_Unit;
 		return 1;
@@ -407,7 +409,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 
 	struct prereq {
 		int building_id;
-		int unit_type_id;
+		struct string_slice unit_type_name;
 	} * new_prereqs = NULL;
 	int new_prereqs_capacity = 0;
 	int count_new_prereqs = 0;
@@ -423,11 +425,11 @@ read_building_unit_prereqs (struct string_slice const * s,
 				break;
 			struct string_slice unit_type_name;
 			while (skip_white_space (&cursor) && parse_string (&cursor, &unit_type_name)) {
-				int unit_type_id;
-				if (find_unit_type_id_by_name (&unit_type_name, &unit_type_id)) {
+				int unused;
+				if (find_unit_type_id_by_name (&unit_type_name, 0, &unused)) { // if there is any by this name, later we'll deal with the possibility of multiple
 					if (have_building_id) {
 						reserve (sizeof new_prereqs[0], (void **)&new_prereqs, &new_prereqs_capacity, count_new_prereqs);
-						new_prereqs[count_new_prereqs++] = (struct prereq) { .building_id = building_id, .unit_type_id = unit_type_id };
+						new_prereqs[count_new_prereqs++] = (struct prereq) { .building_id = building_id, .unit_type_name = unit_type_name };
 					}
 				} else
 					add_unrecognized_line (p_unrecognized_lines, &unit_type_name);
@@ -445,28 +447,32 @@ read_building_unit_prereqs (struct string_slice const * s,
 		for (int n = 0; n < count_new_prereqs; n++) {
 			struct prereq * prereq = &new_prereqs[n];
 
-			// If this unit type ID is not already in the table, insert it paired with the encoded building ID
-			int prev_val;
-			if (! table_look_up (building_unit_prereqs, prereq->unit_type_id, &prev_val))
-				table_insert (building_unit_prereqs, prereq->unit_type_id, (prereq->building_id << 1) | 1);
+			int unit_type_id = -1;
+			while (find_unit_type_id_by_name (&prereq->unit_type_name, unit_type_id + 1, &unit_type_id)) {
 
-			// If the unit type ID is already associated with a building ID, create a list for both the old and new building IDs
-			else if (prev_val & 1) {
-				int * list = malloc (MAX_BUILDING_PREREQS_FOR_UNIT * sizeof *list);
-				for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
-					list[n] = -1;
-				list[0] = prev_val >> 1; // Decode
-				list[1] = prereq->building_id;
-				table_insert (building_unit_prereqs, new_prereqs[n].unit_type_id, (int)list);
+				// If this unit type ID is not already in the table, insert it paired with the encoded building ID
+				int prev_val;
+				if (! table_look_up (building_unit_prereqs, unit_type_id, &prev_val))
+					table_insert (building_unit_prereqs, unit_type_id, (prereq->building_id << 1) | 1);
 
-			// Otherwise, it's already associated with a list. Search the list for a free spot and fill it with the new building ID
-			} else {
-				int * list = (int *)prev_val;
-				for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
-					if (list[n] < 0) {
-						list[n] = prereq->building_id;
-						break;
-					}
+				// If the unit type ID is already associated with a building ID, create a list for both the old and new building IDs
+				else if (prev_val & 1) {
+					int * list = malloc (MAX_BUILDING_PREREQS_FOR_UNIT * sizeof *list);
+					for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
+						list[n] = -1;
+					list[0] = prev_val >> 1; // Decode
+					list[1] = prereq->building_id;
+					table_insert (building_unit_prereqs, unit_type_id, (int)list);
+
+				// Otherwise, it's already associated with a list. Search the list for a free spot and fill it with the new building ID
+				} else {
+					int * list = (int *)prev_val;
+					for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
+						if (list[n] < 0) {
+							list[n] = prereq->building_id;
+							break;
+						}
+				}
 			}
 		}
 
