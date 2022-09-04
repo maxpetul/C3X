@@ -305,20 +305,21 @@ enum recognizable_parse_result
 parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_mill)
 {
 	char * cur = *p_cursor;
-	struct string_slice improv_name, second;
+	struct string_slice improv_name;
 	if (parse_string (&cur, &improv_name) &&
-	    skip_punctuation (&cur, ':') &&
-	    parse_string (&cur, &second)) {
+	    skip_punctuation (&cur, ':')) {
 
-		int is_local;
+		byte is_local = 0, no_tech_req = 0;
 		struct string_slice resource_name;
-		if (strncmp ("local", second.str, second.len) == 0) {
+		while (1) {
 			if (! parse_string (&cur, &resource_name))
 				return RPR_PARSE_ERROR;
-			is_local = 1;
-		} else {
-			is_local = 0;
-			resource_name = second;
+			else if (strncmp ("local", resource_name.str, resource_name.len) == 0)
+				is_local = 1;
+			else if (strncmp ("no-tech-req", resource_name.str, resource_name.len) == 0)
+				no_tech_req = 1;
+			else
+				break;
 		}
 
 		*p_cursor = cur;
@@ -339,6 +340,7 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 			out->improv_id = improv_id;
 			out->resource_id = resource_id;
 			out->is_local = is_local;
+			out->no_tech_req = no_tech_req;
 			return RPR_OK;
 		}
 	} else
@@ -985,10 +987,10 @@ has_active_building (City * city, int improv_id)
 }
 
 int
-can_player_use_resource (int civ_id, int resource_id)
+can_generate_resource (int for_civ_id, struct mill * mill)
 {
-	Resource_Type * res = &p_bic_data->ResourceTypes[resource_id];
-	return (res->RequireID < 0) || Leader_has_tech (&leaders[civ_id], __, res->RequireID);
+	int req_tech_id = mill->no_tech_req ? -1 : p_bic_data->ResourceTypes[mill->resource_id].RequireID;
+	return (req_tech_id < 0) || Leader_has_tech (&leaders[for_civ_id], __, req_tech_id);
 }
 
 int __stdcall
@@ -1073,11 +1075,12 @@ patch_City_has_resource (City * this, int edx, int resource_id)
 		tr = City_has_resource (this, __, resource_id);
 
 	// Check if access to this resource is provided by a building in the city
-	if ((! tr) && can_player_use_resource (this->Body.CivID, resource_id))
+	if (! tr)
 		for (int n = 0; n < is->current_config.count_mills; n++) {
 			struct mill * mill = &is->current_config.mills[n];
 			if ((mill->resource_id == resource_id) &&
 			    mill->is_local &&
+			    can_generate_resource (this->Body.CivID, mill) &&
 			    has_active_building (this, mill->improv_id) &&
 			    has_resources_required_by_building_r (this, mill->improv_id, mill->resource_id - 1)) {
 				tr = 1;
@@ -1156,7 +1159,7 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, byte skip_popups
 					struct mill * mill = &is->current_config.mills[n];
 					if ((! mill->is_local) &&
 					    has_active_building (city, mill->improv_id) &&
-					    can_player_use_resource (city->Body.CivID, mill->resource_id)) {
+					    can_generate_resource (city->Body.CivID, mill)) {
 						reserve (sizeof is->mill_tiles[0],
 							 (void **)&is->mill_tiles,
 							 &is->mill_tiles_capacity,

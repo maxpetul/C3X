@@ -30,7 +30,7 @@ struct perfume_spec {
 struct mill {
 	int improv_id;
 	int resource_id;
-	int is_local;
+	byte is_local, no_tech_req;
 };
 
 enum retreat_rules {
