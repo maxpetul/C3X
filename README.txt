@@ -1,5 +1,5 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 12D
+Release 13
 
 INCLUDES (** = new in latest version):
 Convenience features:
@@ -51,7 +51,9 @@ Engine extensions:
  - Disallow land units from working or settling water tiles
  - Option to let units move after airdropping
  - Buildings can generate resources
+   - ** Generation can happen even if resource hasn't been revealed by tech
  - Buildings can be set as prerequisites for unit production
+   - ** Prereq applies to all unit types with the given name
  - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
  - Option to modify rules for retreat eligibility
  - ** AI two-city start
@@ -122,4 +124,4 @@ SPECIAL THANKS:
 1. Antal1987 for his work reverse engineering Civ3. See: https://github.com/Antal1987/C3CPatchFramework
 2. Rômulo Prado for his help testing the mod
 3. Civinator for the German translation. See: https://www.civforum.de/showthread.php?113285-Der-Flintlock-Deutsch-Patch
-4. Vaughn Parker for generously commissioning the port to the PCGames.de EXE
+4. Vaughn Parker for generously commissioning the port to the PCGames.de EXE and various other features

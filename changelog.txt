@@ -1,10 +1,14 @@
-* RELEASE 12D
+* RELEASE 13
 - AI two-city start
 - Remove cap on turn limit
 - Option to strengthen forbidden palace decorruption effect to match the palace's
 - Option to allow military great leaders to hurry wonders
 - Option to reduce AI research rate by half
-- Fix some issues with text encoding
+- Resource generation from buildings can be set to ignore revealing tech
+- Address some issues with text encoding
+  - Includes fix for encoding error on Windows 8.1
+- Apply building prereqs to all unit types with the same name
+  - Fixes prereq sometimes not applying to AIs
 
 * RELEASE 12
 - Support for the executable from PCGames.de
