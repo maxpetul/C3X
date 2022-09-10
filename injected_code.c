@@ -1236,6 +1236,8 @@ check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect
 	     (iter_count == 0) && check_virtual_protect (addr, size, flags, &old_protect); \
 	     VirtualProtect (addr, size, old_protect, &unused), iter_count++)
 
+void __fastcall adjust_sliders_preproduction (Leader * this);
+
 void
 apply_machine_code_edits (struct c3x_config const * cfg)
 {
@@ -1365,6 +1367,18 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		WITH_MEM_PROTECTION (addr, 4, PAGE_EXECUTE_READWRITE) {
 			int_to_bytes (addr, cfg->remove_cap_on_turn_limit ? 1000000 : 1000);
 		}
+	}
+
+	// Overwrite the human-ness test and call to Leader::ai_adjust_sliders that happens during the preproduction player update method. The new
+	// code calls adjust_sliders_preproduction for all players.
+	WITH_MEM_PROTECTION (ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT, 9, PAGE_EXECUTE_READWRITE) {
+		byte * cursor = ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT;
+		*cursor++ = 0x8B; *cursor++ = 0xCE; // mov ecx, esi
+		int call_offset = (int)&adjust_sliders_preproduction - ((int)cursor + 5);
+		*cursor++ = 0xE8; // call
+		cursor = int_to_bytes (cursor, call_offset);
+		for (; cursor < ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT + 9; cursor++)
+			*cursor = 0x90; // nop
 	}
 }
 
@@ -4356,6 +4370,13 @@ patch_City_get_net_commerce (City * this, int edx, int kind, byte include_scienc
 							    // beakers aren't lost due to integer division by 2 on odd amounts.
 	else
 		return base;
+}
+
+void __fastcall
+adjust_sliders_preproduction (Leader * this)
+{
+	if ((*p_human_player_bits & 1<<this->ID) == 0)
+		this->vtable->ai_adjust_sliders (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
