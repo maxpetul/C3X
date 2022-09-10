@@ -4377,8 +4377,20 @@ patch_City_get_net_commerce (City * this, int edx, int kind, byte include_scienc
 void __fastcall
 adjust_sliders_preproduction (Leader * this)
 {
+	// Replicate the behavior of the original code for AI players. (apply_machine_code_edits overwrites an equivalent branch & call in the
+	// original code with a call to this method.)
 	if ((*p_human_player_bits & 1<<this->ID) == 0)
 		this->vtable->ai_adjust_sliders (this);
+
+	else if (is->current_config.aggressively_penalize_bankruptcy) {
+		// If human player would go bankrupt, try reducing their science spending to avoid that
+		int treasury = this->Gold_Encoded + this->Gold_Decrement;
+		while ((this->science_slider > 0) && (treasury + Leader_compute_income (this) < 0)) {
+			this->science_slider -= 1;
+			this->gold_slider += 1;
+			Leader_recompute_economy (this);
+		}
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.

@@ -4040,9 +4040,9 @@ struct Leader
   int field_198;
   int field_19C;
   int field_1A0;
-  int Tax_Luxury;
-  int Tax_Cash;
-  int Tax_Science;
+  int luxury_slider;
+  int science_slider;
+  int gold_slider;
   Reputation reputations[32];
   int field_B30[96];
   int war_weariness[32];
