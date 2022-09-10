@@ -158,7 +158,6 @@ Ideas:
   - Land transporters
   - Enable HN artillery units to attack friendlies
   - Fix "great wall bug": free walls bounce bombards onto other random building in same city, potentially destroying wonders
-  - Different categories for building "replace others with this flag" flags
   - Optimize trade network calculation
   - See for details: https://forums.civfanatics.com/threads/c3x-exe-mod-including-bug-fixes-stack-bombard-and-much-more.666881/page-46#post-16319627
 - [from Alekseyev_]
@@ -168,3 +167,6 @@ Ideas:
   - Caps lock to quickly skip combat animations instead of shift
 - [from Delta_Strife]
   - Make all units tradeable instead of only workers
+- [from sirati97 and Predator145] Different categories for building "replace others with this flag" flags
+- [from Barret] Enable wonders to grant their cities +1 food/shield/commerce in each land tile. Even better if the amount is variable and can be limited to tiles already producing 1.
+- [from Meteor Man] Despite trespassing restriction, it's possible to attack an enemy unit in someone else's restricted territory. The unit can then get stuck halfway between two tiles.
