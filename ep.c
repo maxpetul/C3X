@@ -960,6 +960,7 @@ ENTRY_POINT ()
 		.promote_forbidden_palace_decorruption = 0,
 		.allow_military_leaders_to_hurry_wonders = 0,
 		.halve_ai_research_rate = 0,
+		.aggressively_penalize_bankruptcy = 0,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,

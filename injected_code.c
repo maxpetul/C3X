@@ -633,6 +633,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->allow_military_leaders_to_hurry_wonders = ival != 0;
 				else if ((0 == strncmp (key.str, "halve_ai_research_rate", key.len)) && read_int (&value, &ival))
 					cfg->halve_ai_research_rate = ival != 0;
+				else if ((0 == strncmp (key.str, "aggressively_penalize_bankruptcy", key.len)) && read_int (&value, &ival))
+					cfg->aggressively_penalize_bankruptcy = ival != 0;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;

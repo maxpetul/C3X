@@ -85,6 +85,7 @@ struct c3x_config {
 	char promote_forbidden_palace_decorruption;
 	char allow_military_leaders_to_hurry_wonders;
 	char halve_ai_research_rate;
+	char aggressively_penalize_bankruptcy;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
