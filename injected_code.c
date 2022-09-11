@@ -934,6 +934,39 @@ ci_init (City * city)
 
 #define FOR_CITIZENS_IN(ci_name, city) for (struct citizen_iter ci_name = ci_init (city); (ci_name.list->Items != NULL) && (ci_name.index <= ci.list->LastIndex); ci_next (&ci_name))
 
+struct city_of_iter {
+	int city_id;
+	int civ_id;
+	City * city;
+};
+
+void
+coi_next (struct city_of_iter * coi)
+{
+	coi->city_id++;
+	while (coi->city_id <= p_cities->LastIndex) {
+		City_Body * body = p_cities->Cities[coi->city_id].City;
+		if ((body != NULL) && ((int)body != offsetof (City, Body)) && (body->CivID == coi->civ_id)) {
+			coi->city = (City *)((char *)body - offsetof (City, Body));
+			break;
+		}
+		coi->city_id++;
+	}
+}
+
+struct city_of_iter
+coi_init (int civ_id)
+{
+	struct city_of_iter tr = { .city_id = -1, .civ_id = civ_id, .city = NULL };
+	if (p_cities->Cities != NULL)
+		coi_next (&tr);
+	else
+		tr.city_id = p_cities->LastIndex + 1;
+	return tr;
+}
+
+#define FOR_CITIES_OF(coi_name, civ_id) for (struct city_of_iter coi_name = coi_init (civ_id); coi_name.city_id <= p_cities->LastIndex; coi_next (&coi_name))
+
 struct tiles_around_iter {
 	int center_x, center_y;
 	int n, num_tiles;
@@ -4392,6 +4425,53 @@ adjust_sliders_preproduction (Leader * this)
 		}
 	}
 }
+
+int
+sum_improvements_maintenance_to_pay (Leader * leader, int govt_id)
+{
+	int base = Leader_sum_improvements_maintenance (leader, __, govt_id);
+	if ((! is->current_config.aggressively_penalize_bankruptcy) ||
+	    (base <= leader->Gold_Encoded + leader->Gold_Decrement))
+		return base;
+
+	else {
+		clear_memo ();
+
+		FOR_CITIES_OF (coi, leader->ID)
+			for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+				Improvement * improv = &p_bic_data->Improvements[n];
+				if (City_has_improvement (coi.city, __, n, 0)) {
+					int maint = City_get_improvement_maintenance (coi.city, __, n);
+					if (maint > 0)
+						memoize ((not_above (31, maint) << 26) | (n << 13) | coi.city_id);
+				}
+			}
+
+		{
+			int to_pay = base;
+			int count_sold = 0;
+			while ((to_pay > leader->Gold_Encoded + leader->Gold_Decrement) && (count_sold < is->memo_len)) {
+				int improv_id = ((1<<13) - 1) & (is->memo[count_sold] >> 13),
+				    city_id   = ((1<<13) - 1) &  is->memo[count_sold];
+				City * city = get_city_ptr (city_id);
+				to_pay -= City_get_improvement_maintenance (city, __, improv_id);
+				City_sell_improvement (city, __, improv_id, 0);
+				count_sold++;
+			}
+			Leader_set_treasury (leader, __, leader->Gold_Encoded + leader->Gold_Decrement - to_pay);
+
+			char s[200];
+			snprintf (s, sizeof s, "sold %d improvements", count_sold);
+			pop_up_in_game_error (s);
+		}
+
+		return 0; // We've already paid maintenance so return zero
+	}}
+
+// The sum_improvements_maintenance function is called in two places as part of the randomization of whether improv or unit maintenance gets paid
+// first. Redirect both of these calls to one function of our own.
+int __fastcall patch_Leader_sum_improv_maintenance_to_pay_1 (Leader * this, int edx, int govt_id) { return sum_improvements_maintenance_to_pay (this, govt_id); }
+int __fastcall patch_Leader_sum_improv_maintenance_to_pay_2 (Leader * this, int edx, int govt_id) { return sum_improvements_maintenance_to_pay (this, govt_id); }
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
