@@ -4460,9 +4460,12 @@ sum_improvements_maintenance_to_pay (Leader * leader, int govt_id)
 			}
 			Leader_set_treasury (leader, __, leader->Gold_Encoded + leader->Gold_Decrement - to_pay);
 
-			char s[200];
-			snprintf (s, sizeof s, "sold %d improvements", count_sold);
-			pop_up_in_game_error (s);
+			if ((leader->ID == p_main_screen_form->Player_CivID) && ! is_game_type_4_or_5 ()) {
+				PopupForm * popup = get_popup_form ();
+				set_popup_int_param (0, count_sold);
+				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_IMPROVS", -1, 0, 0, 0);
+				show_popup (popup, __, 0, 0);
+			}
 		}
 
 		return 0; // We've already paid maintenance so return zero

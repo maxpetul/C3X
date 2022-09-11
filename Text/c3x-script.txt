@@ -49,4 +49,10 @@ This is the point value the AI assigns to each available build in this city:
 A highlight will be applied to all tiles showing how desirable they are as city locations for the AI from the perspective of the selected player.
 ^Viewing from the perspective of another player requires debug mode.
 
+#C3X_FORCE_SOLD_IMPROVS
+#xs 400
+#wave 24
+#advisor Domestic Angry
+Our governors have been forced to sell $NUM0 city improvements because we could no longer afford to pay their maintenance. We should manage our treasury better!
+
 # ; This line must remain at end of file
