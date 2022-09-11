@@ -577,6 +577,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->anarchy_length_reduction_percent = ival;
 				else if ((0 == strncmp (key.str, "show_golden_age_turns_remaining", key.len)) && read_int (&value, &ival))
 					cfg->show_golden_age_turns_remaining = ival != 0;
+				else if ((0 == strncmp (key.str, "cut_research_spending_to_avoid_bankruptcy", key.len)) && read_int (&value, &ival))
+					cfg->cut_research_spending_to_avoid_bankruptcy = ival != 0;
 				else if ((0 == strncmp (key.str, "reverse_specialist_order_with_shift", key.len)) && read_int (&value, &ival))
 					cfg->reverse_specialist_order_with_shift = ival != 0;
 				else if ((0 == strncmp (key.str, "dont_give_king_names_in_non_regicide_games", key.len)) && read_int (&value, &ival))
@@ -4415,8 +4417,8 @@ adjust_sliders_preproduction (Leader * this)
 	if ((*p_human_player_bits & 1<<this->ID) == 0)
 		this->vtable->ai_adjust_sliders (this);
 
-	else if (is->current_config.aggressively_penalize_bankruptcy) {
-		// If human player would go bankrupt, try reducing their science spending to avoid that
+	// If human player would go bankrupt, try reducing their research spending to avoid that
+	else if (is->current_config.cut_research_spending_to_avoid_bankruptcy) {
 		int treasury = this->Gold_Encoded + this->Gold_Decrement;
 		while ((this->science_slider > 0) && (treasury + Leader_compute_income (this) < 0)) {
 			this->science_slider -= 1;
@@ -4445,6 +4447,9 @@ sum_improvements_maintenance_to_pay (Leader * leader, int govt_id)
 	else {
 		clear_memo ();
 
+		// Memoize all buildings this player owns. B/c the memo can only contain ints, we must pack the maintenance cost, improv ID, and city
+		// ID all into one int. The city ID is stored in the lowest 13 bits, then the improv ID in the next 13, and finally the maintenance
+		// amount in the 5 above those.
 		FOR_CITIES_OF (coi, leader->ID)
 			for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
 				Improvement * improv = &p_bic_data->Improvements[n];
@@ -4455,37 +4460,39 @@ sum_improvements_maintenance_to_pay (Leader * leader, int govt_id)
 				}
 			}
 
+		// Sort the list of buildings so the highest maintenance ones come first
 		qsort (is->memo, is->memo_len, sizeof is->memo[0], compare_buildings_to_sell);
 
-		{
-			int to_pay = base;
-			int count_sold = 0;
-			while ((to_pay > leader->Gold_Encoded + leader->Gold_Decrement) && (count_sold < is->memo_len)) {
-				int improv_id = ((1<<13) - 1) & (is->memo[count_sold] >> 13),
-				    city_id   = ((1<<13) - 1) &  is->memo[count_sold];
-				City * city = get_city_ptr (city_id);
-				to_pay -= City_get_improvement_maintenance (city, __, improv_id);
-				City_sell_improvement (city, __, improv_id, 0);
-				count_sold++;
-			}
-			Leader_set_treasury (leader, __, leader->Gold_Encoded + leader->Gold_Decrement - to_pay);
+		// Actually pay building maintenance: Work down the list selling buildings until the treasury contains enough money to pay the
+		// total cost (or we run out of buildings to sell) then deduct the remaining cost from the treasury.
+		int to_pay = base;
+		int count_sold = 0;
+		while ((to_pay > leader->Gold_Encoded + leader->Gold_Decrement) && (count_sold < is->memo_len)) {
+			int improv_id = ((1<<13) - 1) & (is->memo[count_sold] >> 13),
+				city_id   = ((1<<13) - 1) &  is->memo[count_sold];
+			City * city = get_city_ptr (city_id);
+			to_pay -= City_get_improvement_maintenance (city, __, improv_id);
+			City_sell_improvement (city, __, improv_id, 0);
+			count_sold++;
+		}
+		Leader_set_treasury (leader, __, leader->Gold_Encoded + leader->Gold_Decrement - to_pay);
 
-			if ((leader->ID == p_main_screen_form->Player_CivID) && ! is_game_type_4_or_5 ()) {
-				PopupForm * popup = get_popup_form ();
-				if (count_sold == 1) {
-					int improv_id = ((1<<13) - 1) & (is->memo[0] >> 13),
-					    city_id   = ((1<<13) - 1) &  is->memo[0];
-					set_popup_str_param (0, p_bic_data->Improvements[improv_id].Name.S, -1, -1);
-					set_popup_str_param (1, get_city_ptr (city_id)->Body.CityName     , -1, -1);
-					popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "MAINTSHORT", -1, 0, 0, 0);
-					int response = show_popup (popup, __, 0, 0);
-					if (response == 1)
-						Civilopedia_open (p_civilopedia, __, "GCON_Treasury", 1);
-				} else if (count_sold > 1) {
-					set_popup_int_param (0, count_sold);
-					popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_IMPROVS", -1, 0, 0, 0);
-					show_popup (popup, __, 0, 0);
-				}
+		// Show popup informing the player that they couldn't pay maintenance on all of their buildings.
+		if ((leader->ID == p_main_screen_form->Player_CivID) && ! is_game_type_4_or_5 ()) {
+			PopupForm * popup = get_popup_form ();
+			if (count_sold == 1) {
+				int improv_id = ((1<<13) - 1) & (is->memo[0] >> 13),
+					city_id   = ((1<<13) - 1) &  is->memo[0];
+				set_popup_str_param (0, p_bic_data->Improvements[improv_id].Name.S, -1, -1);
+				set_popup_str_param (1, get_city_ptr (city_id)->Body.CityName     , -1, -1);
+				popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "MAINTSHORT", -1, 0, 0, 0);
+				int response = show_popup (popup, __, 0, 0);
+				if (response == 1)
+					Civilopedia_open (p_civilopedia, __, "GCON_Treasury", 1);
+			} else if (count_sold > 1) {
+				set_popup_int_param (0, count_sold);
+				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_IMPROVS", -1, 0, 0, 0);
+				show_popup (popup, __, 0, 0);
 			}
 		}
 
