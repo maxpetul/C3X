@@ -4427,6 +4427,14 @@ adjust_sliders_preproduction (Leader * this)
 }
 
 int
+compare_buildings_to_sell (void const * a, void const * b)
+{
+	int maint_a = (*(int const *)a >> 26) & 31,
+	    maint_b = (*(int const *)b >> 26) & 31;
+	return maint_b - maint_a;
+}
+
+int
 sum_improvements_maintenance_to_pay (Leader * leader, int govt_id)
 {
 	int base = Leader_sum_improvements_maintenance (leader, __, govt_id);
@@ -4446,6 +4454,8 @@ sum_improvements_maintenance_to_pay (Leader * leader, int govt_id)
 						memoize ((not_above (31, maint) << 26) | (n << 13) | coi.city_id);
 				}
 			}
+
+		qsort (is->memo, is->memo_len, sizeof is->memo[0], compare_buildings_to_sell);
 
 		{
 			int to_pay = base;
