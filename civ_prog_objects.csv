@@ -220,9 +220,9 @@ define,	   0x4C2350,	0x4C9B30,	0x4C2370,	"Leader_set_treasury",				"void (__fast
 define,	   0x4B3400,	0x4BA3A0,	0x4B3490,	"City_sell_improvement",			"void (__fastcall *) (City * this, int edx, int improv_id, byte set_status_bit)"
 define,	   0x9E85F0,	0xA0ADF0,	0x9E85B0,	"p_civilopedia",				"void *"
 define,	   0x4CBE10,	0x4D3E50,	0x4CBED0,	"Civilopedia_open",				"void (__fastcall *) (void * this, int edx, char * key, byte param_2)"
-define,	   0x53A960,	0x0,		0x0,		"get_unit_support_info",			"void (__stdcall *) (int civ_id, int govt_id, int * out_cost_per_unit, int * out_count_free_units)"
-define,	   0x55D2A0,	0x0,		0x0,		"Leader_get_free_unit_count",			"int (__fastcall *) (Leader * this, int edx, int govt_id)"
-define,	   0x55D030,	0x0,		0x0,		"Leader_count_foreign_and_king_units",		"int (__fastcall *) (Leader * this)"
+define,	   0x53A960,	0x544C80,	0x53A9E0,	"get_unit_support_info",			"void (__stdcall *) (int civ_id, int govt_id, int * out_cost_per_unit, int * out_count_free_units)"
+define,	   0x55D2A0,	0x569330,	0x55D250,	"Leader_get_free_unit_count",			"int (__fastcall *) (Leader * this, int edx, int govt_id)"
+define,	   0x55D030,	0x5690C0,	0x55CFE0,	"Leader_count_foreign_and_king_units",		"int (__fastcall *) (Leader * this)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
