@@ -4504,5 +4504,41 @@ sum_improvements_maintenance_to_pay (Leader * leader, int govt_id)
 int __fastcall patch_Leader_sum_improv_maintenance_to_pay_1 (Leader * this, int edx, int govt_id) { return sum_improvements_maintenance_to_pay (this, govt_id); }
 int __fastcall patch_Leader_sum_improv_maintenance_to_pay_2 (Leader * this, int edx, int govt_id) { return sum_improvements_maintenance_to_pay (this, govt_id); }
 
+void __fastcall
+patch_Leader_pay_unit_maintenance (Leader * this)
+{
+	if (! is->current_config.aggressively_penalize_bankruptcy)
+		Leader_pay_unit_maintenance (this);
+
+	else if (this->Cities_Count > 0) { // Players with no cities don't pay unit maintenance, per the original game rules
+		int cost_per_unit;
+		get_unit_support_info (this->ID, this->GovernmentType, &cost_per_unit, NULL);
+		if (cost_per_unit > 0) {
+			int to_pay; {
+				int count_free_units = Leader_get_free_unit_count (this, __, this->GovernmentType) + Leader_count_foreign_and_king_units (this);
+				to_pay = not_below (0, (this->Unit_Count - count_free_units) * cost_per_unit);
+			}
+
+			int treasury = this->Gold_Encoded + this->Gold_Decrement;
+			int count_disbanded = 0;
+			Unit * to_disband;
+			while ((to_pay > treasury) &&
+			       (NULL != (to_disband = this->vtable->find_unsupported_unit (this)))) {
+				Unit_disband (to_disband);
+				count_disbanded++;
+				to_pay -= cost_per_unit;
+			}
+
+			Leader_set_treasury (this, __, treasury - to_pay);
+
+			if ((count_disbanded > 0) && (this->ID == p_main_screen_form->Player_CivID)) {
+				char s[300];
+				snprintf (s, sizeof s, "disbanded %d units for lack of maintenance", count_disbanded);
+				pop_up_in_game_error (s);
+			}
+		}
+	}
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

@@ -3035,7 +3035,7 @@ struct Leader_vtable
   int m10;
   void (__fastcall * ai_adjust_sliders) (Leader * this);
   int m12;
-  int m13;
+  Unit * (__fastcall * find_unsupported_unit) (Leader * this);
   int m14;
   int m15;
   int m16;
