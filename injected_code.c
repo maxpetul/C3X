@@ -4522,8 +4522,16 @@ patch_Leader_pay_unit_maintenance (Leader * this)
 			int treasury = this->Gold_Encoded + this->Gold_Decrement;
 			int count_disbanded = 0;
 			Unit * to_disband;
+			char first_disbanded_name[32];
 			while ((to_pay > treasury) &&
 			       (NULL != (to_disband = this->vtable->find_unsupported_unit (this)))) {
+				if (count_disbanded == 0) {
+					char const * name_src = (to_disband->Body.Custom_Name.S[0] == '\0')
+						? p_bic_data->UnitTypes[to_disband->Body.UnitTypeID].Name
+						: to_disband->Body.Custom_Name.S;
+					strncpy (first_disbanded_name, name_src, sizeof first_disbanded_name);
+					first_disbanded_name[(sizeof first_disbanded_name) - 1] = '\0';
+				}
 				Unit_disband (to_disband);
 				count_disbanded++;
 				to_pay -= cost_per_unit;
@@ -4531,10 +4539,18 @@ patch_Leader_pay_unit_maintenance (Leader * this)
 
 			Leader_set_treasury (this, __, treasury - to_pay);
 
-			if ((count_disbanded > 0) && (this->ID == p_main_screen_form->Player_CivID)) {
-				char s[300];
-				snprintf (s, sizeof s, "disbanded %d units for lack of maintenance", count_disbanded);
-				pop_up_in_game_error (s);
+			if (this->ID == p_main_screen_form->Player_CivID) {
+				PopupForm * popup = get_popup_form ();
+				if (count_disbanded == 1) {
+					set_popup_str_param (1, first_disbanded_name, -1, -1);
+					int online_flag = is_game_type_4_or_5 () ? 0x4000 : 0;
+					popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "NOSUPPORT", -1, 0, online_flag, 0);
+					show_popup (popup, __, 0, 0);
+				} else if ((count_disbanded > 1) && ! is_game_type_4_or_5 ()) {
+					set_popup_int_param (0, count_disbanded);
+					popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_UNITS", -1, 0, 0, 0);
+					show_popup (popup, __, 0, 0);
+				}
 			}
 		}
 	}

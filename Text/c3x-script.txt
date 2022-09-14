@@ -55,4 +55,10 @@ A highlight will be applied to all tiles showing how desirable they are as city 
 #advisor Domestic Angry
 Our governors have been forced to {sell $NUM0 city improvements} because we could no longer afford to pay their maintenance. We should manage our treasury better!
 
+#C3X_FORCE_DISBANDED_UNITS
+#xs 320
+#wave 24
+#advisor Military Angry
+{$NUM0 of our units have committed desertion} because we could no longer afford to feed them! We should manage our treasury better!
+
 # ; This line must remain at end of file
