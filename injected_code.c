@@ -4399,7 +4399,37 @@ patch_City_Form_initialize_on_game_load (City_Form * this)
 	to_show = &this->Rects_2[4];
 	snprintf (s, sizeof s, "Rects_2[4] X,Y,W,H: %d, %d, %d, %d", to_show->left - off_x, to_show->top - off_y, to_show->right - to_show->left, to_show->bottom - to_show->top);
 	*/
-	pop_up_in_game_error (s);
+	// pop_up_in_game_error (s);
+}
+
+void __fastcall
+patch_Button_init_city_left_arrow (Button * this, int edx, char * text, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)
+{
+	City_Form * city_form = (City_Form *)parent;
+	int dx = (1920 - 1024) / 2;
+	city_form->rects[CFR_LEFT_ARROW_BUTTON].left  += dx;
+	city_form->rects[CFR_LEFT_ARROW_BUTTON].right += dx;
+	Button_initialize (this, __, text, control_id, x + dx, y, width, height, parent, param_8);
+}
+
+void __fastcall
+patch_Button_init_city_right_arrow (Button * this, int edx, char * text, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)
+{
+	City_Form * city_form = (City_Form *)parent;
+	int dx = (1920 - 1024) / 2;
+	city_form->rects[CFR_RIGHT_ARROW_BUTTON].left  += dx;
+	city_form->rects[CFR_RIGHT_ARROW_BUTTON].right += dx;
+	Button_initialize (this, __, text, control_id, x + dx, y, width, height, parent, param_8);
+}
+
+void __fastcall
+patch_Button_init_city_close (Button * this, int edx, char * text, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)
+{
+	City_Form * city_form = (City_Form *)parent;
+	int dx = 1920 - 1024;
+	city_form->rects[CFR_CLOSE_BUTTON].left  += dx;
+	city_form->rects[CFR_CLOSE_BUTTON].right += dx;
+	Button_initialize (this, __, text, control_id, x + dx, y, width, height, parent, param_8);
 }
 
 // TCC requires a main function be defined even though it's never used.
