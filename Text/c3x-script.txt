@@ -30,12 +30,15 @@ Nevermind
 #active 1
 
 #C3X_ERROR
+#xs 400
 #caption C3X Error
 
 #C3X_WARNING
+#xs 400
 #caption C3X Warning
 
 #C3X_INFO
+#xs 400
 #caption C3X Info
 
 #C3X_AI_PROD_RANKING
