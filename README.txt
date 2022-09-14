@@ -1,5 +1,5 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 13
+Release 13B
 
 INCLUDES (** = new in latest version):
 Convenience features:
@@ -18,6 +18,7 @@ Convenience features:
  - No special king unit names in non-regicide games
  - Option to disable worker automation
  - On the city screen, hold shift when clicking a specialist to switch to the previous type
+ - ** Automatically cut research spending to avoid bankruptcy
 AI enhancements:
  - Allow AI to use artillery in the field
  - Force AI to build more artillery and bombers
@@ -51,16 +52,15 @@ Engine extensions:
  - Disallow land units from working or settling water tiles
  - Option to let units move after airdropping
  - Buildings can generate resources
-   - ** Generation can happen even if resource hasn't been revealed by tech
  - Buildings can be set as prerequisites for unit production
-   - ** Prereq applies to all unit types with the given name
  - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
  - Option to modify rules for retreat eligibility
- - ** AI two-city start
- - ** Remove cap on turn limit
- - ** Option to strengthen forbidden palace decorruption effect to match the palace's
- - ** Option to allow military great leaders to hurry wonders
- - ** Option to reduce AI research rate by half
+ - AI two-city start
+ - Remove cap on turn limit
+ - Option to strengthen forbidden palace decorruption effect to match the palace's
+ - Option to allow military great leaders to hurry wonders
+ - Option to reduce AI research rate by half
+ - ** Option to aggressively penalize bankrupt players
 
 INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.
