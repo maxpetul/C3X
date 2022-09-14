@@ -4482,7 +4482,7 @@ sum_improvements_maintenance_to_pay (Leader * leader, int govt_id)
 			PopupForm * popup = get_popup_form ();
 			if (count_sold == 1) {
 				int improv_id = ((1<<13) - 1) & (is->memo[0] >> 13),
-					city_id   = ((1<<13) - 1) &  is->memo[0];
+				    city_id   = ((1<<13) - 1) &  is->memo[0];
 				set_popup_str_param (0, p_bic_data->Improvements[improv_id].Name.S, -1, -1);
 				set_popup_str_param (1, get_city_ptr (city_id)->Body.CityName     , -1, -1);
 				popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "MAINTSHORT", -1, 0, 0, 0);
@@ -4492,6 +4492,19 @@ sum_improvements_maintenance_to_pay (Leader * leader, int govt_id)
 			} else if (count_sold > 1) {
 				set_popup_int_param (0, count_sold);
 				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_IMPROVS", -1, 0, 0, 0);
+
+				// Add list of sold improvements to popup
+				for (int n = 0; n < count_sold; n++) {
+					int improv_id = ((1<<13) - 1) & (is->memo[n] >> 13),
+					    city_id   = ((1<<13) - 1) &  is->memo[n];
+					char s[200];
+					snprintf (s, sizeof s, "^  %s in %s",
+						  p_bic_data->Improvements[improv_id].Name.S,
+						  get_city_ptr (city_id)->Body.CityName);
+					s[(sizeof s) - 1] = '\0';
+					PopupForm_add_text (popup, __, s, 0);
+				}
+
 				show_popup (popup, __, 0, 0);
 			}
 		}
