@@ -579,6 +579,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->show_golden_age_turns_remaining = ival != 0;
 				else if ((0 == strncmp (key.str, "cut_research_spending_to_avoid_bankruptcy", key.len)) && read_int (&value, &ival))
 					cfg->cut_research_spending_to_avoid_bankruptcy = ival != 0;
+				else if ((0 == strncmp (key.str, "dont_pause_for_love_the_king_messages", key.len)) && read_int (&value, &ival))
+					cfg->dont_pause_for_love_the_king_messages = ival != 0;
 				else if ((0 == strncmp (key.str, "reverse_specialist_order_with_shift", key.len)) && read_int (&value, &ival))
 					cfg->reverse_specialist_order_with_shift = ival != 0;
 				else if ((0 == strncmp (key.str, "dont_give_king_names_in_non_regicide_games", key.len)) && read_int (&value, &ival))
@@ -4576,6 +4578,18 @@ patch_Leader_pay_unit_maintenance (Leader * this)
 			}
 		}
 	}
+}
+
+void __fastcall
+patch_Main_Screen_Form_show_wltk_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, byte pause)
+{
+	Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? 0 : pause);
+}
+
+void __fastcall
+patch_Main_Screen_Form_show_wltk_ended_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, byte pause)
+{
+	Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? 0 : pause);
 }
 
 // TCC requires a main function be defined even though it's never used.

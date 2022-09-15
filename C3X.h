@@ -57,6 +57,7 @@ struct c3x_config {
 	int anarchy_length_reduction_percent;
 	char show_golden_age_turns_remaining;
 	char cut_research_spending_to_avoid_bankruptcy;
+	char dont_pause_for_love_the_king_messages;
 	char reverse_specialist_order_with_shift;
 	char dont_give_king_names_in_non_regicide_games;
 	char disable_worker_automation;
