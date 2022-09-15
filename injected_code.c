@@ -2508,17 +2508,21 @@ patch_City_Form_print_production_info (City_Form *this, int edx, String256 * out
 		out_strs[1].S[0] = '\0';
 }
 
+// Returns the ID of the civ this move is trespassing against, or 0 if it's not trespassing.
 int
-is_trespassing (int civ_id, Tile * from, Tile * to)
+check_trespassing (int civ_id, Tile * from, Tile * to)
 {
 	int from_territory_id = from->vtable->m38_Get_Territory_OwnerID (from),
 	    to_territory_id   = to  ->vtable->m38_Get_Territory_OwnerID (to);
-	return (civ_id > 0) &&
-		(to_territory_id != civ_id) &&
-		(to_territory_id > 0) &&
-		(to_territory_id != from_territory_id) &&
-		(! leaders[civ_id].At_War[to_territory_id]) &&
-		((leaders[civ_id].Relation_Treaties[to_territory_id] & 2) == 0); // Check right of passage
+	if ((civ_id > 0) &&
+	    (to_territory_id != civ_id) &&
+	    (to_territory_id > 0) &&
+	    (to_territory_id != from_territory_id) &&
+	    (! leaders[civ_id].At_War[to_territory_id]) &&
+	    ((leaders[civ_id].Relation_Treaties[to_territory_id] & 2) == 0)) // Check right of passage
+		return to_territory_id;
+	else
+		return 0;
 }
 
 int
@@ -2542,8 +2546,13 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 		Tile * from = tile_at (this->Body.X, this->Body.Y);
 		int nx, ny;
 		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
-		if (is_trespassing (this->Body.CivID, from, tile_at (nx, ny)) && (! is_allowed_to_trespass (this)))
-			return AMV_TRIGGERS_WAR;
+		int trespasses_against_civ_id = check_trespassing (this->Body.CivID, from, tile_at (nx, ny));
+		if ((trespasses_against_civ_id > 0) && (! is_allowed_to_trespass (this)))
+			// The tile might be occupied by a unit belonging to a civ other than the one that owns the territory (against whom we'd be
+			// trespassing). In this case we must forbid the move entirely since TRIGGERS_WAR will not stop it if we're at war with the
+			// occupying civ. This fixes a bug where units could trespass by attacking an enemy unit across a border. They would then get
+			// stuck halfway between tiles if they won.
+			return (trespasses_against_civ_id == get_tile_occupier_id (nx, ny, this->Body.CivID, 0)) ? AMV_TRIGGERS_WAR : AMV_CANNOT_PASS_BETWEEN;
 	}
 
 	return base_validity;
@@ -2556,7 +2565,7 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 
 	// Apply trespassing restriction
 	if (is->current_config.disallow_trespassing &&
-	    is_trespassing (civ_id, tile_at (from_x, from_y), tile_at (to_x, to_y)) &&
+	    check_trespassing (civ_id, tile_at (from_x, from_y), tile_at (to_x, to_y)) &&
 	    ((unit == NULL) || (! is_allowed_to_trespass (unit))))
 		return -1;
 

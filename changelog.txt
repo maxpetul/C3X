@@ -3,6 +3,7 @@
 - Option to aggressively penalize bankrupt players
   - Sells/disbands all buildings/units whose maintenance cannot be paid
 - Widen C3X error, info, and warning popups
+- Fix units could trespass by attacking an enemy unit across a restricted border
 
 * RELEASE 13
 - AI two-city start
