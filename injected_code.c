@@ -4453,6 +4453,22 @@ adjust_sliders_preproduction (Leader * this)
 }
 
 int
+sum_improvements_maintenance_to_pay (Leader * leader, int govt_id)
+{
+	if (is->current_config.aggressively_penalize_bankruptcy)
+		// We're going to replace the logic that charges maintenance, and the replacement will charge both unit & building maintenance b/c
+		// they're intertwined under the new rules. Return zero here so the base game code doesn't charge any building maintenance on its own.
+		return 0;
+	else
+		return Leader_sum_improvements_maintenance (leader, __, govt_id);
+}
+
+// The sum_improvements_maintenance function is called in two places as part of the randomization of whether improv or unit maintenance gets paid
+// first. Redirect both of these calls to one function of our own.
+int __fastcall patch_Leader_sum_improv_maintenance_to_pay_1 (Leader * this, int edx, int govt_id) { return sum_improvements_maintenance_to_pay (this, govt_id); }
+int __fastcall patch_Leader_sum_improv_maintenance_to_pay_2 (Leader * this, int edx, int govt_id) { return sum_improvements_maintenance_to_pay (this, govt_id); }
+
+int
 compare_buildings_to_sell (void const * a, void const * b)
 {
 	int maint_a = (*(int const *)a >> 26) & 31,
@@ -4460,20 +4476,29 @@ compare_buildings_to_sell (void const * a, void const * b)
 	return maint_b - maint_a;
 }
 
-int
-sum_improvements_maintenance_to_pay (Leader * leader, int govt_id)
+void
+charge_maintenance_with_aggressive_penalties (Leader * leader)
 {
-	int base = Leader_sum_improvements_maintenance (leader, __, govt_id);
-	if ((! is->current_config.aggressively_penalize_bankruptcy) ||
-	    (base <= leader->Gold_Encoded + leader->Gold_Decrement))
-		return base;
+	int cost_per_unit;
+	get_unit_support_info (leader->ID, leader->GovernmentType, &cost_per_unit, NULL);
 
-	else {
+	int to_pay = 0; {
+		to_pay += Leader_sum_improvements_maintenance (leader, __, leader->GovernmentType);
+		if (leader->Cities_Count > 0) { // Players with no cities don't pay unit maintenance, per the original game rules
+			if (cost_per_unit > 0) {
+				int count_free_units = Leader_get_free_unit_count (leader, __, leader->GovernmentType) + Leader_count_foreign_and_king_units (leader);
+				to_pay += not_below (0, (leader->Unit_Count - count_free_units) * cost_per_unit);
+			}
+		}
+	}
+
+	int treasury = leader->Gold_Encoded + leader->Gold_Decrement;
+	if (to_pay > treasury) {
 		clear_memo ();
 
-		// Memoize all buildings this player owns. B/c the memo can only contain ints, we must pack the maintenance cost, improv ID, and city
-		// ID all into one int. The city ID is stored in the lowest 13 bits, then the improv ID in the next 13, and finally the maintenance
-		// amount in the 5 above those.
+		// Memoize all buildings this player owns that we might potentially sell. B/c the memo can only contain ints, we must pack the
+		// maintenance cost, improv ID, and city ID all into one int. The city ID is stored in the lowest 13 bits, then the improv ID in the
+		// next 13, and finally the maintenance amount in the 5 above those.
 		FOR_CITIES_OF (coi, leader->ID)
 			for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
 				Improvement * improv = &p_bic_data->Improvements[n];
@@ -4487,21 +4512,19 @@ sum_improvements_maintenance_to_pay (Leader * leader, int govt_id)
 		// Sort the list of buildings so the highest maintenance ones come first
 		qsort (is->memo, is->memo_len, sizeof is->memo[0], compare_buildings_to_sell);
 
-		// Actually pay building maintenance: Work down the list selling buildings until the treasury contains enough money to pay the
-		// total cost (or we run out of buildings to sell) then deduct the remaining cost from the treasury.
-		int to_pay = base;
+		// Sell buildings until we can cover maintenance costs or until we run out of ones to sell
 		int count_sold = 0;
-		while ((to_pay > leader->Gold_Encoded + leader->Gold_Decrement) && (count_sold < is->memo_len)) {
+		while ((to_pay > treasury) && (count_sold < is->memo_len)) {
 			int improv_id = ((1<<13) - 1) & (is->memo[count_sold] >> 13),
-				city_id   = ((1<<13) - 1) &  is->memo[count_sold];
+			    city_id   = ((1<<13) - 1) &  is->memo[count_sold];
 			City * city = get_city_ptr (city_id);
 			to_pay -= City_get_improvement_maintenance (city, __, improv_id);
 			City_sell_improvement (city, __, improv_id, 0);
+			treasury = leader->Gold_Encoded + leader->Gold_Decrement;
 			count_sold++;
 		}
-		Leader_set_treasury (leader, __, leader->Gold_Encoded + leader->Gold_Decrement - to_pay);
 
-		// Show popup informing the player that they couldn't pay maintenance on all of their buildings.
+		// Show popup informing the player that their buildings were force sold
 		if ((leader->ID == p_main_screen_form->Player_CivID) && ! is_game_type_4_or_5 ()) {
 			PopupForm * popup = get_popup_form ();
 			if (count_sold == 1) {
@@ -4533,64 +4556,51 @@ sum_improvements_maintenance_to_pay (Leader * leader, int govt_id)
 			}
 		}
 
-		return 0; // We've already paid maintenance so return zero
-	}}
+		// If the player still can't afford maintenance, disband all the units they can't afford
+		int count_disbanded = 0;
+		Unit * to_disband;
+		char first_disbanded_name[32];
+		while ((to_pay > treasury) &&
+		       (NULL != (to_disband = leader->vtable->find_unsupported_unit (leader)))) {
+			if (count_disbanded == 0) {
+				char const * name_src = (to_disband->Body.Custom_Name.S[0] == '\0')
+					? p_bic_data->UnitTypes[to_disband->Body.UnitTypeID].Name
+					: to_disband->Body.Custom_Name.S;
+				strncpy (first_disbanded_name, name_src, sizeof first_disbanded_name);
+				first_disbanded_name[(sizeof first_disbanded_name) - 1] = '\0';
+			}
+			Unit_disband (to_disband);
+			count_disbanded++;
+			to_pay -= cost_per_unit;
+		}
 
-// The sum_improvements_maintenance function is called in two places as part of the randomization of whether improv or unit maintenance gets paid
-// first. Redirect both of these calls to one function of our own.
-int __fastcall patch_Leader_sum_improv_maintenance_to_pay_1 (Leader * this, int edx, int govt_id) { return sum_improvements_maintenance_to_pay (this, govt_id); }
-int __fastcall patch_Leader_sum_improv_maintenance_to_pay_2 (Leader * this, int edx, int govt_id) { return sum_improvements_maintenance_to_pay (this, govt_id); }
+		// Show popup informing the player that their units were disbanded
+		if (leader->ID == p_main_screen_form->Player_CivID) {
+			PopupForm * popup = get_popup_form ();
+			if (count_disbanded == 1) {
+				set_popup_str_param (1, first_disbanded_name, -1, -1);
+				int online_flag = is_game_type_4_or_5 () ? 0x4000 : 0;
+				popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "NOSUPPORT", -1, 0, online_flag, 0);
+				show_popup (popup, __, 0, 0);
+			} else if ((count_disbanded > 1) && ! is_game_type_4_or_5 ()) {
+				set_popup_int_param (0, count_disbanded);
+				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_UNITS", -1, 0, 0, 0);
+				show_popup (popup, __, 0, 0);
+			}
+		}
+
+	}
+
+	Leader_set_treasury (leader, __, treasury - to_pay);
+}
 
 void __fastcall
 patch_Leader_pay_unit_maintenance (Leader * this)
 {
 	if (! is->current_config.aggressively_penalize_bankruptcy)
 		Leader_pay_unit_maintenance (this);
-
-	else if (this->Cities_Count > 0) { // Players with no cities don't pay unit maintenance, per the original game rules
-		int cost_per_unit;
-		get_unit_support_info (this->ID, this->GovernmentType, &cost_per_unit, NULL);
-		if (cost_per_unit > 0) {
-			int to_pay; {
-				int count_free_units = Leader_get_free_unit_count (this, __, this->GovernmentType) + Leader_count_foreign_and_king_units (this);
-				to_pay = not_below (0, (this->Unit_Count - count_free_units) * cost_per_unit);
-			}
-
-			int treasury = this->Gold_Encoded + this->Gold_Decrement;
-			int count_disbanded = 0;
-			Unit * to_disband;
-			char first_disbanded_name[32];
-			while ((to_pay > treasury) &&
-			       (NULL != (to_disband = this->vtable->find_unsupported_unit (this)))) {
-				if (count_disbanded == 0) {
-					char const * name_src = (to_disband->Body.Custom_Name.S[0] == '\0')
-						? p_bic_data->UnitTypes[to_disband->Body.UnitTypeID].Name
-						: to_disband->Body.Custom_Name.S;
-					strncpy (first_disbanded_name, name_src, sizeof first_disbanded_name);
-					first_disbanded_name[(sizeof first_disbanded_name) - 1] = '\0';
-				}
-				Unit_disband (to_disband);
-				count_disbanded++;
-				to_pay -= cost_per_unit;
-			}
-
-			Leader_set_treasury (this, __, treasury - to_pay);
-
-			if (this->ID == p_main_screen_form->Player_CivID) {
-				PopupForm * popup = get_popup_form ();
-				if (count_disbanded == 1) {
-					set_popup_str_param (1, first_disbanded_name, -1, -1);
-					int online_flag = is_game_type_4_or_5 () ? 0x4000 : 0;
-					popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "NOSUPPORT", -1, 0, online_flag, 0);
-					show_popup (popup, __, 0, 0);
-				} else if ((count_disbanded > 1) && ! is_game_type_4_or_5 ()) {
-					set_popup_int_param (0, count_disbanded);
-					popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_UNITS", -1, 0, 0, 0);
-					show_popup (popup, __, 0, 0);
-				}
-			}
-		}
-	}
+	else
+		charge_maintenance_with_aggressive_penalties (this);
 }
 
 void __fastcall
