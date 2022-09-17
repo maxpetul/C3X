@@ -169,4 +169,3 @@ Ideas:
   - Make all units tradeable instead of only workers
 - [from sirati97 and Predator145] Different categories for building "replace others with this flag" flags
 - [from Barret] Enable wonders to grant their cities +1 food/shield/commerce in each land tile. Even better if the amount is variable and can be limited to tiles already producing 1.
-- [from Meteor Man] Despite trespassing restriction, it's possible to attack an enemy unit in someone else's restricted territory. The unit can then get stuck halfway between two tiles.
