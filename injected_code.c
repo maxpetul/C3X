@@ -1758,6 +1758,9 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 		return;
 	}
 
+	// Save preferences so we can restore them at the end of the stack bombard operation. We might change them to turn off combat animations.
+	unsigned init_prefs = *p_preferences;
+
 	clear_memo ();
 
 	wrap_tile_coords (&p_bic_data->Map, &x, &y);
@@ -1812,6 +1815,15 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 	int anything_left_to_attack;
 	int last_attack_didnt_happen;
 	do {
+		// If combat animations were enabled when the stack bombard operation started, reset the preference according to the state of the
+		// shift key (down => skip animations, up => show them).
+		if (init_prefs & P_ANIMATE_BATTLES) {
+			if ((*p_GetAsyncKeyState) (VK_SHIFT) >> 8)
+				*p_preferences &= ~P_ANIMATE_BATTLES;
+			else
+				*p_preferences |= P_ANIMATE_BATTLES;
+		}
+
 		int moves_before_bombard = next_up->Body.Moves;
 
 		Unit_bombard_tile (next_up, __, x, y);
@@ -1859,6 +1871,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 	} while ((next_up != NULL) && anything_left_to_attack && (! last_attack_didnt_happen));
 
 	is->sb_activated_by_button = 0;
+	*p_preferences = init_prefs;
 }
 
 void

@@ -1319,6 +1319,40 @@ typedef enum toggleable_rules {
 	TR_ALLOW_SCIENTIFIC_LEADERS   = 0x40000,
 } ToggleableRules;
 
+typedef enum preferences {
+	P_ALWAYS_WAIT_AT_END_OF_TURN        = 0x1,
+	P_AUTO_SAVE                         = 0x2,
+	P_SOUND_FX_ON                       = 0x4,
+	P_MUSIC_ON                          = 0x8,
+	P_ANIMATE_MANUAL_MOVES              = 0x10,
+	P_ANIMATE_AUTO_MOVES                = 0x20,
+	P_ANIMATE_FRIEND_MOVES              = 0x40,
+	P_ANIMATE_ENEMY_MOVES               = 0x80,
+	P_SHOW_MANUAL_MOVES                 = 0x100,
+	P_SHOW_AUTO_MOVES                   = 0x200,
+	P_ANIMATE_BATTLES                   = 0x400,
+	P_SHOW_TEAM_COLOR_DISC              = 0x800,
+	P_SHOW_YIELDS_ON_MAP                = 0x1000,
+	P_SHOW_UNITS_OVER_CITIES            = 0x2000,
+	P_CANCEL_ORDERS_FOR_FRIENDLY_UNIT   = 0x4000,
+	P_CANCEL_ORDERS_FOR_ENEMY_UNIT      = 0x8000,
+	P_ASK_AFTER_UNIT_CONSTRUCTION       = 0x10000,
+	P_ALWAYS_BUILD_PREVIOUS_UNIT        = 0x20000,
+	P_SHOW_CIVIL_DISORDER_POPUP         = 0x40000,
+	P_SHOW_PEDIA_BOOK_CURSOR            = 0x80000,
+	P_CAPITAL_GOVERNOR_IS_DEFAULT       = 0x100000,
+	P_COLOR_BLIND_HELP                  = 0x200000,
+	P_DISABLE_POP_LIMIT_WARNINGS        = 0x400000,
+	P_SHOW_FRIEND_MOVES                 = 0x800000,
+	P_SHOW_ENEMY_MOVES                  = 0x1000000,
+	P_SHOW_CITY_POP_DROPSHADOW          = 0x2000000,
+	P_SHOW_WONDER_INITIATION_POPUP      = 0x4000000,
+	P_ALWAYS_RENEGOTIATE_DEALS          = 0x8000000,
+	P_SHOW_ADVANCED_UNIT_ACTION_BUTTONS = 0x10000000,
+	P_SHOW_FEWER_MP_POPUPS              = 0x20000000,
+	P_DO_NOT_AUTO_SELECT_UNITS_IN_MP    = 0x40000000
+} Preferences;
+
 struct IntList
 {
   int field_0;

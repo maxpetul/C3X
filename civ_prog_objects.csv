@@ -227,6 +227,7 @@ define,	   0x56D7D0,	0x0,		0x0,		"get_tile_occupier_id",				"int (__cdecl *) (in
 define,    0x4ED220,	0x0,		0x0,		"Main_Screen_Form_show_map_message",		"void (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, byte pause)"
 repl call, 0x4BE664,	0x0,		0x0,		"Main_Screen_Form_show_wltk_message",		""
 repl call, 0x4BE71B,	0x0,		0x0,		"Main_Screen_Form_show_wltk_ended_message",	""
+define,	   0xA52678,	0x0,		0x0,		"p_preferences",				"unsigned *"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
