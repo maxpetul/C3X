@@ -4482,18 +4482,18 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 	int cost_per_unit;
 	get_unit_support_info (leader->ID, leader->GovernmentType, &cost_per_unit, NULL);
 
-	int to_pay = 0; {
-		to_pay += Leader_sum_improvements_maintenance (leader, __, leader->GovernmentType);
-		if (leader->Cities_Count > 0) { // Players with no cities don't pay unit maintenance, per the original game rules
+	int improv_cost = Leader_sum_improvements_maintenance (leader, __, leader->GovernmentType);
+
+	int unit_cost = 0; {
+		if (leader->Cities_Count > 0) // Players with no cities don't pay unit maintenance, per the original game rules
 			if (cost_per_unit > 0) {
 				int count_free_units = Leader_get_free_unit_count (leader, __, leader->GovernmentType) + Leader_count_foreign_and_king_units (leader);
-				to_pay += not_below (0, (leader->Unit_Count - count_free_units) * cost_per_unit);
+				unit_cost += not_below (0, (leader->Unit_Count - count_free_units) * cost_per_unit);
 			}
-		}
 	}
 
 	int treasury = leader->Gold_Encoded + leader->Gold_Decrement;
-	if (to_pay > treasury) {
+	if (improv_cost + unit_cost > treasury) {
 		clear_memo ();
 
 		// Memoize all buildings this player owns that we might potentially sell. B/c the memo can only contain ints, we must pack the
@@ -4514,11 +4514,11 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 
 		// Sell buildings until we can cover maintenance costs or until we run out of ones to sell
 		int count_sold = 0;
-		while ((to_pay > treasury) && (count_sold < is->memo_len)) {
+		while ((improv_cost + unit_cost > treasury) && (count_sold < is->memo_len)) {
 			int improv_id = ((1<<13) - 1) & (is->memo[count_sold] >> 13),
 			    city_id   = ((1<<13) - 1) &  is->memo[count_sold];
 			City * city = get_city_ptr (city_id);
-			to_pay -= City_get_improvement_maintenance (city, __, improv_id);
+			improv_cost -= City_get_improvement_maintenance (city, __, improv_id);
 			City_sell_improvement (city, __, improv_id, 0);
 			treasury = leader->Gold_Encoded + leader->Gold_Decrement;
 			count_sold++;
@@ -4560,7 +4560,8 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 		int count_disbanded = 0;
 		Unit * to_disband;
 		char first_disbanded_name[32];
-		while ((to_pay > treasury) &&
+		while ((improv_cost + unit_cost > treasury) &&
+		       (unit_cost > 0) &&
 		       (NULL != (to_disband = leader->vtable->find_unsupported_unit (leader)))) {
 			if (count_disbanded == 0) {
 				char const * name_src = (to_disband->Body.Custom_Name.S[0] == '\0')
@@ -4571,7 +4572,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 			}
 			Unit_disband (to_disband);
 			count_disbanded++;
-			to_pay -= cost_per_unit;
+			unit_cost -= cost_per_unit;
 		}
 
 		// Show popup informing the player that their units were disbanded
@@ -4591,7 +4592,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 
 	}
 
-	Leader_set_treasury (leader, __, treasury - to_pay);
+	Leader_set_treasury (leader, __, treasury - improv_cost - unit_cost);
 }
 
 void __fastcall
