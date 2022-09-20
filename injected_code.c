@@ -4502,7 +4502,31 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 		FOR_CITIES_OF (coi, leader->ID)
 			for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
 				Improvement * improv = &p_bic_data->Improvements[n];
-				if (City_has_improvement (coi.city, __, n, 0)) {
+
+				int unsellable_flags =
+					ITF_Center_of_Empire |
+					ITF_50_Luxury_Output |
+					ITF_50_Tax_Output |
+					ITF_Reduces_Corruption |
+					ITF_Increases_Luxury_Trade |
+					ITF_Allows_City_Level_2 |
+					ITF_Allows_City_Level_3 |
+					ITF_Capitalization |
+					ITF_Allows_Water_Trade |
+					ITF_Allows_Air_Trade |
+					ITF_Increases_Shields_In_Water |
+					ITF_Increases_Food_In_Water |
+					ITF_Increases_Trade_In_Water;
+
+				// Only sell improvements that aren't contributing gold, even indirectly through e.g. happiness or boosting shield
+				// production for Wealth
+				int sellable =
+					((improv->Characteristics & (ITC_Small_Wonder | ITC_Wonder)) == 0) &&
+					((improv->ImprovementFlags & unsellable_flags) == 0) &&
+					(improv->Happy_Faces_All <= 0) && (improv->Happy_Faces <= 0) &&
+					(improv->Production <= 0);
+
+				if (sellable && City_has_improvement (coi.city, __, n, 0)) {
 					int maint = City_get_improvement_maintenance (coi.city, __, n);
 					if (maint > 0)
 						memoize ((not_above (31, maint) << 26) | (n << 13) | coi.city_id);
