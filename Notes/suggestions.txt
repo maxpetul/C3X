@@ -155,7 +155,6 @@ Ideas:
 - [from sirati97]
   - Enable carriers to be set to only carry aircraft with the foot unit tag
   - Stop automated units with bombard ability from attacking friendlies
-  - Land transporters
   - Enable HN artillery units to attack friendlies
   - Fix "great wall bug": free walls bounce bombards onto other random building in same city, potentially destroying wonders
   - Optimize trade network calculation
@@ -165,7 +164,12 @@ Ideas:
   - "ability hotkeys don't seem to work when from the 'wrong' domain. On a land unit with recon ability, you have to click the recon icon, pressing R does not work"
   - Stronger barb units unlocked by technologies. The tech level of each barb camp would be copied from the closest city.
   - Caps lock to quickly skip combat animations instead of shift
+  - "Stop agricultural from being exempt to the despotism penalty if the city has fresh water"
 - [from Delta_Strife]
   - Make all units tradeable instead of only workers
 - [from sirati97 and Predator145] Different categories for building "replace others with this flag" flags
 - [from Barret] Enable wonders to grant their cities +1 food/shield/commerce in each land tile. Even better if the amount is variable and can be limited to tiles already producing 1.
+- [from volman.me]
+  - Modify visibility ranges, e.g. give outposts more visibility on hills or mountains
+  - Expand artillery range when it's stationed on hills or mountains
+- [from sirati97, Stew Pid, and register] Land transports
