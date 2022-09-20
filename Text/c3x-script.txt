@@ -65,4 +65,10 @@ Our governors have been forced to {sell $NUM0 city improvements} because we coul
 #advisor Military Angry
 {$NUM0 of our units have committed desertion} because we could no longer afford to feed them! We should manage our treasury better!
 
+#C3X_FORCE_CUT_RESEARCH_SPENDING
+#xs 320
+#wave 24
+#advisor Science Angry
+We don't have enough funds to support our current research, and have been forced to reduce our science spending! We should manage our treasury better!
+
 # ; This line must remain at end of file
