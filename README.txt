@@ -1,10 +1,11 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 13B
+Release 13C
 
 INCLUDES (** = new in latest version):
 Convenience features:
  - Stack unit commands
   - Stack bombard
+   - ** Holding shift while it's going will temporarily turn off combat animations
   - Worker buttons (irrigate, road, etc.) become stack buttons by holding CTRL
   - Stack fortify, upgrade, and disband also with CTRL
  - Disorder warning
@@ -19,6 +20,7 @@ Convenience features:
  - Option to disable worker automation
  - On the city screen, hold shift when clicking a specialist to switch to the previous type
  - ** Automatically cut research spending to avoid bankruptcy
+ - ** Remove pause for "we love the king" messages
 AI enhancements:
  - Allow AI to use artillery in the field
  - Force AI to build more artillery and bombers
@@ -42,6 +44,7 @@ Engine extensions:
  - Option to prevent autoraze and razing by AIs
  - Stealth attack activates even when there's only one target
  - Trespassing prevention
+  - ** Fix restriction not applying to units attacking an enemy across a border
  - Land/sea intersections
  - Adjustable anarchy length
  - "Perfume" units or improvements to control how likely the AI is to build them
