@@ -71,4 +71,10 @@ Our governors have been forced to {sell $NUM0 city improvements} because we coul
 #advisor Science Angry
 We don't have enough funds to support our current research, and have been forced to reduce our science spending! We should manage our treasury better!
 
+#C3X_FORCE_BUILD_WEALTH
+#xs 320
+#wave 24
+#advisor Domestic Angry
+Our treasury is depleted! Some of our cities can no longer afford production, and have been allocated to only producing $WEALTH0 to help offset costs! We should manage our treasury better!
+
 # ; This line must remain at end of file

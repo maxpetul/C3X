@@ -4483,6 +4483,14 @@ compare_buildings_to_sell (void const * a, void const * b)
 	return maint_b - maint_a;
 }
 
+int
+compare_cities_by_production (void const * vp_id_a, void const * vp_id_b)
+{
+	City * a = get_city_ptr (*(int const *)vp_id_a),
+	     * b = get_city_ptr (*(int const *)vp_id_b);
+	return a->Body.ProductionIncome - b->Body.ProductionIncome;
+}
+
 void
 charge_maintenance_with_aggressive_penalties (Leader * leader)
 {
@@ -4621,6 +4629,44 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 			}
 		}
 
+		// If the player still can't afford maintenance, even after all that, start switching their cities to Wealth
+		int wealth_income = 0;
+		if (improv_cost + unit_cost > treasury + wealth_income) {
+			// Memoize all cities not already building wealth and sort by production (lowest first)
+			clear_memo ();
+			FOR_CITIES_OF (coi, leader->ID)
+				if ((coi.city->Body.Status & 0x20) == 0)
+					memoize (coi.city_id);
+			qsort (is->memo, is->memo_len, sizeof is->memo[0], compare_cities_by_production);
+
+			int wealth_improv_id = -1; {
+				for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
+					if (p_bic_data->Improvements[n].ImprovementFlags & ITF_Capitalization) {
+						wealth_improv_id = n;
+						break;
+					}
+			}
+
+			if (wealth_improv_id >= 0) {
+				int n = 0,
+				    switched_any = 0;
+
+				while ((n < is->memo_len) && (improv_cost + unit_cost > treasury + wealth_income)) {
+					City * city = get_city_ptr (is->memo[n]);
+					City_set_production (city, __, COT_Improvement, wealth_improv_id, 0);
+					switched_any = 1;
+					wealth_income += City_get_income_from_wealth_build (city);
+					n++;
+				}
+
+				if (switched_any) {
+					PopupForm * popup = get_popup_form ();
+					set_popup_str_param (0, p_bic_data->Improvements[wealth_improv_id].Name.S, -1, -1);
+					popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_BUILD_WEALTH", -1, 0, 0, 0);
+					show_popup (popup, __, 0, 0);
+				}
+			}
+		}
 	}
 
 	Leader_set_treasury (leader, __, treasury - improv_cost - unit_cost);
