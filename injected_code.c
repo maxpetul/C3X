@@ -4575,7 +4575,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 				set_popup_str_param (1, get_city_ptr (city_id)->Body.CityName     , -1, -1);
 				popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "MAINTSHORT", -1, 0, 0, 0);
 				if (show_popup (popup, __, 0, 0) == 1)
-					Civilopedia_open (p_civilopedia, __, "GCON_Treasury", 1);
+					Civilopedia_open (p_civilopedia, __, "GCON_Maintenance", 1);
 			} else if (count_sold > 1) {
 				set_popup_int_param (0, count_sold);
 				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_IMPROVS", -1, 0, 0, 0);

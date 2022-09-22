@@ -1,4 +1,4 @@
-* RELEASE 13D
+* RELEASE 13E
 - Automatically cut research spending to avoid bankruptcy
 - Option to aggressively penalize bankrupt players
   - Sells non-gold-generating buildings, non-free units, and switches city production to Wealth
