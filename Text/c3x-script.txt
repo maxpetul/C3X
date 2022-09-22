@@ -58,23 +58,35 @@ A highlight will be applied to all tiles showing how desirable they are as city 
 #advisor Domestic Angry
 Our governors have been forced to {sell $NUM0 city improvements} because we could no longer afford to pay their maintenance. We should manage our treasury better!
 ^What was sold:
+#itemlist
+Proceed
+What's the big picture?
 
 #C3X_FORCE_DISBANDED_UNITS
 #xs 320
 #wave 24
 #advisor Military Angry
 {$NUM0 of our units have committed desertion} because we could no longer afford to feed them! We should manage our treasury better!
+#itemlist
+Proceed
+What's the big picture?
 
 #C3X_FORCE_CUT_RESEARCH_SPENDING
 #xs 320
 #wave 24
 #advisor Science Angry
 We don't have enough funds to support our current research, and have been forced to reduce our science spending! We should manage our treasury better!
+#itemlist
+Proceed
+What's the big picture?
 
 #C3X_FORCE_BUILD_WEALTH
 #xs 320
 #wave 24
 #advisor Domestic Angry
 Our treasury is depleted! Some of our cities can no longer afford production, and have been allocated to only producing $WEALTH0 to help offset costs! We should manage our treasury better!
+#itemlist
+Proceed
+What's the big picture?
 
 # ; This line must remain at end of file

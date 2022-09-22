@@ -4454,7 +4454,9 @@ adjust_sliders_preproduction (Leader * this)
 		if (reduced_spending) {
 			PopupForm * popup = get_popup_form ();
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_CUT_RESEARCH_SPENDING", -1, 0, 0, 0);
-			show_popup (popup, __, 0, 0);
+			int response = show_popup (popup, __, 0, 0);
+			if (response == 1)
+				Civilopedia_open (p_civilopedia, __, "GCON_Treasury", 1);
 		}
 	}
 }
@@ -4572,8 +4574,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 				set_popup_str_param (0, p_bic_data->Improvements[improv_id].Name.S, -1, -1);
 				set_popup_str_param (1, get_city_ptr (city_id)->Body.CityName     , -1, -1);
 				popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "MAINTSHORT", -1, 0, 0, 0);
-				int response = show_popup (popup, __, 0, 0);
-				if (response == 1)
+				if (show_popup (popup, __, 0, 0) == 1)
 					Civilopedia_open (p_civilopedia, __, "GCON_Treasury", 1);
 			} else if (count_sold > 1) {
 				set_popup_int_param (0, count_sold);
@@ -4591,7 +4592,8 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 					PopupForm_add_text (popup, __, s, 0);
 				}
 
-				show_popup (popup, __, 0, 0);
+				if (show_popup (popup, __, 0, 0) == 1)
+					Civilopedia_open (p_civilopedia, __, "GCON_Maintenance", 1);
 			}
 		}
 
@@ -4625,7 +4627,8 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 			} else if ((count_disbanded > 1) && ! is_game_type_4_or_5 ()) {
 				set_popup_int_param (0, count_disbanded);
 				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_UNITS", -1, 0, 0, 0);
-				show_popup (popup, __, 0, 0);
+				if (show_popup (popup, __, 0, 0) == 1)
+					Civilopedia_open (p_civilopedia, __, "GCON_Unit_Support", 1);
 			}
 		}
 
@@ -4661,9 +4664,11 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 
 				if (switched_any) {
 					PopupForm * popup = get_popup_form ();
-					set_popup_str_param (0, p_bic_data->Improvements[wealth_improv_id].Name.S, -1, -1);
+					Improvement * wealth = &p_bic_data->Improvements[wealth_improv_id];
+					set_popup_str_param (0, wealth->Name.S, -1, -1);
 					popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_BUILD_WEALTH", -1, 0, 0, 0);
-					show_popup (popup, __, 0, 0);
+					if (show_popup (popup, __, 0, 0) == 1)
+						Civilopedia_open (p_civilopedia, __, wealth->CivilopediaEntry.S, 1);
 				}
 			}
 		}

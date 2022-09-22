@@ -1,7 +1,7 @@
-* RELEASE 13C
+* RELEASE 13D
 - Automatically cut research spending to avoid bankruptcy
 - Option to aggressively penalize bankrupt players
-  - Sells non-gold-generating buildings, non-free units, and swtiches city production to Wealth
+  - Sells non-gold-generating buildings, non-free units, and switches city production to Wealth
 - Remove pause for "we love the king" messages
 - Holding shift while a stack bombard is going will temporarily turn off combat animations
 - Fix units could trespass by attacking an enemy unit across a restricted border
