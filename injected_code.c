@@ -4454,9 +4454,7 @@ adjust_sliders_preproduction (Leader * this)
 		if (reduced_spending) {
 			PopupForm * popup = get_popup_form ();
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_CUT_RESEARCH_SPENDING", -1, 0, 0, 0);
-			int response = show_popup (popup, __, 0, 0);
-			if (response == 1)
-				Civilopedia_open (p_civilopedia, __, "GCON_Treasury", 1);
+			show_popup (popup, __, 0, 0);
 		}
 	}
 }
@@ -4573,12 +4571,11 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 				    city_id   = ((1<<13) - 1) &  is->memo[0];
 				set_popup_str_param (0, p_bic_data->Improvements[improv_id].Name.S, -1, -1);
 				set_popup_str_param (1, get_city_ptr (city_id)->Body.CityName     , -1, -1);
-				popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "MAINTSHORT", -1, 0, 0, 0);
-				if (show_popup (popup, __, 0, 0) == 1)
-					Civilopedia_open (p_civilopedia, __, "GCON_Maintenance", 1);
+				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_SINGLE_IMPROV", -1, 0, 0, 0);
+				show_popup (popup, __, 0, 0);
 			} else if (count_sold > 1) {
 				set_popup_int_param (0, count_sold);
-				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_IMPROVS", -1, 0, 0, 0);
+				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_MULTUPLE_IMPROVS", -1, 0, 0, 0);
 
 				// Add list of sold improvements to popup
 				for (int n = 0; n < count_sold; n++) {
@@ -4592,8 +4589,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 					PopupForm_add_text (popup, __, s, 0);
 				}
 
-				if (show_popup (popup, __, 0, 0) == 1)
-					Civilopedia_open (p_civilopedia, __, "GCON_Maintenance", 1);
+				show_popup (popup, __, 0, 0);
 			}
 		}
 
@@ -4627,8 +4623,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 			} else if ((count_disbanded > 1) && ! is_game_type_4_or_5 ()) {
 				set_popup_int_param (0, count_disbanded);
 				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_UNITS", -1, 0, 0, 0);
-				if (show_popup (popup, __, 0, 0) == 1)
-					Civilopedia_open (p_civilopedia, __, "GCON_Unit_Support", 1);
+				show_popup (popup, __, 0, 0);
 			}
 		}
 
@@ -4666,9 +4661,9 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 					PopupForm * popup = get_popup_form ();
 					Improvement * wealth = &p_bic_data->Improvements[wealth_improv_id];
 					set_popup_str_param (0, wealth->Name.S, -1, -1);
+					set_popup_str_param (1, wealth->CivilopediaEntry.S, -1, -1);
 					popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_BUILD_WEALTH", -1, 0, 0, 0);
-					if (show_popup (popup, __, 0, 0) == 1)
-						Civilopedia_open (p_civilopedia, __, wealth->CivilopediaEntry.S, 1);
+					show_popup (popup, __, 0, 0);
 				}
 			}
 		}
