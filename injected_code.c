@@ -4451,7 +4451,7 @@ adjust_sliders_preproduction (Leader * this)
 			Leader_recompute_economy (this);
 			reduced_spending = 1;
 		}
-		if (reduced_spending) {
+		if (reduced_spending && (this->ID == p_main_screen_form->Player_CivID)) {
 			PopupForm * popup = get_popup_form ();
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_CUT_RESEARCH_SPENDING", -1, 0, 0, 0);
 			show_popup (popup, __, 0, 0);
@@ -4657,7 +4657,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 					n++;
 				}
 
-				if (switched_any) {
+				if (switched_any && (leader->ID == p_main_screen_form->Player_CivID)) {
 					PopupForm * popup = get_popup_form ();
 					Improvement * wealth = &p_bic_data->Improvements[wealth_improv_id];
 					set_popup_str_param (0, wealth->Name.S, -1, -1);
