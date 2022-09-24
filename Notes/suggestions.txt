@@ -173,3 +173,5 @@ Ideas:
   - Modify visibility ranges, e.g. give outposts more visibility on hills or mountains
   - Expand artillery range when it's stationed on hills or mountains
 - [from sirati97, Stew Pid, and register] Land transports
+- [from El_Constructor] Reduce/remove diplo penalty for using nukes
+- from Alekseyev_] Remove exception to tile penalty for Agri civs city centers w/ fresh water
