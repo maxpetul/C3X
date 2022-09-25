@@ -6,7 +6,7 @@ REM Windows will start the script with the current directory set to C:\system32 
 PUSHD "%~dp0"
 
 REM Unfortunately we can't use tcc -run here. See comment above low_addr_buf in ep.c for why.
-tcc\tcc.exe -m32 -I"lua/include" -luser32 ep.c -o temp.exe && temp.exe --install
+tcc\tcc.exe -m32 -I"lua/include" -Wl,-nostdlib -g -lmsvcrt -luser32 -lkernel32 -DC3X_INSTALL ep.c -o temp.exe && temp.exe
 
 IF EXIST "temp.exe" (DEL temp.exe)
 

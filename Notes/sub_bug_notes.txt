@@ -1,0 +1,8 @@
+Declaration of war happens inside 5B8FC0
+	deeper, in 5B61E0
+	deeper, in 5B5600
+IMPORTANT: That func 5B8FC0 is never called when there's a visible unit on the tile
+
+Func at 464270 calls 5B8FC0 (call instr is at 46545A). This func does get called when there's an visible unit on the tile. Also it does not get called when the player issues a move order for multiple tiles, so it's probably some sort of AI function.
+
+Get_Optimal_Direction occupies [0x458120, 0x459CDB). Calls to get_tile_owner occur at 0x4585F4 and 0x4598C6

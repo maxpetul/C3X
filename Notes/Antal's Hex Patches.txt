@@ -1,0 +1,48 @@
+First address is for Conquest exe version 1.21
+*Second address is for Conquest exe version 1.22 GOG version
+
+No city limit
+B115F	E4 10 00 -> 24 10 01
+*B1CCF
+1657A5	7C -> EB
+*1663F5
+code string 321141
+
+No Raze patch
+1634A1	0F 85 FF 01 00 00 -> E9 00 02 00 00 90
+*1640F1
+16390D	0F 84 6F 01 00 00 -> E9 70 01 00 00 90
+*16455D
+
+ANTAL v1
+Fix List for v1:
+Fix of annoying non-zero pollution (when city size > 12) even if the city has mass transit and recycling center. Now there should be no pollution (see).
+Fix limit for building new city nearby the other one. Limit appears when the distance between settlers and a city is less than 2 (see).
+
+B0F9E	01 -> 00
+*B1B0E
+B107B	01 -> 00
+*B1BEB
+B1208	01 -> 00
+*B1D78
+1F2623	05 -> 00
+*1F32F3
+
+ANTAL v3
+Fix List for v3:
+Fix of the science age bug (see)
+Science Age Multiplier is set to 3.00 instead of 1.25
+
+16163A	DB 44 24 08 D8 0D 5C 90 66 00 E8 2B 7F 0E 00 8B F8
+	->	E9 C1 DF E9 FF 90 90 90 90 90 90 90 90 90 90 90 90
+*16228A DB 44 24 08 D8 0D 5C 90 66 00 E8 97 7F 0E 00 8B F8
+	
+267A5E	A0 3F -> 40 40
+*26905E
+
+ANTAL v4
+Fix List for v4:
++ Fix of some drawing bug in civilopedia form (see)
+
+CC571	A5 -> A6
+*CD0B1

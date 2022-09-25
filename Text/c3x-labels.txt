@@ -18,3 +18,21 @@ Surplus: N/A
 
 ; Tooltip for stack bombard button. Follows the same format as the tooltip for the regular bombard button.
 Stack Bombard: Select a target (B then CTRL+Click target)
+
+; Appears in tile info to indicate that forests harvested from this tile won't produce shields anymore
+Chopped
+
+; As in turn off, disable, deactivate
+OFF
+
+; Text on button that opens the mod info popup
+C3X Info
+
+; Used on mod info popup
+Version
+
+; Also used on mod info popup
+Config files loaded
+
+; Appears on loading bar during setup of two-city start
+Creating cities

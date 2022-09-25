@@ -10,6 +10,16 @@
     i.e., you need to stay in republic.
   - Also need to consider its place on the tech tree. Even if it were a good govt, it might still not be worth pursuing
     b/c you'd have to put off railroads, factories, rep. parts, and ToE.
+  - Allows construction of small wonder that, when build, allows its city to ignore tech restrictions for unit
+    construction. Thematically fits with famous Nazi super-weapons programs. Hopefully not too OP since you'd still need
+    to unlock the necessary resources, but could hopefully open up some interesting and unique strategies.
+
+* Buff expansionist
+  - Free border expansion on city founding
+  - Take OCN bonus from commercial. I like this idea since it would keep expansionist useful into the late game but then
+    commercial would need to be given a new ability to compensate.
+
+* Move riverside food bonus from agricultural to seafaring
 
 * Military great leader can perform coup when in the capital, allowing player to change govt w/o anarchy.
   - Makes govt changes more viable in the late game

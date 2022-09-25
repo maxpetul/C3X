@@ -17,19 +17,26 @@ difficulty = {"global_location": 0x9C40C0, "size": 0x7C , "name_offset": 4, "nam
 
 unnamed_unit_counter = 1
 
-unit_layout = {"ID"        : 0x1C + 0x4,
-               "X"         : 0x1C + 0x8,
-               "Y"         : 0x1C + 0xC,
-               "CivID"     : 0x1C + 0x18,
-               "RaceID"    : 0x1C + 0x1C,
-               "UnitTypeID": 0x1C + 0x24,
-               "Status"    : 0x1C + 0x2C,
-               "Job_Value" : 0x1C + 0x38,
-               "Job_ID"    : 0x1C + 0x3C,
-               "UnitState" : 0x1C + 0x48,
-               "escortee"  : 0x1C + 0x1A8}
+unit_layout = {"ID"              : 0x1C + 0x4,
+               "X"               : 0x1C + 0x8,
+               "Y"               : 0x1C + 0xC,
+               "CivID"           : 0x1C + 0x18,
+               "RaceID"          : 0x1C + 0x1C,
+               "UnitTypeID"      : 0x1C + 0x24,
+               "Status"          : 0x1C + 0x2C,
+               "Job_Value"       : 0x1C + 0x38,
+               "Job_ID"          : 0x1C + 0x3C,
+               "UnitState"       : 0x1C + 0x48,
+               "action_target_x" : 0x1C + 0x9C,
+               "action_target_y" : 0x1C + 0xA0,
+               "escortee"        : 0x1C + 0x1A8}
 
-city_layout = {"ID": 0x1C + 0x4}
+city_layout = {"ID"              : 0x1C + 0x4,
+               "ProductionLoss"  : 0x1C + 0x22C,
+               "Corruption"      : 0x1C + 0x230,
+               "FoodIncome"      : 0x1C + 0x234,
+               "ProductionIncome": 0x1C + 0x238,
+               "CashIncome"      : 0x1C + 0x23C}
 
 class GameObject:
         def __init__ (self, civ_proc, address, size):
@@ -64,6 +71,11 @@ class Unit(GameObject):
         def get_location (self):
                 return (self.get_int (0x1C + 0x8), self.get_int (0x1C + 0xC))
 
+        def get_action_target (self):
+                x = self.get ("action_target_x")
+                y = self.get ("action_target_y")
+                return (x, y) if (x >= 0) and (y >= 0) else None
+
         def get_type (self):
                 i = self.get ("UnitTypeID")
                 if (i >= 0) and (i < len (self.civ_proc.unit_types_by_id)):
@@ -74,7 +86,7 @@ class Unit(GameObject):
         def describe (self):
                 unit_type = self.get_type ()
                 type_name = unit_type.name if unit_type is not None else "N/A"
-                return "%d\t%s\t%s" % (self.get ("ID"), type_name, hex (self.get ("UnitState")))
+                return "%d\t(%d,\t%d)\t%s\t%s" % (self.get ("ID"), self.get ("X"), self.get ("Y"), type_name, hex (self.get ("UnitState")))
 
         def get_escortee (self):
                 escortee_id = self.get ("escortee")
@@ -202,6 +214,14 @@ class CivProc:
                                         go = self.read_thing (type_tag, addr_city)
                                         tr[go.name] = go
                 return tr
+
+        def find_int (self, x):
+                for p in self.find_mapped_pages ():
+                        mem_bytes = self.read_memory (p, 0x1000)
+                        mem_ints = [int.from_bytes (mem_bytes[4*n : 4*n+4], "little") for n in range (0x1000 // 4)]
+                        for n in range (len (mem_ints)):
+                                if mem_ints[n] == x:
+                                        print (str (hex (p + 4 * n)) + ": " + str (x))
 
         def read_game_objects_from_list (self, list_object_addr, type_tag):
                 items = self.read_int (list_object_addr + 0x4)

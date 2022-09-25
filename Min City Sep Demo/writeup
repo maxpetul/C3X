@@ -1,0 +1,213 @@
+
+I'm going to describe the process of making a simple EXE modification with C3X so you guys can get an idea of what's involved. For some background, if you haven't already read it, here's some info about how my mod works: https://forums.civfanatics.com/threads/analysis-exe-patching.666413/page-2#post-16076100. The goal of the modification is to make the minimum distance between cities adjustable, to allow it to be increased or decreased by a given number of tiles.
+
+The first step, a minor one, is to put together a scenario that allows us to test our changes. Here it is:
+
+Here we can slide the settler around to see where the game will let us found a new city, if the "found city" command button disappears then that location is invalid.
+
+Secondly, or for the first real step, we must analyze the game's executable to figure out how it determines city location validity so we know where & how to make changes. I've been using Ghidra to do this, I posted my project folder here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-7#post-16066922 (though it's out of date by this point) and a bit about how to load it up. The analysis is the hardest to give an overview of because it often has to be done ad hoc. Often reading the decompiled code isn't enough and it's necessary to observe the game running in a debugger, probe its memory (I have a Python script to help with that), construct special scenarios, inject code to monitor & show the game's internal state, etc., whatever you can think of to figure out what's going on. Fortunately none of that is necessary in this case because I already have a starting point: the method Unit::can_perform_command. I don't remember how I found this function, it was some months ago when I starting work on stack bombard. It's about 1030 lines decompiled so I can't paste the whole thing here but internally it basically just switches over an integer code for a given command on a given unit. Conveniently, Antal already decoded the unit command codes (in the Unit_Command_Values enum in Civ3Conquests.h) so we can easily see that the found city command is code 0x20000002. Searching for that string in the decompiled code turns up this:
+[code]
+case 0x20000002:
+	iVar8 = FUN_005f3160(&bic_data.Map,(this->Body).X,(this->Body).Y,(this->Body).CivID,0x01);
+	if (iVar8 == 0) {
+		return true;
+	}
+break;
+[/code]
+So the function at 0x5F3160 determines if it's possible to found a city. Note that the settler unit is not considered, it's a function of the tile x & y coords, civ ID (i.e. player index: 0 = barbs, 1 = human in a SP game, 2+ are the AIs), and what looks like a boolean parameter.
+
+Next we have to analyze this function. Here again Antal is a big help, most of its calls are virtual calls to a Tile object and Antal has already named most of the functions in the Tile vtable. If we didn't have Antal's work to build off of, we'd have to do something like run the game with a breakpoint set at this function and see when it returns non-zero values (we already know zero means a valid city location). Here's the decompiled function, I've already named & typed the parameters based on the values passed at the call site:
+[code]
+int __thiscall FUN_005f3160(Map *this,int tile_x,int tile_y,int civ_id,char param_4)
+{
+	Map_vtable *pMVar1;
+	int iVar2;
+	bool bVar3;
+	char cVar4;
+	Tile *pTVar5;
+	int iVar6;
+	undefined4 uVar7;
+	int iVar8;
+	int iVar9;
+	int unaff_EBX;
+	int unaff_ESI;
+	int unaff_EDI;
+	int iVar10;
+	int iStack8;
+
+	if (param_4 != 0) {
+		pTVar5 = (*this->vtable->m12_Get_Tile_by_XY)(this,tile_x,tile_y);
+		bVar3 = Tile::has_city(pTVar5);
+		if (bVar3 != false) {
+			return 2;
+		}
+	}
+	pTVar5 = (*this->vtable->m12_Get_Tile_by_XY)(this,tile_x,tile_y);
+	cVar4 = (*pTVar5->vtable->m26_Check_Tile_Building)();
+	if (cVar4 != '\0') {
+		pTVar5 = (*this->vtable->m12_Get_Tile_by_XY)(this,tile_x,tile_y);
+		iVar6 = (*pTVar5->vtable->m70_Get_Tile_Building_OwnerID)();
+		if (iVar6 != civ_id) {
+			return 2;
+		}
+	}
+	pTVar5 = (*this->vtable->m12_Get_Tile_by_XY)(this,tile_x,tile_y);
+	cVar4 = (*pTVar5->vtable->m7_Check_Barbarian_Camp)(0);
+	if (cVar4 == '\0') {
+		pTVar5 = (*this->vtable->m12_Get_Tile_by_XY)(this,tile_x,tile_y);
+		pMVar1 = this->vtable;
+		uVar7 = (*pTVar5->vtable->m50_Get_Square_BaseType)(register0x00000010);
+		(*(code *)pMVar1->m35_Get_BIC_Sub_Data)(0x52524554,uVar7);
+		if (*(char *)(unaff_EBX + 0x78) == '\0') {
+			pTVar5 = (*this->vtable->m12_Get_Tile_by_XY)(this,tile_x,tile_y);
+			cVar4 = (*pTVar5->vtable->m35_Check_Is_Water)();
+			return 4 - (uint)(cVar4 != '\0');
+		}
+		iVar6 = 1;
+		iVar10 = 0;
+		do {
+			if (8 < iVar6) {
+				return iVar10;
+			}
+			neighbor_index_to_displacement(iVar6,(int *)&stack0xffffffe8,(int *)&stack0xffffffec);
+			iVar9 = unaff_EDI + tile_x;
+			if ((this->Flags & 1U) != 0) {
+				iVar8 = this->Width;
+				if (iVar9 < 0) {
+					iVar9 = iVar8 + iVar9;
+				}
+				else {
+					if (iVar8 <= iVar9) {
+						iVar9 = iVar9 - iVar8;
+					}
+				}
+			}
+			iVar8 = unaff_ESI + tile_y;
+			if ((this->Flags & 2U) != 0) {
+				iVar2 = this->Height;
+				if (iVar8 < 0) {
+					iVar8 = iVar2 + iVar8;
+				}
+				else {
+					if (iVar2 <= iVar8) {
+						iVar8 = iVar8 - iVar2;
+					}
+				}
+			}
+			if ((((-1 < iVar9) && (iVar9 < this->Width)) && (-1 < iVar8)) && (iVar8 < this->Height)) {
+				pTVar5 = (*this->vtable->m12_Get_Tile_by_XY)(this,iVar9,iVar8);
+				bVar3 = Tile::has_city(pTVar5);
+				tile_y = iStack8;
+				if (bVar3 != false) {
+					iVar10 = 5;
+				}
+			}
+			iVar6 = iVar6 + 1;
+		} while (iVar10 == 0);
+		return iVar10;
+	}
+	return 2;
+}
+[/code]
+The decompiler gets confused by functions with many virtual calls, like this one, so some calls are missing parameters and some variables have incorrect storage, specifically the "unaff", "stack", and "register" ones. Still, the function is understandable. Notice how it returns 2 if the tile is already blocked by a building or, if param_4 is set, by a city, returns 4 if the terrain disallows city founding (Get_Square_BaseType gets the terrain type and Get_BIC_Sub_Data with the code 0x52524554 gets terrain data) and subtracts 1 to return 3 for water specifically. The most relevant part is the do-while loop which loops over surrounding tiles and returns 5 if any of them has a city already on it. We can sum up our findings by saying the function returns the following enum:
+[code]
+typedef enum city_loc_validity
+{
+	CLV_OK = 0,
+	CLV_1,
+	CLV_BLOCKED,
+	CLV_WATER,
+	CLV_INVALID_TERRAIN,
+	CLV_CITY_TOO_CLOSE
+} CityLocValidity;
+[/code]
+I'm going to name the function "check_city_location" and name param_4 "check_for_city_on_tile". It's also necessary to add the enum definition above to Civ3Conquests.h so it's part of the mod.
+
+The third step is modifying the EXE. We will intercept the return value of check_city_location, i.e., we will replace it with a function that calls the original then runs some additional logic to alter the value that gets returned. Replacing the function is actually very easy because I have entirely automated the process at this point. Add the following entry to the array in civ_prog_objects.h:
+[code]
+{OJ_INLEAD, "Map_check_city_location", "CityLocValidity (__fastcall *) (Map *this, int edx, int tile_x, int tile_y, int civ_id, byte check_for_city_on_tile)", 0x5F3160, 0x0},
+[/code]
+This array contains the names, types, and locations of all EXE objects that we care about, in addition it contains a task for the patcher to perform on each one. Each entry has five fields, explained here, in order:
+  - Job: This tells the patcher what to do with the object. OJ_INLEAD tells it to replace a function by means of an inlead. Other options are OJ_DEFINE which merely defines the object for the injected code and OJ_REPL_VPTR which replaces a function by means of overwriting its entry in a vtable.
+  - Name: The patcher defines a preprocessor macro with this name to make the object available to the injected code. In this case, the macro will expand to a function pointer pointing to an inlead to check_city_location which we can call to access the original function. Note I've prepended "Map_" to the name because the function is a method of the Map object, this is just convention.
+  - Type: The C type of this object. The macro mentioned above will include a type cast, this is its contents.
+  - GOG address: The address of the object in the GOG EXE.
+  - Steam address: The address of the object in the Steam EXE. For example purposes just leave this as zero, meaning this example will only work for the GOG EXE. Finding the real value is a matter of locating the same function in the Steam EXE.
+Notice the type field is almost the same as the function's type in the decompiler. There's one minor difference in that I used "byte" instead of "bool" for param_4. The injected code is all C so there is no bool type out of the box, we could define one of course, I just haven't done so, and not for any particular reason. Instead I use byte which is a typedef of unsigned char. There is also one major difference, the use of the fastcall convention instead of the thiscall convention. This is also related to the awkwardness of interfacing C++ with C. C has no classes and hence no use for the thiscall convention, and the compiler that the mod uses, TCC, doesn't even recognize it. As a work around we can use the fastcall convention with a dummy second parameter. This works because in fastcall the first parameter is stored in register ecx, like the this pointer in thiscall, and the second parameter gets stored in edx, which is unused in thiscall and trashed across calls, and all the remaining parameters get pushed on the stack like usual. This is not a big deal but it's something to be aware of, the dummy second parameter is necessary when defining most C++ functions for C and when calling them from the injected code as we'll see soon.
+
+Now head over to injected_code.c and write a replacement function. Start with a simple replacement as a sanity check and a nice small example:
+[code]
+CityLocValidity __fastcall
+patch_Map_check_city_location (Map * this, int edx, int tile_x, int tile_y, int civ_id, byte check_for_city_on_tile)
+{
+	CityLocValidity base_result = Map_check_city_location (this, __, tile_x, tile_y, civ_id, check_for_city_on_tile);
+	return (base_result == CLV_BLOCKED) ? CLV_BLOCKED : CLV_OK;	
+}
+[/code]
+Note the two underscores as the second argument, that's a macro that expands to 0. The underscores are a visual reminder that that's a meaningless placeholder argument. As for what this replacement actually does, it modifies the check_city_location function to allow cities anywhere except tiles that are blocked by a building or city. Loading up the test scenario, we see that, as expected, this allows us to found cities on mountains and next to existing cities:
+
+So, fundamentally, that's it! If you can write C, you can write any arbitrary logic in this function to determine what the game considers a valid city location. To fulfill the original objective, we need to modify how the CLV_CITY_TOO_CLOSE check is performed to allow the minimum distance to be adjusted by a given number of tiles. Here's the code to do so, I've added some comments to explain how it works:
+[code]
+CityLocValidity __fastcall
+patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int civ_id, byte check_for_city_on_tile)
+{
+	int const adjustment_to_min_city_distance = 2; // TODO: Load this from the config file
+	CityLocValidity base_result = Map_check_city_location (this, __, tile_x, tile_y, civ_id, check_for_city_on_tile);
+
+	// If adjustment is zero, make no change
+	if (adjustment_to_min_city_distance == 0)
+		return base_result;
+
+	// If adjustment is negative, ignore the CITY_TOO_CLOSE objection to city placement. The base code enforces a minimum separation of 1 and the
+	// separation cannot go below zero.
+	else if (adjustment_to_min_city_distance < 0)
+		return (base_result == CLV_CITY_TOO_CLOSE) ? CLV_OK : base_result;
+
+	// If we have an increased separation we might have to exclude some locations the base code allows.
+	else if ((adjustment_to_min_city_distance > 0) && (base_result == CLV_OK)) {
+		// Check tiles around (x, y) for a city. Because the base result is CLV_OK, we don't have to check neighboring tiles, just those at
+		// distance 2, 3, ... up to (an including) the adjustment + 1
+		for (int dist = 2; dist <= adjustment_to_min_city_distance + 1; dist++) {
+
+			// "vertices" stores the unwrapped coords of the tiles at the vertices of the square of tiles at distance "dist" around
+			// (tile_x, tile_y). The order of the vertices is north, east, south, west.
+			struct vertex {
+				int x, y;
+			} vertices[4] = {
+				{tile_x         , tile_y - 2*dist},
+				{tile_x + 2*dist, tile_y         },
+				{tile_x         , tile_y + 2*dist},
+				{tile_x - 2*dist, tile_y         }
+			};
+
+			// neighbor index for direction of tiles along edge starting from each vertex
+			// values correspond to directions: southeast, southwest, northwest, northeast
+			int edge_dirs[4] = {3, 5, 7, 1};
+
+			// Loop over verts and check tiles along their associated edges. The N vert is associated with the NE edge, the E vert with
+			// the SE edge, etc.
+			for (int vert = 0; vert < 4; vert++) {
+				wrap_tile_coords (&p_bic_data->Map, &vertices[vert].x, &vertices[vert].y);
+				int  dx, dy;
+				neighbor_index_to_displacement (edge_dirs[vert], &dx, &dy);
+				for (int j = 0; j < 2*dist; j++) { // loop over tiles along this edge
+					int cx = vertices[vert].x + j * dx,
+					    cy = vertices[vert].y + j * dy;
+					wrap_tile_coords (&p_bic_data->Map, &cx, &cy);
+					if (city_at (cx, cy))
+						return CLV_CITY_TOO_CLOSE;
+				}
+			}
+
+		}
+		return base_result;
+
+	} else
+		return base_result;
+}
+[/code]
+Load up the test scenario again. Now because the min distance is increased by 2 (see the first line of the replacement function) we expect to be able to found on the second ring of desert but not inside of it.
+
+So it works. The last thing to do for the mod would be to load the min distance adjustment from the config file instead of hard coding it, but the code to make that happen is not special or interesting so I'm going to leave it out of this demo. But the jist of it is that the mod injects some data into the program in addition to the code. Part of the data is a config struct that gets filled out when the program is launched with values parsed from default.c3x_config.ini. So making the adjustment value configurable is a matter of adding it as a field to that struct, adding an entry to the base config struct that's used if the config file is missing, and adding a case to the parser to load that value.
+
+That's it. One last remark, if you have a recent version of C3X you can add this feature to it easily. There are only three changes that need to be made: the CityLocValidity enum must be added to Civ3Conquests.h, the entry for Map_check_city_location must be added to the array in civ_prog_objects.h, and the patch_Map_check_city_location function must be added to injected_code.c.

@@ -1,0 +1,14 @@
+Interesting object:
+size: 0xAE (174), or is it 0x2B8 (696)?
+ctor: 0x5FC420
+vptr: 0x6711D0
+FUN_005FC710: Takes interesting object as this, first two params are width, height
+FUN_005FC820: "     "           "      "  "   , next param is PCX file (I think)
+FUN_005F8080: this is a Tile_Image_Info, next parm is inter. obj., next parms look like coords
+Offset 0xAC probably of type PCX_Color_Table **
+Static object at 0xB401B8 (constructed at 0x548655)
+"      "      at 0xB3FF00 ("           "  0x548685)
+"      "      at 0xB3FC48 ("           "  0x5486B5)
+Array of 3 static objects at 0xB3F420, constructed at 5486E5. This confirms the larger size.
+Object dynamically allocated at 0x6020EB, this reconfirms the size of 0x2B8.
+Interesting object must be PCX_Image

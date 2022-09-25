@@ -1,0 +1,11 @@
+Locations that access City->Body.Available_Resources (based on static analysis by Ghidra):
+* 0x4ADE70 (x2)
+  In City::has_resource. Ghidra gets the addresses wrong here, the relevant instructions are at 0x4ADF68 and 0x4ADF30.
+* 0x4FECE9
+  Loops over all resources in all cities multiplying the available resources by pop and adding it all up. Computing score, power, ...?
+* 0x57CF63 (x2)
+  Relevant instructions are at 0x57CFCF and 0x57CF88. No idea what this code is doing.
+* 0x57E5D2
+  In Trade_Net::recompute_resources. Clears the field.
+* 0x57EEC2 (x2)
+  Relevant instruction is at 0x57EEC4. This is where bits in the field get set.

@@ -1,0 +1,83 @@
+Check out the call at 0x466B95. It looks like the parameters are in the wrong order.
+
+In a normal single player game, the call to perform_interturn occurs at 0x4F6759. The loop before that is the main interface loop that runs during the player's turn.
+
+0xB71288 has some kind of array with one item per Leader. Each item is 0xB0 bytes large. This info based on the args to the call at 0x560E14
+
+Object at 0xCADBF0 has something to do with storing labels. One of its member functions (at 0x60F6A0) is one of the most referenced functions in the entire program. It does some kind of processing of label pointers (looks like it just checks that they're in range? What's the point of that?). For the object itself, its vtable ptr gets set twice, first one is 0x670994 set by function at 0x5F7870. Then 0x6716FC set by func at 0x60F5B0 (looks like constructor, suggests size of 28 bytes).
+
+
+
+
+
+5bb650: Unit::is_visible_to
+
+56d630: Relevant to the submarine bug
+I think this is the get owner function that Antal1987 was talking about.
+This is the source of the bug. When the player checks ownership of a tile with an AI sub, this returns the AI's civ ID but when the AI checks ownership of a tile with the player's sub, this returns -1 indicating that the tile is unowned. The AI then tries to move onto that tile and triggers combat.
+The problem is that changing this function to tell the AI about player ownership of a tile might trigger the AI to attack invisible player units. Perhaps the player's units should only be revealed during peace time?
+
+
+
+466f40: some kind of unit move function. I think it's for a unit with a given path.
+Break point set there, for the AI frigate, it called:
+47B530
+| 499FE0 (jump)
+5B2B20
+5B8FC0 (with 7 as a parameter, matches neigh. index of the submarine's tile)
+	47B530
+	| 499FE0 (jump)
+	5BC6D0
+		5BC8B0
+			UnitType::has_ability
+	UnitType::has_ability
+	neighbor_index_to_displacement
+	Map::wrap_horiz
+	Map::wrap_vert
+	Map::in_range
+	Map::get_tile
+	Tile::get_continent_id (virtual EDX+0xB8)
+	56D630
+		Map::get_tile
+		5EAA90 (virtual EDX+0xA0)
+		[5BC8B0
+			5BC6D0
+				5BC8B0
+					UnitType::has_ability
+			UnitType::has_ability
+		]
+	56D7D0
+		5D16A0
+		5EA6C0
+			??? (virtual EAX+0B4; forgot to record the address)
+		5D16A0
+		5EA910 (virtual EDX+0x68)
+			5EAB00 (virtual EAX+0xBC)
+		426BD0
+		437A70
+			5D16A0
+		5EAA90 (virtual EDX+0xA0)
+		426C80
+		[52CA00
+			5BC8B0
+				5BC6D0
+					... ; returns -1
+				... ; returns C8CEB00
+		]
+	56D2C0
+		5D16A0
+		(virtual EDX+0xB4)
+	5D16A0
+	5EAA30 (virtual EDX+8C)
+		5EAB30 (virtual)
+			5EA4E0 (virtual)
+		5EAB30 (virtual)
+			5EA4E0 (virtual)
+	5D16A0
+	5EAA30 (virtual)
+		5EAB30 (virtual)
+			5EA4E0 (virtual)
+		5EAB30 (virtual)
+			5EA4E0 (virtual)
+	5E23C0
+		!!! OOPS ACCIDENTALLY PRESSED CONTINUE INSTEAD OF STEP INTO !!!

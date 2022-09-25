@@ -3,6 +3,6 @@
 REM See INSTALL.bat for explanation of this line
 PUSHD "%~dp0"
 
-tcc\tcc.exe -m32 -I"lua/include" -run -luser32 ep.c --run
+tcc\tcc.exe -m32 -I"lua/include" -Wl,-nostdlib -run -lmsvcrt -luser32 -lkernel32 -DC3X_RUN ep.c
 
 POPD

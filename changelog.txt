@@ -1,12 +1,94 @@
+* RELEASE 13G
+- Automatically cut research spending to avoid bankruptcy
+- Option to aggressively penalize bankrupt players
+  - Sells non-gold-generating buildings, non-free units, and switches city production to Wealth
+- Remove pause for "we love the king" messages
+- Holding shift while a stack bombard is going will temporarily turn off combat animations
+- Fix units could trespass by attacking an enemy unit across a restricted border
+- Widen C3X error, info, and warning popups
+
+* RELEASE 13
+- AI two-city start
+- Remove cap on turn limit
+- Option to strengthen forbidden palace decorruption effect to match the palace's
+- Option to allow military great leaders to hurry wonders
+- Option to reduce AI research rate by half
+- Resource generation from buildings can be set to ignore revealing tech
+- Address some issues with text encoding
+  - Includes fix for encoding error on Windows 8.1
+- Apply building prereqs to all unit types with the same name
+  - Fixes prereq sometimes not applying to AIs
+
+* RELEASE 12
+- Support for the executable from PCGames.de
+- Option to modify rules for retreat eligibility
+- Re-encode config file contents to match Civ 3's internal encoding
+  - Config files should be encoded in UTF-8. They will be converted to Windows-1252 when loaded.
+- Accented Latin characters no longer separate words
+- Fix crash when a building-generated resource triggers the advisor popup for first connection
+- Fix workers in boats can do "extra" jobs (road-to, auto-irrigate, etc.) despite restriction
+
+* RELEASE 11
+- Buildings can generate resources
+- Buildings can be set as prerequisites for unit production
+- On the city screen, hold shift when clicking a specialist to switch to the previous type
+- Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
+- Disallow workers from improving water tiles
+- Exempt invisible and hidden nationality units from trespassing restriction
+- Do not group units with differing charm statuses
+
+* RELEASE 10B
+- Fix crash caused by patch for phantom resource bug
+
+* RELEASE 10
+- Scenario-specific mod configurations (see README for more info)
+- Mod info button
+  - Tells the mod version and file names of currently loaded configs
+  - Located on the upper right of the preferences screen
+- Better logic for grouping units on right click menu
+- Option to let units move after airdropping
+- Fix phantom resource bug
+- Fix air units losing a turn after being set to intercept
+- L key loads unit over activating AI city loc highlighter
+
+* RELEASE 9
+- Perfume can be applied to multiple improvements or unit types
+- Corruption can be completely removed with "OFF" government setting
+- Press P in city screen to see AI point value for each available build
+- Press L on map to see how desirable the AI finds each tile as a city location
+- AI naval invasion forces can include artillery (with offensive artillery AI enabled)
+- Option to disable worker automation
+- Disallow land settlers from founding on water
+- Warn in case perfume target doesn't match any unit or improvement name
+- Fix tile coords replacing resource name in the info box on the Steam version
+- Proper movement check for replacement army inclusion criteria
+
+* RELEASE 8
+- Stack fortify, upgrade, and disband
+- AI routine for "pop units" that may appear in mods
+- Group units on right click menu
+- Show coordinates and chopped status in tile info box
+- Show golden age turns remaining
+- Trespassing prevention (experimental)
+- Land/sea intersections
+- Adjustable anarchy length
+- "Perfume" an improvement to make it more appealing to the AI
+- No special king unit names in non-regicide games
+- Stack worker commands apply across unit types
+
+* RELEASE 7
+- Buttons on trade screen to quickly switch between civs
+- Ask/offer gold popup autofills best amount
+- Adjustable minimum city distance
+
 * RELEASE 6
-- Add option to force the AI to build more artillery
-- Implement/enable offensive artillery AI
+- Add option to increase AI artillery and bomber production
+- Allow AI to grab artillery escorts from city defenders so its arty can be used in the field
+- Improve leader unit AI: fix bug allowing rush of any city build, prefer forming armies, select better rush targets
+- Improve AI army inclusion criteria: exclude HN & defensive units, fix movement check
 - Fix for immobile unit disembark crash
-- For for houseboat bug
-- TODO
-  - AI should not build more artillery if the arty it can build would slow down its army, i.e., if it can or has already built faster units
-  - Credit Civinator in the readme for the German translation that I assume he'll do
-  - Add a note about Romulo's experience with the MSVC++ redists to the readme
+- Fix for for houseboat bug
+- Set LAA bit when creating modded EXE
 
 * RELEASE 5
 - Stack worker commands
