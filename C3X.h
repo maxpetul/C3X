@@ -4,6 +4,7 @@
 
 #include "luajit.h"
 #include "lauxlib.h"
+#include "lualib.h"
 
 #define ARRAY_LEN(a) ((sizeof a) / (sizeof a[0]))
 
@@ -259,10 +260,13 @@ struct injected_state {
 		lua_State * (* newstate) ();
 		void (* close) (lua_State *);
 		int (* loadstring) (lua_State *, char const *);
+		int (* call) (lua_State *, int, int);
 		int (* pcall) (lua_State *, int, int, int);
 		void (* getfield) (lua_State *, int, char const *);
 		int (* gettop) (lua_State *);
 		lua_Integer (* tointeger) (lua_State *, int);
+		void (* pushstring) (lua_State *, char const *);
+		void (* pushcclosure) (lua_State *, lua_CFunction fn, int n);
 	} lua;
 
 	struct c3x_config current_config;

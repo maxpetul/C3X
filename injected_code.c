@@ -1473,26 +1473,33 @@ patch_init_floating_point ()
 		if (lua_module == NULL)
 			MessageBoxA (NULL, "Failed to load lua51.dll", NULL, MB_ICONERROR);
 
-		is->lua.newstate   = (void *)(*p_GetProcAddress) (lua_module, "luaL_newstate");
-		is->lua.close      = (void *)(*p_GetProcAddress) (lua_module, "lua_close");
-		is->lua.loadstring = (void *)(*p_GetProcAddress) (lua_module, "luaL_loadstring");
-		is->lua.pcall      = (void *)(*p_GetProcAddress) (lua_module, "lua_pcall");
-		is->lua.getfield   = (void *)(*p_GetProcAddress) (lua_module, "lua_getfield");
-		is->lua.gettop     = (void *)(*p_GetProcAddress) (lua_module, "lua_gettop");
-		is->lua.tointeger  = (void *)(*p_GetProcAddress) (lua_module, "lua_tointeger");
+		is->lua.newstate     = (void *)(*p_GetProcAddress) (lua_module, "luaL_newstate");
+		is->lua.close        = (void *)(*p_GetProcAddress) (lua_module, "lua_close");
+		is->lua.loadstring   = (void *)(*p_GetProcAddress) (lua_module, "luaL_loadstring");
+		is->lua.call         = (void *)(*p_GetProcAddress) (lua_module, "lua_call");
+		is->lua.pcall        = (void *)(*p_GetProcAddress) (lua_module, "lua_pcall");
+		is->lua.getfield     = (void *)(*p_GetProcAddress) (lua_module, "lua_getfield");
+		is->lua.gettop       = (void *)(*p_GetProcAddress) (lua_module, "lua_gettop");
+		is->lua.tointeger    = (void *)(*p_GetProcAddress) (lua_module, "lua_tointeger");
+		is->lua.pushstring   = (void *)(*p_GetProcAddress) (lua_module, "lua_pushstring");
+		is->lua.pushcclosure = (void *)(*p_GetProcAddress) (lua_module, "lua_pushcclosure");
 		is->lua.state = is->lua.newstate ();
 		if (is->lua.state == NULL)
 			MessageBoxA (NULL, "Failed to initialize Lua", NULL, MB_ICONERROR);
+		lua_State * ls = is->lua.state;
 
 		// Open Lua built-in libraries
-		char const * lib_names[] = {"base", "math", "string", "table", "jit", "ffi"};
+		char const * lib_names[] = {"base", LUA_MATHLIBNAME, LUA_STRLIBNAME, LUA_TABLIBNAME, LUA_JITLIBNAME, LUA_FFILIBNAME};
 		for (int n = 0; n < ARRAY_LEN (lib_names); n++) {
 			char opener_name[30];
 			snprintf (opener_name, sizeof opener_name, "luaopen_%s", lib_names[n]);
 			opener_name[(sizeof opener_name) - 1] = '\0';
 			int (* opener) (lua_State *) = (void *)(*p_GetProcAddress) (lua_module, opener_name);
-			opener (is->lua.state);
-			// TODO: Give error message if opener is NULL or if opening lib failed
+			is->lua.pushcclosure (ls, opener, 0);
+			// Weird edge case: Supposed to push "" as name for base lib (?)
+			char const * name_to_push = (strncmp (lib_names[n], "base", 4) != 0) ? lib_names[n] : "";
+			is->lua.pushstring (ls, name_to_push);
+			is->lua.call (ls, 1, 0);
 		}
 
 		char script_path[MAX_PATH];
@@ -1502,7 +1509,6 @@ patch_init_floating_point ()
 		if (lua_code == NULL)
 			MessageBoxA (NULL, "Failed to load script.lua", NULL, MB_ICONERROR);
 
-		lua_State * ls = is->lua.state;
 		is->lua.loadstring (ls, lua_code);
 		is->lua.pcall (ls, 0, LUA_MULTRET, 0);
 	}
