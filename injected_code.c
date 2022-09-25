@@ -1495,7 +1495,12 @@ patch_init_floating_point ()
 			// TODO: Give error message if opener is NULL or if opening lib failed
 		}
 
-		char const * lua_code = "magic_number = 7*6*5*4*3*2";
+		char script_path[MAX_PATH];
+		snprintf (script_path, sizeof script_path, "%s\\script.lua", is->mod_rel_dir);
+		script_path[(sizeof script_path) - 1] = '\0';
+		char const * lua_code = file_to_string (script_path);
+		if (lua_code == NULL)
+			MessageBoxA (NULL, "Failed to load script.lua", NULL, MB_ICONERROR);
 
 		is->lua.loadstring (is->lua.state, lua_code);
 		is->lua.pcall (is->lua.state, 0, LUA_MULTRET, 0);
