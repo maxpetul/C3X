@@ -1,1 +1,3 @@
-magic_number = 7*6*5*4*3*2
+function GetMagicNumber ()
+	 return 7*6*5*4*3*2
+end

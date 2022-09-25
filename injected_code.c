@@ -1502,16 +1502,9 @@ patch_init_floating_point ()
 		if (lua_code == NULL)
 			MessageBoxA (NULL, "Failed to load script.lua", NULL, MB_ICONERROR);
 
-		is->lua.loadstring (is->lua.state, lua_code);
-		is->lua.pcall (is->lua.state, 0, LUA_MULTRET, 0);
-		is->lua.getfield (is->lua.state, LUA_GLOBALSINDEX, "magic_number");
-		int top = is->lua.gettop (is->lua.state);
-		lua_Integer mn = is->lua.tointeger (is->lua.state, top);
-
-		char sss[100];
-		snprintf (sss, sizeof sss, "Magic number is: %d", (int)mn);
-		MessageBoxA (NULL, sss, "Test", MB_ICONINFORMATION);
-
+		lua_State * ls = is->lua.state;
+		is->lua.loadstring (ls, lua_code);
+		is->lua.pcall (ls, 0, LUA_MULTRET, 0);
 	}
 
 	// Load labels
@@ -2175,6 +2168,19 @@ patch_DiploForm_m22_Draw (DiploForm * this)
 void
 intercept_end_of_turn ()
 {
+	lua_State * ls = is->lua.state;
+	is->lua.getfield (ls, LUA_GLOBALSINDEX, "GetMagicNumber");
+	is->lua.pcall (ls, 0, LUA_MULTRET, 0);
+	int top = is->lua.gettop (ls);
+	lua_Integer mn = is->lua.tointeger (ls, top);
+
+	PopupForm * popup = get_popup_form ();
+	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
+	char msg[100];
+	snprintf (msg, sizeof msg, "Magic number is: %d", mn);
+	PopupForm_add_text (popup, __, msg, 0);
+	show_popup (popup, __, 0, 0);
+
 	if (is->current_config.enable_disorder_warning) {
 		check_happiness_at_end_of_turn ();
 		if (p_main_screen_form->turn_end_flag == 1) // Check if player cancelled turn ending in the disorder warning popup
