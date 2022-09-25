@@ -265,6 +265,7 @@ struct injected_state {
 		void (* getfield) (lua_State *, int, char const *);
 		int (* gettop) (lua_State *);
 		lua_Integer (* tointeger) (lua_State *, int);
+		char const * (* tolstring) (lua_State *, int, size_t *);
 		void (* pushstring) (lua_State *, char const *);
 		void (* pushcclosure) (lua_State *, lua_CFunction fn, int n);
 	} lua;

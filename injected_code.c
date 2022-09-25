@@ -1481,6 +1481,7 @@ patch_init_floating_point ()
 		is->lua.getfield     = (void *)(*p_GetProcAddress) (lua_module, "lua_getfield");
 		is->lua.gettop       = (void *)(*p_GetProcAddress) (lua_module, "lua_gettop");
 		is->lua.tointeger    = (void *)(*p_GetProcAddress) (lua_module, "lua_tointeger");
+		is->lua.tolstring    = (void *)(*p_GetProcAddress) (lua_module, "lua_tolstring");
 		is->lua.pushstring   = (void *)(*p_GetProcAddress) (lua_module, "lua_pushstring");
 		is->lua.pushcclosure = (void *)(*p_GetProcAddress) (lua_module, "lua_pushcclosure");
 		is->lua.state = is->lua.newstate ();
@@ -1489,7 +1490,7 @@ patch_init_floating_point ()
 		lua_State * ls = is->lua.state;
 
 		// Open Lua built-in libraries
-		char const * lib_names[] = {"base", LUA_MATHLIBNAME, LUA_STRLIBNAME, LUA_TABLIBNAME, LUA_JITLIBNAME, LUA_FFILIBNAME};
+		char const * lib_names[] = {"base", LUA_LOADLIBNAME, LUA_MATHLIBNAME, LUA_STRLIBNAME, LUA_TABLIBNAME, LUA_JITLIBNAME, LUA_FFILIBNAME};
 		for (int n = 0; n < ARRAY_LEN (lib_names); n++) {
 			char opener_name[30];
 			snprintf (opener_name, sizeof opener_name, "luaopen_%s", lib_names[n]);
@@ -1506,11 +1507,17 @@ patch_init_floating_point ()
 		snprintf (script_path, sizeof script_path, "%s\\script.lua", is->mod_rel_dir);
 		script_path[(sizeof script_path) - 1] = '\0';
 		char const * lua_code = file_to_string (script_path);
-		if (lua_code == NULL)
+		if (lua_code != NULL) {
+			is->lua.loadstring (ls, lua_code);
+			if (is->lua.pcall (ls, 0, LUA_MULTRET, 0)) {
+				char err_msg[300];
+				snprintf (err_msg, sizeof err_msg, "Error in script.lua:\n%s", is->lua.tolstring (ls, is->lua.gettop (ls), NULL));
+				err_msg[(sizeof err_msg) - 1] = '\0';
+				MessageBoxA (NULL, err_msg, NULL, MB_ICONERROR);
+				// TODO: Pop string from stack
+			}
+		} else
 			MessageBoxA (NULL, "Failed to load script.lua", NULL, MB_ICONERROR);
-
-		is->lua.loadstring (ls, lua_code);
-		is->lua.pcall (ls, 0, LUA_MULTRET, 0);
 	}
 
 	// Load labels
