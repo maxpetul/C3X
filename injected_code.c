@@ -1974,23 +1974,19 @@ check_happiness_at_end_of_turn ()
 {
 	int num_unhappy_cities = 0;
 	City * first_unhappy_city = NULL;
-	if (p_cities->Cities != NULL)
-		for (int n = 0; n <= p_cities->LastIndex; n++) {
-			City * city = get_city_ptr (n);
-			if ((city != NULL) && (city->Body.CivID == p_main_screen_form->Player_CivID)) {
-				City_recompute_happiness (city);
-				int num_happy = 0, num_unhappy = 0;
-				FOR_CITIZENS_IN (ci, city) {
-					num_happy   += ci.ctzn->Body.Mood == CMT_Happy;
-					num_unhappy += ci.ctzn->Body.Mood == CMT_Unhappy;
-				}
-				if (num_unhappy > num_happy) {
-					num_unhappy_cities++;
-					if (first_unhappy_city == NULL)
-						first_unhappy_city = city;
-				}
-			}
+	FOR_CITIES_OF (coi, p_main_screen_form->Player_CivID) {
+		City_recompute_happiness (coi.city);
+		int num_happy = 0, num_unhappy = 0;
+		FOR_CITIZENS_IN (ci, coi.city) {
+			num_happy   += ci.ctzn->Body.Mood == CMT_Happy;
+			num_unhappy += ci.ctzn->Body.Mood == CMT_Unhappy;
 		}
+		if (num_unhappy > num_happy) {
+			num_unhappy_cities++;
+			if (first_unhappy_city == NULL)
+				first_unhappy_city = coi.city;
+		}
+	}
 
 	if (first_unhappy_city != NULL) {
 		PopupForm * popup = get_popup_form ();
@@ -2870,26 +2866,22 @@ find_nearest_established_city (Unit * unit, int continent_id)
 {
 	int lowest_unattractiveness = INT_MAX;
 	City * least_unattractive_city = NULL;
-	if (p_cities->Cities != NULL)
-		for (int n = 0; n <= p_cities->LastIndex; n++) {
-			City * city = get_city_ptr (n);
-			if ((city != NULL) && (city->Body.CivID == unit->Body.CivID)) {
-				Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
-				if (continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) {
-					int dist_in_turns;
-					if (! estimate_travel_time (unit, city->Body.X, city->Body.Y, &dist_in_turns))
-						continue;
-					int unattractiveness = 10 * dist_in_turns;
-					unattractiveness = (10 + unattractiveness) / (10 + city->Body.Population.Size);
-					if (city->Body.CultureIncome > 0)
-						unattractiveness /= 5;
-					if (unattractiveness < lowest_unattractiveness) {
-						lowest_unattractiveness = unattractiveness;
-						least_unattractive_city = city;
-					}
-				}
+	FOR_CITIES_OF (coi,unit->Body.CivID) {
+		Tile * city_tile = tile_at (coi.city->Body.X, coi.city->Body.Y);
+		if (continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) {
+			int dist_in_turns;
+			if (! estimate_travel_time (unit, coi.city->Body.X, coi.city->Body.Y, &dist_in_turns))
+				continue;
+			int unattractiveness = 10 * dist_in_turns;
+			unattractiveness = (10 + unattractiveness) / (10 + coi.city->Body.Population.Size);
+			if (coi.city->Body.CultureIncome > 0)
+				unattractiveness /= 5;
+			if (unattractiveness < lowest_unattractiveness) {
+				lowest_unattractiveness = unattractiveness;
+				least_unattractive_city = coi.city;
 			}
 		}
+	}
 	return least_unattractive_city;
 }
 
@@ -2970,47 +2962,44 @@ patch_Unit_ai_move_leader (Unit * this)
 	// Estimate the value of rushing production in every city on this continent and remember the highest one
 	City * best_rush_loc = NULL;
 	int best_rush_value = -1;
-	if (p_cities->Cities != NULL)
-		for (int n = 0; n <= p_cities->LastIndex; n++) {
-			City * city = get_city_ptr (n);
-			if ((city != NULL) && (city->Body.CivID == this->Body.CivID)) {
-				Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
-				if ((continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) &&
-				    patch_Unit_can_hurry_production (this, __, city, 0)) {
-					// Base value is equal to the number of shields rushing would save
-					int value = City_get_order_cost (city) - City_get_order_progress (city) - city->Body.ProductionIncome;
-					if (value <= 0)
-						continue;
+	FOR_CITIES_OF (coi, this->Body.CivID) {
+		City * city = coi.city;
+		Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
+		if ((continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) &&
+		    patch_Unit_can_hurry_production (this, __, city, 0)) {
+			// Base value is equal to the number of shields rushing would save
+			int value = City_get_order_cost (city) - City_get_order_progress (city) - city->Body.ProductionIncome;
+			if (value <= 0)
+				continue;
 
-					// Consider distance: Reduce the value by the number of shields produced while the leader is en route to rush.
-					int dist_in_turns;
-					if (! estimate_travel_time (this, city->Body.X, city->Body.Y, &dist_in_turns))
-						continue; // no path or unit cannot move
-					value -= dist_in_turns * city->Body.ProductionIncome;
-					if (value <= 0)
-						continue;
+			// Consider distance: Reduce the value by the number of shields produced while the leader is en route to rush.
+			int dist_in_turns;
+			if (! estimate_travel_time (this, city->Body.X, city->Body.Y, &dist_in_turns))
+				continue; // no path or unit cannot move
+			value -= dist_in_turns * city->Body.ProductionIncome;
+			if (value <= 0)
+				continue;
 
-					// Consider corruption: Scale down the value of rushing an improvement by the corruption rate of the city.
-					// This is to reflect the fact that infrastructure is more valuable in less corrupt cities. But do not apply
-					// this to wonders since their benefit is in most cases not lessened by local corruption.
-					Improvement * improv = (city->Body.Order_Type == COT_Improvement) ? &p_bic_data->Improvements[city->Body.Order_ID] : NULL;
-					int is_wonder = (improv != NULL) && (0 != (improv->Characteristics & (ITC_Small_Wonder | ITC_Wonder)));
-					if ((improv != NULL) && (! is_wonder)) {
-						int good_shields = city->Body.ProductionIncome;
-						int corrupt_shields = city->Body.ProductionLoss;
-						if (good_shields + corrupt_shields > 0)
-							value = (value * good_shields) / (good_shields + corrupt_shields);
-						else
-							continue;
-					}
+			// Consider corruption: Scale down the value of rushing an improvement by the corruption rate of the city.
+			// This is to reflect the fact that infrastructure is more valuable in less corrupt cities. But do not apply
+			// this to wonders since their benefit is in most cases not lessened by local corruption.
+			Improvement * improv = (city->Body.Order_Type == COT_Improvement) ? &p_bic_data->Improvements[city->Body.Order_ID] : NULL;
+			int is_wonder = (improv != NULL) && (0 != (improv->Characteristics & (ITC_Small_Wonder | ITC_Wonder)));
+			if ((improv != NULL) && (! is_wonder)) {
+				int good_shields = city->Body.ProductionIncome;
+				int corrupt_shields = city->Body.ProductionLoss;
+				if (good_shields + corrupt_shields > 0)
+					value = (value * good_shields) / (good_shields + corrupt_shields);
+				else
+					continue;
+			}
 
-					if ((value > 0) && (value > best_rush_value)) {
-						best_rush_loc = city;
-						best_rush_value = value;
-					}
-				}
+			if ((value > 0) && (value > best_rush_value)) {
+				best_rush_loc = city;
+				best_rush_value = value;
 			}
 		}
+	}
 
 	// Hurry production or form an army depending on the estimated values of doing so. We might have to move to a (different) city if that's where
 	// we want to rush production or if we want to form an army but aren't already in a city.
@@ -3667,41 +3656,38 @@ ai_move_pop_unit (Unit * this)
 	// Find the best city to join
 	City * best_join_loc = NULL;
 	int best_join_value = -1;
-	if (p_cities->Cities != NULL)
-		for (int n = 0; n <= p_cities->LastIndex; n++) {
-			City * city = get_city_ptr (n);
-			if ((city != NULL) && (city->Body.CivID == this->Body.CivID)) {
-				Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
-				if (continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) {
+	FOR_CITIES_OF (coi, this->Body.CivID) {
+		City * city = coi.city;
+		Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
+		if (continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) {
 
-					// Skip this city if it can't support another citizen
-					if ((city->Body.FoodIncome <= 0) ||
-					    (City_requires_improvement_to_grow (city) > -1))
-						continue;
+			// Skip this city if it can't support another citizen
+			if ((city->Body.FoodIncome <= 0) ||
+			    (City_requires_improvement_to_grow (city) > -1))
+				continue;
 
-					int value = 100;
+			int value = 100;
 
-					// Consider distance.
-					int dist_in_turns;
-					if (! estimate_travel_time (this, city->Body.X, city->Body.Y, &dist_in_turns))
-						continue; // No path or unit cannot move
-					value = (value * 10) / (10 + dist_in_turns);
+			// Consider distance.
+			int dist_in_turns;
+			if (! estimate_travel_time (this, city->Body.X, city->Body.Y, &dist_in_turns))
+				continue; // No path or unit cannot move
+			value = (value * 10) / (10 + dist_in_turns);
 
-					// Scale value by city corruption rate.
-					int good_shields    = city->Body.ProductionIncome,
-						corrupt_shields = city->Body.ProductionLoss;
-					if (good_shields + corrupt_shields > 0)
-						value = (value * good_shields) / (good_shields + corrupt_shields);
-					else
-						continue;
+			// Scale value by city corruption rate.
+			int good_shields    = city->Body.ProductionIncome,
+			    corrupt_shields = city->Body.ProductionLoss;
+			if (good_shields + corrupt_shields > 0)
+				value = (value * good_shields) / (good_shields + corrupt_shields);
+			else
+				continue;
 
-					if (value > best_join_value) {
-						best_join_loc = city;
-						best_join_value = value;
-					}
-				}
+			if (value > best_join_value) {
+				best_join_loc = city;
+				best_join_value = value;
 			}
 		}
+	}
 
 	// Join city if we're already in the city we want to join, otherwise move to that city. If we couldn't find a city to join, go to the
 	// nearest established city and wait.
