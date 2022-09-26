@@ -20,6 +20,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 // Many Windows and C standard library functions have to be loaded dynamically with GetProcAddress and the addresses are stored in the injected
 // state. This is covered up with macros, which is not something I would normally do, but in this case it's very useful because it means the code in
 // common.c can be shared by the patcher and the injected code.
+#define GetProcAddress is->GetProcAddress
 #define VirtualProtect is->VirtualProtect
 #define CloseHandle is->CloseHandle
 #define CreateFileA is->CreateFileA
@@ -1435,6 +1436,15 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	}
 }
 
+FARPROC __stdcall
+patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
+{
+	if (((int)lpProcName > 1000) && (strncmp (lpProcName, "pop_up_in_game_error", strlen ("pop_up_in_game_error")) == 0))
+		return (FARPROC)pop_up_in_game_error;
+	else
+		return GetProcAddress (hModule, lpProcName);
+}
+
 void
 patch_init_floating_point ()
 {
@@ -1448,30 +1458,31 @@ patch_init_floating_point ()
 	is->msvcrt   = (*p_GetModuleHandleA) ("msvcrt.dll");
 
 	// Remember the function names here are macros that expand to is->...
-	VirtualProtect      = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualProtect");
-	CloseHandle         = (void *)(*p_GetProcAddress) (is->kernel32, "CloseHandle");
-	CreateFileA         = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
-	GetFileSize         = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
-	ReadFile            = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
-	LoadLibraryA        = (void *)(*p_GetProcAddress) (is->kernel32, "LoadLibraryA");
-	MultiByteToWideChar = (void *)(*p_GetProcAddress) (is->kernel32, "MultiByteToWideChar");
-	WideCharToMultiByte = (void *)(*p_GetProcAddress) (is->kernel32, "WideCharToMultiByte");
-	GetLastError        = (void *)(*p_GetProcAddress) (is->kernel32, "GetLastError");
-	MessageBoxA = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
-	snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
-	malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
-	calloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "calloc");
-	realloc  = (void *)(*p_GetProcAddress) (is->msvcrt, "realloc");
-	free     = (void *)(*p_GetProcAddress) (is->msvcrt, "free");
-	strtol   = (void *)(*p_GetProcAddress) (is->msvcrt, "strtol");
-	strncmp  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncmp");
-	strlen   = (void *)(*p_GetProcAddress) (is->msvcrt, "strlen");
-	strncpy  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncpy");
-	strdup   = (void *)(*p_GetProcAddress) (is->msvcrt, "_strdup");
-	strstr   = (void *)(*p_GetProcAddress) (is->msvcrt, "strstr");
-	qsort    = (void *)(*p_GetProcAddress) (is->msvcrt, "qsort");
-	memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
-	memcpy   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcpy");
+	GetProcAddress      = *p_GetProcAddress;
+	VirtualProtect      = (void *)GetProcAddress (is->kernel32, "VirtualProtect");
+	CloseHandle         = (void *)GetProcAddress (is->kernel32, "CloseHandle");
+	CreateFileA         = (void *)GetProcAddress (is->kernel32, "CreateFileA");
+	GetFileSize         = (void *)GetProcAddress (is->kernel32, "GetFileSize");
+	ReadFile            = (void *)GetProcAddress (is->kernel32, "ReadFile");
+	LoadLibraryA        = (void *)GetProcAddress (is->kernel32, "LoadLibraryA");
+	MultiByteToWideChar = (void *)GetProcAddress (is->kernel32, "MultiByteToWideChar");
+	WideCharToMultiByte = (void *)GetProcAddress (is->kernel32, "WideCharToMultiByte");
+	GetLastError        = (void *)GetProcAddress (is->kernel32, "GetLastError");
+	MessageBoxA = (void *)GetProcAddress (is->user32, "MessageBoxA");
+	snprintf = (void *)GetProcAddress (is->msvcrt, "_snprintf");
+	malloc   = (void *)GetProcAddress (is->msvcrt, "malloc");
+	calloc   = (void *)GetProcAddress (is->msvcrt, "calloc");
+	realloc  = (void *)GetProcAddress (is->msvcrt, "realloc");
+	free     = (void *)GetProcAddress (is->msvcrt, "free");
+	strtol   = (void *)GetProcAddress (is->msvcrt, "strtol");
+	strncmp  = (void *)GetProcAddress (is->msvcrt, "strncmp");
+	strlen   = (void *)GetProcAddress (is->msvcrt, "strlen");
+	strncpy  = (void *)GetProcAddress (is->msvcrt, "strncpy");
+	strdup   = (void *)GetProcAddress (is->msvcrt, "_strdup");
+	strstr   = (void *)GetProcAddress (is->msvcrt, "strstr");
+	qsort    = (void *)GetProcAddress (is->msvcrt, "qsort");
+	memcmp   = (void *)GetProcAddress (is->msvcrt, "memcmp");
+	memcpy   = (void *)GetProcAddress (is->msvcrt, "memcpy");
 
 	// Set file path to mod's script.txt
 	snprintf (is->mod_script_path, sizeof is->mod_script_path, "%s\\Text\\c3x-script.txt", is->mod_rel_dir);
@@ -1486,18 +1497,26 @@ patch_init_floating_point ()
 		if (lua_module == NULL)
 			MessageBoxA (NULL, "Failed to load lua51.dll", NULL, MB_ICONERROR);
 
-		is->lua.newstate     = (void *)(*p_GetProcAddress) (lua_module, "luaL_newstate");
-		is->lua.close        = (void *)(*p_GetProcAddress) (lua_module, "lua_close");
-		is->lua.loadstring   = (void *)(*p_GetProcAddress) (lua_module, "luaL_loadstring");
-		is->lua.call         = (void *)(*p_GetProcAddress) (lua_module, "lua_call");
-		is->lua.pcall        = (void *)(*p_GetProcAddress) (lua_module, "lua_pcall");
-		is->lua.settop       = (void *)(*p_GetProcAddress) (lua_module, "lua_settop");
-		is->lua.getfield     = (void *)(*p_GetProcAddress) (lua_module, "lua_getfield");
-		is->lua.gettop       = (void *)(*p_GetProcAddress) (lua_module, "lua_gettop");
-		is->lua.tointeger    = (void *)(*p_GetProcAddress) (lua_module, "lua_tointeger");
-		is->lua.tolstring    = (void *)(*p_GetProcAddress) (lua_module, "lua_tolstring");
-		is->lua.pushstring   = (void *)(*p_GetProcAddress) (lua_module, "lua_pushstring");
-		is->lua.pushcclosure = (void *)(*p_GetProcAddress) (lua_module, "lua_pushcclosure");
+		// Replace the Lua DLL's GetProcAddress function with one that can return objects from the base game and this mod
+		FARPROC (__stdcall ** p_lua_GetProcAddress) (HMODULE hModule, char const * lpProcName) = (int)lua_module + 0x48020;
+		if (*p_lua_GetProcAddress == *p_GetProcAddress) { // Check that we have the right address
+			WITH_MEM_PROTECTION (p_lua_GetProcAddress, 4, PAGE_EXECUTE_READWRITE)
+				*p_lua_GetProcAddress = patch_lua_GetProcAddress;
+		} else
+			MessageBoxA (NULL, "Incompatible version of lua51.dll. C3X requires LuaJIT 2.1.0-beta3 and not all builds are necessarily compatible. Please use whatever one was packaged with the mod.", NULL, MB_ICONERROR);
+
+		is->lua.newstate     = (void *)GetProcAddress (lua_module, "luaL_newstate");
+		is->lua.close        = (void *)GetProcAddress (lua_module, "lua_close");
+		is->lua.loadstring   = (void *)GetProcAddress (lua_module, "luaL_loadstring");
+		is->lua.call         = (void *)GetProcAddress (lua_module, "lua_call");
+		is->lua.pcall        = (void *)GetProcAddress (lua_module, "lua_pcall");
+		is->lua.settop       = (void *)GetProcAddress (lua_module, "lua_settop");
+		is->lua.getfield     = (void *)GetProcAddress (lua_module, "lua_getfield");
+		is->lua.gettop       = (void *)GetProcAddress (lua_module, "lua_gettop");
+		is->lua.tointeger    = (void *)GetProcAddress (lua_module, "lua_tointeger");
+		is->lua.tolstring    = (void *)GetProcAddress (lua_module, "lua_tolstring");
+		is->lua.pushstring   = (void *)GetProcAddress (lua_module, "lua_pushstring");
+		is->lua.pushcclosure = (void *)GetProcAddress (lua_module, "lua_pushcclosure");
 		is->lua.state = is->lua.newstate ();
 		if (is->lua.state == NULL)
 			MessageBoxA (NULL, "Failed to initialize Lua", NULL, MB_ICONERROR);
@@ -1509,7 +1528,7 @@ patch_init_floating_point ()
 			char opener_name[30];
 			snprintf (opener_name, sizeof opener_name, "luaopen_%s", lib_names[n]);
 			opener_name[(sizeof opener_name) - 1] = '\0';
-			int (* opener) (lua_State *) = (void *)(*p_GetProcAddress) (lua_module, opener_name);
+			int (* opener) (lua_State *) = (void *)GetProcAddress (lua_module, opener_name);
 			is->lua.pushcclosure (ls, opener, 0);
 			// Weird edge case: Supposed to push "" as name for base lib (?)
 			char const * name_to_push = (strncmp (lib_names[n], "base", 4) != 0) ? lib_names[n] : "";

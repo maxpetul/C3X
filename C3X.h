@@ -225,6 +225,7 @@ struct injected_state {
 	HMODULE msvcrt;
 
 	// Win32 API functions
+	FARPROC (__stdcall * GetProcAddress) (HMODULE, LPCSTR);
 	WINBOOL (WINAPI * VirtualProtect) (LPVOID, SIZE_T, DWORD, PDWORD);
 	WINBOOL (WINAPI * CloseHandle) (HANDLE);
 	HANDLE (WINAPI * CreateFileA) (LPCSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
