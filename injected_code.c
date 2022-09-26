@@ -95,6 +95,19 @@ pop_up_in_game_error (char const * msg)
 	show_popup (popup, __, 0, 0);
 }
 
+// Shows an in-game error popup titled "Script Error" containing a message read off the Lua stack. The top of the Lua stack must contain a
+// string. That string will be popped off by this method.
+void
+pop_up_lua_error ()
+{
+	lua_State * ls = is->lua.state;
+	PopupForm * popup = get_popup_form ();
+	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_SCRIPT_ERROR", -1, 0, 0, 0);
+	PopupForm_add_text (popup, __, (char *)is->lua.tolstring (ls, is->lua.gettop (ls), NULL), 0);
+	show_popup (popup, __, 0, 0);
+	is->lua.settop (ls, -2); // pop
+}
+
 void
 memoize (int val)
 {
@@ -1478,6 +1491,7 @@ patch_init_floating_point ()
 		is->lua.loadstring   = (void *)(*p_GetProcAddress) (lua_module, "luaL_loadstring");
 		is->lua.call         = (void *)(*p_GetProcAddress) (lua_module, "lua_call");
 		is->lua.pcall        = (void *)(*p_GetProcAddress) (lua_module, "lua_pcall");
+		is->lua.settop       = (void *)(*p_GetProcAddress) (lua_module, "lua_settop");
 		is->lua.getfield     = (void *)(*p_GetProcAddress) (lua_module, "lua_getfield");
 		is->lua.gettop       = (void *)(*p_GetProcAddress) (lua_module, "lua_gettop");
 		is->lua.tointeger    = (void *)(*p_GetProcAddress) (lua_module, "lua_tointeger");
@@ -1509,13 +1523,8 @@ patch_init_floating_point ()
 		char const * lua_code = file_to_string (script_path);
 		if (lua_code != NULL) {
 			is->lua.loadstring (ls, lua_code);
-			if (is->lua.pcall (ls, 0, LUA_MULTRET, 0)) {
-				char err_msg[300];
-				snprintf (err_msg, sizeof err_msg, "Error in script.lua:\n%s", is->lua.tolstring (ls, is->lua.gettop (ls), NULL));
-				err_msg[(sizeof err_msg) - 1] = '\0';
-				MessageBoxA (NULL, err_msg, NULL, MB_ICONERROR);
-				// TODO: Pop string from stack
-			}
+			if (is->lua.pcall (ls, 0, LUA_MULTRET, 0))
+				pop_up_lua_error ();
 		} else
 			MessageBoxA (NULL, "Failed to load script.lua", NULL, MB_ICONERROR);
 	}
@@ -2183,16 +2192,18 @@ intercept_end_of_turn ()
 {
 	lua_State * ls = is->lua.state;
 	is->lua.getfield (ls, LUA_GLOBALSINDEX, "GetMagicNumber");
-	is->lua.pcall (ls, 0, LUA_MULTRET, 0);
-	int top = is->lua.gettop (ls);
-	lua_Integer mn = is->lua.tointeger (ls, top);
+	if (! is->lua.pcall (ls, 0, LUA_MULTRET, 0)) {
+		int top = is->lua.gettop (ls);
+		lua_Integer mn = is->lua.tointeger (ls, top);
 
-	PopupForm * popup = get_popup_form ();
-	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
-	char msg[100];
-	snprintf (msg, sizeof msg, "Magic number is: %d", mn);
-	PopupForm_add_text (popup, __, msg, 0);
-	show_popup (popup, __, 0, 0);
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
+		char msg[100];
+		snprintf (msg, sizeof msg, "Magic number is: %d", mn);
+		PopupForm_add_text (popup, __, msg, 0);
+		show_popup (popup, __, 0, 0);
+	} else
+		pop_up_lua_error ();
 
 	if (is->current_config.enable_disorder_warning) {
 		check_happiness_at_end_of_turn ();

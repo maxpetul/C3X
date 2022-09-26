@@ -41,6 +41,10 @@ Nevermind
 #xs 400
 #caption C3X Info
 
+#C3X_SCRIPT_ERROR
+#xs 400
+#caption Script Error
+
 #C3X_AI_PROD_RANKING
 #caption AI's Production Ranking
 #text

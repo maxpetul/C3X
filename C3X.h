@@ -262,6 +262,7 @@ struct injected_state {
 		int (* loadstring) (lua_State *, char const *);
 		int (* call) (lua_State *, int, int);
 		int (* pcall) (lua_State *, int, int, int);
+		void (* settop) (lua_State *, int);
 		void (* getfield) (lua_State *, int, char const *);
 		int (* gettop) (lua_State *);
 		lua_Integer (* tointeger) (lua_State *, int);
