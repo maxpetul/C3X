@@ -4897,7 +4897,8 @@ struct BIC
   int Flavours;
   int ScreenWidth;
   int ScreenHeight;
-  int field_3E38;
+  byte is_zoomed_out;
+  byte field_3E39[3];
   int field_3E3C;
   Fighter fighter;
   Map Map;
@@ -5880,7 +5881,10 @@ struct Main_Screen_Form
   int TileX_Max;
   int TileY_Min;
   int TileY_Max;
-  int field_4E80[19];
+  int field_4E80[6];
+  int camera_x;
+  int camera_y;
+  int field_4EA0[11];
   int Mode_Action;
   int field_4ED0;
   int Mode_Action_Range;
