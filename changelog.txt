@@ -1,4 +1,4 @@
-* RELEASE 13G
+* RELEASE 13H
 - Automatically cut research spending to avoid bankruptcy
 - Option to aggressively penalize bankrupt players
   - Sells non-gold-generating buildings, non-free units, and switches city production to Wealth
@@ -6,6 +6,7 @@
 - Holding shift while a stack bombard is going will temporarily turn off combat animations
 - Fix units could trespass by attacking an enemy unit across a restricted border
 - Widen C3X error, info, and warning popups
+- Warn if two-city start contains adjacent cities or missing FP cities
 
 * RELEASE 13
 - AI two-city start

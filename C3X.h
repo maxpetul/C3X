@@ -8,7 +8,7 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
-#define MOD_VERSION 1306
+#define MOD_VERSION 1307
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -179,6 +179,9 @@ enum c3x_label {
 	CL_VERSION,
 	CL_CONFIG_FILES_LOADED,
 	CL_CREATING_CITIES,
+	CL_2CS_FAILED_SANITY_CHECK,
+	CL_2CS_ADJACENT_CITIES,
+	CL_2CS_MISSING_CITIES,
 	COUNT_C3X_LABELS
 };
 

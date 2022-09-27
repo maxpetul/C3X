@@ -36,3 +36,8 @@ Config files loaded
 
 ; Appears on loading bar during setup of two-city start
 Creating cities
+
+; Warning messages for failed sanity check after two-city start
+Failed sanity check after setting up AI two-city start:
+At least two cities are located on adjacent tiles
+One or more AIs did not receive their second starting cities

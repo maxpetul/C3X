@@ -1,5 +1,5 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 13G
+Release 13H
 
 INCLUDES (** = new in latest version):
 Convenience features:
@@ -59,6 +59,7 @@ Engine extensions:
  - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
  - Option to modify rules for retreat eligibility
  - AI two-city start
+  - ** Warning message if start contains adjacent cities or missing FP cities
  - Remove cap on turn limit
  - Option to strengthen forbidden palace decorruption effect to match the palace's
  - Option to allow military great leaders to hurry wonders

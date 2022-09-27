@@ -2704,17 +2704,6 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 	}
 }
 
-City *
-get_city_near (int x, int y)
-{
-	FOR_TILES_AROUND (tai, 9, x, y) {
-		City * city = get_city_ptr (tai.tile->vtable->m45_Get_City_ID (tai.tile));
-		if (city != NULL)
-			return city;
-	}
-	return NULL;
-}
-
 byte __fastcall
 patch_Unit_can_hurry_production (Unit * this, int edx, City * city, byte exclude_cheap_improvements)
 {
@@ -4395,6 +4384,40 @@ set_up_ai_two_city_start (Map * map)
 
 	free (units_to_move);
 	free (unit_counts);
+
+	// Sanity check
+	int any_adjacent_cities = 0; {
+		if (p_cities->Cities != NULL)
+			for (int city_index = 0; (city_index <= p_cities->LastIndex) && ! any_adjacent_cities; city_index++) {
+				City * city = get_city_ptr (city_index);
+				if (city != NULL)
+					FOR_TILES_AROUND (tai, 9, city->Body.X, city->Body.Y)
+						if ((tai.n > 0) && (NULL != get_city_ptr (tai.tile->vtable->m45_Get_City_ID (tai.tile)))) {
+							any_adjacent_cities = 1;
+							break;
+						}
+			}
+	}
+	int any_missing_fp_cities = (count_cities_created < 2 * count_eligible_civs);
+	if (any_adjacent_cities || any_missing_fp_cities) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[100];
+		snprintf (s, sizeof s, "^%s", is->c3x_labels[CL_2CS_FAILED_SANITY_CHECK]);
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, 0);
+		if (any_adjacent_cities) {
+			snprintf (s, sizeof s, "^%s", is->c3x_labels[CL_2CS_ADJACENT_CITIES]);
+			s[(sizeof s) - 1] = '\0';
+			PopupForm_add_text (popup, __, s, 0);
+		}
+		if (any_missing_fp_cities) {
+			snprintf (s, sizeof s, "^%s", is->c3x_labels[CL_2CS_MISSING_CITIES]);
+			s[(sizeof s) - 1] = '\0';
+			PopupForm_add_text (popup, __, s, 0);
+		}
+		show_popup (popup, __, 0, 0);
+	}
 }
 
 void __fastcall
