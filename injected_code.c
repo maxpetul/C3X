@@ -1436,11 +1436,21 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	}
 }
 
+Cities *
+get_p_cities ()
+{
+	return p_cities;
+}
+
 FARPROC __stdcall
 patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 {
-	if (((int)lpProcName > 1000) && (strncmp (lpProcName, "pop_up_in_game_error", strlen ("pop_up_in_game_error")) == 0))
+	if (((int)lpProcName > 1000) && (strncmp (lpProcName, "pop_up_in_game_error", 100) == 0))
 		return (FARPROC)pop_up_in_game_error;
+	else if (((int)lpProcName > 1000) && (strncmp (lpProcName, "get_p_cities", 100) == 0))
+		return (FARPROC)get_p_cities;
+	else if (((int)lpProcName > 1000) && (strncmp (lpProcName, "get_city_ptr", 100) == 0))
+		return (FARPROC)get_city_ptr;
 	else
 		return GetProcAddress (hModule, lpProcName);
 }
@@ -2210,17 +2220,17 @@ void
 intercept_end_of_turn ()
 {
 	lua_State * ls = is->lua.state;
-	is->lua.getfield (ls, LUA_GLOBALSINDEX, "GetMagicNumber");
+	is->lua.getfield (ls, LUA_GLOBALSINDEX, "InterceptEndOfTurn");
 	if (! is->lua.pcall (ls, 0, LUA_MULTRET, 0)) {
-		int top = is->lua.gettop (ls);
-		lua_Integer mn = is->lua.tointeger (ls, top);
+		// int top = is->lua.gettop (ls);
+		// lua_Integer mn = is->lua.tointeger (ls, top);
 
-		PopupForm * popup = get_popup_form ();
-		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
-		char msg[100];
-		snprintf (msg, sizeof msg, "Magic number is: %d", mn);
-		PopupForm_add_text (popup, __, msg, 0);
-		show_popup (popup, __, 0, 0);
+		// PopupForm * popup = get_popup_form ();
+		// popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
+		// char msg[100];
+		// snprintf (msg, sizeof msg, "Magic number is: %d", mn);
+		// PopupForm_add_text (popup, __, msg, 0);
+		// show_popup (popup, __, 0, 0);
 	} else
 		pop_up_lua_error ();
 
