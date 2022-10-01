@@ -1458,6 +1458,12 @@ get_c3x_script_path ()
 	return is->mod_script_path;
 }
 
+Main_Screen_Form *
+get_main_screen_form ()
+{
+	return p_main_screen_form;
+}
+
 void __fastcall patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script_path, char * text_key, int param_3, int param_4, int param_5, int param_6);
 
 FARPROC __stdcall
@@ -1478,6 +1484,7 @@ patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 		{ "show_popup"                      , (FARPROC)show_popup },
 		{ "PopupForm_set_text_key_and_flags", (FARPROC)patch_PopupForm_set_text_key_and_flags },
 		{ "get_c3x_script_path"             , (FARPROC)get_c3x_script_path },
+		{ "get_main_screen_form"            , (FARPROC)get_main_screen_form },
 	};
 
 	if ((int)lpProcName > 1000)
@@ -2277,6 +2284,9 @@ intercept_end_of_turn ()
 		// show_popup (popup, __, 0, 0);
 	} else
 		pop_up_lua_error (1);
+
+	if (p_main_screen_form->turn_end_flag == 1) // Check if player cancelled turn ending from Lua popup
+		return;
 
 	if (is->current_config.enable_disorder_warning) {
 		check_happiness_at_end_of_turn ();

@@ -3,6 +3,17 @@ local civ3 = {}
 
 local ffi = require("ffi")
 ffi.cdef[[
+typedef struct MainScreenForm
+{
+  int vtable;
+  int field_4[4974];
+  int playerCivID;
+  int field_4DC0[42230];
+  char turnEndFlag;
+  char field_2E199[3];
+  int field_2E19C[1731];
+} MainScreenForm_t;
+
 typedef struct Citizen_Body
 {
   int vtable;
@@ -80,6 +91,7 @@ City_t * get_city_ptr(int id);
 Leader_t * get_ui_controller();
 void __thiscall City_recompute_happiness(City_t * this);
 char * get_c3x_script_path();
+MainScreenForm_t * get_main_screen_form();
 
 void * __stdcall get_popup_form();
 int __cdecl set_popup_str_param(int param_index, char const * str, int param_3, int param_4);
@@ -95,9 +107,9 @@ civ3.CitizenMood = {
   Rebel = 3
 }
 
-function civ3.GetUIController() return ffi.C.get_ui_controller() end
 function civ3.PopUpInGameError(msg) ffi.C.pop_up_in_game_error(msg) end
 function civ3.GetC3XScriptPath() return ffi.C.get_c3x_script_path() end
+civ3.mainScreenForm = ffi.C.get_main_screen_form()
 
 local function NextCity(city, id)
   local lastIndex = ffi.C.get_p_cities().LastIndex
@@ -144,6 +156,14 @@ local function CitizensIn(city)
   local citizenInListing = { index = -1, items = city.Body.citizenList.Items, lastIndex = city.Body.citizenList.LastIndex }
   return NextCitizenIn, citizenInListing, nil
 end
+
+local MainScreenForm
+local MainScreenForm_metatable = {
+  __index = {
+    GetController = function() return ffi.C.get_ui_controller() end
+  }
+}
+MainScreenForm = ffi.metatype("MainScreenForm_t", MainScreenForm_metatable)
 
 local Leader
 local Leader_metatable = {
