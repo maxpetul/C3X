@@ -1452,19 +1452,40 @@ get_ui_controller ()
 	return &leaders[p_main_screen_form->Player_CivID];
 }
 
+char *
+get_c3x_script_path ()
+{
+	return is->mod_script_path;
+}
+
+void __fastcall patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script_path, char * text_key, int param_3, int param_4, int param_5, int param_6);
+
 FARPROC __stdcall
 patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 {
-	if (((int)lpProcName > 1000) && (strncmp (lpProcName, "pop_up_in_game_error", 100) == 0))
-		return (FARPROC)pop_up_in_game_error;
-	else if (((int)lpProcName > 1000) && (strncmp (lpProcName, "get_p_cities", 100) == 0))
-		return (FARPROC)get_p_cities;
-	else if (((int)lpProcName > 1000) && (strncmp (lpProcName, "get_city_ptr", 100) == 0))
-		return (FARPROC)get_city_ptr;
-	else if (((int)lpProcName > 1000) && (strncmp (lpProcName, "get_ui_controller", 100) == 0))
-		return (FARPROC)get_ui_controller;
-	else
-		return GetProcAddress (hModule, lpProcName);
+	struct proc {
+		char const * name;
+		FARPROC address;
+	} procs[] = {
+		{ "pop_up_in_game_error"            , (FARPROC)pop_up_in_game_error },
+		{ "get_p_cities"                    , (FARPROC)get_p_cities },
+		{ "get_city_ptr"                    , (FARPROC)get_city_ptr },
+		{ "get_ui_controller"               , (FARPROC)get_ui_controller },
+		{ "City_recompute_happiness"        , (FARPROC)City_recompute_happiness },
+		{ "get_popup_form"                  , (FARPROC)get_popup_form },
+		{ "set_popup_str_param"             , (FARPROC)set_popup_str_param },
+		{ "set_popup_int_param"             , (FARPROC)set_popup_int_param },
+		{ "show_popup"                      , (FARPROC)show_popup },
+		{ "PopupForm_set_text_key_and_flags", (FARPROC)patch_PopupForm_set_text_key_and_flags },
+		{ "get_c3x_script_path"             , (FARPROC)get_c3x_script_path },
+	};
+
+	if ((int)lpProcName > 1000)
+		for (int n = 0; n < (sizeof procs) / (sizeof procs[0]); n++)
+			if (strncmp (lpProcName, procs[n].name, 100) == 0)
+				return procs[n].address;
+
+	return GetProcAddress (hModule, lpProcName);
 }
 
 void

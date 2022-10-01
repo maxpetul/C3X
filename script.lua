@@ -4,7 +4,7 @@ local civ3 = require("civ3")
 function InterceptEndOfTurn()
   local numUnhappyCities, firstUnhappyCity = 0, nil
   for city in civ3.GetUIController():Cities() do
-    -- recompute happiness
+    city:RecomputeHappiness()
     local numHappy, numUnhappy = 0, 0
     for citizen in city:Citizens() do
       if citizen.Mood == civ3.CitizenMood.Happy then
@@ -20,7 +20,7 @@ function InterceptEndOfTurn()
     end
   end
 
+  civ3.ShowPopup(civ3.GetC3XScriptPath(), "C3X_DISORDER_WARNING_MULTIPLE", "Testing", 123)
   if firstUnhappyCity ~= nil then
-    civ3.PopUpInGameError("At least one city is unhappy")
   end
 end
