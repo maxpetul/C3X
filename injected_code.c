@@ -99,13 +99,17 @@ pop_up_in_game_error (char const * msg)
 // Shows an in-game error popup titled "Script Error" containing a message read off the Lua stack. The top of the Lua stack must contain a
 // string. That string will be popped off by this method.
 void
-pop_up_lua_error ()
+pop_up_lua_error (int in_game)
 {
 	lua_State * ls = is->lua.state;
-	PopupForm * popup = get_popup_form ();
-	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_SCRIPT_ERROR", -1, 0, 0, 0);
-	PopupForm_add_text (popup, __, (char *)is->lua.tolstring (ls, is->lua.gettop (ls), NULL), 0);
-	show_popup (popup, __, 0, 0);
+	char * err_msg = (char *)is->lua.tolstring (ls, is->lua.gettop (ls), NULL);
+	if (in_game) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_SCRIPT_ERROR", -1, 0, 0, 0);
+		PopupForm_add_text (popup, __, err_msg, 0);
+		show_popup (popup, __, 0, 0);
+	} else
+		MessageBoxA (NULL, err_msg, NULL, MB_ICONERROR);
 	is->lua.settop (ls, -2); // pop
 }
 
@@ -1554,6 +1558,17 @@ patch_init_floating_point ()
 			is->lua.call (ls, 1, 0);
 		}
 
+		// Add the "lua" folder inside the mod folder to Lua's path so we can easily load civ3.lua and any other scripts placed there
+		{
+			char code[500];
+			// Need to use four backslashes b/c we're going through two levels of string parsing, first C then Lua.
+			snprintf (code, sizeof code, "package.path = \".\\\\%s\\\\lua\\\\?.lua;\" .. package.path", is->mod_rel_dir);
+			code[(sizeof code) - 1] = '\0';
+			is->lua.loadstring (ls, code);
+			if (is->lua.pcall (ls, 0, LUA_MULTRET, 0))
+				pop_up_lua_error (0);
+		}
+
 		char script_path[MAX_PATH];
 		snprintf (script_path, sizeof script_path, "%s\\script.lua", is->mod_rel_dir);
 		script_path[(sizeof script_path) - 1] = '\0';
@@ -1561,7 +1576,7 @@ patch_init_floating_point ()
 		if (lua_code != NULL) {
 			is->lua.loadstring (ls, lua_code);
 			if (is->lua.pcall (ls, 0, LUA_MULTRET, 0))
-				pop_up_lua_error ();
+				pop_up_lua_error (0);
 		} else
 			MessageBoxA (NULL, "Failed to load script.lua", NULL, MB_ICONERROR);
 	}
@@ -2240,7 +2255,7 @@ intercept_end_of_turn ()
 		// PopupForm_add_text (popup, __, msg, 0);
 		// show_popup (popup, __, 0, 0);
 	} else
-		pop_up_lua_error ();
+		pop_up_lua_error (1);
 
 	if (is->current_config.enable_disorder_warning) {
 		check_happiness_at_end_of_turn ();
