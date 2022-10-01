@@ -30,9 +30,18 @@ typedef struct Cities
   int Capacity;
 } Cities_t;
 
+typedef struct Leader
+{
+  int vtable;
+  int field_4[6];
+  int ID;
+  int field_20[2097];
+} Leader_t;
+
 void pop_up_in_game_error(char const * msg);
 Cities_t * get_p_cities();
 City_t * get_city_ptr(int id);
+Leader_t * get_ui_controller();
 ]]
 
 function NextCity(city, id)
@@ -76,7 +85,7 @@ function InterceptEndOfTurn()
   end
 
   cityCount = 0
-  for city in CitiesOf(1) do
+  for city in CitiesOf(ffi.C.get_ui_controller().ID) do
     cityCount = cityCount + 1
   end
 

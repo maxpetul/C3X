@@ -1442,6 +1442,12 @@ get_p_cities ()
 	return p_cities;
 }
 
+Leader *
+get_ui_controller ()
+{
+	return &leaders[p_main_screen_form->Player_CivID];
+}
+
 FARPROC __stdcall
 patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 {
@@ -1451,6 +1457,8 @@ patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 		return (FARPROC)get_p_cities;
 	else if (((int)lpProcName > 1000) && (strncmp (lpProcName, "get_city_ptr", 100) == 0))
 		return (FARPROC)get_city_ptr;
+	else if (((int)lpProcName > 1000) && (strncmp (lpProcName, "get_ui_controller", 100) == 0))
+		return (FARPROC)get_ui_controller;
 	else
 		return GetProcAddress (hModule, lpProcName);
 }
