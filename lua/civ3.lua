@@ -3,12 +3,45 @@ local civ3 = {}
 
 local ffi = require("ffi")
 ffi.cdef[[
+typedef struct Citizen_Body
+{
+  int vtable;
+  int field_20[66];
+  int Mood;
+  int Gender;
+  int field_130;
+  int field_134;
+  int field_138;
+  int WorkerType;
+  int RaceID;
+  int field_144;
+  int field_148;
+} Citizen_Body_t;
+
+typedef struct Citizen_Info
+{
+  int field_0;
+  Citizen_Body_t *Body;
+} Citizen_Info_t;
+
+typedef struct CitizenList
+{
+  int vtable;
+  Citizen_Info_t *Items;
+  int field_8;
+  int field_C;
+  int LastIndex;
+  int Capacity;
+} CitizenList_t;
+
 typedef struct City_Body
 {
   int field_0[3];
   char OwnerID;
   char field_D[3];
-  int field_10[326];
+  int field_10[44];
+  CitizenList_t citizenList;
+  int field_D8[275];
 } City_Body_t;
 
 typedef struct City
@@ -81,6 +114,21 @@ local function CitiesOf(civID)
   return NextCityOf, cityOfListing, nil
 end
 
+local function NextCitizenIn(citizenInListing, citizen)
+  local cIL = citizenInListing
+  while cIL.index <= cIL.lastIndex do
+    cIL.index = cIL.index + 1
+    local next = cIL.items[cIL.index].Body
+    if (next ~= nil) and (tonumber(ffi.cast("int", next)) ~= 28) then return next end
+  end
+  return nil
+end
+
+local function CitizensIn(city)
+  local citizenInListing = { index = -1, items = city.Body.citizenList.Items, lastIndex = city.Body.citizenList.LastIndex }
+  return NextCitizenIn, citizenInListing, nil
+end
+
 local Leader
 local Leader_metatable = {
   __index = {
@@ -88,5 +136,13 @@ local Leader_metatable = {
   }
 }
 Leader = ffi.metatype("Leader_t", Leader_metatable)
+
+local City
+local City_metatable = {
+  __index = {
+    Citizens = function(this) return CitizensIn(this) end
+  }
+}
+City = ffi.metatype("City_t", City_metatable)
 
 return civ3

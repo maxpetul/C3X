@@ -2,15 +2,14 @@
 local civ3 = require("civ3")
 
 function InterceptEndOfTurn()
-  local cityCount = 0
+  local unhappyCount = 0
   for city in civ3.GetUIController():Cities() do
-    cityCount = cityCount + 1
+    for citizen in city:Citizens() do
+      if citizen.Mood == 2 then -- CMT_Unhappy == 2
+        unhappyCount = unhappyCount + 1
+      end
+    end
   end
 
-  local cityCount2 = 0
-  for _, city in civ3.Cities() do
-    cityCount2 = cityCount2 + 1
-  end
-
-  civ3.PopUpInGameError("City count A: " .. cityCount .. ", B: " .. cityCount2);
+  civ3.PopUpInGameError("Unhappy count: " .. unhappyCount);
 end
