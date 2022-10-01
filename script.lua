@@ -51,6 +51,21 @@ function Cities()
   return NextCity, nil, -1
 end
 
+function NextCityOf(cityOfListing, city)
+  local cOL = cityOfListing
+  while cOL.id <= cOL.lastIndex do
+    cOL.id = cOL.id + 1
+    local next = ffi.C.get_city_ptr(cOL.id)
+    if (next ~= nil) and (next.Body.OwnerID == cOL.civID) then return next end
+  end
+  return nil
+end
+
+function CitiesOf(civID)
+  local cityOfListing = { id = -1, civID = civID, lastIndex = ffi.C.get_p_cities().LastIndex }
+  return NextCityOf, cityOfListing, nil
+end
+
 function InterceptEndOfTurn()
   local cityCount = 0
   for id = 0,(ffi.C.get_p_cities().LastIndex + 1) do
@@ -58,6 +73,11 @@ function InterceptEndOfTurn()
     if city ~= nil then
       cityCount = cityCount + 1
     end
+  end
+
+  cityCount = 0
+  for city in CitiesOf(1) do
+    cityCount = cityCount + 1
   end
 
   local cityCount2 = 0
