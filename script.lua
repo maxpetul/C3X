@@ -5,7 +5,7 @@ function InterceptEndOfTurn()
   local unhappyCount = 0
   for city in civ3.GetUIController():Cities() do
     for citizen in city:Citizens() do
-      if citizen.Mood == 2 then -- CMT_Unhappy == 2
+      if citizen.Mood == civ3.CitizenMood.Unhappy then
         unhappyCount = unhappyCount + 1
       end
     end

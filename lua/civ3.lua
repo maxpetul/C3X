@@ -80,6 +80,13 @@ City_t * get_city_ptr(int id);
 Leader_t * get_ui_controller();
 ]]
 
+civ3.CitizenMood = {
+  Happy = 0,
+  Content = 1,
+  Unhappy = 2,
+  Rebel = 3
+}
+
 function civ3.GetUIController() return ffi.C.get_ui_controller() end
 function civ3.PopUpInGameError(msg) ffi.C.pop_up_in_game_error(msg) end
 
