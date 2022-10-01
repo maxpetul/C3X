@@ -1,7 +1,7 @@
 
 local civ3 = require("civ3")
 
-function InterceptEndOfTurn()
+function CheckHappinessAtEndOfTurn()
   local numUnhappyCities, firstUnhappyCity = 0, nil
   for city in civ3.mainScreenForm:GetController():Cities() do
     city:RecomputeHappiness()
@@ -20,13 +20,21 @@ function InterceptEndOfTurn()
     end
   end
 
-  local prevTurnEndFlag = civ3.mainScreenForm.turnEndFlag
 
-  local response
-  response = civ3.ShowPopup(civ3.GetC3XScriptPath(), "C3X_DISORDER_WARNING_MULTIPLE", "Testing", 123)
-  if response == 1 then
-    civ3.mainScreenForm.turnEndFlag = true
-  end
   if firstUnhappyCity ~= nil then
+    local response
+    if numUnhappyCities > 1 then
+      response = civ3.ShowPopup(civ3.GetC3XScriptPath(), "C3X_DISORDER_WARNING_MULTIPLE", firstUnhappyCity:GetName(), numUnhappyCities)
+    else
+      response = civ3.ShowPopup(civ3.GetC3XScriptPath(), "C3X_DISORDER_WARNING_ONE", firstUnhappyCity:GetName())
+    end
+
+    if response == 2 then -- zoom to city
+      civ3.mainScreenForm.turnEndFlag = true
+      firstUnhappyCity:ZoomTo()
+    elseif response == 1 then -- just cancel turn end
+      civ3.mainScreenForm.turnEndFlag = true
+    -- else do nothing, let turn end
+    end
   end
 end

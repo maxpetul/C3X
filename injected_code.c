@@ -1478,6 +1478,7 @@ patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 		{ "get_city_ptr"                    , (FARPROC)get_city_ptr },
 		{ "get_ui_controller"               , (FARPROC)get_ui_controller },
 		{ "City_recompute_happiness"        , (FARPROC)City_recompute_happiness },
+		{ "City_zoom_to"                    , (FARPROC)City_zoom_to },
 		{ "get_popup_form"                  , (FARPROC)get_popup_form },
 		{ "set_popup_str_param"             , (FARPROC)set_popup_str_param },
 		{ "set_popup_int_param"             , (FARPROC)set_popup_int_param },
@@ -2119,6 +2120,12 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 void
 check_happiness_at_end_of_turn ()
 {
+	lua_State * ls = is->lua.state;
+	is->lua.getfield (ls, LUA_GLOBALSINDEX, "CheckHappinessAtEndOfTurn");
+	if (is->lua.pcall (ls, 0, LUA_MULTRET, 0))
+		pop_up_lua_error (1);
+
+	/*
 	int num_unhappy_cities = 0;
 	City * first_unhappy_city = NULL;
 	FOR_CITIES_OF (coi, p_main_screen_form->Player_CivID) {
@@ -2152,6 +2159,7 @@ check_happiness_at_end_of_turn ()
 		// else do nothing, let turn end
 			
 	}
+	*/
 }
 
 void
@@ -2270,24 +2278,6 @@ patch_DiploForm_m22_Draw (DiploForm * this)
 void
 intercept_end_of_turn ()
 {
-	lua_State * ls = is->lua.state;
-	is->lua.getfield (ls, LUA_GLOBALSINDEX, "InterceptEndOfTurn");
-	if (! is->lua.pcall (ls, 0, LUA_MULTRET, 0)) {
-		// int top = is->lua.gettop (ls);
-		// lua_Integer mn = is->lua.tointeger (ls, top);
-
-		// PopupForm * popup = get_popup_form ();
-		// popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
-		// char msg[100];
-		// snprintf (msg, sizeof msg, "Magic number is: %d", mn);
-		// PopupForm_add_text (popup, __, msg, 0);
-		// show_popup (popup, __, 0, 0);
-	} else
-		pop_up_lua_error (1);
-
-	if (p_main_screen_form->turn_end_flag == 1) // Check if player cancelled turn ending from Lua popup
-		return;
-
 	if (is->current_config.enable_disorder_warning) {
 		check_happiness_at_end_of_turn ();
 		if (p_main_screen_form->turn_end_flag == 1) // Check if player cancelled turn ending in the disorder warning popup

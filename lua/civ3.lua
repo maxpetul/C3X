@@ -52,7 +52,9 @@ typedef struct City_Body
   char field_D[3];
   int field_10[44];
   CitizenList_t citizenList;
-  int field_D8[275];
+  int field_D8[59];
+  char CityName[20];
+  int field_1D8[212];
 } City_Body_t;
 
 typedef struct City
@@ -90,6 +92,7 @@ Cities_t * get_p_cities();
 City_t * get_city_ptr(int id);
 Leader_t * get_ui_controller();
 void __thiscall City_recompute_happiness(City_t * this);
+void __thiscall City_zoom_to(City_t * this);
 char * get_c3x_script_path();
 MainScreenForm_t * get_main_screen_form();
 
@@ -177,7 +180,9 @@ local City
 local City_metatable = {
   __index = {
     RecomputeHappiness = function(this) ffi.C.City_recompute_happiness(this) end,
-    Citizens = function(this) return CitizensIn(this) end
+    ZoomTo = function(this) ffi.C.City_zoom_to(this) end,
+    Citizens = function(this) return CitizensIn(this) end,
+    GetName = function(this) return ffi.string(this.Body.CityName, 20) end
   }
 }
 City = ffi.metatype("City_t", City_metatable)
