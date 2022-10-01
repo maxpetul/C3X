@@ -75,6 +75,14 @@ function CitiesOf(civID)
   return NextCityOf, cityOfListing, nil
 end
 
+local Leader
+local Leader_metatable = {
+  __index = {
+    Cities = function(this) return CitiesOf(this.ID) end
+  }
+}
+Leader = ffi.metatype("Leader_t", Leader_metatable)
+
 function InterceptEndOfTurn()
   local cityCount = 0
   for id = 0,(ffi.C.get_p_cities().LastIndex + 1) do
@@ -85,7 +93,7 @@ function InterceptEndOfTurn()
   end
 
   cityCount = 0
-  for city in CitiesOf(ffi.C.get_ui_controller().ID) do
+  for city in ffi.C.get_ui_controller():Cities() do
     cityCount = cityCount + 1
   end
 
