@@ -3316,12 +3316,14 @@ is_current_offer_acceptable (int * out_their_advantage)
 
 // Adds an offer of gold to the list and returns it. If one already exists in the list, returns a pointer to it.
 TradeOffer *
-offer_gold (TradeOfferList * list, int is_lump_sum)
+offer_gold (TradeOfferList * list, int is_lump_sum, int * is_new_offer)
 {
 	if (list->length > 0)
 		for (TradeOffer * offer = list->first; offer != NULL; offer = offer->next)
-			if ((offer->kind == 7) && (offer->param_1 == is_lump_sum))
+			if ((offer->kind == 7) && (offer->param_1 == is_lump_sum)) {
+				*is_new_offer = 0;
 				return offer;
+			}
 
 	TradeOffer * tr = new (sizeof *tr);
 	*tr = (struct TradeOffer) {
@@ -3343,6 +3345,7 @@ offer_gold (TradeOfferList * list, int is_lump_sum)
 		list->length = 1;
 	}
 
+	*is_new_offer = 1;
 	return tr;
 }
 
@@ -3395,7 +3398,9 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 		     ((! asking) && (! is_original_acceptable)))) { // we're offering money on an unacceptable trade)
 
 			TradeOfferList * offers = asking ? &p_diplo_form->their_offer_lists[their_id] : &p_diplo_form->our_offer_lists[their_id];
-			TradeOffer * test_offer = offer_gold (offers, is_lump_sum);
+			int test_offer_is_new;
+			TradeOffer * test_offer = offer_gold (offers, is_lump_sum, &test_offer_is_new);
+			int saved_param_2 = test_offer->param_2; // So we can restore param_2 if we aren't going to remove test_offer
 
 			// When asking for gold, start at zero and work upwards. When offering gold it's more complicated. For lump sum
 			// offers, start with our entire treasury and work downward. For GPT offers, start with an upper bound and work
@@ -3440,8 +3445,13 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 			if (asking && is_lump_sum && (best_amount > their_treasury))
 				best_amount = their_treasury;
 
-			remove_offer (offers, test_offer);
-			test_offer->vtable->destruct (test_offer, __, 1);
+			// Restore the trade table to its original state. Remove & free test_offer if it was newly created, otherwise put back its
+			// original amount.
+			if (test_offer_is_new) {
+				remove_offer (offers, test_offer);
+				test_offer->vtable->destruct (test_offer, __, 1);
+			} else
+				test_offer->param_2 = saved_param_2;
 		}
 
 		snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "%d", best_amount);
