@@ -1255,6 +1255,21 @@ patch_Tile_get_visible_resource_when_recomputing (Tile * tile, int edx, int civ_
 	}
 }
 
+char * __fastcall
+do_capture_modified_gold_trade (TradeOffer * trade_offer, int edx, int val, char * str, unsigned base)
+{
+	is->modifying_gold_trade = trade_offer;
+	return print_int (val, str, base);
+}
+
+byte *
+emit_call (byte * cursor, byte const * target)
+{
+	int offset = (int)target - ((int)cursor + 5);
+	*cursor++ = 0xE8;
+	return int_to_bytes (cursor, offset);
+}
+
 // Just calls VirtualProtect and displays an error message if it fails. Made for use by the WITH_MEM_PROTECTION macro.
 int
 check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect)
@@ -1419,6 +1434,22 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		for (; cursor < ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT + 9; cursor++)
 			*cursor = 0x90; // nop
 	}
+
+	byte * addr_print_gold_amounts[] = {ADDR_PRINT_GOLD_AMOUNT_1, ADDR_PRINT_GOLD_AMOUNT_2};
+	for (int n = 0; n < (sizeof addr_print_gold_amounts) / (sizeof addr_print_gold_amounts[0]); n++) {
+		byte * addr = addr_print_gold_amounts[n];
+		WITH_MEM_PROTECTION (addr, 5, PAGE_EXECUTE_READWRITE)
+			emit_call (addr, ADDR_CAPTURE_MODIFIED_GOLD_TRADE);
+	}
+	WITH_MEM_PROTECTION (ADDR_CAPTURE_MODIFIED_GOLD_TRADE, 32, PAGE_EXECUTE_READWRITE) {
+		byte * cursor = ADDR_CAPTURE_MODIFIED_GOLD_TRADE;
+		byte repush[] = {0xFF, 0x74, 0x24, 0x0C}; // push [esp+0xC]
+		for (int n = 0; n < 3; n++)
+			for (int k = 0; k < (sizeof repush) / (sizeof repush[0]); k++)
+				*cursor++ = repush[k];
+		cursor = emit_call (cursor, (byte const *)do_capture_modified_gold_trade);
+		*cursor++ = 0xC3; // ret
+	}
 }
 
 void
@@ -1538,6 +1569,8 @@ patch_init_floating_point ()
 	is->count_mill_tiles = 0;
 	is->mill_tiles_capacity = 0;
 	is->saved_tile_count = -1;
+
+	is->modifying_gold_trade = NULL;
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -3341,10 +3374,12 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 	int * p_stack = (int *)&script_path;
 	int ret_addr = p_stack[-1];
 
+	int is_initial_gold_trade   = (ret_addr == ADDR_SETUP_INITIAL_GOLD_ASK_RETURN) || (ret_addr == ADDR_SETUP_INITIAL_GOLD_OFFER_RETURN),
+	    is_modifying_gold_trade = (ret_addr == ADDR_SETUP_MODIFY_GOLD_ASK_RETURN ) || (ret_addr == ADDR_SETUP_MODIFY_GOLD_OFFER_RETURN);
+
 	// This function gets called from all over the place, check that it's being called to setup the set gold amount popup in the trade screen
-	if (is->current_config.autofill_best_gold_amount_when_trading &&
-	    (ret_addr == ADDR_SETUP_ASKING_GOLD_RETURN) || (ret_addr == ADDR_SETUP_OFFERING_GOLD_RETURN)) {
-		int asking = ret_addr == ADDR_SETUP_ASKING_GOLD_RETURN;
+	if (is->current_config.autofill_best_gold_amount_when_trading && is_initial_gold_trade) {
+		int asking = (ret_addr == ADDR_SETUP_INITIAL_GOLD_ASK_RETURN) || (ret_addr == ADDR_SETUP_MODIFY_GOLD_ASK_RETURN);
 		int is_lump_sum = p_stack[TRADE_GOLD_SETTER_IS_LUMP_SUM_OFFSET]; // Read this variable from the caller's frame
 
 		int their_id = p_diplo_form->other_party_civ_id,

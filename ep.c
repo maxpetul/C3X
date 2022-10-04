@@ -1031,6 +1031,13 @@ ENTRY_POINT ()
 		tcc__define_symbol (tcc, "ADDR_SET_RESOURCE_BIT_AIRLOCK", temp_format ("((void *)0x%x)", (int)addr_set_resource_bit_airlock));
 	}
 
+	// Same again, this time for the bit of code that captures the TradeOffer object pointer when a gold trade on the table is modified
+	byte * addr_capture_modified_gold_trade; {
+		ASSERT (i_next_free_inlead < inleads_capacity);
+		addr_capture_modified_gold_trade = (byte *)&inleads[i_next_free_inlead++];
+		tcc__define_symbol (tcc, "ADDR_CAPTURE_MODIFIED_GOLD_TRADE", temp_format ("((void *)0x%x)", (int)addr_capture_modified_gold_trade));
+	}
+
 	// Compile C code to inject
 	{
 		char * source = ep_file_to_string (mod_full_dir, "injected_code.c");
