@@ -20,7 +20,6 @@ function CheckHappinessAtEndOfTurn()
     end
   end
 
-
   if firstUnhappyCity ~= nil then
     local response
     if numUnhappyCities > 1 then
