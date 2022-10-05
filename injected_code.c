@@ -3381,9 +3381,11 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 	    is_modifying_gold_trade = (ret_addr == ADDR_SETUP_MODIFY_GOLD_ASK_RETURN ) || (ret_addr == ADDR_SETUP_MODIFY_GOLD_OFFER_RETURN);
 
 	// This function gets called from all over the place, check that it's being called to setup the set gold amount popup in the trade screen
-	if (is->current_config.autofill_best_gold_amount_when_trading && is_initial_gold_trade) {
+	if (is->current_config.autofill_best_gold_amount_when_trading && (is_initial_gold_trade || is_modifying_gold_trade)) {
 		int asking = (ret_addr == ADDR_SETUP_INITIAL_GOLD_ASK_RETURN) || (ret_addr == ADDR_SETUP_MODIFY_GOLD_ASK_RETURN);
-		int is_lump_sum = p_stack[TRADE_GOLD_SETTER_IS_LUMP_SUM_OFFSET]; // Read this variable from the caller's frame
+		int is_lump_sum = is_initial_gold_trade ?
+			p_stack[TRADE_GOLD_SETTER_IS_LUMP_SUM_OFFSET] : // Read this variable from the caller's frame
+			is->modifying_gold_trade->param_1;
 
 		int their_id = p_diplo_form->other_party_civ_id,
 		    our_id = p_main_screen_form->Player_CivID;
@@ -3393,9 +3395,10 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 
 		int best_amount = 0;
 
-		if ((p_diplo_form->their_offer_lists[their_id].length + p_diplo_form->our_offer_lists[their_id].length > 0) && // if anything is on the table AND
-		    ((asking && is_original_acceptable) || // (we're asking for money on an acceptable trade OR
-		     ((! asking) && (! is_original_acceptable)))) { // we're offering money on an unacceptable trade)
+		// if (we're asking for money on an acceptable trade and are offering something) OR (we're offering money on an unacceptable trade and
+		// are asking for something)
+		if ((   asking  &&    is_original_acceptable  && (p_diplo_form->our_offer_lists[their_id]  .length > 0)) ||
+		    ((! asking) && (! is_original_acceptable) && (p_diplo_form->their_offer_lists[their_id].length > 0))) {
 
 			TradeOfferList * offers = asking ? &p_diplo_form->their_offer_lists[their_id] : &p_diplo_form->our_offer_lists[their_id];
 			int test_offer_is_new;

@@ -382,8 +382,8 @@ struct injected_state {
 	struct mill_tile * got_mill_tile;
 	int saved_tile_count; // Stores the actual tile count in case p_bic_data->Map.TileCount was temporarily overwritten. Set to -1 when empty.
 
-	// Stores the trade offer object being modified when the user right-clicks on a gold offer/ask on the trade table. Normally NULL, gets set by
-	// a special function call replacement (see apply_machine_code_edits for details).
+	// Stores the trade offer object being modified when the user right-clicks on a gold offer/ask on the trade table. Gets set by a special
+	// function call replacement (see apply_machine_code_edits for details).
 	TradeOffer * modifying_gold_trade;
 
 	// ==========
