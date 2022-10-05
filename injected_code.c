@@ -1435,6 +1435,11 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 			*cursor = 0x90; // nop
 	}
 
+	// Set up a special intercept of the base game's calls to print_int in order to grab a pointer to a gold TradeOffer object being modified. The
+	// calls to print_int happen in the context of creating the default text to be placed in the set-gold-amount popup. Conveniently, a pointer to
+	// the TradeOffer object is always stored in register ecx when this call happens. It's not easily accessible since print_int uses the cdecl
+	// convention so we must use an airlock-like thing to effectively convert the calling convention to fastcall. The first part of this code
+	// simply replaces the call to print_int with a call to the airlock-like thing, and the second part initializes its contents.
 	byte * addr_print_gold_amounts[] = {ADDR_PRINT_GOLD_AMOUNT_1, ADDR_PRINT_GOLD_AMOUNT_2};
 	for (int n = 0; n < (sizeof addr_print_gold_amounts) / (sizeof addr_print_gold_amounts[0]); n++) {
 		byte * addr = addr_print_gold_amounts[n];
@@ -1443,11 +1448,16 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	}
 	WITH_MEM_PROTECTION (ADDR_CAPTURE_MODIFIED_GOLD_TRADE, 32, PAGE_EXECUTE_READWRITE) {
 		byte * cursor = ADDR_CAPTURE_MODIFIED_GOLD_TRADE;
+
+		// Repush all of the arguments to print_int onto the stack, they will be consumed by do_capture_modified_gold_trade since it's
+		// fastcall. The original args don't need to be removed b/c we're replacing a cdecl function so that's the caller's
+		// responsibility. The TradeOffer pointer is already in ECX, so that's fine as long as we don't touch that register.
 		byte repush[] = {0xFF, 0x74, 0x24, 0x0C}; // push [esp+0xC]
 		for (int n = 0; n < 3; n++)
 			for (int k = 0; k < (sizeof repush) / (sizeof repush[0]); k++)
 				*cursor++ = repush[k];
-		cursor = emit_call (cursor, (byte const *)do_capture_modified_gold_trade);
+
+		cursor = emit_call (cursor, (byte const *)do_capture_modified_gold_trade); // call do_capture_modified_gold_trade
 		*cursor++ = 0xC3; // ret
 	}
 }
