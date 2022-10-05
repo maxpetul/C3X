@@ -3390,10 +3390,18 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 		int their_id = p_diplo_form->other_party_civ_id,
 		    our_id = p_main_screen_form->Player_CivID;
 
+		// This variable will store the result of the optimization process and it's what will be used as the final amount presented to the
+		// player in the popup and left in the TradeOffer object (if applicable). Default to zero for new offers and the previous amount when
+		// modifying an offer. When modifying, we also zero the amount on the table b/c the optimization process only works properly from that
+		// starting point.
+		int best_amount = 0;
+		if (is_modifying_gold_trade) {
+			best_amount = is->modifying_gold_trade->param_2;
+			is->modifying_gold_trade->param_2 = 0;
+		}
+
 		int their_advantage;
 		int is_original_acceptable = is_current_offer_acceptable (&their_advantage);
-
-		int best_amount = 0;
 
 		// if (we're asking for money on an acceptable trade and are offering something) OR (we're offering money on an unacceptable trade and
 		// are asking for something)
@@ -3403,7 +3411,6 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 			TradeOfferList * offers = asking ? &p_diplo_form->their_offer_lists[their_id] : &p_diplo_form->our_offer_lists[their_id];
 			int test_offer_is_new;
 			TradeOffer * test_offer = offer_gold (offers, is_lump_sum, &test_offer_is_new);
-			int saved_param_2 = test_offer->param_2; // So we can restore param_2 if we aren't going to remove test_offer
 
 			// When asking for gold, start at zero and work upwards. When offering gold it's more complicated. For lump sum
 			// offers, start with our entire treasury and work downward. For GPT offers, start with an upper bound and work
@@ -3453,10 +3460,11 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 			if (test_offer_is_new) {
 				remove_offer (offers, test_offer);
 				test_offer->vtable->destruct (test_offer, __, 1);
-			} else
-				test_offer->param_2 = saved_param_2;
+			}
 		}
 
+		if (is_modifying_gold_trade)
+			is->modifying_gold_trade->param_2 = best_amount;
 		snprintf (is->ask_gold_default, sizeof is->ask_gold_default, "%d", best_amount);
 		is->ask_gold_default[(sizeof is->ask_gold_default) - 1] = '\0';
 		PopupForm_set_text_key_and_flags (this, __, script_path, text_key, param_3, (int)is->ask_gold_default, param_5, param_6);
