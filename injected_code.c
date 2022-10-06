@@ -3471,7 +3471,12 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 				remove_offer (offers, test_offer);
 				test_offer->vtable->destruct (test_offer, __, 1);
 			}
-		}
+
+		// If we're offering gold on a trade that's already acceptable, the optimal amount is zero. We must handle this explicitly in case
+		// we're modifying an amount already on the table. If we didn't, the above condition wouldn't optimize the amount and we'd default to
+		// the original amount.
+		} else if ((! asking) && is_original_acceptable)
+			best_amount = 0;
 
 		if (is_modifying_gold_trade)
 			is->modifying_gold_trade->param_2 = best_amount;

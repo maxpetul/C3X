@@ -12,6 +12,7 @@ Convenience features:
  - Detailed city production info
  - Buttons on trade screen to quickly switch between civs
  - Ask/offer gold popup autofills best amount
+  - ** Also applies when editing an amount on the table
  - Skip repeated popups asking to replace a tile improvement
  - Group units on right click menu
  - Show coordinates and chopped status in tile info box

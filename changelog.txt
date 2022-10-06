@@ -7,6 +7,7 @@
 - Fix units could trespass by attacking an enemy unit across a restricted border
 - Widen C3X error, info, and warning popups
 - Warn if two-city start contains adjacent cities or missing FP cities
+- Gold amount autofill activates when editing an amount on the table
 
 * RELEASE 13
 - AI two-city start
