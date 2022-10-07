@@ -235,6 +235,7 @@ define,	   0xA52678,	0xA74E70,	0xA52638,	"p_preferences",				"unsigned *"
 define,	   0x4AFAB0,	0x4B6A70,	0x4AFB40,	"City_set_production",				"void (__fastcall *) (City * this, int edx, int order_type, int order_id, byte ask_to_confirm)"
 define,	   0x4B0AC0,	0x4B7A70,	0x4B0B50,	"City_get_income_from_wealth_build",		"int (__fastcall *) (City * this)"
 define,	   0x64C91E,	0x66AFD7,	0x64C85E,	"print_int",					"char * (__cdecl *) (int val, char * str, unsigned base)"
+repl call, 0x5D759A,	0x5E69D2,	0x5D74CA,	"Tile_has_city_for_agri_penalty_exception",	""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

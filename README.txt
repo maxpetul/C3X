@@ -66,6 +66,7 @@ Engine extensions:
  - Option to allow military great leaders to hurry wonders
  - Option to reduce AI research rate by half
  - ** Option to aggressively penalize bankrupt players
+ - ** Option to remove exception to tile penalty for city tiles with fresh water and Agri trait
 
 INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.

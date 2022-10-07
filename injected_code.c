@@ -639,6 +639,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->halve_ai_research_rate = ival != 0;
 				else if ((0 == strncmp (key.str, "aggressively_penalize_bankruptcy", key.len)) && read_int (&value, &ival))
 					cfg->aggressively_penalize_bankruptcy = ival != 0;
+				else if ((0 == strncmp (key.str, "no_penalty_exception_for_agri_fresh_water_city_tiles", key.len)) && read_int (&value, &ival))
+					cfg->no_penalty_exception_for_agri_fresh_water_city_tiles = ival != 0;
 
 				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
 					cfg->use_offensive_artillery_ai = ival != 0;
@@ -4769,6 +4771,12 @@ void __fastcall
 patch_Main_Screen_Form_show_wltk_ended_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, byte pause)
 {
 	Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? 0 : pause);
+}
+
+char __fastcall
+patch_Tile_has_city_for_agri_penalty_exception (Tile * this)
+{
+	return is->current_config.no_penalty_exception_for_agri_fresh_water_city_tiles ? 0 : Tile_has_city (this);
 }
 
 // TCC requires a main function be defined even though it's never used.

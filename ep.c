@@ -961,6 +961,7 @@ ENTRY_POINT ()
 		.allow_military_leaders_to_hurry_wonders = 0,
 		.halve_ai_research_rate = 0,
 		.aggressively_penalize_bankruptcy = 0,
+		.no_penalty_exception_for_agri_fresh_water_city_tiles = 0,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,
