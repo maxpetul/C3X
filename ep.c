@@ -8,8 +8,6 @@
 #include "C3X.h"
 #include "common.c"
 
-#define ARRAY_LEN(a) ((sizeof a) / (sizeof a[0]))
-
 #if (!defined(C3X_RUN) && !defined(C3X_INSTALL)) || (defined(C3X_RUN) && defined(C3X_INSTALL))
 #error "Must #define exactly one of C3X_RUN or C3X_INSTALL"
 #endif

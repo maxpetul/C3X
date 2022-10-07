@@ -2,6 +2,8 @@
 // common.c: Stores various utility functions available to both the injected code (injected_code.c) and the patcher (ep.c). Also includes most code
 // related to text parsing, only the parsing funcs that depend on BIC data are put in injected_code.c instead.
 
+#define ARRAY_LEN(a) ((sizeof a) / (sizeof a[0]))
+
 int
 not_below (int lim, int x)
 {

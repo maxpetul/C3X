@@ -1263,7 +1263,7 @@ do_capture_modified_gold_trade (TradeOffer * trade_offer, int edx, int val, char
 }
 
 byte *
-emit_call (byte * cursor, byte const * target)
+emit_call (byte * cursor, void const * target)
 {
 	int offset = (int)target - ((int)cursor + 5);
 	*cursor++ = 0xE8;
@@ -1416,7 +1416,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 
 	byte * addr_turn_metalimits[] = {ADDR_TURN_METALIMIT_1, ADDR_TURN_METALIMIT_2, ADDR_TURN_METALIMIT_3, ADDR_TURN_METALIMIT_4,
 					 ADDR_TURN_METALIMIT_5, ADDR_TURN_METALIMIT_6, ADDR_TURN_METALIMIT_7};
-	for (int n = 0; n < (sizeof addr_turn_metalimits) / (sizeof addr_turn_metalimits[0]); n++) {
+	for (int n = 0; n < ARRAY_LEN (addr_turn_metalimits); n++) {
 		byte * addr = addr_turn_metalimits[n];
 		WITH_MEM_PROTECTION (addr, 4, PAGE_EXECUTE_READWRITE) {
 			int_to_bytes (addr, cfg->remove_cap_on_turn_limit ? 1000000 : 1000);
@@ -1428,9 +1428,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	WITH_MEM_PROTECTION (ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT, 9, PAGE_EXECUTE_READWRITE) {
 		byte * cursor = ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT;
 		*cursor++ = 0x8B; *cursor++ = 0xCE; // mov ecx, esi
-		int call_offset = (int)&adjust_sliders_preproduction - ((int)cursor + 5);
-		*cursor++ = 0xE8; // call
-		cursor = int_to_bytes (cursor, call_offset);
+		cursor = emit_call (cursor, adjust_sliders_preproduction);
 		for (; cursor < ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT + 9; cursor++)
 			*cursor = 0x90; // nop
 	}
@@ -1441,7 +1439,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	// convention so we must use an airlock-like thing to effectively convert the calling convention to fastcall. The first part of this code
 	// simply replaces the call to print_int with a call to the airlock-like thing, and the second part initializes its contents.
 	byte * addr_print_gold_amounts[] = {ADDR_PRINT_GOLD_AMOUNT_1, ADDR_PRINT_GOLD_AMOUNT_2};
-	for (int n = 0; n < (sizeof addr_print_gold_amounts) / (sizeof addr_print_gold_amounts[0]); n++) {
+	for (int n = 0; n < ARRAY_LEN (addr_print_gold_amounts); n++) {
 		byte * addr = addr_print_gold_amounts[n];
 		WITH_MEM_PROTECTION (addr, 5, PAGE_EXECUTE_READWRITE)
 			emit_call (addr, ADDR_CAPTURE_MODIFIED_GOLD_TRADE);
@@ -1454,10 +1452,10 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		// responsibility. The TradeOffer pointer is already in ECX, so that's fine as long as we don't touch that register.
 		byte repush[] = {0xFF, 0x74, 0x24, 0x0C}; // push [esp+0xC]
 		for (int n = 0; n < 3; n++)
-			for (int k = 0; k < (sizeof repush) / (sizeof repush[0]); k++)
+			for (int k = 0; k < ARRAY_LEN (repush); k++)
 				*cursor++ = repush[k];
 
-		cursor = emit_call (cursor, (byte const *)do_capture_modified_gold_trade); // call do_capture_modified_gold_trade
+		cursor = emit_call (cursor, do_capture_modified_gold_trade); // call do_capture_modified_gold_trade
 		*cursor++ = 0xC3; // ret
 	}
 }
@@ -1673,7 +1671,7 @@ init_trade_scroll_buttons (DiploForm * diplo_form)
 
 	// imgs stores normal, rollover, and highlight images, in that order, first for the left button then for the right
 	Tile_Image_Info * imgs[6];
-	for (int n = 0; n < (sizeof imgs) / (sizeof imgs[0]); n++) {
+	for (int n = 0; n < ARRAY_LEN (imgs); n++) {
 		imgs[n] = new (sizeof **imgs);
 		Tile_Image_Info_construct (imgs[n]);
 	}
