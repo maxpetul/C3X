@@ -207,7 +207,7 @@ hash_str (int str_ptr)
 {
 	size_t tr = 0;
 	for (char const * str = (char const *)str_ptr; *str != '\0'; str++)
-		tr = (tr<<2 ^ tr) + *str;
+		tr = (tr<<5 ^ tr>>2) + *str;
 	return tr;
 }
 

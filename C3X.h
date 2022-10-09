@@ -242,6 +242,7 @@ struct injected_state {
 	void * (* realloc) (void *, size_t);
 	void (* free) (void *);
 	long (* strtol) (char const *, char **, int);
+	int (* strcmp) (char const *, char const *);
 	int (* strncmp) (char const *, char const *, size_t);
 	size_t (* strlen) (char const *);
 	char * (* strncpy) (char *, char const *, size_t);
@@ -286,6 +287,10 @@ struct injected_state {
 	// after the first 32.
 	unsigned * extra_available_resources;
 	int extra_available_resources_capacity; // In number of cities.
+
+	// Stores the byte offsets into the c3x_config struct of all boolean config options, accessible using the options' names as strings. Used when
+	// reading in a config INI file.
+	struct table boolean_config_offsets;
 
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {

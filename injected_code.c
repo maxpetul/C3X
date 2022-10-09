@@ -36,6 +36,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define free is->free
 #define strtol is->strtol
 #define strncmp is->strncmp
+#define strcmp is->strcmp
 #define strlen is->strlen
 #define strncpy is->strncpy
 #define strdup is->strdup
@@ -1490,6 +1491,7 @@ patch_init_floating_point ()
 	realloc  = (void *)(*p_GetProcAddress) (is->msvcrt, "realloc");
 	free     = (void *)(*p_GetProcAddress) (is->msvcrt, "free");
 	strtol   = (void *)(*p_GetProcAddress) (is->msvcrt, "strtol");
+	strcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "strcmp");
 	strncmp  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncmp");
 	strlen   = (void *)(*p_GetProcAddress) (is->msvcrt, "strlen");
 	strncpy  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncpy");
@@ -1581,6 +1583,64 @@ patch_init_floating_point ()
 	is->saved_tile_count = -1;
 
 	is->modifying_gold_trade = NULL;
+
+	memset (&is->boolean_config_offsets, 0, sizeof is->boolean_config_offsets);
+	struct boolean_config_option {
+		char * name;
+		int offset;
+	} boolean_config_options[] = {
+		{"enable_stack_bombard"                                , offsetof (struct c3x_config, enable_stack_bombard)},
+		{"enable_disorder_warning"                             , offsetof (struct c3x_config, enable_disorder_warning)},
+		{"allow_stealth_attack_against_single_unit"            , offsetof (struct c3x_config, allow_stealth_attack_against_single_unit)},
+		{"show_detailed_city_production_info"                  , offsetof (struct c3x_config, show_detailed_city_production_info)},
+		{"enable_free_buildings_from_small_wonders"            , offsetof (struct c3x_config, enable_free_buildings_from_small_wonders)},
+		{"enable_stack_unit_commands"                          , offsetof (struct c3x_config, enable_stack_unit_commands)},
+		{"skip_repeated_tile_improv_replacement_asks"          , offsetof (struct c3x_config, skip_repeated_tile_improv_replacement_asks)},
+		{"autofill_best_gold_amount_when_trading"              , offsetof (struct c3x_config, autofill_best_gold_amount_when_trading)},
+		{"disallow_founding_next_to_foreign_city"              , offsetof (struct c3x_config, disallow_founding_next_to_foreign_city)},
+		{"enable_trade_screen_scroll"                          , offsetof (struct c3x_config, enable_trade_screen_scroll)},
+		{"group_units_on_right_click_menu"                     , offsetof (struct c3x_config, group_units_on_right_click_menu)},
+		{"show_golden_age_turns_remaining"                     , offsetof (struct c3x_config, show_golden_age_turns_remaining)},
+		{"cut_research_spending_to_avoid_bankruptcy"           , offsetof (struct c3x_config, cut_research_spending_to_avoid_bankruptcy)},
+		{"dont_pause_for_love_the_king_messages"               , offsetof (struct c3x_config, dont_pause_for_love_the_king_messages)},
+		{"reverse_specialist_order_with_shift"                 , offsetof (struct c3x_config, reverse_specialist_order_with_shift)},
+		{"dont_give_king_names_in_non_regicide_games"          , offsetof (struct c3x_config, dont_give_king_names_in_non_regicide_games)},
+		{"disable_worker_automation"                           , offsetof (struct c3x_config, disable_worker_automation)},
+		{"enable_land_sea_intersections"                       , offsetof (struct c3x_config, enable_land_sea_intersections)},
+		{"disallow_trespassing"                                , offsetof (struct c3x_config, disallow_trespassing)},
+		{"show_detailed_tile_info"                             , offsetof (struct c3x_config, show_detailed_tile_info)},
+		{"warn_about_unrecognized_names"                       , offsetof (struct c3x_config, warn_about_unrecognized_names)},
+		{"enable_ai_production_ranking"                        , offsetof (struct c3x_config, enable_ai_production_ranking)},
+		{"enable_ai_city_location_desirability_display"        , offsetof (struct c3x_config, enable_ai_city_location_desirability_display)},
+		{"zero_corruption_when_off"                            , offsetof (struct c3x_config, zero_corruption_when_off)},
+		{"disallow_land_units_from_affecting_water_tiles"      , offsetof (struct c3x_config, disallow_land_units_from_affecting_water_tiles)},
+		{"dont_end_units_turn_after_airdrop"                   , offsetof (struct c3x_config, dont_end_units_turn_after_airdrop)},
+		{"enable_negative_pop_pollution"                       , offsetof (struct c3x_config, enable_negative_pop_pollution)},
+		{"enable_ai_two_city_start"                            , offsetof (struct c3x_config, enable_ai_two_city_start)},
+		{"promote_forbidden_palace_decorruption"               , offsetof (struct c3x_config, promote_forbidden_palace_decorruption)},
+		{"allow_military_leaders_to_hurry_wonders"             , offsetof (struct c3x_config, allow_military_leaders_to_hurry_wonders)},
+		{"halve_ai_research_rate"                              , offsetof (struct c3x_config, halve_ai_research_rate)},
+		{"aggressively_penalize_bankruptcy"                    , offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
+		{"no_penalty_exception_for_agri_fresh_water_city_tiles", offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
+		{"use_offensive_artillery_ai"                          , offsetof (struct c3x_config, use_offensive_artillery_ai)},
+		{"replace_leader_unit_ai"                              , offsetof (struct c3x_config, replace_leader_unit_ai)},
+		{"fix_ai_army_composition"                             , offsetof (struct c3x_config, fix_ai_army_composition)},
+		{"enable_pop_unit_ai"                                  , offsetof (struct c3x_config, enable_pop_unit_ai)},
+		{"remove_unit_limit"                                   , offsetof (struct c3x_config, remove_unit_limit)},
+		{"remove_era_limit"                                    , offsetof (struct c3x_config, remove_era_limit)},
+		{"remove_cap_on_turn_limit"                            , offsetof (struct c3x_config, remove_cap_on_turn_limit)},
+		{"patch_submarine_bug"                                 , offsetof (struct c3x_config, patch_submarine_bug)},
+		{"patch_science_age_bug"                               , offsetof (struct c3x_config, patch_science_age_bug)},
+		{"patch_pedia_texture_bug"                             , offsetof (struct c3x_config, patch_pedia_texture_bug)},
+		{"patch_disembark_immobile_bug"                        , offsetof (struct c3x_config, patch_disembark_immobile_bug)},
+		{"patch_houseboat_bug"                                 , offsetof (struct c3x_config, patch_houseboat_bug)},
+		{"patch_intercept_lost_turn_bug"                       , offsetof (struct c3x_config, patch_intercept_lost_turn_bug)},
+		{"patch_phantom_resource_bug"                          , offsetof (struct c3x_config, patch_phantom_resource_bug)},
+		{"prevent_autorazing"                                  , offsetof (struct c3x_config, prevent_autorazing)},
+		{"prevent_razing_by_ai_players"                        , offsetof (struct c3x_config, prevent_razing_by_ai_players)},
+	};
+	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
+		stable_insert (&is->boolean_config_offsets, boolean_config_options[n].name, boolean_config_options[n].offset);
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
