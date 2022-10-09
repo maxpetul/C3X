@@ -4,6 +4,11 @@
 
 #define ARRAY_LEN(a) ((sizeof a) / (sizeof a[0]))
 
+struct string_slice {
+	char * str;
+	int len;
+};
+
 int
 not_below (int lim, int x)
 {
@@ -202,6 +207,13 @@ itable_look_up (struct table const * t, int key, int * out_value)
 
 int compare_str_keys (int str_ptr_a, int str_ptr_b) { return strcmp ((char const *)str_ptr_a, (char const *)str_ptr_b) == 0; }
 
+int
+compare_slice_and_str_keys (int slice_ptr, int str_ptr)
+{
+	struct string_slice const * slice = (struct string_slice const *)slice_ptr;
+	return strncmp (slice->str, (char const *)str_ptr, slice->len) == 0;
+}
+
 size_t
 hash_str (int str_ptr)
 {
@@ -209,6 +221,17 @@ hash_str (int str_ptr)
 	for (char const * str = (char const *)str_ptr; *str != '\0'; str++)
 		tr = (tr<<5 ^ tr>>2) + *str;
 	return tr;
+}
+
+size_t
+hash_slice (int slice_ptr)
+{
+	struct string_slice const * slice = (struct string_slice const *)slice_ptr;
+	size_t tr = 0;
+	for (int n = 0; n < slice->len; n++)
+		tr = (tr<<5 ^ tr>>2) + slice->str[n];
+	return tr;
+
 }
 
 void
@@ -235,6 +258,13 @@ stable_look_up (struct table const * t, char const * key, int * out_value)
 	return table_get_by_index (t, index, out_value);
 }
 
+int
+stable_look_up_slice (struct table const * t, struct string_slice const * key, int * out_value)
+{
+	size_t index = (t->len > 0) ? table__place (t, compare_slice_and_str_keys, (int)key, hash_slice ((int)key)) : 0;
+	return table_get_by_index (t, index, out_value);
+}
+
 
 
 // ===============================
@@ -242,11 +272,6 @@ stable_look_up (struct table const * t, char const * key, int * out_value)
 // ||     PARSING FUNCTIONS     ||
 // ||                           ||
 // ===============================
-
-struct string_slice {
-	char * str;
-	int len;
-};
 
 int
 is_horiz_space (char c)
