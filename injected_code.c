@@ -547,53 +547,15 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		else { // parse key-value pair
 			struct string_slice key, value;
 			if (parse_key_value_pair (&cursor, &key, &value)) {
-				int ival;
-				if ((0 == strncmp (key.str, "enable_stack_bombard", key.len)) && read_int (&value, &ival))
-					cfg->enable_stack_bombard = ival != 0;
-				else if ((0 == strncmp (key.str, "enable_disorder_warning", key.len)) && read_int (&value, &ival))
-					cfg->enable_disorder_warning = ival != 0;
-				else if ((0 == strncmp (key.str, "allow_stealth_attack_against_single_unit", key.len)) && read_int (&value, &ival))
-					cfg->allow_stealth_attack_against_single_unit = ival != 0;
-				else if ((0 == strncmp (key.str, "show_detailed_city_production_info", key.len)) && read_int (&value, &ival))
-					cfg->show_detailed_city_production_info = ival != 0;
+				int ival, boolean_offset;
+				if (stable_look_up_slice (&is->boolean_config_offsets, &key, &boolean_offset) && read_int (&value, &ival))
+					*((char *)cfg + boolean_offset) = ival != 0;
 				else if ((0 == strncmp (key.str, "limit_railroad_movement", key.len)) && read_int (&value, &ival))
 					cfg->limit_railroad_movement = ival;
-				else if ((0 == strncmp (key.str, "enable_free_buildings_from_small_wonders", key.len)) && read_int (&value, &ival))
-					cfg->enable_free_buildings_from_small_wonders = ival != 0;
-				else if ((0 == strncmp (key.str, "enable_stack_unit_commands", key.len)) && read_int (&value, &ival))
-					cfg->enable_stack_unit_commands = ival != 0;
-				else if ((0 == strncmp (key.str, "skip_repeated_tile_improv_replacement_asks", key.len)) && read_int (&value, &ival))
-					cfg->skip_repeated_tile_improv_replacement_asks = ival != 0;
-				else if ((0 == strncmp (key.str, "autofill_best_gold_amount_when_trading", key.len)) && read_int (&value, &ival))
-					cfg->autofill_best_gold_amount_when_trading = ival != 0;
 				else if ((0 == strncmp (key.str, "adjust_minimum_city_separation", key.len)) && read_int (&value, &ival))
 					cfg->adjust_minimum_city_separation = ival;
-				else if ((0 == strncmp (key.str, "disallow_founding_next_to_foreign_city", key.len)) && read_int (&value, &ival))
-					cfg->disallow_founding_next_to_foreign_city = ival != 0;
-				else if ((0 == strncmp (key.str, "enable_trade_screen_scroll", key.len)) && read_int (&value, &ival))
-					cfg->enable_trade_screen_scroll = ival != 0;
-				else if ((0 == strncmp (key.str, "group_units_on_right_click_menu", key.len)) && read_int (&value, &ival))
-					cfg->group_units_on_right_click_menu = ival != 0;
 				else if ((0 == strncmp (key.str, "anarchy_length_reduction_percent", key.len)) && read_int (&value, &ival))
 					cfg->anarchy_length_reduction_percent = ival;
-				else if ((0 == strncmp (key.str, "show_golden_age_turns_remaining", key.len)) && read_int (&value, &ival))
-					cfg->show_golden_age_turns_remaining = ival != 0;
-				else if ((0 == strncmp (key.str, "cut_research_spending_to_avoid_bankruptcy", key.len)) && read_int (&value, &ival))
-					cfg->cut_research_spending_to_avoid_bankruptcy = ival != 0;
-				else if ((0 == strncmp (key.str, "dont_pause_for_love_the_king_messages", key.len)) && read_int (&value, &ival))
-					cfg->dont_pause_for_love_the_king_messages = ival != 0;
-				else if ((0 == strncmp (key.str, "reverse_specialist_order_with_shift", key.len)) && read_int (&value, &ival))
-					cfg->reverse_specialist_order_with_shift = ival != 0;
-				else if ((0 == strncmp (key.str, "dont_give_king_names_in_non_regicide_games", key.len)) && read_int (&value, &ival))
-					cfg->dont_give_king_names_in_non_regicide_games = ival != 0;
-				else if ((0 == strncmp (key.str, "disable_worker_automation", key.len)) && read_int (&value, &ival))
-					cfg->disable_worker_automation = ival != 0;
-				else if ((0 == strncmp (key.str, "enable_land_sea_intersections", key.len)) && read_int (&value, &ival))
-					cfg->enable_land_sea_intersections = ival != 0;
-				else if ((0 == strncmp (key.str, "disallow_trespassing", key.len)) && read_int (&value, &ival))
-					cfg->disallow_trespassing = ival != 0;
-				else if ((0 == strncmp (key.str, "show_detailed_tile_info", key.len)) && read_int (&value, &ival))
-					cfg->show_detailed_tile_info = ival != 0;
 				else if ((0 == strncmp (key.str, "perfume_specs", key.len)) &&
 					 read_recognizables (&value,
 							     &unrecognized_lines,
@@ -612,78 +574,16 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 							     (void **)&cfg->mills,
 							     &cfg->count_mills))
 					;
-				else if ((0 == strncmp (key.str, "warn_about_unrecognized_names", key.len)) && read_int (&value, &ival))
-					cfg->warn_about_unrecognized_names = ival != 0;
-				else if ((0 == strncmp (key.str, "enable_ai_production_ranking", key.len)) && read_int (&value, &ival))
-					cfg->enable_ai_production_ranking = ival != 0;
-				else if ((0 == strncmp (key.str, "enable_ai_city_location_desirability_display", key.len)) && read_int (&value, &ival))
-					cfg->enable_ai_city_location_desirability_display = ival != 0;
-				else if ((0 == strncmp (key.str, "zero_corruption_when_off", key.len)) && read_int (&value, &ival))
-					cfg->zero_corruption_when_off = ival;
-				else if ((0 == strncmp (key.str, "disallow_land_units_from_affecting_water_tiles", key.len)) && read_int (&value, &ival))
-					cfg->disallow_land_units_from_affecting_water_tiles = ival;
-				else if ((0 == strncmp (key.str, "dont_end_units_turn_after_airdrop", key.len)) && read_int (&value, &ival))
-					cfg->dont_end_units_turn_after_airdrop = ival;
-				else if ((0 == strncmp (key.str, "enable_negative_pop_pollution", key.len)) && read_int (&value, &ival))
-					cfg->enable_negative_pop_pollution = ival;
 				else if ((0 == strncmp (key.str, "retreat_rules", key.len)) && read_retreat_rules (&value, &ival))
 					cfg->retreat_rules = ival;
-				else if ((0 == strncmp (key.str, "enable_ai_two_city_start", key.len)) && read_int (&value, &ival))
-					cfg->enable_ai_two_city_start = ival != 0;
 				else if ((0 == strncmp (key.str, "max_tries_to_place_fp_city", key.len)) && read_int (&value, &ival))
 					cfg->max_tries_to_place_fp_city = ival;
-				else if ((0 == strncmp (key.str, "promote_forbidden_palace_decorruption", key.len)) && read_int (&value, &ival))
-					cfg->promote_forbidden_palace_decorruption = ival != 0;
-				else if ((0 == strncmp (key.str, "allow_military_leaders_to_hurry_wonders", key.len)) && read_int (&value, &ival))
-					cfg->allow_military_leaders_to_hurry_wonders = ival != 0;
-				else if ((0 == strncmp (key.str, "halve_ai_research_rate", key.len)) && read_int (&value, &ival))
-					cfg->halve_ai_research_rate = ival != 0;
-				else if ((0 == strncmp (key.str, "aggressively_penalize_bankruptcy", key.len)) && read_int (&value, &ival))
-					cfg->aggressively_penalize_bankruptcy = ival != 0;
-				else if ((0 == strncmp (key.str, "no_penalty_exception_for_agri_fresh_water_city_tiles", key.len)) && read_int (&value, &ival))
-					cfg->no_penalty_exception_for_agri_fresh_water_city_tiles = ival != 0;
-
-				else if ((0 == strncmp (key.str, "use_offensive_artillery_ai", key.len)) && read_int (&value, &ival))
-					cfg->use_offensive_artillery_ai = ival != 0;
 				else if ((0 == strncmp (key.str, "ai_build_artillery_ratio", key.len)) && read_int (&value, &ival))
 					cfg->ai_build_artillery_ratio = ival;
 				else if ((0 == strncmp (key.str, "ai_artillery_value_damage_percent", key.len)) && read_int (&value, &ival))
 					cfg->ai_artillery_value_damage_percent = ival;
 				else if ((0 == strncmp (key.str, "ai_build_bomber_ratio", key.len)) && read_int (&value, &ival))
 					cfg->ai_build_bomber_ratio = ival;
-				else if ((0 == strncmp (key.str, "replace_leader_unit_ai", key.len)) && read_int (&value, &ival))
-					cfg->replace_leader_unit_ai = ival != 0;
-				else if ((0 == strncmp (key.str, "fix_ai_army_composition", key.len)) && read_int (&value, &ival))
-					cfg->fix_ai_army_composition = ival != 0;
-				else if ((0 == strncmp (key.str, "enable_pop_unit_ai", key.len)) && read_int (&value, &ival))
-					cfg->enable_pop_unit_ai = ival != 0;
-
-				else if ((0 == strncmp (key.str, "remove_unit_limit", key.len)) && read_int (&value, &ival))
-					cfg->remove_unit_limit = ival != 0;
-				else if ((0 == strncmp (key.str, "remove_era_limit", key.len)) && read_int (&value, &ival))
-					cfg->remove_era_limit = ival != 0;
-				else if ((0 == strncmp (key.str, "remove_cap_on_turn_limit", key.len)) && read_int (&value, &ival))
-					cfg->remove_cap_on_turn_limit = ival != 0;
-
-				else if ((0 == strncmp (key.str, "patch_submarine_bug", key.len)) && read_int (&value, &ival))
-					cfg->patch_submarine_bug = ival != 0;
-				else if ((0 == strncmp (key.str, "patch_science_age_bug", key.len)) && read_int (&value, &ival))
-					cfg->patch_science_age_bug = ival != 0;
-				else if ((0 == strncmp (key.str, "patch_pedia_texture_bug", key.len)) && read_int (&value, &ival))
-					cfg->patch_pedia_texture_bug = ival != 0;
-				else if ((0 == strncmp (key.str, "patch_disembark_immobile_bug", key.len)) && read_int (&value, &ival))
-					cfg->patch_disembark_immobile_bug = ival != 0;
-				else if ((0 == strncmp (key.str, "patch_houseboat_bug", key.len)) && read_int (&value, &ival))
-					cfg->patch_houseboat_bug = ival != 0;
-				else if ((0 == strncmp (key.str, "patch_intercept_lost_turn_bug", key.len)) && read_int (&value, &ival))
-					cfg->patch_intercept_lost_turn_bug = ival != 0;
-				else if ((0 == strncmp (key.str, "patch_phantom_resource_bug", key.len)) && read_int (&value, &ival))
-					cfg->patch_phantom_resource_bug = ival != 0;
-
-				else if ((0 == strncmp (key.str, "prevent_autorazing", key.len)) && read_int (&value, &ival))
-					cfg->prevent_autorazing = ival != 0;
-				else if ((0 == strncmp (key.str, "prevent_razing_by_ai_players", key.len)) && read_int (&value, &ival))
-					cfg->prevent_razing_by_ai_players = ival != 0;
 
 				else if (! displayed_error_message) {
 					snprintf (err_msg, sizeof err_msg, "Error processing config option \"%.*s\" in \"%s\". Either the name of the option is not recognized or the value is invalid.", key.len, key.str, full_path);
