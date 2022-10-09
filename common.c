@@ -77,11 +77,11 @@ reserve (int item_size, void ** p_items, int * p_capacity, int count)
 
 
 
-// ===================================
-// ||                               ||
-// ||     SIMPLE INT HASH TABLE     ||
-// ||                               ||
-// ===================================
+// ========================================================
+// ||                                                    ||
+// ||     SIMPLE HASH TABLES FOR INT AND STRING KEYS     ||
+// ||                                                    ||
+// ========================================================
 
 void
 table_deinit (struct table * t)
@@ -164,7 +164,7 @@ table__expand (struct table * t, size_t (* hash) (int), int (* compare_keys) (in
 }
 
 int
-table_get_by_index (struct table * const t, size_t index, int * out_value)
+table_get_by_index (struct table const * t, size_t index, int * out_value)
 {
 	if ((t->len > 0) && table__is_occupied (t, index)) {
 		int * entry = &((int *)TABLE__BASE (t))[2*index];
@@ -183,7 +183,7 @@ itable_insert (struct table * t, int key, int value)
 	if (t->len >= table_capacity (t) / 2)
 		table__expand (t, hash_int, compare_int_keys);
 
-	size_t index = table__place (t, compare_keys, key, hash_int (key));
+	size_t index = table__place (t, compare_int_keys, key, hash_int (key));
 	int * entry = &((int *)TABLE__BASE (t))[2*index];
 	entry[0] = key;
 	entry[1] = value;
@@ -197,6 +197,41 @@ int
 itable_look_up (struct table const * t, int key, int * out_value)
 {
 	size_t index = (t->len > 0) ? table__place (t, compare_int_keys, key, hash_int (key)) : 0;
+	return table_get_by_index (t, index, out_value);
+}
+
+int compare_str_keys (int str_ptr_a, int str_ptr_b) { return strcmp ((char const *)str_ptr_a, (char const *)str_ptr_b) == 0; }
+
+size_t
+hash_str (int str_ptr)
+{
+	size_t tr = 0;
+	for (char const * str = (char const *)str_ptr; *str != '\0'; str++)
+		tr = (tr<<2 ^ tr) + *str;
+	return tr;
+}
+
+void
+stable_insert (struct table * t, char const * key, int value)
+{
+	if (t->len >= table_capacity (t) / 2)
+		table__expand (t, hash_str, compare_str_keys);
+
+	size_t index = table__place (t, compare_str_keys, (int)key, hash_str ((int)key));
+	int * entry = &((int *)TABLE__BASE (t))[2*index];
+	if (entry[0] == 0)
+		entry[0] = (int)strdup (key);
+	entry[1] = value;
+	if (! table__is_occupied (t, index)) {
+		table__set_occupation (t, index, 1);
+		++t->len;
+	}
+}
+
+int
+stable_look_up (struct table const * t, char const * key, int * out_value)
+{
+	size_t index = (t->len > 0) ? table__place (t, compare_str_keys, (int)key, hash_str ((int)key)) : 0;
 	return table_get_by_index (t, index, out_value);
 }
 
