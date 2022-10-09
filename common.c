@@ -196,15 +196,8 @@ itable_insert (struct table * t, int key, int value)
 int
 itable_look_up (struct table const * t, int key, int * out_value)
 {
-	if (t->len > 0) {
-		size_t index = table__place (t, compare_int_keys, key, hash_int (key));
-		if (table__is_occupied (t, index)) {
-			int * entry = &((int *)TABLE__BASE (t))[2*index];
-			*out_value = entry[1];
-			return 1;
-		}
-	}
-	return 0;
+	size_t index = (t->len > 0) ? table__place (t, compare_int_keys, key, hash_int (key)) : 0;
+	return table_get_by_index (t, index, out_value);
 }
 
 
