@@ -454,8 +454,8 @@ read_building_unit_prereqs (struct string_slice const * s,
 
 				// If this unit type ID is not already in the table, insert it paired with the encoded building ID
 				int prev_val;
-				if (! table_look_up (building_unit_prereqs, unit_type_id, &prev_val))
-					table_insert (building_unit_prereqs, unit_type_id, (prereq->building_id << 1) | 1);
+				if (! itable_look_up (building_unit_prereqs, unit_type_id, &prev_val))
+					itable_insert (building_unit_prereqs, unit_type_id, (prereq->building_id << 1) | 1);
 
 				// If the unit type ID is already associated with a building ID, create a list for both the old and new building IDs
 				else if (prev_val & 1) {
@@ -464,7 +464,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 						list[n] = -1;
 					list[0] = prev_val >> 1; // Decode
 					list[1] = prereq->building_id;
-					table_insert (building_unit_prereqs, unit_type_id, (int)list);
+					itable_insert (building_unit_prereqs, unit_type_id, (int)list);
 
 				// Otherwise, it's already associated with a list. Search the list for a free spot and fill it with the new building ID
 				} else {
@@ -3161,7 +3161,7 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, byte exclude_
 	// Apply building prereqs
 	if (base) {
 		int building_prereq;
-		if (table_look_up (&is->current_config.building_unit_prereqs, unit_type_id, &building_prereq)) {
+		if (itable_look_up (&is->current_config.building_unit_prereqs, unit_type_id, &building_prereq)) {
 			// If the prereq is an encoded building ID
 			if (building_prereq & 1)
 				return has_active_building (this, building_prereq >> 1);

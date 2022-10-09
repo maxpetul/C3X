@@ -118,14 +118,14 @@ table__set_occupation (struct table * t, size_t index, int occupied)
 // Finds an appropriate index for a given key in the table. If the key is already present in the table, the index of its entry will be returned. If
 // it's not present, the index of where it would be is returned. This function assumes that the table is not full and that it has been allocated.
 size_t
-table__place (struct table const * t, int key)
+table__place (struct table const * t, int (* compare_keys) (int, int), int key, size_t hash)
 {
 	size_t mask = ((size_t)1 << t->capacity_exponent) - 1;
-	size_t index = (size_t)key & mask;
+	size_t index = hash & mask;
 	int * base = TABLE__BASE (t);
 	while (1) {
 		int * entry = &base[2*index];
-		if ((! table__is_occupied (t, index)) || (key == entry[0]))
+		if ((! table__is_occupied (t, index)) || compare_keys (key, entry[0]))
 			return index;
 		else
 			index = (index + 1) & mask;
@@ -133,7 +133,7 @@ table__place (struct table const * t, int key)
 }
 
 void
-table__expand (struct table * t)
+table__expand (struct table * t, size_t (* hash) (int), int (* compare_keys) (int, int))
 {
 	size_t new_capacity_exponent = (t->capacity_exponent > 0) ? (t->capacity_exponent + 1) : 5;
 	void * new_block; {
@@ -151,7 +151,7 @@ table__expand (struct table * t)
 	for (size_t n = 0; n < old_capacity; n++)
 		if (table__is_occupied (t, n)) {
 			int * old_entry = &old_base[2*n];
-			size_t new_index = table__place (&new_table, old_entry[0]);
+			size_t new_index = table__place (&new_table, compare_keys, old_entry[0], hash (old_entry[0]));
 			int * new_entry = &((int *)TABLE__BASE (&new_table))[2*new_index];
 			new_entry[0] = old_entry[0]; // copy key
 			new_entry[1] = old_entry[1]; // copy value
@@ -163,13 +163,27 @@ table__expand (struct table * t)
 	*t = new_table;
 }
 
+int
+table_get_by_index (struct table * const t, size_t index, int * out_value)
+{
+	if ((t->len > 0) && table__is_occupied (t, index)) {
+		int * entry = &((int *)TABLE__BASE (t))[2*index];
+		*out_value = entry[1];
+		return 1;
+	}
+	return 0;
+}
+
+int compare_int_keys (int a, int b) { return a == b; }
+size_t hash_int (int key) { return key; }
+
 void
-table_insert (struct table * t, int key, int value)
+itable_insert (struct table * t, int key, int value)
 {
 	if (t->len >= table_capacity (t) / 2)
-		table__expand (t);
+		table__expand (t, hash_int, compare_int_keys);
 
-	size_t index = table__place (t, key);
+	size_t index = table__place (t, compare_keys, key, hash_int (key));
 	int * entry = &((int *)TABLE__BASE (t))[2*index];
 	entry[0] = key;
 	entry[1] = value;
@@ -180,26 +194,15 @@ table_insert (struct table * t, int key, int value)
 }
 
 int
-table_look_up (struct table const * t, int key, int * out_value)
+itable_look_up (struct table const * t, int key, int * out_value)
 {
 	if (t->len > 0) {
-		size_t index = table__place (t, key);
+		size_t index = table__place (t, compare_int_keys, key, hash_int (key));
 		if (table__is_occupied (t, index)) {
 			int * entry = &((int *)TABLE__BASE (t))[2*index];
 			*out_value = entry[1];
 			return 1;
 		}
-	}
-	return 0;
-}
-
-int
-table_get_by_index (struct table * const t, size_t index, int * out_value)
-{
-	if ((t->len > 0) && table__is_occupied (t, index)) {
-		int * entry = &((int *)TABLE__BASE (t))[2*index];
-		*out_value = entry[1];
-		return 1;
 	}
 	return 0;
 }
