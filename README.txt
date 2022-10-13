@@ -22,6 +22,7 @@ Convenience features:
  - On the city screen, hold shift when clicking a specialist to switch to the previous type
  - ** Automatically cut research spending to avoid bankruptcy
  - ** Remove pause for "we love the king" messages
+ - ** Suppress "maximum hypertext links exceeded" popup
 AI enhancements:
  - Allow AI to use artillery in the field
  - Force AI to build more artillery and bombers

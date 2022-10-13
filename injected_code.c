@@ -4,13 +4,11 @@
 
 #include "C3X.h"
 
-void (__stdcall ** p_OutputDebugStringA) (char * lpOutputString) = ADDR_ADDR_OUTPUTDEBUGSTRINGA;
-
-short (__stdcall ** p_GetAsyncKeyState) (int vKey) = ADDR_ADDR_GETASYNCKEYSTATE;
-
-FARPROC (__stdcall ** p_GetProcAddress) (HMODULE hModule, char const * lpProcName) = ADDR_ADDR_GETPROCADDRESS;
-
-HMODULE (__stdcall ** p_GetModuleHandleA) (char const * lpModuleName) = ADDR_ADDR_GETMODULEHANDLEA;
+void (WINAPI ** p_OutputDebugStringA) (char * lpOutputString) = ADDR_ADDR_OUTPUTDEBUGSTRINGA;
+short (WINAPI ** p_GetAsyncKeyState) (int vKey) = ADDR_ADDR_GETASYNCKEYSTATE;
+FARPROC (WINAPI ** p_GetProcAddress) (HMODULE hModule, char const * lpProcName) = ADDR_ADDR_GETPROCADDRESS;
+HMODULE (WINAPI ** p_GetModuleHandleA) (char const * lpModuleName) = ADDR_ADDR_GETMODULEHANDLEA;
+int (WINAPI ** p_MessageBoxA) (HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType) = ADDR_ADDR_MESSAGEBOXA;
 
 struct injected_state * is = ADDR_INJECTED_STATE;
 
@@ -1158,6 +1156,16 @@ patch_Tile_get_visible_resource_when_recomputing (Tile * tile, int edx, int civ_
 	}
 }
 
+int WINAPI
+patch_MessageBoxA (HWND hWnd, LPCSTR lpText, LPCSTR lpCaption, UINT uType)
+{
+	if (is->current_config.suppress_hypertext_links_exceeded_popup &&
+	    (strcmp (lpText, "Maximum hypertext links exceeded!") == 0))
+		return IDOK;
+	else
+		return MessageBoxA (hWnd, lpText, lpCaption, uType);
+}
+
 char * __fastcall
 do_capture_modified_gold_trade (TradeOffer * trade_offer, int edx, int val, char * str, unsigned base)
 {
@@ -1401,6 +1409,10 @@ patch_init_floating_point ()
 	memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
 	memcpy   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcpy");
 
+	// Intercept the game's calls to MessageBoxA. We can't do this through the patcher since that would interfere with the runtime loader.
+	WITH_MEM_PROTECTION (p_MessageBoxA, 4, PAGE_READWRITE)
+		*p_MessageBoxA = patch_MessageBoxA;
+
 	// Set file path to mod's script.txt
 	snprintf (is->mod_script_path, sizeof is->mod_script_path, "%s\\Text\\c3x-script.txt", is->mod_rel_dir);
 	is->mod_script_path[(sizeof is->mod_script_path) - 1] = '\0';
@@ -1538,6 +1550,7 @@ patch_init_floating_point ()
 		{"patch_phantom_resource_bug"                          , offsetof (struct c3x_config, patch_phantom_resource_bug)},
 		{"prevent_autorazing"                                  , offsetof (struct c3x_config, prevent_autorazing)},
 		{"prevent_razing_by_ai_players"                        , offsetof (struct c3x_config, prevent_razing_by_ai_players)},
+		{"suppress_hypertext_links_exceeded_popup"             , offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
 	};
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		stable_insert (&is->boolean_config_offsets, boolean_config_options[n].name, boolean_config_options[n].offset);

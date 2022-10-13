@@ -89,6 +89,7 @@ struct c3x_config {
 	char halve_ai_research_rate;
 	char aggressively_penalize_bankruptcy;
 	char no_penalty_exception_for_agri_fresh_water_city_tiles;
+	char suppress_hypertext_links_exceeded_popup;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;

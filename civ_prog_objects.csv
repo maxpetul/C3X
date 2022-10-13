@@ -9,6 +9,7 @@ define,    0x665188,	0x68219C,	0x665188,	"ADDR_ADDR_OUTPUTDEBUGSTRINGA",			"void
 define,    0x665280,	0x6822E0,	0x665280,	"ADDR_ADDR_GETASYNCKEYSTATE",			"void *"
 define,    0x665168,	0x682130,	0x665168,	"ADDR_ADDR_GETPROCADDRESS",			"void *"
 define,    0x6650E4,	0x6820B8,	0x6650E4,	"ADDR_ADDR_GETMODULEHANDLEA",			"void *"
+define,    0x66527C,	0x6822E4,	0x66527C,	"ADDR_ADDR_MESSAGEBOXA",			"void *"
 repl vptr, 0x73A8FC,	0x756C74,	0x73A8D4,	"init_floating_point",				"void (__stdcall *) (void)"
 define,    0x5B6B01,	0x5C5458,	0x5B6811,	"ADDR_STEALTH_ATTACK_TARGET_COUNT_CHECK",	"void *"
 define,    0x569503,	0x575933,	0x5694B3,	"ADDR_UNIT_COUNT_CHECK",			"void *"

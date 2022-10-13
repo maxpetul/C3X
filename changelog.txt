@@ -9,6 +9,7 @@
 - Warn if two-city start contains adjacent cities or missing FP cities
 - Gold amount autofill activates when editing an amount on the table
 - Option to remove exception to tile penalty for city tiles with fresh water and Agri trait
+- Suppress "maximum hypertext links exceeded" popup
 
 * RELEASE 13
 - AI two-city start
