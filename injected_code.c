@@ -4739,5 +4739,13 @@ patch_Tile_has_city_for_agri_penalty_exception (Tile * this)
 	return is->current_config.no_penalty_exception_for_agri_fresh_water_city_tiles ? 0 : Tile_has_city (this);
 }
 
+void __fastcall
+patch_Unit_perform_air_recon (Unit * this, int edx, int x, int y)
+{
+	byte was_intercepted = Unit_try_flying_over_tile (this, __, x, y);
+	if (! was_intercepted)
+		Unit_perform_air_recon (this, __, x, y);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
