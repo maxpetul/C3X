@@ -4752,5 +4752,30 @@ patch_Tile_has_city_for_agri_penalty_exception (Tile * this)
 	return is->current_config.no_penalty_exception_for_agri_fresh_water_city_tiles ? 0 : Tile_has_city (this);
 }
 
+int
+show_razing_popup (void * popup_object, int popup_param_1, int popup_param_2, int razing_option)
+{
+	int response = show_popup (popup_object, __, popup_param_1, popup_param_2);
+	if (is->current_config.prevent_razing_by_ai_players && (response == razing_option)) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CANT_RAZE", -1, 0, 0, 0);
+		show_popup (popup, __, 0, 0);
+		return 0;
+	}
+	return response;
+}
+
+int __fastcall patch_show_popup_option_1_razes (void *this, int edx, int param_1, int param_2) { return show_razing_popup (this, param_1, param_2, 1); }
+int __fastcall patch_show_popup_option_2_razes (void *this, int edx, int param_1, int param_2) { return show_razing_popup (this, param_1, param_2, 2); }
+
+int __fastcall
+patch_Context_Menu_add_abandon_city (Context_Menu * this, int edx, int item_id, char * text, byte param_3, int param_4)
+{
+	if (is->current_config.prevent_razing_by_ai_players)
+		return 0; // Return value is ignored by the caller
+	else
+		return Context_Menu_add_item (this, __, item_id, text, param_3, param_4);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

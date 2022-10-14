@@ -90,4 +90,9 @@ We don't have enough funds to support our current research, and have been forced
 #text
 Our treasury is depleted! Some of our cities can no longer afford production, and have been allocated to only producing $LINK<$WEALTH0=$PEDIAKEY1> to help offset costs! We should $LINK<manage=GCON_Commerce> our $LINK<treasury=GCON_Treasury> better!
 
+#C3X_CANT_RAZE
+#caption Can't do that, chief!
+#text
+Razing cities is prohibited by the rules of this scenario.
+
 # ; This line must remain at end of file
