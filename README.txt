@@ -43,7 +43,8 @@ Engine extensions:
  - Option to limit railroad movement
  - Removed unit limit
  - Enable free improvements from small wonders
- - Option to prevent autoraze and razing by AIs
+ - Option to prevent autoraze and razing by players
+  - ** Restriction applies to the human player as well as AIs
  - Stealth attack activates even when there's only one target
  - Trespassing prevention
   - ** Fix restriction not applying to units attacking an enemy across a border

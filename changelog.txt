@@ -10,6 +10,7 @@
 - Gold amount autofill activates when editing an amount on the table
 - Option to remove exception to tile penalty for city tiles with fresh water and Agri trait
 - Suppress "maximum hypertext links exceeded" popup
+- NoRaze restriction applies to the human player as well as AIs
 
 * RELEASE 13
 - AI two-city start

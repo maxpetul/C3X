@@ -633,7 +633,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 char __fastcall
 patch_Leader_impl_would_raze_city (Leader * this, int edx, City * city)
 {
-	return is->current_config.prevent_razing_by_ai_players ? 0 : Leader_impl_would_raze_city (this, __, city);
+	return is->current_config.prevent_razing_by_players ? 0 : Leader_impl_would_raze_city (this, __, city);
 }
 
 // This function is used to fix a bug where the game would crash when using disembark all on a transport that contained an immobile unit. The bug
@@ -1549,7 +1549,7 @@ patch_init_floating_point ()
 		{"patch_intercept_lost_turn_bug"                       , offsetof (struct c3x_config, patch_intercept_lost_turn_bug)},
 		{"patch_phantom_resource_bug"                          , offsetof (struct c3x_config, patch_phantom_resource_bug)},
 		{"prevent_autorazing"                                  , offsetof (struct c3x_config, prevent_autorazing)},
-		{"prevent_razing_by_ai_players"                        , offsetof (struct c3x_config, prevent_razing_by_ai_players)},
+		{"prevent_razing_by_players"                           , offsetof (struct c3x_config, prevent_razing_by_players)},
 		{"suppress_hypertext_links_exceeded_popup"             , offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
 	};
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
@@ -4756,7 +4756,7 @@ int
 show_razing_popup (void * popup_object, int popup_param_1, int popup_param_2, int razing_option)
 {
 	int response = show_popup (popup_object, __, popup_param_1, popup_param_2);
-	if (is->current_config.prevent_razing_by_ai_players && (response == razing_option)) {
+	if (is->current_config.prevent_razing_by_players && (response == razing_option)) {
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CANT_RAZE", -1, 0, 0, 0);
 		show_popup (popup, __, 0, 0);
@@ -4771,7 +4771,7 @@ int __fastcall patch_show_popup_option_2_razes (void *this, int edx, int param_1
 int __fastcall
 patch_Context_Menu_add_abandon_city (Context_Menu * this, int edx, int item_id, char * text, byte param_3, int param_4)
 {
-	if (is->current_config.prevent_razing_by_ai_players)
+	if (is->current_config.prevent_razing_by_players)
 		return 0; // Return value is ignored by the caller
 	else
 		return Context_Menu_add_item (this, __, item_id, text, param_3, param_4);

@@ -112,7 +112,7 @@ struct c3x_config {
 	char patch_phantom_resource_bug;
 
 	char prevent_autorazing;
-	char prevent_razing_by_ai_players;
+	char prevent_razing_by_players;
 };
 
 enum stackable_command {

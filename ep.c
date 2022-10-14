@@ -985,7 +985,7 @@ ENTRY_POINT ()
 		.patch_phantom_resource_bug = 1,
 
 		.prevent_autorazing = 0,
-		.prevent_razing_by_ai_players = 0,
+		.prevent_razing_by_players = 0,
 	};
 	write_prog_memory (&injected_state->base_config, (byte const *)&base_config, sizeof base_config);
 	tcc_define_pointer (tcc, "ADDR_INJECTED_STATE", injected_state);
