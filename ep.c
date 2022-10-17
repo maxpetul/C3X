@@ -963,6 +963,7 @@ ENTRY_POINT ()
 		.aggressively_penalize_bankruptcy = 0,
 		.no_penalty_exception_for_agri_fresh_water_city_tiles = 0,
 		.suppress_hypertext_links_exceeded_popup = 1,
+		.indicate_non_upgradability_in_pedia = 1,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,

@@ -1551,6 +1551,7 @@ patch_init_floating_point ()
 		{"prevent_autorazing"                                  , offsetof (struct c3x_config, prevent_autorazing)},
 		{"prevent_razing_by_players"                           , offsetof (struct c3x_config, prevent_razing_by_players)},
 		{"suppress_hypertext_links_exceeded_popup"             , offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
+		{"indicate_non_upgradability_in_pedia"                 , offsetof (struct c3x_config, indicate_non_upgradability_in_pedia)},
 	};
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		stable_insert (&is->boolean_config_offsets, boolean_config_options[n].name, boolean_config_options[n].offset);
@@ -4782,10 +4783,11 @@ check_pedia_upgrades_to_ptr (TextBuffer * this, char * str)
 {
 	Civilopedia_Form * pedia = p_civilopedia_form;
 	UnitType * unit_type = NULL;
-	if ((pedia->Current_Article_ID >= 0) && (pedia->Current_Article_ID <= pedia->Max_Article_ID) &&
+	if (is->current_config.indicate_non_upgradability_in_pedia &&
+	    (pedia->Current_Article_ID >= 0) && (pedia->Current_Article_ID <= pedia->Max_Article_ID) &&
 	    (NULL != (unit_type = pedia->Articles[pedia->Current_Article_ID]->unit_type)) &&
 	    ((unit_type->Special_Actions & UCV_Upgrade_Unit) == 0))
-		return "Obsolete with";
+		return is->c3x_labels[CL_OBSOLETED_BY];
 	else
 		return TextBuffer_check_ptr (this, __, str);
 }

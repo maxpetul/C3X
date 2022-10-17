@@ -11,6 +11,7 @@
 - Option to remove exception to tile penalty for city tiles with fresh water and Agri trait
 - Suppress "maximum hypertext links exceeded" popup
 - NoRaze restriction applies to the human player as well as AIs
+- Civilopedia indicates when units go obsolete but cannot be upgraded
 
 * RELEASE 13
 - AI two-city start

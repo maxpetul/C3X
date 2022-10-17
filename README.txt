@@ -23,6 +23,7 @@ Convenience features:
  - ** Automatically cut research spending to avoid bankruptcy
  - ** Remove pause for "we love the king" messages
  - ** Suppress "maximum hypertext links exceeded" popup
+ - ** Civilopedia indicates when units go obsolete but cannot be upgraded
 AI enhancements:
  - Allow AI to use artillery in the field
  - Force AI to build more artillery and bombers

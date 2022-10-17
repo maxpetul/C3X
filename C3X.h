@@ -90,6 +90,7 @@ struct c3x_config {
 	char aggressively_penalize_bankruptcy;
 	char no_penalty_exception_for_agri_fresh_water_city_tiles;
 	char suppress_hypertext_links_exceeded_popup;
+	char indicate_non_upgradability_in_pedia;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
@@ -184,6 +185,7 @@ enum c3x_label {
 	CL_2CS_FAILED_SANITY_CHECK,
 	CL_2CS_ADJACENT_CITIES,
 	CL_2CS_MISSING_CITIES,
+	CL_OBSOLETED_BY,
 	COUNT_C3X_LABELS
 };
 
