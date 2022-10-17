@@ -2421,7 +2421,7 @@ struct Civilopedia_Article
   int field_120;
   int field_124;
   int field_128;
-  int field_12C;
+  UnitType * unit_type;
   int field_130;
   int field_134;
 };
@@ -5972,6 +5972,7 @@ typedef struct TradeOffer TradeOffer;
 typedef struct TradeOfferList TradeOfferList;
 typedef struct Object_667188 Object_667188;
 typedef struct DiploForm DiploForm;
+typedef struct TextBuffer TextBuffer;
 
 // Contains font info for a particular size & style
 struct Object_66C3FC
@@ -6091,4 +6092,16 @@ struct DiploForm
 	PCX_Image field_193C;
 	int field_1BF4[287];
 	Object_667188 field_2070;
+};
+
+struct TextBuffer
+{
+	void * vtable; // = 0x6716FC
+	byte field_4;
+	byte field_5[3];
+	byte * buffer;
+	byte * buffer_end;
+	int size;
+	int space_remaining;
+	int field_18;
 };
