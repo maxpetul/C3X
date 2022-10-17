@@ -4777,5 +4777,21 @@ patch_Context_Menu_add_abandon_city (Context_Menu * this, int edx, int item_id, 
 		return Context_Menu_add_item (this, __, item_id, text, param_3, param_4);
 }
 
+char *
+check_pedia_upgrades_to_ptr (TextBuffer * this, char * str)
+{
+	Civilopedia_Form * pedia = p_civilopedia_form;
+	UnitType * unit_type = NULL;
+	if ((pedia->Current_Article_ID >= 0) && (pedia->Current_Article_ID <= pedia->Max_Article_ID) &&
+	    (NULL != (unit_type = pedia->Articles[pedia->Current_Article_ID]->unit_type)) &&
+	    ((unit_type->Special_Actions & UCV_Upgrade_Unit) == 0))
+		return "Obsolete with";
+	else
+		return TextBuffer_check_ptr (this, __, str);
+}
+
+char * __fastcall patch_TextBuffer_check_pedia_upgrades_to_ptr_1 (TextBuffer * this, int edx, char * str) { return check_pedia_upgrades_to_ptr (this, str); }
+char * __fastcall patch_TextBuffer_check_pedia_upgrades_to_ptr_2 (TextBuffer * this, int edx, char * str) { return check_pedia_upgrades_to_ptr (this, str); }
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
