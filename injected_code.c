@@ -1538,6 +1538,7 @@ patch_init_floating_point ()
 		{"patch_phantom_resource_bug"                          , offsetof (struct c3x_config, patch_phantom_resource_bug)},
 		{"prevent_autorazing"                                  , offsetof (struct c3x_config, prevent_autorazing)},
 		{"prevent_razing_by_ai_players"                        , offsetof (struct c3x_config, prevent_razing_by_ai_players)},
+		{"intercept_recon_missions"                            , offsetof (struct c3x_config, intercept_recon_missions)},
 	};
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		stable_insert (&is->boolean_config_offsets, boolean_config_options[n].name, boolean_config_options[n].offset);
@@ -4742,8 +4743,8 @@ patch_Tile_has_city_for_agri_penalty_exception (Tile * this)
 void __fastcall
 patch_Unit_perform_air_recon (Unit * this, int edx, int x, int y)
 {
-	byte was_intercepted = Unit_try_flying_over_tile (this, __, x, y);
-	if (! was_intercepted)
+	if ((! is->current_config.intercept_recon_missions) ||
+	    (! Unit_try_flying_over_tile (this, __, x, y))) // try_flying_over_tile returns 1 if the unit was intercepted
 		Unit_perform_air_recon (this, __, x, y);
 }
 
