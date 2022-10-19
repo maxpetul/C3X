@@ -96,11 +96,9 @@ Ideas:
   - Fix bug in AI war weariness.
   - Fix "maximum hypertext links exceeded"
   - More details in post here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-26#post-16197906
-- [from Civinator] Activate gold autofill when editing an amount of gold already on the table
 - [from Alekseyev_]
   - Workers set to auto clean pollution don't drop that setting when there's no pollution left
   - Shield and science overflow
-  - Allow cities founded on resources to benefit from bonus food
   - Play unit attack animation instead of missile animation when a flak or mobile SAM shoots down an aircraft
   - On the stealth attack target selection popup, include units' HP for easier identification
   - Investigate sub bug fix for invisible land units
@@ -137,7 +135,9 @@ Ideas:
   - Fix freeze when stack moved units can't reach their destination (e.g. b/c they're blocked by a submarine)
   - Confirmation pop-up for explore command
 - [from Nathiri] Self-destruct timer for units. See: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-41#post-16305437
-- [from haluu] Allow units to retreat if they're faster than their opponent (e.g. cavalry retreating from knight)
+- [from haluu]
+  - Allow units to retreat if they're faster than their opponent (e.g. cavalry retreating from knight)
+  - Fix immune to disease from flood plains tech flag
 - [from WildWeazel]
   - More options for retreat behavior, like chance based on relative speeds, any unit can retreat, etc., details here: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-43#post-16306973
   - Increase defense of tile improvements vs bombardment to counterbalance stat inflation
@@ -147,7 +147,9 @@ Ideas:
   - Restrict detection by unit domain (e.g. so destroyers can't reveal invisible land units)
 - [from ThesaurusRex] More realistic "actual" population numbers shown in city screen. In particular, make them smaller in the ancient era.
 - [from BrensharQuest] Multiple "classes" of the flags impassable-for-wheeled-units and replaces-all-improvs-with-this-flag-checked
-- [from Sutsuj] Enable units to provide free improvements to cities they're stationed in
+- [from Sutsuj]
+  - Enable units to provide free improvements to cities they're stationed in
+  - Units without the GoTo ability should not be moveable with the arrow keys
 - [from Brenshar]
   - Skip combat animations while shift is held down
   - Keep combat log, especially useful when animations are off
@@ -164,7 +166,6 @@ Ideas:
   - "ability hotkeys don't seem to work when from the 'wrong' domain. On a land unit with recon ability, you have to click the recon icon, pressing R does not work"
   - Stronger barb units unlocked by technologies. The tech level of each barb camp would be copied from the closest city.
   - Caps lock to quickly skip combat animations instead of shift
-  - "Stop agricultural from being exempt to the despotism penalty if the city has fresh water"
 - [from Delta_Strife]
   - Make all units tradeable instead of only workers
 - [from sirati97 and Predator145] Different categories for building "replace others with this flag" flags
@@ -173,5 +174,23 @@ Ideas:
   - Modify visibility ranges, e.g. give outposts more visibility on hills or mountains
   - Expand artillery range when it's stationed on hills or mountains
 - [from sirati97, Stew Pid, and register] Land transports
-- [from El_Constructor] Reduce/remove diplo penalty for using nukes
-- from Alekseyev_] Remove exception to tile penalty for Agri civs city centers w/ fresh water
+- [from El_Constructor]
+  - Reduce/remove diplo penalty for using nukes
+  - Allow civil engineers to contribute shields to unit production
+- [from Alekseyev_]
+  - Make it so that founding on a resource doesn't give up its food bonus
+  - Scale citizen value in shields (when whipping) up by era, e.g. 1x in ancient era to 4x in modern
+  - Variable per-type building survival chance on city capture
+  - Disable tech brokering
+  - A "maintenance factor" for units so they can count as 2, 5, etc. units for maintenance purposes
+  - Specialists with different yield types show those yields stacked on top of each other. They should instead appear side-by-side.
+- [from rysmiel]
+  - Adjustable enslavement probability, to allow for slaver specialists
+  - Allow sacrificing of non-captive units
+  - Terraforming, ideally through worker actions but also maybe through a special nuke-like unit
+  - Allow some units to travel over land as well as water
+- [from Predator145]
+  - List of buildings always destroyed on city capture
+  - AI should sell obsolete buildings
+- [from Civinator]
+  - Allow mills to grant the food/shield/commerce bonus of their generated resources to their city's tile
