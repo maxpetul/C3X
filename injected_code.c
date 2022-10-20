@@ -1539,6 +1539,7 @@ patch_init_floating_point ()
 		{"prevent_autorazing"                                  , offsetof (struct c3x_config, prevent_autorazing)},
 		{"prevent_razing_by_ai_players"                        , offsetof (struct c3x_config, prevent_razing_by_ai_players)},
 		{"intercept_recon_missions"                            , offsetof (struct c3x_config, intercept_recon_missions)},
+		{"charge_one_move_for_recon_and_interception"          , offsetof (struct c3x_config, charge_one_move_for_recon_and_interception)},
 	};
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		stable_insert (&is->boolean_config_offsets, boolean_config_options[n].name, boolean_config_options[n].offset);
@@ -4743,9 +4744,42 @@ patch_Tile_has_city_for_agri_penalty_exception (Tile * this)
 void __fastcall
 patch_Unit_perform_air_recon (Unit * this, int edx, int x, int y)
 {
+	int moves_plus_one = this->Body.Moves + p_bic_data->General.RoadsMovementRate;
 	if ((! is->current_config.intercept_recon_missions) ||
-	    (! Unit_try_flying_over_tile (this, __, x, y))) // try_flying_over_tile returns 1 if the unit was intercepted
+	    (! Unit_try_flying_over_tile (this, __, x, y))) { // try_flying_over_tile returns 1 if the unit was intercepted
 		Unit_perform_air_recon (this, __, x, y);
+		if (is->current_config.charge_one_move_for_recon_and_interception)
+			this->Body.Moves = moves_plus_one;
+	}
+}
+
+int __fastcall
+patch_Unit_get_interceptor_max_moves (Unit * this)
+{
+	// Stop fighters from intercepting multiple times per turn without blitz
+	if (is->current_config.charge_one_move_for_recon_and_interception &&
+	    (this->Body.Status & 4 != 0) && ! UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Blitz))
+		return 0;
+
+	else
+		return Unit_get_max_move_points (this);
+}
+
+int __fastcall
+patch_Unit_get_moves_after_interception (Unit * this)
+{
+	if (is->current_config.charge_one_move_for_recon_and_interception) {
+		this->Body.Status |= 4; // Set status bit indicating that the interceptor has attacked this turn
+		return this->Body.Moves + p_bic_data->General.RoadsMovementRate;
+	} else
+		return Unit_get_max_move_points (this);
+}
+
+void __fastcall
+patch_Unit_set_state_after_interception (Unit * this, int edx, int new_state)
+{
+	if (! is->current_config.charge_one_move_for_recon_and_interception)
+		Unit_set_state (this, __, new_state);
 }
 
 // TCC requires a main function be defined even though it's never used.

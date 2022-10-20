@@ -963,6 +963,7 @@ ENTRY_POINT ()
 		.aggressively_penalize_bankruptcy = 0,
 		.no_penalty_exception_for_agri_fresh_water_city_tiles = 0,
 		.intercept_recon_missions = 0,
+		.charge_one_move_for_recon_and_interception = 0,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,

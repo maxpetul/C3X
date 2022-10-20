@@ -90,6 +90,7 @@ struct c3x_config {
 	char aggressively_penalize_bankruptcy;
 	char no_penalty_exception_for_agri_fresh_water_city_tiles;
 	char intercept_recon_missions;
+	char charge_one_move_for_recon_and_interception;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
