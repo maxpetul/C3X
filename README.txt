@@ -1,5 +1,5 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 13H
+Release 14
 
 INCLUDES (** = new in latest version):
 Convenience features:
@@ -119,7 +119,7 @@ ADJUSTABLE MIN CITY DISTANCE:
 Change the adjust_minimum_city_separation config value to add that many tiles to the minimum allowed distance for founding cities. For example, setting it to 2 means cities can only be founded with 3 tiles separating them. Setting it to a negative number means cities are allowed to be founded next to one another. Additionally, by community request, the option disallow_founding_next_to_foreign_city can be used to disallow founding cities next to those of other civs even when the min separation is zero or less (if the min separation has not been reduced this option has no effect).
 
 NO-RAZE:
-NoRaze has been re-implemented inside C3X but is not enabled by default. To enable it, edit the config file mentioned above.
+The "NoRaze" mod has been re-implemented inside C3X. To enable it, edit the config file mentioned above. There are separate options to prevent autorazing and razing by player's choice.
 
 HOW IT WORKS:
 Some parts of the mod (bug fixes, no-raze, no unit limit) are really just hex edits that are applied to the Civ program code. The real secret sauce is a system to compile and inject arbitrary C code into the process which makes it practical to implement new features in the game. The heart of the system is TCC (Tiny C Compiler) and much work puzzling out the functions and structs inside the executable (and thanks to Antal1987 for figuring out most of the structs years before I came along).
