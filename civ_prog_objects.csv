@@ -241,6 +241,7 @@ inlead,	   0x5C74A0,	0x5D6330,	0x5C71B0,	"Unit_perform_air_recon",			"void (__fa
 repl call, 0x5C6E34,	0x5D5CBB,	0x5C6B44,	"Unit_get_interceptor_max_moves",		""
 repl call, 0x5C7108,	0x5D5FAA,	0x5C6E18,	"Unit_get_moves_after_interception",		""
 repl call, 0x5C7114,	0x5D5FB6,	0x5C6E24,	"Unit_set_state_after_interception",		""
+inlead,	   0x561220,	0x0,		0x0,		"Leader_begin_unit_turns",			"void (__fastcall *) (Leader * this)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

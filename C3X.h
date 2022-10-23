@@ -267,8 +267,7 @@ struct injected_state {
 
 	char * c3x_labels[COUNT_C3X_LABELS];
 
-	int have_job_and_loc_to_skip; // 0 or 1 if the variable below has anything actionable in it. Gets cleared to 0 after
-	// every turn.
+	int have_job_and_loc_to_skip; // 0 or 1 if the variable below has anything actionable in it. Gets cleared to 0 after every turn.
 	struct worker_job_and_location to_skip;
 
 	byte houseboat_patch_area_original_contents[50];
@@ -289,6 +288,19 @@ struct injected_state {
 	// after the first 32.
 	unsigned * extra_available_resources;
 	int extra_available_resources_capacity; // In number of cities.
+
+	// These lists store interception events per-player during the interturn so we can clear the interception state on fighters that have done so
+	// at the beginning of their next turn. The point of this is to imitate the base game behavior where fighters that perform an interception are
+	// knocked out of the interception state. We can't knock them out immediately b/c that will prevent them from doing multiple interceptions per
+	// turn, so instead we record the event in these lists and reset their state later.
+	struct interceptor_reset_list {
+		struct interception {
+			int unit_id;
+			int x, y;
+		} * items;
+		int count;
+		int capacity;
+	} interceptor_reset_lists[32];
 
 	// Stores the byte offsets into the c3x_config struct of all boolean config options, accessible using the options' names as strings. Used when
 	// reading in a config INI file.

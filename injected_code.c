@@ -1473,6 +1473,8 @@ patch_init_floating_point ()
 	is->extra_available_resources = NULL;
 	is->extra_available_resources_capacity = 0;
 
+	memset (is->interceptor_reset_lists, 0, sizeof is->interceptor_reset_lists);
+
 	is->ai_prod_valuations = NULL;
 	is->count_ai_prod_valuations = 0;
 	is->ai_prod_valuations_capacity = 0;
@@ -2641,6 +2643,10 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		is->extra_available_resources = NULL;
 		is->extra_available_resources_capacity = 0;
 	}
+
+	// Similarly, clear this for the new game
+	for (int n = 0; n < 32; n++)
+		is->interceptor_reset_lists[n].count = 0;
 
 	// Set up for limiting railroad movement, if enabled
 	if (is->current_config.limit_railroad_movement > 0) {
@@ -4780,6 +4786,39 @@ patch_Unit_set_state_after_interception (Unit * this, int edx, int new_state)
 {
 	if (! is->current_config.charge_one_move_for_recon_and_interception)
 		Unit_set_state (this, __, new_state);
+
+	// If fighters are supposed to be able to intercept multiple times per turn, then we can't knock them out of the interception state as soon as
+	// they intercept something like in the base game. Instead, record this interception event so that we can clear their state at the start of
+	// their next turn.
+	else {
+		struct interceptor_reset_list * irl = &is->interceptor_reset_lists[this->Body.CivID];
+		reserve (sizeof irl->items[0], (void **)&irl->items, &irl->capacity, irl->count);
+		irl->items[irl->count++] = (struct interception) {
+			.unit_id = this->Body.ID,
+			.x = this->Body.X,
+			.y = this->Body.Y
+		};
+	}
+}
+
+void __fastcall
+patch_Leader_begin_unit_turns (Leader * this)
+{
+	// Reset the states of all fighters that performed an interception on the previous turn.
+	struct interceptor_reset_list * irl = &is->interceptor_reset_lists[this->ID];
+	for (int n = 0; n < irl->count; n++) {
+		struct interception * record = &irl->items[n];
+		Unit * interceptor = get_unit_ptr (record->unit_id);
+		if ((interceptor != NULL) &&
+		    (interceptor->Body.CivID == this->ID) &&
+		    (interceptor->Body.X == record->x) &&
+		    (interceptor->Body.Y == record->y) &&
+		    (interceptor->Body.UnitState == UnitState_Intercept))
+			Unit_set_state (interceptor, __, 0);
+	}
+	irl->count = 0;
+
+	Leader_begin_unit_turns (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
