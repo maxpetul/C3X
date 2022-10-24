@@ -4836,5 +4836,24 @@ patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bomb
 		return defender;
 }
 
+byte __fastcall
+patch_Unit_try_flying_for_precision_strike (Unit * this, int edx, int x, int y)
+{
+	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air)
+		// This method returns -1 when some kind of error occurs. In that case, return true implying the unit was shot down so the caller
+		// doesn't do anything more. Otherwise, return false so it goes ahead and applies damage.
+		return Unit_play_bombard_fire_animation (this, __, x, y) == -1;
+	else
+		return Unit_try_flying_over_tile (this, __, x, y);
+}
+
+void __fastcall
+patch_Unit_play_bombing_anim_for_precision_strike (Unit * this, int edx, int x, int y)
+{
+	// For non-air units we don't play the bombard animation here (do it above instead) since it can fail, for whatever reason.
+	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air)
+		Unit_play_bombing_animation (this, __, x, y);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
