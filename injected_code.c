@@ -4821,5 +4821,20 @@ patch_Leader_begin_unit_turns (Leader * this)
 	Leader_begin_unit_turns (this);
 }
 
+Unit * __fastcall
+patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bombarder, int tile_x, int tile_y, int bombarder_civ_id, byte land_lethal, byte sea_lethal)
+{
+	Unit * defender = Fighter_find_defender_against_bombardment (this, __, bombarder, tile_x, tile_y, bombarder_civ_id, land_lethal, sea_lethal);
+
+	Unit * stealth_attack_target = NULL;
+	UnitType * type = &p_bic_data->UnitTypes[bombarder->Body.UnitTypeID];
+	if ((! is_game_type_4_or_5 ()) &&
+	    (type->Unit_Class == UTC_Air) &&
+	    Unit_select_stealth_attack_target (bombarder, __, defender->Body.CivID, tile_x, tile_y, 1, &stealth_attack_target))
+		return stealth_attack_target;
+	else
+		return defender;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
