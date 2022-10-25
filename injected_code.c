@@ -714,6 +714,17 @@ tile_at_index (Map * map, int i)
 	return tile_at (x, y);
 }
 
+int
+is_tile_visible_to (int x, int y, int civ_id)
+{
+	Tile * tile = tile_at (x, y);
+	if ((tile != NULL) && (tile != p_null_tile)) {
+		Tile_Body * body = &tile->Body;
+		return ((body->FOWStatus | body->V3 | body->Visibility | body->field_D0_Visibility) & (1 << civ_id)) != 0;
+	} else
+		return 0;
+}
+
 void
 get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y)
 {
@@ -4829,7 +4840,7 @@ patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bomb
 	Unit * stealth_attack_target = NULL;
 	UnitType * type = &p_bic_data->UnitTypes[bombarder->Body.UnitTypeID];
 	if ((! is_game_type_4_or_5 ()) &&
-	    (type->Unit_Class == UTC_Air) &&
+	    is_tile_visible_to (tile_x, tile_y, p_main_screen_form->Player_CivID) &&
 	    Unit_select_stealth_attack_target (bombarder, __, defender->Body.CivID, tile_x, tile_y, 1, &stealth_attack_target))
 		return stealth_attack_target;
 	else
