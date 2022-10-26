@@ -964,6 +964,9 @@ ENTRY_POINT ()
 		.no_penalty_exception_for_agri_fresh_water_city_tiles = 0,
 		.suppress_hypertext_links_exceeded_popup = 1,
 		.indicate_non_upgradability_in_pedia = 1,
+		.include_stealth_attack_cancel_option = 0,
+		.intercept_recon_missions = 0,
+		.charge_one_move_for_recon_and_interception = 0,
 
 		.use_offensive_artillery_ai = 1,
 		.ai_build_artillery_ratio = 20,

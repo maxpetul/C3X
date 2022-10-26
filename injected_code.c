@@ -712,6 +712,17 @@ tile_at_index (Map * map, int i)
 	return tile_at (x, y);
 }
 
+int
+is_tile_visible_to (int x, int y, int civ_id)
+{
+	Tile * tile = tile_at (x, y);
+	if ((tile != NULL) && (tile != p_null_tile)) {
+		Tile_Body * body = &tile->Body;
+		return ((body->FOWStatus | body->V3 | body->Visibility | body->field_D0_Visibility) & (1 << civ_id)) != 0;
+	} else
+		return 0;
+}
+
 void
 get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y)
 {
@@ -1485,6 +1496,8 @@ patch_init_floating_point ()
 	is->extra_available_resources = NULL;
 	is->extra_available_resources_capacity = 0;
 
+	memset (is->interceptor_reset_lists, 0, sizeof is->interceptor_reset_lists);
+
 	is->ai_prod_valuations = NULL;
 	is->count_ai_prod_valuations = 0;
 	is->ai_prod_valuations_capacity = 0;
@@ -1495,6 +1508,8 @@ patch_init_floating_point ()
 	is->saved_tile_count = -1;
 
 	is->modifying_gold_trade = NULL;
+
+	is->bombard_stealth_target = NULL;
 
 	memset (&is->boolean_config_offsets, 0, sizeof is->boolean_config_offsets);
 	struct boolean_config_option {
@@ -1552,6 +1567,9 @@ patch_init_floating_point ()
 		{"prevent_razing_by_players"                           , offsetof (struct c3x_config, prevent_razing_by_players)},
 		{"suppress_hypertext_links_exceeded_popup"             , offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
 		{"indicate_non_upgradability_in_pedia"                 , offsetof (struct c3x_config, indicate_non_upgradability_in_pedia)},
+		{"include_stealth_attack_cancel_option"                , offsetof (struct c3x_config, include_stealth_attack_cancel_option)},
+		{"intercept_recon_missions"                            , offsetof (struct c3x_config, intercept_recon_missions)},
+		{"charge_one_move_for_recon_and_interception"          , offsetof (struct c3x_config, charge_one_move_for_recon_and_interception)},
 	};
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		stable_insert (&is->boolean_config_offsets, boolean_config_options[n].name, boolean_config_options[n].offset);
@@ -1716,6 +1734,13 @@ count_escorters (Unit * unit)
 		return 0;
 }
 
+void __fastcall
+patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
+{
+	Unit_bombard_tile (this, __, x, y);
+	is->bombard_stealth_target = NULL;
+}
+
 int
 can_attack_this_turn (Unit * unit)
 {
@@ -1843,7 +1868,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 
 		int moves_before_bombard = next_up->Body.Moves;
 
-		Unit_bombard_tile (next_up, __, x, y);
+		patch_Unit_bombard_tile (next_up, __, x, y);
 
 		// Check if the last unit sent into battle actually did anything. If it didn't we should at least skip over
 		// it to avoid an infinite loop, but actually the only time this should happen is if the player is not at
@@ -2653,6 +2678,10 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		is->extra_available_resources = NULL;
 		is->extra_available_resources_capacity = 0;
 	}
+
+	// Similarly, clear this for the new game
+	for (int n = 0; n < 32; n++)
+		is->interceptor_reset_lists[n].count = 0;
 
 	// Set up for limiting railroad movement, if enabled
 	if (is->current_config.limit_railroad_movement > 0) {
@@ -4794,6 +4823,144 @@ check_pedia_upgrades_to_ptr (TextBuffer * this, char * str)
 
 char * __fastcall patch_TextBuffer_check_pedia_upgrades_to_ptr_1 (TextBuffer * this, int edx, char * str) { return check_pedia_upgrades_to_ptr (this, str); }
 char * __fastcall patch_TextBuffer_check_pedia_upgrades_to_ptr_2 (TextBuffer * this, int edx, char * str) { return check_pedia_upgrades_to_ptr (this, str); }
+
+byte __fastcall
+patch_Unit_select_stealth_attack_target (Unit * this, int edx, int target_civ_id, int x, int y, byte allow_popup, Unit ** out_selected_target)
+{
+	is->added_any_stealth_target = 0;
+	return Unit_select_stealth_attack_target (this, __, target_civ_id, x, y, allow_popup, out_selected_target);
+}
+
+int __fastcall
+patch_PopupSelection_add_stealth_attack_target (PopupSelection * this, int edx, char * text, int value)
+{
+	if (! is->added_any_stealth_target) {
+		PopupSelection_add_item (this, __, "[No stealth attack]", -1);
+		is->added_any_stealth_target = 1;
+	}
+	return PopupSelection_add_item (this, __, text, value);
+}
+
+void __fastcall
+patch_Unit_perform_air_recon (Unit * this, int edx, int x, int y)
+{
+	int moves_plus_one = this->Body.Moves + p_bic_data->General.RoadsMovementRate;
+	if ((! is->current_config.intercept_recon_missions) ||
+	    (! Unit_try_flying_over_tile (this, __, x, y))) { // try_flying_over_tile returns 1 if the unit was intercepted
+		Unit_perform_air_recon (this, __, x, y);
+		if (is->current_config.charge_one_move_for_recon_and_interception)
+			this->Body.Moves = moves_plus_one;
+	}
+}
+
+int __fastcall
+patch_Unit_get_interceptor_max_moves (Unit * this)
+{
+	// Stop fighters from intercepting multiple times per turn without blitz
+	if (is->current_config.charge_one_move_for_recon_and_interception &&
+	    (this->Body.Status & 4 != 0) && ! UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Blitz))
+		return 0;
+
+	else
+		return Unit_get_max_move_points (this);
+}
+
+int __fastcall
+patch_Unit_get_moves_after_interception (Unit * this)
+{
+	if (is->current_config.charge_one_move_for_recon_and_interception) {
+		this->Body.Status |= 4; // Set status bit indicating that the interceptor has attacked this turn
+		return this->Body.Moves + p_bic_data->General.RoadsMovementRate;
+	} else
+		return Unit_get_max_move_points (this);
+}
+
+void __fastcall
+patch_Unit_set_state_after_interception (Unit * this, int edx, int new_state)
+{
+	if (! is->current_config.charge_one_move_for_recon_and_interception)
+		Unit_set_state (this, __, new_state);
+
+	// If fighters are supposed to be able to intercept multiple times per turn, then we can't knock them out of the interception state as soon as
+	// they intercept something like in the base game. Instead, record this interception event so that we can clear their state at the start of
+	// their next turn.
+	else {
+		struct interceptor_reset_list * irl = &is->interceptor_reset_lists[this->Body.CivID];
+		reserve (sizeof irl->items[0], (void **)&irl->items, &irl->capacity, irl->count);
+		irl->items[irl->count++] = (struct interception) {
+			.unit_id = this->Body.ID,
+			.x = this->Body.X,
+			.y = this->Body.Y
+		};
+	}
+}
+
+void __fastcall
+patch_Leader_begin_unit_turns (Leader * this)
+{
+	// Reset the states of all fighters that performed an interception on the previous turn.
+	struct interceptor_reset_list * irl = &is->interceptor_reset_lists[this->ID];
+	for (int n = 0; n < irl->count; n++) {
+		struct interception * record = &irl->items[n];
+		Unit * interceptor = get_unit_ptr (record->unit_id);
+		if ((interceptor != NULL) &&
+		    (interceptor->Body.CivID == this->ID) &&
+		    (interceptor->Body.X == record->x) &&
+		    (interceptor->Body.Y == record->y) &&
+		    (interceptor->Body.UnitState == UnitState_Intercept))
+			Unit_set_state (interceptor, __, 0);
+	}
+	irl->count = 0;
+
+	Leader_begin_unit_turns (this);
+}
+
+Unit * __fastcall
+patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bombarder, int tile_x, int tile_y, int bombarder_civ_id, byte land_lethal, byte sea_lethal)
+{
+	if (is->bombard_stealth_target == NULL)
+		return Fighter_find_defender_against_bombardment (this, __, bombarder, tile_x, tile_y, bombarder_civ_id, land_lethal, sea_lethal);
+	else
+		return is->bombard_stealth_target;
+}
+
+byte __fastcall
+patch_Unit_try_flying_for_precision_strike (Unit * this, int edx, int x, int y)
+{
+	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air)
+		// This method returns -1 when some kind of error occurs. In that case, return true implying the unit was shot down so the caller
+		// doesn't do anything more. Otherwise, return false so it goes ahead and applies damage.
+		return Unit_play_bombard_fire_animation (this, __, x, y) == -1;
+	else
+		return Unit_try_flying_over_tile (this, __, x, y);
+}
+
+void __fastcall
+patch_Unit_play_bombing_anim_for_precision_strike (Unit * this, int edx, int x, int y)
+{
+	// For non-air units we don't play the bombard animation here (do it above instead) since it can fail, for whatever reason.
+	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air)
+		Unit_play_bombing_animation (this, __, x, y);
+}
+
+int __fastcall
+patch_Unit_play_anim_for_bombard_tile (Unit * this, int edx, int x, int y)
+{
+	Unit * stealth_attack_target = NULL;
+	if ((! is_game_type_4_or_5 ()) &&
+	    is_tile_visible_to (x, y, p_main_screen_form->Player_CivID)) {
+		byte land_lethal = Unit_has_ability (this, __, UTA_Lethal_Land_Bombardment),
+		     sea_lethal  = Unit_has_ability (this, __, UTA_Lethal_Sea_Bombardment);
+		Unit * defender = Fighter_find_defender_against_bombardment (&p_bic_data->fighter, __, this, x, y, this->Body.CivID, land_lethal, sea_lethal);
+		if (defender != NULL) {
+			Unit * target;
+			if (Unit_select_stealth_attack_target (this, __, defender->Body.CivID, x, y, 1, &target))
+				is->bombard_stealth_target = target;
+		}
+	}
+
+	return Unit_play_bombard_fire_animation (this, __, x, y);
+}
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
