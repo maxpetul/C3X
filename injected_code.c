@@ -1497,6 +1497,8 @@ patch_init_floating_point ()
 
 	is->modifying_gold_trade = NULL;
 
+	is->bombard_stealth_target = NULL;
+
 	memset (&is->boolean_config_offsets, 0, sizeof is->boolean_config_offsets);
 	struct boolean_config_option {
 		char * name;
@@ -1717,6 +1719,13 @@ count_escorters (Unit * unit)
 		return 0;
 }
 
+void __fastcall
+patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
+{
+	Unit_bombard_tile (this, __, x, y);
+	is->bombard_stealth_target = NULL;
+}
+
 int
 can_attack_this_turn (Unit * unit)
 {
@@ -1844,7 +1853,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 
 		int moves_before_bombard = next_up->Body.Moves;
 
-		Unit_bombard_tile (next_up, __, x, y);
+		patch_Unit_bombard_tile (next_up, __, x, y);
 
 		// Check if the last unit sent into battle actually did anything. If it didn't we should at least skip over
 		// it to avoid an infinite loop, but actually the only time this should happen is if the player is not at
@@ -4835,16 +4844,10 @@ patch_Leader_begin_unit_turns (Leader * this)
 Unit * __fastcall
 patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bombarder, int tile_x, int tile_y, int bombarder_civ_id, byte land_lethal, byte sea_lethal)
 {
-	Unit * defender = Fighter_find_defender_against_bombardment (this, __, bombarder, tile_x, tile_y, bombarder_civ_id, land_lethal, sea_lethal);
-
-	Unit * stealth_attack_target = NULL;
-	UnitType * type = &p_bic_data->UnitTypes[bombarder->Body.UnitTypeID];
-	if ((! is_game_type_4_or_5 ()) &&
-	    is_tile_visible_to (tile_x, tile_y, p_main_screen_form->Player_CivID) &&
-	    Unit_select_stealth_attack_target (bombarder, __, defender->Body.CivID, tile_x, tile_y, 1, &stealth_attack_target))
-		return stealth_attack_target;
+	if (is->bombard_stealth_target == NULL)
+		return Fighter_find_defender_against_bombardment (this, __, bombarder, tile_x, tile_y, bombarder_civ_id, land_lethal, sea_lethal);
 	else
-		return defender;
+		return is->bombard_stealth_target;
 }
 
 byte __fastcall
@@ -4864,6 +4867,25 @@ patch_Unit_play_bombing_anim_for_precision_strike (Unit * this, int edx, int x, 
 	// For non-air units we don't play the bombard animation here (do it above instead) since it can fail, for whatever reason.
 	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air)
 		Unit_play_bombing_animation (this, __, x, y);
+}
+
+int __fastcall
+patch_Unit_play_anim_for_bombard_tile (Unit * this, int edx, int x, int y)
+{
+	Unit * stealth_attack_target = NULL;
+	if ((! is_game_type_4_or_5 ()) &&
+	    is_tile_visible_to (x, y, p_main_screen_form->Player_CivID)) {
+		byte land_lethal = Unit_has_ability (this, __, UTA_Lethal_Land_Bombardment),
+		     sea_lethal  = Unit_has_ability (this, __, UTA_Lethal_Sea_Bombardment);
+		Unit * defender = Fighter_find_defender_against_bombardment (&p_bic_data->fighter, __, this, x, y, this->Body.CivID, land_lethal, sea_lethal);
+		if (defender != NULL) {
+			Unit * target;
+			if (Unit_select_stealth_attack_target (this, __, defender->Body.CivID, x, y, 1, &target))
+				is->bombard_stealth_target = target;
+		}
+	}
+
+	return Unit_play_bombard_fire_animation (this, __, x, y);
 }
 
 // TCC requires a main function be defined even though it's never used.

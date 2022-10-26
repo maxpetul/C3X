@@ -406,6 +406,10 @@ struct injected_state {
 	// function call replacement (see apply_machine_code_edits for details).
 	TradeOffer * modifying_gold_trade;
 
+	// Initialized to NULL and reset to NULL after Unit::bombard_tile returns. Gets set just before the call to Unit::play_bombard_fire_animation
+	// from inside bombard_tile. The value is the unit on the bombarded tile specifically targeted by the attack, if applicable.
+	Unit * bombard_stealth_target;
+
 	// ==========
 	// }
 	// ==========

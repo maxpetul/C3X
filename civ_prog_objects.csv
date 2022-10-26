@@ -22,7 +22,7 @@ repl vptr, 0x66B44C,	0x68854C,	0x66B44C,	"Main_Screen_Form_handle_left_click_on_
 define,    0x499FE0,	0x49F9F0,	0x49A070,	"is_game_type_4_or_5",				"char (__stdcall *) (void)"
 define,    0x437A70,	0x439620,	0x437AF0,	"tile_at",					"Tile * (__cdecl *) (int x, int y)"
 define,    0x426C80,	0x4283C0,	0x426D00,	"TileUnits_TileUnitID_to_UnitID",		"int (__fastcall *) (TileUnits * this, int edx, int tile_unit_id, int * out_UnitItem_field_0)"
-define,    0x5C1410,	0x5CFFA0,	0x5C1120,	"Unit_bombard_tile",				"void (__fastcall *) (Unit * this, int edx, int x, int y)"
+inlead,    0x5C1410,	0x5CFFA0,	0x5C1120,	"Unit_bombard_tile",				"void (__fastcall *) (Unit * this, int edx, int x, int y)"
 define,    0x5C0E20,	0x5CF9C0,	0x5C0B30,	"Unit_can_bombard_tile",			"void (__fastcall *) (Unit * this, int edx, int x, int y)"
 define,    0x5BE820,	0x5CD420,	0x5BE530,	"Unit_get_defense_strength",			"int (__fastcall *) (Unit * this)"
 define,    0x5BB650,	0x5CA190,	0x5BB360,	"Unit_is_visible_to_civ",			"char (__fastcall *) (Unit * this, int edx, int civ_id, int param_2)"
@@ -249,6 +249,7 @@ repl call, 0x5C73FF,	0x5D629C,	0x5C710F,	"Unit_try_flying_for_precision_strike",
 define,	   0x5C1210,	0x5CFDA0,	0x5C0F20,	"Unit_play_bombard_fire_animation",		"int (__fastcall *) (Unit * this, int edx, int x, int y)"
 define,	   0x5CA860,	0x5D97A0,	0x5CA570,	"Unit_play_bombing_animation",			"void (__fastcall *) (Unit * this, int edx, int x, int y)"
 repl call, 0x5C7429,	0x5D62BA,	0x5C7139,	"Unit_play_bombing_anim_for_precision_strike",	""
+repl call, 0x5C143D,	0x5CFFCD,	0x5C114D,	"Unit_play_anim_for_bombard_tile",		""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
