@@ -89,6 +89,7 @@ struct c3x_config {
 	char halve_ai_research_rate;
 	char aggressively_penalize_bankruptcy;
 	char no_penalty_exception_for_agri_fresh_water_city_tiles;
+	char include_stealth_attack_cancel_option;
 	char intercept_recon_missions;
 	char charge_one_move_for_recon_and_interception;
 
@@ -409,6 +410,11 @@ struct injected_state {
 	// Initialized to NULL and reset to NULL after Unit::bombard_tile returns. Gets set just before the call to Unit::play_bombard_fire_animation
 	// from inside bombard_tile. The value is the unit on the bombarded tile specifically targeted by the attack, if applicable.
 	Unit * bombard_stealth_target;
+
+	// Set to zero when Unit::select_stealth_attack_target is called then checked inside in the call to PopupSelection::add_item and set to
+	// 1. This variable lets the add_item replacement function run special code for only the first item added, in order to insert an additional
+	// first option to cancel the stealth attack.
+	int added_any_stealth_target;
 
 	// ==========
 	// }

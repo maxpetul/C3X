@@ -1553,6 +1553,7 @@ patch_init_floating_point ()
 		{"patch_phantom_resource_bug"                          , offsetof (struct c3x_config, patch_phantom_resource_bug)},
 		{"prevent_autorazing"                                  , offsetof (struct c3x_config, prevent_autorazing)},
 		{"prevent_razing_by_ai_players"                        , offsetof (struct c3x_config, prevent_razing_by_ai_players)},
+		{"include_stealth_attack_cancel_option"                , offsetof (struct c3x_config, include_stealth_attack_cancel_option)},
 		{"intercept_recon_missions"                            , offsetof (struct c3x_config, intercept_recon_missions)},
 		{"charge_one_move_for_recon_and_interception"          , offsetof (struct c3x_config, charge_one_move_for_recon_and_interception)},
 	};
@@ -4765,6 +4766,23 @@ char __fastcall
 patch_Tile_has_city_for_agri_penalty_exception (Tile * this)
 {
 	return is->current_config.no_penalty_exception_for_agri_fresh_water_city_tiles ? 0 : Tile_has_city (this);
+}
+
+byte __fastcall
+patch_Unit_select_stealth_attack_target (Unit * this, int edx, int target_civ_id, int x, int y, byte allow_popup, Unit ** out_selected_target)
+{
+	is->added_any_stealth_target = 0;
+	return Unit_select_stealth_attack_target (this, __, target_civ_id, x, y, allow_popup, out_selected_target);
+}
+
+int __fastcall
+patch_PopupSelection_add_stealth_attack_target (PopupSelection * this, int edx, char * text, int value)
+{
+	if (! is->added_any_stealth_target) {
+		PopupSelection_add_item (this, __, "[No stealth attack]", -1);
+		is->added_any_stealth_target = 1;
+	}
+	return PopupSelection_add_item (this, __, text, value);
 }
 
 void __fastcall

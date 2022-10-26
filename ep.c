@@ -962,6 +962,7 @@ ENTRY_POINT ()
 		.halve_ai_research_rate = 0,
 		.aggressively_penalize_bankruptcy = 0,
 		.no_penalty_exception_for_agri_fresh_water_city_tiles = 0,
+		.include_stealth_attack_cancel_option = 0,
 		.intercept_recon_missions = 0,
 		.charge_one_move_for_recon_and_interception = 0,
 
