@@ -4980,5 +4980,19 @@ patch_Unit_play_anim_for_bombard_tile (Unit * this, int edx, int x, int y)
 	return Unit_play_bombard_fire_animation (this, __, x, y);
 }
 
+void __fastcall
+patch_Main_Screen_Form_issue_precision_strike_cmd (Main_Screen_Form * this, int edx, Unit * unit)
+{
+	UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
+	if (type->Unit_Class == UTC_Air)
+		Main_Screen_Form_issue_precision_strike_cmd (this, __, unit);
+	else {
+		int saved_op_range = type->OperationalRange;
+		type->OperationalRange = type->Bombard_Range;
+		Main_Screen_Form_issue_precision_strike_cmd (this, __, unit);
+		type->OperationalRange = saved_op_range;
+	}
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
