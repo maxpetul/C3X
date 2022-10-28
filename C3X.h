@@ -114,6 +114,7 @@ struct c3x_config {
 	char patch_houseboat_bug;
 	char patch_intercept_lost_turn_bug;
 	char patch_phantom_resource_bug;
+	char patch_precision_strike_animation_bug;
 
 	char prevent_autorazing;
 	char prevent_razing_by_players;

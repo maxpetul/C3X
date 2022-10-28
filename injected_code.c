@@ -1444,6 +1444,7 @@ patch_init_floating_point ()
 		{"patch_houseboat_bug"                                 , 1, offsetof (struct c3x_config, patch_houseboat_bug)},
 		{"patch_intercept_lost_turn_bug"                       , 1, offsetof (struct c3x_config, patch_intercept_lost_turn_bug)},
 		{"patch_phantom_resource_bug"                          , 1, offsetof (struct c3x_config, patch_phantom_resource_bug)},
+		{"patch_precision_strike_animation_bug"                , 1, offsetof (struct c3x_config, patch_precision_strike_animation_bug)},
 		{"prevent_autorazing"                                  , 0, offsetof (struct c3x_config, prevent_autorazing)},
 		{"prevent_razing_by_players"                           , 0, offsetof (struct c3x_config, prevent_razing_by_players)},
 		{"suppress_hypertext_links_exceeded_popup"             , 1, offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
@@ -1492,22 +1493,12 @@ patch_init_floating_point ()
 	is->mod_script_path[(sizeof is->mod_script_path) - 1] = '\0';
 
 	// Fill in base config
-	struct c3x_config base_config = {
-		.limit_railroad_movement = 0,
-		.adjust_minimum_city_separation = 0,
-		.anarchy_length_reduction_percent = 0,
-		.perfume_specs = NULL,
-		.count_perfume_specs = 0,
-		.building_unit_prereqs = (struct table) {0},
-		.mills = NULL,
-		.count_mills = 0,
-		.retreat_rules = RR_STANDARD,
-		.max_tries_to_place_fp_city = 10000,
-
-		.ai_build_artillery_ratio = 20,
-		.ai_artillery_value_damage_percent = 50,
-		.ai_build_bomber_ratio = 70,
-	};
+	struct c3x_config base_config = {0};
+	base_config.retreat_rules = RR_STANDARD;
+	base_config.max_tries_to_place_fp_city = 10000;
+	base_config.ai_build_artillery_ratio = 20;
+	base_config.ai_artillery_value_damage_percent = 50;
+	base_config.ai_build_bomber_ratio = 70;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	memcpy (&is->base_config, &base_config, sizeof base_config);
@@ -4952,7 +4943,8 @@ patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bomb
 byte __fastcall
 patch_Unit_try_flying_for_precision_strike (Unit * this, int edx, int x, int y)
 {
-	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air)
+	if (is->current_config.patch_precision_strike_animation_bug &&
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air))
 		// This method returns -1 when some kind of error occurs. In that case, return true implying the unit was shot down so the caller
 		// doesn't do anything more. Otherwise, return false so it goes ahead and applies damage.
 		return Unit_play_bombard_fire_animation (this, __, x, y) == -1;
@@ -4964,7 +4956,8 @@ void __fastcall
 patch_Unit_play_bombing_anim_for_precision_strike (Unit * this, int edx, int x, int y)
 {
 	// For non-air units we don't play the bombard animation here (do it above instead) since it can fail, for whatever reason.
-	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air)
+	if ((! is->current_config.patch_precision_strike_animation_bug) ||
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air))
 		Unit_play_bombing_animation (this, __, x, y);
 }
 
