@@ -1428,6 +1428,82 @@ patch_init_floating_point ()
 	snprintf (is->mod_script_path, sizeof is->mod_script_path, "%s\\Text\\c3x-script.txt", is->mod_rel_dir);
 	is->mod_script_path[(sizeof is->mod_script_path) - 1] = '\0';
 
+	// Fill in base config
+	struct c3x_config base_config = {
+		.enable_stack_bombard = 1,
+		.enable_disorder_warning = 1,
+		.allow_stealth_attack_against_single_unit = 1,
+		.show_detailed_city_production_info = 1,
+		.limit_railroad_movement = 0,
+		.enable_free_buildings_from_small_wonders = 1,
+		.enable_stack_unit_commands = 1,
+		.skip_repeated_tile_improv_replacement_asks = 1,
+		.autofill_best_gold_amount_when_trading = 1,
+		.adjust_minimum_city_separation = 0,
+		.disallow_founding_next_to_foreign_city = 1,
+		.enable_trade_screen_scroll = 1,
+		.group_units_on_right_click_menu = 1,
+		.anarchy_length_reduction_percent = 0,
+		.show_golden_age_turns_remaining = 1,
+		.cut_research_spending_to_avoid_bankruptcy = 1,
+		.dont_pause_for_love_the_king_messages = 1,
+		.reverse_specialist_order_with_shift = 1,
+		.dont_give_king_names_in_non_regicide_games = 1,
+		.disable_worker_automation = 0,
+		.enable_land_sea_intersections = 0,
+		.disallow_trespassing = 0,
+		.show_detailed_tile_info = 1,
+		.perfume_specs = NULL,
+		.count_perfume_specs = 0,
+		.building_unit_prereqs = (struct table) {0},
+		.mills = NULL,
+		.count_mills = 0,
+		.warn_about_unrecognized_names = 1,
+		.enable_ai_production_ranking = 1,
+		.enable_ai_city_location_desirability_display = 1,
+		.zero_corruption_when_off = 1,
+		.disallow_land_units_from_affecting_water_tiles = 1,
+		.dont_end_units_turn_after_airdrop = 0,
+		.enable_negative_pop_pollution = 1,
+		.retreat_rules = RR_STANDARD,
+		.enable_ai_two_city_start = 0,
+		.max_tries_to_place_fp_city = 10000,
+		.promote_forbidden_palace_decorruption = 0,
+		.allow_military_leaders_to_hurry_wonders = 0,
+		.halve_ai_research_rate = 0,
+		.aggressively_penalize_bankruptcy = 0,
+		.no_penalty_exception_for_agri_fresh_water_city_tiles = 0,
+		.suppress_hypertext_links_exceeded_popup = 1,
+		.indicate_non_upgradability_in_pedia = 1,
+		.include_stealth_attack_cancel_option = 0,
+		.intercept_recon_missions = 0,
+		.charge_one_move_for_recon_and_interception = 0,
+
+		.use_offensive_artillery_ai = 1,
+		.ai_build_artillery_ratio = 20,
+		.ai_artillery_value_damage_percent = 50,
+		.ai_build_bomber_ratio = 70,
+		.replace_leader_unit_ai = 1,
+		.fix_ai_army_composition = 1,
+		.enable_pop_unit_ai = 1,
+
+		.remove_unit_limit = 1,
+		.remove_era_limit = 0,
+		.remove_cap_on_turn_limit = 1,
+
+		.patch_submarine_bug = 1,
+		.patch_science_age_bug = 1,
+		.patch_pedia_texture_bug = 1,
+		.patch_disembark_immobile_bug = 1,
+		.patch_houseboat_bug = 1,
+		.patch_intercept_lost_turn_bug = 1,
+		.patch_phantom_resource_bug = 1,
+
+		.prevent_autorazing = 0,
+		.prevent_razing_by_players = 0,
+	};
+	memcpy (&is->base_config, &base_config, sizeof base_config);
+
 	// Load labels
 	{
 		for (int n = 0; n < COUNT_C3X_LABELS; n++)
