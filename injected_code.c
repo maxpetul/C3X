@@ -4852,7 +4852,7 @@ int __fastcall
 patch_PopupSelection_add_stealth_attack_target (PopupSelection * this, int edx, char * text, int value)
 {
 	if (is->current_config.include_stealth_attack_cancel_option && (! is->added_any_stealth_target)) {
-		PopupSelection_add_item (this, __, "[No stealth attack]", -1);
+		PopupSelection_add_item (this, __, is->c3x_labels[CL_NO_STEALTH_ATTACK], -1);
 		is->added_any_stealth_target = 1;
 	}
 	return PopupSelection_add_item (this, __, text, value);
