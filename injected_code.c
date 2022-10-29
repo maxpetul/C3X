@@ -4851,7 +4851,7 @@ patch_Unit_select_stealth_attack_target (Unit * this, int edx, int target_civ_id
 int __fastcall
 patch_PopupSelection_add_stealth_attack_target (PopupSelection * this, int edx, char * text, int value)
 {
-	if (! is->added_any_stealth_target) {
+	if (is->current_config.include_stealth_attack_cancel_option && (! is->added_any_stealth_target)) {
 		PopupSelection_add_item (this, __, "[No stealth attack]", -1);
 		is->added_any_stealth_target = 1;
 	}
@@ -4974,7 +4974,7 @@ patch_Unit_play_anim_for_bombard_tile (Unit * this, int edx, int x, int y)
 		Unit * defender = Fighter_find_defender_against_bombardment (&p_bic_data->fighter, __, this, x, y, this->Body.CivID, land_lethal, sea_lethal);
 		if (defender != NULL) {
 			Unit * target;
-			if (Unit_select_stealth_attack_target (this, __, defender->Body.CivID, x, y, 1, &target))
+			if (patch_Unit_select_stealth_attack_target (this, __, defender->Body.CivID, x, y, 1, &target))
 				is->bombard_stealth_target = target;
 		}
 	}
