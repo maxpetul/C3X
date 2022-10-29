@@ -94,6 +94,7 @@ struct c3x_config {
 	char include_stealth_attack_cancel_option;
 	char intercept_recon_missions;
 	char charge_one_move_for_recon_and_interception;
+	char polish_non_air_precision_striking;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
@@ -114,7 +115,6 @@ struct c3x_config {
 	char patch_houseboat_bug;
 	char patch_intercept_lost_turn_bug;
 	char patch_phantom_resource_bug;
-	char patch_precision_strike_animation_bug;
 
 	char prevent_autorazing;
 	char prevent_razing_by_players;

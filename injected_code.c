@@ -1444,7 +1444,6 @@ patch_init_floating_point ()
 		{"patch_houseboat_bug"                                 , 1, offsetof (struct c3x_config, patch_houseboat_bug)},
 		{"patch_intercept_lost_turn_bug"                       , 1, offsetof (struct c3x_config, patch_intercept_lost_turn_bug)},
 		{"patch_phantom_resource_bug"                          , 1, offsetof (struct c3x_config, patch_phantom_resource_bug)},
-		{"patch_precision_strike_animation_bug"                , 1, offsetof (struct c3x_config, patch_precision_strike_animation_bug)},
 		{"prevent_autorazing"                                  , 0, offsetof (struct c3x_config, prevent_autorazing)},
 		{"prevent_razing_by_players"                           , 0, offsetof (struct c3x_config, prevent_razing_by_players)},
 		{"suppress_hypertext_links_exceeded_popup"             , 1, offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
@@ -1452,6 +1451,7 @@ patch_init_floating_point ()
 		{"include_stealth_attack_cancel_option"                , 0, offsetof (struct c3x_config, include_stealth_attack_cancel_option)},
 		{"intercept_recon_missions"                            , 0, offsetof (struct c3x_config, intercept_recon_missions)},
 		{"charge_one_move_for_recon_and_interception"          , 0, offsetof (struct c3x_config, charge_one_move_for_recon_and_interception)},
+		{"polish_non_air_precision_striking"                   , 1, offsetof (struct c3x_config, polish_non_air_precision_striking)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -4943,7 +4943,7 @@ patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bomb
 byte __fastcall
 patch_Unit_try_flying_for_precision_strike (Unit * this, int edx, int x, int y)
 {
-	if (is->current_config.patch_precision_strike_animation_bug &&
+	if (is->current_config.polish_non_air_precision_striking &&
 	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air))
 		// This method returns -1 when some kind of error occurs. In that case, return true implying the unit was shot down so the caller
 		// doesn't do anything more. Otherwise, return false so it goes ahead and applies damage.
@@ -4956,7 +4956,7 @@ void __fastcall
 patch_Unit_play_bombing_anim_for_precision_strike (Unit * this, int edx, int x, int y)
 {
 	// For non-air units we don't play the bombard animation here (do it above instead) since it can fail, for whatever reason.
-	if ((! is->current_config.patch_precision_strike_animation_bug) ||
+	if ((! is->current_config.polish_non_air_precision_striking) ||
 	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air))
 		Unit_play_bombing_animation (this, __, x, y);
 }
@@ -4984,9 +4984,12 @@ void __fastcall
 patch_Main_Screen_Form_issue_precision_strike_cmd (Main_Screen_Form * this, int edx, Unit * unit)
 {
 	UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
-	if (type->Unit_Class == UTC_Air)
+	if ((! is->current_config.polish_non_air_precision_striking) || (type->Unit_Class == UTC_Air))
 		Main_Screen_Form_issue_precision_strike_cmd (this, __, unit);
 	else {
+		// issue_precision_strike_cmd will use the unit type's operational range. To make it use bombard range instead, place that value in
+		// the operational range field temporarily. Conveniently, it's only necessary to do this temporary switch once, here, because the main
+		// screen form stores a copy of the range for its own use and the method to actually perform the strike doesn't check the range.
 		int saved_op_range = type->OperationalRange;
 		type->OperationalRange = type->Bombard_Range;
 		Main_Screen_Form_issue_precision_strike_cmd (this, __, unit);
