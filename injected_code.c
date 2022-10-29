@@ -1452,6 +1452,7 @@ patch_init_floating_point ()
 		{"intercept_recon_missions"                            , 0, offsetof (struct c3x_config, intercept_recon_missions)},
 		{"charge_one_move_for_recon_and_interception"          , 0, offsetof (struct c3x_config, charge_one_move_for_recon_and_interception)},
 		{"polish_non_air_precision_striking"                   , 1, offsetof (struct c3x_config, polish_non_air_precision_striking)},
+		{"enable_stealth_attack_via_bombardment"               , 0, offsetof (struct c3x_config, enable_stealth_attack_via_bombardment)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -4965,7 +4966,8 @@ int __fastcall
 patch_Unit_play_anim_for_bombard_tile (Unit * this, int edx, int x, int y)
 {
 	Unit * stealth_attack_target = NULL;
-	if ((! is_game_type_4_or_5 ()) &&
+	if (is->current_config.enable_stealth_attack_via_bombardment &&
+	    (! is_game_type_4_or_5 ()) &&
 	    is_tile_visible_to (x, y, p_main_screen_form->Player_CivID)) {
 		byte land_lethal = Unit_has_ability (this, __, UTA_Lethal_Land_Bombardment),
 		     sea_lethal  = Unit_has_ability (this, __, UTA_Lethal_Sea_Bombardment);

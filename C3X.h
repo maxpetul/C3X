@@ -95,6 +95,7 @@ struct c3x_config {
 	char intercept_recon_missions;
 	char charge_one_move_for_recon_and_interception;
 	char polish_non_air_precision_striking;
+	char enable_stealth_attack_via_bombardment;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
