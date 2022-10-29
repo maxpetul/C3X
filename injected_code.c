@@ -4999,5 +4999,12 @@ patch_Main_Screen_Form_issue_precision_strike_cmd (Main_Screen_Form * this, int 
 	}
 }
 
+int __fastcall
+patch_rand_bombard_target (void * this, int edx, int lim)
+{
+	// If we have a bombard stealth attack target set then return 2 so that the bombard damage will be applied to units not pop or buildings.
+	return (is->bombard_stealth_target == NULL) ? rand_int (this, __, lim) : 2;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
