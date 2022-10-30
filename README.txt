@@ -1,18 +1,16 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 14
+Release 14B
 
 INCLUDES (** = new in latest version):
 Convenience features:
  - Stack unit commands
   - Stack bombard
-   - ** Holding shift while it's going will temporarily turn off combat animations
   - Worker buttons (irrigate, road, etc.) become stack buttons by holding CTRL
   - Stack fortify, upgrade, and disband also with CTRL
  - Disorder warning
  - Detailed city production info
  - Buttons on trade screen to quickly switch between civs
  - Ask/offer gold popup autofills best amount
-  - ** Also applies when editing an amount on the table
  - Skip repeated popups asking to replace a tile improvement
  - Group units on right click menu
  - Show coordinates and chopped status in tile info box
@@ -20,10 +18,10 @@ Convenience features:
  - No special king unit names in non-regicide games
  - Option to disable worker automation
  - On the city screen, hold shift when clicking a specialist to switch to the previous type
- - ** Automatically cut research spending to avoid bankruptcy
- - ** Remove pause for "we love the king" messages
- - ** Suppress "maximum hypertext links exceeded" popup
- - ** Civilopedia indicates when units go obsolete but cannot be upgraded
+ - Automatically cut research spending to avoid bankruptcy
+ - Remove pause for "we love the king" messages
+ - Suppress "maximum hypertext links exceeded" popup
+ - Civilopedia indicates when units go obsolete but cannot be upgraded
 AI enhancements:
  - Allow AI to use artillery in the field
  - Force AI to build more artillery and bombers
@@ -45,10 +43,8 @@ Engine extensions:
  - Removed unit limit
  - Enable free improvements from small wonders
  - Option to prevent autoraze and razing by players
-  - ** Restriction applies to the human player as well as AIs
  - Stealth attack activates even when there's only one target
  - Trespassing prevention
-  - ** Fix restriction not applying to units attacking an enemy across a border
  - Land/sea intersections
  - Adjustable anarchy length
  - "Perfume" units or improvements to control how likely the AI is to build them
@@ -63,13 +59,19 @@ Engine extensions:
  - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
  - Option to modify rules for retreat eligibility
  - AI two-city start
-  - ** Warning message if start contains adjacent cities or missing FP cities
  - Remove cap on turn limit
  - Option to strengthen forbidden palace decorruption effect to match the palace's
  - Option to allow military great leaders to hurry wonders
  - Option to reduce AI research rate by half
- - ** Option to aggressively penalize bankrupt players
- - ** Option to remove exception to tile penalty for city tiles with fresh water and Agri trait
+ - Option to aggressively penalize bankrupt players
+ - Option to remove exception to tile penalty for city tiles with fresh water and Agri trait
+ - ** Enable stealth attacks via bombardment
+ - ** Recon missions can be make vulnerable to interception
+ - ** Option to charge one move for recon missions and interception
+ - ** Allow players to opt out of stealth attacks
+ - ** Polish precision striking by land or sea units
+  - Use regular bombard animation instead of flying animation
+  - Use bombard range instead of operational range
 
 INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.

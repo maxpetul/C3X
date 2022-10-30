@@ -1,3 +1,12 @@
+* RELEASE 14B
+- Enable stealth attacks via bombardment
+- Recon missions can be make vulnerable to interception
+- Option to charge one move for recon missions and interception
+- Allow players to opt out of stealth attacks
+- Polish precision striking by land or sea units
+  - Use regular bombard animation instead of flying animation
+  - Use bombard range instead of operational range
+
 * RELEASE 14
 - Automatically cut research spending to avoid bankruptcy
 - Option to aggressively penalize bankrupt players
