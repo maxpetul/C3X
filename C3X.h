@@ -422,6 +422,10 @@ struct injected_state {
 	// first option to cancel the stealth attack.
 	int added_any_stealth_target;
 
+	// Initialized to zero. Temporarily set to 1 across a call to patch_Unit_select_stealth_attack_target to request that the selected target must
+	// be suitable for attack via bombardment.
+	int selecting_stealth_target_for_bombard;
+
 	// ==========
 	// }
 	// ==========

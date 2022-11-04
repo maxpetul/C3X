@@ -1586,6 +1586,7 @@ patch_init_floating_point ()
 	is->modifying_gold_trade = NULL;
 
 	is->bombard_stealth_target = NULL;
+	is->selecting_stealth_target_for_bombard = 0;
 
 	memset (&is->boolean_config_offsets, 0, sizeof is->boolean_config_offsets);
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
@@ -4848,6 +4849,20 @@ patch_Unit_select_stealth_attack_target (Unit * this, int edx, int target_civ_id
 	return Unit_select_stealth_attack_target (this, __, target_civ_id, x, y, allow_popup, out_selected_target);
 }
 
+byte __fastcall
+patch_Unit_can_stealth_attack (Unit * this, int edx, Unit * target)
+{
+	byte tr = Unit_can_stealth_attack (this, __, target);
+
+	// If we're selecting a target for stealth attack via bombardment, we must filter out candidates we can't damage that way
+	if (tr && is->selecting_stealth_target_for_bombard &&
+	    ! can_damage_bombarding (&p_bic_data->UnitTypes[this->Body.UnitTypeID], target, tile_at (target->Body.X, target->Body.Y)))
+		return 0;
+
+	else
+		return tr;
+}
+
 int __fastcall
 patch_Tile_check_water_for_stealth_attack (Tile * this)
 {
@@ -4982,7 +4997,10 @@ patch_Unit_play_anim_for_bombard_tile (Unit * this, int edx, int x, int y)
 		Unit * defender = Fighter_find_defender_against_bombardment (&p_bic_data->fighter, __, this, x, y, this->Body.CivID, land_lethal, sea_lethal);
 		if (defender != NULL) {
 			Unit * target;
-			if (patch_Unit_select_stealth_attack_target (this, __, defender->Body.CivID, x, y, 1, &target))
+			is->selecting_stealth_target_for_bombard = 1;
+			byte got_one = patch_Unit_select_stealth_attack_target (this, __, defender->Body.CivID, x, y, 1, &target);
+			is->selecting_stealth_target_for_bombard = 0;
+			if (got_one)
 				is->bombard_stealth_target = target;
 		}
 	}
