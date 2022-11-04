@@ -1017,8 +1017,17 @@ ENTRY_POINT ()
 				put_trampoline ((void *)obj->addr, find_patch_function (tcc, obj->name, 1), 0);
 			else if (obj->job == OJ_REPL_VPTR)
 				write_prog_int ((void *)obj->addr, (int)find_patch_function (tcc, obj->name, 1));
-			else if (obj->job == OJ_REPL_CALL)
+			else if (obj->job == OJ_REPL_CALL) {
+				byte * instr = read_prog_memory ((void *)obj->addr, 10);
+				int instr_size = length_disasm (instr);
+				REQUIRE (instr_size >= 5, format ("Can't perform call replacement for %s. Instruction must be at least 5 bytes.", obj->name));
 				put_trampoline ((void *)obj->addr, find_patch_function (tcc, obj->name, 1), 1);
+				if (instr_size > 5) {
+					byte nops[] = {0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90};
+					write_prog_memory ((void *)(obj->addr + 5), nops, instr_size - 5);
+				}
+				free (instr);
+			}
 		}
 	}
 
