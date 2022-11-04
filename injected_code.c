@@ -4849,6 +4849,14 @@ patch_Unit_select_stealth_attack_target (Unit * this, int edx, int target_civ_id
 }
 
 int __fastcall
+patch_Tile_check_water_for_stealth_attack (Tile * this)
+{
+	// When stealth attack bombard is enabled, remove a special rule inside can_stealth_attack that prevents land units from stealth attacking
+	// onto sea tiles. This allows land artillery to stealth attack naval units.
+	return is->current_config.enable_stealth_attack_via_bombardment ? 0 : this->vtable->m35_Check_Is_Water (this);
+}
+
+int __fastcall
 patch_PopupSelection_add_stealth_attack_target (PopupSelection * this, int edx, char * text, int value)
 {
 	if (is->current_config.include_stealth_attack_cancel_option && (! is->added_any_stealth_target)) {
