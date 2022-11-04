@@ -4885,8 +4885,18 @@ void __fastcall
 patch_Unit_perform_air_recon (Unit * this, int edx, int x, int y)
 {
 	int moves_plus_one = this->Body.Moves + p_bic_data->General.RoadsMovementRate;
-	if ((! is->current_config.intercept_recon_missions) ||
-	    (! Unit_try_flying_over_tile (this, __, x, y))) { // try_flying_over_tile returns 1 if the unit was intercepted
+
+	int was_intercepted = 0;
+	if (is->current_config.intercept_recon_missions) {
+		// Temporarily add vision on the target tile so the game plays the animation if the unit is show down by ground AA
+		Tile_Body * tile = &tile_at (x, y)->Body;
+		int saved_vis = tile->Visibility;
+		tile->Visibility |= 1 << this->Body.CivID;
+		was_intercepted = Unit_try_flying_over_tile (this, __, x, y);
+		tile->Visibility = saved_vis;
+	}
+
+	if (! was_intercepted) {
 		Unit_perform_air_recon (this, __, x, y);
 		if (is->current_config.charge_one_move_for_recon_and_interception)
 			this->Body.Moves = moves_plus_one;
