@@ -192,6 +192,7 @@ enum c3x_label {
 	CL_2CS_MISSING_CITIES,
 	CL_OBSOLETED_BY,
 	CL_NO_STEALTH_ATTACK,
+	CL_DODGED_SAM,
 	COUNT_C3X_LABELS
 };
 
@@ -426,6 +427,10 @@ struct injected_state {
 	// Initialized to zero. Temporarily set to 1 across a call to patch_Unit_select_stealth_attack_target to request that the selected target must
 	// be suitable for attack via bombardment.
 	int selecting_stealth_target_for_bombard;
+
+	// Set in rand_int_to_dodge_city_aa and read immediately after in Unit_get_defense_to_dodge_city_aa. Allows us to determine whether the dodge
+	// roll was successful in order to popup the message.
+	int result_of_roll_to_dodge_city_aa;
 
 	// Initialized to NULL. If set to non-NULL, the next call to show_map_message will consume that value and use it as the text on the
 	// message. Used to implement show_map_specific_text.

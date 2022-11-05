@@ -48,3 +48,6 @@ Obsoleted By
 ; Used on the stealth attack target selection popup, if chosen performs a normal attack instead of a stealth attack. The brackets cause the game to
 ; italicize the text within, I like this effect since it sets this option apart from the others.
 [No stealth attack]
+
+; Pops up on the map when a bomber gets intercepted by enemy AA buildings but dodges the damage
+Our bomber was forced back to base to avoid enemy air defenses

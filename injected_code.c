@@ -5065,5 +5065,23 @@ patch_rand_bombard_target (void * this, int edx, int lim)
 	return (is->bombard_stealth_target == NULL) ? rand_int (this, __, lim) : 2;
 }
 
+int __fastcall
+patch_rand_int_to_dodge_city_aa (void * this, int edx, int lim)
+{
+	int tr = rand_int (this, __, lim);
+	is->result_of_roll_to_dodge_city_aa = tr;
+	return tr;
+}
+
+int __fastcall
+patch_Unit_get_defense_to_dodge_city_aa (Unit * this)
+{
+	int defense = Unit_get_defense_strength (this);
+	if ((defense > is->result_of_roll_to_dodge_city_aa) &&
+	    (this->Body.CivID == p_main_screen_form->Player_CivID))
+		show_map_specific_text (this->Body.X, this->Body.Y, is->c3x_labels[CL_DODGED_SAM], 0);
+	return defense;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
