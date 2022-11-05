@@ -265,8 +265,8 @@ repl call, 0x5B6549,	0x5C4EA9,	0x5B6259,	"Tile_check_water_for_stealth_attack",	
 inlead,	   0x5B64C0,	0x5C4E20,	0x5B61D0,	"Unit_can_stealth_attack",			"byte (__fastcall *) (Unit * this, int edx, Unit * target)"
 define,	   0x61BCA0,	0x63D770,	0x61BBD0,	"process_text_snippet",				"int (__cdecl *) (char * in, char * out)"
 repl call, 0x4D788A,	0x4E01EA,	0x4D794A,	"process_text_for_map_message",			""
-repl call, 0x5C6997,	0x0,		0x0,		"rand_int_to_dodge_city_aa",			""
-repl call, 0x5C69A7,	0x0,		0x0,		"Unit_get_defense_to_dodge_city_aa",		""
+repl call, 0x5C6997,	0x5D5812,	0x5C66A7,	"rand_int_to_dodge_city_aa",			""
+repl call, 0x5C69A7,	0x5D5822,	0x5C66B7,	"Unit_get_defense_to_dodge_city_aa",		""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

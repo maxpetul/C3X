@@ -1449,6 +1449,7 @@ patch_init_floating_point ()
 		{"prevent_razing_by_players"                           , 0, offsetof (struct c3x_config, prevent_razing_by_players)},
 		{"suppress_hypertext_links_exceeded_popup"             , 1, offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
 		{"indicate_non_upgradability_in_pedia"                 , 1, offsetof (struct c3x_config, indicate_non_upgradability_in_pedia)},
+		{"show_message_after_dodging_sam"                      , 1, offsetof (struct c3x_config, show_message_after_dodging_sam)},
 		{"include_stealth_attack_cancel_option"                , 0, offsetof (struct c3x_config, include_stealth_attack_cancel_option)},
 		{"intercept_recon_missions"                            , 0, offsetof (struct c3x_config, intercept_recon_missions)},
 		{"charge_one_move_for_recon_and_interception"          , 0, offsetof (struct c3x_config, charge_one_move_for_recon_and_interception)},
@@ -5077,7 +5078,8 @@ int __fastcall
 patch_Unit_get_defense_to_dodge_city_aa (Unit * this)
 {
 	int defense = Unit_get_defense_strength (this);
-	if ((defense > is->result_of_roll_to_dodge_city_aa) &&
+	if (is->current_config.show_message_after_dodging_sam &&
+	    (defense > is->result_of_roll_to_dodge_city_aa) &&
 	    (this->Body.CivID == p_main_screen_form->Player_CivID))
 		show_map_specific_text (this->Body.X, this->Body.Y, is->c3x_labels[CL_DODGED_SAM], 0);
 	return defense;

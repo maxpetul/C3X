@@ -91,6 +91,7 @@ struct c3x_config {
 	char no_penalty_exception_for_agri_fresh_water_city_tiles;
 	char suppress_hypertext_links_exceeded_popup;
 	char indicate_non_upgradability_in_pedia;
+	char show_message_after_dodging_sam;
 	char include_stealth_attack_cancel_option;
 	char intercept_recon_missions;
 	char charge_one_move_for_recon_and_interception;
