@@ -255,6 +255,7 @@ struct injected_state {
 	int (* strncmp) (char const *, char const *, size_t);
 	size_t (* strlen) (char const *);
 	char * (* strncpy) (char *, char const *, size_t);
+	char * (* strcpy) (char *, char const *);
 	char * (* strdup) (char const *);
 	char * (* strstr) (char const *, char const *);
 	void (* qsort) (void *, size_t, size_t, int (*) (void const *, void const *));
@@ -425,6 +426,10 @@ struct injected_state {
 	// Initialized to zero. Temporarily set to 1 across a call to patch_Unit_select_stealth_attack_target to request that the selected target must
 	// be suitable for attack via bombardment.
 	int selecting_stealth_target_for_bombard;
+
+	// Initialized to NULL. If set to non-NULL, the next call to show_map_message will consume that value and use it as the text on the
+	// message. Used to implement show_map_specific_text.
+	char const * map_message_text_override;
 
 	// ==========
 	// }

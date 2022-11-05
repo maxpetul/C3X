@@ -90,7 +90,7 @@ typedef struct Map_Cursor_Images Map_Cursor_Images;
 typedef struct Old_Interface_Images Old_Interface_Images;
 typedef struct Main_Screen_Form_vtable Main_Screen_Form_vtable;
 typedef struct GUI_Data_30 GUI_Data_30;
-typedef struct Main_Screen_Data_170 Main_Screen_Data_170;
+typedef struct MapMessage MapMessage;
 typedef struct Form_Data_30 Form_Data_30;
 typedef struct GUI_Form_1_vtable GUI_Form_1_vtable;
 typedef struct Base_Form_vtable Base_Form_vtable;
@@ -2728,7 +2728,7 @@ struct GUI_Data_30
   int field_4[11];
 };
 
-struct Main_Screen_Data_170
+struct MapMessage
 {
   int vtable;
   int field_4[90];
@@ -5864,7 +5864,7 @@ struct Main_Screen_Form
   Base_Form_vtable *vtable;
   Base_Form_Data Base_Data;
   Base Console;
-  Main_Screen_Data_170 Data_170_Array[50];
+  MapMessage map_messages[50];
   int field_4D70;
   Unit *Current_Unit;
   int field_4D78;

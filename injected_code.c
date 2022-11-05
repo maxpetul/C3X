@@ -37,6 +37,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define strcmp is->strcmp
 #define strlen is->strlen
 #define strncpy is->strncpy
+#define strcpy is->strcpy
 #define strdup is->strdup
 #define strstr is->strstr
 #define qsort is->qsort
@@ -1479,6 +1480,7 @@ patch_init_floating_point ()
 	strncmp  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncmp");
 	strlen   = (void *)(*p_GetProcAddress) (is->msvcrt, "strlen");
 	strncpy  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncpy");
+	strcpy   = (void *)(*p_GetProcAddress) (is->msvcrt, "strcpy");
 	strdup   = (void *)(*p_GetProcAddress) (is->msvcrt, "_strdup");
 	strstr   = (void *)(*p_GetProcAddress) (is->msvcrt, "strstr");
 	qsort    = (void *)(*p_GetProcAddress) (is->msvcrt, "qsort");
@@ -1588,6 +1590,8 @@ patch_init_floating_point ()
 	is->bombard_stealth_target = NULL;
 	is->selecting_stealth_target_for_bombard = 0;
 
+	is->map_message_text_override = NULL;
+
 	memset (&is->boolean_config_offsets, 0, sizeof is->boolean_config_offsets);
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		stable_insert (&is->boolean_config_offsets, boolean_config_options[n].name, boolean_config_options[n].offset);
@@ -1595,6 +1599,25 @@ patch_init_floating_point ()
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config);
+}
+
+int __cdecl
+patch_process_text_for_map_message (char * in, char * out)
+{
+	if (is->map_message_text_override != NULL) {
+		strcpy (out, is->map_message_text_override);
+		is->map_message_text_override = NULL;
+		return 0;
+	} else
+		return process_text_snippet (in, out);
+}
+
+// Works like show_map_message but takes a bit of text to display instead of a key for script.txt
+void
+show_map_specific_text (int tile_x, int tile_y, char const * text, byte pause)
+{
+	is->map_message_text_override = text;
+	Main_Screen_Form_show_map_message (p_main_screen_form, __, tile_x, tile_y, "LANDCONQUER", pause); // Use any key here. It will be overridden.
 }
 
 void
