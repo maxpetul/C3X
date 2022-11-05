@@ -1,4 +1,4 @@
-* RELEASE 14B
+* RELEASE 14C
 - Enable stealth attacks via bombardment
 - Recon missions can be make vulnerable to interception
 - Option to charge one move for recon missions and interception
