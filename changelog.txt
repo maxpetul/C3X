@@ -1,4 +1,4 @@
-* RELEASE 14C
+* RELEASE 14D
 - Enable stealth attacks via bombardment
 - Recon missions can be make vulnerable to interception
 - Option to charge one move for recon missions and interception
@@ -6,6 +6,8 @@
 - Polish precision striking by land or sea units
   - Use regular bombard animation instead of flying animation
   - Use bombard range instead of operational range
+- Message appears after bomber dodges interception by air defense buildings
+- Option to immunize aircraft against bombardment
 
 * RELEASE 14
 - Automatically cut research spending to avoid bankruptcy
