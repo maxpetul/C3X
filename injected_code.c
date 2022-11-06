@@ -1455,6 +1455,7 @@ patch_init_floating_point ()
 		{"charge_one_move_for_recon_and_interception"          , 0, offsetof (struct c3x_config, charge_one_move_for_recon_and_interception)},
 		{"polish_non_air_precision_striking"                   , 1, offsetof (struct c3x_config, polish_non_air_precision_striking)},
 		{"enable_stealth_attack_via_bombardment"               , 0, offsetof (struct c3x_config, enable_stealth_attack_via_bombardment)},
+		{"immunize_aircraft_against_bombardment"               , 0, offsetof (struct c3x_config, immunize_aircraft_against_bombardment)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -1806,6 +1807,8 @@ can_damage_bombarding (UnitType * attacker_type, Unit * defender, Tile * defende
 		int has_lethal_sea_bombard = UnitType_has_ability (attacker_type, __, UTA_Lethal_Sea_Bombardment);
 		return defender->Body.Damage + (! has_lethal_sea_bombard) < Unit_get_max_hp (defender);
 	} else if (defender_type->Unit_Class == UTC_Air) {
+		if (is->current_config.immunize_aircraft_against_bombardment)
+			return 0;
 		// Can't damage aircraft in an airfield by bombarding, the attack doesn't even go off
 		if ((defender_tile->vtable->m42_Get_Overlays (defender_tile, __, 0) & 0x20000000) != 0)
 			return 0;
@@ -5083,6 +5086,16 @@ patch_Unit_get_defense_to_dodge_city_aa (Unit * this)
 	    (this->Body.CivID == p_main_screen_form->Player_CivID))
 		show_map_specific_text (this->Body.X, this->Body.Y, is->c3x_labels[CL_DODGED_SAM], 0);
 	return defense;
+}
+
+int __fastcall
+patch_Unit_get_defense_to_find_bombard_defender (Unit * this)
+{
+	if (is->current_config.immunize_aircraft_against_bombardment &&
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air))
+		return 0; // The caller is filtering out candidates with zero defense strength
+	else
+		return Unit_get_defense_strength (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
