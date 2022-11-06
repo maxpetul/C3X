@@ -1462,7 +1462,7 @@ struct UnitType
   int Worker_Actions;
   int Air_Missions;
   int field_B8;
-  int Bombard_Fix;
+  int Bombard_Fx;
   int field_C0;
   int field_C4;
   int field_C8;

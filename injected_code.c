@@ -1837,7 +1837,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 	    (! ((action == UMA_Bombard) || (action == UMA_Air_Bombard))) || // action is not bombard OR
 	    ((((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0) &&  // (control key is not down AND
 	     ((is->sc_img_state != IS_UNINITED) && (is->sb_activated_by_button == 0))) || // (button flag is valid AND not set)) OR
-	    is_game_type_4_or_5 ()) { // is online game
+	    is_online_game ()) { // is online game
 		Main_Screen_Form_perform_action_on_tile (this, __, action, x, y);
 		return;
 	}
@@ -1961,7 +1961,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 void
 set_up_stack_bombard_buttons (Main_GUI * this)
 {
-	if (is_game_type_4_or_5 () || (! is->current_config.enable_stack_bombard))
+	if (is_online_game () || (! is->current_config.enable_stack_bombard))
 		return;
 
 	init_stackable_command_buttons ();
@@ -2009,7 +2009,7 @@ set_up_stack_worker_buttons (Main_GUI * this)
 {
 	if ((((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0) ||  // (control key is not down OR
 	    (! is->current_config.enable_stack_unit_commands) || // stack worker commands not enabled OR
-	    is_game_type_4_or_5 ()) // is online game
+	    is_online_game ()) // is online game
 		return;
 
 	init_stackable_command_buttons ();
@@ -2166,7 +2166,7 @@ patch_DiploForm_do_diplomacy (DiploForm * this, int edx, int diplo_message, int 
 
 	// Trade screen scroll is disabled in online games b/c there's extra synchronization we'd need to do to open or close the diplo screen with
 	// a human player.
-	is->eligible_for_trade_scroll = is->current_config.enable_trade_screen_scroll && (! is_game_type_4_or_5 ());
+	is->eligible_for_trade_scroll = is->current_config.enable_trade_screen_scroll && (! is_online_game ());
 
 	if (is->eligible_for_trade_scroll && (is->trade_scroll_button_state == IS_UNINITED))
 		init_trade_scroll_buttons (this);
@@ -2355,7 +2355,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 
 		} else {
 			set_popup_int_param (0, cost);
-			int param_5 = is_game_type_4_or_5 () ? 0x4000 : 0; // As in base code
+			int param_5 = is_online_game () ? 0x4000 : 0; // As in base code
 			popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "NO_GOLD_TO_UPGRADE_ALL", -1, 0, param_5, 0);
 			show_popup (popup, __, 0, 0);
 		}
@@ -2411,7 +2411,7 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 	    (! is->current_config.enable_stack_unit_commands) || // stack unit commands are not enabled OR
 	    (((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0) || // CTRL key is not down OR
 	    (p_main_screen_form->Current_Unit == NULL) || // no unit is selected OR
-	    is_game_type_4_or_5 ()) { // is online game
+	    is_online_game ()) { // is online game
 		Main_GUI_handle_button_press (this, __, button_id);
 		return;
 	}
@@ -4689,7 +4689,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 		}
 
 		// Show popup informing the player that their buildings were force sold
-		if ((leader->ID == p_main_screen_form->Player_CivID) && ! is_game_type_4_or_5 ()) {
+		if ((leader->ID == p_main_screen_form->Player_CivID) && ! is_online_game ()) {
 			PopupForm * popup = get_popup_form ();
 			if (count_sold == 1) {
 				int improv_id = ((1<<13) - 1) & (is->memo[0] >> 13),
@@ -4742,10 +4742,10 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 			PopupForm * popup = get_popup_form ();
 			if (count_disbanded == 1) {
 				set_popup_str_param (1, first_disbanded_name, -1, -1);
-				int online_flag = is_game_type_4_or_5 () ? 0x4000 : 0;
+				int online_flag = is_online_game () ? 0x4000 : 0;
 				popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "NOSUPPORT", -1, 0, online_flag, 0);
 				show_popup (popup, __, 0, 0);
-			} else if ((count_disbanded > 1) && ! is_game_type_4_or_5 ()) {
+			} else if ((count_disbanded > 1) && ! is_online_game ()) {
 				set_popup_int_param (0, count_disbanded);
 				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_UNITS", -1, 0, 0, 0);
 				show_popup (popup, __, 0, 0);
@@ -5024,7 +5024,7 @@ patch_Unit_play_anim_for_bombard_tile (Unit * this, int edx, int x, int y)
 {
 	Unit * stealth_attack_target = NULL;
 	if (is->current_config.enable_stealth_attack_via_bombardment &&
-	    (! is_game_type_4_or_5 ()) &&
+	    (! is_online_game ()) &&
 	    is_tile_visible_to (x, y, p_main_screen_form->Player_CivID)) {
 		byte land_lethal = Unit_has_ability (this, __, UTA_Lethal_Land_Bombardment),
 		     sea_lethal  = Unit_has_ability (this, __, UTA_Lethal_Sea_Bombardment);
