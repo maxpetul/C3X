@@ -50,4 +50,4 @@ Obsoleted By
 [No stealth attack]
 
 ; Pops up on the map when a bomber gets intercepted by enemy AA buildings but dodges the damage
-Our bomber was forced back to base to avoid enemy air defenses
+We were chased off by enemy air defenses.

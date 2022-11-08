@@ -4697,13 +4697,13 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 			if (count_sold == 1) {
 				int improv_id = ((1<<13) - 1) & (is->memo[0] >> 13),
 				    city_id   = ((1<<13) - 1) &  is->memo[0];
-				set_popup_str_param (0, p_bic_data->Improvements[improv_id].Name.S, -1, -1);
-				set_popup_str_param (1, get_city_ptr (city_id)->Body.CityName     , -1, -1);
+				set_popup_str_param (0, get_city_ptr (city_id)->Body.CityName     , -1, -1);
+				set_popup_str_param (1, p_bic_data->Improvements[improv_id].Name.S, -1, -1);
 				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_SINGLE_IMPROV", -1, 0, 0, 0);
 				show_popup (popup, __, 0, 0);
 			} else if (count_sold > 1) {
 				set_popup_int_param (0, count_sold);
-				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_MULTUPLE_IMPROVS", -1, 0, 0, 0);
+				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_MULTIPLE_IMPROVS", -1, 0, 0, 0);
 
 				// Add list of sold improvements to popup
 				for (int n = 0; n < count_sold; n++) {
@@ -4744,13 +4744,13 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 		if (leader->ID == p_main_screen_form->Player_CivID) {
 			PopupForm * popup = get_popup_form ();
 			if (count_disbanded == 1) {
-				set_popup_str_param (1, first_disbanded_name, -1, -1);
+				set_popup_str_param (0, first_disbanded_name, -1, -1);
 				int online_flag = is_online_game () ? 0x4000 : 0;
-				popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "NOSUPPORT", -1, 0, online_flag, 0);
+				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_SINGLE_UNIT", -1, 0, online_flag, 0);
 				show_popup (popup, __, 0, 0);
 			} else if ((count_disbanded > 1) && ! is_online_game ()) {
 				set_popup_int_param (0, count_disbanded);
-				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_UNITS", -1, 0, 0, 0);
+				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_MULTIPLE_UNITS", -1, 0, 0, 0);
 				show_popup (popup, __, 0, 0);
 			}
 		}

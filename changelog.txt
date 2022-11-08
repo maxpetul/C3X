@@ -1,4 +1,4 @@
-* RELEASE 14D
+* RELEASE 14E
 - Enable stealth attacks via bombardment
 - Recon missions can be make vulnerable to interception
 - Option to charge one move for recon missions and interception
@@ -8,6 +8,7 @@
   - Use bombard range instead of operational range
 - Message appears after bomber dodges interception by air defense buildings
 - Option to immunize aircraft against bombardment
+- Tweak messages on bankruptcy popups
 
 * RELEASE 14
 - Automatically cut research spending to avoid bankruptcy
