@@ -438,6 +438,10 @@ struct injected_state {
 	// message. Used to implement show_map_specific_text.
 	char const * map_message_text_override;
 
+	// Initialized to NULL. If set to non-NULL, the next call to do_load_game will consume this value and use it as the file path of the game to
+	// load instead of opening the file picker.
+	char * load_file_path_override;
+
 	// ==========
 	// }
 	// ==========

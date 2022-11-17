@@ -5895,7 +5895,7 @@ struct Main_Screen_Form
   Form_Data_30 Data_30_3;
   int field_2E194;
   char turn_end_flag;
-  char field_2E199;
+  char is_now_loading_game;
   char field_2E19A;
   char field_2E19B;
   int field_2E19C;

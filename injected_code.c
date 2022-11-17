@@ -1594,6 +1594,8 @@ patch_init_floating_point ()
 
 	is->map_message_text_override = NULL;
 
+	is->load_file_path_override = NULL;
+
 	memset (&is->boolean_config_offsets, 0, sizeof is->boolean_config_offsets);
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		stable_insert (&is->boolean_config_offsets, boolean_config_options[n].name, boolean_config_options[n].offset);
@@ -5096,6 +5098,28 @@ patch_Unit_get_defense_to_find_bombard_defender (Unit * this)
 		return 0; // The caller is filtering out candidates with zero defense strength
 	else
 		return Unit_get_defense_strength (this);
+}
+
+int __cdecl
+patch_get_WindowsFileBox_from_ini (LPCSTR key, int param_2, int param_3)
+{
+	// If the file path has already been determined, then avoid using the Windows file picker. This makes the later code to insert the path easier
+	// since we only have to intercept the opening of the civ-style file picker instead of both that and the Windows one.
+	if (is->load_file_path_override	== NULL)
+		return get_int_from_conquests_ini (key, param_2, param_3);
+	else
+		return 0;
+}
+
+char * __fastcall
+patch_do_open_load_game_file_picker (void * this)
+{
+	if (is->load_file_path_override != NULL) {
+		char * tr = is->load_file_path_override;
+		is->load_file_path_override = NULL;
+		return tr;
+	} else
+		return open_load_game_file_picker (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
