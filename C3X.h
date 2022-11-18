@@ -442,6 +442,10 @@ struct injected_state {
 	// load instead of opening the file picker.
 	char * load_file_path_override;
 
+	// Initialized to NULL. When a hotseat replay save is created, its file path is stored here. When it's loaded, this variable is cleared. This
+	// is how the saving & loading code coordinates to avoid problems, for example attempting to load a save from a previous game.
+	char * hotseat_replay_save_path;
+
 	// ==========
 	// }
 	// ==========

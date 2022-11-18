@@ -1596,6 +1596,8 @@ patch_init_floating_point ()
 
 	is->load_file_path_override = NULL;
 
+	is->hotseat_replay_save_path = NULL;
+
 	memset (&is->boolean_config_offsets, 0, sizeof is->boolean_config_offsets);
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		stable_insert (&is->boolean_config_offsets, boolean_config_options[n].name, boolean_config_options[n].offset);
@@ -5130,16 +5132,20 @@ load_game_ex (char * file_path)
 }
 
 int __fastcall
-patch_show_retrieve_password_popup (void * this, int edx, int param_1, int param_2)
+patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 {
-	int player_civ_id = p_main_screen_form->Player_CivID;
-	char * resume_save_path = "C:\\GOG Games\\Civilization III Complete\\Conquests\\Saves\\Auto\\ai-move-replay-before-p1-resume.SAV";
-	patch_do_save_game (resume_save_path, 1, 0);
-	load_game_ex ("C:\\GOG Games\\Civilization III Complete\\Conquests\\Saves\\Auto\\ai-move-replay-before-interturn.SAV");
-	p_main_screen_form->is_now_loading_game = 0;
-	p_main_screen_form->Player_CivID = player_civ_id;
-	perform_interturn ();
-	load_game_ex (resume_save_path);
+	if (is->hotseat_replay_save_path != NULL) {
+		int player_civ_id = p_main_screen_form->Player_CivID;
+		char * resume_save_path = "C:\\GOG Games\\Civilization III Complete\\Conquests\\Saves\\Auto\\ai-move-replay-before-p1-resume.SAV";
+		patch_do_save_game (resume_save_path, 1, 0);
+		load_game_ex (is->hotseat_replay_save_path);
+		p_main_screen_form->is_now_loading_game = 0;
+		p_main_screen_form->Player_CivID = player_civ_id;
+		perform_interturn ();
+		load_game_ex (resume_save_path);
+
+		is->hotseat_replay_save_path = NULL;
+	}
 
 	return show_popup (this, __, param_1, param_2);
 }
@@ -5147,7 +5153,8 @@ patch_show_retrieve_password_popup (void * this, int edx, int param_1, int param
 void __cdecl
 patch_perform_interturn_in_main_loop ()
 {
-	patch_do_save_game ("C:\\GOG Games\\Civilization III Complete\\Conquests\\Saves\\Auto\\ai-move-replay-before-interturn.SAV", 1, 0);
+	is->hotseat_replay_save_path = "C:\\GOG Games\\Civilization III Complete\\Conquests\\Saves\\Auto\\ai-move-replay-before-interturn.SAV";
+	patch_do_save_game (is->hotseat_replay_save_path, 1, 0);
 
 	perform_interturn ();
 }
