@@ -1598,6 +1598,8 @@ patch_init_floating_point ()
 
 	is->hotseat_replay_save_path = NULL;
 
+	is->suppress_intro_after_load_popup = 0;
+
 	memset (&is->boolean_config_offsets, 0, sizeof is->boolean_config_offsets);
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		stable_insert (&is->boolean_config_offsets, boolean_config_options[n].name, boolean_config_options[n].offset);
@@ -5124,9 +5126,21 @@ patch_do_open_load_game_file_picker (void * this)
 		return open_load_game_file_picker (this);
 }
 
-void *
-load_game_ex (char * file_path)
+int __fastcall
+patch_show_intro_after_load_popup (void * this, int edx, int param_1, int param_2)
 {
+	if (! is->suppress_intro_after_load_popup)
+		return show_popup (this, __, param_1, param_2);
+	else {
+		is->suppress_intro_after_load_popup = 0;
+		return 0;
+	}
+}
+
+void *
+load_game_ex (char * file_path, int suppress_intro_popup)
+{
+	is->suppress_intro_after_load_popup = suppress_intro_popup;
 	is->load_file_path_override = file_path;
 	return do_load_game (NULL);
 }
@@ -5138,11 +5152,11 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 		int player_civ_id = p_main_screen_form->Player_CivID;
 		char * resume_save_path = "C:\\GOG Games\\Civilization III Complete\\Conquests\\Saves\\Auto\\ai-move-replay-before-p1-resume.SAV";
 		patch_do_save_game (resume_save_path, 1, 0);
-		load_game_ex (is->hotseat_replay_save_path);
+		load_game_ex (is->hotseat_replay_save_path, 1);
 		p_main_screen_form->is_now_loading_game = 0;
 		p_main_screen_form->Player_CivID = player_civ_id;
 		perform_interturn ();
-		load_game_ex (resume_save_path);
+		load_game_ex (resume_save_path, 1);
 
 		is->hotseat_replay_save_path = NULL;
 	}

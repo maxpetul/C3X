@@ -446,6 +446,9 @@ struct injected_state {
 	// is how the saving & loading code coordinates to avoid problems, for example attempting to load a save from a previous game.
 	char * hotseat_replay_save_path;
 
+	// Initialized to 0. If set to non-zero, the next call to do_load_game will consume the value and skip the intro popup.
+	int suppress_intro_after_load_popup;
+
 	// ==========
 	// }
 	// ==========
