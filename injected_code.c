@@ -2730,9 +2730,10 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		is->extra_available_resources_capacity = 0;
 	}
 
-	// Similarly, clear this for the new game
+	// Similarly, these don't carry over between games
 	for (int n = 0; n < 32; n++)
 		is->interceptor_reset_lists[n].count = 0;
+	is->hotseat_replay_save_path = NULL;
 
 	// Set up for limiting railroad movement, if enabled
 	if (is->current_config.limit_railroad_movement > 0) {
@@ -5150,9 +5151,17 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 {
 	int tr = show_popup (this, __, param_1, param_2);
 
-	if (is->hotseat_replay_save_path != NULL) {
-		int player_civ_id = p_main_screen_form->Player_CivID;
-		char * resume_save_path = "C:\\GOG Games\\Civilization III Complete\\Conquests\\Saves\\Auto\\ai-move-replay-before-p1-resume.SAV";
+	int player_civ_id = p_main_screen_form->Player_CivID;
+
+	int last_human_civ_id = player_civ_id; {
+		for (int n = 0; n < 32; n++)
+			if (*p_human_player_bits & 1<<n)
+				last_human_civ_id = n;
+	}
+
+	if ((is->hotseat_replay_save_path != NULL) &&
+	    (player_civ_id != last_human_civ_id)) {
+		char * resume_save_path = "Saves\\Auto\\ai-move-replay-before-p1-resume.SAV";
 		patch_do_save_game (resume_save_path, 1, 0);
 		load_game_ex (is->hotseat_replay_save_path, 1);
 		p_main_screen_form->is_now_loading_game = 0;
@@ -5161,7 +5170,9 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 		load_game_ex (resume_save_path, 1);
 
 		is->hotseat_replay_save_path = NULL;
-	}
+
+	} else if (player_civ_id == last_human_civ_id)
+		is->hotseat_replay_save_path = NULL;
 
 	return tr;
 }
@@ -5169,8 +5180,10 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 void __cdecl
 patch_perform_interturn_in_main_loop ()
 {
-	is->hotseat_replay_save_path = "C:\\GOG Games\\Civilization III Complete\\Conquests\\Saves\\Auto\\ai-move-replay-before-interturn.SAV";
-	patch_do_save_game (is->hotseat_replay_save_path, 1, 0);
+	if (*p_is_offline_mp_game && ! *p_is_pbem_game) { // if in a hotseat game
+		is->hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
+		patch_do_save_game (is->hotseat_replay_save_path, 1, 0);
+	}
 
 	perform_interturn ();
 }
