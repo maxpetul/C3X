@@ -1456,6 +1456,7 @@ patch_init_floating_point ()
 		{"polish_non_air_precision_striking"                   , 1, offsetof (struct c3x_config, polish_non_air_precision_striking)},
 		{"enable_stealth_attack_via_bombardment"               , 0, offsetof (struct c3x_config, enable_stealth_attack_via_bombardment)},
 		{"immunize_aircraft_against_bombardment"               , 0, offsetof (struct c3x_config, immunize_aircraft_against_bombardment)},
+		{"replay_ai_moves_in_hotseat_games"                    , 0, offsetof (struct c3x_config, replay_ai_moves_in_hotseat_games)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -5161,7 +5162,7 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 
 	if ((is->hotseat_replay_save_path != NULL) &&
 	    (player_civ_id != last_human_civ_id)) {
-		char * resume_save_path = "Saves\\Auto\\ai-move-replay-before-p1-resume.SAV";
+		char * resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
 		patch_do_save_game (resume_save_path, 1, 0);
 		load_game_ex (is->hotseat_replay_save_path, 1);
 		p_main_screen_form->is_now_loading_game = 0;
@@ -5180,9 +5181,13 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 void __cdecl
 patch_perform_interturn_in_main_loop ()
 {
-	if (*p_is_offline_mp_game && ! *p_is_pbem_game) { // if in a hotseat game
+	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
+	if (is_hotseat_game && is->current_config.replay_ai_moves_in_hotseat_games) {
 		is->hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
+		int toggleable_rules = *p_toggleable_rules;
+		*p_toggleable_rules |= TR_PRESERVE_RANDOM_SEED; // Make sure preserve random seed is on for the replay save
 		patch_do_save_game (is->hotseat_replay_save_path, 1, 0);
+		*p_toggleable_rules = toggleable_rules;
 	}
 
 	perform_interturn ();

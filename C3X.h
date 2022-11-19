@@ -98,6 +98,7 @@ struct c3x_config {
 	char polish_non_air_precision_striking;
 	char enable_stealth_attack_via_bombardment;
 	char immunize_aircraft_against_bombardment;
+	char replay_ai_moves_in_hotseat_games;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
