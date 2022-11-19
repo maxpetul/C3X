@@ -5148,6 +5148,8 @@ load_game_ex (char * file_path, int suppress_intro_popup)
 int __fastcall
 patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 {
+	int tr = show_popup (this, __, param_1, param_2);
+
 	if (is->hotseat_replay_save_path != NULL) {
 		int player_civ_id = p_main_screen_form->Player_CivID;
 		char * resume_save_path = "C:\\GOG Games\\Civilization III Complete\\Conquests\\Saves\\Auto\\ai-move-replay-before-p1-resume.SAV";
@@ -5161,7 +5163,7 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 		is->hotseat_replay_save_path = NULL;
 	}
 
-	return show_popup (this, __, param_1, param_2);
+	return tr;
 }
 
 void __cdecl
