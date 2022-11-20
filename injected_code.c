@@ -5155,25 +5155,23 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 	int player_civ_id = p_main_screen_form->Player_CivID;
 
 	int last_human_civ_id = player_civ_id; {
-		for (int n = 0; n < 32; n++)
+		for (int n = player_civ_id + 1; n < 32; n++)
 			if (*p_human_player_bits & 1<<n)
 				last_human_civ_id = n;
 	}
 
-	if ((is->hotseat_replay_save_path != NULL) &&
-	    (player_civ_id != last_human_civ_id)) {
+	if ((is->hotseat_replay_save_path != NULL) && (player_civ_id != last_human_civ_id)) {
+		char * replay_save_path = is->hotseat_replay_save_path;
 		char * resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
 		patch_do_save_game (resume_save_path, 1, 0);
-		load_game_ex (is->hotseat_replay_save_path, 1);
-		p_main_screen_form->is_now_loading_game = 0;
+		load_game_ex (replay_save_path, 1);
 		p_main_screen_form->Player_CivID = player_civ_id;
 		perform_interturn ();
 		load_game_ex (resume_save_path, 1);
 
-		is->hotseat_replay_save_path = NULL;
-
-	} else if (player_civ_id == last_human_civ_id)
-		is->hotseat_replay_save_path = NULL;
+		// Restore the replay save path b/c it gets cleared when loading another game
+		is->hotseat_replay_save_path = replay_save_path;
+	}
 
 	return tr;
 }
