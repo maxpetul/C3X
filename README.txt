@@ -1,5 +1,5 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 14E
+Release 14F
 
 INCLUDES (** = new in latest version):
 Convenience features:
@@ -23,6 +23,7 @@ Convenience features:
  - Suppress "maximum hypertext links exceeded" popup
  - Civilopedia indicates when units go obsolete but cannot be upgraded
  - ** Message appears after bomber dodges interception by air defense buildings
+ - ** Option to replay AI moves for all human players in hotseat mode
 AI enhancements:
  - Allow AI to use artillery in the field
  - Force AI to build more artillery and bombers
