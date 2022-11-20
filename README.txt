@@ -88,7 +88,11 @@ Notes about installation:
 6. Rômulo Prado reports that RUN.bat started working for him after he installed the MS Visual C++ Redistributables versions 2005 and 2019 (while installing GOG Galaxy).
 
 COMPATIBILITY:
-The mod is compatible with the GOG and Steam versions of Civ 3 Complete, and with the DRM-free executable available through PCGames.de. It works with existing save files and saves made with the mod active will still work in the base game. Multiplayer is not officially supported but some features will work in MP, see this post: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-16#post-16126470. For more info about the PCGames.de executable, see here: https://forums.civfanatics.com/threads/civ-3-windows-update-kb3086255-safedisc.552308/.
+- The mod is compatible with the GOG and Steam versions of Civ 3 Complete, and with the DRM-free executable available through PCGames.de.
+- It works with existing save files and saves made with the mod active will still work in the base game.
+- Multiplayer is not officially supported but some features will work in MP, see this post for more details: https://forums.civfanatics.com/thre...s-in-exe-modding.666881/page-16#post-16126470.
+- The mod can work on Mac OS, see instructions here: https://forums.civfanatics.com/thre...rd-and-much-more.666881/page-56#post-16369665.
+- For more info about the PCGames.de executable, see here: https://forums.civfanatics.com/threads/civ-3-windows-update-kb3086255-safedisc.552308/.
 
 STACK BOMBARD:
 Activate stack bombard on any unit capable of bombarding by clicking the stack bombard button or by activating normal bombard then CTRL+clicking the target tile. The selected unit will bombard the tile, then all other units of the same type on the same tile will automatically bombard the target as well. Stack bombard is pretty smart and will stop bombarding once it can no longer do any damage, and it knows about lethal bombard, that you can't damage air units in an airfield, etc.
