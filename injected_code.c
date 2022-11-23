@@ -5168,6 +5168,7 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 		p_main_screen_form->Player_CivID = player_civ_id;
 		perform_interturn ();
 		load_game_ex (resume_save_path, 1);
+		p_main_screen_form->is_now_loading_game = 0;
 
 		// Restore the replay save path b/c it gets cleared when loading another game
 		is->hotseat_replay_save_path = replay_save_path;
