@@ -9,6 +9,7 @@
   - Use bombard range instead of operational range
 - Message appears after bomber dodges interception by air defense buildings
 - Option to immunize aircraft against bombardment
+- L key unloads unit over activating AI city loc highlighter
 - Tweak messages on bankruptcy popups
 
 * RELEASE 14

@@ -4080,7 +4080,7 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 	char s[200];
 	if (is->current_config.enable_ai_city_location_desirability_display &&
 	    (virtual_key_code == VK_L) && is_down &&
-	    (! is_command_button_active (&this->GUI, UCV_Load)) &&
+	    (! (is_command_button_active (&this->GUI, UCV_Load) || is_command_button_active (&this->GUI, UCV_Unload))) &&
 	    (*p_player_bits != 0)) { // Player bits all zero indicates we aren't currently in a game. Need to check for this because UI events on the
 		                     // main menu also pass through this function.
 		int is_debug_mode = (*p_debug_mode_bits & 4) != 0; // This is how the check is done in open_tile_info. Actually there are two debug
