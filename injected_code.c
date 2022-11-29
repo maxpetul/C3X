@@ -1662,6 +1662,8 @@ patch_init_floating_point ()
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		stable_insert (&is->boolean_config_offsets, boolean_config_options[n].name, boolean_config_options[n].offset);
 
+	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
+
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config);
@@ -2758,6 +2760,23 @@ patch_do_save_game (char * file_path, char param_2, GUID * guid)
 	}
 }
 
+void
+record_unit_type_alt_strategy (int type_id)
+{
+	int ai_strat_index; {
+		int ai_strat_bits = p_bic_data->UnitTypes[type_id].AI_Strategy;
+		if ((ai_strat_bits & ai_strat_bits - 1) != 0) // Sanity check: must only have one strat (one bit) set
+			return;
+		ai_strat_index = 0;
+		while ((ai_strat_bits & 1) == 0) {
+			ai_strat_index++;
+			ai_strat_bits >>= 1;
+		}
+	}
+
+	itable_insert (&is->unit_type_alt_strategies, type_id, ai_strat_index);
+}
+
 unsigned __fastcall
 patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 {
@@ -2792,6 +2811,16 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	for (int n = 0; n < 32; n++)
 		is->interceptor_reset_lists[n].count = 0;
 	is->hotseat_replay_save_path = NULL;
+
+	// Recreate table of alt strategies
+	table_deinit (&is->unit_type_alt_strategies);
+	for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
+		int alt_for_id = p_bic_data->UnitTypes[n].alternate_strategy_for_id;
+		if (alt_for_id >= 0) {
+			record_unit_type_alt_strategy (n);
+			record_unit_type_alt_strategy (alt_for_id); // Record the original too so we know it has alternatives
+		}
+	}
 
 	// Set up for limiting railroad movement, if enabled
 	if (is->current_config.limit_railroad_movement > 0) {
@@ -4004,7 +4033,15 @@ patch_City_Form_m82_handle_key_event (City_Form * this, int edx, int virtual_key
 		for (int n = 0; n < is->count_ai_prod_valuations; n++) {
 			struct ai_prod_valuation const * val = &is->ai_prod_valuations[n];
 			char * name = (val->order_type == COT_Improvement) ? p_bic_data->Improvements[val->order_id].Name.S : p_bic_data->UnitTypes[val->order_id].Name;
-			snprintf (s, sizeof s, "^%d   %s", val->point_value, name);
+
+			int show_strategy = -1;
+			if (val->order_type == COT_Unit)
+				itable_look_up (&is->unit_type_alt_strategies, val->order_id, &show_strategy);
+
+			if (show_strategy >= 0)
+				snprintf (s, sizeof s, "^%d   %s (strat: %d)", val->point_value, name, show_strategy);
+			else
+				snprintf (s, sizeof s, "^%d   %s", val->point_value, name);
 			s[(sizeof s) - 1] = '\0';
 			PopupForm_add_text (popup, __, s, 0);
 		}

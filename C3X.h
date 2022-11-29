@@ -321,6 +321,10 @@ struct injected_state {
 	// reading in a config INI file.
 	struct table boolean_config_offsets;
 
+	// Maps unit types IDs to AI strategy indices (0 = offense, 1 = defense, 2 = artillery, etc.). If a unit type ID is in this table, that means
+	// it's one of several duplicate types created to spread multiple AI strategies out so each type has only one.
+	struct table unit_type_alt_strategies;
+
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {
 	// ==========
