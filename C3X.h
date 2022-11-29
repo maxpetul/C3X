@@ -199,6 +199,11 @@ enum c3x_label {
 	CL_OBSOLETED_BY,
 	CL_NO_STEALTH_ATTACK,
 	CL_DODGED_SAM,
+
+	// Offense, Defense, Artillery, etc.
+	CL_FIRST_UNIT_STRAT,
+	CL_LAST_UNIT_STRAT = CL_FIRST_UNIT_STRAT + 19,
+
 	COUNT_C3X_LABELS
 };
 

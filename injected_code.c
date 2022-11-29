@@ -4038,8 +4038,8 @@ patch_City_Form_m82_handle_key_event (City_Form * this, int edx, int virtual_key
 			if (val->order_type == COT_Unit)
 				itable_look_up (&is->unit_type_alt_strategies, val->order_id, &show_strategy);
 
-			if (show_strategy >= 0)
-				snprintf (s, sizeof s, "^%d   %s (strat: %d)", val->point_value, name, show_strategy);
+			if ((show_strategy >= 0) && (show_strategy <= CL_LAST_UNIT_STRAT - CL_FIRST_UNIT_STRAT))
+				snprintf (s, sizeof s, "^%d   %s (%s)", val->point_value, name, is->c3x_labels[CL_FIRST_UNIT_STRAT + show_strategy]);
 			else
 				snprintf (s, sizeof s, "^%d   %s", val->point_value, name);
 			s[(sizeof s) - 1] = '\0';

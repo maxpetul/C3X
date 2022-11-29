@@ -51,3 +51,25 @@ Obsoleted By
 
 ; Pops up on the map when a bomber gets intercepted by enemy AA buildings but dodges the damage
 We were chased off by enemy air defenses.
+
+; Unit AI strategy names. Matches what they're called in the editor.
+Offense
+Defense
+Artillery
+Explore
+Army
+Cruise Missile
+Air Bombard
+Air Defense
+Naval Power
+Air Transport
+Naval Transport
+Naval Carrier
+Terraform
+Settle
+Leader
+Tactical Nuke
+ICBM
+Naval Missile Transport
+Flag Unit
+King
