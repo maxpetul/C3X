@@ -126,26 +126,26 @@ reset_to_base_config ()
 	struct c3x_config * cc = &is->current_config;
 
 	// Free list of perfume specs
-	if (is->current_config.perfume_specs != NULL) {
-		free (is->current_config.perfume_specs);
-		is->current_config.perfume_specs = NULL;
-		is->current_config.count_perfume_specs = 0;
+	if (cc->perfume_specs != NULL) {
+		free (cc->perfume_specs);
+		cc->perfume_specs = NULL;
+		cc->count_perfume_specs = 0;
 	}
 
 	// Free building-unit prereqs table
-	size_t building_unit_prereqs_capacity = table_capacity (&is->current_config.building_unit_prereqs);
+	size_t building_unit_prereqs_capacity = table_capacity (&cc->building_unit_prereqs);
 	for (size_t n = 0; n < building_unit_prereqs_capacity; n++) {
 		int ptr;
-		if (table_get_by_index (&is->current_config.building_unit_prereqs, n, &ptr) && ((ptr & 1) == 0))
+		if (table_get_by_index (&cc->building_unit_prereqs, n, &ptr) && ((ptr & 1) == 0))
 			free ((void *)ptr);
 	}
-	table_deinit (&is->current_config.building_unit_prereqs);
+	table_deinit (&cc->building_unit_prereqs);
 
 	// Free list of mills
-	if (is->current_config.mills != NULL) {
-		free (is->current_config.mills);
-		is->current_config.mills = NULL;
-		is->current_config.count_mills = 0;
+	if (cc->mills != NULL) {
+		free (cc->mills);
+		cc->mills = NULL;
+		cc->count_mills = 0;
 	}
 
 	// Free list of PTW artillery types
