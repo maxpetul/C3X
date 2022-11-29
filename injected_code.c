@@ -123,6 +123,8 @@ clear_memo ()
 void
 reset_to_base_config ()
 {
+	struct c3x_config * cc = &is->current_config;
+
 	// Free list of perfume specs
 	if (is->current_config.perfume_specs != NULL) {
 		free (is->current_config.perfume_specs);
@@ -144,6 +146,14 @@ reset_to_base_config ()
 		free (is->current_config.mills);
 		is->current_config.mills = NULL;
 		is->current_config.count_mills = 0;
+	}
+
+	// Free list of PTW artillery types
+	if (cc->ptw_arty_types != NULL) {
+		free (cc->ptw_arty_types);
+		cc->ptw_arty_types = NULL;
+		cc->count_ptw_arty_types = 0;
+		cc->ptw_arty_types_capacity = 0;
 	}
 
 	// Free the linked list of loaded config names and the string name contained in each one
@@ -219,7 +229,7 @@ find_improv_id_by_name (struct string_slice const * name, int * out)
 }
 
 // start_id specifies where the search will start. It's useful for finding multiple type IDs with the same name, which commonly happens due to the
-// game duplicating unit types. (I'm not sure why it does that but I think it's related to unique units.)
+// game duplicating unit types.
 int
 find_unit_type_id_by_name (struct string_slice const * name, int start_id, int * out)
 {
@@ -485,6 +495,46 @@ read_building_unit_prereqs (struct string_slice const * s,
 }
 
 int
+read_ptw_arty_types (struct string_slice const * s,
+		     struct error_line ** p_unrecognized_lines,
+		     int ** p_ptw_arty_types,
+		     int * p_count_ptw_arty_types,
+		     int * p_ptw_arty_types_capacity)
+{
+	if (s->len <= 0)
+		return 1;
+	char * extracted_slice = extract_slice (s);
+	char * cursor = extracted_slice;
+	int success = 0;
+
+	while (1) {
+		struct string_slice name;
+		if (parse_string (&cursor, &name)) {
+
+			int id = -1, matched_any = 0;
+			while (find_unit_type_id_by_name (&name, id + 1, &id)) {
+				int count = *p_count_ptw_arty_types;
+				reserve (sizeof **p_ptw_arty_types, (void **)p_ptw_arty_types, p_ptw_arty_types_capacity, count);
+				(*p_ptw_arty_types)[count] = id;
+				*p_count_ptw_arty_types = count + 1;
+				matched_any = 1;
+			}
+
+			if (! matched_any)
+				add_unrecognized_line (p_unrecognized_lines, &name);
+
+		} else {
+			skip_white_space (&cursor);
+			success = *cursor == '\0';
+			break;
+		}
+	}
+
+	free (extracted_slice);
+	return success;
+}
+
+int
 read_retreat_rules (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
@@ -577,6 +627,13 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					cfg->retreat_rules = ival;
 				else if ((0 == strncmp (key.str, "max_tries_to_place_fp_city", key.len)) && read_int (&value, &ival))
 					cfg->max_tries_to_place_fp_city = ival;
+				else if ((0 == strncmp (key.str, "ptw_like_artillery_targeting", key.len)) &&
+					 read_ptw_arty_types (&value,
+							      &unrecognized_lines,
+							      &cfg->ptw_arty_types,
+							      &cfg->count_ptw_arty_types,
+							      &cfg->ptw_arty_types_capacity))
+					;
 				else if ((0 == strncmp (key.str, "ai_build_artillery_ratio", key.len)) && read_int (&value, &ival))
 					cfg->ai_build_artillery_ratio = ival;
 				else if ((0 == strncmp (key.str, "ai_artillery_value_damage_percent", key.len)) && read_int (&value, &ival))

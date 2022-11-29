@@ -99,6 +99,9 @@ struct c3x_config {
 	char enable_stealth_attack_via_bombardment;
 	char immunize_aircraft_against_bombardment;
 	char replay_ai_moves_in_hotseat_games;
+	int count_ptw_arty_types;
+	int ptw_arty_types_capacity;
+	int * ptw_arty_types; // List of unit type IDs
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
