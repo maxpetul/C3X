@@ -3673,6 +3673,16 @@ is_zero_strength (UnitType * ut)
 }
 
 int
+uses_ptw_arty_targeting (Unit * u)
+{
+	int type_id = u->Body.UnitTypeID;
+	for (int n = 0; n < is->current_config.count_ptw_arty_types; n++)
+		if (type_id == is->current_config.ptw_arty_types[n])
+			return 1;
+	return 0;
+}
+
+int
 is_captured (Unit_Body * u)
 {
 	return (u->RaceID >= 0) && (u->CivID >= 0) && (u->CivID < 32) && leaders[u->CivID].RaceID != u->RaceID;
@@ -5252,28 +5262,29 @@ patch_perform_interturn_in_main_loop ()
 void __fastcall
 patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbor_index, int mp_tile_x, int mp_tile_y)
 {
-	// If in an online game and the target tile is already occupied by another combat, fall back on the original method. In this case, it will
-	// show a message and do nothing else.
-	if ((is->bombard_stealth_target != NULL) ||
-	    (is_online_game () && mp_check_current_combat (p_mp_object, __, mp_tile_x, mp_tile_y))) {
+	// Check if we're going to do PTW-like targeting, if not fall back on the base game's do_bombard_tile method. We'll also fall back on that
+	// method in the case where we're in an online game and the bombard can't happen b/c the tile is occupied by another battle. In that case, no
+	// bombard is possible but we'll call the base method anyway since it will show a little message saying as much.
+	if (uses_ptw_arty_targeting (unit) &&
+	    (is->bombard_stealth_target == NULL) &&
+	    ! (is_online_game () && mp_check_current_combat (p_mp_object, __, mp_tile_x, mp_tile_y))) {
+
+		City * city; {
+			int dx, dy;
+			neighbor_index_to_displacement (neighbor_index, &dx, &dy);
+			int tile_x = unit->Body.X + dx, tile_y = unit->Body.Y + dy;
+			wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+			city = city_at (tile_x, tile_y);
+		}
+
+		int rv;
+		if ((city != NULL) && ((rv = rand_int (p_rand_object, __, 3)) < 2))
+			Fighter_damage_city_by_bombardment (this, __, unit, city, rv, 0);
+		else
+			Fighter_do_bombard_tile (this, __, unit, neighbor_index, mp_tile_x, mp_tile_y);
+
+	} else
 		Fighter_do_bombard_tile (this, __, unit, neighbor_index, mp_tile_x, mp_tile_y);
-		return;
-	}
-
-	City * city; {
-		int dx, dy;
-		neighbor_index_to_displacement (neighbor_index, &dx, &dy);
-		int tile_x = unit->Body.X + dx, tile_y = unit->Body.Y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
-		city = city_at (tile_x, tile_y);
-	}
-
-	int rv;
-	if ((city != NULL) && ((rv = rand_int (p_rand_object, __, 3)) < 2))
-		Fighter_damage_city_by_bombardment (this, __, unit, city, rv, 0);
-	else
-		Fighter_do_bombard_tile (this, __, unit, neighbor_index, mp_tile_x, mp_tile_y);
-
 }
 
 // TCC requires a main function be defined even though it's never used.
