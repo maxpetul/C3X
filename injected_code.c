@@ -5192,5 +5192,32 @@ patch_perform_interturn_in_main_loop ()
 	perform_interturn ();
 }
 
+void __fastcall
+patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbor_index, int mp_tile_x, int mp_tile_y)
+{
+	// If in an online game and the target tile is already occupied by another combat, fall back on the original method. In this case, it will
+	// show a message and do nothing else.
+	if ((is->bombard_stealth_target != NULL) ||
+	    (is_online_game () && mp_check_current_combat (p_mp_object, __, mp_tile_x, mp_tile_y))) {
+		Fighter_do_bombard_tile (this, __, unit, neighbor_index, mp_tile_x, mp_tile_y);
+		return;
+	}
+
+	City * city; {
+		int dx, dy;
+		neighbor_index_to_displacement (neighbor_index, &dx, &dy);
+		int tile_x = unit->Body.X + dx, tile_y = unit->Body.Y + dy;
+		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+		city = city_at (tile_x, tile_y);
+	}
+
+	int rv;
+	if ((city != NULL) && ((rv = rand_int (p_rand_object, __, 3)) < 2))
+		Fighter_damage_city_by_bombardment (this, __, unit, city, rv, 0);
+	else
+		Fighter_do_bombard_tile (this, __, unit, neighbor_index, mp_tile_x, mp_tile_y);
+
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
