@@ -1517,6 +1517,7 @@ patch_init_floating_point ()
 		{"enable_stealth_attack_via_bombardment"               , 0, offsetof (struct c3x_config, enable_stealth_attack_via_bombardment)},
 		{"immunize_aircraft_against_bombardment"               , 0, offsetof (struct c3x_config, immunize_aircraft_against_bombardment)},
 		{"replay_ai_moves_in_hotseat_games"                    , 0, offsetof (struct c3x_config, replay_ai_moves_in_hotseat_games)},
+		{"restore_unit_directions_on_game_load"                , 1, offsetof (struct c3x_config, restore_unit_directions_on_game_load)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -5246,12 +5247,42 @@ patch_show_intro_after_load_popup (void * this, int edx, int param_1, int param_
 	}
 }
 
+void * __cdecl
+patch_do_load_game (char * param_1)
+{
+	void * tr = do_load_game (param_1);
+
+	if (is->current_config.restore_unit_directions_on_game_load && (p_units->Units != NULL))
+		for (int n = 0; n <= p_units->LastIndex; n++) {
+			Unit * unit = get_unit_ptr (n);
+			if ((unit != NULL) && (unit->Body.UnitState != UnitState_Fortifying)) {
+				if (Map_in_range (&p_bic_data->Map, __, unit->Body.X, unit->Body.Y) &&
+				    Map_in_range (&p_bic_data->Map, __, unit->Body.PrevMoveX, unit->Body.PrevMoveY)) {
+					int dx = unit->Body.X - unit->Body.PrevMoveX, dy = unit->Body.Y - unit->Body.PrevMoveY;
+					int dir = -1;
+					if      ((dx ==  1) && (dy == -1)) dir = DIR_NE;
+					else if ((dx ==  2) && (dy ==  0)) dir = DIR_E;
+					else if ((dx ==  1) && (dy ==  1)) dir = DIR_SE;
+					else if ((dx ==  0) && (dy ==  2)) dir = DIR_S;
+					else if ((dx == -1) && (dy ==  1)) dir = DIR_SW;
+					else if ((dx == -2) && (dy ==  0)) dir = DIR_W;
+					else if ((dx == -1) && (dy == -1)) dir = DIR_NW;
+					else if ((dx ==  0) && (dy == -2)) dir = DIR_N;
+					if (dir >= 0)
+						unit->Body.Animation.struct_48.Direction = dir;
+				}
+			}
+		}
+
+	return tr;
+}
+
 void *
 load_game_ex (char const * file_path, int suppress_intro_popup)
 {
 	is->suppress_intro_after_load_popup = suppress_intro_popup;
 	is->load_file_path_override = file_path;
-	return do_load_game (NULL);
+	return patch_do_load_game (NULL);
 }
 
 int __fastcall

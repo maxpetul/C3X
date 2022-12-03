@@ -102,6 +102,7 @@ struct c3x_config {
 	int count_ptw_arty_types;
 	int ptw_arty_types_capacity;
 	int * ptw_arty_types; // List of unit type IDs
+	char restore_unit_directions_on_game_load;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;

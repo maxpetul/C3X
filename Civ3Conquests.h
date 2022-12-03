@@ -352,6 +352,19 @@ enum AnimatedEffect
   AE_Plague = 0xB,
 };
 
+enum Direction
+{
+  DIR_ZERO = 0, // Appears facing SW
+  DIR_NE   = 1,
+  DIR_E    = 2,
+  DIR_SE   = 3,
+  DIR_S    = 4,
+  DIR_SW   = 5,
+  DIR_W    = 6,
+  DIR_NW   = 7,
+  DIR_N    = 8
+};
+
 enum ImprovementTypeFlags
 {
   ITF_Center_of_Empire			    = 0x1,

@@ -8,6 +8,7 @@
   - Use regular bombard animation instead of flying animation
   - Use bombard range instead of operational range
 - Message appears after bomber dodges interception by air defense buildings
+- Restore unit directions on game load
 - Option to immunize aircraft against bombardment
 - L key unloads unit over activating AI city loc highlighter
 - Show AI strategy in production ranking for unit types with multiple
