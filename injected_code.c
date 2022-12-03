@@ -55,6 +55,9 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 
 #define MOD_INFO_BUTTON_ID 0x222003
 
+char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
+char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
+
 // Need to define memmove for use by TCC when generated code for functions that return a struct
 void *
 memmove (void * dest, void const * src, size_t size)
@@ -1654,7 +1657,7 @@ patch_init_floating_point ()
 
 	is->load_file_path_override = NULL;
 
-	is->hotseat_replay_save_path = NULL;
+	is->replay_for_players = 0;
 
 	is->suppress_intro_after_load_popup = 0;
 
@@ -2746,7 +2749,7 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 }
 
 int __cdecl
-patch_do_save_game (char * file_path, char param_2, GUID * guid)
+patch_do_save_game (char const * file_path, char param_2, GUID * guid)
 {
 	if ((is->current_config.limit_railroad_movement <= 0) || (is->saved_road_movement_rate <= 0))
 		return do_save_game (file_path, param_2, guid);
@@ -2810,7 +2813,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	// Similarly, these don't carry over between games
 	for (int n = 0; n < 32; n++)
 		is->interceptor_reset_lists[n].count = 0;
-	is->hotseat_replay_save_path = NULL;
+	is->replay_for_players = 0;
 
 	// Recreate table of alt strategies
 	table_deinit (&is->unit_type_alt_strategies);
@@ -5221,11 +5224,11 @@ patch_get_WindowsFileBox_from_ini (LPCSTR key, int param_2, int param_3)
 		return 0;
 }
 
-char * __fastcall
+char const * __fastcall
 patch_do_open_load_game_file_picker (void * this)
 {
 	if (is->load_file_path_override != NULL) {
-		char * tr = is->load_file_path_override;
+		char const * tr = is->load_file_path_override;
 		is->load_file_path_override = NULL;
 		return tr;
 	} else
@@ -5244,7 +5247,7 @@ patch_show_intro_after_load_popup (void * this, int edx, int param_1, int param_
 }
 
 void *
-load_game_ex (char * file_path, int suppress_intro_popup)
+load_game_ex (char const * file_path, int suppress_intro_popup)
 {
 	is->suppress_intro_after_load_popup = suppress_intro_popup;
 	is->load_file_path_override = file_path;
@@ -5257,25 +5260,18 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 	int tr = show_popup (this, __, param_1, param_2);
 
 	int player_civ_id = p_main_screen_form->Player_CivID;
-
-	int last_human_civ_id = player_civ_id; {
-		for (int n = player_civ_id + 1; n < 32; n++)
-			if (*p_human_player_bits & 1<<n)
-				last_human_civ_id = n;
-	}
-
-	if ((is->hotseat_replay_save_path != NULL) && (player_civ_id != last_human_civ_id) && (is->replay_for_players & 1<<player_civ_id)) {
-		char * replay_save_path = is->hotseat_replay_save_path;
-		char * resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
-		patch_do_save_game (resume_save_path, 1, 0);
-		load_game_ex (replay_save_path, 1);
+	int replay_for_players = is->replay_for_players; // Store this b/c it gets reset on game load
+	if (replay_for_players & 1<<player_civ_id) {
+		patch_do_save_game (hotseat_resume_save_path, 1, 0);
+		load_game_ex (hotseat_replay_save_path, 1);
 		p_main_screen_form->Player_CivID = player_civ_id;
 		perform_interturn ();
-		load_game_ex (resume_save_path, 1);
+		load_game_ex (hotseat_resume_save_path, 1);
 		p_main_screen_form->is_now_loading_game = 0;
 
-		// Restore the replay save path b/c it gets cleared when loading another game
-		is->hotseat_replay_save_path = replay_save_path;
+		// Restore the replay_for_players variable b/c it gets cleared when loading a game. Also mask out the bit for the player we just
+		// showed the replay to.
+		is->replay_for_players = replay_for_players & ~(1<<player_civ_id);
 	}
 
 	return tr;
@@ -5318,17 +5314,25 @@ patch_perform_interturn_in_main_loop ()
 	int ai_unit_vis_before;
 	if (save_replay) {
 		ai_unit_vis_before = find_human_players_seeing_ai_units ();
-		is->hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 		int toggleable_rules = *p_toggleable_rules;
 		*p_toggleable_rules |= TR_PRESERVE_RANDOM_SEED; // Make sure preserve random seed is on for the replay save
-		patch_do_save_game (is->hotseat_replay_save_path, 1, 0);
+		patch_do_save_game (hotseat_replay_save_path, 1, 0);
 		*p_toggleable_rules = toggleable_rules;
 	}
 
 	perform_interturn ();
 
-	if (save_replay)
-		is->replay_for_players = ai_unit_vis_before | find_human_players_seeing_ai_units ();
+	if (save_replay) {
+		int last_human_player_bit = 0; {
+			for (int n = 0; n < 32; n++)
+				if (*p_human_player_bits & 1<<n)
+					last_human_player_bit = 1<<n;
+		}
+
+		// Set player bits indicating which players should see the replay. This includes all human players that can see at least one AI unit,
+		// except for the last one (the last human player is excluded since they already saw the AIs move during the actual interturn).
+		is->replay_for_players = (ai_unit_vis_before | find_human_players_seeing_ai_units ()) & ~last_human_player_bit;
+	}
 }
 
 void __fastcall

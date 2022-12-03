@@ -1,5 +1,5 @@
 * RELEASE 14G
-- Option to replay AI moves for all human players in hotseat mode
+- Option to replay AI moves for human players in hotseat mode
 - Enable stealth attacks via bombardment
 - Recon missions can be make vulnerable to interception
 - Option to charge one move for recon missions and interception

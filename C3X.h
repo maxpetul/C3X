@@ -453,14 +453,11 @@ struct injected_state {
 
 	// Initialized to NULL. If set to non-NULL, the next call to do_load_game will consume this value and use it as the file path of the game to
 	// load instead of opening the file picker.
-	char * load_file_path_override;
+	char const * load_file_path_override;
 
-	// Initialized to NULL. When a hotseat replay save is created, its file path is stored here. When it's loaded, this variable is cleared. This
-	// is how the saving & loading code coordinates to avoid problems, for example attempting to load a save from a previous game.
-	char * hotseat_replay_save_path;
-
-	// A set of player bits containing only those that need to see a replay, assuming there is one available (check the var above for
-	// that). Players only need to see the replay if they are human and there is at least one AI unit visible to them.
+	// A set of player bits indicating which players should see a replay of the AI's moves. Normally all zero, gets filled in by
+	// patch_perform_interturn_in_main_loop only when/as appropriate. As replays are played (in patch_show_movement_phase_popup), the
+	// corresponding bits are cleared.
 	int replay_for_players;
 
 	// Initialized to 0. If set to non-zero, the next call to do_load_game will consume the value and skip the intro popup.
