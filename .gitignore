@@ -1,4 +1,5 @@
 *~
+*.obj
 __pycache__
 Thumbs.db
 releases
