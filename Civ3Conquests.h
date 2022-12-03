@@ -2,6 +2,9 @@
 // Originally created by Antal1987, modified for use by TCC in C code injection system for C3X
 // See: https://github.com/Antal1987/C3CPatchFramework/blob/master/Info/Civ3Conquests.h
 
+// Used to simulated thiscall convention with fastcall by inserting a dummy unused second parameter to occupy edx.
+typedef int __;
+
 typedef struct IntList IntList;
 typedef struct City_Base_vtable City_Base_vtable;
 typedef struct Citizen Citizen;
@@ -247,9 +250,6 @@ typedef struct Main_Screen_Form Main_Screen_Form;
 typedef struct Governor_Form Governor_Form;
 typedef struct File_Dialog_Form File_Dialog_Form;
 typedef struct New_Era_Form New_Era_Form;
-
-// Used to simulated thiscall convention with fastcall by inserting a dummy unused second parameter to occupy edx.
-typedef int __;
 
 enum SquareTypes
 {
@@ -1382,7 +1382,7 @@ struct City_Base_vtable
   void *m13;
 //  int (__thiscall *m14)(int, int);
   void *m14;
-  enum UnitStateType (__fastcall * instruct_worker) (City * this, int edx, int tile_x, int tile_y, byte param_3, Unit * worker);
+  enum UnitStateType (__fastcall * instruct_worker) (City * this, __, int tile_x, int tile_y, byte param_3, Unit * worker);
   int m16;
   int m17;
   int m18;
@@ -1395,7 +1395,7 @@ struct City_Base_vtable
   int m25;
 //  char (__thiscall *m26)(City *, int *, char *, char *);
   void *m26;
-  byte (__fastcall * m27) (City *, int, Unit *, int);
+  byte (__fastcall * m27) (City *, __, Unit *, int);
 };
 
 struct Citizen
@@ -1590,14 +1590,14 @@ struct String16
 
 struct Race_vtable
 {
-  byte (__fastcall * CheckBonus) (Race *, int, enum RaceBonuses);
+  byte (__fastcall * CheckBonus) (Race *, __, enum RaceBonuses);
   int (__fastcall * GetBonuses) (Race *);
   char * (__fastcall * GetAdjectiveName) (Race *);
   char * (__fastcall * GetCountryName) (Race *);
   char * (__fastcall * GetLeaderName) (Race *);
   char * (__fastcall * GetTitle) (Race *);
   char * (__fastcall * GetSingularName) (Race *);
-  int (__fastcall * GetStartupAdvance) (Race *, int, int);
+  int (__fastcall * GetStartupAdvance) (Race *, __, int);
   int (__fastcall * f1) (Race *);
 };
 
@@ -1874,7 +1874,7 @@ struct Map_vtable
   int m11_Get_Tile_by_XY2;
 //  Tile *(__thiscall *m12_Get_Tile_by_XY)(Map *, int, int);
   void *m12_Get_Tile_by_XY;
-  Tile *(__fastcall * m13_Get_Tile_by_Index) (Map *, int, int);
+  Tile *(__fastcall * m13_Get_Tile_by_Index) (Map *, __, int);
   int m14;
   int m15_null;
   int m16;
@@ -1884,10 +1884,10 @@ struct Map_vtable
 //  int (__thiscall *m19_Create_Tiles)(Map *, Tile **);
   void *m19_Create_Tiles;
   int m20;
-  byte (__fastcall * is_near_lake) (Map * this, int edx, int x, int y, int num_tiles);
-  byte (__fastcall * is_near_river) (Map * this, int edx, int x, int y, int num_tiles);
+  byte (__fastcall * is_near_lake) (Map * this, __, int x, int y, int num_tiles);
+  byte (__fastcall * is_near_river) (Map * this, __, int x, int y, int num_tiles);
   int m23;
-  int (__fastcall * has_fresh_water) (Map * this, int edx, int x, int y);
+  int (__fastcall * has_fresh_water) (Map * this, __, int x, int y);
   int m25;
   int m26;
   int m27;
@@ -1899,7 +1899,7 @@ struct Map_vtable
   void *m31;
 //  void (__thiscall *m32)(Map *);
   void *m32;
-  Continent * (__fastcall * m33_Get_Continent) (Map *, int, int);
+  Continent * (__fastcall * m33_Get_Continent) (Map *, __, int);
 //  int (__thiscall *m34_Get_Continent_Count)(Map *);
   void *m34_Get_Continent_Count;
 //  int (__thiscall *m35_Get_BIC_Sub_Data)(Map *this, int Object_Type, int Object_Index, void *Object);
@@ -2483,17 +2483,17 @@ struct Unit_vtable
   int (__fastcall * eval_cost_per_defense) (Unit *);
   int (__fastcall * eval_total_defense) (Unit *);
   byte (__fastcall * has_enough_escorters_present) (Unit *);
-  void (__fastcall * check_escorter_health) (Unit *, int, byte *, byte *);
+  void (__fastcall * check_escorter_health) (Unit *, __, byte *, byte *);
   int m10;
   int m11;
   int m12;
   int (__fastcall * get_sea_id) (Unit *);
-  byte (__fastcall * ai_is_good_army_addition) (Unit *, int, Unit *);
-  byte (__fastcall * is_enemy_of_civ) (Unit *, int, int, byte);
-  byte (__fastcall * is_enemy_of_unit) (Unit *, int, Unit *, int);
+  byte (__fastcall * ai_is_good_army_addition) (Unit *, __, Unit *);
+  byte (__fastcall * is_enemy_of_civ) (Unit *, __, int, byte);
+  byte (__fastcall * is_enemy_of_unit) (Unit *, __, Unit *, int);
   int m17;
   int m18;
-  int (__fastcall * Move) (Unit *, int, int, char);
+  int (__fastcall * Move) (Unit *, __, int, char);
   int m20;
   void (__fastcall * update_while_active) (Unit *);
   int m22;
@@ -3052,7 +3052,7 @@ struct Leader_vtable
   int m03;
   int m04;
   int m05;
-  byte (__fastcall * would_raze_city) (Leader * this, int edx, City * city);
+  byte (__fastcall * would_raze_city) (Leader * this, __, City * city);
   int (__fastcall * ai_find_best_government) (Leader * this);
   int m08;
   int m09;
