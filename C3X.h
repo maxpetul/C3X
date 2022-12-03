@@ -459,6 +459,10 @@ struct injected_state {
 	// is how the saving & loading code coordinates to avoid problems, for example attempting to load a save from a previous game.
 	char * hotseat_replay_save_path;
 
+	// A set of player bits containing only those that need to see a replay, assuming there is one available (check the var above for
+	// that). Players only need to see the replay if they are human and there is at least one AI unit visible to them.
+	int replay_for_players;
+
 	// Initialized to 0. If set to non-zero, the next call to do_load_game will consume the value and skip the intro popup.
 	int suppress_intro_after_load_popup;
 

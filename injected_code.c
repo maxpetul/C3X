@@ -5264,7 +5264,7 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 				last_human_civ_id = n;
 	}
 
-	if ((is->hotseat_replay_save_path != NULL) && (player_civ_id != last_human_civ_id)) {
+	if ((is->hotseat_replay_save_path != NULL) && (player_civ_id != last_human_civ_id) && (is->replay_for_players & 1<<player_civ_id)) {
 		char * replay_save_path = is->hotseat_replay_save_path;
 		char * resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
 		patch_do_save_game (resume_save_path, 1, 0);
@@ -5281,11 +5281,43 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 	return tr;
 }
 
+// Returns a set of player bits containing only those players that are human and can see at least one AI unit. For speed and simplicity, does not
+// account for units' invisibility ability, units are considered visible as long as they're on a visible tile.
+int
+find_human_players_seeing_ai_units ()
+{
+	int tr = 0;
+	Map * map = &p_bic_data->Map;
+	if (map->Tiles != NULL)
+		for (int n_tile = 0; n_tile < map->TileCount; n_tile++) {
+			Tile * tile = map->Tiles[n_tile];
+			Tile_Body * body = &tile->Body;
+			int human_vis_bits = (body->FOWStatus | body->V3 | body->Visibility | body->field_D0_Visibility) & *p_human_player_bits;
+			if (human_vis_bits != 0) // If any human players can see this tile
+				for (int n_player = 0; n_player < 32; n_player++)
+					if (human_vis_bits & 1<<n_player) {
+						int unused;
+						int unit_id = TileUnits_TileUnitID_to_UnitID (p_tile_units, __, tile->TileUnitID, &unused);
+						Unit * unit = get_unit_ptr (unit_id);
+						if ((unit != NULL) &&
+						    ((*p_human_player_bits & 1<<unit->Body.CivID) == 0)) {
+							tr |= 1<<n_player;
+							if (tr == *p_player_bits)
+								return tr;
+						}
+					}
+		}
+	return tr;
+}
+
 void __cdecl
 patch_perform_interturn_in_main_loop ()
 {
-	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.replay_ai_moves_in_hotseat_games) {
+	int save_replay = is->current_config.replay_ai_moves_in_hotseat_games &&
+		(*p_is_offline_mp_game && ! *p_is_pbem_game); // offline MP but not PBEM => we're in a hotseat game
+	int ai_unit_vis_before;
+	if (save_replay) {
+		ai_unit_vis_before = find_human_players_seeing_ai_units ();
 		is->hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 		int toggleable_rules = *p_toggleable_rules;
 		*p_toggleable_rules |= TR_PRESERVE_RANDOM_SEED; // Make sure preserve random seed is on for the replay save
@@ -5294,6 +5326,9 @@ patch_perform_interturn_in_main_loop ()
 	}
 
 	perform_interturn ();
+
+	if (save_replay)
+		is->replay_for_players = ai_unit_vis_before | find_human_players_seeing_ai_units ();
 }
 
 void __fastcall
