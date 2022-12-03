@@ -4168,7 +4168,7 @@ struct Tile_Body
   int Visibility;
   int CircuitFlags;
   short CityAreaID;
-  short Values[32];
+  short connected_city_ids[32];
   char Visibile_Overlays[32];
   short field_92;
   int field_D0_Visibility;
