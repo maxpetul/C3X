@@ -1460,7 +1460,7 @@ patch_init_floating_point ()
 	} boolean_config_options[] = {
 		{"enable_stack_bombard"                                , 1, offsetof (struct c3x_config, enable_stack_bombard)},
 		{"enable_disorder_warning"                             , 1, offsetof (struct c3x_config, enable_disorder_warning)},
-		{"allow_stealth_attack_against_single_unit"            , 1, offsetof (struct c3x_config, allow_stealth_attack_against_single_unit)},
+		{"allow_stealth_attack_against_single_unit"            , 0, offsetof (struct c3x_config, allow_stealth_attack_against_single_unit)},
 		{"show_detailed_city_production_info"                  , 1, offsetof (struct c3x_config, show_detailed_city_production_info)},
 		{"enable_free_buildings_from_small_wonders"            , 1, offsetof (struct c3x_config, enable_free_buildings_from_small_wonders)},
 		{"enable_stack_unit_commands"                          , 1, offsetof (struct c3x_config, enable_stack_unit_commands)},

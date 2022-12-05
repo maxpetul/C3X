@@ -7,11 +7,14 @@
 - Polish precision striking by land or sea units
   - Use regular bombard animation instead of flying animation
   - Use bombard range instead of operational range
+  - Cannot be intercepted
 - Message appears after bomber dodges interception by air defense buildings
 - Restore unit directions on game load
 - Option to immunize aircraft against bombardment
+- Disallow stealth attack against single unit by default
+  - Fixes a compatibility issue with the EFZI mod
 - L key unloads unit over activating AI city loc highlighter
-- Show AI strategy in production ranking for unit types with multiple
+- Show AI strategy in production ranking for unit types with multiple strategies
 - Tweak messages on bankruptcy popups
 
 * RELEASE 14
