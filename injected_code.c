@@ -23,6 +23,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define CreateFileA is->CreateFileA
 #define GetFileSize is->GetFileSize
 #define ReadFile is->ReadFile
+#define LoadLibraryA is->LoadLibraryA
 #define MessageBoxA is->MessageBoxA
 #define MultiByteToWideChar is->MultiByteToWideChar
 #define WideCharToMultiByte is->WideCharToMultiByte
@@ -1526,6 +1527,7 @@ patch_init_floating_point ()
 	CreateFileA         = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
 	GetFileSize         = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
 	ReadFile            = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
+	LoadLibraryA        = (void *)(*p_GetProcAddress) (is->kernel32, "LoadLibraryA");
 	MultiByteToWideChar = (void *)(*p_GetProcAddress) (is->kernel32, "MultiByteToWideChar");
 	WideCharToMultiByte = (void *)(*p_GetProcAddress) (is->kernel32, "WideCharToMultiByte");
 	GetLastError        = (void *)(*p_GetProcAddress) (is->kernel32, "GetLastError");
@@ -1607,6 +1609,22 @@ patch_init_floating_point ()
 			err_msg[(sizeof err_msg) - 1] = '\0';
 			MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
 		}
+	}
+
+	// Load TradeNetX.dll
+	{
+		char path[MAX_PATH];
+		snprintf (path, sizeof path, "%s\\Trade Net X\\TradeNetX.dll", is->mod_rel_dir);
+		path[(sizeof path) - 1] = '\0';
+		is->trade_net_x = LoadLibraryA (path);
+		if (is->trade_net_x != NULL) {
+			is->tnx_test = (void *)(*p_GetProcAddress) (is->trade_net_x, "tnx_test");
+			if (is->tnx_test != NULL)
+				is->tnx_test (NULL);
+			else
+				MessageBoxA (NULL, "Failed to get tnx_test function", NULL, MB_ICONERROR);
+		} else
+			MessageBoxA (NULL, "Failed to load Trade Net X!", NULL, MB_ICONERROR);
 	}
 
 	is->have_job_and_loc_to_skip = 0;

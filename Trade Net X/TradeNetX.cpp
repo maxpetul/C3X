@@ -8,6 +8,15 @@ typedef unsigned char byte;
 
 #include "Civ3Conquests.hpp"
 
+#define EXPORT_PROC extern "C" __declspec(dllexport)
+
+EXPORT_PROC
+void
+tnx_test (Tile * tile)
+{
+	printf ("testing... you probably won't see this anyway\n");
+}
+
 int
 print_the_thing ()
 {
