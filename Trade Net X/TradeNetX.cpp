@@ -29,7 +29,7 @@ has_road_open_to (Tile * tile, int civ_id)
 			tech_req_civ_id = tile->vtable->m70_Get_Tile_Building_OwnerID (tile);
 
 		if ((tech_req_civ_id < 0) ||
-		    Leader_has_tech (&leaders[tech_req_civ_id], __, p_bic_data->WorkerJobs[WJ_Build_Road].RequireID))
+		    Leader_has_tech (&leaders[tech_req_civ_id], p_bic_data->WorkerJobs[WJ_Build_Road].RequireID))
 			has_road = tile->Overlays & 1;
 		else
 			has_road = false;

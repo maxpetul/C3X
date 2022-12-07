@@ -27,6 +27,11 @@ def make_addr_table_lines():
         for n in range(len(objects)):
             ctype = ",".join(objects[n][5:]).strip(" \"\t") # types contain commas and so get split into separate columns by the CSV reader
             name  = objects[n][4].strip(" \"\t")
+
+            # Undo the __fastcall standin for __thiscall
+            if "__fastcall" in ctype:
+                ctype = ctype.replace("this", "_this").replace("__fastcall", "__thiscall").replace("int edx,", "")
+
             tr.append(f"#define {name} (({ctype})bin_addrs[{n}])")
 
         def make_addr_table(index, bin_name):
