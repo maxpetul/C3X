@@ -10,11 +10,15 @@ typedef unsigned char byte;
 
 #define EXPORT_PROC extern "C" __declspec(dllexport)
 
+int const * bin_addrs = NULL;
+
 EXPORT_PROC
 void
-tnx_test (Tile * tile)
+set_exe_version (int index)
 {
-	printf ("testing... you probably won't see this anyway\n");
+	if      (index == 0) bin_addrs = gog_addrs;
+	else if (index == 1) bin_addrs = steam_addrs;
+	else if (index == 2) bin_addrs = pcg_addrs;
 }
 
 int

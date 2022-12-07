@@ -1618,11 +1618,8 @@ patch_init_floating_point ()
 		path[(sizeof path) - 1] = '\0';
 		is->trade_net_x = LoadLibraryA (path);
 		if (is->trade_net_x != NULL) {
-			is->tnx_test = (void *)(*p_GetProcAddress) (is->trade_net_x, "tnx_test");
-			if (is->tnx_test != NULL)
-				is->tnx_test (NULL);
-			else
-				MessageBoxA (NULL, "Failed to get tnx_test function", NULL, MB_ICONERROR);
+			is->set_exe_version = (void *)(*p_GetProcAddress) (is->trade_net_x, "set_exe_version");
+			is->set_exe_version (exe_version_index);
 		} else
 			MessageBoxA (NULL, "Failed to load Trade Net X!", NULL, MB_ICONERROR);
 	}

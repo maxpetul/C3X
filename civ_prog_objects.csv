@@ -1,4 +1,5 @@
 JOB,	   GOG ADDR,	STEAM ADDR,	PCG ADDR,	NAME,						TYPE
+define,	   0,  		1,    		2,  		"exe_version_index",				"int"
 define,    0x9C3508,	0x9E5D08,	0x9C34C8,	"p_bic_data",					"BIC *"
 define,    0xA52E80,	0xA75680,	0xA52E40,	"p_units",					"Units *"
 define,    0xA52DD4,	0xA755D0,	0xA52D94,	"p_tile_units",					"TileUnits *"

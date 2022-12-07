@@ -276,7 +276,7 @@ struct injected_state {
 	void * (* memcpy) (void *, void const *, size_t);
 
 	HMODULE trade_net_x;
-	void (__stdcall * tnx_test) (Tile *);
+	void (__stdcall * set_exe_version) (int);
 
 	struct c3x_config current_config;
 
