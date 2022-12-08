@@ -461,6 +461,10 @@ struct injected_state {
 	// corresponding bits are cleared.
 	int replay_for_players;
 
+	// Used by patch_perform_interturn_in_main_loop to determine which players need to see the replay. Clear before interturn processing, then
+	// every time an AI unit moves onto or bombards a tile, any players that have vision on that tile will have their bit set in this var.
+	int players_saw_ai_unit;
+
 	// Initialized to 0. If set to non-zero, the next call to do_load_game will consume the value and skip the intro popup.
 	int suppress_intro_after_load_popup;
 

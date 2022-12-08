@@ -1850,7 +1850,14 @@ count_escorters (Unit * unit)
 void __fastcall
 patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 {
+	if (0 == (*p_human_player_bits & 1<<this->Body.CivID)) { // If "this" belongs to the AI
+		Tile * tile = tile_at (x, y);
+		if ((tile != NULL) && (tile != p_null_tile))
+			is->players_saw_ai_unit |= tile->Body.Visibility;
+	}
+
 	Unit_bombard_tile (this, __, x, y);
+
 	is->bombard_stealth_target = NULL;
 }
 
@@ -5351,6 +5358,8 @@ patch_perform_interturn_in_main_loop ()
 		*p_toggleable_rules = toggleable_rules;
 	}
 
+	is->players_saw_ai_unit = 0; // Clear bits. After perform_interturn, each set bit will indicate a player that has seen an AI unit move
+
 	perform_interturn ();
 
 	if (save_replay) {
@@ -5360,9 +5369,9 @@ patch_perform_interturn_in_main_loop ()
 					last_human_player_bit = 1<<n;
 		}
 
-		// Set player bits indicating which players should see the replay. This includes all human players that can see at least one AI unit,
-		// except for the last one (the last human player is excluded since they already saw the AIs move during the actual interturn).
-		is->replay_for_players = (ai_unit_vis_before | find_human_players_seeing_ai_units ()) & ~last_human_player_bit;
+		// Set player bits indicating which players should see the replay. This includes all human players that could see an AI unit at the
+		// start of the interturn or that saw an AI unit move or bombard during the interturn, excluding the last human player.
+		is->replay_for_players = (ai_unit_vis_before | (is->players_saw_ai_unit & *p_human_player_bits)) & ~last_human_player_bit;
 	}
 }
 
