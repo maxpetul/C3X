@@ -1847,18 +1847,32 @@ count_escorters (Unit * unit)
 		return 0;
 }
 
+// If "unit" belongs to the AI, records that all players that have visibility on (x, y) have seen an AI unit
+void
+record_ai_unit_seen (Unit * unit, int x, int y)
+{
+	if (0 == (*p_human_player_bits & 1<<unit->Body.CivID)) {
+		Tile * tile = tile_at (x, y);
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			Tile_Body * body = &tile->Body;
+			is->players_saw_ai_unit |= body->FOWStatus | body->V3 | body->Visibility | body->field_D0_Visibility;
+		}
+	}
+}
+
 void __fastcall
 patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 {
-	if (0 == (*p_human_player_bits & 1<<this->Body.CivID)) { // If "this" belongs to the AI
-		Tile * tile = tile_at (x, y);
-		if ((tile != NULL) && (tile != p_null_tile))
-			is->players_saw_ai_unit |= tile->Body.Visibility;
-	}
-
+	record_ai_unit_seen (this, x, y);
 	Unit_bombard_tile (this, __, x, y);
-
 	is->bombard_stealth_target = NULL;
+}
+
+void __fastcall
+patch_Unit_move (Unit * this, int edx, int tile_x, int tile_y)
+{
+	record_ai_unit_seen (this, tile_x, tile_y);
+	Unit_move (this, __, tile_x, tile_y);
 }
 
 int
@@ -4620,7 +4634,7 @@ set_up_ai_two_city_start (Map * map)
 			for (int n = 0; n < count_units_to_move; n++) {
 				int x, y;
 				tile_index_to_coords (map, alt_starting_locs[civ_id], &x, &y);
-				Unit_move (units_to_move[n], __, x, y);
+				patch_Unit_move (units_to_move[n], __, x, y);
 			}
 		}
 

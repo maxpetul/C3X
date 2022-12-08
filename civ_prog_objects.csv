@@ -203,7 +203,7 @@ define,	   0x5D7180,	0x5E65E0,	0x5D70B0,	"Map_calc_food_yield_at",			"int (__fas
 define,	   0x5663C0,	0x572730,	0x566370,	"Leader_create_city",				"City * (__fastcall *) (Leader * this, int edx, int x, int y, int race_id, int param_4, char const * name, byte param_6)"
 inlead,	   0x5D3030,	0x5E2330,	0x5D2F60,	"Map_process_after_placing",			"void (__fastcall *) (Map * this, int edx, byte param_1)"
 define,	   0x5BBBC0,	0x5CA720,	0x5BB8D0,	"Unit_despawn",					"void (__fastcall *) (Unit * this, int edx, int param_1, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)"
-define,	   0x5BD220,	0x5CBDE0,	0x5BCF30,	"Unit_move",					"void (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)"
+inlead,	   0x5BD220,	0x5CBDE0,	0x5BCF30,	"Unit_move",					"void (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)"
 define,	   0x558700,	0x564590,	0x5586B0,	"Main_GUI_label_loading_bar",			"void (__fastcall *) (Main_GUI * this, int edx, int param_1, char *text)"
 define,	   0x48DE43,	0x4920E3,	0x48DED3,	"ADDR_TURN_METALIMIT_1",			"byte *"
 define,	   0x4946E1,	0x4990CA,	0x494771,	"ADDR_TURN_METALIMIT_2",			"byte *"
