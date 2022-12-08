@@ -6095,3 +6095,722 @@ struct TextBuffer
 	int space_remaining;
 	int field_18;
 };
+
+
+
+
+
+#define exe_version_index ((int)bin_addrs[0])
+#define p_bic_data ((BIC *)bin_addrs[1])
+#define p_units ((Units *)bin_addrs[2])
+#define p_tile_units ((TileUnits *)bin_addrs[3])
+#define p_cities ((Cities *)bin_addrs[4])
+#define leaders ((Leader *)bin_addrs[5])
+#define p_main_screen_form ((Main_Screen_Form *)bin_addrs[6])
+#define ADDR_ADDR_OUTPUTDEBUGSTRINGA ((void *)bin_addrs[7])
+#define ADDR_ADDR_GETASYNCKEYSTATE ((void *)bin_addrs[8])
+#define ADDR_ADDR_GETPROCADDRESS ((void *)bin_addrs[9])
+#define ADDR_ADDR_GETMODULEHANDLEA ((void *)bin_addrs[10])
+#define ADDR_ADDR_MESSAGEBOXA ((void *)bin_addrs[11])
+#define ADDR_STEALTH_ATTACK_TARGET_COUNT_CHECK ((void *)bin_addrs[12])
+#define ADDR_UNIT_COUNT_CHECK ((void *)bin_addrs[13])
+#define ADDR_ERA_COUNT_CHECK ((void *)bin_addrs[14])
+#define ADDR_SUB_BUG_PATCH ((void *)bin_addrs[15])
+#define ADDR_SCIENCE_AGE_BUG_PATCH ((void *)bin_addrs[16])
+#define ADDR_PEDIA_TEXTURE_BUG_PATCH ((void *)bin_addrs[17])
+#define ADDR_AUTORAZE_BYPASS ((void *)bin_addrs[18])
+#define is_online_game ((char (__stdcall *) (void))bin_addrs[19])
+#define tile_at ((Tile * (__cdecl *) (int x, int y))bin_addrs[20])
+#define TileUnits_TileUnitID_to_UnitID ((int (__thiscall *) (TileUnits * _this,  int tile_unit_id, int * out_UnitItem_field_0))bin_addrs[21])
+#define Unit_can_bombard_tile ((void (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[22])
+#define Unit_get_defense_strength ((int (__thiscall *) (Unit * _this))bin_addrs[23])
+#define Unit_is_visible_to_civ ((char (__thiscall *) (Unit * _this,  int civ_id, int param_2))bin_addrs[24])
+#define Tile_has_city ((char (__thiscall *) (Tile * _this))bin_addrs[25])
+#define Unit_get_max_hp ((int (__thiscall *) (Unit * _this))bin_addrs[26])
+#define UnitType_has_ability ((char (__thiscall *) (UnitType * _this,  enum UnitTypeAbilities a))bin_addrs[27])
+#define Unit_get_max_move_points ((int (__thiscall *) (Unit * _this))bin_addrs[28])
+#define Button_set_tooltip ((int (__thiscall *) (Button * _this,  char * str))bin_addrs[29])
+#define PCX_Image_construct ((PCX_Image * (__thiscall *) (PCX_Image * _this))bin_addrs[30])
+#define PCX_Image_read_file ((int (__thiscall *) (PCX_Image * _this,  char * file_path, void * param_2, int param_3, int param_4, int param_5))bin_addrs[31])
+#define Tile_Image_Info_construct ((Tile_Image_Info * (__thiscall *) (Tile_Image_Info * _this))bin_addrs[32])
+#define Tile_Image_Info_slice_pcx ((int (__thiscall *) (Tile_Image_Info * _this,  PCX_Image * img, int up_left_x, int up_left_y, int w, int h, int arg6, int arg7))bin_addrs[33])
+#define get_popup_form ((PopupForm * (__stdcall *) ())bin_addrs[34])
+#define set_popup_str_param ((int (__cdecl *) (int param_index, char * str, int param_3, int param_4))bin_addrs[35])
+#define set_popup_int_param ((int (__cdecl *) (int param_index, int value))bin_addrs[36])
+#define City_zoom_to ((void (__thiscall *) (City *_this,  int param_1))bin_addrs[37])
+#define City_has_improvement ((char (__thiscall *) (City * _this,  int i_improvement, char include_auto_improvements))bin_addrs[38])
+#define get_font ((Object_66C3FC * (__cdecl *) (int size, FontStyleFlags style))bin_addrs[39])
+#define PCX_Image_draw_centered_text ((int (__thiscall *) (PCX_Image *_this,  Object_66C3FC * font, char * str, int x, int y, int width, int str_len))bin_addrs[40])
+#define City_get_order_cost ((int (__thiscall *) (City * _this))bin_addrs[41])
+#define City_get_order_progress ((int (__thiscall *) (City * _this))bin_addrs[42])
+#define City_recompute_happiness ((void (__thiscall *) (City * _this))bin_addrs[43])
+#define ADDR_SMALL_WONDER_FREE_IMPROVS_RETURN ((int)bin_addrs[44])
+#define ADDR_RECOMPUTE_AUTO_IMPROVS_FILTER ((void *)bin_addrs[45])
+#define Main_Screen_Form_issue_command ((char (__thiscall *) (Main_Screen_Form * _this,  int command, Unit * unit))bin_addrs[46])
+#define clear_something_1 ((void (__stdcall *) ())bin_addrs[47])
+#define clear_something_2 ((void (__thiscall *) (void * _this))bin_addrs[48])
+#define ADDR_CHECK_ARTILLERY_IN_CITY ((void *)bin_addrs[49])
+#define neighbor_index_to_displacement ((void (__cdecl *) (int neighbor_index, int * out_x, int * out_y))bin_addrs[50])
+#define Unit_set_state ((void (__thiscall *) (Unit * _this,  int new_state))bin_addrs[51])
+#define Unit_set_escortee ((void (__thiscall *) (Unit * _this,  int escortee))bin_addrs[52])
+#define p_rand_object ((void *)bin_addrs[53])
+#define rand_int ((int (__thiscall *) (void * _this,  int lim))bin_addrs[54])
+#define p_null_tile ((Tile *)bin_addrs[55])
+#define ADDR_HOUSEBOAT_BUG_PATCH ((byte *)bin_addrs[56])
+#define ADDR_HOUSEBOAT_BUG_PATCH_END ((byte *)bin_addrs[57])
+#define p_trade_net ((Trade_Net *)bin_addrs[58])
+#define Trade_Net_set_unit_path ((int (__thiscall *) (Trade_Net * _this,  int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp))bin_addrs[59])
+#define Unit_pop_next_move_from_path ((byte (__thiscall *) (Unit * _this))bin_addrs[60])
+#define Unit_next_escorter_id ((int (__thiscall *) (Unit * _this,  int * index, byte begin_iterating))bin_addrs[61])
+#define Unit_disband ((void (__thiscall *) (Unit * _this))bin_addrs[62])
+#define Unit_hurry_production ((void (__thiscall *) (Unit * _this))bin_addrs[63])
+#define Unit_ai_can_start_science_age ((byte (__thiscall *) (Unit * _this))bin_addrs[64])
+#define Unit_start_science_age ((void (__thiscall *) (Unit * _this))bin_addrs[65])
+#define Unit_ai_can_form_army ((byte (__thiscall *) (Unit * _this))bin_addrs[66])
+#define Unit_form_army ((Unit * (__thiscall *) (Unit * _this))bin_addrs[67])
+#define p_diplo_form ((DiploForm *)bin_addrs[68])
+#define new ((void * (__cdecl *) (unsigned num_bytes))bin_addrs[69])
+#define p_trade_offer_vtable ((TradeOfferVTable *)bin_addrs[70])
+#define Leader_consider_trade ((DiploMessage (__thiscall *) (Leader * _this,  TradeOfferList * receiving, TradeOfferList * paying, int other_party_civ_id, byte param_4, byte param_5, byte param_6, byte param_7, int * out_advantage, int * param_9, int * param_10))bin_addrs[71])
+#define ADDR_SETUP_INITIAL_GOLD_ASK_RETURN ((int)bin_addrs[72])
+#define ADDR_SETUP_MODIFY_GOLD_ASK_RETURN ((int)bin_addrs[73])
+#define ADDR_SETUP_INITIAL_GOLD_OFFER_RETURN ((int)bin_addrs[74])
+#define ADDR_SETUP_MODIFY_GOLD_OFFER_RETURN ((int)bin_addrs[75])
+#define TRADE_GOLD_SETTER_IS_LUMP_SUM_OFFSET ((int)bin_addrs[76])
+#define ADDR_PRINT_GOLD_AMOUNT_1 ((byte *)bin_addrs[77])
+#define ADDR_PRINT_GOLD_AMOUNT_2 ((byte *)bin_addrs[78])
+#define p_player_bits ((unsigned *)bin_addrs[79])
+#define DiploForm_close ((void (__thiscall *) (DiploForm *))bin_addrs[80])
+#define Leader_ai_would_meet_with ((byte (__thiscall *) (Leader * _this,  int civ_id))bin_addrs[81])
+#define Button_construct ((Button * (__thiscall *) (Button * _this))bin_addrs[82])
+#define Button_initialize ((int (__thiscall *) (Button * _this,  char * param_1, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8))bin_addrs[83])
+#define DiploForm_set_their_message ((int (__thiscall *) (DiploForm * _this,  DiploMessage msg, int message_arg, int param_3))bin_addrs[84])
+#define DiploForm_reset_our_message_choices ((void (__thiscall *) (DiploForm *))bin_addrs[85])
+#define civ_prog_malloc ((void * (__cdecl *) (unsigned _Size))bin_addrs[86])
+#define civ_prog_free ((void (__cdecl *) (void * p))bin_addrs[87])
+#define ADDR_OPEN_UNIT_MENU_RETURN ((int)bin_addrs[88])
+#define Context_Menu_widen_for_text ((void (__thiscall *) (Context_Menu * _this,  char * text))bin_addrs[89])
+#define City_requires_improvement_to_grow ((int (__thiscall *) (City * _this))bin_addrs[90])
+#define Unit_join_city ((void (__thiscall *) (Unit * _this,  City * city))bin_addrs[91])
+#define Unit_upgrade ((Unit * (__thiscall *) (Unit * _this,  byte ignore_cost))bin_addrs[92])
+#define Unit_get_upgrade_cost ((int (__thiscall *) (Unit * _this))bin_addrs[93])
+#define script_dot_txt_file_path ((char *)bin_addrs[94])
+#define Map_compute_neighbor_index ((int (__thiscall *) (Map * _this,  int x_home, int y_home, int x_neigh, int y_neigh, int lim))bin_addrs[95])
+#define PCX_Image_draw_text ((int (__thiscall *) (PCX_Image * _this,  char * str, int x, int y, int str_len))bin_addrs[96])
+#define Main_Screen_Form_get_tile_coords_under_mouse ((int (__thiscall *) (Main_Screen_Form * _this,  int mouse_x, int mouse_y, int * out_tile_x, int * out_tile_y))bin_addrs[97])
+#define PCX_Image_process_text ((int (__thiscall *) (PCX_Image * _this,  char * str))bin_addrs[98])
+#define p_current_turn_no ((int *)bin_addrs[99])
+#define p_labels ((char ***)bin_addrs[100])
+#define LBL_GOLDEN_AGE ((int)bin_addrs[101])
+#define p_toggleable_rules ((int *)bin_addrs[102])
+#define p_debug_mode_bits ((unsigned *)bin_addrs[103])
+#define Unit_has_ability ((byte (__thiscall *) (Unit * _this,  enum UnitTypeAbilities a))bin_addrs[104])
+#define ai_eval_city_location ((int (__stdcall *) (int x, int y, int civ_id, byte param_4, int * out_breakdown))bin_addrs[105])
+#define ADDR_INTERCEPT_AI_IMPROV_VALUE ((void *)bin_addrs[106])
+#define AI_CONSIDERATION_INTERCEPT_LEN ((int)bin_addrs[107])
+#define ADDR_INTERCEPT_AI_UNIT_VALUE ((void *)bin_addrs[108])
+#define PopupForm_add_text ((byte (__thiscall *) (PopupForm * _this,  char * text, byte param_2))bin_addrs[109])
+#define PopupSelection_add_item ((int (__thiscall *) (PopupSelection * _this,  char * text, int value))bin_addrs[110])
+#define ADDR_LOAD_SCENARIO_PREVIEW_RETURN ((int)bin_addrs[111])
+#define ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN ((int)bin_addrs[112])
+#define Improvement_has_wonder_flag ((byte (__thiscall *) (Improvement * _this,  enum ImprovementTypeWonderFeatures flag))bin_addrs[113])
+#define UnitType_has_ai_strategy ((byte (__thiscall *) (UnitType * _this,  byte n))bin_addrs[114])
+#define Unit_find_transport ((Unit * (__thiscall *) (Unit * _this,  int tile_x, int tile_y))bin_addrs[115])
+#define Unit_load ((void (__thiscall *) (Unit * _this,  Unit * transport))bin_addrs[116])
+#define p_human_player_bits ((int *)bin_addrs[117])
+#define Tile_Image_Info_draw_on_map ((int (__thiscall *) (Tile_Image_Info * _this,  Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7))bin_addrs[118])
+#define BIC_get_asset_path ((char * (__thiscall *) (BIC * _this,  char * str, byte show_error_popup))bin_addrs[119])
+#define Tile_Image_Info_slice_pcx_with_color_table ((int (__thiscall *) (Tile_Image_Info * _this,  PCX_Image * img, int up_left_x, int up_left_y, int w, int h, int arg6, int arg7))bin_addrs[120])
+#define PCX_Image_set_font ((int (__thiscall *) (PCX_Image * _this,  Object_66C3FC * font, int arg_2, int arg_3, int arg_4))bin_addrs[121])
+#define ADDR_INTERCEPT_SET_RESOURCE_BIT ((void *)bin_addrs[122])
+#define City_has_trade_connection_to_capital ((byte (__thiscall *) (City * _this))bin_addrs[123])
+#define Leader_has_tech ((byte (__thiscall *) (Leader * _this,  int id))bin_addrs[124])
+#define City_get_pollution_from_buildings ((int (__thiscall *) (City * _this))bin_addrs[125])
+#define ADDR_RESOURCE_TILE_COUNT_MASK ((void *)bin_addrs[126])
+#define Tile_get_resource_visible_to ((int (__thiscall *) (Tile * _this,  int civ_id))bin_addrs[127])
+#define Map_get_tile ((Tile * (__thiscall *) (Map * _this,  int index))bin_addrs[128])
+#define Map_get_x_dist ((int (__thiscall *) (Map * _this,  int x1, int x2))bin_addrs[129])
+#define Map_get_y_dist ((int (__thiscall *) (Map * _this,  int y1, int y2))bin_addrs[130])
+#define Map_calc_food_yield_at ((int (__thiscall *) (Map * _this,  int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city))bin_addrs[131])
+#define Leader_create_city ((City * (__thiscall *) (Leader * _this,  int x, int y, int race_id, int param_4, char const * name, byte param_6))bin_addrs[132])
+#define Unit_despawn ((void (__thiscall *) (Unit * _this,  int param_1, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7))bin_addrs[133])
+#define Unit_move ((void (__thiscall *) (Unit * _this,  int tile_x, int tile_y))bin_addrs[134])
+#define Main_GUI_label_loading_bar ((void (__thiscall *) (Main_GUI * _this,  int param_1, char *text))bin_addrs[135])
+#define ADDR_TURN_METALIMIT_1 ((byte *)bin_addrs[136])
+#define ADDR_TURN_METALIMIT_2 ((byte *)bin_addrs[137])
+#define ADDR_TURN_METALIMIT_3 ((byte *)bin_addrs[138])
+#define ADDR_TURN_METALIMIT_4 ((byte *)bin_addrs[139])
+#define ADDR_TURN_METALIMIT_5 ((byte *)bin_addrs[140])
+#define ADDR_TURN_METALIMIT_6 ((byte *)bin_addrs[141])
+#define ADDR_TURN_METALIMIT_7 ((byte *)bin_addrs[142])
+#define Leader_sum_improvements_maintenance ((int (__thiscall *) (Leader * _this,  int govt_id))bin_addrs[143])
+#define ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT ((byte *)bin_addrs[144])
+#define Leader_compute_income ((int (__thiscall *) (Leader * _this))bin_addrs[145])
+#define Leader_recompute_economy ((void (__thiscall *) (Leader * _this))bin_addrs[146])
+#define City_get_improvement_maintenance ((int (__thiscall *) (City * _this,  int improv_id))bin_addrs[147])
+#define Leader_set_treasury ((void (__thiscall *) (Leader * _this,  int amount))bin_addrs[148])
+#define City_sell_improvement ((void (__thiscall *) (City * _this,  int improv_id, byte set_status_bit))bin_addrs[149])
+#define p_civilopedia_form ((Civilopedia_Form *)bin_addrs[150])
+#define Civilopedia_open ((void (__thiscall *) (void * _this,  char * key, byte param_2))bin_addrs[151])
+#define get_unit_support_info ((void (__stdcall *) (int civ_id, int govt_id, int * out_cost_per_unit, int * out_count_free_units))bin_addrs[152])
+#define Leader_get_free_unit_count ((int (__thiscall *) (Leader * _this,  int govt_id))bin_addrs[153])
+#define Leader_count_foreign_and_king_units ((int (__thiscall *) (Leader * _this))bin_addrs[154])
+#define get_tile_occupier_id ((int (__cdecl *) (int x, int y, int pov_civ_id, byte respect_unit_invisibility))bin_addrs[155])
+#define Main_Screen_Form_show_map_message ((void (__thiscall *) (Main_Screen_Form * _this,  int tile_x, int tile_y, char * text_key, byte pause))bin_addrs[156])
+#define p_preferences ((unsigned *)bin_addrs[157])
+#define City_set_production ((void (__thiscall *) (City * _this,  int order_type, int order_id, byte ask_to_confirm))bin_addrs[158])
+#define City_get_income_from_wealth_build ((int (__thiscall *) (City * _this))bin_addrs[159])
+#define print_int ((char * (__cdecl *) (int val, char * str, unsigned base))bin_addrs[160])
+#define Context_Menu_add_item ((int (__thiscall *) (Context_Menu * _this,  int item_id, char * text, byte param_3, int param_4))bin_addrs[161])
+#define TextBuffer_check_ptr ((char * (__thiscall *) (TextBuffer * _this,  char * str))bin_addrs[162])
+#define Unit_try_flying_over_tile ((byte (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[163])
+#define Fighter_find_defender_against_bombardment ((Unit * (__thiscall *) (Fighter * _this,  Unit * bombarder, int tile_x, int tile_y, int bombarder_civ_id, byte land_lethal, byte sea_lethal))bin_addrs[164])
+#define Unit_play_bombard_fire_animation ((int (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[165])
+#define Unit_play_bombing_animation ((void (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[166])
+#define process_text_snippet ((int (__cdecl *) (char * in, char * out))bin_addrs[167])
+#define get_int_from_conquests_ini ((int (__cdecl *) (LPCSTR key, int param_2, int param_3))bin_addrs[168])
+#define open_load_game_file_picker ((char * (__thiscall *) (void * _this))bin_addrs[169])
+#define do_load_game ((void * (__cdecl *) (char * param_1))bin_addrs[170])
+#define perform_interturn ((void (__cdecl *) ())bin_addrs[171])
+#define p_is_pbem_game ((byte *)bin_addrs[172])
+#define p_is_offline_mp_game ((byte *)bin_addrs[173])
+#define p_mp_object ((void *)bin_addrs[174])
+#define mp_check_current_combat ((byte (__thiscall *) (void * _this,  int mp_tile_x, int mp_tile_y))bin_addrs[175])
+#define Fighter_damage_city_by_bombardment ((byte (__thiscall *) (Fighter * _this,  Unit * unit, City * city, int damage_kind, int min_fire_rate))bin_addrs[176])
+int const gog_addrs[177] = {
+	0,
+	0x9C3508,
+	0xA52E80,
+	0xA52DD4,
+	0xA52E68,
+	0xA52E98,
+	0x9F8700,
+	0x665188,
+	0x665280,
+	0x665168,
+	0x6650E4,
+	0x66527C,
+	0x5B6B01,
+	0x569503,
+	0x594B35,
+	0x57F623,
+	0x5601EF,
+	0x4CD0B1,
+	0x5640AC,
+	0x499FE0,
+	0x437A70,
+	0x426C80,
+	0x5C0E20,
+	0x5BE820,
+	0x5BB650,
+	0x5EA6C0,
+	0x5BE5B0,
+	0x5E4EF0,
+	0x5BE470,
+	0x60B370,
+	0x5FC420,
+	0x5FC820,
+	0x5F7E50,
+	0x5F7F90,
+	0x49FC50,
+	0x61C5A0,
+	0x61C570,
+	0x4ACD20,
+	0x4ACB50,
+	0x54CAD0,
+	0x5FD750,
+	0x4ACD70,
+	0x4ACD40,
+	0x4BCFF0,
+	0x55A62E,
+	0x55A5C6,
+	0x4DAA70,
+	0x609D60,
+	0x6207B0,
+	0x455288,
+	0x5E6E50,
+	0x5B3040,
+	0x5B2F10,
+	0xA526B4,
+	0x60BAB0,
+	0xCAA330,
+	0x45A35F,
+	0x45A386,
+	0xB72888,
+	0x580540,
+	0x5B3290,
+	0x5B2B20,
+	0x5BC300,
+	0x5C0420,
+	0x5C0300,
+	0x5C03B0,
+	0x5BC980,
+	0x5BCA20,
+	0xA35200,
+	0x649A8B,
+	0x666AC4,
+	0x440EE0,
+	0x509325,
+	0x50BCC8,
+	0x509669,
+	0x50BF10,
+	14,
+	0x50BEBD,
+	0x50BC75,
+	0xA526C0,
+	0x50D830,
+	0x440E10,
+	0x609F50,
+	0x60B050,
+	0x5161C0,
+	0x516260,
+	0x649FA7,
+	0x649EBE,
+	0x4E993C,
+	0x61B0C0,
+	0x4B1DC0,
+	0x5B39D0,
+	0x5C0740,
+	0x5C04D0,
+	0xCADC18,
+	0x5F3F50,
+	0x5FEF70,
+	0x4E3C60,
+	0x5FE560,
+	0xA526AC,
+	0xCADC0C,
+	497,
+	0xA5267C,
+	0xA52680,
+	0x5BC8B0,
+	0x442480,
+	0x430FBA,
+	7,
+	0x433C7C,
+	0x610B30,
+	0x6193A0,
+	0x59B499,
+	0x59AD27,
+	0x437540,
+	0x437710,
+	0x44CE50,
+	0x5C5110,
+	0xA526BC,
+	0x5F8130,
+	0x598580,
+	0x5F8080,
+	0x5FD320,
+	0x57EEC4,
+	0x4ADDC0,
+	0x561440,
+	0x4B1B40,
+	0x57E943,
+	0x5DA1A0,
+	0x5D16A0,
+	0x441ED0,
+	0x437970,
+	0x5D7180,
+	0x5663C0,
+	0x5BBBC0,
+	0x5BD220,
+	0x558700,
+	0x48DE43,
+	0x4946E1,
+	0x54E2E0,
+	0x54E2E7,
+	0x584163,
+	0x5817B2,
+	0x492100,
+	0x55CFB0,
+	0x560972,
+	0x55DD50,
+	0x5612F0,
+	0x4ACDF0,
+	0x4C2350,
+	0x4B3400,
+	0x9E85F0,
+	0x4CBE10,
+	0x53A960,
+	0x55D2A0,
+	0x55D030,
+	0x56D7D0,
+	0x4ED220,
+	0xA52678,
+	0x4AFAB0,
+	0x4B0AC0,
+	0x64C91E,
+	0x619E70,
+	0x60F6A0,
+	0x5C68A0,
+	0x4A1FA0,
+	0x5C1210,
+	0x5CA860,
+	0x61BCA0,
+	0x585B00,
+	0x4A0670,
+	0x592D90,
+	0x4F5EF0,
+	0xA527B4,
+	0xA52991,
+	0x74AF60,
+	0x4697B0,
+	0x4A2650,
+};
+int const steam_addrs[177] = {
+	1,
+	0x9E5D08,
+	0xA75680,
+	0xA755D0,
+	0xA75668,
+	0xA75698,
+	0xA1AF00,
+	0x68219C,
+	0x6822E0,
+	0x682130,
+	0x6820B8,
+	0x6822E4,
+	0x5C5458,
+	0x575933,
+	0x5A2357,
+	0x58C352,
+	0x56C2E3,
+	0x4D5151,
+	0x570385,
+	0x49F9F0,
+	0x439620,
+	0x4283C0,
+	0x5CF9C0,
+	0x5CD420,
+	0x5CA190,
+	0x5F9F10,
+	0x5CD180,
+	0x5F4750,
+	0x5CD030,
+	0x625850,
+	0x60FC10,
+	0x610360,
+	0x608170,
+	0x6083D0,
+	0x4A6790,
+	0x63E390,
+	0x63E350,
+	0x4B3CC0,
+	0x4B3AF0,
+	0x557980,
+	0x611850,
+	0x4B3D30,
+	0x4B3CE0,
+	0x4C4660,
+	0x566538,
+	0x5664D4,
+	0x4E3430,
+	0x6233C0,
+	0x644F10,
+	0x457458,
+	0x5F66A0,
+	0x5C1970,
+	0x5C1840,
+	0xA74EAC,
+	0x626440,
+	0xCCCB98,
+	0x45C56F,
+	0x45C596,
+	0xB950A8,
+	0x58D270,
+	0x5C1BE0,
+	0x5C1440,
+	0x5CAE50,
+	0x5CEFC0,
+	0x5CEE90,
+	0x5CEF50,
+	0x5CB510,
+	0x5CB5B0,
+	0xA57A00,
+	0x6683E1,
+	0x683B1C,
+	0x442CD0,
+	0x51334D,
+	0x515DA1,
+	0x51366E,
+	0x516008,
+	14,
+	0x515FB4,
+	0x515D4D,
+	0xA74EB8,
+	0x517970,
+	0x442C00,
+	0x623C40,
+	0x625450,
+	0x51F9B0,
+	0x51FA50,
+	0x6076E0,
+	0x668816,
+	0x4F273A,
+	0x63C940,
+	0x4B8D50,
+	0x5C2320,
+	0x5CF2E0,
+	0x5CF070,
+	0xCD0510,
+	0x603DD0,
+	0x613F70,
+	0x4EC4B0,
+	0x612F50,
+	0xA74EA4,
+	0xCD0504,
+	498,
+	0xA74E74,
+	0xA74E78,
+	0x5CB430,
+	0x444250,
+	0x432A6D,
+	6,
+	0x435712,
+	0x62CE00,
+	0x639AD0,
+	0x5A8FD9,
+	0x5A8872,
+	0x4390F0,
+	0x4392F0,
+	0x44EE40,
+	0x5D3DF0,
+	0xA74EB4,
+	0x6085D0,
+	0x5A5E30,
+	0x608500,
+	0x611210,
+	0x58BBE8,
+	0x4B4DA0,
+	0x56D5A0,
+	0x4B8B00,
+	0x58B68E,
+	0x5E9710,
+	0x5E0900,
+	0x443CC0,
+	0x439520,
+	0x5E65E0,
+	0x572730,
+	0x5CA720,
+	0x5CBDE0,
+	0x564590,
+	0x4920E3,
+	0x4990CA,
+	0x55925B,
+	0x559262,
+	0x59100F,
+	0x58E4E2,
+	0x496751,
+	0x569040,
+	0x56CA7F,
+	0x569DF0,
+	0x56D420,
+	0x4B3DD0,
+	0x4C9B30,
+	0x4BA3A0,
+	0xA0ADF0,
+	0x4D3E50,
+	0x544C80,
+	0x569330,
+	0x5690C0,
+	0x57A1B0,
+	0x4F6140,
+	0xA74E70,
+	0x4B6A70,
+	0x4B7A70,
+	0x66AFD7,
+	0x63B090,
+	0x62B460,
+	0x5D5700,
+	0x4A8BB0,
+	0x5CFDA0,
+	0x5D97A0,
+	0x63D770,
+	0x592D50,
+	0x4A71F0,
+	0x5A0490,
+	0x4FF290,
+	0xA74FAC,
+	0xA75189,
+	0x765300,
+	0x46BF90,
+	0x4A9290,
+};
+int const pcg_addrs[177] = {
+	2,
+	0x9C34C8,
+	0xA52E40,
+	0xA52D94,
+	0xA52E28,
+	0xA52E58,
+	0x9F86C0,
+	0x665188,
+	0x665280,
+	0x665168,
+	0x6650E4,
+	0x66527C,
+	0x5B6811,
+	0x5694B3,
+	0x594855,
+	0x57F383,
+	0x56019F,
+	0x4CD171,
+	0x56405C,
+	0x49A070,
+	0x437AF0,
+	0x426D00,
+	0x5C0B30,
+	0x5BE530,
+	0x5BB360,
+	0x5EA5F0,
+	0x5BE2C0,
+	0x5E4E20,
+	0x5BE180,
+	0x60B290,
+	0x5FC300,
+	0x5FC700,
+	0x5F7D80,
+	0x5F7EC0,
+	0x49FCE0,
+	0x61C4D0,
+	0x61C4A0,
+	0x4ACDB0,
+	0x4ACBE0,
+	0x54CB30,
+	0x5FD630,
+	0x4ACE00,
+	0x4ACDD0,
+	0x4BD080,
+	0x55A5DE,
+	0x55A576,
+	0x4DAB30,
+	0x609C80,
+	0x6206E0,
+	0x455308,
+	0x5E6D80,
+	0x5B2D50,
+	0x5B2C20,
+	0xA52674,
+	0x60B9E0,
+	0xCAA2F0,
+	0x45A3DF,
+	0x45A406,
+	0xB72848,
+	0x5802A0,
+	0x5B2FA0,
+	0x5B2830,
+	0x5BC010,
+	0x5C0130,
+	0x5C0010,
+	0x5C00C0,
+	0x5BC690,
+	0x5BC730,
+	0xA351C0,
+	0x6499CF,
+	0x666AC4,
+	0x440F60,
+	0x5093C5,
+	0x50BD68,
+	0x509709,
+	0x50BFB0,
+	14,
+	0x50BF5D,
+	0x50BD15,
+	0xA52680,
+	0x50D8D0,
+	0x440E90,
+	0x609E70,
+	0x60AF70,
+	0x516260,
+	0x516300,
+	0x649EEB,
+	0x649E02,
+	0x4E99FC,
+	0x61AFF0,
+	0x4B1E50,
+	0x5B36E0,
+	0x5C0450,
+	0x5C01E0,
+	0xCADBD8,
+	0x5F3E80,
+	0x5FEE50,
+	0x4E3D20,
+	0x5FE440,
+	0xA5266C,
+	0xCADBCC,
+	497,
+	0xA5263C,
+	0xA52640,
+	0x5BC5C0,
+	0x442500,
+	0x43103A,
+	7,
+	0x433CFC,
+	0x610A60,
+	0x6192D0,
+	0x59B1B9,
+	0x59AA47,
+	0x4375C0,
+	0x437790,
+	0x44CED0,
+	0x5C4E20,
+	0xA5267C,
+	0x5F8060,
+	0x5982A0,
+	0x5F7FB0,
+	0x5FD200,
+	0x57EC24,
+	0x4ADE50,
+	0x5613F0,
+	0x4B1BD0,
+	0x57E6A3,
+	0x5DA0D0,
+	0x5D15D0,
+	0x441F50,
+	0x4379F0,
+	0x5D70B0,
+	0x566370,
+	0x5BB8D0,
+	0x5BCF30,
+	0x5586B0,
+	0x48DED3,
+	0x494771,
+	0x54E340,
+	0x54E347,
+	0x583EC3,
+	0x581512,
+	0x492190,
+	0x55CF60,
+	0x560922,
+	0x55DD00,
+	0x5612A0,
+	0x4ACE80,
+	0x4C2370,
+	0x4B3490,
+	0x9E85B0,
+	0x4CBED0,
+	0x53A9E0,
+	0x55D250,
+	0x55CFE0,
+	0x56D740,
+	0x4ED2E0,
+	0xA52638,
+	0x4AFB40,
+	0x4B0B50,
+	0x64C85E,
+	0x619DA0,
+	0x60F5D0,
+	0x5C65B0,
+	0x4A2030,
+	0x5C0F20,
+	0x5CA570,
+	0x61BBD0,
+	0x585860,
+	0x4A0700,
+	0x592AB0,
+	0x4F5FB0,
+	0xA52774,
+	0xA52951,
+	0x74AF20,
+	0x469830,
+	0x4A26E0,
+};
