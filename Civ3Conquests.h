@@ -1894,8 +1894,7 @@ struct Map_vtable
   int m17;
 //  char (__thiscall *m18)(Map *, int, int);
   void *m18;
-//  int (__thiscall *m19_Create_Tiles)(Map *, Tile **);
-  void *m19_Create_Tiles;
+  byte (__fastcall * m19_Create_Tiles)(Map * this, __, Tile ** out_array);
   int m20;
   byte (__fastcall * is_near_lake) (Map * this, int edx, int x, int y, int num_tiles);
   byte (__fastcall * is_near_river) (Map * this, int edx, int x, int y, int num_tiles);
