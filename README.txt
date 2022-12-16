@@ -1,5 +1,5 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 14J
+Release 15
 
 INCLUDES (** = new in latest version):
 Convenience features:
@@ -53,6 +53,7 @@ Engine extensions:
  - "Perfume" units or improvements to control how likely the AI is to build them
  - Reveal AI logic
   - Press P in city screen to see AI point value for each available build
+    - ** Units with multiple possible strategies have the different possibilities labeled
   - Press L on map to see how desirable the AI finds each tile as a city location
  - Corruption can be completely removed with "OFF" government setting
  - Disallow land units from working or settling water tiles
@@ -69,12 +70,14 @@ Engine extensions:
  - Option to aggressively penalize bankrupt players
  - Option to remove exception to tile penalty for city tiles with fresh water and Agri trait
  - ** Enable stealth attacks via bombardment
- - ** Recon missions can be make vulnerable to interception
+ - ** Artillery can be set to use PTW-like targeting against cities
+ - ** Recon missions can be made vulnerable to interception
  - ** Option to charge one move for recon missions and interception
  - ** Allow players to opt out of stealth attacks
  - ** Polish precision striking by land or sea units
   - Use regular bombard animation instead of flying animation
   - Use bombard range instead of operational range
+  - Cannot be intercepted
 - ** Option to immunize aircraft against bombardment
 
 INSTALLATION AND USAGE:

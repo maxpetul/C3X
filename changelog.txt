@@ -1,7 +1,8 @@
-* RELEASE 14J
+* RELEASE 15
 - Option to replay AI moves for human players in hotseat mode
 - Enable stealth attacks via bombardment
-- Recon missions can be make vulnerable to interception
+- Artillery can be set to use PTW-like targeting against cities
+- Recon missions can be made vulnerable to interception
 - Option to charge one move for recon missions and interception
 - Allow players to opt out of stealth attacks
 - Polish precision striking by land or sea units
