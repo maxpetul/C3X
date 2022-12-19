@@ -253,6 +253,8 @@ struct injected_state {
 	int (WINAPI * MultiByteToWideChar) (UINT, DWORD, LPCCH, int, LPWSTR, int);
 	int (WINAPI * WideCharToMultiByte) (UINT, DWORD, LPCWCH, int, LPSTR, int, LPCCH, LPBOOL);
 	int (WINAPI * GetLastError) ();
+	BOOL (WINAPI * QueryPerformanceCounter) (LARGE_INTEGER *);
+	BOOL (WINAPI * QueryPerformanceFrequency) (LARGE_INTEGER *);
 
 	// Win32 funcs from user32.dll
 	int (WINAPI * MessageBoxA) (HWND, LPCSTR, LPCSTR, UINT);

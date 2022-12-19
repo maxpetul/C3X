@@ -27,6 +27,8 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define MultiByteToWideChar is->MultiByteToWideChar
 #define WideCharToMultiByte is->WideCharToMultiByte
 #define GetLastError is->GetLastError
+#define QueryPerformanceCounter is->QueryPerformanceCounter
+#define QueryPerformanceFrequency is->QueryPerformanceFrequency
 #define snprintf is->snprintf
 #define malloc is->malloc
 #define calloc is->calloc
@@ -1525,14 +1527,16 @@ patch_init_floating_point ()
 	is->msvcrt   = (*p_GetModuleHandleA) ("msvcrt.dll");
 
 	// Remember the function names here are macros that expand to is->...
-	VirtualProtect      = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualProtect");
-	CloseHandle         = (void *)(*p_GetProcAddress) (is->kernel32, "CloseHandle");
-	CreateFileA         = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
-	GetFileSize         = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
-	ReadFile            = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
-	MultiByteToWideChar = (void *)(*p_GetProcAddress) (is->kernel32, "MultiByteToWideChar");
-	WideCharToMultiByte = (void *)(*p_GetProcAddress) (is->kernel32, "WideCharToMultiByte");
-	GetLastError        = (void *)(*p_GetProcAddress) (is->kernel32, "GetLastError");
+	VirtualProtect            = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualProtect");
+	CloseHandle               = (void *)(*p_GetProcAddress) (is->kernel32, "CloseHandle");
+	CreateFileA               = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
+	GetFileSize               = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
+	ReadFile                  = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
+	MultiByteToWideChar       = (void *)(*p_GetProcAddress) (is->kernel32, "MultiByteToWideChar");
+	WideCharToMultiByte       = (void *)(*p_GetProcAddress) (is->kernel32, "WideCharToMultiByte");
+	GetLastError              = (void *)(*p_GetProcAddress) (is->kernel32, "GetLastError");
+	QueryPerformanceCounter   = (void *)(*p_GetProcAddress) (is->kernel32, "QueryPerformanceCounter");
+	QueryPerformanceFrequency = (void *)(*p_GetProcAddress) (is->kernel32, "QueryPerformanceFrequency");
 	MessageBoxA = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
 	snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
 	malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
@@ -5374,7 +5378,24 @@ patch_perform_interturn_in_main_loop ()
 
 	is->players_saw_ai_unit = 0; // Clear bits. After perform_interturn, each set bit will indicate a player that has seen an AI unit move
 
+	long long freq;
+	QueryPerformanceFrequency (&freq);
+
+	long long ts_before;
+	QueryPerformanceCounter (&ts_before);
+
 	perform_interturn ();
+
+	long long ts_after;
+	QueryPerformanceCounter (&ts_after);
+
+	char s[200];
+	snprintf (s, sizeof s, "perform_interturn time: %d sec", (int)((ts_after - ts_before) / freq));
+	s[(sizeof s) - 1] = '\0';
+	PopupForm * popup = get_popup_form ();
+	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
+	PopupForm_add_text (popup, __, s, 0);
+	show_popup (popup, __, 0, 0);
 
 	if (save_replay) {
 		int last_human_player_bit = 0; {
