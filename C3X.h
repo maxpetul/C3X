@@ -470,6 +470,14 @@ struct injected_state {
 	// Initialized to 0. If set to non-zero, the next call to do_load_game will consume the value and skip the intro popup.
 	int suppress_intro_after_load_popup;
 
+	int * water_trade_improv_ids;
+	int water_trade_improv_id_count;
+	int water_trade_improv_id_capacity;
+
+	int * air_trade_improv_ids;
+	int air_trade_improv_id_count;
+	int air_trade_improv_id_capacity;
+
 	// ==========
 	// }
 	// ==========
