@@ -434,18 +434,6 @@ enum ImprovementTypeCharacteristics
   ITC_Seafaring = 0x800,
 };
 
-enum ImprovementTypeFlags_Byte1
-{
-  ITF_B1_Reduces_Corruption = 0x1,
-  ITF_B1_Doubles_City_Growth_Rate = 0x2,
-  ITF_B1_Increases_Luxury_Trade = 0x4,
-  ITF_B1_Allows_City_Level_2 = 0x8,
-  ITF_B1_Allows_City_Level_3 = 0x10,
-  ITF_B1_Replaces_Other_Buildings = 0x20,
-  ITF_B1_Must_Be_Near_Water = 0x40,
-  ITF_B1_Must_Be_Near_River = 0x80,
-};
-
 enum ImprovementTypeWonderFeatures
 {
   ITW_Safe_Sea_Travel                             = 0x1,
@@ -816,20 +804,6 @@ enum Hurry_Production_Type
   HPT_Paid_Labor = 0x2,
 };
 
-enum ImprovementTypeWonderFeatures_Byte1
-{
-  ITW_B1_Allows_Construction_Of_Nuclear_Devices = 0x1,
-  ITW_B1_City_Growth_Inc_2_Citizens = 0x2,
-  ITW_B1_Free_Advance_Inc_2 = 0x4,
-  ITW_B1_Reduces_War_Weariness = 0x8,
-  ITW_B1_Unk1 = 0x10,
-  ITW_B1_Allows_Diplomatic_Victory = 0x20,
-  ITW_B1_Unk2 = 0x40,
-  ITW_B1_Unk3 = 0x80,
-  ITW_B1_Increases_Army_Value = 0x100,
-  ITW_B1_Turist_Attraction = 0x200,
-};
-
 enum Tile_Owner_Types
 {
   TOT_None = 0x0,
@@ -941,13 +915,6 @@ enum UnitStateType
   UnitState_1E = 0x1E,
   UnitState_Auto_Bombard = 0x1F,
   UnitState_Auto_Air_Bombard = 0x20,
-};
-
-enum ImprovementTypeSmallWonderFeatures_Byte1
-{
-  ITSW_B1_Allows_Healing_In_Enemy_Territory = 0x1,
-  ITSW_B1_Required_Good_Must_be_in_City_Radius = 0x2,
-  ITSW_B1_Requires_Victorous_Army = 0x4,
 };
 
 enum VirtualKey
