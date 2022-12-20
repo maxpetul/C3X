@@ -448,39 +448,39 @@ enum ImprovementTypeFlags_Byte1
 
 enum ImprovementTypeWonderFeatures
 {
-  ITW_Safe_Sea_Travel			     = 0x1,
-  ITW_Gain_Any_Advance_Owned_by_2_Civ	     = 0x2,
-  ITW_Double_Combat_Strength_vs_Barbarians   = 0x4,
-  ITW_Ship_Movement_Inc_1		     = 0x8,
-  ITW_Doubles_Research_Output		     = 0x10,
-  ITW_Trade_In_Each_Tile_inc_1		     = 0x20,
-  ITW_Halves_Unit_Upgrade_Cost		     = 0x40,
-  ITW_Pays_Maintenance_For_Trade_Inst	     = 0x80,
-  ITW_Allows_Construction_Of_Nuclear_Devices = 0x100,
-  ITW_City_Growth_Inc_2_Citizens	     = 0x200,
-  ITW_Free_Advance_Inc_2		     = 0x400,
-  ITW_Reduces_War_Weariness		     = 0x800,
-  ITW_Unk1				     = 0x1000,
-  ITW_Allows_Diplomatic_Victory		     = 0x2000,
-  ITW_Unk2				     = 0x4000,
-  ITW_Unk3				     = 0x8000,
-  ITW_Increases_Army_Value		     = 0x10000,
-  ITW_Tourist_Attraction		     = 0x20000,
+  ITW_Safe_Sea_Travel                             = 0x1,
+  ITW_Gain_Any_Advances_Owned_by_2_Civs           = 0x2,
+  ITW_Double_Combat_Strength_vs_Barbarians        = 0x4,
+  ITW_Plus_One_Ship_Movement                      = 0x8,
+  ITW_Doubles_Research_Output                     = 0x10,
+  ITW_Plus_One_Trade_in_Each_Trade_Producing_Tile = 0x20,
+  ITW_Halves_Unit_Upgrade_Cost                    = 0x40,
+  ITW_Pays_Maintenance_For_Trade_Installations    = 0x80,
+  ITW_Allows_Construction_of_Nuclear_Devices      = 0x100,
+  ITW_City_Growth_Causes_Plus_Two_Citizens        = 0x200,
+  ITW_Plus_Two_Free_Advances                      = 0x400,
+  ITW_Reduces_War_Weariness                       = 0x800,
+  ITW_Doubles_City_Defenses                       = 0x1000,
+  ITW_Allows_Diplomatic_Victory                   = 0x2000,
+  ITW_Plus_Two_Ship_Movement                      = 0x4000,
+  ITW_0x8000                                      = 0x8000,
+  ITW_Increased_Army_Value                        = 0x10000,
+  ITW_Tourist_Attraction                          = 0x20000,
 };
 
 enum ImprovementTypeSmallWonderFeatures
 {
-  ITSW_Increases_Chance_Of_Leader_Appearance = 0x1,
-  ITSW_Build_Army_Without_Leader	     = 0x2,
-  ITSW_Larger_Armies			     = 0x4,
-  ITSW_Treasury_Earns_5_Percent		     = 0x8,
-  ITSW_Build_Spaceship_Parts		     = 0x10,
-  ITSW_Reduces_Corruption		     = 0x20,
+  ITSW_Increases_Chance_of_Leader_Appearance = 0x1,
+  ITSW_Build_Armies_Without_Leader           = 0x2,
+  ITSW_Build_Larger_Armies                   = 0x4,
+  ITSW_Treasury_Earns_5_Percent              = 0x8,
+  ITSW_Build_Spaceship_Parts                 = 0x10,
+  ITSW_Reduces_Corruption                    = 0x20,
   ITSW_Decreases_Success_Of_Missile_Attacks  = 0x40,
-  ITSW_Allows_Spy_Missions		     = 0x80,
+  ITSW_Allows_Spy_Missions                   = 0x80,
   ITSW_Allows_Healing_In_Enemy_Territory     = 0x100,
-  ITSW_200				     = 0x200,
-  ITSW_Requires_Victorous_Army		     = 0x400,
+  ITSW_0x200                                 = 0x200,
+  ITSW_Requires_Victorous_Army               = 0x400,
 };
 
 enum CorruptionAndWasteTypes
@@ -2149,8 +2149,8 @@ struct Improvement
   int Resource2ID;
   enum ImprovementTypeFlags ImprovementFlags;
   enum ImprovementTypeCharacteristics Characteristics;
-  int SmallWonderFlags;
-  int WonderFlags;
+  enum ImprovementTypeSmallWonderFeatures SmallWonderFlags;
+  enum ImprovementTypeWonderFeatures WonderFlags;
   int ArmyRequiredCount;
   int Flavours;
   int field_104;
