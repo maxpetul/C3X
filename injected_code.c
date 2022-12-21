@@ -1696,12 +1696,27 @@ patch_process_text_for_map_message (char * in, char * out)
 		return process_text_snippet (in, out);
 }
 
+void __fastcall
+patch_Main_Screen_Form_show_map_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, byte pause)
+{
+	long long ts_before;
+	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_before);
+
+	Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, pause);
+
+	if (pause) {
+		long long ts_after;
+		QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
+		is->interturn_wait_time += ts_after - ts_before;
+	}
+}
+
 // Works like show_map_message but takes a bit of text to display instead of a key for script.txt
 void
 show_map_specific_text (int tile_x, int tile_y, char const * text, byte pause)
 {
 	is->map_message_text_override = text;
-	Main_Screen_Form_show_map_message (p_main_screen_form, __, tile_x, tile_y, "LANDCONQUER", pause); // Use any key here. It will be overridden.
+	patch_Main_Screen_Form_show_map_message (p_main_screen_form, __, tile_x, tile_y, "LANDCONQUER", pause); // Use any key here. It will be overridden.
 }
 
 void
@@ -2934,8 +2949,17 @@ patch_Main_Screen_Form_handle_key_up (Main_Screen_Form * this, int edx, int virt
 int __fastcall
 patch_show_popup (void * this, int edx, int param_1, int param_2)
 {
+	long long ts_before;
+	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_before);
+
 	is->show_popup_was_called = 1;
-	return show_popup (this, __, param_1, param_2);
+	int tr = show_popup (this, __, param_1, param_2);
+
+	long long ts_after;
+	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
+	is->interturn_wait_time += ts_after - ts_before;
+
+	return tr;
 }
 
 char __fastcall
@@ -4992,13 +5016,13 @@ patch_Leader_pay_unit_maintenance (Leader * this)
 void __fastcall
 patch_Main_Screen_Form_show_wltk_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, byte pause)
 {
-	Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? 0 : pause);
+	patch_Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? 0 : pause);
 }
 
 void __fastcall
 patch_Main_Screen_Form_show_wltk_ended_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, byte pause)
 {
-	Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? 0 : pause);
+	patch_Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? 0 : pause);
 }
 
 char __fastcall
@@ -5419,9 +5443,9 @@ patch_perform_interturn_in_main_loop ()
 
 	long long freq;
 	QueryPerformanceFrequency ((LARGE_INTEGER *)&freq);
-
 	long long ts_before;
 	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_before);
+	is->interturn_wait_time = 0;
 
 	perform_interturn ();
 
@@ -5429,7 +5453,7 @@ patch_perform_interturn_in_main_loop ()
 	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
 
 	char s[200];
-	snprintf (s, sizeof s, "perform_interturn time: %d sec", (int)((ts_after - ts_before) / freq));
+	snprintf (s, sizeof s, "perform_interturn time: %d sec", (int)((ts_after - ts_before - is->interturn_wait_time) / freq));
 	s[(sizeof s) - 1] = '\0';
 	PopupForm * popup = get_popup_form ();
 	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);

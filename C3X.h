@@ -478,6 +478,8 @@ struct injected_state {
 	int air_trade_improv_id_count;
 	int air_trade_improv_id_capacity;
 
+	long long interturn_wait_time;
+
 	// ==========
 	// }
 	// ==========
