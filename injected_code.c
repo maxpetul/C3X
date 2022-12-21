@@ -5519,5 +5519,29 @@ patch_City_can_trade_via_air (City * this)
 	return 0;
 }
 
+int __fastcall
+patch_City_get_building_defense_bonus (City * this)
+{
+	int tr = 0;
+	int is_size_level_1 = (this->Body.Population.Size <= p_bic_data->General.MaximumSize_City) &&
+		(this->Body.Population.Size <= p_bic_data->General.MaximumSize_Town);
+	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+		Improvement * improv = &p_bic_data->Improvements[n];
+		if ((is_size_level_1 || (improv->Combat_Bombard == 0)) && has_active_building (this, n)) {
+			int multiplier;
+			if ((improv->Combat_Bombard > 0) &&
+			    (Leader_count_wonders_with_flag (&leaders[(this->Body).CivID], __, ITW_Doubles_City_Defenses, NULL) > 0))
+				multiplier = 2;
+			else
+				multiplier = 1;
+
+			int building_defense = multiplier * improv->Combat_Defence;
+			if (building_defense > tr)
+				tr = building_defense;
+		}
+	}
+	return tr;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
