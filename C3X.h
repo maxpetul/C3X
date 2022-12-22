@@ -474,7 +474,7 @@ struct injected_state {
 		int * items;
 		int count;
 		int capacity;
-	} water_trade_improvs, air_trade_improvs;
+	} water_trade_improvs, air_trade_improvs, combat_defense_improvs;
 
 	long long interturn_wait_time;
 

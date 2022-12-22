@@ -1668,6 +1668,7 @@ patch_init_floating_point ()
 
 	is->water_trade_improvs    = (struct improv_id_list) {0};
 	is->air_trade_improvs      = (struct improv_id_list) {0};
+	is->combat_defense_improvs = (struct improv_id_list) {0};
 
 	memset (&is->boolean_config_offsets, 0, sizeof is->boolean_config_offsets);
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
@@ -2878,12 +2879,14 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	}
 
 	// Recreate lists of water & air trade improvements
-	is->water_trade_improvs.count = 0;
-	is->air_trade_improvs.count = 0;
+	is->water_trade_improvs   .count = 0;
+	is->air_trade_improvs     .count = 0;
+	is->combat_defense_improvs.count = 0;
 	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
 		enum ImprovementTypeFlags flags = p_bic_data->Improvements[n].ImprovementFlags;
-		if (flags & ITF_Allows_Water_Trade) append_improv_id_to_list (&is->water_trade_improvs, n);
-		if (flags & ITF_Allows_Air_Trade)   append_improv_id_to_list (&is->air_trade_improvs  , n);
+		if (flags & ITF_Allows_Water_Trade)                  append_improv_id_to_list (&is->water_trade_improvs   , n);
+		if (flags & ITF_Allows_Air_Trade)                    append_improv_id_to_list (&is->air_trade_improvs     , n);
+		if (p_bic_data->Improvements[n].Combat_Defence != 0) append_improv_id_to_list (&is->combat_defense_improvs, n);
 	}
 
 	// Set up for limiting railroad movement, if enabled
@@ -5506,9 +5509,10 @@ patch_City_get_building_defense_bonus (City * this)
 	int tr = 0;
 	int is_size_level_1 = (this->Body.Population.Size <= p_bic_data->General.MaximumSize_City) &&
 		(this->Body.Population.Size <= p_bic_data->General.MaximumSize_Town);
-	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
-		Improvement * improv = &p_bic_data->Improvements[n];
-		if ((is_size_level_1 || (improv->Combat_Bombard == 0)) && has_active_building (this, n)) {
+	for (int n = 0; n < is->combat_defense_improvs.count; n++) {
+		int improv_id = is->combat_defense_improvs.items[n];
+		Improvement * improv = &p_bic_data->Improvements[improv_id];
+		if ((is_size_level_1 || (improv->Combat_Bombard == 0)) && has_active_building (this, improv_id)) {
 			int multiplier;
 			if ((improv->Combat_Bombard > 0) &&
 			    (Leader_count_wonders_with_flag (&leaders[(this->Body).CivID], __, ITW_Doubles_City_Defenses, NULL) > 0))
