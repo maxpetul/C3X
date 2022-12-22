@@ -1520,6 +1520,7 @@ patch_init_floating_point ()
 		{"immunize_aircraft_against_bombardment"               , 0, offsetof (struct c3x_config, immunize_aircraft_against_bombardment)},
 		{"replay_ai_moves_in_hotseat_games"                    , 0, offsetof (struct c3x_config, replay_ai_moves_in_hotseat_games)},
 		{"restore_unit_directions_on_game_load"                , 1, offsetof (struct c3x_config, restore_unit_directions_on_game_load)},
+		{"optimize_improvement_loops"                          , 1, offsetof (struct c3x_config, optimize_improvement_loops)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -5488,44 +5489,53 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 byte __fastcall
 patch_City_can_trade_via_water (City * this)
 {
-	for (int n = 0; n < is->water_trade_improvs.count; n++)
-		if (has_active_building (this, is->water_trade_improvs.items[n]))
-			return 1;
-	return 0;
+	if (is->current_config.optimize_improvement_loops) {
+		for (int n = 0; n < is->water_trade_improvs.count; n++)
+			if (has_active_building (this, is->water_trade_improvs.items[n]))
+				return 1;
+		return 0;
+	} else
+		return City_can_trade_via_water (this);
 }
 
 byte __fastcall
 patch_City_can_trade_via_air (City * this)
 {
-	for (int n = 0; n < is->air_trade_improvs.count; n++)
-		if (has_active_building (this, is->air_trade_improvs.items[n]))
-			return 1;
-	return 0;
+	if (is->current_config.optimize_improvement_loops) {
+		for (int n = 0; n < is->air_trade_improvs.count; n++)
+			if (has_active_building (this, is->air_trade_improvs.items[n]))
+				return 1;
+		return 0;
+	} else
+		return City_can_trade_via_air (this);
 }
 
 int __fastcall
 patch_City_get_building_defense_bonus (City * this)
 {
-	int tr = 0;
-	int is_size_level_1 = (this->Body.Population.Size <= p_bic_data->General.MaximumSize_City) &&
-		(this->Body.Population.Size <= p_bic_data->General.MaximumSize_Town);
-	for (int n = 0; n < is->combat_defense_improvs.count; n++) {
-		int improv_id = is->combat_defense_improvs.items[n];
-		Improvement * improv = &p_bic_data->Improvements[improv_id];
-		if ((is_size_level_1 || (improv->Combat_Bombard == 0)) && has_active_building (this, improv_id)) {
-			int multiplier;
-			if ((improv->Combat_Bombard > 0) &&
-			    (Leader_count_wonders_with_flag (&leaders[(this->Body).CivID], __, ITW_Doubles_City_Defenses, NULL) > 0))
-				multiplier = 2;
-			else
-				multiplier = 1;
+	if (is->current_config.optimize_improvement_loops) {
+		int tr = 0;
+		int is_size_level_1 = (this->Body.Population.Size <= p_bic_data->General.MaximumSize_City) &&
+			(this->Body.Population.Size <= p_bic_data->General.MaximumSize_Town);
+		for (int n = 0; n < is->combat_defense_improvs.count; n++) {
+			int improv_id = is->combat_defense_improvs.items[n];
+			Improvement * improv = &p_bic_data->Improvements[improv_id];
+			if ((is_size_level_1 || (improv->Combat_Bombard == 0)) && has_active_building (this, improv_id)) {
+				int multiplier;
+				if ((improv->Combat_Bombard > 0) &&
+				    (Leader_count_wonders_with_flag (&leaders[(this->Body).CivID], __, ITW_Doubles_City_Defenses, NULL) > 0))
+					multiplier = 2;
+				else
+					multiplier = 1;
 
-			int building_defense = multiplier * improv->Combat_Defence;
-			if (building_defense > tr)
-				tr = building_defense;
+				int building_defense = multiplier * improv->Combat_Defence;
+				if (building_defense > tr)
+					tr = building_defense;
+			}
 		}
-	}
-	return tr;
+		return tr;
+	} else
+		return City_get_building_defense_bonus (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
