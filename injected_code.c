@@ -1666,13 +1666,8 @@ patch_init_floating_point ()
 
 	is->suppress_intro_after_load_popup = 0;
 
-	is->water_trade_improv_ids = NULL;
-	is->water_trade_improv_id_count = 0;
-	is->water_trade_improv_id_capacity = 0;
-
-	is->air_trade_improv_ids = NULL;
-	is->air_trade_improv_id_count = 0;
-	is->air_trade_improv_id_capacity = 0;
+	is->water_trade_improvs    = (struct improv_id_list) {0};
+	is->air_trade_improvs      = (struct improv_id_list) {0};
 
 	memset (&is->boolean_config_offsets, 0, sizeof is->boolean_config_offsets);
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
@@ -2829,6 +2824,14 @@ record_unit_type_alt_strategy (int type_id)
 	itable_insert (&is->unit_type_alt_strategies, type_id, ai_strat_index);
 }
 
+void
+append_improv_id_to_list (struct improv_id_list * list, int id)
+{
+	reserve (sizeof list->items[0], (void **)&list->items, &list->capacity, list->count);
+	list->items[list->count] = id;
+	list->count += 1;
+}
+
 unsigned __fastcall
 patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 {
@@ -2875,35 +2878,13 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	}
 
 	// Recreate lists of water & air trade improvements
-	if (is->water_trade_improv_ids != NULL) {
-		free (is->water_trade_improv_ids);
-		is->water_trade_improv_id_capacity = is->water_trade_improv_id_count = 0;
-	}
-	if (is->air_trade_improv_ids != NULL) {
-		free (is->air_trade_improv_ids);
-		is->air_trade_improv_id_capacity = is->air_trade_improv_id_count = 0;
-	}
+	is->water_trade_improvs.count = 0;
+	is->air_trade_improvs.count = 0;
 	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
 		enum ImprovementTypeFlags flags = p_bic_data->Improvements[n].ImprovementFlags;
-		if (flags & ITF_Allows_Water_Trade) {
-			reserve (sizeof is->water_trade_improv_ids[0], (void **)&is->water_trade_improv_ids, &is->water_trade_improv_id_capacity, is->water_trade_improv_id_count);
-			is->water_trade_improv_ids[is->water_trade_improv_id_count] = n;
-			is->water_trade_improv_id_count++;
-		}
-		if (flags & ITF_Allows_Air_Trade) {
-			reserve (sizeof is->air_trade_improv_ids[0], (void **)&is->air_trade_improv_ids, &is->air_trade_improv_id_capacity, is->air_trade_improv_id_count);
-			is->air_trade_improv_ids[is->air_trade_improv_id_count] = n;
-			is->air_trade_improv_id_count++;
-		}
+		if (flags & ITF_Allows_Water_Trade) append_improv_id_to_list (&is->water_trade_improvs, n);
+		if (flags & ITF_Allows_Air_Trade)   append_improv_id_to_list (&is->air_trade_improvs  , n);
 	}
-
-	char s[200];
-	snprintf (s, sizeof s, "water/air trade improvs: %d/%d of %d total", is->water_trade_improv_id_count, is->air_trade_improv_id_count, p_bic_data->ImprovementsCount);
-	s[(sizeof s) - 1] = '\0';
-	PopupForm * popup = get_popup_form ();
-	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
-	PopupForm_add_text (popup, __, s, 0);
-	show_popup (popup, __, 0, 0);
 
 	// Set up for limiting railroad movement, if enabled
 	if (is->current_config.limit_railroad_movement > 0) {
@@ -5504,8 +5485,8 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 byte __fastcall
 patch_City_can_trade_via_water (City * this)
 {
-	for (int n = 0; n < is->water_trade_improv_id_count; n++)
-		if (has_active_building (this, is->water_trade_improv_ids[n]))
+	for (int n = 0; n < is->water_trade_improvs.count; n++)
+		if (has_active_building (this, is->water_trade_improvs.items[n]))
 			return 1;
 	return 0;
 }
@@ -5513,8 +5494,8 @@ patch_City_can_trade_via_water (City * this)
 byte __fastcall
 patch_City_can_trade_via_air (City * this)
 {
-	for (int n = 0; n < is->air_trade_improv_id_count; n++)
-		if (has_active_building (this, is->air_trade_improv_ids[n]))
+	for (int n = 0; n < is->air_trade_improvs.count; n++)
+		if (has_active_building (this, is->air_trade_improvs.items[n]))
 			return 1;
 	return 0;
 }
