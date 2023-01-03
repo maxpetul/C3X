@@ -396,7 +396,7 @@ enum ImprovementTypeFlags
   ITF_Vulnerable_To_Charm_Bombard	    = 0x4000000,
   ITF_8000000				    = 0x8000000,
   ITF_10000000				    = 0x10000000,
-  ITF_20000000				    = 0x20000000,
+  ITF_Doubles_Sacrifice			    = 0x20000000,
   ITF_Produces_Unit			    = 0x40000000,
   ITF_Required_Goods_Must_Be_In_City_Radius = 0x80000000,
 };
