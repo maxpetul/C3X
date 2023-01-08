@@ -1,3 +1,5 @@
+- Can use charm flag to control PTW-like artillery targeting
+
 * RELEASE 15
 - Option to replay AI moves for human players in hotseat mode
 - Enable stealth attacks via bombardment

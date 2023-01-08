@@ -1518,6 +1518,7 @@ patch_init_floating_point ()
 		{"immunize_aircraft_against_bombardment"               , 0, offsetof (struct c3x_config, immunize_aircraft_against_bombardment)},
 		{"replay_ai_moves_in_hotseat_games"                    , 0, offsetof (struct c3x_config, replay_ai_moves_in_hotseat_games)},
 		{"restore_unit_directions_on_game_load"                , 1, offsetof (struct c3x_config, restore_unit_directions_on_game_load)},
+		{"charm_flag_triggers_ptw_like_targeting"              , 0, offsetof (struct c3x_config, charm_flag_triggers_ptw_like_targeting)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -2844,6 +2845,26 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		if (alt_for_id >= 0) {
 			record_unit_type_alt_strategy (n);
 			record_unit_type_alt_strategy (alt_for_id); // Record the original too so we know it has alternatives
+		}
+	}
+
+	// Convert charm-flagged units to using PTW targeting if necessary
+	if (is->current_config.charm_flag_triggers_ptw_like_targeting) {
+		struct c3x_config * cc = &is->current_config;
+
+		for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
+			UnitType * type = &p_bic_data->UnitTypes[n];
+			if (type->Special_Actions & UCV_Charm_Bombard) {
+				// Add this type ID to the PTW targeting list
+				reserve (sizeof cc->ptw_arty_types[0], (void **)&cc->ptw_arty_types, &cc->ptw_arty_types_capacity, cc->count_ptw_arty_types);
+				cc->ptw_arty_types[cc->count_ptw_arty_types] = n;
+				cc->count_ptw_arty_types++;
+
+				// Clear the charm flag, taking care not to clear the category bit. This is necessary for the PTW targeting to work
+				// since the logic to implement it only applies to the non-charm code path. It wouldn't make sense to have both charm
+				// attack and PTW targeting anyway, since charm attack already works that way vs cities.
+				type->Special_Actions &= ~(0x00FFFFFF & UCV_Charm_Bombard);
+			}
 		}
 	}
 
