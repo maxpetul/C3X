@@ -1519,6 +1519,7 @@ patch_init_floating_point ()
 		{"replay_ai_moves_in_hotseat_games"                    , 0, offsetof (struct c3x_config, replay_ai_moves_in_hotseat_games)},
 		{"restore_unit_directions_on_game_load"                , 1, offsetof (struct c3x_config, restore_unit_directions_on_game_load)},
 		{"charm_flag_triggers_ptw_like_targeting"              , 0, offsetof (struct c3x_config, charm_flag_triggers_ptw_like_targeting)},
+		{"city_icons_show_unit_effects_not_trade"              , 1, offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -5436,6 +5437,22 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 
 	} else
 		Fighter_do_bombard_tile (this, __, unit, neighbor_index, mp_tile_x, mp_tile_y);
+}
+
+byte __fastcall
+patch_City_shows_harbor_icon (City * this)
+{
+	return is->current_config.city_icons_show_unit_effects_not_trade ?
+		City_count_improvements_with_flag (this, __, ITF_Veteran_Sea_Units) > 0 :
+		City_can_trade_via_water (this);
+}
+
+byte __fastcall
+patch_City_shows_airport_icon (City * this)
+{
+	return is->current_config.city_icons_show_unit_effects_not_trade ?
+		City_count_improvements_with_flag (this, __, ITF_Veteran_Air_Units) > 0 :
+		City_can_trade_via_air (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
