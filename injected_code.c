@@ -1520,6 +1520,7 @@ patch_init_floating_point ()
 		{"restore_unit_directions_on_game_load"                , 1, offsetof (struct c3x_config, restore_unit_directions_on_game_load)},
 		{"charm_flag_triggers_ptw_like_targeting"              , 0, offsetof (struct c3x_config, charm_flag_triggers_ptw_like_targeting)},
 		{"city_icons_show_unit_effects_not_trade"              , 1, offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
+		{"ignore_king_ability_for_defense_priority"            , 0, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -5453,6 +5454,30 @@ patch_City_shows_airport_icon (City * this)
 	return is->current_config.city_icons_show_unit_effects_not_trade ?
 		City_count_improvements_with_flag (this, __, ITF_Veteran_Air_Units) > 0 :
 		City_can_trade_via_air (this);
+}
+
+// These three patches block the king flag from affecting the logic that determines defense priority for multiple units in a stack, but only in
+// non-regicide games and of course only if the relevant config option is set.
+byte __fastcall
+patch_Unit_is_king_for_defense_priority_1 (Unit * this, int edx, enum UnitTypeAbilities king_ability)
+{
+	return (! is->current_config.ignore_king_ability_for_defense_priority) || (*p_toggleable_rules & (TR_REGICIDE | TR_MASS_REGICIDE)) ?
+		Unit_has_ability (this, __, king_ability) :
+		0;
+}
+byte __fastcall
+patch_Unit_is_king_for_defense_priority_2 (Unit * this, int edx, enum UnitTypeAbilities king_ability)
+{
+	return (! is->current_config.ignore_king_ability_for_defense_priority) || (*p_toggleable_rules & (TR_REGICIDE | TR_MASS_REGICIDE)) ?
+		Unit_has_ability (this, __, king_ability) :
+		0;
+}
+byte __fastcall
+patch_Unit_is_king_for_defense_priority_3 (Unit * this, int edx, enum UnitTypeAbilities king_ability)
+{
+	return (! is->current_config.ignore_king_ability_for_defense_priority) || (*p_toggleable_rules & (TR_REGICIDE | TR_MASS_REGICIDE)) ?
+		Unit_has_ability (this, __, king_ability) :
+		0;
 }
 
 // TCC requires a main function be defined even though it's never used.

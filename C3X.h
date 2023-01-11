@@ -105,6 +105,7 @@ struct c3x_config {
 	char restore_unit_directions_on_game_load;
 	char charm_flag_triggers_ptw_like_targeting;
 	char city_icons_show_unit_effects_not_trade;
+	char ignore_king_ability_for_defense_priority;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
