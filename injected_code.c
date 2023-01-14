@@ -5456,24 +5456,8 @@ patch_City_shows_airport_icon (City * this)
 		City_can_trade_via_air (this);
 }
 
-// These three patches block the king flag from affecting the logic that determines defense priority for multiple units in a stack, but only in
-// non-regicide games and of course only if the relevant config option is set.
 byte __fastcall
-patch_Unit_is_king_for_defense_priority_1 (Unit * this, int edx, enum UnitTypeAbilities king_ability)
-{
-	return (! is->current_config.ignore_king_ability_for_defense_priority) || (*p_toggleable_rules & (TR_REGICIDE | TR_MASS_REGICIDE)) ?
-		Unit_has_ability (this, __, king_ability) :
-		0;
-}
-byte __fastcall
-patch_Unit_is_king_for_defense_priority_2 (Unit * this, int edx, enum UnitTypeAbilities king_ability)
-{
-	return (! is->current_config.ignore_king_ability_for_defense_priority) || (*p_toggleable_rules & (TR_REGICIDE | TR_MASS_REGICIDE)) ?
-		Unit_has_ability (this, __, king_ability) :
-		0;
-}
-byte __fastcall
-patch_Unit_is_king_for_defense_priority_3 (Unit * this, int edx, enum UnitTypeAbilities king_ability)
+patch_Unit_check_king_for_defense_priority (Unit * this, int edx, enum UnitTypeAbilities king_ability)
 {
 	return (! is->current_config.ignore_king_ability_for_defense_priority) || (*p_toggleable_rules & (TR_REGICIDE | TR_MASS_REGICIDE)) ?
 		Unit_has_ability (this, __, king_ability) :
