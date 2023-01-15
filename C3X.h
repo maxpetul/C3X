@@ -60,6 +60,7 @@ struct c3x_config {
 	char dont_pause_for_love_the_king_messages;
 	char reverse_specialist_order_with_shift;
 	char dont_give_king_names_in_non_regicide_games;
+	char no_elvis_easter_egg;
 	char disable_worker_automation;
 	char enable_land_sea_intersections;
 	char disallow_trespassing;
@@ -256,6 +257,7 @@ struct injected_state {
 	int (WINAPI * MultiByteToWideChar) (UINT, DWORD, LPCCH, int, LPWSTR, int);
 	int (WINAPI * WideCharToMultiByte) (UINT, DWORD, LPCWCH, int, LPSTR, int, LPCCH, LPBOOL);
 	int (WINAPI * GetLastError) ();
+	void (WINAPI * GetLocalTime) (LPSYSTEMTIME);
 
 	// Win32 funcs from user32.dll
 	int (WINAPI * MessageBoxA) (HWND, LPCSTR, LPCSTR, UINT);

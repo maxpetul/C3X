@@ -27,6 +27,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define MultiByteToWideChar is->MultiByteToWideChar
 #define WideCharToMultiByte is->WideCharToMultiByte
 #define GetLastError is->GetLastError
+#define GetLocalTime is->GetLocalTime
 #define snprintf is->snprintf
 #define malloc is->malloc
 #define calloc is->calloc
@@ -1474,6 +1475,7 @@ patch_init_floating_point ()
 		{"dont_pause_for_love_the_king_messages"               , 1, offsetof (struct c3x_config, dont_pause_for_love_the_king_messages)},
 		{"reverse_specialist_order_with_shift"                 , 1, offsetof (struct c3x_config, reverse_specialist_order_with_shift)},
 		{"dont_give_king_names_in_non_regicide_games"          , 1, offsetof (struct c3x_config, dont_give_king_names_in_non_regicide_games)},
+		{"no_elvis_easter_egg"                                 , 0, offsetof (struct c3x_config, no_elvis_easter_egg)},
 		{"disable_worker_automation"                           , 0, offsetof (struct c3x_config, disable_worker_automation)},
 		{"enable_land_sea_intersections"                       , 0, offsetof (struct c3x_config, enable_land_sea_intersections)},
 		{"disallow_trespassing"                                , 0, offsetof (struct c3x_config, disallow_trespassing)},
@@ -1536,7 +1538,8 @@ patch_init_floating_point ()
 	MultiByteToWideChar = (void *)(*p_GetProcAddress) (is->kernel32, "MultiByteToWideChar");
 	WideCharToMultiByte = (void *)(*p_GetProcAddress) (is->kernel32, "WideCharToMultiByte");
 	GetLastError        = (void *)(*p_GetProcAddress) (is->kernel32, "GetLastError");
-	MessageBoxA = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
+	GetLocalTime        = (void *)(*p_GetProcAddress) (is->kernel32, "GetLocalTime");
+	MessageBoxA  = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
 	snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
 	malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
 	calloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "calloc");
@@ -5462,6 +5465,14 @@ patch_Unit_check_king_for_defense_priority (Unit * this, int edx, enum UnitTypeA
 	return (! is->current_config.ignore_king_ability_for_defense_priority) || (*p_toggleable_rules & (TR_REGICIDE | TR_MASS_REGICIDE)) ?
 		Unit_has_ability (this, __, king_ability) :
 		0;
+}
+
+void WINAPI
+patch_get_local_time_for_unit_ini (LPSYSTEMTIME lpSystemTime)
+{
+	GetLocalTime (lpSystemTime);
+	if (is->current_config.no_elvis_easter_egg && (lpSystemTime->wMonth == 1) && (lpSystemTime->wDay == 8))
+		lpSystemTime->wDay = 9;
 }
 
 // TCC requires a main function be defined even though it's never used.

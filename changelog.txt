@@ -1,6 +1,7 @@
 - Can use charm flag to control PTW-like artillery targeting
 - Option to ignore king flag on defense, so kings aren't always last to defend in a stack
 - Harbor/airport city icons indicate unit effects not trade abilities
+- Option to remove Elvis Easter egg
 
 * RELEASE 15
 - Option to replay AI moves for human players in hotseat mode
