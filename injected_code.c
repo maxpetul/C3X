@@ -789,7 +789,7 @@ void
 get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y)
 {
 	int dx, dy;
-	neighbor_index_to_displacement (neighbor_index, &dx, &dy);
+	neighbor_index_to_diff (neighbor_index, &dx, &dy);
 	*out_x = x + dx;
 	*out_y = y + dy;
 	wrap_tile_coords (map, out_x, out_y);
@@ -3729,7 +3729,7 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 			for (int vert = 0; vert < 4; vert++) {
 				wrap_tile_coords (&p_bic_data->Map, &vertices[vert].x, &vertices[vert].y);
 				int  dx, dy;
-				neighbor_index_to_displacement (edge_dirs[vert], &dx, &dy);
+				neighbor_index_to_diff (edge_dirs[vert], &dx, &dy);
 				for (int j = 0; j < 2*dist; j++) { // loop over tiles along this edge
 					int cx = vertices[vert].x + j * dx,
 					    cy = vertices[vert].y + j * dy;
@@ -5427,7 +5427,7 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 
 		City * city; {
 			int dx, dy;
-			neighbor_index_to_displacement (neighbor_index, &dx, &dy);
+			neighbor_index_to_diff (neighbor_index, &dx, &dy);
 			int tile_x = unit->Body.X + dx, tile_y = unit->Body.Y + dy;
 			wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 			city = city_at (tile_x, tile_y);
