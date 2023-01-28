@@ -551,6 +551,13 @@ read_retreat_rules (struct string_slice const * s, int * out_val)
 
 }
 
+struct config_parsing {
+	char * text;
+	char * cursor;
+	struct string_slice key;
+	int displayed_error_message;
+};
+
 // Loads a config from the given file, layering it on top of is->current_config and appending its name to the list of loaded configs. Does NOT
 // re-apply machine code edits.
 void
@@ -584,73 +591,71 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		}
 	}
 
-	char * cursor = text;
-	int displayed_error_message = 0;
+	struct config_parsing p = { .text = text, .cursor = text, .key = {0}, .displayed_error_message = 0 };
 	struct error_line * unrecognized_lines = NULL;
 	while (1) {
-		struct string_slice key;
-		skip_horiz_space (&cursor);
-		if (*cursor == '\0')
+		skip_horiz_space (&p.cursor);
+		if (*p.cursor == '\0')
 			break;
-		else if (*cursor == '\n')
-			cursor++; // Continue to next line
-		else if (*cursor == ';')
-			skip_to_line_end (&cursor); // Skip comment line
-		else if (*cursor == '[')
-			skip_to_line_end (&cursor); // Skip section line
-		else if (parse_string (&cursor, &key) && skip_punctuation (&cursor, '=')) { // Parse key and equals sign
+		else if (*p.cursor == '\n')
+			p.cursor++; // Continue to next line
+		else if (*p.cursor == ';')
+			skip_to_line_end (&p.cursor); // Skip comment line
+		else if (*p.cursor == '[')
+			skip_to_line_end (&p.cursor); // Skip section line
+		else if (parse_string (&p.cursor, &p.key) && skip_punctuation (&p.cursor, '=')) { // Parse key and equals sign
 
 			struct string_slice value;
-			if (parse_string (&cursor, &value) || parse_bracketed_block (&cursor, &value)) { // Parse value
+			if (parse_string (&p.cursor, &value) || parse_bracketed_block (&p.cursor, &value)) { // Parse value
 				int ival;
 
 				// if key is for a boolean option
 				int boolean_offset;
-				if (stable_look_up_slice (&is->boolean_config_offsets, &key, &boolean_offset)) {
+				if (stable_look_up_slice (&is->boolean_config_offsets, &p.key, &boolean_offset)) {
 					if (read_int (&value, &ival))
 						*((char *)cfg + boolean_offset) = ival != 0;
 					else
 						implement_me(); // failed to parse boolean value
 
 				// if key is for an integer option
-				} else if (0 == strncmp (key.str, "limit_railroad_movement", key.len)) {
+				} else if (0 == strncmp (p.key.str, "limit_railroad_movement", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->limit_railroad_movement = ival;
 					else
 						implement_me(); // failed to parse integer value
-				} else if (0 == strncmp (key.str, "adjust_minimum_city_separation", key.len)) {
+				} else if (0 == strncmp (p.key.str, "adjust_minimum_city_separation", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->adjust_minimum_city_separation = ival;
 					else
 						implement_me(); // failed to parse integer value
-				} else if (0 == strncmp (key.str, "anarchy_length_reduction_percent", key.len)) {
+				} else if (0 == strncmp (p.key.str, "anarchy_length_reduction_percent", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->anarchy_length_reduction_percent = ival;
 					else
 						implement_me(); // failed to parse integer value
-				} else if (0 == strncmp (key.str, "max_tries_to_place_fp_city", key.len)) {
+				} else if (0 == strncmp (p.key.str, "max_tries_to_place_fp_city", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->max_tries_to_place_fp_city = ival;
 					else
 						implement_me(); // failed to parse integer value
-				} else if (0 == strncmp (key.str, "ai_build_artillery_ratio", key.len)) {
+				} else if (0 == strncmp (p.key.str, "ai_build_artillery_ratio", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->ai_build_artillery_ratio = ival;
 					else
 						implement_me(); // failed to parse integer value
-				} else if (0 == strncmp (key.str, "ai_artillery_value_damage_percent", key.len)) {
+				} else if (0 == strncmp (p.key.str, "ai_artillery_value_damage_percent", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->ai_artillery_value_damage_percent = ival;
 					else
 						implement_me(); // failed to parse integer value
-				} else if (0 == strncmp (key.str, "ai_build_bomber_ratio", key.len)) {
+				} else if (0 == strncmp (p.key.str, "ai_build_bomber_ratio", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->ai_build_bomber_ratio = ival;
 					else
 						implement_me(); // failed to parse integer value
 
 				// if key is for something special
-				} else if (0 == strncmp (key.str, "perfume_specs", key.len)) {
+				} else if (0 == strncmp (p.key.str, "perfume_specs", p.key.len)) {
 					if (! read_recognizables (&value,
 								  &unrecognized_lines,
 								  sizeof (struct perfume_spec),
@@ -658,10 +663,10 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								  (void **)&cfg->perfume_specs,
 								  &cfg->count_perfume_specs))
 						implement_me(); // failed to parse perfume specs
-				} else if (0 == strncmp (key.str, "building_prereqs_for_units", key.len)) {
+				} else if (0 == strncmp (p.key.str, "building_prereqs_for_units", p.key.len)) {
 					if (! read_building_unit_prereqs (&value, &unrecognized_lines, &cfg->building_unit_prereqs))
 						imp(); // failed to parse building rereqs
-				} else if (0 == strncmp (key.str, "buildings_generating_resources", key.len)) {
+				} else if (0 == strncmp (p.key.str, "buildings_generating_resources", p.key.len)) {
 					if (! read_recognizables (&value,
 								  &unrecognized_lines,
 								  sizeof (struct mill),
@@ -669,10 +674,10 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								  (void **)&cfg->mills,
 								  &cfg->count_mills))
 						imp(); // failed to parse mills
-				} else if ((0 == strncmp (key.str, "retreat_rules", key.len)) && read_retreat_rules (&value, &ival)) {
+				} else if ((0 == strncmp (p.key.str, "retreat_rules", p.key.len)) && read_retreat_rules (&value, &ival)) {
 					if (! read_retreat_rules (&value, &cfg->retreat_rules))
 						imp(); // failed to parse retreat rules
-				} else if (0 == strncmp (key.str, "ptw_like_artillery_targeting", key.len)) {
+				} else if (0 == strncmp (p.key.str, "ptw_like_artillery_targeting", p.key.len)) {
 					if (! read_ptw_arty_types (&value,
 								   &unrecognized_lines,
 								   &cfg->ptw_arty_types,
@@ -698,7 +703,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					// Figure out on what line the error occurred so we can show the user.
 					int line_no = 1;
 					char * line_start = text;
-					for (char * c = text; c < cursor; c++)
+					for (char * c = text; c < p.cursor; c++)
 						if (*c == '\n') {
 							line_no++;
 							line_start = c + 1;
@@ -726,7 +731,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					show_popup (popup, __, 0, 0);
 					displayed_error_message = 1;
 				}
-				skip_to_line_end (&cursor);
+				skip_to_line_end (&p.cursor);
 			}
 
 		} else { // Failed to categorize line
