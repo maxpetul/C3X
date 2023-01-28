@@ -653,12 +653,35 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				}
 			} else {
 				if (! displayed_error_message) {
+					// Figure out on what line the error occurred so we can show the user.
 					int line_no = 1;
+					char * line_start = text;
 					for (char * c = text; c < cursor; c++)
-						line_no += *c == '\n';
+						if (*c == '\n') {
+							line_no++;
+							line_start = c + 1;
+						}
+					int line_length = 0;
+					while (1) {
+						char c = line_start[line_length];
+						if ((c == '\r') || (c == '\n') || (c == '\0'))
+							break;
+						else
+							line_length++;
+					}
+
+					PopupForm * popup = get_popup_form ();
+					popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
 					snprintf (err_msg, sizeof err_msg, "Parse error on line %d of \"%s\".", line_no, full_path);
 					err_msg[(sizeof err_msg) - 1] = '\0';
-					pop_up_in_game_error (err_msg);
+					PopupForm_add_text (popup, __, err_msg, 0);
+					if (line_length > 0) {
+						PopupForm_add_text (popup, __, "^Line contains:", 0);
+						snprintf (err_msg, sizeof err_msg, "^   %.*s", line_length, line_start);
+						err_msg[(sizeof err_msg) - 1] = '\0';
+						PopupForm_add_text (popup, __, err_msg, 0);
+					}
+					show_popup (popup, __, 0, 0);
 					displayed_error_message = 1;
 				}
 				skip_to_line_end (&cursor);
