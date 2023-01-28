@@ -552,11 +552,32 @@ read_retreat_rules (struct string_slice const * s, int * out_val)
 }
 
 struct config_parsing {
+	char * file_path;
 	char * text;
 	char * cursor;
 	struct string_slice key;
 	int displayed_error_message;
 };
+
+void
+handle_config_error (struct config_parsing * p)
+{
+	char err_msg[1000];
+	if (! p->displayed_error_message) {
+		int line_no = 1;
+		for (char * c = p->text; c < p->cursor; c++)
+			line_no += *c == '\n';
+
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
+		snprintf (err_msg, sizeof err_msg, "Parse error on line %d of \"%s\".", line_no, p->file_path);
+		err_msg[(sizeof err_msg) - 1] = '\0';
+		PopupForm_add_text (popup, __, err_msg, 0);
+		show_popup (popup, __, 0, 0);
+
+		p->displayed_error_message = 1;
+	}
+}
 
 // Loads a config from the given file, layering it on top of is->current_config and appending its name to the list of loaded configs. Does NOT
 // re-apply machine code edits.
@@ -591,7 +612,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		}
 	}
 
-	struct config_parsing p = { .text = text, .cursor = text, .key = {0}, .displayed_error_message = 0 };
+	struct config_parsing p = { .file_path = full_path, .text = text, .cursor = text, .key = {0}, .displayed_error_message = 0 };
 	struct error_line * unrecognized_lines = NULL;
 	while (1) {
 		skip_horiz_space (&p.cursor);
@@ -615,44 +636,44 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					if (read_int (&value, &ival))
 						*((char *)cfg + boolean_offset) = ival != 0;
 					else
-						implement_me(); // failed to parse boolean value
+						handle_config_error (&p); // failed to parse boolean value
 
 				// if key is for an integer option
 				} else if (0 == strncmp (p.key.str, "limit_railroad_movement", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->limit_railroad_movement = ival;
 					else
-						implement_me(); // failed to parse integer value
+						handle_config_error (&p); // failed to parse integer value
 				} else if (0 == strncmp (p.key.str, "adjust_minimum_city_separation", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->adjust_minimum_city_separation = ival;
 					else
-						implement_me(); // failed to parse integer value
+						handle_config_error (&p); // failed to parse integer value
 				} else if (0 == strncmp (p.key.str, "anarchy_length_reduction_percent", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->anarchy_length_reduction_percent = ival;
 					else
-						implement_me(); // failed to parse integer value
+						handle_config_error (&p); // failed to parse integer value
 				} else if (0 == strncmp (p.key.str, "max_tries_to_place_fp_city", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->max_tries_to_place_fp_city = ival;
 					else
-						implement_me(); // failed to parse integer value
+						handle_config_error (&p); // failed to parse integer value
 				} else if (0 == strncmp (p.key.str, "ai_build_artillery_ratio", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->ai_build_artillery_ratio = ival;
 					else
-						implement_me(); // failed to parse integer value
+						handle_config_error (&p); // failed to parse integer value
 				} else if (0 == strncmp (p.key.str, "ai_artillery_value_damage_percent", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->ai_artillery_value_damage_percent = ival;
 					else
-						implement_me(); // failed to parse integer value
+						handle_config_error (&p); // failed to parse integer value
 				} else if (0 == strncmp (p.key.str, "ai_build_bomber_ratio", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->ai_build_bomber_ratio = ival;
 					else
-						implement_me(); // failed to parse integer value
+						handle_config_error (&p); // failed to parse integer value
 
 				// if key is for something special
 				} else if (0 == strncmp (p.key.str, "perfume_specs", p.key.len)) {
@@ -662,10 +683,10 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								  parse_perfume_spec,
 								  (void **)&cfg->perfume_specs,
 								  &cfg->count_perfume_specs))
-						implement_me(); // failed to parse perfume specs
+						handle_config_error (&p); // failed to parse perfume specs
 				} else if (0 == strncmp (p.key.str, "building_prereqs_for_units", p.key.len)) {
 					if (! read_building_unit_prereqs (&value, &unrecognized_lines, &cfg->building_unit_prereqs))
-						imp(); // failed to parse building rereqs
+						handle_config_error (&p); // failed to parse building rereqs
 				} else if (0 == strncmp (p.key.str, "buildings_generating_resources", p.key.len)) {
 					if (! read_recognizables (&value,
 								  &unrecognized_lines,
@@ -673,69 +694,31 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								  parse_mill,
 								  (void **)&cfg->mills,
 								  &cfg->count_mills))
-						imp(); // failed to parse mills
+						handle_config_error (&p); // failed to parse mills
 				} else if ((0 == strncmp (p.key.str, "retreat_rules", p.key.len)) && read_retreat_rules (&value, &ival)) {
-					if (! read_retreat_rules (&value, &cfg->retreat_rules))
-						imp(); // failed to parse retreat rules
+					if (! read_retreat_rules (&value, (int *)&cfg->retreat_rules))
+						handle_config_error (&p); // failed to parse retreat rules
 				} else if (0 == strncmp (p.key.str, "ptw_like_artillery_targeting", p.key.len)) {
 					if (! read_ptw_arty_types (&value,
 								   &unrecognized_lines,
 								   &cfg->ptw_arty_types,
 								   &cfg->count_ptw_arty_types,
 								   &cfg->ptw_arty_types_capacity))
-						imp(); // failed to parse ptw targeting list
+						handle_config_error (&p); // failed to parse ptw targeting list
 
 				} else {
-					imp(); // failed to recognize key
+					handle_config_error (&p); // failed to recognize key
 				}
 
-				/*
-				else if (! displayed_error_message) {
-					snprintf (err_msg, sizeof err_msg, "Error processing config option \"%.*s\" in \"%s\". Either the name of the option is not recognized or the value is invalid.", key.len, key.str, full_path);
-					err_msg[(sizeof err_msg) - 1] = '\0';
-					pop_up_in_game_error (err_msg);
-					displayed_error_message = 1;
-				}
-				*/
 
 			} else { // Failed to parse value
-				if (! displayed_error_message) {
-					// Figure out on what line the error occurred so we can show the user.
-					int line_no = 1;
-					char * line_start = text;
-					for (char * c = text; c < p.cursor; c++)
-						if (*c == '\n') {
-							line_no++;
-							line_start = c + 1;
-						}
-					int line_length = 0;
-					while (1) {
-						char c = line_start[line_length];
-						if ((c == '\r') || (c == '\n') || (c == '\0'))
-							break;
-						else
-							line_length++;
-					}
-
-					PopupForm * popup = get_popup_form ();
-					popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
-					snprintf (err_msg, sizeof err_msg, "Parse error on line %d of \"%s\".", line_no, full_path);
-					err_msg[(sizeof err_msg) - 1] = '\0';
-					PopupForm_add_text (popup, __, err_msg, 0);
-					if (line_length > 0) {
-						PopupForm_add_text (popup, __, "^Line contains:", 0);
-						snprintf (err_msg, sizeof err_msg, "^   %.*s", line_length, line_start);
-						err_msg[(sizeof err_msg) - 1] = '\0';
-						PopupForm_add_text (popup, __, err_msg, 0);
-					}
-					show_popup (popup, __, 0, 0);
-					displayed_error_message = 1;
-				}
+				handle_config_error (&p);
 				skip_to_line_end (&p.cursor);
 			}
 
 		} else { // Failed to categorize line
-			implement_this();
+			handle_config_error (&p);
+			skip_to_line_end (&p.cursor);
 		}
 	}
 
