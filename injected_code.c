@@ -559,8 +559,16 @@ struct config_parsing {
 	int displayed_error_message;
 };
 
+enum config_parse_error {
+	CPE_GENERIC,
+	CPE_BAD_VALUE,
+	CPE_BAD_BOOL_VALUE,
+	CPE_BAD_INT_VALUE,
+	CPE_BAD_KEY
+};
+
 void
-handle_config_error (struct config_parsing * p)
+handle_config_error (struct config_parsing * p, enum config_parse_error err)
 {
 	char err_msg[1000];
 	if (! p->displayed_error_message) {
@@ -570,11 +578,24 @@ handle_config_error (struct config_parsing * p)
 
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
-		snprintf (err_msg, sizeof err_msg, "Parse error on line %d of \"%s\".", line_no, p->file_path);
+		snprintf (err_msg, sizeof err_msg, "Error reading \"%s\" on line %d.", p->file_path, line_no);
 		err_msg[(sizeof err_msg) - 1] = '\0';
 		PopupForm_add_text (popup, __, err_msg, 0);
-		show_popup (popup, __, 0, 0);
 
+		if (err == CPE_GENERIC) {
+			snprintf (err_msg, sizeof err_msg, "^The last key successfully read was \"%.*s\".", p->key.len, p->key.str);
+		} else if (err == CPE_BAD_VALUE)
+			snprintf (err_msg, sizeof err_msg, "^The value for \"%.*s\" is invalid.", p->key.len, p->key.str);
+		else if (err == CPE_BAD_BOOL_VALUE)
+			snprintf (err_msg, sizeof err_msg, "^The value for \"%.*s\" is invalid. Expected \"true\" or \"false\".", p->key.len, p->key.str);
+		else if (err == CPE_BAD_INT_VALUE)
+			snprintf (err_msg, sizeof err_msg, "^The value for \"%.*s\" is invalid. Expected an integer.", p->key.len, p->key.str);
+		else if (err == CPE_BAD_KEY)
+			snprintf (err_msg, sizeof err_msg, "^The key name \"%.*s\" is not recognized.", p->key.len, p->key.str);
+		err_msg[(sizeof err_msg) - 1] = '\0';
+		PopupForm_add_text (popup, __, err_msg, 0);
+
+		show_popup (popup, __, 0, 0);
 		p->displayed_error_message = 1;
 	}
 }
@@ -636,44 +657,44 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					if (read_int (&value, &ival))
 						*((char *)cfg + boolean_offset) = ival != 0;
 					else
-						handle_config_error (&p); // failed to parse boolean value
+						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 
 				// if key is for an integer option
 				} else if (0 == strncmp (p.key.str, "limit_railroad_movement", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->limit_railroad_movement = ival;
 					else
-						handle_config_error (&p); // failed to parse integer value
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
 				} else if (0 == strncmp (p.key.str, "adjust_minimum_city_separation", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->adjust_minimum_city_separation = ival;
 					else
-						handle_config_error (&p); // failed to parse integer value
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
 				} else if (0 == strncmp (p.key.str, "anarchy_length_reduction_percent", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->anarchy_length_reduction_percent = ival;
 					else
-						handle_config_error (&p); // failed to parse integer value
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
 				} else if (0 == strncmp (p.key.str, "max_tries_to_place_fp_city", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->max_tries_to_place_fp_city = ival;
 					else
-						handle_config_error (&p); // failed to parse integer value
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
 				} else if (0 == strncmp (p.key.str, "ai_build_artillery_ratio", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->ai_build_artillery_ratio = ival;
 					else
-						handle_config_error (&p); // failed to parse integer value
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
 				} else if (0 == strncmp (p.key.str, "ai_artillery_value_damage_percent", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->ai_artillery_value_damage_percent = ival;
 					else
-						handle_config_error (&p); // failed to parse integer value
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
 				} else if (0 == strncmp (p.key.str, "ai_build_bomber_ratio", p.key.len)) {
 					if (read_int (&value, &ival))
 						cfg->ai_build_bomber_ratio = ival;
 					else
-						handle_config_error (&p); // failed to parse integer value
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
 
 				// if key is for something special
 				} else if (0 == strncmp (p.key.str, "perfume_specs", p.key.len)) {
@@ -683,10 +704,10 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								  parse_perfume_spec,
 								  (void **)&cfg->perfume_specs,
 								  &cfg->count_perfume_specs))
-						handle_config_error (&p); // failed to parse perfume specs
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (0 == strncmp (p.key.str, "building_prereqs_for_units", p.key.len)) {
 					if (! read_building_unit_prereqs (&value, &unrecognized_lines, &cfg->building_unit_prereqs))
-						handle_config_error (&p); // failed to parse building rereqs
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (0 == strncmp (p.key.str, "buildings_generating_resources", p.key.len)) {
 					if (! read_recognizables (&value,
 								  &unrecognized_lines,
@@ -694,30 +715,30 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								  parse_mill,
 								  (void **)&cfg->mills,
 								  &cfg->count_mills))
-						handle_config_error (&p); // failed to parse mills
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if ((0 == strncmp (p.key.str, "retreat_rules", p.key.len)) && read_retreat_rules (&value, &ival)) {
 					if (! read_retreat_rules (&value, (int *)&cfg->retreat_rules))
-						handle_config_error (&p); // failed to parse retreat rules
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (0 == strncmp (p.key.str, "ptw_like_artillery_targeting", p.key.len)) {
 					if (! read_ptw_arty_types (&value,
 								   &unrecognized_lines,
 								   &cfg->ptw_arty_types,
 								   &cfg->count_ptw_arty_types,
 								   &cfg->ptw_arty_types_capacity))
-						handle_config_error (&p); // failed to parse ptw targeting list
+						handle_config_error (&p, CPE_BAD_VALUE);
 
 				} else {
-					handle_config_error (&p); // failed to recognize key
+					handle_config_error (&p, CPE_BAD_KEY);
 				}
 
 
 			} else { // Failed to parse value
-				handle_config_error (&p);
+				handle_config_error (&p, CPE_BAD_VALUE);
 				skip_to_line_end (&p.cursor);
 			}
 
 		} else { // Failed to categorize line
-			handle_config_error (&p);
+			handle_config_error (&p, CPE_GENERIC);
 			skip_to_line_end (&p.cursor);
 		}
 	}
