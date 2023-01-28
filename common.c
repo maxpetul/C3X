@@ -472,24 +472,6 @@ parse_bracketed_block (char ** p_cursor, struct string_slice * out)
 }
 
 int
-parse_key_value_pair (char ** p_cursor, struct string_slice * out_key, struct string_slice * out_value)
-{
-	char * cur = *p_cursor;
-	struct string_slice key, value;
-	if (parse_string (&cur, &key) &&
-	    skip_punctuation (&cur, '=') &&
-	    (parse_string (&cur, &value) ||
-	     parse_bracketed_block (&cur, &value))) {
-		*out_key = key;
-		*out_value = value;
-		skip_to_line_end (&cur);
-		*p_cursor = cur;
-		return 1;
-	} else
-		return 0;
-}
-
-int
 parse_csv_value (char ** p_cursor, char ** out_val, int * out_len)
 {
 	char * tr_val = *p_cursor,
