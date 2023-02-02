@@ -322,9 +322,9 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 		while (1) {
 			if (! parse_string (&cur, &resource_name))
 				return RPR_PARSE_ERROR;
-			else if (strncmp ("local", resource_name.str, resource_name.len) == 0)
+			else if (slice_matches_str (&resource_name, "local"))
 				is_local = 1;
-			else if (strncmp ("no-tech-req", resource_name.str, resource_name.len) == 0)
+			else if (slice_matches_str (&resource_name, "no-tech-req"))
 				no_tech_req = 1;
 			else
 				break;
@@ -536,10 +536,10 @@ int
 read_retreat_rules (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
-	if      (0 == strncmp (trimmed.str, "standard" , trimmed.len)) { *out_val = RR_STANDARD;  return 1; }
-	else if (0 == strncmp (trimmed.str, "none"     , trimmed.len)) { *out_val = RR_NONE;      return 1; }
-	else if (0 == strncmp (trimmed.str, "all-units", trimmed.len)) { *out_val = RR_ALL_UNITS; return 1; }
-	else if (0 == strncmp (trimmed.str, "if-faster", trimmed.len)) { *out_val = RR_IF_FASTER; return 1; }
+	if      (slice_matches_str (&trimmed, "standard" )) { *out_val = RR_STANDARD;  return 1; }
+	else if (slice_matches_str (&trimmed, "none"     )) { *out_val = RR_NONE;      return 1; }
+	else if (slice_matches_str (&trimmed, "all-units")) { *out_val = RR_ALL_UNITS; return 1; }
+	else if (slice_matches_str (&trimmed, "if-faster")) { *out_val = RR_IF_FASTER; return 1; }
 	else
 		return 0;
 
@@ -657,44 +657,44 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 
 				// if key is for an integer option
-				} else if (0 == strncmp (p.key.str, "limit_railroad_movement", p.key.len)) {
+				} else if (slice_matches_str (&p.key, "limit_railroad_movement")) {
 					if (read_int (&value, &ival))
 						cfg->limit_railroad_movement = ival;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
-				} else if (0 == strncmp (p.key.str, "adjust_minimum_city_separation", p.key.len)) {
+				} else if (slice_matches_str (&p.key, "adjust_minimum_city_separation")) {
 					if (read_int (&value, &ival))
 						cfg->adjust_minimum_city_separation = ival;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
-				} else if (0 == strncmp (p.key.str, "anarchy_length_reduction_percent", p.key.len)) {
+				} else if (slice_matches_str (&p.key, "anarchy_length_reduction_percent")) {
 					if (read_int (&value, &ival))
 						cfg->anarchy_length_reduction_percent = ival;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
-				} else if (0 == strncmp (p.key.str, "max_tries_to_place_fp_city", p.key.len)) {
+				} else if (slice_matches_str (&p.key, "max_tries_to_place_fp_city")) {
 					if (read_int (&value, &ival))
 						cfg->max_tries_to_place_fp_city = ival;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
-				} else if (0 == strncmp (p.key.str, "ai_build_artillery_ratio", p.key.len)) {
+				} else if (slice_matches_str (&p.key, "ai_build_artillery_ratio")) {
 					if (read_int (&value, &ival))
 						cfg->ai_build_artillery_ratio = ival;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
-				} else if (0 == strncmp (p.key.str, "ai_artillery_value_damage_percent", p.key.len)) {
+				} else if (slice_matches_str (&p.key, "ai_artillery_value_damage_percent")) {
 					if (read_int (&value, &ival))
 						cfg->ai_artillery_value_damage_percent = ival;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
-				} else if (0 == strncmp (p.key.str, "ai_build_bomber_ratio", p.key.len)) {
+				} else if (slice_matches_str (&p.key, "ai_build_bomber_ratio")) {
 					if (read_int (&value, &ival))
 						cfg->ai_build_bomber_ratio = ival;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
 
 				// if key is for something special
-				} else if (0 == strncmp (p.key.str, "perfume_specs", p.key.len)) {
+				} else if (slice_matches_str (&p.key, "perfume_specs")) {
 					if (! read_recognizables (&value,
 								  &unrecognized_lines,
 								  sizeof (struct perfume_spec),
@@ -702,10 +702,10 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								  (void **)&cfg->perfume_specs,
 								  &cfg->count_perfume_specs))
 						handle_config_error (&p, CPE_BAD_VALUE);
-				} else if (0 == strncmp (p.key.str, "building_prereqs_for_units", p.key.len)) {
+				} else if (slice_matches_str (&p.key, "building_prereqs_for_units")) {
 					if (! read_building_unit_prereqs (&value, &unrecognized_lines, &cfg->building_unit_prereqs))
 						handle_config_error (&p, CPE_BAD_VALUE);
-				} else if (0 == strncmp (p.key.str, "buildings_generating_resources", p.key.len)) {
+				} else if (slice_matches_str (&p.key, "buildings_generating_resources")) {
 					if (! read_recognizables (&value,
 								  &unrecognized_lines,
 								  sizeof (struct mill),
@@ -713,10 +713,10 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								  (void **)&cfg->mills,
 								  &cfg->count_mills))
 						handle_config_error (&p, CPE_BAD_VALUE);
-				} else if ((0 == strncmp (p.key.str, "retreat_rules", p.key.len)) && read_retreat_rules (&value, &ival)) {
+				} else if ((slice_matches_str (&p.key, "retreat_rules")) && read_retreat_rules (&value, &ival)) {
 					if (! read_retreat_rules (&value, (int *)&cfg->retreat_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
-				} else if (0 == strncmp (p.key.str, "ptw_like_artillery_targeting", p.key.len)) {
+				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_ptw_arty_types (&value,
 								   &unrecognized_lines,
 								   &cfg->ptw_arty_types,
