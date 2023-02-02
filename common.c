@@ -10,6 +10,12 @@ struct string_slice {
 };
 
 int
+slice_matches_str (struct string_slice const * slice, char const * str)
+{
+	return (strncmp (str, slice->str, slice->len) == 0) && (str[slice->len] == '\0');
+}
+
+int
 not_below (int lim, int x)
 {
 	return (x >= lim) ? x : lim;

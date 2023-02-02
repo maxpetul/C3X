@@ -222,13 +222,11 @@ find_improv_id_by_name (struct string_slice const * name, int * out)
 {
 	Improvement * improv;
 	if (name->len <= sizeof improv->Name)
-		for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
-			improv = &p_bic_data->Improvements[n];
-			if (strncmp (improv->Name.S, name->str, name->len) == 0) {
+		for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
+			if (slice_matches_str (name, p_bic_data->Improvements[n].Name.S)) {
 				*out = n;
 				return 1;
 			}
-		}
 	return 0;
 }
 
@@ -239,13 +237,11 @@ find_unit_type_id_by_name (struct string_slice const * name, int start_id, int *
 {
 	UnitType * unit_type;
 	if (name->len <= sizeof unit_type->Name)
-		for (int n = start_id; n < p_bic_data->UnitTypeCount; n++) {
-			unit_type = &p_bic_data->UnitTypes[n];
-			if (strncmp (unit_type->Name, name->str, name->len) == 0) {
+		for (int n = start_id; n < p_bic_data->UnitTypeCount; n++)
+			if (slice_matches_str (name, p_bic_data->UnitTypes[n].Name)) {
 				*out = n;
 				return 1;
 			}
-		}
 	return 0;
 }
 
@@ -254,13 +250,11 @@ find_resource_id_by_name (struct string_slice const * name, int * out)
 {
 	Resource_Type * res_type;
 	if (name->len <= sizeof res_type->Name)
-		for (int n = 0; n < p_bic_data->ResourceTypeCount; n++) {
-			res_type = &p_bic_data->ResourceTypes[n];
-			if (strncmp (res_type->Name, name->str, name->len) == 0) {
+		for (int n = 0; n < p_bic_data->ResourceTypeCount; n++)
+			if (slice_matches_str (name, p_bic_data->ResourceTypes[n].Name)) {
 				*out = n;
 				return 1;
 			}
-		}
 	return 0;
 }
 
