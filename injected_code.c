@@ -583,7 +583,10 @@ handle_config_error (struct config_parsing * p, enum config_parse_error err)
 		PopupForm_add_text (popup, __, err_msg, 0);
 
 		if (err == CPE_GENERIC) {
-			snprintf (err_msg, sizeof err_msg, "^The last key successfully read was \"%.*s\".", p->key.len, p->key.str);
+			if (p->key.str != NULL)
+				snprintf (err_msg, sizeof err_msg, "^The last key successfully read was \"%.*s\".", p->key.len, p->key.str);
+			else
+				snprintf (err_msg, sizeof err_msg, "^Error occurred before any keys could be read.");
 		} else if (err == CPE_BAD_VALUE)
 			snprintf (err_msg, sizeof err_msg, "^The value for \"%.*s\" is invalid.", p->key.len, p->key.str);
 		else if (err == CPE_BAD_BOOL_VALUE)
