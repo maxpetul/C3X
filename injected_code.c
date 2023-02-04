@@ -5550,5 +5550,15 @@ patch_get_local_time_for_unit_ini (LPSYSTEMTIME lpSystemTime)
 		lpSystemTime->wDay = 9;
 }
 
+int __fastcall
+Tile_check_water_for_sea_zoc (Tile * this)
+{
+	if (! is->current_config.enhance_zone_of_control)
+		return this->vtable->m35_Check_Is_Water (this);
+	else
+		return 1; // The caller will skip ZoC logic if this is a land tile without a city because the targeted unit is a sea unit. Instead
+			  // return 1, so all tiles are considered sea tiles, so we can run the ZoC logic for land units.
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
