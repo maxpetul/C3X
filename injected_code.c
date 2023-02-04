@@ -1350,6 +1350,48 @@ check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect
 
 void __fastcall adjust_sliders_preproduction (Leader * this);
 
+struct nopified_area {
+	int size;
+	byte original_contents[];
+};
+
+// Replaces an area of code with no-ops. The original contents of the area are saved and can be restored with restore_area. This method assumes that
+// the necessary memory protection has already been set on the area, specifically that it can be written to. The method will do nothing if the area
+// has already been nopified with the same size. It's an error to re-nopify an address with a different size or overlap two nopified areas.
+void
+nopify_area (byte * addr, int size)
+{
+	struct nopified_area * na;
+	if (itable_look_up (&is->nopified_areas, (int)addr, (int *)&na)) {
+		if (na->size != 0) {
+			if (na->size != size) {
+				char s[200];
+				snprintf (s, sizeof s, "Nopification conflict: address %p was already nopified with size %d, conflicting with new size %d.", addr, na->size, size);
+				s[(sizeof s) - 1] = '\0';
+				pop_up_in_game_error (s);
+			}
+			return;
+		}
+	} else {
+		na = malloc (size + sizeof *na);
+		itable_insert (&is->nopified_areas, (int)addr, (int)na);
+	}
+	na->size = size;
+	memcpy (&na->original_contents, addr, size);
+	memset (addr, 0x90, size);
+}
+
+// De-nopifies an area, restoring the original contents. Does nothing if the area hasn't been nopified.
+void
+restore_area (byte * addr)
+{
+	struct nopified_area * na;
+	if (itable_look_up (&is->nopified_areas, (int)addr, (int *)&na)) {
+		memcpy (addr, &na->original_contents, na->size);
+		na->size = 0;
+	}
+}
+
 void
 apply_machine_code_edits (struct c3x_config const * cfg)
 {
@@ -1407,17 +1449,14 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	// https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-10#post-16085242
 	WITH_MEM_PROTECTION (ADDR_HOUSEBOAT_BUG_PATCH, ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH, PAGE_EXECUTE_READWRITE) {
 		if (cfg->patch_houseboat_bug) {
+			nopify_area (ADDR_HOUSEBOAT_BUG_PATCH, ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH);
 			byte * cursor = ADDR_HOUSEBOAT_BUG_PATCH;
 			*cursor++ = 0x50; // push eax
 			int call_offset = (int)&tile_at_city_or_null - ((int)cursor + 5);
 			*cursor++ = 0xE8; // call
 			cursor = int_to_bytes (cursor, call_offset);
-			for (; cursor < ADDR_HOUSEBOAT_BUG_PATCH_END; cursor++)
-				*cursor = 0x90; // nop
 		} else
-			memmove (ADDR_HOUSEBOAT_BUG_PATCH,
-				 is->houseboat_patch_area_original_contents,
-				 ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH);
+			restore_area (ADDR_HOUSEBOAT_BUG_PATCH);
 	}
 
 	// NoRaze
@@ -1703,10 +1742,7 @@ patch_init_floating_point ()
 	is->trade_scroll_button_state = IS_UNINITED;
 	is->eligible_for_trade_scroll = 0;
 
-	// Read contents of region potentially overwritten by patch
-	memmove (is->houseboat_patch_area_original_contents,
-		 ADDR_HOUSEBOAT_BUG_PATCH,
-		 ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH);
+	memset (&is->nopified_areas, 0, sizeof is->nopified_areas);
 
 	is->unit_menu_duplicates = NULL;
 
@@ -5551,7 +5587,7 @@ patch_get_local_time_for_unit_ini (LPSYSTEMTIME lpSystemTime)
 }
 
 int __fastcall
-Tile_check_water_for_sea_zoc (Tile * this)
+patch_Tile_check_water_for_sea_zoc (Tile * this)
 {
 	if (! is->current_config.enhance_zone_of_control)
 		return this->vtable->m35_Check_Is_Water (this);
