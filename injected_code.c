@@ -1597,6 +1597,7 @@ patch_init_floating_point ()
 		{"charm_flag_triggers_ptw_like_targeting"              , 0, offsetof (struct c3x_config, charm_flag_triggers_ptw_like_targeting)},
 		{"city_icons_show_unit_effects_not_trade"              , 1, offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
 		{"ignore_king_ability_for_defense_priority"            , 0, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
+		{"enhance_zone_of_control"                             , 0, offsetof (struct c3x_config, enhance_zone_of_control)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
