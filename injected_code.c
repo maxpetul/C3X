@@ -1555,6 +1555,13 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		cursor = emit_call (cursor, do_capture_modified_gold_trade); // call do_capture_modified_gold_trade
 		*cursor++ = 0xC3; // ret
 	}
+
+	WITH_MEM_PROTECTION (ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC, 6, PAGE_EXECUTE_READWRITE) {
+		if (cfg->enhance_zone_of_control)
+			nopify_area (ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC, 6);
+		else
+			restore_area (ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC);
+	}
 }
 
 void
