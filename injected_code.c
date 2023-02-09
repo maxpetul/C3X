@@ -1562,6 +1562,13 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		else
 			restore_area (ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC);
 	}
+
+	WITH_MEM_PROTECTION (ADDR_SKIP_SEA_UNITS_FOR_LAND_ZOC, 6, PAGE_EXECUTE_READWRITE) {
+		if (cfg->enhance_zone_of_control)
+			nopify_area (ADDR_SKIP_SEA_UNITS_FOR_LAND_ZOC, 6);
+		else
+			restore_area (ADDR_SKIP_SEA_UNITS_FOR_LAND_ZOC);
+	}
 }
 
 void
@@ -5601,6 +5608,13 @@ patch_Tile_check_water_for_sea_zoc (Tile * this)
 	else
 		return 1; // The caller will skip ZoC logic if this is a land tile without a city because the targeted unit is a sea unit. Instead
 			  // return 1, so all tiles are considered sea tiles, so we can run the ZoC logic for land units.
+}
+
+int __fastcall
+patch_Tile_check_water_for_land_zoc (Tile * this)
+{
+	// Same as above except this time we want to consider all tiles to be land
+	return (! is->current_config.enhance_zone_of_control) ? this->vtable->m35_Check_Is_Water (this) : 0;
 }
 
 // TCC requires a main function be defined even though it's never used.

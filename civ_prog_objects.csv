@@ -299,6 +299,8 @@ repl call, 0x598EC5,	0x0,		0x0,		"get_local_time_for_unit_ini",			""
 repl call, 0x598AEC,	0x0,		0x0,		"get_local_time_for_unit_ini",			""
 repl call, 0x4A784E,	0x0,		0x0,		"Tile_check_water_for_sea_zoc",			""
 define,	   0x4A79C2,	0x0,		0x0,		"ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC",		"byte *"
+define,	   0x4A7CAA,	0x0,		0x0,		"ADDR_SKIP_SEA_UNITS_FOR_LAND_ZOC",		"byte *"
+repl call, 0x4A7BF2,	0x0,		0x0,		"Tile_check_water_for_land_zoc",		""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
