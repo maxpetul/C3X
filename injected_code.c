@@ -5617,5 +5617,18 @@ patch_Tile_check_water_for_land_zoc (Tile * this)
 	return (! is->current_config.enhance_zone_of_control) ? this->vtable->m35_Check_Is_Water (this) : 0;
 }
 
+
+int __fastcall
+patch_Unit_get_attack_strength_for_sea_zoc (Unit * this)
+{
+	return (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea) ? Unit_get_attack_strength (this) : 0;
+}
+
+int __fastcall
+patch_Unit_get_attack_strength_for_land_zoc (Unit * this)
+{
+	return (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land) ? Unit_get_attack_strength (this) : 0;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
