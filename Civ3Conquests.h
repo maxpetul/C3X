@@ -352,7 +352,7 @@ enum AnimatedEffect
   AE_Plague = 0xB,
 };
 
-enum Direction
+enum direction
 {
   DIR_ZERO = 0, // Appears facing SW
   DIR_NE   = 1,
