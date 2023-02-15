@@ -5647,5 +5647,13 @@ patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int 
 	return Main_Screen_Form_find_visible_unit (this, __, tile_x, tile_y, excluded);
 }
 
+void __fastcall
+patch_Animator_play_zoc_animation (Animator * this, int edx, Unit * unit, AnimationType anim_type, byte param_3)
+{
+	is->unit_display_override = (struct unit_display_override) { unit->Body.ID, unit->Body.X, unit->Body.Y };
+	Animator_play_one_shot_unit_animation (this, __, unit, anim_type, param_3);
+	is->unit_display_override = (struct unit_display_override) { -1, -1, -1 };
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
