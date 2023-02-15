@@ -474,6 +474,12 @@ struct injected_state {
 	// Initialized to 0. If set to non-zero, the next call to do_load_game will consume the value and skip the intro popup.
 	int suppress_intro_after_load_popup;
 
+	// Initialized to all -1. If set, the unit with the specified ID will always be the top unit displayed on the specified tile. If the unit is
+	// not on that tile, there is no effect. This is only intended to be used on a temporary basis.
+	struct unit_display_override {
+		int unit_id, tile_x, tile_y;
+	} unit_display_override;
+
 	// ==========
 	// }
 	// ==========

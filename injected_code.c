@@ -1793,6 +1793,8 @@ patch_init_floating_point ()
 
 	is->suppress_intro_after_load_popup = 0;
 
+	is->unit_display_override = (struct unit_display_override) {-1, -1, -1};
+
 	memset (&is->boolean_config_offsets, 0, sizeof is->boolean_config_offsets);
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		stable_insert (&is->boolean_config_offsets, boolean_config_options[n].name, boolean_config_options[n].offset);
@@ -5628,6 +5630,21 @@ int __fastcall
 patch_Unit_get_attack_strength_for_land_zoc (Unit * this)
 {
 	return (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land) ? Unit_get_attack_strength (this) : 0;
+}
+
+Unit * __fastcall
+patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int tile_x, int tile_y, Unit * excluded)
+{
+	struct unit_display_override * override = &is->unit_display_override;
+	if ((override->unit_id >= 0) && (override->tile_x == tile_x) && (override->tile_y == tile_y)) {
+		Unit * unit = get_unit_ptr (override->unit_id);
+		if (unit != NULL) {
+			if ((unit->Body.X == tile_x) && (unit->Body.Y == tile_y))
+				return unit;
+		}
+	}
+
+	return Main_Screen_Form_find_visible_unit (this, __, tile_x, tile_y, excluded);
 }
 
 // TCC requires a main function be defined even though it's never used.
