@@ -185,7 +185,7 @@ typedef struct Base_Form_Data Base_Form_Data;
 typedef struct Button Button;
 typedef struct Advisor_Science_Form Advisor_Science_Form;
 typedef struct Advisor_Base_Form Advisor_Base_Form;
-typedef struct Main_Screen_Data_1AD4 Main_Screen_Data_1AD4;
+typedef struct Animator Animator;
 typedef struct Command_Button Command_Button;
 typedef struct GUI_Form_1 GUI_Form_1;
 typedef struct ComboBox ComboBox;
@@ -1365,6 +1365,28 @@ typedef enum preferences {
 	P_SHOW_FEWER_MP_POPUPS              = 0x20000000,
 	P_DO_NOT_AUTO_SELECT_UNITS_IN_MP    = 0x40000000
 } Preferences;
+
+typedef enum animation_type {
+	AT_BLANK = 0,
+	AT_DEFAULT,
+	AT_RUN,
+	AT_ATTACK1,
+	AT_ATTACK2,
+	AT_ATTACK3,
+	AT_DEATH,
+	AT_FORTIFY,
+	AT_FIDGET,
+	AT_VICTORY,
+	AT_CAPTURE,
+	AT_FORTRESS,
+	AT_BUILD,
+	AT_ROAD,
+	AT_MINE,
+	AT_IRRIGATE,
+	AT_JUNGLE,
+	AT_FOREST,
+	AT_PLANT
+} AnimationType;
 
 struct IntList
 {
@@ -4604,7 +4626,7 @@ struct Advisor_Base_Form
   int Last;
 };
 
-struct Main_Screen_Data_1AD4
+struct Animator
 {
   int field_0;
   int field_4;
@@ -5906,7 +5928,7 @@ struct Main_Screen_Form
   int field_2E1A8[2];
   int mouse_x;
   int mouse_y;
-  Main_Screen_Data_1AD4 Data_1AD4;
+  Animator animator;
 };
 
 struct Governor_Form
