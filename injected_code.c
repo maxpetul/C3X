@@ -1598,6 +1598,7 @@ patch_init_floating_point ()
 		{"enable_trade_screen_scroll"                          , 1, offsetof (struct c3x_config, enable_trade_screen_scroll)},
 		{"group_units_on_right_click_menu"                     , 1, offsetof (struct c3x_config, group_units_on_right_click_menu)},
 		{"show_golden_age_turns_remaining"                     , 1, offsetof (struct c3x_config, show_golden_age_turns_remaining)},
+		{"show_zoc_attacks_from_mid_stack"                     , 1, offsetof (struct c3x_config, show_zoc_attacks_from_mid_stack)},
 		{"cut_research_spending_to_avoid_bankruptcy"           , 1, offsetof (struct c3x_config, cut_research_spending_to_avoid_bankruptcy)},
 		{"dont_pause_for_love_the_king_messages"               , 1, offsetof (struct c3x_config, dont_pause_for_love_the_king_messages)},
 		{"reverse_specialist_order_with_shift"                 , 1, offsetof (struct c3x_config, reverse_specialist_order_with_shift)},
@@ -5650,9 +5651,12 @@ patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int 
 void __fastcall
 patch_Animator_play_zoc_animation (Animator * this, int edx, Unit * unit, AnimationType anim_type, byte param_3)
 {
-	is->unit_display_override = (struct unit_display_override) { unit->Body.ID, unit->Body.X, unit->Body.Y };
-	Animator_play_one_shot_unit_animation (this, __, unit, anim_type, param_3);
-	is->unit_display_override = (struct unit_display_override) { -1, -1, -1 };
+	if (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class != UTC_Air) {
+		if (is->current_config.show_zoc_attacks_from_mid_stack)
+			is->unit_display_override = (struct unit_display_override) { unit->Body.ID, unit->Body.X, unit->Body.Y };
+		Animator_play_one_shot_unit_animation (this, __, unit, anim_type, param_3);
+		is->unit_display_override = (struct unit_display_override) { -1, -1, -1 };
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.
