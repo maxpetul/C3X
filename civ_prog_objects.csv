@@ -312,6 +312,10 @@ inlead,	   0x4E3E90,	0x0,		0x0,		"Main_Screen_Form_find_visible_unit",		"Unit * 
 define,	   0x4F00F0,	0x4F9100,	0x4F01B0,	"Animator_play_one_shot_unit_animation",	"void (__fastcall *) (Animator * this, int edx, Unit * unit, AnimationType anim_type, byte param_3)"
 repl call, 0x4A81A4,	0x4AEE83,	0x4A8234,	"Animator_play_zoc_animation",			""
 repl call, 0x4A81E2,	0x4AEEC1,	0x4A8272,	"Animator_play_zoc_animation",			""
+inlead,	   0x4A76B0,	0x0,		0x0,		"Fighter_apply_zone_of_control",		"void (__fastcall *) (Fighter * this, int edx, Unit * unit, int from_x, int from_y, int to_x, int to_y)"
+define,	   0x4A1CD0,	0x0,		0x0,		"Fighter_check_combat_anim_visibility",		"byte (__fastcall *) (Fighter * this, int edx, Unit * attacker, Unit * defender, byte param_3)"
+repl call, 0x4A7F71,	0x0,		0x0,		"Fighter_check_zoc_anim_visibility",	""
+define,	   0x4A7F61,	0x0,		0x0,		"ADDR_ZOC_CHECK_ATTACKER_ANIM_FIELD_111",	"byte *"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

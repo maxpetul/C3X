@@ -481,6 +481,9 @@ struct injected_state {
 		int unit_id, tile_x, tile_y;
 	} unit_display_override;
 
+	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
+	Unit * zoc_interceptor;
+
 	// ==========
 	// }
 	// ==========

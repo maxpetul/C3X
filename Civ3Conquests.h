@@ -4507,7 +4507,15 @@ struct FLC_Animation
   Animation_Info *Animation_Info;
   int field_E8[5];
   int field_FC;
-  int field_100[7];
+  int field_100;
+  int field_104;
+  int field_108;
+  int field_10C;
+  byte field_110;
+  byte field_111;
+  byte field_112;
+  byte field_113;
+  int field_114[2];
   int Direction3;
   int Direction4;
   int field_124;

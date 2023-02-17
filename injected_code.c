@@ -1381,7 +1381,8 @@ nopify_area (byte * addr, int size)
 	memset (addr, 0x90, size);
 }
 
-// De-nopifies an area, restoring the original contents. Does nothing if the area hasn't been nopified.
+// De-nopifies an area, restoring the original contents. Does nothing if the area hasn't been nopified. Assumes the appropriate memory protection has
+// already been set.
 void
 restore_area (byte * addr)
 {
@@ -1389,6 +1390,18 @@ restore_area (byte * addr)
 	if (itable_look_up (&is->nopified_areas, (int)addr, (int *)&na)) {
 		memcpy (addr, &na->original_contents, na->size);
 		na->size = 0;
+	}
+}
+
+// Nopifies or restores an area depending on if yes_or_no is 1 or 0. Sets the necessary memory protections.
+void
+set_nopification (int yes_or_no, byte * addr, int size)
+{
+	WITH_MEM_PROTECTION (addr, size, PAGE_EXECUTE_READWRITE) {
+		if (yes_or_no)
+			nopify_area (addr, size);
+		else
+			restore_area (addr);
 	}
 }
 
@@ -1556,19 +1569,9 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		*cursor++ = 0xC3; // ret
 	}
 
-	WITH_MEM_PROTECTION (ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC, 6, PAGE_EXECUTE_READWRITE) {
-		if (cfg->enhance_zone_of_control)
-			nopify_area (ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC, 6);
-		else
-			restore_area (ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC);
-	}
-
-	WITH_MEM_PROTECTION (ADDR_SKIP_SEA_UNITS_FOR_LAND_ZOC, 6, PAGE_EXECUTE_READWRITE) {
-		if (cfg->enhance_zone_of_control)
-			nopify_area (ADDR_SKIP_SEA_UNITS_FOR_LAND_ZOC, 6);
-		else
-			restore_area (ADDR_SKIP_SEA_UNITS_FOR_LAND_ZOC);
-	}
+	set_nopification (cfg->enhance_zone_of_control, ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC      , 6);
+	set_nopification (cfg->enhance_zone_of_control, ADDR_SKIP_SEA_UNITS_FOR_LAND_ZOC      , 6);
+	set_nopification (cfg->enhance_zone_of_control, ADDR_ZOC_CHECK_ATTACKER_ANIM_FIELD_111, 6);
 }
 
 void
@@ -5656,6 +5659,38 @@ patch_Animator_play_zoc_animation (Animator * this, int edx, Unit * unit, Animat
 			is->unit_display_override = (struct unit_display_override) { unit->Body.ID, unit->Body.X, unit->Body.Y };
 		Animator_play_one_shot_unit_animation (this, __, unit, anim_type, param_3);
 		is->unit_display_override = (struct unit_display_override) { -1, -1, -1 };
+	}
+}
+
+byte __fastcall
+patch_Fighter_check_zoc_anim_visibility (Fighter * this, int edx, Unit * attacker, Unit * defender, byte param_3)
+{
+	// If we've reached this point in the code (in the calling method) then a unit has been selected to exert zone of control and it has passed
+	// its dice roll to cause damage. Stash its pointer for possible use later.
+	is->zoc_interceptor = attacker;
+
+	// If an air unit was selected, pre-emptively undo the damage from ZoC since we'll want to run our own bit of logic to do that (the air unit
+	// may still get shot down). Return 0 from this function to skip over all of the animation logic in the caller since it wouldn't work for
+	// aircraft.
+	if (p_bic_data->UnitTypes[attacker->Body.UnitTypeID].Unit_Class == UTC_Air) {
+		defender->Body.Damage -= 1;
+		return 0;
+
+	// Repeat a check done by the caller. We've deleted this check to ensure that this function always gets called so we can grab the interceptor.
+	} else if (attacker->Body.Animation.field_111 == 0)
+		return 0;
+
+	else
+		return Fighter_check_combat_anim_visibility (this, __, attacker, defender, param_3);
+}
+
+void __fastcall
+patch_Fighter_apply_zone_of_control (Fighter * this, int edx, Unit * unit, int from_x, int from_y, int to_x, int to_y)
+{
+	is->zoc_interceptor = NULL;
+	Fighter_apply_zone_of_control (this, __, unit, from_x, from_y, to_x, to_y);
+	if (is->current_config.enhance_zone_of_control && (is->zoc_interceptor != NULL)) {
+		pop_up_in_game_error (p_bic_data->UnitTypes[is->zoc_interceptor->Body.UnitTypeID].Name);
 	}
 }
 
