@@ -5689,8 +5689,15 @@ patch_Fighter_apply_zone_of_control (Fighter * this, int edx, Unit * unit, int f
 {
 	is->zoc_interceptor = NULL;
 	Fighter_apply_zone_of_control (this, __, unit, from_x, from_y, to_x, to_y);
-	if (is->current_config.enhance_zone_of_control && (is->zoc_interceptor != NULL)) {
-		pop_up_in_game_error (p_bic_data->UnitTypes[is->zoc_interceptor->Body.UnitTypeID].Name);
+
+	// Actually exert ZoC if an air unit managed to do so.
+	if (is->current_config.enhance_zone_of_control && (is->zoc_interceptor != NULL) &&
+	    (p_bic_data->UnitTypes[is->zoc_interceptor->Body.UnitTypeID].Unit_Class == UTC_Air)) {
+		int intercepted = Unit_try_flying_over_tile (is->zoc_interceptor, __, from_x, from_y);
+		if (! intercepted) {
+			Unit_play_bombing_animation (is->zoc_interceptor, __, from_x, from_y);
+			unit->Body.Damage = not_below (0, unit->Body.Damage + 1);
+		}
 	}
 }
 
