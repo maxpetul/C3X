@@ -1572,6 +1572,8 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	set_nopification (cfg->enhance_zone_of_control, ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC      , 6);
 	set_nopification (cfg->enhance_zone_of_control, ADDR_SKIP_SEA_UNITS_FOR_LAND_ZOC      , 6);
 	set_nopification (cfg->enhance_zone_of_control, ADDR_ZOC_CHECK_ATTACKER_ANIM_FIELD_111, 6);
+	set_nopification (cfg->enhance_zone_of_control, ADDR_SKIP_ZOC_FOR_ONE_HP_LAND_UNIT    , 6);
+	set_nopification (cfg->enhance_zone_of_control, ADDR_SKIP_ZOC_FOR_ONE_HP_SEA_UNIT     , 6);
 }
 
 void
@@ -5699,6 +5701,40 @@ patch_Fighter_apply_zone_of_control (Fighter * this, int edx, Unit * unit, int f
 			unit->Body.Damage = not_below (0, unit->Body.Damage + 1);
 		}
 	}
+}
+
+// These two patches replace two function calls in Unit::move_to_adjacent_tile that come immediately after the unit has been subjected to zone of
+// control. These calls recheck that the move is valid, not sure why. Here they're patched to indicate that the move in invalid when the unit was
+// previously killed by ZoC. This causes move_to_adjacent_tile to return early without running the code that would place the unit on the destination
+// tile and, for example, capturing an enemy city there.
+int __fastcall
+patch_Trade_Net_get_move_cost_after_zoc (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned param_7, int neighbor_index, int param_9)
+{
+	return (! is->current_config.enhance_zone_of_control) || ((Unit_get_max_hp (unit) - unit->Body.Damage) > 0) ?
+		patch_Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, param_7, neighbor_index, param_9) :
+		-1;
+}
+AdjacentMoveValidity __fastcall
+patch_Unit_can_move_after_zoc (Unit * this, int edx, int neighbor_index, int param_2)
+{
+	return (! is->current_config.enhance_zone_of_control) || ((Unit_get_max_hp (this) - this->Body.Damage) > 0) ?
+		patch_Unit_can_move_to_adjacent_tile (this, __, neighbor_index, param_2) :
+		AMV_1;
+}
+
+int __fastcall
+patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, byte param_2, int param_3, byte param_4)
+{
+	is->zoc_interceptor = NULL;
+	int tr = Unit_move_to_adjacent_tile (this, __, neighbor_index, param_2, param_3, param_4);
+	if (is->current_config.enhance_zone_of_control && (is->zoc_interceptor != NULL) &&
+	    ((Unit_get_max_hp (this) - this->Body.Damage) <= 0)) {
+		// TODO: Score kill
+		// TODO: Play death animation
+		Unit_despawn (this, __, is->zoc_interceptor->Body.CivID, 0, 0, 0, 0, 0, 0);
+		return ! is_online_game (); // This is what the original method returns when the unit was destroyed in combat
+	} else
+		return tr;
 }
 
 // TCC requires a main function be defined even though it's never used.
