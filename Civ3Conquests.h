@@ -723,10 +723,11 @@ enum Unit_Command_Values
   UCV_Finish_Improvements = 0x10000080,
   UCV_Upgrade_Unit	  = 0x10000100,
   UCV_Rescue_Princess	  = 0x10000200,
-  UCV_Enslave		  = 0x10004000,
-  UCV_Unknown		  = 0x10008000,
+  UCV_Telepad             = 0x10004000,
+  UCV_Teleport            = 0x10008000,
   UCV_Stealth_Attack	  = 0x10010000,
   UCV_Charm_Bombard       = 0x10020000,
+  UCV_Enslave		  = 0x10040000,
   UCV_Sacrifice		  = 0x10100000,
   UCV_Science_Age	  = 0x10200000,
 
@@ -2528,7 +2529,7 @@ struct Unit_vtable
   int m17;
   int m18;
   int (__fastcall * Move) (Unit *, int, int, char);
-  int m20;
+  int (__fastcall * teleport) (Unit *, int, int, int, Unit *);
   void (__fastcall * update_while_active) (Unit *);
   int m22;
   byte (__fastcall * work) (Unit *);

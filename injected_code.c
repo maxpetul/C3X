@@ -5722,19 +5722,39 @@ patch_Unit_can_move_after_zoc (Unit * this, int edx, int neighbor_index, int par
 		AMV_1;
 }
 
+// Checks unit's HP after it was possibly hit by ZoC and deals with the consequences if it's dead. Does nothing if config option to enhance ZoC isn't
+// set or if interceptor is NULL. Returns 1 if the unit was killed, 0 otherwise.
+int
+check_life_after_zoc (Unit * unit, Unit * interceptor)
+{
+	if (is->current_config.enhance_zone_of_control && (interceptor != NULL) &&
+	    ((Unit_get_max_hp (unit) - unit->Body.Damage) <= 0)) {
+		// TODO: Score kill
+		// TODO: Play death animation
+		Unit_despawn (unit, __, interceptor->Body.CivID, 0, 0, 0, 0, 0, 0);
+		return 1;
+	} else
+		return 0;
+}
+
 int __fastcall
 patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, byte param_2, int param_3, byte param_4)
 {
 	is->zoc_interceptor = NULL;
 	int tr = Unit_move_to_adjacent_tile (this, __, neighbor_index, param_2, param_3, param_4);
-	if (is->current_config.enhance_zone_of_control && (is->zoc_interceptor != NULL) &&
-	    ((Unit_get_max_hp (this) - this->Body.Damage) <= 0)) {
-		// TODO: Score kill
-		// TODO: Play death animation
-		Unit_despawn (this, __, is->zoc_interceptor->Body.CivID, 0, 0, 0, 0, 0, 0);
+	if (check_life_after_zoc (this, is->zoc_interceptor))
 		return ! is_online_game (); // This is what the original method returns when the unit was destroyed in combat
-	} else
+	else
 		return tr;
+}
+
+int __fastcall
+patch_Unit_teleport (Unit * this, int edx, int tile_x, int tile_y, Unit * unit_telepad)
+{
+	is->zoc_interceptor = NULL;
+	int tr = Unit_teleport (this, __, tile_x, tile_y, unit_telepad);
+	check_life_after_zoc (this, is->zoc_interceptor);
+	return tr;
 }
 
 // TCC requires a main function be defined even though it's never used.
