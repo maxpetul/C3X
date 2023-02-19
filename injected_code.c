@@ -5729,8 +5729,9 @@ check_life_after_zoc (Unit * unit, Unit * interceptor)
 {
 	if (is->current_config.enhance_zone_of_control && (interceptor != NULL) &&
 	    ((Unit_get_max_hp (unit) - unit->Body.Damage) <= 0)) {
-		// TODO: Score kill
-		// TODO: Play death animation
+		Unit_score_kill (interceptor, __, unit, 0);
+		if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (&p_bic_data->fighter, __, interceptor, unit, 1))
+			Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, unit, AT_DEATH, 0);
 		Unit_despawn (unit, __, interceptor->Body.CivID, 0, 0, 0, 0, 0, 0);
 		return 1;
 	} else

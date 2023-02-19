@@ -322,6 +322,7 @@ inlead,	   0x5B8FC0,	0x0,		0x0,		"Unit_move_to_adjacent_tile",			"int (__fastcal
 repl call, 0x5B945B,	0x0,		0x0,		"Trade_Net_get_move_cost_after_zoc",		""
 repl call, 0x5B9471,	0x0,		0x0,		"Unit_can_move_after_zoc",			""
 repl vptr, 0x66DD40,	0x68AE20,	0x66DD40,	"Unit_teleport",				"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, Unit * unit_telepad)"
+define,	   0x5BEF00,	0x0,		0x0,		"Unit_score_kill",				"void (__fastcall *) (Unit * this, int edx, Unit * victim, byte param_2)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
