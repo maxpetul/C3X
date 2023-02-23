@@ -810,6 +810,27 @@ patch_PCX_Image_process_tech_ga_status (PCX_Image * this, int edx, char * str)
 	return PCX_Image_process_text (this, __, str);
 }
 
+enum direction
+reverse_dir (enum direction dir)
+{
+	enum direction const reversed[] = {
+		DIR_ZERO, // DIR_ZERO
+		DIR_SW  , // DIR_NE
+		DIR_W   , // DIR_E
+		DIR_NW  , // DIR_SE
+		DIR_N   , // DIR_S
+		DIR_NE  , // DIR_SW
+		DIR_E   , // DIR_W
+		DIR_SE  , // DIR_NW
+		DIR_S   , // DIR_N
+	};
+	int n = (int)dir;
+	if ((n >= 0) && (n < ARRAY_LEN (reversed)))
+		return reversed[n];
+	else
+		return DIR_ZERO;
+}
+
 void
 wrap_tile_coords (Map * map, int * x, int * y)
 {
@@ -2909,6 +2930,62 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 	return base_cost;
 }
 
+int __fastcall
+patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp)
+{
+	int tr = Trade_Net_set_unit_path (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, out_path_length_in_mp);
+
+	// We might have to correct the path length returned by the base game's pathfinder. This occurs when railroad movement is limited and the
+	// unit's total MP exceeds what can be stored in a one-byte integer. The cause of the incorrect length is that the pathfinder internally
+	// stores the remaining moves at each node of the search in a single byte. This correction fixes the bug (reported several times) that ETAs
+	// shown in the interface are wrong.
+	if ((is->current_config.limit_railroad_movement > 0) && // if railroad movement is limited AND
+	    (tr > 0) && (out_path_length_in_mp != NULL) && // path was found AND caller wants to know its length AND
+	    (unit != NULL) && (Unit_get_max_move_points (unit) > 255)) { // an actual unit was used AND that unit's total MP overflows a uint8
+
+		// First memoize the cost of taking each step along the path. This must be done separately because the pathfinder's internal data only
+		// lets us traverse the path backwards.
+		{
+			clear_memo ();
+			int x = to_x, y = to_y;
+			do {
+				// flags & 1 determines whether "data2" or "data4" was used. I don't know what the difference is.
+				enum direction dir = Trade_Net_get_direction_from_internal_map (this, __, x, y, flags & 1);
+				if (dir == DIR_ZERO)
+					break;
+
+				int prev_x, prev_y; {
+					int dx, dy;
+					neighbor_index_to_diff (dir, &dx, &dy);
+					prev_x = x + dx; prev_y = y + dy;
+					wrap_tile_coords (&p_bic_data->Map, &prev_x, &prev_y);
+				}
+
+				memoize (patch_Trade_Net_get_movement_cost (this, __, prev_x, prev_y, x, y, unit, civ_id, flags, reverse_dir (dir), 0));
+				x = prev_x; y = prev_y;
+			} while (! ((x == from_x) && (y == from_y)));
+		}
+
+		// Now walk the path forwards tracking how much MP the unit would spend. We must be aware that the unit can't spend more MP than it
+		// has. For example, if a unit with 1 move walks onto an unimproved mountain, that effectively costs only 1 move, not 3.
+		int mp_remaining = Unit_get_max_move_points (unit) - unit->Body.Moves,
+		    mp_spent = 0;
+		for (int n = is->memo_len - 1; n >= 0; n--) {
+			int cost = is->memo[n];
+			if (cost < mp_remaining) {
+				mp_spent += cost;
+				mp_remaining -= cost;
+			} else {
+				mp_spent += mp_remaining;
+				mp_remaining = Unit_get_max_move_points (unit);
+			}
+		}
+		*out_path_length_in_mp = mp_spent;
+	}
+
+	return tr;
+}
+
 int __cdecl
 patch_do_save_game (char const * file_path, char param_2, GUID * guid)
 {
@@ -3209,7 +3286,7 @@ int
 estimate_travel_time (Unit * unit, int to_tile_x, int to_tile_y, int * out_num_turns)
 {
 	int dist_in_mp;
-	Trade_Net_set_unit_path (p_trade_net, __, unit->Body.X, unit->Body.Y, to_tile_x, to_tile_y, unit, unit->Body.CivID, 1, &dist_in_mp);
+	patch_Trade_Net_set_unit_path (p_trade_net, __, unit->Body.X, unit->Body.Y, to_tile_x, to_tile_y, unit, unit->Body.CivID, 1, &dist_in_mp);
 	dist_in_mp += unit->Body.Moves; // Add MP already spent this turn to the distance
 	int max_mp = Unit_get_max_move_points (unit);
 	if ((dist_in_mp >= 0) && (max_mp > 0)) {
@@ -3377,7 +3454,7 @@ patch_Unit_ai_move_leader (Unit * this)
 		moving_to_city = find_nearest_established_city (this, continent_id);
 	}
 	if (moving_to_city) {
-		int first_move = Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
+		int first_move = patch_Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
 		if (first_move > 0) {
 			Unit_set_escortee (this, __, -1);
 			this->vtable->Move (this, __, first_move, 0);
@@ -4100,7 +4177,7 @@ ai_move_pop_unit (Unit * this)
 		moving_to_city = find_nearest_established_city (this, continent_id);
 
 	if (moving_to_city) {
-		int first_move = Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
+		int first_move = patch_Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
 		if (first_move > 0) {
 			Unit_set_escortee (this, __, -1);
 			this->vtable->Move (this, __, first_move, 0);
