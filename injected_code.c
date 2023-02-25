@@ -545,6 +545,54 @@ read_retreat_rules (struct string_slice const * s, int * out_val)
 
 }
 
+struct parsable_field_bit {
+	char * name;
+	int bit_value;
+};
+
+int
+read_bit_field (struct string_slice const * s, struct parsable_field_bit const * bits, int count_bits, int * out_field)
+{
+	struct string_slice trimmed = trim_string_slice (s, 0);
+	s = &trimmed;
+
+	int tr;
+	if (s->len <= 0)
+		tr = 0;
+	else if (slice_matches_str (s, "all"))
+		tr = ~0;
+	else {
+		tr = 0;
+		char * cursor = &s->str[0];
+		char * s_end = &s->str[s->len];
+		while (1) {
+			struct string_slice name;
+
+			if (cursor >= s_end)
+				break;
+			else if (! parse_string (&cursor, &name)) {
+				skip_white_space (&cursor);
+				if (cursor >= s_end)
+					break;
+				else
+					return 0; // Invalid character in value
+			}
+
+			int matched_any = 0;
+			for (int n = 0; n < count_bits; n++)
+				if (slice_matches_str (&name, bits[n].name)) {
+					tr |= bits[n].bit_value;
+					matched_any = 1;
+					break;
+				}
+			if (! matched_any)
+				return 0;
+		}
+	}
+	*out_field = tr;
+	return 1;
+}
+
 struct config_parsing {
 	char * file_path;
 	char * text;
@@ -715,6 +763,12 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if ((slice_matches_str (&p.key, "retreat_rules")) && read_retreat_rules (&value, &ival)) {
 					if (! read_retreat_rules (&value, (int *)&cfg->retreat_rules))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "special_defensive_bombard_rules")) {
+					struct parsable_field_bit bits[] = {
+						{"lethal", DBR_LETHAL},
+					};
+					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_defensive_bombard_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_ptw_arty_types (&value,
@@ -1727,6 +1781,7 @@ patch_init_floating_point ()
 	base_config.ai_build_artillery_ratio = 20;
 	base_config.ai_artillery_value_damage_percent = 50;
 	base_config.ai_build_bomber_ratio = 70;
+	base_config.special_defensive_bombard_rules = 0;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	memcpy (&is->base_config, &base_config, sizeof base_config);
@@ -5833,6 +5888,12 @@ patch_Unit_teleport (Unit * this, int edx, int tile_x, int tile_y, Unit * unit_t
 	int tr = Unit_teleport (this, __, tile_x, tile_y, unit_telepad);
 	check_life_after_zoc (this, is->zoc_interceptor);
 	return tr;
+}
+
+Unit * __fastcall
+patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker, Unit * defender)
+{
+	return Fighter_find_defensive_bombarder (this, __, attacker, defender);
 }
 
 // TCC requires a main function be defined even though it's never used.

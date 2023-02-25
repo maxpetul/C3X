@@ -40,6 +40,10 @@ enum retreat_rules {
 	RR_IF_FASTER
 };
 
+enum special_defensive_bombard_rules {
+	DBR_LETHAL = 1
+};
+
 struct c3x_config {
 	char enable_stack_bombard;
 	char enable_disorder_warning;
@@ -109,6 +113,7 @@ struct c3x_config {
 	char city_icons_show_unit_effects_not_trade;
 	char ignore_king_ability_for_defense_priority;
 	char enhance_zone_of_control;
+	enum special_defensive_bombard_rules special_defensive_bombard_rules;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
