@@ -2103,10 +2103,10 @@ struct Fighter
   Unit * defender;
   byte defender_eligible_to_retreat;
   byte attacker_eligible_to_retreat;
-  byte field_A;
+  byte play_animations;
   byte field_B;
   int attack_direction;
-  int field_10;
+  int defense_direction; // Reverse of attack direction
   int attacker_location_x;
   int attacker_location_y;
   int defender_location_x;
