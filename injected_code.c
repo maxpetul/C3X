@@ -5934,5 +5934,35 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 	}
 }
 
+void __fastcall
+patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombarder, Unit * defender)
+{
+	Fighter_damage_by_defensive_bombard (this, __, bombarder, defender);
+
+	// If the unit was killed by defensive bombard, play its death animation then toggle off animations for the rest of the combat so it doesn't
+	// look like anything else happens. Technically, the combat continues and the dead unit is guarantted to lose because the patch to
+	// get_combat_odds ensures the dead unit has no chance of winning a round.
+	if (defender->Body.Damage >= Unit_get_max_hp (defender)) {
+		if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (this, __, bombarder, defender, 1))
+			Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, defender, AT_DEATH, 0);
+		this->play_animations = 0;
+	}
+}
+
+int __fastcall
+patch_Fighter_get_odds_for_main_combat_loop (Fighter * this, int edx, Unit * attacker, Unit * defender, byte bombarding, byte ignore_defensive_bonuses)
+{
+	int attacker_remaining_hp = Unit_get_max_hp (attacker) - attacker->Body.Damage;
+
+	// If the attacker has zero HP remaining and lethal defensive bombard is enabled then it's safe to assume the attacker was killed by def
+	// bombard. In this case, return a number that will ensure the defender wins the first round of combat, otherwise the zero HP attacker might
+	// go on to win an absurd victory.
+	if ((attacker_remaining_hp <= 0) && (is->current_config.special_defensive_bombard_rules & SDBR_LETHAL))
+		return 1025;
+
+	else
+		return Fighter_get_combat_odds (this, __, attacker, defender, bombarding, ignore_defensive_bonuses);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
