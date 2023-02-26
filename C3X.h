@@ -490,6 +490,12 @@ struct injected_state {
 	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
 	Unit * zoc_interceptor;
 
+	// Used to record which units participated in defensive bombardment during Fighter::fight. Gets set by
+	// Fighter::damage_by_defensive_bombardment and cleared when Fighter::fight returns.
+	Unit * db_bombarder;
+	Unit * db_defender;
+	byte db_damage_done, db_defender_was_destroyed;
+
 	// ==========
 	// }
 	// ==========

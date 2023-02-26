@@ -1878,6 +1878,9 @@ patch_init_floating_point ()
 
 	is->unit_display_override = (struct unit_display_override) {-1, -1, -1};
 
+	is->db_bombarder = is->db_defender = NULL;
+	is->db_damage_done = is->db_defender_was_destroyed = 0;
+
 	memset (&is->boolean_config_offsets, 0, sizeof is->boolean_config_offsets);
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		stable_insert (&is->boolean_config_offsets, boolean_config_options[n].name, boolean_config_options[n].offset);
@@ -5939,31 +5942,62 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 void __fastcall
 patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombarder, Unit * defender)
 {
+	int damage_before = defender->Body.Damage;
 	Fighter_damage_by_defensive_bombard (this, __, bombarder, defender);
+	int damage_after = defender->Body.Damage;
 
-	// If the unit was killed by defensive bombard, play its death animation then toggle off animations for the rest of the combat so it doesn't
-	// look like anything else happens. Technically, the combat continues and the dead unit is guarantted to lose because the patch to
-	// get_combat_odds ensures the dead unit has no chance of winning a round.
-	if (defender->Body.Damage >= Unit_get_max_hp (defender)) {
-		if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (this, __, bombarder, defender, 1))
-			Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, defender, AT_DEATH, 0);
-		this->play_animations = 0;
+	is->db_bombarder = bombarder;
+	is->db_defender = defender;
+	if (damage_after > damage_before) {
+		is->db_damage_done = 1;
+		int max_hp = Unit_get_max_hp (defender);
+		int dead_before = damage_before >= max_hp, dead_after = damage_after >= max_hp;
+
+		// If the unit was killed by defensive bombard, play its death animation then toggle off animations for the rest of the combat so it
+		// doesn't look like anything else happens. Technically, the combat continues and the dead unit is guarantted to lose because the
+		// patch to get_combat_odds ensures the dead unit has no chance of winning a round.
+		if (dead_before ^ dead_after) {
+			is->db_defender_was_destroyed = 1;
+			if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (this, __, bombarder, defender, 1))
+				Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, defender, AT_DEATH, 0);
+			this->play_animations = 0;
+		}
 	}
 }
 
 int __fastcall
 patch_Fighter_get_odds_for_main_combat_loop (Fighter * this, int edx, Unit * attacker, Unit * defender, byte bombarding, byte ignore_defensive_bonuses)
 {
-	int attacker_remaining_hp = Unit_get_max_hp (attacker) - attacker->Body.Damage;
-
-	// If the attacker has zero HP remaining and lethal defensive bombard is enabled then it's safe to assume the attacker was killed by def
-	// bombard. In this case, return a number that will ensure the defender wins the first round of combat, otherwise the zero HP attacker might
-	// go on to win an absurd victory.
-	if ((attacker_remaining_hp <= 0) && (is->current_config.special_defensive_bombard_rules & SDBR_LETHAL))
+	// If the attacker was destroyed by defensive bombard, return a number that will ensure the defender wins the first round of combat, otherwise
+	// the zero HP attacker might go on to win an absurd victory. (The attacker in the overall combat is the defender during DB).
+	if (is->db_defender_was_destroyed)
 		return 1025;
 
 	else
 		return Fighter_get_combat_odds (this, __, attacker, defender, bombarding, ignore_defensive_bonuses);
+}
+
+byte __fastcall
+patch_Fighter_fight (Fighter * this, int edx, Unit * attacker, int attack_direction, Unit * defender_or_null)
+{
+	byte tr = Fighter_fight (this, __, attacker, attack_direction, defender_or_null);
+
+	is->db_bombarder = is->db_defender = NULL;
+	is->db_damage_done = is->db_defender_was_destroyed = 0;
+
+	return tr;
+}
+
+void __fastcall
+patch_Unit_score_kill_by_defender (Unit * this, int edx, Unit * victim, byte was_attacking)
+{
+	// This function is called when the defender wins in combat. If the attacker was actually killed by defensive bombardment, then award credit
+	// for that kill to the defensive bombarder not the defender in combat.
+	if (is->db_defender_was_destroyed)
+		Unit_score_kill (is->db_bombarder, __, victim, was_attacking);
+
+	else
+		Unit_score_kill (this, __, victim, was_attacking);
 }
 
 // TCC requires a main function be defined even though it's never used.
