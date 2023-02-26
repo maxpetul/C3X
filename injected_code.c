@@ -766,7 +766,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_defensive_bombard_rules")) {
 					struct parsable_field_bit bits[] = {
-						{"lethal", DBR_LETHAL},
+						{"lethal", SDBR_LETHAL},
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_defensive_bombard_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -5890,10 +5890,46 @@ patch_Unit_teleport (Unit * this, int edx, int tile_x, int tile_y, Unit * unit_t
 	return tr;
 }
 
+int
+can_do_defensive_bombard (Unit * unit, UnitType * type)
+{
+	return (type->Bombard_Strength > 0) &&
+		(! Unit_has_ability (unit, __, UTA_Cruise_Missile)) &&
+		((unit->Body.Status & 0x40) == 0); // has already done def bombard this turn
+}
+
 Unit * __fastcall
 patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker, Unit * defender)
 {
-	return Fighter_find_defensive_bombarder (this, __, attacker, defender);
+	int special_rules = is->current_config.special_defensive_bombard_rules;
+	if (special_rules == 0)
+		return Fighter_find_defensive_bombarder (this, __, attacker, defender);
+	else {
+		Tile * defender_tile = tile_at (defender->Body.X, defender->Body.Y);
+		if ((Unit_get_defense_strength (attacker) < 1) || // if attacker cannot defend OR
+		    (defender_tile == NULL) || (defender_tile == p_null_tile) || // defender tile is invalid OR
+		    (((special_rules & SDBR_LETHAL) == 0) && // (def bombard is non-lethal AND
+		     ((Unit_get_max_hp (attacker) - attacker->Body.Damage) <= 1))) // attacker has one HP remaining)
+			return NULL;
+
+		enum UnitTypeClasses attacker_class = p_bic_data->UnitTypes[attacker->Body.UnitTypeID].Unit_Class;
+
+		Unit * tr = NULL;
+		int highest_strength = -1;
+		FOR_UNITS_ON (uti, defender_tile) {
+			Unit * candidate = uti.unit;
+			UnitType * candidate_type = &p_bic_data->UnitTypes[candidate->Body.UnitTypeID];
+			if (can_do_defensive_bombard (candidate, candidate_type) &&
+			    (candidate_type->Bombard_Strength > highest_strength) &&
+			    (candidate != defender) &&
+			    (Unit_get_containing_army (candidate) != defender) &&
+			    (attacker_class == candidate_type->Unit_Class)) {
+				tr = candidate;
+				highest_strength = candidate_type->Bombard_Strength;
+			}
+		}
+		return tr;
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.
