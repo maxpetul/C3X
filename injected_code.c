@@ -5905,17 +5905,18 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 	if (special_rules == 0)
 		return Fighter_find_defensive_bombarder (this, __, attacker, defender);
 	else {
+		enum UnitTypeClasses attacker_class = p_bic_data->UnitTypes[attacker->Body.UnitTypeID].Unit_Class;
+		int attacker_has_one_hp = Unit_get_max_hp (attacker) - attacker->Body.Damage <= 1;
+
 		Tile * defender_tile = tile_at (defender->Body.X, defender->Body.Y);
 		if ((Unit_get_defense_strength (attacker) < 1) || // if attacker cannot defend OR
 		    (defender_tile == NULL) || (defender_tile == p_null_tile) || // defender tile is invalid OR
-		    (((special_rules & SDBR_LETHAL) == 0) && // (def bombard is non-lethal AND
-		     ((Unit_get_max_hp (attacker) - attacker->Body.Damage) <= 1))) // attacker has one HP remaining)
+		    (((special_rules & SDBR_LETHAL) == 0) && attacker_has_one_hp)) // (def bombard is non-lethal AND attacker has one HP remaining)
 			return NULL;
-
-		enum UnitTypeClasses attacker_class = p_bic_data->UnitTypes[attacker->Body.UnitTypeID].Unit_Class;
 
 		Unit * tr = NULL;
 		int highest_strength = -1;
+		enum UnitTypeAbilities lethal_bombard_req = (attacker_class == UTC_Sea) ? UTA_Lethal_Sea_Bombardment : UTA_Lethal_Land_Bombardment;
 		FOR_UNITS_ON (uti, defender_tile) {
 			Unit * candidate = uti.unit;
 			UnitType * candidate_type = &p_bic_data->UnitTypes[candidate->Body.UnitTypeID];
@@ -5923,7 +5924,8 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 			    (candidate_type->Bombard_Strength > highest_strength) &&
 			    (candidate != defender) &&
 			    (Unit_get_containing_army (candidate) != defender) &&
-			    (attacker_class == candidate_type->Unit_Class)) {
+			    (attacker_class == candidate_type->Unit_Class) &&
+			    ((! attacker_has_one_hp) || UnitType_has_ability (candidate_type, __, lethal_bombard_req))) {
 				tr = candidate;
 				highest_strength = candidate_type->Bombard_Strength;
 			}
