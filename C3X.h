@@ -41,7 +41,8 @@ enum retreat_rules {
 };
 
 enum special_defensive_bombard_rules {
-	SDBR_LETHAL = 1
+	SDBR_LETHAL        = 1,
+	SDBR_NOT_INVISIBLE = 2,
 };
 
 struct c3x_config {

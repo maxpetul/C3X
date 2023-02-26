@@ -766,7 +766,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_defensive_bombard_rules")) {
 					struct parsable_field_bit bits[] = {
-						{"lethal", SDBR_LETHAL},
+						{"lethal"       , SDBR_LETHAL},
+						{"not-invisible", SDBR_NOT_INVISIBLE},
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_defensive_bombard_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -5911,7 +5912,8 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 		Tile * defender_tile = tile_at (defender->Body.X, defender->Body.Y);
 		if ((Unit_get_defense_strength (attacker) < 1) || // if attacker cannot defend OR
 		    (defender_tile == NULL) || (defender_tile == p_null_tile) || // defender tile is invalid OR
-		    (((special_rules & SDBR_LETHAL) == 0) && attacker_has_one_hp)) // (def bombard is non-lethal AND attacker has one HP remaining)
+		    (((special_rules & SDBR_LETHAL) == 0) && attacker_has_one_hp) || // (DB is non-lethal AND attacker has one HP remaining) OR
+		    ((special_rules & SDBR_NOT_INVISIBLE) && ! Unit_is_visible_to_civ (attacker, __, defender->Body.CivID, 1))) // (invisible units are immune to DB AND attacker is invisible)
 			return NULL;
 
 		Unit * tr = NULL;
