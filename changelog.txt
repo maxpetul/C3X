@@ -1,6 +1,10 @@
 - Zone of control changes
   - Allow land-to-sea and sea-to-land attacks, only using bombard stat
   - Make sure attacking unit is visible so animations play
+- Defensive bombard changes
+  - May be lethal
+  - May be performed by air units
+  - Invisible, undetected units may be made immune
 - Can use charm flag to control PTW-like artillery targeting
 - Option to ignore king flag on defense, so kings aren't always last to defend in a stack
 - Harbor/airport city icons indicate unit effects not trade abilities
