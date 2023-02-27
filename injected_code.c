@@ -768,6 +768,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					struct parsable_field_bit bits[] = {
 						{"lethal"       , SDBR_LETHAL},
 						{"not-invisible", SDBR_NOT_INVISIBLE},
+						{"aerial"       , SDBR_AERIAL},
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_defensive_bombard_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -5928,7 +5929,10 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 			    (candidate_type->Bombard_Strength > highest_strength) &&
 			    (candidate != defender) &&
 			    (Unit_get_containing_army (candidate) != defender) &&
-			    (attacker_class == candidate_type->Unit_Class) &&
+			    ((attacker_class == candidate_type->Unit_Class) ||
+			     ((special_rules & SDBR_AERIAL) &&
+			      (candidate_type->Unit_Class == UTC_Air) &&
+			      (candidate_type->Air_Missions & UCV_Bombing))) &&
 			    ((! attacker_has_one_hp) || UnitType_has_ability (candidate_type, __, lethal_bombard_req))) {
 				tr = candidate;
 				highest_strength = candidate_type->Bombard_Strength;
@@ -5941,6 +5945,13 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 void __fastcall
 patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombarder, Unit * defender)
 {
+	if (p_bic_data->UnitTypes[bombarder->Body.UnitTypeID].Unit_Class == UTC_Air) {
+		if (Unit_try_flying_over_tile (bombarder, __, defender->Body.X, defender->Body.Y))
+			return; // intercepted
+		else
+			Unit_play_bombing_animation (bombarder, __, defender->Body.X, defender->Body.Y);
+	}
+
 	int damage_before = defender->Body.Damage;
 	Fighter_damage_by_defensive_bombard (this, __, bombarder, defender);
 	int damage_after = defender->Body.Damage;
@@ -5996,6 +6007,14 @@ patch_Unit_score_kill_by_defender (Unit * this, int edx, Unit * victim, byte was
 
 	} else
 		Unit_score_kill (this, __, victim, was_attacking);
+}
+
+void __fastcall
+patch_Unit_play_attack_anim_for_def_bombard (Unit * this, int edx, int direction)
+{
+	// Don't play any animation for air units, the animations are instead handled in the patch for damage_by_defensive_bombard
+	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air)
+		Unit_play_attack_animation (this, __, direction);
 }
 
 // TCC requires a main function be defined even though it's never used.
