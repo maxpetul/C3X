@@ -174,6 +174,7 @@ typedef struct Continent Continent;
 typedef struct Map_Renderer Map_Renderer;
 typedef struct Tile_Type Tile_Type;
 typedef struct PCX_Image PCX_Image;
+typedef struct PCX_Image_vtable PCX_Image_vtable;
 typedef struct FLC_Animation FLC_Animation;
 typedef struct Airfield Airfield;
 typedef struct Colony Colony;
@@ -2335,7 +2336,7 @@ struct Tile_Image_Info
 
 struct Tile_Image_Info_vtable
 {
-  int m00;
+  Tile_Image_Info * (__fastcall * destruct) (Tile_Image_Info *, __, byte);
 };
 
 struct Tile_Image_Info_List
@@ -4470,8 +4471,17 @@ struct Tile_Type
 
 struct PCX_Image
 {
-  int vtable;
+  PCX_Image_vtable * vtable;
   JGL_Renderer JGL;
+};
+
+struct PCX_Image_vtable
+{
+  int m00;
+  int m01;
+  void (__fastcall * clear_JGL) (PCX_Image *);
+  PCX_Image * (__fastcall * destruct) (PCX_Image *, __, byte);
+  int m04;
 };
 
 struct FLC_Animation
