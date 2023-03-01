@@ -713,7 +713,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								  (void **)&cfg->mills,
 								  &cfg->count_mills))
 						handle_config_error (&p, CPE_BAD_VALUE);
-				} else if ((slice_matches_str (&p.key, "retreat_rules")) && read_retreat_rules (&value, &ival)) {
+				} else if (slice_matches_str (&p.key, "retreat_rules")) {
 					if (! read_retreat_rules (&value, (int *)&cfg->retreat_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
