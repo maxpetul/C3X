@@ -1801,6 +1801,9 @@ init_stackable_command_buttons ()
 
 	PCX_Image pcx;
 	PCX_Image_construct (&pcx);
+	for (int sc = 0; sc < COUNT_STACKABLE_COMMANDS; sc++)
+		for (int n = 0; n < 4; n++)
+			Tile_Image_Info_construct (&is->sc_button_image_sets[sc].imgs[n]);
 
 	char temp_path[2*MAX_PATH];
 
@@ -1814,7 +1817,13 @@ init_stackable_command_buttons ()
 		PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 		if (pcx.JGL.Image == NULL) {
 			(*p_OutputDebugStringA) ("[C3X] Failed to load stacked command buttons sprite sheet.");
-			goto cleanup;
+			for (int sc = 0; sc < COUNT_STACKABLE_COMMANDS; sc++)
+				for (int k = 0; k < 4; k++) {
+					Tile_Image_Info * tii = &is->sc_button_image_sets[sc].imgs[k];
+					tii->vtable->destruct (tii, __, 0);
+				}
+			pcx.vtable->destruct (&pcx, __, 0);
+			return;
 		}
 		
 		for (int sc = 0; sc < COUNT_STACKABLE_COMMANDS; sc++) {
@@ -1827,8 +1836,19 @@ init_stackable_command_buttons ()
 	}
 
 	is->sc_img_state = IS_OK;
-cleanup:
 	pcx.vtable->destruct (&pcx, __, 0);
+}
+
+void
+deinit_stackable_command_buttons ()
+{
+	if (is->sc_img_state == IS_OK)
+		for (int sc = 0; sc < COUNT_STACKABLE_COMMANDS; sc++)
+			for (int n = 0; n < 4; n++) {
+				Tile_Image_Info * tii = &is->sc_button_image_sets[sc].imgs[n];
+				tii->vtable->destruct (tii, __, 0);
+			}
+	is->sc_img_state = IS_UNINITED;
 }
 
 void
@@ -2990,6 +3010,9 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	if (0 != strncmp (scenario_config_file_name, scenario_config_path, strlen (scenario_config_file_name)))
 		load_config (scenario_config_path, 0);
 	apply_machine_code_edits (&is->current_config);
+
+	// This scenario might use different stacked button images than the old one
+	deinit_stackable_command_buttons ();
 
 	// Need to clear this since the resource count might have changed
 	if (is->extra_available_resources != NULL) {
