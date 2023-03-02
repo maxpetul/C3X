@@ -961,12 +961,21 @@ ENTRY_POINT ()
 		tcc__define_symbol (tcc, "ADDR_SET_RESOURCE_BIT_AIRLOCK", temp_format ("((void *)0x%x)", (int)addr_set_resource_bit_airlock));
 	}
 
-	// Same again, this time for the bit of code that captures the TradeOffer object pointer when a gold trade on the table is modified
+	// Again, this time for the bit of code that captures the TradeOffer object pointer when a gold trade on the table is modified
 	byte * addr_capture_modified_gold_trade; {
 		ASSERT (i_next_free_inlead < inleads_capacity);
 		addr_capture_modified_gold_trade = (byte *)&inleads[i_next_free_inlead++];
 		tcc__define_symbol (tcc, "ADDR_CAPTURE_MODIFIED_GOLD_TRADE", temp_format ("((void *)0x%x)", (int)addr_capture_modified_gold_trade));
 	}
+
+	// Again, this time for the airlock to filter zone of control candidates
+	byte * addr_zoc_filter_airlock; {
+		ASSERT (i_next_free_inlead < inleads_capacity);
+		addr_zoc_filter_airlock = (byte *)&inleads[i_next_free_inlead++];
+		tcc__define_symbol (tcc, "ADDR_ZOC_FILTER_AIRLOCK", temp_format ("((void *)0x%x)", (int)addr_zoc_filter_airlock));
+	}
+
+	tcc__define_symbol (tcc, "INLEAD_SIZE", temp_format ("%u", sizeof (struct inlead)));
 
 	// Compile C code to inject
 	{

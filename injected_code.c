@@ -1397,11 +1397,23 @@ do_capture_modified_gold_trade (TradeOffer * trade_offer, int edx, int val, char
 	return print_int (val, str, base);
 }
 
+struct register_set {
+	int edi, esi, ebp, esp, ebx, edx, ecx, eax;
+};
+
+int __stdcall
+filter_zoc_candidate (struct register_set * reg)
+{
+	return 1;
+}
+
+enum branch_kind { BK_CALL, BK_JUMP };
+
 byte *
-emit_call (byte * cursor, void const * target)
+emit_branch (enum branch_kind kind, byte * cursor, void const * target)
 {
 	int offset = (int)target - ((int)cursor + 5);
-	*cursor++ = 0xE8;
+	*cursor++ = (kind == BK_CALL) ? 0xE8 : 0xE9;
 	return int_to_bytes (cursor, offset);
 }
 
@@ -1468,6 +1480,13 @@ restore_area (byte * addr)
 		memcpy (addr, &na->original_contents, na->size);
 		na->size = 0;
 	}
+}
+
+int
+is_area_nopified (byte * addr)
+{
+	struct nopified_area * na;
+	return itable_look_up (&is->nopified_areas, (int)addr, (int *)&na) && (na->size == 0);
 }
 
 // Nopifies or restores an area depending on if yes_or_no is 1 or 0. Sets the necessary memory protections.
@@ -1615,7 +1634,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	WITH_MEM_PROTECTION (ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT, 9, PAGE_EXECUTE_READWRITE) {
 		byte * cursor = ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT;
 		*cursor++ = 0x8B; *cursor++ = 0xCE; // mov ecx, esi
-		cursor = emit_call (cursor, adjust_sliders_preproduction);
+		cursor = emit_branch (BK_CALL, cursor, adjust_sliders_preproduction);
 		for (; cursor < ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT + 9; cursor++)
 			*cursor = 0x90; // nop
 	}
@@ -1629,7 +1648,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	for (int n = 0; n < ARRAY_LEN (addr_print_gold_amounts); n++) {
 		byte * addr = addr_print_gold_amounts[n];
 		WITH_MEM_PROTECTION (addr, 5, PAGE_EXECUTE_READWRITE)
-			emit_call (addr, ADDR_CAPTURE_MODIFIED_GOLD_TRADE);
+			emit_branch (BK_CALL, addr, ADDR_CAPTURE_MODIFIED_GOLD_TRADE);
 	}
 	WITH_MEM_PROTECTION (ADDR_CAPTURE_MODIFIED_GOLD_TRADE, 32, PAGE_EXECUTE_READWRITE) {
 		byte * cursor = ADDR_CAPTURE_MODIFIED_GOLD_TRADE;
@@ -1642,11 +1661,38 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 			for (int k = 0; k < ARRAY_LEN (repush); k++)
 				*cursor++ = repush[k];
 
-		cursor = emit_call (cursor, do_capture_modified_gold_trade); // call do_capture_modified_gold_trade
+		cursor = emit_branch (BK_CALL, cursor, do_capture_modified_gold_trade); // call do_capture_modified_gold_trade
 		*cursor++ = 0xC3; // ret
 	}
 
-	set_nopification (cfg->enhance_zone_of_control, ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC      , 6);
+	WITH_MEM_PROTECTION (ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC, 6, PAGE_EXECUTE_READWRITE) {
+		if (cfg->enhance_zone_of_control && ! is_area_nopified (ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC)) {
+			byte * addr = ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC;
+			byte * original_target = addr + 6 + int_from_bytes (addr + 2); // target addr of jump instr we're replacing
+			nopify_area (ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC, 6);
+
+			// Initialize airlock. The airlock preserves all registers and calls filter_zoc_candidate then either follows or skips the
+			// original jump depending on what it returns. If zero is returned, follows the jump, skipping a bunch of code and filtering
+			// out the unit as a candidate for ZoC.
+			WITH_MEM_PROTECTION (ADDR_ZOC_FILTER_AIRLOCK, INLEAD_SIZE, PAGE_READWRITE) {
+				byte * cursor = ADDR_ZOC_FILTER_AIRLOCK;
+				*cursor++ = 0x60; // pusha
+				*cursor++ = 0x54; // push esp
+				cursor = emit_branch (BK_CALL, cursor, filter_zoc_candidate);
+				*cursor++ = 0x83; *cursor++ = 0xF8; *cursor++ = 0x01; // cmp eax, 1
+				*cursor++ = 0x75; *cursor++ = 0x06; // jne 6
+				*cursor++ = 0x61; // popa
+				cursor = emit_branch (BK_JUMP, cursor, addr + 6);
+				*cursor++ = 0x61; // popa
+				cursor = emit_branch (BK_JUMP, cursor, original_target);
+			}
+
+			// Write jump to airlock
+			emit_branch (BK_JUMP, addr, ADDR_ZOC_FILTER_AIRLOCK);
+		} else if (! cfg->enhance_zone_of_control)
+			restore_area (ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC);
+	}
+
 	set_nopification (cfg->enhance_zone_of_control, ADDR_SKIP_SEA_UNITS_FOR_LAND_ZOC      , 6);
 	set_nopification (cfg->enhance_zone_of_control, ADDR_ZOC_CHECK_ATTACKER_ANIM_FIELD_111, 6);
 	set_nopification (cfg->enhance_zone_of_control, ADDR_SKIP_ZOC_FOR_ONE_HP_LAND_UNIT    , 6);
