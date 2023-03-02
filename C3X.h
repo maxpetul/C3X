@@ -491,6 +491,9 @@ struct injected_state {
 	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
 	Unit * zoc_interceptor;
 
+	// Set when Fighter::apply_zone_of_control is called to store the defending unit, used by the injected filter.
+	Unit * zoc_defender;
+
 	// Used to record info about a defensive bomardment event during Fighter::fight. Gets set by Fighter::damage_by_defensive_bombardment and
 	// cleared when Fighter::fight returns.
 	struct defensive_bombard_event {

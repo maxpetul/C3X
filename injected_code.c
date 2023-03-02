@@ -1401,9 +1401,42 @@ struct register_set {
 	int edi, esi, ebp, esp, ebx, edx, ecx, eax;
 };
 
+// Return 1 to allow the candidate unit to exert ZoC, 0 to exclude it. A pointer to the candidate is in esi.
 int __stdcall
 filter_zoc_candidate (struct register_set * reg)
 {
+	Unit * candidate = (Unit *)reg->esi,
+	     * defender = is->zoc_defender;
+
+	UnitType * candidate_type = &p_bic_data->UnitTypes[candidate->Body.UnitTypeID],
+		 * defender_type  = &p_bic_data->UnitTypes[defender ->Body.UnitTypeID];
+
+	enum UnitTypeClasses candidate_class = candidate_type->Unit_Class,
+		             defender_class  = defender_type ->Unit_Class;
+
+	// In case of cross-domain ZoC, filter out units with zero bombard strength or range. They can't use their attack strength in this case, so
+	// without bombard they can be ruled out. Don't forget units may have non-zero bombard strength and zero range for defensive bombard.
+	int range = (candidate_class != UTC_Air) ? candidate_type->Bombard_Range : candidate_type->OperationalRange;
+	if ((candidate_class != defender_class) && ((candidate_type->Bombard_Strength <= 0) || (range <= 0)))
+		return 0;
+
+	// Require lethal bombard against one HP defender
+	if ((Unit_get_max_hp (defender) - defender->Body.Damage <= 1) &&
+	    (((defender_class == UTC_Sea) && ! UnitType_has_ability (candidate_type, __, UTA_Lethal_Sea_Bombardment)) ||
+	     ((defender_class != UTC_Sea) && ! UnitType_has_ability (candidate_type, __, UTA_Lethal_Land_Bombardment))))
+		return 0;
+
+	// Air units require the bombing action to perform ZoC
+	if ((candidate_class == UTC_Air) && ! (candidate_type->Air_Missions & UCV_Bombing))
+		return 0;
+
+	// Exclude land units in transports
+	if (candidate_class == UTC_Land) {
+		Unit * container = get_unit_ptr (candidate->Body.Container_Unit);
+		if ((container != NULL) && ! UnitType_has_ability (&p_bic_data->UnitTypes[container->Body.UnitTypeID], __, UTA_Army))
+			return 0;
+	}
+
 	return 1;
 }
 
@@ -5872,6 +5905,7 @@ void __fastcall
 patch_Fighter_apply_zone_of_control (Fighter * this, int edx, Unit * unit, int from_x, int from_y, int to_x, int to_y)
 {
 	is->zoc_interceptor = NULL;
+	is->zoc_defender = unit;
 	Fighter_apply_zone_of_control (this, __, unit, from_x, from_y, to_x, to_y);
 
 	// Actually exert ZoC if an air unit managed to do so.
