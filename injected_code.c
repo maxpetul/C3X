@@ -1794,6 +1794,21 @@ show_map_specific_text (int tile_x, int tile_y, char const * text, byte pause)
 }
 
 void
+get_mod_art_path (char const * file_name, char * out_path, int path_buf_size)
+{
+	char s[1000];
+	snprintf (s, sizeof s, "Art\\%s", file_name);
+	s[(sizeof s) - 1] = '\0';
+
+	char * scenario_path = BIC_get_asset_path (p_bic_data, __, s, 0);
+	if (0 != strcmp (scenario_path, s)) // get_asset_path returns its input when the file is not found
+		snprintf (out_path, path_buf_size, "%s", scenario_path);
+	else
+		snprintf (out_path, path_buf_size, "%s\\Art\\%s", is->mod_rel_dir, file_name);
+	out_path[path_buf_size - 1] = '\0';
+}
+
+void
 init_stackable_command_buttons ()
 {
 	if (is->sc_img_state != IS_UNINITED)
@@ -1810,10 +1825,9 @@ init_stackable_command_buttons ()
 	is->sb_activated_by_button = 0;
 	is->sc_img_state = IS_INIT_FAILED;
 
-	char const * filenames[4] = {"StackedNormButtons", "StackedRolloverButtons", "StackedHighlightedButtons", "StackedButtonsAlpha"};
+	char const * filenames[4] = {"StackedNormButtons.pcx", "StackedRolloverButtons.pcx", "StackedHighlightedButtons.pcx", "StackedButtonsAlpha.pcx"};
 	for (int n = 0; n < 4; n++) {
-		snprintf (temp_path, sizeof temp_path, "%s\\Art\\%s.pcx", is->mod_rel_dir, filenames[n]);
-		temp_path[(sizeof temp_path) - 1] = '\0';
+		get_mod_art_path (filenames[n], temp_path, sizeof temp_path);
 		PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 		if (pcx.JGL.Image == NULL) {
 			(*p_OutputDebugStringA) ("[C3X] Failed to load stacked command buttons sprite sheet.");
@@ -3007,7 +3021,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	char * scenario_config_file_name = "scenario.c3x_config.ini";
 	char * scenario_config_path = BIC_get_asset_path (p_bic_data, __, scenario_config_file_name, 0);
 	// BIC_get_asset_path returns the file name when it can't find the file
-	if (0 != strncmp (scenario_config_file_name, scenario_config_path, strlen (scenario_config_file_name)))
+	if (0 != strcmp (scenario_config_file_name, scenario_config_path))
 		load_config (scenario_config_path, 0);
 	apply_machine_code_edits (&is->current_config);
 
