@@ -1796,59 +1796,68 @@ show_map_specific_text (int tile_x, int tile_y, char const * text, byte pause)
 void
 init_stackable_command_buttons ()
 {
-	if (is->sc_img_state == IS_UNINITED) {
-		char temp_path[2*MAX_PATH];
+	if (is->sc_img_state != IS_UNINITED)
+		return;
 
-		is->sb_activated_by_button = 0;
-		is->sc_img_state = IS_INIT_FAILED;
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
 
-		char const * filenames[4] = {"StackedNormButtons", "StackedRolloverButtons", "StackedHighlightedButtons", "StackedButtonsAlpha"};
-		for (int n = 0; n < 4; n++) {
-			PCX_Image * pcx = &is->sc_button_sheets[n];
-			PCX_Image_construct (pcx);
-			snprintf (temp_path, sizeof temp_path, "%s\\Art\\%s.pcx", is->mod_rel_dir, filenames[n]);
-			temp_path[(sizeof temp_path) - 1] = '\0';
-			PCX_Image_read_file (pcx, __, temp_path, NULL, 0, 0x100, 2);
-			if (pcx->JGL.Image == NULL) {
-				(*p_OutputDebugStringA) ("[C3X] Failed to load stacked command buttons sprite sheet.");
-				return;
-			}
+	char temp_path[2*MAX_PATH];
+
+	is->sb_activated_by_button = 0;
+	is->sc_img_state = IS_INIT_FAILED;
+
+	char const * filenames[4] = {"StackedNormButtons", "StackedRolloverButtons", "StackedHighlightedButtons", "StackedButtonsAlpha"};
+	for (int n = 0; n < 4; n++) {
+		snprintf (temp_path, sizeof temp_path, "%s\\Art\\%s.pcx", is->mod_rel_dir, filenames[n]);
+		temp_path[(sizeof temp_path) - 1] = '\0';
+		PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+		if (pcx.JGL.Image == NULL) {
+			(*p_OutputDebugStringA) ("[C3X] Failed to load stacked command buttons sprite sheet.");
+			goto cleanup;
 		}
 		
 		for (int sc = 0; sc < COUNT_STACKABLE_COMMANDS; sc++) {
 			int x = 32 * sc_button_infos[sc].tile_sheet_column,
 			    y = 32 * sc_button_infos[sc].tile_sheet_row;
-			for (int n = 0; n < 4; n++)
-				Tile_Image_Info_slice_pcx (&is->sc_button_image_sets[sc].imgs[n], __, &is->sc_button_sheets[n], x, y, 32, 32, 1, 0);
+			Tile_Image_Info_slice_pcx (&is->sc_button_image_sets[sc].imgs[n], __, &pcx, x, y, 32, 32, 1, 0);
 		}
 
-		is->sc_img_state = IS_OK;
+		pcx.vtable->clear_JGL (&pcx);
 	}
+
+	is->sc_img_state = IS_OK;
+cleanup:
+	pcx.vtable->destruct (&pcx, __, 0);
 }
 
 void
 init_tile_highlights ()
 {
-	if (is->tile_highlight_state == IS_UNINITED) {
-		char temp_path[2*MAX_PATH];
+	if (is->tile_highlight_state != IS_UNINITED)
+		return;
 
-		is->tile_highlight_state = IS_INIT_FAILED;
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
 
-		PCX_Image * pcx = &is->tile_highlight_sheet;
-		PCX_Image_construct (pcx);
-		snprintf (temp_path, sizeof temp_path, "%s\\Art\\TileHighlights.pcx", is->mod_rel_dir);
-		temp_path[(sizeof temp_path) - 1] = '\0';
-		PCX_Image_read_file (pcx, __, temp_path, NULL, 0, 0x100, 2);
-		if (pcx->JGL.Image == NULL) {
-			(*p_OutputDebugStringA) ("[C3X] Failed to load stacked command buttons sprite sheet.");
-			return;
-		}
+	char temp_path[2*MAX_PATH];
 
-		for (int n = 0; n < COUNT_TILE_HIGHLIGHTS; n++)
-			Tile_Image_Info_slice_pcx (&is->tile_highlights[n], __, pcx, 128*n, 0, 128, 64, 1, 0);
+	is->tile_highlight_state = IS_INIT_FAILED;
 
-		is->tile_highlight_state = IS_OK;
+	snprintf (temp_path, sizeof temp_path, "%s\\Art\\TileHighlights.pcx", is->mod_rel_dir);
+	temp_path[(sizeof temp_path) - 1] = '\0';
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if (pcx.JGL.Image == NULL) {
+		(*p_OutputDebugStringA) ("[C3X] Failed to load stacked command buttons sprite sheet.");
+		goto cleanup;
 	}
+
+	for (int n = 0; n < COUNT_TILE_HIGHLIGHTS; n++)
+		Tile_Image_Info_slice_pcx (&is->tile_highlights[n], __, &pcx, 128*n, 0, 128, 64, 1, 0);
+
+	is->tile_highlight_state = IS_OK;
+cleanup:
+	pcx.vtable->destruct (&pcx, __, 0);
 }
 
 void do_trade_scroll (DiploForm * diplo, int forward);

@@ -340,8 +340,6 @@ struct injected_state {
 	// } These fields are valid only after init_stackable_command_buttons has been called. {
 	// ==========
 
-	PCX_Image sc_button_sheets[4];
-
 	struct sc_button_image_set {
 		Tile_Image_Info imgs[4];
 	} sc_button_image_sets[COUNT_STACKABLE_COMMANDS];
@@ -369,7 +367,6 @@ struct injected_state {
 	// } These fields are valid only after init_tile_highlights as been called. {
 	// ==========
 
-	PCX_Image tile_highlight_sheet;
 	Tile_Image_Info tile_highlights[COUNT_TILE_HIGHLIGHTS];
 
 	// ==========
