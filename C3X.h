@@ -46,6 +46,12 @@ enum special_defensive_bombard_rules {
 	SDBR_AERIAL        = 4,
 };
 
+enum special_zone_of_control_rules {
+	SZOCR_LETHAL     = 1,
+	SZOCR_AERIAL     = 2,
+	SZOCR_AMPHIBIOUS = 4,
+};
+
 struct c3x_config {
 	char enable_stack_bombard;
 	char enable_disorder_warning;
@@ -114,7 +120,7 @@ struct c3x_config {
 	char charm_flag_triggers_ptw_like_targeting;
 	char city_icons_show_unit_effects_not_trade;
 	char ignore_king_ability_for_defense_priority;
-	char enhance_zone_of_control;
+	enum special_zone_of_control_rules special_zone_of_control_rules;
 	enum special_defensive_bombard_rules special_defensive_bombard_rules;
 
 	char use_offensive_artillery_ai;

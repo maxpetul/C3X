@@ -772,6 +772,14 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_defensive_bombard_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "special_zone_of_control_rules")) {
+					struct parsable_field_bit bits[] = {
+						{"lethal"    , SZOCR_LETHAL},
+						{"aerial"    , SZOCR_AERIAL},
+						{"amphibious", SZOCR_AMPHIBIOUS},
+					};
+					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_zone_of_control_rules))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_ptw_arty_types (&value,
 								   &unrecognized_lines,
@@ -1414,15 +1422,28 @@ filter_zoc_candidate (struct register_set * reg)
 	enum UnitTypeClasses candidate_class = candidate_type->Unit_Class,
 		             defender_class  = defender_type ->Unit_Class;
 
+	byte lethal     = (is->current_config.special_zone_of_control_rules & SZOCR_LETHAL    ) != 0,
+	     aerial     = (is->current_config.special_zone_of_control_rules & SZOCR_AERIAL    ) != 0,
+	     amphibious = (is->current_config.special_zone_of_control_rules & SZOCR_AMPHIBIOUS) != 0;
+
+	// Exclude air units if aerial ZoC is not enabled and exclude land-to-sea & sea-to-land ZoC if amphibious is not enabled
+	if ((! aerial) && (candidate_class == UTC_Air))
+		return 0;
+	if ((! amphibious) &&
+	    (((candidate_class == UTC_Land) && (defender_class == UTC_Sea )) ||
+	     ((candidate_class == UTC_Sea ) && (defender_class == UTC_Land))))
+		return 0;
+
 	// In case of cross-domain ZoC, filter out units with zero bombard strength or range. They can't use their attack strength in this case, so
 	// without bombard they can be ruled out. Don't forget units may have non-zero bombard strength and zero range for defensive bombard.
 	int range = (candidate_class != UTC_Air) ? candidate_type->Bombard_Range : candidate_type->OperationalRange;
 	if ((candidate_class != defender_class) && ((candidate_type->Bombard_Strength <= 0) || (range <= 0)))
 		return 0;
 
-	// Require lethal bombard against one HP defender
+	// Require lethal config option & lethal bombard against one HP defender
 	if ((Unit_get_max_hp (defender) - defender->Body.Damage <= 1) &&
-	    (((defender_class == UTC_Sea) && ! UnitType_has_ability (candidate_type, __, UTA_Lethal_Sea_Bombardment)) ||
+	    ((! lethal) ||
+	     ((defender_class == UTC_Sea) && ! UnitType_has_ability (candidate_type, __, UTA_Lethal_Sea_Bombardment)) ||
 	     ((defender_class != UTC_Sea) && ! UnitType_has_ability (candidate_type, __, UTA_Lethal_Land_Bombardment))))
 		return 0;
 
@@ -1703,7 +1724,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		     * addr_airlock = (domain == 0) ? ADDR_SEA_ZOC_FILTER_AIRLOCK      : ADDR_LAND_ZOC_FILTER_AIRLOCK;
 
 		WITH_MEM_PROTECTION (addr_skip, 6, PAGE_EXECUTE_READWRITE) {
-			if (cfg->enhance_zone_of_control && ! is_area_nopified (addr_skip)) {
+			if ((cfg->special_zone_of_control_rules != 0) && ! is_area_nopified (addr_skip)) {
 				byte * original_target = addr_skip + 6 + int_from_bytes (addr_skip + 2); // target addr of jump instr we're replacing
 				nopify_area (addr_skip, 6);
 
@@ -1725,14 +1746,14 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 
 				// Write jump to airlock
 				emit_branch (BK_JUMP, addr_skip, addr_airlock);
-			} else if (! cfg->enhance_zone_of_control)
+			} else if (cfg->special_zone_of_control_rules == 0)
 				restore_area (addr_skip);
 		}
 	}
 
-	set_nopification (cfg->enhance_zone_of_control, ADDR_ZOC_CHECK_ATTACKER_ANIM_FIELD_111, 6);
-	set_nopification (cfg->enhance_zone_of_control, ADDR_SKIP_ZOC_FOR_ONE_HP_LAND_UNIT    , 6);
-	set_nopification (cfg->enhance_zone_of_control, ADDR_SKIP_ZOC_FOR_ONE_HP_SEA_UNIT     , 6);
+	set_nopification ( cfg->special_zone_of_control_rules                 != 0, ADDR_ZOC_CHECK_ATTACKER_ANIM_FIELD_111, 6);
+	set_nopification ((cfg->special_zone_of_control_rules & SZOCR_LETHAL) != 0, ADDR_SKIP_ZOC_FOR_ONE_HP_LAND_UNIT    , 6);
+	set_nopification ((cfg->special_zone_of_control_rules & SZOCR_LETHAL) != 0, ADDR_SKIP_ZOC_FOR_ONE_HP_SEA_UNIT     , 6);
 }
 
 void
@@ -1815,7 +1836,6 @@ patch_init_floating_point ()
 		{"charm_flag_triggers_ptw_like_targeting"              , 0, offsetof (struct c3x_config, charm_flag_triggers_ptw_like_targeting)},
 		{"city_icons_show_unit_effects_not_trade"              , 1, offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
 		{"ignore_king_ability_for_defense_priority"            , 0, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
-		{"enhance_zone_of_control"                             , 0, offsetof (struct c3x_config, enhance_zone_of_control)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -5829,18 +5849,20 @@ patch_get_local_time_for_unit_ini (LPSYSTEMTIME lpSystemTime)
 int __fastcall
 patch_Tile_check_water_for_sea_zoc (Tile * this)
 {
-	if (! is->current_config.enhance_zone_of_control)
+	if ((is->current_config.special_zone_of_control_rules & (SZOCR_AMPHIBIOUS | SZOCR_AERIAL)) == 0)
 		return this->vtable->m35_Check_Is_Water (this);
 	else
 		return 1; // The caller will skip ZoC logic if this is a land tile without a city because the targeted unit is a sea unit. Instead
-			  // return 1, so all tiles are considered sea tiles, so we can run the ZoC logic for land units.
+			  // return 1, so all tiles are considered sea tiles, so we can run the ZoC logic for land units or air units on land.
 }
 
 int __fastcall
 patch_Tile_check_water_for_land_zoc (Tile * this)
 {
 	// Same as above except this time we want to consider all tiles to be land
-	return (! is->current_config.enhance_zone_of_control) ? this->vtable->m35_Check_Is_Water (this) : 0;
+	return ((is->current_config.special_zone_of_control_rules & (SZOCR_AMPHIBIOUS | SZOCR_AERIAL)) == 0) ?
+		this->vtable->m35_Check_Is_Water (this) :
+		0;
 }
 
 
@@ -5912,8 +5934,7 @@ patch_Fighter_apply_zone_of_control (Fighter * this, int edx, Unit * unit, int f
 	Fighter_apply_zone_of_control (this, __, unit, from_x, from_y, to_x, to_y);
 
 	// Actually exert ZoC if an air unit managed to do so.
-	if (is->current_config.enhance_zone_of_control && (is->zoc_interceptor != NULL) &&
-	    (p_bic_data->UnitTypes[is->zoc_interceptor->Body.UnitTypeID].Unit_Class == UTC_Air)) {
+	if ((is->zoc_interceptor != NULL) && (p_bic_data->UnitTypes[is->zoc_interceptor->Body.UnitTypeID].Unit_Class == UTC_Air)) {
 		int intercepted = Unit_try_flying_over_tile (is->zoc_interceptor, __, from_x, from_y);
 		if (! intercepted) {
 			Unit_play_bombing_animation (is->zoc_interceptor, __, from_x, from_y);
@@ -5929,24 +5950,24 @@ patch_Fighter_apply_zone_of_control (Fighter * this, int edx, Unit * unit, int f
 int __fastcall
 patch_Trade_Net_get_move_cost_after_zoc (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned param_7, int neighbor_index, int param_9)
 {
-	return (! is->current_config.enhance_zone_of_control) || ((Unit_get_max_hp (unit) - unit->Body.Damage) > 0) ?
+	return ((is->current_config.special_zone_of_control_rules & SZOCR_LETHAL) == 0) || ((Unit_get_max_hp (unit) - unit->Body.Damage) > 0) ?
 		patch_Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, param_7, neighbor_index, param_9) :
 		-1;
 }
 AdjacentMoveValidity __fastcall
 patch_Unit_can_move_after_zoc (Unit * this, int edx, int neighbor_index, int param_2)
 {
-	return (! is->current_config.enhance_zone_of_control) || ((Unit_get_max_hp (this) - this->Body.Damage) > 0) ?
+	return ((is->current_config.special_zone_of_control_rules & SZOCR_LETHAL) == 0) || ((Unit_get_max_hp (this) - this->Body.Damage) > 0) ?
 		patch_Unit_can_move_to_adjacent_tile (this, __, neighbor_index, param_2) :
 		AMV_1;
 }
 
-// Checks unit's HP after it was possibly hit by ZoC and deals with the consequences if it's dead. Does nothing if config option to enhance ZoC isn't
-// set or if interceptor is NULL. Returns 1 if the unit was killed, 0 otherwise.
+// Checks unit's HP after it was possibly hit by ZoC and deals with the consequences if it's dead. Does nothing if config option to make ZoC lethal
+// isn't set or if interceptor is NULL. Returns 1 if the unit was killed, 0 otherwise.
 int
 check_life_after_zoc (Unit * unit, Unit * interceptor)
 {
-	if (is->current_config.enhance_zone_of_control && (interceptor != NULL) &&
+	if ((is->current_config.special_zone_of_control_rules & SZOCR_LETHAL) && (interceptor != NULL) &&
 	    ((Unit_get_max_hp (unit) - unit->Body.Damage) <= 0)) {
 		Unit_score_kill (interceptor, __, unit, 0);
 		if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (&p_bic_data->fighter, __, interceptor, unit, 1))
