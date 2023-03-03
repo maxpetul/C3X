@@ -1540,7 +1540,7 @@ int
 is_area_nopified (byte * addr)
 {
 	struct nopified_area * na;
-	return itable_look_up (&is->nopified_areas, (int)addr, (int *)&na) && (na->size == 0);
+	return itable_look_up (&is->nopified_areas, (int)addr, (int *)&na) && (na->size > 0);
 }
 
 // Nopifies or restores an area depending on if yes_or_no is 1 or 0. Sets the necessary memory protections.
