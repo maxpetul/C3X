@@ -962,18 +962,15 @@ ENTRY_POINT ()
 	}
 
 	// Again, this time for the bit of code that captures the TradeOffer object pointer when a gold trade on the table is modified
-	byte * addr_capture_modified_gold_trade; {
-		ASSERT (i_next_free_inlead < inleads_capacity);
-		addr_capture_modified_gold_trade = (byte *)&inleads[i_next_free_inlead++];
-		tcc__define_symbol (tcc, "ADDR_CAPTURE_MODIFIED_GOLD_TRADE", temp_format ("((void *)0x%x)", (int)addr_capture_modified_gold_trade));
-	}
+	ASSERT (i_next_free_inlead < inleads_capacity);
+	tcc__define_symbol (tcc, "ADDR_CAPTURE_MODIFIED_GOLD_TRADE", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead]));
+	i_next_free_inlead++;
 
-	// Again, this time for the airlock to filter zone of control candidates
-	byte * addr_zoc_filter_airlock; {
-		ASSERT (i_next_free_inlead < inleads_capacity);
-		addr_zoc_filter_airlock = (byte *)&inleads[i_next_free_inlead++];
-		tcc__define_symbol (tcc, "ADDR_ZOC_FILTER_AIRLOCK", temp_format ("((void *)0x%x)", (int)addr_zoc_filter_airlock));
-	}
+	// Again, this time for the airlocks to filter zone of control candidates. Need two b/c there are separate loops for land and sea units.
+	ASSERT (i_next_free_inlead + 1 < inleads_capacity);
+	tcc__define_symbol (tcc, "ADDR_SEA_ZOC_FILTER_AIRLOCK" , temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead    ]));
+	tcc__define_symbol (tcc, "ADDR_LAND_ZOC_FILTER_AIRLOCK", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead + 1]));
+	i_next_free_inlead += 2;
 
 	tcc__define_symbol (tcc, "INLEAD_SIZE", temp_format ("%u", sizeof (struct inlead)));
 

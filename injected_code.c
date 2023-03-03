@@ -1698,35 +1698,38 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		*cursor++ = 0xC3; // ret
 	}
 
-	WITH_MEM_PROTECTION (ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC, 6, PAGE_EXECUTE_READWRITE) {
-		if (cfg->enhance_zone_of_control && ! is_area_nopified (ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC)) {
-			byte * addr = ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC;
-			byte * original_target = addr + 6 + int_from_bytes (addr + 2); // target addr of jump instr we're replacing
-			nopify_area (ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC, 6);
+	for (int domain = 0; domain < 2; domain++) {
+		byte * addr_skip    = (domain == 0) ? ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC : ADDR_SKIP_SEA_UNITS_FOR_LAND_ZOC,
+		     * addr_airlock = (domain == 0) ? ADDR_SEA_ZOC_FILTER_AIRLOCK      : ADDR_LAND_ZOC_FILTER_AIRLOCK;
 
-			// Initialize airlock. The airlock preserves all registers and calls filter_zoc_candidate then either follows or skips the
-			// original jump depending on what it returns. If zero is returned, follows the jump, skipping a bunch of code and filtering
-			// out the unit as a candidate for ZoC.
-			WITH_MEM_PROTECTION (ADDR_ZOC_FILTER_AIRLOCK, INLEAD_SIZE, PAGE_READWRITE) {
-				byte * cursor = ADDR_ZOC_FILTER_AIRLOCK;
-				*cursor++ = 0x60; // pusha
-				*cursor++ = 0x54; // push esp
-				cursor = emit_branch (BK_CALL, cursor, filter_zoc_candidate);
-				*cursor++ = 0x83; *cursor++ = 0xF8; *cursor++ = 0x01; // cmp eax, 1
-				*cursor++ = 0x75; *cursor++ = 0x06; // jne 6
-				*cursor++ = 0x61; // popa
-				cursor = emit_branch (BK_JUMP, cursor, addr + 6);
-				*cursor++ = 0x61; // popa
-				cursor = emit_branch (BK_JUMP, cursor, original_target);
-			}
+		WITH_MEM_PROTECTION (addr_skip, 6, PAGE_EXECUTE_READWRITE) {
+			if (cfg->enhance_zone_of_control && ! is_area_nopified (addr_skip)) {
+				byte * original_target = addr_skip + 6 + int_from_bytes (addr_skip + 2); // target addr of jump instr we're replacing
+				nopify_area (addr_skip, 6);
 
-			// Write jump to airlock
-			emit_branch (BK_JUMP, addr, ADDR_ZOC_FILTER_AIRLOCK);
-		} else if (! cfg->enhance_zone_of_control)
-			restore_area (ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC);
+				// Initialize airlock. The airlock preserves all registers and calls filter_zoc_candidate then either follows or skips the
+				// original jump depending on what it returns. If zero is returned, follows the jump, skipping a bunch of code and filtering
+				// out the unit as a candidate for ZoC.
+				WITH_MEM_PROTECTION (addr_airlock, INLEAD_SIZE, PAGE_READWRITE) {
+					byte * cursor = addr_airlock;
+					*cursor++ = 0x60; // pusha
+					*cursor++ = 0x54; // push esp
+					cursor = emit_branch (BK_CALL, cursor, filter_zoc_candidate);
+					*cursor++ = 0x83; *cursor++ = 0xF8; *cursor++ = 0x01; // cmp eax, 1
+					*cursor++ = 0x75; *cursor++ = 0x06; // jne 6
+					*cursor++ = 0x61; // popa
+					cursor = emit_branch (BK_JUMP, cursor, addr_skip + 6);
+					*cursor++ = 0x61; // popa
+					cursor = emit_branch (BK_JUMP, cursor, original_target);
+				}
+
+				// Write jump to airlock
+				emit_branch (BK_JUMP, addr_skip, addr_airlock);
+			} else if (! cfg->enhance_zone_of_control)
+				restore_area (addr_skip);
+		}
 	}
 
-	set_nopification (cfg->enhance_zone_of_control, ADDR_SKIP_SEA_UNITS_FOR_LAND_ZOC      , 6);
 	set_nopification (cfg->enhance_zone_of_control, ADDR_ZOC_CHECK_ATTACKER_ANIM_FIELD_111, 6);
 	set_nopification (cfg->enhance_zone_of_control, ADDR_SKIP_ZOC_FOR_ONE_HP_LAND_UNIT    , 6);
 	set_nopification (cfg->enhance_zone_of_control, ADDR_SKIP_ZOC_FOR_ONE_HP_SEA_UNIT     , 6);
