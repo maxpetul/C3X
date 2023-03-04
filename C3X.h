@@ -478,6 +478,7 @@ struct injected_state {
 	} water_trade_improvs, air_trade_improvs, combat_defense_improvs;
 
 	long long interturn_wait_time;
+	int recompute_cc_call_count;
 
 	// ==========
 	// }

@@ -5431,17 +5431,21 @@ patch_perform_interturn_in_main_loop ()
 	long long ts_before;
 	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_before);
 	is->interturn_wait_time = 0;
+	is->recompute_cc_call_count = 0;
 
 	perform_interturn ();
 
 	long long ts_after;
 	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
 
+	PopupForm * popup = get_popup_form ();
+	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
 	char s[200];
 	snprintf (s, sizeof s, "perform_interturn time: %d sec", (int)((ts_after - ts_before - is->interturn_wait_time) / freq));
 	s[(sizeof s) - 1] = '\0';
-	PopupForm * popup = get_popup_form ();
-	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
+	PopupForm_add_text (popup, __, s, 0);
+	snprintf (s, sizeof s, "^number of calls to recompute_city_connections: %d", is->recompute_cc_call_count);
+	s[(sizeof s) - 1] = '\0';
 	PopupForm_add_text (popup, __, s, 0);
 	show_popup (popup, __, 0, 0);
 
@@ -5536,6 +5540,13 @@ patch_City_get_building_defense_bonus (City * this)
 		return tr;
 	} else
 		return City_get_building_defense_bonus (this);
+}
+
+void __fastcall
+patch_Trade_Net_recompute_city_connections (Trade_Net * this, int edx, int civ_id, byte redo_road_network, byte param_3, int redo_roads_for_city_id)
+{
+	is->recompute_cc_call_count++;
+	Trade_Net_recompute_city_connections (this, __, civ_id, redo_road_network, param_3, redo_roads_for_city_id);
 }
 
 // TCC requires a main function be defined even though it's never used.
