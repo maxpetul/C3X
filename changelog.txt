@@ -1,6 +1,9 @@
+* RELEASE 16B
 - Zone of control changes
   - Allow land-to-sea and sea-to-land attacks, only using bombard stat
-  - Make sure attacking unit is visible so animations play
+  - May be lethal
+  - May be exerted by air units
+  - Show attack animation even when attacker is not at the top of its stack
 - Defensive bombard changes
   - May be lethal
   - May be performed by air units
