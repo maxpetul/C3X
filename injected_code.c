@@ -1720,6 +1720,7 @@ patch_init_floating_point ()
 	is->open_diplo_form_straight_to_trade = 0;
 	is->trade_screen_scroll_to_id = -1;
 	is->trade_scroll_button_left = is->trade_scroll_button_right = NULL;
+	is->trade_scroll_button_images = NULL;
 	is->trade_scroll_button_state = IS_UNINITED;
 	is->eligible_for_trade_scroll = 0;
 
@@ -1909,27 +1910,25 @@ init_trade_scroll_buttons (DiploForm * diplo_form)
 		return;
 
 	char temp_path[2*MAX_PATH];
-	PCX_Image * pcx = new (sizeof *pcx);
-	PCX_Image_construct (pcx);
-	snprintf (temp_path, sizeof temp_path, "%s\\Art\\TradeScrollButtons.pcx", is->mod_rel_dir);
-	temp_path[(sizeof temp_path) - 1] = '\0';
-	PCX_Image_read_file (pcx, __, temp_path, NULL, 0, 0x100, 2);
-	if (pcx->JGL.Image == NULL) {
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
+	get_mod_art_path ("TradeScrollButtons.pcx", temp_path, sizeof temp_path);
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if (pcx.JGL.Image == NULL) {
 		is->trade_scroll_button_state = IS_INIT_FAILED;
 		(*p_OutputDebugStringA) ("[C3X] Failed to load TradeScrollButtons.pcx");
-		return;
+		goto cleanup;
 	}
 
-	// imgs stores normal, rollover, and highlight images, in that order, first for the left button then for the right
-	Tile_Image_Info * imgs[6];
-	for (int n = 0; n < ARRAY_LEN (imgs); n++) {
-		imgs[n] = new (sizeof **imgs);
-		Tile_Image_Info_construct (imgs[n]);
-	}
+	// Stores normal, rollover, and highlight images, in that order, first for the left button then for the right
+	is->trade_scroll_button_images = calloc (6, sizeof is->trade_scroll_button_images[0]);
+	for (int n = 0; n < 6; n++)
+		Tile_Image_Info_construct (&is->trade_scroll_button_images[n]);
+	Tile_Image_Info * imgs = is->trade_scroll_button_images;
 
 	for (int right = 0; right < 2; right++)
 		for (int n = 0; n < 3; n++)
-			Tile_Image_Info_slice_pcx (imgs[n + 3*right], __, pcx, right ? 44 : 0, 1 + 48*n, 43, 47, 1, 1);
+			Tile_Image_Info_slice_pcx (&imgs[n + 3*right], __, &pcx, right ? 44 : 0, 1 + 48*n, 43, 47, 1, 1);
 
 	for (int right = 0; right < 2; right++) {
 		Button * b = new (sizeof *b);
@@ -1938,7 +1937,7 @@ init_trade_scroll_buttons (DiploForm * diplo_form)
 		int id = right ? TRADE_SCROLL_BUTTON_ID_RIGHT : TRADE_SCROLL_BUTTON_ID_LEFT;
 		Button_initialize (b, __, NULL, id, right ? 622 : 358, 50, 43, 47, (Base_Form *)diplo_form, 0);
 		for (int n = 0; n < 3; n++)
-			b->Images[n] = imgs[n + 3*right];
+			b->Images[n] = &imgs[n + 3*right];
 
 		b->activation_handler = &activate_trade_scroll_button;
 		b->field_630[0] = 0; // TODO: Is this necessary? It's done by the base game code when creating the city screen scroll buttons
@@ -1950,6 +1949,25 @@ init_trade_scroll_buttons (DiploForm * diplo_form)
 	}
 
 	is->trade_scroll_button_state = IS_OK;
+cleanup:
+	pcx.vtable->destruct (&pcx, __, 0);
+}
+
+void
+deinit_trade_scroll_buttons ()
+{
+	if (is->trade_scroll_button_state == IS_OK) {
+		is->trade_scroll_button_left ->vtable->destruct ((Base_Form *)is->trade_scroll_button_left , __, 0);
+		is->trade_scroll_button_right->vtable->destruct ((Base_Form *)is->trade_scroll_button_right, __, 0);
+		is->trade_scroll_button_left = is->trade_scroll_button_right = NULL;
+		for (int n = 0; n < 6; n++) {
+			Tile_Image_Info * tii = &is->trade_scroll_button_images[n];
+			tii->vtable->destruct (tii, __, 0);
+		}
+		free (is->trade_scroll_button_images);
+		is->trade_scroll_button_images = NULL;
+	}
+	is->trade_scroll_button_state = IS_UNINITED;
 }
 
 void
@@ -3025,8 +3043,9 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		load_config (scenario_config_path, 0);
 	apply_machine_code_edits (&is->current_config);
 
-	// This scenario might use different stacked button images than the old one
+	// This scenario might use different mod art assets than the old one
 	deinit_stackable_command_buttons ();
+	deinit_trade_scroll_buttons ();
 
 	// Need to clear this since the resource count might have changed
 	if (is->extra_available_resources != NULL) {

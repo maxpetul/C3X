@@ -3,7 +3,7 @@
 - Harbor/airport city icons indicate unit effects not trade abilities
 - Fix incorrect ETAs in go-to mode when railroad movement is limited
 - Option to remove Elvis Easter egg
-- Use stacked button images from scenario folder if present
+- Load mod button images from scenario folder if present
 - Match only complete names from config
 - Improve config read error messages
 

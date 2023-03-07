@@ -395,6 +395,7 @@ struct injected_state {
 	// was closed in order to scroll to the civ with the set ID. -1 indicates no scrolling.
 	Button * trade_scroll_button_left; // initialized to NULL
 	Button * trade_scroll_button_right; // initialized to NULL
+	Tile_Image_Info * trade_scroll_button_images; // inited to NULL, array of 6 images: normal, rollover, and highlight for left & right
 	enum init_state trade_scroll_button_state;
 	int eligible_for_trade_scroll;
 
