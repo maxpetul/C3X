@@ -1618,6 +1618,7 @@ patch_init_floating_point ()
 		{"charm_flag_triggers_ptw_like_targeting"              , 0, offsetof (struct c3x_config, charm_flag_triggers_ptw_like_targeting)},
 		{"city_icons_show_unit_effects_not_trade"              , 1, offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
 		{"ignore_king_ability_for_defense_priority"            , 0, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
+		{"show_untradable_techs_on_trade_screen"               , 0, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -5689,6 +5690,36 @@ patch_get_local_time_for_unit_ini (LPSYSTEMTIME lpSystemTime)
 	GetLocalTime (lpSystemTime);
 	if (is->current_config.no_elvis_easter_egg && (lpSystemTime->wMonth == 1) && (lpSystemTime->wDay == 8))
 		lpSystemTime->wDay = 9;
+}
+
+byte __fastcall
+patch_Leader_could_buy_tech_on_trade_screen (Leader * this, int edx, int tech_id, int from_civ_id)
+{
+	// Temporarily remove the untradable flag so this tech is listed on the screen instead of skipped over. After all the items have been
+	// assembled, we'll go back and disable the untradable techs.
+	if (is->current_config.show_untradable_techs_on_trade_screen) {
+		int saved_flags = p_bic_data->Advances[tech_id].Flags;
+		p_bic_data->Advances[tech_id].Flags &= ~ATF_Cannot_Be_Traded;
+		byte tr = Leader_could_buy_tech_on_trade_screen (this, __, tech_id, from_civ_id);
+		p_bic_data->Advances[tech_id].Flags = saved_flags;
+		return tr;
+
+	} else
+		return Leader_could_buy_tech_on_trade_screen (this, __, tech_id, from_civ_id);
+}
+
+void __fastcall
+patch_DiploForm_assemble_tradable_items (DiploForm * this)
+{
+	DiploForm_assemble_tradable_items (this);
+
+	// Disable (gray out) all untradable techs
+	if (is->current_config.show_untradable_techs_on_trade_screen)
+		for (int n = 0; n < p_bic_data->AdvanceCount; n++)
+			if (p_bic_data->Advances[n].Flags & ATF_Cannot_Be_Traded) {
+				this->tradable_technologies[n].can_be_bought = 0;
+				this->tradable_technologies[n].can_be_sold   = 0;
+			}
 }
 
 // TCC requires a main function be defined even though it's never used.
