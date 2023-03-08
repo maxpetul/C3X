@@ -1367,6 +1367,20 @@ typedef enum preferences {
 	P_DO_NOT_AUTO_SELECT_UNITS_IN_MP    = 0x40000000
 } Preferences;
 
+typedef enum tradable_item_kind {
+	TIK_DIPLO_AGREEMENT = 0,
+	TIK_ALLIANCE        = 1,
+	TIK_EMBARGO         = 2,
+	TIK_MAP             = 3,
+	TIK_COMMUNICATION   = 4,
+	TIK_RESOURCE        = 5,
+	TIK_LUXURY          = 6,
+	TIK_GOLD            = 7,
+	TIK_TECHNOLOGY      = 8,
+	TIK_CITY            = 9,
+	TIK_UNIT            = 10
+} TradableItemKind;
+
 struct IntList
 {
   int field_0;
@@ -5978,7 +5992,7 @@ typedef struct Object_66D520 Object_66D520;
 typedef struct PopupSelection PopupSelection;
 typedef struct PopupFormVTable PopupFormVTable;
 typedef struct PopupForm PopupForm;
-typedef struct StrWithJunk StrWithJunk;
+typedef struct TradableItem TradableItem;
 typedef struct TradeOfferVTable TradeOfferVTable;
 typedef struct TradeOffer TradeOffer;
 typedef struct TradeOfferList TradeOfferList;
@@ -6030,11 +6044,12 @@ struct PopupForm
 	int unk2[338];
 };
 
-struct StrWithJunk
+struct TradableItem
 {
-	char * str;
-	byte junk_1[4];
-	int junk_2;
+	char * label;
+	byte listed_for_sale    , can_be_sold,
+	     listed_for_purchase, can_be_bought;
+	int field_8;
 };
 
 struct TradeOfferVTable
@@ -6068,8 +6083,8 @@ struct Object_667188
 
 struct DiploForm
 {
-	Base_Form_vtable * vtable; // = 0x66C0D8
-	int field_4[933];
+	Base_Form base;
+	int field_574[585];
 	int other_party_civ_id;
 	int field_E9C[15];
 	int mode;
@@ -6078,18 +6093,18 @@ struct DiploForm
 	TradeOfferList our_offer_lists[32];
 	int field_1380[4];
 	int field_1390[3];
-	StrWithJunk * headings;
-	StrWithJunk * agreements;
-	StrWithJunk * alliances;
-	StrWithJunk * embargoes;
-	void * field_13AC;
-	StrWithJunk * communications;
-	int field_13B4;
-	int field_13B8;
-	int field_13BC;
-	int field_13C0;
-	int field_13C4;
-	int field_13C8;
+	TradableItem * tradable_categories; // "Diplomatic Agreements", "Military Alliances", "Trade Embargos", "Maps", etc.
+	TradableItem * tradable_diplo_agreements;
+	TradableItem * tradable_alliances;
+	TradableItem * tradable_embargos;
+	TradableItem * tradable_maps; // "World Map", "Territory Map"
+	TradableItem * tradable_communications;
+	TradableItem * tradable_resources; // Array len = resource count
+	TradableItem * tradable_luxuries; // Array len = resource count
+	TradableItem * tradable_gold;
+	TradableItem * tradable_technologies; // Array len = tech count
+	TradableItem * tradable_cities;
+	TradableItem * tradable_units;
 	char * attitudes[5]; // polite, annoyed, etc.
 	int field_13E0[24];
 	Tile_Image_Info talk_offer_img;
