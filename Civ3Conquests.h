@@ -57,7 +57,8 @@ typedef struct Tile_Image_Info_vtable Tile_Image_Info_vtable;
 typedef struct Tile_Image_Info_List Tile_Image_Info_List;
 typedef struct Base_vtable Base_vtable;
 typedef struct City_Screen_FileNames City_Screen_FileNames;
-typedef struct _188_48 _188_48;
+typedef struct AnimationSummary AnimationSummary;
+typedef struct AnimationSummaryVTable AnimationSummaryVTable;
 typedef struct FLC_Frame_Image FLC_Frame_Image;
 typedef struct _188_4C _188_4C;
 typedef struct Civilopedia_Article Civilopedia_Article;
@@ -2392,17 +2393,25 @@ struct City_Screen_FileNames
   String260 XAndView2;
 };
 
-struct _188_48
+struct AnimationSummaryVTable
 {
-  int *vtable;
-  int Direction;
-  int field_8;
-  int field_C[4];
-  int Direction2;
-  int Animation_Type;
-  int field_24;
-  int field_28;
-  int Last;
+  AnimationSummary * (__fastcall * destruct) (AnimationSummary *, __, byte);
+};
+
+struct AnimationSummary
+{
+  AnimationSummaryVTable * vtable;
+  enum direction direction;
+  AnimationType queued_anim_type;
+  int field_C;
+  int field_10;
+  int pixel_loc_x;
+  int pixel_loc_y;
+  enum direction direction_2; // queued direction?
+  AnimationType current_anim_type;
+  int pixel_target_x;
+  int pixel_target_y;
+  int field_2C; // bookend?
 };
 
 struct FLC_Frame_Image
@@ -4501,7 +4510,7 @@ struct PCX_Image_vtable
 struct FLC_Animation
 {
   _188_vtable *vtable;
-  _188_48 struct_48;
+  AnimationSummary summary;
   int field_34[9];
   FLC_Frame_Image Frame_1;
   FLC_Frame_Image Frame_2;
@@ -4799,7 +4808,12 @@ struct Unit_Body
   int field_1D4;
   LeaderKind leader_kind;
   IDLS IDLS;
-  int field_210[12];
+  int field_210[8];
+  byte field_230;
+  byte field_231;
+  byte always_on_top;
+  byte field_233;
+  int field_234[3];
   RECT Rect;
   int field_250[4];
   FLC_Animation Animation;
