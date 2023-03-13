@@ -5896,12 +5896,8 @@ patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int 
 void __fastcall
 patch_Animator_play_zoc_animation (Animator * this, int edx, Unit * unit, AnimationType anim_type, byte param_3)
 {
-	if (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class != UTC_Air) {
-		if (is->current_config.show_zoc_attacks_from_mid_stack)
-			is->unit_display_override = (struct unit_display_override) { unit->Body.ID, unit->Body.X, unit->Body.Y };
+	if (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class != UTC_Air)
 		Animator_play_one_shot_unit_animation (this, __, unit, anim_type, param_3);
-		is->unit_display_override = (struct unit_display_override) { -1, -1, -1 };
-	}
 }
 
 byte __fastcall
@@ -5922,8 +5918,21 @@ patch_Fighter_check_zoc_anim_visibility (Fighter * this, int edx, Unit * attacke
 	} else if (attacker->Body.Animation.field_111 == 0)
 		return 0;
 
-	else
-		return Fighter_check_combat_anim_visibility (this, __, attacker, defender, param_3);
+	else {
+		byte tr = Fighter_check_combat_anim_visibility (this, __, attacker, defender, param_3);
+
+		// If necessary, set up to ensure the unit's attack animation is visible. This means forcing it to the top of its stack and
+		// temporarily unfortifying it if it's fortified. (If it's fortified, the animation is occasionally not visible. Don't know why.)
+		if (tr && is->current_config.show_zoc_attacks_from_mid_stack) {
+			is->unit_display_override = (struct unit_display_override) { attacker->Body.ID, attacker->Body.X, attacker->Body.Y };
+			if (attacker->Body.UnitState == UnitState_Fortifying) {
+				Unit_set_state (attacker, __, 0);
+				is->refortify_interceptor_after_zoc = 1;
+			}
+		}
+
+		return tr;
+	}
 }
 
 void __fastcall
@@ -5931,6 +5940,8 @@ patch_Fighter_apply_zone_of_control (Fighter * this, int edx, Unit * unit, int f
 {
 	is->zoc_interceptor = NULL;
 	is->zoc_defender = unit;
+	is->refortify_interceptor_after_zoc = 0;
+	struct unit_display_override saved_udo = is->unit_display_override;
 	Fighter_apply_zone_of_control (this, __, unit, from_x, from_y, to_x, to_y);
 
 	// Actually exert ZoC if an air unit managed to do so.
@@ -5941,6 +5952,10 @@ patch_Fighter_apply_zone_of_control (Fighter * this, int edx, Unit * unit, int f
 			unit->Body.Damage = not_below (0, unit->Body.Damage + 1);
 		}
 	}
+
+	if (is->refortify_interceptor_after_zoc)
+		Unit_set_state (is->zoc_interceptor, __, UnitState_Fortifying);
+	is->unit_display_override = saved_udo;
 }
 
 // These two patches replace two function calls in Unit::move_to_adjacent_tile that come immediately after the unit has been subjected to zone of

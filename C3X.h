@@ -500,6 +500,10 @@ struct injected_state {
 	// Set when Fighter::apply_zone_of_control is called to store the defending unit, used by the injected filter.
 	Unit * zoc_defender;
 
+	// Cleared to zero when Fighter::apply_zone_of_control is called. The interceptor must be unfortified to ensure it plays its animation. If
+	// that happens, this flag is set so that apply_zone_of_control knows to refortify the unit after the ZoC process is done.
+	int refortify_interceptor_after_zoc;
+
 	// Used to record info about a defensive bomardment event during Fighter::fight. Gets set by Fighter::damage_by_defensive_bombardment and
 	// cleared when Fighter::fight returns.
 	struct defensive_bombard_event {
