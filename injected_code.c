@@ -769,6 +769,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						{"lethal"       , SDBR_LETHAL},
 						{"not-invisible", SDBR_NOT_INVISIBLE},
 						{"aerial"       , SDBR_AERIAL},
+						{"blitz"        , SDBR_BLITZ},
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_defensive_bombard_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -1885,7 +1886,6 @@ patch_init_floating_point ()
 	base_config.ai_build_artillery_ratio = 20;
 	base_config.ai_artillery_value_damage_percent = 50;
 	base_config.ai_build_bomber_ratio = 70;
-	base_config.special_defensive_bombard_rules = 0;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	memcpy (&is->base_config, &base_config, sizeof base_config);
@@ -1988,6 +1988,7 @@ patch_init_floating_point ()
 		stable_insert (&is->boolean_config_offsets, boolean_config_options[n].name, boolean_config_options[n].offset);
 
 	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
+	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -3213,6 +3214,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	for (int n = 0; n < 32; n++)
 		is->interceptor_reset_lists[n].count = 0;
 	is->replay_for_players = 0;
+	table_deinit (&is->extra_defensive_bombards);
 
 	// Recreate table of alt strategies
 	table_deinit (&is->unit_type_alt_strategies);
@@ -4836,6 +4838,17 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 }
 
 void __fastcall
+patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
+{
+	// Clear extra DBs used by this unit
+	int extra_dbs;
+	if (itable_look_up (&is->extra_defensive_bombards, this->Body.ID, &extra_dbs) && (extra_dbs != 0))
+		itable_insert (&is->extra_defensive_bombards, this->Body.ID, 0);
+
+	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
+}
+
+void __fastcall
 patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, int param_2, int param_3)
 {
 	// Restore the tile count if it was saved by recompute_resources. This is necessary because the Draw_Tiles method loops over all tiles.
@@ -5002,7 +5015,7 @@ set_up_ai_two_city_start (Map * map)
 
 			// Delete starting settler so it's as if it was consumed to found the capital
 			if (starting_settler != NULL)
-				Unit_despawn (starting_settler, __, 0, 1, 0, 0, 0, 0, 0);
+				patch_Unit_despawn (starting_settler, __, 0, 1, 0, 0, 0, 0, 0);
 
 			// Add forbidden palace to FP city
 			for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
@@ -5523,6 +5536,17 @@ patch_Leader_begin_unit_turns (Leader * this)
 	}
 	irl->count = 0;
 
+	// Reset all extra defensive bombard uses, if necessary
+	if (is->extra_defensive_bombards.len > 0)
+		for (int n = 0; n <= p_units->LastIndex; n++) {
+			Unit * unit = get_unit_ptr (n);
+			if ((unit != NULL) && (unit->Body.CivID == this->ID)) {
+				int unused;
+				if (itable_look_up (&is->extra_defensive_bombards, n, &unused))
+					itable_insert (&is->extra_defensive_bombards, n, 0);
+			}
+		}
+
 	Leader_begin_unit_turns (this);
 }
 
@@ -5987,7 +6011,7 @@ check_life_after_zoc (Unit * unit, Unit * interceptor)
 		Unit_score_kill (interceptor, __, unit, 0);
 		if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (&p_bic_data->fighter, __, interceptor, unit, 1))
 			Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, unit, AT_DEATH, 0);
-		Unit_despawn (unit, __, interceptor->Body.CivID, 0, 0, 0, 0, 0, 0);
+		patch_Unit_despawn (unit, __, interceptor->Body.CivID, 0, 0, 0, 0, 0, 0);
 		return 1;
 	} else
 		return 0;
@@ -6016,9 +6040,22 @@ patch_Unit_teleport (Unit * this, int edx, int tile_x, int tile_y, Unit * unit_t
 int
 can_do_defensive_bombard (Unit * unit, UnitType * type)
 {
-	return (type->Bombard_Strength > 0) &&
-		(! Unit_has_ability (unit, __, UTA_Cruise_Missile)) &&
-		((unit->Body.Status & 0x40) == 0); // has already done def bombard this turn
+	if ((type->Bombard_Strength > 0) && (! Unit_has_ability (unit, __, UTA_Cruise_Missile))) {
+		if ((unit->Body.Status & 0x40) == 0) // has not already done DB this turn
+			return 1;
+
+		// If the "blitz" special DB rule is activated, check if this unit still has an extra DB to use
+		else if (is->current_config.special_defensive_bombard_rules & SDBR_BLITZ) {
+			int extra_dbs;
+			int got_value = itable_look_up (&is->extra_defensive_bombards, unit->Body.ID, &extra_dbs);
+			if (! got_value)
+				extra_dbs = 0;
+			return type->Movement > extra_dbs + 1;
+
+		} else
+			return 0;
+	} else
+		return 0;
 }
 
 Unit * __fastcall
@@ -6069,6 +6106,13 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 			return; // intercepted
 		else
 			Unit_play_bombing_animation (bombarder, __, defender->Body.X, defender->Body.Y);
+	}
+
+	// If the unit has already performed DB this turn, then record that it's consumed one of its extra DBs
+	if (bombarder->Body.Status & 0x40) {
+		int extra_dbs;
+		int got_value = itable_look_up (&is->extra_defensive_bombards, bombarder->Body.ID, &extra_dbs);
+		itable_insert (&is->extra_defensive_bombards, bombarder->Body.ID, got_value ? (extra_dbs + 1) : 1);
 	}
 
 	int damage_before = defender->Body.Damage;

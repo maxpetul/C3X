@@ -88,6 +88,7 @@ Engine extensions:
   - May be lethal
   - May be performed by air units
   - Invisible, undetected units may be made immune
+  - May be performed multiple times per turn with blitz
 - ** Zone of control overhaul
   - Allow land-to-sea and sea-to-land attacks, only using bombard stat
   - May be lethal

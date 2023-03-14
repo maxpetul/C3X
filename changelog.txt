@@ -8,6 +8,7 @@
   - May be lethal
   - May be performed by air units
   - Invisible, undetected units may be made immune
+  - May be performed multiple times per turn with blitz
 - Can use charm flag to control PTW-like artillery targeting
 - Option to ignore king flag on defense, so kings aren't always last to defend in a stack
 - Harbor/airport city icons indicate unit effects not trade abilities

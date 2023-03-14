@@ -44,6 +44,7 @@ enum special_defensive_bombard_rules {
 	SDBR_LETHAL        = 1,
 	SDBR_NOT_INVISIBLE = 2,
 	SDBR_AERIAL        = 4,
+	SDBR_BLITZ         = 8,
 };
 
 enum special_zone_of_control_rules {
@@ -350,6 +351,10 @@ struct injected_state {
 	// Maps unit types IDs to AI strategy indices (0 = offense, 1 = defense, 2 = artillery, etc.). If a unit type ID is in this table, that means
 	// it's one of several duplicate types created to spread multiple AI strategies out so each type has only one.
 	struct table unit_type_alt_strategies;
+
+	// Tracks the number of "extra" defensive bombards units have performed, by their IDs. If the "blitz" special defensive bombard rule is
+	// activated, units with blitz get an extra chance to perform DB for each movement point they have beyond the first.
+	struct table extra_defensive_bombards;
 
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {
