@@ -1060,6 +1060,7 @@ ENTRY_POINT ()
 	ResumeThread (civ_proc_info.hThread);
 
 	WaitForSingleObject (civ_proc, INFINITE);
+	TerminateProcess (civ_proc_info.hProcess, 0);
 	CloseHandle (civ_proc_info.hProcess);
 	CloseHandle (civ_proc_info.hThread);
 

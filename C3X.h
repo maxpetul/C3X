@@ -238,11 +238,11 @@ struct injected_state {
 	enum init_state tile_highlight_state;
 	enum init_state mod_info_button_images_state;
 
-	struct c3x_config base_config;
-
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
 	// ==========
+
+	struct c3x_config base_config;
 
 	// Windows modules
 	HMODULE kernel32;
