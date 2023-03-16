@@ -5533,7 +5533,7 @@ patch_do_load_game (char * param_1)
 					else if ((dx == -1) && (dy == -1)) dir = DIR_NW;
 					else if ((dx ==  0) && (dy == -2)) dir = DIR_N;
 					if (dir >= 0)
-						unit->Body.Animation.struct_48.Direction = dir;
+						unit->Body.Animation.summary.direction = dir;
 				}
 			}
 		}

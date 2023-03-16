@@ -1382,6 +1382,28 @@ typedef enum tradable_item_kind {
 	TIK_UNIT            = 10
 } TradableItemKind;
 
+typedef enum animation_type {
+	AT_BLANK    = 0x0,
+	AT_DEFAULT  = 0x1,
+	AT_RUN      = 0x2,
+	AT_ATTACK1  = 0x3,
+	AT_ATTACK2  = 0x4,
+	AT_ATTACK3  = 0x5,
+	AT_DEATH    = 0x6,
+	AT_FORTIFY  = 0x7,
+	AT_FIDGET   = 0x8,
+	AT_VICTORY  = 0x9,
+	AT_CAPTURE  = 0xA,
+	AT_FORTRESS = 0xB,
+	AT_BUILD    = 0xC,
+	AT_ROAD     = 0xD,
+	AT_MINE     = 0xE,
+	AT_IRRIGATE = 0xF,
+	AT_JUNGLE   = 0x10,
+	AT_FOREST   = 0x11,
+	AT_PLANT    = 0x12,
+} AnimationType;
+
 struct IntList
 {
   int field_0;
