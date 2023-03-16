@@ -108,6 +108,7 @@ struct c3x_config {
 	char city_icons_show_unit_effects_not_trade;
 	char ignore_king_ability_for_defense_priority;
 	char show_untradable_techs_on_trade_screen;
+	char optimize_improvement_loops;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
@@ -471,6 +472,12 @@ struct injected_state {
 
 	// Initialized to 0. If set to non-zero, the next call to do_load_game will consume the value and skip the intro popup.
 	int suppress_intro_after_load_popup;
+
+	struct improv_id_list {
+		int * items;
+		int count;
+		int capacity;
+	} water_trade_improvs, air_trade_improvs, combat_defense_improvs;
 
 	// ==========
 	// }

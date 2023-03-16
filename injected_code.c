@@ -1619,6 +1619,7 @@ patch_init_floating_point ()
 		{"city_icons_show_unit_effects_not_trade"              , 1, offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
 		{"ignore_king_ability_for_defense_priority"            , 0, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
 		{"show_untradable_techs_on_trade_screen"               , 0, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
+		{"optimize_improvement_loops"                          , 1, offsetof (struct c3x_config, optimize_improvement_loops)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -1764,6 +1765,10 @@ patch_init_floating_point ()
 	is->replay_for_players = 0;
 
 	is->suppress_intro_after_load_popup = 0;
+
+	is->water_trade_improvs    = (struct improv_id_list) {0};
+	is->air_trade_improvs      = (struct improv_id_list) {0};
+	is->combat_defense_improvs = (struct improv_id_list) {0};
 
 	memset (&is->boolean_config_offsets, 0, sizeof is->boolean_config_offsets);
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
@@ -3021,6 +3026,14 @@ record_unit_type_alt_strategy (int type_id)
 	itable_insert (&is->unit_type_alt_strategies, type_id, ai_strat_index);
 }
 
+void
+append_improv_id_to_list (struct improv_id_list * list, int id)
+{
+	reserve (sizeof list->items[0], (void **)&list->items, &list->capacity, list->count);
+	list->items[list->count] = id;
+	list->count += 1;
+}
+
 unsigned __fastcall
 patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 {
@@ -3088,6 +3101,17 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 				type->Special_Actions &= ~(0x00FFFFFF & UCV_Charm_Bombard);
 			}
 		}
+	}
+
+	// Recreate lists of water & air trade improvements
+	is->water_trade_improvs   .count = 0;
+	is->air_trade_improvs     .count = 0;
+	is->combat_defense_improvs.count = 0;
+	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+		enum ImprovementTypeFlags flags = p_bic_data->Improvements[n].ImprovementFlags;
+		if (flags & ITF_Allows_Water_Trade)                  append_improv_id_to_list (&is->water_trade_improvs   , n);
+		if (flags & ITF_Allows_Air_Trade)                    append_improv_id_to_list (&is->air_trade_improvs     , n);
+		if (p_bic_data->Improvements[n].Combat_Defence != 0) append_improv_id_to_list (&is->combat_defense_improvs, n);
 	}
 
 	// Set up for limiting railroad movement, if enabled
@@ -5665,7 +5689,7 @@ patch_City_shows_harbor_icon (City * this)
 {
 	return is->current_config.city_icons_show_unit_effects_not_trade ?
 		City_count_improvements_with_flag (this, __, ITF_Veteran_Sea_Units) > 0 :
-		City_can_trade_via_water (this);
+		patch_City_can_trade_via_water (this);
 }
 
 byte __fastcall
@@ -5673,7 +5697,7 @@ patch_City_shows_airport_icon (City * this)
 {
 	return is->current_config.city_icons_show_unit_effects_not_trade ?
 		City_count_improvements_with_flag (this, __, ITF_Veteran_Air_Units) > 0 :
-		City_can_trade_via_air (this);
+		patch_City_can_trade_via_air (this);
 }
 
 byte __fastcall
@@ -5720,6 +5744,58 @@ patch_DiploForm_assemble_tradable_items (DiploForm * this)
 				this->tradable_technologies[n].can_be_bought = 0;
 				this->tradable_technologies[n].can_be_sold   = 0;
 			}
+}
+
+byte __fastcall
+patch_City_can_trade_via_water (City * this)
+{
+	if (is->current_config.optimize_improvement_loops) {
+		for (int n = 0; n < is->water_trade_improvs.count; n++)
+			if (has_active_building (this, is->water_trade_improvs.items[n]))
+				return 1;
+		return 0;
+	} else
+		return City_can_trade_via_water (this);
+}
+
+byte __fastcall
+patch_City_can_trade_via_air (City * this)
+{
+	if (is->current_config.optimize_improvement_loops) {
+		for (int n = 0; n < is->air_trade_improvs.count; n++)
+			if (has_active_building (this, is->air_trade_improvs.items[n]))
+				return 1;
+		return 0;
+	} else
+		return City_can_trade_via_air (this);
+}
+
+int __fastcall
+patch_City_get_building_defense_bonus (City * this)
+{
+	if (is->current_config.optimize_improvement_loops) {
+		int tr = 0;
+		int is_size_level_1 = (this->Body.Population.Size <= p_bic_data->General.MaximumSize_City) &&
+			(this->Body.Population.Size <= p_bic_data->General.MaximumSize_Town);
+		for (int n = 0; n < is->combat_defense_improvs.count; n++) {
+			int improv_id = is->combat_defense_improvs.items[n];
+			Improvement * improv = &p_bic_data->Improvements[improv_id];
+			if ((is_size_level_1 || (improv->Combat_Bombard == 0)) && has_active_building (this, improv_id)) {
+				int multiplier;
+				if ((improv->Combat_Bombard > 0) &&
+				    (Leader_count_wonders_with_flag (&leaders[(this->Body).CivID], __, ITW_Doubles_City_Defenses, NULL) > 0))
+					multiplier = 2;
+				else
+					multiplier = 1;
+
+				int building_defense = multiplier * improv->Combat_Defence;
+				if (building_defense > tr)
+					tr = building_defense;
+			}
+		}
+		return tr;
+	} else
+		return City_get_building_defense_bonus (this);
 }
 
 // TCC requires a main function be defined even though it's never used.

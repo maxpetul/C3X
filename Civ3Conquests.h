@@ -436,53 +436,41 @@ enum ImprovementTypeCharacteristics
   ITC_Seafaring = 0x800,
 };
 
-enum ImprovementTypeFlags_Byte1
-{
-  ITF_B1_Reduces_Corruption = 0x1,
-  ITF_B1_Doubles_City_Growth_Rate = 0x2,
-  ITF_B1_Increases_Luxury_Trade = 0x4,
-  ITF_B1_Allows_City_Level_2 = 0x8,
-  ITF_B1_Allows_City_Level_3 = 0x10,
-  ITF_B1_Replaces_Other_Buildings = 0x20,
-  ITF_B1_Must_Be_Near_Water = 0x40,
-  ITF_B1_Must_Be_Near_River = 0x80,
-};
-
 enum ImprovementTypeWonderFeatures
 {
-  ITW_Safe_Sea_Travel			     = 0x1,
-  ITW_Gain_Any_Advance_Owned_by_2_Civ	     = 0x2,
-  ITW_Double_Combat_Strength_vs_Barbarians   = 0x4,
-  ITW_Ship_Movement_Inc_1		     = 0x8,
-  ITW_Doubles_Research_Output		     = 0x10,
-  ITW_Trade_In_Each_Tile_inc_1		     = 0x20,
-  ITW_Halves_Unit_Upgrade_Cost		     = 0x40,
-  ITW_Pays_Maintenance_For_Trade_Inst	     = 0x80,
-  ITW_Allows_Construction_Of_Nuclear_Devices = 0x100,
-  ITW_City_Growth_Inc_2_Citizens	     = 0x200,
-  ITW_Free_Advance_Inc_2		     = 0x400,
-  ITW_Reduces_War_Weariness		     = 0x800,
-  ITW_Unk1				     = 0x1000,
-  ITW_Allows_Diplomatic_Victory		     = 0x2000,
-  ITW_Unk2				     = 0x4000,
-  ITW_Unk3				     = 0x8000,
-  ITW_Increases_Army_Value		     = 0x10000,
-  ITW_Tourist_Attraction		     = 0x20000,
+  ITW_Safe_Sea_Travel                             = 0x1,
+  ITW_Gain_Any_Advances_Owned_by_2_Civs           = 0x2,
+  ITW_Double_Combat_Strength_vs_Barbarians        = 0x4,
+  ITW_Plus_One_Ship_Movement                      = 0x8,
+  ITW_Doubles_Research_Output                     = 0x10,
+  ITW_Plus_One_Trade_in_Each_Trade_Producing_Tile = 0x20,
+  ITW_Halves_Unit_Upgrade_Cost                    = 0x40,
+  ITW_Pays_Maintenance_For_Trade_Installations    = 0x80,
+  ITW_Allows_Construction_of_Nuclear_Devices      = 0x100,
+  ITW_City_Growth_Causes_Plus_Two_Citizens        = 0x200,
+  ITW_Plus_Two_Free_Advances                      = 0x400,
+  ITW_Reduces_War_Weariness                       = 0x800,
+  ITW_Doubles_City_Defenses                       = 0x1000,
+  ITW_Allows_Diplomatic_Victory                   = 0x2000,
+  ITW_Plus_Two_Ship_Movement                      = 0x4000,
+  ITW_0x8000                                      = 0x8000,
+  ITW_Increased_Army_Value                        = 0x10000,
+  ITW_Tourist_Attraction                          = 0x20000,
 };
 
 enum ImprovementTypeSmallWonderFeatures
 {
-  ITSW_Increases_Chance_Of_Leader_Appearance = 0x1,
-  ITSW_Build_Army_Without_Leader	     = 0x2,
-  ITSW_Larger_Armies			     = 0x4,
-  ITSW_Treasury_Earns_5_Percent		     = 0x8,
-  ITSW_Build_Spaceship_Parts		     = 0x10,
-  ITSW_Reduces_Corruption		     = 0x20,
+  ITSW_Increases_Chance_of_Leader_Appearance = 0x1,
+  ITSW_Build_Armies_Without_Leader           = 0x2,
+  ITSW_Build_Larger_Armies                   = 0x4,
+  ITSW_Treasury_Earns_5_Percent              = 0x8,
+  ITSW_Build_Spaceship_Parts                 = 0x10,
+  ITSW_Reduces_Corruption                    = 0x20,
   ITSW_Decreases_Success_Of_Missile_Attacks  = 0x40,
-  ITSW_Allows_Spy_Missions		     = 0x80,
+  ITSW_Allows_Spy_Missions                   = 0x80,
   ITSW_Allows_Healing_In_Enemy_Territory     = 0x100,
-  ITSW_200				     = 0x200,
-  ITSW_Requires_Victorous_Army		     = 0x400,
+  ITSW_0x200                                 = 0x200,
+  ITSW_Requires_Victorous_Army               = 0x400,
 };
 
 enum CorruptionAndWasteTypes
@@ -818,20 +806,6 @@ enum Hurry_Production_Type
   HPT_Paid_Labor = 0x2,
 };
 
-enum ImprovementTypeWonderFeatures_Byte1
-{
-  ITW_B1_Allows_Construction_Of_Nuclear_Devices = 0x1,
-  ITW_B1_City_Growth_Inc_2_Citizens = 0x2,
-  ITW_B1_Free_Advance_Inc_2 = 0x4,
-  ITW_B1_Reduces_War_Weariness = 0x8,
-  ITW_B1_Unk1 = 0x10,
-  ITW_B1_Allows_Diplomatic_Victory = 0x20,
-  ITW_B1_Unk2 = 0x40,
-  ITW_B1_Unk3 = 0x80,
-  ITW_B1_Increases_Army_Value = 0x100,
-  ITW_B1_Turist_Attraction = 0x200,
-};
-
 enum Tile_Owner_Types
 {
   TOT_None = 0x0,
@@ -943,13 +917,6 @@ enum UnitStateType
   UnitState_1E = 0x1E,
   UnitState_Auto_Bombard = 0x1F,
   UnitState_Auto_Air_Bombard = 0x20,
-};
-
-enum ImprovementTypeSmallWonderFeatures_Byte1
-{
-  ITSW_B1_Allows_Healing_In_Enemy_Territory = 0x1,
-  ITSW_B1_Required_Good_Must_be_in_City_Radius = 0x2,
-  ITSW_B1_Requires_Victorous_Army = 0x4,
 };
 
 enum VirtualKey
@@ -2187,8 +2154,8 @@ struct Improvement
   int Resource2ID;
   enum ImprovementTypeFlags ImprovementFlags;
   enum ImprovementTypeCharacteristics Characteristics;
-  int SmallWonderFlags;
-  int WonderFlags;
+  enum ImprovementTypeSmallWonderFeatures SmallWonderFlags;
+  enum ImprovementTypeWonderFeatures WonderFlags;
   int ArmyRequiredCount;
   int Flavours;
   int field_104;
