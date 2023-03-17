@@ -5685,22 +5685,6 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 }
 
 byte __fastcall
-patch_City_shows_harbor_icon (City * this)
-{
-	return is->current_config.city_icons_show_unit_effects_not_trade ?
-		City_count_improvements_with_flag (this, __, ITF_Veteran_Sea_Units) > 0 :
-		patch_City_can_trade_via_water (this);
-}
-
-byte __fastcall
-patch_City_shows_airport_icon (City * this)
-{
-	return is->current_config.city_icons_show_unit_effects_not_trade ?
-		City_count_improvements_with_flag (this, __, ITF_Veteran_Air_Units) > 0 :
-		patch_City_can_trade_via_air (this);
-}
-
-byte __fastcall
 patch_Unit_check_king_for_defense_priority (Unit * this, int edx, enum UnitTypeAbilities king_ability)
 {
 	return (! is->current_config.ignore_king_ability_for_defense_priority) || (*p_toggleable_rules & (TR_REGICIDE | TR_MASS_REGICIDE)) ?
@@ -5796,6 +5780,22 @@ patch_City_get_building_defense_bonus (City * this)
 		return tr;
 	} else
 		return City_get_building_defense_bonus (this);
+}
+
+byte __fastcall
+patch_City_shows_harbor_icon (City * this)
+{
+	return is->current_config.city_icons_show_unit_effects_not_trade ?
+		City_count_improvements_with_flag (this, __, ITF_Veteran_Sea_Units) > 0 :
+		patch_City_can_trade_via_water (this);
+}
+
+byte __fastcall
+patch_City_shows_airport_icon (City * this)
+{
+	return is->current_config.city_icons_show_unit_effects_not_trade ?
+		City_count_improvements_with_flag (this, __, ITF_Veteran_Air_Units) > 0 :
+		patch_City_can_trade_via_air (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
