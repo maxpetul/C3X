@@ -6044,8 +6044,8 @@ can_do_defensive_bombard (Unit * unit, UnitType * type)
 		if ((unit->Body.Status & 0x40) == 0) // has not already done DB this turn
 			return 1;
 
-		// If the "blitz" special DB rule is activated, check if this unit still has an extra DB to use
-		else if (is->current_config.special_defensive_bombard_rules & SDBR_BLITZ) {
+		// If the "blitz" special DB rule is activated and this unit has blitz, check if it still has an extra DB to use
+		else if ((is->current_config.special_defensive_bombard_rules & SDBR_BLITZ) && UnitType_has_ability (type, __, UTA_Blitz)) {
 			int extra_dbs;
 			int got_value = itable_look_up (&is->extra_defensive_bombards, unit->Body.ID, &extra_dbs);
 			if (! got_value)
