@@ -692,6 +692,11 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->ai_build_bomber_ratio = ival;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
+				} else if (slice_matches_str (&p.key, "reduce_max_escorts_per_ai_transport")) {
+					if (read_int (&value, &ival))
+						cfg->reduce_max_escorts_per_ai_transport = ival;
+					else
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
 
 				// if key is for something special
 				} else if (slice_matches_str (&p.key, "perfume_specs")) {
@@ -5796,6 +5801,17 @@ patch_City_shows_airport_icon (City * this)
 	return is->current_config.city_icons_show_unit_effects_not_trade ?
 		City_count_improvements_with_flag (this, __, ITF_Veteran_Air_Units) > 0 :
 		patch_City_can_trade_via_air (this);
+}
+
+int __fastcall
+patch_Unit_eval_escort_requirement (Unit * this)
+{
+	int base = Unit_eval_escort_requirement (this);
+
+	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].AI_Strategy & UTAI_Naval_Transport)
+		return not_above (3 - is->current_config.reduce_max_escorts_per_ai_transport, base);
+	else
+		return base;
 }
 
 // TCC requires a main function be defined even though it's never used.

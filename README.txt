@@ -32,6 +32,7 @@ AI enhancements:
  - Fix bug preventing AI from filling its armies
  - Improve AI army composition to discourage mixing types & exclude HN units
  - AI routine for "pop units" that may appear in mods
+ - ** Can limit the number of escorts the AI assigns to its naval transports
 Bugs fixed:
  - AI pathfinding collides with invisible units (called the "submarine bug")
  - Science age beakers not actually awarded

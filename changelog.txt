@@ -2,6 +2,7 @@
 - Option to ignore king flag on defense, so kings aren't always last to defend in a stack
 - Harbor/airport city icons indicate unit effects not trade abilities
 - Fix incorrect ETAs in go-to mode when railroad movement is limited
+- Can limit the number of escorts the AI assigns to its naval transports
 - Option to show untradable techs on trade screen
 - Option to remove Elvis Easter egg
 - Load mod button images from scenario folder if present
