@@ -112,6 +112,8 @@ civ3.CitizenMood = {
 
 function civ3.PopUpInGameError(msg) ffi.C.pop_up_in_game_error(msg) end
 function civ3.GetC3XScriptPath() return ffi.C.get_c3x_script_path() end
+
+---@type MainScreenForm
 civ3.mainScreenForm = ffi.C.get_main_screen_form()
 
 local function NextCity(city, id)
@@ -160,7 +162,10 @@ local function CitizensIn(city)
   return NextCitizenIn, citizenInListing, nil
 end
 
+---@class MainScreenForm
+---@field GetController fun(): Leader Returns the Leader object corresponding to the seated player
 local MainScreenForm
+
 local MainScreenForm_metatable = {
   __index = {
     GetController = function() return ffi.C.get_ui_controller() end
@@ -168,7 +173,10 @@ local MainScreenForm_metatable = {
 }
 MainScreenForm = ffi.metatype("MainScreenForm_t", MainScreenForm_metatable)
 
+---@class Leader
+---@field Cities any Returns an iterator over this player's cities
 local Leader
+
 local Leader_metatable = {
   __index = {
     Cities = function(this) return CitiesOf(this.ID) end
@@ -187,6 +195,10 @@ local City_metatable = {
 }
 City = ffi.metatype("City_t", City_metatable)
 
+--- Opens a popup window
+--- @param scriptPath string Path to the script.txt file containing the text key
+--- @param textKey string Which text key to use
+--- @return integer choice If the popup contains multiple choices, this is the zero-based index of the player's choice
 function civ3.ShowPopup(scriptPath, textKey, ...)
   local popup = ffi.C.get_popup_form()
   for n = 1,select("#", ...) do
