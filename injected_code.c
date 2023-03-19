@@ -5825,7 +5825,7 @@ patch_Leader_unlock_technology (Leader * this, int edx, int tech_id, byte param_
 
 	// Recompute building maintenance for all of this players cities if the bug fix is enabled, this tech obsoletes any buildings, and doing so
 	// wouldn't be redundant. It's redundant if we're adding techs during game initialization or recursively calling this function.
-	if ((is->current_config.patch_maintenance_persisting_for_obsolete_buildings) &&
+	if (is->current_config.patch_maintenance_persisting_for_obsolete_buildings &&
 	    (ret_addr != ADDR_UNLOCK_TECH_AT_INIT_1) &&
 	    (ret_addr != ADDR_UNLOCK_TECH_AT_INIT_2) &&
 	    (ret_addr != ADDR_UNLOCK_TECH_AT_INIT_3) &&
@@ -5839,6 +5839,17 @@ patch_Leader_unlock_technology (Leader * this, int edx, int tech_id, byte param_
 		if (obsoletes_anything)
 			Leader_recompute_buildings_maintenance (this);
 	}
+}
+
+int __fastcall
+patch_City_get_improv_maintenance_for_ui (City * this, int edx, int improv_id)
+{
+	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	if (is->current_config.patch_maintenance_persisting_for_obsolete_buildings &&
+	    (improv->ObsoleteID >= 0) && Leader_has_tech (&leaders[this->Body.CivID], __, improv->ObsoleteID))
+		return 0;
+	else
+		return City_get_improvement_maintenance (this, __, improv_id);
 }
 
 // TCC requires a main function be defined even though it's never used.
