@@ -5,6 +5,7 @@
 - Can limit the number of escorts the AI assigns to its naval transports
 - Option to show untradable techs on trade screen
 - Option to remove Elvis Easter egg
+- Fix cached building maintenance amounts not being updated when buildings are obsoleted
 - Load mod button images from scenario folder if present
 - Match only complete names from config
 - Improve config read error messages

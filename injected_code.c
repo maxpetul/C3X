@@ -1607,6 +1607,7 @@ patch_init_floating_point ()
 		{"patch_houseboat_bug"                                 , 1, offsetof (struct c3x_config, patch_houseboat_bug)},
 		{"patch_intercept_lost_turn_bug"                       , 1, offsetof (struct c3x_config, patch_intercept_lost_turn_bug)},
 		{"patch_phantom_resource_bug"                          , 1, offsetof (struct c3x_config, patch_phantom_resource_bug)},
+		{"patch_maintenance_persisting_for_obsolete_buildings" , 1, offsetof (struct c3x_config, patch_maintenance_persisting_for_obsolete_buildings)},
 		{"prevent_autorazing"                                  , 0, offsetof (struct c3x_config, prevent_autorazing)},
 		{"prevent_razing_by_players"                           , 0, offsetof (struct c3x_config, prevent_razing_by_players)},
 		{"suppress_hypertext_links_exceeded_popup"             , 1, offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
@@ -5812,6 +5813,23 @@ patch_Unit_eval_escort_requirement (Unit * this)
 		return not_above (3 - is->current_config.reduce_max_escorts_per_ai_transport, base);
 	else
 		return base;
+}
+
+void __fastcall
+patch_Leader_unlock_technology (Leader * this, int edx, int tech_id, byte param_2, byte param_3, byte param_4)
+{
+	Leader_unlock_technology (this, __, tech_id, param_2, param_3, param_4);
+
+	if (is->current_config.patch_maintenance_persisting_for_obsolete_buildings) {
+		int obsoletes_anything = 0;
+		for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
+			if (p_bic_data->Improvements[n].ObsoleteID == tech_id) {
+				obsoletes_anything = 1;
+				break;
+			}
+		if (obsoletes_anything)
+			Leader_recompute_buildings_maintenance (this);
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.
