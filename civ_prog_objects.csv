@@ -305,6 +305,10 @@ define,	   0x55A8D0,	0x0,		0x0,		"Leader_count_wonders_with_flag",		"int (__fast
 repl vptr, 0x66DD04,	0x68ADE4,	0x66DD04,	"Unit_eval_escort_requirement",			"int (__fastcall *) (Unit * this)"
 inlead,	   0x561860,	0x56D9E0,	0x561810,	"Leader_unlock_technology",			"void (__fastcall *) (Leader * this, int edx, int tech_id, byte param_2, byte param_3, byte param_4)"
 define,	   0x55CF10,	0x568F90,	0x55CEC0,	"Leader_recompute_buildings_maintenance",     	"void (__fastcall *) (Leader *this)"
+define,	   0x5683F7,	0x5747F2,	0x5683A7,	"ADDR_UNLOCK_TECH_AT_INIT_1",			"int"
+define,	   0x56847F,	0x57487A,	0x56842F,	"ADDR_UNLOCK_TECH_AT_INIT_3",			"int"
+define,	   0x5688DC,	0x574CD6,	0x56888C,	"ADDR_UNLOCK_TECH_AT_INIT_2",			"int"
+define,	   0x5621DE,	0x56E33D,	0x56217E,	"ADDR_UNLOCK_TECH_RECURSE",			"int"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

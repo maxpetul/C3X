@@ -5818,9 +5818,18 @@ patch_Unit_eval_escort_requirement (Unit * this)
 void __fastcall
 patch_Leader_unlock_technology (Leader * this, int edx, int tech_id, byte param_2, byte param_3, byte param_4)
 {
+	int * p_stack = (int *)&tech_id;
+	int ret_addr = p_stack[-1];
+
 	Leader_unlock_technology (this, __, tech_id, param_2, param_3, param_4);
 
-	if (is->current_config.patch_maintenance_persisting_for_obsolete_buildings) {
+	// Recompute building maintenance for all of this players cities if the bug fix is enabled, this tech obsoletes any buildings, and doing so
+	// wouldn't be redundant. It's redundant if we're adding techs during game initialization or recursively calling this function.
+	if ((is->current_config.patch_maintenance_persisting_for_obsolete_buildings) &&
+	    (ret_addr != ADDR_UNLOCK_TECH_AT_INIT_1) &&
+	    (ret_addr != ADDR_UNLOCK_TECH_AT_INIT_2) &&
+	    (ret_addr != ADDR_UNLOCK_TECH_AT_INIT_3) &&
+	    (ret_addr != ADDR_UNLOCK_TECH_RECURSE)) {
 		int obsoletes_anything = 0;
 		for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
 			if (p_bic_data->Improvements[n].ObsoleteID == tech_id) {
