@@ -4660,10 +4660,12 @@ patch_City_get_total_pollution (City * this)
 void __fastcall
 patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int add, byte param_3)
 {
+	int init_maintenance = this->Body.Improvements_Maintenance;
+	Improvement * improv = &p_bic_data->Improvements[improv_id];
+
 	// The enable_negative_pop_pollution feature changes the rules so that improvements flagged as removing pop pollution and having a negative
 	// pollution amount contribute to the city's pop pollution instead of building pollution. Here we make sure that such improvements do not
 	// contribute to building pollution by temporarily zeroing out their pollution stat when they're added to or removed from a city.
-	Improvement * improv = &p_bic_data->Improvements[improv_id];
 	if (is->current_config.enable_negative_pop_pollution &&
 	    (improv->ImprovementFlags & ITF_Removes_Population_Pollution) &&
 	    (improv->Pollution < 0)) {
@@ -4686,6 +4688,13 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 				break;
 			}
 	}
+
+	// Adding or removing an obsolete improvement should not change the total maintenance since obsolete improvs shouldn't cost maintenance. In
+	// the base game, they usually do since the game doesn't update maintenance costs when buildings are obsoleted, but with that bug patched we
+	// can enforce the correct behavior.
+	if (is->current_config.patch_maintenance_persisting_for_obsolete_buildings &&
+	    (improv->ObsoleteID >= 0) && Leader_has_tech (&leaders[this->Body.CivID], __, improv->ObsoleteID))
+		this->Body.Improvements_Maintenance = init_maintenance;
 }
 
 void __fastcall
