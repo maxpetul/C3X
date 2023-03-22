@@ -109,6 +109,7 @@ struct c3x_config {
 	char ignore_king_ability_for_defense_priority;
 	char show_untradable_techs_on_trade_screen;
 	char optimize_improvement_loops;
+	char enable_city_capture_by_barbarians;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;

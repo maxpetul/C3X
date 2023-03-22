@@ -1542,6 +1542,22 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		cursor = emit_call (cursor, do_capture_modified_gold_trade); // call do_capture_modified_gold_trade
 		*cursor++ = 0xC3; // ret
 	}
+
+	// Edit branch in capture_city to never run code for barbs, this allows barbs to capture cities
+	WITH_MEM_PROTECTION (ADDR_CAPTURE_CITY_BARB_BRANCH, 2, PAGE_EXECUTE_READWRITE) {
+		byte normal[2] = {0x0F, 0x85}; // jnz
+		byte bypass[2] = {0x90, 0xE9}; // nop, jmp
+		for (int n = 0; n < 2; n++)
+			((byte *)ADDR_CAPTURE_CITY_BARB_BRANCH)[n] = cfg->enable_city_capture_by_barbarians ? bypass[n] : normal[n];
+	}
+
+	// Similarly for the production phase, this allows barbs to have a real ecnonomy
+	WITH_MEM_PROTECTION (ADDR_PRODUCTION_PHASE_BARB_BRANCH, 2, PAGE_EXECUTE_READWRITE) {
+		byte normal[2] = {0x0F, 0x85}; // jnz
+		byte bypass[2] = {0x90, 0xE9}; // nop, jmp
+		for (int n = 0; n < 2; n++)
+			((byte *)ADDR_PRODUCTION_PHASE_BARB_BRANCH)[n] = cfg->enable_city_capture_by_barbarians ? bypass[n] : normal[n];
+	}
 }
 
 void
@@ -1626,6 +1642,7 @@ patch_init_floating_point ()
 		{"ignore_king_ability_for_defense_priority"            , 0, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
 		{"show_untradable_techs_on_trade_screen"               , 0, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
 		{"optimize_improvement_loops"                          , 1, offsetof (struct c3x_config, optimize_improvement_loops)},
+		{"enable_city_capture_by_barbarians"                   , 1, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");

@@ -310,6 +310,8 @@ define,	   0x56847F,	0x57487A,	0x56842F,	"ADDR_UNLOCK_TECH_AT_INIT_3",			"int"
 define,	   0x5688DC,	0x574CD6,	0x56888C,	"ADDR_UNLOCK_TECH_AT_INIT_2",			"int"
 define,	   0x5621DE,	0x56E33D,	0x56217E,	"ADDR_UNLOCK_TECH_RECURSE",			"int"
 repl call, 0x4212E7,	0x422847,	0x421367,	"City_get_improv_maintenance_for_ui",		""
+define,	   0x563473,	0x0,		0x0,		"ADDR_CAPTURE_CITY_BARB_BRANCH",		"byte *"
+define,	   0x5604DA,	0x0,		0x0,		"ADDR_PRODUCTION_PHASE_BARB_BRANCH",		"byte *"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
