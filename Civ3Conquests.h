@@ -3279,9 +3279,9 @@ struct Item_List2
 struct Culture
 {
   Base Base;
-  int field_1C;
-  int field_20;
-  int field_24;
+  int cultural_level;
+  int total_culture_accumulated;
+  int total_culture_income;
   int CivID;
 };
 
@@ -4766,7 +4766,7 @@ struct Unit_Body
   int PrevMoveY;
   int CivID;
   int RaceID;
-  int field_20;
+  int barb_tribe_id;
   int UnitTypeID;
   int Combat_Experience;
   int Status;
