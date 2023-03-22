@@ -1376,6 +1376,68 @@ check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect
 
 void __fastcall adjust_sliders_preproduction (Leader * this);
 
+struct nopified_area {
+	int size;
+	byte original_contents[];
+};
+
+// Replaces an area of code with no-ops. The original contents of the area are saved and can be restored with restore_area. This method assumes that
+// the necessary memory protection has already been set on the area, specifically that it can be written to. The method will do nothing if the area
+// has already been nopified with the same size. It's an error to re-nopify an address with a different size or overlap two nopified areas.
+void
+nopify_area (byte * addr, int size)
+{
+	struct nopified_area * na;
+	if (itable_look_up (&is->nopified_areas, (int)addr, (int *)&na)) {
+		if (na->size != 0) {
+			if (na->size != size) {
+				char s[200];
+				snprintf (s, sizeof s, "Nopification conflict: address %p was already nopified with size %d, conflicting with new size %d.", addr, na->size, size);
+				s[(sizeof s) - 1] = '\0';
+				pop_up_in_game_error (s);
+			}
+			return;
+		}
+	} else {
+		na = malloc (size + sizeof *na);
+		itable_insert (&is->nopified_areas, (int)addr, (int)na);
+	}
+	na->size = size;
+	memcpy (&na->original_contents, addr, size);
+	memset (addr, 0x90, size);
+}
+
+// De-nopifies an area, restoring the original contents. Does nothing if the area hasn't been nopified. Assumes the appropriate memory protection has
+// already been set.
+void
+restore_area (byte * addr)
+{
+	struct nopified_area * na;
+	if (itable_look_up (&is->nopified_areas, (int)addr, (int *)&na)) {
+		memcpy (addr, &na->original_contents, na->size);
+		na->size = 0;
+	}
+}
+
+int
+is_area_nopified (byte * addr)
+{
+	struct nopified_area * na;
+	return itable_look_up (&is->nopified_areas, (int)addr, (int *)&na) && (na->size > 0);
+}
+
+// Nopifies or restores an area depending on if yes_or_no is 1 or 0. Sets the necessary memory protections.
+void
+set_nopification (int yes_or_no, byte * addr, int size)
+{
+	WITH_MEM_PROTECTION (addr, size, PAGE_EXECUTE_READWRITE) {
+		if (yes_or_no)
+			nopify_area (addr, size);
+		else
+			restore_area (addr);
+	}
+}
+
 void
 apply_machine_code_edits (struct c3x_config const * cfg)
 {
