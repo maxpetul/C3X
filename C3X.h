@@ -301,6 +301,8 @@ struct injected_state {
 	int have_job_and_loc_to_skip; // 0 or 1 if the variable below has anything actionable in it. Gets cleared to 0 after every turn.
 	struct worker_job_and_location to_skip;
 
+	struct table nopified_areas;
+
 	byte houseboat_patch_area_original_contents[50];
 
 	int * unit_menu_duplicates; // NULL initialized, allocated to an array of 0x100 ints when needed

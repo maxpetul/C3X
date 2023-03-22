@@ -1613,13 +1613,18 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 			((byte *)ADDR_CAPTURE_CITY_BARB_BRANCH)[n] = cfg->enable_city_capture_by_barbarians ? bypass[n] : normal[n];
 	}
 
-	// Similarly for the production phase, this allows barbs to have a real ecnonomy
-	WITH_MEM_PROTECTION (ADDR_PRODUCTION_PHASE_BARB_BRANCH, 2, PAGE_EXECUTE_READWRITE) {
-		byte normal[2] = {0x0F, 0x85}; // jnz
-		byte bypass[2] = {0x90, 0xE9}; // nop, jmp
-		for (int n = 0; n < 2; n++)
-			((byte *)ADDR_PRODUCTION_PHASE_BARB_BRANCH)[n] = cfg->enable_city_capture_by_barbarians ? bypass[n] : normal[n];
+	// After the production phase is done for the barb player, there are two jump instructions skipping the production code for civs. Replacing
+	// those jumps lets us run the civ production code for the barbs as well.
+	WITH_MEM_PROTECTION (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP, 6, PAGE_EXECUTE_READWRITE) {
+		if (cfg->enable_city_capture_by_barbarians) {
+			nopify_area (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP, 6);
+			byte jump_to_civ[6] = {0x0F, 0x8D, 0x0C, 0x00, 0x00, 0x00}; // jge +0x12
+			for (int n = 0; n < 6; n++)
+				ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP[n] = jump_to_civ[n];
+		} else
+			restore_area (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP);
 	}
+	set_nopification (cfg->enable_city_capture_by_barbarians, ADDR_PROD_PHASE_BARB_DONE_JUMP, 5);
 }
 
 void
