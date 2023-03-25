@@ -388,6 +388,7 @@ struct injected_state {
 
 	int saved_road_movement_rate; // Valid when railroad movement limit is applied (limit_railroad_movement > 0) and BIC
 	// data has been loaded
+	int saved_barb_culture_group; // Valid when barb city capturing is enabled and BIC data has been loaded
 
 	Leader * leader_param_for_patch_get_wonder_city_id; // Valid in patch_get_wonder_city_id when called from
 	// Leader_recompute_auto_improvements

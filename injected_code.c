@@ -3087,16 +3087,30 @@ patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y
 int __cdecl
 patch_do_save_game (char const * file_path, char param_2, GUID * guid)
 {
-	if ((is->current_config.limit_railroad_movement <= 0) || (is->saved_road_movement_rate <= 0))
-		return do_save_game (file_path, param_2, guid);
-	else {
-		// If the BIC's road-movement-rate was changed to limit railroad movement, avoid writing the changed value into the save
-		int rmr = p_bic_data->General.RoadsMovementRate;
+	// Do not save the modified road movement rate, if it was modified to limit railroad movement
+	int restore_rmr = (is->current_config.limit_railroad_movement > 0) && (is->saved_road_movement_rate > 0);
+	int rmr;
+	if (restore_rmr) {
+		rmr = p_bic_data->General.RoadsMovementRate;
 		p_bic_data->General.RoadsMovementRate = is->saved_road_movement_rate;
-		int tr = do_save_game (file_path, param_2, guid);
-		p_bic_data->General.RoadsMovementRate = rmr;
-		return tr;
 	}
+
+	// Do not save the modified barb culture group ID
+	int restore_barb_culture_group = is->current_config.enable_city_capture_by_barbarians && (is->saved_barb_culture_group >= 0);
+	int barb_culture;
+	if (restore_barb_culture_group) {
+		barb_culture = p_bic_data->Races[leaders[0].RaceID].CultureGroupID;
+		p_bic_data->Races[leaders[0].RaceID].CultureGroupID = is->saved_barb_culture_group;
+	}
+
+	int tr = do_save_game (file_path, param_2, guid);
+
+	if (restore_rmr)
+		p_bic_data->General.RoadsMovementRate = rmr;
+	if (restore_barb_culture_group)
+		p_bic_data->Races[leaders[0].RaceID].CultureGroupID = barb_culture;
+
+	return tr;
 }
 
 void
@@ -3210,6 +3224,15 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		p_bic_data->General.RoadsMovementRate *= is->current_config.limit_railroad_movement;
 	} else
 		is->saved_road_movement_rate = -1;
+
+	// If barb city capturing is enabled and the barbs have the non-existent "none" culture group (index -1), switch them to the first real
+	// culture group. The "none" group produces corrupt graphics and crashes.
+	int * barb_culture_group = &p_bic_data->Races[leaders[0].RaceID].CultureGroupID;
+	if (is->current_config.enable_city_capture_by_barbarians && (*barb_culture_group < 0)) {
+		is->saved_barb_culture_group = *barb_culture_group;
+		*barb_culture_group = 0;
+	} else
+		is->saved_barb_culture_group = -1;
 
 	return tr;
 }
