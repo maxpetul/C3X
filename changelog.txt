@@ -3,6 +3,7 @@
 - Harbor/airport city icons indicate unit effects not trade abilities
 - Fix incorrect ETAs in go-to mode when railroad movement is limited
 - Can limit the number of escorts the AI assigns to its naval transports
+- Fix barbarian diagonal bug
 - Option to show untradable techs on trade screen
 - Option to remove Elvis Easter egg
 - Fix cached building maintenance amounts not being updated when buildings are obsoleted

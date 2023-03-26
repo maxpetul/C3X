@@ -132,6 +132,7 @@ struct c3x_config {
 	char patch_intercept_lost_turn_bug;
 	char patch_phantom_resource_bug;
 	char patch_maintenance_persisting_for_obsolete_buildings;
+	char patch_barbarian_diagonal_bug;
 
 	char prevent_autorazing;
 	char prevent_razing_by_players;
@@ -484,6 +485,9 @@ struct injected_state {
 		int count;
 		int capacity;
 	} water_trade_improvs, air_trade_improvs, combat_defense_improvs;
+
+	// Used by the fix for the barbarian diagonal bug
+	int barb_diag_patch_dy_fix;
 
 	// ==========
 	// }

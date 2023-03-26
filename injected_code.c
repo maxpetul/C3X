@@ -1691,6 +1691,7 @@ patch_init_floating_point ()
 		{"patch_intercept_lost_turn_bug"                       , 1, offsetof (struct c3x_config, patch_intercept_lost_turn_bug)},
 		{"patch_phantom_resource_bug"                          , 1, offsetof (struct c3x_config, patch_phantom_resource_bug)},
 		{"patch_maintenance_persisting_for_obsolete_buildings" , 1, offsetof (struct c3x_config, patch_maintenance_persisting_for_obsolete_buildings)},
+		{"patch_barbarian_diagonal_bug"                        , 1, offsetof (struct c3x_config, patch_barbarian_diagonal_bug)},
 		{"prevent_autorazing"                                  , 0, offsetof (struct c3x_config, prevent_autorazing)},
 		{"prevent_razing_by_players"                           , 0, offsetof (struct c3x_config, prevent_razing_by_players)},
 		{"suppress_hypertext_links_exceeded_popup"             , 1, offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
@@ -5966,6 +5967,22 @@ patch_City_get_improv_maintenance_for_ui (City * this, int edx, int improv_id)
 		return 0;
 	else
 		return City_get_improvement_maintenance (this, __, improv_id);
+}
+
+// Patch for barbarian diagonal bug. This bug is a small mistake in the original code, maybe a copy+paste error. The original code tries to loop over
+// tiles around the barb unit by incrementing a neighbor index and coverting it to tile coords (like normal). The problem is that after it converts
+// the neighbor index to dx and dy, it adds dx to both coords of the unit's position instead of using dy. The fix is simply to subtract off dx and add
+// in dy when the Y coord is passed to Map::wrap_vert.
+void __cdecl
+patch_neighbor_index_to_diff_for_barb_ai (int neighbor_index, int * out_x, int * out_y)
+{
+	neighbor_index_to_diff (neighbor_index, out_x, out_y);
+	is->barb_diag_patch_dy_fix = *out_y - *out_x;
+}
+int __fastcall
+patch_Map_wrap_vert_for_barb_ai (Map * this, int edx, int y)
+{
+	return Map_wrap_vert (this, __, is->current_config.patch_barbarian_diagonal_bug ? (y + is->barb_diag_patch_dy_fix) : y);
 }
 
 // TCC requires a main function be defined even though it's never used.

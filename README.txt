@@ -42,6 +42,7 @@ Bugs fixed:
  - Resources beyond the first 32 share access records in cities not on the main trade network (called the "phantom resource bug")
  - Air units lose a turn after being set to intercept
  - Cached building maintenance amounts not updated when buildings are obsoleted
+ - Barbarian long-range search for targets is limited to tiles directly NW or SE
 Engine extensions:
  - Adjustable minimum city distance
  - Option to limit railroad movement
