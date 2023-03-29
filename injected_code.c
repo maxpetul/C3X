@@ -1710,7 +1710,7 @@ patch_init_floating_point ()
 		{"ignore_king_ability_for_defense_priority"            , 0, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
 		{"show_untradable_techs_on_trade_screen"               , 0, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
 		{"optimize_improvement_loops"                          , 1, offsetof (struct c3x_config, optimize_improvement_loops)},
-		{"enable_city_capture_by_barbarians"                   , 1, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
+		{"enable_city_capture_by_barbarians"                   , 0, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
