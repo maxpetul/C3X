@@ -4637,7 +4637,10 @@ activate_mod_info_button (int control_id)
 	char s[500];
 	char version_letter = 'A' + MOD_VERSION%100;
 
-	snprintf (s, sizeof s, "%s: %d%c", is->c3x_labels[CL_VERSION], MOD_VERSION/100, MOD_VERSION%100 != 0 ? version_letter : ' ');
+	if (MOD_PREVIEW_VERSION == 0)
+		snprintf (s, sizeof s, "%s: %d%c", is->c3x_labels[CL_VERSION], MOD_VERSION/100, MOD_VERSION%100 != 0 ? version_letter : ' ');
+	else
+		snprintf (s, sizeof s, "%s: %d%c%s %d", is->c3x_labels[CL_VERSION], MOD_VERSION/100, MOD_VERSION%100 != 0 ? version_letter : ' ', is->c3x_labels[CL_PREVIEW], MOD_PREVIEW_VERSION);
 	s[(sizeof s) - 1] = '\0';
 	PopupForm_add_text (popup, __, s, 0);
 

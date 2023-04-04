@@ -9,6 +9,7 @@ typedef unsigned char byte;
 #include "Civ3Conquests.h"
 
 #define MOD_VERSION 1500
+#define MOD_PREVIEW_VERSION 0
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -210,6 +211,7 @@ enum c3x_label {
 	CL_OBSOLETED_BY,
 	CL_NO_STEALTH_ATTACK,
 	CL_DODGED_SAM,
+	CL_PREVIEW,
 
 	// Offense, Defense, Artillery, etc.
 	CL_FIRST_UNIT_STRAT,

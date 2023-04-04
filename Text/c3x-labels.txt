@@ -52,6 +52,9 @@ Obsoleted By
 ; Pops up on the map when a bomber gets intercepted by enemy AA buildings but dodges the damage
 We were chased off by enemy air defenses.
 
+; As in a "preview" version of the mod. Used on the mod info popup.
+Preview
+
 ; Unit AI strategy names. Matches what they're called in the editor.
 Offense
 Defense
