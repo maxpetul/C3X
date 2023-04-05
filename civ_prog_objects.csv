@@ -317,6 +317,9 @@ define,	   0x426C00,	0x428340,	0x426C80,	"Map_wrap_horiz",				"int (__fastcall *
 define,	   0x426C40,	0x428380,	0x426CC0,	"Map_wrap_vert",				"int (__fastcall *) (Map * this, int edx, int y)"
 repl call, 0x44FEC3,	0x451F64,	0x44FF43,	"neighbor_index_to_diff_for_barb_ai",		""
 repl call, 0x44FEF0,	0x451F91,	0x44FF70,	"Map_wrap_vert_for_barb_ai",			""
+inlead,	   0x5604B0,	0x56C5A0,	0x560460,	"Leader_do_production_phase",			"void (__fastcall *) (Leader * this)"
+define,	   0x5DF900,	0x5EF150,	0x5DF830,	"count_set_bits",				"int (__cdecl *) (unsigned int bit_field)"
+repl call, 0x5604F8,	0x56C5E8,	0x5604A8,	"count_player_bits_for_barb_prod",		""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

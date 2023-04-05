@@ -491,6 +491,9 @@ struct injected_state {
 	// Used by the fix for the barbarian diagonal bug
 	int barb_diag_patch_dy_fix;
 
+	// Initialized to 0. If 1, barbarian activity is force activated b/c there are barb cities on the map that need to do production.
+	int force_barb_activity_for_cities;
+
 	// ==========
 	// }
 	// ==========

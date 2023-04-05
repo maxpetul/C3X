@@ -1857,6 +1857,8 @@ patch_init_floating_point ()
 
 	is->suppress_intro_after_load_popup = 0;
 
+	is->force_barb_activity_for_cities = 0;
+
 	is->water_trade_improvs    = (struct improv_id_list) {0};
 	is->air_trade_improvs      = (struct improv_id_list) {0};
 	is->combat_defense_improvs = (struct improv_id_list) {0};
@@ -5986,6 +5988,43 @@ int __fastcall
 patch_Map_wrap_vert_for_barb_ai (Map * this, int edx, int y)
 {
 	return Map_wrap_vert (this, __, is->current_config.patch_barbarian_diagonal_bug ? (y + is->barb_diag_patch_dy_fix) : y);
+}
+
+void __fastcall
+patch_Leader_do_production_phase (Leader * this)
+{
+	// Force-activate the barbs if there are any barb cities on the map and barb city capturing is enabled. This is necessary for barb city
+	// production to work given how it's currently implemented.
+	if (is->current_config.enable_city_capture_by_barbarians && (this->ID == 0)) {
+		int any_barb_cities = 0;
+		FOR_CITIES_OF (coi, this->ID) {
+			any_barb_cities = 1;
+			break;
+		}
+		if (any_barb_cities)
+			is->force_barb_activity_for_cities = 1;
+	}
+
+	// If barbs are force-activated, make sure their activity level is at least 1 (sedentary).
+	int * p_barb_activity = &p_bic_data->Map.World.Final_Barbarians_Activity;
+	int saved_barb_activity = *p_barb_activity;
+	if (is->force_barb_activity_for_cities && (*p_barb_activity <= 0))
+		*p_barb_activity = 1;
+
+	Leader_do_production_phase (this);
+
+	if (is->force_barb_activity_for_cities) {
+		*p_barb_activity = saved_barb_activity;
+		is->force_barb_activity_for_cities = 0;
+	}
+}
+
+// This function counts the number of players in the game. The return value will be compared to the number of cities on the map to determine if there
+// are enough cities (per player) to unlock barb production. If barb activity is forced on, return zero so that the check always passes.
+int __cdecl
+patch_count_player_bits_for_barb_prod (unsigned int bit_field)
+{
+	return is->force_barb_activity_for_cities ? 0 : count_set_bits (bit_field);
 }
 
 // TCC requires a main function be defined even though it's never used.

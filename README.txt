@@ -88,6 +88,7 @@ Engine extensions:
  - Option to immunize aircraft against bombardment
  - ** Option to ignore king flag on defense, so kings aren't always last to defend in a stack
  - ** Option to show untradable techs on trade screen
+ - ** Barbarian city capture & production (experimental)
 
 INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.
