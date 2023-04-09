@@ -5836,12 +5836,12 @@ patch_Leader_could_buy_tech_for_trade_screen (Leader * this, int edx, int tech_i
 	if (is->current_config.show_untradable_techs_on_trade_screen) {
 		int saved_flags = p_bic_data->Advances[tech_id].Flags;
 		p_bic_data->Advances[tech_id].Flags &= ~ATF_Cannot_Be_Traded;
-		byte tr = Leader_could_buy_tech (this, __, tech_id, from_civ_id);
+		byte tr = this->vtable->could_buy_tech (this, __, tech_id, from_civ_id);
 		p_bic_data->Advances[tech_id].Flags = saved_flags;
 		return tr;
 
 	} else
-		return Leader_could_buy_tech (this, __, tech_id, from_civ_id);
+		return this->vtable->could_buy_tech (this, __, tech_id, from_civ_id);
 }
 
 void __fastcall

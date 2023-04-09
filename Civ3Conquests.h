@@ -3092,7 +3092,7 @@ struct Leader_vtable
   int m18;
   int m19;
   int m20;
-  int m21;
+  int (__fastcall * ai_eval_technology) (Leader * this, int edx, int id, byte param_2, byte param_3);
   int m22;
   int m23;
   int m24;
@@ -3103,7 +3103,7 @@ struct Leader_vtable
   void *m28;
   int m29;
   int m30;
-  int m31;
+  int (__fastcall * get_attitude_toward) (Leader * this, int edx, int civ_id, int param_2);
   int m32;
   int m33;
   int m34;
@@ -3113,7 +3113,7 @@ struct Leader_vtable
   int m38;
   int m39;
   int m40;
-  int m41;
+  byte (__fastcall * could_buy_tech) (Leader * this, int edx, int tech_id, int from_civ_id);
   int m42;
 };
 
