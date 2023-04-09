@@ -5829,19 +5829,19 @@ patch_get_local_time_for_unit_ini (LPSYSTEMTIME lpSystemTime)
 }
 
 byte __fastcall
-patch_Leader_could_buy_tech_on_trade_screen (Leader * this, int edx, int tech_id, int from_civ_id)
+patch_Leader_could_buy_tech_for_trade_screen (Leader * this, int edx, int tech_id, int from_civ_id)
 {
 	// Temporarily remove the untradable flag so this tech is listed on the screen instead of skipped over. After all the items have been
 	// assembled, we'll go back and disable the untradable techs.
 	if (is->current_config.show_untradable_techs_on_trade_screen) {
 		int saved_flags = p_bic_data->Advances[tech_id].Flags;
 		p_bic_data->Advances[tech_id].Flags &= ~ATF_Cannot_Be_Traded;
-		byte tr = Leader_could_buy_tech_on_trade_screen (this, __, tech_id, from_civ_id);
+		byte tr = Leader_could_buy_tech (this, __, tech_id, from_civ_id);
 		p_bic_data->Advances[tech_id].Flags = saved_flags;
 		return tr;
 
 	} else
-		return Leader_could_buy_tech_on_trade_screen (this, __, tech_id, from_civ_id);
+		return Leader_could_buy_tech (this, __, tech_id, from_civ_id);
 }
 
 void __fastcall
