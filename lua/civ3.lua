@@ -141,11 +141,18 @@ local function NextCityOf(cityOfListing, city)
   end
   return nil
 end
+--- @alias NextCityOf fun(cityOfListing: any, city: City): City | nil
 
+--- Returns an iterator over cities belonging to this civ civID
+--- @param civID number
+--- @return NextCityOf
+--- @return any
+--- @return City | nil
 local function CitiesOf(civID)
   local cityOfListing = { id = -1, civID = civID, lastIndex = ffi.C.get_p_cities().LastIndex }
   return NextCityOf, cityOfListing, nil
 end
+--- @alias CitiesOf fun(civID: number): NextCityOf, any, City | nil
 
 local function NextCitizenIn(citizenInListing, citizen)
   local cIL = citizenInListing
@@ -174,7 +181,7 @@ local MainScreenForm_metatable = {
 MainScreenForm = ffi.metatype("MainScreenForm_t", MainScreenForm_metatable)
 
 ---@class Leader
----@field Cities any Returns an iterator over this player's cities
+---@field Cities fun(): NextCityOf, any, City | nil Returns an iterator over this player's cities
 local Leader
 
 local Leader_metatable = {
@@ -184,6 +191,9 @@ local Leader_metatable = {
 }
 Leader = ffi.metatype("Leader_t", Leader_metatable)
 
+--- @class City
+--- @field RecomputeHappiness fun(): nil
+--- @field Citizens any
 local City
 local City_metatable = {
   __index = {
