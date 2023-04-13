@@ -1620,6 +1620,13 @@ patch_init_floating_point ()
 		if (is->trade_net_x != NULL) {
 			is->set_exe_version = (void *)(*p_GetProcAddress) (is->trade_net_x, "set_exe_version");
 			is->set_exe_version (exe_version_index);
+
+			int (__stdcall * test) () = (void *)(*p_GetProcAddress) (is->trade_net_x, "test");
+			int failed_test_count = test ();
+			if (failed_test_count > 0)
+				MessageBoxA (NULL, "Failed some tests in Trade Net X!", NULL, MB_ICONWARNING);
+			else
+				MessageBoxA (NULL, "All tests in Trade Net X passed.", "Success", MB_ICONINFORMATION);
 		} else
 			MessageBoxA (NULL, "Failed to load Trade Net X!", NULL, MB_ICONERROR);
 	}

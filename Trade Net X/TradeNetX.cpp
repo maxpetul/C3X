@@ -74,7 +74,7 @@ public:
 	{
 		// Coordinates of the block (x, y) is in and the "remainder" coords inside the block
 		int block_x = x / 16, r_x = x % 16,
-		    block_y = y / 8 , r_y = y % 16;
+		    block_y = y / 8 , r_y = y % 8;
 
 		int block_index = block_y * width_in_blocks + block_x,
 		    tile_index = r_y * 8 + (r_y%2 == 0 ? r_x : r_x-1) / 2;
@@ -98,6 +98,58 @@ public:
 		blocks[block_index].tiles[tile_index] = val;
 	}
 };
+
+EXPORT_PROC
+int
+test ()
+{
+	int failure_count = 0;
+
+	struct bl_test {
+		int width, height, prime;
+	} bl_tests[] = {
+		{25,   25, 3571},
+		{128, 128, 48611},
+		{130,  70, 10061},
+	};
+
+	for (int n_test = 0; n_test < (sizeof bl_tests) / (sizeof bl_tests[0]); n_test++) {
+		struct bl_test t = bl_tests[n_test];
+		ByteLayer bl(t.width, t.height);
+		for (int y = 0; y < t.height; y++)
+			for (int x = y%2; x < t.width; x += 2)
+				bl.set (x, y, (y * t.width + x) * t.prime);
+		for (int y = 0; y < t.height; y++)
+			for (int x = y%2; x < t.width; x += 2)
+				if (bl.get (x, y) != (byte)((y * t.width + x) * t.prime)) {
+					failure_count++;
+					goto fail;
+				}
+	fail:
+		;
+	}
+
+	{
+		int width = 175, height = 175;
+		ByteLayer bl(width, height);
+		for (int y = 0; y < height; y++)
+			for (int x = y%2; x < width; x += 2)
+				if ((((y * width) + x) * 132241) % 30 == 0)
+					bl.set (x, y, 1);
+		for (int y = 0; y < height; y++)
+			for (int x = y%2; x < width; x += 2) {
+				bool was_set = (((y * width) + x) * 132241) % 30 == 0;
+				if ((   was_set  && (bl.get (x, y) == 0)) ||
+				    ((! was_set) && (bl.get (x, y) != 0))) {
+					failure_count++;
+					goto fail_2;
+				}
+			}
+	}
+	fail_2:
+
+	return failure_count;
+}
 
 EXPORT_PROC
 void
