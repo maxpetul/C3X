@@ -1,7 +1,6 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <tuple>
 
 #define NOVIRTUALKEYCODES // Keycodes defined in Civ3Conquests.h instead
 #include "windows.h"
@@ -71,33 +70,17 @@ public:
 		free (blocks);
 	}
 
-	std::tuple<int, int>
-	compute_location (int x, int y)
+	byte&
+	at (int x, int y)
 	{
 		// Coordinates of the block (x, y) is in and the "remainder" coords inside the block
 		int block_x = x / (2*BL_BLOCK_WIDTH), r_x = x % (2*BL_BLOCK_WIDTH),
 		    block_y = y /    BL_BLOCK_HEIGHT, r_y = y %    BL_BLOCK_HEIGHT;
 
 		int block_index = block_y * width_in_blocks + block_x,
-		    tile_index = r_y * BL_BLOCK_HEIGHT + (r_y%2 == 0 ? r_x : r_x-1) / 2;
+		    tile_index = r_y * BL_BLOCK_HEIGHT + r_x / 2;
 
-		return {block_index, tile_index};
-	}
-
-	byte
-	get (int x, int y)
-	{
-		int block_index, tile_index;
-		std::tie(block_index, tile_index) = compute_location (x, y);
 		return blocks[block_index].tiles[tile_index];
-	}
-
-	void
-	set (int x, int y, byte val)
-	{
-		int block_index, tile_index;
-		std::tie(block_index, tile_index) = compute_location (x, y);
-		blocks[block_index].tiles[tile_index] = val;
 	}
 };
 
@@ -120,10 +103,10 @@ test ()
 		ByteLayer bl(t.width, t.height);
 		for (int y = 0; y < t.height; y++)
 			for (int x = y%2; x < t.width; x += 2)
-				bl.set (x, y, (y * t.width + x) * t.prime);
+				bl.at (x, y) = (y * t.width + x) * t.prime;
 		for (int y = 0; y < t.height; y++)
 			for (int x = y%2; x < t.width; x += 2)
-				if (bl.get (x, y) != (byte)((y * t.width + x) * t.prime)) {
+				if (bl.at (x, y) != (byte)((y * t.width + x) * t.prime)) {
 					failure_count++;
 					goto fail;
 				}
@@ -137,12 +120,12 @@ test ()
 		for (int y = 0; y < height; y++)
 			for (int x = y%2; x < width; x += 2)
 				if ((((y * width) + x) * 132241) % 30 == 0)
-					bl.set (x, y, 1);
+					bl.at (x, y) = 1;
 		for (int y = 0; y < height; y++)
 			for (int x = y%2; x < width; x += 2) {
 				bool was_set = (((y * width) + x) * 132241) % 30 == 0;
-				if ((   was_set  && (bl.get (x, y) == 0)) ||
-				    ((! was_set) && (bl.get (x, y) != 0))) {
+				if ((   was_set  && (bl.at (x, y) == 0)) ||
+				    ((! was_set) && (bl.at (x, y) != 0))) {
 					failure_count++;
 					goto fail_2;
 				}
