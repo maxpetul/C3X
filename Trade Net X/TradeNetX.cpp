@@ -78,7 +78,7 @@ public:
 		    block_y = y /    BL_BLOCK_HEIGHT, r_y = y %    BL_BLOCK_HEIGHT;
 
 		int block_index = block_y * width_in_blocks + block_x,
-		    tile_index = r_y * BL_BLOCK_HEIGHT + r_x / 2;
+		    tile_index = r_y * BL_BLOCK_WIDTH + r_x / 2;
 
 		return blocks[block_index].tiles[tile_index];
 	}
@@ -123,7 +123,7 @@ public:
 		    block_y = y /    EL_BLOCK_HEIGHT, r_y = y %    EL_BLOCK_HEIGHT;
 
 		int block_index = block_y * width_in_blocks + block_x,
-		    tile_index = r_y * EL_BLOCK_HEIGHT + r_x / 2;
+		    tile_index = r_y * EL_BLOCK_WIDTH + r_x / 2;
 
 		if ((block_inits[block_index/8] & (1 << block_index%8)) == 0) {
 			for (int by = 0; by < EL_BLOCK_HEIGHT; by++)
