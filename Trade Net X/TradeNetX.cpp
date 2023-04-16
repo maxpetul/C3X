@@ -84,6 +84,63 @@ public:
 	}
 };
 
+// ExplorationLayer stores the "Fog_Of_War" fields from tile objects in a cache-efficient fashion. Those fields record which civs have revealed each
+// tile. The fields are stored in 4x4 blocks which are filled in as needed.
+#define EL_BLOCK_WIDTH  4
+#define EL_BLOCK_HEIGHT 4
+class ExplorationLayer
+{
+	struct ExplorationBlock {
+		unsigned int tiles[EL_BLOCK_WIDTH * EL_BLOCK_HEIGHT];
+	};
+
+public:
+	ExplorationBlock * blocks;
+	byte * block_inits; // bit array storing which blocks have been filled in
+	int map_width, map_height;
+	int width_in_blocks, height_in_blocks;
+
+	ExplorationLayer (int _map_width, int _map_height)
+	{
+		map_width = _map_width, map_height = _map_height;
+		width_in_blocks  = map_width  / (2*EL_BLOCK_WIDTH) + (map_width  % (2*EL_BLOCK_WIDTH) != 0 ? 1 : 0);
+		height_in_blocks = map_height /    EL_BLOCK_HEIGHT + (map_height %    EL_BLOCK_HEIGHT != 0 ? 1 : 0);
+		int block_count = width_in_blocks * height_in_blocks;
+		blocks = (ExplorationBlock *)calloc (block_count, sizeof *blocks);
+		block_inits = (byte *)calloc (block_count / 8 + (block_count % 8 != 0 ? 1 : 0), sizeof *block_inits);
+	}
+
+	~ExplorationLayer ()
+	{
+		free (blocks);
+		free (block_inits);
+	}
+
+	bool
+	has_explored (int civ_id, int x, int y)
+	{
+		int block_x = x / (2*EL_BLOCK_WIDTH), r_x = x % (2*EL_BLOCK_WIDTH),
+		    block_y = y /    EL_BLOCK_HEIGHT, r_y = y %    EL_BLOCK_HEIGHT;
+
+		int block_index = block_y * width_in_blocks + block_x,
+		    tile_index = r_y * EL_BLOCK_HEIGHT + r_x / 2;
+
+		if ((block_inits[block_index/8] & (1 << block_index%8)) == 0) {
+			for (int by = 0; by < EL_BLOCK_HEIGHT; by++)
+				for (int bx = 0; bx < EL_BLOCK_WIDTH; bx++) {
+					int tile_y = EL_BLOCK_HEIGHT * block_y + by;
+					int tile_x = 2 * (EL_BLOCK_WIDTH * block_x + bx) + tile_y % 2;
+					Tile * tile = tile_at (tile_x, tile_y);
+					if (tile != p_null_tile)
+						blocks[block_index].tiles[by * EL_BLOCK_WIDTH + bx] = tile->Body.Fog_Of_War;
+				}
+			block_inits[block_index/8] |= 1 << block_index%8;
+		}
+
+		return (blocks[block_index].tiles[tile_index] & (1U << civ_id)) != 0;
+	}
+};
+
 EXPORT_PROC
 int
 test ()
