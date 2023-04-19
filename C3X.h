@@ -83,7 +83,8 @@ struct c3x_config {
 	char disallow_land_units_from_affecting_water_tiles;
 	char dont_end_units_turn_after_airdrop;
 	char enable_negative_pop_pollution;
-	enum retreat_rules retreat_rules;
+	enum retreat_rules land_retreat_rules;
+	enum retreat_rules sea_retreat_rules;
 	char enable_ai_two_city_start;
 	int max_tries_to_place_fp_city;
 	char promote_forbidden_palace_decorruption;

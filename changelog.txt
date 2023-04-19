@@ -1,5 +1,6 @@
 * RELEASE 16 PREVIEW 2
 - Limit AI artillery units to one escort (w/ offensive artillery AI)
+- Separate land & sea retreat rules
 - Apply AI naval transport escort limit to carriers
 
 * RELEASE 16 PREVIEW 1

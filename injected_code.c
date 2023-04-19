@@ -718,8 +718,11 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								  (void **)&cfg->mills,
 								  &cfg->count_mills))
 						handle_config_error (&p, CPE_BAD_VALUE);
-				} else if (slice_matches_str (&p.key, "retreat_rules")) {
-					if (! read_retreat_rules (&value, (int *)&cfg->retreat_rules))
+				} else if (slice_matches_str (&p.key, "land_retreat_rules")) {
+					if (! read_retreat_rules (&value, (int *)&cfg->land_retreat_rules))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "sea_retreat_rules")) {
+					if (! read_retreat_rules (&value, (int *)&cfg->sea_retreat_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_ptw_arty_types (&value,
@@ -1755,7 +1758,8 @@ patch_init_floating_point ()
 
 	// Fill in base config
 	struct c3x_config base_config = {0};
-	base_config.retreat_rules = RR_STANDARD;
+	base_config.land_retreat_rules = RR_STANDARD;
+	base_config.sea_retreat_rules  = RR_STANDARD;
 	base_config.max_tries_to_place_fp_city = 10000;
 	base_config.ai_build_artillery_ratio = 20;
 	base_config.ai_artillery_value_damage_percent = 50;
@@ -4818,18 +4822,21 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 	// Apply override of retreat eligibility
 	// Must use this->defender instead of the defender argument since the argument is often NULL, in which case Fighter_begin finds a defender on
 	// the target tile and stores it in this->defender. Also must check that against NULL since Fighter_begin might fail to find a defender.
-	enum retreat_rules retreat_rules = is->current_config.retreat_rules;
-	if ((retreat_rules != RR_STANDARD) && (this->defender != NULL) && (p_bic_data->UnitTypes[this->attacker->Body.UnitTypeID].Unit_Class == UTC_Land)) {
-		if (retreat_rules == RR_NONE)
-			this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 0;
-		else if (retreat_rules == RR_ALL_UNITS)
-			this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 1;
-		else if (retreat_rules == RR_IF_FASTER) {
-			int diff = Unit_get_max_move_points (this->attacker) - Unit_get_max_move_points (this->defender);
-			this->attacker_eligible_to_retreat = diff > 0;
-			this->defender_eligible_to_retreat = diff < 0;
+	enum UnitTypeClasses class = p_bic_data->UnitTypes[this->attacker->Body.UnitTypeID].Unit_Class;
+	if ((this->defender != NULL) && ((class == UTC_Land) || (class == UTC_Sea))) {
+		enum retreat_rules retreat_rules = (class == UTC_Land) ? is->current_config.land_retreat_rules : is->current_config.sea_retreat_rules;
+		if (retreat_rules != RR_STANDARD) {
+			if (retreat_rules == RR_NONE)
+				this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 0;
+			else if (retreat_rules == RR_ALL_UNITS)
+				this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 1;
+			else if (retreat_rules == RR_IF_FASTER) {
+				int diff = Unit_get_max_move_points (this->attacker) - Unit_get_max_move_points (this->defender);
+				this->attacker_eligible_to_retreat = diff > 0;
+				this->defender_eligible_to_retreat = diff < 0;
+			}
+			this->defender_eligible_to_retreat &= city_at (this->defender_location_x, this->defender_location_y) == NULL;
 		}
-		this->defender_eligible_to_retreat &= city_at (this->defender_location_x, this->defender_location_y) == NULL;
 	}
 }
 

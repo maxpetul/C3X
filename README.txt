@@ -69,6 +69,7 @@ Engine extensions:
  - Buildings can be set as prerequisites for unit production
  - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
  - Option to modify rules for retreat eligibility
+  - ** Separate options for land & sea
  - AI two-city start
  - Remove cap on turn limit
  - Option to strengthen forbidden palace decorruption effect to match the palace's
