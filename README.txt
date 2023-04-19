@@ -30,6 +30,7 @@ Convenience features:
  - ** Harbor/airport city icons indicate unit effects not trade abilities
 AI enhancements:
  - Allow AI to use artillery in the field
+  - ** AI artillery units are now limited to one escort
  - Force AI to build more artillery and bombers
  - Replace leader unit AI to fix bugs and improve behavior
  - Fix bug preventing AI from filling its armies

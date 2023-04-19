@@ -1,3 +1,6 @@
+* RELEASE 16 PREVIEW 2
+- Limit AI artillery units to one escort (w/ offensive artillery AI)
+
 * RELEASE 16 PREVIEW 1
 - Barbarian city capture & production (experimental)
 - Can use charm flag to control PTW-like artillery targeting

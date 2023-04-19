@@ -5929,9 +5929,13 @@ patch_City_shows_airport_icon (City * this)
 int __fastcall
 patch_Unit_eval_escort_requirement (Unit * this)
 {
-	int base = Unit_eval_escort_requirement (this);
+	int ai_strat = p_bic_data->UnitTypes[this->Body.UnitTypeID].AI_Strategy;
 
-	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].AI_Strategy & UTAI_Naval_Transport)
+	if ((ai_strat & UTAI_Artillery) && is->current_config.use_offensive_artillery_ai)
+		return 1;
+
+	int base = Unit_eval_escort_requirement (this);
+	if (ai_strat & UTAI_Naval_Transport)
 		return not_above (3 - is->current_config.reduce_max_escorts_per_ai_transport, base);
 	else
 		return base;
