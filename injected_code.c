@@ -646,55 +646,19 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 
 			struct string_slice value;
 			if (parse_string (&p.cursor, &value) || parse_bracketed_block (&p.cursor, &value)) { // Parse value
-				int ival;
+				int ival, offset;
 
 				// if key is for a boolean option
-				int boolean_offset;
-				if (stable_look_up_slice (&is->boolean_config_offsets, &p.key, &boolean_offset)) {
+				if (stable_look_up_slice (&is->boolean_config_offsets, &p.key, &offset)) {
 					if (read_int (&value, &ival))
-						*((char *)cfg + boolean_offset) = ival != 0;
+						*((char *)cfg + offset) = ival != 0;
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 
 				// if key is for an integer option
-				} else if (slice_matches_str (&p.key, "limit_railroad_movement")) {
+				} else if (stable_look_up_slice (&is->integer_config_offsets, &p.key, &offset)) {
 					if (read_int (&value, &ival))
-						cfg->limit_railroad_movement = ival;
-					else
-						handle_config_error (&p, CPE_BAD_INT_VALUE);
-				} else if (slice_matches_str (&p.key, "adjust_minimum_city_separation")) {
-					if (read_int (&value, &ival))
-						cfg->adjust_minimum_city_separation = ival;
-					else
-						handle_config_error (&p, CPE_BAD_INT_VALUE);
-				} else if (slice_matches_str (&p.key, "anarchy_length_reduction_percent")) {
-					if (read_int (&value, &ival))
-						cfg->anarchy_length_reduction_percent = ival;
-					else
-						handle_config_error (&p, CPE_BAD_INT_VALUE);
-				} else if (slice_matches_str (&p.key, "max_tries_to_place_fp_city")) {
-					if (read_int (&value, &ival))
-						cfg->max_tries_to_place_fp_city = ival;
-					else
-						handle_config_error (&p, CPE_BAD_INT_VALUE);
-				} else if (slice_matches_str (&p.key, "ai_build_artillery_ratio")) {
-					if (read_int (&value, &ival))
-						cfg->ai_build_artillery_ratio = ival;
-					else
-						handle_config_error (&p, CPE_BAD_INT_VALUE);
-				} else if (slice_matches_str (&p.key, "ai_artillery_value_damage_percent")) {
-					if (read_int (&value, &ival))
-						cfg->ai_artillery_value_damage_percent = ival;
-					else
-						handle_config_error (&p, CPE_BAD_INT_VALUE);
-				} else if (slice_matches_str (&p.key, "ai_build_bomber_ratio")) {
-					if (read_int (&value, &ival))
-						cfg->ai_build_bomber_ratio = ival;
-					else
-						handle_config_error (&p, CPE_BAD_INT_VALUE);
-				} else if (slice_matches_str (&p.key, "reduce_max_escorts_per_ai_transport")) {
-					if (read_int (&value, &ival))
-						cfg->reduce_max_escorts_per_ai_transport = ival;
+						*(int *)((byte *)cfg + offset) = ival;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
 
@@ -1716,6 +1680,21 @@ patch_init_floating_point ()
 		{"enable_city_capture_by_barbarians"                   , 0, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
 	};
 
+	struct integer_config_option {
+		char * name;
+		int base_val;
+		int offset;
+	} integer_config_options[] = {
+		{"limit_railroad_movement"            ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
+		{"adjust_minimum_city_separation"     ,     0, offsetof (struct c3x_config, adjust_minimum_city_separation)},
+		{"anarchy_length_reduction_percent"   ,     0, offsetof (struct c3x_config, anarchy_length_reduction_percent)},
+		{"max_tries_to_place_fp_city"         , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
+		{"ai_build_artillery_ratio"           ,    20, offsetof (struct c3x_config, ai_build_artillery_ratio)},
+		{"ai_artillery_value_damage_percent"  ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
+		{"ai_build_bomber_ratio"              ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
+		{"reduce_max_escorts_per_ai_transport",     0, offsetof (struct c3x_config, reduce_max_escorts_per_ai_transport)},
+	};
+
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
 	is->user32   = (*p_GetModuleHandleA) ("user32.dll");
 	is->msvcrt   = (*p_GetModuleHandleA) ("msvcrt.dll");
@@ -1760,12 +1739,10 @@ patch_init_floating_point ()
 	struct c3x_config base_config = {0};
 	base_config.land_retreat_rules = RR_STANDARD;
 	base_config.sea_retreat_rules  = RR_STANDARD;
-	base_config.max_tries_to_place_fp_city = 10000;
-	base_config.ai_build_artillery_ratio = 20;
-	base_config.ai_artillery_value_damage_percent = 50;
-	base_config.ai_build_bomber_ratio = 70;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
+	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)
+		*(int *)((byte *)&base_config + integer_config_options[n].offset) = integer_config_options[n].base_val;
 	memcpy (&is->base_config, &base_config, sizeof base_config);
 
 	// Load labels
@@ -1870,6 +1847,9 @@ patch_init_floating_point ()
 	memset (&is->boolean_config_offsets, 0, sizeof is->boolean_config_offsets);
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		stable_insert (&is->boolean_config_offsets, boolean_config_options[n].name, boolean_config_options[n].offset);
+	memset (&is->integer_config_offsets, 0, sizeof is->integer_config_offsets);
+	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)
+		stable_insert (&is->integer_config_offsets, integer_config_options[n].name, integer_config_options[n].offset);
 
 	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
 

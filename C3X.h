@@ -339,9 +339,10 @@ struct injected_state {
 		int capacity;
 	} interceptor_reset_lists[32];
 
-	// Stores the byte offsets into the c3x_config struct of all boolean config options, accessible using the options' names as strings. Used when
-	// reading in a config INI file.
+	// Stores the byte offsets into the c3x_config struct of all boolean/integer config options, accessible using the options' names as
+	// strings. Used when reading in a config INI file.
 	struct table boolean_config_offsets;
+	struct table integer_config_offsets;
 
 	// Maps unit types IDs to AI strategy indices (0 = offense, 1 = defense, 2 = artillery, etc.). If a unit type ID is in this table, that means
 	// it's one of several duplicate types created to spread multiple AI strategies out so each type has only one.
