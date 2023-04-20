@@ -696,6 +696,13 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								   &cfg->ptw_arty_types_capacity))
 						handle_config_error (&p, CPE_BAD_VALUE);
 
+				// if key is for an obsolete upside-down option
+				} else if (slice_matches_str (&p.key, "anarchy_length_reduction_percent")) {
+					if (read_int (&value, &ival))
+						cfg->anarchy_length_percent = 100 - ival;
+					else
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
+
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
 				}
@@ -1687,7 +1694,7 @@ patch_init_floating_point ()
 	} integer_config_options[] = {
 		{"limit_railroad_movement"            ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
 		{"adjust_minimum_city_separation"     ,     0, offsetof (struct c3x_config, adjust_minimum_city_separation)},
-		{"anarchy_length_reduction_percent"   ,     0, offsetof (struct c3x_config, anarchy_length_reduction_percent)},
+		{"anarchy_length_percent"             ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
 		{"max_tries_to_place_fp_city"         , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
 		{"ai_build_artillery_ratio"           ,    20, offsetof (struct c3x_config, ai_build_artillery_ratio)},
 		{"ai_artillery_value_damage_percent"  ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
@@ -4341,16 +4348,16 @@ int __stdcall
 patch_get_anarchy_length (int leader_id)
 {
 	int base = get_anarchy_length (leader_id);
-	int reduction = is->current_config.anarchy_length_reduction_percent;
-	if (reduction > 0) {
-		// Anarchy cannot be less than 2 turns or you'll get an instant government switch. Only let that happen when the reduction is set
-		// above 100%, indicating a desire for no anarchy. Otherwise we can't reduce anarchy below 2 turns.
-		if (reduction > 100)
+	int multiplier = is->current_config.anarchy_length_percent;
+	if (multiplier != 100) {
+		// Anarchy cannot be less than 2 turns or you'll get an instant government switch. Only let that happen when the percent multiplier is
+		// set below zero, indicating a desire for no anarchy. Otherwise we can't reduce anarchy below 2 turns.
+		if (multiplier < 0)
 			return 1;
 		else if (base <= 2)
 			return base;
 		else
-			return not_below (2, rand_div (base * (100 - reduction), 100));
+			return not_below (2, rand_div (base * multiplier, 100));
 	} else
 		return base;
 }

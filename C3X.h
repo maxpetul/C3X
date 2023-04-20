@@ -55,7 +55,7 @@ struct c3x_config {
 	char disallow_founding_next_to_foreign_city;
 	char enable_trade_screen_scroll;
 	char group_units_on_right_click_menu;
-	int anarchy_length_reduction_percent;
+	int anarchy_length_percent;
 	char show_golden_age_turns_remaining;
 	char cut_research_spending_to_avoid_bankruptcy;
 	char dont_pause_for_love_the_king_messages;
