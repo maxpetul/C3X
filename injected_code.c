@@ -712,6 +712,13 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->max_ai_naval_escorts = 3 - ival;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
+				} else if (slice_matches_str (&p.key, "retreat_rules")) {
+					int rules;
+					if (read_retreat_rules (&value, &rules)) {
+						cfg->land_retreat_rules = rules;
+						cfg->sea_retreat_rules  = rules;
+					} else
+						handle_config_error (&p, CPE_BAD_VALUE);
 
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
