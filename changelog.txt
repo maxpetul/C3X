@@ -1,7 +1,8 @@
 * RELEASE 16 PREVIEW 2
 - Limit AI artillery units to one escort (w/ offensive artillery AI)
 - Separate land & sea retreat rules
-- Apply AI naval transport escort limit to carriers
+- Apply AI naval escort limit to carriers and missile transports
+- Make config options more intuitive: anarchy length reduction, minimum city separation, AI naval escort cap
 
 * RELEASE 16 PREVIEW 1
 - Barbarian city capture & production (experimental)

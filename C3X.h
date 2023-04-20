@@ -120,7 +120,7 @@ struct c3x_config {
 	char replace_leader_unit_ai;
 	char fix_ai_army_composition;
 	char enable_pop_unit_ai;
-	int reduce_max_escorts_per_ai_transport;
+	int max_ai_naval_escorts;
 
 	char remove_unit_limit;
 	char remove_era_limit;

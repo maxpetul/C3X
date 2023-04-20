@@ -707,6 +707,11 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->minimum_city_separation = ival + 1;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
+				} else if (slice_matches_str (&p.key, "reduce_max_escorts_per_ai_transport")) {
+					if (read_int (&value, &ival))
+						cfg->max_ai_naval_escorts = 3 - ival;
+					else
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
 
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
@@ -1704,7 +1709,7 @@ patch_init_floating_point ()
 		{"ai_build_artillery_ratio"           ,    20, offsetof (struct c3x_config, ai_build_artillery_ratio)},
 		{"ai_artillery_value_damage_percent"  ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
 		{"ai_build_bomber_ratio"              ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
-		{"reduce_max_escorts_per_ai_transport",     0, offsetof (struct c3x_config, reduce_max_escorts_per_ai_transport)},
+		{"max_ai_naval_escorts"               ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -5934,8 +5939,8 @@ patch_Unit_eval_escort_requirement (Unit * this)
 		return 1;
 
 	int base = Unit_eval_escort_requirement (this);
-	if (ai_strat & (UTAI_Naval_Transport | UTAI_Naval_Carrier))
-		return not_above (3 - is->current_config.reduce_max_escorts_per_ai_transport, base);
+	if (ai_strat & (UTAI_Naval_Transport | UTAI_Naval_Carrier | UTAI_Naval_Missile_Transport))
+		return not_above (is->current_config.max_ai_naval_escorts, base);
 	else
 		return base;
 }
