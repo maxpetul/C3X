@@ -51,7 +51,7 @@ struct c3x_config {
 	char enable_stack_unit_commands;
 	char skip_repeated_tile_improv_replacement_asks;
 	char autofill_best_gold_amount_when_trading;
-	int adjust_minimum_city_separation;
+	int minimum_city_separation;
 	char disallow_founding_next_to_foreign_city;
 	char enable_trade_screen_scroll;
 	char group_units_on_right_click_menu;

@@ -696,10 +696,15 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								   &cfg->ptw_arty_types_capacity))
 						handle_config_error (&p, CPE_BAD_VALUE);
 
-				// if key is for an obsolete upside-down option
+				// if key is for an obsolete option
 				} else if (slice_matches_str (&p.key, "anarchy_length_reduction_percent")) {
 					if (read_int (&value, &ival))
 						cfg->anarchy_length_percent = 100 - ival;
+					else
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
+				} else if (slice_matches_str (&p.key, "adjust_minimum_city_separation")) {
+					if (read_int (&value, &ival))
+						cfg->minimum_city_separation = ival + 1;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
 
@@ -1693,7 +1698,7 @@ patch_init_floating_point ()
 		int offset;
 	} integer_config_options[] = {
 		{"limit_railroad_movement"            ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
-		{"adjust_minimum_city_separation"     ,     0, offsetof (struct c3x_config, adjust_minimum_city_separation)},
+		{"minimum_city_separation"            ,     1, offsetof (struct c3x_config, minimum_city_separation)},
 		{"anarchy_length_percent"             ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
 		{"max_tries_to_place_fp_city"         , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
 		{"ai_build_artillery_ratio"           ,    20, offsetof (struct c3x_config, ai_build_artillery_ratio)},
@@ -4031,16 +4036,16 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 CityLocValidity __fastcall
 patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int civ_id, byte check_for_city_on_tile)
 {
-	int adjustment = is->current_config.adjust_minimum_city_separation;
+	int min_sep = is->current_config.minimum_city_separation;
 	CityLocValidity base_result = Map_check_city_location (this, __, tile_x, tile_y, civ_id, check_for_city_on_tile);
 
-	// If adjustment is zero, make no change
-	if (adjustment == 0)
+	// If minimum separation is one, make no change
+	if (min_sep == 1)
 		return base_result;
 
-	// If adjustment is negative, ignore the CITY_TOO_CLOSE objection to city placement unless the location is next to a city belonging to
+	// If minimum separation is <= 0, ignore the CITY_TOO_CLOSE objection to city placement unless the location is next to a city belonging to
 	// another civ and the settings forbid founding there.
-	else if ((adjustment < 0) && (base_result == CLV_CITY_TOO_CLOSE)) {
+	else if ((min_sep <= 0) && (base_result == CLV_CITY_TOO_CLOSE)) {
 		if (is->current_config.disallow_founding_next_to_foreign_city)
 			for (int n = 1; n <= 8; n++) {
 				int x, y;
@@ -4052,10 +4057,10 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 		return CLV_OK;
 
 	// If we have an increased separation we might have to exclude some locations the base code allows.
-	} else if ((adjustment > 0) && (base_result == CLV_OK)) {
+	} else if ((min_sep > 1) && (base_result == CLV_OK)) {
 		// Check tiles around (x, y) for a city. Because the base result is CLV_OK, we don't have to check neighboring tiles, just those at
-		// distance 2, 3, ... up to (an including) the adjustment + 1
-		for (int dist = 2; dist <= adjustment + 1; dist++) {
+		// distance 2, 3, ... up to (an including) the minimum separation
+		for (int dist = 2; dist <= min_sep; dist++) {
 
 			// vertices stores the unwrapped coords of the tiles at the vertices of the square of tiles at distance "dist" around
 			// (tile_x, tile_y). The order of the vertices is north, east, south, west.
