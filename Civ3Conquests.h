@@ -3,6 +3,7 @@
 // See: https://github.com/Antal1987/C3CPatchFramework/blob/master/Info/Civ3Conquests.h
 
 typedef struct IntList IntList;
+typedef struct TribeCustomization TribeCustomization;
 typedef struct City_Base_vtable City_Base_vtable;
 typedef struct Citizen Citizen;
 typedef struct RulerTitle RulerTitle;
@@ -1379,6 +1380,18 @@ struct IntList
   int * contents;
   int * contents_end;
   int * also_contents_end;
+};
+
+struct TribeCustomization
+{
+  char leader_name[32];
+  char leader_title[24];
+  char civ_formal_name[40];
+  char civ_noun[40];
+  char civ_adjective[16];
+  int field_98[6];
+  int leader_gender;
+  int field_B4;
 };
 
 struct City_Base_vtable
@@ -4081,7 +4094,9 @@ struct Leader
   int Current_Research_Turns;
   int Future_Techs_Count;
   short AI_Strategy_Unit_Counts[20];
-  int field_130[22];
+  int field_130[6];
+  short ai_strat_production_counts[20];
+  int field_170[6];
   int Armies_Count;
   int Unit_Count;
   int Military_Units_Count;
@@ -4106,10 +4121,8 @@ struct Leader
   int Trade_Embargos[32];
   int field_10B0[18];
   int Color_Table_ID;
-  int field_10FC;
-  int field_1100[7];
-  int field_111C[36];
-  int field_11AC[8];
+  TribeCustomization tribe_customization;
+  int field_11AC[6];
   int field_11CC;
   int field_11D0[252];
   int field_15C0;
