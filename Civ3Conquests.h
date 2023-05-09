@@ -93,7 +93,7 @@ typedef struct Old_Interface_Images Old_Interface_Images;
 typedef struct Main_Screen_Form_vtable Main_Screen_Form_vtable;
 typedef struct GUI_Data_30 GUI_Data_30;
 typedef struct MapMessage MapMessage;
-typedef struct Form_Data_30 Form_Data_30;
+typedef struct Timer Timer;
 typedef struct GUI_Form_1_vtable GUI_Form_1_vtable;
 typedef struct Base_Form_vtable Base_Form_vtable;
 typedef struct Control_Data_Offsets Control_Data_Offsets;
@@ -2763,10 +2763,20 @@ struct MapMessage
   int Last;
 };
 
-struct Form_Data_30
+struct Timer
 {
-  int vtable;
-  int field_4[11];
+  void * vtable;
+  void * callback_fn_2;
+  int field_8;
+  unsigned * timer_id;
+  void * callback_fn;
+  int field_14;
+  int field_18;
+  void * callback_param;
+  int duration; // in milliseconds
+  int sent_window_message;
+  int resolution; // in milliseconds
+  int field_2C;
 };
 
 struct GUI_Form_1_vtable
@@ -4002,7 +4012,7 @@ struct Control_Tooltips
   int field_8;
   int field_C;
   int field_10[4];
-  Form_Data_30 Data_30;
+  Timer timer;
   Control_Tooltip *Items;
   int Capacity;
   int Count;
@@ -5300,7 +5310,7 @@ struct TextBox
   Base_Form Base;
   Scroll_Bar Scroll_Bar;
   int field_1934[16];
-  Form_Data_30 field_1974;
+  Timer timer;
 };
 
 struct File_Dialog_Body
@@ -5604,7 +5614,7 @@ struct Authors_Form
   int field_1A38;
   PCX_Image PCX;
   Button Button1;
-  Form_Data_30 Data_30;
+  Timer timer;
 };
 
 struct MP_Filters_Form
@@ -5789,7 +5799,10 @@ struct Main_GUI
 {
   Base_Form Base;
   int field_574[4];
-  int field_584;
+  byte field_584;
+  byte is_enabled;
+  byte field_586;
+  byte is_mouse_down_on_minimap;
   int field_588;
   int field_58C[769];
   String260 Main_Commands[29];
@@ -5825,8 +5838,8 @@ struct Main_GUI
   Tile_Image_Info Images[252];
   Tile_Image_Info Image2;
   Tile_Image_Info Image3;
-  Form_Data_30 Data_30_1;
-  Form_Data_30 Data_30_2;
+  Timer timer_1;
+  Timer timer_2;
   int field_16CE0;
   Command_Button Unit_Command_Buttons[42];
 };
@@ -5913,11 +5926,11 @@ struct Main_Screen_Form
   City *Selected_City;
   int field_4D80;
   int field_4D84;
-  Form_Data_30 Data_30_1;
+  Timer timer_1;
   int field_4DB8;
   int Player_CivID;
   int field_4DC0[25];
-  Form_Data_30 Data_30_2;
+  Timer timer_2;
   int field_4E54[7];
   int TileX_Min;
   int TileX_Max;
@@ -5934,7 +5947,7 @@ struct Main_Screen_Form
   int field_544C;
   Main_GUI GUI;
   int field_2E14C[6];
-  Form_Data_30 Data_30_3;
+  Timer timer_3;
   int field_2E194;
   char turn_end_flag;
   char is_now_loading_game;

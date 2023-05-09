@@ -64,7 +64,7 @@ define,    0x55A5C6,	0x5664D4,	0x55A576,	"ADDR_RECOMPUTE_AUTO_IMPROVS_FILTER",		
 repl vptr, 0x66B46C,	0x68856C,	0x66B46C,	"Main_Screen_Form_handle_key_up",		"int (__fastcall *) (Main_Screen_Form * this, int edx, int virtual_key_code)"
 define,    0x4DAA70,	0x4E3430,	0x4DAB30,	"Main_Screen_Form_issue_command",		"char (__fastcall *) (Main_Screen_Form * this, int edx, int command, Unit * unit)"
 define,    0x609D60,	0x6233C0,	0x609C80,	"clear_something_1",				"void (__stdcall *) ()"
-define,    0x6207B0,	0x644F10,	0x6206E0,	"clear_something_2",				"void (__fastcall *) (void * this)"
+define,    0x6207B0,	0x644F10,	0x6206E0,	"Timer_clear",					"void (__fastcall *) (Timer * this)"
 inlead,    0x55EFA0,	0x56B030,	0x55EF50,	"Leader_can_do_worker_job",			"char (__fastcall *) (Leader * this, int edx, enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing)"
 define,    0x455288,	0x457458,	0x455308,	"ADDR_CHECK_ARTILLERY_IN_CITY",			"void *"
 inlead,    0x455140,	0x457310,	0x4551C0,	"Unit_ai_move_artillery",			"void (__fastcall *) (Unit * this)"

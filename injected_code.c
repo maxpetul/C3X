@@ -2781,9 +2781,9 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 
 	enum stackable_command_kind kind = stack_button_info->kind;
 	if ((kind == SCK_TERRAFORM) || (kind == SCK_UNIT_MGMT)) {
-		// I don't know what these functions do but we have to call them to replicate the behavior of the function we're replacing
+		// Replicate behavior of function we're replacing
 		clear_something_1 ();
-		clear_something_2 (&this->Data_30_1);
+		Timer_clear (&this->timer_1);
 
 		if (kind == SCK_TERRAFORM)
 			issue_stack_worker_command (p_main_screen_form->Current_Unit, stack_button_info->command);
