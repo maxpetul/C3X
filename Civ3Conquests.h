@@ -5939,7 +5939,9 @@ struct Main_Screen_Form
   int field_4E80[6];
   int camera_x;
   int camera_y;
-  int field_4EA0[11];
+  int field_4EA0[9];
+  int ambient_sound_index;
+  int field_4EC8;
   int Mode_Action;
   int field_4ED0;
   int Mode_Action_Range;
@@ -5947,7 +5949,7 @@ struct Main_Screen_Form
   int field_544C;
   Main_GUI GUI;
   int field_2E14C[6];
-  Timer timer_3;
+  Timer ambient_sound_timer;
   int field_2E194;
   char turn_end_flag;
   char is_now_loading_game;

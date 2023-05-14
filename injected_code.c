@@ -5723,6 +5723,8 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 		patch_do_save_game (hotseat_resume_save_path, 1, 0);
 		load_game_ex (hotseat_replay_save_path, 1);
 		p_main_screen_form->Player_CivID = player_civ_id;
+		p_main_screen_form->GUI.is_enabled = 1;
+
 		perform_interturn ();
 		load_game_ex (hotseat_resume_save_path, 1);
 		p_main_screen_form->is_now_loading_game = 0;
