@@ -500,6 +500,11 @@ struct injected_state {
 	// when we need to override the visibility data to implement hotseat shared vis.
 	Tile * dummy_tile;
 
+	// When the tile drawing code checks FoW, it first accesses the tile through Map::get_tile, then three more times through tile_at. This
+	// variable stores the return value from get_tile and then gets used as the return value for the three calls to tile_at. This way we don't
+	// need to fill in the dummy tile multiple times.
+	Tile * tile_returned_for_draw_fow_check;
+
 	// ==========
 	// }
 	// ==========

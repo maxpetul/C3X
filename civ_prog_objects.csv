@@ -323,8 +323,6 @@ define,	   0x5DF900,	0x5EF150,	0x5DF830,	"count_set_bits",				"int (__cdecl *) (
 repl call, 0x5604F8,	0x56C5E8,	0x5604A8,	"count_player_bits_for_barb_prod",		""
 
 repl call, 0x4C5289,	0x0,		0x0,		"Map_get_tile_for_draw_fow_check",		""
-ignore,	   0x4C3577,	0x0,		0x0,		"Map_get_tile_for_draw_fow_check",		""
-ignore,	   0x66A554,	0x0,		0x0,		"draw_tile",					"void (__fastcall *) (Map_Renderer *this, int edx, int param_1,int pixel_x,int pixel_y,Map_Renderer *map_renderer, int param_5,int tile_x,int tile_y,int flags)"
 repl call, 0x4C5297,	0x0,		0x0,		"tile_at_for_draw_fow_check",			""
 repl call, 0x4C52A5,	0x0,		0x0,		"tile_at_for_draw_fow_check",			""
 repl call, 0x4C52B3,	0x0,		0x0,		"tile_at_for_draw_fow_check",			""

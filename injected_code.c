@@ -6056,30 +6056,16 @@ patch_Map_get_tile_for_draw_fow_check (Map * this, int edx, int index)
 		is->dummy_tile->Body.FOWStatus  = ((tr->Body.FOWStatus  & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
 		is->dummy_tile->Body.V3         = ((tr->Body.V3         & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
 		is->dummy_tile->Body.Visibility = ((tr->Body.Visibility & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		return is->dummy_tile;
-	} else
-		return tr;
-}
-
-/*
-void __fastcall
-patch_draw_tile (Map_Renderer *this, int edx, int param_1,int pixel_x,int pixel_y,Map_Renderer *map_renderer, int param_5,int tile_x,int tile_y,int flags)
-{
-	if ((tile_x != 6) || (tile_y != 24))
-		draw_tile (this, __, param_1,pixel_x,pixel_y,map_renderer, param_5,tile_x,tile_y,flags);
-	else if (is->dummy_tile != NULL) {
-		char s[100];
-		snprintf (s, sizeof s, "%p", tile_at (6, 24));
-		pop_up_in_game_error (s);
-		is->dummy_tile = NULL;
+		tr = is->dummy_tile;
 	}
+	is->tile_returned_for_draw_fow_check = tr;
+	return tr;
 }
-*/
 
 Tile * __cdecl
 patch_tile_at_for_draw_fow_check (int x, int y)
 {
-	return is->dummy_tile;
+	return is->tile_returned_for_draw_fow_check;
 }
 
 // TCC requires a main function be defined even though it's never used.
