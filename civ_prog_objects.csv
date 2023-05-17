@@ -322,6 +322,13 @@ inlead,	   0x5604B0,	0x56C5A0,	0x560460,	"Leader_do_production_phase",			"void (
 define,	   0x5DF900,	0x5EF150,	0x5DF830,	"count_set_bits",				"int (__cdecl *) (unsigned int bit_field)"
 repl call, 0x5604F8,	0x56C5E8,	0x5604A8,	"count_player_bits_for_barb_prod",		""
 
+repl call, 0x4C5289,	0x0,		0x0,		"Map_get_tile_for_draw_fow_check",		""
+ignore,	   0x4C3577,	0x0,		0x0,		"Map_get_tile_for_draw_fow_check",		""
+ignore,	   0x66A554,	0x0,		0x0,		"draw_tile",					"void (__fastcall *) (Map_Renderer *this, int edx, int param_1,int pixel_x,int pixel_y,Map_Renderer *map_renderer, int param_5,int tile_x,int tile_y,int flags)"
+repl call, 0x4C5297,	0x0,		0x0,		"tile_at_for_draw_fow_check",			""
+repl call, 0x4C52A5,	0x0,		0x0,		"tile_at_for_draw_fow_check",			""
+repl call, 0x4C52B3,	0x0,		0x0,		"tile_at_for_draw_fow_check",			""
+
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
 ignore,	   0x66DD04,	0x0,		0x0,		"Unit_eval_escort_requirement",			"int (__fastcall *) (Unit *)"

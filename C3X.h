@@ -496,6 +496,10 @@ struct injected_state {
 	// Initialized to 0. If 1, barbarian activity is force activated b/c there are barb cities on the map that need to do production.
 	int force_barb_activity_for_cities;
 
+	// Used as a stand-in for an actual tile where needed. In particular, this object is returned from various get_tile and tile_at replacements
+	// when we need to override the visibility data to implement hotseat shared vis.
+	Tile * dummy_tile;
+
 	// ==========
 	// }
 	// ==========
