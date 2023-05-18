@@ -2405,8 +2405,8 @@ struct AnimationSummary
   AnimationSummaryVTable * vtable;
   enum direction direction;
   AnimationType queued_anim_type;
-  int field_C;
-  int field_10;
+  int tile_x;
+  int tile_y;
   int pixel_loc_x;
   int pixel_loc_y;
   enum direction direction_2; // queued direction?

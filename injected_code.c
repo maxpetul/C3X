@@ -6062,6 +6062,18 @@ patch_Map_get_tile_for_draw_fow_check (Map * this, int edx, int index)
 	return tr;
 }
 
+Tile * __fastcall
+patch_Map_get_tile_for_draw_flags (Map * this, int edx, int index)
+{
+	Tile * tile = Map_get_tile (this, __, index);
+	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
+	if (is_hotseat_game) {
+		is->dummy_tile->Body.Fog_Of_War = ((tile->Body.Fog_Of_War & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
+		return is->dummy_tile;
+	} else
+		return tile;
+}
+
 Tile * __cdecl
 patch_tile_at_for_draw_fow_check (int x, int y)
 {
