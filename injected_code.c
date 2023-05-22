@@ -2181,6 +2181,30 @@ can_damage_bombarding (UnitType * attacker_type, Unit * defender, Tile * defende
 		return 0;
 }
 
+char __fastcall
+patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2)
+{
+	char base_vis = Unit_is_visible_to_civ (this, __, civ_id, param_2);
+	if ((! base_vis) && // if unit is not visible to civ_id AND
+	    ((1 << civ_id) & *p_human_player_bits) && // civ_id is a human player AND
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game)) { // we're in a hotseat game
+
+		// Check if the unit is visible to any other human player in the game
+		unsigned player_bits = *p_human_player_bits >> 1;
+		int n_player = 1;
+		while (player_bits != 0) {
+			if ((player_bits & 1) &&
+			    (n_player != civ_id) &&
+			    Unit_is_visible_to_civ (this, __, n_player, param_2))
+				return 1;
+			player_bits >>= 1;
+			n_player++;
+		}
+	}
+
+	return base_vis;
+}
+
 int
 has_any_destructible_improvements (City * city)
 {
@@ -2236,7 +2260,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 		num_air_units_on_target_tile += UTC_Air == p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Unit_Class;
 		if ((Unit_get_defense_strength (uti.unit) > 0) &&
 		    (uti.unit->Body.Container_Unit < 0) &&
-		    Unit_is_visible_to_civ (uti.unit, __, civ_id, 0) &&
+		    patch_Unit_is_visible_to_civ (uti.unit, __, civ_id, 0) &&
 		    can_damage_bombarding (attacker_type, uti.unit, target_tile))
 			memoize (uti.id);
 	}
@@ -3328,7 +3352,7 @@ any_enemies_near (Leader const * me, int tile_x, int tile_y, enum UnitTypeClasse
 		int enemy_on_this_tile = 0;
 		FOR_UNITS_ON (uti, tai.tile) {
 			UnitType const * unit_type = &p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID];
-			if (Unit_is_visible_to_civ (uti.unit, __, me->ID, 0) &&
+			if (patch_Unit_is_visible_to_civ (uti.unit, __, me->ID, 0) &&
 			    (((int)class < 0) || (unit_type->Unit_Class == class))) {
 				if (me->At_War[uti.unit->Body.CivID]) {
 					if ((unit_type->Defence > 0) || (unit_type->Attack > 0)) {
@@ -6047,7 +6071,7 @@ patch_count_player_bits_for_barb_prod (unsigned int bit_field)
 }
 
 Tile * __fastcall
-patch_Map_get_tile_for_draw_fow_check (Map * this, int edx, int index)
+patch_Map_get_tile_for_draw_vis_check (Map * this, int edx, int index)
 {
 	Tile * tr = Map_get_tile (this, __, index);
 	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
@@ -6058,12 +6082,14 @@ patch_Map_get_tile_for_draw_fow_check (Map * this, int edx, int index)
 		is->dummy_tile->Body.Visibility = ((tr->Body.Visibility & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
 		tr = is->dummy_tile;
 	}
-	is->tile_returned_for_draw_fow_check = tr;
+	is->tile_returned_for_draw_vis_check = tr;
 	return tr;
 }
 
+// This function works like get_tile_for_draw_vis_check except it only sets the Fog_Of_War field in the dummy tile and doesn't cache the returned
+// pointer for later calls to tile_at. It's used for several patches in the drawing code where the code checks only the Fog_Of_War field.
 Tile * __fastcall
-patch_Map_get_tile_for_draw_flags (Map * this, int edx, int index)
+patch_Map_get_tile_for_fow_check (Map * this, int edx, int index)
 {
 	Tile * tile = Map_get_tile (this, __, index);
 	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
@@ -6075,9 +6101,9 @@ patch_Map_get_tile_for_draw_flags (Map * this, int edx, int index)
 }
 
 Tile * __cdecl
-patch_tile_at_for_draw_fow_check (int x, int y)
+patch_tile_at_for_draw_vis_check (int x, int y)
 {
-	return is->tile_returned_for_draw_fow_check;
+	return is->tile_returned_for_draw_vis_check;
 }
 
 unsigned __fastcall
