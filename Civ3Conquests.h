@@ -3,6 +3,7 @@
 // See: https://github.com/Antal1987/C3CPatchFramework/blob/master/Info/Civ3Conquests.h
 
 typedef struct IntList IntList;
+typedef struct CoordPairList CoordPairList;
 typedef struct TribeCustomization TribeCustomization;
 typedef struct City_Base_vtable City_Base_vtable;
 typedef struct Citizen Citizen;
@@ -1380,6 +1381,17 @@ struct IntList
   int * contents;
   int * contents_end;
   int * also_contents_end;
+};
+
+struct CoordPairList
+{
+  byte field_0;
+  byte field_1;
+  byte field_2;
+  byte field_3;
+  CoordPair * contents;
+  CoordPair * contents_end;
+  CoordPair * buffer_end;
 };
 
 struct TribeCustomization
@@ -5960,10 +5972,8 @@ struct Main_Screen_Form
   char is_now_loading_game;
   char field_2E19A;
   char field_2E19B;
-  int field_2E19C;
-  CoordPair *First_Ptr;
-  CoordPair *Second_Ptr;
-  int field_2E1A8[2];
+  CoordPairList minimap_update_list;
+  int field_2E1AC;
   int mouse_x;
   int mouse_y;
   Main_Screen_Data_1AD4 Data_1AD4;
