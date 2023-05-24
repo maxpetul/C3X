@@ -134,7 +134,7 @@ typedef struct World_Features World_Features;
 typedef struct Starting_Location Starting_Location;
 typedef struct Scenario_Player Scenario_Player;
 typedef struct Navigator_Cell Navigator_Cell;
-typedef struct Navigator_Point Navigator_Point;
+typedef struct CoordPair CoordPair;
 typedef struct JGL_Image JGL_Image;
 typedef struct JGL_Image_vtable JGL_Image_vtable;
 typedef struct JGL_Graphics JGL_Graphics;
@@ -3482,16 +3482,15 @@ struct Navigator_Cell
   short X;
   short Y;
   int field_4;
-  Navigator_Point **First_Point;
-  Navigator_Point **Last_Point;
+  CoordPair **First_Point;
+  CoordPair **Last_Point;
   int field_10;
   int field_14;
 };
 
-struct Navigator_Point
+struct CoordPair
 {
-  short X;
-  short Y;
+  short x, y;
 };
 
 struct JGL_Image
@@ -5931,7 +5930,13 @@ struct Main_Screen_Form
   int Player_CivID;
   int field_4DC0[25];
   Timer timer_2;
-  int field_4E54[7];
+  int field_4E54;
+  int field_4E58;
+  int revealed_area_x_min;
+  int revealed_area_x_max;
+  int revealed_area_y_min;
+  int revealed_area_y_max;
+  int field_4E6C;
   int TileX_Min;
   int TileX_Max;
   int TileY_Min;
@@ -5956,8 +5961,8 @@ struct Main_Screen_Form
   char field_2E19A;
   char field_2E19B;
   int field_2E19C;
-  Navigator_Point *First_Ptr;
-  Navigator_Point *Second_Ptr;
+  CoordPair *First_Ptr;
+  CoordPair *Second_Ptr;
   int field_2E1A8[2];
   int mouse_x;
   int mouse_y;
