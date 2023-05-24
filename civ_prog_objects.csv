@@ -331,6 +331,7 @@ repl call, 0x4C5333,	0x0,		0x0,		"Map_get_tile_for_fow_check",			""
 repl vptr, 0x670270,	0x0,		0x0,		"Tile_m42_Get_Overlays",			"unsigned (__fastcall *) (Tile * this, int edx, byte visible_to_civ)"
 repl call, 0x4C35E4,	0x0,		0x0,		"Map_get_tile_for_fow_check",			""
 repl call, 0x4C3577,	0x0,		0x0,		"Map_get_tile_for_fow_check",			""
+repl call, 0x578A67,	0x0,		0x0,		"Map_get_tile_for_fow_check",			""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
