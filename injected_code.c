@@ -6106,6 +6106,12 @@ patch_tile_at_for_draw_vis_check (int x, int y)
 	return is->tile_returned_for_draw_vis_check;
 }
 
+Tile * __fastcall
+patch_Map_get_tile_again_for_draw_vis_check (Map * this, int edx, int index)
+{
+	return is->tile_returned_for_draw_vis_check;
+}
+
 unsigned __fastcall
 patch_Tile_m42_Get_Overlays (Tile * this, int edx, byte visible_to_civ)
 {
