@@ -1,4 +1,5 @@
 * RELEASE 16 PREVIEW 2
+- Option to share visibility among all human players in a hotseat game
 - Limit AI artillery units to one escort (w/ offensive artillery AI)
 - Separate land & sea retreat rules
 - Apply AI naval escort limit to carriers and missile transports
