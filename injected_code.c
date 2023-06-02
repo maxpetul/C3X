@@ -4237,7 +4237,8 @@ patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3
 	int ret_addr = p_stack[-1];
 
 	if (is->current_config.group_units_on_right_click_menu &&
-	    (ret_addr == ADDR_OPEN_UNIT_MENU_RETURN)) {
+	    (ret_addr == ADDR_OPEN_UNIT_MENU_RETURN) &&
+	    (is->unit_menu_duplicates != NULL)) {
 
 		// Change the menu text to include the duplicate counts. This is pretty straight forward except for a couple little issues: we must
 		// use the game's internal malloc & free for compatibility with the base code and must call a function that widens the menu form,
@@ -6135,6 +6136,28 @@ patch_Tile_m42_Get_Overlays (Tile * this, int edx, byte visible_to_civ)
 		return tr;
 	} else
 		return base_vis_overlays;
+}
+
+Tile * __cdecl
+patch_tile_at_for_right_click_fow_status_check (int x, int y)
+{
+	Tile * tile = tile_at (x, y);
+	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
+	if (is_hotseat_game) {
+		is->dummy_tile->Body.FOWStatus = ((tile->Body.FOWStatus & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
+		return is->dummy_tile;
+	} else
+		return tile;
+}
+
+byte __fastcall
+patch_Unit_check_contact_bit_6 (Unit * this, int edx, int civ_id)
+{
+	byte base = Unit_check_contact_bit_6 (this, __, civ_id);
+	return base ||
+		((*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+		 ((1 << civ_id) & *p_human_player_bits) &&
+		 ((1 << this->Body.CivID) & *p_human_player_bits));
 }
 
 // TCC requires a main function be defined even though it's never used.
