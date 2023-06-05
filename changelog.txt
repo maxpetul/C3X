@@ -1,10 +1,24 @@
-* RELEASE 16 PREVIEW 2
+* RELEASE 16C
 - Option to share visibility among all human players in a hotseat game
+- Re-enable main GUI before showing hotseat AI replay
+
+* RELEASE 16B
+- Zone of control changes
+  - Allow land-to-sea and sea-to-land attacks, only using bombard stat
+  - May be lethal
+  - May be exerted by air units
+  - Show attack animation even when attacker is not at the top of its stack
+- Defensive bombard changes
+  - May be lethal
+  - May be performed by air units
+  - Invisible, undetected units may be made immune
+  - May be performed multiple times per turn with blitz
+
+* RELEASE 16 PREVIEW 2
 - Limit AI artillery units to one escort (w/ offensive artillery AI)
 - Separate land & sea retreat rules
 - Apply AI naval escort limit to carriers and missile transports
 - Make config options more intuitive: anarchy length reduction, minimum city separation, AI naval escort cap
-- Re-enable main GUI before showing hotseat AI replay
 
 * RELEASE 16 PREVIEW 1
 - Barbarian city capture & production (experimental)

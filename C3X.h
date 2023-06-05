@@ -8,8 +8,8 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
-#define MOD_VERSION 1600
-#define MOD_PREVIEW_VERSION 1
+#define MOD_VERSION 1602
+#define MOD_PREVIEW_VERSION 0
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -41,6 +41,19 @@ enum retreat_rules {
 	RR_IF_FASTER
 };
 
+enum special_defensive_bombard_rules {
+	SDBR_LETHAL        = 1,
+	SDBR_NOT_INVISIBLE = 2,
+	SDBR_AERIAL        = 4,
+	SDBR_BLITZ         = 8,
+};
+
+enum special_zone_of_control_rules {
+	SZOCR_LETHAL     = 1,
+	SZOCR_AERIAL     = 2,
+	SZOCR_AMPHIBIOUS = 4,
+};
+
 struct c3x_config {
 	char enable_stack_bombard;
 	char enable_disorder_warning;
@@ -57,6 +70,7 @@ struct c3x_config {
 	char group_units_on_right_click_menu;
 	int anarchy_length_percent;
 	char show_golden_age_turns_remaining;
+	char show_zoc_attacks_from_mid_stack;
 	char cut_research_spending_to_avoid_bankruptcy;
 	char dont_pause_for_love_the_king_messages;
 	char reverse_specialist_order_with_shift;
@@ -113,6 +127,8 @@ struct c3x_config {
 	char optimize_improvement_loops;
 	char enable_city_capture_by_barbarians;
 	char share_visibility_in_hoseat;
+	enum special_zone_of_control_rules special_zone_of_control_rules;
+	enum special_defensive_bombard_rules special_defensive_bombard_rules;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
@@ -308,8 +324,6 @@ struct injected_state {
 
 	struct table nopified_areas;
 
-	byte houseboat_patch_area_original_contents[50];
-
 	int * unit_menu_duplicates; // NULL initialized, allocated to an array of 0x100 ints when needed
 
 	// List of temporary ints. Initializes to NULL/0/0, used with functions "memoize" and "clear_memo"
@@ -348,6 +362,10 @@ struct injected_state {
 	// Maps unit types IDs to AI strategy indices (0 = offense, 1 = defense, 2 = artillery, etc.). If a unit type ID is in this table, that means
 	// it's one of several duplicate types created to spread multiple AI strategies out so each type has only one.
 	struct table unit_type_alt_strategies;
+
+	// Tracks the number of "extra" defensive bombards units have performed, by their IDs. If the "blitz" special defensive bombard rule is
+	// activated, units with blitz get an extra chance to perform DB for each movement point they have beyond the first.
+	struct table extra_defensive_bombards;
 
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {
@@ -505,6 +523,30 @@ struct injected_state {
 	// variable stores the return value from get_tile and then gets used as the return value for the three calls to tile_at. This way we don't
 	// need to fill in the dummy tile multiple times.
 	Tile * tile_returned_for_draw_vis_check;
+
+	// Initialized to all -1. If set, the unit with the specified ID will always be the top unit displayed on the specified tile. If the unit is
+	// not on that tile, there is no effect. This is only intended to be used on a temporary basis.
+	struct unit_display_override {
+		int unit_id, tile_x, tile_y;
+	} unit_display_override;
+
+	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
+	Unit * zoc_interceptor;
+
+	// Set when Fighter::apply_zone_of_control is called to store the defending unit, used by the injected filter.
+	Unit * zoc_defender;
+
+	// Cleared to zero when Fighter::apply_zone_of_control is called. The interceptor must be unfortified to ensure it plays its animation. If
+	// that happens, this flag is set so that apply_zone_of_control knows to refortify the unit after the ZoC process is done.
+	int refortify_interceptor_after_zoc;
+
+	// Used to record info about a defensive bomardment event during Fighter::fight. Gets set by Fighter::damage_by_defensive_bombardment and
+	// cleared when Fighter::fight returns.
+	struct defensive_bombard_event {
+		Unit * bombarder;
+		Unit * defender;
+		byte damage_done, defender_was_destroyed, saved_animation_setting;
+	} dbe;
 
 	// ==========
 	// }
