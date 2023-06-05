@@ -6125,18 +6125,20 @@ patch_Tile_m42_Get_Overlays (Tile * this, int edx, byte visible_to_civ)
 	    (base_vis_overlays != this->Overlays) && // that player can't already see all the actual overlays AND
 	    (*p_is_offline_mp_game && ! *p_is_pbem_game)) { // we're in a hotseat game
 
-		// OR together all the overlay bits visible to all human players in the game
-		unsigned tr = base_vis_overlays;
+		// Check if there's another human player that can see the actual overlays. If so, give that info to this player and return it.
 		unsigned player_bits = *p_human_player_bits >> 1;
 		int n_player = 1;
 		while (player_bits != 0) {
-			if ((player_bits & 1) && (n_player != visible_to_civ))
-				tr |= Tile_m42_Get_Overlays (this, __, n_player);
+			if ((player_bits & 1) && (n_player != visible_to_civ) &&
+			    (Tile_m42_Get_Overlays (this, __, n_player) == this->Overlays)) {
+				this->Body.Visibile_Overlays[visible_to_civ] = this->Overlays;
+				return this->Overlays;
+			}
 			player_bits >>= 1;
 			n_player++;
 		}
 
-		return tr;
+		return base_vis_overlays;
 	} else
 		return base_vis_overlays;
 }
