@@ -1,4 +1,4 @@
-* RELEASE 16C
+* RELEASE 16E
 - Option to share visibility among all human players in a hotseat game
 - Re-enable main GUI before showing hotseat AI replay
 
