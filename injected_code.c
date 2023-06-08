@@ -6349,6 +6349,7 @@ patch_Unit_check_contact_bit_6_on_right_click (Unit * this, int edx, int civ_id)
 			tr = 1;
 
 		else {
+			// Check if any other human player has contact
 			unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
 			int n_player = 1;
 			while (player_bits != 0) {
@@ -6373,10 +6374,11 @@ patch_Leader_is_tile_visible (Leader * this, int edx, int x, int y)
 	unsigned vis_bits = tile->FOWStatus | tile->V3 | tile->Visibility | tile->field_D0_Visibility;
 	if (vis_bits & (1 << this->ID))
 		return 1;
-	else if (is->current_config.share_visibility_in_hoseat &&
-		 (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
-		 ((1 << this->ID) & *p_human_player_bits))
-		return (vis_bits & *p_human_player_bits) != 0;
+	else if (is->current_config.share_visibility_in_hoseat && // if shared hotseat vis is enabled AND
+		 (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game AND
+		 ((1 << this->ID) & *p_human_player_bits) && // "this" is a human player AND
+		 (vis_bits & *p_human_player_bits)) // any human player has visibility on the tile
+		return 1;
 	else
 		return 0;
 }
