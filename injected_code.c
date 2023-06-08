@@ -2351,7 +2351,7 @@ patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2)
 	    (*p_is_offline_mp_game && ! *p_is_pbem_game)) { // we're in a hotseat game
 
 		// Check if the unit is visible to any other human player in the game
-		unsigned player_bits = *p_human_player_bits >> 1;
+		unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
 		int n_player = 1;
 		while (player_bits != 0) {
 			if ((player_bits & 1) &&
@@ -6308,7 +6308,7 @@ patch_Tile_m42_Get_Overlays (Tile * this, int edx, byte visible_to_civ)
 	    (*p_is_offline_mp_game && ! *p_is_pbem_game)) { // we're in a hotseat game
 
 		// Check if there's another human player that can see the actual overlays. If so, give that info to this player and return it.
-		unsigned player_bits = *p_human_player_bits >> 1;
+		unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
 		int n_player = 1;
 		while (player_bits != 0) {
 			if ((player_bits & 1) && (n_player != visible_to_civ) &&
@@ -6338,14 +6338,47 @@ patch_tile_at_for_right_click_fow_status_check (int x, int y)
 }
 
 byte __fastcall
-patch_Unit_check_contact_bit_6 (Unit * this, int edx, int civ_id)
+patch_Unit_check_contact_bit_6_on_right_click (Unit * this, int edx, int civ_id)
 {
-	byte base = Unit_check_contact_bit_6 (this, __, civ_id);
-	return base ||
-		(is->current_config.share_visibility_in_hoseat &&
+	byte tr = Unit_check_contact_bit_6 (this, __, civ_id);
+	if ((! tr) &&
+	    is->current_config.share_visibility_in_hoseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << civ_id) & *p_human_player_bits)) { // is civ_id a human player
+		if ((1 << this->Body.CivID) & *p_human_player_bits)
+			tr = 1;
+
+		else {
+			unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+			int n_player = 1;
+			while (player_bits != 0) {
+				if ((player_bits & 1) && (n_player != civ_id) &&
+				    Unit_check_contact_bit_6 (this, __, n_player)) {
+					tr = 1;
+					break;
+				}
+				player_bits >>= 1;
+				n_player++;
+			}
+		}
+	}
+	return tr;
+}
+
+
+byte __fastcall
+patch_Leader_is_tile_visible (Leader * this, int edx, int x, int y)
+{
+	Tile_Body * tile = &tile_at (x, y)->Body;
+	unsigned vis_bits = tile->FOWStatus | tile->V3 | tile->Visibility | tile->field_D0_Visibility;
+	if (vis_bits & (1 << this->ID))
+		return 1;
+	else if (is->current_config.share_visibility_in_hoseat &&
 		 (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
-		 ((1 << civ_id) & *p_human_player_bits) &&
-		 ((1 << this->Body.CivID) & *p_human_player_bits));
+		 ((1 << this->ID) & *p_human_player_bits))
+		return (vis_bits & *p_human_player_bits) != 0;
+	else
+		return 0;
 }
 
 int __fastcall
