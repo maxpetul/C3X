@@ -6144,7 +6144,7 @@ patch_Tile_m42_Get_Overlays (Tile * this, int edx, byte visible_to_civ)
 }
 
 Tile * __cdecl
-patch_tile_at_for_right_click_fow_status_check (int x, int y)
+patch_tile_at_for_fow_status_check (int x, int y)
 {
 	Tile * tile = tile_at (x, y);
 	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
