@@ -123,11 +123,11 @@ def fit_offset (game_objects, observations, size=4):
         return tr
 
 class CivProc:
-        def __init__ (self, start_suspended = False):
+        def __init__ (self, use_unmodded_exe=True, start_suspended=False):
                 startup_info = winproc.STARTUPINFO ()
                 proc_handles = winproc.CreateProcess (
                         None,
-                        "Civ3Conquests.exe",
+                        "Civ3Conquests-Unmodded.exe" if use_unmodded_exe else "Civ3Conquests.exe",
                         None,
                         None,
                         False,
@@ -161,6 +161,9 @@ class CivProc:
                 read = self.read_memory (source_addr, num_bytes)
                 num_written = self.write_memory (dest_addr, read)
                 print ("memcpy read " + str (len (read)) + " bytes and wrote " + str (num_written) + " bytes")
+
+        def get_text_section(self):
+                return self.read_memory (0x401000, 0x664FFF - 0x401000)
 
         def find_mapped_pages (self):
                 # Scan through memory area and identify pages that have been mapped
@@ -266,3 +269,16 @@ class CivProc:
                 print ("Found %d unit types" % len (self.unit_types_by_id))
                 self.difficulties_by_id, self.difficulties_by_name = self.find_data_objects (difficulty)
                 print ("Found %d difficulties" % len (self.difficulties_by_id))
+
+# code_bytes comes from CivProc.get_text_section
+# addr is the address to inspect
+# target_addr is the address of a function
+# Returns whether or not there is a call to target_addr at addr
+def call_at (code_bytes, addr, target_addr):
+        a = addr - 0x401000
+        if code_bytes[a] == 0xE8:
+                b = code_bytes[a+1:a+5]
+                t = addr + 5 + int.from_bytes(b, byteorder="little", signed=True)
+                return t == target_addr
+        else:
+                return False
