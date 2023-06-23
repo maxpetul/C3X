@@ -5934,7 +5934,13 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 		patch_do_save_game (hotseat_resume_save_path, 1, 0);
 		load_game_ex (hotseat_replay_save_path, 1);
 		p_main_screen_form->Player_CivID = player_civ_id;
-		p_main_screen_form->GUI.is_enabled = 1;
+
+		// Re-enable the GUI so the minimap is visible during the replay. We must also reset the minimap & redraw it so that it reflects the
+		// player we just seated (above) instead of leftover data from the last player.
+		Main_GUI * main_gui = &p_main_screen_form->GUI;
+		main_gui->is_enabled = 1;
+		Navigator_Data_reset (&main_gui->Navigator_Data);
+		main_gui->Base.vtable->m73_call_m22_Draw ((Base_Form *)main_gui);
 
 		perform_interturn ();
 		load_game_ex (hotseat_resume_save_path, 1);
