@@ -370,6 +370,7 @@ repl call, 0x5B992A,	0x5C83E2,	0x5B963A,	"Map_get_tile_for_fow_status_check",		"
 repl call, 0x5B99E6,	0x5C84A7,	0x5B96F6,	"Map_get_tile_for_fow_status_check",		""
 repl call, 0x5B9A97,	0x5C8559,	0x5B97A7,	"Map_get_tile_for_fow_status_check",		""
 repl call, 0x5B9E54,	0x5C892B,	0x5B9B64,	"Map_get_tile_for_fow_status_check",		""
+define,	   0x578780,	0x5858A0,	0x5786F0,	"Navigator_Data_reset",				"void (__fastcall *) (Navigator_Data * this)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
