@@ -506,6 +506,9 @@ struct injected_state {
 	// need to fill in the dummy tile multiple times.
 	Tile * tile_returned_for_draw_vis_check;
 
+	// Set to 1 IFF we're showing a replay of AI moves in hotseat mode
+	int showing_hotseat_replay;
+
 	// ==========
 	// }
 	// ==========

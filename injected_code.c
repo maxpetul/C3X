@@ -1867,6 +1867,8 @@ patch_init_floating_point ()
 
 	is->dummy_tile = calloc (1, sizeof *is->dummy_tile);
 
+	is->showing_hotseat_replay = 0;
+
 	is->water_trade_improvs    = (struct improv_id_list) {0};
 	is->air_trade_improvs      = (struct improv_id_list) {0};
 	is->combat_defense_improvs = (struct improv_id_list) {0};
@@ -5749,6 +5751,8 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 	int player_civ_id = p_main_screen_form->Player_CivID;
 	int replay_for_players = is->replay_for_players; // Store this b/c it gets reset on game load
 	if (replay_for_players & 1<<player_civ_id) {
+		is->showing_hotseat_replay = 1;
+
 		patch_do_save_game (hotseat_resume_save_path, 1, 0);
 		load_game_ex (hotseat_replay_save_path, 1);
 		p_main_screen_form->Player_CivID = player_civ_id;
@@ -5767,6 +5771,8 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 		// Restore the replay_for_players variable b/c it gets cleared when loading a game. Also mask out the bit for the player we just
 		// showed the replay to.
 		is->replay_for_players = replay_for_players & ~(1<<player_civ_id);
+
+		is->showing_hotseat_replay = 0;
 	}
 
 	return tr;
@@ -5830,6 +5836,20 @@ patch_perform_interturn_in_main_loop ()
 		// start of the interturn or that saw an AI unit move or bombard during the interturn, excluding the last human player.
 		is->replay_for_players = (ai_unit_vis_before | (is->players_saw_ai_unit & *p_human_player_bits)) & ~last_human_player_bit;
 	}
+}
+
+void __cdecl
+patch_initialize_map_music (int civ_id, int era_id, byte param_3)
+{
+	if (! is->showing_hotseat_replay)
+		initialize_map_music (civ_id, era_id, param_3);
+}
+
+void __stdcall
+patch_deinitialize_map_music ()
+{
+	if (! is->showing_hotseat_replay)
+		deinitialize_map_music ();
 }
 
 void __fastcall
