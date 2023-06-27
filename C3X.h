@@ -548,6 +548,9 @@ struct injected_state {
 		byte damage_done, defender_was_destroyed, saved_animation_setting;
 	} dbe;
 
+	// Set to 1 IFF we're showing a replay of AI moves in hotseat mode
+	int showing_hotseat_replay;
+
 	// ==========
 	// }
 	// ==========
