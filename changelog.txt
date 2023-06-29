@@ -1,3 +1,8 @@
+* RELEASE 16F
+- Prevent game music from being reset during hotseat replay
+- Update minimap when showing replay so it doesn't display info for a previous player
+- Expand shared hotseat visibility to cover more UI code
+
 * RELEASE 16E
 - Option to share visibility among all human players in a hotseat game
 - Re-enable main GUI before showing hotseat AI replay
