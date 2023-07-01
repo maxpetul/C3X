@@ -5,6 +5,7 @@
 - Apply AI naval escort limit to carriers and missile transports
 - Make config options more intuitive: anarchy length reduction, minimum city separation, AI naval escort cap
 - Re-enable main GUI before showing hotseat AI replay
+- Prevent music from being reset during hotseat AI replay
 
 * RELEASE 16 PREVIEW 1
 - Barbarian city capture & production (experimental)
