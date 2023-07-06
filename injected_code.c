@@ -887,6 +887,12 @@ patch_Leader_is_tile_visible (Leader * this, int edx, int x, int y)
 		return 0;
 }
 
+byte __fastcall
+patch_Main_Screen_Form_is_unit_visible_to_player (Main_Screen_Form * this, int edx, int tile_x, int tile_y, Unit * unit)
+{
+	return (unit->Body.CivID == this->Player_CivID) || patch_Leader_is_tile_visible (&leaders[this->Player_CivID], __, tile_x, tile_y);
+}
+
 enum direction
 reverse_dir (enum direction dir)
 {
