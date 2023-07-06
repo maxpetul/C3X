@@ -871,6 +871,22 @@ patch_PCX_Image_process_tech_ga_status (PCX_Image * this, int edx, char * str)
 	return PCX_Image_process_text (this, __, str);
 }
 
+byte __fastcall
+patch_Leader_is_tile_visible (Leader * this, int edx, int x, int y)
+{
+	Tile_Body * tile = &tile_at (x, y)->Body;
+	unsigned vis_bits = tile->FOWStatus | tile->V3 | tile->Visibility | tile->field_D0_Visibility;
+	if (vis_bits & (1 << this->ID))
+		return 1;
+	else if (is->current_config.share_visibility_in_hoseat && // if shared hotseat vis is enabled AND
+		 (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game AND
+		 ((1 << this->ID) & *p_human_player_bits) && // "this" is a human player AND
+		 (vis_bits & *p_human_player_bits)) // any human player has visibility on the tile
+		return 1;
+	else
+		return 0;
+}
+
 enum direction
 reverse_dir (enum direction dir)
 {
@@ -928,17 +944,6 @@ tile_at_index (Map * map, int i)
 	int x, y;
 	tile_index_to_coords (map, i, &x, &y);
 	return tile_at (x, y);
-}
-
-int
-is_tile_visible_to (int x, int y, int civ_id)
-{
-	Tile * tile = tile_at (x, y);
-	if ((tile != NULL) && (tile != p_null_tile)) {
-		Tile_Body * body = &tile->Body;
-		return ((body->FOWStatus | body->V3 | body->Visibility | body->field_D0_Visibility) & (1 << civ_id)) != 0;
-	} else
-		return 0;
 }
 
 void
@@ -5784,7 +5789,7 @@ patch_Unit_play_anim_for_bombard_tile (Unit * this, int edx, int x, int y)
 	Unit * stealth_attack_target = NULL;
 	if (is->current_config.enable_stealth_attack_via_bombardment &&
 	    (! is_online_game ()) &&
-	    is_tile_visible_to (x, y, p_main_screen_form->Player_CivID)) {
+	    patch_Leader_is_tile_visible (&leaders[p_main_screen_form->Player_CivID], __, x, y)) {
 		byte land_lethal = Unit_has_ability (this, __, UTA_Lethal_Land_Bombardment),
 		     sea_lethal  = Unit_has_ability (this, __, UTA_Lethal_Sea_Bombardment);
 		Unit * defender = Fighter_find_defender_against_bombardment (&p_bic_data->fighter, __, this, x, y, this->Body.CivID, land_lethal, sea_lethal);
@@ -6416,23 +6421,6 @@ patch_Unit_check_contact_bit_6_on_right_click (Unit * this, int edx, int civ_id)
 		}
 	}
 	return tr;
-}
-
-
-byte __fastcall
-patch_Leader_is_tile_visible (Leader * this, int edx, int x, int y)
-{
-	Tile_Body * tile = &tile_at (x, y)->Body;
-	unsigned vis_bits = tile->FOWStatus | tile->V3 | tile->Visibility | tile->field_D0_Visibility;
-	if (vis_bits & (1 << this->ID))
-		return 1;
-	else if (is->current_config.share_visibility_in_hoseat && // if shared hotseat vis is enabled AND
-		 (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game AND
-		 ((1 << this->ID) & *p_human_player_bits) && // "this" is a human player AND
-		 (vis_bits & *p_human_player_bits)) // any human player has visibility on the tile
-		return 1;
-	else
-		return 0;
 }
 
 int __fastcall
