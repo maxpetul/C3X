@@ -410,7 +410,10 @@ define,	   0x578780,	0x5858A0,	0x5786F0,	"Navigator_Data_reset",				"void (__fas
 inlead,	   0x536080,	0x540670,	0x536100,	"initialize_map_music",				"void (__cdecl *) (int civ_id, int era_id, byte param_3)"
 inlead,	   0x535FB0,	0x5405A0,	0x536030,	"deinitialize_map_music",			"void (__stdcall *) ()"
 inlead,	   0x4ED120,	0x4F6040,	0x4ED1E0,	"Main_Screen_Form_is_unit_visible_to_player",	"byte (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, Unit * unit)"
-
+repl call, 0x57F515,	0x58C23E,	0x57F275,	"tile_at_for_visibility_check",			""
+repl call, 0x57FC98,	0x58C915,	0x57F9F8,	"tile_at_for_visibility_check",			""
+repl call, 0x57F9B6,	0x58C62B,	0x57F716,	"Map_get_tile_for_fow_check",			""
+repl call, 0x57F9F2,	0x58C667,	0x57F752,	"Map_get_tile_for_fow_check",			""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
