@@ -6335,6 +6335,18 @@ patch_Map_get_tile_for_fow_status_check (Map * this, int edx, int index)
 		return tile;
 }
 
+Tile * __fastcall
+patch_Map_get_tile_for_visibility_check (Map * this, int edx, int index)
+{
+	Tile * tile = Map_get_tile (this, __, index);
+	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
+	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
+		is->dummy_tile->Body.Visibility = ((tile->Body.Visibility & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
+		return is->dummy_tile;
+	} else
+		return tile;
+}
+
 Tile * __cdecl
 patch_tile_at_for_draw_vis_check (int x, int y)
 {
@@ -6395,6 +6407,18 @@ patch_tile_at_for_v3_check (int x, int y)
 	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
 	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
 		is->dummy_tile->Body.V3 = ((tile->Body.V3 & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
+		return is->dummy_tile;
+	} else
+		return tile;
+}
+
+Tile * __cdecl
+patch_tile_at_for_visibility_check (int x, int y)
+{
+	Tile * tile = tile_at (x, y);
+	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
+	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
+		is->dummy_tile->Body.Visibility = ((tile->Body.Visibility & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
 		return is->dummy_tile;
 	} else
 		return tile;
