@@ -6,6 +6,7 @@
 - Make config options more intuitive: anarchy length reduction, minimum city separation, AI naval escort cap
 - Re-enable main GUI before showing hotseat AI replay
 - Prevent music from being reset during hotseat AI replay
+- Update UI after stack bombarding (fixes bombard button not disappearing for multi-move units w/o blitz)
 
 * RELEASE 16 PREVIEW 1
 - Barbarian city capture & production (experimental)
