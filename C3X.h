@@ -524,6 +524,8 @@ struct injected_state {
 	// need to fill in the dummy tile multiple times.
 	Tile * tile_returned_for_draw_vis_check;
 
+	Tile * tile_returned_for_visibility_check;
+
 	// Initialized to all -1. If set, the unit with the specified ID will always be the top unit displayed on the specified tile. If the unit is
 	// not on that tile, there is no effect. This is only intended to be used on a temporary basis.
 	struct unit_display_override {

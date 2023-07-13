@@ -6293,6 +6293,42 @@ patch_count_player_bits_for_barb_prod (unsigned int bit_field)
 }
 
 Tile * __fastcall
+patch_Map_get_tile_to_check_visibility (Map * this, int edx, int index)
+{
+	Tile * tr = Map_get_tile (this, __, index);
+	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
+	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
+		int human_bits = *p_human_player_bits;
+		is->dummy_tile->Body.Fog_Of_War          = tr->Body.Fog_Of_War          | ((tr->Body.Fog_Of_War          & human_bits) != 0 ? human_bits : 0);
+		is->dummy_tile->Body.FOWStatus           = tr->Body.FOWStatus           | ((tr->Body.FOWStatus           & human_bits) != 0 ? human_bits : 0);
+		is->dummy_tile->Body.V3                  = tr->Body.V3                  | ((tr->Body.V3                  & human_bits) != 0 ? human_bits : 0);
+		is->dummy_tile->Body.Visibility          = tr->Body.Visibility          | ((tr->Body.Visibility          & human_bits) != 0 ? human_bits : 0);
+		is->dummy_tile->Body.field_D0_Visibility = tr->Body.field_D0_Visibility | ((tr->Body.field_D0_Visibility & human_bits) != 0 ? human_bits : 0);
+		tr = is->dummy_tile;
+	}
+	is->tile_returned_for_visibility_check = tr;
+	return tr;
+}
+
+Tile * __fastcall
+patch_Map_get_tile_to_check_visibility_again (Map * this, int edx, int index)
+{
+	return is->tile_returned_for_visibility_check;
+}
+
+Tile * __cdecl
+patch_tile_at_to_check_visibility (int x, int y)
+{
+	return patch_Map_get_tile_to_check_visibility (&p_bic_data->Map, __, (p_bic_data->Map.Width >> 1) * y + (x >> 1));
+}
+
+Tile * __cdecl
+patch_tile_at_to_check_visibility_again (int x, int y)
+{
+	return is->tile_returned_for_visibility_check;
+}
+
+Tile * __fastcall
 patch_Map_get_tile_for_draw_vis_check (Map * this, int edx, int index)
 {
 	Tile * tr = Map_get_tile (this, __, index);
