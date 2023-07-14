@@ -1056,14 +1056,13 @@ ENTRY_POINT ()
 				free (instr);
 
 			// Replace visibility check
-
 			// The game checks tile visibility with four calls to Map::get_tile or tile_at, each call reading only one visibility
 			// field. Because of this regular pattern, it's easy to replace the check programmatically. Given a starting address:
 			//   (1) Search for four call instructions close after that address
 			//   (2) Replace get_tile or tile_at calls with the corresponding patch function
 			//   (3) Replace all calls after the first with "again" functions that simply return a cached pointer set by the first
 			} else if (obj->job == OJ_REPL_VIS) {
-				byte * init_cursor = read_prog_memory ((void *)obj->addr, 1000);
+				byte * init_cursor = read_prog_memory ((void *)obj->addr, 200);
 
 				byte * cursor = init_cursor;
 				int found_calls = 0;
@@ -1082,7 +1081,7 @@ ENTRY_POINT ()
 							THROW (format ("Vis cluster after 0x%x does not match pattern. Found non-vis call.", obj->addr));
 					}
 					cursor += length_disasm (cursor);
-				} while ((found_calls < 4) && (cursor - init_cursor < 1000));
+				} while ((found_calls < 4) && (cursor - init_cursor < 200));
 
 				REQUIRE (found_calls == 4, format ("Vis cluster after 0x%x does not match pattern. Did not find four calls.", obj->addr));
 
