@@ -1013,6 +1013,27 @@ ENTRY_POINT ()
 	tcc__list_symbols (tcc, NULL, print_symbol_location);
 #endif
 	
+	// Gather everything we need to do visibility check replacements
+	void * patch_Map_get_tile_to_check_visibility       = find_patch_function (tcc, "Map_get_tile_to_check_visibility"      , 1);
+	void * patch_Map_get_tile_to_check_visibility_again = find_patch_function (tcc, "Map_get_tile_to_check_visibility_again", 1);
+	void * patch_tile_at_to_check_visibility            = find_patch_function (tcc, "tile_at_to_check_visibility"           , 1);
+	void * patch_tile_at_to_check_visibility_again      = find_patch_function (tcc, "tile_at_to_check_visibility_again"     , 1);
+	REQUIRE (patch_Map_get_tile_to_check_visibility       != NULL, "Missing function needed for vis replacement");
+	REQUIRE (patch_Map_get_tile_to_check_visibility_again != NULL, "Missing function needed for vis replacement");
+	REQUIRE (patch_tile_at_to_check_visibility            != NULL, "Missing function needed for vis replacement");
+	REQUIRE (patch_tile_at_to_check_visibility_again      != NULL, "Missing function needed for vis replacement");
+	int addr_Map_get_tile = 0, addr_tile_at = 0;
+	for (int n = 0; n < count_civ_prog_objects; n++) {
+		struct civ_prog_object const * obj = &civ_prog_objects[n];
+		if (obj->job == OJ_DEFINE) {
+			if (0 == strcmp (obj->name, "Map_get_tile"))
+				addr_Map_get_tile = obj->addr;
+			else if (0 == strcmp (obj->name, "tile_at"))
+				addr_tile_at = obj->addr;
+		}
+	}
+	REQUIRE ((addr_Map_get_tile != 0) && (addr_tile_at != 0), "Missing define needed for vis replacement");
+
 	// Pass through prog objects after compiling to redirect control flow to patches
 	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
@@ -1033,6 +1054,39 @@ ENTRY_POINT ()
 					write_prog_memory ((void *)(obj->addr + 5), nops, instr_size - 5);
 				}
 				free (instr);
+
+			// Replace visibility check
+
+			// The game checks tile visibility with four calls to Map::get_tile or tile_at, each call reading only one visibility
+			// field. Because of this regular pattern, it's easy to replace the check programmatically. Given a starting address:
+			//   (1) Search for four call instructions close after that address
+			//   (2) Replace get_tile or tile_at calls with the corresponding patch function
+			//   (3) Replace all calls after the first with "again" functions that simply return a cached pointer set by the first
+			} else if (obj->job == OJ_REPL_VIS) {
+				byte * init_cursor = read_prog_memory ((void *)obj->addr, 1000);
+
+				byte * cursor = init_cursor;
+				int found_calls = 0;
+				do {
+					if (*cursor == 0xE8) {
+						found_calls++;
+						int offset = int_from_bytes (&cursor[1]);
+						int actual_cursor_address = obj->addr + (cursor - init_cursor);
+						int target_addr = actual_cursor_address + 5 + offset;
+
+						if (target_addr == addr_Map_get_tile)
+							put_trampoline ((void *)actual_cursor_address, (found_calls == 1) ? patch_Map_get_tile_to_check_visibility : patch_Map_get_tile_to_check_visibility_again, 1);
+						else if (target_addr == addr_tile_at)
+							put_trampoline ((void *)actual_cursor_address, (found_calls == 1) ? patch_tile_at_to_check_visibility : patch_tile_at_to_check_visibility_again, 1);
+						else
+							THROW (format ("Vis cluster after 0x%x does not match pattern. Found non-vis call.", obj->addr));
+					}
+					cursor += length_disasm (cursor);
+				} while ((found_calls < 4) && (cursor - init_cursor < 1000));
+
+				REQUIRE (found_calls == 4, format ("Vis cluster after 0x%x does not match pattern. Did not find four calls.", obj->addr));
+
+				free (init_cursor);
 			}
 		}
 	}
