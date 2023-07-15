@@ -782,18 +782,18 @@ enum Unit_Mode_Actions
   UMA_Airlift = 0x8,
   UMA_Recon = 0x9,
   UMA_Rebase = 0xA,
-  UMA_11 = 0xB,
+  UMA_Precision_Strike = 0xB,
   UMA_12 = 0xC,
   UMA_13 = 0xD,
   UMA_Build_Colony = 0xE,
   UMA_Auto_Bombard = 0xF,
   UMA_Auto_Air_Bombard = 0x10,
-  UMA_17 = 0x11,
-  UMA_18 = 0x12,
-  UMA_19 = 0x13,
+  UMA_Auto_Precision_Strike = 0x11,
+  UMA_Stack_Go_To = 0x12,
+  UMA_Stack_Rebase = 0x13,
   UMA_20 = 0x14,
   UMA_21 = 0x15,
-  UMA_22 = 0x16,
+  UMA_Teleport = 0x16,
 };
 
 enum City_Order_Types

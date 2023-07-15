@@ -408,6 +408,8 @@ repl call, 0x4A5791,	0x4AC443,	0x4A5821,	"Unit_play_attack_anim_for_def_bombard"
 define,	   0x578780,	0x5858A0,	0x5786F0,	"Navigator_Data_reset",				"void (__fastcall *) (Navigator_Data * this)"
 inlead,	   0x536080,	0x540670,	0x536100,	"initialize_map_music",				"void (__cdecl *) (int civ_id, int era_id, byte param_3)"
 inlead,	   0x535FB0,	0x5405A0,	0x536030,	"deinitialize_map_music",			"void (__stdcall *) ()"
+define,	   0x5C7350,	0x5D61F0,	0x5C7060,	"Unit_do_precision_strike",			"void (__fastcall *) (Unit * this, int edx, int x, int y)"
+define,	   0x5B5790,	0x5C40E0,	0x5B54A0,	"Unit_confirm_war",				"byte (__fastcall *) (Unit * this, int edx, int against_civ_id, int param_2)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
