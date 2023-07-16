@@ -1,3 +1,7 @@
+* RELEASE 16H
+- Allow precision strikes to target tile improvements
+- Overhaul implementation of shared visibility for simplicity and correctness
+
 * RELEASE 16G
 - Fix two bugs in shared hotseat visibility
 
