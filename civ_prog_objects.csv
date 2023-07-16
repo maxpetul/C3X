@@ -411,6 +411,10 @@ inlead,	   0x5C7350,	0x5D61F0,	0x5C7060,	"Unit_do_precision_strike",			"void (__
 define,	   0x5B5790,	0x5C40E0,	0x5B54A0,	"Unit_confirm_war",				"byte (__fastcall *) (Unit * this, int edx, int against_civ_id, int param_2)"
 inlead,	   0x5C37B0,	0x5D23F0,	0x5C34C0,	"Unit_check_precision_strike_target",		"byte (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)"
 define,	   0x5B5280,	0x5C3BF0,	0x5B4F90,	"Unit_attack_tile",				"void (__fastcall *) (Unit * this, int edx, int x, int y)"
+repl call, 0x5C33F6,	0x5D2026,	0x5C3106,	"Map_get_tile_to_check_visibility",		""
+repl call, 0x52C39A,	0x5367DC,	0x52C42A,	"Map_get_tile_to_check_visibility",		""
+repl call, 0x52C146,	0x536586,	0x52C1D6,	"Map_get_tile_to_check_visibility",		""
+repl call, 0x52BED0,	0x536310,	0x52BF60,	"Map_get_tile_to_check_visibility",		""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
