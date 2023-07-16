@@ -127,6 +127,7 @@ struct c3x_config {
 	char optimize_improvement_loops;
 	char enable_city_capture_by_barbarians;
 	char share_visibility_in_hoseat;
+	char allow_precision_strikes_against_tile_improvements;
 	enum special_zone_of_control_rules special_zone_of_control_rules;
 	enum special_defensive_bombard_rules special_defensive_bombard_rules;
 

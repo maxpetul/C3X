@@ -1871,6 +1871,7 @@ patch_init_floating_point ()
 		{"optimize_improvement_loops"                          , 1, offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"enable_city_capture_by_barbarians"                   , 0, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
 		{"share_visibility_in_hoseat"                          , 0, offsetof (struct c3x_config, share_visibility_in_hoseat)},
+		{"allow_precision_strikes_against_tile_improvements"   , 0, offsetof (struct c3x_config, allow_precision_strikes_against_tile_improvements)},
 	};
 
 	struct integer_config_option {
@@ -2393,6 +2394,22 @@ has_any_destructible_improvements (City * city)
 	return 0;
 }
 
+int const destructible_overlays =
+	0x00000003 | // road, railroad
+	0x00000004 | // mine
+	0x00000008 | // irrigation
+	0x00000010 | // fortress
+	0x10000000 | // barricade
+	0x20000000 | // airfield
+	0x40000000 | // radar
+	0x80000000;  // outpost
+
+int
+has_any_destructible_overlays (Tile * tile)
+{
+	return (tile->vtable->m42_Get_Overlays (tile, __, 0) & destructible_overlays) != 0;
+}
+
 void __fastcall
 patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx, enum Unit_Mode_Actions action, int x, int y)
 {
@@ -2498,22 +2515,11 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 					}
 				}
 			}
-		} else if (target_city != NULL) {
-			anything_left_to_attack =
-				(target_city->Body.Population.Size > 1) ||
-				has_any_destructible_improvements (target_city);
-		} else if (attacking_tile) {
-			int destructible_overlays =
-				0x00000003 | // road, railroad
-				0x00000004 | // mine
-				0x00000008 | // irrigation
-				0x00000010 | // fortress
-				0x10000000 | // barricade
-				0x20000000 | // airfield
-				0x40000000 | // radar
-				0x80000000;  // outpost
-			anything_left_to_attack = (target_tile->vtable->m42_Get_Overlays (target_tile, __, 0) & destructible_overlays) != 0;
-		} else
+		} else if (target_city != NULL)
+			anything_left_to_attack = (target_city->Body.Population.Size > 1) || has_any_destructible_improvements (target_city);
+		else if (attacking_tile)
+			anything_left_to_attack = has_any_destructible_overlays (target_tile);
+		else
 			anything_left_to_attack = 0;
 	} while ((next_up != NULL) && anything_left_to_attack && (! last_attack_didnt_happen));
 
@@ -4693,9 +4699,17 @@ patch_open_tile_info (void * this, int edx, int mouse_x, int mouse_y, int civ_id
 int
 is_explored (Tile * tile, int civ_id)
 {
-	int in_debug_mode = (*p_debug_mode_bits & 8) != 0, // checking bit 3 here b/c that's how resource visibility is checked in open_tile_info
-	    not_fogged = (tile->Body.Fog_Of_War & (1 << civ_id)) != 0;
-	return in_debug_mode || not_fogged;
+	unsigned explored_bits = tile->Body.Fog_Of_War;
+	int in_debug_mode = (*p_debug_mode_bits & 8) != 0; // checking bit 3 here b/c that's how resource visibility is checked in open_tile_info
+	if (in_debug_mode || (explored_bits & (1 << civ_id)))
+		return 1;
+	else if (is->current_config.share_visibility_in_hoseat && // if shared hotseat vis is enabled AND
+		 (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game AND
+		 ((1 << civ_id) & *p_human_player_bits) && // "civ_id" is a human player AND
+		 (explored_bits & *p_human_player_bits)) // any human player has visibility on the tile
+		return 1;
+	else
+		return 0;
 }
 
 // On the GOG executable, this function intercepts the call to draw the "No information available" text on a unexplored (black) tile. In that case we
@@ -6797,6 +6811,17 @@ patch_Unit_play_attack_anim_for_def_bombard (Unit * this, int edx, int direction
 	// Don't play any animation for air units, the animations are instead handled in the patch for damage_by_defensive_bombard
 	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air)
 		Unit_play_attack_animation (this, __, direction);
+}
+
+byte __fastcall
+patch_Unit_check_precision_strike_target (Unit * this, int edx, int tile_x,int tile_y)
+{
+	byte base = Unit_check_precision_strike_target (this, __, tile_x, tile_y);
+	if ((! base) && is->current_config.allow_precision_strikes_against_tile_improvements) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		return is_explored (tile, this->Body.CivID) && has_any_destructible_overlays (tile);
+	} else
+		return base;
 }
 
 // TCC requires a main function be defined even though it's never used.
