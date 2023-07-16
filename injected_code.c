@@ -3262,10 +3262,14 @@ patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y
 		// First memoize the cost of taking each step along the path. This must be done separately because the pathfinder's internal data only
 		// lets us traverse the path backwards.
 		{
+			// Must pass cached "distance info" to Trade_Net::get_movement_cost. Trade_Net stores two sets of cached data, which one was
+			// used depends on the flags. I believe one is intended to be used for city trade connections and the other for unit movement.
+			Trade_Net_Distance_Info * dist_info = (flags & 1) ? this->Data2 : this->Data4;
+
 			clear_memo ();
 			int x = to_x, y = to_y;
 			do {
-				// flags & 1 determines whether "data2" or "data4" was used. I don't know what the difference is.
+				// "flags & 1" again determines whether Data2 or Data4 was used.
 				enum direction dir = Trade_Net_get_direction_from_internal_map (this, __, x, y, flags & 1);
 				if (dir == DIR_ZERO)
 					break;
@@ -3277,7 +3281,7 @@ patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y
 					wrap_tile_coords (&p_bic_data->Map, &prev_x, &prev_y);
 				}
 
-				memoize (patch_Trade_Net_get_movement_cost (this, __, prev_x, prev_y, x, y, unit, civ_id, flags, reverse_dir (dir), 0));
+				memoize (patch_Trade_Net_get_movement_cost (this, __, prev_x, prev_y, x, y, unit, civ_id, flags, reverse_dir (dir), dist_info));
 				x = prev_x; y = prev_y;
 			} while (! ((x == from_x) && (y == from_y)));
 		}
