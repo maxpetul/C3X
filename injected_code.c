@@ -6824,5 +6824,14 @@ patch_Unit_check_precision_strike_target (Unit * this, int edx, int tile_x,int t
 		return base;
 }
 
+void __fastcall
+patch_Unit_do_precision_strike (Unit * this, int edx, int x, int y)
+{
+	if (is->current_config.allow_precision_strikes_against_tile_improvements && (city_at (x, y) == NULL))
+		Unit_attack_tile (this, __, x, y);
+	else
+		Unit_do_precision_strike (this, __, x, y);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
