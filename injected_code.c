@@ -6347,73 +6347,6 @@ patch_tile_at_to_check_visibility_again (int x, int y)
 	return is->tile_returned_for_visibility_check;
 }
 
-Tile * __fastcall
-patch_Map_get_tile_for_draw_vis_check (Map * this, int edx, int index)
-{
-	Tile * tr = Map_get_tile (this, __, index);
-	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
-		is->dummy_tile->Body.Fog_Of_War = ((tr->Body.Fog_Of_War & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		is->dummy_tile->Body.FOWStatus  = ((tr->Body.FOWStatus  & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		is->dummy_tile->Body.V3         = ((tr->Body.V3         & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		is->dummy_tile->Body.Visibility = ((tr->Body.Visibility & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		tr = is->dummy_tile;
-	}
-	is->tile_returned_for_draw_vis_check = tr;
-	return tr;
-}
-
-// This function works like get_tile_for_draw_vis_check except it only sets the Fog_Of_War field in the dummy tile and doesn't cache the returned
-// pointer for later calls to tile_at. It's used for several patches in the drawing code where the code checks only the Fog_Of_War field.
-Tile * __fastcall
-patch_Map_get_tile_for_fow_check (Map * this, int edx, int index)
-{
-	Tile * tile = Map_get_tile (this, __, index);
-	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
-		is->dummy_tile->Body.Fog_Of_War = ((tile->Body.Fog_Of_War & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		return is->dummy_tile;
-	} else
-		return tile;
-}
-
-// Same as above except this method uses the FOWStatus field instead of Fog_Of_War
-Tile * __fastcall
-patch_Map_get_tile_for_fow_status_check (Map * this, int edx, int index)
-{
-	Tile * tile = Map_get_tile (this, __, index);
-	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
-		is->dummy_tile->Body.FOWStatus = ((tile->Body.FOWStatus & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		return is->dummy_tile;
-	} else
-		return tile;
-}
-
-Tile * __fastcall
-patch_Map_get_tile_for_visibility_check (Map * this, int edx, int index)
-{
-	Tile * tile = Map_get_tile (this, __, index);
-	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
-		is->dummy_tile->Body.Visibility = ((tile->Body.Visibility & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		return is->dummy_tile;
-	} else
-		return tile;
-}
-
-Tile * __cdecl
-patch_tile_at_for_draw_vis_check (int x, int y)
-{
-	return is->tile_returned_for_draw_vis_check;
-}
-
-Tile * __fastcall
-patch_Map_get_tile_again_for_draw_vis_check (Map * this, int edx, int index)
-{
-	return is->tile_returned_for_draw_vis_check;
-}
-
 unsigned __fastcall
 patch_Tile_m42_Get_Overlays (Tile * this, int edx, byte visible_to_civ)
 {
@@ -6440,43 +6373,6 @@ patch_Tile_m42_Get_Overlays (Tile * this, int edx, byte visible_to_civ)
 		return base_vis_overlays;
 	} else
 		return base_vis_overlays;
-}
-
-Tile * __cdecl
-patch_tile_at_for_fow_status_check (int x, int y)
-{
-	Tile * tile = tile_at (x, y);
-	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
-		is->dummy_tile->Body.FOWStatus = ((tile->Body.FOWStatus & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		return is->dummy_tile;
-	} else
-		return tile;
-}
-
-// Same as above function except this one applies to the V3 field instead of FOWStatus
-Tile * __cdecl
-patch_tile_at_for_v3_check (int x, int y)
-{
-	Tile * tile = tile_at (x, y);
-	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
-		is->dummy_tile->Body.V3 = ((tile->Body.V3 & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		return is->dummy_tile;
-	} else
-		return tile;
-}
-
-Tile * __cdecl
-patch_tile_at_for_visibility_check (int x, int y)
-{
-	Tile * tile = tile_at (x, y);
-	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
-		is->dummy_tile->Body.Visibility = ((tile->Body.Visibility & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		return is->dummy_tile;
-	} else
-		return tile;
 }
 
 byte __fastcall
@@ -6625,10 +6521,10 @@ patch_Fighter_apply_zone_of_control (Fighter * this, int edx, Unit * unit, int f
 // previously killed by ZoC. This causes move_to_adjacent_tile to return early without running the code that would place the unit on the destination
 // tile and, for example, capturing an enemy city there.
 int __fastcall
-patch_Trade_Net_get_move_cost_after_zoc (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned param_7, int neighbor_index, int param_9)
+patch_Trade_Net_get_move_cost_after_zoc (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned param_7, int neighbor_index, Trade_Net_Distance_Info * dist_info)
 {
 	return ((is->current_config.special_zone_of_control_rules & SZOCR_LETHAL) == 0) || ((Unit_get_max_hp (unit) - unit->Body.Damage) > 0) ?
-		patch_Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, param_7, neighbor_index, param_9) :
+		patch_Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, param_7, neighbor_index, dist_info) :
 		-1;
 }
 AdjacentMoveValidity __fastcall

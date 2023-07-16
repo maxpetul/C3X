@@ -520,11 +520,9 @@ struct injected_state {
 	// when we need to override the visibility data to implement hotseat shared vis.
 	Tile * dummy_tile;
 
-	// When the tile drawing code checks vis data, it first accesses the tile through Map::get_tile, then three more times through tile_at. This
-	// variable stores the return value from get_tile and then gets used as the return value for the three calls to tile_at. This way we don't
-	// need to fill in the dummy tile multiple times.
-	Tile * tile_returned_for_draw_vis_check;
-
+	// When the game checks visibility for a tile, it accesses all four visibility fields with separate calls to Map::get_tile and/or tile_at. We
+	// replace the first call, maybe altering its return to implement shared visibility, cache the return in this variable, then re-use the cached
+	// value for the next three calls.
 	Tile * tile_returned_for_visibility_check;
 
 	// Initialized to all -1. If set, the unit with the specified ID will always be the top unit displayed on the specified tile. If the unit is
