@@ -2405,9 +2405,28 @@ int const destructible_overlays =
 	0x80000000;  // outpost
 
 int
-has_any_destructible_overlays (Tile * tile)
+has_any_destructible_overlays (Tile * tile, int precision_strike)
 {
-	return (tile->vtable->m42_Get_Overlays (tile, __, 0) & destructible_overlays) != 0;
+	int overlays = tile->vtable->m42_Get_Overlays (tile, __, 0);
+	if ((overlays & destructible_overlays) == 0)
+		return 0;
+	else {
+		if (! precision_strike)
+			return 1;
+		else {
+			if (overlays == 0x20000000) { // if tile ONLY has an airfield
+				int any_aircraft_on_tile = 0; {
+					FOR_UNITS_ON (uti, tile)
+						if (p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Unit_Class == UTC_Air) {
+							any_aircraft_on_tile = 1;
+							break;
+						}
+				}
+				return ! any_aircraft_on_tile;
+			} else
+				return 1;
+		}
+	}
 }
 
 void __fastcall
@@ -2518,7 +2537,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 		} else if (target_city != NULL)
 			anything_left_to_attack = (target_city->Body.Population.Size > 1) || has_any_destructible_improvements (target_city);
 		else if (attacking_tile)
-			anything_left_to_attack = has_any_destructible_overlays (target_tile);
+			anything_left_to_attack = has_any_destructible_overlays (target_tile, 0);
 		else
 			anything_left_to_attack = 0;
 	} while ((next_up != NULL) && anything_left_to_attack && (! last_attack_didnt_happen));
@@ -6714,21 +6733,26 @@ patch_Unit_play_attack_anim_for_def_bombard (Unit * this, int edx, int direction
 		Unit_play_attack_animation (this, __, direction);
 }
 
-byte __fastcall
-patch_Unit_check_precision_strike_target (Unit * this, int edx, int tile_x,int tile_y)
+int
+can_precision_strike_tile_improv_at (Unit * unit, int x, int y)
 {
-	byte base = Unit_check_precision_strike_target (this, __, tile_x, tile_y);
-	if ((! base) && is->current_config.allow_precision_strikes_against_tile_improvements) {
-		Tile * tile = tile_at (tile_x, tile_y);
-		return is_explored (tile, this->Body.CivID) && has_any_destructible_overlays (tile);
-	} else
-		return base;
+	Tile * tile;
+	return is->current_config.allow_precision_strikes_against_tile_improvements && // we're configured to allow prec. strikes vs tiles AND
+		((tile = tile_at (x, y)) != p_null_tile) && // get tile, make sure it's valid AND
+		is_explored (tile, unit->Body.CivID) && // tile has been explored by attacker AND
+		has_any_destructible_overlays (tile, 1); // it has something that can be destroyed by prec. strike
+}
+
+byte __fastcall
+patch_Unit_check_precision_strike_target (Unit * this, int edx, int tile_x, int tile_y)
+{
+	return Unit_check_precision_strike_target (this, __, tile_x, tile_y) || can_precision_strike_tile_improv_at (this, tile_x, tile_y);
 }
 
 void __fastcall
 patch_Unit_do_precision_strike (Unit * this, int edx, int x, int y)
 {
-	if (is->current_config.allow_precision_strikes_against_tile_improvements && (city_at (x, y) == NULL))
+	if ((city_at (x, y) == NULL) && can_precision_strike_tile_improv_at (this, x, y))
 		Unit_attack_tile (this, __, x, y);
 	else
 		Unit_do_precision_strike (this, __, x, y);
