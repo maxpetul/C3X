@@ -128,6 +128,7 @@ struct c3x_config {
 	char enable_city_capture_by_barbarians;
 	char share_visibility_in_hoseat;
 	char allow_precision_strikes_against_tile_improvements;
+	char dont_end_units_turn_after_bombarding_barricade;
 	enum special_zone_of_control_rules special_zone_of_control_rules;
 	enum special_defensive_bombard_rules special_defensive_bombard_rules;
 
@@ -536,6 +537,10 @@ struct injected_state {
 
 	// Set when Fighter::apply_zone_of_control is called to store the defending unit, used by the injected filter.
 	Unit * zoc_defender;
+
+	// Normally set to NULL. When a unit bombards a tile (the tile itself, not something on it), set to point to that unit during the call to
+	// Unit::attack_tile. Used to stop the unit from losing all of its movement if configured.
+	Unit * unit_bombard_attacking_tile;
 
 	// Cleared to zero when Fighter::apply_zone_of_control is called. The interceptor must be unfortified to ensure it plays its animation. If
 	// that happens, this flag is set so that apply_zone_of_control knows to refortify the unit after the ZoC process is done.

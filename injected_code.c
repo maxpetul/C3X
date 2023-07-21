@@ -1872,6 +1872,7 @@ patch_init_floating_point ()
 		{"enable_city_capture_by_barbarians"                   , 0, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
 		{"share_visibility_in_hoseat"                          , 0, offsetof (struct c3x_config, share_visibility_in_hoseat)},
 		{"allow_precision_strikes_against_tile_improvements"   , 0, offsetof (struct c3x_config, allow_precision_strikes_against_tile_improvements)},
+		{"dont_end_units_turn_after_bombarding_barricade"      , 0, offsetof (struct c3x_config, dont_end_units_turn_after_bombarding_barricade)},
 	};
 
 	struct integer_config_option {
@@ -2032,6 +2033,8 @@ patch_init_floating_point ()
 	is->force_barb_activity_for_cities = 0;
 
 	is->dummy_tile = calloc (1, sizeof *is->dummy_tile);
+
+	is->unit_bombard_attacking_tile = NULL;
 
 	is->showing_hotseat_replay = 0;
 
@@ -6750,12 +6753,30 @@ patch_Unit_check_precision_strike_target (Unit * this, int edx, int tile_x, int 
 }
 
 void __fastcall
+patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
+{
+	if (bombarding)
+		is->unit_bombard_attacking_tile = this;
+	Unit_attack_tile (this, __, x, y, bombarding);
+	is->unit_bombard_attacking_tile = NULL;
+}
+
+void __fastcall
 patch_Unit_do_precision_strike (Unit * this, int edx, int x, int y)
 {
 	if ((city_at (x, y) == NULL) && can_precision_strike_tile_improv_at (this, x, y))
-		Unit_attack_tile (this, __, x, y);
+		patch_Unit_attack_tile (this, __, x, y, 1);
 	else
 		Unit_do_precision_strike (this, __, x, y);
+}
+
+int __fastcall
+patch_Unit_get_max_moves_after_barricade_attack (Unit * this)
+{
+	if (is->current_config.dont_end_units_turn_after_bombarding_barricade && (this == is->unit_bombard_attacking_tile))
+		return this->Body.Moves + p_bic_data->General.RoadsMovementRate;
+	else
+		return Unit_get_max_move_points (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
