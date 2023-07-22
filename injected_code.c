@@ -901,13 +901,6 @@ get_city_ptr (int id)
 	return NULL;
 }
 
-City *
-city_at (int x, int y)
-{
-	Tile * tile = tile_at (x, y);
-	return get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
-}
-
 Tile * __stdcall
 tile_at_city_or_null (City * city_or_null)
 {
