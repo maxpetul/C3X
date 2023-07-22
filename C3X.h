@@ -113,6 +113,7 @@ struct c3x_config {
 	char optimize_improvement_loops;
 	char enable_city_capture_by_barbarians;
 	char share_visibility_in_hoseat;
+	char remove_land_artillery_target_restrictions;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
