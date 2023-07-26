@@ -738,10 +738,11 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_defensive_bombard_rules")) {
 					struct parsable_field_bit bits[] = {
-						{"lethal"       , SDBR_LETHAL},
-						{"not-invisible", SDBR_NOT_INVISIBLE},
-						{"aerial"       , SDBR_AERIAL},
-						{"blitz"        , SDBR_BLITZ},
+						{"lethal"        , SDBR_LETHAL},
+						{"not-invisible" , SDBR_NOT_INVISIBLE},
+						{"aerial"        , SDBR_AERIAL},
+						{"blitz"         , SDBR_BLITZ},
+						{"docked-vs-land", SDBR_DOCKED_VS_LAND},
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_defensive_bombard_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -6639,7 +6640,10 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 			    ((attacker_class == candidate_type->Unit_Class) ||
 			     ((special_rules & SDBR_AERIAL) &&
 			      (candidate_type->Unit_Class == UTC_Air) &&
-			      (candidate_type->Air_Missions & UCV_Bombing))) &&
+			      (candidate_type->Air_Missions & UCV_Bombing)) ||
+			     ((special_rules & SDBR_DOCKED_VS_LAND) &&
+			      (candidate_type->Unit_Class == UTC_Sea) &&
+			      (get_city_ptr (defender_tile->CityID) != NULL))) &&
 			    ((! attacker_has_one_hp) || UnitType_has_ability (candidate_type, __, lethal_bombard_req))) {
 				tr = candidate;
 				highest_strength = candidate_type->Bombard_Strength;

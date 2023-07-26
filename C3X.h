@@ -42,10 +42,11 @@ enum retreat_rules {
 };
 
 enum special_defensive_bombard_rules {
-	SDBR_LETHAL        = 1,
-	SDBR_NOT_INVISIBLE = 2,
-	SDBR_AERIAL        = 4,
-	SDBR_BLITZ         = 8,
+	SDBR_LETHAL         =  1,
+	SDBR_NOT_INVISIBLE  =  2,
+	SDBR_AERIAL         =  4,
+	SDBR_BLITZ          =  8,
+	SDBR_DOCKED_VS_LAND = 16,
 };
 
 enum special_zone_of_control_rules {

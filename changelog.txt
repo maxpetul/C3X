@@ -9,6 +9,7 @@
 - Overhaul implementation of shared visibility for simplicity and correctness
 - Update UI after stack bombarding (fixes bombard button not disappearing for multi-move units w/o blitz)
 - Fix crash caused by previous fix for incorrect ETAs w/ limited railroad movement
+- Naval units in a city may perform defensive bombard vs land attackers
 
 * RELEASE 16G
 - Fix two bugs in shared hotseat visibility
