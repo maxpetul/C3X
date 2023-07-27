@@ -111,6 +111,7 @@ struct c3x_config {
 	char ignore_king_ability_for_defense_priority;
 	char show_untradable_techs_on_trade_screen;
 	char optimize_improvement_loops;
+	char disallow_useless_bombard_vs_airfields;
 	char enable_city_capture_by_barbarians;
 	char share_visibility_in_hoseat;
 	char remove_land_artillery_target_restrictions;

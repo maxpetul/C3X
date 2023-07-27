@@ -1694,6 +1694,7 @@ patch_init_floating_point ()
 		{"ignore_king_ability_for_defense_priority"            , 0, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
 		{"show_untradable_techs_on_trade_screen"               , 0, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
 		{"optimize_improvement_loops"                          , 1, offsetof (struct c3x_config, optimize_improvement_loops)},
+		{"disallow_useless_bombard_vs_airfields"               , 1, offsetof (struct c3x_config, disallow_useless_bombard_vs_airfields)},
 		{"enable_city_capture_by_barbarians"                   , 0, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
 		{"share_visibility_in_hoseat"                          , 0, offsetof (struct c3x_config, share_visibility_in_hoseat)},
 		{"remove_land_artillery_target_restrictions"           , 0, offsetof (struct c3x_config, remove_land_artillery_target_restrictions)},
@@ -6266,6 +6267,36 @@ patch_city_at_in_find_bombard_defender (int x, int y)
 	}
 
 	return city_at (x, y);
+}
+
+byte __fastcall
+patch_Unit_check_bombard_target (Unit * this, int edx, int tile_x, int tile_y)
+{
+	int base = Unit_check_bombard_target (this, __, tile_x, tile_y);
+	Tile * tile;
+	if (base &&
+	    is->current_config.disallow_useless_bombard_vs_airfields &&
+	    ((tile = tile_at (tile_x, tile_y)) != p_null_tile) &&
+	    tile->vtable->m06_Check_Airfield (tile, __, 0)) {
+
+		// Check that a bombard attack vs this tile would not be wasted. It won't be if either (1) there are no units on the tile, (2) there
+		// is a unit that can be damaged by bombarding, or (3) there are no units that can be damaged and no air units. The rules for
+		// bombardment are that you can't damage aircraft in an airfield and you also can't destroy an airfield from underneath aircraft.
+		int any_units = 0,
+		    any_vulnerable_units = 0,
+		    any_air_units = 0;
+		FOR_UNITS_ON (uti, tile) {
+			enum UnitTypeClasses class = p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Unit_Class;
+			any_units = 1;
+			any_air_units |= class == UTC_Air;
+			any_vulnerable_units |= (class != UTC_Air) && (Unit_get_defense_strength (uti.unit) > 0);
+		}
+		return (! any_units) || // case (1) above
+			any_vulnerable_units || // case (2)
+			((! any_air_units) && (! any_vulnerable_units)); // case (3)
+
+	} else
+		return base;
 }
 
 // TCC requires a main function be defined even though it's never used.

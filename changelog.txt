@@ -1,4 +1,5 @@
 - Option to allow land units to bombard aircraft and naval units in cities
+- Disallow useless bombard attacks vs airfields
 
 * RELEASE 16 PREVIEW 2
 - Option to share visibility among all human players in a hotseat game

@@ -28,6 +28,7 @@ Convenience features:
  - ** Optimize improvement loops
  - ** Option to remove Elvis Easter egg
  - ** Harbor/airport city icons indicate unit effects not trade abilities
+ - ** Disallow useless bombard attacks vs airfields
 AI enhancements:
  - Allow AI to use artillery in the field
   - ** AI artillery units are now limited to one escort
