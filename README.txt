@@ -29,6 +29,7 @@ Convenience features:
  - Optimize improvement loops
  - Option to remove Elvis Easter egg
  - Harbor/airport city icons indicate unit effects not trade abilities
+ - ** Disallow useless bombard attacks vs airfields
  - Show zone of control attack animation even when attacker is not at the top of its stack
 AI enhancements:
  - Allow AI to use artillery in the field

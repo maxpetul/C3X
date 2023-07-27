@@ -1,5 +1,6 @@
 * RELEASE 16I
 - Option to allow land units to bombard aircraft and naval units in cities
+- Disallow useless bombard attacks vs airfields
 
 * RELEASE 16H
 - Allow precision strikes to target tile improvements
