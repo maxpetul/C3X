@@ -89,6 +89,7 @@ Engine extensions:
  - Option to ignore king flag on defense, so kings aren't always last to defend in a stack
  - Option to show untradable techs on trade screen
  - Barbarian city capture & production (experimental)
+ - ** Option to allow land units to bombard aircraft and naval units in cities
  - Defensive bombard overhaul
   - May be lethal
   - May be performed by air units

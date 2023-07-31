@@ -977,13 +977,6 @@ get_city_ptr (int id)
 	return NULL;
 }
 
-City *
-city_at (int x, int y)
-{
-	Tile * tile = tile_at (x, y);
-	return get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
-}
-
 Tile * __stdcall
 tile_at_city_or_null (City * city_or_null)
 {
@@ -1873,6 +1866,7 @@ patch_init_floating_point ()
 		{"share_visibility_in_hoseat"                          , 0, offsetof (struct c3x_config, share_visibility_in_hoseat)},
 		{"allow_precision_strikes_against_tile_improvements"   , 0, offsetof (struct c3x_config, allow_precision_strikes_against_tile_improvements)},
 		{"dont_end_units_turn_after_bombarding_barricade"      , 0, offsetof (struct c3x_config, dont_end_units_turn_after_bombarding_barricade)},
+		{"remove_land_artillery_target_restrictions"           , 0, offsetof (struct c3x_config, remove_land_artillery_target_restrictions)},
 	};
 
 	struct integer_config_option {
@@ -2340,8 +2334,8 @@ can_damage_bombarding (UnitType * attacker_type, Unit * defender, Tile * defende
 		int has_lethal_land_bombard = UnitType_has_ability (attacker_type, __, UTA_Lethal_Land_Bombardment);
 		return defender->Body.Damage + (! has_lethal_land_bombard) < Unit_get_max_hp (defender);
 	} else if (defender_type->Unit_Class == UTC_Sea) {
-		// Land artillery can't damage ships in port
-		if ((attacker_type->Unit_Class == UTC_Land) && Tile_has_city (defender_tile))
+		// Land artillery can't normally damage ships in port
+		if ((attacker_type->Unit_Class == UTC_Land) && (! is->current_config.remove_land_artillery_target_restrictions) && Tile_has_city (defender_tile))
 			return 0;
 		int has_lethal_sea_bombard = UnitType_has_ability (attacker_type, __, UTA_Lethal_Sea_Bombardment);
 		return defender->Body.Damage + (! has_lethal_sea_bombard) < Unit_get_max_hp (defender);
@@ -2351,9 +2345,9 @@ can_damage_bombarding (UnitType * attacker_type, Unit * defender, Tile * defende
 		// Can't damage aircraft in an airfield by bombarding, the attack doesn't even go off
 		if ((defender_tile->vtable->m42_Get_Overlays (defender_tile, __, 0) & 0x20000000) != 0)
 			return 0;
-		// Land artillery can't damage aircraft but naval artillery and other aircraft can. Lethal bombard doesn't
-		// apply; anything that can damage can kill.
-		return attacker_type->Unit_Class != UTC_Land;
+		// Land artillery can't normally damage aircraft but naval artillery and other aircraft can. Lethal bombard doesn't apply; anything
+		// that can damage can kill.
+		return (attacker_type->Unit_Class != UTC_Land) || is->current_config.remove_land_artillery_target_restrictions;
 	} else // UTC_Space? UTC_Alternate_Dimension???
 		return 0;
 }
@@ -6777,6 +6771,22 @@ patch_Unit_get_max_moves_after_barricade_attack (Unit * this)
 		return this->Body.Moves + p_bic_data->General.RoadsMovementRate;
 	else
 		return Unit_get_max_move_points (this);
+}
+
+City * __cdecl
+patch_city_at_in_find_bombard_defender (int x, int y)
+{
+	// The caller (Fighter::find_defender_against_bombardment) has a set of lists of bombard priority/eligibility in its stack memory. The list
+	// for land units bombarding land tiles normally restricts the targets to land units by containing [UTC_Land, -1, -1]. If we're configured to
+	// remove that restriction, modify the list so it contains instead [UTC_Land, UTC_Sea, UTC_Air]. Conveniently, the offset from this function's
+	// first parameter to the list is 0x40 bytes in all executables.
+	if (is->current_config.remove_land_artillery_target_restrictions) {
+		enum UnitTypeClasses * list = (void *)((byte *)&x + 0x40);
+		list[1] = UTC_Sea;
+		list[2] = UTC_Air;
+	}
+
+	return city_at (x, y);
 }
 
 // TCC requires a main function be defined even though it's never used.

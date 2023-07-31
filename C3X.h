@@ -129,6 +129,7 @@ struct c3x_config {
 	char share_visibility_in_hoseat;
 	char allow_precision_strikes_against_tile_improvements;
 	char dont_end_units_turn_after_bombarding_barricade;
+	char remove_land_artillery_target_restrictions;
 	enum special_zone_of_control_rules special_zone_of_control_rules;
 	enum special_defensive_bombard_rules special_defensive_bombard_rules;
 

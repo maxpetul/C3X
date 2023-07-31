@@ -1,3 +1,6 @@
+* RELEASE 16I
+- Option to allow land units to bombard aircraft and naval units in cities
+
 * RELEASE 16H
 - Allow precision strikes to target tile improvements
 - Overhaul implementation of shared visibility for simplicity and correctness
