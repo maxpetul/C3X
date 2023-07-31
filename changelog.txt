@@ -1,6 +1,8 @@
 * RELEASE 16I
 - Option to allow land units to bombard aircraft and naval units in cities
 - Disallow useless bombard attacks vs airfields
+- Option not to end a unit's turn after it bombards a barricade
+- Stop precision strikes vs tiles from destroying occupied airfields
 
 * RELEASE 16H
 - Allow precision strikes to target tile improvements

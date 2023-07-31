@@ -1,5 +1,5 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 16H
+Release 16I
 
 INCLUDES (** = new in latest version):
 Convenience features:
@@ -102,6 +102,7 @@ Engine extensions:
   - May be exerted by air units
  - ** Option to share visibility among all human players in a hotseat game
  - ** Can target tile improvements with precision strikes
+ - ** Option not to end a unit's turn after it bombards a barricade
 
 INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.
