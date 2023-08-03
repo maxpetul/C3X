@@ -146,11 +146,10 @@ def prepend_dummy_structs(content, dummy_structs):
         dummy_defs += f"struct {name} {{ char dummy[{size}]; }};\n"
     return dummy_defs + content
 
-# TODO: Fill in actual sizes
 opaque_win_structs = {
-    "RTL_CRITICAL_SECTION": 4,
-    "RECT": 4,
-    "BITMAPINFO": 4,
+    "RTL_CRITICAL_SECTION": 24,
+    "RECT": 16,
+    "BITMAPINFO": 44,
     "HRGN": 4,
     "HBITMAP": 4,
     "HDC": 4,
