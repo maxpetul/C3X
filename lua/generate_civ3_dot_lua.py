@@ -31,7 +31,9 @@ def extract_enums(source):
     return tr
 
 def extract_member_info(struct_dict, enum_dict, member):
-    # Regular expression pattern to match member type and name
+    unsigned = member.startswith("unsigned")
+
+    # Regular expression pattern to match member type and name.
     pattern = r'(\b[\w]+\b\s*\**?)\s*(\b\w+\b)(\[\d+\])?'
     regex = re.compile(pattern)
 
@@ -43,9 +45,22 @@ def extract_member_info(struct_dict, enum_dict, member):
         member_name = match.group(2).strip()
         # Third group is the array size (if exists)
         array_size = match.group(3)
+
+        # Ugly fix for unsigned + char/short/int. The regex above won't work b/c it matches the integer type as the variable name. To fix, drop
+        # "unsigned" from the type, extract info, then tack it back on.
+        if unsigned and member_name in ["char", "short", "int"]:
+            n, t, s, a = extract_member_info(struct_dict, enum_dict, member.split("unsigned")[1].strip())
+            return n, "unsigned " + t, s, a
+
         # Calculate the size of the member
-        member_size = compute_member_size(struct_dict, enum_dict, member_type, array_size)
-        return member_name, member_type, member_size
+        member_size, member_alignment = compute_member_size(struct_dict, enum_dict, member_type, array_size)
+
+        return member_name, member_type, member_size, member_alignment
+
+    # TODO: Real handling of func pointers
+    elif any([x in member for x in ["__fastcall", "__thiscall", "__cdecl", "__stdcall"]]):
+        return "func_ptr", "void *", 4, 4
+
     else:
         raise Exception(f"Cannot extract info for struct member \"{member}\"")
 
@@ -89,13 +104,14 @@ def compute_member_size(struct_dict, enum_dict, member_type, array_size="1"):
     else:
         array_size = 1  # For non-array types, size multiplier is 1
 
+    struct_alignment = None
     # If member is a pointer, its size is the size of a void pointer
     if '*' in member_type:
         type_size = fundamental_type_sizes["void*"]
     elif member_type in fundamental_type_sizes:
         type_size = fundamental_type_sizes[member_type]
     elif member_type in struct_dict:
-        type_size = compute_struct_size(struct_dict, enum_dict, member_type)
+        type_size, _, struct_alignment = compute_struct_layout(struct_dict, enum_dict, member_type)
     elif member_type in enum_dict:
         type_size = fundamental_type_sizes["int"]
     elif member_type == "enum": # TODO: Actual parsing of non-typedef'd enums
@@ -103,7 +119,8 @@ def compute_member_size(struct_dict, enum_dict, member_type, array_size="1"):
     else:
         raise Exception(f"Struct member type \"{member_type}\" not recognized")
 
-    return type_size * array_size
+    alignment = type_size if struct_alignment is None else struct_alignment
+    return type_size * array_size, alignment
 
 def align(size, alignment):
     rem = size % alignment
@@ -112,18 +129,25 @@ def align(size, alignment):
     else:
         return size + alignment - rem
     
-def compute_struct_size(struct_dict, enum_dict, name):
+def compute_struct_layout(struct_dict, enum_dict, name):
+    offsets = []
     struct_size = 0
     strictest_member_alignment = 1
     for member in struct_dict[name]:
         if extract_func_ptr_info(member) is not None:
             member_size = 4
+            member_alignment = 4
         else:
-            _, _, member_size = extract_member_info(struct_dict, enum_dict, member)
-        member_alignment = min(4, member_size) # Assume we don't have any alignment requirements stricter than 4 bytes.
+            _, _, member_size, member_alignment = extract_member_info(struct_dict, enum_dict, member)
         strictest_member_alignment = max(strictest_member_alignment, member_alignment)
-        struct_size = align(struct_size, member_alignment) + member_size
-    return align(struct_size, strictest_member_alignment)
+        offsets.append(align(struct_size, member_alignment))
+        struct_size = offsets[-1] + member_size
+    return align(struct_size, strictest_member_alignment), offsets, strictest_member_alignment
+
+def print_member_offsets(struct_dict, enum_dict, name):
+    _, offsets, _ = compute_struct_layout(struct_dict, enum_dict, name)
+    for mem_name, offset in zip(struct_dict[name], offsets):
+        print(f"{offset}\t{mem_name}")
 
 def remove_c_comments(source):
     # The regular expression pattern to match C-style comments
@@ -162,4 +186,12 @@ with open("../Civ3Conquests.h", "r") as f:
 ss = extract_structs(header)
 es = extract_enums(header)
 nonvtable_structs = {name: ss[name] for name in ss.keys() if not "vtable" in name}
-s_sizes = {name: compute_struct_size(ss, es, name) for name in ss.keys()}
+# s_sizes = {name: compute_struct_layout(ss, es, name)[0] for name in ss.keys()}
+
+# Generates C code that can be added to injected_code.c to check that all the sizes we've computed match the real sizes
+# for name in ss.keys():
+#     size = compute_struct_layout(ss, es, name)[0]
+#     print(f"num_correct += {size} == sizeof({name});")
+#     print(f"if ({size} != sizeof({name}))")
+#     print(f'\tMessageBoxA (NULL, "{name}", NULL, MB_ICONINFORMATION);')
+# print(f"total_count = {len(ss)};")
