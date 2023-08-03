@@ -6660,7 +6660,7 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 	if (p_bic_data->UnitTypes[bombarder->Body.UnitTypeID].Unit_Class == UTC_Air) {
 		if (Unit_try_flying_over_tile (bombarder, __, defender->Body.X, defender->Body.Y))
 			return; // intercepted
-		else
+		else if (patch_Main_Screen_Form_is_unit_visible_to_player (p_main_screen_form, __, defender->Body.X, defender->Body.Y, bombarder))
 			Unit_play_bombing_animation (bombarder, __, defender->Body.X, defender->Body.Y);
 	}
 

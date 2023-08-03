@@ -1,5 +1,6 @@
 * RELEASE 16J
 - Option to allow bombardment of other improvements on a tile with an occupied airfield
+- Fix aerial defensive bombard animations showing over fog during AI replays
 
 * RELEASE 16I
 - Option to allow land units to bombard aircraft and naval units in cities
