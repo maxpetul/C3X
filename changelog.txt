@@ -1,3 +1,6 @@
+* RELEASE 16J
+- Option to allow bombardment of other improvements on a tile with an occupied airfield
+
 * RELEASE 16I
 - Option to allow land units to bombard aircraft and naval units in cities
 - Disallow useless bombard attacks vs airfields

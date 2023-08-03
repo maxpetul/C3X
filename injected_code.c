@@ -1869,6 +1869,7 @@ patch_init_floating_point ()
 		{"allow_precision_strikes_against_tile_improvements"   , 0, offsetof (struct c3x_config, allow_precision_strikes_against_tile_improvements)},
 		{"dont_end_units_turn_after_bombarding_barricade"      , 0, offsetof (struct c3x_config, dont_end_units_turn_after_bombarding_barricade)},
 		{"remove_land_artillery_target_restrictions"           , 0, offsetof (struct c3x_config, remove_land_artillery_target_restrictions)},
+		{"allow_bombard_of_other_improvs_on_occupied_airfield" , 0, offsetof (struct c3x_config, allow_bombard_of_other_improvs_on_occupied_airfield)},
 	};
 
 	struct integer_config_option {
@@ -6799,10 +6800,12 @@ patch_Unit_check_bombard_target (Unit * this, int edx, int tile_x, int tile_y)
 {
 	int base = Unit_check_bombard_target (this, __, tile_x, tile_y);
 	Tile * tile;
+	int overlays;
 	if (base &&
 	    is->current_config.disallow_useless_bombard_vs_airfields &&
 	    ((tile = tile_at (tile_x, tile_y)) != p_null_tile) &&
-	    tile->vtable->m06_Check_Airfield (tile, __, 0)) {
+	    ((overlays = tile->vtable->m42_Get_Overlays (tile, __, 0)) & 0x20000000) && // if tile has an airfield AND
+	    (overlays == 0x20000000)) { // tile only has an airfield
 
 		// Check that a bombard attack vs this tile would not be wasted. It won't be if either (1) there are no units on the tile, (2) there
 		// is a unit that can be damaged by bombarding, or (3) there are no units that can be damaged and no air units. The rules for
@@ -6822,6 +6825,25 @@ patch_Unit_check_bombard_target (Unit * this, int edx, int tile_x, int tile_y)
 
 	} else
 		return base;
+}
+
+int __fastcall
+patch_Unit_get_defense_for_bombardable_unit_check (Unit * this)
+{
+	// Returning a defense value of zero indicates this unit is not a target for bombardment. If configured, exclude all air units from
+	// bombardment so the attacks target tile improvements instead. Do this only if the tile has another improvement in addition to an airfield,
+	// or we could destroy the airfield itself.
+	Tile * tile;
+	int overlays;
+	if (is->current_config.allow_bombard_of_other_improvs_on_occupied_airfield && // If configured AND
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air) && // "this" is an air unit AND
+	    ((tile = tile_at (this->Body.X, this->Body.Y)) != p_null_tile) && // "this" is on a valid tile AND
+	    ((overlays = tile->vtable->m42_Get_Overlays (tile, __, 0)) & 0x20000000) && // tile has an airfield AND
+	    (overlays != 0x20000000)) // tile does not only have an airfield
+		return 0;
+
+	else
+		return Unit_get_defense_strength (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
