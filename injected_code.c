@@ -1549,7 +1549,7 @@ patch_init_floating_point ()
 			MessageBoxA (NULL, "Failed to load lua51.dll", NULL, MB_ICONERROR);
 
 		// Replace the Lua DLL's GetProcAddress function with one that can return objects from the base game and this mod
-		FARPROC (__stdcall ** p_lua_GetProcAddress) (HMODULE hModule, char const * lpProcName) = (int)lua_module + 0x48020;
+		FARPROC (__stdcall ** p_lua_GetProcAddress) (HMODULE hModule, char const * lpProcName) = (void *)((int)lua_module + 0x48020);
 		if (*p_lua_GetProcAddress == *p_GetProcAddress) { // Check that we have the right address
 			WITH_MEM_PROTECTION (p_lua_GetProcAddress, 4, PAGE_EXECUTE_READWRITE)
 				*p_lua_GetProcAddress = patch_lua_GetProcAddress;
@@ -1574,7 +1574,7 @@ patch_init_floating_point ()
 		lua_State * ls = is->lua.state;
 
 		// Open Lua built-in libraries
-		char const * lib_names[] = {"base", LUA_LOADLIBNAME, LUA_MATHLIBNAME, LUA_STRLIBNAME, LUA_TABLIBNAME, LUA_JITLIBNAME, LUA_FFILIBNAME};
+		char const * lib_names[] = {"base", LUA_LOADLIBNAME, LUA_MATHLIBNAME, LUA_IOLIBNAME, LUA_STRLIBNAME, LUA_TABLIBNAME, LUA_JITLIBNAME, LUA_FFILIBNAME};
 		for (int n = 0; n < ARRAY_LEN (lib_names); n++) {
 			char opener_name[30];
 			snprintf (opener_name, sizeof opener_name, "luaopen_%s", lib_names[n]);
