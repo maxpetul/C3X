@@ -1,6 +1,15 @@
 
 import re
 
+def convert_to_camel_case(identifier, capitalize_first=False):
+    parts = identifier.split("_")
+    parts[0] = (parts[0][0].capitalize() if capitalize_first else parts[0][0].lower()) + parts[0][1:]
+    for i in range(1, len(parts)):
+        parts[i] = parts[i].capitalize()
+    return "".join(parts)
+assert(all(convert_to_camel_case(x, True ) == "FooBar" for x in ["foo_bar", "fooBar", "FooBar", "Foo_Bar"]))
+assert(all(convert_to_camel_case(x, False) == "fooBar" for x in ["foo_bar", "fooBar", "FooBar", "Foo_Bar"]))
+
 def extract_structs(source):
     struct_pattern = r'struct\s+(\w+)\s*\{([^}]*)\}\s*;'
     regex = re.compile(struct_pattern, re.MULTILINE | re.DOTALL)
