@@ -6806,6 +6806,7 @@ patch_Unit_check_bombard_target (Unit * this, int edx, int tile_x, int tile_y)
 	    ((tile = tile_at (tile_x, tile_y)) != p_null_tile) &&
 	    ((overlays = tile->vtable->m42_Get_Overlays (tile, __, 0)) & 0x20000000) && // if tile has an airfield AND
 	    (overlays == 0x20000000)) { // tile only has an airfield
+		UnitType * this_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
 
 		// Check that a bombard attack vs this tile would not be wasted. It won't be if either (1) there are no units on the tile, (2) there
 		// is a unit that can be damaged by bombarding, or (3) there are no units that can be damaged and no air units. The rules for
@@ -6817,7 +6818,8 @@ patch_Unit_check_bombard_target (Unit * this, int edx, int tile_x, int tile_y)
 			enum UnitTypeClasses class = p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Unit_Class;
 			any_units = 1;
 			any_air_units |= class == UTC_Air;
-			any_vulnerable_units |= (class != UTC_Air) && (Unit_get_defense_strength (uti.unit) > 0);
+			any_vulnerable_units |= (class != UTC_Air) && (Unit_get_defense_strength (uti.unit) > 0) &&
+				can_damage_bombarding (this_type, uti.unit, tile);
 		}
 		return (! any_units) || // case (1) above
 			any_vulnerable_units || // case (2)

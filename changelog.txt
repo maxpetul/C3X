@@ -1,3 +1,6 @@
+* RELEASE 16K
+- Consider lethal bombard ability when disallowing useless bombard vs airfields
+
 * RELEASE 16J
 - Option to allow bombardment of other improvements on a tile with an occupied airfield
 - Fix aerial defensive bombard animations showing over fog during AI replays
