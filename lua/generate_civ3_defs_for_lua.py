@@ -188,6 +188,59 @@ opaque_win_structs = {
     "HDC": 4,
 }
 
+# "defines" is a dictionary mapping struct names to lists. Each list specifies which members to include in the exported defs, any others will be left
+# opaque.
+def generate_civ3_defs_for_lua(struct_dict, proced_struct_dict, enum_dict, defines):
+    from collections import OrderedDict
+
+    ss = struct_dict
+    pss = proced_struct_dict
+    es = enum_dict
+
+    # Takes a struct type name returns a list of struct type names that are contained in the struct, possibly indirectly.
+    # Example: "Tile" -> ["Base", "Tile_Body"]
+    def gather_deps(s_name):
+        tr = []
+        for m in pss[s_name]: # For each member of s_name
+            _, member_type, _, _ = m
+            if (member_type in ss) and not (member_type in tr): # If that member is a struct and not already in the list of deps
+                tr.extend(gather_deps(member_type)) # Recursively add its deps to the list
+                tr.append(member_type) # Add the member type itself to the list
+        return tr
+
+    # Reorder & extend "defines" so all the structs are preceded by their dependencies
+    ordered_defines = OrderedDict()
+    for s_name in defines.keys():
+        for dep_name in gather_deps(s_name):
+            if not dep_name in ordered_defines:
+                ordered_defines[dep_name] = []
+        ordered_defines[s_name] = defines[s_name]
+
+    tr = ""
+    for struct_name, included_members in ordered_defines.items():
+        tr += f"typedef struct s_{struct_name}\n{{\n"
+
+        struct_size, offsets, _ = compute_struct_layout(ss, es, struct_name)
+        opaque_counter = 0
+        running_size = 0
+        for m, offset in zip(pss[struct_name], offsets):
+            member_name, member_type, member_size, member_alignment = m
+            if member_name in included_members:
+                current_offset = align(running_size, member_alignment)
+                if current_offset < offset: # If we need padding
+                    tr += f"\tbyte _opaque_{opaque_counter}[{offset - current_offset}];\n"
+                    opaque_counter += 1
+                tr += f"\t{member_type} {member_name};\n";
+                running_size = offset + member_size
+
+        # Insert padding at end of struct
+        if running_size < struct_size:
+            tr += f"\tbyte _opaque_{opaque_counter}[{struct_size - running_size}];\n"
+
+        tr += f"}} {struct_name};\n"
+
+    return tr;
+
 with open("../Civ3Conquests.h", "r") as f:
     header = f.read()
     header = remove_c_comments(header)
@@ -196,6 +249,13 @@ ss = extract_structs(header)
 es = extract_enums(header)
 nonvtable_structs = {name: ss[name] for name in ss.keys() if not "vtable" in name}
 # s_sizes = {name: compute_struct_layout(ss, es, name)[0] for name in ss.keys()}
+
+# Process struct dict
+pss = {}
+for name, members in ss.items():
+    proced_members = [extract_member_info(ss, es, m) for m in members]
+    pss[name] = proced_members
+
 
 # Generates C code that can be added to injected_code.c to check that all the sizes we've computed match the real sizes
 # for name in ss.keys():
