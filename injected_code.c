@@ -6867,5 +6867,27 @@ patch_Unit_get_defense_for_bombardable_unit_check (Unit * this)
 		return Unit_get_defense_strength (this);
 }
 
+void __fastcall
+patch_Demographics_Form_m22_draw (Demographics_Form * this)
+{
+	Demographics_Form_m22_draw (this);
+
+	// There's proably a better way to get the city count, but better safe than sorry. I don't know if it's possible for the city list to contain
+	// holes so the surest thing is to check every possible ID.
+	int city_count = 0; {
+		if (p_cities->Cities != NULL)
+			for (int n = 0; n <= p_cities->LastIndex; n++) {
+				City_Body * body = p_cities->Cities[n].City;
+				city_count += (body != NULL) && ((int)body != offsetof (City, Body));
+			}
+	}
+
+	char s[100];
+	snprintf (s, sizeof s, "City count: %d / 512", city_count);
+	s[(sizeof s) - 1] = '\0';
+	PCX_Image_set_font (&this->Base.Data.Canvas, __, get_font (14, FSF_NONE), 0, 0, 0);
+	PCX_Image_draw_text (&this->Base.Data.Canvas, __, s, 30, 730, strlen (s));
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

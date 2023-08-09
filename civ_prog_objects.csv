@@ -421,6 +421,7 @@ inlead,	   0x5C3510,	0x5D2140,	0x5C3220,	"Unit_check_bombard_target",			"byte (_
 repl call, 0x52C912,	0x536D92,	0x52C9A2,	"Unit_get_defense_for_bombardable_unit_check",	""
 repl call, 0x57F627,	0x58C356,	0x57F387,	"get_tile_occupier_for_ai_path",		""
 repl call, 0x56D9D1,	0x57A3C2,	0x56D941,	"Unit_is_tile_occupier_visible",		""
+repl vptr, 0x66BF68,	0x0,		0x0,		"Demographics_Form_m22_draw",			"void (__fastcall *) (Demographics_Form * this)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
