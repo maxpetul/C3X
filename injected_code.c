@@ -1589,12 +1589,6 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	WITH_MEM_PROTECTION (ADDR_ERA_COUNT_CHECK, 1, PAGE_EXECUTE_READWRITE)
 		*(byte *)ADDR_ERA_COUNT_CHECK = cfg->remove_era_limit ? 0xEB : 0x74;
 
-	// Fix submarine bug
-	// Address refers to the last parameter (respect_unit_visiblity) for a call to Unit::is_visible_to_civ inside some kind of pathfinding
-	// function.
-	WITH_MEM_PROTECTION (ADDR_SUB_BUG_PATCH, 1, PAGE_EXECUTE_READWRITE)
-		*(byte *)ADDR_SUB_BUG_PATCH = cfg->patch_submarine_bug ? 0 : 1;
-
 	// Fix science age bug
 	// Similar in nature to the sub bug, the function that measures a city's research output accepts a flag that determines whether or not it
 	// takes science ages into account. It's mistakenly not set by the code that gathers all research points to increment tech progress (but it
@@ -2034,6 +2028,7 @@ patch_init_floating_point ()
 	is->unit_bombard_attacking_tile = NULL;
 
 	is->showing_hotseat_replay = 0;
+	is->getting_tile_occupier_for_ai_pathfinding = 0;
 
 	is->water_trade_improvs    = (struct improv_id_list) {0};
 	is->air_trade_improvs      = (struct improv_id_list) {0};
@@ -2176,6 +2171,30 @@ init_tile_highlights ()
 	is->tile_highlight_state = IS_OK;
 cleanup:
 	pcx.vtable->destruct (&pcx, __, 0);
+}
+
+int __cdecl
+patch_get_tile_occupier_for_ai_path (int x, int y, int pov_civ_id, byte respect_unit_invisibility)
+{
+	is->getting_tile_occupier_for_ai_pathfinding = 1;
+	return get_tile_occupier_id (x, y, pov_civ_id, respect_unit_invisibility);
+	is->getting_tile_occupier_for_ai_pathfinding = 0;
+}
+
+char __fastcall patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2);
+
+char __fastcall
+patch_Unit_is_tile_occupier_visible (Unit * this, int edx, int civ_id, int param_2)
+{
+	// Here's the fix for the submarine bug: If we're constructing a path for an AI unit, ignore unit invisibility so the pathfinder will path
+	// around instead of over other civ's units. We must carve out an exception if the AI is at war with the unit in question. In that case if it
+	// "accidentally" paths over the unit, it should get stuck in combat like the human player would.
+	if (is->current_config.patch_submarine_bug &&
+	    is->getting_tile_occupier_for_ai_pathfinding &&
+	    ! this->vtable->is_enemy_of_civ (this, __, civ_id, 0))
+		return 1;
+	else
+		return patch_Unit_is_visible_to_civ (this, __, civ_id, param_2);
 }
 
 void do_trade_scroll (DiploForm * diplo, int forward);

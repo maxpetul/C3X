@@ -41,6 +41,7 @@ AI enhancements:
  - Can limit the number of escorts the AI assigns to its naval transports and carriers
 Bugs fixed:
  - AI pathfinding collides with invisible units (called the "submarine bug")
+  - ** Exclude enemy units so the AI doesn't path around enemies it isn't supposed to be able to see
  - Science age beakers not actually awarded
  - Pink line in Civilopedia
  - Crash when doing disembark-all on transport containing immobile unit(s)

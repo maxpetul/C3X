@@ -559,7 +559,11 @@ struct injected_state {
 	} dbe;
 
 	// Set to 1 IFF we're showing a replay of AI moves in hotseat mode
-	int showing_hotseat_replay;
+	byte showing_hotseat_replay;
+
+	// Set to 1 only during the first call to get_tile_occupier_id from Trade_Net::get_movement_cost. While this is set, we need to edit unit
+	// visibility to patch the submarine bug.
+	byte getting_tile_occupier_for_ai_pathfinding;
 
 	// ==========
 	// }

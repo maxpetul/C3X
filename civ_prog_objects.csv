@@ -14,7 +14,6 @@ repl vptr, 0x73A8FC,	0x756C74,	0x73A8D4,	"init_floating_point",				"void (__stdc
 define,    0x5B6B01,	0x5C5458,	0x5B6811,	"ADDR_STEALTH_ATTACK_TARGET_COUNT_CHECK",	"void *"
 define,    0x569503,	0x575933,	0x5694B3,	"ADDR_UNIT_COUNT_CHECK",			"void *"
 define,    0x594B35,	0x5A2357,	0x594855,	"ADDR_ERA_COUNT_CHECK",				"void *"
-define,    0x57F623,	0x58C352,	0x57F383,	"ADDR_SUB_BUG_PATCH",				"void *"
 define,    0x5601EF,	0x56C2E3,	0x56019F,	"ADDR_SCIENCE_AGE_BUG_PATCH",			"void *"
 define,    0x4CD0B1,	0x4D5151,	0x4CD171,	"ADDR_PEDIA_TEXTURE_BUG_PATCH",			"void *"
 define,    0x5640AC,	0x570385,	0x56405C,	"ADDR_AUTORAZE_BYPASS",				"void *"
@@ -420,6 +419,8 @@ define,	   0x56D2C0,	0x579C40,	0x56D230,	"city_at",					"City * (__cdecl *) (int
 repl call, 0x4A2018,	0x4A8C28,	0x4A20A8,	"city_at_in_find_bombard_defender",		""
 inlead,	   0x5C3510,	0x5D2140,	0x5C3220,	"Unit_check_bombard_target",			"byte (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)"
 repl call, 0x52C912,	0x536D92,	0x52C9A2,	"Unit_get_defense_for_bombardable_unit_check",	""
+repl call, 0x57F627,	0x58C356,	0x57F387,	"get_tile_occupier_for_ai_path",		""
+repl call, 0x56D9D1,	0x57A3C2,	0x56D941,	"Unit_is_tile_occupier_visible",		""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
@@ -443,3 +444,4 @@ ignore,	   0x605010,	0x61C6A0,	0x604F00,	"Base_Form_impl_m01_Show_Enabled",		"vo
 ignore,	   0x74AF60,	0x0,		0x0,		"p_sync_object",				"void *"
 ignore,	   0x474140,	0x0,		0x0,		"mp_despawn",					"void (__fastcall *) (void * this, int edx, int unit_id, int civ_id_responsible, byte param_3, byte param_4, byte param_5, byte param_6)"
 ignore,    0x5C0E20,	0x5CF9C0,	0x5C0B30,	"Unit_begin_bombarding_tile",			"byte (__fastcall *) (Unit * this, int edx, int x, int y)"
+ignore,    0x57F623,	0x58C352,	0x57F383,	"ADDR_SUB_BUG_PATCH",				"void *"
