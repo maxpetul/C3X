@@ -55,6 +55,9 @@ We were chased off by enemy air defenses.
 ; As in a "preview" version of the mod. Used on the mod info popup.
 Preview
 
+; Label for the total number of cities in the game. Appears on the F11 demographics screen, if enabled.
+Total cities:
+
 ; Unit AI strategy names. Matches what they're called in the editor.
 Offense
 Defense

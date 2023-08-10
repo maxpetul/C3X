@@ -1864,6 +1864,7 @@ patch_init_floating_point ()
 		{"dont_end_units_turn_after_bombarding_barricade"      , 0, offsetof (struct c3x_config, dont_end_units_turn_after_bombarding_barricade)},
 		{"remove_land_artillery_target_restrictions"           , 0, offsetof (struct c3x_config, remove_land_artillery_target_restrictions)},
 		{"allow_bombard_of_other_improvs_on_occupied_airfield" , 0, offsetof (struct c3x_config, allow_bombard_of_other_improvs_on_occupied_airfield)},
+		{"show_total_city_count"                               , 0, offsetof (struct c3x_config, show_total_city_count)},
 	};
 
 	struct integer_config_option {
@@ -6872,26 +6873,30 @@ patch_Demographics_Form_m22_draw (Demographics_Form * this)
 {
 	Demographics_Form_m22_draw (this);
 
-	// There's proably a better way to get the city count, but better safe than sorry. I don't know if it's possible for the city list to contain
-	// holes so the surest thing is to check every possible ID.
-	int city_count = 0; {
-		if (p_cities->Cities != NULL)
-			for (int n = 0; n <= p_cities->LastIndex; n++) {
-				City_Body * body = p_cities->Cities[n].City;
-				city_count += (body != NULL) && ((int)body != offsetof (City, Body));
-			}
+	if (is->current_config.show_total_city_count) {
+		// There's proably a better way to get the city count, but better safe than sorry. I don't know if it's possible for the city list to
+		// contain holes so the surest thing is to check every possible ID.
+		int city_count = 0; {
+			if (p_cities->Cities != NULL)
+				for (int n = 0; n <= p_cities->LastIndex; n++) {
+					City_Body * body = p_cities->Cities[n].City;
+					city_count += (body != NULL) && ((int)body != offsetof (City, Body));
+				}
+		}
+
+		PCX_Image * canvas = &this->Base.Data.Canvas;
+
+		// Draw a white rectangle on the center bottom of the form
+		RECT plate_area = {1024/2 - 100, 728, 1024/2 + 100, 745};
+		PCX_Image_register_rect (canvas, __, &plate_area, 0x8000FFFF);
+
+		// Draw text on top of the rectangle
+		char s[100];
+		snprintf (s, sizeof s, "%s %d / 512", is->c3x_labels[CL_TOTAL_CITIES], city_count);
+		s[(sizeof s) - 1] = '\0';
+		PCX_Image_set_text_effects (canvas, __, 0x80000000, -1, 2, 2); // Set text color to black
+		PCX_Image_draw_centered_text (canvas, __, get_font (14, FSF_NONE), s, 1024/2 - 100, 730, 200, strlen (s));
 	}
-
-	PCX_Image * canvas = &this->Base.Data.Canvas;
-	RECT plate_area = {1024/2 - 100, 728, 1024/2 + 100, 745};
-	PCX_Image_register_rect (canvas, __, &plate_area, 0x8000FFFF);
-
-	char s[100];
-	snprintf (s, sizeof s, "Total cities: %d / 512", city_count);
-	s[(sizeof s) - 1] = '\0';
-	void (__fastcall * PCX_Image_set_params) (PCX_Image * this, int edx, int font_color, int param_2, int param_3, int param_4) = (void *)0x5FD360;
-	PCX_Image_set_text_effects (canvas, __, 0x80000000, -1, 2, 2);
-	PCX_Image_draw_centered_text (canvas, __, get_font (14, FSF_NONE), s, 1024/2 - 100, 730, 200, strlen (s));
 }
 
 // TCC requires a main function be defined even though it's never used.

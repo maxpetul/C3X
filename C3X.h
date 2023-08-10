@@ -133,6 +133,7 @@ struct c3x_config {
 	char dont_end_units_turn_after_bombarding_barricade;
 	char remove_land_artillery_target_restrictions;
 	char allow_bombard_of_other_improvs_on_occupied_airfield;
+	char show_total_city_count;
 	enum special_zone_of_control_rules special_zone_of_control_rules;
 	enum special_defensive_bombard_rules special_defensive_bombard_rules;
 
@@ -236,6 +237,7 @@ enum c3x_label {
 	CL_NO_STEALTH_ATTACK,
 	CL_DODGED_SAM,
 	CL_PREVIEW,
+	CL_TOTAL_CITIES,
 
 	// Offense, Defense, Artillery, etc.
 	CL_FIRST_UNIT_STRAT,
