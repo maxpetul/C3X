@@ -6882,11 +6882,16 @@ patch_Demographics_Form_m22_draw (Demographics_Form * this)
 			}
 	}
 
+	PCX_Image * canvas = &this->Base.Data.Canvas;
+	RECT plate_area = {1024/2 - 100, 728, 1024/2 + 100, 745};
+	PCX_Image_register_rect (canvas, __, &plate_area, 0x8000FFFF);
+
 	char s[100];
-	snprintf (s, sizeof s, "City count: %d / 512", city_count);
+	snprintf (s, sizeof s, "Total cities: %d / 512", city_count);
 	s[(sizeof s) - 1] = '\0';
-	PCX_Image_set_font (&this->Base.Data.Canvas, __, get_font (14, FSF_NONE), 0, 0, 0);
-	PCX_Image_draw_text (&this->Base.Data.Canvas, __, s, 30, 730, strlen (s));
+	void (__fastcall * PCX_Image_set_params) (PCX_Image * this, int edx, int font_color, int param_2, int param_3, int param_4) = (void *)0x5FD360;
+	PCX_Image_set_text_effects (canvas, __, 0x80000000, -1, 2, 2);
+	PCX_Image_draw_centered_text (canvas, __, get_font (14, FSF_NONE), s, 1024/2 - 100, 730, 200, strlen (s));
 }
 
 // TCC requires a main function be defined even though it's never used.
