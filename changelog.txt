@@ -1,3 +1,4 @@
+- Option to boost OCN increase from forbidden palaces in non-communal governments
 - Rework sub bug fix in order not to interfere with AI pathing vs enemy units
 
 * RELEASE 16K

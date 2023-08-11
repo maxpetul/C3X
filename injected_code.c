@@ -1865,6 +1865,7 @@ patch_init_floating_point ()
 		{"remove_land_artillery_target_restrictions"           , 0, offsetof (struct c3x_config, remove_land_artillery_target_restrictions)},
 		{"allow_bombard_of_other_improvs_on_occupied_airfield" , 0, offsetof (struct c3x_config, allow_bombard_of_other_improvs_on_occupied_airfield)},
 		{"show_total_city_count"                               , 0, offsetof (struct c3x_config, show_total_city_count)},
+		{"strengthen_forbidden_palace_ocn_effect"              , 0, offsetof (struct c3x_config, strengthen_forbidden_palace_ocn_effect)},
 	};
 
 	struct integer_config_option {
@@ -6897,6 +6898,29 @@ patch_Demographics_Form_m22_draw (Demographics_Form * this)
 		PCX_Image_set_text_effects (canvas, __, 0x80000000, -1, 2, 2); // Set text color to black
 		PCX_Image_draw_centered_text (canvas, __, get_font (14, FSF_NONE), s, 1024/2 - 100, 730, 200, strlen (s));
 	}
+}
+
+int __fastcall
+patch_Leader_get_optimal_city_number (Leader * this)
+{
+	if (! is->current_config.strengthen_forbidden_palace_ocn_effect)
+		return Leader_get_optimal_city_number (this);
+	else {
+		int num_sans_fp = Leader_get_optimal_city_number (this), // OCN w/o contrib from num of FPs
+		    fp_count = Leader_count_wonders_with_small_flag (this, __, ITSW_Reduces_Corruption, NULL),
+		    s_diff = p_bic_data->DifficultyLevels[this->field_30].Optimal_Cities, // Difficulty scaling, called "percentage of optimal cities" in the editor
+		    base_ocn = p_bic_data->WorldSizes[p_bic_data->Map.World.World_Size].OptimalCityCount;
+		return num_sans_fp + (s_diff * fp_count * base_ocn + 50) / 100; // Add 50 to round off
+	}
+}
+
+int __fastcall
+patch_Leader_count_forbidden_palaces_for_ocn (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null)
+{
+	if (! is->current_config.strengthen_forbidden_palace_ocn_effect)
+		return Leader_count_wonders_with_small_flag (this, __, flag, city_or_null);
+	else
+		return 0; // We'll add in the FP effect later with a different weight
 }
 
 // TCC requires a main function be defined even though it's never used.
