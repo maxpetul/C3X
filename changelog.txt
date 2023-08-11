@@ -1,4 +1,6 @@
+* RELEASE 16L
 - Option to boost OCN increase from forbidden palaces in non-communal governments
+- Display total city count (disabled by default, appears on demographics screen)
 - Rework sub bug fix in order not to interfere with AI pathing vs enemy units
 
 * RELEASE 16K
