@@ -215,8 +215,9 @@ def generate_civ3_defs_for_lua(struct_dict, proced_struct_dict, enum_dict, defin
     def gather_deps(s_name):
         tr = []
         for m in pss[s_name]: # For each member of s_name
-            _, member_type, _, _ = m
-            if (member_type in ss) and not (member_type in tr): # If that member is a struct and not already in the list of deps
+            member_name, member_type, _, _ = m
+            is_exported = (s_name in defines) and (member_name in defines[s_name])
+            if (member_type in ss) and is_exported and not (member_type in tr): # If that member is a struct, is to be exported, and not already in the list of deps
                 tr.extend(gather_deps(member_type)) # Recursively add its deps to the list
                 tr.append(member_type) # Add the member type itself to the list
         return tr
