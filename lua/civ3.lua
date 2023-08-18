@@ -83,7 +83,7 @@ local MainScreenForm_metatable = {
     GetController = function() return ffi.C.get_ui_controller() end
   }
 }
-MainScreenForm = ffi.metatype("MainScreenForm_t", MainScreenForm_metatable)
+MainScreenForm = ffi.metatype("MainScreenForm", MainScreenForm_metatable)
 
 ---@class Leader
 ---@field Cities fun(): NextCityOf, any, City | nil Returns an iterator over this player's cities
@@ -94,7 +94,7 @@ local Leader_metatable = {
     Cities = function(this) return CitiesOf(this.ID) end
   }
 }
-Leader = ffi.metatype("Leader_t", Leader_metatable)
+Leader = ffi.metatype("Leader", Leader_metatable)
 
 --- @class City
 --- @field RecomputeHappiness fun(): nil
@@ -108,7 +108,7 @@ local City_metatable = {
     GetName = function(this) return ffi.string(this.Body.CityName, 20) end
   }
 }
-City = ffi.metatype("City_t", City_metatable)
+City = ffi.metatype("City", City_metatable)
 
 --- Opens a popup window
 --- @param scriptPath string Path to the script.txt file containing the text key

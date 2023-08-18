@@ -1,4 +1,4 @@
-typedef struct MainScreenForm
+typedef struct s_MainScreenForm
 {
   int vtable;
   int field_4[4974];
@@ -7,9 +7,9 @@ typedef struct MainScreenForm
   char turnEndFlag;
   char field_2E199[3];
   int field_2E19C[1731];
-} MainScreenForm_t;
+} MainScreenForm;
 
-typedef struct Citizen_Body
+typedef struct s_Citizen_Body
 {
   int vtable;
   int field_20[66];
@@ -22,74 +22,74 @@ typedef struct Citizen_Body
   int RaceID;
   int field_144;
   int field_148;
-} Citizen_Body_t;
+} Citizen_Body;
 
-typedef struct Citizen_Info
+typedef struct s_Citizen_Info
 {
   int field_0;
-  Citizen_Body_t *Body;
-} Citizen_Info_t;
+  Citizen_Body *Body;
+} Citizen_Info;
 
-typedef struct CitizenList
+typedef struct s_CitizenList
 {
   int vtable;
-  Citizen_Info_t *Items;
+  Citizen_Info *Items;
   int field_8;
   int field_C;
   int LastIndex;
   int Capacity;
-} CitizenList_t;
+} CitizenList;
 
-typedef struct City_Body
+typedef struct s_City_Body
 {
   int field_0[3];
   char OwnerID;
   char field_D[3];
   int field_10[44];
-  CitizenList_t citizenList;
+  CitizenList citizenList;
   int field_D8[59];
   char CityName[20];
   int field_1D8[212];
-} City_Body_t;
+} City_Body;
 
-typedef struct City
+typedef struct s_City
 {
   int field_0[7];
-  City_Body_t Body;
-} City_t;
+  City_Body Body;
+} City;
 
-typedef struct CityItem
+typedef struct s_CityItem
 {
   int field_0;
-  City_Body_t *City;
-} CityItem_t;
+  City_Body *City;
+} CityItem;
 
-typedef struct Cities
+typedef struct s_Cities
 {
   int vtable;
-  CityItem_t *Cities;
+  CityItem *Cities;
   int V1;
   int V2;
   int LastIndex;
   int Capacity;
-} Cities_t;
+} Cities;
 
-typedef struct Leader
+typedef struct s_Leader
 {
   int vtable;
   int field_4[6];
   int ID;
   int field_20[2097];
-} Leader_t;
+} Leader;
 
 void pop_up_in_game_error(char const * msg);
-Cities_t * get_p_cities();
-City_t * get_city_ptr(int id);
-Leader_t * get_ui_controller();
-void __thiscall City_recompute_happiness(City_t * this);
-void __thiscall City_zoom_to(City_t * this);
+Cities * get_p_cities();
+City * get_city_ptr(int id);
+Leader * get_ui_controller();
+void __thiscall City_recompute_happiness(City * this);
+void __thiscall City_zoom_to(City * this);
 char * get_c3x_script_path();
-MainScreenForm_t * get_main_screen_form();
+MainScreenForm * get_main_screen_form();
 
 void * __stdcall get_popup_form();
 int __cdecl set_popup_str_param(int param_index, char const * str, int param_3, int param_4);
