@@ -13,13 +13,13 @@ typedef struct s_Citizen_Body
 {
   int vtable;
   int field_20[66];
-  int Mood;
-  int Gender;
+  int mood;
+  int gender;
   int field_130;
   int field_134;
   int field_138;
-  int WorkerType;
-  int RaceID;
+  int workerType;
+  int raceID;
   int field_144;
   int field_148;
 } Citizen_Body;
@@ -27,58 +27,58 @@ typedef struct s_Citizen_Body
 typedef struct s_Citizen_Info
 {
   int field_0;
-  Citizen_Body *Body;
+  Citizen_Body *body;
 } Citizen_Info;
 
 typedef struct s_CitizenList
 {
   int vtable;
-  Citizen_Info *Items;
+  Citizen_Info *items;
   int field_8;
   int field_C;
-  int LastIndex;
-  int Capacity;
+  int lastIndex;
+  int capacity;
 } CitizenList;
 
 typedef struct s_City_Body
 {
   int field_0[3];
-  char OwnerID;
+  char ownerID;
   char field_D[3];
   int field_10[44];
   CitizenList citizenList;
   int field_D8[59];
-  char CityName[20];
+  char cityName[20];
   int field_1D8[212];
 } City_Body;
 
 typedef struct s_City
 {
   int field_0[7];
-  City_Body Body;
+  City_Body body;
 } City;
 
 typedef struct s_CityItem
 {
   int field_0;
-  City_Body *City;
+  City_Body *city;
 } CityItem;
 
 typedef struct s_Cities
 {
   int vtable;
-  CityItem *Cities;
-  int V1;
-  int V2;
-  int LastIndex;
-  int Capacity;
+  CityItem *cities;
+  int v1;
+  int v2;
+  int lastIndex;
+  int capacity;
 } Cities;
 
 typedef struct s_Leader
 {
   int vtable;
   int field_4[6];
-  int ID;
+  int id;
   int field_20[2097];
 } Leader;
 

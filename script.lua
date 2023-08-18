@@ -7,10 +7,10 @@ function CheckHappinessAtEndOfTurn()
     city:RecomputeHappiness()
     local numHappy, numUnhappy = 0, 0
     for citizen in city:Citizens() do
-      if citizen.Mood == civ3.CitizenMood.Happy then
+      if citizen.mood == civ3.CitizenMood.Happy then
         numHappy = numHappy + 1
       end
-      if citizen.Mood == civ3.CitizenMood.Unhappy then
+      if citizen.mood == civ3.CitizenMood.Unhappy then
         numUnhappy = numUnhappy + 1
       end
     end

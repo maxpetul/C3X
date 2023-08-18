@@ -22,7 +22,7 @@ function civ3.GetC3XScriptPath() return ffi.C.get_c3x_script_path() end
 civ3.mainScreenForm = ffi.C.get_main_screen_form()
 
 local function NextCity(city, id)
-  local lastIndex = ffi.C.get_p_cities().LastIndex
+  local lastIndex = ffi.C.get_p_cities().lastIndex
   if (id ~= nil) and (id <= lastIndex) then
     while true do
       id = id + 1
@@ -42,7 +42,7 @@ local function NextCityOf(cityOfListing, city)
   while cOL.id <= cOL.lastIndex do
     cOL.id = cOL.id + 1
     local next = ffi.C.get_city_ptr(cOL.id)
-    if (next ~= nil) and (next.Body.OwnerID == cOL.civID) then return next end
+    if (next ~= nil) and (next.body.ownerID == cOL.civID) then return next end
   end
   return nil
 end
@@ -54,7 +54,7 @@ end
 --- @return any
 --- @return City | nil
 local function CitiesOf(civID)
-  local cityOfListing = { id = -1, civID = civID, lastIndex = ffi.C.get_p_cities().LastIndex }
+  local cityOfListing = { id = -1, civID = civID, lastIndex = ffi.C.get_p_cities().lastIndex }
   return NextCityOf, cityOfListing, nil
 end
 --- @alias CitiesOf fun(civID: number): NextCityOf, any, City | nil
@@ -63,14 +63,14 @@ local function NextCitizenIn(citizenInListing, citizen)
   local cIL = citizenInListing
   while cIL.index <= cIL.lastIndex do
     cIL.index = cIL.index + 1
-    local next = cIL.items[cIL.index].Body
+    local next = cIL.items[cIL.index].body
     if (next ~= nil) and (tonumber(ffi.cast("int", next)) ~= 28) then return next end
   end
   return nil
 end
 
 local function CitizensIn(city)
-  local citizenInListing = { index = -1, items = city.Body.citizenList.Items, lastIndex = city.Body.citizenList.LastIndex }
+  local citizenInListing = { index = -1, items = city.body.citizenList.items, lastIndex = city.body.citizenList.lastIndex }
   return NextCitizenIn, citizenInListing, nil
 end
 
@@ -91,7 +91,7 @@ local Leader
 
 local Leader_metatable = {
   __index = {
-    Cities = function(this) return CitiesOf(this.ID) end
+    Cities = function(this) return CitiesOf(this.id) end
   }
 }
 Leader = ffi.metatype("Leader", Leader_metatable)
@@ -105,7 +105,7 @@ local City_metatable = {
     RecomputeHappiness = function(this) ffi.C.City_recompute_happiness(this) end,
     ZoomTo = function(this) ffi.C.City_zoom_to(this) end,
     Citizens = function(this) return CitizensIn(this) end,
-    GetName = function(this) return ffi.string(this.Body.CityName, 20) end
+    GetName = function(this) return ffi.string(this.body.cityName, 20) end
   }
 }
 City = ffi.metatype("City", City_metatable)
