@@ -1,6 +1,8 @@
 
 import re
 
+aliases = {}
+
 def remove_c_comments(source):
     # The regular expression pattern to match C-style comments
     pattern = r'//.*?$|/\*.*?\*/|\'(?:\\.|[^\\\'])*\'|"(?:\\.|[^\\"])*"'
@@ -20,10 +22,11 @@ def convert_to_camel_case(identifier, capitalize_first=False):
     parts = identifier.split("_")
     parts[0] = (parts[0][0].capitalize() if capitalize_first else parts[0][0].lower()) + parts[0][1:]
     for i in range(1, len(parts)):
-        parts[i] = parts[i].capitalize()
+        parts[i] = parts[i][0].capitalize() + parts[i][1:] # Capitalize first letter
     return "".join(parts)
 assert(all(convert_to_camel_case(x, True ) == "FooBar" for x in ["foo_bar", "fooBar", "FooBar", "Foo_Bar"]))
 assert(all(convert_to_camel_case(x, False) == "fooBar" for x in ["foo_bar", "fooBar", "FooBar", "Foo_Bar"]))
+assert(convert_to_camel_case("Player_ID", False) == "playerID")
 
 def extract_structs(source):
     struct_pattern = r'struct\s+(\w+)\s*\{([^}]*)\}\s*;'
@@ -230,9 +233,12 @@ def generate_civ3_defs_for_lua(struct_dict, proced_struct_dict, enum_dict, defin
                 ordered_defines[dep_name] = []
         ordered_defines[s_name] = defines[s_name]
 
+    def export_struct_name(n): return convert_to_camel_case(aliases.get(n, n), True)
+    def export_member_name(n): return convert_to_camel_case(aliases.get(n, n), False)
+
     tr = ""
     for struct_name, included_members in ordered_defines.items():
-        tr += f"typedef struct s_{struct_name}\n{{\n"
+        tr += f"typedef struct s_{export_struct_name(struct_name)}\n{{\n"
 
         struct_size, offsets, _ = compute_struct_layout(ss, es, struct_name)
         opaque_counter = 0
@@ -244,14 +250,14 @@ def generate_civ3_defs_for_lua(struct_dict, proced_struct_dict, enum_dict, defin
                 if current_offset < offset: # If we need padding
                     tr += f"\tbyte _opaque_{opaque_counter}[{offset - current_offset}];\n"
                     opaque_counter += 1
-                tr += f"\t{member_type} {member_name};\n";
+                tr += f"\t{member_type} {export_member_name(member_name)};\n";
                 running_size = offset + member_size
 
         # Insert padding at end of struct
         if running_size < struct_size:
             tr += f"\tbyte _opaque_{opaque_counter}[{struct_size - running_size}];\n"
 
-        tr += f"}} {struct_name};\n\n"
+        tr += f"}} {export_struct_name(struct_name)};\n\n"
 
     return tr;
 
