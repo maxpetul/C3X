@@ -1,6 +1,21 @@
 
 import re
 
+def remove_c_comments(source):
+    # The regular expression pattern to match C-style comments
+    pattern = r'//.*?$|/\*.*?\*/|\'(?:\\.|[^\\\'])*\'|"(?:\\.|[^\\"])*"'
+    regex = re.compile(pattern, re.DOTALL | re.MULTILINE)
+
+    # The function to replace the matched patterns
+    def replacer(match):
+        # If the match is not a comment (i.e., it is a string), return it as is
+        if match.group(0).startswith('/') or match.group(0).startswith('*'):
+            return ""  # if it's a comment, replace it with nothing
+        else:
+            return match.group(0)  # else return the match
+
+    return regex.sub(replacer, source)
+
 def convert_to_camel_case(identifier, capitalize_first=False):
     parts = identifier.split("_")
     parts[0] = (parts[0][0].capitalize() if capitalize_first else parts[0][0].lower()) + parts[0][1:]
@@ -58,7 +73,7 @@ def extract_member_info(struct_dict, enum_dict, member):
         # Ugly fix for unsigned + char/short/int. The regex above won't work b/c it matches the integer type as the variable name. To fix, drop
         # "unsigned" from the type, extract info, then tack it back on.
         if unsigned and member_name in ["char", "short", "int"]:
-            n, t, s, a = extract_member_info(struct_dict, enum_dict, member.split("unsigned")[1].strip())
+            n, t, s, a = extract_member_info(struct_dict, enum_dict, member.removeprefix("unsigned ").strip())
             return n, "unsigned " + t, s, a
 
         # Calculate the size of the member
@@ -153,25 +168,23 @@ def compute_struct_layout(struct_dict, enum_dict, name):
         struct_size = offsets[-1] + member_size
     return align(struct_size, strictest_member_alignment), offsets, strictest_member_alignment
 
+# Modifies the struct_dict to inline one struct type into another
+# For example, inline(ss, "Tile_Body", "Tile") will inline Tile_Body into the Tile struct
+def inline(struct_dict, struct_type_to_inline, target_struct_type):
+    inlined = []
+    for m in struct_dict[target_struct_type]:
+        m = m.removeprefix("struct ")
+        type_name = m.split(" ")[0]
+        if type_name == struct_type_to_inline:
+            inlined.extend(struct_dict[type_name])
+        else:
+            inlined.append(m)
+    struct_dict[target_struct_type] = inlined
+
 def print_member_offsets(struct_dict, enum_dict, name):
     _, offsets, _ = compute_struct_layout(struct_dict, enum_dict, name)
     for mem_name, offset in zip(struct_dict[name], offsets):
         print(f"{offset}\t{mem_name}")
-
-def remove_c_comments(source):
-    # The regular expression pattern to match C-style comments
-    pattern = r'//.*?$|/\*.*?\*/|\'(?:\\.|[^\\\'])*\'|"(?:\\.|[^\\"])*"'
-    regex = re.compile(pattern, re.DOTALL | re.MULTILINE)
-
-    # The function to replace the matched patterns
-    def replacer(match):
-        # If the match is not a comment (i.e., it is a string), return it as is
-        if match.group(0).startswith('/') or match.group(0).startswith('*'):
-            return ""  # if it's a comment, replace it with nothing
-        else:
-            return match.group(0)  # else return the match
-
-    return regex.sub(replacer, source)
 
 def prepend_dummy_structs(content, dummy_structs):
     dummy_defs = ""
@@ -237,7 +250,7 @@ def generate_civ3_defs_for_lua(struct_dict, proced_struct_dict, enum_dict, defin
         if running_size < struct_size:
             tr += f"\tbyte _opaque_{opaque_counter}[{struct_size - running_size}];\n"
 
-        tr += f"}} {struct_name};\n"
+        tr += f"}} {struct_name};\n\n"
 
     return tr;
 
@@ -247,8 +260,11 @@ with open("../Civ3Conquests.h", "r") as f:
     header = prepend_dummy_structs(header, opaque_win_structs)
 ss = extract_structs(header)
 es = extract_enums(header)
+
+# Inline bodies into main structs
+inline(ss, "Tile_Body", "Tile")
+
 nonvtable_structs = {name: ss[name] for name in ss.keys() if not "vtable" in name}
-# s_sizes = {name: compute_struct_layout(ss, es, name)[0] for name in ss.keys()}
 
 # Process struct dict
 pss = {}
