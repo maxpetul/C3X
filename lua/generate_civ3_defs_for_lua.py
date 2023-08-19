@@ -1,7 +1,9 @@
 
 import re
 
-aliases = {}
+aliases = {"Citizens": "CitizenList",
+           "Citizen_Info": "CitizenItem",
+           "Citizen_Body": "Citizen"}
 
 def remove_c_comments(source):
     # The regular expression pattern to match C-style comments
@@ -250,6 +252,10 @@ def generate_civ3_defs_for_lua(struct_dict, proced_struct_dict, enum_dict, defin
 
     def export_struct_name(n): return convert_to_camel_case(aliases.get(n, n), True)
     def export_member_name(n): return convert_to_camel_case(aliases.get(n, n), False)
+    def export_member_type(t):
+        for name, alias in aliases.items():
+            t = t.replace(name, alias)
+        return t
 
     tr = ""
     for struct_name, included_members in ordered_defines.items():
@@ -265,7 +271,7 @@ def generate_civ3_defs_for_lua(struct_dict, proced_struct_dict, enum_dict, defin
                 if current_offset < offset: # If we need padding
                     tr += f"\tbyte _opaque_{opaque_counter}[{offset - current_offset}];\n"
                     opaque_counter += 1
-                tr += f"\t{member_type} {export_member_name(member_name)};\n";
+                tr += f"\t{export_member_type(member_type)} {export_member_name(member_name)};\n";
                 running_size = offset + member_size
 
         # Insert padding at end of struct
@@ -296,7 +302,8 @@ for name, members in ss.items():
 
 if True:
     defs = {"Main_Screen_Form": ["Player_CivID", "turn_end_flag"],
-            "Citizen_Body": ["Mood", "Gender", "WorkerType", "RaceID"]}
+            "Citizen_Body": ["Mood", "Gender", "WorkerType", "RaceID"],
+            "Citizens": ["Items", "LastIndex", "Capacity"]}
     print(generate_civ3_defs_for_lua(ss, pss, es, defs))
 
 # Generates C code that can be added to injected_code.c to check that all the sizes we've computed match the real sizes
