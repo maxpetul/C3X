@@ -1,13 +1,19 @@
 
 import re
+from collections import OrderedDict
 
-aliases = {"Citizens": "CitizenList",
-           "Citizen_Info": "CitizenItem",
-           "Citizen_Body": "Citizen",
-           "City_Body": "City",
-           "City": "BasedCity",
-           "Cities": "CityList",
-           "CivID": "OwnerID"}
+aliases = OrderedDict()
+alias_list = [("Citizens", "CitizenList"),
+              ("Citizen_Info", "CitizenItem"),
+              ("Citizen_Body", "Citizen"),
+              ("City", "BasedCity"),
+              ("City_Body", "City"),
+              ("Cities", "CityList"),
+              ("CivID", "OwnerID")]
+for k, v in alias_list:
+    assert(not k in aliases.values()) # If this assertion fails, that means there is a double-aliasing of a name, i.e. A gets aliased to B then B gets
+                                      # aliased to C. Fix by reordering the list of aliases.
+    aliases[k] = v
 
 def remove_c_comments(source):
     # The regular expression pattern to match C-style comments
@@ -228,8 +234,6 @@ opaque_win_structs = {
 # "defines" is a dictionary mapping struct names to lists. Each list specifies which members to include in the exported defs, any others will be left
 # opaque.
 def generate_civ3_defs_for_lua(struct_dict, proced_struct_dict, enum_dict, defines):
-    from collections import OrderedDict
-
     ss = struct_dict
     pss = proced_struct_dict
     es = enum_dict
