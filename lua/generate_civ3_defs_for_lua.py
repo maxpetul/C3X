@@ -3,7 +3,11 @@ import re
 
 aliases = {"Citizens": "CitizenList",
            "Citizen_Info": "CitizenItem",
-           "Citizen_Body": "Citizen"}
+           "Citizen_Body": "Citizen",
+           "City_Body": "City",
+           "City": "BasedCity",
+           "Cities": "CityList",
+           "CivID": "OwnerID"}
 
 def remove_c_comments(source):
     # The regular expression pattern to match C-style comments
@@ -255,7 +259,8 @@ def generate_civ3_defs_for_lua(struct_dict, proced_struct_dict, enum_dict, defin
     def export_member_name(n): return convert_to_camel_case(aliases.get(n, n), False)
     def export_member_type(t):
         for name, alias in aliases.items():
-            t = t.replace(name, alias)
+            if name in t:
+                t = " ".join([alias if word == name else word for word in t.split(" ")])
         return t
 
     tr = ""
@@ -305,7 +310,12 @@ if True:
     defs = {"Main_Screen_Form": ["Player_CivID", "turn_end_flag"],
             "Citizen_Body": ["Mood", "Gender", "WorkerType", "RaceID"],
             "Citizen_Info": ["Body"],
-            "Citizens": ["Items", "LastIndex", "Capacity"]}
+            "Citizens": ["Items", "LastIndex", "Capacity"],
+            "City_Body": ["CivID", "Citizens", "CityName"],
+            "City": ["Body"],
+            "CityItem": ["City"],
+            "Cities": ["Cities", "LastIndex", "Capacity"],
+            "Leader": ["ID"]}
     print(generate_civ3_defs_for_lua(ss, pss, es, defs))
 
 # Generates C code that can be added to injected_code.c to check that all the sizes we've computed match the real sizes
