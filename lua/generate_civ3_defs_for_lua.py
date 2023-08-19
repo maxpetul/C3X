@@ -236,6 +236,7 @@ def generate_civ3_defs_for_lua(struct_dict, proced_struct_dict, enum_dict, defin
         tr = []
         for m in pss[s_name]: # For each member of s_name
             member_name, member_type, _, _ = m
+            member_type = member_type.strip(" *") # Ignore pointer aspect of type
             is_exported = (s_name in defines) and (member_name in defines[s_name])
             if (member_type in ss) and is_exported and not (member_type in tr): # If that member is a struct, is to be exported, and not already in the list of deps
                 tr.extend(gather_deps(member_type)) # Recursively add its deps to the list
@@ -303,6 +304,7 @@ for name, members in ss.items():
 if True:
     defs = {"Main_Screen_Form": ["Player_CivID", "turn_end_flag"],
             "Citizen_Body": ["Mood", "Gender", "WorkerType", "RaceID"],
+            "Citizen_Info": ["Body"],
             "Citizens": ["Items", "LastIndex", "Capacity"]}
     print(generate_civ3_defs_for_lua(ss, pss, es, defs))
 
