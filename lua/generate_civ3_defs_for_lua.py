@@ -18,15 +18,30 @@ def remove_c_comments(source):
 
     return regex.sub(replacer, source)
 
+acronyms = ["ID", "UI"]
+
+def upper_case_word(word):
+    if word in [a.lower() for a in acronyms]:
+        return word.upper()
+    else:
+        return word[0].upper() + word[1:]
+
+def lower_case_word(word):
+    if word in acronyms:
+        return word.lower()
+    else:
+        return word[0].lower() + word[1:]
+
 def convert_to_camel_case(identifier, capitalize_first=False):
     parts = identifier.split("_")
-    parts[0] = (parts[0][0].capitalize() if capitalize_first else parts[0][0].lower()) + parts[0][1:]
+    parts[0] = upper_case_word(parts[0]) if capitalize_first else lower_case_word(parts[0])
     for i in range(1, len(parts)):
-        parts[i] = parts[i][0].capitalize() + parts[i][1:] # Capitalize first letter
+        parts[i] = upper_case_word(parts[i])
     return "".join(parts)
 assert(all(convert_to_camel_case(x, True ) == "FooBar" for x in ["foo_bar", "fooBar", "FooBar", "Foo_Bar"]))
 assert(all(convert_to_camel_case(x, False) == "fooBar" for x in ["foo_bar", "fooBar", "FooBar", "Foo_Bar"]))
 assert(convert_to_camel_case("Player_ID", False) == "playerID")
+assert(convert_to_camel_case("player_id", True) == "PlayerID")
 
 def extract_structs(source):
     struct_pattern = r'struct\s+(\w+)\s*\{([^}]*)\}\s*;'
@@ -279,6 +294,10 @@ for name, members in ss.items():
     proced_members = [extract_member_info(ss, es, m) for m in members]
     pss[name] = proced_members
 
+if True:
+    defs = {"Main_Screen_Form": ["Player_CivID", "turn_end_flag"],
+            "Citizen_Body": ["Mood", "Gender", "WorkerType", "RaceID"]}
+    print(generate_civ3_defs_for_lua(ss, pss, es, defs))
 
 # Generates C code that can be added to injected_code.c to check that all the sizes we've computed match the real sizes
 # for name in ss.keys():
