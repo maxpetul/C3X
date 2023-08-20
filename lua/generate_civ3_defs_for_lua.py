@@ -5,9 +5,6 @@ from collections import OrderedDict
 aliases = OrderedDict()
 alias_list = [("Citizens", "CitizenList"),
               ("Citizen_Info", "CitizenItem"),
-              ("Citizen_Body", "Citizen"),
-              ("City", "BasedCity"),
-              ("City_Body", "City"),
               ("Cities", "CityList"),
               ("CivID", "OwnerID")]
 for k, v in alias_list:
@@ -300,7 +297,11 @@ ss = extract_structs(header)
 es = extract_enums(header)
 
 # Inline bodies into main structs
-inline(ss, "Tile_Body", "Tile")
+structs_to_inline = [("Tile_Body", "Tile"),
+                     ("City_Body", "City"),
+                     ("Citizen_Body", "Citizen")]
+for to_inline, target in structs_to_inline:
+    inline(ss, to_inline, target)
 
 nonvtable_structs = {name: ss[name] for name in ss.keys() if not "vtable" in name}
 
@@ -312,11 +313,10 @@ for name, members in ss.items():
 
 if True:
     defs = {"Main_Screen_Form": ["Player_CivID", "turn_end_flag"],
-            "Citizen_Body": ["Mood", "Gender", "WorkerType", "RaceID"],
+            "Citizen": ["Mood", "Gender", "WorkerType", "RaceID"],
             "Citizen_Info": ["Body"],
             "Citizens": ["Items", "LastIndex", "Capacity"],
-            "City_Body": ["CivID", "Citizens", "CityName"],
-            "City": ["Body"],
+            "City": ["CivID", "Citizens", "CityName"],
             "CityItem": ["City"],
             "Cities": ["Cities", "LastIndex", "Capacity"],
             "Leader": ["ID"]}
