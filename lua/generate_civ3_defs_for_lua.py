@@ -81,6 +81,35 @@ def extract_enums(source):
 
     return tr
 
+def parse_function_pointer(declaration: str):
+    """
+    Parse a C function pointer declaration and return the name of the variable and its type as a tuple.
+    If the declaration does not match the expected format, return None.
+
+    Parameters:
+    declaration (str): The C function pointer declaration.
+
+    Returns:
+    tuple: A tuple containing the variable name and type, or None if the declaration does not match the expected format.
+    """
+    # Regular expression to match C function pointer declarations
+    pattern = r"(\w+\s*\**\s*)?\(\s*([_\w]+\s*)\*\s*(\w+)\s*\)\s*\((.*)\)"
+    match = re.fullmatch(pattern, declaration)
+    if match:
+        return_type = match.group(1).strip() if match.group(1) else None
+        calling_convention = match.group(2).strip()
+        variable_name = match.group(3).strip()
+        arguments = match.group(4).strip()
+        function_pointer_type = f"{return_type} ({calling_convention} *) ({arguments})"
+        return (variable_name, function_pointer_type)
+    return None
+
+assert(parse_function_pointer("int (__thiscall *m13)(City *)")                                                        == ("m13"               , "int (__thiscall *) (City *)"))
+assert(parse_function_pointer("int (__thiscall *m19_Create_Tiles)(Map *, Tile **)")                                   == ("m19_Create_Tiles"  , "int (__thiscall *) (Map *, Tile **)"))
+assert(parse_function_pointer("byte (__fastcall * is_near_river) (Map * this, int edx, int x, int y, int num_tiles)") == ("is_near_river"     , "byte (__fastcall *) (Map * this, int edx, int x, int y, int num_tiles)"))
+assert(parse_function_pointer("void (__cdecl * mouse_drag_handler) (int control_id)")                                 == ("mouse_drag_handler", "void (__cdecl *) (int control_id)"))
+assert(parse_function_pointer("char * (__fastcall * GetAdjectiveName) (Race *)")                                      == ("GetAdjectiveName"  , "char * (__fastcall *) (Race *)"))
+
 def extract_member_info(struct_dict, enum_dict, member):
     unsigned = member.startswith("unsigned")
 
@@ -108,36 +137,12 @@ def extract_member_info(struct_dict, enum_dict, member):
 
         return member_name, member_type, member_size, member_alignment
 
-    # TODO: Real handling of func pointers
-    elif any([x in member for x in ["__fastcall", "__thiscall", "__cdecl", "__stdcall"]]):
-        return "func_ptr", "void *", 4, 4
+    elif (func_ptr := parse_function_pointer(member.strip(";"))) is not None:
+        fp_name, fp_type = func_ptr
+        return fp_name, fp_type, 4, 4
 
     else:
         raise Exception(f"Cannot extract info for struct member \"{member}\"")
-
-def extract_func_ptr_info(member):
-    # Regular expression pattern to match function pointers
-    pattern = r'(\b[\w]+\b\s*\*?\s*)\s*\(__\w+\s*\*\s*(\b\w+\b)\)\s*\(([\w\s,\*]*)\)'
-    regex = re.compile(pattern)
-
-    match = regex.match(member.strip(';'))
-    if match is not None:
-        # First group is the return type
-        return_type = match.group(1).strip()
-        # Second group is the name
-        func_ptr_name = match.group(2).strip()
-        # Third group is the list of arguments
-        arg_list = match.group(3).strip()
-
-        # Capture calling convention from member string
-        calling_convention = re.search(r'\(__(\w+)', member).group(1)
-        
-        func_ptr_type = f'{return_type} ({calling_convention} *) ({arg_list})'
-        is_func_ptr = True
-
-        return func_ptr_name, func_ptr_type, is_func_ptr
-    else:
-        return None
 
 def compute_member_size(struct_dict, enum_dict, member_type, array_size="1"):
     fundamental_type_sizes = {
@@ -185,11 +190,7 @@ def compute_struct_layout(struct_dict, enum_dict, name):
     struct_size = 0
     strictest_member_alignment = 1
     for member in struct_dict[name]:
-        if extract_func_ptr_info(member) is not None:
-            member_size = 4
-            member_alignment = 4
-        else:
-            _, _, member_size, member_alignment = extract_member_info(struct_dict, enum_dict, member)
+        _, _, member_size, member_alignment = extract_member_info(struct_dict, enum_dict, member)
         strictest_member_alignment = max(strictest_member_alignment, member_alignment)
         offsets.append(align(struct_size, member_alignment))
         struct_size = offsets[-1] + member_size
@@ -302,8 +303,6 @@ structs_to_inline = [("Tile_Body", "Tile"),
                      ("Citizen_Body", "Citizen")]
 for to_inline, target in structs_to_inline:
     inline(ss, to_inline, target)
-
-nonvtable_structs = {name: ss[name] for name in ss.keys() if not "vtable" in name}
 
 # Process struct dict
 pss = {}
