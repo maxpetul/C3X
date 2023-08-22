@@ -1466,35 +1466,7 @@ get_main_screen_form ()
 
 void __fastcall patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script_path, char * text_key, int param_3, int param_4, int param_5, int param_6);
 
-FARPROC __stdcall
-patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
-{
-	struct proc {
-		char const * name;
-		FARPROC address;
-	} procs[] = {
-		{ "pop_up_in_game_error"            , (FARPROC)pop_up_in_game_error },
-		{ "get_p_cities"                    , (FARPROC)get_p_cities },
-		{ "get_city_ptr"                    , (FARPROC)get_city_ptr },
-		{ "get_ui_controller"               , (FARPROC)get_ui_controller },
-		{ "City_recompute_happiness"        , (FARPROC)City_recompute_happiness },
-		{ "City_zoom_to"                    , (FARPROC)City_zoom_to },
-		{ "get_popup_form"                  , (FARPROC)get_popup_form },
-		{ "set_popup_str_param"             , (FARPROC)set_popup_str_param },
-		{ "set_popup_int_param"             , (FARPROC)set_popup_int_param },
-		{ "show_popup"                      , (FARPROC)show_popup },
-		{ "PopupForm_set_text_key_and_flags", (FARPROC)patch_PopupForm_set_text_key_and_flags },
-		{ "get_c3x_script_path"             , (FARPROC)get_c3x_script_path },
-		{ "get_main_screen_form"            , (FARPROC)get_main_screen_form },
-	};
-
-	if ((int)lpProcName > 1000)
-		for (int n = 0; n < (sizeof procs) / (sizeof procs[0]); n++)
-			if (strncmp (lpProcName, procs[n].name, 100) == 0)
-				return procs[n].address;
-
-	return GetProcAddress (hModule, lpProcName);
-}
+FARPROC __stdcall patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName);
 
 void
 patch_init_floating_point ()
@@ -4832,6 +4804,34 @@ void __fastcall
 patch_Main_Screen_Form_show_wltk_ended_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, byte pause)
 {
 	Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? 0 : pause);
+}
+
+// This function needs to know the addresses of many patch functions. The easiest way is to define it last.
+FARPROC __stdcall
+patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
+{
+	struct proc {
+		char const * name;
+		FARPROC address;
+	} procs[] = {
+		// Auto-generated list based on civ_prog_objects.csv
+		#include "lua/prog_objects_for_lua.h"
+
+		// Additional functions especially for Lua
+		{ "pop_up_in_game_error"            , (FARPROC)pop_up_in_game_error },
+		{ "get_p_cities"                    , (FARPROC)get_p_cities },
+		{ "get_city_ptr"                    , (FARPROC)get_city_ptr },
+		{ "get_ui_controller"               , (FARPROC)get_ui_controller },
+		{ "get_c3x_script_path"             , (FARPROC)get_c3x_script_path },
+		{ "get_main_screen_form"            , (FARPROC)get_main_screen_form },
+	};
+
+	if ((int)lpProcName > 1000)
+		for (int n = 0; n < (sizeof procs) / (sizeof procs[0]); n++)
+			if (strncmp (lpProcName, procs[n].name, 100) == 0)
+				return procs[n].address;
+
+	return GetProcAddress (hModule, lpProcName);
 }
 
 // TCC requires a main function be defined even though it's never used.
