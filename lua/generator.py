@@ -1,6 +1,7 @@
 
 import re
 from collections import OrderedDict
+import csv
 
 aliases = OrderedDict()
 alias_list = [("Citizens", "CitizenList"),
@@ -184,7 +185,7 @@ def align(size, alignment):
         return size
     else:
         return size + alignment - rem
-    
+
 def compute_struct_layout(struct_dict, enum_dict, name):
     offsets = []
     struct_size = 0
@@ -228,6 +229,31 @@ opaque_win_structs = {
     "HBITMAP": 4,
     "HDC": 4,
 }
+
+def generate_prog_objects_for_lua():
+    civ_prog_objects = open("../civ_prog_objects.csv", "r")
+    prog_objects_for_lua = open("prog_objects_for_lua.c", "w")
+
+    header_comment = """
+/* This file was generated automatically (see generate_prog_objects_for_lua in generator.py). Its purpose is to be included into
+*  injected_code.c to produce a list associating Civ 3 and C3X function names with addresses that can be looked up by name at run time.
+*/
+"""
+    prog_objects_for_lua.write(header_comment)
+
+    reader = csv.reader(civ_prog_objects, delimiter=",", quotechar="\"")
+    for row in list(reader)[1:100]:
+        job    = row[0].strip(" \"\t")
+        name   = row[4].strip(" \"\t")
+        c_type = (",".join(row[5:])).strip(" \"\t")
+
+        if (job == "define" or job == "inlead" or job == "repl vptr") and any([x in c_type for x in ["__fastcall", "__thiscall", "__stdcall", "__cdecl"]]):
+            lua_name = name
+            injected_code_name = "patch_" + name if job == "inlead" else name
+            prog_objects_for_lua.write(f"{{ \"{lua_name}\", (FARPROC){injected_code_name} }},\n")
+
+    prog_objects_for_lua.close()
+    civ_prog_objects.close()
 
 # "defines" is a dictionary mapping struct names to lists. Each list specifies which members to include in the exported defs, any others will be left
 # opaque.
@@ -310,7 +336,7 @@ for name, members in ss.items():
     proced_members = [extract_member_info(ss, es, m) for m in members]
     pss[name] = proced_members
 
-if True:
+if __name__ == "__main__":
     defs = {"Main_Screen_Form": ["Player_CivID", "turn_end_flag"],
             "Citizen": ["Mood", "Gender", "WorkerType", "RaceID"],
             "Citizen_Info": ["Body"],
@@ -320,6 +346,8 @@ if True:
             "Cities": ["Cities", "LastIndex", "Capacity"],
             "Leader": ["ID"]}
     print(generate_civ3_defs_for_lua(ss, pss, es, defs))
+
+    generate_prog_objects_for_lua()
 
 # Generates C code that can be added to injected_code.c to check that all the sizes we've computed match the real sizes
 # for name in ss.keys():

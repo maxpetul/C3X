@@ -4815,7 +4815,7 @@ patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 		FARPROC address;
 	} procs[] = {
 		// Auto-generated list based on civ_prog_objects.csv
-		#include "lua/prog_objects_for_lua.h"
+		#include "lua/prog_objects_for_lua.c"
 
 		// Additional functions especially for Lua
 		{ "pop_up_in_game_error"            , (FARPROC)pop_up_in_game_error },
