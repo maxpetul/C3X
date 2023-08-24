@@ -6299,5 +6299,29 @@ patch_Unit_check_bombard_target (Unit * this, int edx, int tile_x, int tile_y)
 		return base;
 }
 
+byte __fastcall
+patch_Unit_can_disembark_anything (Unit * this, int edx, int tile_x, int tile_y)
+{
+	Tile * this_tile = tile_at (this->Body.X, this->Body.Y);
+	byte base = Unit_can_disembark_anything (this, __, tile_x, tile_y);
+
+	// Apply trespassing restriction. First check if this civ may move into (tile_x, tile_y) without trespassing. If it would be trespassing, then
+	// we can only disembark anything if this transport has a passenger that can ignore the restriction. Without this check, the game can enter an
+	// infinite loop under rare circumstances.
+	if (base &&
+	    is->current_config.disallow_trespassing &&
+	    check_trespassing (this->Body.CivID, this_tile, tile_at (tile_x, tile_y))) {
+		int any_exempt_passengers = 0;
+		FOR_UNITS_ON (uti, this_tile)
+			if ((uti.unit->Body.Container_Unit == this->Body.ID) && is_allowed_to_trespass (uti.unit)) {
+				any_exempt_passengers = 1;
+				break;
+			}
+		return any_exempt_passengers;
+
+	} else
+		return base;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

@@ -376,6 +376,7 @@ inlead,	   0x535FB0,	0x5405A0,	0x536030,	"deinitialize_map_music",			"void (__st
 define,	   0x56D2C0,	0x579C40,	0x56D230,	"city_at",					"City * (__cdecl *) (int x, int y)"
 repl call, 0x4A2018,	0x4A8C28,	0x4A20A8,	"city_at_in_find_bombard_defender",		""
 inlead,	   0x5C3510,	0x5D2140,	0x5C3220,	"Unit_check_bombard_target",			"byte (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)"
+inlead,	   0x5C5160,	0x5D3E40,	0x5C4E70,	"Unit_can_disembark_anything",			"byte (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
