@@ -1,6 +1,7 @@
 - Option to allow land units to bombard aircraft and naval units in cities
 - Disallow useless bombard attacks vs airfields
 - Fix freeze related to trespassing restriction and AI disembarking
+- Rework sub bug fix in order not to interfere with AI pathing vs enemy units
 
 * RELEASE 16 PREVIEW 2
 - Option to share visibility among all human players in a hotseat game
