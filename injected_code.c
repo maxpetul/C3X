@@ -1537,6 +1537,12 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	WITH_MEM_PROTECTION (ADDR_RESOURCE_TILE_COUNT_MASK, 1, PAGE_EXECUTE_READWRITE) {
 		*(byte *)ADDR_RESOURCE_TILE_COUNT_MASK = (cfg->count_mills > 0) ? 0xFF : 0x00;
 	}
+	// Similarly, enlarge the cmp instruction that jumps over the entire loop when the tile count is zero. Do this by simply removing the operand
+	// override prefix byte (0x66), overwriting it with a nop (0x90). This converts the instruction "cmp word ptr [bic_data.Map.TileCount], di"
+	// into "nop; cmp dword ptr [bic_data.Map.TileCount], edi"
+	WITH_MEM_PROTECTION (ADDR_RESOURCE_TILE_COUNT_ZERO_COMPARE, 1, PAGE_EXECUTE_READWRITE) {
+		*(byte *)ADDR_RESOURCE_TILE_COUNT_ZERO_COMPARE = 0x90;
+	}
 
 	byte * addr_turn_metalimits[] = {ADDR_TURN_METALIMIT_1, ADDR_TURN_METALIMIT_2, ADDR_TURN_METALIMIT_3, ADDR_TURN_METALIMIT_4,
 					 ADDR_TURN_METALIMIT_5, ADDR_TURN_METALIMIT_6, ADDR_TURN_METALIMIT_7};
