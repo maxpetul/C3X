@@ -3079,12 +3079,12 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 		return -1;
 
 	// Adjust movement cost to enforce limited railroad movement
-	int rail_limit = is->current_config.limit_railroad_movement;
-	if ((rail_limit > 0) && (is->saved_road_movement_rate > 0)) {
-		if ((unit != NULL) && (base_cost == 0))
-			return Unit_get_max_move_points (unit) / rail_limit;
-		else if (base_cost == 1)
-			return rail_limit; // = p_bic_data->General.RoadsMovementRate / is->saved_road_movement_rate;
+	if ((is->current_config.limit_railroad_movement > 0) && (is->saved_road_movement_rate > 0)) {
+		if ((unit != NULL) && (base_cost == 0)) { // Railroad move
+			int type_moves_available = Unit_get_max_move_points (unit) / p_bic_data->General.RoadsMovementRate;
+			return type_moves_available * is->railroad_mp_cost_per_move;
+		} else if (base_cost == 1) // Road move
+			return is->road_mp_cost;
 	}
 
 	return base_cost;
@@ -3286,10 +3286,18 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 
 	// Set up for limiting railroad movement, if enabled
 	if (is->current_config.limit_railroad_movement > 0) {
-		is->saved_road_movement_rate = p_bic_data->General.RoadsMovementRate;
-		p_bic_data->General.RoadsMovementRate *= is->current_config.limit_railroad_movement;
-	} else
+		int base_rmr = p_bic_data->General.RoadsMovementRate;
+		int g = gcd (base_rmr, is->current_config.limit_railroad_movement); // Scale down all MP costs by this common divisor to help against
+										    // overflow of 8-bit integers inside the pathfinder.
+		is->saved_road_movement_rate = base_rmr;
+		p_bic_data->General.RoadsMovementRate = base_rmr * is->current_config.limit_railroad_movement / g; // Full move in MP
+		is->road_mp_cost = is->current_config.limit_railroad_movement / g;
+		is->railroad_mp_cost_per_move = base_rmr / g;
+	} else {
 		is->saved_road_movement_rate = -1;
+		is->road_mp_cost = 1;
+		is->railroad_mp_cost_per_move = 0;
+	}
 
 	// If barb city capturing is enabled and the barbs have the non-existent "none" culture group (index -1), switch them to the first real
 	// culture group. The "none" group produces corrupt graphics and crashes.

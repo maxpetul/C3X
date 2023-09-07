@@ -394,8 +394,12 @@ struct injected_state {
 	// } These fields are temporary/situational {
 	// ==========
 
-	int saved_road_movement_rate; // Valid when railroad movement limit is applied (limit_railroad_movement > 0) and BIC
-	// data has been loaded
+	int saved_road_movement_rate; // Valid when railroad movement limit is applied (limit_railroad_movement > 0) and BIC data has been loaded
+	int road_mp_cost; // The cost of moving one tile along a road, in MP. Valid after BIC data was loaded.
+	int railroad_mp_cost_per_move; // The cost of moving one tile along a railroad, in MP, per move available to the unit. This is measured per
+				       // move since the cost of moving along a railroad is scaled by the total number of moves available to the
+				       // unit. Valid after BIC data was loaded.
+
 	int saved_barb_culture_group; // Valid when barb city capturing is enabled and BIC data has been loaded
 
 	Leader * leader_param_for_patch_get_wonder_city_id; // Valid in patch_get_wonder_city_id when called from

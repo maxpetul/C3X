@@ -51,6 +51,17 @@ int_abs (int x)
 	return (x >= 0) ? x : (0 - x);
 }
 
+int
+gcd (int a, int b)
+{
+	while (b != 0) {
+		int t = b;
+		b = a % b;
+		a = t;
+	}
+	return a;
+}
+
 // Writes an integer to a byte buffer. buf need not be aligned but it must have at least four bytes of free space. Written little-endian.
 byte *
 int_to_bytes (byte * buf, int x)

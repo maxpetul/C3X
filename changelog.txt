@@ -2,6 +2,8 @@
 - Disallow useless bombard attacks vs airfields
 - Fix freeze related to trespassing restriction and AI disembarking
 - Rework sub bug fix in order not to interfere with AI pathing vs enemy units
+- Mitigate issue with pathfinding, limited railroad movement, and units with many moves
+  - Mitigation applies if GCD(road movement rate, railroad limit) > 1
 - Fix potential trade net issue in games with a very large number of tiles and resource generating buildings
 
 * RELEASE 16 PREVIEW 2
