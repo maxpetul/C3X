@@ -55,6 +55,10 @@ We were chased off by enemy air defenses.
 ; As in a "preview" version of the mod. Used on the mod info popup.
 Preview
 
+; Tooltip for the build city button when it's disabled because the settler is too close to an existing city. Only applies when the minimum city
+; separation has been set > 1.
+Not a valid city location.^Cities must be separated by at least $NUM0 tiles.
+
 ; Unit AI strategy names. Matches what they're called in the editor.
 Offense
 Defense

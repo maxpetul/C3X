@@ -216,6 +216,7 @@ enum c3x_label {
 	CL_NO_STEALTH_ATTACK,
 	CL_DODGED_SAM,
 	CL_PREVIEW,
+	CL_CITY_TOO_CLOSE_BUTTON_TOOLTIP,
 
 	// Offense, Defense, Artillery, etc.
 	CL_FIRST_UNIT_STRAT,
@@ -248,6 +249,7 @@ struct injected_state {
 	enum init_state sc_img_state;
 	enum init_state tile_highlight_state;
 	enum init_state mod_info_button_images_state;
+	enum init_state disabled_command_img_state;
 
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
@@ -377,6 +379,12 @@ struct injected_state {
 	// mode action, the cursor is cleared before the action is carried out. So we have to intercept that map click as well for
 	// a total of 4 UI functions patched to make this damn button work. I doubt this is optimal but it works and I've wasted
 	// enough time on this already. That click interceptor sets a flag value of 2 to indicate this annoying state.
+
+	// ==========
+	// } This field is only valid after init_disabled_command_buttons has been called and disabled_command_img_state equals IS_OK {
+	// ==========
+
+	Tile_Image_Info disabled_build_city_button_img;
 
 	// ==========
 	// } These fields are valid only after init_tile_highlights as been called. {

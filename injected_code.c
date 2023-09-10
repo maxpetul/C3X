@@ -1963,6 +1963,33 @@ init_stackable_command_buttons ()
 }
 
 void
+init_disabled_command_buttons ()
+{
+	if (is->disabled_command_img_state != IS_UNINITED)
+		return;
+
+	is->disabled_command_img_state = IS_INIT_FAILED;
+
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
+
+	char temp_path[2*MAX_PATH];
+	get_mod_art_path ("DisabledButtons.pcx", temp_path, sizeof temp_path);
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if (pcx.JGL.Image == NULL) {
+		(*p_OutputDebugStringA) ("[C3X] Failed to load disabled command buttons sprite sheet.");
+		pcx.vtable->destruct (&pcx, __, 0);
+		return;
+	}
+
+	Tile_Image_Info_construct (&is->disabled_build_city_button_img);
+	Tile_Image_Info_slice_pcx (&is->disabled_build_city_button_img, __, &pcx, 32*5, 32*2, 32, 32, 1, 0);
+
+	is->disabled_command_img_state = IS_OK;
+	pcx.vtable->destruct (&pcx, __, 0);
+}
+
+void
 deinit_stackable_command_buttons ()
 {
 	if (is->sc_img_state == IS_OK)
@@ -1972,6 +1999,16 @@ deinit_stackable_command_buttons ()
 				tii->vtable->destruct (tii, __, 0);
 			}
 	is->sc_img_state = IS_UNINITED;
+}
+
+void
+deinit_disabled_command_buttons ()
+{
+	Tile_Image_Info * tii = &is->disabled_build_city_button_img;
+	if (is->disabled_command_img_state == IS_OK)
+		tii->vtable->destruct (tii, __, 0);
+	memset (tii, 0, sizeof *tii);
+	is->disabled_command_img_state = IS_UNINITED;
 }
 
 void
@@ -2459,12 +2496,52 @@ set_up_stack_worker_buttons (Main_GUI * this)
 	}
 }
 
+CityLocValidity __fastcall patch_Map_check_city_location (Map * this, int edx, int tile_x, int tile_y, int civ_id, byte check_for_city_on_tile);
+
 void __fastcall
 patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 {
 	Main_GUI_set_up_unit_command_buttons (this);
 	set_up_stack_bombard_buttons (this);
 	set_up_stack_worker_buttons (this);
+
+	// If the minimum city separation is increased, then gray out the found city button if we're too close to another city.
+	if ((is->current_config.minimum_city_separation > 1) && (p_main_screen_form->Current_Unit != NULL) && (is->disabled_command_img_state == IS_OK)) {
+		Unit_Body * selected_unit = &p_main_screen_form->Current_Unit->Body;
+
+		// For each unit command button
+		for (int n = 0; n < 42; n++) {
+			Command_Button * cb = &this->Unit_Command_Buttons[n];
+
+			// If it's enabled, set to city founding, and the current city location is too close to another city
+			if (((cb->Button.Base_Data.Status2 & 1) != 0) &&
+			    (cb->Command == UCV_Build_City) &&
+			    (patch_Map_check_city_location (&p_bic_data->Map, __, selected_unit->X, selected_unit->Y, selected_unit->CivID, 0) == CLV_CITY_TOO_CLOSE)) {
+
+				// Replace the button's image with the disabled image, as in set_up_stack_worker_buttons.
+				cb->Button.vtable->m02_Show_Disabled ((Base_Form *)&cb->Button);
+				for (int k = 0; k < 3; k++)
+					cb->Button.Images[k] = &is->disabled_build_city_button_img;
+				cb->Button.field_5FC[13] = 0;
+
+				char tooltip[200]; {
+					memset (tooltip, 0, sizeof tooltip);
+					char * label = is->c3x_labels[CL_CITY_TOO_CLOSE_BUTTON_TOOLTIP],
+					     * to_replace = "$NUM0",
+					     * replace_location = strstr (label, to_replace);
+					if (replace_location != NULL)
+						snprintf (tooltip, sizeof tooltip, "%.*s%d%s", replace_location - label, label, is->current_config.minimum_city_separation, replace_location + strlen (to_replace));
+					else
+						snprintf (tooltip, sizeof tooltip, "%s", label);
+					tooltip[(sizeof tooltip) - 1] = '\0';
+				}
+				Button_set_tooltip (&cb->Button, __, tooltip);
+
+				cb->Button.vtable->m01_Show_Enabled ((Base_Form *)&cb->Button, __, 0);
+
+			}
+		}
+	}
 }
 
 void
@@ -2653,6 +2730,25 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 			Unit_can_perform_command (this, __, unit_command_value);
 	} else
 		return Unit_can_perform_command (this, __, unit_command_value);
+}
+
+byte __fastcall
+patch_Unit_can_do_worker_command_for_button_setup (Unit * this, int edx, int unit_command_value)
+{
+	byte base = patch_Unit_can_perform_command (this, __, unit_command_value);
+
+	// If the command is to build a city and it can't be done because another city is already too close, and the minimum separation was changed
+	// from its standard value, then return 1 here so that the build city button will be added anyway. We'll gray it out later. Check that the
+	// grayed out button image is initialized now so we don't activate the build city button then find out later we can't gray it out.
+	if ((! base) &&
+	    (unit_command_value == UCV_Build_City) &&
+	    (is->current_config.minimum_city_separation > 1) &&
+	    (patch_Map_check_city_location (&p_bic_data->Map, __, this->Body.X, this->Body.Y, this->Body.CivID, 0) == CLV_CITY_TOO_CLOSE) &&
+	    (init_disabled_command_buttons (), is->disabled_command_img_state == IS_OK))
+		return 1;
+
+	else
+		return base;
 }
 
 int
@@ -3229,6 +3325,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 
 	// This scenario might use different mod art assets than the old one
 	deinit_stackable_command_buttons ();
+	deinit_disabled_command_buttons ();
 	deinit_trade_scroll_buttons ();
 
 	// Need to clear this since the resource count might have changed

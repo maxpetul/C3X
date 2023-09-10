@@ -51,6 +51,7 @@ Bugs fixed:
  - ** Barbarian long-range search for targets is limited to tiles directly NW or SE
 Engine extensions:
  - Adjustable minimum city distance
+  - ** Gray out build city button when too close to another city and min distance has been increased
  - Option to limit railroad movement
   - ** Fix incorrect ETAs in go-to mode
  - Removed unit limit
