@@ -1,36 +1,31 @@
-- Option to allow land units to bombard aircraft and naval units in cities
-- Disallow useless bombard attacks vs airfields
-- Fix freeze related to trespassing restriction and AI disembarking
-- Gray out build city button when too close to another city and min separation has been increased
-- Rework sub bug fix in order not to interfere with AI pathing vs enemy units
-- Mitigate issue with pathfinding, limited railroad movement, and units with many moves
-  - Mitigation applies if GCD(road movement rate, railroad limit) > 1
-- Fix potential trade net issue in games with a very large number of tiles and resource generating buildings
-
-* RELEASE 16 PREVIEW 2
-- Option to share visibility among all human players in a hotseat game
-- Limit AI artillery units to one escort (w/ offensive artillery AI)
-- Separate land & sea retreat rules
-- Apply AI naval escort limit to carriers and missile transports
-- Make config options more intuitive: anarchy length reduction, minimum city separation, AI naval escort cap
-- Re-enable main GUI before showing hotseat AI replay
-- Prevent music from being reset during hotseat AI replay
-- Update UI after stack bombarding (fixes bombard button not disappearing for multi-move units w/o blitz)
-- Fix crash caused by previous fix for incorrect ETAs w/ limited railroad movement
-
 * RELEASE 16 PREVIEW 1
 - Barbarian city capture & production (experimental)
+- Option to share visibility among all human players in a hotseat game
 - Can use charm flag to control PTW-like artillery targeting
+- Option to allow land units to bombard aircraft and naval units in cities
 - Option to ignore king flag on defense, so kings aren't always last to defend in a stack
+- Limit AI artillery units to one escort (w/ offensive artillery AI)
 - Harbor/airport city icons indicate unit effects not trade abilities
+- Separate land & sea retreat rules
 - Fix incorrect ETAs in go-to mode when railroad movement is limited
-- Can limit the number of escorts the AI assigns to its naval transports
+- Can limit the number of escorts the AI assigns to its naval transports and carriers
 - Fix barbarian diagonal bug
+- Fix cached building maintenance amounts not being updated when buildings are obsoleted
 - Optimize improvement loops
 - Option to show untradable techs on trade screen
+- Disallow useless bombard attacks vs airfields
 - Option to remove Elvis Easter egg
-- Fix cached building maintenance amounts not being updated when buildings are obsoleted
+- Gray out build city button when too close to another city and min separation has been increased
+- Mitigate issue with pathfinding, limited railroad movement, and units with many moves
+  - Mitigation applies if GCD(road movement rate, railroad limit) > 1
+- Fix freeze related to trespassing restriction and AI disembarking
+- Rework sub bug fix in order not to interfere with AI pathing vs enemy units
+- Re-enable main GUI before showing hotseat AI replay
+- Prevent music from being reset during hotseat AI replay
+- Make config options more intuitive: anarchy length reduction, minimum city separation, AI naval escort cap
 - Load mod button images from scenario folder if present
+- Update UI after stack bombarding (fixes bombard button not disappearing for multi-move units w/o blitz)
+- Fix potential trade net issue in games with a very large number of tiles and resource generating buildings
 - Match only complete names from config
 - Improve config read error messages
 

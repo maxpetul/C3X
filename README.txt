@@ -24,6 +24,8 @@ Convenience features:
  - Civilopedia indicates when units go obsolete but cannot be upgraded
  - Message appears after bomber dodges interception by air defense buildings
  - Option to replay AI moves for all human players in hotseat mode
+  - ** Keep main GUI active during replay
+  - ** Prevent game music from being reset by replay
  - Restore unit directions on game load
  - ** Optimize improvement loops
  - ** Option to remove Elvis Easter egg
@@ -54,11 +56,14 @@ Engine extensions:
   - ** Gray out build city button when too close to another city and min distance has been increased
  - Option to limit railroad movement
   - ** Fix incorrect ETAs in go-to mode
+  - ** Mitigate issue with pathfinding for units with many moves (see config file for details)
  - Removed unit limit
  - Enable free improvements from small wonders
+ - Option to share visibility among all human players in a hotseat game
  - Option to prevent autoraze and razing by players
  - Stealth attack activates even when there's only one target
  - Trespassing prevention
+  - ** Fix freeze when disembark-all job is blocked by trespassing restriction
  - Land/sea intersections
  - Adjustable anarchy length
  - "Perfume" units or improvements to control how likely the AI is to build them
