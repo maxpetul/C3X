@@ -1709,7 +1709,7 @@ patch_init_floating_point ()
 		{"minimum_city_separation"            ,     1, offsetof (struct c3x_config, minimum_city_separation)},
 		{"anarchy_length_percent"             ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
 		{"max_tries_to_place_fp_city"         , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
-		{"ai_build_artillery_ratio"           ,    20, offsetof (struct c3x_config, ai_build_artillery_ratio)},
+		{"ai_build_artillery_ratio"           ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
 		{"ai_artillery_value_damage_percent"  ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
 		{"ai_build_bomber_ratio"              ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
 		{"max_ai_naval_escorts"               ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},

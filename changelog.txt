@@ -26,6 +26,7 @@
 - Load mod button images from scenario folder if present
 - Update UI after stack bombarding (fixes bombard button not disappearing for multi-move units w/o blitz)
 - Fix potential trade net issue in games with a very large number of tiles and resource generating buildings
+- Reduce default ai_build_artillery_ratio from 20 to 16
 - Match only complete names from config
 - Improve config read error messages
 
