@@ -1,4 +1,4 @@
-* RELEASE 16 PREVIEW 1
+* RELEASE 16
 - Barbarian city capture & production (experimental)
 - Option to share visibility among all human players in a hotseat game
 - Can use charm flag to control PTW-like artillery targeting

@@ -1,5 +1,5 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 16 Preview 1
+Release 16
 
 INCLUDES (** = new in latest version):
 Convenience features:
