@@ -232,7 +232,7 @@ opaque_win_structs = {
 
 def generate_prog_objects_for_lua():
     civ_prog_objects = open("../civ_prog_objects.csv", "r")
-    prog_objects_for_lua = open("prog_objects_for_lua.c", "w")
+    prog_objects_for_lua = open("prog_objects_for_lua.c", "w", newline="\r\n")
 
     header_comment = """
 /* This file was generated automatically (see generate_prog_objects_for_lua in generator.py). Its purpose is to be included into
@@ -359,7 +359,7 @@ def generate_interface():
     assert (begin >= 0 and end >= 0 and end > begin)
     new_contents = contents[:begin + len(begin_generated_section_banner)] + "\ntesting 4 5 6...\n" + contents[end:]
 
-    with open("civ3.lua", "w") as f:
+    with open("civ3.lua", "w", newline="\r\n") as f:
         f.write(new_contents)
 
 if __name__ == "__main__":
