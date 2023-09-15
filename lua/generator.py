@@ -336,6 +336,32 @@ for name, members in ss.items():
     proced_members = [extract_member_info(ss, es, m) for m in members]
     pss[name] = proced_members
 
+def generate_interface():
+    begin_generated_section_banner = """
+-- **************************** --
+-- BEGIN AUTO-GENERATED SECTION --
+-- **************************** --
+
+-- Do not edit. This section was generated automatically by generate_interface in generator.py.
+"""
+
+    end_generated_section_banner = """
+-- ************************** --
+-- END AUTO-GENERATED SECTION --
+-- ************************** --
+"""
+
+    with open("civ3.lua", "r") as f:
+        contents = f.read()
+
+    begin = contents.find(begin_generated_section_banner)
+    end = contents.find(end_generated_section_banner)
+    assert (begin >= 0 and end >= 0 and end > begin)
+    new_contents = contents[:begin + len(begin_generated_section_banner)] + "\ntesting 4 5 6...\n" + contents[end:]
+
+    with open("civ3.lua", "w") as f:
+        f.write(new_contents)
+
 if __name__ == "__main__":
     defs = {"Main_Screen_Form": ["Player_CivID", "turn_end_flag"],
             "Citizen": ["Mood", "Gender", "WorkerType", "RaceID"],
@@ -348,6 +374,8 @@ if __name__ == "__main__":
     print(generate_civ3_defs_for_lua(ss, pss, es, defs))
 
     generate_prog_objects_for_lua()
+
+    generate_interface()
 
 # Generates C code that can be added to injected_code.c to check that all the sizes we've computed match the real sizes
 # for name in ss.keys():

@@ -8,6 +8,18 @@ local civ3_def_file = assert(io.open("C3X/lua/civ3_defs_for_lua.h", "rb"))
 ffi.cdef(civ3_def_file:read("all"))
 civ3_def_file:close()
 
+-- **************************** --
+-- BEGIN AUTO-GENERATED SECTION --
+-- **************************** --
+
+-- Do not edit. This section was generated automatically by generate_interface in generator.py.
+
+testing 4 5 6...
+
+-- ************************** --
+-- END AUTO-GENERATED SECTION --
+-- ************************** --
+
 civ3.CitizenMood = {
   Happy = 0,
   Content = 1,
