@@ -14,7 +14,14 @@ civ3_def_file:close()
 
 -- Do not edit. This section was generated automatically by generate_interface in generator.py.
 
-testing 4 5 6...
+--- @class Tile
+local Tile
+local Tile_metatable = {
+  __index = {{
+  }
+}
+Tile = ffi.metatype("Tile", Tile_metatable)
+
 
 -- ************************** --
 -- END AUTO-GENERATED SECTION --

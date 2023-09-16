@@ -336,7 +336,7 @@ for name, members in ss.items():
     proced_members = [extract_member_info(ss, es, m) for m in members]
     pss[name] = proced_members
 
-def generate_interface():
+def generate_interface(pss):
     begin_generated_section_banner = """
 -- **************************** --
 -- BEGIN AUTO-GENERATED SECTION --
@@ -354,11 +354,23 @@ def generate_interface():
     with open("civ3.lua", "r") as f:
         contents = f.read()
 
+    class_name = "Tile"
+    genned = ""
+    genned += f"--- @class {class_name}\n"
+    # Add fields here
+    genned += f"local {class_name}\n"
+    genned += f"local {class_name}_metatable = {{\n"
+    genned +=  "  __index = {{\n"
+    # Add methods here
+    genned +=  "  }\n"
+    genned +=  "}\n"
+    genned += f"{class_name} = ffi.metatype(\"{class_name}\", {class_name}_metatable)\n"
+
     begin = contents.find(begin_generated_section_banner)
     end = contents.find(end_generated_section_banner)
     assert (begin >= 0 and end >= 0 and end > begin)
-    new_contents = contents[:begin + len(begin_generated_section_banner)] + "\ntesting 4 5 6...\n" + contents[end:]
 
+    new_contents = contents[:begin + len(begin_generated_section_banner)] + "\n" + genned + "\n" + contents[end:]
     with open("civ3.lua", "w", newline="\r\n") as f:
         f.write(new_contents)
 
@@ -375,7 +387,7 @@ if __name__ == "__main__":
 
     generate_prog_objects_for_lua()
 
-    generate_interface()
+    generate_interface(pss)
 
 # Generates C code that can be added to injected_code.c to check that all the sizes we've computed match the real sizes
 # for name in ss.keys():
