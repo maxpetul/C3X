@@ -8,8 +8,8 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
-#define MOD_VERSION 1600
-#define MOD_PREVIEW_VERSION 0
+#define MOD_VERSION 1700
+#define MOD_PREVIEW_VERSION 1
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -41,6 +41,20 @@ enum retreat_rules {
 	RR_IF_FASTER
 };
 
+enum special_defensive_bombard_rules {
+	SDBR_LETHAL         =  1,
+	SDBR_NOT_INVISIBLE  =  2,
+	SDBR_AERIAL         =  4,
+	SDBR_BLITZ          =  8,
+	SDBR_DOCKED_VS_LAND = 16,
+};
+
+enum special_zone_of_control_rules {
+	SZOCR_LETHAL     = 1,
+	SZOCR_AERIAL     = 2,
+	SZOCR_AMPHIBIOUS = 4,
+};
+
 struct c3x_config {
 	char enable_stack_bombard;
 	char enable_disorder_warning;
@@ -57,6 +71,7 @@ struct c3x_config {
 	char group_units_on_right_click_menu;
 	int anarchy_length_percent;
 	char show_golden_age_turns_remaining;
+	char show_zoc_attacks_from_mid_stack;
 	char cut_research_spending_to_avoid_bankruptcy;
 	char dont_pause_for_love_the_king_messages;
 	char reverse_specialist_order_with_shift;
@@ -115,6 +130,14 @@ struct c3x_config {
 	char enable_city_capture_by_barbarians;
 	char share_visibility_in_hoseat;
 	char remove_land_artillery_target_restrictions;
+	char allow_precision_strikes_against_tile_improvements;
+	char dont_end_units_turn_after_bombarding_barricade;
+	char remove_land_artillery_target_restrictions;
+	char allow_bombard_of_other_improvs_on_occupied_airfield;
+	char show_total_city_count;
+	char strengthen_forbidden_palace_ocn_effect;
+	enum special_zone_of_control_rules special_zone_of_control_rules;
+	enum special_defensive_bombard_rules special_defensive_bombard_rules;
 
 	char use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
@@ -217,6 +240,7 @@ enum c3x_label {
 	CL_DODGED_SAM,
 	CL_PREVIEW,
 	CL_CITY_TOO_CLOSE_BUTTON_TOOLTIP,
+	CL_TOTAL_CITIES,
 
 	// Offense, Defense, Artillery, etc.
 	CL_FIRST_UNIT_STRAT,
@@ -312,8 +336,6 @@ struct injected_state {
 
 	struct table nopified_areas;
 
-	byte houseboat_patch_area_original_contents[50];
-
 	int * unit_menu_duplicates; // NULL initialized, allocated to an array of 0x100 ints when needed
 
 	// List of temporary ints. Initializes to NULL/0/0, used with functions "memoize" and "clear_memo"
@@ -352,6 +374,10 @@ struct injected_state {
 	// Maps unit types IDs to AI strategy indices (0 = offense, 1 = defense, 2 = artillery, etc.). If a unit type ID is in this table, that means
 	// it's one of several duplicate types created to spread multiple AI strategies out so each type has only one.
 	struct table unit_type_alt_strategies;
+
+	// Tracks the number of "extra" defensive bombards units have performed, by their IDs. If the "blitz" special defensive bombard rule is
+	// activated, units with blitz get an extra chance to perform DB for each movement point they have beyond the first.
+	struct table extra_defensive_bombards;
 
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {
@@ -515,10 +541,45 @@ struct injected_state {
 	// when we need to override the visibility data to implement hotseat shared vis.
 	Tile * dummy_tile;
 
-	// When the tile drawing code checks vis data, it first accesses the tile through Map::get_tile, then three more times through tile_at. This
-	// variable stores the return value from get_tile and then gets used as the return value for the three calls to tile_at. This way we don't
-	// need to fill in the dummy tile multiple times.
-	Tile * tile_returned_for_draw_vis_check;
+	// When the game checks visibility for a tile, it accesses all four visibility fields with separate calls to Map::get_tile and/or tile_at. We
+	// replace the first call, maybe altering its return to implement shared visibility, cache the return in this variable, then re-use the cached
+	// value for the next three calls.
+	Tile * tile_returned_for_visibility_check;
+
+	// Initialized to all -1. If set, the unit with the specified ID will always be the top unit displayed on the specified tile. If the unit is
+	// not on that tile, there is no effect. This is only intended to be used on a temporary basis.
+	struct unit_display_override {
+		int unit_id, tile_x, tile_y;
+	} unit_display_override;
+
+	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
+	Unit * zoc_interceptor;
+
+	// Set when Fighter::apply_zone_of_control is called to store the defending unit, used by the injected filter.
+	Unit * zoc_defender;
+
+	// Normally set to NULL. When a unit bombards a tile (the tile itself, not something on it), set to point to that unit during the call to
+	// Unit::attack_tile. Used to stop the unit from losing all of its movement if configured.
+	Unit * unit_bombard_attacking_tile;
+
+	// Cleared to zero when Fighter::apply_zone_of_control is called. The interceptor must be unfortified to ensure it plays its animation. If
+	// that happens, this flag is set so that apply_zone_of_control knows to refortify the unit after the ZoC process is done.
+	int refortify_interceptor_after_zoc;
+
+	// Used to record info about a defensive bomardment event during Fighter::fight. Gets set by Fighter::damage_by_defensive_bombardment and
+	// cleared when Fighter::fight returns.
+	struct defensive_bombard_event {
+		Unit * bombarder;
+		Unit * defender;
+		byte damage_done, defender_was_destroyed, saved_animation_setting;
+	} dbe;
+
+	// Set to 1 IFF we're showing a replay of AI moves in hotseat mode
+	byte showing_hotseat_replay;
+
+	// Set to 1 only during the first call to get_tile_occupier_id from Trade_Net::get_movement_cost. While this is set, we need to edit unit
+	// visibility to patch the submarine bug.
+	byte getting_tile_occupier_for_ai_pathfinding;
 
 	// Set to 1 IFF we're showing a replay of AI moves in hotseat mode
 	byte showing_hotseat_replay;
@@ -537,6 +598,7 @@ enum object_job {
 	OJ_INLEAD, // Patch this function with an inlead
 	OJ_REPL_VPTR, // Patch this function by replacing a pointer to it. The address column is the addr of the VPTR not the function itself.
 	OJ_REPL_CALL, // Patch a single function call. The address column is the addr of the call instruction, name refers to the new target function, type is not used.
+	OJ_REPL_VIS, // Patch a cluster of four function calls that make up a check of tile visibility. See implementation for details.
 	OJ_IGNORE
 };
 

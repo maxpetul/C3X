@@ -1,3 +1,22 @@
+* RELEASE 17 PREVIEW 1
+- Zone of control changes
+  - Allow land-to-sea and sea-to-land attacks, only using bombard stat
+  - May be lethal
+  - May be exerted by air units
+  - Show attack animation even when attacker is not at the top of its stack
+- Defensive bombard changes
+  - May be lethal
+  - May be performed by air units
+  - Invisible, undetected units may be made immune
+  - May be performed multiple times per turn with blitz
+  - Naval units in a city may perform defensive bombard vs land attackers
+- Allow precision strikes to target tile improvements
+- Option not to end a unit's turn after it bombards a barricade
+- Option to allow bombardment of other improvements on a tile with an occupied airfield
+- Option to boost OCN increase from forbidden palaces in non-communal governments
+- Overhaul implementation of shared visibility for simplicity and correctness
+- Display total city count (disabled by default, appears on demographics screen)
+
 * RELEASE 16
 - Barbarian city capture & production (experimental)
 - Option to share visibility among all human players in a hotseat game

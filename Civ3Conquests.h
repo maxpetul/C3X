@@ -189,7 +189,7 @@ typedef struct Base_Form_Data Base_Form_Data;
 typedef struct Button Button;
 typedef struct Advisor_Science_Form Advisor_Science_Form;
 typedef struct Advisor_Base_Form Advisor_Base_Form;
-typedef struct Main_Screen_Data_1AD4 Main_Screen_Data_1AD4;
+typedef struct Animator Animator;
 typedef struct Command_Button Command_Button;
 typedef struct GUI_Form_1 GUI_Form_1;
 typedef struct ComboBox ComboBox;
@@ -715,10 +715,11 @@ enum Unit_Command_Values
   UCV_Finish_Improvements = 0x10000080,
   UCV_Upgrade_Unit	  = 0x10000100,
   UCV_Rescue_Princess	  = 0x10000200,
-  UCV_Enslave		  = 0x10004000,
-  UCV_Unknown		  = 0x10008000,
+  UCV_Telepad             = 0x10004000,
+  UCV_Teleport            = 0x10008000,
   UCV_Stealth_Attack	  = 0x10010000,
   UCV_Charm_Bombard       = 0x10020000,
+  UCV_Enslave		  = 0x10040000,
   UCV_Sacrifice		  = 0x10100000,
   UCV_Science_Age	  = 0x10200000,
 
@@ -781,18 +782,18 @@ enum Unit_Mode_Actions
   UMA_Airlift = 0x8,
   UMA_Recon = 0x9,
   UMA_Rebase = 0xA,
-  UMA_11 = 0xB,
+  UMA_Precision_Strike = 0xB,
   UMA_12 = 0xC,
   UMA_13 = 0xD,
   UMA_Build_Colony = 0xE,
   UMA_Auto_Bombard = 0xF,
   UMA_Auto_Air_Bombard = 0x10,
-  UMA_17 = 0x11,
-  UMA_18 = 0x12,
-  UMA_19 = 0x13,
+  UMA_Auto_Precision_Strike = 0x11,
+  UMA_Stack_Go_To = 0x12,
+  UMA_Stack_Rebase = 0x13,
   UMA_20 = 0x14,
   UMA_21 = 0x15,
-  UMA_22 = 0x16,
+  UMA_Teleport = 0x16,
 };
 
 enum City_Order_Types
@@ -2110,10 +2111,10 @@ struct Fighter
   Unit * defender;
   byte defender_eligible_to_retreat;
   byte attacker_eligible_to_retreat;
-  byte field_A;
+  byte play_animations;
   byte field_B;
   int attack_direction;
-  int field_10;
+  int defense_direction; // Reverse of attack direction
   int attacker_location_x;
   int attacker_location_y;
   int defender_location_x;
@@ -2544,7 +2545,7 @@ struct Unit_vtable
   int m17;
   int m18;
   int (__fastcall * Move) (Unit *, int, int, char);
-  int m20;
+  int (__fastcall * teleport) (Unit *, int, int, int, Unit *);
   void (__fastcall * update_while_active) (Unit *);
   int m22;
   byte (__fastcall * work) (Unit *);
@@ -4541,7 +4542,15 @@ struct FLC_Animation
   Animation_Info *Animation_Info;
   int field_E8[5];
   int field_FC;
-  int field_100[7];
+  int field_100;
+  int field_104;
+  int field_108;
+  int field_10C;
+  byte field_110;
+  byte field_111;
+  byte field_112;
+  byte field_113;
+  int field_114[2];
   int Direction3;
   int Direction4;
   int field_124;
@@ -4660,7 +4669,7 @@ struct Advisor_Base_Form
   int Last;
 };
 
-struct Main_Screen_Data_1AD4
+struct Animator
 {
   int field_0;
   int field_4;
@@ -5976,7 +5985,7 @@ struct Main_Screen_Form
   int field_2E1AC;
   int mouse_x;
   int mouse_y;
-  Main_Screen_Data_1AD4 Data_1AD4;
+  Animator animator;
 };
 
 struct Governor_Form

@@ -1,5 +1,5 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 16
+Release 17 Preview 1
 
 INCLUDES (** = new in latest version):
 Convenience features:
@@ -24,46 +24,40 @@ Convenience features:
  - Civilopedia indicates when units go obsolete but cannot be upgraded
  - Message appears after bomber dodges interception by air defense buildings
  - Option to replay AI moves for all human players in hotseat mode
-  - ** Keep main GUI active during replay
-  - ** Prevent game music from being reset by replay
  - Restore unit directions on game load
- - ** Optimize improvement loops
- - ** Option to remove Elvis Easter egg
- - ** Harbor/airport city icons indicate unit effects not trade abilities
- - ** Disallow useless bombard attacks vs airfields
+ - Optimize improvement loops
+ - Option to remove Elvis Easter egg
+ - Harbor/airport city icons indicate unit effects not trade abilities
+ - Disallow useless bombard attacks vs airfields
+ - ** Display total city count (disabled by default, appears on demographics screen)
 AI enhancements:
  - Allow AI to use artillery in the field
-  - ** AI artillery units are now limited to one escort
  - Force AI to build more artillery and bombers
  - Replace leader unit AI to fix bugs and improve behavior
  - Fix bug preventing AI from filling its armies
  - Improve AI army composition to discourage mixing types & exclude HN units
  - AI routine for "pop units" that may appear in mods
- - ** Can limit the number of escorts the AI assigns to its naval transports and carriers
+ - Can limit the number of escorts the AI assigns to its naval transports and carriers
 Bugs fixed:
  - AI pathfinding collides with invisible units (called the "submarine bug")
-  - ** Exclude enemy units so the AI doesn't path around enemies it isn't supposed to be able to see
  - Science age beakers not actually awarded
  - Pink line in Civilopedia
  - Crash when doing disembark-all on transport containing immobile unit(s)
  - Crash possible when AI civ is left alive with only a settler on a transport (called the "houseboat bug")
  - Resources beyond the first 32 share access records in cities not on the main trade network (called the "phantom resource bug")
  - Air units lose a turn after being set to intercept
- - ** Cached building maintenance amounts not updated when buildings are obsoleted
- - ** Barbarian long-range search for targets is limited to tiles directly NW or SE
+ - Cached building maintenance amounts not updated when buildings are obsoleted
+ - Barbarian long-range search for targets is limited to tiles directly NW or SE
 Engine extensions:
  - Adjustable minimum city distance
-  - ** Gray out build city button when too close to another city and min distance has been increased
  - Option to limit railroad movement
-  - ** Fix incorrect ETAs in go-to mode
-  - ** Mitigate issue with pathfinding for units with many moves (see config file for details)
  - Removed unit limit
  - Enable free improvements from small wonders
  - Option to share visibility among all human players in a hotseat game
+  - ** Overhaul implementation of shared visibility for simplicity and correctness
  - Option to prevent autoraze and razing by players
  - Stealth attack activates even when there's only one target
  - Trespassing prevention
-  - ** Fix freeze when disembark-all job is blocked by trespassing restriction
  - Land/sea intersections
  - Adjustable anarchy length
  - "Perfume" units or improvements to control how likely the AI is to build them
@@ -77,7 +71,6 @@ Engine extensions:
  - Buildings can be set as prerequisites for unit production
  - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
  - Option to modify rules for retreat eligibility
-  - ** Separate options for land & sea
  - AI two-city start
  - Remove cap on turn limit
  - Option to strengthen forbidden palace decorruption effect to match the palace's
@@ -87,7 +80,6 @@ Engine extensions:
  - Option to remove exception to tile penalty for city tiles with fresh water and Agri trait
  - Enable stealth attacks via bombardment
  - Artillery can be set to use PTW-like targeting against cities
-  - ** Can use charm bombard flag to control this
  - Recon missions can be made vulnerable to interception
  - Option to charge one move for recon missions and interception
  - Allow players to opt out of stealth attacks
@@ -96,10 +88,25 @@ Engine extensions:
   - Use bombard range instead of operational range
   - Cannot be intercepted
  - Option to immunize aircraft against bombardment
- - ** Option to ignore king flag on defense, so kings aren't always last to defend in a stack
- - ** Option to show untradable techs on trade screen
- - ** Barbarian city capture & production (experimental)
- - ** Option to allow land units to bombard aircraft and naval units in cities
+ - Option to ignore king flag on defense, so kings aren't always last to defend in a stack
+ - Option to show untradable techs on trade screen
+ - Barbarian city capture & production (experimental)
+ - Option to allow land units to bombard aircraft and naval units in cities
+ - ** Zone of control changes
+  - Allow land-to-sea and sea-to-land attacks, only using bombard stat
+  - May be lethal
+  - May be exerted by air units
+  - Show attack animation even when attacker is not at the top of its stack
+ - ** Defensive bombard changes
+  - May be lethal
+  - May be performed by air units
+  - Invisible, undetected units may be made immune
+  - May be performed multiple times per turn with blitz
+  - Naval units in a city may perform defensive bombard vs land attackers
+ - ** Allow precision strikes to target tile improvements
+ - ** Option not to end a unit's turn after it bombards a barricade
+ - ** Option to allow bombardment of other improvements on a tile with an occupied airfield
+ - ** Option to boost OCN increase from forbidden palaces in non-communal governments
 
 INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.

@@ -545,6 +545,54 @@ read_retreat_rules (struct string_slice const * s, int * out_val)
 
 }
 
+struct parsable_field_bit {
+	char * name;
+	int bit_value;
+};
+
+int
+read_bit_field (struct string_slice const * s, struct parsable_field_bit const * bits, int count_bits, int * out_field)
+{
+	struct string_slice trimmed = trim_string_slice (s, 0);
+	s = &trimmed;
+
+	int tr;
+	if (s->len <= 0)
+		tr = 0;
+	else if (slice_matches_str (s, "all"))
+		tr = ~0;
+	else {
+		tr = 0;
+		char * cursor = &s->str[0];
+		char * s_end = &s->str[s->len];
+		while (1) {
+			struct string_slice name;
+
+			if (cursor >= s_end)
+				break;
+			else if (! parse_string (&cursor, &name)) {
+				skip_white_space (&cursor);
+				if (cursor >= s_end)
+					break;
+				else
+					return 0; // Invalid character in value
+			}
+
+			int matched_any = 0;
+			for (int n = 0; n < count_bits; n++)
+				if (slice_matches_str (&name, bits[n].name)) {
+					tr |= bits[n].bit_value;
+					matched_any = 1;
+					break;
+				}
+			if (! matched_any)
+				return 0;
+		}
+	}
+	*out_field = tr;
+	return 1;
+}
+
 struct config_parsing {
 	char * file_path;
 	char * text;
@@ -688,6 +736,24 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				} else if (slice_matches_str (&p.key, "sea_retreat_rules")) {
 					if (! read_retreat_rules (&value, (int *)&cfg->sea_retreat_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "special_defensive_bombard_rules")) {
+					struct parsable_field_bit bits[] = {
+						{"lethal"        , SDBR_LETHAL},
+						{"not-invisible" , SDBR_NOT_INVISIBLE},
+						{"aerial"        , SDBR_AERIAL},
+						{"blitz"         , SDBR_BLITZ},
+						{"docked-vs-land", SDBR_DOCKED_VS_LAND},
+					};
+					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_defensive_bombard_rules))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "special_zone_of_control_rules")) {
+					struct parsable_field_bit bits[] = {
+						{"lethal"    , SZOCR_LETHAL},
+						{"aerial"    , SZOCR_AERIAL},
+						{"amphibious", SZOCR_AMPHIBIOUS},
+					};
+					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_zone_of_control_rules))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_ptw_arty_types (&value,
 								   &unrecognized_lines,
@@ -806,6 +872,28 @@ patch_PCX_Image_process_tech_ga_status (PCX_Image * this, int edx, char * str)
 	return PCX_Image_process_text (this, __, str);
 }
 
+byte __fastcall
+patch_Leader_is_tile_visible (Leader * this, int edx, int x, int y)
+{
+	Tile_Body * tile = &tile_at (x, y)->Body;
+	unsigned vis_bits = tile->FOWStatus | tile->V3 | tile->Visibility | tile->field_D0_Visibility;
+	if (vis_bits & (1 << this->ID))
+		return 1;
+	else if (is->current_config.share_visibility_in_hoseat && // if shared hotseat vis is enabled AND
+		 (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game AND
+		 ((1 << this->ID) & *p_human_player_bits) && // "this" is a human player AND
+		 (vis_bits & *p_human_player_bits)) // any human player has visibility on the tile
+		return 1;
+	else
+		return 0;
+}
+
+byte __fastcall
+patch_Main_Screen_Form_is_unit_visible_to_player (Main_Screen_Form * this, int edx, int tile_x, int tile_y, Unit * unit)
+{
+	return (unit->Body.CivID == this->Player_CivID) || patch_Leader_is_tile_visible (&leaders[this->Player_CivID], __, tile_x, tile_y);
+}
+
 enum direction
 reverse_dir (enum direction dir)
 {
@@ -863,17 +951,6 @@ tile_at_index (Map * map, int i)
 	int x, y;
 	tile_index_to_coords (map, i, &x, &y);
 	return tile_at (x, y);
-}
-
-int
-is_tile_visible_to (int x, int y, int civ_id)
-{
-	Tile * tile = tile_at (x, y);
-	if ((tile != NULL) && (tile != p_null_tile)) {
-		Tile_Body * body = &tile->Body;
-		return ((body->FOWStatus | body->V3 | body->Visibility | body->field_D0_Visibility) & (1 << civ_id)) != 0;
-	} else
-		return 0;
 }
 
 void
@@ -1330,11 +1407,69 @@ do_capture_modified_gold_trade (TradeOffer * trade_offer, int edx, int val, char
 	return print_int (val, str, base);
 }
 
+struct register_set {
+	int edi, esi, ebp, esp, ebx, edx, ecx, eax;
+};
+
+// Return 1 to allow the candidate unit to exert ZoC, 0 to exclude it. A pointer to the candidate is in esi.
+int __stdcall
+filter_zoc_candidate (struct register_set * reg)
+{
+	Unit * candidate = (Unit *)reg->esi,
+	     * defender = is->zoc_defender;
+
+	UnitType * candidate_type = &p_bic_data->UnitTypes[candidate->Body.UnitTypeID],
+		 * defender_type  = &p_bic_data->UnitTypes[defender ->Body.UnitTypeID];
+
+	enum UnitTypeClasses candidate_class = candidate_type->Unit_Class,
+		             defender_class  = defender_type ->Unit_Class;
+
+	byte lethal     = (is->current_config.special_zone_of_control_rules & SZOCR_LETHAL    ) != 0,
+	     aerial     = (is->current_config.special_zone_of_control_rules & SZOCR_AERIAL    ) != 0,
+	     amphibious = (is->current_config.special_zone_of_control_rules & SZOCR_AMPHIBIOUS) != 0;
+
+	// Exclude air units if aerial ZoC is not enabled and exclude land-to-sea & sea-to-land ZoC if amphibious is not enabled
+	if ((! aerial) && (candidate_class == UTC_Air))
+		return 0;
+	if ((! amphibious) &&
+	    (((candidate_class == UTC_Land) && (defender_class == UTC_Sea )) ||
+	     ((candidate_class == UTC_Sea ) && (defender_class == UTC_Land))))
+		return 0;
+
+	// In case of cross-domain ZoC, filter out units with zero bombard strength or range. They can't use their attack strength in this case, so
+	// without bombard they can be ruled out. Don't forget units may have non-zero bombard strength and zero range for defensive bombard.
+	int range = (candidate_class != UTC_Air) ? candidate_type->Bombard_Range : candidate_type->OperationalRange;
+	if ((candidate_class != defender_class) && ((candidate_type->Bombard_Strength <= 0) || (range <= 0)))
+		return 0;
+
+	// Require lethal config option & lethal bombard against one HP defender
+	if ((Unit_get_max_hp (defender) - defender->Body.Damage <= 1) &&
+	    ((! lethal) ||
+	     ((defender_class == UTC_Sea) && ! UnitType_has_ability (candidate_type, __, UTA_Lethal_Sea_Bombardment)) ||
+	     ((defender_class != UTC_Sea) && ! UnitType_has_ability (candidate_type, __, UTA_Lethal_Land_Bombardment))))
+		return 0;
+
+	// Air units require the bombing action to perform ZoC
+	if ((candidate_class == UTC_Air) && ! (candidate_type->Air_Missions & UCV_Bombing))
+		return 0;
+
+	// Exclude land units in transports
+	if (candidate_class == UTC_Land) {
+		Unit * container = get_unit_ptr (candidate->Body.Container_Unit);
+		if ((container != NULL) && ! UnitType_has_ability (&p_bic_data->UnitTypes[container->Body.UnitTypeID], __, UTA_Army))
+			return 0;
+	}
+
+	return 1;
+}
+
+enum branch_kind { BK_CALL, BK_JUMP };
+
 byte *
-emit_call (byte * cursor, void const * target)
+emit_branch (enum branch_kind kind, byte * cursor, void const * target)
 {
 	int offset = (int)target - ((int)cursor + 5);
-	*cursor++ = 0xE8;
+	*cursor++ = (kind == BK_CALL) ? 0xE8 : 0xE9;
 	return int_to_bytes (cursor, offset);
 }
 
@@ -1473,17 +1608,14 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	// https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-10#post-16085242
 	WITH_MEM_PROTECTION (ADDR_HOUSEBOAT_BUG_PATCH, ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH, PAGE_EXECUTE_READWRITE) {
 		if (cfg->patch_houseboat_bug) {
+			nopify_area (ADDR_HOUSEBOAT_BUG_PATCH, ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH);
 			byte * cursor = ADDR_HOUSEBOAT_BUG_PATCH;
 			*cursor++ = 0x50; // push eax
 			int call_offset = (int)&tile_at_city_or_null - ((int)cursor + 5);
 			*cursor++ = 0xE8; // call
 			cursor = int_to_bytes (cursor, call_offset);
-			for (; cursor < ADDR_HOUSEBOAT_BUG_PATCH_END; cursor++)
-				*cursor = 0x90; // nop
 		} else
-			memmove (ADDR_HOUSEBOAT_BUG_PATCH,
-				 is->houseboat_patch_area_original_contents,
-				 ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH);
+			restore_area (ADDR_HOUSEBOAT_BUG_PATCH);
 	}
 
 	// NoRaze
@@ -1558,7 +1690,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	WITH_MEM_PROTECTION (ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT, 9, PAGE_EXECUTE_READWRITE) {
 		byte * cursor = ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT;
 		*cursor++ = 0x8B; *cursor++ = 0xCE; // mov ecx, esi
-		cursor = emit_call (cursor, adjust_sliders_preproduction);
+		cursor = emit_branch (BK_CALL, cursor, adjust_sliders_preproduction);
 		for (; cursor < ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT + 9; cursor++)
 			*cursor = 0x90; // nop
 	}
@@ -1572,7 +1704,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	for (int n = 0; n < ARRAY_LEN (addr_print_gold_amounts); n++) {
 		byte * addr = addr_print_gold_amounts[n];
 		WITH_MEM_PROTECTION (addr, 5, PAGE_EXECUTE_READWRITE)
-			emit_call (addr, ADDR_CAPTURE_MODIFIED_GOLD_TRADE);
+			emit_branch (BK_CALL, addr, ADDR_CAPTURE_MODIFIED_GOLD_TRADE);
 	}
 	WITH_MEM_PROTECTION (ADDR_CAPTURE_MODIFIED_GOLD_TRADE, 32, PAGE_EXECUTE_READWRITE) {
 		byte * cursor = ADDR_CAPTURE_MODIFIED_GOLD_TRADE;
@@ -1585,7 +1717,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 			for (int k = 0; k < ARRAY_LEN (repush); k++)
 				*cursor++ = repush[k];
 
-		cursor = emit_call (cursor, do_capture_modified_gold_trade); // call do_capture_modified_gold_trade
+		cursor = emit_branch (BK_CALL, cursor, do_capture_modified_gold_trade); // call do_capture_modified_gold_trade
 		*cursor++ = 0xC3; // ret
 	}
 
@@ -1609,6 +1741,42 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 			restore_area (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP);
 	}
 	set_nopification (cfg->enable_city_capture_by_barbarians, ADDR_PROD_PHASE_BARB_DONE_JUMP, 5);
+
+	for (int domain = 0; domain < 2; domain++) {
+		byte * addr_skip    = (domain == 0) ? ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC : ADDR_SKIP_SEA_UNITS_FOR_LAND_ZOC,
+		     * addr_airlock = (domain == 0) ? ADDR_SEA_ZOC_FILTER_AIRLOCK      : ADDR_LAND_ZOC_FILTER_AIRLOCK;
+
+		WITH_MEM_PROTECTION (addr_skip, 6, PAGE_EXECUTE_READWRITE) {
+			if ((cfg->special_zone_of_control_rules != 0) && ! is_area_nopified (addr_skip)) {
+				byte * original_target = addr_skip + 6 + int_from_bytes (addr_skip + 2); // target addr of jump instr we're replacing
+				nopify_area (addr_skip, 6);
+
+				// Initialize airlock. The airlock preserves all registers and calls filter_zoc_candidate then either follows or skips the
+				// original jump depending on what it returns. If zero is returned, follows the jump, skipping a bunch of code and filtering
+				// out the unit as a candidate for ZoC.
+				WITH_MEM_PROTECTION (addr_airlock, INLEAD_SIZE, PAGE_READWRITE) {
+					byte * cursor = addr_airlock;
+					*cursor++ = 0x60; // pusha
+					*cursor++ = 0x54; // push esp
+					cursor = emit_branch (BK_CALL, cursor, filter_zoc_candidate);
+					*cursor++ = 0x83; *cursor++ = 0xF8; *cursor++ = 0x01; // cmp eax, 1
+					*cursor++ = 0x75; *cursor++ = 0x06; // jne 6
+					*cursor++ = 0x61; // popa
+					cursor = emit_branch (BK_JUMP, cursor, addr_skip + 6);
+					*cursor++ = 0x61; // popa
+					cursor = emit_branch (BK_JUMP, cursor, original_target);
+				}
+
+				// Write jump to airlock
+				emit_branch (BK_JUMP, addr_skip, addr_airlock);
+			} else if (cfg->special_zone_of_control_rules == 0)
+				restore_area (addr_skip);
+		}
+	}
+
+	set_nopification ( cfg->special_zone_of_control_rules                 != 0, ADDR_ZOC_CHECK_ATTACKER_ANIM_FIELD_111, 6);
+	set_nopification ((cfg->special_zone_of_control_rules & SZOCR_LETHAL) != 0, ADDR_SKIP_ZOC_FOR_ONE_HP_LAND_UNIT    , 6);
+	set_nopification ((cfg->special_zone_of_control_rules & SZOCR_LETHAL) != 0, ADDR_SKIP_ZOC_FOR_ONE_HP_SEA_UNIT     , 6);
 }
 
 void
@@ -1638,6 +1806,7 @@ patch_init_floating_point ()
 		{"enable_trade_screen_scroll"                          , 1, offsetof (struct c3x_config, enable_trade_screen_scroll)},
 		{"group_units_on_right_click_menu"                     , 1, offsetof (struct c3x_config, group_units_on_right_click_menu)},
 		{"show_golden_age_turns_remaining"                     , 1, offsetof (struct c3x_config, show_golden_age_turns_remaining)},
+		{"show_zoc_attacks_from_mid_stack"                     , 1, offsetof (struct c3x_config, show_zoc_attacks_from_mid_stack)},
 		{"cut_research_spending_to_avoid_bankruptcy"           , 1, offsetof (struct c3x_config, cut_research_spending_to_avoid_bankruptcy)},
 		{"dont_pause_for_love_the_king_messages"               , 1, offsetof (struct c3x_config, dont_pause_for_love_the_king_messages)},
 		{"reverse_specialist_order_with_shift"                 , 1, offsetof (struct c3x_config, reverse_specialist_order_with_shift)},
@@ -1698,6 +1867,12 @@ patch_init_floating_point ()
 		{"enable_city_capture_by_barbarians"                   , 0, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
 		{"share_visibility_in_hoseat"                          , 0, offsetof (struct c3x_config, share_visibility_in_hoseat)},
 		{"remove_land_artillery_target_restrictions"           , 0, offsetof (struct c3x_config, remove_land_artillery_target_restrictions)},
+		{"allow_precision_strikes_against_tile_improvements"   , 0, offsetof (struct c3x_config, allow_precision_strikes_against_tile_improvements)},
+		{"dont_end_units_turn_after_bombarding_barricade"      , 0, offsetof (struct c3x_config, dont_end_units_turn_after_bombarding_barricade)},
+		{"remove_land_artillery_target_restrictions"           , 0, offsetof (struct c3x_config, remove_land_artillery_target_restrictions)},
+		{"allow_bombard_of_other_improvs_on_occupied_airfield" , 0, offsetof (struct c3x_config, allow_bombard_of_other_improvs_on_occupied_airfield)},
+		{"show_total_city_count"                               , 0, offsetof (struct c3x_config, show_total_city_count)},
+		{"strengthen_forbidden_palace_ocn_effect"              , 0, offsetof (struct c3x_config, strengthen_forbidden_palace_ocn_effect)},
 	};
 
 	struct integer_config_option {
@@ -1818,10 +1993,7 @@ patch_init_floating_point ()
 	is->trade_scroll_button_state = IS_UNINITED;
 	is->eligible_for_trade_scroll = 0;
 
-	// Read contents of region potentially overwritten by patch
-	memmove (is->houseboat_patch_area_original_contents,
-		 ADDR_HOUSEBOAT_BUG_PATCH,
-		 ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH);
+	memset (&is->nopified_areas, 0, sizeof is->nopified_areas);
 
 	is->unit_menu_duplicates = NULL;
 
@@ -1862,12 +2034,18 @@ patch_init_floating_point ()
 
 	is->dummy_tile = calloc (1, sizeof *is->dummy_tile);
 
+	is->unit_bombard_attacking_tile = NULL;
+
 	is->showing_hotseat_replay = 0;
 	is->getting_tile_occupier_for_ai_pathfinding = 0;
 
 	is->water_trade_improvs    = (struct improv_id_list) {0};
 	is->air_trade_improvs      = (struct improv_id_list) {0};
 	is->combat_defense_improvs = (struct improv_id_list) {0};
+
+	is->unit_display_override = (struct unit_display_override) {-1, -1, -1};
+
+	is->dbe = (struct defensive_bombard_event) {0};
 
 	memset (&is->boolean_config_offsets, 0, sizeof is->boolean_config_offsets);
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
@@ -1877,6 +2055,7 @@ patch_init_floating_point ()
 		stable_insert (&is->integer_config_offsets, integer_config_options[n].name, integer_config_options[n].offset);
 
 	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
+	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -2280,6 +2459,41 @@ has_any_destructible_improvements (City * city)
 	return 0;
 }
 
+int const destructible_overlays =
+	0x00000003 | // road, railroad
+	0x00000004 | // mine
+	0x00000008 | // irrigation
+	0x00000010 | // fortress
+	0x10000000 | // barricade
+	0x20000000 | // airfield
+	0x40000000 | // radar
+	0x80000000;  // outpost
+
+int
+has_any_destructible_overlays (Tile * tile, int precision_strike)
+{
+	int overlays = tile->vtable->m42_Get_Overlays (tile, __, 0);
+	if ((overlays & destructible_overlays) == 0)
+		return 0;
+	else {
+		if (! precision_strike)
+			return 1;
+		else {
+			if (overlays == 0x20000000) { // if tile ONLY has an airfield
+				int any_aircraft_on_tile = 0; {
+					FOR_UNITS_ON (uti, tile)
+						if (p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Unit_Class == UTC_Air) {
+							any_aircraft_on_tile = 1;
+							break;
+						}
+				}
+				return ! any_aircraft_on_tile;
+			} else
+				return 1;
+		}
+	}
+}
+
 void __fastcall
 patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx, enum Unit_Mode_Actions action, int x, int y)
 {
@@ -2385,22 +2599,11 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 					}
 				}
 			}
-		} else if (target_city != NULL) {
-			anything_left_to_attack =
-				(target_city->Body.Population.Size > 1) ||
-				has_any_destructible_improvements (target_city);
-		} else if (attacking_tile) {
-			int destructible_overlays =
-				0x00000003 | // road, railroad
-				0x00000004 | // mine
-				0x00000008 | // irrigation
-				0x00000010 | // fortress
-				0x10000000 | // barricade
-				0x20000000 | // airfield
-				0x40000000 | // radar
-				0x80000000;  // outpost
-			anything_left_to_attack = (target_tile->vtable->m42_Get_Overlays (target_tile, __, 0) & destructible_overlays) != 0;
-		} else
+		} else if (target_city != NULL)
+			anything_left_to_attack = (target_city->Body.Population.Size > 1) || has_any_destructible_improvements (target_city);
+		else if (attacking_tile)
+			anything_left_to_attack = has_any_destructible_overlays (target_tile, 0);
+		else
 			anything_left_to_attack = 0;
 	} while ((next_up != NULL) && anything_left_to_attack && (! last_attack_didnt_happen));
 
@@ -3339,6 +3542,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	for (int n = 0; n < 32; n++)
 		is->interceptor_reset_lists[n].count = 0;
 	is->replay_for_players = 0;
+	table_deinit (&is->extra_defensive_bombards);
 
 	// Recreate table of alt strategies
 	table_deinit (&is->unit_type_alt_strategies);
@@ -4652,9 +4856,17 @@ patch_open_tile_info (void * this, int edx, int mouse_x, int mouse_y, int civ_id
 int
 is_explored (Tile * tile, int civ_id)
 {
-	int in_debug_mode = (*p_debug_mode_bits & 8) != 0, // checking bit 3 here b/c that's how resource visibility is checked in open_tile_info
-	    not_fogged = (tile->Body.Fog_Of_War & (1 << civ_id)) != 0;
-	return in_debug_mode || not_fogged;
+	unsigned explored_bits = tile->Body.Fog_Of_War;
+	int in_debug_mode = (*p_debug_mode_bits & 8) != 0; // checking bit 3 here b/c that's how resource visibility is checked in open_tile_info
+	if (in_debug_mode || (explored_bits & (1 << civ_id)))
+		return 1;
+	else if (is->current_config.share_visibility_in_hoseat && // if shared hotseat vis is enabled AND
+		 (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game AND
+		 ((1 << civ_id) & *p_human_player_bits) && // "civ_id" is a human player AND
+		 (explored_bits & *p_human_player_bits)) // any human player has visibility on the tile
+		return 1;
+	else
+		return 0;
 }
 
 // On the GOG executable, this function intercepts the call to draw the "No information available" text on a unexplored (black) tile. In that case we
@@ -5006,6 +5218,17 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 }
 
 void __fastcall
+patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
+{
+	// Clear extra DBs used by this unit
+	int extra_dbs;
+	if (itable_look_up (&is->extra_defensive_bombards, this->Body.ID, &extra_dbs) && (extra_dbs != 0))
+		itable_insert (&is->extra_defensive_bombards, this->Body.ID, 0);
+
+	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
+}
+
+void __fastcall
 patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, int param_2, int param_3)
 {
 	// Restore the tile count if it was saved by recompute_resources. This is necessary because the Draw_Tiles method loops over all tiles.
@@ -5172,7 +5395,7 @@ set_up_ai_two_city_start (Map * map)
 
 			// Delete starting settler so it's as if it was consumed to found the capital
 			if (starting_settler != NULL)
-				Unit_despawn (starting_settler, __, 0, 1, 0, 0, 0, 0, 0);
+				patch_Unit_despawn (starting_settler, __, 0, 1, 0, 0, 0, 0, 0);
 
 			// Add forbidden palace to FP city
 			for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
@@ -5693,6 +5916,17 @@ patch_Leader_begin_unit_turns (Leader * this)
 	}
 	irl->count = 0;
 
+	// Reset all extra defensive bombard uses, if necessary
+	if (is->extra_defensive_bombards.len > 0)
+		for (int n = 0; n <= p_units->LastIndex; n++) {
+			Unit * unit = get_unit_ptr (n);
+			if ((unit != NULL) && (unit->Body.CivID == this->ID)) {
+				int unused;
+				if (itable_look_up (&is->extra_defensive_bombards, n, &unused))
+					itable_insert (&is->extra_defensive_bombards, n, 0);
+			}
+		}
+
 	Leader_begin_unit_turns (this);
 }
 
@@ -5732,7 +5966,7 @@ patch_Unit_play_anim_for_bombard_tile (Unit * this, int edx, int x, int y)
 	Unit * stealth_attack_target = NULL;
 	if (is->current_config.enable_stealth_attack_via_bombardment &&
 	    (! is_online_game ()) &&
-	    is_tile_visible_to (x, y, p_main_screen_form->Player_CivID)) {
+	    patch_Leader_is_tile_visible (&leaders[p_main_screen_form->Player_CivID], __, x, y)) {
 		byte land_lethal = Unit_has_ability (this, __, UTA_Lethal_Land_Bombardment),
 		     sea_lethal  = Unit_has_ability (this, __, UTA_Lethal_Sea_Bombardment);
 		Unit * defender = Fighter_find_defender_against_bombardment (&p_bic_data->fighter, __, this, x, y, this->Body.CivID, land_lethal, sea_lethal);
@@ -6230,33 +6464,27 @@ patch_count_player_bits_for_barb_prod (unsigned int bit_field)
 }
 
 Tile * __fastcall
-patch_Map_get_tile_for_draw_vis_check (Map * this, int edx, int index)
+patch_Map_get_tile_to_check_visibility (Map * this, int edx, int index)
 {
 	Tile * tr = Map_get_tile (this, __, index);
 	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
 	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
-		is->dummy_tile->Body.Fog_Of_War = ((tr->Body.Fog_Of_War & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		is->dummy_tile->Body.FOWStatus  = ((tr->Body.FOWStatus  & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		is->dummy_tile->Body.V3         = ((tr->Body.V3         & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		is->dummy_tile->Body.Visibility = ((tr->Body.Visibility & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
+		int human_bits = *p_human_player_bits;
+		is->dummy_tile->Body.Fog_Of_War          = tr->Body.Fog_Of_War          | ((tr->Body.Fog_Of_War          & human_bits) != 0 ? human_bits : 0);
+		is->dummy_tile->Body.FOWStatus           = tr->Body.FOWStatus           | ((tr->Body.FOWStatus           & human_bits) != 0 ? human_bits : 0);
+		is->dummy_tile->Body.V3                  = tr->Body.V3                  | ((tr->Body.V3                  & human_bits) != 0 ? human_bits : 0);
+		is->dummy_tile->Body.Visibility          = tr->Body.Visibility          | ((tr->Body.Visibility          & human_bits) != 0 ? human_bits : 0);
+		is->dummy_tile->Body.field_D0_Visibility = tr->Body.field_D0_Visibility | ((tr->Body.field_D0_Visibility & human_bits) != 0 ? human_bits : 0);
 		tr = is->dummy_tile;
 	}
-	is->tile_returned_for_draw_vis_check = tr;
+	is->tile_returned_for_visibility_check = tr;
 	return tr;
 }
 
-// This function works like get_tile_for_draw_vis_check except it only sets the Fog_Of_War field in the dummy tile and doesn't cache the returned
-// pointer for later calls to tile_at. It's used for several patches in the drawing code where the code checks only the Fog_Of_War field.
 Tile * __fastcall
-patch_Map_get_tile_for_fow_check (Map * this, int edx, int index)
+patch_Map_get_tile_to_check_visibility_again (Map * this, int edx, int index)
 {
-	Tile * tile = Map_get_tile (this, __, index);
-	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
-		is->dummy_tile->Body.Fog_Of_War = ((tile->Body.Fog_Of_War & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		return is->dummy_tile;
-	} else
-		return tile;
+	return is->tile_returned_for_visibility_check;
 }
 
 // Same as above except this method uses the FOWStatus field instead of Fog_Of_War
@@ -6273,15 +6501,15 @@ patch_Map_get_tile_for_fow_status_check (Map * this, int edx, int index)
 }
 
 Tile * __cdecl
-patch_tile_at_for_draw_vis_check (int x, int y)
+patch_tile_at_to_check_visibility (int x, int y)
 {
-	return is->tile_returned_for_draw_vis_check;
+	return patch_Map_get_tile_to_check_visibility (&p_bic_data->Map, __, (p_bic_data->Map.Width >> 1) * y + (x >> 1));
 }
 
-Tile * __fastcall
-patch_Map_get_tile_again_for_draw_vis_check (Map * this, int edx, int index)
+Tile * __cdecl
+patch_tile_at_to_check_visibility_again (int x, int y)
 {
-	return is->tile_returned_for_draw_vis_check;
+	return is->tile_returned_for_visibility_check;
 }
 
 unsigned __fastcall
@@ -6312,16 +6540,327 @@ patch_Tile_m42_Get_Overlays (Tile * this, int edx, byte visible_to_civ)
 		return base_vis_overlays;
 }
 
-Tile * __cdecl
-patch_tile_at_for_fow_status_check (int x, int y)
+int __fastcall
+patch_Tile_check_water_for_sea_zoc (Tile * this)
 {
-	Tile * tile = tile_at (x, y);
-	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
-		is->dummy_tile->Body.FOWStatus = ((tile->Body.FOWStatus & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
-		return is->dummy_tile;
+	if ((is->current_config.special_zone_of_control_rules & (SZOCR_AMPHIBIOUS | SZOCR_AERIAL)) == 0)
+		return this->vtable->m35_Check_Is_Water (this);
+	else
+		return 1; // The caller will skip ZoC logic if this is a land tile without a city because the targeted unit is a sea unit. Instead
+			  // return 1, so all tiles are considered sea tiles, so we can run the ZoC logic for land units or air units on land.
+}
+
+int __fastcall
+patch_Tile_check_water_for_land_zoc (Tile * this)
+{
+	// Same as above except this time we want to consider all tiles to be land
+	return ((is->current_config.special_zone_of_control_rules & (SZOCR_AMPHIBIOUS | SZOCR_AERIAL)) == 0) ?
+		this->vtable->m35_Check_Is_Water (this) :
+		0;
+}
+
+
+int __fastcall
+patch_Unit_get_attack_strength_for_sea_zoc (Unit * this)
+{
+	return (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea) ? Unit_get_attack_strength (this) : 0;
+}
+
+int __fastcall
+patch_Unit_get_attack_strength_for_land_zoc (Unit * this)
+{
+	return (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land) ? Unit_get_attack_strength (this) : 0;
+}
+
+Unit * __fastcall
+patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int tile_x, int tile_y, Unit * excluded)
+{
+	struct unit_display_override * override = &is->unit_display_override;
+	if ((override->unit_id >= 0) && (override->tile_x == tile_x) && (override->tile_y == tile_y)) {
+		Unit * unit = get_unit_ptr (override->unit_id);
+		if (unit != NULL) {
+			if ((unit->Body.X == tile_x) && (unit->Body.Y == tile_y))
+				return unit;
+		}
+	}
+
+	return Main_Screen_Form_find_visible_unit (this, __, tile_x, tile_y, excluded);
+}
+
+void __fastcall
+patch_Animator_play_zoc_animation (Animator * this, int edx, Unit * unit, AnimationType anim_type, byte param_3)
+{
+	if (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class != UTC_Air)
+		Animator_play_one_shot_unit_animation (this, __, unit, anim_type, param_3);
+}
+
+byte __fastcall
+patch_Fighter_check_zoc_anim_visibility (Fighter * this, int edx, Unit * attacker, Unit * defender, byte param_3)
+{
+	// If we've reached this point in the code (in the calling method) then a unit has been selected to exert zone of control and it has passed
+	// its dice roll to cause damage. Stash its pointer for possible use later.
+	is->zoc_interceptor = attacker;
+
+	// If an air unit was selected, pre-emptively undo the damage from ZoC since we'll want to run our own bit of logic to do that (the air unit
+	// may still get shot down). Return 0 from this function to skip over all of the animation logic in the caller since it wouldn't work for
+	// aircraft.
+	if (p_bic_data->UnitTypes[attacker->Body.UnitTypeID].Unit_Class == UTC_Air) {
+		defender->Body.Damage -= 1;
+		return 0;
+
+	// Repeat a check done by the caller. We've deleted this check to ensure that this function always gets called so we can grab the interceptor.
+	} else if (attacker->Body.Animation.field_111 == 0)
+		return 0;
+
+	else {
+		byte tr = Fighter_check_combat_anim_visibility (this, __, attacker, defender, param_3);
+
+		// If necessary, set up to ensure the unit's attack animation is visible. This means forcing it to the top of its stack and
+		// temporarily unfortifying it if it's fortified. (If it's fortified, the animation is occasionally not visible. Don't know why.)
+		if (tr && is->current_config.show_zoc_attacks_from_mid_stack) {
+			is->unit_display_override = (struct unit_display_override) { attacker->Body.ID, attacker->Body.X, attacker->Body.Y };
+			if (attacker->Body.UnitState == UnitState_Fortifying) {
+				Unit_set_state (attacker, __, 0);
+				is->refortify_interceptor_after_zoc = 1;
+			}
+		}
+
+		return tr;
+	}
+}
+
+void __fastcall
+patch_Fighter_apply_zone_of_control (Fighter * this, int edx, Unit * unit, int from_x, int from_y, int to_x, int to_y)
+{
+	is->zoc_interceptor = NULL;
+	is->zoc_defender = unit;
+	is->refortify_interceptor_after_zoc = 0;
+	struct unit_display_override saved_udo = is->unit_display_override;
+	Fighter_apply_zone_of_control (this, __, unit, from_x, from_y, to_x, to_y);
+
+	// Actually exert ZoC if an air unit managed to do so.
+	if ((is->zoc_interceptor != NULL) && (p_bic_data->UnitTypes[is->zoc_interceptor->Body.UnitTypeID].Unit_Class == UTC_Air)) {
+		int intercepted = Unit_try_flying_over_tile (is->zoc_interceptor, __, from_x, from_y);
+		if (! intercepted) {
+			Unit_play_bombing_animation (is->zoc_interceptor, __, from_x, from_y);
+			unit->Body.Damage = not_below (0, unit->Body.Damage + 1);
+		}
+	}
+
+	if (is->refortify_interceptor_after_zoc)
+		Unit_set_state (is->zoc_interceptor, __, UnitState_Fortifying);
+	is->unit_display_override = saved_udo;
+}
+
+// These two patches replace two function calls in Unit::move_to_adjacent_tile that come immediately after the unit has been subjected to zone of
+// control. These calls recheck that the move is valid, not sure why. Here they're patched to indicate that the move in invalid when the unit was
+// previously killed by ZoC. This causes move_to_adjacent_tile to return early without running the code that would place the unit on the destination
+// tile and, for example, capturing an enemy city there.
+int __fastcall
+patch_Trade_Net_get_move_cost_after_zoc (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned param_7, int neighbor_index, Trade_Net_Distance_Info * dist_info)
+{
+	return ((is->current_config.special_zone_of_control_rules & SZOCR_LETHAL) == 0) || ((Unit_get_max_hp (unit) - unit->Body.Damage) > 0) ?
+		patch_Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, param_7, neighbor_index, dist_info) :
+		-1;
+}
+AdjacentMoveValidity __fastcall
+patch_Unit_can_move_after_zoc (Unit * this, int edx, int neighbor_index, int param_2)
+{
+	return ((is->current_config.special_zone_of_control_rules & SZOCR_LETHAL) == 0) || ((Unit_get_max_hp (this) - this->Body.Damage) > 0) ?
+		patch_Unit_can_move_to_adjacent_tile (this, __, neighbor_index, param_2) :
+		AMV_1;
+}
+
+// Checks unit's HP after it was possibly hit by ZoC and deals with the consequences if it's dead. Does nothing if config option to make ZoC lethal
+// isn't set or if interceptor is NULL. Returns 1 if the unit was killed, 0 otherwise.
+int
+check_life_after_zoc (Unit * unit, Unit * interceptor)
+{
+	if ((is->current_config.special_zone_of_control_rules & SZOCR_LETHAL) && (interceptor != NULL) &&
+	    ((Unit_get_max_hp (unit) - unit->Body.Damage) <= 0)) {
+		Unit_score_kill (interceptor, __, unit, 0);
+		if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (&p_bic_data->fighter, __, interceptor, unit, 1))
+			Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, unit, AT_DEATH, 0);
+		patch_Unit_despawn (unit, __, interceptor->Body.CivID, 0, 0, 0, 0, 0, 0);
+		return 1;
 	} else
-		return tile;
+		return 0;
+}
+
+int __fastcall
+patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, byte param_2, int param_3, byte param_4)
+{
+	is->zoc_interceptor = NULL;
+	int tr = Unit_move_to_adjacent_tile (this, __, neighbor_index, param_2, param_3, param_4);
+	if (check_life_after_zoc (this, is->zoc_interceptor))
+		return ! is_online_game (); // This is what the original method returns when the unit was destroyed in combat
+	else
+		return tr;
+}
+
+int __fastcall
+patch_Unit_teleport (Unit * this, int edx, int tile_x, int tile_y, Unit * unit_telepad)
+{
+	is->zoc_interceptor = NULL;
+	int tr = Unit_teleport (this, __, tile_x, tile_y, unit_telepad);
+	check_life_after_zoc (this, is->zoc_interceptor);
+	return tr;
+}
+
+int
+can_do_defensive_bombard (Unit * unit, UnitType * type)
+{
+	if ((type->Bombard_Strength > 0) && (! Unit_has_ability (unit, __, UTA_Cruise_Missile))) {
+		if ((unit->Body.Status & 0x40) == 0) // has not already done DB this turn
+			return 1;
+
+		// If the "blitz" special DB rule is activated and this unit has blitz, check if it still has an extra DB to use
+		else if ((is->current_config.special_defensive_bombard_rules & SDBR_BLITZ) && UnitType_has_ability (type, __, UTA_Blitz)) {
+			int extra_dbs;
+			int got_value = itable_look_up (&is->extra_defensive_bombards, unit->Body.ID, &extra_dbs);
+			if (! got_value)
+				extra_dbs = 0;
+			return type->Movement > extra_dbs + 1;
+
+		} else
+			return 0;
+	} else
+		return 0;
+}
+
+Unit * __fastcall
+patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker, Unit * defender)
+{
+	int special_rules = is->current_config.special_defensive_bombard_rules;
+	if (special_rules == 0)
+		return Fighter_find_defensive_bombarder (this, __, attacker, defender);
+	else {
+		enum UnitTypeClasses attacker_class = p_bic_data->UnitTypes[attacker->Body.UnitTypeID].Unit_Class;
+		int attacker_has_one_hp = Unit_get_max_hp (attacker) - attacker->Body.Damage <= 1;
+
+		Tile * defender_tile = tile_at (defender->Body.X, defender->Body.Y);
+		if ((Unit_get_defense_strength (attacker) < 1) || // if attacker cannot defend OR
+		    (defender_tile == NULL) || (defender_tile == p_null_tile) || // defender tile is invalid OR
+		    (((special_rules & SDBR_LETHAL) == 0) && attacker_has_one_hp) || // (DB is non-lethal AND attacker has one HP remaining) OR
+		    ((special_rules & SDBR_NOT_INVISIBLE) && ! Unit_is_visible_to_civ (attacker, __, defender->Body.CivID, 1))) // (invisible units are immune to DB AND attacker is invisible)
+			return NULL;
+
+		Unit * tr = NULL;
+		int highest_strength = -1;
+		enum UnitTypeAbilities lethal_bombard_req = (attacker_class == UTC_Sea) ? UTA_Lethal_Sea_Bombardment : UTA_Lethal_Land_Bombardment;
+		FOR_UNITS_ON (uti, defender_tile) {
+			Unit * candidate = uti.unit;
+			UnitType * candidate_type = &p_bic_data->UnitTypes[candidate->Body.UnitTypeID];
+			if (can_do_defensive_bombard (candidate, candidate_type) &&
+			    (candidate_type->Bombard_Strength > highest_strength) &&
+			    (candidate != defender) &&
+			    (Unit_get_containing_army (candidate) != defender) &&
+			    ((attacker_class == candidate_type->Unit_Class) ||
+			     ((special_rules & SDBR_AERIAL) &&
+			      (candidate_type->Unit_Class == UTC_Air) &&
+			      (candidate_type->Air_Missions & UCV_Bombing)) ||
+			     ((special_rules & SDBR_DOCKED_VS_LAND) &&
+			      (candidate_type->Unit_Class == UTC_Sea) &&
+			      (get_city_ptr (defender_tile->CityID) != NULL))) &&
+			    ((! attacker_has_one_hp) || UnitType_has_ability (candidate_type, __, lethal_bombard_req))) {
+				tr = candidate;
+				highest_strength = candidate_type->Bombard_Strength;
+			}
+		}
+		return tr;
+	}
+}
+
+void __fastcall
+patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombarder, Unit * defender)
+{
+	if (p_bic_data->UnitTypes[bombarder->Body.UnitTypeID].Unit_Class == UTC_Air) {
+		if (Unit_try_flying_over_tile (bombarder, __, defender->Body.X, defender->Body.Y))
+			return; // intercepted
+		else if (patch_Main_Screen_Form_is_unit_visible_to_player (p_main_screen_form, __, defender->Body.X, defender->Body.Y, bombarder))
+			Unit_play_bombing_animation (bombarder, __, defender->Body.X, defender->Body.Y);
+	}
+
+	// If the unit has already performed DB this turn, then record that it's consumed one of its extra DBs
+	if (bombarder->Body.Status & 0x40) {
+		int extra_dbs;
+		int got_value = itable_look_up (&is->extra_defensive_bombards, bombarder->Body.ID, &extra_dbs);
+		itable_insert (&is->extra_defensive_bombards, bombarder->Body.ID, got_value ? (extra_dbs + 1) : 1);
+	}
+
+	int damage_before = defender->Body.Damage;
+	Fighter_damage_by_defensive_bombard (this, __, bombarder, defender);
+	int damage_after = defender->Body.Damage;
+
+	is->dbe.bombarder = bombarder;
+	is->dbe.defender = defender;
+	if (damage_after > damage_before) {
+		is->dbe.damage_done = 1;
+		int max_hp = Unit_get_max_hp (defender);
+		int dead_before = damage_before >= max_hp, dead_after = damage_after >= max_hp;
+
+		// If the unit was killed by defensive bombard, play its death animation then toggle off animations for the rest of the combat so it
+		// doesn't look like anything else happens. Technically, the combat continues and the dead unit is guarantted to lose because the
+		// patch to get_combat_odds ensures the dead unit has no chance of winning a round.
+		if (dead_before ^ dead_after) {
+			is->dbe.defender_was_destroyed = 1;
+			if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (this, __, bombarder, defender, 1))
+				Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, defender, AT_DEATH, 0);
+			is->dbe.saved_animation_setting = this->play_animations;
+			this->play_animations = 0;
+		}
+	}
+}
+
+int __fastcall
+patch_Fighter_get_odds_for_main_combat_loop (Fighter * this, int edx, Unit * attacker, Unit * defender, byte bombarding, byte ignore_defensive_bonuses)
+{
+	// If the attacker was destroyed by defensive bombard, return a number that will ensure the defender wins the first round of combat, otherwise
+	// the zero HP attacker might go on to win an absurd victory. (The attacker in the overall combat is the defender during DB).
+	if (is->dbe.defender_was_destroyed)
+		return 1025;
+
+	else
+		return Fighter_get_combat_odds (this, __, attacker, defender, bombarding, ignore_defensive_bonuses);
+}
+
+byte __fastcall
+patch_Fighter_fight (Fighter * this, int edx, Unit * attacker, int attack_direction, Unit * defender_or_null)
+{
+	byte tr = Fighter_fight (this, __, attacker, attack_direction, defender_or_null);
+	is->dbe = (struct defensive_bombard_event) {0};
+	return tr;
+}
+
+void __fastcall
+patch_Unit_score_kill_by_defender (Unit * this, int edx, Unit * victim, byte was_attacking)
+{
+	// This function is called when the defender wins in combat. If the attacker was actually killed by defensive bombardment, then award credit
+	// for that kill to the defensive bombarder not the defender in combat.
+	if (is->dbe.defender_was_destroyed) {
+		Unit_score_kill (is->dbe.bombarder, __, victim, was_attacking);
+		p_bic_data->fighter.play_animations = is->dbe.saved_animation_setting;
+
+	} else
+		Unit_score_kill (this, __, victim, was_attacking);
+}
+
+void __fastcall
+patch_Unit_play_attack_anim_for_def_bombard (Unit * this, int edx, int direction)
+{
+	// Don't play any animation for air units, the animations are instead handled in the patch for damage_by_defensive_bombard
+	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air)
+		Unit_play_attack_animation (this, __, direction);
+}
+
+int
+can_precision_strike_tile_improv_at (Unit * unit, int x, int y)
+{
+	Tile * tile;
+	return is->current_config.allow_precision_strikes_against_tile_improvements && // we're configured to allow prec. strikes vs tiles AND
+		((tile = tile_at (x, y)) != p_null_tile) && // get tile, make sure it's valid AND
+		is_explored (tile, unit->Body.CivID) && // tile has been explored by attacker AND
+		has_any_destructible_overlays (tile, 1); // it has something that can be destroyed by prec. strike
 }
 
 // Same as above function except this one applies to the V3 field instead of FOWStatus
@@ -6366,21 +6905,37 @@ patch_Unit_check_contact_bit_6_on_right_click (Unit * this, int edx, int civ_id)
 	return tr;
 }
 
-
 byte __fastcall
-patch_Leader_is_tile_visible (Leader * this, int edx, int x, int y)
+patch_Unit_check_precision_strike_target (Unit * this, int edx, int tile_x, int tile_y)
 {
-	Tile_Body * tile = &tile_at (x, y)->Body;
-	unsigned vis_bits = tile->FOWStatus | tile->V3 | tile->Visibility | tile->field_D0_Visibility;
-	if (vis_bits & (1 << this->ID))
-		return 1;
-	else if (is->current_config.share_visibility_in_hoseat && // if shared hotseat vis is enabled AND
-		 (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game AND
-		 ((1 << this->ID) & *p_human_player_bits) && // "this" is a human player AND
-		 (vis_bits & *p_human_player_bits)) // any human player has visibility on the tile
-		return 1;
+	return Unit_check_precision_strike_target (this, __, tile_x, tile_y) || can_precision_strike_tile_improv_at (this, tile_x, tile_y);
+}
+
+void __fastcall
+patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
+{
+	if (bombarding)
+		is->unit_bombard_attacking_tile = this;
+	Unit_attack_tile (this, __, x, y, bombarding);
+	is->unit_bombard_attacking_tile = NULL;
+}
+
+void __fastcall
+patch_Unit_do_precision_strike (Unit * this, int edx, int x, int y)
+{
+	if ((city_at (x, y) == NULL) && can_precision_strike_tile_improv_at (this, x, y))
+		patch_Unit_attack_tile (this, __, x, y, 1);
 	else
-		return 0;
+		Unit_do_precision_strike (this, __, x, y);
+}
+
+int __fastcall
+patch_Unit_get_max_moves_after_barricade_attack (Unit * this)
+{
+	if (is->current_config.dont_end_units_turn_after_bombarding_barricade && (this == is->unit_bombard_attacking_tile))
+		return this->Body.Moves + p_bic_data->General.RoadsMovementRate;
+	else
+		return Unit_get_max_move_points (this);
 }
 
 City * __cdecl
@@ -6404,10 +6959,13 @@ patch_Unit_check_bombard_target (Unit * this, int edx, int tile_x, int tile_y)
 {
 	int base = Unit_check_bombard_target (this, __, tile_x, tile_y);
 	Tile * tile;
+	int overlays;
 	if (base &&
 	    is->current_config.disallow_useless_bombard_vs_airfields &&
 	    ((tile = tile_at (tile_x, tile_y)) != p_null_tile) &&
-	    tile->vtable->m06_Check_Airfield (tile, __, 0)) {
+	    ((overlays = tile->vtable->m42_Get_Overlays (tile, __, 0)) & 0x20000000) && // if tile has an airfield AND
+	    (overlays == 0x20000000)) { // tile only has an airfield
+		UnitType * this_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
 
 		// Check that a bombard attack vs this tile would not be wasted. It won't be if either (1) there are no units on the tile, (2) there
 		// is a unit that can be damaged by bombarding, or (3) there are no units that can be damaged and no air units. The rules for
@@ -6419,7 +6977,8 @@ patch_Unit_check_bombard_target (Unit * this, int edx, int tile_x, int tile_y)
 			enum UnitTypeClasses class = p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Unit_Class;
 			any_units = 1;
 			any_air_units |= class == UTC_Air;
-			any_vulnerable_units |= (class != UTC_Air) && (Unit_get_defense_strength (uti.unit) > 0);
+			any_vulnerable_units |= (class != UTC_Air) && (Unit_get_defense_strength (uti.unit) > 0) &&
+				can_damage_bombarding (this_type, uti.unit, tile);
 		}
 		return (! any_units) || // case (1) above
 			any_vulnerable_units || // case (2)
@@ -6451,6 +7010,79 @@ patch_Unit_can_disembark_anything (Unit * this, int edx, int tile_x, int tile_y)
 
 	} else
 		return base;
+}
+
+int __fastcall
+patch_Unit_get_defense_for_bombardable_unit_check (Unit * this)
+{
+	// Returning a defense value of zero indicates this unit is not a target for bombardment. If configured, exclude all air units from
+	// bombardment so the attacks target tile improvements instead. Do this only if the tile has another improvement in addition to an airfield,
+	// or we could destroy the airfield itself.
+	Tile * tile;
+	int overlays;
+	if (is->current_config.allow_bombard_of_other_improvs_on_occupied_airfield && // If configured AND
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air) && // "this" is an air unit AND
+	    ((tile = tile_at (this->Body.X, this->Body.Y)) != p_null_tile) && // "this" is on a valid tile AND
+	    ((overlays = tile->vtable->m42_Get_Overlays (tile, __, 0)) & 0x20000000) && // tile has an airfield AND
+	    (overlays != 0x20000000)) // tile does not only have an airfield
+		return 0;
+
+	else
+		return Unit_get_defense_strength (this);
+}
+
+void __fastcall
+patch_Demographics_Form_m22_draw (Demographics_Form * this)
+{
+	Demographics_Form_m22_draw (this);
+
+	if (is->current_config.show_total_city_count) {
+		// There's proably a better way to get the city count, but better safe than sorry. I don't know if it's possible for the city list to
+		// contain holes so the surest thing is to check every possible ID.
+		int city_count = 0; {
+			if (p_cities->Cities != NULL)
+				for (int n = 0; n <= p_cities->LastIndex; n++) {
+					City_Body * body = p_cities->Cities[n].City;
+					city_count += (body != NULL) && ((int)body != offsetof (City, Body));
+				}
+		}
+
+		PCX_Image * canvas = &this->Base.Data.Canvas;
+
+		// Draw a white rectangle on the center bottom of the form
+		RECT plate_area = {1024/2 - 100, 728, 1024/2 + 100, 745};
+		PCX_Image_register_rect (canvas, __, &plate_area, 0x8000FFFF);
+
+		// Draw text on top of the rectangle
+		char s[100];
+		snprintf (s, sizeof s, "%s %d / 512", is->c3x_labels[CL_TOTAL_CITIES], city_count);
+		s[(sizeof s) - 1] = '\0';
+		PCX_Image_set_text_effects (canvas, __, 0x80000000, -1, 2, 2); // Set text color to black
+		PCX_Image_draw_centered_text (canvas, __, get_font (14, FSF_NONE), s, 1024/2 - 100, 730, 200, strlen (s));
+	}
+}
+
+int __fastcall
+patch_Leader_get_optimal_city_number (Leader * this)
+{
+	if (! is->current_config.strengthen_forbidden_palace_ocn_effect)
+		return Leader_get_optimal_city_number (this);
+	else {
+		int num_sans_fp = Leader_get_optimal_city_number (this), // OCN w/o contrib from num of FPs
+		    fp_count = Leader_count_wonders_with_small_flag (this, __, ITSW_Reduces_Corruption, NULL),
+		    s_diff = p_bic_data->DifficultyLevels[this->field_30].Optimal_Cities, // Difficulty scaling, called "percentage of optimal cities" in the editor
+		    base_ocn = p_bic_data->WorldSizes[p_bic_data->Map.World.World_Size].OptimalCityCount;
+		return num_sans_fp + (s_diff * fp_count * base_ocn + 50) / 100; // Add 50 to round off
+	}
+}
+
+int __fastcall
+patch_Leader_count_forbidden_palaces_for_ocn (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null)
+{
+	if (! is->current_config.strengthen_forbidden_palace_ocn_effect)
+		return Leader_count_wonders_with_small_flag (this, __, flag, city_or_null);
+	else
+		return 0; // We'll add in the FP effect later with a different weight
 }
 
 // TCC requires a main function be defined even though it's never used.
