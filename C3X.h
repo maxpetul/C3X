@@ -129,7 +129,6 @@ struct c3x_config {
 	char disallow_useless_bombard_vs_airfields;
 	char enable_city_capture_by_barbarians;
 	char share_visibility_in_hoseat;
-	char remove_land_artillery_target_restrictions;
 	char allow_precision_strikes_against_tile_improvements;
 	char dont_end_units_turn_after_bombarding_barricade;
 	char remove_land_artillery_target_restrictions;
@@ -573,13 +572,6 @@ struct injected_state {
 		Unit * defender;
 		byte damage_done, defender_was_destroyed, saved_animation_setting;
 	} dbe;
-
-	// Set to 1 IFF we're showing a replay of AI moves in hotseat mode
-	byte showing_hotseat_replay;
-
-	// Set to 1 only during the first call to get_tile_occupier_id from Trade_Net::get_movement_cost. While this is set, we need to edit unit
-	// visibility to patch the submarine bug.
-	byte getting_tile_occupier_for_ai_pathfinding;
 
 	// Set to 1 IFF we're showing a replay of AI moves in hotseat mode
 	byte showing_hotseat_replay;
