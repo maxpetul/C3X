@@ -1,4 +1,6 @@
 
+#include <stdbool.h>
+
 #define NOVIRTUALKEYCODES // Keycodes defined in Civ3Conquests.h instead
 #include "windows.h"
 
@@ -31,7 +33,7 @@ struct perfume_spec {
 struct mill {
 	int improv_id;
 	int resource_id;
-	byte is_local, no_tech_req;
+	bool is_local, no_tech_req;
 };
 
 enum retreat_rules {
@@ -56,31 +58,31 @@ enum special_zone_of_control_rules {
 };
 
 struct c3x_config {
-	char enable_stack_bombard;
-	char enable_disorder_warning;
-	char allow_stealth_attack_against_single_unit;
-	char show_detailed_city_production_info;
+	bool enable_stack_bombard;
+	bool enable_disorder_warning;
+	bool allow_stealth_attack_against_single_unit;
+	bool show_detailed_city_production_info;
 	int limit_railroad_movement;
-	char enable_free_buildings_from_small_wonders;
-	char enable_stack_unit_commands;
-	char skip_repeated_tile_improv_replacement_asks;
-	char autofill_best_gold_amount_when_trading;
+	bool enable_free_buildings_from_small_wonders;
+	bool enable_stack_unit_commands;
+	bool skip_repeated_tile_improv_replacement_asks;
+	bool autofill_best_gold_amount_when_trading;
 	int minimum_city_separation;
-	char disallow_founding_next_to_foreign_city;
-	char enable_trade_screen_scroll;
-	char group_units_on_right_click_menu;
+	bool disallow_founding_next_to_foreign_city;
+	bool enable_trade_screen_scroll;
+	bool group_units_on_right_click_menu;
 	int anarchy_length_percent;
-	char show_golden_age_turns_remaining;
-	char show_zoc_attacks_from_mid_stack;
-	char cut_research_spending_to_avoid_bankruptcy;
-	char dont_pause_for_love_the_king_messages;
-	char reverse_specialist_order_with_shift;
-	char dont_give_king_names_in_non_regicide_games;
-	char no_elvis_easter_egg;
-	char disable_worker_automation;
-	char enable_land_sea_intersections;
-	char disallow_trespassing;
-	char show_detailed_tile_info;
+	bool show_golden_age_turns_remaining;
+	bool show_zoc_attacks_from_mid_stack;
+	bool cut_research_spending_to_avoid_bankruptcy;
+	bool dont_pause_for_love_the_king_messages;
+	bool reverse_specialist_order_with_shift;
+	bool dont_give_king_names_in_non_regicide_games;
+	bool no_elvis_easter_egg;
+	bool disable_worker_automation;
+	bool enable_land_sea_intersections;
+	bool disallow_trespassing;
+	bool show_detailed_tile_info;
 	struct perfume_spec * perfume_specs;
 	int count_perfume_specs;
 	struct table building_unit_prereqs; // A mapping from int keys to int values. The keys are unit type IDs. If an ID is present as a key in the
@@ -91,78 +93,78 @@ struct c3x_config {
 					    // by checking the LSB (1 => encoded improv ID, 0 => list pointer).
 	struct mill * mills;
 	int count_mills;
-	char warn_about_unrecognized_names;
-	char enable_ai_production_ranking;
-	char enable_ai_city_location_desirability_display;
-	char zero_corruption_when_off;
-	char disallow_land_units_from_affecting_water_tiles;
-	char dont_end_units_turn_after_airdrop;
-	char enable_negative_pop_pollution;
+	bool warn_about_unrecognized_names;
+	bool enable_ai_production_ranking;
+	bool enable_ai_city_location_desirability_display;
+	bool zero_corruption_when_off;
+	bool disallow_land_units_from_affecting_water_tiles;
+	bool dont_end_units_turn_after_airdrop;
+	bool enable_negative_pop_pollution;
 	enum retreat_rules land_retreat_rules;
 	enum retreat_rules sea_retreat_rules;
-	char enable_ai_two_city_start;
+	bool enable_ai_two_city_start;
 	int max_tries_to_place_fp_city;
-	char promote_forbidden_palace_decorruption;
-	char allow_military_leaders_to_hurry_wonders;
-	char halve_ai_research_rate;
-	char aggressively_penalize_bankruptcy;
-	char no_penalty_exception_for_agri_fresh_water_city_tiles;
-	char suppress_hypertext_links_exceeded_popup;
-	char indicate_non_upgradability_in_pedia;
-	char show_message_after_dodging_sam;
-	char include_stealth_attack_cancel_option;
-	char intercept_recon_missions;
-	char charge_one_move_for_recon_and_interception;
-	char polish_non_air_precision_striking;
-	char enable_stealth_attack_via_bombardment;
-	char immunize_aircraft_against_bombardment;
-	char replay_ai_moves_in_hotseat_games;
+	bool promote_forbidden_palace_decorruption;
+	bool allow_military_leaders_to_hurry_wonders;
+	bool halve_ai_research_rate;
+	bool aggressively_penalize_bankruptcy;
+	bool no_penalty_exception_for_agri_fresh_water_city_tiles;
+	bool suppress_hypertext_links_exceeded_popup;
+	bool indicate_non_upgradability_in_pedia;
+	bool show_message_after_dodging_sam;
+	bool include_stealth_attack_cancel_option;
+	bool intercept_recon_missions;
+	bool charge_one_move_for_recon_and_interception;
+	bool polish_non_air_precision_striking;
+	bool enable_stealth_attack_via_bombardment;
+	bool immunize_aircraft_against_bombardment;
+	bool replay_ai_moves_in_hotseat_games;
 	int count_ptw_arty_types;
 	int ptw_arty_types_capacity;
 	int * ptw_arty_types; // List of unit type IDs
-	char restore_unit_directions_on_game_load;
-	char charm_flag_triggers_ptw_like_targeting;
-	char city_icons_show_unit_effects_not_trade;
-	char ignore_king_ability_for_defense_priority;
-	char show_untradable_techs_on_trade_screen;
-	char optimize_improvement_loops;
-	char disallow_useless_bombard_vs_airfields;
-	char enable_city_capture_by_barbarians;
-	char share_visibility_in_hoseat;
-	char allow_precision_strikes_against_tile_improvements;
-	char dont_end_units_turn_after_bombarding_barricade;
-	char remove_land_artillery_target_restrictions;
-	char allow_bombard_of_other_improvs_on_occupied_airfield;
-	char show_total_city_count;
-	char strengthen_forbidden_palace_ocn_effect;
+	bool restore_unit_directions_on_game_load;
+	bool charm_flag_triggers_ptw_like_targeting;
+	bool city_icons_show_unit_effects_not_trade;
+	bool ignore_king_ability_for_defense_priority;
+	bool show_untradable_techs_on_trade_screen;
+	bool optimize_improvement_loops;
+	bool disallow_useless_bombard_vs_airfields;
+	bool enable_city_capture_by_barbarians;
+	bool share_visibility_in_hoseat;
+	bool allow_precision_strikes_against_tile_improvements;
+	bool dont_end_units_turn_after_bombarding_barricade;
+	bool remove_land_artillery_target_restrictions;
+	bool allow_bombard_of_other_improvs_on_occupied_airfield;
+	bool show_total_city_count;
+	bool strengthen_forbidden_palace_ocn_effect;
 	enum special_zone_of_control_rules special_zone_of_control_rules;
 	enum special_defensive_bombard_rules special_defensive_bombard_rules;
 
-	char use_offensive_artillery_ai;
+	bool use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
 	int ai_artillery_value_damage_percent;
 	int ai_build_bomber_ratio;
-	char replace_leader_unit_ai;
-	char fix_ai_army_composition;
-	char enable_pop_unit_ai;
+	bool replace_leader_unit_ai;
+	bool fix_ai_army_composition;
+	bool enable_pop_unit_ai;
 	int max_ai_naval_escorts;
 
-	char remove_unit_limit;
-	char remove_era_limit;
-	char remove_cap_on_turn_limit;
+	bool remove_unit_limit;
+	bool remove_era_limit;
+	bool remove_cap_on_turn_limit;
 
-	char patch_submarine_bug;
-	char patch_science_age_bug;
-	char patch_pedia_texture_bug;
-	char patch_disembark_immobile_bug;
-	char patch_houseboat_bug;
-	char patch_intercept_lost_turn_bug;
-	char patch_phantom_resource_bug;
-	char patch_maintenance_persisting_for_obsolete_buildings;
-	char patch_barbarian_diagonal_bug;
+	bool patch_submarine_bug;
+	bool patch_science_age_bug;
+	bool patch_pedia_texture_bug;
+	bool patch_disembark_immobile_bug;
+	bool patch_houseboat_bug;
+	bool patch_intercept_lost_turn_bug;
+	bool patch_phantom_resource_bug;
+	bool patch_maintenance_persisting_for_obsolete_buildings;
+	bool patch_barbarian_diagonal_bug;
 
-	char prevent_autorazing;
-	char prevent_razing_by_players;
+	bool prevent_autorazing;
+	bool prevent_razing_by_players;
 };
 
 enum stackable_command {
@@ -570,15 +572,15 @@ struct injected_state {
 	struct defensive_bombard_event {
 		Unit * bombarder;
 		Unit * defender;
-		byte damage_done, defender_was_destroyed, saved_animation_setting;
+		bool damage_done, defender_was_destroyed, saved_animation_setting;
 	} dbe;
 
 	// Set to 1 IFF we're showing a replay of AI moves in hotseat mode
-	byte showing_hotseat_replay;
+	bool showing_hotseat_replay;
 
 	// Set to 1 only during the first call to get_tile_occupier_id from Trade_Net::get_movement_cost. While this is set, we need to edit unit
 	// visibility to patch the submarine bug.
-	byte getting_tile_occupier_for_ai_pathfinding;
+	bool getting_tile_occupier_for_ai_pathfinding;
 
 	// ==========
 	// }

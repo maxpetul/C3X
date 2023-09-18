@@ -217,7 +217,7 @@ free_error_lines (struct error_line * lines)
 	}
 }
 
-int
+bool
 find_improv_id_by_name (struct string_slice const * name, int * out)
 {
 	Improvement * improv;
@@ -225,14 +225,14 @@ find_improv_id_by_name (struct string_slice const * name, int * out)
 		for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
 			if (slice_matches_str (name, p_bic_data->Improvements[n].Name.S)) {
 				*out = n;
-				return 1;
+				return true;
 			}
-	return 0;
+	return false;
 }
 
 // start_id specifies where the search will start. It's useful for finding multiple type IDs with the same name, which commonly happens due to the
 // game duplicating unit types.
-int
+bool
 find_unit_type_id_by_name (struct string_slice const * name, int start_id, int * out)
 {
 	UnitType * unit_type;
@@ -240,12 +240,12 @@ find_unit_type_id_by_name (struct string_slice const * name, int start_id, int *
 		for (int n = start_id; n < p_bic_data->UnitTypeCount; n++)
 			if (slice_matches_str (name, p_bic_data->UnitTypes[n].Name)) {
 				*out = n;
-				return 1;
+				return true;
 			}
-	return 0;
+	return false;
 }
 
-int
+bool
 find_resource_id_by_name (struct string_slice const * name, int * out)
 {
 	Resource_Type * res_type;
@@ -253,26 +253,27 @@ find_resource_id_by_name (struct string_slice const * name, int * out)
 		for (int n = 0; n < p_bic_data->ResourceTypeCount; n++)
 			if (slice_matches_str (name, p_bic_data->ResourceTypes[n].Name)) {
 				*out = n;
-				return 1;
+				return true;
 			}
-	return 0;
+	return false;
 }
 
-// Converts a build name (like "Spearman" or "Granary") into a City_Order struct. Returns 0 if no by improvement or unit type was found, else 1.
-int
+// Converts a build name (like "Spearman" or "Granary") into a City_Order struct. Returns whether or not any improvement or unit type was found under
+// the given name.
+bool
 find_city_order_by_name (struct string_slice const * name, City_Order * out)
 {
 	int id;
 	if (find_improv_id_by_name (name, &id)) {
 		out->OrderID = id;
 		out->OrderType = COT_Improvement;
-		return 1;
+		return true;
 	} else if (find_unit_type_id_by_name (name, 0, &id)) {
 		out->OrderID = id;
 		out->OrderType = COT_Unit;
-		return 1;
+		return true;
 	} else
-		return 0;
+		return false;
 }
 
 // A "recognizable" is something that contains the name of a unit, building, etc. When parsing one, it's possible for it to be grammatically valid but
@@ -317,15 +318,15 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 	if (parse_string (&cur, &improv_name) &&
 	    skip_punctuation (&cur, ':')) {
 
-		byte is_local = 0, no_tech_req = 0;
+		bool is_local = false, no_tech_req = false;
 		struct string_slice resource_name;
 		while (1) {
 			if (! parse_string (&cur, &resource_name))
 				return RPR_PARSE_ERROR;
 			else if (slice_matches_str (&resource_name, "local"))
-				is_local = 1;
+				is_local = true;
 			else if (slice_matches_str (&resource_name, "no-tech-req"))
-				no_tech_req = 1;
+				no_tech_req = true;
 			else
 				break;
 		}
@@ -356,7 +357,7 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 }
 
 // Recognizable items are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
-int
+bool
 read_recognizables (struct string_slice const * s,
 		    struct error_line ** p_unrecognized_lines,
 		    int item_size,
@@ -365,11 +366,11 @@ read_recognizables (struct string_slice const * s,
 		    int * inout_count)
 {
 	if (s->len <= 0)
-		return 1;
+		return true;
 	char * extracted_slice = extract_slice (s);
 	char * cursor = extracted_slice;
 
-	int success = 0;
+	bool success = false;
 	void * new_items = NULL;
 	int count_new_items = 0;
 	int new_items_capacity = 0;
@@ -387,7 +388,7 @@ read_recognizables (struct string_slice const * s,
 			if (skip_punctuation (&cursor, ','))
 				continue;
 			else if (skip_horiz_space (&cursor) && (*cursor == '\0')) {
-				success = 1;
+				success = true;
 				break;
 			} else
 				break;
@@ -406,16 +407,16 @@ read_recognizables (struct string_slice const * s,
 	return success;
 }
 
-int
+bool
 read_building_unit_prereqs (struct string_slice const * s,
 			    struct error_line ** p_unrecognized_lines,
 			    struct table * building_unit_prereqs)
 {
 	if (s->len <= 0)
-		return 1;
+		return true;
 	char * extracted_slice = extract_slice (s);
 	char * cursor = extracted_slice;
-	int success = 0;
+	bool success = false;
 
 	struct prereq {
 		int building_id;
@@ -428,7 +429,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 		struct string_slice building_name;
 		if (parse_string (&cursor, &building_name)) {
 			int building_id;
-			int have_building_id = find_improv_id_by_name (&building_name, &building_id);
+			bool have_building_id = find_improv_id_by_name (&building_name, &building_id);
 			if (! have_building_id)
 				add_unrecognized_line (p_unrecognized_lines, &building_name);
 			if (! skip_punctuation (&cursor, ':'))
@@ -492,7 +493,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 	return success;
 }
 
-int
+bool
 read_ptw_arty_types (struct string_slice const * s,
 		     struct error_line ** p_unrecognized_lines,
 		     int ** p_ptw_arty_types,
@@ -500,10 +501,10 @@ read_ptw_arty_types (struct string_slice const * s,
 		     int * p_ptw_arty_types_capacity)
 {
 	if (s->len <= 0)
-		return 1;
+		return true;
 	char * extracted_slice = extract_slice (s);
 	char * cursor = extracted_slice;
-	int success = 0;
+	bool success = false;
 
 	while (1) {
 		struct string_slice name;
@@ -532,17 +533,16 @@ read_ptw_arty_types (struct string_slice const * s,
 	return success;
 }
 
-int
+bool
 read_retreat_rules (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
-	if      (slice_matches_str (&trimmed, "standard" )) { *out_val = RR_STANDARD;  return 1; }
-	else if (slice_matches_str (&trimmed, "none"     )) { *out_val = RR_NONE;      return 1; }
-	else if (slice_matches_str (&trimmed, "all-units")) { *out_val = RR_ALL_UNITS; return 1; }
-	else if (slice_matches_str (&trimmed, "if-faster")) { *out_val = RR_IF_FASTER; return 1; }
+	if      (slice_matches_str (&trimmed, "standard" )) { *out_val = RR_STANDARD;  return true; }
+	else if (slice_matches_str (&trimmed, "none"     )) { *out_val = RR_NONE;      return true; }
+	else if (slice_matches_str (&trimmed, "all-units")) { *out_val = RR_ALL_UNITS; return true; }
+	else if (slice_matches_str (&trimmed, "if-faster")) { *out_val = RR_IF_FASTER; return true; }
 	else
-		return 0;
-
+		return false;
 }
 
 struct parsable_field_bit {
@@ -550,7 +550,7 @@ struct parsable_field_bit {
 	int bit_value;
 };
 
-int
+bool
 read_bit_field (struct string_slice const * s, struct parsable_field_bit const * bits, int count_bits, int * out_field)
 {
 	struct string_slice trimmed = trim_string_slice (s, 0);
@@ -575,22 +575,22 @@ read_bit_field (struct string_slice const * s, struct parsable_field_bit const *
 				if (cursor >= s_end)
 					break;
 				else
-					return 0; // Invalid character in value
+					return false; // Invalid character in value
 			}
 
-			int matched_any = 0;
+			bool matched_any = false;
 			for (int n = 0; n < count_bits; n++)
 				if (slice_matches_str (&name, bits[n].name)) {
 					tr |= bits[n].bit_value;
-					matched_any = 1;
+					matched_any = true;
 					break;
 				}
 			if (! matched_any)
-				return 0;
+				return false;
 		}
 	}
 	*out_field = tr;
-	return 1;
+	return true;
 }
 
 struct config_parsing {
@@ -1150,7 +1150,7 @@ tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
 	}
 }
 
-int
+bool
 has_active_building (City * city, int improv_id)
 {
 	Leader * owner = &leaders[city->Body.CivID];
@@ -1160,7 +1160,7 @@ has_active_building (City * city, int improv_id)
 		((improv->GovernmentID < 0) || (improv->GovernmentID == owner->GovernmentType)); // building is not restricted to a different govt
 }
 
-int
+bool
 can_generate_resource (int for_civ_id, struct mill * mill)
 {
 	int req_tech_id = mill->no_tech_req ? -1 : p_bic_data->ResourceTypes[mill->resource_id].RequireID;
@@ -1234,7 +1234,7 @@ intercept_set_resource_bit (City * city, int resource_id)
 }
 
 // Must forward declare this function since there's a circular dependency between it and patch_City_has_resource
-int has_resources_required_by_building_r (City * city, int improv_id, int max_req_resource_id);
+bool has_resources_required_by_building_r (City * city, int improv_id, int max_req_resource_id);
 
 byte __fastcall
 patch_City_has_resource (City * this, int edx, int resource_id)
@@ -1270,7 +1270,7 @@ patch_City_has_resource (City * this, int edx, int resource_id)
 // their ID is not greater than that limit. This function is called recursively by patch_City_has_resource and in the recursive calls, the limit is
 // set to be below the resource ID provided by the mill being considered. So, when considering resource production chains, the limit approaches zero
 // with each recursive call, hence infinite loops are not possible.
-int
+bool
 has_resources_required_by_building_r (City * city, int improv_id, int max_req_resource_id)
 {
 	Improvement * improv = &p_bic_data->Improvements[improv_id];
@@ -1279,13 +1279,13 @@ has_resources_required_by_building_r (City * city, int improv_id, int max_req_re
 			int res_id = (&improv->Resource1ID)[n];
 			if ((res_id >= 0) &&
 			    ((res_id > max_req_resource_id) || (! patch_City_has_resource (city, __, res_id))))
-				return 0;
+				return false;
 		}
-		return 1;
+		return true;
 	} else {
 		int * targets = &improv->Resource1ID;
 		if ((targets[0] < 0) && (targets[1] < 0))
-			return 1;
+			return true;
 		int finds[2] = {0, 0};
 
 		int civ_id = city->Body.CivID;
@@ -1303,7 +1303,7 @@ has_resources_required_by_building_r (City * city, int improv_id, int max_req_re
 	}
 }
 
-int
+bool
 has_resources_required_by_building (City * city, int improv_id)
 {
 	return has_resources_required_by_building_r (city, improv_id, INT_MAX);
@@ -1474,17 +1474,17 @@ emit_branch (enum branch_kind kind, byte * cursor, void const * target)
 }
 
 // Just calls VirtualProtect and displays an error message if it fails. Made for use by the WITH_MEM_PROTECTION macro.
-int
+bool
 check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect)
 {
 	if (VirtualProtect (addr, size, flags, old_protect))
-		return 1;
+		return true;
 	else {
 		char err_msg[1000];
 		snprintf (err_msg, sizeof err_msg, "VirtualProtect failed! Args:\n  Address: 0x%p\n  Size: %d\n  Flags: 0x%x", addr, size, flags);
 		err_msg[(sizeof err_msg) - 1] = '\0';
 		MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
-		return 0;
+		return false;
 	}
 }
 
@@ -1538,7 +1538,7 @@ restore_area (byte * addr)
 	}
 }
 
-int
+bool
 is_area_nopified (byte * addr)
 {
 	struct nopified_area * na;
@@ -1791,87 +1791,87 @@ patch_init_floating_point ()
 	// fill out the base config.
 	struct boolean_config_option {
 		char * name;
-		int base_val;
+		bool base_val;
 		int offset;
 	} boolean_config_options[] = {
-		{"enable_stack_bombard"                                , 1, offsetof (struct c3x_config, enable_stack_bombard)},
-		{"enable_disorder_warning"                             , 1, offsetof (struct c3x_config, enable_disorder_warning)},
-		{"allow_stealth_attack_against_single_unit"            , 0, offsetof (struct c3x_config, allow_stealth_attack_against_single_unit)},
-		{"show_detailed_city_production_info"                  , 1, offsetof (struct c3x_config, show_detailed_city_production_info)},
-		{"enable_free_buildings_from_small_wonders"            , 1, offsetof (struct c3x_config, enable_free_buildings_from_small_wonders)},
-		{"enable_stack_unit_commands"                          , 1, offsetof (struct c3x_config, enable_stack_unit_commands)},
-		{"skip_repeated_tile_improv_replacement_asks"          , 1, offsetof (struct c3x_config, skip_repeated_tile_improv_replacement_asks)},
-		{"autofill_best_gold_amount_when_trading"              , 1, offsetof (struct c3x_config, autofill_best_gold_amount_when_trading)},
-		{"disallow_founding_next_to_foreign_city"              , 1, offsetof (struct c3x_config, disallow_founding_next_to_foreign_city)},
-		{"enable_trade_screen_scroll"                          , 1, offsetof (struct c3x_config, enable_trade_screen_scroll)},
-		{"group_units_on_right_click_menu"                     , 1, offsetof (struct c3x_config, group_units_on_right_click_menu)},
-		{"show_golden_age_turns_remaining"                     , 1, offsetof (struct c3x_config, show_golden_age_turns_remaining)},
-		{"show_zoc_attacks_from_mid_stack"                     , 1, offsetof (struct c3x_config, show_zoc_attacks_from_mid_stack)},
-		{"cut_research_spending_to_avoid_bankruptcy"           , 1, offsetof (struct c3x_config, cut_research_spending_to_avoid_bankruptcy)},
-		{"dont_pause_for_love_the_king_messages"               , 1, offsetof (struct c3x_config, dont_pause_for_love_the_king_messages)},
-		{"reverse_specialist_order_with_shift"                 , 1, offsetof (struct c3x_config, reverse_specialist_order_with_shift)},
-		{"dont_give_king_names_in_non_regicide_games"          , 1, offsetof (struct c3x_config, dont_give_king_names_in_non_regicide_games)},
-		{"no_elvis_easter_egg"                                 , 0, offsetof (struct c3x_config, no_elvis_easter_egg)},
-		{"disable_worker_automation"                           , 0, offsetof (struct c3x_config, disable_worker_automation)},
-		{"enable_land_sea_intersections"                       , 0, offsetof (struct c3x_config, enable_land_sea_intersections)},
-		{"disallow_trespassing"                                , 0, offsetof (struct c3x_config, disallow_trespassing)},
-		{"show_detailed_tile_info"                             , 1, offsetof (struct c3x_config, show_detailed_tile_info)},
-		{"warn_about_unrecognized_names"                       , 1, offsetof (struct c3x_config, warn_about_unrecognized_names)},
-		{"enable_ai_production_ranking"                        , 1, offsetof (struct c3x_config, enable_ai_production_ranking)},
-		{"enable_ai_city_location_desirability_display"        , 1, offsetof (struct c3x_config, enable_ai_city_location_desirability_display)},
-		{"zero_corruption_when_off"                            , 1, offsetof (struct c3x_config, zero_corruption_when_off)},
-		{"disallow_land_units_from_affecting_water_tiles"      , 1, offsetof (struct c3x_config, disallow_land_units_from_affecting_water_tiles)},
-		{"dont_end_units_turn_after_airdrop"                   , 0, offsetof (struct c3x_config, dont_end_units_turn_after_airdrop)},
-		{"enable_negative_pop_pollution"                       , 1, offsetof (struct c3x_config, enable_negative_pop_pollution)},
-		{"enable_ai_two_city_start"                            , 0, offsetof (struct c3x_config, enable_ai_two_city_start)},
-		{"promote_forbidden_palace_decorruption"               , 0, offsetof (struct c3x_config, promote_forbidden_palace_decorruption)},
-		{"allow_military_leaders_to_hurry_wonders"             , 0, offsetof (struct c3x_config, allow_military_leaders_to_hurry_wonders)},
-		{"halve_ai_research_rate"                              , 0, offsetof (struct c3x_config, halve_ai_research_rate)},
-		{"aggressively_penalize_bankruptcy"                    , 0, offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
-		{"no_penalty_exception_for_agri_fresh_water_city_tiles", 0, offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
-		{"use_offensive_artillery_ai"                          , 1, offsetof (struct c3x_config, use_offensive_artillery_ai)},
-		{"replace_leader_unit_ai"                              , 1, offsetof (struct c3x_config, replace_leader_unit_ai)},
-		{"fix_ai_army_composition"                             , 1, offsetof (struct c3x_config, fix_ai_army_composition)},
-		{"enable_pop_unit_ai"                                  , 1, offsetof (struct c3x_config, enable_pop_unit_ai)},
-		{"remove_unit_limit"                                   , 1, offsetof (struct c3x_config, remove_unit_limit)},
-		{"remove_era_limit"                                    , 0, offsetof (struct c3x_config, remove_era_limit)},
-		{"remove_cap_on_turn_limit"                            , 1, offsetof (struct c3x_config, remove_cap_on_turn_limit)},
-		{"patch_submarine_bug"                                 , 1, offsetof (struct c3x_config, patch_submarine_bug)},
-		{"patch_science_age_bug"                               , 1, offsetof (struct c3x_config, patch_science_age_bug)},
-		{"patch_pedia_texture_bug"                             , 1, offsetof (struct c3x_config, patch_pedia_texture_bug)},
-		{"patch_disembark_immobile_bug"                        , 1, offsetof (struct c3x_config, patch_disembark_immobile_bug)},
-		{"patch_houseboat_bug"                                 , 1, offsetof (struct c3x_config, patch_houseboat_bug)},
-		{"patch_intercept_lost_turn_bug"                       , 1, offsetof (struct c3x_config, patch_intercept_lost_turn_bug)},
-		{"patch_phantom_resource_bug"                          , 1, offsetof (struct c3x_config, patch_phantom_resource_bug)},
-		{"patch_maintenance_persisting_for_obsolete_buildings" , 1, offsetof (struct c3x_config, patch_maintenance_persisting_for_obsolete_buildings)},
-		{"patch_barbarian_diagonal_bug"                        , 1, offsetof (struct c3x_config, patch_barbarian_diagonal_bug)},
-		{"prevent_autorazing"                                  , 0, offsetof (struct c3x_config, prevent_autorazing)},
-		{"prevent_razing_by_players"                           , 0, offsetof (struct c3x_config, prevent_razing_by_players)},
-		{"suppress_hypertext_links_exceeded_popup"             , 1, offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
-		{"indicate_non_upgradability_in_pedia"                 , 1, offsetof (struct c3x_config, indicate_non_upgradability_in_pedia)},
-		{"show_message_after_dodging_sam"                      , 1, offsetof (struct c3x_config, show_message_after_dodging_sam)},
-		{"include_stealth_attack_cancel_option"                , 0, offsetof (struct c3x_config, include_stealth_attack_cancel_option)},
-		{"intercept_recon_missions"                            , 0, offsetof (struct c3x_config, intercept_recon_missions)},
-		{"charge_one_move_for_recon_and_interception"          , 0, offsetof (struct c3x_config, charge_one_move_for_recon_and_interception)},
-		{"polish_non_air_precision_striking"                   , 1, offsetof (struct c3x_config, polish_non_air_precision_striking)},
-		{"enable_stealth_attack_via_bombardment"               , 0, offsetof (struct c3x_config, enable_stealth_attack_via_bombardment)},
-		{"immunize_aircraft_against_bombardment"               , 0, offsetof (struct c3x_config, immunize_aircraft_against_bombardment)},
-		{"replay_ai_moves_in_hotseat_games"                    , 0, offsetof (struct c3x_config, replay_ai_moves_in_hotseat_games)},
-		{"restore_unit_directions_on_game_load"                , 1, offsetof (struct c3x_config, restore_unit_directions_on_game_load)},
-		{"charm_flag_triggers_ptw_like_targeting"              , 0, offsetof (struct c3x_config, charm_flag_triggers_ptw_like_targeting)},
-		{"city_icons_show_unit_effects_not_trade"              , 1, offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
-		{"ignore_king_ability_for_defense_priority"            , 0, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
-		{"show_untradable_techs_on_trade_screen"               , 0, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
-		{"optimize_improvement_loops"                          , 1, offsetof (struct c3x_config, optimize_improvement_loops)},
-		{"disallow_useless_bombard_vs_airfields"               , 1, offsetof (struct c3x_config, disallow_useless_bombard_vs_airfields)},
-		{"enable_city_capture_by_barbarians"                   , 0, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
-		{"share_visibility_in_hoseat"                          , 0, offsetof (struct c3x_config, share_visibility_in_hoseat)},
-		{"allow_precision_strikes_against_tile_improvements"   , 0, offsetof (struct c3x_config, allow_precision_strikes_against_tile_improvements)},
-		{"dont_end_units_turn_after_bombarding_barricade"      , 0, offsetof (struct c3x_config, dont_end_units_turn_after_bombarding_barricade)},
-		{"remove_land_artillery_target_restrictions"           , 0, offsetof (struct c3x_config, remove_land_artillery_target_restrictions)},
-		{"allow_bombard_of_other_improvs_on_occupied_airfield" , 0, offsetof (struct c3x_config, allow_bombard_of_other_improvs_on_occupied_airfield)},
-		{"show_total_city_count"                               , 0, offsetof (struct c3x_config, show_total_city_count)},
-		{"strengthen_forbidden_palace_ocn_effect"              , 0, offsetof (struct c3x_config, strengthen_forbidden_palace_ocn_effect)},
+		{"enable_stack_bombard"                                , true , offsetof (struct c3x_config, enable_stack_bombard)},
+		{"enable_disorder_warning"                             , true , offsetof (struct c3x_config, enable_disorder_warning)},
+		{"allow_stealth_attack_against_single_unit"            , false, offsetof (struct c3x_config, allow_stealth_attack_against_single_unit)},
+		{"show_detailed_city_production_info"                  , true , offsetof (struct c3x_config, show_detailed_city_production_info)},
+		{"enable_free_buildings_from_small_wonders"            , true , offsetof (struct c3x_config, enable_free_buildings_from_small_wonders)},
+		{"enable_stack_unit_commands"                          , true , offsetof (struct c3x_config, enable_stack_unit_commands)},
+		{"skip_repeated_tile_improv_replacement_asks"          , true , offsetof (struct c3x_config, skip_repeated_tile_improv_replacement_asks)},
+		{"autofill_best_gold_amount_when_trading"              , true , offsetof (struct c3x_config, autofill_best_gold_amount_when_trading)},
+		{"disallow_founding_next_to_foreign_city"              , true , offsetof (struct c3x_config, disallow_founding_next_to_foreign_city)},
+		{"enable_trade_screen_scroll"                          , true , offsetof (struct c3x_config, enable_trade_screen_scroll)},
+		{"group_units_on_right_click_menu"                     , true , offsetof (struct c3x_config, group_units_on_right_click_menu)},
+		{"show_golden_age_turns_remaining"                     , true , offsetof (struct c3x_config, show_golden_age_turns_remaining)},
+		{"show_zoc_attacks_from_mid_stack"                     , true , offsetof (struct c3x_config, show_zoc_attacks_from_mid_stack)},
+		{"cut_research_spending_to_avoid_bankruptcy"           , true , offsetof (struct c3x_config, cut_research_spending_to_avoid_bankruptcy)},
+		{"dont_pause_for_love_the_king_messages"               , true , offsetof (struct c3x_config, dont_pause_for_love_the_king_messages)},
+		{"reverse_specialist_order_with_shift"                 , true , offsetof (struct c3x_config, reverse_specialist_order_with_shift)},
+		{"dont_give_king_names_in_non_regicide_games"          , true , offsetof (struct c3x_config, dont_give_king_names_in_non_regicide_games)},
+		{"no_elvis_easter_egg"                                 , false, offsetof (struct c3x_config, no_elvis_easter_egg)},
+		{"disable_worker_automation"                           , false, offsetof (struct c3x_config, disable_worker_automation)},
+		{"enable_land_sea_intersections"                       , false, offsetof (struct c3x_config, enable_land_sea_intersections)},
+		{"disallow_trespassing"                                , false, offsetof (struct c3x_config, disallow_trespassing)},
+		{"show_detailed_tile_info"                             , true , offsetof (struct c3x_config, show_detailed_tile_info)},
+		{"warn_about_unrecognized_names"                       , true , offsetof (struct c3x_config, warn_about_unrecognized_names)},
+		{"enable_ai_production_ranking"                        , true , offsetof (struct c3x_config, enable_ai_production_ranking)},
+		{"enable_ai_city_location_desirability_display"        , true , offsetof (struct c3x_config, enable_ai_city_location_desirability_display)},
+		{"zero_corruption_when_off"                            , true , offsetof (struct c3x_config, zero_corruption_when_off)},
+		{"disallow_land_units_from_affecting_water_tiles"      , true , offsetof (struct c3x_config, disallow_land_units_from_affecting_water_tiles)},
+		{"dont_end_units_turn_after_airdrop"                   , false, offsetof (struct c3x_config, dont_end_units_turn_after_airdrop)},
+		{"enable_negative_pop_pollution"                       , true , offsetof (struct c3x_config, enable_negative_pop_pollution)},
+		{"enable_ai_two_city_start"                            , false, offsetof (struct c3x_config, enable_ai_two_city_start)},
+		{"promote_forbidden_palace_decorruption"               , false, offsetof (struct c3x_config, promote_forbidden_palace_decorruption)},
+		{"allow_military_leaders_to_hurry_wonders"             , false, offsetof (struct c3x_config, allow_military_leaders_to_hurry_wonders)},
+		{"halve_ai_research_rate"                              , false, offsetof (struct c3x_config, halve_ai_research_rate)},
+		{"aggressively_penalize_bankruptcy"                    , false, offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
+		{"no_penalty_exception_for_agri_fresh_water_city_tiles", false, offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
+		{"use_offensive_artillery_ai"                          , true , offsetof (struct c3x_config, use_offensive_artillery_ai)},
+		{"replace_leader_unit_ai"                              , true , offsetof (struct c3x_config, replace_leader_unit_ai)},
+		{"fix_ai_army_composition"                             , true , offsetof (struct c3x_config, fix_ai_army_composition)},
+		{"enable_pop_unit_ai"                                  , true , offsetof (struct c3x_config, enable_pop_unit_ai)},
+		{"remove_unit_limit"                                   , true , offsetof (struct c3x_config, remove_unit_limit)},
+		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
+		{"remove_cap_on_turn_limit"                            , true , offsetof (struct c3x_config, remove_cap_on_turn_limit)},
+		{"patch_submarine_bug"                                 , true , offsetof (struct c3x_config, patch_submarine_bug)},
+		{"patch_science_age_bug"                               , true , offsetof (struct c3x_config, patch_science_age_bug)},
+		{"patch_pedia_texture_bug"                             , true , offsetof (struct c3x_config, patch_pedia_texture_bug)},
+		{"patch_disembark_immobile_bug"                        , true , offsetof (struct c3x_config, patch_disembark_immobile_bug)},
+		{"patch_houseboat_bug"                                 , true , offsetof (struct c3x_config, patch_houseboat_bug)},
+		{"patch_intercept_lost_turn_bug"                       , true , offsetof (struct c3x_config, patch_intercept_lost_turn_bug)},
+		{"patch_phantom_resource_bug"                          , true , offsetof (struct c3x_config, patch_phantom_resource_bug)},
+		{"patch_maintenance_persisting_for_obsolete_buildings" , true , offsetof (struct c3x_config, patch_maintenance_persisting_for_obsolete_buildings)},
+		{"patch_barbarian_diagonal_bug"                        , true , offsetof (struct c3x_config, patch_barbarian_diagonal_bug)},
+		{"prevent_autorazing"                                  , false, offsetof (struct c3x_config, prevent_autorazing)},
+		{"prevent_razing_by_players"                           , false, offsetof (struct c3x_config, prevent_razing_by_players)},
+		{"suppress_hypertext_links_exceeded_popup"             , true , offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
+		{"indicate_non_upgradability_in_pedia"                 , true , offsetof (struct c3x_config, indicate_non_upgradability_in_pedia)},
+		{"show_message_after_dodging_sam"                      , true , offsetof (struct c3x_config, show_message_after_dodging_sam)},
+		{"include_stealth_attack_cancel_option"                , false, offsetof (struct c3x_config, include_stealth_attack_cancel_option)},
+		{"intercept_recon_missions"                            , false, offsetof (struct c3x_config, intercept_recon_missions)},
+		{"charge_one_move_for_recon_and_interception"          , false, offsetof (struct c3x_config, charge_one_move_for_recon_and_interception)},
+		{"polish_non_air_precision_striking"                   , true , offsetof (struct c3x_config, polish_non_air_precision_striking)},
+		{"enable_stealth_attack_via_bombardment"               , false, offsetof (struct c3x_config, enable_stealth_attack_via_bombardment)},
+		{"immunize_aircraft_against_bombardment"               , false, offsetof (struct c3x_config, immunize_aircraft_against_bombardment)},
+		{"replay_ai_moves_in_hotseat_games"                    , false, offsetof (struct c3x_config, replay_ai_moves_in_hotseat_games)},
+		{"restore_unit_directions_on_game_load"                , true , offsetof (struct c3x_config, restore_unit_directions_on_game_load)},
+		{"charm_flag_triggers_ptw_like_targeting"              , false, offsetof (struct c3x_config, charm_flag_triggers_ptw_like_targeting)},
+		{"city_icons_show_unit_effects_not_trade"              , true , offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
+		{"ignore_king_ability_for_defense_priority"            , false, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
+		{"show_untradable_techs_on_trade_screen"               , false, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
+		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
+		{"disallow_useless_bombard_vs_airfields"               , true , offsetof (struct c3x_config, disallow_useless_bombard_vs_airfields)},
+		{"enable_city_capture_by_barbarians"                   , false, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
+		{"share_visibility_in_hoseat"                          , false, offsetof (struct c3x_config, share_visibility_in_hoseat)},
+		{"allow_precision_strikes_against_tile_improvements"   , false, offsetof (struct c3x_config, allow_precision_strikes_against_tile_improvements)},
+		{"dont_end_units_turn_after_bombarding_barricade"      , false, offsetof (struct c3x_config, dont_end_units_turn_after_bombarding_barricade)},
+		{"remove_land_artillery_target_restrictions"           , false, offsetof (struct c3x_config, remove_land_artillery_target_restrictions)},
+		{"allow_bombard_of_other_improvs_on_occupied_airfield" , false, offsetof (struct c3x_config, allow_bombard_of_other_improvs_on_occupied_airfield)},
+		{"show_total_city_count"                               , false, offsetof (struct c3x_config, show_total_city_count)},
+		{"strengthen_forbidden_palace_ocn_effect"              , false, offsetof (struct c3x_config, strengthen_forbidden_palace_ocn_effect)},
 	};
 
 	struct integer_config_option {
@@ -2035,8 +2035,8 @@ patch_init_floating_point ()
 
 	is->unit_bombard_attacking_tile = NULL;
 
-	is->showing_hotseat_replay = 0;
-	is->getting_tile_occupier_for_ai_pathfinding = 0;
+	is->showing_hotseat_replay = false;
+	is->getting_tile_occupier_for_ai_pathfinding = false;
 
 	is->water_trade_improvs    = (struct improv_id_list) {0};
 	is->air_trade_improvs      = (struct improv_id_list) {0};
@@ -2221,9 +2221,9 @@ cleanup:
 int __cdecl
 patch_get_tile_occupier_for_ai_path (int x, int y, int pov_civ_id, byte respect_unit_invisibility)
 {
-	is->getting_tile_occupier_for_ai_pathfinding = 1;
+	is->getting_tile_occupier_for_ai_pathfinding = true;
 	return get_tile_occupier_id (x, y, pov_civ_id, respect_unit_invisibility);
-	is->getting_tile_occupier_for_ai_pathfinding = 0;
+	is->getting_tile_occupier_for_ai_pathfinding = false;
 }
 
 char __fastcall patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2);
@@ -2384,7 +2384,7 @@ patch_Unit_move (Unit * this, int edx, int tile_x, int tile_y)
 	Unit_move (this, __, tile_x, tile_y);
 }
 
-int
+bool
 can_attack_this_turn (Unit * unit)
 {
 	// return unit has moves left AND (unit hasn't attacked this turn OR unit has blitz ability)
@@ -2393,7 +2393,7 @@ can_attack_this_turn (Unit * unit)
 		 UnitType_has_ability (&p_bic_data->UnitTypes[unit->Body.UnitTypeID], __, UTA_Blitz));
 }
 
-int
+bool
 can_damage_bombarding (UnitType * attacker_type, Unit * defender, Tile * defender_tile)
 {
 	UnitType * defender_type = &p_bic_data->UnitTypes[defender->Body.UnitTypeID];
@@ -2403,20 +2403,20 @@ can_damage_bombarding (UnitType * attacker_type, Unit * defender, Tile * defende
 	} else if (defender_type->Unit_Class == UTC_Sea) {
 		// Land artillery can't normally damage ships in port
 		if ((attacker_type->Unit_Class == UTC_Land) && (! is->current_config.remove_land_artillery_target_restrictions) && Tile_has_city (defender_tile))
-			return 0;
+			return false;
 		int has_lethal_sea_bombard = UnitType_has_ability (attacker_type, __, UTA_Lethal_Sea_Bombardment);
 		return defender->Body.Damage + (! has_lethal_sea_bombard) < Unit_get_max_hp (defender);
 	} else if (defender_type->Unit_Class == UTC_Air) {
 		if (is->current_config.immunize_aircraft_against_bombardment)
-			return 0;
+			return false;
 		// Can't damage aircraft in an airfield by bombarding, the attack doesn't even go off
 		if ((defender_tile->vtable->m42_Get_Overlays (defender_tile, __, 0) & 0x20000000) != 0)
-			return 0;
+			return false;
 		// Land artillery can't normally damage aircraft but naval artillery and other aircraft can. Lethal bombard doesn't apply; anything
 		// that can damage can kill.
 		return (attacker_type->Unit_Class != UTC_Land) || is->current_config.remove_land_artillery_target_restrictions;
 	} else // UTC_Space? UTC_Alternate_Dimension???
-		return 0;
+		return false;
 }
 
 char __fastcall
@@ -2444,7 +2444,7 @@ patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2)
 	return base_vis;
 }
 
-int
+bool
 has_any_destructible_improvements (City * city)
 {
 	for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
@@ -2453,9 +2453,9 @@ has_any_destructible_improvements (City * city)
 		    ((improv->ImprovementFlags & ITF_Center_of_Empire) == 0) && // it's not the palace AND
 		    (improv->SpaceshipPart < 0) && // it's not a spaceship part AND
 		    City_has_improvement (city, __, n, 0)) // it's present in the city ignoring free improvements
-			return 1;
+			return true;
 	}
-	return 0;
+	return false;
 }
 
 int const destructible_overlays =
@@ -2468,15 +2468,15 @@ int const destructible_overlays =
 	0x40000000 | // radar
 	0x80000000;  // outpost
 
-int
-has_any_destructible_overlays (Tile * tile, int precision_strike)
+bool
+has_any_destructible_overlays (Tile * tile, bool precision_strike)
 {
 	int overlays = tile->vtable->m42_Get_Overlays (tile, __, 0);
 	if ((overlays & destructible_overlays) == 0)
-		return 0;
+		return false;
 	else {
 		if (! precision_strike)
-			return 1;
+			return true;
 		else {
 			if (overlays == 0x20000000) { // if tile ONLY has an airfield
 				int any_aircraft_on_tile = 0; {
@@ -2488,7 +2488,7 @@ has_any_destructible_overlays (Tile * tile, int precision_strike)
 				}
 				return ! any_aircraft_on_tile;
 			} else
-				return 1;
+				return true;
 		}
 	}
 }
@@ -2601,7 +2601,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 		} else if (target_city != NULL)
 			anything_left_to_attack = (target_city->Body.Population.Size > 1) || has_any_destructible_improvements (target_city);
 		else if (attacking_tile)
-			anything_left_to_attack = has_any_destructible_overlays (target_tile, 0);
+			anything_left_to_attack = has_any_destructible_overlays (target_tile, false);
 		else
 			anything_left_to_attack = 0;
 	} while ((next_up != NULL) && anything_left_to_attack && (! last_attack_didnt_happen));
@@ -2910,7 +2910,7 @@ intercept_end_of_turn ()
 	is->have_job_and_loc_to_skip = 0;
 }
 
-int
+bool
 is_worker_or_settler_command (int unit_command_value)
 {
 	return (unit_command_value & 0x20000000) ||
@@ -3142,14 +3142,14 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 		Main_GUI_handle_button_press (this, __, button_id);
 }
 
-int
+bool
 is_command_button_active (Main_GUI * main_gui, enum Unit_Command_Values command)
 {
 	Command_Button * buttons = main_gui->Unit_Command_Buttons;
 	for (int n = 0; n < 42; n++)
 		if (((buttons[n].Button.Base_Data.Status2 & 1) != 0) && (buttons[n].Command == command))
-			return 1;
-	return 0;
+			return true;
+	return false;
 }
 
 int __fastcall
@@ -3332,7 +3332,7 @@ check_trespassing (int civ_id, Tile * from, Tile * to)
 		return 0;
 }
 
-int
+bool
 is_allowed_to_trespass (Unit * unit)
 {
 	int type_id = unit->Body.UnitTypeID;
@@ -3340,7 +3340,7 @@ is_allowed_to_trespass (Unit * unit)
 		UnitType * type = &p_bic_data->UnitTypes[type_id];
 		return UnitType_has_ability (type, __, UTA_Hidden_Nationality) || UnitType_has_ability (type, __, UTA_Invisible);
 	} else
-		return 0;
+		return false;
 }
 
 AdjacentMoveValidity __fastcall
@@ -3681,10 +3681,10 @@ patch_Unit_can_hurry_production (Unit * this, int edx, City * city, byte exclude
 		return Unit_can_hurry_production (this, __, city, exclude_cheap_improvements);
 }
 
-int
+bool
 any_enemies_near (Leader const * me, int tile_x, int tile_y, enum UnitTypeClasses class, int num_tiles)
 {
-	int tr = 0;
+	bool tr = false;
 	FOR_TILES_AROUND (tai, num_tiles, tile_x, tile_y) {
 		int enemy_on_this_tile = 0;
 		FOR_UNITS_ON (uti, tai.tile) {
@@ -3701,14 +3701,14 @@ any_enemies_near (Leader const * me, int tile_x, int tile_y, enum UnitTypeClasse
 			}
 		}
 		if (enemy_on_this_tile) {
-			tr = 1;
+			tr = true;
 			break;
 		}
 	}
 	return tr;
 }
 
-int
+bool
 any_enemies_near_unit (Unit * unit, int num_tiles)
 {
 	UnitType * unit_type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
@@ -4227,7 +4227,7 @@ patch_Unit_disembark_passengers (Unit * this, int edx, int tile_x, int tile_y)
 // trade is for itself is stored in out_their_advantage if it's not NULL. This advantage is measured in gold, if it's positive it means the
 // AI thinks it's gaining that much value from the trade and if it's negative it thinks it would be losing that much. I don't know what would
 // happen if this function were called while the trade screen is not active.
-int
+bool
 is_current_offer_acceptable (int * out_their_advantage)
 {
 	int their_id = p_diplo_form->other_party_civ_id;
@@ -4332,7 +4332,7 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 		}
 
 		int their_advantage;
-		int is_original_acceptable = is_current_offer_acceptable (&their_advantage);
+		bool is_original_acceptable = is_current_offer_acceptable (&their_advantage);
 
 		// if (we're asking for money on an acceptable trade and are offering something) OR (we're offering money on an unacceptable trade and
 		// are asking for something)
@@ -4474,30 +4474,30 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 		return base_result;
 }
 
-int
+bool
 is_zero_strength (UnitType * ut)
 {
 	return (ut->Attack == 0) && (ut->Defence == 0) && (ut->Bombard_Strength == 0) && (ut->Air_Defence == 0);
 }
 
-int
+bool
 uses_ptw_arty_targeting (Unit * u)
 {
 	int type_id = u->Body.UnitTypeID;
 	for (int n = 0; n < is->current_config.count_ptw_arty_types; n++)
 		if (type_id == is->current_config.ptw_arty_types[n])
-			return 1;
-	return 0;
+			return true;
+	return false;
 }
 
-int
+bool
 is_captured (Unit_Body * u)
 {
 	return (u->RaceID >= 0) && (u->CivID >= 0) && (u->CivID < 32) && leaders[u->CivID].RaceID != u->RaceID;
 }
 
 // Decides whether or not units "a" and "b" are duplicates, i.e., whether they are completely interchangeable.
-int
+bool
 are_units_duplicate (Unit_Body * a, Unit_Body * b)
 {
 	UnitType * a_type = &p_bic_data->UnitTypes[a->UnitTypeID],
@@ -4608,7 +4608,7 @@ patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3
 	return Context_Menu_open (this, __, x, y, param_3);
 }
 
-int
+bool
 is_pop_unit (UnitType const * type)
 {
 	int join_city_action = UCV_Join_City & 0x0FFFFFFF; // To get the join city action code, use the command value and mask out the top 4 category bits
@@ -4831,7 +4831,7 @@ patch_City_Form_m82_handle_key_event (City_Form * this, int edx, int virtual_key
 	City_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
 }
 
-int
+bool
 can_harvest_shields_from_forest (Tile * tile)
 {
 	int flags = tile->vtable->m43_Get_field_30 (tile);
@@ -4852,20 +4852,20 @@ patch_open_tile_info (void * this, int edx, int mouse_x, int mouse_y, int civ_id
 	return open_tile_info (this, __, mouse_x, mouse_y, civ_id);
 }
 
-int
+bool
 is_explored (Tile * tile, int civ_id)
 {
 	unsigned explored_bits = tile->Body.Fog_Of_War;
 	int in_debug_mode = (*p_debug_mode_bits & 8) != 0; // checking bit 3 here b/c that's how resource visibility is checked in open_tile_info
 	if (in_debug_mode || (explored_bits & (1 << civ_id)))
-		return 1;
+		return true;
 	else if (is->current_config.share_visibility_in_hoseat && // if shared hotseat vis is enabled AND
 		 (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game AND
 		 ((1 << civ_id) & *p_human_player_bits) && // "civ_id" is a human player AND
 		 (explored_bits & *p_human_player_bits)) // any human player has visibility on the tile
-		return 1;
+		return true;
 	else
-		return 0;
+		return false;
 }
 
 // On the GOG executable, this function intercepts the call to draw the "No information available" text on a unexplored (black) tile. In that case we
@@ -6114,7 +6114,7 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 	int player_civ_id = p_main_screen_form->Player_CivID;
 	int replay_for_players = is->replay_for_players; // Store this b/c it gets reset on game load
 	if (replay_for_players & 1<<player_civ_id) {
-		is->showing_hotseat_replay = 1;
+		is->showing_hotseat_replay = true;
 
 		patch_do_save_game (hotseat_resume_save_path, 1, 0);
 		load_game_ex (hotseat_replay_save_path, 1);
@@ -6135,7 +6135,7 @@ patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 		// showed the replay to.
 		is->replay_for_players = replay_for_players & ~(1<<player_civ_id);
 
-		is->showing_hotseat_replay = 0;
+		is->showing_hotseat_replay = false;
 	}
 
 	return tr;
@@ -6672,7 +6672,7 @@ patch_Unit_can_move_after_zoc (Unit * this, int edx, int neighbor_index, int par
 
 // Checks unit's HP after it was possibly hit by ZoC and deals with the consequences if it's dead. Does nothing if config option to make ZoC lethal
 // isn't set or if interceptor is NULL. Returns 1 if the unit was killed, 0 otherwise.
-int
+bool
 check_life_after_zoc (Unit * unit, Unit * interceptor)
 {
 	if ((is->current_config.special_zone_of_control_rules & SZOCR_LETHAL) && (interceptor != NULL) &&
@@ -6681,9 +6681,9 @@ check_life_after_zoc (Unit * unit, Unit * interceptor)
 		if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (&p_bic_data->fighter, __, interceptor, unit, 1))
 			Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, unit, AT_DEATH, 0);
 		patch_Unit_despawn (unit, __, interceptor->Body.CivID, 0, 0, 0, 0, 0, 0);
-		return 1;
+		return true;
 	} else
-		return 0;
+		return false;
 }
 
 int __fastcall
@@ -6706,12 +6706,12 @@ patch_Unit_teleport (Unit * this, int edx, int tile_x, int tile_y, Unit * unit_t
 	return tr;
 }
 
-int
+bool
 can_do_defensive_bombard (Unit * unit, UnitType * type)
 {
 	if ((type->Bombard_Strength > 0) && (! Unit_has_ability (unit, __, UTA_Cruise_Missile))) {
 		if ((unit->Body.Status & 0x40) == 0) // has not already done DB this turn
-			return 1;
+			return true;
 
 		// If the "blitz" special DB rule is activated and this unit has blitz, check if it still has an extra DB to use
 		else if ((is->current_config.special_defensive_bombard_rules & SDBR_BLITZ) && UnitType_has_ability (type, __, UTA_Blitz)) {
@@ -6722,9 +6722,9 @@ can_do_defensive_bombard (Unit * unit, UnitType * type)
 			return type->Movement > extra_dbs + 1;
 
 		} else
-			return 0;
+			return false;
 	} else
-		return 0;
+		return false;
 }
 
 Unit * __fastcall
@@ -6794,7 +6794,7 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 	is->dbe.bombarder = bombarder;
 	is->dbe.defender = defender;
 	if (damage_after > damage_before) {
-		is->dbe.damage_done = 1;
+		is->dbe.damage_done = true;
 		int max_hp = Unit_get_max_hp (defender);
 		int dead_before = damage_before >= max_hp, dead_after = damage_after >= max_hp;
 
@@ -6802,7 +6802,7 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 		// doesn't look like anything else happens. Technically, the combat continues and the dead unit is guarantted to lose because the
 		// patch to get_combat_odds ensures the dead unit has no chance of winning a round.
 		if (dead_before ^ dead_after) {
-			is->dbe.defender_was_destroyed = 1;
+			is->dbe.defender_was_destroyed = true;
 			if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (this, __, bombarder, defender, 1))
 				Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, defender, AT_DEATH, 0);
 			is->dbe.saved_animation_setting = this->play_animations;
@@ -6852,14 +6852,14 @@ patch_Unit_play_attack_anim_for_def_bombard (Unit * this, int edx, int direction
 		Unit_play_attack_animation (this, __, direction);
 }
 
-int
+bool
 can_precision_strike_tile_improv_at (Unit * unit, int x, int y)
 {
 	Tile * tile;
 	return is->current_config.allow_precision_strikes_against_tile_improvements && // we're configured to allow prec. strikes vs tiles AND
 		((tile = tile_at (x, y)) != p_null_tile) && // get tile, make sure it's valid AND
 		is_explored (tile, unit->Body.CivID) && // tile has been explored by attacker AND
-		has_any_destructible_overlays (tile, 1); // it has something that can be destroyed by prec. strike
+		has_any_destructible_overlays (tile, true); // it has something that can be destroyed by prec. strike
 }
 
 // Same as above function except this one applies to the V3 field instead of FOWStatus
