@@ -94,7 +94,7 @@ pop_up_in_game_error (char const * msg)
 {
 	PopupForm * popup = get_popup_form ();
 	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
-	PopupForm_add_text (popup, __, (char *)msg, 0);
+	PopupForm_add_text (popup, __, (char *)msg, false);
 	show_popup (popup, __, 0, 0);
 }
 
@@ -622,7 +622,7 @@ handle_config_error (struct config_parsing * p, enum config_parse_error err)
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
 		snprintf (err_msg, sizeof err_msg, "Error reading \"%s\" on line %d.", p->file_path, line_no);
 		err_msg[(sizeof err_msg) - 1] = '\0';
-		PopupForm_add_text (popup, __, err_msg, 0);
+		PopupForm_add_text (popup, __, err_msg, false);
 
 		if (err == CPE_GENERIC) {
 			if (p->key.str != NULL)
@@ -638,7 +638,7 @@ handle_config_error (struct config_parsing * p, enum config_parse_error err)
 		else if (err == CPE_BAD_KEY)
 			snprintf (err_msg, sizeof err_msg, "^The key name \"%.*s\" is not recognized.", p->key.len, p->key.str);
 		err_msg[(sizeof err_msg) - 1] = '\0';
-		PopupForm_add_text (popup, __, err_msg, 0);
+		PopupForm_add_text (popup, __, err_msg, false);
 
 		show_popup (popup, __, 0, 0);
 		p->displayed_error_message = 1;
@@ -808,9 +808,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		char s[200];
 		snprintf (s, sizeof s, "Unrecognized names in %s:", full_path);
 		s[(sizeof s) - 1] = '\0';
-		PopupForm_add_text (popup, __, s, 0);
+		PopupForm_add_text (popup, __, s, false);
 		for (struct error_line * line = unrecognized_lines; line != NULL; line = line->next)
-			PopupForm_add_text (popup, __, line->text, 0);
+			PopupForm_add_text (popup, __, line->text, false);
 		show_popup (popup, __, 0, 0);
 	}
 
@@ -828,10 +828,10 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 	top_lcn->next = new_lcn;
 }
 
-char __fastcall
+bool __fastcall
 patch_Leader_impl_would_raze_city (Leader * this, int edx, City * city)
 {
-	return is->current_config.prevent_razing_by_players ? 0 : Leader_impl_would_raze_city (this, __, city);
+	return is->current_config.prevent_razing_by_players ? false : Leader_impl_would_raze_city (this, __, city);
 }
 
 // This function is used to fix a bug where the game would crash when using disembark all on a transport that contained an immobile unit. The bug
@@ -872,23 +872,23 @@ patch_PCX_Image_process_tech_ga_status (PCX_Image * this, int edx, char * str)
 	return PCX_Image_process_text (this, __, str);
 }
 
-byte __fastcall
+bool __fastcall
 patch_Leader_is_tile_visible (Leader * this, int edx, int x, int y)
 {
 	Tile_Body * tile = &tile_at (x, y)->Body;
 	unsigned vis_bits = tile->FOWStatus | tile->V3 | tile->Visibility | tile->field_D0_Visibility;
 	if (vis_bits & (1 << this->ID))
-		return 1;
+		return true;
 	else if (is->current_config.share_visibility_in_hoseat && // if shared hotseat vis is enabled AND
 		 (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game AND
 		 ((1 << this->ID) & *p_human_player_bits) && // "this" is a human player AND
 		 (vis_bits & *p_human_player_bits)) // any human player has visibility on the tile
-		return 1;
+		return true;
 	else
-		return 0;
+		return false;
 }
 
-byte __fastcall
+bool __fastcall
 patch_Main_Screen_Form_is_unit_visible_to_player (Main_Screen_Form * this, int edx, int tile_x, int tile_y, Unit * unit)
 {
 	return (unit->Body.CivID == this->Player_CivID) || patch_Leader_is_tile_visible (&leaders[this->Player_CivID], __, tile_x, tile_y);
@@ -1236,10 +1236,10 @@ intercept_set_resource_bit (City * city, int resource_id)
 // Must forward declare this function since there's a circular dependency between it and patch_City_has_resource
 bool has_resources_required_by_building_r (City * city, int improv_id, int max_req_resource_id);
 
-byte __fastcall
+bool __fastcall
 patch_City_has_resource (City * this, int edx, int resource_id)
 {
-	byte tr;
+	bool tr;
 	if (is->current_config.patch_phantom_resource_bug &&
 	    (resource_id >= 32) && (resource_id < p_bic_data->ResourceTypeCount) &&
 	    (! City_has_trade_connection_to_capital (this))) {
@@ -1257,7 +1257,7 @@ patch_City_has_resource (City * this, int edx, int resource_id)
 			    can_generate_resource (this->Body.CivID, mill) &&
 			    has_active_building (this, mill->improv_id) &&
 			    has_resources_required_by_building_r (this, mill->improv_id, mill->resource_id - 1)) {
-				tr = 1;
+				tr = true;
 				break;
 			}
 		}
@@ -1317,7 +1317,7 @@ compare_mill_tiles (void const * vp_a, void const * vp_b)
 }
 
 void __fastcall
-patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, byte skip_popups)
+patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups)
 {
 	int extra_resource_count = not_below (0, p_bic_data->ResourceTypeCount - 32);
 	int ints_per_city = 1 + extra_resource_count/32;
@@ -2074,7 +2074,7 @@ patch_process_text_for_map_message (char * in, char * out)
 
 // Works like show_map_message but takes a bit of text to display instead of a key for script.txt
 void
-show_map_specific_text (int tile_x, int tile_y, char const * text, byte pause)
+show_map_specific_text (int tile_x, int tile_y, char const * text, bool pause)
 {
 	is->map_message_text_override = text;
 	Main_Screen_Form_show_map_message (p_main_screen_form, __, tile_x, tile_y, "LANDCONQUER", pause); // Use any key here. It will be overridden.
@@ -2087,7 +2087,7 @@ get_mod_art_path (char const * file_name, char * out_path, int path_buf_size)
 	snprintf (s, sizeof s, "Art\\%s", file_name);
 	s[(sizeof s) - 1] = '\0';
 
-	char * scenario_path = BIC_get_asset_path (p_bic_data, __, s, 0);
+	char * scenario_path = BIC_get_asset_path (p_bic_data, __, s, false);
 	if (0 != strcmp (scenario_path, s)) // get_asset_path returns its input when the file is not found
 		snprintf (out_path, path_buf_size, "%s", scenario_path);
 	else
@@ -2219,7 +2219,7 @@ cleanup:
 }
 
 int __cdecl
-patch_get_tile_occupier_for_ai_path (int x, int y, int pov_civ_id, byte respect_unit_invisibility)
+patch_get_tile_occupier_for_ai_path (int x, int y, int pov_civ_id, bool respect_unit_invisibility)
 {
 	is->getting_tile_occupier_for_ai_pathfinding = true;
 	return get_tile_occupier_id (x, y, pov_civ_id, respect_unit_invisibility);
@@ -2327,7 +2327,7 @@ init_mod_info_button_images ()
 
 	PCX_Image * descbox_pcx = new (sizeof *descbox_pcx);
 	PCX_Image_construct (descbox_pcx);
-	char * descbox_path = BIC_get_asset_path (p_bic_data, __, "art\\civilopedia\\descbox.pcx", 1);
+	char * descbox_path = BIC_get_asset_path (p_bic_data, __, "art\\civilopedia\\descbox.pcx", true);
 	PCX_Image_read_file (descbox_pcx, __, descbox_path, NULL, 0, 0x100, 1);
 	if (descbox_pcx->JGL.Image == NULL) {
 		(*p_OutputDebugStringA) ("[C3X] Failed to load descbox.pcx");
@@ -2698,7 +2698,7 @@ set_up_stack_worker_buttons (Main_GUI * this)
 	}
 }
 
-CityLocValidity __fastcall patch_Map_check_city_location (Map * this, int edx, int tile_x, int tile_y, int civ_id, byte check_for_city_on_tile);
+CityLocValidity __fastcall patch_Map_check_city_location (Map * this, int edx, int tile_x, int tile_y, int civ_id, bool check_for_city_on_tile);
 
 void __fastcall
 patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
@@ -2718,7 +2718,7 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 			// If it's enabled, set to city founding, and the current city location is too close to another city
 			if (((cb->Button.Base_Data.Status2 & 1) != 0) &&
 			    (cb->Command == UCV_Build_City) &&
-			    (patch_Map_check_city_location (&p_bic_data->Map, __, selected_unit->X, selected_unit->Y, selected_unit->CivID, 0) == CLV_CITY_TOO_CLOSE)) {
+			    (patch_Map_check_city_location (&p_bic_data->Map, __, selected_unit->X, selected_unit->Y, selected_unit->CivID, false) == CLV_CITY_TOO_CLOSE)) {
 
 				// Replace the button's image with the disabled image, as in set_up_stack_worker_buttons.
 				cb->Button.vtable->m02_Show_Disabled ((Base_Form *)&cb->Button);
@@ -2917,13 +2917,13 @@ is_worker_or_settler_command (int unit_command_value)
 		((unit_command_value >= UCV_Build_Remote_Colony) && (unit_command_value <= UCV_Auto_Save_Tiles));
 }
 
-byte __fastcall
+bool __fastcall
 patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 {
 	if (is->current_config.disable_worker_automation &&
 	    (this->Body.CivID == p_main_screen_form->Player_CivID) &&
 	    (unit_command_value == UCV_Automate))
-		return 0;
+		return false;
 	else if (is->current_config.disallow_land_units_from_affecting_water_tiles &&
 		 is_worker_or_settler_command (unit_command_value)) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
@@ -2945,7 +2945,7 @@ patch_Unit_can_do_worker_command_for_button_setup (Unit * this, int edx, int uni
 	if ((! base) &&
 	    (unit_command_value == UCV_Build_City) &&
 	    (is->current_config.minimum_city_separation > 1) &&
-	    (patch_Map_check_city_location (&p_bic_data->Map, __, this->Body.X, this->Body.Y, this->Body.CivID, 0) == CLV_CITY_TOO_CLOSE) &&
+	    (patch_Map_check_city_location (&p_bic_data->Map, __, this->Body.X, this->Body.Y, this->Body.CivID, false) == CLV_CITY_TOO_CLOSE) &&
 	    (init_disabled_command_buttons (), is->disabled_command_img_state == IS_OK))
 		return 1;
 
@@ -3062,7 +3062,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 				for (int n = 0; n < is->memo_len; n++) {
 					Unit * to_upgrade = get_unit_ptr (is->memo[n]);
 					if (to_upgrade != NULL)
-						Unit_upgrade (to_upgrade, __, 0);
+						Unit_upgrade (to_upgrade, __, false);
 				}
 
 		} else {
@@ -3359,7 +3359,7 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 			// trespassing). In this case we must forbid the move entirely since TRIGGERS_WAR will not stop it if we're at war with the
 			// occupying civ. This fixes a bug where units could trespass by attacking an enemy unit across a border. They would then get
 			// stuck halfway between tiles if they won.
-			return (trespasses_against_civ_id == get_tile_occupier_id (nx, ny, this->Body.CivID, 0)) ? AMV_TRIGGERS_WAR : AMV_CANNOT_PASS_BETWEEN;
+			return (trespasses_against_civ_id == get_tile_occupier_id (nx, ny, this->Body.CivID, false)) ? AMV_TRIGGERS_WAR : AMV_CANNOT_PASS_BETWEEN;
 	}
 
 	return base_validity;
@@ -3519,7 +3519,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	reset_to_base_config ();
 	load_config ("default.c3x_config.ini", 1);
 	char * scenario_config_file_name = "scenario.c3x_config.ini";
-	char * scenario_config_path = BIC_get_asset_path (p_bic_data, __, scenario_config_file_name, 0);
+	char * scenario_config_path = BIC_get_asset_path (p_bic_data, __, scenario_config_file_name, false);
 	// BIC_get_asset_path returns the file name when it can't find the file
 	if (0 != strcmp (scenario_config_file_name, scenario_config_path))
 		load_config (scenario_config_path, 0);
@@ -3668,13 +3668,13 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 	}
 }
 
-byte __fastcall
-patch_Unit_can_hurry_production (Unit * this, int edx, City * city, byte exclude_cheap_improvements)
+bool __fastcall
+patch_Unit_can_hurry_production (Unit * this, int edx, City * city, bool exclude_cheap_improvements)
 {
 	if (is->current_config.allow_military_leaders_to_hurry_wonders && Unit_has_ability (this, __, UTA_Leader)) {
 		LeaderKind actual_kind = this->Body.leader_kind;
 		this->Body.leader_kind = LK_Scientific;
-		byte tr = Unit_can_hurry_production (this, __, city, exclude_cheap_improvements);
+		bool tr = Unit_can_hurry_production (this, __, city, exclude_cheap_improvements);
 		this->Body.leader_kind = actual_kind;
 		return tr;
 	} else
@@ -3860,7 +3860,7 @@ patch_Unit_ai_move_leader (Unit * this)
 		int escorter_count = 0;
 		int any_healthy_escorters = 0;
 		int index;
-		for (int escorter_id = Unit_next_escorter_id (this, __, &index, 1); escorter_id >= 0; escorter_id = Unit_next_escorter_id (this, __, &index, 0)) {
+		for (int escorter_id = Unit_next_escorter_id (this, __, &index, true); escorter_id >= 0; escorter_id = Unit_next_escorter_id (this, __, &index, false)) {
 			Unit * escorter = get_unit_ptr (escorter_id);
 			if ((escorter != NULL) && (escorter->Body.X == this->Body.X) && (escorter->Body.Y == this->Body.Y)) {
 				escorter_count++;
@@ -3919,7 +3919,7 @@ patch_Unit_ai_move_leader (Unit * this)
 		City * city = coi.city;
 		Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
 		if ((continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) &&
-		    patch_Unit_can_hurry_production (this, __, city, 0)) {
+		    patch_Unit_can_hurry_production (this, __, city, false)) {
 			// Base value is equal to the number of shields rushing would save
 			int value = City_get_order_cost (city) - City_get_order_progress (city) - city->Body.ProductionIncome;
 			if (value <= 0)
@@ -3991,7 +3991,7 @@ measure_strength_in_army (UnitType * type)
 	return ((type->Attack + type->Defence) * (4 + type->Hit_Point_Bonus)) / 4;
 }
 
-byte __fastcall
+bool __fastcall
 patch_impl_ai_is_good_army_addition (Unit * this, int edx, Unit * candidate)
 {
 	if (! is->current_config.fix_ai_army_composition)
@@ -4002,7 +4002,7 @@ patch_impl_ai_is_good_army_addition (Unit * this, int edx, Unit * candidate)
 
 	if (((candidate_type->AI_Strategy & UTAI_Offence) == 0) ||
 	    UnitType_has_ability (candidate_type, __, UTA_Hidden_Nationality))
-		return 0;
+		return false;
 
 	int num_units_in_army = 0,
 	    army_min_speed = INT_MAX,
@@ -4074,10 +4074,10 @@ rate_bomber (UnitType * type)
 	return tr;
 }
 
-byte __fastcall
-patch_City_can_build_unit (City * this, int edx, int unit_type_id, byte exclude_upgradable, int param_3, byte allow_kings)
+bool __fastcall
+patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_upgradable, int param_3, bool allow_kings)
 {
-	byte base = City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
+	bool base = City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
 
 	// Apply building prereqs
 	if (base) {
@@ -4092,7 +4092,7 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, byte exclude_
 				int * list = (int *)building_prereq;
 				for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
 					if ((list[n] >= 0) && ! has_active_building (this, list[n]))
-						return 0;
+						return false;
 			}
 		}
 	}
@@ -4238,7 +4238,7 @@ is_current_offer_acceptable (int * out_their_advantage)
 		&p_diplo_form->our_offer_lists[their_id],
 		&p_diplo_form->their_offer_lists[their_id],
 		p_main_screen_form->Player_CivID,
-		0, 1, 0, 0,
+		0, true, 0, 0,
 		out_their_advantage,
 		NULL, NULL);
 
@@ -4409,7 +4409,7 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 }
 
 CityLocValidity __fastcall
-patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int civ_id, byte check_for_city_on_tile)
+patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int civ_id, bool check_for_city_on_tile)
 {
 	int min_sep = is->current_config.minimum_city_separation;
 	CityLocValidity base_result = Map_check_city_location (this, __, tile_x, tile_y, civ_id, check_for_city_on_tile);
@@ -4773,7 +4773,7 @@ patch_Improvement_has_wonder_com_bonus_for_ai_prod (Improvement * this, int edx,
 }
 
 // Similarly, this one sets the var when looping over unit types.
-byte __fastcall
+bool __fastcall
 patch_UnitType_has_strat_0_for_ai_prod (UnitType * this, int edx, byte n)
 {
 	is->ai_considering_order.OrderID = this - p_bic_data->UnitTypes;
@@ -4897,7 +4897,7 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 
 		if ((is->city_loc_display_perspective >= 0) &&
 		    ((1 << is->city_loc_display_perspective) & *p_player_bits)) {
-			int eval = ai_eval_city_location (is->viewing_tile_info_x, is->viewing_tile_info_y, is->city_loc_display_perspective, 0, NULL);
+			int eval = ai_eval_city_location (is->viewing_tile_info_x, is->viewing_tile_info_y, is->city_loc_display_perspective, false, NULL);
 			if (eval > 0) {
 				snprintf (s, sizeof s, "%d", eval - 1000000);
 				PCX_Image_draw_text (this, __, s, x + 95, y, strlen (s));
@@ -4912,7 +4912,7 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 }
 
 int __fastcall
-patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, byte is_production)
+patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, bool is_production)
 {
 	Leader * leader = &leaders[this->Body.CivID];
 
@@ -4954,7 +4954,7 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 
 		init_tile_highlights ();
 		if (is->tile_highlight_state == IS_OK) {
-			int eval = ai_eval_city_location (tile_x, tile_y, is->city_loc_display_perspective, 0, NULL);
+			int eval = ai_eval_city_location (tile_x, tile_y, is->city_loc_display_perspective, false, NULL);
 			if (eval > 0) {
 				int step_size = 10;
 				int midpoint = (COUNT_TILE_HIGHLIGHTS % 2 == 0) ? 1000000 : (1000000 - step_size/2);
@@ -5083,7 +5083,7 @@ patch_Parameters_Form_m68_Show_Dialog (Parameters_Form * this, int edx, int para
 	return tr;
 }
 
-byte __fastcall
+bool __fastcall
 patch_City_cycle_specialist_type (City * this, int edx, int mouse_x, int mouse_y, Citizen * citizen, City_Form * city_form)
 {
 	int specialist_count = 0; {
@@ -5096,7 +5096,7 @@ patch_City_cycle_specialist_type (City * this, int edx, int mouse_x, int mouse_y
 	int original_worker_type = citizen->WorkerType;
 
 	// The return value of this function is not actually used by either of the two original callers.
-	byte tr = City_cycle_specialist_type (this, __, mouse_x, mouse_y, citizen, city_form);
+	bool tr = City_cycle_specialist_type (this, __, mouse_x, mouse_y, citizen, city_form);
 
 	// Cycle all the way around back to the previous specialist type, if appropriate.
 	// If the worker type was not changed after the first call to cycle_specialist_type, that indicates that the player was asked to disable
@@ -5151,7 +5151,7 @@ patch_City_get_total_pollution (City * this)
 }
 
 void __fastcall
-patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int add, byte param_3)
+patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int add, bool param_3)
 {
 	int init_maintenance = this->Body.Improvements_Maintenance;
 	Improvement * improv = &p_bic_data->Improvements[improv_id];
@@ -5245,7 +5245,7 @@ eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, in
 {
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile != p_null_tile) &&
-	    (patch_Map_check_city_location (map, __, tile_x, tile_y, civ_id, 1) == CLV_OK) &&
+	    (patch_Map_check_city_location (map, __, tile_x, tile_y, civ_id, true) == CLV_OK) &&
 	    (tile->vtable->m15_Check_Goody_Hut (tile, __, 0) == 0) &&
 	    (tile->vtable->m40_get_TileUnit_ID (tile) == -1)) {
 		int tr = 0;
@@ -5304,7 +5304,7 @@ create_starter_city (Map * map, int civ_id, int tile_index)
 {
 	int x, y;
 	tile_index_to_coords (map, tile_index, &x, &y);
-	return Leader_create_city (&leaders[civ_id], __, x, y, leaders[civ_id].RaceID, -1, NULL, 1);
+	return Leader_create_city (&leaders[civ_id], __, x, y, leaders[civ_id].RaceID, -1, NULL, true);
 }
 
 void
@@ -5405,7 +5405,7 @@ set_up_ai_two_city_start (Map * map)
 				    ((improv->ObsoleteID < 0) || ! Leader_has_tech (&leaders[civ_id], __, improv->ObsoleteID)) && // is not obsolete AND
 				    ((improv->GovernmentID < 0) || (improv->GovernmentID == leaders[civ_id].GovernmentType)) && // is not restricted to another govt AND
 				    (improv->Resource1ID < 0) && (improv->Resource2ID < 0)) { // does not require resources
-					patch_City_add_or_remove_improvement (fp_city, __, n, 1, 1);
+					patch_City_add_or_remove_improvement (fp_city, __, n, 1, true);
 					break;
 				}
 			}
@@ -5466,7 +5466,7 @@ set_up_ai_two_city_start (Map * map)
 }
 
 void __fastcall
-patch_Map_process_after_placing (Map * this, int edx, byte param_1)
+patch_Map_process_after_placing (Map * this, int edx, bool param_1)
 {
 	if (is->current_config.enable_ai_two_city_start && (*p_current_turn_no == 0))
 		set_up_ai_two_city_start (this);
@@ -5474,7 +5474,7 @@ patch_Map_process_after_placing (Map * this, int edx, byte param_1)
 }
 
 int __fastcall
-patch_City_get_net_commerce (City * this, int edx, int kind, byte include_science_age)
+patch_City_get_net_commerce (City * this, int edx, int kind, bool include_science_age)
 {
 	int base = City_get_net_commerce (this, __, kind, include_science_age);
 
@@ -5612,7 +5612,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 			    city_id   = ((1<<13) - 1) &  is->memo[count_sold];
 			City * city = get_city_ptr (city_id);
 			improv_cost -= City_get_improvement_maintenance (city, __, improv_id);
-			City_sell_improvement (city, __, improv_id, 0);
+			City_sell_improvement (city, __, improv_id, false);
 			treasury = leader->Gold_Encoded + leader->Gold_Decrement;
 			count_sold++;
 		}
@@ -5705,7 +5705,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 
 				while ((n < is->memo_len) && (improv_cost + unit_cost > treasury + wealth_income)) {
 					City * city = get_city_ptr (is->memo[n]);
-					City_set_production (city, __, COT_Improvement, wealth_improv_id, 0);
+					City_set_production (city, __, COT_Improvement, wealth_improv_id, false);
 					switched_any = 1;
 					wealth_income += City_get_income_from_wealth_build (city);
 					n++;
@@ -5736,15 +5736,15 @@ patch_Leader_pay_unit_maintenance (Leader * this)
 }
 
 void __fastcall
-patch_Main_Screen_Form_show_wltk_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, byte pause)
+patch_Main_Screen_Form_show_wltk_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, bool pause)
 {
-	Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? 0 : pause);
+	Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? false : pause);
 }
 
 void __fastcall
-patch_Main_Screen_Form_show_wltk_ended_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, byte pause)
+patch_Main_Screen_Form_show_wltk_ended_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, bool pause)
 {
-	Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? 0 : pause);
+	Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? false : pause);
 }
 
 char __fastcall
@@ -5770,7 +5770,7 @@ int __fastcall patch_show_popup_option_1_razes (void *this, int edx, int param_1
 int __fastcall patch_show_popup_option_2_razes (void *this, int edx, int param_1, int param_2) { return show_razing_popup (this, param_1, param_2, 2); }
 
 int __fastcall
-patch_Context_Menu_add_abandon_city (Context_Menu * this, int edx, int item_id, char * text, byte param_3, int param_4)
+patch_Context_Menu_add_abandon_city (Context_Menu * this, int edx, int item_id, char * text, bool param_3, int param_4)
 {
 	if (is->current_config.prevent_razing_by_players)
 		return 0; // Return value is ignored by the caller
@@ -5795,22 +5795,22 @@ check_pedia_upgrades_to_ptr (TextBuffer * this, char * str)
 char * __fastcall patch_TextBuffer_check_pedia_upgrades_to_ptr_1 (TextBuffer * this, int edx, char * str) { return check_pedia_upgrades_to_ptr (this, str); }
 char * __fastcall patch_TextBuffer_check_pedia_upgrades_to_ptr_2 (TextBuffer * this, int edx, char * str) { return check_pedia_upgrades_to_ptr (this, str); }
 
-byte __fastcall
-patch_Unit_select_stealth_attack_target (Unit * this, int edx, int target_civ_id, int x, int y, byte allow_popup, Unit ** out_selected_target)
+bool __fastcall
+patch_Unit_select_stealth_attack_target (Unit * this, int edx, int target_civ_id, int x, int y, bool allow_popup, Unit ** out_selected_target)
 {
 	is->added_any_stealth_target = 0;
 	return Unit_select_stealth_attack_target (this, __, target_civ_id, x, y, allow_popup, out_selected_target);
 }
 
-byte __fastcall
+bool __fastcall
 patch_Unit_can_stealth_attack (Unit * this, int edx, Unit * target)
 {
-	byte tr = Unit_can_stealth_attack (this, __, target);
+	bool tr = Unit_can_stealth_attack (this, __, target);
 
 	// If we're selecting a target for stealth attack via bombardment, we must filter out candidates we can't damage that way
 	if (tr && is->selecting_stealth_target_for_bombard &&
 	    ! can_damage_bombarding (&p_bic_data->UnitTypes[this->Body.UnitTypeID], target, tile_at (target->Body.X, target->Body.Y)))
-		return 0;
+		return false;
 
 	else
 		return tr;
@@ -5839,7 +5839,7 @@ patch_Unit_perform_air_recon (Unit * this, int edx, int x, int y)
 {
 	int moves_plus_one = this->Body.Moves + p_bic_data->General.RoadsMovementRate;
 
-	int was_intercepted = 0;
+	bool was_intercepted = false;
 	if (is->current_config.intercept_recon_missions) {
 		// Temporarily add vision on the target tile so the game plays the animation if the unit is show down by ground AA
 		Tile_Body * tile = &tile_at (x, y)->Body;
@@ -5930,7 +5930,7 @@ patch_Leader_begin_unit_turns (Leader * this)
 }
 
 Unit * __fastcall
-patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bombarder, int tile_x, int tile_y, int bombarder_civ_id, byte land_lethal, byte sea_lethal)
+patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bombarder, int tile_x, int tile_y, int bombarder_civ_id, bool land_lethal, bool sea_lethal)
 {
 	if (is->bombard_stealth_target == NULL)
 		return Fighter_find_defender_against_bombardment (this, __, bombarder, tile_x, tile_y, bombarder_civ_id, land_lethal, sea_lethal);
@@ -5938,7 +5938,7 @@ patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bomb
 		return is->bombard_stealth_target;
 }
 
-byte __fastcall
+bool __fastcall
 patch_Unit_try_flying_for_precision_strike (Unit * this, int edx, int x, int y)
 {
 	if (is->current_config.polish_non_air_precision_striking &&
@@ -5966,13 +5966,13 @@ patch_Unit_play_anim_for_bombard_tile (Unit * this, int edx, int x, int y)
 	if (is->current_config.enable_stealth_attack_via_bombardment &&
 	    (! is_online_game ()) &&
 	    patch_Leader_is_tile_visible (&leaders[p_main_screen_form->Player_CivID], __, x, y)) {
-		byte land_lethal = Unit_has_ability (this, __, UTA_Lethal_Land_Bombardment),
+		bool land_lethal = Unit_has_ability (this, __, UTA_Lethal_Land_Bombardment),
 		     sea_lethal  = Unit_has_ability (this, __, UTA_Lethal_Sea_Bombardment);
 		Unit * defender = Fighter_find_defender_against_bombardment (&p_bic_data->fighter, __, this, x, y, this->Body.CivID, land_lethal, sea_lethal);
 		if (defender != NULL) {
 			Unit * target;
 			is->selecting_stealth_target_for_bombard = 1;
-			byte got_one = patch_Unit_select_stealth_attack_target (this, __, defender->Body.CivID, x, y, 1, &target);
+			byte got_one = patch_Unit_select_stealth_attack_target (this, __, defender->Body.CivID, x, y, true, &target);
 			is->selecting_stealth_target_for_bombard = 0;
 			if (got_one)
 				is->bombard_stealth_target = target;
@@ -6202,7 +6202,7 @@ patch_perform_interturn_in_main_loop ()
 }
 
 void __cdecl
-patch_initialize_map_music (int civ_id, int era_id, byte param_3)
+patch_initialize_map_music (int civ_id, int era_id, bool param_3)
 {
 	if (! is->showing_hotseat_replay)
 		initialize_map_music (civ_id, era_id, param_3);
@@ -6289,26 +6289,26 @@ patch_DiploForm_assemble_tradable_items (DiploForm * this)
 			}
 }
 
-byte __fastcall
+bool __fastcall
 patch_City_can_trade_via_water (City * this)
 {
 	if (is->current_config.optimize_improvement_loops) {
 		for (int n = 0; n < is->water_trade_improvs.count; n++)
 			if (has_active_building (this, is->water_trade_improvs.items[n]))
-				return 1;
-		return 0;
+				return true;
+		return false;
 	} else
 		return City_can_trade_via_water (this);
 }
 
-byte __fastcall
+bool __fastcall
 patch_City_can_trade_via_air (City * this)
 {
 	if (is->current_config.optimize_improvement_loops) {
 		for (int n = 0; n < is->air_trade_improvs.count; n++)
 			if (has_active_building (this, is->air_trade_improvs.items[n]))
-				return 1;
-		return 0;
+				return true;
+		return false;
 	} else
 		return City_can_trade_via_air (this);
 }
@@ -6373,7 +6373,7 @@ patch_Unit_eval_escort_requirement (Unit * this)
 }
 
 void __fastcall
-patch_Leader_unlock_technology (Leader * this, int edx, int tech_id, byte param_2, byte param_3, byte param_4)
+patch_Leader_unlock_technology (Leader * this, int edx, int tech_id, bool param_2, bool param_3, bool param_4)
 {
 	int * p_stack = (int *)&tech_id;
 	int ret_addr = p_stack[-1];
@@ -6587,32 +6587,32 @@ patch_Main_Screen_Form_find_visible_unit (Main_Screen_Form * this, int edx, int 
 }
 
 void __fastcall
-patch_Animator_play_zoc_animation (Animator * this, int edx, Unit * unit, AnimationType anim_type, byte param_3)
+patch_Animator_play_zoc_animation (Animator * this, int edx, Unit * unit, AnimationType anim_type, bool param_3)
 {
 	if (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class != UTC_Air)
 		Animator_play_one_shot_unit_animation (this, __, unit, anim_type, param_3);
 }
 
-byte __fastcall
-patch_Fighter_check_zoc_anim_visibility (Fighter * this, int edx, Unit * attacker, Unit * defender, byte param_3)
+bool __fastcall
+patch_Fighter_check_zoc_anim_visibility (Fighter * this, int edx, Unit * attacker, Unit * defender, bool param_3)
 {
 	// If we've reached this point in the code (in the calling method) then a unit has been selected to exert zone of control and it has passed
 	// its dice roll to cause damage. Stash its pointer for possible use later.
 	is->zoc_interceptor = attacker;
 
 	// If an air unit was selected, pre-emptively undo the damage from ZoC since we'll want to run our own bit of logic to do that (the air unit
-	// may still get shot down). Return 0 from this function to skip over all of the animation logic in the caller since it wouldn't work for
+	// may still get shot down). Return false from this function to skip over all of the animation logic in the caller since it wouldn't work for
 	// aircraft.
 	if (p_bic_data->UnitTypes[attacker->Body.UnitTypeID].Unit_Class == UTC_Air) {
 		defender->Body.Damage -= 1;
-		return 0;
+		return false;
 
 	// Repeat a check done by the caller. We've deleted this check to ensure that this function always gets called so we can grab the interceptor.
 	} else if (attacker->Body.Animation.field_111 == 0)
-		return 0;
+		return false;
 
 	else {
-		byte tr = Fighter_check_combat_anim_visibility (this, __, attacker, defender, param_3);
+		bool tr = Fighter_check_combat_anim_visibility (this, __, attacker, defender, param_3);
 
 		// If necessary, set up to ensure the unit's attack animation is visible. This means forcing it to the top of its stack and
 		// temporarily unfortifying it if it's fortified. (If it's fortified, the animation is occasionally not visible. Don't know why.)
@@ -6639,7 +6639,7 @@ patch_Fighter_apply_zone_of_control (Fighter * this, int edx, Unit * unit, int f
 
 	// Actually exert ZoC if an air unit managed to do so.
 	if ((is->zoc_interceptor != NULL) && (p_bic_data->UnitTypes[is->zoc_interceptor->Body.UnitTypeID].Unit_Class == UTC_Air)) {
-		int intercepted = Unit_try_flying_over_tile (is->zoc_interceptor, __, from_x, from_y);
+		bool intercepted = Unit_try_flying_over_tile (is->zoc_interceptor, __, from_x, from_y);
 		if (! intercepted) {
 			Unit_play_bombing_animation (is->zoc_interceptor, __, from_x, from_y);
 			unit->Body.Damage = not_below (0, unit->Body.Damage + 1);
@@ -6677,9 +6677,9 @@ check_life_after_zoc (Unit * unit, Unit * interceptor)
 {
 	if ((is->current_config.special_zone_of_control_rules & SZOCR_LETHAL) && (interceptor != NULL) &&
 	    ((Unit_get_max_hp (unit) - unit->Body.Damage) <= 0)) {
-		Unit_score_kill (interceptor, __, unit, 0);
-		if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (&p_bic_data->fighter, __, interceptor, unit, 1))
-			Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, unit, AT_DEATH, 0);
+		Unit_score_kill (interceptor, __, unit, false);
+		if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (&p_bic_data->fighter, __, interceptor, unit, true))
+			Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, unit, AT_DEATH, false);
 		patch_Unit_despawn (unit, __, interceptor->Body.CivID, 0, 0, 0, 0, 0, 0);
 		return true;
 	} else
@@ -6687,7 +6687,7 @@ check_life_after_zoc (Unit * unit, Unit * interceptor)
 }
 
 int __fastcall
-patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, byte param_2, int param_3, byte param_4)
+patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool param_2, int param_3, byte param_4)
 {
 	is->zoc_interceptor = NULL;
 	int tr = Unit_move_to_adjacent_tile (this, __, neighbor_index, param_2, param_3, param_4);
@@ -6803,8 +6803,8 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 		// patch to get_combat_odds ensures the dead unit has no chance of winning a round.
 		if (dead_before ^ dead_after) {
 			is->dbe.defender_was_destroyed = true;
-			if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (this, __, bombarder, defender, 1))
-				Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, defender, AT_DEATH, 0);
+			if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (this, __, bombarder, defender, true))
+				Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, defender, AT_DEATH, false);
 			is->dbe.saved_animation_setting = this->play_animations;
 			this->play_animations = 0;
 		}
@@ -6812,7 +6812,7 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 }
 
 int __fastcall
-patch_Fighter_get_odds_for_main_combat_loop (Fighter * this, int edx, Unit * attacker, Unit * defender, byte bombarding, byte ignore_defensive_bonuses)
+patch_Fighter_get_odds_for_main_combat_loop (Fighter * this, int edx, Unit * attacker, Unit * defender, bool bombarding, bool ignore_defensive_bonuses)
 {
 	// If the attacker was destroyed by defensive bombard, return a number that will ensure the defender wins the first round of combat, otherwise
 	// the zero HP attacker might go on to win an absurd victory. (The attacker in the overall combat is the defender during DB).
@@ -6832,7 +6832,7 @@ patch_Fighter_fight (Fighter * this, int edx, Unit * attacker, int attack_direct
 }
 
 void __fastcall
-patch_Unit_score_kill_by_defender (Unit * this, int edx, Unit * victim, byte was_attacking)
+patch_Unit_score_kill_by_defender (Unit * this, int edx, Unit * victim, bool was_attacking)
 {
 	// This function is called when the defender wins in combat. If the attacker was actually killed by defensive bombardment, then award credit
 	// for that kill to the defensive bombarder not the defender in combat.
@@ -6875,16 +6875,16 @@ patch_tile_at_for_v3_check (int x, int y)
 		return tile;
 }
 
-byte __fastcall
+bool __fastcall
 patch_Unit_check_contact_bit_6_on_right_click (Unit * this, int edx, int civ_id)
 {
-	byte tr = Unit_check_contact_bit_6 (this, __, civ_id);
+	bool tr = Unit_check_contact_bit_6 (this, __, civ_id);
 	if ((! tr) &&
 	    is->current_config.share_visibility_in_hoseat &&
 	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
 	    ((1 << civ_id) & *p_human_player_bits)) { // is civ_id a human player
 		if ((1 << this->Body.CivID) & *p_human_player_bits)
-			tr = 1;
+			tr = true;
 
 		else {
 			// Check if any other human player has contact
@@ -6893,7 +6893,7 @@ patch_Unit_check_contact_bit_6_on_right_click (Unit * this, int edx, int civ_id)
 			while (player_bits != 0) {
 				if ((player_bits & 1) && (n_player != civ_id) &&
 				    Unit_check_contact_bit_6 (this, __, n_player)) {
-					tr = 1;
+					tr = true;
 					break;
 				}
 				player_bits >>= 1;
@@ -6904,7 +6904,7 @@ patch_Unit_check_contact_bit_6_on_right_click (Unit * this, int edx, int civ_id)
 	return tr;
 }
 
-byte __fastcall
+bool __fastcall
 patch_Unit_check_precision_strike_target (Unit * this, int edx, int tile_x, int tile_y)
 {
 	return Unit_check_precision_strike_target (this, __, tile_x, tile_y) || can_precision_strike_tile_improv_at (this, tile_x, tile_y);
@@ -6953,10 +6953,10 @@ patch_city_at_in_find_bombard_defender (int x, int y)
 	return city_at (x, y);
 }
 
-byte __fastcall
+bool __fastcall
 patch_Unit_check_bombard_target (Unit * this, int edx, int tile_x, int tile_y)
 {
-	int base = Unit_check_bombard_target (this, __, tile_x, tile_y);
+	bool base = Unit_check_bombard_target (this, __, tile_x, tile_y);
 	Tile * tile;
 	int overlays;
 	if (base &&
@@ -6987,11 +6987,11 @@ patch_Unit_check_bombard_target (Unit * this, int edx, int tile_x, int tile_y)
 		return base;
 }
 
-byte __fastcall
+bool __fastcall
 patch_Unit_can_disembark_anything (Unit * this, int edx, int tile_x, int tile_y)
 {
 	Tile * this_tile = tile_at (this->Body.X, this->Body.Y);
-	byte base = Unit_can_disembark_anything (this, __, tile_x, tile_y);
+	bool base = Unit_can_disembark_anything (this, __, tile_x, tile_y);
 
 	// Apply trespassing restriction. First check if this civ may move into (tile_x, tile_y) without trespassing. If it would be trespassing, then
 	// we can only disembark anything if this transport has a passenger that can ignore the restriction. Without this check, the game can enter an
@@ -6999,10 +6999,10 @@ patch_Unit_can_disembark_anything (Unit * this, int edx, int tile_x, int tile_y)
 	if (base &&
 	    is->current_config.disallow_trespassing &&
 	    check_trespassing (this->Body.CivID, this_tile, tile_at (tile_x, tile_y))) {
-		int any_exempt_passengers = 0;
+		bool any_exempt_passengers = false;
 		FOR_UNITS_ON (uti, this_tile)
 			if ((uti.unit->Body.Container_Unit == this->Body.ID) && is_allowed_to_trespass (uti.unit)) {
-				any_exempt_passengers = 1;
+				any_exempt_passengers = true;
 				break;
 			}
 		return any_exempt_passengers;
