@@ -1424,7 +1424,7 @@ filter_zoc_candidate (struct register_set * reg)
 	enum UnitTypeClasses candidate_class = candidate_type->Unit_Class,
 		             defender_class  = defender_type ->Unit_Class;
 
-	byte lethal     = (is->current_config.special_zone_of_control_rules & SZOCR_LETHAL    ) != 0,
+	bool lethal     = (is->current_config.special_zone_of_control_rules & SZOCR_LETHAL    ) != 0,
 	     aerial     = (is->current_config.special_zone_of_control_rules & SZOCR_AERIAL    ) != 0,
 	     amphibious = (is->current_config.special_zone_of_control_rules & SZOCR_AMPHIBIOUS) != 0;
 
@@ -2934,20 +2934,20 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 		return Unit_can_perform_command (this, __, unit_command_value);
 }
 
-byte __fastcall
+bool __fastcall
 patch_Unit_can_do_worker_command_for_button_setup (Unit * this, int edx, int unit_command_value)
 {
-	byte base = patch_Unit_can_perform_command (this, __, unit_command_value);
+	bool base = patch_Unit_can_perform_command (this, __, unit_command_value);
 
 	// If the command is to build a city and it can't be done because another city is already too close, and the minimum separation was changed
-	// from its standard value, then return 1 here so that the build city button will be added anyway. We'll gray it out later. Check that the
+	// from its standard value, then return true here so that the build city button will be added anyway. We'll gray it out later. Check that the
 	// grayed out button image is initialized now so we don't activate the build city button then find out later we can't gray it out.
 	if ((! base) &&
 	    (unit_command_value == UCV_Build_City) &&
 	    (is->current_config.minimum_city_separation > 1) &&
 	    (patch_Map_check_city_location (&p_bic_data->Map, __, this->Body.X, this->Body.Y, this->Body.CivID, false) == CLV_CITY_TOO_CLOSE) &&
 	    (init_disabled_command_buttons (), is->disabled_command_img_state == IS_OK))
-		return 1;
+		return true;
 
 	else
 		return base;
@@ -3872,7 +3872,7 @@ patch_Unit_ai_move_leader (Unit * this)
 	}
 	if ((! has_adequate_escort) && any_enemies_near_unit (this, 49)) {
 		Unit_set_state (this, __, UnitState_Fleeing);
-		byte done = this->vtable->work (this);
+		bool done = this->vtable->work (this);
 		if (done || (this->Body.UnitState != 0))
 			return;
 	}
@@ -4635,7 +4635,7 @@ ai_move_pop_unit (Unit * this)
 	}
 	if (any_enemies_near_unit (this, 49)) {
 		Unit_set_state (this, __, UnitState_Fleeing);
-		byte done = this->vtable->work (this);
+		bool done = this->vtable->work (this);
 		if (done || (this->Body.UnitState != 0))
 			return;
 	}
@@ -4743,12 +4743,12 @@ patch_get_anarchy_length (int leader_id)
 		return base;
 }
 
-byte __fastcall
+bool __fastcall
 patch_Unit_check_king_ability_while_spawning (Unit * this, int edx, enum UnitTypeAbilities a)
 {
 	if (is->current_config.dont_give_king_names_in_non_regicide_games &&
 	    ((*p_toggleable_rules & (TR_REGICIDE | TR_MASS_REGICIDE)) == 0))
-		return 0;
+		return false;
 	else
 		return Unit_has_ability (this, __, a);
 }
@@ -4764,7 +4764,7 @@ patch_Map_compute_neighbor_index_for_pass_between (Map * this, int edx, int x_ho
 
 // This call replacement used to be part of improvement perfuming but now its only purpose is to set ai_considering_order when
 // ai_choose_production is looping over improvements.
-byte __fastcall
+bool __fastcall
 patch_Improvement_has_wonder_com_bonus_for_ai_prod (Improvement * this, int edx, enum ImprovementTypeWonderFeatures flag)
 {
 	is->ai_considering_order.OrderID = this - p_bic_data->Improvements;
@@ -5972,7 +5972,7 @@ patch_Unit_play_anim_for_bombard_tile (Unit * this, int edx, int x, int y)
 		if (defender != NULL) {
 			Unit * target;
 			is->selecting_stealth_target_for_bombard = 1;
-			byte got_one = patch_Unit_select_stealth_attack_target (this, __, defender->Body.CivID, x, y, true, &target);
+			bool got_one = patch_Unit_select_stealth_attack_target (this, __, defender->Body.CivID, x, y, true, &target);
 			is->selecting_stealth_target_for_bombard = 0;
 			if (got_one)
 				is->bombard_stealth_target = target;
@@ -6243,12 +6243,12 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 		Fighter_do_bombard_tile (this, __, unit, neighbor_index, mp_tile_x, mp_tile_y);
 }
 
-byte __fastcall
+bool __fastcall
 patch_Unit_check_king_for_defense_priority (Unit * this, int edx, enum UnitTypeAbilities king_ability)
 {
 	return (! is->current_config.ignore_king_ability_for_defense_priority) || (*p_toggleable_rules & (TR_REGICIDE | TR_MASS_REGICIDE)) ?
 		Unit_has_ability (this, __, king_ability) :
-		0;
+		false;
 }
 
 void WINAPI
@@ -6259,7 +6259,7 @@ patch_get_local_time_for_unit_ini (LPSYSTEMTIME lpSystemTime)
 		lpSystemTime->wDay = 9;
 }
 
-byte __fastcall
+bool __fastcall
 patch_Leader_could_buy_tech_for_trade_screen (Leader * this, int edx, int tech_id, int from_civ_id)
 {
 	// Temporarily remove the untradable flag so this tech is listed on the screen instead of skipped over. After all the items have been
@@ -6267,7 +6267,7 @@ patch_Leader_could_buy_tech_for_trade_screen (Leader * this, int edx, int tech_i
 	if (is->current_config.show_untradable_techs_on_trade_screen) {
 		int saved_flags = p_bic_data->Advances[tech_id].Flags;
 		p_bic_data->Advances[tech_id].Flags &= ~ATF_Cannot_Be_Traded;
-		byte tr = this->vtable->could_buy_tech (this, __, tech_id, from_civ_id);
+		bool tr = this->vtable->could_buy_tech (this, __, tech_id, from_civ_id);
 		p_bic_data->Advances[tech_id].Flags = saved_flags;
 		return tr;
 
@@ -6341,7 +6341,7 @@ patch_City_get_building_defense_bonus (City * this)
 		return City_get_building_defense_bonus (this);
 }
 
-byte __fastcall
+bool __fastcall
 patch_City_shows_harbor_icon (City * this)
 {
 	return is->current_config.city_icons_show_unit_effects_not_trade ?
@@ -6349,7 +6349,7 @@ patch_City_shows_harbor_icon (City * this)
 		patch_City_can_trade_via_water (this);
 }
 
-byte __fastcall
+bool __fastcall
 patch_City_shows_airport_icon (City * this)
 {
 	return is->current_config.city_icons_show_unit_effects_not_trade ?

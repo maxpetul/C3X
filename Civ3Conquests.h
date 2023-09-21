@@ -2548,7 +2548,7 @@ struct Unit_vtable
   int (__fastcall * teleport) (Unit *, int, int, int, Unit *);
   void (__fastcall * update_while_active) (Unit *);
   int m22;
-  byte (__fastcall * work) (Unit *);
+  bool (__fastcall * work) (Unit *);
   int m24;
   int m25;
   int m26;
@@ -3149,7 +3149,7 @@ struct Leader_vtable
   int m38;
   int m39;
   int m40;
-  byte (__fastcall * could_buy_tech) (Leader * this, int edx, int tech_id, int from_civ_id);
+  bool (__fastcall * could_buy_tech) (Leader * this, int edx, int tech_id, int from_civ_id);
   int m42;
 };
 
