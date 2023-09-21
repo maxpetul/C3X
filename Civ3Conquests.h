@@ -3,6 +3,8 @@
 // See: https://github.com/Antal1987/C3CPatchFramework/blob/master/Info/Civ3Conquests.h
 
 typedef struct IntList IntList;
+typedef struct CoordPairList CoordPairList;
+typedef struct TribeCustomization TribeCustomization;
 typedef struct City_Base_vtable City_Base_vtable;
 typedef struct Citizen Citizen;
 typedef struct RulerTitle RulerTitle;
@@ -57,7 +59,8 @@ typedef struct Tile_Image_Info_vtable Tile_Image_Info_vtable;
 typedef struct Tile_Image_Info_List Tile_Image_Info_List;
 typedef struct Base_vtable Base_vtable;
 typedef struct City_Screen_FileNames City_Screen_FileNames;
-typedef struct _188_48 _188_48;
+typedef struct AnimationSummary AnimationSummary;
+typedef struct AnimationSummaryVTable AnimationSummaryVTable;
 typedef struct FLC_Frame_Image FLC_Frame_Image;
 typedef struct _188_4C _188_4C;
 typedef struct Civilopedia_Article Civilopedia_Article;
@@ -90,8 +93,8 @@ typedef struct Map_Cursor_Images Map_Cursor_Images;
 typedef struct Old_Interface_Images Old_Interface_Images;
 typedef struct Main_Screen_Form_vtable Main_Screen_Form_vtable;
 typedef struct GUI_Data_30 GUI_Data_30;
-typedef struct Main_Screen_Data_170 Main_Screen_Data_170;
-typedef struct Form_Data_30 Form_Data_30;
+typedef struct MapMessage MapMessage;
+typedef struct Timer Timer;
 typedef struct GUI_Form_1_vtable GUI_Form_1_vtable;
 typedef struct Base_Form_vtable Base_Form_vtable;
 typedef struct Control_Data_Offsets Control_Data_Offsets;
@@ -132,7 +135,7 @@ typedef struct World_Features World_Features;
 typedef struct Starting_Location Starting_Location;
 typedef struct Scenario_Player Scenario_Player;
 typedef struct Navigator_Cell Navigator_Cell;
-typedef struct Navigator_Point Navigator_Point;
+typedef struct CoordPair CoordPair;
 typedef struct JGL_Image JGL_Image;
 typedef struct JGL_Image_vtable JGL_Image_vtable;
 typedef struct JGL_Graphics JGL_Graphics;
@@ -174,6 +177,7 @@ typedef struct Continent Continent;
 typedef struct Map_Renderer Map_Renderer;
 typedef struct Tile_Type Tile_Type;
 typedef struct PCX_Image PCX_Image;
+typedef struct PCX_Image_vtable PCX_Image_vtable;
 typedef struct FLC_Animation FLC_Animation;
 typedef struct Airfield Airfield;
 typedef struct Colony Colony;
@@ -185,7 +189,7 @@ typedef struct Base_Form_Data Base_Form_Data;
 typedef struct Button Button;
 typedef struct Advisor_Science_Form Advisor_Science_Form;
 typedef struct Advisor_Base_Form Advisor_Base_Form;
-typedef struct Main_Screen_Data_1AD4 Main_Screen_Data_1AD4;
+typedef struct Animator Animator;
 typedef struct Command_Button Command_Button;
 typedef struct GUI_Form_1 GUI_Form_1;
 typedef struct ComboBox ComboBox;
@@ -352,6 +356,19 @@ enum AnimatedEffect
   AE_Plague = 0xB,
 };
 
+enum direction
+{
+  DIR_ZERO = 0, // Appears facing SW
+  DIR_NE   = 1,
+  DIR_E    = 2,
+  DIR_SE   = 3,
+  DIR_S    = 4,
+  DIR_SW   = 5,
+  DIR_W    = 6,
+  DIR_NW   = 7,
+  DIR_N    = 8
+};
+
 enum ImprovementTypeFlags
 {
   ITF_Center_of_Empire			    = 0x1,
@@ -383,7 +400,7 @@ enum ImprovementTypeFlags
   ITF_Vulnerable_To_Charm_Bombard	    = 0x4000000,
   ITF_8000000				    = 0x8000000,
   ITF_10000000				    = 0x10000000,
-  ITF_20000000				    = 0x20000000,
+  ITF_Doubles_Sacrifice			    = 0x20000000,
   ITF_Produces_Unit			    = 0x40000000,
   ITF_Required_Goods_Must_Be_In_City_Radius = 0x80000000,
 };
@@ -421,53 +438,41 @@ enum ImprovementTypeCharacteristics
   ITC_Seafaring = 0x800,
 };
 
-enum ImprovementTypeFlags_Byte1
-{
-  ITF_B1_Reduces_Corruption = 0x1,
-  ITF_B1_Doubles_City_Growth_Rate = 0x2,
-  ITF_B1_Increases_Luxury_Trade = 0x4,
-  ITF_B1_Allows_City_Level_2 = 0x8,
-  ITF_B1_Allows_City_Level_3 = 0x10,
-  ITF_B1_Replaces_Other_Buildings = 0x20,
-  ITF_B1_Must_Be_Near_Water = 0x40,
-  ITF_B1_Must_Be_Near_River = 0x80,
-};
-
 enum ImprovementTypeWonderFeatures
 {
-  ITW_Safe_Sea_Travel			     = 0x1,
-  ITW_Gain_Any_Advance_Owned_by_2_Civ	     = 0x2,
-  ITW_Double_Combat_Strength_vs_Barbarians   = 0x4,
-  ITW_Ship_Movement_Inc_1		     = 0x8,
-  ITW_Doubles_Research_Output		     = 0x10,
-  ITW_Trade_In_Each_Tile_inc_1		     = 0x20,
-  ITW_Halves_Unit_Upgrade_Cost		     = 0x40,
-  ITW_Pays_Maintenance_For_Trade_Inst	     = 0x80,
-  ITW_Allows_Construction_Of_Nuclear_Devices = 0x100,
-  ITW_City_Growth_Inc_2_Citizens	     = 0x200,
-  ITW_Free_Advance_Inc_2		     = 0x400,
-  ITW_Reduces_War_Weariness		     = 0x800,
-  ITW_Unk1				     = 0x1000,
-  ITW_Allows_Diplomatic_Victory		     = 0x2000,
-  ITW_Unk2				     = 0x4000,
-  ITW_Unk3				     = 0x8000,
-  ITW_Increases_Army_Value		     = 0x10000,
-  ITW_Tourist_Attraction		     = 0x20000,
+  ITW_Safe_Sea_Travel                             = 0x1,
+  ITW_Gain_Any_Advances_Owned_by_2_Civs           = 0x2,
+  ITW_Double_Combat_Strength_vs_Barbarians        = 0x4,
+  ITW_Plus_One_Ship_Movement                      = 0x8,
+  ITW_Doubles_Research_Output                     = 0x10,
+  ITW_Plus_One_Trade_in_Each_Trade_Producing_Tile = 0x20,
+  ITW_Halves_Unit_Upgrade_Cost                    = 0x40,
+  ITW_Pays_Maintenance_For_Trade_Installations    = 0x80,
+  ITW_Allows_Construction_of_Nuclear_Devices      = 0x100,
+  ITW_City_Growth_Causes_Plus_Two_Citizens        = 0x200,
+  ITW_Plus_Two_Free_Advances                      = 0x400,
+  ITW_Reduces_War_Weariness                       = 0x800,
+  ITW_Doubles_City_Defenses                       = 0x1000,
+  ITW_Allows_Diplomatic_Victory                   = 0x2000,
+  ITW_Plus_Two_Ship_Movement                      = 0x4000,
+  ITW_0x8000                                      = 0x8000,
+  ITW_Increased_Army_Value                        = 0x10000,
+  ITW_Tourist_Attraction                          = 0x20000,
 };
 
 enum ImprovementTypeSmallWonderFeatures
 {
-  ITSW_Increases_Chance_Of_Leader_Appearance = 0x1,
-  ITSW_Build_Army_Without_Leader	     = 0x2,
-  ITSW_Larger_Armies			     = 0x4,
-  ITSW_Treasury_Earns_5_Percent		     = 0x8,
-  ITSW_Build_Spaceship_Parts		     = 0x10,
-  ITSW_Reduces_Corruption		     = 0x20,
+  ITSW_Increases_Chance_of_Leader_Appearance = 0x1,
+  ITSW_Build_Armies_Without_Leader           = 0x2,
+  ITSW_Build_Larger_Armies                   = 0x4,
+  ITSW_Treasury_Earns_5_Percent              = 0x8,
+  ITSW_Build_Spaceship_Parts                 = 0x10,
+  ITSW_Reduces_Corruption                    = 0x20,
   ITSW_Decreases_Success_Of_Missile_Attacks  = 0x40,
-  ITSW_Allows_Spy_Missions		     = 0x80,
+  ITSW_Allows_Spy_Missions                   = 0x80,
   ITSW_Allows_Healing_In_Enemy_Territory     = 0x100,
-  ITSW_200				     = 0x200,
-  ITSW_Requires_Victorous_Army		     = 0x400,
+  ITSW_0x200                                 = 0x200,
+  ITSW_Requires_Victorous_Army               = 0x400,
 };
 
 enum CorruptionAndWasteTypes
@@ -710,10 +715,11 @@ enum Unit_Command_Values
   UCV_Finish_Improvements = 0x10000080,
   UCV_Upgrade_Unit	  = 0x10000100,
   UCV_Rescue_Princess	  = 0x10000200,
-  UCV_Stealth_Attack	  = 0x10001000,
-  UCV_Enslave		  = 0x10004000,
-  UCV_Unknown		  = 0x10008000,
+  UCV_Telepad             = 0x10004000,
+  UCV_Teleport            = 0x10008000,
+  UCV_Stealth_Attack	  = 0x10010000,
   UCV_Charm_Bombard       = 0x10020000,
+  UCV_Enslave		  = 0x10040000,
   UCV_Sacrifice		  = 0x10100000,
   UCV_Science_Age	  = 0x10200000,
 
@@ -776,18 +782,18 @@ enum Unit_Mode_Actions
   UMA_Airlift = 0x8,
   UMA_Recon = 0x9,
   UMA_Rebase = 0xA,
-  UMA_11 = 0xB,
+  UMA_Precision_Strike = 0xB,
   UMA_12 = 0xC,
   UMA_13 = 0xD,
   UMA_Build_Colony = 0xE,
   UMA_Auto_Bombard = 0xF,
   UMA_Auto_Air_Bombard = 0x10,
-  UMA_17 = 0x11,
-  UMA_18 = 0x12,
-  UMA_19 = 0x13,
+  UMA_Auto_Precision_Strike = 0x11,
+  UMA_Stack_Go_To = 0x12,
+  UMA_Stack_Rebase = 0x13,
   UMA_20 = 0x14,
   UMA_21 = 0x15,
-  UMA_22 = 0x16,
+  UMA_Teleport = 0x16,
 };
 
 enum City_Order_Types
@@ -801,20 +807,6 @@ enum Hurry_Production_Type
   HPT_Cannot_Hurry = 0x0,
   HPT_Forced_Labor = 0x1,
   HPT_Paid_Labor = 0x2,
-};
-
-enum ImprovementTypeWonderFeatures_Byte1
-{
-  ITW_B1_Allows_Construction_Of_Nuclear_Devices = 0x1,
-  ITW_B1_City_Growth_Inc_2_Citizens = 0x2,
-  ITW_B1_Free_Advance_Inc_2 = 0x4,
-  ITW_B1_Reduces_War_Weariness = 0x8,
-  ITW_B1_Unk1 = 0x10,
-  ITW_B1_Allows_Diplomatic_Victory = 0x20,
-  ITW_B1_Unk2 = 0x40,
-  ITW_B1_Unk3 = 0x80,
-  ITW_B1_Increases_Army_Value = 0x100,
-  ITW_B1_Turist_Attraction = 0x200,
 };
 
 enum Tile_Owner_Types
@@ -928,13 +920,6 @@ enum UnitStateType
   UnitState_1E = 0x1E,
   UnitState_Auto_Bombard = 0x1F,
   UnitState_Auto_Air_Bombard = 0x20,
-};
-
-enum ImprovementTypeSmallWonderFeatures_Byte1
-{
-  ITSW_B1_Allows_Healing_In_Enemy_Territory = 0x1,
-  ITSW_B1_Required_Good_Must_be_in_City_Radius = 0x2,
-  ITSW_B1_Requires_Victorous_Army = 0x4,
 };
 
 enum VirtualKey
@@ -1353,6 +1338,42 @@ typedef enum preferences {
 	P_DO_NOT_AUTO_SELECT_UNITS_IN_MP    = 0x40000000
 } Preferences;
 
+typedef enum tradable_item_kind {
+	TIK_DIPLO_AGREEMENT = 0,
+	TIK_ALLIANCE        = 1,
+	TIK_EMBARGO         = 2,
+	TIK_MAP             = 3,
+	TIK_COMMUNICATION   = 4,
+	TIK_RESOURCE        = 5,
+	TIK_LUXURY          = 6,
+	TIK_GOLD            = 7,
+	TIK_TECHNOLOGY      = 8,
+	TIK_CITY            = 9,
+	TIK_UNIT            = 10
+} TradableItemKind;
+
+typedef enum animation_type {
+	AT_BLANK    = 0x0,
+	AT_DEFAULT  = 0x1,
+	AT_RUN      = 0x2,
+	AT_ATTACK1  = 0x3,
+	AT_ATTACK2  = 0x4,
+	AT_ATTACK3  = 0x5,
+	AT_DEATH    = 0x6,
+	AT_FORTIFY  = 0x7,
+	AT_FIDGET   = 0x8,
+	AT_VICTORY  = 0x9,
+	AT_CAPTURE  = 0xA,
+	AT_FORTRESS = 0xB,
+	AT_BUILD    = 0xC,
+	AT_ROAD     = 0xD,
+	AT_MINE     = 0xE,
+	AT_IRRIGATE = 0xF,
+	AT_JUNGLE   = 0x10,
+	AT_FOREST   = 0x11,
+	AT_PLANT    = 0x12,
+} AnimationType;
+
 struct IntList
 {
   int field_0;
@@ -1361,6 +1382,29 @@ struct IntList
   int * contents;
   int * contents_end;
   int * also_contents_end;
+};
+
+struct CoordPairList
+{
+  byte field_0;
+  byte field_1;
+  byte field_2;
+  byte field_3;
+  CoordPair * contents;
+  CoordPair * contents_end;
+  CoordPair * buffer_end;
+};
+
+struct TribeCustomization
+{
+  char leader_name[32];
+  char leader_title[24];
+  char civ_formal_name[40];
+  char civ_noun[40];
+  char civ_adjective[16];
+  int field_98[6];
+  int leader_gender;
+  int field_B4;
 };
 
 struct City_Base_vtable
@@ -1455,14 +1499,14 @@ struct UnitType
   int field_94;
   int field_98;
   enum UnitTypeClasses Unit_Class;
-  int IconID_2;
+  int alternate_strategy_for_id;
   int Hit_Point_Bonus;
   int Standard_Actions;
   int Special_Actions;
   int Worker_Actions;
   int Air_Missions;
   int field_B8;
-  int Bombard_Fix;
+  int Bombard_Fx;
   int field_C0;
   int field_C4;
   int field_C8;
@@ -1470,20 +1514,10 @@ struct UnitType
   int b_Not_King;
   int field_D4;
   int field_D8;
-  int field_DC;
-  int field_E0;
-  int field_E4;
-  int field_E8;
-  int field_EC;
-  int field_F0;
+  IntList unit_telepads;
   int field_F4;
   IntList stealth_attack_targets;
-  int field_110;
-  int field_114;
-  int field_118;
-  int field_11C;
-  int field_120;
-  int field_124;
+  IntList building_telepads;
   int Create_Craters;
   float WorkerStrength;
   int Extra_Abilities;
@@ -1891,8 +1925,7 @@ struct Map_vtable
   int m17;
 //  char (__thiscall *m18)(Map *, int, int);
   void *m18;
-//  int (__thiscall *m19_Create_Tiles)(Map *, Tile **);
-  void *m19_Create_Tiles;
+  byte (__fastcall * m19_Create_Tiles)(Map * this, __, Tile ** out_array);
   int m20;
   byte (__fastcall * is_near_lake) (Map * this, int edx, int x, int y, int num_tiles);
   byte (__fastcall * is_near_river) (Map * this, int edx, int x, int y, int num_tiles);
@@ -2078,10 +2111,10 @@ struct Fighter
   Unit * defender;
   byte defender_eligible_to_retreat;
   byte attacker_eligible_to_retreat;
-  byte field_A;
+  byte play_animations;
   byte field_B;
   int attack_direction;
-  int field_10;
+  int defense_direction; // Reverse of attack direction
   int attacker_location_x;
   int attacker_location_y;
   int defender_location_x;
@@ -2147,8 +2180,8 @@ struct Improvement
   int Resource2ID;
   enum ImprovementTypeFlags ImprovementFlags;
   enum ImprovementTypeCharacteristics Characteristics;
-  int SmallWonderFlags;
-  int WonderFlags;
+  enum ImprovementTypeSmallWonderFeatures SmallWonderFlags;
+  enum ImprovementTypeWonderFeatures WonderFlags;
   int ArmyRequiredCount;
   int Flavours;
   int field_104;
@@ -2333,7 +2366,7 @@ struct Tile_Image_Info
 
 struct Tile_Image_Info_vtable
 {
-  int m00;
+  Tile_Image_Info * (__fastcall * destruct) (Tile_Image_Info *, __, byte);
 };
 
 struct Tile_Image_Info_List
@@ -2375,17 +2408,25 @@ struct City_Screen_FileNames
   String260 XAndView2;
 };
 
-struct _188_48
+struct AnimationSummaryVTable
 {
-  int *vtable;
-  int Direction;
-  int field_8;
-  int field_C[4];
-  int Direction2;
-  int Animation_Type;
-  int field_24;
-  int field_28;
-  int Last;
+  AnimationSummary * (__fastcall * destruct) (AnimationSummary *, __, byte);
+};
+
+struct AnimationSummary
+{
+  AnimationSummaryVTable * vtable;
+  enum direction direction;
+  AnimationType queued_anim_type;
+  int tile_x;
+  int tile_y;
+  int pixel_loc_x;
+  int pixel_loc_y;
+  enum direction direction_2; // queued direction?
+  AnimationType current_anim_type;
+  int pixel_target_x;
+  int pixel_target_y;
+  int field_2C; // bookend?
 };
 
 struct FLC_Frame_Image
@@ -2421,7 +2462,7 @@ struct Civilopedia_Article
   int field_120;
   int field_124;
   int field_128;
-  int field_12C;
+  UnitType * unit_type;
   int field_130;
   int field_134;
 };
@@ -2504,10 +2545,10 @@ struct Unit_vtable
   int m17;
   int m18;
   int (__fastcall * Move) (Unit *, int, int, char);
-  int m20;
+  int (__fastcall * teleport) (Unit *, int, int, int, Unit *);
   void (__fastcall * update_while_active) (Unit *);
   int m22;
-  byte (__fastcall * work) (Unit *);
+  bool (__fastcall * work) (Unit *);
   int m24;
   int m25;
   int m26;
@@ -2728,17 +2769,27 @@ struct GUI_Data_30
   int field_4[11];
 };
 
-struct Main_Screen_Data_170
+struct MapMessage
 {
   int vtable;
   int field_4[90];
   int Last;
 };
 
-struct Form_Data_30
+struct Timer
 {
-  int vtable;
-  int field_4[11];
+  void * vtable;
+  void * callback_fn_2;
+  int field_8;
+  unsigned * timer_id;
+  void * callback_fn;
+  int field_14;
+  int field_18;
+  void * callback_param;
+  int duration; // in milliseconds
+  int sent_window_message;
+  int resolution; // in milliseconds
+  int field_2C;
 };
 
 struct GUI_Form_1_vtable
@@ -3077,7 +3128,7 @@ struct Leader_vtable
   int m18;
   int m19;
   int m20;
-  int m21;
+  int (__fastcall * ai_eval_technology) (Leader * this, int edx, int id, byte param_2, byte param_3);
   int m22;
   int m23;
   int m24;
@@ -3088,7 +3139,7 @@ struct Leader_vtable
   void *m28;
   int m29;
   int m30;
-  int m31;
+  int (__fastcall * get_attitude_toward) (Leader * this, int edx, int civ_id, int param_2);
   int m32;
   int m33;
   int m34;
@@ -3098,7 +3149,7 @@ struct Leader_vtable
   int m38;
   int m39;
   int m40;
-  int m41;
+  bool (__fastcall * could_buy_tech) (Leader * this, int edx, int tech_id, int from_civ_id);
   int m42;
 };
 
@@ -3264,9 +3315,9 @@ struct Item_List2
 struct Culture
 {
   Base Base;
-  int field_1C;
-  int field_20;
-  int field_24;
+  int cultural_level;
+  int total_culture_accumulated;
+  int total_culture_income;
   int CivID;
 };
 
@@ -3444,16 +3495,15 @@ struct Navigator_Cell
   short X;
   short Y;
   int field_4;
-  Navigator_Point **First_Point;
-  Navigator_Point **Last_Point;
+  CoordPair **First_Point;
+  CoordPair **Last_Point;
   int field_10;
   int field_14;
 };
 
-struct Navigator_Point
+struct CoordPair
 {
-  short X;
-  short Y;
+  short x, y;
 };
 
 struct JGL_Image
@@ -3974,7 +4024,7 @@ struct Control_Tooltips
   int field_8;
   int field_C;
   int field_10[4];
-  Form_Data_30 Data_30;
+  Timer timer;
   Control_Tooltip *Items;
   int Capacity;
   int Count;
@@ -4066,7 +4116,9 @@ struct Leader
   int Current_Research_Turns;
   int Future_Techs_Count;
   short AI_Strategy_Unit_Counts[20];
-  int field_130[22];
+  int field_130[6];
+  short ai_strat_production_counts[20];
+  int field_170[6];
   int Armies_Count;
   int Unit_Count;
   int Military_Units_Count;
@@ -4091,10 +4143,8 @@ struct Leader
   int Trade_Embargos[32];
   int field_10B0[18];
   int Color_Table_ID;
-  int field_10FC;
-  int field_1100[7];
-  int field_111C[36];
-  int field_11AC[8];
+  TribeCustomization tribe_customization;
+  int field_11AC[6];
   int field_11CC;
   int field_11D0[252];
   int field_15C0;
@@ -4178,7 +4228,7 @@ struct Tile_Body
   int Visibility;
   int CircuitFlags;
   short CityAreaID;
-  short Values[32];
+  short connected_city_ids[32];
   char Visibile_Overlays[32];
   short field_92;
   int field_D0_Visibility;
@@ -4468,14 +4518,23 @@ struct Tile_Type
 
 struct PCX_Image
 {
-  int vtable;
+  PCX_Image_vtable * vtable;
   JGL_Renderer JGL;
+};
+
+struct PCX_Image_vtable
+{
+  int m00;
+  int m01;
+  void (__fastcall * clear_JGL) (PCX_Image *);
+  PCX_Image * (__fastcall * destruct) (PCX_Image *, __, byte);
+  int m04;
 };
 
 struct FLC_Animation
 {
   _188_vtable *vtable;
-  _188_48 struct_48;
+  AnimationSummary summary;
   int field_34[9];
   FLC_Frame_Image Frame_1;
   FLC_Frame_Image Frame_2;
@@ -4483,7 +4542,15 @@ struct FLC_Animation
   Animation_Info *Animation_Info;
   int field_E8[5];
   int field_FC;
-  int field_100[7];
+  int field_100;
+  int field_104;
+  int field_108;
+  int field_10C;
+  byte field_110;
+  byte field_111;
+  byte field_112;
+  byte field_113;
+  int field_114[2];
   int Direction3;
   int Direction4;
   int field_124;
@@ -4602,7 +4669,7 @@ struct Advisor_Base_Form
   int Last;
 };
 
-struct Main_Screen_Data_1AD4
+struct Animator
 {
   int field_0;
   int field_4;
@@ -4742,7 +4809,7 @@ struct Unit_Body
   int PrevMoveY;
   int CivID;
   int RaceID;
-  int field_20;
+  int barb_tribe_id;
   int UnitTypeID;
   int Combat_Experience;
   int Status;
@@ -4773,7 +4840,12 @@ struct Unit_Body
   int field_1D4;
   LeaderKind leader_kind;
   IDLS IDLS;
-  int field_210[12];
+  int field_210[8];
+  byte field_230;
+  byte field_231;
+  byte always_on_top;
+  byte field_233;
+  int field_234[3];
   RECT Rect;
   int field_250[4];
   FLC_Animation Animation;
@@ -4897,7 +4969,8 @@ struct BIC
   int Flavours;
   int ScreenWidth;
   int ScreenHeight;
-  int field_3E38;
+  byte is_zoomed_out;
+  byte field_3E39[3];
   int field_3E3C;
   Fighter fighter;
   Map Map;
@@ -5257,7 +5330,7 @@ struct TextBox
   Base_Form Base;
   Scroll_Bar Scroll_Bar;
   int field_1934[16];
-  Form_Data_30 field_1974;
+  Timer timer;
 };
 
 struct File_Dialog_Body
@@ -5561,7 +5634,7 @@ struct Authors_Form
   int field_1A38;
   PCX_Image PCX;
   Button Button1;
-  Form_Data_30 Data_30;
+  Timer timer;
 };
 
 struct MP_Filters_Form
@@ -5746,7 +5819,10 @@ struct Main_GUI
 {
   Base_Form Base;
   int field_574[4];
-  int field_584;
+  byte field_584;
+  byte is_enabled;
+  byte field_586;
+  byte is_mouse_down_on_minimap;
   int field_588;
   int field_58C[769];
   String260 Main_Commands[29];
@@ -5782,8 +5858,8 @@ struct Main_GUI
   Tile_Image_Info Images[252];
   Tile_Image_Info Image2;
   Tile_Image_Info Image3;
-  Form_Data_30 Data_30_1;
-  Form_Data_30 Data_30_2;
+  Timer timer_1;
+  Timer timer_2;
   int field_16CE0;
   Command_Button Unit_Command_Buttons[42];
 };
@@ -5863,24 +5939,35 @@ struct Main_Screen_Form
   Base_Form_vtable *vtable;
   Base_Form_Data Base_Data;
   Base Console;
-  Main_Screen_Data_170 Data_170_Array[50];
+  MapMessage map_messages[50];
   int field_4D70;
   Unit *Current_Unit;
   int field_4D78;
   City *Selected_City;
   int field_4D80;
   int field_4D84;
-  Form_Data_30 Data_30_1;
+  Timer timer_1;
   int field_4DB8;
   int Player_CivID;
   int field_4DC0[25];
-  Form_Data_30 Data_30_2;
-  int field_4E54[7];
+  Timer timer_2;
+  int field_4E54;
+  int field_4E58;
+  int revealed_area_x_min;
+  int revealed_area_x_max;
+  int revealed_area_y_min;
+  int revealed_area_y_max;
+  int field_4E6C;
   int TileX_Min;
   int TileX_Max;
   int TileY_Min;
   int TileY_Max;
-  int field_4E80[19];
+  int field_4E80[6];
+  int camera_x;
+  int camera_y;
+  int field_4EA0[9];
+  int ambient_sound_index;
+  int field_4EC8;
   int Mode_Action;
   int field_4ED0;
   int Mode_Action_Range;
@@ -5888,19 +5975,17 @@ struct Main_Screen_Form
   int field_544C;
   Main_GUI GUI;
   int field_2E14C[6];
-  Form_Data_30 Data_30_3;
+  Timer ambient_sound_timer;
   int field_2E194;
   char turn_end_flag;
-  char field_2E199;
+  char is_now_loading_game;
   char field_2E19A;
   char field_2E19B;
-  int field_2E19C;
-  Navigator_Point *First_Ptr;
-  Navigator_Point *Second_Ptr;
-  int field_2E1A8[2];
+  CoordPairList minimap_update_list;
+  int field_2E1AC;
   int mouse_x;
   int mouse_y;
-  Main_Screen_Data_1AD4 Data_1AD4;
+  Animator animator;
 };
 
 struct Governor_Form
@@ -5962,12 +6047,13 @@ typedef struct Object_66D520 Object_66D520;
 typedef struct PopupSelection PopupSelection;
 typedef struct PopupFormVTable PopupFormVTable;
 typedef struct PopupForm PopupForm;
-typedef struct StrWithJunk StrWithJunk;
+typedef struct TradableItem TradableItem;
 typedef struct TradeOfferVTable TradeOfferVTable;
 typedef struct TradeOffer TradeOffer;
 typedef struct TradeOfferList TradeOfferList;
 typedef struct Object_667188 Object_667188;
 typedef struct DiploForm DiploForm;
+typedef struct TextBuffer TextBuffer;
 
 // Contains font info for a particular size & style
 struct Object_66C3FC
@@ -6013,11 +6099,12 @@ struct PopupForm
 	int unk2[338];
 };
 
-struct StrWithJunk
+struct TradableItem
 {
-	char * str;
-	byte junk_1[4];
-	int junk_2;
+	char * label;
+	byte listed_for_sale    , can_be_sold,
+	     listed_for_purchase, can_be_bought;
+	int field_8;
 };
 
 struct TradeOfferVTable
@@ -6051,8 +6138,8 @@ struct Object_667188
 
 struct DiploForm
 {
-	Base_Form_vtable * vtable; // = 0x66C0D8
-	int field_4[933];
+	Base_Form base;
+	int field_574[585];
 	int other_party_civ_id;
 	int field_E9C[15];
 	int mode;
@@ -6061,18 +6148,18 @@ struct DiploForm
 	TradeOfferList our_offer_lists[32];
 	int field_1380[4];
 	int field_1390[3];
-	StrWithJunk * headings;
-	StrWithJunk * agreements;
-	StrWithJunk * alliances;
-	StrWithJunk * embargoes;
-	void * field_13AC;
-	StrWithJunk * communications;
-	int field_13B4;
-	int field_13B8;
-	int field_13BC;
-	int field_13C0;
-	int field_13C4;
-	int field_13C8;
+	TradableItem * tradable_categories; // "Diplomatic Agreements", "Military Alliances", "Trade Embargos", "Maps", etc.
+	TradableItem * tradable_diplo_agreements;
+	TradableItem * tradable_alliances;
+	TradableItem * tradable_embargos;
+	TradableItem * tradable_maps; // "World Map", "Territory Map"
+	TradableItem * tradable_communications;
+	TradableItem * tradable_resources; // Array len = resource count
+	TradableItem * tradable_luxuries; // Array len = resource count
+	TradableItem * tradable_gold;
+	TradableItem * tradable_technologies; // Array len = tech count
+	TradableItem * tradable_cities;
+	TradableItem * tradable_units;
 	char * attitudes[5]; // polite, annoyed, etc.
 	int field_13E0[24];
 	Tile_Image_Info talk_offer_img;
@@ -6087,4 +6174,16 @@ struct DiploForm
 	PCX_Image field_193C;
 	int field_1BF4[287];
 	Object_667188 field_2070;
+};
+
+struct TextBuffer
+{
+	void * vtable; // = 0x6716FC
+	byte field_4;
+	byte field_5[3];
+	byte * buffer;
+	byte * buffer_end;
+	int size;
+	int space_remaining;
+	int field_18;
 };

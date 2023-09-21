@@ -1,11 +1,10 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 13G
+Release 17 Preview 1
 
 INCLUDES (** = new in latest version):
 Convenience features:
  - Stack unit commands
   - Stack bombard
-   - ** Holding shift while it's going will temporarily turn off combat animations
   - Worker buttons (irrigate, road, etc.) become stack buttons by holding CTRL
   - Stack fortify, upgrade, and disband also with CTRL
  - Disorder warning
@@ -19,8 +18,18 @@ Convenience features:
  - No special king unit names in non-regicide games
  - Option to disable worker automation
  - On the city screen, hold shift when clicking a specialist to switch to the previous type
- - ** Automatically cut research spending to avoid bankruptcy
- - ** Remove pause for "we love the king" messages
+ - Automatically cut research spending to avoid bankruptcy
+ - Remove pause for "we love the king" messages
+ - Suppress "maximum hypertext links exceeded" popup
+ - Civilopedia indicates when units go obsolete but cannot be upgraded
+ - Message appears after bomber dodges interception by air defense buildings
+ - Option to replay AI moves for all human players in hotseat mode
+ - Restore unit directions on game load
+ - Optimize improvement loops
+ - Option to remove Elvis Easter egg
+ - Harbor/airport city icons indicate unit effects not trade abilities
+ - Disallow useless bombard attacks vs airfields
+ - ** Display total city count (disabled by default, appears on demographics screen)
 AI enhancements:
  - Allow AI to use artillery in the field
  - Force AI to build more artillery and bombers
@@ -28,6 +37,7 @@ AI enhancements:
  - Fix bug preventing AI from filling its armies
  - Improve AI army composition to discourage mixing types & exclude HN units
  - AI routine for "pop units" that may appear in mods
+ - Can limit the number of escorts the AI assigns to its naval transports and carriers
 Bugs fixed:
  - AI pathfinding collides with invisible units (called the "submarine bug")
  - Science age beakers not actually awarded
@@ -36,15 +46,18 @@ Bugs fixed:
  - Crash possible when AI civ is left alive with only a settler on a transport (called the "houseboat bug")
  - Resources beyond the first 32 share access records in cities not on the main trade network (called the "phantom resource bug")
  - Air units lose a turn after being set to intercept
+ - Cached building maintenance amounts not updated when buildings are obsoleted
+ - Barbarian long-range search for targets is limited to tiles directly NW or SE
 Engine extensions:
  - Adjustable minimum city distance
  - Option to limit railroad movement
  - Removed unit limit
  - Enable free improvements from small wonders
- - Option to prevent autoraze and razing by AIs
+ - Option to share visibility among all human players in a hotseat game
+  - ** Overhaul implementation of shared visibility for simplicity and correctness
+ - Option to prevent autoraze and razing by players
  - Stealth attack activates even when there's only one target
  - Trespassing prevention
-  - ** Fix restriction not applying to units attacking an enemy across a border
  - Land/sea intersections
  - Adjustable anarchy length
  - "Perfume" units or improvements to control how likely the AI is to build them
@@ -63,7 +76,37 @@ Engine extensions:
  - Option to strengthen forbidden palace decorruption effect to match the palace's
  - Option to allow military great leaders to hurry wonders
  - Option to reduce AI research rate by half
- - ** Option to aggressively penalize bankrupt players
+ - Option to aggressively penalize bankrupt players
+ - Option to remove exception to tile penalty for city tiles with fresh water and Agri trait
+ - Enable stealth attacks via bombardment
+ - Artillery can be set to use PTW-like targeting against cities
+ - Recon missions can be made vulnerable to interception
+ - Option to charge one move for recon missions and interception
+ - Allow players to opt out of stealth attacks
+ - Polish precision striking by land or sea units
+  - Use regular bombard animation instead of flying animation
+  - Use bombard range instead of operational range
+  - Cannot be intercepted
+ - Option to immunize aircraft against bombardment
+ - Option to ignore king flag on defense, so kings aren't always last to defend in a stack
+ - Option to show untradable techs on trade screen
+ - Barbarian city capture & production (experimental)
+ - Option to allow land units to bombard aircraft and naval units in cities
+ - ** Zone of control changes
+  - Allow land-to-sea and sea-to-land attacks, only using bombard stat
+  - May be lethal
+  - May be exerted by air units
+  - Show attack animation even when attacker is not at the top of its stack
+ - ** Defensive bombard changes
+  - May be lethal
+  - May be performed by air units
+  - Invisible, undetected units may be made immune
+  - May be performed multiple times per turn with blitz
+  - Naval units in a city may perform defensive bombard vs land attackers
+ - ** Allow precision strikes to target tile improvements
+ - ** Option not to end a unit's turn after it bombards a barricade
+ - ** Option to allow bombardment of other improvements on a tile with an occupied airfield
+ - ** Option to boost OCN increase from forbidden palaces in non-communal governments
 
 INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.
@@ -77,7 +120,11 @@ Notes about installation:
 6. Rômulo Prado reports that RUN.bat started working for him after he installed the MS Visual C++ Redistributables versions 2005 and 2019 (while installing GOG Galaxy).
 
 COMPATIBILITY:
-The mod is compatible with the GOG and Steam versions of Civ 3 Complete, and with the DRM-free executable available through PCGames.de. It works with existing save files and saves made with the mod active will still work in the base game. Multiplayer is not officially supported but some features will work in MP, see this post: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-16#post-16126470. For more info about the PCGames.de executable, see here: https://forums.civfanatics.com/threads/civ-3-windows-update-kb3086255-safedisc.552308/.
+- The mod is compatible with the GOG and Steam versions of Civ 3 Complete, and with the DRM-free executable available through PCGames.de.
+- It works with existing save files and saves made with the mod active will still work in the base game.
+- Multiplayer is not officially supported but some features will work in MP, see this post for more details: https://forums.civfanatics.com/thre...s-in-exe-modding.666881/page-16#post-16126470.
+- The mod can work on Mac OS, see instructions here: https://forums.civfanatics.com/thre...rd-and-much-more.666881/page-56#post-16369665.
+- For more info about the PCGames.de executable, see here: https://forums.civfanatics.com/threads/civ-3-windows-update-kb3086255-safedisc.552308/.
 
 STACK BOMBARD:
 Activate stack bombard on any unit capable of bombarding by clicking the stack bombard button or by activating normal bombard then CTRL+clicking the target tile. The selected unit will bombard the tile, then all other units of the same type on the same tile will automatically bombard the target as well. Stack bombard is pretty smart and will stop bombarding once it can no longer do any damage, and it knows about lethal bombard, that you can't damage air units in an airfield, etc.
@@ -113,7 +160,7 @@ ADJUSTABLE MIN CITY DISTANCE:
 Change the adjust_minimum_city_separation config value to add that many tiles to the minimum allowed distance for founding cities. For example, setting it to 2 means cities can only be founded with 3 tiles separating them. Setting it to a negative number means cities are allowed to be founded next to one another. Additionally, by community request, the option disallow_founding_next_to_foreign_city can be used to disallow founding cities next to those of other civs even when the min separation is zero or less (if the min separation has not been reduced this option has no effect).
 
 NO-RAZE:
-NoRaze has been re-implemented inside C3X but is not enabled by default. To enable it, edit the config file mentioned above.
+The "NoRaze" mod has been re-implemented inside C3X. To enable it, edit the config file mentioned above. There are separate options to prevent autorazing and razing by player's choice.
 
 HOW IT WORKS:
 Some parts of the mod (bug fixes, no-raze, no unit limit) are really just hex edits that are applied to the Civ program code. The real secret sauce is a system to compile and inject arbitrary C code into the process which makes it practical to implement new features in the game. The heart of the system is TCC (Tiny C Compiler) and much work puzzling out the functions and structs inside the executable (and thanks to Antal1987 for figuring out most of the structs years before I came along).

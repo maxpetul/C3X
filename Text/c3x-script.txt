@@ -56,16 +56,15 @@ This is the point value the AI assigns to each available build in this city:
 A highlight will be applied to all tiles showing how desirable they are as city locations for the AI from the perspective of the selected player.
 ^Viewing from the perspective of another player requires debug mode.
 
-#comment Same text as MAINTSHORT from the base game
 #C3X_FORCE_SOLD_SINGLE_IMPROV
-#map_center 1
+#map_center 0
 #xs 400
 #wave 24
 #advisor Domestic Angry
 #text
-We can no longer $LINK<support=GCON_Maintenance> our $IMPROVEMENT0 at $CITY1. We must $LINK<think=GCON_Commerce> more about our $LINK<treasury=GCON_Treasury>!
+$CITY0's governor was forced to sell the $IMPROVEMENT1 there because we could no longer afford to pay its $LINK<maintenance=GCON_Maintenance>. We should $LINK<manage=GCON_Commerce> our $LINK<treasury=GCON_Treasury> better!
 
-#C3X_FORCE_SOLD_MULTUPLE_IMPROVS
+#C3X_FORCE_SOLD_MULTIPLE_IMPROVS
 #xs 400
 #wave 24
 #advisor Domestic Angry
@@ -73,12 +72,19 @@ We can no longer $LINK<support=GCON_Maintenance> our $IMPROVEMENT0 at $CITY1. We
 Our governors have been forced to {sell $NUM0 city improvements} because we could no longer afford to pay their $LINK<maintenance=GCON_Maintenance>. We should $LINK<manage=GCON_Commerce> our $LINK<treasury=GCON_Treasury> better!
 ^What was sold:
 
-#C3X_FORCE_DISBANDED_UNITS
+#C3X_FORCE_DISBANDED_MULTIPLE_UNITS
 #xs 320
 #wave 24
 #advisor Military Angry
 #text
 {$NUM0 of our units have committed desertion} because we could no longer afford to $LINK<feed=GCON_Unit_Support> them! We should $LINK<manage=GCON_Commerce> our $LINK<treasury=GCON_Treasury> better!
+
+#C3X_FORCE_DISBANDED_SINGLE_UNIT
+#xs 320
+#wave 24
+#advisor Military Angry
+#text
+One $UNIT0 committed desertion because we could no longer afford to $LINK<feed=GCON_Unit_Support> them! We should $LINK<manage=GCON_Commerce> our $LINK<treasury=GCON_Treasury> better!
 
 #C3X_FORCE_CUT_RESEARCH_SPENDING
 #xs 320
@@ -93,5 +99,10 @@ We don't have enough funds to support our current research, and have been forced
 #advisor Domestic Angry
 #text
 Our treasury is depleted! Some of our cities can no longer afford production, and have been allocated to only producing $LINK<$WEALTH0=$PEDIAKEY1> to help offset costs! We should $LINK<manage=GCON_Commerce> our $LINK<treasury=GCON_Treasury> better!
+
+#C3X_CANT_RAZE
+#caption Can't do that, chief!
+#text
+Razing cities is prohibited by the rules of this scenario.
 
 # ; This line must remain at end of file

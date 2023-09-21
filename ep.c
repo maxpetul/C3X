@@ -8,8 +8,6 @@
 #include "C3X.h"
 #include "common.c"
 
-#define ARRAY_LEN(a) ((sizeof a) / (sizeof a[0]))
-
 #if (!defined(C3X_RUN) && !defined(C3X_INSTALL)) || (defined(C3X_RUN) && defined(C3X_INSTALL))
 #error "Must #define exactly one of C3X_RUN or C3X_INSTALL"
 #endif
@@ -921,74 +919,7 @@ ENTRY_POINT ()
 	write_prog_int (&injected_state->sc_img_state, IS_UNINITED);
 	write_prog_int (&injected_state->tile_highlight_state, IS_UNINITED);
 	write_prog_int (&injected_state->mod_info_button_images_state, IS_UNINITED);
-	struct c3x_config base_config = {
-		.enable_stack_bombard = 1,
-		.enable_disorder_warning = 1,
-		.allow_stealth_attack_against_single_unit = 1,
-		.show_detailed_city_production_info = 1,
-		.limit_railroad_movement = 0,
-		.enable_free_buildings_from_small_wonders = 1,
-		.enable_stack_unit_commands = 1,
-		.skip_repeated_tile_improv_replacement_asks = 1,
-		.autofill_best_gold_amount_when_trading = 1,
-		.adjust_minimum_city_separation = 0,
-		.disallow_founding_next_to_foreign_city = 1,
-		.enable_trade_screen_scroll = 1,
-		.group_units_on_right_click_menu = 1,
-		.anarchy_length_reduction_percent = 0,
-		.show_golden_age_turns_remaining = 1,
-		.cut_research_spending_to_avoid_bankruptcy = 1,
-		.dont_pause_for_love_the_king_messages = 1,
-		.reverse_specialist_order_with_shift = 1,
-		.dont_give_king_names_in_non_regicide_games = 1,
-		.disable_worker_automation = 0,
-		.enable_land_sea_intersections = 0,
-		.disallow_trespassing = 0,
-		.show_detailed_tile_info = 1,
-		.perfume_specs = NULL,
-		.count_perfume_specs = 0,
-		.building_unit_prereqs = (struct table) {0},
-		.mills = NULL,
-		.count_mills = 0,
-		.warn_about_unrecognized_names = 1,
-		.enable_ai_production_ranking = 1,
-		.enable_ai_city_location_desirability_display = 1,
-		.zero_corruption_when_off = 1,
-		.disallow_land_units_from_affecting_water_tiles = 1,
-		.dont_end_units_turn_after_airdrop = 0,
-		.enable_negative_pop_pollution = 1,
-		.retreat_rules = RR_STANDARD,
-		.enable_ai_two_city_start = 0,
-		.max_tries_to_place_fp_city = 10000,
-		.promote_forbidden_palace_decorruption = 0,
-		.allow_military_leaders_to_hurry_wonders = 0,
-		.halve_ai_research_rate = 0,
-		.aggressively_penalize_bankruptcy = 0,
-
-		.use_offensive_artillery_ai = 1,
-		.ai_build_artillery_ratio = 20,
-		.ai_artillery_value_damage_percent = 50,
-		.ai_build_bomber_ratio = 70,
-		.replace_leader_unit_ai = 1,
-		.fix_ai_army_composition = 1,
-		.enable_pop_unit_ai = 1,
-
-		.remove_unit_limit = 1,
-		.remove_era_limit = 0,
-		.remove_cap_on_turn_limit = 1,
-
-		.patch_submarine_bug = 1,
-		.patch_science_age_bug = 1,
-		.patch_pedia_texture_bug = 1,
-		.patch_disembark_immobile_bug = 1,
-		.patch_houseboat_bug = 1,
-		.patch_intercept_lost_turn_bug = 1,
-		.patch_phantom_resource_bug = 1,
-
-		.prevent_autorazing = 0,
-		.prevent_razing_by_ai_players = 0,
-	};
-	write_prog_memory (&injected_state->base_config, (byte const *)&base_config, sizeof base_config);
+	write_prog_int (&injected_state->disabled_command_img_state, IS_UNINITED);
 	tcc_define_pointer (tcc, "ADDR_INJECTED_STATE", injected_state);
 
 	// Pass through prog objects before compiling to set things up for compilation
@@ -1032,6 +963,19 @@ ENTRY_POINT ()
 		tcc__define_symbol (tcc, "ADDR_SET_RESOURCE_BIT_AIRLOCK", temp_format ("((void *)0x%x)", (int)addr_set_resource_bit_airlock));
 	}
 
+	// Again, this time for the bit of code that captures the TradeOffer object pointer when a gold trade on the table is modified
+	ASSERT (i_next_free_inlead < inleads_capacity);
+	tcc__define_symbol (tcc, "ADDR_CAPTURE_MODIFIED_GOLD_TRADE", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead]));
+	i_next_free_inlead++;
+
+	// Again, this time for the airlocks to filter zone of control candidates. Need two b/c there are separate loops for land and sea units.
+	ASSERT (i_next_free_inlead + 1 < inleads_capacity);
+	tcc__define_symbol (tcc, "ADDR_SEA_ZOC_FILTER_AIRLOCK" , temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead    ]));
+	tcc__define_symbol (tcc, "ADDR_LAND_ZOC_FILTER_AIRLOCK", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead + 1]));
+	i_next_free_inlead += 2;
+
+	tcc__define_symbol (tcc, "INLEAD_SIZE", temp_format ("%u", sizeof (struct inlead)));
+
 	// Compile C code to inject
 	{
 		char * source = ep_file_to_string (mod_full_dir, "injected_code.c");
@@ -1071,6 +1015,27 @@ ENTRY_POINT ()
 	tcc__list_symbols (tcc, NULL, print_symbol_location);
 #endif
 	
+	// Gather everything we need to do visibility check replacements
+	void * patch_Map_get_tile_to_check_visibility       = find_patch_function (tcc, "Map_get_tile_to_check_visibility"      , 1);
+	void * patch_Map_get_tile_to_check_visibility_again = find_patch_function (tcc, "Map_get_tile_to_check_visibility_again", 1);
+	void * patch_tile_at_to_check_visibility            = find_patch_function (tcc, "tile_at_to_check_visibility"           , 1);
+	void * patch_tile_at_to_check_visibility_again      = find_patch_function (tcc, "tile_at_to_check_visibility_again"     , 1);
+	REQUIRE (patch_Map_get_tile_to_check_visibility       != NULL, "Missing function needed for vis replacement");
+	REQUIRE (patch_Map_get_tile_to_check_visibility_again != NULL, "Missing function needed for vis replacement");
+	REQUIRE (patch_tile_at_to_check_visibility            != NULL, "Missing function needed for vis replacement");
+	REQUIRE (patch_tile_at_to_check_visibility_again      != NULL, "Missing function needed for vis replacement");
+	int addr_Map_get_tile = 0, addr_tile_at = 0;
+	for (int n = 0; n < count_civ_prog_objects; n++) {
+		struct civ_prog_object const * obj = &civ_prog_objects[n];
+		if (obj->job == OJ_DEFINE) {
+			if (0 == strcmp (obj->name, "Map_get_tile"))
+				addr_Map_get_tile = obj->addr;
+			else if (0 == strcmp (obj->name, "tile_at"))
+				addr_tile_at = obj->addr;
+		}
+	}
+	REQUIRE ((addr_Map_get_tile != 0) && (addr_tile_at != 0), "Missing define needed for vis replacement");
+
 	// Pass through prog objects after compiling to redirect control flow to patches
 	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
@@ -1081,8 +1046,49 @@ ENTRY_POINT ()
 				put_trampoline ((void *)obj->addr, find_patch_function (tcc, obj->name, 1), 0);
 			else if (obj->job == OJ_REPL_VPTR)
 				write_prog_int ((void *)obj->addr, (int)find_patch_function (tcc, obj->name, 1));
-			else if (obj->job == OJ_REPL_CALL)
+			else if (obj->job == OJ_REPL_CALL) {
+				byte * instr = read_prog_memory ((void *)obj->addr, 10);
+				int instr_size = length_disasm (instr);
+				REQUIRE (instr_size >= 5, format ("Can't perform call replacement for %s. Instruction must be at least 5 bytes.", obj->name));
 				put_trampoline ((void *)obj->addr, find_patch_function (tcc, obj->name, 1), 1);
+				if (instr_size > 5) {
+					byte nops[] = {0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90};
+					write_prog_memory ((void *)(obj->addr + 5), nops, instr_size - 5);
+				}
+				free (instr);
+
+			// Replace visibility check
+			// The game checks tile visibility with four calls to Map::get_tile or tile_at, each call reading only one visibility
+			// field. Because of this regular pattern, it's easy to replace the check programmatically. Given a starting address:
+			//   (1) Search for four call instructions close after that address
+			//   (2) Replace get_tile or tile_at calls with the corresponding patch function
+			//   (3) Replace all calls after the first with "again" functions that simply return a cached pointer set by the first
+			} else if (obj->job == OJ_REPL_VIS) {
+				byte * init_cursor = read_prog_memory ((void *)obj->addr, 200);
+
+				byte * cursor = init_cursor;
+				int found_calls = 0;
+				do {
+					if (*cursor == 0xE8) {
+						found_calls++;
+						int offset = int_from_bytes (&cursor[1]);
+						int actual_cursor_address = obj->addr + (cursor - init_cursor);
+						int target_addr = actual_cursor_address + 5 + offset;
+
+						if (target_addr == addr_Map_get_tile)
+							put_trampoline ((void *)actual_cursor_address, (found_calls == 1) ? patch_Map_get_tile_to_check_visibility : patch_Map_get_tile_to_check_visibility_again, 1);
+						else if (target_addr == addr_tile_at)
+							put_trampoline ((void *)actual_cursor_address, (found_calls == 1) ? patch_tile_at_to_check_visibility : patch_tile_at_to_check_visibility_again, 1);
+						else
+							THROW (format ("Vis cluster after 0x%x does not match pattern. Found non-vis call.", obj->addr));
+					}
+					cursor += length_disasm (cursor);
+				} while ((found_calls < 4) && (cursor - init_cursor < 200));
+
+				REQUIRE (found_calls == 4, format ("Vis cluster after 0x%x does not match pattern. Did not find four calls.", obj->addr));
+
+				free (init_cursor);
+			}
 		}
 	}
 
@@ -1115,6 +1121,7 @@ ENTRY_POINT ()
 	ResumeThread (civ_proc_info.hThread);
 
 	WaitForSingleObject (civ_proc, INFINITE);
+	TerminateProcess (civ_proc_info.hProcess, 0);
 	CloseHandle (civ_proc_info.hProcess);
 	CloseHandle (civ_proc_info.hThread);
 

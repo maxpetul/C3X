@@ -2,6 +2,19 @@
 // common.c: Stores various utility functions available to both the injected code (injected_code.c) and the patcher (ep.c). Also includes most code
 // related to text parsing, only the parsing funcs that depend on BIC data are put in injected_code.c instead.
 
+#define ARRAY_LEN(a) ((sizeof a) / (sizeof a[0]))
+
+struct string_slice {
+	char * str;
+	int len;
+};
+
+int
+slice_matches_str (struct string_slice const * slice, char const * str)
+{
+	return (strncmp (str, slice->str, slice->len) == 0) && (str[slice->len] == '\0');
+}
+
 int
 not_below (int lim, int x)
 {
@@ -36,6 +49,17 @@ int
 int_abs (int x)
 {
 	return (x >= 0) ? x : (0 - x);
+}
+
+int
+gcd (int a, int b)
+{
+	while (b != 0) {
+		int t = b;
+		b = a % b;
+		a = t;
+	}
+	return a;
 }
 
 // Writes an integer to a byte buffer. buf need not be aligned but it must have at least four bytes of free space. Written little-endian.
@@ -75,11 +99,11 @@ reserve (int item_size, void ** p_items, int * p_capacity, int count)
 
 
 
-// ===================================
-// ||                               ||
-// ||     SIMPLE INT HASH TABLE     ||
-// ||                               ||
-// ===================================
+// ========================================================
+// ||                                                    ||
+// ||     SIMPLE HASH TABLES FOR INT AND STRING KEYS     ||
+// ||                                                    ||
+// ========================================================
 
 void
 table_deinit (struct table * t)
@@ -116,14 +140,14 @@ table__set_occupation (struct table * t, size_t index, int occupied)
 // Finds an appropriate index for a given key in the table. If the key is already present in the table, the index of its entry will be returned. If
 // it's not present, the index of where it would be is returned. This function assumes that the table is not full and that it has been allocated.
 size_t
-table__place (struct table const * t, int key)
+table__place (struct table const * t, int (* compare_keys) (int, int), int key, size_t hash)
 {
 	size_t mask = ((size_t)1 << t->capacity_exponent) - 1;
-	size_t index = (size_t)key & mask;
+	size_t index = hash & mask;
 	int * base = TABLE__BASE (t);
 	while (1) {
 		int * entry = &base[2*index];
-		if ((! table__is_occupied (t, index)) || (key == entry[0]))
+		if ((! table__is_occupied (t, index)) || compare_keys (key, entry[0]))
 			return index;
 		else
 			index = (index + 1) & mask;
@@ -131,7 +155,7 @@ table__place (struct table const * t, int key)
 }
 
 void
-table__expand (struct table * t)
+table__expand (struct table * t, size_t (* hash) (int), int (* compare_keys) (int, int))
 {
 	size_t new_capacity_exponent = (t->capacity_exponent > 0) ? (t->capacity_exponent + 1) : 5;
 	void * new_block; {
@@ -149,7 +173,7 @@ table__expand (struct table * t)
 	for (size_t n = 0; n < old_capacity; n++)
 		if (table__is_occupied (t, n)) {
 			int * old_entry = &old_base[2*n];
-			size_t new_index = table__place (&new_table, old_entry[0]);
+			size_t new_index = table__place (&new_table, compare_keys, old_entry[0], hash (old_entry[0]));
 			int * new_entry = &((int *)TABLE__BASE (&new_table))[2*new_index];
 			new_entry[0] = old_entry[0]; // copy key
 			new_entry[1] = old_entry[1]; // copy value
@@ -161,13 +185,27 @@ table__expand (struct table * t)
 	*t = new_table;
 }
 
+int
+table_get_by_index (struct table const * t, size_t index, int * out_value)
+{
+	if ((t->len > 0) && table__is_occupied (t, index)) {
+		int * entry = &((int *)TABLE__BASE (t))[2*index];
+		*out_value = entry[1];
+		return 1;
+	}
+	return 0;
+}
+
+int compare_int_keys (int a, int b) { return a == b; }
+size_t hash_int (int key) { return key; }
+
 void
-table_insert (struct table * t, int key, int value)
+itable_insert (struct table * t, int key, int value)
 {
 	if (t->len >= table_capacity (t) / 2)
-		table__expand (t);
+		table__expand (t, hash_int, compare_int_keys);
 
-	size_t index = table__place (t, key);
+	size_t index = table__place (t, compare_int_keys, key, hash_int (key));
 	int * entry = &((int *)TABLE__BASE (t))[2*index];
 	entry[0] = key;
 	entry[1] = value;
@@ -178,28 +216,70 @@ table_insert (struct table * t, int key, int value)
 }
 
 int
-table_look_up (struct table const * t, int key, int * out_value)
+itable_look_up (struct table const * t, int key, int * out_value)
 {
-	if (t->len > 0) {
-		size_t index = table__place (t, key);
-		if (table__is_occupied (t, index)) {
-			int * entry = &((int *)TABLE__BASE (t))[2*index];
-			*out_value = entry[1];
-			return 1;
-		}
+	size_t index = (t->len > 0) ? table__place (t, compare_int_keys, key, hash_int (key)) : 0;
+	return table_get_by_index (t, index, out_value);
+}
+
+int compare_str_keys (int str_ptr_a, int str_ptr_b) { return strcmp ((char const *)str_ptr_a, (char const *)str_ptr_b) == 0; }
+
+int
+compare_slice_and_str_keys (int slice_ptr, int str_ptr)
+{
+	struct string_slice const * slice = (struct string_slice const *)slice_ptr;
+	return strncmp (slice->str, (char const *)str_ptr, slice->len) == 0;
+}
+
+size_t
+hash_str (int str_ptr)
+{
+	size_t tr = 0;
+	for (char const * str = (char const *)str_ptr; *str != '\0'; str++)
+		tr = (tr<<5 ^ tr>>2) + *str;
+	return tr;
+}
+
+size_t
+hash_slice (int slice_ptr)
+{
+	struct string_slice const * slice = (struct string_slice const *)slice_ptr;
+	size_t tr = 0;
+	for (int n = 0; n < slice->len; n++)
+		tr = (tr<<5 ^ tr>>2) + slice->str[n];
+	return tr;
+
+}
+
+void
+stable_insert (struct table * t, char const * key, int value)
+{
+	if (t->len >= table_capacity (t) / 2)
+		table__expand (t, hash_str, compare_str_keys);
+
+	size_t index = table__place (t, compare_str_keys, (int)key, hash_str ((int)key));
+	int * entry = &((int *)TABLE__BASE (t))[2*index];
+	if (entry[0] == 0)
+		entry[0] = (int)strdup (key);
+	entry[1] = value;
+	if (! table__is_occupied (t, index)) {
+		table__set_occupation (t, index, 1);
+		++t->len;
 	}
-	return 0;
 }
 
 int
-table_get_by_index (struct table * const t, size_t index, int * out_value)
+stable_look_up (struct table const * t, char const * key, int * out_value)
 {
-	if ((t->len > 0) && table__is_occupied (t, index)) {
-		int * entry = &((int *)TABLE__BASE (t))[2*index];
-		*out_value = entry[1];
-		return 1;
-	}
-	return 0;
+	size_t index = (t->len > 0) ? table__place (t, compare_str_keys, (int)key, hash_str ((int)key)) : 0;
+	return table_get_by_index (t, index, out_value);
+}
+
+int
+stable_look_up_slice (struct table const * t, struct string_slice const * key, int * out_value)
+{
+	size_t index = (t->len > 0) ? table__place (t, compare_slice_and_str_keys, (int)key, hash_slice ((int)key)) : 0;
+	return table_get_by_index (t, index, out_value);
 }
 
 
@@ -209,11 +289,6 @@ table_get_by_index (struct table * const t, size_t index, int * out_value)
 // ||     PARSING FUNCTIONS     ||
 // ||                           ||
 // ===============================
-
-struct string_slice {
-	char * str;
-	int len;
-};
 
 int
 is_horiz_space (char c)
@@ -414,24 +489,6 @@ parse_bracketed_block (char ** p_cursor, struct string_slice * out)
 }
 
 int
-parse_key_value_pair (char ** p_cursor, struct string_slice * out_key, struct string_slice * out_value)
-{
-	char * cur = *p_cursor;
-	struct string_slice key, value;
-	if (parse_string (&cur, &key) &&
-	    skip_punctuation (&cur, '=') &&
-	    (parse_string (&cur, &value) ||
-	     parse_bracketed_block (&cur, &value))) {
-		*out_key = key;
-		*out_value = value;
-		skip_to_line_end (&cur);
-		*p_cursor = cur;
-		return 1;
-	} else
-		return 0;
-}
-
-int
 parse_csv_value (char ** p_cursor, char ** out_val, int * out_len)
 {
 	char * tr_val = *p_cursor,
@@ -466,6 +523,7 @@ read_object_job (struct string_slice const * s, enum object_job * out)
 	else if (0 == strncmp ("inlead"   , trimmed.str, trimmed.len)) *out = OJ_INLEAD;
 	else if (0 == strncmp ("repl vptr", trimmed.str, trimmed.len)) *out = OJ_REPL_VPTR;
 	else if (0 == strncmp ("repl call", trimmed.str, trimmed.len)) *out = OJ_REPL_CALL;
+	else if (0 == strncmp ("repl vis" , trimmed.str, trimmed.len)) *out = OJ_REPL_VIS;
 	else if (0 == strncmp ("ignore"   , trimmed.str, trimmed.len)) *out = OJ_IGNORE;
 	else
 		return 0;
