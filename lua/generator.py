@@ -356,15 +356,16 @@ def generate_interface(pss):
 
     class_name = "Tile"
     genned = ""
-    genned += f"--- @class {class_name}\n"
-    # Add fields here
-    genned += f"local {class_name}\n"
-    genned += f"local {class_name}_metatable = {{\n"
-    genned +=  "  __index = {{\n"
-    # Add methods here
-    genned +=  "  }\n"
-    genned +=  "}\n"
-    genned += f"{class_name} = ffi.metatype(\"{class_name}\", {class_name}_metatable)\n"
+    if False: # Excluded for now since Tile type is not included in the defs
+        genned += f"--- @class {class_name}\n"
+        # Add fields here
+        genned += f"local {class_name}\n"
+        genned += f"local {class_name}_metatable = {{\n"
+        genned +=  "  __index = {\n"
+        # Add methods here
+        genned +=  "  }\n"
+        genned +=  "}\n"
+        genned += f"{class_name} = ffi.metatype(\"{class_name}\", {class_name}_metatable)\n"
 
     begin = contents.find(begin_generated_section_banner)
     end = contents.find(end_generated_section_banner)
