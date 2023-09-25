@@ -1951,6 +1951,7 @@ patch_init_floating_point ()
 	MultiByteToWideChar = (void *)GetProcAddress (is->kernel32, "MultiByteToWideChar");
 	WideCharToMultiByte = (void *)GetProcAddress (is->kernel32, "WideCharToMultiByte");
 	GetLastError        = (void *)GetProcAddress (is->kernel32, "GetLastError");
+	GetLocalTime        = (void *)GetProcAddress (is->kernel32, "GetLocalTime");
 	MessageBoxA = (void *)GetProcAddress (is->user32, "MessageBoxA");
 	snprintf = (void *)GetProcAddress (is->msvcrt, "_snprintf");
 	malloc   = (void *)GetProcAddress (is->msvcrt, "malloc");
@@ -1959,8 +1960,10 @@ patch_init_floating_point ()
 	free     = (void *)GetProcAddress (is->msvcrt, "free");
 	strtol   = (void *)GetProcAddress (is->msvcrt, "strtol");
 	strncmp  = (void *)GetProcAddress (is->msvcrt, "strncmp");
+	strcmp   = (void *)GetProcAddress (is->msvcrt, "strcmp");
 	strlen   = (void *)GetProcAddress (is->msvcrt, "strlen");
 	strncpy  = (void *)GetProcAddress (is->msvcrt, "strncpy");
+	strcpy   = (void *)GetProcAddress (is->msvcrt, "strcpy");
 	strdup   = (void *)GetProcAddress (is->msvcrt, "_strdup");
 	strstr   = (void *)GetProcAddress (is->msvcrt, "strstr");
 	qsort    = (void *)GetProcAddress (is->msvcrt, "qsort");
