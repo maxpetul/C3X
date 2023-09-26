@@ -7050,7 +7050,7 @@ patch_Demographics_Form_m22_draw (Demographics_Form * this)
 
 		// Draw a white rectangle on the center bottom of the form
 		RECT plate_area = {1024/2 - 100, 728, 1024/2 + 100, 745};
-		PCX_Image_register_rect (canvas, __, &plate_area, 0x8000FFFF);
+		PCX_Image_fill_area (canvas, __, &plate_area, 0x8000FFFF);
 
 		// Draw text on top of the rectangle
 		char s[100];

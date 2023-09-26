@@ -3561,7 +3561,7 @@ struct JGL_Image_vtable
   int m15;
 //  int (__thiscall *m16_Copy_To_Dest)(JGL_Image *this, JGL_Image *Dest, RECT *SrcRect, RECT *DestRect);
   void *m16_Copy_To_Dest;
-  int m17_Register_Rect;
+  int m17_fill_area;
   int m18;
   int m19;
   int m20;
