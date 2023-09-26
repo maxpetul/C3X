@@ -3598,10 +3598,8 @@ struct JGL_Image_vtable
   int m51;
   int m52_Get_Image_Rect;
   int m53;
-//  int (__thiscall *m54_Get_Width)(JGL_Image *this);
-  void *m54_Get_Width;
-//  int (__thiscall *m55_Get_Height)(JGL_Image *this);
-  void *m55_Get_Height;
+  int (__fastcall * m54_Get_Width) (JGL_Image * this);
+  int (__fastcall * m55_Get_Height) (JGL_Image * this);
   int m56;
 //  int (__thiscall *m57_Get_Bit_Count)(JGL_Image *);
   void *m57_Get_Bit_Count;

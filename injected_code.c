@@ -7048,11 +7048,21 @@ patch_Demographics_Form_m22_draw (Demographics_Form * this)
 
 		PCX_Image * canvas = &this->Base.Data.Canvas;
 
-		// Draw a white rectangle on the center bottom of the form
-		RECT plate_area = {1024/2 - 100, 728, 1024/2 + 100, 745};
-		PCX_Image_fill_area (canvas, __, &plate_area, 0x8000FFFF);
+		// Draw backdrop
+		{
+			char temp_path[2*MAX_PATH];
+			PCX_Image backdrop;
+			PCX_Image_construct (&backdrop);
+			get_mod_art_path ("CityCountBackdrop.pcx", temp_path, sizeof temp_path);
+			PCX_Image_read_file (&backdrop, __, temp_path, NULL, 0, 0x100, 2);
+			if (backdrop.JGL.Image != NULL) {
+				int w = backdrop.JGL.Image->vtable->m54_Get_Width (backdrop.JGL.Image);
+				PCX_Image_draw_onto (&backdrop, __, canvas, (1024 - w) / 2, 720);
+			}
+			backdrop.vtable->destruct (&backdrop, __, 0);
+		}
 
-		// Draw text on top of the rectangle
+		// Draw text on top of the backdrop
 		char s[100];
 		snprintf (s, sizeof s, "%s %d / 512", is->c3x_labels[CL_TOTAL_CITIES], city_count);
 		s[(sizeof s) - 1] = '\0';
