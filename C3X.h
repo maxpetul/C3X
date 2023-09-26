@@ -410,7 +410,7 @@ struct injected_state {
 	// ==========
 
 	struct sc_button_image_set {
-		Tile_Image_Info imgs[4];
+		Sprite imgs[4];
 	} sc_button_image_sets[COUNT_STACKABLE_COMMANDS];
 
 	int sb_activated_by_button; // Gets set to 1 when the player clicks on the SB button so that perform_action_on_tile knows
@@ -436,19 +436,19 @@ struct injected_state {
 	// } This field is only valid after init_disabled_command_buttons has been called and disabled_command_img_state equals IS_OK {
 	// ==========
 
-	Tile_Image_Info disabled_build_city_button_img;
+	Sprite disabled_build_city_button_img;
 
 	// ==========
 	// } These fields are valid only after init_tile_highlights as been called. {
 	// ==========
 
-	Tile_Image_Info tile_highlights[COUNT_TILE_HIGHLIGHTS];
+	Sprite tile_highlights[COUNT_TILE_HIGHLIGHTS];
 
 	// ==========
 	// } This one is valid only if init_mod_info_button_images has been called and mod_info_button_images_state equals IS_OK {
 	// ==========
 
-	Tile_Image_Info mod_info_button_images[3];
+	Sprite mod_info_button_images[3];
 
 	// ==========
 	// } These fields are temporary/situational {
@@ -475,7 +475,7 @@ struct injected_state {
 	// was closed in order to scroll to the civ with the set ID. -1 indicates no scrolling.
 	Button * trade_scroll_button_left; // initialized to NULL
 	Button * trade_scroll_button_right; // initialized to NULL
-	Tile_Image_Info * trade_scroll_button_images; // inited to NULL, array of 6 images: normal, rollover, and highlight for left & right
+	Sprite * trade_scroll_button_images; // inited to NULL, array of 6 images: normal, rollover, and highlight for left & right
 	enum init_state trade_scroll_button_state;
 	int eligible_for_trade_scroll;
 
