@@ -3551,8 +3551,7 @@ struct JGL_Image_vtable
   void *m07_m05_Get_Pixel;
   int m08_Get_Bits_Data;
   int m09;
-//  HDC (__thiscall *m10_Get_DC)(JGL_Image *);
-  void *m10_Get_DC;
+  HDC (__fastcall * m10_Get_DC) (JGL_Image * this);
 //  void (__thiscall *m11_Release_DC)(JGL_Image *, int);
   void *m11_Release_DC;
   int m12;
@@ -4526,7 +4525,7 @@ struct PCX_Image_vtable
   int m01;
   void (__fastcall * clear_JGL) (PCX_Image *);
   PCX_Image * (__fastcall * destruct) (PCX_Image *, __, byte);
-  int m04;
+  int (__fastcall * return_zero) (PCX_Image *);
 };
 
 struct FLC_Animation
@@ -6052,6 +6051,7 @@ typedef struct TradeOfferList TradeOfferList;
 typedef struct Object_667188 Object_667188;
 typedef struct DiploForm DiploForm;
 typedef struct TextBuffer TextBuffer;
+typedef struct OpenGLRenderer OpenGLRenderer;
 
 // Contains font info for a particular size & style
 struct Object_66C3FC
@@ -6184,4 +6184,20 @@ struct TextBuffer
 	int size;
 	int space_remaining;
 	int field_18;
+};
+
+struct OpenGLRenderer
+{
+	void * vtable; // = 0x6724B4
+	bool is_on_windows_2000_or_newer;
+	bool is_initialized;
+	byte field_6;
+	byte field_7;
+	HGLRC context;
+	int field_C;
+	float red;
+	float green;
+	float blue;
+	float alpha;
+	int field_20;
 };
