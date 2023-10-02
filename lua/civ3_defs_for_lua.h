@@ -82,6 +82,24 @@ typedef struct s_Leader
   int field_20[2097];
 } Leader;
 
+typedef struct s_Tile
+{
+  byte _opaque_0[5];
+  char territoryOwnerID;
+  int resourceType;
+  int tileUnitID;
+  byte _opaque_1[10];
+  short cityID;
+  short tileBuildingID;
+  short continentID;
+  byte _opaque_2[8];
+  int overlays;
+  int squareType;
+  byte _opaque_3[60];
+  short cityAreaID;
+  byte _opaque_4[110];
+} Tile;
+
 void pop_up_in_game_error(char const * msg);
 Cities * get_p_cities();
 City * get_city_ptr(int id);

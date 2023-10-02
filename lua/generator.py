@@ -336,13 +336,13 @@ for name, members in ss.items():
     proced_members = [extract_member_info(ss, es, m) for m in members]
     pss[name] = proced_members
 
-def generate_interface(pss):
+def insert_generated_section(file_name, generated_text):
     begin_generated_section_banner = """
 -- **************************** --
 -- BEGIN AUTO-GENERATED SECTION --
 -- **************************** --
 
--- Do not edit. This section was generated automatically by generate_interface in generator.py.
+-- Do not edit. This section was generated automatically by generator.py.
 """
 
     end_generated_section_banner = """
@@ -351,29 +351,32 @@ def generate_interface(pss):
 -- ************************** --
 """
 
-    with open("civ3.lua", "r") as f:
+    with open(file_name, "r") as f:
         contents = f.read()
-
-    class_name = "Tile"
-    genned = ""
-    if False: # Excluded for now since Tile type is not included in the defs
-        genned += f"--- @class {class_name}\n"
-        # Add fields here
-        genned += f"local {class_name}\n"
-        genned += f"local {class_name}_metatable = {{\n"
-        genned +=  "  __index = {\n"
-        # Add methods here
-        genned +=  "  }\n"
-        genned +=  "}\n"
-        genned += f"{class_name} = ffi.metatype(\"{class_name}\", {class_name}_metatable)\n"
 
     begin = contents.find(begin_generated_section_banner)
     end = contents.find(end_generated_section_banner)
     assert (begin >= 0 and end >= 0 and end > begin)
 
-    new_contents = contents[:begin + len(begin_generated_section_banner)] + "\n" + genned + "\n" + contents[end:]
+    new_contents = contents[:begin + len(begin_generated_section_banner)] + "\n" + generated_text + "\n" + contents[end:]
     with open("civ3.lua", "w", newline="\r\n") as f:
         f.write(new_contents)
+
+
+def generate_civ3_dot_lua(pss):
+    class_name = "Tile"
+    tr = ""
+    tr += f"--- @class {class_name}\n"
+    # Add fields here
+    tr += f"local {class_name}\n"
+    tr += f"local {class_name}_metatable = {{\n"
+    tr +=  "  __index = {\n"
+    # Add methods here
+    tr +=  "  }\n"
+    tr +=  "}\n"
+    tr += f"{class_name} = ffi.metatype(\"{class_name}\", {class_name}_metatable)\n"
+
+    return tr
 
 if __name__ == "__main__":
     defs = {"Main_Screen_Form": ["Player_CivID", "turn_end_flag"],
@@ -383,12 +386,13 @@ if __name__ == "__main__":
             "City": ["CivID", "Citizens", "CityName"],
             "CityItem": ["City"],
             "Cities": ["Cities", "LastIndex", "Capacity"],
-            "Leader": ["ID"]}
+            "Leader": ["ID"],
+            "Tile": ["Territory_OwnerID", "ResourceType", "TileUnitID", "CityID", "Tile_BuildingID", "ContinentID", "Overlays", "SquareType", "CityAreaID"]}
     print(generate_civ3_defs_for_lua(ss, pss, es, defs))
 
     generate_prog_objects_for_lua()
 
-    generate_interface(pss)
+    insert_generated_section("civ3.lua", generate_civ3_dot_lua(pss))
 
 # Generates C code that can be added to injected_code.c to check that all the sizes we've computed match the real sizes
 # for name in ss.keys():
