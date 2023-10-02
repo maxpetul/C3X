@@ -337,19 +337,26 @@ for name, members in ss.items():
     pss[name] = proced_members
 
 def insert_generated_section(file_name, generated_text):
-    begin_generated_section_banner = """
--- **************************** --
--- BEGIN AUTO-GENERATED SECTION --
--- **************************** --
+    if file_name.endswith(".lua"):
+        comment_str = "--"
+    elif file_name.endswith(".h") or file_name.endswith(".c"):
+        comment_str = "//"
+    else:
+        raise Exception("Don't know comment string for file \"" + file_name + "\"")
 
--- Do not edit. This section was generated automatically by generator.py.
-"""
+    begin_generated_section_banner = """
+|| **************************** ||
+|| BEGIN AUTO-GENERATED SECTION ||
+|| **************************** ||
+
+|| Do not edit. This section was generated automatically by generator.py.
+""".replace("||", comment_str)
 
     end_generated_section_banner = """
--- ************************** --
--- END AUTO-GENERATED SECTION --
--- ************************** --
-"""
+|| ************************** ||
+|| END AUTO-GENERATED SECTION ||
+|| ************************** ||
+""".replace("||", comment_str)
 
     with open(file_name, "r") as f:
         contents = f.read()
@@ -359,9 +366,8 @@ def insert_generated_section(file_name, generated_text):
     assert (begin >= 0 and end >= 0 and end > begin)
 
     new_contents = contents[:begin + len(begin_generated_section_banner)] + "\n" + generated_text + "\n" + contents[end:]
-    with open("civ3.lua", "w", newline="\r\n") as f:
+    with open(file_name, "w", newline="\r\n") as f:
         f.write(new_contents)
-
 
 def generate_civ3_dot_lua(pss):
     class_name = "Tile"
@@ -388,7 +394,7 @@ if __name__ == "__main__":
             "Cities": ["Cities", "LastIndex", "Capacity"],
             "Leader": ["ID"],
             "Tile": ["Territory_OwnerID", "ResourceType", "TileUnitID", "CityID", "Tile_BuildingID", "ContinentID", "Overlays", "SquareType", "CityAreaID"]}
-    print(generate_civ3_defs_for_lua(ss, pss, es, defs))
+    insert_generated_section("civ3_defs_for_lua.h", generate_civ3_defs_for_lua(ss, pss, es, defs))
 
     generate_prog_objects_for_lua()
 

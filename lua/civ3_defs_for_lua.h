@@ -1,104 +1,111 @@
+
+// **************************** //
+// BEGIN AUTO-GENERATED SECTION //
+// **************************** //
+
+// Do not edit. This section was generated automatically by generator.py.
+
 typedef struct s_MainScreenForm
 {
-  int vtable;
-  int field_4[4974];
-  int playerCivID;
-  int field_4DC0[42230];
-  char turnEndFlag;
-  char field_2E199[3];
-  int field_2E19C[1731];
+	byte _opaque_0[19900];
+	int playerCivID;
+	byte _opaque_1[168920];
+	char turnEndFlag;
+	byte _opaque_2[6927];
 } MainScreenForm;
 
-typedef struct s_Citizen_Body
+typedef struct s_Citizen
 {
-  int vtable;
-  int field_20[66];
-  int mood;
-  int gender;
-  int field_130;
-  int field_134;
-  int field_138;
-  int workerType;
-  int raceID;
-  int field_144;
-  int field_148;
-} Citizen_Body;
+	byte _opaque_0[296];
+	int mood;
+	int gender;
+	byte _opaque_1[12];
+	int workerType;
+	int raceID;
+	byte _opaque_2[8];
+} Citizen;
 
-typedef struct s_Citizen_Info
+typedef struct s_CitizenBody
 {
-  int field_0;
-  Citizen_Body *body;
-} Citizen_Info;
+	byte _opaque_0[304];
+} CitizenBody;
+
+typedef struct s_CitizenItem
+{
+	byte _opaque_0[4];
+	Citizen_Body * body;
+} CitizenItem;
 
 typedef struct s_CitizenList
 {
-  int vtable;
-  Citizen_Info *items;
-  int field_8;
-  int field_C;
-  int lastIndex;
-  int capacity;
+	byte _opaque_0[4];
+	CitizenItem * items;
+	byte _opaque_1[8];
+	int lastIndex;
+	int capacity;
 } CitizenList;
-
-typedef struct s_City_Body
-{
-  int field_0[3];
-  char ownerID;
-  char field_D[3];
-  int field_10[44];
-  CitizenList citizenList;
-  int field_D8[59];
-  char cityName[20];
-  int field_1D8[212];
-} City_Body;
 
 typedef struct s_City
 {
-  int field_0[7];
-  City_Body body;
+	byte _opaque_0[40];
+	char ownerID;
+	byte _opaque_1[176];
+	CitizenList citizenList;
+	byte _opaque_2[236];
+	char cityName;
+	byte _opaque_3[848];
 } City;
+
+typedef struct s_CityBody
+{
+	byte _opaque_0[1320];
+} CityBody;
 
 typedef struct s_CityItem
 {
-  int field_0;
-  City_Body *city;
+	byte _opaque_0[4];
+	City_Body * city;
 } CityItem;
 
-typedef struct s_Cities
+typedef struct s_CityList
 {
-  int vtable;
-  CityItem *cities;
-  int v1;
-  int v2;
-  int lastIndex;
-  int capacity;
-} Cities;
+	byte _opaque_0[4];
+	CityItem * cityList;
+	byte _opaque_1[8];
+	int lastIndex;
+	int capacity;
+} CityList;
 
 typedef struct s_Leader
 {
-  int vtable;
-  int field_4[6];
-  int id;
-  int field_20[2097];
+	byte _opaque_0[28];
+	int id;
+	byte _opaque_1[8388];
 } Leader;
 
 typedef struct s_Tile
 {
-  byte _opaque_0[5];
-  char territoryOwnerID;
-  int resourceType;
-  int tileUnitID;
-  byte _opaque_1[10];
-  short cityID;
-  short tileBuildingID;
-  short continentID;
-  byte _opaque_2[8];
-  int overlays;
-  int squareType;
-  byte _opaque_3[60];
-  short cityAreaID;
-  byte _opaque_4[110];
+	byte _opaque_0[5];
+	char territoryOwnerID;
+	int resourceType;
+	int tileUnitID;
+	byte _opaque_1[10];
+	short cityID;
+	short tileBuildingID;
+	short continentID;
+	byte _opaque_2[8];
+	int overlays;
+	int squareType;
+	byte _opaque_3[60];
+	short cityAreaID;
+	byte _opaque_4[110];
 } Tile;
+
+
+
+// ************************** //
+// END AUTO-GENERATED SECTION //
+// ************************** //
 
 void pop_up_in_game_error(char const * msg);
 Cities * get_p_cities();
