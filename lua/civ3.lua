@@ -61,7 +61,7 @@ local function NextCityOf(cityOfListing, city)
   while cOL.id <= cOL.lastIndex do
     cOL.id = cOL.id + 1
     local next = ffi.C.get_city_ptr(cOL.id)
-    if (next ~= nil) and (next.body.ownerID == cOL.civID) then return next end
+    if (next ~= nil) and (next.ownerID == cOL.civID) then return next end
   end
   return nil
 end
@@ -89,7 +89,7 @@ local function NextCitizenIn(citizenInListing, citizen)
 end
 
 local function CitizensIn(city)
-  local citizenInListing = { index = -1, items = city.body.citizenList.items, lastIndex = city.body.citizenList.lastIndex }
+  local citizenInListing = { index = -1, items = city.citizenList.items, lastIndex = city.citizenList.lastIndex }
   return NextCitizenIn, citizenInListing, nil
 end
 
@@ -124,7 +124,7 @@ local City_metatable = {
     RecomputeHappiness = function(this) ffi.C.City_recompute_happiness(this) end,
     ZoomTo = function(this) ffi.C.City_zoom_to(this) end,
     Citizens = function(this) return CitizensIn(this) end,
-    GetName = function(this) return ffi.string(this.body.cityName, 20) end
+    GetName = function(this) return ffi.string(this.cityName, 20) end
   }
 }
 City = ffi.metatype("City", City_metatable)

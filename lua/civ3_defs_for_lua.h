@@ -1,4 +1,6 @@
 
+typedef unsigned char byte;
+
 // **************************** //
 // BEGIN AUTO-GENERATED SECTION //
 // **************************** //
@@ -14,26 +16,17 @@ typedef struct s_MainScreenForm
 	byte _opaque_2[6927];
 } MainScreenForm;
 
-typedef struct s_Citizen
-{
-	byte _opaque_0[296];
-	int mood;
-	int gender;
-	byte _opaque_1[12];
-	int workerType;
-	int raceID;
-	byte _opaque_2[8];
-} Citizen;
-
 typedef struct s_CitizenBody
 {
-	byte _opaque_0[304];
+	byte _opaque_0[268];
+	int mood;
+	byte _opaque_1[32];
 } CitizenBody;
 
 typedef struct s_CitizenItem
 {
 	byte _opaque_0[4];
-	Citizen_Body * body;
+	CitizenBody * body;
 } CitizenItem;
 
 typedef struct s_CitizenList
@@ -64,7 +57,7 @@ typedef struct s_CityBody
 typedef struct s_CityItem
 {
 	byte _opaque_0[4];
-	City_Body * city;
+	CityBody * city;
 } CityItem;
 
 typedef struct s_CityList
@@ -108,7 +101,7 @@ typedef struct s_Tile
 // ************************** //
 
 void pop_up_in_game_error(char const * msg);
-Cities * get_p_cities();
+CityList * get_p_cities();
 City * get_city_ptr(int id);
 Leader * get_ui_controller();
 void __thiscall City_recompute_happiness(City * this);

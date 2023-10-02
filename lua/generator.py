@@ -286,10 +286,17 @@ def generate_civ3_defs_for_lua(struct_dict, proced_struct_dict, enum_dict, defin
     def export_struct_name(n): return convert_to_camel_case(aliases.get(n, n), True)
     def export_member_name(n): return convert_to_camel_case(aliases.get(n, n), False)
     def export_member_type(t):
-        for name, alias in aliases.items():
-            if name in t:
-                t = " ".join([alias if word == name else word for word in t.split(" ")])
-        return t
+        processed_words = []
+        for word in t.split(" "):
+            is_struct = word in struct_dict
+            if word in aliases:
+                word = aliases[word]
+            if is_struct:
+                word = convert_to_camel_case(word, True)
+            processed_words.append(word)
+        tr = " ".join(processed_words)
+        print(f"{t} -> {tr}")
+        return tr
 
     tr = ""
     for struct_name, included_members in ordered_defines.items():
@@ -325,8 +332,7 @@ es = extract_enums(header)
 
 # Inline bodies into main structs
 structs_to_inline = [("Tile_Body", "Tile"),
-                     ("City_Body", "City"),
-                     ("Citizen_Body", "Citizen")]
+                     ("City_Body", "City")]
 for to_inline, target in structs_to_inline:
     inline(ss, to_inline, target)
 
@@ -386,7 +392,9 @@ def generate_civ3_dot_lua(pss):
 
 if __name__ == "__main__":
     defs = {"Main_Screen_Form": ["Player_CivID", "turn_end_flag"],
-            "Citizen": ["Mood", "Gender", "WorkerType", "RaceID"],
+#            "Citizen": ["Mood", "Gender", "WorkerType", "RaceID"],
+#            "Citizen": ["Body"],
+            "Citizen_Body": ["Mood"],
             "Citizen_Info": ["Body"],
             "Citizens": ["Items", "LastIndex", "Capacity"],
             "City": ["CivID", "Citizens", "CityName"],
