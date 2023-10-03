@@ -1,6 +1,6 @@
 
 import re
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 import csv
 
 aliases = OrderedDict()
@@ -111,6 +111,8 @@ assert(parse_function_pointer("byte (__fastcall * is_near_river) (Map * this, in
 assert(parse_function_pointer("void (__cdecl * mouse_drag_handler) (int control_id)")                                 == ("mouse_drag_handler", "void (__cdecl *) (int control_id)"))
 assert(parse_function_pointer("char * (__fastcall * GetAdjectiveName) (Race *)")                                      == ("GetAdjectiveName"  , "char * (__fastcall *) (Race *)"))
 
+Member = namedtuple("Member", ["name", "type", "size", "alignment", "array_length"])
+
 def extract_member_info(struct_dict, enum_dict, member):
     unsigned = member.startswith("unsigned")
 
@@ -124,28 +126,34 @@ def extract_member_info(struct_dict, enum_dict, member):
         member_type = match.group(1).strip()
         # Second group is the name
         member_name = match.group(2).strip()
-        # Third group is the array size (if exists)
-        array_size = match.group(3)
+        # Third group is the array length (if exists)
+        array_length = match.group(3)
+
+        # Convert array_length to int (from string or None)
+        if array_length:
+            array_length = int(array_length.strip('[]'))
+        else:
+            array_length = 1
 
         # Ugly fix for unsigned + char/short/int. The regex above won't work b/c it matches the integer type as the variable name. To fix, drop
         # "unsigned" from the type, extract info, then tack it back on.
         if unsigned and member_name in ["char", "short", "int"]:
-            n, t, s, a = extract_member_info(struct_dict, enum_dict, member.removeprefix("unsigned ").strip())
-            return n, "unsigned " + t, s, a
+            m, t, s, a, L = extract_member_info(struct_dict, enum_dict, member.removeprefix("unsigned ").strip())
+            return Member(m, "unsigned " + t, s, a, L)
 
         # Calculate the size of the member
-        member_size, member_alignment = compute_member_size(struct_dict, enum_dict, member_type, array_size)
+        member_size, member_alignment = compute_member_size(struct_dict, enum_dict, member_type, array_length)
 
-        return member_name, member_type, member_size, member_alignment
+        return Member(member_name, member_type, member_size, member_alignment, array_length)
 
     elif (func_ptr := parse_function_pointer(member.strip(";"))) is not None:
         fp_name, fp_type = func_ptr
-        return fp_name, fp_type, 4, 4
+        return Member(fp_name, fp_type, 4, 4, 1)
 
     else:
         raise Exception(f"Cannot extract info for struct member \"{member}\"")
 
-def compute_member_size(struct_dict, enum_dict, member_type, array_size="1"):
+def compute_member_size(struct_dict, enum_dict, member_type, array_length):
     fundamental_type_sizes = {
         'byte': 1,
         'char': 1, 'unsigned char': 1,
@@ -154,12 +162,6 @@ def compute_member_size(struct_dict, enum_dict, member_type, array_size="1"):
         'float': 4,
         'void*': 4,  # Assuming a 32-bit system
     }
-
-    if array_size:
-        # Remove brackets and convert to int
-        array_size = int(array_size.strip('[]'))
-    else:
-        array_size = 1  # For non-array types, size multiplier is 1
 
     struct_alignment = None
     # If member is a pointer, its size is the size of a void pointer
@@ -177,7 +179,7 @@ def compute_member_size(struct_dict, enum_dict, member_type, array_size="1"):
         raise Exception(f"Struct member type \"{member_type}\" not recognized")
 
     alignment = type_size if struct_alignment is None else struct_alignment
-    return type_size * array_size, alignment
+    return type_size * array_length, alignment
 
 def align(size, alignment):
     rem = size % alignment
@@ -191,10 +193,10 @@ def compute_struct_layout(struct_dict, enum_dict, name):
     struct_size = 0
     strictest_member_alignment = 1
     for member in struct_dict[name]:
-        _, _, member_size, member_alignment = extract_member_info(struct_dict, enum_dict, member)
-        strictest_member_alignment = max(strictest_member_alignment, member_alignment)
-        offsets.append(align(struct_size, member_alignment))
-        struct_size = offsets[-1] + member_size
+        info = extract_member_info(struct_dict, enum_dict, member)
+        strictest_member_alignment = max(strictest_member_alignment, info.alignment)
+        offsets.append(align(struct_size, info.alignment))
+        struct_size = offsets[-1] + info.size
     return align(struct_size, strictest_member_alignment), offsets, strictest_member_alignment
 
 # Modifies the struct_dict to inline one struct type into another
@@ -267,9 +269,8 @@ def generate_civ3_defs_for_lua(struct_dict, proced_struct_dict, enum_dict, defin
     def gather_deps(s_name):
         tr = []
         for m in pss[s_name]: # For each member of s_name
-            member_name, member_type, _, _ = m
-            member_type = member_type.strip(" *") # Ignore pointer aspect of type
-            is_exported = (s_name in defines) and (member_name in defines[s_name])
+            member_type = m.type.strip(" *") # Ignore pointer aspect of type
+            is_exported = (s_name in defines) and (m.name in defines[s_name])
             if (member_type in ss) and is_exported and not (member_type in tr): # If that member is a struct, is to be exported, and not already in the list of deps
                 tr.extend(gather_deps(member_type)) # Recursively add its deps to the list
                 tr.append(member_type) # Add the member type itself to the list
@@ -294,9 +295,7 @@ def generate_civ3_defs_for_lua(struct_dict, proced_struct_dict, enum_dict, defin
             if is_struct:
                 word = convert_to_camel_case(word, True)
             processed_words.append(word)
-        tr = " ".join(processed_words)
-        print(f"{t} -> {tr}")
-        return tr
+        return " ".join(processed_words)
 
     tr = ""
     for struct_name, included_members in ordered_defines.items():
@@ -306,14 +305,14 @@ def generate_civ3_defs_for_lua(struct_dict, proced_struct_dict, enum_dict, defin
         opaque_counter = 0
         running_size = 0
         for m, offset in zip(pss[struct_name], offsets):
-            member_name, member_type, member_size, member_alignment = m
-            if member_name in included_members:
-                current_offset = align(running_size, member_alignment)
+            if m.name in included_members:
+                current_offset = align(running_size, m.alignment)
                 if current_offset < offset: # If we need padding
                     tr += f"\tbyte _opaque_{opaque_counter}[{offset - current_offset}];\n"
                     opaque_counter += 1
-                tr += f"\t{export_member_type(member_type)} {export_member_name(member_name)};\n";
-                running_size = offset + member_size
+                array_part = f"[{m.array_length}]" if m.array_length > 1 else ""
+                tr += f"\t{export_member_type(m.type)} {export_member_name(m.name)}{array_part};\n";
+                running_size = offset + m.size
 
         # Insert padding at end of struct
         if running_size < struct_size:

@@ -45,7 +45,7 @@ typedef struct s_City
 	byte _opaque_1[176];
 	CitizenList citizenList;
 	byte _opaque_2[236];
-	char cityName;
+	char cityName[20];
 	byte _opaque_3[848];
 } City;
 
