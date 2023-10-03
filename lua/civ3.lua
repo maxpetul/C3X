@@ -35,8 +35,32 @@ civ3.CitizenMood = {
   Rebel = 3
 }
 
+civ3.TerrainType = {
+  Desert = 0,
+  Plains = 1,
+  Grassland = 2,
+  Tundra = 3,
+  FloodPlain = 4,
+  Hills = 5,
+  Mountains = 6,
+  Forest = 7,
+  Jungle = 8,
+  Swamp = 9,
+  Volcano = 10,
+  Coast = 11,
+  Sea = 12,
+  Ocean = 13
+}
+
 function civ3.PopUpInGameError(msg) ffi.C.pop_up_in_game_error(msg) end
 function civ3.GetC3XScriptPath() return ffi.C.get_c3x_script_path() end
+
+--- @param x integer
+--- @param y integer
+--- @return Tile
+function civ3.TileAt(x, y)
+  return ffi.C.tile_at(x, y)
+end
 
 ---@type MainScreenForm
 civ3.mainScreenForm = ffi.C.get_main_screen_form()

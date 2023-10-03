@@ -116,3 +116,4 @@ int __cdecl set_popup_str_param(int param_index, char const * str, int param_3, 
 int __cdecl set_popup_int_param(int param_index, int value);
 int __thiscall show_popup(void * this, int param_1, int param_2);
 void __thiscall PopupForm_set_text_key_and_flags(void * this, char const * script_path, char const * text_key, int param_3, int param_4, int param_5, int param_6);
+Tile * __cdecl tile_at (int x, int y);

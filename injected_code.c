@@ -7211,6 +7211,18 @@ patch_Leader_count_forbidden_palaces_for_ocn (Leader * this, int edx, enum Impro
 		return 0; // We'll add in the FP effect later with a different weight
 }
 
+void __fastcall
+patch_Map_generate_terrain_shape (Map * this)
+{
+	Map_generate_terrain_shape (this);
+
+	lua_State * ls = is->lua.state;
+	is->lua.getfield (ls, LUA_GLOBALSINDEX, "ModifyTerrainShape");
+	if (is->lua.pcall (ls, 0, LUA_MULTRET, 0))
+		pop_up_lua_error (true);
+}
+
+
 // This function needs to know the addresses of many patch functions. The easiest way is to define it last.
 FARPROC __stdcall
 patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
@@ -7238,7 +7250,7 @@ patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 			// Read index of vtable function from digits following 'm' in its name
 			int index = 0; {
 				for (char const * c = &lpProcName[strlen (prefix)]; (*c >= '0') && (*c <= '9'); c++)
-					index = 10*index + (c - '0');
+					index = 10*index + (*c - '0');
 			}
 
 			return ((FARPROC *)tile_vtable)[index];

@@ -37,3 +37,9 @@ function CheckHappinessAtEndOfTurn()
     end
   end
 end
+
+function ModifyTerrainShape()
+  local x, y = 6, 10
+  local tile = civ3.TileAt(x, y)
+  tile:SetTerrainType(civ3.TerrainType.Mountains, x, y)
+end
