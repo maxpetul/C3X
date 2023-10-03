@@ -18,6 +18,7 @@ civ3_def_file:close()
 local Tile
 local Tile_metatable = {
   __index = {
+    SetTerrainType = function(this, terrain_type, x, y) ffi.C.Tile_m74_SetTerrainType (this, terrain_type, x, y) end
   }
 }
 Tile = ffi.metatype("Tile", Tile_metatable)

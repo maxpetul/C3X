@@ -7231,10 +7231,23 @@ patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 		{ "get_main_screen_form"            , (FARPROC)get_main_screen_form },
 	};
 
-	if ((int)lpProcName > 1000)
+	if ((int)lpProcName > 1000) {
+		char const * prefix = "Tile_m";
+		if (0 == strncmp (lpProcName, prefix, strlen (prefix))) {
+
+			// Read index of vtable function from digits following 'm' in its name
+			int index = 0; {
+				for (char const * c = &lpProcName[strlen (prefix)]; (*c >= '0') && (*c <= '9'); c++)
+					index = 10*index + (c - '0');
+			}
+
+			return ((FARPROC *)tile_vtable)[index];
+		}
+
 		for (int n = 0; n < (sizeof procs) / (sizeof procs[0]); n++)
 			if (strncmp (lpProcName, procs[n].name, 100) == 0)
 				return procs[n].address;
+	}
 
 	return GetProcAddress (hModule, lpProcName);
 }

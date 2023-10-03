@@ -382,6 +382,10 @@ def generate_civ3_dot_lua(pss):
     tr += f"local {class_name}\n"
     tr += f"local {class_name}_metatable = {{\n"
     tr +=  "  __index = {\n"
+
+    # Methods
+    tr += "    SetTerrainType = function(this, terrainType, x, y) ffi.C.Tile_m74_SetTerrainType (this, terrainType, x, y) end\n"
+
     # Add methods here
     tr +=  "  }\n"
     tr +=  "}\n"
