@@ -141,6 +141,107 @@ public:
 	}
 };
 
+struct TNXCache {
+	ExplorationLayer exploration_layer;
+	ByteLayer tile_info;
+};
+
+enum TileInfo : byte {
+	TI_INFO_SET          = 0x01,
+
+	TI_LAND              = 0x00,
+	TI_COAST             = 0x02,
+	TI_SEA               = 0x04,
+	TI_OCEAN             = 0x06,
+
+	TI_HAS_CITY          = 0x08,
+	TI_HAS_UNIT          = 0x10,
+	TI_NEUTRAL_TERRITORY = 0x20,
+};
+
+#define TI_TERRAIN_MASK ((byte)0x6)
+
+// This function is a replacement for Trade_Net::get_movement_cost optimized for the case of building a sea trade network. It assumes "flags" is
+// either 0x1009 or 0x9 and that "unit" is NULL (so the unit parameter is omitted).
+EXPORT_PROC
+int
+get_move_cost_for_sea_trade (Trade_Net * trade_net, TNXCache * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, uint flags, int neighbor_index)
+{
+	Map * map = &p_bic_data->Map;
+	ExplorationLayer * el = &tnx_cache->exploration_layer;
+	ByteLayer * tile_info = &tnx_cache->tile_info;
+
+	// Check parameters
+	if ((to_x   < 0) || (to_x   >= map->Width) || (to_y   < 0) || (to_y   >= map->Height) ||
+	    (from_x < 0) || (from_x >= map->Width) || (from_y < 0) || (from_y >= map->Height))
+		return -1;
+	if ((neighbor_index > 8) || (neighbor_index < 1))
+		return -1;
+
+	// Conversion to river code index (? - TODO: Check this)
+	int alt_neighbor_index = (neighbor_index != 8) ? neighbor_index : 0;
+
+	// Check that the tiles are adjacent
+	if ((Map_get_x_dist (map, from_x, to_x) + Map_get_y_dist (map, from_y, to_y)) / 2 != 1)
+		return -1;
+
+	// If either of the from or to tiles have not been explored by the civ, return -1
+	if (! (el.has_explored (civ_id, from_x, from_y) && el.has_explored (civ_id, to_x, to_y)))
+		return -1;
+
+	// Get info bytes for "to" and "from" tiles, initializing them if necessary
+	byte from_info, to_info; {
+		for (int n = 0; n < 2; n++) {
+			int x = (n == 0) ? from_x : to_x,
+			    y = (n == 0) ? from_y : to_y;
+			byte info = tile_info.at (x, y);
+
+			// Initialize info
+			if ((info & TI_INFO_SET) == 0) {
+				Tile * tile = tile_at (x, y);
+				info = TI_INFO_SET;
+
+				if (tile->vtable->m35_Check_Is_Water (tile)) {
+					SquareTypes terrain_type = tile->vtable->m50_Get_Square_BaseType (tile);
+					if      (terrain_type == SQ_Coast) info |= TI_COAST;
+					else if (terrain_type == SQ_Sea)   info |= TI_SEA;
+					else if (terrain_type == SQ_Ocean) info |= TI_OCEAN;
+				}
+
+				info |= Tile_has_city (tile) ? TI_HAS_CITY : 0;
+
+				bool any_units_on_tile = false; {
+					if (p_units->Units != NULL) {
+						int tile_unit_id = tile->vtable->m40_get_TileUnit_ID (tile);
+						int unit_id = TileUnits_TileUnitID_to_UnitID (p_tile_units, tile_unit_id, NULL);
+						any_units_on_tile = (unit_id >= 0) && (unit_id <= p_units->LastIndex) &&
+							((int)p_units->Units[unit_id].Unit > offsetof (Unit, Body));
+					}
+				}
+				info |= any_units_on_tile ? TI_HAS_UNIT : 0;
+
+				info |= (tile->vtable->m38_Get_Territory_OwnerID (tile) == 0) ? TI_NEUTRAL_TERRITORY : 0;
+
+				tile_info.at (x, y) = info; // Save info for future use
+			}
+
+			if (n == 0)
+				from_info = info;
+			else
+				to_info = info;
+		}
+	}
+
+	// If flag 0x1000 is set and the to tile is occupied by a unit belonging to a civ we're at war with, return -1
+	if ((flags & 0x1000) && (to_info & TI_HAS_UNIT)) {
+		int occupier_id = get_combat_occupier (to_x, to_y, civ_id, 0);
+		if ((occupier_id >= 0) && leaders[civ_id].At_War[occupier_id])
+			return -1;
+	}
+
+
+}
+
 EXPORT_PROC
 int
 test ()
