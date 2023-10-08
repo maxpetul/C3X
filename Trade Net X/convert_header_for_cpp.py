@@ -22,7 +22,7 @@ def make_addr_table_lines():
 
     with open(Path.cwd().parent.joinpath("civ_prog_objects.csv"), mode="r") as cpo_file:
         reader = csv.reader(cpo_file)
-        objects = [x for x in list(reader) if len(x) > 0 and x[0].strip() == "define"]
+        objects = [x for x in list(reader) if len(x) > 0 and (x[0].strip() == "define" or x[0].strip() == "inlead")]
 
         for n in range(len(objects)):
             ctype = ",".join(objects[n][5:]).strip(" \"\t") # types contain commas and so get split into separate columns by the CSV reader
