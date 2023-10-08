@@ -141,9 +141,13 @@ public:
 	}
 };
 
-struct TNXCache {
+class TNXCache {
 	ExplorationLayer exploration_layer;
 	ByteLayer tile_info;
+
+	// These bit fields store which players have the necessary techs/wonders to trade over sea/ocean
+	unsigned int sea_trade_player_bits;
+	unsigned int ocean_trade_travel_bits;
 };
 
 enum TileInfo : byte {
@@ -165,7 +169,7 @@ enum TileInfo : byte {
 // either 0x1009 or 0x9 and that "unit" is NULL (so the unit parameter is omitted).
 EXPORT_PROC
 int
-get_move_cost_for_sea_trade (Trade_Net * trade_net, TNXCache * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, uint flags, int neighbor_index)
+get_move_cost_for_sea_trade (Trade_Net * trade_net, TNXCache * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, uint flags, int neighbor_index, Trade_Net_Distance_Info * dist_info)
 {
 	Map * map = &p_bic_data->Map;
 	ExplorationLayer * el = &tnx_cache->exploration_layer;
@@ -177,9 +181,6 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, TNXCache * tnx_cache, int fr
 		return -1;
 	if ((neighbor_index > 8) || (neighbor_index < 1))
 		return -1;
-
-	// Conversion to river code index (? - TODO: Check this)
-	int alt_neighbor_index = (neighbor_index != 8) ? neighbor_index : 0;
 
 	// Check that the tiles are adjacent
 	if ((Map_get_x_dist (map, from_x, to_x) + Map_get_y_dist (map, from_y, to_y)) / 2 != 1)
@@ -239,7 +240,37 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, TNXCache * tnx_cache, int fr
 			return -1;
 	}
 
+	Tile * to_tile = tile_at (to_x, to_y);
 
+	// If to tile is in the territory of a civ we're at war with, return -1
+	if (0 == (to_info & TI_NEUTRAL_TERRITORY)) {
+		int owner_id = to_tile->vtable->m38_Get_Territory_OwnerID (to_tile);
+		if ((owner_id != 0) && leaders[civ_id].At_War[owner_id])
+			return -1;
+	}
+
+	// If either tile is not water and does not have a city, return -1
+	if ((((from_info & TI_TERRAIN_MASK) == TI_LAND) && ! (from_info & TI_HAS_CITY)) ||
+	    (((to_info   & TI_TERRAIN_MASK) == TI_LAND) && ! (to_info   & TI_HAS_CITY)))
+		return -1;
+
+	// If either tile is sea and we don't have the ability to trade over sea, return -1
+	if ((((from_info & TI_TERRAIN_MASK) == TI_SEA) || ((to_info & TI_TERRAIN_MASK) == TI_SEA)) &&
+	    ! (tnx_cache->sea_trade_player_bits & (1 << civ_id)))
+		return -1;
+
+	// Again, for ocean
+	if ((((from_info & TI_TERRAIN_MASK) == TI_OCEAN) || ((to_info & TI_TERRAIN_MASK) == TI_OCEAN)) &&
+	    ! (tnx_cache->ocean_trade_player_bits & (1 << civ_id)))
+		return -1;
+
+	// In the very rare case that both tiles are land (and so both must contain cities), fall back to the game's original function. The logic for
+	// this case is a little bit complex since it considers rivers, bridge tech, and railroads.
+	if (((from_info & TI_TERRAIN_MASK) == TI_LAND) && ((to_info & TI_TERRAIN_MASK) == TI_LAND))
+		return Trade_Net_get_movement_cost (trade_net, from_x, from_y, to_x, to_y, NULL, civ_id, flags, neighbor_index, dist_info);
+
+	// At this point, the move is valid. Return its cost.
+	return Tile_get_terrain_move_cost (to_tile) * p_bic_data->General.RoadsMovementRate;
 }
 
 EXPORT_PROC
