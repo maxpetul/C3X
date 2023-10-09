@@ -170,6 +170,27 @@ public:
 	}
 };
 
+EXPORT_PROC
+void *
+create_tnx_cache (Map * map)
+{
+	return new TNXCache (map);
+}
+
+EXPORT_PROC
+void
+destroy_tnx_cache (void * tnx_cache)
+{
+	delete tnx_cache;
+}
+
+EXPORT_PROC
+void
+set_up_before_building_network (void * tnx_cache)
+{
+	((TNXCache *)tnx_cache)->set_up_before_building_network ();
+}
+
 enum TileInfo : byte {
 	TI_INFO_SET          = 0x01,
 
@@ -189,11 +210,11 @@ enum TileInfo : byte {
 // either 0x1009 or 0x9 and that "unit" is NULL (so the unit parameter is omitted).
 EXPORT_PROC
 int
-get_move_cost_for_sea_trade (Trade_Net * trade_net, TNXCache * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags, int neighbor_index, Trade_Net_Distance_Info * dist_info)
+get_move_cost_for_sea_trade (Trade_Net * trade_net, void * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags, int neighbor_index, Trade_Net_Distance_Info * dist_info)
 {
 	Map * map = &p_bic_data->Map;
-	ExplorationLayer * el = &tnx_cache->exploration_layer;
-	ByteLayer * tile_info = &tnx_cache->tile_info;
+	ExplorationLayer * el = &((TNXCache *)tnx_cache)->exploration_layer;
+	ByteLayer * tile_info = &((TNXCache *)tnx_cache)->tile_info;
 
 	// Check parameters
 	if ((to_x   < 0) || (to_x   >= map->Width) || (to_y   < 0) || (to_y   >= map->Height) ||
@@ -276,12 +297,12 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, TNXCache * tnx_cache, int fr
 
 	// If either tile is sea and we don't have the ability to trade over sea, return -1
 	if ((((from_info & TI_TERRAIN_MASK) == TI_SEA) || ((to_info & TI_TERRAIN_MASK) == TI_SEA)) &&
-	    ! (tnx_cache->sea_trade_player_bits & (1 << civ_id)))
+	    ! (((TNXCache *)tnx_cache)->sea_trade_player_bits & (1 << civ_id)))
 		return -1;
 
 	// Again, for ocean
 	if ((((from_info & TI_TERRAIN_MASK) == TI_OCEAN) || ((to_info & TI_TERRAIN_MASK) == TI_OCEAN)) &&
-	    ! (tnx_cache->ocean_trade_player_bits & (1 << civ_id)))
+	    ! (((TNXCache *)tnx_cache)->ocean_trade_player_bits & (1 << civ_id)))
 		return -1;
 
 	// In the very rare case that both tiles are land (and so both must contain cities), fall back to the game's original function. The logic for

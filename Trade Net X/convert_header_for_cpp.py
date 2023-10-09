@@ -28,6 +28,10 @@ def make_addr_table_lines():
             ctype = ",".join(objects[n][5:]).strip(" \"\t") # types contain commas and so get split into separate columns by the CSV reader
             name  = objects[n][4].strip(" \"\t")
 
+            # Exclude these so they don't confict with the C++ keywords
+            if (name == "new") or (name == "delete"):
+                continue
+
             # Undo the __fastcall standin for __thiscall
             if "__fastcall" in ctype:
                 ctype = ctype.replace("this", "_this").replace("__fastcall", "__thiscall").replace("int edx,", "")

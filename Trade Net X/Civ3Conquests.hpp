@@ -6189,7 +6189,6 @@ struct TextBuffer
 #define Unit_ai_can_form_army ((byte (__thiscall *) (Unit * _this))bin_addrs[87])
 #define Unit_form_army ((Unit * (__thiscall *) (Unit * _this))bin_addrs[88])
 #define p_diplo_form ((DiploForm *)bin_addrs[89])
-#define new ((void * (__cdecl *) (unsigned num_bytes))bin_addrs[90])
 #define p_trade_offer_vtable ((TradeOfferVTable *)bin_addrs[91])
 #define Leader_consider_trade ((DiploMessage (__thiscall *) (Leader * _this,  TradeOfferList * receiving, TradeOfferList * paying, int other_party_civ_id, byte param_4, byte param_5, byte param_6, byte param_7, int * out_advantage, int * param_9, int * param_10))bin_addrs[92])
 #define ADDR_SETUP_INITIAL_GOLD_ASK_RETURN ((int)bin_addrs[93])
