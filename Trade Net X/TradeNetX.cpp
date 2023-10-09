@@ -153,8 +153,20 @@ public:
 	TNXCache (Map * map) :
 		exploration_layer(map),
 		tile_info(map->Width, map->Height)
+	{}
+
+	void
+	set_up_before_building_network ()
 	{
-		// TODO: Initialize trade bits
+		sea_trade_player_bits = ocean_trade_player_bits = 0;
+		for (int n = 0; n < 32; n++)
+			if (*p_player_bits & (1 << n)) {
+				if (Leader_has_tech_with_flag (&leaders[n], ATF_Enables_Trade_Over_Sea_Tiles) ||
+				    (Leader_count_wonders_with_flag (&leaders[n], ITW_Safe_Sea_Travel, NULL) == 0))
+					sea_trade_player_bits |= (1U << n);
+				if (Leader_has_tech_with_flag (&leaders[n], ATF_Enables_Trade_Over_Ocean_Tiles))
+					ocean_trade_player_bits |= (1U << n);
+			}
 	}
 };
 

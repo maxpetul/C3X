@@ -6326,7 +6326,9 @@ struct TextBuffer
 #define Fighter_damage_city_by_bombardment ((byte (__thiscall *) (Fighter * _this,  Unit * unit, City * city, int damage_kind, int min_fire_rate))bin_addrs[224])
 #define Tile_get_terrain_move_cost ((int (__thiscall *) (Tile * _this))bin_addrs[225])
 #define get_combat_occupier ((int (__cdecl *) (int tile_x, int tile_y, int civ_id, byte ignore_visibility))bin_addrs[226])
-int const gog_addrs[227] = {
+#define Leader_has_tech_with_flag ((byte (__thiscall *) (Leader * _this,  AdvanceTypeFlags flag))bin_addrs[227])
+#define Leader_count_wonders_with_flag ((int (__thiscall *) (Leader * _this,  ImprovementTypeWonderFeatures flag, City * only_in_city))bin_addrs[228])
+int const gog_addrs[229] = {
 	0,
 	0x9C3508,
 	0xA52E80,
@@ -6554,8 +6556,10 @@ int const gog_addrs[227] = {
 	0x4A2650,
 	0x5DBF60,
 	0x56D340,
+	0x561480,
+	0x55A8D0,
 };
-int const steam_addrs[227] = {
+int const steam_addrs[229] = {
 	1,
 	0x9E5D08,
 	0xA75680,
@@ -6783,8 +6787,10 @@ int const steam_addrs[227] = {
 	0x4A9290,
 	0x5EB4B0,
 	0x579CC0,
+	0x56D5E0,
+	0x5667E0,
 };
-int const pcg_addrs[227] = {
+int const pcg_addrs[229] = {
 	2,
 	0x9C34C8,
 	0xA52E40,
@@ -7012,4 +7018,6 @@ int const pcg_addrs[227] = {
 	0x4A26E0,
 	0x5DBE90,
 	0x56D2B0,
+	0x561430,
+	0x55A880,
 };
