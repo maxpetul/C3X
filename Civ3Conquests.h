@@ -1538,7 +1538,7 @@ struct Tile_vtable
   short (__fastcall *m47_Get_Tile_BuildingID)(Tile *);
   short (__fastcall *m48_Get_field_20_hiword)(Tile *);
   int (__fastcall *m49_Get_Square_RealType)(int);
-  int (__fastcall *m50_Get_Square_BaseType)(Tile *);
+  SquareTypes (__fastcall *m50_Get_Square_BaseType)(Tile *);
   void (__fastcall *m51_Unset_Tile_Flags)(Tile *, __, int, int, int, int);
   void (__fastcall *m52_Unset_River_Code_call_m53)(Tile *, __, char);
   int (__fastcall *m53_set_River_Code_field_30)(Tile *);
@@ -1872,9 +1872,8 @@ struct Map_vtable
   int m09_Init;
   byte (__fastcall * m10_Get_Map_Zoom) (Map * this);
   int m11_Get_Tile_by_XY2;
-//  Tile *(__thiscall *m12_Get_Tile_by_XY)(Map *, int, int);
-  void *m12_Get_Tile_by_XY;
-  Tile *(__fastcall * m13_Get_Tile_by_Index) (Map *, __, int);
+  Tile * (__fastcall * m12_Get_Tile_by_XY) (Map *, __, int, int);
+  Tile * (__fastcall * m13_Get_Tile_by_Index) (Map *, __, int);
   int m14;
   int m15_null;
   int m16;

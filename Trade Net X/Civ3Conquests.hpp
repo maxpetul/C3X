@@ -1538,7 +1538,7 @@ struct Tile_vtable
   short (__thiscall *m47_Get_Tile_BuildingID)(Tile *);
   short (__thiscall *m48_Get_field_20_hiword)(Tile *);
   int (__thiscall *m49_Get_Square_RealType)(int);
-  int (__thiscall *m50_Get_Square_BaseType)(Tile *);
+  SquareTypes (__thiscall *m50_Get_Square_BaseType)(Tile *);
   void (__thiscall *m51_Unset_Tile_Flags)(Tile *,  int, int, int, int);
   void (__thiscall *m52_Unset_River_Code_call_m53)(Tile *,  char);
   int (__thiscall *m53_set_River_Code_field_30)(Tile *);
@@ -1872,9 +1872,8 @@ struct Map_vtable
   int m09_Init;
   byte (__thiscall * m10_Get_Map_Zoom) (Map * _this);
   int m11_Get_Tile_by_XY2;
-//  Tile *(___thiscall *m12_Get_Tile_by_XY)(Map *, int, int);
-  void *m12_Get_Tile_by_XY;
-  Tile *(__thiscall * m13_Get_Tile_by_Index) (Map *,  int);
+  Tile * (__thiscall * m12_Get_Tile_by_XY) (Map *,  int, int);
+  Tile * (__thiscall * m13_Get_Tile_by_Index) (Map *,  int);
   int m14;
   int m15_null;
   int m16;
@@ -6153,7 +6152,7 @@ struct TextBuffer
 #define City_Form_print_production_info ((void (__thiscall *) (City_Form *_this,  String256 * out_strs, int str_capacity))bin_addrs[50])
 #define City_get_order_cost ((int (__thiscall *) (City * _this))bin_addrs[51])
 #define City_get_order_progress ((int (__thiscall *) (City * _this))bin_addrs[52])
-#define Trade_Net_get_movement_cost ((int (__thiscall *) (Trade_Net * _this,  int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned param_7, int neighbor_index, int param_9))bin_addrs[53])
+#define Trade_Net_get_movement_cost ((int (__thiscall *) (Trade_Net * _this,  int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned param_7, int neighbor_index, Trade_Net_Distance_Info * dist_info))bin_addrs[53])
 #define do_save_game ((int (__cdecl *) (char * file_path, char param_2, GUID * guid))bin_addrs[54])
 #define City_recompute_happiness ((void (__thiscall *) (City * _this))bin_addrs[55])
 #define Leader_recompute_auto_improvements ((void (__thiscall *) (Leader * _this))bin_addrs[56])
@@ -6326,7 +6325,8 @@ struct TextBuffer
 #define mp_check_current_combat ((byte (__thiscall *) (void * _this,  int mp_tile_x, int mp_tile_y))bin_addrs[223])
 #define Fighter_damage_city_by_bombardment ((byte (__thiscall *) (Fighter * _this,  Unit * unit, City * city, int damage_kind, int min_fire_rate))bin_addrs[224])
 #define Tile_get_terrain_move_cost ((int (__thiscall *) (Tile * _this))bin_addrs[225])
-int const gog_addrs[226] = {
+#define get_combat_occupier ((int (__cdecl *) (int tile_x, int tile_y, int civ_id, byte ignore_visibility))bin_addrs[226])
+int const gog_addrs[227] = {
 	0,
 	0x9C3508,
 	0xA52E80,
@@ -6553,8 +6553,9 @@ int const gog_addrs[226] = {
 	0x4697B0,
 	0x4A2650,
 	0x5DBF60,
+	0x56D340,
 };
-int const steam_addrs[226] = {
+int const steam_addrs[227] = {
 	1,
 	0x9E5D08,
 	0xA75680,
@@ -6781,8 +6782,9 @@ int const steam_addrs[226] = {
 	0x46BF90,
 	0x4A9290,
 	0x5EB4B0,
+	0x579CC0,
 };
-int const pcg_addrs[226] = {
+int const pcg_addrs[227] = {
 	2,
 	0x9C34C8,
 	0xA52E40,
@@ -7009,4 +7011,5 @@ int const pcg_addrs[226] = {
 	0x469830,
 	0x4A26E0,
 	0x5DBE90,
+	0x56D2B0,
 };

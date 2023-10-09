@@ -95,16 +95,16 @@ class ExplorationLayer
 	};
 
 public:
+	Map * map;
 	ExplorationBlock * blocks;
 	byte * block_inits; // bit array storing which blocks have been filled in
-	int map_width, map_height;
 	int width_in_blocks, height_in_blocks;
 
-	ExplorationLayer (int _map_width, int _map_height)
+	ExplorationLayer (Map * _map)
 	{
-		map_width = _map_width, map_height = _map_height;
-		width_in_blocks  = map_width  / (2*EL_BLOCK_WIDTH) + (map_width  % (2*EL_BLOCK_WIDTH) != 0 ? 1 : 0);
-		height_in_blocks = map_height /    EL_BLOCK_HEIGHT + (map_height %    EL_BLOCK_HEIGHT != 0 ? 1 : 0);
+		map = _map;
+		width_in_blocks  = map->Width  / (2*EL_BLOCK_WIDTH) + (map->Width  % (2*EL_BLOCK_WIDTH) != 0 ? 1 : 0);
+		height_in_blocks = map->Height /    EL_BLOCK_HEIGHT + (map->Height %    EL_BLOCK_HEIGHT != 0 ? 1 : 0);
 		int block_count = width_in_blocks * height_in_blocks;
 		blocks = (ExplorationBlock *)calloc (block_count, sizeof *blocks);
 		block_inits = (byte *)calloc (block_count / 8 + (block_count % 8 != 0 ? 1 : 0), sizeof *block_inits);
@@ -142,12 +142,20 @@ public:
 };
 
 class TNXCache {
+public:
 	ExplorationLayer exploration_layer;
 	ByteLayer tile_info;
 
 	// These bit fields store which players have the necessary techs/wonders to trade over sea/ocean
 	unsigned int sea_trade_player_bits;
-	unsigned int ocean_trade_travel_bits;
+	unsigned int ocean_trade_player_bits;
+
+	TNXCache (Map * map) :
+		exploration_layer(map),
+		tile_info(map->Width, map->Height)
+	{
+		// TODO: Initialize trade bits
+	}
 };
 
 enum TileInfo : byte {
@@ -169,7 +177,7 @@ enum TileInfo : byte {
 // either 0x1009 or 0x9 and that "unit" is NULL (so the unit parameter is omitted).
 EXPORT_PROC
 int
-get_move_cost_for_sea_trade (Trade_Net * trade_net, TNXCache * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, uint flags, int neighbor_index, Trade_Net_Distance_Info * dist_info)
+get_move_cost_for_sea_trade (Trade_Net * trade_net, TNXCache * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags, int neighbor_index, Trade_Net_Distance_Info * dist_info)
 {
 	Map * map = &p_bic_data->Map;
 	ExplorationLayer * el = &tnx_cache->exploration_layer;
@@ -187,7 +195,7 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, TNXCache * tnx_cache, int fr
 		return -1;
 
 	// If either of the from or to tiles have not been explored by the civ, return -1
-	if (! (el.has_explored (civ_id, from_x, from_y) && el.has_explored (civ_id, to_x, to_y)))
+	if (! (el->has_explored (civ_id, from_x, from_y) && el->has_explored (civ_id, to_x, to_y)))
 		return -1;
 
 	// Get info bytes for "to" and "from" tiles, initializing them if necessary
@@ -195,7 +203,7 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, TNXCache * tnx_cache, int fr
 		for (int n = 0; n < 2; n++) {
 			int x = (n == 0) ? from_x : to_x,
 			    y = (n == 0) ? from_y : to_y;
-			byte info = tile_info.at (x, y);
+			byte info = tile_info->at (x, y);
 
 			// Initialize info
 			if ((info & TI_INFO_SET) == 0) {
@@ -223,7 +231,7 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, TNXCache * tnx_cache, int fr
 
 				info |= (tile->vtable->m38_Get_Territory_OwnerID (tile) == 0) ? TI_NEUTRAL_TERRITORY : 0;
 
-				tile_info.at (x, y) = info; // Save info for future use
+				tile_info->at (x, y) = info; // Save info for future use
 			}
 
 			if (n == 0)
