@@ -1611,25 +1611,40 @@ patch_init_floating_point ()
 		}
 	}
 
-	// Load TradeNetX.dll
+	// Initialize Trade Net X
 	{
+		is->tnx_cache = NULL;
+
 		char path[MAX_PATH];
 		snprintf (path, sizeof path, "%s\\Trade Net X\\TradeNetX.dll", is->mod_rel_dir);
 		path[(sizeof path) - 1] = '\0';
 		is->trade_net_x = LoadLibraryA (path);
 		if (is->trade_net_x != NULL) {
-			is->set_exe_version = (void *)(*p_GetProcAddress) (is->trade_net_x, "set_exe_version");
+			is->set_exe_version                = (void *)(*p_GetProcAddress) (is->trade_net_x, "set_exe_version");
+			is->create_tnx_cache               = (void *)(*p_GetProcAddress) (is->trade_net_x, "create_tnx_cache");
+			is->destroy_tnx_cache              = (void *)(*p_GetProcAddress) (is->trade_net_x, "destroy_tnx_cache");
+			is->set_up_before_building_network = (void *)(*p_GetProcAddress) (is->trade_net_x, "set_up_before_building_network");
+			is->get_move_cost_for_sea_trade    = (void *)(*p_GetProcAddress) (is->trade_net_x, "get_move_cost_for_sea_trade");
+
 			is->set_exe_version (exe_version_index);
 
-			int (__stdcall * test) () = (void *)(*p_GetProcAddress) (is->trade_net_x, "test");
-			int failed_test_count = test ();
-			if (failed_test_count > 0)
-				MessageBoxA (NULL, "Failed some tests in Trade Net X!", NULL, MB_ICONWARNING);
-			else
-				MessageBoxA (NULL, "All tests in Trade Net X passed.", "Success", MB_ICONINFORMATION);
-		} else
+			// Run tests
+			if (0) {
+				int (__stdcall * test) () = (void *)(*p_GetProcAddress) (is->trade_net_x, "test");
+				int failed_test_count = test ();
+				if (failed_test_count > 0)
+					MessageBoxA (NULL, "Failed some tests in Trade Net X!", NULL, MB_ICONWARNING);
+				else
+					MessageBoxA (NULL, "All tests in Trade Net X passed.", "Success", MB_ICONINFORMATION);
+			}
+
+			is->tnx_init_state = IS_OK;
+		} else {
 			MessageBoxA (NULL, "Failed to load Trade Net X!", NULL, MB_ICONERROR);
+			is->tnx_init_state = IS_INIT_FAILED;
+		}
 	}
+	is->is_computing_city_connections = 0;
 
 	is->have_job_and_loc_to_skip = 0;
 
@@ -2745,9 +2760,14 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 }
 
 int __fastcall
-patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned param_7, int neighbor_index, int param_9)
+patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned flags, int neighbor_index, Trade_Net_Distance_Info * dist_info)
 {
-	int const base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, param_7, neighbor_index, param_9);
+	if (is->is_computing_city_connections && // if this call came while rebuilding the trade network AND
+	    (is->tnx_init_state == IS_OK) && (is->tnx_cache != NULL) && // Trade Net X is set up AND
+	    (unit == NULL) && ((flags == 0x1009) || (flags == 0x9))) // this call can be accelerated by TNX
+	    return is->get_move_cost_for_sea_trade (this, is->tnx_cache, from_x, from_y, to_x, to_y, civ_id, flags, neighbor_index, dist_info);
+
+	int const base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, neighbor_index, dist_info);
 
 	// Apply trespassing restriction
 	if (is->current_config.disallow_trespassing &&
@@ -2803,6 +2823,12 @@ unsigned __fastcall
 patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 {
 	int ret_addr = ((int *)&param_1)[-1];
+
+	// Destroy TNX cache from previous map. A new one will be created when needed.
+	if ((is->tnx_init_state == IS_OK) && (is->tnx_cache != NULL)) {
+		is->destroy_tnx_cache (is->tnx_cache);
+		is->tnx_cache = NULL;
+	}
 
 	unsigned tr = load_scenario (this, __, param_1, param_2);
 
@@ -5344,6 +5370,22 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 
 	} else
 		Fighter_do_bombard_tile (this, __, unit, neighbor_index, mp_tile_x, mp_tile_y);
+}
+
+void __fastcall
+patch_Trade_Net_recompute_city_connections (Trade_Net * this, int edx, int civ_id, byte redo_road_network, byte param_3, int redo_roads_for_city_id)
+{
+	is->is_computing_city_connections = 1;
+
+	if (is->tnx_init_state == IS_OK) {
+		if (is->tnx_cache == NULL)
+			is->tnx_cache = is->create_tnx_cache (&p_bic_data->Map);
+		is->set_up_before_building_network (is->tnx_cache);
+	}
+
+	Trade_Net_recompute_city_connections (this, __, civ_id, redo_road_network, param_3, redo_roads_for_city_id);
+
+	is->is_computing_city_connections = 0;
 }
 
 // TCC requires a main function be defined even though it's never used.

@@ -277,6 +277,14 @@ struct injected_state {
 
 	HMODULE trade_net_x;
 	void (__stdcall * set_exe_version) (int);
+	void * (__stdcall * create_tnx_cache) (Map *);
+	void (__stdcall * destroy_tnx_cache) (void *);
+	void (__stdcall * set_up_before_building_network) (void *);
+	int (__stdcall * get_move_cost_for_sea_trade) (Trade_Net * trade_net, void * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags, int neighbor_index, Trade_Net_Distance_Info * dist_info);
+
+	void * tnx_cache; // Cache object used by Trade Net X. Initially NULL, must be recreated every time a new map is loaded.
+	enum init_state tnx_init_state;
+	int is_computing_city_connections; // Set to 1 only while Trade_Net::recompute_city_connections is running
 
 	struct c3x_config current_config;
 

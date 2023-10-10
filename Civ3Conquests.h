@@ -1538,7 +1538,7 @@ struct Tile_vtable
   short (__fastcall *m47_Get_Tile_BuildingID)(Tile *);
   short (__fastcall *m48_Get_field_20_hiword)(Tile *);
   int (__fastcall *m49_Get_Square_RealType)(int);
-  SquareTypes (__fastcall *m50_Get_Square_BaseType)(Tile *);
+  enum SquareTypes (__fastcall *m50_Get_Square_BaseType)(Tile *);
   void (__fastcall *m51_Unset_Tile_Flags)(Tile *, __, int, int, int, int);
   void (__fastcall *m52_Unset_River_Code_call_m53)(Tile *, __, char);
   int (__fastcall *m53_set_River_Code_field_30)(Tile *);
