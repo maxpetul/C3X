@@ -54,6 +54,7 @@ class ByteLayer
 
 public:
 	ByteBlock * blocks;
+	size_t blocks_size;
 	int map_width, map_height;
 	int width_in_blocks, height_in_blocks;
 
@@ -62,12 +63,20 @@ public:
 		map_width = _map_width, map_height = _map_height;
 		width_in_blocks  = map_width  / (2*BL_BLOCK_WIDTH) + (map_width  % (2*BL_BLOCK_WIDTH) != 0 ? 1 : 0);
 		height_in_blocks = map_height /    BL_BLOCK_HEIGHT + (map_height %    BL_BLOCK_HEIGHT != 0 ? 1 : 0);
-		blocks = (ByteBlock *)calloc (width_in_blocks * height_in_blocks, sizeof *blocks);
+		blocks_size = width_in_blocks * height_in_blocks * (sizeof *blocks);
+		blocks = (ByteBlock *)malloc (blocks_size);
+		clear ();
 	}
 
 	~ByteLayer ()
 	{
 		free (blocks);
+	}
+
+	void
+	clear ()
+	{
+		memset (blocks, 0, blocks_size);
 	}
 
 	byte&
@@ -98,6 +107,7 @@ public:
 	Map * map;
 	ExplorationBlock * blocks;
 	byte * block_inits; // bit array storing which blocks have been filled in
+	size_t block_inits_size;
 	int width_in_blocks, height_in_blocks;
 
 	ExplorationLayer (Map * _map)
@@ -107,13 +117,21 @@ public:
 		height_in_blocks = map->Height /    EL_BLOCK_HEIGHT + (map->Height %    EL_BLOCK_HEIGHT != 0 ? 1 : 0);
 		int block_count = width_in_blocks * height_in_blocks;
 		blocks = (ExplorationBlock *)calloc (block_count, sizeof *blocks);
-		block_inits = (byte *)calloc (block_count / 8 + (block_count % 8 != 0 ? 1 : 0), sizeof *block_inits);
+		block_inits_size = (block_count / 8 + (block_count % 8 != 0 ? 1 : 0)) * (sizeof *block_inits);
+		block_inits = (byte *)malloc (block_inits_size);
+		clear ();
 	}
 
 	~ExplorationLayer ()
 	{
 		free (blocks);
 		free (block_inits);
+	}
+
+	void
+	clear ()
+	{
+		memset (block_inits, 0, block_inits_size);
 	}
 
 	bool
@@ -158,6 +176,9 @@ public:
 	void
 	set_up_before_building_network ()
 	{
+		exploration_layer.clear ();
+		tile_info.clear ();
+
 		sea_trade_player_bits = ocean_trade_player_bits = 0;
 		for (int n = 0; n < 32; n++)
 			if (*p_player_bits & (1 << n)) {
