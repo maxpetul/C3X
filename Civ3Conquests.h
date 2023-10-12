@@ -1127,6 +1127,50 @@ typedef enum font_style_flags
   FSF_UNDERLINE = 4,
 } FontStyleFlags;
 
+tyepdef enum script_style
+{
+	SS_ADVISOR = 0x0,
+	SS_CIV = 0x1,
+	SS_POWER = 0x2,
+	SS_MOOD = 0x3,
+	SS_RANDOM = 0x4,
+	SS_POPUP_CENTER = 0x5,
+	SS_MAP_CENTER = 0x6,
+	SS_TIMER = 0x7,
+
+	SS_DID_NOT_PARSE = -1,
+} ScriptStyle;
+
+typedef enum script_control
+{
+	SC_XS = 0x0,
+	SC_YS = 0x1,
+	SC_X = 0x2,
+	SC_Y = 0x3,
+	SC_COL = 0x4,
+	SC_CAPTION = 0x5,
+	SC_CHECKBOX = 0x6,
+	SC_EDITBOX = 0x7,
+	SC_LISTBOX = 0x8,
+	SC_ACTIVE = 0x9,
+	SC_TEXT = 0xa,
+	SC_ITEMLIST = 0xb,
+	SC_ITEMINDEX = 0xc,
+	SC_BUTTON = 0xd,
+	SC_EXTRA = 0xe,
+	SC_WAVE = 0xf,
+	SC_VOL = 0x10,
+	SC_PITCH = 0x11,
+	SC_FADE = 0x12,
+	SC_PAN = 0x13,
+	SC_SPRITE = 0x14,
+	SC_COMMENT = 0x15,
+	SC_OK_TEXT = 0x16,
+	SC_CANCEL_TEXT = 0x17,
+
+	SC_DID_NOT_PARSE = -1,
+} ScriptControl;
+
 typedef enum unit_filter
 {
 	UF_0 = 0,
