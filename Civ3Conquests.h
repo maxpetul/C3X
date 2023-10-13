@@ -1127,7 +1127,7 @@ typedef enum font_style_flags
   FSF_UNDERLINE = 4,
 } FontStyleFlags;
 
-tyepdef enum script_style
+typedef enum script_style
 {
 	SS_ADVISOR = 0x0,
 	SS_CIV = 0x1,
