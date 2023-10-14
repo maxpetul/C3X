@@ -10,6 +10,12 @@ struct string_slice {
 };
 
 int
+slice_matches_str (struct string_slice const * slice, char const * str)
+{
+	return (strncmp (str, slice->str, slice->len) == 0) && (str[slice->len] == '\0');
+}
+
+int
 not_below (int lim, int x)
 {
 	return (x >= lim) ? x : lim;
@@ -43,6 +49,17 @@ int
 int_abs (int x)
 {
 	return (x >= 0) ? x : (0 - x);
+}
+
+int
+gcd (int a, int b)
+{
+	while (b != 0) {
+		int t = b;
+		b = a % b;
+		a = t;
+	}
+	return a;
 }
 
 // Writes an integer to a byte buffer. buf need not be aligned but it must have at least four bytes of free space. Written little-endian.
@@ -472,24 +489,6 @@ parse_bracketed_block (char ** p_cursor, struct string_slice * out)
 }
 
 int
-parse_key_value_pair (char ** p_cursor, struct string_slice * out_key, struct string_slice * out_value)
-{
-	char * cur = *p_cursor;
-	struct string_slice key, value;
-	if (parse_string (&cur, &key) &&
-	    skip_punctuation (&cur, '=') &&
-	    (parse_string (&cur, &value) ||
-	     parse_bracketed_block (&cur, &value))) {
-		*out_key = key;
-		*out_value = value;
-		skip_to_line_end (&cur);
-		*p_cursor = cur;
-		return 1;
-	} else
-		return 0;
-}
-
-int
 parse_csv_value (char ** p_cursor, char ** out_val, int * out_len)
 {
 	char * tr_val = *p_cursor,
@@ -524,6 +523,7 @@ read_object_job (struct string_slice const * s, enum object_job * out)
 	else if (0 == strncmp ("inlead"   , trimmed.str, trimmed.len)) *out = OJ_INLEAD;
 	else if (0 == strncmp ("repl vptr", trimmed.str, trimmed.len)) *out = OJ_REPL_VPTR;
 	else if (0 == strncmp ("repl call", trimmed.str, trimmed.len)) *out = OJ_REPL_CALL;
+	else if (0 == strncmp ("repl vis" , trimmed.str, trimmed.len)) *out = OJ_REPL_VIS;
 	else if (0 == strncmp ("ignore"   , trimmed.str, trimmed.len)) *out = OJ_IGNORE;
 	else
 		return 0;

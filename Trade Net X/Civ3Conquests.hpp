@@ -6,6 +6,8 @@
 typedef int __;
 
 typedef struct IntList IntList;
+typedef struct CoordPairList CoordPairList;
+typedef struct TribeCustomization TribeCustomization;
 typedef struct City_Base_vtable City_Base_vtable;
 typedef struct Citizen Citizen;
 typedef struct RulerTitle RulerTitle;
@@ -60,7 +62,8 @@ typedef struct Tile_Image_Info_vtable Tile_Image_Info_vtable;
 typedef struct Tile_Image_Info_List Tile_Image_Info_List;
 typedef struct Base_vtable Base_vtable;
 typedef struct City_Screen_FileNames City_Screen_FileNames;
-typedef struct _188_48 _188_48;
+typedef struct AnimationSummary AnimationSummary;
+typedef struct AnimationSummaryVTable AnimationSummaryVTable;
 typedef struct FLC_Frame_Image FLC_Frame_Image;
 typedef struct _188_4C _188_4C;
 typedef struct Civilopedia_Article Civilopedia_Article;
@@ -94,7 +97,7 @@ typedef struct Old_Interface_Images Old_Interface_Images;
 typedef struct Main_Screen_Form_vtable Main_Screen_Form_vtable;
 typedef struct GUI_Data_30 GUI_Data_30;
 typedef struct MapMessage MapMessage;
-typedef struct Form_Data_30 Form_Data_30;
+typedef struct Timer Timer;
 typedef struct GUI_Form_1_vtable GUI_Form_1_vtable;
 typedef struct Base_Form_vtable Base_Form_vtable;
 typedef struct Control_Data_Offsets Control_Data_Offsets;
@@ -135,7 +138,7 @@ typedef struct World_Features World_Features;
 typedef struct Starting_Location Starting_Location;
 typedef struct Scenario_Player Scenario_Player;
 typedef struct Navigator_Cell Navigator_Cell;
-typedef struct Navigator_Point Navigator_Point;
+typedef struct CoordPair CoordPair;
 typedef struct JGL_Image JGL_Image;
 typedef struct JGL_Image_vtable JGL_Image_vtable;
 typedef struct JGL_Graphics JGL_Graphics;
@@ -177,6 +180,7 @@ typedef struct Continent Continent;
 typedef struct Map_Renderer Map_Renderer;
 typedef struct Tile_Type Tile_Type;
 typedef struct PCX_Image PCX_Image;
+typedef struct PCX_Image_vtable PCX_Image_vtable;
 typedef struct FLC_Animation FLC_Animation;
 typedef struct Airfield Airfield;
 typedef struct Colony Colony;
@@ -188,7 +192,7 @@ typedef struct Base_Form_Data Base_Form_Data;
 typedef struct Button Button;
 typedef struct Advisor_Science_Form Advisor_Science_Form;
 typedef struct Advisor_Base_Form Advisor_Base_Form;
-typedef struct Main_Screen_Data_1AD4 Main_Screen_Data_1AD4;
+typedef struct Animator Animator;
 typedef struct Command_Button Command_Button;
 typedef struct GUI_Form_1 GUI_Form_1;
 typedef struct ComboBox ComboBox;
@@ -352,6 +356,19 @@ enum AnimatedEffect
   AE_Plague = 0xB,
 };
 
+enum direction
+{
+  DIR_ZERO = 0, // Appears facing SW
+  DIR_NE   = 1,
+  DIR_E    = 2,
+  DIR_SE   = 3,
+  DIR_S    = 4,
+  DIR_SW   = 5,
+  DIR_W    = 6,
+  DIR_NW   = 7,
+  DIR_N    = 8
+};
+
 enum ImprovementTypeFlags
 {
   ITF_Center_of_Empire			    = 0x1,
@@ -383,7 +400,7 @@ enum ImprovementTypeFlags
   ITF_Vulnerable_To_Charm_Bombard	    = 0x4000000,
   ITF_8000000				    = 0x8000000,
   ITF_10000000				    = 0x10000000,
-  ITF_20000000				    = 0x20000000,
+  ITF_Doubles_Sacrifice			    = 0x20000000,
   ITF_Produces_Unit			    = 0x40000000,
   ITF_Required_Goods_Must_Be_In_City_Radius = 0x80000000,
 };
@@ -421,53 +438,41 @@ enum ImprovementTypeCharacteristics
   ITC_Seafaring = 0x800,
 };
 
-enum ImprovementTypeFlags_Byte1
-{
-  ITF_B1_Reduces_Corruption = 0x1,
-  ITF_B1_Doubles_City_Growth_Rate = 0x2,
-  ITF_B1_Increases_Luxury_Trade = 0x4,
-  ITF_B1_Allows_City_Level_2 = 0x8,
-  ITF_B1_Allows_City_Level_3 = 0x10,
-  ITF_B1_Replaces_Other_Buildings = 0x20,
-  ITF_B1_Must_Be_Near_Water = 0x40,
-  ITF_B1_Must_Be_Near_River = 0x80,
-};
-
 enum ImprovementTypeWonderFeatures
 {
-  ITW_Safe_Sea_Travel			     = 0x1,
-  ITW_Gain_Any_Advance_Owned_by_2_Civ	     = 0x2,
-  ITW_Double_Combat_Strength_vs_Barbarians   = 0x4,
-  ITW_Ship_Movement_Inc_1		     = 0x8,
-  ITW_Doubles_Research_Output		     = 0x10,
-  ITW_Trade_In_Each_Tile_inc_1		     = 0x20,
-  ITW_Halves_Unit_Upgrade_Cost		     = 0x40,
-  ITW_Pays_Maintenance_For_Trade_Inst	     = 0x80,
-  ITW_Allows_Construction_Of_Nuclear_Devices = 0x100,
-  ITW_City_Growth_Inc_2_Citizens	     = 0x200,
-  ITW_Free_Advance_Inc_2		     = 0x400,
-  ITW_Reduces_War_Weariness		     = 0x800,
-  ITW_Unk1				     = 0x1000,
-  ITW_Allows_Diplomatic_Victory		     = 0x2000,
-  ITW_Unk2				     = 0x4000,
-  ITW_Unk3				     = 0x8000,
-  ITW_Increases_Army_Value		     = 0x10000,
-  ITW_Tourist_Attraction		     = 0x20000,
+  ITW_Safe_Sea_Travel                             = 0x1,
+  ITW_Gain_Any_Advances_Owned_by_2_Civs           = 0x2,
+  ITW_Double_Combat_Strength_vs_Barbarians        = 0x4,
+  ITW_Plus_One_Ship_Movement                      = 0x8,
+  ITW_Doubles_Research_Output                     = 0x10,
+  ITW_Plus_One_Trade_in_Each_Trade_Producing_Tile = 0x20,
+  ITW_Halves_Unit_Upgrade_Cost                    = 0x40,
+  ITW_Pays_Maintenance_For_Trade_Installations    = 0x80,
+  ITW_Allows_Construction_of_Nuclear_Devices      = 0x100,
+  ITW_City_Growth_Causes_Plus_Two_Citizens        = 0x200,
+  ITW_Plus_Two_Free_Advances                      = 0x400,
+  ITW_Reduces_War_Weariness                       = 0x800,
+  ITW_Doubles_City_Defenses                       = 0x1000,
+  ITW_Allows_Diplomatic_Victory                   = 0x2000,
+  ITW_Plus_Two_Ship_Movement                      = 0x4000,
+  ITW_0x8000                                      = 0x8000,
+  ITW_Increased_Army_Value                        = 0x10000,
+  ITW_Tourist_Attraction                          = 0x20000,
 };
 
 enum ImprovementTypeSmallWonderFeatures
 {
-  ITSW_Increases_Chance_Of_Leader_Appearance = 0x1,
-  ITSW_Build_Army_Without_Leader	     = 0x2,
-  ITSW_Larger_Armies			     = 0x4,
-  ITSW_Treasury_Earns_5_Percent		     = 0x8,
-  ITSW_Build_Spaceship_Parts		     = 0x10,
-  ITSW_Reduces_Corruption		     = 0x20,
+  ITSW_Increases_Chance_of_Leader_Appearance = 0x1,
+  ITSW_Build_Armies_Without_Leader           = 0x2,
+  ITSW_Build_Larger_Armies                   = 0x4,
+  ITSW_Treasury_Earns_5_Percent              = 0x8,
+  ITSW_Build_Spaceship_Parts                 = 0x10,
+  ITSW_Reduces_Corruption                    = 0x20,
   ITSW_Decreases_Success_Of_Missile_Attacks  = 0x40,
-  ITSW_Allows_Spy_Missions		     = 0x80,
+  ITSW_Allows_Spy_Missions                   = 0x80,
   ITSW_Allows_Healing_In_Enemy_Territory     = 0x100,
-  ITSW_200				     = 0x200,
-  ITSW_Requires_Victorous_Army		     = 0x400,
+  ITSW_0x200                                 = 0x200,
+  ITSW_Requires_Victorous_Army               = 0x400,
 };
 
 enum CorruptionAndWasteTypes
@@ -710,10 +715,11 @@ enum Unit_Command_Values
   UCV_Finish_Improvements = 0x10000080,
   UCV_Upgrade_Unit	  = 0x10000100,
   UCV_Rescue_Princess	  = 0x10000200,
-  UCV_Enslave		  = 0x10004000,
-  UCV_Unknown		  = 0x10008000,
+  UCV_Telepad             = 0x10004000,
+  UCV_Teleport            = 0x10008000,
   UCV_Stealth_Attack	  = 0x10010000,
   UCV_Charm_Bombard       = 0x10020000,
+  UCV_Enslave		  = 0x10040000,
   UCV_Sacrifice		  = 0x10100000,
   UCV_Science_Age	  = 0x10200000,
 
@@ -776,18 +782,18 @@ enum Unit_Mode_Actions
   UMA_Airlift = 0x8,
   UMA_Recon = 0x9,
   UMA_Rebase = 0xA,
-  UMA_11 = 0xB,
+  UMA_Precision_Strike = 0xB,
   UMA_12 = 0xC,
   UMA_13 = 0xD,
   UMA_Build_Colony = 0xE,
   UMA_Auto_Bombard = 0xF,
   UMA_Auto_Air_Bombard = 0x10,
-  UMA_17 = 0x11,
-  UMA_18 = 0x12,
-  UMA_19 = 0x13,
+  UMA_Auto_Precision_Strike = 0x11,
+  UMA_Stack_Go_To = 0x12,
+  UMA_Stack_Rebase = 0x13,
   UMA_20 = 0x14,
   UMA_21 = 0x15,
-  UMA_22 = 0x16,
+  UMA_Teleport = 0x16,
 };
 
 enum City_Order_Types
@@ -801,20 +807,6 @@ enum Hurry_Production_Type
   HPT_Cannot_Hurry = 0x0,
   HPT_Forced_Labor = 0x1,
   HPT_Paid_Labor = 0x2,
-};
-
-enum ImprovementTypeWonderFeatures_Byte1
-{
-  ITW_B1_Allows_Construction_Of_Nuclear_Devices = 0x1,
-  ITW_B1_City_Growth_Inc_2_Citizens = 0x2,
-  ITW_B1_Free_Advance_Inc_2 = 0x4,
-  ITW_B1_Reduces_War_Weariness = 0x8,
-  ITW_B1_Unk1 = 0x10,
-  ITW_B1_Allows_Diplomatic_Victory = 0x20,
-  ITW_B1_Unk2 = 0x40,
-  ITW_B1_Unk3 = 0x80,
-  ITW_B1_Increases_Army_Value = 0x100,
-  ITW_B1_Turist_Attraction = 0x200,
 };
 
 enum Tile_Owner_Types
@@ -928,13 +920,6 @@ enum UnitStateType
   UnitState_1E = 0x1E,
   UnitState_Auto_Bombard = 0x1F,
   UnitState_Auto_Air_Bombard = 0x20,
-};
-
-enum ImprovementTypeSmallWonderFeatures_Byte1
-{
-  ITSW_B1_Allows_Healing_In_Enemy_Territory = 0x1,
-  ITSW_B1_Required_Good_Must_be_in_City_Radius = 0x2,
-  ITSW_B1_Requires_Victorous_Army = 0x4,
 };
 
 enum VirtualKey
@@ -1141,6 +1126,50 @@ typedef enum font_style_flags
   FSF_ITALIC = 2,
   FSF_UNDERLINE = 4,
 } FontStyleFlags;
+
+typedef enum script_style
+{
+	SS_ADVISOR = 0x0,
+	SS_CIV = 0x1,
+	SS_POWER = 0x2,
+	SS_MOOD = 0x3,
+	SS_RANDOM = 0x4,
+	SS_POPUP_CENTER = 0x5,
+	SS_MAP_CENTER = 0x6,
+	SS_TIMER = 0x7,
+
+	SS_DID_NOT_PARSE = -1,
+} ScriptStyle;
+
+typedef enum script_control
+{
+	SC_XS = 0x0,
+	SC_YS = 0x1,
+	SC_X = 0x2,
+	SC_Y = 0x3,
+	SC_COL = 0x4,
+	SC_CAPTION = 0x5,
+	SC_CHECKBOX = 0x6,
+	SC_EDITBOX = 0x7,
+	SC_LISTBOX = 0x8,
+	SC_ACTIVE = 0x9,
+	SC_TEXT = 0xa,
+	SC_ITEMLIST = 0xb,
+	SC_ITEMINDEX = 0xc,
+	SC_BUTTON = 0xd,
+	SC_EXTRA = 0xe,
+	SC_WAVE = 0xf,
+	SC_VOL = 0x10,
+	SC_PITCH = 0x11,
+	SC_FADE = 0x12,
+	SC_PAN = 0x13,
+	SC_SPRITE = 0x14,
+	SC_COMMENT = 0x15,
+	SC_OK_TEXT = 0x16,
+	SC_CANCEL_TEXT = 0x17,
+
+	SC_DID_NOT_PARSE = -1,
+} ScriptControl;
 
 typedef enum unit_filter
 {
@@ -1353,6 +1382,42 @@ typedef enum preferences {
 	P_DO_NOT_AUTO_SELECT_UNITS_IN_MP    = 0x40000000
 } Preferences;
 
+typedef enum tradable_item_kind {
+	TIK_DIPLO_AGREEMENT = 0,
+	TIK_ALLIANCE        = 1,
+	TIK_EMBARGO         = 2,
+	TIK_MAP             = 3,
+	TIK_COMMUNICATION   = 4,
+	TIK_RESOURCE        = 5,
+	TIK_LUXURY          = 6,
+	TIK_GOLD            = 7,
+	TIK_TECHNOLOGY      = 8,
+	TIK_CITY            = 9,
+	TIK_UNIT            = 10
+} TradableItemKind;
+
+typedef enum animation_type {
+	AT_BLANK    = 0x0,
+	AT_DEFAULT  = 0x1,
+	AT_RUN      = 0x2,
+	AT_ATTACK1  = 0x3,
+	AT_ATTACK2  = 0x4,
+	AT_ATTACK3  = 0x5,
+	AT_DEATH    = 0x6,
+	AT_FORTIFY  = 0x7,
+	AT_FIDGET   = 0x8,
+	AT_VICTORY  = 0x9,
+	AT_CAPTURE  = 0xA,
+	AT_FORTRESS = 0xB,
+	AT_BUILD    = 0xC,
+	AT_ROAD     = 0xD,
+	AT_MINE     = 0xE,
+	AT_IRRIGATE = 0xF,
+	AT_JUNGLE   = 0x10,
+	AT_FOREST   = 0x11,
+	AT_PLANT    = 0x12,
+} AnimationType;
+
 struct IntList
 {
   int field_0;
@@ -1361,6 +1426,29 @@ struct IntList
   int * contents;
   int * contents_end;
   int * also_contents_end;
+};
+
+struct CoordPairList
+{
+  byte field_0;
+  byte field_1;
+  byte field_2;
+  byte field_3;
+  CoordPair * contents;
+  CoordPair * contents_end;
+  CoordPair * buffer_end;
+};
+
+struct TribeCustomization
+{
+  char leader_name[32];
+  char leader_title[24];
+  char civ_formal_name[40];
+  char civ_noun[40];
+  char civ_adjective[16];
+  int field_98[6];
+  int leader_gender;
+  int field_B4;
 };
 
 struct City_Base_vtable
@@ -1538,7 +1626,7 @@ struct Tile_vtable
   short (__thiscall *m47_Get_Tile_BuildingID)(Tile *);
   short (__thiscall *m48_Get_field_20_hiword)(Tile *);
   int (__thiscall *m49_Get_Square_RealType)(int);
-  SquareTypes (__thiscall *m50_Get_Square_BaseType)(Tile *);
+  enum SquareTypes (__thiscall *m50_Get_Square_BaseType)(Tile *);
   void (__thiscall *m51_Unset_Tile_Flags)(Tile *,  int, int, int, int);
   void (__thiscall *m52_Unset_River_Code_call_m53)(Tile *,  char);
   int (__thiscall *m53_set_River_Code_field_30)(Tile *);
@@ -1880,8 +1968,7 @@ struct Map_vtable
   int m17;
 //  char (___thiscall *m18)(Map *, int, int);
   void *m18;
-//  int (___thiscall *m19_Create_Tiles)(Map *, Tile **);
-  void *m19_Create_Tiles;
+  byte (__thiscall * m19_Create_Tiles)(Map * _this,  Tile ** out_array);
   int m20;
   byte (__thiscall * is_near_lake) (Map * _this,  int x, int y, int num_tiles);
   byte (__thiscall * is_near_river) (Map * _this,  int x, int y, int num_tiles);
@@ -2067,10 +2154,10 @@ struct Fighter
   Unit * defender;
   byte defender_eligible_to_retreat;
   byte attacker_eligible_to_retreat;
-  byte field_A;
+  byte play_animations;
   byte field_B;
   int attack_direction;
-  int field_10;
+  int defense_direction; // Reverse of attack direction
   int attacker_location_x;
   int attacker_location_y;
   int defender_location_x;
@@ -2136,8 +2223,8 @@ struct Improvement
   int Resource2ID;
   enum ImprovementTypeFlags ImprovementFlags;
   enum ImprovementTypeCharacteristics Characteristics;
-  int SmallWonderFlags;
-  int WonderFlags;
+  enum ImprovementTypeSmallWonderFeatures SmallWonderFlags;
+  enum ImprovementTypeWonderFeatures WonderFlags;
   int ArmyRequiredCount;
   int Flavours;
   int field_104;
@@ -2322,7 +2409,7 @@ struct Tile_Image_Info
 
 struct Tile_Image_Info_vtable
 {
-  int m00;
+  Tile_Image_Info * (__thiscall * destruct) (Tile_Image_Info *,  byte);
 };
 
 struct Tile_Image_Info_List
@@ -2364,17 +2451,25 @@ struct City_Screen_FileNames
   String260 XAndView2;
 };
 
-struct _188_48
+struct AnimationSummaryVTable
 {
-  int *vtable;
-  int Direction;
-  int field_8;
-  int field_C[4];
-  int Direction2;
-  int Animation_Type;
-  int field_24;
-  int field_28;
-  int Last;
+  AnimationSummary * (__thiscall * destruct) (AnimationSummary *,  byte);
+};
+
+struct AnimationSummary
+{
+  AnimationSummaryVTable * vtable;
+  enum direction direction;
+  AnimationType queued_anim_type;
+  int tile_x;
+  int tile_y;
+  int pixel_loc_x;
+  int pixel_loc_y;
+  enum direction direction_2; // queued direction?
+  AnimationType current_anim_type;
+  int pixel_target_x;
+  int pixel_target_y;
+  int field_2C; // bookend?
 };
 
 struct FLC_Frame_Image
@@ -2492,11 +2587,11 @@ struct Unit_vtable
   byte (__thiscall * is_enemy_of_unit) (Unit *,  Unit *, int);
   int m17;
   int m18;
-  int (__thiscall * Move) (Unit *,  int, char);
-  int m20;
+  int (__thiscall * Move) (Unit *, int, int, char);
+  int (__thiscall * teleport) (Unit *, int, int, int, Unit *);
   void (__thiscall * update_while_active) (Unit *);
   int m22;
-  byte (__thiscall * work) (Unit *);
+  bool (__thiscall * work) (Unit *);
   int m24;
   int m25;
   int m26;
@@ -2724,10 +2819,20 @@ struct MapMessage
   int Last;
 };
 
-struct Form_Data_30
+struct Timer
 {
-  int vtable;
-  int field_4[11];
+  void * vtable;
+  void * callback_fn_2;
+  int field_8;
+  unsigned * timer_id;
+  void * callback_fn;
+  int field_14;
+  int field_18;
+  void * callback_param;
+  int duration; // in milliseconds
+  int sent_window_message;
+  int resolution; // in milliseconds
+  int field_2C;
 };
 
 struct GUI_Form_1_vtable
@@ -3066,7 +3171,7 @@ struct Leader_vtable
   int m18;
   int m19;
   int m20;
-  int m21;
+  int (__thiscall * ai_eval_technology) (Leader * _this, int edx, int id, byte param_2, byte param_3);
   int m22;
   int m23;
   int m24;
@@ -3077,7 +3182,7 @@ struct Leader_vtable
   void *m28;
   int m29;
   int m30;
-  int m31;
+  int (__thiscall * get_attitude_toward) (Leader * _this, int edx, int civ_id, int param_2);
   int m32;
   int m33;
   int m34;
@@ -3087,7 +3192,7 @@ struct Leader_vtable
   int m38;
   int m39;
   int m40;
-  int m41;
+  bool (__thiscall * could_buy_tech) (Leader * _this, int edx, int tech_id, int from_civ_id);
   int m42;
 };
 
@@ -3253,9 +3358,9 @@ struct Item_List2
 struct Culture
 {
   Base Base;
-  int field_1C;
-  int field_20;
-  int field_24;
+  int cultural_level;
+  int total_culture_accumulated;
+  int total_culture_income;
   int CivID;
 };
 
@@ -3433,16 +3538,15 @@ struct Navigator_Cell
   short X;
   short Y;
   int field_4;
-  Navigator_Point **First_Point;
-  Navigator_Point **Last_Point;
+  CoordPair **First_Point;
+  CoordPair **Last_Point;
   int field_10;
   int field_14;
 };
 
-struct Navigator_Point
+struct CoordPair
 {
-  short X;
-  short Y;
+  short x, y;
 };
 
 struct JGL_Image
@@ -3490,8 +3594,7 @@ struct JGL_Image_vtable
   void *m07_m05_Get_Pixel;
   int m08_Get_Bits_Data;
   int m09;
-//  HDC (___thiscall *m10_Get_DC)(JGL_Image *);
-  void *m10_Get_DC;
+  HDC (__thiscall * m10_Get_DC) (JGL_Image * _this);
 //  void (___thiscall *m11_Release_DC)(JGL_Image *, int);
   void *m11_Release_DC;
   int m12;
@@ -3500,7 +3603,7 @@ struct JGL_Image_vtable
   int m15;
 //  int (___thiscall *m16_Copy_To_Dest)(JGL_Image *_this, JGL_Image *Dest, RECT *SrcRect, RECT *DestRect);
   void *m16_Copy_To_Dest;
-  int m17_Register_Rect;
+  int m17_fill_area;
   int m18;
   int m19;
   int m20;
@@ -3537,10 +3640,8 @@ struct JGL_Image_vtable
   int m51;
   int m52_Get_Image_Rect;
   int m53;
-//  int (___thiscall *m54_Get_Width)(JGL_Image *_this);
-  void *m54_Get_Width;
-//  int (___thiscall *m55_Get_Height)(JGL_Image *_this);
-  void *m55_Get_Height;
+  int (__thiscall * m54_Get_Width) (JGL_Image * _this);
+  int (__thiscall * m55_Get_Height) (JGL_Image * _this);
   int m56;
 //  int (___thiscall *m57_Get_Bit_Count)(JGL_Image *);
   void *m57_Get_Bit_Count;
@@ -3963,7 +4064,7 @@ struct Control_Tooltips
   int field_8;
   int field_C;
   int field_10[4];
-  Form_Data_30 Data_30;
+  Timer timer;
   Control_Tooltip *Items;
   int Capacity;
   int Count;
@@ -4055,7 +4156,9 @@ struct Leader
   int Current_Research_Turns;
   int Future_Techs_Count;
   short AI_Strategy_Unit_Counts[20];
-  int field_130[22];
+  int field_130[6];
+  short ai_strat_production_counts[20];
+  int field_170[6];
   int Armies_Count;
   int Unit_Count;
   int Military_Units_Count;
@@ -4080,10 +4183,8 @@ struct Leader
   int Trade_Embargos[32];
   int field_10B0[18];
   int Color_Table_ID;
-  int field_10FC;
-  int field_1100[7];
-  int field_111C[36];
-  int field_11AC[8];
+  TribeCustomization tribe_customization;
+  int field_11AC[6];
   int field_11CC;
   int field_11D0[252];
   int field_15C0;
@@ -4457,14 +4558,23 @@ struct Tile_Type
 
 struct PCX_Image
 {
-  int vtable;
+  PCX_Image_vtable * vtable;
   JGL_Renderer JGL;
+};
+
+struct PCX_Image_vtable
+{
+  int m00;
+  int m01;
+  void (__thiscall * clear_JGL) (PCX_Image *);
+  PCX_Image * (__thiscall * destruct) (PCX_Image *,  byte);
+  int (__thiscall * return_zero) (PCX_Image *);
 };
 
 struct FLC_Animation
 {
   _188_vtable *vtable;
-  _188_48 struct_48;
+  AnimationSummary summary;
   int field_34[9];
   FLC_Frame_Image Frame_1;
   FLC_Frame_Image Frame_2;
@@ -4472,7 +4582,15 @@ struct FLC_Animation
   Animation_Info *Animation_Info;
   int field_E8[5];
   int field_FC;
-  int field_100[7];
+  int field_100;
+  int field_104;
+  int field_108;
+  int field_10C;
+  byte field_110;
+  byte field_111;
+  byte field_112;
+  byte field_113;
+  int field_114[2];
   int Direction3;
   int Direction4;
   int field_124;
@@ -4591,7 +4709,7 @@ struct Advisor_Base_Form
   int Last;
 };
 
-struct Main_Screen_Data_1AD4
+struct Animator
 {
   int field_0;
   int field_4;
@@ -4731,7 +4849,7 @@ struct Unit_Body
   int PrevMoveY;
   int CivID;
   int RaceID;
-  int field_20;
+  int barb_tribe_id;
   int UnitTypeID;
   int Combat_Experience;
   int Status;
@@ -4762,7 +4880,12 @@ struct Unit_Body
   int field_1D4;
   LeaderKind leader_kind;
   IDLS IDLS;
-  int field_210[12];
+  int field_210[8];
+  byte field_230;
+  byte field_231;
+  byte always_on_top;
+  byte field_233;
+  int field_234[3];
   RECT Rect;
   int field_250[4];
   FLC_Animation Animation;
@@ -5247,7 +5370,7 @@ struct TextBox
   Base_Form Base;
   Scroll_Bar Scroll_Bar;
   int field_1934[16];
-  Form_Data_30 field_1974;
+  Timer timer;
 };
 
 struct File_Dialog_Body
@@ -5551,7 +5674,7 @@ struct Authors_Form
   int field_1A38;
   PCX_Image PCX;
   Button Button1;
-  Form_Data_30 Data_30;
+  Timer timer;
 };
 
 struct MP_Filters_Form
@@ -5736,7 +5859,10 @@ struct Main_GUI
 {
   Base_Form Base;
   int field_574[4];
-  int field_584;
+  byte field_584;
+  byte is_enabled;
+  byte field_586;
+  byte is_mouse_down_on_minimap;
   int field_588;
   int field_58C[769];
   String260 Main_Commands[29];
@@ -5772,8 +5898,8 @@ struct Main_GUI
   Tile_Image_Info Images[252];
   Tile_Image_Info Image2;
   Tile_Image_Info Image3;
-  Form_Data_30 Data_30_1;
-  Form_Data_30 Data_30_2;
+  Timer timer_1;
+  Timer timer_2;
   int field_16CE0;
   Command_Button Unit_Command_Buttons[42];
 };
@@ -5860,12 +5986,18 @@ struct Main_Screen_Form
   City *Selected_City;
   int field_4D80;
   int field_4D84;
-  Form_Data_30 Data_30_1;
+  Timer timer_1;
   int field_4DB8;
   int Player_CivID;
   int field_4DC0[25];
-  Form_Data_30 Data_30_2;
-  int field_4E54[7];
+  Timer timer_2;
+  int field_4E54;
+  int field_4E58;
+  int revealed_area_x_min;
+  int revealed_area_x_max;
+  int revealed_area_y_min;
+  int revealed_area_y_max;
+  int field_4E6C;
   int TileX_Min;
   int TileX_Max;
   int TileY_Min;
@@ -5873,7 +6005,9 @@ struct Main_Screen_Form
   int field_4E80[6];
   int camera_x;
   int camera_y;
-  int field_4EA0[11];
+  int field_4EA0[9];
+  int ambient_sound_index;
+  int field_4EC8;
   int Mode_Action;
   int field_4ED0;
   int Mode_Action_Range;
@@ -5881,19 +6015,17 @@ struct Main_Screen_Form
   int field_544C;
   Main_GUI GUI;
   int field_2E14C[6];
-  Form_Data_30 Data_30_3;
+  Timer ambient_sound_timer;
   int field_2E194;
   char turn_end_flag;
   char is_now_loading_game;
   char field_2E19A;
   char field_2E19B;
-  int field_2E19C;
-  Navigator_Point *First_Ptr;
-  Navigator_Point *Second_Ptr;
-  int field_2E1A8[2];
+  CoordPairList minimap_update_list;
+  int field_2E1AC;
   int mouse_x;
   int mouse_y;
-  Main_Screen_Data_1AD4 Data_1AD4;
+  Animator animator;
 };
 
 struct Governor_Form
@@ -5955,13 +6087,14 @@ typedef struct Object_66D520 Object_66D520;
 typedef struct PopupSelection PopupSelection;
 typedef struct PopupFormVTable PopupFormVTable;
 typedef struct PopupForm PopupForm;
-typedef struct StrWithJunk StrWithJunk;
+typedef struct TradableItem TradableItem;
 typedef struct TradeOfferVTable TradeOfferVTable;
 typedef struct TradeOffer TradeOffer;
 typedef struct TradeOfferList TradeOfferList;
 typedef struct Object_667188 Object_667188;
 typedef struct DiploForm DiploForm;
 typedef struct TextBuffer TextBuffer;
+typedef struct OpenGLRenderer OpenGLRenderer;
 
 // Contains font info for a particular size & style
 struct Object_66C3FC
@@ -6007,11 +6140,12 @@ struct PopupForm
 	int unk2[338];
 };
 
-struct StrWithJunk
+struct TradableItem
 {
-	char * str;
-	byte junk_1[4];
-	int junk_2;
+	char * label;
+	byte listed_for_sale    , can_be_sold,
+	     listed_for_purchase, can_be_bought;
+	int field_8;
 };
 
 struct TradeOfferVTable
@@ -6045,8 +6179,8 @@ struct Object_667188
 
 struct DiploForm
 {
-	Base_Form_vtable * vtable; // = 0x66C0D8
-	int field_4[933];
+	Base_Form base;
+	int field_574[585];
 	int other_party_civ_id;
 	int field_E9C[15];
 	int mode;
@@ -6055,18 +6189,18 @@ struct DiploForm
 	TradeOfferList our_offer_lists[32];
 	int field_1380[4];
 	int field_1390[3];
-	StrWithJunk * headings;
-	StrWithJunk * agreements;
-	StrWithJunk * alliances;
-	StrWithJunk * embargoes;
-	void * field_13AC;
-	StrWithJunk * communications;
-	int field_13B4;
-	int field_13B8;
-	int field_13BC;
-	int field_13C0;
-	int field_13C4;
-	int field_13C8;
+	TradableItem * tradable_categories; // "Diplomatic Agreements", "Military Alliances", "Trade Embargos", "Maps", etc.
+	TradableItem * tradable_diplo_agreements;
+	TradableItem * tradable_alliances;
+	TradableItem * tradable_embargos;
+	TradableItem * tradable_maps; // "World Map", "Territory Map"
+	TradableItem * tradable_communications;
+	TradableItem * tradable_resources; // Array len = resource count
+	TradableItem * tradable_luxuries; // Array len = resource count
+	TradableItem * tradable_gold;
+	TradableItem * tradable_technologies; // Array len = tech count
+	TradableItem * tradable_cities;
+	TradableItem * tradable_units;
 	char * attitudes[5]; // polite, annoyed, etc.
 	int field_13E0[24];
 	Tile_Image_Info talk_offer_img;
@@ -6095,6 +6229,22 @@ struct TextBuffer
 	int field_18;
 };
 
+struct OpenGLRenderer
+{
+	void * vtable; // = 0x6724B4
+	bool is_on_windows_2000_or_newer;
+	bool is_initialized;
+	byte field_6;
+	byte field_7;
+	HGLRC context;
+	int field_C;
+	float red;
+	float green;
+	float blue;
+	float alpha;
+	int field_20;
+};
+
 
 
 
@@ -6114,220 +6264,276 @@ struct TextBuffer
 #define ADDR_STEALTH_ATTACK_TARGET_COUNT_CHECK ((void *)bin_addrs[12])
 #define ADDR_UNIT_COUNT_CHECK ((void *)bin_addrs[13])
 #define ADDR_ERA_COUNT_CHECK ((void *)bin_addrs[14])
-#define ADDR_SUB_BUG_PATCH ((void *)bin_addrs[15])
-#define ADDR_SCIENCE_AGE_BUG_PATCH ((void *)bin_addrs[16])
-#define ADDR_PEDIA_TEXTURE_BUG_PATCH ((void *)bin_addrs[17])
-#define ADDR_AUTORAZE_BYPASS ((void *)bin_addrs[18])
-#define is_online_game ((char (__stdcall *) (void))bin_addrs[19])
-#define tile_at ((Tile * (__cdecl *) (int x, int y))bin_addrs[20])
-#define TileUnits_TileUnitID_to_UnitID ((int (__thiscall *) (TileUnits * _this,  int tile_unit_id, int * out_UnitItem_field_0))bin_addrs[21])
-#define Unit_bombard_tile ((void (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[22])
-#define Unit_can_bombard_tile ((void (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[23])
-#define Unit_get_defense_strength ((int (__thiscall *) (Unit * _this))bin_addrs[24])
-#define Unit_is_visible_to_civ ((char (__thiscall *) (Unit * _this,  int civ_id, int param_2))bin_addrs[25])
-#define Tile_has_city ((char (__thiscall *) (Tile * _this))bin_addrs[26])
-#define Unit_get_max_hp ((int (__thiscall *) (Unit * _this))bin_addrs[27])
-#define UnitType_has_ability ((char (__thiscall *) (UnitType * _this,  enum UnitTypeAbilities a))bin_addrs[28])
-#define Unit_get_max_move_points ((int (__thiscall *) (Unit * _this))bin_addrs[29])
-#define Button_set_tooltip ((int (__thiscall *) (Button * _this,  char * str))bin_addrs[30])
-#define PCX_Image_construct ((PCX_Image * (__thiscall *) (PCX_Image * _this))bin_addrs[31])
-#define PCX_Image_read_file ((int (__thiscall *) (PCX_Image * _this,  char * file_path, void * param_2, int param_3, int param_4, int param_5))bin_addrs[32])
-#define Tile_Image_Info_construct ((Tile_Image_Info * (__thiscall *) (Tile_Image_Info * _this))bin_addrs[33])
-#define Tile_Image_Info_slice_pcx ((int (__thiscall *) (Tile_Image_Info * _this,  PCX_Image * img, int up_left_x, int up_left_y, int w, int h, int arg6, int arg7))bin_addrs[34])
-#define get_popup_form ((PopupForm * (__stdcall *) ())bin_addrs[35])
-#define set_popup_str_param ((int (__cdecl *) (int param_index, char * str, int param_3, int param_4))bin_addrs[36])
-#define set_popup_int_param ((int (__cdecl *) (int param_index, int value))bin_addrs[37])
-#define show_popup ((int (__thiscall *) (void * _this,  int param_1, int param_2))bin_addrs[38])
-#define City_zoom_to ((void (__thiscall *) (City *_this,  int param_1))bin_addrs[39])
-#define City_has_improvement ((char (__thiscall *) (City * _this,  int i_improvement, char include_auto_improvements))bin_addrs[40])
-#define Main_Screen_Form_perform_action_on_tile ((void (__thiscall *) (Main_Screen_Form * _this,  enum Unit_Mode_Actions action, int x, int y))bin_addrs[41])
-#define Main_GUI_set_up_unit_command_buttons ((void (__thiscall *) (Main_GUI * _this))bin_addrs[42])
-#define Main_GUI_handle_button_press ((void (__thiscall *) (Main_GUI * _this,  int button_id))bin_addrs[43])
-#define Main_Screen_Form_handle_key_down ((int (__thiscall *) (Main_Screen_Form * _this,  int char_code, int virtual_key_code))bin_addrs[44])
-#define handle_cursor_change_in_jgl ((int (__stdcall *) ())bin_addrs[45])
-#define Main_GUI_handle_click_in_status_panel ((void (__thiscall *) (Main_GUI * _this,  int mouse_x, int mouse_y))bin_addrs[46])
-#define get_font ((Object_66C3FC * (__cdecl *) (int size, FontStyleFlags style))bin_addrs[47])
-#define PCX_Image_draw_centered_text ((int (__thiscall *) (PCX_Image *_this,  Object_66C3FC * font, char * str, int x, int y, int width, int str_len))bin_addrs[48])
-#define City_Form_draw ((void (__thiscall *) (City_Form * _this))bin_addrs[49])
-#define City_Form_print_production_info ((void (__thiscall *) (City_Form *_this,  String256 * out_strs, int str_capacity))bin_addrs[50])
-#define City_get_order_cost ((int (__thiscall *) (City * _this))bin_addrs[51])
-#define City_get_order_progress ((int (__thiscall *) (City * _this))bin_addrs[52])
-#define Trade_Net_get_movement_cost ((int (__thiscall *) (Trade_Net * _this,  int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned param_7, int neighbor_index, Trade_Net_Distance_Info * dist_info))bin_addrs[53])
-#define do_save_game ((int (__cdecl *) (char * file_path, char param_2, GUID * guid))bin_addrs[54])
-#define City_recompute_happiness ((void (__thiscall *) (City * _this))bin_addrs[55])
-#define Leader_recompute_auto_improvements ((void (__thiscall *) (Leader * _this))bin_addrs[56])
-#define get_wonder_city_id ((int (__thiscall *) (void * _this,  int wonder_improvement_id))bin_addrs[57])
-#define ADDR_SMALL_WONDER_FREE_IMPROVS_RETURN ((int)bin_addrs[58])
-#define ADDR_RECOMPUTE_AUTO_IMPROVS_FILTER ((void *)bin_addrs[59])
-#define Main_Screen_Form_issue_command ((char (__thiscall *) (Main_Screen_Form * _this,  int command, Unit * unit))bin_addrs[60])
-#define clear_something_1 ((void (__stdcall *) ())bin_addrs[61])
-#define clear_something_2 ((void (__thiscall *) (void * _this))bin_addrs[62])
-#define Leader_can_do_worker_job ((char (__thiscall *) (Leader * _this,  enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing))bin_addrs[63])
-#define ADDR_CHECK_ARTILLERY_IN_CITY ((void *)bin_addrs[64])
-#define Unit_ai_move_artillery ((void (__thiscall *) (Unit * _this))bin_addrs[65])
-#define neighbor_index_to_displacement ((void (__cdecl *) (int neighbor_index, int * out_x, int * out_y))bin_addrs[66])
-#define Unit_set_state ((void (__thiscall *) (Unit * _this,  int new_state))bin_addrs[67])
-#define Unit_set_escortee ((void (__thiscall *) (Unit * _this,  int escortee))bin_addrs[68])
-#define p_rand_object ((void *)bin_addrs[69])
-#define rand_int ((int (__thiscall *) (void * _this,  int lim))bin_addrs[70])
-#define City_ai_choose_production ((void (__thiscall *) (City * _this,  City_Order * out))bin_addrs[71])
-#define City_can_build_unit ((byte (__thiscall *) (City * _this,  int unit_type_id, byte exclude_upgradable, int param_3, byte allow_kings))bin_addrs[72])
-#define Unit_disembark_passengers ((int (__thiscall *) (Unit * _this,  int tile_x, int tile_y))bin_addrs[73])
-#define p_null_tile ((Tile *)bin_addrs[74])
-#define ADDR_HOUSEBOAT_BUG_PATCH ((byte *)bin_addrs[75])
-#define ADDR_HOUSEBOAT_BUG_PATCH_END ((byte *)bin_addrs[76])
-#define p_trade_net ((Trade_Net *)bin_addrs[77])
-#define Trade_Net_set_unit_path ((int (__thiscall *) (Trade_Net * _this,  int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp))bin_addrs[78])
-#define Unit_pop_next_move_from_path ((byte (__thiscall *) (Unit * _this))bin_addrs[79])
-#define Unit_ai_move_leader ((void (__thiscall *) (Unit * _this))bin_addrs[80])
-#define Unit_next_escorter_id ((int (__thiscall *) (Unit * _this,  int * index, byte begin_iterating))bin_addrs[81])
-#define Unit_disband ((void (__thiscall *) (Unit * _this))bin_addrs[82])
-#define Unit_can_hurry_production ((byte (__thiscall *) (Unit * _this,  City * city, byte exclude_cheap_improvements))bin_addrs[83])
-#define Unit_hurry_production ((void (__thiscall *) (Unit * _this))bin_addrs[84])
-#define Unit_ai_can_start_science_age ((byte (__thiscall *) (Unit * _this))bin_addrs[85])
-#define Unit_start_science_age ((void (__thiscall *) (Unit * _this))bin_addrs[86])
-#define Unit_ai_can_form_army ((byte (__thiscall *) (Unit * _this))bin_addrs[87])
-#define Unit_form_army ((Unit * (__thiscall *) (Unit * _this))bin_addrs[88])
-#define p_diplo_form ((DiploForm *)bin_addrs[89])
-#define p_trade_offer_vtable ((TradeOfferVTable *)bin_addrs[91])
-#define Leader_consider_trade ((DiploMessage (__thiscall *) (Leader * _this,  TradeOfferList * receiving, TradeOfferList * paying, int other_party_civ_id, byte param_4, byte param_5, byte param_6, byte param_7, int * out_advantage, int * param_9, int * param_10))bin_addrs[92])
-#define ADDR_SETUP_INITIAL_GOLD_ASK_RETURN ((int)bin_addrs[93])
-#define ADDR_SETUP_MODIFY_GOLD_ASK_RETURN ((int)bin_addrs[94])
-#define ADDR_SETUP_INITIAL_GOLD_OFFER_RETURN ((int)bin_addrs[95])
-#define ADDR_SETUP_MODIFY_GOLD_OFFER_RETURN ((int)bin_addrs[96])
-#define TRADE_GOLD_SETTER_IS_LUMP_SUM_OFFSET ((int)bin_addrs[97])
-#define ADDR_PRINT_GOLD_AMOUNT_1 ((byte *)bin_addrs[98])
-#define ADDR_PRINT_GOLD_AMOUNT_2 ((byte *)bin_addrs[99])
-#define Map_check_city_location ((CityLocValidity (__thiscall *) (Map *_this,  int tile_x, int tile_y, int civ_id, byte check_for_city_on_tile))bin_addrs[100])
-#define p_player_bits ((unsigned *)bin_addrs[101])
-#define DiploForm_close ((void (__thiscall *) (DiploForm *))bin_addrs[102])
-#define DiploForm_do_diplomacy ((void (__thiscall *) (DiploForm * _this,  int diplo_message, int param_2, int civ_id, int do_not_request_audience, int war_negotiation, int disallow_proposal, TradeOfferList * our_offers, TradeOfferList * their_offers))bin_addrs[103])
-#define Leader_ai_would_meet_with ((byte (__thiscall *) (Leader * _this,  int civ_id))bin_addrs[104])
-#define Button_construct ((Button * (__thiscall *) (Button * _this))bin_addrs[105])
-#define Button_initialize ((int (__thiscall *) (Button * _this,  char * param_1, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8))bin_addrs[106])
-#define DiploForm_set_their_message ((int (__thiscall *) (DiploForm * _this,  DiploMessage msg, int message_arg, int param_3))bin_addrs[107])
-#define DiploForm_reset_our_message_choices ((void (__thiscall *) (DiploForm *))bin_addrs[108])
-#define civ_prog_malloc ((void * (__cdecl *) (unsigned _Size))bin_addrs[109])
-#define civ_prog_free ((void (__cdecl *) (void * p))bin_addrs[110])
-#define Context_Menu_open ((int (__thiscall *) (Context_Menu * _this,  int x, int y, int param_3))bin_addrs[111])
-#define ADDR_OPEN_UNIT_MENU_RETURN ((int)bin_addrs[112])
-#define Context_Menu_widen_for_text ((void (__thiscall *) (Context_Menu * _this,  char * text))bin_addrs[113])
-#define Context_Menu_add_item_and_set_field_18 ((int (__thiscall *)  (Context_Menu * _this,  int item_id, char * text, int field_18))bin_addrs[114])
-#define Unit_ai_move_terraformer ((void (__thiscall *) (Unit * _this))bin_addrs[115])
-#define City_requires_improvement_to_grow ((int (__thiscall *) (City * _this))bin_addrs[116])
-#define Unit_can_perform_command ((byte (__thiscall *) (Unit * _this,  int unit_command_value))bin_addrs[117])
-#define Unit_join_city ((void (__thiscall *) (Unit * _this,  City * city))bin_addrs[118])
-#define Unit_upgrade ((Unit * (__thiscall *) (Unit * _this,  byte ignore_cost))bin_addrs[119])
-#define Unit_get_upgrade_cost ((int (__thiscall *) (Unit * _this))bin_addrs[120])
-#define script_dot_txt_file_path ((char *)bin_addrs[121])
-#define Unit_can_move_to_adjacent_tile ((AdjacentMoveValidity (__thiscall *) (Unit * _this,  int neighbor_index, int param_2))bin_addrs[122])
-#define Map_compute_neighbor_index ((int (__thiscall *) (Map * _this,  int x_home, int y_home, int x_neigh, int y_neigh, int lim))bin_addrs[123])
-#define PCX_Image_draw_text ((int (__thiscall *) (PCX_Image * _this,  char * str, int x, int y, int str_len))bin_addrs[124])
-#define Main_Screen_Form_get_tile_coords_under_mouse ((int (__thiscall *) (Main_Screen_Form * _this,  int mouse_x, int mouse_y, int * out_tile_x, int * out_tile_y))bin_addrs[125])
-#define open_tile_info ((void (__thiscall *) (void * _this,  int mouse_x, int mouse_y, int civ_id))bin_addrs[126])
-#define get_anarchy_length ((int (__stdcall *) (int leader_id))bin_addrs[127])
-#define PCX_Image_process_text ((int (__thiscall *) (PCX_Image * _this,  char * str))bin_addrs[128])
-#define p_current_turn_no ((int *)bin_addrs[129])
-#define p_labels ((char ***)bin_addrs[130])
-#define LBL_GOLDEN_AGE ((int)bin_addrs[131])
-#define p_toggleable_rules ((int *)bin_addrs[132])
-#define p_debug_mode_bits ((unsigned *)bin_addrs[133])
-#define Unit_has_ability ((byte (__thiscall *) (Unit * _this,  enum UnitTypeAbilities a))bin_addrs[134])
-#define ai_eval_city_location ((int (__stdcall *) (int x, int y, int civ_id, byte param_4, int * out_breakdown))bin_addrs[135])
-#define ADDR_INTERCEPT_AI_IMPROV_VALUE ((void *)bin_addrs[136])
-#define AI_CONSIDERATION_INTERCEPT_LEN ((int)bin_addrs[137])
-#define ADDR_INTERCEPT_AI_UNIT_VALUE ((void *)bin_addrs[138])
-#define City_compute_corrupted_yield ((int (__thiscall *) (City * _this,  int gross_yield, byte is_production))bin_addrs[139])
-#define PopupForm_add_text ((byte (__thiscall *) (PopupForm * _this,  char * text, byte param_2))bin_addrs[140])
-#define PopupSelection_add_item ((int (__thiscall *) (PopupSelection * _this,  char * text, int value))bin_addrs[141])
-#define load_scenario ((unsigned (__thiscall *) (void * _this,  char * param_1, unsigned * param_2))bin_addrs[142])
-#define ADDR_LOAD_SCENARIO_PREVIEW_RETURN ((int)bin_addrs[143])
-#define ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN ((int)bin_addrs[144])
-#define Improvement_has_wonder_flag ((byte (__thiscall *) (Improvement * _this,  enum ImprovementTypeWonderFeatures flag))bin_addrs[145])
-#define UnitType_has_ai_strategy ((byte (__thiscall *) (UnitType * _this,  byte n))bin_addrs[146])
-#define Unit_find_transport ((Unit * (__thiscall *) (Unit * _this,  int tile_x, int tile_y))bin_addrs[147])
-#define Unit_load ((void (__thiscall *) (Unit * _this,  Unit * transport))bin_addrs[148])
-#define p_human_player_bits ((int *)bin_addrs[149])
-#define Tile_Image_Info_draw_on_map ((int (__thiscall *) (Tile_Image_Info * _this,  Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7))bin_addrs[150])
-#define BIC_get_asset_path ((char * (__thiscall *) (BIC * _this,  char * str, byte show_error_popup))bin_addrs[151])
-#define Tile_Image_Info_slice_pcx_with_color_table ((int (__thiscall *) (Tile_Image_Info * _this,  PCX_Image * img, int up_left_x, int up_left_y, int w, int h, int arg6, int arg7))bin_addrs[152])
-#define PCX_Image_set_font ((int (__thiscall *) (PCX_Image * _this,  Object_66C3FC * font, int arg_2, int arg_3, int arg_4))bin_addrs[153])
-#define ADDR_INTERCEPT_SET_RESOURCE_BIT ((void *)bin_addrs[154])
-#define City_has_resource ((byte (__thiscall *) (City * _this,  int resource_id))bin_addrs[155])
-#define City_has_trade_connection_to_capital ((byte (__thiscall *) (City * _this))bin_addrs[156])
-#define Trade_Net_recompute_resources ((void (__thiscall *) (Trade_Net * _this,  byte skip_popups))bin_addrs[157])
-#define Leader_has_tech ((byte (__thiscall *) (Leader * _this,  int id))bin_addrs[158])
-#define City_cycle_specialist_type ((byte (__thiscall *) (City * _this,  int mouse_x, int mouse_y, Citizen * citizen, City_Form * city_form))bin_addrs[159])
-#define City_get_total_pollution ((int (__thiscall *) (City * _this))bin_addrs[160])
-#define City_get_pollution_from_buildings ((int (__thiscall *) (City * _this))bin_addrs[161])
-#define City_get_pollution_from_pop ((int (__thiscall *) (City * _this))bin_addrs[162])
-#define City_add_or_remove_improvement ((void (__thiscall *) (City * _this,  int improv_id, int add, byte param_3))bin_addrs[163])
-#define ADDR_RESOURCE_TILE_COUNT_MASK ((void *)bin_addrs[164])
-#define Tile_get_resource_visible_to ((int (__thiscall *) (Tile * _this,  int civ_id))bin_addrs[165])
-#define Map_get_tile ((Tile * (__thiscall *) (Map * _this,  int index))bin_addrs[166])
-#define Fighter_begin ((void (__thiscall *) (Fighter * _this,  Unit * attacker, int attack_direction, Unit * defender))bin_addrs[167])
-#define Map_get_x_dist ((int (__thiscall *) (Map * _this,  int x1, int x2))bin_addrs[168])
-#define Map_get_y_dist ((int (__thiscall *) (Map * _this,  int y1, int y2))bin_addrs[169])
-#define Map_calc_food_yield_at ((int (__thiscall *) (Map * _this,  int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city))bin_addrs[170])
-#define Leader_create_city ((City * (__thiscall *) (Leader * _this,  int x, int y, int race_id, int param_4, char const * name, byte param_6))bin_addrs[171])
-#define Map_process_after_placing ((void (__thiscall *) (Map * _this,  byte param_1))bin_addrs[172])
-#define Unit_despawn ((void (__thiscall *) (Unit * _this,  int param_1, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7))bin_addrs[173])
-#define Unit_move ((void (__thiscall *) (Unit * _this,  int tile_x, int tile_y))bin_addrs[174])
-#define Main_GUI_label_loading_bar ((void (__thiscall *) (Main_GUI * _this,  int param_1, char *text))bin_addrs[175])
-#define ADDR_TURN_METALIMIT_1 ((byte *)bin_addrs[176])
-#define ADDR_TURN_METALIMIT_2 ((byte *)bin_addrs[177])
-#define ADDR_TURN_METALIMIT_3 ((byte *)bin_addrs[178])
-#define ADDR_TURN_METALIMIT_4 ((byte *)bin_addrs[179])
-#define ADDR_TURN_METALIMIT_5 ((byte *)bin_addrs[180])
-#define ADDR_TURN_METALIMIT_6 ((byte *)bin_addrs[181])
-#define ADDR_TURN_METALIMIT_7 ((byte *)bin_addrs[182])
-#define City_get_net_commerce ((int (__thiscall *) (City * _this,  int kind, byte include_science_age))bin_addrs[183])
-#define Leader_pay_unit_maintenance ((void (__thiscall *) (Leader * _this))bin_addrs[184])
-#define Leader_sum_improvements_maintenance ((int (__thiscall *) (Leader * _this,  int govt_id))bin_addrs[185])
-#define ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT ((byte *)bin_addrs[186])
-#define Leader_compute_income ((int (__thiscall *) (Leader * _this))bin_addrs[187])
-#define Leader_recompute_economy ((void (__thiscall *) (Leader * _this))bin_addrs[188])
-#define City_get_improvement_maintenance ((int (__thiscall *) (City * _this,  int improv_id))bin_addrs[189])
-#define Leader_set_treasury ((void (__thiscall *) (Leader * _this,  int amount))bin_addrs[190])
-#define City_sell_improvement ((void (__thiscall *) (City * _this,  int improv_id, byte set_status_bit))bin_addrs[191])
-#define p_civilopedia_form ((Civilopedia_Form *)bin_addrs[192])
-#define Civilopedia_open ((void (__thiscall *) (void * _this,  char * key, byte param_2))bin_addrs[193])
-#define get_unit_support_info ((void (__stdcall *) (int civ_id, int govt_id, int * out_cost_per_unit, int * out_count_free_units))bin_addrs[194])
-#define Leader_get_free_unit_count ((int (__thiscall *) (Leader * _this,  int govt_id))bin_addrs[195])
-#define Leader_count_foreign_and_king_units ((int (__thiscall *) (Leader * _this))bin_addrs[196])
-#define get_tile_occupier_id ((int (__cdecl *) (int x, int y, int pov_civ_id, byte respect_unit_invisibility))bin_addrs[197])
-#define Main_Screen_Form_show_map_message ((void (__thiscall *) (Main_Screen_Form * _this,  int tile_x, int tile_y, char * text_key, byte pause))bin_addrs[198])
-#define p_preferences ((unsigned *)bin_addrs[199])
-#define City_set_production ((void (__thiscall *) (City * _this,  int order_type, int order_id, byte ask_to_confirm))bin_addrs[200])
-#define City_get_income_from_wealth_build ((int (__thiscall *) (City * _this))bin_addrs[201])
-#define print_int ((char * (__cdecl *) (int val, char * str, unsigned base))bin_addrs[202])
-#define Context_Menu_add_item ((int (__thiscall *) (Context_Menu * _this,  int item_id, char * text, byte param_3, int param_4))bin_addrs[203])
-#define TextBuffer_check_ptr ((char * (__thiscall *) (TextBuffer * _this,  char * str))bin_addrs[204])
-#define Unit_try_flying_over_tile ((byte (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[205])
-#define Unit_perform_air_recon ((void (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[206])
-#define Leader_begin_unit_turns ((void (__thiscall *) (Leader * _this))bin_addrs[207])
-#define Fighter_find_defender_against_bombardment ((Unit * (__thiscall *) (Fighter * _this,  Unit * bombarder, int tile_x, int tile_y, int bombarder_civ_id, byte land_lethal, byte sea_lethal))bin_addrs[208])
-#define Unit_select_stealth_attack_target ((byte (__thiscall *) (Unit * _this,  int target_civ_id, int x, int y, byte allow_popup, Unit ** out_selected_target))bin_addrs[209])
-#define Unit_play_bombard_fire_animation ((int (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[210])
-#define Unit_play_bombing_animation ((void (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[211])
-#define Main_Screen_Form_issue_precision_strike_cmd ((void (__thiscall *) (Main_Screen_Form * _this,  Unit * unit))bin_addrs[212])
-#define Unit_can_stealth_attack ((byte (__thiscall *) (Unit * _this,  Unit * target))bin_addrs[213])
-#define process_text_snippet ((int (__cdecl *) (char * in, char * out))bin_addrs[214])
-#define get_int_from_conquests_ini ((int (__cdecl *) (LPCSTR key, int param_2, int param_3))bin_addrs[215])
-#define open_load_game_file_picker ((char * (__thiscall *) (void * _this))bin_addrs[216])
-#define do_load_game ((void * (__cdecl *) (char * param_1))bin_addrs[217])
-#define perform_interturn ((void (__cdecl *) ())bin_addrs[218])
-#define p_is_pbem_game ((byte *)bin_addrs[219])
-#define p_is_offline_mp_game ((byte *)bin_addrs[220])
-#define Fighter_do_bombard_tile ((void (__thiscall *) (Fighter * _this,  Unit * unit, int neighbor_index, int param_3, int param_4))bin_addrs[221])
-#define p_mp_object ((void *)bin_addrs[222])
-#define mp_check_current_combat ((byte (__thiscall *) (void * _this,  int mp_tile_x, int mp_tile_y))bin_addrs[223])
-#define Fighter_damage_city_by_bombardment ((byte (__thiscall *) (Fighter * _this,  Unit * unit, City * city, int damage_kind, int min_fire_rate))bin_addrs[224])
-#define Tile_get_terrain_move_cost ((int (__thiscall *) (Tile * _this))bin_addrs[225])
-#define get_combat_occupier ((int (__cdecl *) (int tile_x, int tile_y, int civ_id, byte ignore_visibility))bin_addrs[226])
-#define Leader_has_tech_with_flag ((byte (__thiscall *) (Leader * _this,  AdvanceTypeFlags flag))bin_addrs[227])
-#define Leader_count_wonders_with_flag ((int (__thiscall *) (Leader * _this,  ImprovementTypeWonderFeatures flag, City * only_in_city))bin_addrs[228])
-int const gog_addrs[229] = {
+#define ADDR_SCIENCE_AGE_BUG_PATCH ((void *)bin_addrs[15])
+#define ADDR_PEDIA_TEXTURE_BUG_PATCH ((void *)bin_addrs[16])
+#define ADDR_AUTORAZE_BYPASS ((void *)bin_addrs[17])
+#define is_online_game ((char (__stdcall *) (void))bin_addrs[18])
+#define tile_at ((Tile * (__cdecl *) (int x, int y))bin_addrs[19])
+#define TileUnits_TileUnitID_to_UnitID ((int (__thiscall *) (TileUnits * _this,  int tile_unit_id, int * out_UnitItem_field_0))bin_addrs[20])
+#define Unit_bombard_tile ((void (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[21])
+#define Unit_get_defense_strength ((int (__thiscall *) (Unit * _this))bin_addrs[22])
+#define Unit_is_visible_to_civ ((char (__thiscall *) (Unit * _this,  int civ_id, int param_2))bin_addrs[23])
+#define Tile_has_city ((char (__thiscall *) (Tile * _this))bin_addrs[24])
+#define Unit_get_max_hp ((int (__thiscall *) (Unit * _this))bin_addrs[25])
+#define UnitType_has_ability ((char (__thiscall *) (UnitType * _this,  enum UnitTypeAbilities a))bin_addrs[26])
+#define Unit_get_max_move_points ((int (__thiscall *) (Unit * _this))bin_addrs[27])
+#define Button_set_tooltip ((int (__thiscall *) (Button * _this,  char * str))bin_addrs[28])
+#define PCX_Image_construct ((PCX_Image * (__thiscall *) (PCX_Image * _this))bin_addrs[29])
+#define PCX_Image_read_file ((int (__thiscall *) (PCX_Image * _this,  char * file_path, PCX_Color_Table * out_color_table, int ct_start, int ct_count, unsigned flags))bin_addrs[30])
+#define Tile_Image_Info_construct ((Tile_Image_Info * (__thiscall *) (Tile_Image_Info * _this))bin_addrs[31])
+#define Tile_Image_Info_slice_pcx ((int (__thiscall *) (Tile_Image_Info * _this,  PCX_Image * img, int up_left_x, int up_left_y, int w, int h, int arg6, int arg7))bin_addrs[32])
+#define get_popup_form ((PopupForm * (__stdcall *) ())bin_addrs[33])
+#define set_popup_str_param ((int (__cdecl *) (int param_index, char * str, int param_3, int param_4))bin_addrs[34])
+#define set_popup_int_param ((int (__cdecl *) (int param_index, int value))bin_addrs[35])
+#define show_popup ((int (__thiscall *) (void * _this,  int param_1, int param_2))bin_addrs[36])
+#define City_zoom_to ((void (__thiscall *) (City *_this,  int param_1))bin_addrs[37])
+#define City_has_improvement ((char (__thiscall *) (City * _this,  int i_improvement, char include_auto_improvements))bin_addrs[38])
+#define Main_Screen_Form_perform_action_on_tile ((void (__thiscall *) (Main_Screen_Form * _this,  enum Unit_Mode_Actions action, int x, int y))bin_addrs[39])
+#define Main_GUI_set_up_unit_command_buttons ((void (__thiscall *) (Main_GUI * _this))bin_addrs[40])
+#define Main_GUI_handle_button_press ((void (__thiscall *) (Main_GUI * _this,  int button_id))bin_addrs[41])
+#define Main_Screen_Form_handle_key_down ((int (__thiscall *) (Main_Screen_Form * _this,  int char_code, int virtual_key_code))bin_addrs[42])
+#define handle_cursor_change_in_jgl ((int (__stdcall *) ())bin_addrs[43])
+#define Main_GUI_handle_click_in_status_panel ((void (__thiscall *) (Main_GUI * _this,  int mouse_x, int mouse_y))bin_addrs[44])
+#define get_font ((Object_66C3FC * (__cdecl *) (int size, FontStyleFlags style))bin_addrs[45])
+#define PCX_Image_draw_centered_text ((int (__thiscall *) (PCX_Image *_this,  Object_66C3FC * font, char * str, int x, int y, int width, int str_len))bin_addrs[46])
+#define City_Form_draw ((void (__thiscall *) (City_Form * _this))bin_addrs[47])
+#define City_Form_print_production_info ((void (__thiscall *) (City_Form *_this,  String256 * out_strs, int str_capacity))bin_addrs[48])
+#define City_get_order_cost ((int (__thiscall *) (City * _this))bin_addrs[49])
+#define City_get_order_progress ((int (__thiscall *) (City * _this))bin_addrs[50])
+#define Trade_Net_get_movement_cost ((int (__thiscall *) (Trade_Net * _this,  int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned flags, int neighbor_index, Trade_Net_Distance_Info * dist_info))bin_addrs[51])
+#define do_save_game ((int (__cdecl *) (char const * file_path, char param_2, GUID * guid))bin_addrs[52])
+#define City_recompute_happiness ((void (__thiscall *) (City * _this))bin_addrs[53])
+#define Leader_recompute_auto_improvements ((void (__thiscall *) (Leader * _this))bin_addrs[54])
+#define get_wonder_city_id ((int (__thiscall *) (void * _this,  int wonder_improvement_id))bin_addrs[55])
+#define ADDR_SMALL_WONDER_FREE_IMPROVS_RETURN ((int)bin_addrs[56])
+#define ADDR_RECOMPUTE_AUTO_IMPROVS_FILTER ((void *)bin_addrs[57])
+#define Main_Screen_Form_issue_command ((char (__thiscall *) (Main_Screen_Form * _this,  int command, Unit * unit))bin_addrs[58])
+#define clear_something_1 ((void (__stdcall *) ())bin_addrs[59])
+#define Timer_clear ((void (__thiscall *) (Timer * _this))bin_addrs[60])
+#define Leader_can_do_worker_job ((char (__thiscall *) (Leader * _this,  enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing))bin_addrs[61])
+#define ADDR_CHECK_ARTILLERY_IN_CITY ((void *)bin_addrs[62])
+#define Unit_ai_move_artillery ((void (__thiscall *) (Unit * _this))bin_addrs[63])
+#define neighbor_index_to_diff ((void (__cdecl *) (int neighbor_index, int * out_x, int * out_y))bin_addrs[64])
+#define Unit_set_state ((void (__thiscall *) (Unit * _this,  int new_state))bin_addrs[65])
+#define Unit_set_escortee ((void (__thiscall *) (Unit * _this,  int escortee))bin_addrs[66])
+#define p_rand_object ((void *)bin_addrs[67])
+#define rand_int ((int (__thiscall *) (void * _this,  int lim))bin_addrs[68])
+#define City_ai_choose_production ((void (__thiscall *) (City * _this,  City_Order * out))bin_addrs[69])
+#define City_can_build_unit ((bool (__thiscall *) (City * _this,  int unit_type_id, bool exclude_upgradable, int param_3, bool allow_kings))bin_addrs[70])
+#define Unit_disembark_passengers ((int (__thiscall *) (Unit * _this,  int tile_x, int tile_y))bin_addrs[71])
+#define p_null_tile ((Tile *)bin_addrs[72])
+#define ADDR_HOUSEBOAT_BUG_PATCH ((byte *)bin_addrs[73])
+#define ADDR_HOUSEBOAT_BUG_PATCH_END ((byte *)bin_addrs[74])
+#define p_trade_net ((Trade_Net *)bin_addrs[75])
+#define Trade_Net_set_unit_path ((int (__thiscall *) (Trade_Net * _this,  int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp))bin_addrs[76])
+#define Unit_pop_next_move_from_path ((byte (__thiscall *) (Unit * _this))bin_addrs[77])
+#define Unit_ai_move_leader ((void (__thiscall *) (Unit * _this))bin_addrs[78])
+#define Unit_next_escorter_id ((int (__thiscall *) (Unit * _this,  int * index, bool begin_iterating))bin_addrs[79])
+#define Unit_disband ((void (__thiscall *) (Unit * _this))bin_addrs[80])
+#define Unit_can_hurry_production ((bool (__thiscall *) (Unit * _this,  City * city, bool exclude_cheap_improvements))bin_addrs[81])
+#define Unit_hurry_production ((void (__thiscall *) (Unit * _this))bin_addrs[82])
+#define Unit_ai_can_start_science_age ((bool (__thiscall *) (Unit * _this))bin_addrs[83])
+#define Unit_start_science_age ((void (__thiscall *) (Unit * _this))bin_addrs[84])
+#define Unit_ai_can_form_army ((bool (__thiscall *) (Unit * _this))bin_addrs[85])
+#define Unit_form_army ((Unit * (__thiscall *) (Unit * _this))bin_addrs[86])
+#define p_diplo_form ((DiploForm *)bin_addrs[87])
+#define p_trade_offer_vtable ((TradeOfferVTable *)bin_addrs[89])
+#define Leader_consider_trade ((DiploMessage (__thiscall *) (Leader * _this,  TradeOfferList * receiving, TradeOfferList * paying, int other_party_civ_id, byte param_4, bool param_5, byte param_6, byte param_7, int * out_advantage, int * param_9, int * param_10))bin_addrs[90])
+#define ADDR_SETUP_INITIAL_GOLD_ASK_RETURN ((int)bin_addrs[91])
+#define ADDR_SETUP_MODIFY_GOLD_ASK_RETURN ((int)bin_addrs[92])
+#define ADDR_SETUP_INITIAL_GOLD_OFFER_RETURN ((int)bin_addrs[93])
+#define ADDR_SETUP_MODIFY_GOLD_OFFER_RETURN ((int)bin_addrs[94])
+#define TRADE_GOLD_SETTER_IS_LUMP_SUM_OFFSET ((int)bin_addrs[95])
+#define ADDR_PRINT_GOLD_AMOUNT_1 ((byte *)bin_addrs[96])
+#define ADDR_PRINT_GOLD_AMOUNT_2 ((byte *)bin_addrs[97])
+#define Map_check_city_location ((CityLocValidity (__thiscall *) (Map *_this,  int tile_x, int tile_y, int civ_id, bool check_for_city_on_tile))bin_addrs[98])
+#define p_player_bits ((unsigned *)bin_addrs[99])
+#define DiploForm_close ((void (__thiscall *) (DiploForm *))bin_addrs[100])
+#define DiploForm_do_diplomacy ((void (__thiscall *) (DiploForm * _this,  int diplo_message, int param_2, int civ_id, int do_not_request_audience, int war_negotiation, int disallow_proposal, TradeOfferList * our_offers, TradeOfferList * their_offers))bin_addrs[101])
+#define Leader_ai_would_meet_with ((bool (__thiscall *) (Leader * _this,  int civ_id))bin_addrs[102])
+#define Button_construct ((Button * (__thiscall *) (Button * _this))bin_addrs[103])
+#define Button_initialize ((int (__thiscall *) (Button * _this,  char * param_1, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8))bin_addrs[104])
+#define DiploForm_set_their_message ((int (__thiscall *) (DiploForm * _this,  DiploMessage msg, int message_arg, int param_3))bin_addrs[105])
+#define DiploForm_reset_our_message_choices ((void (__thiscall *) (DiploForm *))bin_addrs[106])
+#define civ_prog_malloc ((void * (__cdecl *) (unsigned _Size))bin_addrs[107])
+#define civ_prog_free ((void (__cdecl *) (void * p))bin_addrs[108])
+#define Context_Menu_open ((int (__thiscall *) (Context_Menu * _this,  int x, int y, int param_3))bin_addrs[109])
+#define ADDR_OPEN_UNIT_MENU_RETURN ((int)bin_addrs[110])
+#define Context_Menu_widen_for_text ((void (__thiscall *) (Context_Menu * _this,  char * text))bin_addrs[111])
+#define Context_Menu_add_item_and_set_field_18 ((int (__thiscall *)  (Context_Menu * _this,  int item_id, char * text, int field_18))bin_addrs[112])
+#define Unit_ai_move_terraformer ((void (__thiscall *) (Unit * _this))bin_addrs[113])
+#define City_requires_improvement_to_grow ((int (__thiscall *) (City * _this))bin_addrs[114])
+#define Unit_can_perform_command ((bool (__thiscall *) (Unit * _this,  int unit_command_value))bin_addrs[115])
+#define Unit_join_city ((void (__thiscall *) (Unit * _this,  City * city))bin_addrs[116])
+#define Unit_upgrade ((Unit * (__thiscall *) (Unit * _this,  bool ignore_cost))bin_addrs[117])
+#define Unit_get_upgrade_cost ((int (__thiscall *) (Unit * _this))bin_addrs[118])
+#define script_dot_txt_file_path ((char *)bin_addrs[119])
+#define Unit_can_move_to_adjacent_tile ((AdjacentMoveValidity (__thiscall *) (Unit * _this,  int neighbor_index, int param_2))bin_addrs[120])
+#define Map_compute_neighbor_index ((int (__thiscall *) (Map * _this,  int x_home, int y_home, int x_neigh, int y_neigh, int lim))bin_addrs[121])
+#define PCX_Image_draw_text ((int (__thiscall *) (PCX_Image * _this,  char * str, int x, int y, int str_len))bin_addrs[122])
+#define Main_Screen_Form_get_tile_coords_under_mouse ((int (__thiscall *) (Main_Screen_Form * _this,  int mouse_x, int mouse_y, int * out_tile_x, int * out_tile_y))bin_addrs[123])
+#define open_tile_info ((void (__thiscall *) (void * _this,  int mouse_x, int mouse_y, int civ_id))bin_addrs[124])
+#define get_anarchy_length ((int (__stdcall *) (int leader_id))bin_addrs[125])
+#define PCX_Image_process_text ((int (__thiscall *) (PCX_Image * _this,  char * str))bin_addrs[126])
+#define p_current_turn_no ((int *)bin_addrs[127])
+#define p_labels ((char ***)bin_addrs[128])
+#define LBL_GOLDEN_AGE ((int)bin_addrs[129])
+#define p_toggleable_rules ((int *)bin_addrs[130])
+#define p_debug_mode_bits ((unsigned *)bin_addrs[131])
+#define Unit_has_ability ((bool (__thiscall *) (Unit * _this,  enum UnitTypeAbilities a))bin_addrs[132])
+#define ai_eval_city_location ((int (__stdcall *) (int x, int y, int civ_id, bool param_4, int * out_breakdown))bin_addrs[133])
+#define ADDR_INTERCEPT_AI_IMPROV_VALUE ((void *)bin_addrs[134])
+#define AI_CONSIDERATION_INTERCEPT_LEN ((int)bin_addrs[135])
+#define ADDR_INTERCEPT_AI_UNIT_VALUE ((void *)bin_addrs[136])
+#define City_compute_corrupted_yield ((int (__thiscall *) (City * _this,  int gross_yield, bool is_production))bin_addrs[137])
+#define PopupForm_add_text ((byte (__thiscall *) (PopupForm * _this,  char * text, bool param_2))bin_addrs[138])
+#define PopupSelection_add_item ((int (__thiscall *) (PopupSelection * _this,  char * text, int value))bin_addrs[139])
+#define load_scenario ((unsigned (__thiscall *) (void * _this,  char * param_1, unsigned * param_2))bin_addrs[140])
+#define ADDR_LOAD_SCENARIO_PREVIEW_RETURN ((int)bin_addrs[141])
+#define ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN ((int)bin_addrs[142])
+#define Improvement_has_wonder_flag ((bool (__thiscall *) (Improvement * _this,  enum ImprovementTypeWonderFeatures flag))bin_addrs[143])
+#define UnitType_has_ai_strategy ((bool (__thiscall *) (UnitType * _this,  byte n))bin_addrs[144])
+#define Unit_find_transport ((Unit * (__thiscall *) (Unit * _this,  int tile_x, int tile_y))bin_addrs[145])
+#define Unit_load ((void (__thiscall *) (Unit * _this,  Unit * transport))bin_addrs[146])
+#define p_human_player_bits ((int *)bin_addrs[147])
+#define Tile_Image_Info_draw_on_map ((int (__thiscall *) (Tile_Image_Info * _this,  Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7))bin_addrs[148])
+#define BIC_get_asset_path ((char * (__thiscall *) (BIC * _this,  char * str, bool show_error_popup))bin_addrs[149])
+#define Tile_Image_Info_slice_pcx_with_color_table ((int (__thiscall *) (Tile_Image_Info * _this,  PCX_Image * img, int up_left_x, int up_left_y, int w, int h, int arg6, int arg7))bin_addrs[150])
+#define PCX_Image_set_font ((int (__thiscall *) (PCX_Image * _this,  Object_66C3FC * font, int arg_2, int arg_3, int arg_4))bin_addrs[151])
+#define ADDR_INTERCEPT_SET_RESOURCE_BIT ((void *)bin_addrs[152])
+#define City_has_resource ((bool (__thiscall *) (City * _this,  int resource_id))bin_addrs[153])
+#define City_has_trade_connection_to_capital ((bool (__thiscall *) (City * _this))bin_addrs[154])
+#define Trade_Net_recompute_resources ((void (__thiscall *) (Trade_Net * _this,  bool skip_popups))bin_addrs[155])
+#define Leader_has_tech ((bool (__thiscall *) (Leader * _this,  int id))bin_addrs[156])
+#define City_cycle_specialist_type ((bool (__thiscall *) (City * _this,  int mouse_x, int mouse_y, Citizen * citizen, City_Form * city_form))bin_addrs[157])
+#define City_get_total_pollution ((int (__thiscall *) (City * _this))bin_addrs[158])
+#define City_get_pollution_from_buildings ((int (__thiscall *) (City * _this))bin_addrs[159])
+#define City_get_pollution_from_pop ((int (__thiscall *) (City * _this))bin_addrs[160])
+#define City_add_or_remove_improvement ((void (__thiscall *) (City * _this,  int improv_id, int add, bool param_3))bin_addrs[161])
+#define ADDR_RESOURCE_TILE_COUNT_MASK ((void *)bin_addrs[162])
+#define ADDR_RESOURCE_TILE_COUNT_ZERO_COMPARE ((void *)bin_addrs[163])
+#define Tile_get_resource_visible_to ((int (__thiscall *) (Tile * _this,  int civ_id))bin_addrs[164])
+#define Map_get_tile ((Tile * (__thiscall *) (Map * _this,  int index))bin_addrs[165])
+#define Fighter_begin ((void (__thiscall *) (Fighter * _this,  Unit * attacker, int attack_direction, Unit * defender))bin_addrs[166])
+#define Map_get_x_dist ((int (__thiscall *) (Map * _this,  int x1, int x2))bin_addrs[167])
+#define Map_get_y_dist ((int (__thiscall *) (Map * _this,  int y1, int y2))bin_addrs[168])
+#define Map_calc_food_yield_at ((int (__thiscall *) (Map * _this,  int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city))bin_addrs[169])
+#define Leader_create_city ((City * (__thiscall *) (Leader * _this,  int x, int y, int race_id, int param_4, char const * name, bool param_6))bin_addrs[170])
+#define Map_process_after_placing ((void (__thiscall *) (Map * _this,  bool param_1))bin_addrs[171])
+#define Unit_despawn ((void (__thiscall *) (Unit * _this,  int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7))bin_addrs[172])
+#define Unit_move ((void (__thiscall *) (Unit * _this,  int tile_x, int tile_y))bin_addrs[173])
+#define Main_GUI_label_loading_bar ((void (__thiscall *) (Main_GUI * _this,  int param_1, char *text))bin_addrs[174])
+#define ADDR_TURN_METALIMIT_1 ((byte *)bin_addrs[175])
+#define ADDR_TURN_METALIMIT_2 ((byte *)bin_addrs[176])
+#define ADDR_TURN_METALIMIT_3 ((byte *)bin_addrs[177])
+#define ADDR_TURN_METALIMIT_4 ((byte *)bin_addrs[178])
+#define ADDR_TURN_METALIMIT_5 ((byte *)bin_addrs[179])
+#define ADDR_TURN_METALIMIT_6 ((byte *)bin_addrs[180])
+#define ADDR_TURN_METALIMIT_7 ((byte *)bin_addrs[181])
+#define City_get_net_commerce ((int (__thiscall *) (City * _this,  int kind, bool include_science_age))bin_addrs[182])
+#define Leader_pay_unit_maintenance ((void (__thiscall *) (Leader * _this))bin_addrs[183])
+#define Leader_sum_improvements_maintenance ((int (__thiscall *) (Leader * _this,  int govt_id))bin_addrs[184])
+#define ADDR_AI_PREPRODUCTION_SLIDER_ADJUSTMENT ((byte *)bin_addrs[185])
+#define Leader_compute_income ((int (__thiscall *) (Leader * _this))bin_addrs[186])
+#define Leader_recompute_economy ((void (__thiscall *) (Leader * _this))bin_addrs[187])
+#define City_get_improvement_maintenance ((int (__thiscall *) (City * _this,  int improv_id))bin_addrs[188])
+#define Leader_set_treasury ((void (__thiscall *) (Leader * _this,  int amount))bin_addrs[189])
+#define City_sell_improvement ((void (__thiscall *) (City * _this,  int improv_id, bool set_status_bit))bin_addrs[190])
+#define p_civilopedia_form ((Civilopedia_Form *)bin_addrs[191])
+#define Civilopedia_open ((void (__thiscall *) (void * _this,  char * key, bool param_2))bin_addrs[192])
+#define get_unit_support_info ((void (__stdcall *) (int civ_id, int govt_id, int * out_cost_per_unit, int * out_count_free_units))bin_addrs[193])
+#define Leader_get_free_unit_count ((int (__thiscall *) (Leader * _this,  int govt_id))bin_addrs[194])
+#define Leader_count_foreign_and_king_units ((int (__thiscall *) (Leader * _this))bin_addrs[195])
+#define get_tile_occupier_id ((int (__cdecl *) (int x, int y, int pov_civ_id, bool respect_unit_invisibility))bin_addrs[196])
+#define Main_Screen_Form_show_map_message ((void (__thiscall *) (Main_Screen_Form * _this,  int tile_x, int tile_y, char * text_key, bool pause))bin_addrs[197])
+#define p_preferences ((unsigned *)bin_addrs[198])
+#define City_set_production ((void (__thiscall *) (City * _this,  int order_type, int order_id, bool ask_to_confirm))bin_addrs[199])
+#define City_get_income_from_wealth_build ((int (__thiscall *) (City * _this))bin_addrs[200])
+#define print_int ((char * (__cdecl *) (int val, char * str, unsigned base))bin_addrs[201])
+#define Context_Menu_add_item ((int (__thiscall *) (Context_Menu * _this,  int item_id, char * text, bool param_3, int param_4))bin_addrs[202])
+#define TextBuffer_check_ptr ((char * (__thiscall *) (TextBuffer * _this,  char * str))bin_addrs[203])
+#define Unit_try_flying_over_tile ((bool (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[204])
+#define Unit_perform_air_recon ((void (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[205])
+#define Leader_begin_unit_turns ((void (__thiscall *) (Leader * _this))bin_addrs[206])
+#define Fighter_find_defender_against_bombardment ((Unit * (__thiscall *) (Fighter * _this,  Unit * bombarder, int tile_x, int tile_y, int bombarder_civ_id, bool land_lethal, bool sea_lethal))bin_addrs[207])
+#define Unit_select_stealth_attack_target ((bool (__thiscall *) (Unit * _this,  int target_civ_id, int x, int y, bool allow_popup, Unit ** out_selected_target))bin_addrs[208])
+#define Unit_play_bombard_fire_animation ((int (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[209])
+#define Unit_play_bombing_animation ((void (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[210])
+#define Main_Screen_Form_issue_precision_strike_cmd ((void (__thiscall *) (Main_Screen_Form * _this,  Unit * unit))bin_addrs[211])
+#define Unit_can_stealth_attack ((bool (__thiscall *) (Unit * _this,  Unit * target))bin_addrs[212])
+#define process_text_snippet ((int (__cdecl *) (char * in, char * out))bin_addrs[213])
+#define get_int_from_conquests_ini ((int (__cdecl *) (LPCSTR key, int param_2, int param_3))bin_addrs[214])
+#define open_load_game_file_picker ((char const * (__thiscall *) (void * _this))bin_addrs[215])
+#define do_load_game ((void * (__cdecl *) (char * param_1))bin_addrs[216])
+#define perform_interturn ((void (__cdecl *) ())bin_addrs[217])
+#define p_is_pbem_game ((byte *)bin_addrs[218])
+#define p_is_offline_mp_game ((byte *)bin_addrs[219])
+#define Fighter_do_bombard_tile ((void (__thiscall *) (Fighter * _this,  Unit * unit, int neighbor_index, int param_3, int param_4))bin_addrs[220])
+#define p_mp_object ((void *)bin_addrs[221])
+#define mp_check_current_combat ((bool (__thiscall *) (void * _this,  int mp_tile_x, int mp_tile_y))bin_addrs[222])
+#define Fighter_damage_city_by_bombardment ((bool (__thiscall *) (Fighter * _this,  Unit * unit, City * city, int damage_kind, int min_fire_rate))bin_addrs[223])
+#define Map_in_range ((bool (__thiscall *) (Map * _this,  int x, int y))bin_addrs[224])
+#define City_can_trade_via_water ((bool (__thiscall *) (City * _this))bin_addrs[225])
+#define City_can_trade_via_air ((bool (__thiscall *) (City * _this))bin_addrs[226])
+#define City_count_improvements_with_flag ((int (__thiscall *) (City * _this,  enum ImprovementTypeFlags flag))bin_addrs[227])
+#define Trade_Net_get_direction_from_internal_map ((int (__thiscall *) (Trade_Net * _this,  int x, int y, bool use_data_2_else_4))bin_addrs[228])
+#define DiploForm_assemble_tradable_items ((void (__thiscall *) (DiploForm * _this))bin_addrs[229])
+#define City_get_building_defense_bonus ((int (__thiscall *) (City * _this))bin_addrs[230])
+#define Leader_count_wonders_with_flag ((int (__thiscall *) (Leader * _this,  enum ImprovementTypeWonderFeatures flag, City * only_in_city))bin_addrs[231])
+#define Leader_unlock_technology ((void (__thiscall *) (Leader * _this,  int tech_id, bool param_2, bool param_3, bool param_4))bin_addrs[232])
+#define Leader_recompute_buildings_maintenance ((void (__thiscall *) (Leader *_this))bin_addrs[233])
+#define ADDR_UNLOCK_TECH_AT_INIT_1 ((int)bin_addrs[234])
+#define ADDR_UNLOCK_TECH_AT_INIT_3 ((int)bin_addrs[235])
+#define ADDR_UNLOCK_TECH_AT_INIT_2 ((int)bin_addrs[236])
+#define ADDR_UNLOCK_TECH_RECURSE ((int)bin_addrs[237])
+#define ADDR_CAPTURE_CITY_BARB_BRANCH ((byte *)bin_addrs[238])
+#define ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP ((byte *)bin_addrs[239])
+#define ADDR_PROD_PHASE_BARB_DONE_JUMP ((byte *)bin_addrs[240])
+#define Map_wrap_horiz ((int (__thiscall *) (Map * _this,  int x))bin_addrs[241])
+#define Map_wrap_vert ((int (__thiscall *) (Map * _this,  int y))bin_addrs[242])
+#define Leader_do_production_phase ((void (__thiscall *) (Leader * _this))bin_addrs[243])
+#define count_set_bits ((int (__cdecl *) (unsigned int bit_field))bin_addrs[244])
+#define Main_Screen_Form_is_unit_visible_to_player ((bool (__thiscall *) (Main_Screen_Form * _this,  int tile_x, int tile_y, Unit * unit))bin_addrs[245])
+#define Unit_check_contact_bit_6 ((bool (__thiscall *) (Unit * _this,  int civ_id))bin_addrs[246])
+#define Leader_is_tile_visible ((bool (__thiscall *) (Leader * _this,  int x, int y))bin_addrs[247])
+#define ADDR_SKIP_LAND_UNITS_FOR_SEA_ZOC ((byte *)bin_addrs[248])
+#define ADDR_SKIP_SEA_UNITS_FOR_LAND_ZOC ((byte *)bin_addrs[249])
+#define Unit_get_attack_strength ((int (__thiscall *) (Unit * _this))bin_addrs[250])
+#define Main_Screen_Form_find_visible_unit ((Unit * (__thiscall *) (Main_Screen_Form * _this,  int tile_x, int tile_y, Unit * excluded))bin_addrs[251])
+#define Animator_play_one_shot_unit_animation ((void (__thiscall *) (Animator * _this,  Unit * unit, AnimationType anim_type, bool param_3))bin_addrs[252])
+#define Fighter_apply_zone_of_control ((void (__thiscall *) (Fighter * _this,  Unit * unit, int from_x, int from_y, int to_x, int to_y))bin_addrs[253])
+#define Fighter_check_combat_anim_visibility ((bool (__thiscall *) (Fighter * _this,  Unit * attacker, Unit * defender, bool param_3))bin_addrs[254])
+#define ADDR_ZOC_CHECK_ATTACKER_ANIM_FIELD_111 ((byte *)bin_addrs[255])
+#define ADDR_SKIP_ZOC_FOR_ONE_HP_LAND_UNIT ((byte *)bin_addrs[256])
+#define ADDR_SKIP_ZOC_FOR_ONE_HP_SEA_UNIT ((byte *)bin_addrs[257])
+#define Unit_move_to_adjacent_tile ((int (__thiscall *) (Unit * _this,  int neighbor_index, bool param_2, int param_3, byte param_4))bin_addrs[258])
+#define Unit_score_kill ((void (__thiscall *) (Unit * _this,  Unit * victim, bool was_attacking))bin_addrs[259])
+#define Fighter_find_defensive_bombarder ((Unit * (__thiscall *) (Fighter * _this,  Unit * attacker, Unit * defender))bin_addrs[260])
+#define Unit_get_containing_army ((Unit * (__thiscall *) (Unit * _this))bin_addrs[261])
+#define Fighter_get_combat_odds ((int (__thiscall *) (Fighter * _this,  Unit * attacker, Unit * defender, bool bombarding, bool ignore_defensive_bonuses))bin_addrs[262])
+#define Fighter_damage_by_defensive_bombard ((void (__thiscall *) (Fighter * _this,  Unit * bombarder, Unit * defender))bin_addrs[263])
+#define Fighter_fight ((byte (__thiscall *) (Fighter * _this,  Unit * attacker, int attack_direction, Unit * defender_or_null))bin_addrs[264])
+#define Unit_play_attack_animation ((void (__thiscall *) (Unit * _this,  int direction))bin_addrs[265])
+#define Navigator_Data_reset ((void (__thiscall *) (Navigator_Data * _this))bin_addrs[266])
+#define initialize_map_music ((void (__cdecl *) (int civ_id, int era_id, bool param_3))bin_addrs[267])
+#define deinitialize_map_music ((void (__stdcall *) ())bin_addrs[268])
+#define Unit_do_precision_strike ((void (__thiscall *) (Unit * _this,  int x, int y))bin_addrs[269])
+#define Unit_confirm_war ((bool (__thiscall *) (Unit * _this,  int against_civ_id, bool allow_map_message))bin_addrs[270])
+#define Unit_check_precision_strike_target ((bool (__thiscall *) (Unit * _this,  int tile_x, int tile_y))bin_addrs[271])
+#define Unit_attack_tile ((void (__thiscall *) (Unit * _this,  int x, int y, int bombarding))bin_addrs[272])
+#define city_at ((City * (__cdecl *) (int x, int y))bin_addrs[273])
+#define Unit_check_bombard_target ((bool (__thiscall *) (Unit * _this,  int tile_x, int tile_y))bin_addrs[274])
+#define Unit_can_disembark_anything ((bool (__thiscall *) (Unit * _this,  int tile_x, int tile_y))bin_addrs[275])
+#define PCX_Image_fill_area ((int (__thiscall *) (PCX_Image * _this,  RECT * rect, int color))bin_addrs[276])
+#define PCX_Image_set_text_effects ((void (__thiscall *) (PCX_Image * _this,  int text_color, int shadow_color, int shadow_offset_x, int shadow_offset_y))bin_addrs[277])
+#define Leader_get_optimal_city_number ((int (__thiscall *) (Leader * _this))bin_addrs[278])
+#define Leader_count_wonders_with_small_flag ((int (__thiscall *) (Leader * _this,  enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null))bin_addrs[279])
+#define PCX_Image_draw_onto ((int (__thiscall *) (PCX_Image * _this,  PCX_Image * canvas, int pixel_x, int pixel_y))bin_addrs[280])
+#define Tile_get_terrain_move_cost ((int (__thiscall *) (Tile * _this))bin_addrs[281])
+#define get_combat_occupier ((int (__cdecl *) (int tile_x, int tile_y, int civ_id, byte ignore_visibility))bin_addrs[282])
+#define Leader_has_tech_with_flag ((bool (__thiscall *) (Leader * _this,  AdvanceTypeFlags flag))bin_addrs[283])
+#define Trade_Net_recompute_city_connections ((void (__thiscall *) (Trade_Net * _this,  int civ_id, bool redo_road_network, byte param_3, int redo_roads_for_city_id))bin_addrs[284])
+int const gog_addrs[285] = {
 	0,
 	0x9C3508,
 	0xA52E80,
@@ -6343,7 +6549,6 @@ int const gog_addrs[229] = {
 	0x5B6B01,
 	0x569503,
 	0x594B35,
-	0x57F623,
 	0x5601EF,
 	0x4CD0B1,
 	0x5640AC,
@@ -6351,7 +6556,6 @@ int const gog_addrs[229] = {
 	0x437A70,
 	0x426C80,
 	0x5C1410,
-	0x5C0E20,
 	0x5BE820,
 	0x5BB650,
 	0x5EA6C0,
@@ -6493,6 +6697,7 @@ int const gog_addrs[229] = {
 	0x4B1A50,
 	0x4ACF40,
 	0x57E943,
+	0x57E5EB,
 	0x5DA1A0,
 	0x5D16A0,
 	0x4A47C0,
@@ -6553,12 +6758,69 @@ int const gog_addrs[229] = {
 	0x74AF60,
 	0x4697B0,
 	0x4A2650,
+	0x426BD0,
+	0x4AE030,
+	0x4ADF90,
+	0x4B1F90,
+	0x581330,
+	0x50EC10,
+	0x4C10B0,
+	0x55A8D0,
+	0x561860,
+	0x55CF10,
+	0x5683F7,
+	0x56847F,
+	0x5688DC,
+	0x5621DE,
+	0x563473,
+	0x56082B,
+	0x560838,
+	0x426C00,
+	0x426C40,
+	0x5604B0,
+	0x5DF900,
+	0x4ED120,
+	0x4EDF20,
+	0x4A8350,
+	0x4A79C2,
+	0x4A7CAA,
+	0x5BE6E0,
+	0x4E3E90,
+	0x4F00F0,
+	0x4A76B0,
+	0x4A1CD0,
+	0x4A7F61,
+	0x4A770A,
+	0x4A7745,
+	0x5B8FC0,
+	0x5BEF00,
+	0x4A1AE0,
+	0x5BCA90,
+	0x4A0ED0,
+	0x4A3280,
+	0x4A53A0,
+	0x5C8180,
+	0x578780,
+	0x536080,
+	0x535FB0,
+	0x5C7350,
+	0x5B5790,
+	0x5C37B0,
+	0x5B5280,
+	0x56D2C0,
+	0x5C3510,
+	0x5C5160,
+	0x600070,
+	0x5FD360,
+	0x5676C0,
+	0x55AA10,
+	0x5FCB10,
 	0x5DBF60,
 	0x56D340,
 	0x561480,
-	0x55A8D0,
+	0x57D980,
 };
-int const steam_addrs[229] = {
+int const steam_addrs[285] = {
 	1,
 	0x9E5D08,
 	0xA75680,
@@ -6574,7 +6836,6 @@ int const steam_addrs[229] = {
 	0x5C5458,
 	0x575933,
 	0x5A2357,
-	0x58C352,
 	0x56C2E3,
 	0x4D5151,
 	0x570385,
@@ -6582,7 +6843,6 @@ int const steam_addrs[229] = {
 	0x439620,
 	0x4283C0,
 	0x5CFFA0,
-	0x5CF9C0,
 	0x5CD420,
 	0x5CA190,
 	0x5F9F10,
@@ -6724,6 +6984,7 @@ int const steam_addrs[229] = {
 	0x4B8A10,
 	0x4B3F20,
 	0x58B68E,
+	0x58B328,
 	0x5E9710,
 	0x5E0900,
 	0x4AB470,
@@ -6784,12 +7045,69 @@ int const steam_addrs[229] = {
 	0x765300,
 	0x46BF90,
 	0x4A9290,
+	0x428310,
+	0x4B5010,
+	0x4B4F70,
+	0x4B8F10,
+	0x58E060,
+	0x518F00,
+	0x4C86A0,
+	0x5667E0,
+	0x56D9E0,
+	0x568F90,
+	0x5747F2,
+	0x57487A,
+	0x574CD6,
+	0x56E33D,
+	0x56F723,
+	0x56C938,
+	0x56C945,
+	0x428340,
+	0x428380,
+	0x56C5A0,
+	0x5EF150,
+	0x4F6040,
+	0x4F6E70,
+	0x4AF030,
+	0x4AE66D,
+	0x4AE962,
+	0x5CD2C0,
+	0x4EC6E0,
+	0x4F9100,
+	0x4AE370,
+	0x4A88E0,
+	0x4AEC26,
+	0x4AE3CA,
+	0x4AE405,
+	0x5C7A40,
+	0x5CDB10,
+	0x4A86E0,
+	0x5CB620,
+	0x4A7A90,
+	0x4A9ED0,
+	0x4AC060,
+	0x5D7060,
+	0x5858A0,
+	0x540670,
+	0x5405A0,
+	0x5D61F0,
+	0x5C40E0,
+	0x5D23F0,
+	0x5C3BF0,
+	0x579C40,
+	0x5D2140,
+	0x5D3E40,
+	0x615570,
+	0x611290,
+	0x573AB0,
+	0x566930,
+	0x610790,
 	0x5EB4B0,
 	0x579CC0,
 	0x56D5E0,
-	0x5667E0,
+	0x58A680,
 };
-int const pcg_addrs[229] = {
+int const pcg_addrs[285] = {
 	2,
 	0x9C34C8,
 	0xA52E40,
@@ -6805,7 +7123,6 @@ int const pcg_addrs[229] = {
 	0x5B6811,
 	0x5694B3,
 	0x594855,
-	0x57F383,
 	0x56019F,
 	0x4CD171,
 	0x56405C,
@@ -6813,7 +7130,6 @@ int const pcg_addrs[229] = {
 	0x437AF0,
 	0x426D00,
 	0x5C1120,
-	0x5C0B30,
 	0x5BE530,
 	0x5BB360,
 	0x5EA5F0,
@@ -6955,6 +7271,7 @@ int const pcg_addrs[229] = {
 	0x4B1AE0,
 	0x4ACFD0,
 	0x57E6A3,
+	0x57E34B,
 	0x5DA0D0,
 	0x5D15D0,
 	0x4A4850,
@@ -7015,8 +7332,65 @@ int const pcg_addrs[229] = {
 	0x74AF20,
 	0x469830,
 	0x4A26E0,
+	0x426C50,
+	0x4AE0C0,
+	0x4AE020,
+	0x4B2020,
+	0x581090,
+	0x50ECB0,
+	0x4C1140,
+	0x55A880,
+	0x561810,
+	0x55CEC0,
+	0x5683A7,
+	0x56842F,
+	0x56888C,
+	0x56217E,
+	0x563423,
+	0x5607DB,
+	0x5607E8,
+	0x426C80,
+	0x426CC0,
+	0x560460,
+	0x5DF830,
+	0x4ED1E0,
+	0x4EDFE0,
+	0x4A83E0,
+	0x4A7A52,
+	0x4A7D3A,
+	0x5BE3F0,
+	0x4E3F50,
+	0x4F01B0,
+	0x4A7740,
+	0x4A1D60,
+	0x4A7FF1,
+	0x4A779A,
+	0x4A77D5,
+	0x5B8CD0,
+	0x5BEC10,
+	0x4A1B70,
+	0x5BC7A0,
+	0x4A0F60,
+	0x4A3310,
+	0x4A5430,
+	0x5C7E90,
+	0x5786F0,
+	0x536100,
+	0x536030,
+	0x5C7060,
+	0x5B54A0,
+	0x5C34C0,
+	0x5B4F90,
+	0x56D230,
+	0x5C3220,
+	0x5C4E70,
+	0x5FFF50,
+	0x5FD240,
+	0x567670,
+	0x55A9C0,
+	0x5FC9F0,
 	0x5DBE90,
 	0x56D2B0,
 	0x561430,
-	0x55A880,
+	0x57D6E0,
 };

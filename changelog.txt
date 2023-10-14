@@ -1,16 +1,72 @@
-* RELEASE 14G
-- Option to replay AI moves for all human players in hotseat mode
+* RELEASE 17 PREVIEW 1
+- Zone of control changes
+  - Allow land-to-sea and sea-to-land attacks, only using bombard stat
+  - May be lethal
+  - May be exerted by air units
+  - Show attack animation even when attacker is not at the top of its stack
+- Defensive bombard changes
+  - May be lethal
+  - May be performed by air units
+  - Invisible, undetected units may be made immune
+  - May be performed multiple times per turn with blitz
+  - Naval units in a city may perform defensive bombard vs land attackers
+- Allow precision strikes to target tile improvements
+- Option not to end a unit's turn after it bombards a barricade
+- Option to allow bombardment of other improvements on a tile with an occupied airfield
+- Option to boost OCN increase from forbidden palaces in non-communal governments
+- Overhaul implementation of shared visibility for simplicity and correctness
+- Display total city count (disabled by default, appears on demographics screen)
+
+* RELEASE 16
+- Barbarian city capture & production (experimental)
+- Option to share visibility among all human players in a hotseat game
+- Can use charm flag to control PTW-like artillery targeting
+- Option to allow land units to bombard aircraft and naval units in cities
+- Option to ignore king flag on defense, so kings aren't always last to defend in a stack
+- Limit AI artillery units to one escort (w/ offensive artillery AI)
+- Harbor/airport city icons indicate unit effects not trade abilities
+- Separate land & sea retreat rules
+- Fix incorrect ETAs in go-to mode when railroad movement is limited
+- Can limit the number of escorts the AI assigns to its naval transports and carriers
+- Fix barbarian diagonal bug
+- Fix cached building maintenance amounts not being updated when buildings are obsoleted
+- Optimize improvement loops
+- Option to show untradable techs on trade screen
+- Disallow useless bombard attacks vs airfields
+- Option to remove Elvis Easter egg
+- Gray out build city button when too close to another city and min separation has been increased
+- Mitigate issue with pathfinding, limited railroad movement, and units with many moves
+  - Mitigation applies if GCD(road movement rate, railroad limit) > 1
+- Fix freeze related to trespassing restriction and AI disembarking
+- Rework sub bug fix in order not to interfere with AI pathing vs enemy units
+- Re-enable main GUI before showing hotseat AI replay
+- Prevent music from being reset during hotseat AI replay
+- Make config options more intuitive: anarchy length reduction, minimum city separation, AI naval escort cap
+- Load mod button images from scenario folder if present
+- Update UI after stack bombarding (fixes bombard button not disappearing for multi-move units w/o blitz)
+- Fix potential trade net issue in games with a very large number of tiles and resource generating buildings
+- Reduce default ai_build_artillery_ratio from 20 to 16
+- Match only complete names from config
+- Improve config read error messages
+
+* RELEASE 15
+- Option to replay AI moves for human players in hotseat mode
 - Enable stealth attacks via bombardment
-- Recon missions can be make vulnerable to interception
+- Artillery can be set to use PTW-like targeting against cities
+- Recon missions can be made vulnerable to interception
 - Option to charge one move for recon missions and interception
 - Allow players to opt out of stealth attacks
 - Polish precision striking by land or sea units
   - Use regular bombard animation instead of flying animation
   - Use bombard range instead of operational range
+  - Cannot be intercepted
 - Message appears after bomber dodges interception by air defense buildings
+- Restore unit directions on game load
 - Option to immunize aircraft against bombardment
+- Disallow stealth attack against single unit by default
+  - Fixes a compatibility issue with the EFZI mod
 - L key unloads unit over activating AI city loc highlighter
-- Show AI strategy in production ranking for unit types with multiple
+- Show AI strategy in production ranking for unit types with multiple strategies
 - Tweak messages on bankruptcy popups
 
 * RELEASE 14

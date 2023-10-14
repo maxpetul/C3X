@@ -918,6 +918,7 @@ ENTRY_POINT ()
 	write_prog_int (&injected_state->sc_img_state, IS_UNINITED);
 	write_prog_int (&injected_state->tile_highlight_state, IS_UNINITED);
 	write_prog_int (&injected_state->mod_info_button_images_state, IS_UNINITED);
+	write_prog_int (&injected_state->disabled_command_img_state, IS_UNINITED);
 	tcc_define_pointer (tcc, "ADDR_INJECTED_STATE", injected_state);
 
 	// Pass through prog objects before compiling to set things up for compilation
@@ -961,12 +962,18 @@ ENTRY_POINT ()
 		tcc__define_symbol (tcc, "ADDR_SET_RESOURCE_BIT_AIRLOCK", temp_format ("((void *)0x%x)", (int)addr_set_resource_bit_airlock));
 	}
 
-	// Same again, this time for the bit of code that captures the TradeOffer object pointer when a gold trade on the table is modified
-	byte * addr_capture_modified_gold_trade; {
-		ASSERT (i_next_free_inlead < inleads_capacity);
-		addr_capture_modified_gold_trade = (byte *)&inleads[i_next_free_inlead++];
-		tcc__define_symbol (tcc, "ADDR_CAPTURE_MODIFIED_GOLD_TRADE", temp_format ("((void *)0x%x)", (int)addr_capture_modified_gold_trade));
-	}
+	// Again, this time for the bit of code that captures the TradeOffer object pointer when a gold trade on the table is modified
+	ASSERT (i_next_free_inlead < inleads_capacity);
+	tcc__define_symbol (tcc, "ADDR_CAPTURE_MODIFIED_GOLD_TRADE", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead]));
+	i_next_free_inlead++;
+
+	// Again, this time for the airlocks to filter zone of control candidates. Need two b/c there are separate loops for land and sea units.
+	ASSERT (i_next_free_inlead + 1 < inleads_capacity);
+	tcc__define_symbol (tcc, "ADDR_SEA_ZOC_FILTER_AIRLOCK" , temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead    ]));
+	tcc__define_symbol (tcc, "ADDR_LAND_ZOC_FILTER_AIRLOCK", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead + 1]));
+	i_next_free_inlead += 2;
+
+	tcc__define_symbol (tcc, "INLEAD_SIZE", temp_format ("%u", sizeof (struct inlead)));
 
 	// Compile C code to inject
 	{
@@ -1007,6 +1014,27 @@ ENTRY_POINT ()
 	tcc__list_symbols (tcc, NULL, print_symbol_location);
 #endif
 	
+	// Gather everything we need to do visibility check replacements
+	void * patch_Map_get_tile_to_check_visibility       = find_patch_function (tcc, "Map_get_tile_to_check_visibility"      , 1);
+	void * patch_Map_get_tile_to_check_visibility_again = find_patch_function (tcc, "Map_get_tile_to_check_visibility_again", 1);
+	void * patch_tile_at_to_check_visibility            = find_patch_function (tcc, "tile_at_to_check_visibility"           , 1);
+	void * patch_tile_at_to_check_visibility_again      = find_patch_function (tcc, "tile_at_to_check_visibility_again"     , 1);
+	REQUIRE (patch_Map_get_tile_to_check_visibility       != NULL, "Missing function needed for vis replacement");
+	REQUIRE (patch_Map_get_tile_to_check_visibility_again != NULL, "Missing function needed for vis replacement");
+	REQUIRE (patch_tile_at_to_check_visibility            != NULL, "Missing function needed for vis replacement");
+	REQUIRE (patch_tile_at_to_check_visibility_again      != NULL, "Missing function needed for vis replacement");
+	int addr_Map_get_tile = 0, addr_tile_at = 0;
+	for (int n = 0; n < count_civ_prog_objects; n++) {
+		struct civ_prog_object const * obj = &civ_prog_objects[n];
+		if (obj->job == OJ_DEFINE) {
+			if (0 == strcmp (obj->name, "Map_get_tile"))
+				addr_Map_get_tile = obj->addr;
+			else if (0 == strcmp (obj->name, "tile_at"))
+				addr_tile_at = obj->addr;
+		}
+	}
+	REQUIRE ((addr_Map_get_tile != 0) && (addr_tile_at != 0), "Missing define needed for vis replacement");
+
 	// Pass through prog objects after compiling to redirect control flow to patches
 	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
@@ -1027,6 +1055,38 @@ ENTRY_POINT ()
 					write_prog_memory ((void *)(obj->addr + 5), nops, instr_size - 5);
 				}
 				free (instr);
+
+			// Replace visibility check
+			// The game checks tile visibility with four calls to Map::get_tile or tile_at, each call reading only one visibility
+			// field. Because of this regular pattern, it's easy to replace the check programmatically. Given a starting address:
+			//   (1) Search for four call instructions close after that address
+			//   (2) Replace get_tile or tile_at calls with the corresponding patch function
+			//   (3) Replace all calls after the first with "again" functions that simply return a cached pointer set by the first
+			} else if (obj->job == OJ_REPL_VIS) {
+				byte * init_cursor = read_prog_memory ((void *)obj->addr, 200);
+
+				byte * cursor = init_cursor;
+				int found_calls = 0;
+				do {
+					if (*cursor == 0xE8) {
+						found_calls++;
+						int offset = int_from_bytes (&cursor[1]);
+						int actual_cursor_address = obj->addr + (cursor - init_cursor);
+						int target_addr = actual_cursor_address + 5 + offset;
+
+						if (target_addr == addr_Map_get_tile)
+							put_trampoline ((void *)actual_cursor_address, (found_calls == 1) ? patch_Map_get_tile_to_check_visibility : patch_Map_get_tile_to_check_visibility_again, 1);
+						else if (target_addr == addr_tile_at)
+							put_trampoline ((void *)actual_cursor_address, (found_calls == 1) ? patch_tile_at_to_check_visibility : patch_tile_at_to_check_visibility_again, 1);
+						else
+							THROW (format ("Vis cluster after 0x%x does not match pattern. Found non-vis call.", obj->addr));
+					}
+					cursor += length_disasm (cursor);
+				} while ((found_calls < 4) && (cursor - init_cursor < 200));
+
+				REQUIRE (found_calls == 4, format ("Vis cluster after 0x%x does not match pattern. Did not find four calls.", obj->addr));
+
+				free (init_cursor);
 			}
 		}
 	}
@@ -1060,6 +1120,7 @@ ENTRY_POINT ()
 	ResumeThread (civ_proc_info.hThread);
 
 	WaitForSingleObject (civ_proc, INFINITE);
+	TerminateProcess (civ_proc_info.hProcess, 0);
 	CloseHandle (civ_proc_info.hProcess);
 	CloseHandle (civ_proc_info.hThread);
 

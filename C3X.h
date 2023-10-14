@@ -1,4 +1,6 @@
 
+#include <stdbool.h>
+
 #define NOVIRTUALKEYCODES // Keycodes defined in Civ3Conquests.h instead
 #include "windows.h"
 
@@ -8,7 +10,8 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
-#define MOD_VERSION 1406
+#define MOD_VERSION 1700
+#define MOD_PREVIEW_VERSION 1
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -30,7 +33,7 @@ struct perfume_spec {
 struct mill {
 	int improv_id;
 	int resource_id;
-	byte is_local, no_tech_req;
+	bool is_local, no_tech_req;
 };
 
 enum retreat_rules {
@@ -40,30 +43,46 @@ enum retreat_rules {
 	RR_IF_FASTER
 };
 
+enum special_defensive_bombard_rules {
+	SDBR_LETHAL         =  1,
+	SDBR_NOT_INVISIBLE  =  2,
+	SDBR_AERIAL         =  4,
+	SDBR_BLITZ          =  8,
+	SDBR_DOCKED_VS_LAND = 16,
+};
+
+enum special_zone_of_control_rules {
+	SZOCR_LETHAL     = 1,
+	SZOCR_AERIAL     = 2,
+	SZOCR_AMPHIBIOUS = 4,
+};
+
 struct c3x_config {
-	char enable_stack_bombard;
-	char enable_disorder_warning;
-	char allow_stealth_attack_against_single_unit;
-	char show_detailed_city_production_info;
+	bool enable_stack_bombard;
+	bool enable_disorder_warning;
+	bool allow_stealth_attack_against_single_unit;
+	bool show_detailed_city_production_info;
 	int limit_railroad_movement;
-	char enable_free_buildings_from_small_wonders;
-	char enable_stack_unit_commands;
-	char skip_repeated_tile_improv_replacement_asks;
-	char autofill_best_gold_amount_when_trading;
-	int adjust_minimum_city_separation;
-	char disallow_founding_next_to_foreign_city;
-	char enable_trade_screen_scroll;
-	char group_units_on_right_click_menu;
-	int anarchy_length_reduction_percent;
-	char show_golden_age_turns_remaining;
-	char cut_research_spending_to_avoid_bankruptcy;
-	char dont_pause_for_love_the_king_messages;
-	char reverse_specialist_order_with_shift;
-	char dont_give_king_names_in_non_regicide_games;
-	char disable_worker_automation;
-	char enable_land_sea_intersections;
-	char disallow_trespassing;
-	char show_detailed_tile_info;
+	bool enable_free_buildings_from_small_wonders;
+	bool enable_stack_unit_commands;
+	bool skip_repeated_tile_improv_replacement_asks;
+	bool autofill_best_gold_amount_when_trading;
+	int minimum_city_separation;
+	bool disallow_founding_next_to_foreign_city;
+	bool enable_trade_screen_scroll;
+	bool group_units_on_right_click_menu;
+	int anarchy_length_percent;
+	bool show_golden_age_turns_remaining;
+	bool show_zoc_attacks_from_mid_stack;
+	bool cut_research_spending_to_avoid_bankruptcy;
+	bool dont_pause_for_love_the_king_messages;
+	bool reverse_specialist_order_with_shift;
+	bool dont_give_king_names_in_non_regicide_games;
+	bool no_elvis_easter_egg;
+	bool disable_worker_automation;
+	bool enable_land_sea_intersections;
+	bool disallow_trespassing;
+	bool show_detailed_tile_info;
 	struct perfume_spec * perfume_specs;
 	int count_perfume_specs;
 	struct table building_unit_prereqs; // A mapping from int keys to int values. The keys are unit type IDs. If an ID is present as a key in the
@@ -74,57 +93,78 @@ struct c3x_config {
 					    // by checking the LSB (1 => encoded improv ID, 0 => list pointer).
 	struct mill * mills;
 	int count_mills;
-	char warn_about_unrecognized_names;
-	char enable_ai_production_ranking;
-	char enable_ai_city_location_desirability_display;
-	char zero_corruption_when_off;
-	char disallow_land_units_from_affecting_water_tiles;
-	char dont_end_units_turn_after_airdrop;
-	char enable_negative_pop_pollution;
-	enum retreat_rules retreat_rules;
-	char enable_ai_two_city_start;
+	bool warn_about_unrecognized_names;
+	bool enable_ai_production_ranking;
+	bool enable_ai_city_location_desirability_display;
+	bool zero_corruption_when_off;
+	bool disallow_land_units_from_affecting_water_tiles;
+	bool dont_end_units_turn_after_airdrop;
+	bool enable_negative_pop_pollution;
+	enum retreat_rules land_retreat_rules;
+	enum retreat_rules sea_retreat_rules;
+	bool enable_ai_two_city_start;
 	int max_tries_to_place_fp_city;
-	char promote_forbidden_palace_decorruption;
-	char allow_military_leaders_to_hurry_wonders;
-	char halve_ai_research_rate;
-	char aggressively_penalize_bankruptcy;
-	char no_penalty_exception_for_agri_fresh_water_city_tiles;
-	char suppress_hypertext_links_exceeded_popup;
-	char indicate_non_upgradability_in_pedia;
-	char show_message_after_dodging_sam;
-	char include_stealth_attack_cancel_option;
-	char intercept_recon_missions;
-	char charge_one_move_for_recon_and_interception;
-	char polish_non_air_precision_striking;
-	char enable_stealth_attack_via_bombardment;
-	char immunize_aircraft_against_bombardment;
-	char replay_ai_moves_in_hotseat_games;
+	bool promote_forbidden_palace_decorruption;
+	bool allow_military_leaders_to_hurry_wonders;
+	bool halve_ai_research_rate;
+	bool aggressively_penalize_bankruptcy;
+	bool no_penalty_exception_for_agri_fresh_water_city_tiles;
+	bool suppress_hypertext_links_exceeded_popup;
+	bool indicate_non_upgradability_in_pedia;
+	bool show_message_after_dodging_sam;
+	bool include_stealth_attack_cancel_option;
+	bool intercept_recon_missions;
+	bool charge_one_move_for_recon_and_interception;
+	bool polish_non_air_precision_striking;
+	bool enable_stealth_attack_via_bombardment;
+	bool immunize_aircraft_against_bombardment;
+	bool replay_ai_moves_in_hotseat_games;
 	int count_ptw_arty_types;
 	int ptw_arty_types_capacity;
 	int * ptw_arty_types; // List of unit type IDs
+	bool restore_unit_directions_on_game_load;
+	bool charm_flag_triggers_ptw_like_targeting;
+	bool city_icons_show_unit_effects_not_trade;
+	bool ignore_king_ability_for_defense_priority;
+	bool show_untradable_techs_on_trade_screen;
+	bool optimize_improvement_loops;
+	bool disallow_useless_bombard_vs_airfields;
+	bool enable_city_capture_by_barbarians;
+	bool share_visibility_in_hoseat;
+	bool allow_precision_strikes_against_tile_improvements;
+	bool dont_end_units_turn_after_bombarding_barricade;
+	bool remove_land_artillery_target_restrictions;
+	bool allow_bombard_of_other_improvs_on_occupied_airfield;
+	bool show_total_city_count;
+	bool strengthen_forbidden_palace_ocn_effect;
+	enum special_zone_of_control_rules special_zone_of_control_rules;
+	enum special_defensive_bombard_rules special_defensive_bombard_rules;
 
-	char use_offensive_artillery_ai;
+	bool use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
 	int ai_artillery_value_damage_percent;
 	int ai_build_bomber_ratio;
-	char replace_leader_unit_ai;
-	char fix_ai_army_composition;
-	char enable_pop_unit_ai;
+	bool replace_leader_unit_ai;
+	bool fix_ai_army_composition;
+	bool enable_pop_unit_ai;
+	int max_ai_naval_escorts;
 
-	char remove_unit_limit;
-	char remove_era_limit;
-	char remove_cap_on_turn_limit;
+	bool remove_unit_limit;
+	bool remove_era_limit;
+	bool remove_cap_on_turn_limit;
 
-	char patch_submarine_bug;
-	char patch_science_age_bug;
-	char patch_pedia_texture_bug;
-	char patch_disembark_immobile_bug;
-	char patch_houseboat_bug;
-	char patch_intercept_lost_turn_bug;
-	char patch_phantom_resource_bug;
+	bool patch_submarine_bug;
+	bool patch_science_age_bug;
+	bool patch_pedia_texture_bug;
+	bool patch_disembark_immobile_bug;
+	bool patch_houseboat_bug;
+	bool patch_intercept_lost_turn_bug;
+	bool patch_phantom_resource_bug;
+	bool patch_maintenance_persisting_for_obsolete_buildings;
+	bool patch_barbarian_diagonal_bug;
 
-	char prevent_autorazing;
-	char prevent_razing_by_players;
+	bool prevent_autorazing;
+	bool prevent_razing_by_players;
 };
 
 enum stackable_command {
@@ -199,6 +239,9 @@ enum c3x_label {
 	CL_OBSOLETED_BY,
 	CL_NO_STEALTH_ATTACK,
 	CL_DODGED_SAM,
+	CL_PREVIEW,
+	CL_CITY_TOO_CLOSE_BUTTON_TOOLTIP,
+	CL_TOTAL_CITIES,
 
 	// Offense, Defense, Artillery, etc.
 	CL_FIRST_UNIT_STRAT,
@@ -231,12 +274,13 @@ struct injected_state {
 	enum init_state sc_img_state;
 	enum init_state tile_highlight_state;
 	enum init_state mod_info_button_images_state;
-
-	struct c3x_config base_config;
+	enum init_state disabled_command_img_state;
 
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
 	// ==========
+
+	struct c3x_config base_config;
 
 	// Windows modules
 	HMODULE kernel32;
@@ -253,6 +297,7 @@ struct injected_state {
 	int (WINAPI * MultiByteToWideChar) (UINT, DWORD, LPCCH, int, LPWSTR, int);
 	int (WINAPI * WideCharToMultiByte) (UINT, DWORD, LPCWCH, int, LPSTR, int, LPCCH, LPBOOL);
 	int (WINAPI * GetLastError) ();
+	void (WINAPI * GetLocalTime) (LPSYSTEMTIME);
 
 	// Win32 funcs from user32.dll
 	int (WINAPI * MessageBoxA) (HWND, LPCSTR, LPCSTR, UINT);
@@ -302,7 +347,7 @@ struct injected_state {
 	int have_job_and_loc_to_skip; // 0 or 1 if the variable below has anything actionable in it. Gets cleared to 0 after every turn.
 	struct worker_job_and_location to_skip;
 
-	byte houseboat_patch_area_original_contents[50];
+	struct table nopified_areas;
 
 	int * unit_menu_duplicates; // NULL initialized, allocated to an array of 0x100 ints when needed
 
@@ -334,19 +379,22 @@ struct injected_state {
 		int capacity;
 	} interceptor_reset_lists[32];
 
-	// Stores the byte offsets into the c3x_config struct of all boolean config options, accessible using the options' names as strings. Used when
-	// reading in a config INI file.
+	// Stores the byte offsets into the c3x_config struct of all boolean/integer config options, accessible using the options' names as
+	// strings. Used when reading in a config INI file.
 	struct table boolean_config_offsets;
+	struct table integer_config_offsets;
 
 	// Maps unit types IDs to AI strategy indices (0 = offense, 1 = defense, 2 = artillery, etc.). If a unit type ID is in this table, that means
 	// it's one of several duplicate types created to spread multiple AI strategies out so each type has only one.
 	struct table unit_type_alt_strategies;
 
+	// Tracks the number of "extra" defensive bombards units have performed, by their IDs. If the "blitz" special defensive bombard rule is
+	// activated, units with blitz get an extra chance to perform DB for each movement point they have beyond the first.
+	struct table extra_defensive_bombards;
+
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {
 	// ==========
-
-	PCX_Image sc_button_sheets[4];
 
 	struct sc_button_image_set {
 		Tile_Image_Info imgs[4];
@@ -372,10 +420,15 @@ struct injected_state {
 	// enough time on this already. That click interceptor sets a flag value of 2 to indicate this annoying state.
 
 	// ==========
+	// } This field is only valid after init_disabled_command_buttons has been called and disabled_command_img_state equals IS_OK {
+	// ==========
+
+	Tile_Image_Info disabled_build_city_button_img;
+
+	// ==========
 	// } These fields are valid only after init_tile_highlights as been called. {
 	// ==========
 
-	PCX_Image tile_highlight_sheet;
 	Tile_Image_Info tile_highlights[COUNT_TILE_HIGHLIGHTS];
 
 	// ==========
@@ -388,8 +441,13 @@ struct injected_state {
 	// } These fields are temporary/situational {
 	// ==========
 
-	int saved_road_movement_rate; // Valid when railroad movement limit is applied (limit_railroad_movement > 0) and BIC
-	// data has been loaded
+	int saved_road_movement_rate; // Valid when railroad movement limit is applied (limit_railroad_movement > 0) and BIC data has been loaded
+	int road_mp_cost; // The cost of moving one tile along a road, in MP. Valid after BIC data was loaded.
+	int railroad_mp_cost_per_move; // The cost of moving one tile along a railroad, in MP, per move available to the unit. This is measured per
+				       // move since the cost of moving along a railroad is scaled by the total number of moves available to the
+				       // unit. Valid after BIC data was loaded.
+
+	int saved_barb_culture_group; // Valid when barb city capturing is enabled and BIC data has been loaded
 
 	Leader * leader_param_for_patch_get_wonder_city_id; // Valid in patch_get_wonder_city_id when called from
 	// Leader_recompute_auto_improvements
@@ -404,6 +462,7 @@ struct injected_state {
 	// was closed in order to scroll to the civ with the set ID. -1 indicates no scrolling.
 	Button * trade_scroll_button_left; // initialized to NULL
 	Button * trade_scroll_button_right; // initialized to NULL
+	Tile_Image_Info * trade_scroll_button_images; // inited to NULL, array of 6 images: normal, rollover, and highlight for left & right
 	enum init_state trade_scroll_button_state;
 	int eligible_for_trade_scroll;
 
@@ -465,14 +524,75 @@ struct injected_state {
 
 	// Initialized to NULL. If set to non-NULL, the next call to do_load_game will consume this value and use it as the file path of the game to
 	// load instead of opening the file picker.
-	char * load_file_path_override;
+	char const * load_file_path_override;
 
-	// Initialized to NULL. When a hotseat replay save is created, its file path is stored here. When it's loaded, this variable is cleared. This
-	// is how the saving & loading code coordinates to avoid problems, for example attempting to load a save from a previous game.
-	char * hotseat_replay_save_path;
+	// A set of player bits indicating which players should see a replay of the AI's moves. Normally all zero, gets filled in by
+	// patch_perform_interturn_in_main_loop only when/as appropriate. As replays are played (in patch_show_movement_phase_popup), the
+	// corresponding bits are cleared.
+	int replay_for_players;
+
+	// Used by patch_perform_interturn_in_main_loop to determine which players need to see the replay. Clear before interturn processing, then
+	// every time an AI unit moves onto or bombards a tile, any players that have vision on that tile will have their bit set in this var.
+	int players_saw_ai_unit;
 
 	// Initialized to 0. If set to non-zero, the next call to do_load_game will consume the value and skip the intro popup.
 	int suppress_intro_after_load_popup;
+
+	struct improv_id_list {
+		int * items;
+		int count;
+		int capacity;
+	} water_trade_improvs, air_trade_improvs, combat_defense_improvs;
+
+	// Used by the fix for the barbarian diagonal bug
+	int barb_diag_patch_dy_fix;
+
+	// Initialized to 0. If 1, barbarian activity is force activated b/c there are barb cities on the map that need to do production.
+	int force_barb_activity_for_cities;
+
+	// Used as a stand-in for an actual tile where needed. In particular, this object is returned from various get_tile and tile_at replacements
+	// when we need to override the visibility data to implement hotseat shared vis.
+	Tile * dummy_tile;
+
+	// When the game checks visibility for a tile, it accesses all four visibility fields with separate calls to Map::get_tile and/or tile_at. We
+	// replace the first call, maybe altering its return to implement shared visibility, cache the return in this variable, then re-use the cached
+	// value for the next three calls.
+	Tile * tile_returned_for_visibility_check;
+
+	// Initialized to all -1. If set, the unit with the specified ID will always be the top unit displayed on the specified tile. If the unit is
+	// not on that tile, there is no effect. This is only intended to be used on a temporary basis.
+	struct unit_display_override {
+		int unit_id, tile_x, tile_y;
+	} unit_display_override;
+
+	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
+	Unit * zoc_interceptor;
+
+	// Set when Fighter::apply_zone_of_control is called to store the defending unit, used by the injected filter.
+	Unit * zoc_defender;
+
+	// Normally set to NULL. When a unit bombards a tile (the tile itself, not something on it), set to point to that unit during the call to
+	// Unit::attack_tile. Used to stop the unit from losing all of its movement if configured.
+	Unit * unit_bombard_attacking_tile;
+
+	// Cleared to zero when Fighter::apply_zone_of_control is called. The interceptor must be unfortified to ensure it plays its animation. If
+	// that happens, this flag is set so that apply_zone_of_control knows to refortify the unit after the ZoC process is done.
+	int refortify_interceptor_after_zoc;
+
+	// Used to record info about a defensive bomardment event during Fighter::fight. Gets set by Fighter::damage_by_defensive_bombardment and
+	// cleared when Fighter::fight returns.
+	struct defensive_bombard_event {
+		Unit * bombarder;
+		Unit * defender;
+		bool damage_done, defender_was_destroyed, saved_animation_setting;
+	} dbe;
+
+	// Set to 1 IFF we're showing a replay of AI moves in hotseat mode
+	bool showing_hotseat_replay;
+
+	// Set to 1 only during the first call to get_tile_occupier_id from Trade_Net::get_movement_cost. While this is set, we need to edit unit
+	// visibility to patch the submarine bug.
+	bool getting_tile_occupier_for_ai_pathfinding;
 
 	// ==========
 	// }
@@ -484,6 +604,7 @@ enum object_job {
 	OJ_INLEAD, // Patch this function with an inlead
 	OJ_REPL_VPTR, // Patch this function by replacing a pointer to it. The address column is the addr of the VPTR not the function itself.
 	OJ_REPL_CALL, // Patch a single function call. The address column is the addr of the call instruction, name refers to the new target function, type is not used.
+	OJ_REPL_VIS, // Patch a cluster of four function calls that make up a check of tile visibility. See implementation for details.
 	OJ_IGNORE
 };
 
