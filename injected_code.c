@@ -23,6 +23,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define CreateFileA is->CreateFileA
 #define GetFileSize is->GetFileSize
 #define ReadFile is->ReadFile
+#define LoadLibraryA is->LoadLibraryA
 #define MessageBoxA is->MessageBoxA
 #define MultiByteToWideChar is->MultiByteToWideChar
 #define WideCharToMultiByte is->WideCharToMultiByte
@@ -1899,6 +1900,7 @@ patch_init_floating_point ()
 	CreateFileA         = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
 	GetFileSize         = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
 	ReadFile            = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
+	LoadLibraryA        = (void *)(*p_GetProcAddress) (is->kernel32, "LoadLibraryA");
 	MultiByteToWideChar = (void *)(*p_GetProcAddress) (is->kernel32, "MultiByteToWideChar");
 	WideCharToMultiByte = (void *)(*p_GetProcAddress) (is->kernel32, "WideCharToMultiByte");
 	GetLastError        = (void *)(*p_GetProcAddress) (is->kernel32, "GetLastError");
@@ -2037,6 +2039,8 @@ patch_init_floating_point ()
 
 	is->showing_hotseat_replay = false;
 	is->getting_tile_occupier_for_ai_pathfinding = false;
+
+	is->gdi_plus.init_state = IS_UNINITED;
 
 	is->water_trade_improvs    = (struct improv_id_list) {0};
 	is->air_trade_improvs      = (struct improv_id_list) {0};
@@ -7092,6 +7096,91 @@ patch_Leader_count_forbidden_palaces_for_ocn (Leader * this, int edx, enum Impro
 		return Leader_count_wonders_with_small_flag (this, __, flag, city_or_null);
 	else
 		return 0; // We'll add in the FP effect later with a different weight
+}
+
+/*
+Working line drawing with C++, for reference
+
+namespace Gdiplus {
+
+EXPORT_PROC
+void __cdecl
+draw_line (HDC hdc, int x1, int y1, int x2, int y2)
+{
+// Function names from failed link:
+// _GdiplusShutdown@4
+// _GdipCreatePen1@16 referenced in function "public: __thiscall Gdiplus::Pen::Pen(class Gdiplus::Color const &,float)" (??0Pen@Gdiplus@@QAE@ABVColor@1@M@Z)
+// _GdipDeletePen@4 referenced in function "public: __thiscall Gdiplus::Pen::~Pen(void)" (??1Pen@Gdiplus@@QAE@XZ)
+// _GdipCreateFromHDC@8 referenced in function "public: __thiscall Gdiplus::Graphics::Graphics(struct HDC__ *)" (??0Graphics@Gdiplus@@QAE@PAUHDC__@@@Z)
+// _GdipDeleteGraphics@4 referenced in function "public: __thiscall Gdiplus::Graphics::~Graphics(void)" (??1Graphics@Gdiplus@@QAE@XZ)
+// _GdipDrawLineI@24 referenced in function "public: enum Gdiplus::Status __thiscall Gdiplus::Graphics::DrawLine(class Gdiplus::Pen const *,int,int,int,int)" (?DrawLine@Graphics@Gdiplus@@QAE?AW4Status@2@PBVPen@2@HHHH@Z)
+
+	// Initialization of GDI+
+	GdiplusStartupInput gdiplusStartupInput;
+	ULONG_PTR gdiplusToken;
+	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
+
+	// Drawing with GDI+
+	// This must be in its own scope so that the destructors run before GDI+ is shutdown
+	{
+		Graphics graphics(hdc);  // hdc is your device context
+		Pen pen(Color(128, 255, 0, 0), 2); // Semi-transparent red, width of 2
+		graphics.DrawLine(&pen, 0, 0, 100, 100);
+	}
+
+	// Shutdown GDI+
+	GdiplusShutdown(gdiplusToken);
+}
+
+}
+*/
+
+bool
+set_up_gdi_plus ()
+{
+	if (is->gdi_plus.init_state == IS_UNINITED) {
+		// TODO: Replace with actual sizes of startup input/output structs
+		void * startup_input = calloc (1, 10000),
+		     * startup_output = calloc (1, 10000);
+
+		is->gdi_plus.init_state = IS_INIT_FAILED;
+
+		is->gdi_plus.module = LoadLibraryA ("gdiplus.dll");
+		if (is->gdi_plus.module == NULL) {
+			MessageBoxA (NULL, "Failed to load gdiplus.dll!", "Error", MB_ICONERROR);
+			goto end_init;
+		}
+
+		int (WINAPI * GdiplusStartup) (ULONG_PTR * out_token, void * gdi_plus_startup_input, void * out_gdi_plus_startup_output) =
+			(void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdiplusStartup");
+
+		*(int *)startup_input = 1; // Set first field (version) to 1 (there are no other versions)
+
+		int status = GdiplusStartup (&is->gdi_plus.token, startup_input, startup_output);
+		if (status != 0) {
+			char s[200];
+			snprintf (s, sizeof s, "Failed to initialize GDI+! Startup status: %d", status);
+			MessageBoxA (NULL, s, "Error", MB_ICONERROR);
+			goto end_init;
+		}
+
+		is->gdi_plus.init_state = IS_OK;
+
+	end_init:
+		free (startup_output);
+		free (startup_input);
+	}
+
+	return is->gdi_plus.init_state == IS_OK;
+}
+
+void __fastcall
+patch_OpenGLRenderer_draw_line (OpenGLRenderer * this, int edx, int x1, int y1, int x2, int y2)
+{
+	if (((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0)
+		OpenGLRenderer_draw_line (this, __, x1, y1, x2, y2);
+	else
+		set_up_gdi_plus ();
 }
 
 // TCC requires a main function be defined even though it's never used.

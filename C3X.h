@@ -293,6 +293,7 @@ struct injected_state {
 	HANDLE (WINAPI * CreateFileA) (LPCSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
 	DWORD (WINAPI * GetFileSize) (HANDLE, LPDWORD);
 	WINBOOL (WINAPI * ReadFile) (HANDLE, LPVOID, DWORD, LPDWORD, LPOVERLAPPED);
+	HMODULE (WINAPI * LoadLibraryA) (LPCSTR);
 	int (WINAPI * MultiByteToWideChar) (UINT, DWORD, LPCCH, int, LPWSTR, int);
 	int (WINAPI * WideCharToMultiByte) (UINT, DWORD, LPCWCH, int, LPSTR, int, LPCCH, LPBOOL);
 	int (WINAPI * GetLastError) ();
@@ -581,6 +582,14 @@ struct injected_state {
 	// Set to 1 only during the first call to get_tile_occupier_id from Trade_Net::get_movement_cost. While this is set, we need to edit unit
 	// visibility to patch the submarine bug.
 	bool getting_tile_occupier_for_ai_pathfinding;
+
+	// gdi_plus.init_state is valid any time after patch_init_floating_point. All the other fields are only valid after set_up_gdi_plus has been
+	// called and gdi_plus.init_state equals IS_OK.
+	struct gdi_plus {
+		enum init_state init_state;
+		HMODULE module;
+		ULONG_PTR token;
+	} gdi_plus;
 
 	// ==========
 	// }
