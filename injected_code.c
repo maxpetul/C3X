@@ -2042,8 +2042,6 @@ patch_init_floating_point ()
 
 	is->gdi_plus.init_state = IS_UNINITED;
 
-	is->last_dc_for_open_gl = NULL;
-
 	is->water_trade_improvs    = (struct improv_id_list) {0};
 	is->air_trade_improvs      = (struct improv_id_list) {0};
 	is->combat_defense_improvs = (struct improv_id_list) {0};
@@ -7100,61 +7098,12 @@ patch_Leader_count_forbidden_palaces_for_ocn (Leader * this, int edx, enum Impro
 		return 0; // We'll add in the FP effect later with a different weight
 }
 
-int __fastcall
-patch_OpenGLRenderer_initialize (OpenGLRenderer * this, int edx, PCX_Image * texture)
-{
-	if (texture != NULL) {
-		JGL_Image * jgl_img = texture->JGL.Image;
-		is->last_dc_for_open_gl = jgl_img->vtable->m10_Get_DC (jgl_img);
-	} else
-		is->last_dc_for_open_gl = NULL;
-
-	return OpenGLRenderer_initialize (this, __, texture);
-}
-
-
-/*
-Working line drawing with C++, for reference
-
-namespace Gdiplus {
-
-EXPORT_PROC
-void __cdecl
-draw_line (HDC hdc, int x1, int y1, int x2, int y2)
-{
-// Function names from failed link:
-// _GdiplusShutdown@4
-// _GdipCreatePen1@16 referenced in function "public: __thiscall Gdiplus::Pen::Pen(class Gdiplus::Color const &,float)" (??0Pen@Gdiplus@@QAE@ABVColor@1@M@Z)
-// _GdipDeletePen@4 referenced in function "public: __thiscall Gdiplus::Pen::~Pen(void)" (??1Pen@Gdiplus@@QAE@XZ)
-// _GdipCreateFromHDC@8 referenced in function "public: __thiscall Gdiplus::Graphics::Graphics(struct HDC__ *)" (??0Graphics@Gdiplus@@QAE@PAUHDC__@@@Z)
-// _GdipDeleteGraphics@4 referenced in function "public: __thiscall Gdiplus::Graphics::~Graphics(void)" (??1Graphics@Gdiplus@@QAE@XZ)
-// _GdipDrawLineI@24 referenced in function "public: enum Gdiplus::Status __thiscall Gdiplus::Graphics::DrawLine(class Gdiplus::Pen const *,int,int,int,int)" (?DrawLine@Graphics@Gdiplus@@QAE?AW4Status@2@PBVPen@2@HHHH@Z)
-
-	// Initialization of GDI+
-	GdiplusStartupInput gdiplusStartupInput;
-	ULONG_PTR gdiplusToken;
-	GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, NULL);
-
-	// Drawing with GDI+
-	// This must be in its own scope so that the destructors run before GDI+ is shutdown
-	{
-		Graphics graphics(hdc);  // hdc is your device context
-		Pen pen(Color(128, 255, 0, 0), 2); // Semi-transparent red, width of 2
-		graphics.DrawLine(&pen, 0, 0, 100, 100);
-	}
-
-	// Shutdown GDI+
-	GdiplusShutdown(gdiplusToken);
-}
-
-}
-*/
-
 bool
 set_up_gdi_plus ()
 {
 	if (is->gdi_plus.init_state == IS_UNINITED) {
 		is->gdi_plus.init_state = IS_INIT_FAILED;
+		is->gdi_plus.gp_graphics = NULL;
 
 		struct startup_input {
 			UINT32 GdiplusVersion;
@@ -7200,32 +7149,42 @@ set_up_gdi_plus ()
 	return is->gdi_plus.init_state == IS_OK;
 }
 
+int __fastcall
+patch_OpenGLRenderer_initialize (OpenGLRenderer * this, int edx, PCX_Image * texture)
+{
+	// Initialize GDI+ instead
+	if (((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 != 0) {
+		if (! set_up_gdi_plus ())
+			return 2;
+		if (is->gdi_plus.gp_graphics != NULL) {
+			is->gdi_plus.DeleteGraphics (is->gdi_plus.gp_graphics);
+			is->gdi_plus.gp_graphics = NULL;
+		}
+		HDC dc = texture->JGL.Image->vtable->m10_Get_DC (texture->JGL.Image);
+		int status = is->gdi_plus.CreateFromHDC (dc, &is->gdi_plus.gp_graphics);
+		return (status == 0) ? 0 : 2;
+
+	} else
+		return OpenGLRenderer_initialize (this, __, texture);
+}
+
 void __fastcall
 patch_OpenGLRenderer_draw_line (OpenGLRenderer * this, int edx, int x1, int y1, int x2, int y2)
 {
 	if (((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0)
 		OpenGLRenderer_draw_line (this, __, x1, y1, x2, y2);
 
-	else if ((is->last_dc_for_open_gl != NULL) && set_up_gdi_plus ()) {
-		// Create Gdiplus::Graphics
-		struct gdi_plus_graphics {
-			void * nativeGraphics;
+	else if ((is->gdi_plus.init_state == IS_OK) && (is->gdi_plus.gp_graphics != NULL)) {
+		// Create Gdiplus::Pen
+		struct gdi_plus_pen {
+			void * nativePen;
 			int lastResult;
-		} graphics = {NULL, 0};
-		int status = is->gdi_plus.CreateFromHDC (is->last_dc_for_open_gl, &graphics.nativeGraphics);
+		} pen = {NULL, 0};
+		int unit_world = 0; // = UnitWorld from gdiplusenums.h
+		int status = is->gdi_plus.CreatePen1 (0x7FFF0000, 5.0f, unit_world, &pen.nativePen);
 		if (status == 0) {
-			// Create Gdiplus::Pen
-			struct gdi_plus_pen {
-				void * nativePen;
-				int lastResult;
-			} pen = {NULL, 0};
-			int unit_world = 0; // = UnitWorld from gdiplusenums.h
-			status = is->gdi_plus.CreatePen1 (0x7FFF0000, 5.0f, unit_world, &pen.nativePen);
-			if (status == 0) {
-				is->gdi_plus.DrawLineI (graphics.nativeGraphics, pen.nativePen, x1, y1, x2, y2);
-				is->gdi_plus.DeletePen (pen.nativePen);
-			}
-			is->gdi_plus.DeleteGraphics (graphics.nativeGraphics);
+			is->gdi_plus.DrawLineI (is->gdi_plus.gp_graphics, pen.nativePen, x1, y1, x2, y2);
+			is->gdi_plus.DeletePen (pen.nativePen);
 		}
 	}
 }
