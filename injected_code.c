@@ -7169,22 +7169,50 @@ patch_OpenGLRenderer_initialize (OpenGLRenderer * this, int edx, PCX_Image * tex
 }
 
 void __fastcall
+patch_OpenGLRenderer_set_color (OpenGLRenderer * this, int edx, unsigned int rgb555)
+{
+	// Convert rgb555 to rgb888
+	unsigned int rgb888 = 0; {
+		unsigned int mask = 31;
+		int shift = 3;
+		for (int n = 0; n < 3; n++) {
+			rgb888 |= (rgb555 & mask) << shift;
+			mask <<= 5;
+			shift += 3;
+		}
+	}
+
+	is->ogl_color = (is->ogl_color & 0xFF000000) | rgb888;
+	OpenGLRenderer_set_color (this, __, rgb555);
+}
+
+void __fastcall
+patch_OpenGLRenderer_set_opacity (OpenGLRenderer * this, int edx, unsigned int alpha)
+{
+	is->ogl_color = (is->ogl_color & 0x00FFFFFF) | (alpha << 24);
+	OpenGLRenderer_set_opacity (this, __, alpha);
+}
+
+void __fastcall
+patch_OpenGLRenderer_set_line_width (OpenGLRenderer * this, int edx, int width)
+{
+	is->ogl_line_width = width;
+	OpenGLRenderer_set_line_width (this, __, width);
+}
+
+void __fastcall
 patch_OpenGLRenderer_draw_line (OpenGLRenderer * this, int edx, int x1, int y1, int x2, int y2)
 {
 	if (((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0)
 		OpenGLRenderer_draw_line (this, __, x1, y1, x2, y2);
 
 	else if ((is->gdi_plus.init_state == IS_OK) && (is->gdi_plus.gp_graphics != NULL)) {
-		// Create Gdiplus::Pen
-		struct gdi_plus_pen {
-			void * nativePen;
-			int lastResult;
-		} pen = {NULL, 0};
+		void * gp_pen;
 		int unit_world = 0; // = UnitWorld from gdiplusenums.h
-		int status = is->gdi_plus.CreatePen1 (0x7FFF0000, 5.0f, unit_world, &pen.nativePen);
+		int status = is->gdi_plus.CreatePen1 (is->ogl_color, (float)is->ogl_line_width, unit_world, &gp_pen);
 		if (status == 0) {
-			is->gdi_plus.DrawLineI (is->gdi_plus.gp_graphics, pen.nativePen, x1, y1, x2, y2);
-			is->gdi_plus.DeletePen (pen.nativePen);
+			is->gdi_plus.DrawLineI (is->gdi_plus.gp_graphics, gp_pen, x1, y1, x2, y2);
+			is->gdi_plus.DeletePen (gp_pen);
 		}
 	}
 }

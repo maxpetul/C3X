@@ -598,6 +598,10 @@ struct injected_state {
 		int (__stdcall * DrawLineI) (void * gp_graphics, void * gp_pen, int x1, int y1, int x2, int y2);
 	} gdi_plus;
 
+	// These variables track the states of some OpenGL parameters. They're updated whenever methods like OpenGLRenderer::set_color are called.
+	unsigned int ogl_color;
+	int ogl_line_width;
+
 	// ==========
 	// }
 	// ==========
