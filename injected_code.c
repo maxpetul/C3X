@@ -7121,12 +7121,15 @@ set_up_gdi_plus ()
 		int (WINAPI * GdiplusStartup) (ULONG_PTR * out_token, struct startup_input *, void * startup_output) =
 			(void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdiplusStartup");
 
-		is->gdi_plus.CreateFromHDC  = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipCreateFromHDC");
-		is->gdi_plus.DeleteGraphics = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipDeleteGraphics");
-		is->gdi_plus.CreatePen1     = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipCreatePen1");
-		is->gdi_plus.DeletePen      = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipDeletePen");
-		is->gdi_plus.DrawLineI      = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipDrawLineI");
+		is->gdi_plus.CreateFromHDC    = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipCreateFromHDC");
+		is->gdi_plus.DeleteGraphics   = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipDeleteGraphics");
+		is->gdi_plus.SetSmoothingMode = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipSetSmoothingMode");
+		is->gdi_plus.SetPenDashStyle  = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipSetPenDashStyle");
+		is->gdi_plus.CreatePen1       = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipCreatePen1");
+		is->gdi_plus.DeletePen        = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipDeletePen");
+		is->gdi_plus.DrawLineI        = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipDrawLineI");
 		if ((is->gdi_plus.CreateFromHDC == NULL) || (is->gdi_plus.DeleteGraphics == NULL) ||
+		    (is->gdi_plus.SetSmoothingMode == NULL) || (is->gdi_plus.SetPenDashStyle == NULL) ||
 		    (is->gdi_plus.CreatePen1 == NULL) || (is->gdi_plus.DeletePen == NULL) ||
 		    (is->gdi_plus.DrawLineI == NULL)) {
 			MessageBoxA (NULL, "Failed to get GDI+ proc addresses!", "Error", MB_ICONERROR);
@@ -7162,7 +7165,11 @@ patch_OpenGLRenderer_initialize (OpenGLRenderer * this, int edx, PCX_Image * tex
 		}
 		HDC dc = texture->JGL.Image->vtable->m10_Get_DC (texture->JGL.Image);
 		int status = is->gdi_plus.CreateFromHDC (dc, &is->gdi_plus.gp_graphics);
-		return (status == 0) ? 0 : 2;
+		if (status == 0) {
+			is->gdi_plus.SetSmoothingMode (is->gdi_plus.gp_graphics, 4); // 4 = SmoothingModeAntiAlias from GdiPlusEnums.h
+			return 0;
+		} else
+			return 2;
 
 	} else
 		return OpenGLRenderer_initialize (this, __, texture);
@@ -7201,6 +7208,20 @@ patch_OpenGLRenderer_set_line_width (OpenGLRenderer * this, int edx, int width)
 }
 
 void __fastcall
+patch_OpenGLRenderer_enable_line_dashing (OpenGLRenderer * this)
+{
+	is->ogl_line_stipple_enabled = true;
+	OpenGLRenderer_enable_line_dashing (this);
+}
+
+void __fastcall
+patch_OpenGLRenderer_disable_line_dashing (OpenGLRenderer * this)
+{
+	is->ogl_line_stipple_enabled = false;
+	OpenGLRenderer_disable_line_dashing (this);
+}
+
+void __fastcall
 patch_OpenGLRenderer_draw_line (OpenGLRenderer * this, int edx, int x1, int y1, int x2, int y2)
 {
 	if (((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0)
@@ -7211,6 +7232,8 @@ patch_OpenGLRenderer_draw_line (OpenGLRenderer * this, int edx, int x1, int y1, 
 		int unit_world = 0; // = UnitWorld from gdiplusenums.h
 		int status = is->gdi_plus.CreatePen1 (is->ogl_color, (float)is->ogl_line_width, unit_world, &gp_pen);
 		if (status == 0) {
+			if (is->ogl_line_stipple_enabled)
+				is->gdi_plus.SetPenDashStyle (gp_pen, 1); // 1 = DashStyleDash from GdiPlusEnums.h
 			is->gdi_plus.DrawLineI (is->gdi_plus.gp_graphics, gp_pen, x1, y1, x2, y2);
 			is->gdi_plus.DeletePen (gp_pen);
 		}

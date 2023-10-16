@@ -593,6 +593,8 @@ struct injected_state {
 
 		int (__stdcall * CreateFromHDC) (HDC hdc, void ** p_gp_graphics);
 		int (__stdcall * DeleteGraphics) (void * gp_graphics);
+		int (__stdcall * SetSmoothingMode) (void * graphics, int smoothing_mode);
+		int (__stdcall * SetPenDashStyle) (void * gp_pen, int dash_style);
 		int (__stdcall * CreatePen1) (unsigned int argb_color, float width, int gp_unit, void ** p_gp_pen);
 		int (__stdcall * DeletePen) (void * gp_pen);
 		int (__stdcall * DrawLineI) (void * gp_graphics, void * gp_pen, int x1, int y1, int x2, int y2);
@@ -601,6 +603,7 @@ struct injected_state {
 	// These variables track the states of some OpenGL parameters. They're updated whenever methods like OpenGLRenderer::set_color are called.
 	unsigned int ogl_color;
 	int ogl_line_width;
+	bool ogl_line_stipple_enabled;
 
 	// ==========
 	// }
