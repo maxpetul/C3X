@@ -590,10 +590,11 @@ struct injected_state {
 		HMODULE module;
 		ULONG_PTR token;
 
-		int (__stdcall * GdipCreateFromHDC) (HDC hdc, void ** p_gp_graphics);
-		int (__stdcall * GdipDeleteGraphics) (void * gp_graphics);
-		int (__stdcall * GdipCreatePen1) (unsigned int argb_color, float width, int gp_unit, void ** p_gp_pen);
-		int (__stdcall * GdipDeletePen) (void * gp_pen);
+		int (__stdcall * CreateFromHDC) (HDC hdc, void ** p_gp_graphics);
+		int (__stdcall * DeleteGraphics) (void * gp_graphics);
+		int (__stdcall * CreatePen1) (unsigned int argb_color, float width, int gp_unit, void ** p_gp_pen);
+		int (__stdcall * DeletePen) (void * gp_pen);
+		int (__stdcall * DrawLineI) (void * gp_graphics, void * gp_pen, int x1, int y1, int x2, int y2);
 	} gdi_plus;
 
 	// Keeps the device context handle most recently used to initialize OpenGLRenderer. This is the DC beloning to the texture passed to
