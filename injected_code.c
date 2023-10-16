@@ -7174,7 +7174,10 @@ set_up_gdi_plus ()
 
 		is->gdi_plus.GdipCreateFromHDC  = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipCreateFromHDC");
 		is->gdi_plus.GdipDeleteGraphics = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipDeleteGraphics");
-		if ((is->gdi_plus.GdipCreateFromHDC == NULL) || (is->gdi_plus.GdipDeleteGraphics == NULL)) {
+		is->gdi_plus.GdipCreatePen1     = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipCreatePen1");
+		is->gdi_plus.GdipDeletePen      = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipDeletePen");
+		if ((is->gdi_plus.GdipCreateFromHDC == NULL) || (is->gdi_plus.GdipDeleteGraphics == NULL) ||
+		    (is->gdi_plus.GdipCreatePen1 == NULL) || (is->gdi_plus.GdipDeletePen == NULL)) {
 			MessageBoxA (NULL, "Failed to get GDI+ proc addresses!", "Error", MB_ICONERROR);
 			goto end_init;
 		}
@@ -7206,11 +7209,21 @@ patch_OpenGLRenderer_draw_line (OpenGLRenderer * this, int edx, int x1, int y1, 
 		struct gdi_plus_graphics {
 			void * nativeGraphics;
 			int lastResult;
-		} graphics = { NULL, 0 };
+		} graphics = {NULL, 0};
 		int status = is->gdi_plus.GdipCreateFromHDC (is->last_dc_for_open_gl, &graphics.nativeGraphics);
 		if (status == 0) {
-			// TODO: Create pen and draw line
+			// Create Gdiplus::Pen
+			struct gdi_plus_pen {
+				void * nativePen;
+				int lastResult;
+			} pen = {NULL, 0};
+			int unit_world = 0; // = UnitWorld from gdiplusenums.h
+			status = is->gdi_plus.GdipCreatePen1 (0xFFFF0000, 2.0f, unit_world, &pen.nativePen);
+			if (status == 0) {
+				// TODO: Actually draw the line
 
+				is->gdi_plus.GdipDeletePen (pen.nativePen);
+			}
 			is->gdi_plus.GdipDeleteGraphics (graphics.nativeGraphics);
 		}
 	}

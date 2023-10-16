@@ -592,6 +592,8 @@ struct injected_state {
 
 		int (__stdcall * GdipCreateFromHDC) (HDC hdc, void ** p_gp_graphics);
 		int (__stdcall * GdipDeleteGraphics) (void * gp_graphics);
+		int (__stdcall * GdipCreatePen1) (unsigned int argb_color, float width, int gp_unit, void ** p_gp_pen);
+		int (__stdcall * GdipDeletePen) (void * gp_pen);
 	} gdi_plus;
 
 	// Keeps the device context handle most recently used to initialize OpenGLRenderer. This is the DC beloning to the texture passed to
