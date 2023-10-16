@@ -7139,11 +7139,14 @@ bool
 set_up_gdi_plus ()
 {
 	if (is->gdi_plus.init_state == IS_UNINITED) {
-		// TODO: Replace with actual sizes of startup input/output structs
-		void * startup_input = calloc (1, 10000),
-		     * startup_output = calloc (1, 10000);
-
 		is->gdi_plus.init_state = IS_INIT_FAILED;
+
+		struct startup_input {
+			UINT32 GdiplusVersion;
+			void * DebugEventCallback;
+			BOOL SuppressBackgroundThread;
+			BOOL SuppressExternalCodecs;
+		} startup_input = {1, NULL, FALSE, FALSE};
 
 		is->gdi_plus.module = LoadLibraryA ("gdiplus.dll");
 		if (is->gdi_plus.module == NULL) {
@@ -7151,12 +7154,10 @@ set_up_gdi_plus ()
 			goto end_init;
 		}
 
-		int (WINAPI * GdiplusStartup) (ULONG_PTR * out_token, void * gdi_plus_startup_input, void * out_gdi_plus_startup_output) =
+		int (WINAPI * GdiplusStartup) (ULONG_PTR * out_token, struct startup_input *, void * startup_output) =
 			(void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdiplusStartup");
 
-		*(int *)startup_input = 1; // Set first field (version) to 1 (there are no other versions)
-
-		int status = GdiplusStartup (&is->gdi_plus.token, startup_input, startup_output);
+		int status = GdiplusStartup (&is->gdi_plus.token, &startup_input, NULL);
 		if (status != 0) {
 			char s[200];
 			snprintf (s, sizeof s, "Failed to initialize GDI+! Startup status: %d", status);
@@ -7165,10 +7166,8 @@ set_up_gdi_plus ()
 		}
 
 		is->gdi_plus.init_state = IS_OK;
-
 	end_init:
-		free (startup_output);
-		free (startup_input);
+		;
 	}
 
 	return is->gdi_plus.init_state == IS_OK;
