@@ -432,6 +432,7 @@ repl call, 0x567706,	0x573AF6,	0x5676B6,	"Leader_count_forbidden_palaces_for_ocn
 repl call, 0x550F99,	0x55C0E1,	0x550F49,	"Unit_can_do_worker_command_for_button_setup",	""
 repl call, 0x55132D,	0x55C484,	0x5512DD,	"Unit_can_do_worker_command_for_button_setup",	""
 define,	   0x5FCB10,	0x610790,	0x5FC9F0,	"PCX_Image_draw_onto",				"int (__fastcall *) (PCX_Image * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y)"
+inlead,	   0x62B1A0,	0x64E220,	0x6274B0,	"OpenGLRenderer_initialize",			"int (__fastcall *) (OpenGLRenderer * this, int edx, PCX_Image * texture)"
 inlead,	   0x62B450,	0x64E510,	0x627760,	"OpenGLRenderer_draw_line",			"void (__fastcall *) (OpenGLRenderer * this, int edx, int x1, int y1, int x2, int y2)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"

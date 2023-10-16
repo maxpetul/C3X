@@ -589,7 +589,14 @@ struct injected_state {
 		enum init_state init_state;
 		HMODULE module;
 		ULONG_PTR token;
+
+		int (__stdcall * GdipCreateFromHDC) (HDC hdc, void ** p_gp_graphics);
+		int (__stdcall * GdipDeleteGraphics) (void * gp_graphics);
 	} gdi_plus;
+
+	// Keeps the device context handle most recently used to initialize OpenGLRenderer. This is the DC beloning to the texture passed to
+	// OpenGLRenderer::intiailize.
+	HDC last_dc_for_open_gl;
 
 	// ==========
 	// }

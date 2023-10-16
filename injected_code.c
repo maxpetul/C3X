@@ -2042,6 +2042,8 @@ patch_init_floating_point ()
 
 	is->gdi_plus.init_state = IS_UNINITED;
 
+	is->last_dc_for_open_gl = NULL;
+
 	is->water_trade_improvs    = (struct improv_id_list) {0};
 	is->air_trade_improvs      = (struct improv_id_list) {0};
 	is->combat_defense_improvs = (struct improv_id_list) {0};
@@ -7098,6 +7100,19 @@ patch_Leader_count_forbidden_palaces_for_ocn (Leader * this, int edx, enum Impro
 		return 0; // We'll add in the FP effect later with a different weight
 }
 
+int __fastcall
+patch_OpenGLRenderer_initialize (OpenGLRenderer * this, int edx, PCX_Image * texture)
+{
+	if (texture != NULL) {
+		JGL_Image * jgl_img = texture->JGL.Image;
+		is->last_dc_for_open_gl = jgl_img->vtable->m10_Get_DC (jgl_img);
+	} else
+		is->last_dc_for_open_gl = NULL;
+
+	return OpenGLRenderer_initialize (this, __, texture);
+}
+
+
 /*
 Working line drawing with C++, for reference
 
@@ -7157,6 +7172,13 @@ set_up_gdi_plus ()
 		int (WINAPI * GdiplusStartup) (ULONG_PTR * out_token, struct startup_input *, void * startup_output) =
 			(void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdiplusStartup");
 
+		is->gdi_plus.GdipCreateFromHDC  = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipCreateFromHDC");
+		is->gdi_plus.GdipDeleteGraphics = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipDeleteGraphics");
+		if ((is->gdi_plus.GdipCreateFromHDC == NULL) || (is->gdi_plus.GdipDeleteGraphics == NULL)) {
+			MessageBoxA (NULL, "Failed to get GDI+ proc addresses!", "Error", MB_ICONERROR);
+			goto end_init;
+		}
+
 		int status = GdiplusStartup (&is->gdi_plus.token, &startup_input, NULL);
 		if (status != 0) {
 			char s[200];
@@ -7178,8 +7200,20 @@ patch_OpenGLRenderer_draw_line (OpenGLRenderer * this, int edx, int x1, int y1, 
 {
 	if (((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0)
 		OpenGLRenderer_draw_line (this, __, x1, y1, x2, y2);
-	else
-		set_up_gdi_plus ();
+
+	else if ((is->last_dc_for_open_gl != NULL) && set_up_gdi_plus ()) {
+		// Create Gdiplus::Graphics
+		struct gdi_plus_graphics {
+			void * nativeGraphics;
+			int lastResult;
+		} graphics = { NULL, 0 };
+		int status = is->gdi_plus.GdipCreateFromHDC (is->last_dc_for_open_gl, &graphics.nativeGraphics);
+		if (status == 0) {
+			// TODO: Create pen and draw line
+
+			is->gdi_plus.GdipDeleteGraphics (graphics.nativeGraphics);
+		}
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.
