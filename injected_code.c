@@ -546,6 +546,17 @@ read_retreat_rules (struct string_slice const * s, int * out_val)
 		return false;
 }
 
+bool
+read_line_drawing_override (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "never" )) { *out_val = LDO_NEVER;  return true; }
+	else if (slice_matches_str (&trimmed, "wine"  )) { *out_val = LDO_WINE;   return true; }
+	else if (slice_matches_str (&trimmed, "always")) { *out_val = LDO_ALWAYS; return true; }
+	else
+		return false;
+}
+
 struct parsable_field_bit {
 	char * name;
 	int bit_value;
@@ -736,6 +747,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "sea_retreat_rules")) {
 					if (! read_retreat_rules (&value, (int *)&cfg->sea_retreat_rules))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "draw_lines_using_gdi_plus")) {
+					if (! read_line_drawing_override (&value, (int *)&cfg->draw_lines_using_gdi_plus))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_defensive_bombard_rules")) {
 					struct parsable_field_bit bits[] = {
@@ -1935,6 +1949,7 @@ patch_init_floating_point ()
 	struct c3x_config base_config = {0};
 	base_config.land_retreat_rules = RR_STANDARD;
 	base_config.sea_retreat_rules  = RR_STANDARD;
+	base_config.draw_lines_using_gdi_plus = LDO_WINE;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)
@@ -2039,6 +2054,11 @@ patch_init_floating_point ()
 
 	is->showing_hotseat_replay = false;
 	is->getting_tile_occupier_for_ai_pathfinding = false;
+
+	is->running_on_wine = false; {
+		HMODULE ntdll = (*p_GetModuleHandleA) ("ntdll.dll");
+		is->running_on_wine = (ntdll != NULL) && ((*p_GetProcAddress) (ntdll, "wine_get_version") != NULL);
+	}
 
 	is->gdi_plus.init_state = IS_UNINITED;
 
@@ -7155,8 +7175,12 @@ set_up_gdi_plus ()
 int __fastcall
 patch_OpenGLRenderer_initialize (OpenGLRenderer * this, int edx, PCX_Image * texture)
 {
+	if ((is->current_config.draw_lines_using_gdi_plus == LDO_NEVER) ||
+	    ((is->current_config.draw_lines_using_gdi_plus == LDO_WINE) && ! is->running_on_wine))
+		return OpenGLRenderer_initialize (this, __, texture);
+
 	// Initialize GDI+ instead
-	if (((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 != 0) {
+	else {
 		if (! set_up_gdi_plus ())
 			return 2;
 		if (is->gdi_plus.gp_graphics != NULL) {
@@ -7170,9 +7194,7 @@ patch_OpenGLRenderer_initialize (OpenGLRenderer * this, int edx, PCX_Image * tex
 			return 0;
 		} else
 			return 2;
-
-	} else
-		return OpenGLRenderer_initialize (this, __, texture);
+	}
 }
 
 void __fastcall
@@ -7224,7 +7246,8 @@ patch_OpenGLRenderer_disable_line_dashing (OpenGLRenderer * this)
 void __fastcall
 patch_OpenGLRenderer_draw_line (OpenGLRenderer * this, int edx, int x1, int y1, int x2, int y2)
 {
-	if (((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0)
+	if ((is->current_config.draw_lines_using_gdi_plus == LDO_NEVER) ||
+	    ((is->current_config.draw_lines_using_gdi_plus == LDO_WINE) && ! is->running_on_wine))
 		OpenGLRenderer_draw_line (this, __, x1, y1, x2, y2);
 
 	else if ((is->gdi_plus.init_state == IS_OK) && (is->gdi_plus.gp_graphics != NULL)) {
