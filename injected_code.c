@@ -28,6 +28,8 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define MultiByteToWideChar is->MultiByteToWideChar
 #define WideCharToMultiByte is->WideCharToMultiByte
 #define GetLastError is->GetLastError
+#define QueryPerformanceCounter is->QueryPerformanceCounter
+#define QueryPerformanceFrequency is->QueryPerformanceFrequency
 #define GetLocalTime is->GetLocalTime
 #define snprintf is->snprintf
 #define malloc is->malloc
@@ -1909,16 +1911,18 @@ patch_init_floating_point ()
 	is->msvcrt   = (*p_GetModuleHandleA) ("msvcrt.dll");
 
 	// Remember the function names here are macros that expand to is->...
-	VirtualProtect      = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualProtect");
-	CloseHandle         = (void *)(*p_GetProcAddress) (is->kernel32, "CloseHandle");
-	CreateFileA         = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
-	GetFileSize         = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
-	ReadFile            = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
-	LoadLibraryA        = (void *)(*p_GetProcAddress) (is->kernel32, "LoadLibraryA");
-	MultiByteToWideChar = (void *)(*p_GetProcAddress) (is->kernel32, "MultiByteToWideChar");
-	WideCharToMultiByte = (void *)(*p_GetProcAddress) (is->kernel32, "WideCharToMultiByte");
-	GetLastError        = (void *)(*p_GetProcAddress) (is->kernel32, "GetLastError");
-	GetLocalTime        = (void *)(*p_GetProcAddress) (is->kernel32, "GetLocalTime");
+	VirtualProtect            = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualProtect");
+	CloseHandle               = (void *)(*p_GetProcAddress) (is->kernel32, "CloseHandle");
+	CreateFileA               = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
+	GetFileSize               = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
+	ReadFile                  = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
+	LoadLibraryA              = (void *)(*p_GetProcAddress) (is->kernel32, "LoadLibraryA");
+	MultiByteToWideChar       = (void *)(*p_GetProcAddress) (is->kernel32, "MultiByteToWideChar");
+	WideCharToMultiByte       = (void *)(*p_GetProcAddress) (is->kernel32, "WideCharToMultiByte");
+	GetLastError              = (void *)(*p_GetProcAddress) (is->kernel32, "GetLastError");
+	QueryPerformanceCounter   = (void *)(*p_GetProcAddress) (is->kernel32, "QueryPerformanceCounter");
+	QueryPerformanceFrequency = (void *)(*p_GetProcAddress) (is->kernel32, "QueryPerformanceFrequency");
+	GetLocalTime              = (void *)(*p_GetProcAddress) (is->kernel32, "GetLocalTime");
 	MessageBoxA  = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
 	snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
 	malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
@@ -2033,6 +2037,7 @@ patch_init_floating_point ()
 		}
 	}
 	is->is_computing_city_connections = 0;
+	is->time_spent_computing_city_connections = 0;
 
 	is->have_job_and_loc_to_skip = 0;
 
@@ -6255,8 +6260,22 @@ patch_perform_interturn_in_main_loop ()
 	}
 
 	is->players_saw_ai_unit = 0; // Clear bits. After perform_interturn, each set bit will indicate a player that has seen an AI unit move
+	is->time_spent_computing_city_connections = 0;
 
 	perform_interturn ();
+
+	{
+		long long perf_freq;
+		QueryPerformanceFrequency ((LARGE_INTEGER *)&perf_freq);
+		int time_in_ms = (int)(1000 * is->time_spent_computing_city_connections / perf_freq);
+
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
+		char msg[1000];
+		snprintf (msg, sizeof msg, "Time spent recomputing city connections: %d.%03d sec", time_in_ms/1000, time_in_ms%1000);
+		PopupForm_add_text (popup, __, (char *)msg, false);
+		show_popup (popup, __, 0, 0);
+	}
 
 	if (save_replay) {
 		int last_human_player_bit = 0; {
@@ -7168,6 +7187,8 @@ void __fastcall
 patch_Trade_Net_recompute_city_connections (Trade_Net * this, int edx, int civ_id, bool redo_road_network, byte param_3, int redo_roads_for_city_id)
 {
 	is->is_computing_city_connections = 1;
+	long long ts_before;
+	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_before);
 
 	if (is->tnx_init_state == IS_OK) {
 		if (is->tnx_cache == NULL)
@@ -7177,6 +7198,9 @@ patch_Trade_Net_recompute_city_connections (Trade_Net * this, int edx, int civ_i
 
 	Trade_Net_recompute_city_connections (this, __, civ_id, redo_road_network, param_3, redo_roads_for_city_id);
 
+	long long ts_after;
+	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
+	is->time_spent_computing_city_connections += ts_after - ts_before;
 	is->is_computing_city_connections = 0;
 }
 

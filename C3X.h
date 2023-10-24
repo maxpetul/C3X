@@ -304,6 +304,8 @@ struct injected_state {
 	int (WINAPI * MultiByteToWideChar) (UINT, DWORD, LPCCH, int, LPWSTR, int);
 	int (WINAPI * WideCharToMultiByte) (UINT, DWORD, LPCWCH, int, LPSTR, int, LPCCH, LPBOOL);
 	int (WINAPI * GetLastError) ();
+	BOOL (WINAPI * QueryPerformanceCounter) (LARGE_INTEGER *);
+	BOOL (WINAPI * QueryPerformanceFrequency) (LARGE_INTEGER *);
 	void (WINAPI * GetLocalTime) (LPSYSTEMTIME);
 
 	// Win32 funcs from user32.dll
@@ -337,6 +339,8 @@ struct injected_state {
 	void * tnx_cache; // Cache object used by Trade Net X. Initially NULL, must be recreated every time a new map is loaded.
 	enum init_state tnx_init_state;
 	int is_computing_city_connections; // Set to 1 only while Trade_Net::recompute_city_connections is running
+	long long time_spent_computing_city_connections; // Increased every time Trade_Net::recompute_city_connections runs with the time elapsed.
+	// Time is measured using Windows performance counter.
 
 	struct c3x_config current_config;
 
