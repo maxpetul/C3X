@@ -546,6 +546,17 @@ read_retreat_rules (struct string_slice const * s, int * out_val)
 		return false;
 }
 
+bool
+read_line_drawing_override (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "never" )) { *out_val = LDO_NEVER;  return true; }
+	else if (slice_matches_str (&trimmed, "wine"  )) { *out_val = LDO_WINE;   return true; }
+	else if (slice_matches_str (&trimmed, "always")) { *out_val = LDO_ALWAYS; return true; }
+	else
+		return false;
+}
+
 struct parsable_field_bit {
 	char * name;
 	int bit_value;
@@ -736,6 +747,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "sea_retreat_rules")) {
 					if (! read_retreat_rules (&value, (int *)&cfg->sea_retreat_rules))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "draw_lines_using_gdi_plus")) {
+					if (! read_line_drawing_override (&value, (int *)&cfg->draw_lines_using_gdi_plus))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_defensive_bombard_rules")) {
 					struct parsable_field_bit bits[] = {
@@ -1935,6 +1949,7 @@ patch_init_floating_point ()
 	struct c3x_config base_config = {0};
 	base_config.land_retreat_rules = RR_STANDARD;
 	base_config.sea_retreat_rules  = RR_STANDARD;
+	base_config.draw_lines_using_gdi_plus = LDO_WINE;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)
@@ -2074,6 +2089,13 @@ patch_init_floating_point ()
 
 	is->showing_hotseat_replay = false;
 	is->getting_tile_occupier_for_ai_pathfinding = false;
+
+	is->running_on_wine = false; {
+		HMODULE ntdll = (*p_GetModuleHandleA) ("ntdll.dll");
+		is->running_on_wine = (ntdll != NULL) && ((*p_GetProcAddress) (ntdll, "wine_get_version") != NULL);
+	}
+
+	is->gdi_plus.init_state = IS_UNINITED;
 
 	is->water_trade_improvs    = (struct improv_id_list) {0};
 	is->air_trade_improvs      = (struct improv_id_list) {0};
@@ -7156,6 +7178,151 @@ patch_Trade_Net_recompute_city_connections (Trade_Net * this, int edx, int civ_i
 	Trade_Net_recompute_city_connections (this, __, civ_id, redo_road_network, param_3, redo_roads_for_city_id);
 
 	is->is_computing_city_connections = 0;
+}
+
+bool
+set_up_gdi_plus ()
+{
+	if (is->gdi_plus.init_state == IS_UNINITED) {
+		is->gdi_plus.init_state = IS_INIT_FAILED;
+		is->gdi_plus.gp_graphics = NULL;
+
+		struct startup_input {
+			UINT32 GdiplusVersion;
+			void * DebugEventCallback;
+			BOOL SuppressBackgroundThread;
+			BOOL SuppressExternalCodecs;
+		} startup_input = {1, NULL, FALSE, FALSE};
+
+		is->gdi_plus.module = LoadLibraryA ("gdiplus.dll");
+		if (is->gdi_plus.module == NULL) {
+			MessageBoxA (NULL, "Failed to load gdiplus.dll!", "Error", MB_ICONERROR);
+			goto end_init;
+		}
+
+		int (WINAPI * GdiplusStartup) (ULONG_PTR * out_token, struct startup_input *, void * startup_output) =
+			(void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdiplusStartup");
+
+		is->gdi_plus.CreateFromHDC    = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipCreateFromHDC");
+		is->gdi_plus.DeleteGraphics   = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipDeleteGraphics");
+		is->gdi_plus.SetSmoothingMode = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipSetSmoothingMode");
+		is->gdi_plus.SetPenDashStyle  = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipSetPenDashStyle");
+		is->gdi_plus.CreatePen1       = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipCreatePen1");
+		is->gdi_plus.DeletePen        = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipDeletePen");
+		is->gdi_plus.DrawLineI        = (void *)(*p_GetProcAddress) (is->gdi_plus.module, "GdipDrawLineI");
+		if ((is->gdi_plus.CreateFromHDC == NULL) || (is->gdi_plus.DeleteGraphics == NULL) ||
+		    (is->gdi_plus.SetSmoothingMode == NULL) || (is->gdi_plus.SetPenDashStyle == NULL) ||
+		    (is->gdi_plus.CreatePen1 == NULL) || (is->gdi_plus.DeletePen == NULL) ||
+		    (is->gdi_plus.DrawLineI == NULL)) {
+			MessageBoxA (NULL, "Failed to get GDI+ proc addresses!", "Error", MB_ICONERROR);
+			goto end_init;
+		}
+
+		int status = GdiplusStartup (&is->gdi_plus.token, &startup_input, NULL);
+		if (status != 0) {
+			char s[200];
+			snprintf (s, sizeof s, "Failed to initialize GDI+! Startup status: %d", status);
+			MessageBoxA (NULL, s, "Error", MB_ICONERROR);
+			goto end_init;
+		}
+
+		is->gdi_plus.init_state = IS_OK;
+	end_init:
+		;
+	}
+
+	return is->gdi_plus.init_state == IS_OK;
+}
+
+int __fastcall
+patch_OpenGLRenderer_initialize (OpenGLRenderer * this, int edx, PCX_Image * texture)
+{
+	if ((is->current_config.draw_lines_using_gdi_plus == LDO_NEVER) ||
+	    ((is->current_config.draw_lines_using_gdi_plus == LDO_WINE) && ! is->running_on_wine))
+		return OpenGLRenderer_initialize (this, __, texture);
+
+	// Initialize GDI+ instead
+	else {
+		if (! set_up_gdi_plus ())
+			return 2;
+		if (is->gdi_plus.gp_graphics != NULL) {
+			is->gdi_plus.DeleteGraphics (is->gdi_plus.gp_graphics);
+			is->gdi_plus.gp_graphics = NULL;
+		}
+		HDC dc = texture->JGL.Image->vtable->m10_Get_DC (texture->JGL.Image);
+		int status = is->gdi_plus.CreateFromHDC (dc, &is->gdi_plus.gp_graphics);
+		if (status == 0) {
+			is->gdi_plus.SetSmoothingMode (is->gdi_plus.gp_graphics, 4); // 4 = SmoothingModeAntiAlias from GdiPlusEnums.h
+			return 0;
+		} else
+			return 2;
+	}
+}
+
+void __fastcall
+patch_OpenGLRenderer_set_color (OpenGLRenderer * this, int edx, unsigned int rgb555)
+{
+	// Convert rgb555 to rgb888
+	unsigned int rgb888 = 0; {
+		unsigned int mask = 31;
+		int shift = 3;
+		for (int n = 0; n < 3; n++) {
+			rgb888 |= (rgb555 & mask) << shift;
+			mask <<= 5;
+			shift += 3;
+		}
+	}
+
+	is->ogl_color = (is->ogl_color & 0xFF000000) | rgb888;
+	OpenGLRenderer_set_color (this, __, rgb555);
+}
+
+void __fastcall
+patch_OpenGLRenderer_set_opacity (OpenGLRenderer * this, int edx, unsigned int alpha)
+{
+	is->ogl_color = (is->ogl_color & 0x00FFFFFF) | (alpha << 24);
+	OpenGLRenderer_set_opacity (this, __, alpha);
+}
+
+void __fastcall
+patch_OpenGLRenderer_set_line_width (OpenGLRenderer * this, int edx, int width)
+{
+	is->ogl_line_width = width;
+	OpenGLRenderer_set_line_width (this, __, width);
+}
+
+void __fastcall
+patch_OpenGLRenderer_enable_line_dashing (OpenGLRenderer * this)
+{
+	is->ogl_line_stipple_enabled = true;
+	OpenGLRenderer_enable_line_dashing (this);
+}
+
+void __fastcall
+patch_OpenGLRenderer_disable_line_dashing (OpenGLRenderer * this)
+{
+	is->ogl_line_stipple_enabled = false;
+	OpenGLRenderer_disable_line_dashing (this);
+}
+
+void __fastcall
+patch_OpenGLRenderer_draw_line (OpenGLRenderer * this, int edx, int x1, int y1, int x2, int y2)
+{
+	if ((is->current_config.draw_lines_using_gdi_plus == LDO_NEVER) ||
+	    ((is->current_config.draw_lines_using_gdi_plus == LDO_WINE) && ! is->running_on_wine))
+		OpenGLRenderer_draw_line (this, __, x1, y1, x2, y2);
+
+	else if ((is->gdi_plus.init_state == IS_OK) && (is->gdi_plus.gp_graphics != NULL)) {
+		void * gp_pen;
+		int unit_world = 0; // = UnitWorld from gdiplusenums.h
+		int status = is->gdi_plus.CreatePen1 (is->ogl_color, (float)is->ogl_line_width, unit_world, &gp_pen);
+		if (status == 0) {
+			if (is->ogl_line_stipple_enabled)
+				is->gdi_plus.SetPenDashStyle (gp_pen, 1); // 1 = DashStyleDash from GdiPlusEnums.h
+			is->gdi_plus.DrawLineI (is->gdi_plus.gp_graphics, gp_pen, x1, y1, x2, y2);
+			is->gdi_plus.DeletePen (gp_pen);
+		}
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.
