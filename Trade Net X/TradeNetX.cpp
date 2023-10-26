@@ -330,9 +330,12 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, void * tnx_cache, int from_x
 	if (((from_info & TI_TERRAIN_MASK) == TI_LAND) && ((to_info & TI_TERRAIN_MASK) == TI_LAND))
 		return Trade_Net_get_movement_cost (trade_net, from_x, from_y, to_x, to_y, NULL, civ_id, flags, neighbor_index, dist_info);
 
-	// At this point, the move is valid. Return its cost.
-	Tile * to_tile = tile_at (to_x, to_y);
-	return Tile_get_terrain_move_cost (to_tile) * p_bic_data->General.RoadsMovementRate;
+	// At this point, we've determined that a sea trade route may pass between these tiles. Instead of returning the movement cost, simply return
+	// one since all that matters is whether or not passage is possible. The caller doesn't even use the actual movement cost, it only compares it
+	// against zero.
+	// Tile * to_tile = tile_at (to_x, to_y);
+	// return Tile_get_terrain_move_cost (to_tile) * p_bic_data->General.RoadsMovementRate;
+	return 1;
 }
 
 EXPORT_PROC
