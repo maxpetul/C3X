@@ -443,6 +443,8 @@ inlead,	   0x62B570,	0x64E600,	0x627880,	"OpenGLRenderer_set_opacity",			"void (
 inlead,	   0x62B5B0,	0x64E660,	0x6278C0,	"OpenGLRenderer_set_line_width",		"void (__fastcall *) (OpenGLRenderer * this, int edx, int width)"
 inlead,	   0x62B5D0,	0x64E690,	0x6278E0,	"OpenGLRenderer_enable_line_dashing",		"void (__fastcall *) (OpenGLRenderer * this)"
 inlead,	   0x62B5F0,	0x64E6C0,	0x627900,	"OpenGLRenderer_disable_line_dashing",		"void (__fastcall *) (OpenGLRenderer * this)"
+inlead,	   0x5D2150,	0x0,		0x0,		"Map_build_trade_network",			"void (__fastcall *) (Map * this)"
+inlead,	   0x57DE90,	0x0,		0x0,		"Trade_Net_recompute_city_cons_and_res", 	"void (__fastcall *) (Trade_Net * this, int edx, bool param_1)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

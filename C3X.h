@@ -338,9 +338,13 @@ struct injected_state {
 
 	void * tnx_cache; // Cache object used by Trade Net X. Initially NULL, must be recreated every time a new map is loaded.
 	enum init_state tnx_init_state;
-	int is_computing_city_connections; // Set to 1 only while Trade_Net::recompute_city_connections is running
-	long long time_spent_computing_city_connections; // Increased every time Trade_Net::recompute_city_connections runs with the time elapsed.
-	// Time is measured using Windows performance counter.
+	bool is_computing_city_connections; // Set to true only while Trade_Net::recompute_city_connections is running
+	bool keep_tnx_cache;
+
+	// This variable is increased with the time elapsed during every call to Trade_Net::recompute_city_connections. Time is measured using
+	// Windows performance counter.
+	long long time_spent_computing_city_connections;
+	int count_calls_to_recompute_city_connections;
 
 	struct c3x_config current_config;
 

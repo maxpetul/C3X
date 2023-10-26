@@ -2036,8 +2036,10 @@ patch_init_floating_point ()
 			is->tnx_init_state = IS_INIT_FAILED;
 		}
 	}
-	is->is_computing_city_connections = 0;
+	is->is_computing_city_connections = false;
+	is->keep_tnx_cache = false;
 	is->time_spent_computing_city_connections = 0;
+	is->count_calls_to_recompute_city_connections = 0;
 
 	is->have_job_and_loc_to_skip = 0;
 
@@ -6261,18 +6263,21 @@ patch_perform_interturn_in_main_loop ()
 
 	is->players_saw_ai_unit = 0; // Clear bits. After perform_interturn, each set bit will indicate a player that has seen an AI unit move
 	is->time_spent_computing_city_connections = 0;
+	is->count_calls_to_recompute_city_connections = 0;
 
 	perform_interturn ();
 
 	{
 		long long perf_freq;
 		QueryPerformanceFrequency ((LARGE_INTEGER *)&perf_freq);
-		int time_in_ms = (int)(1000 * is->time_spent_computing_city_connections / perf_freq);
+		int time_in_ms = 1000 * is->time_spent_computing_city_connections / perf_freq;
 
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
 		char msg[1000];
-		snprintf (msg, sizeof msg, "Time spent recomputing city connections: %d.%03d sec", time_in_ms/1000, time_in_ms%1000);
+		snprintf (msg, sizeof msg, "Time spent recomputing city connections: %d.%03d sec (%d calls)",
+			  time_in_ms/1000, time_in_ms%1000,
+			  is->count_calls_to_recompute_city_connections);
 		PopupForm_add_text (popup, __, (char *)msg, false);
 		show_popup (popup, __, 0, 0);
 	}
@@ -7186,14 +7191,16 @@ patch_Leader_count_forbidden_palaces_for_ocn (Leader * this, int edx, enum Impro
 void __fastcall
 patch_Trade_Net_recompute_city_connections (Trade_Net * this, int edx, int civ_id, bool redo_road_network, byte param_3, int redo_roads_for_city_id)
 {
-	is->is_computing_city_connections = 1;
+	is->is_computing_city_connections = true;
 	long long ts_before;
 	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_before);
 
 	if (is->tnx_init_state == IS_OK) {
-		if (is->tnx_cache == NULL)
+		if (is->tnx_cache == NULL) {
 			is->tnx_cache = is->create_tnx_cache (&p_bic_data->Map);
-		is->set_up_before_building_network (is->tnx_cache);
+			is->set_up_before_building_network (is->tnx_cache);
+		} else if (! is->keep_tnx_cache)
+			is->set_up_before_building_network (is->tnx_cache);
 	}
 
 	Trade_Net_recompute_city_connections (this, __, civ_id, redo_road_network, param_3, redo_roads_for_city_id);
@@ -7201,7 +7208,28 @@ patch_Trade_Net_recompute_city_connections (Trade_Net * this, int edx, int civ_i
 	long long ts_after;
 	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
 	is->time_spent_computing_city_connections += ts_after - ts_before;
-	is->is_computing_city_connections = 0;
+	is->count_calls_to_recompute_city_connections++;
+	is->is_computing_city_connections = false;
+}
+
+void __fastcall
+patch_Map_build_trade_network (Map * this)
+{
+	if ((is->tnx_init_state == IS_OK) && (is->tnx_cache != NULL))
+		is->set_up_before_building_network (is->tnx_cache);
+	is->keep_tnx_cache = true;
+	Map_build_trade_network (this);
+	is->keep_tnx_cache = false;
+}
+
+void __fastcall
+patch_Trade_Net_recompute_city_cons_and_res (Trade_Net * this, int edx, bool param_1)
+{
+	if ((is->tnx_init_state == IS_OK) && (is->tnx_cache != NULL))
+		is->set_up_before_building_network (is->tnx_cache);
+	is->keep_tnx_cache = true;
+	Trade_Net_recompute_city_cons_and_res (this, __, param_1);
+	is->keep_tnx_cache = false;
 }
 
 bool
