@@ -42,33 +42,33 @@ has_road_open_to (Tile * tile, int civ_id)
 		 ! leaders[civ_id].At_War[tile->Territory_OwnerID]);
 }
 
-// ByteLayer stores one byte of data per map tile in a cache-efficient way, assuming that when you access the data for one tile you'll soon need it
+// UShortLayer stores two bytes of data per map tile in a cache-efficient way, assuming that when you access the data for one tile you'll soon need it
 // for the surrounding tiles too.
-#define BL_BLOCK_WIDTH  8
-#define BL_BLOCK_HEIGHT 8
-class ByteLayer
+#define USL_BLOCK_WIDTH  8
+#define USL_BLOCK_HEIGHT 4
+class UShortLayer
 {
-	struct ByteBlock {
-		byte tiles[BL_BLOCK_WIDTH * BL_BLOCK_HEIGHT];
+	struct UShortBlock {
+		unsigned short tiles[USL_BLOCK_WIDTH * USL_BLOCK_HEIGHT];
 	};
 
 public:
-	ByteBlock * blocks;
+	UShortBlock * blocks;
 	size_t blocks_size;
 	int map_width, map_height;
 	int width_in_blocks, height_in_blocks;
 
-	ByteLayer (int _map_width, int _map_height)
+	UShortLayer (int _map_width, int _map_height)
 	{
 		map_width = _map_width, map_height = _map_height;
-		width_in_blocks  = map_width  / (2*BL_BLOCK_WIDTH) + (map_width  % (2*BL_BLOCK_WIDTH) != 0 ? 1 : 0);
-		height_in_blocks = map_height /    BL_BLOCK_HEIGHT + (map_height %    BL_BLOCK_HEIGHT != 0 ? 1 : 0);
+		width_in_blocks  = map_width  / (2*USL_BLOCK_WIDTH) + (map_width  % (2*USL_BLOCK_WIDTH) != 0 ? 1 : 0);
+		height_in_blocks = map_height /    USL_BLOCK_HEIGHT + (map_height %    USL_BLOCK_HEIGHT != 0 ? 1 : 0);
 		blocks_size = width_in_blocks * height_in_blocks * (sizeof *blocks);
-		blocks = (ByteBlock *)malloc (blocks_size);
+		blocks = (UShortBlock *)malloc (blocks_size);
 		clear ();
 	}
 
-	~ByteLayer ()
+	~UShortLayer ()
 	{
 		free (blocks);
 	}
@@ -79,15 +79,15 @@ public:
 		memset (blocks, 0, blocks_size);
 	}
 
-	byte&
+	unsigned short&
 	at (int x, int y)
 	{
 		// Coordinates of the block (x, y) is in and the "remainder" coords inside the block
-		int block_x = x / (2*BL_BLOCK_WIDTH), r_x = x % (2*BL_BLOCK_WIDTH),
-		    block_y = y /    BL_BLOCK_HEIGHT, r_y = y %    BL_BLOCK_HEIGHT;
+		int block_x = x / (2*USL_BLOCK_WIDTH), r_x = x % (2*USL_BLOCK_WIDTH),
+		    block_y = y /    USL_BLOCK_HEIGHT, r_y = y %    USL_BLOCK_HEIGHT;
 
 		int block_index = block_y * width_in_blocks + block_x,
-		    tile_index = r_y * BL_BLOCK_WIDTH + r_x / 2;
+		    tile_index = r_y * USL_BLOCK_WIDTH + r_x / 2;
 
 		return blocks[block_index].tiles[tile_index];
 	}
@@ -162,7 +162,7 @@ public:
 class TNXCache {
 public:
 	ExplorationLayer exploration_layer;
-	ByteLayer tile_info;
+	UShortLayer tile_info;
 
 	// These bit fields store which players have the necessary techs/wonders to trade over sea/ocean
 	unsigned int sea_trade_player_bits;
@@ -212,7 +212,7 @@ set_up_before_building_network (void * tnx_cache)
 	((TNXCache *)tnx_cache)->set_up_before_building_network ();
 }
 
-enum TileInfo : byte {
+enum TileInfo : unsigned short {
 	TI_INFO_SET          = 0x01,
 
 	TI_LAND              = 0x00,
@@ -222,10 +222,14 @@ enum TileInfo : byte {
 
 	TI_HAS_CITY          = 0x08,
 	TI_HAS_UNIT          = 0x10,
-	TI_NEUTRAL_TERRITORY = 0x20,
+
+	// 0x20, 0x40, 0x80, 0x100, 0x200 bits contain territory owner
 };
 
-#define TI_TERRAIN_MASK ((byte)0x6)
+#define TI_TERRAIN_MASK ((unsigned short)0x6)
+
+#define TI_SET_OWNER(ti, id) (((ti)&~(31<<5)) | (((id)&31)<<5))
+#define TI_GET_OWNER(ti) (((ti)>>5)&31)
 
 // This function is a replacement for Trade_Net::get_movement_cost optimized for the case of building a sea trade network. It assumes "flags" is
 // either 0x1009 or 0x9 and that "unit" is NULL (so the unit parameter is omitted).
@@ -235,7 +239,7 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, void * tnx_cache, int from_x
 {
 	Map * map = &p_bic_data->Map;
 	ExplorationLayer * el = &((TNXCache *)tnx_cache)->exploration_layer;
-	ByteLayer * tile_info = &((TNXCache *)tnx_cache)->tile_info;
+	UShortLayer * tile_info = &((TNXCache *)tnx_cache)->tile_info;
 
 	// Check parameters
 	if ((to_x   < 0) || (to_x   >= map->Width) || (to_y   < 0) || (to_y   >= map->Height) ||
@@ -252,12 +256,12 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, void * tnx_cache, int from_x
 	if (! (el->has_explored (civ_id, from_x, from_y) && el->has_explored (civ_id, to_x, to_y)))
 		return -1;
 
-	// Get info bytes for "to" and "from" tiles, initializing them if necessary
-	byte from_info, to_info; {
+	// Get info for "to" and "from" tiles, initializing them if necessary
+	unsigned short from_info, to_info; {
 		for (int n = 0; n < 2; n++) {
 			int x = (n == 0) ? from_x : to_x,
 			    y = (n == 0) ? from_y : to_y;
-			byte info = tile_info->at (x, y);
+			unsigned short info = tile_info->at (x, y);
 
 			// Initialize info
 			if ((info & TI_INFO_SET) == 0) {
@@ -283,7 +287,7 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, void * tnx_cache, int from_x
 				}
 				info |= any_units_on_tile ? TI_HAS_UNIT : 0;
 
-				info |= (tile->vtable->m38_Get_Territory_OwnerID (tile) == 0) ? TI_NEUTRAL_TERRITORY : 0;
+				info = TI_SET_OWNER (info, tile->vtable->m38_Get_Territory_OwnerID (tile));
 
 				tile_info->at (x, y) = info; // Save info for future use
 			}
@@ -302,14 +306,9 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, void * tnx_cache, int from_x
 			return -1;
 	}
 
-	Tile * to_tile = tile_at (to_x, to_y);
-
 	// If to tile is in the territory of a civ we're at war with, return -1
-	if (0 == (to_info & TI_NEUTRAL_TERRITORY)) {
-		int owner_id = to_tile->vtable->m38_Get_Territory_OwnerID (to_tile);
-		if ((owner_id != 0) && leaders[civ_id].At_War[owner_id])
-			return -1;
-	}
+	if ((TI_GET_OWNER (to_info) != 0) && leaders[civ_id].At_War[TI_GET_OWNER (to_info)])
+		return -1;
 
 	// If either tile is not water and does not have a city, return -1
 	if ((((from_info & TI_TERRAIN_MASK) == TI_LAND) && ! (from_info & TI_HAS_CITY)) ||
@@ -332,6 +331,7 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, void * tnx_cache, int from_x
 		return Trade_Net_get_movement_cost (trade_net, from_x, from_y, to_x, to_y, NULL, civ_id, flags, neighbor_index, dist_info);
 
 	// At this point, the move is valid. Return its cost.
+	Tile * to_tile = tile_at (to_x, to_y);
 	return Tile_get_terrain_move_cost (to_tile) * p_bic_data->General.RoadsMovementRate;
 }
 
@@ -341,23 +341,23 @@ test ()
 {
 	int failure_count = 0;
 
-	struct bl_test {
+	struct usl_test {
 		int width, height, prime;
-	} bl_tests[] = {
+	} usl_tests[] = {
 		{25,   25, 3571},
 		{128, 128, 48611},
 		{130,  70, 10061},
 	};
 
-	for (int n_test = 0; n_test < (sizeof bl_tests) / (sizeof bl_tests[0]); n_test++) {
-		struct bl_test t = bl_tests[n_test];
-		ByteLayer bl(t.width, t.height);
+	for (int n_test = 0; n_test < (sizeof usl_tests) / (sizeof usl_tests[0]); n_test++) {
+		struct usl_test t = usl_tests[n_test];
+		UShortLayer usl(t.width, t.height);
 		for (int y = 0; y < t.height; y++)
 			for (int x = y%2; x < t.width; x += 2)
-				bl.at (x, y) = (y * t.width + x) * t.prime;
+				usl.at (x, y) = (y * t.width + x) * t.prime;
 		for (int y = 0; y < t.height; y++)
 			for (int x = y%2; x < t.width; x += 2)
-				if (bl.at (x, y) != (byte)((y * t.width + x) * t.prime)) {
+				if (usl.at (x, y) != (unsigned short)((y * t.width + x) * t.prime)) {
 					failure_count++;
 					goto fail;
 				}
@@ -367,16 +367,16 @@ test ()
 
 	{
 		int width = 175, height = 175;
-		ByteLayer bl(width, height);
+		UShortLayer usl(width, height);
 		for (int y = 0; y < height; y++)
 			for (int x = y%2; x < width; x += 2)
 				if ((((y * width) + x) * 132241) % 30 == 0)
-					bl.at (x, y) = 1;
+					usl.at (x, y) = 1;
 		for (int y = 0; y < height; y++)
 			for (int x = y%2; x < width; x += 2) {
 				bool was_set = (((y * width) + x) * 132241) % 30 == 0;
-				if ((   was_set  && (bl.at (x, y) == 0)) ||
-				    ((! was_set) && (bl.at (x, y) != 0))) {
+				if ((   was_set  && (usl.at (x, y) == 0)) ||
+				    ((! was_set) && (usl.at (x, y) != 0))) {
 					failure_count++;
 					goto fail_2;
 				}
