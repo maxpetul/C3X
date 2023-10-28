@@ -108,6 +108,7 @@ struct c3x_config {
 	bool enable_negative_pop_pollution;
 	enum retreat_rules land_retreat_rules;
 	enum retreat_rules sea_retreat_rules;
+	bool allow_defensive_retreat_on_water;
 	bool enable_ai_two_city_start;
 	int max_tries_to_place_fp_city;
 	bool promote_forbidden_palace_decorruption;

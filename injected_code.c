@@ -1838,6 +1838,7 @@ patch_init_floating_point ()
 		{"disallow_land_units_from_affecting_water_tiles"      , true , offsetof (struct c3x_config, disallow_land_units_from_affecting_water_tiles)},
 		{"dont_end_units_turn_after_airdrop"                   , false, offsetof (struct c3x_config, dont_end_units_turn_after_airdrop)},
 		{"enable_negative_pop_pollution"                       , true , offsetof (struct c3x_config, enable_negative_pop_pollution)},
+		{"allow_defensive_retreat_on_water"                    , false, offsetof (struct c3x_config, allow_defensive_retreat_on_water)},
 		{"enable_ai_two_city_start"                            , false, offsetof (struct c3x_config, enable_ai_two_city_start)},
 		{"promote_forbidden_palace_decorruption"               , false, offsetof (struct c3x_config, promote_forbidden_palace_decorruption)},
 		{"allow_military_leaders_to_hurry_wonders"             , false, offsetof (struct c3x_config, allow_military_leaders_to_hurry_wonders)},
@@ -7261,6 +7262,19 @@ patch_OpenGLRenderer_draw_line (OpenGLRenderer * this, int edx, int x1, int y1, 
 			is->gdi_plus.DeletePen (gp_pen);
 		}
 	}
+}
+
+int __fastcall
+patch_Tile_check_water_for_retreat_on_defense (Tile * this)
+{
+	int is_water = this->vtable->m35_Check_Is_Water (this);
+	if (is->current_config.allow_defensive_retreat_on_water &&
+	    is_water &&
+	    (p_bic_data->fighter.defender != NULL) &&
+	    (p_bic_data->UnitTypes[p_bic_data->fighter.defender->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
+		return 0; // Say this is not water so the retreat is allowed to happen
+	} else
+		return is_water;
 }
 
 // TCC requires a main function be defined even though it's never used.
