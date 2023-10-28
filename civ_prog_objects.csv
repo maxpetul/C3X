@@ -228,7 +228,7 @@ define,	   0x53A960,	0x544C80,	0x53A9E0,	"get_unit_support_info",			"void (__std
 define,	   0x55D2A0,	0x569330,	0x55D250,	"Leader_get_free_unit_count",			"int (__fastcall *) (Leader * this, int edx, int govt_id)"
 define,	   0x55D030,	0x5690C0,	0x55CFE0,	"Leader_count_foreign_and_king_units",		"int (__fastcall *) (Leader * this)"
 define,	   0x56D7D0,	0x57A1B0,	0x56D740,	"get_tile_occupier_id",				"int (__cdecl *) (int x, int y, int pov_civ_id, bool respect_unit_invisibility)"
-define,    0x4ED220,	0x4F6140,	0x4ED2E0,	"Main_Screen_Form_show_map_message",		"void (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, bool pause)"
+inlead,    0x4ED220,	0x4F6140,	0x4ED2E0,	"Main_Screen_Form_show_map_message",		"void (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, bool pause)"
 repl call, 0x4BE664,	0x4C5C66,	0x4BE6F4,	"Main_Screen_Form_show_wltk_message",		""
 repl call, 0x4BE71B,	0x4C5D1D,	0x4BE7AB,	"Main_Screen_Form_show_wltk_ended_message",	""
 define,	   0xA52678,	0xA74E70,	0xA52638,	"p_preferences",				"unsigned *"

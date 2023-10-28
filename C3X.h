@@ -341,6 +341,9 @@ struct injected_state {
 	bool is_computing_city_connections; // Set to true only while Trade_Net::recompute_city_connections is running
 	bool keep_tnx_cache;
 
+	bool paused_for_popup; // Set to true while a popup, map message, or the diplo screen is open
+	long long time_spent_paused_during_popup; // Tracks time spent waiting for the three things above
+
 	// This variable is increased with the time elapsed during every call to Trade_Net::recompute_city_connections. Time is measured using
 	// Windows performance counter.
 	long long time_spent_computing_city_connections;

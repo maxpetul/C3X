@@ -92,13 +92,54 @@ rand_div (int num, int denom)
 	return q + (rand_int (p_rand_object, __, denom) < r);
 }
 
+struct pause_for_popup {
+	bool done; // Set to true to exit for loop
+	bool redundant; // If true, this pause would overlap a previous one and so should not be counted
+	long long ts_before;
+};
+
+struct pause_for_popup
+pfp_init ()
+{
+	struct pause_for_popup tr;
+	tr.done = false;
+	tr.redundant = is->paused_for_popup;
+	if (! tr.redundant)
+		QueryPerformanceCounter ((LARGE_INTEGER *)&tr.ts_before);
+	return tr;
+}
+
+void
+pfp_finish (struct pause_for_popup * pfp)
+{
+	if ((! pfp->redundant) && (! pfp->done)) {
+		long long ts_after;
+		QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
+		is->time_spent_paused_during_popup += ts_after - pfp->ts_before;
+	}
+	pfp->done = true;
+}
+
+#define WITH_PAUSE_FOR_POPUP for (struct pause_for_popup pfp = pfp_init (); ! pfp.done; pfp_finish (&pfp))
+
+int __fastcall
+patch_show_popup (void * this, int edx, int param_1, int param_2)
+{
+	int tr;
+	WITH_PAUSE_FOR_POPUP {
+		is->show_popup_was_called = 1;
+		tr = show_popup (this, __, param_1, param_2);
+	}
+	return tr;
+}
+
 void
 pop_up_in_game_error (char const * msg)
 {
 	PopupForm * popup = get_popup_form ();
 	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
 	PopupForm_add_text (popup, __, (char *)msg, false);
-	show_popup (popup, __, 0, 0);
+	patch_show_popup (popup, __, 0, 0);
 }
 
 void
@@ -654,7 +695,7 @@ handle_config_error (struct config_parsing * p, enum config_parse_error err)
 		err_msg[(sizeof err_msg) - 1] = '\0';
 		PopupForm_add_text (popup, __, err_msg, false);
 
-		show_popup (popup, __, 0, 0);
+		patch_show_popup (popup, __, 0, 0);
 		p->displayed_error_message = 1;
 	}
 }
@@ -828,7 +869,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		PopupForm_add_text (popup, __, s, false);
 		for (struct error_line * line = unrecognized_lines; line != NULL; line = line->next)
 			PopupForm_add_text (popup, __, line->text, false);
-		show_popup (popup, __, 0, 0);
+		patch_show_popup (popup, __, 0, 0);
 	}
 
 	free (text);
@@ -2038,6 +2079,8 @@ patch_init_floating_point ()
 	}
 	is->is_computing_city_connections = false;
 	is->keep_tnx_cache = false;
+	is->paused_for_popup = false;
+	is->time_spent_paused_during_popup = 0;
 	is->time_spent_computing_city_connections = 0;
 	is->count_calls_to_recompute_city_connections = 0;
 
@@ -2127,6 +2170,14 @@ patch_init_floating_point ()
 	apply_machine_code_edits (&is->current_config);
 }
 
+void __fastcall
+patch_Main_Screen_Form_show_map_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, bool pause)
+{
+	WITH_PAUSE_FOR_POPUP {
+		Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, pause);
+	}
+}
+
 int __cdecl
 patch_process_text_for_map_message (char * in, char * out)
 {
@@ -2143,7 +2194,7 @@ void
 show_map_specific_text (int tile_x, int tile_y, char const * text, bool pause)
 {
 	is->map_message_text_override = text;
-	Main_Screen_Form_show_map_message (p_main_screen_form, __, tile_x, tile_y, "LANDCONQUER", pause); // Use any key here. It will be overridden.
+	patch_Main_Screen_Form_show_map_message (p_main_screen_form, __, tile_x, tile_y, "LANDCONQUER", pause); // Use any key here. It will be overridden.
 }
 
 void
@@ -2838,7 +2889,7 @@ check_happiness_at_end_of_turn ()
 			set_popup_int_param (1, num_unhappy_cities - 1);
 		char * key = (num_unhappy_cities > 1) ? "C3X_DISORDER_WARNING_MULTIPLE" : "C3X_DISORDER_WARNING_ONE";
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, key, -1, 0, 0, 0);
-		int response = show_popup (popup, __, 0, 0);
+		int response = patch_show_popup (popup, __, 0, 0);
 
 		if (response == 2) { // zoom to city
 			p_main_screen_form->turn_end_flag = 1;
@@ -2930,13 +2981,15 @@ patch_DiploForm_do_diplomacy (DiploForm * this, int edx, int diplo_message, int 
 	if (is->eligible_for_trade_scroll && (is->trade_scroll_button_state == IS_UNINITED))
 		init_trade_scroll_buttons (this);
 
-	DiploForm_do_diplomacy (this, __, diplo_message, param_2, civ_id, do_not_request_audience, war_negotiation, disallow_proposal, our_offers, their_offers);
+	WITH_PAUSE_FOR_POPUP {
+		DiploForm_do_diplomacy (this, __, diplo_message, param_2, civ_id, do_not_request_audience, war_negotiation, disallow_proposal, our_offers, their_offers);
 
-	while (is->trade_screen_scroll_to_id >= 0) {
-		int scroll_to_id = is->trade_screen_scroll_to_id;
-		is->trade_screen_scroll_to_id = -1;
-		is->open_diplo_form_straight_to_trade = 1;
-		DiploForm_do_diplomacy (this, __, DM_AI_COUNTER, 0, scroll_to_id, 1, 0, 0, NULL, NULL);
+		while (is->trade_screen_scroll_to_id >= 0) {
+			int scroll_to_id = is->trade_screen_scroll_to_id;
+			is->trade_screen_scroll_to_id = -1;
+			is->open_diplo_form_straight_to_trade = 1;
+			DiploForm_do_diplomacy (this, __, DM_AI_COUNTER, 0, scroll_to_id, 1, 0, 0, NULL, NULL);
+		}
 	}
 
 	is->open_diplo_form_straight_to_trade = 0;
@@ -3124,7 +3177,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 			set_popup_int_param (0, is->memo_len);
 			set_popup_int_param (1, cost);
 			popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "UPGRADE_ALL", -1, 0, 0, 0);
-			if (show_popup (popup, __, 0, 0) == 0)
+			if (patch_show_popup (popup, __, 0, 0) == 0)
 				for (int n = 0; n < is->memo_len; n++) {
 					Unit * to_upgrade = get_unit_ptr (is->memo[n]);
 					if (to_upgrade != NULL)
@@ -3135,7 +3188,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 			set_popup_int_param (0, cost);
 			int param_5 = is_online_game () ? 0x4000 : 0; // As in base code
 			popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "NO_GOLD_TO_UPGRADE_ALL", -1, 0, param_5, 0);
-			show_popup (popup, __, 0, 0);
+			patch_show_popup (popup, __, 0, 0);
 		}
 
 	} else if (command == UCV_Disband) {
@@ -3149,7 +3202,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 		if (is->memo_len > 0) {
 			set_popup_int_param (0, is->memo_len);
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_STACK_DISBAND", -1, 0, 0, 0);
-			if (show_popup (popup, __, 0, 0) == 0) {
+			if (patch_show_popup (popup, __, 0, 0) == 0) {
 				for (int n = 0; n < is->memo_len; n++) {
 					Unit * to_disband = get_unit_ptr (is->memo[n]);
 					if (to_disband)
@@ -3717,13 +3770,6 @@ patch_Main_Screen_Form_handle_key_up (Main_Screen_Form * this, int edx, int virt
 		patch_Main_GUI_set_up_unit_command_buttons (&this->GUI);
 
 	return Main_Screen_Form_handle_key_up (this, __, virtual_key_code);
-}
-
-int __fastcall
-patch_show_popup (void * this, int edx, int param_1, int param_2)
-{
-	is->show_popup_was_called = 1;
-	return show_popup (this, __, param_1, param_2);
 }
 
 char __fastcall
@@ -4902,7 +4948,7 @@ patch_City_Form_m82_handle_key_event (City_Form * this, int edx, int virtual_key
 			s[(sizeof s) - 1] = '\0';
 			PopupForm_add_text (popup, __, s, 0);
 		}
-		show_popup (popup, __, 0, 0);
+		patch_show_popup (popup, __, 0, 0);
 	}
 
 	City_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
@@ -5067,7 +5113,7 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 				s[(sizeof s) - 1] = '\0';
 				PopupSelection_add_item (&popup->selection, __, s, n);
 			}
-		int sel = show_popup (popup, __, 0, 0);
+		int sel = patch_show_popup (popup, __, 0, 0);
 		if (sel >= 0) { // -1 indicates popup was closed without making a selection
 			is->city_loc_display_perspective = (sel >= 1) ? sel : -1;
 			this->vtable->m73_call_m22_Draw ((Base_Form *)this); // Trigger map redraw
@@ -5115,7 +5161,7 @@ activate_mod_info_button (int control_id)
 		PopupForm_add_text (popup, __, s, 0);
 	}
 
-	show_popup (popup, __, 0, 0);
+	patch_show_popup (popup, __, 0, 0);
 }
 
 int __fastcall
@@ -5538,7 +5584,7 @@ set_up_ai_two_city_start (Map * map)
 			s[(sizeof s) - 1] = '\0';
 			PopupForm_add_text (popup, __, s, 0);
 		}
-		show_popup (popup, __, 0, 0);
+		patch_show_popup (popup, __, 0, 0);
 	}
 }
 
@@ -5585,7 +5631,7 @@ adjust_sliders_preproduction (Leader * this)
 		if (reduced_spending && (this->ID == p_main_screen_form->Player_CivID)) {
 			PopupForm * popup = get_popup_form ();
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_CUT_RESEARCH_SPENDING", -1, 0, 0, 0);
-			show_popup (popup, __, 0, 0);
+			patch_show_popup (popup, __, 0, 0);
 		}
 	}
 }
@@ -5703,7 +5749,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 				set_popup_str_param (0, get_city_ptr (city_id)->Body.CityName     , -1, -1);
 				set_popup_str_param (1, p_bic_data->Improvements[improv_id].Name.S, -1, -1);
 				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_SINGLE_IMPROV", -1, 0, 0, 0);
-				show_popup (popup, __, 0, 0);
+				patch_show_popup (popup, __, 0, 0);
 			} else if (count_sold > 1) {
 				set_popup_int_param (0, count_sold);
 				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_MULTIPLE_IMPROVS", -1, 0, 0, 0);
@@ -5720,7 +5766,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 					PopupForm_add_text (popup, __, s, 0);
 				}
 
-				show_popup (popup, __, 0, 0);
+				patch_show_popup (popup, __, 0, 0);
 			}
 		}
 
@@ -5750,11 +5796,11 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 				set_popup_str_param (0, first_disbanded_name, -1, -1);
 				int online_flag = is_online_game () ? 0x4000 : 0;
 				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_SINGLE_UNIT", -1, 0, online_flag, 0);
-				show_popup (popup, __, 0, 0);
+				patch_show_popup (popup, __, 0, 0);
 			} else if ((count_disbanded > 1) && ! is_online_game ()) {
 				set_popup_int_param (0, count_disbanded);
 				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_MULTIPLE_UNITS", -1, 0, 0, 0);
-				show_popup (popup, __, 0, 0);
+				patch_show_popup (popup, __, 0, 0);
 			}
 		}
 
@@ -5794,7 +5840,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 					set_popup_str_param (0, wealth->Name.S, -1, -1);
 					set_popup_str_param (1, wealth->CivilopediaEntry.S, -1, -1);
 					popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_BUILD_WEALTH", -1, 0, 0, 0);
-					show_popup (popup, __, 0, 0);
+					patch_show_popup (popup, __, 0, 0);
 				}
 			}
 		}
@@ -5815,13 +5861,13 @@ patch_Leader_pay_unit_maintenance (Leader * this)
 void __fastcall
 patch_Main_Screen_Form_show_wltk_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, bool pause)
 {
-	Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? false : pause);
+	patch_Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? false : pause);
 }
 
 void __fastcall
 patch_Main_Screen_Form_show_wltk_ended_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, bool pause)
 {
-	Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? false : pause);
+	patch_Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? false : pause);
 }
 
 char __fastcall
@@ -5833,11 +5879,11 @@ patch_Tile_has_city_for_agri_penalty_exception (Tile * this)
 int
 show_razing_popup (void * popup_object, int popup_param_1, int popup_param_2, int razing_option)
 {
-	int response = show_popup (popup_object, __, popup_param_1, popup_param_2);
+	int response = patch_show_popup (popup_object, __, popup_param_1, popup_param_2);
 	if (is->current_config.prevent_razing_by_players && (response == razing_option)) {
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CANT_RAZE", -1, 0, 0, 0);
-		show_popup (popup, __, 0, 0);
+		patch_show_popup (popup, __, 0, 0);
 		return 0;
 	}
 	return response;
@@ -6138,7 +6184,7 @@ int __fastcall
 patch_show_intro_after_load_popup (void * this, int edx, int param_1, int param_2)
 {
 	if (! is->suppress_intro_after_load_popup)
-		return show_popup (this, __, param_1, param_2);
+		return patch_show_popup (this, __, param_1, param_2);
 	else {
 		is->suppress_intro_after_load_popup = 0;
 		return 0;
@@ -6186,7 +6232,7 @@ load_game_ex (char const * file_path, int suppress_intro_popup)
 int __fastcall
 patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 {
-	int tr = show_popup (this, __, param_1, param_2);
+	int tr = patch_show_popup (this, __, param_1, param_2);
 
 	int player_civ_id = p_main_screen_form->Player_CivID;
 	int replay_for_players = is->replay_for_players; // Store this b/c it gets reset on game load
@@ -6279,7 +6325,7 @@ patch_perform_interturn_in_main_loop ()
 			  time_in_ms/1000, time_in_ms%1000,
 			  is->count_calls_to_recompute_city_connections);
 		PopupForm_add_text (popup, __, (char *)msg, false);
-		show_popup (popup, __, 0, 0);
+		patch_show_popup (popup, __, 0, 0);
 	}
 
 	if (save_replay) {
