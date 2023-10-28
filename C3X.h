@@ -147,6 +147,8 @@ struct c3x_config {
 	enum special_zone_of_control_rules special_zone_of_control_rules;
 	enum special_defensive_bombard_rules special_defensive_bombard_rules;
 
+	bool measure_turn_times;
+
 	bool use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
 	int ai_artillery_value_damage_percent;

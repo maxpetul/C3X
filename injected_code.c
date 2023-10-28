@@ -1922,6 +1922,7 @@ patch_init_floating_point ()
 		{"show_untradable_techs_on_trade_screen"               , false, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"disallow_useless_bombard_vs_airfields"               , true , offsetof (struct c3x_config, disallow_useless_bombard_vs_airfields)},
+		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
 		{"enable_city_capture_by_barbarians"                   , false, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
 		{"share_visibility_in_hoseat"                          , false, offsetof (struct c3x_config, share_visibility_in_hoseat)},
 		{"allow_precision_strikes_against_tile_improvements"   , false, offsetof (struct c3x_config, allow_precision_strikes_against_tile_improvements)},
@@ -6308,21 +6309,29 @@ patch_perform_interturn_in_main_loop ()
 	}
 
 	is->players_saw_ai_unit = 0; // Clear bits. After perform_interturn, each set bit will indicate a player that has seen an AI unit move
+	long long ts_before;
+	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_before);
+	is->time_spent_paused_during_popup = 0;
 	is->time_spent_computing_city_connections = 0;
 	is->count_calls_to_recompute_city_connections = 0;
 
 	perform_interturn ();
 
-	{
+	if (is->current_config.measure_turn_times) {
+		long long ts_after;
+		QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
 		long long perf_freq;
 		QueryPerformanceFrequency ((LARGE_INTEGER *)&perf_freq);
-		int time_in_ms = 1000 * is->time_spent_computing_city_connections / perf_freq;
+		int turn_time_in_ms = 1000 * (ts_after - ts_before - is->time_spent_paused_during_popup) / perf_freq;
+		int city_con_time_in_ms = 1000 * is->time_spent_computing_city_connections / perf_freq;
 
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
 		char msg[1000];
-		snprintf (msg, sizeof msg, "Time spent recomputing city connections: %d.%03d sec (%d calls)",
-			  time_in_ms/1000, time_in_ms%1000,
+		snprintf (msg, sizeof msg, "^Turn time: %d.%03d sec", turn_time_in_ms/1000, turn_time_in_ms%1000);
+		PopupForm_add_text (popup, __, (char *)msg, false);
+		snprintf (msg, sizeof msg, "^  Recomputing city connections: %d.%03d sec (%d calls)",
+			  city_con_time_in_ms/1000, city_con_time_in_ms%1000,
 			  is->count_calls_to_recompute_city_connections);
 		PopupForm_add_text (popup, __, (char *)msg, false);
 		patch_show_popup (popup, __, 0, 0);
