@@ -19,29 +19,6 @@ has_outpost (Tile * tile)
 	return false; // TODO: Implement me
 }
 
-bool
-has_road_open_to (Tile * tile, int civ_id)
-{
-	bool has_road; {
-		int tech_req_civ_id = -1;
-		if (tile->CityID != -1)
-			tech_req_civ_id = tile->vtable->m69_get_Tile_City_CivID (tile);
-		else if (has_outpost (tile))
-			tech_req_civ_id = tile->vtable->m70_Get_Tile_Building_OwnerID (tile);
-
-		if ((tech_req_civ_id < 0) ||
-		    Leader_has_tech (&leaders[tech_req_civ_id], p_bic_data->WorkerJobs[WJ_Build_Road].RequireID))
-			has_road = tile->Overlays & 1;
-		else
-			has_road = false;
-	}
-
-	return has_road &&
-		((civ_id == 0) ||
-		 (tile->Territory_OwnerID == 0) ||
-		 ! leaders[civ_id].At_War[tile->Territory_OwnerID]);
-}
-
 // UShortLayer stores two bytes of data per map tile in a cache-efficient way, assuming that when you access the data for one tile you'll soon need it
 // for the surrounding tiles too.
 #define USL_BLOCK_WIDTH  8
@@ -213,23 +190,88 @@ set_up_before_building_network (void * tnx_cache)
 }
 
 enum TileInfo : unsigned short {
-	TI_INFO_SET          = 0x01,
+	TI_INFO_SET = 0x01,
 
-	TI_LAND              = 0x00,
-	TI_COAST             = 0x02,
-	TI_SEA               = 0x04,
-	TI_OCEAN             = 0x06,
+	TI_LAND     = 0x00,
+	TI_COAST    = 0x02,
+	TI_SEA      = 0x04,
+	TI_OCEAN    = 0x06,
 
-	TI_HAS_CITY          = 0x08,
-	TI_HAS_UNIT          = 0x10,
+	TI_HAS_CITY = 0x08,
+	TI_HAS_UNIT = 0x10,
 
 	// 0x20, 0x40, 0x80, 0x100, 0x200 bits contain territory owner
+	// 0x400 is reserved
+
+	TI_HAS_ROAD = 0x800,
 };
 
 #define TI_TERRAIN_MASK ((unsigned short)0x6)
 
 #define TI_SET_OWNER(ti, id) (((ti)&~(31<<5)) | (((id)&31)<<5))
 #define TI_GET_OWNER(ti) (((ti)>>5)&31)
+
+bool
+has_road_open_to (unsigned short tile_info, int civ_id)
+{
+	int territory_owner_id = TI_GET_OWNER (tile_info);
+	return (tile_info & TI_HAS_ROAD)
+		&& ((civ_id == 0)
+		    || (territory_owner_id == 0)
+		    || ! leaders[civ_id].At_War[territory_owner_id]);
+}
+
+unsigned short
+get_tile_info (UShortLayer * tile_info, int x, int y)
+{
+	unsigned short info = tile_info->at (x, y);
+
+	// Initialize info if necessary
+	if ((info & TI_INFO_SET) == 0) {
+		Tile * tile = tile_at (x, y);
+		info = TI_INFO_SET;
+
+		if (tile->vtable->m35_Check_Is_Water (tile)) {
+			SquareTypes terrain_type = tile->vtable->m50_Get_Square_BaseType (tile);
+			if      (terrain_type == SQ_Coast) info |= TI_COAST;
+			else if (terrain_type == SQ_Sea)   info |= TI_SEA;
+			else if (terrain_type == SQ_Ocean) info |= TI_OCEAN;
+		}
+
+		info |= Tile_has_city (tile) ? TI_HAS_CITY : 0;
+
+		bool any_units_on_tile = false; {
+			if (p_units->Units != NULL) {
+				int tile_unit_id = tile->vtable->m40_get_TileUnit_ID (tile);
+				int unit_id = TileUnits_TileUnitID_to_UnitID (p_tile_units, tile_unit_id, NULL);
+				any_units_on_tile = (unit_id >= 0) && (unit_id <= p_units->LastIndex) &&
+					((int)p_units->Units[unit_id].Unit > offsetof (Unit, Body));
+			}
+		}
+		info |= any_units_on_tile ? TI_HAS_UNIT : 0;
+
+		info = TI_SET_OWNER (info, tile->vtable->m38_Get_Territory_OwnerID (tile));
+
+		bool has_road; {
+			int tech_req_civ_id = -1;
+			if (tile->CityID != -1)
+				tech_req_civ_id = tile->vtable->m69_get_Tile_City_CivID (tile);
+			else if (has_outpost (tile))
+				tech_req_civ_id = tile->vtable->m70_Get_Tile_Building_OwnerID (tile);
+
+			if ((tech_req_civ_id < 0) ||
+			    Leader_has_tech (&leaders[tech_req_civ_id], p_bic_data->WorkerJobs[WJ_Build_Road].RequireID))
+				has_road = tile->Overlays & 1;
+			else
+				has_road = false;
+		}
+		info |= has_road ? TI_HAS_ROAD : 0;
+
+		tile_info->at (x, y) = info; // Save info for future use
+	}
+
+	return info;
+}
 
 // This function is a replacement for Trade_Net::get_movement_cost optimized for the case of building a sea trade network. It assumes "flags" is
 // either 0x1009 or 0x9 and that "unit" is NULL (so the unit parameter is omitted).
@@ -256,48 +298,8 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, void * tnx_cache, int from_x
 	if (! (el->has_explored (civ_id, from_x, from_y) && el->has_explored (civ_id, to_x, to_y)))
 		return -1;
 
-	// Get info for "to" and "from" tiles, initializing them if necessary
-	unsigned short from_info, to_info; {
-		for (int n = 0; n < 2; n++) {
-			int x = (n == 0) ? from_x : to_x,
-			    y = (n == 0) ? from_y : to_y;
-			unsigned short info = tile_info->at (x, y);
-
-			// Initialize info
-			if ((info & TI_INFO_SET) == 0) {
-				Tile * tile = tile_at (x, y);
-				info = TI_INFO_SET;
-
-				if (tile->vtable->m35_Check_Is_Water (tile)) {
-					SquareTypes terrain_type = tile->vtable->m50_Get_Square_BaseType (tile);
-					if      (terrain_type == SQ_Coast) info |= TI_COAST;
-					else if (terrain_type == SQ_Sea)   info |= TI_SEA;
-					else if (terrain_type == SQ_Ocean) info |= TI_OCEAN;
-				}
-
-				info |= Tile_has_city (tile) ? TI_HAS_CITY : 0;
-
-				bool any_units_on_tile = false; {
-					if (p_units->Units != NULL) {
-						int tile_unit_id = tile->vtable->m40_get_TileUnit_ID (tile);
-						int unit_id = TileUnits_TileUnitID_to_UnitID (p_tile_units, tile_unit_id, NULL);
-						any_units_on_tile = (unit_id >= 0) && (unit_id <= p_units->LastIndex) &&
-							((int)p_units->Units[unit_id].Unit > offsetof (Unit, Body));
-					}
-				}
-				info |= any_units_on_tile ? TI_HAS_UNIT : 0;
-
-				info = TI_SET_OWNER (info, tile->vtable->m38_Get_Territory_OwnerID (tile));
-
-				tile_info->at (x, y) = info; // Save info for future use
-			}
-
-			if (n == 0)
-				from_info = info;
-			else
-				to_info = info;
-		}
-	}
+	unsigned short from_info = get_tile_info (tile_info, from_x, from_y),
+		       to_info   = get_tile_info (tile_fino, to_x  , to_y);
 
 	// If flag 0x1000 is set and the to tile is occupied by a unit belonging to a civ we're at war with, return -1
 	if ((flags & 0x1000) && (to_info & TI_HAS_UNIT)) {
