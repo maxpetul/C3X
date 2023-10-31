@@ -2059,6 +2059,7 @@ patch_init_floating_point ()
 			is->destroy_tnx_cache              = (void *)(*p_GetProcAddress) (is->trade_net_x, "destroy_tnx_cache");
 			is->set_up_before_building_network = (void *)(*p_GetProcAddress) (is->trade_net_x, "set_up_before_building_network");
 			is->get_move_cost_for_sea_trade    = (void *)(*p_GetProcAddress) (is->trade_net_x, "get_move_cost_for_sea_trade");
+			is->flood_fill_road_network        = (void *)(*p_GetProcAddress) (is->trade_net_x, "flood_fill_road_network");
 
 			is->set_exe_version (exe_version_index);
 

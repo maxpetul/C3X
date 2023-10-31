@@ -1,6 +1,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <vector>
 
 #define NOVIRTUALKEYCODES // Keycodes defined in Civ3Conquests.h instead
 #include "windows.h"
@@ -273,6 +274,64 @@ get_tile_info (UShortLayer * tile_info, int x, int y)
 	return info;
 }
 
+enum FloodFillNodeState {
+	FFNS_NONE = 0, // Hasn't been processed yet
+	FFNS_OPEN, // Pending processing
+	FFNS_CLOSED // Finished processing
+};
+
+EXPORT_PROC
+void
+flood_fill_road_network (void * tnx_cache, int from_x, int from_y, int civ_id)
+{
+	struct CoordPair {
+		short x, y;
+	};
+
+	UShortLayer * tile_info = &((TNXCache *)tnx_cache)->tile_info;
+
+	if (! has_road_open_to (tile_info->at (from_x, from_y), civ_id))
+		return;
+
+	int from_tile_city_id = city_at (from_x, from_y)->Body.ID;
+
+	UShortLayer node_states(p_bic_data->Map.Width, p_bic_data->Map.Height);
+	std::vector<CoordPair> open; // Stores tile indices
+
+	// Add (from_x, from_y) to open set
+	node_states.at (from_x, from_y) = FFNS_OPEN;
+	open.push_back (CoordPair{(short)from_x, (short)from_y});
+
+	while (! open.empty ()) {
+		// Remove node from open set
+		struct CoordPair coords = open.back ();
+		open.pop_back ();
+		int x = coords.x, y = coords.y;
+		node_states.at (x, y) = FFNS_CLOSED;
+
+		if (has_road_open_to (tile_info->at (x, y), civ_id)) {
+			// Add this tile to the road network
+			tile_at (x, y)->Body.connected_city_ids[civ_id] = from_tile_city_id;
+
+			// Loop over all tiles neighboring (x, y)
+			for (int n = 1; n < 9; n++) {
+				int dx, dy;
+				neighbor_index_to_diff (n, &dx, &dy);
+				int nx = Map_wrap_horiz (&p_bic_data->Map, x + dx),
+				    ny = Map_wrap_vert  (&p_bic_data->Map, y + dy);
+
+				// If this neighbor is not already in a set, add it to the open set
+				if ((nx >= 0) && (nx < p_bic_data->Map.Width) &&
+				    (ny >= 0) && (ny < p_bic_data->Map.Height) &&
+				    (node_states.at (nx, ny) == FFNS_NONE)) {
+					open.push_back (CoordPair{(short)nx, (short)ny});
+					node_states.at (nx, ny) = FFNS_OPEN;
+				}
+			}
+		}
+	}
+}
+
 // This function is a replacement for Trade_Net::get_movement_cost optimized for the case of building a sea trade network. It assumes "flags" is
 // either 0x1009 or 0x9 and that "unit" is NULL (so the unit parameter is omitted).
 EXPORT_PROC
@@ -299,7 +358,7 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, void * tnx_cache, int from_x
 		return -1;
 
 	unsigned short from_info = get_tile_info (tile_info, from_x, from_y),
-		       to_info   = get_tile_info (tile_fino, to_x  , to_y);
+		       to_info   = get_tile_info (tile_info, to_x  , to_y);
 
 	// If flag 0x1000 is set and the to tile is occupied by a unit belonging to a civ we're at war with, return -1
 	if ((flags & 0x1000) && (to_info & TI_HAS_UNIT)) {
