@@ -71,6 +71,75 @@ public:
 	}
 };
 
+// This is like UShortLayer except it stores only two bits per tile
+#define TBL_BLOCK_WIDTH  16
+#define TBL_BLOCK_HEIGHT 16
+class TwoBitLayer
+{
+	struct TwoBitBlock {
+		unsigned int pieces[16];
+	};
+
+public:
+	TwoBitBlock * blocks;
+	size_t blocks_size;
+	int map_width, map_height;
+	int width_in_blocks, height_in_blocks;
+
+	TwoBitLayer (int _map_width, int _map_height)
+	{
+		map_width = _map_width, map_height = _map_height;
+		width_in_blocks  = map_width  / (2*TBL_BLOCK_WIDTH) + (map_width  % (2*TBL_BLOCK_WIDTH) != 0 ? 1 : 0);
+		height_in_blocks = map_height /    TBL_BLOCK_HEIGHT + (map_height %    TBL_BLOCK_HEIGHT != 0 ? 1 : 0);
+		blocks_size = width_in_blocks * height_in_blocks * (sizeof *blocks);
+		blocks = (TwoBitBlock *)malloc (blocks_size);
+		clear ();
+	}
+
+	~TwoBitLayer ()
+	{
+		free (blocks);
+	}
+
+	void
+	clear ()
+	{
+		memset (blocks, 0, blocks_size);
+	}
+
+	unsigned int *
+	get_piece (int x, int y, int * out_index_within_piece)
+	{
+		// Coordinates of the block (x, y) is in and the "remainder" coords inside the block
+		int block_x = x / (2*TBL_BLOCK_WIDTH), r_x = x % (2*TBL_BLOCK_WIDTH),
+		    block_y = y /    TBL_BLOCK_HEIGHT, r_y = y %    TBL_BLOCK_HEIGHT;
+
+		int block_index = block_y * width_in_blocks + block_x,
+		    tile_index = r_y * TBL_BLOCK_WIDTH + r_x / 2;
+
+		// There are 16 tiles in each piece (32 bits / 2 bits/tile = 16 tiles)
+		*out_index_within_piece = tile_index % 16;
+		return &blocks[block_index].pieces[tile_index/16];
+	}
+
+	byte
+	get (int x, int y)
+	{
+		int i;
+		unsigned int * piece = get_piece (x, y, &i);
+		return (byte)((*piece >> (i * 2)) & 3);
+	}
+
+	void
+	set (int x, int y, byte two_bit_val)
+	{
+		int i;
+		unsigned int * piece = get_piece (x, y, &i);
+		unsigned int mask = 3U << (i * 2);
+		*piece = (*piece & ~mask) | (((unsigned int)two_bit_val << (i * 2)) & mask);
+	}
+};
+
 // ExplorationLayer stores the "Fog_Of_War" fields from tile objects in a cache-efficient fashion. Those fields record which civs have revealed each
 // tile. The fields are stored in 4x4 blocks which are filled in as needed.
 #define EL_BLOCK_WIDTH  4
@@ -295,11 +364,11 @@ flood_fill_road_network (void * tnx_cache, int from_x, int from_y, int civ_id)
 
 	int from_tile_city_id = city_at (from_x, from_y)->Body.ID;
 
-	UShortLayer node_states(p_bic_data->Map.Width, p_bic_data->Map.Height);
+	TwoBitLayer node_states(p_bic_data->Map.Width, p_bic_data->Map.Height);
 	std::vector<CoordPair> open; // Stores tile indices
 
 	// Add (from_x, from_y) to open set
-	node_states.at (from_x, from_y) = FFNS_OPEN;
+	node_states.set (from_x, from_y, FFNS_OPEN);
 	open.push_back (CoordPair{(short)from_x, (short)from_y});
 
 	while (! open.empty ()) {
@@ -307,7 +376,7 @@ flood_fill_road_network (void * tnx_cache, int from_x, int from_y, int civ_id)
 		struct CoordPair coords = open.back ();
 		open.pop_back ();
 		int x = coords.x, y = coords.y;
-		node_states.at (x, y) = FFNS_CLOSED;
+		node_states.set (x, y, FFNS_CLOSED);
 
 		if (has_road_open_to (tile_info->at (x, y), civ_id)) {
 			// Add this tile to the road network
@@ -323,9 +392,9 @@ flood_fill_road_network (void * tnx_cache, int from_x, int from_y, int civ_id)
 				// If this neighbor is not already in a set, add it to the open set
 				if ((nx >= 0) && (nx < p_bic_data->Map.Width) &&
 				    (ny >= 0) && (ny < p_bic_data->Map.Height) &&
-				    (node_states.at (nx, ny) == FFNS_NONE)) {
+				    (node_states.get (nx, ny) == FFNS_NONE)) {
 					open.push_back (CoordPair{(short)nx, (short)ny});
-					node_states.at (nx, ny) = FFNS_OPEN;
+					node_states.set (nx, ny, FFNS_OPEN);
 				}
 			}
 		}
@@ -447,6 +516,31 @@ test ()
 			}
 	}
 	fail_2:
+
+	struct tbl_test {
+		int width, height, prime;
+	} tbl_tests[] = {
+		{80,  80,  103},
+		{100, 50,  109},
+		{202, 101, 139},
+		{59,  73,  167},
+		{362, 362, 3571},
+		{10,  10,  48611},
+	};
+	for (int n_test = 0; n_test < (sizeof tbl_tests) / (sizeof tbl_tests[0]); n_test++) {
+		struct tbl_test t = tbl_tests[n_test];
+		TwoBitLayer tbl(t.width, t.height);
+		for (int y = 0; y < t.height; y++)
+			for (int x = y%2; x < t.width; x += 2)
+				tbl.set (x, y, (y * t.width + x) * t.prime);
+		for (int y = 0; y < t.height; y++)
+			for (int x = y%2; x < t.width; x += 2)
+				if (tbl.get (x, y) != (byte)(((y * t.width + x) * t.prime) & 3)) {
+					failure_count++;
+					goto fail_3;
+				}
+	}
+	fail_3:
 
 	return failure_count;
 }
