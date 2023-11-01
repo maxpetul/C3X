@@ -359,7 +359,7 @@ flood_fill_road_network (void * tnx_cache, int from_x, int from_y, int civ_id)
 
 	UShortLayer * tile_info = &((TNXCache *)tnx_cache)->tile_info;
 
-	if (! has_road_open_to (tile_info->at (from_x, from_y), civ_id))
+	if (! has_road_open_to (get_tile_info (tile_info, from_x, from_y), civ_id))
 		return;
 
 	int from_tile_city_id = city_at (from_x, from_y)->Body.ID;
@@ -378,7 +378,7 @@ flood_fill_road_network (void * tnx_cache, int from_x, int from_y, int civ_id)
 		int x = coords.x, y = coords.y;
 		node_states.set (x, y, FFNS_CLOSED);
 
-		if (has_road_open_to (tile_info->at (x, y), civ_id)) {
+		if (has_road_open_to (get_tile_info (tile_info, x, y), civ_id)) {
 			// Add this tile to the road network
 			tile_at (x, y)->Body.connected_city_ids[civ_id] = from_tile_city_id;
 
