@@ -1,6 +1,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <vector>
 
 #define NOVIRTUALKEYCODES // Keycodes defined in Civ3Conquests.h instead
@@ -346,7 +347,8 @@ get_tile_info (UShortLayer * tile_info, int x, int y)
 enum FloodFillNodeState {
 	FFNS_NONE = 0, // Hasn't been processed yet
 	FFNS_OPEN, // Pending processing
-	FFNS_CLOSED // Finished processing
+	FFNS_REACHABLE, // Processed & concluded this tile is reachable
+	FFNS_UNREACHABLE // Processed & concluded this tile is NOT reachable
 };
 
 EXPORT_PROC
@@ -367,6 +369,18 @@ flood_fill_road_network (void * tnx_cache, int from_x, int from_y, int civ_id)
 	TwoBitLayer node_states(p_bic_data->Map.Width, p_bic_data->Map.Height);
 	std::vector<CoordPair> open; // Stores tile indices
 
+	// The original code iterates over neighbors in this non-standard order. I've replicated that here although I doubt it matters. Computing the
+	// dx's & dy's ahead of time speeds up the flood fill operation modestly.
+	int const neighbor_dirs[8] = {DIR_NE, DIR_SE, DIR_SW, DIR_NW, DIR_E, DIR_S, DIR_W, DIR_N};
+	int8_t dxs[8];
+	int8_t dys[8];
+	for (int n = 0; n < 8; n++) {
+		int dx, dy;
+		neighbor_index_to_diff (neighbor_dirs[n], &dx, &dy);
+		dxs[n] = dx;
+		dys[n] = dy;
+	}
+
 	// Add (from_x, from_y) to open set
 	node_states.set (from_x, from_y, FFNS_OPEN);
 	open.push_back (CoordPair{(short)from_x, (short)from_y});
@@ -376,18 +390,16 @@ flood_fill_road_network (void * tnx_cache, int from_x, int from_y, int civ_id)
 		struct CoordPair coords = open.back ();
 		open.pop_back ();
 		int x = coords.x, y = coords.y;
-		node_states.set (x, y, FFNS_CLOSED);
 
 		if (has_road_open_to (get_tile_info (tile_info, x, y), civ_id)) {
 			// Add this tile to the road network
 			tile_at (x, y)->Body.connected_city_ids[civ_id] = from_tile_city_id;
+			node_states.set (x, y, FFNS_REACHABLE);
 
 			// Loop over all tiles neighboring (x, y)
-			for (int n = 1; n < 9; n++) {
-				int dx, dy;
-				neighbor_index_to_diff (n, &dx, &dy);
-				int nx = Map_wrap_horiz (&p_bic_data->Map, x + dx),
-				    ny = Map_wrap_vert  (&p_bic_data->Map, y + dy);
+			for (int n = 0; n < 8; n++) {
+				int nx = Map_wrap_horiz (&p_bic_data->Map, x + dxs[n]),
+				    ny = Map_wrap_vert  (&p_bic_data->Map, y + dys[n]);
 
 				// If this neighbor is not already in a set, add it to the open set
 				if ((nx >= 0) && (nx < p_bic_data->Map.Width) &&
@@ -397,7 +409,8 @@ flood_fill_road_network (void * tnx_cache, int from_x, int from_y, int civ_id)
 					node_states.set (nx, ny, FFNS_OPEN);
 				}
 			}
-		}
+		} else
+			node_states.set (x, y, FFNS_UNREACHABLE);
 	}
 }
 
