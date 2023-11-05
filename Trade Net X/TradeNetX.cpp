@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <vector>
+#include <queue>
 
 #define NOVIRTUALKEYCODES // Keycodes defined in Civ3Conquests.h instead
 #include "windows.h"
@@ -463,6 +464,85 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, void * tnx_cache, int from_x
 	return (can_trade_via_water_at ((TNXCache *)tnx_cache, civ_id, from_x, from_y, true              , true) &&
 		can_trade_via_water_at ((TNXCache *)tnx_cache, civ_id, to_x  , to_y  , ! (flags & 0x1000), false)) ?
 		1 : -1;
+}
+
+// This function replaces Trade_Net::set_unit_path when searching for a water trade route.
+EXPORT_PROC
+bool
+try_drawing_sea_trade_route (Trade_Net * trade_net, void * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags)
+{
+	struct CoordPair {
+		short x, y;
+
+		int
+		squared_dist (CoordPair const& other) const
+		{
+			int dx = (int)x - other.x, dy = (int)y - other.y;
+			return dx*dx + dy*dy;
+		}
+	};
+
+	struct CloserTo {
+		CoordPair target;
+
+		CloserTo(int x, int y) : target{(short)x, (short)y} {}
+
+		bool
+		operator() (CoordPair const& a, CoordPair const& b) const
+		{
+			return a.squared_dist (target) > b.squared_dist (target);
+		}
+	};
+
+	UShortLayer * tile_info = &((TNXCache *)tnx_cache)->tile_info;
+
+	TwoBitLayer node_states(p_bic_data->Map.Width, p_bic_data->Map.Height);
+	std::priority_queue<CoordPair, std::vector<CoordPair>, CloserTo> open(CloserTo(to_x, to_y));
+
+	// neighbor_dirs same as flood fill
+	int const neighbor_dirs[8] = {DIR_NE, DIR_SE, DIR_SW, DIR_NW, DIR_E, DIR_S, DIR_W, DIR_N};
+	int8_t dxs[8];
+	int8_t dys[8];
+	for (int n = 0; n < 8; n++) {
+		int dx, dy;
+		neighbor_index_to_diff (neighbor_dirs[n], &dx, &dy);
+		dxs[n] = dx;
+		dys[n] = dy;
+	}
+
+	// Add (from_x, from_y) to open set
+	node_states.set (from_x, from_y, FFNS_OPEN);
+	open.push (CoordPair{(short)from_x, (short)from_y});
+
+	while (! open.empty ()) {
+		// Remove node from open set
+		CoordPair coords = open.top ();
+		open.pop ();
+		int x = coords.x, y = coords.y;
+
+		if (can_trade_via_water_at ((TNXCache *)tnx_cache, civ_id, x, y, ! (flags & 0x1000), false)) {
+			node_states.set (x, y, FFNS_REACHABLE);
+			if ((x == to_x) && (y == to_y))
+				return true;
+
+			// Loop over all tiles neighboring (x, y)
+			for (int n = 0; n < 8; n++) {
+				int nx = Map_wrap_horiz (&p_bic_data->Map, x + dxs[n]),
+				    ny = Map_wrap_vert  (&p_bic_data->Map, y + dys[n]);
+
+				// If this neighbor is not already in a set, add it to the open set
+				if ((nx >= 0) && (nx < p_bic_data->Map.Width) &&
+				    (ny >= 0) && (ny < p_bic_data->Map.Height) &&
+				    (node_states.get (nx, ny) == FFNS_NONE)) {
+					open.push (CoordPair{(short)nx, (short)ny});
+					node_states.set (nx, ny, FFNS_OPEN);
+				}
+			}
+		} else
+			node_states.set (x, y, FFNS_UNREACHABLE);
+	}
+
+	return false;
 }
 
 EXPORT_PROC
