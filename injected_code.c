@@ -6315,6 +6315,7 @@ patch_perform_interturn_in_main_loop ()
 	is->time_spent_paused_during_popup = 0;
 	is->time_spent_computing_city_connections = 0;
 	is->count_calls_to_recompute_city_connections = 0;
+	is->count_calls_to_tnx_flood_fill = 0;
 
 	perform_interturn ();
 
@@ -6325,6 +6326,7 @@ patch_perform_interturn_in_main_loop ()
 		QueryPerformanceFrequency ((LARGE_INTEGER *)&perf_freq);
 		int turn_time_in_ms = 1000 * (ts_after - ts_before - is->time_spent_paused_during_popup) / perf_freq;
 		int city_con_time_in_ms = 1000 * is->time_spent_computing_city_connections / perf_freq;
+		int road_time_in_ms = 1000 * is->time_spent_filling_roads / perf_freq;
 
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
@@ -6334,6 +6336,11 @@ patch_perform_interturn_in_main_loop ()
 		snprintf (msg, sizeof msg, "^  Recomputing city connections: %d.%03d sec (%d calls)",
 			  city_con_time_in_ms/1000, city_con_time_in_ms%1000,
 			  is->count_calls_to_recompute_city_connections);
+		PopupForm_add_text (popup, __, (char *)msg, false);
+		snprintf (msg, sizeof msg, "^    Flood filling road network: %d.%03d sec",
+			  road_time_in_ms/1000, road_time_in_ms%1000);
+		PopupForm_add_text (popup, __, (char *)msg, false);
+		snprintf (msg, sizeof msg, "^Calls to TNX flood fill: %d", is->count_calls_to_tnx_flood_fill);
 		PopupForm_add_text (popup, __, (char *)msg, false);
 		patch_show_popup (popup, __, 0, 0);
 	}
@@ -7286,6 +7293,26 @@ patch_Trade_Net_recompute_city_cons_and_res (Trade_Net * this, int edx, bool par
 	is->keep_tnx_cache = true;
 	Trade_Net_recompute_city_cons_and_res (this, __, param_1);
 	is->keep_tnx_cache = false;
+}
+
+int __fastcall
+patch_Trade_Net_set_unit_path_to_fill_road_net (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp)
+{
+	int tr;
+	long long ts_before;
+	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_before);
+
+	if ((is->tnx_init_state == IS_OK) && (is->tnx_cache != NULL)) {
+		is->count_calls_to_tnx_flood_fill++;
+		is->flood_fill_road_network (is->tnx_cache, from_x, from_y, civ_id);
+		tr = 0; // Return value is not used by caller anyway
+	} else
+		tr = Trade_Net_set_unit_path (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, out_path_length_in_mp);
+
+	long long ts_after;
+	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
+	is->time_spent_filling_roads += ts_after - ts_before;
+	return tr;
 }
 
 bool

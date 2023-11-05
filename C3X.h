@@ -352,6 +352,9 @@ struct injected_state {
 	long long time_spent_computing_city_connections;
 	int count_calls_to_recompute_city_connections;
 
+	int count_calls_to_tnx_flood_fill;
+	long long time_spent_filling_roads;
+
 	struct c3x_config current_config;
 
 	// Keeps a record of all configs currently loaded. Useful to know. "name" is the file name for configs that come from files, which is all of
