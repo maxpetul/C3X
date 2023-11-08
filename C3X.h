@@ -338,6 +338,7 @@ struct injected_state {
 	void (__stdcall * set_up_before_building_network) (void *);
 	int (__stdcall * get_move_cost_for_sea_trade) (Trade_Net * trade_net, void * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags, int neighbor_index, Trade_Net_Distance_Info * dist_info);
 	void (__stdcall * flood_fill_road_network) (void * tnx_cache, int from_x, int from_y, int civ_id);
+	bool (__stdcall * try_drawing_sea_trade_route) (Trade_Net * trade_net, void * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags);
 
 	void * tnx_cache; // Cache object used by Trade Net X. Initially NULL, must be recreated every time a new map is loaded.
 	enum init_state tnx_init_state;
