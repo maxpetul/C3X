@@ -217,9 +217,19 @@ public:
 	unsigned int sea_trade_player_bits;
 	unsigned int ocean_trade_player_bits;
 
+	int pf_x, pf_y, pf_civ_id;
+	unsigned int pf_flags;
+	TwoBitLayer pf_node_states;
+	std::vector<CoordPair> pf_open_set;
+
 	TNXCache (Map * map) :
 		exploration_layer(map),
-		tile_info(map->Width, map->Height)
+		tile_info(map->Width, map->Height),
+		pf_x(-1),
+		pf_y(-1),
+		pf_civ_id(-1),
+		pf_flags(0),
+		pf_node_states(map->Width, map->Height)
 	{}
 
 	void
@@ -237,6 +247,17 @@ public:
 				if (Leader_has_tech_with_flag (&leaders[n], ATF_Enables_Trade_Over_Ocean_Tiles))
 					ocean_trade_player_bits |= (1U << n);
 			}
+
+		clear_pathfinder_state ();
+	}
+
+	void
+	clear_pathfinder_state ()
+	{
+		pf_x = pf_y = pf_civ_id = -1;
+		pf_flags = 0;
+		pf_node_states.clear ();
+		pf_open_set.clear ();
 	}
 };
 
@@ -469,15 +490,16 @@ get_move_cost_for_sea_trade (Trade_Net * trade_net, void * tnx_cache, int from_x
 // This function replaces Trade_Net::set_unit_path when searching for a water trade route.
 EXPORT_PROC
 bool
-try_drawing_sea_trade_route (Trade_Net * trade_net, void * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags)
+try_drawing_sea_trade_route (Trade_Net * trade_net, void * vp_tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags)
 {
+	/*
 	struct CoordPair {
 		short x, y;
 
 		int
 		squared_dist (CoordPair const& other) const
 		{
-			int dx = (int)x - other.x, dy = (int)y - other.y;
+			int dx = (int)x - other.x, dy = (int)y - other.y; // TODO: Use Map_get_x/y_dist instead
 			return dx*dx + dy*dy;
 		}
 	};
@@ -493,11 +515,24 @@ try_drawing_sea_trade_route (Trade_Net * trade_net, void * tnx_cache, int from_x
 			return a.squared_dist (target) > b.squared_dist (target);
 		}
 	};
+	*/
 
-	UShortLayer * tile_info = &((TNXCache *)tnx_cache)->tile_info;
+	TNXCache * tnx_cache = (TNXCache *)vp_tnx_cache;
 
-	TwoBitLayer node_states(p_bic_data->Map.Width, p_bic_data->Map.Height);
-	std::priority_queue<CoordPair, std::vector<CoordPair>, CloserTo> open(CloserTo(to_x, to_y));
+	UShortLayer * tile_info = &tnx_cache->tile_info;
+
+	// TwoBitLayer node_states(p_bic_data->Map.Width, p_bic_data->Map.Height);
+	// std::priority_queue<CoordPair, std::vector<CoordPair>, CloserTo> open(CloserTo(to_x, to_y));
+	// std::vector<CoordPair> open;
+	if ((from_x != tnx_cache->pf_x) || (from_y != tnx_cache->pf_y) || (civ_id != tnx_cache->pf_civ_id) || (flags != tnx_cache->pf_flags)) {
+		tnx_cache->clear_pathfinder_state ();
+		tnx_cache->pf_x = from_x;
+		tnx_cache->pf_y = from_y;
+		tnx_cache->pf_civ_id = civ_id;
+		tnx_cache->pf_flags = flags;
+	}
+	TwoBitLayer& node_states = tnx_cache->pf_node_states;
+	std::vector<CoordPair>& open = tnx_cache->pf_open_set;
 
 	// neighbor_dirs same as flood fill
 	int const neighbor_dirs[8] = {DIR_NE, DIR_SE, DIR_SW, DIR_NW, DIR_E, DIR_S, DIR_W, DIR_N};
@@ -512,15 +547,18 @@ try_drawing_sea_trade_route (Trade_Net * trade_net, void * tnx_cache, int from_x
 
 	// Add (from_x, from_y) to open set
 	node_states.set (from_x, from_y, FFNS_OPEN);
-	open.push (CoordPair{(short)from_x, (short)from_y});
+	// open.push (CoordPair{(short)from_x, (short)from_y});
+	open.push_back (CoordPair{(short)from_x, (short)from_y});
 
 	while (! open.empty ()) {
 		// Remove node from open set
-		CoordPair coords = open.top ();
-		open.pop ();
+		// CoordPair coords = open.top ();
+		CoordPair coords = open.back ();
+		// open.pop ();
+		open.pop_back ();
 		int x = coords.x, y = coords.y;
 
-		if (can_trade_via_water_at ((TNXCache *)tnx_cache, civ_id, x, y, ! (flags & 0x1000), false)) {
+		if (can_trade_via_water_at (tnx_cache, civ_id, x, y, ! (flags & 0x1000), false)) {
 			node_states.set (x, y, FFNS_REACHABLE);
 			if ((x == to_x) && (y == to_y))
 				return true;
@@ -534,7 +572,8 @@ try_drawing_sea_trade_route (Trade_Net * trade_net, void * tnx_cache, int from_x
 				if ((nx >= 0) && (nx < p_bic_data->Map.Width) &&
 				    (ny >= 0) && (ny < p_bic_data->Map.Height) &&
 				    (node_states.get (nx, ny) == FFNS_NONE)) {
-					open.push (CoordPair{(short)nx, (short)ny});
+					// open.push (CoordPair{(short)nx, (short)ny});
+					open.push_back (CoordPair{(short)nx, (short)ny});
 					node_states.set (nx, ny, FFNS_OPEN);
 				}
 			}
