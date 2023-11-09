@@ -217,7 +217,8 @@ public:
 	unsigned int sea_trade_player_bits;
 	unsigned int ocean_trade_player_bits;
 
-	int pf_x, pf_y, pf_civ_id;
+	bool pf_holding_state;
+	int pf_civ_id;
 	unsigned int pf_flags;
 	TwoBitLayer pf_node_states;
 	std::vector<CoordPair> pf_open_set;
@@ -225,8 +226,7 @@ public:
 	TNXCache (Map * map) :
 		exploration_layer(map),
 		tile_info(map->Width, map->Height),
-		pf_x(-1),
-		pf_y(-1),
+		pf_holding_state(false),
 		pf_civ_id(-1),
 		pf_flags(0),
 		pf_node_states(map->Width, map->Height)
@@ -254,7 +254,8 @@ public:
 	void
 	clear_pathfinder_state ()
 	{
-		pf_x = pf_y = pf_civ_id = -1;
+		pf_holding_state = false;
+		pf_civ_id = -1;
 		pf_flags = 0;
 		pf_node_states.clear ();
 		pf_open_set.clear ();
@@ -518,21 +519,37 @@ try_drawing_sea_trade_route (Trade_Net * trade_net, void * vp_tnx_cache, int fro
 	*/
 
 	TNXCache * tnx_cache = (TNXCache *)vp_tnx_cache;
-
 	UShortLayer * tile_info = &tnx_cache->tile_info;
+	TwoBitLayer& node_states = tnx_cache->pf_node_states;
+	std::vector<CoordPair>& open = tnx_cache->pf_open_set;
 
 	// TwoBitLayer node_states(p_bic_data->Map.Width, p_bic_data->Map.Height);
 	// std::priority_queue<CoordPair, std::vector<CoordPair>, CloserTo> open(CloserTo(to_x, to_y));
 	// std::vector<CoordPair> open;
-	if ((from_x != tnx_cache->pf_x) || (from_y != tnx_cache->pf_y) || (civ_id != tnx_cache->pf_civ_id) || (flags != tnx_cache->pf_flags)) {
+
+	// Check if we can reuse intermediate results from a previous pathfinding operation
+	if (tnx_cache->pf_holding_state && (tnx_cache->pf_civ_id == civ_id) && (tnx_cache->pf_flags == flags) && (node_states.get (from_x, from_y) == FFNS_REACHABLE)) {
+		// If we've already determined the reachability of the "to" tile, return that. Otherwise re-enter the main loop to continue searching
+		// for a path from the previously accessible set.
+		byte to_node_state = node_states.get (to_x, to_y);
+		if (to_node_state == FFNS_REACHABLE)
+			return true;
+		else if (to_node_state == FFNS_UNREACHABLE)
+			return false;
+
+	// Set up new pathfinding state
+	} else {
 		tnx_cache->clear_pathfinder_state ();
-		tnx_cache->pf_x = from_x;
-		tnx_cache->pf_y = from_y;
+
+		// Add "from" tile to the open set
+		node_states.set (from_x, from_y, FFNS_OPEN);
+		// open.push (CoordPair{(short)from_x, (short)from_y});
+		open.push_back (CoordPair{(short)from_x, (short)from_y});
+
 		tnx_cache->pf_civ_id = civ_id;
 		tnx_cache->pf_flags = flags;
+		tnx_cache->pf_holding_state = true;
 	}
-	TwoBitLayer& node_states = tnx_cache->pf_node_states;
-	std::vector<CoordPair>& open = tnx_cache->pf_open_set;
 
 	// neighbor_dirs same as flood fill
 	int const neighbor_dirs[8] = {DIR_NE, DIR_SE, DIR_SW, DIR_NW, DIR_E, DIR_S, DIR_W, DIR_N};
@@ -544,11 +561,6 @@ try_drawing_sea_trade_route (Trade_Net * trade_net, void * vp_tnx_cache, int fro
 		dxs[n] = dx;
 		dys[n] = dy;
 	}
-
-	// Add (from_x, from_y) to open set
-	node_states.set (from_x, from_y, FFNS_OPEN);
-	// open.push (CoordPair{(short)from_x, (short)from_y});
-	open.push_back (CoordPair{(short)from_x, (short)from_y});
 
 	while (! open.empty ()) {
 		// Remove node from open set
