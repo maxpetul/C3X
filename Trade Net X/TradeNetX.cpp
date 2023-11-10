@@ -208,6 +208,69 @@ public:
 	}
 };
 
+// For use with std::priority_queue
+struct CloserTo {
+	CoordPair target;
+
+	CloserTo(int x, int y) : target{(short)x, (short)y} {}
+
+	bool
+	operator() (CoordPair const& a, CoordPair const& b) const
+	{
+		int a_dx = Map_get_x_dist (&p_bic_data->Map, a.x, target.x),
+		    a_dy = Map_get_y_dist (&p_bic_data->Map, a.y, target.y),
+		    b_dx = Map_get_x_dist (&p_bic_data->Map, b.x, target.x),
+		    b_dy = Map_get_y_dist (&p_bic_data->Map, b.y, target.y),
+		    a_sq_dist = a_dx * a_dx + a_dy * a_dy,
+		    b_sq_dist = b_dx * b_dx + b_dy * b_dy;
+		return a_sq_dist > b_sq_dist;
+	}
+};
+
+class CoordPairStdPQ {
+public:
+	std::priority_queue<CoordPair, std::vector<CoordPair>, CloserTo> * q;
+
+	CoordPairStdPQ (Map * map) : q(NULL) {}
+
+	void insert (int x, int y) { q->push (CoordPair{(short)x, (short)y}); }
+
+	CoordPair
+	take_top ()
+	{
+		CoordPair tr = q->top ();
+		q->pop ();
+		return tr;
+	}
+
+	bool empty () { return q->empty (); }
+
+	void init (int target_x, int target_y) { q = new std::priority_queue<CoordPair, std::vector<CoordPair>, CloserTo> (CloserTo (target_x, target_y)); }
+
+	void
+	deinit ()
+	{
+		if (q) {
+			delete q;
+			q = NULL;
+		}
+	}
+
+	void
+	reinit (int new_target_x, int new_target_y)
+	{
+		auto new_q = new std::priority_queue<CoordPair, std::vector<CoordPair>, CloserTo> (CloserTo (new_target_x, new_target_y));
+		while (! q->empty ()) {
+			new_q->push (q->top ());
+			q->pop ();
+		}
+		delete q;
+		q = new_q;
+	}
+
+
+};
+
 class TNXCache {
 public:
 	ExplorationLayer exploration_layer;
@@ -218,18 +281,21 @@ public:
 	unsigned int ocean_trade_player_bits;
 
 	bool pf_holding_state;
-	int pf_civ_id;
+	int pf_to_x, pf_to_y, pf_civ_id;
 	unsigned int pf_flags;
 	TwoBitLayer pf_node_states;
-	std::vector<CoordPair> pf_open_set;
+	// std::vector<CoordPair> pf_open_set;
+	// std::priority_queue<CoordPair, std::vector<CoordPair>, CloserTo> * pf_open_set;
+	CoordPairStdPQ pf_open_set;
 
 	TNXCache (Map * map) :
 		exploration_layer(map),
 		tile_info(map->Width, map->Height),
 		pf_holding_state(false),
-		pf_civ_id(-1),
+		pf_to_x(-1), pf_to_y(-1), pf_civ_id(-1),
 		pf_flags(0),
-		pf_node_states(map->Width, map->Height)
+		pf_node_states(map->Width, map->Height),
+		pf_open_set(map)
 	{}
 
 	void
@@ -255,10 +321,15 @@ public:
 	clear_pathfinder_state ()
 	{
 		pf_holding_state = false;
-		pf_civ_id = -1;
+		pf_to_x = pf_to_y = pf_civ_id = -1;
 		pf_flags = 0;
 		pf_node_states.clear ();
-		pf_open_set.clear ();
+		// pf_open_set.clear ();
+		// if (pf_open_set) {
+		//	delete pf_open_set;
+		//	pf_open_set = NULL;
+		//}
+		pf_open_set.deinit ();
 	}
 };
 
@@ -493,35 +564,10 @@ EXPORT_PROC
 bool
 try_drawing_sea_trade_route (Trade_Net * trade_net, void * vp_tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags)
 {
-	/*
-	struct CoordPair {
-		short x, y;
-
-		int
-		squared_dist (CoordPair const& other) const
-		{
-			int dx = (int)x - other.x, dy = (int)y - other.y; // TODO: Use Map_get_x/y_dist instead
-			return dx*dx + dy*dy;
-		}
-	};
-
-	struct CloserTo {
-		CoordPair target;
-
-		CloserTo(int x, int y) : target{(short)x, (short)y} {}
-
-		bool
-		operator() (CoordPair const& a, CoordPair const& b) const
-		{
-			return a.squared_dist (target) > b.squared_dist (target);
-		}
-	};
-	*/
-
 	TNXCache * tnx_cache = (TNXCache *)vp_tnx_cache;
 	UShortLayer * tile_info = &tnx_cache->tile_info;
 	TwoBitLayer& node_states = tnx_cache->pf_node_states;
-	std::vector<CoordPair>& open = tnx_cache->pf_open_set;
+	// std::vector<CoordPair>& open = tnx_cache->pf_open_set;
 
 	// TwoBitLayer node_states(p_bic_data->Map.Width, p_bic_data->Map.Height);
 	// std::priority_queue<CoordPair, std::vector<CoordPair>, CloserTo> open(CloserTo(to_x, to_y));
@@ -537,19 +583,34 @@ try_drawing_sea_trade_route (Trade_Net * trade_net, void * vp_tnx_cache, int fro
 		else if (to_node_state == FFNS_UNREACHABLE)
 			return false;
 
+		// If the target has changed, recreate the open set re-ranking based on distance to the new target
+		if ((to_x != tnx_cache->pf_to_x) || (to_y != tnx_cache->pf_to_y)) {
+			tnx_cache->pf_open_set.reinit (to_x, to_y);
+			tnx_cache->pf_to_x = to_x;
+			tnx_cache->pf_to_y = to_y;
+		}
+
 	// Set up new pathfinding state
 	} else {
 		tnx_cache->clear_pathfinder_state ();
 
+		tnx_cache->pf_open_set.init (to_x, to_y);
+		// tnx_cache->pf_open_set = new std::priority_queue<CoordPair, std::vector<CoordPair>, CloserTo> (CloserTo (to_x, to_y));
+
 		// Add "from" tile to the open set
 		node_states.set (from_x, from_y, FFNS_OPEN);
-		// open.push (CoordPair{(short)from_x, (short)from_y});
-		open.push_back (CoordPair{(short)from_x, (short)from_y});
+		// open.push_back (CoordPair{(short)from_x, (short)from_y});
+		// tnx_cache->pf_open_set->push (CoordPair{(short)from_x, (short)from_y});
+		tnx_cache->pf_open_set.insert (from_x, from_y);
 
 		tnx_cache->pf_civ_id = civ_id;
+		tnx_cache->pf_to_x = to_x;
+		tnx_cache->pf_to_y = to_y;
 		tnx_cache->pf_flags = flags;
 		tnx_cache->pf_holding_state = true;
 	}
+
+	auto * open = &tnx_cache->pf_open_set;
 
 	// neighbor_dirs same as flood fill
 	int const neighbor_dirs[8] = {DIR_NE, DIR_SE, DIR_SW, DIR_NW, DIR_E, DIR_S, DIR_W, DIR_N};
@@ -562,12 +623,13 @@ try_drawing_sea_trade_route (Trade_Net * trade_net, void * vp_tnx_cache, int fro
 		dys[n] = dy;
 	}
 
-	while (! open.empty ()) {
+	while (! open->empty ()) {
 		// Remove node from open set
-		// CoordPair coords = open.top ();
-		CoordPair coords = open.back ();
-		// open.pop ();
-		open.pop_back ();
+		// CoordPair coords = open.back ();
+		// open.pop_back ();
+		// CoordPair coords = open->top ();
+		// open->pop ();
+		CoordPair coords = open->take_top ();
 		int x = coords.x, y = coords.y;
 
 		if (can_trade_via_water_at (tnx_cache, civ_id, x, y, ! (flags & 0x1000), false)) {
@@ -584,8 +646,9 @@ try_drawing_sea_trade_route (Trade_Net * trade_net, void * vp_tnx_cache, int fro
 				if ((nx >= 0) && (nx < p_bic_data->Map.Width) &&
 				    (ny >= 0) && (ny < p_bic_data->Map.Height) &&
 				    (node_states.get (nx, ny) == FFNS_NONE)) {
-					// open.push (CoordPair{(short)nx, (short)ny});
-					open.push_back (CoordPair{(short)nx, (short)ny});
+					// open.push_back (CoordPair{(short)nx, (short)ny});
+					// open->push (CoordPair{(short)nx, (short)ny});
+					open->insert (nx, ny);
 					node_states.set (nx, ny, FFNS_OPEN);
 				}
 			}
