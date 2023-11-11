@@ -6533,7 +6533,17 @@ struct OpenGLRenderer
 #define get_combat_occupier ((int (__cdecl *) (int tile_x, int tile_y, int civ_id, byte ignore_visibility))bin_addrs[282])
 #define Leader_has_tech_with_flag ((bool (__thiscall *) (Leader * _this,  AdvanceTypeFlags flag))bin_addrs[283])
 #define Trade_Net_recompute_city_connections ((void (__thiscall *) (Trade_Net * _this,  int civ_id, bool redo_road_network, byte param_3, int redo_roads_for_city_id))bin_addrs[284])
-int const gog_addrs[285] = {
+#define OpenGLRenderer_initialize ((int (__thiscall *) (OpenGLRenderer * _this,  PCX_Image * texture))bin_addrs[285])
+#define OpenGLRenderer_draw_line ((void (__thiscall *) (OpenGLRenderer * _this,  int x1, int y1, int x2, int y2))bin_addrs[286])
+#define OpenGLRenderer_set_color ((void (__thiscall *) (OpenGLRenderer * _this,  unsigned int rgb555))bin_addrs[287])
+#define OpenGLRenderer_set_opacity ((void (__thiscall *) (OpenGLRenderer * _this,  unsigned int alpha))bin_addrs[288])
+#define OpenGLRenderer_set_line_width ((void (__thiscall *) (OpenGLRenderer * _this,  int width))bin_addrs[289])
+#define OpenGLRenderer_enable_line_dashing ((void (__thiscall *) (OpenGLRenderer * _this))bin_addrs[290])
+#define OpenGLRenderer_disable_line_dashing ((void (__thiscall *) (OpenGLRenderer * _this))bin_addrs[291])
+#define Map_build_trade_network ((void (__thiscall *) (Map * _this))bin_addrs[292])
+#define Trade_Net_recompute_city_cons_and_res ((void (__thiscall *) (Trade_Net * _this,  bool param_1))bin_addrs[293])
+#define Tile_has_colony ((bool (__thiscall *) (Tile * _this))bin_addrs[294])
+int const gog_addrs[295] = {
 	0,
 	0x9C3508,
 	0xA52E80,
@@ -6819,8 +6829,18 @@ int const gog_addrs[285] = {
 	0x56D340,
 	0x561480,
 	0x57D980,
+	0x62B1A0,
+	0x62B450,
+	0x62B490,
+	0x62B570,
+	0x62B5B0,
+	0x62B5D0,
+	0x62B5F0,
+	0x5D2150,
+	0x57DE90,
+	0x5EA6E0,
 };
-int const steam_addrs[285] = {
+int const steam_addrs[295] = {
 	1,
 	0x9E5D08,
 	0xA75680,
@@ -7106,8 +7126,18 @@ int const steam_addrs[285] = {
 	0x579CC0,
 	0x56D5E0,
 	0x58A680,
+	0x64E220,
+	0x64E510,
+	0x64E560,
+	0x64E600,
+	0x64E660,
+	0x64E690,
+	0x64E6C0,
+	0x5E13F0,
+	0x58ABD0,
+	0x5F9F30,
 };
-int const pcg_addrs[285] = {
+int const pcg_addrs[295] = {
 	2,
 	0x9C34C8,
 	0xA52E40,
@@ -7393,4 +7423,14 @@ int const pcg_addrs[285] = {
 	0x56D2B0,
 	0x561430,
 	0x57D6E0,
+	0x6274B0,
+	0x627760,
+	0x6277A0,
+	0x627880,
+	0x6278C0,
+	0x6278E0,
+	0x627900,
+	0x5D2080,
+	0x57DBF0,
+	0x5EA610,
 };

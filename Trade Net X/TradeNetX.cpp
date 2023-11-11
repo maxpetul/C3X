@@ -17,12 +17,6 @@ typedef unsigned char byte;
 
 int const * bin_addrs = NULL;
 
-bool
-has_outpost (Tile * tile)
-{
-	return false; // TODO: Implement me
-}
-
 // UShortLayer stores two bytes of data per map tile in a cache-efficient way, assuming that when you access the data for one tile you'll soon need it
 // for the surrounding tiles too.
 #define USL_BLOCK_WIDTH  8
@@ -520,7 +514,7 @@ get_tile_info (UShortLayer * tile_info, int x, int y)
 			int tech_req_civ_id = -1;
 			if (tile->CityID != -1)
 				tech_req_civ_id = tile->vtable->m69_get_Tile_City_CivID (tile);
-			else if (has_outpost (tile))
+			else if (Tile_has_colony (tile))
 				tech_req_civ_id = tile->vtable->m70_Get_Tile_Building_OwnerID (tile);
 
 			if ((tech_req_civ_id < 0) ||
