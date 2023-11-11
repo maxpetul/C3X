@@ -270,8 +270,8 @@ public:
 	}
 };
 
-#define CPBPQ_BLOCK_WIDTH  32
-#define CPBPQ_BLOCK_HEIGHT 32
+#define CPBPQ_BLOCK_WIDTH  64
+#define CPBPQ_BLOCK_HEIGHT 64
 class CoordPairBlockPQ {
 public:
 	int map_width, map_height;
