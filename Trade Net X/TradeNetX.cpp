@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <vector>
 #include <queue>
+#include <algorithm>
 
 #define NOVIRTUALKEYCODES // Keycodes defined in Civ3Conquests.h instead
 #include "windows.h"
@@ -267,8 +268,106 @@ public:
 		delete q;
 		q = new_q;
 	}
+};
+
+#define CPBPQ_BLOCK_WIDTH  32
+#define CPBPQ_BLOCK_HEIGHT 32
+class CoordPairBlockPQ {
+public:
+	int map_width, map_height;
+	int width_in_blocks, height_in_blocks;
+
+	int block_count;
+	std::vector<CoordPair> * blocks;
+	int * block_distances;
+
+	int nearest_populated_block;
+
+	CoordPairBlockPQ (Map * map) :
+		map_width(map->Width),
+		map_height(map->Height),
+		width_in_blocks (map_width  / (2*CPBPQ_BLOCK_WIDTH) + (map_width  % (2*CPBPQ_BLOCK_WIDTH) != 0 ? 1 : 0)),
+		height_in_blocks(map_height /    CPBPQ_BLOCK_HEIGHT + (map_height %    CPBPQ_BLOCK_HEIGHT != 0 ? 1 : 0)),
+		block_count(width_in_blocks * height_in_blocks),
+		blocks(new std::vector<CoordPair>[block_count]),
+		block_distances(new int[block_count]),
+		nearest_populated_block(-1)
+	{}
+
+	~CoordPairBlockPQ ()
+	{
+		delete[] block_distances;
+		delete[] blocks;
+	}
 
 
+	void
+	insert (int x, int y)
+	{
+		int block_x = x / (2*CPBPQ_BLOCK_WIDTH),
+		    block_y = y / CPBPQ_BLOCK_HEIGHT,
+		    block_index = block_y * width_in_blocks + block_x;
+		blocks[block_index].push_back (CoordPair{(short)x, short(y)});
+		if ((nearest_populated_block < 0) || (block_distances[block_index] < block_distances[nearest_populated_block]))
+			nearest_populated_block = block_index;
+	}
+
+	void
+	find_nearest_populated_block ()
+	{
+		nearest_populated_block = -1;
+		int nearest_distance = INT_MAX;
+		for (int n = 0; n < block_count; n++)
+			if ((! blocks[n].empty ()) && (block_distances[n] < nearest_distance)) {
+				nearest_populated_block = n;
+				nearest_distance = block_distances[n];
+			}
+	}
+
+	CoordPair
+	take_top ()
+	{
+		std::vector<CoordPair>& nearest_block = blocks[nearest_populated_block];
+		CoordPair tr = nearest_block.back ();
+		nearest_block.pop_back ();
+		if (nearest_block.empty ())
+			find_nearest_populated_block ();
+		return tr;
+	}
+
+	bool empty () { return nearest_populated_block < 0; }
+
+	void
+	recompute_block_distances (int target_x, int target_y)
+	{
+		for (int y = 0; y < height_in_blocks; y++)
+			for (int x = 0; x < width_in_blocks; x++) {
+				int block_index = y*width_in_blocks + x,
+				    center_x = std::min<int> (map_width  - 1, x*(2*CPBPQ_BLOCK_WIDTH) +  CPBPQ_BLOCK_WIDTH),
+				    center_y = std::min<int> (map_height - 1, y*   CPBPQ_BLOCK_HEIGHT + (CPBPQ_BLOCK_HEIGHT/2)),
+				    dx = Map_get_x_dist (&p_bic_data->Map, center_x, target_x),
+				    dy = Map_get_y_dist (&p_bic_data->Map, center_y, target_y),
+				    squared_dist = dx*dx + dy*dy;
+				block_distances[block_index] = squared_dist;
+			}
+	}
+
+	void init (int target_x, int target_y) { recompute_block_distances (target_x, target_y); }
+
+	void
+	deinit ()
+	{
+		for (int n = 0; n < block_count; n++)
+			blocks[n].clear ();
+		nearest_populated_block = -1;
+	}
+
+	void
+	reinit (int target_x, int target_y)
+	{
+		recompute_block_distances (target_x, target_y);
+		find_nearest_populated_block ();
+	}
 };
 
 class TNXCache {
@@ -286,7 +385,7 @@ public:
 	TwoBitLayer pf_node_states;
 	// std::vector<CoordPair> pf_open_set;
 	// std::priority_queue<CoordPair, std::vector<CoordPair>, CloserTo> * pf_open_set;
-	CoordPairStdPQ pf_open_set;
+	CoordPairBlockPQ pf_open_set;
 
 	TNXCache (Map * map) :
 		exploration_layer(map),
