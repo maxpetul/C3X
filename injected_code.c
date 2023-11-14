@@ -6337,6 +6337,9 @@ patch_perform_interturn_in_main_loop ()
 	is->time_spent_computing_city_connections = 0;
 	is->count_calls_to_recompute_city_connections = 0;
 	is->count_calls_to_tnx_flood_fill = 0;
+	unsigned saved_prefs = *p_preferences;
+	if (is->current_config.measure_turn_times)
+		*p_preferences &= ~(P_ANIMATE_BATTLES | P_SHOW_FRIEND_MOVES | P_SHOW_ENEMY_MOVES);
 
 	perform_interturn ();
 
@@ -6364,6 +6367,8 @@ patch_perform_interturn_in_main_loop ()
 		snprintf (msg, sizeof msg, "^Calls to TNX flood fill: %d", is->count_calls_to_tnx_flood_fill);
 		PopupForm_add_text (popup, __, (char *)msg, false);
 		patch_show_popup (popup, __, 0, 0);
+
+		*p_preferences = saved_prefs;
 	}
 
 	if (save_replay) {
