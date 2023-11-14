@@ -6336,7 +6336,6 @@ patch_perform_interturn_in_main_loop ()
 	is->time_spent_paused_during_popup = 0;
 	is->time_spent_computing_city_connections = 0;
 	is->count_calls_to_recompute_city_connections = 0;
-	is->count_calls_to_tnx_flood_fill = 0;
 	unsigned saved_prefs = *p_preferences;
 	if (is->current_config.measure_turn_times)
 		*p_preferences &= ~(P_ANIMATE_BATTLES | P_SHOW_FRIEND_MOVES | P_SHOW_ENEMY_MOVES);
@@ -6363,8 +6362,6 @@ patch_perform_interturn_in_main_loop ()
 		PopupForm_add_text (popup, __, (char *)msg, false);
 		snprintf (msg, sizeof msg, "^    Flood filling road network: %d.%03d sec",
 			  road_time_in_ms/1000, road_time_in_ms%1000);
-		PopupForm_add_text (popup, __, (char *)msg, false);
-		snprintf (msg, sizeof msg, "^Calls to TNX flood fill: %d", is->count_calls_to_tnx_flood_fill);
 		PopupForm_add_text (popup, __, (char *)msg, false);
 		patch_show_popup (popup, __, 0, 0);
 
@@ -7329,7 +7326,6 @@ patch_Trade_Net_set_unit_path_to_fill_road_net (Trade_Net * this, int edx, int f
 	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_before);
 
 	if ((is->tnx_init_state == IS_OK) && (is->tnx_cache != NULL)) {
-		is->count_calls_to_tnx_flood_fill++;
 		is->flood_fill_road_network (is->tnx_cache, from_x, from_y, civ_id);
 		tr = 0; // Return value is not used by caller anyway
 	} else
