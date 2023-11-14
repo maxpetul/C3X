@@ -6354,6 +6354,28 @@ patch_perform_interturn_in_main_loop ()
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
 		char msg[1000];
+
+		struct c3x_opt {
+			bool is_active;
+			char * name;
+		} opts[] = {{is->current_config.optimize_improvement_loops, "improv. loops"},
+			    {is->current_config.enable_trade_net_x && (is->tnx_init_state == IS_OK), "trade net x"}};
+		char opt_list[1000];
+		memset (opt_list, 0, sizeof opt_list);
+		strncpy (opt_list, "^C3X optimizations: ", sizeof opt_list);
+		bool any_active_opts = false;
+		for (int n = 0; n < ARRAY_LEN (opts); n++)
+			if (opts[n].is_active) {
+				char * cursor = &opt_list[strlen (opt_list)];
+				snprintf (cursor, opt_list + (sizeof opt_list) - cursor, "%s%s", any_active_opts ? ", " : "", opts[n].name);
+				any_active_opts = true;
+			}
+		if (! any_active_opts) {
+			char * cursor = &opt_list[strlen (opt_list)];
+			strncpy (cursor, "None", opt_list + (sizeof opt_list) - cursor);
+		}
+		PopupForm_add_text (popup, __, (char *)opt_list, false);
+
 		snprintf (msg, sizeof msg, "^Turn time: %d.%03d sec", turn_time_in_ms/1000, turn_time_in_ms%1000);
 		PopupForm_add_text (popup, __, (char *)msg, false);
 		snprintf (msg, sizeof msg, "^  Recomputing city connections: %d.%03d sec (%d calls)",
