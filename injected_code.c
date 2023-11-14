@@ -24,6 +24,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define GetFileSize is->GetFileSize
 #define ReadFile is->ReadFile
 #define LoadLibraryA is->LoadLibraryA
+#define FreeLibrary is->FreeLibrary
 #define MessageBoxA is->MessageBoxA
 #define MultiByteToWideChar is->MultiByteToWideChar
 #define WideCharToMultiByte is->WideCharToMultiByte
@@ -1920,8 +1921,9 @@ patch_init_floating_point ()
 		{"city_icons_show_unit_effects_not_trade"              , true , offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
 		{"ignore_king_ability_for_defense_priority"            , false, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
 		{"show_untradable_techs_on_trade_screen"               , false, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
-		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"disallow_useless_bombard_vs_airfields"               , true , offsetof (struct c3x_config, disallow_useless_bombard_vs_airfields)},
+		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
+		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
 		{"enable_city_capture_by_barbarians"                   , false, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
 		{"share_visibility_in_hoseat"                          , false, offsetof (struct c3x_config, share_visibility_in_hoseat)},
@@ -1959,6 +1961,7 @@ patch_init_floating_point ()
 	GetFileSize               = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
 	ReadFile                  = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
 	LoadLibraryA              = (void *)(*p_GetProcAddress) (is->kernel32, "LoadLibraryA");
+	FreeLibrary               = (void *)(*p_GetProcAddress) (is->kernel32, "FreeLibrary");
 	MultiByteToWideChar       = (void *)(*p_GetProcAddress) (is->kernel32, "MultiByteToWideChar");
 	WideCharToMultiByte       = (void *)(*p_GetProcAddress) (is->kernel32, "WideCharToMultiByte");
 	GetLastError              = (void *)(*p_GetProcAddress) (is->kernel32, "GetLastError");
@@ -2045,41 +2048,7 @@ patch_init_floating_point ()
 		}
 	}
 
-	// Initialize Trade Net X
-	{
-		is->tnx_cache = NULL;
-
-		char path[MAX_PATH];
-		snprintf (path, sizeof path, "%s\\Trade Net X\\TradeNetX.dll", is->mod_rel_dir);
-		path[(sizeof path) - 1] = '\0';
-		is->trade_net_x = LoadLibraryA (path);
-		if (is->trade_net_x != NULL) {
-			is->set_exe_version                = (void *)(*p_GetProcAddress) (is->trade_net_x, "set_exe_version");
-			is->create_tnx_cache               = (void *)(*p_GetProcAddress) (is->trade_net_x, "create_tnx_cache");
-			is->destroy_tnx_cache              = (void *)(*p_GetProcAddress) (is->trade_net_x, "destroy_tnx_cache");
-			is->set_up_before_building_network = (void *)(*p_GetProcAddress) (is->trade_net_x, "set_up_before_building_network");
-			is->get_move_cost_for_sea_trade    = (void *)(*p_GetProcAddress) (is->trade_net_x, "get_move_cost_for_sea_trade");
-			is->flood_fill_road_network        = (void *)(*p_GetProcAddress) (is->trade_net_x, "flood_fill_road_network");
-			is->try_drawing_sea_trade_route    = (void *)(*p_GetProcAddress) (is->trade_net_x, "try_drawing_sea_trade_route");
-
-			is->set_exe_version (exe_version_index);
-
-			// Run tests
-			if (0) {
-				int (__stdcall * test) () = (void *)(*p_GetProcAddress) (is->trade_net_x, "test");
-				int failed_test_count = test ();
-				if (failed_test_count > 0)
-					MessageBoxA (NULL, "Failed some tests in Trade Net X!", NULL, MB_ICONWARNING);
-				else
-					MessageBoxA (NULL, "All tests in Trade Net X passed.", "Success", MB_ICONINFORMATION);
-			}
-
-			is->tnx_init_state = IS_OK;
-		} else {
-			MessageBoxA (NULL, "Failed to load Trade Net X!", NULL, MB_ICONERROR);
-			is->tnx_init_state = IS_INIT_FAILED;
-		}
-	}
+	is->tnx_cache = NULL;
 	is->is_computing_city_connections = false;
 	is->keep_tnx_cache = false;
 	is->paused_for_popup = false;
@@ -3668,6 +3637,46 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	if (0 != strcmp (scenario_config_file_name, scenario_config_path))
 		load_config (scenario_config_path, 0);
 	apply_machine_code_edits (&is->current_config);
+
+	// Initialize Trade Net X
+	if (is->current_config.enable_trade_net_x && (is->tnx_init_state == IS_UNINITED)) {
+		char path[MAX_PATH];
+		snprintf (path, sizeof path, "%s\\Trade Net X\\TradeNetX.dll", is->mod_rel_dir);
+		path[(sizeof path) - 1] = '\0';
+		is->trade_net_x = LoadLibraryA (path);
+		if (is->trade_net_x != NULL) {
+			is->set_exe_version                = (void *)(*p_GetProcAddress) (is->trade_net_x, "set_exe_version");
+			is->create_tnx_cache               = (void *)(*p_GetProcAddress) (is->trade_net_x, "create_tnx_cache");
+			is->destroy_tnx_cache              = (void *)(*p_GetProcAddress) (is->trade_net_x, "destroy_tnx_cache");
+			is->set_up_before_building_network = (void *)(*p_GetProcAddress) (is->trade_net_x, "set_up_before_building_network");
+			is->get_move_cost_for_sea_trade    = (void *)(*p_GetProcAddress) (is->trade_net_x, "get_move_cost_for_sea_trade");
+			is->flood_fill_road_network        = (void *)(*p_GetProcAddress) (is->trade_net_x, "flood_fill_road_network");
+			is->try_drawing_sea_trade_route    = (void *)(*p_GetProcAddress) (is->trade_net_x, "try_drawing_sea_trade_route");
+
+			is->set_exe_version (exe_version_index);
+
+			// Run tests
+			if (0) {
+				int (__stdcall * test) () = (void *)(*p_GetProcAddress) (is->trade_net_x, "test");
+				int failed_test_count = test ();
+				if (failed_test_count > 0)
+					MessageBoxA (NULL, "Failed some tests in Trade Net X!", NULL, MB_ICONWARNING);
+				else
+					MessageBoxA (NULL, "All tests in Trade Net X passed.", "Success", MB_ICONINFORMATION);
+			}
+
+			is->tnx_init_state = IS_OK;
+		} else {
+			MessageBoxA (NULL, "Failed to load Trade Net X!", NULL, MB_ICONERROR);
+			is->tnx_init_state = IS_INIT_FAILED;
+		}
+
+	// Deinitialize Trade Net X
+	} else if ((! is->current_config.enable_trade_net_x) && (is->tnx_init_state == IS_OK)) {
+		FreeLibrary (is->trade_net_x);
+		is->trade_net_x = NULL;
+		is->tnx_init_state = IS_UNINITED;
+	}
 
 	// This scenario might use different mod art assets than the old one
 	deinit_stackable_command_buttons ();

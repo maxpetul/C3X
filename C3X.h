@@ -133,7 +133,6 @@ struct c3x_config {
 	bool city_icons_show_unit_effects_not_trade;
 	bool ignore_king_ability_for_defense_priority;
 	bool show_untradable_techs_on_trade_screen;
-	bool optimize_improvement_loops;
 	bool disallow_useless_bombard_vs_airfields;
 	enum line_drawing_override draw_lines_using_gdi_plus;
 	bool enable_city_capture_by_barbarians;
@@ -147,6 +146,8 @@ struct c3x_config {
 	enum special_zone_of_control_rules special_zone_of_control_rules;
 	enum special_defensive_bombard_rules special_defensive_bombard_rules;
 
+	bool enable_trade_net_x;
+	bool optimize_improvement_loops;
 	bool measure_turn_times;
 
 	bool use_offensive_artillery_ai;
@@ -303,6 +304,7 @@ struct injected_state {
 	DWORD (WINAPI * GetFileSize) (HANDLE, LPDWORD);
 	WINBOOL (WINAPI * ReadFile) (HANDLE, LPVOID, DWORD, LPDWORD, LPOVERLAPPED);
 	HMODULE (WINAPI * LoadLibraryA) (LPCSTR);
+	BOOL (WINAPI * FreeLibrary) (HMODULE);
 	int (WINAPI * MultiByteToWideChar) (UINT, DWORD, LPCCH, int, LPWSTR, int);
 	int (WINAPI * WideCharToMultiByte) (UINT, DWORD, LPCWCH, int, LPSTR, int, LPCCH, LPBOOL);
 	int (WINAPI * GetLastError) ();
