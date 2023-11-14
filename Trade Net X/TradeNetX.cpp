@@ -203,6 +203,9 @@ public:
 	}
 };
 
+// Exclude these from the build since they're not being used
+#if 0
+
 // For use with std::priority_queue
 struct CloserTo {
 	CoordPair target;
@@ -222,6 +225,8 @@ struct CloserTo {
 	}
 };
 
+// This class is a priority queue that stores CoordPairs and prioritizes them based on distance to some target tile. It's a simple wrapper around
+// std::priority_queue and used as a performance baseline.
 class CoordPairStdPQ {
 public:
 	std::priority_queue<CoordPair, std::vector<CoordPair>, CloserTo> * q;
@@ -264,6 +269,14 @@ public:
 	}
 };
 
+#endif
+
+// This class is again a priority queue for CoordPairs prioritized based on distance to a target location, except it's tuned for insertion and removal
+// speed at the cost of accurate prioritization. The way it works is it divides the map up into rectangular blocks of tiles and each block has a
+// std::vector of CoordPairs. When taking from the queue, you don't necessarily get the CoordPair closest to the target, instead you get one from the
+// closest block.
+// Large block sizes are good since sea trade pathfinding time is dominated by cases where there is no path and all sea tiles must be searched. In my
+// testing, 64x64 is close to the optimal size. It's actually a bit below optimal for the Monstrosity test which should be better on smaller maps.
 #define CPBPQ_BLOCK_WIDTH  64
 #define CPBPQ_BLOCK_HEIGHT 64
 class CoordPairBlockPQ {
@@ -373,12 +386,11 @@ public:
 	unsigned int sea_trade_player_bits;
 	unsigned int ocean_trade_player_bits;
 
+	// These variables hold the state of the pathfinder for reuse across calls.
 	bool pf_holding_state;
 	int pf_to_x, pf_to_y, pf_civ_id;
 	unsigned int pf_flags;
 	TwoBitLayer pf_node_states;
-	// std::vector<CoordPair> pf_open_set;
-	// std::priority_queue<CoordPair, std::vector<CoordPair>, CloserTo> * pf_open_set;
 	CoordPairBlockPQ pf_open_set;
 
 	TNXCache (Map * map) :
@@ -417,11 +429,6 @@ public:
 		pf_to_x = pf_to_y = pf_civ_id = -1;
 		pf_flags = 0;
 		pf_node_states.clear ();
-		// pf_open_set.clear ();
-		// if (pf_open_set) {
-		//	delete pf_open_set;
-		//	pf_open_set = NULL;
-		//}
 		pf_open_set.deinit ();
 	}
 };
@@ -660,11 +667,6 @@ try_drawing_sea_trade_route (Trade_Net * trade_net, void * vp_tnx_cache, int fro
 	TNXCache * tnx_cache = (TNXCache *)vp_tnx_cache;
 	UShortLayer * tile_info = &tnx_cache->tile_info;
 	TwoBitLayer& node_states = tnx_cache->pf_node_states;
-	// std::vector<CoordPair>& open = tnx_cache->pf_open_set;
-
-	// TwoBitLayer node_states(p_bic_data->Map.Width, p_bic_data->Map.Height);
-	// std::priority_queue<CoordPair, std::vector<CoordPair>, CloserTo> open(CloserTo(to_x, to_y));
-	// std::vector<CoordPair> open;
 
 	// Check if we can reuse intermediate results from a previous pathfinding operation
 	if (tnx_cache->pf_holding_state && (tnx_cache->pf_civ_id == civ_id) && (tnx_cache->pf_flags == flags) && (node_states.get (from_x, from_y) == FFNS_REACHABLE)) {
@@ -688,12 +690,9 @@ try_drawing_sea_trade_route (Trade_Net * trade_net, void * vp_tnx_cache, int fro
 		tnx_cache->clear_pathfinder_state ();
 
 		tnx_cache->pf_open_set.init (to_x, to_y);
-		// tnx_cache->pf_open_set = new std::priority_queue<CoordPair, std::vector<CoordPair>, CloserTo> (CloserTo (to_x, to_y));
 
 		// Add "from" tile to the open set
 		node_states.set (from_x, from_y, FFNS_OPEN);
-		// open.push_back (CoordPair{(short)from_x, (short)from_y});
-		// tnx_cache->pf_open_set->push (CoordPair{(short)from_x, (short)from_y});
 		tnx_cache->pf_open_set.insert (from_x, from_y);
 
 		tnx_cache->pf_civ_id = civ_id;
@@ -718,10 +717,6 @@ try_drawing_sea_trade_route (Trade_Net * trade_net, void * vp_tnx_cache, int fro
 
 	while (! open->empty ()) {
 		// Remove node from open set
-		// CoordPair coords = open.back ();
-		// open.pop_back ();
-		// CoordPair coords = open->top ();
-		// open->pop ();
 		CoordPair coords = open->take_top ();
 		int x = coords.x, y = coords.y;
 
@@ -739,8 +734,6 @@ try_drawing_sea_trade_route (Trade_Net * trade_net, void * vp_tnx_cache, int fro
 				if ((nx >= 0) && (nx < p_bic_data->Map.Width) &&
 				    (ny >= 0) && (ny < p_bic_data->Map.Height) &&
 				    (node_states.get (nx, ny) == FFNS_NONE)) {
-					// open.push_back (CoordPair{(short)nx, (short)ny});
-					// open->push (CoordPair{(short)nx, (short)ny});
 					open->insert (nx, ny);
 					node_states.set (nx, ny, FFNS_OPEN);
 				}
