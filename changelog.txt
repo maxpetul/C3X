@@ -1,4 +1,7 @@
 * RELEASE 17 PREVIEW 1
+- Optimize computation of trade networks
+ - For details, see the info text file in the Trade Net X folder
+- Option to measure turn times
 - Zone of control changes
   - Allow land-to-sea and sea-to-land attacks, only using bombard stat
   - May be lethal
