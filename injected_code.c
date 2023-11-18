@@ -24,10 +24,13 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define GetFileSize is->GetFileSize
 #define ReadFile is->ReadFile
 #define LoadLibraryA is->LoadLibraryA
+#define FreeLibrary is->FreeLibrary
 #define MessageBoxA is->MessageBoxA
 #define MultiByteToWideChar is->MultiByteToWideChar
 #define WideCharToMultiByte is->WideCharToMultiByte
 #define GetLastError is->GetLastError
+#define QueryPerformanceCounter is->QueryPerformanceCounter
+#define QueryPerformanceFrequency is->QueryPerformanceFrequency
 #define GetLocalTime is->GetLocalTime
 #define snprintf is->snprintf
 #define malloc is->malloc
@@ -90,13 +93,54 @@ rand_div (int num, int denom)
 	return q + (rand_int (p_rand_object, __, denom) < r);
 }
 
+struct pause_for_popup {
+	bool done; // Set to true to exit for loop
+	bool redundant; // If true, this pause would overlap a previous one and so should not be counted
+	long long ts_before;
+};
+
+struct pause_for_popup
+pfp_init ()
+{
+	struct pause_for_popup tr;
+	tr.done = false;
+	tr.redundant = is->paused_for_popup;
+	if (! tr.redundant)
+		QueryPerformanceCounter ((LARGE_INTEGER *)&tr.ts_before);
+	return tr;
+}
+
+void
+pfp_finish (struct pause_for_popup * pfp)
+{
+	if ((! pfp->redundant) && (! pfp->done)) {
+		long long ts_after;
+		QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
+		is->time_spent_paused_during_popup += ts_after - pfp->ts_before;
+	}
+	pfp->done = true;
+}
+
+#define WITH_PAUSE_FOR_POPUP for (struct pause_for_popup pfp = pfp_init (); ! pfp.done; pfp_finish (&pfp))
+
+int __fastcall
+patch_show_popup (void * this, int edx, int param_1, int param_2)
+{
+	int tr;
+	WITH_PAUSE_FOR_POPUP {
+		is->show_popup_was_called = 1;
+		tr = show_popup (this, __, param_1, param_2);
+	}
+	return tr;
+}
+
 void
 pop_up_in_game_error (char const * msg)
 {
 	PopupForm * popup = get_popup_form ();
 	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
 	PopupForm_add_text (popup, __, (char *)msg, false);
-	show_popup (popup, __, 0, 0);
+	patch_show_popup (popup, __, 0, 0);
 }
 
 void
@@ -652,7 +696,7 @@ handle_config_error (struct config_parsing * p, enum config_parse_error err)
 		err_msg[(sizeof err_msg) - 1] = '\0';
 		PopupForm_add_text (popup, __, err_msg, false);
 
-		show_popup (popup, __, 0, 0);
+		patch_show_popup (popup, __, 0, 0);
 		p->displayed_error_message = 1;
 	}
 }
@@ -826,7 +870,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		PopupForm_add_text (popup, __, s, false);
 		for (struct error_line * line = unrecognized_lines; line != NULL; line = line->next)
 			PopupForm_add_text (popup, __, line->text, false);
-		show_popup (popup, __, 0, 0);
+		patch_show_popup (popup, __, 0, 0);
 	}
 
 	free (text);
@@ -1878,8 +1922,10 @@ patch_init_floating_point ()
 		{"city_icons_show_unit_effects_not_trade"              , true , offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
 		{"ignore_king_ability_for_defense_priority"            , false, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
 		{"show_untradable_techs_on_trade_screen"               , false, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
-		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"disallow_useless_bombard_vs_airfields"               , true , offsetof (struct c3x_config, disallow_useless_bombard_vs_airfields)},
+		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
+		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
+		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
 		{"enable_city_capture_by_barbarians"                   , false, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
 		{"share_visibility_in_hoseat"                          , false, offsetof (struct c3x_config, share_visibility_in_hoseat)},
 		{"allow_precision_strikes_against_tile_improvements"   , false, offsetof (struct c3x_config, allow_precision_strikes_against_tile_improvements)},
@@ -1910,16 +1956,19 @@ patch_init_floating_point ()
 	is->msvcrt   = (*p_GetModuleHandleA) ("msvcrt.dll");
 
 	// Remember the function names here are macros that expand to is->...
-	VirtualProtect      = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualProtect");
-	CloseHandle         = (void *)(*p_GetProcAddress) (is->kernel32, "CloseHandle");
-	CreateFileA         = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
-	GetFileSize         = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
-	ReadFile            = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
-	LoadLibraryA        = (void *)(*p_GetProcAddress) (is->kernel32, "LoadLibraryA");
-	MultiByteToWideChar = (void *)(*p_GetProcAddress) (is->kernel32, "MultiByteToWideChar");
-	WideCharToMultiByte = (void *)(*p_GetProcAddress) (is->kernel32, "WideCharToMultiByte");
-	GetLastError        = (void *)(*p_GetProcAddress) (is->kernel32, "GetLastError");
-	GetLocalTime        = (void *)(*p_GetProcAddress) (is->kernel32, "GetLocalTime");
+	VirtualProtect            = (void *)(*p_GetProcAddress) (is->kernel32, "VirtualProtect");
+	CloseHandle               = (void *)(*p_GetProcAddress) (is->kernel32, "CloseHandle");
+	CreateFileA               = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
+	GetFileSize               = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
+	ReadFile                  = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
+	LoadLibraryA              = (void *)(*p_GetProcAddress) (is->kernel32, "LoadLibraryA");
+	FreeLibrary               = (void *)(*p_GetProcAddress) (is->kernel32, "FreeLibrary");
+	MultiByteToWideChar       = (void *)(*p_GetProcAddress) (is->kernel32, "MultiByteToWideChar");
+	WideCharToMultiByte       = (void *)(*p_GetProcAddress) (is->kernel32, "WideCharToMultiByte");
+	GetLastError              = (void *)(*p_GetProcAddress) (is->kernel32, "GetLastError");
+	QueryPerformanceCounter   = (void *)(*p_GetProcAddress) (is->kernel32, "QueryPerformanceCounter");
+	QueryPerformanceFrequency = (void *)(*p_GetProcAddress) (is->kernel32, "QueryPerformanceFrequency");
+	GetLocalTime              = (void *)(*p_GetProcAddress) (is->kernel32, "GetLocalTime");
 	MessageBoxA  = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
 	snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
 	malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
@@ -1999,6 +2048,14 @@ patch_init_floating_point ()
 			MessageBoxA (NULL, err_msg, NULL, MB_ICONWARNING);
 		}
 	}
+
+	is->tnx_cache = NULL;
+	is->is_computing_city_connections = false;
+	is->keep_tnx_cache = false;
+	is->paused_for_popup = false;
+	is->time_spent_paused_during_popup = 0;
+	is->time_spent_computing_city_connections = 0;
+	is->count_calls_to_recompute_city_connections = 0;
 
 	is->have_job_and_loc_to_skip = 0;
 
@@ -2086,6 +2143,14 @@ patch_init_floating_point ()
 	apply_machine_code_edits (&is->current_config);
 }
 
+void __fastcall
+patch_Main_Screen_Form_show_map_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, bool pause)
+{
+	WITH_PAUSE_FOR_POPUP {
+		Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, pause);
+	}
+}
+
 int __cdecl
 patch_process_text_for_map_message (char * in, char * out)
 {
@@ -2102,7 +2167,7 @@ void
 show_map_specific_text (int tile_x, int tile_y, char const * text, bool pause)
 {
 	is->map_message_text_override = text;
-	Main_Screen_Form_show_map_message (p_main_screen_form, __, tile_x, tile_y, "LANDCONQUER", pause); // Use any key here. It will be overridden.
+	patch_Main_Screen_Form_show_map_message (p_main_screen_form, __, tile_x, tile_y, "LANDCONQUER", pause); // Use any key here. It will be overridden.
 }
 
 void
@@ -2797,7 +2862,7 @@ check_happiness_at_end_of_turn ()
 			set_popup_int_param (1, num_unhappy_cities - 1);
 		char * key = (num_unhappy_cities > 1) ? "C3X_DISORDER_WARNING_MULTIPLE" : "C3X_DISORDER_WARNING_ONE";
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, key, -1, 0, 0, 0);
-		int response = show_popup (popup, __, 0, 0);
+		int response = patch_show_popup (popup, __, 0, 0);
 
 		if (response == 2) { // zoom to city
 			p_main_screen_form->turn_end_flag = 1;
@@ -2889,13 +2954,15 @@ patch_DiploForm_do_diplomacy (DiploForm * this, int edx, int diplo_message, int 
 	if (is->eligible_for_trade_scroll && (is->trade_scroll_button_state == IS_UNINITED))
 		init_trade_scroll_buttons (this);
 
-	DiploForm_do_diplomacy (this, __, diplo_message, param_2, civ_id, do_not_request_audience, war_negotiation, disallow_proposal, our_offers, their_offers);
+	WITH_PAUSE_FOR_POPUP {
+		DiploForm_do_diplomacy (this, __, diplo_message, param_2, civ_id, do_not_request_audience, war_negotiation, disallow_proposal, our_offers, their_offers);
 
-	while (is->trade_screen_scroll_to_id >= 0) {
-		int scroll_to_id = is->trade_screen_scroll_to_id;
-		is->trade_screen_scroll_to_id = -1;
-		is->open_diplo_form_straight_to_trade = 1;
-		DiploForm_do_diplomacy (this, __, DM_AI_COUNTER, 0, scroll_to_id, 1, 0, 0, NULL, NULL);
+		while (is->trade_screen_scroll_to_id >= 0) {
+			int scroll_to_id = is->trade_screen_scroll_to_id;
+			is->trade_screen_scroll_to_id = -1;
+			is->open_diplo_form_straight_to_trade = 1;
+			DiploForm_do_diplomacy (this, __, DM_AI_COUNTER, 0, scroll_to_id, 1, 0, 0, NULL, NULL);
+		}
 	}
 
 	is->open_diplo_form_straight_to_trade = 0;
@@ -3083,7 +3150,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 			set_popup_int_param (0, is->memo_len);
 			set_popup_int_param (1, cost);
 			popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "UPGRADE_ALL", -1, 0, 0, 0);
-			if (show_popup (popup, __, 0, 0) == 0)
+			if (patch_show_popup (popup, __, 0, 0) == 0)
 				for (int n = 0; n < is->memo_len; n++) {
 					Unit * to_upgrade = get_unit_ptr (is->memo[n]);
 					if (to_upgrade != NULL)
@@ -3094,7 +3161,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 			set_popup_int_param (0, cost);
 			int param_5 = is_online_game () ? 0x4000 : 0; // As in base code
 			popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "NO_GOLD_TO_UPGRADE_ALL", -1, 0, param_5, 0);
-			show_popup (popup, __, 0, 0);
+			patch_show_popup (popup, __, 0, 0);
 		}
 
 	} else if (command == UCV_Disband) {
@@ -3108,7 +3175,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 		if (is->memo_len > 0) {
 			set_popup_int_param (0, is->memo_len);
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_STACK_DISBAND", -1, 0, 0, 0);
-			if (show_popup (popup, __, 0, 0) == 0) {
+			if (patch_show_popup (popup, __, 0, 0) == 0) {
 				for (int n = 0; n < is->memo_len; n++) {
 					Unit * to_disband = get_unit_ptr (is->memo[n]);
 					if (to_disband)
@@ -3391,9 +3458,14 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 }
 
 int __fastcall
-patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned param_7, int neighbor_index, Trade_Net_Distance_Info * dist_info)
+patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned flags, int neighbor_index, Trade_Net_Distance_Info * dist_info)
 {
-	int const base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, param_7, neighbor_index, dist_info);
+	if (is->is_computing_city_connections && // if this call came while rebuilding the trade network AND
+	    (is->tnx_init_state == IS_OK) && (is->tnx_cache != NULL) && // Trade Net X is set up AND
+	    (unit == NULL) && ((flags == 0x1009) || (flags == 0x9))) // this call can be accelerated by TNX
+	    return is->get_move_cost_for_sea_trade (this, is->tnx_cache, from_x, from_y, to_x, to_y, civ_id, flags, neighbor_index, dist_info);
+
+	int const base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, neighbor_index, dist_info);
 
 	// Apply trespassing restriction
 	if (is->current_config.disallow_trespassing &&
@@ -3473,6 +3545,17 @@ patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y
 	return tr;
 }
 
+int __fastcall
+patch_Trade_Net_set_unit_path_to_find_sea_route (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp)
+{
+	// Accelerate this call with TNX if possible
+	if ((is->tnx_init_state == IS_OK) && (is->tnx_cache != NULL)) {
+		bool route_exists = is->try_drawing_sea_trade_route (this, is->tnx_cache, from_x, from_y, to_x, to_y, civ_id, flags);
+		return route_exists ? 1 : 0;
+	} else
+		return Trade_Net_set_unit_path (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, out_path_length_in_mp);
+}
+
 int __cdecl
 patch_do_save_game (char const * file_path, char param_2, GUID * guid)
 {
@@ -3532,6 +3615,12 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 {
 	int ret_addr = ((int *)&param_1)[-1];
 
+	// Destroy TNX cache from previous map. A new one will be created when needed.
+	if ((is->tnx_init_state == IS_OK) && (is->tnx_cache != NULL)) {
+		is->destroy_tnx_cache (is->tnx_cache);
+		is->tnx_cache = NULL;
+	}
+
 	unsigned tr = load_scenario (this, __, param_1, param_2);
 
 	// There are two cases when load_scenario is called that we don't want to run our own code. These are (1) when the scenario is loaded to
@@ -3549,6 +3638,46 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	if (0 != strcmp (scenario_config_file_name, scenario_config_path))
 		load_config (scenario_config_path, 0);
 	apply_machine_code_edits (&is->current_config);
+
+	// Initialize Trade Net X
+	if (is->current_config.enable_trade_net_x && (is->tnx_init_state == IS_UNINITED)) {
+		char path[MAX_PATH];
+		snprintf (path, sizeof path, "%s\\Trade Net X\\TradeNetX.dll", is->mod_rel_dir);
+		path[(sizeof path) - 1] = '\0';
+		is->trade_net_x = LoadLibraryA (path);
+		if (is->trade_net_x != NULL) {
+			is->set_exe_version                = (void *)(*p_GetProcAddress) (is->trade_net_x, "set_exe_version");
+			is->create_tnx_cache               = (void *)(*p_GetProcAddress) (is->trade_net_x, "create_tnx_cache");
+			is->destroy_tnx_cache              = (void *)(*p_GetProcAddress) (is->trade_net_x, "destroy_tnx_cache");
+			is->set_up_before_building_network = (void *)(*p_GetProcAddress) (is->trade_net_x, "set_up_before_building_network");
+			is->get_move_cost_for_sea_trade    = (void *)(*p_GetProcAddress) (is->trade_net_x, "get_move_cost_for_sea_trade");
+			is->flood_fill_road_network        = (void *)(*p_GetProcAddress) (is->trade_net_x, "flood_fill_road_network");
+			is->try_drawing_sea_trade_route    = (void *)(*p_GetProcAddress) (is->trade_net_x, "try_drawing_sea_trade_route");
+
+			is->set_exe_version (exe_version_index);
+
+			// Run tests
+			if (0) {
+				int (__stdcall * test) () = (void *)(*p_GetProcAddress) (is->trade_net_x, "test");
+				int failed_test_count = test ();
+				if (failed_test_count > 0)
+					MessageBoxA (NULL, "Failed some tests in Trade Net X!", NULL, MB_ICONWARNING);
+				else
+					MessageBoxA (NULL, "All tests in Trade Net X passed.", "Success", MB_ICONINFORMATION);
+			}
+
+			is->tnx_init_state = IS_OK;
+		} else {
+			MessageBoxA (NULL, "Failed to load Trade Net X!", NULL, MB_ICONERROR);
+			is->tnx_init_state = IS_INIT_FAILED;
+		}
+
+	// Deinitialize Trade Net X
+	} else if ((! is->current_config.enable_trade_net_x) && (is->tnx_init_state == IS_OK)) {
+		FreeLibrary (is->trade_net_x);
+		is->trade_net_x = NULL;
+		is->tnx_init_state = IS_UNINITED;
+	}
 
 	// This scenario might use different mod art assets than the old one
 	deinit_stackable_command_buttons ();
@@ -3665,13 +3794,6 @@ patch_Main_Screen_Form_handle_key_up (Main_Screen_Form * this, int edx, int virt
 		patch_Main_GUI_set_up_unit_command_buttons (&this->GUI);
 
 	return Main_Screen_Form_handle_key_up (this, __, virtual_key_code);
-}
-
-int __fastcall
-patch_show_popup (void * this, int edx, int param_1, int param_2)
-{
-	is->show_popup_was_called = 1;
-	return show_popup (this, __, param_1, param_2);
 }
 
 char __fastcall
@@ -4850,7 +4972,7 @@ patch_City_Form_m82_handle_key_event (City_Form * this, int edx, int virtual_key
 			s[(sizeof s) - 1] = '\0';
 			PopupForm_add_text (popup, __, s, 0);
 		}
-		show_popup (popup, __, 0, 0);
+		patch_show_popup (popup, __, 0, 0);
 	}
 
 	City_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
@@ -5015,7 +5137,7 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 				s[(sizeof s) - 1] = '\0';
 				PopupSelection_add_item (&popup->selection, __, s, n);
 			}
-		int sel = show_popup (popup, __, 0, 0);
+		int sel = patch_show_popup (popup, __, 0, 0);
 		if (sel >= 0) { // -1 indicates popup was closed without making a selection
 			is->city_loc_display_perspective = (sel >= 1) ? sel : -1;
 			this->vtable->m73_call_m22_Draw ((Base_Form *)this); // Trigger map redraw
@@ -5063,7 +5185,7 @@ activate_mod_info_button (int control_id)
 		PopupForm_add_text (popup, __, s, 0);
 	}
 
-	show_popup (popup, __, 0, 0);
+	patch_show_popup (popup, __, 0, 0);
 }
 
 int __fastcall
@@ -5486,7 +5608,7 @@ set_up_ai_two_city_start (Map * map)
 			s[(sizeof s) - 1] = '\0';
 			PopupForm_add_text (popup, __, s, 0);
 		}
-		show_popup (popup, __, 0, 0);
+		patch_show_popup (popup, __, 0, 0);
 	}
 }
 
@@ -5533,7 +5655,7 @@ adjust_sliders_preproduction (Leader * this)
 		if (reduced_spending && (this->ID == p_main_screen_form->Player_CivID)) {
 			PopupForm * popup = get_popup_form ();
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_CUT_RESEARCH_SPENDING", -1, 0, 0, 0);
-			show_popup (popup, __, 0, 0);
+			patch_show_popup (popup, __, 0, 0);
 		}
 	}
 }
@@ -5651,7 +5773,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 				set_popup_str_param (0, get_city_ptr (city_id)->Body.CityName     , -1, -1);
 				set_popup_str_param (1, p_bic_data->Improvements[improv_id].Name.S, -1, -1);
 				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_SINGLE_IMPROV", -1, 0, 0, 0);
-				show_popup (popup, __, 0, 0);
+				patch_show_popup (popup, __, 0, 0);
 			} else if (count_sold > 1) {
 				set_popup_int_param (0, count_sold);
 				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_MULTIPLE_IMPROVS", -1, 0, 0, 0);
@@ -5668,7 +5790,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 					PopupForm_add_text (popup, __, s, 0);
 				}
 
-				show_popup (popup, __, 0, 0);
+				patch_show_popup (popup, __, 0, 0);
 			}
 		}
 
@@ -5698,11 +5820,11 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 				set_popup_str_param (0, first_disbanded_name, -1, -1);
 				int online_flag = is_online_game () ? 0x4000 : 0;
 				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_SINGLE_UNIT", -1, 0, online_flag, 0);
-				show_popup (popup, __, 0, 0);
+				patch_show_popup (popup, __, 0, 0);
 			} else if ((count_disbanded > 1) && ! is_online_game ()) {
 				set_popup_int_param (0, count_disbanded);
 				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_MULTIPLE_UNITS", -1, 0, 0, 0);
-				show_popup (popup, __, 0, 0);
+				patch_show_popup (popup, __, 0, 0);
 			}
 		}
 
@@ -5742,7 +5864,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 					set_popup_str_param (0, wealth->Name.S, -1, -1);
 					set_popup_str_param (1, wealth->CivilopediaEntry.S, -1, -1);
 					popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_BUILD_WEALTH", -1, 0, 0, 0);
-					show_popup (popup, __, 0, 0);
+					patch_show_popup (popup, __, 0, 0);
 				}
 			}
 		}
@@ -5763,13 +5885,13 @@ patch_Leader_pay_unit_maintenance (Leader * this)
 void __fastcall
 patch_Main_Screen_Form_show_wltk_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, bool pause)
 {
-	Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? false : pause);
+	patch_Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? false : pause);
 }
 
 void __fastcall
 patch_Main_Screen_Form_show_wltk_ended_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, bool pause)
 {
-	Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? false : pause);
+	patch_Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, is->current_config.dont_pause_for_love_the_king_messages ? false : pause);
 }
 
 char __fastcall
@@ -5781,11 +5903,11 @@ patch_Tile_has_city_for_agri_penalty_exception (Tile * this)
 int
 show_razing_popup (void * popup_object, int popup_param_1, int popup_param_2, int razing_option)
 {
-	int response = show_popup (popup_object, __, popup_param_1, popup_param_2);
+	int response = patch_show_popup (popup_object, __, popup_param_1, popup_param_2);
 	if (is->current_config.prevent_razing_by_players && (response == razing_option)) {
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CANT_RAZE", -1, 0, 0, 0);
-		show_popup (popup, __, 0, 0);
+		patch_show_popup (popup, __, 0, 0);
 		return 0;
 	}
 	return response;
@@ -6086,7 +6208,7 @@ int __fastcall
 patch_show_intro_after_load_popup (void * this, int edx, int param_1, int param_2)
 {
 	if (! is->suppress_intro_after_load_popup)
-		return show_popup (this, __, param_1, param_2);
+		return patch_show_popup (this, __, param_1, param_2);
 	else {
 		is->suppress_intro_after_load_popup = 0;
 		return 0;
@@ -6134,7 +6256,7 @@ load_game_ex (char const * file_path, int suppress_intro_popup)
 int __fastcall
 patch_show_movement_phase_popup (void * this, int edx, int param_1, int param_2)
 {
-	int tr = show_popup (this, __, param_1, param_2);
+	int tr = patch_show_popup (this, __, param_1, param_2);
 
 	int player_civ_id = p_main_screen_form->Player_CivID;
 	int replay_for_players = is->replay_for_players; // Store this b/c it gets reset on game load
@@ -6210,8 +6332,64 @@ patch_perform_interturn_in_main_loop ()
 	}
 
 	is->players_saw_ai_unit = 0; // Clear bits. After perform_interturn, each set bit will indicate a player that has seen an AI unit move
+	long long ts_before;
+	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_before);
+	is->time_spent_paused_during_popup = 0;
+	is->time_spent_computing_city_connections = 0;
+	is->count_calls_to_recompute_city_connections = 0;
+	unsigned saved_prefs = *p_preferences;
+	if (is->current_config.measure_turn_times)
+		*p_preferences &= ~(P_ANIMATE_BATTLES | P_SHOW_FRIEND_MOVES | P_SHOW_ENEMY_MOVES);
 
 	perform_interturn ();
+
+	if (is->current_config.measure_turn_times) {
+		long long ts_after;
+		QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
+		long long perf_freq;
+		QueryPerformanceFrequency ((LARGE_INTEGER *)&perf_freq);
+		int turn_time_in_ms = 1000 * (ts_after - ts_before - is->time_spent_paused_during_popup) / perf_freq;
+		int city_con_time_in_ms = 1000 * is->time_spent_computing_city_connections / perf_freq;
+		int road_time_in_ms = 1000 * is->time_spent_filling_roads / perf_freq;
+
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
+		char msg[1000];
+
+		struct c3x_opt {
+			bool is_active;
+			char * name;
+		} opts[] = {{is->current_config.optimize_improvement_loops, "improv. loops"},
+			    {is->current_config.enable_trade_net_x && (is->tnx_init_state == IS_OK), "trade net x"}};
+		char opt_list[1000];
+		memset (opt_list, 0, sizeof opt_list);
+		strncpy (opt_list, "^C3X optimizations: ", sizeof opt_list);
+		bool any_active_opts = false;
+		for (int n = 0; n < ARRAY_LEN (opts); n++)
+			if (opts[n].is_active) {
+				char * cursor = &opt_list[strlen (opt_list)];
+				snprintf (cursor, opt_list + (sizeof opt_list) - cursor, "%s%s", any_active_opts ? ", " : "", opts[n].name);
+				any_active_opts = true;
+			}
+		if (! any_active_opts) {
+			char * cursor = &opt_list[strlen (opt_list)];
+			strncpy (cursor, "None", opt_list + (sizeof opt_list) - cursor);
+		}
+		PopupForm_add_text (popup, __, (char *)opt_list, false);
+
+		snprintf (msg, sizeof msg, "^Turn time: %d.%03d sec", turn_time_in_ms/1000, turn_time_in_ms%1000);
+		PopupForm_add_text (popup, __, (char *)msg, false);
+		snprintf (msg, sizeof msg, "^  Recomputing city connections: %d.%03d sec (%d calls)",
+			  city_con_time_in_ms/1000, city_con_time_in_ms%1000,
+			  is->count_calls_to_recompute_city_connections);
+		PopupForm_add_text (popup, __, (char *)msg, false);
+		snprintf (msg, sizeof msg, "^    Flood filling road network: %d.%03d sec",
+			  road_time_in_ms/1000, road_time_in_ms%1000);
+		PopupForm_add_text (popup, __, (char *)msg, false);
+		patch_show_popup (popup, __, 0, 0);
+
+		*p_preferences = saved_prefs;
+	}
 
 	if (save_replay) {
 		int last_human_player_bit = 0; {
@@ -7117,6 +7295,69 @@ patch_Leader_count_forbidden_palaces_for_ocn (Leader * this, int edx, enum Impro
 		return Leader_count_wonders_with_small_flag (this, __, flag, city_or_null);
 	else
 		return 0; // We'll add in the FP effect later with a different weight
+}
+
+void __fastcall
+patch_Trade_Net_recompute_city_connections (Trade_Net * this, int edx, int civ_id, bool redo_road_network, byte param_3, int redo_roads_for_city_id)
+{
+	is->is_computing_city_connections = true;
+	long long ts_before;
+	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_before);
+
+	if (is->tnx_init_state == IS_OK) {
+		if (is->tnx_cache == NULL) {
+			is->tnx_cache = is->create_tnx_cache (&p_bic_data->Map);
+			is->set_up_before_building_network (is->tnx_cache);
+		} else if (! is->keep_tnx_cache)
+			is->set_up_before_building_network (is->tnx_cache);
+	}
+
+	Trade_Net_recompute_city_connections (this, __, civ_id, redo_road_network, param_3, redo_roads_for_city_id);
+
+	long long ts_after;
+	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
+	is->time_spent_computing_city_connections += ts_after - ts_before;
+	is->count_calls_to_recompute_city_connections++;
+	is->is_computing_city_connections = false;
+}
+
+void __fastcall
+patch_Map_build_trade_network (Map * this)
+{
+	if ((is->tnx_init_state == IS_OK) && (is->tnx_cache != NULL))
+		is->set_up_before_building_network (is->tnx_cache);
+	is->keep_tnx_cache = true;
+	Map_build_trade_network (this);
+	is->keep_tnx_cache = false;
+}
+
+void __fastcall
+patch_Trade_Net_recompute_city_cons_and_res (Trade_Net * this, int edx, bool param_1)
+{
+	if ((is->tnx_init_state == IS_OK) && (is->tnx_cache != NULL))
+		is->set_up_before_building_network (is->tnx_cache);
+	is->keep_tnx_cache = true;
+	Trade_Net_recompute_city_cons_and_res (this, __, param_1);
+	is->keep_tnx_cache = false;
+}
+
+int __fastcall
+patch_Trade_Net_set_unit_path_to_fill_road_net (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp)
+{
+	int tr;
+	long long ts_before;
+	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_before);
+
+	if ((is->tnx_init_state == IS_OK) && (is->tnx_cache != NULL)) {
+		is->flood_fill_road_network (is->tnx_cache, from_x, from_y, civ_id);
+		tr = 0; // Return value is not used by caller anyway
+	} else
+		tr = Trade_Net_set_unit_path (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, out_path_length_in_mp);
+
+	long long ts_after;
+	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
+	is->time_spent_filling_roads += ts_after - ts_before;
+	return tr;
 }
 
 bool

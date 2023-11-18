@@ -134,7 +134,6 @@ struct c3x_config {
 	bool city_icons_show_unit_effects_not_trade;
 	bool ignore_king_ability_for_defense_priority;
 	bool show_untradable_techs_on_trade_screen;
-	bool optimize_improvement_loops;
 	bool disallow_useless_bombard_vs_airfields;
 	enum line_drawing_override draw_lines_using_gdi_plus;
 	bool enable_city_capture_by_barbarians;
@@ -147,6 +146,10 @@ struct c3x_config {
 	bool strengthen_forbidden_palace_ocn_effect;
 	enum special_zone_of_control_rules special_zone_of_control_rules;
 	enum special_defensive_bombard_rules special_defensive_bombard_rules;
+
+	bool enable_trade_net_x;
+	bool optimize_improvement_loops;
+	bool measure_turn_times;
 
 	bool use_offensive_artillery_ai;
 	int ai_build_artillery_ratio;
@@ -302,9 +305,12 @@ struct injected_state {
 	DWORD (WINAPI * GetFileSize) (HANDLE, LPDWORD);
 	WINBOOL (WINAPI * ReadFile) (HANDLE, LPVOID, DWORD, LPDWORD, LPOVERLAPPED);
 	HMODULE (WINAPI * LoadLibraryA) (LPCSTR);
+	BOOL (WINAPI * FreeLibrary) (HMODULE);
 	int (WINAPI * MultiByteToWideChar) (UINT, DWORD, LPCCH, int, LPWSTR, int);
 	int (WINAPI * WideCharToMultiByte) (UINT, DWORD, LPCWCH, int, LPSTR, int, LPCCH, LPBOOL);
 	int (WINAPI * GetLastError) ();
+	BOOL (WINAPI * QueryPerformanceCounter) (LARGE_INTEGER *);
+	BOOL (WINAPI * QueryPerformanceFrequency) (LARGE_INTEGER *);
 	void (WINAPI * GetLocalTime) (LPSYSTEMTIME);
 
 	// Win32 funcs from user32.dll
@@ -327,6 +333,30 @@ struct injected_state {
 	void (* qsort) (void *, size_t, size_t, int (*) (void const *, void const *));
 	int (* memcmp) (void const *, void const *, size_t);
 	void * (* memcpy) (void *, void const *, size_t);
+
+	HMODULE trade_net_x;
+	void (__stdcall * set_exe_version) (int);
+	void * (__stdcall * create_tnx_cache) (Map *);
+	void (__stdcall * destroy_tnx_cache) (void *);
+	void (__stdcall * set_up_before_building_network) (void *);
+	int (__stdcall * get_move_cost_for_sea_trade) (Trade_Net * trade_net, void * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags, int neighbor_index, Trade_Net_Distance_Info * dist_info);
+	void (__stdcall * flood_fill_road_network) (void * tnx_cache, int from_x, int from_y, int civ_id);
+	bool (__stdcall * try_drawing_sea_trade_route) (Trade_Net * trade_net, void * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags);
+
+	void * tnx_cache; // Cache object used by Trade Net X. Initially NULL, must be recreated every time a new map is loaded.
+	enum init_state tnx_init_state;
+	bool is_computing_city_connections; // Set to true only while Trade_Net::recompute_city_connections is running
+	bool keep_tnx_cache;
+
+	bool paused_for_popup; // Set to true while a popup, map message, or the diplo screen is open
+	long long time_spent_paused_during_popup; // Tracks time spent waiting for the three things above
+
+	// This variable is increased with the time elapsed during every call to Trade_Net::recompute_city_connections. Time is measured using
+	// Windows performance counter.
+	long long time_spent_computing_city_connections;
+	int count_calls_to_recompute_city_connections;
+
+	long long time_spent_filling_roads;
 
 	struct c3x_config current_config;
 

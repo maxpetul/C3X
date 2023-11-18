@@ -1039,7 +1039,7 @@ ENTRY_POINT ()
 	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
 		if (obj->job != OJ_IGNORE) {
-			ASSERT (obj->addr != 0);
+			ASSERT ((obj->addr != 0) || (0 == strcmp (obj->name, "exe_version_index")));
 
 			if (obj->job == OJ_INLEAD)
 				put_trampoline ((void *)obj->addr, find_patch_function (tcc, obj->name, 1), 0);

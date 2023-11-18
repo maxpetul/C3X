@@ -25,11 +25,15 @@ Convenience features:
  - Message appears after bomber dodges interception by air defense buildings
  - Option to replay AI moves for all human players in hotseat mode
  - Restore unit directions on game load
- - Optimize improvement loops
  - Option to remove Elvis Easter egg
  - Harbor/airport city icons indicate unit effects not trade abilities
  - Disallow useless bombard attacks vs airfields
  - ** Display total city count (disabled by default, appears on demographics screen)
+Optimization:
+ - ** Optimize computation of trade networks
+  - For details, see the info text file in the Trade Net X folder
+ - Optimize improvement loops
+ - ** Option to measure turn times
 AI enhancements:
  - Allow AI to use artillery in the field
  - Force AI to build more artillery and bombers
