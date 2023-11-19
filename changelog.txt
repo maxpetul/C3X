@@ -17,6 +17,8 @@
 - Option not to end a unit's turn after it bombards a barricade
 - Option to allow bombardment of other improvements on a tile with an occupied airfield
 - Option to boost OCN increase from forbidden palaces in non-communal governments
+- Fix graphical issues when running on Wine
+- Option to allow defensive retreat on water tiles
 - Overhaul implementation of shared visibility for simplicity and correctness
 - Display total city count (disabled by default, appears on demographics screen)
 

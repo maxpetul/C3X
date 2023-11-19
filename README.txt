@@ -29,6 +29,7 @@ Convenience features:
  - Harbor/airport city icons indicate unit effects not trade abilities
  - Disallow useless bombard attacks vs airfields
  - ** Display total city count (disabled by default, appears on demographics screen)
+ - ** Fix graphical issues when running on Wine
 Optimization:
  - ** Optimize computation of trade networks
   - For details, see the info text file in the Trade Net X folder
@@ -75,6 +76,7 @@ Engine extensions:
  - Buildings can be set as prerequisites for unit production
  - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
  - Option to modify rules for retreat eligibility
+  - ** Can allow defensive retreat on water tiles
  - AI two-city start
  - Remove cap on turn limit
  - Option to strengthen forbidden palace decorruption effect to match the palace's
