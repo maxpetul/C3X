@@ -1,3 +1,5 @@
+- Option to allow airdrops without airports
+
 * RELEASE 17 PREVIEW 1
 - Optimize computation of trade networks
  - For details, see the info text file in the Trade Net X folder

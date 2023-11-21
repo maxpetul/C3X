@@ -1881,6 +1881,7 @@ patch_init_floating_point ()
 		{"zero_corruption_when_off"                            , true , offsetof (struct c3x_config, zero_corruption_when_off)},
 		{"disallow_land_units_from_affecting_water_tiles"      , true , offsetof (struct c3x_config, disallow_land_units_from_affecting_water_tiles)},
 		{"dont_end_units_turn_after_airdrop"                   , false, offsetof (struct c3x_config, dont_end_units_turn_after_airdrop)},
+		{"allow_airdrop_without_airport"                       , false, offsetof (struct c3x_config, allow_airdrop_without_airport)},
 		{"enable_negative_pop_pollution"                       , true , offsetof (struct c3x_config, enable_negative_pop_pollution)},
 		{"allow_defensive_retreat_on_water"                    , false, offsetof (struct c3x_config, allow_defensive_retreat_on_water)},
 		{"enable_ai_two_city_start"                            , false, offsetof (struct c3x_config, enable_ai_two_city_start)},
@@ -7516,6 +7517,15 @@ patch_Tile_check_water_for_retreat_on_defense (Tile * this)
 		return 0; // Say this is not water so the retreat is allowed to happen
 	} else
 		return is_water;
+}
+
+int __fastcall
+patch_City_count_airports_for_airdrop (City * this, int edx, enum ImprovementTypeFlags airport_flag)
+{
+	if (is->current_config.allow_airdrop_without_airport)
+		return 1;
+	else
+		return City_count_improvements_with_flag (this, __, airport_flag);
 }
 
 // TCC requires a main function be defined even though it's never used.
