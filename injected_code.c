@@ -3997,8 +3997,8 @@ patch_Unit_ai_move_leader (Unit * this)
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
 	int continent_id = tile->vtable->m46_Get_ContinentID (tile);
 
-	// Duplicate some logic from the base function. I'm pretty sure this disbands the unit if it's on a continent with no cities of the same civ.
-	if (leaders[this->Body.CivID].ContinentStat1[continent_id] == 0) {
+	// Disband the unit if it's on a continent with no cities of its civ. This is what the original logic does.
+	if (leaders[this->Body.CivID].city_count_per_cont[continent_id] == 0) {
 		Unit_disband (this);
 		return;
 	}

@@ -4207,7 +4207,7 @@ struct Leader
   int ContinentStat3;
   int *ContinentCities;
   int ContinentStat2;
-  int *ContinentStat1;
+  int * city_count_per_cont;
   unsigned char *Available_Resources;
   unsigned char *Available_Resources_Counts;
   Civ_Treaties Treaties[32];
