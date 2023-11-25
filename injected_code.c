@@ -1950,6 +1950,7 @@ patch_init_floating_point ()
 		{"ai_artillery_value_damage_percent"  ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
 		{"ai_build_bomber_ratio"              ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
 		{"max_ai_naval_escorts"               ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
+		{"ai_worker_requirement_percent"      ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -4777,7 +4778,7 @@ ai_move_pop_unit (Unit * this)
 
 	// This part of the code follows how the replacement leader AI works. Basically it disbands the unit if it's on a continent with no
 	// friendly cities, then flees if it's in danger, then moves it along a set path if it has one.
-	if (leaders[this->Body.CivID].ContinentStat1[continent_id] == 0) {
+	if (leaders[this->Body.CivID].city_count_per_cont[continent_id] == 0) {
 		Unit_disband (this);
 		return;
 	}
@@ -7526,6 +7527,25 @@ patch_City_count_airports_for_airdrop (City * this, int edx, enum ImprovementTyp
 		return 1;
 	else
 		return City_count_improvements_with_flag (this, __, airport_flag);
+}
+
+int __fastcall
+patch_Leader_get_cont_city_count_for_worker_req (Leader * this, int edx, int cont_id)
+{
+	int tr = Leader_get_city_count_on_continent (this, __, cont_id);
+	if (is->current_config.ai_worker_requirement_percent != 100)
+		tr = (tr * is->current_config.ai_worker_requirement_percent + 50) / 100;
+	return tr;
+}
+
+int __fastcall
+patch_Leader_get_city_count_for_worker_prod_cap (Leader * this)
+{
+	int tr = this->Cities_Count;
+	// Don't scale down the cap since it's pretty low to begin with
+	if (is->current_config.ai_worker_requirement_percent > 100)
+		tr = (tr * is->current_config.ai_worker_requirement_percent + 50) / 100;
+	return tr;
 }
 
 // TCC requires a main function be defined even though it's never used.

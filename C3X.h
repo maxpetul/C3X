@@ -160,6 +160,7 @@ struct c3x_config {
 	bool fix_ai_army_composition;
 	bool enable_pop_unit_ai;
 	int max_ai_naval_escorts;
+	int ai_worker_requirement_percent;
 
 	bool remove_unit_limit;
 	bool remove_era_limit;

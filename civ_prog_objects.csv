@@ -450,6 +450,10 @@ repl call, 0x57DAF1,	0x58A7F9,	0x57D851,	"Trade_Net_set_unit_path_to_fill_road_n
 repl call, 0x57DE29,	0x58AB4E,	0x57DB89,	"Trade_Net_set_unit_path_to_find_sea_route",	""
 define,	   0x5EA6E0,	0x5F9F30,	0x5EA610,	"Tile_has_colony",				"bool (__fastcall *) (Tile * this)"
 repl call, 0x5C1559,	0x5D00ED,	0x5C1269,	"City_count_airports_for_airdrop",		""
+define,	   0x437CF0,	0x4398A0,	0x437D70,	"Leader_get_city_count_on_continent",		"int (__fastcall *) (Leader * this, int edx, int cont_id)"
+repl call, 0x42EB3F,	0x430615,	0x42EBBF,	"Leader_get_cont_city_count_for_worker_req",	""
+repl call, 0x42EBCA,	0x430698,	0x42EC4A,	"Leader_get_cont_city_count_for_worker_req",	""
+repl call, 0x42EAD2,	0x4305AE,	0x42EB52,	"Leader_get_city_count_for_worker_prod_cap",	""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

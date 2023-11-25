@@ -1,4 +1,5 @@
 - Option to allow airdrops without airports
+- Adjustable AI worker requirement
 
 * RELEASE 17 PREVIEW 1
 - Optimize computation of trade networks
