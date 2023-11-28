@@ -1946,6 +1946,7 @@ patch_init_floating_point ()
 		{"minimum_city_separation"            ,     1, offsetof (struct c3x_config, minimum_city_separation)},
 		{"anarchy_length_percent"             ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
 		{"max_tries_to_place_fp_city"         , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
+		{"extra_unit_maintenance_per_shields" ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
 		{"ai_build_artillery_ratio"           ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
 		{"ai_artillery_value_damage_percent"  ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
 		{"ai_build_bomber_ratio"              ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
@@ -5662,6 +5663,55 @@ adjust_sliders_preproduction (Leader * this)
 	}
 }
 
+int __fastcall
+patch_Leader_count_maintenance_free_units (Leader * this)
+{
+	if (is->current_config.extra_unit_maintenance_per_shields <= 0)
+		return Leader_count_maintenance_free_units (this);
+	else {
+		int tr = 0;
+		for (int n = 0; n <= p_units->LastIndex; n++) {
+			Unit * unit = get_unit_ptr (n);
+			if ((unit != NULL) && (unit->Body.CivID == this->ID)) {
+				UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
+
+				// If this is a free unit
+				if ((unit->Body.RaceID != this->RaceID) || (type->b_Not_King == 0))
+					tr++;
+
+				// Otherwise, reduce the free unit count by however many times this unit's cost is above the threshold for extra
+				// maintenace. It's alright if the resulting free unit count is negative since all callers of this function subtract
+				// its return value from the total unit count to obtain the count of units that must be paid for.
+				else
+					tr -= type->Cost / is->current_config.extra_unit_maintenance_per_shields;
+			}
+		}
+		return tr;
+	}
+}
+
+int __fastcall
+patch_Leader_sum_unit_maintenance (Leader * this, int edx, int government_id)
+{
+	if (is->current_config.extra_unit_maintenance_per_shields <= 0)
+		return Leader_sum_unit_maintenance (this, __, government_id);
+	else if (this->Cities_Count > 0) {
+		int maint_free_count = patch_Leader_count_maintenance_free_units (this);
+		int cost_per_unit, base_free_count;
+		get_unit_support_info (this->ID, government_id, &cost_per_unit, &base_free_count);
+		int ai_free_count; {
+			if (*p_human_player_bits & 1<<this->ID)
+				ai_free_count = 0;
+			else {
+				Difficulty_Level * difficulty = &p_bic_data->DifficultyLevels[*p_game_difficulty];
+				ai_free_count = difficulty->Bonus_For_Each_City * this->Cities_Count + difficulty->Additional_Free_Support;
+			}
+		}
+		return not_below (0, (this->Unit_Count - base_free_count - ai_free_count - maint_free_count) * cost_per_unit);
+	} else
+		return 0;
+}
+
 int
 sum_improvements_maintenance_to_pay (Leader * leader, int govt_id)
 {
@@ -5705,7 +5755,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 	int unit_cost = 0; {
 		if (leader->Cities_Count > 0) // Players with no cities don't pay unit maintenance, per the original game rules
 			if (cost_per_unit > 0) {
-				int count_free_units = Leader_get_free_unit_count (leader, __, leader->GovernmentType) + Leader_count_foreign_and_king_units (leader);
+				int count_free_units = Leader_get_free_unit_count (leader, __, leader->GovernmentType) + patch_Leader_count_maintenance_free_units (leader);
 				unit_cost += not_below (0, (leader->Unit_Count - count_free_units) * cost_per_unit);
 			}
 	}

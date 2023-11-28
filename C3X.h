@@ -145,6 +145,7 @@ struct c3x_config {
 	bool allow_bombard_of_other_improvs_on_occupied_airfield;
 	bool show_total_city_count;
 	bool strengthen_forbidden_palace_ocn_effect;
+	int extra_unit_maintenance_per_shields;
 	enum special_zone_of_control_rules special_zone_of_control_rules;
 	enum special_defensive_bombard_rules special_defensive_bombard_rules;
 

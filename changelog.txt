@@ -1,4 +1,5 @@
 - Option to allow airdrops without airports
+- Can increase unit maintenance costs based on their build costs
 - Adjustable AI worker requirement
 
 * RELEASE 17 PREVIEW 1
