@@ -170,7 +170,7 @@ struct c3x_config {
 	bool patch_submarine_bug;
 	bool patch_science_age_bug;
 	bool patch_pedia_texture_bug;
-	bool patch_disembark_immobile_bug;
+	bool patch_blocked_disembark_freeze;
 	bool patch_houseboat_bug;
 	bool patch_intercept_lost_turn_bug;
 	bool patch_phantom_resource_bug;

@@ -1635,7 +1635,7 @@ struct Tile_vtable
   int (__fastcall *m56_Set_Tile_Flags)(Tile *, __, int, int, int, int);
   void (__fastcall *m57_Set_CityID)(Tile *, __, int);
   void (__fastcall *m58_Set_ContinentID)(Tile *, __, int);
-  int (__fastcall *m59_Process_Cities)(Tile *, __, int);
+  void (__fastcall *m59_set_resource)(Tile *, __, int);
   void (__fastcall *m60_Set_Ruins)(Tile *, __, int);
   int (__fastcall *m61_Set_River_Code_Flood_Plains)(Tile *, __, int);
   void (__fastcall *m62_Set_Tile_BuildingID)(Tile *, __, short);

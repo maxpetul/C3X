@@ -822,6 +822,11 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 
 				// if key is for an obsolete option
+				} else if (slice_matches_str (&p.key, "patch_disembark_immobile_bug")) {
+					if (read_int (&value, &ival))
+						cfg->patch_blocked_disembark_freeze = ival != 0;
+					else
+						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 				} else if (slice_matches_str (&p.key, "anarchy_length_reduction_percent")) {
 					if (read_int (&value, &ival))
 						cfg->anarchy_length_percent = 100 - ival;
@@ -893,7 +898,7 @@ patch_Leader_impl_would_raze_city (Leader * this, int edx, City * city)
 	return is->current_config.prevent_razing_by_players ? false : Leader_impl_would_raze_city (this, __, city);
 }
 
-// This function is used to fix a bug where the game would crash when using disembark all on a transport that contained an immobile unit. The bug
+// This function is used to fix a bug where the game would freeze when using disembark all on a transport that contained an immobile unit. The bug
 // comes from the fact that the function to disembark all units loops continuously over units in the transport until there are none left that
 // can be disembarked. The problem is the logic to check disembarkability erroneously reports immobile units as disembarkable when they're not,
 // so the program gets stuck in an infinite loop. The fix affects the function that checks disembarkability, replacing a call to
@@ -902,7 +907,7 @@ patch_Leader_impl_would_raze_city (Leader * this, int edx, City * city)
 int __fastcall
 patch_Unit_get_max_move_points_for_disembarking (Unit * this)
 {
-	if (is->current_config.patch_disembark_immobile_bug &&
+	if (is->current_config.patch_blocked_disembark_freeze &&
 	    UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Immobile))
 		return 0;
 	else
@@ -1900,7 +1905,7 @@ patch_init_floating_point ()
 		{"patch_submarine_bug"                                 , true , offsetof (struct c3x_config, patch_submarine_bug)},
 		{"patch_science_age_bug"                               , true , offsetof (struct c3x_config, patch_science_age_bug)},
 		{"patch_pedia_texture_bug"                             , true , offsetof (struct c3x_config, patch_pedia_texture_bug)},
-		{"patch_disembark_immobile_bug"                        , true , offsetof (struct c3x_config, patch_disembark_immobile_bug)},
+		{"patch_blocked_disembark_freeze"                      , true , offsetof (struct c3x_config, patch_blocked_disembark_freeze)},
 		{"patch_houseboat_bug"                                 , true , offsetof (struct c3x_config, patch_houseboat_bug)},
 		{"patch_intercept_lost_turn_bug"                       , true , offsetof (struct c3x_config, patch_intercept_lost_turn_bug)},
 		{"patch_phantom_resource_bug"                          , true , offsetof (struct c3x_config, patch_phantom_resource_bug)},
@@ -4357,10 +4362,11 @@ int __fastcall
 patch_Unit_disembark_passengers (Unit * this, int edx, int tile_x, int tile_y)
 {
 	// Break any escort relationships if the escorting unit can't move onto the target tile. This prevents a freeze where the game continues
-	// trying to disembark units because an escortee could disembark except is blocked by the fact that its escorter can't.
+	// trying to disembark units because an escortee looks like it could be disembarked except it can't because it won't move if its escorter
+	// can't be moved first.
 	Tile * tile   = tile_at (this->Body.X, this->Body.Y),
 	     * target = tile_at (tile_x      , tile_y);
-	if (is->current_config.patch_disembark_immobile_bug && (tile != NULL) && (target != NULL)) {
+	if (is->current_config.patch_blocked_disembark_freeze && (tile != NULL) && (target != NULL)) {
 		enum SquareTypes target_terrain = target->vtable->m50_Get_Square_BaseType (target);
 		FOR_UNITS_ON (uti, tile) {
 			Unit * escortee = get_unit_ptr (uti.unit->Body.escortee);
