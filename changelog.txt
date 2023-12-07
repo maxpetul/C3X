@@ -1,6 +1,7 @@
 - Option to allow airdrops without airports
 - Can increase unit maintenance costs based on their build costs
 - Adjustable AI worker requirement
+- Option to pack the list of luxuries more tightly into the box on the city screen
 - Fix freezes caused by undisembarkable escorting unit
   - Covered by the disembark immobile bug fix option, which has been renamed
 

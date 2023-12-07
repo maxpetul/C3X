@@ -1841,6 +1841,13 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	set_nopification ( cfg->special_zone_of_control_rules                 != 0, ADDR_ZOC_CHECK_ATTACKER_ANIM_FIELD_111, 6);
 	set_nopification ((cfg->special_zone_of_control_rules & SZOCR_LETHAL) != 0, ADDR_SKIP_ZOC_FOR_ONE_HP_LAND_UNIT    , 6);
 	set_nopification ((cfg->special_zone_of_control_rules & SZOCR_LETHAL) != 0, ADDR_SKIP_ZOC_FOR_ONE_HP_SEA_UNIT     , 6);
+
+	WITH_MEM_PROTECTION (ADDR_LUXURY_BOX_ROW_HEIGHT, 4, PAGE_EXECUTE_READWRITE) {
+		byte normal [4] = {0x8B, 0x44, 0x24, LUXURY_BOX_ROW_HEIGHT_STACK_OFFSET}; // mov eax, dword ptr [esp + LUXURY_BOX_ROW_HEIGHT_STACK_OFFSET]
+		byte compact[4] = {0x31, 0xC0, 0xB0, 0x10}; // xor eax, eax; mov al, 0x10
+		for (int n = 0; n < 4; n++)
+			ADDR_LUXURY_BOX_ROW_HEIGHT[n] = cfg->compact_luxury_display_on_city_screen ? compact[n] : normal[n];
+	}
 }
 
 void
@@ -1929,6 +1936,7 @@ patch_init_floating_point ()
 		{"ignore_king_ability_for_defense_priority"            , false, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
 		{"show_untradable_techs_on_trade_screen"               , false, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
 		{"disallow_useless_bombard_vs_airfields"               , true , offsetof (struct c3x_config, disallow_useless_bombard_vs_airfields)},
+		{"compact_luxury_display_on_city_screen"               , false, offsetof (struct c3x_config, compact_luxury_display_on_city_screen)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},

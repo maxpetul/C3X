@@ -137,6 +137,7 @@ struct c3x_config {
 	bool show_untradable_techs_on_trade_screen;
 	bool disallow_useless_bombard_vs_airfields;
 	enum line_drawing_override draw_lines_using_gdi_plus;
+	bool compact_luxury_display_on_city_screen;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hoseat;
 	bool allow_precision_strikes_against_tile_improvements;
