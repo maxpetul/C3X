@@ -4385,7 +4385,7 @@ patch_Unit_disembark_passengers (Unit * this, int edx, int tile_x, int tile_y)
 				|| (   is->current_config.disallow_trespassing
 				    && check_trespassing (uti.unit->Body.CivID, tile, target)
 				    && ! is_allowed_to_trespass (uti.unit))
-				|| ! Unit_can_enter_terrain (uti.unit, __, target_terrain)))
+				|| Unit_is_terrain_impassable (uti.unit, __, target_terrain)))
 				Unit_set_escortee (uti.unit, __, -1);
 		}
 	}

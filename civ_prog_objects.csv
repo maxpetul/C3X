@@ -456,7 +456,7 @@ repl call, 0x42EBCA,	0x430698,	0x42EC4A,	"Leader_get_cont_city_count_for_worker_
 repl call, 0x42EAD2,	0x4305AE,	0x42EB52,	"Leader_get_city_count_for_worker_prod_cap",	""
 inlead,	   0x55D310,	0x5693A0,	0x55D2C0,	"Leader_sum_unit_maintenance",			"int (__fastcall *) (Leader * this, int edx, int government_id)"
 define,	   0xA52684,	0xA74E7C,	0xA52644,	"p_game_difficulty",				"int *"
-define,	   0x5CD960,	0x5DC940,	0x5CD880,	"Unit_can_enter_terrain",			"bool (__fastcall *) (Unit * this, int edx, int terrain_type_index)"
+define,	   0x5CD960,	0x5DC940,	0x5CD880,	"Unit_is_terrain_impassable",			"bool (__fastcall *) (Unit * this, int edx, int terrain_type_index)"
 define,	   0x41CD22,	0x41E04C,	0x41CDA2,	"ADDR_LUXURY_BOX_ROW_HEIGHT",			"byte *"
 define,	   0x30,	0x38,		0x30,		"LUXURY_BOX_ROW_HEIGHT_STACK_OFFSET",		"int"
 
