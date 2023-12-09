@@ -459,6 +459,8 @@ define,	   0xA52684,	0xA74E7C,	0xA52644,	"p_game_difficulty",				"int *"
 define,	   0x5CD960,	0x5DC940,	0x5CD880,	"Unit_is_terrain_impassable",			"bool (__fastcall *) (Unit * this, int edx, int terrain_type_index)"
 define,	   0x41CD22,	0x41E04C,	0x41CDA2,	"ADDR_LUXURY_BOX_ROW_HEIGHT",			"byte *"
 define,	   0x30,	0x38,		0x30,		"LUXURY_BOX_ROW_HEIGHT_STACK_OFFSET",		"int"
+define,	   0x5F82E0,	0x6087E0,	0x41CD9D,	"Tile_Image_Info_draw",				"int (__fastcall *) (Tile_Image_Info * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)"
+repl call, 0x421295,	0x0,		0x0,		"Tile_Image_Info_draw_improv_img_on_city_form",	""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

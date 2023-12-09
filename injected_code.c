@@ -7618,5 +7618,11 @@ patch_Leader_get_city_count_for_worker_prod_cap (Leader * this)
 	return tr;
 }
 
+int __fastcall
+patch_Tile_Image_Info_draw_improv_img_on_city_form (Tile_Image_Info * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
+{
+	return Tile_Image_Info_draw (this, __, canvas, pixel_x, pixel_y, param_4);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
