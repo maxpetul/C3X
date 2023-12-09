@@ -363,15 +363,14 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 	if (parse_string (&cur, &improv_name) &&
 	    skip_punctuation (&cur, ':')) {
 
-		bool is_local = false, no_tech_req = false;
+		bool is_local = false, no_tech_req = false, yields = false;
 		struct string_slice resource_name;
 		while (1) {
 			if (! parse_string (&cur, &resource_name))
 				return RPR_PARSE_ERROR;
-			else if (slice_matches_str (&resource_name, "local"))
-				is_local = true;
-			else if (slice_matches_str (&resource_name, "no-tech-req"))
-				no_tech_req = true;
+			else if (slice_matches_str (&resource_name, "local"))       is_local    = true;
+			else if (slice_matches_str (&resource_name, "no-tech-req")) no_tech_req = true;
+			else if (slice_matches_str (&resource_name, "yields"))      yields      = true;
 			else
 				break;
 		}
@@ -395,6 +394,7 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 			out->resource_id = resource_id;
 			out->is_local = is_local;
 			out->no_tech_req = no_tech_req;
+			out->yields = yields;
 			return RPR_OK;
 		}
 	} else
