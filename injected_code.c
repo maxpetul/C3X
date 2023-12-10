@@ -1423,6 +1423,27 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups
 		p_bic_data->Map.TileCount = is->saved_tile_count;
 		is->saved_tile_count = -1;
 	}
+
+	// Recompute yields in all cities with active mills that depend on input resources
+	if (p_cities->Cities != NULL)
+		for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+			City * city = get_city_ptr (city_index);
+			if (city != NULL) {
+				bool any_relevant_mills = false;
+				for (int n = 0; n < is->current_config.count_mills; n++) {
+					struct mill * mill = &is->current_config.mills[n];
+					Improvement * mill_improv = &p_bic_data->Improvements[mill->improv_id];
+					if (mill->yields &&
+					    ((mill_improv->Resource1ID >= 0) || (mill_improv->Resource2ID >= 0)) &&
+					    has_active_building (city, mill->improv_id)) {
+						any_relevant_mills = true;
+						break;
+					}
+				}
+				if (any_relevant_mills)
+					City_recompute_yields_and_happiness (city);
+			}
+		}
 }
 
 Tile *
@@ -7615,6 +7636,28 @@ patch_Leader_get_city_count_for_worker_prod_cap (Leader * this)
 	// Don't scale down the cap since it's pretty low to begin with
 	if (is->current_config.ai_worker_requirement_percent > 100)
 		tr = (tr * is->current_config.ai_worker_requirement_percent + 50) / 100;
+	return tr;
+}
+
+int __fastcall
+patch_City_calc_tile_yield_while_gathering (City * this, int edx, YieldKind kind, int tile_x, int tile_y)
+{
+	int tr = City_calc_tile_yield_at (this, __, kind, tile_x, tile_y);
+
+	// Include yields from generated resources
+	if ((this->Body.X == tile_x) && (this->Body.Y == tile_y))
+		for (int n = 0; n < is->current_config.count_mills; n++) {
+			struct mill * mill = &is->current_config.mills[n];
+			if (mill->yields &&
+			    has_active_building (this, mill->improv_id) &&
+			    can_generate_resource (this->Body.CivID, mill)) {
+				Resource_Type * res = &p_bic_data->ResourceTypes[mill->resource_id];
+				if      (kind == YK_FOOD)     tr += res->Food;
+				else if (kind == YK_SHIELDS)  tr += res->Shield;
+				else if (kind == YK_COMMERCE) tr += res->Commerce;
+			}
+		}
+
 	return tr;
 }
 

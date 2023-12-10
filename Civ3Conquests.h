@@ -513,13 +513,6 @@ enum AdvanceTypeFlags
   ATF_Reveal_Map = 0x400000,
 };
 
-enum Tile_Resource_Types
-{
-  TRT_Food = 0x0,
-  TRT_Shields = 0x1,
-  TRT_Trade = 0x2,
-};
-
 enum CityStatusFlags
 {
   CSF_Civil_Disorder = 0x1,
@@ -1203,6 +1196,13 @@ typedef enum leader_kind
 	LK_Military = 1,
 	LK_Scientific = 2
 } LeaderKind;
+
+typedef enum yield_kind
+{
+	YK_FOOD = 0,
+	YK_SHIELDS = 1,
+	YK_COMMERCE = 2,
+} YieldKind;
 
 typedef enum city_loc_validity
 {
