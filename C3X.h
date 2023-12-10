@@ -527,6 +527,7 @@ struct injected_state {
 	int mill_tiles_capacity;
 	struct mill_tile * got_mill_tile;
 	int saved_tile_count; // Stores the actual tile count in case p_bic_data->Map.TileCount was temporarily overwritten. Set to -1 when empty.
+	byte * mill_input_resource_bits; // Array of bits, one for each resource. Stores whether or not each one is an input to any mill.
 
 	// Stores the trade offer object being modified when the user right-clicks on a gold offer/ask on the trade table. Gets set by a special
 	// function call replacement (see apply_machine_code_edits for details).

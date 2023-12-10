@@ -2137,6 +2137,7 @@ patch_init_floating_point ()
 	is->count_mill_tiles = 0;
 	is->mill_tiles_capacity = 0;
 	is->saved_tile_count = -1;
+	is->mill_input_resource_bits = NULL;
 
 	is->modifying_gold_trade = NULL;
 
@@ -3770,6 +3771,21 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 				// since the logic to implement it only applies to the non-charm code path. It wouldn't make sense to have both charm
 				// attack and PTW targeting anyway, since charm attack already works that way vs cities.
 				type->Special_Actions &= ~(0x00FFFFFF & UCV_Charm_Bombard);
+			}
+		}
+	}
+
+	// Pick out which resources are used as mill inputs
+	if (is->mill_input_resource_bits)
+		free (is->mill_input_resource_bits);
+	is->mill_input_resource_bits = calloc (1, 1 + p_bic_data->ResourceTypeCount / 8);
+	for (int n = 0; n < is->current_config.count_mills; n++) {
+		struct mill * mill = &is->current_config.mills[n];
+		for (int k = 0; k < 2; k++) {
+			int resource_id = (&p_bic_data->Improvements[mill->improv_id].Resource1ID)[n];
+			if ((resource_id >= 0) && (resource_id < p_bic_data->ResourceTypeCount)) {
+				byte bit = 1 << (resource_id & 7);
+				is->mill_input_resource_bits[resource_id>>3] |= bit;
 			}
 		}
 	}
@@ -7676,11 +7692,9 @@ bool __fastcall
 patch_Leader_record_export (Leader * this, int edx, int importer_civ_id, int resource_id)
 {
 	bool exported = Leader_record_export (this, __, importer_civ_id, resource_id);
-	if (exported) {
-		recompute_mill_yields_after_resource_change (&leaders[importer_civ_id]);
-		if (this->Available_Resources_Counts[resource_id] == 0) // if "this" exported their last supply of the resource
-			recompute_mill_yields_after_resource_change (this);
-	}
+	if (exported &&
+	    (is->mill_input_resource_bits[resource_id>>3] & (1 << (resource_id & 7)))) // if the traded resource is an input to any mill
+		patch_Trade_Net_recompute_resources (p_trade_net, __, false);
 	return exported;
 }
 
