@@ -1373,6 +1373,35 @@ has_resources_required_by_building (City * city, int improv_id)
 	return has_resources_required_by_building_r (city, improv_id, INT_MAX);
 }
 
+
+// Recomputes yields in cities with active mills that depend on input resources. Intended to be called when an input resource has been potentially
+// gained or lost. Recomputes only for the cities of a given leader or, if NULL, for all cities on the map.
+void
+recompute_mill_yields_after_resource_change (Leader * leader_or_null)
+{
+	if (p_cities->Cities != NULL)
+		for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+			City * city = get_city_ptr (city_index);
+			if ((city != NULL) &&
+			    ((leader_or_null == NULL) || (city->Body.CivID == leader_or_null->ID))) {
+				bool any_relevant_mills = false;
+				for (int n = 0; n < is->current_config.count_mills; n++) {
+					struct mill * mill = &is->current_config.mills[n];
+					Improvement * mill_improv = &p_bic_data->Improvements[mill->improv_id];
+					if (mill->yields &&
+					    ((mill_improv->Resource1ID >= 0) || (mill_improv->Resource2ID >= 0)) &&
+					    has_active_building (city, mill->improv_id)) {
+						any_relevant_mills = true;
+						break;
+					}
+				}
+				if (any_relevant_mills)
+					City_recompute_yields_and_happiness (city);
+			}
+		}
+}
+
+
 int
 compare_mill_tiles (void const * vp_a, void const * vp_b)
 {
@@ -1424,26 +1453,7 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups
 		is->saved_tile_count = -1;
 	}
 
-	// Recompute yields in all cities with active mills that depend on input resources
-	if (p_cities->Cities != NULL)
-		for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
-			City * city = get_city_ptr (city_index);
-			if (city != NULL) {
-				bool any_relevant_mills = false;
-				for (int n = 0; n < is->current_config.count_mills; n++) {
-					struct mill * mill = &is->current_config.mills[n];
-					Improvement * mill_improv = &p_bic_data->Improvements[mill->improv_id];
-					if (mill->yields &&
-					    ((mill_improv->Resource1ID >= 0) || (mill_improv->Resource2ID >= 0)) &&
-					    has_active_building (city, mill->improv_id)) {
-						any_relevant_mills = true;
-						break;
-					}
-				}
-				if (any_relevant_mills)
-					City_recompute_yields_and_happiness (city);
-			}
-		}
+	recompute_mill_yields_after_resource_change (NULL);
 }
 
 Tile *
@@ -7649,8 +7659,9 @@ patch_City_calc_tile_yield_while_gathering (City * this, int edx, YieldKind kind
 		for (int n = 0; n < is->current_config.count_mills; n++) {
 			struct mill * mill = &is->current_config.mills[n];
 			if (mill->yields &&
+			    can_generate_resource (this->Body.CivID, mill) &&
 			    has_active_building (this, mill->improv_id) &&
-			    can_generate_resource (this->Body.CivID, mill)) {
+			    has_resources_required_by_building (this, mill->improv_id)) {
 				Resource_Type * res = &p_bic_data->ResourceTypes[mill->resource_id];
 				if      (kind == YK_FOOD)     tr += res->Food;
 				else if (kind == YK_SHIELDS)  tr += res->Shield;
@@ -7659,6 +7670,18 @@ patch_City_calc_tile_yield_while_gathering (City * this, int edx, YieldKind kind
 		}
 
 	return tr;
+}
+
+bool __fastcall
+patch_Leader_record_export (Leader * this, int edx, int importer_civ_id, int resource_id)
+{
+	bool exported = Leader_record_export (this, __, importer_civ_id, resource_id);
+	if (exported) {
+		recompute_mill_yields_after_resource_change (&leaders[importer_civ_id]);
+		if (this->Available_Resources_Counts[resource_id] == 0) // if "this" exported their last supply of the resource
+			recompute_mill_yields_after_resource_change (this);
+	}
+	return exported;
 }
 
 int __fastcall
