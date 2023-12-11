@@ -5386,17 +5386,35 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	} else
 		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
 
-	// Recompute available resources if this improvement has the ability to generate a traded resource. Don't bother if the improvement also
-	// enables trade b/c then the recomputation would have already been done in the base game's add_or_remove_improvement method.
-	if (((improv->ImprovementFlags & ITF_Allows_Water_Trade) == 0) &&
-	    ((improv->ImprovementFlags & ITF_Allows_Air_Trade)   == 0) &&
-	    ((improv->WonderFlags      & ITW_Safe_Sea_Travel)    == 0)) {
-		for (int n = 0; n < is->current_config.count_mills; n++)
-			if ((improv_id == is->current_config.mills[n].improv_id) &&
-			    (! is->current_config.mills[n].is_local)) {
-				patch_Trade_Net_recompute_resources (p_trade_net, __, 0);
-				break;
+	// Update things in case we've added or removed a mill
+	{
+		// Collect info about this mill, if in fact the added or removed improvement is a mill. If it's not, all these vars will be left
+		// false. "generates_input" tracks whether or not the mill generates a resource that's an input for another mill.
+		bool is_non_local_mill, is_yielding_mill, generates_input; {
+			is_non_local_mill = is_yielding_mill = generates_input = false;
+			for (int n = 0; n < is->current_config.count_mills; n++) {
+				struct mill * mill = &is->current_config.mills[n];
+				if (mill->improv_id == improv_id) {
+					is_non_local_mill = ! mill->is_local;
+					is_yielding_mill = mill->yields;
+					generates_input = (is->mill_input_resource_bits[mill->resource_id >> 3] & (1 << (mill->resource_id & 7))) != 0;
+					break;
+				}
 			}
+		}
+
+		// If the mill generates a resource that's added to the trade network or it's generating an input (potentially used locally to
+		// generate a traded resource) then rebuild the resource network. This is not necessary if the improvement also affects trade routes
+		// since the base method will have already done this recomputation.
+		if ((is_non_local_mill || generates_input) &&
+		    ((improv->ImprovementFlags & ITF_Allows_Water_Trade) == 0) &&
+		    ((improv->ImprovementFlags & ITF_Allows_Air_Trade)   == 0) &&
+		    ((improv->WonderFlags      & ITW_Safe_Sea_Travel)    == 0))
+			patch_Trade_Net_recompute_resources (p_trade_net, __, 0);
+
+		// If the mill adds yields or might be a link in a resource production chain that does, recompute yields in the city.
+		if (is_yielding_mill || generates_input)
+			City_recompute_yields_and_happiness (this);
 	}
 
 	// Adding or removing an obsolete improvement should not change the total maintenance since obsolete improvs shouldn't cost maintenance. In
