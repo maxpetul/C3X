@@ -5395,10 +5395,9 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 			for (int n = 0; n < is->current_config.count_mills; n++) {
 				struct mill * mill = &is->current_config.mills[n];
 				if (mill->improv_id == improv_id) {
-					is_non_local_mill = ! mill->is_local;
-					is_yielding_mill = mill->yields;
-					generates_input = (is->mill_input_resource_bits[mill->resource_id >> 3] & (1 << (mill->resource_id & 7))) != 0;
-					break;
+					is_non_local_mill |= ! mill->is_local;
+					is_yielding_mill |= mill->yields;
+					generates_input |= (is->mill_input_resource_bits[mill->resource_id >> 3] & (1 << (mill->resource_id & 7))) != 0;
 				}
 			}
 		}
