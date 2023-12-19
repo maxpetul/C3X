@@ -3594,9 +3594,8 @@ struct JGL_Image_vtable
   void *m07_m05_Get_Pixel;
   int m08_Get_Bits_Data;
   int m09;
-  HDC (__fastcall * m10_Get_DC) (JGL_Image * this);
-//  void (__thiscall *m11_Release_DC)(JGL_Image *, int);
-  void *m11_Release_DC;
+  HDC (__fastcall * acquire_dc) (JGL_Image * this);
+  void (__fastcall * release_dc) (JGL_Image *, __, int);
   int m12;
   int m13_Set_Clip_Region;
   int m14;
@@ -4208,8 +4207,8 @@ struct Leader
   int *ContinentCities;
   int ContinentStat2;
   int * city_count_per_cont;
-  unsigned char *Available_Resources;
-  unsigned char *Available_Resources_Counts;
+  unsigned char *Available_Resources; // 96 bytes per resource
+  unsigned char *Available_Resources_Counts; // one byte per resource
   Civ_Treaties Treaties[32];
   Culture Culture;
   Espionage Espionage_1;

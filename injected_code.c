@@ -32,6 +32,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define QueryPerformanceCounter is->QueryPerformanceCounter
 #define QueryPerformanceFrequency is->QueryPerformanceFrequency
 #define GetLocalTime is->GetLocalTime
+#define TransparentBlt is->TransparentBlt
 #define snprintf is->snprintf
 #define malloc is->malloc
 #define calloc is->calloc
@@ -2017,6 +2018,8 @@ patch_init_floating_point ()
 	QueryPerformanceFrequency = (void *)(*p_GetProcAddress) (is->kernel32, "QueryPerformanceFrequency");
 	GetLocalTime              = (void *)(*p_GetProcAddress) (is->kernel32, "GetLocalTime");
 	MessageBoxA  = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
+	is->msimg32  = LoadLibraryA ("Msimg32.dll");
+	TransparentBlt = (void *)(*p_GetProcAddress) (is->msimg32, "TransparentBlt");
 	snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
 	malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
 	calloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "calloc");
@@ -2138,6 +2141,8 @@ patch_init_floating_point ()
 	is->mill_tiles_capacity = 0;
 	is->saved_tile_count = -1;
 	is->mill_input_resource_bits = NULL;
+
+	is->resources_sheet = NULL;
 
 	is->modifying_gold_trade = NULL;
 
@@ -3744,6 +3749,21 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		is->interceptor_reset_lists[n].count = 0;
 	is->replay_for_players = 0;
 	table_deinit (&is->extra_defensive_bombards);
+
+	// Load resources.pcx
+	{
+		PCX_Image * rs = is->resources_sheet;
+		if (rs != NULL)
+			rs->vtable->destruct (rs, __, 0);
+		else
+			rs = malloc (sizeof *rs);
+		memset (rs, 0, sizeof *rs);
+		PCX_Image_construct (rs);
+
+		char * resources_pcx_path = BIC_get_asset_path (p_bic_data, __, "Art\\resources.pcx", true);
+		PCX_Image_read_file (rs, __, resources_pcx_path, NULL, 0, 0x100, 2);
+		is->resources_sheet = rs;
+	}
 
 	// Recreate table of alt strategies
 	table_deinit (&is->unit_type_alt_strategies);
@@ -7565,7 +7585,7 @@ patch_OpenGLRenderer_initialize (OpenGLRenderer * this, int edx, PCX_Image * tex
 			is->gdi_plus.DeleteGraphics (is->gdi_plus.gp_graphics);
 			is->gdi_plus.gp_graphics = NULL;
 		}
-		HDC dc = texture->JGL.Image->vtable->m10_Get_DC (texture->JGL.Image);
+		HDC dc = texture->JGL.Image->vtable->acquire_dc (texture->JGL.Image);
 		int status = is->gdi_plus.CreateFromHDC (dc, &is->gdi_plus.gp_graphics);
 		if (status == 0) {
 			is->gdi_plus.SetSmoothingMode (is->gdi_plus.gp_graphics, 4); // 4 = SmoothingModeAntiAlias from GdiPlusEnums.h
@@ -7736,7 +7756,27 @@ patch_Leader_record_export (Leader * this, int edx, int importer_civ_id, int res
 int __fastcall
 patch_Tile_Image_Info_draw_improv_img_on_city_form (Tile_Image_Info * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
 {
-	return Tile_Image_Info_draw (this, __, canvas, pixel_x, pixel_y, param_4);
+	int tr = Tile_Image_Info_draw (this, __, canvas, pixel_x, pixel_y, param_4);
+	if ((is->resources_sheet != NULL) && (is->resources_sheet->JGL.Image != NULL) && (TransparentBlt != NULL)) {
+		JGL_Image * jgl_canvas = canvas->JGL.Image,
+			  * jgl_sheet = is->resources_sheet->JGL.Image;
+
+		HDC canvas_dc = jgl_canvas->vtable->acquire_dc (jgl_canvas);
+		if (canvas_dc != NULL) {
+			HDC sheet_dc = jgl_sheet->vtable->acquire_dc (jgl_sheet);
+			if (sheet_dc != NULL) {
+				TransparentBlt (canvas_dc, // dest DC
+						pixel_x + 15, pixel_y, 24, 24, // dest x, y, width, height
+						sheet_dc, // src DC
+						9, 9, 33, 33, // src x, y, width, height
+						0xFF00FF); // transparent color (RGB)
+
+				jgl_sheet->vtable->release_dc (jgl_sheet, __, 1);
+			}
+			jgl_canvas->vtable->release_dc (jgl_canvas, __, 1);
+		}
+	}
+	return tr;
 }
 
 void __cdecl

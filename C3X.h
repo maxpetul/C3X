@@ -301,6 +301,7 @@ struct injected_state {
 	HMODULE kernel32;
 	HMODULE user32;
 	HMODULE msvcrt;
+	HMODULE msimg32;
 
 	// Win32 API functions
 	WINBOOL (WINAPI * VirtualProtect) (LPVOID, SIZE_T, DWORD, PDWORD);
@@ -319,6 +320,9 @@ struct injected_state {
 
 	// Win32 funcs from user32.dll
 	int (WINAPI * MessageBoxA) (HWND, LPCSTR, LPCSTR, UINT);
+
+	// Win32 funcs from Msimg32.dll
+	BOOL (WINAPI * TransparentBlt) (HDC, int, int, int, int, HDC, int, int, int, int, UINT);
 
 	// C standard library functions
 	int (* snprintf) (char *, size_t, char const *, ...);
@@ -532,6 +536,8 @@ struct injected_state {
 	// Used for displaying yields from generated resources on the city screen
 	int tourism_icon_counter; // Incremented each time a tourism yield icon (normally commerce) is drawn. Reset between improvs.
 	int convert_displayed_tourism_to_food, convert_displayed_tourism_to_shields; // Number of commerce tourism icons to convert to food, shields
+
+	PCX_Image * resources_sheet; // Sprite sheet of resource icons, i.e. resources.pcx
 
 	// Stores the trade offer object being modified when the user right-clicks on a gold offer/ask on the trade table. Gets set by a special
 	// function call replacement (see apply_machine_code_edits for details).
