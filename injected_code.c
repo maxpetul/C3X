@@ -7682,25 +7682,43 @@ patch_Leader_get_city_count_for_worker_prod_cap (Leader * this)
 	return tr;
 }
 
+// If "only_improv_id" is >= 0, will only return yields from mills attached to that improv, otherwise returns all yields from all improvs
+void
+gather_mill_yields (City * city, int only_improv_id, int * out_food, int * out_shields, int * out_commerce)
+{
+	int food = 0, shields = 0, commerce = 0;
+	for (int n = 0; n < is->current_config.count_mills; n++) {
+		struct mill * mill = &is->current_config.mills[n];
+		if (mill->yields &&
+		    ((only_improv_id < 0) || (mill->improv_id == only_improv_id)) &&
+		    can_generate_resource (city->Body.CivID, mill) &&
+		    has_active_building (city, mill->improv_id) &&
+		    has_resources_required_by_building (city, mill->improv_id)) {
+			Resource_Type * res = &p_bic_data->ResourceTypes[mill->resource_id];
+			food += res->Food;
+			shields += res->Shield;
+			commerce += res->Commerce;
+		}
+	}
+	*out_food = food;
+	*out_shields = shields;
+	*out_commerce = commerce;
+}
+
+
 int __fastcall
 patch_City_calc_tile_yield_while_gathering (City * this, int edx, YieldKind kind, int tile_x, int tile_y)
 {
 	int tr = City_calc_tile_yield_at (this, __, kind, tile_x, tile_y);
 
 	// Include yields from generated resources
-	if ((this->Body.X == tile_x) && (this->Body.Y == tile_y))
-		for (int n = 0; n < is->current_config.count_mills; n++) {
-			struct mill * mill = &is->current_config.mills[n];
-			if (mill->yields &&
-			    can_generate_resource (this->Body.CivID, mill) &&
-			    has_active_building (this, mill->improv_id) &&
-			    has_resources_required_by_building (this, mill->improv_id)) {
-				Resource_Type * res = &p_bic_data->ResourceTypes[mill->resource_id];
-				if      (kind == YK_FOOD)     tr += res->Food;
-				else if (kind == YK_SHIELDS)  tr += res->Shield;
-				else if (kind == YK_COMMERCE) tr += res->Commerce;
-			}
-		}
+	if ((this->Body.X == tile_x) && (this->Body.Y == tile_y)) {
+		int mill_food, mill_shields, mill_commerce;
+		gather_mill_yields (this, -1, &mill_food, &mill_shields, &mill_commerce);
+		if      (kind == YK_FOOD)     tr += mill_food;
+		else if (kind == YK_SHIELDS)  tr += mill_shields;
+		else if (kind == YK_COMMERCE) tr += mill_commerce;
+	}
 
 	return tr;
 }
@@ -7719,6 +7737,43 @@ int __fastcall
 patch_Tile_Image_Info_draw_improv_img_on_city_form (Tile_Image_Info * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
 {
 	return Tile_Image_Info_draw (this, __, canvas, pixel_x, pixel_y, param_4);
+}
+
+void __cdecl
+patch_draw_improv_icons_on_city_screen (Base_List_Control * control, int improv_id, int item_index, int offset_x, int offset_y)
+{
+	draw_improv_icons_on_city_screen (control, improv_id, item_index, offset_x, offset_y);
+}
+
+int __fastcall
+patch_City_get_tourism_amount_to_draw (City * this, int edx, int improv_id)
+{
+	is->tourism_icon_counter = 0;
+
+	int mill_food, mill_shields, mill_commerce;
+	gather_mill_yields (this, improv_id, &mill_food, &mill_shields, &mill_commerce);
+
+	is->convert_displayed_tourism_to_food = mill_food;
+	is->convert_displayed_tourism_to_shields = mill_shields;
+	return City_get_tourism_amount (this, __, improv_id) + mill_food + mill_shields + mill_commerce;
+}
+
+int __fastcall
+patch_Tile_Image_Info_draw_tourism_gold (Tile_Image_Info * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
+{
+	// Replace the yield sprite we're drawing with food or a shield if needed.
+	Tile_Image_Info * sprite; {
+		if (is->tourism_icon_counter < is->convert_displayed_tourism_to_food)
+			sprite = &p_city_form->City_Icons_Images.Icon_15_Food;
+		else if (is->tourism_icon_counter < is->convert_displayed_tourism_to_food + is->convert_displayed_tourism_to_shields)
+			sprite = &p_city_form->City_Icons_Images.Icon_13_Shield;
+		else
+			sprite = this;
+	}
+
+	int tr = Tile_Image_Info_draw (sprite, __, canvas, pixel_x, pixel_y, param_4);
+	is->tourism_icon_counter++;
+	return tr;
 }
 
 // TCC requires a main function be defined even though it's never used.

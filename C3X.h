@@ -529,6 +529,10 @@ struct injected_state {
 	int saved_tile_count; // Stores the actual tile count in case p_bic_data->Map.TileCount was temporarily overwritten. Set to -1 when empty.
 	byte * mill_input_resource_bits; // Array of bits, one for each resource. Stores whether or not each one is an input to any mill.
 
+	// Used for displaying yields from generated resources on the city screen
+	int tourism_icon_counter; // Incremented each time a tourism yield icon (normally commerce) is drawn. Reset between improvs.
+	int convert_displayed_tourism_to_food, convert_displayed_tourism_to_shields; // Number of commerce tourism icons to convert to food, shields
+
 	// Stores the trade offer object being modified when the user right-clicks on a gold offer/ask on the trade table. Gets set by a special
 	// function call replacement (see apply_machine_code_edits for details).
 	TradeOffer * modifying_gold_trade;
