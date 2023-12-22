@@ -2142,6 +2142,8 @@ patch_init_floating_point ()
 	is->saved_tile_count = -1;
 	is->mill_input_resource_bits = NULL;
 
+	is->drawing_icons_for_improv_id = -1;
+
 	is->resources_sheet = NULL;
 
 	is->modifying_gold_trade = NULL;
@@ -7757,7 +7759,20 @@ int __fastcall
 patch_Tile_Image_Info_draw_improv_img_on_city_form (Tile_Image_Info * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
 {
 	int tr = Tile_Image_Info_draw (this, __, canvas, pixel_x, pixel_y, param_4);
-	if ((is->resources_sheet != NULL) && (is->resources_sheet->JGL.Image != NULL) && (TransparentBlt != NULL)) {
+
+	int generated_resources[16];
+	int generated_resource_count = 0;
+	for (int n = 0; (n < is->current_config.count_mills) && (generated_resource_count < ARRAY_LEN (generated_resources)); n++) {
+		struct mill * mill = &is->current_config.mills[n];
+		if ((mill->improv_id == is->drawing_icons_for_improv_id) &&
+		    (p_bic_data->ResourceTypes[mill->resource_id].Class != RC_Bonus) &&
+		    can_generate_resource (p_city_form->CurrentCity->Body.CivID, mill) &&
+		    has_active_building (p_city_form->CurrentCity, mill->improv_id) &&
+		    has_resources_required_by_building (p_city_form->CurrentCity, mill->improv_id))
+			generated_resources[generated_resource_count++] = mill->resource_id;
+	}
+
+	if ((generated_resource_count > 0) && (is->resources_sheet != NULL) && (is->resources_sheet->JGL.Image != NULL) && (TransparentBlt != NULL)) {
 		JGL_Image * jgl_canvas = canvas->JGL.Image,
 			  * jgl_sheet = is->resources_sheet->JGL.Image;
 
@@ -7765,11 +7780,19 @@ patch_Tile_Image_Info_draw_improv_img_on_city_form (Tile_Image_Info * this, int 
 		if (canvas_dc != NULL) {
 			HDC sheet_dc = jgl_sheet->vtable->acquire_dc (jgl_sheet);
 			if (sheet_dc != NULL) {
-				TransparentBlt (canvas_dc, // dest DC
-						pixel_x + 15, pixel_y, 24, 24, // dest x, y, width, height
-						sheet_dc, // src DC
-						9, 9, 33, 33, // src x, y, width, height
-						0xFF00FF); // transparent color (RGB)
+
+				for (int n = 0; n < generated_resource_count; n++) {
+					int res_id = generated_resources[n],
+					    sheet_row = res_id / 6,
+					    sheet_col = res_id % 6;
+
+					int dy = (n * 160 / not_below (1, generated_resource_count - 1) + 5) / 10;
+					TransparentBlt (canvas_dc, // dest DC
+							pixel_x + 15, pixel_y + dy, 24, 24, // dest x, y, width, height
+							sheet_dc, // src DC
+							9 + 50*sheet_col, 9 + 50*sheet_row, 33, 33, // src x, y, width, height
+							0xFF00FF); // transparent color (RGB)
+				}
 
 				jgl_sheet->vtable->release_dc (jgl_sheet, __, 1);
 			}
@@ -7782,7 +7805,9 @@ patch_Tile_Image_Info_draw_improv_img_on_city_form (Tile_Image_Info * this, int 
 void __cdecl
 patch_draw_improv_icons_on_city_screen (Base_List_Control * control, int improv_id, int item_index, int offset_x, int offset_y)
 {
+	is->drawing_icons_for_improv_id = improv_id;
 	draw_improv_icons_on_city_screen (control, improv_id, item_index, offset_x, offset_y);
+	is->drawing_icons_for_improv_id = -1;
 }
 
 int __fastcall

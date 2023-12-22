@@ -537,6 +537,8 @@ struct injected_state {
 	int tourism_icon_counter; // Incremented each time a tourism yield icon (normally commerce) is drawn. Reset between improvs.
 	int convert_displayed_tourism_to_food, convert_displayed_tourism_to_shields; // Number of commerce tourism icons to convert to food, shields
 
+	int drawing_icons_for_improv_id; // Stores the improv ID whose icons we're drawing. -1 while not drawing.
+
 	PCX_Image * resources_sheet; // Sprite sheet of resource icons, i.e. resources.pcx
 
 	// Stores the trade offer object being modified when the user right-clicks on a gold offer/ask on the trade table. Gets set by a special
