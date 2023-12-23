@@ -7587,8 +7587,7 @@ patch_OpenGLRenderer_initialize (OpenGLRenderer * this, int edx, PCX_Image * tex
 			is->gdi_plus.DeleteGraphics (is->gdi_plus.gp_graphics);
 			is->gdi_plus.gp_graphics = NULL;
 		}
-		HDC dc = texture->JGL.Image->vtable->acquire_dc (texture->JGL.Image);
-		int status = is->gdi_plus.CreateFromHDC (dc, &is->gdi_plus.gp_graphics);
+		int status = is->gdi_plus.CreateFromHDC (texture->JGL.Image->DC, &is->gdi_plus.gp_graphics);
 		if (status == 0) {
 			is->gdi_plus.SetSmoothingMode (is->gdi_plus.gp_graphics, 4); // 4 = SmoothingModeAntiAlias from GdiPlusEnums.h
 			return 0;
