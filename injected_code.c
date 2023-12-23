@@ -7755,6 +7755,16 @@ patch_Leader_record_export (Leader * this, int edx, int importer_civ_id, int res
 	return exported;
 }
 
+bool __fastcall
+patch_Leader_erase_export (Leader * this, int edx, int importer_civ_id, int resource_id)
+{
+	bool erased = Leader_erase_export (this, __, importer_civ_id, resource_id);
+	if (erased &&
+	    (is->mill_input_resource_bits[resource_id>>3] & (1 << (resource_id & 7)))) // if the traded resource is an input to any mill
+		patch_Trade_Net_recompute_resources (p_trade_net, __, false);
+	return erased;
+}
+
 int __fastcall
 patch_Tile_Image_Info_draw_improv_img_on_city_form (Tile_Image_Info * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
 {
