@@ -106,8 +106,10 @@ pfp_init ()
 	struct pause_for_popup tr;
 	tr.done = false;
 	tr.redundant = is->paused_for_popup;
-	if (! tr.redundant)
+	if (! tr.redundant) {
+		is->paused_for_popup = true;
 		QueryPerformanceCounter ((LARGE_INTEGER *)&tr.ts_before);
+	}
 	return tr;
 }
 
@@ -118,6 +120,7 @@ pfp_finish (struct pause_for_popup * pfp)
 		long long ts_after;
 		QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
 		is->time_spent_paused_during_popup += ts_after - pfp->ts_before;
+		is->paused_for_popup = false;
 	}
 	pfp->done = true;
 }
@@ -3368,6 +3371,14 @@ get_city_production_rate (City * city, enum City_Order_Types order_type, int ord
 		return city->Body.ProductionIncome;
 	else
 		return 0;
+}
+
+void __fastcall
+patch_City_Form_open (City_Form * this, int edx, City * city, int param_2)
+{
+	WITH_PAUSE_FOR_POPUP {
+		City_Form_open (this, __, city, param_2);
+	}
 }
 
 void __fastcall
@@ -7827,6 +7838,12 @@ patch_City_get_tourism_amount_to_draw (City * this, int edx, int improv_id)
 
 	int mill_food, mill_shields, mill_commerce;
 	gather_mill_yields (this, improv_id, &mill_food, &mill_shields, &mill_commerce);
+
+	// TODO: Properly display negative mill yields. Right now negative values will mess with the arithmetic so I'm clamping the displayed yields
+	// at zero to prevent that.
+	mill_food     = not_below (0, mill_food);
+	mill_shields  = not_below (0, mill_shields);
+	mill_commerce = not_below (0, mill_commerce);
 
 	is->convert_displayed_tourism_to_food = mill_food;
 	is->convert_displayed_tourism_to_shields = mill_shields;

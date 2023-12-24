@@ -4,6 +4,9 @@
 - Option to pack the list of luxuries more tightly into the box on the city screen
 - Fix freezes caused by undisembarkable escorting unit
   - Covered by the disembark immobile bug fix option, which has been renamed
+- Improve turn timer
+  - No longer count time spent on city screen
+  - Fix possible double-counting of time spent on popups
 
 * RELEASE 17 PREVIEW 1
 - Optimize computation of trade networks
