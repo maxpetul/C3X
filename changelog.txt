@@ -1,3 +1,6 @@
+* RELEASE 17 PREVIEW 2
+- Enable resource generating buildings to add the resource's yields to their city
+- Display icons for generated resources on top of the generating building
 - Option to allow airdrops without airports
 - Can increase unit maintenance costs based on their build costs
 - Adjustable AI worker requirement
