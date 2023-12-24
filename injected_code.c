@@ -367,7 +367,7 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 	if (parse_string (&cur, &improv_name) &&
 	    skip_punctuation (&cur, ':')) {
 
-		bool is_local = false, no_tech_req = false, yields = false;
+		bool is_local = false, no_tech_req = false, yields = false, show_bonus = false;
 		struct string_slice resource_name;
 		while (1) {
 			if (! parse_string (&cur, &resource_name))
@@ -375,6 +375,7 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 			else if (slice_matches_str (&resource_name, "local"))       is_local    = true;
 			else if (slice_matches_str (&resource_name, "no-tech-req")) no_tech_req = true;
 			else if (slice_matches_str (&resource_name, "yields"))      yields      = true;
+			else if (slice_matches_str (&resource_name, "show-bonus"))  show_bonus  = true;
 			else
 				break;
 		}
@@ -399,6 +400,7 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 			out->is_local = is_local;
 			out->no_tech_req = no_tech_req;
 			out->yields = yields;
+			out->show_bonus = show_bonus;
 			return RPR_OK;
 		}
 	} else
@@ -7786,7 +7788,7 @@ patch_Tile_Image_Info_draw_improv_img_on_city_form (Tile_Image_Info * this, int 
 	for (int n = 0; (n < is->current_config.count_mills) && (generated_resource_count < ARRAY_LEN (generated_resources)); n++) {
 		struct mill * mill = &is->current_config.mills[n];
 		if ((mill->improv_id == is->drawing_icons_for_improv_id) &&
-		    (p_bic_data->ResourceTypes[mill->resource_id].Class != RC_Bonus) &&
+		    (mill->show_bonus || (p_bic_data->ResourceTypes[mill->resource_id].Class != RC_Bonus)) &&
 		    can_generate_resource (p_city_form->CurrentCity->Body.CivID, mill) &&
 		    has_active_building (p_city_form->CurrentCity, mill->improv_id) &&
 		    has_resources_required_by_building (p_city_form->CurrentCity, mill->improv_id))
