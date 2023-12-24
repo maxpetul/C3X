@@ -6741,21 +6741,22 @@ patch_Leader_unlock_technology (Leader * this, int edx, int tech_id, bool param_
 
 	Leader_unlock_technology (this, __, tech_id, param_2, param_3, param_4);
 
-	// Recompute building maintenance for all of this players cities if the bug fix is enabled, this tech obsoletes any buildings, and doing so
-	// wouldn't be redundant. It's redundant if we're adding techs during game initialization or recursively calling this function.
-	if (is->current_config.patch_maintenance_persisting_for_obsolete_buildings &&
-	    (ret_addr != ADDR_UNLOCK_TECH_AT_INIT_1) &&
+	// If this method was not called during game initialization
+	if ((ret_addr != ADDR_UNLOCK_TECH_AT_INIT_1) &&
 	    (ret_addr != ADDR_UNLOCK_TECH_AT_INIT_2) &&
-	    (ret_addr != ADDR_UNLOCK_TECH_AT_INIT_3) &&
-	    (ret_addr != ADDR_UNLOCK_TECH_RECURSE)) {
-		int obsoletes_anything = 0;
-		for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
-			if (p_bic_data->Improvements[n].ObsoleteID == tech_id) {
-				obsoletes_anything = 1;
-				break;
-			}
-		if (obsoletes_anything)
-			Leader_recompute_buildings_maintenance (this);
+	    (ret_addr != ADDR_UNLOCK_TECH_AT_INIT_3)) {
+
+		// If this tech obsoletes some building and we're configured to fix the maintenance bug then recompute city maintenance.
+		if (is->current_config.patch_maintenance_persisting_for_obsolete_buildings) {
+			bool obsoletes_anything = false;
+			for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
+				if (p_bic_data->Improvements[n].ObsoleteID == tech_id) {
+					obsoletes_anything = true;
+					break;
+				}
+			if (obsoletes_anything)
+				Leader_recompute_buildings_maintenance (this);
+		}
 	}
 }
 
