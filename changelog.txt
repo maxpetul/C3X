@@ -1,3 +1,5 @@
+- Fix a rare edge case where stack bombard would continue attacking an empty tile
+
 * RELEASE 17 PREVIEW 2
 - Enable resource generating buildings to add the resource's yields to their city
 - Display icons for generated resources on top of the generating building

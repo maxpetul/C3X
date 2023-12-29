@@ -2671,6 +2671,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 	int selected_unit_id = this->Current_Unit->Body.ID;
 	FOR_UNITS_ON (uti, base_tile)
 		if ((uti.id != selected_unit_id) &&
+		    (uti.unit->Body.CivID == civ_id) &&
 		    (uti.unit->Body.UnitTypeID == attacker_type_id) &&
 		    ((uti.unit->Body.Container_Unit < 0) || (attacker_type->Unit_Class == UTC_Air)) &&
 		    (uti.unit->Body.UnitState == 0) &&
@@ -2682,7 +2683,8 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 	int num_air_units_on_target_tile = 0;
 	FOR_UNITS_ON (uti, target_tile) {
 		num_air_units_on_target_tile += UTC_Air == p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Unit_Class;
-		if ((Unit_get_defense_strength (uti.unit) > 0) &&
+		if ((uti.unit->Body.CivID != civ_id) &&
+		    (Unit_get_defense_strength (uti.unit) > 0) &&
 		    (uti.unit->Body.Container_Unit < 0) &&
 		    patch_Unit_is_visible_to_civ (uti.unit, __, civ_id, 0) &&
 		    can_damage_bombarding (attacker_type, uti.unit, target_tile))
@@ -2741,7 +2743,11 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 			anything_left_to_attack = 0;
 			for (int n = 0; n < count_targets; n++) {
 				Unit * unit = get_unit_ptr (targets[n]);
-				if (unit != NULL) {
+
+				// Make sure this unit is still a valid target. Keep in mind it's possible for new units to be created during the
+				// stack bombard operation if the attackers have lethal bombard and the enslave ability.
+				if ((unit != NULL) && (unit->Body.X == x) && (unit->Body.Y == y) && (unit->Body.CivID != civ_id)) {
+
 					if (can_damage_bombarding (attacker_type, unit, target_tile)) {
 						anything_left_to_attack = 1;
 						break;
