@@ -1940,6 +1940,7 @@ patch_init_floating_point ()
 		{"aggressively_penalize_bankruptcy"                    , false, offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
 		{"no_penalty_exception_for_agri_fresh_water_city_tiles", false, offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
 		{"use_offensive_artillery_ai"                          , true , offsetof (struct c3x_config, use_offensive_artillery_ai)},
+		{"dont_escort_unflagged_units"                         , false, offsetof (struct c3x_config, dont_escort_unflagged_units)},
 		{"replace_leader_unit_ai"                              , true , offsetof (struct c3x_config, replace_leader_unit_ai)},
 		{"fix_ai_army_composition"                             , true , offsetof (struct c3x_config, fix_ai_army_composition)},
 		{"enable_pop_unit_ai"                                  , true , offsetof (struct c3x_config, enable_pop_unit_ai)},
@@ -6740,9 +6741,13 @@ patch_City_shows_airport_icon (City * this)
 int __fastcall
 patch_Unit_eval_escort_requirement (Unit * this)
 {
-	int ai_strat = p_bic_data->UnitTypes[this->Body.UnitTypeID].AI_Strategy;
+	UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+	int ai_strat = type->AI_Strategy;
 
-	if ((ai_strat & UTAI_Artillery) && is->current_config.use_offensive_artillery_ai)
+	// Apply special escort rules
+	if (is->current_config.dont_escort_unflagged_units && ! UnitType_has_ability (type, __, UTA_Requires_Escort))
+		return 0;
+	if (is->current_config.use_offensive_artillery_ai && (ai_strat & UTAI_Artillery))
 		return 1;
 
 	int base = Unit_eval_escort_requirement (this);
@@ -6750,6 +6755,27 @@ patch_Unit_eval_escort_requirement (Unit * this)
 		return not_above (is->current_config.max_ai_naval_escorts, base);
 	else
 		return base;
+}
+
+bool __fastcall
+patch_Unit_has_enough_escorters_present (Unit * this)
+{
+	UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+	if (is->current_config.dont_escort_unflagged_units && ! UnitType_has_ability (type, __, UTA_Requires_Escort))
+		return true;
+	else
+		return Unit_has_enough_escorters_present (this);
+}
+
+void __fastcall
+patch_Unit_check_escorter_health (Unit * this, int edx, bool * has_any_escort_present, bool * any_escorter_cant_heal)
+{
+	UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+	if (is->current_config.dont_escort_unflagged_units && ! UnitType_has_ability (type, __, UTA_Requires_Escort)) {
+		*has_any_escort_present = true;
+		*any_escorter_cant_heal = true; // Returning true here indicates the unit should not stop to wait for its escorter(s) to heal.
+	} else
+		Unit_check_escorter_health (this, __, has_any_escort_present, any_escorter_cant_heal);
 }
 
 void __fastcall

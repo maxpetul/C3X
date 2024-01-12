@@ -1,3 +1,4 @@
+- Option to stop AI from escorting units without the "requires escort" flag
 - Fix a rare edge case where stack bombard would continue attacking an empty tile
 
 * RELEASE 17 PREVIEW 2
