@@ -1956,7 +1956,7 @@ struct Map_vtable
   int m05;
   int m06;
   int m07_Init_Continents2;
-  int m08;
+  void (__fastcall * reorder_continents) (Map * this, __, int * ids);
   int m09_Init;
   byte (__fastcall * m10_Get_Map_Zoom) (Map * this);
   int m11_Get_Tile_by_XY2;
@@ -1966,8 +1966,7 @@ struct Map_vtable
   int m15_null;
   int m16;
   int m17;
-//  char (__thiscall *m18)(Map *, int, int);
-  void *m18;
+  bool (__fastcall * check_goody_hut_location) (Map *, __, int, int);
   byte (__fastcall * m19_Create_Tiles)(Map * this, __, Tile ** out_array);
   int m20;
   byte (__fastcall * is_near_lake) (Map * this, __, int x, int y, int num_tiles);
@@ -3502,8 +3501,8 @@ struct World_Features
   int World_Age;
   int Final_World_Age;
   int World_Size;
-  int Continents_Data;
-  int Tiles_Data;
+  short * Continents_Data;
+  short * Tiles_Data;
 };
 
 struct Starting_Location
