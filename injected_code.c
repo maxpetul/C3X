@@ -7837,9 +7837,9 @@ patch_Tile_Image_Info_draw_improv_img_on_city_form (Tile_Image_Info * this, int 
 			if (sheet_dc != NULL) {
 
 				for (int n = 0; n < generated_resource_count; n++) {
-					int res_id = generated_resources[n],
-					    sheet_row = res_id / 6,
-					    sheet_col = res_id % 6;
+					int icon_id = p_bic_data->ResourceTypes[generated_resources[n]].IconID,
+					    sheet_row = icon_id / 6,
+					    sheet_col = icon_id % 6;
 
 					int dy = (n * 160 / not_below (1, generated_resource_count - 1) + 5) / 10;
 					TransparentBlt (canvas_dc, // dest DC
