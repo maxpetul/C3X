@@ -37,8 +37,10 @@ struct mill {
 };
 
 // A list of per-era aliases for a civ's noun, adjective, or formal name.
+#define ERA_ALIAS_LIST_CAPACITY 4
 struct era_alias_list {
-	char * aliases[4];
+	char * key;
+	char * aliases[ERA_ALIAS_LIST_CAPACITY];
 };
 
 enum retreat_rules {
@@ -154,6 +156,8 @@ struct c3x_config {
 	int extra_unit_maintenance_per_shields;
 	enum special_zone_of_control_rules special_zone_of_control_rules;
 	enum special_defensive_bombard_rules special_defensive_bombard_rules;
+	struct era_alias_list * era_alias_lists;
+	int count_era_alias_lists;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;

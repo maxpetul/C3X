@@ -209,6 +209,19 @@ reset_to_base_config ()
 		cc->ptw_arty_types_capacity = 0;
 	}
 
+	// Free era alias lists
+	if (cc->era_alias_lists != NULL) {
+		for (int n = 0; n < cc->count_era_alias_lists; n++) {
+			struct era_alias_list * list = &cc->era_alias_lists[n];
+			free (list->key);
+			for (int k = 0; k < ERA_ALIAS_LIST_CAPACITY; k++)
+				free (list->aliases[k]);
+		}
+		free (cc->era_alias_lists);
+		cc->era_alias_lists = NULL;
+		cc->count_era_alias_lists = 0;
+	}
+
 	// Free the linked list of loaded config names and the string name contained in each one
 	if (is->loaded_config_names != NULL) {
 		struct loaded_config_name * next = is->loaded_config_names;
@@ -415,11 +428,11 @@ parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_line
 	if (parse_string (&cur, &key) &&
 	    skip_punctuation (&cur, ':')) {
 
-		char * aliases[4];
+		char * aliases[ERA_ALIAS_LIST_CAPACITY];
 		int alias_count = 0;
 		struct string_slice alias;
 		while (1) {
-			if (parse_string (&cur, &alias) && (alias_count < 4))
+			if (parse_string (&cur, &alias) && (alias_count < ERA_ALIAS_LIST_CAPACITY))
 				aliases[alias_count++] = extract_slice (&alias);
 			else
 				break;
@@ -431,8 +444,11 @@ parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_line
 
 		// TODO: Check that "key" matches a noun, adjective, or formal name of any civ in the scenario data
 
+		struct era_alias_list * out = out_era_alias_list;
+		memset (out, 0, sizeof *out); // Make sure unspecified aliases are NULL
+		out->key = extract_slice (&key);
 		for (int n = 0; n < alias_count; n++)
-			((struct era_alias_list *)out_era_alias_list)->aliases[n] = aliases[n];
+			out->aliases[n] = aliases[n];
 		return RPR_OK;
 	} else
 		return RPR_PARSE_ERROR;
@@ -858,16 +874,13 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								   &cfg->ptw_arty_types_capacity))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "civ_aliases_by_era")) {
-					struct era_alias_list * era_alias_lists = NULL;
-					int era_alias_list_count = 0;
 					if (! read_recognizables (&value,
 								  &unrecognized_lines,
 								  sizeof (struct era_alias_list),
 								  parse_era_alias_list,
-								  (void **)&era_alias_lists,
-								  &era_alias_list_count))
+								  (void **)&cfg->era_alias_lists,
+								  &cfg->count_era_alias_lists))
 						handle_config_error (&p, CPE_BAD_VALUE);
-					free (era_alias_lists);
 
 				// if key is for an obsolete option
 				} else if (slice_matches_str (&p.key, "patch_disembark_immobile_bug")) {
