@@ -7902,5 +7902,23 @@ patch_Tile_Image_Info_draw_tourism_gold (Tile_Image_Info * this, int edx, PCX_Im
 	return tr;
 }
 
+char * __fastcall
+patch_Leader_get_civ_adjective (Leader * this)
+{
+	return Leader_get_civ_adjective (this);
+}
+
+char * __fastcall
+patch_Leader_get_civ_noun (Leader * this)
+{
+	return Leader_get_civ_noun (this);
+}
+
+char * __fastcall
+patch_Leader_get_civ_formal_name (Leader * this)
+{
+	return Leader_get_civ_formal_name (this);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

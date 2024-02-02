@@ -480,6 +480,10 @@ inlead,	   0x4216A0,	0x422BF0,	0x421720,	"City_Form_open",				"void (__fastcall 
 repl vptr, 0x66dd10,	0x68adf0,	0x66dd10,	"Unit_has_enough_escorters_present",		"bool (__fastcall *) (Unit * this)"
 repl vptr, 0x66dd14,	0x68adf4,	0x66dd14,	"Unit_check_escorter_health",			"void (__fastcall *) (Unit * this, int edx, bool * has_any_escort_present, bool * any_escorter_cant_heal)"
 
+inlead,	   0x55A210,	0x566120,	0x55A1C0,	"Leader_get_civ_adjective",			"char * (__fastcall *) (Leader * this)"
+inlead,	   0x55A240,	0x566150,	0x55A1F0,	"Leader_get_civ_noun",				"char * (__fastcall *) (Leader * this)"
+inlead,	   0x55A340,	0x566250,	0x55A2F0,	"Leader_get_civ_formal_name",			"char * (__fastcall *) (Leader * this)"
+
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
 ignore,    0x558F70,	0x0,		0x0,		"Leader_is_enemy_unit",				"char (__fastcall *) (Leader * this, int edx, Unit * unit)"
