@@ -425,7 +425,8 @@ parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_line
 {
 	char * cur = *p_cursor;
 	struct string_slice key;
-	if (parse_string (&cur, &key) &&
+	if (skip_white_space (&cur) &&
+	    parse_string (&cur, &key) &&
 	    skip_punctuation (&cur, ':')) {
 
 		char * aliases[ERA_ALIAS_LIST_CAPACITY];
@@ -7957,22 +7958,46 @@ patch_Tile_Image_Info_draw_tourism_gold (Tile_Image_Info * this, int edx, PCX_Im
 	return tr;
 }
 
+// Returns the era-specific replacement for this civ name (noun, adjective, or formal) if there is one, otherwise returns the name.
+char *
+replace_civ_name (char * name, int era_id)
+{
+	for (int n = 0; n < is->current_config.count_era_alias_lists; n++) {
+		struct era_alias_list * list = &is->current_config.era_alias_lists[n];
+		if ((0 == strcmp (list->key, name)) && (list->aliases[era_id] != NULL))
+			return list->aliases[era_id];
+	}
+	return name;
+}
+
 char * __fastcall
 patch_Leader_get_civ_adjective (Leader * this)
 {
-	return Leader_get_civ_adjective (this);
+	char * base = Leader_get_civ_adjective (this);
+	if ((is->current_config.count_era_alias_lists > 0) && (this->tribe_customization.civ_adjective[0] == '\0')) {
+		return replace_civ_name (base, this->Era);
+	} else
+		return base;
 }
 
 char * __fastcall
 patch_Leader_get_civ_noun (Leader * this)
 {
-	return Leader_get_civ_noun (this);
+	char * base = Leader_get_civ_noun (this);
+	if ((is->current_config.count_era_alias_lists > 0) && (this->tribe_customization.civ_noun[0] == '\0')) {
+		return replace_civ_name (base, this->Era);
+	} else
+		return base;
 }
 
 char * __fastcall
 patch_Leader_get_civ_formal_name (Leader * this)
 {
-	return Leader_get_civ_formal_name (this);
+	char * base = Leader_get_civ_formal_name (this);
+	if ((is->current_config.count_era_alias_lists > 0) && (this->tribe_customization.civ_formal_name[0] == '\0')) {
+		return replace_civ_name (base, this->Era);
+	} else
+		return base;
 }
 
 // TCC requires a main function be defined even though it's never used.
