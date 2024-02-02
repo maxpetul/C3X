@@ -36,6 +36,11 @@ struct mill {
 	bool is_local, no_tech_req, yields, show_bonus;
 };
 
+// A list of per-era aliases for a civ's noun, adjective, or formal name.
+struct era_alias_list {
+	char * aliases[4];
+};
+
 enum retreat_rules {
 	RR_STANDARD = 0,
 	RR_NONE,

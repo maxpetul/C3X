@@ -407,6 +407,37 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 		return RPR_PARSE_ERROR;
 }
 
+enum recognizable_parse_result
+parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_era_alias_list)
+{
+	char * cur = *p_cursor;
+	struct string_slice key;
+	if (parse_string (&cur, &key) &&
+	    skip_punctuation (&cur, ':')) {
+
+		char * aliases[4];
+		int alias_count = 0;
+		struct string_slice alias;
+		while (1) {
+			if (parse_string (&cur, &alias) && (alias_count < 4))
+				aliases[alias_count++] = extract_slice (&alias);
+			else
+				break;
+		}
+		if (alias_count == 0)
+			return RPR_PARSE_ERROR;
+
+		*p_cursor = cur;
+
+		// TODO: Check that "key" matches a noun, adjective, or formal name of any civ in the scenario data
+
+		for (int n = 0; n < alias_count; n++)
+			((struct era_alias_list *)out_era_alias_list)->aliases[n] = aliases[n];
+		return RPR_OK;
+	} else
+		return RPR_PARSE_ERROR;
+}
+
 // Recognizable items are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
 bool
 read_recognizables (struct string_slice const * s,
@@ -826,6 +857,17 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								   &cfg->count_ptw_arty_types,
 								   &cfg->ptw_arty_types_capacity))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "civ_aliases_by_era")) {
+					struct era_alias_list * era_alias_lists = NULL;
+					int era_alias_list_count = 0;
+					if (! read_recognizables (&value,
+								  &unrecognized_lines,
+								  sizeof (struct era_alias_list),
+								  parse_era_alias_list,
+								  (void **)&era_alias_lists,
+								  &era_alias_list_count))
+						handle_config_error (&p, CPE_BAD_VALUE);
+					free (era_alias_lists);
 
 				// if key is for an obsolete option
 				} else if (slice_matches_str (&p.key, "patch_disembark_immobile_bug")) {
