@@ -2269,6 +2269,7 @@ patch_init_floating_point ()
 
 	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
 	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
+	memset (&is->era_alias_table, 0, sizeof is->era_alias_table);
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -3866,6 +3867,13 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 			record_unit_type_alt_strategy (n);
 			record_unit_type_alt_strategy (alt_for_id); // Record the original too so we know it has alternatives
 		}
+	}
+
+	// Recreate table of era aliases
+	stable_deinit (&is->era_alias_table);
+	for (int n = 0; n < is->current_config.count_era_alias_lists; n++) {
+		struct era_alias_list * list = &is->current_config.era_alias_lists[n];
+		stable_insert (&is->era_alias_table, list->key, (int)list);
 	}
 
 	// Convert charm-flagged units to using PTW targeting if necessary
@@ -7977,12 +7985,12 @@ patch_Tile_Image_Info_draw_tourism_gold (Tile_Image_Info * this, int edx, PCX_Im
 char *
 replace_civ_name (char * name, int era_id)
 {
-	for (int n = 0; n < is->current_config.count_era_alias_lists; n++) {
-		struct era_alias_list * list = &is->current_config.era_alias_lists[n];
-		if ((0 == strcmp (list->key, name)) && (list->aliases[era_id] != NULL))
-			return list->aliases[era_id];
-	}
-	return name;
+	struct era_alias_list * list;
+	if (stable_look_up (&is->era_alias_table, name, (int *)&list)) {
+		char * alias = list->aliases[era_id];
+		return (alias != NULL) ? alias : name;
+	} else
+		return name;
 }
 
 char * __fastcall

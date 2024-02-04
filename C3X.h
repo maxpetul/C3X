@@ -437,6 +437,9 @@ struct injected_state {
 	// activated, units with blitz get an extra chance to perform DB for each movement point they have beyond the first.
 	struct table extra_defensive_bombards;
 
+	// A table mapping civ names to era alias lists, filled in each time the list of lists in the config gets reloaded. Used in replace_civ_name.
+	struct table era_alias_table;
+
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {
 	// ==========
