@@ -443,7 +443,22 @@ parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_line
 
 		*p_cursor = cur;
 
-		// TODO: Check that "key" matches a noun, adjective, or formal name of any civ in the scenario data
+		// Check that "key" matches a noun, adjective, or formal name of any civ in the scenario data
+		bool recognized_key = false; {
+			for (int n = 0; n < p_bic_data->RacesCount; n++) {
+				Race * race = &p_bic_data->Races[n];
+				if (slice_matches_str (&key, race->AdjectiveName) ||
+				    slice_matches_str (&key, race->CountryName) ||
+				    slice_matches_str (&key, race->SingularName)) {
+					recognized_key = true;
+					break;
+				}
+			}
+		}
+		if (! recognized_key) {
+			add_unrecognized_line (p_unrecognized_lines, &key);
+			return RPR_UNRECOGNIZED;
+		}
 
 		struct era_alias_list * out = out_era_alias_list;
 		memset (out, 0, sizeof *out); // Make sure unspecified aliases are NULL
