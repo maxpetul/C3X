@@ -30,10 +30,16 @@ struct perfume_spec {
 
 // A mill is a city improvement that spawns a resource. These are read from the "buildings_generating_resources" key in the config but are called
 // "mills" internally for brevity.
+enum mill_flag {
+	MF_LOCAL       = 1,
+	MF_NO_TECH_REQ = 2,
+	MF_YIELDS      = 4,
+	MF_SHOW_BONUS  = 8
+};
 struct mill {
-	int improv_id;
-	int resource_id;
-	bool is_local, no_tech_req, yields, show_bonus;
+	short improv_id;
+	short resource_id;
+	short flags;
 };
 
 // A list of per-era aliases for a civ's noun, adjective, or formal name.

@@ -380,15 +380,15 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 	if (parse_string (&cur, &improv_name) &&
 	    skip_punctuation (&cur, ':')) {
 
-		bool is_local = false, no_tech_req = false, yields = false, show_bonus = false;
+		short flags = 0;
 		struct string_slice resource_name;
 		while (1) {
 			if (! parse_string (&cur, &resource_name))
 				return RPR_PARSE_ERROR;
-			else if (slice_matches_str (&resource_name, "local"))       is_local    = true;
-			else if (slice_matches_str (&resource_name, "no-tech-req")) no_tech_req = true;
-			else if (slice_matches_str (&resource_name, "yields"))      yields      = true;
-			else if (slice_matches_str (&resource_name, "show-bonus"))  show_bonus  = true;
+			else if (slice_matches_str (&resource_name, "local"))       flags |= MF_LOCAL;
+			else if (slice_matches_str (&resource_name, "no-tech-req")) flags |= MF_NO_TECH_REQ;
+			else if (slice_matches_str (&resource_name, "yields"))      flags |= MF_YIELDS;
+			else if (slice_matches_str (&resource_name, "show-bonus"))  flags |= MF_SHOW_BONUS;
 			else
 				break;
 		}
@@ -410,10 +410,7 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 			struct mill * out = out_mill;
 			out->improv_id = improv_id;
 			out->resource_id = resource_id;
-			out->is_local = is_local;
-			out->no_tech_req = no_tech_req;
-			out->yields = yields;
-			out->show_bonus = show_bonus;
+			out->flags = flags;
 			return RPR_OK;
 		}
 	} else
@@ -1304,7 +1301,7 @@ has_active_building (City * city, int improv_id)
 bool
 can_generate_resource (int for_civ_id, struct mill * mill)
 {
-	int req_tech_id = mill->no_tech_req ? -1 : p_bic_data->ResourceTypes[mill->resource_id].RequireID;
+	int req_tech_id = (mill->flags & MF_NO_TECH_REQ) ? -1 : p_bic_data->ResourceTypes[mill->resource_id].RequireID;
 	return (req_tech_id < 0) || Leader_has_tech (&leaders[for_civ_id], __, req_tech_id);
 }
 
@@ -1394,7 +1391,7 @@ patch_City_has_resource (City * this, int edx, int resource_id)
 		for (int n = 0; n < is->current_config.count_mills; n++) {
 			struct mill * mill = &is->current_config.mills[n];
 			if ((mill->resource_id == resource_id) &&
-			    mill->is_local &&
+			    (mill->flags & MF_LOCAL) &&
 			    can_generate_resource (this->Body.CivID, mill) &&
 			    has_active_building (this, mill->improv_id) &&
 			    has_resources_required_by_building_r (this, mill->improv_id, mill->resource_id - 1)) {
@@ -1465,7 +1462,7 @@ recompute_mill_yields_after_resource_change (Leader * leader_or_null)
 				for (int n = 0; n < is->current_config.count_mills; n++) {
 					struct mill * mill = &is->current_config.mills[n];
 					Improvement * mill_improv = &p_bic_data->Improvements[mill->improv_id];
-					if (mill->yields &&
+					if ((mill->flags & MF_YIELDS) &&
 					    ((mill_improv->Resource1ID >= 0) || (mill_improv->Resource2ID >= 0)) &&
 					    has_active_building (city, mill->improv_id)) {
 						any_relevant_mills = true;
@@ -1501,7 +1498,7 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups
 			if (city != NULL)
 				for (int n = 0; n < is->current_config.count_mills; n++) {
 					struct mill * mill = &is->current_config.mills[n];
-					if ((! mill->is_local) &&
+					if (((mill->flags & MF_LOCAL) == 0) &&
 					    has_active_building (city, mill->improv_id) &&
 					    can_generate_resource (city->Body.CivID, mill)) {
 						reserve (sizeof is->mill_tiles[0],
@@ -5518,8 +5515,8 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 			for (int n = 0; n < is->current_config.count_mills; n++) {
 				struct mill * mill = &is->current_config.mills[n];
 				if (mill->improv_id == improv_id) {
-					is_non_local_mill |= ! mill->is_local;
-					is_yielding_mill |= mill->yields;
+					is_non_local_mill |= (mill->flags & MF_LOCAL) == 0;
+					is_yielding_mill |= (mill->flags & MF_YIELDS) != 0;
 					generates_input |= (is->mill_input_resource_bits[mill->resource_id >> 3] & (1 << (mill->resource_id & 7))) != 0;
 				}
 			}
@@ -7841,7 +7838,7 @@ gather_mill_yields (City * city, int only_improv_id, int * out_food, int * out_s
 	int food = 0, shields = 0, commerce = 0;
 	for (int n = 0; n < is->current_config.count_mills; n++) {
 		struct mill * mill = &is->current_config.mills[n];
-		if (mill->yields &&
+		if ((mill->flags & MF_YIELDS) &&
 		    ((only_improv_id < 0) || (mill->improv_id == only_improv_id)) &&
 		    can_generate_resource (city->Body.CivID, mill) &&
 		    has_active_building (city, mill->improv_id) &&
@@ -7905,7 +7902,7 @@ patch_Tile_Image_Info_draw_improv_img_on_city_form (Tile_Image_Info * this, int 
 	for (int n = 0; (n < is->current_config.count_mills) && (generated_resource_count < ARRAY_LEN (generated_resources)); n++) {
 		struct mill * mill = &is->current_config.mills[n];
 		if ((mill->improv_id == is->drawing_icons_for_improv_id) &&
-		    (mill->show_bonus || (p_bic_data->ResourceTypes[mill->resource_id].Class != RC_Bonus)) &&
+		    ((mill->flags & MF_SHOW_BONUS) || (p_bic_data->ResourceTypes[mill->resource_id].Class != RC_Bonus)) &&
 		    can_generate_resource (p_city_form->CurrentCity->Body.CivID, mill) &&
 		    has_active_building (p_city_form->CurrentCity, mill->improv_id) &&
 		    has_resources_required_by_building (p_city_form->CurrentCity, mill->improv_id))
