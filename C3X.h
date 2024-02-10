@@ -632,9 +632,20 @@ struct injected_state {
 	// Unit::attack_tile. Used to stop the unit from losing all of its movement if configured.
 	Unit * unit_bombard_attacking_tile;
 
-	// Cleared to zero when Fighter::apply_zone_of_control is called. The interceptor must be unfortified to ensure it plays its animation. If
+	// Cleared to false when Fighter::apply_zone_of_control is called. The interceptor must be unfortified to ensure it plays its animation. If
 	// that happens, this flag is set so that apply_zone_of_control knows to refortify the unit after the ZoC process is done.
-	int refortify_interceptor_after_zoc;
+	bool refortify_interceptor_after_zoc;
+
+	// These flags are used to turn off lethal ZoC for units that capture an enemy on the tile they're moving into. Without this rule, the unit
+	// might get killed by ZoC but the captured units will remain on a tile that was never actually entered (that tile might have an enemy city
+	// for extra weirdness). Here's how it works:
+	//  1. The moving_unit_to_adjacent_tile flag is set when Unit::move_to_adjacent_tile is called.
+	//  2. If that flag is set and a unit is captured (detected by intercepting the calls to Leader::spawn_unit inside Unit::do_capture_units)
+	//     then temporarily_disallow_lethal_zoc is set.
+	//  3. If temporar... is set, the code to filter ZoC interceptors acts as if lethal ZoC were turned off.
+	//  4. Both flags are cleared when Unit::move_to_adjacent_tile returns.
+	bool temporarily_disallow_lethal_zoc;
+	bool moving_unit_to_adjacent_tile;
 
 	// Used to record info about a defensive bomardment event during Fighter::fight. Gets set by Fighter::damage_by_defensive_bombardment and
 	// cleared when Fighter::fight returns.
@@ -644,10 +655,10 @@ struct injected_state {
 		bool damage_done, defender_was_destroyed, saved_animation_setting;
 	} dbe;
 
-	// Set to 1 IFF we're showing a replay of AI moves in hotseat mode
+	// Set to true IFF we're showing a replay of AI moves in hotseat mode
 	bool showing_hotseat_replay;
 
-	// Set to 1 only during the first call to get_tile_occupier_id from Trade_Net::get_movement_cost. While this is set, we need to edit unit
+	// Set to true only during the first call to get_tile_occupier_id from Trade_Net::get_movement_cost. While this is set, we need to edit unit
 	// visibility to patch the submarine bug.
 	bool getting_tile_occupier_for_ai_pathfinding;
 

@@ -1596,8 +1596,8 @@ filter_zoc_candidate (struct register_set * reg)
 	enum UnitTypeClasses candidate_class = candidate_type->Unit_Class,
 		             defender_class  = defender_type ->Unit_Class;
 
-	bool lethal     = (is->current_config.special_zone_of_control_rules & SZOCR_LETHAL    ) != 0,
-	     aerial     = (is->current_config.special_zone_of_control_rules & SZOCR_AERIAL    ) != 0,
+	bool lethal = ((is->current_config.special_zone_of_control_rules & SZOCR_LETHAL) != 0) && (! is->temporarily_disallow_lethal_zoc);
+	bool aerial     = (is->current_config.special_zone_of_control_rules & SZOCR_AERIAL    ) != 0,
 	     amphibious = (is->current_config.special_zone_of_control_rules & SZOCR_AMPHIBIOUS) != 0;
 
 	// Exclude air units if aerial ZoC is not enabled and exclude land-to-sea & sea-to-land ZoC if amphibious is not enabled
@@ -2242,6 +2242,8 @@ patch_init_floating_point ()
 
 	is->unit_bombard_attacking_tile = NULL;
 
+	is->temporarily_disallow_lethal_zoc = false;
+	is->moving_unit_to_adjacent_tile = false;
 	is->showing_hotseat_replay = false;
 	is->getting_tile_occupier_for_ai_pathfinding = false;
 
@@ -7106,7 +7108,7 @@ patch_Fighter_check_zoc_anim_visibility (Fighter * this, int edx, Unit * attacke
 			is->unit_display_override = (struct unit_display_override) { attacker->Body.ID, attacker->Body.X, attacker->Body.Y };
 			if (attacker->Body.UnitState == UnitState_Fortifying) {
 				Unit_set_state (attacker, __, 0);
-				is->refortify_interceptor_after_zoc = 1;
+				is->refortify_interceptor_after_zoc = true;
 			}
 		}
 
@@ -7119,7 +7121,7 @@ patch_Fighter_apply_zone_of_control (Fighter * this, int edx, Unit * unit, int f
 {
 	is->zoc_interceptor = NULL;
 	is->zoc_defender = unit;
-	is->refortify_interceptor_after_zoc = 0;
+	is->refortify_interceptor_after_zoc = false;
 	struct unit_display_override saved_udo = is->unit_display_override;
 	Fighter_apply_zone_of_control (this, __, unit, from_x, from_y, to_x, to_y);
 
@@ -7157,7 +7159,7 @@ patch_Unit_can_move_after_zoc (Unit * this, int edx, int neighbor_index, int par
 }
 
 // Checks unit's HP after it was possibly hit by ZoC and deals with the consequences if it's dead. Does nothing if config option to make ZoC lethal
-// isn't set or if interceptor is NULL. Returns 1 if the unit was killed, 0 otherwise.
+// isn't set or if interceptor is NULL. Returns true if the unit was killed, false otherwise.
 bool
 check_life_after_zoc (Unit * unit, Unit * interceptor)
 {
@@ -7175,12 +7177,16 @@ check_life_after_zoc (Unit * unit, Unit * interceptor)
 int __fastcall
 patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool param_2, int param_3, byte param_4)
 {
+	is->moving_unit_to_adjacent_tile = true;
+
 	is->zoc_interceptor = NULL;
 	int tr = Unit_move_to_adjacent_tile (this, __, neighbor_index, param_2, param_3, param_4);
 	if (check_life_after_zoc (this, is->zoc_interceptor))
-		return ! is_online_game (); // This is what the original method returns when the unit was destroyed in combat
-	else
-		return tr;
+		tr = ! is_online_game (); // This is what the original method returns when the unit was destroyed in combat
+
+	is->temporarily_disallow_lethal_zoc = false;
+	is->moving_unit_to_adjacent_tile = false;
+	return tr;
 }
 
 int __fastcall
@@ -7978,6 +7984,15 @@ patch_Tile_Image_Info_draw_tourism_gold (Tile_Image_Info * this, int edx, PCX_Im
 
 	int tr = Tile_Image_Info_draw (sprite, __, canvas, pixel_x, pixel_y, param_4);
 	is->tourism_icon_counter++;
+	return tr;
+}
+
+Unit * __fastcall
+patch_Leader_spawn_captured_unit (Leader * this, int edx, int type_id, int tile_x, int tile_y, int barb_tribe_id, int id, bool param_6, LeaderKind leader_kind, int race_id)
+{
+	Unit * tr = Leader_spawn_unit (this, __, type_id, tile_x, tile_y, barb_tribe_id, id, param_6, leader_kind, race_id);
+	if ((tr != NULL) && is->moving_unit_to_adjacent_tile)
+		is->temporarily_disallow_lethal_zoc = true;
 	return tr;
 }
 
