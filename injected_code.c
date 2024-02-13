@@ -418,7 +418,7 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 }
 
 enum recognizable_parse_result
-parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_era_alias_list)
+parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_era_alias_list, bool leader_else_civ_name)
 {
 	char * cur = *p_cursor;
 	struct string_slice key;
@@ -427,12 +427,37 @@ parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_line
 	    skip_punctuation (&cur, ':')) {
 
 		char * aliases[ERA_ALIAS_LIST_CAPACITY];
-		int alias_count = 0;
+		int alias_count = 0,
+		    female_bits = 0,
+		    gender_specified_bits = 0; // For each alias, set to 1 if a gender was specified
 		struct string_slice alias;
 		while (1) {
-			if (parse_string (&cur, &alias) && (alias_count < ERA_ALIAS_LIST_CAPACITY))
-				aliases[alias_count++] = extract_slice (&alias);
-			else
+			if (parse_string (&cur, &alias)) {
+				if (alias_count < ERA_ALIAS_LIST_CAPACITY)
+					aliases[alias_count] = extract_slice (&alias);
+
+				// If we're parsing a list of leader names, read in the gender specifier if present
+				if (leader_else_civ_name) {
+					char * gender_cur = cur;
+					struct string_slice gender;
+					if (   skip_punctuation (&gender_cur, '(')
+					    && parse_string (&gender_cur, &gender)
+					    && skip_punctuation (&gender_cur, ')')
+					    && (   slice_matches_str (&gender, "M")
+						|| slice_matches_str (&gender, "m")
+						|| slice_matches_str (&gender, "F")
+						|| slice_matches_str (&gender, "f"))) {
+						if (alias_count < 32) {
+							if (slice_matches_str (&gender, "F") || slice_matches_str (&gender, "f"))
+								female_bits |= 1 << alias_count;
+							gender_specified_bits |= 1 << alias_count;
+						}
+						cur = gender_cur;
+					}
+				}
+
+				alias_count++;
+			} else
 				break;
 		}
 		if (alias_count == 0)
@@ -440,19 +465,22 @@ parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_line
 
 		*p_cursor = cur;
 
-		// Check that "key" matches a noun, adjective, or formal name of any civ in the scenario data
-		bool recognized_key = false; {
+		// Check that "key" matches a noun, adjective, or formal name of any civ ("race") in the scenario data. Store that civ.
+		Race * race_matching_key = NULL; {
 			for (int n = 0; n < p_bic_data->RacesCount; n++) {
 				Race * race = &p_bic_data->Races[n];
-				if (slice_matches_str (&key, race->AdjectiveName) ||
-				    slice_matches_str (&key, race->CountryName) ||
-				    slice_matches_str (&key, race->SingularName)) {
-					recognized_key = true;
+				if (   (   leader_else_civ_name
+				        && slice_matches_str (&key, race->LeaderName))
+				    || (   (! leader_else_civ_name)
+					&& (   slice_matches_str (&key, race->AdjectiveName)
+					    || slice_matches_str (&key, race->CountryName)
+					    || slice_matches_str (&key, race->SingularName)))) {
+					race_matching_key = race;
 					break;
 				}
 			}
 		}
-		if (! recognized_key) {
+		if (race_matching_key == NULL) {
 			add_unrecognized_line (p_unrecognized_lines, &key);
 			return RPR_UNRECOGNIZED;
 		}
@@ -462,9 +490,23 @@ parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_line
 		out->key = extract_slice (&key);
 		for (int n = 0; n < alias_count; n++)
 			out->aliases[n] = aliases[n];
+
+		// Set gender bits
+		if (leader_else_civ_name) {
+			int unreplaced_bits = (race_matching_key->LeaderGender == 0) ? 0 : ~0;
+			out->gender_bits = (unreplaced_bits & ~gender_specified_bits) | female_bits;
+		} else
+			out->gender_bits = 0;
+
 		return RPR_OK;
 	} else
 		return RPR_PARSE_ERROR;
+}
+
+enum recognizable_parse_result
+parse_civ_name_alias_list  (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_era_alias_list)
+{
+	return parse_era_alias_list (p_cursor, p_unrecognized_lines, out_era_alias_list, false);
 }
 
 // Recognizable items are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
@@ -890,7 +932,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					if (! read_recognizables (&value,
 								  &unrecognized_lines,
 								  sizeof (struct era_alias_list),
-								  parse_era_alias_list,
+								  parse_civ_name_alias_list,
 								  (void **)&cfg->era_alias_lists,
 								  &cfg->count_era_alias_lists))
 						handle_config_error (&p, CPE_BAD_VALUE);

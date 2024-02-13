@@ -43,10 +43,11 @@ struct mill {
 };
 
 // A list of per-era aliases for a civ's noun, adjective, or formal name.
-#define ERA_ALIAS_LIST_CAPACITY 4
+#define ERA_ALIAS_LIST_CAPACITY 4 // Must not exceed 32 so we can store all genders as bits in an int
 struct era_alias_list {
 	char * key;
 	char * aliases[ERA_ALIAS_LIST_CAPACITY];
+	int gender_bits; // Gender of each alias. Like LeaderGender in the Race object, 0 for male and 1 for female.
 };
 
 enum retreat_rules {

@@ -4288,7 +4288,7 @@ struct Race
   char SingularName[40];
   RaceEraAnimations EraAnimations[4];
   int CultureGroupID;
-  int LeaderGender;
+  int LeaderGender; // 0 for male, 1 for female
   int CivGender;
   int AggressionLevel;
   int ID;
