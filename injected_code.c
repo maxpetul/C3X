@@ -210,16 +210,27 @@ reset_to_base_config ()
 	}
 
 	// Free era alias lists
-	if (cc->era_alias_lists != NULL) {
-		for (int n = 0; n < cc->count_era_alias_lists; n++) {
-			struct era_alias_list * list = &cc->era_alias_lists[n];
+	if (cc->civ_era_alias_lists != NULL) {
+		for (int n = 0; n < cc->count_civ_era_alias_lists; n++) {
+			struct era_alias_list * list = &cc->civ_era_alias_lists[n];
 			free (list->key);
 			for (int k = 0; k < ERA_ALIAS_LIST_CAPACITY; k++)
 				free (list->aliases[k]);
 		}
-		free (cc->era_alias_lists);
-		cc->era_alias_lists = NULL;
-		cc->count_era_alias_lists = 0;
+		free (cc->civ_era_alias_lists);
+		cc->civ_era_alias_lists = NULL;
+		cc->count_civ_era_alias_lists = 0;
+	}
+	if (cc->leader_era_alias_lists != NULL) {
+		for (int n = 0; n < cc->count_leader_era_alias_lists; n++) {
+			struct era_alias_list * list = &cc->leader_era_alias_lists[n];
+			free (list->key);
+			for (int k = 0; k < ERA_ALIAS_LIST_CAPACITY; k++)
+				free (list->aliases[k]);
+		}
+		free (cc->leader_era_alias_lists);
+		cc->leader_era_alias_lists = NULL;
+		cc->count_leader_era_alias_lists = 0;
 	}
 
 	// Free the linked list of loaded config names and the string name contained in each one
@@ -507,6 +518,12 @@ enum recognizable_parse_result
 parse_civ_name_alias_list  (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_era_alias_list)
 {
 	return parse_era_alias_list (p_cursor, p_unrecognized_lines, out_era_alias_list, false);
+}
+
+enum recognizable_parse_result
+parse_leader_name_alias_list  (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_era_alias_list)
+{
+	return parse_era_alias_list (p_cursor, p_unrecognized_lines, out_era_alias_list, true);
 }
 
 // Recognizable items are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
@@ -933,8 +950,16 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								  &unrecognized_lines,
 								  sizeof (struct era_alias_list),
 								  parse_civ_name_alias_list,
-								  (void **)&cfg->era_alias_lists,
-								  &cfg->count_era_alias_lists))
+								  (void **)&cfg->civ_era_alias_lists,
+								  &cfg->count_civ_era_alias_lists))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "leader_aliases_by_era")) {
+					if (! read_recognizables (&value,
+								  &unrecognized_lines,
+								  sizeof (struct era_alias_list),
+								  parse_leader_name_alias_list,
+								  (void **)&cfg->leader_era_alias_lists,
+								  &cfg->count_leader_era_alias_lists))
 						handle_config_error (&p, CPE_BAD_VALUE);
 
 				// if key is for an obsolete option
@@ -2310,7 +2335,8 @@ patch_init_floating_point ()
 
 	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
 	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
-	memset (&is->era_alias_table, 0, sizeof is->era_alias_table);
+	memset (&is->civ_era_alias_table, 0, sizeof is->civ_era_alias_table);
+	memset (&is->leader_era_alias_table, 0, sizeof is->leader_era_alias_table);
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -3910,11 +3936,16 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		}
 	}
 
-	// Recreate table of era aliases
-	stable_deinit (&is->era_alias_table);
-	for (int n = 0; n < is->current_config.count_era_alias_lists; n++) {
-		struct era_alias_list * list = &is->current_config.era_alias_lists[n];
-		stable_insert (&is->era_alias_table, list->key, (int)list);
+	// Recreate era alias tables
+	stable_deinit (&is->civ_era_alias_table);
+	for (int n = 0; n < is->current_config.count_civ_era_alias_lists; n++) {
+		struct era_alias_list * list = &is->current_config.civ_era_alias_lists[n];
+		stable_insert (&is->civ_era_alias_table, list->key, (int)list);
+	}
+	stable_deinit (&is->leader_era_alias_table);
+	for (int n = 0; n < is->current_config.count_leader_era_alias_lists; n++) {
+		struct era_alias_list * list = &is->current_config.leader_era_alias_lists[n];
+		stable_insert (&is->leader_era_alias_table, list->key, (int)list);
 	}
 
 	// Convert charm-flagged units to using PTW targeting if necessary
@@ -8040,7 +8071,7 @@ char *
 replace_civ_name (char * name, int era_id)
 {
 	struct era_alias_list * list;
-	if (stable_look_up (&is->era_alias_table, name, (int *)&list)) {
+	if (stable_look_up (&is->civ_era_alias_table, name, (int *)&list)) {
 		char * alias = list->aliases[era_id];
 		return (alias != NULL) ? alias : name;
 	} else
@@ -8051,7 +8082,7 @@ char * __fastcall
 patch_Leader_get_civ_adjective (Leader * this)
 {
 	char * base = Leader_get_civ_adjective (this);
-	if ((is->current_config.count_era_alias_lists > 0) && (this->tribe_customization.civ_adjective[0] == '\0')) {
+	if ((is->current_config.count_civ_era_alias_lists > 0) && (this->tribe_customization.civ_adjective[0] == '\0')) {
 		return replace_civ_name (base, this->Era);
 	} else
 		return base;
@@ -8061,7 +8092,7 @@ char * __fastcall
 patch_Leader_get_civ_noun (Leader * this)
 {
 	char * base = Leader_get_civ_noun (this);
-	if ((is->current_config.count_era_alias_lists > 0) && (this->tribe_customization.civ_noun[0] == '\0')) {
+	if ((is->current_config.count_civ_era_alias_lists > 0) && (this->tribe_customization.civ_noun[0] == '\0')) {
 		return replace_civ_name (base, this->Era);
 	} else
 		return base;
@@ -8071,7 +8102,7 @@ char * __fastcall
 patch_Leader_get_civ_formal_name (Leader * this)
 {
 	char * base = Leader_get_civ_formal_name (this);
-	if ((is->current_config.count_era_alias_lists > 0) && (this->tribe_customization.civ_formal_name[0] == '\0')) {
+	if ((is->current_config.count_civ_era_alias_lists > 0) && (this->tribe_customization.civ_formal_name[0] == '\0')) {
 		return replace_civ_name (base, this->Era);
 	} else
 		return base;

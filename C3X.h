@@ -163,8 +163,10 @@ struct c3x_config {
 	int extra_unit_maintenance_per_shields;
 	enum special_zone_of_control_rules special_zone_of_control_rules;
 	enum special_defensive_bombard_rules special_defensive_bombard_rules;
-	struct era_alias_list * era_alias_lists;
-	int count_era_alias_lists;
+	struct era_alias_list * civ_era_alias_lists;
+	int count_civ_era_alias_lists;
+	struct era_alias_list * leader_era_alias_lists;
+	int count_leader_era_alias_lists;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
@@ -445,7 +447,10 @@ struct injected_state {
 	struct table extra_defensive_bombards;
 
 	// A table mapping civ names to era alias lists, filled in each time the list of lists in the config gets reloaded. Used in replace_civ_name.
-	struct table era_alias_table;
+	struct table civ_era_alias_table;
+
+	// Same but for leader names
+	struct table leader_era_alias_table;
 
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {
