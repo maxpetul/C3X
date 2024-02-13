@@ -8108,5 +8108,50 @@ patch_Leader_get_civ_formal_name (Leader * this)
 		return base;
 }
 
+bool
+maybe_replace_leader_name_and_gender (char * name, int era_id, char ** out_replaced_name, int * out_replaced_gender)
+{
+	struct era_alias_list * list;
+	char * alias;
+	if (   stable_look_up (&is->leader_era_alias_table, name, (int *)&list)
+	    && ((alias = list->aliases[era_id]) != NULL)) {
+		*out_replaced_name = alias;
+		*out_replaced_gender = (list->gender_bits >> era_id) & 1;
+		return true;
+	} else
+		return false;
+}
+
+char * __fastcall
+patch_Leader_get_name (Leader * this)
+{
+	char * base = Leader_get_name (this);
+
+	// Replace name & gender with values from the config
+	char * replaced_name;
+	int replaced_gender;
+	if (   (is->current_config.count_leader_era_alias_lists > 0)
+	    && (this->tribe_customization.leader_name[0] == '\0')
+	    && maybe_replace_leader_name_and_gender (base, this->Era, &replaced_name, &replaced_gender)) {
+		*p_got_leader_gender = replaced_gender;
+		return replaced_name;
+
+	} else
+		return base;
+}
+
+int __fastcall
+patch_Leader_get_gender (Leader * this)
+{
+	char * replaced_name;
+	int replaced_gender;
+	if (   (is->current_config.count_leader_era_alias_lists > 0)
+	    && (this->tribe_customization.leader_name[0] == '\0')
+	    && maybe_replace_leader_name_and_gender (Leader_get_name (this), this->Era, &replaced_name, &replaced_gender)) {
+		return replaced_gender;
+	} else
+		return Leader_get_gender (this);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
