@@ -5,6 +5,8 @@
 #include "windows.h"
 #include "strsafe.h"
 
+HWND CreateSimpleWindow(const char* title);
+
 // Copy-pasted from https://learn.microsoft.com/en-us/windows/win32/Debug/retrieving-the-last-error-code
 void ErrorExit(LPTSTR lpszFunction)
 {
@@ -39,6 +41,19 @@ void ErrorExit(LPTSTR lpszFunction)
     ExitProcess(dw);
 }
 
+struct WaveDevice;
+
+struct WaveDeviceVTable {
+	void * omitted[4];
+	int (__thiscall * initialize) (WaveDevice *, HWND, unsigned);
+	void * omitted_2[38];
+};
+
+struct WaveDevice {
+	WaveDeviceVTable * vtable;
+	// other fields omitted
+};
+
 struct SoundCore;
 
 struct SoundCoreVTable {
@@ -55,7 +70,7 @@ struct SoundCore {
 #define SCT_WAV 1
 typedef int (__cdecl * InitSoundTimer) (int param_1, int param_2);
 typedef int (__cdecl * CreateSound) (SoundCore ** out_sound_core, char * file_path, int sound_core_type);
-typedef int (__cdecl * CreateWaveDevice) (void ** out_wave_device, unsigned param_2);
+typedef int (__cdecl * CreateWaveDevice) (WaveDevice ** out, unsigned param_2);
 
 int
 main ()
@@ -89,10 +104,13 @@ main ()
 		return 1;
 	}
 
+	HWND window = CreateSimpleWindow ("Sound Test");
+
 	init_sound_timer (0, 0); // don't know what these params are for, but Civ 3 passes zero for both
 
-	void * wave_device;
+	WaveDevice * wave_device;
 	create_wave_device (&wave_device, 0); // second parameter is not used
+	wave_device->vtable->initialize (wave_device, window, 2); // pass "2" for flags. I think that's what Civ 3 uses.
 
 	char * hawk_path = "..\\Sounds\\Ambience Sfx\\Hawk.wav";
 	SoundCore * core;
@@ -101,8 +119,68 @@ main ()
 
 	result = core->vtable->play (core);
 	printf ("play result: %d\n", result);
-	Sleep (3000);
 
 	printf ("ok");
+
+	// Run the window message loop
+	MSG msg = {};
+	while (GetMessage(&msg, NULL, 0, 0)) {
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
+	}
+
 	return 0;
+}
+
+
+
+//
+// Helper functions (all written by ChatGPT):
+//
+
+// Function prototype for the Window Procedure
+LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+
+// Function to create and show a simple window
+HWND CreateSimpleWindow(const char* title) {
+    // Register the window class
+    const char CLASS_NAME[] = "Simple Window Class";
+    WNDCLASS wc = {};
+
+    wc.lpfnWndProc = WindowProc;
+    wc.hInstance = GetModuleHandle(NULL);
+    wc.lpszClassName = CLASS_NAME;
+
+    RegisterClass(&wc);
+
+    // Create the window
+    HWND hwnd = CreateWindowEx(
+        0,                              // Optional window styles
+        CLASS_NAME,                     // Window class
+        title,                          // Window text
+        WS_OVERLAPPEDWINDOW,            // Window style
+
+        // Size and position
+        CW_USEDEFAULT, CW_USEDEFAULT, 200, 100,
+
+        NULL,       // Parent window
+        NULL,       // Menu
+        wc.hInstance,  // Instance handle
+        NULL        // Additional application data
+    );
+
+    ShowWindow(hwnd, SW_SHOW);
+
+    return hwnd;
+}
+
+// Window procedure function
+LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    switch (uMsg) {
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        return 0;
+    }
+
+    return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
