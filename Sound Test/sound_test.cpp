@@ -58,17 +58,17 @@ struct SoundCore;
 
 struct SoundCoreVTable {
 	void * omitted[4];
-	int (__thiscall * m04) (SoundCore *, char *); // takes file path
+	int (__thiscall * load_file) (SoundCore *, char *); // takes file path
 	void * omitted_2[2];
 	int (__thiscall * play) (SoundCore *);
 	void * omitted_3[8];
-	void (__thiscall * m16) (SoundCore *, int);
+	void (__thiscall * set_volume) (SoundCore *, int); // volume is >= 0 and <= 127
 	void * omitted_4[5];
 	int (__thiscall * m22) (SoundCore *);
 	void * omitted_5;
 	int (__thiscall * m24) (SoundCore *);
 	void * omitted_6[2];
-	int (__thiscall * m27) (SoundCore *, unsigned);
+	int (__thiscall * set_flags) (SoundCore *, unsigned);
 	void * omitted_7[22];
 	int (__thiscall * m50) (SoundCore *);
 	void * omitted_8[26];
@@ -122,7 +122,7 @@ WinMain (HINSTANCE inst, HINSTANCE prev_inst, char * cmd_line, int show_cmd)
 
 	WaveDevice * wave_device;
 	create_wave_device (&wave_device, 0); // second parameter is not used
-	wave_device->vtable->initialize (wave_device, window, 2); // pass "2" for flags. I think that's what Civ 3 uses.
+	wave_device->vtable->initialize (wave_device, window, 2); // pass 2 for flags. I think that's what Civ 3 uses.
 
 	char * hawk_path = "..\\Sounds\\Ambience Sfx\\Hawk.wav";
 	SoundCore * core;
@@ -132,19 +132,21 @@ WinMain (HINSTANCE inst, HINSTANCE prev_inst, char * cmd_line, int show_cmd)
 	result = core->vtable->m22 (core);
 	printf ("m22 returned %d (expected 0)\n", result);
 
-	result = core->vtable->m27 (core, 0); // 0 corresponds to some flags, Civ 3 passes 0
-	printf ("m27 returned %d (expected 0)\n", result);
+	result = core->vtable->set_flags (core, 0); // Civ 3 passes 0 for flags here
+	printf ("set_flags returned %d (expected 0)\n", result);
 
 	result = core->vtable->m24 (core);
 	printf ("m24 returned %d (expected 0)\n", result);
 
-	result = core->vtable->m04 (core, hawk_path);
-	printf ("m04 returned %d (expected 0)\n", result);
+	result = core->vtable->load_file (core, hawk_path);
+	printf ("load_file returned %d (expected 0)\n", result);
 
-	result = core->vtable->m50 (core);
-	printf ("m50 returned %d (don't know what to expect)\n", result); // Civ 3 returns 1496 here
+	// I observed this function returning 1496 when running inside Civ 3. It does not return the same thing when run here. I don't what the return
+	// value means. The function is a "getter" and does no actual work.
+	// result = core->vtable->m50 (core);
+	// printf ("m50 returned %d (don't know what to expect)\n", result);
 
-	core->vtable->m16 (core, 127); // Pretty sure this sets the volume
+	core->vtable->set_volume (core, 127);
 	result = core->vtable->play (core);
 	printf ("play result: %d\n", result);
 
