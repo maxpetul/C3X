@@ -87,11 +87,25 @@ typedef int (__cdecl * CreateWaveDevice) (WaveDevice ** out, unsigned param_2);
 int APIENTRY
 WinMain (HINSTANCE inst, HINSTANCE prev_inst, char * cmd_line, int show_cmd)
 {
-	// Go to Conquests directory
-	// TODO: Load directory location from registry
-	SetCurrentDirectory ("C:\\GOG Games\\Civilization III Complete\\Conquests");
+	// Go to Conquests directory.
+	{
+		char civ_3_install_path[1000] = {0};
+		DWORD buf_size = (sizeof civ_3_install_path) - 1;
+		HKEY reg_key;
+		if (RegOpenKeyExA (HKEY_LOCAL_MACHINE, "SOFTWARE\\Infrogrames Interactive\\Civilization III", 0, KEY_READ, &reg_key) == ERROR_SUCCESS) {
+			RegQueryValueExA (reg_key, "Install_Path", NULL, NULL, (LPBYTE)civ_3_install_path, &buf_size);
+			RegCloseKey (reg_key);
+		}
+		if (civ_3_install_path[0] != '\0') {
+			char conquests_path[1000] = {0};
+			snprintf (conquests_path, (sizeof conquests_path) - 1, "%s%s", civ_3_install_path, "Conquests");
+			SetCurrentDirectory (conquests_path);
+		} else {
+			MessageBoxA (NULL, "Couldn't find Civ 3 install!", NULL, MB_ICONERROR);
+			return 0;
+		}
+	}
 
-	// char * sound_module_path = get_civ_3_path ("Conquests\\sound.dll");
 	HMODULE sound_module = LoadLibraryA ("sound.dll");
 	if (sound_module == NULL) {
 		ErrorExit ("creating sound module");
