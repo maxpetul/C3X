@@ -1,45 +1,13 @@
 
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 #include "windows.h"
 #include "strsafe.h"
 
 HWND CreateSimpleWindow(const char* title);
-
-// Copy-pasted from https://learn.microsoft.com/en-us/windows/win32/Debug/retrieving-the-last-error-code
-void ErrorExit(LPTSTR lpszFunction)
-{
-    // Retrieve the system error message for the last-error code
-
-    LPVOID lpMsgBuf;
-    LPVOID lpDisplayBuf;
-    DWORD dw = GetLastError();
-
-    FormatMessage(
-        FORMAT_MESSAGE_ALLOCATE_BUFFER |
-        FORMAT_MESSAGE_FROM_SYSTEM |
-        FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL,
-        dw,
-        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-        (LPTSTR) &lpMsgBuf,
-        0, NULL );
-
-    // Display the error message and exit the process
-
-    lpDisplayBuf = (LPVOID)LocalAlloc(LMEM_ZEROINIT,
-        (lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)lpszFunction) + 40) * sizeof(TCHAR));
-    StringCchPrintf((LPTSTR)lpDisplayBuf,
-        LocalSize(lpDisplayBuf) / sizeof(TCHAR),
-        TEXT("%s failed with error %d: %s"),
-        lpszFunction, dw, lpMsgBuf);
-    MessageBox(NULL, (LPCTSTR)lpDisplayBuf, TEXT("Error"), MB_OK);
-
-    LocalFree(lpMsgBuf);
-    LocalFree(lpDisplayBuf);
-    ExitProcess(dw);
-}
+char* GetLastErrorAsString();
 
 struct WaveDevice;
 
@@ -92,7 +60,7 @@ WinMain (HINSTANCE inst, HINSTANCE prev_inst, char * cmd_line, int show_cmd)
 		char civ_3_install_path[1000] = {0};
 		DWORD buf_size = (sizeof civ_3_install_path) - 1;
 		HKEY reg_key;
-		if (RegOpenKeyExA (HKEY_LOCAL_MACHINE, "SOFTWARE\\Infrogrames Interactive\\Civilization III", 0, KEY_READ, &reg_key) == ERROR_SUCCESS) {
+		if (RegOpenKeyExA (HKEY_LOCAL_MACHINE, "SOFTWARE\\Infogrames Interactive\\Civilization III", 0, KEY_READ, &reg_key) == ERROR_SUCCESS) {
 			RegQueryValueExA (reg_key, "Install_Path", NULL, NULL, (LPBYTE)civ_3_install_path, &buf_size);
 			RegCloseKey (reg_key);
 		}
@@ -108,27 +76,15 @@ WinMain (HINSTANCE inst, HINSTANCE prev_inst, char * cmd_line, int show_cmd)
 
 	HMODULE sound_module = LoadLibraryA ("sound.dll");
 	if (sound_module == NULL) {
-		ErrorExit ("creating sound module");
+		char error_msg[1000] = {0};
+		snprintf (error_msg, (sizeof error_msg) - 1, "Couldn't load sound.dll: %s", GetLastErrorAsString ());
+		MessageBoxA (NULL, error_msg, NULL, MB_ICONERROR);
+		return 0;
 	}
 
-	InitSoundTimer init_sound_timer = reinterpret_cast<InitSoundTimer>(GetProcAddress (sound_module, "init_sound_timer"));
-	if (init_sound_timer == NULL) {
-		printf ("init_sound_timer is NULL");
-		return 1;
-	}
-
-	CreateSound create_sound = reinterpret_cast<CreateSound>(GetProcAddress (sound_module, "create_sound"));
-	if (create_sound == NULL) {
-		printf ("create_sound is NULL");
-		return 1;
-	}
-
-	// Name of Dll_Wave_Device::create_device is mangled so use ordinal here
-	CreateWaveDevice create_wave_device = reinterpret_cast<CreateWaveDevice>(GetProcAddress (sound_module, (LPCSTR)5));
-	if (create_wave_device == NULL) {
-		printf ("create_wave_device is NULL");
-		return 1;
-	}
+	InitSoundTimer   init_sound_timer   = reinterpret_cast<InitSoundTimer>  (GetProcAddress (sound_module, "init_sound_timer"));
+	CreateSound      create_sound       = reinterpret_cast<CreateSound>     (GetProcAddress (sound_module, "create_sound"));
+	CreateWaveDevice create_wave_device = reinterpret_cast<CreateWaveDevice>(GetProcAddress (sound_module, (LPCSTR)5)); // Name of Dll_Wave_Device::create_device is mangled so use ordinal here
 
 	HWND window = CreateSimpleWindow ("Sound Test");
 
@@ -163,8 +119,6 @@ WinMain (HINSTANCE inst, HINSTANCE prev_inst, char * cmd_line, int show_cmd)
 	core->vtable->set_volume (core, 127);
 	result = core->vtable->play (core);
 	printf ("play result: %d\n", result);
-
-	printf ("ok\n");
 
 	// Run the window message loop
 	MSG msg = {};
@@ -229,4 +183,31 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
     }
 
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+
+char* GetLastErrorAsString() {
+    // Retrieve the last error code
+    DWORD errorMessageID = ::GetLastError();
+    if(errorMessageID == 0) {
+        // No error message has been recorded
+        return strdup("No error");
+    }
+
+    LPSTR messageBuffer = nullptr;
+    size_t size = FormatMessageA(
+        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        nullptr,
+        errorMessageID,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        (LPSTR)&messageBuffer,
+        0, nullptr);
+
+    // Copy the error message into a std::string
+    std::string message(messageBuffer, size);
+
+    // Free the buffer allocated by the system
+    LocalFree(messageBuffer);
+
+    // Return a copy of the string as a char*
+    return strdup(message.c_str());
 }
