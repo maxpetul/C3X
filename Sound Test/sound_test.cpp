@@ -84,8 +84,8 @@ typedef int (__cdecl * InitSoundTimer) (int param_1, int param_2);
 typedef int (__cdecl * CreateSound) (SoundCore ** out_sound_core, char * file_path, int sound_core_type);
 typedef int (__cdecl * CreateWaveDevice) (WaveDevice ** out, unsigned param_2);
 
-int
-main ()
+int APIENTRY
+WinMain (HINSTANCE inst, HINSTANCE prev_inst, char * cmd_line, int show_cmd)
 {
 	// Go to Conquests directory
 	// TODO: Load directory location from registry
