@@ -57,9 +57,21 @@ struct WaveDevice {
 struct SoundCore;
 
 struct SoundCoreVTable {
-	void * omitted[7];
+	void * omitted[4];
+	int (__thiscall * m04) (SoundCore *, char *); // takes file path
+	void * omitted_2[2];
 	int (__thiscall * play) (SoundCore *);
-	void * omitted_2[69];
+	void * omitted_3[8];
+	void (__thiscall * m16) (SoundCore *, int);
+	void * omitted_4[5];
+	int (__thiscall * m22) (SoundCore *);
+	void * omitted_5;
+	int (__thiscall * m24) (SoundCore *);
+	void * omitted_6[2];
+	int (__thiscall * m27) (SoundCore *, unsigned);
+	void * omitted_7[22];
+	int (__thiscall * m50) (SoundCore *);
+	void * omitted_8[26];
 };
 
 struct SoundCore {
@@ -117,10 +129,26 @@ main ()
 	int result = create_sound (&core, hawk_path, SCT_WAV);
 	printf ("create_sound result: %d\n", result);
 
+	result = core->vtable->m22 (core);
+	printf ("m22 returned %d (expected 0)\n", result);
+
+	result = core->vtable->m27 (core, 0); // 0 corresponds to some flags, Civ 3 passes 0
+	printf ("m27 returned %d (expected 0)\n", result);
+
+	result = core->vtable->m24 (core);
+	printf ("m24 returned %d (expected 0)\n", result);
+
+	result = core->vtable->m04 (core, hawk_path);
+	printf ("m04 returned %d (expected 0)\n", result);
+
+	result = core->vtable->m50 (core);
+	printf ("m50 returned %d (don't know what to expect)\n", result); // Civ 3 returns 1496 here
+
+	core->vtable->m16 (core, 127); // Pretty sure this sets the volume
 	result = core->vtable->play (core);
 	printf ("play result: %d\n", result);
 
-	printf ("ok");
+	printf ("ok\n");
 
 	// Run the window message loop
 	MSG msg = {};
