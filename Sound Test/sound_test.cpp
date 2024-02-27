@@ -157,7 +157,9 @@ WinMain (HINSTANCE inst, HINSTANCE prev_inst, char * cmd_line, int show_cmd)
 		DispatchMessage(&msg);
 	}
 
-	return 0;
+	// Need to call TerminateProcess to close the program otherwise sound.dll will keep it alive in the background.
+	TerminateProcess (GetCurrentProcess (), 0);
+	return 0; // Unreachable
 }
 
 
