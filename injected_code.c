@@ -2268,6 +2268,8 @@ patch_init_floating_point ()
 
 	is->city_loc_display_perspective = -1;
 
+	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = 0;
+
 	is->extra_available_resources = NULL;
 	is->extra_available_resources_capacity = 0;
 
@@ -3768,6 +3770,33 @@ patch_Trade_Net_set_unit_path_to_find_sea_route (Trade_Net * this, int edx, int 
 		return Trade_Net_set_unit_path (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, out_path_length_in_mp);
 }
 
+// Renames this leader and their civ based on their era. Era-specific names come from the config file. If this leader has a custom name set by the
+// human player, this method does nothing.
+void
+apply_era_specific_names (Leader * leader)
+{
+	int leader_bit = 1 << leader->ID;
+	if ((is->aliased_civ_noun_bits & leader_bit) || (leader->tribe_customization.civ_noun[0] == '\0')) {
+		leader->tribe_customization.civ_noun[0] = '\0'; // Clear this so it doesn't interfere with getting the base name
+		char * base = Leader_get_civ_noun (leader);
+		char * replacement = NULL;
+		if (leader->Era < ERA_ALIAS_LIST_CAPACITY)
+			for (int n = 0; n < is->current_config.count_civ_era_alias_lists; n++) {
+				struct era_alias_list * list = &is->current_config.civ_era_alias_lists[n];
+				if (strcmp (list->key, base) == 0) {
+				    replacement = list->aliases[leader->Era];
+				    break;
+				}
+			}
+		if (replacement != NULL) {
+			strncpy (leader->tribe_customization.civ_noun, replacement, sizeof leader->tribe_customization.civ_noun);
+			leader->tribe_customization.civ_noun[(sizeof leader->tribe_customization.civ_noun) - 1] = '\0';
+			is->aliased_civ_noun_bits |= leader_bit;
+		} else
+			is->aliased_civ_noun_bits &= ~leader_bit;
+	}
+}
+
 int __cdecl
 patch_do_save_game (char const * file_path, char param_2, GUID * guid)
 {
@@ -3787,12 +3816,27 @@ patch_do_save_game (char const * file_path, char param_2, GUID * guid)
 		p_bic_data->Races[leaders[0].RaceID].CultureGroupID = is->saved_barb_culture_group;
 	}
 
+	// Do not save names that were replaced with era-specific versions
+	for (int n = 0; n < 32; n++) {
+		Leader * leader = &leaders[n];
+		int leader_bit = 1 << leader->ID;
+		if (is->aliased_civ_noun_bits        & leader_bit) leader->tribe_customization.civ_noun       [0] = '\0';
+		if (is->aliased_civ_adjective_bits   & leader_bit) leader->tribe_customization.civ_adjective  [0] = '\0';
+		if (is->aliased_civ_formal_name_bits & leader_bit) leader->tribe_customization.civ_formal_name[0] = '\0';
+	}
+	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = 0;
+
 	int tr = do_save_game (file_path, param_2, guid);
 
 	if (restore_rmr)
 		p_bic_data->General.RoadsMovementRate = rmr;
 	if (restore_barb_culture_group)
 		p_bic_data->Races[leaders[0].RaceID].CultureGroupID = barb_culture;
+
+	// Reapply era aliases
+	for (int n = 0; n < 32; n++)
+		if (*p_player_bits & (1 << n))
+			apply_era_specific_names (&leaders[n]);
 
 	return tr;
 }
@@ -4003,6 +4047,9 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		*barb_culture_group = 0;
 	} else
 		is->saved_barb_culture_group = -1;
+
+	// Clear old alias bits
+	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = 0;
 
 	return tr;
 }
@@ -6522,9 +6569,10 @@ patch_do_open_load_game_file_picker (void * this)
 int __fastcall
 patch_show_intro_after_load_popup (void * this, int edx, int param_1, int param_2)
 {
-	if (! is->suppress_intro_after_load_popup)
+	if (! is->suppress_intro_after_load_popup) {
+		apply_era_specific_names (&leaders[p_main_screen_form->Player_CivID]);
 		return patch_show_popup (this, __, param_1, param_2);
-	else {
+	} else {
 		is->suppress_intro_after_load_popup = 0;
 		return 0;
 	}
@@ -6556,6 +6604,11 @@ patch_do_load_game (char * param_1)
 				}
 			}
 		}
+
+	// Apply era aliases
+	for (int n = 0; n < 32; n++)
+		if (*p_player_bits & (1 << n))
+			apply_era_specific_names (&leaders[n]);
 
 	return tr;
 }
@@ -8050,6 +8103,13 @@ patch_Leader_spawn_captured_unit (Leader * this, int edx, int type_id, int tile_
 	if ((tr != NULL) && is->moving_unit_to_adjacent_tile)
 		is->temporarily_disallow_lethal_zoc = true;
 	return tr;
+}
+
+void __fastcall
+patch_Leader_enter_new_era (Leader * this, int edx, bool param_1, bool no_online_sync)
+{
+	Leader_enter_new_era (this, __, param_1, no_online_sync);
+	apply_era_specific_names (this);
 }
 
 // TCC requires a main function be defined even though it's never used.

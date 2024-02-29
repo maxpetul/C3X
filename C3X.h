@@ -413,6 +413,12 @@ struct injected_state {
 	// The civ ID of the player from whose perspective we're currently showing city loc desirability, or -1 if none. Initialized to -1.
 	int city_loc_display_perspective;
 
+	// These are all bit fields that run parallel to player bits. Each bit indicates whether or not that name was replaced with an era-specific
+	// version for that player. This allows us to tell the difference between custom names set by human players and replacements made by the mod.
+	int aliased_civ_noun_bits;
+	int aliased_civ_adjective_bits;
+	int aliased_civ_formal_name_bits;
+
 	// Stores resource access bits for resources beyond the first 32, used to fix the phantom resource bug. Initialized to NULL/0 and allocated as
 	// necessary by get_extra_resource_bits. Contains an array of groups of unsigned ints. There is one group per city (allocated lazily so you
 	// must use the getter) and the number of ints in each group depends on the number of resources defined in the scenario, one for every 32
