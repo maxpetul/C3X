@@ -2335,8 +2335,6 @@ patch_init_floating_point ()
 
 	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
 	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
-	memset (&is->civ_era_alias_table, 0, sizeof is->civ_era_alias_table);
-	memset (&is->leader_era_alias_table, 0, sizeof is->leader_era_alias_table);
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -3934,18 +3932,6 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 			record_unit_type_alt_strategy (n);
 			record_unit_type_alt_strategy (alt_for_id); // Record the original too so we know it has alternatives
 		}
-	}
-
-	// Recreate era alias tables
-	stable_deinit (&is->civ_era_alias_table);
-	for (int n = 0; n < is->current_config.count_civ_era_alias_lists; n++) {
-		struct era_alias_list * list = &is->current_config.civ_era_alias_lists[n];
-		stable_insert (&is->civ_era_alias_table, list->key, (int)list);
-	}
-	stable_deinit (&is->leader_era_alias_table);
-	for (int n = 0; n < is->current_config.count_leader_era_alias_lists; n++) {
-		struct era_alias_list * list = &is->current_config.leader_era_alias_lists[n];
-		stable_insert (&is->leader_era_alias_table, list->key, (int)list);
 	}
 
 	// Convert charm-flagged units to using PTW targeting if necessary
@@ -8064,93 +8050,6 @@ patch_Leader_spawn_captured_unit (Leader * this, int edx, int type_id, int tile_
 	if ((tr != NULL) && is->moving_unit_to_adjacent_tile)
 		is->temporarily_disallow_lethal_zoc = true;
 	return tr;
-}
-
-// Returns the era-specific replacement for this civ name (noun, adjective, or formal) if there is one, otherwise returns the name.
-char *
-replace_civ_name (char * name, int era_id)
-{
-	struct era_alias_list * list;
-	if (stable_look_up (&is->civ_era_alias_table, name, (int *)&list)) {
-		char * alias = list->aliases[era_id];
-		return (alias != NULL) ? alias : name;
-	} else
-		return name;
-}
-
-char * __fastcall
-patch_Leader_get_civ_adjective (Leader * this)
-{
-	char * base = Leader_get_civ_adjective (this);
-	if ((is->current_config.count_civ_era_alias_lists > 0) && (this->tribe_customization.civ_adjective[0] == '\0')) {
-		return replace_civ_name (base, this->Era);
-	} else
-		return base;
-}
-
-char * __fastcall
-patch_Leader_get_civ_noun (Leader * this)
-{
-	char * base = Leader_get_civ_noun (this);
-	if ((is->current_config.count_civ_era_alias_lists > 0) && (this->tribe_customization.civ_noun[0] == '\0')) {
-		return replace_civ_name (base, this->Era);
-	} else
-		return base;
-}
-
-char * __fastcall
-patch_Leader_get_civ_formal_name (Leader * this)
-{
-	char * base = Leader_get_civ_formal_name (this);
-	if ((is->current_config.count_civ_era_alias_lists > 0) && (this->tribe_customization.civ_formal_name[0] == '\0')) {
-		return replace_civ_name (base, this->Era);
-	} else
-		return base;
-}
-
-bool
-maybe_replace_leader_name_and_gender (char * name, int era_id, char ** out_replaced_name, int * out_replaced_gender)
-{
-	struct era_alias_list * list;
-	char * alias;
-	if (   stable_look_up (&is->leader_era_alias_table, name, (int *)&list)
-	    && ((alias = list->aliases[era_id]) != NULL)) {
-		*out_replaced_name = alias;
-		*out_replaced_gender = (list->gender_bits >> era_id) & 1;
-		return true;
-	} else
-		return false;
-}
-
-char * __fastcall
-patch_Leader_get_name (Leader * this)
-{
-	char * base = Leader_get_name (this);
-
-	// Replace name & gender with values from the config
-	char * replaced_name;
-	int replaced_gender;
-	if (   (is->current_config.count_leader_era_alias_lists > 0)
-	    && (this->tribe_customization.leader_name[0] == '\0')
-	    && maybe_replace_leader_name_and_gender (base, this->Era, &replaced_name, &replaced_gender)) {
-		*p_got_leader_gender = replaced_gender;
-		return replaced_name;
-
-	} else
-		return base;
-}
-
-int __fastcall
-patch_Leader_get_gender (Leader * this)
-{
-	char * replaced_name;
-	int replaced_gender;
-	if (   (is->current_config.count_leader_era_alias_lists > 0)
-	    && (this->tribe_customization.leader_name[0] == '\0')
-	    && maybe_replace_leader_name_and_gender (Leader_get_name (this), this->Era, &replaced_name, &replaced_gender)) {
-		return replaced_gender;
-	} else
-		return Leader_get_gender (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
