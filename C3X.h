@@ -418,6 +418,7 @@ struct injected_state {
 	int aliased_civ_noun_bits;
 	int aliased_civ_adjective_bits;
 	int aliased_civ_formal_name_bits;
+	int aliased_leader_name_bits;
 
 	// Stores resource access bits for resources beyond the first 32, used to fix the phantom resource bug. Initialized to NULL/0 and allocated as
 	// necessary by get_extra_resource_bits. Contains an array of groups of unsigned ints. There is one group per city (allocated lazily so you

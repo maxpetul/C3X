@@ -2268,7 +2268,7 @@ patch_init_floating_point ()
 
 	is->city_loc_display_perspective = -1;
 
-	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = 0;
+	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = 0;
 
 	is->extra_available_resources = NULL;
 	is->extra_available_resources_capacity = 0;
@@ -3789,6 +3789,7 @@ apply_era_specific_names (Leader * leader)
 		{race->vtable->GetCountryName (race)  , &is->aliased_civ_formal_name_bits, leader->tribe_customization.civ_formal_name, sizeof leader->tribe_customization.civ_formal_name}
 	};
 
+	// Apply replacements to civ noun, adjective, and formal name
 	for (int n = 0; n < ARRAY_LEN (replaceable_names); n++) {
 		struct replaceable_name * repl = &replaceable_names[n];
 		if ((*repl->tracking_bits & leader_bit) || (repl->buf[0] == '\0')) {
@@ -3809,6 +3810,32 @@ apply_era_specific_names (Leader * leader)
 				repl->buf[0] = '\0';
 				*repl->tracking_bits &= ~leader_bit;
 			}
+		}
+	}
+
+	// Apply replacement to leader name & gender
+	if ((is->aliased_leader_name_bits & leader_bit) || (leader->tribe_customization.leader_name[0] == '\0')) {
+		char * base_name = race->vtable->GetLeaderName (race);
+		char * replacement_name = NULL;
+		int replacement_gender; // Only used if replacement_name is
+		if (leader->Era < ERA_ALIAS_LIST_CAPACITY)
+			for (int k = 0; k < is->current_config.count_leader_era_alias_lists; k++) {
+				struct era_alias_list * list = &is->current_config.leader_era_alias_lists[k];
+				if (strcmp (list->key, base_name) == 0) {
+					replacement_name = list->aliases[leader->Era];
+					replacement_gender = (list->gender_bits >> leader->Era) & 1;
+					break;
+				}
+			}
+		if (replacement_name != NULL) {
+			strncpy (leader->tribe_customization.leader_name, replacement_name, sizeof leader->tribe_customization.leader_name);
+			leader->tribe_customization.leader_name[(sizeof leader->tribe_customization.leader_name) - 1] = '\0';
+			leader->tribe_customization.leader_gender = replacement_gender;
+			is->aliased_leader_name_bits |= leader_bit;
+		} else {
+			leader->tribe_customization.leader_name[0] = '\0';
+			// Don't need to clear custom leader gender since it's not used unless a custom name was set
+			is->aliased_leader_name_bits &= ~leader_bit;
 		}
 	}
 }
@@ -3839,8 +3866,9 @@ patch_do_save_game (char const * file_path, char param_2, GUID * guid)
 		if (is->aliased_civ_noun_bits        & leader_bit) leader->tribe_customization.civ_noun       [0] = '\0';
 		if (is->aliased_civ_adjective_bits   & leader_bit) leader->tribe_customization.civ_adjective  [0] = '\0';
 		if (is->aliased_civ_formal_name_bits & leader_bit) leader->tribe_customization.civ_formal_name[0] = '\0';
+		if (is->aliased_leader_name_bits     & leader_bit) leader->tribe_customization.leader_name    [0] = '\0';
 	}
-	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = 0;
+	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = 0;
 
 	int tr = do_save_game (file_path, param_2, guid);
 
@@ -4065,7 +4093,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		is->saved_barb_culture_group = -1;
 
 	// Clear old alias bits
-	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = 0;
+	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = 0;
 
 	return tr;
 }
