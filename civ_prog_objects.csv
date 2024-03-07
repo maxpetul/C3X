@@ -489,6 +489,8 @@ define,	   0x55A370,	0x566280,	0x55A320,	"Leader_get_gender",				"int (__fastcal
 define,	   0x55A210,	0x566120,	0x55A1C0,	"Leader_get_civ_adjective",			"char * (__fastcall *) (Leader * this)"
 define,	   0x55A240,	0x566150,	0x55A1F0,	"Leader_get_civ_noun",				"char * (__fastcall *) (Leader * this)"
 define,	   0x55A340,	0x566250,	0x55A2F0,	"Leader_get_civ_formal_name",			"char * (__fastcall *) (Leader * this)"
+define,	   0x55A2C0,	0x0,		0x0,		"Leader_get_title",				"char * (__fastcall *) (Leader * this)"
+repl call, 0x593614,	0x0,		0x0,		"Leader_get_player_title_for_intro_popup",	""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

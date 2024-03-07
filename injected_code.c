@@ -3776,24 +3776,40 @@ void
 apply_era_specific_names (Leader * leader)
 {
 	int leader_bit = 1 << leader->ID;
-	if ((is->aliased_civ_noun_bits & leader_bit) || (leader->tribe_customization.civ_noun[0] == '\0')) {
-		leader->tribe_customization.civ_noun[0] = '\0'; // Clear this so it doesn't interfere with getting the base name
-		char * base = Leader_get_civ_noun (leader);
-		char * replacement = NULL;
-		if (leader->Era < ERA_ALIAS_LIST_CAPACITY)
-			for (int n = 0; n < is->current_config.count_civ_era_alias_lists; n++) {
-				struct era_alias_list * list = &is->current_config.civ_era_alias_lists[n];
-				if (strcmp (list->key, base) == 0) {
-				    replacement = list->aliases[leader->Era];
-				    break;
+	Race * race = &p_bic_data->Races[leader->RaceID];
+
+	struct replaceable_name {
+		char * base_name;
+		int * tracking_bits;
+		char * buf;
+		int buf_size;
+	} replaceable_names[] = {
+		{race->vtable->GetAdjectiveName (race), &is->aliased_civ_adjective_bits  , leader->tribe_customization.civ_adjective  , sizeof leader->tribe_customization.civ_adjective},
+		{race->vtable->GetSingularName (race) , &is->aliased_civ_noun_bits       , leader->tribe_customization.civ_noun       , sizeof leader->tribe_customization.civ_noun},
+		{race->vtable->GetCountryName (race)  , &is->aliased_civ_formal_name_bits, leader->tribe_customization.civ_formal_name, sizeof leader->tribe_customization.civ_formal_name}
+	};
+
+	for (int n = 0; n < ARRAY_LEN (replaceable_names); n++) {
+		struct replaceable_name * repl = &replaceable_names[n];
+		if ((*repl->tracking_bits & leader_bit) || (repl->buf[0] == '\0')) {
+			char * replacement = NULL;
+			if (leader->Era < ERA_ALIAS_LIST_CAPACITY)
+				for (int k = 0; k < is->current_config.count_civ_era_alias_lists; k++) {
+					struct era_alias_list * list = &is->current_config.civ_era_alias_lists[k];
+					if (strcmp (list->key, repl->base_name) == 0) {
+						replacement = list->aliases[leader->Era];
+						break;
+					}
 				}
+			if (replacement != NULL) {
+				strncpy (repl->buf, replacement, repl->buf_size);
+				repl->buf[repl->buf_size - 1] = '\0';
+				*repl->tracking_bits |= leader_bit;
+			} else {
+				repl->buf[0] = '\0';
+				*repl->tracking_bits &= ~leader_bit;
 			}
-		if (replacement != NULL) {
-			strncpy (leader->tribe_customization.civ_noun, replacement, sizeof leader->tribe_customization.civ_noun);
-			leader->tribe_customization.civ_noun[(sizeof leader->tribe_customization.civ_noun) - 1] = '\0';
-			is->aliased_civ_noun_bits |= leader_bit;
-		} else
-			is->aliased_civ_noun_bits &= ~leader_bit;
+		}
 	}
 }
 
@@ -6569,10 +6585,9 @@ patch_do_open_load_game_file_picker (void * this)
 int __fastcall
 patch_show_intro_after_load_popup (void * this, int edx, int param_1, int param_2)
 {
-	if (! is->suppress_intro_after_load_popup) {
-		apply_era_specific_names (&leaders[p_main_screen_form->Player_CivID]);
+	if (! is->suppress_intro_after_load_popup)
 		return patch_show_popup (this, __, param_1, param_2);
-	} else {
+	else {
 		is->suppress_intro_after_load_popup = 0;
 		return 0;
 	}
@@ -8110,6 +8125,15 @@ patch_Leader_enter_new_era (Leader * this, int edx, bool param_1, bool no_online
 {
 	Leader_enter_new_era (this, __, param_1, no_online_sync);
 	apply_era_specific_names (this);
+}
+
+char * __fastcall
+patch_Leader_get_player_title_for_intro_popup (Leader * this)
+{
+	// Normally the era-specific names are applied later, after game loading is finished, but in this case we apply the player's names ahead of
+	// time so they appear on the intro popup. "this" will always refer to the human player in this call.
+	apply_era_specific_names (this);
+	return Leader_get_title (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
