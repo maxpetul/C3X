@@ -3795,7 +3795,10 @@ apply_era_specific_names (Leader * leader)
 		if ((*repl->tracking_bits & leader_bit) || (repl->buf[0] == '\0')) {
 			char * replacement = NULL;
 			if (leader->Era < ERA_ALIAS_LIST_CAPACITY)
-				for (int k = 0; k < is->current_config.count_civ_era_alias_lists; k++) {
+				// Search through the list of aliases in reverse order so that, if the same key was listed multiple times, the last
+				// appearance overrides the earlier ones. This is important b/c when configs are loaded, their aliases get appended to
+				// the list.
+				for (int k = is->current_config.count_civ_era_alias_lists - 1; k >= 0; k--) {
 					struct era_alias_list * list = &is->current_config.civ_era_alias_lists[k];
 					if (strcmp (list->key, repl->base_name) == 0) {
 						replacement = list->aliases[leader->Era];
@@ -3819,7 +3822,7 @@ apply_era_specific_names (Leader * leader)
 		char * replacement_name = NULL;
 		int replacement_gender; // Only used if replacement_name is
 		if (leader->Era < ERA_ALIAS_LIST_CAPACITY)
-			for (int k = 0; k < is->current_config.count_leader_era_alias_lists; k++) {
+			for (int k = is->current_config.count_leader_era_alias_lists - 1; k >= 0; k--) {
 				struct era_alias_list * list = &is->current_config.leader_era_alias_lists[k];
 				if (strcmp (list->key, base_name) == 0) {
 					replacement_name = list->aliases[leader->Era];
