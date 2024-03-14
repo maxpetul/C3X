@@ -26,7 +26,7 @@ struct SoundCore;
 
 struct SoundCoreVTable {
 	void * omitted[4];
-	int (__thiscall * load_file) (SoundCore *, char *); // takes file path
+	int (__thiscall * load_file) (SoundCore *, char const *); // takes file path
 	void * omitted_2[2];
 	int (__thiscall * play) (SoundCore *);
 	void * omitted_3[8];
@@ -49,7 +49,7 @@ struct SoundCore {
 
 #define SCT_WAV 1
 typedef int (__cdecl * InitSoundTimer) (int param_1, int param_2);
-typedef int (__cdecl * CreateSound) (SoundCore ** out_sound_core, char * file_path, int sound_core_type);
+typedef int (__cdecl * CreateSound) (SoundCore ** out_sound_core, char const * file_path, int sound_core_type);
 typedef int (__cdecl * CreateWaveDevice) (WaveDevice ** out, unsigned param_2);
 
 int APIENTRY
@@ -94,7 +94,7 @@ WinMain (HINSTANCE inst, HINSTANCE prev_inst, char * cmd_line, int show_cmd)
 	create_wave_device (&wave_device, 0); // second parameter is not used
 	wave_device->vtable->initialize (wave_device, window, 2); // pass 2 for flags. I think that's what Civ 3 uses.
 
-	char * hawk_path = "..\\Sounds\\Ambience Sfx\\Hawk.wav";
+	char const * hawk_path = "..\\Sounds\\Ambience Sfx\\Hawk.wav";
 	SoundCore * core;
 	int result = create_sound (&core, hawk_path, SCT_WAV);
 	printf ("create_sound result: %d\n", result);
