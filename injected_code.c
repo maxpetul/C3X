@@ -212,7 +212,7 @@ reset_to_base_config ()
 	// Free era alias lists
 	if (cc->civ_era_alias_lists != NULL) {
 		for (int n = 0; n < cc->count_civ_era_alias_lists; n++) {
-			struct era_alias_list * list = &cc->civ_era_alias_lists[n];
+			struct civ_era_alias_list * list = &cc->civ_era_alias_lists[n];
 			free (list->key);
 			for (int k = 0; k < ERA_ALIAS_LIST_CAPACITY; k++)
 				free (list->aliases[k]);
@@ -223,10 +223,12 @@ reset_to_base_config ()
 	}
 	if (cc->leader_era_alias_lists != NULL) {
 		for (int n = 0; n < cc->count_leader_era_alias_lists; n++) {
-			struct era_alias_list * list = &cc->leader_era_alias_lists[n];
+			struct leader_era_alias_list * list = &cc->leader_era_alias_lists[n];
 			free (list->key);
-			for (int k = 0; k < ERA_ALIAS_LIST_CAPACITY; k++)
+			for (int k = 0; k < ERA_ALIAS_LIST_CAPACITY; k++) {
 				free (list->aliases[k]);
+				free (list->titles[k]);
+			}
 		}
 		free (cc->leader_era_alias_lists);
 		cc->leader_era_alias_lists = NULL;
@@ -429,7 +431,7 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 }
 
 enum recognizable_parse_result
-parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_era_alias_list, bool leader_else_civ_name)
+parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_leader_or_civ_alias_list, bool leader_else_civ_name)
 {
 	char * cur = *p_cursor;
 	struct string_slice key;
@@ -437,7 +439,8 @@ parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_line
 	    parse_string (&cur, &key) &&
 	    skip_punctuation (&cur, ':')) {
 
-		char * aliases[ERA_ALIAS_LIST_CAPACITY];
+		char * aliases[ERA_ALIAS_LIST_CAPACITY] = {0};
+		char * titles[ERA_ALIAS_LIST_CAPACITY] = {0};
 		int alias_count = 0,
 		    female_bits = 0,
 		    gender_specified_bits = 0; // For each alias, set to 1 if a gender was specified
@@ -447,13 +450,17 @@ parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_line
 				if (alias_count < ERA_ALIAS_LIST_CAPACITY)
 					aliases[alias_count] = extract_slice (&alias);
 
-				// If we're parsing a list of leader names, read in the gender specifier if present
+				// If we're parsing a list of leader names, read in the gender & title if present
 				if (leader_else_civ_name) {
 					char * gender_cur = cur;
 					struct string_slice gender;
+					struct string_slice title = {0};
 					if (   skip_punctuation (&gender_cur, '(')
 					    && parse_string (&gender_cur, &gender)
-					    && skip_punctuation (&gender_cur, ')')
+					    && (   skip_punctuation (&gender_cur, ')')
+						|| (   skip_punctuation (&gender_cur, ',')
+						    && parse_string (&gender_cur, &title)
+						    && skip_punctuation (&gender_cur, ')')))
 					    && (   slice_matches_str (&gender, "M")
 						|| slice_matches_str (&gender, "m")
 						|| slice_matches_str (&gender, "F")
@@ -463,6 +470,8 @@ parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_line
 								female_bits |= 1 << alias_count;
 							gender_specified_bits |= 1 << alias_count;
 						}
+						if (title.len > 0)
+							titles[alias_count] = extract_slice (&title);
 						cur = gender_cur;
 					}
 				}
@@ -496,18 +505,27 @@ parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_line
 			return RPR_UNRECOGNIZED;
 		}
 
-		struct era_alias_list * out = out_era_alias_list;
-		memset (out, 0, sizeof *out); // Make sure unspecified aliases are NULL
-		out->key = extract_slice (&key);
-		for (int n = 0; n < alias_count; n++)
-			out->aliases[n] = aliases[n];
-
-		// Set gender bits
 		if (leader_else_civ_name) {
+			struct leader_era_alias_list * out = out_leader_or_civ_alias_list;
+			memset (out, 0, sizeof *out); // Make sure unspecified aliases & titles are NULL
+			out->key = extract_slice (&key);
+			for (int n = 0; n < alias_count; n++) {
+				out->aliases[n] = aliases[n];
+				out->titles[n] = titles[n];
+			}
+
+			// Set gender bits
 			int unreplaced_bits = (race_matching_key->LeaderGender == 0) ? 0 : ~0;
 			out->gender_bits = (unreplaced_bits & ~gender_specified_bits) | female_bits;
-		} else
-			out->gender_bits = 0;
+
+
+		} else {
+			struct civ_era_alias_list * out = out_leader_or_civ_alias_list;
+			memset (out, 0, sizeof *out);
+			out->key = extract_slice (&key);
+			for (int n = 0; n < alias_count; n++)
+				out->aliases[n] = aliases[n];
+		}
 
 		return RPR_OK;
 	} else
@@ -515,15 +533,15 @@ parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_line
 }
 
 enum recognizable_parse_result
-parse_civ_name_alias_list  (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_era_alias_list)
+parse_civ_name_alias_list  (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_civ_era_alias_list)
 {
-	return parse_era_alias_list (p_cursor, p_unrecognized_lines, out_era_alias_list, false);
+	return parse_era_alias_list (p_cursor, p_unrecognized_lines, out_civ_era_alias_list, false);
 }
 
 enum recognizable_parse_result
-parse_leader_name_alias_list  (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_era_alias_list)
+parse_leader_name_alias_list  (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_leader_era_alias_list)
 {
-	return parse_era_alias_list (p_cursor, p_unrecognized_lines, out_era_alias_list, true);
+	return parse_era_alias_list (p_cursor, p_unrecognized_lines, out_leader_era_alias_list, true);
 }
 
 // Recognizable items are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
@@ -948,7 +966,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				} else if (slice_matches_str (&p.key, "civ_aliases_by_era")) {
 					if (! read_recognizables (&value,
 								  &unrecognized_lines,
-								  sizeof (struct era_alias_list),
+								  sizeof (struct civ_era_alias_list),
 								  parse_civ_name_alias_list,
 								  (void **)&cfg->civ_era_alias_lists,
 								  &cfg->count_civ_era_alias_lists))
@@ -956,7 +974,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				} else if (slice_matches_str (&p.key, "leader_aliases_by_era")) {
 					if (! read_recognizables (&value,
 								  &unrecognized_lines,
-								  sizeof (struct era_alias_list),
+								  sizeof (struct leader_era_alias_list),
 								  parse_leader_name_alias_list,
 								  (void **)&cfg->leader_era_alias_lists,
 								  &cfg->count_leader_era_alias_lists))
@@ -3799,7 +3817,7 @@ apply_era_specific_names (Leader * leader)
 				// appearance overrides the earlier ones. This is important b/c when configs are loaded, their aliases get appended to
 				// the list.
 				for (int k = is->current_config.count_civ_era_alias_lists - 1; k >= 0; k--) {
-					struct era_alias_list * list = &is->current_config.civ_era_alias_lists[k];
+					struct civ_era_alias_list * list = &is->current_config.civ_era_alias_lists[k];
 					if (strcmp (list->key, repl->base_name) == 0) {
 						replacement = list->aliases[leader->Era];
 						break;
@@ -3820,24 +3838,32 @@ apply_era_specific_names (Leader * leader)
 	if ((is->aliased_leader_name_bits & leader_bit) || (leader->tribe_customization.leader_name[0] == '\0')) {
 		char * base_name = race->vtable->GetLeaderName (race);
 		char * replacement_name = NULL;
+		char * replacement_title = NULL;
 		int replacement_gender; // Only used if replacement_name is
 		if (leader->Era < ERA_ALIAS_LIST_CAPACITY)
 			for (int k = is->current_config.count_leader_era_alias_lists - 1; k >= 0; k--) {
-				struct era_alias_list * list = &is->current_config.leader_era_alias_lists[k];
+				struct leader_era_alias_list * list = &is->current_config.leader_era_alias_lists[k];
 				if (strcmp (list->key, base_name) == 0) {
 					replacement_name = list->aliases[leader->Era];
+					replacement_title = list->titles[leader->Era];
 					replacement_gender = (list->gender_bits >> leader->Era) & 1;
 					break;
 				}
 			}
 		if (replacement_name != NULL) {
-			strncpy (leader->tribe_customization.leader_name, replacement_name, sizeof leader->tribe_customization.leader_name);
-			leader->tribe_customization.leader_name[(sizeof leader->tribe_customization.leader_name) - 1] = '\0';
-			leader->tribe_customization.leader_gender = replacement_gender;
+			TribeCustomization * tc = &leader->tribe_customization;
+			strncpy (tc->leader_name, replacement_name, sizeof tc->leader_name);
+			tc->leader_name[(sizeof tc->leader_name) - 1] = '\0';
+			tc->leader_gender = replacement_gender;
+			if (replacement_title != NULL) {
+				strncpy (tc->leader_title, replacement_title, sizeof tc->leader_title);
+				tc->leader_title[(sizeof tc->leader_title) - 1] = '\0';
+			}
 			is->aliased_leader_name_bits |= leader_bit;
 		} else {
 			leader->tribe_customization.leader_name[0] = '\0';
 			// Don't need to clear custom leader gender since it's not used unless a custom name was set
+			leader->tribe_customization.leader_title[0] = '\0';
 			is->aliased_leader_name_bits &= ~leader_bit;
 		}
 	}

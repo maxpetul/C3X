@@ -42,12 +42,20 @@ struct mill {
 	short flags;
 };
 
-// A list of per-era aliases for a civ's noun, adjective, or formal name.
 #define ERA_ALIAS_LIST_CAPACITY 4 // Must not exceed 32 so we can store all genders as bits in an int
-struct era_alias_list {
+
+// A list of per-era aliases for a civ's noun, adjective, or formal name.
+struct civ_era_alias_list {
+	char * key;
+	char * aliases[ERA_ALIAS_LIST_CAPACITY];
+};
+
+// A list of per-era aliases for a civ's leader's name, including genders and (optionally) titles.
+struct leader_era_alias_list {
 	char * key;
 	char * aliases[ERA_ALIAS_LIST_CAPACITY];
 	int gender_bits; // Gender of each alias. Like LeaderGender in the Race object, 0 for male and 1 for female.
+	char * titles[ERA_ALIAS_LIST_CAPACITY]; // Title for each alias. May be NULL.
 };
 
 enum retreat_rules {
@@ -163,9 +171,9 @@ struct c3x_config {
 	int extra_unit_maintenance_per_shields;
 	enum special_zone_of_control_rules special_zone_of_control_rules;
 	enum special_defensive_bombard_rules special_defensive_bombard_rules;
-	struct era_alias_list * civ_era_alias_lists;
+	struct civ_era_alias_list * civ_era_alias_lists;
 	int count_civ_era_alias_lists;
-	struct era_alias_list * leader_era_alias_lists;
+	struct leader_era_alias_list * leader_era_alias_lists;
 	int count_leader_era_alias_lists;
 
 	bool enable_trade_net_x;
