@@ -1572,6 +1572,7 @@ compare_mill_tiles (void const * vp_a, void const * vp_b)
 void __fastcall
 patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups)
 {
+	is->is_computing_resource_access = true;
 	int extra_resource_count = not_below (0, p_bic_data->ResourceTypeCount - 32);
 	int ints_per_city = 1 + extra_resource_count/32;
 	memset (is->extra_available_resources, 0, is->extra_available_resources_capacity * ints_per_city * sizeof (unsigned));
@@ -1614,6 +1615,7 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups
 	}
 
 	recompute_mill_yields_after_resource_change (NULL);
+	is->is_computing_resource_access = false;
 }
 
 Tile *
@@ -2260,7 +2262,7 @@ patch_init_floating_point ()
 	}
 
 	is->tnx_cache = NULL;
-	is->is_computing_city_connections = false;
+	is->is_computing_city_connections = is->is_computing_resource_access = false;
 	is->keep_tnx_cache = false;
 	is->paused_for_popup = false;
 	is->time_spent_paused_during_popup = 0;
@@ -8076,6 +8078,7 @@ patch_Leader_record_export (Leader * this, int edx, int importer_civ_id, int res
 {
 	bool exported = Leader_record_export (this, __, importer_civ_id, resource_id);
 	if (exported &&
+	    (! is->is_computing_resource_access) && // if we're not already running recompute_resources
 	    (is->mill_input_resource_bits[resource_id>>3] & (1 << (resource_id & 7)))) // if the traded resource is an input to any mill
 		patch_Trade_Net_recompute_resources (p_trade_net, __, false);
 	return exported;
@@ -8086,6 +8089,7 @@ patch_Leader_erase_export (Leader * this, int edx, int importer_civ_id, int reso
 {
 	bool erased = Leader_erase_export (this, __, importer_civ_id, resource_id);
 	if (erased &&
+	    (! is->is_computing_resource_access) && // if we're not already running recompute_resources
 	    (is->mill_input_resource_bits[resource_id>>3] & (1 << (resource_id & 7)))) // if the traded resource is an input to any mill
 		patch_Trade_Net_recompute_resources (p_trade_net, __, false);
 	return erased;

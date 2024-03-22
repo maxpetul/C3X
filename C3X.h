@@ -382,6 +382,7 @@ struct injected_state {
 	void * tnx_cache; // Cache object used by Trade Net X. Initially NULL, must be recreated every time a new map is loaded.
 	enum init_state tnx_init_state;
 	bool is_computing_city_connections; // Set to true only while Trade_Net::recompute_city_connections is running
+	bool is_computing_resource_access; // Set to true only while Trade_Net::recompute_resources is running
 	bool keep_tnx_cache;
 
 	bool paused_for_popup; // Set to true while a popup, map message, or the diplo screen is open
