@@ -367,7 +367,8 @@ parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines,
 	struct string_slice name, amount_str;
 	City_Order order;
 	int amount;
-	if (parse_string (&cur, &name) &&
+	if (skip_white_space (&cur),
+	    parse_string (&cur, &name) &&
 	    skip_punctuation (&cur, ':') &&
 	    parse_string (&cur, &amount_str) &&
 	    read_int (&amount_str, &amount)) {
@@ -390,7 +391,8 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 {
 	char * cur = *p_cursor;
 	struct string_slice improv_name;
-	if (parse_string (&cur, &improv_name) &&
+	if (skip_white_space (&cur) &&
+	    parse_string (&cur, &improv_name) &&
 	    skip_punctuation (&cur, ':')) {
 
 		short flags = 0;
