@@ -1418,6 +1418,18 @@ typedef enum animation_type {
 	AT_PLANT    = 0x12,
 } AnimationType;
 
+typedef enum espionage_mission {
+	EM_ESTABLISH_EMBASSY   = 0,
+	EM_INVESTIGATE_CITY    = 1,
+	EM_STEAL_TECHNOLOGY    = 2,
+	EM_STEAL_WORLD_MAP     = 3,
+	EM_PLANT_MOLE          = 4,
+	EM_STEAL_PLANS         = 5,
+	EM_BRIBE_CITY          = 6,
+	EM_SABOTAGE_PRODUCTION = 7,
+	EM_EXPOSE_MOLE         = 8,
+} EspionageMission;
+
 struct IntList
 {
   int field_0;
@@ -3366,14 +3378,14 @@ struct Culture
 struct Espionage
 {
   Base Base;
-  int field_1C;
-  int field_20;
-  int field_24;
+  int civ_id;
+  int base_success_chance; // percentage
+  EspionageMission mission;
   int Type;
-  int field_2C;
+  int city_id;
   int field_30;
   int field_34;
-  int field_38;
+  int cost;
 };
 
 struct CTPG
