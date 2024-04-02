@@ -125,12 +125,13 @@ INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.
 
 Notes about installation:
-1. When installing, the mod will create a backup of the original unmodded executable named "Civ3Conquests-Unmodded.exe".
-2. To uninstall the mod, delete the modded executable then rename the backed up version mentioned above to "Civ3Conquests.exe".
-3. It is not necessary to uninstall the mod before installing a different version.
-4. Even after installation, the mod still depends on some files in the mod folder, specifically the config file and the Art & Text folders.
-5. I've received multiple reports that RUN.bat doesn't work while installing does, so know that installation is the more reliable option.
-6. Rômulo Prado reports that RUN.bat started working for him after he installed the MS Visual C++ Redistributables versions 2005 and 2019 (while installing GOG Galaxy).
+1. If your Civ 3 is installed inside Program Files then it's necessary to run INSTALL.bat as administrator. This is because admin permissions are required to edit anything within the Program Files directory.
+2. When installing, the mod will create a backup of the original unmodded executable named "Civ3Conquests-Unmodded.exe".
+3. To uninstall the mod, delete the modded executable then rename the backed up version mentioned above to "Civ3Conquests.exe".
+4. It is not necessary to uninstall the mod before installing a different version.
+5. Even after installation, the mod still depends on some files in the mod folder, so you need to keep it around.
+6. I've received multiple reports that RUN.bat doesn't work while installing does, so know that installation is the more reliable option.
+7. Rômulo Prado reports that RUN.bat started working for him after he installed the MS Visual C++ Redistributables versions 2005 and 2019 (while installing GOG Galaxy).
 
 COMPATIBILITY:
 - The mod is compatible with the GOG and Steam versions of Civ 3 Complete, and with the DRM-free executable available through PCGames.de.
@@ -170,7 +171,7 @@ SMALL WONDER FREE IMPROVEMENTS:
 The free improvements wonder effect (granaries from Pyramids etc.) now works on small wonders. Note to modders, to set this effect you must use a third party editor like Quintillus' (https://forums.civfanatics.com/threads/cross-platform-editor-for-conquests-now-available.377188/) because the option is grayed out in the standard editor. Even worse, if you set the effect then work on the BIQ in the standard editor, the effect won't be saved, so you'd need to set it every time or work exclusively in Quintillus' editor.
 
 ADJUSTABLE MIN CITY DISTANCE:
-Change the adjust_minimum_city_separation config value to add that many tiles to the minimum allowed distance for founding cities. For example, setting it to 2 means cities can only be founded with 3 tiles separating them. Setting it to a negative number means cities are allowed to be founded next to one another. Additionally, by community request, the option disallow_founding_next_to_foreign_city can be used to disallow founding cities next to those of other civs even when the min separation is zero or less (if the min separation has not been reduced this option has no effect).
+The minimum allowed distance between cities can be changed by modifying the minimum_city_separation config option. A value of 1 corresponds to the standard game rules. A value of zero allows cities to be founded directly adjacent to one another. Values greater than 1 force cities to be founded farther apart than normal. Additionally, the option disallow_founding_next_to_foreign_city can be used to disallow founding cities next to those of other civs even when the min separation is zero.
 
 NO-RAZE:
 The "NoRaze" mod has been re-implemented inside C3X. To enable it, edit the config file mentioned above. There are separate options to prevent autorazing and razing by player's choice.
@@ -178,10 +179,11 @@ The "NoRaze" mod has been re-implemented inside C3X. To enable it, edit the conf
 HOW IT WORKS:
 Some parts of the mod (bug fixes, no-raze, no unit limit) are really just hex edits that are applied to the Civ program code. The real secret sauce is a system to compile and inject arbitrary C code into the process which makes it practical to implement new features in the game. The heart of the system is TCC (Tiny C Compiler) and much work puzzling out the functions and structs inside the executable (and thanks to Antal1987 for figuring out most of the structs years before I came along).
 
-The injected code, along with the rest of the mod, is fully open source. If you're curious how stack bombard was implemented, check out "patch_Main_Screen_Form_perform_action_on_tile" in "injected_code.c", I assure you the code is quite readable.
+C3X is open source. The C code that gets injected into the game's EXE is located in injected_code.c and the code to perform the injection is located in ep.c. You're invited to explore the source code if you're interested.
 
 MORE INFO, QUESTIONS, COMMENTS:
-See my thread on CivFanatics: https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/
+See my thread on CivFanatics: https://forums.civfanatics.com/threads/c3x-exe-mod-including-bug-fixes-stack-bombard-and-much-more.666881/
+The mod is also on GitHub: https://github.com/maxpetul/C3X
 
 SPECIAL THANKS:
 1. Antal1987 for his work reverse engineering Civ3. See: https://github.com/Antal1987/C3CPatchFramework
