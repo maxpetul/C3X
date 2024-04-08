@@ -1,10 +1,11 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 17 Preview 2
+Release 17 Preview 3
 
 INCLUDES (** = new in latest version):
 Convenience features:
  - Stack unit commands
   - Stack bombard
+   - ** Fix a rare edge case where stack bombard would continue attacking an empty tile
   - Worker buttons (irrigate, road, etc.) become stack buttons by holding CTRL
   - Stack fortify, upgrade, and disband also with CTRL
  - Disorder warning
@@ -45,6 +46,7 @@ AI enhancements:
  - AI routine for "pop units" that may appear in mods
  - Can limit the number of escorts the AI assigns to its naval transports and carriers
  - ** Adjustable AI worker requirement
+ - ** Option to stop AI from escorting units without the "requires escort" flag
 Bugs fixed:
  - AI pathfinding collides with invisible units (called the "submarine bug")
  - Science age beakers not actually awarded
@@ -78,6 +80,7 @@ Engine extensions:
  - Buildings can generate resources
   - ** Can also add the resource's yields to the city
   - ** Display icons for generated resources on top of the generating building
+  - ** Fix possible freeze when a trade deal is broken for a resource that's an input to a resource generating building
  - Buildings can be set as prerequisites for unit production
  - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
  - Option to modify rules for retreat eligibility
@@ -106,6 +109,7 @@ Engine extensions:
  - ** Zone of control changes
   - Allow land-to-sea and sea-to-land attacks, only using bombard stat
   - May be lethal
+   - ** Exclude units from lethal ZoC when they're entering a tile after capturing an enemy unit (fixes odd edge case)
   - May be exerted by air units
   - Show attack animation even when attacker is not at the top of its stack
  - ** Defensive bombard changes
@@ -120,6 +124,7 @@ Engine extensions:
  - ** Option to boost OCN increase from forbidden palaces in non-communal governments
  - ** Option to allow airdrops without airports
  - ** Can increase unit maintenance costs based on their build costs
+ - ** Civ and leader names can vary by era
 
 INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.

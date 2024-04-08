@@ -1,5 +1,12 @@
+* RELEASE 17 PREVIEW 3
+- Civ and leader names can vary by era
 - Option to stop AI from escorting units without the "requires escort" flag
+- Exclude units from lethal ZoC when they're entering a tile after capturing an enemy unit
+- Fix incorrect icons appearing for generated resources
 - Fix a rare edge case where stack bombard would continue attacking an empty tile
+- Option to hide icons for generation of non-bonus resources
+- Fix possible freeze when a trade deal is broken for a resource that's an input to a resource generating building
+- Allow list items to be placed on separate lines for perfume_specs and buildings_generating_resources
 
 * RELEASE 17 PREVIEW 2
 - Enable resource generating buildings to add the resource's yields to their city
