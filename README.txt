@@ -71,6 +71,7 @@ Engine extensions:
  - Land/sea intersections
  - Adjustable anarchy length
  - "Perfume" units or improvements to control how likely the AI is to build them
+  - ** Fix perfume not applying to all sub-types for unit types with multiple AI strategies
  - Reveal AI logic
   - Press P in city screen to see AI point value for each available build
   - Press L on map to see how desirable the AI finds each tile as a city location

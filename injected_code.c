@@ -178,12 +178,7 @@ reset_to_base_config ()
 {
 	struct c3x_config * cc = &is->current_config;
 
-	// Free list of perfume specs
-	if (cc->perfume_specs != NULL) {
-		free (cc->perfume_specs);
-		cc->perfume_specs = NULL;
-		cc->count_perfume_specs = 0;
-	}
+	stable_deinit (&cc->perfume_specs);
 
 	// Free building-unit prereqs table
 	size_t building_unit_prereqs_capacity = table_capacity (&cc->building_unit_prereqs);
@@ -360,12 +355,17 @@ enum recognizable_parse_result {
 	RPR_PARSE_ERROR
 };
 
+struct perfume_spec {
+	struct string_slice name;
+	int amount;
+};
+
 enum recognizable_parse_result
 parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_perfume_spec)
 {
 	char * cur = *p_cursor;
 	struct string_slice name, amount_str;
-	City_Order order;
+	City_Order unused;
 	int amount;
 	if (skip_white_space (&cur),
 	    parse_string (&cur, &name) &&
@@ -373,9 +373,9 @@ parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines,
 	    parse_string (&cur, &amount_str) &&
 	    read_int (&amount_str, &amount)) {
 		*p_cursor = cur;
-		if (find_city_order_by_name (&name, &order)) {
+		if (find_city_order_by_name (&name, &unused)) {
 			struct perfume_spec * out = out_perfume_spec;
-			out->target_order = order;
+			out->name = name;
 			out->amount = amount;
 			return RPR_OK;
 		} else {
@@ -880,6 +880,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		}
 	}
 
+	struct perfume_spec * perfume_spec_list = NULL;
+	int perfume_spec_count = 0;
+
 	struct config_parsing p = { .file_path = full_path, .text = text, .cursor = text, .key = {0}, .displayed_error_message = 0 };
 	struct error_line * unrecognized_lines = NULL;
 	while (1) {
@@ -918,8 +921,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								  &unrecognized_lines,
 								  sizeof (struct perfume_spec),
 								  parse_perfume_spec,
-								  (void **)&cfg->perfume_specs,
-								  &cfg->count_perfume_specs))
+								  (void **)&perfume_spec_list,
+								  &perfume_spec_count))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "building_prereqs_for_units")) {
 					if (! read_building_unit_prereqs (&value, &unrecognized_lines, &cfg->building_unit_prereqs))
@@ -1038,6 +1041,17 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		for (struct error_line * line = unrecognized_lines; line != NULL; line = line->next)
 			PopupForm_add_text (popup, __, line->text, false);
 		patch_show_popup (popup, __, 0, 0);
+	}
+
+	// Copy perfume specs from list to table
+	if (perfume_spec_list != NULL) {
+		char s[100] = {0};
+		for (int n = 0; n < perfume_spec_count; n++) {
+			struct perfume_spec * ps = &perfume_spec_list[n];
+			snprintf (s, (sizeof s) - 1, "%.*s", ps->name.len, ps->name.str);
+			stable_insert (&cfg->perfume_specs, s, ps->amount);
+		}
+		free (perfume_spec_list);
 	}
 
 	free (text);
@@ -1407,13 +1421,9 @@ intercept_consideration (int valuation)
 	}
 
 	// Apply perfume
-	for (int n = 0; n < is->current_config.count_perfume_specs; n++) {
-		struct perfume_spec const * spec = &is->current_config.perfume_specs[n];
-		if ((spec->target_order.OrderType == order->OrderType) && (spec->target_order.OrderID == order->OrderID)) {
-			valuation += spec->amount;
-			break;
-		}
-	}
+	int perfume_amount;
+	if (stable_look_up (&is->current_config.perfume_specs, order_name, &perfume_amount))
+		valuation += perfume_amount;
 
 	// Expand the list of valuations if necessary
 	reserve (sizeof is->ai_prod_valuations[0], (void **)&is->ai_prod_valuations, &is->ai_prod_valuations_capacity, is->count_ai_prod_valuations);

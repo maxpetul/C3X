@@ -23,11 +23,6 @@ struct table {
 	size_t len;
 };
 
-struct perfume_spec {
-	City_Order target_order;
-	int amount;
-};
-
 // A mill is a city improvement that spawns a resource. These are read from the "buildings_generating_resources" key in the config but are called
 // "mills" internally for brevity.
 enum mill_flag {
@@ -112,8 +107,7 @@ struct c3x_config {
 	bool enable_land_sea_intersections;
 	bool disallow_trespassing;
 	bool show_detailed_tile_info;
-	struct perfume_spec * perfume_specs;
-	int count_perfume_specs;
+	struct table perfume_specs; // Maps strings to ints
 	struct table building_unit_prereqs; // A mapping from int keys to int values. The keys are unit type IDs. If an ID is present as a key in the
 					    // table that means that unit type has one or more prereq buildings. The associated value is either a
 					    // pointer to a list of MAX_BUILDING_PREREQS_FOR_UNITS improvement IDs or a single encoded improv ID. The
