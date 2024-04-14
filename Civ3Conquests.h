@@ -3177,7 +3177,7 @@ struct Leader_vtable
   Unit * (__fastcall * find_unsupported_unit) (Leader * this);
   int m14;
   int m15;
-  int m16;
+  void (__fastcall * begin_turn) (Leader * this);
   int m17;
   int m18;
   int m19;

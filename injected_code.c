@@ -1,4 +1,3 @@
-
 #include "stdlib.h"
 #include "stdio.h"
 
@@ -1407,6 +1406,59 @@ can_generate_resource (int for_civ_id, struct mill * mill)
 	return (req_tech_id < 0) || Leader_has_tech (&leaders[for_civ_id], __, req_tech_id);
 }
 
+void
+init_unit_type_count (Leader * leader)
+{
+	int id = leader->ID;
+	struct table * counts = &is->unit_type_counts[id];
+
+	if (counts->len > 0)
+		table_deinit (counts);
+
+	if (p_units->Units != NULL)
+		for (int n = 0; n <= p_units->LastIndex; n++) {
+			Unit_Body * body = p_units->Units[n].Unit;
+			if ((body != NULL) && ((int)body != offsetof (Unit, Body)) && (body->CivID == id)) {
+				int prev_count;
+				if (! itable_look_up (counts, body->UnitTypeID, &prev_count))
+					prev_count = 0;
+				itable_insert (counts, body->UnitTypeID, prev_count + 1);
+			}
+		}
+
+	is->unit_type_count_init_bits |= 1 << id;
+}
+
+int
+get_unit_type_count (Leader * leader, int unit_type_id)
+{
+	int id = leader->ID;
+	struct table * counts = &is->unit_type_counts[id];
+
+	if ((is->unit_type_count_init_bits & 1<<id) == 0)
+		init_unit_type_count (leader);
+
+	int count;
+	if (itable_look_up (counts, unit_type_id, &count))
+		return count;
+	else
+		return 0;
+}
+
+void
+change_unit_type_count (Leader * leader, int unit_type_id, int amount)
+{
+	int id = leader->ID;
+	struct table * counts = &is->unit_type_counts[id];
+	if ((is->unit_type_count_init_bits & (1 << id)) == 0)
+		init_unit_type_count (leader);
+
+	int prev_amount;
+	if (! itable_look_up (counts, unit_type_id, &prev_amount))
+		prev_amount = 0;
+	itable_insert (counts, unit_type_id, prev_amount + amount);
+}
+
 int __stdcall
 intercept_consideration (int valuation)
 {
@@ -2370,6 +2422,10 @@ patch_init_floating_point ()
 
 	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
 	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
+
+	is->unit_type_count_init_bits = 0;
+	for (int n = 0; n < 32; n++)
+		memset (&is->unit_type_counts[n], 0, sizeof is->unit_type_counts[n]);
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -4054,6 +4110,11 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		is->interceptor_reset_lists[n].count = 0;
 	is->replay_for_players = 0;
 	table_deinit (&is->extra_defensive_bombards);
+
+	// Clear unit type counts
+	for (int n = 0; n < 32; n++)
+		table_deinit (&is->unit_type_counts[n]);
+	is->unit_type_count_init_bits = 0;
 
 	// Load resources.pcx
 	{
@@ -5781,12 +5842,17 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 void __fastcall
 patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
 {
+	int owner_id = this->Body.CivID;
+	int type_id = this->Body.UnitTypeID;
+
 	// Clear extra DBs used by this unit
 	int extra_dbs;
 	if (itable_look_up (&is->extra_defensive_bombards, this->Body.ID, &extra_dbs) && (extra_dbs != 0))
 		itable_insert (&is->extra_defensive_bombards, this->Body.ID, 0);
 
 	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
+
+	change_unit_type_count (&leaders[owner_id], type_id, -1);
 }
 
 void __fastcall
@@ -8201,9 +8267,18 @@ patch_Tile_Image_Info_draw_tourism_gold (Tile_Image_Info * this, int edx, PCX_Im
 }
 
 Unit * __fastcall
-patch_Leader_spawn_captured_unit (Leader * this, int edx, int type_id, int tile_x, int tile_y, int barb_tribe_id, int id, bool param_6, LeaderKind leader_kind, int race_id)
+patch_Leader_spawn_unit (Leader * this, int edx, int type_id, int tile_x, int tile_y, int barb_tribe_id, int id, bool param_6, LeaderKind leader_kind, int race_id)
 {
 	Unit * tr = Leader_spawn_unit (this, __, type_id, tile_x, tile_y, barb_tribe_id, id, param_6, leader_kind, race_id);
+	if (tr != NULL)
+		change_unit_type_count (this, type_id, 1);
+	return tr;
+}
+
+Unit * __fastcall
+patch_Leader_spawn_captured_unit (Leader * this, int edx, int type_id, int tile_x, int tile_y, int barb_tribe_id, int id, bool param_6, LeaderKind leader_kind, int race_id)
+{
+	Unit * tr = patch_Leader_spawn_unit (this, __, type_id, tile_x, tile_y, barb_tribe_id, id, param_6, leader_kind, race_id);
 	if ((tr != NULL) && is->moving_unit_to_adjacent_tile)
 		is->temporarily_disallow_lethal_zoc = true;
 	return tr;
