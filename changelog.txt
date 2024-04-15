@@ -1,5 +1,6 @@
 - Apply perfume to all unit types & buildings with the specified name
   - Fixes perfume only applying to one sub-type when a unit type has multiple AI strategies
+- Gray out units on right-click menu if they have no remaining moves
 
 * RELEASE 17 PREVIEW 3
 - Civ and leader names can vary by era

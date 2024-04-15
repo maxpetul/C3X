@@ -3064,7 +3064,7 @@ struct Context_Menu_Item
   int Status;
   int field_10;
   Tile_Image_Info *Image;
-  int field_18;
+  int text_color; // AFAIK 0 = black and 1 = red and the only options
 };
 
 struct Civilopedia_Article_vtable

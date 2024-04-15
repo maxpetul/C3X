@@ -95,6 +95,7 @@ struct c3x_config {
 	bool disallow_founding_next_to_foreign_city;
 	bool enable_trade_screen_scroll;
 	bool group_units_on_right_click_menu;
+	bool gray_out_units_on_menu_with_no_remaining_moves;
 	int anarchy_length_percent;
 	bool show_golden_age_turns_remaining;
 	bool show_zoc_attacks_from_mid_stack;

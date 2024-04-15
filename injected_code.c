@@ -2133,6 +2133,7 @@ patch_init_floating_point ()
 		{"disallow_founding_next_to_foreign_city"              , true , offsetof (struct c3x_config, disallow_founding_next_to_foreign_city)},
 		{"enable_trade_screen_scroll"                          , true , offsetof (struct c3x_config, enable_trade_screen_scroll)},
 		{"group_units_on_right_click_menu"                     , true , offsetof (struct c3x_config, group_units_on_right_click_menu)},
+		{"gray_out_units_on_menu_with_no_remaining_moves"      , true , offsetof (struct c3x_config, gray_out_units_on_menu_with_no_remaining_moves)},
 		{"show_golden_age_turns_remaining"                     , true , offsetof (struct c3x_config, show_golden_age_turns_remaining)},
 		{"show_zoc_attacks_from_mid_stack"                     , true , offsetof (struct c3x_config, show_zoc_attacks_from_mid_stack)},
 		{"cut_research_spending_to_avoid_bankruptcy"           , true , offsetof (struct c3x_config, cut_research_spending_to_avoid_bankruptcy)},
@@ -5136,7 +5137,7 @@ are_units_duplicate (Unit_Body * a, Unit_Body * b)
 }
 
 int __fastcall
-patch_Context_Menu_add_item_and_set_field_18 (Context_Menu * this, int edx, int item_id, char * text, int field_18)
+patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int item_id, char * text, int red)
 {
 	// Initialize the array of duplicate counts. The array is 0x100 items long because that's the maximum number of items a menu can have.
 	if (is->current_config.group_units_on_right_click_menu &&
@@ -5149,28 +5150,39 @@ patch_Context_Menu_add_item_and_set_field_18 (Context_Menu * this, int edx, int 
 	// Check if this menu item is a valid unit and grab pointers to its info
 	int unit_id;
 	Unit_Body * unit_body;
-	if (is->current_config.group_units_on_right_click_menu &&
-	    (0 <= (unit_id = item_id - (0x13 + p_bic_data->UnitTypeCount))) &&
+	bool disable = false;
+	if ((0 <= (unit_id = item_id - (0x13 + p_bic_data->UnitTypeCount))) &&
 	    (NULL != (unit_body = p_units->Units[unit_id].Unit)) &&
 	    (unit_body->UnitTypeID >= 0) && (unit_body->UnitTypeID < p_bic_data->UnitTypeCount)) {
 
-		// Loop over all existing menu items and check if any of them is a unit that's a duplicate of the one being added
-		for (int n = 0; n < this->Item_Count; n++) {
-			Context_Menu_Item * item = &this->Items[n];
-			int dup_unit_id = this->Items[n].Menu_Item_ID - (0x13 + p_bic_data->UnitTypeCount);
-			Unit_Body * dup_body;
-			if ((dup_unit_id >= 0) &&
-			    (NULL != (dup_body = p_units->Units[dup_unit_id].Unit)) &&
-			    are_units_duplicate (unit_body, dup_body)) {
-				// The new item is a duplicate of the nth. Mark that in the duplicate counts array and return without actually
-				// adding the item. It doesn't matter what value we return because the caller doesn't use it.
-				is->unit_menu_duplicates[n] += 1;
-				return 0;
+		if (is->current_config.group_units_on_right_click_menu) {
+			// Loop over all existing menu items and check if any of them is a unit that's a duplicate of the one being added
+			for (int n = 0; n < this->Item_Count; n++) {
+				Context_Menu_Item * item = &this->Items[n];
+				int dup_unit_id = this->Items[n].Menu_Item_ID - (0x13 + p_bic_data->UnitTypeCount);
+				Unit_Body * dup_body;
+				if ((dup_unit_id >= 0) &&
+				    (NULL != (dup_body = p_units->Units[dup_unit_id].Unit)) &&
+				    are_units_duplicate (unit_body, dup_body)) {
+					// The new item is a duplicate of the nth. Mark that in the duplicate counts array and return without actually
+					// adding the item. It doesn't matter what value we return because the caller doesn't use it.
+					is->unit_menu_duplicates[n] += 1;
+					return 0;
+				}
 			}
 		}
+
+		if (is->current_config.gray_out_units_on_menu_with_no_remaining_moves &&
+		    (unit_body->Moves >= Unit_get_max_move_points ((Unit *)((int)unit_body - offsetof (Unit, Body)))))
+			disable = true;
 	}
 
-	return Context_Menu_add_item_and_set_field_18 (this, __, item_id, text, field_18);
+	int tr = Context_Menu_add_item_and_set_color (this, __, item_id, text, red);
+
+	if (disable)
+		Context_Menu_disable_item (this, __, item_id);
+
+	return tr;
 }
 
 int __fastcall
@@ -6447,12 +6459,12 @@ int __fastcall patch_show_popup_option_1_razes (void *this, int edx, int param_1
 int __fastcall patch_show_popup_option_2_razes (void *this, int edx, int param_1, int param_2) { return show_razing_popup (this, param_1, param_2, 2); }
 
 int __fastcall
-patch_Context_Menu_add_abandon_city (Context_Menu * this, int edx, int item_id, char * text, bool param_3, int param_4)
+patch_Context_Menu_add_abandon_city (Context_Menu * this, int edx, int item_id, char * text, bool checkbox, Tile_Image_Info * image)
 {
 	if (is->current_config.prevent_razing_by_players)
 		return 0; // Return value is ignored by the caller
 	else
-		return Context_Menu_add_item (this, __, item_id, text, param_3, param_4);
+		return Context_Menu_add_item (this, __, item_id, text, checkbox, image);
 }
 
 char *
