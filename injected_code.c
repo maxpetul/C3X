@@ -7042,7 +7042,8 @@ patch_Unit_eval_escort_requirement (Unit * this)
 		return 1;
 
 	int base = Unit_eval_escort_requirement (this);
-	if (ai_strat & (UTAI_Naval_Transport | UTAI_Naval_Carrier | UTAI_Naval_Missile_Transport))
+	if ((~*p_human_player_bits & 1<<this->Body.CivID) && // Applying this to a human player's units messes with group movement (for some reason)
+	    (ai_strat & (UTAI_Naval_Transport | UTAI_Naval_Carrier | UTAI_Naval_Missile_Transport)))
 		return not_above (is->current_config.max_ai_naval_escorts, base);
 	else
 		return base;

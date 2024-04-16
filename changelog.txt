@@ -1,5 +1,6 @@
 - Apply perfume to all unit types & buildings with the specified name
   - Fixes perfume only applying to one sub-type when a unit type has multiple AI strategies
+- Fix max_ai_naval_escorts setting interfering with group movement of naval units belonging to human players
 
 * RELEASE 17 PREVIEW 3
 - Civ and leader names can vary by era
