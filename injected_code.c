@@ -5220,6 +5220,7 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 		}
 
 		if (is->current_config.gray_out_units_on_menu_with_no_remaining_moves &&
+		    (unit_body->CivID == p_main_screen_form->Player_CivID) &&
 		    (unit_body->Moves >= Unit_get_max_move_points ((Unit *)((int)unit_body - offsetof (Unit, Body)))))
 			disable = true;
 	}
