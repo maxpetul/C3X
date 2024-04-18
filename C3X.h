@@ -455,6 +455,10 @@ struct injected_state {
 	// it's one of several duplicate types created to spread multiple AI strategies out so each type has only one.
 	struct table unit_type_alt_strategies;
 
+	// Stores a linked list of unit type duplicates. Maps unit type IDs to the next duplicate ID. Use list_unit_type_duplicates to get the list of
+	// the duplicates of a particular type as an array.
+	struct table unit_type_duplicates;
+
 	// Tracks the number of "extra" defensive bombards units have performed, by their IDs. If the "blitz" special defensive bombard rule is
 	// activated, units with blitz get an extra chance to perform DB for each movement point they have beyond the first.
 	struct table extra_defensive_bombards;

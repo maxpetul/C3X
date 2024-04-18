@@ -345,6 +345,32 @@ find_city_order_by_name (struct string_slice const * name, City_Order * out)
 		return false;
 }
 
+// Returns a list of AI strat duplicates of the unit type with the given id. This means a list of all other unit types that are identical to the given
+// one except were separated out so each can have only one AI strategy. Returns the total number of duplicates, which may be greater than dup_ids_len.
+int
+list_unit_type_duplicates (int type_id, int * out_dup_ids, int dup_ids_len)
+{
+	// type_id may be a duplicate itself. Find the base type so we can start assembling the array from there. Otherwise we may miss some.
+	int alt_for_id = p_bic_data->UnitTypes[type_id].alternate_strategy_for_id;
+	int base_type_id = (alt_for_id >= 0) ? alt_for_id : type_id;
+
+	int tr = 0, current = base_type_id;
+	while (1) {
+		if (current != type_id) {
+			if (tr < dup_ids_len)
+				out_dup_ids[tr] = current;
+			tr++;
+		}
+		int next;
+		if (itable_look_up (&is->unit_type_duplicates, current, &next))
+			current = next;
+		else
+			break;
+	}
+
+	return tr;
+}
+
 // A "recognizable" is something that contains the name of a unit, building, etc. When parsing one, it's possible for it to be grammatically valid but
 // contain a name that doesn't match anything in the scenario data. That's a special kind of error. In that case, we record the error to report in a
 // popup and continue parsing.
@@ -2422,6 +2448,7 @@ patch_init_floating_point ()
 		stable_insert (&is->integer_config_offsets, integer_config_options[n].name, integer_config_options[n].offset);
 
 	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
+	memset (&is->unit_type_duplicates    , 0, sizeof is->unit_type_duplicates);
 	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
 
 	is->unit_type_count_init_bits = 0;
@@ -4132,13 +4159,33 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		is->resources_sheet = rs;
 	}
 
-	// Recreate table of alt strategies
+	// Recreate table of alt strategies mapping duplicates to their strategies
 	table_deinit (&is->unit_type_alt_strategies);
 	for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
 		int alt_for_id = p_bic_data->UnitTypes[n].alternate_strategy_for_id;
 		if (alt_for_id >= 0) {
 			record_unit_type_alt_strategy (n);
 			record_unit_type_alt_strategy (alt_for_id); // Record the original too so we know it has alternatives
+		}
+	}
+
+	// Recreate table of duplicates mapping unit types to the next duplicate
+	table_deinit (&is->unit_type_duplicates);
+	for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
+		int alt_for_id = p_bic_data->UnitTypes[n].alternate_strategy_for_id;
+		if (alt_for_id >= 0) {
+
+			// Find the type ID of the last duplicate in the list. alt_for_id refers to the original unit that was duplicated possibly
+			// multiple times. Begin searching there and, each time we find another duplicate, use its ID to continue the search. When
+			// we're done last_dup_id will be set to whichever ID in the list of duplicates is not already associated with another.
+			int last_dup_id = alt_for_id; {
+				int next;
+				while (itable_look_up (&is->unit_type_duplicates, last_dup_id, &next))
+					last_dup_id = next;
+			}
+
+			// Add this unit type to the end of the list of duplicates
+			itable_insert (&is->unit_type_duplicates, last_dup_id, n);
 		}
 	}
 
