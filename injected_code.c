@@ -5197,7 +5197,7 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 	// Check if this menu item is a valid unit and grab pointers to its info
 	int unit_id;
 	Unit_Body * unit_body;
-	bool disable = false;
+	bool disable = false, put_exhausted_image = false;
 	if ((0 <= (unit_id = item_id - (0x13 + p_bic_data->UnitTypeCount))) &&
 	    (NULL != (unit_body = p_units->Units[unit_id].Unit)) &&
 	    (unit_body->UnitTypeID >= 0) && (unit_body->UnitTypeID < p_bic_data->UnitTypeCount)) {
@@ -5219,16 +5219,24 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 			}
 		}
 
-		if (is->current_config.gray_out_units_on_menu_with_no_remaining_moves &&
-		    (unit_body->CivID == p_main_screen_form->Player_CivID) &&
-		    (unit_body->Moves >= Unit_get_max_move_points ((Unit *)((int)unit_body - offsetof (Unit, Body)))))
-			disable = true;
+		if (unit_body->CivID == p_main_screen_form->Player_CivID) {
+			if (is->current_config.gray_out_units_on_menu_with_no_remaining_moves &&
+			    (unit_body->Moves >= Unit_get_max_move_points ((Unit *)((int)unit_body - offsetof (Unit, Body)))))
+				disable = true;
+
+			else if ((unit_body->Status & 4) &&
+				 ! UnitType_has_ability (&p_bic_data->UnitTypes[unit_body->UnitTypeID], __, UTA_Blitz))
+				put_exhausted_image = true;
+		}
 	}
 
 	int tr = Context_Menu_add_item_and_set_color (this, __, item_id, text, red);
 
 	if (disable)
 		Context_Menu_disable_item (this, __, item_id);
+
+	if (put_exhausted_image)
+		Context_Menu_put_image_on_item (this, __, item_id, &p_city_form->City_Icons_Images.Icon_15_Food);
 
 	return tr;
 }
