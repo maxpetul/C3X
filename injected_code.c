@@ -8226,5 +8226,27 @@ patch_Leader_get_player_title_for_intro_popup (Leader * this)
 	return Leader_get_title (this);
 }
 
+void __fastcall
+patch_Fighter_animate_start_of_combat (Fighter * this, int edx, Unit * attacker, Unit * defender)
+{
+	// Temporarily clear the attacker retreat eligibility flag when needed so naval units are rotated and animated properly. Normally the game
+	// does not use ranged animations when the attacker can retreat and, worse, not using ranged anims means it also ignores the
+	// rotate-before-attack setting.
+	bool restore_attacker_retreat_eligibility = false;
+	if ((is->current_config.sea_retreat_rules != RR_STANDARD) &&
+	    (p_bic_data->UnitTypes[attacker->Body.UnitTypeID].Unit_Class == UTC_Sea) &&
+	    Unit_has_ability (attacker, __, UTA_Ranged_Attack_Animation) &&
+	    Unit_has_ability (defender, __, UTA_Ranged_Attack_Animation) &&
+	    this->attacker_eligible_to_retreat) {
+		this->attacker_eligible_to_retreat = false;
+		restore_attacker_retreat_eligibility = true;
+	}
+
+	Fighter_animate_start_of_combat (this, __, attacker, defender);
+
+	if (restore_attacker_retreat_eligibility)
+		this->attacker_eligible_to_retreat = true;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
