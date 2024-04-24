@@ -54,6 +54,12 @@ struct leader_era_alias_list {
 	char * titles[ERA_ALIAS_LIST_CAPACITY]; // Title for each alias. May be NULL.
 };
 
+struct unit_type_limit {
+	int per_civ;
+	int per_city;
+	int cities_per;
+};
+
 enum retreat_rules {
 	RR_STANDARD = 0,
 	RR_NONE,
@@ -171,6 +177,7 @@ struct c3x_config {
 	int count_civ_era_alias_lists;
 	struct leader_era_alias_list * leader_era_alias_lists;
 	int count_leader_era_alias_lists;
+	struct table unit_limits; // Maps unit type names (strings) to pointers to limit objects (struct unit_type_limit *)
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;

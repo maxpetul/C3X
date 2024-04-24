@@ -229,6 +229,8 @@ reset_to_base_config ()
 		cc->count_leader_era_alias_lists = 0;
 	}
 
+	stable_deinit (&cc->unit_limits);
+
 	// Free the linked list of loaded config names and the string name contained in each one
 	if (is->loaded_config_names != NULL) {
 		struct loaded_config_name * next = is->loaded_config_names;
@@ -1483,6 +1485,44 @@ change_unit_type_count (Leader * leader, int unit_type_id, int amount)
 	if (! itable_look_up (counts, unit_type_id, &prev_amount))
 		prev_amount = 0;
 	itable_insert (counts, unit_type_id, prev_amount + amount);
+}
+
+// If this unit type is limited, returns true and writes how many units of the type the given player is allowed to "out_limit". If the type is not
+// limited, returns false.
+bool
+get_unit_limit (Leader * leader, int unit_type_id, int * out_limit)
+{
+	UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
+	struct unit_type_limit * lim;
+	if ((unit_type_id >= 0) && (unit_type_id < p_bic_data->UnitTypeCount) &&
+	    stable_look_up (&is->current_config.unit_limits, type->Name, (int *)&lim)) {
+		int city_count = leader->Cities_Count;
+		int tr = lim->per_civ + lim->per_city * city_count;
+		if (lim->cities_per != 0)
+			tr += city_count / lim->cities_per;
+		*out_limit = tr;
+		return true;
+	} else
+		return false;
+}
+
+// This this unit type is limited, returns true and writes to "out_available" how many units the given player can add before reaching the limit. If
+// the type is not limited, returns false.
+bool
+get_available_unit_count (Leader * leader, int unit_type_id, int * out_available)
+{
+	int limit;
+	if (get_unit_limit (leader, unit_type_id, &limit)) {
+		int count = get_unit_type_count (leader, unit_type_id);
+		int dups[30];
+		int dups_count = list_unit_type_duplicates (unit_type_id, dups, ARRAY_LEN (dups));
+		for (int n = 0; n < dups_count; n++)
+			count += get_unit_type_count (leader, dups[n]);
+
+		*out_available = limit - count;
+		return true;
+	} else
+		return false;
 }
 
 int __stdcall
@@ -4743,6 +4783,11 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 			}
 		}
 	}
+
+	// Apply unit type limit
+	int available;
+	if (get_available_unit_count (&leaders[this->Body.CivID], unit_type_id, &available) && (available <= 0))
+		return false;
 
 	return base;
 }
