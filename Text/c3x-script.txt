@@ -101,4 +101,13 @@ Our treasury is depleted! Some of our cities can no longer afford production, an
 #text
 Razing cities is prohibited by the rules of this scenario.
 
+#C3X_LIMITED_UNIT_CHANGE
+#map_center 0
+#advisor Military
+#text
+$CITY0 can no longer work on a $UNIT1 because our civilization can only command at most $NUM2 $<#2:unit:units> of that type. Production has been switched to $UNIT3.
+#itemlist
+Zoom to City.
+Sounds Good.
+
 # ; This line must remain at end of file

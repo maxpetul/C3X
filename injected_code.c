@@ -8413,5 +8413,85 @@ patch_Leader_get_player_title_for_intro_popup (Leader * this)
 	return Leader_get_title (this);
 }
 
+void __fastcall
+patch_City_spawn_unit_if_done (City * this)
+{
+	bool skip_spawn = false;
+
+	// Apply unit limit. If this city's owner has reached the limit for the unit type it's building then force it to build something else.
+	int available;
+	if ((this->Body.Order_Type == COT_Unit) &&
+	    get_available_unit_count (&leaders[this->Body.CivID], this->Body.Order_ID, &available) &&
+	    (available <= 0)) {
+		int limited_unit_type_id = this->Body.Order_ID;
+
+		if (*p_human_player_bits & 1<<this->Body.CivID) {
+			// Find another type ID to build instead of the limited one
+			int replacement_type_id = -1; {
+				int limited_unit_strat = p_bic_data->UnitTypes[limited_unit_type_id].AI_Strategy,
+				    shields_in_box = this->Body.StoredProduction;
+				UnitType * replacement_type;
+				for (int can_type_id = 0; can_type_id < p_bic_data->UnitTypeCount; can_type_id++)
+					if (patch_City_can_build_unit (this, __, can_type_id, 1, 0, 0)) {
+						UnitType * candidate_type = &p_bic_data->UnitTypes[can_type_id];
+
+						// If we haven't found a replacement yet, use this one
+						if (replacement_type_id < 0) {
+							replacement_type_id = can_type_id;
+							replacement_type = candidate_type;
+
+						// Keep the prev replacement if it doesn't waste shields but this candidate would
+						} else if ((replacement_type->Cost >= shields_in_box) && (candidate_type->Cost < shields_in_box))
+							continue;
+
+						// Keep the prev if it shares an AI strategy with the limited unit but this candidate doesn't
+						else if (((replacement_type->AI_Strategy & limited_unit_strat) != 0) &&
+							 ((candidate_type  ->AI_Strategy & limited_unit_strat) == 0))
+							continue;
+
+						// At this point we know switching to the candidate would not cause us to waste shields and would not
+						// give us a worse match role-wise to the original limited unit. So pick it if it's better somehow,
+						// either a better role match or more expensive.
+						else if ((candidate_type->Cost > replacement_type->Cost) ||
+							 (((replacement_type->AI_Strategy & limited_unit_strat) == 0) &&
+							  ((candidate_type  ->AI_Strategy & limited_unit_strat) != 0))) {
+							replacement_type_id = can_type_id;
+							replacement_type = candidate_type;
+						}
+					}
+			}
+
+			if (replacement_type_id >= 0) {
+				City_set_production (this, __, COT_Unit, replacement_type_id, false);
+				if (this->Body.CivID == p_main_screen_form->Player_CivID) {
+					PopupForm * popup = get_popup_form ();
+					set_popup_str_param (0, this->Body.CityName, -1, -1);
+					set_popup_str_param (1, p_bic_data->UnitTypes[limited_unit_type_id].Name, -1, -1);
+					int limit = -1;
+					get_unit_limit (&leaders[this->Body.CivID], limited_unit_type_id, &limit);
+					set_popup_int_param (2, limit);
+					set_popup_str_param (3, p_bic_data->UnitTypes[replacement_type_id].Name, -1, -1);
+					popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_LIMITED_UNIT_CHANGE", -1, 0, 0, 0);
+					int response = patch_show_popup (popup, __, 0, 0);
+					if (response == 0)
+						City_zoom_to (this, __, 0);
+				}
+			}
+
+		} else {
+			City_Order unused;
+			patch_City_ai_choose_production (this, __, &unused);
+		}
+
+		// Just as a final check, if we weren't able to switch production off the limited unit, prevent it from being spawned so the limit
+		// doesn't get violated.
+		if ((this->Body.Order_Type == COT_Unit) && (this->Body.Order_ID == limited_unit_type_id))
+			skip_spawn = true;
+	}
+
+	if (! skip_spawn)
+		City_spawn_unit_if_done (this);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
