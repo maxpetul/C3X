@@ -2665,6 +2665,33 @@ cleanup:
 	pcx.vtable->destruct (&pcx, __, 0);
 }
 
+void
+init_unit_rcm_icons ()
+{
+	if (is->unit_rcm_icon_state != IS_UNINITED)
+		return;
+	is->unit_rcm_icon_state = IS_INIT_FAILED;
+
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
+
+	char temp_path[2*MAX_PATH];
+	get_mod_art_path ("UnitRCMIcons.pcx", temp_path, sizeof temp_path);
+
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if (pcx.JGL.Image == NULL) {
+		(*p_OutputDebugStringA) ("[C3X] Failed to load PCX file for unit RCM icons.");
+		goto cleanup;
+	}
+
+	for (int n = 0; n < COUNT_UNIT_RCM_ICONS; n++)
+		Tile_Image_Info_slice_pcx (&is->unit_rcm_icons[n], __, &pcx, 1, 1 + 16*n, 15, 15, 1, 0);
+
+	is->unit_rcm_icon_state = IS_OK;
+cleanup:
+	pcx.vtable->destruct (&pcx, __, 0);
+}
+
 int __cdecl
 patch_get_tile_occupier_for_ai_path (int x, int y, int pov_civ_id, bool respect_unit_invisibility)
 {

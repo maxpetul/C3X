@@ -306,6 +306,18 @@ struct ai_prod_valuation {
 	int point_value;
 };
 
+enum unit_rcm_icon {
+	URCMI_UNMOVED_CAN_ATTACK = 0,
+	URCMI_UNMOVED_NO_ATTACK,
+	URCMI_MOVED_CAN_ATTACK,
+	URCMI_MOVED_NO_ATTACK,
+	URCMI_CANT_MOVE,
+	URCMI_INTERCEPT_CAN_ATTACK,
+	URCMI_INTERCEPT_NO_ATTACK,
+
+	COUNT_UNIT_RCM_ICONS
+};
+
 struct injected_state {
 	// ==========
 	// These fields are valid at any time in the injected code because they're set by the patcher {
@@ -320,6 +332,7 @@ struct injected_state {
 	enum init_state tile_highlight_state;
 	enum init_state mod_info_button_images_state;
 	enum init_state disabled_command_img_state;
+	enum init_state unit_rcm_icon_state;
 
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
@@ -506,6 +519,12 @@ struct injected_state {
 	// ==========
 
 	Tile_Image_Info disabled_build_city_button_img;
+
+	// ==========
+	// } This field is only valid after init_unit_rcm_icons has been called and unit_rcm_icon_state equals IS_OK {
+	// ==========
+
+	Tile_Image_Info unit_rcm_icons[COUNT_UNIT_RCM_ICONS];
 
 	// ==========
 	// } These fields are valid only after init_tile_highlights as been called. {
