@@ -2692,6 +2692,18 @@ cleanup:
 	pcx.vtable->destruct (&pcx, __, 0);
 }
 
+void
+deinit_unit_rcm_icons ()
+{
+	if (is->unit_rcm_icon_state == IS_OK) {
+		for (int n = 0; n < COUNT_UNIT_RCM_ICONS; n++) {
+			Tile_Image_Info * tii = &is->unit_rcm_icons[n];
+			tii->vtable->destruct (tii, __, 0);
+		}
+		is->unit_rcm_icon_state = IS_UNINITED;
+	}
+}
+
 int __cdecl
 patch_get_tile_occupier_for_ai_path (int x, int y, int pov_civ_id, bool respect_unit_invisibility)
 {
@@ -4192,6 +4204,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	deinit_stackable_command_buttons ();
 	deinit_disabled_command_buttons ();
 	deinit_trade_scroll_buttons ();
+	deinit_unit_rcm_icons ();
 
 	// Need to clear this since the resource count might have changed
 	if (is->extra_available_resources != NULL) {
