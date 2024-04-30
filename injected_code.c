@@ -2200,6 +2200,7 @@ patch_init_floating_point ()
 		{"enable_trade_screen_scroll"                          , true , offsetof (struct c3x_config, enable_trade_screen_scroll)},
 		{"group_units_on_right_click_menu"                     , true , offsetof (struct c3x_config, group_units_on_right_click_menu)},
 		{"gray_out_units_on_menu_with_no_remaining_moves"      , true , offsetof (struct c3x_config, gray_out_units_on_menu_with_no_remaining_moves)},
+		{"put_movement_icons_on_units_on_menu"                 , true , offsetof (struct c3x_config, put_movement_icons_on_units_on_menu)},
 		{"show_golden_age_turns_remaining"                     , true , offsetof (struct c3x_config, show_golden_age_turns_remaining)},
 		{"show_zoc_attacks_from_mid_stack"                     , true , offsetof (struct c3x_config, show_zoc_attacks_from_mid_stack)},
 		{"cut_research_spending_to_avoid_bankruptcy"           , true , offsetof (struct c3x_config, cut_research_spending_to_avoid_bankruptcy)},
@@ -5312,7 +5313,11 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 			if (no_moves_left && is->current_config.gray_out_units_on_menu_with_no_remaining_moves)
 				disable = true;
 
-			if (true) { // TODO: Insert config option for RCM icons
+			// Put an icon next to this unit if we're configured to do so and it's not in an army
+			Unit * container;
+			if (is->current_config.put_movement_icons_on_units_on_menu &&
+			    ((NULL == (container = get_unit_ptr (unit_body->Container_Unit))) ||
+			     (! UnitType_has_ability (&p_bic_data->UnitTypes[container->Body.UnitTypeID], __, UTA_Army)))) {
 				put_icon = true;
 				bool can_attack = can_attack_this_turn (unit) && ((unit_type->Attack > 0) || (unit_type->Bombard_Strength > 0)),
 				     all_moves_left = unit_body->Moves == 0,
