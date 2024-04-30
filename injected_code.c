@@ -5269,7 +5269,8 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 	// Check if this menu item is a valid unit and grab pointers to its info
 	int unit_id;
 	Unit_Body * unit_body;
-	bool disable = false, put_exhausted_image = false;
+	bool disable = false, put_icon = false;
+	enum unit_rcm_icon icon = URCMI_UNMOVED_CAN_ATTACK;
 	if ((0 <= (unit_id = item_id - (0x13 + p_bic_data->UnitTypeCount))) &&
 	    (NULL != (unit_body = p_units->Units[unit_id].Unit)) &&
 	    (unit_body->UnitTypeID >= 0) && (unit_body->UnitTypeID < p_bic_data->UnitTypeCount)) {
@@ -5292,13 +5293,26 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 		}
 
 		if (unit_body->CivID == p_main_screen_form->Player_CivID) {
-			if (is->current_config.gray_out_units_on_menu_with_no_remaining_moves &&
-			    (unit_body->Moves >= Unit_get_max_move_points ((Unit *)((int)unit_body - offsetof (Unit, Body)))))
+			Unit * unit = (Unit *)((int)unit_body - offsetof (Unit, Body));
+			UnitType * unit_type = &p_bic_data->UnitTypes[unit_body->UnitTypeID];
+			bool no_moves_left = unit_body->Moves >= Unit_get_max_move_points (unit);
+			if (no_moves_left && is->current_config.gray_out_units_on_menu_with_no_remaining_moves)
 				disable = true;
 
-			else if ((unit_body->Status & 4) &&
-				 ! UnitType_has_ability (&p_bic_data->UnitTypes[unit_body->UnitTypeID], __, UTA_Blitz))
-				put_exhausted_image = true;
+			if (true) { // TODO: Insert config option for RCM icons
+				put_icon = true;
+				bool can_attack = can_attack_this_turn (unit) && ((unit_type->Attack > 0) || (unit_type->Bombard_Strength > 0)),
+				     all_moves_left = unit_body->Moves == 0,
+				     some_moves_left = (! all_moves_left) && (! no_moves_left),
+				     intercepting = (unit_type->Unit_Class == UTC_Air) && (unit_body->UnitState == UnitState_Intercept);
+				if      ((! intercepting) && all_moves_left  && (  can_attack)) icon = URCMI_UNMOVED_CAN_ATTACK;
+				else if ((! intercepting) && all_moves_left  && (! can_attack)) icon = URCMI_UNMOVED_NO_ATTACK;
+				else if ((! intercepting) && some_moves_left && (  can_attack)) icon = URCMI_MOVED_CAN_ATTACK;
+				else if ((! intercepting) && some_moves_left && (! can_attack)) icon = URCMI_MOVED_NO_ATTACK;
+				else if (                    no_moves_left                    ) icon = URCMI_CANT_MOVE;
+				else if ((  intercepting) &&                    (  can_attack)) icon = URCMI_INTERCEPT_CAN_ATTACK;
+				else if ((  intercepting) &&                    (! can_attack)) icon = URCMI_INTERCEPT_NO_ATTACK;
+			}
 		}
 	}
 
@@ -5307,8 +5321,11 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 	if (disable)
 		Context_Menu_disable_item (this, __, item_id);
 
-	if (put_exhausted_image)
-		Context_Menu_put_image_on_item (this, __, item_id, &p_city_form->City_Icons_Images.Icon_15_Food);
+	if (put_icon) {
+		init_unit_rcm_icons ();
+		if (is->unit_rcm_icon_state == IS_OK)
+			Context_Menu_put_image_on_item (this, __, item_id, &is->unit_rcm_icons[icon]);
+	}
 
 	return tr;
 }
