@@ -2680,13 +2680,15 @@ init_unit_rcm_icons ()
 	get_mod_art_path ("UnitRCMIcons.pcx", temp_path, sizeof temp_path);
 
 	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
-	if (pcx.JGL.Image == NULL) {
-		(*p_OutputDebugStringA) ("[C3X] Failed to load PCX file for unit RCM icons.");
+	int width;
+	if ((pcx.JGL.Image == NULL) ||
+	    (2 >= (width = pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image)))){
+		(*p_OutputDebugStringA) ("[C3X] PCX file for unit RCM icons failed to load or is too narrow.");
 		goto cleanup;
 	}
 
 	for (int n = 0; n < COUNT_UNIT_RCM_ICONS; n++)
-		Tile_Image_Info_slice_pcx (&is->unit_rcm_icons[n], __, &pcx, 1, 1 + 16*n, 15, 15, 1, 0);
+		Tile_Image_Info_slice_pcx (&is->unit_rcm_icons[n], __, &pcx, 1, 1 + 16*n, width-2, 15, 1, 0);
 
 	is->unit_rcm_icon_state = IS_OK;
 cleanup:
