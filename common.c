@@ -477,6 +477,18 @@ parse_string (char ** p_cursor, struct string_slice * out)
 }
 
 int
+parse_int (char ** p_cursor, int * out)
+{
+	char * cur = *p_cursor;
+	struct string_slice ss;
+	if (parse_string (&cur, &ss) && read_int (&ss, out)) {
+		*p_cursor = cur;
+		return 1;
+	} else
+		return 0;
+}
+
+int
 parse_bracketed_block (char ** p_cursor, struct string_slice * out)
 {
 	char * cur = *p_cursor;

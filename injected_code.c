@@ -574,6 +574,59 @@ parse_leader_name_alias_list  (char ** p_cursor, struct error_line ** p_unrecogn
 	return parse_era_alias_list (p_cursor, p_unrecognized_lines, out_leader_era_alias_list, true);
 }
 
+struct parsed_unit_type_limit {
+	char name[32]; // Same length as Name in Unit_Type
+	struct unit_type_limit limit;
+};
+
+enum recognizable_parse_result
+parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_unit_type_limit)
+{
+	char * cur = *p_cursor;
+	struct parsed_unit_type_limit * out = out_parsed_unit_type_limit;
+
+	struct string_slice name;
+	struct unit_type_limit limit = {0};
+	if (skip_white_space (&cur) &&
+	    parse_string (&cur, &name) &&
+	    (name.len < (sizeof out->name)) &&
+	    skip_punctuation (&cur, ':')) {
+
+		do {
+			int num;
+			if (! parse_int (&cur, &num))
+				return RPR_PARSE_ERROR;
+
+			struct string_slice ss;
+			if (parse_string (&cur, &ss)) {
+				if (slice_matches_str (&ss, "per-city"))
+					limit.per_city += num;
+				else if (slice_matches_str (&ss, "cities-per"))
+					limit.cities_per += num;
+				else
+					return RPR_PARSE_ERROR;
+			} else
+				limit.per_civ += num;
+
+		} while (skip_punctuation (&cur, '+'));
+
+		int unused;
+		if (find_unit_type_id_by_name (&name, 0, &unused)) {
+			memset (out->name, 0, sizeof out->name);
+			strncpy (out->name, name.str, name.len);
+			out->limit = limit;
+			*p_cursor = cur;
+			return RPR_OK;
+		} else {
+			add_unrecognized_line (p_unrecognized_lines, &name);
+			*p_cursor = cur;
+			return RPR_UNRECOGNIZED;
+		}
+
+	} else
+		return RPR_PARSE_ERROR;
+}
+
 // Recognizable items are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
 bool
 read_recognizables (struct string_slice const * s,
@@ -910,6 +963,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 	struct perfume_spec * perfume_spec_list = NULL;
 	int perfume_spec_count = 0;
 
+	struct parsed_unit_type_limit * parsed_unit_type_limits = NULL;
+	int parsed_unit_type_limit_count = 0;
+
 	struct config_parsing p = { .file_path = full_path, .text = text, .cursor = text, .key = {0}, .displayed_error_message = 0 };
 	struct error_line * unrecognized_lines = NULL;
 	while (1) {
@@ -1012,6 +1068,14 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								  (void **)&cfg->leader_era_alias_lists,
 								  &cfg->count_leader_era_alias_lists))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "unit_limits")) {
+					if (! read_recognizables (&value,
+								  &unrecognized_lines,
+								  sizeof (struct parsed_unit_type_limit),
+								  parse_unit_type_limit,
+								  (void **)&parsed_unit_type_limits,
+								  &parsed_unit_type_limit_count))
+						handle_config_error (&p, CPE_BAD_VALUE);
 
 				// if key is for an obsolete option
 				} else if (slice_matches_str (&p.key, "patch_disembark_immobile_bug")) {
@@ -1079,6 +1143,17 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 			stable_insert (&cfg->perfume_specs, s, ps->amount);
 		}
 		free (perfume_spec_list);
+	}
+
+	// Copy unit type limits from list to table
+	if (parsed_unit_type_limits != NULL) {
+		for (int n = 0; n < parsed_unit_type_limit_count; n++) {
+			struct parsed_unit_type_limit * parsed_lim = &parsed_unit_type_limits[n];
+			struct unit_type_limit * lim_values = malloc (sizeof *lim_values);
+			*lim_values = parsed_lim->limit;
+			stable_insert (&cfg->unit_limits, parsed_lim->name, (int)lim_values);
+		}
+		free (parsed_unit_type_limits);
 	}
 
 	free (text);
