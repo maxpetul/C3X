@@ -3490,6 +3490,21 @@ is_worker_or_settler_command (int unit_command_value)
 }
 
 bool __fastcall
+patch_Unit_can_upgrade (Unit * this)
+{
+	bool base = Unit_can_upgrade (this);
+	int available;
+	City * city = city_at (this->Body.X, this->Body.Y);
+	if (base &&
+	    (city != NULL) &&
+	    get_available_unit_count (&leaders[this->Body.CivID], City_get_upgraded_type_id (city, __, this->Body.UnitTypeID), &available) &&
+	    (available <= 0))
+		return false;
+	else
+		return base;
+}
+
+bool __fastcall
 patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 {
 	if (is->current_config.disable_worker_automation &&
