@@ -2571,6 +2571,9 @@ patch_init_floating_point ()
 	for (int n = 0; n < 32; n++)
 		memset (&is->unit_type_counts[n], 0, sizeof is->unit_type_counts[n]);
 
+	is->penciled_in_upgrades = NULL;
+	is->penciled_in_upgrade_count = is->penciled_in_upgrade_capacity = 0;
+
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config);
@@ -3630,13 +3633,27 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 	} else if (command == UCV_Upgrade_Unit) {
 		int our_treasury = leaders[unit->Body.CivID].Gold_Encoded + leaders[unit->Body.CivID].Gold_Decrement;
 
+		// If the unit type we're upgrading to is limited, find out how many we can add. Keep that in "available". If the type is not limited,
+		// leave available set to INT_MAX.
+		int available = INT_MAX; {
+			City * city;
+			int upgrade_id;
+			if ((is->current_config.unit_limits.len > 0) &&
+			    patch_Unit_can_perform_command (unit, __, UCV_Upgrade_Unit) &&
+			    (NULL != (city = city_at (unit->Body.X, unit->Body.Y))) &&
+			    (0 < (upgrade_id = City_get_upgraded_type_id (city, __, unit_type_id))))
+				get_available_unit_count (&leaders[unit->Body.CivID], upgrade_id, &available);
+		}
+
 		int cost = 0;
 		FOR_UNITS_ON (uti, tile)
-			if ((uti.unit->Body.UnitTypeID == unit_type_id) &&
+			if ((available > 0) &&
+			    (uti.unit->Body.UnitTypeID == unit_type_id) &&
 			    (uti.unit->Body.Container_Unit < 0) &&
 			    (uti.unit->Body.UnitState == 0) &&
 			    Unit_can_perform_command (uti.unit, __, UCV_Upgrade_Unit)) {
 				cost += Unit_get_upgrade_cost (uti.unit);
+				available--;
 				memoize (uti.id);
 			}
 
@@ -8645,6 +8662,63 @@ patch_City_spawn_unit_if_done (City * this)
 
 	if (! skip_spawn)
 		City_spawn_unit_if_done (this);
+}
+
+void __fastcall
+patch_Leader_upgrade_all_units (Leader * this, int edx, int type_id)
+{
+	is->penciled_in_upgrade_count = 0;
+	Leader_upgrade_all_units (this, __, type_id);
+}
+
+void __fastcall
+patch_Main_Screen_Form_upgrade_all_units (Main_Screen_Form * this, int edx, int type_id)
+{
+	is->penciled_in_upgrade_count = 0;
+	Main_Screen_Form_upgrade_all_units (this, __, type_id);
+}
+
+bool __fastcall
+patch_Unit_can_perform_upgrade_all (Unit * this, int edx, int unit_command_value)
+{
+	bool base = patch_Unit_can_perform_command (this, __, unit_command_value);
+
+	// Deal with unit limits. If the unit type we're upgrading to is limited, we need to pencil in the upgrade to make sure that we don't queue up
+	// so many upgrades that we exceed the limit.
+	City * city;
+	int upgrade_id, available;
+	if (base &&
+	    (is->current_config.unit_limits.len > 0) &&
+	    (NULL != (city = city_at (this->Body.X, this->Body.Y))) &&
+	    (0 < (upgrade_id = City_get_upgraded_type_id (city, __, this->Body.UnitTypeID))) &&
+	    get_available_unit_count (&leaders[this->Body.CivID], upgrade_id, &available)) {
+
+		// Find penciled in upgrade. Add a new one if we don't already have one.
+		struct penciled_in_upgrade * piu = NULL; {
+			for (int n = 0; n < is->penciled_in_upgrade_count; n++)
+				if (is->penciled_in_upgrades[n].unit_type_id == upgrade_id) {
+					piu = &is->penciled_in_upgrades[n];
+					break;
+				}
+			if (piu == NULL) {
+				reserve (sizeof is->penciled_in_upgrades[0], (void **)&is->penciled_in_upgrades, &is->penciled_in_upgrade_capacity, is->penciled_in_upgrade_count);
+				piu = &is->penciled_in_upgrades[is->penciled_in_upgrade_count];
+				is->penciled_in_upgrade_count += 1;
+				piu->unit_type_id = upgrade_id;
+				piu->count = 0;
+			}
+		}
+
+		// If we can have more units of the type we're upgrading to, pencil in another upgrade and return true. Otherwise return false so this
+		// unit isn't considered one of the upgradable ones.
+		if (piu->count < available) {
+			piu->count += 1;
+			return true;
+		} else
+			return false;
+
+	} else
+		return base;
 }
 
 // TCC requires a main function be defined even though it's never used.

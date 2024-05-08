@@ -740,6 +740,15 @@ struct injected_state {
 	int ogl_line_width;
 	bool ogl_line_stipple_enabled;
 
+	// Records how many units of each type we're going to upgrade to during an upgrade-all. This info will be used to impose the unit type limit
+	// during the upgrade. Keep in mind units all get upgraded from the same type but might end up as different types after upgrade-all.
+	struct penciled_in_upgrade {
+		int unit_type_id;
+		int count;
+	} * penciled_in_upgrades;
+	int penciled_in_upgrade_count;
+	int penciled_in_upgrade_capacity;
+
 	// ==========
 	// }
 	// ==========

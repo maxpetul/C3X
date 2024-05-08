@@ -496,8 +496,10 @@ define,	   0x61A380,	0x63B7E0,	0x61A2B0,	"Context_Menu_put_image_on_item",		"int
 inlead,	   0x4B8BA0,	0x4C0210,	0x4B8C30,	"City_spawn_unit_if_done",			"void (__fastcall *) (City * this)"
 inlead,	   0x5C0620,	0x5CF1C0,	0x5C0330,	"Unit_can_upgrade",				"bool (__fastcall *) (Unit * this)"
 define,	   0x4C0690,	0x4C7C50,	0x4C0720,	"City_get_upgraded_type_id",			"int (__fastcall *) (City * this, int edx, int unit_type_id)"
-ignore,	   0x56AAE0,	0x576F90,	0x56AA90,	"Leader_upgrade_all_units",			"void (__fastcall *) (Leader * this, int edx, int type_id)"
-ignore,	   0x4DE8B0,	0x4E7290,	0x4DE970,	"Main_Screen_Form_upgrade_all_units",		"void (__fastcall *) (Main_Screen_Form * this, int edx, int type_id)"
+inlead,	   0x56AAE0,	0x576F90,	0x56AA90,	"Leader_upgrade_all_units",			"void (__fastcall *) (Leader * this, int edx, int type_id)"
+inlead,	   0x4DE8B0,	0x4E7290,	0x4DE970,	"Main_Screen_Form_upgrade_all_units",		"void (__fastcall *) (Main_Screen_Form * this, int edx, int type_id)"
+repl call, 0x56AB65,	0x577017,	0x56AB15,	"Unit_can_perform_upgrade_all",			""
+repl call, 0x4DE93C,	0x4E7316,	0x4DE9FC,	"Unit_can_perform_upgrade_all",			""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
