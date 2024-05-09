@@ -597,13 +597,14 @@ read_recognizables (struct string_slice const * s,
 	return success ? -1 : cursor - extracted_slice;
 }
 
-bool
+// Like read_recognizables, returns -1 for success or the location of an error if there is one
+int
 read_building_unit_prereqs (struct string_slice const * s,
 			    struct error_line ** p_unrecognized_lines,
 			    struct table * building_unit_prereqs)
 {
 	if (s->len <= 0)
-		return true;
+		return -1;
 	char * extracted_slice = extract_slice (s);
 	char * cursor = extracted_slice;
 	bool success = false;
@@ -617,7 +618,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 
 	while (1) {
 		struct string_slice building_name;
-		if (parse_string (&cursor, &building_name)) {
+		if (skip_white_space (&cursor) && parse_string (&cursor, &building_name)) {
 			int building_id;
 			bool have_building_id = find_improv_id_by_name (&building_name, &building_id);
 			if (! have_building_id)
@@ -636,7 +637,6 @@ read_building_unit_prereqs (struct string_slice const * s,
 					add_unrecognized_line (p_unrecognized_lines, &unit_type_name);
 			}
 			skip_punctuation (&cursor, ',');
-			skip_white_space (&cursor);
 		} else {
 			success = (*cursor == '\0');
 			break;
@@ -680,7 +680,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 
 	free (new_prereqs);
 	free (extracted_slice);
-	return success;
+	return success ? -1 : cursor - extracted_slice;
 }
 
 bool
@@ -930,8 +930,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 &perfume_spec_count)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "building_prereqs_for_units")) {
-					if (! read_building_unit_prereqs (&value, &unrecognized_lines, &cfg->building_unit_prereqs))
-						handle_config_error (&p, CPE_BAD_VALUE);
+					if (0 <= (recog_err_offset = read_building_unit_prereqs (&value, &unrecognized_lines, &cfg->building_unit_prereqs)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "buildings_generating_resources")) {
 					if (0 <= (recog_err_offset = read_recognizables (&value,
 											 &unrecognized_lines,
