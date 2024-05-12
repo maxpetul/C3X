@@ -1,5 +1,5 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 17 Preview 3
+Release 17
 
 INCLUDES (** = new in latest version):
 Convenience features:
@@ -45,6 +45,7 @@ AI enhancements:
  - Improve AI army composition to discourage mixing types & exclude HN units
  - AI routine for "pop units" that may appear in mods
  - Can limit the number of escorts the AI assigns to its naval transports and carriers
+  - ** Fix limit interfering with group movement of naval units belonging to human players
  - ** Adjustable AI worker requirement
  - ** Option to stop AI from escorting units without the "requires escort" flag
 Bugs fixed:
@@ -86,6 +87,7 @@ Engine extensions:
  - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
  - Option to modify rules for retreat eligibility
   - ** Can allow defensive retreat on water tiles
+  - ** Fix modified sea retreat rules interfering with naval combat animations
  - AI two-city start
  - Remove cap on turn limit
  - Option to strengthen forbidden palace decorruption effect to match the palace's
