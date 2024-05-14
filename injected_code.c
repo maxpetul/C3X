@@ -391,13 +391,12 @@ enum recognizable_parse_result
 parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_perfume_spec)
 {
 	char * cur = *p_cursor;
-	struct string_slice name, amount_str;
+	struct string_slice name;
 	City_Order unused;
 	int amount;
 	if (parse_string (&cur, &name) &&
 	    skip_punctuation (&cur, ':') &&
-	    parse_string (&cur, &amount_str) &&
-	    read_int (&amount_str, &amount)) {
+	    parse_int (&cur, &amount)) {
 		*p_cursor = cur;
 		if (find_city_order_by_name (&name, &unused)) {
 			struct perfume_spec * out = out_perfume_spec;
@@ -3656,7 +3655,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 			    (uti.unit->Body.UnitTypeID == unit_type_id) &&
 			    (uti.unit->Body.Container_Unit < 0) &&
 			    (uti.unit->Body.UnitState == 0) &&
-			    Unit_can_perform_command (uti.unit, __, UCV_Upgrade_Unit)) {
+			    patch_Unit_can_perform_command (uti.unit, __, UCV_Upgrade_Unit)) {
 				cost += Unit_get_upgrade_cost (uti.unit);
 				available--;
 				memoize (uti.id);
@@ -5582,7 +5581,7 @@ ai_move_pop_unit (Unit * this)
 	City * moving_to_city = NULL;
 	if (best_join_loc != NULL) {
 		if ((best_join_loc == in_city) &&
-		    Unit_can_perform_command (this, __, UCV_Join_City)) {
+		    patch_Unit_can_perform_command (this, __, UCV_Join_City)) {
 			Unit_join_city (this, __, in_city);
 			return;
 		} else
