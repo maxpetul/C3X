@@ -394,8 +394,7 @@ parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines,
 	struct string_slice name, amount_str;
 	City_Order unused;
 	int amount;
-	if (skip_white_space (&cur),
-	    parse_string (&cur, &name) &&
+	if (parse_string (&cur, &name) &&
 	    skip_punctuation (&cur, ':') &&
 	    parse_string (&cur, &amount_str) &&
 	    read_int (&amount_str, &amount)) {
@@ -418,8 +417,7 @@ parse_mill (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * 
 {
 	char * cur = *p_cursor;
 	struct string_slice improv_name;
-	if (skip_white_space (&cur) &&
-	    parse_string (&cur, &improv_name) &&
+	if (parse_string (&cur, &improv_name) &&
 	    skip_punctuation (&cur, ':')) {
 
 		short flags = 0;
@@ -465,8 +463,7 @@ parse_era_alias_list (char ** p_cursor, struct error_line ** p_unrecognized_line
 {
 	char * cur = *p_cursor;
 	struct string_slice key;
-	if (skip_white_space (&cur) &&
-	    parse_string (&cur, &key) &&
+	if (parse_string (&cur, &key) &&
 	    skip_punctuation (&cur, ':')) {
 
 		char * aliases[ERA_ALIAS_LIST_CAPACITY] = {0};
@@ -628,7 +625,9 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 }
 
 // Recognizable items are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
-bool
+// If an error occurs while reading, returns the location of the error inside the slice, specifically the number of characters before the unreadable
+// item. If no error occurs, returns -1.
+int
 read_recognizables (struct string_slice const * s,
 		    struct error_line ** p_unrecognized_lines,
 		    int item_size,
@@ -637,7 +636,7 @@ read_recognizables (struct string_slice const * s,
 		    int * inout_count)
 {
 	if (s->len <= 0)
-		return true;
+		return -1;
 	char * extracted_slice = extract_slice (s);
 	char * cursor = extracted_slice;
 
@@ -656,7 +655,7 @@ read_recognizables (struct string_slice const * s,
 				count_new_items++;
 			}
 
-			if (skip_punctuation (&cursor, ','))
+			if (skip_punctuation (&cursor, ',') && skip_white_space (&cursor))
 				continue;
 			else if (skip_horiz_space (&cursor) && (*cursor == '\0')) {
 				success = true;
@@ -675,16 +674,17 @@ read_recognizables (struct string_slice const * s,
 	free (temp_item);
 	free (new_items);
 	free (extracted_slice);
-	return success;
+	return success ? -1 : cursor - extracted_slice;
 }
 
-bool
+// Like read_recognizables, returns -1 for success or the location of an error if there is one
+int
 read_building_unit_prereqs (struct string_slice const * s,
 			    struct error_line ** p_unrecognized_lines,
 			    struct table * building_unit_prereqs)
 {
 	if (s->len <= 0)
-		return true;
+		return -1;
 	char * extracted_slice = extract_slice (s);
 	char * cursor = extracted_slice;
 	bool success = false;
@@ -698,7 +698,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 
 	while (1) {
 		struct string_slice building_name;
-		if (parse_string (&cursor, &building_name)) {
+		if (skip_white_space (&cursor) && parse_string (&cursor, &building_name)) {
 			int building_id;
 			bool have_building_id = find_improv_id_by_name (&building_name, &building_id);
 			if (! have_building_id)
@@ -717,7 +717,6 @@ read_building_unit_prereqs (struct string_slice const * s,
 					add_unrecognized_line (p_unrecognized_lines, &unit_type_name);
 			}
 			skip_punctuation (&cursor, ',');
-			skip_white_space (&cursor);
 		} else {
 			success = (*cursor == '\0');
 			break;
@@ -761,7 +760,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 
 	free (new_prereqs);
 	free (extracted_slice);
-	return success;
+	return success ? -1 : cursor - extracted_slice;
 }
 
 bool
@@ -892,12 +891,12 @@ enum config_parse_error {
 };
 
 void
-handle_config_error (struct config_parsing * p, enum config_parse_error err)
+handle_config_error_at (struct config_parsing * p, char * error_loc, enum config_parse_error err)
 {
 	char err_msg[1000];
 	if (! p->displayed_error_message) {
 		int line_no = 1;
-		for (char * c = p->text; c < p->cursor; c++)
+		for (char * c = p->text; c < error_loc; c++)
 			line_no += *c == '\n';
 
 		PopupForm * popup = get_popup_form ();
@@ -925,6 +924,12 @@ handle_config_error (struct config_parsing * p, enum config_parse_error err)
 		patch_show_popup (popup, __, 0, 0);
 		p->displayed_error_message = 1;
 	}
+}
+
+void
+handle_config_error (struct config_parsing * p, enum config_parse_error err)
+{
+	handle_config_error_at (p, p->cursor, err);
 }
 
 // Loads a config from the given file, layering it on top of is->current_config and appending its name to the list of loaded configs. Does NOT
@@ -982,7 +987,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 
 			struct string_slice value;
 			if (parse_string (&p.cursor, &value) || parse_bracketed_block (&p.cursor, &value)) { // Parse value
-				int ival, offset;
+				int ival, offset, recog_err_offset;
 
 				// if key is for a boolean option
 				if (stable_look_up_slice (&is->boolean_config_offsets, &p.key, &offset)) {
@@ -1000,24 +1005,24 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 
 				// if key is for something special
 				} else if (slice_matches_str (&p.key, "perfume_specs")) {
-					if (! read_recognizables (&value,
-								  &unrecognized_lines,
-								  sizeof (struct perfume_spec),
-								  parse_perfume_spec,
-								  (void **)&perfume_spec_list,
-								  &perfume_spec_count))
-						handle_config_error (&p, CPE_BAD_VALUE);
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct perfume_spec),
+											 parse_perfume_spec,
+											 (void **)&perfume_spec_list,
+											 &perfume_spec_count)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "building_prereqs_for_units")) {
-					if (! read_building_unit_prereqs (&value, &unrecognized_lines, &cfg->building_unit_prereqs))
-						handle_config_error (&p, CPE_BAD_VALUE);
+					if (0 <= (recog_err_offset = read_building_unit_prereqs (&value, &unrecognized_lines, &cfg->building_unit_prereqs)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "buildings_generating_resources")) {
-					if (! read_recognizables (&value,
-								  &unrecognized_lines,
-								  sizeof (struct mill),
-								  parse_mill,
-								  (void **)&cfg->mills,
-								  &cfg->count_mills))
-						handle_config_error (&p, CPE_BAD_VALUE);
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct mill),
+											 parse_mill,
+											 (void **)&cfg->mills,
+											 &cfg->count_mills)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "land_retreat_rules")) {
 					if (! read_retreat_rules (&value, (int *)&cfg->land_retreat_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -1053,29 +1058,29 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 								   &cfg->ptw_arty_types_capacity))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "civ_aliases_by_era")) {
-					if (! read_recognizables (&value,
-								  &unrecognized_lines,
-								  sizeof (struct civ_era_alias_list),
-								  parse_civ_name_alias_list,
-								  (void **)&cfg->civ_era_alias_lists,
-								  &cfg->count_civ_era_alias_lists))
-						handle_config_error (&p, CPE_BAD_VALUE);
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct civ_era_alias_list),
+											 parse_civ_name_alias_list,
+											 (void **)&cfg->civ_era_alias_lists,
+											 &cfg->count_civ_era_alias_lists)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "leader_aliases_by_era")) {
-					if (! read_recognizables (&value,
-								  &unrecognized_lines,
-								  sizeof (struct leader_era_alias_list),
-								  parse_leader_name_alias_list,
-								  (void **)&cfg->leader_era_alias_lists,
-								  &cfg->count_leader_era_alias_lists))
-						handle_config_error (&p, CPE_BAD_VALUE);
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct leader_era_alias_list),
+											 parse_leader_name_alias_list,
+											 (void **)&cfg->leader_era_alias_lists,
+											 &cfg->count_leader_era_alias_lists)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "unit_limits")) {
-					if (! read_recognizables (&value,
-								  &unrecognized_lines,
-								  sizeof (struct parsed_unit_type_limit),
-								  parse_unit_type_limit,
-								  (void **)&parsed_unit_type_limits,
-								  &parsed_unit_type_limit_count))
-						handle_config_error (&p, CPE_BAD_VALUE);
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct parsed_unit_type_limit),
+											 parse_unit_type_limit,
+											 (void **)&parsed_unit_type_limits,
+											 &parsed_unit_type_limit_count)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 
 				// if key is for an obsolete option
 				} else if (slice_matches_str (&p.key, "patch_disembark_immobile_bug")) {
@@ -7392,7 +7397,8 @@ patch_Unit_eval_escort_requirement (Unit * this)
 		return 1;
 
 	int base = Unit_eval_escort_requirement (this);
-	if (ai_strat & (UTAI_Naval_Transport | UTAI_Naval_Carrier | UTAI_Naval_Missile_Transport))
+	if ((~*p_human_player_bits & 1<<this->Body.CivID) && // Applying this to a human player's units messes with group movement (for some reason)
+	    (ai_strat & (UTAI_Naval_Transport | UTAI_Naval_Carrier | UTAI_Naval_Missile_Transport)))
 		return not_above (is->current_config.max_ai_naval_escorts, base);
 	else
 		return base;
@@ -8719,6 +8725,28 @@ patch_Unit_can_perform_upgrade_all (Unit * this, int edx, int unit_command_value
 
 	} else
 		return base;
+}
+
+void __fastcall
+patch_Fighter_animate_start_of_combat (Fighter * this, int edx, Unit * attacker, Unit * defender)
+{
+	// Temporarily clear the attacker retreat eligibility flag when needed so naval units are rotated and animated properly. Normally the game
+	// does not use ranged animations when the attacker can retreat and, worse, not using ranged anims means it also ignores the
+	// rotate-before-attack setting.
+	bool restore_attacker_retreat_eligibility = false;
+	if ((is->current_config.sea_retreat_rules != RR_STANDARD) &&
+	    (p_bic_data->UnitTypes[attacker->Body.UnitTypeID].Unit_Class == UTC_Sea) &&
+	    Unit_has_ability (attacker, __, UTA_Ranged_Attack_Animation) &&
+	    Unit_has_ability (defender, __, UTA_Ranged_Attack_Animation) &&
+	    this->attacker_eligible_to_retreat) {
+		this->attacker_eligible_to_retreat = false;
+		restore_attacker_retreat_eligibility = true;
+	}
+
+	Fighter_animate_start_of_combat (this, __, attacker, defender);
+
+	if (restore_attacker_retreat_eligibility)
+		this->attacker_eligible_to_retreat = true;
 }
 
 // TCC requires a main function be defined even though it's never used.

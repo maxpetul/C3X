@@ -1,33 +1,9 @@
-- Apply perfume to all unit types & buildings with the specified name
-  - Fixes perfume only applying to one sub-type when a unit type has multiple AI strategies
 - Gray out units on right-click menu if they have no remaining moves
 
-* RELEASE 17 PREVIEW 3
-- Civ and leader names can vary by era
-- Option to stop AI from escorting units without the "requires escort" flag
-- Exclude units from lethal ZoC when they're entering a tile after capturing an enemy unit
-- Fix incorrect icons appearing for generated resources
-- Fix a rare edge case where stack bombard would continue attacking an empty tile
-- Option to hide icons for generation of non-bonus resources
-- Fix possible freeze when a trade deal is broken for a resource that's an input to a resource generating building
-- Allow list items to be placed on separate lines for perfume_specs and buildings_generating_resources
-
-* RELEASE 17 PREVIEW 2
-- Enable resource generating buildings to add the resource's yields to their city
-- Display icons for generated resources on top of the generating building
-- Option to allow airdrops without airports
-- Can increase unit maintenance costs based on their build costs
-- Adjustable AI worker requirement
-- Option to pack the list of luxuries more tightly into the box on the city screen
-- Fix freezes caused by undisembarkable escorting unit
-  - Covered by the disembark immobile bug fix option, which has been renamed
-- Improve turn timer
-  - No longer count time spent on city screen
-  - Fix possible double-counting of time spent on popups
-
-* RELEASE 17 PREVIEW 1
+* RELEASE 17
 - Optimize computation of trade networks
  - For details, see the info text file in the Trade Net X folder
+- Civ and leader names can vary by era
 - Option to measure turn times
 - Zone of control changes
   - Allow land-to-sea and sea-to-land attacks, only using bombard stat
@@ -40,14 +16,31 @@
   - Invisible, undetected units may be made immune
   - May be performed multiple times per turn with blitz
   - Naval units in a city may perform defensive bombard vs land attackers
+- Enable resource generating buildings to add the resource's yields to their city
+- Display icons for generated resources on top of the generating building
 - Allow precision strikes to target tile improvements
 - Option not to end a unit's turn after it bombards a barricade
-- Option to allow bombardment of other improvements on a tile with an occupied airfield
-- Option to boost OCN increase from forbidden palaces in non-communal governments
+- Fix freezes caused by undisembarkable escorting unit
+  - Covered by the disembark immobile bug fix option, which has been renamed
 - Fix graphical issues when running on Wine
 - Option to allow defensive retreat on water tiles
+- Can increase unit maintenance costs based on their build costs
+- Adjustable AI worker requirement
+- Option to stop AI from escorting units without the "requires escort" flag
+- Fix a rare edge case where stack bombard would continue attacking an empty tile
+- Option to pack the list of luxuries more tightly into the box on the city screen
+- Apply perfume to all unit types & buildings with the specified name
+  - Fixes perfume only applying to one sub-type when a unit type has multiple AI strategies
+- Option to allow airdrops without airports
+- Fix max_ai_naval_escorts setting interfering with group movement of naval units belonging to human players
+- Option to allow bombardment of other improvements on a tile with an occupied airfield
+- Option to boost OCN increase from forbidden palaces in non-communal governments
+- Fix modified sea retreat rules interfering with naval combat animations
 - Overhaul implementation of shared visibility for simplicity and correctness
+- Fix possible freeze when a trade deal is broken for a resource that's an input to a resource generating building
 - Display total city count (disabled by default, appears on demographics screen)
+- Allow list items to be placed on separate lines for perfume_specs and buildings_generating_resources
+- Improve accuracy of line numbers on error messages
 
 * RELEASE 16
 - Barbarian city capture & production (experimental)
