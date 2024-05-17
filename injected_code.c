@@ -229,6 +229,13 @@ reset_to_base_config ()
 		cc->count_leader_era_alias_lists = 0;
 	}
 
+	// Free unit limits table
+	size_t unit_limits_capacity = table_capacity (&cc->unit_limits);
+	for (size_t n = 0; n < unit_limits_capacity; n++) {
+		int ptr;
+		if (table_get_by_index (&cc->unit_limits, n, &ptr))
+			free ((void *)ptr);
+	}
 	stable_deinit (&cc->unit_limits);
 
 	// Free the linked list of loaded config names and the string name contained in each one
@@ -8721,7 +8728,7 @@ patch_Unit_can_perform_upgrade_all (Unit * this, int edx, int unit_command_value
 	if (base &&
 	    (is->current_config.unit_limits.len > 0) &&
 	    (NULL != (city = city_at (this->Body.X, this->Body.Y))) &&
-	    (0 < (upgrade_id = City_get_upgraded_type_id (city, __, this->Body.UnitTypeID))) &&
+	    (0 <= (upgrade_id = City_get_upgraded_type_id (city, __, this->Body.UnitTypeID))) &&
 	    get_available_unit_count (&leaders[this->Body.CivID], upgrade_id, &available)) {
 
 		// Find penciled in upgrade. Add a new one if we don't already have one.
