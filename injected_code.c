@@ -8774,5 +8774,15 @@ patch_Fighter_animate_start_of_combat (Fighter * this, int edx, Unit * attacker,
 		this->attacker_eligible_to_retreat = true;
 }
 
+Unit * __fastcall
+patch_Leader_spawn_unit_from_building (Leader * this, int edx, int type_id, int tile_x, int tile_y, int barb_tribe_id, int id, bool param_6, LeaderKind leader_kind, int race_id)
+{
+	int available;
+	if (get_available_unit_count (this, type_id, &available) && (available <= 0))
+		return NULL;
+	else
+		return patch_Leader_spawn_unit (this, __, type_id, tile_x, tile_y, barb_tribe_id, id, param_6, leader_kind, race_id);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
