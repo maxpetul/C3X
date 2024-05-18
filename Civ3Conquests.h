@@ -2388,8 +2388,7 @@ struct Map_Renderer_vtable
 //  int (__thiscall *m66_Draw_Victory_Point)(Map_Renderer *, int, int, int, int, int, int);
   void *m66_Draw_Victory_Point;
   int m67;
-//  void (__thiscall *m68_Toggle_Grid)(Map_Renderer *);
-  void *m68_Toggle_Grid;
+  void (__fastcall * m68_Toggle_Grid) (Map_Renderer *);
   int m69;
 //  void (__thiscall *m70_Draw_Info_Dialog_Tile)(Map_Renderer *, int, int, int, int, int, int);
   void *m70_Draw_Info_Dialog_Tile;

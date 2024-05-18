@@ -2343,6 +2343,7 @@ patch_init_floating_point ()
 		{"immunize_aircraft_against_bombardment"               , false, offsetof (struct c3x_config, immunize_aircraft_against_bombardment)},
 		{"replay_ai_moves_in_hotseat_games"                    , false, offsetof (struct c3x_config, replay_ai_moves_in_hotseat_games)},
 		{"restore_unit_directions_on_game_load"                , true , offsetof (struct c3x_config, restore_unit_directions_on_game_load)},
+		{"apply_grid_ini_setting_on_game_load"                 , true , offsetof (struct c3x_config, apply_grid_ini_setting_on_game_load)},
 		{"charm_flag_triggers_ptw_like_targeting"              , false, offsetof (struct c3x_config, charm_flag_triggers_ptw_like_targeting)},
 		{"city_icons_show_unit_effects_not_trade"              , true , offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
 		{"ignore_king_ability_for_defense_priority"            , false, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
@@ -7097,6 +7098,13 @@ patch_do_load_game (char * param_1)
 	for (int n = 0; n < 32; n++)
 		if (*p_player_bits & (1 << n))
 			apply_era_specific_names (&leaders[n]);
+
+	if (is->current_config.apply_grid_ini_setting_on_game_load) {
+		int grid_on = get_int_from_conquests_ini ("GridOn", 0, 0);
+		Map_Renderer * mr = &p_bic_data->Map.Renderer;
+		if (grid_on && ! mr->MapGrid_Flag)
+			mr->vtable->m68_Toggle_Grid (mr);
+	}
 
 	return tr;
 }

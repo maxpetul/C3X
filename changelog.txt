@@ -1,4 +1,5 @@
 - Gray out units on right-click menu if they have no remaining moves
+- Apply GridOn setting from conquests.ini after loading a save
 
 * RELEASE 17
 - Optimize computation of trade networks
