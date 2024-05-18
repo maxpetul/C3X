@@ -1,3 +1,4 @@
+- Add icons to units on the right-click menu showing movement and status
 - Gray out units on right-click menu if they have no remaining moves
 - Apply GridOn setting from conquests.ini after loading a save
 
