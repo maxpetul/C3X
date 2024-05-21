@@ -1,7 +1,7 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 17
+Release 18 Preview 1
 
-INCLUDES (** = new in latest version):
+INCLUDES (** = new in Release 17):
 Convenience features:
  - Stack unit commands
   - Stack bombard
