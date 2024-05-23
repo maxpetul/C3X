@@ -1116,6 +1116,11 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->sea_retreat_rules  = rules;
 					} else
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "halve_ai_research_rate")) {
+					if (read_int (&value, &ival))
+						cfg->ai_research_multiplier = (ival != 0) ? 50 : 100;
+					else
+						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
@@ -2310,7 +2315,6 @@ patch_init_floating_point ()
 		{"enable_ai_two_city_start"                            , false, offsetof (struct c3x_config, enable_ai_two_city_start)},
 		{"promote_forbidden_palace_decorruption"               , false, offsetof (struct c3x_config, promote_forbidden_palace_decorruption)},
 		{"allow_military_leaders_to_hurry_wonders"             , false, offsetof (struct c3x_config, allow_military_leaders_to_hurry_wonders)},
-		{"halve_ai_research_rate"                              , false, offsetof (struct c3x_config, halve_ai_research_rate)},
 		{"aggressively_penalize_bankruptcy"                    , false, offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
 		{"no_penalty_exception_for_agri_fresh_water_city_tiles", false, offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
 		{"use_offensive_artillery_ai"                          , true , offsetof (struct c3x_config, use_offensive_artillery_ai)},
@@ -2372,6 +2376,7 @@ patch_init_floating_point ()
 		{"minimum_city_separation"            ,     1, offsetof (struct c3x_config, minimum_city_separation)},
 		{"anarchy_length_percent"             ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
 		{"max_tries_to_place_fp_city"         , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
+		{"ai_research_multiplier"             ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
 		{"extra_unit_maintenance_per_shields" ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
 		{"ai_build_artillery_ratio"           ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
 		{"ai_artillery_value_damage_percent"  ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
@@ -6429,10 +6434,9 @@ patch_City_get_net_commerce (City * this, int edx, int kind, bool include_scienc
 	int base = City_get_net_commerce (this, __, kind, include_science_age);
 
 	if ((kind == 1) && // beakers, as opposed to 2 which is gold
-	    is->current_config.halve_ai_research_rate &&
+	    (is->current_config.ai_research_multiplier != 100) &&
 	    ((*p_human_player_bits & 1<<this->Body.CivID) == 0))
-		return base/2 + (base & this->Body.ID & 1); // Add one pseudo-randomly half of the time when the base amount is odd so that, overall,
-							    // beakers aren't lost due to integer division by 2 on odd amounts.
+		return (base * is->current_config.ai_research_multiplier + 50) / 100;
 	else
 		return base;
 }

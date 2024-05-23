@@ -139,7 +139,7 @@ struct c3x_config {
 	int max_tries_to_place_fp_city;
 	bool promote_forbidden_palace_decorruption;
 	bool allow_military_leaders_to_hurry_wonders;
-	bool halve_ai_research_rate;
+	int ai_research_multiplier;
 	bool aggressively_penalize_bankruptcy;
 	bool no_penalty_exception_for_agri_fresh_water_city_tiles;
 	bool suppress_hypertext_links_exceeded_popup;
