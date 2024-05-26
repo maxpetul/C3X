@@ -137,6 +137,9 @@ struct c3x_config {
 	bool allow_defensive_retreat_on_water;
 	int ai_multi_city_start;
 	int max_tries_to_place_fp_city;
+	int * ai_multi_start_extra_palaces;
+	int count_ai_multi_start_extra_palaces;
+	int ai_multi_start_extra_palaces_capacity;
 	bool promote_forbidden_palace_decorruption;
 	bool allow_military_leaders_to_hurry_wonders;
 	int ai_research_multiplier;

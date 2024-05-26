@@ -195,6 +195,14 @@ reset_to_base_config ()
 		cc->count_mills = 0;
 	}
 
+	// Free list of AI multi-city start extra palaces
+	if (cc->ai_multi_start_extra_palaces != NULL) {
+		free (cc->ai_multi_start_extra_palaces);
+		cc->ai_multi_start_extra_palaces = NULL;
+		cc->count_ai_multi_start_extra_palaces = 0;
+		cc->ai_multi_start_extra_palaces_capacity = 0;
+	}
+
 	// Free list of PTW artillery types
 	if (cc->ptw_arty_types != NULL) {
 		free (cc->ptw_arty_types);
@@ -810,6 +818,42 @@ read_ptw_arty_types (struct string_slice const * s,
 }
 
 bool
+read_ai_multi_start_extra_palaces (struct string_slice const * s,
+				  struct error_line ** p_unrecognized_lines,
+				  int ** p_ai_multi_start_extra_palaces,
+				  int * p_count_ai_multi_start_extra_palaces,
+				  int * p_ai_multi_start_extra_palaces_capacity)
+{
+	if (s->len <= 0)
+		return true;
+	char * extracted_slice = extract_slice (s);
+	char * cursor = extracted_slice;
+	bool success = false;
+
+	while (1) {
+		struct string_slice name;
+		if (parse_string (&cursor, &name)) {
+			int id;
+			if (find_improv_id_by_name (&name, &id)) {
+				int count = *p_count_ai_multi_start_extra_palaces;
+				reserve (sizeof **p_ai_multi_start_extra_palaces, (void **)p_ai_multi_start_extra_palaces, p_ai_multi_start_extra_palaces_capacity, count);
+				(*p_ai_multi_start_extra_palaces)[count] = id;
+				*p_count_ai_multi_start_extra_palaces = count + 1;
+			} else
+				add_unrecognized_line (p_unrecognized_lines, &name);
+
+		} else {
+			skip_white_space (&cursor);
+			success = *cursor == '\0';
+			break;
+		}
+	}
+
+	free (extracted_slice);
+	return success;
+}
+
+bool
 read_retreat_rules (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
@@ -1029,6 +1073,13 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 (void **)&cfg->mills,
 											 &cfg->count_mills)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "ai_multi_start_extra_palaces")) {
+					if (! read_ai_multi_start_extra_palaces (&value,
+										 &unrecognized_lines,
+										 &cfg->ai_multi_start_extra_palaces,
+										 &cfg->count_ai_multi_start_extra_palaces,
+										 &cfg->ai_multi_start_extra_palaces_capacity))
+					    handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "land_retreat_rules")) {
 					if (! read_retreat_rules (&value, (int *)&cfg->land_retreat_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -6363,9 +6414,10 @@ set_up_ai_multi_city_start (Map * map, int city_count)
 				    (NULL != (city = create_starter_city (map, civ_id, loc)))) {
 					count_cities_created++;
 					extra_city_count++;
-					// CONTINUE HERE:
-					// Spawn palace in new city like so:
-					// patch_City_add_or_remove_improvement (fp_city, __, n, 1, true);
+
+					// Spawn palace substitute in new city
+					if (extra_city_count-1 < is->current_config.count_ai_multi_start_extra_palaces)
+						patch_City_add_or_remove_improvement (city, __, is->current_config.ai_multi_start_extra_palaces[extra_city_count - 1], 1, true);
 
 					// Move starting units over to the new city. Do this by moving every Nth unit where N is the number of extra
 					// cities we've founded so far plus one. ("Extra" cities are the ones created after the capital.) E.g., if
