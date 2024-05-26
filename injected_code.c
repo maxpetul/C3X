@@ -6325,12 +6325,8 @@ set_up_ai_multi_city_start (Map * map, int city_count)
 		}
 	}
 
-	int size_of_unit_counts = p_bic_data->UnitTypeCount * sizeof(int);
-	int * unit_counts = malloc (size_of_unit_counts);
-	int units_to_move_capacity = 100;
-	Unit ** units_to_move = calloc (units_to_move_capacity, sizeof units_to_move[0]);
-
 	int count_cities_created = 0;
+	int count_eligible_civs_handled = 0;
 	for (int civ_id = 1; civ_id < 32; civ_id++)
 		if (eligibility_bits & 1<<civ_id) {
 			int sloc = map->Starting_Locations[civ_id];
@@ -6368,78 +6364,28 @@ set_up_ai_multi_city_start (Map * map, int city_count)
 					count_cities_created++;
 					extra_city_count++;
 					// CONTINUE HERE:
-					// Spawn palace in new city
-					// Move starting units over to the new city
+					// Spawn palace in new city like so:
+					// patch_City_add_or_remove_improvement (fp_city, __, n, 1, true);
+
+					// Move starting units over to the new city. Do this by moving every Nth unit where N is the number of extra
+					// cities we've founded so far plus one. ("Extra" cities are the ones created after the capital.) E.g., if
+					// this is the 1st city after the capital, move every 2nd unit to it. If it's the 2nd, move every 3rd, etc.
+					for (int n = 0; n < is->memo_len; n++)
+						if (n % (extra_city_count+1) == extra_city_count)
+							patch_Unit_move ((Unit *)is->memo[n], __, city->Body.X, city->Body.Y);
+
 				}
 			}
+
+			// Update progress report
+			count_eligible_civs_handled++;
+			int progress = 100 * count_eligible_civs_handled / count_eligible_civs;
+			snprintf (load_text, sizeof load_text, "%s %d%%", is->c3x_labels[CL_CREATING_CITIES], progress);
+			load_text[(sizeof load_text) - 1] = '\0';
+			Main_GUI_label_loading_bar (&p_main_screen_form->GUI, __, 1, load_text);
 
 		}
 
-	/*
-	int count_cities_created = 0;
-	for (int civ_id = 1; civ_id < 32; civ_id++)
-		if ((eligibility_bits & 1<<civ_id) &&
-		    (alt_starting_locs[civ_id] >= 0)) {
-			int sloc = map->Starting_Locations[civ_id];
-
-			// Identify AI's starting settler
-			Unit * starting_settler = NULL;
-			FOR_UNITS_ON (tai, tile_at_index (map, sloc)) {
-				if (p_bic_data->UnitTypes[tai.unit->Body.UnitTypeID].AI_Strategy & UTAI_Settle) {
-					starting_settler = tai.unit;
-					break;
-				}
-			}
-
-			create_starter_city (map, civ_id, sloc); // create capital city
-			City * fp_city = create_starter_city (map, civ_id, alt_starting_locs[civ_id]); // create FP city
-			count_cities_created += 2;
-
-			if (count_cities_created % 4 == 0) {
-				int progress = 100 * count_cities_created / (2 * count_eligible_civs);
-				snprintf (load_text, sizeof load_text, "%s %d%%", is->c3x_labels[CL_CREATING_CITIES], progress);
-				load_text[(sizeof load_text) - 1] = '\0';
-				Main_GUI_label_loading_bar (&p_main_screen_form->GUI, __, 1, load_text);
-			}
-
-			// Delete starting settler so it's as if it was consumed to found the capital
-			if (starting_settler != NULL)
-				patch_Unit_despawn (starting_settler, __, 0, 1, 0, 0, 0, 0, 0);
-
-			// Add forbidden palace to FP city
-			for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
-				Improvement * improv = &p_bic_data->Improvements[n];
-				if ((improv->Characteristics & ITC_Small_Wonder) && // is a small wonder AND
-				    (improv->SmallWonderFlags & ITSW_Reduces_Corruption) && // reduces corruption AND
-				    ((improv->RequiredID < 0) || Leader_has_tech (&leaders[civ_id], __, improv->RequiredID)) && // tech requirement satisfied AND
-				    ((improv->ObsoleteID < 0) || ! Leader_has_tech (&leaders[civ_id], __, improv->ObsoleteID)) && // is not obsolete AND
-				    ((improv->GovernmentID < 0) || (improv->GovernmentID == leaders[civ_id].GovernmentType)) && // is not restricted to another govt AND
-				    (improv->Resource1ID < 0) && (improv->Resource2ID < 0)) { // does not require resources
-					patch_City_add_or_remove_improvement (fp_city, __, n, 1, true);
-					break;
-				}
-			}
-
-			// Move half of the AI's starting units over to the FP city. Its starting units from difficulty are already spawned at map
-			// point since their spawn is triggered by the creation of the AI's first city.
-			int count_units_to_move = 0;
-			memset (unit_counts, 0, size_of_unit_counts);
-			FOR_UNITS_ON (tai, tile_at_index (map, sloc)) {
-				int * p_count = &unit_counts[tai.unit->Body.UnitTypeID];
-				*p_count += 1;
-				if ((*p_count % 2 == 0) && (count_units_to_move < units_to_move_capacity))
-					units_to_move[count_units_to_move++] = tai.unit;
-			}
-			for (int n = 0; n < count_units_to_move; n++) {
-				int x, y;
-				tile_index_to_coords (map, alt_starting_locs[civ_id], &x, &y);
-				patch_Unit_move (units_to_move[n], __, x, y);
-			}
-		}
-	*/
-
-	free (units_to_move);
-	free (unit_counts);
 	free (alt_starting_locs);
 
 	// Sanity check
