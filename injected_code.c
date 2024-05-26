@@ -1121,6 +1121,11 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->ai_research_multiplier = (ival != 0) ? 50 : 100;
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
+				} else if (slice_matches_str (&p.key, "enable_ai_two_city_start")) {
+					if (read_int (&value, &ival))
+						cfg->ai_multi_city_start = (ival != 0) ? 2 : 0;
+					else
+						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
@@ -2312,7 +2317,6 @@ patch_init_floating_point ()
 		{"allow_airdrop_without_airport"                       , false, offsetof (struct c3x_config, allow_airdrop_without_airport)},
 		{"enable_negative_pop_pollution"                       , true , offsetof (struct c3x_config, enable_negative_pop_pollution)},
 		{"allow_defensive_retreat_on_water"                    , false, offsetof (struct c3x_config, allow_defensive_retreat_on_water)},
-		{"enable_ai_two_city_start"                            , false, offsetof (struct c3x_config, enable_ai_two_city_start)},
 		{"promote_forbidden_palace_decorruption"               , false, offsetof (struct c3x_config, promote_forbidden_palace_decorruption)},
 		{"allow_military_leaders_to_hurry_wonders"             , false, offsetof (struct c3x_config, allow_military_leaders_to_hurry_wonders)},
 		{"aggressively_penalize_bankruptcy"                    , false, offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
@@ -2375,6 +2379,7 @@ patch_init_floating_point ()
 		{"limit_railroad_movement"            ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
 		{"minimum_city_separation"            ,     1, offsetof (struct c3x_config, minimum_city_separation)},
 		{"anarchy_length_percent"             ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
+		{"ai_multi_city_start"                ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
 		{"max_tries_to_place_fp_city"         , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
 		{"ai_research_multiplier"             ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
 		{"extra_unit_maintenance_per_shields" ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
@@ -6196,7 +6201,7 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 
 // Returns -1 if the location is unusable, 0-9 if it's usable but doesn't satisfy all criteria, and 10 if it couldn't be better
 int
-eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, int tile_y, int civ_id)
+eval_starting_location (Map * map, int const * alt_starting_locs, int alt_starting_loc_count, int tile_x, int tile_y, int civ_id)
 {
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile != p_null_tile) &&
@@ -6215,7 +6220,7 @@ eval_starting_location (Map * map, int const * alt_starting_locs, int tile_x, in
 				if (dist < closest_dist)
 					closest_dist = dist;
 			}
-		for (int n = 0; n < 32; n++)
+		for (int n = 0; n < alt_starting_loc_count; n++)
 			if (alt_starting_locs[n] >= 0) {
 				int other_x, other_y;
 				tile_index_to_coords (map, alt_starting_locs[n], &other_x, &other_y);
@@ -6263,7 +6268,7 @@ create_starter_city (Map * map, int civ_id, int tile_index)
 }
 
 void
-set_up_ai_two_city_start (Map * map)
+set_up_ai_multi_city_start (Map * map, int city_count)
 {
 	// Set of bits determining which players are eligible for the two-city start
 	int eligibility_bits = 0,
@@ -6277,7 +6282,7 @@ set_up_ai_two_city_start (Map * map)
 			count_eligible_civs++;
 		}
 
-	if (count_eligible_civs == 0)
+	if ((city_count < 1) || (count_eligible_civs == 0)) // if we have nothing to do
 		return;
 
 	char load_text[50];
@@ -6285,13 +6290,16 @@ set_up_ai_two_city_start (Map * map)
 	load_text[(sizeof load_text) - 1] = '\0';
 	Main_GUI_label_loading_bar (&p_main_screen_form->GUI, __, 1, load_text);
 
-	// Generate an alternate set of starting locations
-	int alt_starting_locs[32]; {
-		for (int n = 0; n < 32; n++)
+	// Generate alternate sets of starting locations. We need one set for each extra city we're going to create per player. Each set only needs to
+	// include starting locations for eligible players, all others will be left as -1.
+	int alt_starting_loc_count = 32 * (city_count - 1);
+	int * alt_starting_locs = malloc (alt_starting_loc_count * sizeof *alt_starting_locs); {
+		for (int n = 0; n < alt_starting_loc_count; n++)
 			alt_starting_locs[n] = -1;
 
-		for (int civ_id = 1; civ_id < 32; civ_id++)
-			if (eligibility_bits & 1<<civ_id) {
+		for (int i_loc = 0; i_loc < alt_starting_loc_count; i_loc++) {
+			int civ_id = i_loc % 32;
+			if ((civ_id != 0) && (eligibility_bits & 1<<civ_id)) {
 				int best_loc_val   = -1,
 				    best_loc_index = -1;
 
@@ -6300,7 +6308,7 @@ set_up_ai_two_city_start (Map * map)
 					int x_loc, y_loc;
 					tile_index_to_coords (map, i_loc, &x_loc, &y_loc);
 					if ((x_loc >= 0) && (y_loc >= 0)) {
-						int val = eval_starting_location (map, alt_starting_locs, x_loc, y_loc, civ_id);
+						int val = eval_starting_location (map, alt_starting_locs, alt_starting_loc_count, x_loc, y_loc, civ_id);
 						if (val >= 10) {
 							best_loc_index = i_loc;
 							break;
@@ -6312,8 +6320,9 @@ set_up_ai_two_city_start (Map * map)
 				}
 
 				if (best_loc_index >= 0)
-					alt_starting_locs[civ_id] = best_loc_index;
+					alt_starting_locs[i_loc] = best_loc_index;
 			}
+		}
 	}
 
 	int size_of_unit_counts = p_bic_data->UnitTypeCount * sizeof(int);
@@ -6321,6 +6330,52 @@ set_up_ai_two_city_start (Map * map)
 	int units_to_move_capacity = 100;
 	Unit ** units_to_move = calloc (units_to_move_capacity, sizeof units_to_move[0]);
 
+	int count_cities_created = 0;
+	for (int civ_id = 1; civ_id < 32; civ_id++)
+		if (eligibility_bits & 1<<civ_id) {
+			int sloc = map->Starting_Locations[civ_id];
+
+			// Create the first starting city for the AI. This one is its capital and is located at its actual starting
+			// location. Afterward, delete its starting settler so it's as if the settler founded the city.
+			{
+				Unit * starting_settler = NULL;
+				FOR_UNITS_ON (tai, tile_at_index (map, sloc)) {
+					if (p_bic_data->UnitTypes[tai.unit->Body.UnitTypeID].AI_Strategy & UTAI_Settle) {
+						starting_settler = tai.unit;
+						break;
+					}
+				}
+
+				create_starter_city (map, civ_id, sloc);
+				count_cities_created++;
+
+				if (starting_settler != NULL)
+					patch_Unit_despawn (starting_settler, __, 0, 1, 0, 0, 0, 0, 0);
+
+			}
+
+			// Memoize all of the AI's starting units
+			clear_memo ();
+			FOR_UNITS_ON (tai, tile_at_index (map, sloc))
+				memoize ((int)tai.unit);
+
+			int extra_city_count = 0;
+			for (int i_city = 1; i_city < city_count; i_city++) {
+				int loc = alt_starting_locs[(i_city-1)*32 + civ_id];
+				City * city;
+				if ((loc >= 0) &&
+				    (NULL != (city = create_starter_city (map, civ_id, loc)))) {
+					count_cities_created++;
+					extra_city_count++;
+					// CONTINUE HERE:
+					// Spawn palace in new city
+					// Move starting units over to the new city
+				}
+			}
+
+		}
+
+	/*
 	int count_cities_created = 0;
 	for (int civ_id = 1; civ_id < 32; civ_id++)
 		if ((eligibility_bits & 1<<civ_id) &&
@@ -6381,9 +6436,11 @@ set_up_ai_two_city_start (Map * map)
 				patch_Unit_move (units_to_move[n], __, x, y);
 			}
 		}
+	*/
 
 	free (units_to_move);
 	free (unit_counts);
+	free (alt_starting_locs);
 
 	// Sanity check
 	int any_adjacent_cities = 0; {
@@ -6398,7 +6455,7 @@ set_up_ai_two_city_start (Map * map)
 						}
 			}
 	}
-	int any_missing_fp_cities = (count_cities_created < 2 * count_eligible_civs);
+	int any_missing_fp_cities = (count_cities_created < city_count * count_eligible_civs);
 	if (any_adjacent_cities || any_missing_fp_cities) {
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
@@ -6423,8 +6480,8 @@ set_up_ai_two_city_start (Map * map)
 void __fastcall
 patch_Map_process_after_placing (Map * this, int edx, bool param_1)
 {
-	if (is->current_config.enable_ai_two_city_start && (*p_current_turn_no == 0))
-		set_up_ai_two_city_start (this);
+	if ((is->current_config.ai_multi_city_start > 0) && (*p_current_turn_no == 0))
+		set_up_ai_multi_city_start (this, is->current_config.ai_multi_city_start);
 	Map_process_after_placing (this, __, param_1);
 }
 

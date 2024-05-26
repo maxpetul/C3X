@@ -135,7 +135,7 @@ struct c3x_config {
 	enum retreat_rules land_retreat_rules;
 	enum retreat_rules sea_retreat_rules;
 	bool allow_defensive_retreat_on_water;
-	bool enable_ai_two_city_start;
+	int ai_multi_city_start;
 	int max_tries_to_place_fp_city;
 	bool promote_forbidden_palace_decorruption;
 	bool allow_military_leaders_to_hurry_wonders;
