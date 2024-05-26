@@ -38,9 +38,9 @@ Config files loaded
 Creating cities
 
 ; Warning messages for failed sanity check after two-city start
-Failed sanity check after setting up AI two-city start:
+Failed sanity check after setting up AI multi-city start:
 At least two cities are located on adjacent tiles
-One or more AIs did not receive their second starting cities
+One or more AIs did not receive all their starting cities
 
 ; Used in place of "Upgrades To" in the Civilopedia for unit types that cannot actually upgrade
 Obsoleted By

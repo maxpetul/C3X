@@ -6458,16 +6458,16 @@ set_up_ai_multi_city_start (Map * map, int city_count)
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
 		char s[100];
-		snprintf (s, sizeof s, "^%s", is->c3x_labels[CL_2CS_FAILED_SANITY_CHECK]);
+		snprintf (s, sizeof s, "^%s", is->c3x_labels[CL_MCS_FAILED_SANITY_CHECK]);
 		s[(sizeof s) - 1] = '\0';
 		PopupForm_add_text (popup, __, s, 0);
 		if (any_adjacent_cities) {
-			snprintf (s, sizeof s, "^%s", is->c3x_labels[CL_2CS_ADJACENT_CITIES]);
+			snprintf (s, sizeof s, "^%s", is->c3x_labels[CL_MCS_ADJACENT_CITIES]);
 			s[(sizeof s) - 1] = '\0';
 			PopupForm_add_text (popup, __, s, 0);
 		}
 		if (any_missing_fp_cities) {
-			snprintf (s, sizeof s, "^%s", is->c3x_labels[CL_2CS_MISSING_CITIES]);
+			snprintf (s, sizeof s, "^%s", is->c3x_labels[CL_MCS_MISSING_CITIES]);
 			s[(sizeof s) - 1] = '\0';
 			PopupForm_add_text (popup, __, s, 0);
 		}
