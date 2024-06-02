@@ -2420,6 +2420,7 @@ patch_init_floating_point ()
 		{"allow_bombard_of_other_improvs_on_occupied_airfield" , false, offsetof (struct c3x_config, allow_bombard_of_other_improvs_on_occupied_airfield)},
 		{"show_total_city_count"                               , false, offsetof (struct c3x_config, show_total_city_count)},
 		{"strengthen_forbidden_palace_ocn_effect"              , false, offsetof (struct c3x_config, strengthen_forbidden_palace_ocn_effect)},
+		{"allow_upgrades_in_any_city"                          , false, offsetof (struct c3x_config, allow_upgrades_in_any_city)},
 	};
 
 	struct integer_config_option {
@@ -8856,6 +8857,12 @@ patch_Leader_spawn_unit_from_building (Leader * this, int edx, int type_id, int 
 		return NULL;
 	else
 		return patch_Leader_spawn_unit (this, __, type_id, tile_x, tile_y, barb_tribe_id, id, param_6, leader_kind, race_id);
+}
+
+int __fastcall
+patch_City_count_improvs_enabling_upgrade (City * this, int edx, enum ImprovementTypeFlags flag)
+{
+	return is->current_config.allow_upgrades_in_any_city ? 1 : City_count_improvements_with_flag (this, __, flag);
 }
 
 // TCC requires a main function be defined even though it's never used.

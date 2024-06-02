@@ -502,6 +502,12 @@ inlead,	   0x4DE8B0,	0x4E7290,	0x4DE970,	"Main_Screen_Form_upgrade_all_units",		
 repl call, 0x56AB65,	0x577017,	0x56AB15,	"Unit_can_perform_upgrade_all",			""
 repl call, 0x4DE93C,	0x4E7316,	0x4DE9FC,	"Unit_can_perform_upgrade_all",			""
 repl call, 0x4BE89A,	0x4C5E80,	0x4BE92A,	"Leader_spawn_unit_from_building",		""
+repl call, 0x5C0727,	0x5CF2C7,	0x5C0437,	"City_count_improvs_enabling_upgrade",		""
+repl call, 0x5C0700,	0x5CF2A0,	0x5C0410,	"City_count_improvs_enabling_upgrade",		""
+repl call, 0x5C0715,	0x5CF2B5,	0x5C0425,	"City_count_improvs_enabling_upgrade",		""
+
+define,	   0x4AECC0,	0x4B5C80,	0x4AED50,	"City_raze",					"void (__fastcall *) (City * this)"
+define,	   0x563410,	0x56F6C0,	0x5633C0,	"Leader_capture_city",				"bool (__fastcall *) (Leader * this, int edx, City * city, Unit * unit, bool param_3, bool param_4)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
