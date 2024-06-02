@@ -1430,6 +1430,29 @@ typedef enum espionage_mission {
 	EM_EXPOSE_MOLE         = 8,
 } EspionageMission;
 
+typedef enum map_rcm_item {
+	MRCMI_TERRAIN_INFO           =  1,
+	MRCMI_WAKE_ALL               =  2,
+	MRCMI_WAKE_TRANSPORTED       =  3,
+	MRCMI_FORTIFY_ALL            =  4,
+	MRCMI_ZOOM_TO_CITY           =  5,
+	MRCMI_RENAME_CITY            =  6,
+	MRCMI_AERIAL_VIEW            =  7,
+	MRCMI_DISORDER_REPORT        =  8,
+	MRCMI_CHANGE_PRODUCTION      =  9,
+	MRCMI_HURRY_PRODUCTION       = 10,
+	MRCMI_DRAFT_CITIZEN          = 11,
+	MRCMI_CONDUCT_ESPIONAGE      = 12,
+	MRCMI_CONTACT_GOVERNOR       = 13,
+	MRCMI_SET_RALLY_POINT        = 14,
+	MRCMI_SET_CONT_RALLY_POINT   = 15,
+	MRCMI_CLEAR_RALLY_POINT      = 16,
+	MRCMI_CLEAR_CONT_RALLY_POINT = 17,
+	MRCMI_ABANDON_CITY           = 18,
+	// 19 to UnitTypeCount+19 are "view civilopedia entry" items
+	// After that are the unit items. There, item_id = unit_id - (UnitTypeCount+19)
+} MapRCMItem;
+
 struct IntList
 {
   int field_0;
