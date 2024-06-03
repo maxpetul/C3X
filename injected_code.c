@@ -356,7 +356,7 @@ enum recognizable_parse_result {
 };
 
 struct perfume_spec {
-	struct string_slice name;
+	char name[36]; // Must be large enough to fit the name of a unit type or improvement
 	int amount;
 };
 
@@ -374,7 +374,8 @@ parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines,
 		*p_cursor = cur;
 		if (find_city_order_by_name (&name, &unused)) {
 			struct perfume_spec * out = out_perfume_spec;
-			out->name = name;
+			snprintf (out->name, sizeof out->name, "%.*s", name.len, name.str);
+			out->name[(sizeof out->name) - 1] = '\0';
 			out->amount = amount;
 			return RPR_OK;
 		} else {
@@ -1050,11 +1051,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 
 	// Copy perfume specs from list to table
 	if (perfume_spec_list != NULL) {
-		char s[100] = {0};
 		for (int n = 0; n < perfume_spec_count; n++) {
 			struct perfume_spec * ps = &perfume_spec_list[n];
-			snprintf (s, (sizeof s) - 1, "%.*s", ps->name.len, ps->name.str);
-			stable_insert (&cfg->perfume_specs, s, ps->amount);
+			stable_insert (&cfg->perfume_specs, ps->name, ps->amount);
 		}
 		free (perfume_spec_list);
 	}

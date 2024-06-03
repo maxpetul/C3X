@@ -1,7 +1,8 @@
+- Fix crashes and strange behavior caused by use-after-free bug in config loader
 
 * RELEASE 17
 - Optimize computation of trade networks
- - For details, see the info text file in the Trade Net X folder
+  - For details, see the info text file in the Trade Net X folder
 - Civ and leader names can vary by era
 - Option to measure turn times
 - Zone of control changes
