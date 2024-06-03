@@ -1,3 +1,4 @@
+* RELEASE 17C
 - Fix crashes and strange behavior caused by use-after-free bug in config loader
 
 * RELEASE 17
