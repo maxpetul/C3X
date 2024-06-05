@@ -6250,6 +6250,11 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
 }
 
+void
+on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
+{
+}
+
 // Returns -1 if the location is unusable, 0-9 if it's usable but doesn't satisfy all criteria, and 10 if it couldn't be better
 int
 eval_starting_location (Map * map, int const * alt_starting_locs, int alt_starting_loc_count, int tile_x, int tile_y, int civ_id)
@@ -6315,7 +6320,10 @@ create_starter_city (Map * map, int civ_id, int tile_index)
 {
 	int x, y;
 	tile_index_to_coords (map, tile_index, &x, &y);
-	return Leader_create_city (&leaders[civ_id], __, x, y, leaders[civ_id].RaceID, -1, NULL, true);
+	City * tr = Leader_create_city (&leaders[civ_id], __, x, y, leaders[civ_id].RaceID, -1, NULL, true);
+	if (tr != NULL)
+		on_gain_city (&leaders[civ_id], tr, CGR_PLACED_FOR_AI_MULTI_CITY_START);
+	return tr;
 }
 
 void
@@ -8862,6 +8870,42 @@ int __fastcall
 patch_City_count_improvs_enabling_upgrade (City * this, int edx, enum ImprovementTypeFlags flag)
 {
 	return is->current_config.allow_upgrades_in_any_city ? 1 : City_count_improvements_with_flag (this, __, flag);
+}
+
+City * __fastcall
+patch_Leader_create_city_from_hut (Leader * this, int edx, int x, int y, int race_id, int param_4, char const * name, bool param_6)
+{
+	City * tr = Leader_create_city (this, __, x, y, race_id, param_4, name, param_6);
+	if (tr != NULL)
+		on_gain_city (this, tr, CGR_POPPED_FROM_HUT);
+	return tr;
+}
+
+City * __fastcall
+patch_Leader_create_city_for_ai_respawn (Leader * this, int edx, int x, int y, int race_id, int param_4, char const * name, bool param_6)
+{
+	City * tr = Leader_create_city (this, __, x, y, race_id, param_4, name, param_6);
+	if (tr != NULL)
+		on_gain_city (this, tr, CGR_PLACED_FOR_AI_RESPAWN);
+	return tr;
+}
+
+City * __fastcall
+patch_Leader_create_city_for_founding (Leader * this, int edx, int x, int y, int race_id, int param_4, char const * name, bool param_6)
+{
+	City * tr = Leader_create_city (this, __, x, y, race_id, param_4, name, param_6);
+	if (tr != NULL)
+		on_gain_city (this, tr, CGR_FOUNDED);
+	return tr;
+}
+
+City * __fastcall
+patch_Leader_create_city_for_scenario (Leader * this, int edx, int x, int y, int race_id, int param_4, char const * name, bool param_6)
+{
+	City * tr = Leader_create_city (this, __, x, y, race_id, param_4, name, param_6);
+	if (tr != NULL)
+		on_gain_city (this, tr, CGR_PLACED_FOR_SCENARIO);
+	return tr;
 }
 
 // TCC requires a main function be defined even though it's never used.

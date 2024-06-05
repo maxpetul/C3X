@@ -324,6 +324,14 @@ enum unit_rcm_icon {
 	COUNT_UNIT_RCM_ICONS
 };
 
+enum city_gain_reason {
+	CGR_FOUNDED = 0,
+	CGR_POPPED_FROM_HUT,
+	CGR_PLACED_FOR_AI_RESPAWN,
+	CGR_PLACED_FOR_SCENARIO,
+	CGR_PLACED_FOR_AI_MULTI_CITY_START,
+};
+
 struct injected_state {
 	// ==========
 	// These fields are valid at any time in the injected code because they're set by the patcher {
