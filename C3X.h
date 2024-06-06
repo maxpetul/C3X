@@ -326,6 +326,9 @@ enum unit_rcm_icon {
 
 enum city_gain_reason {
 	CGR_FOUNDED = 0,
+	CGR_CONQUERED,
+	CGR_CONVERTED, // covers culture flips & bribes
+	CGR_TRADED,
 	CGR_POPPED_FROM_HUT,
 	CGR_PLACED_FOR_AI_RESPAWN,
 	CGR_PLACED_FOR_SCENARIO,

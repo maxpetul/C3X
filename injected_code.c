@@ -6253,6 +6253,18 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 void
 on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 {
+	char * reason_strs[8] = {"founded",
+				 "conquered",
+				 "converted",
+				 "traded",
+				 "popped from hut",
+				 "placed for AI respawn",
+				 "placed for scenario",
+				 "placed for AI multi city start"};
+	char s[100];
+	snprintf (s, sizeof s, "%s gained a city, reason: %s", Leader_get_name (leader), reason_strs[reason]);
+	s[(sizeof s) - 1] = '\0';
+	(*p_OutputDebugStringA) (s);
 }
 
 // Returns -1 if the location is unusable, 0-9 if it's usable but doesn't satisfy all criteria, and 10 if it couldn't be better
@@ -8905,6 +8917,14 @@ patch_Leader_create_city_for_scenario (Leader * this, int edx, int x, int y, int
 	City * tr = Leader_create_city (this, __, x, y, race_id, param_4, name, param_6);
 	if (tr != NULL)
 		on_gain_city (this, tr, CGR_PLACED_FOR_SCENARIO);
+	return tr;
+}
+
+bool __fastcall
+patch_Leader_do_capture_city (Leader * this, int edx, City * city, bool involuntary, bool converted)
+{
+	bool tr = Leader_do_capture_city (this, __, city, involuntary, converted);
+	on_gain_city (this, city, converted ? CGR_CONVERTED : (involuntary ? CGR_CONVERTED : CGR_TRADED));
 	return tr;
 }
 
