@@ -4,6 +4,7 @@
 - Can set multiplier on AI research rate (replaces halve_ai_research_rate)
 - Option to allow upgrades in any city
 - Fix crashes and strange behavior caused by use-after-free bug in config loader
+- Fix crash when loading a second game due to improper creation of unit RCM icon sprites
 
 * RELEASE 18 PREVIEW 1
 - Unit limits

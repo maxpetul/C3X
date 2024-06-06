@@ -2838,8 +2838,10 @@ init_unit_rcm_icons ()
 		goto cleanup;
 	}
 
-	for (int n = 0; n < COUNT_UNIT_RCM_ICONS; n++)
+	for (int n = 0; n < COUNT_UNIT_RCM_ICONS; n++) {
+		Tile_Image_Info_construct (&is->unit_rcm_icons[n]);
 		Tile_Image_Info_slice_pcx (&is->unit_rcm_icons[n], __, &pcx, 1, 1 + 16*n, width-2, 15, 1, 0);
+	}
 
 	is->unit_rcm_icon_state = IS_OK;
 cleanup:
