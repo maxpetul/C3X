@@ -335,6 +335,13 @@ enum city_gain_reason {
 	CGR_PLACED_FOR_AI_MULTI_CITY_START,
 };
 
+enum city_loss_reason {
+	CLR_DESTROYED = 0, // means city was razed for any reason (inc. by conqueror)
+	CLR_CONQUERED,
+	CLR_CONVERTED, // covers culture flips & bribes
+	CLR_TRADED
+};
+
 struct injected_state {
 	// ==========
 	// These fields are valid at any time in the injected code because they're set by the patcher {

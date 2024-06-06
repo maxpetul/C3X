@@ -6269,6 +6269,19 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 	(*p_OutputDebugStringA) (s);
 }
 
+void
+on_lose_city (Leader * leader, City * city, enum city_loss_reason reason)
+{
+	char * reason_strs[4] = {"destroyed",
+				 "conquered",
+				 "converted",
+				 "traded"};
+	char s[100];
+	snprintf (s, sizeof s, "%s lost a city, reason: %s", Leader_get_name (leader), reason_strs[reason]);
+	s[(sizeof s) - 1] = '\0';
+	(*p_OutputDebugStringA) (s);
+}
+
 // Returns -1 if the location is unusable, 0-9 if it's usable but doesn't satisfy all criteria, and 10 if it couldn't be better
 int
 eval_starting_location (Map * map, int const * alt_starting_locs, int alt_starting_loc_count, int tile_x, int tile_y, int civ_id)
@@ -8925,9 +8938,17 @@ patch_Leader_create_city_for_scenario (Leader * this, int edx, int x, int y, int
 bool __fastcall
 patch_Leader_do_capture_city (Leader * this, int edx, City * city, bool involuntary, bool converted)
 {
+	on_lose_city (&leaders[city->Body.CivID], city, converted ? CLR_CONVERTED : (involuntary ? CLR_CONQUERED : CLR_TRADED));
 	bool tr = Leader_do_capture_city (this, __, city, involuntary, converted);
-	on_gain_city (this, city, converted ? CGR_CONVERTED : (involuntary ? CGR_CONVERTED : CGR_TRADED));
+	on_gain_city (this, city, converted ? CGR_CONVERTED : (involuntary ? CGR_CONQUERED : CGR_TRADED));
 	return tr;
+}
+
+void __fastcall
+patch_City_raze (City * this)
+{
+	on_lose_city (&leaders[this->Body.CivID], this, CLR_DESTROYED);
+	City_raze (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
