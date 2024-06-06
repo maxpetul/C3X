@@ -505,14 +505,12 @@ repl call, 0x4BE89A,	0x4C5E80,	0x4BE92A,	"Leader_spawn_unit_from_building",		""
 repl call, 0x5C0727,	0x5CF2C7,	0x5C0437,	"City_count_improvs_enabling_upgrade",		""
 repl call, 0x5C0700,	0x5CF2A0,	0x5C0410,	"City_count_improvs_enabling_upgrade",		""
 repl call, 0x5C0715,	0x5CF2B5,	0x5C0425,	"City_count_improvs_enabling_upgrade",		""
-
-inlead,	   0x4AECC0,	0x4B5C80,	0x4AED50,	"City_raze",					"void (__fastcall *) (City * this)"
+inlead,	   0x4AECC0,	0x4B5C80,	0x4AED50,	"City_raze",					"void (__fastcall *) (City * this, int edx, int civ_id_responsible, bool checking_elimination)"
 define,	   0x563410,	0x56F6C0,	0x5633C0,	"Leader_capture_city",				"bool (__fastcall *) (Leader * this, int edx, City * city, Unit * unit, bool involuntary, bool converted)"
-
 repl call, 0x55BA76,	0x567D20,	0x55BA26,	"Leader_create_city_from_hut",			""
 repl call, 0x568F57,	0x57538A,	0x568F07,	"Leader_create_city_for_ai_respawn",		""
 repl call, 0x5B35D3,	0x5C1F22,	0x5B32E3,	"Leader_create_city_for_founding",		""
-repl call, 0x5D2B8F,	0x5E1E68,	0x566370,	"Leader_create_city_for_scenario",		""
+repl call, 0x5D2B8F,	0x5E1E68,	0x5D2ABF,	"Leader_create_city_for_scenario",		""
 inlead,	   0x564800,	0x570BB0,	0x5647B0,	"Leader_do_capture_city",			"bool (__fastcall *) (Leader * this, int edx, City * city, bool involuntary, bool converted)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"

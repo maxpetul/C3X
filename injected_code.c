@@ -8945,10 +8945,10 @@ patch_Leader_do_capture_city (Leader * this, int edx, City * city, bool involunt
 }
 
 void __fastcall
-patch_City_raze (City * this)
+patch_City_raze (City * this, int edx, int civ_id_responsible, bool checking_elimination)
 {
 	on_lose_city (&leaders[this->Body.CivID], this, CLR_DESTROYED);
-	City_raze (this);
+	City_raze (this, __, civ_id_responsible, checking_elimination);
 }
 
 // TCC requires a main function be defined even though it's never used.
