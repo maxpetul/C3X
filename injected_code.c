@@ -6284,6 +6284,29 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 	snprintf (s, sizeof s, "%s gained a city, reason: %s", Leader_get_name (leader), reason_strs[reason]);
 	s[(sizeof s) - 1] = '\0';
 	(*p_OutputDebugStringA) (s);
+
+	if (((*p_human_player_bits & (1<<leader->ID)) == 0) && // If leader is an AI AND
+	    (is->current_config.ai_multi_city_start > 1) && // AI multi-city start is enabled AND
+	    (leader->Cities_Count > 1) && // city is not the only one the AI has (i.e. it's not the capital) AND
+	    (reason != CGR_PLACED_FOR_SCENARIO) && (reason != CGR_PLACED_FOR_AI_MULTI_CITY_START)) { // city was not placed before the game started
+
+		// Find an extra palace that this player does not already have
+		int free_extra_palace = -1;
+		for (int n = 0; n < is->current_config.count_ai_multi_start_extra_palaces; n++) {
+			int improv_id = is->current_config.ai_multi_start_extra_palaces[n];
+			Improvement * improv = &p_bic_data->Improvements[improv_id];
+			if ((improv->Characteristics & ITC_Small_Wonder) &&
+			    (improv->SmallWonderFlags & ITSW_Reduces_Corruption) &&
+			    (NULL == get_city_ptr (leader->Small_Wonders[improv_id]))) {
+				free_extra_palace = improv_id;
+				break;
+			}
+		}
+
+		// Place that extra palace here
+		if (free_extra_palace >= 0)
+			City_add_or_remove_improvement (city, __, free_extra_palace, 1, false);
+	}
 }
 
 void
