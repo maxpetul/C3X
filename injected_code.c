@@ -6269,53 +6269,25 @@ has_extra_palace (City * city)
 	return false;
 }
 
+// Removes any extra palaces from this city to other cities owned by the same player (if possible). Does not check that the city belongs to an AI or
+// that AI MCS is enabled.
 void
-on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
+remove_extra_palaces (City * city)
 {
-	// Handle extra palaces for AI multi-city start
-	if (((*p_human_player_bits & (1<<leader->ID)) == 0) && // If leader is an AI AND
-	    (is->current_config.ai_multi_city_start > 1) && // AI multi-city start is enabled AND
-	    (leader->Cities_Count > 1) && // city is not the only one the AI has (i.e. it's not the capital) AND
-	    (reason != CGR_PLACED_FOR_SCENARIO) && (reason != CGR_PLACED_FOR_AI_MULTI_CITY_START)) { // city was not placed before the game started
-
-		// Find an extra palace that this player does not already have
-		int free_extra_palace = -1;
+	Leader * leader = &leaders[city->Body.CivID];
+	int extra_palace_lost;
+	do {
+		// Search for an extra palace in the city and delete it. Remember its ID so we can put it elsewhere.
+		extra_palace_lost = -1;
 		for (int n = 0; n < is->current_config.count_ai_multi_start_extra_palaces; n++) {
 			int improv_id = is->current_config.ai_multi_start_extra_palaces[n];
 			Improvement * improv = &p_bic_data->Improvements[improv_id];
 			if ((improv->Characteristics & ITC_Small_Wonder) &&
 			    (improv->SmallWonderFlags & ITSW_Reduces_Corruption) &&
-			    (NULL == get_city_ptr (leader->Small_Wonders[improv_id]))) {
-				free_extra_palace = improv_id;
+			    (leader->Small_Wonders[improv_id] == city->Body.ID)) {
+				patch_City_add_or_remove_improvement (city, __, improv_id, 0, false);
+				extra_palace_lost = improv_id;
 				break;
-			}
-		}
-
-		// Place that extra palace here
-		if (free_extra_palace >= 0)
-			City_add_or_remove_improvement (city, __, free_extra_palace, 1, false);
-	}
-}
-
-void
-on_lose_city (Leader * leader, City * city, enum city_loss_reason reason)
-{
-	// Handle extra palaces for AI multi-city start
-	if (((*p_human_player_bits & (1<<leader->ID)) == 0) && // If leader is an AI AND
-	    (is->current_config.ai_multi_city_start > 1) && // AI multi-city start is enabled AND
-	    (city->Body.ID != leader->CapitalID)) { // city is not the capital
-		// Find & remove any extra palace in this city. Remember its ID so we can find a new place for it.
-		int extra_palace_lost = -1; {
-			for (int n = 0; n < is->current_config.count_ai_multi_start_extra_palaces; n++) {
-				int improv_id = is->current_config.ai_multi_start_extra_palaces[n];
-				Improvement * improv = &p_bic_data->Improvements[improv_id];
-				if ((improv->Characteristics & ITC_Small_Wonder) &&
-				    (improv->SmallWonderFlags & ITSW_Reduces_Corruption) &&
-				    (leader->Small_Wonders[improv_id] == city->Body.ID)) {
-					patch_City_add_or_remove_improvement (city, __, improv_id, 0, false);
-					extra_palace_lost = improv_id;
-					break;
-				}
 			}
 		}
 
@@ -6357,7 +6329,44 @@ on_lose_city (Leader * leader, City * city, enum city_loss_reason reason)
 			if (best_location != NULL)
 				City_add_or_remove_improvement (best_location, __, extra_palace_lost, 1, false);
 		}
+	} while (extra_palace_lost >= 0);
+}
+
+void
+on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
+{
+	// Handle extra palaces for AI multi-city start
+	if (((*p_human_player_bits & (1<<leader->ID)) == 0) && // If leader is an AI AND
+	    (is->current_config.ai_multi_city_start > 1) && // AI multi-city start is enabled AND
+	    (leader->Cities_Count > 1) && // city is not the only one the AI has (i.e. it's not the capital) AND
+	    (reason != CGR_PLACED_FOR_SCENARIO) && (reason != CGR_PLACED_FOR_AI_MULTI_CITY_START)) { // city was not placed before the game started
+
+		// Find an extra palace that this player does not already have
+		int free_extra_palace = -1;
+		for (int n = 0; n < is->current_config.count_ai_multi_start_extra_palaces; n++) {
+			int improv_id = is->current_config.ai_multi_start_extra_palaces[n];
+			Improvement * improv = &p_bic_data->Improvements[improv_id];
+			if ((improv->Characteristics & ITC_Small_Wonder) &&
+			    (improv->SmallWonderFlags & ITSW_Reduces_Corruption) &&
+			    (NULL == get_city_ptr (leader->Small_Wonders[improv_id]))) {
+				free_extra_palace = improv_id;
+				break;
+			}
+		}
+
+		// Place that extra palace here
+		if (free_extra_palace >= 0)
+			City_add_or_remove_improvement (city, __, free_extra_palace, 1, false);
 	}
+}
+
+void
+on_lose_city (Leader * leader, City * city, enum city_loss_reason reason)
+{
+	// If leader is an AI and AI MCS is enabled, remove any extra palaces the city has
+	if (((*p_human_player_bits & (1<<leader->ID)) == 0) &&
+	    (is->current_config.ai_multi_city_start > 1))
+		remove_extra_palaces (city);
 }
 
 // Returns -1 if the location is unusable, 0-9 if it's usable but doesn't satisfy all criteria, and 10 if it couldn't be better
