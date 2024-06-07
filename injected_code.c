@@ -9029,5 +9029,30 @@ patch_City_raze (City * this, int edx, int civ_id_responsible, bool checking_eli
 	City_raze (this, __, civ_id_responsible, checking_elimination);
 }
 
+void __fastcall
+patch_City_draw_hud_icon (City * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y)
+{
+	Leader * owner = &leaders[this->Body.CivID];
+	int restore_capital = owner->CapitalID;
+
+	// Temporarily set this city as the capital if it has an extra palace so it gets the capital star icon
+	if ((is->current_config.ai_multi_city_start > 1) &&
+	    ((*p_human_player_bits & (1 << owner->ID)) == 0) &&
+	    has_extra_palace (this))
+		owner->CapitalID = this->Body.ID;
+
+	City_draw_hud_icon (this, __, canvas, pixel_x, pixel_y);
+	owner->CapitalID = restore_capital;
+}
+
+bool __fastcall
+patch_City_has_hud_icon (City * this)
+{
+	return City_has_hud_icon (this)
+	       || (   (is->current_config.ai_multi_city_start > 1)
+		   && ((*p_human_player_bits & (1 << this->Body.CivID)) == 0)
+		   && has_extra_palace (this));
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
