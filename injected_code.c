@@ -6272,19 +6272,7 @@ has_extra_palace (City * city)
 void
 on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 {
-	char * reason_strs[8] = {"founded",
-				 "conquered",
-				 "converted",
-				 "traded",
-				 "popped from hut",
-				 "placed for AI respawn",
-				 "placed for scenario",
-				 "placed for AI multi city start"};
-	char s[100];
-	snprintf (s, sizeof s, "%s gained a city, reason: %s", Leader_get_name (leader), reason_strs[reason]);
-	s[(sizeof s) - 1] = '\0';
-	(*p_OutputDebugStringA) (s);
-
+	// Handle extra palaces for AI multi-city start
 	if (((*p_human_player_bits & (1<<leader->ID)) == 0) && // If leader is an AI AND
 	    (is->current_config.ai_multi_city_start > 1) && // AI multi-city start is enabled AND
 	    (leader->Cities_Count > 1) && // city is not the only one the AI has (i.e. it's not the capital) AND
@@ -6312,16 +6300,7 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 void
 on_lose_city (Leader * leader, City * city, enum city_loss_reason reason)
 {
-	char * reason_strs[4] = {"destroyed",
-				 "conquered",
-				 "converted",
-				 "traded"};
-	char s[100];
-	snprintf (s, sizeof s, "%s lost a city, reason: %s", Leader_get_name (leader), reason_strs[reason]);
-	s[(sizeof s) - 1] = '\0';
-	(*p_OutputDebugStringA) (s);
-
-	int extra_palace_id;
+	// Handle extra palaces for AI multi-city start
 	if (((*p_human_player_bits & (1<<leader->ID)) == 0) && // If leader is an AI AND
 	    (is->current_config.ai_multi_city_start > 1) && // AI multi-city start is enabled AND
 	    (city->Body.ID != leader->CapitalID)) { // city is not the capital

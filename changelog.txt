@@ -1,6 +1,6 @@
 - Expand AI two-city start to any number of cities
   - Config option has been renamed to ai_multi_city_start
-- Option to add improvements to AI's starter cities in multi-city start
+- AI's starter cities in multi-city start can begin with improvements, inc. "extra palaces" which respawn like the real palace
 - Can set multiplier on AI research rate (replaces halve_ai_research_rate)
 - Option to allow upgrades in any city
 - Fix crashes and strange behavior caused by use-after-free bug in config loader
