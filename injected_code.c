@@ -6252,6 +6252,23 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
 }
 
+// Returns whether or not city has an "extra palace", a concept used by the AI multi-city start. Extra palaces are small wonders that reduce
+// corruption (e.g. forbidden palace) that are listed under the ai_multi_start_extra_palaces config option.
+bool
+has_extra_palace (City * city)
+{
+	for (int n = 0; n < is->current_config.count_ai_multi_start_extra_palaces; n++) {
+		int improv_id = is->current_config.ai_multi_start_extra_palaces[n];
+		Improvement * improv = &p_bic_data->Improvements[improv_id];
+		if ((improv->Characteristics & ITC_Small_Wonder) &&
+		    (improv->SmallWonderFlags & ITSW_Reduces_Corruption) &&
+		    (leaders[city->Body.CivID].Small_Wonders[improv_id] == city->Body.ID)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 void
 on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 {
@@ -6280,6 +6297,65 @@ on_lose_city (Leader * leader, City * city, enum city_loss_reason reason)
 	snprintf (s, sizeof s, "%s lost a city, reason: %s", Leader_get_name (leader), reason_strs[reason]);
 	s[(sizeof s) - 1] = '\0';
 	(*p_OutputDebugStringA) (s);
+
+	int extra_palace_id;
+	if (((*p_human_player_bits & (1<<leader->ID)) == 0) && // If leader is an AI AND
+	    (is->current_config.ai_multi_city_start > 1) && // AI multi-city start is enabled AND
+	    (city->Body.ID != leader->CapitalID)) { // city is not the capital
+		// Find & remove any extra palace in this city. Remember its ID so we can find a new place for it.
+		int extra_palace_lost = -1; {
+			for (int n = 0; n < is->current_config.count_ai_multi_start_extra_palaces; n++) {
+				int improv_id = is->current_config.ai_multi_start_extra_palaces[n];
+				Improvement * improv = &p_bic_data->Improvements[improv_id];
+				if ((improv->Characteristics & ITC_Small_Wonder) &&
+				    (improv->SmallWonderFlags & ITSW_Reduces_Corruption) &&
+				    (leader->Small_Wonders[improv_id] == city->Body.ID)) {
+					patch_City_add_or_remove_improvement (city, __, improv_id, 0, false);
+					extra_palace_lost = improv_id;
+					break;
+				}
+			}
+		}
+
+		// Replace the lost extra palace like what happens to the real palace
+		if (extra_palace_lost >= 0) {
+			int best_rating = -1;
+			City * best_location = NULL;
+			FOR_CITIES_OF (coi, leader->ID) {
+				City * candidate = coi.city;
+				if ((candidate != city) &&
+				    (candidate->Body.ID != leader->CapitalID) &&
+				    ! has_extra_palace (candidate)) {
+
+					// Rate this candidate as a possible (extra) palace location. The criteria we use to rate it are identical to
+					// what the base game uses to find a new location for the palace.
+					int rating = 0;
+					rating += candidate->Body.Population.Size;
+					rating += count_units_at (candidate->Body.X, candidate->Body.Y, UF_4, -1, 0, -1);
+					rating += 2 * City_count_citizens_of_race (candidate, __, leader->RaceID);
+					FOR_TILES_AROUND (tai, 0x121, candidate->Body.X, candidate->Body.Y) {
+						if (tai.n == 0)
+							continue;
+						City * neighbor = get_city_ptr (tai.tile->CityID);
+						if ((neighbor != NULL) && (neighbor != city) && (neighbor->Body.CivID == leader->ID)) {
+							int size = neighbor->Body.Population.Size;
+							if      (size > p_bic_data->General.MaximumSize_City) rating += 3;
+							else if (size > p_bic_data->General.MaximumSize_Town) rating += 2;
+							else                                                  rating += 1;
+						}
+					}
+
+					if (rating > best_rating) {
+						best_rating = rating;
+						best_location = candidate;
+					}
+				}
+			}
+
+			if (best_location != NULL)
+				City_add_or_remove_improvement (best_location, __, extra_palace_lost, 1, false);
+		}
+	}
 }
 
 // Returns -1 if the location is unusable, 0-9 if it's usable but doesn't satisfy all criteria, and 10 if it couldn't be better
