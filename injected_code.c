@@ -2647,6 +2647,8 @@ patch_init_floating_point ()
 	is->penciled_in_upgrades = NULL;
 	is->penciled_in_upgrade_count = is->penciled_in_upgrade_capacity = 0;
 
+	is->currently_capturing_city = NULL;
+
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config);
@@ -6141,6 +6143,8 @@ patch_City_get_total_pollution (City * this)
 	return City_get_pollution_from_buildings (this) + patch_City_get_pollution_from_pop (this);
 }
 
+void remove_extra_palaces (City * city, City * excluded_destination);
+
 void __fastcall
 patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int add, bool param_3)
 {
@@ -6196,6 +6200,13 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	if (is->current_config.patch_maintenance_persisting_for_obsolete_buildings &&
 	    (improv->ObsoleteID >= 0) && Leader_has_tech (&leaders[this->Body.CivID], __, improv->ObsoleteID))
 		this->Body.Improvements_Maintenance = init_maintenance;
+
+	// If AI MCS is enabled and we've added the Palace to a city, then remove any extra palaces from that city. If we're in the process of
+	// capturing a city, it's necessary to exclude that city as a possible destination for removed extra palaces.
+	if ((is->current_config.ai_multi_city_start > 1) &&
+	    add && (improv->ImprovementFlags & ITF_Center_of_Empire) &&
+	    ((*p_human_player_bits & (1 << this->Body.CivID)) == 0))
+		remove_extra_palaces (this, is->currently_capturing_city);
 }
 
 void __fastcall
@@ -6272,7 +6283,7 @@ has_extra_palace (City * city)
 // Removes any extra palaces from this city to other cities owned by the same player (if possible). Does not check that the city belongs to an AI or
 // that AI MCS is enabled.
 void
-remove_extra_palaces (City * city)
+remove_extra_palaces (City * city, City * excluded_destination)
 {
 	Leader * leader = &leaders[city->Body.CivID];
 	int extra_palace_lost;
@@ -6299,6 +6310,7 @@ remove_extra_palaces (City * city)
 				City * candidate = coi.city;
 				if ((candidate != city) &&
 				    (candidate->Body.ID != leader->CapitalID) &&
+				    (candidate != excluded_destination) &&
 				    ! has_extra_palace (candidate)) {
 
 					// Rate this candidate as a possible (extra) palace location. The criteria we use to rate it are identical to
@@ -6366,7 +6378,7 @@ on_lose_city (Leader * leader, City * city, enum city_loss_reason reason)
 	// If leader is an AI and AI MCS is enabled, remove any extra palaces the city has
 	if (((*p_human_player_bits & (1<<leader->ID)) == 0) &&
 	    (is->current_config.ai_multi_city_start > 1))
-		remove_extra_palaces (city);
+		remove_extra_palaces (city, NULL);
 }
 
 // Returns -1 if the location is unusable, 0-9 if it's usable but doesn't satisfy all criteria, and 10 if it couldn't be better
@@ -9022,12 +9034,16 @@ patch_Leader_create_city_for_scenario (Leader * this, int edx, int x, int y, int
 	return tr;
 }
 
+
+
 bool __fastcall
 patch_Leader_do_capture_city (Leader * this, int edx, City * city, bool involuntary, bool converted)
 {
+	is->currently_capturing_city = city;
 	on_lose_city (&leaders[city->Body.CivID], city, converted ? CLR_CONVERTED : (involuntary ? CLR_CONQUERED : CLR_TRADED));
 	bool tr = Leader_do_capture_city (this, __, city, involuntary, converted);
 	on_gain_city (this, city, converted ? CGR_CONVERTED : (involuntary ? CGR_CONQUERED : CGR_TRADED));
+	is->currently_capturing_city = NULL;
 	return tr;
 }
 

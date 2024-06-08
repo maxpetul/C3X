@@ -772,6 +772,9 @@ struct injected_state {
 	int penciled_in_upgrade_count;
 	int penciled_in_upgrade_capacity;
 
+	// While in Leader::do_capture_city, the city in question is stored in this var. Otherwise it's NULL.
+	City * currently_capturing_city;
+
 	// ==========
 	// }
 	// ==========
