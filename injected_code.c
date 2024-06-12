@@ -1170,7 +1170,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "halve_ai_research_rate")) {
 					if (read_int (&value, &ival))
-						cfg->ai_research_multiplier = (ival != 0) ? 50 : 100;
+						if (ival) // halving = true => set multiplier to 50, otherwise do nothing
+							cfg->ai_research_multiplier = 50;
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 				} else if (slice_matches_str (&p.key, "enable_ai_two_city_start")) {
