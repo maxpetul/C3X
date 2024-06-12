@@ -9080,5 +9080,21 @@ patch_City_has_hud_icon (City * this)
 		   && has_extra_palace (this));
 }
 
+void __fastcall
+patch_City_draw_on_map (City * this, int edx, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7)
+{
+	Leader * owner = &leaders[this->Body.CivID];
+	int restore_capital = owner->CapitalID;
+
+	// Temporarily set this city as the capital if it has an extra palace so it gets drawn with the next larger size
+	if ((is->current_config.ai_multi_city_start > 1) &&
+	    ((*p_human_player_bits & (1 << owner->ID)) == 0) &&
+	    has_extra_palace (this))
+		owner->CapitalID = this->Body.ID;
+
+	City_draw_on_map (this, __, map_renderer, pixel_x, pixel_y, param_4, param_5, param_6, param_7);
+	owner->CapitalID = restore_capital;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
