@@ -9096,5 +9096,27 @@ patch_City_draw_on_map (City * this, int edx, Map_Renderer * map_renderer, int p
 	owner->CapitalID = restore_capital;
 }
 
+void __fastcall
+patch_MenuUnitItem_write_text_to_temp_str (MenuUnitItem * this)
+{
+	MenuUnitItem_write_text_to_temp_str (this);
+
+	Unit * unit = this->unit;
+	if ((unit->Body.CivID == p_main_screen_form->Player_CivID) &&
+	    (Unit_get_containing_army (unit) == NULL)) {
+		char * verb = (unit->Body.UnitState == UnitState_Fortifying) ? (*p_labels)[0x100] : (*p_labels)[0xFF];
+		char * verb_str_start = strstr (temp_str, verb);
+		if (verb_str_start != NULL) {
+			char * repl_verb = "poc poc poc";
+
+			char s[500];
+			char * verb_str_end = verb_str_start + strlen (verb);
+			snprintf (s, sizeof s, "%.*s%s%s", verb_str_start - temp_str, temp_str, repl_verb, verb_str_end);
+			s[(sizeof s) - 1] = '\0';
+			strncpy (temp_str, s, sizeof s);
+		}
+	}
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

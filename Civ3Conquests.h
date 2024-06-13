@@ -6127,6 +6127,7 @@ typedef struct Object_667188 Object_667188;
 typedef struct DiploForm DiploForm;
 typedef struct TextBuffer TextBuffer;
 typedef struct OpenGLRenderer OpenGLRenderer;
+typedef struct MenuUnitItem MenuUnitItem;
 
 // Contains font info for a particular size & style
 struct Object_66C3FC
@@ -6275,4 +6276,14 @@ struct OpenGLRenderer
 	float blue;
 	float alpha;
 	int field_20;
+};
+
+struct MenuUnitItem
+{
+	Unit * unit;
+	int container_count;
+	bool is_in_army;
+	bool is_flag_unit;
+	bool is_state_blank;
+	byte field_B;
 };
