@@ -2348,6 +2348,7 @@ patch_init_floating_point ()
 		{"group_units_on_right_click_menu"                     , true , offsetof (struct c3x_config, group_units_on_right_click_menu)},
 		{"gray_out_units_on_menu_with_no_remaining_moves"      , true , offsetof (struct c3x_config, gray_out_units_on_menu_with_no_remaining_moves)},
 		{"put_movement_icons_on_units_on_menu"                 , true , offsetof (struct c3x_config, put_movement_icons_on_units_on_menu)},
+		{"describe_states_of_units_on_menu"                    , true , offsetof (struct c3x_config, describe_states_of_units_on_menu)},
 		{"show_golden_age_turns_remaining"                     , true , offsetof (struct c3x_config, show_golden_age_turns_remaining)},
 		{"show_zoc_attacks_from_mid_stack"                     , true , offsetof (struct c3x_config, show_zoc_attacks_from_mid_stack)},
 		{"cut_research_spending_to_avoid_bankruptcy"           , true , offsetof (struct c3x_config, cut_research_spending_to_avoid_bankruptcy)},
@@ -9096,19 +9097,69 @@ patch_City_draw_on_map (City * this, int edx, Map_Renderer * map_renderer, int p
 	owner->CapitalID = restore_capital;
 }
 
+// Writes a string to replace "Wake" or "Activate" on the right-click menu entry for the given unit. Some units might not have a replacement, in which
+// case the function writes nothing and returns false. The string is written to out_str which must point to a buffer of at least str_capacity bytes.
+bool
+get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
+{
+	char const * const verbs[33] = {
+		"Idle"        , // [No state] = 0x0
+		"Fortifying"  , // Fortifying = 0x1
+		"Working"     , // Build_Mines = 0x2
+		"Working"     , // Irrigate = 0x3
+		"Working"     , // Build_Fortress = 0x4
+		"Working"     , // Build_Road = 0x5
+		"Working"     , // Build_Railroad = 0x6
+		"Working"     , // Plant_Forest = 0x7
+		"Working"     , // Clear_Forest = 0x8
+		"Working"     , // Clear_Wetlands = 0x9
+		"Working"     , // Clear_Damage = 0xA
+		"Working"     , // Build_Airfield = 0xB
+		"Working"     , // Build_Radar_Tower = 0xC
+		"Working"     , // Build_Outpost = 0xD
+		"Working"     , // Build_Barricade = 0xE
+		"Intercepting", // Intercept = 0xF
+		"Moving"      , // Go_To = 0x10
+		"Working"     , // Road_To_Tile = 0x11
+		"Working"     , // Railroad_To_Tile = 0x12
+		"Working"     , // Build_Colony = 0x13
+		"Automated"   , // Auto_Irrigate = 0x14
+		"Automated"   , // Build_Trade_Routes = 0x15
+		"Automated"   , // Auto_Clear_Forest = 0x16
+		"Automated"   , // Auto_Clear_Swamp = 0x17
+		"Automated"   , // Auto_Clear_Pollution = 0x18
+		"Automated"   , // Auto_Save_City_Tiles = 0x19
+		"Exploring"   , // Explore = 0x1A
+		NULL          , // ? = 0x1B
+		NULL          , // Fleeing = 0x1C
+		NULL          , // ? = 0x1D
+		NULL          , // ? = 0x1E
+		"Bombarding"  , // Auto_Bombard = 0x1F
+		"Bombarding"  , // Auto_Air_Bombard = 0x20
+	};
+	enum UnitStateType state = unit->Body.UnitState;
+	char const * verb;
+	if ((state >= 0) && (state < ARRAY_LEN (verbs)) && (NULL != (verb = verbs[state]))) {
+		strncpy (out_str, verb, str_capacity);
+		out_str[str_capacity - 1] = '\0';
+		return true;
+	} else
+		return false;
+}
+
 void __fastcall
 patch_MenuUnitItem_write_text_to_temp_str (MenuUnitItem * this)
 {
 	MenuUnitItem_write_text_to_temp_str (this);
 
 	Unit * unit = this->unit;
+	char repl_verb[30];
 	if ((unit->Body.CivID == p_main_screen_form->Player_CivID) &&
-	    (Unit_get_containing_army (unit) == NULL)) {
+	    (Unit_get_containing_army (unit) == NULL) &&
+	    get_menu_verb_for_unit (unit, repl_verb, sizeof repl_verb)) {
 		char * verb = (unit->Body.UnitState == UnitState_Fortifying) ? (*p_labels)[0x100] : (*p_labels)[0xFF];
 		char * verb_str_start = strstr (temp_str, verb);
 		if (verb_str_start != NULL) {
-			char * repl_verb = "poc poc poc";
-
 			char s[500];
 			char * verb_str_end = verb_str_start + strlen (verb);
 			snprintf (s, sizeof s, "%.*s%s%s", verb_str_start - temp_str, temp_str, repl_verb, verb_str_end);

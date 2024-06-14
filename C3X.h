@@ -103,6 +103,7 @@ struct c3x_config {
 	bool group_units_on_right_click_menu;
 	bool gray_out_units_on_menu_with_no_remaining_moves;
 	bool put_movement_icons_on_units_on_menu;
+	bool describe_states_of_units_on_menu;
 	int anarchy_length_percent;
 	bool show_golden_age_turns_remaining;
 	bool show_zoc_attacks_from_mid_stack;
