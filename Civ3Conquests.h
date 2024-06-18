@@ -1454,6 +1454,14 @@ typedef enum map_rcm_item {
 	// After that are the unit items. There, item_id = unit_id - (UnitTypeCount+19)
 } MapRCMItem;
 
+enum unit_status_flags
+{
+	USF_USED_ATTACK = 0x4, // the unit has attacked at least once this turn
+	USF_USED_DEFENSIVE_BOMBARD = 0x40, // the unit has performed def. bombard already this turn
+	USF_SENTRY = 0x80,
+	USF_SENTRY_ENEMY_ONLY = 0x100,
+} UnitStatusFlags;
+
 struct IntList
 {
   int field_0;
@@ -4885,7 +4893,7 @@ struct Unit_Body
   int barb_tribe_id;
   int UnitTypeID;
   int Combat_Experience;
-  int Status;
+  UnitStatusFlags Status;
   int Damage;
   int Moves;
   int Job_Value;
@@ -4894,7 +4902,11 @@ struct Unit_Body
   short field_42;
   int Container_Unit;
   int UnitState;
-  int field_4C[3];
+  bool automated;
+  byte field_4D;
+  byte field_4E;
+  byte field_4F;
+  int field_50[2];
   String56 Custom_Name;
   int field_98;
   int path_dest_x;

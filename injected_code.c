@@ -3035,7 +3035,7 @@ can_attack_this_turn (Unit * unit)
 {
 	// return unit has moves left AND (unit hasn't attacked this turn OR unit has blitz ability)
 	return (unit->Body.Moves < Unit_get_max_move_points (unit)) &&
-		(((unit->Body.Status & 4) == 0) ||
+		(((unit->Body.Status & USF_USED_ATTACK) == 0) ||
 		 UnitType_has_ability (&p_bic_data->UnitTypes[unit->Body.UnitTypeID], __, UTA_Blitz));
 }
 
@@ -3889,7 +3889,7 @@ patch_Main_GUI_handle_click_in_status_panel (Main_GUI * this, int edx, int mouse
 int
 get_city_production_rate (City * city, enum City_Order_Types order_type, int order_id)
 {
-	int in_disorder = city->Body.Status & 1,
+	int in_disorder = city->Body.Status & CSF_Civil_Disorder,
 	    in_anarchy = p_bic_data->Governments[leaders[city->Body.CivID].GovernmentType].b_Transition_Type,
 	    getting_tile_shields = (! in_disorder) && (! in_anarchy);
 
@@ -6881,7 +6881,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 			// Memoize all cities not already building wealth and sort by production (lowest first)
 			clear_memo ();
 			FOR_CITIES_OF (coi, leader->ID)
-				if ((coi.city->Body.Status & 0x20) == 0)
+				if ((coi.city->Body.Status & CSF_Capitalization) == 0)
 					memoize (coi.city_id);
 			qsort (is->memo, is->memo_len, sizeof is->memo[0], compare_cities_by_production);
 
@@ -7055,7 +7055,7 @@ patch_Unit_get_interceptor_max_moves (Unit * this)
 {
 	// Stop fighters from intercepting multiple times per turn without blitz
 	if (is->current_config.charge_one_move_for_recon_and_interception &&
-	    (this->Body.Status & 4 != 0) && ! UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Blitz))
+	    (this->Body.Status & USF_USED_ATTACK != 0) && ! UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Blitz))
 		return 0;
 
 	else
@@ -7066,7 +7066,7 @@ int __fastcall
 patch_Unit_get_moves_after_interception (Unit * this)
 {
 	if (is->current_config.charge_one_move_for_recon_and_interception) {
-		this->Body.Status |= 4; // Set status bit indicating that the interceptor has attacked this turn
+		this->Body.Status |= USF_USED_ATTACK; // Set status bit indicating that the interceptor has attacked this turn
 		return this->Body.Moves + p_bic_data->General.RoadsMovementRate;
 	} else
 		return Unit_get_max_move_points (this);
@@ -8003,7 +8003,7 @@ bool
 can_do_defensive_bombard (Unit * unit, UnitType * type)
 {
 	if ((type->Bombard_Strength > 0) && (! Unit_has_ability (unit, __, UTA_Cruise_Missile))) {
-		if ((unit->Body.Status & 0x40) == 0) // has not already done DB this turn
+		if ((unit->Body.Status & USF_USED_DEFENSIVE_BOMBARD) == 0) // has not already done DB this turn
 			return true;
 
 		// If the "blitz" special DB rule is activated and this unit has blitz, check if it still has an extra DB to use
@@ -8074,7 +8074,7 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 	}
 
 	// If the unit has already performed DB this turn, then record that it's consumed one of its extra DBs
-	if (bombarder->Body.Status & 0x40) {
+	if (bombarder->Body.Status & USF_USED_DEFENSIVE_BOMBARD) {
 		int extra_dbs;
 		int got_value = itable_look_up (&is->extra_defensive_bombards, bombarder->Body.ID, &extra_dbs);
 		itable_insert (&is->extra_defensive_bombards, bombarder->Body.ID, got_value ? (extra_dbs + 1) : 1);
