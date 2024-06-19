@@ -4486,7 +4486,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	for (int n = 0; n < is->current_config.count_mills; n++) {
 		struct mill * mill = &is->current_config.mills[n];
 		for (int k = 0; k < 2; k++) {
-			int resource_id = (&p_bic_data->Improvements[mill->improv_id].Resource1ID)[n];
+			int resource_id = (&p_bic_data->Improvements[mill->improv_id].Resource1ID)[k];
 			if ((resource_id >= 0) && (resource_id < p_bic_data->ResourceTypeCount)) {
 				byte bit = 1 << (resource_id & 7);
 				is->mill_input_resource_bits[resource_id>>3] |= bit;
