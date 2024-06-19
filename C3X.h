@@ -185,6 +185,7 @@ struct c3x_config {
 	int count_leader_era_alias_lists;
 	struct table unit_limits; // Maps unit type names (strings) to pointers to limit objects (struct unit_type_limit *)
 	bool allow_upgrades_in_any_city;
+	bool do_not_generate_volcanos;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;

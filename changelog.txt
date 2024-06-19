@@ -3,6 +3,7 @@
 - AI's starter cities in multi-city start can begin with improvements, inc. "extra palaces" which respawn like the real palace
 - Can set multiplier on AI research rate (replaces halve_ai_research_rate)
 - Option to allow upgrades in any city
+- Option to stop the map generator from placing volcanos
 - Fix crashes and strange behavior caused by use-after-free bug in config loader
 - Fix crash when loading a second game due to improper creation of unit RCM icon sprites
 

@@ -2422,6 +2422,7 @@ patch_init_floating_point ()
 		{"show_total_city_count"                               , false, offsetof (struct c3x_config, show_total_city_count)},
 		{"strengthen_forbidden_palace_ocn_effect"              , false, offsetof (struct c3x_config, strengthen_forbidden_palace_ocn_effect)},
 		{"allow_upgrades_in_any_city"                          , false, offsetof (struct c3x_config, allow_upgrades_in_any_city)},
+		{"do_not_generate_volcanos"                            , false, offsetof (struct c3x_config, do_not_generate_volcanos)},
 	};
 
 	struct integer_config_option {
@@ -9172,6 +9173,14 @@ patch_MenuUnitItem_write_text_to_temp_str (MenuUnitItem * this)
 			strncpy (temp_str, s, sizeof s);
 		}
 	}
+}
+
+void __fastcall
+patch_Tile_m74_Set_Square_Type_for_hill_gen (Tile * this, int edx, enum SquareTypes sq, int tile_x, int tile_y)
+{
+	if ((sq == SQ_Volcano) && is->current_config.do_not_generate_volcanos)
+		sq = SQ_Mountains;
+	this->vtable->m74_Set_Square_Type (this, __, sq, tile_x, tile_y);
 }
 
 // TCC requires a main function be defined even though it's never used.

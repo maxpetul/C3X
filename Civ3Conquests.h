@@ -1993,8 +1993,7 @@ struct Map_vtable
 //  int (__thiscall *m01_Create_WH_Tiles)(Map *);
   void *m01_Create_WH_Tiles;
   int m02;
-//  void (__thiscall *m03)(Map *);
-  void *m03;
+  void (__fastcall * push_loading_bar) (Map * this);
 //  void (__thiscall *m04_Clear_Tiles)(Map *);
   void *m04_Clear_Tiles;
   int m05;
@@ -2021,7 +2020,7 @@ struct Map_vtable
   int m26;
   int m27;
   int m28_Find_Center_Neighbour_Point;
-  int m29;
+  void (__fastcall * generate) (Map * this, __, int seed, bool is_multiplayer_game, int num_seafaring_civs);
 //  void (__thiscall *m30_Init_Tiles)(Map *this, int SquareType, int);
   void *m30_Init_Tiles;
 //  void (__thiscall *m31)(Map *this);
