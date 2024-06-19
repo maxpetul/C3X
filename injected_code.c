@@ -9140,6 +9140,11 @@ get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 	enum UnitStateType state = unit->Body.UnitState;
 	enum c3x_label label;
 	if ((state >= 0) && (state < ARRAY_LEN (labels)) && (0 <= (label = labels[state]))) {
+		if (((label == CL_IDLE) || (label == CL_WORKING) || (label == CL_MOVING)) && unit->Body.automated)
+			label = CL_AUTOMATED;
+		else if ((label == CL_FORTIFIED) && (unit->Body.Status & (USF_SENTRY | USF_SENTRY_ENEMY_ONLY)))
+			label = CL_SENTRY;
+
 		strncpy (out_str, is->c3x_labels[label], str_capacity);
 		out_str[str_capacity - 1] = '\0';
 		return true;
