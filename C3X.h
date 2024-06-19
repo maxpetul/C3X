@@ -437,6 +437,8 @@ struct injected_state {
 	bool is_computing_resource_access; // Set to true only while Trade_Net::recompute_resources is running
 	bool keep_tnx_cache;
 
+	bool is_placing_scenario_things; // Set to true only while Map::place_scenario_things is running
+
 	bool paused_for_popup; // Set to true while a popup, map message, or the diplo screen is open
 	long long time_spent_paused_during_popup; // Tracks time spent waiting for the three things above
 

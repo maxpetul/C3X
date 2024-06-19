@@ -2547,6 +2547,7 @@ patch_init_floating_point ()
 	is->tnx_cache = NULL;
 	is->is_computing_city_connections = is->is_computing_resource_access = false;
 	is->keep_tnx_cache = false;
+	is->is_placing_scenario_things = false;
 	is->paused_for_popup = false;
 	is->time_spent_paused_during_popup = 0;
 	is->time_spent_computing_city_connections = 0;
@@ -6167,8 +6168,9 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	} else
 		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
 
-	// Update things in case we've added or removed a mill
-	{
+	// Update things in case we've added or removed a mill. This is only necessary while in-game. If the game is still loading the scenario, it
+	// will recompute trade & resources after it's done.
+	if (! is->is_placing_scenario_things) {
 		// Collect info about this mill, if in fact the added or removed improvement is a mill. If it's not, all these vars will be left
 		// false. "generates_input" tracks whether or not the mill generates a resource that's an input for another mill.
 		bool is_non_local_mill, is_yielding_mill, generates_input; {
@@ -6207,6 +6209,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	// If AI MCS is enabled and we've added the Palace to a city, then remove any extra palaces from that city. If we're in the process of
 	// capturing a city, it's necessary to exclude that city as a possible destination for removed extra palaces.
 	if ((is->current_config.ai_multi_city_start > 1) &&
+	    (! is->is_placing_scenario_things) &&
 	    add && (improv->ImprovementFlags & ITF_Center_of_Empire) &&
 	    ((*p_human_player_bits & (1 << this->Body.CivID)) == 0))
 		remove_extra_palaces (this, is->currently_capturing_city);
@@ -9181,6 +9184,14 @@ patch_Tile_m74_Set_Square_Type_for_hill_gen (Tile * this, int edx, enum SquareTy
 	if ((sq == SQ_Volcano) && is->current_config.do_not_generate_volcanos)
 		sq = SQ_Mountains;
 	this->vtable->m74_Set_Square_Type (this, __, sq, tile_x, tile_y);
+}
+
+void __fastcall
+patch_Map_place_scenario_things (Map * this)
+{
+	is->is_placing_scenario_things = true;
+	Map_place_scenario_things (this);
+	is->is_placing_scenario_things = false;
 }
 
 // TCC requires a main function be defined even though it's never used.
