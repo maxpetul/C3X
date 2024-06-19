@@ -9102,45 +9102,45 @@ patch_City_draw_on_map (City * this, int edx, Map_Renderer * map_renderer, int p
 bool
 get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 {
-	char const * const verbs[33] = {
-		"Idle"        , // [No state] = 0x0
-		"Fortifying"  , // Fortifying = 0x1
-		"Working"     , // Build_Mines = 0x2
-		"Working"     , // Irrigate = 0x3
-		"Working"     , // Build_Fortress = 0x4
-		"Working"     , // Build_Road = 0x5
-		"Working"     , // Build_Railroad = 0x6
-		"Working"     , // Plant_Forest = 0x7
-		"Working"     , // Clear_Forest = 0x8
-		"Working"     , // Clear_Wetlands = 0x9
-		"Working"     , // Clear_Damage = 0xA
-		"Working"     , // Build_Airfield = 0xB
-		"Working"     , // Build_Radar_Tower = 0xC
-		"Working"     , // Build_Outpost = 0xD
-		"Working"     , // Build_Barricade = 0xE
-		"Intercepting", // Intercept = 0xF
-		"Moving"      , // Go_To = 0x10
-		"Working"     , // Road_To_Tile = 0x11
-		"Working"     , // Railroad_To_Tile = 0x12
-		"Working"     , // Build_Colony = 0x13
-		"Automated"   , // Auto_Irrigate = 0x14
-		"Automated"   , // Build_Trade_Routes = 0x15
-		"Automated"   , // Auto_Clear_Forest = 0x16
-		"Automated"   , // Auto_Clear_Swamp = 0x17
-		"Automated"   , // Auto_Clear_Pollution = 0x18
-		"Automated"   , // Auto_Save_City_Tiles = 0x19
-		"Exploring"   , // Explore = 0x1A
-		NULL          , // ? = 0x1B
-		NULL          , // Fleeing = 0x1C
-		NULL          , // ? = 0x1D
-		NULL          , // ? = 0x1E
-		"Bombarding"  , // Auto_Bombard = 0x1F
-		"Bombarding"  , // Auto_Air_Bombard = 0x20
+	enum c3x_label const labels[33] = {
+		CL_IDLE        , // [No state] = 0x0
+		CL_FORTIFIED   , // Fortifying = 0x1
+		CL_WORKING     , // Build_Mines = 0x2
+		CL_WORKING     , // Irrigate = 0x3
+		CL_WORKING     , // Build_Fortress = 0x4
+		CL_WORKING     , // Build_Road = 0x5
+		CL_WORKING     , // Build_Railroad = 0x6
+		CL_WORKING     , // Plant_Forest = 0x7
+		CL_WORKING     , // Clear_Forest = 0x8
+		CL_WORKING     , // Clear_Wetlands = 0x9
+		CL_WORKING     , // Clear_Damage = 0xA
+		CL_WORKING     , // Build_Airfield = 0xB
+		CL_WORKING     , // Build_Radar_Tower = 0xC
+		CL_WORKING     , // Build_Outpost = 0xD
+		CL_WORKING     , // Build_Barricade = 0xE
+		CL_INTERCEPTING, // Intercept = 0xF
+		CL_MOVING      , // Go_To = 0x10
+		CL_WORKING     , // Road_To_Tile = 0x11
+		CL_WORKING     , // Railroad_To_Tile = 0x12
+		CL_WORKING     , // Build_Colony = 0x13
+		CL_AUTOMATED   , // Auto_Irrigate = 0x14
+		CL_AUTOMATED   , // Build_Trade_Routes = 0x15
+		CL_AUTOMATED   , // Auto_Clear_Forest = 0x16
+		CL_AUTOMATED   , // Auto_Clear_Swamp = 0x17
+		CL_AUTOMATED   , // Auto_Clear_Pollution = 0x18
+		CL_AUTOMATED   , // Auto_Save_City_Tiles = 0x19
+		CL_EXPLORING   , // Explore = 0x1A
+		-1             , // ? = 0x1B
+		-1             , // Fleeing = 0x1C
+		-1             , // ? = 0x1D
+		-1             , // ? = 0x1E
+		CL_BOMBARDING  , // Auto_Bombard = 0x1F
+		CL_BOMBARDING  , // Auto_Air_Bombard = 0x20
 	};
 	enum UnitStateType state = unit->Body.UnitState;
-	char const * verb;
-	if ((state >= 0) && (state < ARRAY_LEN (verbs)) && (NULL != (verb = verbs[state]))) {
-		strncpy (out_str, verb, str_capacity);
+	enum c3x_label label;
+	if ((state >= 0) && (state < ARRAY_LEN (labels)) && (0 <= (label = labels[state]))) {
+		strncpy (out_str, is->c3x_labels[label], str_capacity);
 		out_str[str_capacity - 1] = '\0';
 		return true;
 	} else

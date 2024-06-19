@@ -83,3 +83,14 @@ ICBM
 Naval Missile Transport
 Flag Unit
 King
+
+; Unit actions. These appear on the right-click menu in place of Wake/Activate.
+Idle
+Fortified
+Sentry
+Working
+Intercepting
+Moving
+Automated
+Exploring
+Bombarding

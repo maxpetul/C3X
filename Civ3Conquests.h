@@ -1454,7 +1454,7 @@ typedef enum map_rcm_item {
 	// After that are the unit items. There, item_id = unit_id - (UnitTypeCount+19)
 } MapRCMItem;
 
-enum unit_status_flags
+typedef enum unit_status_flags
 {
 	USF_USED_ATTACK = 0x4, // the unit has attacked at least once this turn
 	USF_USED_DEFENSIVE_BOMBARD = 0x40, // the unit has performed def. bombard already this turn
