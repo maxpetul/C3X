@@ -521,6 +521,13 @@ inlead,	   0x4E7E30,	0x4F08F0,	0x4E7EF0,	"MenuUnitItem_write_text_to_temp_str",	
 define,	   0xCAB2D8,	0xCCDB88,	0xCAB298,	"temp_str",					"char[4096]"
 repl call, 0x5EDD89,	0x5FD7BE,	0x5EDCB9,	"Tile_m74_Set_Square_Type_for_hill_gen",	""
 inlead,	   0x5D1EA0,	0x5E1140,	0x5D1DD0,	"Map_place_scenario_things",			"void (__fastcall *) (Map * this)"
+repl vptr, 0x66c3ec,	0x6894d8,	0x66c3ec,	"Advisor_Base_Form_domestic_m95",		"bool (__fastcall *) (Advisor_Base_Form * this)"
+repl vptr, 0x66f8cc,	0x68c988,	0x66f8cc,	"Advisor_Base_Form_trade_m95",			"bool (__fastcall *) (Advisor_Base_Form * this)"
+repl vptr, 0x66e0cc,	0x68b1b8,	0x66e0cc,	"Advisor_Base_Form_military_m95",		"bool (__fastcall *) (Advisor_Base_Form * this)"
+repl vptr, 0x66caac,	0x689b9c,	0x66caac,	"Advisor_Base_Form_foreign_m95",		"bool (__fastcall *) (Advisor_Base_Form * this)"
+repl vptr, 0x66bd3c,	0x688e34,	0x66bd3c,	"Advisor_Base_Form_cultural_m95",		"bool (__fastcall *) (Advisor_Base_Form * this)"
+repl vptr, 0x66f59c,	0x68c658,	0x66f59c,	"Advisor_Base_Form_science_m95",		"bool (__fastcall *) (Advisor_Base_Form * this)"
+
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
@@ -544,3 +551,4 @@ ignore,    0x57F623,	0x58C352,	0x57F383,	"ADDR_SUB_BUG_PATCH",				"void *"
 ignore,	   0x5B6CE0,	0x5C5670,	0x5B69F0,	"Unit_do_capture_units",			"bool (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int owner_civ_id)"
 define,	   0xCC2BB0,	0xCE54BC,	0xCC2B70,	"p_got_leader_gender",				"int *"
 ignore,	   0x446840,	0x0,		0x0,		"Leader_begin_turn",				"void (__fastcall *) (Leader * this)"
+ignore,	   0x49D070,	0x4A3AF0,	0x49D100,	"Advisor_GUI_open",				"void (__fastcall *) (Advisor_GUI * this, int edx, AdvisorKind kind)"

@@ -1462,6 +1462,18 @@ typedef enum unit_status_flags
 	USF_SENTRY_ENEMY_ONLY = 0x100,
 } UnitStatusFlags;
 
+typedef enum advisor_kind
+{
+	AK_DOMESTIC = 0,
+	AK_TRADE,
+	AK_MILITARY,
+	AK_FOREIGN,
+	AK_CULTURAL,
+	AK_SCIENCE,
+	AK_6,
+	AK_7
+} AdvisorKind;
+
 struct IntList
 {
   int field_0;
@@ -4678,7 +4690,7 @@ struct Advisor_Form_vtable
   int m92_Get_AdvisorID;
   int m93;
   int m94;
-  int m95;
+  bool (__fastcall * m95) (Advisor_Base_Form * this);
   int m96;
   int m97;
   int m98;

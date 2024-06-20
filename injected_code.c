@@ -9194,5 +9194,17 @@ patch_Map_place_scenario_things (Map * this)
 	is->is_placing_scenario_things = false;
 }
 
+void
+on_open_advisor (AdvisorKind kind)
+{
+}
+
+bool __fastcall patch_Advisor_Base_Form_domestic_m95 (Advisor_Base_Form * this) { on_open_advisor (AK_DOMESTIC); return Advisor_Base_Form_domestic_m95 (this); }
+bool __fastcall patch_Advisor_Base_Form_trade_m95    (Advisor_Base_Form * this) { on_open_advisor (AK_TRADE)   ; return Advisor_Base_Form_trade_m95    (this); }
+bool __fastcall patch_Advisor_Base_Form_military_m95 (Advisor_Base_Form * this) { on_open_advisor (AK_MILITARY); return Advisor_Base_Form_military_m95 (this); }
+bool __fastcall patch_Advisor_Base_Form_foreign_m95  (Advisor_Base_Form * this) { on_open_advisor (AK_FOREIGN) ; return Advisor_Base_Form_foreign_m95  (this); }
+bool __fastcall patch_Advisor_Base_Form_cultural_m95 (Advisor_Base_Form * this) { on_open_advisor (AK_CULTURAL); return Advisor_Base_Form_cultural_m95 (this); }
+bool __fastcall patch_Advisor_Base_Form_science_m95  (Advisor_Base_Form * this) { on_open_advisor (AK_SCIENCE) ; return Advisor_Base_Form_science_m95  (this); }
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
