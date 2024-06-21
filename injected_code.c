@@ -1169,10 +1169,10 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					} else
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "halve_ai_research_rate")) {
-					if (read_int (&value, &ival))
+					if (read_int (&value, &ival)) {
 						if (ival) // halving = true => set multiplier to 50, otherwise do nothing
 							cfg->ai_research_multiplier = 50;
-					else
+					} else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 				} else if (slice_matches_str (&p.key, "enable_ai_two_city_start")) {
 					if (read_int (&value, &ival))
@@ -9205,6 +9205,12 @@ bool __fastcall patch_Advisor_Base_Form_military_m95 (Advisor_Base_Form * this) 
 bool __fastcall patch_Advisor_Base_Form_foreign_m95  (Advisor_Base_Form * this) { on_open_advisor (AK_FOREIGN) ; return Advisor_Base_Form_foreign_m95  (this); }
 bool __fastcall patch_Advisor_Base_Form_cultural_m95 (Advisor_Base_Form * this) { on_open_advisor (AK_CULTURAL); return Advisor_Base_Form_cultural_m95 (this); }
 bool __fastcall patch_Advisor_Base_Form_science_m95  (Advisor_Base_Form * this) { on_open_advisor (AK_SCIENCE) ; return Advisor_Base_Form_science_m95  (this); }
+
+void __fastcall
+patch_Main_Screen_Form_open_quick_build_chooser (Main_Screen_Form * this, int edx, City * city, int mouse_x, int mouse_y)
+{
+	Main_Screen_Form_open_quick_build_chooser (this, __, city, mouse_x, mouse_y);
+}
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
