@@ -6,7 +6,8 @@
 - Option to stop the map generator from placing volcanos
 - Fix crashes and strange behavior caused by use-after-free bug in config loader
 - Fix crash when loading a second game due to improper creation of unit RCM icon sprites
-- Fix mill production not always updated after an input was gained or lost due to city improv change
+- Fix resource generation not always updated after an input was gained or lost due to city improv change
+- Rework some code related to resource generation and trade to improve stability and efficiency
 
 * RELEASE 18 PREVIEW 1
 - Unit limits

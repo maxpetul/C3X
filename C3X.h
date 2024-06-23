@@ -434,8 +434,18 @@ struct injected_state {
 	void * tnx_cache; // Cache object used by Trade Net X. Initially NULL, must be recreated every time a new map is loaded.
 	enum init_state tnx_init_state;
 	bool is_computing_city_connections; // Set to true only while Trade_Net::recompute_city_connections is running
-	bool is_computing_resource_access; // Set to true only while Trade_Net::recompute_resources is running
 	bool keep_tnx_cache;
+
+	// This flag gets set whenever a trade deal is signed or broken for a resource that's an input to a mill. It's necessary to call
+	// recompute_resources in that case since a mill may have been de/activated by the change. We can't call it right when the change happens as
+	// that can crash the game for reasons I don't completely understand. I believe it's because the recomputation can't be done while some other
+	// econ logic is running. Instead, we set this variable then recompute before obsolete data would be an issue. Specifically, this is done:
+	//   - When any player or AI begins their production phase
+	//   - When the player zooms to any city
+	//   - When the player opens the shift + right-click production chooser menu
+	//   - When the player visits any advisor
+	//   - When the player selects any unit
+	bool must_recompute_resources_for_mill_inputs;
 
 	bool is_placing_scenario_things; // Set to true only while Map::place_scenario_things is running
 

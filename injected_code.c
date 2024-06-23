@@ -1849,7 +1849,6 @@ compare_mill_tiles (void const * vp_a, void const * vp_b)
 void __fastcall
 patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups)
 {
-	is->is_computing_resource_access = true;
 	int extra_resource_count = not_below (0, p_bic_data->ResourceTypeCount - 32);
 	int ints_per_city = 1 + extra_resource_count/32;
 	memset (is->extra_available_resources, 0, is->extra_available_resources_capacity * ints_per_city * sizeof (unsigned));
@@ -1892,7 +1891,8 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups
 	}
 
 	recompute_mill_yields_after_resource_change (NULL);
-	is->is_computing_resource_access = false;
+
+	is->must_recompute_resources_for_mill_inputs = false;
 }
 
 Tile *
@@ -2545,8 +2545,9 @@ patch_init_floating_point ()
 	}
 
 	is->tnx_cache = NULL;
-	is->is_computing_city_connections = is->is_computing_resource_access = false;
+	is->is_computing_city_connections = false;
 	is->keep_tnx_cache = false;
+	is->must_recompute_resources_for_mill_inputs = false;
 	is->is_placing_scenario_things = false;
 	is->paused_for_popup = false;
 	is->time_spent_paused_during_popup = 0;
@@ -3017,6 +3018,13 @@ record_ai_unit_seen (Unit * unit, int x, int y)
 	}
 }
 
+void
+recompute_resources_if_necessary ()
+{
+	if (is->must_recompute_resources_for_mill_inputs)
+		patch_Trade_Net_recompute_resources (p_trade_net, __, false);
+}
+
 void __fastcall
 patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 {
@@ -3357,6 +3365,10 @@ CityLocValidity __fastcall patch_Map_check_city_location (Map * this, int edx, i
 void __fastcall
 patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 {
+	// Recompute resources now if needed because of a trade deal involving mill inputs. In rare cases the change in deals might affect a mill that
+	// produces a resource that's used for a worker job.
+	recompute_resources_if_necessary ();
+
 	Main_GUI_set_up_unit_command_buttons (this);
 	set_up_stack_bombard_buttons (this);
 	set_up_stack_worker_buttons (this);
@@ -3911,6 +3923,8 @@ get_city_production_rate (City * city, enum City_Order_Types order_type, int ord
 void __fastcall
 patch_City_Form_open (City_Form * this, int edx, City * city, int param_2)
 {
+	recompute_resources_if_necessary ();
+
 	WITH_PAUSE_FOR_POPUP {
 		City_Form_open (this, __, city, param_2);
 	}
@@ -7721,6 +7735,8 @@ patch_Map_wrap_vert_for_barb_ai (Map * this, int edx, int y)
 void __fastcall
 patch_Leader_do_production_phase (Leader * this)
 {
+	recompute_resources_if_necessary ();
+
 	// Force-activate the barbs if there are any barb cities on the map and barb city capturing is enabled. This is necessary for barb city
 	// production to work given how it's currently implemented.
 	if (is->current_config.enable_city_capture_by_barbarians && (this->ID == 0)) {
@@ -8685,9 +8701,8 @@ patch_Leader_record_export (Leader * this, int edx, int importer_civ_id, int res
 {
 	bool exported = Leader_record_export (this, __, importer_civ_id, resource_id);
 	if (exported &&
-	    (! is->is_computing_resource_access) && // if we're not already running recompute_resources
 	    (is->mill_input_resource_bits[resource_id>>3] & (1 << (resource_id & 7)))) // if the traded resource is an input to any mill
-		patch_Trade_Net_recompute_resources (p_trade_net, __, false);
+		is->must_recompute_resources_for_mill_inputs = true;
 	return exported;
 }
 
@@ -8696,9 +8711,8 @@ patch_Leader_erase_export (Leader * this, int edx, int importer_civ_id, int reso
 {
 	bool erased = Leader_erase_export (this, __, importer_civ_id, resource_id);
 	if (erased &&
-	    (! is->is_computing_resource_access) && // if we're not already running recompute_resources
 	    (is->mill_input_resource_bits[resource_id>>3] & (1 << (resource_id & 7)))) // if the traded resource is an input to any mill
-		patch_Trade_Net_recompute_resources (p_trade_net, __, false);
+		is->must_recompute_resources_for_mill_inputs = true;
 	return erased;
 }
 
@@ -9197,6 +9211,7 @@ patch_Map_place_scenario_things (Map * this)
 void
 on_open_advisor (AdvisorKind kind)
 {
+	recompute_resources_if_necessary ();
 }
 
 bool __fastcall patch_Advisor_Base_Form_domestic_m95 (Advisor_Base_Form * this) { on_open_advisor (AK_DOMESTIC); return Advisor_Base_Form_domestic_m95 (this); }
@@ -9209,6 +9224,7 @@ bool __fastcall patch_Advisor_Base_Form_science_m95  (Advisor_Base_Form * this) 
 void __fastcall
 patch_Main_Screen_Form_open_quick_build_chooser (Main_Screen_Form * this, int edx, City * city, int mouse_x, int mouse_y)
 {
+	recompute_resources_if_necessary ();
 	Main_Screen_Form_open_quick_build_chooser (this, __, city, mouse_x, mouse_y);
 }
 
