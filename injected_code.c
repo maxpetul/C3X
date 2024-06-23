@@ -5473,32 +5473,6 @@ are_units_duplicate (Unit_Body * a, Unit_Body * b)
 		(! (is_captured (a) ^ is_captured (b)));
 }
 
-// A unit is "busy" if it's performing a multi-turn action that the player might not want to interrupt. This includes all worker actions,
-// intercepting, and auto bombard. A unit is NOT considered busy if it's fortified, on a move command, automated, or exploring.
-bool
-is_unit_busy (Unit * unit)
-{
-	int state = unit->Body.UnitState;
-
-	// If unit is foritified or has no set state
-	if (state <= 1) return false;
-
-	// If unit is mining, irrigating, building (rail)road, planting forest, clearing forest/wetlands/pollution, building airfield/radar
-	// tower/outpost/barricade, or intercepting
-	else if (state <= 0xF) return true;
-
-	// If unit is on a move command
-	else if (state == 0x10) return false;
-
-	// If unit is (rail)roading to a tile, or building a colony
-	else if (state <= 0x13) return true;
-
-	// If unit is auto-bombarding or auto-bombing
-	else if ((state == 0x1F) || (state == 0x20)) return true;
-
-	else return false;
-}
-
 int __fastcall
 patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int item_id, char * text, int red)
 {
@@ -5553,9 +5527,7 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 					icon = URCMI_CANT_MOVE;
 				else {
 					bool can_attack = can_attack_this_turn (unit) && ((unit_type->Attack > 0) || (unit_type->Bombard_Strength > 0));
-					if (is_unit_busy (unit))
-						icon = can_attack ? URCMI_BUSY_CAN_ATTACK : URCMI_BUSY_NO_ATTACK;
-					else if (unit_body->Moves == 0)
+					if (unit_body->Moves == 0)
 						icon = can_attack ? URCMI_UNMOVED_CAN_ATTACK : URCMI_UNMOVED_NO_ATTACK;
 					else
 						icon = can_attack ? URCMI_MOVED_CAN_ATTACK : URCMI_MOVED_NO_ATTACK;
