@@ -3043,10 +3043,12 @@ patch_Unit_move (Unit * this, int edx, int tile_x, int tile_y)
 bool
 can_attack_this_turn (Unit * unit)
 {
-	// return unit has moves left AND (unit hasn't attacked this turn OR unit has blitz ability)
-	return (unit->Body.Moves < Unit_get_max_move_points (unit)) &&
-		(((unit->Body.Status & USF_USED_ATTACK) == 0) ||
-		 UnitType_has_ability (&p_bic_data->UnitTypes[unit->Body.UnitTypeID], __, UTA_Blitz));
+	UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
+	return (unit->Body.Moves < Unit_get_max_move_points (unit)) && // Unit can move at all AND
+		(((unit->Body.Status & USF_USED_ATTACK) == 0) || UnitType_has_ability (type, __, UTA_Blitz)) && // (Unit has not attacked OR has blitz) AND
+		((type->Attack > 0) || // (Unit can do a regular attack OR
+		 ((type->Special_Actions & UCV_Bombard & 0x0FFFFFFF) && // (unit can perform bombard AND
+		  ((type->Bombard_Strength > 0) || UnitType_has_ability (type, __, UTA_Nuclear_Weapon)))); // (unit has bombard strength OR is a nuclear weapon)))
 }
 
 bool
@@ -5526,7 +5528,7 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 				if (no_moves_left)
 					icon = URCMI_CANT_MOVE;
 				else {
-					bool can_attack = can_attack_this_turn (unit) && ((unit_type->Attack > 0) || (unit_type->Bombard_Strength > 0));
+					bool can_attack = can_attack_this_turn (unit);
 					if (unit_body->Moves == 0)
 						icon = can_attack ? URCMI_UNMOVED_CAN_ATTACK : URCMI_UNMOVED_NO_ATTACK;
 					else
