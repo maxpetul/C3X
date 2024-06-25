@@ -1,6 +1,7 @@
 - Expand AI two-city start to any number of cities
   - Config option has been renamed to ai_multi_city_start
 - AI's starter cities in multi-city start can begin with improvements, inc. "extra palaces" which respawn like the real palace
+- Replace Wake/Activate on the right-click menu with descriptions of what the units are doing
 - Can set multiplier on AI research rate (replaces halve_ai_research_rate)
 - Option to allow upgrades in any city
 - Option to stop the map generator from placing volcanos

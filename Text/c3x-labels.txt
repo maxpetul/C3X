@@ -88,6 +88,20 @@ King
 Idle
 Fortified
 Sentry
+Mining
+Irrigating
+Building Fortress
+Building Road
+Building Railroad
+Planting Forest
+Clearing Forest
+Clearing Wetlands
+Clearing Pollution
+Building Airfield
+Building Radar Tower
+Building Outpost
+Building Barricade
+Building Colony
 Working
 Intercepting
 Moving

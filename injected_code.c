@@ -9094,45 +9094,49 @@ patch_City_draw_on_map (City * this, int edx, Map_Renderer * map_renderer, int p
 bool
 get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 {
-	enum c3x_label const labels[33] = {
-		CL_IDLE        , // [No state] = 0x0
-		CL_FORTIFIED   , // Fortifying = 0x1
-		CL_WORKING     , // Build_Mines = 0x2
-		CL_WORKING     , // Irrigate = 0x3
-		CL_WORKING     , // Build_Fortress = 0x4
-		CL_WORKING     , // Build_Road = 0x5
-		CL_WORKING     , // Build_Railroad = 0x6
-		CL_WORKING     , // Plant_Forest = 0x7
-		CL_WORKING     , // Clear_Forest = 0x8
-		CL_WORKING     , // Clear_Wetlands = 0x9
-		CL_WORKING     , // Clear_Damage = 0xA
-		CL_WORKING     , // Build_Airfield = 0xB
-		CL_WORKING     , // Build_Radar_Tower = 0xC
-		CL_WORKING     , // Build_Outpost = 0xD
-		CL_WORKING     , // Build_Barricade = 0xE
-		CL_INTERCEPTING, // Intercept = 0xF
-		CL_MOVING      , // Go_To = 0x10
-		CL_WORKING     , // Road_To_Tile = 0x11
-		CL_WORKING     , // Railroad_To_Tile = 0x12
-		CL_WORKING     , // Build_Colony = 0x13
-		CL_AUTOMATED   , // Auto_Irrigate = 0x14
-		CL_AUTOMATED   , // Build_Trade_Routes = 0x15
-		CL_AUTOMATED   , // Auto_Clear_Forest = 0x16
-		CL_AUTOMATED   , // Auto_Clear_Swamp = 0x17
-		CL_AUTOMATED   , // Auto_Clear_Pollution = 0x18
-		CL_AUTOMATED   , // Auto_Save_City_Tiles = 0x19
-		CL_EXPLORING   , // Explore = 0x1A
-		-1             , // ? = 0x1B
-		-1             , // Fleeing = 0x1C
-		-1             , // ? = 0x1D
-		-1             , // ? = 0x1E
-		CL_BOMBARDING  , // Auto_Bombard = 0x1F
-		CL_BOMBARDING  , // Auto_Air_Bombard = 0x20
+	struct state_desc {
+		enum c3x_label label;
+		bool is_doing_worker_job;
+	} state_descs[33] = {
+		{CL_IDLE                , false}, // [No state] = 0x0
+		{CL_FORTIFIED           , false}, // Fortifying = 0x1
+		{CL_MINING              , true }, // Build_Mines = 0x2
+		{CL_IRRIGATING          , true }, // Irrigate = 0x3
+		{CL_BUILDING_FORTRESS   , true }, // Build_Fortress = 0x4
+		{CL_BUILDING_ROAD       , true }, // Build_Road = 0x5
+		{CL_BUILDING_RAILROAD   , true }, // Build_Railroad = 0x6
+		{CL_PLANTING_FOREST     , true }, // Plant_Forest = 0x7
+		{CL_CLEARING_FOREST     , true }, // Clear_Forest = 0x8
+		{CL_CLEARING_WETLANDS   , true }, // Clear_Wetlands = 0x9
+		{CL_CLEARING_DAMAGE     , true }, // Clear_Damage = 0xA
+		{CL_BUILDING_AIRFIELD   , true }, // Build_Airfield = 0xB
+		{CL_BUILDING_RADAR_TOWER, true }, // Build_Radar_Tower = 0xC
+		{CL_BUILDING_OUTPOST    , true }, // Build_Outpost = 0xD
+		{CL_BUILDING_BARRICADE  , true }, // Build_Barricade = 0xE
+		{CL_INTERCEPTING        , false}, // Intercept = 0xF
+		{CL_MOVING              , false}, // Go_To = 0x10
+		{CL_BUILDING_ROAD       , true }, // Road_To_Tile = 0x11
+		{CL_BUILDING_RAILROAD   , true }, // Railroad_To_Tile = 0x12
+		{CL_BUILDING_COLONY     , true }, // Build_Colony = 0x13
+		{CL_AUTOMATED           , true }, // Auto_Irrigate = 0x14
+		{CL_AUTOMATED           , true }, // Build_Trade_Routes = 0x15
+		{CL_AUTOMATED           , true }, // Auto_Clear_Forest = 0x16
+		{CL_AUTOMATED           , true }, // Auto_Clear_Swamp = 0x17
+		{CL_AUTOMATED           , true }, // Auto_Clear_Pollution = 0x18
+		{CL_AUTOMATED           , true }, // Auto_Save_City_Tiles = 0x19
+		{CL_EXPLORING           , false}, // Explore = 0x1A
+		{-1                     , false}, // ? = 0x1B
+		{-1                     , false}, // Fleeing = 0x1C
+		{-1                     , false}, // ? = 0x1D
+		{-1                     , false}, // ? = 0x1E
+		{CL_BOMBARDING          , false}, // Auto_Bombard = 0x1F
+		{CL_BOMBARDING          , false}, // Auto_Air_Bombard = 0x20
 	};
 	enum UnitStateType state = unit->Body.UnitState;
-	enum c3x_label label;
-	if ((state >= 0) && (state < ARRAY_LEN (labels)) && (0 <= (label = labels[state]))) {
-		if (((label == CL_IDLE) || (label == CL_WORKING) || (label == CL_MOVING)) && unit->Body.automated)
+	struct state_desc const * desc;
+	if ((state >= 0) && (state < ARRAY_LEN (state_descs)) && (desc = &state_descs[state]) && (desc->label >= 0)) {
+		enum c3x_label label = desc->label;
+		if (((label == CL_IDLE) || (label == CL_MOVING) || desc->is_doing_worker_job) && unit->Body.automated)
 			label = CL_AUTOMATED;
 		else if ((label == CL_FORTIFIED) && (unit->Body.Status & (USF_SENTRY | USF_SENTRY_ENEMY_ONLY)))
 			label = CL_SENTRY;
