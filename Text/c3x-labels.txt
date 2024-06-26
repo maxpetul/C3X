@@ -102,7 +102,6 @@ Building Radar Tower
 Building Outpost
 Building Barricade
 Building Colony
-Working
 Intercepting
 Moving
 Automated
