@@ -1,14 +1,5 @@
-These icons are placed next to units on the right-click menu. Here's what they indicate in order from top to bottom:
-1. Unit has full movement available and can attack
-2. Unit has full movement available and canNOT attack
-3. Unit has partial movement available, and can still attack
-4. Unit has partial movement available, and canNOT attack
-5. Unit has exhausted all of its moves for this turn
-6. Unit is busy and can attack
-7. Unit is busy and canNOT attack
+These icons are placed next to units on the right-click menu. The LEDs match those used by the base game, stored in Art\interface\MovementLED.pcx. (Note that there are five icons in that file but only three are used.) The little swords on the left are used to indicate which units can still attack on the current turn.
 
-A unit is considered "busy" if it's doing a multi-turn action that the player may not want to interrupt. This includes all worker actions, air interception mode, and the auto-bombard modes.
-
-The game will place these icons right up against the left edge of the right-click menu so it helps to leave some blank pixels there to form a margin. Also the game seems to cut off the rightmost column of pixels for some reason so it's necessary to leave those blank as well.
+These icons will be drawn right up against the left edge of the right-click menu so it helps to leave some blank pixels there to form a margin. Also the game seems to cut off the rightmost column of pixels for some reason so it's necessary to leave those blank as well.
 
 The icons can be any width but they must be 15 pixels tall. You probably wouldn't want them to be any taller anyway since 15 pixels is about the tallest they can be without vertically stretching the items on the menu.
