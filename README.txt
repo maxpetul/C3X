@@ -1,11 +1,10 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 18 Preview 1
+Release 18
 
-INCLUDES (** = new in Release 17):
+INCLUDES (** = new in latest version):
 Convenience features:
  - Stack unit commands
   - Stack bombard
-   - ** Fix a rare edge case where stack bombard would continue attacking an empty tile
   - Worker buttons (irrigate, road, etc.) become stack buttons by holding CTRL
   - Stack fortify, upgrade, and disband also with CTRL
  - Disorder warning
@@ -14,6 +13,7 @@ Convenience features:
  - Ask/offer gold popup autofills best amount
  - Skip repeated popups asking to replace a tile improvement
  - Group units on right click menu
+  - ** Separate automated and non-automated workers
  - Show coordinates and chopped status in tile info box
  - Show golden age turns remaining
  - No special king unit names in non-regicide games
@@ -29,14 +29,19 @@ Convenience features:
  - Option to remove Elvis Easter egg
  - Harbor/airport city icons indicate unit effects not trade abilities
  - Disallow useless bombard attacks vs airfields
- - ** Display total city count (disabled by default, appears on demographics screen)
- - ** Fix graphical issues when running on Wine
- - ** Option to pack the list of luxuries more tightly into the box on the city screen
+ - Display total city count (disabled by default, appears on demographics screen)
+ - Fix graphical issues when running on Wine
+ - Option to pack the list of luxuries more tightly into the box on the city screen
+ - ** Right-click menu enhancements
+  - Place icons next to units showing movement and combat status
+  - Replace Wake/Activate with descriptions of what the units are doing
+  - Gray out units if they have no remaining moves
+ - ** Apply GridOn setting from conquests.ini after loading a save
 Optimization:
- - ** Optimize computation of trade networks
+ - Optimize computation of trade networks
   - For details, see the info text file in the Trade Net X folder
  - Optimize improvement loops
- - ** Option to measure turn times
+ - Option to measure turn times
 AI enhancements:
  - Allow AI to use artillery in the field
  - Force AI to build more artillery and bombers
@@ -45,15 +50,13 @@ AI enhancements:
  - Improve AI army composition to discourage mixing types & exclude HN units
  - AI routine for "pop units" that may appear in mods
  - Can limit the number of escorts the AI assigns to its naval transports and carriers
-  - ** Fix limit interfering with group movement of naval units belonging to human players
- - ** Adjustable AI worker requirement
- - ** Option to stop AI from escorting units without the "requires escort" flag
+ - Adjustable AI worker requirement
+ - Option to stop AI from escorting units without the "requires escort" flag
 Bugs fixed:
  - AI pathfinding collides with invisible units (called the "submarine bug")
  - Science age beakers not actually awarded
  - Pink line in Civilopedia
  - Crash when doing disembark-all on transport containing immobile unit(s)
-  - ** Also covers undisembarkable escorting units
  - Crash possible when AI civ is left alive with only a settler on a transport (called the "houseboat bug")
  - Resources beyond the first 32 share access records in cities not on the main trade network (called the "phantom resource bug")
  - Air units lose a turn after being set to intercept
@@ -65,14 +68,13 @@ Engine extensions:
  - Removed unit limit
  - Enable free improvements from small wonders
  - Option to share visibility among all human players in a hotseat game
-  - ** Overhaul implementation of shared visibility for simplicity and correctness
  - Option to prevent autoraze and razing by players
  - Stealth attack activates even when there's only one target
  - Trespassing prevention
  - Land/sea intersections
  - Adjustable anarchy length
+ - ** Unit limits (stops players from producing units of a given type once they reach a maximum quantity)
  - "Perfume" units or improvements to control how likely the AI is to build them
-  - ** Fix perfume not applying to all sub-types for unit types with multiple AI strategies
  - Reveal AI logic
   - Press P in city screen to see AI point value for each available build
   - Press L on map to see how desirable the AI finds each tile as a city location
@@ -80,19 +82,19 @@ Engine extensions:
  - Disallow land units from working or settling water tiles
  - Option to let units move after airdropping
  - Buildings can generate resources
-  - ** Can also add the resource's yields to the city
-  - ** Display icons for generated resources on top of the generating building
-  - ** Fix possible freeze when a trade deal is broken for a resource that's an input to a resource generating building
+  - ** Fix resource generation not always updated after an input was gained or lost due to city improv change
+  - ** Rework some code related to resource generation and trade to improve stability and efficiency
  - Buildings can be set as prerequisites for unit production
  - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
  - Option to modify rules for retreat eligibility
-  - ** Can allow defensive retreat on water tiles
-  - ** Fix modified sea retreat rules interfering with naval combat animations
- - AI two-city start
+ - ** AI multi-city start
+  - ** Previously two-city start, now allows any number of cities
+  - ** Starter cities can begin with improvements, including "extra palaces" which respawn like the real palace
  - Remove cap on turn limit
  - Option to strengthen forbidden palace decorruption effect to match the palace's
  - Option to allow military great leaders to hurry wonders
- - Option to reduce AI research rate by half
+ - ** Option to multiply AI research rate by any amount
+  - ** Previously only allowed reducing research rate by half
  - Option to aggressively penalize bankrupt players
  - Option to remove exception to tile penalty for city tiles with fresh water and Agri trait
  - Enable stealth attacks via bombardment
@@ -109,25 +111,26 @@ Engine extensions:
  - Option to show untradable techs on trade screen
  - Barbarian city capture & production (experimental)
  - Option to allow land units to bombard aircraft and naval units in cities
- - ** Zone of control changes
+ - Zone of control changes
   - Allow land-to-sea and sea-to-land attacks, only using bombard stat
   - May be lethal
-   - ** Exclude units from lethal ZoC when they're entering a tile after capturing an enemy unit (fixes odd edge case)
   - May be exerted by air units
   - Show attack animation even when attacker is not at the top of its stack
- - ** Defensive bombard changes
+ - Defensive bombard changes
   - May be lethal
   - May be performed by air units
   - Invisible, undetected units may be made immune
   - May be performed multiple times per turn with blitz
   - Naval units in a city may perform defensive bombard vs land attackers
- - ** Allow precision strikes to target tile improvements
- - ** Option not to end a unit's turn after it bombards a barricade
- - ** Option to allow bombardment of other improvements on a tile with an occupied airfield
- - ** Option to boost OCN increase from forbidden palaces in non-communal governments
- - ** Option to allow airdrops without airports
- - ** Can increase unit maintenance costs based on their build costs
- - ** Civ and leader names can vary by era
+ - Allow precision strikes to target tile improvements
+ - Option not to end a unit's turn after it bombards a barricade
+ - Option to allow bombardment of other improvements on a tile with an occupied airfield
+ - Option to boost OCN increase from forbidden palaces in non-communal governments
+ - Option to allow airdrops without airports
+ - Can increase unit maintenance costs based on their build costs
+ - Civ and leader names can vary by era
+ - ** Option to allow upgrades in any city
+ - ** Option to stop the map generator from placing volcanos
 
 INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.

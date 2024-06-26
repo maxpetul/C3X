@@ -1,21 +1,20 @@
+* RELEASE 18
+- Unit limits
 - Expand AI two-city start to any number of cities
   - Config option has been renamed to ai_multi_city_start
 - AI's starter cities in multi-city start can begin with improvements, inc. "extra palaces" which respawn like the real palace
-- Replace Wake/Activate on the right-click menu with descriptions of what the units are doing
+- Right-click menu enhancements
+  - Place icons next to units showing movement and combat status
+  - Replace Wake/Activate with descriptions of what the units are doing
+  - Gray out units if they have no remaining moves
+  - Stop grouping automated and non-automated workers
 - Can set multiplier on AI research rate (replaces halve_ai_research_rate)
 - Option to allow upgrades in any city
 - Option to stop the map generator from placing volcanos
+- Apply GridOn setting from conquests.ini after loading a save
 - Fix crashes and strange behavior caused by use-after-free bug in config loader
-- Fix crash when loading a second game due to improper creation of unit RCM icon sprites
 - Fix resource generation not always updated after an input was gained or lost due to city improv change
 - Rework some code related to resource generation and trade to improve stability and efficiency
-- Stop grouping automated and non-automated workers on the right-click menu
-
-* RELEASE 18 PREVIEW 1
-- Unit limits
-- Add icons to units on the right-click menu showing movement and status
-- Gray out units on right-click menu if they have no remaining moves
-- Apply GridOn setting from conquests.ini after loading a save
 
 * RELEASE 17
 - Optimize computation of trade networks
