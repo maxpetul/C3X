@@ -9206,5 +9206,19 @@ patch_Main_Screen_Form_open_quick_build_chooser (Main_Screen_Form * this, int ed
 	Main_Screen_Form_open_quick_build_chooser (this, __, city, mouse_x, mouse_y);
 }
 
+int __fastcall
+patch_Context_Menu_get_selected_item_on_unit_rcm (Context_Menu * this)
+{
+	// In the base game, this method returns -1 for any disabled item which prevents the player from clicking those. We want players to be able to
+	// click unit items which have been disabled by the mod so they can interrupt the queued actions of units that have no moves left.
+	int index = this->Selected_Item;
+	if (index >= 0) {
+		bool is_enabled = (this->Items[index].Status & 2) == 0;
+		bool is_unit_item = (this->Items[index].Menu_Item_ID - (0x13 + p_bic_data->UnitTypeCount)) >= 0;
+		return (is_enabled || is_unit_item) ? index : -1;
+	}
+	return -1;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

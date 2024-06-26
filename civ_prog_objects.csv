@@ -528,6 +528,7 @@ repl vptr, 0x66CAAC,	0x689B9C,	0x66CAAC,	"Advisor_Base_Form_foreign_m95",		"bool
 repl vptr, 0x66BD3C,	0x688E34,	0x66BD3C,	"Advisor_Base_Form_cultural_m95",		"bool (__fastcall *) (Advisor_Base_Form * this)"
 repl vptr, 0x66F59C,	0x68C658,	0x66F59C,	"Advisor_Base_Form_science_m95",		"bool (__fastcall *) (Advisor_Base_Form * this)"
 inlead,	   0x4E79B0,	0x4F0470,	0x4E7A70,	"Main_Screen_Form_open_quick_build_chooser",	"void (__fastcall *) (Main_Screen_Form * this, int edx, City * city, int mouse_x, int mouse_y)"
+repl call, 0x4E9941,	0x4F273F,	0x4E9A01,	"Context_Menu_get_selected_item_on_unit_rcm",	"int (__fastcall *) (Context_Menu * this)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
