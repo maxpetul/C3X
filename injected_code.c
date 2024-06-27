@@ -9158,7 +9158,7 @@ patch_MenuUnitItem_write_text_to_temp_str (MenuUnitItem * this)
 	if ((unit->Body.CivID == p_main_screen_form->Player_CivID) &&
 	    (Unit_get_containing_army (unit) == NULL) &&
 	    get_menu_verb_for_unit (unit, repl_verb, sizeof repl_verb)) {
-		char * verb = (unit->Body.UnitState == UnitState_Fortifying) ? (*p_labels)[0x100] : (*p_labels)[0xFF];
+		char * verb = (unit->Body.UnitState == UnitState_Fortifying) ? (*p_labels)[LBL_WAKE] : (*p_labels)[LBL_ACTIVATE];
 		char * verb_str_start = strstr (temp_str, verb);
 		if (verb_str_start != NULL) {
 			char s[500];

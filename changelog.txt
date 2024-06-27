@@ -1,3 +1,5 @@
+- Fix Wake/Activate replacement not working on Steam version
+
 * RELEASE 18
 - Unit limits
 - Expand AI two-city start to any number of cities
@@ -12,9 +14,11 @@
 - Option to allow upgrades in any city
 - Option to stop the map generator from placing volcanos
 - Apply GridOn setting from conquests.ini after loading a save
-- Fix crashes and strange behavior caused by use-after-free bug in config loader
 - Fix resource generation not always updated after an input was gained or lost due to city improv change
 - Rework some code related to resource generation and trade to improve stability and efficiency
+
+* RELEASE 17C
+- Fix crashes and strange behavior caused by use-after-free bug in config loader
 
 * RELEASE 17
 - Optimize computation of trade networks
