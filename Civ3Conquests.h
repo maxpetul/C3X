@@ -57,9 +57,9 @@ typedef struct Improvement Improvement;
 typedef struct Citizen_Type Citizen_Type;
 typedef struct Map_Renderer_vtable Map_Renderer_vtable;
 typedef struct String260 String260;
-typedef struct Tile_Image_Info Tile_Image_Info;
-typedef struct Tile_Image_Info_vtable Tile_Image_Info_vtable;
-typedef struct Tile_Image_Info_List Tile_Image_Info_List;
+typedef struct Sprite Sprite;
+typedef struct SpriteVTable SpriteVTable;
+typedef struct SpriteList SpriteList;
 typedef struct Base_vtable Base_vtable;
 typedef struct City_Screen_FileNames City_Screen_FileNames;
 typedef struct AnimationSummary AnimationSummary;
@@ -144,10 +144,10 @@ typedef struct JGL_Image_vtable JGL_Image_vtable;
 typedef struct JGL_Graphics JGL_Graphics;
 typedef struct Window_Controller Window_Controller;
 typedef struct Window_Controller_vtable Window_Controller_vtable;
-typedef struct JGL_Image_Info JGL_Image_Info;
+typedef struct JGLSprite JGLSprite;
 typedef struct JGL_Color_Table_vtable JGL_Color_Table_vtable;
 typedef struct JGL_Color_Table JGL_Color_Table;
-typedef struct JGL_Image_Info_vtable JGL_Image_Info_vtable;
+typedef struct JGLSprite_vtable JGLSprite_vtable;
 typedef struct Units_Image_Data Units_Image_Data;
 typedef struct Animation_Info Animation_Info;
 typedef struct Animation_Info_vtable Animation_Info_vtable;
@@ -1660,7 +1660,7 @@ struct Tile_vtable
   int (__fastcall *m25_Check_Roads)(Tile *this, __, int);
   char (__fastcall *m26_Check_Tile_Building)(Tile *);
   int (__fastcall *m27_Check_Special_Resource)(Tile *);
-  char (__fastcall *m28_Check_field_30_bit_15)(Tile *);
+  bool (__fastcall *m28_is_revealed_by_scenario_setting)(Tile *);
   int (__fastcall *m29_Check_Mountain_Snowcap)(Tile *);
   int (__fastcall *m30_Check_is_LM)(Tile *);
   void (__fastcall *m31_set_field_30_bit_29)(Tile *, __, char);
@@ -2445,10 +2445,10 @@ struct String260
   char S[260];
 };
 
-struct Tile_Image_Info
+struct Sprite
 {
-  Tile_Image_Info_vtable *vtable;
-  JGL_Image_Info *JGL_Image_Info;
+  SpriteVTable *vtable;
+  JGLSprite * jgl_sprite;
   int field_8;
   PCX_Color_Table *Color_Table;
   int Width3;
@@ -2460,14 +2460,14 @@ struct Tile_Image_Info
   int field_28;
 };
 
-struct Tile_Image_Info_vtable
+struct SpriteVTable
 {
-  Tile_Image_Info * (__fastcall * destruct) (Tile_Image_Info *, __, byte);
+  Sprite * (__fastcall * destruct) (Sprite *, __, byte);
 };
 
-struct Tile_Image_Info_List
+struct SpriteList
 {
-  Tile_Image_Info field_0[81];
+  Sprite field_0[81];
 };
 
 struct Base_vtable
@@ -2529,8 +2529,8 @@ struct FLC_Frame_Image
 {
   int vtable;
   Flic_Anim_Info *Flic_Info;
-  Tile_Image_Info Frame_Image;
-  int field_34;
+  Sprite sprite;
+  Sprite * field_34;
   FLIC_CHUNK *Current_Frame_Chunk;
   int Current_Frame_ID;
   int Direction;
@@ -2606,7 +2606,7 @@ struct Citizen_Mood_Array
   String260 Mood_Text[14];
   String260 PCX_Heads;
   String260 Labels_File;
-  Tile_Image_Info Images[520];
+  Sprite sprites[520];
 };
 
 struct Map_Body_vtable
@@ -2794,63 +2794,63 @@ struct String256
 
 struct City_Icon_Images
 {
-  Tile_Image_Info Icon_00;
-  Tile_Image_Info Icon_01;
-  Tile_Image_Info Icon_02_Science;
-  Tile_Image_Info Icon_03;
-  Tile_Image_Info Icon_04;
-  Tile_Image_Info Icon_05_Shield_Outcome;
-  Tile_Image_Info Icon_06;
-  Tile_Image_Info Icon_07;
-  Tile_Image_Info Icon_08;
-  Tile_Image_Info Icon_09;
-  Tile_Image_Info Icon_10;
-  Tile_Image_Info Icon_11_Pollution;
-  Tile_Image_Info Icon_12_Happy_Faces;
-  Tile_Image_Info Icon_13_Shield;
-  Tile_Image_Info Icon_14_Gold;
-  Tile_Image_Info Icon_15_Food;
-  Tile_Image_Info Icon_16_Science;
-  Tile_Image_Info Icon_17_Gold_Outcome;
-  Tile_Image_Info Icon_18_Culture;
-  Tile_Image_Info Icon_19_Happy_Faces;
-  Tile_Image_Info Icon_20_Shield_Highlighted;
-  Tile_Image_Info Icon_21_Gold_Highlighted;
-  Tile_Image_Info Icon_22_Food_Highlighted;
-  Tile_Image_Info Icon_23;
-  Tile_Image_Info Icon_24_Treasury;
+  Sprite Icon_00;
+  Sprite Icon_01;
+  Sprite Icon_02_Science;
+  Sprite Icon_03;
+  Sprite Icon_04;
+  Sprite Icon_05_Shield_Outcome;
+  Sprite Icon_06;
+  Sprite Icon_07;
+  Sprite Icon_08;
+  Sprite Icon_09;
+  Sprite Icon_10;
+  Sprite Icon_11_Pollution;
+  Sprite Icon_12_Happy_Faces;
+  Sprite Icon_13_Shield;
+  Sprite Icon_14_Gold;
+  Sprite Icon_15_Food;
+  Sprite Icon_16_Science;
+  Sprite Icon_17_Gold_Outcome;
+  Sprite Icon_18_Culture;
+  Sprite Icon_19_Happy_Faces;
+  Sprite Icon_20_Shield_Highlighted;
+  Sprite Icon_21_Gold_Highlighted;
+  Sprite Icon_22_Food_Highlighted;
+  Sprite Icon_23;
+  Sprite Icon_24_Treasury;
 };
 
 struct Map_Cursor_Images
 {
-  Tile_Image_Info C00;
-  Tile_Image_Info C01;
-  Tile_Image_Info C02;
-  Tile_Image_Info C03;
-  Tile_Image_Info C04;
-  Tile_Image_Info C05;
-  Tile_Image_Info C06;
-  Tile_Image_Info Bombing;
-  Tile_Image_Info C08;
-  Tile_Image_Info Recon;
-  Tile_Image_Info C10;
-  Tile_Image_Info Precision_Bombing;
-  Tile_Image_Info C12;
-  Tile_Image_Info C13;
-  Tile_Image_Info C14;
-  Tile_Image_Info C15;
-  Tile_Image_Info Auto_Air_Bombard;
-  Tile_Image_Info C17;
-  Tile_Image_Info C18;
-  Tile_Image_Info C19;
-  Tile_Image_Info C20;
-  Tile_Image_Info C21;
-  Tile_Image_Info C22;
+  Sprite C00;
+  Sprite C01;
+  Sprite C02;
+  Sprite C03;
+  Sprite C04;
+  Sprite C05;
+  Sprite C06;
+  Sprite Bombing;
+  Sprite C08;
+  Sprite Recon;
+  Sprite C10;
+  Sprite Precision_Bombing;
+  Sprite C12;
+  Sprite C13;
+  Sprite C14;
+  Sprite C15;
+  Sprite Auto_Air_Bombard;
+  Sprite C17;
+  Sprite C18;
+  Sprite C19;
+  Sprite C20;
+  Sprite C21;
+  Sprite C22;
 };
 
 struct Old_Interface_Images
 {
-  Tile_Image_Info Images[3];
+  Sprite sprites[3];
   int Last;
 };
 
@@ -3105,7 +3105,7 @@ struct Context_Menu_Item
   int Menu_Item_ID;
   int Status;
   int field_10;
-  Tile_Image_Info *Image;
+  Sprite * Image;
   int text_color; // AFAIK 0 = black and 1 = red and the only options
 };
 
@@ -3144,7 +3144,7 @@ struct Text_Reader
 
 struct Button_Images_3
 {
-  Tile_Image_Info Images[3];
+  Sprite Images[3];
 };
 
 struct Point
@@ -3731,9 +3731,9 @@ struct Window_Controller_vtable
   int m13;
 };
 
-struct JGL_Image_Info
+struct JGLSprite
 {
-  JGL_Image_Info_vtable *vtable;
+  JGLSprite_vtable *vtable;
   int field_4;
   int field_8;
   int field_C;
@@ -3776,22 +3776,22 @@ struct JGL_Color_Table
   int field_81C;
 };
 
-struct JGL_Image_Info_vtable
+struct JGLSpriteVTable
 {
   int m00;
   int m01;
   int m02;
   int m03;
-  int m04_Set_Color_Table;
-  int m05;
+  void (__fastcall * m04_set_color_table) (JGLSprite * this, __, JGL_Color_Table * color_table);
+  JGL_Color_Table * (__fastcall * m05_get_color_table) (JGLSprite * this);
   int m06;
   int m07;
   int m08;
   int m09;
-  int m10;
-  int m11;
-  int m12;
-  int m13;
+  int (__fastcall * m10_get_bits_per_pixel) (JGLSprite * this);
+  int (__fastcall * m11_get_stride) (JGLSprite * this);
+  int (__fastcall * m12_get_width) (JGLSprite * this);
+  int (__fastcall * m13_get_height) (JGLSprite * this);
   int m14;
   int m15;
   int m16;
@@ -4506,71 +4506,71 @@ struct Map_Renderer
   int field_3E94[4];
   int field_3EA4;
   int field_3EA8;
-  Tile_Image_Info *Resources;
-  Tile_Image_Info *ResourcesShadows;
-  Tile_Image_Info Terrain_Buldings_Barbarian_Camp;
-  Tile_Image_Info Terrain_Buldings_Mines;
-  Tile_Image_Info Victory_Image;
-  Tile_Image_Info Flood_Plains_Images[16];
-  Tile_Image_Info Fog_Of_War_Images[81];
-  Tile_Image_Info Polar_Icecaps_Images[32];
-  Tile_Image_Info Railroads_Images[272];
-  Tile_Image_Info Roads_Images[256];
-  Tile_Image_Info Terrain_Buldings_Airfields[2];
-  Tile_Image_Info Terrain_Buldings_Airfields_Shadow[2];
-  Tile_Image_Info Terrain_Buldings_Camp[4];
-  Tile_Image_Info Terrain_Buldings_Fortress[4];
-  Tile_Image_Info Terrain_Buldings_Barricade[4];
-  Tile_Image_Info Goody_Huts_Images[8];
-  Tile_Image_Info Terrain_Buldings_Outposts[3];
-  Tile_Image_Info Terrain_Buldings_Outposts_Shadow[3];
-  Tile_Image_Info Pollution[25];
-  Tile_Image_Info Craters[25];
-  Tile_Image_Info Terrain_Buldings_Radar;
-  Tile_Image_Info Terrain_Buldings_Radar_Shadow;
-  Tile_Image_Info Tnt_Images[18];
-  Tile_Image_Info Waterfalls_Images[4];
-  Tile_Image_Info LM_Terrain[7];
-  Tile_Image_Info Marsh_Large[8];
-  Tile_Image_Info Marsh_Small[10];
-  Tile_Image_Info field_C650;
-  Tile_Image_Info field_C67C;
-  Tile_Image_Info Volcanos_Images[16];
-  Tile_Image_Info Volcanos_Forests_Images[16];
-  Tile_Image_Info Volcanos_Jungles_Images[16];
-  Tile_Image_Info Volcanos_Snow_Images[16];
-  Tile_Image_Info Grassland_Forests_Large[8];
-  Tile_Image_Info Plains_Forests_Large[8];
-  Tile_Image_Info Tundra_Forests_Large[8];
-  Tile_Image_Info Grassland_Forests_Small[10];
-  Tile_Image_Info Plains_Forests_Small[10];
-  Tile_Image_Info Tundra_Forests_Small[10];
-  Tile_Image_Info Grassland_Forests_Pines[12];
-  Tile_Image_Info Plains_Forests_Pines[12];
-  Tile_Image_Info Tundra_Forests_Pines[12];
-  Tile_Image_Info Irrigation_Desert_Images[16];
-  Tile_Image_Info Irrigation_Plains_Images[16];
-  Tile_Image_Info Irrigation_Images[16];
-  Tile_Image_Info Irrigation_Tundra_Images[16];
-  Tile_Image_Info Grassland_Jungles_Large[8];
-  Tile_Image_Info Grassland_Jungles_Small[12];
-  Tile_Image_Info Mountains_Images[16];
-  Tile_Image_Info Mountains_Forests_Images[16];
-  Tile_Image_Info Mountains_Jungles_Images[16];
-  Tile_Image_Info Mountains_Snow_Images[16];
-  Tile_Image_Info Hills_Images[16];
-  Tile_Image_Info Hills_Forests_Images[16];
-  Tile_Image_Info Hills_Jungle_Images[16];
-  Tile_Image_Info_List Std_Terrain_Images[9];
-  Tile_Image_Info Delta_Rivers_Images[16];
-  Tile_Image_Info Mountain_Rivers_Images[16];
-  Tile_Image_Info Territory_Images[8];
-  Tile_Image_Info LM_Mountains_Images[16];
-  Tile_Image_Info LM_Forests_Large_Images[8];
-  Tile_Image_Info LM_Forests_Small_Images[10];
-  Tile_Image_Info LM_Forests_Pines_Images[12];
-  Tile_Image_Info LM_Hills_Images[16];
-  Tile_Image_Info_List LM_Terrain_Images[9];
+  Sprite *Resources;
+  Sprite *ResourcesShadows;
+  Sprite Terrain_Buldings_Barbarian_Camp;
+  Sprite Terrain_Buldings_Mines;
+  Sprite Victory_Image;
+  Sprite Flood_Plains_Images[16];
+  Sprite Fog_Of_War_Images[81];
+  Sprite Polar_Icecaps_Images[32];
+  Sprite Railroads_Images[272];
+  Sprite Roads_Images[256];
+  Sprite Terrain_Buldings_Airfields[2];
+  Sprite Terrain_Buldings_Airfields_Shadow[2];
+  Sprite Terrain_Buldings_Camp[4];
+  Sprite Terrain_Buldings_Fortress[4];
+  Sprite Terrain_Buldings_Barricade[4];
+  Sprite Goody_Huts_Images[8];
+  Sprite Terrain_Buldings_Outposts[3];
+  Sprite Terrain_Buldings_Outposts_Shadow[3];
+  Sprite Pollution[25];
+  Sprite Craters[25];
+  Sprite Terrain_Buldings_Radar;
+  Sprite Terrain_Buldings_Radar_Shadow;
+  Sprite Tnt_Images[18];
+  Sprite Waterfalls_Images[4];
+  Sprite LM_Terrain[7];
+  Sprite Marsh_Large[8];
+  Sprite Marsh_Small[10];
+  Sprite field_C650;
+  Sprite field_C67C;
+  Sprite Volcanos_Images[16];
+  Sprite Volcanos_Forests_Images[16];
+  Sprite Volcanos_Jungles_Images[16];
+  Sprite Volcanos_Snow_Images[16];
+  Sprite Grassland_Forests_Large[8];
+  Sprite Plains_Forests_Large[8];
+  Sprite Tundra_Forests_Large[8];
+  Sprite Grassland_Forests_Small[10];
+  Sprite Plains_Forests_Small[10];
+  Sprite Tundra_Forests_Small[10];
+  Sprite Grassland_Forests_Pines[12];
+  Sprite Plains_Forests_Pines[12];
+  Sprite Tundra_Forests_Pines[12];
+  Sprite Irrigation_Desert_Images[16];
+  Sprite Irrigation_Plains_Images[16];
+  Sprite Irrigation_Images[16];
+  Sprite Irrigation_Tundra_Images[16];
+  Sprite Grassland_Jungles_Large[8];
+  Sprite Grassland_Jungles_Small[12];
+  Sprite Mountains_Images[16];
+  Sprite Mountains_Forests_Images[16];
+  Sprite Mountains_Jungles_Images[16];
+  Sprite Mountains_Snow_Images[16];
+  Sprite Hills_Images[16];
+  Sprite Hills_Forests_Images[16];
+  Sprite Hills_Jungle_Images[16];
+  SpriteList Std_Terrain_Images[9];
+  Sprite Delta_Rivers_Images[16];
+  Sprite Mountain_Rivers_Images[16];
+  Sprite Territory_Images[8];
+  Sprite LM_Mountains_Images[16];
+  Sprite LM_Forests_Large_Images[8];
+  Sprite LM_Forests_Small_Images[10];
+  Sprite LM_Forests_Pines_Images[12];
+  Sprite LM_Hills_Images[16];
+  SpriteList LM_Terrain_Images[9];
 };
 
 struct Tile_Type
@@ -4738,8 +4738,8 @@ struct Button
   void (__cdecl * activation_handler) (int control_id);
   void (__cdecl * mouse_drag_handler) (int control_id);
   int field_630[6];
-  Tile_Image_Info **Border_Images[3];
-  Tile_Image_Info *Images[4]; // Norm, Rollover, Highlighted, Alpha
+  Sprite **Border_Images[3];
+  Sprite *Images[4]; // Norm, Rollover, Highlighted, Alpha
   int field_664;
   int field_668[26];
   int Last;
@@ -5167,7 +5167,7 @@ struct Advisor_Military_Form
   RECT field_10088;
   RECT field_10098;
   Control_Tooltips Tooltips;
-  Tile_Image_Info Images1[5];
+  Sprite Images1[5];
   Scroll_Bar ScrollBar1;
   Scroll_Bar ScrollBar2;
   Scroll_Bar ScrollBar3;
@@ -5187,7 +5187,7 @@ struct Advisor_Trade_Form
   Advisor_Form_vtable *vtable;
   Base_Form_Data Base_Data;
   int field_574[3];
-  Tile_Image_Info Image1;
+  Sprite Image1;
   int field_5AC;
   int field_5B0;
   int field_5B4;
@@ -5230,7 +5230,7 @@ struct Advisor_Internal_Form
   RECT Gov_Btn_Rect;
   RECT Conscription_Btn_Rect;
   int field_44C0[44];
-  Tile_Image_Info Image1;
+  Sprite Image1;
   void *Tax_Button_Images[3];
   Scroll_Bar ScrollBar;
   RECT Tax_Science_Plus_Btn_Rect;
@@ -5239,8 +5239,8 @@ struct Advisor_Internal_Form
   RECT Tax_Luxury_Minus_Btn_Rect;
   RECT Tax_Science_Scroll_Bar_Rect;
   RECT Tax_Luxury_Scroll_Bar_Rect;
-  Tile_Image_Info *Plus_Btn_Images;
-  Tile_Image_Info *Minus_Btn_Images;
+  Sprite *Plus_Btn_Images;
+  Sprite *Minus_Btn_Images;
   Button Science_Plus_Btn;
   Button Luxury_Plus_Btn;
   Button Science_Minus_Btn;
@@ -5261,11 +5261,11 @@ struct Advisor_GUI
   String260 TXT_Labels;
   int Current_Advisor_ID;
   int field_2514[9];
-  Tile_Image_Info Backgrounds_Images[10];
-  Tile_Image_Info Advisor_Buttons_Images[18];
-  Tile_Image_Info Close_Button_Images[3];
+  Sprite Backgrounds_Images[10];
+  Sprite Advisor_Buttons_Images[18];
+  Sprite Close_Button_Images[3];
   Button field_2A8C;
-  Tile_Image_Info Faces_Images[96];
+  Sprite Faces_Images[96];
   Navigator_Data Navigator;
   int Last;
 };
@@ -5277,16 +5277,16 @@ struct City_View_Form
   int field_C48[3];
   PCX_Image PCX;
   int field_F0C[10];
-  Tile_Image_Info Background_Image;
+  Sprite Background_Image;
   int field_F60[198];
   int field_1278[158];
   int field_14F0[182];
-  Tile_Image_Info *Roads_Images[15];
-  Tile_Image_Info *Roads_Images2[3];
+  Sprite *Roads_Images[15];
+  Sprite *Roads_Images2[3];
   int field_1810[4];
-  Tile_Image_Info field_1820;
-  Tile_Image_Info field_184C;
-  Tile_Image_Info Terrain_Parts[28];
+  Sprite field_1820;
+  Sprite field_184C;
+  Sprite Terrain_Parts[28];
   int field_1D48[257];
   int field_214C[255];
   City *City;
@@ -5355,7 +5355,7 @@ struct CheckBox
 struct Parameters_Form
 {
   Base_Form Base;
-  Tile_Image_Info Image1;
+  Sprite Image1;
   Button OK_Btn;
   Button Cancel_Btn;
   CheckBox CheckBoxes[33];
@@ -5390,13 +5390,13 @@ struct Civilopedia_Form
   int field_574[65];
   Common_Dialog_Form Sub_Dialog;
   int field_2D30[6];
-  Tile_Image_Info Backgrounds_Images[8];
-  Tile_Image_Info Relations_Images[8];
-  Tile_Image_Info Color_Bars_Images[17];
-  Tile_Image_Info Next_Btn_Images[3];
-  Tile_Image_Info Prev_Btn_Images[3];
-  Tile_Image_Info Description_Btn_Images[3];
-  Tile_Image_Info Navigator_Buttons_Images[9];
+  Sprite Backgrounds_Images[8];
+  Sprite Relations_Images[8];
+  Sprite Color_Bars_Images[17];
+  Sprite Next_Btn_Images[3];
+  Sprite Prev_Btn_Images[3];
+  Sprite Description_Btn_Images[3];
+  Sprite Navigator_Buttons_Images[9];
   int Current_Article_ID;
   int field_3610;
   int field_3614;
@@ -5433,7 +5433,7 @@ struct File_Dialog_Body
 {
   int field_0;
   int field_678;
-  Tile_Image_Info Image;
+  Sprite Image;
   String260 Root_Path;
   String260 Game_Root_Path;
   int field_8B0[278];
@@ -5457,13 +5457,13 @@ struct Main_Menu_Form
 struct Espionage_Form
 {
   Base_Form Base;
-  Tile_Image_Info Image;
+  Sprite Image;
   Button OK_Btn;
   Button Cancel_Btn;
-  Tile_Image_Info field_1348[3];
-  Tile_Image_Info field_13CC[4];
-  Tile_Image_Info field_147C[4];
-  Tile_Image_Info field_152C[2];
+  Sprite field_1348[3];
+  Sprite field_13CC[4];
+  Sprite field_147C[4];
+  Sprite field_152C[2];
   int field_1584;
   int field_1588;
   Scroll_Bar Scroll_Bar;
@@ -5482,8 +5482,8 @@ struct Palace_View_Form
   Button CloseBtn;
   Button Culture_Buttons[5];
   Button_Images_3 Icon_Images[5];
-  Tile_Image_Info Background_Image;
-  Tile_Image_Info *Item_Images[5];
+  Sprite Background_Image;
+  Sprite *Item_Images[5];
   PCX_Image PCX;
   Point *Items_Points;
   int Selected_CultureID;
@@ -5502,11 +5502,11 @@ struct Spaceship_Form
   PCX_Image PCX;
   int field_82C;
   int field_830;
-  Tile_Image_Info Background_Image;
-  Tile_Image_Info Parts_Images[17];
-  Tile_Image_Info ProgressBar_Image;
-  Tile_Image_Info Launch_Btn_Images[6];
-  Tile_Image_Info Big_Brother_Images[3];
+  Sprite Background_Image;
+  Sprite Parts_Images[17];
+  Sprite ProgressBar_Image;
+  Sprite Launch_Btn_Images[6];
+  Sprite Big_Brother_Images[3];
   int field_D04[54];
   int Cities[10];
   int Stat_1[10];
@@ -5517,7 +5517,7 @@ struct Spaceship_Form
 struct Demographics_Form
 {
   Base_Form Base;
-  Tile_Image_Info *Background_Image;
+  Sprite *Background_Image;
   String260 Strings[25];
   int Top_Cities[5];
   float Stat_Values[13];
@@ -5530,8 +5530,8 @@ struct Victory_Conditions_Form
 {
   Base_Form Base;
   int field_574[5];
-  Tile_Image_Info Image1;
-  Tile_Image_Info Image2;
+  Sprite Image1;
+  Sprite Image2;
   int field_5E0[6];
   Scroll_Bar ScrollBar;
   Button CloseBtn;
@@ -5545,9 +5545,9 @@ struct Victory_Conditions_Form
 struct Wonders_Form
 {
   Base_Form Base;
-  Tile_Image_Info Background_Image;
-  Tile_Image_Info Box_Image;
-  Tile_Image_Info Box_Overlay_Image;
+  Sprite Background_Image;
+  Sprite Box_Image;
+  Sprite Box_Overlay_Image;
   Scroll_Bar Scroll_Bar;
   int field_19B8[24];
   String260 Labels[5];
@@ -5558,16 +5558,16 @@ struct Wonders_Form
 struct MP_LAN_Game_Parameters_Form
 {
   Base_Form Base;
-  Tile_Image_Info Button4_Images[3];
+  Sprite Button4_Images[3];
   Button Button1;
   int field_CCC;
   ComboBox ComboBoxList1[11];
   int field_25110;
   Button Button2;
-  Tile_Image_Info Background_Image;
-  Tile_Image_Info Button1_Images[3];
-  Tile_Image_Info Button2_Images[3];
-  Tile_Image_Info Button3_Images[3];
+  Sprite Background_Image;
+  Sprite Button1_Images[3];
+  Sprite Button2_Images[3];
+  Sprite Button3_Images[3];
   PCX_Image PCX1;
   Button Buttons2[8];
   ComboBox ComboBoxList2[8];
@@ -5581,11 +5581,11 @@ struct MP_Internet_Game_Parameters_Form
 {
   Base_Form Base;
   Button Button1;
-  Tile_Image_Info Image1;
-  Tile_Image_Info Images1[3];
-  Tile_Image_Info Images2[3];
-  Tile_Image_Info Images3[3];
-  Tile_Image_Info Image2;
+  Sprite Image1;
+  Sprite Images1[3];
+  Sprite Images2[3];
+  Sprite Images3[3];
+  Sprite Image2;
   ComboBox ComboBoxList[2];
   TextBox TextBox;
   Scroll_Bar ScrollBar;
@@ -5596,12 +5596,12 @@ struct MP_Manager_Form
 {
   Base_Form Base;
   Button Close_Btn;
-  Tile_Image_Info Lobby_Background_Image;
-  Tile_Image_Info Lobby_Bar_Image;
-  Tile_Image_Info Collapse_Btn_Image;
-  Tile_Image_Info Expand_Btn_Image;
-  Tile_Image_Info Game_Status_Images[3];
-  Tile_Image_Info Image1;
+  Sprite Lobby_Background_Image;
+  Sprite Lobby_Bar_Image;
+  Sprite Collapse_Btn_Image;
+  Sprite Expand_Btn_Image;
+  Sprite Game_Status_Images[3];
+  Sprite Image1;
   RECT Rects[14];
   _12C _12C_Array1[2048];
   _12C _12C_Array2[2048];
@@ -5609,16 +5609,16 @@ struct MP_Manager_Form
   Scroll_Bar Messages_ScrollBar;
   Scroll_Bar Games_ScrollBar;
   int field_130FAC[16923];
-  Tile_Image_Info Description_Btn_Images[3];
+  Sprite Description_Btn_Images[3];
   Button Direct_Connection_Btn;
 };
 
 struct Wonder_Form
 {
   Base_Form Base;
-  Tile_Image_Info *Background;
-  Tile_Image_Info *Image1;
-  Tile_Image_Info View_Btn_Images[3];
+  Sprite *Background;
+  Sprite *Image1;
+  Sprite View_Btn_Images[3];
   int field_600[69];
   int field_714[423];
   Button View_Btn;
@@ -5634,15 +5634,15 @@ struct New_Game_Map_Form
   int field_574;
   int field_578;
   int field_57C;
-  Tile_Image_Info Background_Image;
-  Tile_Image_Info Landmass_Water_Large_Images[9];
-  Tile_Image_Info Landmass_Water_Small_Images[27];
-  Tile_Image_Info Images3[3];
-  Tile_Image_Info Climate_Images[9];
-  Tile_Image_Info Images5[3];
-  Tile_Image_Info Images6[9];
-  Tile_Image_Info Images7[3];
-  Tile_Image_Info Images8[9];
+  Sprite Background_Image;
+  Sprite Landmass_Water_Large_Images[9];
+  Sprite Landmass_Water_Small_Images[27];
+  Sprite Images3[3];
+  Sprite Climate_Images[9];
+  Sprite Images5[3];
+  Sprite Images6[9];
+  Sprite Images7[3];
+  Sprite Images8[9];
   TextBox MapSeed_TextBox;
   Button OkBtn;
   Button CloseBtn;
@@ -5669,10 +5669,10 @@ struct New_Game_Player_Form
   PCX_Image PCX;
   PCX_Animation PCX_Animation;
   int field_E7C[13];
-  Tile_Image_Info Background_Image;
-  Tile_Image_Info WhoLeader_Image;
-  Tile_Image_Info Description_Button_Images[3];
-  Tile_Image_Info Custom_Leader_Button_Images[3];
+  Sprite Background_Image;
+  Sprite WhoLeader_Image;
+  Sprite Description_Button_Images[3];
+  Sprite Custom_Leader_Button_Images[3];
   Button OkBtn;
   Button CancelBtn;
   Button DescriptionBtn;
@@ -5693,10 +5693,10 @@ struct New_Game_Player_Form
 struct Campain_Records_Form
 {
   Base_Form Base;
-  Tile_Image_Info Background_Image;
+  Sprite Background_Image;
   Button Ok_Btn;
   Button Cancel_Btn;
-  Tile_Image_Info Next_Btn_Images[3];
+  Sprite Next_Btn_Images[3];
   Button Next_Btn;
   int field_1AA0;
   int field_1AA4;
@@ -5725,7 +5725,7 @@ struct Authors_Form
   int field_574[10];
   Button Close_Btn;
   int field_C70[522];
-  Tile_Image_Info Image1;
+  Sprite Image1;
   Base_Form Sub_Form;
   int field_1A38;
   PCX_Image PCX;
@@ -5736,7 +5736,7 @@ struct Authors_Form
 struct MP_Filters_Form
 {
   Base_Form Base;
-  Tile_Image_Info Background;
+  Sprite Background;
   Button Ok_Btn;
   Button Cancel_Btn;
   ComboBox Server_ComboBox;
@@ -5750,7 +5750,7 @@ struct MP_Filters_Form
 struct Radio_Button_List
 {
   int vtable;
-  Tile_Image_Info *Button_Images[3];
+  Sprite *Button_Images[3];
   int field_10;
   int field_14[5];
   Base_Form Control;
@@ -5761,13 +5761,13 @@ struct Radio_Button_List
 struct Game_Results_Form
 {
   Base_Form Base;
-  Tile_Image_Info Background;
+  Sprite Background;
   Button_Images_3 Prev_Turn_Btn_Images;
   Button_Images_3 Stop_Btn_Images;
   Button_Images_3 Play_Btn_Images;
   Button_Images_3 Next_Turn_Btn_Images;
   Button_Images_3 First_Turn_Btn_Images;
-  Tile_Image_Info ProgressBar_Image;
+  Sprite ProgressBar_Image;
   ComboBox1 ComboBox;
   Replay_Turn *Current_Replay_Turn;
   int ItemList1[438];
@@ -5795,7 +5795,7 @@ struct Game_Spy_Connection_Form
 {
   Base_Form Base;
   Button Cancel_Btn;
-  Tile_Image_Info Calcen_Btn_Images[3];
+  Sprite Calcen_Btn_Images[3];
   int field_CCC[6];
   char B1;
   char B2;
@@ -5827,30 +5827,30 @@ struct City_Form
   Button Draft_Btn;
   Button Governor_Btn;
   Button Resources_View_Btn;
-  Tile_Image_Info Background_Image;
-  Tile_Image_Info HurryButton_Images[3];
-  Tile_Image_Info Govern_Images[3];
-  Tile_Image_Info DraftButton_Images[3];
-  Tile_Image_Info ProdButton_Images[3];
-  Tile_Image_Info PopheadHilite_Image;
+  Sprite Background_Image;
+  Sprite HurryButton_Images[3];
+  Sprite Govern_Images[3];
+  Sprite DraftButton_Images[3];
+  Sprite ProdButton_Images[3];
+  Sprite PopheadHilite_Image;
   PCX_Image PCX1;
   City_Icon_Images City_Icons_Images;
-  Tile_Image_Info City_Icons_Images_42[4];
-  Tile_Image_Info Top_Buttons_Images[12];
-  Tile_Image_Info City_View_Btn_Image;
-  Tile_Image_Info Close_Btn_Images[3];
-  Tile_Image_Info BottomFadeBar_Image;
-  Tile_Image_Info BottomFadeBarAlpha;
-  Tile_Image_Info TopFadeBar_Image;
-  Tile_Image_Info TopFadeBarAlpha_Image;
-  Tile_Image_Info ProductionQueueBox_Image;
-  Tile_Image_Info ProductionQueueBar_Image;
-  Tile_Image_Info *Improvement_Images_Small;
-  Tile_Image_Info *Improvement_Images_Large;
+  Sprite City_Icons_Images_42[4];
+  Sprite Top_Buttons_Images[12];
+  Sprite City_View_Btn_Image;
+  Sprite Close_Btn_Images[3];
+  Sprite BottomFadeBar_Image;
+  Sprite BottomFadeBarAlpha;
+  Sprite TopFadeBar_Image;
+  Sprite TopFadeBarAlpha_Image;
+  Sprite ProductionQueueBox_Image;
+  Sprite ProductionQueueBar_Image;
+  Sprite *Improvement_Images_Small;
+  Sprite *Improvement_Images_Large;
   void *Luxury_Res_Images[8];
   int field_6570[61];
-  Tile_Image_Info Image_1;
-  Tile_Image_Info Image_2;
+  Sprite Image_1;
+  Sprite Image_2;
   RECT Citizens_Rect;
   RECT Production_Rect;
   RECT Rect1;
@@ -5891,7 +5891,7 @@ struct City_Form
   FLC_Animation struct_188;
   City_Form_Labels Labels;
   int field_98D0[67];
-  Tile_Image_Info QueueBase_Image;
+  Sprite QueueBase_Image;
 };
 
 struct Unit
@@ -5906,7 +5906,7 @@ struct Unit
 struct Tile_Info_Form
 {
   Base_Form Base;
-  Tile_Image_Info Image;
+  Sprite Image;
   Button Close_Btn;
   int field_C74;
 };
@@ -5951,9 +5951,9 @@ struct Main_GUI
   RECT Mini_Map_Click_Rect;
   RECT Rects3[5];
   int field_14058[32];
-  Tile_Image_Info Images[252];
-  Tile_Image_Info Image2;
-  Tile_Image_Info Image3;
+  Sprite Images[252];
+  Sprite Image2;
+  Sprite Image3;
   Timer timer_1;
   Timer timer_2;
   int field_16CE0;
@@ -5985,7 +5985,7 @@ struct Advisor_Foreign_Form
   Advisor_Form_vtable *vtable;
   Base_Form_Data Base_Data;
   int field_574[3];
-  Tile_Image_Info Image1;
+  Sprite Image1;
   int field_5AC;
   int field_5B0;
   int field_5B4;
@@ -6089,7 +6089,7 @@ struct Governor_Form
   Base_Form_vtable *vtable;
   Base_Form_Data Base_Data;
   CheckBox CheckBox;
-  Tile_Image_Info Image1;
+  Sprite Image1;
   int Current_City_ID;
   int field_C38;
   int field_C3C;
@@ -6120,8 +6120,8 @@ struct File_Dialog_Form
 struct New_Era_Form
 {
   Base_Form Base;
-  Tile_Image_Info *Image1;
-  Tile_Image_Info *Image2;
+  Sprite *Image1;
+  Sprite *Image2;
   String256 field_57C;
   int field_67C;
   int Old_Era;
@@ -6260,15 +6260,15 @@ struct DiploForm
 	TradableItem * tradable_units;
 	char * attitudes[5]; // polite, annoyed, etc.
 	int field_13E0[24];
-	Tile_Image_Info talk_offer_img;
-	Tile_Image_Info consider_img;
-	Tile_Image_Info counter_img;
-	Tile_Image_Info uparrow_img;
-	Tile_Image_Info downarrow_img;
-	Tile_Image_Info MPcounter_img;
-	Tile_Image_Info large_icons[11];
-	Tile_Image_Info small_icons[11];
-	Tile_Image_Info diplowinbox_img;
+	Sprite talk_offer_img;
+	Sprite consider_img;
+	Sprite counter_img;
+	Sprite uparrow_img;
+	Sprite downarrow_img;
+	Sprite MPcounter_img;
+	Sprite large_icons[11];
+	Sprite small_icons[11];
+	Sprite diplowinbox_img;
 	PCX_Image field_193C;
 	int field_1BF4[287];
 	Object_667188 field_2070;

@@ -2711,7 +2711,7 @@ init_stackable_command_buttons ()
 	PCX_Image_construct (&pcx);
 	for (int sc = 0; sc < COUNT_STACKABLE_COMMANDS; sc++)
 		for (int n = 0; n < 4; n++)
-			Tile_Image_Info_construct (&is->sc_button_image_sets[sc].imgs[n]);
+			Sprite_construct (&is->sc_button_image_sets[sc].imgs[n]);
 
 	char temp_path[2*MAX_PATH];
 
@@ -2726,8 +2726,8 @@ init_stackable_command_buttons ()
 			(*p_OutputDebugStringA) ("[C3X] Failed to load stacked command buttons sprite sheet.");
 			for (int sc = 0; sc < COUNT_STACKABLE_COMMANDS; sc++)
 				for (int k = 0; k < 4; k++) {
-					Tile_Image_Info * tii = &is->sc_button_image_sets[sc].imgs[k];
-					tii->vtable->destruct (tii, __, 0);
+					Sprite * sprite = &is->sc_button_image_sets[sc].imgs[k];
+					sprite->vtable->destruct (sprite, __, 0);
 				}
 			pcx.vtable->destruct (&pcx, __, 0);
 			return;
@@ -2736,7 +2736,7 @@ init_stackable_command_buttons ()
 		for (int sc = 0; sc < COUNT_STACKABLE_COMMANDS; sc++) {
 			int x = 32 * sc_button_infos[sc].tile_sheet_column,
 			    y = 32 * sc_button_infos[sc].tile_sheet_row;
-			Tile_Image_Info_slice_pcx (&is->sc_button_image_sets[sc].imgs[n], __, &pcx, x, y, 32, 32, 1, 0);
+			Sprite_slice_pcx (&is->sc_button_image_sets[sc].imgs[n], __, &pcx, x, y, 32, 32, 1, 0);
 		}
 
 		pcx.vtable->clear_JGL (&pcx);
@@ -2766,8 +2766,8 @@ init_disabled_command_buttons ()
 		return;
 	}
 
-	Tile_Image_Info_construct (&is->disabled_build_city_button_img);
-	Tile_Image_Info_slice_pcx (&is->disabled_build_city_button_img, __, &pcx, 32*5, 32*2, 32, 32, 1, 0);
+	Sprite_construct (&is->disabled_build_city_button_img);
+	Sprite_slice_pcx (&is->disabled_build_city_button_img, __, &pcx, 32*5, 32*2, 32, 32, 1, 0);
 
 	is->disabled_command_img_state = IS_OK;
 	pcx.vtable->destruct (&pcx, __, 0);
@@ -2779,8 +2779,8 @@ deinit_stackable_command_buttons ()
 	if (is->sc_img_state == IS_OK)
 		for (int sc = 0; sc < COUNT_STACKABLE_COMMANDS; sc++)
 			for (int n = 0; n < 4; n++) {
-				Tile_Image_Info * tii = &is->sc_button_image_sets[sc].imgs[n];
-				tii->vtable->destruct (tii, __, 0);
+				Sprite * sprite = &is->sc_button_image_sets[sc].imgs[n];
+				sprite->vtable->destruct (sprite, __, 0);
 			}
 	is->sc_img_state = IS_UNINITED;
 }
@@ -2788,10 +2788,10 @@ deinit_stackable_command_buttons ()
 void
 deinit_disabled_command_buttons ()
 {
-	Tile_Image_Info * tii = &is->disabled_build_city_button_img;
+	Sprite * sprite = &is->disabled_build_city_button_img;
 	if (is->disabled_command_img_state == IS_OK)
-		tii->vtable->destruct (tii, __, 0);
-	memset (tii, 0, sizeof *tii);
+		sprite->vtable->destruct (sprite, __, 0);
+	memset (sprite, 0, sizeof *sprite);
 	is->disabled_command_img_state = IS_UNINITED;
 }
 
@@ -2817,7 +2817,7 @@ init_tile_highlights ()
 	}
 
 	for (int n = 0; n < COUNT_TILE_HIGHLIGHTS; n++)
-		Tile_Image_Info_slice_pcx (&is->tile_highlights[n], __, &pcx, 128*n, 0, 128, 64, 1, 0);
+		Sprite_slice_pcx (&is->tile_highlights[n], __, &pcx, 128*n, 0, 128, 64, 1, 0);
 
 	is->tile_highlight_state = IS_OK;
 cleanup:
@@ -2846,8 +2846,8 @@ init_unit_rcm_icons ()
 	}
 
 	for (int n = 0; n < COUNT_UNIT_RCM_ICONS; n++) {
-		Tile_Image_Info_construct (&is->unit_rcm_icons[n]);
-		Tile_Image_Info_slice_pcx (&is->unit_rcm_icons[n], __, &pcx, 1, 1 + 16*n, width-2, 15, 1, 0);
+		Sprite_construct (&is->unit_rcm_icons[n]);
+		Sprite_slice_pcx (&is->unit_rcm_icons[n], __, &pcx, 1, 1 + 16*n, width-2, 15, 1, 0);
 	}
 
 	is->unit_rcm_icon_state = IS_OK;
@@ -2860,8 +2860,8 @@ deinit_unit_rcm_icons ()
 {
 	if (is->unit_rcm_icon_state == IS_OK) {
 		for (int n = 0; n < COUNT_UNIT_RCM_ICONS; n++) {
-			Tile_Image_Info * tii = &is->unit_rcm_icons[n];
-			tii->vtable->destruct (tii, __, 0);
+			Sprite * sprite = &is->unit_rcm_icons[n];
+			sprite->vtable->destruct (sprite, __, 0);
 		}
 		is->unit_rcm_icon_state = IS_UNINITED;
 	}
@@ -2919,12 +2919,12 @@ init_trade_scroll_buttons (DiploForm * diplo_form)
 	// Stores normal, rollover, and highlight images, in that order, first for the left button then for the right
 	is->trade_scroll_button_images = calloc (6, sizeof is->trade_scroll_button_images[0]);
 	for (int n = 0; n < 6; n++)
-		Tile_Image_Info_construct (&is->trade_scroll_button_images[n]);
-	Tile_Image_Info * imgs = is->trade_scroll_button_images;
+		Sprite_construct (&is->trade_scroll_button_images[n]);
+	Sprite * imgs = is->trade_scroll_button_images;
 
 	for (int right = 0; right < 2; right++)
 		for (int n = 0; n < 3; n++)
-			Tile_Image_Info_slice_pcx (&imgs[n + 3*right], __, &pcx, right ? 44 : 0, 1 + 48*n, 43, 47, 1, 1);
+			Sprite_slice_pcx (&imgs[n + 3*right], __, &pcx, right ? 44 : 0, 1 + 48*n, 43, 47, 1, 1);
 
 	for (int right = 0; right < 2; right++) {
 		Button * b = new (sizeof *b);
@@ -2957,8 +2957,8 @@ deinit_trade_scroll_buttons ()
 		is->trade_scroll_button_right->vtable->destruct ((Base_Form *)is->trade_scroll_button_right, __, 0);
 		is->trade_scroll_button_left = is->trade_scroll_button_right = NULL;
 		for (int n = 0; n < 6; n++) {
-			Tile_Image_Info * tii = &is->trade_scroll_button_images[n];
-			tii->vtable->destruct (tii, __, 0);
+			Sprite * sprite = &is->trade_scroll_button_images[n];
+			sprite->vtable->destruct (sprite, __, 0);
 		}
 		free (is->trade_scroll_button_images);
 		is->trade_scroll_button_images = NULL;
@@ -2984,9 +2984,9 @@ init_mod_info_button_images ()
 	}
 
 	for (int n = 0; n < 3; n++) {
-		Tile_Image_Info_construct (&is->mod_info_button_images[n]);
-		Tile_Image_Info_slice_pcx_with_color_table (&is->mod_info_button_images[n], __, descbox_pcx, 1 + n * 103, 1, MOD_INFO_BUTTON_WIDTH,
-							    MOD_INFO_BUTTON_HEIGHT, 1, 1);
+		Sprite_construct (&is->mod_info_button_images[n]);
+		Sprite_slice_pcx_with_color_table (&is->mod_info_button_images[n], __, descbox_pcx, 1 + n * 103, 1, MOD_INFO_BUTTON_WIDTH,
+						   MOD_INFO_BUTTON_HEIGHT, 1, 1);
 	}
 
 	is->mod_info_button_images_state = IS_OK;
@@ -5945,7 +5945,7 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 				int midpoint = (COUNT_TILE_HIGHLIGHTS % 2 == 0) ? 1000000 : (1000000 - step_size/2);
 				int grade = (eval >= midpoint) ? (eval - midpoint) / step_size : (eval - midpoint) / step_size - 1;
 				int i_highlight = clamp (0, COUNT_TILE_HIGHLIGHTS - 1, COUNT_TILE_HIGHLIGHTS/2 + grade);
-				Tile_Image_Info_draw_on_map (&is->tile_highlights[i_highlight], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+				Sprite_draw_on_map (&is->tile_highlights[i_highlight], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 			}
 		}
 	}
@@ -6956,7 +6956,7 @@ int __fastcall patch_show_popup_option_1_razes (void *this, int edx, int param_1
 int __fastcall patch_show_popup_option_2_razes (void *this, int edx, int param_1, int param_2) { return show_razing_popup (this, param_1, param_2, 2); }
 
 int __fastcall
-patch_Context_Menu_add_abandon_city (Context_Menu * this, int edx, int item_id, char * text, bool checkbox, Tile_Image_Info * image)
+patch_Context_Menu_add_abandon_city (Context_Menu * this, int edx, int item_id, char * text, bool checkbox, Sprite * image)
 {
 	if (is->current_config.prevent_razing_by_players)
 		return 0; // Return value is ignored by the caller
@@ -8691,9 +8691,9 @@ patch_Leader_erase_export (Leader * this, int edx, int importer_civ_id, int reso
 }
 
 int __fastcall
-patch_Tile_Image_Info_draw_improv_img_on_city_form (Tile_Image_Info * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
+patch_Sprite_draw_improv_img_on_city_form (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
 {
-	int tr = Tile_Image_Info_draw (this, __, canvas, pixel_x, pixel_y, param_4);
+	int tr = Sprite_draw (this, __, canvas, pixel_x, pixel_y, param_4);
 
 	int generated_resources[16];
 	int generated_resource_count = 0;
@@ -8766,10 +8766,10 @@ patch_City_get_tourism_amount_to_draw (City * this, int edx, int improv_id)
 }
 
 int __fastcall
-patch_Tile_Image_Info_draw_tourism_gold (Tile_Image_Info * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
+patch_Sprite_draw_tourism_gold (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
 {
 	// Replace the yield sprite we're drawing with food or a shield if needed.
-	Tile_Image_Info * sprite; {
+	Sprite * sprite; {
 		if (is->tourism_icon_counter < is->convert_displayed_tourism_to_food)
 			sprite = &p_city_form->City_Icons_Images.Icon_15_Food;
 		else if (is->tourism_icon_counter < is->convert_displayed_tourism_to_food + is->convert_displayed_tourism_to_shields)
@@ -8778,7 +8778,7 @@ patch_Tile_Image_Info_draw_tourism_gold (Tile_Image_Info * this, int edx, PCX_Im
 			sprite = this;
 	}
 
-	int tr = Tile_Image_Info_draw (sprite, __, canvas, pixel_x, pixel_y, param_4);
+	int tr = Sprite_draw (sprite, __, canvas, pixel_x, pixel_y, param_4);
 	is->tourism_icon_counter++;
 	return tr;
 }
