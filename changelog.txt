@@ -1,3 +1,4 @@
+* RELEASE 18B
 - Fix Wake/Activate replacement not working on Steam version
 
 * RELEASE 18
