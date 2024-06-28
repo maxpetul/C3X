@@ -16,8 +16,8 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
-#define MOD_VERSION 1700
-#define MOD_PREVIEW_VERSION 1
+#define MOD_VERSION 1801
+#define MOD_PREVIEW_VERSION 0
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -29,17 +29,41 @@ struct table {
 	size_t len;
 };
 
-struct perfume_spec {
-	City_Order target_order;
-	int amount;
-};
-
 // A mill is a city improvement that spawns a resource. These are read from the "buildings_generating_resources" key in the config but are called
 // "mills" internally for brevity.
+enum mill_flag {
+	MF_LOCAL          = 1,
+	MF_NO_TECH_REQ    = 2,
+	MF_YIELDS         = 4,
+	MF_SHOW_BONUS     = 8,
+	MF_HIDE_NON_BONUS = 16
+};
 struct mill {
-	int improv_id;
-	int resource_id;
-	bool is_local, no_tech_req;
+	short improv_id;
+	short resource_id;
+	short flags;
+};
+
+#define ERA_ALIAS_LIST_CAPACITY 4 // Must not exceed 32 so we can store all genders as bits in an int
+
+// A list of per-era aliases for a civ's noun, adjective, or formal name.
+struct civ_era_alias_list {
+	char * key;
+	char * aliases[ERA_ALIAS_LIST_CAPACITY];
+};
+
+// A list of per-era aliases for a civ's leader's name, including genders and (optionally) titles.
+struct leader_era_alias_list {
+	char * key;
+	char * aliases[ERA_ALIAS_LIST_CAPACITY];
+	int gender_bits; // Gender of each alias. Like LeaderGender in the Race object, 0 for male and 1 for female.
+	char * titles[ERA_ALIAS_LIST_CAPACITY]; // Title for each alias. May be NULL.
+};
+
+struct unit_type_limit {
+	int per_civ;
+	int per_city;
+	int cities_per;
 };
 
 enum retreat_rules {
@@ -47,6 +71,12 @@ enum retreat_rules {
 	RR_NONE,
 	RR_ALL_UNITS,
 	RR_IF_FASTER
+};
+
+enum line_drawing_override {
+	LDO_NEVER = 0,
+	LDO_WINE,
+	LDO_ALWAYS
 };
 
 enum special_defensive_bombard_rules {
@@ -77,6 +107,9 @@ struct c3x_config {
 	bool disallow_founding_next_to_foreign_city;
 	bool enable_trade_screen_scroll;
 	bool group_units_on_right_click_menu;
+	bool gray_out_units_on_menu_with_no_remaining_moves;
+	bool put_movement_icons_on_units_on_menu;
+	bool describe_states_of_units_on_menu;
 	int anarchy_length_percent;
 	bool show_golden_age_turns_remaining;
 	bool show_zoc_attacks_from_mid_stack;
@@ -89,8 +122,7 @@ struct c3x_config {
 	bool enable_land_sea_intersections;
 	bool disallow_trespassing;
 	bool show_detailed_tile_info;
-	struct perfume_spec * perfume_specs;
-	int count_perfume_specs;
+	struct table perfume_specs; // Maps strings to ints
 	struct table building_unit_prereqs; // A mapping from int keys to int values. The keys are unit type IDs. If an ID is present as a key in the
 					    // table that means that unit type has one or more prereq buildings. The associated value is either a
 					    // pointer to a list of MAX_BUILDING_PREREQS_FOR_UNITS improvement IDs or a single encoded improv ID. The
@@ -105,14 +137,19 @@ struct c3x_config {
 	bool zero_corruption_when_off;
 	bool disallow_land_units_from_affecting_water_tiles;
 	bool dont_end_units_turn_after_airdrop;
+	bool allow_airdrop_without_airport;
 	bool enable_negative_pop_pollution;
 	enum retreat_rules land_retreat_rules;
 	enum retreat_rules sea_retreat_rules;
-	bool enable_ai_two_city_start;
+	bool allow_defensive_retreat_on_water;
+	int ai_multi_city_start;
 	int max_tries_to_place_fp_city;
+	int * ai_multi_start_extra_palaces;
+	int count_ai_multi_start_extra_palaces;
+	int ai_multi_start_extra_palaces_capacity;
 	bool promote_forbidden_palace_decorruption;
 	bool allow_military_leaders_to_hurry_wonders;
-	bool halve_ai_research_rate;
+	int ai_research_multiplier;
 	bool aggressively_penalize_bankruptcy;
 	bool no_penalty_exception_for_agri_fresh_water_city_tiles;
 	bool suppress_hypertext_links_exceeded_popup;
@@ -129,12 +166,14 @@ struct c3x_config {
 	int ptw_arty_types_capacity;
 	int * ptw_arty_types; // List of unit type IDs
 	bool restore_unit_directions_on_game_load;
+	bool apply_grid_ini_setting_on_game_load;
 	bool charm_flag_triggers_ptw_like_targeting;
 	bool city_icons_show_unit_effects_not_trade;
 	bool ignore_king_ability_for_defense_priority;
 	bool show_untradable_techs_on_trade_screen;
-	bool optimize_improvement_loops;
 	bool disallow_useless_bombard_vs_airfields;
+	enum line_drawing_override draw_lines_using_gdi_plus;
+	bool compact_luxury_display_on_city_screen;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hoseat;
 	bool allow_precision_strikes_against_tile_improvements;
@@ -143,10 +182,23 @@ struct c3x_config {
 	bool allow_bombard_of_other_improvs_on_occupied_airfield;
 	bool show_total_city_count;
 	bool strengthen_forbidden_palace_ocn_effect;
+	int extra_unit_maintenance_per_shields;
 	enum special_zone_of_control_rules special_zone_of_control_rules;
 	enum special_defensive_bombard_rules special_defensive_bombard_rules;
+	struct civ_era_alias_list * civ_era_alias_lists;
+	int count_civ_era_alias_lists;
+	struct leader_era_alias_list * leader_era_alias_lists;
+	int count_leader_era_alias_lists;
+	struct table unit_limits; // Maps unit type names (strings) to pointers to limit objects (struct unit_type_limit *)
+	bool allow_upgrades_in_any_city;
+	bool do_not_generate_volcanos;
+
+	bool enable_trade_net_x;
+	bool optimize_improvement_loops;
+	bool measure_turn_times;
 
 	bool use_offensive_artillery_ai;
+	bool dont_escort_unflagged_units;
 	int ai_build_artillery_ratio;
 	int ai_artillery_value_damage_percent;
 	int ai_build_bomber_ratio;
@@ -154,6 +206,7 @@ struct c3x_config {
 	bool fix_ai_army_composition;
 	bool enable_pop_unit_ai;
 	int max_ai_naval_escorts;
+	int ai_worker_requirement_percent;
 
 	bool remove_unit_limit;
 	bool remove_era_limit;
@@ -162,7 +215,7 @@ struct c3x_config {
 	bool patch_submarine_bug;
 	bool patch_science_age_bug;
 	bool patch_pedia_texture_bug;
-	bool patch_disembark_immobile_bug;
+	bool patch_blocked_disembark_freeze;
 	bool patch_houseboat_bug;
 	bool patch_intercept_lost_turn_bug;
 	bool patch_phantom_resource_bug;
@@ -239,9 +292,9 @@ enum c3x_label {
 	CL_VERSION,
 	CL_CONFIG_FILES_LOADED,
 	CL_CREATING_CITIES,
-	CL_2CS_FAILED_SANITY_CHECK,
-	CL_2CS_ADJACENT_CITIES,
-	CL_2CS_MISSING_CITIES,
+	CL_MCS_FAILED_SANITY_CHECK,
+	CL_MCS_ADJACENT_CITIES,
+	CL_MCS_MISSING_CITIES,
 	CL_OBSOLETED_BY,
 	CL_NO_STEALTH_ATTACK,
 	CL_DODGED_SAM,
@@ -252,6 +305,30 @@ enum c3x_label {
 	// Offense, Defense, Artillery, etc.
 	CL_FIRST_UNIT_STRAT,
 	CL_LAST_UNIT_STRAT = CL_FIRST_UNIT_STRAT + 19,
+
+	// Unit actions for right-click menu
+	CL_IDLE,
+	CL_FORTIFIED,
+	CL_SENTRY,
+	CL_MINING,
+	CL_IRRIGATING,
+	CL_BUILDING_FORTRESS,
+	CL_BUILDING_ROAD,
+	CL_BUILDING_RAILROAD,
+	CL_PLANTING_FOREST,
+	CL_CLEARING_FOREST,
+	CL_CLEARING_WETLANDS,
+	CL_CLEARING_DAMAGE,
+	CL_BUILDING_AIRFIELD,
+	CL_BUILDING_RADAR_TOWER,
+	CL_BUILDING_OUTPOST,
+	CL_BUILDING_BARRICADE,
+	CL_BUILDING_COLONY,
+	CL_INTERCEPTING,
+	CL_MOVING,
+	CL_AUTOMATED,
+	CL_EXPLORING,
+	CL_BOMBARDING,
 
 	COUNT_C3X_LABELS
 };
@@ -265,6 +342,34 @@ struct ai_prod_valuation {
 	int order_type;
 	int order_id;
 	int point_value;
+};
+
+enum unit_rcm_icon {
+	URCMI_UNMOVED_CAN_ATTACK = 0,
+	URCMI_UNMOVED_NO_ATTACK,
+	URCMI_MOVED_CAN_ATTACK,
+	URCMI_MOVED_NO_ATTACK,
+	URCMI_CANT_MOVE,
+
+	COUNT_UNIT_RCM_ICONS
+};
+
+enum city_gain_reason {
+	CGR_FOUNDED = 0,
+	CGR_CONQUERED,
+	CGR_CONVERTED, // covers culture flips & bribes
+	CGR_TRADED,
+	CGR_POPPED_FROM_HUT,
+	CGR_PLACED_FOR_AI_RESPAWN,
+	CGR_PLACED_FOR_SCENARIO,
+	CGR_PLACED_FOR_AI_MULTI_CITY_START,
+};
+
+enum city_loss_reason {
+	CLR_DESTROYED = 0, // means city was razed for any reason (inc. by conqueror)
+	CLR_CONQUERED,
+	CLR_CONVERTED, // covers culture flips & bribes
+	CLR_TRADED
 };
 
 struct injected_state {
@@ -281,6 +386,7 @@ struct injected_state {
 	enum init_state tile_highlight_state;
 	enum init_state mod_info_button_images_state;
 	enum init_state disabled_command_img_state;
+	enum init_state unit_rcm_icon_state;
 
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
@@ -292,6 +398,7 @@ struct injected_state {
 	HMODULE kernel32;
 	HMODULE user32;
 	HMODULE msvcrt;
+	HMODULE msimg32;
 
 	// Win32 API functions
 	FARPROC (__stdcall * GetProcAddress) (HMODULE, LPCSTR);
@@ -301,13 +408,19 @@ struct injected_state {
 	DWORD (WINAPI * GetFileSize) (HANDLE, LPDWORD);
 	WINBOOL (WINAPI * ReadFile) (HANDLE, LPVOID, DWORD, LPDWORD, LPOVERLAPPED);
 	HMODULE (WINAPI * LoadLibraryA) (LPCSTR);
+	BOOL (WINAPI * FreeLibrary) (HMODULE);
 	int (WINAPI * MultiByteToWideChar) (UINT, DWORD, LPCCH, int, LPWSTR, int);
 	int (WINAPI * WideCharToMultiByte) (UINT, DWORD, LPCWCH, int, LPSTR, int, LPCCH, LPBOOL);
 	int (WINAPI * GetLastError) ();
+	BOOL (WINAPI * QueryPerformanceCounter) (LARGE_INTEGER *);
+	BOOL (WINAPI * QueryPerformanceFrequency) (LARGE_INTEGER *);
 	void (WINAPI * GetLocalTime) (LPSYSTEMTIME);
 
 	// Win32 funcs from user32.dll
 	int (WINAPI * MessageBoxA) (HWND, LPCSTR, LPCSTR, UINT);
+
+	// Win32 funcs from Msimg32.dll
+	BOOL (WINAPI * TransparentBlt) (HDC, int, int, int, int, HDC, int, int, int, int, UINT);
 
 	// C standard library functions
 	int (* snprintf) (char *, size_t, char const *, ...);
@@ -344,6 +457,43 @@ struct injected_state {
 		void (* pushcclosure) (lua_State *, lua_CFunction fn, int n);
 	} lua;
 
+	HMODULE trade_net_x;
+	void (__stdcall * set_exe_version) (int);
+	void * (__stdcall * create_tnx_cache) (Map *);
+	void (__stdcall * destroy_tnx_cache) (void *);
+	void (__stdcall * set_up_before_building_network) (void *);
+	int (__stdcall * get_move_cost_for_sea_trade) (Trade_Net * trade_net, void * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags, int neighbor_index, Trade_Net_Distance_Info * dist_info);
+	void (__stdcall * flood_fill_road_network) (void * tnx_cache, int from_x, int from_y, int civ_id);
+	bool (__stdcall * try_drawing_sea_trade_route) (Trade_Net * trade_net, void * tnx_cache, int from_x, int from_y, int to_x, int to_y, int civ_id, unsigned int flags);
+
+	void * tnx_cache; // Cache object used by Trade Net X. Initially NULL, must be recreated every time a new map is loaded.
+	enum init_state tnx_init_state;
+	bool is_computing_city_connections; // Set to true only while Trade_Net::recompute_city_connections is running
+	bool keep_tnx_cache;
+
+	// This flag gets set whenever a trade deal is signed or broken for a resource that's an input to a mill. It's necessary to call
+	// recompute_resources in that case since a mill may have been de/activated by the change. We can't call it right when the change happens as
+	// that can crash the game for reasons I don't completely understand. I believe it's because the recomputation can't be done while some other
+	// econ logic is running. Instead, we set this variable then recompute before obsolete data would be an issue. Specifically, this is done:
+	//   - When any player or AI begins their production phase
+	//   - When the player zooms to any city
+	//   - When the player opens the shift + right-click production chooser menu
+	//   - When the player visits any advisor
+	//   - When the player selects any unit
+	bool must_recompute_resources_for_mill_inputs;
+
+	bool is_placing_scenario_things; // Set to true only while Map::place_scenario_things is running
+
+	bool paused_for_popup; // Set to true while a popup, map message, or the diplo screen is open
+	long long time_spent_paused_during_popup; // Tracks time spent waiting for the three things above
+
+	// This variable is increased with the time elapsed during every call to Trade_Net::recompute_city_connections. Time is measured using
+	// Windows performance counter.
+	long long time_spent_computing_city_connections;
+	int count_calls_to_recompute_city_connections;
+
+	long long time_spent_filling_roads;
+
 	struct c3x_config current_config;
 
 	// Keeps a record of all configs currently loaded. Useful to know. "name" is the file name for configs that come from files, which is all of
@@ -371,6 +521,14 @@ struct injected_state {
 
 	// The civ ID of the player from whose perspective we're currently showing city loc desirability, or -1 if none. Initialized to -1.
 	int city_loc_display_perspective;
+
+	// These are all bit fields that run parallel to player bits. Each bit indicates whether or not that name was replaced with an era-specific
+	// version for that player. This allows us to tell the difference between custom names set by human players and replacements made by the mod.
+	int aliased_civ_noun_bits;
+	int aliased_civ_adjective_bits;
+	int aliased_civ_formal_name_bits;
+	int aliased_leader_name_bits;
+	int aliased_leader_title_bits;
 
 	// Stores resource access bits for resources beyond the first 32, used to fix the phantom resource bug. Initialized to NULL/0 and allocated as
 	// necessary by get_extra_resource_bits. Contains an array of groups of unsigned ints. There is one group per city (allocated lazily so you
@@ -401,9 +559,17 @@ struct injected_state {
 	// it's one of several duplicate types created to spread multiple AI strategies out so each type has only one.
 	struct table unit_type_alt_strategies;
 
+	// Stores a linked list of unit type duplicates. Maps unit type IDs to the next duplicate ID. Use list_unit_type_duplicates to get the list of
+	// the duplicates of a particular type as an array.
+	struct table unit_type_duplicates;
+
 	// Tracks the number of "extra" defensive bombards units have performed, by their IDs. If the "blitz" special defensive bombard rule is
 	// activated, units with blitz get an extra chance to perform DB for each movement point they have beyond the first.
 	struct table extra_defensive_bombards;
+
+	// These variables store the number of units of each type that each player has
+	int unit_type_count_init_bits; // Player bits tracking which unit type count tables have been initialized.
+	struct table unit_type_counts[32]; // One table per player. Each one maps unit type ids (ints) to counts (ints)
 
 	// ==========
 	// } These fields are valid only after init_stackable_command_buttons has been called. {
@@ -437,6 +603,12 @@ struct injected_state {
 	// ==========
 
 	Sprite disabled_build_city_button_img;
+
+	// ==========
+	// } This field is only valid after init_unit_rcm_icons has been called and unit_rcm_icon_state equals IS_OK {
+	// ==========
+
+	Sprite unit_rcm_icons[COUNT_UNIT_RCM_ICONS];
 
 	// ==========
 	// } These fields are valid only after init_tile_highlights as been called. {
@@ -509,6 +681,15 @@ struct injected_state {
 	int mill_tiles_capacity;
 	struct mill_tile * got_mill_tile;
 	int saved_tile_count; // Stores the actual tile count in case p_bic_data->Map.TileCount was temporarily overwritten. Set to -1 when empty.
+	byte * mill_input_resource_bits; // Array of bits, one for each resource. Stores whether or not each one is an input to any mill.
+
+	// Used for displaying yields from generated resources on the city screen
+	int tourism_icon_counter; // Incremented each time a tourism yield icon (normally commerce) is drawn. Reset between improvs.
+	int convert_displayed_tourism_to_food, convert_displayed_tourism_to_shields; // Number of commerce tourism icons to convert to food, shields
+
+	int drawing_icons_for_improv_id; // Stores the improv ID whose icons we're drawing. -1 while not drawing.
+
+	PCX_Image * resources_sheet; // Sprite sheet of resource icons, i.e. resources.pcx
 
 	// Stores the trade offer object being modified when the user right-clicks on a gold offer/ask on the trade table. Gets set by a special
 	// function call replacement (see apply_machine_code_edits for details).
@@ -588,9 +769,20 @@ struct injected_state {
 	// Unit::attack_tile. Used to stop the unit from losing all of its movement if configured.
 	Unit * unit_bombard_attacking_tile;
 
-	// Cleared to zero when Fighter::apply_zone_of_control is called. The interceptor must be unfortified to ensure it plays its animation. If
+	// Cleared to false when Fighter::apply_zone_of_control is called. The interceptor must be unfortified to ensure it plays its animation. If
 	// that happens, this flag is set so that apply_zone_of_control knows to refortify the unit after the ZoC process is done.
-	int refortify_interceptor_after_zoc;
+	bool refortify_interceptor_after_zoc;
+
+	// These flags are used to turn off lethal ZoC for units that capture an enemy on the tile they're moving into. Without this rule, the unit
+	// might get killed by ZoC but the captured units will remain on a tile that was never actually entered (that tile might have an enemy city
+	// for extra weirdness). Here's how it works:
+	//  1. The moving_unit_to_adjacent_tile flag is set when Unit::move_to_adjacent_tile is called.
+	//  2. If that flag is set and a unit is captured (detected by intercepting the calls to Leader::spawn_unit inside Unit::do_capture_units)
+	//     then temporarily_disallow_lethal_zoc is set.
+	//  3. If temporar... is set, the code to filter ZoC interceptors acts as if lethal ZoC were turned off.
+	//  4. Both flags are cleared when Unit::move_to_adjacent_tile returns.
+	bool temporarily_disallow_lethal_zoc;
+	bool moving_unit_to_adjacent_tile;
 
 	// Used to record info about a defensive bomardment event during Fighter::fight. Gets set by Fighter::damage_by_defensive_bombardment and
 	// cleared when Fighter::fight returns.
@@ -600,12 +792,48 @@ struct injected_state {
 		bool damage_done, defender_was_destroyed, saved_animation_setting;
 	} dbe;
 
-	// Set to 1 IFF we're showing a replay of AI moves in hotseat mode
+	// Set to true IFF we're showing a replay of AI moves in hotseat mode
 	bool showing_hotseat_replay;
 
-	// Set to 1 only during the first call to get_tile_occupier_id from Trade_Net::get_movement_cost. While this is set, we need to edit unit
+	// Set to true only during the first call to get_tile_occupier_id from Trade_Net::get_movement_cost. While this is set, we need to edit unit
 	// visibility to patch the submarine bug.
 	bool getting_tile_occupier_for_ai_pathfinding;
+
+	bool running_on_wine; // Set to 1 IFF we're running in Wine, as opposed to actual Windows
+
+	// gdi_plus.init_state is valid any time after patch_init_floating_point. All the other fields are only valid after set_up_gdi_plus has been
+	// called and gdi_plus.init_state equals IS_OK.
+	struct gdi_plus {
+		enum init_state init_state;
+		HMODULE module;
+		ULONG_PTR token;
+		void * gp_graphics;
+
+		int (__stdcall * CreateFromHDC) (HDC hdc, void ** p_gp_graphics);
+		int (__stdcall * DeleteGraphics) (void * gp_graphics);
+		int (__stdcall * SetSmoothingMode) (void * graphics, int smoothing_mode);
+		int (__stdcall * SetPenDashStyle) (void * gp_pen, int dash_style);
+		int (__stdcall * CreatePen1) (unsigned int argb_color, float width, int gp_unit, void ** p_gp_pen);
+		int (__stdcall * DeletePen) (void * gp_pen);
+		int (__stdcall * DrawLineI) (void * gp_graphics, void * gp_pen, int x1, int y1, int x2, int y2);
+	} gdi_plus;
+
+	// These variables track the states of some OpenGL parameters. They're updated whenever methods like OpenGLRenderer::set_color are called.
+	unsigned int ogl_color;
+	int ogl_line_width;
+	bool ogl_line_stipple_enabled;
+
+	// Records how many units of each type we're going to upgrade to during an upgrade-all. This info will be used to impose the unit type limit
+	// during the upgrade. Keep in mind units all get upgraded from the same type but might end up as different types after upgrade-all.
+	struct penciled_in_upgrade {
+		int unit_type_id;
+		int count;
+	} * penciled_in_upgrades;
+	int penciled_in_upgrade_count;
+	int penciled_in_upgrade_capacity;
+
+	// While in Leader::do_capture_city, the city in question is stored in this var. Otherwise it's NULL.
+	City * currently_capturing_city;
 
 	// ==========
 	// }

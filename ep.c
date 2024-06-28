@@ -907,8 +907,14 @@ ENTRY_POINT ()
 #endif
 
 	// Allocate space for inleads
-	int inleads_capacity = 100,
-	    inleads_size = inleads_capacity * sizeof (struct inlead);
+	int inleads_capacity; {
+		int count = 0;
+		for (int n = 0; n < count_civ_prog_objects; n++)
+			if (civ_prog_objects[n].job == OJ_INLEAD)
+				count++;
+		inleads_capacity = count + 20; // Allocate some extra space for various uses
+	}
+	int inleads_size = inleads_capacity * sizeof (struct inlead);
 	struct inlead * inleads = alloc_prog_memory (".c3xinl", NULL, inleads_size, MAA_READ_WRITE_EXECUTE);
 	int i_next_free_inlead = 0;
 
@@ -920,6 +926,7 @@ ENTRY_POINT ()
 	write_prog_int (&injected_state->tile_highlight_state, IS_UNINITED);
 	write_prog_int (&injected_state->mod_info_button_images_state, IS_UNINITED);
 	write_prog_int (&injected_state->disabled_command_img_state, IS_UNINITED);
+	write_prog_int (&injected_state->unit_rcm_icon_state, IS_UNINITED);
 	tcc_define_pointer (tcc, "ADDR_INJECTED_STATE", injected_state);
 
 	// Pass through prog objects before compiling to set things up for compilation
@@ -1040,7 +1047,7 @@ ENTRY_POINT ()
 	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
 		if (obj->job != OJ_IGNORE) {
-			ASSERT (obj->addr != 0);
+			ASSERT ((obj->addr != 0) || (0 == strcmp (obj->name, "exe_version_index")));
 
 			if (obj->job == OJ_INLEAD)
 				put_trampoline ((void *)obj->addr, find_patch_function (tcc, obj->name, 1), 0);

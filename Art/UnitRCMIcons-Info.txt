@@ -1,0 +1,5 @@
+These icons are placed next to units on the right-click menu. The LEDs match those used by the base game, stored in Art\interface\MovementLED.pcx. (Note that there are five icons in that file but only three are used.) The little swords on the left are used to indicate which units can still attack on the current turn.
+
+These icons will be drawn right up against the left edge of the right-click menu so it helps to leave some blank pixels there to form a margin. Also the game seems to cut off the rightmost column of pixels for some reason so it's necessary to leave those blank as well.
+
+The icons can be any width but they must be 15 pixels tall. You probably wouldn't want them to be any taller anyway since 15 pixels is about the tallest they can be without vertically stretching the items on the menu.

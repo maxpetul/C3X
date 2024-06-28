@@ -251,6 +251,21 @@ hash_slice (int slice_ptr)
 
 }
 
+// Like regular deinit but also frees all keys
+void
+stable_deinit (struct table * t)
+{
+	if (t->len > 0) {
+		size_t capacity = table_capacity (t);
+		for (size_t n = 0; n < capacity; n++)
+			if (table__is_occupied (t, n)) {
+				int * entry = &((int *)TABLE__BASE (t))[2*n];
+				free ((void *)entry[0]);
+			}
+	}
+	table_deinit (t);
+}
+
 void
 stable_insert (struct table * t, char const * key, int value)
 {
@@ -459,6 +474,18 @@ parse_string (char ** p_cursor, struct string_slice * out)
 	out->len = str_len;
 	*p_cursor = cur + (quoted && (*cur == '"'));
 	return 1;
+}
+
+int
+parse_int (char ** p_cursor, int * out)
+{
+	char * cur = *p_cursor;
+	struct string_slice ss;
+	if (parse_string (&cur, &ss) && read_int (&ss, out)) {
+		*p_cursor = cur;
+		return 1;
+	} else
+		return 0;
 }
 
 int

@@ -1,4 +1,31 @@
-* RELEASE 17 PREVIEW 1
+* RELEASE 18B
+- Fix Wake/Activate replacement not working on Steam version
+
+* RELEASE 18
+- Unit limits
+- Expand AI two-city start to any number of cities
+  - Config option has been renamed to ai_multi_city_start
+- AI's starter cities in multi-city start can begin with improvements, inc. "extra palaces" which respawn like the real palace
+- Right-click menu enhancements
+  - Place icons next to units showing movement and combat status
+  - Replace Wake/Activate with descriptions of what the units are doing
+  - Gray out units if they have no remaining moves
+  - Stop grouping automated and non-automated workers
+- Can set multiplier on AI research rate (replaces halve_ai_research_rate)
+- Option to allow upgrades in any city
+- Option to stop the map generator from placing volcanos
+- Apply GridOn setting from conquests.ini after loading a save
+- Fix resource generation not always updated after an input was gained or lost due to city improv change
+- Rework some code related to resource generation and trade to improve stability and efficiency
+
+* RELEASE 17C
+- Fix crashes and strange behavior caused by use-after-free bug in config loader
+
+* RELEASE 17
+- Optimize computation of trade networks
+  - For details, see the info text file in the Trade Net X folder
+- Civ and leader names can vary by era
+- Option to measure turn times
 - Zone of control changes
   - Allow land-to-sea and sea-to-land attacks, only using bombard stat
   - May be lethal
@@ -10,12 +37,31 @@
   - Invisible, undetected units may be made immune
   - May be performed multiple times per turn with blitz
   - Naval units in a city may perform defensive bombard vs land attackers
+- Enable resource generating buildings to add the resource's yields to their city
+- Display icons for generated resources on top of the generating building
 - Allow precision strikes to target tile improvements
 - Option not to end a unit's turn after it bombards a barricade
+- Fix freezes caused by undisembarkable escorting unit
+  - Covered by the disembark immobile bug fix option, which has been renamed
+- Fix graphical issues when running on Wine
+- Option to allow defensive retreat on water tiles
+- Can increase unit maintenance costs based on their build costs
+- Adjustable AI worker requirement
+- Option to stop AI from escorting units without the "requires escort" flag
+- Fix a rare edge case where stack bombard would continue attacking an empty tile
+- Option to pack the list of luxuries more tightly into the box on the city screen
+- Apply perfume to all unit types & buildings with the specified name
+  - Fixes perfume only applying to one sub-type when a unit type has multiple AI strategies
+- Option to allow airdrops without airports
+- Fix max_ai_naval_escorts setting interfering with group movement of naval units belonging to human players
 - Option to allow bombardment of other improvements on a tile with an occupied airfield
 - Option to boost OCN increase from forbidden palaces in non-communal governments
+- Fix modified sea retreat rules interfering with naval combat animations
 - Overhaul implementation of shared visibility for simplicity and correctness
+- Fix possible freeze when a trade deal is broken for a resource that's an input to a resource generating building
 - Display total city count (disabled by default, appears on demographics screen)
+- Allow list items to be placed on separate lines for perfume_specs and buildings_generating_resources
+- Improve accuracy of line numbers on error messages
 
 * RELEASE 16
 - Barbarian city capture & production (experimental)
