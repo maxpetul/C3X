@@ -2585,12 +2585,20 @@ patch_init_floating_point ()
 			is->lua.call (ls, 1, 0);
 		}
 
-		// Add the "lua" folder inside the mod folder to Lua's path so we can easily load civ3.lua and any other scripts placed there
+		// Define a c3x_rel_dir variable for Lua so it can find the "lua" directory inside the C3X folder. The working directory for all Lua
+		// scripts will be the Conquests directory. Add the "lua" folder inside the mod folder to Lua's path so we can easily load civ3.lua
+		// and any other scripts placed there.
 		{
 			char code[500];
-			// Need to use four backslashes b/c we're going through two levels of string parsing, first C then Lua.
-			snprintf (code, sizeof code, "package.path = \".\\\\%s\\\\lua\\\\?.lua;\" .. package.path", is->mod_rel_dir);
 			code[(sizeof code) - 1] = '\0';
+
+			snprintf (code, (sizeof code) - 1, "c3x_rel_dir = \"%s\"", is->mod_rel_dir);
+			is->lua.loadstring (ls, code);
+			if (is->lua.pcall (ls, 0, LUA_MULTRET, 0))
+				pop_up_lua_error (false);
+
+			// Need to use four backslashes b/c we're going through two levels of string parsing, first C then Lua.
+			snprintf (code, (sizeof code) - 1, "package.path = \".\\\\%s\\\\lua\\\\?.lua;\" .. package.path", is->mod_rel_dir);
 			is->lua.loadstring (ls, code);
 			if (is->lua.pcall (ls, 0, LUA_MULTRET, 0))
 				pop_up_lua_error (false);
