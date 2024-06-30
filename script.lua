@@ -1,7 +1,13 @@
 
 local civ3 = require("civ3")
+local io = require("io")
 
 function CheckHappinessAtEndOfTurn()
+  io.output("CONOUT$")
+  io.write("IO writing from Lua\r\n")
+  io.flush()
+  print("Printing from Lua")
+
   local numUnhappyCities, firstUnhappyCity = 0, nil
   for city in civ3.mainScreenForm:GetController():Cities() do
     city:RecomputeHappiness()

@@ -1,6 +1,8 @@
 #include "stdlib.h"
 #include "stdio.h"
 
+#include "fcntl.h"  // For _O_TEXT
+
 #include "C3X.h"
 
 void (WINAPI ** p_OutputDebugStringA) (char * lpOutputString) = ADDR_ADDR_OUTPUTDEBUGSTRINGA;
@@ -23,6 +25,9 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define CreateFileA is->CreateFileA
 #define GetFileSize is->GetFileSize
 #define ReadFile is->ReadFile
+#define WriteFile is->WriteFile
+#define GetStdHandle is->GetStdHandle
+#define SetStdHandle is->SetStdHandle
 #define LoadLibraryA is->LoadLibraryA
 #define FreeLibrary is->FreeLibrary
 #define MessageBoxA is->MessageBoxA
@@ -31,9 +36,15 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define GetLastError is->GetLastError
 #define QueryPerformanceCounter is->QueryPerformanceCounter
 #define QueryPerformanceFrequency is->QueryPerformanceFrequency
+#define AllocConsole is->AllocConsole
 #define GetLocalTime is->GetLocalTime
 #define TransparentBlt is->TransparentBlt
 #define snprintf is->snprintf
+#define fprintf is->fprintf
+#define fputs is->fputs
+#define fflush is->fflush
+#define _fdopen is->_fdopen
+#define _open_osfhandle is->_open_osfhandle
 #define malloc is->malloc
 #define calloc is->calloc
 #define realloc is->realloc
@@ -162,6 +173,32 @@ pop_up_lua_error (bool in_game)
 	} else
 		MessageBoxA (NULL, err_msg, NULL, MB_ICONERROR);
 	is->lua.settop (ls, -2); // pop
+}
+
+// Prints the given string to the Lua console if it's open. Does not append a new line.
+void
+write_to_lua_console (char const * msg)
+{
+	if (is->lua.console_out != NULL) {
+		fputs (msg, is->lua.console_out);
+		fflush (is->lua.console_out);
+	}
+}
+
+void
+open_lua_console ()
+{
+	// Create a console if one isn't already open
+	AllocConsole ();
+
+	// Creating a console automatically sets the std in & out handles. Get std out, translate it to a FILE *, and store that in
+	// is->lua.console_out so we can write to the Lua console with fputs.
+	HANDLE h_std_out = GetStdHandle (STD_OUTPUT_HANDLE);
+	int console_out_fd = _open_osfhandle ((intptr_t)h_std_out, _O_TEXT);
+	FILE * c_out_file = _fdopen (console_out_fd, "w");
+	is->lua.console_out = c_out_file;
+
+	write_to_lua_console ("Welcome to the Lua console!\r\n");
 }
 
 void
@@ -2501,6 +2538,9 @@ patch_init_floating_point ()
 	CreateFileA               = (void *)(*p_GetProcAddress) (is->kernel32, "CreateFileA");
 	GetFileSize               = (void *)(*p_GetProcAddress) (is->kernel32, "GetFileSize");
 	ReadFile                  = (void *)(*p_GetProcAddress) (is->kernel32, "ReadFile");
+	WriteFile                 = (void *)(*p_GetProcAddress) (is->kernel32, "WriteFile");
+	GetStdHandle              = (void *)(*p_GetProcAddress) (is->kernel32, "GetStdHandle");
+	SetStdHandle              = (void *)(*p_GetProcAddress) (is->kernel32, "SetStdHandle");
 	LoadLibraryA              = (void *)(*p_GetProcAddress) (is->kernel32, "LoadLibraryA");
 	FreeLibrary               = (void *)(*p_GetProcAddress) (is->kernel32, "FreeLibrary");
 	MultiByteToWideChar       = (void *)(*p_GetProcAddress) (is->kernel32, "MultiByteToWideChar");
@@ -2508,26 +2548,32 @@ patch_init_floating_point ()
 	GetLastError              = (void *)(*p_GetProcAddress) (is->kernel32, "GetLastError");
 	QueryPerformanceCounter   = (void *)(*p_GetProcAddress) (is->kernel32, "QueryPerformanceCounter");
 	QueryPerformanceFrequency = (void *)(*p_GetProcAddress) (is->kernel32, "QueryPerformanceFrequency");
+	AllocConsole              = (void *)(*p_GetProcAddress) (is->kernel32, "AllocConsole");
 	GetLocalTime              = (void *)(*p_GetProcAddress) (is->kernel32, "GetLocalTime");
 	MessageBoxA  = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
 	is->msimg32  = LoadLibraryA ("Msimg32.dll");
 	TransparentBlt = (void *)(*p_GetProcAddress) (is->msimg32, "TransparentBlt");
-	snprintf = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
-	malloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
-	calloc   = (void *)(*p_GetProcAddress) (is->msvcrt, "calloc");
-	realloc  = (void *)(*p_GetProcAddress) (is->msvcrt, "realloc");
-	free     = (void *)(*p_GetProcAddress) (is->msvcrt, "free");
-	strtol   = (void *)(*p_GetProcAddress) (is->msvcrt, "strtol");
-	strcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "strcmp");
-	strncmp  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncmp");
-	strlen   = (void *)(*p_GetProcAddress) (is->msvcrt, "strlen");
-	strncpy  = (void *)(*p_GetProcAddress) (is->msvcrt, "strncpy");
-	strcpy   = (void *)(*p_GetProcAddress) (is->msvcrt, "strcpy");
-	strdup   = (void *)(*p_GetProcAddress) (is->msvcrt, "_strdup");
-	strstr   = (void *)(*p_GetProcAddress) (is->msvcrt, "strstr");
-	qsort    = (void *)(*p_GetProcAddress) (is->msvcrt, "qsort");
-	memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
-	memcpy   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcpy");
+	snprintf        = (void *)(*p_GetProcAddress) (is->msvcrt, "_snprintf");
+	fprintf         = (void *)(*p_GetProcAddress) (is->msvcrt, "fprintf");
+	fputs           = (void *)(*p_GetProcAddress) (is->msvcrt, "fputs");
+	fflush          = (void *)(*p_GetProcAddress) (is->msvcrt, "fflush");
+	_fdopen         = (void *)(*p_GetProcAddress) (is->msvcrt, "_fdopen");
+	_open_osfhandle = (void *)(*p_GetProcAddress) (is->msvcrt, "_open_osfhandle");
+	malloc          = (void *)(*p_GetProcAddress) (is->msvcrt, "malloc");
+	calloc          = (void *)(*p_GetProcAddress) (is->msvcrt, "calloc");
+	realloc         = (void *)(*p_GetProcAddress) (is->msvcrt, "realloc");
+	free            = (void *)(*p_GetProcAddress) (is->msvcrt, "free");
+	strtol          = (void *)(*p_GetProcAddress) (is->msvcrt, "strtol");
+	strcmp          = (void *)(*p_GetProcAddress) (is->msvcrt, "strcmp");
+	strncmp         = (void *)(*p_GetProcAddress) (is->msvcrt, "strncmp");
+	strlen          = (void *)(*p_GetProcAddress) (is->msvcrt, "strlen");
+	strncpy         = (void *)(*p_GetProcAddress) (is->msvcrt, "strncpy");
+	strcpy          = (void *)(*p_GetProcAddress) (is->msvcrt, "strcpy");
+	strdup          = (void *)(*p_GetProcAddress) (is->msvcrt, "_strdup");
+	strstr          = (void *)(*p_GetProcAddress) (is->msvcrt, "strstr");
+	qsort           = (void *)(*p_GetProcAddress) (is->msvcrt, "qsort");
+	memcmp          = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
+	memcpy          = (void *)(*p_GetProcAddress) (is->msvcrt, "memcpy");
 
 	// Intercept the game's calls to MessageBoxA. We can't do this through the patcher since that would interfere with the runtime loader.
 	WITH_MEM_PROTECTION (p_MessageBoxA, 4, PAGE_READWRITE)
@@ -2539,6 +2585,8 @@ patch_init_floating_point ()
 
 	// Initialize Lua
 	{
+		memset (&is->lua, 0, sizeof is->lua);
+
 		char lua_lib_path[2*MAX_PATH];
 		snprintf (lua_lib_path, sizeof lua_lib_path, "%s\\%s", is->mod_rel_dir, "lua\\lua51.dll");
 		lua_lib_path[(sizeof lua_lib_path) - 1] = '\0';
@@ -2559,11 +2607,12 @@ patch_init_floating_point ()
 		is->lua.loadstring   = (void *)GetProcAddress (lua_module, "luaL_loadstring");
 		is->lua.call         = (void *)GetProcAddress (lua_module, "lua_call");
 		is->lua.pcall        = (void *)GetProcAddress (lua_module, "lua_pcall");
+		is->lua.gettop       = (void *)GetProcAddress (lua_module, "lua_gettop");
 		is->lua.settop       = (void *)GetProcAddress (lua_module, "lua_settop");
 		is->lua.getfield     = (void *)GetProcAddress (lua_module, "lua_getfield");
-		is->lua.gettop       = (void *)GetProcAddress (lua_module, "lua_gettop");
 		is->lua.tointeger    = (void *)GetProcAddress (lua_module, "lua_tointeger");
 		is->lua.tolstring    = (void *)GetProcAddress (lua_module, "lua_tolstring");
+		is->lua.checklstring = (void *)GetProcAddress (lua_module, "luaL_checklstring");
 		is->lua.pushstring   = (void *)GetProcAddress (lua_module, "lua_pushstring");
 		is->lua.pushcclosure = (void *)GetProcAddress (lua_module, "lua_pushcclosure");
 		is->lua.state = is->lua.newstate ();
@@ -3543,6 +3592,8 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 void
 check_happiness_at_end_of_turn ()
 {
+	open_lua_console ();
+
 	lua_State * ls = is->lua.state;
 	is->lua.getfield (ls, LUA_GLOBALSINDEX, "CheckHappinessAtEndOfTurn");
 	if (is->lua.pcall (ls, 0, LUA_MULTRET, 0))
@@ -9382,6 +9433,7 @@ patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 		{ "get_ui_controller"               , (FARPROC)get_ui_controller },
 		{ "get_c3x_script_path"             , (FARPROC)get_c3x_script_path },
 		{ "get_main_screen_form"            , (FARPROC)get_main_screen_form },
+		{ "write_to_lua_console"            , (FARPROC)write_to_lua_console },
 	};
 
 	if ((int)lpProcName > 1000) {

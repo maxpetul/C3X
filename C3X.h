@@ -407,6 +407,9 @@ struct injected_state {
 	HANDLE (WINAPI * CreateFileA) (LPCSTR, DWORD, DWORD, LPSECURITY_ATTRIBUTES, DWORD, DWORD, HANDLE);
 	DWORD (WINAPI * GetFileSize) (HANDLE, LPDWORD);
 	WINBOOL (WINAPI * ReadFile) (HANDLE, LPVOID, DWORD, LPDWORD, LPOVERLAPPED);
+	WINBOOL (WINAPI * WriteFile) (HANDLE, LPCVOID, DWORD, LPDWORD, LPOVERLAPPED);
+	HANDLE (WINAPI * GetStdHandle) (DWORD);
+	BOOL (WINAPI * SetStdHandle) (DWORD, HANDLE);
 	HMODULE (WINAPI * LoadLibraryA) (LPCSTR);
 	BOOL (WINAPI * FreeLibrary) (HMODULE);
 	int (WINAPI * MultiByteToWideChar) (UINT, DWORD, LPCCH, int, LPWSTR, int);
@@ -414,6 +417,7 @@ struct injected_state {
 	int (WINAPI * GetLastError) ();
 	BOOL (WINAPI * QueryPerformanceCounter) (LARGE_INTEGER *);
 	BOOL (WINAPI * QueryPerformanceFrequency) (LARGE_INTEGER *);
+	BOOL (WINAPI * AllocConsole) ();
 	void (WINAPI * GetLocalTime) (LPSYSTEMTIME);
 
 	// Win32 funcs from user32.dll
@@ -424,6 +428,11 @@ struct injected_state {
 
 	// C standard library functions
 	int (* snprintf) (char *, size_t, char const *, ...);
+	int (* fprintf) (FILE *, char const *, ...);
+	int (* fputs) (char const *, FILE *);
+	int (* fflush) (FILE *);
+	FILE * (* _fdopen) (int, char const *);
+	int (* _open_osfhandle) (intptr_t, int);
 	void * (* malloc) (size_t);
 	void * (* calloc) (size_t, size_t);
 	void * (* realloc) (void *, size_t);
@@ -440,19 +449,22 @@ struct injected_state {
 	int (* memcmp) (void const *, void const *, size_t);
 	void * (* memcpy) (void *, void const *, size_t);
 
-	// Lua functions
-	struct is_lua_funcs {
+	// Lua functions and state
+	struct is_lua_module {
 		lua_State * state;
+		FILE * console_out; // Will be NULL if the Lua console isn't open
+
 		lua_State * (* newstate) ();
 		void (* close) (lua_State *);
 		int (* loadstring) (lua_State *, char const *);
 		int (* call) (lua_State *, int, int);
 		int (* pcall) (lua_State *, int, int, int);
+		int (* gettop) (lua_State *);
 		void (* settop) (lua_State *, int);
 		void (* getfield) (lua_State *, int, char const *);
-		int (* gettop) (lua_State *);
 		lua_Integer (* tointeger) (lua_State *, int);
 		char const * (* tolstring) (lua_State *, int, size_t *);
+		char const * (* checklstring) (lua_State *, int, size_t *);
 		void (* pushstring) (lua_State *, char const *);
 		void (* pushcclosure) (lua_State *, lua_CFunction fn, int n);
 	} lua;
