@@ -214,6 +214,17 @@ open_lua_console ()
 	FILE * c_out_file = _fdopen (console_out_fd, "w");
 	is->lua.console_out = c_out_file;
 
+	// Set Lua's IO module's output location to "CONOUT$" so io.write goes to the console and replace Lua's print function with one that uses
+	// io.write so print also sends its output to the console.
+	char const * code =
+		"local io = require(\"io\")"
+		"io.output(\"CONOUT$\")"
+		"function print(...)"
+		"  local msg = table.concat({...}, \"\\t\") .. \"\\n\""
+		"  io.write(msg)"
+		"end";
+	run_lua_string (true, code);
+
 	write_to_lua_console ("Welcome to the Lua console!\r\n");
 }
 
@@ -9445,7 +9456,6 @@ patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 		{ "get_ui_controller"               , (FARPROC)get_ui_controller },
 		{ "get_c3x_script_path"             , (FARPROC)get_c3x_script_path },
 		{ "get_main_screen_form"            , (FARPROC)get_main_screen_form },
-		{ "write_to_lua_console"            , (FARPROC)write_to_lua_console },
 	};
 
 	if ((int)lpProcName > 1000) {

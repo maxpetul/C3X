@@ -55,12 +55,6 @@ civ3.TerrainType = {
 function civ3.PopUpInGameError(msg) ffi.C.pop_up_in_game_error(msg) end
 function civ3.GetC3XScriptPath() return ffi.C.get_c3x_script_path() end
 
--- Redirect print to write to Lua console
-function print(...)
-  local msg = table.concat({...}, "\t") .. "\n"
-  ffi.C.write_to_lua_console(msg)
-end
-
 --- @param x integer
 --- @param y integer
 --- @return Tile

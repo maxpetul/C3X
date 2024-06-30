@@ -110,7 +110,6 @@ void __thiscall City_recompute_happiness(City * this);
 void __thiscall City_zoom_to(City * this);
 char * get_c3x_script_path();
 MainScreenForm * get_main_screen_form();
-void write_to_lua_console(char const * msg);
 
 void * __stdcall get_popup_form();
 int __cdecl set_popup_str_param(int param_index, char const * str, int param_3, int param_4);
