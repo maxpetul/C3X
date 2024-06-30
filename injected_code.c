@@ -175,6 +175,22 @@ pop_up_lua_error (bool in_game)
 	is->lua.settop (ls, -2); // pop
 }
 
+// Runs some Lua code. Returns true if Lua is initialized and the code ran without error, false otherwise.
+bool
+run_lua_string (bool show_errors_in_game, char const * code)
+{
+	lua_State * ls = is->lua.state;
+	if (ls != NULL) {
+		is->lua.loadstring (ls, code);
+		if (is->lua.pcall (ls, 0, LUA_MULTRET, 0)) {
+			pop_up_lua_error (show_errors_in_game);
+			return false;
+		} else
+			return true;
+	} else
+		return false;
+}
+
 // Prints the given string to the Lua console if it's open. Does not append a new line.
 void
 write_to_lua_console (char const * msg)
@@ -2634,23 +2650,19 @@ patch_init_floating_point ()
 			is->lua.call (ls, 1, 0);
 		}
 
-		// Define a c3x_rel_dir variable for Lua so it can find the "lua" directory inside the C3X folder. The working directory for all Lua
-		// scripts will be the Conquests directory. Add the "lua" folder inside the mod folder to Lua's path so we can easily load civ3.lua
-		// and any other scripts placed there.
 		{
 			char code[500];
 			code[(sizeof code) - 1] = '\0';
 
+			// Define a c3x_rel_dir variable for Lua so it can find the "lua" directory inside the C3X folder. The working directory for
+			// all Lua scripts will be the Conquests directory.
 			snprintf (code, (sizeof code) - 1, "c3x_rel_dir = \"%s\"", is->mod_rel_dir);
-			is->lua.loadstring (ls, code);
-			if (is->lua.pcall (ls, 0, LUA_MULTRET, 0))
-				pop_up_lua_error (false);
+			run_lua_string (false, code);
 
+			// Add the "lua" folder inside the mod folder to Lua's path so we can easily load civ3.lua and any other scripts placed there.
 			// Need to use four backslashes b/c we're going through two levels of string parsing, first C then Lua.
 			snprintf (code, (sizeof code) - 1, "package.path = \".\\\\%s\\\\lua\\\\?.lua;\" .. package.path", is->mod_rel_dir);
-			is->lua.loadstring (ls, code);
-			if (is->lua.pcall (ls, 0, LUA_MULTRET, 0))
-				pop_up_lua_error (false);
+			run_lua_string (false, code);
 		}
 
 		char script_path[MAX_PATH];
