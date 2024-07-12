@@ -418,6 +418,9 @@ struct injected_state {
 	BOOL (WINAPI * QueryPerformanceCounter) (LARGE_INTEGER *);
 	BOOL (WINAPI * QueryPerformanceFrequency) (LARGE_INTEGER *);
 	BOOL (WINAPI * AllocConsole) ();
+	BOOL (WINAPI * SetConsoleMode) (HANDLE, DWORD);
+	BOOL (WINAPI * ReadConsoleInputA) (HANDLE, PINPUT_RECORD, DWORD, LPDWORD);
+	HANDLE (WINAPI * CreateThread) (LPSECURITY_ATTRIBUTES, SIZE_T, LPTHREAD_START_ROUTINE, LPVOID, DWORD, LPDWORD);
 	void (WINAPI * GetLocalTime) (LPSYSTEMTIME);
 
 	// Win32 funcs from user32.dll
@@ -453,6 +456,7 @@ struct injected_state {
 	struct is_lua_module {
 		lua_State * state;
 		FILE * console_out; // Will be NULL if the Lua console isn't open
+		HANDLE console_thread_handle;
 
 		lua_State * (* newstate) ();
 		void (* close) (lua_State *);

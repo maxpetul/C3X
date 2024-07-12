@@ -37,6 +37,9 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define QueryPerformanceCounter is->QueryPerformanceCounter
 #define QueryPerformanceFrequency is->QueryPerformanceFrequency
 #define AllocConsole is->AllocConsole
+#define SetConsoleMode is->SetConsoleMode
+#define ReadConsoleInputA is->ReadConsoleInputA
+#define CreateThread is->CreateThread
 #define GetLocalTime is->GetLocalTime
 #define TransparentBlt is->TransparentBlt
 #define snprintf is->snprintf
@@ -201,6 +204,26 @@ write_to_lua_console (char const * msg)
 	}
 }
 
+// Event loop for the Lua console
+void
+run_lua_repl_thread (LPVOID unused)
+{
+	char const * code =
+		"  local io = require(\"io\")"
+		"  while (true) do"
+		"    local x = io.read()"
+		"    if (x == \"exit\") then"
+		"      break"
+		"    elseif (x ~= nil) then"
+		"      print(\" :: \" .. x)"
+		"    end"
+		"  end";
+	run_lua_string (false, code);
+
+	// is->lua.console_thread_handle = NULL;
+	// ExitThread (0);
+}
+
 void
 open_lua_console ()
 {
@@ -217,13 +240,23 @@ open_lua_console ()
 	// Set Lua's IO module's output location to "CONOUT$" so io.write goes to the console and replace Lua's print function with one that uses
 	// io.write so print also sends its output to the console.
 	char const * code =
-		"local io = require(\"io\")"
-		"io.output(\"CONOUT$\")"
-		"function print(...)"
-		"  local msg = table.concat({...}, \"\\t\") .. \"\\n\""
-		"  io.write(msg)"
-		"end";
+		"  local io = require(\"io\")"
+		"  io.input(\"CONIN$\")"
+		"  io.output(\"CONOUT$\")"
+		"  function print(...)"
+		"    local msg = table.concat({...}, \"\\t\") .. \"\\n\""
+		"    io.write(msg)"
+		"    io.flush()"
+		"  end";
 	run_lua_string (true, code);
+
+	// HANDLE h_std_in = GetStdHandle (STD_INPUT_HANDLE);
+	// SetConsoleMode (h_std_in, ENABLE_WINDOW_INPUT | ENABLE_MOUSE_INPUT);
+
+	// Writing to Lua console here creates a race condition with io.read()... I think.
+
+	if (is->lua.console_thread_handle == NULL)
+		is->lua.console_thread_handle = CreateThread (NULL, 0, (LPTHREAD_START_ROUTINE)run_lua_repl_thread, NULL, 0, NULL);
 
 	write_to_lua_console ("Welcome to the Lua console!\r\n");
 }
@@ -2576,6 +2609,9 @@ patch_init_floating_point ()
 	QueryPerformanceCounter   = (void *)(*p_GetProcAddress) (is->kernel32, "QueryPerformanceCounter");
 	QueryPerformanceFrequency = (void *)(*p_GetProcAddress) (is->kernel32, "QueryPerformanceFrequency");
 	AllocConsole              = (void *)(*p_GetProcAddress) (is->kernel32, "AllocConsole");
+	SetConsoleMode            = (void *)(*p_GetProcAddress) (is->kernel32, "SetConsoleMode");
+	ReadConsoleInputA         = (void *)(*p_GetProcAddress) (is->kernel32, "ReadConsoleInputA");
+	CreateThread              = (void *)(*p_GetProcAddress) (is->kernel32, "CreateThread");
 	GetLocalTime              = (void *)(*p_GetProcAddress) (is->kernel32, "GetLocalTime");
 	MessageBoxA  = (void *)(*p_GetProcAddress) (is->user32, "MessageBoxA");
 	is->msimg32  = LoadLibraryA ("Msimg32.dll");
