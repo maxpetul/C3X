@@ -1,3 +1,5 @@
+- Fix lethal ZoC setting allowing coastal fortresses to knock the last hit point off passing units
+
 * RELEASE 18B
 - Fix Wake/Activate replacement not working on Steam version
 

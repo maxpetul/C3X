@@ -7911,6 +7911,19 @@ patch_Fighter_check_zoc_anim_visibility (Fighter * this, int edx, Unit * attacke
 	}
 }
 
+int __fastcall
+patch_City_sum_buildings_naval_power_for_zoc (City * this)
+{
+	// Cancel out city's naval power if the unit has only one HP left. This prevents coastal fortresses from knocking that last hit point off
+	// passing units when lethal ZoC is enabled, because to make that work we delete an earlier check excusing 1-HP units from ZoC.
+	if ((is->zoc_defender != NULL) &&
+	    ((Unit_get_max_hp (is->zoc_defender) - is->zoc_defender->Body.Damage) <= 1))
+		return 0;
+
+	else
+		return City_sum_buildings_naval_power (this);
+}
+
 void __fastcall
 patch_Fighter_apply_zone_of_control (Fighter * this, int edx, Unit * unit, int from_x, int from_y, int to_x, int to_y)
 {
