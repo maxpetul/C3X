@@ -1,4 +1,5 @@
 - Fix lethal ZoC setting allowing coastal fortresses to knock the last hit point off passing units
+- Fix dont_escort_unflagged_units option interfering with group movement of units
 
 * RELEASE 18B
 - Fix Wake/Activate replacement not working on Steam version

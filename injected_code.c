@@ -7616,19 +7616,22 @@ patch_Unit_eval_escort_requirement (Unit * this)
 {
 	UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
 	int ai_strat = type->AI_Strategy;
+	bool owned_by_ai = (*p_human_player_bits & 1<<this->Body.CivID) == 0; // We must not reduce the escort requirement for human-owned units
+									      // because that will interfere with group movement of units.
 
 	// Apply special escort rules
-	if (is->current_config.dont_escort_unflagged_units && ! UnitType_has_ability (type, __, UTA_Requires_Escort))
+	if (owned_by_ai && is->current_config.dont_escort_unflagged_units && ! UnitType_has_ability (type, __, UTA_Requires_Escort))
 		return 0;
-	if (is->current_config.use_offensive_artillery_ai && (ai_strat & UTAI_Artillery))
+	else if (owned_by_ai && is->current_config.use_offensive_artillery_ai && (ai_strat & UTAI_Artillery))
 		return 1;
 
-	int base = Unit_eval_escort_requirement (this);
-	if ((~*p_human_player_bits & 1<<this->Body.CivID) && // Applying this to a human player's units messes with group movement (for some reason)
-	    (ai_strat & (UTAI_Naval_Transport | UTAI_Naval_Carrier | UTAI_Naval_Missile_Transport)))
-		return not_above (is->current_config.max_ai_naval_escorts, base);
-	else
-		return base;
+	else {
+		int base = Unit_eval_escort_requirement (this);
+		if (owned_by_ai && (ai_strat & (UTAI_Naval_Transport | UTAI_Naval_Carrier | UTAI_Naval_Missile_Transport)))
+			return not_above (is->current_config.max_ai_naval_escorts, base);
+		else
+			return base;
+	}
 }
 
 bool __fastcall
