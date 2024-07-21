@@ -3040,15 +3040,22 @@ patch_Unit_move (Unit * this, int edx, int tile_x, int tile_y)
 	Unit_move (this, __, tile_x, tile_y);
 }
 
+// Returns true if the unit has attacked & does not have blitz or if it's run out of movement points for the turn
 bool
-can_attack_this_turn (Unit * unit)
+has_exhausted_attack (Unit * unit)
 {
-	UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
-	return (unit->Body.Moves < Unit_get_max_move_points (unit)) && // Unit can move at all AND
-		(((unit->Body.Status & USF_USED_ATTACK) == 0) || UnitType_has_ability (type, __, UTA_Blitz)) && // (Unit has not attacked OR has blitz) AND
-		((type->Attack > 0) || // (Unit can do a regular attack OR
-		 ((type->Special_Actions & UCV_Bombard & 0x0FFFFFFF) && // (unit can perform bombard AND
-		  ((type->Bombard_Strength > 0) || UnitType_has_ability (type, __, UTA_Nuclear_Weapon)))); // (unit has bombard strength OR is a nuclear weapon)))
+	return (unit->Body.Moves >= Unit_get_max_move_points (unit)) ||
+		((unit->Body.Status & USF_USED_ATTACK) && ! UnitType_has_ability (&p_bic_data->UnitTypes[unit->Body.UnitTypeID], __, UTA_Blitz));
+}
+
+// Returns whether or not the unit type is a combat type and can do damage on offense (as opposed to only being able to defend). This includes units
+// that can only do damage by bombarding and nuclear weapons.
+bool
+is_offensive_combat_type (UnitType * unit_type)
+{
+	return (unit_type->Attack > 0) ||
+		((((unit_type->Special_Actions & UCV_Bombard) | (unit_type->Air_Missions & UCV_Bombing)) & 0x0FFFFFFF) && // (type can perform bombard or bombing AND
+		 ((unit_type->Bombard_Strength > 0) || UnitType_has_ability (unit_type, __, UTA_Nuclear_Weapon))); // (unit has bombard strength OR is a nuclear weapon))
 }
 
 bool
@@ -3183,7 +3190,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 		    (uti.unit->Body.UnitTypeID == attacker_type_id) &&
 		    ((uti.unit->Body.Container_Unit < 0) || (attacker_type->Unit_Class == UTC_Air)) &&
 		    (uti.unit->Body.UnitState == 0) &&
-		    can_attack_this_turn (uti.unit))
+		    ! has_exhausted_attack (uti.unit))
 			memoize (uti.id);
 	int count_attackers = is->memo_len;
 	
@@ -3241,7 +3248,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 		// trying to attack so as to not spam the player with prompts.
 		last_attack_didnt_happen = (next_up->Body.Moves == moves_before_bombard);
 
-		if (! can_attack_this_turn (next_up)) {
+		if (has_exhausted_attack (next_up)) {
 			next_up = NULL;
 			while ((i_next_attacker < count_attackers) && (next_up == NULL))
 				next_up = get_unit_ptr (attackers[i_next_attacker++]);
@@ -5528,7 +5535,7 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 				if (no_moves_left)
 					icon = URCMI_CANT_MOVE;
 				else {
-					bool can_attack = can_attack_this_turn (unit);
+					bool can_attack = is_offensive_combat_type (unit_type) && ! has_exhausted_attack (unit);
 					if (unit_body->Moves == 0)
 						icon = can_attack ? URCMI_UNMOVED_CAN_ATTACK : URCMI_UNMOVED_NO_ATTACK;
 					else
