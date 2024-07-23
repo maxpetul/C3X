@@ -5535,7 +5535,14 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 				if (no_moves_left)
 					icon = URCMI_CANT_MOVE;
 				else {
-					bool can_attack = is_offensive_combat_type (unit_type) && ! has_exhausted_attack (unit);
+					bool can_attack; {
+						if (has_exhausted_attack (unit))
+							can_attack = false;
+						else if (Unit_has_ability (unit, __, UTA_Army))
+							can_attack = Unit_count_contained_units (unit) >= 1;
+						else
+							can_attack = is_offensive_combat_type (unit_type);
+					}
 					if (unit_body->Moves == 0)
 						icon = can_attack ? URCMI_UNMOVED_CAN_ATTACK : URCMI_UNMOVED_NO_ATTACK;
 					else
