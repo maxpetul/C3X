@@ -2423,6 +2423,7 @@ patch_init_floating_point ()
 		{"strengthen_forbidden_palace_ocn_effect"              , false, offsetof (struct c3x_config, strengthen_forbidden_palace_ocn_effect)},
 		{"allow_upgrades_in_any_city"                          , false, offsetof (struct c3x_config, allow_upgrades_in_any_city)},
 		{"do_not_generate_volcanos"                            , false, offsetof (struct c3x_config, do_not_generate_volcanos)},
+		{"do_not_pollute_impassable_tiles"                     , false, offsetof (struct c3x_config, do_not_pollute_impassable_tiles)},
 	};
 
 	struct integer_config_option {
@@ -9251,6 +9252,19 @@ patch_Context_Menu_get_selected_item_on_unit_rcm (Context_Menu * this)
 		return (is_enabled || is_unit_item) ? index : -1;
 	}
 	return -1;
+}
+
+int __fastcall
+patch_Tile_check_water_to_block_pollution (Tile * this)
+{
+
+	if (this->vtable->m35_Check_Is_Water (this))
+		return 1;
+	else if (is->current_config.do_not_pollute_impassable_tiles) {
+		enum SquareTypes terrain_type = this->vtable->m50_Get_Square_BaseType (this);
+		return p_bic_data->TileTypes[terrain_type].Flags.Impassable;
+	} else
+		return 0;
 }
 
 // TCC requires a main function be defined even though it's never used.

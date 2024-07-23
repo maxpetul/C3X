@@ -535,6 +535,7 @@ define,	   255,		256,		255,		"LBL_ACTIVATE",					"int"
 define,	   0x4C1280,	0x4C8860,	0x4C1310,	"City_sum_buildings_naval_power",		"int (__fastcall *) (City * this)"
 repl call, 0x4A78EE,	0x4AE5A5,	0x4A797E,	"City_sum_buildings_naval_power_for_zoc",	""
 define,	   0x5BE9E0,	0x5CD600,	0x5BE6F0,	"Unit_count_contained_units",			"int (__fastcall *) (Unit * this)"
+repl call, 0x4B3089,	0x4BA00B,	0x4B3119,	"Tile_check_water_to_block_pollution",		""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

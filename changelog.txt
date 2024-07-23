@@ -1,3 +1,4 @@
+- Option to stop pollution from appearing on impassable tiles
 - Fix bombers not doing stack bombard and not showing as attack-capable on right-click menu
 - Fix lethal ZoC setting allowing coastal fortresses to knock the last hit point off passing units
 - Fix dont_escort_unflagged_units option interfering with group movement of units
