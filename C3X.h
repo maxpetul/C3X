@@ -324,6 +324,9 @@ enum c3x_label {
 	CL_EXPLORING,
 	CL_BOMBARDING,
 
+	// "Action" for passenger units
+	CL_TRANSPORTED,
+
 	COUNT_C3X_LABELS
 };
 

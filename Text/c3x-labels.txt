@@ -107,3 +107,6 @@ Moving
 Automated
 Exploring
 Bombarding
+
+; This appears instead of the above actions on units that have been loaded into another (except an army).
+Transported

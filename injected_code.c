@@ -9166,8 +9166,11 @@ get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 	struct state_desc const * desc;
 	if ((state >= 0) && (state < ARRAY_LEN (state_descs)) && (desc = &state_descs[state]) && (desc->label >= 0)) {
 		enum c3x_label label = desc->label;
+		Unit * container;
 		if (((label == CL_IDLE) || (label == CL_MOVING) || desc->is_doing_worker_job) && unit->Body.automated)
 			label = CL_AUTOMATED;
+		else if ((label == CL_FORTIFIED) && (NULL != (container = get_unit_ptr (unit->Body.Container_Unit))) && ! Unit_has_ability (container, __, UTA_Army))
+			label = CL_TRANSPORTED;
 		else if ((label == CL_FORTIFIED) && (unit->Body.Status & (USF_SENTRY | USF_SENTRY_ENEMY_ONLY)))
 			label = CL_SENTRY;
 
