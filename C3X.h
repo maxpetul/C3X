@@ -343,13 +343,21 @@ struct ai_prod_valuation {
 };
 
 enum unit_rcm_icon {
-	URCMI_UNMOVED_CAN_ATTACK = 0,
-	URCMI_UNMOVED_NO_ATTACK,
+	URCMI_UNMOVED = 0,
 	URCMI_MOVED_CAN_ATTACK,
 	URCMI_MOVED_NO_ATTACK,
 	URCMI_CANT_MOVE,
 
 	COUNT_UNIT_RCM_ICONS
+};
+
+enum unit_rcm_icon_set {
+	URCMIS_ATTACKER = 0,
+	URCMIS_NONCOMBAT,
+	URCMIS_BUSY_ATTACKER,
+	URCMIS_BUSY_NONCOMBAT,
+
+	COUNT_UNIT_RCM_ICON_SETS
 };
 
 enum city_gain_reason {
@@ -588,7 +596,9 @@ struct injected_state {
 	// } This field is only valid after init_unit_rcm_icons has been called and unit_rcm_icon_state equals IS_OK {
 	// ==========
 
-	Sprite unit_rcm_icons[COUNT_UNIT_RCM_ICONS];
+	// Sprites are stored together as sets, so the first COUNT_UNIT_RCM_ICONS elements are those from the first set, then the same number from the
+	// second set, etc.
+	Sprite unit_rcm_icons[COUNT_UNIT_RCM_ICONS * COUNT_UNIT_RCM_ICON_SETS];
 
 	// ==========
 	// } These fields are valid only after init_tile_highlights as been called. {

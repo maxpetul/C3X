@@ -2830,7 +2830,6 @@ init_unit_rcm_icons ()
 {
 	if (is->unit_rcm_icon_state != IS_UNINITED)
 		return;
-	is->unit_rcm_icon_state = IS_INIT_FAILED;
 
 	PCX_Image pcx;
 	PCX_Image_construct (&pcx);
@@ -2839,16 +2838,19 @@ init_unit_rcm_icons ()
 	get_mod_art_path ("UnitRCMIcons.pcx", temp_path, sizeof temp_path);
 
 	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
-	int width;
 	if ((pcx.JGL.Image == NULL) ||
-	    (2 >= (width = pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image)))){
-		(*p_OutputDebugStringA) ("[C3X] PCX file for unit RCM icons failed to load or is too narrow.");
+	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) < 57) ||
+	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) < 64)) {
+		(*p_OutputDebugStringA) ("[C3X] PCX file for unit RCM icons failed to load or is too small.");
 		goto cleanup;
 	}
 
-	for (int n = 0; n < COUNT_UNIT_RCM_ICONS; n++) {
-		Sprite_construct (&is->unit_rcm_icons[n]);
-		Sprite_slice_pcx (&is->unit_rcm_icons[n], __, &pcx, 1, 1 + 16*n, width-2, 15, 1, 0);
+	for (int set = 0; set < COUNT_UNIT_RCM_ICON_SETS; set++) {
+		Sprite * icons = &is->unit_rcm_icons[set * COUNT_UNIT_RCM_ICONS];
+		for (int n = 0; n < COUNT_UNIT_RCM_ICONS; n++) {
+			Sprite_construct (&icons[n]);
+			Sprite_slice_pcx (&icons[n], __, &pcx, 1 + 14*set, 1 + 16*n, 14, 15, 1, 0);
+		}
 	}
 
 	is->unit_rcm_icon_state = IS_OK;
@@ -2860,7 +2862,8 @@ void
 deinit_unit_rcm_icons ()
 {
 	if (is->unit_rcm_icon_state == IS_OK) {
-		for (int n = 0; n < COUNT_UNIT_RCM_ICONS; n++) {
+		int total_icon_count = COUNT_UNIT_RCM_ICONS * COUNT_UNIT_RCM_ICON_SETS;
+		for (int n = 0; n < total_icon_count; n++) {
 			Sprite * sprite = &is->unit_rcm_icons[n];
 			sprite->vtable->destruct (sprite, __, 0);
 		}
@@ -5483,6 +5486,12 @@ are_units_duplicate (Unit_Body * a, Unit_Body * b)
 		(! (is_captured (a) ^ is_captured (b)));
 }
 
+bool
+is_busy (Unit * unit)
+{
+	return false;
+}
+
 int __fastcall
 patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int item_id, char * text, int red)
 {
@@ -5498,7 +5507,7 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 	int unit_id;
 	Unit_Body * unit_body;
 	bool disable = false, put_icon = false;
-	enum unit_rcm_icon icon = URCMI_UNMOVED_CAN_ATTACK;
+	int icon_index = 0;
 	if ((0 <= (unit_id = item_id - (0x13 + p_bic_data->UnitTypeCount))) &&
 	    (NULL != (unit_body = p_units->Units[unit_id].Unit)) &&
 	    (unit_body->UnitTypeID >= 0) && (unit_body->UnitTypeID < p_bic_data->UnitTypeCount)) {
@@ -5533,22 +5542,24 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 			    ((NULL == (container = get_unit_ptr (unit_body->Container_Unit))) ||
 			     (! UnitType_has_ability (&p_bic_data->UnitTypes[container->Body.UnitTypeID], __, UTA_Army)))) {
 				put_icon = true;
-				if (no_moves_left)
-					icon = URCMI_CANT_MOVE;
-				else {
-					bool can_attack; {
-						if (has_exhausted_attack (unit))
-							can_attack = false;
-						else if (Unit_has_ability (unit, __, UTA_Army))
-							can_attack = Unit_count_contained_units (unit) >= 1;
-						else
-							can_attack = is_offensive_combat_type (unit_type);
-					}
-					if (unit_body->Moves == 0)
-						icon = can_attack ? URCMI_UNMOVED_CAN_ATTACK : URCMI_UNMOVED_NO_ATTACK;
+
+				bool attacker = is_offensive_combat_type (unit_type) || (Unit_has_ability (unit, __, UTA_Army) && (Unit_count_contained_units (unit) >= 1)),
+				     busy = is_busy (unit);
+
+				int icon_set_index = ((int)busy << 1) + (int)(! attacker);
+
+				int icon_row; {
+					if (no_moves_left)
+						icon_row = URCMI_CANT_MOVE;
+					else if (unit_body->Moves == 0)
+						icon_row = URCMI_UNMOVED;
+					else if (! attacker)
+						icon_row = URCMI_MOVED_NO_ATTACK;
 					else
-						icon = can_attack ? URCMI_MOVED_CAN_ATTACK : URCMI_MOVED_NO_ATTACK;
+						icon_row = (! has_exhausted_attack (unit)) ? URCMI_MOVED_CAN_ATTACK : URCMI_MOVED_NO_ATTACK;
 				}
+
+				icon_index = icon_set_index * COUNT_UNIT_RCM_ICONS + icon_row;
 			}
 		}
 	}
@@ -5561,7 +5572,7 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 	if (put_icon) {
 		init_unit_rcm_icons ();
 		if (is->unit_rcm_icon_state == IS_OK)
-			Context_Menu_put_image_on_item (this, __, item_id, &is->unit_rcm_icons[icon]);
+			Context_Menu_put_image_on_item (this, __, item_id, &is->unit_rcm_icons[icon_index]);
 	}
 
 	return tr;
