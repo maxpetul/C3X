@@ -5489,7 +5489,10 @@ are_units_duplicate (Unit_Body * a, Unit_Body * b)
 bool
 is_busy (Unit * unit)
 {
-	return false;
+	int state = unit->Body.UnitState;
+	return ((state >= UnitState_Build_Mines) && (state <= UnitState_Explore)) ||
+		(state == UnitState_Auto_Bombard) || (state == UnitState_Auto_Air_Bombard) ||
+		unit->Body.automated;
 }
 
 int __fastcall
