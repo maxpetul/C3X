@@ -344,6 +344,65 @@ find_resource_id_by_name (struct string_slice const * name, int * out)
 	return false;
 }
 
+enum game_object_kind {
+	GOK_UNIT_TYPE = 0,
+	GOK_BUILDING,
+	GOK_RESOURCE,
+
+	COUNT_GAME_OBJECT_KINDS
+};
+
+bool
+find_game_object_id_by_name (enum game_object_kind kind, struct string_slice const * name, int start_id, int * out)
+{
+	switch (kind) {
+	case GOK_UNIT_TYPE: {
+		UnitType * unit_type;
+		if (name->len <= sizeof unit_type->Name)
+			for (int n = start_id; n < p_bic_data->UnitTypeCount; n++)
+				if (slice_matches_str (name, p_bic_data->UnitTypes[n].Name)) {
+					*out = n;
+					return true;
+				}
+		return false;
+	}
+	case GOK_BUILDING: {
+		Improvement * improv;
+		if (name->len <= sizeof improv->Name)
+			for (int n = start_id; n < p_bic_data->ImprovementsCount; n++)
+				if (slice_matches_str (name, p_bic_data->Improvements[n].Name.S)) {
+					*out = n;
+					return true;
+				}
+		return false;
+	}
+	case GOK_RESOURCE: {
+		Resource_Type * res_type;
+		if (name->len <= sizeof res_type->Name)
+			for (int n = start_id; n < p_bic_data->ResourceTypeCount; n++)
+				if (slice_matches_str (name, p_bic_data->ResourceTypes[n].Name)) {
+					*out = n;
+					return true;
+				}
+		return false;
+	}
+	default:
+		return false;
+	}
+}
+
+void
+goltable_append (struct table * t, int key, int addl_value)
+{
+	// implement me
+}
+
+bool
+goltable_look_up (struct table const * t, int key, int const ** out_ids, int * out_id_count)
+{
+	// implement me
+}
+
 // Converts a build name (like "Spearman" or "Granary") into a City_Order struct. Returns whether or not any improvement or unit type was found under
 // the given name.
 bool
@@ -688,6 +747,54 @@ read_recognizables (struct string_slice const * s,
 	}
 	free (temp_item);
 	free (new_items);
+	free (extracted_slice);
+	return success ? -1 : cursor - extracted_slice;
+}
+
+// Like read_recognizables, returns -1 for success or the location of an error if there is one
+int
+read_game_object_lists (struct string_slice const * s,
+			struct error_line ** p_unrecognized_lines,
+			enum game_object_kind key_kind,
+			enum game_object_kind list_elem_kind,
+			struct table * inout)
+{
+	if (s->len <= 0)
+		return -1;
+	char * extracted_slice = extract_slice (s);
+	char * cursor = extracted_slice;
+	bool success = false;
+
+	while (1) {
+		struct string_slice key_name;
+		if (skip_white_space (&cursor) && parse_string (&cursor, &key_name)) {
+			int key_id;
+			bool have_key_id = find_game_object_id_by_name (key_kind, &key_name, 0, &key_id);
+			if (! have_key_id)
+				add_unrecognized_line (p_unrecognized_lines, &key_name);
+			if (! skip_punctuation (&cursor, ':'))
+				break;
+			struct string_slice elem_name;
+			while (skip_white_space (&cursor) && parse_string (&cursor, &elem_name)) {
+				bool recognized_elem = false;
+				int elem_id = -1;
+				while (find_game_object_id_by_name (list_elem_kind, &elem_name, elem_id + 1, &elem_id)) {
+					recognized_elem = true;
+					int running_key_id = key_id;
+					do
+						goltable_append (inout, running_key_id, elem_id);
+					while (find_game_object_id_by_name (key_kind, &key_name, running_key_id + 1, &running_key_id));
+				}
+				if (! recognized_elem)
+					add_unrecognized_line (p_unrecognized_lines, &elem_name);
+			}
+			skip_punctuation (&cursor, ',');
+		} else {
+			success = (*cursor == '\0');
+			break;
+		}
+	}
+
 	free (extracted_slice);
 	return success ? -1 : cursor - extracted_slice;
 }
