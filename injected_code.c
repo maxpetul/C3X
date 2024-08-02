@@ -287,6 +287,27 @@ alloc_id_list (int capacity, struct id_list const * copy)
 	return tr;
 }
 
+// This is the largest ID that will be stored inline inside sidtables. The amount here must be smaller than any pointer we'd get from malloc since the
+// sidtable code compares values against this amount to determine which are inlined values versus pointers.
+#define SID_TABLE_MAX_INLINE_ID 10000
+
+void
+sidtable_deinit (struct table * t)
+{
+	if (t->len > 0) {
+		size_t capacity = table_capacity (t);
+		for (size_t n = 0; n < capacity; n++)
+			if (table__is_occupied (t, n)) {
+				int * entry = &((int *)TABLE__BASE (t))[2*n];
+				free ((void *)entry[0]);
+				int val = entry[1];
+				if (val > SID_TABLE_MAX_INLINE_ID)
+					free ((void *)val);
+			}
+	}
+	table_deinit (t);
+}
+
 void
 sidtable_append (struct table * t, struct string_slice const * key, int id)
 {
@@ -298,7 +319,7 @@ sidtable_append (struct table * t, struct string_slice const * key, int id)
 	int * entry = &((int *)TABLE__BASE (t))[2*index];
 	if (table__is_occupied (t, index)) { // If key is already in the table
 		int prev_val = entry[1];
-		if (prev_val <= is->max_scenario_id) { // If prev value is an id, convert it to a list
+		if (prev_val <= SID_TABLE_MAX_INLINE_ID) { // If prev value is an id, convert it to a list
 			struct id_list * new_list = alloc_id_list (2, NULL);
 			new_list->ids[0] = prev_val;
 			new_list->ids[1] = id;
@@ -315,7 +336,7 @@ sidtable_append (struct table * t, struct string_slice const * key, int id)
 			list->ids[list->length] = id;
 			list->length++;
 		}
-	} else if (id <= is->max_scenario_id) { // Else if key is not in the table but is valid, fill in the blank entry
+	} else if (id <= SID_TABLE_MAX_INLINE_ID) { // Else if key is not in the table but is valid, fill in the blank entry
 		entry[0] = (int)extract_slice (key);
 		entry[1] = id;
 		table__set_occupation (t, index, 1);
@@ -334,7 +355,7 @@ sidtable_get_by_index (struct table const * t, size_t index, int ** out_ids, int
 	if ((capacity > 0) && (index < capacity) && table__is_occupied (t, index)) {
 		int * entry = &((int *)TABLE__BASE (t))[2*index];
 		int val = entry[1];
-		if (val <= is->max_scenario_id) { // Value is an ID
+		if (val <= SID_TABLE_MAX_INLINE_ID) { // Value is an ID
 			*out_ids = &entry[1];
 			*out_count = 1;
 		} else {
@@ -2841,8 +2862,6 @@ patch_init_floating_point ()
 	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)
 		stable_insert (&is->integer_config_offsets, integer_config_options[n].name, integer_config_options[n].offset);
 
-	is->max_scenario_id = -1;
-
 	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
 	memset (&is->unit_type_duplicates    , 0, sizeof is->unit_type_duplicates);
 	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
@@ -4657,17 +4676,6 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		PCX_Image_read_file (rs, __, resources_pcx_path, NULL, 0, 0x100, 2);
 		is->resources_sheet = rs;
 	}
-
-	is->max_scenario_id = -1;
-	int max_ids[] = {
-		p_bic_data->UnitTypeCount - 1,
-		p_bic_data->ImprovementsCount - 1,
-		p_bic_data->AdvanceCount - 1,
-		p_bic_data->ResourceTypeCount - 1,
-	};
-	for (int n = 0; n < ARRAY_LEN (max_ids); n++)
-		if (max_ids[n] > is->max_scenario_id)
-		    is->max_scenario_id = max_ids[n];
 
 	// Recreate table of alt strategies mapping duplicates to their strategies
 	table_deinit (&is->unit_type_alt_strategies);

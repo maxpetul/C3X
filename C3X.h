@@ -543,9 +543,6 @@ struct injected_state {
 	struct table boolean_config_offsets;
 	struct table integer_config_offsets;
 
-	// When a scenario is loaded, this is set to the largest ID value used in that scenario for unit types, buildings, techs, or resources.
-	int max_scenario_id;
-
 	// Maps unit types IDs to AI strategy indices (0 = offense, 1 = defense, 2 = artillery, etc.). If a unit type ID is in this table, that means
 	// it's one of several duplicate types created to spread multiple AI strategies out so each type has only one.
 	struct table unit_type_alt_strategies;
