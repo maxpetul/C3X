@@ -266,6 +266,107 @@ reset_to_base_config ()
 	is->loaded_config_names->next = NULL;
 }
 
+struct id_list {
+	int length;
+	int capacity;
+	int ids[0];
+};
+
+struct id_list *
+alloc_id_list (int capacity, struct id_list const * copy)
+{
+	struct id_list * tr = malloc ((sizeof *tr) + capacity * sizeof(tr->ids[0]));
+	tr->length = 0;
+	tr->capacity = capacity;
+	if (copy != NULL) {
+		int new_len = not_above (capacity, copy->length);
+		for (int n = 0; n < new_len; n++)
+			tr->ids[n] = copy->ids[n];
+		tr->length = new_len;
+	}
+	return tr;
+}
+
+void
+sidtable_append (struct table * t, struct string_slice const * key, int id)
+{
+	// Expand or allocate table as needed
+	if (t->len >= table_capacity (t) / 2)
+		table__expand (t, hash_str, compare_str_keys);
+
+	size_t index = table__place (t, compare_slice_and_str_keys, (int)key, hash_slice ((int)key));
+	int * entry = &((int *)TABLE__BASE (t))[2*index];
+	if (table__is_occupied (t, index)) { // If key is already in the table
+		int prev_val = entry[1];
+		if (prev_val <= is->max_scenario_id) { // If prev value is an id, convert it to a list
+			struct id_list * new_list = alloc_id_list (2, NULL);
+			new_list->ids[0] = prev_val;
+			new_list->ids[1] = id;
+			new_list->length = 2;
+			entry[1] = (int)new_list;
+		} else { // Else, prev value is a list so append the new ID to it
+			struct id_list * list = (void *)prev_val;
+			if (list->length >= list->capacity) { // Expand list if necessary
+				struct id_list * new_list = alloc_id_list (2 * list->capacity, list);
+				entry[1] = (int)new_list;
+				free (list);
+				list = new_list;
+			}
+			list->ids[list->length] = id;
+			list->length++;
+		}
+	} else if (id <= is->max_scenario_id) { // Else if key is not in the table but is valid, fill in the blank entry
+		entry[0] = (int)extract_slice (key);
+		entry[1] = id;
+		table__set_occupation (t, index, 1);
+		t->len++;
+	} else {
+		(*p_OutputDebugStringA) ("[C3X] Crashing because sidtable_append received an invalid id");
+		int * x = 0;
+		*x = 0;
+	}
+}
+
+bool
+sidtable_get_by_index (struct table const * t, size_t index, int ** out_ids, int * out_count)
+{
+	size_t capacity = table_capacity (t);
+	if ((capacity > 0) && (index < capacity) && table__is_occupied (t, index)) {
+		int * entry = &((int *)TABLE__BASE (t))[2*index];
+		int val = entry[1];
+		if (val <= is->max_scenario_id) { // Value is an ID
+			*out_ids = &entry[1];
+			*out_count = 1;
+		} else {
+			struct id_list * list = (void *)val;
+			*out_ids = &list->ids[0];
+			*out_count = list->length;
+		}
+		return true;
+	} else
+		return false;
+}
+
+bool
+sidtable_look_up (struct table const * t, char const * key, int ** out_ids, int * out_count)
+{
+	if (t->len > 0) {
+		size_t index = table__place (t, compare_str_keys, (int)key, hash_str ((int)key));
+		return sidtable_get_by_index (t, index, out_ids, out_count);
+	} else
+		return false;
+}
+
+bool
+sidtable_look_up_slice (struct table const * t, struct string_slice const * key, int ** out_ids, int * out_count)
+{
+	if (t->len > 0) {
+		size_t index = table__place (t, compare_slice_and_str_keys, (int)key, hash_slice ((int)key));
+		return sidtable_get_by_index (t, index, out_ids, out_count);
+	} else
+		return false;
+}
+
 struct error_line {
 	char text[200];
 	struct error_line * next;
@@ -389,18 +490,6 @@ find_game_object_id_by_name (enum game_object_kind kind, struct string_slice con
 	default:
 		return false;
 	}
-}
-
-void
-goltable_append (struct table * t, int key, int addl_value)
-{
-	// implement me
-}
-
-bool
-goltable_look_up (struct table const * t, int key, int const ** out_ids, int * out_id_count)
-{
-	// implement me
 }
 
 // Converts a build name (like "Spearman" or "Granary") into a City_Order struct. Returns whether or not any improvement or unit type was found under
@@ -782,7 +871,7 @@ read_game_object_lists (struct string_slice const * s,
 					recognized_elem = true;
 					int running_key_id = key_id;
 					do
-						goltable_append (inout, running_key_id, elem_id);
+						; // goltable_append (inout, running_key_id, elem_id);
 					while (find_game_object_id_by_name (key_kind, &key_name, running_key_id + 1, &running_key_id));
 				}
 				if (! recognized_elem)
@@ -2749,6 +2838,8 @@ patch_init_floating_point ()
 	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)
 		stable_insert (&is->integer_config_offsets, integer_config_options[n].name, integer_config_options[n].offset);
 
+	is->max_scenario_id = -1;
+
 	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
 	memset (&is->unit_type_duplicates    , 0, sizeof is->unit_type_duplicates);
 	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
@@ -4563,6 +4654,17 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		PCX_Image_read_file (rs, __, resources_pcx_path, NULL, 0, 0x100, 2);
 		is->resources_sheet = rs;
 	}
+
+	is->max_scenario_id = -1;
+	int max_ids[] = {
+		p_bic_data->UnitTypeCount - 1,
+		p_bic_data->ImprovementsCount - 1,
+		p_bic_data->AdvanceCount - 1,
+		p_bic_data->ResourceTypeCount - 1,
+	};
+	for (int n = 0; n < ARRAY_LEN (max_ids); n++)
+		if (max_ids[n] > is->max_scenario_id)
+		    is->max_scenario_id = max_ids[n];
 
 	// Recreate table of alt strategies mapping duplicates to their strategies
 	table_deinit (&is->unit_type_alt_strategies);
