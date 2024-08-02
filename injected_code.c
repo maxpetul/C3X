@@ -840,13 +840,18 @@ read_recognizables (struct string_slice const * s,
 	return success ? -1 : cursor - extracted_slice;
 }
 
-// Like read_recognizables, returns -1 for success or the location of an error if there is one
+// Reads a "sidtable" from text. A sidtable maps strings to IDs of scenario objects. The string keys are also expected to be a type of scenario
+// object. This method reads text such as:
+//   Factory: Battleship, Stable: Horseman Knight Cavalry, "Siege Workshop": Catapult Trebuchet
+// and converts it to a table mapping "Factory", "Stable", and "Siege Workshop" to the corresponding unit type IDs. All new entries are appended to
+// the given table; existing entries are not removed.
+// Like read_recognizables, this method returns -1 for success or the location of an error if there is one.
 int
-read_game_object_lists (struct string_slice const * s,
-			struct error_line ** p_unrecognized_lines,
-			enum game_object_kind key_kind,
-			enum game_object_kind list_elem_kind,
-			struct table * inout)
+read_sidtable (struct string_slice const * s,
+	       struct error_line ** p_unrecognized_lines,
+	       enum game_object_kind key_kind,
+	       enum game_object_kind list_elem_kind,
+	       struct table * sidtable)
 {
 	if (s->len <= 0)
 		return -1;
@@ -855,12 +860,12 @@ read_game_object_lists (struct string_slice const * s,
 	bool success = false;
 
 	while (1) {
-		struct string_slice key_name;
-		if (skip_white_space (&cursor) && parse_string (&cursor, &key_name)) {
-			int key_id;
-			bool have_key_id = find_game_object_id_by_name (key_kind, &key_name, 0, &key_id);
-			if (! have_key_id)
-				add_unrecognized_line (p_unrecognized_lines, &key_name);
+		struct string_slice key;
+		if (skip_white_space (&cursor) && parse_string (&cursor, &key)) {
+			int unused;
+			bool recognized_key = find_game_object_id_by_name (key_kind, &key, 0, &unused);
+			if (! recognized_key)
+				add_unrecognized_line (p_unrecognized_lines, &key);
 			if (! skip_punctuation (&cursor, ':'))
 				break;
 			struct string_slice elem_name;
@@ -869,10 +874,8 @@ read_game_object_lists (struct string_slice const * s,
 				int elem_id = -1;
 				while (find_game_object_id_by_name (list_elem_kind, &elem_name, elem_id + 1, &elem_id)) {
 					recognized_elem = true;
-					int running_key_id = key_id;
-					do
-						; // goltable_append (inout, running_key_id, elem_id);
-					while (find_game_object_id_by_name (key_kind, &key_name, running_key_id + 1, &running_key_id));
+					if (recognized_key)
+						sidtable_append (sidtable, &key, elem_id);
 				}
 				if (! recognized_elem)
 					add_unrecognized_line (p_unrecognized_lines, &elem_name);
