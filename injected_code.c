@@ -336,15 +336,18 @@ sidtable_append (struct table * t, struct string_slice const * key, int id)
 			list->ids[list->length] = id;
 			list->length++;
 		}
-	} else if (id <= SID_TABLE_MAX_INLINE_ID) { // Else if key is not in the table but is valid, fill in the blank entry
+	} else { // Key is not in the table, add it for the first time
 		entry[0] = (int)extract_slice (key);
-		entry[1] = id;
+		if (id <= SID_TABLE_MAX_INLINE_ID) // Write ID inline if possible
+			entry[1] = id;
+		else { // Otherwise create a list for this one ID
+			struct id_list * new_list = alloc_id_list (2, NULL);
+			new_list->ids[0] = id;
+			new_list->length = 1;
+			entry[1] = (int)new_list;
+		}
 		table__set_occupation (t, index, 1);
 		t->len++;
-	} else {
-		(*p_OutputDebugStringA) ("[C3X] Crashing because sidtable_append received an invalid id");
-		int * x = 0;
-		*x = 0;
 	}
 }
 
