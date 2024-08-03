@@ -910,7 +910,7 @@ enum UnitStateType
   UnitState_Explore = 0x1A,
   UnitState_1B = 0x1B,
   UnitState_Fleeing = 0x1C,
-  UnitState_1D = 0x1D,
+  UnitState_1D = 0x1D, // Another fleeing-like state used by human-owned automated workers
   UnitState_1E = 0x1E,
   UnitState_Auto_Bombard = 0x1F,
   UnitState_Auto_Air_Bombard = 0x20,

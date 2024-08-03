@@ -9393,19 +9393,19 @@ get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 		{CL_AUTOMATED           , true }, // Auto_Clear_Pollution = 0x18
 		{CL_AUTOMATED           , true }, // Auto_Save_City_Tiles = 0x19
 		{CL_EXPLORING           , false}, // Explore = 0x1A
-		{-1                     , false}, // ? = 0x1B
-		{-1                     , false}, // Fleeing = 0x1C
-		{-1                     , false}, // ? = 0x1D
-		{-1                     , false}, // ? = 0x1E
+		{CL_IN_STATE_27         , false}, // ? = 0x1B
+		{CL_IN_STATE_28         , false}, // Fleeing = 0x1C
+		{CL_IN_STATE_29         , false}, // ? = 0x1D
+		{CL_IN_STATE_30         , false}, // ? = 0x1E
 		{CL_BOMBARDING          , false}, // Auto_Bombard = 0x1F
 		{CL_BOMBARDING          , false}, // Auto_Air_Bombard = 0x20
 	};
 	enum UnitStateType state = unit->Body.UnitState;
 	struct state_desc const * desc;
-	if ((state >= 0) && (state < ARRAY_LEN (state_descs)) && (desc = &state_descs[state]) && (desc->label >= 0)) {
+	if ((state >= 0) && (state < ARRAY_LEN (state_descs)) && (desc = &state_descs[state]) && (desc->label >= 0) && (desc->label < COUNT_C3X_LABELS)) {
 		enum c3x_label label = desc->label;
 		Unit * container;
-		if (((label == CL_IDLE) || (label == CL_MOVING) || desc->is_doing_worker_job) && unit->Body.automated)
+		if (((label == CL_IDLE) || (label == CL_MOVING) || (label == CL_IN_STATE_29) || desc->is_doing_worker_job) && unit->Body.automated)
 			label = CL_AUTOMATED;
 		else if ((label == CL_FORTIFIED) && (NULL != (container = get_unit_ptr (unit->Body.Container_Unit))) && ! Unit_has_ability (container, __, UTA_Army))
 			label = CL_TRANSPORTED;

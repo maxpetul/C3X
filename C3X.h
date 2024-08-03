@@ -328,6 +328,11 @@ enum c3x_label {
 	// "Action" for passenger units
 	CL_TRANSPORTED,
 
+	CL_IN_STATE_27,
+	CL_IN_STATE_28,
+	CL_IN_STATE_29,
+	CL_IN_STATE_30,
+
 	COUNT_C3X_LABELS
 };
 

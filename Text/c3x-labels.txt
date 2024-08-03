@@ -110,3 +110,9 @@ Bombarding
 
 ; This appears instead of the above actions on units that have been loaded into another (except an army).
 Transported
+
+; Action labels for the four unknown unit states. These labels are placeholders that should never actually appear on the UI.
+In State 27
+In State 28
+In State 29
+In State 30
