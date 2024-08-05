@@ -1,4 +1,5 @@
 - Option to stop pollution from appearing on impassable tiles
+- Rework UnitRCMIcons.pcx so busy & combat units can be given special icons
 - Fix bombers not doing stack bombard and not showing as attack-capable on right-click menu
 - Fix crash when opening right-click menu with fleeing automated workers
 - Fix lethal ZoC setting allowing coastal fortresses to knock the last hit point off passing units
