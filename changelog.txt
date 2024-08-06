@@ -1,3 +1,5 @@
+- Replace Wake/Activate for units on auto precision strike order
+
 * RELEASE 19
 - Option to stop pollution from appearing on impassable tiles
 - Rework UnitRCMIcons.pcx so busy & combat units can be given special icons

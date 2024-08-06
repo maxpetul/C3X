@@ -9399,7 +9399,7 @@ get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 		{CL_IN_STATE_30         , false}, // ? = 0x1E
 		{CL_BOMBARDING          , false}, // Auto_Bombard = 0x1F
 		{CL_BOMBARDING          , false}, // Auto_Air_Bombard = 0x20
-		{CL_IN_STATE_33         , false}, // ? = 0x21
+		{CL_BOMBARDING          , false}, // Auto_Precision_Strike = 0x21
 		{CL_FORTIFIED           , false}, // Waiting_To_Fortify = 0x22
 	};
 	enum UnitStateType state = unit->Body.UnitState;

@@ -914,7 +914,7 @@ enum UnitStateType
   UnitState_1E = 0x1E,
   UnitState_Auto_Bombard = 0x1F,
   UnitState_Auto_Air_Bombard = 0x20,
-  UnitState_21 = 0x21,
+  UnitState_Auto_Precision_Strike = 0x21,
   UnitState_Waiting_To_Fortify = 0x22,
 };
 
@@ -4930,7 +4930,10 @@ struct Unit_Body
   int path_len;
   int escortee;
   int Auto_CityID;
-  int field_1B0[8];
+  int field_1B0[5];
+  int auto_bombard_target_x;
+  int auto_bombard_target_y;
+  int field_1CC;
   char carrying_princess_of_race;
   byte charmed;
   byte field_1D2;
