@@ -6,6 +6,7 @@
 - Fix dont_escort_unflagged_units option interfering with group movement of units
 - Put right-click menu sword icon on non-empty armies
 - Describe the action of passenger units as "Transported" instead of "Fortified"
+- Describe the action of units waiting to fortify as "Fortified" instead of leaving it unreplaced
 
 * RELEASE 18B
 - Fix Wake/Activate replacement not working on Steam version

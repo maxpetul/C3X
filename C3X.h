@@ -332,6 +332,7 @@ enum c3x_label {
 	CL_IN_STATE_28,
 	CL_IN_STATE_29,
 	CL_IN_STATE_30,
+	CL_IN_STATE_33,
 
 	COUNT_C3X_LABELS
 };

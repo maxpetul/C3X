@@ -914,6 +914,8 @@ enum UnitStateType
   UnitState_1E = 0x1E,
   UnitState_Auto_Bombard = 0x1F,
   UnitState_Auto_Air_Bombard = 0x20,
+  UnitState_21 = 0x21,
+  UnitState_Waiting_To_Fortify = 0x22,
 };
 
 enum VirtualKey

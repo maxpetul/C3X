@@ -9365,7 +9365,7 @@ get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 	struct state_desc {
 		enum c3x_label label;
 		bool is_doing_worker_job;
-	} state_descs[33] = {
+	} state_descs[35] = {
 		{CL_IDLE                , false}, // [No state] = 0x0
 		{CL_FORTIFIED           , false}, // Fortifying = 0x1
 		{CL_MINING              , true }, // Build_Mines = 0x2
@@ -9399,6 +9399,8 @@ get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 		{CL_IN_STATE_30         , false}, // ? = 0x1E
 		{CL_BOMBARDING          , false}, // Auto_Bombard = 0x1F
 		{CL_BOMBARDING          , false}, // Auto_Air_Bombard = 0x20
+		{CL_IN_STATE_33         , false}, // ? = 0x21
+		{CL_FORTIFIED           , false}, // Waiting_To_Fortify = 0x22
 	};
 	enum UnitStateType state = unit->Body.UnitState;
 	struct state_desc const * desc;
