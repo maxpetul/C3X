@@ -1,10 +1,11 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 18B
+Release 19
 
 INCLUDES (** = new in latest version):
 Convenience features:
  - Stack unit commands
   - Stack bombard
+   - ** Fix bombers not doing stack bombard and not showing as attack-capable on right-click menu
   - Worker buttons (irrigate, road, etc.) become stack buttons by holding CTRL
   - Stack fortify, upgrade, and disband also with CTRL
  - Disorder warning
@@ -13,7 +14,6 @@ Convenience features:
  - Ask/offer gold popup autofills best amount
  - Skip repeated popups asking to replace a tile improvement
  - Group units on right click menu
-  - ** Separate automated and non-automated workers
  - Show coordinates and chopped status in tile info box
  - Show golden age turns remaining
  - No special king unit names in non-regicide games
@@ -32,11 +32,16 @@ Convenience features:
  - Display total city count (disabled by default, appears on demographics screen)
  - Fix graphical issues when running on Wine
  - Option to pack the list of luxuries more tightly into the box on the city screen
- - ** Right-click menu enhancements
+ - Right-click menu enhancements
   - Place icons next to units showing movement and combat status
+   - ** Rework UnitRCMIcons.pcx so busy & combat units can be given special icons
+   - ** Put right-click menu sword icon on non-empty armies
   - Replace Wake/Activate with descriptions of what the units are doing
+   - ** Describe the action of passenger units as "Transported" instead of "Fortified"
+   - ** Describe the action of units waiting to fortify as "Fortified" instead of leaving it unreplaced
   - Gray out units if they have no remaining moves
- - ** Apply GridOn setting from conquests.ini after loading a save
+  - ** Fix crash when opening right-click menu with fleeing automated workers
+ - Apply GridOn setting from conquests.ini after loading a save
 Optimization:
  - Optimize computation of trade networks
   - For details, see the info text file in the Trade Net X folder
@@ -52,6 +57,7 @@ AI enhancements:
  - Can limit the number of escorts the AI assigns to its naval transports and carriers
  - Adjustable AI worker requirement
  - Option to stop AI from escorting units without the "requires escort" flag
+  - ** Fix dont_escort_unflagged_units option interfering with group movement of units
 Bugs fixed:
  - AI pathfinding collides with invisible units (called the "submarine bug")
  - Science age beakers not actually awarded
@@ -73,7 +79,7 @@ Engine extensions:
  - Trespassing prevention
  - Land/sea intersections
  - Adjustable anarchy length
- - ** Unit limits (stops players from producing units of a given type once they reach a maximum quantity)
+ - Unit limits (stops players from producing units of a given type once they reach a maximum quantity)
  - "Perfume" units or improvements to control how likely the AI is to build them
  - Reveal AI logic
   - Press P in city screen to see AI point value for each available build
@@ -82,19 +88,15 @@ Engine extensions:
  - Disallow land units from working or settling water tiles
  - Option to let units move after airdropping
  - Buildings can generate resources
-  - ** Fix resource generation not always updated after an input was gained or lost due to city improv change
-  - ** Rework some code related to resource generation and trade to improve stability and efficiency
  - Buildings can be set as prerequisites for unit production
  - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
  - Option to modify rules for retreat eligibility
- - ** AI multi-city start
-  - ** Previously two-city start, now allows any number of cities
-  - ** Starter cities can begin with improvements, including "extra palaces" which respawn like the real palace
+ - AI multi-city start
+  - Starter cities can begin with improvements, including "extra palaces" which respawn like the real palace
  - Remove cap on turn limit
  - Option to strengthen forbidden palace decorruption effect to match the palace's
  - Option to allow military great leaders to hurry wonders
- - ** Option to multiply AI research rate by any amount
-  - ** Previously only allowed reducing research rate by half
+ - Option to multiply AI research rate by any amount
  - Option to aggressively penalize bankrupt players
  - Option to remove exception to tile penalty for city tiles with fresh water and Agri trait
  - Enable stealth attacks via bombardment
@@ -114,6 +116,7 @@ Engine extensions:
  - Zone of control changes
   - Allow land-to-sea and sea-to-land attacks, only using bombard stat
   - May be lethal
+   - ** Fix lethal ZoC setting allowing coastal fortresses to knock the last hit point off passing units
   - May be exerted by air units
   - Show attack animation even when attacker is not at the top of its stack
  - Defensive bombard changes
@@ -129,8 +132,9 @@ Engine extensions:
  - Option to allow airdrops without airports
  - Can increase unit maintenance costs based on their build costs
  - Civ and leader names can vary by era
- - ** Option to allow upgrades in any city
- - ** Option to stop the map generator from placing volcanos
+ - Option to allow upgrades in any city
+ - Option to stop the map generator from placing volcanos
+ - ** Option to stop pollution from appearing on impassable tiles
 
 INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.
