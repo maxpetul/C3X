@@ -100,6 +100,8 @@ typedef struct s_Tile
 // END AUTO-GENERATED SECTION //
 // ************************** //
 
+int __thiscall Tile_m35_Check_Is_Water) (Tile * this);
+int __thiscall Tile_m50_Get_Square_BaseType (Tile * this);
 void __thiscall Tile_m74_SetTerrainType (Tile * this, int terrain_type, int tile_x, int tile_y);
 
 void pop_up_in_game_error(char const * msg);

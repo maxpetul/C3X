@@ -157,10 +157,12 @@ def compute_member_size(struct_dict, enum_dict, member_type, array_length):
     fundamental_type_sizes = {
         'byte': 1,
         'char': 1, 'unsigned char': 1,
+        'bool': 1,
         'short': 2, 'unsigned short': 2,
         'int': 4, 'unsigned int': 4, 'unsigned': 4,
         'float': 4,
         'void*': 4,  # Assuming a 32-bit system
+        'HGLRC': 4,
     }
 
     struct_alignment = None
@@ -377,16 +379,22 @@ def insert_generated_section(file_name, generated_text):
 def generate_civ3_dot_lua(pss):
     class_name = "Tile"
     tr = ""
-    tr += f"--- @class {class_name}\n"
-    # Add fields here
+    tr += f"---@class {class_name}\n"
+
+    # Fields
+    tr += "---@field IsWater fun(this: Tile): boolean Whether this is a coast, sea, or ocean tile\n"
+    tr += "---@field GetTerrainBaseType fun(this: Tile): integer Returns the ID of the tile's base terrain type. The ID corresponds to an entry in the TerrainType table.\n"
+    tr += "---@field SetTerrainType fun(this: Tile, terrainType: integer, x: integer, y: integer): nil Changes the tile's terrain. You must specify the tile's own X & Y coordinates as the last two parameters.\n"
+
     tr += f"local {class_name}\n"
     tr += f"local {class_name}_metatable = {{\n"
     tr +=  "  __index = {\n"
 
     # Methods
+    tr += "    IsWater = function(this) return ffi.C.Tile_m35_Check_Is_Water(this) ~= 0 end,\n"
+    tr += "    GetTerrainBaseType = function(this) return ffi.C.Tile_m50_Get_Square_BaseType(this) end,\n"
     tr += "    SetTerrainType = function(this, terrainType, x, y) ffi.C.Tile_m74_SetTerrainType (this, terrainType, x, y) end\n"
 
-    # Add methods here
     tr +=  "  }\n"
     tr +=  "}\n"
     tr += f"{class_name} = ffi.metatype(\"{class_name}\", {class_name}_metatable)\n"
