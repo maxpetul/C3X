@@ -94,6 +94,19 @@ typedef struct s_Tile
 	byte _opaque_4[110];
 } Tile;
 
+typedef struct s_Unit
+{
+	byte _opaque_0[32];
+	int id;
+	int x;
+	int y;
+	byte _opaque_1[8];
+	int ownerID;
+	byte _opaque_2[8];
+	int unitTypeID;
+	byte _opaque_3[960];
+} Unit;
+
 
 
 // ************************** //

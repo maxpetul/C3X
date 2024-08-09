@@ -7,6 +7,7 @@ aliases = OrderedDict()
 alias_list = [("Citizens", "CitizenList"),
               ("Citizen_Info", "CitizenItem"),
               ("Cities", "CityList"),
+              ("Units", "UnitList"),
               ("CivID", "OwnerID")]
 for k, v in alias_list:
     assert(not k in aliases.values()) # If this assertion fails, that means there is a double-aliasing of a name, i.e. A gets aliased to B then B gets
@@ -333,7 +334,8 @@ es = extract_enums(header)
 
 # Inline bodies into main structs
 structs_to_inline = [("Tile_Body", "Tile"),
-                     ("City_Body", "City")]
+                     ("City_Body", "City"),
+                     ("Unit_Body", "Unit")]
 for to_inline, target in structs_to_inline:
     inline(ss, to_inline, target)
 
@@ -377,29 +379,44 @@ def insert_generated_section(file_name, generated_text):
         f.write(new_contents)
 
 def generate_civ3_dot_lua(pss):
-    class_name = "Tile"
+    classes = [
+        ("Tile",
+         #fields
+         ["IsWater fun(this: Tile): boolean Whether this is a coast, sea, or ocean tile",
+          "GetTerrainBaseType fun(this: Tile): integer Returns the ID of the tile's base terrain type. The ID corresponds to an entry in the TerrainType table.",
+          "SetTerrainType fun(this: Tile, terrainType: integer, x: integer, y: integer): nil Changes the tile's terrain. You must specify the tile's own X & Y coordinates as the last two parameters.",
+          "GetCity fun(this: Tile): City | nil Returns the city on this tile or nil if there isn't any"],
+         #methods
+         ["IsWater = function(this) return ffi.C.Tile_m35_Check_Is_Water(this) ~= 0 end",
+          "GetTerrainBaseType = function(this) return ffi.C.Tile_m50_Get_Square_BaseType(this) end",
+          "SetTerrainType = function(this, terrainType, x, y) ffi.C.Tile_m74_SetTerrainType(this, terrainType, x, y) end",
+          "GetCity = function(this) return ffi.C.get_city_ptr(this.cityID) end"]),
+        ("Unit",
+         [],
+         [])
+        ]
+
     tr = ""
-    tr += f"---@class {class_name}\n"
 
-    # Fields
-    tr += "---@field IsWater fun(this: Tile): boolean Whether this is a coast, sea, or ocean tile\n"
-    tr += "---@field GetTerrainBaseType fun(this: Tile): integer Returns the ID of the tile's base terrain type. The ID corresponds to an entry in the TerrainType table.\n"
-    tr += "---@field SetTerrainType fun(this: Tile, terrainType: integer, x: integer, y: integer): nil Changes the tile's terrain. You must specify the tile's own X & Y coordinates as the last two parameters.\n"
-    tr += "---@field GetCity fun(this: Tile): City | nil Returns the city on this tile or nil if there isn't any\n"
+    for lua_class in classes:
+        class_name, fields, methods = lua_class
+        tr += f"---@class {class_name}\n"
 
-    tr += f"local {class_name}\n"
-    tr += f"local {class_name}_metatable = {{\n"
-    tr +=  "  __index = {\n"
+        for n in range(len(fields)):
+            tr += f"---@field {fields[n]}\n"
 
-    # Methods
-    tr += "    IsWater = function(this) return ffi.C.Tile_m35_Check_Is_Water(this) ~= 0 end,\n"
-    tr += "    GetTerrainBaseType = function(this) return ffi.C.Tile_m50_Get_Square_BaseType(this) end,\n"
-    tr += "    SetTerrainType = function(this, terrainType, x, y) ffi.C.Tile_m74_SetTerrainType(this, terrainType, x, y) end,\n"
-    tr += "    GetCity = function(this) return ffi.C.get_city_ptr(this.cityID) end\n"
+        tr += f"local {class_name}\n"
+        tr += f"local {class_name}_metatable = {{\n"
+        tr +=  "  __index = {\n"
 
-    tr +=  "  }\n"
-    tr +=  "}\n"
-    tr += f"{class_name} = ffi.metatype(\"{class_name}\", {class_name}_metatable)\n"
+        for n in range(len(methods)):
+            comma = "," if n < len(methods) - 1 else ""
+            tr += f"    {methods[n]}{comma}\n"
+
+        tr +=  "  }\n"
+        tr +=  "}\n"
+        tr += f"{class_name} = ffi.metatype(\"{class_name}\", {class_name}_metatable)\n"
+        tr += "\n"
 
     return tr
 
@@ -413,8 +430,10 @@ if __name__ == "__main__":
             "City": ["CivID", "Citizens", "CityName"],
             "CityItem": ["City"],
             "Cities": ["Cities", "LastIndex", "Capacity"],
+            "Units": ["Units", "LastIndex", "Capacity"],
             "Leader": ["ID"],
-            "Tile": ["Territory_OwnerID", "ResourceType", "TileUnitID", "CityID", "Tile_BuildingID", "ContinentID", "Overlays", "SquareType", "CityAreaID"]}
+            "Tile": ["Territory_OwnerID", "ResourceType", "TileUnitID", "CityID", "Tile_BuildingID", "ContinentID", "Overlays", "SquareType", "CityAreaID"],
+            "Unit": ["ID", "X", "Y", "CivID", "UnitTypeID"]}
     insert_generated_section("civ3_defs_for_lua.h", generate_civ3_defs_for_lua(ss, pss, es, defs))
 
     generate_prog_objects_for_lua()
