@@ -385,6 +385,7 @@ def generate_civ3_dot_lua(pss):
     tr += "---@field IsWater fun(this: Tile): boolean Whether this is a coast, sea, or ocean tile\n"
     tr += "---@field GetTerrainBaseType fun(this: Tile): integer Returns the ID of the tile's base terrain type. The ID corresponds to an entry in the TerrainType table.\n"
     tr += "---@field SetTerrainType fun(this: Tile, terrainType: integer, x: integer, y: integer): nil Changes the tile's terrain. You must specify the tile's own X & Y coordinates as the last two parameters.\n"
+    tr += "---@field GetCity fun(this: Tile): City | nil Returns the city on this tile or nil if there isn't any\n"
 
     tr += f"local {class_name}\n"
     tr += f"local {class_name}_metatable = {{\n"
@@ -393,7 +394,8 @@ def generate_civ3_dot_lua(pss):
     # Methods
     tr += "    IsWater = function(this) return ffi.C.Tile_m35_Check_Is_Water(this) ~= 0 end,\n"
     tr += "    GetTerrainBaseType = function(this) return ffi.C.Tile_m50_Get_Square_BaseType(this) end,\n"
-    tr += "    SetTerrainType = function(this, terrainType, x, y) ffi.C.Tile_m74_SetTerrainType (this, terrainType, x, y) end\n"
+    tr += "    SetTerrainType = function(this, terrainType, x, y) ffi.C.Tile_m74_SetTerrainType(this, terrainType, x, y) end,\n"
+    tr += "    GetCity = function(this) return ffi.C.get_city_ptr(this.cityID) end\n"
 
     tr +=  "  }\n"
     tr +=  "}\n"

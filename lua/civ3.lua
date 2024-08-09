@@ -18,12 +18,14 @@ civ3_def_file:close()
 ---@field IsWater fun(this: Tile): boolean Whether this is a coast, sea, or ocean tile
 ---@field GetTerrainBaseType fun(this: Tile): integer Returns the ID of the tile's base terrain type. The ID corresponds to an entry in the TerrainType table.
 ---@field SetTerrainType fun(this: Tile, terrainType: integer, x: integer, y: integer): nil Changes the tile's terrain. You must specify the tile's own X & Y coordinates as the last two parameters.
+---@field GetCity fun(this: Tile): City | nil Returns the city on this tile or nil if there isn't any
 local Tile
 local Tile_metatable = {
   __index = {
     IsWater = function(this) return ffi.C.Tile_m35_Check_Is_Water(this) ~= 0 end,
     GetTerrainBaseType = function(this) return ffi.C.Tile_m50_Get_Square_BaseType(this) end,
-    SetTerrainType = function(this, terrainType, x, y) ffi.C.Tile_m74_SetTerrainType (this, terrainType, x, y) end
+    SetTerrainType = function(this, terrainType, x, y) ffi.C.Tile_m74_SetTerrainType(this, terrainType, x, y) end,
+    GetCity = function(this) return ffi.C.get_city_ptr(this.cityID) end
   }
 }
 Tile = ffi.metatype("Tile", Tile_metatable)
