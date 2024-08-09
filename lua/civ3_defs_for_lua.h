@@ -119,7 +119,9 @@ void __thiscall Tile_m74_SetTerrainType (Tile * this, int terrain_type, int tile
 
 void pop_up_in_game_error(char const * msg);
 CityList * get_p_cities();
+UnitList * get_p_units();
 City * get_city_ptr(int id);
+Unit * get_unit_ptr(int id);
 Leader * get_ui_controller();
 void __thiscall City_recompute_happiness(City * this);
 void __thiscall City_zoom_to(City * this);

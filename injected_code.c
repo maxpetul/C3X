@@ -2441,6 +2441,12 @@ get_p_cities ()
 	return p_cities;
 }
 
+Units *
+get_p_units ()
+{
+	return p_units;
+}
+
 Leader *
 get_ui_controller ()
 {
@@ -9488,7 +9494,9 @@ patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 		// Additional functions especially for Lua
 		{ "pop_up_in_game_error"            , (FARPROC)pop_up_in_game_error },
 		{ "get_p_cities"                    , (FARPROC)get_p_cities },
+		{ "get_p_units"                     , (FARPROC)get_p_units },
 		{ "get_city_ptr"                    , (FARPROC)get_city_ptr },
+		{ "get_unit_ptr"                    , (FARPROC)get_unit_ptr },
 		{ "get_ui_controller"               , (FARPROC)get_ui_controller },
 		{ "get_c3x_script_path"             , (FARPROC)get_c3x_script_path },
 		{ "get_main_screen_form"            , (FARPROC)get_main_screen_form },

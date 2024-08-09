@@ -30,6 +30,15 @@ local Tile_metatable = {
 }
 Tile = ffi.metatype("Tile", Tile_metatable)
 
+---@class Unit
+local Unit
+local Unit_metatable = {
+  __index = {
+  }
+}
+Unit = ffi.metatype("Unit", Unit_metatable)
+
+
 
 -- ************************** --
 -- END AUTO-GENERATED SECTION --
@@ -71,6 +80,22 @@ end
 
 ---@type MainScreenForm
 civ3.mainScreenForm = ffi.C.get_main_screen_form()
+
+local function NextUnit(unit, id)
+  local lastIndex = ffi.C.get_p_units().lastIndex
+  if (id ~= nil) and (id <= lastIndex) then
+    while true do
+      id = id + 1
+      if id > lastIndex then break end
+      local next = ffi.C.get_unit_ptr(id)
+      if next ~= nil then return id, next end
+    end
+  end
+end
+
+function civ3.Units()
+  return NextUnit, nil, -1
+end
 
 local function NextCity(city, id)
   local lastIndex = ffi.C.get_p_cities().lastIndex
