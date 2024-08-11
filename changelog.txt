@@ -1,3 +1,4 @@
+- Fix describe_states_of_units_on_menu setting being ignored
 - Touch up action descriptions for auto precision striking and fortified exhausted units
 
 * RELEASE 19
