@@ -2435,17 +2435,9 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	}
 }
 
-Cities *
-get_p_cities ()
-{
-	return p_cities;
-}
-
-Units *
-get_p_units ()
-{
-	return p_units;
-}
+Cities *    get_p_cities     () { return p_cities;     }
+Units *     get_p_units      () { return p_units;      }
+TileUnits * get_p_tile_units () { return p_tile_units; }
 
 Leader *
 get_ui_controller ()
@@ -9495,6 +9487,7 @@ patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 		{ "pop_up_in_game_error"            , (FARPROC)pop_up_in_game_error },
 		{ "get_p_cities"                    , (FARPROC)get_p_cities },
 		{ "get_p_units"                     , (FARPROC)get_p_units },
+		{ "get_p_tile_units"                , (FARPROC)get_p_tile_units },
 		{ "get_city_ptr"                    , (FARPROC)get_city_ptr },
 		{ "get_unit_ptr"                    , (FARPROC)get_unit_ptr },
 		{ "get_ui_controller"               , (FARPROC)get_ui_controller },

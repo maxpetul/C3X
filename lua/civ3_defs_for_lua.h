@@ -69,6 +69,20 @@ typedef struct s_CityList
 	int capacity;
 } CityList;
 
+typedef struct s_UnitItem
+{
+	byte _opaque_0[8];
+} UnitItem;
+
+typedef struct s_UnitList
+{
+	byte _opaque_0[4];
+	UnitItem * unitList;
+	byte _opaque_1[8];
+	int lastIndex;
+	int capacity;
+} UnitList;
+
 typedef struct s_Leader
 {
 	byte _opaque_0[28];
@@ -107,19 +121,38 @@ typedef struct s_Unit
 	byte _opaque_3[960];
 } Unit;
 
+typedef struct s_BaseListItem
+{
+	int v;
+	void * object;
+} BaseListItem;
+
+typedef struct s_TileUnits
+{
+	byte _opaque_0[4];
+	BaseListItem * items;
+	byte _opaque_1[4];
+	int v2;
+	int lastIndex;
+	int capacity;
+	byte _opaque_2[4];
+} TileUnits;
+
 
 
 // ************************** //
 // END AUTO-GENERATED SECTION //
 // ************************** //
 
-int __thiscall Tile_m35_Check_Is_Water) (Tile * this);
+int __thiscall Tile_m35_Check_Is_Water (Tile * this);
 int __thiscall Tile_m50_Get_Square_BaseType (Tile * this);
+int __thiscall Tile_m40_get_TileUnit_ID (Tile * this);
 void __thiscall Tile_m74_SetTerrainType (Tile * this, int terrain_type, int tile_x, int tile_y);
 
 void pop_up_in_game_error(char const * msg);
 CityList * get_p_cities();
 UnitList * get_p_units();
+TileUnits * get_p_tile_units();
 City * get_city_ptr(int id);
 Unit * get_unit_ptr(int id);
 Leader * get_ui_controller();
@@ -127,7 +160,7 @@ void __thiscall City_recompute_happiness(City * this);
 void __thiscall City_zoom_to(City * this);
 char * get_c3x_script_path();
 MainScreenForm * get_main_screen_form();
-
+int __thiscall TileUnits_TileUnitID_to_UnitID (TileUnits * this, int tile_unit_id, int * out_UnitItem_field_0);
 void * __stdcall get_popup_form();
 int __cdecl set_popup_str_param(int param_index, char const * str, int param_3, int param_4);
 int __cdecl set_popup_int_param(int param_index, int value);

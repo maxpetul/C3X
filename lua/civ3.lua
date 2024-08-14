@@ -16,6 +16,7 @@ civ3_def_file:close()
 
 ---@class Tile
 ---@field IsWater fun(this: Tile): boolean Whether this is a coast, sea, or ocean tile
+---@field GetTileUnitID fun(this: Tile): integer
 ---@field GetTerrainBaseType fun(this: Tile): integer Returns the ID of the tile's base terrain type. The ID corresponds to an entry in the TerrainType table.
 ---@field SetTerrainType fun(this: Tile, terrainType: integer, x: integer, y: integer): nil Changes the tile's terrain. You must specify the tile's own X & Y coordinates as the last two parameters.
 ---@field GetCity fun(this: Tile): City | nil Returns the city on this tile or nil if there isn't any
@@ -23,6 +24,7 @@ local Tile
 local Tile_metatable = {
   __index = {
     IsWater = function(this) return ffi.C.Tile_m35_Check_Is_Water(this) ~= 0 end,
+    GetTileUnitID = function(this) return ffi.C.Tile_m40_get_TileUnit_ID(this) end,
     GetTerrainBaseType = function(this) return ffi.C.Tile_m50_Get_Square_BaseType(this) end,
     SetTerrainType = function(this, terrainType, x, y) ffi.C.Tile_m74_SetTerrainType(this, terrainType, x, y) end,
     GetCity = function(this) return ffi.C.get_city_ptr(this.cityID) end
@@ -95,6 +97,20 @@ end
 
 function civ3.Units()
   return NextUnit, nil, -1
+end
+
+local function NextUnitOn(unit, index)
+  local tileUnits = ffi.C.get_p_tile_units()
+  if (index >= 0) and (index < tileUnits.lastIndex) then
+    local baseListItem item = tileUnits.items[index]
+    return item.v, ffi.C.get_unit_ptr(item.object)
+  end
+end
+
+local function UnitsOn(tile)
+  local itemIndex = ffi.new("int[1]", -1)
+  local unitID = ffi.C.TileUnits_TileUnitID_to_UnitID(ffi.C.get_p_tile_units(), tile:GetTileUnitID(), itemIndex)
+  return NextUnitOn, ffi.C.get_unit_ptr(unitID), itemIndex[0]
 end
 
 local function NextCity(city, id)

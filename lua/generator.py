@@ -335,7 +335,8 @@ es = extract_enums(header)
 # Inline bodies into main structs
 structs_to_inline = [("Tile_Body", "Tile"),
                      ("City_Body", "City"),
-                     ("Unit_Body", "Unit")]
+                     ("Unit_Body", "Unit"),
+                     ("Base_List", "TileUnits")]
 for to_inline, target in structs_to_inline:
     inline(ss, to_inline, target)
 
@@ -383,11 +384,13 @@ def generate_civ3_dot_lua(pss):
         ("Tile",
          #fields
          ["IsWater fun(this: Tile): boolean Whether this is a coast, sea, or ocean tile",
+          "GetTileUnitID fun(this: Tile): integer",
           "GetTerrainBaseType fun(this: Tile): integer Returns the ID of the tile's base terrain type. The ID corresponds to an entry in the TerrainType table.",
           "SetTerrainType fun(this: Tile, terrainType: integer, x: integer, y: integer): nil Changes the tile's terrain. You must specify the tile's own X & Y coordinates as the last two parameters.",
           "GetCity fun(this: Tile): City | nil Returns the city on this tile or nil if there isn't any"],
          #methods
          ["IsWater = function(this) return ffi.C.Tile_m35_Check_Is_Water(this) ~= 0 end",
+          "GetTileUnitID = function(this) return ffi.C.Tile_m40_get_TileUnit_ID(this) end",
           "GetTerrainBaseType = function(this) return ffi.C.Tile_m50_Get_Square_BaseType(this) end",
           "SetTerrainType = function(this, terrainType, x, y) ffi.C.Tile_m74_SetTerrainType(this, terrainType, x, y) end",
           "GetCity = function(this) return ffi.C.get_city_ptr(this.cityID) end"]),
@@ -433,7 +436,9 @@ if __name__ == "__main__":
             "Units": ["Units", "LastIndex", "Capacity"],
             "Leader": ["ID"],
             "Tile": ["Territory_OwnerID", "ResourceType", "TileUnitID", "CityID", "Tile_BuildingID", "ContinentID", "Overlays", "SquareType", "CityAreaID"],
-            "Unit": ["ID", "X", "Y", "CivID", "UnitTypeID"]}
+            "Unit": ["ID", "X", "Y", "CivID", "UnitTypeID"],
+            "Base_List_Item": ["V", "Object"],
+            "TileUnits": ["Items", "V2", "LastIndex", "Capacity"]}
     insert_generated_section("civ3_defs_for_lua.h", generate_civ3_defs_for_lua(ss, pss, es, defs))
 
     generate_prog_objects_for_lua()
