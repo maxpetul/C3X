@@ -1,5 +1,8 @@
 
+local tradeNetX = {}
+
 local ffi = require("ffi")
+local civ3 = require("civ3")
 
 local USL_BLOCK_WIDTH, USL_BLOCK_HEIGHT = 8, 4
 local TBL_BLOCK_WIDTH, TBL_BLOCK_HEIGHT = 16, 16
@@ -101,3 +104,22 @@ function TwoBitLayer:set(x, y, twoBitVal)
 end
 
 ]]--
+
+local WATER_TYPE_NONE, WATER_TYPE_COAST, WATER_TYPE_SEA, WATER_TYPE_OCEAN = 0, 1, 2, 3
+
+function tradeNetX.GetTileInfo(x, y)
+	local tile = civ3.TileAt(x, y)
+	local terrainType = tile:GetTerrainBaseType()
+
+	local waterType = WATER_TYPE_NONE
+	if     terrainType == civ3.TerrainType.Coast then waterType = WATER_TYPE_COAST
+	elseif terrainType == civ3.TerrainType.Sea   then waterType = WATER_TYPE_SEA
+	elseif terrainType == civ3.TerrainType.Ocean then waterType = WATER_TYPE_OCEAN
+	end
+
+	local city = tile:GetCity()
+
+	return waterType, city ~= nil
+end
+
+return tradeNetX
