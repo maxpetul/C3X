@@ -9497,7 +9497,6 @@ patch_Context_Menu_get_selected_item_on_unit_rcm (Context_Menu * this)
 int __fastcall
 patch_Tile_check_water_to_block_pollution (Tile * this)
 {
-
 	if (this->vtable->m35_Check_Is_Water (this))
 		return 1;
 	else if (is->current_config.do_not_pollute_impassable_tiles) {
@@ -9505,6 +9504,14 @@ patch_Tile_check_water_to_block_pollution (Tile * this)
 		return p_bic_data->TileTypes[terrain_type].Flags.Impassable;
 	} else
 		return 0;
+}
+
+void __fastcall
+patch_Tile_set_flag_for_eruption_damage (Tile * this, int edx, int param_1, int param_2, int x, int y)
+{
+	if (! (is->current_config.do_not_pollute_impassable_tiles &&
+	       p_bic_data->TileTypes[this->vtable->m50_Get_Square_BaseType (this)].Flags.Impassable))
+		this->vtable->m56_Set_Tile_Flags (this, __, param_1, param_2, x, y);
 }
 
 // TCC requires a main function be defined even though it's never used.
