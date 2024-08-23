@@ -473,6 +473,7 @@ enum ImprovementTypeSmallWonderFeatures
   ITSW_Allows_Healing_In_Enemy_Territory     = 0x100,
   ITSW_0x200                                 = 0x200,
   ITSW_Requires_Victorous_Army               = 0x400,
+  ITSE_Requires_Elite_Naval_Units            = 0x800,
 };
 
 enum CorruptionAndWasteTypes
@@ -1651,7 +1652,7 @@ struct Tile_vtable
   char (__fastcall *m14_Check_Barricade)(Tile *, __, int);
   char (__fastcall *m15_Check_Goody_Hut)(Tile *, __, int);
   int m16;
-  char (__fastcall *m17_Check_Irrigation)(Tile *, __, int);
+  bool (__fastcall *m17_Check_Irrigation)(Tile *, __, int);
   int (__fastcall *m18_Check_Mines)(Tile *, __, int);
   char (__fastcall *m19_Check_Outpost)(Tile *, __, int);
   unsigned char (__fastcall *m20_Check_Pollution)(Tile *, __, int);
@@ -1690,7 +1691,7 @@ struct Tile_vtable
   int (__fastcall *m53_set_River_Code_field_30)(Tile *);
   void (__fastcall *m54_Set_Square_Parts)(Tile *, __, int);
   void (__fastcall *m55_Set_Barbarian_TribeID)(Tile *, __, short);
-  int (__fastcall *m56_Set_Tile_Flags)(Tile *, __, int, int, int, int);
+  void (__fastcall *m56_Set_Tile_Flags)(Tile *, __, int, int, int, int);
   void (__fastcall *m57_Set_CityID)(Tile *, __, int);
   void (__fastcall *m58_Set_ContinentID)(Tile *, __, int);
   void (__fastcall *m59_set_resource)(Tile *, __, int);
