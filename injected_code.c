@@ -2633,6 +2633,7 @@ patch_init_floating_point ()
 		{"show_untradable_techs_on_trade_screen"               , false, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
 		{"disallow_useless_bombard_vs_airfields"               , true , offsetof (struct c3x_config, disallow_useless_bombard_vs_airfields)},
 		{"compact_luxury_display_on_city_screen"               , false, offsetof (struct c3x_config, compact_luxury_display_on_city_screen)},
+		{"warn_when_chosen_building_would_replace_another"     , false, offsetof (struct c3x_config, warn_when_chosen_building_would_replace_another)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -9512,6 +9513,38 @@ patch_Tile_set_flag_for_eruption_damage (Tile * this, int edx, int param_1, int 
 	if (! (is->current_config.do_not_pollute_impassable_tiles &&
 	       p_bic_data->TileTypes[this->vtable->m50_Get_Square_BaseType (this)].Flags.Impassable))
 		this->vtable->m56_Set_Tile_Flags (this, __, param_1, param_2, x, y);
+}
+
+bool __fastcall
+patch_City_confirm_production_switch (City * this, int edx, int order_type, int order_id)
+{
+	bool tr = City_confirm_production_switch (this, __, order_type, order_id);
+	if (tr &&
+	    (order_type == COT_Improvement) && (order_id >= 0) && (order_id < p_bic_data->ImprovementsCount) &&
+	    (this->Body.CivID == p_main_screen_form->Player_CivID) &&
+	    is->current_config.warn_when_chosen_building_would_replace_another) {
+		Improvement * improv = &p_bic_data->Improvements[order_id];
+		if (improv->ImprovementFlags & ITF_Replaces_Other_Buildings) {
+			Improvement * replaced = NULL;
+			for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+				Improvement * other = &p_bic_data->Improvements[n];
+				if ((other->ImprovementFlags & ITF_Replaces_Other_Buildings) &&
+				    City_has_improvement (this, __, n, false)) {
+					replaced = other;
+					break;
+				}
+			}
+			if (replaced != NULL) {
+				PopupForm * popup = get_popup_form ();
+				set_popup_str_param (0, improv->Name.S, -1, -1);
+				set_popup_str_param (1, replaced->Name.S, -1, -1);
+				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARN_ABOUT_BUILDING_REPLACEMENT", -1, 0, 0, 0);
+				if (patch_show_popup (popup, __, 0, 0) == 1)
+					return false;
+			}
+		}
+	}
+	return tr;
 }
 
 // TCC requires a main function be defined even though it's never used.

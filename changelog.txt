@@ -1,3 +1,5 @@
+- Option to have a warning when the building you've selected to build would replace another already built in the city
+  - Off by default, controlled by config option warn_when_chosen_building_would_replace_another
 - Option stopping pollution of impassable tiles also covers volcanic eruptions
 - Fix describe_states_of_units_on_menu setting being ignored
 - Touch up action descriptions for auto precision striking and fortified exhausted units
