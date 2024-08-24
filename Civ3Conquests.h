@@ -6158,6 +6158,7 @@ typedef struct DiploForm DiploForm;
 typedef struct TextBuffer TextBuffer;
 typedef struct OpenGLRenderer OpenGLRenderer;
 typedef struct MenuUnitItem MenuUnitItem;
+typedef struct MappedFile MappedFile;
 
 // Contains font info for a particular size & style
 struct Object_66C3FC
@@ -6316,4 +6317,13 @@ struct MenuUnitItem
 	bool is_flag_unit;
 	bool is_state_blank;
 	byte field_B;
+};
+
+struct MappedFile
+{
+	void * vtable; // = 0x6724AC
+	void * base_addr;
+	HANDLE file;
+	HANDLE mapping;
+	int size;
 };

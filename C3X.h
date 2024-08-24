@@ -832,6 +832,9 @@ struct injected_state {
 	// While in Leader::do_capture_city, the city in question is stored in this var. Otherwise it's NULL.
 	City * currently_capturing_city;
 
+	// While a game is being saved or loaded, this variable points to the save file's MappedFile object. Otherwise it's NULL.
+	MappedFile * accessing_save_file;
+
 	// ==========
 	// }
 	// ==========

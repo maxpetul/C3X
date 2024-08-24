@@ -2878,6 +2878,7 @@ patch_init_floating_point ()
 	is->penciled_in_upgrade_count = is->penciled_in_upgrade_capacity = 0;
 
 	is->currently_capturing_city = NULL;
+	is->accessing_save_file = NULL;
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -9545,6 +9546,31 @@ patch_City_confirm_production_switch (City * this, int edx, int order_type, int 
 		}
 	}
 	return tr;
+}
+
+void * __fastcall
+patch_MappedFile_open_to_load_game (MappedFile * this, int edx, char * file_name, int sequential_access)
+{
+	void * tr = MappedFile_open (this, __, file_name, sequential_access);
+	if (tr != NULL)
+		is->accessing_save_file = this;
+	return tr;
+}
+
+void * __fastcall
+patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR file_path, unsigned file_size, int is_shared)
+{
+	void * tr = MappedFile_create_file (this, __, file_path, file_size, is_shared);
+	if (tr != NULL)
+		is->accessing_save_file = this;
+	return tr;
+}
+
+void __fastcall
+patch_MappedFile_deinit_after_saving_or_loading (MappedFile * this)
+{
+	is->accessing_save_file = NULL;
+	MappedFile_deinit (this);
 }
 
 // TCC requires a main function be defined even though it's never used.

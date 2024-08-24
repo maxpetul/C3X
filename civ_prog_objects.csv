@@ -538,6 +538,13 @@ define,	   0x5BE9E0,	0x5CD600,	0x5BE6F0,	"Unit_count_contained_units",			"int (_
 repl call, 0x4B3089,	0x4BA00B,	0x4B3119,	"Tile_check_water_to_block_pollution",		""
 repl call, 0x4F416E,	0x4FD448,	0x4F422E,	"Tile_set_flag_for_eruption_damage",		""
 inlead,	   0x4AF5D0,	0x4B6590,	0x4AF660,	"City_confirm_production_switch",		"bool (__fastcall *) (City * this, int edx, int order_type, int order_id)"
+define,	   0x62AEE0,	0x64DE20,	0x6271F0,	"MappedFile_open",				"void * (__fastcall *) (MappedFile * this, int edx, char * file_name, int sequential_access)"
+repl call, 0x592160,	0x59F790,	0x591E80,	"MappedFile_open_to_load_game",			""
+define,	   0x62AFA0,	0x64DF40,	0x6272B0,	"MappedFile_create_file",			"void * (__fastcall *) (MappedFile * this, int edx, LPCSTR file_path, unsigned file_size, int is_shared)"
+repl call, 0x591CF1,	0x59F321,	0x591A11,	"MappedFile_create_file_to_save_game",		""
+define,	   0x62B0C0,	0x64E0B0,	0x6273D0,	"MappedFile_deinit",				"void (__fastcall *) (MappedFile * this)"
+repl call, 0x592322,	0x59F973,	0x592042,	"MappedFile_deinit_after_saving_or_loading",	""
+repl call, 0x591D9F,	0x59F3D0,	0x591ABF,	"MappedFile_deinit_after_saving_or_loading",	""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
