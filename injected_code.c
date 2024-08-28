@@ -9548,15 +9548,15 @@ patch_City_confirm_production_switch (City * this, int edx, int order_type, int 
 	return tr;
 }
 
+byte const c3x_save_segment_bookend[4] = {0x22, 'C', '3', 'X'};
+
 void
 assemble_mod_save_data (struct buffer * b)
 {
-	byte * p = buffer_allocate_chunk (b, 8);
-	byte bookend[4] = {0x22, 'C', '3', 'X'};
+	byte * p = buffer_allocate_chunk (b, 4);
+	byte text[4] = {'T', 'E', 'S', 'T'};
 	for (int n = 0; n < ARRAY_LEN (bookend); n++)
-		p[n] = bookend[n];
-	for (int n = 0; n < ARRAY_LEN (bookend); n++)
-		p[4+n] = bookend[n];
+		p[n] = text[n];
 }
 
 void * __fastcall
@@ -9573,11 +9573,29 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 {
 	struct buffer mod_data = {0};
 	assemble_mod_save_data (&mod_data);
-	void * tr = MappedFile_create_file (this, __, file_path, file_size + mod_data.length, is_shared);
+
+	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
+
+	void * tr = MappedFile_create_file (this, __, file_path, file_size + mod_data.length + metadata_size, is_shared);
 	if (tr != NULL) {
 		is->accessing_save_file = this;
-		if (mod_data.length <= (unsigned)this->size)
-			memcpy ((byte *)tr + file_size, mod_data.contents, mod_data.length);
+		if ((mod_data.length > 0) && (mod_data.length + metadata_size <= this->size)) {
+			// Write first bookend to mod's segment in the save data
+			byte * seg_start = (byte *)tr + file_size;
+			for (int n = 0; n < ARRAY_LEN (c3x_save_segment_bookend); n++)
+				seg_start[n] = c3x_save_segment_bookend[n];
+
+			// Write actual mod game data
+			memcpy ((byte *)tr + file_size + 4, mod_data.contents, mod_data.length);
+
+			// Write size of mod data
+			byte * seg_end = (byte *)tr + file_size + 4 + mod_data.length;
+			int_to_bytes (seg_end, mod_data.length);
+
+			// Finish off with another bookend
+			for (int n = 0; n < ARRAY_LEN (c3x_save_segment_bookend); n++)
+				seg_end[4+n] = c3x_save_segment_bookend[n];
+		}
 	}
 	buffer_deinit (&mod_data);
 	return tr;
