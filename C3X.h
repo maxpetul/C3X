@@ -23,6 +23,13 @@ struct table {
 	size_t len;
 };
 
+// Initialize to zero. Implementation in common.c
+struct buffer {
+	byte * contents;
+	int length;
+	int capacity;
+};
+
 // A mill is a city improvement that spawns a resource. These are read from the "buildings_generating_resources" key in the config but are called
 // "mills" internally for brevity.
 enum mill_flag {

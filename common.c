@@ -97,7 +97,27 @@ reserve (int item_size, void ** p_items, int * p_capacity, int count)
 	}
 }
 
+byte *
+buffer_allocate_chunk (struct buffer * b, int size)
+{
+	size = not_below (0, size);
+	if ((b->contents != NULL) && (b->length + size <= b->capacity)) {
+		byte * tr = b->contents + b->length;
+		b->length += size;
+		return tr;
+	} else {
+		b->capacity = b->length + size + 1000;
+		b->contents = realloc (b->contents, b->capacity);
+		return buffer_allocate_chunk (b, size);
+	}
+}
 
+void
+buffer_deinit (struct buffer * b)
+{
+	free (b->contents);
+	memset (b, 0, sizeof *b);
+}
 
 // ========================================================
 // ||                                                    ||

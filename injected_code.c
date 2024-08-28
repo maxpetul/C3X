@@ -9548,6 +9548,17 @@ patch_City_confirm_production_switch (City * this, int edx, int order_type, int 
 	return tr;
 }
 
+void
+assemble_mod_save_data (struct buffer * b)
+{
+	byte * p = buffer_allocate_chunk (b, 8);
+	byte bookend[4] = {0x22, 'C', '3', 'X'};
+	for (int n = 0; n < ARRAY_LEN (bookend); n++)
+		p[n] = bookend[n];
+	for (int n = 0; n < ARRAY_LEN (bookend); n++)
+		p[4+n] = bookend[n];
+}
+
 void * __fastcall
 patch_MappedFile_open_to_load_game (MappedFile * this, int edx, char * file_name, int sequential_access)
 {
@@ -9560,9 +9571,15 @@ patch_MappedFile_open_to_load_game (MappedFile * this, int edx, char * file_name
 void * __fastcall
 patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR file_path, unsigned file_size, int is_shared)
 {
-	void * tr = MappedFile_create_file (this, __, file_path, file_size, is_shared);
-	if (tr != NULL)
+	struct buffer mod_data = {0};
+	assemble_mod_save_data (&mod_data);
+	void * tr = MappedFile_create_file (this, __, file_path, file_size + mod_data.length, is_shared);
+	if (tr != NULL) {
 		is->accessing_save_file = this;
+		if (mod_data.length <= (unsigned)this->size)
+			memcpy ((byte *)tr + file_size, mod_data.contents, mod_data.length);
+	}
+	buffer_deinit (&mod_data);
 	return tr;
 }
 
