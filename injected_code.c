@@ -9553,7 +9553,7 @@ byte const c3x_save_segment_bookend[4] = {0x22, 'C', '3', 'X'};
 void
 assemble_mod_save_data (struct buffer * b)
 {
-	byte * p = buffer_allocate_chunk (b, 4);
+	byte * p = buffer_allocate (b, 4);
 	byte text[4] = {'T', 'E', 'S', 'T'};
 	for (int n = 0; n < ARRAY_LEN (bookend); n++)
 		p[n] = text[n];

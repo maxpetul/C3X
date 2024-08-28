@@ -98,7 +98,7 @@ reserve (int item_size, void ** p_items, int * p_capacity, int count)
 }
 
 byte *
-buffer_allocate_chunk (struct buffer * b, int size)
+buffer_allocate (struct buffer * b, int size)
 {
 	size = not_below (0, size);
 	if ((b->contents != NULL) && (b->length + size <= b->capacity)) {
@@ -108,7 +108,7 @@ buffer_allocate_chunk (struct buffer * b, int size)
 	} else {
 		b->capacity = b->length + size + 1000;
 		b->contents = realloc (b->contents, b->capacity);
-		return buffer_allocate_chunk (b, size);
+		return buffer_allocate (b, size);
 	}
 }
 
@@ -315,6 +315,26 @@ stable_look_up_slice (struct table const * t, struct string_slice const * key, i
 {
 	size_t index = (t->len > 0) ? table__place (t, compare_slice_and_str_keys, (int)key, hash_slice ((int)key)) : 0;
 	return table_get_by_index (t, index, out_value);
+}
+
+// Writes the contents of the table to the buffer as an array of key-value pairs. Returns the number of bytes written. Assumes the buffer contents is
+// four-byte aligned.
+int
+table_serialize (struct table const * t, struct buffer * b)
+{
+	if (t->len > 0) {
+		int tr = t->len * 2 * sizeof(int);
+		int * out = (int *)buffer_allocate (b, tr);
+		size_t capacity = table_capacity (t);
+		for (size_t index = 0; index < capacity; index++)
+			if (table__is_occupied (t, index)) {
+				int * entry = &((int *)TABLE__BASE (t))[2*index];
+				*out++ = entry[0];
+				*out++ = entry[1];
+			}
+		return tr;
+	} else
+		return 0;
 }
 
 
