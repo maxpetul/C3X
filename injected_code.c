@@ -9608,5 +9608,21 @@ patch_MappedFile_deinit_after_saving_or_loading (MappedFile * this)
 	MappedFile_deinit (this);
 }
 
+bool __fastcall
+patch_Tile_m7_Check_Barbarian_Camp (Tile * this, int edx, int visible_to_civ)
+{
+	int * p_stack = (int *)&visible_to_civ;
+	int ret_addr = p_stack[-1];
+
+	// If the barb unit AI is calling this method to check if there's a camp to defend, return true if we're allowing barb city capture and the
+	// tile has a city. This causes barb units to defend cities they've captured, otherwise they'll ignore them.
+	if ((ret_addr == ADDR_CHECK_BARB_CAMP_TO_DEFEND_RETURN) &&
+	    is->current_config.enable_city_capture_by_barbarians &&
+	    Tile_has_city (this))
+		return true;
+	else
+		return Tile_m7_Check_Barbarian_Camp (this, __, visible_to_civ);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

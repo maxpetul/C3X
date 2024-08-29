@@ -1642,7 +1642,7 @@ struct Tile_vtable
   void (__fastcall *m4_Dispose)(Tile *this, __, int);
   int m5;
   char (__fastcall *m06_Check_Airfield)(Tile *, __, int);
-  int (__fastcall *m7_Check_Barbarian_Camp)(Tile *, __, int);
+  bool (__fastcall *m7_Check_Barbarian_Camp)(Tile *, __, int);
   int m08_Check_field_30_bit_23;
   int m9;
   int m10;
