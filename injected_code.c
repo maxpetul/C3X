@@ -6907,7 +6907,7 @@ adjust_sliders_preproduction (Leader * this)
 int __fastcall
 patch_Leader_count_maintenance_free_units (Leader * this)
 {
-	if (is->current_config.extra_unit_maintenance_per_shields <= 0)
+	if ((is->current_config.extra_unit_maintenance_per_shields <= 0) && (this->ID != 0))
 		return Leader_count_maintenance_free_units (this);
 	else {
 		int tr = 0;
@@ -6920,10 +6920,17 @@ patch_Leader_count_maintenance_free_units (Leader * this)
 				if ((unit->Body.RaceID != this->RaceID) || (type->b_Not_King == 0))
 					tr++;
 
-				// Otherwise, reduce the free unit count by however many times this unit's cost is above the threshold for extra
-				// maintenace. It's alright if the resulting free unit count is negative since all callers of this function subtract
-				// its return value from the total unit count to obtain the count of units that must be paid for.
-				else
+				// If this unit belongs to the barbs and has a tribe ID set (indicating it was spawned in a barb camp) then count it
+				// as a free unit in order not to bankrupt the barb player if the barb player controls any cities. A tribe ID of 75 is
+				// the generic ID that's assigned to barb units when they're spawned with no specific tribe ID.
+				else if ((unit->Body.CivID == 0) && (unit->Body.barb_tribe_id >= 0) && (unit->Body.barb_tribe_id < 75))
+					tr++;
+
+				// Otherwise, if we're configured to apply extra maintenance based on shield cost, reduce the free unit count by
+				// however many times this unit's cost is above the threshold for extra maintenace. It's alright if the resulting free
+				// unit count is negative since all callers of this function subtract its return value from the total unit count to
+				// obtain the count of units that must be paid for.
+				else if (is->current_config.extra_unit_maintenance_per_shields > 0)
 					tr -= type->Cost / is->current_config.extra_unit_maintenance_per_shields;
 			}
 		}
