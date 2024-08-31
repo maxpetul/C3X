@@ -6490,9 +6490,7 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	int type_id = this->Body.UnitTypeID;
 
 	// Clear extra DBs used by this unit
-	int extra_dbs;
-	if (itable_look_up (&is->extra_defensive_bombards, this->Body.ID, &extra_dbs) && (extra_dbs != 0))
-		itable_insert (&is->extra_defensive_bombards, this->Body.ID, 0);
+	itable_remove (&is->extra_defensive_bombards, this->Body.ID);
 
 	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 
@@ -7363,15 +7361,19 @@ patch_Leader_begin_unit_turns (Leader * this)
 	irl->count = 0;
 
 	// Reset all extra defensive bombard uses, if necessary
-	if (is->extra_defensive_bombards.len > 0)
-		for (int n = 0; n <= p_units->LastIndex; n++) {
-			Unit * unit = get_unit_ptr (n);
-			if ((unit != NULL) && (unit->Body.CivID == this->ID)) {
-				int unused;
-				if (itable_look_up (&is->extra_defensive_bombards, n, &unused))
-					itable_insert (&is->extra_defensive_bombards, n, 0);
+	if (is->extra_defensive_bombards.len > 0) {
+		clear_memo ();
+		size_t capacity = table_capacity (&is->extra_defensive_bombards);
+		for (size_t index = 0; index < capacity; index++)
+			if (table__is_occupied (&is->extra_defensive_bombards, index)) {
+				int * entry = &((int *)TABLE__BASE (&is->extra_defensive_bombards))[2*index];
+				Unit * unit = get_unit_ptr (entry[0]);
+				if ((unit == NULL) || (unit->Body.CivID == this->ID))
+					memoize (entry[0]);
 			}
-		}
+		for (int n = 0; n < is->memo_len; n++)
+			itable_remove (&is->extra_defensive_bombards, is->memo[n]);
+	}
 
 	Leader_begin_unit_turns (this);
 }

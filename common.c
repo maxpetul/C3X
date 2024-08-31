@@ -235,6 +235,41 @@ itable_insert (struct table * t, int key, int value)
 	}
 }
 
+// Deletes a table entry, if present. Returns whether or not the entry was present.
+int
+itable_remove (struct table * t, int key)
+{
+	if (t->len == 0)
+		return 0;
+
+	size_t index = table__place (t, compare_int_keys, key, hash_int (key));
+	if (! table__is_occupied (t, index))
+		return 0;
+
+	table__set_occupation (t, index, 0);
+	t->len--;
+
+	// Re-insert any elements in the probe sequence
+	size_t index_mask = ((size_t)1 << t->capacity_exponent) - 1;
+	size_t current = (index + 1) & index_mask;
+	while (table__is_occupied (t, current)) {
+		int * entry = &((int *)TABLE__BASE (t))[2 * current];
+		int cur_key = entry[0],
+		    cur_value = entry[1];
+		table__set_occupation (t, current, 0);
+
+		size_t new_index = table__place (t, compare_int_keys, cur_key, hash_int (cur_key));
+		int * new_entry = &((int *)TABLE__BASE (t))[2 * new_index];
+		new_entry[0] = cur_key;
+		new_entry[1] = cur_value;
+		table__set_occupation (t, new_index, 1);
+
+		current = (current + 1) & index_mask;
+	}
+
+	return 1;
+}
+
 int
 itable_look_up (struct table const * t, int key, int * out_value)
 {
