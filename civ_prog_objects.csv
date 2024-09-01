@@ -547,6 +547,7 @@ repl call, 0x592322,	0x59F973,	0x592042,	"MappedFile_deinit_after_saving_or_load
 repl call, 0x591D9F,	0x59F3D0,	0x591ABF,	"MappedFile_deinit_after_saving_or_loading",	""
 repl vptr, 0x6701E4,	0x68D290,	0x6701E4,	"Tile_m7_Check_Barbarian_Camp",			"bool (__fastcall *) (Tile * this, int edx, int visible_to_civ)"
 define,	   0x44FBA5,	0x451C45,	0x44FC25,	"ADDR_CHECK_BARB_CAMP_TO_DEFEND_RETURN",	"int"
+inlead,	   0x590030,	0x59D690,	0x58FD50,	"move_game_data",				"int (__cdecl *) (byte * buffer, bool save_else_load)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

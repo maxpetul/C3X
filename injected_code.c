@@ -9559,13 +9559,18 @@ patch_City_confirm_production_switch (City * this, int edx, int order_type, int 
 
 byte const c3x_save_segment_bookend[4] = {0x22, 'C', '3', 'X'};
 
+// Writes a string to the buffer and pads the end so it's four-byte aligned (assuming the existing contents is already so aligned).
 void
-assemble_mod_save_data (struct buffer * b)
+serialize_aligned_text (char const * text, struct buffer * b)
 {
-	byte * p = buffer_allocate (b, 4);
-	byte text[4] = {'T', 'E', 'S', 'T'};
-	for (int n = 0; n < ARRAY_LEN (text); n++)
-		p[n] = text[n];
+	int len = strlen (text);
+	if (len > 0) {
+		int padded_len = (len + 4) & ~3; // +1 for null terminator then +3 & ~3 for alignment
+		byte * p = buffer_allocate (b, padded_len);
+		strcpy (p, text);
+		for (int n = 0; n < padded_len - len; n++)
+			p[len + n] = (byte)0;
+	}
 }
 
 void * __fastcall
@@ -9580,8 +9585,11 @@ patch_MappedFile_open_to_load_game (MappedFile * this, int edx, char * file_name
 void * __fastcall
 patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR file_path, unsigned file_size, int is_shared)
 {
-	struct buffer mod_data = {0};
-	assemble_mod_save_data (&mod_data);
+	// Assemble mod save data
+	struct buffer mod_data = {0}; {
+		serialize_aligned_text ("special save message", &mod_data);
+		serialize_aligned_text ("testing 1 2 3...", &mod_data);
+	}
 
 	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
 
@@ -9607,6 +9615,66 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		}
 	}
 	buffer_deinit (&mod_data);
+	return tr;
+}
+
+bool
+match_save_chunk_name (byte ** cursor, char const * name)
+{
+	if (strcmp (name, *cursor) == 0) {
+		// Move cursor past the string if it matched. Also move past any padding that was added to ensure alignment (see serialize_aligned_text).
+		*cursor = (byte *)((int)*cursor + strlen (name) + 4 & ~3);
+		return true;
+	} else
+		return false;
+}
+
+bool
+match_save_segment_bookend (byte * b)
+{
+	return memcmp (c3x_save_segment_bookend, b, ARRAY_LEN (c3x_save_segment_bookend)) == 0;
+}
+
+int __cdecl
+patch_move_game_data (byte * buffer, bool save_else_load)
+{
+	int tr = move_game_data (buffer, save_else_load);
+
+	// Check for a mod save data section and load it if present
+	MappedFile * save;
+	int seg_size;
+	byte * seg;
+	if ((! save_else_load) &&
+	    ((save = is->accessing_save_file) != NULL) &&
+	    (save->size >= 8) &&
+	    match_save_segment_bookend ((byte *)((int)save->base_addr + save->size - 4)) &&
+	    ((seg_size = int_from_bytes ((byte *)((int)save->base_addr + save->size - 8))) > 0) &&
+	    (save->size >= seg_size + 12) &&
+	    match_save_segment_bookend ((byte *)((int)save->base_addr + save->size - seg_size - 12)) &&
+	    ((seg = malloc (seg_size)) != NULL)) {
+		memcpy (seg, (void *)((int)save->base_addr + save->size - seg_size - 8), seg_size);
+
+		byte * cursor = seg;
+		while (cursor < seg + seg_size) {
+			if (match_save_chunk_name (&cursor, "special save message")) {
+				char * msg = (char *)cursor;
+				cursor = (byte *)((int)cursor + strlen (msg) + 4 & ~3);
+
+				PopupForm * popup = get_popup_form ();
+				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
+				PopupForm_add_text (popup, __, "This save contains a special message:", 0);
+				PopupForm_add_text (popup, __, msg, 0);
+				patch_show_popup (popup, __, 0, 0);
+
+			} else {
+				pop_up_in_game_error ("This save contains a mod data section which appears to be corrupted.");
+				break;
+			}
+		}
+
+		free (seg);
+	}
+
 	return tr;
 }
 
