@@ -352,6 +352,43 @@ stable_look_up_slice (struct table const * t, struct string_slice const * key, i
 	return table_get_by_index (t, index, out_value);
 }
 
+struct table_entry_iter {
+	struct table const * t;
+	size_t index;
+	size_t capacity;
+	int key;
+	int value;
+};
+
+void
+tei_next (struct table_entry_iter * tei)
+{
+	size_t new_index = tei->index + 1;
+	while ((new_index < tei->capacity) && (! table__is_occupied (tei->t, new_index)))
+		new_index++;
+	if (new_index < tei->capacity) {
+		int * entry = &((int *)TABLE__BASE (tei->t))[2*new_index];
+		tei->key = entry[0];
+		tei->value = entry[1];
+	}
+	tei->index = new_index;
+}
+
+struct table_entry_iter
+tei_init (struct table const * t)
+{
+	struct table_entry_iter tr = {0};
+	tr.t = t;
+	tr.capacity = table_capacity (t);
+	if (t->len > 0) {
+		tr.index = -1;
+		tei_next (&tr);
+	}
+	return tr;
+}
+
+#define FOR_TABLE_ENTRIES(tei_name, p_table) for (struct table_entry_iter tei_name = tei_init (p_table); tei_name.index < tei_name.capacity; tei_next (&tei_name))
+
 // Writes the contents of the table to the buffer as an array of key-value pairs. Returns the number of bytes written. Assumes the buffer contents is
 // four-byte aligned.
 int

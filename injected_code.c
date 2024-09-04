@@ -180,11 +180,9 @@ reset_to_base_config ()
 	stable_deinit (&cc->perfume_specs);
 
 	// Free building-unit prereqs table
-	size_t building_unit_prereqs_capacity = table_capacity (&cc->building_unit_prereqs);
-	for (size_t n = 0; n < building_unit_prereqs_capacity; n++) {
-		int ptr;
-		if (table_get_by_index (&cc->building_unit_prereqs, n, &ptr) && ((ptr & 1) == 0))
-			free ((void *)ptr);
+	FOR_TABLE_ENTRIES (tei, &cc->building_unit_prereqs) {
+		if ((tei.value & 1) == 0)
+			free ((void *)tei.value);
 	}
 	table_deinit (&cc->building_unit_prereqs);
 
@@ -238,12 +236,8 @@ reset_to_base_config ()
 	}
 
 	// Free unit limits table
-	size_t unit_limits_capacity = table_capacity (&cc->unit_limits);
-	for (size_t n = 0; n < unit_limits_capacity; n++) {
-		int ptr;
-		if (table_get_by_index (&cc->unit_limits, n, &ptr))
-			free ((void *)ptr);
-	}
+	FOR_TABLE_ENTRIES (tei, &cc->unit_limits)
+		free ((void *)tei.value);
 	stable_deinit (&cc->unit_limits);
 
 	// Free the linked list of loaded config names and the string name contained in each one
@@ -294,16 +288,10 @@ alloc_id_list (int capacity, struct id_list const * copy)
 void
 sidtable_deinit (struct table * t)
 {
-	if (t->len > 0) {
-		size_t capacity = table_capacity (t);
-		for (size_t n = 0; n < capacity; n++)
-			if (table__is_occupied (t, n)) {
-				int * entry = &((int *)TABLE__BASE (t))[2*n];
-				free ((void *)entry[0]);
-				int val = entry[1];
-				if (val > SID_TABLE_MAX_INLINE_ID)
-					free ((void *)val);
-			}
+	FOR_TABLE_ENTRIES (tei, t) {
+		free ((void *)tei.key);
+		if (tei.value > SID_TABLE_MAX_INLINE_ID)
+			free ((void *)tei.value);
 	}
 	table_deinit (t);
 }
@@ -7363,14 +7351,11 @@ patch_Leader_begin_unit_turns (Leader * this)
 	// Reset all extra defensive bombard uses, if necessary
 	if (is->extra_defensive_bombards.len > 0) {
 		clear_memo ();
-		size_t capacity = table_capacity (&is->extra_defensive_bombards);
-		for (size_t index = 0; index < capacity; index++)
-			if (table__is_occupied (&is->extra_defensive_bombards, index)) {
-				int * entry = &((int *)TABLE__BASE (&is->extra_defensive_bombards))[2*index];
-				Unit * unit = get_unit_ptr (entry[0]);
-				if ((unit == NULL) || (unit->Body.CivID == this->ID))
-					memoize (entry[0]);
-			}
+		FOR_TABLE_ENTRIES (tei, &is->extra_defensive_bombards) {
+			Unit * unit = get_unit_ptr (tei.key);
+			if ((unit == NULL) || (unit->Body.CivID == this->ID))
+				memoize (tei.key);
+		}
 		for (int n = 0; n < is->memo_len; n++)
 			itable_remove (&is->extra_defensive_bombards, is->memo[n]);
 	}
