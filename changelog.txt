@@ -7,6 +7,7 @@
 - Make barbarians defend cities they've captured as if they were camps
 - Fix describe_states_of_units_on_menu setting being ignored
 - Touch up action descriptions for auto precision striking and fortified exhausted units
+- Correct description of lethal zone of control setting in default config
 
 * RELEASE 19
 - Option to stop pollution from appearing on impassable tiles
