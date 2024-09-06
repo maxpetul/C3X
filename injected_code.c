@@ -2636,6 +2636,7 @@ patch_init_floating_point ()
 		{"allow_upgrades_in_any_city"                          , false, offsetof (struct c3x_config, allow_upgrades_in_any_city)},
 		{"do_not_generate_volcanos"                            , false, offsetof (struct c3x_config, do_not_generate_volcanos)},
 		{"do_not_pollute_impassable_tiles"                     , false, offsetof (struct c3x_config, do_not_pollute_impassable_tiles)},
+		{"show_hp_of_stealth_attack_options"                   , false, offsetof (struct c3x_config, show_hp_of_stealth_attack_options)},
 	};
 
 	struct integer_config_option {
@@ -7264,7 +7265,17 @@ patch_PopupSelection_add_stealth_attack_target (PopupSelection * this, int edx, 
 		PopupSelection_add_item (this, __, is->c3x_labels[CL_NO_STEALTH_ATTACK], -1);
 		is->added_any_stealth_target = 1;
 	}
-	return PopupSelection_add_item (this, __, text, value);
+
+	Unit * unit;
+	if (is->current_config.show_hp_of_stealth_attack_options &&
+	    ((unit = get_unit_ptr (value)) != NULL)) {
+		char s[500];
+		int max_hp = Unit_get_max_hp (unit);
+		snprintf (s, sizeof s, "(%d/%d) %s", max_hp - unit->Body.Damage, max_hp, text);
+		s[(sizeof s) - 1] = '\0';
+		return PopupSelection_add_item (this, __, s, value);
+	} else
+		return PopupSelection_add_item (this, __, text, value);
 }
 
 void __fastcall

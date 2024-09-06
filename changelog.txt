@@ -1,3 +1,5 @@
+- Option to show unit hitpoints on the stealth attack target selection popup
+  - Config option show_hp_of_stealth_attack_options
 - Option to have a warning when the building you've selected to build would replace another already built in the city
   - Off by default, controlled by config option warn_when_chosen_building_would_replace_another
 - Stop barbarian spawns from bankrupting the barbarian player (matters only if barbs are allowed to capture cities)

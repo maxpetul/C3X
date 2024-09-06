@@ -195,6 +195,7 @@ struct c3x_config {
 	bool allow_upgrades_in_any_city;
 	bool do_not_generate_volcanos;
 	bool do_not_pollute_impassable_tiles;
+	bool show_hp_of_stealth_attack_options;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
