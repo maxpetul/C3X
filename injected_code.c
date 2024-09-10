@@ -9583,8 +9583,10 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 {
 	// Assemble mod save data
 	struct buffer mod_data = {0}; {
-		serialize_aligned_text ("special save message", &mod_data);
-		serialize_aligned_text ("testing 1 2 3...", &mod_data);
+		if (is->extra_defensive_bombards.len > 0) {
+			serialize_aligned_text ("extra_defensive_bombards", &mod_data);
+			itable_serialize (&is->extra_defensive_bombards, &mod_data);
+		}
 	}
 
 	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
@@ -9661,6 +9663,15 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				PopupForm_add_text (popup, __, "This save contains a special message:", 0);
 				PopupForm_add_text (popup, __, msg, 0);
 				patch_show_popup (popup, __, 0, 0);
+
+			} else if (match_save_chunk_name (&cursor, "extra_defensive_bombards")) {
+				int bytes_read = itable_deserialize (cursor, seg + seg_size, &is->extra_defensive_bombards);
+				if (bytes_read > 0)
+					cursor += bytes_read;
+				else {
+					pop_up_in_game_error ("Error reading extra_defensive_bombards mod section from save game.");
+					break;
+				}
 
 			} else {
 				pop_up_in_game_error ("This save contains a mod data section which appears to be corrupted.");

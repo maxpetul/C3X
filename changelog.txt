@@ -6,6 +6,7 @@
 - Option stopping pollution of impassable tiles also covers volcanic eruptions
 - Make barbarians defend cities they've captured as if they were camps
 - Fix describe_states_of_units_on_menu setting being ignored
+- Record which units have used extra defensive bombards in save files
 - Touch up action descriptions for auto precision striking and fortified exhausted units
 - Correct description of lethal zone of control setting in default config
 
