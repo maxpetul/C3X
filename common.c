@@ -392,21 +392,35 @@ tei_init (struct table const * t)
 // Writes the contents of the table to the buffer as an array of key-value pairs. Returns the number of bytes written. Assumes the buffer contents is
 // four-byte aligned.
 int
-table_serialize (struct table const * t, struct buffer * b)
+itable_serialize (struct table const * t, struct buffer * b)
 {
-	if (t->len > 0) {
-		int tr = t->len * 2 * sizeof(int);
-		int * out = (int *)buffer_allocate (b, tr);
-		size_t capacity = table_capacity (t);
-		for (size_t index = 0; index < capacity; index++)
-			if (table__is_occupied (t, index)) {
-				int * entry = &((int *)TABLE__BASE (t))[2*index];
-				*out++ = entry[0];
-				*out++ = entry[1];
-			}
-		return tr;
-	} else
+	int tr = sizeof(int) + t->len * 2 * sizeof(int);
+	int * out = (int *)buffer_allocate (b, tr);
+	*out++ = t->len;
+	FOR_TABLE_ENTRIES (tei, t) {
+		*out++ = tei.key;
+		*out++ = tei.value;
+	}
+	return tr;
+}
+
+// Reads table entries from a buffer, inserting them into the given table. Will not read beyond buf_end. Returns the number of bytes read if
+// successful or 0 if there was an error.
+int
+itable_deserialize (byte const * buf, byte const * buf_end, struct table * t)
+{
+	int const * ints = (int const *)buf;
+
+	if (((int)buf & 3) || (buf_end - buf < 4))
 		return 0;
+	int count = *ints++;
+	if (buf + (count * 2 * sizeof(int)) > buf_end)
+		return 0;
+
+	for (int n = 0; n < count; n++)
+		itable_insert (t, ints[2*n], ints[2*n + 1]);
+
+	return (2*count + 1) * sizeof(int);
 }
 
 
