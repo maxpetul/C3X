@@ -7342,6 +7342,22 @@ patch_Unit_set_state_after_interception (Unit * this, int edx, int new_state)
 	}
 }
 
+// Goes through every entry in a table with unit IDs as keys and filters out any that belong to the given owner (or are invalid).
+void
+remove_unit_id_entries_owned_by (struct table * t, int owner_id)
+{
+	if (t->len > 0) {
+		clear_memo ();
+		FOR_TABLE_ENTRIES (tei, t) {
+			Unit * unit = get_unit_ptr (tei.key);
+			if ((unit == NULL) || (unit->Body.CivID == owner_id))
+				memoize (tei.key);
+		}
+		for (int n = 0; n < is->memo_len; n++)
+			itable_remove (t, is->memo[n]);
+	}
+}
+
 void __fastcall
 patch_Leader_begin_unit_turns (Leader * this)
 {
@@ -7359,17 +7375,8 @@ patch_Leader_begin_unit_turns (Leader * this)
 	}
 	irl->count = 0;
 
-	// Reset all extra defensive bombard uses, if necessary
-	if (is->extra_defensive_bombards.len > 0) {
-		clear_memo ();
-		FOR_TABLE_ENTRIES (tei, &is->extra_defensive_bombards) {
-			Unit * unit = get_unit_ptr (tei.key);
-			if ((unit == NULL) || (unit->Body.CivID == this->ID))
-				memoize (tei.key);
-		}
-		for (int n = 0; n < is->memo_len; n++)
-			itable_remove (&is->extra_defensive_bombards, is->memo[n]);
-	}
+	// Reset extra defensive bombard counters
+	remove_unit_id_entries_owned_by (&is->extra_defensive_bombards, this->ID);
 
 	Leader_begin_unit_turns (this);
 }
