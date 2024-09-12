@@ -5698,8 +5698,11 @@ are_units_duplicate (Unit_Body * a, Unit_Body * b)
 		// ... neither one is carrying a princess AND ...
 		((a->carrying_princess_of_race < 0) && (b->carrying_princess_of_race < 0)) &&
 
-		// ... [they are both captured units OR are both native units].
-		(! (is_captured (a) ^ is_captured (b)));
+		// ... [they are both captured units OR are both native units] AND ...
+		(! (is_captured (a) ^ is_captured (b))) &&
+
+		// ... they have both done the same number of airdrops this turn.
+		(itable_look_up_or (&is->airdrops_this_turn, a->ID, 0) == itable_look_up_or (&is->airdrops_this_turn, b->ID, 0));
 }
 
 bool
@@ -9602,6 +9605,10 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			serialize_aligned_text ("extra_defensive_bombards", &mod_data);
 			itable_serialize (&is->extra_defensive_bombards, &mod_data);
 		}
+		if (is->airdrops_this_turn.len > 0) {
+			serialize_aligned_text ("airdrops_this_turn", &mod_data);
+			itable_serialize (&is->airdrops_this_turn, &mod_data);
+		}
 	}
 
 	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
@@ -9668,6 +9675,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 		memcpy (seg, (void *)((int)save->base_addr + save->size - seg_size - 8), seg_size);
 
 		byte * cursor = seg;
+		char * error_chunk_name = NULL;
 		while (cursor < seg + seg_size) {
 			if (match_save_chunk_name (&cursor, "special save message")) {
 				char * msg = (char *)cursor;
@@ -9684,14 +9692,30 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				if (bytes_read > 0)
 					cursor += bytes_read;
 				else {
-					pop_up_in_game_error ("Error reading extra_defensive_bombards mod section from save game.");
+					error_chunk_name = "extra_defensive_bombards";
+					break;
+				}
+
+			} else if (match_save_chunk_name (&cursor, "airdrops_this_turn")) {
+				int bytes_read = itable_deserialize (cursor, seg + seg_size, &is->airdrops_this_turn);
+				if (bytes_read > 0)
+					cursor += bytes_read;
+				else {
+					error_chunk_name = "airdrops_this_turn";
 					break;
 				}
 
 			} else {
-				pop_up_in_game_error ("This save contains a mod data section which appears to be corrupted.");
+				error_chunk_name = "N/A";
 				break;
 			}
+		}
+
+		if (error_chunk_name != NULL) {
+			char s[200];
+			snprintf (s, sizeof s, "Failed to read mod save data. Error occured in chunk: %s", error_chunk_name);
+			s[(sizeof s) - 1] = '\0';
+			pop_up_in_game_error (s);
 		}
 
 		free (seg);

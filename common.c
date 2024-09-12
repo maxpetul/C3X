@@ -277,6 +277,15 @@ itable_look_up (struct table const * t, int key, int * out_value)
 	return table_get_by_index (t, index, out_value);
 }
 
+// Returns the associated value if the key is present in the table, otherwise returns default_value
+int
+itable_look_up_or (struct table const * t, int key, int default_value)
+{
+	int value;
+	int got_value = itable_look_up (t, key, &value);
+	return got_value ? value : default_value;
+}
+
 int compare_str_keys (int str_ptr_a, int str_ptr_b) { return strcmp ((char const *)str_ptr_a, (char const *)str_ptr_b) == 0; }
 
 int
