@@ -1805,9 +1805,7 @@ init_unit_type_count (Leader * leader)
 		for (int n = 0; n <= p_units->LastIndex; n++) {
 			Unit_Body * body = p_units->Units[n].Unit;
 			if ((body != NULL) && ((int)body != offsetof (Unit, Body)) && (body->CivID == id)) {
-				int prev_count;
-				if (! itable_look_up (counts, body->UnitTypeID, &prev_count))
-					prev_count = 0;
+				int prev_count = itable_look_up_or (counts, body->UnitTypeID, 0);
 				itable_insert (counts, body->UnitTypeID, prev_count + 1);
 			}
 		}
@@ -1824,11 +1822,7 @@ get_unit_type_count (Leader * leader, int unit_type_id)
 	if ((is->unit_type_count_init_bits & 1<<id) == 0)
 		init_unit_type_count (leader);
 
-	int count;
-	if (itable_look_up (counts, unit_type_id, &count))
-		return count;
-	else
-		return 0;
+	return itable_look_up_or (counts, unit_type_id, 0);
 }
 
 void
@@ -1839,9 +1833,7 @@ change_unit_type_count (Leader * leader, int unit_type_id, int amount)
 	if ((is->unit_type_count_init_bits & (1 << id)) == 0)
 		init_unit_type_count (leader);
 
-	int prev_amount;
-	if (! itable_look_up (counts, unit_type_id, &prev_amount))
-		prev_amount = 0;
+	int prev_amount = itable_look_up_or (counts, unit_type_id, 0);
 	itable_insert (counts, unit_type_id, prev_amount + amount);
 }
 
@@ -6235,9 +6227,8 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 int __fastcall
 patch_Unit_get_move_points_after_airdrop (Unit * this)
 {
-	int prev_airdrop_count;
-	int got_value = itable_look_up (&is->airdrops_this_turn, this->Body.ID, &prev_airdrop_count);
-	itable_insert (&is->airdrops_this_turn, this->Body.ID, got_value ? (prev_airdrop_count + 1) : 1);
+	int prev_airdrop_count = itable_look_up_or (&is->airdrops_this_turn, this->Body.ID, 0);
+	itable_insert (&is->airdrops_this_turn, this->Body.ID, prev_airdrop_count + 1);
 
 	return is->current_config.dont_end_units_turn_after_airdrop ? this->Body.Moves : Unit_get_max_move_points (this);
 }
@@ -8295,10 +8286,7 @@ can_do_defensive_bombard (Unit * unit, UnitType * type)
 
 		// If the "blitz" special DB rule is activated and this unit has blitz, check if it still has an extra DB to use
 		else if ((is->current_config.special_defensive_bombard_rules & SDBR_BLITZ) && UnitType_has_ability (type, __, UTA_Blitz)) {
-			int extra_dbs;
-			int got_value = itable_look_up (&is->extra_defensive_bombards, unit->Body.ID, &extra_dbs);
-			if (! got_value)
-				extra_dbs = 0;
+			int extra_dbs = itable_look_up_or (&is->extra_defensive_bombards, unit->Body.ID, 0);
 			return type->Movement > extra_dbs + 1;
 
 		} else
@@ -8362,9 +8350,8 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 
 	// If the unit has already performed DB this turn, then record that it's consumed one of its extra DBs
 	if (bombarder->Body.Status & USF_USED_DEFENSIVE_BOMBARD) {
-		int extra_dbs;
-		int got_value = itable_look_up (&is->extra_defensive_bombards, bombarder->Body.ID, &extra_dbs);
-		itable_insert (&is->extra_defensive_bombards, bombarder->Body.ID, got_value ? (extra_dbs + 1) : 1);
+		int extra_dbs = itable_look_up_or (&is->extra_defensive_bombards, bombarder->Body.ID, 0);
+		itable_insert (&is->extra_defensive_bombards, bombarder->Body.ID, extra_dbs + 1);
 	}
 
 	int damage_before = defender->Body.Damage;
@@ -9750,10 +9737,7 @@ patch_Tile_m7_Check_Barbarian_Camp (Tile * this, int edx, int visible_to_civ)
 bool __fastcall
 patch_Unit_can_airdrop (Unit * this)
 {
-	int airdrop_count;
-	return Unit_can_airdrop (this) &&
-		((! itable_look_up (&is->airdrops_this_turn, this->Body.ID, &airdrop_count)) ||
-		 (airdrop_count == 0));
+	return Unit_can_airdrop (this) && (itable_look_up_or (&is->airdrops_this_turn, this->Body.ID, 0) == 0);
 }
 
 // TCC requires a main function be defined even though it's never used.
