@@ -2858,6 +2858,7 @@ patch_init_floating_point ()
 	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
 	memset (&is->unit_type_duplicates    , 0, sizeof is->unit_type_duplicates);
 	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
+	memset (&is->airdrops_this_turn      , 0, sizeof is->airdrops_this_turn);
 
 	is->unit_type_count_init_bits = 0;
 	for (int n = 0; n < 32; n++)
@@ -4650,6 +4651,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		is->interceptor_reset_lists[n].count = 0;
 	is->replay_for_players = 0;
 	table_deinit (&is->extra_defensive_bombards);
+	table_deinit (&is->airdrops_this_turn);
 
 	// Clear unit type counts
 	for (int n = 0; n < 32; n++)
@@ -6230,6 +6232,10 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 int __fastcall
 patch_Unit_get_move_points_after_airdrop (Unit * this)
 {
+	int prev_airdrop_count;
+	int got_value = itable_look_up (&is->airdrops_this_turn, this->Body.ID, &prev_airdrop_count);
+	itable_insert (&is->airdrops_this_turn, this->Body.ID, got_value ? (prev_airdrop_count + 1) : 1);
+
 	return is->current_config.dont_end_units_turn_after_airdrop ? this->Body.Moves : Unit_get_max_move_points (this);
 }
 
@@ -6478,8 +6484,9 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	int owner_id = this->Body.CivID;
 	int type_id = this->Body.UnitTypeID;
 
-	// Clear extra DBs used by this unit
+	// Clear extra DBs and airdrops used by this unit
 	itable_remove (&is->extra_defensive_bombards, this->Body.ID);
+	itable_remove (&is->airdrops_this_turn, this->Body.ID);
 
 	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 
@@ -7375,8 +7382,9 @@ patch_Leader_begin_unit_turns (Leader * this)
 	}
 	irl->count = 0;
 
-	// Reset extra defensive bombard counters
+	// Reset extra defensive bombard and airdrop counters
 	remove_unit_id_entries_owned_by (&is->extra_defensive_bombards, this->ID);
+	remove_unit_id_entries_owned_by (&is->airdrops_this_turn      , this->ID);
 
 	Leader_begin_unit_turns (this);
 }
@@ -9713,6 +9721,15 @@ patch_Tile_m7_Check_Barbarian_Camp (Tile * this, int edx, int visible_to_civ)
 		return true;
 	else
 		return Tile_m7_Check_Barbarian_Camp (this, __, visible_to_civ);
+}
+
+bool __fastcall
+patch_Unit_can_airdrop (Unit * this)
+{
+	int airdrop_count;
+	return Unit_can_airdrop (this) &&
+		((! itable_look_up (&is->airdrops_this_turn, this->Body.ID, &airdrop_count)) ||
+		 (airdrop_count == 0));
 }
 
 // TCC requires a main function be defined even though it's never used.

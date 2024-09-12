@@ -570,6 +570,11 @@ struct injected_state {
 	// activated, units with blitz get an extra chance to perform DB for each movement point they have beyond the first.
 	struct table extra_defensive_bombards;
 
+	// Table mapping unit IDs to how many times that unit has airdropped on the current turn. This is used to prevent units from airdropping
+	// multiple times. That doesn't matter for the base game but stops the dont-end-turn-after-airdrop setting from letting units airdrop an
+	// unlimited number of times.
+	struct table airdrops_this_turn;
+
 	// These variables store the number of units of each type that each player has
 	int unit_type_count_init_bits; // Player bits tracking which unit type count tables have been initialized.
 	struct table unit_type_counts[32]; // One table per player. Each one maps unit type ids (ints) to counts (ints)
