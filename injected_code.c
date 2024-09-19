@@ -4583,6 +4583,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	// BIC_get_asset_path returns the file name when it can't find the file
 	if (0 != strcmp (scenario_config_file_name, scenario_config_path))
 		load_config (scenario_config_path, 0);
+	load_config ("custom.c3x_config.ini", 1);
 	apply_machine_code_edits (&is->current_config);
 
 	// Initialize Trade Net X

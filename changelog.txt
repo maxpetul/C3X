@@ -5,6 +5,7 @@
 - Stop barbarian spawns from bankrupting the barbarian player (matters only if barbs are allowed to capture cities)
 - Option stopping pollution of impassable tiles also covers volcanic eruptions
 - Make barbarians defend cities they've captured as if they were camps
+- Load a third config file, custom.c3x_config.ini, if present
 - Fix describe_states_of_units_on_menu setting being ignored
 - Stop units from airdropping multiple times in one turn
   - This only matters when dont_end_units_turn_after_airdrop has been activated
