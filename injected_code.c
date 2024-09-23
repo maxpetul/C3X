@@ -2582,6 +2582,7 @@ patch_init_floating_point ()
 		{"fix_ai_army_composition"                             , true , offsetof (struct c3x_config, fix_ai_army_composition)},
 		{"enable_pop_unit_ai"                                  , true , offsetof (struct c3x_config, enable_pop_unit_ai)},
 		{"remove_unit_limit"                                   , true , offsetof (struct c3x_config, remove_unit_limit)},
+		{"remove_city_improvement_limit"                       , true , offsetof (struct c3x_config, remove_city_improvement_limit)},
 		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
 		{"remove_cap_on_turn_limit"                            , true , offsetof (struct c3x_config, remove_cap_on_turn_limit)},
 		{"patch_submarine_bug"                                 , true , offsetof (struct c3x_config, patch_submarine_bug)},
@@ -9739,6 +9740,22 @@ bool __fastcall
 patch_Unit_can_airdrop (Unit * this)
 {
 	return Unit_can_airdrop (this) && (itable_look_up_or (&is->airdrops_this_turn, this->Body.ID, 0) == 0);
+}
+
+bool __fastcall
+patch_City_Improvements_contains (City_Improvements * this, int edx, int id)
+{
+	if ((id < 256) || ! is->current_config.remove_city_improvement_limit)
+		return City_Improvements_contains (this, __, id);
+	else
+		return false;
+}
+
+void __fastcall
+patch_City_Improvements_set (City_Improvements * this, int edx, int id, bool add_else_remove)
+{
+	if ((id < 256) || ! is->current_config.remove_city_improvement_limit)
+		return City_Improvements_set (this, __, id, add_else_remove);
 }
 
 // TCC requires a main function be defined even though it's never used.

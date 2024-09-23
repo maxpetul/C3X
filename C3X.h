@@ -213,6 +213,7 @@ struct c3x_config {
 	int ai_worker_requirement_percent;
 
 	bool remove_unit_limit;
+	bool remove_city_improvement_limit;
 	bool remove_era_limit;
 	bool remove_cap_on_turn_limit;
 
