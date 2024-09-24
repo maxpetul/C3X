@@ -576,6 +576,9 @@ struct injected_state {
 	// unlimited number of times.
 	struct table airdrops_this_turn;
 
+	// Stores city improvement bits for improvs beyond the first 256
+	struct table extra_city_improvs;
+
 	// These variables store the number of units of each type that each player has
 	int unit_type_count_init_bits; // Player bits tracking which unit type count tables have been initialized.
 	struct table unit_type_counts[32]; // One table per player. Each one maps unit type ids (ints) to counts (ints)

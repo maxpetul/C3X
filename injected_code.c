@@ -2852,6 +2852,7 @@ patch_init_floating_point ()
 	memset (&is->unit_type_duplicates    , 0, sizeof is->unit_type_duplicates);
 	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
 	memset (&is->airdrops_this_turn      , 0, sizeof is->airdrops_this_turn);
+	memset (&is->extra_city_improvs      , 0, sizeof is->extra_city_improvs);
 
 	is->unit_type_count_init_bits = 0;
 	for (int n = 0; n < 32; n++)
@@ -4646,6 +4647,11 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	is->replay_for_players = 0;
 	table_deinit (&is->extra_defensive_bombards);
 	table_deinit (&is->airdrops_this_turn);
+
+	// Clear extra city improvement bits
+	FOR_TABLE_ENTRIES (tei, &is->extra_city_improvs)
+		free ((void *)tei.value);
+	table_deinit (&is->extra_city_improvs);
 
 	// Clear unit type counts
 	for (int n = 0; n < 32; n++)
@@ -9328,6 +9334,17 @@ patch_City_raze (City * this, int edx, int civ_id_responsible, bool checking_eli
 {
 	on_lose_city (&leaders[this->Body.CivID], this, CLR_DESTROYED);
 	City_raze (this, __, civ_id_responsible, checking_elimination);
+
+	// Delete the extra improvement bits records for this city
+	City_Improvements * improv_lists[2] = {&this->Body.Improvements_1, &this->Body.Improvements_2};
+	for (int n = 0; n < ARRAY_LEN (improv_lists); n++) {
+		City_Improvements * improv_list = improv_lists[n];
+		byte * extra_bits;
+		if (itable_look_up (&is->extra_city_improvs, (int)improv_list, (int *)&extra_bits)) {
+			free (extra_bits);
+			itable_remove (&is->extra_city_improvs, (int)improv_list);
+		}
+	}
 }
 
 void __fastcall
@@ -9745,9 +9762,13 @@ patch_Unit_can_airdrop (Unit * this)
 bool __fastcall
 patch_City_Improvements_contains (City_Improvements * this, int edx, int id)
 {
+	byte * extra_bits;
 	if ((id < 256) || ! is->current_config.remove_city_improvement_limit)
 		return City_Improvements_contains (this, __, id);
-	else
+	else if (itable_look_up (&is->extra_city_improvs, (int)this, (int *)&extra_bits)) {
+		int extra_id = id - 256;
+		return (extra_bits[extra_id>>3] >> (extra_id & 7)) & 1;
+	} else
 		return false;
 }
 
@@ -9756,6 +9777,20 @@ patch_City_Improvements_set (City_Improvements * this, int edx, int id, bool add
 {
 	if ((id < 256) || ! is->current_config.remove_city_improvement_limit)
 		return City_Improvements_set (this, __, id, add_else_remove);
+	else {
+		byte * extra_bits = (byte *)itable_look_up_or (&is->extra_city_improvs, (int)this, 0);
+		int extra_id = id - 256;
+		byte mask = 1 << (extra_id & 7);
+		if (add_else_remove) {
+			if (! extra_bits) {
+				int extra_bits_size = (not_below (0, p_bic_data->ImprovementsCount - 256) >> 3) + 1;
+				extra_bits = calloc (1, extra_bits_size);
+				itable_insert (&is->extra_city_improvs, (int)this, (int)extra_bits);
+			}
+			extra_bits[extra_id>>3] |= mask;
+		} else if ((! add_else_remove) && (extra_bits != NULL))
+			extra_bits[extra_id>>3] &= ~mask;
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.
