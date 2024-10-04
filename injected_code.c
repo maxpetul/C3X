@@ -9711,6 +9711,57 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					break;
 				}
 
+			} else if (match_save_chunk_name (&cursor, "extra_city_improvs")) {
+				bool success = false;
+				int remaining_bytes = (seg + seg_size) - cursor;
+
+				// Read two int vars from this save chunk
+				int file_extra_improv_count, count_entries;
+				if (remaining_bytes >= 8) {
+					file_extra_improv_count = *((int *)cursor)++;
+					count_entries = *((int *)cursor)++;
+					remaining_bytes -= 8;
+				} else
+					goto done_with_extra_city_improvs;
+
+				// Check that the extra improv counts are valid. They must be greater than zero and what was stored in the save must
+				// match what we got from the current scenario data.
+				int extra_improv_count = not_below (0, p_bic_data->ImprovementsCount - 256);
+				if ((file_extra_improv_count <= 0) || (extra_improv_count != file_extra_improv_count))
+					goto done_with_extra_city_improvs;
+
+				// The extra bits data in the save is stored in 32-bit chunks, "ints", to maintain alignment. Compute how many ints we
+				// need for each list of bits and check that reading all entries won't overrun the buffer.
+				int ints_per_list = (extra_improv_count + 31) / 32,
+				    ints_per_entry = 1 + 2 * ints_per_list;
+				if (count_entries * ints_per_entry * sizeof(int) > remaining_bytes)
+					goto done_with_extra_city_improvs;
+
+				// Main loop reading the extra bits data
+				for (int n = 0; n < count_entries; n++) {
+					City * city = get_city_ptr (*((int *)cursor)++);
+					if (city == NULL)
+						goto done_with_extra_city_improvs;
+
+					byte * extra_bits_1 = calloc (sizeof (int), ints_per_list);
+					for (int k = 0; k < ints_per_list; k++)
+						((int *)extra_bits_1)[k] = *((int *)cursor)++;
+					itable_insert (&is->extra_city_improvs, (int)&city->Body.Improvements_1, (int)extra_bits_1);
+
+					byte * extra_bits_2 = calloc (sizeof (int), ints_per_list);
+					for (int k = 0; k < ints_per_list; k++)
+						((int *)extra_bits_2)[k] = *((int *)cursor)++;
+					itable_insert (&is->extra_city_improvs, (int)&city->Body.Improvements_2, (int)extra_bits_2);
+				}
+
+				success = true;
+
+			done_with_extra_city_improvs:
+				if (! success) {
+					error_chunk_name = "extra_city_improvs";;
+					break;
+				}
+
 			} else {
 				error_chunk_name = "N/A";
 				break;
