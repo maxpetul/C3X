@@ -9615,6 +9615,45 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			serialize_aligned_text ("airdrops_this_turn", &mod_data);
 			itable_serialize (&is->airdrops_this_turn, &mod_data);
 		}
+		if ((p_bic_data->ImprovementsCount > 256) && (p_cities->Cities != NULL) && (is->extra_city_improvs.len > 0)) {
+			serialize_aligned_text ("extra_city_improvs", &mod_data);
+			int extra_improv_count = p_bic_data->ImprovementsCount - 256;
+			*(int *)buffer_allocate (&mod_data, sizeof(int)) = extra_improv_count;
+
+			int count_entries = 0; {
+				for (int n = 0; n <= p_cities->LastIndex; n++) {
+					City_Body * body = p_cities->Cities[n].City;
+					if ((body != NULL) && ((int)body != offsetof (City, Body))) {
+						int unused;
+						if (itable_look_up (&is->extra_city_improvs, (int)&body->Improvements_1, &unused) ||
+						    itable_look_up (&is->extra_city_improvs, (int)&body->Improvements_2, &unused))
+							count_entries++;
+					}
+				}
+			}
+			*(int *)buffer_allocate (&mod_data, sizeof(int)) = count_entries;
+
+			int ints_per_list = (extra_improv_count + 31) / 32;
+			int bytes_per_list = (extra_improv_count + 7) / 8;
+			for (int n = 0; n <= p_cities->LastIndex; n++) {
+				City_Body * body = p_cities->Cities[n].City;
+				if ((body != NULL) && ((int)body != offsetof (City, Body))) {
+					byte * extra_bit_lists[2];
+					extra_bit_lists[0] = (byte *)itable_look_up_or (&is->extra_city_improvs, (int)&body->Improvements_1, 0);
+					extra_bit_lists[1] = (byte *)itable_look_up_or (&is->extra_city_improvs, (int)&body->Improvements_2, 0);
+					if ((extra_bit_lists[0] != NULL) || (extra_bit_lists[1] != NULL)) {
+						*(int *)buffer_allocate (&mod_data, sizeof(int)) = body->ID;
+						for (int k = 0; k < 2; k++) {
+							int list_size = sizeof(int) * ints_per_list;
+							int * list = (int *)buffer_allocate (&mod_data, list_size);
+							memset (list, 0, list_size);
+							if (extra_bit_lists[k] != NULL)
+								memcpy (list, extra_bit_lists[k], bytes_per_list);
+						}
+					}
+				}
+			}
+		}
 	}
 
 	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
