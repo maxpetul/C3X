@@ -5701,6 +5701,9 @@ are_units_duplicate (Unit_Body * a, Unit_Body * b)
 		// ... [they are both captured units OR are both native units] AND ...
 		(! (is_captured (a) ^ is_captured (b))) &&
 
+		// ... their custom names are identical AND ...
+		(0 == strncmp (a->Custom_Name.S, b->Custom_Name.S, sizeof (a->Custom_Name))) &&
+
 		// ... they have both done the same number of airdrops this turn.
 		(itable_look_up_or (&is->airdrops_this_turn, a->ID, 0) == itable_look_up_or (&is->airdrops_this_turn, b->ID, 0));
 }

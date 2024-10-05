@@ -10,6 +10,7 @@
 - Fix describe_states_of_units_on_menu setting being ignored
 - Stop units from airdropping multiple times in one turn
   - This only matters when dont_end_units_turn_after_airdrop has been activated
+- Do not group together units with different names on right-click menu
 - Record which units have used extra defensive bombards in save files
 - Touch up action descriptions for auto precision striking and fortified exhausted units
 - Correct description of lethal zone of control setting in default config
