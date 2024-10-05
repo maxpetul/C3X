@@ -2255,7 +2255,7 @@ struct Improvement
   int Double_Happiness_Building;
   int Gain_Building_Global;
   int Gain_Building_Continent;
-  int ImprovementID;
+  int RequiredBuildingID;
   int Cost;
   int Culture;
   int Combat_Bombard;
@@ -2274,7 +2274,7 @@ struct Improvement
   int Production;
   int GovernmentID;
   int SpaceshipPart;
-  int RequiredID;
+  int RequiredTechID;
   int ObsoleteID;
   int Resource1ID;
   int Resource2ID;
