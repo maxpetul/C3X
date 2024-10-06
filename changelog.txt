@@ -3,6 +3,7 @@
 - Option to show unit hitpoints on the stealth attack target selection popup (named show_hp_of_stealth_attack_options in config)
 - Option to have a warning when the building you've selected to build would replace another already built in the city
   - Named warn_when_chosen_building_would_replace_another in config, off by default
+- Option to prevent stealth attacks from targeting units that are invisible and unrevealed (named exclude_invisible_units_from_stealth_attack)
 - Stop barbarian spawns from bankrupting the barbarian player (matters only if barbs are allowed to capture cities)
 - Option stopping pollution of impassable tiles also covers volcanic eruptions
 - Make barbarians defend cities they've captured as if they were camps

@@ -196,6 +196,7 @@ struct c3x_config {
 	bool do_not_generate_volcanos;
 	bool do_not_pollute_impassable_tiles;
 	bool show_hp_of_stealth_attack_options;
+	bool exclude_invisible_units_from_stealth_attack;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;

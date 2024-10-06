@@ -2630,6 +2630,7 @@ patch_init_floating_point ()
 		{"do_not_generate_volcanos"                            , false, offsetof (struct c3x_config, do_not_generate_volcanos)},
 		{"do_not_pollute_impassable_tiles"                     , false, offsetof (struct c3x_config, do_not_pollute_impassable_tiles)},
 		{"show_hp_of_stealth_attack_options"                   , false, offsetof (struct c3x_config, show_hp_of_stealth_attack_options)},
+		{"exclude_invisible_units_from_stealth_attack"         , false, offsetof (struct c3x_config, exclude_invisible_units_from_stealth_attack)},
 	};
 
 	struct integer_config_option {
@@ -7256,6 +7257,9 @@ patch_Unit_can_stealth_attack (Unit * this, int edx, Unit * target)
 	// If we're selecting a target for stealth attack via bombardment, we must filter out candidates we can't damage that way
 	if (tr && is->selecting_stealth_target_for_bombard &&
 	    ! can_damage_bombarding (&p_bic_data->UnitTypes[this->Body.UnitTypeID], target, tile_at (target->Body.X, target->Body.Y)))
+		return false;
+
+	else if (tr && is->current_config.exclude_invisible_units_from_stealth_attack && ! Unit_is_visible_to_civ (target, __, this->Body.CivID, 1))
 		return false;
 
 	else
