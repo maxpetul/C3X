@@ -9172,8 +9172,13 @@ patch_City_spawn_unit_if_done (City * this)
 					set_popup_str_param (3, p_bic_data->UnitTypes[replacement_type_id].Name, -1, -1);
 					popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_LIMITED_UNIT_CHANGE", -1, 0, 0, 0);
 					int response = patch_show_popup (popup, __, 0, 0);
-					if (response == 0)
+					if (response == 0) {
 						City_zoom_to (this, __, 0);
+
+						// If the player changed production to something other than a unit, don't spawn anything
+						if (this->Body.Order_Type != COT_Unit)
+							skip_spawn = true;
+					}
 				}
 			}
 

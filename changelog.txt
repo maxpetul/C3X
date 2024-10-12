@@ -1,3 +1,5 @@
+- Fix free unit glitch from switching production to a building through the unit limit reached popup
+
 * RELEASE 20 PREVIEW 1
 - Remove city improvement limit
   - Controlled by config option remove_city_improvement_limit
