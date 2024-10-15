@@ -2594,6 +2594,7 @@ patch_init_floating_point ()
 		{"patch_phantom_resource_bug"                          , true , offsetof (struct c3x_config, patch_phantom_resource_bug)},
 		{"patch_maintenance_persisting_for_obsolete_buildings" , true , offsetof (struct c3x_config, patch_maintenance_persisting_for_obsolete_buildings)},
 		{"patch_barbarian_diagonal_bug"                        , true , offsetof (struct c3x_config, patch_barbarian_diagonal_bug)},
+		{"patch_disease_stopping_tech_flag_bug"                , false, offsetof (struct c3x_config, patch_disease_stopping_tech_flag_bug)},
 		{"prevent_autorazing"                                  , false, offsetof (struct c3x_config, prevent_autorazing)},
 		{"prevent_razing_by_players"                           , false, offsetof (struct c3x_config, prevent_razing_by_players)},
 		{"suppress_hypertext_links_exceeded_popup"             , true , offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
@@ -9893,6 +9894,15 @@ patch_City_Improvements_set (City_Improvements * this, int edx, int id, bool add
 		} else if ((! add_else_remove) && (extra_bits != NULL))
 			extra_bits[extra_id>>3] &= ~mask;
 	}
+}
+
+bool __fastcall
+patch_Leader_has_tech_to_stop_disease (Leader * this, int edx, int id)
+{
+	if (! is->current_config.patch_disease_stopping_tech_flag_bug)
+		return Leader_has_tech (this, __, id);
+	else
+		return Leader_has_tech_with_flag (this, __, ATF_Disabled_Deseases_From_Flood_Plains);
 }
 
 // TCC requires a main function be defined even though it's never used.

@@ -435,7 +435,7 @@ define,	   0x55B1A0,	0x567100,	0x55B150,	"Leader_reveal_tile",				"void (__fastc
 define,	   0x5FCB10,	0x610790,	0x5FC9F0,	"PCX_Image_draw_onto",				"int (__fastcall *) (PCX_Image * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y)"
 define,	   0x5DBF60,	0x5EB4B0,	0x5DBE90,	"Tile_get_terrain_move_cost",			"int (__fastcall *) (Tile * this)"
 define,	   0x56D340,	0x579CC0,	0x56D2B0,	"get_combat_occupier",				"int (__cdecl *) (int tile_x, int tile_y, int civ_id, byte ignore_visibility)"
-define,	   0x561480,	0x56D5E0,	0x561430,	"Leader_has_tech_with_flag",			"bool (__fastcall *) (Leader * this, int edx, AdvanceTypeFlags flag)"
+define,	   0x561480,	0x56D5E0,	0x561430,	"Leader_has_tech_with_flag",			"bool (__fastcall *) (Leader * this, int edx, enum AdvanceTypeFlags flag)"
 inlead,	   0x57D980,	0x58A680,	0x57D6E0,	"Trade_Net_recompute_city_connections",		"void (__fastcall *) (Trade_Net * this, int edx, int civ_id, bool redo_road_network, byte param_3, int redo_roads_for_city_id)"
 inlead,	   0x62B1A0,	0x64E220,	0x6274B0,	"OpenGLRenderer_initialize",			"int (__fastcall *) (OpenGLRenderer * this, int edx, PCX_Image * texture)"
 inlead,	   0x62B450,	0x64E510,	0x627760,	"OpenGLRenderer_draw_line",			"void (__fastcall *) (OpenGLRenderer * this, int edx, int x1, int y1, int x2, int y2)"
@@ -551,6 +551,7 @@ inlead,	   0x590030,	0x59D690,	0x58FD50,	"move_game_data",				"int (__cdecl *) (
 inlead,	   0x5C14B0,	0x5D0040,	0x5C11C0,	"Unit_can_airdrop",				"bool (__fastcall *) (Unit * this)"
 inlead,	   0x5DF8D0,	0x5EF120,	0x5DF800,	"City_Improvements_contains",			"bool (__fastcall *) (City_Improvements * this, int edx, int id)"
 inlead,	   0x5DF890,	0x5EF0E0,	0x5DF7C0,	"City_Improvements_set",			"void (__fastcall *) (City_Improvements * this, int edx, int id, bool add_else_remove)"
+repl call, 0x4B47C9,	0x4BB7B9,	0x4B4859,	"Leader_has_tech_to_stop_disease",		""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

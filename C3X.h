@@ -227,6 +227,7 @@ struct c3x_config {
 	bool patch_phantom_resource_bug;
 	bool patch_maintenance_persisting_for_obsolete_buildings;
 	bool patch_barbarian_diagonal_bug;
+	bool patch_disease_stopping_tech_flag_bug;
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
