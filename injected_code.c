@@ -9806,6 +9806,10 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					itable_insert (&is->extra_city_improvs, (int)&city->Body.Improvements_2, (int)extra_bits_2);
 				}
 
+				// Rebuild the trade network since it may have changed as a result of the additional buildings. This method also
+				// refreshes the free improvement tables and recomputes city happiness.
+				patch_Map_build_trade_network (&p_bic_data->Map);
+
 				success = true;
 
 			done_with_extra_city_improvs:

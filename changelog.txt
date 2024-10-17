@@ -1,6 +1,7 @@
 - Fix bug related to "Disables Diseases From Flood Plains" tech flag
   - Option named patch_disease_stopping_tech_flag_bug, off by default b/c this fix causes a lot more disease under the standard rules
 - Fix free unit glitch from switching production to a building through the unit limit reached popup
+- Rebuild the trade network after loading save data for improvements beyond the limit
 
 * RELEASE 20 PREVIEW 1
 - Remove city improvement limit
