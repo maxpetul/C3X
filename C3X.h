@@ -411,6 +411,7 @@ struct injected_state {
 	enum init_state mod_info_button_images_state;
 	enum init_state disabled_command_img_state;
 	enum init_state unit_rcm_icon_state;
+	enum init_state red_food_icon_state;
 
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
@@ -637,6 +638,12 @@ struct injected_state {
 	// ==========
 
 	Sprite mod_info_button_images[3];
+
+	// ==========
+	// } This one is valid only if init_red_food_icon has been called and red_food_icon_state equals IS_OK {
+	// ==========
+
+	Sprite red_food_icon;
 
 	// ==========
 	// } These fields are temporary/situational {

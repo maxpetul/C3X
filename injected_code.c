@@ -3082,6 +3082,41 @@ deinit_unit_rcm_icons ()
 	}
 }
 
+void
+init_red_food_icon ()
+{
+	if (is->red_food_icon_state != IS_UNINITED)
+		return;
+
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
+
+	char temp_path[2*MAX_PATH];
+	get_mod_art_path ("MoreCityIcons.pcx", temp_path, sizeof temp_path);
+
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if ((pcx.JGL.Image != NULL) &&
+	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) >= 32) &&
+	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) == 32)) {
+		Sprite_construct (&is->red_food_icon);
+		Sprite_slice_pcx (&is->red_food_icon, __, &pcx, 1, 1, 30, 30, 1, 1);
+		is->red_food_icon_state = IS_OK;
+	} else {
+		(*p_OutputDebugStringA) ("[C3X] PCX file for red food icon failed to load or is not the correct size.");
+		is->red_food_icon_state = IS_INIT_FAILED;
+	}
+
+	pcx.vtable->destruct (&pcx, __, 0);
+}
+
+void
+deinit_red_food_icon ()
+{
+	if (is->red_food_icon_state == IS_OK)
+		is->red_food_icon.vtable->destruct (&is->red_food_icon, __, 0);
+	is->red_food_icon_state = IS_UNINITED;
+}
+
 int __cdecl
 patch_get_tile_occupier_for_ai_path (int x, int y, int pov_civ_id, bool respect_unit_invisibility)
 {
@@ -4635,6 +4670,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	deinit_disabled_command_buttons ();
 	deinit_trade_scroll_buttons ();
 	deinit_unit_rcm_icons ();
+	deinit_red_food_icon ();
 
 	// Need to clear this since the resource count might have changed
 	if (is->extra_available_resources != NULL) {
