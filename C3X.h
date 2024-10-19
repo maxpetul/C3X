@@ -709,6 +709,7 @@ struct injected_state {
 	// Used for displaying yields from generated resources on the city screen
 	int tourism_icon_counter; // Incremented each time a tourism yield icon (normally commerce) is drawn. Reset between improvs.
 	int convert_displayed_tourism_to_food, convert_displayed_tourism_to_shields; // Number of commerce tourism icons to convert to food, shields
+	int combined_tourism_and_mill_commerce; // Number of commerce tourism icons to display inc. from mills, maybe negative
 
 	int drawing_icons_for_improv_id; // Stores the improv ID whose icons we're drawing. -1 while not drawing.
 

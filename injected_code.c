@@ -9085,32 +9085,38 @@ patch_City_get_tourism_amount_to_draw (City * this, int edx, int improv_id)
 
 	int mill_food, mill_shields, mill_commerce;
 	gather_mill_yields (this, improv_id, &mill_food, &mill_shields, &mill_commerce);
-
-	// TODO: Properly display negative mill yields. Right now negative values will mess with the arithmetic so I'm clamping the displayed yields
-	// at zero to prevent that.
-	mill_food     = not_below (0, mill_food);
-	mill_shields  = not_below (0, mill_shields);
-	mill_commerce = not_below (0, mill_commerce);
+	int combined_commerce = mill_commerce + City_get_tourism_amount (this, __, improv_id);
 
 	is->convert_displayed_tourism_to_food = mill_food;
 	is->convert_displayed_tourism_to_shields = mill_shields;
-	return City_get_tourism_amount (this, __, improv_id) + mill_food + mill_shields + mill_commerce;
+	is->combined_tourism_and_mill_commerce = combined_commerce;
+	return int_abs (mill_food) + int_abs (mill_shields) + int_abs (combined_commerce);
 }
 
 int __fastcall
 patch_Sprite_draw_tourism_gold (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
 {
 	// Replace the yield sprite we're drawing with food or a shield if needed.
-	Sprite * sprite; {
-		if (is->tourism_icon_counter < is->convert_displayed_tourism_to_food)
-			sprite = &p_city_form->City_Icons_Images.Icon_15_Food;
-		else if (is->tourism_icon_counter < is->convert_displayed_tourism_to_food + is->convert_displayed_tourism_to_shields)
-			sprite = &p_city_form->City_Icons_Images.Icon_13_Shield;
+	Sprite * sprite = NULL; {
+		if (is->tourism_icon_counter < int_abs (is->convert_displayed_tourism_to_food)) {
+			if (is->convert_displayed_tourism_to_food >= 0)
+				sprite = &p_city_form->City_Icons_Images.Icon_15_Food;
+			else {
+				init_red_food_icon ();
+				if (is->red_food_icon_state == IS_OK)
+					sprite = &is->red_food_icon;
+			}
+		} else if (is->tourism_icon_counter < int_abs (is->convert_displayed_tourism_to_food) + int_abs (is->convert_displayed_tourism_to_shields))
+			sprite = (is->convert_displayed_tourism_to_shields >= 0) ? &p_city_form->City_Icons_Images.Icon_13_Shield : &p_city_form->City_Icons_Images.Icon_05_Shield_Outcome;
+		else if (is->combined_tourism_and_mill_commerce < 0)
+			sprite = &p_city_form->City_Icons_Images.Icon_17_Gold_Outcome;
 		else
 			sprite = this;
 	}
 
-	int tr = Sprite_draw (sprite, __, canvas, pixel_x, pixel_y, param_4);
+	int tr = 0; // return value is not used by caller
+	if (sprite != NULL)
+		tr = Sprite_draw (sprite, __, canvas, pixel_x, pixel_y, param_4);
 	is->tourism_icon_counter++;
 	return tr;
 }
