@@ -6449,7 +6449,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
 
 	// Update things in case we've added or removed a mill. This is only necessary while in-game. If the game is still loading the scenario, it
-	// will recompute trade & resources after it's done.
+	// will recompute resources after it's done and we'll recompute yields and happiness ourselves.
 	if (! is->is_placing_scenario_things) {
 		// Collect info about this mill, if in fact the added or removed improvement is a mill. If it's not, all these vars will be left
 		// false. "generates_input" tracks whether or not the mill generates a resource that's an input for another mill.
@@ -9536,7 +9536,18 @@ void __fastcall
 patch_Map_place_scenario_things (Map * this)
 {
 	is->is_placing_scenario_things = true;
+
 	Map_place_scenario_things (this);
+
+	// If there are any mills in the config then recompute yields & happiness in all cities. This must be done because we avoid doing this as
+	// mills are added to cities while placing scenario things.
+	if (is->current_config.count_mills > 0)
+		for (int n = 0; n <= p_cities->LastIndex; n++) {
+			City * city = get_city_ptr (n);
+			if (city != NULL)
+				City_recompute_yields_and_happiness (city);
+		}
+
 	is->is_placing_scenario_things = false;
 }
 
