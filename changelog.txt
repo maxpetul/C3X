@@ -1,3 +1,4 @@
+* RELEASE 20 PREVIEW 2
 - Fix bug related to "Disables Diseases From Flood Plains" tech flag
   - Option named patch_disease_stopping_tech_flag_bug, off by default b/c this fix causes a lot more disease under the standard rules
 - Display negative yields from generated resources
