@@ -2632,6 +2632,7 @@ patch_init_floating_point ()
 		{"do_not_pollute_impassable_tiles"                     , false, offsetof (struct c3x_config, do_not_pollute_impassable_tiles)},
 		{"show_hp_of_stealth_attack_options"                   , false, offsetof (struct c3x_config, show_hp_of_stealth_attack_options)},
 		{"exclude_invisible_units_from_stealth_attack"         , false, offsetof (struct c3x_config, exclude_invisible_units_from_stealth_attack)},
+		{"convert_to_landmark_after_planting_forest"           , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
 	};
 
 	struct integer_config_option {
@@ -9960,6 +9961,24 @@ patch_Leader_has_tech_to_stop_disease (Leader * this, int edx, int id)
 		return Leader_has_tech (this, __, id);
 	else
 		return Leader_has_tech_with_flag (this, __, ATF_Disabled_Deseases_From_Flood_Plains);
+}
+
+void __fastcall
+patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
+{
+	is->lmify_tile_after_working_simple_job = NULL;
+	Unit_work_simple_job (this, __, job_id);
+	if (is->lmify_tile_after_working_simple_job != NULL)
+		is->lmify_tile_after_working_simple_job->vtable->m31_set_landmark (is->lmify_tile_after_working_simple_job, __, true);
+}
+
+void __fastcall
+patch_Map_change_tile_terrain_by_worker (Map * this, int edx, enum SquareTypes new_terrain_type, int x, int y)
+{
+	Map_change_tile_terrain (this, __, new_terrain_type, x, y);
+
+	if (is->current_config.convert_to_landmark_after_planting_forest && (new_terrain_type == SQ_Forest))
+		is->lmify_tile_after_working_simple_job = tile_at (x, y);
 }
 
 // TCC requires a main function be defined even though it's never used.

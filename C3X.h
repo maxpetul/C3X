@@ -197,6 +197,7 @@ struct c3x_config {
 	bool do_not_pollute_impassable_tiles;
 	bool show_hp_of_stealth_attack_options;
 	bool exclude_invisible_units_from_stealth_attack;
+	bool convert_to_landmark_after_planting_forest;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
@@ -861,6 +862,9 @@ struct injected_state {
 
 	// While a game is being saved or loaded, this variable points to the save file's MappedFile object. Otherwise it's NULL.
 	MappedFile * accessing_save_file;
+
+	// Used in patch_work_simple_job. If a method sets this variable while that method is running then at the end it sets the given tile as LM.
+	Tile * lmify_tile_after_working_simple_job;
 
 	// ==========
 	// }

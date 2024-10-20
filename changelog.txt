@@ -1,6 +1,7 @@
 - Fix bug related to "Disables Diseases From Flood Plains" tech flag
   - Option named patch_disease_stopping_tech_flag_bug, off by default b/c this fix causes a lot more disease under the standard rules
 - Display negative yields from generated resources
+- Option to make planting forests produce LM forest terrain (named convert_to_landmark_after_planting_forest)
 - Fix free unit glitch from switching production to a building through the unit limit reached popup
 - Rebuild the trade network after loading save data for improvements beyond the limit
 - Fix yields from resource generating buildings not always appearing after a new scenario is loaded

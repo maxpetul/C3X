@@ -1666,7 +1666,7 @@ struct Tile_vtable
   bool (__fastcall *m28_is_revealed_by_scenario_setting)(Tile *);
   int (__fastcall *m29_Check_Mountain_Snowcap)(Tile *);
   int (__fastcall *m30_Check_is_LM)(Tile *);
-  void (__fastcall *m31_set_field_30_bit_29)(Tile *, __, char);
+  void (__fastcall * m31_set_landmark) (Tile *, __, bool);
   char (__fastcall *m32_Check_field_30_bit_19)(Tile *);
   char (__fastcall *m33_Check_Radar)(Tile *, __, int);
   int (__fastcall *m34_Check_field_20_hiword)(Tile *);
