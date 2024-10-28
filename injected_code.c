@@ -8560,6 +8560,10 @@ patch_Unit_do_precision_strike (Unit * this, int edx, int x, int y)
 		patch_Unit_attack_tile (this, __, x, y, 1);
 	else
 		Unit_do_precision_strike (this, __, x, y);
+
+	if (is->current_config.polish_precision_striking &&
+	    UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Cruise_Missile))
+		Unit_despawn (this, __, 0, false, false, 0, 0, 0, 0);
 }
 
 int __fastcall
