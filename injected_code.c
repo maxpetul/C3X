@@ -7453,17 +7453,17 @@ patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bomb
 bool __fastcall
 patch_Unit_try_flying_for_precision_strike (Unit * this, int edx, int x, int y)
 {
+	bool is_cruise_missile = UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Cruise_Missile);
 	if (is->current_config.polish_precision_striking &&
-	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air)) {
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air) &&
+	    ! is_cruise_missile)
+		// This method returns -1 when some kind of error occurs. In that case, return true implying the unit was shot down so the caller
+		// doesn't do anything more. Otherwise, return false so it goes ahead and applies damage.
+		return Unit_play_bombard_fire_animation (this, __, x, y) == -1;
 
-		if (! UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Cruise_Missile))
-			// This method returns -1 when some kind of error occurs. In that case, return true implying the unit was shot down so the
-			// caller doesn't do anything more. Otherwise, return false so it goes ahead and applies damage.
-			return Unit_play_bombard_fire_animation (this, __, x, y) == -1;
-		else {
-			Unit_animate_cruise_missile_strike (this, __, x, y);
-			return false;
-		}
+	else if (is->current_config.polish_precision_striking && is_cruise_missile) {
+		Unit_animate_cruise_missile_strike (this, __, x, y);
+		return false;
 
 	} else
 		return Unit_try_flying_over_tile (this, __, x, y);
@@ -7472,9 +7472,11 @@ patch_Unit_try_flying_for_precision_strike (Unit * this, int edx, int x, int y)
 void __fastcall
 patch_Unit_play_bombing_anim_for_precision_strike (Unit * this, int edx, int x, int y)
 {
-	// For non-air units we don't play the bombard animation here (do it above instead) since it can fail, for whatever reason.
+	// Only play the bombing animation here if we haven't already played an animation in the above method. We don't want to play all animations
+	// here since the bombard fire animation can fail for whatever reason but this method can't handle failure.
+	bool is_cruise_missile = UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Cruise_Missile);
 	if ((! is->current_config.polish_precision_striking) ||
-	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air))
+	    ((p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air) && ! is_cruise_missile))
 		Unit_play_bombing_animation (this, __, x, y);
 }
 
