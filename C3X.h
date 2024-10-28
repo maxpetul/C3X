@@ -159,7 +159,7 @@ struct c3x_config {
 	bool include_stealth_attack_cancel_option;
 	bool intercept_recon_missions;
 	bool charge_one_move_for_recon_and_interception;
-	bool polish_non_air_precision_striking;
+	bool polish_precision_striking;
 	bool enable_stealth_attack_via_bombardment;
 	bool immunize_aircraft_against_bombardment;
 	bool replay_ai_moves_in_hotseat_games;

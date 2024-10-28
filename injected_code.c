@@ -1390,6 +1390,11 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->ai_multi_city_start = (ival != 0) ? 2 : 0;
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
+				} else if (slice_matches_str (&p.key, "polish_non_air_precision_striking")) {
+					if (read_int (&value, &ival))
+						cfg->polish_precision_striking = ival != 0;
+					else
+						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
@@ -2603,7 +2608,7 @@ patch_init_floating_point ()
 		{"include_stealth_attack_cancel_option"                , false, offsetof (struct c3x_config, include_stealth_attack_cancel_option)},
 		{"intercept_recon_missions"                            , false, offsetof (struct c3x_config, intercept_recon_missions)},
 		{"charge_one_move_for_recon_and_interception"          , false, offsetof (struct c3x_config, charge_one_move_for_recon_and_interception)},
-		{"polish_non_air_precision_striking"                   , true , offsetof (struct c3x_config, polish_non_air_precision_striking)},
+		{"polish_precision_striking"                           , true , offsetof (struct c3x_config, polish_precision_striking)},
 		{"enable_stealth_attack_via_bombardment"               , false, offsetof (struct c3x_config, enable_stealth_attack_via_bombardment)},
 		{"immunize_aircraft_against_bombardment"               , false, offsetof (struct c3x_config, immunize_aircraft_against_bombardment)},
 		{"replay_ai_moves_in_hotseat_games"                    , false, offsetof (struct c3x_config, replay_ai_moves_in_hotseat_games)},
@@ -7448,7 +7453,7 @@ patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bomb
 bool __fastcall
 patch_Unit_try_flying_for_precision_strike (Unit * this, int edx, int x, int y)
 {
-	if (is->current_config.polish_non_air_precision_striking &&
+	if (is->current_config.polish_precision_striking &&
 	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air)) {
 
 		if (! UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Cruise_Missile))
@@ -7468,7 +7473,7 @@ void __fastcall
 patch_Unit_play_bombing_anim_for_precision_strike (Unit * this, int edx, int x, int y)
 {
 	// For non-air units we don't play the bombard animation here (do it above instead) since it can fail, for whatever reason.
-	if ((! is->current_config.polish_non_air_precision_striking) ||
+	if ((! is->current_config.polish_precision_striking) ||
 	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air))
 		Unit_play_bombing_animation (this, __, x, y);
 }
@@ -7500,7 +7505,7 @@ void __fastcall
 patch_Main_Screen_Form_issue_precision_strike_cmd (Main_Screen_Form * this, int edx, Unit * unit)
 {
 	UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
-	if ((! is->current_config.polish_non_air_precision_striking) || (type->Unit_Class == UTC_Air))
+	if ((! is->current_config.polish_precision_striking) || (type->Unit_Class == UTC_Air))
 		Main_Screen_Form_issue_precision_strike_cmd (this, __, unit);
 	else {
 		// issue_precision_strike_cmd will use the unit type's operational range. To make it use bombard range instead, place that value in
