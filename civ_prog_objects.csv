@@ -555,6 +555,7 @@ repl call, 0x4B47C9,	0x4BB7B9,	0x4B4859,	"Leader_has_tech_to_stop_disease",		""
 define,	   0x5D59E0,	0x5E4E20,	0x5D5910,	"Map_change_tile_terrain",			"void (__fastcall *) (Map * this, int edx, enum SquareTypes new_terrain_type, int x, int y)"
 repl call, 0x461833,	0x463CAF,	0x4618B3,	"Map_change_tile_terrain_by_worker",		""
 inlead,	   0x461470,	0x4638C0,	0x4614F0,	"Unit_work_simple_job",				"void (__fastcall *) (Unit * this, int edx, int job_id)"
+define,	   0x5C8B30,	0x5D7A50,	0x5C8840,	"Unit_animate_cruise_missile_strike",		"void (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
