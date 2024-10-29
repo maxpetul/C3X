@@ -2828,6 +2828,7 @@ patch_init_floating_point ()
 	is->dummy_tile = calloc (1, sizeof *is->dummy_tile);
 
 	is->unit_bombard_attacking_tile = NULL;
+	is->attacking_tile_x = is->attacking_tile_y = -1;
 
 	is->temporarily_disallow_lethal_zoc = false;
 	is->moving_unit_to_adjacent_tile = false;
@@ -8545,12 +8546,28 @@ patch_Unit_check_precision_strike_target (Unit * this, int edx, int tile_x, int 
 }
 
 void __fastcall
+patch_Unit_play_attack_animation_vs_tile (Unit * this, int edx, int direction)
+{
+	if (is->current_config.polish_precision_striking &&
+	    UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Cruise_Missile) &&
+	    (is->attacking_tile_x != this->Body.X) && (is->attacking_tile_y != this->Body.Y))
+		Unit_animate_cruise_missile_strike (this, __, is->attacking_tile_x, is->attacking_tile_y);
+	else
+		Unit_play_attack_animation (this, __, direction);
+}
+
+void __fastcall
 patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 {
+	is->attacking_tile_x = x;
+	is->attacking_tile_y = y;
 	if (bombarding)
 		is->unit_bombard_attacking_tile = this;
+
 	Unit_attack_tile (this, __, x, y, bombarding);
+
 	is->unit_bombard_attacking_tile = NULL;
+	is->attacking_tile_x = is->attacking_tile_y = -1;
 }
 
 void __fastcall

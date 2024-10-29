@@ -794,6 +794,9 @@ struct injected_state {
 	// Unit::attack_tile. Used to stop the unit from losing all of its movement if configured.
 	Unit * unit_bombard_attacking_tile;
 
+	// Set to the coords of the tile being attacked while Unit::attack_tile is running, -1 otherwise.
+	int attacking_tile_x, attacking_tile_y;
+
 	// Cleared to false when Fighter::apply_zone_of_control is called. The interceptor must be unfortified to ensure it plays its animation. If
 	// that happens, this flag is set so that apply_zone_of_control knows to refortify the unit after the ZoC process is done.
 	bool refortify_interceptor_after_zoc;
