@@ -7451,6 +7451,22 @@ patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bomb
 		return is->bombard_stealth_target;
 }
 
+Unit *
+select_stealth_attack_bombard_target (Unit * unit, int tile_x, int tile_y)
+{
+	bool land_lethal = Unit_has_ability (unit, __, UTA_Lethal_Land_Bombardment),
+	     sea_lethal  = Unit_has_ability (unit, __, UTA_Lethal_Sea_Bombardment);
+	Unit * defender = Fighter_find_defender_against_bombardment (&p_bic_data->fighter, __, unit, tile_x, tile_y, unit->Body.CivID, land_lethal, sea_lethal);
+	if (defender != NULL) {
+		Unit * target;
+		is->selecting_stealth_target_for_bombard = 1;
+		bool got_one = patch_Unit_select_stealth_attack_target (unit, __, defender->Body.CivID, tile_x, tile_y, true, &target);
+		is->selecting_stealth_target_for_bombard = 0;
+		return got_one ? target : NULL;
+	} else
+		return NULL;
+}
+
 bool __fastcall
 patch_Unit_try_flying_for_precision_strike (Unit * this, int edx, int x, int y)
 {
@@ -7487,19 +7503,8 @@ patch_Unit_play_anim_for_bombard_tile (Unit * this, int edx, int x, int y)
 	Unit * stealth_attack_target = NULL;
 	if (is->current_config.enable_stealth_attack_via_bombardment &&
 	    (! is_online_game ()) &&
-	    patch_Leader_is_tile_visible (&leaders[p_main_screen_form->Player_CivID], __, x, y)) {
-		bool land_lethal = Unit_has_ability (this, __, UTA_Lethal_Land_Bombardment),
-		     sea_lethal  = Unit_has_ability (this, __, UTA_Lethal_Sea_Bombardment);
-		Unit * defender = Fighter_find_defender_against_bombardment (&p_bic_data->fighter, __, this, x, y, this->Body.CivID, land_lethal, sea_lethal);
-		if (defender != NULL) {
-			Unit * target;
-			is->selecting_stealth_target_for_bombard = 1;
-			bool got_one = patch_Unit_select_stealth_attack_target (this, __, defender->Body.CivID, x, y, true, &target);
-			is->selecting_stealth_target_for_bombard = 0;
-			if (got_one)
-				is->bombard_stealth_target = target;
-		}
-	}
+	    patch_Leader_is_tile_visible (&leaders[p_main_screen_form->Player_CivID], __, x, y))
+		is->bombard_stealth_target = select_stealth_attack_bombard_target (this, x, y);
 
 	return Unit_play_bombard_fire_animation (this, __, x, y);
 }
