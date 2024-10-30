@@ -2827,6 +2827,8 @@ patch_init_floating_point ()
 
 	is->dummy_tile = calloc (1, sizeof *is->dummy_tile);
 
+	is->bombarding_unit = NULL;
+
 	is->unit_bombard_attacking_tile = NULL;
 	is->attacking_tile_x = is->attacking_tile_y = -1;
 
@@ -3285,9 +3287,11 @@ recompute_resources_if_necessary ()
 void __fastcall
 patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 {
+	is->bombarding_unit = this;
 	record_ai_unit_seen (this, x, y);
 	Unit_bombard_tile (this, __, x, y);
 	is->bombard_stealth_target = NULL;
+	is->bombarding_unit = NULL;
 }
 
 void __fastcall
@@ -7524,6 +7528,22 @@ patch_Main_Screen_Form_issue_precision_strike_cmd (Main_Screen_Form * this, int 
 		Main_Screen_Form_issue_precision_strike_cmd (this, __, unit);
 		type->OperationalRange = saved_op_range;
 	}
+}
+
+int __fastcall
+patch_Map_compute_neighbor_index_for_cm_strike (Map * this, int edx, int x_home, int y_home, int x_neigh, int y_neigh, int lim)
+{
+	int tr = Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, lim);
+
+	if ((tr >= 0) &&
+	    (is->bombarding_unit != NULL) &&
+	    ((p_bic_data->UnitTypes[is->bombarding_unit->Body.UnitTypeID].Special_Actions & UCV_Stealth_Attack) != 0) &&
+	    is->current_config.enable_stealth_attack_via_bombardment &&
+	    (! is_online_game ()) &&
+	    patch_Leader_is_tile_visible (&leaders[is->bombarding_unit->Body.CivID], __, x_neigh, y_neigh))
+		is->bombard_stealth_target = select_stealth_attack_bombard_target (is->bombarding_unit, x_neigh, y_neigh);
+
+	return tr;
 }
 
 int __fastcall

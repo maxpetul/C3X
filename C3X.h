@@ -790,6 +790,9 @@ struct injected_state {
 	// Set when Fighter::apply_zone_of_control is called to store the defending unit, used by the injected filter.
 	Unit * zoc_defender;
 
+	// Set to the bombarding unit while Unit::bombard_tile is running. NULL otherwise.
+	Unit * bombarding_unit;
+
 	// Normally set to NULL. When a unit bombards a tile (the tile itself, not something on it), set to point to that unit during the call to
 	// Unit::attack_tile. Used to stop the unit from losing all of its movement if configured.
 	Unit * unit_bombard_attacking_tile;
