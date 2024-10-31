@@ -7505,7 +7505,8 @@ int __fastcall
 patch_Unit_play_anim_for_bombard_tile (Unit * this, int edx, int x, int y)
 {
 	Unit * stealth_attack_target = NULL;
-	if (is->current_config.enable_stealth_attack_via_bombardment &&
+	if (((p_bic_data->UnitTypes[this->Body.UnitTypeID].Special_Actions & UCV_Stealth_Attack) != 0) &&
+	    is->current_config.enable_stealth_attack_via_bombardment &&
 	    (! is_online_game ()) &&
 	    patch_Leader_is_tile_visible (&leaders[p_main_screen_form->Player_CivID], __, x, y))
 		is->bombard_stealth_target = select_stealth_attack_bombard_target (this, x, y);
