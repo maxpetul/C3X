@@ -2528,7 +2528,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	}
 
 	WITH_MEM_PROTECTION (ADDR_MOST_STRAT_RES_ON_CITY_SCREEN, 1, PAGE_EXECUTE_READWRITE) {
-		*(byte *)ADDR_MOST_STRAT_RES_ON_CITY_SCREEN = 16;
+		*(byte *)ADDR_MOST_STRAT_RES_ON_CITY_SCREEN = 13;
 	}
 }
 
@@ -4303,13 +4303,13 @@ patch_City_Form_print_production_info (City_Form *this, int edx, String256 * out
 int __fastcall
 patch_Sprite_draw_strat_res_on_city_screen (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
 {
-	return Sprite_draw (this, __, canvas, pixel_x - 20 * is->drawn_strat_resource_count, pixel_y, param_4);
+	return Sprite_draw (this, __, canvas, pixel_x - 13 * is->drawn_strat_resource_count - 17, pixel_y, param_4);
 }
 
 int __fastcall
 patch_PCX_Image_do_draw_cntd_text_for_strat_res (PCX_Image * this, int edx, char * str, int x, int y, int width, unsigned str_len)
 {
-	int tr = PCX_Image_do_draw_centered_text (this, __, str, x - 20 * is->drawn_strat_resource_count, y, width, str_len);
+	int tr = PCX_Image_do_draw_centered_text (this, __, str, x - 13 * is->drawn_strat_resource_count - 17, y, width, str_len);
 	is->drawn_strat_resource_count++;
 	return tr;
 }
