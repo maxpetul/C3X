@@ -2526,6 +2526,10 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		for (int n = 0; n < 4; n++)
 			ADDR_LUXURY_BOX_ROW_HEIGHT[n] = cfg->compact_luxury_display_on_city_screen ? compact[n] : normal[n];
 	}
+
+	WITH_MEM_PROTECTION (ADDR_MOST_STRAT_RES_ON_CITY_SCREEN, 1, PAGE_EXECUTE_READWRITE) {
+		*(byte *)ADDR_MOST_STRAT_RES_ON_CITY_SCREEN = 16;
+	}
 }
 
 void
