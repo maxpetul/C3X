@@ -872,6 +872,9 @@ struct injected_state {
 	// Used in patch_work_simple_job. If a method sets this variable while that method is running then at the end it sets the given tile as LM.
 	Tile * lmify_tile_after_working_simple_job;
 
+	// Reset to zero every time City_Form::draw is called. Incremented everything a strategic resource is drawn on the city screen.
+	int drawn_strat_resource_count;
+
 	// ==========
 	// }
 	// ==========

@@ -560,6 +560,10 @@ define,	   0x5C8B30,	0x5D7A50,	0x5C8840,	"Unit_animate_cruise_missile_strike",		
 repl call, 0x5B550E,	0x5C3E6F,	0x5B521E,	"Unit_play_attack_animation_vs_tile",		""
 repl call, 0x5B4C0E,	0x5C355E,	0x5B491E,	"Map_compute_neighbor_index_for_cm_strike",	""
 
+define,	   0x5FF0E0,	0x0,		0x0,		"PCX_Image_do_draw_centered_text",		"int (__fastcall *) (PCX_Image * this, int edx, char * str, int x, int y, int width, unsigned str_len)"
+repl call, 0x41AF59,	0x0,		0x0,		"PCX_Image_do_draw_cntd_text_for_strat_res",	""
+repl call, 0x41AE9F,	0x0,		0x0,		"Sprite_draw_strat_res_on_city_screen",		""
+
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
 ignore,    0x558F70,	0x0,		0x0,		"Leader_is_enemy_unit",				"char (__fastcall *) (Leader * this, int edx, Unit * unit)"

@@ -2875,6 +2875,8 @@ patch_init_floating_point ()
 	is->currently_capturing_city = NULL;
 	is->accessing_save_file = NULL;
 
+	is->drawn_strat_resource_count = 0;
+
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config);
@@ -4208,6 +4210,8 @@ patch_City_Form_draw (City_Form * this)
 	int form_top = (p_bic_data->ScreenHeight - this->Background_Image.Height) / 2;
 	this->Production_Storage_Indicator.top = form_top + 621 + (is->current_config.show_detailed_city_production_info ? 34 : 0);
 
+	is->drawn_strat_resource_count = 0;
+
 	City_Form_draw (this);
 
 	if (is->current_config.show_detailed_city_production_info) {
@@ -4290,6 +4294,20 @@ patch_City_Form_print_production_info (City_Form *this, int edx, String256 * out
 	City_Form_print_production_info (this, __, out_strs, str_capacity);
 	if (is->current_config.show_detailed_city_production_info)
 		out_strs[1].S[0] = '\0';
+}
+
+int __fastcall
+patch_Sprite_draw_strat_res_on_city_screen (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
+{
+	return Sprite_draw (this, __, canvas, pixel_x - 20 * is->drawn_strat_resource_count, pixel_y, param_4);
+}
+
+int __fastcall
+patch_PCX_Image_do_draw_cntd_text_for_strat_res (PCX_Image * this, int edx, char * str, int x, int y, int width, unsigned str_len)
+{
+	int tr = PCX_Image_do_draw_centered_text (this, __, str, x - 20 * is->drawn_strat_resource_count, y, width, str_len);
+	is->drawn_strat_resource_count++;
+	return tr;
 }
 
 // Returns the ID of the civ this move is trespassing against, or 0 if it's not trespassing.
