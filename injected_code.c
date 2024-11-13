@@ -2528,7 +2528,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	}
 
 	WITH_MEM_PROTECTION (ADDR_MOST_STRAT_RES_ON_CITY_SCREEN, 1, PAGE_EXECUTE_READWRITE) {
-		*(byte *)ADDR_MOST_STRAT_RES_ON_CITY_SCREEN = 13;
+		*(byte *)ADDR_MOST_STRAT_RES_ON_CITY_SCREEN = cfg->compact_strategic_resource_display_on_city_screen ? 13 : 8;
 	}
 }
 
@@ -2624,6 +2624,7 @@ patch_init_floating_point ()
 		{"show_untradable_techs_on_trade_screen"               , false, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
 		{"disallow_useless_bombard_vs_airfields"               , true , offsetof (struct c3x_config, disallow_useless_bombard_vs_airfields)},
 		{"compact_luxury_display_on_city_screen"               , false, offsetof (struct c3x_config, compact_luxury_display_on_city_screen)},
+		{"compact_strategic_resource_display_on_city_screen"   , false, offsetof (struct c3x_config, compact_strategic_resource_display_on_city_screen)},
 		{"warn_when_chosen_building_would_replace_another"     , false, offsetof (struct c3x_config, warn_when_chosen_building_would_replace_another)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
@@ -4303,13 +4304,17 @@ patch_City_Form_print_production_info (City_Form *this, int edx, String256 * out
 int __fastcall
 patch_Sprite_draw_strat_res_on_city_screen (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
 {
-	return Sprite_draw (this, __, canvas, pixel_x - 13 * is->drawn_strat_resource_count - 17, pixel_y, param_4);
+	if (is->current_config.compact_strategic_resource_display_on_city_screen)
+		pixel_x -= 13 * is->drawn_strat_resource_count + 17;
+	return Sprite_draw (this, __, canvas, pixel_x, pixel_y, param_4);
 }
 
 int __fastcall
 patch_PCX_Image_do_draw_cntd_text_for_strat_res (PCX_Image * this, int edx, char * str, int x, int y, int width, unsigned str_len)
 {
-	int tr = PCX_Image_do_draw_centered_text (this, __, str, x - 13 * is->drawn_strat_resource_count - 17, y, width, str_len);
+	if (is->current_config.compact_strategic_resource_display_on_city_screen)
+		x -= 13 * is->drawn_strat_resource_count + 17;
+	int tr = PCX_Image_do_draw_centered_text (this, __, str, x, y, width, str_len);
 	is->drawn_strat_resource_count++;
 	return tr;
 }
