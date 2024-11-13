@@ -2,6 +2,8 @@
   - Now plays the correct animations and despawns the unit afterward
   - Controlled by the polish_precision_striking config option, which used to be named polish_non_air_precision_striking
 - Enable cruise missiles to perform stealth attack bombard
+- Option to show more strategic resources (up to 13) in the box on the top left of the city screen by packing them in more tightly
+  - Named compact_strategic_resource_display_on_city_screen, off by default
 - Fix tile visibility check in stealth attack bombard
 
 * RELEASE 20 PREVIEW 2

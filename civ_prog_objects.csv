@@ -559,11 +559,10 @@ inlead,	   0x461470,	0x4638C0,	0x4614F0,	"Unit_work_simple_job",				"void (__fas
 define,	   0x5C8B30,	0x5D7A50,	0x5C8840,	"Unit_animate_cruise_missile_strike",		"void (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)"
 repl call, 0x5B550E,	0x5C3E6F,	0x5B521E,	"Unit_play_attack_animation_vs_tile",		""
 repl call, 0x5B4C0E,	0x5C355E,	0x5B491E,	"Map_compute_neighbor_index_for_cm_strike",	""
-
-define,	   0x5FF0E0,	0x0,		0x0,		"PCX_Image_do_draw_centered_text",		"int (__fastcall *) (PCX_Image * this, int edx, char * str, int x, int y, int width, unsigned str_len)"
-repl call, 0x41AF59,	0x0,		0x0,		"PCX_Image_do_draw_cntd_text_for_strat_res",	""
-repl call, 0x41AE9F,	0x0,		0x0,		"Sprite_draw_strat_res_on_city_screen",		""
-define,	   0x41AE1B,	0x0,		0x0,		"ADDR_MOST_STRAT_RES_ON_CITY_SCREEN",		"void *"
+define,	   0x5FF0E0,	0x614190,	0x5FEFC0,	"PCX_Image_do_draw_centered_text",		"int (__fastcall *) (PCX_Image * this, int edx, char * str, int x, int y, int width, unsigned str_len)"
+repl call, 0x41AF59,	0x41C067,	0x41AFD9,	"PCX_Image_do_draw_cntd_text_for_strat_res",	""
+repl call, 0x41AE9F,	0x41BFA9,	0x41AF1F,	"Sprite_draw_strat_res_on_city_screen",		""
+define,	   0x41AE1B,	0x41BF23,	0x41AE9B,	"ADDR_MOST_STRAT_RES_ON_CITY_SCREEN",		"void *"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
