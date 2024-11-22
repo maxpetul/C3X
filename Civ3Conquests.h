@@ -4947,7 +4947,11 @@ struct Unit_Body
   byte field_231;
   byte always_on_top;
   byte field_233;
-  int field_234[3];
+  int field_234[2];
+  bool online_skip_flag; // Not sure what this is for. In online MP, it causes the game to skip some update logic like healing at the start of turns.
+  byte field_23D;
+  byte field_23E;
+  byte field_23F;
   RECT Rect;
   int field_250[4];
   FLC_Animation Animation;
