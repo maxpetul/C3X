@@ -563,6 +563,9 @@ define,	   0x5FF0E0,	0x614190,	0x5FEFC0,	"PCX_Image_do_draw_centered_text",		"in
 repl call, 0x41AF59,	0x41C067,	0x41AFD9,	"PCX_Image_do_draw_cntd_text_for_strat_res",	""
 repl call, 0x41AE9F,	0x41BFA9,	0x41AF1F,	"Sprite_draw_strat_res_on_city_screen",		""
 define,	   0x41AE1B,	0x41BF23,	0x41AE9B,	"ADDR_MOST_STRAT_RES_ON_CITY_SCREEN",		"void *"
+define,	   0x5BEB60,	0x5CD780,	0x5BE870,	"Unit_can_heal_at",				"bool (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)"
+define,	   0x5BECE0,	0x5CD900,	0x5BE9F0,	"Unit_heal_at_start_of_turn",			"void (__fastcall *) (Unit * this)"
+define,	   0x469590,	0x46BD40,	0x469610,	"check_online_skip_flag",			"bool (__stdcall *) (int unit_id)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
