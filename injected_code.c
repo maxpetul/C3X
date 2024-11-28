@@ -10069,5 +10069,12 @@ patch_Map_change_tile_terrain_by_worker (Map * this, int edx, enum SquareTypes n
 		is->lmify_tile_after_working_simple_job = tile_at (x, y);
 }
 
+int __fastcall
+patch_Leader_ai_eval_technology (Leader * this, int edx, int id, bool param_2, bool param_3)
+{
+	int base = Leader_ai_eval_technology (this, __, id, param_2, param_3);
+	return base;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
