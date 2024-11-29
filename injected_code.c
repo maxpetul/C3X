@@ -10083,5 +10083,12 @@ patch_Leader_ai_eval_technology (Leader * this, int edx, int id, bool param_2, b
 	return base;
 }
 
+int __fastcall
+patch_Leader_ai_eval_government (Leader * this, int edx, int id)
+{
+	int base = Leader_ai_eval_government (this, __, id);
+	return base;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
