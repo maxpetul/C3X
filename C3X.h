@@ -94,6 +94,12 @@ enum special_zone_of_control_rules {
 	SZOCR_AMPHIBIOUS = 4,
 };
 
+enum perfume_kind {
+	PK_PRODUCTION = 0,
+
+	COUNT_PERFUME_KINDS
+};
+
 struct c3x_config {
 	bool enable_stack_bombard;
 	bool enable_disorder_warning;
@@ -123,7 +129,7 @@ struct c3x_config {
 	bool enable_land_sea_intersections;
 	bool disallow_trespassing;
 	bool show_detailed_tile_info;
-	struct table perfume_specs; // Maps strings to ints
+	struct table perfume_specs[COUNT_PERFUME_KINDS]; // Each table maps strings to ints
 	struct table building_unit_prereqs; // A mapping from int keys to int values. The keys are unit type IDs. If an ID is present as a key in the
 					    // table that means that unit type has one or more prereq buildings. The associated value is either a
 					    // pointer to a list of MAX_BUILDING_PREREQS_FOR_UNITS improvement IDs or a single encoded improv ID. The

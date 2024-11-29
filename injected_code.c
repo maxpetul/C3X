@@ -177,7 +177,8 @@ reset_to_base_config ()
 {
 	struct c3x_config * cc = &is->current_config;
 
-	stable_deinit (&cc->perfume_specs);
+	for (int n = 0; n < COUNT_PERFUME_KINDS; n++)
+		stable_deinit (&cc->perfume_specs[n]);
 
 	// Free building-unit prereqs table
 	FOR_TABLE_ENTRIES (tei, &cc->building_unit_prereqs) {
@@ -1227,8 +1228,10 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		}
 	}
 
-	struct perfume_spec * perfume_spec_list = NULL;
-	int perfume_spec_count = 0;
+	struct perfume_spec_list {
+		struct perfume_spec * items;
+		int count;
+	} perfume_spec_lists[COUNT_PERFUME_KINDS] = {0};
 
 	struct parsed_unit_type_limit * parsed_unit_type_limits = NULL;
 	int parsed_unit_type_limit_count = 0;
@@ -1271,8 +1274,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 &unrecognized_lines,
 											 sizeof (struct perfume_spec),
 											 parse_perfume_spec,
-											 (void **)&perfume_spec_list,
-											 &perfume_spec_count)))
+											 (void **)&perfume_spec_lists[PK_PRODUCTION].items,
+											 &perfume_spec_lists[PK_PRODUCTION].count)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "building_prereqs_for_units")) {
 					if (0 <= (recog_err_offset = read_building_unit_prereqs (&value, &unrecognized_lines, &cfg->building_unit_prereqs)))
@@ -1424,13 +1427,17 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		patch_show_popup (popup, __, 0, 0);
 	}
 
-	// Copy perfume specs from list to table
-	if (perfume_spec_list != NULL) {
-		for (int n = 0; n < perfume_spec_count; n++) {
-			struct perfume_spec * ps = &perfume_spec_list[n];
-			stable_insert (&cfg->perfume_specs, ps->name, ps->amount);
+	// Copy perfume specs from lists to tables
+	for (int n = 0; n < COUNT_PERFUME_KINDS; n++) {
+		struct table * table = &cfg->perfume_specs[n];
+		struct perfume_spec_list * list = &perfume_spec_lists[n];
+		if (list->items != NULL) {
+			for (int k = 0; k < list->count; k++) {
+				struct perfume_spec * ps = &list->items[k];
+				stable_insert (table, ps->name, ps->amount);
+			}
+			free (list->items);
 		}
-		free (perfume_spec_list);
 	}
 
 	// Copy unit type limits from list to table
@@ -1895,7 +1902,7 @@ intercept_consideration (int valuation)
 
 	// Apply perfume
 	int perfume_amount;
-	if (stable_look_up (&is->current_config.perfume_specs, order_name, &perfume_amount))
+	if (stable_look_up (&is->current_config.perfume_specs[PK_PRODUCTION], order_name, &perfume_amount))
 		valuation += perfume_amount;
 
 	// Expand the list of valuations if necessary
