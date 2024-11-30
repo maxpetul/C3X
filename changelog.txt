@@ -1,3 +1,4 @@
+- Add ability to perfume technologies
 - Rename perfume_specs option to production_perfume
 
 - Polish precision striking by cruise missiles
