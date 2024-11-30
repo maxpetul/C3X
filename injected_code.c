@@ -1269,7 +1269,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
 
 				// if key is for something special
-				} else if (slice_matches_str (&p.key, "perfume_specs")) {
+				} else if (slice_matches_str (&p.key, "production_perfume") || slice_matches_str (&p.key, "perfume_specs")) {
 					if (0 <= (recog_err_offset = read_recognizables (&value,
 											 &unrecognized_lines,
 											 sizeof (struct perfume_spec),

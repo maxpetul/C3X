@@ -1,3 +1,5 @@
+- Rename perfume_specs option to production_perfume
+
 - Polish precision striking by cruise missiles
   - Now plays the correct animations and despawns the unit afterward
   - Controlled by the polish_precision_striking config option, which used to be named polish_non_air_precision_striking
