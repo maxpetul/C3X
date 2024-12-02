@@ -1,10 +1,10 @@
-- Add ability to perfume technologies
-- Rename perfume_specs option to production_perfume
-
 - Polish precision striking by cruise missiles
   - Now plays the correct animations and despawns the unit afterward
   - Controlled by the polish_precision_striking config option, which used to be named polish_non_air_precision_striking
 - Enable cruise missiles to perform stealth attack bombard
+- Add ability to perfume technologies and governments
+  - Options named technology_perfume and government_perfume, respectively
+  - The perfume_specs option from before has been renamed to production_perfume but the old name still works as an alias
 - Option to show more strategic resources (up to 13) in the box on the top left of the city screen by packing them in more tightly
   - Named compact_strategic_resource_display_on_city_screen, off by default
 - Fix tile visibility check in stealth attack bombard

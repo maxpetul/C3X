@@ -97,6 +97,7 @@ enum special_zone_of_control_rules {
 enum perfume_kind {
 	PK_PRODUCTION = 0,
 	PK_TECHNOLOGY,
+	PK_GOVERNMENT,
 
 	COUNT_PERFUME_KINDS
 };

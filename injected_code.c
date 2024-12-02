@@ -463,6 +463,7 @@ enum game_object_kind {
 	GOK_BUILDING,
 	GOK_RESOURCE,
 	GOK_TECHNOLOGY,
+	GOK_GOVERNMENT,
 
 	COUNT_GAME_OBJECT_KINDS
 };
@@ -506,6 +507,16 @@ find_game_object_id_by_name (enum game_object_kind kind, struct string_slice con
 		if (name->len <= sizeof adv->Name)
 			for (int n = start_id; n < p_bic_data->AdvanceCount; n++)
 				if (slice_matches_str (name, p_bic_data->Advances[n].Name)) {
+					*out = n;
+					return true;
+				}
+		return false;
+	}
+	case GOK_GOVERNMENT: {
+		Government * govt;
+		if (name->len <= sizeof govt->Name)
+			for (int n = start_id; n < p_bic_data->GovernmentsCount; n++)
+				if (slice_matches_str (name, p_bic_data->Governments[n].Name.S)) {
 					*out = n;
 					return true;
 				}
@@ -588,7 +599,8 @@ parse_perfume_spec (char ** p_cursor, enum perfume_kind kind, struct error_line 
 		*p_cursor = cur;
 
 		if (((kind == PK_PRODUCTION) && find_city_order_by_name (&name, &unused_city_order)) ||
-		    ((kind == PK_TECHNOLOGY) && find_game_object_id_by_name (GOK_TECHNOLOGY, &name, 0, &unused_id))) {
+		    ((kind == PK_TECHNOLOGY) && find_game_object_id_by_name (GOK_TECHNOLOGY, &name, 0, &unused_id)) ||
+		    ((kind == PK_GOVERNMENT) && find_game_object_id_by_name (GOK_GOVERNMENT, &name, 0, &unused_id))) {
 			struct perfume_spec * out = out_perfume_spec;
 			snprintf (out->name, sizeof out->name, "%.*s", name.len, name.str);
 			out->name[(sizeof out->name) - 1] = '\0';
@@ -612,6 +624,12 @@ enum recognizable_parse_result
 parse_technology_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_perfume_spec)
 {
 	return parse_perfume_spec (p_cursor, PK_TECHNOLOGY, p_unrecognized_lines, out_perfume_spec);
+}
+
+enum recognizable_parse_result
+parse_government_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_perfume_spec)
+{
+	return parse_perfume_spec (p_cursor, PK_GOVERNMENT, p_unrecognized_lines, out_perfume_spec);
 }
 
 enum recognizable_parse_result
@@ -1310,6 +1328,14 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 parse_technology_perfume_spec,
 											 (void **)&perfume_spec_lists[PK_TECHNOLOGY].items,
 											 &perfume_spec_lists[PK_TECHNOLOGY].count)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "government_perfume")) {
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct perfume_spec),
+											 parse_government_perfume_spec,
+											 (void **)&perfume_spec_lists[PK_GOVERNMENT].items,
+											 &perfume_spec_lists[PK_GOVERNMENT].count)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "building_prereqs_for_units")) {
 					if (0 <= (recog_err_offset = read_building_unit_prereqs (&value, &unrecognized_lines, &cfg->building_unit_prereqs)))
@@ -10126,8 +10152,14 @@ patch_Leader_ai_eval_technology (Leader * this, int edx, int id, bool param_2, b
 int __fastcall
 patch_Leader_ai_eval_government (Leader * this, int edx, int id)
 {
-	int base = Leader_ai_eval_government (this, __, id);
-	return base;
+	int tr = Leader_ai_eval_government (this, __, id);
+
+	// Apply perfume
+	int perfume_amount;
+	if (stable_look_up (&is->current_config.perfume_specs[PK_GOVERNMENT], p_bic_data->Governments[id].Name.S, &perfume_amount))
+		tr += perfume_amount;
+
+	return tr;
 }
 
 // TCC requires a main function be defined even though it's never used.
