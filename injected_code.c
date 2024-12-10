@@ -9382,8 +9382,9 @@ patch_City_spawn_unit_if_done (City * this)
 			}
 
 		} else {
-			City_Order unused;
-			patch_City_ai_choose_production (this, __, &unused);
+			City_Order order;
+			patch_City_ai_choose_production (this, __, &order);
+			City_set_production (this, __, order.OrderType, order.OrderID, false);
 		}
 
 		// Just as a final check, if we weren't able to switch production off the limited unit, prevent it from being spawned so the limit

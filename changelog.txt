@@ -7,6 +7,7 @@
   - The perfume_specs option from before has been renamed to production_perfume but the old name still works as an alias
 - Option to show more strategic resources (up to 13) in the box on the top left of the city screen by packing them in more tightly
   - Named compact_strategic_resource_display_on_city_screen, off by default
+- Fix AIs not switching off a unit build when it can't complete due to a limit
 - Fix tile visibility check in stealth attack bombard
 
 * RELEASE 20 PREVIEW 2
