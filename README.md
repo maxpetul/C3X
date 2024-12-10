@@ -26,14 +26,13 @@ All aspects of C3X are configurable through INI text files. The basic INI file i
 However, because the default config file gets updated with each new release of the mod, it's recommended to put changes like the one above in a new file named "custom.c3x\_config.ini". C3X supports up to three different config files, the default config, a scenario config named "scenario.c3x\_config.ini" located in a scenario's search folder, and a custom config. They are loaded in that order. Scenario configs are intended to contain rule settings relevant to a particular scenario and custom configs are intended to function like user preferences.
 
 ### Compatibiity
+C3X is compatible with the GOG and Steam versions of Civ 3 Complete and also with the DRM-free executable available through PCGames.de. If you have a CD version of the game, you can replace its EXE with the one from PCGames.de then install C3X on top of that. For more info about the PCGames.de executable, see this thread: [Civ 3, Windows Update KB3086255, & SafeDisc](https://forums.civfanatics.com/threads/civ-3-windows-update-kb3086255-safedisc.552308/).
 
+For info about running C3X on Mac, see this thread: [Installing, Playing and Modding C3C on Apple Silicon](https://forums.civfanatics.com/threads/installing-playing-and-modding-c3c-on-apple-silicon.681540/)
 
+C3X is compatible with existing saves and saves created with the mod active will still be loadable by the base game.
 
-- The mod is compatible with the GOG and Steam versions of Civ 3 Complete, and with the DRM-free executable available through PCGames.de.
-- It works with existing save files and saves made with the mod active will still work in the base game.
-- Multiplayer is not officially supported but some features will work in MP, see this post for more details: https://forums.civfanatics.com/thre...s-in-exe-modding.666881/page-16#post-16126470.
-- The mod can work on Mac OS, see instructions here: https://forums.civfanatics.com/thre...rd-and-much-more.666881/page-56#post-16369665.
-- For more info about the PCGames.de executable, see here: https://forums.civfanatics.com/threads/civ-3-windows-update-kb3086255-safedisc.552308/.
+Online multiplayer is not officially supported but some features of the mod will work. Others will not, including stack unit commands. I have also received reports that C3X can cause crashes in online MP. In general, online play is something I'd like to support but haven't gotten around to yet.
 
 
 
