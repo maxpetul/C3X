@@ -5,6 +5,8 @@
 |:--:|
 |Stack unit commands. Holding the control key converts most unit action buttons into stack buttons, which issue their commands to all units of the same type on the same tile. Similarly, holding control when selecting a tile to bombard performs a stack bombard. Also note the grouping of units and movement indicators on the right-click menus.|
 
+C3X's primary home is on CivFanatics, see: [main mod page](https://forums.civfanatics.com/resources/c3x.28759/), [releases](https://forums.civfanatics.com/resources/c3x.28759/updates), [discussion thread](https://forums.civfanatics.com/threads/c3x-exe-mod-including-bug-fixes-stack-bombard-and-much-more.666881/latest)
+
 ### Video Overview
 See this video by Suede for a demonstration of how to install the mod and of some of its convenience features.
 [![C3X: Incredible Quality of Life mod for Civ 3, Video by Suede CivIII](http://img.youtube.com/vi/VxQ5dVABJcQ/0.jpg)](http://www.youtube.com/watch?v=VxQ5dVABJcQ)
@@ -25,7 +27,7 @@ All aspects of C3X are configurable through INI text files. The basic INI file i
 
 However, because the default config file gets updated with each new release of the mod, it's recommended to put changes like the one above in a new file named "custom.c3x\_config.ini". C3X supports up to three different config files, the default config, a scenario config named "scenario.c3x\_config.ini" located in a scenario's search folder, and a custom config. They are loaded in that order. Scenario configs are intended to contain rule settings relevant to a particular scenario and custom configs are intended to function like user preferences. For a quick example of a scenario config, see [this post](https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-28#post-16212316).
 
-### Compatibiity
+### Compatibility
 C3X is compatible with the GOG and Steam versions of Civ 3 Complete and also with the DRM-free executable available through PCGames.de. If you have a CD version of the game, you can replace its EXE with the one from PCGames.de then install C3X on top of that. For more info about the PCGames.de executable, see this thread: [Civ 3, Windows Update KB3086255, & SafeDisc](https://forums.civfanatics.com/threads/civ-3-windows-update-kb3086255-safedisc.552308/).
 
 For info about running C3X on Mac, see this thread: [Installing, Playing and Modding C3C on Apple Silicon](https://forums.civfanatics.com/threads/installing-playing-and-modding-c3c-on-apple-silicon.681540/)
@@ -49,7 +51,7 @@ Numerous changes have been made to improve the AI's behavior, especially in comb
 When negotiating with the AI, you can quickly switch back and forth between civs using the added arrow buttons (arrow keys work as well). When asking for or offering gold, the set amount popup will appear with the best amount already filled in. Best amount means, when asking for gold on an acceptable trade, the most you could get, and when offering gold on an unacceptable trade, the least you need to pay.
 
 #### Optimization:
-A major inefficiency in the game's sea trade computation has been fixed. This elimiates one major cause of slow turns in the late game, especially on large maps with many coastal cities and many wars. For details about the problem and how C3X solves it, see [this post](https://forums.civfanatics.com/threads/c3x-exe-mod-including-bug-fixes-stack-bombard-and-much-more.666881/page-83#post-16536108).
+A major inefficiency in the game's sea trade computation has been fixed. This eliminates one major cause of slow turns in the late game, especially on large maps with many coastal cities and many wars. For details about the problem and how C3X solves it, see [this post](https://forums.civfanatics.com/threads/c3x-exe-mod-including-bug-fixes-stack-bombard-and-much-more.666881/page-83#post-16536108).
 
 #### Adjustable Movement Rules:
 The functions governing unit movement have been modified to enable various adjustments to the game's movement rules not possible through the editor. As with all other engine extensions, the rules are not changed from vanilla Conquests unless the config file is edited.
@@ -70,3 +72,9 @@ The no-raze and no-unit-limit features of earlier modded EXEs have been re-imple
 Some parts of the mod (bug fixes, no-raze, no unit limit) are really just hex edits that are applied to the Civ program code. The real secret sauce is a system to compile and inject arbitrary C code into the process which makes it practical to implement new features in the game. The heart of the system is TCC (Tiny C Compiler) and much work puzzling out the functions and structs inside the executable. Much thanks to Antal1987 for figuring out most of the structs years before I came along, [his work is posted here](https://github.com/Antal1987/C3CPatchFramework)).
 
 C3X is open source. The C code that gets injected into the game's EXE is located in injected_code.c and the code to perform the injection is located in ep.c. You're invited to explore the source code if you're interested. [The mod is also hosted on GitHub.](https://github.com/maxpetul/C3X)
+
+### Special Thanks
+1. Antal1987 for his work reverse engineering Civ3
+2. Rômulo Prado for his help testing the mod
+3. Civinator for the German translation. See: https://www.civforum.de/showthread.php?113285-Der-Flintlock-Deutsch-Patch
+4. Vaughn Parker for generously commissioning the port to the PCGames.de EXE and many other features
