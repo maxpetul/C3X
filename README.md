@@ -36,7 +36,8 @@ Online multiplayer is not officially supported but some features of the mod will
 
 ### Feature Highlights
 #### Disorder Warning:
-![C3X disorder warning feature. The domestic advisor is popping up to warn about unhappy cities before the end of a turn.](Misc%20Images/disorder_warning.png)
+![C3X disorder warning feature. The domestic advisor is popping up to warn about unhappy cities before the end of a turn.](Misc%20Images/disorder_warning.jpg)
+
 If you try to end the turn with unhappy cities, the domestic advisor will pop up to warn you and give you the option to continue that turn.
 
 #### AI Enhancements:
@@ -44,6 +45,7 @@ Numerous changes have been made to improve the AI's behavior, especially in comb
 
 #### Trade Screen Improvements:
 ![C3X trade screen arrows. Shows the top of the leader window with arrows on either side.](Misc%20Images/c3x_trade_screen_arrows.jpg)
+
 When negotiating with the AI, you can quickly switch back and forth between civs using the added arrow buttons (arrow keys work as well). When asking for or offering gold, the set amount popup will appear with the best amount already filled in. Best amount means, when asking for gold on an acceptable trade, the most you could get, and when offering gold on an unacceptable trade, the least you need to pay.
 
 #### Optimization:
@@ -59,17 +61,12 @@ Enabling land/sea intersections allows sea units to travel over the thin isthmus
 Disallowing trespassing prevents civs from entering each other's borders while at peace without a right of passage, similar to the rules in Civ 4. Invisible and hidden nationality units are exempted from the restriction.
 
 #### Small Wonder Free Improvements:
-The free improvements wonder effect (granaries from Pyramids etc.) now works on small wonders. Note to modders, to set this effect you must use a third party editor like Quintillus' (https://forums.civfanatics.com/threads/cross-platform-editor-for-conquests-now-available.377188/) because the option is grayed out in the standard editor. Even worse, if you set the effect then work on the BIQ in the standard editor, the effect won't be saved, so you'd need to set it every time or work exclusively in Quintillus' editor.
+The free improvements wonder effect (granaries from Pyramids etc.) now works on small wonders. Note to modders, to set this effect you must use a third party editor like Quintillus' ([thread link](https://forums.civfanatics.com/threads/cross-platform-editor-for-conquests-now-available.377188/)) because the option is grayed out in the standard editor. Even worse, if you set the effect then work on the BIQ in the standard editor, the effect won't be saved, so you'd need to set it every time or work exclusively in Quintillus' editor.
 
-#### No-raze & No Unit Limit:
+#### No-Raze & No Unit Limit:
 The no-raze and no-unit-limit features of earlier modded EXEs have been re-implemented as part of C3X. To enable no-raze, edit the config. There are separate options to prevent autorazing (the forced destruction of size 1 cities) and razing by player's choice.
 
+### How It Works
+Some parts of the mod (bug fixes, no-raze, no unit limit) are really just hex edits that are applied to the Civ program code. The real secret sauce is a system to compile and inject arbitrary C code into the process which makes it practical to implement new features in the game. The heart of the system is TCC (Tiny C Compiler) and much work puzzling out the functions and structs inside the executable. Much thanks to Antal1987 for figuring out most of the structs years before I came along, [his work is posted here](https://github.com/Antal1987/C3CPatchFramework)).
 
-
-
-
-Old:
-
-**C3X** is a mod for Civ 3 Complete that modifies the game's executable to make changes not possible through the scenario editor. The mod's primary home is on [CivFanatics](https://forums.civfanatics.com/resources/c3x.28759/), look there for a full feature list and releases.
-
-See also: [Antal1987's work](https://github.com/Antal1987/C3CPatchFramework), on which this mod is partially based.
+C3X is open source. The C code that gets injected into the game's EXE is located in injected_code.c and the code to perform the injection is located in ep.c. You're invited to explore the source code if you're interested. [The mod is also hosted on GitHub.](https://github.com/maxpetul/C3X)
