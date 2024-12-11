@@ -1,3 +1,5 @@
+- Remove city improvement limit
+  - Controlled by config option remove_city_improvement_limit
 - Polish precision striking by cruise missiles
   - Now plays the correct animations and despawns the unit afterward
   - Controlled by the polish_precision_striking config option, which used to be named polish_non_air_precision_striking
@@ -5,36 +7,30 @@
 - Add ability to perfume technologies and governments
   - Options named technology_perfume and government_perfume, respectively
   - The perfume_specs option from before has been renamed to production_perfume but the old name still works as an alias
-- Option to show more strategic resources (up to 13) in the box on the top left of the city screen by packing them in more tightly
-  - Named compact_strategic_resource_display_on_city_screen, off by default
-- Fix AIs not switching off a unit build when it can't complete due to a limit
-- Fix tile visibility check in stealth attack bombard
-
-* RELEASE 20 PREVIEW 2
 - Fix bug related to "Disables Diseases From Flood Plains" tech flag
   - Option named patch_disease_stopping_tech_flag_bug, off by default b/c this fix causes a lot more disease under the standard rules
-- Display negative yields from generated resources
-- Option to make planting forests produce LM forest terrain (named convert_to_landmark_after_planting_forest)
-- Fix free unit glitch from switching production to a building through the unit limit reached popup
-- Rebuild the trade network after loading save data for improvements beyond the limit
-- Fix yields from resource generating buildings not always appearing after a new scenario is loaded
-
-* RELEASE 20 PREVIEW 1
-- Remove city improvement limit
-  - Controlled by config option remove_city_improvement_limit
 - Option to show unit hitpoints on the stealth attack target selection popup (named show_hp_of_stealth_attack_options in config)
 - Option to have a warning when the building you've selected to build would replace another already built in the city
   - Named warn_when_chosen_building_would_replace_another in config, off by default
 - Option to prevent stealth attacks from targeting units that are invisible and unrevealed (named exclude_invisible_units_from_stealth_attack)
+- Display negative yields from generated resources
+- Option to show more strategic resources (up to 13) in the box on the top left of the city screen by packing them in more tightly
+  - Named compact_strategic_resource_display_on_city_screen, off by default
+- Option to make planting forests produce LM forest terrain (named convert_to_landmark_after_planting_forest)
 - Stop barbarian spawns from bankrupting the barbarian player (matters only if barbs are allowed to capture cities)
 - Option stopping pollution of impassable tiles also covers volcanic eruptions
 - Make barbarians defend cities they've captured as if they were camps
 - Load a third config file, custom.c3x_config.ini, if present
-- Fix describe_states_of_units_on_menu setting being ignored
+- Fix AIs not switching off a unit build when it can't complete due to a limit
+- Fix free unit glitch from switching production to a building through the unit limit reached popup
 - Stop units from airdropping multiple times in one turn
   - This only matters when dont_end_units_turn_after_airdrop has been activated
 - Do not group together units with different names on right-click menu
 - Record which units have used extra defensive bombards in save files
+- Rebuild the trade network after loading save data for improvements beyond the limit
+- Fix describe_states_of_units_on_menu setting being ignored
+- Fix tile visibility check in stealth attack bombard
+- Fix yields from resource generating buildings not always appearing after a new scenario is loaded
 - Touch up action descriptions for auto precision striking and fortified exhausted units
 - Correct description of lethal zone of control setting in default config
 

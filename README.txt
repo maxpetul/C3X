@@ -30,12 +30,13 @@ Convenience features:
  - Disallow useless bombard attacks vs airfields
  - Display total city count (disabled by default, appears on demographics screen)
  - Fix graphical issues when running on Wine
- - Option to pack the list of luxuries more tightly into the box on the city screen
+ - Option to pack the lists of luxuries and strategic resources more tightly into their boxes on the city screen
  - Right-click menu enhancements
   - Place icons next to units showing movement and combat status
   - Replace Wake/Activate with descriptions of what the units are doing
   - Gray out units if they have no remaining moves
  - Apply GridOn setting from conquests.ini after loading a save
+ - Option to have a warning when the building you've selected to build would replace another already built in the city
 Optimization:
  - Optimize computation of trade networks
   - For details, see the info text file in the Trade Net X folder
@@ -61,19 +62,20 @@ Bugs fixed:
  - Air units lose a turn after being set to intercept
  - Cached building maintenance amounts not updated when buildings are obsoleted
  - Barbarian long-range search for targets is limited to tiles directly NW or SE
+ - "Disables Diseases From Flood Plains" tech flag hardcoded to tech #8 (off by default)
 Engine extensions:
  - Adjustable minimum city distance
  - Option to limit railroad movement
  - Removed unit limit
+ - Removed city improvement limit
  - Enable free improvements from small wonders
  - Option to share visibility among all human players in a hotseat game
  - Option to prevent autoraze and razing by players
- - Stealth attack activates even when there's only one target
  - Trespassing prevention
  - Land/sea intersections
  - Adjustable anarchy length
  - Unit limits (stops players from producing units of a given type once they reach a maximum quantity)
- - "Perfume" units or improvements to control how likely the AI is to build them
+ - "Perfume" city production options, technologies, and governments to control how likely the AI is to choose them
  - Reveal AI logic
   - Press P in city screen to see AI point value for each available build
   - Press L on map to see how desirable the AI finds each tile as a city location
@@ -92,14 +94,19 @@ Engine extensions:
  - Option to multiply AI research rate by any amount
  - Option to aggressively penalize bankrupt players
  - Option to remove exception to tile penalty for city tiles with fresh water and Agri trait
- - Enable stealth attacks via bombardment
  - Artillery can be set to use PTW-like targeting against cities
  - Recon missions can be made vulnerable to interception
  - Option to charge one move for recon missions and interception
- - Allow players to opt out of stealth attacks
+ - Stealth attack changes
+  - Option to perform stealth attack even when there's only one target
+  - Enable stealth attacks via bombardment
+  - Allow players to opt out of stealth attacks
+  - Option to show unit hitpoints on the stealth attack target selection popup
+  - Option to prevent stealth attacks from targeting units that are invisible and unrevealed
  - Polish precision striking by land or sea units
   - Use regular bombard animation instead of flying animation
   - Use bombard range instead of operational range
+  - Despawn unit if cruise missile
   - Cannot be intercepted
  - Option to immunize aircraft against bombardment
  - Option to ignore king flag on defense, so kings aren't always last to defend in a stack
@@ -127,6 +134,7 @@ Engine extensions:
  - Option to allow upgrades in any city
  - Option to stop the map generator from placing volcanos
  - Option to stop pollution from appearing on impassable tiles
+ - Option to make planting forests produce LM forest terrain (named convert_to_landmark_after_planting_forest)
 
 INSTALLATION AND USAGE:
 Extract the mod to its own folder then copy that folder into your Civ install directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat or RUN.bat scripts. INSTALL.bat will install the mod into Civ3Conquests.exe, RUN.bat will launch Civ 3 then apply the mod to the program in memory. The mod's behavior is highly adjustable by editing the config file named "default.c3x_config.ini". Also that config file contains info about some mod features that aren't fully explained in this README.
