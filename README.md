@@ -7,11 +7,11 @@
 
 C3X's primary home is on CivFanatics, see: [main mod page](https://forums.civfanatics.com/resources/c3x.28759/), [releases](https://forums.civfanatics.com/resources/c3x.28759/updates), [discussion thread](https://forums.civfanatics.com/threads/c3x-exe-mod-including-bug-fixes-stack-bombard-and-much-more.666881/latest)
 
-### Video Overview
+## Video Overview
 See this video by Suede for a demonstration of how to install the mod and of some of its convenience features.
 [![C3X: Incredible Quality of Life mod for Civ 3, Video by Suede CivIII](http://img.youtube.com/vi/VxQ5dVABJcQ/0.jpg)](http://www.youtube.com/watch?v=VxQ5dVABJcQ)
 
-### Installation Details
+## Installation Details
 Extract the mod, keeping it in its own folder, then copy that folder to your main Conquests directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat script. You should get a message reporting that the installation was successful. You can also try RUN.bat, which launches a modded version of Civ 3 without installation, however I have received several reports that that script doesn't work for some people.
 
 Notes about installation:
@@ -22,12 +22,12 @@ Notes about installation:
 5. Even after installation, the mod still depends on some files in the mod folder, so you need to keep it around.
 6. Rômulo Prado reports that RUN.bat started working for him after he installed the MS Visual C++ Redistributables versions 2005 and 2019 (while installing GOG Galaxy).
 
-### Configuration
+## Configuration
 All aspects of C3X are configurable through INI text files. The basic INI file is called "default.c3x_config.ini" and is located in the mod folder. For example, if you want to turn off grouping of units on the right-click menu (that's what gives you "3x Spearman" instead of 3 identical Spearman entries), you could open that file in any text editor, find the line `group_units_on_right_click_menu = true`, and set it to `false`.
 
 However, because the default config file gets updated with each new release of the mod, it's recommended to put changes like the one above in a new file named "custom.c3x\_config.ini". C3X supports up to three different config files, the default config, a scenario config named "scenario.c3x\_config.ini" located in a scenario's search folder, and a custom config. They are loaded in that order. Scenario configs are intended to contain rule settings relevant to a particular scenario and custom configs are intended to function like user preferences. For a quick example of a scenario config, see [this post](https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-28#post-16212316).
 
-### Compatibility
+## Compatibility
 C3X is compatible with the GOG and Steam versions of Civ 3 Complete and also with the DRM-free executable available through PCGames.de. If you have a CD version of the game, you can replace its EXE with the one from PCGames.de then install C3X on top of that. For more info about the PCGames.de executable, see this thread: [Civ 3, Windows Update KB3086255, & SafeDisc](https://forums.civfanatics.com/threads/civ-3-windows-update-kb3086255-safedisc.552308/).
 
 For info about running C3X on Mac, see this thread: [Installing, Playing and Modding C3C on Apple Silicon](https://forums.civfanatics.com/threads/installing-playing-and-modding-c3c-on-apple-silicon.681540/)
@@ -36,7 +36,7 @@ C3X is compatible with existing saves and saves created with the mod active will
 
 Online multiplayer is not officially supported but some features of the mod will work. Others will not, including stack unit commands. I have also received reports that C3X can cause crashes in online MP. In general, online play is something I'd like to support but haven't gotten around to yet.
 
-### Feature Highlights
+## Feature Highlights
 #### Disorder Warning:
 ![C3X disorder warning feature. The domestic advisor is popping up to warn about unhappy cities before the end of a turn.](Misc%20Images/disorder_warning.jpg)
 
@@ -68,12 +68,12 @@ The free improvements wonder effect (granaries from Pyramids etc.) now works on 
 #### No-Raze & No Unit Limit:
 The no-raze and no-unit-limit features of earlier modded EXEs have been re-implemented as part of C3X. To enable no-raze, edit the config. There are separate options to prevent autorazing (the forced destruction of size 1 cities) and razing by player's choice.
 
-### How It Works
+## How It Works
 Some parts of the mod (bug fixes, no-raze, no unit limit) are really just hex edits that are applied to the Civ program code. The real secret sauce is a system to compile and inject arbitrary C code into the process which makes it practical to implement new features in the game. The heart of the system is TCC (Tiny C Compiler) and much work puzzling out the functions and structs inside the executable. Much thanks to Antal1987 for figuring out most of the structs years before I came along, [his work is posted here](https://github.com/Antal1987/C3CPatchFramework)).
 
 C3X is open source. The C code that gets injected into the game's EXE is located in injected_code.c and the code to perform the injection is located in ep.c. You're invited to explore the source code if you're interested. [The mod is also hosted on GitHub.](https://github.com/maxpetul/C3X)
 
-### Special Thanks
+## Special Thanks
 1. Antal1987 for his work reverse engineering Civ3
 2. Rômulo Prado for his help testing the mod
 3. Civinator for the German translation. See: https://www.civforum.de/showthread.php?113285-Der-Flintlock-Deutsch-Patch
