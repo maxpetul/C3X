@@ -211,7 +211,7 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
 ## How It Works
 Some parts of the mod (bug fixes, no-raze, no unit limit) are really just hex edits that are applied to the Civ program code. The real secret sauce is a system to compile and inject arbitrary C code into the process which makes it practical to implement new features in the game. The heart of the system is TCC (Tiny C Compiler) and much work puzzling out the functions and structs inside the executable. Much thanks to Antal1987 for figuring out most of the structs years before I came along, [his work is posted here](https://github.com/Antal1987/C3CPatchFramework)).
 
-C3X is open source. The C code that gets injected into the game's EXE is located in injected_code.c and the code to perform the injection is located in ep.c. You're invited to explore the source code if you're interested. [The mod is also hosted on GitHub.](https://github.com/maxpetul/C3X)
+C3X is open source. The C code that gets injected into the game's EXE is located in injected_code.c and the code to perform the injection is located in ep.c. You're invited to explore the source code if you're interested.
 
 ## Special Thanks
 1. Antal1987 for his work reverse engineering Civ3
