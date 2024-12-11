@@ -68,6 +68,146 @@ The free improvements wonder effect (granaries from Pyramids etc.) now works on 
 #### No-Raze & No Unit Limit:
 The no-raze and no-unit-limit features of earlier modded EXEs have been re-implemented as part of C3X. To enable no-raze, edit the config. There are separate options to prevent autorazing (the forced destruction of size 1 cities) and razing by player's choice.
 
+## Full Feature List
+All C3X features are listed below. See the default config (default.c3x\_config.ini) for descriptions.
+<details>
+  <summary>Included in C3X</summary>
+
+  #### Convenience features
+   - Stack unit commands
+      - Stack bombard
+      - Worker buttons (irrigate, road, etc.) become stack buttons by holding CTRL
+      - Stack fortify, upgrade, and disband also with CTRL
+   - Disorder warning
+   - Detailed city production info
+   - Buttons on trade screen to quickly switch between civs
+   - Ask/offer gold popup autofills best amount
+   - Skip repeated popups asking to replace a tile improvement
+   - Group units on right click menu
+   - Show coordinates and chopped status in tile info box
+   - Show golden age turns remaining
+   - No special king unit names in non-regicide games
+   - Option to disable worker automation
+   - On the city screen, hold shift when clicking a specialist to switch to the previous type
+   - Automatically cut research spending to avoid bankruptcy
+   - Remove pause for "we love the king" messages
+   - Suppress "maximum hypertext links exceeded" popup
+   - Civilopedia indicates when units go obsolete but cannot be upgraded
+   - Message appears after bomber dodges interception by air defense buildings
+   - Option to replay AI moves for all human players in hotseat mode
+   - Restore unit directions on game load
+   - Option to remove Elvis Easter egg
+   - Harbor/airport city icons indicate unit effects not trade abilities
+   - Disallow useless bombard attacks vs airfields
+   - Display total city count (disabled by default, appears on demographics screen)
+   - Fix graphical issues when running on Wine
+   - Option to pack the lists of luxuries and strategic resources more tightly into their boxes on the city screen
+   - Right-click menu enhancements
+      - Place icons next to units showing movement and combat status
+      - Replace Wake/Activate with descriptions of what the units are doing
+      - Gray out units if they have no remaining moves
+   - Apply GridOn setting from conquests.ini after loading a save
+   - Option to have a warning when the building you've selected to build would replace another already built in the city
+  #### Optimization
+   - Optimize computation of trade networks
+      - For details, see the info text file in the Trade Net X folder
+   - Optimize improvement loops
+   - Option to measure turn times
+  #### AI Enhancements
+   - Allow AI to use artillery in the field
+   - Force AI to build more artillery and bombers
+   - Replace leader unit AI to fix bugs and improve behavior
+   - Fix bug preventing AI from filling its armies
+   - Improve AI army composition to discourage mixing types & exclude HN units
+   - AI routine for "pop units" that may appear in mods
+   - Can limit the number of escorts the AI assigns to its naval transports and carriers
+   - Adjustable AI worker requirement
+   - Option to stop AI from escorting units without the "requires escort" flag
+  #### Bugs Fixed
+   - AI pathfinding collides with invisible units (called the "submarine bug")
+   - Science age beakers not actually awarded
+   - Pink line in Civilopedia
+   - Crash when doing disembark-all on transport containing immobile unit(s)
+   - Crash possible when AI civ is left alive with only a settler on a transport (called the "houseboat bug")
+   - Resources beyond the first 32 share access records in cities not on the main trade network (called the "phantom resource bug")
+   - Air units lose a turn after being set to intercept
+   - Cached building maintenance amounts not updated when buildings are obsoleted
+   - Barbarian long-range search for targets is limited to tiles directly NW or SE
+   - "Disables Diseases From Flood Plains" tech flag hardcoded to tech #8 (off by default)
+  #### Engine Extensions
+   - Adjustable minimum city distance
+   - Option to limit railroad movement
+   - Removed unit limit
+   - Removed city improvement limit
+   - Enable free improvements from small wonders
+   - Option to share visibility among all human players in a hotseat game
+   - Option to prevent autoraze and razing by players
+   - Trespassing prevention
+   - Land/sea intersections
+   - Adjustable anarchy length
+   - Unit limits (stops players from producing units of a given type once they reach a maximum quantity)
+   - "Perfume" city production options, technologies, and governments to control how likely the AI is to choose them
+   - Reveal AI logic
+      - Press P in city screen to see AI point value for each available build
+      - Press L on map to see how desirable the AI finds each tile as a city location
+   - Corruption can be completely removed with "OFF" government setting
+   - Disallow land units from working or settling water tiles
+   - Option to let units move after airdropping
+   - Buildings can generate resources
+   - Buildings can be set as prerequisites for unit production
+   - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
+   - Option to modify rules for retreat eligibility
+   - AI multi-city start
+      - Starter cities can begin with improvements, including "extra palaces" which respawn like the real palace
+   - Remove cap on turn limit
+   - Option to strengthen forbidden palace decorruption effect to match the palace's
+   - Option to allow military great leaders to hurry wonders
+   - Option to multiply AI research rate by any amount
+   - Option to aggressively penalize bankrupt players
+   - Option to remove exception to tile penalty for city tiles with fresh water and Agri trait
+   - Artillery can be set to use PTW-like targeting against cities
+   - Recon missions can be made vulnerable to interception
+   - Option to charge one move for recon missions and interception
+   - Stealth attack changes
+      - Option to perform stealth attack even when there's only one target
+      - Enable stealth attacks via bombardment
+      - Allow players to opt out of stealth attacks
+      - Option to show unit hitpoints on the stealth attack target selection popup
+      - Option to prevent stealth attacks from targeting units that are invisible and unrevealed
+   - Polish precision striking by land or sea units
+      - Use regular bombard animation instead of flying animation
+      - Use bombard range instead of operational range
+      - Despawn unit if cruise missile
+      - Cannot be intercepted
+   - Option to immunize aircraft against bombardment
+   - Option to ignore king flag on defense, so kings aren't always last to defend in a stack
+   - Option to show untradable techs on trade screen
+   - Barbarian city capture & production (experimental)
+   - Option to allow land units to bombard aircraft and naval units in cities
+   - Zone of control changes
+      - Allow land-to-sea and sea-to-land attacks, only using bombard stat
+      - May be lethal
+      - May be exerted by air units
+      - Show attack animation even when attacker is not at the top of its stack
+   - Defensive bombard changes
+      - May be lethal
+      - May be performed by air units
+      - Invisible, undetected units may be made immune
+      - May be performed multiple times per turn with blitz
+      - Naval units in a city may perform defensive bombard vs land attackers
+   - Allow precision strikes to target tile improvements
+   - Option not to end a unit's turn after it bombards a barricade
+   - Option to allow bombardment of other improvements on a tile with an occupied airfield
+   - Option to boost OCN increase from forbidden palaces in non-communal governments
+   - Option to allow airdrops without airports
+   - Can increase unit maintenance costs based on their build costs
+   - Civ and leader names can vary by era
+   - Option to allow upgrades in any city
+   - Option to stop the map generator from placing volcanos
+   - Option to stop pollution from appearing on impassable tiles
+   - Option to make planting forests produce LM forest terrain
+</details>
+
 ## How It Works
 Some parts of the mod (bug fixes, no-raze, no unit limit) are really just hex edits that are applied to the Civ program code. The real secret sauce is a system to compile and inject arbitrary C code into the process which makes it practical to implement new features in the game. The heart of the system is TCC (Tiny C Compiler) and much work puzzling out the functions and structs inside the executable. Much thanks to Antal1987 for figuring out most of the structs years before I came along, [his work is posted here](https://github.com/Antal1987/C3CPatchFramework)).
 
