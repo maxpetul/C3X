@@ -1,3 +1,4 @@
+* RELEASE 20
 - Remove city improvement limit
   - Controlled by config option remove_city_improvement_limit
 - Polish precision striking by cruise missiles
