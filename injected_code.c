@@ -582,7 +582,7 @@ enum recognizable_parse_result {
 
 struct perfume_spec {
 	char name[36]; // Must be large enough to fit the name of a unit type or improvement
-	int amount;
+	i31b value; // Int component stores amount, bool stores whether it's a percentage or not
 };
 
 enum recognizable_parse_result
@@ -604,7 +604,7 @@ parse_perfume_spec (char ** p_cursor, enum perfume_kind kind, struct error_line 
 			struct perfume_spec * out = out_perfume_spec;
 			snprintf (out->name, sizeof out->name, "%.*s", name.len, name.str);
 			out->name[(sizeof out->name) - 1] = '\0';
-			out->amount = amount;
+			out->value = i31b_pack (amount, false);
 			return RPR_OK;
 		} else {
 			add_unrecognized_line (p_unrecognized_lines, &name);
@@ -1494,7 +1494,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		if (list->items != NULL) {
 			for (int k = 0; k < list->count; k++) {
 				struct perfume_spec * ps = &list->items[k];
-				stable_insert (table, ps->name, ps->amount);
+				stable_insert (table, ps->name, ps->value);
 			}
 			free (list->items);
 		}
@@ -1947,23 +1947,38 @@ get_available_unit_count (Leader * leader, int unit_type_id, int * out_available
 		return false;
 }
 
+int
+apply_perfume (enum perfume_kind kind, char const * name, int base_amount)
+{
+	i31b perfume_value;
+	if (stable_look_up (&is->current_config.perfume_specs[kind], name, &perfume_value)) {
+		int amount;
+		bool percent;
+		i31b_unpack (perfume_value, &amount, &percent);
+		if (! percent)
+			return base_amount + amount;
+		else {
+			int rounding = (amount >= 0) ? 50 : -50;
+			return base_amount + (base_amount * amount + rounding) / 100;
+		}
+	} else
+		return base_amount;
+}
+
 int __stdcall
 intercept_consideration (int valuation)
 {
 	City * city = is->ai_considering_production_for_city;
 	City_Order * order = &is->ai_considering_order;
 
+	// Apply perfume
 	char * order_name; {
 		if (order->OrderType == COT_Improvement)
 			order_name = p_bic_data->Improvements[order->OrderID].Name.S;
 		else
 			order_name = p_bic_data->UnitTypes[order->OrderID].Name;
 	}
-
-	// Apply perfume
-	int perfume_amount;
-	if (stable_look_up (&is->current_config.perfume_specs[PK_PRODUCTION], order_name, &perfume_amount))
-		valuation += perfume_amount;
+	valuation = apply_perfume (PK_PRODUCTION, order_name, valuation);
 
 	// Expand the list of valuations if necessary
 	reserve (sizeof is->ai_prod_valuations[0], (void **)&is->ai_prod_valuations, &is->ai_prod_valuations_capacity, is->count_ai_prod_valuations);
@@ -10140,27 +10155,15 @@ patch_Map_change_tile_terrain_by_worker (Map * this, int edx, enum SquareTypes n
 int __fastcall
 patch_Leader_ai_eval_technology (Leader * this, int edx, int id, bool param_2, bool param_3)
 {
-	int tr = Leader_ai_eval_technology (this, __, id, param_2, param_3);
-
-	// Apply perfume
-	int perfume_amount;
-	if (stable_look_up (&is->current_config.perfume_specs[PK_TECHNOLOGY], p_bic_data->Advances[id].Name, &perfume_amount))
-		tr += perfume_amount;
-
-	return tr;
+	int base = Leader_ai_eval_technology (this, __, id, param_2, param_3);
+	return apply_perfume (PK_TECHNOLOGY, p_bic_data->Advances[id].Name, base);
 }
 
 int __fastcall
 patch_Leader_ai_eval_government (Leader * this, int edx, int id)
 {
-	int tr = Leader_ai_eval_government (this, __, id);
-
-	// Apply perfume
-	int perfume_amount;
-	if (stable_look_up (&is->current_config.perfume_specs[PK_GOVERNMENT], p_bic_data->Governments[id].Name.S, &perfume_amount))
-		tr += perfume_amount;
-
-	return tr;
+	int base = Leader_ai_eval_government (this, __, id);
+	return apply_perfume (PK_GOVERNMENT, p_bic_data->Governments[id].Name.S, base);
 }
 
 // TCC requires a main function be defined even though it's never used.
