@@ -119,6 +119,22 @@ buffer_deinit (struct buffer * b)
 	memset (b, 0, sizeof *b);
 }
 
+// An i31b represents a 31-bit signed integer and a boolean packed into a single int.
+typedef int i31b;
+
+i31b
+i31b_pack (int int_val, bool bool_val)
+{
+	return (clamp (INT_MIN/2, INT_MAX/2, int_val) << 1) | (bool_val ? 1 : 0);
+}
+
+void
+i31b_unpack (i31b packed_val, int * out_int_val, bool * out_bool_val)
+{
+	*out_int_val = packed_val >> 1;
+	*out_bool_val = packed_val & 1;
+}
+
 // ========================================================
 // ||                                                    ||
 // ||     SIMPLE HASH TABLES FOR INT AND STRING KEYS     ||
