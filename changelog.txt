@@ -1,3 +1,5 @@
+- Allow perfume amounts to be specified as percentages
+
 * RELEASE 20
 - Remove city improvement limit
   - Controlled by config option remove_city_improvement_limit

@@ -596,6 +596,7 @@ parse_perfume_spec (char ** p_cursor, enum perfume_kind kind, struct error_line 
 	if (parse_string (&cur, &name) &&
 	    skip_punctuation (&cur, ':') &&
 	    parse_int (&cur, &amount)) {
+		bool percent = skip_punctuation (&cur, '%');
 		*p_cursor = cur;
 
 		if (((kind == PK_PRODUCTION) && find_city_order_by_name (&name, &unused_city_order)) ||
@@ -604,7 +605,7 @@ parse_perfume_spec (char ** p_cursor, enum perfume_kind kind, struct error_line 
 			struct perfume_spec * out = out_perfume_spec;
 			snprintf (out->name, sizeof out->name, "%.*s", name.len, name.str);
 			out->name[(sizeof out->name) - 1] = '\0';
-			out->value = i31b_pack (amount, false);
+			out->value = i31b_pack (amount, percent);
 			return RPR_OK;
 		} else {
 			add_unrecognized_line (p_unrecognized_lines, &name);
@@ -1958,8 +1959,8 @@ apply_perfume (enum perfume_kind kind, char const * name, int base_amount)
 		if (! percent)
 			return base_amount + amount;
 		else {
-			int rounding = (amount >= 0) ? 50 : -50;
-			return base_amount + (base_amount * amount + rounding) / 100;
+			int fraction = (base_amount * int_abs (amount) + 50) / 100;
+			return (amount >= 0) ? base_amount + fraction : base_amount - fraction;
 		}
 	} else
 		return base_amount;
