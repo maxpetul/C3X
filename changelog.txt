@@ -1,4 +1,5 @@
 - Allow perfume amounts to be specified as percentages
+- Adjustable chance for max one HP units to be destroyed by nuclear strikes
 
 * RELEASE 20
 - Remove city improvement limit

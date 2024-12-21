@@ -2733,18 +2733,19 @@ patch_init_floating_point ()
 		int base_val;
 		int offset;
 	} integer_config_options[] = {
-		{"limit_railroad_movement"            ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
-		{"minimum_city_separation"            ,     1, offsetof (struct c3x_config, minimum_city_separation)},
-		{"anarchy_length_percent"             ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
-		{"ai_multi_city_start"                ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
-		{"max_tries_to_place_fp_city"         , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
-		{"ai_research_multiplier"             ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
-		{"extra_unit_maintenance_per_shields" ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
-		{"ai_build_artillery_ratio"           ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
-		{"ai_artillery_value_damage_percent"  ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
-		{"ai_build_bomber_ratio"              ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
-		{"max_ai_naval_escorts"               ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
-		{"ai_worker_requirement_percent"      ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
+		{"limit_railroad_movement"                     ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
+		{"minimum_city_separation"                     ,     1, offsetof (struct c3x_config, minimum_city_separation)},
+		{"anarchy_length_percent"                      ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
+		{"ai_multi_city_start"                         ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
+		{"max_tries_to_place_fp_city"                  , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
+		{"ai_research_multiplier"                      ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
+		{"extra_unit_maintenance_per_shields"          ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
+		{"ai_build_artillery_ratio"                    ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
+		{"ai_artillery_value_damage_percent"           ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
+		{"ai_build_bomber_ratio"                       ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
+		{"max_ai_naval_escorts"                        ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
+		{"ai_worker_requirement_percent"               ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
+		{"chance_for_nukes_to_destroy_max_one_hp_units",   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -10165,6 +10166,31 @@ patch_Leader_ai_eval_government (Leader * this, int edx, int id)
 {
 	int base = Leader_ai_eval_government (this, __, id);
 	return apply_perfume (PK_GOVERNMENT, p_bic_data->Governments[id].Name.S, base);
+}
+
+void __fastcall
+patch_Unit_despawn_after_killed_by_nuke (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
+{
+	int one_hp_destroy_chance = is->current_config.chance_for_nukes_to_destroy_max_one_hp_units;
+	if (   (one_hp_destroy_chance >= 100)
+            || (   (Unit_get_max_hp (this) > 1)
+		|| (rand_int (p_rand_object, __, 100) < one_hp_destroy_chance)))
+		patch_Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
+	else
+		this->Body.Damage = 0;
+}
+
+void __fastcall
+patch_mp_despawn_after_killed_by_nuke (void * this, int edx, int unit_id, int civ_id_responsible, byte param_3, byte param_4, byte param_5, byte param_6)
+{
+	Unit * unit;
+	int one_hp_destroy_chance = is->current_config.chance_for_nukes_to_destroy_max_one_hp_units;
+	if (   (one_hp_destroy_chance >= 100)
+            || (   (Unit_get_max_hp (this) > 1)
+	        || (rand_int (p_rand_object, __, 100) < one_hp_destroy_chance)))
+		mp_despawn (this, __, unit_id, civ_id_responsible, param_3, param_4, param_5, param_6);
+	else if ((unit = get_unit_ptr (unit_id)) != NULL)
+		unit->Body.Damage = 0;
 }
 
 // TCC requires a main function be defined even though it's never used.

@@ -207,6 +207,7 @@ struct c3x_config {
 	bool show_hp_of_stealth_attack_options;
 	bool exclude_invisible_units_from_stealth_attack;
 	bool convert_to_landmark_after_planting_forest;
+	int chance_for_nukes_to_destroy_max_one_hp_units;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
