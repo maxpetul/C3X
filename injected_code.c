@@ -10168,29 +10168,36 @@ patch_Leader_ai_eval_government (Leader * this, int edx, int id)
 	return apply_perfume (PK_GOVERNMENT, p_bic_data->Governments[id].Name.S, base);
 }
 
+bool
+roll_to_spare_unit_from_nuke (Unit * unit)
+{
+	int one_hp_destroy_chance = is->current_config.chance_for_nukes_to_destroy_max_one_hp_units;
+	if ((one_hp_destroy_chance < 100) &&
+	    (Unit_get_max_hp (unit) <= 1) &&
+	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Defence > 0) &&
+	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Land))
+		return ! (rand_int (p_rand_object, __, 100) < one_hp_destroy_chance);
+	else
+		return false;
+}
+
 void __fastcall
 patch_Unit_despawn_after_killed_by_nuke (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
 {
-	int one_hp_destroy_chance = is->current_config.chance_for_nukes_to_destroy_max_one_hp_units;
-	if (   (one_hp_destroy_chance >= 100)
-            || (   (Unit_get_max_hp (this) > 1)
-		|| (rand_int (p_rand_object, __, 100) < one_hp_destroy_chance)))
-		patch_Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
+	if (roll_to_spare_unit_from_nuke (this))
+		this->Body.Damage = Unit_get_max_hp (this) - 1;
 	else
-		this->Body.Damage = 0;
+		patch_Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 }
 
 void __fastcall
 patch_mp_despawn_after_killed_by_nuke (void * this, int edx, int unit_id, int civ_id_responsible, byte param_3, byte param_4, byte param_5, byte param_6)
 {
-	Unit * unit;
-	int one_hp_destroy_chance = is->current_config.chance_for_nukes_to_destroy_max_one_hp_units;
-	if (   (one_hp_destroy_chance >= 100)
-            || (   (Unit_get_max_hp (this) > 1)
-	        || (rand_int (p_rand_object, __, 100) < one_hp_destroy_chance)))
+	Unit * unit = get_unit_ptr (unit_id);
+	if ((unit != NULL) && roll_to_spare_unit_from_nuke (unit))
+		unit->Body.Damage = Unit_get_max_hp (unit) - 1;
+	else
 		mp_despawn (this, __, unit_id, civ_id_responsible, param_3, param_4, param_5, param_6);
-	else if ((unit = get_unit_ptr (unit_id)) != NULL)
-		unit->Body.Damage = 0;
 }
 
 // TCC requires a main function be defined even though it's never used.
