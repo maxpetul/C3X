@@ -568,9 +568,9 @@ define,	   0x5BECE0,	0x5CD900,	0x5BE9F0,	"Unit_heal_at_start_of_turn",			"void (
 define,	   0x469590,	0x46BD40,	0x469610,	"check_online_skip_flag",			"bool (__stdcall *) (int unit_id)"
 inlead,	   0x448BF0,	0x44AB10,	0x448C70,	"Leader_ai_eval_technology",			"int (__fastcall *) (Leader * this, int edx, int id, bool param_2, bool param_3)"
 inlead,	   0x4446C0,	0x4464C0,	0x444740,	"Leader_ai_eval_government",			"int (__fastcall *) (Leader * this, int edx, int id)"
-define,	   0x474140,	0x0,		0x0,		"mp_despawn",					"void (__fastcall *) (void * this, int edx, int unit_id, int civ_id_responsible, byte param_3, byte param_4, byte param_5, byte param_6)"
-repl call, 0x5B483F,	0x0,		0x0,		"Unit_despawn_after_killed_by_nuke",		""
-repl call, 0x5B4832,	0x0,		0x0,		"mp_despawn_after_killed_by_nuke",		""
+define,	   0x474140,	0x476F70,	0x4741C0,	"mp_despawn",					"void (__fastcall *) (void * this, int edx, int unit_id, int civ_id_responsible, byte param_3, byte param_4, byte param_5, byte param_6)"
+repl call, 0x5B483F,	0x5C3199,	0x5B454F,	"Unit_despawn_after_killed_by_nuke",		""
+repl call, 0x5B4832,	0x5C318C,	0x5B4542,	"mp_despawn_after_killed_by_nuke",		""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
