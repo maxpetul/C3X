@@ -10172,10 +10172,11 @@ bool
 roll_to_spare_unit_from_nuke (Unit * unit)
 {
 	int one_hp_destroy_chance = is->current_config.chance_for_nukes_to_destroy_max_one_hp_units;
+	UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
 	if ((one_hp_destroy_chance < 100) &&
 	    (Unit_get_max_hp (unit) <= 1) &&
-	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Defence > 0) &&
-	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Land))
+	    (type->Defence > 0) &&
+	    ((type->Unit_Class == UTC_Land) || (type->Unit_Class == UTC_Sea)))
 		return ! (rand_int (p_rand_object, __, 100) < one_hp_destroy_chance);
 	else
 		return false;
