@@ -108,6 +108,7 @@ struct c3x_config {
 	bool allow_stealth_attack_against_single_unit;
 	bool show_detailed_city_production_info;
 	int limit_railroad_movement;
+	bool limited_railroads_work_like_fast_roads;
 	bool enable_free_buildings_from_small_wonders;
 	bool enable_stack_unit_commands;
 	bool skip_repeated_tile_improv_replacement_asks;

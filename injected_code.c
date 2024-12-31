@@ -2634,6 +2634,7 @@ patch_init_floating_point ()
 		{"enable_disorder_warning"                             , true , offsetof (struct c3x_config, enable_disorder_warning)},
 		{"allow_stealth_attack_against_single_unit"            , false, offsetof (struct c3x_config, allow_stealth_attack_against_single_unit)},
 		{"show_detailed_city_production_info"                  , true , offsetof (struct c3x_config, show_detailed_city_production_info)},
+		{"limited_railroads_work_like_fast_roads"              , false, offsetof (struct c3x_config, limited_railroads_work_like_fast_roads)},
 		{"enable_free_buildings_from_small_wonders"            , true , offsetof (struct c3x_config, enable_free_buildings_from_small_wonders)},
 		{"enable_stack_unit_commands"                          , true , offsetof (struct c3x_config, enable_stack_unit_commands)},
 		{"skip_repeated_tile_improv_replacement_asks"          , true , offsetof (struct c3x_config, skip_repeated_tile_improv_replacement_asks)},
@@ -4472,8 +4473,11 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 	// Adjust movement cost to enforce limited railroad movement
 	if ((is->current_config.limit_railroad_movement > 0) && (is->saved_road_movement_rate > 0)) {
 		if ((unit != NULL) && (base_cost == 0)) { // Railroad move
-			int type_moves_available = Unit_get_max_move_points (unit) / p_bic_data->General.RoadsMovementRate;
-			return type_moves_available * is->railroad_mp_cost_per_move;
+			if (! is->current_config.limited_railroads_work_like_fast_roads) { // If Civ 4 style RR, scale cost by type's moves
+				int type_moves_available = Unit_get_max_move_points (unit) / p_bic_data->General.RoadsMovementRate;
+				return type_moves_available * is->railroad_mp_cost_per_move;
+			} else
+				return is->railroad_mp_cost_per_move;
 		} else if (base_cost == 1) // Road move
 			return is->road_mp_cost;
 	}
