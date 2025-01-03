@@ -571,6 +571,8 @@ inlead,	   0x4446C0,	0x4464C0,	0x444740,	"Leader_ai_eval_government",			"int (__
 define,	   0x474140,	0x476F70,	0x4741C0,	"mp_despawn",					"void (__fastcall *) (void * this, int edx, int unit_id, int civ_id_responsible, byte param_3, byte param_4, byte param_5, byte param_6)"
 repl call, 0x5B483F,	0x5C3199,	0x5B454F,	"Unit_despawn_after_killed_by_nuke",		""
 repl call, 0x5B4832,	0x5C318C,	0x5B4542,	"mp_despawn_after_killed_by_nuke",		""
+define,	   0x4B3290,	0x4BA210,	0x4B3320,	"City_has_unprotected_improv",			"bool (__fastcall *) (City * this, int edx, int id)"
+repl call, 0x422BE5,	0x4241A5,	0x422C65,	"City_has_unprotected_improv_to_sell",		""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

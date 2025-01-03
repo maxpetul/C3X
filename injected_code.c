@@ -2727,6 +2727,7 @@ patch_init_floating_point ()
 		{"show_hp_of_stealth_attack_options"                   , false, offsetof (struct c3x_config, show_hp_of_stealth_attack_options)},
 		{"exclude_invisible_units_from_stealth_attack"         , false, offsetof (struct c3x_config, exclude_invisible_units_from_stealth_attack)},
 		{"convert_to_landmark_after_planting_forest"           , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
+		{"allow_sale_of_aqueducts_and_hospitals"               , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
 	};
 
 	struct integer_config_option {
@@ -10203,6 +10204,30 @@ patch_mp_despawn_after_killed_by_nuke (void * this, int edx, int unit_id, int ci
 		unit->Body.Damage = Unit_get_max_hp (unit) - 1;
 	else
 		mp_despawn (this, __, unit_id, civ_id_responsible, param_3, param_4, param_5, param_6);
+}
+
+bool __fastcall
+patch_City_has_unprotected_improv_to_sell (City * this, int edx, int id)
+{
+	if (! is->current_config.allow_sale_of_aqueducts_and_hospitals)
+		return City_has_unprotected_improv (this, __, id);
+
+	// Replicate the logic from the original method but check that the city is below the pop cap instead of that the improv removes the cap
+	else if (City_has_improvement (this, __, id, false)) {
+		Improvement * improv = &p_bic_data->Improvements[id];
+		int max_pop_to_sell = INT_MAX; {
+			if (improv->ImprovementFlags & ITF_Allows_City_Level_2)
+				max_pop_to_sell = p_bic_data->General.MaximumSize_Town;
+			else if (improv->ImprovementFlags & ITF_Allows_City_Level_3)
+				max_pop_to_sell = p_bic_data->General.MaximumSize_City;
+		}
+		return ((improv->Characteristics & ITC_Wonder) == 0) &&
+			((improv->Characteristics & ITC_Small_Wonder) == 0) &&
+			((improv->ImprovementFlags & ITF_Center_of_Empire) == 0) &&
+			(this->Body.Population.Size <= max_pop_to_sell);
+
+	} else
+		return false;
 }
 
 // TCC requires a main function be defined even though it's never used.
