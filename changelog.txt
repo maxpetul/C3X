@@ -1,9 +1,9 @@
 - Allow perfume amounts to be specified as percentages
+- Option to limit how many units can share each tile, named limit_units_per_tile
 - Adjustable chance for max one HP units to be destroyed by nuclear strikes
   - Controlled by config option chance_for_nukes_to_destroy_max_one_hp_units
 - Add limited_railroads_work_like_fast_roads option which does just that
-- Option to allow sale of buildings like aqueducts that uncap population growth
-  - Named allow_sale_of_aqueducts_and_hospitals
+- Option to allow sale of buildings like aqueducts that uncap population growth, named allow_sale_of_aqueducts_and_hospitals
 
 * RELEASE 20
 - Remove city improvement limit

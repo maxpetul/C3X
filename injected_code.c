@@ -2736,6 +2736,7 @@ patch_init_floating_point ()
 		int offset;
 	} integer_config_options[] = {
 		{"limit_railroad_movement"                     ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
+		{"limit_units_per_tile"                        ,     0, offsetof (struct c3x_config, limit_units_per_tile)},
 		{"minimum_city_separation"                     ,     1, offsetof (struct c3x_config, minimum_city_separation)},
 		{"anarchy_length_percent"                      ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
 		{"ai_multi_city_start"                         ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
@@ -4405,6 +4406,23 @@ patch_PCX_Image_do_draw_cntd_text_for_strat_res (PCX_Image * this, int edx, char
 	return tr;
 }
 
+// Returns true iff there are at least "count" units on the given tile, ignoring units that are contianed in other units.
+bool
+has_at_least_unit_count (Tile * tile, int count)
+{
+	if (count >= 0) {
+		FOR_UNITS_ON (uti, tile) {
+			if (uti.unit->Body.Container_Unit < 0) {
+				count -= 1;
+				if (count <= 0)
+					return true;
+			}
+		}
+		return false;
+	} else
+		return true;
+}
+
 // Returns the ID of the civ this move is trespassing against, or 0 if it's not trespassing.
 int
 check_trespassing (int civ_id, Tile * from, Tile * to)
@@ -4438,6 +4456,19 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 {
 	AdjacentMoveValidity base_validity = Unit_can_move_to_adjacent_tile (this, __, neighbor_index, param_2);
 
+	// Apply unit count per tile limit
+	if ((base_validity == AMV_OK) && (is->current_config.limit_units_per_tile > 0)) {
+		int nx, ny;
+		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
+		Tile * destination = tile_at (nx, ny);
+		bool dest_is_water = destination->vtable->m35_Check_Is_Water (destination);
+		enum UnitTypeClasses unit_class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
+		if ((! (dest_is_water && (unit_class == UTC_Land))) && // not ordering a land unit onto water
+		    (! ((unit_class == UTC_Sea) && ! dest_is_water)) && // not ordering a water unit onto land
+		    has_at_least_unit_count (destination, is->current_config.limit_units_per_tile))
+			return AMV_CANNOT_PASS_BETWEEN;
+	}
+
 	// Apply trespassing restriction
 	if (is->current_config.disallow_trespassing && (base_validity == AMV_OK)) {
 		Tile * from = tile_at (this->Body.X, this->Body.Y);
@@ -4464,6 +4495,10 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 	    return is->get_move_cost_for_sea_trade (this, is->tnx_cache, from_x, from_y, to_x, to_y, civ_id, flags, neighbor_index, dist_info);
 
 	int const base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, neighbor_index, dist_info);
+
+	// Apply unit count per tile limit
+	if ((is->current_config.limit_units_per_tile > 0) && has_at_least_unit_count (tile_at (to_x, to_y), is->current_config.limit_units_per_tile))
+		return -1;
 
 	// Apply trespassing restriction
 	if (is->current_config.disallow_trespassing &&
@@ -8790,12 +8825,18 @@ patch_Unit_can_disembark_anything (Unit * this, int edx, int tile_x, int tile_y)
 	Tile * this_tile = tile_at (this->Body.X, this->Body.Y);
 	bool base = Unit_can_disembark_anything (this, __, tile_x, tile_y);
 
+	// Apply units per tile limit
+	if (base &&
+	    (is->current_config.limit_units_per_tile > 0) &&
+	    has_at_least_unit_count (tile_at (tile_x, tile_y), is->current_config.limit_units_per_tile))
+		return false;
+
 	// Apply trespassing restriction. First check if this civ may move into (tile_x, tile_y) without trespassing. If it would be trespassing, then
 	// we can only disembark anything if this transport has a passenger that can ignore the restriction. Without this check, the game can enter an
 	// infinite loop under rare circumstances.
-	if (base &&
-	    is->current_config.disallow_trespassing &&
-	    check_trespassing (this->Body.CivID, this_tile, tile_at (tile_x, tile_y))) {
+	else if (base &&
+		 is->current_config.disallow_trespassing &&
+		 check_trespassing (this->Body.CivID, this_tile, tile_at (tile_x, tile_y))) {
 		bool any_exempt_passengers = false;
 		FOR_UNITS_ON (uti, this_tile)
 			if ((uti.unit->Body.Container_Unit == this->Body.ID) && is_allowed_to_trespass (uti.unit)) {
