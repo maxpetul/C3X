@@ -173,9 +173,7 @@ struct c3x_config {
 	bool enable_stealth_attack_via_bombardment;
 	bool immunize_aircraft_against_bombardment;
 	bool replay_ai_moves_in_hotseat_games;
-	int count_ptw_arty_types;
-	int ptw_arty_types_capacity;
-	int * ptw_arty_types; // List of unit type IDs
+	struct table ptw_arty_types; // Table mapping unit type IDs to 1's; used as a hash set
 	bool restore_unit_directions_on_game_load;
 	bool apply_grid_ini_setting_on_game_load;
 	bool charm_flag_triggers_ptw_like_targeting;

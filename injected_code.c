@@ -202,13 +202,8 @@ reset_to_base_config ()
 		cc->ai_multi_start_extra_palaces_capacity = 0;
 	}
 
-	// Free list of PTW artillery types
-	if (cc->ptw_arty_types != NULL) {
-		free (cc->ptw_arty_types);
-		cc->ptw_arty_types = NULL;
-		cc->count_ptw_arty_types = 0;
-		cc->ptw_arty_types_capacity = 0;
-	}
+	// Free set of PTW artillery types
+	table_deinit (&cc->ptw_arty_types);
 
 	// Free era alias lists
 	if (cc->civ_era_alias_lists != NULL) {
@@ -1038,9 +1033,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 bool
 read_ptw_arty_types (struct string_slice const * s,
 		     struct error_line ** p_unrecognized_lines,
-		     int ** p_ptw_arty_types,
-		     int * p_count_ptw_arty_types,
-		     int * p_ptw_arty_types_capacity)
+		     struct table * ptw_arty_types)
 {
 	if (s->len <= 0)
 		return true;
@@ -1052,13 +1045,11 @@ read_ptw_arty_types (struct string_slice const * s,
 		struct string_slice name;
 		if (parse_string (&cursor, &name)) {
 
-			int id = -1, matched_any = 0;
+			int id = -1;
+			bool matched_any = false;
 			while (find_unit_type_id_by_name (&name, id + 1, &id)) {
-				int count = *p_count_ptw_arty_types;
-				reserve (sizeof **p_ptw_arty_types, (void **)p_ptw_arty_types, p_ptw_arty_types_capacity, count);
-				(*p_ptw_arty_types)[count] = id;
-				*p_count_ptw_arty_types = count + 1;
-				matched_any = 1;
+				itable_insert (ptw_arty_types, id, 1);
+				matched_any = true;
 			}
 
 			if (! matched_any)
@@ -1386,9 +1377,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_ptw_arty_types (&value,
 								   &unrecognized_lines,
-								   &cfg->ptw_arty_types,
-								   &cfg->count_ptw_arty_types,
-								   &cfg->ptw_arty_types_capacity))
+								   &cfg->ptw_arty_types))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "civ_aliases_by_era")) {
 					if (0 <= (recog_err_offset = read_recognizables (&value,
@@ -4911,9 +4900,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 			UnitType * type = &p_bic_data->UnitTypes[n];
 			if (type->Special_Actions & UCV_Charm_Bombard) {
 				// Add this type ID to the PTW targeting list
-				reserve (sizeof cc->ptw_arty_types[0], (void **)&cc->ptw_arty_types, &cc->ptw_arty_types_capacity, cc->count_ptw_arty_types);
-				cc->ptw_arty_types[cc->count_ptw_arty_types] = n;
-				cc->count_ptw_arty_types++;
+				itable_insert (&cc->ptw_arty_types, n, 1);
 
 				// Clear the charm flag, taking care not to clear the category bit. This is necessary for the PTW targeting to work
 				// since the logic to implement it only applies to the non-charm code path. It wouldn't make sense to have both charm
@@ -5852,16 +5839,6 @@ bool
 is_zero_strength (UnitType * ut)
 {
 	return (ut->Attack == 0) && (ut->Defence == 0) && (ut->Bombard_Strength == 0) && (ut->Air_Defence == 0);
-}
-
-bool
-uses_ptw_arty_targeting (Unit * u)
-{
-	int type_id = u->Body.UnitTypeID;
-	for (int n = 0; n < is->current_config.count_ptw_arty_types; n++)
-		if (type_id == is->current_config.ptw_arty_types[n])
-			return true;
-	return false;
 }
 
 bool
@@ -7989,7 +7966,7 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 	// Check if we're going to do PTW-like targeting, if not fall back on the base game's do_bombard_tile method. We'll also fall back on that
 	// method in the case where we're in an online game and the bombard can't happen b/c the tile is occupied by another battle. In that case, no
 	// bombard is possible but we'll call the base method anyway since it will show a little message saying as much.
-	if (uses_ptw_arty_targeting (unit) &&
+	if (itable_look_up_or (&is->current_config.ptw_arty_types, unit->Body.UnitTypeID, 0) &&
 	    (is->bombard_stealth_target == NULL) &&
 	    ! (is_online_game () && mp_check_current_combat (p_mp_object, __, mp_tile_x, mp_tile_y))) {
 
