@@ -5440,28 +5440,29 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 {
 	bool base = City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
 
-	// Apply building prereqs
 	if (base) {
+		// Apply building prereqs
 		int building_prereq;
 		if (itable_look_up (&is->current_config.building_unit_prereqs, unit_type_id, &building_prereq)) {
 			// If the prereq is an encoded building ID
-			if (building_prereq & 1)
-				return has_active_building (this, building_prereq >> 1);
+			if (building_prereq & 1) {
+				if (! has_active_building (this, building_prereq >> 1))
+					return false;
 
 			// Else it's a pointer to a list of building IDs
-			else {
+			} else {
 				int * list = (int *)building_prereq;
 				for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
 					if ((list[n] >= 0) && ! has_active_building (this, list[n]))
 						return false;
 			}
 		}
-	}
 
-	// Apply unit type limit
-	int available;
-	if (get_available_unit_count (&leaders[this->Body.CivID], unit_type_id, &available) && (available <= 0))
-		return false;
+		// Apply unit type limit
+		int available;
+		if (get_available_unit_count (&leaders[this->Body.CivID], unit_type_id, &available) && (available <= 0))
+			return false;
+	}
 
 	return base;
 }

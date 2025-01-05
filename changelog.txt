@@ -4,6 +4,7 @@
   - Controlled by config option chance_for_nukes_to_destroy_max_one_hp_units
 - Add limited_railroads_work_like_fast_roads option which does just that
 - Option to allow sale of buildings like aqueducts that uncap population growth, named allow_sale_of_aqueducts_and_hospitals
+- Fix building unit prereqs interfering with unit limits
 
 * RELEASE 20
 - Remove city improvement limit
