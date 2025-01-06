@@ -202,8 +202,14 @@ reset_to_base_config ()
 		cc->ai_multi_start_extra_palaces_capacity = 0;
 	}
 
-	// Free set of PTW artillery types
+	// Free set of PTW artillery types and list of converted types
 	table_deinit (&cc->ptw_arty_types);
+	if (is->charmed_types_converted_to_ptw_arty != NULL) {
+		free (is->charmed_types_converted_to_ptw_arty);
+		is->charmed_types_converted_to_ptw_arty = NULL;
+		is->count_charmed_types_converted_to_ptw_arty = 0;
+		is->charmed_types_converted_to_ptw_arty_capacity = 0;
+	}
 
 	// Free era alias lists
 	if (cc->civ_era_alias_lists != NULL) {
@@ -2958,6 +2964,10 @@ patch_init_floating_point ()
 
 	is->drawn_strat_resource_count = 0;
 
+	is->charmed_types_converted_to_ptw_arty = NULL;
+	is->count_charmed_types_converted_to_ptw_arty = 0;
+	is->charmed_types_converted_to_ptw_arty_capacity = 0;
+
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config);
@@ -4706,6 +4716,13 @@ patch_do_save_game (char const * file_path, char param_2, GUID * guid)
 	}
 	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = is->aliased_leader_title_bits = 0;
 
+	// Do not save unit types with the charm bits cleared if they were cleared by convertion to PTW targeting. The special actions field must not
+	// include the top category bits that are part of the UCV_* enum
+	for (int n = 0; n < is->count_charmed_types_converted_to_ptw_arty; n++) {
+		UnitType * converted_type = &p_bic_data->UnitTypes[is->charmed_types_converted_to_ptw_arty[n]];
+		converted_type->Special_Actions |= (0x00FFFFFF & UCV_Charm_Bombard);
+	}
+
 	int tr = do_save_game (file_path, param_2, guid);
 
 	if (restore_rmr)
@@ -4717,6 +4734,12 @@ patch_do_save_game (char const * file_path, char param_2, GUID * guid)
 	for (int n = 0; n < 32; n++)
 		if (*p_player_bits & (1 << n))
 			apply_era_specific_names (&leaders[n]);
+
+	// Reclear charm bits on converted types
+	for (int n = 0; n < is->count_charmed_types_converted_to_ptw_arty; n++) {
+		UnitType * converted_type = &p_bic_data->UnitTypes[is->charmed_types_converted_to_ptw_arty[n]];
+		converted_type->Special_Actions &= ~(0x00FFFFFF & UCV_Charm_Bombard);
+	}
 
 	return tr;
 }
@@ -4894,13 +4917,19 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 
 	// Convert charm-flagged units to using PTW targeting if necessary
 	if (is->current_config.charm_flag_triggers_ptw_like_targeting) {
-		struct c3x_config * cc = &is->current_config;
-
 		for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
 			UnitType * type = &p_bic_data->UnitTypes[n];
 			if (type->Special_Actions & UCV_Charm_Bombard) {
-				// Add this type ID to the PTW targeting list
-				itable_insert (&cc->ptw_arty_types, n, 1);
+				// Also add it to the list of converted types
+				reserve (sizeof is->charmed_types_converted_to_ptw_arty[0], // item size
+					 (void **)&is->charmed_types_converted_to_ptw_arty, // ptr to items
+					 &is->charmed_types_converted_to_ptw_arty_capacity, // ptr to capacity
+					 is->count_charmed_types_converted_to_ptw_arty); // count
+				is->charmed_types_converted_to_ptw_arty[is->count_charmed_types_converted_to_ptw_arty] = n;
+				is->count_charmed_types_converted_to_ptw_arty += 1;
+
+				// Add this type ID to the table
+				itable_insert (&is->current_config.ptw_arty_types, n, 1);
 
 				// Clear the charm flag, taking care not to clear the category bit. This is necessary for the PTW targeting to work
 				// since the logic to implement it only applies to the non-charm code path. It wouldn't make sense to have both charm

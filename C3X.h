@@ -886,6 +886,10 @@ struct injected_state {
 	// Reset to zero every time City_Form::draw is called. Incremented everything a strategic resource is drawn on the city screen.
 	int drawn_strat_resource_count;
 
+	int * charmed_types_converted_to_ptw_arty;
+	int count_charmed_types_converted_to_ptw_arty;
+	int charmed_types_converted_to_ptw_arty_capacity;
+
 	// ==========
 	// }
 	// ==========
