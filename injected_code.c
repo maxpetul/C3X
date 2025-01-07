@@ -2723,6 +2723,7 @@ patch_init_floating_point ()
 		{"exclude_invisible_units_from_stealth_attack"         , false, offsetof (struct c3x_config, exclude_invisible_units_from_stealth_attack)},
 		{"convert_to_landmark_after_planting_forest"           , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
 		{"allow_sale_of_aqueducts_and_hospitals"               , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
+		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
 	};
 
 	struct integer_config_option {
@@ -2967,6 +2968,8 @@ patch_init_floating_point ()
 	is->charmed_types_converted_to_ptw_arty = NULL;
 	is->count_charmed_types_converted_to_ptw_arty = 0;
 	is->charmed_types_converted_to_ptw_arty_capacity = 0;
+
+	is->checking_visibility_for_unit = NULL;
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -3441,6 +3444,10 @@ can_damage_bombarding (UnitType * attacker_type, Unit * defender, Tile * defende
 char __fastcall
 patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2)
 {
+	// Save the previous value here b/c this function gets called recursively
+	Unit * prev_checking = is->checking_visibility_for_unit;
+	is->checking_visibility_for_unit = this;
+
 	char base_vis = Unit_is_visible_to_civ (this, __, civ_id, param_2);
 	if ((! base_vis) && // if unit is not visible to civ_id AND
 	    is->current_config.share_visibility_in_hoseat && // shared hotseat vis is enabled AND
@@ -3460,6 +3467,7 @@ patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2)
 		}
 	}
 
+	is->checking_visibility_for_unit = prev_checking;
 	return base_vis;
 }
 
@@ -10276,6 +10284,20 @@ patch_City_has_unprotected_improv_to_sell (City * this, int edx, int id)
 
 	} else
 		return false;
+}
+
+bool __fastcall
+patch_UnitType_has_detector_ability_for_vis_check (UnitType * this, int edx, enum UnitTypeAbilities a)
+{
+	bool tr = UnitType_has_ability (this, __, a);
+
+	// Restrict detection by sea units to other sea units and non-sea units to other non-sea units
+	if (tr &&
+	    is->current_config.no_cross_shore_detection &&
+	    ((this->Unit_Class == UTC_Sea) ^ (p_bic_data->UnitTypes[is->checking_visibility_for_unit->Body.UnitTypeID].Unit_Class == UTC_Sea)))
+		tr = false;
+
+	return tr;
 }
 
 // TCC requires a main function be defined even though it's never used.

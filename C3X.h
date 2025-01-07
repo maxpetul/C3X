@@ -209,6 +209,7 @@ struct c3x_config {
 	bool convert_to_landmark_after_planting_forest;
 	int chance_for_nukes_to_destroy_max_one_hp_units;
 	bool allow_sale_of_aqueducts_and_hospitals;
+	bool no_cross_shore_detection;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
@@ -889,6 +890,9 @@ struct injected_state {
 	int * charmed_types_converted_to_ptw_arty;
 	int count_charmed_types_converted_to_ptw_arty;
 	int charmed_types_converted_to_ptw_arty_capacity;
+
+	// While Unit::is_visible_to_civ is running, this var is set to the unit in question. Otherwise it's NULL.
+	Unit * checking_visibility_for_unit;
 
 	// ==========
 	// }
