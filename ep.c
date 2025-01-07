@@ -1046,7 +1046,8 @@ ENTRY_POINT ()
 	// Pass through prog objects after compiling to redirect control flow to patches
 	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
-		if (obj->job != OJ_IGNORE) {
+		if ((obj->job != OJ_IGNORE) &&
+		    ! ((obj->job == OJ_REPL_CALL) && (obj->addr == 0x0FF))) { // Special address 0x0FF ("OFF") ignores call repl on a per-exe basis
 			ASSERT ((obj->addr != 0) || (0 == strcmp (obj->name, "exe_version_index")));
 
 			if (obj->job == OJ_INLEAD)
