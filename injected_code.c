@@ -4413,21 +4413,24 @@ patch_PCX_Image_do_draw_cntd_text_for_strat_res (PCX_Image * this, int edx, char
 	return tr;
 }
 
-// Returns true iff there are at least "count" units on the given tile, ignoring units that are contianed in other units.
 bool
-has_at_least_unit_count (Tile * tile, int count)
+is_below_stack_limit (Tile * tile)
 {
-	if (count >= 0) {
-		FOR_UNITS_ON (uti, tile) {
-			if (uti.unit->Body.Container_Unit < 0) {
-				count -= 1;
-				if (count <= 0)
-					return true;
-			}
-		}
-		return false;
-	} else
+	int stack_limit = is->current_config.limit_units_per_tile;
+	if (stack_limit <= 0)
 		return true;
+
+	if (get_city_ptr (tile->CityID) != NULL)
+		return true;
+
+	FOR_UNITS_ON (uti, tile) {
+		if (uti.unit->Body.Container_Unit < 0) {
+			stack_limit -= 1;
+			if (stack_limit <= 0)
+				return false;
+		}
+	}
+	return true;
 }
 
 // Returns the ID of the civ this move is trespassing against, or 0 if it's not trespassing.
@@ -4472,7 +4475,7 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 		enum UnitTypeClasses unit_class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
 		if ((! (dest_is_water && (unit_class == UTC_Land))) && // not ordering a land unit onto water
 		    (! ((unit_class == UTC_Sea) && ! dest_is_water)) && // not ordering a water unit onto land
-		    has_at_least_unit_count (destination, is->current_config.limit_units_per_tile))
+		    ! is_below_stack_limit (destination))
 			return AMV_CANNOT_PASS_BETWEEN;
 	}
 
@@ -4504,7 +4507,7 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 	int const base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, neighbor_index, dist_info);
 
 	// Apply unit count per tile limit
-	if ((is->current_config.limit_units_per_tile > 0) && has_at_least_unit_count (tile_at (to_x, to_y), is->current_config.limit_units_per_tile))
+	if (! is_below_stack_limit (tile_at (to_x, to_y)))
 		return -1;
 
 	// Apply trespassing restriction
@@ -8841,9 +8844,7 @@ patch_Unit_can_disembark_anything (Unit * this, int edx, int tile_x, int tile_y)
 	bool base = Unit_can_disembark_anything (this, __, tile_x, tile_y);
 
 	// Apply units per tile limit
-	if (base &&
-	    (is->current_config.limit_units_per_tile > 0) &&
-	    has_at_least_unit_count (tile_at (tile_x, tile_y), is->current_config.limit_units_per_tile))
+	if (base && ! is_below_stack_limit (tile_at (tile_x, tile_y)))
 		return false;
 
 	// Apply trespassing restriction. First check if this civ may move into (tile_x, tile_y) without trespassing. If it would be trespassing, then
