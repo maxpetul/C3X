@@ -10301,5 +10301,11 @@ patch_UnitType_has_detector_ability_for_vis_check (UnitType * this, int edx, enu
 	return tr;
 }
 
+bool __fastcall
+patch_Unit_check_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
+{
+	return Unit_check_airdrop_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y));
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
