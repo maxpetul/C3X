@@ -10307,6 +10307,16 @@ patch_Unit_check_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
 	return Unit_check_airdrop_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y));
 }
 
+int __fastcall
+patch_Unit_ai_eval_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
+{
+	// Prevent the AI from airdropping onto tiles that have reached the stack limit
+	if (! is_below_stack_limit (tile_at (tile_x, tile_y)))
+		return 0;
+
+	return Unit_ai_eval_airdrop_target (this, __, tile_x, tile_y);
+}
+
 bool __fastcall
 patch_Unit_find_telepad_on_tile (Unit * this, int edx, int x, int y, bool show_selection_popup, Unit ** out_unit_telepad)
 {
