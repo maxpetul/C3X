@@ -10307,5 +10307,16 @@ patch_Unit_check_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
 	return Unit_check_airdrop_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y));
 }
 
+bool __fastcall
+patch_Unit_find_telepad_on_tile (Unit * this, int edx, int x, int y, bool show_selection_popup, Unit ** out_unit_telepad)
+{
+	if (! is_below_stack_limit (tile_at (x, y))) {
+		*out_unit_telepad = NULL;
+		return false;
+	} else
+		return Unit_find_telepad_on_tile (this, __, x, y, show_selection_popup, out_unit_telepad);
+}
+
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
