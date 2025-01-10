@@ -1,5 +1,5 @@
 C3X: Executable Mod for Civ 3 Complete
-Release 20
+Release 21 Preview 1
 
 === INSTALLATION ===
 Extract the mod, keeping it in its own folder, then copy that folder to your main Conquests directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat script. You should get a message reporting that the installation was successful. You can also try RUN.bat, which launches a modded version of Civ 3 without installation, however I have received several reports that that script doesn't work for some people.
