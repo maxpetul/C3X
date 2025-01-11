@@ -714,6 +714,7 @@ enum Unit_Command_Values
   UCV_Stealth_Attack	  = 0x10010000,
   UCV_Charm_Bombard       = 0x10020000,
   UCV_Enslave		  = 0x10040000,
+  UCV_0x10080000          = 0x10080000, // Appears in Leader::capture_city doubling capture gold
   UCV_Sacrifice		  = 0x10100000,
   UCV_Science_Age	  = 0x10200000,
 

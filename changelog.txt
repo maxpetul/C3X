@@ -5,7 +5,7 @@
 - Add limited_railroads_work_like_fast_roads option which does just that
 - Option to allow sale of buildings like aqueducts that uncap population growth, named allow_sale_of_aqueducts_and_hospitals
 - Option stopping non-sea detector units from revealing invisible sea units and vice-versa, named no_cross_shore_detection
-- Fix charm flag controling PTW arty targeting not working for reloaded games
+- Fix charm flag controlling PTW arty targeting not working for reloaded games
 - Fix building unit prereqs interfering with unit limits
 
 * RELEASE 20
