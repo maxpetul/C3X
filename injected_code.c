@@ -2630,6 +2630,7 @@ patch_init_floating_point ()
 		{"allow_stealth_attack_against_single_unit"            , false, offsetof (struct c3x_config, allow_stealth_attack_against_single_unit)},
 		{"show_detailed_city_production_info"                  , true , offsetof (struct c3x_config, show_detailed_city_production_info)},
 		{"limited_railroads_work_like_fast_roads"              , false, offsetof (struct c3x_config, limited_railroads_work_like_fast_roads)},
+		{"exclude_cities_from_units_per_tile_limit"            , true , offsetof (struct c3x_config, exclude_cities_from_units_per_tile_limit)},
 		{"enable_free_buildings_from_small_wonders"            , true , offsetof (struct c3x_config, enable_free_buildings_from_small_wonders)},
 		{"enable_stack_unit_commands"                          , true , offsetof (struct c3x_config, enable_stack_unit_commands)},
 		{"skip_repeated_tile_improv_replacement_asks"          , true , offsetof (struct c3x_config, skip_repeated_tile_improv_replacement_asks)},
@@ -4420,7 +4421,8 @@ is_below_stack_limit (Tile * tile)
 	if (stack_limit <= 0)
 		return true;
 
-	if (get_city_ptr (tile->CityID) != NULL)
+	if (is->current_config.exclude_cities_from_units_per_tile_limit &&
+	    get_city_ptr (tile->CityID) != NULL)
 		return true;
 
 	FOR_UNITS_ON (uti, tile) {

@@ -110,6 +110,7 @@ struct c3x_config {
 	int limit_railroad_movement;
 	bool limited_railroads_work_like_fast_roads;
 	int limit_units_per_tile;
+	bool exclude_cities_from_units_per_tile_limit;
 	bool enable_free_buildings_from_small_wonders;
 	bool enable_stack_unit_commands;
 	bool skip_repeated_tile_improv_replacement_asks;
