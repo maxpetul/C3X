@@ -6692,9 +6692,12 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 		if (retreat_rules != RR_STANDARD) {
 			if (retreat_rules == RR_NONE)
 				this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 0;
-			else if (retreat_rules == RR_ALL_UNITS)
-				this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 1;
-			else if (retreat_rules == RR_IF_FASTER) {
+			else if (retreat_rules == RR_ALL_UNITS) {
+				if (! UnitType_has_ability (&p_bic_data->UnitTypes[this->attacker->Body.UnitTypeID], __, UTA_Immobile))
+					this->attacker_eligible_to_retreat = 1;
+				if (! UnitType_has_ability (&p_bic_data->UnitTypes[this->defender->Body.UnitTypeID], __, UTA_Immobile))
+					this->defender_eligible_to_retreat = 1;
+			} else if (retreat_rules == RR_IF_FASTER) {
 				int diff = Unit_get_max_move_points (this->attacker) - Unit_get_max_move_points (this->defender);
 				this->attacker_eligible_to_retreat = diff > 0;
 				this->defender_eligible_to_retreat = diff < 0;
