@@ -1,3 +1,4 @@
+- Apply the stack limit separately to land, sea, and air units
 - Option to exclude cities from the unit stack limit
 
 - Allow perfume amounts to be specified as percentages

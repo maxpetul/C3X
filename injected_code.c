@@ -4415,7 +4415,7 @@ patch_PCX_Image_do_draw_cntd_text_for_strat_res (PCX_Image * this, int edx, char
 }
 
 bool
-is_below_stack_limit (Tile * tile)
+is_below_stack_limit (Tile * tile, enum UnitTypeClasses class)
 {
 	int stack_limit = is->current_config.limit_units_per_tile;
 	if (stack_limit <= 0)
@@ -4426,7 +4426,8 @@ is_below_stack_limit (Tile * tile)
 		return true;
 
 	FOR_UNITS_ON (uti, tile) {
-		if (uti.unit->Body.Container_Unit < 0) {
+		if ((uti.unit->Body.Container_Unit < 0) &&
+		    (class == p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Unit_Class)) {
 			stack_limit -= 1;
 			if (stack_limit <= 0)
 				return false;
@@ -4472,12 +4473,7 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 	if ((base_validity == AMV_OK) && (is->current_config.limit_units_per_tile > 0)) {
 		int nx, ny;
 		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
-		Tile * destination = tile_at (nx, ny);
-		bool dest_is_water = destination->vtable->m35_Check_Is_Water (destination);
-		enum UnitTypeClasses unit_class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
-		if ((! (dest_is_water && (unit_class == UTC_Land))) && // not ordering a land unit onto water
-		    (! ((unit_class == UTC_Sea) && ! dest_is_water)) && // not ordering a water unit onto land
-		    ! is_below_stack_limit (destination))
+		if (! is_below_stack_limit (tile_at (nx, ny), p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
 			return AMV_CANNOT_PASS_BETWEEN;
 	}
 
@@ -4509,7 +4505,7 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 	int const base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, neighbor_index, dist_info);
 
 	// Apply unit count per tile limit
-	if (! is_below_stack_limit (tile_at (to_x, to_y)))
+	if ((unit != NULL) && ! is_below_stack_limit (tile_at (to_x, to_y), p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class))
 		return -1;
 
 	// Apply trespassing restriction
@@ -8846,7 +8842,7 @@ patch_Unit_can_disembark_anything (Unit * this, int edx, int tile_x, int tile_y)
 	bool base = Unit_can_disembark_anything (this, __, tile_x, tile_y);
 
 	// Apply units per tile limit
-	if (base && ! is_below_stack_limit (tile_at (tile_x, tile_y)))
+	if (base && ! is_below_stack_limit (tile_at (tile_x, tile_y), UTC_Land))
 		return false;
 
 	// Apply trespassing restriction. First check if this civ may move into (tile_x, tile_y) without trespassing. If it would be trespassing, then
@@ -10306,14 +10302,14 @@ patch_UnitType_has_detector_ability_for_vis_check (UnitType * this, int edx, enu
 bool __fastcall
 patch_Unit_check_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
 {
-	return Unit_check_airdrop_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y));
+	return Unit_check_airdrop_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
 }
 
 int __fastcall
 patch_Unit_ai_eval_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
 {
 	// Prevent the AI from airdropping onto tiles that have reached the stack limit
-	if (! is_below_stack_limit (tile_at (tile_x, tile_y)))
+	if (! is_below_stack_limit (tile_at (tile_x, tile_y), p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
 		return 0;
 
 	return Unit_ai_eval_airdrop_target (this, __, tile_x, tile_y);
@@ -10322,7 +10318,7 @@ patch_Unit_ai_eval_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
 bool __fastcall
 patch_Unit_find_telepad_on_tile (Unit * this, int edx, int x, int y, bool show_selection_popup, Unit ** out_unit_telepad)
 {
-	if (! is_below_stack_limit (tile_at (x, y))) {
+	if (! is_below_stack_limit (tile_at (x, y), p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class)) {
 		*out_unit_telepad = NULL;
 		return false;
 	} else
