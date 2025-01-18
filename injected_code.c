@@ -10336,6 +10336,20 @@ patch_Unit_check_airlift_target (Unit * this, int edx, int tile_x, int tile_y)
 }
 
 int __fastcall
+patch_City_count_airports_for_ai_airlift_target (City * this, int edx, enum ImprovementTypeFlags airport_flag)
+{
+	int tr = City_count_improvements_with_flag (this, __, airport_flag);
+
+	// Check the stack limit here. If the city's tile is at the limit, return that it has no airport so the AI can't airlift there. The two calls
+	// to this patch function come from the off. & def. unit AI, so only for land units.
+	if ((tr > 0) && ! is_below_stack_limit (tile_at (this->Body.X, this->Body.Y), this->Body.CivID, UTC_Land))
+		return 0;
+
+	else
+		return tr;
+}
+
+int __fastcall
 patch_Unit_ai_eval_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
 {
 	// Prevent the AI from airdropping onto tiles that have reached the stack limit
@@ -10355,6 +10369,19 @@ patch_Unit_find_telepad_on_tile (Unit * this, int edx, int x, int y, bool show_s
 		return Unit_find_telepad_on_tile (this, __, x, y, show_selection_popup, out_unit_telepad);
 }
 
+bool __fastcall
+patch_Unit_ai_go_to_capital (Unit * this)
+{
+	City * capital = get_city_ptr (leaders[this->Body.CivID].CapitalID);
+
+	// Block going to capital if the capital's tile is at the stack limit. This stops the AI from airlifting there (would violate the limit) and
+	// saves it from trying to pathfind there.
+	if ((capital != NULL) &&
+	    ! is_below_stack_limit (tile_at (capital->Body.X, capital->Body.Y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+		return false;
+
+	return Unit_ai_go_to_capital (this);
+}
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
