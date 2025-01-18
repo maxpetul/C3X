@@ -9164,14 +9164,30 @@ patch_OpenGLRenderer_draw_line (OpenGLRenderer * this, int edx, int x1, int y1, 
 int __fastcall
 patch_Tile_check_water_for_retreat_on_defense (Tile * this)
 {
-	int is_water = this->vtable->m35_Check_Is_Water (this);
-	if (is->current_config.allow_defensive_retreat_on_water &&
-	    is_water &&
-	    (p_bic_data->fighter.defender != NULL) &&
-	    (p_bic_data->UnitTypes[p_bic_data->fighter.defender->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
-		return 0; // Say this is not water so the retreat is allowed to happen
-	} else
-		return is_water;
+	Unit * defender = p_bic_data->fighter.defender;
+
+	// Under the standard game rules, defensively retreating onto a water tile is not allowed. Set retreat_blocked to true if "this" is a water
+	// tile and we're not configured to allow retreating onto water tiles.
+	bool retreat_blocked; {
+		if (this->vtable->m35_Check_Is_Water (this)) {
+			if (is->current_config.allow_defensive_retreat_on_water &&
+			    (defender != NULL) &&
+			    (p_bic_data->UnitTypes[defender->Body.UnitTypeID].Unit_Class == UTC_Sea))
+				retreat_blocked = false;
+			else
+				retreat_blocked = true;
+		} else
+			retreat_blocked = false;
+	}
+
+	// Check stack limit
+	if ((! retreat_blocked) &&
+	    (defender != NULL) &&
+	    ! is_below_stack_limit (this, defender->Body.CivID, p_bic_data->UnitTypes[defender->Body.UnitTypeID].Unit_Class))
+		retreat_blocked = true;
+
+	// The return from this call is only used to filter the given tile as a possible retreat destination based on whether it's water or not
+	return (int)retreat_blocked;
 }
 
 int __fastcall
