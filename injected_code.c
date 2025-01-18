@@ -10329,6 +10329,12 @@ patch_Unit_check_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
 	return Unit_check_airdrop_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
 }
 
+bool __fastcall
+patch_Unit_check_airlift_target (Unit * this, int edx, int tile_x, int tile_y)
+{
+	return Unit_check_airlift_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+}
+
 int __fastcall
 patch_Unit_ai_eval_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
 {
