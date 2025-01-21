@@ -7482,7 +7482,7 @@ patch_Unit_can_stealth_attack (Unit * this, int edx, Unit * target)
 	    ! can_damage_bombarding (&p_bic_data->UnitTypes[this->Body.UnitTypeID], target, tile_at (target->Body.X, target->Body.Y)))
 		return false;
 
-	else if (tr && is->current_config.exclude_invisible_units_from_stealth_attack && ! Unit_is_visible_to_civ (target, __, this->Body.CivID, 1))
+	else if (tr && is->current_config.exclude_invisible_units_from_stealth_attack && ! patch_Unit_is_visible_to_civ (target, __, this->Body.CivID, 1))
 		return false;
 
 	else
@@ -8578,7 +8578,7 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 		if ((Unit_get_defense_strength (attacker) < 1) || // if attacker cannot defend OR
 		    (defender_tile == NULL) || (defender_tile == p_null_tile) || // defender tile is invalid OR
 		    (((special_rules & SDBR_LETHAL) == 0) && attacker_has_one_hp) || // (DB is non-lethal AND attacker has one HP remaining) OR
-		    ((special_rules & SDBR_NOT_INVISIBLE) && ! Unit_is_visible_to_civ (attacker, __, defender->Body.CivID, 1))) // (invisible units are immune to DB AND attacker is invisible)
+		    ((special_rules & SDBR_NOT_INVISIBLE) && ! patch_Unit_is_visible_to_civ (attacker, __, defender->Body.CivID, 1))) // (invisible units are immune to DB AND attacker is invisible)
 			return NULL;
 
 		Unit * tr = NULL;
@@ -10317,6 +10317,7 @@ patch_UnitType_has_detector_ability_for_vis_check (UnitType * this, int edx, enu
 	// Restrict detection by sea units to other sea units and non-sea units to other non-sea units
 	if (tr &&
 	    is->current_config.no_cross_shore_detection &&
+	    (is->checking_visibility_for_unit != NULL) &&
 	    ((this->Unit_Class == UTC_Sea) ^ (p_bic_data->UnitTypes[is->checking_visibility_for_unit->Body.UnitTypeID].Unit_Class == UTC_Sea)))
 		tr = false;
 
