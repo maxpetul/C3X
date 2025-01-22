@@ -1,3 +1,4 @@
+* RELEASE 21 PREVIEW 2
 - Apply the stack limit separately to land, sea, and air units
 - Option to exclude cities from the unit stack limit
 - Do not apply all-units special retreat rule to immobile units
@@ -6,6 +7,7 @@
 - Fix units retreating onto fully occupied tiles
 - Fix unit stack limit blocking combat
 
+* RELEASE 21 PREVIEW 1
 - Allow perfume amounts to be specified as percentages
 - Option to limit how many units can share each tile, named limit_units_per_tile
 - Adjustable chance for max one HP units to be destroyed by nuclear strikes
