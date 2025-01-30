@@ -1,3 +1,5 @@
+- Prevent rebasing from violating the stack limit
+
 - Apply the stack limit separately to land, sea, and air units
 - Option to exclude cities from the unit stack limit
 - Do not apply all-units special retreat rule to immobile units

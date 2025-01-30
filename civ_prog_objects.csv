@@ -584,6 +584,11 @@ repl call, 0x450C9C,	0x452D98,	0x450D1C,	"City_count_airports_for_ai_airlift_tar
 repl call, 0x452A3A,	0x454B5F,	0x452ABA,	"City_count_airports_for_ai_airlift_target",	""
 inlead,	   0x44F040,	0x4510E0,	0x44F0C0,	"Unit_ai_go_to_capital",			"bool (__fastcall *) (Unit * this)"
 inlead,	   0x5C3900,	0x5D2540,	0x5C3610,	"Unit_check_rebase_target",			"bool (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)"
+define,	   0x5C3860,	0x5D24A0,	0x5C3570,	"Unit_is_in_operational_range",			"bool (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)"
+repl call, 0x456FEE,	0x4591DB,	0x45706E,	"Unit_is_in_op_range_for_ai_rebase",		""
+repl call, 0x457784,	0x45995E,	0x457804,	"Unit_is_in_op_range_for_ai_rebase",		""
+repl call, 0x457D1B,	0x459EEC,	0x457D9B,	"Unit_is_in_op_range_for_ai_rebase",		""
+repl call, 0x459EC1,	0x45C0DC,	0x459F41,	"Unit_is_in_op_range_for_ai_rebase",		""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
