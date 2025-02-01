@@ -1179,6 +1179,33 @@ read_bit_field (struct string_slice const * s, struct parsable_field_bit const *
 	return true;
 }
 
+int
+read_units_per_tile_limit (struct string_slice const * s, int * out_limits)
+{
+	int single_val;
+	if (read_int (s, &single_val)) {
+		out_limits[0] = out_limits[1] = out_limits[2] = single_val;
+		return true;
+
+	} else {
+		bool success = false;
+		char * extracted_slice = extract_slice (s);
+		char * cursor = extracted_slice;
+		int vals[3];
+		if (skip_punctuation (&cursor, '[') &&
+		    parse_int (&cursor, &vals[0]) && skip_punctuation (&cursor, ',') &&
+		    parse_int (&cursor, &vals[1]) && skip_punctuation (&cursor, ',') &&
+		    parse_int (&cursor, &vals[2]) &&
+		    skip_punctuation (&cursor, ']')) {
+			for (int n = 0; n < ARRAY_LEN (vals); n++)
+				out_limits[n] = vals[n];
+			success = true;
+		}
+		free (extracted_slice);
+		return success;
+	}
+}
+
 struct config_parsing {
 	char * file_path;
 	char * text;
@@ -1311,6 +1338,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
 
 				// if key is for something special
+				} else if (slice_matches_str (&p.key, "limit_units_per_tile")) {
+					if (! read_units_per_tile_limit (&value, &cfg->limit_units_per_tile[0]))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "production_perfume") || slice_matches_str (&p.key, "perfume_specs")) {
 					if (0 <= (recog_err_offset = read_recognizables (&value,
 											 &unrecognized_lines,
@@ -2733,7 +2763,6 @@ patch_init_floating_point ()
 		int offset;
 	} integer_config_options[] = {
 		{"limit_railroad_movement"                     ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
-		{"limit_units_per_tile"                        ,     0, offsetof (struct c3x_config, limit_units_per_tile)},
 		{"minimum_city_separation"                     ,     1, offsetof (struct c3x_config, minimum_city_separation)},
 		{"anarchy_length_percent"                      ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
 		{"ai_multi_city_start"                         ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
@@ -4417,7 +4446,7 @@ patch_PCX_Image_do_draw_cntd_text_for_strat_res (PCX_Image * this, int edx, char
 bool
 is_below_stack_limit (Tile * tile, int civ_id, enum UnitTypeClasses class)
 {
-	int stack_limit = is->current_config.limit_units_per_tile;
+	int stack_limit = is->current_config.limit_units_per_tile[class];
 	if (stack_limit <= 0)
 		return true;
 
@@ -4475,10 +4504,11 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 	AdjacentMoveValidity base_validity = Unit_can_move_to_adjacent_tile (this, __, neighbor_index, param_2);
 
 	// Apply unit count per tile limit
-	if ((base_validity == AMV_OK) && (is->current_config.limit_units_per_tile > 0)) {
+	enum UnitTypeClasses class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
+	if ((base_validity == AMV_OK) && (is->current_config.limit_units_per_tile[class] > 0)) {
 		int nx, ny;
 		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
-		if (! is_below_stack_limit (tile_at (nx, ny), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+		if (! is_below_stack_limit (tile_at (nx, ny), this->Body.CivID, class))
 			return AMV_CANNOT_PASS_BETWEEN;
 	}
 
