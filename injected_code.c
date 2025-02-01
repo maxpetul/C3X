@@ -1219,6 +1219,7 @@ enum config_parse_error {
 	CPE_BAD_VALUE,
 	CPE_BAD_BOOL_VALUE,
 	CPE_BAD_INT_VALUE,
+	CPE_BAD_STACK_LIMIT_VALUE,
 	CPE_BAD_KEY
 };
 
@@ -1248,6 +1249,8 @@ handle_config_error_at (struct config_parsing * p, char * error_loc, enum config
 			snprintf (err_msg, sizeof err_msg, "^The value for \"%.*s\" is invalid. Expected \"true\" or \"false\".", p->key.len, p->key.str);
 		else if (err == CPE_BAD_INT_VALUE)
 			snprintf (err_msg, sizeof err_msg, "^The value for \"%.*s\" is invalid. Expected an integer.", p->key.len, p->key.str);
+		else if (err == CPE_BAD_STACK_LIMIT_VALUE)
+			snprintf (err_msg, sizeof err_msg, "^The value for \"%.*s\" is invalid. Expected \"false\", an integer, or a list of exactly three of those.", p->key.len, p->key.str);
 		else if (err == CPE_BAD_KEY)
 			snprintf (err_msg, sizeof err_msg, "^The key name \"%.*s\" is not recognized.", p->key.len, p->key.str);
 		err_msg[(sizeof err_msg) - 1] = '\0';
@@ -1340,7 +1343,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				// if key is for something special
 				} else if (slice_matches_str (&p.key, "limit_units_per_tile")) {
 					if (! read_units_per_tile_limit (&value, &cfg->limit_units_per_tile[0]))
-						handle_config_error (&p, CPE_BAD_VALUE);
+						handle_config_error (&p, CPE_BAD_STACK_LIMIT_VALUE);
 				} else if (slice_matches_str (&p.key, "production_perfume") || slice_matches_str (&p.key, "perfume_specs")) {
 					if (0 <= (recog_err_offset = read_recognizables (&value,
 											 &unrecognized_lines,
