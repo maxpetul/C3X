@@ -1,3 +1,4 @@
+- Allow stack limit to be set separately for land, sea, and air units
 - Prevent rebasing from violating the stack limit
 
 - Apply the stack limit separately to land, sea, and air units
