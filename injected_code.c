@@ -1195,11 +1195,7 @@ read_units_per_tile_limit (struct string_slice const * s, int * out_limits)
 		char * extracted_slice = extract_slice (s);
 		char * cursor = extracted_slice;
 		int vals[3];
-		if (skip_punctuation (&cursor, '[') &&
-		    parse_int (&cursor, &vals[0]) && skip_punctuation (&cursor, ',') &&
-		    parse_int (&cursor, &vals[1]) && skip_punctuation (&cursor, ',') &&
-		    parse_int (&cursor, &vals[2]) &&
-		    skip_punctuation (&cursor, ']')) {
+		if (parse_int (&cursor, &vals[0]) && parse_int (&cursor, &vals[1]) && parse_int (&cursor, &vals[2])) {
 			for (int n = 0; n < ARRAY_LEN (vals); n++)
 				out_limits[n] = vals[n];
 			success = true;
