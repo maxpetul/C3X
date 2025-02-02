@@ -177,6 +177,9 @@ reset_to_base_config ()
 {
 	struct c3x_config * cc = &is->current_config;
 
+	for (int n = 0; n < ARRAY_LEN (cc->limit_units_per_tile); n++)
+		cc->limit_units_per_tile[n] = 0;
+
 	for (int n = 0; n < COUNT_PERFUME_KINDS; n++)
 		stable_deinit (&cc->perfume_specs[n]);
 
