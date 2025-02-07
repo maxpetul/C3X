@@ -93,6 +93,27 @@ rand_div (int num, int denom)
 	return q + (rand_int (p_rand_object, __, denom) < r);
 }
 
+bool
+are_tiles_adjacent (int ax, int ay, int bx, int by)
+{
+	int x_dist = int_abs (ax - bx),
+	    y_dist = int_abs (ay - by);
+
+	// Handle edge wrapping by counting from the opposite direction if it would be shorter
+	if (p_bic_data->Map.Flags & 1) { // if map wraps horizontally
+		int width = p_bic_data->Map.Width;
+		if (x_dist > (width>>1))
+			x_dist = width - x_dist;
+	}
+	if (p_bic_data->Map.Flags & 2) { // if map wraps vertically
+		int height = p_bic_data->Map.Height;
+		if (y_dist > (height>>1))
+			y_dist = height - y_dist;
+	}
+
+	return (x_dist + y_dist) == 2;
+}
+
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
 	bool redundant; // If true, this pause would overlap a previous one and so should not be counted
