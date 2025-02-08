@@ -5958,6 +5958,15 @@ are_units_duplicate (Unit_Body * a, Unit_Body * b, bool surface_only)
 	UnitType * a_type = &p_bic_data->UnitTypes[a->UnitTypeID],
 		 * b_type = &p_bic_data->UnitTypes[b->UnitTypeID];
 
+	// If only doing a surface comparison, look through the alternate strategy types to the base types. The difference b/w the alt types is only
+	// their AI strategies, and that isn't considered a surface feature.
+	if (surface_only) {
+		while (a_type->alternate_strategy_for_id >= 0)
+			a_type = &p_bic_data->UnitTypes[a_type->alternate_strategy_for_id];
+		while (b_type->alternate_strategy_for_id >= 0)
+			b_type = &p_bic_data->UnitTypes[b_type->alternate_strategy_for_id];
+	}
+
 	// a and b are duplicates "on the surface" if...
 	bool are_surface_duplicates =
 		// ... they belong to the same player ...
