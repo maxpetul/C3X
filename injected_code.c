@@ -5950,28 +5950,32 @@ is_captured (Unit_Body * u)
 	return (u->RaceID >= 0) && (u->CivID >= 0) && (u->CivID < 32) && leaders[u->CivID].RaceID != u->RaceID;
 }
 
-// Decides whether or not units "a" and "b" are duplicates, i.e., whether they are completely interchangeable.
+// Decides whether or not units "a" and "b" are duplicates, i.e., whether they are interchangeable.
+// If surface_only is set, the function checks only surface-level characteristics, meaning those that are visible to other players.
 bool
-are_units_duplicate (Unit_Body * a, Unit_Body * b)
+are_units_duplicate (Unit_Body * a, Unit_Body * b, bool surface_only)
 {
 	UnitType * a_type = &p_bic_data->UnitTypes[a->UnitTypeID],
-	         * b_type = &p_bic_data->UnitTypes[b->UnitTypeID];
+		 * b_type = &p_bic_data->UnitTypes[b->UnitTypeID];
 
-	// a and b are duplicates if...
-	return
+	// a and b are duplicates "on the surface" if...
+	bool are_surface_duplicates =
+		// ... they belong to the same player ...
+		(a->CivID == b->CivID) &&
+
 		// ... they have the same type that is not [a leader OR army] AND not a transport AND ...
 		(a_type == b_type) &&
 		(! (UnitType_has_ability (a_type, __, UTA_Leader) || UnitType_has_ability (a_type, __, UTA_Army))) &&
 		(a_type->Transport_Capacity == 0) &&
 
-		// ... they've taken the same amount of damage AND used up the same number of moves AND ...
-		(a->Damage == b->Damage) && (a->Moves == b->Moves) &&
+		// ... they've taken the same amount of damage AND have the same charm status AND ...
+		(a->Damage == b->Damage) && (a->charmed == b->charmed) &&
 
-		// ... they have matching statuses (has attacked this turn, etc.) AND states (is fortified, is doing worker action, etc.) AND charm status AND automation status AND ...
-		(a->Status == b->Status) && (a->UnitState == b->UnitState) && (a->charmed == b->charmed) && (a->automated == b->automated) &&
+		// ... they're either both fortified or both not AND ...
+		(! (a->UnitState == UnitState_Fortifying) ^ (b->UnitState == UnitState_Fortifying)) &&
 
-		// ... [they have the same experience level OR are both zero strength units] AND ...
-		((a->Combat_Experience == b->Combat_Experience) || (is_zero_strength (a_type) && is_zero_strength (b_type))) &&
+		// ... [they have the same experience level OR are zero strength units] AND ...
+		((a->Combat_Experience == b->Combat_Experience) || is_zero_strength (a_type)) &&
 
 		// ... [they are both not contained in any unit OR they are both contained in the same unit] AND ...
 		(((a->Container_Unit < 0) && (b->Container_Unit < 0)) || (a->Container_Unit == b->Container_Unit)) &&
@@ -5982,11 +5986,24 @@ are_units_duplicate (Unit_Body * a, Unit_Body * b)
 		// ... [they are both captured units OR are both native units] AND ...
 		(! (is_captured (a) ^ is_captured (b))) &&
 
-		// ... their custom names are identical AND ...
-		(0 == strncmp (a->Custom_Name.S, b->Custom_Name.S, sizeof (a->Custom_Name))) &&
+		// ... their custom names are identical.
+		(0 == strncmp (a->Custom_Name.S, b->Custom_Name.S, sizeof (a->Custom_Name)));
+
+	if ((! are_surface_duplicates) || surface_only)
+		return are_surface_duplicates;
+
+	// a and b are additionally "deep", i.e. in all ways, duplicates if...
+	bool are_deep_duplicates =
+		// ...  they've used up the same number of moves AND ...
+		(a->Moves == b->Moves) &&
+
+		// ... they have matching statuses (has attacked this turn, etc.) AND states (is fortified, is doing worker action, etc.) AND automation status AND ...
+		(a->Status == b->Status) && (a->UnitState == b->UnitState) && (a->automated == b->automated) &&
 
 		// ... they have both done the same number of airdrops this turn.
 		(itable_look_up_or (&is->airdrops_this_turn, a->ID, 0) == itable_look_up_or (&is->airdrops_this_turn, b->ID, 0));
+
+	return are_deep_duplicates;
 }
 
 bool
@@ -6026,7 +6043,7 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 				Unit_Body * dup_body;
 				if ((dup_unit_id >= 0) &&
 				    (NULL != (dup_body = p_units->Units[dup_unit_id].Unit)) &&
-				    are_units_duplicate (unit_body, dup_body)) {
+				    are_units_duplicate (unit_body, dup_body, unit_body->CivID != p_main_screen_form->Player_CivID)) {
 					// The new item is a duplicate of the nth. Mark that in the duplicate counts array and return without actually
 					// adding the item. It doesn't matter what value we return because the caller doesn't use it.
 					is->unit_menu_duplicates[n] += 1;
