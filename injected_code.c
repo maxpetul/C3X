@@ -4593,13 +4593,15 @@ patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y
 {
 	int tr = Trade_Net_set_unit_path (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, out_path_length_in_mp);
 
+	bool may_require_length_fix = (is->current_config.limit_railroad_movement > 0) && // if railroad movement is limited AND
+		(tr > 0) && (out_path_length_in_mp != NULL) && // path was found AND caller wants to know its length AND
+		(unit != NULL); // the path is for an actual unit
+
 	// We might have to correct the path length returned by the base game's pathfinder. This occurs when railroad movement is limited and the
 	// unit's total MP exceeds what can be stored in a one-byte integer. The cause of the incorrect length is that the pathfinder internally
 	// stores the remaining moves at each node of the search in a single byte. This correction fixes the bug (reported several times) that ETAs
 	// shown in the interface are wrong.
-	if ((is->current_config.limit_railroad_movement > 0) && // if railroad movement is limited AND
-	    (tr > 0) && (out_path_length_in_mp != NULL) && // path was found AND caller wants to know its length AND
-	    (unit != NULL) && (Unit_get_max_move_points (unit) > 255)) { // an actual unit was used AND that unit's total MP overflows a uint8
+	if (may_require_length_fix && (Unit_get_max_move_points (unit) > 255)) { // Need to recompute path length if unit's total MP can overflow a uint8
 
 		// First memoize the cost of taking each step along the path. This must be done separately because the pathfinder's internal data only
 		// lets us traverse the path backwards.
@@ -4643,7 +4645,11 @@ patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y
 			}
 		}
 		*out_path_length_in_mp = mp_spent;
-	}
+
+	// Also, if this is a move between adjacent tiles, make sure the path length doesn't exceed the unit's remaining MP. Otherwise, the game may
+	// erroneously show an ETA of >1 turn.
+	} else if (may_require_length_fix && are_tiles_adjacent (from_x, from_y, to_x, to_y))
+		*out_path_length_in_mp = not_above (Unit_get_max_move_points (unit) - unit->Body.Moves, *out_path_length_in_mp);
 
 	return tr;
 }
