@@ -6803,6 +6803,10 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	itable_remove (&is->extra_defensive_bombards, this->Body.ID);
 	itable_remove (&is->airdrops_this_turn, this->Body.ID);
 
+	// If we're despawning the stored ZoC defender, clear that variable so we don't despawn it again in check_life_after_zoc
+	if (this == is->zoc_defender)
+		is->zoc_defender = NULL;
+
 	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 
 	change_unit_type_count (&leaders[owner_id], type_id, -1);
@@ -8613,9 +8617,9 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 {
 	is->moving_unit_to_adjacent_tile = true;
 
-	is->zoc_interceptor = NULL;
+	is->zoc_interceptor = is->zoc_defender = NULL;
 	int tr = Unit_move_to_adjacent_tile (this, __, neighbor_index, param_2, param_3, param_4);
-	if (check_life_after_zoc (this, is->zoc_interceptor))
+	if ((this == is->zoc_defender) && check_life_after_zoc (this, is->zoc_interceptor))
 		tr = ! is_online_game (); // This is what the original method returns when the unit was destroyed in combat
 
 	is->temporarily_disallow_lethal_zoc = false;

@@ -800,7 +800,8 @@ struct injected_state {
 	// Used to extract which unit (if any) exerted zone of control from within Fighter::apply_zone_of_control.
 	Unit * zoc_interceptor;
 
-	// Set when Fighter::apply_zone_of_control is called to store the defending unit, used by the injected filter.
+	// Set when Fighter::apply_zone_of_control is called to store the defending unit, used by the injected filter and Unit::move_to_adjacent_tile.
+	// Cleared at each call to move_to_adjacent_tile and by Unit::despawn.
 	Unit * zoc_defender;
 
 	// Set to the bombarding unit while Unit::bombard_tile is running. NULL otherwise.

@@ -1,6 +1,7 @@
 - Allow stack limit to be set separately for land, sea, and air units
 - Prevent rebasing from violating the stack limit
 - Group foreign units on the right-click menu based only on their surface characteristics
+- Fix double despawn of barb unit entering city after hit by lethal ZoC
 - Fix incorrect ETAs shown for one tile paths when railroad movement is limited
 
 - Apply the stack limit separately to land, sea, and air units
