@@ -56,11 +56,11 @@ A major inefficiency in the game's sea trade computation has been fixed. This el
 #### Adjustable Movement Rules:
 The functions governing unit movement have been modified to enable various adjustments to the game's movement rules not possible through the editor. As with all other engine extensions, the rules are not changed from vanilla Conquests unless the config file is edited.
 
-Railroad movement can be limited to a certain number of tiles by setting the "limit\_railroad\_movement" variable. The limitation works like in Civ 4, i.e., moving along a railroad consumes movement points like moving along a road except the cost of moving along a railroad is scaled by the unit's total moves so all units are limited to the same distance. (Optionally, that scaling can be removed so limited railroads work like fast roads instead.) Be advised, because this setting affects how movement is measured, changing it in the middle of a turn (i.e. after some units have already moved) is likely to cause units to have extra or missing moves.
+Unlimited railroad movement can be turned off. The non-unlimited railroads can function like they do in Civ 4, meaning that all units will move the same distance along them regardless of how many moves they have, or they can function like an upgraded version of regular roads that have a lower movement cost. The relevant config variables are "limit\_railroad\_movement" and "limited\_railroads\_work\_like\_fast\_roads".
 
 Enabling land/sea intersections allows sea units to travel over the thin isthmus that exists on the diagonal path between two land tiles. More specifically, imagine a diamond of four tiles with land terrain on the north & south tiles and water on the east & west ones. With land/sea intersections enabled, naval units can pass between the east and west tiles.
 
-Disallowing trespassing prevents civs from entering each other's borders while at peace without a right of passage, similar to the rules in Civ 4. Invisible and hidden nationality units are exempted from the restriction.
+It is possible to disallow trespassing, which will prevent units from entering another civ's borders without a right of passage agreement, similar to the rules in Civ 4. Invisible and hidden nationality units are allowed to trespass in any case. It is also possible to impose a stack limit, which will prevent units from entering tiles that already have more than a set number of units occupying them. The stack limit can be set separately for land, sea, and air units.
 
 #### Small Wonder Free Improvements:
 The free improvements wonder effect (granaries from Pyramids etc.) now works on small wonders. Note to modders, to set this effect you must use a third party editor like Quintillus' ([thread link](https://forums.civfanatics.com/threads/cross-platform-editor-for-conquests-now-available.377188/)) because the option is grayed out in the standard editor. Even worse, if you set the effect then work on the BIQ in the standard editor, the effect won't be saved, so you'd need to set it every time or work exclusively in Quintillus' editor.
@@ -136,9 +136,10 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - "Disables Diseases From Flood Plains" tech flag hardcoded to tech #8 (off by default)
   #### Engine Extensions
    - Adjustable minimum city distance
-   - Option to limit railroad movement
+   - Option to limit railroad movement, as in Civ 4 or by converting them to fast roads
    - Removed unit limit
    - Removed city improvement limit
+   - Option to limit how many units can share each tile
    - Enable free improvements from small wonders
    - Option to share visibility among all human players in a hotseat game
    - Option to prevent autoraze and razing by players
@@ -206,6 +207,9 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Option to stop the map generator from placing volcanos
    - Option to stop pollution from appearing on impassable tiles
    - Option to make planting forests produce LM forest terrain
+   - Adjustable chance for max one HP units to be destroyed by nuclear strikes
+   - Option to allow sale of buildings like aqueducts that uncap population growth
+   - Option stopping non-sea detector units from revealing invisible sea units and vice-versa
 </details>
 
 ## How It Works
