@@ -1,0 +1,46 @@
+
+GOG patch locations for expanded city work radius (0x):
+4adb68
+  in add_or_remove_improvement
+  ...basically should check every call to calc_tile_yield_at
+4ae51e
+  sets tile flags in City::initialize
+4ae83b
+  another loop in City::initialize
+4af02d, 4af0c7
+  in City::raze, double loop to clear tile flags around the city
+  ...this is why it would be difficult to have workable ranges that vary between cities
+4af3d4
+  in City::raze, again setting tile flags (feels redundant)
+4af5a3
+  in City::raze, looks like setting a dirty flag re: visibility
+4afcf4
+  in City::set_production, re: mobilization bonus
+4b1040
+  recomputing tile yields
+4b2489, 4b2620
+  in City::update_growth, again recomputing yields
+  ...basically should check every call to add_or_remove_tile_yield
+4ba197
+  in City::add_population
+4ba677
+  in City::remove_population
+4bb4e8
+  in City::controls_tile
+  ...this one is different from the others since it's not a loop condition. ez to patch though
+
+
+Locations NOT patched:
+4b2abb - counting foreign tiles around city for culture flip
+4b3098 - for spawning pollution
+4b4794 - for triggering disease
+
+
+tile counts for each workable radius, inc. city center:
+1: 9
+2: 21
+3: 37
+4: 61
+5: 89
+6: 137
+7: 193 <-- count for a hypothetical 7th ring at one million culture
