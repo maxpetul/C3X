@@ -28,12 +28,34 @@ GOG patch locations for expanded city work radius (0x):
 4bb4e8
   in City::controls_tile
   ...this one is different from the others since it's not a loop condition. ez to patch though
+43550a
+  in City::find_min_value_tile (m13)
+4356ef, 4357d0, 435954
+  in City::manage_by_governor (m14)
+435d67
+  in City::instruct_worker (m15), sets lim for Map::compute_neighbor_index
+4367fe
+  in City::find_best_tile_to_work
+436981
+  in City::m17
+4373b1
+  in City::m23
+420524
+  in City_Form::handle_left_click, sets lim for Map::compute_neighbor_index
+420544
+  in City_Form::handle_left_click, redundantly checks the index returned from above
+420efe, 42117b
+  in funcs called by City_Form::draw, drawing tiles around city
+
 
 
 Locations NOT patched:
 4b2abb - counting foreign tiles around city for culture flip
 4b3098 - for spawning pollution
 4b4794 - for triggering disease
+435404 - for checking for pollution or craters in range (maybe should patch this one)
+
+
 
 
 tile counts for each workable radius, inc. city center:

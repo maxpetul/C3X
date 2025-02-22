@@ -1528,8 +1528,7 @@ struct City_Base_vtable
   char (__fastcall * has_pollution_or_craters_in_range) (City *);
 //  int (__thiscall *m13)(City *);
   void *m13;
-//  int (__thiscall *m14)(int, int);
-  void *m14;
+  void (__fastcall * manage_by_governor) (City * this, __, bool param_1);
   enum UnitStateType (__fastcall * instruct_worker) (City * this, __, int tile_x, int tile_y, byte param_3, Unit * worker);
   int (__fastcall * find_best_tile_to_work) (City * this, __, Unit * worker, bool param_2);
   int m17;
