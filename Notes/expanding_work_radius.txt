@@ -46,7 +46,10 @@ GOG patch locations for expanded city work radius (0x):
   in City_Form::handle_left_click, redundantly checks the index returned from above
 420efe, 42117b
   in funcs called by City_Form::draw, drawing tiles around city
-
+421047
+  in second func above, lim on compute_neighbor_index
+5da3a8
+  in Tile::m56_Set_Tile_Flags, lim on compute_neighbor_index
 
 
 Locations NOT patched:
