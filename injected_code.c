@@ -192,6 +192,67 @@ clear_memo ()
 	is->memo_len = 0;
 }
 
+char const cultural_ni_to_diffs[386] = // = 193*2
+{
+	0, 0,
+
+// first ring
+	1, -1,   2, 0,   1, 1,   0, 2,   -1, 1,   -2, 0,   -1, -1,
+	0, -2,
+
+// second ring
+	 1, -3,    2, -2,    3, -1,    3,  1,   2, 2,   1, 3,   -1, 3,   -2, 2,
+	-3,  1,   -3, -1,   -2, -2,   -1, -3,
+
+// third ring
+	0, -4,   4, 0,    0, 4,   -4, 0,    2, -4,    3, -3,    4, -2,    4,  2,
+	3,  3,   2, 4,   -2, 4,   -3, 3,   -4,  2,   -4, -2,   -3, -3,   -2, -4,
+
+// fourth ring
+	1, -5,   5, -1,    5, 1,    1, 5,   -1,  5,   -5,  1,   -5, -1,   -1, -5,
+	0, -6,   6,  0,    0, 6,   -6, 0,    3, -5,    4, -4,    5, -3,    5,  3,
+	4,  4,   3,  5,   -3, 5,   -4, 4,   -5,  3,   -5, -3,   -4, -4,   -3, -5,
+
+// fifth ring
+	 1, -7,    2, -6,    6, -2,    7, -1,    7,  1,    6,  2,    2,  6,    1,  7,
+	-1,  7,   -2,  6,   -6,  2,   -7,  1,   -7, -1,   -6, -2,   -2, -6,   -1, -7,
+	 4, -6,    5, -5,    6, -4,    6,  4,    5,  5,    4,  6,   -4,  6,   -5,  5,
+	-6,  4,   -6, -4,   -5, -5,   -4, -6,
+
+// sixth ring
+	 0, -8,    8,  0,    0,  8,   -8,  0,    1, -9,    2, -8,    3, -7,    7, -3,
+	 8, -2,    9, -1,    9,  1,    8,  2,    7,  3,    3,  7,    2,  8,    1,  9,
+	-1,  9,   -2,  8,   -3,  7,   -7,  3,   -8,  2,   -9,  1,   -9, -1,   -8, -2,
+	-7, -3,   -3, -7,   -2, -8,   -1, -9,    4, -8,    5, -7,    6, -6,    7, -5,
+	 8, -4,    8,  4,    7,  5,    6,  6,    5,  7,    4,  8,   -4,  8,   -5,  7,
+	-6,  6,   -7,  5,   -8,  4,   -8, -4,   -7, -5,   -6, -6,   -5, -7,   -4, -8,
+
+// seventh ring
+	  0, -10,    10,  0,    0,  10,   -10,   0,     1, -11,     2, -10,     3, -9,     9,  -3,
+	 10,  -2,    11, -1,   11,   1,    10,   2,     9,   3,     3,   9,     2, 10,     1,  11,
+	 -1,  11,    -2, 10,   -3,   9,    -9,   3,   -10,   2,   -11,   1,   -11, -1,   -10,  -2,
+	 -9,  -3,    -3, -9,   -2, -10,    -1, -11,     4, -10,     5,  -9,     6, -8,     7,  -7,
+	  8,  -6,     9, -5,   10,  -4,    10,   4,     9,   5,     8,   6,     7,  7,     6,   8,
+	  5,   9,     4, 10,   -4,  10,    -5,   9,    -6,   8,    -7,   7,    -8,  6,    -9,   5,
+	-10,   4,   -10, -4,   -9,  -5,    -8,  -6,    -7,  -7,    -6,  -8,    -5, -9,    -4, -10
+};
+
+// Like neighbor_index_to_diff, but enumerates tiles in an order that matches cultural border expansion. Only valid for 0 <= neighbor_index <= 192.
+void __cdecl
+cultural_ni_to_diff (int neighbor_index, int * x_disp, int * y_disp)
+{
+	if (neighbor_index <= 0) {
+		*x_disp = *y_disp = 0;
+		return;
+	} else if (neighbor_index > 192)
+		neighbor_index = neighbor_index % 193;
+
+	int i = neighbor_index << 1;
+	char const * p = &cultural_ni_to_diffs[neighbor_index << 1];
+	*x_disp = p[0];
+	*y_disp = p[1];
+}
+
 // Resets is->current_config to the base config and updates the list of config names. Does NOT re-apply machine code edits.
 void
 reset_to_base_config ()
