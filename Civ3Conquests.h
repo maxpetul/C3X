@@ -4506,7 +4506,8 @@ struct Map_Renderer
   String260 PCX_Delta_Rivers;
   String260 PCX_Rivers;
   String260 PCX_Std_Terrain_Images[9];
-  int field_3E94[4];
+  City * spotlight_on_city;
+  int field_3E98[3];
   int field_3EA4;
   int field_3EA8;
   Sprite *Resources;

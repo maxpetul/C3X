@@ -50,6 +50,12 @@ GOG patch locations for expanded city work radius (0x):
   in second func above, lim on compute_neighbor_index
 5da3a8
   in Tile::m56_Set_Tile_Flags, lim on compute_neighbor_index
+4c5376
+  in a Map_Renderer method, related to the spotlight effect
+
+
+Consider radius for resources. That should be expanded too, no?
+  one place that would need to be edited is has_resources_required_by_building_r
 
 
 Locations NOT patched:
