@@ -2723,6 +2723,56 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	WITH_MEM_PROTECTION (ADDR_MOST_STRAT_RES_ON_CITY_SCREEN, 1, PAGE_EXECUTE_READWRITE) {
 		*(byte *)ADDR_MOST_STRAT_RES_ON_CITY_SCREEN = cfg->compact_strategic_resource_display_on_city_screen ? 13 : 8;
 	}
+
+
+
+
+	int work_area_addrs[] = {
+		0x4ADB68,
+		0x4AE51E,
+		0x4AE83B,
+		0x4AF02D,
+		0x4AF0C7,
+		0x4AF3D4,
+		0x4AF5A3,
+		0x4AFCF4,
+		0x4B1040,
+		0x4B2489,
+		0x4B2620,
+		0x4BA197,
+		0x4BA677,
+		0x4BB4E8,
+		0x43550A,
+		0x4356EF,
+		0x4357D0,
+		0x435954,
+		0x435D67,
+		0x4367FE,
+		0x436981,
+		0x4373B1,
+		0x420524,
+		0x420544,
+		0x420EFE,
+		0x421047,
+		0x42117B,
+		0x5DA3A8,
+		0x4C5376};
+	int workable_tile_count = 37;
+	for (int n = 0; n < ARRAY_LEN (work_area_addrs); n++) {
+		byte * addr = (byte *)work_area_addrs[n];
+		WITH_MEM_PROTECTION (addr, 3, PAGE_EXECUTE_READWRITE) {
+			if ((addr[0] == 0x83) && (addr[1] >= 0xF8) && (addr[1] <= 0xFF))
+				addr[2] = workable_tile_count;
+			else if (addr[0] == 0x6A)
+				addr[1] = workable_tile_count;
+			else {
+				char z[200];
+				snprintf (z, sizeof z, "Didn't recog instr at addr: 0x%x", (int)addr);
+				MessageBoxA (NULL, z, NULL, MB_ICONWARNING);
+			}
+		}
+	}
+
 }
 
 void
