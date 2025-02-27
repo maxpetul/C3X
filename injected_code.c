@@ -239,7 +239,7 @@ char const cultural_ni_to_diffs[386] = // = 193*2
 
 // Like neighbor_index_to_diff, but enumerates tiles in an order that matches cultural border expansion. Only valid for 0 <= neighbor_index <= 192.
 void __cdecl
-cultural_ni_to_diff (int neighbor_index, int * x_disp, int * y_disp)
+patch_ni_to_diff_for_work_area (int neighbor_index, int * x_disp, int * y_disp)
 {
 	if (neighbor_index <= 0) {
 		*x_disp = *y_disp = 0;
