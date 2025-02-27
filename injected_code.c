@@ -2754,7 +2754,6 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		0x436981,
 		0x4373B1,
 		0x420524,
-		0x420544,
 		0x420EFE,
 		0x421047,
 		0x42117B,
@@ -2776,6 +2775,11 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		}
 	}
 
+	// Skip redundant check of clicked tile's neighbor index in City_Form::handle_left_click.
+	byte * addr_city_form_left_click_jump = (byte *)0x420547;
+	WITH_MEM_PROTECTION (addr_city_form_left_click_jump, 1, PAGE_EXECUTE_READWRITE) {
+		*addr_city_form_left_click_jump = 0xEB; // 0x7C (jl) -> 0xEB (jmp)
+	}
 }
 
 void
