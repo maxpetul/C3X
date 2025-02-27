@@ -256,6 +256,34 @@ patch_ni_to_diff_for_work_area (int neighbor_index, int * x_disp, int * y_disp)
 	*y_disp = p[1];
 }
 
+void wrap_tile_coords (Map * map, int * x, int * y);
+
+int __fastcall
+patch_Map_compute_ni_for_work_area (Map * this, int edx, int x_home, int y_home, int x_neigh, int y_neigh, int lim)
+{
+	// Within the first two rings, there's no difference b/w the standard and custom "work area" neighbor indices so fall back to the base game's
+	// function in that case.
+	if (is->current_config.city_work_radius <= 2)
+		return Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, lim);
+
+	// For work radius >= 3, check if the tile is in range using the custom n.i. to diff function. For simplicity, we ignore the "lim" parameter
+	// and instead use the workable tile count. That saves us from having to edit that param in the calls to this function. If it's in range,
+	// we still must compute the standard n.i. b/c that's what the caller expects.
+	else {
+		int workable_tile_count = workable_tile_counts[clamp (1, 7, is->current_config.city_work_radius)];
+		for (int n = 0; n < workable_tile_count; n++) {
+			int dx, dy;
+			patch_ni_to_diff_for_work_area (n, &dx, &dy);
+			int x = x_home + dx,
+			    y = y_home + dy;
+			wrap_tile_coords (this, &x, &y);
+			if ((x == x_neigh) && (y == y_neigh))
+				return Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, 1000);
+		}
+		return -1;
+	}
+}
+
 // Resets is->current_config to the base config and updates the list of config names. Does NOT re-apply machine code edits.
 void
 reset_to_base_config ()

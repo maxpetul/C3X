@@ -40,11 +40,11 @@ GOG patch locations for expanded city work radius (0x):
   in City::m17
 4373b1
   in City::m23
-420524
-  in City_Form::handle_left_click, sets lim for Map::compute_neighbor_index
-420544
+42053d
+  in City_Form::handle_left_click, call to Map::compute_neighbor_index
+420547
   in City_Form::handle_left_click, redundantly checks the index returned from above
-  in this case let's cut out this check entirely since it doesn't do anything anyway, by editing the jump instr at 420547
+  cut out this check entirely by editing the jump instr here
 420efe, 42117b
   in funcs called by City_Form::draw, drawing tiles around city
 421047
