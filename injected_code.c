@@ -192,6 +192,9 @@ clear_memo ()
 	is->memo_len = 0;
 }
 
+// Number of workable tiles including the city center for each workable radius
+unsigned char const workable_tile_counts[8] = {1, 9, 21, 37, 61, 89, 137, 193};
+
 char const cultural_ni_to_diffs[386] = // = 193*2
 {
 	0, 0,
@@ -2757,7 +2760,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		0x42117B,
 		0x5DA3A8,
 		0x4C5376};
-	int workable_tile_count = 37;
+	unsigned char workable_tile_count = workable_tile_counts[clamp (1, 7, cfg->city_work_radius)];
 	for (int n = 0; n < ARRAY_LEN (work_area_addrs); n++) {
 		byte * addr = (byte *)work_area_addrs[n];
 		WITH_MEM_PROTECTION (addr, 3, PAGE_EXECUTE_READWRITE) {
@@ -2910,6 +2913,7 @@ patch_init_floating_point ()
 		{"max_ai_naval_escorts"                        ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
 		{"ai_worker_requirement_percent"               ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
 		{"chance_for_nukes_to_destroy_max_one_hp_units",   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
+		{"city_work_radius"                            ,     2, offsetof (struct c3x_config, city_work_radius)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
