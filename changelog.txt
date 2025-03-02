@@ -1,3 +1,5 @@
+- Fix AI players sometimes spawning nonsensical units when hitting a unit limit
+
 * RELEASE 21
 - Allow perfume amounts to be specified as percentages
 - Option to limit how many units can share each tile, named limit_units_per_tile
