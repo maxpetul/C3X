@@ -5,3 +5,6 @@
 __pycache__
 Thumbs.db
 releases
+correlator/gog.json
+correlator/steam.json
+correlator/pcg.json
