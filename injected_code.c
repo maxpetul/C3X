@@ -2843,6 +2843,11 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	WITH_MEM_PROTECTION (addr_controls_tile_jump, 1, PAGE_EXECUTE_READWRITE) {
 		*addr_controls_tile_jump = 0xEB; // 0x7C (jl) -> 0xEB (jmp)
 	}
+
+	// Quick and dirty fix for drawing lines around expanded work area
+	WITH_MEM_PROTECTION ((byte *)0x421048, 1, PAGE_EXECUTE_READWRITE) {
+		*(byte *)0x421048 = 100;
+	}
 }
 
 void
