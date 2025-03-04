@@ -589,6 +589,7 @@ repl call, 0x456FEE,	0x4591DB,	0x45706E,	"Unit_is_in_op_range_for_ai_rebase",		"
 repl call, 0x457784,	0x45995E,	0x457804,	"Unit_is_in_op_range_for_ai_rebase",		""
 repl call, 0x457D1B,	0x459EEC,	0x457D9B,	"Unit_is_in_op_range_for_ai_rebase",		""
 repl call, 0x459EC1,	0x45C0DC,	0x459F41,	"Unit_is_in_op_range_for_ai_rebase",		""
+define,	   0x5E6D20,	0x0,		0x0,		"diff_to_neighbor_index",			"int (__cdecl *) (int dx, int dy, int lim)"
 
 repl call, 0x4C2695,	0x0,		0x0,		"ni_to_diff_for_work_area",			""
 
@@ -617,6 +618,7 @@ repl call, 0x420F3A,	0x0,		0x0,		"ni_to_diff_for_work_area",			""
 
 repl call, 0x42053D,	0x0,		0x0,		"Map_compute_ni_for_work_area",			""
 inlead,	   0x4BB4D0,	0x0,		0x0,		"City_controls_tile",				"bool (__fastcall *) (City * this, int edx, int neighbor_index, bool consider_enemy_units)"
+repl vptr, 0x66DCAC,	0x0,		0x0,		"City_find_min_value_tile",			"int (__fastcall *) (City * this)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

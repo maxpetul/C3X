@@ -274,6 +274,26 @@ ni_to_work_radius (int neighbor_index)
 	return -1;
 }
 
+int __fastcall
+patch_City_find_min_value_tile (City * this)
+{
+	int tr = City_find_min_value_tile (this);
+
+	// The original function has been edited to enumerate tiles in our custom order matching cultural borders instead of the game's original
+	// order. It returns a neighbor index from that enumeration. We must convert it to standard order if it's beyond the range where the two
+	// enumerations overlap.
+	if (tr >= 21) {
+		if (tr < 193) {
+			char const * p = &cultural_ni_to_diffs[tr<<1];
+			int standard_ni = diff_to_neighbor_index (p[0], p[1], 1000);
+			tr = (standard_ni > 0) ? standard_ni : 0;
+		} else
+			tr = 0;
+	}
+
+	return tr;
+}
+
 void wrap_tile_coords (Map * map, int * x, int * y);
 
 int __fastcall
