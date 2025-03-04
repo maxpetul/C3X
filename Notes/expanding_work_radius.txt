@@ -25,9 +25,9 @@ GOG patch locations for expanded city work radius (0x):
   in City::add_population
 4ba677
   in City::remove_population
-4bb4e8
+4bb4eb
   in City::controls_tile
-  ...this one is different from the others since it's not a loop condition. ez to patch though
+  cut out this check by editing the jump. we've replicated this check in the patched version of City::controls_tile
 43550a
   in City::find_min_value_tile (m13)
 4356ef, 4357d0, 435954

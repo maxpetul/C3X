@@ -256,6 +256,24 @@ patch_ni_to_diff_for_work_area (int neighbor_index, int * x_disp, int * y_disp)
 	*y_disp = p[1];
 }
 
+// Returns the smallest work radius that includes the tile at the given n.i. Ex., if the given n.i. corresponds to one of the adjacent tiles, returns
+// 1, if it's in the fat cross but not adjacent, returns 2, and so forth, out into the extended workable range.
+// TODO: Optimize this function by creating a lookup table.
+int
+ni_to_work_radius (int neighbor_index)
+{
+	int dx, dy;
+	neighbor_index_to_diff (neighbor_index, &dx, &dy);
+	for (int ring_no = 0; ring_no <= 7; ring_no++) {
+		for (int n = workable_tile_counts[ring_no-1]; n < workable_tile_counts[ring_no]; n++) {
+			char const * p = &cultural_ni_to_diffs[n<<1];
+			if ((p[0] == dx) && (p[1] == dy))
+				return ring_no;
+		}
+	}
+	return -1;
+}
+
 void wrap_tile_coords (Map * map, int * x, int * y);
 
 int __fastcall
@@ -282,6 +300,18 @@ patch_Map_compute_ni_for_work_area (Map * this, int edx, int x_home, int y_home,
 		}
 		return -1;
 	}
+}
+
+bool __fastcall
+patch_City_controls_tile (City * this, int edx, int neighbor_index, bool consider_enemy_units)
+{
+	// Check that this tile is not outside the city's work area. We've deleted a check from the base game code that verifies the n.i. is within 21
+	// tiles so we can replicate it here in a way that also works for an expanded work area.
+	int work_radius = ni_to_work_radius (neighbor_index);
+	if (work_radius > is->current_config.city_work_radius)
+		return false;
+
+	return City_controls_tile (this, __, neighbor_index, consider_enemy_units);
 }
 
 // Resets is->current_config to the base config and updates the list of config names. Does NOT re-apply machine code edits.
@@ -2772,7 +2802,6 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		0x4B2620,
 		0x4BA197,
 		0x4BA677,
-		0x4BB4E8,
 		0x43550A,
 		0x4356EF,
 		0x4357D0,
@@ -2807,6 +2836,12 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	byte * addr_city_form_left_click_jump = (byte *)0x420547;
 	WITH_MEM_PROTECTION (addr_city_form_left_click_jump, 1, PAGE_EXECUTE_READWRITE) {
 		*addr_city_form_left_click_jump = 0xEB; // 0x7C (jl) -> 0xEB (jmp)
+	}
+
+	// Skip check that neighbor index passed to City::controls_tile is within work radius. This check is now implemented in the patch func.
+	byte * addr_controls_tile_jump = (byte *)0x4BB4EB;
+	WITH_MEM_PROTECTION (addr_controls_tile_jump, 1, PAGE_EXECUTE_READWRITE) {
+		*addr_controls_tile_jump = 0xEB; // 0x7C (jl) -> 0xEB (jmp)
 	}
 }
 
