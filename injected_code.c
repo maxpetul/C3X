@@ -322,6 +322,16 @@ patch_Map_compute_ni_for_work_area (Map * this, int edx, int x_home, int y_home,
 	}
 }
 
+int __fastcall
+patch_Map_m28_find_cnter_neigh_point_for_work_area (Map * this, int edx, int x_home, int y_home, int x_neigh, int y_neigh, int lim)
+{
+	int ret_addr = ((int *)&x_home)[-1];
+	if (ret_addr != ADDR_FIND_CENTER_NP_SPOTLIGHT_RET)
+		return Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, lim);
+	else
+		return patch_Map_compute_ni_for_work_area (this, __, x_home, y_home, x_neigh, y_neigh, 500);
+}
+
 bool __fastcall
 patch_City_controls_tile (City * this, int edx, int neighbor_index, bool consider_enemy_units)
 {
