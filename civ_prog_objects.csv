@@ -590,6 +590,7 @@ repl call, 0x457784,	0x45995E,	0x457804,	"Unit_is_in_op_range_for_ai_rebase",		"
 repl call, 0x457D1B,	0x459EEC,	0x457D9B,	"Unit_is_in_op_range_for_ai_rebase",		""
 repl call, 0x459EC1,	0x45C0DC,	0x459F41,	"Unit_is_in_op_range_for_ai_rebase",		""
 define,	   0x5E6D20,	0x0,		0x0,		"diff_to_neighbor_index",			"int (__cdecl *) (int dx, int dy, int lim)"
+repl call, 0x421060,	0x4225BA,	0x4210E0,	"Map_compute_ni_for_work_area",			""
 
 repl call, 0x4C2695,	0x0,		0x0,		"ni_to_diff_for_work_area",			""
 
