@@ -344,6 +344,21 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 	return City_controls_tile (this, __, neighbor_index, consider_enemy_units);
 }
 
+void __fastcall
+patch_Main_Screen_Form_bring_cnter_view_city_focus (Main_Screen_Form * this, int edx, int x, int y, int param_3, bool always_update_tile_bounds, bool param_5)
+{
+	// This is the call that centers the map view on the city center tile when the city form is opened. If the city work radius has expanded then
+	// we'll want to do things a bit differently, shifting the map upward a bit so the workable tiles don't overlap with the citizens' heads, and
+	// zooming out if the work area is too large to fit the window.
+	if (is->current_config.city_work_radius == 3)
+		y += 2;
+	else if (is->current_config.city_work_radius >= 4) {
+		y += 5;
+		p_bic_data->is_zoomed_out = true;
+	}
+	Main_Screen_Form_bring_tile_into_view (this, __, x, y, param_3, always_update_tile_bounds, param_5);
+}
+
 // Resets is->current_config to the base config and updates the list of config names. Does NOT re-apply machine code edits.
 void
 reset_to_base_config ()
