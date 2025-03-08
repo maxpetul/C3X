@@ -596,6 +596,8 @@ define,	   0x4C538E,	0x4CCC47,	0x4C53AE,	"ADDR_FIND_CENTER_NP_SPOTLIGHT_RET",		"
 define,	   0x4DF9E0,	0x4E8390,	0x4DFAA0,	"Main_Screen_Form_bring_tile_into_view",	"void (__fastcall *) (Main_Screen_Form * this, int edx, int x, int y, int param_3, bool always_update_tile_bounds, bool param_5)"
 repl call, 0x421853,	0x422DC1,	0x4218D3,	"Main_Screen_Form_bring_cnter_view_city_focus",	""
 
+ext walup, 0x4ADB6F,	0x0,		0x0,		"",						""
+
 repl call, 0x4C2695,	0x0,		0x0,		"ni_to_diff_for_work_area",			""
 
 repl call, 0x4ADA69,	0x0,		0x0,		"ni_to_diff_for_work_area",			""

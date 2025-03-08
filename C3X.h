@@ -912,6 +912,7 @@ enum object_job {
 	OJ_REPL_VPTR, // Patch this function by replacing a pointer to it. The address column is the addr of the VPTR not the function itself.
 	OJ_REPL_CALL, // Patch a single function call. The address column is the addr of the call instruction, name refers to the new target function, type is not used.
 	OJ_REPL_VIS, // Patch a cluster of four function calls that make up a check of tile visibility. See implementation for details.
+	OJ_EXT_WALUP, // "EXTend Work Area LuP" Patch a jump instruction at the end of a "lup" (loop) over a city's workable area to extend it
 	OJ_IGNORE
 };
 

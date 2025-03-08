@@ -1115,9 +1115,12 @@ ENTRY_POINT ()
 	}
 
 	// Just as a proof of concept, redirect one of the final jump instructions in a loop over the workable area
-	ASSERT (i_next_free_inlead < inleads_capacity);
-	{
-		int addr_jump = 0x4ADB6F;
+	for (int n = 0; n < count_civ_prog_objects; n++) {
+		struct civ_prog_object const * obj = &civ_prog_objects[n];
+		if (obj->job != OJ_EXT_WALUP)
+			continue;
+
+		int addr_jump = obj->addr;
 
 		byte * orig_code = read_prog_memory ((void *)(addr_jump - 20), 40);
 		byte * jump_instr = &orig_code[20];
@@ -1141,7 +1144,9 @@ ENTRY_POINT ()
 
 		int orig_jump_target = addr_jump + jump_instr_size + read_prog_int ((void const *)(addr_jump + 2));
 
+		ASSERT (i_next_free_inlead < inleads_capacity);
 		byte * wae_inlead = (byte *)&inleads[i_next_free_inlead];
+		i_next_free_inlead++;
 
 		// Replace original jump with an uncond. one heading to the inlead
 		byte jump_repl[6] = {0};
@@ -1164,7 +1169,6 @@ ENTRY_POINT ()
 
 		free (orig_code);
 	}
-	i_next_free_inlead++;
 
 	// Give up write permission on Civ proc's code injection pages
 	set_prog_mem_protection (civ_inject_mem, inject_size, MAA_READ_EXECUTE);
