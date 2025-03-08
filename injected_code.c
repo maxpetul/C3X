@@ -308,7 +308,7 @@ patch_Map_compute_ni_for_work_area (Map * this, int edx, int x_home, int y_home,
 	// and instead use the workable tile count. That saves us from having to edit that param in the calls to this function. If it's in range,
 	// we still must compute the standard n.i. b/c that's what the caller expects.
 	else {
-		int workable_tile_count = workable_tile_counts[clamp (1, 7, is->current_config.city_work_radius)];
+		int workable_tile_count = workable_tile_counts[is->current_config.city_work_radius];
 		for (int n = 0; n < workable_tile_count; n++) {
 			int dx, dy;
 			patch_ni_to_diff_for_work_area (n, &dx, &dy);
@@ -1525,6 +1525,12 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				} else if (stable_look_up_slice (&is->integer_config_offsets, &p.key, &offset)) {
 					if (read_int (&value, &ival))
 						*(int *)((byte *)cfg + offset) = ival;
+					else
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
+
+				} else if (slice_matches_str (&p.key, "city_work_radius")) {
+					if (read_int (&value, &ival))
+						cfg->city_work_radius = clamp (1, 7, ival);
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
 
@@ -2861,7 +2867,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		0x42117B,
 		0x5DA3A8,
 		0x4C5376};
-	unsigned char workable_tile_count = workable_tile_counts[clamp (1, 7, cfg->city_work_radius)];
+	unsigned char workable_tile_count = workable_tile_counts[cfg->city_work_radius];
 	for (int n = 0; n < ARRAY_LEN (work_area_addrs); n++) {
 		byte * addr = (byte *)work_area_addrs[n];
 		WITH_MEM_PROTECTION (addr, 3, PAGE_EXECUTE_READWRITE) {
@@ -3025,7 +3031,6 @@ patch_init_floating_point ()
 		{"max_ai_naval_escorts"                        ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
 		{"ai_worker_requirement_percent"               ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
 		{"chance_for_nukes_to_destroy_max_one_hp_units",   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
-		{"city_work_radius"                            ,     2, offsetof (struct c3x_config, city_work_radius)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -3079,6 +3084,7 @@ patch_init_floating_point ()
 	base_config.land_retreat_rules = RR_STANDARD;
 	base_config.sea_retreat_rules  = RR_STANDARD;
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
+	base_config.city_work_radius = 2;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)
