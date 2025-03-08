@@ -585,7 +585,7 @@ find_patch_function (TCCState * tcc, char const * obj_name, int prepend_patch)
 	return mss.matching_val;
 }
 
-enum reg { REG_EAX = 0, REG_ECX, REG_EDX, REG_EBX, REG_EBP, REG_ESI, REG_EDI };
+enum reg { REG_EAX = 0, REG_ECX, REG_EDX, REG_EBX, REG_ESP, REG_EBP, REG_ESI, REG_EDI };
 
 // This writes a call to intercept_consideration at the cursor. intercept_consideration takes a single parameter, the point value of the thing being
 // considered and it returns a new, possibly modified, value for it. Because this call gets inserted into a stream of instructions we must take care
@@ -1119,11 +1119,25 @@ ENTRY_POINT ()
 	{
 		int addr_jump = 0x4ADB6F;
 
-		byte * orig_code = read_prog_memory ((void *)(addr_jump - 100), 200);
-		byte * in_cursor = &orig_code[100];
+		byte * orig_code = read_prog_memory ((void *)(addr_jump - 20), 40);
+		byte * jump_instr = &orig_code[20];
 
-		int jump_instr_size = length_disasm (in_cursor);
-		REQUIRE ((in_cursor[0] == 0x0F) && (in_cursor[1] == 0x8C) && (jump_instr_size == 6), "Jump address invalid or type of jump not supported");
+		// Determine what register contains the loop index (which is also neighbor index around the city). We need to know this in order to
+		// reproduce the cmp instruction.
+		enum reg reg; {
+			byte * cursor = orig_code;
+			do {
+				if ((cursor[0] == 0x83) && (cursor[1] >= 0xF8) && (cursor[2] == 0x15)) {
+					reg = (enum reg)(cursor[1] - 0xF8);
+					break;
+				}
+				cursor++;
+			} while (cursor < jump_instr);
+			REQUIRE (cursor != jump_instr, "Couldn't find cmp instruction in lead up to work area jump");
+		}
+
+		int jump_instr_size = length_disasm (jump_instr);
+		REQUIRE ((jump_instr[0] == 0x0F) && (jump_instr[1] == 0x8C) && (jump_instr_size == 6), "Jump address invalid or type of jump not supported");
 
 		int orig_jump_target = addr_jump + jump_instr_size + read_prog_int ((void const *)(addr_jump + 2));
 
@@ -1136,12 +1150,17 @@ ENTRY_POINT ()
 		jump_repl[5] = 0x90;
 		write_prog_memory ((byte *)addr_jump, jump_repl, jump_instr_size);
 
-		// At the inlead, replace the original cond. jump and also a second one exiting the loop in case the cond. doesn't pass
-		byte code[sizeof (struct inlead)] = {0};
-		byte * out_cursor = code;
-		emit_jump (&out_cursor, code, orig_jump_target, wae_inlead, JK_LESS);
-		emit_jump (&out_cursor, code, addr_jump + jump_instr_size, wae_inlead, JK_UNCOND);
-		write_prog_memory (wae_inlead, code, sizeof code);
+		// At the inlead, replace the original cmp, cond. jump, and also add second jmp exiting the loop in case the cond. doesn't pass
+		{
+			byte code[sizeof (struct inlead)] = {0};
+			byte * cursor = code;
+			*cursor++ = 0x3B;
+			*cursor++ = 0x05 + 8 * (int)reg;
+			cursor = int_to_bytes (cursor, (int)&injected_state->workable_tile_count);
+			emit_jump (&cursor, code, orig_jump_target, wae_inlead, JK_LESS);
+			emit_jump (&cursor, code, addr_jump + jump_instr_size, wae_inlead, JK_UNCOND);
+			write_prog_memory (wae_inlead, code, sizeof code);
+		}
 
 		free (orig_code);
 	}
