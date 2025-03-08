@@ -2844,12 +2844,6 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 
 
 	int work_area_addrs[] = {
-		0x4AE51E,
-		0x4AE83B,
-		0x4AF02D,
-		0x4AF0C7,
-		0x4AF3D4,
-		0x4AF5A3,
 		0x4AFCF4,
 		0x4B1040,
 		0x4B2489,
