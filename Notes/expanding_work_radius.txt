@@ -1,18 +1,19 @@
 
-GOG patch locations for expanded city work radius (0x):
-4adb68
+GOG/Steam/PCG patch locations for expanded city work radius (0x):
+4adb68/4b4b4c/4adbf8 [jumps: 6/6/6 eax/ebp/eax]
   in add_or_remove_improvement
   ...basically should check every call to calc_tile_yield_at
-4ae51e
+4ae51e/4b5504/4ae5ae [jumps: 6/6/6 ebx/eax/ebx]
   sets tile flags in City::initialize
-4ae83b
+4ae83b/4b580c/4ae8cb [jumps: 6/2/6 eax/ebx/eax]
   another loop in City::initialize
-4af02d, 4af0c7
+  annoying example of a 2-byte jump
+4af02d/4b5ffc/4af0bd [jumps: 6/6/6 eax/ebx/eax], 4af0c7/4b6092/4af157 [jumps: 6/6/6 eax/eax/eax]
   in City::raze, double loop to clear tile flags around the city
   ...this is why it would be difficult to have workable ranges that vary between cities
-4af3d4
+4af3d4/4b639d/4af464 [jumps: 6/6/6 ebp/ebx/ebp]
   in City::raze, again setting tile flags (feels redundant)
-4af5a3
+4af5a3/4b6568/4af633 [jumps: 6/6/6 ebp/ebp/ebp]
   in City::raze, looks like setting a dirty flag re: visibility
 4afcf4
   in City::set_production, re: mobilization bonus
