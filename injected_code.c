@@ -308,8 +308,7 @@ patch_Map_compute_ni_for_work_area (Map * this, int edx, int x_home, int y_home,
 	// and instead use the workable tile count. That saves us from having to edit that param in the calls to this function. If it's in range,
 	// we still must compute the standard n.i. b/c that's what the caller expects.
 	else {
-		int workable_tile_count = workable_tile_counts[is->current_config.city_work_radius];
-		for (int n = 0; n < workable_tile_count; n++) {
+		for (int n = 0; n < is->workable_tile_count; n++) {
 			int dx, dy;
 			patch_ni_to_diff_for_work_area (n, &dx, &dy);
 			int x = x_home + dx,
@@ -451,6 +450,9 @@ reset_to_base_config ()
 	is->loaded_config_names = malloc (sizeof *is->loaded_config_names);
 	is->loaded_config_names->name = strdup ("(base)");
 	is->loaded_config_names->next = NULL;
+
+	// Update IS variable that's tied to a config value
+	is->workable_tile_count = workable_tile_counts[is->current_config.city_work_radius];
 }
 
 struct id_list {
@@ -1528,10 +1530,12 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
 
+				// Handle city_work_radius separately from the other int options so we can clamp it and update the count var
 				} else if (slice_matches_str (&p.key, "city_work_radius")) {
-					if (read_int (&value, &ival))
+					if (read_int (&value, &ival)) {
 						cfg->city_work_radius = clamp (1, 7, ival);
-					else
+						is->workable_tile_count = workable_tile_counts[cfg->city_work_radius];
+					} else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
 
 				// if key is for something special

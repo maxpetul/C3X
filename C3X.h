@@ -541,6 +541,10 @@ struct injected_state {
 	int memo_len;
 	int memo_capacity;
 
+	// The maximum number of tiles workable by cities including the city tile itself (21 under standard game rules). Updated whenever the
+	// city_work_radius config value gets changed.
+	int workable_tile_count;
+
 	// The civ ID of the player from whose perspective we're currently showing city loc desirability, or -1 if none. Initialized to -1.
 	int city_loc_display_perspective;
 
