@@ -1114,6 +1114,39 @@ ENTRY_POINT ()
 		init_set_resource_bit_airlock (tcc, addr_set_resource_bit_airlock, addr_intercept_set_resource_bit);
 	}
 
+	// Just as a proof of concept, redirect one of the final jump instructions in a loop over the workable area
+	ASSERT (i_next_free_inlead < inleads_capacity);
+	{
+		int addr_jump = 0x4ADB6F;
+
+		byte * orig_code = read_prog_memory ((void *)(addr_jump - 100), 200);
+		byte * in_cursor = &orig_code[100];
+
+		int jump_instr_size = length_disasm (in_cursor);
+		REQUIRE ((in_cursor[0] == 0x0F) && (in_cursor[1] == 0x8C) && (jump_instr_size == 6), "Jump address invalid or type of jump not supported");
+
+		int orig_jump_target = addr_jump + jump_instr_size + read_prog_int ((void const *)(addr_jump + 2));
+
+		byte * wae_inlead = (byte *)&inleads[i_next_free_inlead];
+
+		// Replace original jump with an uncond. one heading to the inlead
+		byte jump_repl[6] = {0};
+		jump_repl[0] = 0xE9;
+		int_to_bytes (&jump_repl[1], (int)wae_inlead - (addr_jump + 5));
+		jump_repl[5] = 0x90;
+		write_prog_memory ((byte *)addr_jump, jump_repl, jump_instr_size);
+
+		// At the inlead, replace the original cond. jump and also a second one exiting the loop in case the cond. doesn't pass
+		byte code[sizeof (struct inlead)] = {0};
+		byte * out_cursor = code;
+		emit_jump (&out_cursor, code, orig_jump_target, wae_inlead, JK_LESS);
+		emit_jump (&out_cursor, code, addr_jump + jump_instr_size, wae_inlead, JK_UNCOND);
+		write_prog_memory (wae_inlead, code, sizeof code);
+
+		free (orig_code);
+	}
+	i_next_free_inlead++;
+
 	// Give up write permission on Civ proc's code injection pages
 	set_prog_mem_protection (civ_inject_mem, inject_size, MAA_READ_EXECUTE);
 
