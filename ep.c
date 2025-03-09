@@ -911,7 +911,7 @@ ENTRY_POINT ()
 		for (int n = 0; n < count_civ_prog_objects; n++)
 			if (civ_prog_objects[n].job == OJ_INLEAD)
 				count++;
-		inleads_capacity = count + 20; // Allocate some extra space for various uses
+		inleads_capacity = count + 30; // Allocate some extra space for various uses
 	}
 	int inleads_size = inleads_capacity * sizeof (struct inlead);
 	struct inlead * inleads = alloc_prog_memory (".c3xinl", NULL, inleads_size, MAA_READ_WRITE_EXECUTE);

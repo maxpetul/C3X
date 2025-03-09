@@ -2845,23 +2845,11 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 
 	int work_area_addrs[] = {
 		0x4AFCF4,
-		0x4B1040,
-		0x4B2489,
 		0x4B2620,
-		0x4BA197,
 		0x4BA677,
-		0x43550A,
-		0x4356EF,
-		0x4357D0,
-		0x435954,
 		0x435D67,
-		0x4367FE,
-		0x436981,
-		0x4373B1,
 		0x420524,
-		0x420EFE,
 		0x421047,
-		0x42117B,
 		0x5DA3A8,
 		0x4C5376};
 	unsigned char workable_tile_count = workable_tile_counts[cfg->city_work_radius];
