@@ -1114,7 +1114,12 @@ ENTRY_POINT ()
 		init_set_resource_bit_airlock (tcc, addr_set_resource_bit_airlock, addr_intercept_set_resource_bit);
 	}
 
-	// Just as a proof of concept, redirect one of the final jump instructions in a loop over the workable area
+	// Process the "ext walup" jobs, which involves extending loops over city work areas by redirecting their final jump instruction (that would
+	// normally begin a new cycle) to an inlead where we redo the comparison against our own work area tile count variable then reproduce the
+	// jumps to either cycle again or exit the loop.
+	// Complications include: (1) There are many different loops to patch and they use different registers to contain the loop variable. We must
+	// detect which register is being used for each. (2) Some jump instructions are only 2 bytes. We must overwrite more than just the original
+	// jmp instr in those cases in order to insert a jump to the inlead (req. 5 bytes).
 	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
 		if (obj->job != OJ_EXT_WALUP)
