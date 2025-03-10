@@ -1130,6 +1130,13 @@ ENTRY_POINT ()
 		byte * orig_code = read_prog_memory ((void *)(addr_jump - 20), 40);
 		byte * jump_instr = &orig_code[20];
 
+		// Determine if this is a 6-byte or 2-byte jump and make sure the jump instruction matches one of the ones we can handle.
+		int jump_instr_size = length_disasm (jump_instr);
+		REQUIRE (   ((jump_instr_size == 6) && (jump_instr[0] == 0x0F) && (jump_instr[1] == 0x8C))
+			 || ((jump_instr_size == 2) && (jump_instr[0] == 0x7C)),
+			 "Work area jump address invalid or type of jump not supported");
+		bool small_jump = jump_instr_size == 2;
+
 		// Determine what register contains the loop index (which is also neighbor index around the city). We need to know this in order to
 		// reproduce the cmp instruction.
 		enum reg reg; {
@@ -1144,21 +1151,27 @@ ENTRY_POINT ()
 			REQUIRE (cursor != jump_instr, "Couldn't find cmp instruction in lead up to work area jump");
 		}
 
-		int jump_instr_size = length_disasm (jump_instr);
-		REQUIRE ((jump_instr[0] == 0x0F) && (jump_instr[1] == 0x8C) && (jump_instr_size == 6), "Jump address invalid or type of jump not supported");
+		// If we're redirecting a 2-byte jump, check that the instruction sequence is specifically increment, compare, jump, and that the
+		// increment and compare concern the same register.
+		if (small_jump) {
+			byte incr_instr = 0x40 + (int)reg;
+			REQUIRE ((jump_instr[-4] == incr_instr) && (jump_instr[-3] == 0x83) && (jump_instr[-1] == 0x15),
+				"2-byte work area jump pattern not matched");
+		}
 
-		int orig_jump_target = addr_jump + jump_instr_size + read_prog_int ((void const *)(addr_jump + 2));
+		int jump_offset = small_jump ? (int)*(char *)&jump_instr[1] : read_prog_int ((void const *)(addr_jump + 2));
+		int orig_jump_target = addr_jump + jump_instr_size + jump_offset;
 
 		ASSERT (i_next_free_inlead < inleads_capacity);
 		byte * wae_inlead = (byte *)&inleads[i_next_free_inlead];
 		i_next_free_inlead++;
 
-		// Replace original jump with an uncond. one heading to the inlead
-		byte jump_repl[6] = {0};
-		jump_repl[0] = 0xE9;
-		int_to_bytes (&jump_repl[1], (int)wae_inlead - (addr_jump + 5));
-		jump_repl[5] = 0x90;
-		write_prog_memory ((byte *)addr_jump, jump_repl, jump_instr_size);
+		// Replace original jump with an uncond. one heading to the inlead. If the jump is only 2 bytes, replace the instruction preceeding
+		// it, too, which we have already determined is the 3-byte compare.
+		byte jump_repl[6] = {0xE9, 0, 0, 0, 0, 0x90};
+		int addr_new_jump = small_jump ? addr_jump - 3 : addr_jump;
+		int_to_bytes (&jump_repl[1], (int)wae_inlead - (addr_new_jump + 5));
+		write_prog_memory ((byte *)addr_new_jump, jump_repl, small_jump ? 5 : 6);
 
 		// At the inlead, replace the original cmp, cond. jump, and also add second jmp exiting the loop in case the cond. doesn't pass
 		{
