@@ -2843,27 +2843,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 
 
 
-	int work_area_addrs[] = {
-		0x435D67,
-		0x420524,
-		0x421047,
-		0x5DA3A8,
-		0x4C5376};
-	unsigned char workable_tile_count = workable_tile_counts[cfg->city_work_radius];
-	for (int n = 0; n < ARRAY_LEN (work_area_addrs); n++) {
-		byte * addr = (byte *)work_area_addrs[n];
-		WITH_MEM_PROTECTION (addr, 3, PAGE_EXECUTE_READWRITE) {
-			if ((addr[0] == 0x83) && (addr[1] >= 0xF8) && (addr[1] <= 0xFF))
-				addr[2] = workable_tile_count;
-			else if (addr[0] == 0x6A)
-				addr[1] = workable_tile_count;
-			else {
-				char z[200];
-				snprintf (z, sizeof z, "Didn't recog instr at addr: 0x%x", (int)addr);
-				MessageBoxA (NULL, z, NULL, MB_ICONWARNING);
-			}
-		}
-	}
+	// TODO: Add defines for these to the CSV:
 
 	// Skip redundant check of clicked tile's neighbor index in City_Form::handle_left_click.
 	byte * addr_city_form_left_click_jump = (byte *)0x420547;
