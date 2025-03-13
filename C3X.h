@@ -128,6 +128,7 @@ struct c3x_config {
 	bool cut_research_spending_to_avoid_bankruptcy;
 	bool dont_pause_for_love_the_king_messages;
 	bool reverse_specialist_order_with_shift;
+	bool toggle_zoom_with_z_on_city_screen;
 	bool dont_give_king_names_in_non_regicide_games;
 	bool no_elvis_easter_egg;
 	bool disable_worker_automation;

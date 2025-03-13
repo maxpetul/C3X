@@ -2894,6 +2894,7 @@ patch_init_floating_point ()
 		{"cut_research_spending_to_avoid_bankruptcy"           , true , offsetof (struct c3x_config, cut_research_spending_to_avoid_bankruptcy)},
 		{"dont_pause_for_love_the_king_messages"               , true , offsetof (struct c3x_config, dont_pause_for_love_the_king_messages)},
 		{"reverse_specialist_order_with_shift"                 , true , offsetof (struct c3x_config, reverse_specialist_order_with_shift)},
+		{"toggle_zoom_with_z_on_city_screen"                   , true , offsetof (struct c3x_config, toggle_zoom_with_z_on_city_screen)},
 		{"dont_give_king_names_in_non_regicide_games"          , true , offsetof (struct c3x_config, dont_give_king_names_in_non_regicide_games)},
 		{"no_elvis_easter_egg"                                 , false, offsetof (struct c3x_config, no_elvis_easter_egg)},
 		{"disable_worker_automation"                           , false, offsetof (struct c3x_config, disable_worker_automation)},
@@ -6565,7 +6566,8 @@ patch_City_Form_m82_handle_key_event (City_Form * this, int edx, int virtual_key
 		}
 		patch_show_popup (popup, __, 0, 0);
 
-	} else if ((virtual_key_code == VK_Z) && is_down) {
+	} else if (is->current_config.toggle_zoom_with_z_on_city_screen &&
+		   (virtual_key_code == VK_Z) && is_down) {
 		p_bic_data->is_zoomed_out = ! p_bic_data->is_zoomed_out;
 		int dy = p_bic_data->is_zoomed_out ? 7 : (is->current_config.city_work_radius == 3 ? 4 : 2);
 		Main_Screen_Form_bring_tile_into_view (p_main_screen_form, __, this->CurrentCity->Body.X, this->CurrentCity->Body.Y + dy, 0, true, false); // also redraws map
