@@ -192,10 +192,14 @@ clear_memo ()
 	is->memo_len = 0;
 }
 
+// The maximum possible cultural neighbor index. We don't bother dealing with indices beyond this b/c it's the last tile in the seventh ring. Also
+// equals one less than the tile count up to & inc. the seventh ring b/c of the zeroth tile.
+#define MAX_CULTURAL_NI 192
+
 // Number of workable tiles including the city center for each workable radius
 unsigned char const workable_tile_counts[8] = {1, 9, 21, 37, 61, 89, 137, 193};
 
-char const cultural_ni_to_diffs[386] = // = 193*2
+char const cultural_ni_to_diffs[(MAX_CULTURAL_NI + 1) * 2] =
 {
 	0, 0,
 
@@ -240,15 +244,15 @@ char const cultural_ni_to_diffs[386] = // = 193*2
 	-10,   4,   -10, -4,   -9,  -5,    -8,  -6,    -7,  -7,    -6,  -8,    -5, -9,    -4, -10
 };
 
-// Like neighbor_index_to_diff, but enumerates tiles in an order that matches cultural border expansion. Only valid for 0 <= neighbor_index <= 192.
+// Like neighbor_index_to_diff, but enumerates tiles in an order that matches cultural border expansion. Only valid for 0 <= neighbor_index <= MAX_CULTURAL_NI.
 void __cdecl
 patch_ni_to_diff_for_work_area (int neighbor_index, int * x_disp, int * y_disp)
 {
 	if (neighbor_index <= 0) {
 		*x_disp = *y_disp = 0;
 		return;
-	} else if (neighbor_index > 192)
-		neighbor_index = neighbor_index % 193;
+	} else if (neighbor_index > MAX_CULTURAL_NI)
+		neighbor_index = neighbor_index % (MAX_CULTURAL_NI + 1);
 
 	int i = neighbor_index << 1;
 	char const * p = &cultural_ni_to_diffs[neighbor_index << 1];
@@ -282,14 +286,8 @@ patch_City_find_min_value_tile (City * this)
 	// The original function has been edited to enumerate tiles in our custom order matching cultural borders instead of the game's original
 	// order. It returns a neighbor index from that enumeration. We must convert it to standard order if it's beyond the range where the two
 	// enumerations overlap.
-	if (tr >= 21) {
-		if (tr < 193) {
-			char const * p = &cultural_ni_to_diffs[tr<<1];
-			int standard_ni = diff_to_neighbor_index (p[0], p[1], 1000);
-			tr = (standard_ni > 0) ? standard_ni : 0;
-		} else
-			tr = 0;
-	}
+	if (tr >= 21)
+		tr = (tr <= MAX_CULTURAL_NI) ? is->cultural_ni_to_standard[tr] : 0;
 
 	return tr;
 }
@@ -3126,9 +3124,9 @@ patch_init_floating_point ()
 	is->memo_capacity = 0;
 
 	// Fill in array mapping cultural NIs to standard ones.
-	is->cultural_ni_to_standard = malloc (193);
-	for (int n = 0; n < 193; n++) {
-		char const * p = &cultural_ni_to_diffs[cultural_ni << 1];
+	is->cultural_ni_to_standard = malloc (MAX_CULTURAL_NI + 1);
+	for (int n = 0; n <= MAX_CULTURAL_NI; n++) {
+		char const * p = &cultural_ni_to_diffs[n << 1];
 		is->cultural_ni_to_standard[n] = diff_to_neighbor_index (p[0], p[1], 1000);
 	}
 
