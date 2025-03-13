@@ -6564,6 +6564,12 @@ patch_City_Form_m82_handle_key_event (City_Form * this, int edx, int virtual_key
 			PopupForm_add_text (popup, __, s, 0);
 		}
 		patch_show_popup (popup, __, 0, 0);
+
+	} else if ((virtual_key_code == VK_Z) && is_down) {
+		p_bic_data->is_zoomed_out = ! p_bic_data->is_zoomed_out;
+		int dy = p_bic_data->is_zoomed_out ? 7 : (is->current_config.city_work_radius == 3 ? 4 : 2);
+		Main_Screen_Form_bring_tile_into_view (p_main_screen_form, __, this->CurrentCity->Body.X, this->CurrentCity->Body.Y + dy, 0, true, false); // also redraws map
+		this->Base.vtable->m73_call_m22_Draw ((Base_Form *)this);
 	}
 
 	City_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
