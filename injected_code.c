@@ -292,6 +292,14 @@ patch_City_find_min_value_tile (City * this)
 	return tr;
 }
 
+bool __fastcall
+City_stop_working_tile_conv_ni (City * this, int edx, int neighbor_index)
+{
+	if ((neighbor_index >= 21) && (neighbor_index <= MAX_CULTURAL_NI))
+		neighbor_index = is->cultural_ni_to_standard[neighbor_index];
+	return City_stop_working_tile (this, __, neighbor_index);
+}
+
 void wrap_tile_coords (Map * map, int * x, int * y);
 
 int __fastcall
