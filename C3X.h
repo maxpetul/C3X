@@ -542,6 +542,9 @@ struct injected_state {
 	int memo_len;
 	int memo_capacity;
 
+	// Array mapping cultural neighbor indices to the standard indices that correspond to the same tiles. Generated at program start.
+	byte * cultural_ni_to_standard;
+
 	// The maximum number of tiles workable by cities including the city tile itself (21 under standard game rules). Updated whenever the
 	// city_work_radius config value gets changed.
 	int workable_tile_count;

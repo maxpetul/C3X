@@ -3125,6 +3125,13 @@ patch_init_floating_point ()
 	is->memo_len = 0;
 	is->memo_capacity = 0;
 
+	// Fill in array mapping cultural NIs to standard ones.
+	is->cultural_ni_to_standard = malloc (193);
+	for (int n = 0; n < 193; n++) {
+		char const * p = &cultural_ni_to_diffs[cultural_ni << 1];
+		is->cultural_ni_to_standard[n] = diff_to_neighbor_index (p[0], p[1], 1000);
+	}
+
 	is->city_loc_display_perspective = -1;
 
 	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = is->aliased_leader_title_bits = 0;
