@@ -1,4 +1,11 @@
 
+To test addresses:
+  - sell harbor, verify food updates correctly for worker in 3+ ring
+  - found city
+  - raze city
+
+
+
 GOG/Steam/PCG patch locations for expanded city work radius (0x):
 4adb68/4b4b4c/4adbf8 [jumps: 6/6/6 eax/ebp/eax]
   in add_or_remove_improvement

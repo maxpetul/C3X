@@ -377,6 +377,13 @@ patch_City_start_working_tile_conv_ni (City * this, int edx, int neighbor_index)
 }
 
 void __fastcall
+patch_City_add_or_remove_tile_yield_conv_ni (City * this, int edx, int neighbor_index, bool add_else_remove)
+{
+	if ((neighbor_index >= 0) && (neighbor_index <= MAX_CULTURAL_NI))
+		City_add_or_remove_tile_yield (this, __, is->cultural_ni_to_standard[neighbor_index], add_else_remove);
+}
+
+void __fastcall
 patch_Main_Screen_Form_bring_cnter_view_city_focus (Main_Screen_Form * this, int edx, int x, int y, int param_3, bool always_update_tile_bounds, bool param_5)
 {
 	// This is the call that centers the map view on the city center tile when the city form is opened. If the city work radius has expanded then
