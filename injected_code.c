@@ -349,6 +349,33 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 	return City_controls_tile (this, __, neighbor_index, consider_enemy_units);
 }
 
+bool __fastcall
+patch_City_controls_tile_conv_ni (City * this, int edx, int neighbor_index, bool consider_enemy_units)
+{
+	if ((neighbor_index >= 0) && (neighbor_index <= MAX_CULTURAL_NI))
+		return patch_City_controls_tile (this, __, is->cultural_ni_to_standard[neighbor_index], consider_enemy_units);
+	else
+		return false;
+}
+
+bool __fastcall
+patch_City_stop_working_tile_conv_ni (City * this, int edx, int neighbor_index)
+{
+	if ((neighbor_index >= 0) && (neighbor_index <= MAX_CULTURAL_NI))
+		return City_stop_working_tile (this, __, is->cultural_ni_to_standard[neighbor_index]);
+	else
+		return false;
+}
+
+bool __fastcall
+patch_City_start_working_tile_conv_ni (City * this, int edx, int neighbor_index)
+{
+	if ((neighbor_index >= 0) && (neighbor_index <= MAX_CULTURAL_NI))
+		return City_start_working_tile (this, __, is->cultural_ni_to_standard[neighbor_index]);
+	else
+		return false;
+}
+
 void __fastcall
 patch_Main_Screen_Form_bring_cnter_view_city_focus (Main_Screen_Form * this, int edx, int x, int y, int param_3, bool always_update_tile_bounds, bool param_5)
 {
