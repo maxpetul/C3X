@@ -545,6 +545,10 @@ struct injected_state {
 	// Array mapping cultural neighbor indices to the standard indices that correspond to the same tiles. Generated at program start.
 	byte * cultural_ni_to_standard;
 
+	// Array mapping standard neighbor indices to the smallest work radius that includes the corresponding tile. Ex., if a given n.i. corresponds
+	// to one of the adjacent tiles, maps to 1, if it's in the fat cross but not adjacent, maps to 2, and so forth, out into the extended area.
+	char ni_to_work_radius[256];
+
 	// The maximum number of tiles workable by cities including the city tile itself (21 under standard game rules). Updated whenever the
 	// city_work_radius config value gets changed.
 	int workable_tile_count;

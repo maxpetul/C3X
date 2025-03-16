@@ -260,24 +260,6 @@ patch_ni_to_diff_for_work_area (int neighbor_index, int * x_disp, int * y_disp)
 	*y_disp = p[1];
 }
 
-// Returns the smallest work radius that includes the tile at the given n.i. Ex., if the given n.i. corresponds to one of the adjacent tiles, returns
-// 1, if it's in the fat cross but not adjacent, returns 2, and so forth, out into the extended workable range.
-// TODO: Optimize this function by creating a lookup table.
-int
-ni_to_work_radius (int neighbor_index)
-{
-	int dx, dy;
-	neighbor_index_to_diff (neighbor_index, &dx, &dy);
-	for (int ring_no = 0; ring_no <= 7; ring_no++) {
-		for (int n = workable_tile_counts[ring_no-1]; n < workable_tile_counts[ring_no]; n++) {
-			char const * p = &cultural_ni_to_diffs[n<<1];
-			if ((p[0] == dx) && (p[1] == dy))
-				return ring_no;
-		}
-	}
-	return -1;
-}
-
 int __fastcall
 patch_City_find_min_value_tile (City * this)
 {
@@ -342,8 +324,8 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 {
 	// Check that this tile is not outside the city's work area. We've deleted a check from the base game code that verifies the n.i. is within 21
 	// tiles so we can replicate it here in a way that also works for an expanded work area.
-	int work_radius = ni_to_work_radius (neighbor_index);
-	if (work_radius > is->current_config.city_work_radius)
+	int work_radius = ((neighbor_index >= 0) && (neighbor_index < ARRAY_LEN (is->ni_to_work_radius))) ? is->ni_to_work_radius[neighbor_index] : -1;
+	if ((work_radius > is->current_config.city_work_radius) || (work_radius < 0))
 		return false;
 
 	return City_controls_tile (this, __, neighbor_index, consider_enemy_units);
@@ -3170,6 +3152,25 @@ patch_init_floating_point ()
 	for (int n = 0; n <= MAX_CULTURAL_NI; n++) {
 		char const * p = &cultural_ni_to_diffs[n << 1];
 		is->cultural_ni_to_standard[n] = diff_to_neighbor_index (p[0], p[1], 1000);
+	}
+
+	// Fill in array mapping standard NIs to work radii AKA work ring numbers
+	for (int n = 0; n < ARRAY_LEN (is->ni_to_work_radius); n++) {
+		int work_radius = -1;
+		int dx, dy;
+		neighbor_index_to_diff (n, &dx, &dy);
+		for (int ring_no = 0; ring_no <= 7; ring_no++) {
+			for (int k = workable_tile_counts[ring_no-1]; k < workable_tile_counts[ring_no]; k++) {
+				char const * p = &cultural_ni_to_diffs[k<<1];
+				if ((p[0] == dx) && (p[1] == dy)) {
+					work_radius = ring_no;
+					break;
+				}
+			}
+			if (work_radius != -1)
+				break;
+		}
+		is->ni_to_work_radius[n] = work_radius;
 	}
 
 	is->city_loc_display_perspective = -1;
