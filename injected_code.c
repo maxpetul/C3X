@@ -365,6 +365,15 @@ patch_City_add_or_remove_tile_yield_conv_ni (City * this, int edx, int neighbor_
 		City_add_or_remove_tile_yield (this, __, is->cultural_ni_to_standard[neighbor_index], add_else_remove);
 }
 
+bool __fastcall
+City_is_neighboring_tile_in_area_conv_ni (City * this, int edx, int neighbor_index)
+{
+	if ((neighbor_index >= 0) && (neighbor_index <= MAX_CULTURAL_NI))
+		City_is_neighboring_tile_in_area (this, __, is->cultural_ni_to_standard[neighbor_index]);
+	else
+		return false;
+}
+
 void __fastcall
 patch_Main_Screen_Form_bring_cnter_view_city_focus (Main_Screen_Form * this, int edx, int x, int y, int param_3, bool always_update_tile_bounds, bool param_5)
 {
