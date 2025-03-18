@@ -289,23 +289,18 @@ patch_Map_compute_ni_for_work_area (Map * this, int edx, int x_home, int y_home,
 {
 	// Within the first two rings, there's no difference b/w the standard and custom "work area" neighbor indices so fall back to the base game's
 	// function in that case.
-	if (is->current_config.city_work_radius <= 2)
+	if (is->workable_tile_count <= 21)
 		return Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, lim);
 
-	// For work radius >= 3, check if the tile is in range using the custom n.i. to diff function. For simplicity, we ignore the "lim" parameter
-	// and instead use the workable tile count. That saves us from having to edit that param in the calls to this function. If it's in range,
-	// we still must compute the standard n.i. b/c that's what the caller expects.
+	// If the work area has been expanded, compute the neighbor index using an expanded limit then check that it's within the area.
 	else {
-		for (int n = 0; n < is->workable_tile_count; n++) {
-			int dx, dy;
-			patch_ni_to_diff_for_work_area (n, &dx, &dy);
-			int x = x_home + dx,
-			    y = y_home + dy;
-			wrap_tile_coords (this, &x, &y);
-			if ((x == x_neigh) && (y == y_neigh))
-				return Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, 1000);
-		}
-		return -1;
+		int ni = Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, 2 * lim);
+		if ((ni >= 0) && (ni <= ARRAY_LEN (is->ni_to_work_radius)) &&
+		    (is->ni_to_work_radius[ni] >= 0) &&
+		    (is->ni_to_work_radius[ni] <= is->current_config.city_work_radius))
+			return ni;
+		else
+			return -1;
 	}
 }
 
@@ -366,10 +361,10 @@ patch_City_add_or_remove_tile_yield_conv_ni (City * this, int edx, int neighbor_
 }
 
 bool __fastcall
-City_is_neighboring_tile_in_area_conv_ni (City * this, int edx, int neighbor_index)
+patch_City_is_neighboring_tile_in_area_conv_ni (City * this, int edx, int neighbor_index)
 {
 	if ((neighbor_index >= 0) && (neighbor_index <= MAX_CULTURAL_NI))
-		City_is_neighboring_tile_in_area (this, __, is->cultural_ni_to_standard[neighbor_index]);
+		return City_is_neighboring_tile_in_area (this, __, is->cultural_ni_to_standard[neighbor_index]);
 	else
 		return false;
 }
