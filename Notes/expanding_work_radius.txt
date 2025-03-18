@@ -1,9 +1,13 @@
 
 To test addresses:
+  - click map to work a tile
   - sell harbor, verify food updates correctly for worker in 3+ ring
   - found city
   - raze city
-
+  - grow city, also w/ wonder that grows two at a time
+  - starve city
+  - join a worker
+  - click center city tile to manage citizens
 
 
 GOG/Steam/PCG patch locations for expanded city work radius (0x):
