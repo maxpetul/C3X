@@ -1531,7 +1531,7 @@ struct City_Base_vtable
   void (__fastcall * manage_by_governor) (City * this, __, bool param_1);
   enum UnitStateType (__fastcall * instruct_worker) (City * this, __, int tile_x, int tile_y, byte param_3, Unit * worker);
   int (__fastcall * find_best_tile_to_work) (City * this, __, Unit * worker, bool param_2);
-  int m17;
+  int (__fastcall * count_tile_improvs_in_area) (City * this, __, int param_1);
   int m18;
   int m19;
   void (__fastcall * set_production_to_most_expensive_option) (City *);
