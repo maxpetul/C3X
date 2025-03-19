@@ -274,6 +274,15 @@ patch_City_find_min_value_tile (City * this)
 	return tr;
 }
 
+int __fastcall
+patch_City_find_best_tile_to_work (City * this, int edx, Unit * worker, bool param_2)
+{
+	int tr = City_find_best_tile_to_work (this, __, worker, param_2);
+	if (tr >= 21) // Like in find_min_value_tile, convert return value from cultural to standard n.i.
+		tr = (tr <= MAX_CULTURAL_NI) ? is->cultural_ni_to_standard[tr] : 0;
+	return tr;
+}
+
 bool __fastcall
 City_stop_working_tile_conv_ni (City * this, int edx, int neighbor_index)
 {
