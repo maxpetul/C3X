@@ -644,6 +644,7 @@ repl call, 0x435925,	0x4373D1,	0x4359A5,	"City_controls_tile_conv_ni",			""
 ext walup, 0x43595B,	0x4373F7,	0x4359DB,	"",						""
 repl call, 0x43597C,	0x437418,	0x4359FC,	"ni_to_diff_for_work_area",			""
 repl call, 0x435A91,	0x43752D,	0x435B11,	"City_start_working_tile_conv_ni",		""
+repl call, 0x5BD837,	0x5CC412,	0x5BD547,	"Map_compute_ni_for_work_area",			""
 
 ext walup, 0x436805,	0x0,		0x0,		"",						""
 ext walup, 0x4373B4,	0x0,		0x0,		"",						""
