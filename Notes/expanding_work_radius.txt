@@ -10,7 +10,8 @@ To test addresses:
   - click center city tile to manage citizens
   - kick a citizen off of a tile by moving a hostile unit onto it
   - run through a bunch of turns w/ automated workers
-
+  - set city production to something that gets mobilization bonus
+  - have pollution kick a citizen off a tile
 
 GOG/Steam/PCG patch locations for expanded city work radius (0x):
 4adb68/4b4b4c/4adbf8 [jumps: 6/6/6 eax/ebp/eax]
