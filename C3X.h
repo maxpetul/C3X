@@ -428,6 +428,7 @@ struct injected_state {
 	enum init_state disabled_command_img_state;
 	enum init_state unit_rcm_icon_state;
 	enum init_state red_food_icon_state;
+	enum init_state tile_already_worked_zoomed_out_sprite_init_state;
 
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
@@ -741,6 +742,8 @@ struct injected_state {
 	int drawing_icons_for_improv_id; // Stores the improv ID whose icons we're drawing. -1 while not drawing.
 
 	PCX_Image * resources_sheet; // Sprite sheet of resource icons, i.e. resources.pcx
+
+	Sprite tile_already_worked_zoomed_out_sprite; // Valid only if init state is OK
 
 	// Stores the trade offer object being modified when the user right-clicks on a gold offer/ask on the trade table. Gets set by a special
 	// function call replacement (see apply_machine_code_edits for details).

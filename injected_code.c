@@ -5176,6 +5176,14 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	deinit_trade_scroll_buttons ();
 	deinit_unit_rcm_icons ();
 	deinit_red_food_icon ();
+	if (is->tile_already_worked_zoomed_out_sprite_init_state != IS_UNINITED) {
+		enum init_state * state = &is->tile_already_worked_zoomed_out_sprite_init_state;
+		if (*state == IS_OK) {
+			Sprite * sprite = &is->tile_already_worked_zoomed_out_sprite;
+			sprite->vtable->destruct (sprite, __, 0);
+		}
+		*state = IS_UNINITED;
+	}
 
 	// Need to clear this since the resource count might have changed
 	if (is->extra_available_resources != NULL) {
@@ -10747,6 +10755,42 @@ bool __fastcall
 patch_Unit_is_in_op_range_for_ai_rebase (Unit * this, int edx, int tile_x, int tile_y)
 {
 	return Unit_is_in_operational_range (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+}
+
+int __fastcall
+patch_Sprite_draw_already_worked_tile_img (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
+{
+	Sprite * to_draw = this;
+
+	if (is->current_config.toggle_zoom_with_z_on_city_screen && p_bic_data->is_zoomed_out) {
+
+		// Load sprite if necessary
+		if (is->tile_already_worked_zoomed_out_sprite_init_state == IS_UNINITED) {
+			is->tile_already_worked_zoomed_out_sprite_init_state = IS_INIT_FAILED;
+			PCX_Image * pcx = malloc (sizeof *pcx);
+			if (pcx != NULL) {
+				memset (pcx, 0, sizeof *pcx);
+				PCX_Image_construct (pcx);
+				char path[2*MAX_PATH];
+				get_mod_art_path ("TileAlreadyWorkedZoomedOut.pcx", path, sizeof path);
+				PCX_Image_read_file (pcx, __, path, NULL, 0, 0x100, 2);
+				if (pcx->JGL.Image != NULL) {
+					Sprite * sprite = &is->tile_already_worked_zoomed_out_sprite;
+					memset (sprite, 0, sizeof *sprite);
+					Sprite_construct (sprite);
+					Sprite_slice_pcx (sprite, __, pcx, 0, 0, 64, 32, 1, 1);
+					is->tile_already_worked_zoomed_out_sprite_init_state = IS_OK;
+				}
+				pcx->vtable->destruct (pcx, __, 0);
+				free (pcx);
+			}
+		}
+
+		if (is->tile_already_worked_zoomed_out_sprite_init_state == IS_OK)
+			to_draw = &is->tile_already_worked_zoomed_out_sprite;
+	}
+
+	return Sprite_draw (to_draw, __, canvas, pixel_x, pixel_y, param_4);
 }
 
 // TCC requires a main function be defined even though it's never used.

@@ -663,6 +663,7 @@ repl call, 0x42053D,	0x421A1D,	0x4205BD,	"Map_compute_ni_for_work_area",			""
 repl call, 0x435D78,	0x437802,	0x435DF8,	"Map_compute_ni_for_work_area",			""
 repl call, 0x5DA3B6,	0x5E9925,	0x5DA2E6,	"Map_compute_ni_for_work_area",			""
 repl vptr, 0x66DCAC,	0x68AD90,	0x66DCAC,	"City_find_min_value_tile",			"int (__fastcall *) (City * this)"
+repl call, 0x420ECD,	0x422426,	0x420F4D,	"Sprite_draw_already_worked_tile_img",		""
 
 ignore,	   0x437321,	0x0,		0x0,		"ni_to_diff_for_work_area",			""
 ignore,	   0x4373B4,	0x0,		0x0,		"",						""
