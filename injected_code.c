@@ -301,9 +301,10 @@ patch_Map_compute_ni_for_work_area (Map * this, int edx, int x_home, int y_home,
 	if (is->workable_tile_count <= 21)
 		return Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, lim);
 
-	// If the work area has been expanded, compute the neighbor index using an expanded limit then check that it's within the area.
+	// If the work area has been expanded, compute the neighbor index then check that it's within the area. Ignore the limit we were passed and
+	// instead use the number of tiles in the workable area, doubled to cover the difference between cultural vs standard enumeration.
 	else {
-		int ni = Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, 2 * lim);
+		int ni = Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, 2 * is->workable_tile_count);
 		if ((ni >= 0) && (ni <= ARRAY_LEN (is->ni_to_work_radius)) &&
 		    (is->ni_to_work_radius[ni] >= 0) &&
 		    (is->ni_to_work_radius[ni] <= is->current_config.city_work_radius))
