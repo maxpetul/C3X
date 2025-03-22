@@ -378,19 +378,26 @@ patch_City_is_neighboring_tile_in_area_conv_ni (City * this, int edx, int neighb
 		return false;
 }
 
+int
+get_city_screen_center_y (City * city)
+{
+	int y = city->Body.Y;
+	if (p_bic_data->is_zoomed_out)
+		return y + 7; // when zoomed out, shift map up to center city
+	else if (is->current_config.city_work_radius >= 3)
+		return y + 4; // when work radius is 3, shift map up one extra tile so as not to overlap citizen heads
+	else
+		return y + 2; // base game behavior
+}
+
 void __fastcall
 patch_Main_Screen_Form_bring_cnter_view_city_focus (Main_Screen_Form * this, int edx, int x, int y, int param_3, bool always_update_tile_bounds, bool param_5)
 {
-	// This is the call that centers the map view on the city center tile when the city form is opened. If the city work radius has expanded then
-	// we'll want to do things a bit differently, shifting the map upward a bit so the workable tiles don't overlap with the citizens' heads, and
-	// zooming out if the work area is too large to fit the window.
-	if (is->current_config.city_work_radius == 3)
-		y += 2;
-	else if (is->current_config.city_work_radius >= 4) {
-		y += 5;
+	// If the work radius is at least 4, zoom out the map b/c otherwise we won't be able to see the whole work area
+	if (is->current_config.city_work_radius >= 4)
 		p_bic_data->is_zoomed_out = true;
-	}
-	Main_Screen_Form_bring_tile_into_view (this, __, x, y, param_3, always_update_tile_bounds, param_5);
+
+	Main_Screen_Form_bring_tile_into_view (this, __, x, get_city_screen_center_y (p_city_form->CurrentCity), param_3, always_update_tile_bounds, param_5);
 }
 
 // Resets is->current_config to the base config and updates the list of config names. Does NOT re-apply machine code edits.
@@ -6638,8 +6645,7 @@ patch_City_Form_m82_handle_key_event (City_Form * this, int edx, int virtual_key
 	} else if (is->current_config.toggle_zoom_with_z_on_city_screen &&
 		   (virtual_key_code == VK_Z) && is_down) {
 		p_bic_data->is_zoomed_out = ! p_bic_data->is_zoomed_out;
-		int dy = p_bic_data->is_zoomed_out ? 7 : (is->current_config.city_work_radius == 3 ? 4 : 2);
-		Main_Screen_Form_bring_tile_into_view (p_main_screen_form, __, this->CurrentCity->Body.X, this->CurrentCity->Body.Y + dy, 0, true, false); // also redraws map
+		Main_Screen_Form_bring_tile_into_view (p_main_screen_form, __, this->CurrentCity->Body.X, get_city_screen_center_y (this->CurrentCity), 0, true, false); // also redraws map
 		this->Base.vtable->m73_call_m22_Draw ((Base_Form *)this);
 	}
 
