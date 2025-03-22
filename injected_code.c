@@ -400,6 +400,12 @@ patch_Main_Screen_Form_bring_cnter_view_city_focus (Main_Screen_Form * this, int
 	Main_Screen_Form_bring_tile_into_view (this, __, x, get_city_screen_center_y (p_city_form->CurrentCity), param_3, always_update_tile_bounds, param_5);
 }
 
+void __fastcall
+patch_Main_Screen_Form_bring_cnter_view_city_arrow (Main_Screen_Form * this, int edx, int x, int y, int param_3, bool always_update_tile_bounds, bool param_5)
+{
+	Main_Screen_Form_bring_tile_into_view (this, __, x, get_city_screen_center_y (p_city_form->CurrentCity), param_3, always_update_tile_bounds, param_5);
+}
+
 // Resets is->current_config to the base config and updates the list of config names. Does NOT re-apply machine code edits.
 void
 reset_to_base_config ()
