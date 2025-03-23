@@ -2889,8 +2889,9 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		*(byte *)ADDR_MOST_STRAT_RES_ON_CITY_SCREEN = cfg->compact_strategic_resource_display_on_city_screen ? 13 : 8;
 	}
 
-
-
+	// Remove a check that a returned neighbor index is within the 21 tile work area in code related to hoving the mouse over the work area on the
+	// city screen. This check is redundant and could be removed always, but only do so if work area is expanded.
+	set_nopification (cfg->city_work_radius > 2, ADDR_REDUNDANT_CHECK_ON_WORK_AREA_HOVER, 6);
 
 	// TODO: Add defines for these to the CSV:
 
