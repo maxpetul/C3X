@@ -2893,18 +2893,14 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	// city screen. This check is redundant and could be removed always, but only do so if work area is expanded.
 	set_nopification (cfg->city_work_radius > 2, ADDR_REDUNDANT_CHECK_ON_WORK_AREA_HOVER, 6);
 
-	// TODO: Add defines for these to the CSV:
-
 	// Skip redundant check of clicked tile's neighbor index in City_Form::handle_left_click.
-	byte * addr_city_form_left_click_jump = (byte *)0x420547;
-	WITH_MEM_PROTECTION (addr_city_form_left_click_jump, 1, PAGE_EXECUTE_READWRITE) {
-		*addr_city_form_left_click_jump = 0xEB; // 0x7C (jl) -> 0xEB (jmp)
+	WITH_MEM_PROTECTION (ADDR_CITY_FORM_LEFT_CLICK_JUMP, 1, PAGE_EXECUTE_READWRITE) {
+		*ADDR_CITY_FORM_LEFT_CLICK_JUMP = 0xEB; // 0x7C (jl) -> 0xEB (jmp)
 	}
 
 	// Skip check that neighbor index passed to City::controls_tile is within work radius. This check is now implemented in the patch func.
-	byte * addr_controls_tile_jump = (byte *)0x4BB4EB;
-	WITH_MEM_PROTECTION (addr_controls_tile_jump, 1, PAGE_EXECUTE_READWRITE) {
-		*addr_controls_tile_jump = 0xEB; // 0x7C (jl) -> 0xEB (jmp)
+	WITH_MEM_PROTECTION (ADDR_CONTROLS_TILE_JUMP, 1, PAGE_EXECUTE_READWRITE) {
+		*ADDR_CONTROLS_TILE_JUMP = 0xEB; // 0x7C (jl) -> 0xEB (jmp)
 	}
 }
 
