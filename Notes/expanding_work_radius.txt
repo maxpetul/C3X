@@ -11,6 +11,7 @@ To test addresses:
   - kick a citizen off of a tile by moving a hostile unit onto it
   - run through a bunch of turns w/ automated workers
   - set city production to something that gets mobilization bonus
+  - spawn and clear pollution
   - have pollution kick a citizen off a tile
   - kick a citizen off a tile by founding a city on it
   - test various city screen things: click to work tile, click off tile, hover, click center tile
@@ -86,7 +87,6 @@ Locations NOT patched (yet):
 442b9c - in ai_eval_city_location
 442ecf - again ^^^
 5f3668 - in Map::m17
-5da555 - in Tile::m51_Unset_Tile_Flags (definitely need to patch this one)
 4ddbf8 - not a loop, a condition checking ni < 0x15, need to investigate
 4de1e1 - related to drawing something (?)
 44427a - check for resources around an area

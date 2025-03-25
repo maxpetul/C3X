@@ -672,6 +672,8 @@ define,	   0x420672,	0x421B52,	0x4206F2,	"ADDR_REDUNDANT_CHECK_ON_WORK_AREA_HOVE
 repl call, 0x5668EE,	0x572C9B,	0x56689E,	"Map_compute_ni_for_work_area",			""
 define,	   0x420547,	0x421A27,	0x4205C7,	"ADDR_CITY_FORM_LEFT_CLICK_JUMP",		"byte *"
 define,	   0x4BB4EB,	0x4C2B3C,	0x4BB57B,	"ADDR_CONTROLS_TILE_JUMP",			"byte *"
+repl call, 0x5DA4D1,	0x5E9A48,	0x5DA401,	"ni_to_diff_for_work_area",			""
+ext walup, 0x5DA555,	0x5E9ACC,	0x5DA485,	"",						""
 
 ignore,	   0x437321,	0x0,		0x0,		"ni_to_diff_for_work_area",			""
 ignore,	   0x4C2695,	0x0,		0x0,		"ni_to_diff_for_work_area",			""
