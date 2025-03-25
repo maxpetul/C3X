@@ -618,7 +618,7 @@ emit_consideration_intercept_call (byte ** p_cursor, byte * code_base, void * ad
 	*p_cursor = cursor;
 }
 
-enum jump_kind { JK_UNCOND = 0, JK_LESS };
+enum jump_kind { JK_UNCOND = 0, JK_LESS, JK_GREATER_EQ };
 
 void
 emit_jump (byte ** p_cursor, byte * code_base, int jump_target, byte * addr_airlock, enum jump_kind kind)
@@ -629,6 +629,9 @@ emit_jump (byte ** p_cursor, byte * code_base, int jump_target, byte * addr_airl
 	else if (kind == JK_LESS) {
 		*cursor++ = 0x0F; // | jl
 		*cursor++ = 0x8C; // |
+	} else if (kind == JK_GREATER_EQ) {
+		*cursor++ = 0x0F; // | jge
+		*cursor++ = 0x8D; // |
 	}
 	cursor = int_to_bytes (cursor, jump_target - ((int)addr_airlock + (cursor - code_base) + 4));
 	*p_cursor = cursor;
@@ -1133,10 +1136,11 @@ ENTRY_POINT ()
 
 		// Determine if this is a 6-byte or 2-byte jump and make sure the jump instruction matches one of the ones we can handle.
 		int jump_instr_size = length_disasm (jump_instr);
-		REQUIRE (   ((jump_instr_size == 6) && (jump_instr[0] == 0x0F) && (jump_instr[1] == 0x8C))
+		REQUIRE (   ((jump_instr_size == 6) && (jump_instr[0] == 0x0F) && ((jump_instr[1] == 0x8C) || (jump_instr[1] == 0x8D)))
 			 || ((jump_instr_size == 2) && (jump_instr[0] == 0x7C)),
 			 "Work area jump address invalid or type of jump not supported");
-		bool small_jump = jump_instr_size == 2;
+		bool small_jump = jump_instr_size == 2,
+		     cond_ge = (jump_instr_size == 6) && (jump_instr[1] == 0x8D); // One jump's condition is GE, all others are less-than
 
 		// Determine what register contains the loop index (which is also neighbor index around the city). We need to know this in order to
 		// reproduce the cmp instruction.
@@ -1181,7 +1185,7 @@ ENTRY_POINT ()
 			*cursor++ = 0x3B;
 			*cursor++ = 0x05 + 8 * (int)reg;
 			cursor = int_to_bytes (cursor, (int)&injected_state->workable_tile_count);
-			emit_jump (&cursor, code, orig_jump_target, wae_inlead, JK_LESS);
+			emit_jump (&cursor, code, orig_jump_target, wae_inlead, cond_ge ? JK_GREATER_EQ : JK_LESS);
 			emit_jump (&cursor, code, addr_jump + jump_instr_size, wae_inlead, JK_UNCOND);
 			write_prog_memory (wae_inlead, code, sizeof code);
 		}
