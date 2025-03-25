@@ -674,7 +674,6 @@ define,	   0x420547,	0x421A27,	0x4205C7,	"ADDR_CITY_FORM_LEFT_CLICK_JUMP",		"byt
 define,	   0x4BB4EB,	0x4C2B3C,	0x4BB57B,	"ADDR_CONTROLS_TILE_JUMP",			"byte *"
 
 ignore,	   0x437321,	0x0,		0x0,		"ni_to_diff_for_work_area",			""
-ignore,	   0x4373B4,	0x0,		0x0,		"",						""
 ignore,	   0x4C2695,	0x0,		0x0,		"ni_to_diff_for_work_area",			""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"

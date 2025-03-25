@@ -74,11 +74,28 @@ Consider radius for resources. That should be expanded too, no?
   one place that would need to be edited is has_resources_required_by_building_r
 
 
-Locations NOT patched:
-4b2abb - counting foreign tiles around city for culture flip
-4b3098 - for spawning pollution
-4b4794 - for triggering disease
+Locations NOT patched (yet):
+4b2ac2 - counting foreign tiles around city for culture flip
+4b309f - for spawning pollution
+4b479b - for triggering disease
 435404 - for checking for pollution or craters in range (maybe should patch this one)
+56b8ae - for revealing area around capital after establishing embassy
+443cde - for AI judging whether to raze a city
+461a99 - for forest harvesting
+4c03ea - in City::can_build_improvement (for resources I think)
+442b9c - in ai_eval_city_location
+442ecf - again ^^^
+5f3668 - in Map::m17
+5da555 - in Tile::m51_Unset_Tile_Flags (definitely need to patch this one)
+4ddbf8 - not a loop, a condition checking ni < 0x15, need to investigate
+4de1e1 - related to drawing something (?)
+44427a - check for resources around an area
+565329 - something about visibility or FOW around captured cities
+494c4d - revealing tiles
+526ce9 - revealing tiles for investigate city mission
+4ddcca - in a method for Main_Screen_Form
+4373b4 - in City::m23
+438ee4 - checking for resources again
 
 
 
