@@ -2356,9 +2356,14 @@ has_resources_required_by_building_r (City * city, int improv_id, int max_req_re
 		int finds[2] = {0, 0};
 
 		int civ_id = city->Body.CivID;
-		FOR_TILES_AROUND(tai, 21, city->Body.X, city->Body.Y) {
-			if (tai.tile->vtable->m38_Get_Territory_OwnerID (tai.tile) == civ_id) {
-				int res_here = Tile_get_resource_visible_to (tai.tile, __, civ_id);
+		for (int n = 0; n < is->workable_tile_count; n++) {
+			int dx, dy;
+			patch_ni_to_diff_for_work_area (n, &dx, &dy);
+			int x = city->Body.X + dx, y = city->Body.Y + dy;
+			wrap_tile_coords (&p_bic_data->Map, &x, &y);
+			Tile * tile = tile_at (x, y);
+			if (tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id) {
+				int res_here = Tile_get_resource_visible_to (tile, __, civ_id);
 				if (res_here >= 0) {
 					finds[0] |= targets[0] == res_here;
 					finds[1] |= targets[1] == res_here;

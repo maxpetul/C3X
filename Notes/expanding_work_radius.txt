@@ -83,7 +83,6 @@ Locations NOT patched (yet):
 56b8ae - for revealing area around capital after establishing embassy
 443cde - for AI judging whether to raze a city
 461a99 - for forest harvesting
-4c03ea - in City::can_build_improvement (for resources I think)
 442b9c - in ai_eval_city_location
 442ecf - again ^^^
 5f3668 - in Map::m17
