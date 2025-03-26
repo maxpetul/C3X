@@ -77,7 +77,6 @@ Consider radius for resources. That should be expanded too, no?
 
 Locations NOT patched (yet):
 4b2ac2 - counting foreign tiles around city for culture flip
-4b309f - for spawning pollution
 4b479b - for triggering disease
 435404 - for checking for pollution or craters in range (maybe should patch this one)
 56b8ae - for revealing area around capital after establishing embassy

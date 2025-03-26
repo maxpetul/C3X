@@ -2907,6 +2907,12 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	WITH_MEM_PROTECTION (ADDR_CONTROLS_TILE_JUMP, 1, PAGE_EXECUTE_READWRITE) {
 		*ADDR_CONTROLS_TILE_JUMP = 0xEB; // 0x7C (jl) -> 0xEB (jmp)
 	}
+
+	// When searching for a tile on which to spawn pollution, the game wraps its search around by using remainder after division. Here, we replace
+	// the dividend to match a potentially expanded city work area.
+	WITH_MEM_PROTECTION (ADDR_SPAWN_POLLUTION_MOD, 4, PAGE_EXECUTE_READWRITE) {
+		int_to_bytes (ADDR_SPAWN_POLLUTION_MOD, is->workable_tile_count - 1);
+	}
 }
 
 void
@@ -10821,6 +10827,14 @@ patch_Tile_m43_Get_field_30_for_city_loc_eval (Tile * this)
 
 	return tr;
 
+}
+
+// Intercept the call where the game gets a random index at which to start searching for a suitable tile to become polluted. Normally, it passes 20 as
+// the limit here. We must replace that to cover a potentially modded work area.
+int __fastcall
+patch_rand_int_to_place_pollution (void * this, int edx, int lim)
+{
+	return rand_int (this, __, is->workable_tile_count - 1);
 }
 
 // TCC requires a main function be defined even though it's never used.
