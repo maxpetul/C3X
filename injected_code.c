@@ -2970,6 +2970,7 @@ patch_init_floating_point ()
 		{"replace_leader_unit_ai"                              , true , offsetof (struct c3x_config, replace_leader_unit_ai)},
 		{"fix_ai_army_composition"                             , true , offsetof (struct c3x_config, fix_ai_army_composition)},
 		{"enable_pop_unit_ai"                                  , true , offsetof (struct c3x_config, enable_pop_unit_ai)},
+		{"ai_ignores_overlap_for_city_placement"               , false, offsetof (struct c3x_config, ai_ignores_overlap_for_city_placement)},
 		{"remove_unit_limit"                                   , true , offsetof (struct c3x_config, remove_unit_limit)},
 		{"remove_city_improvement_limit"                       , true , offsetof (struct c3x_config, remove_city_improvement_limit)},
 		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
@@ -10806,6 +10807,20 @@ patch_Sprite_draw_already_worked_tile_img (Sprite * this, int edx, PCX_Image * c
 	}
 
 	return Sprite_draw (to_draw, __, canvas, pixel_x, pixel_y, param_4);
+}
+
+int __fastcall
+patch_Tile_m43_Get_field_30_for_city_loc_eval (Tile * this)
+{
+	int tr = this->vtable->m43_Get_field_30 (this);
+
+	// This patch function replaces two places where ai_eval_city_location calls Tile::m43_Get_field_30 to check the 18th bit, which indicates
+	// whether the tile is in the workable area of any city. Clearing that bit for all tiles makes the eval ignore overlap with existing cities.
+	if (is->current_config.ai_ignores_overlap_for_city_placement)
+		tr &= ~(1 << 17);
+
+	return tr;
+
 }
 
 // TCC requires a main function be defined even though it's never used.

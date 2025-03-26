@@ -228,6 +228,7 @@ struct c3x_config {
 	bool enable_pop_unit_ai;
 	int max_ai_naval_escorts;
 	int ai_worker_requirement_percent;
+	bool ai_ignores_overlap_for_city_placement;
 
 	bool remove_unit_limit;
 	bool remove_city_improvement_limit;
