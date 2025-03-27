@@ -10837,5 +10837,19 @@ patch_rand_int_to_place_pollution (void * this, int edx, int lim)
 	return rand_int (this, __, is->workable_tile_count - 1);
 }
 
+void __fastcall
+patch_Main_Screen_Form_t2s_coords_to_draw_yields (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int * out_x, int * out_y)
+{
+	Main_Screen_Form_tile_to_screen_coords (this, __, tile_x, tile_y, out_x, out_y);
+
+	// If we've zoomed out the map on the city screen, we may end up drawing the tile yields off screen depending on the map size. If this is the
+	// case, detected by negative screen coords, then shift the coords over by one map-screen back onto the actual screen. The shift amounts are
+	// 64*map_width/2 and 32*map_height/2 for x and y because (64, 32) is the size of a zoomed out tile and /2 is for overlap (I think).
+	if (p_bic_data->is_zoomed_out && (*out_x < 0))
+		*out_x += p_bic_data->Map.Width << 5;
+	if (p_bic_data->is_zoomed_out && (*out_y < 0))
+		*out_y += p_bic_data->Map.Height << 4;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
