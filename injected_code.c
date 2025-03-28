@@ -10854,9 +10854,34 @@ patch_Main_Screen_Form_t2s_coords_to_draw_yields (Main_Screen_Form * this, int e
 		*out_y += p_bic_data->Map.Height << 4;
 }
 
+void
+set_clip_area_to_map_view (City_Form * city_form)
+{
+	int left_margin = (p_bic_data->ScreenWidth  - city_form->Background_Image.Width)  / 2,
+	    top_margin  = (p_bic_data->ScreenHeight - city_form->Background_Image.Height) / 2;
+	RECT map_view_on_screen = { .left = left_margin, .top = top_margin + 92, .right = left_margin + 1024, .bottom = top_margin + 508 };
+	JGL_Image * jgl_canvas = city_form->Base.Data.Canvas.JGL.Image;
+	jgl_canvas->vtable->m13_Set_Clip_Region (jgl_canvas, __, &map_view_on_screen);
+}
+
+void
+clear_clip_area (City_Form * city_form)
+{
+	JGL_Image * jgl_canvas = city_form->Base.Data.Canvas.JGL.Image;
+	jgl_canvas->vtable->m13_Set_Clip_Region (jgl_canvas, __, &jgl_canvas->Image_Rect);
+}
+
 void __fastcall
 patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 {
+	// If we're zoomed in and the city work radius is at least 4 then it's likely we'll end up drawing things outside of the city screen's usual
+	// map area. Set the clip area to the map area so none of those draws are visible.
+	bool changed_clip_area = false;
+	if ((is->current_config.city_work_radius >= 4) && ! p_bic_data->is_zoomed_out) {
+		set_clip_area_to_map_view (this);
+		changed_clip_area = true;
+	}
+
 	is->do_not_draw_already_worked_tile_img = false;
 	City_Form_draw_yields_on_worked_tiles (this);
 
@@ -10868,7 +10893,44 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 		is->do_not_draw_already_worked_tile_img = true;
 		City_Form_draw_yields_on_worked_tiles (this);
 	}
+
+	if (changed_clip_area)
+		clear_clip_area (this);
 }
+
+bool __fastcall
+patch_City_Form_draw_highlighted_yields (City_Form * this, int edx, int tile_x, int tile_y, int neighbor_index)
+{
+	// Make sure we don't draw outside the map area
+	bool changed_clip_area = false;
+	if ((is->current_config.city_work_radius >= 4) && ! p_bic_data->is_zoomed_out) {
+		set_clip_area_to_map_view (this);
+		changed_clip_area = true;
+	}
+
+	bool tr = City_Form_draw_highlighted_yields (this, __, tile_x, tile_y, neighbor_index);
+
+	if (changed_clip_area)
+		clear_clip_area (this);
+	return tr;
+}
+
+void __fastcall
+patch_City_Form_draw_border_around_workable_tiles (City_Form * this)
+{
+	// Make sure we don't draw outside the map area
+	bool changed_clip_area = false;
+	if ((is->current_config.city_work_radius >= 4) && ! p_bic_data->is_zoomed_out) {
+		set_clip_area_to_map_view (this);
+		changed_clip_area = true;
+	}
+
+	City_Form_draw_border_around_workable_tiles (this);
+
+	if (changed_clip_area)
+		clear_clip_area (this);
+}
+
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

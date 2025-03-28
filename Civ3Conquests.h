@@ -3653,7 +3653,7 @@ struct JGL_Image_vtable
   HDC (__fastcall * acquire_dc) (JGL_Image * this);
   void (__fastcall * release_dc) (JGL_Image *, __, int);
   int m12;
-  int m13_Set_Clip_Region;
+  int (__fastcall * m13_Set_Clip_Region) (JGL_Image *, __, RECT *);
   int m14;
   int m15;
 //  int (__thiscall *m16_Copy_To_Dest)(JGL_Image *this, JGL_Image *Dest, RECT *SrcRect, RECT *DestRect);
