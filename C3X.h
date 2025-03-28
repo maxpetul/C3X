@@ -746,6 +746,9 @@ struct injected_state {
 
 	Sprite tile_already_worked_zoomed_out_sprite; // Valid only if init state is OK
 
+	// Only for use by patch_City_Form_draw_yields_on_worked_tiles and patch_Sprite_draw_already_worked_tile_img
+	bool do_not_draw_already_worked_tile_img;
+
 	// Stores the trade offer object being modified when the user right-clicks on a gold offer/ask on the trade table. Gets set by a special
 	// function call replacement (see apply_machine_code_edits for details).
 	TradeOffer * modifying_gold_trade;

@@ -10784,6 +10784,9 @@ patch_Sprite_draw_already_worked_tile_img (Sprite * this, int edx, PCX_Image * c
 {
 	Sprite * to_draw = this;
 
+	if (is->do_not_draw_already_worked_tile_img)
+		return 0;
+
 	if (is->current_config.toggle_zoom_with_z_on_city_screen && p_bic_data->is_zoomed_out) {
 
 		// Load sprite if necessary
@@ -10849,6 +10852,22 @@ patch_Main_Screen_Form_t2s_coords_to_draw_yields (Main_Screen_Form * this, int e
 		*out_x += p_bic_data->Map.Width << 5;
 	if (p_bic_data->is_zoomed_out && (*out_y < 0))
 		*out_y += p_bic_data->Map.Height << 4;
+}
+
+void __fastcall
+patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
+{
+	is->do_not_draw_already_worked_tile_img = false;
+	City_Form_draw_yields_on_worked_tiles (this);
+
+	// If we're zoomed out then draw the yields again but this time skip drawing of the tile-already-worked sprites. This is because the
+	// transparent regions of those sprites get drawn overtop of the yield sprites when zoomed out, and that overdrawing deletes parts of the
+	// yields, i.e., it overwrites their colored pixels with transparent ones. The simplest solution is to draw the yields again after the
+	// already-worked sprites to ensure the former get drawn overtop of the latter.
+	if (p_bic_data->is_zoomed_out) {
+		is->do_not_draw_already_worked_tile_img = true;
+		City_Form_draw_yields_on_worked_tiles (this);
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.
