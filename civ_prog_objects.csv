@@ -691,6 +691,7 @@ repl call, 0x420887,	0x421D88,	0x420907,	"Main_Screen_Form_t2s_coords_to_draw_yi
 inlead,	   0x420C40,	0x422190,	0x420CC0,	"City_Form_draw_yields_on_worked_tiles",	"void (__fastcall *) (City_Form * this)"
 inlead,	   0x420860,	0x421D60,	0x4208E0,	"City_Form_draw_highlighted_yields",		"bool (__fastcall *) (City_Form * this, int edx, int tile_x, int tile_y, int neighbor_index)"
 inlead,	   0x420F20,	0x422480,	0x420FA0,	"City_Form_draw_border_around_workable_tiles",	"void (__fastcall *) (City_Form * this)"
+repl call, 0x421095,	0x4225EF,	0x421115,	"Main_Screen_Form_t2s_coords_to_draw_yields",	""
 
 ignore,	   0x437321,	0x0,		0x0,		"ni_to_diff_for_work_area",			""
 ignore,	   0x4C2695,	0x0,		0x0,		"ni_to_diff_for_work_area",			""
