@@ -91,7 +91,7 @@ Locations NOT patched (yet):
 494c4d - revealing tiles
 526ce9 - revealing tiles for investigate city mission
 4ddcca - in a method for Main_Screen_Form
-4373b4 - in City::m23
+4373b4 - in City::m23, computes defense priority (I think), shouldn't patch
 438ee4 - checking for resources again
 
 
