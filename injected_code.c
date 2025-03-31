@@ -2976,7 +2976,6 @@ patch_init_floating_point ()
 		{"replace_leader_unit_ai"                              , true , offsetof (struct c3x_config, replace_leader_unit_ai)},
 		{"fix_ai_army_composition"                             , true , offsetof (struct c3x_config, fix_ai_army_composition)},
 		{"enable_pop_unit_ai"                                  , true , offsetof (struct c3x_config, enable_pop_unit_ai)},
-		{"ai_ignores_overlap_for_city_placement"               , false, offsetof (struct c3x_config, ai_ignores_overlap_for_city_placement)},
 		{"remove_unit_limit"                                   , true , offsetof (struct c3x_config, remove_unit_limit)},
 		{"remove_city_improvement_limit"                       , true , offsetof (struct c3x_config, remove_city_improvement_limit)},
 		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
@@ -6689,6 +6688,12 @@ patch_open_tile_info (void * this, int edx, int mouse_x, int mouse_y, int civ_id
 	return open_tile_info (this, __, mouse_x, mouse_y, civ_id);
 }
 
+int __fastcall
+patch_Match_ai_eval_city_location (void * this, int edx, int x, int y, int civ_id, bool param_4, int * out_breakdown)
+{
+	return Match_ai_eval_city_location (this, __, x, y, civ_id, param_4, out_breakdown);
+}
+
 bool
 is_explored (Tile * tile, int civ_id)
 {
@@ -6734,7 +6739,7 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 
 		if ((is->city_loc_display_perspective >= 0) &&
 		    ((1 << is->city_loc_display_perspective) & *p_player_bits)) {
-			int eval = ai_eval_city_location (is->viewing_tile_info_x, is->viewing_tile_info_y, is->city_loc_display_perspective, false, NULL);
+			int eval = patch_Match_ai_eval_city_location (p_match, __, is->viewing_tile_info_x, is->viewing_tile_info_y, is->city_loc_display_perspective, false, NULL);
 			if (eval > 0) {
 				snprintf (s, sizeof s, "%d", eval - 1000000);
 				PCX_Image_draw_text (this, __, s, x + 95, y, strlen (s));
@@ -6791,7 +6796,7 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 
 		init_tile_highlights ();
 		if (is->tile_highlight_state == IS_OK) {
-			int eval = ai_eval_city_location (tile_x, tile_y, is->city_loc_display_perspective, false, NULL);
+			int eval = patch_Match_ai_eval_city_location (p_match, __, tile_x, tile_y, is->city_loc_display_perspective, false, NULL);
 			if (eval > 0) {
 				int step_size = 10;
 				int midpoint = (COUNT_TILE_HIGHLIGHTS % 2 == 0) ? 1000000 : (1000000 - step_size/2);
@@ -10822,12 +10827,6 @@ int __fastcall
 patch_Tile_m43_Get_field_30_for_city_loc_eval (Tile * this)
 {
 	int tr = this->vtable->m43_Get_field_30 (this);
-
-	// This patch function replaces two places where ai_eval_city_location calls Tile::m43_Get_field_30 to check the 18th bit, which indicates
-	// whether the tile is in the workable area of any city. Clearing that bit for all tiles makes the eval ignore overlap with existing cities.
-	if (is->current_config.ai_ignores_overlap_for_city_placement)
-		tr &= ~(1 << 17);
-
 	return tr;
 
 }
