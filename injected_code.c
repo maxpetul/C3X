@@ -6691,6 +6691,10 @@ patch_open_tile_info (void * this, int edx, int mouse_x, int mouse_y, int civ_id
 int __fastcall
 patch_Match_ai_eval_city_location (void * this, int edx, int x, int y, int civ_id, bool param_4, int * out_breakdown)
 {
+	is->ai_evaling_city_loc_x = x;
+	is->ai_evaling_city_loc_y = y;
+	is->ai_evaling_city_field_30_get_counter = 0;
+
 	return Match_ai_eval_city_location (this, __, x, y, civ_id, param_4, out_breakdown);
 }
 
@@ -10827,6 +10831,36 @@ int __fastcall
 patch_Tile_m43_Get_field_30_for_city_loc_eval (Tile * this)
 {
 	int tr = this->vtable->m43_Get_field_30 (this);
+
+	// This patch function replaces two places where ai_eval_city_location calls Tile::m43_Get_field_30 to check the 18th bit, which indicates
+	// whether the tile is in the workable area of any city. If it is but the work area has been expanded, check that it's actually within the
+	// normal 20-tile area. This prevents work area expansion from causing AIs to space their cities further apart.
+	// The field_30_get_counter is a crazy workaround for the fact that the game doesn't have any way to determine a tile's coordinates given a
+	// pointer to its object. So we track the initial (x, y) for the tile we're evaluating and then count calls to this func to know what
+	// neighboring coords "this" corresponds to.
+	int get_counter = is->ai_evaling_city_field_30_get_counter;
+	if (((tr >> 17) & 1) && (is->current_config.city_work_radius >= 3)) {
+		bool found_city = false;
+		int this_x, this_y; {
+			int dx, dy;
+			patch_ni_to_diff_for_work_area (get_counter, &dx, &dy);
+			this_x = is->ai_evaling_city_loc_x + dx;
+			this_y = is->ai_evaling_city_loc_y + dy;
+			wrap_tile_coords (&p_bic_data->Map, &this_x, &this_y);
+		}
+		FOR_TILES_AROUND (tai, 21, this_x, this_y)
+			if (Tile_has_city (tai.tile)) {
+				found_city = true;
+				break;
+			}
+		if (! found_city)
+			tr &= ~(1 << 17);
+	}
+	get_counter++;
+	if (get_counter >= 21)
+		get_counter = 0;
+	is->ai_evaling_city_field_30_get_counter = get_counter;
+
 	return tr;
 
 }

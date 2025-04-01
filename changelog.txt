@@ -1,7 +1,8 @@
+- Stop expanded city work radii from affecting AI settlement patterns
+
 - Configurable city work radius
 - Fix AI players sometimes spawning nonsensical units when hitting a unit limit
 - Pressing the Z key on the city screen toggles the zoom level of the map display
-- Option to make the AI found its cities closer together called ai_ignores_overlap_for_city_placement
 
 * RELEASE 21
 - Allow perfume amounts to be specified as percentages

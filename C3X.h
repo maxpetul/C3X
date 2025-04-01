@@ -715,6 +715,10 @@ struct injected_state {
 	// Used in the code that adds additional info to the tile info box
 	int viewing_tile_info_x, viewing_tile_info_y;
 
+	// Used in patch_Tile_m43_Get_field_30_for_city_loc_eval to change how the AI evaluates overlap between cities
+	int ai_evaling_city_loc_x, ai_evaling_city_loc_y;
+	int ai_evaling_city_field_30_get_counter;
+
 	// Stores a list of the production options in a given city and the point value the AI would assign to each. The list is populated by
 	// rank_ai_production_options, items are added by record_improv_val which gets called by some code injected into one of the loops in
 	// ai_choose_production. These vars are initialized to zero.
