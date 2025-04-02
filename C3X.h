@@ -213,6 +213,7 @@ struct c3x_config {
 	bool allow_sale_of_aqueducts_and_hospitals;
 	bool no_cross_shore_detection;
 	int city_work_radius;
+	bool limit_working_extended_area_by_cultural_level;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;

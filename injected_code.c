@@ -324,6 +324,26 @@ patch_Map_m28_find_cnter_neigh_point_for_work_area (Map * this, int edx, int x_h
 		return patch_Map_compute_ni_for_work_area (this, __, x_home, y_home, x_neigh, y_neigh, 500);
 }
 
+int
+get_work_ring_limit_by_culture (City * city)
+{
+	if (! is->current_config.limit_working_extended_area_by_cultural_level)
+		return INT_MAX;
+	else {
+		int level; {
+			level = city->Body.cultural_level;
+			if (level == 6) {
+				int level_7_threshold = 1;
+				for (int n = 0; n < 6; n++)
+					level_7_threshold *= p_bic_data->General.BorderFactor;
+				if (city->Body.Total_Cultures[city->Body.CivID] >= level_7_threshold)
+					level = 7;
+			}
+		}
+		return not_below (2, level);
+	}
+}
+
 bool __fastcall
 patch_City_controls_tile (City * this, int edx, int neighbor_index, bool consider_enemy_units)
 {
@@ -333,7 +353,7 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 	if ((work_radius > is->current_config.city_work_radius) || (work_radius < 0))
 		return false;
 
-	if (work_radius > this->Body.cultural_level)
+	if (work_radius > get_work_ring_limit_by_culture (this))
 		return false;
 
 	return City_controls_tile (this, __, neighbor_index, consider_enemy_units);
@@ -423,7 +443,7 @@ patch_Map_get_tile_for_work_area_border (Map * this, int edx, int index)
 		City * viewing_city = p_city_form->CurrentCity;
 		int ni = Map_compute_neighbor_index (this, __, viewing_city->Body.X, viewing_city->Body.Y, x, y, 1000);
 		if ((ni > 0) && (ni <= ARRAY_LEN (is->ni_to_work_radius)) &&
-		    (is->ni_to_work_radius[ni] > viewing_city->Body.cultural_level))
+		    (is->ni_to_work_radius[ni] > get_work_ring_limit_by_culture (viewing_city)))
 			tr = p_null_tile;
 	}
 
@@ -3054,6 +3074,7 @@ patch_init_floating_point ()
 		{"convert_to_landmark_after_planting_forest"           , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
 		{"allow_sale_of_aqueducts_and_hospitals"               , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
 		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
+		{"limit_working_extended_area_by_cultural_level"       , false, offsetof (struct c3x_config, limit_working_extended_area_by_cultural_level)},
 	};
 
 	struct integer_config_option {

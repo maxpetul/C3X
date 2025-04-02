@@ -1,3 +1,5 @@
+- Option to limit working tiles in an extended work area to only those that are within the city's direct cultural borders
+
 - Stop expanded city work radii from affecting AI settlement patterns
 
 - Configurable city work radius
