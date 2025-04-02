@@ -333,6 +333,9 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 	if ((work_radius > is->current_config.city_work_radius) || (work_radius < 0))
 		return false;
 
+	if (work_radius > this->Body.cultural_level)
+		return false;
+
 	return City_controls_tile (this, __, neighbor_index, consider_enemy_units);
 }
 
@@ -405,6 +408,26 @@ void __fastcall
 patch_Main_Screen_Form_bring_cnter_view_city_arrow (Main_Screen_Form * this, int edx, int x, int y, int param_3, bool always_update_tile_bounds, bool param_5)
 {
 	Main_Screen_Form_bring_tile_into_view (this, __, x, get_city_screen_center_y (p_city_form->CurrentCity), param_3, always_update_tile_bounds, param_5);
+}
+
+void tile_index_to_coords (Map * map, int index, int * out_x, int * out_y);
+
+Tile * __fastcall
+patch_Map_get_tile_for_work_area_border (Map * this, int edx, int index)
+{
+	Tile * tr = Map_get_tile (this, __, index);
+
+	if (tr != p_null_tile) {
+		int x, y;
+		tile_index_to_coords (this, index, &x, &y);
+		City * viewing_city = p_city_form->CurrentCity;
+		int ni = Map_compute_neighbor_index (this, __, viewing_city->Body.X, viewing_city->Body.Y, x, y, 1000);
+		if ((ni > 0) && (ni <= ARRAY_LEN (is->ni_to_work_radius)) &&
+		    (is->ni_to_work_radius[ni] > viewing_city->Body.cultural_level))
+			tr = p_null_tile;
+	}
+
+	return tr;
 }
 
 // Resets is->current_config to the base config and updates the list of config names. Does NOT re-apply machine code edits.

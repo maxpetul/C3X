@@ -4389,7 +4389,9 @@ struct City_Body
   int Improvements_Pollution;
   int Order_ID;
   int Order_Type;
-  int field_38[6];
+  int field_38[2];
+  int cultural_level;
+  int field_44[3];
   int DraftCount;
   int field_70[11];
   int Available_Resources;
