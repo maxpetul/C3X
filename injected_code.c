@@ -442,8 +442,7 @@ patch_Map_get_tile_for_work_area_drawing (Map * this, int edx, int index)
 		tile_index_to_coords (this, index, &x, &y);
 		City * viewing_city = p_city_form->CurrentCity;
 		int ni = Map_compute_neighbor_index (this, __, viewing_city->Body.X, viewing_city->Body.Y, x, y, 1000);
-		if ((ni > 0) && (ni <= ARRAY_LEN (is->ni_to_work_radius)) &&
-		    (is->ni_to_work_radius[ni] > get_work_ring_limit_by_culture (viewing_city)))
+		if ((ni > 0) && ! patch_City_controls_tile (viewing_city, __, ni, false))
 			tr = p_null_tile;
 	}
 
