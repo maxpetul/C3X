@@ -358,26 +358,33 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 	if (work_radius > work_ring_limit) {
 
 		// Consider this tile within the limit if any adjacent tiles are within the limit & within borders
-		bool any_neighbor_within_limits = false; {
+		bool exempt_from_limit;
+		if (neighbor_index >= 9) {
+			exempt_from_limit = false;
 			int center_x, center_y;
 			get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &center_x, &center_y);
+			int neighbors_checked = 0;
 			for (int ni = 1; ni < ARRAY_LEN (is->ni_to_work_radius); ni++) {
 				int nx, ny;
 				get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, ni, &nx, &ny);
 				if (are_tiles_adjacent (center_x, center_y, nx, ny)) {
+					neighbors_checked++;
 					int wr = is->ni_to_work_radius[ni];
 					Tile * neighbor;
 					if (((wr >= 0) && (wr <= work_ring_limit)) &&
 					    (neighbor = tile_at (nx, ny)) &&
 					    (neighbor->vtable->m38_Get_Territory_OwnerID (neighbor) == this->Body.CivID)) {
-						any_neighbor_within_limits = true;
+						exempt_from_limit = true;
 						break;
 					}
 				}
+				if (neighbors_checked == 8)
+					break;
 			}
-		}
+		} else
+			exempt_from_limit = true;
 
-		if (! any_neighbor_within_limits)
+		if (! exempt_from_limit)
 			return false;
 	}
 
