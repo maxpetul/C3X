@@ -291,6 +291,7 @@ City_stop_working_tile_conv_ni (City * this, int edx, int neighbor_index)
 	return City_stop_working_tile (this, __, neighbor_index);
 }
 
+void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y);
 void wrap_tile_coords (Map * map, int * x, int * y);
 
 int __fastcall
@@ -353,8 +354,32 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 	if ((work_radius > is->current_config.city_work_radius) || (work_radius < 0))
 		return false;
 
-	if (work_radius > get_work_ring_limit_by_culture (this))
-		return false;
+	int work_ring_limit = get_work_ring_limit_by_culture (this);
+	if (work_radius > work_ring_limit) {
+
+		// Consider this tile within the limit if any adjacent tiles are within the limit & within borders
+		bool any_neighbor_within_limits = false; {
+			int center_x, center_y;
+			get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &center_x, &center_y);
+			for (int ni = 1; ni < ARRAY_LEN (is->ni_to_work_radius); ni++) {
+				int nx, ny;
+				get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, ni, &nx, &ny);
+				if (are_tiles_adjacent (center_x, center_y, nx, ny)) {
+					int wr = is->ni_to_work_radius[ni];
+					Tile * neighbor;
+					if (((wr >= 0) && (wr <= work_ring_limit)) &&
+					    (neighbor = tile_at (nx, ny)) &&
+					    (neighbor->vtable->m38_Get_Territory_OwnerID (neighbor) == this->Body.CivID)) {
+						any_neighbor_within_limits = true;
+						break;
+					}
+				}
+			}
+		}
+
+		if (! any_neighbor_within_limits)
+			return false;
+	}
 
 	return City_controls_tile (this, __, neighbor_index, consider_enemy_units);
 }
