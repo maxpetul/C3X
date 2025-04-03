@@ -433,7 +433,7 @@ patch_Main_Screen_Form_bring_cnter_view_city_arrow (Main_Screen_Form * this, int
 void tile_index_to_coords (Map * map, int index, int * out_x, int * out_y);
 
 Tile * __fastcall
-patch_Map_get_tile_for_work_area_border (Map * this, int edx, int index)
+patch_Map_get_tile_for_work_area_drawing (Map * this, int edx, int index)
 {
 	Tile * tr = Map_get_tile (this, __, index);
 
