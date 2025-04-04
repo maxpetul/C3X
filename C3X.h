@@ -94,6 +94,13 @@ enum special_zone_of_control_rules {
 	SZOCR_AMPHIBIOUS = 4,
 };
 
+enum work_area_limit {
+	WAL_NONE = 0,
+	WAL_CULTURAL,
+	WAL_CULTURAL_MIN_2,
+	WAL_CULTURAL_OR_ADJACENT
+};
+
 enum perfume_kind {
 	PK_PRODUCTION = 0,
 	PK_TECHNOLOGY,
@@ -213,7 +220,7 @@ struct c3x_config {
 	bool allow_sale_of_aqueducts_and_hospitals;
 	bool no_cross_shore_detection;
 	int city_work_radius;
-	bool limit_working_extended_area_by_cultural_level;
+	enum work_area_limit work_area_limit;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;

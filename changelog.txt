@@ -1,6 +1,5 @@
-- Option to limit working tiles in an extended work area to only those that are within the city's direct cultural borders
-
-- Stop expanded city work radii from affecting AI settlement patterns
+- More varied options to limit city working areas based on culture
+- Fix occupied tile sprite being drawn outside cities' limited working areas
 
 - Configurable city work radius
 - Fix AI players sometimes spawning nonsensical units when hitting a unit limit

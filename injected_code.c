@@ -328,7 +328,7 @@ patch_Map_m28_find_cnter_neigh_point_for_work_area (Map * this, int edx, int x_h
 int
 get_work_ring_limit_by_culture (City * city)
 {
-	if (! is->current_config.limit_working_extended_area_by_cultural_level)
+	if (is->current_config.work_area_limit == WAL_NONE)
 		return INT_MAX;
 	else {
 		int level; {
@@ -341,7 +341,8 @@ get_work_ring_limit_by_culture (City * city)
 					level = 7;
 			}
 		}
-		return not_below (2, level);
+		int lower_lim = (is->current_config.work_area_limit == WAL_CULTURAL_MIN_2) ? 2 : 1;
+		return not_below (lower_lim, level);
 	}
 }
 
@@ -357,9 +358,11 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 	int work_ring_limit = get_work_ring_limit_by_culture (this);
 	if (work_radius > work_ring_limit) {
 
-		// Consider this tile within the limit if any adjacent tiles are within the limit & within borders
+		// May consider this tile within the limit if any adjacent tiles are within the limit & within borders
 		bool exempt_from_limit;
-		if (neighbor_index >= 9) {
+		if (is->current_config.work_area_limit != WAL_CULTURAL_OR_ADJACENT)
+			exempt_from_limit = false;
+		else if (neighbor_index >= 9) {
 			exempt_from_limit = false;
 			int center_x, center_y;
 			get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &center_x, &center_y);
@@ -1447,6 +1450,18 @@ read_line_drawing_override (struct string_slice const * s, int * out_val)
 		return false;
 }
 
+bool
+read_work_area_limit (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "none"                )) { *out_val = WAL_NONE;                 return true; }
+	else if (slice_matches_str (&trimmed, "cultural"            )) { *out_val = WAL_CULTURAL;             return true; }
+	else if (slice_matches_str (&trimmed, "cultural-min-2"      )) { *out_val = WAL_CULTURAL_MIN_2;       return true; }
+	else if (slice_matches_str (&trimmed, "cultural-or-adjacent")) { *out_val = WAL_CULTURAL_OR_ADJACENT; return true; }
+	else
+		return false;
+}
+
 struct parsable_field_bit {
 	char * name;
 	int bit_value;
@@ -1733,6 +1748,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						{"amphibious", SZOCR_AMPHIBIOUS},
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_zone_of_control_rules))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "work_area_limit")) {
+					if (! read_work_area_limit (&value, (int *)&cfg->work_area_limit))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_ptw_arty_types (&value,
@@ -3105,7 +3123,6 @@ patch_init_floating_point ()
 		{"convert_to_landmark_after_planting_forest"           , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
 		{"allow_sale_of_aqueducts_and_hospitals"               , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
 		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
-		{"limit_working_extended_area_by_cultural_level"       , false, offsetof (struct c3x_config, limit_working_extended_area_by_cultural_level)},
 	};
 
 	struct integer_config_option {
@@ -3178,6 +3195,7 @@ patch_init_floating_point ()
 	struct c3x_config base_config = {0};
 	base_config.land_retreat_rules = RR_STANDARD;
 	base_config.sea_retreat_rules  = RR_STANDARD;
+	base_config.work_area_limit = WAL_NONE;
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
 	base_config.city_work_radius = 2;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
