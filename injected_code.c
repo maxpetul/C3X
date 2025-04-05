@@ -331,18 +331,8 @@ get_work_ring_limit_by_culture (City * city)
 	if (is->current_config.work_area_limit == WAL_NONE)
 		return INT_MAX;
 	else {
-		int level; {
-			level = city->Body.cultural_level;
-			if (level == 6) {
-				int level_7_threshold = 1;
-				for (int n = 0; n < 6; n++)
-					level_7_threshold *= p_bic_data->General.BorderFactor;
-				if (city->Body.Total_Cultures[city->Body.CivID] >= level_7_threshold)
-					level = 7;
-			}
-		}
 		int lower_lim = (is->current_config.work_area_limit == WAL_CULTURAL_MIN_2) ? 2 : 1;
-		return not_below (lower_lim, level);
+		return not_below (lower_lim, city->Body.cultural_level);
 	}
 }
 
