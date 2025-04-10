@@ -2,6 +2,7 @@
 - Fix occupied tile sprite being drawn outside cities' limited working areas
 
 - Configurable city work radius
+- Option do_not_unassign_workers_from_polluted_tiles (off by default)
 - Fix AI players sometimes spawning nonsensical units when hitting a unit limit
 - Pressing the Z key on the city screen toggles the zoom level of the map display
 

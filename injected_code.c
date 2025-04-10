@@ -3094,6 +3094,7 @@ patch_init_floating_point ()
 		{"compact_luxury_display_on_city_screen"               , false, offsetof (struct c3x_config, compact_luxury_display_on_city_screen)},
 		{"compact_strategic_resource_display_on_city_screen"   , false, offsetof (struct c3x_config, compact_strategic_resource_display_on_city_screen)},
 		{"warn_when_chosen_building_would_replace_another"     , false, offsetof (struct c3x_config, warn_when_chosen_building_would_replace_another)},
+		{"do_not_unassign_workers_from_polluted_tiles"         , false, offsetof (struct c3x_config, do_not_unassign_workers_from_polluted_tiles)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -11047,6 +11048,30 @@ patch_City_Form_draw_border_around_workable_tiles (City_Form * this)
 		clear_clip_area (this);
 }
 
+bool __fastcall
+patch_City_stop_working_polluted_tile (City * this, int edx, int neighbor_index)
+{
+	if (is->current_config.do_not_unassign_workers_from_polluted_tiles &&
+	    (*p_human_player_bits & (1 << this->Body.CivID)))
+		return false; // do nothing; return value is not used
+	else
+		return City_stop_working_tile (this, __, neighbor_index);
+}
+
+void __fastcall
+patch_City_manage_by_governor (City * this, int edx, bool param_1)
+{
+	int * p_stack = (int *)&param_1;
+	int ret_addr = p_stack[-1];
+
+	// Do nothing if called after spawning pollution but didn't unassign worker
+	if ((ret_addr == ADDR_MANAGE_CITY_AFTER_POLLUTION_RETURN) &&
+	    is->current_config.do_not_unassign_workers_from_polluted_tiles &&
+	    (*p_human_player_bits & (1 << this->Body.CivID)))
+		return;
+
+	City_manage_by_governor (this, __, param_1);
+}
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
