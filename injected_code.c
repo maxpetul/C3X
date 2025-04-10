@@ -442,8 +442,11 @@ get_city_screen_center_y (City * city)
 void __fastcall
 patch_Main_Screen_Form_bring_cnter_view_city_focus (Main_Screen_Form * this, int edx, int x, int y, int param_3, bool always_update_tile_bounds, bool param_5)
 {
-	// If the work radius is at least 4, zoom out the map b/c otherwise we won't be able to see the whole work area
-	if (is->current_config.city_work_radius >= 4)
+	// If the city we're viewing can work tiles in the 4+ ring then zoom out the map display to show them
+	int effective_radius = not_above (get_work_ring_limit_by_culture (p_city_form->CurrentCity), is->current_config.city_work_radius);
+	if (is->current_config.work_area_limit == WAL_CULTURAL_OR_ADJACENT)
+		effective_radius += 1;
+	if (effective_radius >= 4)
 		p_bic_data->is_zoomed_out = true;
 
 	Main_Screen_Form_bring_tile_into_view (this, __, x, get_city_screen_center_y (p_city_form->CurrentCity), param_3, always_update_tile_bounds, param_5);
