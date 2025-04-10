@@ -1,7 +1,6 @@
-- More varied options to limit city working areas based on culture
-- Fix occupied tile sprite being drawn outside cities' limited working areas
-
-- Configurable city work radius
+- Can adjust the size of the area cities can work
+  - Setting named city_work_radius, standard radius is 2, can be set 1 - 7
+  - work_area_limit option allows the workable areas to be limited based on cities' cultural levels
 - Option do_not_unassign_workers_from_polluted_tiles (off by default)
 - Fix AI players sometimes spawning nonsensical units when hitting a unit limit
 - Pressing the Z key on the city screen toggles the zoom level of the map display
