@@ -445,7 +445,7 @@ patch_Main_Screen_Form_bring_cnter_view_city_focus (Main_Screen_Form * this, int
 	// If the city we're viewing can work tiles in the 4+ ring then zoom out the map display to show them
 	int effective_radius = not_above (get_work_ring_limit_by_culture (p_city_form->CurrentCity), is->current_config.city_work_radius);
 	if (is->current_config.work_area_limit == WAL_CULTURAL_OR_ADJACENT)
-		effective_radius += 1;
+		effective_radius = not_above (is->current_config.city_work_radius, effective_radius + 1);
 	if (effective_radius >= 4)
 		p_bic_data->is_zoomed_out = true;
 

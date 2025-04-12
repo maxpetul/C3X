@@ -1,3 +1,5 @@
+- Fix city screen zooming out for adjacent tiles that aren't actually workable due to maximum work radius
+
 * RELEASE 22
 - Can adjust the size of the area cities can work
   - Setting named city_work_radius, standard radius is 2, can be set 1 - 7
