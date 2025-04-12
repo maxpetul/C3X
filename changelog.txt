@@ -1,3 +1,4 @@
+* RELEASE 22
 - Can adjust the size of the area cities can work
   - Setting named city_work_radius, standard radius is 2, can be set 1 - 7
   - work_area_limit option allows the workable areas to be limited based on cities' cultural levels

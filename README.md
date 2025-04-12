@@ -108,6 +108,8 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
       - Gray out units if they have no remaining moves
    - Apply GridOn setting from conquests.ini after loading a save
    - Option to have a warning when the building you've selected to build would replace another already built in the city
+   - Option not to unassign workers from tiles that become polluted
+   - Pressing the Z key on the city screen toggles the zoom level of the map display
   #### Optimization
    - Optimize computation of trade networks
       - For details, see the info text file in the Trade Net X folder
@@ -210,6 +212,9 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Adjustable chance for max one HP units to be destroyed by nuclear strikes
    - Option to allow sale of buildings like aqueducts that uncap population growth
    - Option stopping non-sea detector units from revealing invisible sea units and vice-versa
+   - Adjustable city work area size
+      - Radius of area can be set from 1 to 7 tiles (2 is the standard)
+      - Area can also be limited by a city's cultural level
 </details>
 
 ## How It Works
