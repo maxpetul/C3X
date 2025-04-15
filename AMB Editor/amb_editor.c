@@ -4,9 +4,53 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// Minimal declarations for common dialogs (normally from commdlg.h)
+#define OFN_PATHMUSTEXIST    0x00000800
+#define OFN_FILEMUSTEXIST    0x00001000
+#define OFN_HIDEREADONLY     0x00000004
+#define OFN_NOCHANGEDIR      0x00000008
+#define OFN_EXPLORER         0x00080000
+
+typedef struct tagOFNA {
+    DWORD        lStructSize;
+    HWND         hwndOwner;
+    HINSTANCE    hInstance;
+    LPCSTR       lpstrFilter;
+    LPSTR        lpstrCustomFilter;
+    DWORD        nMaxCustFilter;
+    DWORD        nFilterIndex;
+    LPSTR        lpstrFile;
+    DWORD        nMaxFile;
+    LPSTR        lpstrFileTitle;
+    DWORD        nMaxFileTitle;
+    LPCSTR       lpstrInitialDir;
+    LPCSTR       lpstrTitle;
+    DWORD        Flags;
+    WORD         nFileOffset;
+    WORD         nFileExtension;
+    LPCSTR       lpstrDefExt;
+    LPARAM       lCustData;
+    LPVOID       lpfnHook;
+    LPCSTR       lpTemplateName;
+    void*        pvReserved;
+    DWORD        dwReserved;
+    DWORD        FlagsEx;
+} OPENFILENAMEA, *LPOPENFILENAMEA;
+
+// Function declarations
+BOOL WINAPI GetOpenFileNameA(LPOPENFILENAMEA lpofn);
+BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
+
 #define MAX_PATH_LENGTH 1024
-#define ID_BROWSE_BUTTON 101
-#define ID_PATH_EDIT 102
+
+// Menu IDs
+#define IDM_FILE_OPEN       1001
+#define IDM_FILE_EXIT       1002
+#define IDM_HELP_ABOUT      1003
+
+// Control IDs 
+#define ID_BROWSE_BUTTON    101
+#define ID_PATH_EDIT        102
 #define MAX_CHUNKS 100
 #define MAX_TRACKS 20
 #define MAX_EVENTS 1000
@@ -843,6 +887,104 @@ bool PathRemoveFileSpec(char* path)
     return false;
 }
 
+// Function to browse for an AMB file to open
+bool BrowseForAmbFile(HWND hwnd, char *filePath, int bufferSize)
+{
+    // Initialize the OPENFILENAME structure
+    OPENFILENAMEA ofn;
+    ZeroMemory(&ofn, sizeof(ofn));
+    
+    // Set up buffer
+    ZeroMemory(filePath, bufferSize);
+    
+    // Setup the open file dialog
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd;
+    ofn.lpstrFile = filePath;
+    ofn.nMaxFile = bufferSize;
+    ofn.lpstrFilter = "AMB Files\0*.amb\0All Files\0*.*\0";
+    ofn.nFilterIndex = 1;
+    ofn.lpstrTitle = "Select an AMB file to open";
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY | OFN_EXPLORER;
+    
+    // Set initial directory to Civ3 install path if found
+    if (strlen(g_civ3MainPath) > 0) {
+        ofn.lpstrInitialDir = g_civ3MainPath;
+    }
+    
+    // Show the dialog and get result
+    return GetOpenFileNameA(&ofn);
+}
+
+// Function to browse for a directory (used for Civ3 installation)
+bool BrowseForDirectory(HWND hwnd, char *dirPath, int bufferSize, const char *title)
+{
+    // A trick: use the file open dialog but look for a file we know will exist
+    // in the directory we want (like .exe files)
+    OPENFILENAMEA ofn;
+    ZeroMemory(&ofn, sizeof(ofn));
+    
+    // Set up buffer
+    ZeroMemory(dirPath, bufferSize);
+    
+    // Setup the open file dialog
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd;
+    ofn.lpstrFile = dirPath;
+    ofn.nMaxFile = bufferSize;
+    ofn.lpstrFilter = "Executable Files\0*.exe\0All Files\0*.*\0";
+    ofn.nFilterIndex = 1;
+    ofn.lpstrTitle = title;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY | OFN_EXPLORER;
+    
+    // Show the dialog and get result
+    if (GetOpenFileNameA(&ofn)) {
+        // Extract directory path from the selected file
+        char* lastSlash = strrchr(dirPath, '\\');
+        if (lastSlash) {
+            *lastSlash = '\0'; // Truncate at last backslash to get directory
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// Load an AMB file selected by the user
+void LoadAmbFileWithDialog(HWND hwnd)
+{
+    char ambFilePath[MAX_PATH_LENGTH] = {0};
+    
+    if (BrowseForAmbFile(hwnd, ambFilePath, MAX_PATH_LENGTH)) {
+        if (LoadAmbFile(ambFilePath)) {
+            // Successfully loaded AMB file - write description to file
+            char *description = (char *)malloc(50000);
+            if (description) {
+                DescribeAmbFile(description, 50000);
+                
+                // Write to file
+                char outputPath[MAX_PATH_LENGTH];
+                GetCurrentDirectory(MAX_PATH_LENGTH, outputPath);
+                PathAppend(outputPath, "amb_info.txt");
+                
+                FILE *outFile = fopen(outputPath, "w");
+                if (outFile) {
+                    fputs(description, outFile);
+                    fclose(outFile);
+                    
+                    char message[MAX_PATH_LENGTH + 64];
+                    sprintf(message, "AMB file information written to:\n%s", outputPath);
+                    MessageBox(hwnd, message, "AMB File Loaded Successfully", MB_OK | MB_ICONINFORMATION);
+                } else {
+                    MessageBox(hwnd, "Failed to write AMB info to file", "Error", MB_OK | MB_ICONERROR);
+                }
+                
+                free(description);
+            }
+        }
+    }
+}
+
 // Test AMB file loading
 void TestAmbLoading(HWND hwnd)
 {
@@ -1030,23 +1172,23 @@ bool FindCiv3InstallFromRegistry()
 // Validate a manually entered Civ3 folder path
 bool ValidateCiv3Path(HWND hwnd)
 {
-    char path[MAX_PATH_LENGTH];
+    // Get path from dialog
+    char path[MAX_PATH_LENGTH] = {0};
     
-    // Get text from edit control
-    GetWindowText(g_hwndPathEdit, path, MAX_PATH_LENGTH);
-    
-    // Check if it's a valid Civ3 directory
-    if (IsCiv3MainFolder(path)) {
-        strcpy(g_civ3MainPath, path);
-        
-        // Assume Conquests is in a subfolder named "Conquests"
-        strcpy(g_civ3ConquestsPath, g_civ3MainPath);
-        PathAppend(g_civ3ConquestsPath, "Conquests");
-        
-        return true;
-    } else {
-        MessageBox(hwnd, "The entered folder does not appear to be a valid Civilization III installation.", 
-                  "Invalid Path", MB_OK | MB_ICONWARNING);
+    if (BrowseForDirectory(hwnd, path, MAX_PATH_LENGTH, "Select your Civilization III installation folder")) {
+        // Check if it's a valid Civ3 directory
+        if (IsCiv3MainFolder(path)) {
+            strcpy(g_civ3MainPath, path);
+            
+            // Assume Conquests is in a subfolder named "Conquests"
+            strcpy(g_civ3ConquestsPath, g_civ3MainPath);
+            PathAppend(g_civ3ConquestsPath, "Conquests");
+            
+            return true;
+        } else {
+            MessageBox(hwnd, "The selected folder does not appear to be a valid Civilization III installation.", 
+                      "Invalid Selection", MB_OK | MB_ICONWARNING);
+        }
     }
     
     return false;
@@ -1120,19 +1262,39 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             // Find Civ3 installation when window is created
             FindCiv3Installation(hwnd);
             g_hwndMainWindow = hwnd;
-            
-            // Directly test AMB loading after the window is created
-            TestAmbLoading(hwnd);
             return 0;
             
         case WM_COMMAND:
-            if (LOWORD(wParam) == ID_BROWSE_BUTTON) {
-                if (ValidateCiv3Path(hwnd)) {
-                    // Test AMB loading with the found installation
-                    TestAmbLoading(hwnd);
-                }
+            // Handle menu commands
+            switch (LOWORD(wParam))
+            {
+                case IDM_FILE_OPEN:
+                    // Show open file dialog to load an AMB file
+                    LoadAmbFileWithDialog(hwnd);
+                    return 0;
+                    
+                case IDM_FILE_EXIT:
+                    // Exit the application
+                    PostMessage(hwnd, WM_CLOSE, 0, 0);
+                    return 0;
+                    
+                case IDM_HELP_ABOUT:
+                    // Show about dialog
+                    MessageBox(hwnd, 
+                               "AMB Editor v0.1\nA tool for viewing and editing Civilization III AMB sound files.", 
+                               "About AMB Editor", 
+                               MB_OK | MB_ICONINFORMATION);
+                    return 0;
+                    
+                case ID_BROWSE_BUTTON:
+                    // Browse for Civ3 installation folder
+                    if (ValidateCiv3Path(hwnd)) {
+                        // Test AMB loading with the found installation
+                        TestAmbLoading(hwnd);
+                    }
+                    return 0;
             }
-            return 0;
+            break;
             
         case WM_CLOSE:
             DestroyWindow(hwnd);
@@ -1141,10 +1303,33 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         case WM_DESTROY:
             PostQuitMessage(0);
             return 0;
-            
-        default:
-            return DefWindowProc(hwnd, uMsg, wParam, lParam);
     }
+    
+    return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+
+// Create a simple menu
+HMENU CreateAmbEditorMenu()
+{
+    HMENU hMenu, hFileMenu, hHelpMenu;
+    
+    hMenu = CreateMenu();
+    
+    // File menu
+    hFileMenu = CreatePopupMenu();
+    AppendMenu(hFileMenu, MF_STRING, IDM_FILE_OPEN, "&Open AMB File...");
+    AppendMenu(hFileMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hFileMenu, MF_STRING, IDM_FILE_EXIT, "E&xit");
+    
+    // Help menu
+    hHelpMenu = CreatePopupMenu();
+    AppendMenu(hHelpMenu, MF_STRING, IDM_HELP_ABOUT, "&About...");
+    
+    // Add menus to the main menu
+    AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hFileMenu, "&File");
+    AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hHelpMenu, "&Help");
+    
+    return hMenu;
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
@@ -1160,6 +1345,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     
     RegisterClass(&wc);
     
+    // Create menu
+    HMENU hMenu = CreateAmbEditorMenu();
+    
     // Create the window
     HWND hwnd = CreateWindowEx(
         0,                          // Optional window styles
@@ -1171,7 +1359,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         CW_USEDEFAULT, CW_USEDEFAULT, 800, 600,
         
         NULL,       // Parent window    
-        NULL,       // Menu
+        hMenu,      // Menu
         hInstance,  // Instance handle
         NULL        // Additional application data
     );
