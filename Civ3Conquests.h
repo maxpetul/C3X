@@ -1944,10 +1944,6 @@ struct Buildings_Info
   Base Base;
   Buildings_Info_Item *Items;
   int Count;
-  int field_24;
-  int field_28;
-  int field_2C;
-  int field_30;
 };
 
 struct Population
@@ -4393,18 +4389,32 @@ struct City_Body
   int cultural_level;
   int field_44[3];
   int DraftCount;
-  int field_70[11];
+  int UnhappyTurnsDueToDrafting;
+  int field_70[10];
   int Available_Resources;
   int field_84;
   int field_A4;
   Buildings_Info Buildings;
+  byte UnhappyNoReasonPercent;
+  byte UnhappyCrowdedPercent;
+  byte UnhappyWarWearinessPercent;
+  byte UnhappyAgresssionPercent;
+  byte UnhappyPropagandaPercent;
+  byte UnhappyDraftPercent;
+  byte UnhappyOppressionPercent;
+  byte UnhappyThisCityImprovementsPercent;
+  byte UnhappyOtherCityImprovementsPercent;
+  byte UnknownByte0;
+  byte UnknownByte1;
+  byte UnknownByte2;
+  int field_30;
   Citizens Citizens;
   int field_F4[9];
   Population Population;
   int CultureIncome;
   int Total_Cultures[32];
-  int field_1A4;
-  int Rioting_Change_Value;
+  int UnhappyFacesDueToPropaganda;
+  int UnhappinessTurnsFromPopRushing;
   int Tiles_Food;
   int Tiles_Production;
   int Tiles_Commerce;
