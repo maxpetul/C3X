@@ -22,6 +22,19 @@ struct WaveDevice {
 	// other fields omitted
 };
 
+struct MidiDevice;
+
+struct MidiDeviceVTable {
+	void * omitted[4];
+	int (__thiscall * initialize) (MidiDevice *, HWND, unsigned);
+	void * omitted_2[38];
+};
+
+struct MidiDevice {
+	MidiDeviceVTable * vtable;
+	// other fields omitted
+};
+
 struct SoundCore;
 
 struct SoundCoreVTable {
@@ -47,14 +60,28 @@ struct SoundCore {
 	// many more fields omitted
 };
 
-#define SCT_WAV 1
+enum sound_core_type {
+	SCT_DETECT_FROM_FILE_EXT = 0, // Does not work
+	SCT_WAV,
+	SCT_MIDI,
+	SCT_AIF,
+	SCT_4,
+	SCT_AMB,
+	SCT_6,
+	SCT_7,
+	SCT_8
+};
+
 typedef int (__cdecl * InitSoundTimer) (int param_1, int param_2);
 typedef int (__cdecl * CreateSound) (SoundCore ** out_sound_core, char const * file_path, int sound_core_type);
 typedef int (__cdecl * CreateWaveDevice) (WaveDevice ** out, unsigned param_2);
+typedef int (__cdecl * CreateMidiDevice) (MidiDevice ** out, unsigned param_2);
 
 int APIENTRY
 WinMain (HINSTANCE inst, HINSTANCE prev_inst, char * cmd_line, int show_cmd)
 {
+	int result;
+
 	// Go to Conquests directory.
 	{
 		char civ_3_install_path[1000] = {0};
@@ -85,6 +112,7 @@ WinMain (HINSTANCE inst, HINSTANCE prev_inst, char * cmd_line, int show_cmd)
 	InitSoundTimer   init_sound_timer   = reinterpret_cast<InitSoundTimer>  (GetProcAddress (sound_module, "init_sound_timer"));
 	CreateSound      create_sound       = reinterpret_cast<CreateSound>     (GetProcAddress (sound_module, "create_sound"));
 	CreateWaveDevice create_wave_device = reinterpret_cast<CreateWaveDevice>(GetProcAddress (sound_module, (LPCSTR)5)); // Name of Dll_Wave_Device::create_device is mangled so use ordinal here
+	CreateMidiDevice create_midi_device = reinterpret_cast<CreateMidiDevice>(GetProcAddress (sound_module, (LPCSTR)7));
 
 	HWND window = CreateSimpleWindow ("Sound Test");
 
@@ -94,9 +122,14 @@ WinMain (HINSTANCE inst, HINSTANCE prev_inst, char * cmd_line, int show_cmd)
 	create_wave_device (&wave_device, 0); // second parameter is not used
 	wave_device->vtable->initialize (wave_device, window, 2); // pass 2 for flags. I think that's what Civ 3 uses.
 
-	char const * hawk_path = "..\\Sounds\\Ambience Sfx\\Hawk.wav";
+	MidiDevice * midi_device;
+	create_midi_device (&midi_device, 0);
+	midi_device->vtable->initialize (midi_device, window, 0);
+
+	// char const * to_play = "..\\Sounds\\Ambience Sfx\\Hawk.wav";
+	char const * to_play = "Art\\Units\\Trebuchet\\TrebuchetAttack.AMB";
 	SoundCore * core;
-	int result = create_sound (&core, hawk_path, SCT_WAV);
+	result = create_sound (&core, to_play, SCT_AMB);
 	printf ("create_sound result: %d\n", result);
 
 	result = core->vtable->m22 (core);
@@ -108,7 +141,7 @@ WinMain (HINSTANCE inst, HINSTANCE prev_inst, char * cmd_line, int show_cmd)
 	result = core->vtable->m24 (core);
 	printf ("m24 returned %d (expected 0)\n", result);
 
-	result = core->vtable->load_file (core, hawk_path);
+	result = core->vtable->load_file (core, to_play);
 	printf ("load_file returned %d (expected 0)\n", result);
 
 	// I observed this function returning 1496 when running inside Civ 3. It does not return the same thing when run here. I don't what the return
