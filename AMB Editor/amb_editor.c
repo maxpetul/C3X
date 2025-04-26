@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "preview.c"
+
 // Minimal declarations for common dialogs (normally from commdlg.h)
 #define OFN_PATHMUSTEXIST    0x00000800
 #define OFN_FILEMUSTEXIST    0x00001000
@@ -977,6 +979,8 @@ void LoadAmbFileWithDialog(HWND hwnd)
     
     if (BrowseForAmbFile(hwnd, ambFilePath, MAX_PATH_LENGTH)) {
         if (LoadAmbFile(ambFilePath)) {
+            PreviewAmbFile(ambFilePath);
+
             // Successfully loaded AMB file - write description to file
             char *description = (char *)malloc(50000);
             if (description) {
@@ -1282,6 +1286,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             // Find Civ3 installation when window is created
             FindCiv3Installation(hwnd);
             g_hwndMainWindow = hwnd;
+
+            if (strlen(g_civ3MainPath) > 0) {
+                    InitializePreviewPlayer(hwnd, g_civ3MainPath);
+            }
+
             return 0;
             
         case WM_COMMAND:
