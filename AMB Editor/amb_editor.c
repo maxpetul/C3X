@@ -652,6 +652,26 @@ bool LoadAmbFile(const char *filePath) {
     }
     
     fclose(file);
+    
+    // If successful and we have a main window, update the window title
+    if (success && g_hwndMainWindow != NULL) {
+        // Extract the filename part from the path
+        char *fileName = strrchr(filePath, '\\');
+        if (fileName) {
+            fileName++; // Skip past the backslash
+        } else {
+            fileName = (char*)filePath; // No backslash found, use the whole path
+        }
+        
+        char windowTitle[MAX_PATH_LENGTH + 20];
+        snprintf(windowTitle, sizeof windowTitle, "%s - AMB Editor", fileName);
+        windowTitle[(sizeof windowTitle) - 1] = '\0';
+        SetWindowText(g_hwndMainWindow, windowTitle);
+        
+        // Save current AMB path
+        strcpy(g_currentAmbPath, filePath);
+    }
+    
     return success;
 }
 
