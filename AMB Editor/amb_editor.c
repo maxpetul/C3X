@@ -980,31 +980,6 @@ void LoadAmbFileWithDialog(HWND hwnd)
     if (BrowseForAmbFile(hwnd, ambFilePath, MAX_PATH_LENGTH)) {
         if (LoadAmbFile(ambFilePath)) {
             PreviewAmbFile(ambFilePath);
-
-            // Successfully loaded AMB file - write description to file
-            char *description = (char *)malloc(50000);
-            if (description) {
-                DescribeAmbFile(description, 50000);
-                
-                // Write to file
-                char outputPath[MAX_PATH_LENGTH];
-                GetCurrentDirectory(MAX_PATH_LENGTH, outputPath);
-                PathAppend(outputPath, "amb_info.txt");
-                
-                FILE *outFile = fopen(outputPath, "w");
-                if (outFile) {
-                    fputs(description, outFile);
-                    fclose(outFile);
-                    
-                    char message[MAX_PATH_LENGTH + 64];
-                    sprintf(message, "AMB file information written to:\n%s", outputPath);
-                    MessageBox(hwnd, message, "AMB File Loaded Successfully", MB_OK | MB_ICONINFORMATION);
-                } else {
-                    MessageBox(hwnd, "Failed to write AMB info to file", "Error", MB_OK | MB_ICONERROR);
-                }
-                
-                free(description);
-            }
         }
     }
 }

@@ -105,11 +105,18 @@ void InitializePreviewPlayer(HWND window, char *conquestsInstallPath)
 
 done:
     if (strlen(errorMsg) > 0)
-            MessageBox(NULL, errorMsg, "Couldn't load sound.dll", MB_ICONERROR);
+        MessageBox(NULL, errorMsg, "Couldn't load sound.dll", MB_ICONERROR);
     SetCurrentDirectory(savedCWD);
 }
 
 void PreviewAmbFile(char *filePath)
 {
-
+    SoundCore * core;
+    CreateSound(&core, filePath, SCT_AMB);
+    core->vtable->M22(core);
+    core->vtable->SetFlags(core, __, 0); // Civ 3 passes 0 here
+    core->vtable->M24(core);
+    core->vtable->LoadFile(core, __, filePath);
+    core->vtable->SetVolume(core, __, 127);
+    core->vtable->Play(core);
 }
