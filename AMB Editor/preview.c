@@ -4,6 +4,19 @@
 // Using fastcall to substitute for lack of thiscall on a C compiler, as usual. This is the dummy second param.
 #define __ 0
 
+typedef struct WaveDevice WaveDevice;
+
+typedef struct {
+    void * omitted[4];
+    int (__fastcall * Initialize) (WaveDevice *, int, HWND, unsigned);
+    void * omitted_2[38];
+} WaveDeviceVTable;
+
+struct WaveDevice {
+    WaveDeviceVTable * vtable;
+    // other fields omitted
+};
+
 typedef struct MidiDevice MidiDevice;
 
 typedef struct {
@@ -57,8 +70,10 @@ enum sound_core_type {
 HMODULE soundModule = NULL;
 int (__cdecl * InitSoundTimer)(int param_1, int param_2) = NULL;
 int (__cdecl * CreateSound)(SoundCore ** out_sound_core, char const * file_path, int sound_core_type) = NULL;
+int (__cdecl * CreateWaveDevice)(WaveDevice ** out, unsigned param_2) = NULL;
 int (__cdecl * CreateMidiDevice)(MidiDevice ** out, unsigned param_2) = NULL;
 
+WaveDevice * waveDevice = NULL;
 MidiDevice * midiDevice = NULL;
 
 void InitializePreviewPlayer(HWND window, char *conquestsInstallPath)
@@ -77,9 +92,13 @@ void InitializePreviewPlayer(HWND window, char *conquestsInstallPath)
 
     InitSoundTimer   = (void *)GetProcAddress(soundModule, "init_sound_timer");
     CreateSound      = (void *)GetProcAddress(soundModule, "create_sound");
-    CreateMidiDevice = (void *)GetProcAddress(soundModule, (LPCSTR)7); // Use ordinal b/c name is mangled
+    CreateWaveDevice = (void *)GetProcAddress(soundModule, (LPCSTR)5); // Use ordinal b/c name is mangled
+    CreateMidiDevice = (void *)GetProcAddress(soundModule, (LPCSTR)7);
 
     InitSoundTimer(0, 0);
+
+    CreateWaveDevice(&waveDevice, 0);
+    waveDevice->vtable->Initialize(waveDevice, __, window, 2); // Civ 3 passes 2 for second param (flags)
 
     CreateMidiDevice(&midiDevice, 0);
     midiDevice->vtable->Initialize(midiDevice, __, window, 0);
