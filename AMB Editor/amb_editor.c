@@ -53,6 +53,8 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 // Control IDs 
 #define ID_BROWSE_BUTTON    101
 #define ID_PATH_EDIT        102
+#define ID_PLAY_BUTTON      103
+#define ID_STOP_BUTTON      104
 #define MAX_CHUNKS 100
 #define MAX_TRACKS 20
 #define MAX_EVENTS 1000
@@ -63,6 +65,8 @@ char g_civ3MainPath[MAX_PATH_LENGTH] = {0};
 char g_civ3ConquestsPath[MAX_PATH_LENGTH] = {0};
 HWND g_hwndPathEdit = NULL;
 HWND g_hwndMainWindow = NULL;
+HWND g_hwndPlayButton = NULL;
+HWND g_hwndStopButton = NULL;
 char g_currentAmbPath[MAX_PATH_LENGTH] = {0};
 
 // AMB file structures
@@ -978,9 +982,7 @@ void LoadAmbFileWithDialog(HWND hwnd)
     char ambFilePath[MAX_PATH_LENGTH] = {0};
     
     if (BrowseForAmbFile(hwnd, ambFilePath, MAX_PATH_LENGTH)) {
-        if (LoadAmbFile(ambFilePath)) {
-            PreviewAmbFile(ambFilePath);
-        }
+        LoadAmbFile(ambFilePath);
     }
 }
 
@@ -1253,6 +1255,28 @@ bool FindCiv3Installation(HWND hwnd)
     return false;
 }
 
+// Create the play and stop buttons
+void CreatePlaybackButtons(HWND hwnd)
+{
+    // Create Play button
+    g_hwndPlayButton = CreateWindow(
+        "BUTTON", 
+        "Play File", 
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        20, 20, 100, 30,
+        hwnd, (HMENU)ID_PLAY_BUTTON, GetModuleHandle(NULL), NULL
+    );
+    
+    // Create Stop button
+    g_hwndStopButton = CreateWindow(
+        "BUTTON", 
+        "Stop", 
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        130, 20, 80, 30,
+        hwnd, (HMENU)ID_STOP_BUTTON, GetModuleHandle(NULL), NULL
+    );
+}
+
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
@@ -1265,6 +1289,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             if (strlen(g_civ3MainPath) > 0) {
                     InitializePreviewPlayer(hwnd, g_civ3MainPath);
             }
+            
+            // Create playback buttons
+            CreatePlaybackButtons(hwnd);
 
             return 0;
             
@@ -1296,6 +1323,21 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                         // Test AMB loading with the found installation
                         TestAmbLoading(hwnd);
                     }
+                    return 0;
+                    
+                case ID_PLAY_BUTTON:
+                    // Handle Play button click
+                    if (strlen(g_currentAmbPath) > 0) {
+                        PreviewAmbFile(g_currentAmbPath);
+                    } else {
+                        MessageBox(hwnd, "No AMB file loaded. Please open an AMB file first.", 
+                                   "Error", MB_OK | MB_ICONINFORMATION);
+                    }
+                    return 0;
+                    
+                case ID_STOP_BUTTON:
+                    // Handle Stop button click
+                    StopAmbPreview();
                     return 0;
             }
             break;

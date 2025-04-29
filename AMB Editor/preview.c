@@ -37,7 +37,8 @@ typedef struct {
     int (__fastcall * LoadFile)(SoundCore *, int, char const *); // takes file path
     void * omitted_2[2];
     int (__fastcall * Play)(SoundCore *);
-    void * omitted_3[8];
+    int (__fastcall * Stop)(SoundCore *);
+    void * omitted_3[7];
     void (__fastcall * SetVolume)(SoundCore *, int, int); // volume is >= 0 and <= 127
     void * omitted_4[5];
     int (__fastcall * M22)(SoundCore *);
@@ -76,6 +77,8 @@ int (__cdecl * CreateMidiDevice)(MidiDevice ** out, unsigned param_2) = NULL;
 WaveDevice * waveDevice = NULL;
 MidiDevice * midiDevice = NULL;
 
+SoundCore * playingCore = NULL;
+
 void InitializePreviewPlayer(HWND window, char *conquestsInstallPath)
 {
     char errorMsg[1000] = {0};
@@ -111,12 +114,18 @@ done:
 
 void PreviewAmbFile(char *filePath)
 {
-    SoundCore * core;
-    CreateSound(&core, filePath, SCT_AMB);
-    core->vtable->M22(core);
-    core->vtable->SetFlags(core, __, 0); // Civ 3 passes 0 here
-    core->vtable->M24(core);
-    core->vtable->LoadFile(core, __, filePath);
-    core->vtable->SetVolume(core, __, 127);
-    core->vtable->Play(core);
+    if (playingCore == NULL)
+        CreateSound(&playingCore, NULL, SCT_AMB);
+
+    if (playingCore != NULL){
+        playingCore->vtable->Stop(playingCore);
+        playingCore->vtable->LoadFile(playingCore, __, filePath);
+        playingCore->vtable->Play(playingCore);
+    }
+}
+
+void StopAmbPreview()
+{
+    if (playingCore != NULL)
+        playingCore->vtable->Stop(playingCore);
 }
