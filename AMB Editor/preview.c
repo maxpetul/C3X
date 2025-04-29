@@ -112,20 +112,21 @@ done:
     SetCurrentDirectory(savedCWD);
 }
 
-void PreviewAmbFile(char *filePath)
+void StopAmbPreview()
 {
-    if (playingCore == NULL)
-        CreateSound(&playingCore, NULL, SCT_AMB);
-
-    if (playingCore != NULL){
+    if (playingCore != NULL) {
         playingCore->vtable->Stop(playingCore);
-        playingCore->vtable->LoadFile(playingCore, __, filePath);
-        playingCore->vtable->Play(playingCore);
+        // TODO: Figure out how to deallocate Sound Core objects. Right now we just leak the memory. Attempting to reuse a core causes a crash.
+        playingCore = NULL;
     }
 }
 
-void StopAmbPreview()
+void PreviewAmbFile(char *filePath)
 {
-    if (playingCore != NULL)
-        playingCore->vtable->Stop(playingCore);
+    StopAmbPreview();
+    CreateSound(&playingCore, NULL, SCT_AMB);
+    if (playingCore != NULL) {
+        playingCore->vtable->LoadFile(playingCore, __, filePath);
+        playingCore->vtable->Play(playingCore);
+    }
 }
