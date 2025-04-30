@@ -51,7 +51,6 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 #define IDM_HELP_ABOUT      1003
 
 // Control IDs 
-#define ID_BROWSE_BUTTON    101
 #define ID_PATH_EDIT        102
 #define ID_PLAY_BUTTON      103
 #define ID_STOP_BUTTON      104
@@ -1171,7 +1170,7 @@ bool FindCiv3InstallFromRegistry()
 }
 
 // Validate a manually entered Civ3 folder path
-bool ValidateCiv3Path(HWND hwnd)
+bool BrowseForCiv3Install(HWND hwnd)
 {
     // Get path from dialog
     char path[MAX_PATH_LENGTH] = {0};
@@ -1195,37 +1194,6 @@ bool ValidateCiv3Path(HWND hwnd)
     return false;
 }
 
-// Create a simple path input dialog
-void CreatePathInputDialog(HWND hwnd)
-{
-    // Create a label
-    HWND hwndLabel = CreateWindow(
-        "STATIC", 
-        "Enter Civilization III installation path:", 
-        WS_CHILD | WS_VISIBLE | SS_LEFT,
-        20, 50, 300, 20,
-        hwnd, NULL, GetModuleHandle(NULL), NULL
-    );
-    
-    // Create a text box
-    g_hwndPathEdit = CreateWindow(
-        "EDIT", 
-        "", 
-        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-        20, 70, 350, 25,
-        hwnd, (HMENU)ID_PATH_EDIT, GetModuleHandle(NULL), NULL
-    );
-    
-    // Create a button
-    HWND hwndButton = CreateWindow(
-        "BUTTON", 
-        "Validate", 
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        380, 70, 80, 25,
-        hwnd, (HMENU)ID_BROWSE_BUTTON, GetModuleHandle(NULL), NULL
-    );
-}
-
 // Find Civ3 installation using all available methods
 bool FindCiv3Installation(HWND hwnd)
 {
@@ -1246,10 +1214,8 @@ bool FindCiv3Installation(HWND hwnd)
     int result = MessageBox(hwnd, 
         "Civilization III installation not found. Would you like to enter the path manually?", 
         "Installation not found", MB_YESNO | MB_ICONQUESTION);
-    
     if (result == IDYES) {
-        // Create dialog to enter path
-        CreatePathInputDialog(hwnd);
+        return BrowseForCiv3Install(hwnd);
     }
     
     return false;
@@ -1315,14 +1281,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                                "AMB Editor v0.1\nA tool for viewing and editing Civilization III AMB sound files.", 
                                "About AMB Editor", 
                                MB_OK | MB_ICONINFORMATION);
-                    return 0;
-                    
-                case ID_BROWSE_BUTTON:
-                    // Browse for Civ3 installation folder
-                    if (ValidateCiv3Path(hwnd)) {
-                        // Test AMB loading with the found installation
-                        TestAmbLoading(hwnd);
-                    }
                     return 0;
                     
                 case ID_PLAY_BUTTON:
