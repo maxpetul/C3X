@@ -7,6 +7,54 @@
 #include "preview.c"
 #include "amb_file.c"
 
+// Common Control definitions (normally from commctrl.h)
+#define WC_LISTVIEW "SysListView32"
+#define LVS_REPORT 0x0001
+#define LVS_SHOWSELALWAYS 0x0008
+#define LVS_SINGLESEL 0x0004
+#define LVS_EDITLABELS 0x0200
+#define LVS_NOHSCROLL 0x8000
+#define LVM_INSERTCOLUMN (LVM_FIRST + 27)
+#define LVM_INSERTITEM (LVM_FIRST + 7)
+#define LVM_SETITEM (LVM_FIRST + 6)
+#define LVM_SETITEMSTATE (LVM_FIRST + 43)
+#define LVM_GETITEMCOUNT (LVM_FIRST + 4)
+#define LVM_DELETEALLITEMS (LVM_FIRST + 9)
+#define LVM_GETITEMSTATE (LVM_FIRST + 44)
+#define LVM_FIRST 0x1000
+#define LVCF_TEXT 0x0004
+#define LVCF_WIDTH 0x0002
+#define LVIF_TEXT 0x0001
+#define LVS_EX_GRIDLINES 0x00000001
+#define LVS_EX_FULLROWSELECT 0x00000020
+#define LVS_EX_CHECKBOXES 0x00000004
+#define LVM_SETEXTENDEDLISTVIEWSTYLE (LVM_FIRST + 54)
+#define LVM_GETEXTENDEDLISTVIEWSTYLE (LVM_FIRST + 55)
+
+typedef struct tagLVCOLUMNA {
+    UINT mask;
+    int fmt;
+    int cx;
+    LPSTR pszText;
+    int cchTextMax;
+    int iSubItem;
+    int iImage;
+    int iOrder;
+} LVCOLUMNA, *LPLVCOLUMNA;
+
+typedef struct tagLVITEMA {
+    UINT mask;
+    int iItem;
+    int iSubItem;
+    UINT state;
+    UINT stateMask;
+    LPSTR pszText;
+    int cchTextMax;
+    int iImage;
+    LPARAM lParam;
+    int iIndent;
+} LVITEMA, *LPLVITEMA;
+
 // Minimal declarations for common dialogs (normally from commdlg.h)
 #define OFN_PATHMUSTEXIST    0x00000800
 #define OFN_FILEMUSTEXIST    0x00001000
@@ -53,6 +101,7 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 #define ID_PATH_EDIT        102
 #define ID_PLAY_BUTTON      103
 #define ID_STOP_BUTTON      104
+#define ID_AMB_LISTVIEW     105
 
 // Global variables
 char g_civ3MainPath[MAX_PATH_LENGTH] = {0};
@@ -61,6 +110,7 @@ HWND g_hwndPathEdit = NULL;
 HWND g_hwndMainWindow = NULL;
 HWND g_hwndPlayButton = NULL;
 HWND g_hwndStopButton = NULL;
+HWND g_hwndListView = NULL;
 HBRUSH g_hBackgroundBrush = NULL;  // Brush for window background color
 
 // Custom path helpers 
@@ -445,6 +495,53 @@ void CreatePlaybackButtons(HWND hwnd)
     );
 }
 
+// Add a column to the ListView
+void AddListViewColumn(HWND hListView, int index, char *title, int width) 
+{
+    LVCOLUMNA lvc = {0};
+    lvc.mask = LVCF_TEXT | LVCF_WIDTH;
+    lvc.pszText = title;
+    lvc.cx = width;
+    
+    SendMessage(hListView, LVM_INSERTCOLUMN, index, (LPARAM)&lvc);
+}
+
+// Create and initialize the ListView control
+void CreateAmbListView(HWND hwnd) 
+{
+    // Create ListView control below the playback buttons
+    g_hwndListView = CreateWindow(
+        WC_LISTVIEW,
+        "",
+        WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_SINGLESEL | LVS_NOHSCROLL,
+        20, 70, // x, y position (below the buttons)
+        820, 460, // width, height (fill most of the window)
+        hwnd,
+        (HMENU)ID_AMB_LISTVIEW,
+        GetModuleHandle(NULL),
+        NULL
+    );
+    
+    if (g_hwndListView == NULL) {
+        MessageBox(hwnd, "Could not create ListView control", "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    // Set extended ListView styles
+    DWORD exStyle = LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES;
+    SendMessage(g_hwndListView, LVM_SETEXTENDEDLISTVIEWSTYLE, 0, exStyle);
+    
+    // Add columns to the ListView
+    AddListViewColumn(g_hwndListView, 0, "Time", 85);
+    AddListViewColumn(g_hwndListView, 1, "WAV File", 235);
+    AddListViewColumn(g_hwndListView, 2, "Pitch Random", 95);
+    AddListViewColumn(g_hwndListView, 3, "Pitch Min", 70);
+    AddListViewColumn(g_hwndListView, 4, "Pitch Max", 70);
+    AddListViewColumn(g_hwndListView, 5, "Effect Random", 95);
+    AddListViewColumn(g_hwndListView, 6, "Effect Min", 70);
+    AddListViewColumn(g_hwndListView, 7, "Effect Max", 70);
+}
+
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
@@ -460,6 +557,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             
             // Create playback buttons
             CreatePlaybackButtons(hwnd);
+            
+            // Create the AMB ListView control
+            CreateAmbListView(hwnd);
 
             return 0;
             
@@ -587,7 +687,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         WS_OVERLAPPEDWINDOW,        // Window style
         
         // Size and position
-        CW_USEDEFAULT, CW_USEDEFAULT, 800, 600,
+        CW_USEDEFAULT, CW_USEDEFAULT, 900, 600,
         
         NULL,       // Parent window    
         hMenu,      // Menu
