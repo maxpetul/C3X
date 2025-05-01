@@ -61,6 +61,7 @@ HWND g_hwndPathEdit = NULL;
 HWND g_hwndMainWindow = NULL;
 HWND g_hwndPlayButton = NULL;
 HWND g_hwndStopButton = NULL;
+HBRUSH g_hBackgroundBrush = NULL;  // Brush for window background color
 
 // Custom path helpers 
 bool PathFileExists(const char* path)
@@ -501,11 +502,32 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             }
             break;
             
+        case WM_ERASEBKGND:
+            {
+                // Handle window background erasure
+                HDC hdc = (HDC)wParam;
+                RECT rect;
+                GetClientRect(hwnd, &rect);
+                FillRect(hdc, &rect, g_hBackgroundBrush);
+                return 1;  // Return non-zero to indicate we processed this message
+            }
+            
+        case WM_CTLCOLORDLG:
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN:
+            // Set background color for dialog, static controls, and buttons
+            return (LRESULT)g_hBackgroundBrush;
+            
         case WM_CLOSE:
             DestroyWindow(hwnd);
             return 0;
             
         case WM_DESTROY:
+            // Clean up resources
+            if (g_hBackgroundBrush != NULL) {
+                DeleteObject(g_hBackgroundBrush);
+                g_hBackgroundBrush = NULL;
+            }
             PostQuitMessage(0);
             return 0;
     }
@@ -542,11 +564,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // Register the window class
     const char CLASS_NAME[] = "AMB Editor Window Class";
     
+    // Create a pleasant beige brush for the background - RGB(245, 245, 220) is a nice beige color
+    g_hBackgroundBrush = CreateSolidBrush(RGB(245, 235, 200));
+    
     WNDCLASS wc = {0};
     wc.lpfnWndProc = WindowProc;
     wc.hInstance = hInstance;
     wc.lpszClassName = CLASS_NAME;
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = g_hBackgroundBrush;
     
     RegisterClass(&wc);
     
