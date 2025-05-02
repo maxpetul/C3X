@@ -7,6 +7,14 @@
 #include "preview.c"
 #include "amb_file.c"
 
+// Forward declarations for ListView functions
+void AddListViewColumn(HWND hListView, int index, char *title, int width);
+int AddListViewItem(HWND hListView, int index, const char *text);
+void SetListViewItemText(HWND hListView, int row, int col, const char *text);
+void FormatTimeString(char *buffer, int bufferSize, float timestamp);
+void ClearListView(HWND hListView);
+void PopulateAmbListView(void);
+
 // Common Control definitions (normally from commctrl.h)
 #define WC_LISTVIEW "SysListView32"
 #define LVS_REPORT 0x0001
@@ -25,6 +33,8 @@
 #define LVCF_TEXT 0x0004
 #define LVCF_WIDTH 0x0002
 #define LVIF_TEXT 0x0001
+#define LVIF_STATE 0x0008
+#define LVIS_STATEIMAGEMASK 0xF000
 #define LVS_EX_GRIDLINES 0x00000001
 #define LVS_EX_FULLROWSELECT 0x00000020
 #define LVS_EX_CHECKBOXES 0x00000004
@@ -233,6 +243,9 @@ void LoadAmbFileWithDialog(HWND hwnd)
             snprintf(windowTitle, sizeof windowTitle, "%s - AMB Editor", fileName);
             windowTitle[(sizeof windowTitle) - 1] = '\0';
             SetWindowText(g_hwndMainWindow, windowTitle);
+            
+            // Populate the ListView with the loaded AMB file data
+            PopulateAmbListView();
         }
     }
 }
@@ -246,11 +259,27 @@ void TestAmbLoading(HWND hwnd)
         strcpy(ambFilePath, g_civ3MainPath);
         PathAppend(ambFilePath, "Art");
         PathAppend(ambFilePath, "Units");
-        PathAppend(ambFilePath, "Archer");
-        PathAppend(ambFilePath, "ArcherAttack.amb");
+        PathAppend(ambFilePath, "Infantry");
+        PathAppend(ambFilePath, "InfantryAttack.amb");  // Use the same file from the example
         
         if (PathFileExists(ambFilePath)) {
             if (LoadAmbFile(ambFilePath)) {
+                // Extract the filename part for the window title
+                char *fileName = strrchr(ambFilePath, '\\');
+                if (fileName) {
+                    fileName++; // Skip past the backslash
+                } else {
+                    fileName = (char*)ambFilePath;
+                }
+                
+                char windowTitle[MAX_PATH_LENGTH + 20];
+                snprintf(windowTitle, sizeof windowTitle, "%s - AMB Editor", fileName);
+                windowTitle[(sizeof windowTitle) - 1] = '\0';
+                SetWindowText(g_hwndMainWindow, windowTitle);
+                
+                // Populate the ListView with the loaded AMB file data
+                PopulateAmbListView();
+                
                 // Successfully loaded AMB file - write description to file
                 char *description = (char *)malloc(50000);
                 if (description) {
@@ -506,6 +535,171 @@ void AddListViewColumn(HWND hListView, int index, char *title, int width)
     SendMessage(hListView, LVM_INSERTCOLUMN, index, (LPARAM)&lvc);
 }
 
+// Add a row to the ListView
+int AddListViewItem(HWND hListView, int index, const char *text) 
+{
+    LVITEMA lvi = {0};
+    lvi.mask = LVIF_TEXT;
+    lvi.iItem = index;
+    lvi.iSubItem = 0;
+    lvi.pszText = (LPSTR)text;
+    
+    return SendMessage(hListView, LVM_INSERTITEM, 0, (LPARAM)&lvi);
+}
+
+// Set text in a ListView cell
+void SetListViewItemText(HWND hListView, int row, int col, const char *text) 
+{
+    LVITEMA lvi = {0};
+    lvi.mask = LVIF_TEXT;
+    lvi.iItem = row;
+    lvi.iSubItem = col;
+    lvi.pszText = (LPSTR)text;
+    
+    SendMessage(hListView, LVM_SETITEM, 0, (LPARAM)&lvi);
+}
+
+// Format a time string from MIDI timing data
+void FormatTimeString(char *buffer, int bufferSize, float timestamp) 
+{
+    int minutes = (int)(timestamp / 60.0f);
+    float seconds = timestamp - (minutes * 60.0f);
+    
+    snprintf(buffer, bufferSize, "%d:%05.2f", minutes, seconds);
+}
+
+// Clear all items from the ListView
+void ClearListView(HWND hListView) 
+{
+    SendMessage(hListView, LVM_DELETEALLITEMS, 0, 0);
+}
+
+// Populate the ListView with AMB file data
+void PopulateAmbListView(void) 
+{
+    if (g_hwndListView == NULL) {
+        MessageBox(NULL, "ListView control is NULL", "Debug", MB_OK);
+        return;
+    }
+    
+    // Clear any existing data
+    ClearListView(g_hwndListView);
+    
+    // Check if we have valid AMB data
+    if (g_ambFile.kmapChunkCount == 0 || g_ambFile.prgmChunkCount == 0 || g_ambFile.midi.trackCount == 0) {
+        MessageBox(NULL, "AMB file has missing data or is invalid", "Debug", MB_OK);
+        return;
+    }
+
+    // Calculate seconds per tick for timing
+    float secondsPerTick = 0.0f;
+    if (g_ambFile.midi.ticksPerQuarterNote > 0) {
+        secondsPerTick = g_ambFile.midi.secondsPerQuarterNote / g_ambFile.midi.ticksPerQuarterNote;
+    }
+    
+    // Process each MIDI track (except track 0 which is metadata)
+    for (int trackIndex = 1; trackIndex < g_ambFile.midi.trackCount; trackIndex++) {
+        MidiTrack *track = &g_ambFile.midi.tracks[trackIndex];
+        
+        // Try to find the track name event to get the effect name
+        char trackName[256] = {0};
+        for (int i = 0; i < track->eventCount; i++) {
+            if (track->events[i].type == EVENT_TRACK_NAME) {
+                strcpy(trackName, track->events[i].data.trackName.name);
+                break;
+            }
+        }
+        
+        if (trackName[0] == '\0') {
+            continue; // Skip tracks without names
+        }
+        
+        // Find corresponding Prgm chunk with the matching effect name
+        PrgmChunk *matchingPrgm = NULL;
+        for (int i = 0; i < g_ambFile.prgmChunkCount; i++) {
+            if (strcmp(g_ambFile.prgmChunks[i].effectName, trackName) == 0) {
+                matchingPrgm = &g_ambFile.prgmChunks[i];
+                break;
+            }
+        }
+        
+        if (matchingPrgm == NULL) {
+            continue; // Skip if no matching Prgm found
+        }
+        
+        // Get the var name from the matching Prgm chunk
+        const char *varName = matchingPrgm->varName;
+        
+        // Find corresponding Kmap chunk with the same var name
+        KmapChunk *matchingKmap = NULL;
+        for (int i = 0; i < g_ambFile.kmapChunkCount; i++) {
+            if (strcmp(g_ambFile.kmapChunks[i].varName, varName) == 0) {
+                matchingKmap = &g_ambFile.kmapChunks[i];
+                break;
+            }
+        }
+        
+        if (matchingKmap == NULL || matchingKmap->itemCount == 0) {
+            continue; // Skip if no matching Kmap found or no items in Kmap
+        }
+        
+        // Add an entry for each track with note events
+        float timestamp = 0.0f;
+        for (int i = 0; i < track->eventCount; i++) {
+            MidiEvent *event = &track->events[i];
+            
+            // Add delta time
+            timestamp += event->deltaTime * secondsPerTick;
+            
+            // We're looking for the first note-on event to get the timestamp
+            if (event->type == EVENT_NOTE_ON && event->data.noteOn.velocity > 0) {
+                // Format time string
+                char timeStr[32];
+                FormatTimeString(timeStr, sizeof(timeStr), timestamp);
+                
+                // Format pitch information
+                char pitchMinStr[32];
+                char pitchMaxStr[32];
+                snprintf(pitchMinStr, sizeof(pitchMinStr), "%d", matchingPrgm->minRandomPitch);
+                snprintf(pitchMaxStr, sizeof(pitchMaxStr), "%d", matchingPrgm->maxRandomPitch);
+                
+                // Format effect parameter information
+                char effectParam1Str[32];
+                char effectParam2Str[32];
+                snprintf(effectParam1Str, sizeof(effectParam1Str), "%d", matchingPrgm->param1);
+                snprintf(effectParam2Str, sizeof(effectParam2Str), "%d", matchingPrgm->param2);
+                
+                // Check flags for randomization settings (LSB = pitch random, bit 1 = effect random)
+                bool hasPitchRandom = (matchingPrgm->flags & 0x01) != 0;
+                bool hasEffectRandom = (matchingPrgm->flags & 0x02) != 0;
+                
+                // For each item in the kmap (usually just one WAV file per track)
+                for (int j = 0; j < matchingKmap->itemCount; j++) {
+                    // Add the item to the ListView
+                    int row = AddListViewItem(g_hwndListView, 0x7FFFFFFF, timeStr);
+                    if (row >= 0) {
+                        // Set the WAV file name
+                        SetListViewItemText(g_hwndListView, row, 1, matchingKmap->items[j].wavFileName);
+                        
+                        // Set pitch information
+                        SetListViewItemText(g_hwndListView, row, 2, hasPitchRandom ? "Yes" : "No");
+                        SetListViewItemText(g_hwndListView, row, 3, pitchMinStr);
+                        SetListViewItemText(g_hwndListView, row, 4, pitchMaxStr);
+                        
+                        // Set effect information
+                        SetListViewItemText(g_hwndListView, row, 5, hasEffectRandom ? "Yes" : "No");
+                        SetListViewItemText(g_hwndListView, row, 6, effectParam2Str);  // Param2 (Min)
+                        SetListViewItemText(g_hwndListView, row, 7, effectParam1Str);  // Param1 (Max)
+                    }
+                }
+                
+                // Only process the first note-on event per track
+                break;
+            }
+        }
+    }
+}
+
 // Create and initialize the ListView control
 void CreateAmbListView(HWND hwnd) 
 {
@@ -538,8 +732,8 @@ void CreateAmbListView(HWND hwnd)
     AddListViewColumn(g_hwndListView, 3, "Pitch Min", 70);
     AddListViewColumn(g_hwndListView, 4, "Pitch Max", 70);
     AddListViewColumn(g_hwndListView, 5, "Effect Random", 95);
-    AddListViewColumn(g_hwndListView, 6, "Effect Min", 70);
-    AddListViewColumn(g_hwndListView, 7, "Effect Max", 70);
+    AddListViewColumn(g_hwndListView, 6, "Effect Param 2", 70);  // Min
+    AddListViewColumn(g_hwndListView, 7, "Effect Param 1", 70);  // Max
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
