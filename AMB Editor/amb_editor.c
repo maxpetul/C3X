@@ -15,6 +15,7 @@ void FormatTimeString(char *buffer, int bufferSize, float timestamp);
 void ClearListView(HWND hListView);
 void PopulateAmbListView(void);
 BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText);
+BOOL IsValidInteger(const char *str);
 
 // Common Control definitions (normally from commctrl.h)
 #define WC_LISTVIEW "SysListView32"
@@ -622,6 +623,30 @@ void ClearListView(HWND hListView)
     SendMessage(hListView, LVM_DELETEALLITEMS, 0, 0);
 }
 
+// Function to check if a string is a valid integer
+BOOL IsValidInteger(const char *str)
+{
+    // Allow for a leading + or - sign
+    if (*str == '+' || *str == '-') {
+        str++;
+    }
+    
+    // Empty string or just a sign isn't a valid integer
+    if (*str == '\0') {
+        return FALSE;
+    }
+    
+    // Check that all characters are digits
+    while (*str) {
+        if (!isdigit(*str)) {
+            return FALSE;
+        }
+        str++;
+    }
+    
+    return TRUE;
+}
+
 // Populate the ListView with AMB file data
 void PopulateAmbListView(void) 
 {
@@ -835,11 +860,35 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             break;
             
         case 3: // Pitch Min
-            prgm->minRandomPitch = atoi(newText);
+            if (IsValidInteger(newText)) {
+                prgm->minRandomPitch = atoi(newText);
+            } else {
+                // Invalid integer - play error sound and reject edit
+                MessageBeep(MB_ICONERROR);
+                
+                // Get the current value and restore it in the ListView
+                char buffer[16];
+                sprintf(buffer, "%d", prgm->minRandomPitch);
+                SetListViewItemText(g_hwndListView, row, col, buffer);
+                
+                return FALSE;
+            }
             break;
             
         case 4: // Pitch Max
-            prgm->maxRandomPitch = atoi(newText);
+            if (IsValidInteger(newText)) {
+                prgm->maxRandomPitch = atoi(newText);
+            } else {
+                // Invalid integer - play error sound and reject edit
+                MessageBeep(MB_ICONERROR);
+                
+                // Get the current value and restore it in the ListView
+                char buffer[16];
+                sprintf(buffer, "%d", prgm->maxRandomPitch);
+                SetListViewItemText(g_hwndListView, row, col, buffer);
+                
+                return FALSE;
+            }
             break;
             
         case 5: // Effect Random flag
@@ -857,11 +906,35 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             break;
             
         case 6: // Effect Param 2 (Min)
-            prgm->param2 = atoi(newText);
+            if (IsValidInteger(newText)) {
+                prgm->param2 = atoi(newText);
+            } else {
+                // Invalid integer - play error sound and reject edit
+                MessageBeep(MB_ICONERROR);
+                
+                // Get the current value and restore it in the ListView
+                char buffer[16];
+                sprintf(buffer, "%d", prgm->param2);
+                SetListViewItemText(g_hwndListView, row, col, buffer);
+                
+                return FALSE;
+            }
             break;
             
         case 7: // Effect Param 1 (Max)
-            prgm->param1 = atoi(newText);
+            if (IsValidInteger(newText)) {
+                prgm->param1 = atoi(newText);
+            } else {
+                // Invalid integer - play error sound and reject edit
+                MessageBeep(MB_ICONERROR);
+                
+                // Get the current value and restore it in the ListView
+                char buffer[16];
+                sprintf(buffer, "%d", prgm->param1);
+                SetListViewItemText(g_hwndListView, row, col, buffer);
+                
+                return FALSE;
+            }
             break;
     }
     
