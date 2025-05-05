@@ -35,11 +35,25 @@ void PopulateAmbListView(void);
 #define LVIF_TEXT 0x0001
 #define LVIF_STATE 0x0008
 #define LVIS_STATEIMAGEMASK 0xF000
+#define LVIS_SELECTED 0x0002
 #define LVS_EX_GRIDLINES 0x00000001
 #define LVS_EX_FULLROWSELECT 0x00000020
 #define LVS_EX_CHECKBOXES 0x00000004
 #define LVM_SETEXTENDEDLISTVIEWSTYLE (LVM_FIRST + 54)
 #define LVM_GETEXTENDEDLISTVIEWSTYLE (LVM_FIRST + 55)
+#define LVN_FIRST               (-100)
+#define LVN_BEGINLABELEDIT      (LVN_FIRST-5)
+#define LVN_ENDLABELEDIT        (LVN_FIRST-6)
+#define LVN_COLUMNCLICK         (LVN_FIRST-8)
+#define LVM_GETEDITCONTROL      (LVM_FIRST + 24)
+#define LVM_EDITLABEL           (LVM_FIRST + 23)
+#define LVM_GETITEMTEXT         (LVM_FIRST + 45)
+#define LVM_GETSUBITEMRECT      (LVM_FIRST + 56)
+#define EM_SETSEL               0x00B1
+#define LVIR_BOUNDS             0
+#define LVIR_ICON               1
+#define LVIR_LABEL              2
+#define LVIR_SELECTBOUNDS       3
 
 typedef struct tagLVCOLUMNA {
     UINT mask;
@@ -64,6 +78,27 @@ typedef struct tagLVITEMA {
     LPARAM lParam;
     int iIndent;
 } LVITEMA, *LPLVITEMA;
+
+typedef struct tagNMLVDISPINFOA {
+    NMHDR hdr;
+    LVITEMA item;
+} NMLVDISPINFOA, *LPNMLVDISPINFOA;
+
+typedef struct tagNMITEMACTIVATE {
+    NMHDR hdr;
+    int iItem;
+    int iSubItem;
+    UINT uNewState;
+    UINT uOldState;
+    UINT uChanged;
+    POINT ptAction;
+    LPARAM lParam;
+    UINT uKeyFlags;
+} NMITEMACTIVATE, *LPNMITEMACTIVATE;
+
+#define NM_FIRST        (0U-  0U)
+#define NM_DBLCLK       (NM_FIRST-3)
+#define EN_KILLFOCUS    0x0200
 
 // Minimal declarations for common dialogs (normally from commdlg.h)
 #define OFN_PATHMUSTEXIST    0x00000800
@@ -700,6 +735,152 @@ void PopulateAmbListView(void)
     }
 }
 
+// Handle the beginning of a ListView label edit
+BOOL HandleBeginLabelEdit(HWND hwnd, NMLVDISPINFOA *pInfo)
+{
+    // You can reject edits for specific columns or rows if needed
+    // For now, allow editing all cells
+    return TRUE; // Return TRUE to allow the edit, FALSE to prevent it
+}
+
+// Handle the end of a ListView label edit
+BOOL HandleEndLabelEdit(HWND hwnd, NMLVDISPINFOA *pInfo)
+{
+    // Check if the edit was cancelled
+    if (pInfo->item.pszText == NULL) {
+        return FALSE; // Edit was cancelled, no update needed
+    }
+    
+    // Get the row and column (subitem) being edited
+    int row = pInfo->item.iItem;
+    int col = pInfo->item.iSubItem;
+    char *newText = pInfo->item.pszText;
+    
+    // For debugging: Show which cell was edited
+    char debugMsg[256];
+    sprintf(debugMsg, "Edited Row %d, Column %d: New Value = %s", row, col, newText);
+    MessageBox(hwnd, debugMsg, "Cell Edited", MB_OK | MB_ICONINFORMATION);
+    
+    // TODO: Update the AMB file data based on the edit
+    // This will depend on which column was edited and the corresponding AMB data structure
+    
+    return TRUE; // Return TRUE to accept the edit, FALSE to reject it
+}
+
+// Global variables to track the current edit control's position
+int g_editRow = -1;
+int g_editCol = -1;
+HWND g_hwndEdit = NULL;
+WNDPROC g_oldEditProc = NULL;  // Original window procedure for the edit control
+
+// Custom window procedure for the edit control to handle keyboard input
+LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    switch (uMsg)
+    {
+        case WM_KEYDOWN:
+            switch (wParam)
+            {
+                case VK_RETURN:
+                    // Enter key - accept changes and destroy edit control
+                    if (g_hwndEdit != NULL && g_editRow >= 0 && g_editCol >= 0) {
+                        char buffer[256];
+                        GetWindowText(g_hwndEdit, buffer, sizeof(buffer));
+                        
+                        // Update the ListView item with the new text
+                        SetListViewItemText(g_hwndListView, g_editRow, g_editCol, buffer);
+                        
+                        // Show debug message about what was edited
+                        char debugMsg[256];
+                        sprintf(debugMsg, "Edited Row %d, Column %d: New Value = %s", 
+                                g_editRow, g_editCol, buffer);
+                        MessageBox(GetParent(GetParent(hwnd)), debugMsg, "Cell Edited", MB_OK | MB_ICONINFORMATION);
+                        
+                        // Destroy the edit control
+                        DestroyWindow(g_hwndEdit);
+                        g_hwndEdit = NULL;
+                        g_editRow = -1;
+                        g_editCol = -1;
+                    }
+                    return 0;
+                    
+                case VK_ESCAPE:
+                    // Escape key - cancel edit
+                    if (g_hwndEdit != NULL) {
+                        DestroyWindow(g_hwndEdit);
+                        g_hwndEdit = NULL;
+                        g_editRow = -1;
+                        g_editCol = -1;
+                    }
+                    return 0;
+            }
+            break;
+    }
+    
+    // Call the original window procedure for other messages
+    return CallWindowProc(g_oldEditProc, hwnd, uMsg, wParam, lParam);
+}
+
+// Function to programmatically start editing a ListView subitem
+void EditListViewSubItem(HWND hwndListView, int row, int col)
+{
+    // First select the item
+    LVITEMA lvi = {0};
+    lvi.stateMask = LVIS_SELECTED;
+    lvi.state = LVIS_SELECTED;
+    SendMessage(hwndListView, LVM_SETITEMSTATE, row, (LPARAM)&lvi);
+    
+    // For the first column (col=0), we can use the built-in edit control
+    if (col == 0) {
+        SendMessage(hwndListView, LVM_EDITLABEL, row, 0);
+        return;
+    }
+    
+    // For subitems, we need to create a custom edit control
+    // First get the text of the subitem
+    char buffer[256] = {0};
+    lvi.mask = LVIF_TEXT;
+    lvi.iItem = row;
+    lvi.iSubItem = col;
+    lvi.pszText = buffer;
+    lvi.cchTextMax = sizeof(buffer);
+    SendMessage(hwndListView, LVM_GETITEMTEXT, row, (LPARAM)&lvi);
+    
+    // Create a structure for LVM_GETSUBITEMRECT
+    // The struct needs to have subItem in top and flags in left
+    RECT rect;
+    memset(&rect, 0, sizeof(RECT));
+    rect.top = col;  // subItem index
+    rect.left = LVIR_BOUNDS;  // Type of rectangle (LVIR_BOUNDS for entire cell)
+    SendMessage(hwndListView, LVM_GETSUBITEMRECT, row, (LPARAM)&rect);
+    
+    // If we already have an edit control, destroy it
+    if (g_hwndEdit != NULL) {
+        DestroyWindow(g_hwndEdit);
+        g_hwndEdit = NULL;
+    }
+    
+    // Create an edit control over the subitem
+    g_hwndEdit = CreateWindow(
+        "EDIT", buffer,
+        WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+        rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
+        hwndListView, (HMENU)1000, GetModuleHandle(NULL), NULL);
+    
+    if (g_hwndEdit) {
+        // Store which row and column we're editing
+        g_editRow = row;
+        g_editCol = col;
+        
+        // Subclass the edit control to handle keyboard input
+        g_oldEditProc = (WNDPROC)SetWindowLongPtr(g_hwndEdit, GWLP_WNDPROC, (LONG_PTR)EditSubclassProc);
+        
+        // Set focus to the edit control and select all text
+        SetFocus(g_hwndEdit);
+        SendMessage(g_hwndEdit, EM_SETSEL, 0, -1);
+    }
+}
+
 // Create and initialize the ListView control
 void CreateAmbListView(HWND hwnd) 
 {
@@ -707,7 +888,7 @@ void CreateAmbListView(HWND hwnd)
     g_hwndListView = CreateWindow(
         WC_LISTVIEW,
         "",
-        WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_SINGLESEL | LVS_NOHSCROLL,
+        WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_SINGLESEL | LVS_NOHSCROLL | LVS_EDITLABELS,
         20, 70, // x, y position (below the buttons)
         820, 460, // width, height (fill most of the window)
         hwnd,
@@ -793,6 +974,68 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     // Handle Stop button click
                     StopAmbPreview();
                     return 0;
+                
+                // Check if the command is from the edit control created for subitem editing
+                default:
+                    if (LOWORD(wParam) == 1000 && HIWORD(wParam) == EN_KILLFOCUS) {
+                        // When the edit control loses focus, get its text and update the list view item
+                        if (g_hwndEdit != NULL && g_editRow >= 0 && g_editCol >= 0) {
+                            char buffer[256];
+                            GetWindowText(g_hwndEdit, buffer, sizeof(buffer));
+                            
+                            // Update the ListView item with the new text
+                            SetListViewItemText(g_hwndListView, g_editRow, g_editCol, buffer);
+                            
+                            // Show debug message about what was edited
+                            char debugMsg[256];
+                            sprintf(debugMsg, "Edited Row %d, Column %d: New Value = %s", 
+                                    g_editRow, g_editCol, buffer);
+                            MessageBox(hwnd, debugMsg, "Cell Edited", MB_OK | MB_ICONINFORMATION);
+                            
+                            // Destroy the edit control
+                            DestroyWindow(g_hwndEdit);
+                            g_hwndEdit = NULL;
+                            g_editRow = -1;
+                            g_editCol = -1;
+                        }
+                        return 0;
+                    }
+            }
+            break;
+            
+        case WM_NOTIFY:
+            // Handle control notifications
+            {
+                NMHDR *nmhdr = (NMHDR *)lParam;
+                
+                // Check if the notification is from our ListView
+                if (nmhdr->hwndFrom == g_hwndListView) {
+                    switch (nmhdr->code) {
+                        case LVN_BEGINLABELEDIT:
+                            // Notification when a label edit begins
+                            return HandleBeginLabelEdit(hwnd, (NMLVDISPINFOA *)lParam);
+                            
+                        case LVN_ENDLABELEDIT:
+                            // Notification when a label edit ends
+                            return HandleEndLabelEdit(hwnd, (NMLVDISPINFOA *)lParam);
+                            
+                        case NM_DBLCLK:
+                            // Handle double-click on a ListView item to edit the cell
+                            {
+                                NMITEMACTIVATE *nia = (NMITEMACTIVATE *)lParam;
+                                // Only process if a valid item was clicked
+                                if (nia->iItem != -1) {
+                                    // Start editing the subitem that was clicked
+                                    EditListViewSubItem(g_hwndListView, nia->iItem, nia->iSubItem);
+                                    
+                                    // Tell the system we handled this message
+                                    SetWindowLongPtr(hwnd, DWLP_MSGRESULT, TRUE);
+                                    return TRUE;
+                                }
+                            }
+                            break;
+                    }
+                }
             }
             break;
             
