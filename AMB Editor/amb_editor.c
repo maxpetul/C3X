@@ -14,6 +14,7 @@ void SetListViewItemText(HWND hListView, int row, int col, const char *text);
 void FormatTimeString(char *buffer, int bufferSize, float timestamp);
 void ClearListView(HWND hListView);
 void PopulateAmbListView(void);
+BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText);
 
 // Common Control definitions (normally from commctrl.h)
 #define WC_LISTVIEW "SysListView32"
@@ -148,6 +149,14 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 #define ID_STOP_BUTTON      104
 #define ID_AMB_LISTVIEW     105
 
+// Track info structure to associate ListView rows with AMB data
+typedef struct {
+    int trackIndex;       // MIDI track index
+    int kmapIndex;        // Index of Kmap chunk
+    int prgmIndex;        // Index of Prgm chunk
+    int kmapItemIndex;    // Index of item within Kmap
+} AmbRowInfo;
+
 // Global variables
 char g_civ3MainPath[MAX_PATH_LENGTH] = {0};
 char g_civ3ConquestsPath[MAX_PATH_LENGTH] = {0};
@@ -157,6 +166,10 @@ HWND g_hwndPlayButton = NULL;
 HWND g_hwndStopButton = NULL;
 HWND g_hwndListView = NULL;
 HBRUSH g_hBackgroundBrush = NULL;  // Brush for window background color
+
+// Track info for each row in the ListView
+AmbRowInfo g_rowInfo[MAX_TRACKS];
+int g_rowCount = 0;  // Number of rows in the ListView
 
 // Custom path helpers 
 bool PathFileExists(const char* path)
@@ -620,6 +633,10 @@ void PopulateAmbListView(void)
     // Clear any existing data
     ClearListView(g_hwndListView);
     
+    // Reset row info
+    g_rowCount = 0;
+    memset(g_rowInfo, 0, sizeof(g_rowInfo));
+    
     // Check if we have valid AMB data
     if (g_ambFile.kmapChunkCount == 0 || g_ambFile.prgmChunkCount == 0 || g_ambFile.midi.trackCount == 0) {
         MessageBox(NULL, "AMB file has missing data or is invalid", "Debug", MB_OK);
@@ -651,9 +668,11 @@ void PopulateAmbListView(void)
         
         // Find corresponding Prgm chunk with the matching effect name
         PrgmChunk *matchingPrgm = NULL;
+        int prgmIndex = -1;
         for (int i = 0; i < g_ambFile.prgmChunkCount; i++) {
             if (strcmp(g_ambFile.prgmChunks[i].effectName, trackName) == 0) {
                 matchingPrgm = &g_ambFile.prgmChunks[i];
+                prgmIndex = i;
                 break;
             }
         }
@@ -667,9 +686,11 @@ void PopulateAmbListView(void)
         
         // Find corresponding Kmap chunk with the same var name
         KmapChunk *matchingKmap = NULL;
+        int kmapIndex = -1;
         for (int i = 0; i < g_ambFile.kmapChunkCount; i++) {
             if (strcmp(g_ambFile.kmapChunks[i].varName, varName) == 0) {
                 matchingKmap = &g_ambFile.kmapChunks[i];
+                kmapIndex = i;
                 break;
             }
         }
@@ -713,6 +734,15 @@ void PopulateAmbListView(void)
                     // Add the item to the ListView
                     int row = AddListViewItem(g_hwndListView, 0x7FFFFFFF, timeStr);
                     if (row >= 0) {
+                        // Store the track info for this row
+                        if (g_rowCount < MAX_TRACKS) {
+                            g_rowInfo[g_rowCount].trackIndex = trackIndex;
+                            g_rowInfo[g_rowCount].kmapIndex = kmapIndex;
+                            g_rowInfo[g_rowCount].prgmIndex = prgmIndex;
+                            g_rowInfo[g_rowCount].kmapItemIndex = j;
+                            g_rowCount++;
+                        }
+                        
                         // Set the WAV file name
                         SetListViewItemText(g_hwndListView, row, 1, matchingKmap->items[j].wavFileName);
                         
@@ -743,6 +773,101 @@ BOOL HandleBeginLabelEdit(HWND hwnd, NMLVDISPINFOA *pInfo)
     return TRUE; // Return TRUE to allow the edit, FALSE to prevent it
 }
 
+// Apply an edit to the AMB file data structure
+BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
+{
+    // Make sure we have valid row info
+    if (row >= g_rowCount) {
+        MessageBox(hwnd, "Invalid row index", "Error", MB_OK | MB_ICONERROR);
+        return FALSE;
+    }
+    
+    // Get the track information for this row
+    AmbRowInfo *rowInfo = &g_rowInfo[row];
+    int trackIndex = rowInfo->trackIndex;
+    int kmapIndex = rowInfo->kmapIndex;
+    int prgmIndex = rowInfo->prgmIndex;
+    int kmapItemIndex = rowInfo->kmapItemIndex;
+    
+    // Check if indices are valid
+    if (trackIndex < 0 || trackIndex >= g_ambFile.midi.trackCount ||
+        kmapIndex < 0 || kmapIndex >= g_ambFile.kmapChunkCount ||
+        prgmIndex < 0 || prgmIndex >= g_ambFile.prgmChunkCount ||
+        kmapItemIndex < 0 || kmapItemIndex >= g_ambFile.kmapChunks[kmapIndex].itemCount) {
+        
+        MessageBox(hwnd, "Invalid track indices", "Error", MB_OK | MB_ICONERROR);
+        return FALSE;
+    }
+    
+    // For debugging: Show which cell was edited with track info
+    char debugMsg[512];
+    sprintf(debugMsg, "Edited Row %d, Column %d: New Value = %s\n\nTrack Index: %d\nKmap Index: %d\nPrgm Index: %d\nKmap Item Index: %d", 
+            row, col, newText, trackIndex, kmapIndex, prgmIndex, kmapItemIndex);
+    MessageBox(hwnd, debugMsg, "Cell Edited", MB_OK | MB_ICONINFORMATION);
+    
+    // Get references to the actual AMB data structures
+    PrgmChunk *prgm = &g_ambFile.prgmChunks[prgmIndex];
+    KmapChunk *kmap = &g_ambFile.kmapChunks[kmapIndex];
+    
+    // Update the appropriate field based on the column that was edited
+    switch (col) {
+        case 0: // Time column - can't edit this directly as it's MIDI timing data
+            break;
+            
+        case 1: // WAV filename
+            // Update the WAV filename in the Kmap item
+            strncpy(kmap->items[kmapItemIndex].wavFileName, newText, sizeof(kmap->items[kmapItemIndex].wavFileName) - 1);
+            kmap->items[kmapItemIndex].wavFileName[sizeof(kmap->items[kmapItemIndex].wavFileName) - 1] = '\0';
+            break;
+            
+        case 2: // Pitch Random flag
+            // Update the pitch random flag in the Prgm chunk
+            if (strcmp(newText, "Yes") == 0 || strcmp(newText, "yes") == 0 || 
+                strcmp(newText, "Y") == 0 || strcmp(newText, "y") == 0 || 
+                strcmp(newText, "1") == 0 || strcmp(newText, "true") == 0) {
+                prgm->flags |= 0x01;  // Set bit 0
+            } else {
+                prgm->flags &= ~0x01;  // Clear bit 0
+            }
+            
+            // Update the displayed text for consistency
+            SetListViewItemText(g_hwndListView, row, col, (prgm->flags & 0x01) ? "Yes" : "No");
+            break;
+            
+        case 3: // Pitch Min
+            prgm->minRandomPitch = atoi(newText);
+            break;
+            
+        case 4: // Pitch Max
+            prgm->maxRandomPitch = atoi(newText);
+            break;
+            
+        case 5: // Effect Random flag
+            // Update the effect random flag in the Prgm chunk
+            if (strcmp(newText, "Yes") == 0 || strcmp(newText, "yes") == 0 ||
+                strcmp(newText, "Y") == 0 || strcmp(newText, "y") == 0 ||
+                strcmp(newText, "1") == 0 || strcmp(newText, "true") == 0) {
+                prgm->flags |= 0x02;  // Set bit 1
+            } else {
+                prgm->flags &= ~0x02;  // Clear bit 1
+            }
+            
+            // Update the displayed text for consistency
+            SetListViewItemText(g_hwndListView, row, col, (prgm->flags & 0x02) ? "Yes" : "No");
+            break;
+            
+        case 6: // Effect Param 2 (Min)
+            prgm->param2 = atoi(newText);
+            break;
+            
+        case 7: // Effect Param 1 (Max)
+            prgm->param1 = atoi(newText);
+            break;
+    }
+    
+    return TRUE;
+}
+
 // Handle the end of a ListView label edit
 BOOL HandleEndLabelEdit(HWND hwnd, NMLVDISPINFOA *pInfo)
 {
@@ -756,15 +881,8 @@ BOOL HandleEndLabelEdit(HWND hwnd, NMLVDISPINFOA *pInfo)
     int col = pInfo->item.iSubItem;
     char *newText = pInfo->item.pszText;
     
-    // For debugging: Show which cell was edited
-    char debugMsg[256];
-    sprintf(debugMsg, "Edited Row %d, Column %d: New Value = %s", row, col, newText);
-    MessageBox(hwnd, debugMsg, "Cell Edited", MB_OK | MB_ICONINFORMATION);
-    
-    // TODO: Update the AMB file data based on the edit
-    // This will depend on which column was edited and the corresponding AMB data structure
-    
-    return TRUE; // Return TRUE to accept the edit, FALSE to reject it
+    // Apply the edit to the AMB file data structure
+    return ApplyEditToAmbFile(hwnd, row, col, newText);
 }
 
 // Global variables to track the current edit control's position
@@ -790,11 +908,8 @@ LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
                         // Update the ListView item with the new text
                         SetListViewItemText(g_hwndListView, g_editRow, g_editCol, buffer);
                         
-                        // Show debug message about what was edited
-                        char debugMsg[256];
-                        sprintf(debugMsg, "Edited Row %d, Column %d: New Value = %s", 
-                                g_editRow, g_editCol, buffer);
-                        MessageBox(GetParent(GetParent(hwnd)), debugMsg, "Cell Edited", MB_OK | MB_ICONINFORMATION);
+                        // Apply the edit to the AMB file data structure
+                        ApplyEditToAmbFile(GetParent(GetParent(hwnd)), g_editRow, g_editCol, buffer);
                         
                         // Destroy the edit control
                         DestroyWindow(g_hwndEdit);
@@ -986,11 +1101,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                             // Update the ListView item with the new text
                             SetListViewItemText(g_hwndListView, g_editRow, g_editCol, buffer);
                             
-                            // Show debug message about what was edited
-                            char debugMsg[256];
-                            sprintf(debugMsg, "Edited Row %d, Column %d: New Value = %s", 
-                                    g_editRow, g_editCol, buffer);
-                            MessageBox(hwnd, debugMsg, "Cell Edited", MB_OK | MB_ICONINFORMATION);
+                            // Apply the edit to the AMB file data structure
+                            ApplyEditToAmbFile(hwnd, g_editRow, g_editCol, buffer);
                             
                             // Destroy the edit control
                             DestroyWindow(g_hwndEdit);
