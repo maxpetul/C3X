@@ -16,6 +16,7 @@ void ClearListView(HWND hListView);
 void PopulateAmbListView(void);
 BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText);
 BOOL IsValidInteger(const char *str);
+BOOL IsValidBoolean(const char *str, BOOL *value);
 
 // Common Control definitions (normally from commctrl.h)
 #define WC_LISTVIEW "SysListView32"
@@ -647,6 +648,37 @@ BOOL IsValidInteger(const char *str)
     return TRUE;
 }
 
+// Function to check if a string is a valid boolean value
+BOOL IsValidBoolean(const char *str, BOOL *value)
+{
+    // Check for valid "true" values
+    if (strcmp(str, "Yes") == 0 || 
+        strcmp(str, "yes") == 0 || 
+        strcmp(str, "Y") == 0 || 
+        strcmp(str, "y") == 0 || 
+        strcmp(str, "True") == 0 || 
+        strcmp(str, "true") == 0 || 
+        strcmp(str, "1") == 0) {
+        if (value) *value = TRUE;
+        return TRUE;
+    }
+    
+    // Check for valid "false" values
+    if (strcmp(str, "No") == 0 || 
+        strcmp(str, "no") == 0 || 
+        strcmp(str, "N") == 0 || 
+        strcmp(str, "n") == 0 || 
+        strcmp(str, "False") == 0 || 
+        strcmp(str, "false") == 0 || 
+        strcmp(str, "0") == 0) {
+        if (value) *value = FALSE;
+        return TRUE;
+    }
+    
+    // Invalid boolean value
+    return FALSE;
+}
+
 // Populate the ListView with AMB file data
 void PopulateAmbListView(void) 
 {
@@ -846,17 +878,28 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             break;
             
         case 2: // Pitch Random flag
-            // Update the pitch random flag in the Prgm chunk
-            if (strcmp(newText, "Yes") == 0 || strcmp(newText, "yes") == 0 || 
-                strcmp(newText, "Y") == 0 || strcmp(newText, "y") == 0 || 
-                strcmp(newText, "1") == 0 || strcmp(newText, "true") == 0) {
-                prgm->flags |= 0x01;  // Set bit 0
-            } else {
-                prgm->flags &= ~0x01;  // Clear bit 0
+            {
+                BOOL boolValue;
+                if (IsValidBoolean(newText, &boolValue)) {
+                    // Valid boolean value - update the flag
+                    if (boolValue) {
+                        prgm->flags |= 0x01;  // Set bit 0
+                    } else {
+                        prgm->flags &= ~0x01;  // Clear bit 0
+                    }
+                    
+                    // Update the displayed text for consistency
+                    SetListViewItemText(g_hwndListView, row, col, (prgm->flags & 0x01) ? "Yes" : "No");
+                } else {
+                    // Invalid boolean - play error sound and reject edit
+                    MessageBeep(MB_ICONERROR);
+                    
+                    // Restore the original value in the ListView
+                    SetListViewItemText(g_hwndListView, row, col, (prgm->flags & 0x01) ? "Yes" : "No");
+                    
+                    return FALSE;
+                }
             }
-            
-            // Update the displayed text for consistency
-            SetListViewItemText(g_hwndListView, row, col, (prgm->flags & 0x01) ? "Yes" : "No");
             break;
             
         case 3: // Pitch Min
@@ -892,17 +935,28 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             break;
             
         case 5: // Effect Random flag
-            // Update the effect random flag in the Prgm chunk
-            if (strcmp(newText, "Yes") == 0 || strcmp(newText, "yes") == 0 ||
-                strcmp(newText, "Y") == 0 || strcmp(newText, "y") == 0 ||
-                strcmp(newText, "1") == 0 || strcmp(newText, "true") == 0) {
-                prgm->flags |= 0x02;  // Set bit 1
-            } else {
-                prgm->flags &= ~0x02;  // Clear bit 1
+            {
+                BOOL boolValue;
+                if (IsValidBoolean(newText, &boolValue)) {
+                    // Valid boolean value - update the flag
+                    if (boolValue) {
+                        prgm->flags |= 0x02;  // Set bit 1
+                    } else {
+                        prgm->flags &= ~0x02;  // Clear bit 1
+                    }
+                    
+                    // Update the displayed text for consistency
+                    SetListViewItemText(g_hwndListView, row, col, (prgm->flags & 0x02) ? "Yes" : "No");
+                } else {
+                    // Invalid boolean - play error sound and reject edit
+                    MessageBeep(MB_ICONERROR);
+                    
+                    // Restore the original value in the ListView
+                    SetListViewItemText(g_hwndListView, row, col, (prgm->flags & 0x02) ? "Yes" : "No");
+                    
+                    return FALSE;
+                }
             }
-            
-            // Update the displayed text for consistency
-            SetListViewItemText(g_hwndListView, row, col, (prgm->flags & 0x02) ? "Yes" : "No");
             break;
             
         case 6: // Effect Param 2 (Min)
