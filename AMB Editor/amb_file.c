@@ -115,7 +115,7 @@ AmbFile g_ambFile;
 // Global variable to store current AMB path for the preview feature
 char g_currentAmbPath[MAX_PATH_LENGTH] = {0};
 
-// Helper functions for file parsing
+// Helper functions for file parsing and writing
 unsigned int ReadAmbInt(FILE *file, bool isUnsigned) {
     unsigned char buffer[4];
     fread(buffer, 1, 4, file);
@@ -133,6 +133,66 @@ unsigned int ReadAmbInt(FILE *file, bool isUnsigned) {
     }
     
     return result;
+}
+
+// Helper functions for file writing
+void WriteAmbInt(FILE *file, unsigned int value, bool isUnsigned) {
+    unsigned char buffer[4];
+    
+    // Little endian
+    buffer[0] = value & 0xFF;
+    buffer[1] = (value >> 8) & 0xFF;
+    buffer[2] = (value >> 16) & 0xFF;
+    buffer[3] = (value >> 24) & 0xFF;
+    
+    fwrite(buffer, 1, 4, file);
+}
+
+void WriteMidiInt(FILE *file, unsigned int value, bool isUnsigned) {
+    unsigned char buffer[4];
+    
+    // Big endian
+    buffer[0] = (value >> 24) & 0xFF;
+    buffer[1] = (value >> 16) & 0xFF;
+    buffer[2] = (value >> 8) & 0xFF;
+    buffer[3] = value & 0xFF;
+    
+    fwrite(buffer, 1, 4, file);
+}
+
+void WriteMidiShort(FILE *file, unsigned short value, bool isUnsigned) {
+    unsigned char buffer[2];
+    
+    // Big endian
+    buffer[0] = (value >> 8) & 0xFF;
+    buffer[1] = value & 0xFF;
+    
+    fwrite(buffer, 1, 2, file);
+}
+
+void WriteMidiVarInt(FILE *file, unsigned int value) {
+    unsigned char buffer[4];
+    int numBytes = 0;
+    
+    // Build the bytes from least significant to most significant
+    do {
+        buffer[numBytes++] = (value & 0x7F) | (numBytes > 0 ? 0x80 : 0);
+        value >>= 7;
+    } while (value > 0 && numBytes < 4);
+    
+    // Write the bytes in reverse order
+    for (int i = numBytes - 1; i >= 0; i--) {
+        // Clear the continuation bit for the last byte
+        if (i == 0) {
+            buffer[i] &= 0x7F;
+        }
+        fwrite(&buffer[i], 1, 1, file);
+    }
+}
+
+void WriteString(FILE *file, const char *str) {
+    // Write null-terminated string
+    fwrite(str, 1, strlen(str) + 1, file);
 }
 
 unsigned int ReadMidiInt(FILE *file, bool isUnsigned) {
@@ -533,6 +593,10 @@ bool ParseMidi(FILE *file, MidiData *midi) {
     return true;
 }
 
+// Function declarations
+bool LoadAmbFile(const char *filePath);
+bool SaveAmbFile(const char *filePath);
+
 // Load AMB file
 bool LoadAmbFile(const char *filePath) {
     FILE *file = fopen(filePath, "rb");
@@ -608,6 +672,312 @@ bool LoadAmbFile(const char *filePath) {
     // If successful, update the current AMB path
     if (success) {
         strcpy(g_currentAmbPath, filePath);
+    }
+    
+    return success;
+}
+
+// Functions to write AMB file chunks
+bool WritePrgmChunk(FILE *file, PrgmChunk *chunk) {
+    // Write tag
+    fwrite("prgm", 1, 4, file);
+    
+    // Write chunk data
+    WriteAmbInt(file, chunk->size, true);
+    WriteAmbInt(file, chunk->number, true);
+    WriteAmbInt(file, chunk->flags, false);
+    WriteAmbInt(file, chunk->maxRandomPitch, false);
+    WriteAmbInt(file, chunk->minRandomPitch, false);
+    WriteAmbInt(file, chunk->param1, false);
+    WriteAmbInt(file, chunk->param2, false);
+    
+    // Write end marker before strings
+    WriteAmbInt(file, 0xFA, true);
+    
+    // Write strings
+    WriteString(file, chunk->effectName);
+    WriteString(file, chunk->varName);
+    
+    return true;
+}
+
+bool WriteKmapChunk(FILE *file, KmapChunk *chunk) {
+    // Write tag
+    fwrite("kmap", 1, 4, file);
+    
+    // Write chunk data
+    WriteAmbInt(file, chunk->size, true);
+    WriteAmbInt(file, chunk->flags, true);
+    WriteAmbInt(file, chunk->param1, true);
+    WriteAmbInt(file, chunk->param2, true);
+    
+    // Write variable name
+    WriteString(file, chunk->varName);
+    
+    // Write item count
+    WriteAmbInt(file, chunk->itemCount, true);
+    
+    // Write item size if needed
+    if ((chunk->flags & 6) != 0) {
+        WriteAmbInt(file, chunk->itemSize, true);
+    }
+    
+    // Write items
+    for (int i = 0; i < chunk->itemCount && i < MAX_ITEMS; i++) {
+        if ((chunk->flags & 6) == 0) {
+            // Not used in Civ3, but we should still write placeholder data
+            WriteAmbInt(file, 0, true);  // Placeholder for aint1
+            WriteAmbInt(file, 0, true);  // Placeholder for aint2
+        } else {
+            // Write the data block
+            fwrite(chunk->items[i].data, 1, chunk->itemSize, file);
+        }
+        
+        // Write WAV filename
+        WriteString(file, chunk->items[i].wavFileName);
+    }
+    
+    // Write end marker
+    WriteAmbInt(file, 0xFA, true);
+    
+    return true;
+}
+
+bool WriteGlblChunk(FILE *file, GlblChunk *chunk) {
+    // Write tag
+    fwrite("glbl", 1, 4, file);
+    
+    // Write chunk size
+    WriteAmbInt(file, chunk->size, true);
+    
+    // Write data size
+    WriteAmbInt(file, chunk->dataSize, true);
+    
+    // Write data
+    fwrite(chunk->data, 1, chunk->dataSize, file);
+    
+    // Write extra data if present
+    if (chunk->extraDataSize > 0) {
+        fwrite(chunk->extraData, 1, chunk->extraDataSize, file);
+    }
+    
+    return true;
+}
+
+bool WriteMidiEvent(FILE *file, MidiEvent *event) {
+    // Write delta time
+    WriteMidiVarInt(file, event->deltaTime);
+    
+    // Write event data based on type
+    switch (event->type) {
+        case EVENT_TRACK_NAME:
+            fputc(0xFF, file);  // Meta event
+            fputc(0x03, file);  // Track name
+            
+            // Length of the name
+            WriteMidiVarInt(file, strlen(event->data.trackName.name));
+            
+            // Name data
+            fwrite(event->data.trackName.name, 1, strlen(event->data.trackName.name), file);
+            break;
+            
+        case EVENT_SMPTE_OFFSET:
+            fputc(0xFF, file);  // Meta event
+            fputc(0x54, file);  // SMPTE offset
+            fputc(0x05, file);  // Length is always 5
+            
+            // SMPTE data
+            fputc(event->data.smpteOffset.hr, file);
+            fputc(event->data.smpteOffset.mn, file);
+            fputc(event->data.smpteOffset.se, file);
+            fputc(event->data.smpteOffset.fr, file);
+            fputc(event->data.smpteOffset.ff, file);
+            break;
+            
+        case EVENT_TIME_SIGNATURE:
+            fputc(0xFF, file);  // Meta event
+            fputc(0x58, file);  // Time signature
+            fputc(0x04, file);  // Length is always 4
+            
+            // Time signature data
+            fputc(event->data.timeSignature.nn, file);
+            fputc(event->data.timeSignature.dd, file);
+            fputc(event->data.timeSignature.cc, file);
+            fputc(event->data.timeSignature.bb, file);
+            break;
+            
+        case EVENT_SET_TEMPO:
+            fputc(0xFF, file);  // Meta event
+            fputc(0x51, file);  // Set tempo
+            fputc(0x03, file);  // Length is always 3
+            
+            // Tempo data (microseconds per quarter note)
+            unsigned int tempo = event->data.setTempo.microsecondsPerQuarterNote;
+            fputc((tempo >> 16) & 0xFF, file);
+            fputc((tempo >> 8) & 0xFF, file);
+            fputc(tempo & 0xFF, file);
+            break;
+            
+        case EVENT_END_OF_TRACK:
+            fputc(0xFF, file);  // Meta event
+            fputc(0x2F, file);  // End of track
+            fputc(0x00, file);  // Length is always 0
+            break;
+            
+        case EVENT_CONTROL_CHANGE:
+            // Control change status byte: 0xBn, where n is the channel number
+            fputc(0xB0 | (event->data.controlChange.channelNumber & 0x0F), file);
+            
+            // Controller number and value
+            fputc(event->data.controlChange.controllerNumber & 0x7F, file);
+            fputc(event->data.controlChange.value & 0x7F, file);
+            break;
+            
+        case EVENT_PROGRAM_CHANGE:
+            // Program change status byte: 0xCn, where n is the channel number
+            fputc(0xC0 | (event->data.programChange.channelNumber & 0x0F), file);
+            
+            // Program number
+            fputc(event->data.programChange.programNumber & 0x7F, file);
+            break;
+            
+        case EVENT_NOTE_OFF:
+            // Note off status byte: 0x8n, where n is the channel number
+            fputc(0x80 | (event->data.noteOff.channelNumber & 0x0F), file);
+            
+            // Key and velocity
+            fputc(event->data.noteOff.key & 0x7F, file);
+            fputc(event->data.noteOff.velocity & 0x7F, file);
+            break;
+            
+        case EVENT_NOTE_ON:
+            // Note on status byte: 0x9n, where n is the channel number
+            fputc(0x90 | (event->data.noteOn.channelNumber & 0x0F), file);
+            
+            // Key and velocity
+            fputc(event->data.noteOn.key & 0x7F, file);
+            fputc(event->data.noteOn.velocity & 0x7F, file);
+            break;
+            
+        case EVENT_UNKNOWN:
+            // For unknown events, write the raw data
+            if (event->data.unknown.dataLength > 0) {
+                fwrite(event->data.unknown.data, 1, event->data.unknown.dataLength, file);
+            }
+            break;
+    }
+    
+    return true;
+}
+
+bool WriteMidiTrack(FILE *file, MidiTrack *track) {
+    // Write track tag
+    fwrite("MTrk", 1, 4, file);
+    
+    // We need to calculate track size, so we'll save the current position,
+    // write a placeholder, write the events, then come back and update it
+    long sizePos = ftell(file);
+    
+    // Write placeholder for size
+    WriteMidiInt(file, 0, true);
+    
+    // Save position at start of track data
+    long startPos = ftell(file);
+    
+    // Write track events
+    for (int i = 0; i < track->eventCount; i++) {
+        WriteMidiEvent(file, &track->events[i]);
+    }
+    
+    // Get end position and calculate size
+    long endPos = ftell(file);
+    unsigned int trackSize = (unsigned int)(endPos - startPos);
+    
+    // Go back and write the actual size
+    fseek(file, sizePos, SEEK_SET);
+    WriteMidiInt(file, trackSize, true);
+    
+    // Return to the end of the track
+    fseek(file, endPos, SEEK_SET);
+    
+    return true;
+}
+
+bool WriteMidi(FILE *file, MidiData *midi) {
+    // Write MIDI header
+    fwrite("MThd", 1, 4, file);
+    
+    // Header size is always 6
+    WriteMidiInt(file, 6, true);
+    
+    // Write format, track count, and division
+    WriteMidiShort(file, midi->format, false);
+    WriteMidiShort(file, midi->trackCount, false);
+    WriteMidiShort(file, midi->ticksPerQuarterNote, false);
+    
+    // Write all tracks
+    for (int i = 0; i < midi->trackCount; i++) {
+        if (!WriteMidiTrack(file, &midi->tracks[i])) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+// Function to save AMB file to the specified path
+bool SaveAmbFile(const char *filePath) {
+    FILE *file = fopen(filePath, "wb");
+    if (!file) {
+        MessageBox(NULL, "Failed to create output AMB file", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    
+    bool success = true;
+    
+    // Write Prgm chunks
+    for (int i = 0; i < g_ambFile.prgmChunkCount; i++) {
+        if (!WritePrgmChunk(file, &g_ambFile.prgmChunks[i])) {
+            success = false;
+            break;
+        }
+    }
+    
+    // Write Kmap chunks
+    if (success) {
+        for (int i = 0; i < g_ambFile.kmapChunkCount; i++) {
+            if (!WriteKmapChunk(file, &g_ambFile.kmapChunks[i])) {
+                success = false;
+                break;
+            }
+        }
+    }
+    
+    // Write Glbl chunk if present
+    if (success && g_ambFile.hasGlblChunk) {
+        if (!WriteGlblChunk(file, &g_ambFile.glblChunk)) {
+            success = false;
+        }
+    }
+    
+    // Write MIDI data
+    if (success) {
+        if (!WriteMidi(file, &g_ambFile.midi)) {
+            success = false;
+        }
+    }
+    
+    fclose(file);
+    
+    // If successful, update the current AMB path
+    if (success) {
+        strcpy(g_currentAmbPath, filePath);
+    } else {
+        // Remove the file if we failed
+        if (remove(filePath) != 0) {
+            // Failed to remove the file, but we don't want to fail the entire operation
+            // just because of this
+        }
     }
     
     return success;
