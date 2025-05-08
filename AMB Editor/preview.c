@@ -125,14 +125,13 @@ void StopAmbPreview()
     }
 }
 
-#define MAX_WAV_FILES 100
 #define TEMP_DIR "AMBEditorTemp"
 #ifndef MAX_PATH
 #define MAX_PATH 260
 #endif
 
-// Create a temporary directory for AMB previewing
-BOOL CreateTempDirectory(char *tempDirPath, size_t tempDirPathSize)
+// Prepare temporary directory for AMB previewing, cleaning any existing WAV files
+BOOL PrepareTempDirectory(char *tempDirPath, size_t tempDirPathSize)
 {
     char tempPath[MAX_PATH];
     DWORD result = GetTempPath(MAX_PATH, tempPath);
@@ -148,6 +147,33 @@ BOOL CreateTempDirectory(char *tempDirPath, size_t tempDirPathSize)
         if (!CreateDirectory(tempDirPath, NULL)) {
             return FALSE;
         }
+    }
+    
+    // Try to clean up existing WAV files
+    WIN32_FIND_DATA findData;
+    char searchPattern[MAX_PATH];
+    
+    // Try to delete all files in the directory
+    snprintf(searchPattern, MAX_PATH, "%s\\*.*", tempDirPath);
+    HANDLE hFind = FindFirstFile(searchPattern, &findData);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            // Skip . and .. directory entries
+            if (strcmp(findData.cFileName, ".") == 0 || 
+                strcmp(findData.cFileName, "..") == 0) {
+                continue;
+            }
+            
+            // Check if it's a file, not a directory
+            if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                char filePath[MAX_PATH];
+                snprintf(filePath, MAX_PATH, "%s\\%s", tempDirPath, findData.cFileName);
+                
+                // Try to delete the file (ignoring errors)
+                DeleteFile(filePath);
+            }
+        } while (FindNextFile(hFind, &findData));
+        FindClose(hFind);
     }
     
     return TRUE;
@@ -207,8 +233,8 @@ void PreviewAmbFile(char *filePath)
         char tempDirPath[MAX_PATH_LENGTH];
         char tempFilePath[MAX_PATH_LENGTH];
         
-        // Create a temporary directory for our files
-        if (CreateTempDirectory(tempDirPath, MAX_PATH_LENGTH)) {
+        // Prepare a temporary directory for our files and clean existing WAV files
+        if (PrepareTempDirectory(tempDirPath, MAX_PATH_LENGTH)) {
             // Generate a temp file path for the AMB
             snprintf(tempFilePath, MAX_PATH_LENGTH, "%s\\temp.amb", tempDirPath);
             
@@ -216,11 +242,6 @@ void PreviewAmbFile(char *filePath)
             if (SaveAmbFile(tempFilePath)) {
                 // Copy all WAV files referenced by the AMB to the temp directory
                 if (CopyWavFilesToTempDir(&g_ambFile, tempDirPath)) {
-                    // Show debug message with temp file path
-                    char debugMsg[MAX_PATH_LENGTH + 100];
-                    snprintf(debugMsg, sizeof(debugMsg), "Previewing from temp file:\n%s", tempFilePath);
-                    MessageBox(NULL, debugMsg, "Debug Info", MB_OK | MB_ICONINFORMATION);
-                    
                     // Use this temp file for previewing
                     filePath = tempFilePath;
                 }
