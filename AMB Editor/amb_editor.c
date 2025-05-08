@@ -17,6 +17,8 @@ void PopulateAmbListView(void);
 BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText);
 BOOL IsValidInteger(const char *str);
 BOOL IsValidBoolean(const char *str, BOOL *value);
+void LoadAmbFileWithDialog(HWND hwnd);
+void SaveAmbFileWithDialog(HWND hwnd);
 
 // Common Control definitions (normally from commctrl.h)
 #define WC_LISTVIEW "SysListView32"
@@ -142,8 +144,9 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 
 // Menu IDs
 #define IDM_FILE_OPEN       1001
-#define IDM_FILE_EXIT       1002
-#define IDM_HELP_ABOUT      1003
+#define IDM_FILE_SAVE       1002
+#define IDM_FILE_EXIT       1003
+#define IDM_HELP_ABOUT      1004
 
 // Control IDs 
 #define ID_PATH_EDIT        102
@@ -296,6 +299,67 @@ void LoadAmbFileWithDialog(HWND hwnd)
             
             // Populate the ListView with the loaded AMB file data
             PopulateAmbListView();
+        }
+    }
+}
+
+// Browse for a file to save
+BOOL BrowseForSaveFile(HWND hwnd, char *filePath, int maxLength)
+{
+    OPENFILENAMEA ofn;
+    ZeroMemory(&ofn, sizeof(ofn));
+    
+    // Initialize the filePath with current file if any
+    if (g_ambFile.filePath[0] != '\0') {
+        strncpy(filePath, g_ambFile.filePath, maxLength);
+    }
+    
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd;
+    ofn.lpstrFilter = "AMB Files (*.amb)\0*.amb\0All Files (*.*)\0*.*\0";
+    ofn.lpstrFile = filePath;
+    ofn.nMaxFile = maxLength;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_NOCHANGEDIR | OFN_EXPLORER;
+    ofn.lpstrDefExt = "amb";
+    ofn.lpstrTitle = "Save AMB File";
+    
+    return GetSaveFileNameA(&ofn);
+}
+
+// Save AMB file with a dialog
+void SaveAmbFileWithDialog(HWND hwnd)
+{
+    if (g_ambFile.filePath[0] == '\0') {
+        MessageBox(hwnd, "No AMB file loaded. Please load a file first.", "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    char filePath[MAX_PATH_LENGTH] = {0};
+    
+    if (BrowseForSaveFile(hwnd, filePath, MAX_PATH_LENGTH))
+    {
+        // Try to save the AMB file
+        if (SaveAmbFile(filePath))
+        {
+            // Extract the filename part from the path
+            char *fileName = strrchr(filePath, '\\');
+            if (fileName) {
+                fileName++; // Skip past the backslash
+            } else {
+                fileName = (char*)filePath; // No backslash found, use the whole path
+            }
+            
+            char windowTitle[MAX_PATH_LENGTH + 20];
+            snprintf(windowTitle, sizeof windowTitle, "%s - AMB Editor", fileName);
+            windowTitle[(sizeof windowTitle) - 1] = '\0';
+            SetWindowText(g_hwndMainWindow, windowTitle);
+            
+            // Show success message
+            MessageBox(hwnd, "AMB file saved successfully.", "Success", MB_OK | MB_ICONINFORMATION);
+        }
+        else
+        {
+            MessageBox(hwnd, "Failed to save AMB file.", "Error", MB_OK | MB_ICONERROR);
         }
     }
 }
@@ -1189,6 +1253,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     LoadAmbFileWithDialog(hwnd);
                     return 0;
                     
+                case IDM_FILE_SAVE:
+                    // Show save file dialog to save an AMB file
+                    SaveAmbFileWithDialog(hwnd);
+                    return 0;
+                    
                 case IDM_FILE_EXIT:
                     // Exit the application
                     PostMessage(hwnd, WM_CLOSE, 0, 0);
@@ -1321,6 +1390,7 @@ HMENU CreateAmbEditorMenu()
     // File menu
     hFileMenu = CreatePopupMenu();
     AppendMenu(hFileMenu, MF_STRING, IDM_FILE_OPEN, "&Open AMB File...");
+    AppendMenu(hFileMenu, MF_STRING, IDM_FILE_SAVE, "&Save AMB File...");
     AppendMenu(hFileMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hFileMenu, MF_STRING, IDM_FILE_EXIT, "E&xit");
     
