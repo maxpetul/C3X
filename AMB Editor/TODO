@@ -1,0 +1,14 @@
+- Make sure previews properly reflect changes in the editor. It may be necessary to create a unique AMB file each time due to sound.dll locking the files.
+- Does PreviewAmbFile need to take any parameter at all? Actually, it should take the AMB object itself instead of a file path now.
+- Forbid editing slashes into WAV file names
+- Add undo & redo functions
+- Add window showing AMB file text description
+
+Final things:
+- Harden all the various s(n)printf calls against buffer overflow
+- Update About popup
+- Include AMB Editor in assemble_release.bat
+
+Low priority:
+- Figure out how to dispose of SoundCore objects properly
+  - This will also mean we can clean up the temp directory more quickly
