@@ -1,6 +1,10 @@
 
 // This file gets #included into amb_editor.c
 
+// Forward declarations for functions defined in amb_editor.c
+extern bool PathIsDirectory(const char* path);
+extern bool PathFileExists(const char* path);
+
 // Using fastcall to substitute for lack of thiscall on a C compiler, as usual. This is the dummy second param.
 #define __ 0
 
@@ -121,9 +125,110 @@ void StopAmbPreview()
     }
 }
 
+#define MAX_WAV_FILES 100
+#define TEMP_DIR "AMBEditorTemp"
+#ifndef MAX_PATH
+#define MAX_PATH 260
+#endif
+
+// Create a temporary directory for AMB previewing
+BOOL CreateTempDirectory(char *tempDirPath, size_t tempDirPathSize)
+{
+    char tempPath[MAX_PATH];
+    DWORD result = GetTempPath(MAX_PATH, tempPath);
+    if (result == 0 || result > MAX_PATH) {
+        return FALSE;
+    }
+    
+    // Generate a unique subdirectory for our editor
+    snprintf(tempDirPath, tempDirPathSize, "%s%s", tempPath, TEMP_DIR);
+    
+    // Create the directory if it doesn't exist
+    if (!PathIsDirectory(tempDirPath)) {
+        if (!CreateDirectory(tempDirPath, NULL)) {
+            return FALSE;
+        }
+    }
+    
+    return TRUE;
+}
+
+// Copy WAV files referenced by the AMB to the temp directory
+BOOL CopyWavFilesToTempDir(AmbFile *ambFile, char *tempDirPath)
+{
+    char sourcePath[MAX_PATH_LENGTH];
+    char targetPath[MAX_PATH_LENGTH];
+    BOOL success = TRUE;
+    
+    // Get the directory of the original AMB file to find the WAV files
+    char ambDir[MAX_PATH_LENGTH];
+    strncpy(ambDir, ambFile->filePath, MAX_PATH_LENGTH);
+    ambDir[MAX_PATH_LENGTH - 1] = '\0';
+    
+    // Find the last backslash in the path
+    char *lastBackslash = strrchr(ambDir, '\\');
+    if (lastBackslash != NULL) {
+        *lastBackslash = '\0'; // Truncate the path at the last backslash
+    }
+    
+    // For each Kmap chunk, copy any referenced WAV files
+    for (int i = 0; i < ambFile->kmapChunkCount; i++) {
+        KmapChunk *chunk = &ambFile->kmapChunks[i];
+        
+        // For each item in the Kmap chunk, copy its WAV file
+        for (int j = 0; j < chunk->itemCount && j < MAX_ITEMS; j++) {
+            const char *wavFileName = chunk->items[j].wavFileName;
+            
+            // Skip if no WAV file is specified
+            if (strlen(wavFileName) == 0) {
+                continue;
+            }
+            
+            // Construct the source and target paths
+            snprintf(sourcePath, MAX_PATH_LENGTH, "%s\\%s", ambDir, wavFileName);
+            snprintf(targetPath, MAX_PATH_LENGTH, "%s\\%s", tempDirPath, wavFileName);
+            
+            // Copy the file
+            if (!CopyFile(sourcePath, targetPath, FALSE)) {
+                success = FALSE;
+            }
+        }
+    }
+    
+    return success;
+}
+
 void PreviewAmbFile(char *filePath)
 {
     StopAmbPreview();
+    
+    // If we have an AMB loaded in memory, save it to a temporary file first
+    if (g_ambFile.filePath[0] != '\0') {
+        char tempDirPath[MAX_PATH_LENGTH];
+        char tempFilePath[MAX_PATH_LENGTH];
+        
+        // Create a temporary directory for our files
+        if (CreateTempDirectory(tempDirPath, MAX_PATH_LENGTH)) {
+            // Generate a temp file path for the AMB
+            snprintf(tempFilePath, MAX_PATH_LENGTH, "%s\\temp.amb", tempDirPath);
+            
+            // Save the current AMB to the temp file
+            if (SaveAmbFile(tempFilePath)) {
+                // Copy all WAV files referenced by the AMB to the temp directory
+                if (CopyWavFilesToTempDir(&g_ambFile, tempDirPath)) {
+                    // Show debug message with temp file path
+                    char debugMsg[MAX_PATH_LENGTH + 100];
+                    snprintf(debugMsg, sizeof(debugMsg), "Previewing from temp file:\n%s", tempFilePath);
+                    MessageBox(NULL, debugMsg, "Debug Info", MB_OK | MB_ICONINFORMATION);
+                    
+                    // Use this temp file for previewing
+                    filePath = tempFilePath;
+                }
+            }
+        }
+    }
+    
+    // Play the AMB file (either the original or our temp copy)
     CreateSound(&playingCore, NULL, SCT_AMB);
     if (playingCore != NULL) {
         playingCore->vtable->LoadFile(playingCore, __, filePath);

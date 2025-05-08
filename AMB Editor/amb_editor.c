@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "preview.c"
 #include "amb_file.c"
+#include "preview.c"
 
 // Forward declarations for ListView functions
 void AddListViewColumn(HWND hListView, int index, char *title, int width);
@@ -1273,8 +1273,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     
                 case ID_PLAY_BUTTON:
                     // Handle Play button click
-                    if (strlen(g_currentAmbPath) > 0) {
-                        PreviewAmbFile(g_currentAmbPath);
+                    if (g_ambFile.filePath[0] != '\0') {
+                        // Use empty string here since PreviewAmbFile now handles
+                        // the temp file creation if g_ambFile is loaded
+                        PreviewAmbFile("");
                     } else {
                         MessageBox(hwnd, "No AMB file loaded. Please open an AMB file first.", 
                                    "Error", MB_OK | MB_ICONINFORMATION);
