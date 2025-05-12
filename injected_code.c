@@ -10870,9 +10870,9 @@ patch_Unit_check_rebase_target (Unit * this, int edx, int tile_x, int tile_y)
 }
 
 bool __fastcall
-patch_Unit_is_in_op_range_for_ai_rebase (Unit * this, int edx, int tile_x, int tile_y)
+patch_Unit_is_in_rebase_range (Unit * this, int edx, int tile_x, int tile_y)
 {
-	return Unit_is_in_operational_range (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+	return Unit_is_in_rebase_range (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
 }
 
 int __fastcall
