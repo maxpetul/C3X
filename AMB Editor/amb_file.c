@@ -17,10 +17,10 @@ typedef struct {
     int size;
     int number;
     int flags;
-    int maxRandomPitch;
-    int minRandomPitch;
-    int param1;
-    int param2;
+    int maxRandomSpeed;
+    int minRandomSpeed;
+    int maxRandomVolume;
+    int minRandomVolume;
     char effectName[256];
     char varName[256];
 } PrgmChunk;
@@ -261,10 +261,10 @@ bool ParsePrgmChunk(FILE *file, PrgmChunk *chunk) {
     chunk->size = ReadAmbInt(file, true);
     chunk->number = ReadAmbInt(file, true);
     chunk->flags = ReadAmbInt(file, false);
-    chunk->maxRandomPitch = ReadAmbInt(file, false);
-    chunk->minRandomPitch = ReadAmbInt(file, false);
-    chunk->param1 = ReadAmbInt(file, false);
-    chunk->param2 = ReadAmbInt(file, false);
+    chunk->maxRandomSpeed = ReadAmbInt(file, false);
+    chunk->minRandomSpeed = ReadAmbInt(file, false);
+    chunk->maxRandomVolume = ReadAmbInt(file, false);
+    chunk->minRandomVolume = ReadAmbInt(file, false);
     
     // Read end marker
     unsigned int endMarker = ReadAmbInt(file, true);
@@ -686,10 +686,10 @@ bool WritePrgmChunk(FILE *file, PrgmChunk *chunk) {
     WriteAmbInt(file, chunk->size, true);
     WriteAmbInt(file, chunk->number, true);
     WriteAmbInt(file, chunk->flags, false);
-    WriteAmbInt(file, chunk->maxRandomPitch, false);
-    WriteAmbInt(file, chunk->minRandomPitch, false);
-    WriteAmbInt(file, chunk->param1, false);
-    WriteAmbInt(file, chunk->param2, false);
+    WriteAmbInt(file, chunk->maxRandomSpeed, false);
+    WriteAmbInt(file, chunk->minRandomSpeed, false);
+    WriteAmbInt(file, chunk->maxRandomVolume, false);
+    WriteAmbInt(file, chunk->minRandomVolume, false);
     
     // Write end marker before strings
     WriteAmbInt(file, 0xFA, true);
@@ -1001,15 +1001,15 @@ void DescribeAmbFile(char *buffer, size_t bufferSize) {
                     "  Size: %d\n"
                     "  Number: %d\n"
                     "  Flags: %d\n"
-                    "  Max Random Pitch: %d\n"
-                    "  Min Random Pitch: %d\n"
-                    "  Param1: %d\n"
-                    "  Param2: %d\n"
+                    "  Max Random Speed: %d\n"
+                    "  Min Random Speed: %d\n"
+                    "  Max Random Volume: %d\n"
+                    "  Min Random Volume: %d\n"
                     "  Effect Name: '%s'\n"
                     "  Var Name: '%s'\n\n",
                     i + 1, chunk->size, chunk->number, chunk->flags,
-                    chunk->maxRandomPitch, chunk->minRandomPitch,
-                    chunk->param1, chunk->param2,
+                    chunk->maxRandomSpeed, chunk->minRandomSpeed,
+                    chunk->maxRandomVolume, chunk->minRandomVolume,
                     chunk->effectName, chunk->varName);
         pos += written;
         remainingSize -= written;

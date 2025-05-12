@@ -834,21 +834,21 @@ void PopulateAmbListView(void)
                 char timeStr[32];
                 FormatTimeString(timeStr, sizeof(timeStr), timestamp);
                 
-                // Format pitch information
-                char pitchMinStr[32];
-                char pitchMaxStr[32];
-                snprintf(pitchMinStr, sizeof(pitchMinStr), "%d", matchingPrgm->minRandomPitch);
-                snprintf(pitchMaxStr, sizeof(pitchMaxStr), "%d", matchingPrgm->maxRandomPitch);
+                // Format speed information
+                char speedMaxStr[32];
+                char speedMinStr[32];
+                snprintf(speedMaxStr, sizeof(speedMaxStr), "%d", matchingPrgm->maxRandomSpeed);
+                snprintf(speedMinStr, sizeof(speedMinStr), "%d", matchingPrgm->minRandomSpeed);
                 
-                // Format effect parameter information
-                char effectParam1Str[32];
-                char effectParam2Str[32];
-                snprintf(effectParam1Str, sizeof(effectParam1Str), "%d", matchingPrgm->param1);
-                snprintf(effectParam2Str, sizeof(effectParam2Str), "%d", matchingPrgm->param2);
+                // Format volume parameter information
+                char volumeMaxStr[32];
+                char volumeMinStr[32];
+                snprintf(volumeMaxStr, sizeof(volumeMaxStr), "%d", matchingPrgm->maxRandomVolume);
+                snprintf(volumeMinStr, sizeof(volumeMinStr), "%d", matchingPrgm->minRandomVolume);
                 
-                // Check flags for randomization settings (LSB = pitch random, bit 1 = effect random)
-                bool hasPitchRandom = (matchingPrgm->flags & 0x01) != 0;
-                bool hasEffectRandom = (matchingPrgm->flags & 0x02) != 0;
+                // Check flags for randomization settings (LSB = speed random, bit 1 = volume random)
+                bool hasSpeedRandom  = (matchingPrgm->flags & 0x01) != 0;
+                bool hasVolumeRandom = (matchingPrgm->flags & 0x02) != 0;
                 
                 // For each item in the kmap (usually just one WAV file per track)
                 for (int j = 0; j < matchingKmap->itemCount; j++) {
@@ -867,15 +867,15 @@ void PopulateAmbListView(void)
                         // Set the WAV file name
                         SetListViewItemText(g_hwndListView, row, 1, matchingKmap->items[j].wavFileName);
                         
-                        // Set pitch information
-                        SetListViewItemText(g_hwndListView, row, 2, hasPitchRandom ? "Yes" : "No");
-                        SetListViewItemText(g_hwndListView, row, 3, pitchMinStr);
-                        SetListViewItemText(g_hwndListView, row, 4, pitchMaxStr);
+                        // Set speed information
+                        SetListViewItemText(g_hwndListView, row, 2, hasSpeedRandom ? "Yes" : "No");
+                        SetListViewItemText(g_hwndListView, row, 3, speedMinStr);
+                        SetListViewItemText(g_hwndListView, row, 4, speedMaxStr);
                         
-                        // Set effect information
-                        SetListViewItemText(g_hwndListView, row, 5, hasEffectRandom ? "Yes" : "No");
-                        SetListViewItemText(g_hwndListView, row, 6, effectParam2Str);  // Param2 (Min)
-                        SetListViewItemText(g_hwndListView, row, 7, effectParam1Str);  // Param1 (Max)
+                        // Set volume information
+                        SetListViewItemText(g_hwndListView, row, 5, hasVolumeRandom ? "Yes" : "No");
+                        SetListViewItemText(g_hwndListView, row, 6, volumeMinStr);
+                        SetListViewItemText(g_hwndListView, row, 7, volumeMaxStr);
                     }
                 }
                 
@@ -941,7 +941,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             kmap->items[kmapItemIndex].wavFileName[sizeof(kmap->items[kmapItemIndex].wavFileName) - 1] = '\0';
             break;
             
-        case 2: // Pitch Random flag
+        case 2: // Speed Random flag
             {
                 BOOL boolValue;
                 if (IsValidBoolean(newText, &boolValue)) {
@@ -966,39 +966,39 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             }
             break;
             
-        case 3: // Pitch Min
+        case 3: // Speed Min
             if (IsValidInteger(newText)) {
-                prgm->minRandomPitch = atoi(newText);
+                prgm->minRandomSpeed = atoi(newText);
             } else {
                 // Invalid integer - play error sound and reject edit
                 MessageBeep(MB_ICONERROR);
                 
                 // Get the current value and restore it in the ListView
                 char buffer[16];
-                sprintf(buffer, "%d", prgm->minRandomPitch);
+                sprintf(buffer, "%d", prgm->minRandomSpeed);
                 SetListViewItemText(g_hwndListView, row, col, buffer);
                 
                 return FALSE;
             }
             break;
             
-        case 4: // Pitch Max
+        case 4: // Speed Max
             if (IsValidInteger(newText)) {
-                prgm->maxRandomPitch = atoi(newText);
+                prgm->maxRandomSpeed = atoi(newText);
             } else {
                 // Invalid integer - play error sound and reject edit
                 MessageBeep(MB_ICONERROR);
                 
                 // Get the current value and restore it in the ListView
                 char buffer[16];
-                sprintf(buffer, "%d", prgm->maxRandomPitch);
+                sprintf(buffer, "%d", prgm->maxRandomSpeed);
                 SetListViewItemText(g_hwndListView, row, col, buffer);
                 
                 return FALSE;
             }
             break;
             
-        case 5: // Effect Random flag
+        case 5: // Volume Random flag
             {
                 BOOL boolValue;
                 if (IsValidBoolean(newText, &boolValue)) {
@@ -1023,32 +1023,32 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             }
             break;
             
-        case 6: // Effect Param 2 (Min)
+        case 6: // Volume Min
             if (IsValidInteger(newText)) {
-                prgm->param2 = atoi(newText);
+                prgm->minRandomVolume = atoi(newText);
             } else {
                 // Invalid integer - play error sound and reject edit
                 MessageBeep(MB_ICONERROR);
                 
                 // Get the current value and restore it in the ListView
                 char buffer[16];
-                sprintf(buffer, "%d", prgm->param2);
+                sprintf(buffer, "%d", prgm->minRandomVolume);
                 SetListViewItemText(g_hwndListView, row, col, buffer);
                 
                 return FALSE;
             }
             break;
             
-        case 7: // Effect Param 1 (Max)
+        case 7: // Volume Max
             if (IsValidInteger(newText)) {
-                prgm->param1 = atoi(newText);
+                prgm->maxRandomVolume = atoi(newText);
             } else {
                 // Invalid integer - play error sound and reject edit
                 MessageBeep(MB_ICONERROR);
                 
                 // Get the current value and restore it in the ListView
                 char buffer[16];
-                sprintf(buffer, "%d", prgm->param1);
+                sprintf(buffer, "%d", prgm->maxRandomVolume);
                 SetListViewItemText(g_hwndListView, row, col, buffer);
                 
                 return FALSE;
@@ -1215,12 +1215,12 @@ void CreateAmbListView(HWND hwnd)
     // Add columns to the ListView
     AddListViewColumn(g_hwndListView, 0, "Time", 85);
     AddListViewColumn(g_hwndListView, 1, "WAV File", 235);
-    AddListViewColumn(g_hwndListView, 2, "Pitch Random", 95);
-    AddListViewColumn(g_hwndListView, 3, "Pitch Min", 70);
-    AddListViewColumn(g_hwndListView, 4, "Pitch Max", 70);
-    AddListViewColumn(g_hwndListView, 5, "Effect Random", 95);
-    AddListViewColumn(g_hwndListView, 6, "Effect Param 2", 70);  // Min
-    AddListViewColumn(g_hwndListView, 7, "Effect Param 1", 70);  // Max
+    AddListViewColumn(g_hwndListView, 2, "Speed Random", 95);
+    AddListViewColumn(g_hwndListView, 3, "Speed Min", 70);
+    AddListViewColumn(g_hwndListView, 4, "Speed Max", 70);
+    AddListViewColumn(g_hwndListView, 5, "Volume Random", 95);
+    AddListViewColumn(g_hwndListView, 6, "Volume Min", 70);  // Min
+    AddListViewColumn(g_hwndListView, 7, "Volume Max", 70);  // Max
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
