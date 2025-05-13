@@ -112,8 +112,6 @@ typedef struct {
 
 // Global instance of the AMB file
 AmbFile g_ambFile;
-// Global variable to store current AMB path for the preview feature
-char g_currentAmbPath[MAX_PATH_LENGTH] = {0};
 
 // Helper functions for file parsing and writing
 unsigned int ReadAmbInt(FILE *file, bool isUnsigned) {
@@ -669,11 +667,6 @@ bool LoadAmbFile(const char *filePath) {
     
     fclose(file);
     
-    // If successful, update the current AMB path
-    if (success) {
-        strcpy(g_currentAmbPath, filePath);
-    }
-    
     return success;
 }
 
@@ -969,15 +962,9 @@ bool SaveAmbFile(const char *filePath) {
     
     fclose(file);
     
-    // If successful, update the current AMB path
-    if (success) {
-        strcpy(g_currentAmbPath, filePath);
-    } else {
-        // Remove the file if we failed
-        if (remove(filePath) != 0) {
-            // Failed to remove the file, but we don't want to fail the entire operation
-            // just because of this
-        }
+    // Remove the file if we failed
+    if (! success) {
+        remove(filePath);
     }
     
     return success;
