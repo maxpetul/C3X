@@ -340,11 +340,9 @@ void SaveAmbFileWithDialog(HWND hwnd)
     
     char filePath[MAX_PATH_LENGTH] = {0};
     
-    if (BrowseForSaveFile(hwnd, filePath, MAX_PATH_LENGTH))
-    {
+    if (BrowseForSaveFile(hwnd, filePath, MAX_PATH_LENGTH)) {
         // Try to save the AMB file
-        if (SaveAmbFile(&g_ambFile, filePath))
-        {
+        if (SaveAmbFile(&g_ambFile, filePath)) {
             // Extract the filename part from the path
             char *fileName = strrchr(filePath, '\\');
             if (fileName) {
@@ -360,74 +358,9 @@ void SaveAmbFileWithDialog(HWND hwnd)
             
             // Show success message
             MessageBox(hwnd, "AMB file saved successfully.", "Success", MB_OK | MB_ICONINFORMATION);
-        }
-        else
-        {
+        } else {
             MessageBox(hwnd, "Failed to save AMB file.", "Error", MB_OK | MB_ICONERROR);
         }
-    }
-}
-
-// Test AMB file loading
-void TestAmbLoading(HWND hwnd)
-{
-    // Find a sample AMB file to load
-    if (strlen(g_civ3MainPath) > 0) {
-        char ambFilePath[MAX_PATH_LENGTH];
-        strcpy(ambFilePath, g_civ3MainPath);
-        PathAppend(ambFilePath, "Art");
-        PathAppend(ambFilePath, "Units");
-        PathAppend(ambFilePath, "Infantry");
-        PathAppend(ambFilePath, "InfantryAttack.amb");  // Use the same file from the example
-        
-        if (PathFileExists(ambFilePath)) {
-            if (LoadAmbFile(ambFilePath, &g_ambFile)) {
-                // Extract the filename part for the window title
-                char *fileName = strrchr(ambFilePath, '\\');
-                if (fileName) {
-                    fileName++; // Skip past the backslash
-                } else {
-                    fileName = (char*)ambFilePath;
-                }
-                
-                char windowTitle[MAX_PATH_LENGTH + 20];
-                snprintf(windowTitle, sizeof windowTitle, "%s - AMB Editor", fileName);
-                windowTitle[(sizeof windowTitle) - 1] = '\0';
-                SetWindowText(g_hwndMainWindow, windowTitle);
-                
-                // Populate the ListView with the loaded AMB file data
-                PopulateAmbListView();
-                
-                // Successfully loaded AMB file - write description to file
-                char *description = (char *)malloc(50000);
-                if (description) {
-                    DescribeAmbFile(&g_ambFile, description, 50000);
-                    
-                    // Write to file
-                    char outputPath[MAX_PATH_LENGTH];
-                    GetCurrentDirectory(MAX_PATH_LENGTH, outputPath);
-                    PathAppend(outputPath, "amb_info.txt");
-                    
-                    FILE *outFile = fopen(outputPath, "w");
-                    if (outFile) {
-                        fputs(description, outFile);
-                        fclose(outFile);
-                        
-                        char message[MAX_PATH_LENGTH + 64];
-                        sprintf(message, "AMB file information written to:\n%s", outputPath);
-                        MessageBox(hwnd, message, "AMB File Loaded Successfully", MB_OK | MB_ICONINFORMATION);
-                    } else {
-                        MessageBox(hwnd, "Failed to write AMB info to file", "Error", MB_OK | MB_ICONERROR);
-                    }
-                    
-                    free(description);
-                }
-            }
-        } else {
-            MessageBox(hwnd, "Sample AMB file not found", "Error", MB_OK | MB_ICONERROR);
-        }
-    } else {
-        MessageBox(hwnd, "Civ 3 installation not found", "Error", MB_OK | MB_ICONERROR);
     }
 }
 
@@ -1611,8 +1544,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         NULL        // Additional application data
     );
     
-    if (hwnd == NULL)
-    {
+    if (hwnd == NULL) {
         return 0;
     }
     
@@ -1620,8 +1552,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     
     // Run the message loop
     MSG msg = {0};
-    while (GetMessage(&msg, NULL, 0, 0))
-    {
+    while (GetMessage(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
