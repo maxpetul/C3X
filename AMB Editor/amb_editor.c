@@ -145,8 +145,9 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 // Menu IDs
 #define IDM_FILE_OPEN       1001
 #define IDM_FILE_SAVE       1002
-#define IDM_FILE_EXIT       1003
-#define IDM_HELP_ABOUT      1004
+#define IDM_FILE_DESCRIBE   1003
+#define IDM_FILE_EXIT       1004
+#define IDM_HELP_ABOUT      1005
 
 // Control IDs 
 #define ID_PATH_EDIT        102
@@ -716,31 +717,191 @@ BOOL IsValidInteger(const char *str)
 BOOL IsValidBoolean(const char *str, BOOL *value)
 {
     // Check for valid "true" values
-    if (strcmp(str, "Yes") == 0 || 
-        strcmp(str, "yes") == 0 || 
-        strcmp(str, "Y") == 0 || 
-        strcmp(str, "y") == 0 || 
-        strcmp(str, "True") == 0 || 
-        strcmp(str, "true") == 0 || 
+    if (strcmp(str, "Yes") == 0 ||
+        strcmp(str, "yes") == 0 ||
+        strcmp(str, "Y") == 0 ||
+        strcmp(str, "y") == 0 ||
+        strcmp(str, "True") == 0 ||
+        strcmp(str, "true") == 0 ||
         strcmp(str, "1") == 0) {
         if (value) *value = TRUE;
         return TRUE;
     }
-    
+
     // Check for valid "false" values
-    if (strcmp(str, "No") == 0 || 
-        strcmp(str, "no") == 0 || 
-        strcmp(str, "N") == 0 || 
-        strcmp(str, "n") == 0 || 
-        strcmp(str, "False") == 0 || 
-        strcmp(str, "false") == 0 || 
+    if (strcmp(str, "No") == 0 ||
+        strcmp(str, "no") == 0 ||
+        strcmp(str, "N") == 0 ||
+        strcmp(str, "n") == 0 ||
+        strcmp(str, "False") == 0 ||
+        strcmp(str, "false") == 0 ||
         strcmp(str, "0") == 0) {
         if (value) *value = FALSE;
         return TRUE;
     }
-    
+
     // Invalid boolean value
     return FALSE;
+}
+
+// Global variables for the AMB description window
+HWND g_hwndDescWindow = NULL;
+HWND g_hwndDescTextbox = NULL;
+WNDPROC g_origDescWindowProc = NULL;
+
+// Window procedure for the description window
+LRESULT CALLBACK DescWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    switch (uMsg)
+    {
+        case WM_SIZE:
+            // Resize the textbox to fill the window
+            if (g_hwndDescTextbox != NULL) {
+                RECT rcClient;
+                GetClientRect(hwnd, &rcClient);
+                SetWindowPos(g_hwndDescTextbox, NULL,
+                             0, 0,
+                             rcClient.right, rcClient.bottom,
+                             SWP_NOZORDER);
+            }
+            return 0;
+
+        case WM_CLOSE:
+            DestroyWindow(hwnd);
+            return 0;
+
+        case WM_DESTROY:
+            g_hwndDescWindow = NULL;
+            g_hwndDescTextbox = NULL;
+            return 0;
+    }
+
+    return CallWindowProc(g_origDescWindowProc, hwnd, uMsg, wParam, lParam);
+}
+
+// Function to show the AMB description window
+void ShowAmbDescriptionWindow(HWND hwndParent)
+{
+    // Check if we have a valid AMB file loaded
+    if (g_ambFile.filePath[0] == '\0') {
+        MessageBox(hwndParent, "No AMB file loaded. Please open an AMB file first.",
+                  "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    // If the window already exists, just bring it to the front
+    if (g_hwndDescWindow != NULL) {
+        SetForegroundWindow(g_hwndDescWindow);
+        return;
+    }
+
+    // Create a new window for the description
+    HINSTANCE hInstance = GetModuleHandle(NULL);
+    WNDCLASS wc = {0};
+
+    // Check if the window class is already registered
+    if (!GetClassInfo(hInstance, "AMBDescWindowClass", &wc)) {
+        // Register a window class for the description window
+        wc.lpfnWndProc = DefWindowProc;
+        wc.hInstance = hInstance;
+        wc.lpszClassName = "AMBDescWindowClass";
+        wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+        wc.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
+
+        if (!RegisterClass(&wc)) {
+            MessageBox(hwndParent, "Failed to register window class", "Error", MB_OK | MB_ICONERROR);
+            return;
+        }
+    }
+
+    // Extract filename from the full path for the window title
+    const char *fileName = strrchr(g_ambFile.filePath, '\\');
+    if (fileName) {
+        fileName++; // Skip past the backslash
+    } else {
+        fileName = g_ambFile.filePath; // No backslash found, use the whole path
+    }
+
+    char windowTitle[MAX_PATH_LENGTH + 30];
+    snprintf(windowTitle, sizeof(windowTitle), "%s - AMB Description", fileName);
+
+    // Create the description window
+    g_hwndDescWindow = CreateWindowEx(
+        WS_EX_CLIENTEDGE,
+        "AMBDescWindowClass",
+        windowTitle,
+        WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT, CW_USEDEFAULT, 600, 500,
+        hwndParent,
+        NULL,
+        hInstance,
+        NULL
+    );
+
+    if (g_hwndDescWindow == NULL) {
+        MessageBox(hwndParent, "Failed to create description window", "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    // Subclass the window to handle resize events
+    g_origDescWindowProc = (WNDPROC)SetWindowLongPtr(g_hwndDescWindow, GWLP_WNDPROC, (LONG_PTR)DescWindowProc);
+
+    // Create a multiline read-only text box to display the description
+    g_hwndDescTextbox = CreateWindowEx(
+        WS_EX_CLIENTEDGE,
+        "EDIT",
+        "",
+        WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL |
+        ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_READONLY,
+        0, 0, 0, 0, // Will be resized in WM_SIZE handler
+        g_hwndDescWindow,
+        NULL,
+        hInstance,
+        NULL
+    );
+
+    if (g_hwndDescTextbox == NULL) {
+        MessageBox(hwndParent, "Failed to create textbox control", "Error", MB_OK | MB_ICONERROR);
+        DestroyWindow(g_hwndDescWindow);
+        g_hwndDescWindow = NULL;
+        return;
+    }
+
+    // Set a monospaced font for the textbox
+    HFONT hFont = CreateFont(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                           DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                           DEFAULT_QUALITY, FIXED_PITCH | FF_MODERN, "Courier New");
+    if (hFont != NULL) {
+        SendMessage(g_hwndDescTextbox, WM_SETFONT, (WPARAM)hFont, TRUE);
+    }
+
+    // Generate the AMB file description
+    char *description = (char *)malloc(50000);
+    if (description) {
+        DescribeAmbFile(description, 50000);
+
+        // Set the text in the textbox
+        SetWindowText(g_hwndDescTextbox, description);
+
+        free(description);
+    } else {
+        MessageBox(hwndParent, "Failed to allocate memory for description", "Error", MB_OK | MB_ICONERROR);
+        DestroyWindow(g_hwndDescWindow);
+        g_hwndDescWindow = NULL;
+        return;
+    }
+
+    // Force the window to resize the textbox initially
+    RECT rcClient;
+    GetClientRect(g_hwndDescWindow, &rcClient);
+    SetWindowPos(g_hwndDescTextbox, NULL,
+                 0, 0,
+                 rcClient.right, rcClient.bottom,
+                 SWP_NOZORDER);
+
+    // Show the window
+    ShowWindow(g_hwndDescWindow, SW_SHOW);
+    UpdateWindow(g_hwndDescWindow);
 }
 
 // Populate the ListView with AMB file data
@@ -1257,7 +1418,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     // Show save file dialog to save an AMB file
                     SaveAmbFileWithDialog(hwnd);
                     return 0;
-                    
+
+                case IDM_FILE_DESCRIBE:
+                    // Show window with AMB file description
+                    ShowAmbDescriptionWindow(hwnd);
+                    return 0;
+
                 case IDM_FILE_EXIT:
                     // Exit the application
                     PostMessage(hwnd, WM_CLOSE, 0, 0);
@@ -1391,6 +1557,7 @@ HMENU CreateAmbEditorMenu()
     hFileMenu = CreatePopupMenu();
     AppendMenu(hFileMenu, MF_STRING, IDM_FILE_OPEN, "&Open AMB File...");
     AppendMenu(hFileMenu, MF_STRING, IDM_FILE_SAVE, "&Save AMB File...");
+    AppendMenu(hFileMenu, MF_STRING, IDM_FILE_DESCRIBE, "&View AMB Description");
     AppendMenu(hFileMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hFileMenu, MF_STRING, IDM_FILE_EXIT, "E&xit");
     
