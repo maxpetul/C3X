@@ -1274,9 +1274,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 case ID_PLAY_BUTTON:
                     // Handle Play button click
                     if (g_ambFile.filePath[0] != '\0') {
-                        // Use empty string here since PreviewAmbFile now handles
-                        // the temp file creation if g_ambFile is loaded
-                        PreviewAmbFile("");
+                        PreviewAmbFile(&g_ambFile);
                     } else {
                         MessageBox(hwnd, "No AMB file loaded. Please open an AMB file first.", 
                                    "Error", MB_OK | MB_ICONINFORMATION);

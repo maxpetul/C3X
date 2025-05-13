@@ -224,35 +224,33 @@ BOOL CopyWavFilesToTempDir(AmbFile *ambFile, char *tempDirPath)
     return success;
 }
 
-void PreviewAmbFile(char *filePath)
+void PreviewAmbFile(AmbFile const * amb)
 {
     StopAmbPreview();
     
-    // If we have an AMB loaded in memory, save it to a temporary file first
-    if (g_ambFile.filePath[0] != '\0') {
-        char tempDirPath[MAX_PATH_LENGTH];
-        char tempFilePath[MAX_PATH_LENGTH];
-        
-        // Prepare a temporary directory for our files and clean existing WAV files
-        if (PrepareTempDirectory(tempDirPath, MAX_PATH_LENGTH)) {
-            // Generate a temp file path for the AMB
-            snprintf(tempFilePath, MAX_PATH_LENGTH, "%s\\temp.amb", tempDirPath);
-            
-            // Save the current AMB to the temp file
-            if (SaveAmbFile(tempFilePath)) {
-                // Copy all WAV files referenced by the AMB to the temp directory
-                if (CopyWavFilesToTempDir(&g_ambFile, tempDirPath)) {
-                    // Use this temp file for previewing
-                    filePath = tempFilePath;
-                }
+    // Save the AMB to a temporary file first. Begin by preparing a temp directory
+    char tempFilePath[MAX_PATH_LENGTH] = {0};
+    char tempDirPath[MAX_PATH_LENGTH] = {0};
+    bool success = false;
+    if (PrepareTempDirectory(tempDirPath, sizeof tempDirPath)) {
+        // Generate a temp file path for the AMB
+        snprintf(tempFilePath, (sizeof tempFilePath) - 1, "%s\\temp.amb", tempDirPath);
+
+        // Save the current AMB to the temp file
+        if (SaveAmbFile(tempFilePath)) {
+            // Copy all WAV files referenced by the AMB to the temp directory
+            if (CopyWavFilesToTempDir(&g_ambFile, tempDirPath)) {
+                success = true;
             }
         }
     }
-    
-    // Play the AMB file (either the original or our temp copy)
-    CreateSound(&playingCore, NULL, SCT_AMB);
-    if (playingCore != NULL) {
-        playingCore->vtable->LoadFile(playingCore, __, filePath);
-        playingCore->vtable->Play(playingCore);
+
+    // Play the temp copy if it was created successfully
+    if (success) {
+        CreateSound(&playingCore, NULL, SCT_AMB);
+        if (playingCore != NULL) {
+            playingCore->vtable->LoadFile(playingCore, __, tempFilePath);
+            playingCore->vtable->Play(playingCore);
+        }
     }
 }
