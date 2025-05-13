@@ -180,7 +180,7 @@ BOOL PrepareTempDirectory(char *tempDirPath, size_t tempDirPathSize)
 }
 
 // Copy WAV files referenced by the AMB to the temp directory
-BOOL CopyWavFilesToTempDir(AmbFile *ambFile, char *tempDirPath)
+BOOL CopyWavFilesToTempDir(AmbFile const * ambFile, char *tempDirPath)
 {
     char sourcePath[MAX_PATH_LENGTH];
     char targetPath[MAX_PATH_LENGTH];
@@ -199,7 +199,7 @@ BOOL CopyWavFilesToTempDir(AmbFile *ambFile, char *tempDirPath)
     
     // For each Kmap chunk, copy any referenced WAV files
     for (int i = 0; i < ambFile->kmapChunkCount; i++) {
-        KmapChunk *chunk = &ambFile->kmapChunks[i];
+        KmapChunk const * chunk = &ambFile->kmapChunks[i];
         
         // For each item in the Kmap chunk, copy its WAV file
         for (int j = 0; j < chunk->itemCount && j < MAX_ITEMS; j++) {
@@ -237,9 +237,9 @@ void PreviewAmbFile(AmbFile const * amb)
         snprintf(tempFilePath, (sizeof tempFilePath) - 1, "%s\\temp.amb", tempDirPath);
 
         // Save the current AMB to the temp file
-        if (SaveAmbFile(tempFilePath)) {
+        if (SaveAmbFile(amb, tempFilePath)) {
             // Copy all WAV files referenced by the AMB to the temp directory
-            if (CopyWavFilesToTempDir(&g_ambFile, tempDirPath)) {
+            if (CopyWavFilesToTempDir(amb, tempDirPath)) {
                 success = true;
             }
         }

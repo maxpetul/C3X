@@ -7,6 +7,9 @@
 #include "amb_file.c"
 #include "preview.c"
 
+// Currently loaded AMB file
+AmbFile g_ambFile;
+
 // Forward declarations for ListView functions
 void AddListViewColumn(HWND hListView, int index, char *title, int width);
 int AddListViewItem(HWND hListView, int index, const char *text);
@@ -284,7 +287,7 @@ void LoadAmbFileWithDialog(HWND hwnd)
     char ambFilePath[MAX_PATH_LENGTH] = {0};
     
     if (BrowseForAmbFile(hwnd, ambFilePath, MAX_PATH_LENGTH)) {
-        if (LoadAmbFile(ambFilePath) && g_hwndMainWindow != NULL) {
+        if (LoadAmbFile(ambFilePath, &g_ambFile) && g_hwndMainWindow != NULL) {
             // Extract the filename part from the path
             char *fileName = strrchr(ambFilePath, '\\');
             if (fileName) {
@@ -340,7 +343,7 @@ void SaveAmbFileWithDialog(HWND hwnd)
     if (BrowseForSaveFile(hwnd, filePath, MAX_PATH_LENGTH))
     {
         // Try to save the AMB file
-        if (SaveAmbFile(filePath))
+        if (SaveAmbFile(&g_ambFile, filePath))
         {
             // Extract the filename part from the path
             char *fileName = strrchr(filePath, '\\');
@@ -378,7 +381,7 @@ void TestAmbLoading(HWND hwnd)
         PathAppend(ambFilePath, "InfantryAttack.amb");  // Use the same file from the example
         
         if (PathFileExists(ambFilePath)) {
-            if (LoadAmbFile(ambFilePath)) {
+            if (LoadAmbFile(ambFilePath, &g_ambFile)) {
                 // Extract the filename part for the window title
                 char *fileName = strrchr(ambFilePath, '\\');
                 if (fileName) {
@@ -398,7 +401,7 @@ void TestAmbLoading(HWND hwnd)
                 // Successfully loaded AMB file - write description to file
                 char *description = (char *)malloc(50000);
                 if (description) {
-                    DescribeAmbFile(description, 50000);
+                    DescribeAmbFile(&g_ambFile, description, 50000);
                     
                     // Write to file
                     char outputPath[MAX_PATH_LENGTH];
@@ -878,7 +881,7 @@ void ShowAmbDescriptionWindow(HWND hwndParent)
     // Generate the AMB file description
     char *description = (char *)malloc(50000);
     if (description) {
-        DescribeAmbFile(description, 50000);
+        DescribeAmbFile(&g_ambFile, description, 50000);
 
         // Set the text in the textbox
         SetWindowText(g_hwndDescTextbox, description);

@@ -110,9 +110,6 @@ typedef struct {
     MidiData midi;
 } AmbFile;
 
-// Global instance of the AMB file
-AmbFile g_ambFile;
-
 // Helper functions for file parsing and writing
 unsigned int ReadAmbInt(FILE *file, bool isUnsigned) {
     unsigned char buffer[4];
@@ -591,12 +588,8 @@ bool ParseMidi(FILE *file, MidiData *midi) {
     return true;
 }
 
-// Function declarations
-bool LoadAmbFile(const char *filePath);
-bool SaveAmbFile(const char *filePath);
-
 // Load AMB file
-bool LoadAmbFile(const char *filePath) {
+bool LoadAmbFile(const char *filePath, AmbFile * out) {
     FILE *file = fopen(filePath, "rb");
     if (!file) {
         MessageBox(NULL, "Failed to open AMB file", "Error", MB_OK | MB_ICONERROR);
@@ -604,8 +597,8 @@ bool LoadAmbFile(const char *filePath) {
     }
     
     // Initialize AMB file structure
-    memset(&g_ambFile, 0, sizeof(AmbFile));
-    strcpy(g_ambFile.filePath, filePath);
+    memset(out, 0, sizeof *out);
+    strcpy(out->filePath, filePath);
     
     // Parse all chunks
     bool success = true;
@@ -616,8 +609,8 @@ bool LoadAmbFile(const char *filePath) {
         }
         
         if (strcmp(tag, "prgm") == 0) {
-            if (g_ambFile.prgmChunkCount < MAX_CHUNKS) {
-                if (!ParsePrgmChunk(file, &g_ambFile.prgmChunks[g_ambFile.prgmChunkCount++])) {
+            if (out->prgmChunkCount < MAX_CHUNKS) {
+                if (!ParsePrgmChunk(file, &out->prgmChunks[out->prgmChunkCount++])) {
                     success = false;
                     break;
                 }
@@ -627,8 +620,8 @@ bool LoadAmbFile(const char *filePath) {
                 break;
             }
         } else if (strcmp(tag, "kmap") == 0) {
-            if (g_ambFile.kmapChunkCount < MAX_CHUNKS) {
-                if (!ParseKmapChunk(file, &g_ambFile.kmapChunks[g_ambFile.kmapChunkCount++])) {
+            if (out->kmapChunkCount < MAX_CHUNKS) {
+                if (!ParseKmapChunk(file, &out->kmapChunks[out->kmapChunkCount++])) {
                     success = false;
                     break;
                 }
@@ -638,12 +631,12 @@ bool LoadAmbFile(const char *filePath) {
                 break;
             }
         } else if (strcmp(tag, "glbl") == 0) {
-            if (!g_ambFile.hasGlblChunk) {
-                if (!ParseGlblChunk(file, &g_ambFile.glblChunk)) {
+            if (!out->hasGlblChunk) {
+                if (!ParseGlblChunk(file, &out->glblChunk)) {
                     success = false;
                     break;
                 }
-                g_ambFile.hasGlblChunk = true;
+                out->hasGlblChunk = true;
             } else {
                 MessageBox(NULL, "Multiple Glbl chunks not supported", "Error", MB_OK | MB_ICONERROR);
                 success = false;
@@ -652,7 +645,7 @@ bool LoadAmbFile(const char *filePath) {
         } else if (strcmp(tag, "MThd") == 0) {
             // MIDI header detected, parse the MIDI data
             // Don't need to go back, ParseMidi now expects to be positioned after the tag
-            if (!ParseMidi(file, &g_ambFile.midi)) {
+            if (!ParseMidi(file, &out->midi)) {
                 success = false;
                 break;
             }
@@ -671,7 +664,7 @@ bool LoadAmbFile(const char *filePath) {
 }
 
 // Functions to write AMB file chunks
-bool WritePrgmChunk(FILE *file, PrgmChunk *chunk) {
+bool WritePrgmChunk(FILE *file, PrgmChunk const * chunk) {
     // Write tag
     fwrite("prgm", 1, 4, file);
     
@@ -694,7 +687,7 @@ bool WritePrgmChunk(FILE *file, PrgmChunk *chunk) {
     return true;
 }
 
-bool WriteKmapChunk(FILE *file, KmapChunk *chunk) {
+bool WriteKmapChunk(FILE *file, KmapChunk const * chunk) {
     // Write tag
     fwrite("kmap", 1, 4, file);
     
@@ -736,7 +729,7 @@ bool WriteKmapChunk(FILE *file, KmapChunk *chunk) {
     return true;
 }
 
-bool WriteGlblChunk(FILE *file, GlblChunk *chunk) {
+bool WriteGlblChunk(FILE *file, GlblChunk const * chunk) {
     // Write tag
     fwrite("glbl", 1, 4, file);
     
@@ -757,7 +750,7 @@ bool WriteGlblChunk(FILE *file, GlblChunk *chunk) {
     return true;
 }
 
-bool WriteMidiEvent(FILE *file, MidiEvent *event) {
+bool WriteMidiEvent(FILE *file, MidiEvent const * event) {
     // Write delta time
     WriteMidiVarInt(file, event->deltaTime);
     
@@ -863,7 +856,7 @@ bool WriteMidiEvent(FILE *file, MidiEvent *event) {
     return true;
 }
 
-bool WriteMidiTrack(FILE *file, MidiTrack *track) {
+bool WriteMidiTrack(FILE *file, MidiTrack const * track) {
     // Write track tag
     fwrite("MTrk", 1, 4, file);
     
@@ -896,7 +889,7 @@ bool WriteMidiTrack(FILE *file, MidiTrack *track) {
     return true;
 }
 
-bool WriteMidi(FILE *file, MidiData *midi) {
+bool WriteMidi(FILE *file, MidiData const * midi) {
     // Write MIDI header
     fwrite("MThd", 1, 4, file);
     
@@ -919,7 +912,7 @@ bool WriteMidi(FILE *file, MidiData *midi) {
 }
 
 // Function to save AMB file to the specified path
-bool SaveAmbFile(const char *filePath) {
+bool SaveAmbFile(AmbFile const * amb, const char *filePath) {
     FILE *file = fopen(filePath, "wb");
     if (!file) {
         MessageBox(NULL, "Failed to create output AMB file", "Error", MB_OK | MB_ICONERROR);
@@ -929,8 +922,8 @@ bool SaveAmbFile(const char *filePath) {
     bool success = true;
     
     // Write Prgm chunks
-    for (int i = 0; i < g_ambFile.prgmChunkCount; i++) {
-        if (!WritePrgmChunk(file, &g_ambFile.prgmChunks[i])) {
+    for (int i = 0; i < amb->prgmChunkCount; i++) {
+        if (!WritePrgmChunk(file, &amb->prgmChunks[i])) {
             success = false;
             break;
         }
@@ -938,8 +931,8 @@ bool SaveAmbFile(const char *filePath) {
     
     // Write Kmap chunks
     if (success) {
-        for (int i = 0; i < g_ambFile.kmapChunkCount; i++) {
-            if (!WriteKmapChunk(file, &g_ambFile.kmapChunks[i])) {
+        for (int i = 0; i < amb->kmapChunkCount; i++) {
+            if (!WriteKmapChunk(file, &amb->kmapChunks[i])) {
                 success = false;
                 break;
             }
@@ -947,15 +940,15 @@ bool SaveAmbFile(const char *filePath) {
     }
     
     // Write Glbl chunk if present
-    if (success && g_ambFile.hasGlblChunk) {
-        if (!WriteGlblChunk(file, &g_ambFile.glblChunk)) {
+    if (success && amb->hasGlblChunk) {
+        if (!WriteGlblChunk(file, &amb->glblChunk)) {
             success = false;
         }
     }
     
     // Write MIDI data
     if (success) {
-        if (!WriteMidi(file, &g_ambFile.midi)) {
+        if (!WriteMidi(file, &amb->midi)) {
             success = false;
         }
     }
@@ -971,18 +964,18 @@ bool SaveAmbFile(const char *filePath) {
 }
 
 // Function to describe the loaded AMB file (for debugging)
-void DescribeAmbFile(char *buffer, size_t bufferSize) {
+void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
     char *pos = buffer;
     int remainingSize = (int)bufferSize;
     
     // Describe file path
-    int written = snprintf(pos, remainingSize, "File: %s\n\n", g_ambFile.filePath);
+    int written = snprintf(pos, remainingSize, "File: %s\n\n", amb->filePath);
     pos += written;
     remainingSize -= written;
     
     // Describe Prgm chunks
-    for (int i = 0; i < g_ambFile.prgmChunkCount && remainingSize > 0; i++) {
-        PrgmChunk *chunk = &g_ambFile.prgmChunks[i];
+    for (int i = 0; i < amb->prgmChunkCount && remainingSize > 0; i++) {
+        PrgmChunk *chunk = &amb->prgmChunks[i];
         written = snprintf(pos, remainingSize, 
                     "Prgm #%d:\n"
                     "  Size: %d\n"
@@ -1003,8 +996,8 @@ void DescribeAmbFile(char *buffer, size_t bufferSize) {
     }
     
     // Describe Kmap chunks
-    for (int i = 0; i < g_ambFile.kmapChunkCount && remainingSize > 0; i++) {
-        KmapChunk *chunk = &g_ambFile.kmapChunks[i];
+    for (int i = 0; i < amb->kmapChunkCount && remainingSize > 0; i++) {
+        KmapChunk *chunk = &amb->kmapChunks[i];
         written = snprintf(pos, remainingSize, 
                     "Kmap #%d:\n"
                     "  Size: %d\n"
@@ -1035,8 +1028,8 @@ void DescribeAmbFile(char *buffer, size_t bufferSize) {
     }
     
     // Describe Glbl chunk
-    if (g_ambFile.hasGlblChunk && remainingSize > 0) {
-        GlblChunk *chunk = &g_ambFile.glblChunk;
+    if (amb->hasGlblChunk && remainingSize > 0) {
+        GlblChunk const * chunk = &amb->glblChunk;
         written = snprintf(pos, remainingSize, 
                     "Glbl:\n"
                     "  Size: %d\n"
@@ -1054,14 +1047,14 @@ void DescribeAmbFile(char *buffer, size_t bufferSize) {
                     "  Track Count: %d\n"
                     "  Ticks Per Quarter Note: %d\n"
                     "  Seconds Per Quarter Note: %.6f\n\n",
-                    g_ambFile.midi.format, g_ambFile.midi.trackCount,
-                    g_ambFile.midi.ticksPerQuarterNote, g_ambFile.midi.secondsPerQuarterNote);
+                    amb->midi.format, amb->midi.trackCount,
+                    amb->midi.ticksPerQuarterNote, amb->midi.secondsPerQuarterNote);
         pos += written;
         remainingSize -= written;
         
         // Describe each track
-        for (int i = 0; i < g_ambFile.midi.trackCount && remainingSize > 0; i++) {
-            MidiTrack *track = &g_ambFile.midi.tracks[i];
+        for (int i = 0; i < amb->midi.trackCount && remainingSize > 0; i++) {
+            MidiTrack *track = &amb->midi.tracks[i];
             written = snprintf(pos, remainingSize, 
                         "  Track #%d:\n"
                         "    Size: %d\n"
@@ -1072,7 +1065,7 @@ void DescribeAmbFile(char *buffer, size_t bufferSize) {
             
             // Describe a few events for each track
             float timestamp = 0.0f;
-            float secondsPerTick = g_ambFile.midi.secondsPerQuarterNote / g_ambFile.midi.ticksPerQuarterNote;
+            float secondsPerTick = amb->midi.secondsPerQuarterNote / amb->midi.ticksPerQuarterNote;
             
             for (int j = 0; j < track->eventCount && j < 20 && remainingSize > 0; j++) {
                 MidiEvent *event = &track->events[j];
