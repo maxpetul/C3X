@@ -11,7 +11,6 @@
 void AddListViewColumn(HWND hListView, int index, char *title, int width);
 int AddListViewItem(HWND hListView, int index, const char *text);
 void SetListViewItemText(HWND hListView, int row, int col, const char *text);
-void FormatTimeString(char *buffer, int bufferSize, float timestamp);
 void ClearListView(HWND hListView);
 void PopulateAmbListView(void);
 BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText);
@@ -676,15 +675,6 @@ void SetListViewItemText(HWND hListView, int row, int col, const char *text)
     SendMessage(hListView, LVM_SETITEM, 0, (LPARAM)&lvi);
 }
 
-// Format a time string from MIDI timing data
-void FormatTimeString(char *buffer, int bufferSize, float timestamp) 
-{
-    int minutes = (int)(timestamp / 60.0f);
-    float seconds = timestamp - (minutes * 60.0f);
-    
-    snprintf(buffer, bufferSize, "%d:%05.2f", minutes, seconds);
-}
-
 // Clear all items from the ListView
 void ClearListView(HWND hListView) 
 {
@@ -994,8 +984,8 @@ void PopulateAmbListView(void)
             // We're looking for the first note-on event to get the timestamp
             if (event->type == EVENT_NOTE_ON && event->data.noteOn.velocity > 0) {
                 // Format time string
-                char timeStr[32];
-                FormatTimeString(timeStr, sizeof(timeStr), timestamp);
+                char timeStr[32] = {0};
+                snprintf(timeStr, (sizeof timeStr) - 1, "%04.3f", timestamp);
                 
                 // Format speed information
                 char speedMaxStr[32];
@@ -1389,7 +1379,7 @@ void CreateAmbListView(HWND hwnd)
     SendMessage(g_hwndListView, LVM_SETEXTENDEDLISTVIEWSTYLE, 0, exStyle);
     
     // Add columns to the ListView
-    AddListViewColumn(g_hwndListView, 0, "Time", 85);
+    AddListViewColumn(g_hwndListView, 0, "Time (sec.)", 85);
     AddListViewColumn(g_hwndListView, 1, "WAV File", 235);
     AddListViewColumn(g_hwndListView, 2, "Speed Random", 95);
     AddListViewColumn(g_hwndListView, 3, "Speed Min", 70);
