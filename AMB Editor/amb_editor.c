@@ -1099,9 +1099,16 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             break;
             
         case 1: // WAV filename
-            SnapshotCurrentFile();
-            strncpy(kmap->items[kmapItemIndex].wavFileName, newText, sizeof(kmap->items[kmapItemIndex].wavFileName) - 1);
-            kmap->items[kmapItemIndex].wavFileName[sizeof(kmap->items[kmapItemIndex].wavFileName) - 1] = '\0';
+            // Reject the edit if the new text contains a slash
+            if ((strchr(newText, '\\') == NULL) && (strchr(newText, '/') == NULL)) {
+                SnapshotCurrentFile();
+                strncpy(kmap->items[kmapItemIndex].wavFileName, newText, sizeof(kmap->items[kmapItemIndex].wavFileName) - 1);
+                kmap->items[kmapItemIndex].wavFileName[sizeof(kmap->items[kmapItemIndex].wavFileName) - 1] = '\0';
+            } else {
+                MessageBeep(MB_ICONERROR);
+                SetListViewItemText(g_hwndListView, row, col, kmap->items[kmapItemIndex].wavFileName);
+                return FALSE;
+            }
             break;
             
         case 2: // Speed Random flag

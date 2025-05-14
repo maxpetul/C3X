@@ -1,4 +1,3 @@
-- Forbid editing slashes into WAV file names
 - Enable editing of play times
 - Enable addition and deletion of rows
 - Figure out why some AMBs don't load e.g. the F-15
