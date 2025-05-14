@@ -1,11 +1,12 @@
 - Forbid editing slashes into WAV file names
 - Enable editing of play times
 - Enable addition and deletion of rows
-- Add undo & redo functions
 - Figure out why some AMBs don't load e.g. the F-15
+- Pop up warning when previewing AMB with missing WAV files
 
 Final things:
 - Harden all the various s(n)printf calls against buffer overflow
+- Remove popup after editing cell. Cut down on error popups.
 - Update About popup
 - Include AMB Editor in assemble_release.bat
 

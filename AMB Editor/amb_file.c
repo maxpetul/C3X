@@ -7,10 +7,10 @@
 #include <stdlib.h>
 
 #define MAX_PATH_LENGTH 1024
-#define MAX_CHUNKS 100
+#define MAX_CHUNKS 30 // No AMB in Civ 3 has more than 12 Kmap or Prgm chunks
 #define MAX_TRACKS 20
-#define MAX_EVENTS 1000
-#define MAX_ITEMS 10
+#define MAX_EVENTS 10 // No AMB in Civ 3 has more than 7 events in a single track
+#define MAX_ITEMS 2 // No AMB in Civ 3 has more than 1 item
 
 // AMB file structures
 typedef struct {

@@ -23,7 +23,7 @@ void SaveAmbFileWithDialog(HWND hwnd);
 // Currently loaded AMB file
 AmbFile g_ambFile = {0};
 
-AmbFile g_fileSnapshots[10] = {0};
+AmbFile g_fileSnapshots[100] = {0};
 int g_snapshotCount = 0,
     g_redoCount = 0;
 
