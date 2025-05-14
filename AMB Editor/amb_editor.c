@@ -7,6 +7,19 @@
 #include "amb_file.c"
 #include "preview.c"
 
+// Forward declarations for ListView functions
+void AddListViewColumn(HWND hListView, int index, char *title, int width);
+int AddListViewItem(HWND hListView, int index, const char *text);
+void SetListViewItemText(HWND hListView, int row, int col, const char *text);
+void FormatTimeString(char *buffer, int bufferSize, float timestamp);
+void ClearListView(HWND hListView);
+void PopulateAmbListView(void);
+BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText);
+BOOL IsValidInteger(const char *str);
+BOOL IsValidBoolean(const char *str, BOOL *value);
+void LoadAmbFileWithDialog(HWND hwnd);
+void SaveAmbFileWithDialog(HWND hwnd);
+
 // Currently loaded AMB file
 AmbFile g_ambFile = {0};
 
@@ -48,6 +61,8 @@ void Undo()
 
         g_snapshotCount--;
         g_redoCount++;
+
+        PopulateAmbListView(); // Refresh the ListView to reflect changes
     } else
         MessageBeep(MB_ICONERROR);
 }
@@ -64,22 +79,11 @@ void Redo()
 
         g_snapshotCount++;
         g_redoCount--;
+
+        PopulateAmbListView(); // Refresh the ListView to reflect changes
     } else
         MessageBeep(MB_ICONERROR);
 }
-
-// Forward declarations for ListView functions
-void AddListViewColumn(HWND hListView, int index, char *title, int width);
-int AddListViewItem(HWND hListView, int index, const char *text);
-void SetListViewItemText(HWND hListView, int row, int col, const char *text);
-void FormatTimeString(char *buffer, int bufferSize, float timestamp);
-void ClearListView(HWND hListView);
-void PopulateAmbListView(void);
-BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText);
-BOOL IsValidInteger(const char *str);
-BOOL IsValidBoolean(const char *str, BOOL *value);
-void LoadAmbFileWithDialog(HWND hwnd);
-void SaveAmbFileWithDialog(HWND hwnd);
 
 // Common Control definitions (normally from commctrl.h)
 #define WC_LISTVIEW "SysListView32"
@@ -208,7 +212,9 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 #define IDM_FILE_SAVE       1002
 #define IDM_FILE_DESCRIBE   1003
 #define IDM_FILE_EXIT       1004
-#define IDM_HELP_ABOUT      1005
+#define IDM_EDIT_UNDO       1005
+#define IDM_EDIT_REDO       1006
+#define IDM_HELP_ABOUT      1007
 
 // Control IDs 
 #define ID_PATH_EDIT        102
@@ -1390,6 +1396,21 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
     {
+        case WM_KEYDOWN:
+            // Handle keyboard shortcuts
+            if (GetKeyState(VK_CONTROL) < 0) {  // Check if Ctrl key is pressed
+                switch (wParam) {
+                    case 'Z':  // Ctrl+Z for Undo
+                        Undo();
+                        return 0;
+                        
+                    case 'Y':  // Ctrl+Y for Redo
+                        Redo();
+                        return 0;
+                }
+            }
+            break;
+            
         case WM_CREATE:
             // Find Civ3 installation when window is created
             FindCiv3Installation(hwnd);
@@ -1429,6 +1450,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 case IDM_FILE_EXIT:
                     // Exit the application
                     PostMessage(hwnd, WM_CLOSE, 0, 0);
+                    return 0;
+                    
+                case IDM_EDIT_UNDO:
+                    // Perform undo operation
+                    Undo();
+                    return 0;
+                    
+                case IDM_EDIT_REDO:
+                    // Perform redo operation
+                    Redo();
                     return 0;
                     
                 case IDM_HELP_ABOUT:
@@ -1551,7 +1582,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 // Create a simple menu
 HMENU CreateAmbEditorMenu()
 {
-    HMENU hMenu, hFileMenu, hHelpMenu;
+    HMENU hMenu, hFileMenu, hEditMenu, hHelpMenu;
     
     hMenu = CreateMenu();
     
@@ -1563,12 +1594,18 @@ HMENU CreateAmbEditorMenu()
     AppendMenu(hFileMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hFileMenu, MF_STRING, IDM_FILE_EXIT, "E&xit");
     
+    // Edit menu
+    hEditMenu = CreatePopupMenu();
+    AppendMenu(hEditMenu, MF_STRING, IDM_EDIT_UNDO, "&Undo\tCtrl+Z");
+    AppendMenu(hEditMenu, MF_STRING, IDM_EDIT_REDO, "&Redo\tCtrl+Y");
+    
     // Help menu
     hHelpMenu = CreatePopupMenu();
     AppendMenu(hHelpMenu, MF_STRING, IDM_HELP_ABOUT, "&About...");
     
     // Add menus to the main menu
     AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hFileMenu, "&File");
+    AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hEditMenu, "&Edit");
     AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hHelpMenu, "&Help");
     
     return hMenu;
