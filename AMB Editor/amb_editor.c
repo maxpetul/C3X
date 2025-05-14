@@ -8,7 +8,65 @@
 #include "preview.c"
 
 // Currently loaded AMB file
-AmbFile g_ambFile;
+AmbFile g_ambFile = {0};
+
+AmbFile g_fileSnapshots[10] = {0};
+int g_snapshotCount = 0,
+    g_redoCount = 0;
+
+void ClearFileSnapshots()
+{
+    memset(g_fileSnapshots, 0, sizeof g_fileSnapshots);
+    g_snapshotCount = g_redoCount = 0;
+}
+
+// Saves a copy of the currently loaded file onto the stack of snapshots so any changes to the file can be reverted. If the stack is full, drops the
+// oldest item.
+void SnapshotCurrentFile()
+{
+    g_redoCount = 0;
+
+    int snapshotCapacity = (sizeof g_fileSnapshots) / (sizeof g_fileSnapshots[0]);
+    if (g_snapshotCount == snapshotCapacity) {
+        memmove(&g_fileSnapshots[0], &g_fileSnapshots[1], (snapshotCapacity - 1) * (sizeof g_fileSnapshots[0]));
+        g_snapshotCount--;
+    }
+
+    memcpy(&g_fileSnapshots[g_snapshotCount], &g_ambFile, sizeof(AmbFile));
+    g_snapshotCount++;
+}
+
+void Undo()
+{
+    static AmbFile tempAmb;
+
+    if (g_snapshotCount > 0) {
+        // Swap most recent snapshot with the current file
+        memcpy(&tempAmb, &g_ambFile, sizeof(AmbFile));
+        memcpy(&g_ambFile, &g_fileSnapshots[g_snapshotCount - 1], sizeof(AmbFile));
+        memcpy(&g_fileSnapshots[g_snapshotCount - 1], &tempAmb, sizeof(AmbFile));
+
+        g_snapshotCount--;
+        g_redoCount++;
+    } else
+        MessageBeep(MB_ICONERROR);
+}
+
+void Redo()
+{
+    static AmbFile tempAmb;
+
+    if (g_redoCount > 0) {
+        // Swap oldest redo (stored one above the newest undo on the stack) with the current file
+        memcpy(&tempAmb, &g_fileSnapshots[g_snapshotCount], sizeof(AmbFile));
+        memcpy(&g_fileSnapshots[g_snapshotCount], &g_ambFile, sizeof(AmbFile));
+        memcpy(&g_ambFile, &tempAmb, sizeof(AmbFile));
+
+        g_snapshotCount++;
+        g_redoCount--;
+    } else
+        MessageBeep(MB_ICONERROR);
+}
 
 // Forward declarations for ListView functions
 void AddListViewColumn(HWND hListView, int index, char *title, int width);
@@ -288,6 +346,8 @@ void LoadAmbFileWithDialog(HWND hwnd)
     
     if (BrowseForAmbFile(hwnd, ambFilePath, MAX_PATH_LENGTH)) {
         if (LoadAmbFile(ambFilePath, &g_ambFile) && g_hwndMainWindow != NULL) {
+            ClearFileSnapshots();
+
             // Extract the filename part from the path
             char *fileName = strrchr(ambFilePath, '\\');
             if (fileName) {
@@ -1033,7 +1093,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             break;
             
         case 1: // WAV filename
-            // Update the WAV filename in the Kmap item
+            SnapshotCurrentFile();
             strncpy(kmap->items[kmapItemIndex].wavFileName, newText, sizeof(kmap->items[kmapItemIndex].wavFileName) - 1);
             kmap->items[kmapItemIndex].wavFileName[sizeof(kmap->items[kmapItemIndex].wavFileName) - 1] = '\0';
             break;
@@ -1042,7 +1102,8 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             {
                 BOOL boolValue;
                 if (IsValidBoolean(newText, &boolValue)) {
-                    // Valid boolean value - update the flag
+                    SnapshotCurrentFile();
+
                     if (boolValue) {
                         prgm->flags |= 0x01;  // Set bit 0
                     } else {
@@ -1065,6 +1126,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             
         case 3: // Speed Min
             if (IsValidInteger(newText)) {
+                SnapshotCurrentFile();
                 prgm->minRandomSpeed = atoi(newText);
             } else {
                 // Invalid integer - play error sound and reject edit
@@ -1081,6 +1143,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             
         case 4: // Speed Max
             if (IsValidInteger(newText)) {
+                SnapshotCurrentFile();
                 prgm->maxRandomSpeed = atoi(newText);
             } else {
                 // Invalid integer - play error sound and reject edit
@@ -1099,7 +1162,8 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             {
                 BOOL boolValue;
                 if (IsValidBoolean(newText, &boolValue)) {
-                    // Valid boolean value - update the flag
+                    SnapshotCurrentFile();
+
                     if (boolValue) {
                         prgm->flags |= 0x02;  // Set bit 1
                     } else {
@@ -1122,6 +1186,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             
         case 6: // Volume Min
             if (IsValidInteger(newText)) {
+                SnapshotCurrentFile();
                 prgm->minRandomVolume = atoi(newText);
             } else {
                 // Invalid integer - play error sound and reject edit
@@ -1138,6 +1203,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             
         case 7: // Volume Max
             if (IsValidInteger(newText)) {
+                SnapshotCurrentFile();
                 prgm->maxRandomVolume = atoi(newText);
             } else {
                 // Invalid integer - play error sound and reject edit
