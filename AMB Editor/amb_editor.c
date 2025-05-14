@@ -13,7 +13,7 @@ int AddListViewItem(HWND hListView, int index, const char *text);
 void SetListViewItemText(HWND hListView, int row, int col, const char *text);
 void ClearListView(HWND hListView);
 void PopulateAmbListView(void);
-BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText);
+BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char * outFormattedText, int formattedTextBufferSize);
 BOOL IsValidInteger(const char *str);
 BOOL IsValidBoolean(const char *str, BOOL *value);
 void LoadAmbFileWithDialog(HWND hwnd);
@@ -1047,8 +1047,10 @@ BOOL HandleBeginLabelEdit(HWND hwnd, NMLVDISPINFOA *pInfo)
     return TRUE; // Return TRUE to allow the edit, FALSE to prevent it
 }
 
-// Apply an edit to the AMB file data structure
-BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
+// Apply an edit to the AMB file data structure. Returns TRUE if the edit was accepted or FALSE if it was invalid. If the edit was accepted, the new
+// text is written to outFormattedText in a way that is consistent with the usual format of the ListView display (e.g. y/n converts to Yes/No for
+// boolean fields.) outFormattedText must not be NULL and formattedTextBufferSize must be at least 1.
+BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char * outFormattedText, int formattedTextBufferSize)
 {
     // Make sure we have valid row info
     if (row >= g_rowCount) {
@@ -1084,6 +1086,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
     KmapChunk *kmap = &g_ambFile.kmapChunks[kmapIndex];
     
     // Update the appropriate field based on the column that was edited
+    BOOL newTextIsValid = TRUE;
     switch (col) {
         case 0: // Time column - can't edit this directly as it's MIDI timing data
             break;
@@ -1092,12 +1095,15 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             // Reject the edit if the new text contains a slash
             if ((strchr(newText, '\\') == NULL) && (strchr(newText, '/') == NULL)) {
                 SnapshotCurrentFile();
+
+                // Write new text to kmap item
                 strncpy(kmap->items[kmapItemIndex].wavFileName, newText, sizeof(kmap->items[kmapItemIndex].wavFileName) - 1);
                 kmap->items[kmapItemIndex].wavFileName[sizeof(kmap->items[kmapItemIndex].wavFileName) - 1] = '\0';
+
+                // Write new text to formatted output
+                strncpy(outFormattedText, newText, formattedTextBufferSize);
             } else {
-                MessageBeep(MB_ICONERROR);
-                SetListViewItemText(g_hwndListView, row, col, kmap->items[kmapItemIndex].wavFileName);
-                return FALSE;
+                newTextIsValid = FALSE;
             }
             break;
             
@@ -1113,16 +1119,9 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
                         prgm->flags &= ~0x01;  // Clear bit 0
                     }
                     
-                    // Update the displayed text for consistency
-                    SetListViewItemText(g_hwndListView, row, col, (prgm->flags & 0x01) ? "Yes" : "No");
+                    strncpy(outFormattedText, (prgm->flags & 0x01) ? "Yes" : "No", formattedTextBufferSize);
                 } else {
-                    // Invalid boolean - play error sound and reject edit
-                    MessageBeep(MB_ICONERROR);
-                    
-                    // Restore the original value in the ListView
-                    SetListViewItemText(g_hwndListView, row, col, (prgm->flags & 0x01) ? "Yes" : "No");
-                    
-                    return FALSE;
+                    newTextIsValid = FALSE;
                 }
             }
             break;
@@ -1131,16 +1130,9 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             if (IsValidInteger(newText)) {
                 SnapshotCurrentFile();
                 prgm->minRandomSpeed = atoi(newText);
+                snprintf(outFormattedText, formattedTextBufferSize, "%d", prgm->minRandomSpeed);
             } else {
-                // Invalid integer - play error sound and reject edit
-                MessageBeep(MB_ICONERROR);
-                
-                // Get the current value and restore it in the ListView
-                char buffer[16];
-                sprintf(buffer, "%d", prgm->minRandomSpeed);
-                SetListViewItemText(g_hwndListView, row, col, buffer);
-                
-                return FALSE;
+                newTextIsValid = FALSE;
             }
             break;
             
@@ -1148,16 +1140,9 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             if (IsValidInteger(newText)) {
                 SnapshotCurrentFile();
                 prgm->maxRandomSpeed = atoi(newText);
+                snprintf(outFormattedText, formattedTextBufferSize, "%d", prgm->maxRandomSpeed);
             } else {
-                // Invalid integer - play error sound and reject edit
-                MessageBeep(MB_ICONERROR);
-                
-                // Get the current value and restore it in the ListView
-                char buffer[16];
-                sprintf(buffer, "%d", prgm->maxRandomSpeed);
-                SetListViewItemText(g_hwndListView, row, col, buffer);
-                
-                return FALSE;
+                newTextIsValid = FALSE;
             }
             break;
             
@@ -1173,16 +1158,9 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
                         prgm->flags &= ~0x02;  // Clear bit 1
                     }
                     
-                    // Update the displayed text for consistency
-                    SetListViewItemText(g_hwndListView, row, col, (prgm->flags & 0x02) ? "Yes" : "No");
+                    strncpy(outFormattedText, (prgm->flags & 0x02) ? "Yes" : "No", formattedTextBufferSize);
                 } else {
-                    // Invalid boolean - play error sound and reject edit
-                    MessageBeep(MB_ICONERROR);
-                    
-                    // Restore the original value in the ListView
-                    SetListViewItemText(g_hwndListView, row, col, (prgm->flags & 0x02) ? "Yes" : "No");
-                    
-                    return FALSE;
+                    newTextIsValid = FALSE;
                 }
             }
             break;
@@ -1191,16 +1169,9 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             if (IsValidInteger(newText)) {
                 SnapshotCurrentFile();
                 prgm->minRandomVolume = atoi(newText);
+                snprintf(outFormattedText, formattedTextBufferSize, "%d", prgm->minRandomVolume);
             } else {
-                // Invalid integer - play error sound and reject edit
-                MessageBeep(MB_ICONERROR);
-                
-                // Get the current value and restore it in the ListView
-                char buffer[16];
-                sprintf(buffer, "%d", prgm->minRandomVolume);
-                SetListViewItemText(g_hwndListView, row, col, buffer);
-                
-                return FALSE;
+                newTextIsValid = FALSE;
             }
             break;
             
@@ -1208,21 +1179,20 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText)
             if (IsValidInteger(newText)) {
                 SnapshotCurrentFile();
                 prgm->maxRandomVolume = atoi(newText);
+                snprintf(outFormattedText, formattedTextBufferSize, "%d", prgm->maxRandomVolume);
             } else {
-                // Invalid integer - play error sound and reject edit
-                MessageBeep(MB_ICONERROR);
-                
-                // Get the current value and restore it in the ListView
-                char buffer[16];
-                sprintf(buffer, "%d", prgm->maxRandomVolume);
-                SetListViewItemText(g_hwndListView, row, col, buffer);
-                
-                return FALSE;
+                newTextIsValid = FALSE;
             }
             break;
     }
     
-    return TRUE;
+    // Play error beep if new text didn't validate. If it did that means we wrote something to outFormattedText so make sure it's null terminated.
+    if (! newTextIsValid)
+        MessageBeep(MB_ICONERROR);
+    else
+        outFormattedText[formattedTextBufferSize - 1] = '\0';
+
+    return newTextIsValid;
 }
 
 // Handle the end of a ListView label edit
@@ -1239,7 +1209,12 @@ BOOL HandleEndLabelEdit(HWND hwnd, NMLVDISPINFOA *pInfo)
     char *newText = pInfo->item.pszText;
     
     // Apply the edit to the AMB file data structure
-    return ApplyEditToAmbFile(hwnd, row, col, newText);
+    char formattedText[256];
+    BOOL editAccepted = ApplyEditToAmbFile(hwnd, row, col, newText, formattedText, sizeof formattedText);
+    if (editAccepted) {
+        SetListViewItemText(g_hwndListView, row, col, formattedText);
+    }
+    return editAccepted;
 }
 
 // Global variables to track the current edit control's position
@@ -1262,11 +1237,11 @@ LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
                         char buffer[256];
                         GetWindowText(g_hwndEdit, buffer, sizeof(buffer));
                         
-                        // Update the ListView item with the new text
-                        SetListViewItemText(g_hwndListView, g_editRow, g_editCol, buffer);
-                        
-                        // Apply the edit to the AMB file data structure
-                        ApplyEditToAmbFile(GetParent(GetParent(hwnd)), g_editRow, g_editCol, buffer);
+                        // Apply the edit to the AMB file data structure and update the ListView with the formatted text
+                        char formattedBuffer[256];
+                        if (ApplyEditToAmbFile(GetParent(GetParent(hwnd)), g_editRow, g_editCol, buffer, formattedBuffer, sizeof formattedBuffer)) {
+                            SetListViewItemText(g_hwndListView, g_editRow, g_editCol, formattedBuffer);
+                        }
                         
                         // Destroy the edit control
                         DestroyWindow(g_hwndEdit);
@@ -1490,11 +1465,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                             char buffer[256];
                             GetWindowText(g_hwndEdit, buffer, sizeof(buffer));
                             
-                            // Update the ListView item with the new text
-                            SetListViewItemText(g_hwndListView, g_editRow, g_editCol, buffer);
-                            
                             // Apply the edit to the AMB file data structure
-                            ApplyEditToAmbFile(hwnd, g_editRow, g_editCol, buffer);
+                            char formattedBuffer[256];
+                            if (ApplyEditToAmbFile(hwnd, g_editRow, g_editCol, buffer, formattedBuffer, sizeof formattedBuffer)) {
+                                SetListViewItemText(g_hwndListView, g_editRow, g_editCol, formattedBuffer);
+                            }
                             
                             // Destroy the edit control
                             DestroyWindow(g_hwndEdit);
