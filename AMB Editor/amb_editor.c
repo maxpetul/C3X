@@ -241,7 +241,7 @@ HWND g_hwndListView = NULL;
 HBRUSH g_hBackgroundBrush = NULL;  // Brush for window background color
 
 // Track info for each row in the ListView
-AmbRowInfo g_rowInfo[MAX_TRACKS];
+AmbRowInfo g_rowInfo[MAX_SOUND_TRACKS];
 int g_rowCount = 0;  // Number of rows in the ListView
 
 // Custom path helpers 
@@ -924,28 +924,16 @@ void PopulateAmbListView(void)
         secondsPerTick = g_ambFile.midi.secondsPerQuarterNote / g_ambFile.midi.ticksPerQuarterNote;
     }
     
-    // Process each MIDI track (except track 0 which is metadata)
-    for (int trackIndex = 1; trackIndex < g_ambFile.midi.trackCount; trackIndex++) {
-        MidiTrack *track = &g_ambFile.midi.tracks[trackIndex];
-        
-        // Try to find the track name event to get the effect name
-        char trackName[256] = {0};
-        for (int i = 0; i < track->eventCount; i++) {
-            if (track->events[i].type == EVENT_TRACK_NAME) {
-                strcpy(trackName, track->events[i].data.trackName.name);
-                break;
-            }
-        }
-        
-        if (trackName[0] == '\0') {
-            continue; // Skip tracks without names
-        }
+    // Process each MIDI sound track
+    int soundTrackCount = g_ambFile.midi.trackCount - 1; // Minus one to exclude the info track
+    for (int trackIndex = 0; trackIndex < soundTrackCount; trackIndex++) {
+        SoundTrack * track = &g_ambFile.midi.soundTracks[trackIndex];
         
         // Find corresponding Prgm chunk with the matching effect name
         PrgmChunk *matchingPrgm = NULL;
         int prgmIndex = -1;
         for (int i = 0; i < g_ambFile.prgmChunkCount; i++) {
-            if (strcmp(g_ambFile.prgmChunks[i].effectName, trackName) == 0) {
+            if (strcmp(g_ambFile.prgmChunks[i].effectName, track->trackName.name) == 0) {
                 matchingPrgm = &g_ambFile.prgmChunks[i];
                 prgmIndex = i;
                 break;
@@ -973,68 +961,55 @@ void PopulateAmbListView(void)
         if (matchingKmap == NULL || matchingKmap->itemCount == 0) {
             continue; // Skip if no matching Kmap found or no items in Kmap
         }
-        
-        // Add an entry for each track with note events
-        float timestamp = 0.0f;
-        for (int i = 0; i < track->eventCount; i++) {
-            MidiEvent *event = &track->events[i];
-            
-            // Add delta time
-            timestamp += event->deltaTime * secondsPerTick;
-            
-            // We're looking for the first note-on event to get the timestamp
-            if (event->type == EVENT_NOTE_ON && event->data.noteOn.velocity > 0) {
-                // Format time string
-                char timeStr[32] = {0};
-                snprintf(timeStr, (sizeof timeStr) - 1, "%04.3f", timestamp);
+
+        float timestamp = track->deltaTimeNoteOn * secondsPerTick;
+
+        // Format time string
+        char timeStr[32] = {0};
+        snprintf(timeStr, (sizeof timeStr) - 1, "%04.3f", timestamp);
                 
-                // Format speed information
-                char speedMaxStr[32];
-                char speedMinStr[32];
-                snprintf(speedMaxStr, sizeof(speedMaxStr), "%d", matchingPrgm->maxRandomSpeed);
-                snprintf(speedMinStr, sizeof(speedMinStr), "%d", matchingPrgm->minRandomSpeed);
+        // Format speed information
+        char speedMaxStr[32];
+        char speedMinStr[32];
+        snprintf(speedMaxStr, sizeof(speedMaxStr), "%d", matchingPrgm->maxRandomSpeed);
+        snprintf(speedMinStr, sizeof(speedMinStr), "%d", matchingPrgm->minRandomSpeed);
                 
-                // Format volume parameter information
-                char volumeMaxStr[32];
-                char volumeMinStr[32];
-                snprintf(volumeMaxStr, sizeof(volumeMaxStr), "%d", matchingPrgm->maxRandomVolume);
-                snprintf(volumeMinStr, sizeof(volumeMinStr), "%d", matchingPrgm->minRandomVolume);
+        // Format volume parameter information
+        char volumeMaxStr[32];
+        char volumeMinStr[32];
+        snprintf(volumeMaxStr, sizeof(volumeMaxStr), "%d", matchingPrgm->maxRandomVolume);
+        snprintf(volumeMinStr, sizeof(volumeMinStr), "%d", matchingPrgm->minRandomVolume);
                 
-                // Check flags for randomization settings (LSB = speed random, bit 1 = volume random)
-                bool hasSpeedRandom  = (matchingPrgm->flags & 0x01) != 0;
-                bool hasVolumeRandom = (matchingPrgm->flags & 0x02) != 0;
-                
-                // For each item in the kmap (usually just one WAV file per track)
-                for (int j = 0; j < matchingKmap->itemCount; j++) {
-                    // Add the item to the ListView
-                    int row = AddListViewItem(g_hwndListView, 0x7FFFFFFF, timeStr);
-                    if (row >= 0) {
-                        // Store the track info for this row
-                        if (g_rowCount < MAX_TRACKS) {
-                            g_rowInfo[g_rowCount].trackIndex = trackIndex;
-                            g_rowInfo[g_rowCount].kmapIndex = kmapIndex;
-                            g_rowInfo[g_rowCount].prgmIndex = prgmIndex;
-                            g_rowInfo[g_rowCount].kmapItemIndex = j;
-                            g_rowCount++;
-                        }
-                        
-                        // Set the WAV file name
-                        SetListViewItemText(g_hwndListView, row, 1, matchingKmap->items[j].wavFileName);
-                        
-                        // Set speed information
-                        SetListViewItemText(g_hwndListView, row, 2, hasSpeedRandom ? "Yes" : "No");
-                        SetListViewItemText(g_hwndListView, row, 3, speedMinStr);
-                        SetListViewItemText(g_hwndListView, row, 4, speedMaxStr);
-                        
-                        // Set volume information
-                        SetListViewItemText(g_hwndListView, row, 5, hasVolumeRandom ? "Yes" : "No");
-                        SetListViewItemText(g_hwndListView, row, 6, volumeMinStr);
-                        SetListViewItemText(g_hwndListView, row, 7, volumeMaxStr);
-                    }
+        // Check flags for randomization settings (LSB = speed random, bit 1 = volume random)
+        bool hasSpeedRandom  = (matchingPrgm->flags & 0x01) != 0;
+        bool hasVolumeRandom = (matchingPrgm->flags & 0x02) != 0;
+
+        // For each item in the kmap (usually just one WAV file per track)
+        for (int j = 0; j < matchingKmap->itemCount; j++) {
+            // Add the item to the ListView
+            int row = AddListViewItem(g_hwndListView, 0x7FFFFFFF, timeStr);
+            if (row >= 0) {
+                // Store the track info for this row
+                if (g_rowCount < MAX_SOUND_TRACKS) {
+                    g_rowInfo[g_rowCount].trackIndex = trackIndex;
+                    g_rowInfo[g_rowCount].kmapIndex = kmapIndex;
+                    g_rowInfo[g_rowCount].prgmIndex = prgmIndex;
+                    g_rowInfo[g_rowCount].kmapItemIndex = j;
+                    g_rowCount++;
                 }
-                
-                // Only process the first note-on event per track
-                break;
+                        
+                // Set the WAV file name
+                SetListViewItemText(g_hwndListView, row, 1, matchingKmap->items[j].wavFileName);
+                        
+                // Set speed information
+                SetListViewItemText(g_hwndListView, row, 2, hasSpeedRandom ? "Yes" : "No");
+                SetListViewItemText(g_hwndListView, row, 3, speedMinStr);
+                SetListViewItemText(g_hwndListView, row, 4, speedMaxStr);
+                        
+                // Set volume information
+                SetListViewItemText(g_hwndListView, row, 5, hasVolumeRandom ? "Yes" : "No");
+                SetListViewItemText(g_hwndListView, row, 6, volumeMinStr);
+                SetListViewItemText(g_hwndListView, row, 7, volumeMaxStr);
             }
         }
     }

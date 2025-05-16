@@ -8,11 +8,11 @@
 
 #define MAX_PATH_LENGTH 1024
 #define MAX_CHUNKS 30 // No AMB in Civ 3 has more than 12 Kmap or Prgm chunks
-#define MAX_TRACKS 20
-#define MAX_EVENTS 10 // No AMB in Civ 3 has more than 7 events in a single track
+#define MAX_SOUND_TRACKS 30 // No AMB in Civ 3 has more than 12 sound tracks
+#define MAX_CONTROL_CHANGES 2 // No AMB in Civ 3 has more than 2 control changes per track
 #define MAX_ITEMS 2 // No AMB in Civ 3 has more than 1 item
 
-// AMB file structures
+// AMB file structures for Civ 3
 typedef struct {
     int size;
     int number;
@@ -49,49 +49,76 @@ typedef struct {
     int extraDataSize;
 } GlblChunk;
 
-typedef enum {
-    EVENT_TRACK_NAME,
-    EVENT_SMPTE_OFFSET,
-    EVENT_TIME_SIGNATURE,
-    EVENT_SET_TEMPO,
-    EVENT_END_OF_TRACK,
-    EVENT_CONTROL_CHANGE,
-    EVENT_PROGRAM_CHANGE,
-    EVENT_NOTE_OFF,
-    EVENT_NOTE_ON,
-    EVENT_UNKNOWN
-} MidiEventType;
+// MIDI event types - specific to Civ3 AMB files
+typedef struct {
+    char name[256]; // Always "Seq-1" in Civ3 AMBs
+} TrackNameEvent;
 
 typedef struct {
-    MidiEventType type;
-    int deltaTime;
-    
-    // Data for different event types
-    union {
-        struct { char name[256]; } trackName;
-        struct { int hr, mn, se, fr, ff; } smpteOffset;
-        struct { int nn, dd, cc, bb; } timeSignature;
-        struct { int microsecondsPerQuarterNote; } setTempo;
-        struct { int channelNumber, controllerNumber, value; } controlChange;
-        struct { int channelNumber, programNumber; } programChange;
-        struct { int channelNumber, key, velocity; } noteOff;
-        struct { int channelNumber, key, velocity; } noteOn;
-        struct { unsigned char data[16]; int dataLength; } unknown;
-    } data;
-} MidiEvent;
+    int hr, mn, se, fr, ff;
+} SMPTEOffsetEvent;
+
+typedef struct {
+    int nn, dd, cc, bb;
+} TimeSignatureEvent;
+
+typedef struct {
+    int microsecondsPerQuarterNote;
+} SetTempoEvent;
+
+typedef struct {
+    int channelNumber, controllerNumber, value;
+} ControlChangeEvent;
+
+typedef struct {
+    int channelNumber, programNumber;
+} ProgramChangeEvent;
+
+typedef struct {
+    int channelNumber, key, velocity;
+} NoteOffEvent;
+
+typedef struct {
+    int channelNumber, key, velocity;
+} NoteOnEvent;
+
+// Specific track structures for Civ3 AMB files
+typedef struct {
+    int size;
+    int deltaTimeTrackName;
+    TrackNameEvent trackName;
+    int deltaTimeSMPTEOffset;
+    SMPTEOffsetEvent smpteOffset;
+    int deltaTimeTimeSignature;
+    TimeSignatureEvent timeSignature;
+    int deltaTimeSetTempo;
+    SetTempoEvent setTempo;
+    int deltaTimeEndOfTrack;
+} InfoTrack;
 
 typedef struct {
     int size;
-    MidiEvent events[MAX_EVENTS];
-    int eventCount;
-} MidiTrack;
+    int deltaTimeTrackName;
+    TrackNameEvent trackName;
+    int controlChangeCount;
+    int deltaTimeControlChanges[MAX_CONTROL_CHANGES];
+    ControlChangeEvent controlChanges[MAX_CONTROL_CHANGES];
+    int deltaTimeProgramChange;
+    ProgramChangeEvent programChange;
+    int deltaTimeNoteOn;
+    NoteOnEvent noteOn;
+    int deltaTimeNoteOff;
+    NoteOffEvent noteOff;
+    int deltaTimeEndOfTrack;
+} SoundTrack;
 
 typedef struct {
     short format;
     short trackCount;
     short ticksPerQuarterNote;
     float secondsPerQuarterNote;
-    MidiTrack tracks[MAX_TRACKS];
+    InfoTrack infoTrack;
+    SoundTrack soundTracks[MAX_SOUND_TRACKS];
 } MidiData;
 
 typedef struct {
@@ -335,186 +362,417 @@ bool ParseGlblChunk(FILE *file, GlblChunk *chunk) {
     return true;
 }
 
-bool ParseMidiTrackEvent(FILE *file, MidiTrack *track, MidiEvent *prevEvent) {
-    MidiEvent event;
-    memset(&event, 0, sizeof(MidiEvent));
+// Parse TrackName event from MIDI file
+bool ParseTrackNameEvent(FILE *file, TrackNameEvent *event) {
+    unsigned char metaType;
+    fread(&metaType, 1, 1, file);
     
-    event.deltaTime = ReadMidiVarInt(file);
-    
-    unsigned char byte1;
-    fread(&byte1, 1, 1, file);
-    
-    // Check for running status
-    if (prevEvent != NULL && 
-        (prevEvent->type == EVENT_CONTROL_CHANGE ||
-         prevEvent->type == EVENT_PROGRAM_CHANGE ||
-         prevEvent->type == EVENT_NOTE_OFF ||
-         prevEvent->type == EVENT_NOTE_ON) && 
-        (byte1 & 0x80) == 0) {
-        
-        // Use previous event type and channel
-        event.type = prevEvent->type;
-        
-        // Put the byte back for reading by the specific event parser
-        fseek(file, -1, SEEK_CUR);
-        
-        switch (event.type) {
-            case EVENT_CONTROL_CHANGE:
-                event.data.controlChange.channelNumber = prevEvent->data.controlChange.channelNumber;
-                event.data.controlChange.controllerNumber = ReadMidiVarInt(file);
-                event.data.controlChange.value = ReadMidiVarInt(file);
-                break;
-                
-            case EVENT_PROGRAM_CHANGE:
-                event.data.programChange.channelNumber = prevEvent->data.programChange.channelNumber;
-                event.data.programChange.programNumber = ReadMidiVarInt(file);
-                break;
-                
-            case EVENT_NOTE_OFF:
-                event.data.noteOff.channelNumber = prevEvent->data.noteOff.channelNumber;
-                event.data.noteOff.key = ReadMidiVarInt(file);
-                event.data.noteOff.velocity = ReadMidiVarInt(file);
-                break;
-                
-            case EVENT_NOTE_ON:
-                event.data.noteOn.channelNumber = prevEvent->data.noteOn.channelNumber;
-                event.data.noteOn.key = ReadMidiVarInt(file);
-                event.data.noteOn.velocity = ReadMidiVarInt(file);
-                break;
-                
-            default:
-                // Should not happen
-                event.type = EVENT_UNKNOWN;
-                break;
-        }
-    } else if (byte1 == 0xFF) {
-        // Meta event
-        unsigned char metaType;
-        fread(&metaType, 1, 1, file);
-        
-        if (metaType == 0x03) {
-            // Track name
-            event.type = EVENT_TRACK_NAME;
-            unsigned int length = ReadMidiVarInt(file);
-            fread(event.data.trackName.name, 1, length < sizeof(event.data.trackName.name) ? length : sizeof(event.data.trackName.name) - 1, file);
-            event.data.trackName.name[length < sizeof(event.data.trackName.name) ? length : sizeof(event.data.trackName.name) - 1] = '\0';
-        } else if (metaType == 0x2F) {
-            // End of track
-            unsigned char zero;
-            fread(&zero, 1, 1, file);  // Should be zero
-            event.type = EVENT_END_OF_TRACK;
-        } else if (metaType == 0x51) {
-            // Set tempo
-            unsigned char length;
-            fread(&length, 1, 1, file);  // Should be 3
-            
-            if (length == 3) {
-                unsigned char tempo[3];
-                fread(tempo, 1, 3, file);
-                event.type = EVENT_SET_TEMPO;
-                event.data.setTempo.microsecondsPerQuarterNote = (tempo[0] << 16) | (tempo[1] << 8) | tempo[2];
-            } else {
-                event.type = EVENT_UNKNOWN;
-                // Skip data
-                fseek(file, length, SEEK_CUR);
-            }
-        } else if (metaType == 0x54) {
-            // SMPTE offset
-            unsigned char length;
-            fread(&length, 1, 1, file);  // Should be 5
-            
-            if (length == 5) {
-                event.type = EVENT_SMPTE_OFFSET;
-                event.data.smpteOffset.hr = fgetc(file);
-                event.data.smpteOffset.mn = fgetc(file);
-                event.data.smpteOffset.se = fgetc(file);
-                event.data.smpteOffset.fr = fgetc(file);
-                event.data.smpteOffset.ff = fgetc(file);
-            } else {
-                event.type = EVENT_UNKNOWN;
-                // Skip data
-                fseek(file, length, SEEK_CUR);
-            }
-        } else if (metaType == 0x58) {
-            // Time signature
-            unsigned char length;
-            fread(&length, 1, 1, file);  // Should be 4
-            
-            if (length == 4) {
-                event.type = EVENT_TIME_SIGNATURE;
-                event.data.timeSignature.nn = fgetc(file);
-                event.data.timeSignature.dd = fgetc(file);
-                event.data.timeSignature.cc = fgetc(file);
-                event.data.timeSignature.bb = fgetc(file);
-            } else {
-                event.type = EVENT_UNKNOWN;
-                // Skip data
-                fseek(file, length, SEEK_CUR);
-            }
-        } else {
-            // Unknown meta event
-            event.type = EVENT_UNKNOWN;
-            unsigned int length = ReadMidiVarInt(file);
-            // Skip data
-            fseek(file, length, SEEK_CUR);
-        }
-    } else if ((byte1 >> 4) == 8) {
-        // Note off
-        event.type = EVENT_NOTE_OFF;
-        event.data.noteOff.channelNumber = byte1 & 0x0F;
-        event.data.noteOff.key = fgetc(file);
-        event.data.noteOff.velocity = fgetc(file);
-    } else if ((byte1 >> 4) == 9) {
-        // Note on
-        event.type = EVENT_NOTE_ON;
-        event.data.noteOn.channelNumber = byte1 & 0x0F;
-        event.data.noteOn.key = fgetc(file);
-        event.data.noteOn.velocity = fgetc(file);
-    } else if ((byte1 >> 4) == 0xB) {
-        // Control change
-        event.type = EVENT_CONTROL_CHANGE;
-        event.data.controlChange.channelNumber = byte1 & 0x0F;
-        event.data.controlChange.controllerNumber = fgetc(file);
-        event.data.controlChange.value = fgetc(file);
-    } else if ((byte1 >> 4) == 0xC) {
-        // Program change
-        event.type = EVENT_PROGRAM_CHANGE;
-        event.data.programChange.channelNumber = byte1 & 0x0F;
-        event.data.programChange.programNumber = fgetc(file);
-    } else {
-        // Unknown event
-        event.type = EVENT_UNKNOWN;
-        // Store the first byte
-        event.data.unknown.data[0] = byte1;
-        event.data.unknown.dataLength = 1;
+    if (metaType != 0x03) {
+        MessageBox(NULL, "Expected TrackName event (0x03)", "Error", MB_OK | MB_ICONERROR);
+        return false;
     }
     
-    // Add the event to the track
-    if (track->eventCount < MAX_EVENTS) {
-        track->events[track->eventCount++] = event;
-        return true;
-    }
+    unsigned int length = ReadMidiVarInt(file);
+    memset(event->name, 0, sizeof(event->name));
+    fread(event->name, 1, length < sizeof(event->name) ? length : sizeof(event->name) - 1, file);
     
-    return false;
+    return true;
 }
 
-bool ParseMidiTrack(FILE *file, MidiTrack *track) {
+// Parse SMPTEOffset event from MIDI file
+bool ParseSMPTEOffsetEvent(FILE *file, SMPTEOffsetEvent *event) {
+    unsigned char metaType;
+    fread(&metaType, 1, 1, file);
+    
+    if (metaType != 0x54) {
+        MessageBox(NULL, "Expected SMPTEOffset event (0x54)", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    
+    unsigned char length;
+    fread(&length, 1, 1, file);
+    
+    if (length != 5) {
+        MessageBox(NULL, "Invalid SMPTEOffset event length (expected 5)", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    
+    event->hr = fgetc(file);
+    event->mn = fgetc(file);
+    event->se = fgetc(file);
+    event->fr = fgetc(file);
+    event->ff = fgetc(file);
+    
+    return true;
+}
+
+// Parse TimeSignature event from MIDI file
+bool ParseTimeSignatureEvent(FILE *file, TimeSignatureEvent *event) {
+    unsigned char metaType;
+    fread(&metaType, 1, 1, file);
+    
+    if (metaType != 0x58) {
+        MessageBox(NULL, "Expected TimeSignature event (0x58)", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    
+    unsigned char length;
+    fread(&length, 1, 1, file);
+    
+    if (length != 4) {
+        MessageBox(NULL, "Invalid TimeSignature event length (expected 4)", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    
+    event->nn = fgetc(file);
+    event->dd = fgetc(file);
+    event->cc = fgetc(file);
+    event->bb = fgetc(file);
+    
+    return true;
+}
+
+// Parse SetTempo event from MIDI file
+bool ParseSetTempoEvent(FILE *file, SetTempoEvent *event) {
+    unsigned char metaType;
+    fread(&metaType, 1, 1, file);
+    
+    if (metaType != 0x51) {
+        MessageBox(NULL, "Expected SetTempo event (0x51)", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    
+    unsigned char length;
+    fread(&length, 1, 1, file);
+    
+    if (length != 3) {
+        MessageBox(NULL, "Invalid SetTempo event length (expected 3)", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    
+    unsigned char tempo[3];
+    fread(tempo, 1, 3, file);
+    event->microsecondsPerQuarterNote = (tempo[0] << 16) | (tempo[1] << 8) | tempo[2];
+    
+    return true;
+}
+
+// Parse EndOfTrack event from MIDI file
+bool ParseEndOfTrackEvent(FILE *file) {
+    unsigned char metaType;
+    fread(&metaType, 1, 1, file);
+    
+    if (metaType != 0x2F) {
+        MessageBox(NULL, "Expected EndOfTrack event (0x2F)", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    
+    unsigned char zero;
+    fread(&zero, 1, 1, file);  // Should be zero
+    
+    return true;
+}
+
+// Parse ControlChange event from MIDI file
+bool ParseControlChangeEvent(FILE *file, ControlChangeEvent *event, int *channelNumber) {
+    unsigned char statusByte;
+    fread(&statusByte, 1, 1, file);
+    
+    // Check if the status byte indicates a control change event (0xBn)
+    if ((statusByte >> 4) != 0xB) {
+        // If channelNumber pointer is provided, we're expecting running status
+        if (channelNumber != NULL) {
+            // Put the byte back for reading data
+            fseek(file, -1, SEEK_CUR);
+            event->channelNumber = *channelNumber;
+        } else {
+            MessageBox(NULL, "Expected ControlChange event (0xBn)", "Error", MB_OK | MB_ICONERROR);
+            return false;
+        }
+    } else {
+        event->channelNumber = statusByte & 0x0F;
+        // Save channel number for possible running status
+        if (channelNumber != NULL) {
+            *channelNumber = event->channelNumber;
+        }
+    }
+    
+    event->controllerNumber = fgetc(file);
+    event->value = fgetc(file);
+    
+    return true;
+}
+
+// Parse ProgramChange event from MIDI file
+bool ParseProgramChangeEvent(FILE *file, ProgramChangeEvent *event, int *channelNumber) {
+    unsigned char statusByte;
+    fread(&statusByte, 1, 1, file);
+    
+    // Check if the status byte indicates a program change event (0xCn)
+    if ((statusByte >> 4) != 0xC) {
+        // If channelNumber pointer is provided, we're expecting running status
+        if (channelNumber != NULL) {
+            // Put the byte back for reading data
+            fseek(file, -1, SEEK_CUR);
+            event->channelNumber = *channelNumber;
+        } else {
+            MessageBox(NULL, "Expected ProgramChange event (0xCn)", "Error", MB_OK | MB_ICONERROR);
+            return false;
+        }
+    } else {
+        event->channelNumber = statusByte & 0x0F;
+        // Save channel number for possible running status
+        if (channelNumber != NULL) {
+            *channelNumber = event->channelNumber;
+        }
+    }
+    
+    event->programNumber = fgetc(file);
+    
+    return true;
+}
+
+// Parse NoteOn event from MIDI file
+bool ParseNoteOnEvent(FILE *file, NoteOnEvent *event, int *channelNumber) {
+    unsigned char statusByte;
+    fread(&statusByte, 1, 1, file);
+    
+    // Check if the status byte indicates a note on event (0x9n)
+    if ((statusByte >> 4) != 0x9) {
+        // If channelNumber pointer is provided, we're expecting running status
+        if (channelNumber != NULL) {
+            // Put the byte back for reading data
+            fseek(file, -1, SEEK_CUR);
+            event->channelNumber = *channelNumber;
+        } else {
+            MessageBox(NULL, "Expected NoteOn event (0x9n)", "Error", MB_OK | MB_ICONERROR);
+            return false;
+        }
+    } else {
+        event->channelNumber = statusByte & 0x0F;
+        // Save channel number for possible running status
+        if (channelNumber != NULL) {
+            *channelNumber = event->channelNumber;
+        }
+    }
+    
+    event->key = fgetc(file);
+    event->velocity = fgetc(file);
+    
+    return true;
+}
+
+// Parse NoteOff event from MIDI file
+bool ParseNoteOffEvent(FILE *file, NoteOffEvent *event, int *channelNumber) {
+    unsigned char statusByte;
+    fread(&statusByte, 1, 1, file);
+    
+    // Check if the status byte indicates a note off event (0x8n)
+    if ((statusByte >> 4) != 0x8) {
+        // Check if it's a note on with velocity 0 (equivalent to note off)
+        if ((statusByte >> 4) == 0x9) {
+            event->channelNumber = statusByte & 0x0F;
+            event->key = fgetc(file);
+            event->velocity = fgetc(file);
+            
+            // Check if velocity is 0 (note off)
+            if (event->velocity > 0) {
+                MessageBox(NULL, "Expected NoteOff event but got NoteOn with velocity > 0", "Error", MB_OK | MB_ICONERROR);
+                return false;
+            }
+            
+            // Save channel number for possible running status
+            if (channelNumber != NULL) {
+                *channelNumber = event->channelNumber;
+            }
+            
+            return true;
+        }
+        
+        // If channelNumber pointer is provided, we're expecting running status
+        if (channelNumber != NULL) {
+            // Put the byte back for reading data
+            fseek(file, -1, SEEK_CUR);
+            event->channelNumber = *channelNumber;
+        } else {
+            MessageBox(NULL, "Expected NoteOff event (0x8n)", "Error", MB_OK | MB_ICONERROR);
+            return false;
+        }
+    } else {
+        event->channelNumber = statusByte & 0x0F;
+        // Save channel number for possible running status
+        if (channelNumber != NULL) {
+            *channelNumber = event->channelNumber;
+        }
+    }
+    
+    event->key = fgetc(file);
+    event->velocity = fgetc(file);
+    
+    return true;
+}
+
+// Parse InfoTrack from MIDI file
+bool ParseInfoTrack(FILE *file, InfoTrack *track) {
+    // Read the file tag
+    char trackTag[5] = {0};
+    fread(trackTag, 1, 4, file);
+    
+    if (strcmp(trackTag, "MTrk") != 0) {
+        char errMsg[256];
+        sprintf(errMsg, "Invalid MIDI info track header: expected 'MTrk', got '%.4s'", trackTag);
+        MessageBox(NULL, errMsg, "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    
+    // Read track chunk size
     track->size = ReadMidiInt(file, true);
     long startPos = ftell(file);
-    track->eventCount = 0;
     
-    // Read track events until we reach the end of the track
-    while (ftell(file) < startPos + track->size && track->eventCount < MAX_EVENTS) {
-        MidiEvent *prevEvent = (track->eventCount > 0) ? &track->events[track->eventCount - 1] : NULL;
-        if (!ParseMidiTrackEvent(file, track, prevEvent)) {
+    // Read events in the InfoTrack
+    
+    // 1. TrackName event
+    track->deltaTimeTrackName = ReadMidiVarInt(file);
+    if (fgetc(file) != 0xFF) { // Meta event marker
+        MessageBox(NULL, "Expected Meta event marker (0xFF) for TrackName", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    if (!ParseTrackNameEvent(file, &track->trackName)) return false;
+    
+    // 2. SMPTEOffset event
+    track->deltaTimeSMPTEOffset = ReadMidiVarInt(file);
+    if (fgetc(file) != 0xFF) { // Meta event marker
+        MessageBox(NULL, "Expected Meta event marker (0xFF) for SMPTEOffset", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    if (!ParseSMPTEOffsetEvent(file, &track->smpteOffset)) return false;
+    
+    // 3. TimeSignature event
+    track->deltaTimeTimeSignature = ReadMidiVarInt(file);
+    if (fgetc(file) != 0xFF) { // Meta event marker
+        MessageBox(NULL, "Expected Meta event marker (0xFF) for TimeSignature", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    if (!ParseTimeSignatureEvent(file, &track->timeSignature)) return false;
+    
+    // 4. SetTempo event
+    track->deltaTimeSetTempo = ReadMidiVarInt(file);
+    if (fgetc(file) != 0xFF) { // Meta event marker
+        MessageBox(NULL, "Expected Meta event marker (0xFF) for SetTempo", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    if (!ParseSetTempoEvent(file, &track->setTempo)) return false;
+    
+    // 5. EndOfTrack event
+    track->deltaTimeEndOfTrack = ReadMidiVarInt(file);
+    if (fgetc(file) != 0xFF) { // Meta event marker
+        MessageBox(NULL, "Expected Meta event marker (0xFF) for EndOfTrack", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    if (!ParseEndOfTrackEvent(file)) return false;
+    
+    // Ensure we've read exactly the size of the track
+    long currentPos = ftell(file);
+    if (currentPos != startPos + track->size) {
+        MessageBox(NULL, "Info track size mismatch", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    
+    return true;
+}
+
+// Parse SoundTrack from MIDI file
+bool ParseSoundTrack(FILE *file, SoundTrack *track) {
+    // Read the file tag
+    char trackTag[5] = {0};
+    fread(trackTag, 1, 4, file);
+    
+    if (strcmp(trackTag, "MTrk") != 0) {
+        char errMsg[256];
+        sprintf(errMsg, "Invalid MIDI sound track header: expected 'MTrk', got '%.4s'", trackTag);
+        MessageBox(NULL, errMsg, "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    
+    // Read track chunk size
+    track->size = ReadMidiInt(file, true);
+    long startPos = ftell(file);
+    
+    // Initialize control change count
+    track->controlChangeCount = 0;
+    
+    // 1. TrackName event
+    track->deltaTimeTrackName = ReadMidiVarInt(file);
+    if (fgetc(file) != 0xFF) { // Meta event marker
+        MessageBox(NULL, "Expected Meta event marker (0xFF) for TrackName", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    if (!ParseTrackNameEvent(file, &track->trackName)) return false;
+    
+    // 2. ControlChange events (1 or 2)
+    unsigned char nextByte;
+    int currentChannelNumber = -1; // For running status
+    
+    // Peek at the next byte to determine event type
+    long peekPos = ftell(file);
+    track->deltaTimeControlChanges[0] = ReadMidiVarInt(file);
+    nextByte = fgetc(file);
+    fseek(file, peekPos, SEEK_SET); // Go back to where we were
+    
+    // Check for control change events (0xBn)
+    while (((nextByte >> 4) == 0xB || currentChannelNumber != -1) && 
+           track->controlChangeCount < MAX_CONTROL_CHANGES) {
+        
+        // Read the delta time
+        track->deltaTimeControlChanges[track->controlChangeCount] = ReadMidiVarInt(file);
+        
+        // Parse the control change event
+        if (!ParseControlChangeEvent(file, &track->controlChanges[track->controlChangeCount], &currentChannelNumber)) {
             return false;
         }
         
-        // If we got an unknown event, skip to the end of the track
-        if (track->events[track->eventCount - 1].type == EVENT_UNKNOWN) {
-            fseek(file, startPos + track->size, SEEK_SET);
-            break;
+        track->controlChangeCount++;
+        
+        // Peek at the next byte to determine if there's another control change
+        if (track->controlChangeCount < MAX_CONTROL_CHANGES) {
+            peekPos = ftell(file);
+            int testDeltaTime = ReadMidiVarInt(file);
+            nextByte = fgetc(file);
+            fseek(file, peekPos, SEEK_SET); // Go back to where we were
+            
+            // If next byte is not a control change and not a running status, break
+            if ((nextByte >> 4) != 0xB && (nextByte & 0x80) != 0) {
+                currentChannelNumber = -1; // Reset running status
+                break;
+            }
         }
+    }
+    
+    // 3. ProgramChange event
+    track->deltaTimeProgramChange = ReadMidiVarInt(file);
+    if (!ParseProgramChangeEvent(file, &track->programChange, NULL)) return false;
+    
+    // 4. NoteOn event
+    track->deltaTimeNoteOn = ReadMidiVarInt(file);
+    if (!ParseNoteOnEvent(file, &track->noteOn, NULL)) return false;
+    
+    // 5. NoteOff event
+    track->deltaTimeNoteOff = ReadMidiVarInt(file);
+    if (!ParseNoteOffEvent(file, &track->noteOff, NULL)) return false;
+    
+    // 6. EndOfTrack event
+    track->deltaTimeEndOfTrack = ReadMidiVarInt(file);
+    if (fgetc(file) != 0xFF) { // Meta event marker
+        MessageBox(NULL, "Expected Meta event marker (0xFF) for EndOfTrack", "Error", MB_OK | MB_ICONERROR);
+        return false;
+    }
+    if (!ParseEndOfTrackEvent(file)) return false;
+    
+    // Ensure we've read exactly the size of the track
+    long currentPos = ftell(file);
+    if (currentPos != startPos + track->size) {
+        MessageBox(NULL, "Sound track size mismatch", "Error", MB_OK | MB_ICONERROR);
+        return false;
     }
     
     return true;
@@ -551,7 +809,7 @@ bool ParseMidi(FILE *file, MidiData *midi) {
         return false;
     }
     
-    if (midi->trackCount < 2 || midi->trackCount > MAX_TRACKS) {
+    if (midi->trackCount < 2 || midi->trackCount > (MAX_SOUND_TRACKS + 1)) {
         MessageBox(NULL, "Invalid MIDI track count", "Error", MB_OK | MB_ICONERROR);
         return false;
     }
@@ -561,27 +819,20 @@ bool ParseMidi(FILE *file, MidiData *midi) {
         return false;
     }
     
-    // Read all tracks
-    for (int i = 0; i < midi->trackCount; i++) {
-        char trackTag[5] = {0};
-        fread(trackTag, 1, 4, file);
-        
-        if (strcmp(trackTag, "MTrk") != 0) {
-            MessageBox(NULL, "Invalid MIDI track header", "Error", MB_OK | MB_ICONERROR);
-            return false;
-        }
-        
-        if (!ParseMidiTrack(file, &midi->tracks[i])) {
-            return false;
-        }
+    // Parse InfoTrack (first track)
+    if (!ParseInfoTrack(file, &midi->infoTrack)) {
+        return false;
     }
     
-    // Get tempo from the first track
-    for (int i = 0; i < midi->tracks[0].eventCount; i++) {
-        MidiEvent *event = &midi->tracks[0].events[i];
-        if (event->type == EVENT_SET_TEMPO) {
-            midi->secondsPerQuarterNote = event->data.setTempo.microsecondsPerQuarterNote / 1000000.0f;
-            break;
+    // Set seconds per quarter note from the tempo in the InfoTrack
+    midi->secondsPerQuarterNote = midi->infoTrack.setTempo.microsecondsPerQuarterNote / 1000000.0f;
+    
+    // Parse SoundTracks
+    int soundTrackCount = midi->trackCount - 1; // First track is InfoTrack
+    
+    for (int i = 0; i < soundTrackCount && i < MAX_SOUND_TRACKS; i++) {
+        if (!ParseSoundTrack(file, &midi->soundTracks[i])) {
+            return false;
         }
     }
     
@@ -750,113 +1001,101 @@ bool WriteGlblChunk(FILE *file, GlblChunk const * chunk) {
     return true;
 }
 
-bool WriteMidiEvent(FILE *file, MidiEvent const * event) {
-    // Write delta time
-    WriteMidiVarInt(file, event->deltaTime);
+// Function to write TrackName event to MIDI file
+void WriteTrackNameEvent(FILE *file, const TrackNameEvent *event) {
+    fputc(0x03, file);  // Track name meta event type
     
-    // Write event data based on type
-    switch (event->type) {
-        case EVENT_TRACK_NAME:
-            fputc(0xFF, file);  // Meta event
-            fputc(0x03, file);  // Track name
-            
-            // Length of the name
-            WriteMidiVarInt(file, strlen(event->data.trackName.name));
-            
-            // Name data
-            fwrite(event->data.trackName.name, 1, strlen(event->data.trackName.name), file);
-            break;
-            
-        case EVENT_SMPTE_OFFSET:
-            fputc(0xFF, file);  // Meta event
-            fputc(0x54, file);  // SMPTE offset
-            fputc(0x05, file);  // Length is always 5
-            
-            // SMPTE data
-            fputc(event->data.smpteOffset.hr, file);
-            fputc(event->data.smpteOffset.mn, file);
-            fputc(event->data.smpteOffset.se, file);
-            fputc(event->data.smpteOffset.fr, file);
-            fputc(event->data.smpteOffset.ff, file);
-            break;
-            
-        case EVENT_TIME_SIGNATURE:
-            fputc(0xFF, file);  // Meta event
-            fputc(0x58, file);  // Time signature
-            fputc(0x04, file);  // Length is always 4
-            
-            // Time signature data
-            fputc(event->data.timeSignature.nn, file);
-            fputc(event->data.timeSignature.dd, file);
-            fputc(event->data.timeSignature.cc, file);
-            fputc(event->data.timeSignature.bb, file);
-            break;
-            
-        case EVENT_SET_TEMPO:
-            fputc(0xFF, file);  // Meta event
-            fputc(0x51, file);  // Set tempo
-            fputc(0x03, file);  // Length is always 3
-            
-            // Tempo data (microseconds per quarter note)
-            unsigned int tempo = event->data.setTempo.microsecondsPerQuarterNote;
-            fputc((tempo >> 16) & 0xFF, file);
-            fputc((tempo >> 8) & 0xFF, file);
-            fputc(tempo & 0xFF, file);
-            break;
-            
-        case EVENT_END_OF_TRACK:
-            fputc(0xFF, file);  // Meta event
-            fputc(0x2F, file);  // End of track
-            fputc(0x00, file);  // Length is always 0
-            break;
-            
-        case EVENT_CONTROL_CHANGE:
-            // Control change status byte: 0xBn, where n is the channel number
-            fputc(0xB0 | (event->data.controlChange.channelNumber & 0x0F), file);
-            
-            // Controller number and value
-            fputc(event->data.controlChange.controllerNumber & 0x7F, file);
-            fputc(event->data.controlChange.value & 0x7F, file);
-            break;
-            
-        case EVENT_PROGRAM_CHANGE:
-            // Program change status byte: 0xCn, where n is the channel number
-            fputc(0xC0 | (event->data.programChange.channelNumber & 0x0F), file);
-            
-            // Program number
-            fputc(event->data.programChange.programNumber & 0x7F, file);
-            break;
-            
-        case EVENT_NOTE_OFF:
-            // Note off status byte: 0x8n, where n is the channel number
-            fputc(0x80 | (event->data.noteOff.channelNumber & 0x0F), file);
-            
-            // Key and velocity
-            fputc(event->data.noteOff.key & 0x7F, file);
-            fputc(event->data.noteOff.velocity & 0x7F, file);
-            break;
-            
-        case EVENT_NOTE_ON:
-            // Note on status byte: 0x9n, where n is the channel number
-            fputc(0x90 | (event->data.noteOn.channelNumber & 0x0F), file);
-            
-            // Key and velocity
-            fputc(event->data.noteOn.key & 0x7F, file);
-            fputc(event->data.noteOn.velocity & 0x7F, file);
-            break;
-            
-        case EVENT_UNKNOWN:
-            // For unknown events, write the raw data
-            if (event->data.unknown.dataLength > 0) {
-                fwrite(event->data.unknown.data, 1, event->data.unknown.dataLength, file);
-            }
-            break;
-    }
+    // Length of the name
+    WriteMidiVarInt(file, strlen(event->name));
     
-    return true;
+    // Name data
+    fwrite(event->name, 1, strlen(event->name), file);
 }
 
-bool WriteMidiTrack(FILE *file, MidiTrack const * track) {
+// Function to write SMPTEOffset event to MIDI file
+void WriteSMPTEOffsetEvent(FILE *file, const SMPTEOffsetEvent *event) {
+    fputc(0x54, file);  // SMPTE offset meta event type
+    fputc(0x05, file);  // Length is always 5
+    
+    // SMPTE data
+    fputc(event->hr, file);
+    fputc(event->mn, file);
+    fputc(event->se, file);
+    fputc(event->fr, file);
+    fputc(event->ff, file);
+}
+
+// Function to write TimeSignature event to MIDI file
+void WriteTimeSignatureEvent(FILE *file, const TimeSignatureEvent *event) {
+    fputc(0x58, file);  // Time signature meta event type
+    fputc(0x04, file);  // Length is always 4
+    
+    // Time signature data
+    fputc(event->nn, file);
+    fputc(event->dd, file);
+    fputc(event->cc, file);
+    fputc(event->bb, file);
+}
+
+// Function to write SetTempo event to MIDI file
+void WriteSetTempoEvent(FILE *file, const SetTempoEvent *event) {
+    fputc(0x51, file);  // Set tempo meta event type
+    fputc(0x03, file);  // Length is always 3
+    
+    // Tempo data (microseconds per quarter note)
+    unsigned int tempo = event->microsecondsPerQuarterNote;
+    fputc((tempo >> 16) & 0xFF, file);
+    fputc((tempo >> 8) & 0xFF, file);
+    fputc(tempo & 0xFF, file);
+}
+
+// Function to write EndOfTrack event to MIDI file
+void WriteEndOfTrackEvent(FILE *file) {
+    fputc(0x2F, file);  // End of track meta event type
+    fputc(0x00, file);  // Length is always 0
+}
+
+// Function to write ControlChange event to MIDI file
+void WriteControlChangeEvent(FILE *file, const ControlChangeEvent *event) {
+    // Control change status byte: 0xBn, where n is the channel number
+    fputc(0xB0 | (event->channelNumber & 0x0F), file);
+    
+    // Controller number and value
+    fputc(event->controllerNumber & 0x7F, file);
+    fputc(event->value & 0x7F, file);
+}
+
+// Function to write ProgramChange event to MIDI file
+void WriteProgramChangeEvent(FILE *file, const ProgramChangeEvent *event) {
+    // Program change status byte: 0xCn, where n is the channel number
+    fputc(0xC0 | (event->channelNumber & 0x0F), file);
+    
+    // Program number
+    fputc(event->programNumber & 0x7F, file);
+}
+
+// Function to write NoteOn event to MIDI file
+void WriteNoteOnEvent(FILE *file, const NoteOnEvent *event) {
+    // Note on status byte: 0x9n, where n is the channel number
+    fputc(0x90 | (event->channelNumber & 0x0F), file);
+    
+    // Key and velocity
+    fputc(event->key & 0x7F, file);
+    fputc(event->velocity & 0x7F, file);
+}
+
+// Function to write NoteOff event to MIDI file
+void WriteNoteOffEvent(FILE *file, const NoteOffEvent *event) {
+    // Note off status byte: 0x8n, where n is the channel number
+    fputc(0x80 | (event->channelNumber & 0x0F), file);
+    
+    // Key and velocity
+    fputc(event->key & 0x7F, file);
+    fputc(event->velocity & 0x7F, file);
+}
+
+// Function to write InfoTrack to MIDI file
+void WriteInfoTrack(FILE *file, const InfoTrack *track) {
     // Write track tag
     fwrite("MTrk", 1, 4, file);
     
@@ -870,10 +1109,32 @@ bool WriteMidiTrack(FILE *file, MidiTrack const * track) {
     // Save position at start of track data
     long startPos = ftell(file);
     
-    // Write track events
-    for (int i = 0; i < track->eventCount; i++) {
-        WriteMidiEvent(file, &track->events[i]);
-    }
+    // Write all events in sequence
+    
+    // 1. TrackName event
+    WriteMidiVarInt(file, track->deltaTimeTrackName);
+    fputc(0xFF, file);  // Meta event marker
+    WriteTrackNameEvent(file, &track->trackName);
+    
+    // 2. SMPTEOffset event
+    WriteMidiVarInt(file, track->deltaTimeSMPTEOffset);
+    fputc(0xFF, file);  // Meta event marker
+    WriteSMPTEOffsetEvent(file, &track->smpteOffset);
+    
+    // 3. TimeSignature event
+    WriteMidiVarInt(file, track->deltaTimeTimeSignature);
+    fputc(0xFF, file);  // Meta event marker
+    WriteTimeSignatureEvent(file, &track->timeSignature);
+    
+    // 4. SetTempo event
+    WriteMidiVarInt(file, track->deltaTimeSetTempo);
+    fputc(0xFF, file);  // Meta event marker
+    WriteSetTempoEvent(file, &track->setTempo);
+    
+    // 5. EndOfTrack event
+    WriteMidiVarInt(file, track->deltaTimeEndOfTrack);
+    fputc(0xFF, file);  // Meta event marker
+    WriteEndOfTrackEvent(file);
     
     // Get end position and calculate size
     long endPos = ftell(file);
@@ -885,8 +1146,63 @@ bool WriteMidiTrack(FILE *file, MidiTrack const * track) {
     
     // Return to the end of the track
     fseek(file, endPos, SEEK_SET);
+}
+
+// Function to write SoundTrack to MIDI file
+void WriteSoundTrack(FILE *file, const SoundTrack *track) {
+    // Write track tag
+    fwrite("MTrk", 1, 4, file);
     
-    return true;
+    // We need to calculate track size, so we'll save the current position,
+    // write a placeholder, write the events, then come back and update it
+    long sizePos = ftell(file);
+    
+    // Write placeholder for size
+    WriteMidiInt(file, 0, true);
+    
+    // Save position at start of track data
+    long startPos = ftell(file);
+    
+    // Write all events in sequence
+    
+    // 1. TrackName event
+    WriteMidiVarInt(file, track->deltaTimeTrackName);
+    fputc(0xFF, file);  // Meta event marker
+    WriteTrackNameEvent(file, &track->trackName);
+    
+    // 2. ControlChange events (1 or 2)
+    for (int i = 0; i < track->controlChangeCount; i++) {
+        WriteMidiVarInt(file, track->deltaTimeControlChanges[i]);
+        WriteControlChangeEvent(file, &track->controlChanges[i]);
+    }
+    
+    // 3. ProgramChange event
+    WriteMidiVarInt(file, track->deltaTimeProgramChange);
+    WriteProgramChangeEvent(file, &track->programChange);
+    
+    // 4. NoteOn event
+    WriteMidiVarInt(file, track->deltaTimeNoteOn);
+    WriteNoteOnEvent(file, &track->noteOn);
+    
+    // 5. NoteOff event
+    WriteMidiVarInt(file, track->deltaTimeNoteOff);
+    WriteNoteOffEvent(file, &track->noteOff);
+    
+    // 6. EndOfTrack event
+    WriteMidiVarInt(file, track->deltaTimeEndOfTrack);
+    fputc(0xFF, file);  // Meta event marker
+    WriteEndOfTrackEvent(file);
+    
+    // Get end position and calculate size
+    long endPos = ftell(file);
+    unsigned int trackSize = (unsigned int)(endPos - startPos);
+    
+    // Go back and write the actual size
+    fseek(file, sizePos, SEEK_SET);
+    WriteMidiInt(file, trackSize, true);
+    
+    // Return to the end of the track
+    fseek(file, endPos, SEEK_SET);
 }
 
 bool WriteMidi(FILE *file, MidiData const * midi) {
@@ -901,11 +1217,14 @@ bool WriteMidi(FILE *file, MidiData const * midi) {
     WriteMidiShort(file, midi->trackCount, false);
     WriteMidiShort(file, midi->ticksPerQuarterNote, false);
     
-    // Write all tracks
-    for (int i = 0; i < midi->trackCount; i++) {
-        if (!WriteMidiTrack(file, &midi->tracks[i])) {
-            return false;
-        }
+    // Write InfoTrack
+    WriteInfoTrack(file, &midi->infoTrack);
+    
+    // Write SoundTracks
+    int soundTrackCount = midi->trackCount - 1; // First track is InfoTrack
+    
+    for (int i = 0; i < soundTrackCount && i < MAX_SOUND_TRACKS; i++) {
+        WriteSoundTrack(file, &midi->soundTracks[i]);
     }
     
     return true;
@@ -956,11 +1275,16 @@ bool SaveAmbFile(AmbFile const * amb, const char *filePath) {
     fclose(file);
     
     // Remove the file if we failed
-    if (! success) {
+    if (!success) {
         remove(filePath);
     }
     
     return success;
+}
+
+// Utility function to get sound track count
+int GetSoundTrackCount(const MidiData *midi) {
+    return midi->trackCount - 1; // First track is InfoTrack
 }
 
 // Function to describe the loaded AMB file (for debugging)
@@ -1052,107 +1376,137 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
         pos += written;
         remainingSize -= written;
         
-        // Describe each track
-        for (int i = 0; i < amb->midi.trackCount && remainingSize > 0; i++) {
-            MidiTrack *track = &amb->midi.tracks[i];
+        // Describe InfoTrack
+        if (remainingSize > 0) {
+            InfoTrack const *infoTrack = &amb->midi.infoTrack;
+            float secondsPerTick = amb->midi.secondsPerQuarterNote / amb->midi.ticksPerQuarterNote;
+            float timestamp = 0.0f;
+            
             written = snprintf(pos, remainingSize, 
-                        "  Track #%d:\n"
-                        "    Size: %d\n"
-                        "    Event Count: %d\n",
-                        i + 1, track->size, track->eventCount);
+                        "  InfoTrack:\n"
+                        "    Size: %d\n",
+                        infoTrack->size);
             pos += written;
             remainingSize -= written;
             
-            // Describe a few events for each track
-            float timestamp = 0.0f;
+            // Track name event
+            timestamp += infoTrack->deltaTimeTrackName * secondsPerTick;
+            written = snprintf(pos, remainingSize, 
+                        "    %.3f: TrackName '%s'\n",
+                        timestamp, infoTrack->trackName.name);
+            pos += written;
+            remainingSize -= written;
+            
+            // SMPTE offset event
+            timestamp += infoTrack->deltaTimeSMPTEOffset * secondsPerTick;
+            written = snprintf(pos, remainingSize, 
+                        "    %.3f: SMPTEOffset %d %d %d %d %d\n",
+                        timestamp, infoTrack->smpteOffset.hr, 
+                        infoTrack->smpteOffset.mn, 
+                        infoTrack->smpteOffset.se, 
+                        infoTrack->smpteOffset.fr, 
+                        infoTrack->smpteOffset.ff);
+            pos += written;
+            remainingSize -= written;
+            
+            // Time signature event
+            timestamp += infoTrack->deltaTimeTimeSignature * secondsPerTick;
+            written = snprintf(pos, remainingSize, 
+                        "    %.3f: TimeSignature %d %d %d %d\n",
+                        timestamp, infoTrack->timeSignature.nn, 
+                        infoTrack->timeSignature.dd, 
+                        infoTrack->timeSignature.cc, 
+                        infoTrack->timeSignature.bb);
+            pos += written;
+            remainingSize -= written;
+            
+            // Set tempo event
+            timestamp += infoTrack->deltaTimeSetTempo * secondsPerTick;
+            written = snprintf(pos, remainingSize, 
+                        "    %.3f: SetTempo %d\n",
+                        timestamp, infoTrack->setTempo.microsecondsPerQuarterNote);
+            pos += written;
+            remainingSize -= written;
+            
+            // End of track event
+            timestamp += infoTrack->deltaTimeEndOfTrack * secondsPerTick;
+            written = snprintf(pos, remainingSize, 
+                        "    %.3f: EndOfTrack\n\n",
+                        timestamp);
+            pos += written;
+            remainingSize -= written;
+        }
+        
+        // Describe each SoundTrack
+        int soundTrackCount = GetSoundTrackCount(&amb->midi);
+        for (int i = 0; i < soundTrackCount && remainingSize > 0; i++) {
+            SoundTrack const *soundTrack = &amb->midi.soundTracks[i];
             float secondsPerTick = amb->midi.secondsPerQuarterNote / amb->midi.ticksPerQuarterNote;
+            float timestamp = 0.0f;
             
-            for (int j = 0; j < track->eventCount && j < 20 && remainingSize > 0; j++) {
-                MidiEvent *event = &track->events[j];
-                timestamp += event->deltaTime * secondsPerTick;
-                
-                switch (event->type) {
-                    case EVENT_TRACK_NAME:
-                        written = snprintf(pos, remainingSize, 
-                                    "      %.3f: TrackName '%s'\n",
-                                    timestamp, event->data.trackName.name);
-                        break;
-                    case EVENT_SET_TEMPO:
-                        written = snprintf(pos, remainingSize, 
-                                    "      %.3f: SetTempo %d\n",
-                                    timestamp, event->data.setTempo.microsecondsPerQuarterNote);
-                        break;
-                    case EVENT_TIME_SIGNATURE:
-                        written = snprintf(pos, remainingSize, 
-                                    "      %.3f: TimeSignature %d %d %d %d\n",
-                                    timestamp, event->data.timeSignature.nn, 
-                                    event->data.timeSignature.dd, 
-                                    event->data.timeSignature.cc, 
-                                    event->data.timeSignature.bb);
-                        break;
-                    case EVENT_CONTROL_CHANGE:
-                        written = snprintf(pos, remainingSize, 
-                                    "      %.3f: ControlChange %d %d %d\n",
-                                    timestamp, event->data.controlChange.channelNumber, 
-                                    event->data.controlChange.controllerNumber, 
-                                    event->data.controlChange.value);
-                        break;
-                    case EVENT_PROGRAM_CHANGE:
-                        written = snprintf(pos, remainingSize, 
-                                    "      %.3f: ProgramChange %d %d\n",
-                                    timestamp, event->data.programChange.channelNumber, 
-                                    event->data.programChange.programNumber);
-                        break;
-                    case EVENT_NOTE_ON:
-                        written = snprintf(pos, remainingSize, 
-                                    "      %.3f: NoteOn %d %d %d\n",
-                                    timestamp, event->data.noteOn.channelNumber, 
-                                    event->data.noteOn.key, 
-                                    event->data.noteOn.velocity);
-                        break;
-                    case EVENT_NOTE_OFF:
-                        written = snprintf(pos, remainingSize, 
-                                    "      %.3f: NoteOff %d %d %d\n",
-                                    timestamp, event->data.noteOff.channelNumber, 
-                                    event->data.noteOff.key, 
-                                    event->data.noteOff.velocity);
-                        break;
-                    case EVENT_END_OF_TRACK:
-                        written = snprintf(pos, remainingSize, 
-                                    "      %.3f: EndOfTrack\n",
-                                    timestamp);
-                        break;
-                    case EVENT_SMPTE_OFFSET:
-                        written = snprintf(pos, remainingSize, 
-                                    "      %.3f: SMPTEOffset %d %d %d %d %d\n",
-                                    timestamp, event->data.smpteOffset.hr, 
-                                    event->data.smpteOffset.mn, 
-                                    event->data.smpteOffset.se, 
-                                    event->data.smpteOffset.fr, 
-                                    event->data.smpteOffset.ff);
-                        break;
-                    case EVENT_UNKNOWN:
-                        written = snprintf(pos, remainingSize, 
-                                    "      %.3f: Unknown event\n",
-                                    timestamp);
-                        break;
-                }
-                
+            written = snprintf(pos, remainingSize, 
+                        "  SoundTrack #%d:\n"
+                        "    Size: %d\n",
+                        i + 1, soundTrack->size);
+            pos += written;
+            remainingSize -= written;
+            
+            // Track name event
+            timestamp += soundTrack->deltaTimeTrackName * secondsPerTick;
+            written = snprintf(pos, remainingSize, 
+                        "    %.3f: TrackName '%s'\n",
+                        timestamp, soundTrack->trackName.name);
+            pos += written;
+            remainingSize -= written;
+            
+            // Control change events
+            for (int j = 0; j < soundTrack->controlChangeCount && remainingSize > 0; j++) {
+                timestamp += soundTrack->deltaTimeControlChanges[j] * secondsPerTick;
+                written = snprintf(pos, remainingSize, 
+                            "    %.3f: ControlChange %d %d %d\n",
+                            timestamp, soundTrack->controlChanges[j].channelNumber,
+                            soundTrack->controlChanges[j].controllerNumber,
+                            soundTrack->controlChanges[j].value);
                 pos += written;
                 remainingSize -= written;
             }
             
-            if (track->eventCount > 20 && remainingSize > 0) {
-                written = snprintf(pos, remainingSize, "      ... (more events)\n");
-                pos += written;
-                remainingSize -= written;
-            }
+            // Program change event
+            timestamp += soundTrack->deltaTimeProgramChange * secondsPerTick;
+            written = snprintf(pos, remainingSize, 
+                        "    %.3f: ProgramChange %d %d\n",
+                        timestamp, soundTrack->programChange.channelNumber,
+                        soundTrack->programChange.programNumber);
+            pos += written;
+            remainingSize -= written;
             
-            if (remainingSize > 0) {
-                written = snprintf(pos, remainingSize, "\n");
-                pos += written;
-                remainingSize -= written;
-            }
+            // Note on event
+            timestamp += soundTrack->deltaTimeNoteOn * secondsPerTick;
+            written = snprintf(pos, remainingSize, 
+                        "    %.3f: NoteOn %d %d %d\n",
+                        timestamp, soundTrack->noteOn.channelNumber,
+                        soundTrack->noteOn.key,
+                        soundTrack->noteOn.velocity);
+            pos += written;
+            remainingSize -= written;
+            
+            // Note off event
+            timestamp += soundTrack->deltaTimeNoteOff * secondsPerTick;
+            written = snprintf(pos, remainingSize, 
+                        "    %.3f: NoteOff %d %d %d\n",
+                        timestamp, soundTrack->noteOff.channelNumber,
+                        soundTrack->noteOff.key,
+                        soundTrack->noteOff.velocity);
+            pos += written;
+            remainingSize -= written;
+            
+            // End of track event
+            timestamp += soundTrack->deltaTimeEndOfTrack * secondsPerTick;
+            written = snprintf(pos, remainingSize, 
+                        "    %.3f: EndOfTrack\n\n",
+                        timestamp);
+            pos += written;
+            remainingSize -= written;
         }
     }
 }
