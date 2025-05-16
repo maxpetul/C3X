@@ -118,6 +118,7 @@ void Redo()
 #define LVM_EDITLABEL           (LVM_FIRST + 23)
 #define LVM_GETITEMTEXT         (LVM_FIRST + 45)
 #define LVM_GETSUBITEMRECT      (LVM_FIRST + 56)
+#define LVM_GETCOLUMN           (LVM_FIRST + 25)
 #define EM_SETSEL               0x00B1
 #define LVIR_BOUNDS             0
 #define LVIR_ICON               1
@@ -1088,7 +1089,21 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
     // Update the appropriate field based on the column that was edited
     BOOL newTextIsValid = TRUE;
     switch (col) {
-        case 0: // Time column - can't edit this directly as it's MIDI timing data
+        case 0:
+            {
+                char * afterParsing;
+                float newTime = strtod(newText, &afterParsing);
+                if (afterParsing != newText) {
+                    SnapshotCurrentFile();
+
+                    // TODO: Actually write new time to AMB object
+
+                    snprintf(outFormattedText, formattedTextBufferSize, "%04.3f", newTime);
+
+                } else {
+                    newTextIsValid = FALSE;
+                }
+            }
             break;
             
         case 1: // WAV filename
@@ -1277,12 +1292,6 @@ void EditListViewSubItem(HWND hwndListView, int row, int col)
     lvi.state = LVIS_SELECTED;
     SendMessage(hwndListView, LVM_SETITEMSTATE, row, (LPARAM)&lvi);
     
-    // For the first column (col=0), we can use the built-in edit control
-    if (col == 0) {
-        SendMessage(hwndListView, LVM_EDITLABEL, row, 0);
-        return;
-    }
-    
     // For subitems, we need to create a custom edit control
     // First get the text of the subitem
     char buffer[256] = {0};
@@ -1305,6 +1314,18 @@ void EditListViewSubItem(HWND hwndListView, int row, int col)
     if (g_hwndEdit != NULL) {
         DestroyWindow(g_hwndEdit);
         g_hwndEdit = NULL;
+    }
+    
+    // For column 0, we need to adjust the width to match the column width
+    // instead of using the full row width that LVIR_BOUNDS returns
+    if (col == 0) {
+        // Get the width of column 0
+        LVCOLUMNA lvc = {0};
+        lvc.mask = LVCF_WIDTH;
+        SendMessage(hwndListView, LVM_GETCOLUMN, 0, (LPARAM)&lvc);
+        
+        // Adjust the rectangle to match the column width
+        rect.right = rect.left + lvc.cx;
     }
     
     // Create an edit control over the subitem
