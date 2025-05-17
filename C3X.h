@@ -195,6 +195,7 @@ struct c3x_config {
 	bool compact_strategic_resource_display_on_city_screen;
 	bool warn_when_chosen_building_would_replace_another;
 	bool do_not_unassign_workers_from_polluted_tiles;
+	bool do_not_make_capital_cities_appear_larger;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hoseat;
 	bool allow_precision_strikes_against_tile_improvements;

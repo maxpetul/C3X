@@ -1,3 +1,4 @@
+- Option not to draw capital cities larger than they really are, named do_not_make_capital_cities_appear_larger
 - Fix city screen zooming out for adjacent tiles that aren't actually workable due to maximum work radius
 
 * RELEASE 22

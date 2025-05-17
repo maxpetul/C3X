@@ -3098,6 +3098,7 @@ patch_init_floating_point ()
 		{"compact_strategic_resource_display_on_city_screen"   , false, offsetof (struct c3x_config, compact_strategic_resource_display_on_city_screen)},
 		{"warn_when_chosen_building_would_replace_another"     , false, offsetof (struct c3x_config, warn_when_chosen_building_would_replace_another)},
 		{"do_not_unassign_workers_from_polluted_tiles"         , false, offsetof (struct c3x_config, do_not_unassign_workers_from_polluted_tiles)},
+		{"do_not_make_capital_cities_appear_larger"            , false, offsetof (struct c3x_config, do_not_make_capital_cities_appear_larger)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -10170,8 +10171,11 @@ patch_City_draw_on_map (City * this, int edx, Map_Renderer * map_renderer, int p
 	Leader * owner = &leaders[this->Body.CivID];
 	int restore_capital = owner->CapitalID;
 
+	if (is->current_config.do_not_make_capital_cities_appear_larger)
+		owner->CapitalID = -1;
+
 	// Temporarily set this city as the capital if it has an extra palace so it gets drawn with the next larger size
-	if ((is->current_config.ai_multi_city_start > 1) &&
+	else if ((is->current_config.ai_multi_city_start > 1) &&
 	    ((*p_human_player_bits & (1 << owner->ID)) == 0) &&
 	    has_extra_palace (this))
 		owner->CapitalID = this->Body.ID;
