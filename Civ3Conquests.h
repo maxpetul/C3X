@@ -1684,7 +1684,7 @@ struct Tile_vtable
   short (__fastcall *m46_Get_ContinentID)(Tile *);
   short (__fastcall *m47_Get_Tile_BuildingID)(Tile *);
   short (__fastcall *m48_Get_field_20_hiword)(Tile *);
-  int (__fastcall *m49_Get_Square_RealType)(int);
+  byte (__fastcall *m49_Get_Square_RealType)(Tile *);
   enum SquareTypes (__fastcall *m50_Get_Square_BaseType)(Tile *);
   void (__fastcall *m51_Unset_Tile_Flags)(Tile *, __, int, int, int, int);
   void (__fastcall *m52_Unset_River_Code_call_m53)(Tile *, __, char);
@@ -1707,7 +1707,7 @@ struct Tile_vtable
   int (__fastcall *m69_get_Tile_City_CivID)(Tile *);
   int (__fastcall *m70_Get_Tile_Building_OwnerID)(Tile *);
   int (__fastcall *m71_Check_Worker_Job)(Tile *);
-  int (__fastcall *m72_Get_Pollution_Effect)(Tile *);
+  char (__fastcall * m72_Get_Pollution_Effect) (Tile *);
   int m73;
   void (__fastcall *m74_Set_Square_Type)(Tile *, __, int, int, int);
   void (__fastcall *m75_Clear)(Tile *, __, int);
@@ -2041,8 +2041,7 @@ struct Map_vtable
   Continent * (__fastcall * m33_Get_Continent) (Map *, __, int);
 //  int (__thiscall *m34_Get_Continent_Count)(Map *);
   void *m34_Get_Continent_Count;
-//  int (__thiscall *m35_Get_BIC_Sub_Data)(Map *this, int Object_Type, int Object_Index, void *Object);
-  void *m35_Get_BIC_Sub_Data;
+  int (__fastcall * m35_Get_BIC_Sub_Data) (Map *this, int edx, int Object_Type, int Object_Index, void **Object);
 };
 
 struct Base_List_Item
