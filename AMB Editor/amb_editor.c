@@ -1071,7 +1071,8 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
                 if (afterParsing != newText) {
                     SnapshotCurrentFile();
 
-                    // TODO: Actually write new time to AMB object
+		    float ticksPerSecond = g_ambFile.midi.ticksPerQuarterNote / g_ambFile.midi.secondsPerQuarterNote;
+		    g_ambFile.midi.soundTracks[trackIndex].deltaTimeNoteOn = newTime * ticksPerSecond;
 
                     snprintf(outFormattedText, formattedTextBufferSize, "%04.3f", newTime);
 

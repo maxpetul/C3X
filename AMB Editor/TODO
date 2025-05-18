@@ -1,8 +1,8 @@
-- Verify that all delta times are zero for all sound track events before the NoteOn event
-- Enable editing of play times
+- Add "duration" column that allows specification of NoteOff's delta time
 - Enable addition and deletion of rows
 - Sort rows by play time
 - Figure out why some AMBs don't load e.g. the F-15
+  - The issue here is filling the ListView; track names must be matched to effect names ignoring case
 - Pop up warning when previewing AMB with missing WAV files
 
 Final things:
