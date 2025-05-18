@@ -1,8 +1,6 @@
 - Add "duration" column that allows specification of NoteOff's delta time
 - Enable addition and deletion of rows
 - Sort rows by play time
-- Figure out why some AMBs don't load e.g. the F-15
-  - The issue here is filling the ListView; track names must be matched to effect names ignoring case
 - Pop up warning when previewing AMB with missing WAV files
 
 Final things:
@@ -15,3 +13,4 @@ Final things:
 Low priority:
 - Figure out how to dispose of SoundCore objects properly
   - This will also mean we can clean up the temp directory more quickly
+- It would be nice if this editor could be used to fix broken files, like GalleyAttack.amb, where the var names don't match

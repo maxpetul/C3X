@@ -933,7 +933,7 @@ void PopulateAmbListView(void)
         PrgmChunk *matchingPrgm = NULL;
         int prgmIndex = -1;
         for (int i = 0; i < g_ambFile.prgmChunkCount; i++) {
-            if (strcmp(g_ambFile.prgmChunks[i].effectName, track->trackName.name) == 0) {
+            if (_stricmp(g_ambFile.prgmChunks[i].effectName, track->trackName.name) == 0) { // stricmp ignores case
                 matchingPrgm = &g_ambFile.prgmChunks[i];
                 prgmIndex = i;
                 break;
