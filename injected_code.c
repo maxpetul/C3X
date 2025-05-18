@@ -3138,6 +3138,7 @@ patch_init_floating_point ()
 		{"max_ai_naval_escorts"                        ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
 		{"ai_worker_requirement_percent"               ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
 		{"chance_for_nukes_to_destroy_max_one_hp_units",   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
+		{"rebase_range_multiplier"                     ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -10868,15 +10869,49 @@ patch_Unit_ai_go_to_capital (Unit * this)
 }
 
 bool __fastcall
-patch_Unit_check_rebase_target (Unit * this, int edx, int tile_x, int tile_y)
+patch_Unit_is_in_rebase_range (Unit * this, int edx, int tile_x, int tile_y)
 {
-	return Unit_check_rebase_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+	bool in_range;
+
+	// 6 is the game's standard value, so fall back on the base game logic in that case
+	if (is->current_config.rebase_range_multiplier == 6)
+		in_range = Unit_is_in_rebase_range (this, __, tile_x, tile_y);
+
+	else {
+		int op_range = p_bic_data->UnitTypes[this->Body.UnitTypeID].OperationalRange;
+		if (op_range < 1)
+			op_range = 500;
+
+		int x_dist = Map_get_x_dist (&p_bic_data->Map, __, tile_x, this->Body.X),
+		    y_dist = Map_get_y_dist (&p_bic_data->Map, __, tile_y, this->Body.Y);
+
+		in_range = ((x_dist + y_dist) >> 1) <= (op_range * is->current_config.rebase_range_multiplier);
+	}
+
+	return in_range && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
 }
 
 bool __fastcall
-patch_Unit_is_in_rebase_range (Unit * this, int edx, int tile_x, int tile_y)
+patch_Unit_check_rebase_target (Unit * this, int edx, int tile_x, int tile_y)
 {
-	return Unit_is_in_rebase_range (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+	// 6 is the game's standard value, so fall back on the base game logic in that case
+	if (is->current_config.rebase_range_multiplier == 6) {
+		return Unit_check_rebase_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+
+	// Otherwise, we have to redo the range check. Unlike Unit::is_in_rebase_range, the base method here does more than just check the range so we
+	// want to make sure to call it even if we determine that the target is in range. In that case, set the range to unlimited temporarily so the
+	// base game's range check passes.
+	} else {
+		if (patch_Unit_is_in_rebase_range (this, __, tile_x, tile_y)) {
+			int * p_op_range = &p_bic_data->UnitTypes[this->Body.UnitTypeID].OperationalRange;
+			int original_op_range = *p_op_range;
+			*p_op_range = 0;
+			bool tr = Unit_check_rebase_target (this, __, tile_x, tile_y);
+			*p_op_range = original_op_range;
+			return tr;
+		} else
+			return false;
+	}
 }
 
 int __fastcall

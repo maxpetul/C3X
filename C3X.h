@@ -223,6 +223,7 @@ struct c3x_config {
 	bool no_cross_shore_detection;
 	int city_work_radius;
 	enum work_area_limit work_area_limit;
+	int rebase_range_multiplier;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
