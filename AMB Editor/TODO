@@ -1,7 +1,8 @@
 - Add "duration" column that allows specification of NoteOff's delta time
-- Enable addition and deletion of rows
+- Enable addition of rows
 - Sort rows by play time
 - Pop up warning when previewing AMB with missing WAV files
+- Look at IroncladAttack.amb. It's odd how the effect and track names don't match for the explosion effects but they play anyway. It might be that Prgms and tracks are matched by number instead of name.
 
 Final things:
 - Harden all the various s(n)printf calls against buffer overflow

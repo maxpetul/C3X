@@ -1094,6 +1094,49 @@ void DeleteRow(int row)
         for (int i = 0; i < g_ambFile.prgmChunkCount; i++) {
             g_ambFile.prgmChunks[i].number = i + 1;
         }
+        
+        // Update channelNumber in all MIDI sound tracks for any that reference 
+        // Prgm chunks with indices greater than the one we deleted
+        for (int i = 0; i < g_ambFile.midi.trackCount - 1; i++) { // Skip info track
+            SoundTrack *track = &g_ambFile.midi.soundTracks[i];
+            
+            // Check all control change events
+            for (int j = 0; j < track->controlChangeCount; j++) {
+                if (track->controlChanges[j].channelNumber > prgmIndex) {
+                    track->controlChanges[j].channelNumber--;
+                }
+            }
+            
+            // Check program change event
+            if (track->programChange.channelNumber > prgmIndex) {
+                track->programChange.channelNumber--;
+            }
+            
+            // Update programNumber if it references deleted program or those after it
+            // Note: programNumbers are 1-based (matching the Prgm number field)
+            if (track->programChange.programNumber == prgmIndex + 1) {
+                // This is referencing the deleted program - we'd need to update it
+                // to a valid program or potentially disable this track
+                // For now, if there are other programs, use the first available one
+                if (g_ambFile.prgmChunkCount > 0) {
+                    track->programChange.programNumber = 1; // Use first available program (1-based)
+                }
+            }
+            else if (track->programChange.programNumber > prgmIndex + 1) {
+                // This references a program that got shifted down, so update the index
+                track->programChange.programNumber--;
+            }
+            
+            // Check note on event
+            if (track->noteOn.channelNumber > prgmIndex) {
+                track->noteOn.channelNumber--;
+            }
+            
+            // Check note off event
+            if (track->noteOff.channelNumber > prgmIndex) {
+                track->noteOff.channelNumber--;
+            }
+        }
     }
 
     // Delete the MIDI track
