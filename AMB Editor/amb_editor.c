@@ -214,7 +214,8 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 #define IDM_FILE_EXIT       1004
 #define IDM_EDIT_UNDO       1005
 #define IDM_EDIT_REDO       1006
-#define IDM_HELP_ABOUT      1007
+#define IDM_EDIT_DELETE     1007
+#define IDM_HELP_ABOUT      1008
 
 // Control IDs 
 #define ID_PATH_EDIT        102
@@ -1178,6 +1179,25 @@ LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
     return CallWindowProc(g_oldEditProc, hwnd, uMsg, wParam, lParam);
 }
 
+// Function to delete the currently selected row
+void DeleteSelectedRow(HWND hwndListView)
+{
+    // Check if a row is selected
+    int rowCount = SendMessage(hwndListView, LVM_GETITEMCOUNT, 0, 0);
+    
+    for (int i = 0; i < rowCount; i++) {
+        UINT state = SendMessage(hwndListView, LVM_GETITEMSTATE, i, LVIS_SELECTED);
+        if (state & LVIS_SELECTED) {
+            // Found a selected row, delete it
+            DeleteRow(i);
+            return;
+        }
+    }
+    
+    // If we get here, no row was selected
+    MessageBox(NULL, "Please select a row to delete", "Information", MB_OK | MB_ICONINFORMATION);
+}
+
 // Function to programmatically start editing a ListView subitem
 void EditListViewSubItem(HWND hwndListView, int row, int col)
 {
@@ -1296,6 +1316,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                         Redo();
                         return 0;
                 }
+            } else {
+                switch (wParam) {
+                    case VK_DELETE:  // Delete key to delete selected row
+                        DeleteSelectedRow(g_hwndListView);
+                        return 0;
+                }
             }
             break;
             
@@ -1348,6 +1374,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 case IDM_EDIT_REDO:
                     // Perform redo operation
                     Redo();
+                    return 0;
+                    
+                case IDM_EDIT_DELETE:
+                    // Delete the selected row
+                    DeleteSelectedRow(g_hwndListView);
                     return 0;
                     
                 case IDM_HELP_ABOUT:
@@ -1486,6 +1517,8 @@ HMENU CreateAmbEditorMenu()
     hEditMenu = CreatePopupMenu();
     AppendMenu(hEditMenu, MF_STRING, IDM_EDIT_UNDO, "&Undo\tCtrl+Z");
     AppendMenu(hEditMenu, MF_STRING, IDM_EDIT_REDO, "&Redo\tCtrl+Y");
+    AppendMenu(hEditMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hEditMenu, MF_STRING, IDM_EDIT_DELETE, "&Delete Row\tDel");
     
     // Help menu
     hHelpMenu = CreatePopupMenu();
