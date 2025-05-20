@@ -1033,6 +1033,78 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
     return newTextIsValid;
 }
 
+void DeleteRow(int row)
+{
+    // If no file loaded or row is invalid, do nothing
+    if (g_ambFile.filePath[0] == '\0' || row < 0 || row >= g_rowCount) {
+        MessageBox(NULL, "Invalid row or no AMB file loaded", "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    // Get the references to the chunks and tracks we need to work with
+    AmbRowInfo *rowInfo = &g_rowInfo[row];
+    int trackIndex = rowInfo->trackIndex;
+    int kmapIndex = rowInfo->kmapIndex;
+    int prgmIndex = rowInfo->prgmIndex;
+
+    // Take a snapshot before making changes
+    SnapshotCurrentFile();
+
+    // First, check if the Kmap chunk is referenced by other Prgm chunks
+    KmapChunk *kmap = &g_ambFile.kmapChunks[kmapIndex];
+    const char *kmapVarName = kmap->varName;
+    int kmapReferenceCount = 0;
+
+    for (int i = 0; i < g_ambFile.prgmChunkCount; i++) {
+        if (strcmp(g_ambFile.prgmChunks[i].varName, kmapVarName) == 0) {
+            kmapReferenceCount++;
+        }
+    }
+
+    // Delete the Kmap chunk if it's only referenced by the Prgm we're deleting
+    if (kmapReferenceCount <= 1) {
+        // Shift all Kmap chunks after this one forward
+        for (int i = kmapIndex; i < g_ambFile.kmapChunkCount - 1; i++) {
+            memcpy(&g_ambFile.kmapChunks[i], &g_ambFile.kmapChunks[i + 1], sizeof(KmapChunk));
+        }
+        g_ambFile.kmapChunkCount--;
+    }
+
+    // Next, check if the Prgm chunk is referenced by other MIDI tracks
+    PrgmChunk *prgm = &g_ambFile.prgmChunks[prgmIndex];
+    const char *effectName = prgm->effectName;
+    int prgmReferenceCount = 0;
+
+    for (int i = 0; i < g_ambFile.midi.trackCount - 1; i++) { // Skip info track
+        if (_stricmp(g_ambFile.midi.soundTracks[i].trackName.name, effectName) == 0) {
+            prgmReferenceCount++;
+        }
+    }
+
+    // Delete the Prgm chunk if it's only referenced by the track we're deleting
+    if (prgmReferenceCount <= 1) {
+        // Shift all Prgm chunks after this one forward
+        for (int i = prgmIndex; i < g_ambFile.prgmChunkCount - 1; i++) {
+            memcpy(&g_ambFile.prgmChunks[i], &g_ambFile.prgmChunks[i + 1], sizeof(PrgmChunk));
+        }
+        g_ambFile.prgmChunkCount--;
+
+        // Update the number field of any remaining Prgm chunks - they are 1-based
+        for (int i = 0; i < g_ambFile.prgmChunkCount; i++) {
+            g_ambFile.prgmChunks[i].number = i + 1;
+        }
+    }
+
+    // Delete the MIDI track
+    for (int i = trackIndex; i < g_ambFile.midi.trackCount - 2; i++) { // -2 because we skip info track (0) and want to leave room for the last valid track
+        memcpy(&g_ambFile.midi.soundTracks[i], &g_ambFile.midi.soundTracks[i + 1], sizeof(SoundTrack));
+    }
+    g_ambFile.midi.trackCount--;
+
+    // Refresh the ListView to show updated AMB data
+    PopulateAmbListView();
+}
+
 // Handle the end of a ListView label edit
 BOOL HandleEndLabelEdit(HWND hwnd, NMLVDISPINFOA *pInfo)
 {
