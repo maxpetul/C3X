@@ -939,6 +939,9 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
                 strncpy(kmap->items[kmapItemIndex].wavFileName, newText, sizeof(kmap->items[kmapItemIndex].wavFileName) - 1);
                 kmap->items[kmapItemIndex].wavFileName[sizeof(kmap->items[kmapItemIndex].wavFileName) - 1] = '\0';
 
+                // Update Kmap size
+                kmap->size = ComputeKmapChunkSize(kmap);
+
                 // Write new text to formatted output
                 strncpy(outFormattedText, newText, formattedTextBufferSize);
             } else {

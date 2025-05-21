@@ -914,6 +914,12 @@ bool LoadAmbFile(const char *filePath, AmbFile * out) {
     return success;
 }
 
+int ComputePrgmChunkSize(PrgmChunk const * chunk) {
+    // size = 28 bytes for 7 4-byte ints + 2 null terminators + lengths of the two strings
+    // All Prgm chunks in the AMBs that ship with Civ 3 are confirmed to follow this rule
+    return 30 + strlen(chunk->effectName) + strlen(chunk->varName);
+}
+
 // Functions to write AMB file chunks
 bool WritePrgmChunk(FILE *file, PrgmChunk const * chunk) {
     // Write tag
@@ -936,6 +942,17 @@ bool WritePrgmChunk(FILE *file, PrgmChunk const * chunk) {
     WriteString(file, chunk->varName);
     
     return true;
+}
+
+int ComputeKmapChunkSize(KmapChunk const * chunk) {
+    // size w/o items = 20 bytes for 5 4-byte ints + length of var name + null terminator + end indicator
+    int size = 25 + strlen(chunk->varName);
+    for (int i = 0; i < chunk->itemCount; i++)
+        // size of each item = 12 bytes unknown data + length of wav file name + null terminator
+        size += 12 + strlen(chunk->items[i].wavFileName) + 1;
+    // This rule matches the size of all Kmap chunks in the Civ 3 AMBs except two, both in GalleyAttack.amb. Those chunks are broken, however, and
+    // don't play any sound.
+    return size;
 }
 
 bool WriteKmapChunk(FILE *file, KmapChunk const * chunk) {
