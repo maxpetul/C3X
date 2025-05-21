@@ -1166,7 +1166,7 @@ void WriteInfoTrack(FILE *file, const InfoTrack *track) {
 }
 
 // Function to write SoundTrack to MIDI file
-void WriteSoundTrack(FILE *file, const SoundTrack *track) {
+unsigned int WriteSoundTrack(FILE *file, const SoundTrack *track) {
     // Write track tag
     fwrite("MTrk", 1, 4, file);
     
@@ -1220,6 +1220,15 @@ void WriteSoundTrack(FILE *file, const SoundTrack *track) {
     
     // Return to the end of the track
     fseek(file, endPos, SEEK_SET);
+
+    return trackSize;
+}
+
+int ComputeSoundTrackSize(SoundTrack const * track) {
+    FILE *memFile = tmpfile();
+    unsigned int size = WriteSoundTrack(memFile, track);
+    fclose(memFile);
+    return size;
 }
 
 bool WriteMidi(FILE *file, MidiData const * midi) {
