@@ -17,6 +17,7 @@ void PopulateAmbListView(void);
 BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char * outFormattedText, int formattedTextBufferSize);
 BOOL IsValidInteger(const char *str);
 BOOL GetWavFileDuration(const char* filePath, float* outDuration);
+void MatchDurationToWav(HWND hwndListView);
 void LoadAmbFileWithDialog(HWND hwnd);
 void SaveAmbFileWithDialog(HWND hwnd);
 
@@ -217,7 +218,8 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 #define IDM_EDIT_REDO       1006
 #define IDM_EDIT_DELETE     1007
 #define IDM_EDIT_ADD        1008
-#define IDM_HELP_ABOUT      1009
+#define IDM_EDIT_MATCH_WAV  1009
+#define IDM_HELP_ABOUT      1010
 
 // Control IDs 
 #define ID_PATH_EDIT        102
@@ -1433,6 +1435,75 @@ void DeleteSelectedRow(HWND hwndListView)
     MessageBox(NULL, "Please select a row to delete", "Information", MB_OK | MB_ICONINFORMATION);
 }
 
+// Function to match duration to WAV file for the selected row
+void MatchDurationToWav(HWND hwndListView)
+{
+    // Check if a row is selected
+    int rowCount = SendMessage(hwndListView, LVM_GETITEMCOUNT, 0, 0);
+    int selectedRow = -1;
+    
+    for (int i = 0; i < rowCount; i++) {
+        UINT state = SendMessage(hwndListView, LVM_GETITEMSTATE, i, LVIS_SELECTED);
+        if (state & LVIS_SELECTED) {
+            selectedRow = i;
+            break;
+        }
+    }
+    
+    if (selectedRow == -1) {
+        MessageBox(NULL, "Please select a row to match duration", "Information", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    
+    // Make sure we have valid row info
+    if (selectedRow >= g_rowCount) {
+        MessageBox(NULL, "Invalid row selection", "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    // Get the WAV filename from the selected row
+    char wavFileName[256] = {0};
+    LVITEMA lvi = {0};
+    lvi.mask = LVIF_TEXT;
+    lvi.iItem = selectedRow;
+    lvi.iSubItem = COL_WAV_FILE;
+    lvi.pszText = wavFileName;
+    lvi.cchTextMax = sizeof(wavFileName);
+    SendMessage(hwndListView, LVM_GETITEMTEXT, selectedRow, (LPARAM)&lvi);
+    
+    if (strlen(wavFileName) == 0) {
+        MessageBox(NULL, "No WAV filename found in selected row", "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    // Construct full path to WAV file (assuming it's in the same directory as the AMB file)
+    char wavFilePath[MAX_PATH_LENGTH];
+    strcpy(wavFilePath, g_ambFile.filePath);
+    PathRemoveFileSpec(wavFilePath);  // Remove filename, keep directory
+    PathAppend(wavFilePath, wavFileName);
+    
+    // Get WAV file duration
+    float wavDuration;
+    if (!GetWavFileDuration(wavFilePath, &wavDuration)) {
+        char errorMsg[512];
+        snprintf(errorMsg, sizeof(errorMsg), "Could not read duration from WAV file:\n%s\n\nMake sure the file exists and is a valid WAV file.", wavFilePath);
+        MessageBox(NULL, errorMsg, "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    // Convert duration to string and apply it to the AMB file
+    char durationStr[32];
+    snprintf(durationStr, sizeof(durationStr), "%.3f", wavDuration);
+    
+    char formattedText[256];
+    if (ApplyEditToAmbFile(GetParent(hwndListView), selectedRow, COL_DURATION, durationStr, formattedText, sizeof(formattedText))) {
+        SetListViewItemText(hwndListView, selectedRow, COL_DURATION, formattedText);
+        MessageBox(NULL, "Duration matched to WAV file successfully", "Success", MB_OK | MB_ICONINFORMATION);
+    } else {
+        MessageBox(NULL, "Failed to update duration", "Error", MB_OK | MB_ICONERROR);
+    }
+}
+
 // Function to programmatically start editing a ListView subitem
 void EditListViewSubItem(HWND hwndListView, int row, int col)
 {
@@ -1626,6 +1697,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     DeleteSelectedRow(g_hwndListView);
                     return 0;
                     
+                case IDM_EDIT_MATCH_WAV:
+                    // Match duration to WAV file
+                    MatchDurationToWav(g_hwndListView);
+                    return 0;
+                    
                 case IDM_HELP_ABOUT:
                     // Show about dialog
                     MessageBox(hwnd, 
@@ -1787,6 +1863,8 @@ HMENU CreateAmbEditorMenu()
     AppendMenu(hEditMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hEditMenu, MF_STRING, IDM_EDIT_ADD, "&Add Row\tIns");
     AppendMenu(hEditMenu, MF_STRING, IDM_EDIT_DELETE, "&Delete Row\tDel");
+    AppendMenu(hEditMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hEditMenu, MF_STRING, IDM_EDIT_MATCH_WAV, "&Match duration to WAV");
     
     // Help menu
     hHelpMenu = CreatePopupMenu();
