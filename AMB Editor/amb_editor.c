@@ -226,13 +226,14 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 // ListView Column Indices
 typedef enum {
     COL_TIME = 0,
-    COL_WAV_FILE = 1,
-    COL_SPEED_RANDOM = 2,
-    COL_SPEED_MIN = 3,
-    COL_SPEED_MAX = 4,
-    COL_VOLUME_RANDOM = 5,
-    COL_VOLUME_MIN = 6,
-    COL_VOLUME_MAX = 7
+    COL_DURATION,
+    COL_WAV_FILE,
+    COL_SPEED_RANDOM,
+    COL_SPEED_MIN,
+    COL_SPEED_MAX,
+    COL_VOLUME_RANDOM,
+    COL_VOLUME_MIN,
+    COL_VOLUME_MAX
 } ListViewColumn;
 
 // Track info structure to associate ListView rows with AMB data
@@ -793,10 +794,15 @@ void PopulateAmbListView(void)
         }
 
         float timestamp = track->deltaTimeNoteOn * secondsPerTick;
+        float duration = track->deltaTimeNoteOff * secondsPerTick;
 
         // Format time string
         char timeStr[32] = {0};
         snprintf(timeStr, (sizeof timeStr) - 1, "%04.3f", timestamp);
+        
+        // Format duration string
+        char durationStr[32] = {0};
+        snprintf(durationStr, (sizeof durationStr) - 1, "%04.3f", duration);
                 
         // Format speed information
         char speedMaxStr[32];
@@ -827,6 +833,9 @@ void PopulateAmbListView(void)
                     g_rowInfo[g_rowCount].kmapItemIndex = j;
                     g_rowCount++;
                 }
+                        
+                // Set the duration
+                SetListViewItemText(g_hwndListView, row, COL_DURATION, durationStr);
                         
                 // Set the WAV file name
                 SetListViewItemText(g_hwndListView, row, COL_WAV_FILE, matchingKmap->items[j].wavFileName);
@@ -905,6 +914,24 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
 		    g_ambFile.midi.soundTracks[trackIndex].deltaTimeNoteOn = newTime * ticksPerSecond;
 
                     snprintf(outFormattedText, formattedTextBufferSize, "%04.3f", newTime);
+
+                } else {
+                    newTextIsValid = FALSE;
+                }
+            }
+            break;
+            
+        case COL_DURATION:
+            {
+                char * afterParsing;
+                float newDuration = strtod(newText, &afterParsing);
+                if (afterParsing != newText) {
+                    SnapshotCurrentFile();
+
+                    float ticksPerSecond = g_ambFile.midi.ticksPerQuarterNote / g_ambFile.midi.secondsPerQuarterNote;
+                    g_ambFile.midi.soundTracks[trackIndex].deltaTimeNoteOff = newDuration * ticksPerSecond;
+
+                    snprintf(outFormattedText, formattedTextBufferSize, "%04.3f", newDuration);
 
                 } else {
                     newTextIsValid = FALSE;
@@ -1497,6 +1524,7 @@ void CreateAmbListView(HWND hwnd)
     
     // Add columns to the ListView
     AddListViewColumn(g_hwndListView, COL_TIME, "Time (sec.)", 85);
+    AddListViewColumn(g_hwndListView, COL_DURATION, "Duration (sec.)", 95);
     AddListViewColumn(g_hwndListView, COL_WAV_FILE, "WAV File", 235);
     AddListViewColumn(g_hwndListView, COL_SPEED_RANDOM, "Speed Random", 95);
     AddListViewColumn(g_hwndListView, COL_SPEED_MIN, "Speed Min", 70);
