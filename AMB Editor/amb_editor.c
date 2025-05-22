@@ -1261,12 +1261,6 @@ void AddRow()
     strcpy(prgm->varName, uniqueName);
     prgm->number = prgmIndex + 1;
     
-    // Set some default values for speed and volume
-    prgm->minRandomSpeed = 100;
-    prgm->maxRandomSpeed = 100;
-    prgm->minRandomVolume = 100;
-    prgm->maxRandomVolume = 100;
-    
     // Calculate the size of the Prgm chunk
     prgm->size = ComputePrgmChunkSize(prgm);
     
