@@ -1152,6 +1152,39 @@ void DeleteRow(int row)
     PopulateAmbListView();
 }
 
+void AddRow()
+{
+    // If no file is loaded or we're already at the limit of how many sound tracks, prgm chunks, or kmap chunks we can have in one file, report an
+    // error then return.
+
+    // Snapshot file
+
+    // Find a name. It doesn't matter what it is, it just has to be unique. Check "1", "2", etc. until we find a string that's not already a track
+    // name, var name, or effect name.
+
+    // Create a Kmap chunk with one item. Set that item's wavFileName to the placeholder "<.wav file name>". The kmap item's data is:
+    //   0x (7F 00 00 00 00 00 00 00 01 00 00 00)
+    // And the Kmap's item size is 12. This is what's set in all Civ 3 AMBs.
+    // Set the Kmap's flags field to 2, fill in the generated name as its varName, and leave everything else blank (zero).
+    // When the Kmap is filled out, set its size field using the ComputeKmapChunkSize function that's defined in amb_file.c. Here's its signature:
+    //   int ComputeKmapChunkSize(KmapChunk const * chunk)
+
+    // Create a Prgm chunk. Leave everything zero except fill in the name generated above for its effectName and varName, then set its number equal to
+    // its index + 1. Finally, fill in its size using the ComputePrgmChunkSize function like for the Kmap.
+
+    // Create a sound track.
+    // - In the track name event, fill in the generated name as the track name and zero for the event's delta time.
+    // - Fill in only one control change event, delta time zero, channel number equal to the added Prgm's index, controllerNumber 32, value 0
+    // - In the program change event, delta time zero, channel number equal to the Prgm's index, programNumber equal to the index + 1
+    // - In the note on event, same again for delta time and channel number, find a unique key for it to use by starting at a key value of 60 and
+    //   searching all existing note on events for the smallest value not already used (this seems close to what the Civ 3 AMBs do), velocity 64
+    // - In the note off event, give it a delta time equal to one second, same channel number as always, same key & velocity as the note on event
+    // - Set deltaTimeEndOfTrack to zero
+    // One you're done filling in the sound track, set its size using ComputeSoundTrackSize as before.
+
+    // Refresh the ListView
+}
+
 // Handle the end of a ListView label edit
 BOOL HandleEndLabelEdit(HWND hwnd, NMLVDISPINFOA *pInfo)
 {
