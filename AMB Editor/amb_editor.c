@@ -215,7 +215,8 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 #define IDM_EDIT_UNDO       1005
 #define IDM_EDIT_REDO       1006
 #define IDM_EDIT_DELETE     1007
-#define IDM_HELP_ABOUT      1008
+#define IDM_EDIT_ADD        1008
+#define IDM_HELP_ABOUT      1009
 
 // Control IDs 
 #define ID_PATH_EDIT        102
@@ -1553,6 +1554,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     case VK_DELETE:  // Delete key to delete selected row
                         DeleteSelectedRow(g_hwndListView);
                         return 0;
+                        
+                    case VK_INSERT:  // Insert key to add a new row
+                        AddRow();
+                        return 0;
                 }
             }
             break;
@@ -1606,6 +1611,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 case IDM_EDIT_REDO:
                     // Perform redo operation
                     Redo();
+                    return 0;
+                    
+                case IDM_EDIT_ADD:
+                    // Add a new row
+                    AddRow();
                     return 0;
                     
                 case IDM_EDIT_DELETE:
@@ -1750,6 +1760,7 @@ HMENU CreateAmbEditorMenu()
     AppendMenu(hEditMenu, MF_STRING, IDM_EDIT_UNDO, "&Undo\tCtrl+Z");
     AppendMenu(hEditMenu, MF_STRING, IDM_EDIT_REDO, "&Redo\tCtrl+Y");
     AppendMenu(hEditMenu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(hEditMenu, MF_STRING, IDM_EDIT_ADD, "&Add Row\tIns");
     AppendMenu(hEditMenu, MF_STRING, IDM_EDIT_DELETE, "&Delete Row\tDel");
     
     // Help menu
