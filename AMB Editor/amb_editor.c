@@ -1154,35 +1154,188 @@ void DeleteRow(int row)
 
 void AddRow()
 {
-    // If no file is loaded or we're already at the limit of how many sound tracks, prgm chunks, or kmap chunks we can have in one file, report an
+    // If no file is loaded or we're already at the limit of how many sound tracks, prgm chunks, or kmap chunks we can have one file, report an
     // error then return.
-
+    if (g_ambFile.filePath[0] == '\0') {
+        MessageBox(NULL, "No AMB file loaded. Please load a file first.", "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    if (g_ambFile.kmapChunkCount >= MAX_CHUNKS) {
+        MessageBox(NULL, "Cannot add more rows: Maximum number of Kmap chunks reached.", "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    if (g_ambFile.prgmChunkCount >= MAX_CHUNKS) {
+        MessageBox(NULL, "Cannot add more rows: Maximum number of Prgm chunks reached.", "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    if (g_ambFile.midi.trackCount >= MAX_SOUND_TRACKS + 1) { // +1 because first track is info track
+        MessageBox(NULL, "Cannot add more rows: Maximum number of sound tracks reached.", "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
     // Snapshot file
-
-    // Find a name. It doesn't matter what it is, it just has to be unique. Check "1", "2", etc. until we find a string that's not already a track
-    // name, var name, or effect name.
-
-    // Create a Kmap chunk with one item. Set that item's wavFileName to the placeholder "<.wav file name>". The kmap item's data is:
-    //   0x (7F 00 00 00 00 00 00 00 01 00 00 00)
-    // And the Kmap's item size is 12. This is what's set in all Civ 3 AMBs.
-    // Set the Kmap's flags field to 2, fill in the generated name as its varName, and leave everything else blank (zero).
-    // When the Kmap is filled out, set its size field using the ComputeKmapChunkSize function that's defined in amb_file.c. Here's its signature:
-    //   int ComputeKmapChunkSize(KmapChunk const * chunk)
-
-    // Create a Prgm chunk. Leave everything zero except fill in the name generated above for its effectName and varName, then set its number equal to
-    // its index + 1. Finally, fill in its size using the ComputePrgmChunkSize function like for the Kmap.
-
-    // Create a sound track.
-    // - In the track name event, fill in the generated name as the track name and zero for the event's delta time.
-    // - Fill in only one control change event, delta time zero, channel number equal to the added Prgm's index, controllerNumber 32, value 0
-    // - In the program change event, delta time zero, channel number equal to the Prgm's index, programNumber equal to the index + 1
-    // - In the note on event, same again for delta time and channel number, find a unique key for it to use by starting at a key value of 60 and
-    //   searching all existing note on events for the smallest value not already used (this seems close to what the Civ 3 AMBs do), velocity 64
-    // - In the note off event, give it a delta time equal to one second, same channel number as always, same key & velocity as the note on event
-    // - Set deltaTimeEndOfTrack to zero
-    // One you're done filling in the sound track, set its size using ComputeSoundTrackSize as before.
-
+    SnapshotCurrentFile();
+    
+    // Find a unique name
+    char uniqueName[32];
+    int nameCounter = 1;
+    bool nameIsUnique;
+    
+    do {
+        snprintf(uniqueName, sizeof(uniqueName), "NewTrack%d", nameCounter++);
+        nameIsUnique = true;
+        
+        // Check if this name is already used as a track name
+        for (int i = 0; i < g_ambFile.midi.trackCount - 1; i++) { // Skip info track
+            if (strcmp(g_ambFile.midi.soundTracks[i].trackName.name, uniqueName) == 0) {
+                nameIsUnique = false;
+                break;
+            }
+        }
+        
+        // Check if this name is already used as a var name or effect name
+        if (nameIsUnique) {
+            for (int i = 0; i < g_ambFile.prgmChunkCount; i++) {
+                if (strcmp(g_ambFile.prgmChunks[i].varName, uniqueName) == 0 ||
+                    strcmp(g_ambFile.prgmChunks[i].effectName, uniqueName) == 0) {
+                    nameIsUnique = false;
+                    break;
+                }
+            }
+        }
+        
+        // Check if this name is already used as a kmap var name
+        if (nameIsUnique) {
+            for (int i = 0; i < g_ambFile.kmapChunkCount; i++) {
+                if (strcmp(g_ambFile.kmapChunks[i].varName, uniqueName) == 0) {
+                    nameIsUnique = false;
+                    break;
+                }
+            }
+        }
+    } while (!nameIsUnique && nameCounter < 1000); // Prevent infinite loop
+    
+    if (!nameIsUnique) {
+        MessageBox(NULL, "Failed to generate a unique name for new row.", "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    // Create a Kmap chunk
+    int kmapIndex = g_ambFile.kmapChunkCount;
+    KmapChunk *kmap = &g_ambFile.kmapChunks[kmapIndex];
+    
+    // Initialize the Kmap chunk
+    memset(kmap, 0, sizeof(KmapChunk));
+    
+    kmap->flags = 2;  // Standard flags value in Civ3 AMBs
+    kmap->itemCount = 1;
+    kmap->itemSize = 12;
+    
+    // Set the varName to our unique name
+    strcpy(kmap->varName, uniqueName);
+    
+    // Initialize the Kmap item
+    static const unsigned char kmapItemData[12] = { 0x7F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00 };
+    memcpy(kmap->items[0].data, kmapItemData, 12);
+    strcpy(kmap->items[0].wavFileName, "<.wav file name>");
+    
+    // Calculate the size of the Kmap chunk
+    kmap->size = ComputeKmapChunkSize(kmap);
+    
+    // Increment the Kmap count
+    g_ambFile.kmapChunkCount++;
+    
+    // Create a Prgm chunk
+    int prgmIndex = g_ambFile.prgmChunkCount;
+    PrgmChunk *prgm = &g_ambFile.prgmChunks[prgmIndex];
+    
+    // Initialize the Prgm chunk
+    memset(prgm, 0, sizeof(PrgmChunk));
+    
+    // Fill in names and set number (1-based)
+    strcpy(prgm->effectName, uniqueName);
+    strcpy(prgm->varName, uniqueName);
+    prgm->number = prgmIndex + 1;
+    
+    // Set some default values for speed and volume
+    prgm->minRandomSpeed = 100;
+    prgm->maxRandomSpeed = 100;
+    prgm->minRandomVolume = 100;
+    prgm->maxRandomVolume = 100;
+    
+    // Calculate the size of the Prgm chunk
+    prgm->size = ComputePrgmChunkSize(prgm);
+    
+    // Increment the Prgm count
+    g_ambFile.prgmChunkCount++;
+    
+    // Create a sound track
+    int trackIndex = g_ambFile.midi.trackCount - 1; // Index for the new track (after info track)
+    SoundTrack *track = &g_ambFile.midi.soundTracks[trackIndex];
+    
+    // Initialize the sound track
+    memset(track, 0, sizeof(SoundTrack));
+    
+    // Set track name
+    track->deltaTimeTrackName = 0;
+    strcpy(track->trackName.name, uniqueName);
+    
+    // Add one control change event
+    track->controlChangeCount = 1;
+    track->deltaTimeControlChanges[0] = 0;
+    track->controlChanges[0].channelNumber = prgmIndex; // 0-based index
+    track->controlChanges[0].controllerNumber = 32;
+    track->controlChanges[0].value = 0;
+    
+    // Set program change event
+    track->deltaTimeProgramChange = 0;
+    track->programChange.channelNumber = prgmIndex; // 0-based index
+    track->programChange.programNumber = prgmIndex + 1; // 1-based number
+    
+    // Find a unique key for the note on/off events
+    int keyValue = 60; // Start at middle C
+    bool keyIsUnique;
+    
+    do {
+        keyIsUnique = true;
+        
+        // Check if this key is already used in any other track
+        for (int i = 0; i < g_ambFile.midi.trackCount - 1; i++) { // Skip info track
+            if (i != trackIndex && g_ambFile.midi.soundTracks[i].noteOn.key == keyValue) {
+                keyIsUnique = false;
+                keyValue++;
+                break;
+            }
+        }
+    } while (!keyIsUnique && keyValue < 127);
+    
+    // Set note on event
+    track->deltaTimeNoteOn = 0;
+    track->noteOn.channelNumber = prgmIndex; // 0-based index
+    track->noteOn.key = keyValue;
+    track->noteOn.velocity = 64; // Medium velocity
+    
+    // Set note off event - one second after note on
+    float ticksPerSecond = g_ambFile.midi.ticksPerQuarterNote / g_ambFile.midi.secondsPerQuarterNote;
+    track->deltaTimeNoteOff = (int)ticksPerSecond; // 1 second duration
+    track->noteOff.channelNumber = prgmIndex; // 0-based index
+    track->noteOff.key = keyValue;
+    track->noteOff.velocity = 64; // Same as note on
+    
+    // Set end of track
+    track->deltaTimeEndOfTrack = 0;
+    
+    // Calculate the size of the sound track
+    track->size = ComputeSoundTrackSize(track);
+    
+    // Increment the track count
+    g_ambFile.midi.trackCount++;
+    
     // Refresh the ListView
+    PopulateAmbListView();
 }
 
 // Handle the end of a ListView label edit
