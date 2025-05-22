@@ -6,6 +6,7 @@
 
 #include "amb_file.c"
 #include "preview.c"
+#include "wav_file.c"
 
 // Forward declarations for ListView functions
 void AddListViewColumn(HWND hListView, int index, char *title, int width);
@@ -15,6 +16,7 @@ void ClearListView(HWND hListView);
 void PopulateAmbListView(void);
 BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char * outFormattedText, int formattedTextBufferSize);
 BOOL IsValidInteger(const char *str);
+BOOL GetWavFileDuration(const char* filePath, float* outDuration);
 void LoadAmbFileWithDialog(HWND hwnd);
 void SaveAmbFileWithDialog(HWND hwnd);
 
