@@ -19,7 +19,8 @@ BOOL IsValidInteger(const char *str);
 BOOL GetWavFileDuration(const char* filePath, float* outDuration);
 void MatchDurationToWav(HWND hwndListView);
 void LoadAmbFileWithDialog(HWND hwnd);
-void SaveAmbFileWithDialog(HWND hwnd);
+void SaveAmbFileDirectly(HWND hwnd);
+void SaveAmbFileAs(HWND hwnd);
 
 // Currently loaded AMB file
 AmbFile g_ambFile = {0};
@@ -212,14 +213,15 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 // Menu IDs
 #define IDM_FILE_OPEN       1001
 #define IDM_FILE_SAVE       1002
-#define IDM_FILE_DETAILS    1003
-#define IDM_FILE_EXIT       1004
-#define IDM_EDIT_UNDO       1005
-#define IDM_EDIT_REDO       1006
-#define IDM_EDIT_DELETE     1007
-#define IDM_EDIT_ADD        1008
-#define IDM_EDIT_MATCH_WAV  1009
-#define IDM_HELP_ABOUT      1010
+#define IDM_FILE_SAVE_AS    1003
+#define IDM_FILE_DETAILS    1004
+#define IDM_FILE_EXIT       1005
+#define IDM_EDIT_UNDO       1006
+#define IDM_EDIT_REDO       1007
+#define IDM_EDIT_DELETE     1008
+#define IDM_EDIT_ADD        1009
+#define IDM_EDIT_MATCH_WAV  1010
+#define IDM_HELP_ABOUT      1011
 
 // Control IDs 
 #define ID_PATH_EDIT        102
@@ -414,8 +416,26 @@ BOOL BrowseForSaveFile(HWND hwnd, char *filePath, int maxLength)
     return GetSaveFileNameA(&ofn);
 }
 
-// Save AMB file with a dialog
-void SaveAmbFileWithDialog(HWND hwnd)
+// Save AMB file directly (without dialog)
+void SaveAmbFileDirectly(HWND hwnd)
+{
+    if (g_ambFile.filePath[0] == '\0') {
+        MessageBox(hwnd, "No AMB file loaded. Please load a file first.", "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    // Try to save to the current file path
+    if (SaveAmbFile(&g_ambFile, g_ambFile.filePath)) {
+        // Success - file saved silently
+        return;
+    }
+    
+    // Failed to save (likely permissions issue) - fall back to Save As silently
+    SaveAmbFileAs(hwnd);
+}
+
+// Save AMB file with Save As dialog
+void SaveAmbFileAs(HWND hwnd)
 {
     if (g_ambFile.filePath[0] == '\0') {
         MessageBox(hwnd, "No AMB file loaded. Please load a file first.", "Error", MB_OK | MB_ICONERROR);
@@ -427,7 +447,10 @@ void SaveAmbFileWithDialog(HWND hwnd)
     if (BrowseForSaveFile(hwnd, filePath, MAX_PATH_LENGTH)) {
         // Try to save the AMB file
         if (SaveAmbFile(&g_ambFile, filePath)) {
-            // Extract the filename part from the path
+            // Update the current file path to the new location
+            strcpy(g_ambFile.filePath, filePath);
+            
+            // Extract the filename part from the path and update window title
             char *fileName = strrchr(filePath, '\\');
             if (fileName) {
                 fileName++; // Skip past the backslash
@@ -440,7 +463,7 @@ void SaveAmbFileWithDialog(HWND hwnd)
             windowTitle[(sizeof windowTitle) - 1] = '\0';
             SetWindowText(g_hwndMainWindow, windowTitle);
         } else {
-            MessageBox(hwnd, "Failed to save AMB file.", "Error", MB_OK | MB_ICONERROR);
+            MessageBox(hwnd, "Failed to save AMB file. Check file permissions and try again.", "Error", MB_OK | MB_ICONERROR);
         }
     }
 }
@@ -1612,6 +1635,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     case 'Y':  // Ctrl+Y for Redo
                         Redo();
                         return 0;
+                        
+                    case 'S':  // Ctrl+S for Save
+                        SaveAmbFileDirectly(hwnd);
+                        return 0;
                 }
             } else {
                 switch (wParam) {
@@ -1653,8 +1680,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     return 0;
                     
                 case IDM_FILE_SAVE:
-                    // Show save file dialog to save an AMB file
-                    SaveAmbFileWithDialog(hwnd);
+                    // Save AMB file directly
+                    SaveAmbFileDirectly(hwnd);
+                    return 0;
+                    
+                case IDM_FILE_SAVE_AS:
+                    // Show save file dialog to save AMB file as
+                    SaveAmbFileAs(hwnd);
                     return 0;
 
                 case IDM_FILE_DETAILS:
@@ -1841,7 +1873,9 @@ HMENU CreateAmbEditorMenu()
     // File menu
     hFileMenu = CreatePopupMenu();
     AppendMenu(hFileMenu, MF_STRING, IDM_FILE_OPEN, "&Open AMB File...");
-    AppendMenu(hFileMenu, MF_STRING, IDM_FILE_SAVE, "&Save AMB File...");
+    AppendMenu(hFileMenu, MF_STRING, IDM_FILE_SAVE, "&Save\tCtrl+S");
+    AppendMenu(hFileMenu, MF_STRING, IDM_FILE_SAVE_AS, "Save &As...");
+    AppendMenu(hFileMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hFileMenu, MF_STRING, IDM_FILE_DETAILS, "&View AMB Details");
     AppendMenu(hFileMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hFileMenu, MF_STRING, IDM_FILE_EXIT, "E&xit");

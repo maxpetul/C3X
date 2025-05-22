@@ -1260,7 +1260,6 @@ bool WriteMidi(FILE *file, MidiData const * midi) {
 bool SaveAmbFile(AmbFile const * amb, const char *filePath) {
     FILE *file = fopen(filePath, "wb");
     if (!file) {
-        MessageBox(NULL, "Failed to create output AMB file", "Error", MB_OK | MB_ICONERROR);
         return false;
     }
     
