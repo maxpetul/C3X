@@ -439,9 +439,6 @@ void SaveAmbFileWithDialog(HWND hwnd)
             snprintf(windowTitle, sizeof windowTitle, "%s - AMB Editor", fileName);
             windowTitle[(sizeof windowTitle) - 1] = '\0';
             SetWindowText(g_hwndMainWindow, windowTitle);
-            
-            // Show success message
-            MessageBox(hwnd, "AMB file saved successfully.", "Success", MB_OK | MB_ICONINFORMATION);
         } else {
             MessageBox(hwnd, "Failed to save AMB file.", "Error", MB_OK | MB_ICONERROR);
         }
@@ -893,12 +890,6 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
         MessageBox(hwnd, "Invalid track indices", "Error", MB_OK | MB_ICONERROR);
         return FALSE;
     }
-    
-    // For debugging: Show which cell was edited with track info
-    char debugMsg[512];
-    sprintf(debugMsg, "Edited Row %d, Column %d: New Value = %s\n\nTrack Index: %d\nKmap Index: %d\nPrgm Index: %d\nKmap Item Index: %d", 
-            row, col, newText, trackIndex, kmapIndex, prgmIndex, kmapItemIndex);
-    MessageBox(hwnd, debugMsg, "Cell Edited", MB_OK | MB_ICONINFORMATION);
     
     // Get references to the actual AMB data structures
     PrgmChunk *prgm = &g_ambFile.prgmChunks[prgmIndex];
@@ -1498,9 +1489,8 @@ void MatchDurationToWav(HWND hwndListView)
     char formattedText[256];
     if (ApplyEditToAmbFile(GetParent(hwndListView), selectedRow, COL_DURATION, durationStr, formattedText, sizeof(formattedText))) {
         SetListViewItemText(hwndListView, selectedRow, COL_DURATION, formattedText);
-        MessageBox(NULL, "Duration matched to WAV file successfully", "Success", MB_OK | MB_ICONINFORMATION);
     } else {
-        MessageBox(NULL, "Failed to update duration", "Error", MB_OK | MB_ICONERROR);
+        MessageBeep(MB_ICONERROR);
     }
 }
 
