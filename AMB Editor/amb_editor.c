@@ -1687,8 +1687,30 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                                 NMITEMACTIVATE *nia = (NMITEMACTIVATE *)lParam;
                                 // Only process if a valid item was clicked
                                 if (nia->iItem != -1) {
-                                    // Start editing the subitem that was clicked
-                                    EditListViewSubItem(g_hwndListView, nia->iItem, nia->iSubItem);
+                                    // Check if this is a boolean column (Speed Random = 2, Volume Random = 5)
+                                    if (nia->iSubItem == 2 || nia->iSubItem == 5) {
+                                        // Toggle the boolean value directly
+                                        char currentText[32];
+                                        LVITEMA lvi = {0};
+                                        lvi.mask = LVIF_TEXT;
+                                        lvi.iItem = nia->iItem;
+                                        lvi.iSubItem = nia->iSubItem;
+                                        lvi.pszText = currentText;
+                                        lvi.cchTextMax = sizeof(currentText);
+                                        SendMessage(g_hwndListView, LVM_GETITEMTEXT, nia->iItem, (LPARAM)&lvi);
+                                        
+                                        // Toggle: if current is "Yes", change to "No", otherwise change to "Yes"
+                                        const char *newText = (strcmp(currentText, "Yes") == 0) ? "No" : "Yes";
+                                        
+                                        // Apply the toggle to the AMB file data structure
+                                        char formattedText[256];
+                                        if (ApplyEditToAmbFile(hwnd, nia->iItem, nia->iSubItem, newText, formattedText, sizeof(formattedText))) {
+                                            SetListViewItemText(g_hwndListView, nia->iItem, nia->iSubItem, formattedText);
+                                        }
+                                    } else {
+                                        // For non-boolean columns, start editing the subitem that was clicked
+                                        EditListViewSubItem(g_hwndListView, nia->iItem, nia->iSubItem);
+                                    }
                                     
                                     // Tell the system we handled this message
                                     SetWindowLongPtr(hwnd, DWLP_MSGRESULT, TRUE);
