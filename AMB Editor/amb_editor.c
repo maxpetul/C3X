@@ -15,7 +15,6 @@ void ClearListView(HWND hListView);
 void PopulateAmbListView(void);
 BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char * outFormattedText, int formattedTextBufferSize);
 BOOL IsValidInteger(const char *str);
-BOOL IsValidBoolean(const char *str, BOOL *value);
 void LoadAmbFileWithDialog(HWND hwnd);
 void SaveAmbFileWithDialog(HWND hwnd);
 
@@ -708,36 +707,6 @@ BOOL IsValidInteger(const char *str)
     return TRUE;
 }
 
-// Function to check if a string is a valid boolean value
-BOOL IsValidBoolean(const char *str, BOOL *value)
-{
-    // Check for valid "true" values
-    if (strcmp(str, "Yes") == 0 ||
-        strcmp(str, "yes") == 0 ||
-        strcmp(str, "Y") == 0 ||
-        strcmp(str, "y") == 0 ||
-        strcmp(str, "True") == 0 ||
-        strcmp(str, "true") == 0 ||
-        strcmp(str, "1") == 0) {
-        if (value) *value = TRUE;
-        return TRUE;
-    }
-
-    // Check for valid "false" values
-    if (strcmp(str, "No") == 0 ||
-        strcmp(str, "no") == 0 ||
-        strcmp(str, "N") == 0 ||
-        strcmp(str, "n") == 0 ||
-        strcmp(str, "False") == 0 ||
-        strcmp(str, "false") == 0 ||
-        strcmp(str, "0") == 0) {
-        if (value) *value = FALSE;
-        return TRUE;
-    }
-
-    // Invalid boolean value
-    return FALSE;
-}
 
 
 
@@ -952,11 +921,10 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
             
         case 2: // Speed Random flag
             {
-                BOOL boolValue;
-                if (IsValidBoolean(newText, &boolValue)) {
+                if (strcmp(newText, "Yes") == 0 || strcmp(newText, "No") == 0) {
                     SnapshotCurrentFile();
 
-                    if (boolValue) {
+                    if (strcmp(newText, "Yes") == 0) {
                         prgm->flags |= 0x01;  // Set bit 0
                     } else {
                         prgm->flags &= ~0x01;  // Clear bit 0
@@ -991,11 +959,10 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
             
         case 5: // Volume Random flag
             {
-                BOOL boolValue;
-                if (IsValidBoolean(newText, &boolValue)) {
+                if (strcmp(newText, "Yes") == 0 || strcmp(newText, "No") == 0) {
                     SnapshotCurrentFile();
 
-                    if (boolValue) {
+                    if (strcmp(newText, "Yes") == 0) {
                         prgm->flags |= 0x02;  // Set bit 1
                     } else {
                         prgm->flags &= ~0x02;  // Clear bit 1
