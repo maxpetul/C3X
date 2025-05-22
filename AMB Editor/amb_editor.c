@@ -223,6 +223,18 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 #define ID_STOP_BUTTON      104
 #define ID_AMB_LISTVIEW     105
 
+// ListView Column Indices
+typedef enum {
+    COL_TIME = 0,
+    COL_WAV_FILE = 1,
+    COL_SPEED_RANDOM = 2,
+    COL_SPEED_MIN = 3,
+    COL_SPEED_MAX = 4,
+    COL_VOLUME_RANDOM = 5,
+    COL_VOLUME_MIN = 6,
+    COL_VOLUME_MAX = 7
+} ListViewColumn;
+
 // Track info structure to associate ListView rows with AMB data
 typedef struct {
     int trackIndex;       // MIDI track index
@@ -817,17 +829,17 @@ void PopulateAmbListView(void)
                 }
                         
                 // Set the WAV file name
-                SetListViewItemText(g_hwndListView, row, 1, matchingKmap->items[j].wavFileName);
+                SetListViewItemText(g_hwndListView, row, COL_WAV_FILE, matchingKmap->items[j].wavFileName);
                         
                 // Set speed information
-                SetListViewItemText(g_hwndListView, row, 2, hasSpeedRandom ? "Yes" : "No");
-                SetListViewItemText(g_hwndListView, row, 3, speedMinStr);
-                SetListViewItemText(g_hwndListView, row, 4, speedMaxStr);
+                SetListViewItemText(g_hwndListView, row, COL_SPEED_RANDOM, hasSpeedRandom ? "Yes" : "No");
+                SetListViewItemText(g_hwndListView, row, COL_SPEED_MIN, speedMinStr);
+                SetListViewItemText(g_hwndListView, row, COL_SPEED_MAX, speedMaxStr);
                         
                 // Set volume information
-                SetListViewItemText(g_hwndListView, row, 5, hasVolumeRandom ? "Yes" : "No");
-                SetListViewItemText(g_hwndListView, row, 6, volumeMinStr);
-                SetListViewItemText(g_hwndListView, row, 7, volumeMaxStr);
+                SetListViewItemText(g_hwndListView, row, COL_VOLUME_RANDOM, hasVolumeRandom ? "Yes" : "No");
+                SetListViewItemText(g_hwndListView, row, COL_VOLUME_MIN, volumeMinStr);
+                SetListViewItemText(g_hwndListView, row, COL_VOLUME_MAX, volumeMaxStr);
             }
         }
     }
@@ -882,7 +894,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
     // Update the appropriate field based on the column that was edited
     BOOL newTextIsValid = TRUE;
     switch (col) {
-        case 0:
+        case COL_TIME:
             {
                 char * afterParsing;
                 float newTime = strtod(newText, &afterParsing);
@@ -900,7 +912,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
             }
             break;
             
-        case 1: // WAV filename
+        case COL_WAV_FILE: // WAV filename
             // Reject the edit if the new text contains a slash
             if ((strchr(newText, '\\') == NULL) && (strchr(newText, '/') == NULL)) {
                 SnapshotCurrentFile();
@@ -919,7 +931,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
             }
             break;
             
-        case 2: // Speed Random flag
+        case COL_SPEED_RANDOM: // Speed Random flag
             {
                 if (strcmp(newText, "Yes") == 0 || strcmp(newText, "No") == 0) {
                     SnapshotCurrentFile();
@@ -937,7 +949,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
             }
             break;
             
-        case 3: // Speed Min
+        case COL_SPEED_MIN: // Speed Min
             if (IsValidInteger(newText)) {
                 SnapshotCurrentFile();
                 prgm->minRandomSpeed = atoi(newText);
@@ -947,7 +959,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
             }
             break;
             
-        case 4: // Speed Max
+        case COL_SPEED_MAX: // Speed Max
             if (IsValidInteger(newText)) {
                 SnapshotCurrentFile();
                 prgm->maxRandomSpeed = atoi(newText);
@@ -957,7 +969,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
             }
             break;
             
-        case 5: // Volume Random flag
+        case COL_VOLUME_RANDOM: // Volume Random flag
             {
                 if (strcmp(newText, "Yes") == 0 || strcmp(newText, "No") == 0) {
                     SnapshotCurrentFile();
@@ -975,7 +987,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
             }
             break;
             
-        case 6: // Volume Min
+        case COL_VOLUME_MIN: // Volume Min
             if (IsValidInteger(newText)) {
                 SnapshotCurrentFile();
                 prgm->minRandomVolume = atoi(newText);
@@ -985,7 +997,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
             }
             break;
             
-        case 7: // Volume Max
+        case COL_VOLUME_MAX: // Volume Max
             if (IsValidInteger(newText)) {
                 SnapshotCurrentFile();
                 prgm->maxRandomVolume = atoi(newText);
@@ -1425,13 +1437,13 @@ void EditListViewSubItem(HWND hwndListView, int row, int col)
         g_hwndEdit = NULL;
     }
     
-    // For column 0, we need to adjust the width to match the column width
+    // For column 0 (Time), we need to adjust the width to match the column width
     // instead of using the full row width that LVIR_BOUNDS returns
-    if (col == 0) {
+    if (col == COL_TIME) {
         // Get the width of column 0
         LVCOLUMNA lvc = {0};
         lvc.mask = LVCF_WIDTH;
-        SendMessage(hwndListView, LVM_GETCOLUMN, 0, (LPARAM)&lvc);
+        SendMessage(hwndListView, LVM_GETCOLUMN, COL_TIME, (LPARAM)&lvc);
         
         // Adjust the rectangle to match the column width
         rect.right = rect.left + lvc.cx;
@@ -1484,14 +1496,14 @@ void CreateAmbListView(HWND hwnd)
     SendMessage(g_hwndListView, LVM_SETEXTENDEDLISTVIEWSTYLE, 0, exStyle);
     
     // Add columns to the ListView
-    AddListViewColumn(g_hwndListView, 0, "Time (sec.)", 85);
-    AddListViewColumn(g_hwndListView, 1, "WAV File", 235);
-    AddListViewColumn(g_hwndListView, 2, "Speed Random", 95);
-    AddListViewColumn(g_hwndListView, 3, "Speed Min", 70);
-    AddListViewColumn(g_hwndListView, 4, "Speed Max", 70);
-    AddListViewColumn(g_hwndListView, 5, "Volume Random", 95);
-    AddListViewColumn(g_hwndListView, 6, "Volume Min", 70);  // Min
-    AddListViewColumn(g_hwndListView, 7, "Volume Max", 70);  // Max
+    AddListViewColumn(g_hwndListView, COL_TIME, "Time (sec.)", 85);
+    AddListViewColumn(g_hwndListView, COL_WAV_FILE, "WAV File", 235);
+    AddListViewColumn(g_hwndListView, COL_SPEED_RANDOM, "Speed Random", 95);
+    AddListViewColumn(g_hwndListView, COL_SPEED_MIN, "Speed Min", 70);
+    AddListViewColumn(g_hwndListView, COL_SPEED_MAX, "Speed Max", 70);
+    AddListViewColumn(g_hwndListView, COL_VOLUME_RANDOM, "Volume Random", 95);
+    AddListViewColumn(g_hwndListView, COL_VOLUME_MIN, "Volume Min", 70);
+    AddListViewColumn(g_hwndListView, COL_VOLUME_MAX, "Volume Max", 70);
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -1654,8 +1666,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                                 NMITEMACTIVATE *nia = (NMITEMACTIVATE *)lParam;
                                 // Only process if a valid item was clicked
                                 if (nia->iItem != -1) {
-                                    // Check if this is a boolean column (Speed Random = 2, Volume Random = 5)
-                                    if (nia->iSubItem == 2 || nia->iSubItem == 5) {
+                                    // Check if this is a boolean column
+                                    if (nia->iSubItem == COL_SPEED_RANDOM || nia->iSubItem == COL_VOLUME_RANDOM) {
                                         // Toggle the boolean value directly
                                         char currentText[32];
                                         LVITEMA lvi = {0};
