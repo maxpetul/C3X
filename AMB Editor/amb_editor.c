@@ -11,7 +11,7 @@
 // Forward declarations for ListView functions
 void AddListViewColumn(HWND hListView, int index, char *title, int width);
 int AddListViewItem(HWND hListView, int index, const char *text);
-void SetListViewItemText(HWND hListView, int row, int col, const char *text);
+void SetListViewItemText(HWND hListView, int row, int col, const char *text, BOOL allowRepopulation);
 void ClearListView(HWND hListView);
 void PopulateAmbListView(void);
 BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char * outFormattedText, int formattedTextBufferSize);
@@ -285,6 +285,33 @@ typedef struct {
     int prgmIndex;        // Index of Prgm chunk
     int kmapItemIndex;    // Index of item within Kmap
 } AmbRowInfo;
+
+// Temporary structure for sorting rows by timestamp
+typedef struct {
+    AmbRowInfo rowInfo;
+    float timestamp;
+    float duration;
+    char timeStr[32];
+    char durationStr[32];
+    char wavFileName[256];
+    char speedMaxStr[32];
+    char speedMinStr[32];
+    char volumeMaxStr[32];
+    char volumeMinStr[32];
+    bool hasSpeedRandom;
+    bool hasVolumeRandom;
+} RowData;
+
+// Comparison function for sorting rows by timestamp
+int CompareRowsByTimestamp(const void *a, const void *b)
+{
+    const RowData *rowA = (const RowData *)a;
+    const RowData *rowB = (const RowData *)b;
+    
+    if (rowA->timestamp < rowB->timestamp) return -1;
+    if (rowA->timestamp > rowB->timestamp) return 1;
+    return 0;
+}
 
 // Global variables
 char g_civ3MainPath[MAX_PATH_LENGTH] = {0};
@@ -739,7 +766,7 @@ int AddListViewItem(HWND hListView, int index, const char *text)
 }
 
 // Set text in a ListView cell
-void SetListViewItemText(HWND hListView, int row, int col, const char *text) 
+void SetListViewItemText(HWND hListView, int row, int col, const char *text, BOOL allowRepopulation) 
 {
     LVITEMA lvi = {0};
     lvi.mask = LVIF_TEXT;
@@ -748,6 +775,11 @@ void SetListViewItemText(HWND hListView, int row, int col, const char *text)
     lvi.pszText = (LPSTR)text;
     
     SendMessage(hListView, LVM_SETITEM, 0, (LPARAM)&lvi);
+    
+    // Check if we need to repopulate when time changes
+    if (allowRepopulation && col == COL_TIME) {
+        PopulateAmbListView();
+    }
 }
 
 // Clear all items from the ListView
@@ -866,6 +898,10 @@ void PopulateAmbListView(void)
         secondsPerTick = g_ambFile.midi.secondsPerQuarterNote / g_ambFile.midi.ticksPerQuarterNote;
     }
     
+    // Collect all row data before sorting
+    RowData rowData[MAX_SOUND_TRACKS];
+    int rowDataCount = 0;
+    
     // Process each MIDI sound track
     int soundTrackCount = g_ambFile.midi.trackCount - 1; // Minus one to exclude the info track
     for (int trackIndex = 0; trackIndex < soundTrackCount; trackIndex++) {
@@ -907,60 +943,64 @@ void PopulateAmbListView(void)
         float timestamp = track->deltaTimeNoteOn * secondsPerTick;
         float duration = track->deltaTimeNoteOff * secondsPerTick;
 
-        // Format time string
-        char timeStr[32] = {0};
-        snprintf(timeStr, (sizeof timeStr) - 1, "%04.3f", timestamp);
-        
-        // Format duration string
-        char durationStr[32] = {0};
-        snprintf(durationStr, (sizeof durationStr) - 1, "%04.3f", duration);
-                
-        // Format speed information
-        char speedMaxStr[32];
-        char speedMinStr[32];
-        snprintf(speedMaxStr, sizeof(speedMaxStr), "%d", matchingPrgm->maxRandomSpeed);
-        snprintf(speedMinStr, sizeof(speedMinStr), "%d", matchingPrgm->minRandomSpeed);
-                
-        // Format volume parameter information
-        char volumeMaxStr[32];
-        char volumeMinStr[32];
-        snprintf(volumeMaxStr, sizeof(volumeMaxStr), "%d", matchingPrgm->maxRandomVolume);
-        snprintf(volumeMinStr, sizeof(volumeMinStr), "%d", matchingPrgm->minRandomVolume);
-                
         // Check flags for randomization settings (LSB = speed random, bit 1 = volume random)
         bool hasSpeedRandom  = (matchingPrgm->flags & 0x01) != 0;
         bool hasVolumeRandom = (matchingPrgm->flags & 0x02) != 0;
 
         // For each item in the kmap (usually just one WAV file per track)
         for (int j = 0; j < matchingKmap->itemCount; j++) {
-            // Add the item to the ListView
-            int row = AddListViewItem(g_hwndListView, 0x7FFFFFFF, timeStr);
-            if (row >= 0) {
-                // Store the track info for this row
-                if (g_rowCount < MAX_SOUND_TRACKS) {
-                    g_rowInfo[g_rowCount].trackIndex = trackIndex;
-                    g_rowInfo[g_rowCount].kmapIndex = kmapIndex;
-                    g_rowInfo[g_rowCount].prgmIndex = prgmIndex;
-                    g_rowInfo[g_rowCount].kmapItemIndex = j;
-                    g_rowCount++;
-                }
-                        
-                // Set the duration
-                SetListViewItemText(g_hwndListView, row, COL_DURATION, durationStr);
-                        
-                // Set the WAV file name
-                SetListViewItemText(g_hwndListView, row, COL_WAV_FILE, matchingKmap->items[j].wavFileName);
-                        
-                // Set speed information
-                SetListViewItemText(g_hwndListView, row, COL_SPEED_RANDOM, hasSpeedRandom ? "Yes" : "No");
-                SetListViewItemText(g_hwndListView, row, COL_SPEED_MIN, speedMinStr);
-                SetListViewItemText(g_hwndListView, row, COL_SPEED_MAX, speedMaxStr);
-                        
-                // Set volume information
-                SetListViewItemText(g_hwndListView, row, COL_VOLUME_RANDOM, hasVolumeRandom ? "Yes" : "No");
-                SetListViewItemText(g_hwndListView, row, COL_VOLUME_MIN, volumeMinStr);
-                SetListViewItemText(g_hwndListView, row, COL_VOLUME_MAX, volumeMaxStr);
+            if (rowDataCount >= MAX_SOUND_TRACKS) {
+                break; // Prevent overflow
             }
+            
+            // Collect row data
+            RowData *row = &rowData[rowDataCount];
+            row->rowInfo.trackIndex = trackIndex;
+            row->rowInfo.kmapIndex = kmapIndex;
+            row->rowInfo.prgmIndex = prgmIndex;
+            row->rowInfo.kmapItemIndex = j;
+            row->timestamp = timestamp;
+            row->duration = duration;
+            row->hasSpeedRandom = hasSpeedRandom;
+            row->hasVolumeRandom = hasVolumeRandom;
+            
+            // Format strings
+            snprintf(row->timeStr, sizeof(row->timeStr), "%04.3f", timestamp);
+            snprintf(row->durationStr, sizeof(row->durationStr), "%04.3f", duration);
+            strncpy(row->wavFileName, matchingKmap->items[j].wavFileName, sizeof(row->wavFileName) - 1);
+            row->wavFileName[sizeof(row->wavFileName) - 1] = '\0';
+            snprintf(row->speedMaxStr, sizeof(row->speedMaxStr), "%d", matchingPrgm->maxRandomSpeed);
+            snprintf(row->speedMinStr, sizeof(row->speedMinStr), "%d", matchingPrgm->minRandomSpeed);
+            snprintf(row->volumeMaxStr, sizeof(row->volumeMaxStr), "%d", matchingPrgm->maxRandomVolume);
+            snprintf(row->volumeMinStr, sizeof(row->volumeMinStr), "%d", matchingPrgm->minRandomVolume);
+            
+            rowDataCount++;
+        }
+    }
+    
+    // Sort rows by timestamp
+    qsort(rowData, rowDataCount, sizeof(RowData), CompareRowsByTimestamp);
+    
+    // Add sorted rows to ListView
+    for (int i = 0; i < rowDataCount; i++) {
+        RowData *row = &rowData[i];
+        
+        // Add the item to the ListView
+        int listRow = AddListViewItem(g_hwndListView, 0x7FFFFFFF, row->timeStr);
+        if (listRow >= 0) {
+            // Store the track info for this row
+            g_rowInfo[g_rowCount] = row->rowInfo;
+            g_rowCount++;
+            
+            // Set all the column values
+            SetListViewItemText(g_hwndListView, listRow, COL_DURATION, row->durationStr, FALSE);
+            SetListViewItemText(g_hwndListView, listRow, COL_WAV_FILE, row->wavFileName, FALSE);
+            SetListViewItemText(g_hwndListView, listRow, COL_SPEED_RANDOM, row->hasSpeedRandom ? "Yes" : "No", FALSE);
+            SetListViewItemText(g_hwndListView, listRow, COL_SPEED_MIN, row->speedMinStr, FALSE);
+            SetListViewItemText(g_hwndListView, listRow, COL_SPEED_MAX, row->speedMaxStr, FALSE);
+            SetListViewItemText(g_hwndListView, listRow, COL_VOLUME_RANDOM, row->hasVolumeRandom ? "Yes" : "No", FALSE);
+            SetListViewItemText(g_hwndListView, listRow, COL_VOLUME_MIN, row->volumeMinStr, FALSE);
+            SetListViewItemText(g_hwndListView, listRow, COL_VOLUME_MAX, row->volumeMaxStr, FALSE);
         }
     }
 }
@@ -1479,7 +1519,7 @@ BOOL HandleEndLabelEdit(HWND hwnd, NMLVDISPINFOA *pInfo)
     char formattedText[256];
     BOOL editAccepted = ApplyEditToAmbFile(hwnd, row, col, newText, formattedText, sizeof formattedText);
     if (editAccepted) {
-        SetListViewItemText(g_hwndListView, row, col, formattedText);
+        SetListViewItemText(g_hwndListView, row, col, formattedText, TRUE);
     }
     return editAccepted;
 }
@@ -1507,7 +1547,7 @@ LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
                         // Apply the edit to the AMB file data structure and update the ListView with the formatted text
                         char formattedBuffer[256];
                         if (ApplyEditToAmbFile(GetParent(GetParent(hwnd)), g_editRow, g_editCol, buffer, formattedBuffer, sizeof formattedBuffer)) {
-                            SetListViewItemText(g_hwndListView, g_editRow, g_editCol, formattedBuffer);
+                            SetListViewItemText(g_hwndListView, g_editRow, g_editCol, formattedBuffer, TRUE);
                         }
                         
                         // Destroy the edit control
@@ -1616,7 +1656,7 @@ void MatchDurationToWav(HWND hwndListView)
     
     char formattedText[256];
     if (ApplyEditToAmbFile(GetParent(hwndListView), selectedRow, COL_DURATION, durationStr, formattedText, sizeof(formattedText))) {
-        SetListViewItemText(hwndListView, selectedRow, COL_DURATION, formattedText);
+        SetListViewItemText(hwndListView, selectedRow, COL_DURATION, formattedText, TRUE);
     } else {
         MessageBeep(MB_ICONERROR);
     }
@@ -1873,7 +1913,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                             // Apply the edit to the AMB file data structure
                             char formattedBuffer[256];
                             if (ApplyEditToAmbFile(hwnd, g_editRow, g_editCol, buffer, formattedBuffer, sizeof formattedBuffer)) {
-                                SetListViewItemText(g_hwndListView, g_editRow, g_editCol, formattedBuffer);
+                                SetListViewItemText(g_hwndListView, g_editRow, g_editCol, formattedBuffer, TRUE);
                             }
                             
                             // Destroy the edit control
@@ -1927,7 +1967,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                                         // Apply the toggle to the AMB file data structure
                                         char formattedText[256];
                                         if (ApplyEditToAmbFile(hwnd, nia->iItem, nia->iSubItem, newText, formattedText, sizeof(formattedText))) {
-                                            SetListViewItemText(g_hwndListView, nia->iItem, nia->iSubItem, formattedText);
+                                            SetListViewItemText(g_hwndListView, nia->iItem, nia->iSubItem, formattedText, TRUE);
                                         }
                                     } else {
                                         // For non-boolean columns, start editing the subitem that was clicked

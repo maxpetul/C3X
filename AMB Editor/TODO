@@ -1,5 +1,5 @@
-- Sort rows by play time
 - Look at IroncladAttack.amb. It's odd how the effect and track names don't match for the explosion effects but they play anyway. It might be that Prgms and tracks are matched by number instead of name.
+- Think about error handling regarding the install dir. I think right now it just crashes if you try to play a preview without an install dir set.
 
 Final things:
 - Harden all the various s(n)printf calls against buffer overflow
@@ -8,6 +8,10 @@ Final things:
 - Include AMB Editor in assemble_release.bat
 
 Low priority:
+- Put asterisk in window title if there are unsaved changes
+- Option to create a "new" AMB file
+- Consider moving all .c files into a source folder
+- Consider adding a column with program numbers
 - Figure out how to dispose of SoundCore objects properly
   - This will also mean we can clean up the temp directory more quickly
 - It would be nice if this editor could be used to fix broken files, like GalleyAttack.amb, where the var names don't match
