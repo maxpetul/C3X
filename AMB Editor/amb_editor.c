@@ -1920,6 +1920,36 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                                                 }
                                                 
                                                 return CDRF_NEWFONT;
+                                            } else if (subItem == COL_SPEED_MIN || subItem == COL_SPEED_MAX || 
+                                                      subItem == COL_VOLUME_MIN || subItem == COL_VOLUME_MAX) {
+                                                // Check if min/max columns should be grayed out based on flags
+                                                if (item < g_rowCount) {
+                                                    AmbRowInfo *rowInfo = &g_rowInfo[item];
+                                                    if (rowInfo->prgmIndex >= 0 && rowInfo->prgmIndex < g_ambFile.prgmChunkCount) {
+                                                        PrgmChunk *prgm = &g_ambFile.prgmChunks[rowInfo->prgmIndex];
+                                                        
+                                                        BOOL shouldGrayOut = FALSE;
+                                                        if (subItem == COL_SPEED_MIN || subItem == COL_SPEED_MAX) {
+                                                            // Gray out if speed random is disabled (flags & 1 == 0)
+                                                            shouldGrayOut = !(prgm->flags & 0x01);
+                                                        } else {
+                                                            // Gray out if volume random is disabled (flags & 2 == 0)
+                                                            shouldGrayOut = !(prgm->flags & 0x02);
+                                                        }
+                                                        
+                                                        if (shouldGrayOut) {
+                                                            lplvcd->clrText = GetSysColor(COLOR_GRAYTEXT);
+                                                        } else {
+                                                            lplvcd->clrText = GetSysColor(COLOR_WINDOWTEXT);
+                                                        }
+                                                        
+                                                        return CDRF_NEWFONT;
+                                                    }
+                                                }
+                                                
+                                                // Fallback to default color
+                                                lplvcd->clrText = GetSysColor(COLOR_WINDOWTEXT);
+                                                return CDRF_NEWFONT;
                                             } else {
                                                 // For all other columns, use default text color
                                                 lplvcd->clrText = GetSysColor(COLOR_WINDOWTEXT);
