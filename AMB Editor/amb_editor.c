@@ -18,6 +18,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
 BOOL IsValidInteger(const char *str);
 BOOL GetWavFileDuration(const char* filePath, float* outDuration);
 BOOL CheckWavFileExists(const char* wavFileName);
+BOOL HasMissingWavFiles(char* missingFiles, int bufferSize);
 void MatchDurationToWav(HWND hwndListView);
 void LoadAmbFileWithDialog(HWND hwnd);
 void SaveAmbFileDirectly(HWND hwnd);
@@ -770,6 +771,40 @@ BOOL CheckWavFileExists(const char* wavFileName)
     
     // Check if file exists
     return PathFileExists(wavFilePath);
+}
+
+// Check if any WAV files are missing and return a list of missing files
+BOOL HasMissingWavFiles(char* missingFiles, int bufferSize)
+{
+    if (!missingFiles || bufferSize == 0 || g_ambFile.filePath[0] == '\0') {
+        return FALSE;
+    }
+    
+    missingFiles[0] = '\0';  // Initialize as empty string
+    BOOL hasMissing = FALSE;
+    
+    // Check each row in the ListView for missing WAV files
+    for (int i = 0; i < g_rowCount; i++) {
+        AmbRowInfo *rowInfo = &g_rowInfo[i];
+        if (rowInfo->kmapIndex >= 0 && rowInfo->kmapIndex < g_ambFile.kmapChunkCount &&
+            rowInfo->kmapItemIndex >= 0 && rowInfo->kmapItemIndex < g_ambFile.kmapChunks[rowInfo->kmapIndex].itemCount) {
+            
+            KmapChunk *kmap = &g_ambFile.kmapChunks[rowInfo->kmapIndex];
+            const char *wavFileName = kmap->items[rowInfo->kmapItemIndex].wavFileName;
+            
+            if (!CheckWavFileExists(wavFileName)) {
+                hasMissing = TRUE;
+                
+                // Add to missing files list if there's space
+                if (strlen(missingFiles) > 0) {
+                    strncat(missingFiles, "\n", bufferSize - strlen(missingFiles) - 1);
+                }
+                strncat(missingFiles, wavFileName, bufferSize - strlen(missingFiles) - 1);
+            }
+        }
+    }
+    
+    return hasMissing;
 }
 
 // Function to check if a string is a valid integer
@@ -1787,7 +1822,17 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 case ID_PLAY_BUTTON:
                     // Handle Play button click
                     if (g_ambFile.filePath[0] != '\0') {
-                        PreviewAmbFile(&g_ambFile);
+                        // Check for missing WAV files before attempting preview
+                        char missingFiles[1024];
+                        if (HasMissingWavFiles(missingFiles, sizeof(missingFiles))) {
+                            char errorMsg[1280];
+                            snprintf(errorMsg, sizeof(errorMsg), 
+                                "Cannot preview AMB file because the following WAV files are missing:\n\n%s\n\nPlease ensure all WAV files are present in the AMB file's directory.", 
+                                missingFiles);
+                            MessageBox(hwnd, errorMsg, "Missing WAV Files", MB_OK | MB_ICONERROR);
+                        } else {
+                            PreviewAmbFile(&g_ambFile);
+                        }
                     } else {
                         MessageBox(hwnd, "No AMB file loaded. Please open an AMB file first.", 
                                    "Error", MB_OK | MB_ICONINFORMATION);
