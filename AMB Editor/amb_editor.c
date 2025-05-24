@@ -17,6 +17,7 @@ void PopulateAmbListView(void);
 BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char * outFormattedText, int formattedTextBufferSize);
 BOOL IsValidInteger(const char *str);
 BOOL GetWavFileDuration(const char* filePath, float* outDuration);
+BOOL CheckWavFileExists(const char* wavFileName);
 void MatchDurationToWav(HWND hwndListView);
 void LoadAmbFileWithDialog(HWND hwnd);
 void SaveAmbFileDirectly(HWND hwnd);
@@ -117,6 +118,7 @@ void Redo()
 #define LVN_BEGINLABELEDIT      (LVN_FIRST-5)
 #define LVN_ENDLABELEDIT        (LVN_FIRST-6)
 #define LVN_COLUMNCLICK         (LVN_FIRST-8)
+#define NM_CUSTOMDRAW           (NM_FIRST-12)
 #define LVM_GETEDITCONTROL      (LVM_FIRST + 24)
 #define LVM_EDITLABEL           (LVM_FIRST + 23)
 #define LVM_GETITEMTEXT         (LVM_FIRST + 45)
@@ -127,6 +129,22 @@ void Redo()
 #define LVIR_ICON               1
 #define LVIR_LABEL              2
 #define LVIR_SELECTBOUNDS       3
+
+// Custom draw constants
+#define CDDS_PREPAINT           0x00000001
+#define CDDS_POSTPAINT          0x00000002
+#define CDDS_PREERASE           0x00000003
+#define CDDS_POSTERASE          0x00000004
+#define CDDS_ITEM               0x00010000
+#define CDDS_ITEMPREPAINT       (CDDS_ITEM | CDDS_PREPAINT)
+#define CDDS_ITEMPOSTPAINT      (CDDS_ITEM | CDDS_POSTPAINT)
+#define CDDS_SUBITEM            0x00020000
+#define CDRF_DODEFAULT          0x00000000
+#define CDRF_NEWFONT            0x00000002
+#define CDRF_SKIPDEFAULT        0x00000004
+#define CDRF_NOTIFYPOSTPAINT    0x00000010
+#define CDRF_NOTIFYITEMDRAW     0x00000020
+#define CDRF_NOTIFYSUBITEMDRAW  0x00000020
 
 typedef struct tagLVCOLUMNA {
     UINT mask;
@@ -168,6 +186,23 @@ typedef struct tagNMITEMACTIVATE {
     LPARAM lParam;
     UINT uKeyFlags;
 } NMITEMACTIVATE, *LPNMITEMACTIVATE;
+
+typedef struct tagNMCUSTOMDRAWINFO {
+    NMHDR hdr;
+    DWORD dwDrawStage;
+    HDC hdc;
+    RECT rc;
+    DWORD_PTR dwItemSpec;
+    UINT uItemState;
+    LPARAM lItemlParam;
+} NMCUSTOMDRAW, *LPNMCUSTOMDRAW;
+
+typedef struct tagNMLVCUSTOMDRAW {
+    NMCUSTOMDRAW nmcd;
+    COLORREF clrText;
+    COLORREF clrTextBk;
+    int iSubItem;
+} NMLVCUSTOMDRAW, *LPNMLVCUSTOMDRAW;
 
 #define NM_FIRST        (0U-  0U)
 #define NM_DBLCLK       (NM_FIRST-3)
@@ -718,6 +753,23 @@ void SetListViewItemText(HWND hListView, int row, int col, const char *text)
 void ClearListView(HWND hListView) 
 {
     SendMessage(hListView, LVM_DELETEALLITEMS, 0, 0);
+}
+
+// Check if a WAV file exists in the AMB file's directory
+BOOL CheckWavFileExists(const char* wavFileName)
+{
+    if (!wavFileName || strlen(wavFileName) == 0 || g_ambFile.filePath[0] == '\0') {
+        return FALSE;
+    }
+    
+    // Construct full path to WAV file
+    char wavFilePath[MAX_PATH_LENGTH];
+    strcpy(wavFilePath, g_ambFile.filePath);
+    PathRemoveFileSpec(wavFilePath);  // Remove filename, keep directory
+    PathAppend(wavFilePath, wavFileName);
+    
+    // Check if file exists
+    return PathFileExists(wavFilePath);
 }
 
 // Function to check if a string is a valid integer
@@ -1825,6 +1877,58 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                                 }
                             }
                             break;
+                            
+                        case NM_CUSTOMDRAW:
+                            // Handle custom drawing for ListView
+                            {
+                                LPNMLVCUSTOMDRAW lplvcd = (LPNMLVCUSTOMDRAW)lParam;
+                                
+                                switch (lplvcd->nmcd.dwDrawStage) {
+                                    case CDDS_PREPAINT:
+                                        // Tell Windows we want to be notified for each item
+                                        return CDRF_NOTIFYITEMDRAW;
+                                        
+                                    case CDDS_ITEMPREPAINT:
+                                        // Tell Windows we want to be notified for each subitem
+                                        return CDRF_NOTIFYSUBITEMDRAW;
+                                        
+                                    case CDDS_SUBITEM | CDDS_ITEMPREPAINT:
+                                        // Custom draw for individual cells
+                                        {
+                                            int item = (int)lplvcd->nmcd.dwItemSpec;
+                                            int subItem = lplvcd->iSubItem;
+                                            
+                                            // Check if this is the WAV file column
+                                            if (subItem == COL_WAV_FILE) {
+                                                // Get the WAV filename for this row
+                                                char wavFileName[256] = {0};
+                                                LVITEMA lvi = {0};
+                                                lvi.mask = LVIF_TEXT;
+                                                lvi.iItem = item;
+                                                lvi.iSubItem = COL_WAV_FILE;
+                                                lvi.pszText = wavFileName;
+                                                lvi.cchTextMax = sizeof(wavFileName);
+                                                SendMessage(g_hwndListView, LVM_GETITEMTEXT, item, (LPARAM)&lvi);
+                                                
+                                                // Check if WAV file exists
+                                                if (!CheckWavFileExists(wavFileName)) {
+                                                    // Set text color to red for missing files
+                                                    lplvcd->clrText = RGB(255, 0, 0);
+                                                } else {
+                                                    // Use default text color
+                                                    lplvcd->clrText = GetSysColor(COLOR_WINDOWTEXT);
+                                                }
+                                                
+                                                return CDRF_NEWFONT;
+                                            } else {
+                                                // For all other columns, use default text color
+                                                lplvcd->clrText = GetSysColor(COLOR_WINDOWTEXT);
+                                                return CDRF_NEWFONT;
+                                            }
+                                        }
+                                }
+                            }
+                            return CDRF_DODEFAULT;
                     }
                 }
             }
