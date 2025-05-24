@@ -974,8 +974,9 @@ BOOL HandleBeginLabelEdit(HWND hwnd, NMLVDISPINFOA *pInfo)
 }
 
 // Apply an edit to the AMB file data structure. Returns TRUE if the edit was accepted or FALSE if it was invalid. If the edit was accepted, the new
-// text is written to outFormattedText in a way that is consistent with the usual format of the ListView display (e.g. y/n converts to Yes/No for
-// boolean fields.) outFormattedText must not be NULL and formattedTextBufferSize must be at least 1.
+// text is written to outFormattedText in a way that is consistent with the usual format of the ListView display (e.g. float fields are formatted
+// to 3 decimal places). If the new text exactly matches the current cell text, the edit is accepted but no snapshot is taken and no AMB data is modified.
+// outFormattedText must not be NULL and formattedTextBufferSize must be at least 1.
 BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char * outFormattedText, int formattedTextBufferSize)
 {
     // Make sure we have valid row info
@@ -999,6 +1000,23 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
         
         MessageBox(hwnd, "Invalid track indices", "Error", MB_OK | MB_ICONERROR);
         return FALSE;
+    }
+    
+    // Check if new text matches the current value in the cell - if so, accept without changing anything
+    char currentText[256] = {0};
+    LVITEMA lvi = {0};
+    lvi.mask = LVIF_TEXT;
+    lvi.iItem = row;
+    lvi.iSubItem = col;
+    lvi.pszText = currentText;
+    lvi.cchTextMax = sizeof(currentText);
+    SendMessage(g_hwndListView, LVM_GETITEMTEXT, row, (LPARAM)&lvi);
+    
+    if (strcmp(newText, currentText) == 0) {
+        // Text unchanged - accept edit but don't modify data or take snapshot
+        strncpy(outFormattedText, newText, formattedTextBufferSize);
+        outFormattedText[formattedTextBufferSize - 1] = '\0';
+        return TRUE;
     }
     
     // Get references to the actual AMB data structures
