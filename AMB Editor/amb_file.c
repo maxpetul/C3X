@@ -1318,7 +1318,7 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
     int remainingSize = (int)bufferSize;
     
     // Describe file path
-    int written = snprintf(pos, remainingSize, "File: %s\n\n", amb->filePath);
+    int written = snprintf(pos, remainingSize, "File: %s\r\n\r\n", amb->filePath);
     pos += written;
     remainingSize -= written;
     
@@ -1326,16 +1326,16 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
     for (int i = 0; i < amb->prgmChunkCount && remainingSize > 0; i++) {
         PrgmChunk *chunk = &amb->prgmChunks[i];
         written = snprintf(pos, remainingSize, 
-                    "Prgm #%d:\n"
-                    "  Size: %d\n"
-                    "  Number: %d\n"
-                    "  Flags: %d\n"
-                    "  Max Random Speed: %d\n"
-                    "  Min Random Speed: %d\n"
-                    "  Max Random Volume: %d\n"
-                    "  Min Random Volume: %d\n"
-                    "  Effect Name: '%s'\n"
-                    "  Var Name: '%s'\n\n",
+                    "Prgm #%d:\r\n"
+                    "  Size: %d\r\n"
+                    "  Number: %d\r\n"
+                    "  Flags: %d\r\n"
+                    "  Max Random Speed: %d\r\n"
+                    "  Min Random Speed: %d\r\n"
+                    "  Max Random Volume: %d\r\n"
+                    "  Min Random Volume: %d\r\n"
+                    "  Effect Name: '%s'\r\n"
+                    "  Var Name: '%s'\r\n\r\n",
                     i + 1, chunk->size, chunk->number, chunk->flags,
                     chunk->maxRandomSpeed, chunk->minRandomSpeed,
                     chunk->maxRandomVolume, chunk->minRandomVolume,
@@ -1348,14 +1348,14 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
     for (int i = 0; i < amb->kmapChunkCount && remainingSize > 0; i++) {
         KmapChunk *chunk = &amb->kmapChunks[i];
         written = snprintf(pos, remainingSize, 
-                    "Kmap #%d:\n"
-                    "  Size: %d\n"
-                    "  Flags: %d\n"
-                    "  Param1: %d\n"
-                    "  Param2: %d\n"
-                    "  Var Name: '%s'\n"
-                    "  Item Count: %d\n"
-                    "  Item Size: %d\n",
+                    "Kmap #%d:\r\n"
+                    "  Size: %d\r\n"
+                    "  Flags: %d\r\n"
+                    "  Param1: %d\r\n"
+                    "  Param2: %d\r\n"
+                    "  Var Name: '%s'\r\n"
+                    "  Item Count: %d\r\n"
+                    "  Item Size: %d\r\n",
                     i + 1, chunk->size, chunk->flags,
                     chunk->param1, chunk->param2,
                     chunk->varName, chunk->itemCount, chunk->itemSize);
@@ -1365,13 +1365,13 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
         // Describe Kmap items
         for (int j = 0; j < chunk->itemCount && remainingSize > 0; j++) {
             written = snprintf(pos, remainingSize, 
-                        "    Item #%d: WAV File: '%s'\n",
+                        "    Item #%d: WAV File: '%s'\r\n",
                         j + 1, chunk->items[j].wavFileName);
             pos += written;
             remainingSize -= written;
         }
         
-        written = snprintf(pos, remainingSize, "\n");
+        written = snprintf(pos, remainingSize, "\r\n");
         pos += written;
         remainingSize -= written;
     }
@@ -1380,9 +1380,9 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
     if (amb->hasGlblChunk && remainingSize > 0) {
         GlblChunk const * chunk = &amb->glblChunk;
         written = snprintf(pos, remainingSize, 
-                    "Glbl:\n"
-                    "  Size: %d\n"
-                    "  Data Size: %d\n\n",
+                    "Glbl:\r\n"
+                    "  Size: %d\r\n"
+                    "  Data Size: %d\r\n\r\n",
                     chunk->size, chunk->dataSize);
         pos += written;
         remainingSize -= written;
@@ -1391,11 +1391,11 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
     // Describe MIDI data
     if (remainingSize > 0) {
         written = snprintf(pos, remainingSize, 
-                    "MIDI:\n"
-                    "  Format: %d\n"
-                    "  Track Count: %d\n"
-                    "  Ticks Per Quarter Note: %d\n"
-                    "  Seconds Per Quarter Note: %.6f\n\n",
+                    "MIDI:\r\n"
+                    "  Format: %d\r\n"
+                    "  Track Count: %d\r\n"
+                    "  Ticks Per Quarter Note: %d\r\n"
+                    "  Seconds Per Quarter Note: %.6f\r\n\r\n",
                     amb->midi.format, amb->midi.trackCount,
                     amb->midi.ticksPerQuarterNote, amb->midi.secondsPerQuarterNote);
         pos += written;
@@ -1408,8 +1408,8 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
             float timestamp = 0.0f;
             
             written = snprintf(pos, remainingSize, 
-                        "  InfoTrack:\n"
-                        "    Size: %d\n",
+                        "  InfoTrack:\r\n"
+                        "    Size: %d\r\n",
                         infoTrack->size);
             pos += written;
             remainingSize -= written;
@@ -1417,7 +1417,7 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
             // Track name event
             timestamp += infoTrack->deltaTimeTrackName * secondsPerTick;
             written = snprintf(pos, remainingSize, 
-                        "    %.3f: TrackName '%s'\n",
+                        "    %.3f: TrackName '%s'\r\n",
                         timestamp, infoTrack->trackName.name);
             pos += written;
             remainingSize -= written;
@@ -1425,7 +1425,7 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
             // SMPTE offset event
             timestamp += infoTrack->deltaTimeSMPTEOffset * secondsPerTick;
             written = snprintf(pos, remainingSize, 
-                        "    %.3f: SMPTEOffset %d %d %d %d %d\n",
+                        "    %.3f: SMPTEOffset %d %d %d %d %d\r\n",
                         timestamp, infoTrack->smpteOffset.hr, 
                         infoTrack->smpteOffset.mn, 
                         infoTrack->smpteOffset.se, 
@@ -1437,7 +1437,7 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
             // Time signature event
             timestamp += infoTrack->deltaTimeTimeSignature * secondsPerTick;
             written = snprintf(pos, remainingSize, 
-                        "    %.3f: TimeSignature %d %d %d %d\n",
+                        "    %.3f: TimeSignature %d %d %d %d\r\n",
                         timestamp, infoTrack->timeSignature.nn, 
                         infoTrack->timeSignature.dd, 
                         infoTrack->timeSignature.cc, 
@@ -1448,7 +1448,7 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
             // Set tempo event
             timestamp += infoTrack->deltaTimeSetTempo * secondsPerTick;
             written = snprintf(pos, remainingSize, 
-                        "    %.3f: SetTempo %d\n",
+                        "    %.3f: SetTempo %d\r\n",
                         timestamp, infoTrack->setTempo.microsecondsPerQuarterNote);
             pos += written;
             remainingSize -= written;
@@ -1456,7 +1456,7 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
             // End of track event
             timestamp += infoTrack->deltaTimeEndOfTrack * secondsPerTick;
             written = snprintf(pos, remainingSize, 
-                        "    %.3f: EndOfTrack\n\n",
+                        "    %.3f: EndOfTrack\r\n\r\n",
                         timestamp);
             pos += written;
             remainingSize -= written;
@@ -1470,8 +1470,8 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
             float timestamp = 0.0f;
             
             written = snprintf(pos, remainingSize, 
-                        "  SoundTrack #%d:\n"
-                        "    Size: %d\n",
+                        "  SoundTrack #%d:\r\n"
+                        "    Size: %d\r\n",
                         i + 1, soundTrack->size);
             pos += written;
             remainingSize -= written;
@@ -1479,7 +1479,7 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
             // Track name event
             timestamp += soundTrack->deltaTimeTrackName * secondsPerTick;
             written = snprintf(pos, remainingSize, 
-                        "    %.3f: TrackName '%s'\n",
+                        "    %.3f: TrackName '%s'\r\n",
                         timestamp, soundTrack->trackName.name);
             pos += written;
             remainingSize -= written;
@@ -1488,7 +1488,7 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
             for (int j = 0; j < soundTrack->controlChangeCount && remainingSize > 0; j++) {
                 timestamp += soundTrack->deltaTimeControlChanges[j] * secondsPerTick;
                 written = snprintf(pos, remainingSize, 
-                            "    %.3f: ControlChange %d %d %d\n",
+                            "    %.3f: ControlChange %d %d %d\r\n",
                             timestamp, soundTrack->controlChanges[j].channelNumber,
                             soundTrack->controlChanges[j].controllerNumber,
                             soundTrack->controlChanges[j].value);
@@ -1499,7 +1499,7 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
             // Program change event
             timestamp += soundTrack->deltaTimeProgramChange * secondsPerTick;
             written = snprintf(pos, remainingSize, 
-                        "    %.3f: ProgramChange %d %d\n",
+                        "    %.3f: ProgramChange %d %d\r\n",
                         timestamp, soundTrack->programChange.channelNumber,
                         soundTrack->programChange.programNumber);
             pos += written;
@@ -1508,7 +1508,7 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
             // Note on event
             timestamp += soundTrack->deltaTimeNoteOn * secondsPerTick;
             written = snprintf(pos, remainingSize, 
-                        "    %.3f: NoteOn %d %d %d\n",
+                        "    %.3f: NoteOn %d %d %d\r\n",
                         timestamp, soundTrack->noteOn.channelNumber,
                         soundTrack->noteOn.key,
                         soundTrack->noteOn.velocity);
@@ -1518,7 +1518,7 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
             // Note off event
             timestamp += soundTrack->deltaTimeNoteOff * secondsPerTick;
             written = snprintf(pos, remainingSize, 
-                        "    %.3f: NoteOff %d %d %d\n",
+                        "    %.3f: NoteOff %d %d %d\r\n",
                         timestamp, soundTrack->noteOff.channelNumber,
                         soundTrack->noteOff.key,
                         soundTrack->noteOff.velocity);
@@ -1528,7 +1528,7 @@ void DescribeAmbFile(AmbFile const * amb, char *buffer, size_t bufferSize) {
             // End of track event
             timestamp += soundTrack->deltaTimeEndOfTrack * secondsPerTick;
             written = snprintf(pos, remainingSize, 
-                        "    %.3f: EndOfTrack\n\n",
+                        "    %.3f: EndOfTrack\r\n\r\n",
                         timestamp);
             pos += written;
             remainingSize -= written;
