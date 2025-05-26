@@ -907,20 +907,26 @@ void PopulateAmbListView(void)
     for (int trackIndex = 0; trackIndex < soundTrackCount; trackIndex++) {
         SoundTrack * track = &g_ambFile.midi.soundTracks[trackIndex];
         
-        // Find corresponding Prgm chunk with the matching effect name
+        // Check that this track properly refers to a Prgm chunk and keep a pointer to that chunk. To properly refer, the channel numbers of all
+        // events must match and specify a valid Prgm index and the program change event must specify the corresponding program number.
+        int prgmIndex; {
+            prgmIndex = track->programChange.programNumber - 1;
+
+            for (int i = 0; i < track->controlChangeCount; i++)
+                if (track->controlChanges[i].channelNumber != prgmIndex)
+                    prgmIndex = -1;
+
+            if (track->programChange.channelNumber != prgmIndex)
+                prgmIndex = -1;
+
+            if ((track->noteOn.channelNumber != prgmIndex) || (track->noteOff.channelNumber != prgmIndex))
+                prgmIndex = -1;
+        }
         PrgmChunk *matchingPrgm = NULL;
-        int prgmIndex = -1;
-        for (int i = 0; i < g_ambFile.prgmChunkCount; i++) {
-            if (_stricmp(g_ambFile.prgmChunks[i].effectName, track->trackName.name) == 0) { // stricmp ignores case
-                matchingPrgm = &g_ambFile.prgmChunks[i];
-                prgmIndex = i;
-                break;
-            }
-        }
-        
-        if (matchingPrgm == NULL) {
-            continue; // Skip if no matching Prgm found
-        }
+        if ((prgmIndex >= 0) && (prgmIndex < g_ambFile.prgmChunkCount))
+            matchingPrgm = &g_ambFile.prgmChunks[prgmIndex];
+        else
+            continue; // No valid Prgm, skip this track
         
         // Get the var name from the matching Prgm chunk
         const char *varName = matchingPrgm->varName;
