@@ -726,7 +726,7 @@ void CreatePlaybackButtons(HWND hwnd)
     // Create Play button
     g_hwndPlayButton = CreateWindow(
         "BUTTON", 
-        "Play File", 
+        "Play Preview",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
         20, 20, 100, 30,
         hwnd, (HMENU)ID_PLAY_BUTTON, GetModuleHandle(NULL), NULL
@@ -1743,7 +1743,7 @@ void CreateAmbListView(HWND hwnd)
         "",
         WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SHOWSELALWAYS | LVS_SINGLESEL | LVS_NOHSCROLL | LVS_EDITLABELS,
         20, 70, // x, y position (below the buttons)
-        820, 460, // width, height (fill most of the window)
+        835, 460, // width, height (fill most of the window)
         hwnd,
         (HMENU)ID_AMB_LISTVIEW,
         GetModuleHandle(NULL),
@@ -1763,12 +1763,12 @@ void CreateAmbListView(HWND hwnd)
     AddListViewColumn(g_hwndListView, COL_TIME, "Time (sec.)", 85);
     AddListViewColumn(g_hwndListView, COL_DURATION, "Duration (sec.)", 95);
     AddListViewColumn(g_hwndListView, COL_WAV_FILE, "WAV File", 235);
-    AddListViewColumn(g_hwndListView, COL_SPEED_RANDOM, "Speed Random", 95);
+    AddListViewColumn(g_hwndListView, COL_SPEED_RANDOM, "Speed Rnd", 70);
     AddListViewColumn(g_hwndListView, COL_SPEED_MIN, "Speed Min", 70);
     AddListViewColumn(g_hwndListView, COL_SPEED_MAX, "Speed Max", 70);
-    AddListViewColumn(g_hwndListView, COL_VOLUME_RANDOM, "Volume Random", 95);
-    AddListViewColumn(g_hwndListView, COL_VOLUME_MIN, "Volume Min", 70);
-    AddListViewColumn(g_hwndListView, COL_VOLUME_MAX, "Volume Max", 70);
+    AddListViewColumn(g_hwndListView, COL_VOLUME_RANDOM, "Vol. Rnd", 70);
+    AddListViewColumn(g_hwndListView, COL_VOLUME_MIN, "Vol. Min", 70);
+    AddListViewColumn(g_hwndListView, COL_VOLUME_MAX, "Vol. Max", 70);
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -2173,7 +2173,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         WS_OVERLAPPEDWINDOW,        // Window style
         
         // Size and position
-        CW_USEDEFAULT, CW_USEDEFAULT, 900, 600,
+        CW_USEDEFAULT, CW_USEDEFAULT, 895, 600,
         
         NULL,       // Parent window    
         hMenu,      // Menu

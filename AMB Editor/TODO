@@ -4,7 +4,6 @@
 Final things:
 - Harden all the various s(n)printf calls against buffer overflow
 - Update About popup
-- Fix margins, column widths, etc.
 - Include AMB Editor in assemble_release.bat
 
 Low priority:
