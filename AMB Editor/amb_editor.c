@@ -871,6 +871,30 @@ BOOL IsValidInteger(const char *str)
 
 
 
+// Returns the index of the Prgm chunk referred to by the given sound track. If the track does not validly refer to any Prgm, returns -1. In order for
+// the track to be valid, the channel numbers of all events must match and specify a valid Prgm index and the program change event must specify the
+// corresponding program number.
+int GetReferencedPrgmIfValid(int trackIndex)
+{
+    SoundTrack * track = &g_ambFile.midi.soundTracks[trackIndex];
+
+    int prgmIndex = track->programChange.programNumber - 1;
+
+    if ((prgmIndex < 0) || (prgmIndex >= g_ambFile.prgmChunkCount))
+        return -1;
+
+    for (int i = 0; i < track->controlChangeCount; i++)
+        if (track->controlChanges[i].channelNumber != prgmIndex)
+            return -1;
+
+    if ((track->programChange.channelNumber != prgmIndex) ||
+        (track->noteOn       .channelNumber != prgmIndex) ||
+        (track->noteOff      .channelNumber != prgmIndex))
+        return -1;
+    
+    return prgmIndex;
+}
+
 // Populate the ListView with AMB file data
 void PopulateAmbListView(void) 
 {
@@ -907,26 +931,10 @@ void PopulateAmbListView(void)
     for (int trackIndex = 0; trackIndex < soundTrackCount; trackIndex++) {
         SoundTrack * track = &g_ambFile.midi.soundTracks[trackIndex];
         
-        // Check that this track properly refers to a Prgm chunk and keep a pointer to that chunk. To properly refer, the channel numbers of all
-        // events must match and specify a valid Prgm index and the program change event must specify the corresponding program number.
-        int prgmIndex; {
-            prgmIndex = track->programChange.programNumber - 1;
-
-            for (int i = 0; i < track->controlChangeCount; i++)
-                if (track->controlChanges[i].channelNumber != prgmIndex)
-                    prgmIndex = -1;
-
-            if (track->programChange.channelNumber != prgmIndex)
-                prgmIndex = -1;
-
-            if ((track->noteOn.channelNumber != prgmIndex) || (track->noteOff.channelNumber != prgmIndex))
-                prgmIndex = -1;
-        }
-        PrgmChunk *matchingPrgm = NULL;
-        if ((prgmIndex >= 0) && (prgmIndex < g_ambFile.prgmChunkCount))
-            matchingPrgm = &g_ambFile.prgmChunks[prgmIndex];
-        else
+        int prgmIndex = GetReferencedPrgmIfValid(trackIndex);
+        if (prgmIndex < 0)
             continue; // No valid Prgm, skip this track
+        PrgmChunk *matchingPrgm = &g_ambFile.prgmChunks[prgmIndex];
         
         // Get the var name from the matching Prgm chunk
         const char *varName = matchingPrgm->varName;
@@ -1321,14 +1329,10 @@ void DeleteRow(int row)
     }
 
     // Next, check if the Prgm chunk is referenced by other MIDI tracks
-    PrgmChunk *prgm = &g_ambFile.prgmChunks[prgmIndex];
-    const char *effectName = prgm->effectName;
     int prgmReferenceCount = 0;
-
     for (int i = 0; i < g_ambFile.midi.trackCount - 1; i++) { // Skip info track
-        if (_stricmp(g_ambFile.midi.soundTracks[i].trackName.name, effectName) == 0) {
+        if (GetReferencedPrgmIfValid(i) == prgmIndex)
             prgmReferenceCount++;
-        }
     }
 
     // Delete the Prgm chunk if it's only referenced by the track we're deleting
