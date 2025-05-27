@@ -1213,6 +1213,80 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
     return newTextIsValid;
 }
 
+void DeleteKmapChunk(int kmapIndex)
+{
+    // Shift all Kmap chunks after this one forward
+    for (int i = kmapIndex; i < g_ambFile.kmapChunkCount - 1; i++) {
+        memcpy(&g_ambFile.kmapChunks[i], &g_ambFile.kmapChunks[i + 1], sizeof(KmapChunk));
+    }
+    g_ambFile.kmapChunkCount--;
+}
+
+void DeletePrgmChunk(int prgmIndex)
+{
+    // Shift all Prgm chunks after this one forward
+    for (int i = prgmIndex; i < g_ambFile.prgmChunkCount - 1; i++) {
+        memcpy(&g_ambFile.prgmChunks[i], &g_ambFile.prgmChunks[i + 1], sizeof(PrgmChunk));
+    }
+    g_ambFile.prgmChunkCount--;
+
+    // Update the number field of any remaining Prgm chunks - they are 1-based
+    for (int i = 0; i < g_ambFile.prgmChunkCount; i++) {
+        g_ambFile.prgmChunks[i].number = i + 1;
+    }
+    
+    // Update channelNumber in all MIDI sound tracks for any that reference 
+    // Prgm chunks with indices greater than the one we deleted
+    for (int i = 0; i < g_ambFile.midi.trackCount - 1; i++) { // Skip info track
+        SoundTrack *track = &g_ambFile.midi.soundTracks[i];
+        
+        // Check all control change events
+        for (int j = 0; j < track->controlChangeCount; j++) {
+            if (track->controlChanges[j].channelNumber > prgmIndex) {
+                track->controlChanges[j].channelNumber--;
+            }
+        }
+        
+        // Check program change event
+        if (track->programChange.channelNumber > prgmIndex) {
+            track->programChange.channelNumber--;
+        }
+        
+        // Update programNumber if it references deleted program or those after it
+        // Note: programNumbers are 1-based (matching the Prgm number field)
+        if (track->programChange.programNumber == prgmIndex + 1) {
+            // This is referencing the deleted program - we'd need to update it
+            // to a valid program or potentially disable this track
+            // For now, if there are other programs, use the first available one
+            if (g_ambFile.prgmChunkCount > 0) {
+                track->programChange.programNumber = 1; // Use first available program (1-based)
+            }
+        }
+        else if (track->programChange.programNumber > prgmIndex + 1) {
+            // This references a program that got shifted down, so update the index
+            track->programChange.programNumber--;
+        }
+        
+        // Check note on event
+        if (track->noteOn.channelNumber > prgmIndex) {
+            track->noteOn.channelNumber--;
+        }
+        
+        // Check note off event
+        if (track->noteOff.channelNumber > prgmIndex) {
+            track->noteOff.channelNumber--;
+        }
+    }
+}
+
+void DeleteSoundTrack(int trackIndex)
+{
+    for (int i = trackIndex; i < g_ambFile.midi.trackCount - 2; i++) { // -2 because we skip info track (0) and want to leave room for the last valid track
+        memcpy(&g_ambFile.midi.soundTracks[i], &g_ambFile.midi.soundTracks[i + 1], sizeof(SoundTrack));
+    }
+    g_ambFile.midi.trackCount--;
+}
+
 void DeleteRow(int row)
 {
     // If no file loaded or row is invalid, do nothing
@@ -1243,11 +1317,7 @@ void DeleteRow(int row)
 
     // Delete the Kmap chunk if it's only referenced by the Prgm we're deleting
     if (kmapReferenceCount <= 1) {
-        // Shift all Kmap chunks after this one forward
-        for (int i = kmapIndex; i < g_ambFile.kmapChunkCount - 1; i++) {
-            memcpy(&g_ambFile.kmapChunks[i], &g_ambFile.kmapChunks[i + 1], sizeof(KmapChunk));
-        }
-        g_ambFile.kmapChunkCount--;
+        DeleteKmapChunk(kmapIndex);
     }
 
     // Next, check if the Prgm chunk is referenced by other MIDI tracks
@@ -1263,66 +1333,11 @@ void DeleteRow(int row)
 
     // Delete the Prgm chunk if it's only referenced by the track we're deleting
     if (prgmReferenceCount <= 1) {
-        // Shift all Prgm chunks after this one forward
-        for (int i = prgmIndex; i < g_ambFile.prgmChunkCount - 1; i++) {
-            memcpy(&g_ambFile.prgmChunks[i], &g_ambFile.prgmChunks[i + 1], sizeof(PrgmChunk));
-        }
-        g_ambFile.prgmChunkCount--;
-
-        // Update the number field of any remaining Prgm chunks - they are 1-based
-        for (int i = 0; i < g_ambFile.prgmChunkCount; i++) {
-            g_ambFile.prgmChunks[i].number = i + 1;
-        }
-        
-        // Update channelNumber in all MIDI sound tracks for any that reference 
-        // Prgm chunks with indices greater than the one we deleted
-        for (int i = 0; i < g_ambFile.midi.trackCount - 1; i++) { // Skip info track
-            SoundTrack *track = &g_ambFile.midi.soundTracks[i];
-            
-            // Check all control change events
-            for (int j = 0; j < track->controlChangeCount; j++) {
-                if (track->controlChanges[j].channelNumber > prgmIndex) {
-                    track->controlChanges[j].channelNumber--;
-                }
-            }
-            
-            // Check program change event
-            if (track->programChange.channelNumber > prgmIndex) {
-                track->programChange.channelNumber--;
-            }
-            
-            // Update programNumber if it references deleted program or those after it
-            // Note: programNumbers are 1-based (matching the Prgm number field)
-            if (track->programChange.programNumber == prgmIndex + 1) {
-                // This is referencing the deleted program - we'd need to update it
-                // to a valid program or potentially disable this track
-                // For now, if there are other programs, use the first available one
-                if (g_ambFile.prgmChunkCount > 0) {
-                    track->programChange.programNumber = 1; // Use first available program (1-based)
-                }
-            }
-            else if (track->programChange.programNumber > prgmIndex + 1) {
-                // This references a program that got shifted down, so update the index
-                track->programChange.programNumber--;
-            }
-            
-            // Check note on event
-            if (track->noteOn.channelNumber > prgmIndex) {
-                track->noteOn.channelNumber--;
-            }
-            
-            // Check note off event
-            if (track->noteOff.channelNumber > prgmIndex) {
-                track->noteOff.channelNumber--;
-            }
-        }
+        DeletePrgmChunk(prgmIndex);
     }
 
     // Delete the MIDI track
-    for (int i = trackIndex; i < g_ambFile.midi.trackCount - 2; i++) { // -2 because we skip info track (0) and want to leave room for the last valid track
-        memcpy(&g_ambFile.midi.soundTracks[i], &g_ambFile.midi.soundTracks[i + 1], sizeof(SoundTrack));
-    }
-    g_ambFile.midi.trackCount--;
+    DeleteSoundTrack(trackIndex);
 
     // Refresh the ListView to show updated AMB data
     PopulateAmbListView();
