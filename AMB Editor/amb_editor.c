@@ -1535,11 +1535,12 @@ void Prune()
         return;
     }
 
-    // Make sure the ListView is up to date. We're going to delete any Kmap or Prgm chunks that don't appear in it.
+    // Make sure the ListView is up to date. We're going to delete any Kmap or Prgm chunks and any sound tracks that don't appear in it.
     PopulateAmbListView();
 
     int unneededKmapCount = 0;
     int unneededPrgmCount = 0;
+    int unneededTrackCount = 0;
     bool tookSnapshot = false;
 
     for (int kmapIndex = g_ambFile.kmapChunkCount - 1; kmapIndex >= 0; kmapIndex--) {
@@ -1578,12 +1579,35 @@ void Prune()
         }
     }
 
-    if ((unneededKmapCount == 0) && (unneededPrgmCount == 0)) {
+    for (int trackIndex = g_ambFile.midi.trackCount - 2; trackIndex >= 0; trackIndex--) { // Skip info track
+        bool inAnyRow = false;
+        for (int i = 0; i < g_rowCount; i++) {
+            if (g_rowInfo[i].trackIndex == trackIndex) {
+                inAnyRow = true;
+                break;
+            }
+        }
+        if (! inAnyRow) {
+            if (! tookSnapshot) {
+                SnapshotCurrentFile();
+                tookSnapshot = true;
+            }
+            DeleteSoundTrack(trackIndex);
+            unneededTrackCount++;
+        }
+    }
+
+    if ((unneededKmapCount == 0) && (unneededPrgmCount == 0) && (unneededTrackCount == 0)) {
         MessageBox(NULL, "The AMB data has no superfluous parts.", "Nothing to do", MB_OK | MB_ICONINFORMATION);
     } else {
         char msg[300] = {0};
-        snprintf (msg, (sizeof msg) - 1, "Deleted %d unused Kmap chunks and %d unused Prgm chunks.", unneededKmapCount, unneededPrgmCount);
+        snprintf (msg, (sizeof msg) - 1, "Deleted %d unused Kmap chunk%s, %d unused Prgm chunk%s, and %d unused or invalid MIDI track%s.",
+                  unneededKmapCount , unneededKmapCount  == 1 ? "" : "s",
+                  unneededPrgmCount , unneededPrgmCount  == 1 ? "" : "s",
+                  unneededTrackCount, unneededTrackCount == 1 ? "" : "s");
         MessageBox(NULL, msg, "Pruning results", MB_OK | MB_ICONINFORMATION);
+
+        PopulateAmbListView();
     }
 }
 
