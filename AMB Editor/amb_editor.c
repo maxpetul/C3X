@@ -1527,6 +1527,63 @@ void AddRow()
     PopulateAmbListView();
 }
 
+void Prune()
+{
+    if (g_ambFile.filePath[0] == '\0') {
+        MessageBox(NULL, "No AMB file loaded. Please load a file first.", "Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+
+    int kmapRefCounts[MAX_CHUNKS] = {0};
+    int prgmRefCounts[MAX_CHUNKS] = {0};
+
+    for (int kmapIndex = 0; kmapIndex < g_ambFile.kmapChunkCount; kmapIndex++) {
+        for (int prgmIndex = 0; prgmIndex < g_ambFile.prgmChunkCount; prgmIndex++) {
+            if (strcmp(g_ambFile.prgmChunks[prgmIndex].varName, g_ambFile.kmapChunks[kmapIndex].varName) == 0)
+                kmapRefCounts[kmapIndex]++;
+        }
+    }
+
+    int soundTrackCount = g_ambFile.midi.trackCount - 1; // Minus one to exclude the info track
+    for (int trackIndex = 0; trackIndex < soundTrackCount; trackIndex++) {
+        int prgmIndex = GetReferencedPrgmIfValid(trackIndex);
+        if (prgmIndex >= 0) {
+            prgmRefCounts[prgmIndex]++;
+        }
+    }
+
+    int unneededKmapCount = 0;
+    for (int kmapIndex = 0; kmapIndex < g_ambFile.kmapChunkCount; kmapIndex++) {
+        if (kmapRefCounts[kmapIndex] == 0)
+            unneededKmapCount++;
+    }
+
+    int unneededPrgmCount = 0;
+    for (int prgmIndex = 0; prgmIndex < g_ambFile.prgmChunkCount; prgmIndex++) {
+        if (prgmRefCounts[prgmIndex] == 0)
+            unneededPrgmCount++;
+    }
+
+    if ((unneededKmapCount == 0) && (unneededPrgmCount == 0)) {
+        MessageBox(NULL, "The AMB data has no superfluous parts.", "Nothing to do", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+
+    SnapshotCurrentFile();
+
+    for (int kmapIndex = g_ambFile.kmapChunkCount - 1; kmapIndex >= 0; kmapIndex--) {
+        if (kmapRefCounts[kmapIndex] == 0)
+            DeleteKmapChunk(kmapIndex);
+    }
+
+    for (int prgmIndex = g_ambFile.prgmChunkCount - 1; prgmIndex >= 0; prgmIndex--) {
+        if (prgmRefCounts[prgmIndex] == 0)
+            DeletePrgmChunk(prgmIndex);
+    }
+
+    PopulateAmbListView();
+}
+
 // Handle the end of a ListView label edit
 BOOL HandleEndLabelEdit(HWND hwnd, NMLVDISPINFOA *pInfo)
 {
