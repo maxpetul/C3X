@@ -257,7 +257,8 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 #define IDM_EDIT_DELETE     1008
 #define IDM_EDIT_ADD        1009
 #define IDM_EDIT_MATCH_WAV  1010
-#define IDM_HELP_ABOUT      1011
+#define IDM_EDIT_PRUNE      1011
+#define IDM_HELP_ABOUT      1012
 
 // Control IDs 
 #define ID_PATH_EDIT        102
@@ -1534,54 +1535,56 @@ void Prune()
         return;
     }
 
-    int kmapRefCounts[MAX_CHUNKS] = {0};
-    int prgmRefCounts[MAX_CHUNKS] = {0};
-
-    for (int kmapIndex = 0; kmapIndex < g_ambFile.kmapChunkCount; kmapIndex++) {
-        for (int prgmIndex = 0; prgmIndex < g_ambFile.prgmChunkCount; prgmIndex++) {
-            if (strcmp(g_ambFile.prgmChunks[prgmIndex].varName, g_ambFile.kmapChunks[kmapIndex].varName) == 0)
-                kmapRefCounts[kmapIndex]++;
-        }
-    }
-
-    int soundTrackCount = g_ambFile.midi.trackCount - 1; // Minus one to exclude the info track
-    for (int trackIndex = 0; trackIndex < soundTrackCount; trackIndex++) {
-        int prgmIndex = GetReferencedPrgmIfValid(trackIndex);
-        if (prgmIndex >= 0) {
-            prgmRefCounts[prgmIndex]++;
-        }
-    }
+    // Make sure the ListView is up to date. We're going to delete any Kmap or Prgm chunks that don't appear in it.
+    PopulateAmbListView();
 
     int unneededKmapCount = 0;
-    for (int kmapIndex = 0; kmapIndex < g_ambFile.kmapChunkCount; kmapIndex++) {
-        if (kmapRefCounts[kmapIndex] == 0)
+    int unneededPrgmCount = 0;
+    bool tookSnapshot = false;
+
+    for (int kmapIndex = g_ambFile.kmapChunkCount - 1; kmapIndex >= 0; kmapIndex--) {
+        bool inAnyRow = false;
+        for (int i = 0; i < g_rowCount; i++) {
+            if (g_rowInfo[i].kmapIndex == kmapIndex) {
+                inAnyRow = true;
+                break;
+            }
+        }
+        if (! inAnyRow) {
+            if (! tookSnapshot) {
+                SnapshotCurrentFile();
+                tookSnapshot = true;
+            }
+            DeleteKmapChunk(kmapIndex);
             unneededKmapCount++;
+        }
     }
 
-    int unneededPrgmCount = 0;
-    for (int prgmIndex = 0; prgmIndex < g_ambFile.prgmChunkCount; prgmIndex++) {
-        if (prgmRefCounts[prgmIndex] == 0)
+    for (int prgmIndex = g_ambFile.prgmChunkCount - 1; prgmIndex >= 0; prgmIndex--) {
+        bool inAnyRow = false;
+        for (int i = 0; i < g_rowCount; i++) {
+            if (g_rowInfo[i].prgmIndex == prgmIndex) {
+                inAnyRow = true;
+                break;
+            }
+        }
+        if (! inAnyRow) {
+            if (! tookSnapshot) {
+                SnapshotCurrentFile();
+                tookSnapshot = true;
+            }
+            DeletePrgmChunk(prgmIndex);
             unneededPrgmCount++;
+        }
     }
 
     if ((unneededKmapCount == 0) && (unneededPrgmCount == 0)) {
         MessageBox(NULL, "The AMB data has no superfluous parts.", "Nothing to do", MB_OK | MB_ICONINFORMATION);
-        return;
+    } else {
+        char msg[300] = {0};
+        snprintf (msg, (sizeof msg) - 1, "Deleted %d unused Kmap chunks and %d unused Prgm chunks.", unneededKmapCount, unneededPrgmCount);
+        MessageBox(NULL, msg, "Pruning results", MB_OK | MB_ICONINFORMATION);
     }
-
-    SnapshotCurrentFile();
-
-    for (int kmapIndex = g_ambFile.kmapChunkCount - 1; kmapIndex >= 0; kmapIndex--) {
-        if (kmapRefCounts[kmapIndex] == 0)
-            DeleteKmapChunk(kmapIndex);
-    }
-
-    for (int prgmIndex = g_ambFile.prgmChunkCount - 1; prgmIndex >= 0; prgmIndex--) {
-        if (prgmRefCounts[prgmIndex] == 0)
-            DeletePrgmChunk(prgmIndex);
-    }
-
-    PopulateAmbListView();
 }
 
 // Handle the end of a ListView label edit
@@ -1951,6 +1954,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     MatchDurationToWav(g_hwndListView);
                     return 0;
                     
+                case IDM_EDIT_PRUNE:
+                    Prune();
+                    return 0;
+
                 case IDM_HELP_ABOUT:
                     // Show about dialog
                     MessageBox(hwnd, 
@@ -2208,6 +2215,7 @@ HMENU CreateAmbEditorMenu()
     AppendMenu(hEditMenu, MF_STRING, IDM_EDIT_DELETE, "&Delete Row\tDel");
     AppendMenu(hEditMenu, MF_SEPARATOR, 0, NULL);
     AppendMenu(hEditMenu, MF_STRING, IDM_EDIT_MATCH_WAV, "&Match duration to WAV");
+    AppendMenu(hEditMenu, MF_STRING, IDM_EDIT_PRUNE, "&Prune");
     
     // Help menu
     hHelpMenu = CreatePopupMenu();
