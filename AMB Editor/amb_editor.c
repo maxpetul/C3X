@@ -395,40 +395,6 @@ bool BrowseForAmbFile(HWND hwnd, char *filePath, int bufferSize)
     return GetOpenFileNameA(&ofn);
 }
 
-// Function to browse for a directory (used for Civ3 installation)
-bool BrowseForDirectory(HWND hwnd, char *dirPath, int bufferSize, const char *title)
-{
-    // A trick: use the file open dialog but look for a file we know will exist
-    // in the directory we want (like .exe files)
-    OPENFILENAMEA ofn;
-    ZeroMemory(&ofn, sizeof(ofn));
-    
-    // Set up buffer
-    ZeroMemory(dirPath, bufferSize);
-    
-    // Setup the open file dialog
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = hwnd;
-    ofn.lpstrFile = dirPath;
-    ofn.nMaxFile = bufferSize;
-    ofn.lpstrFilter = "Executable Files\0*.exe\0All Files\0*.*\0";
-    ofn.nFilterIndex = 1;
-    ofn.lpstrTitle = title;
-    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY | OFN_EXPLORER;
-    
-    // Show the dialog and get result
-    if (GetOpenFileNameA(&ofn)) {
-        // Extract directory path from the selected file
-        char* lastSlash = strrchr(dirPath, '\\');
-        if (lastSlash) {
-            *lastSlash = '\0'; // Truncate at last backslash to get directory
-            return true;
-        }
-    }
-    
-    return false;
-}
-
 // Load an AMB file selected by the user
 void LoadAmbFileWithDialog(HWND hwnd)
 {
@@ -669,28 +635,37 @@ bool FindCiv3InstallFromRegistry()
     return false;
 }
 
-// Validate a manually entered Civ3 folder path
-bool BrowseForCiv3Install(HWND hwnd)
+bool BrowseForConquestsSoundDLL(HWND hwnd)
 {
-    // Get path from dialog
     char path[MAX_PATH_LENGTH] = {0};
-    
-    if (BrowseForDirectory(hwnd, path, MAX_PATH_LENGTH, "Select your Civilization III installation folder")) {
-        // Check if it's a valid Civ3 directory
-        if (IsCiv3MainFolder(path)) {
-            strcpy(g_civ3MainPath, path);
-            
-            // Assume Conquests is in a subfolder named "Conquests"
-            strcpy(g_civ3ConquestsPath, g_civ3MainPath);
-            PathAppend(g_civ3ConquestsPath, "Conquests");
-            
-            return true;
-        } else {
-            MessageBox(hwnd, "The selected folder does not appear to be a valid Civilization III installation.", 
-                      "Invalid Selection", MB_OK | MB_ICONWARNING);
+
+    OPENFILENAMEA ofn;
+    ZeroMemory(&ofn, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd;
+    ofn.lpstrFile = path;
+    ofn.nMaxFile = sizeof path;
+    ofn.lpstrFilter = "DLL Files\0*.dll\0All Files\0*.*\0";
+    ofn.nFilterIndex = 1;
+    ofn.lpstrTitle = "Select sound.dll from your Civ 3 Conquests install";
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_EXPLORER;
+
+    if (GetOpenFileNameA(&ofn)) {
+        // Extract directory path from the selected file
+        char* lastSlash = strrchr(path, '\\');
+        if (lastSlash) {
+            *lastSlash = '\0'; // Truncate at last backslash to get directory
+
+            char soundDLLPath[MAX_PATH_LENGTH] = {0};
+            snprintf(soundDLLPath, (sizeof soundDLLPath) - 1, "%s\\sound.dll", path);
+
+            if (PathFileExists(soundDLLPath)) {
+                strcpy(g_civ3ConquestsPath, path);
+                return true;
+            }
         }
     }
-    
+
     return false;
 }
 
@@ -700,25 +675,11 @@ bool FindCiv3Installation(HWND hwnd)
     char workingDir[MAX_PATH_LENGTH];
     GetCurrentDirectory(MAX_PATH_LENGTH, workingDir);
     
-    // Method 1: Search parent folders
+    // Search parent folders first. If that doesn't work, check the registry.
     if (FindCiv3InstallBySearch(workingDir)) {
         return true;
-    }
-    
-    // Method 2: Check registry
-    if (FindCiv3InstallFromRegistry()) {
-        return true;
-    }
-    
-    // Method 3: Ask user to manually enter the path
-    int result = MessageBox(hwnd, 
-        "Civilization III installation not found. Would you like to enter the path manually?", 
-        "Installation not found", MB_YESNO | MB_ICONQUESTION);
-    if (result == IDYES) {
-        return BrowseForCiv3Install(hwnd);
-    }
-    
-    return false;
+    } else
+        return FindCiv3InstallFromRegistry();
 }
 
 // Create the play and stop buttons
@@ -1912,8 +1873,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             FindCiv3Installation(hwnd);
             g_hwndMainWindow = hwnd;
 
-            if (strlen(g_civ3MainPath) > 0) {
-                    InitializePreviewPlayer(hwnd, g_civ3MainPath);
+            if (strlen(g_civ3ConquestsPath) > 0) {
+                InitializePreviewPlayer(hwnd, g_civ3ConquestsPath);
             }
             
             // Create playback buttons
@@ -1993,17 +1954,42 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 case ID_PLAY_BUTTON:
                     // Handle Play button click
                     if (g_ambFile.filePath[0] != '\0') {
-                        // Check for missing WAV files before attempting preview
-                        char missingFiles[1024];
-                        if (HasMissingWavFiles(missingFiles, sizeof(missingFiles))) {
-                            char errorMsg[1280];
-                            snprintf(errorMsg, sizeof(errorMsg), 
-                                "Cannot preview AMB file because the following WAV files are missing:\n\n%s\n\nPlease ensure all WAV files are present in the AMB file's directory.", 
-                                missingFiles);
-                            MessageBox(hwnd, errorMsg, "Missing WAV Files", MB_OK | MB_ICONERROR);
-                        } else {
-                            PreviewAmbFile(&g_ambFile);
+                        bool encounteredError = false;
+
+                        // Check that the preview player is initialized. If it's not, do so. If it wasn't initialized before, that may be because we
+                        // haven't found the Conquests install dir.
+                        if (! previewPlayerIsInitialized) {
+                            if (strlen(g_civ3ConquestsPath) == 0) {
+                                int result = MessageBox(hwnd,
+                                                        "Playing a preview requires sound.dll from your Civ 3 Conquests install. The install location could not be found automatically. "
+                                                        "Would you like to locate sound.dll manually?",
+                                                        "Installation not found", MB_YESNO | MB_ICONQUESTION);
+                                if (result == IDYES) {
+                                    if (! BrowseForConquestsSoundDLL(hwnd))
+                                        encounteredError = true;
+                                } else
+                                    encounteredError = true;
+                            }
+                            if (strlen(g_civ3ConquestsPath) > 0)
+                                InitializePreviewPlayer(hwnd, g_civ3ConquestsPath);
+                            if (! previewPlayerIsInitialized)
+                                encounteredError = true;
                         }
+
+                        // Check for missing WAV files before attempting preview
+                        if (! encounteredError) {
+                            char missingFiles[1024];
+                            if (HasMissingWavFiles(missingFiles, sizeof(missingFiles))) {
+                                char errorMsg[1280];
+                                snprintf(errorMsg, sizeof(errorMsg),
+                                         "Cannot preview AMB file because the following WAV files are missing:\n\n%s\n\nPlease ensure all WAV files are present in the AMB file's directory.", 
+                                         missingFiles);
+                                MessageBox(hwnd, errorMsg, "Missing WAV Files", MB_OK | MB_ICONERROR);
+                            }
+                        }
+
+                        if (! encounteredError)
+                            PreviewAmbFile(&g_ambFile);
                     } else {
                         MessageBox(hwnd, "No AMB file loaded. Please open an AMB file first.", 
                                    "Error", MB_OK | MB_ICONINFORMATION);

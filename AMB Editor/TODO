@@ -1,4 +1,4 @@
-- Think about error handling regarding the install dir. I think right now it just crashes if you try to play a preview without an install dir set.
+- Fix program staying around in background after window is closed (caused by sound.dll)
 
 Final things:
 - Harden all the various s(n)printf calls against buffer overflow

@@ -72,6 +72,8 @@ enum sound_core_type {
     SCT_8
 };
 
+bool previewPlayerIsInitialized = false;
+
 HMODULE soundModule = NULL;
 int (__cdecl * InitSoundTimer)(int param_1, int param_2) = NULL;
 int (__cdecl * CreateSound)(SoundCore ** out_sound_core, char const * file_path, int sound_core_type) = NULL;
@@ -111,8 +113,11 @@ void InitializePreviewPlayer(HWND window, char *conquestsInstallPath)
     midiDevice->vtable->Initialize(midiDevice, __, window, 0);
 
 done:
-    if (strlen(errorMsg) > 0)
+    if (strlen(errorMsg) > 0) {
         MessageBox(NULL, errorMsg, "Couldn't load sound.dll", MB_ICONERROR);
+        previewPlayerIsInitialized = false;
+    } else
+        previewPlayerIsInitialized = true;
     SetCurrentDirectory(savedCWD);
 }
 
@@ -226,6 +231,9 @@ BOOL CopyWavFilesToTempDir(AmbFile const * ambFile, char *tempDirPath)
 
 void PreviewAmbFile(AmbFile const * amb)
 {
+    if (! previewPlayerIsInitialized)
+        return;
+
     StopAmbPreview();
     
     // Save the AMB to a temporary file first. Begin by preparing a temp directory
