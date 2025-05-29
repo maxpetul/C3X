@@ -2192,6 +2192,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                 DeleteObject(g_hBackgroundBrush);
                 g_hBackgroundBrush = NULL;
             }
+            DeinitializePreviewPlayer();
             PostQuitMessage(0);
             return 0;
     }

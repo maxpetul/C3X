@@ -87,6 +87,9 @@ SoundCore * playingCore = NULL;
 
 void InitializePreviewPlayer(HWND window, char *conquestsInstallPath)
 {
+    if (previewPlayerIsInitialized)
+        return;
+
     char errorMsg[1000] = {0};
 
     char savedCWD[1000];
@@ -127,6 +130,15 @@ void StopAmbPreview()
         playingCore->vtable->Stop(playingCore);
         // TODO: Figure out how to deallocate Sound Core objects. Right now we just leak the memory. Attempting to reuse a core causes a crash.
         playingCore = NULL;
+    }
+}
+
+void DeinitializePreviewPlayer()
+{
+    if (previewPlayerIsInitialized) {
+        StopAmbPreview();
+        FreeLibrary(soundModule);
+        previewPlayerIsInitialized = false;
     }
 }
 

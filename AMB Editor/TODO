@@ -1,5 +1,3 @@
-- Fix program staying around in background after window is closed (caused by sound.dll)
-
 Final things:
 - Harden all the various s(n)printf calls against buffer overflow
 - Update About popup
