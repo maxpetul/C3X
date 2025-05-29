@@ -168,10 +168,10 @@ BOOL PrepareTempDirectory(char *tempDirPath, size_t tempDirPathSize)
     
     // Try to clean up existing WAV files
     WIN32_FIND_DATA findData;
-    char searchPattern[MAX_PATH];
+    char searchPattern[MAX_PATH] = {0};
     
     // Try to delete all files in the directory
-    snprintf(searchPattern, MAX_PATH, "%s\\*.*", tempDirPath);
+    snprintf(searchPattern, (sizeof searchPattern) - 1, "%s\\*.*", tempDirPath);
     HANDLE hFind = FindFirstFile(searchPattern, &findData);
     if (hFind != INVALID_HANDLE_VALUE) {
         do {
@@ -183,8 +183,8 @@ BOOL PrepareTempDirectory(char *tempDirPath, size_t tempDirPathSize)
             
             // Check if it's a file, not a directory
             if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-                char filePath[MAX_PATH];
-                snprintf(filePath, MAX_PATH, "%s\\%s", tempDirPath, findData.cFileName);
+                char filePath[MAX_PATH] = {0};
+                snprintf(filePath, (sizeof filePath) - 1, "%s\\%s", tempDirPath, findData.cFileName);
                 
                 // Try to delete the file (ignoring errors)
                 DeleteFile(filePath);
@@ -199,14 +199,13 @@ BOOL PrepareTempDirectory(char *tempDirPath, size_t tempDirPathSize)
 // Copy WAV files referenced by the AMB to the temp directory
 BOOL CopyWavFilesToTempDir(AmbFile const * ambFile, char *tempDirPath)
 {
-    char sourcePath[MAX_PATH_LENGTH];
-    char targetPath[MAX_PATH_LENGTH];
+    Path sourcePath = {0};
+    Path targetPath = {0};
     BOOL success = TRUE;
     
     // Get the directory of the original AMB file to find the WAV files
-    char ambDir[MAX_PATH_LENGTH];
-    strncpy(ambDir, ambFile->filePath, MAX_PATH_LENGTH);
-    ambDir[MAX_PATH_LENGTH - 1] = '\0';
+    Path ambDir;
+    strcpy(ambDir, ambFile->filePath);
     
     // Find the last backslash in the path
     char *lastBackslash = strrchr(ambDir, '\\');
@@ -228,8 +227,8 @@ BOOL CopyWavFilesToTempDir(AmbFile const * ambFile, char *tempDirPath)
             }
             
             // Construct the source and target paths
-            snprintf(sourcePath, MAX_PATH_LENGTH, "%s\\%s", ambDir, wavFileName);
-            snprintf(targetPath, MAX_PATH_LENGTH, "%s\\%s", tempDirPath, wavFileName);
+            snprintf(sourcePath, MAX_PATH_LENGTH - 1, "%s\\%s", ambDir, wavFileName);
+            snprintf(targetPath, MAX_PATH_LENGTH - 1, "%s\\%s", tempDirPath, wavFileName);
             
             // Copy the file
             if (!CopyFile(sourcePath, targetPath, FALSE)) {
@@ -249,12 +248,12 @@ void PreviewAmbFile(AmbFile const * amb)
     StopAmbPreview();
     
     // Save the AMB to a temporary file first. Begin by preparing a temp directory
-    char tempFilePath[MAX_PATH_LENGTH] = {0};
-    char tempDirPath[MAX_PATH_LENGTH] = {0};
+    Path tempFilePath = {0};
+    Path tempDirPath = {0};
     bool success = false;
-    if (PrepareTempDirectory(tempDirPath, sizeof tempDirPath)) {
+    if (PrepareTempDirectory(tempDirPath, MAX_PATH_LENGTH)) {
         // Generate a temp file path for the AMB
-        snprintf(tempFilePath, (sizeof tempFilePath) - 1, "%s\\temp.amb", tempDirPath);
+        snprintf(tempFilePath, MAX_PATH_LENGTH - 1, "%s\\temp.amb", tempDirPath);
 
         // Save the current AMB to the temp file
         if (SaveAmbFile(amb, tempFilePath)) {

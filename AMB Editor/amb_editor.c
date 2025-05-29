@@ -4,9 +4,46 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define MAX_PATH_LENGTH 1024
+typedef char Path[MAX_PATH_LENGTH];
+
+void PathAppend(Path path, const char* append)
+{
+    size_t len = strlen(path);
+
+    // No space at end of buffer
+    if (len >= MAX_PATH_LENGTH - 1)
+        return;
+
+    // Add backslash if needed
+    if (len > 0 && path[len - 1] != '\\') {
+        path[len] = '\\';
+        path[len + 1] = '\0';
+        len++;
+    }
+    
+    // Append the new part
+    strncpy(path + len, append, MAX_PATH_LENGTH - len);
+    path[MAX_PATH_LENGTH - 1] = '\0';
+}
+
+bool PathRemoveFileSpec(Path path)
+{
+    char* lastSlash = strrchr(path, '\\');
+    if (lastSlash) {
+        *lastSlash = '\0';
+        return true;
+    }
+    return false;
+}
+
+
+
 #include "amb_file.c"
 #include "preview.c"
 #include "wav_file.c"
+
+
 
 // Forward declarations for ListView functions
 void AddListViewColumn(HWND hListView, int index, char *title, int width);
@@ -315,8 +352,8 @@ int CompareRowsByTimestamp(const void *a, const void *b)
 }
 
 // Global variables
-char g_civ3MainPath[MAX_PATH_LENGTH] = {0};
-char g_civ3ConquestsPath[MAX_PATH_LENGTH] = {0};
+Path g_civ3MainPath = {0};
+Path g_civ3ConquestsPath = {0};
 HWND g_hwndPathEdit = NULL;
 HWND g_hwndMainWindow = NULL;
 HWND g_hwndPlayButton = NULL;
@@ -329,58 +366,33 @@ AmbRowInfo g_rowInfo[MAX_SOUND_TRACKS];
 int g_rowCount = 0;  // Number of rows in the ListView
 
 // Custom path helpers 
-bool PathFileExists(const char* path)
+bool PathFileExists(const Path path)
 {
     DWORD attr = GetFileAttributes(path);
     return (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY));
 }
 
-bool PathIsDirectory(const char* path)
+bool PathIsDirectory(const Path path)
 {
     DWORD attr = GetFileAttributes(path);
     return (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY));
 }
 
-void PathAppend(char* path, const char* append)
-{
-    size_t len = strlen(path);
-    
-    // Add backslash if needed
-    if (len > 0 && path[len - 1] != '\\') {
-        path[len] = '\\';
-        path[len + 1] = '\0';
-        len++;
-    }
-    
-    // Append the new part
-    strcpy(path + len, append);
-}
-
-bool PathRemoveFileSpec(char* path)
-{
-    char* lastSlash = strrchr(path, '\\');
-    if (lastSlash) {
-        *lastSlash = '\0';
-        return true;
-    }
-    return false;
-}
-
 // Function to browse for an AMB file to open
-bool BrowseForAmbFile(HWND hwnd, char *filePath, int bufferSize)
+bool BrowseForAmbFile(HWND hwnd, Path filePath)
 {
     // Initialize the OPENFILENAME structure
     OPENFILENAMEA ofn;
     ZeroMemory(&ofn, sizeof(ofn));
     
     // Set up buffer
-    ZeroMemory(filePath, bufferSize);
+    ZeroMemory(filePath, MAX_PATH_LENGTH);
     
     // Setup the open file dialog
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = hwnd;
     ofn.lpstrFile = filePath;
-    ofn.nMaxFile = bufferSize;
+    ofn.nMaxFile = MAX_PATH_LENGTH;
     ofn.lpstrFilter = "AMB Files\0*.amb\0All Files\0*.*\0";
     ofn.nFilterIndex = 1;
     ofn.lpstrTitle = "Select an AMB file to open";
@@ -398,9 +410,9 @@ bool BrowseForAmbFile(HWND hwnd, char *filePath, int bufferSize)
 // Load an AMB file selected by the user
 void LoadAmbFileWithDialog(HWND hwnd)
 {
-    char ambFilePath[MAX_PATH_LENGTH] = {0};
+    Path ambFilePath = {0};
     
-    if (BrowseForAmbFile(hwnd, ambFilePath, MAX_PATH_LENGTH)) {
+    if (BrowseForAmbFile(hwnd, ambFilePath)) {
         if (LoadAmbFile(ambFilePath, &g_ambFile) && g_hwndMainWindow != NULL) {
             ClearFileSnapshots();
 
@@ -412,7 +424,7 @@ void LoadAmbFileWithDialog(HWND hwnd)
                 fileName = (char*)ambFilePath; // No backslash found, use the whole path
             }
             
-            char windowTitle[MAX_PATH_LENGTH + 20];
+            char windowTitle[100];
             snprintf(windowTitle, sizeof windowTitle, "%s - AMB Editor", fileName);
             windowTitle[(sizeof windowTitle) - 1] = '\0';
             SetWindowText(g_hwndMainWindow, windowTitle);
@@ -424,21 +436,21 @@ void LoadAmbFileWithDialog(HWND hwnd)
 }
 
 // Browse for a file to save
-BOOL BrowseForSaveFile(HWND hwnd, char *filePath, int maxLength)
+BOOL BrowseForSaveFile(HWND hwnd, Path filePath)
 {
     OPENFILENAMEA ofn;
     ZeroMemory(&ofn, sizeof(ofn));
     
     // Initialize the filePath with current file if any
     if (g_ambFile.filePath[0] != '\0') {
-        strncpy(filePath, g_ambFile.filePath, maxLength);
+        strcpy(filePath, g_ambFile.filePath);
     }
     
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = hwnd;
     ofn.lpstrFilter = "AMB Files (*.amb)\0*.amb\0All Files (*.*)\0*.*\0";
     ofn.lpstrFile = filePath;
-    ofn.nMaxFile = maxLength;
+    ofn.nMaxFile = MAX_PATH_LENGTH;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_NOCHANGEDIR | OFN_EXPLORER;
     ofn.lpstrDefExt = "amb";
     ofn.lpstrTitle = "Save AMB File";
@@ -472,9 +484,9 @@ void SaveAmbFileAs(HWND hwnd)
         return;
     }
     
-    char filePath[MAX_PATH_LENGTH] = {0};
+    Path filePath = {0};
     
-    if (BrowseForSaveFile(hwnd, filePath, MAX_PATH_LENGTH)) {
+    if (BrowseForSaveFile(hwnd, filePath)) {
         // Try to save the AMB file
         if (SaveAmbFile(&g_ambFile, filePath)) {
             // Update the current file path to the new location
@@ -488,7 +500,7 @@ void SaveAmbFileAs(HWND hwnd)
                 fileName = (char*)filePath; // No backslash found, use the whole path
             }
             
-            char windowTitle[MAX_PATH_LENGTH + 20];
+            char windowTitle[100];
             snprintf(windowTitle, sizeof windowTitle, "%s - AMB Editor", fileName);
             windowTitle[(sizeof windowTitle) - 1] = '\0';
             SetWindowText(g_hwndMainWindow, windowTitle);
@@ -499,9 +511,9 @@ void SaveAmbFileAs(HWND hwnd)
 }
 
 // Function to check if a directory has the required Civ3 files
-bool IsCiv3ConquestsFolder(const char* folderPath)
+bool IsCiv3ConquestsFolder(const Path folderPath)
 {
-    char testPath[MAX_PATH_LENGTH];
+    Path testPath;
     
     // Check for Civ3Conquests.exe
     strcpy(testPath, folderPath);
@@ -521,9 +533,9 @@ bool IsCiv3ConquestsFolder(const char* folderPath)
 }
 
 // Function to check if a directory is the main Civ3 folder
-bool IsCiv3MainFolder(const char* folderPath)
+bool IsCiv3MainFolder(const Path folderPath)
 {
-    char testPath[MAX_PATH_LENGTH];
+    Path testPath;
     
     // Check for Art folder
     strcpy(testPath, folderPath);
@@ -543,10 +555,10 @@ bool IsCiv3MainFolder(const char* folderPath)
 }
 
 // Function to search parent folders for Civ3 install
-bool FindCiv3InstallBySearch(const char* startPath)
+bool FindCiv3InstallBySearch(const Path startPath)
 {
-    char testPath[MAX_PATH_LENGTH];
-    char parentPath[MAX_PATH_LENGTH];
+    Path testPath;
+    Path parentPath;
     bool foundConquests = false;
     
     // Start with working directory
@@ -557,7 +569,7 @@ bool FindCiv3InstallBySearch(const char* startPath)
         // Check current directory and subdirectories for Conquests
         WIN32_FIND_DATA findData;
         HANDLE hFind;
-        char searchPath[MAX_PATH_LENGTH];
+        Path searchPath;
         
         strcpy(searchPath, testPath);
         PathAppend(searchPath, "*");
@@ -569,7 +581,7 @@ bool FindCiv3InstallBySearch(const char* startPath)
                     strcmp(findData.cFileName, ".") != 0 && 
                     strcmp(findData.cFileName, "..") != 0) {
                     
-                    char subDirPath[MAX_PATH_LENGTH];
+                    Path subDirPath;
                     strcpy(subDirPath, testPath);
                     PathAppend(subDirPath, findData.cFileName);
                     
@@ -619,6 +631,7 @@ bool FindCiv3InstallFromRegistry()
                            (LPBYTE)regValue, &valueSize) == ERROR_SUCCESS) {
             
             if (valueType == REG_SZ) {
+                regValue[(sizeof regValue) - 1] = '\0'; // RegQueryValueEx is not guaranteed to return null terminated strings
                 strcpy(g_civ3MainPath, regValue);
                 
                 // Assume Conquests is in a subfolder named "Conquests"
@@ -637,14 +650,14 @@ bool FindCiv3InstallFromRegistry()
 
 bool BrowseForConquestsSoundDLL(HWND hwnd)
 {
-    char path[MAX_PATH_LENGTH] = {0};
+    Path path = {0};
 
     OPENFILENAMEA ofn;
     ZeroMemory(&ofn, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = hwnd;
     ofn.lpstrFile = path;
-    ofn.nMaxFile = sizeof path;
+    ofn.nMaxFile = MAX_PATH_LENGTH;
     ofn.lpstrFilter = "DLL Files\0*.dll\0All Files\0*.*\0";
     ofn.nFilterIndex = 1;
     ofn.lpstrTitle = "Select sound.dll from your Civ 3 Conquests install";
@@ -656,8 +669,8 @@ bool BrowseForConquestsSoundDLL(HWND hwnd)
         if (lastSlash) {
             *lastSlash = '\0'; // Truncate at last backslash to get directory
 
-            char soundDLLPath[MAX_PATH_LENGTH] = {0};
-            snprintf(soundDLLPath, (sizeof soundDLLPath) - 1, "%s\\sound.dll", path);
+            Path soundDLLPath = {0};
+            snprintf(soundDLLPath, MAX_PATH_LENGTH - 1, "%s\\sound.dll", path);
 
             if (PathFileExists(soundDLLPath)) {
                 strcpy(g_civ3ConquestsPath, path);
@@ -672,11 +685,11 @@ bool BrowseForConquestsSoundDLL(HWND hwnd)
 // Find Civ3 installation using all available methods
 bool FindCiv3Installation(HWND hwnd)
 {
-    char workingDir[MAX_PATH_LENGTH];
-    GetCurrentDirectory(MAX_PATH_LENGTH, workingDir);
+    Path cwdPath;
+    GetCurrentDirectory(MAX_PATH_LENGTH, cwdPath);
     
     // Search parent folders first. If that doesn't work, check the registry.
-    if (FindCiv3InstallBySearch(workingDir)) {
+    if (FindCiv3InstallBySearch(cwdPath)) {
         return true;
     } else
         return FindCiv3InstallFromRegistry();
@@ -758,7 +771,7 @@ BOOL CheckWavFileExists(const char* wavFileName)
     }
     
     // Construct full path to WAV file
-    char wavFilePath[MAX_PATH_LENGTH];
+    Path wavFilePath;
     strcpy(wavFilePath, g_ambFile.filePath);
     PathRemoveFileSpec(wavFilePath);  // Remove filename, keep directory
     PathAppend(wavFilePath, wavFileName);
@@ -1706,7 +1719,7 @@ void MatchDurationToWav(HWND hwndListView)
     }
     
     // Construct full path to WAV file (assuming it's in the same directory as the AMB file)
-    char wavFilePath[MAX_PATH_LENGTH];
+    Path wavFilePath;
     strcpy(wavFilePath, g_ambFile.filePath);
     PathRemoveFileSpec(wavFilePath);  // Remove filename, keep directory
     PathAppend(wavFilePath, wavFileName);

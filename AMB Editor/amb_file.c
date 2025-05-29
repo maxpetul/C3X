@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define MAX_PATH_LENGTH 1024
 #define MAX_CHUNKS 30 // No AMB in Civ 3 has more than 12 Kmap or Prgm chunks
 #define MAX_SOUND_TRACKS 30 // No AMB in Civ 3 has more than 12 sound tracks
 #define MAX_CONTROL_CHANGES 2 // No AMB in Civ 3 has more than 2 control changes per track
@@ -122,7 +121,7 @@ typedef struct {
 } MidiData;
 
 typedef struct {
-    char filePath[MAX_PATH_LENGTH];
+    Path filePath;
     
     // Chunks
     PrgmChunk prgmChunks[MAX_CHUNKS];
@@ -840,7 +839,7 @@ bool ParseMidi(FILE *file, MidiData *midi) {
 }
 
 // Load AMB file
-bool LoadAmbFile(const char *filePath, AmbFile * out) {
+bool LoadAmbFile(const Path filePath, AmbFile * out) {
     FILE *file = fopen(filePath, "rb");
     if (!file) {
         MessageBox(NULL, "Failed to open AMB file", "Error", MB_OK | MB_ICONERROR);
@@ -1257,7 +1256,7 @@ bool WriteMidi(FILE *file, MidiData const * midi) {
 }
 
 // Function to save AMB file to the specified path
-bool SaveAmbFile(AmbFile const * amb, const char *filePath) {
+bool SaveAmbFile(AmbFile const * amb, const Path filePath) {
     FILE *file = fopen(filePath, "wb");
     if (!file) {
         return false;
