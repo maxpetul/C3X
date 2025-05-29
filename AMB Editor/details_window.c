@@ -78,8 +78,8 @@ void ShowAmbDetailsWindow(HWND hwndParent)
         fileName = g_ambFile.filePath; // No backslash found, use the whole path
     }
 
-    char windowTitle[MAX_PATH_LENGTH + 30];
-    snprintf(windowTitle, sizeof(windowTitle), "%s - AMB Details", fileName);
+    char windowTitle[100] = {0};
+    snprintf(windowTitle, sizeof(windowTitle) - 1, "%s - AMB Details", fileName);
 
     // Create the details window
     g_hwndDetailsWindow = CreateWindowEx(

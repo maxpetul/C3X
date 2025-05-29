@@ -4,15 +4,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define MAX_PATH_LENGTH 1024
-typedef char Path[MAX_PATH_LENGTH];
+#define PATH_BUFFER_SIZE 1024
+typedef char Path[PATH_BUFFER_SIZE];
 
 void PathAppend(Path path, const char* append)
 {
     size_t len = strlen(path);
 
     // No space at end of buffer
-    if (len >= MAX_PATH_LENGTH - 1)
+    if (len >= PATH_BUFFER_SIZE - 1)
         return;
 
     // Add backslash if needed
@@ -23,8 +23,8 @@ void PathAppend(Path path, const char* append)
     }
     
     // Append the new part
-    strncpy(path + len, append, MAX_PATH_LENGTH - len);
-    path[MAX_PATH_LENGTH - 1] = '\0';
+    strncpy(path + len, append, PATH_BUFFER_SIZE - len);
+    path[PATH_BUFFER_SIZE - 1] = '\0';
 }
 
 bool PathRemoveFileSpec(Path path)
@@ -386,13 +386,13 @@ bool BrowseForAmbFile(HWND hwnd, Path filePath)
     ZeroMemory(&ofn, sizeof(ofn));
     
     // Set up buffer
-    ZeroMemory(filePath, MAX_PATH_LENGTH);
+    ZeroMemory(filePath, PATH_BUFFER_SIZE);
     
     // Setup the open file dialog
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = hwnd;
     ofn.lpstrFile = filePath;
-    ofn.nMaxFile = MAX_PATH_LENGTH;
+    ofn.nMaxFile = PATH_BUFFER_SIZE;
     ofn.lpstrFilter = "AMB Files\0*.amb\0All Files\0*.*\0";
     ofn.nFilterIndex = 1;
     ofn.lpstrTitle = "Select an AMB file to open";
@@ -450,7 +450,7 @@ BOOL BrowseForSaveFile(HWND hwnd, Path filePath)
     ofn.hwndOwner = hwnd;
     ofn.lpstrFilter = "AMB Files (*.amb)\0*.amb\0All Files (*.*)\0*.*\0";
     ofn.lpstrFile = filePath;
-    ofn.nMaxFile = MAX_PATH_LENGTH;
+    ofn.nMaxFile = PATH_BUFFER_SIZE;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_NOCHANGEDIR | OFN_EXPLORER;
     ofn.lpstrDefExt = "amb";
     ofn.lpstrTitle = "Save AMB File";
@@ -620,7 +620,7 @@ bool FindCiv3InstallBySearch(const Path startPath)
 bool FindCiv3InstallFromRegistry()
 {
     HKEY hKey;
-    char regValue[MAX_PATH_LENGTH];
+    char regValue[PATH_BUFFER_SIZE];
     DWORD valueSize = sizeof(regValue);
     DWORD valueType;
     
@@ -657,7 +657,7 @@ bool BrowseForConquestsSoundDLL(HWND hwnd)
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = hwnd;
     ofn.lpstrFile = path;
-    ofn.nMaxFile = MAX_PATH_LENGTH;
+    ofn.nMaxFile = PATH_BUFFER_SIZE;
     ofn.lpstrFilter = "DLL Files\0*.dll\0All Files\0*.*\0";
     ofn.nFilterIndex = 1;
     ofn.lpstrTitle = "Select sound.dll from your Civ 3 Conquests install";
@@ -670,7 +670,7 @@ bool BrowseForConquestsSoundDLL(HWND hwnd)
             *lastSlash = '\0'; // Truncate at last backslash to get directory
 
             Path soundDLLPath = {0};
-            snprintf(soundDLLPath, MAX_PATH_LENGTH - 1, "%s\\sound.dll", path);
+            snprintf(soundDLLPath, PATH_BUFFER_SIZE - 1, "%s\\sound.dll", path);
 
             if (PathFileExists(soundDLLPath)) {
                 strcpy(g_civ3ConquestsPath, path);
@@ -686,7 +686,7 @@ bool BrowseForConquestsSoundDLL(HWND hwnd)
 bool FindCiv3Installation(HWND hwnd)
 {
     Path cwdPath;
-    GetCurrentDirectory(MAX_PATH_LENGTH, cwdPath);
+    GetCurrentDirectory(PATH_BUFFER_SIZE, cwdPath);
     
     // Search parent folders first. If that doesn't work, check the registry.
     if (FindCiv3InstallBySearch(cwdPath)) {

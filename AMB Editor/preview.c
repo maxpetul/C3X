@@ -227,8 +227,8 @@ BOOL CopyWavFilesToTempDir(AmbFile const * ambFile, char *tempDirPath)
             }
             
             // Construct the source and target paths
-            snprintf(sourcePath, MAX_PATH_LENGTH - 1, "%s\\%s", ambDir, wavFileName);
-            snprintf(targetPath, MAX_PATH_LENGTH - 1, "%s\\%s", tempDirPath, wavFileName);
+            snprintf(sourcePath, PATH_BUFFER_SIZE - 1, "%s\\%s", ambDir, wavFileName);
+            snprintf(targetPath, PATH_BUFFER_SIZE - 1, "%s\\%s", tempDirPath, wavFileName);
             
             // Copy the file
             if (!CopyFile(sourcePath, targetPath, FALSE)) {
@@ -251,9 +251,9 @@ void PreviewAmbFile(AmbFile const * amb)
     Path tempFilePath = {0};
     Path tempDirPath = {0};
     bool success = false;
-    if (PrepareTempDirectory(tempDirPath, MAX_PATH_LENGTH)) {
+    if (PrepareTempDirectory(tempDirPath, PATH_BUFFER_SIZE)) {
         // Generate a temp file path for the AMB
-        snprintf(tempFilePath, MAX_PATH_LENGTH - 1, "%s\\temp.amb", tempDirPath);
+        snprintf(tempFilePath, PATH_BUFFER_SIZE - 1, "%s\\temp.amb", tempDirPath);
 
         // Save the current AMB to the temp file
         if (SaveAmbFile(amb, tempFilePath)) {
