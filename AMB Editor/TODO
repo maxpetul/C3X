@@ -1,8 +1,8 @@
 Final things:
-- Write a README
-- Check the other files with orphaned Kmap chunks; Modify AMBReader.py to properly check for references from tracks to Prgm chunks
+- In GalleyAttack.amb, inputting "0.110" time produces 0.108 but inputting "0.111" gives 0.110. Rounding issue?
 
 Low priority:
+- Add row on HopliteAttackA.amb doesn't work properly b/c of the orphan sound track
 - Put asterisk in window title if there are unsaved changes
 - Option to create a "new" AMB file
 - Consider moving all .c files into a source folder
