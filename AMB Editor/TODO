@@ -1,6 +1,6 @@
 Final things:
-- Update About popup
-- Include AMB Editor in assemble_release.bat
+- Write a README
+- Check the other files with orphaned Kmap chunks; Modify AMBReader.py to properly check for references from tracks to Prgm chunks
 
 Low priority:
 - Put asterisk in window title if there are unsaved changes
