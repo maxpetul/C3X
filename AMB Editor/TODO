@@ -1,6 +1,3 @@
-Final things:
-- In GalleyAttack.amb, inputting "0.110" time produces 0.108 but inputting "0.111" gives 0.110. Rounding issue?
-
 Low priority:
 - Add row on HopliteAttackA.amb doesn't work properly b/c of the orphan sound track
 - Put asterisk in window title if there are unsaved changes

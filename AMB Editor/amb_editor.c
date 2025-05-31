@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define PATH_BUFFER_SIZE 1024
 typedef char Path[PATH_BUFFER_SIZE];
@@ -1063,7 +1064,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
                     SnapshotCurrentFile();
 
 		    float ticksPerSecond = g_ambFile.midi.ticksPerQuarterNote / g_ambFile.midi.secondsPerQuarterNote;
-		    g_ambFile.midi.soundTracks[trackIndex].deltaTimeNoteOn = newTime * ticksPerSecond;
+		    g_ambFile.midi.soundTracks[trackIndex].deltaTimeNoteOn = round(newTime * ticksPerSecond);
 
                     snprintf(outFormattedText, formattedTextBufferSize, "%04.3f", newTime);
 
@@ -1081,7 +1082,7 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
                     SnapshotCurrentFile();
 
                     float ticksPerSecond = g_ambFile.midi.ticksPerQuarterNote / g_ambFile.midi.secondsPerQuarterNote;
-                    g_ambFile.midi.soundTracks[trackIndex].deltaTimeNoteOff = newDuration * ticksPerSecond;
+                    g_ambFile.midi.soundTracks[trackIndex].deltaTimeNoteOff = round(newDuration * ticksPerSecond);
 
                     snprintf(outFormattedText, formattedTextBufferSize, "%04.3f", newDuration);
 
