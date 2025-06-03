@@ -10808,10 +10808,35 @@ patch_UnitType_has_detector_ability_for_vis_check (UnitType * this, int edx, enu
 	return tr;
 }
 
+bool
+is_airdrop_trespassing (Unit * unit, int target_x, int target_y)
+{
+	if (is->current_config.disallow_trespassing &&
+	    check_trespassing (unit->Body.CivID, tile_at (unit->Body.X, unit->Body.Y), tile_at (target_x, target_y))) {
+		bool allowed = is_allowed_to_trespass (unit);
+
+		// If "unit" is an air unit that can carry others, like helicopters, then this airdrop is only allowed if all of its passengers are
+		// allowed to trespass.
+		UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
+		if (allowed && (type->Unit_Class == UTC_Air) && (type->Transport_Capacity > 0))
+			FOR_UNITS_ON (uti, tile_at (unit->Body.X, unit->Body.Y))
+				if ((uti.unit->Body.Container_Unit == unit->Body.ID) &&
+				    (! is_allowed_to_trespass (uti.unit))) {
+					allowed = false;
+					break;
+				}
+
+		return ! allowed;
+	} else
+		return false;
+}
+
 bool __fastcall
 patch_Unit_check_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
 {
-	return Unit_check_airdrop_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+	return Unit_check_airdrop_target (this, __, tile_x, tile_y) &&
+		is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class) &&
+		! is_airdrop_trespassing (this, tile_x, tile_y);
 }
 
 bool __fastcall
@@ -10837,11 +10862,15 @@ patch_City_count_airports_for_ai_airlift_target (City * this, int edx, enum Impr
 int __fastcall
 patch_Unit_ai_eval_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
 {
-	// Prevent the AI from airdropping onto tiles that have reached the stack limit
-	if (! is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
-		return 0;
+	int tr = Unit_ai_eval_airdrop_target (this, __, tile_x, tile_y);
 
-	return Unit_ai_eval_airdrop_target (this, __, tile_x, tile_y);
+	// Prevent the AI from airdropping onto tiles in violation of the stack limit or trespassing restriction
+	if ((tr > 0) &&
+	    ((! is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class)) ||
+	     is_airdrop_trespassing (this, tile_x, tile_y)))
+		tr = 0;
+
+	return tr;
 }
 
 bool __fastcall

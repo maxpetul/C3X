@@ -1,3 +1,5 @@
+- Prevent airdrops from violating the trespassing restriction
+
 * RELEASE 23 PREVIEW 1
 - Include AMB editor
 - Adjustable rebase range as multiple of operational range, setting named rebase_range_multiplier
