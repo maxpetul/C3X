@@ -1,3 +1,5 @@
+- In AMB editor, dispose of sound core objects when previews stop playing
+  - Hopefully this fixes the issue where it's not possible to play multiple previews without manually clearing the editor's temp folder
 - Fix possible division by zero in AI logic to evaluate proposed alliances
 - Prevent airdrops from violating the trespassing restriction
 

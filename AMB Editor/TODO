@@ -1,9 +1,9 @@
+- See if the Kmap params do anything useful
+
 Low priority:
 - Add row on HopliteAttackA.amb doesn't work properly b/c of the orphan sound track
 - Put asterisk in window title if there are unsaved changes
+- Warning when you run multiple instances of the editor. Doing so breaks playing of previews.
 - Option to create a "new" AMB file
 - Consider moving all .c files into a source folder
 - Consider adding a column with program numbers
-- Figure out how to dispose of SoundCore objects properly
-  - This will also mean we can clean up the temp directory more quickly
-- It would be nice if this editor could be used to fix broken files, like GalleyAttack.amb, where the var names don't match

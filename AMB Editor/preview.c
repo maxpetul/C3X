@@ -77,6 +77,7 @@ bool previewPlayerIsInitialized = false;
 HMODULE soundModule = NULL;
 int (__cdecl * InitSoundTimer)(int param_1, int param_2) = NULL;
 int (__cdecl * CreateSound)(SoundCore ** out_sound_core, char const * file_path, int sound_core_type) = NULL;
+int (__cdecl * DeleteSound)(SoundCore * sound_core) = NULL;
 int (__cdecl * CreateWaveDevice)(WaveDevice ** out, unsigned param_2) = NULL;
 int (__cdecl * CreateMidiDevice)(MidiDevice ** out, unsigned param_2) = NULL;
 
@@ -104,6 +105,7 @@ void InitializePreviewPlayer(HWND window, char *conquestsInstallPath)
 
     InitSoundTimer   = (void *)GetProcAddress(soundModule, "init_sound_timer");
     CreateSound      = (void *)GetProcAddress(soundModule, "create_sound");
+    DeleteSound      = (void *)GetProcAddress(soundModule, "delete_sound");
     CreateWaveDevice = (void *)GetProcAddress(soundModule, (LPCSTR)5); // Use ordinal b/c name is mangled
     CreateMidiDevice = (void *)GetProcAddress(soundModule, (LPCSTR)7);
 
@@ -128,7 +130,7 @@ void StopAmbPreview()
 {
     if (playingCore != NULL) {
         playingCore->vtable->Stop(playingCore);
-        // TODO: Figure out how to deallocate Sound Core objects. Right now we just leak the memory. Attempting to reuse a core causes a crash.
+        DeleteSound(playingCore);
         playingCore = NULL;
     }
 }
