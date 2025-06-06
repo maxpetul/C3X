@@ -1,3 +1,4 @@
+- Fix possible division by zero in AI logic to evaluate proposed alliances
 - Prevent airdrops from violating the trespassing restriction
 
 * RELEASE 23 PREVIEW 1

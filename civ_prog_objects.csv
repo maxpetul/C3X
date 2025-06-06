@@ -694,6 +694,9 @@ repl call, 0x420DA2,	0x4222F8,	0x420E22,	"Map_get_tile_for_work_area_drawing",		
 repl call, 0x5DA3BE,	0x5E992D,	0x5DA2EE,	"City_stop_working_polluted_tile",		""
 repl vptr, 0x66DCB0,	0x68AD94,	0x66DCB0,	"City_manage_by_governor",			"void (__fastcall *) (City * this, int edx, bool param_1)"
 define,	   0x5DA3CC,	0x5E993B,	0x5DA2FC,	"ADDR_MANAGE_CITY_AFTER_POLLUTION_RETURN",	"int"
+define,	   0x56D040,	0x5799C0,	0x56CFB0,	"find_nearest_city",				"City * (__cdecl *) (int tile_x, int tile_y, int owner_id, int continent_id, int ignore_owner_id, int perspective_id, City * ignore_city)"
+repl call, 0x438A5B,	0x43A5E6,	0x438ADB,	"find_nearest_city_for_ai_alliance_eval",	""
+define,	   0x9C34EC,	0x9E5CE4,	0x9C34AC,	"p_nearest_city_distance",			"int *"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
@@ -705,7 +708,6 @@ ignore,	   0x4E8850,	0x4F14E0,	0x4E8910,	"Main_Screen_Form_open_right_click_unit
 ignore,	   0x4DBA70,	0x0,		0x0,		"Main_Screen_Form_set_selected_unit",		"void (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit, bool param_2)"
 ignore,	   0x5CCBB0,	0x0,		0x0,		"Unit_can_pass_between",			"PassBetweenValidity (__fastcall *) (Unit * this, int edx, int from_x, int from_y, int to_x, int to_y, byte param_5)"
 ignore,	   0x452510,	0x454600,	0x452590,	"ai_move_defensive_unit",			"void (__fastcall *) (Unit * this)"
-ignore,	   0x56D040,	0x5799C0,	0x0,		"find_nearest_city",				"City * (__cdecl *) (int tile_x, int tile_y, int owner_id, int continent_id, int ignore_owner_id, int perspective_id, City * ignore_city)"
 ignore,    0x5E78E0,	0x5F7130,	0x0,		"General_load",					"void (__fastcall *) (General * this, int edx, byte ** buffer)"
 ignore,    0x5E7020,	0x5F6870,	0x0,		"General_clear",				"void (__fastcall *) (General * this)"
 ignore,	   0x4E5580,	0x0,		0x0,		"Main_Screen_Form_draw_city_hud",		"void (__fastcall *) (Main_Screen_Form * this, int edx, PCX_Image * canvas)"

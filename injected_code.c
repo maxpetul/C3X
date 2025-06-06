@@ -3075,6 +3075,7 @@ patch_init_floating_point ()
 		{"patch_maintenance_persisting_for_obsolete_buildings" , true , offsetof (struct c3x_config, patch_maintenance_persisting_for_obsolete_buildings)},
 		{"patch_barbarian_diagonal_bug"                        , true , offsetof (struct c3x_config, patch_barbarian_diagonal_bug)},
 		{"patch_disease_stopping_tech_flag_bug"                , false, offsetof (struct c3x_config, patch_disease_stopping_tech_flag_bug)},
+		{"patch_division_by_zero_in_ai_alliance_eval"          , true , offsetof (struct c3x_config, patch_division_by_zero_in_ai_alliance_eval)},
 		{"prevent_autorazing"                                  , false, offsetof (struct c3x_config, prevent_autorazing)},
 		{"prevent_razing_by_players"                           , false, offsetof (struct c3x_config, prevent_razing_by_players)},
 		{"suppress_hypertext_links_exceeded_popup"             , true , offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
@@ -11142,6 +11143,15 @@ patch_City_manage_by_governor (City * this, int edx, bool param_1)
 		return;
 
 	City_manage_by_governor (this, __, param_1);
+}
+
+City * __cdecl
+patch_find_nearest_city_for_ai_alliance_eval (int tile_x, int tile_y, int owner_id, int continent_id, int ignore_owner_id, int perspective_id, City * ignore_city)
+{
+	City * tr = find_nearest_city (tile_x, tile_y, owner_id, continent_id, ignore_owner_id, perspective_id, ignore_city);
+	if (is->current_config.patch_division_by_zero_in_ai_alliance_eval && (*p_nearest_city_distance == 0))
+		*p_nearest_city_distance = 1;
+	return tr;
 }
 
 // TCC requires a main function be defined even though it's never used.
