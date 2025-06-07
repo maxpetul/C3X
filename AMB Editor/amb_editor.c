@@ -61,6 +61,7 @@ void MatchDurationToWav(HWND hwndListView);
 void LoadAmbFileWithDialog(HWND hwnd);
 void SaveAmbFileDirectly(HWND hwnd);
 void SaveAmbFileAs(HWND hwnd);
+void UpdateOverallDuration(void);
 
 // Currently loaded AMB file
 AmbFile g_ambFile = {0};
@@ -360,6 +361,7 @@ HWND g_hwndMainWindow = NULL;
 HWND g_hwndPlayButton = NULL;
 HWND g_hwndStopButton = NULL;
 HWND g_hwndListView = NULL;
+HWND g_hwndDurationLabel = NULL;
 HBRUSH g_hBackgroundBrush = NULL;  // Brush for window background color
 
 // Track info for each row in the ListView
@@ -993,6 +995,9 @@ void PopulateAmbListView(void)
             SetListViewItemText(g_hwndListView, listRow, COL_VOLUME_MAX, row->volumeMaxStr, FALSE);
         }
     }
+    
+    // Update the overall duration display
+    UpdateOverallDuration();
 }
 
 // Handle the beginning of a ListView label edit
@@ -1067,6 +1072,9 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
 		    g_ambFile.midi.soundTracks[trackIndex].deltaTimeNoteOn = round(newTime * ticksPerSecond);
 
                     snprintf(outFormattedText, formattedTextBufferSize, "%04.3f", newTime);
+                    
+                    // Update overall duration since timestamp changed
+                    UpdateOverallDuration();
 
                 } else {
                     newTextIsValid = FALSE;
@@ -1085,6 +1093,9 @@ BOOL ApplyEditToAmbFile(HWND hwnd, int row, int col, const char *newText, char *
                     g_ambFile.midi.soundTracks[trackIndex].deltaTimeNoteOff = round(newDuration * ticksPerSecond);
 
                     snprintf(outFormattedText, formattedTextBufferSize, "%04.3f", newDuration);
+                    
+                    // Update overall duration since duration changed
+                    UpdateOverallDuration();
 
                 } else {
                     newTextIsValid = FALSE;
@@ -1812,6 +1823,51 @@ void EditListViewSubItem(HWND hwndListView, int row, int col)
     }
 }
 
+// Calculate and update the overall duration display
+void UpdateOverallDuration(void)
+{
+    if (g_hwndDurationLabel == NULL) {
+        return;
+    }
+    
+    float maxEndTime = 0.0f;
+    
+    // Check if we have valid AMB data
+    if (g_ambFile.kmapChunkCount == 0 || g_ambFile.prgmChunkCount == 0 || g_ambFile.midi.trackCount == 0) {
+        SetWindowText(g_hwndDurationLabel, "Overall Duration: 0.000 sec");
+        return;
+    }
+    
+    // Calculate seconds per tick for timing
+    float secondsPerTick = 0.0f;
+    if (g_ambFile.midi.ticksPerQuarterNote > 0) {
+        secondsPerTick = g_ambFile.midi.secondsPerQuarterNote / g_ambFile.midi.ticksPerQuarterNote;
+    }
+    
+    // Process each MIDI sound track to find the longest duration
+    int soundTrackCount = g_ambFile.midi.trackCount - 1; // Minus one to exclude the info track
+    for (int trackIndex = 0; trackIndex < soundTrackCount; trackIndex++) {
+        SoundTrack * track = &g_ambFile.midi.soundTracks[trackIndex];
+        
+        int prgmIndex = GetReferencedPrgmIfValid(trackIndex);
+        if (prgmIndex < 0)
+            continue; // No valid Prgm, skip this track
+        
+        float timestamp = track->deltaTimeNoteOn * secondsPerTick;
+        float duration = track->deltaTimeNoteOff * secondsPerTick;
+        float endTime = timestamp + duration;
+        
+        if (endTime > maxEndTime) {
+            maxEndTime = endTime;
+        }
+    }
+    
+    // Update the label text
+    char durationText[64] = {0};
+    snprintf(durationText, sizeof(durationText) - 1, "Overall Duration: %04.3f sec", maxEndTime);
+    SetWindowText(g_hwndDurationLabel, durationText);
+}
+
 // Create and initialize the ListView control
 void CreateAmbListView(HWND hwnd) 
 {
@@ -1847,6 +1903,19 @@ void CreateAmbListView(HWND hwnd)
     AddListViewColumn(g_hwndListView, COL_VOLUME_RANDOM, "Vol. Rnd", 70);
     AddListViewColumn(g_hwndListView, COL_VOLUME_MIN, "Vol. Min", 70);
     AddListViewColumn(g_hwndListView, COL_VOLUME_MAX, "Vol. Max", 70);
+    
+    // Create duration label below the ListView
+    g_hwndDurationLabel = CreateWindow(
+        "STATIC",
+        "Overall Duration: 0.000 sec",
+        WS_CHILD | WS_VISIBLE | SS_LEFT,
+        20, 540, // x, y position (below the ListView)
+        250, 20, // width, height
+        hwnd,
+        NULL,
+        GetModuleHandle(NULL),
+        NULL
+    );
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -2284,7 +2353,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         WS_OVERLAPPEDWINDOW,        // Window style
         
         // Size and position
-        CW_USEDEFAULT, CW_USEDEFAULT, 895, 600,
+        CW_USEDEFAULT, CW_USEDEFAULT, 895, 620,
         
         NULL,       // Parent window    
         hMenu,      // Menu

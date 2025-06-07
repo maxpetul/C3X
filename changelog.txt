@@ -1,5 +1,6 @@
 - Create a new temp folder for each preview played in AMB editor
   - Hopefully this fixes the issue (for real this time) where it's not possible to play multiple previews without manually clearing the editor's temp folder
+- Show overall duration of loaded AMB
 
 * RELEASE 22B
 - In AMB editor, dispose of sound core objects when previews stop playing
