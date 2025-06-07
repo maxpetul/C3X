@@ -149,32 +149,16 @@ void DeinitializePreviewPlayer()
 #define MAX_PATH 260
 #endif
 
-// Prepare temporary directory for AMB previewing, cleaning any existing WAV files
-BOOL PrepareTempDirectory(char *tempDirPath, size_t tempDirPathSize)
+// Helper function to recursively delete directory contents
+void DeleteDirectoryContents(const char *dirPath)
 {
-    char tempPath[MAX_PATH];
-    DWORD result = GetTempPath(MAX_PATH, tempPath);
-    if (result == 0 || result > MAX_PATH) {
-        return FALSE;
-    }
-    
-    // Generate a unique subdirectory for our editor
-    snprintf(tempDirPath, tempDirPathSize, "%s%s", tempPath, TEMP_DIR);
-    
-    // Create the directory if it doesn't exist
-    if (!PathIsDirectory(tempDirPath)) {
-        if (!CreateDirectory(tempDirPath, NULL)) {
-            return FALSE;
-        }
-    }
-    
-    // Try to clean up existing WAV files
     WIN32_FIND_DATA findData;
     char searchPattern[MAX_PATH] = {0};
+    char fullPath[MAX_PATH] = {0};
     
-    // Try to delete all files in the directory
-    snprintf(searchPattern, (sizeof searchPattern) - 1, "%s\\*.*", tempDirPath);
+    snprintf(searchPattern, sizeof(searchPattern) - 1, "%s\\*.*", dirPath);
     HANDLE hFind = FindFirstFile(searchPattern, &findData);
+    
     if (hFind != INVALID_HANDLE_VALUE) {
         do {
             // Skip . and .. directory entries
@@ -183,19 +167,70 @@ BOOL PrepareTempDirectory(char *tempDirPath, size_t tempDirPathSize)
                 continue;
             }
             
-            // Check if it's a file, not a directory
-            if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-                char filePath[MAX_PATH] = {0};
-                snprintf(filePath, (sizeof filePath) - 1, "%s\\%s", tempDirPath, findData.cFileName);
-                
-                // Try to delete the file (ignoring errors)
-                DeleteFile(filePath);
+            snprintf(fullPath, sizeof(fullPath) - 1, "%s\\%s", dirPath, findData.cFileName);
+            
+            if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                // Recursively delete subdirectory contents
+                DeleteDirectoryContents(fullPath);
+                // Try to remove the empty directory
+                RemoveDirectory(fullPath);
+            } else {
+                // Delete file
+                DeleteFile(fullPath);
             }
         } while (FindNextFile(hFind, &findData));
         FindClose(hFind);
     }
+}
+
+// Prepare temporary directory for AMB previewing, creating a numbered subfolder
+BOOL PrepareTempDirectory(char *tempDirPath, size_t tempDirPathSize)
+{
+    char tempPath[MAX_PATH] = {0};
+    char baseTempDir[MAX_PATH] = {0};
     
-    return TRUE;
+    // Get the system temp directory
+    DWORD result = GetTempPath(MAX_PATH, tempPath);
+    if (result == 0 || result > MAX_PATH) {
+        return FALSE;
+    }
+    
+    // Create our base temp folder in the system temp directory
+    snprintf(baseTempDir, sizeof(baseTempDir) - 1, "%s%s", tempPath, TEMP_DIR);
+    
+    // Create the directory if it doesn't exist
+    if (!PathIsDirectory(baseTempDir)) {
+        if (!CreateDirectory(baseTempDir, NULL)) {
+            return FALSE;
+        }
+    }
+    
+    // Delete everything within the base temp directory
+    DeleteDirectoryContents(baseTempDir);
+    
+    // Find an unused numbered subfolder
+    char numberedPath[MAX_PATH] = {0};
+    int folderNumber = 1;
+    
+    while (folderNumber <= 9999) { // Reasonable upper limit
+        snprintf(numberedPath, sizeof(numberedPath) - 1, "%s\\%d", baseTempDir, folderNumber);
+        
+        if (!PathIsDirectory(numberedPath)) {
+            // This number is available, create the directory
+            if (CreateDirectory(numberedPath, NULL)) {
+                // Update the output path to the numbered folder
+                snprintf(tempDirPath, tempDirPathSize - 1, "%s", numberedPath);
+                return TRUE;
+            } else {
+                return FALSE;
+            }
+        }
+        
+        folderNumber++;
+    }
+    
+    // If we couldn't find an unused number, fail
+    return FALSE;
 }
 
 // Copy WAV files referenced by the AMB to the temp directory
