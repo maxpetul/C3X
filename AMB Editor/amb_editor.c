@@ -802,7 +802,8 @@ BOOL HasMissingWavFiles(char* missingFiles, int bufferSize)
             KmapChunk *kmap = &g_ambFile.kmapChunks[rowInfo->kmapIndex];
             const char *wavFileName = kmap->items[rowInfo->kmapItemIndex].wavFileName;
             
-            if (!CheckWavFileExists(wavFileName)) {
+            // Ignore empty WAV file names since those don't interfere with playback
+            if ((wavFileName[0] != '\0') && !CheckWavFileExists(wavFileName)) {
                 hasMissing = TRUE;
                 
                 // Add to missing files list if there's space
