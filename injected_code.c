@@ -3244,6 +3244,7 @@ patch_init_floating_point ()
 		}
 	}
 
+	is->sb_next_up = NULL;
 	is->tnx_cache = NULL;
 	is->is_computing_city_connections = false;
 	is->keep_tnx_cache = false;
@@ -4009,7 +4010,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 		attacking_tile = (! has_airfield) || (num_air_units_on_target_tile == 0);
 	}
 
-	Unit * next_up = this->Current_Unit;
+	is->sb_next_up = this->Current_Unit;
 	int i_next_attacker = 0;
 	int anything_left_to_attack;
 	int last_attack_didnt_happen;
@@ -4023,20 +4024,21 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 				*p_preferences |= P_ANIMATE_BATTLES;
 		}
 
-		int moves_before_bombard = next_up->Body.Moves;
+		int moves_before_bombard = is->sb_next_up->Body.Moves;
 
-		patch_Unit_bombard_tile (next_up, __, x, y);
+		patch_Unit_bombard_tile (is->sb_next_up, __, x, y);
+		// At this point sb_next_up may have become NULL if the unit was a bomber that got shot down.
 
 		// Check if the last unit sent into battle actually did anything. If it didn't we should at least skip over
 		// it to avoid an infinite loop, but actually the only time this should happen is if the player is not at
 		// war with the targetted civ and chose not to declare when prompted. In this case it's better to just stop
 		// trying to attack so as to not spam the player with prompts.
-		last_attack_didnt_happen = (next_up->Body.Moves == moves_before_bombard);
+		last_attack_didnt_happen = (is->sb_next_up == NULL) || (is->sb_next_up->Body.Moves == moves_before_bombard);
 
-		if (has_exhausted_attack (next_up)) {
-			next_up = NULL;
-			while ((i_next_attacker < count_attackers) && (next_up == NULL))
-				next_up = get_unit_ptr (attackers[i_next_attacker++]);
+		if ((is->sb_next_up == NULL) || has_exhausted_attack (is->sb_next_up)) {
+			is->sb_next_up = NULL;
+			while ((i_next_attacker < count_attackers) && (is->sb_next_up == NULL))
+				is->sb_next_up = get_unit_ptr (attackers[i_next_attacker++]);
 		}
 		
 		if (attacking_units) {
@@ -4060,9 +4062,10 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 			anything_left_to_attack = has_any_destructible_overlays (target_tile, false);
 		else
 			anything_left_to_attack = 0;
-	} while ((next_up != NULL) && anything_left_to_attack && (! last_attack_didnt_happen));
+	} while ((is->sb_next_up != NULL) && anything_left_to_attack && (! last_attack_didnt_happen));
 
 	is->sb_activated_by_button = 0;
+	is->sb_next_up = NULL;
 	*p_preferences = init_prefs;
 	this->GUI.Base.vtable->m73_call_m22_Draw ((Base_Form *)&this->GUI);
 }
@@ -7199,6 +7202,9 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	// If we're despawning the stored ZoC defender, clear that variable so we don't despawn it again in check_life_after_zoc
 	if (this == is->zoc_defender)
 		is->zoc_defender = NULL;
+
+	if (this == is->sb_next_up)
+		is->sb_next_up = NULL;
 
 	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 

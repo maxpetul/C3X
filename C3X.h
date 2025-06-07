@@ -493,6 +493,8 @@ struct injected_state {
 	int (* memcmp) (void const *, void const *, size_t);
 	void * (* memcpy) (void *, void const *, size_t);
 
+	Unit * sb_next_up; // The unit currently doing a stack bombard or NULL otherwise. Gets set to NULL if the unit is despawned.
+
 	HMODULE trade_net_x;
 	void (__stdcall * set_exe_version) (int);
 	void * (__stdcall * create_tnx_cache) (Map *);

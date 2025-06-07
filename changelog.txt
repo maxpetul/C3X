@@ -1,6 +1,7 @@
 - Create a new temp folder for each preview played in AMB editor
   - Hopefully this fixes the issue (for real this time) where it's not possible to play multiple previews without manually clearing the editor's temp folder
 - Show overall duration of loaded AMB
+- Fix possible crash when unit performing stack bombard is destroyed
 - When playing preview, don't complain that empty WAV file names are missing
 
 * RELEASE 22B
