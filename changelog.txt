@@ -1,13 +1,12 @@
-- Create a new temp folder for each preview played in AMB editor
-  - Hopefully this fixes the issue (for real this time) where it's not possible to play multiple previews without manually clearing the editor's temp folder
-- Show overall duration of loaded AMB
-- Fix possible crash when unit performing stack bombard is destroyed
-- When playing preview, don't complain that empty WAV file names are missing
-
-* RELEASE 22B
-- In AMB editor, dispose of sound core objects when previews stop playing
-- Fix possible division by zero in AI logic to evaluate proposed alliances
+* RELEASE 23 Preview 2
+- AMB editor improvements
+  - Show overall duration of loaded file
+  - When playing preview, don't complain that empty WAV file names are missing
+  - Create a new temp folder for each preview played and dispose of sound core objects when previews are stopped
+    - These changes should fix issues where previews can't be played due to conflicts with leftover files
 - Prevent airdrops from violating the trespassing restriction
+- Fix possible crash when unit performing stack bombard is destroyed
+- Fix division by zero in AI logic to evaluate proposed alliances
 
 * RELEASE 23 PREVIEW 1
 - Include AMB editor
