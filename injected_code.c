@@ -905,11 +905,10 @@ parse_perfume_spec (char ** p_cursor, enum perfume_kind kind, struct error_line 
 	struct string_slice name;
 	City_Order unused_city_order;
 	int unused_id;
-	int amount;
+	i31b value;
 	if (parse_string (&cur, &name) &&
 	    skip_punctuation (&cur, ':') &&
-	    parse_int (&cur, &amount)) {
-		bool percent = skip_punctuation (&cur, '%');
+	    parse_i31b (&cur, &value)) {
 		*p_cursor = cur;
 
 		if (((kind == PK_PRODUCTION) && find_city_order_by_name (&name, &unused_city_order)) ||
@@ -918,7 +917,7 @@ parse_perfume_spec (char ** p_cursor, enum perfume_kind kind, struct error_line 
 			struct perfume_spec * out = out_perfume_spec;
 			snprintf (out->name, sizeof out->name, "%.*s", name.len, name.str);
 			out->name[(sizeof out->name) - 1] = '\0';
-			out->value = i31b_pack (amount, percent);
+			out->value = value;
 			return RPR_OK;
 		} else {
 			add_unrecognized_line (p_unrecognized_lines, &name);

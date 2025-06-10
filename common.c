@@ -640,6 +640,20 @@ parse_int (char ** p_cursor, int * out)
 }
 
 int
+parse_i31b (char ** p_cursor, int * out_i31b_val)
+{
+	char * cur = *p_cursor;
+	int int_val;
+	if (parse_int (&cur, &int_val)) {
+		bool percent = skip_punctuation (&cur, '%');
+		*p_cursor = cur;
+		*out_i31b_val = i31b_pack (int_val, percent);
+		return 1;
+	} else
+		return 0;
+}
+
+int
 parse_bracketed_block (char ** p_cursor, struct string_slice * out)
 {
 	char * cur = *p_cursor;
