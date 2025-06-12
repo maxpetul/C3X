@@ -359,7 +359,6 @@ int CompareRowsByTimestamp(const void *a, const void *b)
 
 // Global variables
 Path g_civ3MainPath = {0};
-Path g_civ3ConquestsPath = {0};
 HWND g_hwndPathEdit = NULL;
 HWND g_hwndMainWindow = NULL;
 HWND g_hwndPlayButton = NULL;
@@ -565,15 +564,13 @@ bool IsCiv3MainFolder(const Path folderPath)
 bool FindCiv3InstallBySearch(const Path startPath)
 {
     Path testPath;
-    Path parentPath;
-    bool foundConquests = false;
     
     // Start with working directory
     strcpy(testPath, startPath);
     
-    // Go up up to 5 parent directories
-    for (int i = 0; i < 5; i++) {
-        // Check current directory and subdirectories for Conquests
+    // Go up up to 10 parent directories
+    for (int i = 0; i < 10; i++) {
+        // Check current directory and subdirectories for main Civ3 folder
         WIN32_FIND_DATA findData;
         HANDLE hFind;
         Path searchPath;
@@ -592,26 +589,15 @@ bool FindCiv3InstallBySearch(const Path startPath)
                     strcpy(subDirPath, testPath);
                     PathAppend(subDirPath, findData.cFileName);
                     
-                    if (IsCiv3ConquestsFolder(subDirPath)) {
-                        // Found Conquests directory
-                        strcpy(g_civ3ConquestsPath, subDirPath);
-                        foundConquests = true;
-                        break;
+                    if (IsCiv3MainFolder(subDirPath)) {
+                        // Found main Civ3 directory
+                        strcpy(g_civ3MainPath, subDirPath);
+                        FindClose(hFind);
+                        return true;
                     }
                 }
             } while (FindNextFile(hFind, &findData));
             FindClose(hFind);
-        }
-        
-        if (foundConquests) {
-            // Now look for the main Civ3 folder (should be parent of Conquests parent)
-            strcpy(parentPath, g_civ3ConquestsPath);
-            PathRemoveFileSpec(parentPath); // Go up to Conquests parent
-            
-            if (IsCiv3MainFolder(parentPath)) {
-                strcpy(g_civ3MainPath, parentPath);
-                return true;
-            }
         }
         
         // Move up a directory
@@ -641,10 +627,6 @@ bool FindCiv3InstallFromRegistry()
                 regValue[(sizeof regValue) - 1] = '\0'; // RegQueryValueEx is not guaranteed to return null terminated strings
                 strcpy(g_civ3MainPath, regValue);
                 
-                // Assume Conquests is in a subfolder named "Conquests"
-                strcpy(g_civ3ConquestsPath, g_civ3MainPath);
-                PathAppend(g_civ3ConquestsPath, "Conquests");
-                
                 RegCloseKey(hKey);
                 return true;
             }
@@ -655,7 +637,7 @@ bool FindCiv3InstallFromRegistry()
     return false;
 }
 
-bool BrowseForConquestsSoundDLL(HWND hwnd)
+bool BrowseForSoundDLL(HWND hwnd, Path outSoundDLLPath)
 {
     Path path = {0};
 
@@ -671,22 +653,38 @@ bool BrowseForConquestsSoundDLL(HWND hwnd)
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_EXPLORER;
 
     if (GetOpenFileNameA(&ofn)) {
-        // Extract directory path from the selected file
-        char* lastSlash = strrchr(path, '\\');
-        if (lastSlash) {
-            *lastSlash = '\0'; // Truncate at last backslash to get directory
-
-            Path soundDLLPath = {0};
-            snprintf(soundDLLPath, PATH_BUFFER_SIZE - 1, "%s\\sound.dll", path);
-
-            if (PathFileExists(soundDLLPath)) {
-                strcpy(g_civ3ConquestsPath, path);
-                return true;
-            }
+        if (PathFileExists(path)) {
+            strcpy(outSoundDLLPath, path);
+            return true;
         }
     }
 
     return false;
+}
+
+bool GetSoundDLLPath(HWND hwnd, Path outSoundDLLPath)
+{
+    // First, check if INI has a sound.dll path specified
+    if (strlen(g_iniSoundDLLPath) > 0 && PathFileExists(g_iniSoundDLLPath)) {
+        strcpy(outSoundDLLPath, g_iniSoundDLLPath);
+        return true;
+    }
+    
+    // Otherwise, check if Conquests\sound.dll exists in the main Civ3 install
+    if (strlen(g_civ3MainPath) > 0) {
+        Path conquestsSoundPath;
+        strcpy(conquestsSoundPath, g_civ3MainPath);
+        PathAppend(conquestsSoundPath, "Conquests");
+        PathAppend(conquestsSoundPath, "sound.dll");
+        
+        if (PathFileExists(conquestsSoundPath)) {
+            strcpy(outSoundDLLPath, conquestsSoundPath);
+            return true;
+        }
+    }
+    
+    // If neither works, ask the user to locate sound.dll
+    return BrowseForSoundDLL(hwnd, outSoundDLLPath);
 }
 
 // Find Civ3 installation using all available methods
@@ -1965,16 +1963,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             // If we've been given a specific Civ 3 install path in the INI, use that. Otherwise search for one.
             if (strlen(g_iniCiv3InstallPath) > 0) {
                 strcpy(g_civ3MainPath, g_iniCiv3InstallPath);
-                strcpy(g_civ3ConquestsPath, g_iniCiv3InstallPath);
-                PathAppend(g_civ3ConquestsPath, "Conquests");
             } else {
                 FindCiv3Installation(hwnd);
             }
 
             g_hwndMainWindow = hwnd;
 
-            if (strlen(g_civ3ConquestsPath) > 0) {
-                InitializePreviewPlayer(hwnd, g_civ3ConquestsPath);
+            // Try to initialize preview player with sound.dll
+            Path soundDLLPath;
+            if (GetSoundDLLPath(hwnd, soundDLLPath)) {
+                InitializePreviewPlayer(hwnd, soundDLLPath);
             }
             
             // Create playback buttons
@@ -2058,22 +2056,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     if (g_ambFile.filePath[0] != '\0') {
                         bool encounteredError = false;
 
-                        // Check that the preview player is initialized. If it's not, do so. If it wasn't initialized before, that may be because we
-                        // haven't found the Conquests install dir.
+                        // Check that the preview player is initialized. If it's not, try to initialize it.
                         if (! previewPlayerIsInitialized) {
-                            if (strlen(g_civ3ConquestsPath) == 0) {
-                                int result = MessageBox(hwnd,
-                                                        "Playing a preview requires sound.dll from your Civ 3 Conquests install. The install location could not be found automatically. "
-                                                        "Would you like to locate sound.dll manually?",
-                                                        "Installation not found", MB_YESNO | MB_ICONQUESTION);
-                                if (result == IDYES) {
-                                    if (! BrowseForConquestsSoundDLL(hwnd))
-                                        encounteredError = true;
-                                } else
-                                    encounteredError = true;
+                            Path soundDLLPath;
+                            if (GetSoundDLLPath(hwnd, soundDLLPath)) {
+                                InitializePreviewPlayer(hwnd, soundDLLPath);
                             }
-                            if (strlen(g_civ3ConquestsPath) > 0)
-                                InitializePreviewPlayer(hwnd, g_civ3ConquestsPath);
                             if (! previewPlayerIsInitialized)
                                 encounteredError = true;
                         }

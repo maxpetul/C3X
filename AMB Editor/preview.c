@@ -86,18 +86,14 @@ MidiDevice * midiDevice = NULL;
 
 SoundCore * playingCore = NULL;
 
-void InitializePreviewPlayer(HWND window, char *conquestsInstallPath)
+void InitializePreviewPlayer(HWND window, char *soundDLLPath)
 {
     if (previewPlayerIsInitialized)
         return;
 
     char errorMsg[1000] = {0};
 
-    char savedCWD[1000];
-    GetCurrentDirectory(sizeof savedCWD, savedCWD);
-
-    SetCurrentDirectory(conquestsInstallPath);
-    soundModule = LoadLibraryA("sound.dll");
+    soundModule = LoadLibraryA(soundDLLPath);
     if (soundModule == NULL) {
         snprintf(errorMsg, (sizeof errorMsg) - 1, "GetLastError returns: %d", GetLastError());
         goto done;
@@ -123,7 +119,6 @@ done:
         previewPlayerIsInitialized = false;
     } else
         previewPlayerIsInitialized = true;
-    SetCurrentDirectory(savedCWD);
 }
 
 void StopAmbPreview()
