@@ -183,14 +183,14 @@ void DeinitializePreviewPlayer()
 #define MAX_PATH 260
 #endif
 
-// Helper function to recursively delete directory contents
-void DeleteDirectoryContents(const char *dirPath)
+// Helper function to clear .wav and .amb files from numbered directories
+void ClearTempDirectory(const char *baseTempDir)
 {
     WIN32_FIND_DATA findData;
     char searchPattern[MAX_PATH] = {0};
-    char fullPath[MAX_PATH] = {0};
+    char numberedDirPath[MAX_PATH] = {0};
     
-    snprintf(searchPattern, sizeof(searchPattern) - 1, "%s\\*.*", dirPath);
+    snprintf(searchPattern, sizeof(searchPattern) - 1, "%s\\*", baseTempDir);
     HANDLE hFind = FindFirstFile(searchPattern, &findData);
     
     if (hFind != INVALID_HANDLE_VALUE) {
@@ -201,16 +201,44 @@ void DeleteDirectoryContents(const char *dirPath)
                 continue;
             }
             
-            snprintf(fullPath, sizeof(fullPath) - 1, "%s\\%s", dirPath, findData.cFileName);
-            
+            // Check if this is a numbered directory (1, 2, 3, etc.)
             if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-                // Recursively delete subdirectory contents
-                DeleteDirectoryContents(fullPath);
-                // Try to remove the empty directory
-                RemoveDirectory(fullPath);
-            } else {
-                // Delete file
-                DeleteFile(fullPath);
+                char *endPtr;
+                long dirNumber = strtol(findData.cFileName, &endPtr, 10);
+                
+                // If the entire filename is a number, it's a numbered directory
+                if (*endPtr == '\0' && dirNumber > 0) {
+                    snprintf(numberedDirPath, sizeof(numberedDirPath) - 1, "%s\\%s", baseTempDir, findData.cFileName);
+                    
+                    // Delete .wav and .amb files from this numbered directory
+                    WIN32_FIND_DATA fileData;
+                    char fileSearchPattern[MAX_PATH] = {0};
+                    char filePath[MAX_PATH] = {0};
+                    
+                    snprintf(fileSearchPattern, sizeof(fileSearchPattern) - 1, "%s\\*.*", numberedDirPath);
+                    HANDLE hFileFind = FindFirstFile(fileSearchPattern, &fileData);
+                    
+                    if (hFileFind != INVALID_HANDLE_VALUE) {
+                        do {
+                            if (strcmp(fileData.cFileName, ".") != 0 && 
+                                strcmp(fileData.cFileName, "..") != 0 &&
+                                !(fileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                                
+                                char *extension = strrchr(fileData.cFileName, '.');
+                                if (extension != NULL) {
+                                    if (_stricmp(extension, ".wav") == 0 || _stricmp(extension, ".amb") == 0) {
+                                        snprintf(filePath, sizeof(filePath) - 1, "%s\\%s", numberedDirPath, fileData.cFileName);
+                                        DeleteFile(filePath);
+                                    }
+                                }
+                            }
+                        } while (FindNextFile(hFileFind, &fileData));
+                        FindClose(hFileFind);
+                    }
+                    
+                    // Try to remove the empty directory
+                    RemoveDirectory(numberedDirPath);
+                }
             }
         } while (FindNextFile(hFind, &findData));
         FindClose(hFind);
@@ -239,8 +267,8 @@ BOOL PrepareTempDirectory(char *tempDirPath, size_t tempDirPathSize)
         }
     }
     
-    // Delete everything within the base temp directory
-    DeleteDirectoryContents(baseTempDir);
+    // Clear .wav and .amb files from numbered directories within the base temp directory
+    ClearTempDirectory(baseTempDir);
     
     // Find an unused numbered subfolder
     char numberedPath[MAX_PATH] = {0};
