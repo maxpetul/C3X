@@ -144,7 +144,7 @@ void DeinitializePreviewPlayer()
     }
 }
 
-#define TEMP_DIR "AMBEditorTemp"
+#define TEMP_FOLDER "AMBEditorTemp"
 #ifndef MAX_PATH
 #define MAX_PATH 260
 #endif
@@ -196,7 +196,7 @@ BOOL PrepareTempDirectory(char *tempDirPath, size_t tempDirPathSize)
     }
     
     // Create our base temp folder in the system temp directory
-    snprintf(baseTempDir, sizeof(baseTempDir) - 1, "%s%s", tempPath, TEMP_DIR);
+    snprintf(baseTempDir, sizeof(baseTempDir) - 1, "%s%s", tempPath, TEMP_FOLDER);
     
     // Create the directory if it doesn't exist
     if (!PathIsDirectory(baseTempDir)) {

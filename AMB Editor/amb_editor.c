@@ -8,6 +8,10 @@
 #define PATH_BUFFER_SIZE 1024
 typedef char Path[PATH_BUFFER_SIZE];
 
+Path g_iniCiv3InstallPath;
+Path g_iniSoundDLLPath;
+Path g_iniTempDirectory;
+
 void PathAppend(Path path, const char* append)
 {
     size_t len = strlen(path);
@@ -1953,8 +1957,20 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             break;
             
         case WM_CREATE:
-            // Find Civ3 installation when window is created
-            FindCiv3Installation(hwnd);
+            // Read INI settings
+            GetPrivateProfileString(NULL, "civ_3_install_path", "", g_iniCiv3InstallPath, PATH_BUFFER_SIZE, "editor.ini");
+            GetPrivateProfileString(NULL, "sound_dll_path", "", g_iniSoundDLLPath, PATH_BUFFER_SIZE, "editor.ini");
+            GetPrivateProfileString(NULL, "temp_directory", "", g_iniTempDirectory, PATH_BUFFER_SIZE, "editor.ini");
+
+            // If we've been given a specific Civ 3 install path in the INI, use that. Otherwise search for one.
+            if (strlen(g_iniCiv3InstallPath) > 0) {
+                strcpy(g_civ3MainPath, g_iniCiv3InstallPath);
+                strcpy(g_civ3ConquestsPath, g_iniCiv3InstallPath);
+                PathAppend(g_civ3ConquestsPath, "Conquests");
+            } else {
+                FindCiv3Installation(hwnd);
+            }
+
             g_hwndMainWindow = hwnd;
 
             if (strlen(g_civ3ConquestsPath) > 0) {
