@@ -95,7 +95,14 @@ void InitializePreviewPlayer(HWND window, char *soundDLLPath)
 
     soundModule = LoadLibraryA(soundDLLPath);
     if (soundModule == NULL) {
-        snprintf(errorMsg, (sizeof errorMsg) - 1, "GetLastError returns: %d", GetLastError());
+        DWORD error = GetLastError();
+        char errorString[256];
+        if (FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                          NULL, error, 0, errorString, sizeof(errorString), NULL) == 0) {
+            snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to load sound.dll: Error code %lu", error);
+        } else {
+            snprintf(errorMsg, sizeof(errorMsg) - 1, "Failed to load sound.dll: %s", errorString);
+        }
         goto done;
     }
 
@@ -104,6 +111,13 @@ void InitializePreviewPlayer(HWND window, char *soundDLLPath)
     DeleteSound      = (void *)GetProcAddress(soundModule, "delete_sound");
     CreateWaveDevice = (void *)GetProcAddress(soundModule, (LPCSTR)5); // Use ordinal b/c name is mangled
     CreateMidiDevice = (void *)GetProcAddress(soundModule, (LPCSTR)7);
+
+    if (InitSoundTimer == NULL || CreateSound == NULL || DeleteSound == NULL || 
+        CreateWaveDevice == NULL || CreateMidiDevice == NULL) {
+        snprintf(errorMsg, sizeof(errorMsg) - 1, 
+                "Failed to load required functions from sound.dll. This may not be a valid Civ3 sound.dll file.");
+        goto done;
+    }
 
     InitSoundTimer(0, 0);
 
@@ -116,6 +130,10 @@ void InitializePreviewPlayer(HWND window, char *soundDLLPath)
 done:
     if (strlen(errorMsg) > 0) {
         MessageBox(NULL, errorMsg, "Couldn't load sound.dll", MB_ICONERROR);
+        if (soundModule != NULL) {
+            FreeLibrary(soundModule);
+            soundModule = NULL;
+        }
         previewPlayerIsInitialized = false;
     } else
         previewPlayerIsInitialized = true;
