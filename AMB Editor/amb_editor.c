@@ -637,35 +637,10 @@ bool FindCiv3InstallFromRegistry()
     return false;
 }
 
-bool BrowseForSoundDLL(HWND hwnd, Path outSoundDLLPath)
-{
-    Path path = {0};
-
-    OPENFILENAMEA ofn;
-    ZeroMemory(&ofn, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = hwnd;
-    ofn.lpstrFile = path;
-    ofn.nMaxFile = PATH_BUFFER_SIZE;
-    ofn.lpstrFilter = "DLL Files\0*.dll\0All Files\0*.*\0";
-    ofn.nFilterIndex = 1;
-    ofn.lpstrTitle = "Select sound.dll from your Civ 3 Conquests install";
-    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_EXPLORER;
-
-    if (GetOpenFileNameA(&ofn)) {
-        if (PathFileExists(path)) {
-            strcpy(outSoundDLLPath, path);
-            return true;
-        }
-    }
-
-    return false;
-}
-
 bool GetSoundDLLPath(HWND hwnd, Path outSoundDLLPath)
 {
     // First, check if INI has a sound.dll path specified
-    if (strlen(g_iniSoundDLLPath) > 0 && PathFileExists(g_iniSoundDLLPath)) {
+    if (strlen(g_iniSoundDLLPath) > 0) {
         strcpy(outSoundDLLPath, g_iniSoundDLLPath);
         return true;
     }
@@ -684,7 +659,33 @@ bool GetSoundDLLPath(HWND hwnd, Path outSoundDLLPath)
     }
     
     // If neither works, ask the user to locate sound.dll
-    return BrowseForSoundDLL(hwnd, outSoundDLLPath);
+    int result = MessageBox(hwnd,
+                           "Playing a preview requires sound.dll from your Civ 3 Conquests install. This could not be found automatically. "
+                           "Would you like to locate sound.dll manually?",
+                           "DLL not found", MB_YESNO | MB_ICONQUESTION);
+    if (result == IDYES) {
+        Path path = {0};
+
+        OPENFILENAMEA ofn;
+        ZeroMemory(&ofn, sizeof(ofn));
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = hwnd;
+        ofn.lpstrFile = path;
+        ofn.nMaxFile = PATH_BUFFER_SIZE;
+        ofn.lpstrFilter = "DLL Files\0*.dll\0All Files\0*.*\0";
+        ofn.nFilterIndex = 1;
+        ofn.lpstrTitle = "Select sound.dll from your Civ 3 Conquests install";
+        ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_EXPLORER;
+
+        if (GetOpenFileNameA(&ofn)) {
+            if (PathFileExists(path)) {
+                strcpy(outSoundDLLPath, path);
+                return true;
+            }
+        }
+    }
+    
+    return false;
 }
 
 // Find Civ3 installation using all available methods
@@ -1968,12 +1969,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             }
 
             g_hwndMainWindow = hwnd;
-
-            // Try to initialize preview player with sound.dll
-            Path soundDLLPath;
-            if (GetSoundDLLPath(hwnd, soundDLLPath)) {
-                InitializePreviewPlayer(hwnd, soundDLLPath);
-            }
             
             // Create playback buttons
             CreatePlaybackButtons(hwnd);
