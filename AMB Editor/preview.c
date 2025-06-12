@@ -246,19 +246,28 @@ void ClearTempDirectory(const char *baseTempDir)
 }
 
 // Prepare temporary directory for AMB previewing, creating a numbered subfolder
-BOOL PrepareTempDirectory(char *tempDirPath, size_t tempDirPathSize)
+BOOL PrepareTempDirectory(Path forcedTempPath, char *tempDirPath, size_t tempDirPathSize)
 {
     char tempPath[MAX_PATH] = {0};
     char baseTempDir[MAX_PATH] = {0};
     
-    // Get the system temp directory
-    DWORD result = GetTempPath(MAX_PATH, tempPath);
-    if (result == 0 || result > MAX_PATH) {
-        return FALSE;
+    // Check if forcedTempPath is provided and non-empty
+    if (strlen(forcedTempPath) > 0) {
+        // Validate that the forced temp path exists and is a directory
+        if (!PathIsDirectory(forcedTempPath)) {
+            return FALSE;
+        }
+        strncpy(baseTempDir, forcedTempPath, (sizeof baseTempDir) - 1);
+    } else {
+        // Get the system temp directory
+        DWORD result = GetTempPath(MAX_PATH, tempPath);
+        if (result == 0 || result > MAX_PATH) {
+            return FALSE;
+        }
+        
+        // Create our base temp folder in the system temp directory
+        snprintf(baseTempDir, sizeof(baseTempDir) - 1, "%s%s", tempPath, TEMP_FOLDER);
     }
-    
-    // Create our base temp folder in the system temp directory
-    snprintf(baseTempDir, sizeof(baseTempDir) - 1, "%s%s", tempPath, TEMP_FOLDER);
     
     // Create the directory if it doesn't exist
     if (!PathIsDirectory(baseTempDir)) {
@@ -339,7 +348,7 @@ BOOL CopyWavFilesToTempDir(AmbFile const * ambFile, char *tempDirPath)
     return success;
 }
 
-void PreviewAmbFile(AmbFile const * amb)
+void PreviewAmbFile(Path forcedTempPath, AmbFile const * amb)
 {
     if (! previewPlayerIsInitialized)
         return;
@@ -350,7 +359,7 @@ void PreviewAmbFile(AmbFile const * amb)
     Path tempFilePath = {0};
     Path tempDirPath = {0};
     bool success = false;
-    if (PrepareTempDirectory(tempDirPath, PATH_BUFFER_SIZE)) {
+    if (PrepareTempDirectory(forcedTempPath, tempDirPath, PATH_BUFFER_SIZE)) {
         // Generate a temp file path for the AMB
         snprintf(tempFilePath, PATH_BUFFER_SIZE - 1, "%s\\temp.amb", tempDirPath);
 

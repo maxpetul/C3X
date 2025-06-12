@@ -2074,7 +2074,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                         }
 
                         if (! encounteredError)
-                            PreviewAmbFile(&g_ambFile);
+                            PreviewAmbFile(g_iniTempDirectory, &g_ambFile);
                     } else {
                         MessageBox(hwnd, "No AMB file loaded. Please open an AMB file first.", 
                                    "Error", MB_OK | MB_ICONINFORMATION);
