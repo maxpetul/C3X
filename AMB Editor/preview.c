@@ -92,8 +92,26 @@ void InitializePreviewPlayer(HWND window, char *soundDLLPath)
         return;
 
     char errorMsg[1000] = {0};
+    Path savedCWD;
+    Path soundDLLDir;
+    char* fileName;
+    
+    // Save current directory
+    GetCurrentDirectory(sizeof(savedCWD), savedCWD);
+    
+    // Extract directory and filename from sound.dll path
+    strcpy(soundDLLDir, soundDLLPath);
+    char* lastSlash = strrchr(soundDLLDir, '\\');
+    if (lastSlash) {
+        fileName = lastSlash + 1; // point to filename part
+        *lastSlash = '\0'; // truncate to get directory
+        SetCurrentDirectory(soundDLLDir);
+    } else {
+        // No path separators, assume it's just a filename
+        fileName = soundDLLPath;
+    }
 
-    soundModule = LoadLibraryA(soundDLLPath);
+    soundModule = LoadLibraryA(fileName);
     if (soundModule == NULL) {
         DWORD error = GetLastError();
         char errorString[256];
@@ -128,6 +146,9 @@ void InitializePreviewPlayer(HWND window, char *soundDLLPath)
     midiDevice->vtable->Initialize(midiDevice, __, window, 0);
 
 done:
+    // Restore original directory
+    SetCurrentDirectory(savedCWD);
+    
     if (strlen(errorMsg) > 0) {
         MessageBox(NULL, errorMsg, "Couldn't load sound.dll", MB_ICONERROR);
         if (soundModule != NULL) {
