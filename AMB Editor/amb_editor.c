@@ -1957,9 +1957,15 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             
         case WM_CREATE:
             // Read INI settings
-            GetPrivateProfileString(NULL, "civ_3_install_path", "", g_iniCiv3InstallPath, PATH_BUFFER_SIZE, "editor.ini");
-            GetPrivateProfileString(NULL, "sound_dll_path", "", g_iniSoundDLLPath, PATH_BUFFER_SIZE, "editor.ini");
-            GetPrivateProfileString(NULL, "temp_directory", "", g_iniTempDirectory, PATH_BUFFER_SIZE, "editor.ini");
+            {
+                Path iniFullPath;
+                GetCurrentDirectory(PATH_BUFFER_SIZE, iniFullPath);
+                PathAppend(iniFullPath, "amb_editor.ini");
+
+                GetPrivateProfileString("Paths", "civ_3_install_path", "", g_iniCiv3InstallPath, PATH_BUFFER_SIZE, iniFullPath);
+                GetPrivateProfileString("Paths", "sound_dll_path"    , "", g_iniSoundDLLPath   , PATH_BUFFER_SIZE, iniFullPath);
+                GetPrivateProfileString("Paths", "temp_directory"    , "", g_iniTempDirectory  , PATH_BUFFER_SIZE, iniFullPath);
+            }
 
             // If we've been given a specific Civ 3 install path in the INI, use that. Otherwise search for one.
             if (strlen(g_iniCiv3InstallPath) > 0) {

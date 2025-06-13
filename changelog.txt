@@ -1,3 +1,5 @@
+- Allow file locations used by AMB editor to be set manually in an INI file
+
 * RELEASE 23 Preview 2
 - AMB editor improvements
   - Show overall duration of loaded file
