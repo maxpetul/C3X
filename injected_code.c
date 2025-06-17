@@ -1714,6 +1714,16 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 										 &cfg->count_ai_multi_start_extra_palaces,
 										 &cfg->ai_multi_start_extra_palaces_capacity))
 					    handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "ai_settler_perfume_on_founding")) {
+					struct string_slice trimmed = trim_string_slice (&value, 1);
+					if (trimmed.len > 0) {
+						char * extracted = extract_slice (&trimmed);
+						char * cursor = extracted;
+						if (! parse_i31b (&cursor, &cfg->ai_settler_perfume_on_founding))
+							handle_config_error (&p, CPE_BAD_VALUE);
+						free (extracted);
+					} else
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "land_retreat_rules")) {
 					if (! read_retreat_rules (&value, (int *)&cfg->land_retreat_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -3131,6 +3141,7 @@ patch_init_floating_point ()
 		{"ai_multi_city_start"                         ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
 		{"max_tries_to_place_fp_city"                  , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
 		{"ai_research_multiplier"                      ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
+		{"ai_settler_perfume_on_founding_duration"     ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
 		{"extra_unit_maintenance_per_shields"          ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
 		{"ai_build_artillery_ratio"                    ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
 		{"ai_artillery_value_damage_percent"           ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
@@ -3191,6 +3202,7 @@ patch_init_floating_point ()
 	struct c3x_config base_config = {0};
 	base_config.land_retreat_rules = RR_STANDARD;
 	base_config.sea_retreat_rules  = RR_STANDARD;
+	base_config.ai_settler_perfume_on_founding = 0;
 	base_config.work_area_limit = WAL_NONE;
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
 	base_config.city_work_radius = 2;
@@ -5323,6 +5335,10 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		table_deinit (&is->unit_type_counts[n]);
 	is->unit_type_count_init_bits = 0;
 
+	// Clear last city founding turn numbers
+	for (int n = 0; n < 32; n++)
+		is->turn_no_of_last_founding_for_settler_perfume[n] = -1;
+
 	// Load resources.pcx
 	{
 		PCX_Image * rs = is->resources_sheet;
@@ -7306,6 +7322,9 @@ remove_extra_palaces (City * city, City * excluded_destination)
 void
 on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 {
+	if (reason == CGR_FOUNDED)
+		is->turn_no_of_last_founding_for_settler_perfume[leader->ID] = *p_current_turn_no;
+
 	// Handle extra palaces for AI multi-city start
 	if (((*p_human_player_bits & (1<<leader->ID)) == 0) && // If leader is an AI AND
 	    (is->current_config.ai_multi_city_start > 1) && // AI multi-city start is enabled AND

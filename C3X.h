@@ -170,6 +170,8 @@ struct c3x_config {
 	bool promote_forbidden_palace_decorruption;
 	bool allow_military_leaders_to_hurry_wonders;
 	int ai_research_multiplier;
+	int ai_settler_perfume_on_founding;
+	int ai_settler_perfume_on_founding_duration;
 	bool aggressively_penalize_bankruptcy;
 	bool no_penalty_exception_for_agri_fresh_water_city_tiles;
 	bool suppress_hypertext_links_exceeded_popup;
@@ -598,6 +600,10 @@ struct injected_state {
 		int count;
 		int capacity;
 	} interceptor_reset_lists[32];
+
+	// Records the turn number on which each player has most recently founded a city. This is intended to be used for the temp settler perfume
+	// after founding feature so it may not be set if that feature is not activated or applicable. Defaults to -1.
+	int turn_no_of_last_founding_for_settler_perfume[32];
 
 	// Stores the byte offsets into the c3x_config struct of all boolean/integer config options, accessible using the options' names as
 	// strings. Used when reading in a config INI file.
