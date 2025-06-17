@@ -1636,8 +1636,8 @@ struct UnitItem
 struct Tile_vtable
 {
   int m0_Get_SquareType_Container;
-  char (__fastcall *m1_Set_Square_Type)(Tile *, __, int, signed int);
-  void (__fastcall *m2_Set_Square_Real_Type)(Tile *, __, int, signed int);
+  char (__fastcall *m1_Set_Square_Type)(Tile *, __, int);
+  void (__fastcall *m2_Set_Square_Real_Type)(Tile *, __, int);
   int (__fastcall *m3_Set_Square_Base_Type)(Tile *, __, int);
   void (__fastcall *m4_Dispose)(Tile *this, __, int);
   int m5;
