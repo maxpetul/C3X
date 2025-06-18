@@ -308,7 +308,8 @@ int
 compare_slice_and_str_keys (int slice_ptr, int str_ptr)
 {
 	struct string_slice const * slice = (struct string_slice const *)slice_ptr;
-	return strncmp (slice->str, (char const *)str_ptr, slice->len) == 0;
+	char const * str = (char const *)str_ptr;
+	return (strncmp (slice->str, str, slice->len) == 0) && (str[slice->len] == '\0');
 }
 
 size_t
@@ -582,6 +583,25 @@ read_int (struct string_slice const * s, int * out_val)
 		return 0;
 }
 
+int
+read_i31b (struct string_slice const * s, i31b * out_i31b_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if (trimmed.len > 0) {
+		bool percent = trimmed.str[trimmed.len - 1] == '%';
+		if (percent)
+			trimmed.len -= 1;
+
+		int int_val;
+		if (read_int (&trimmed, &int_val)) {
+			*out_i31b_val = i31b_pack (int_val, percent);
+			return 1;
+		} else
+			return 0;
+	} else
+		return 0;
+}
+
 char const windows1252_alpha_nums[256] = {
 	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, // control chars
 	0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, // control chars
@@ -615,7 +635,7 @@ parse_string (char ** p_cursor, struct string_slice * out)
 			cur++;
 	} else {
 		str_start = cur;
-		while (windows1252_alpha_nums[*(unsigned char *)cur] || (*cur == '_') || (*cur == '-') || (*cur == '.'))
+		while (windows1252_alpha_nums[*(unsigned char *)cur] || (*cur == '_') || (*cur == '-') || (*cur == '.') || (*cur == '%'))
 			cur++;
 	}
 	int str_len = cur - str_start;
@@ -643,11 +663,9 @@ int
 parse_i31b (char ** p_cursor, int * out_i31b_val)
 {
 	char * cur = *p_cursor;
-	int int_val;
-	if (parse_int (&cur, &int_val)) {
-		bool percent = skip_punctuation (&cur, '%');
+	struct string_slice ss;
+	if (parse_string (&cur, &ss) && read_i31b (&ss, out_i31b_val)) {
 		*p_cursor = cur;
-		*out_i31b_val = i31b_pack (int_val, percent);
 		return 1;
 	} else
 		return 0;
