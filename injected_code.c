@@ -1715,14 +1715,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 										 &cfg->ai_multi_start_extra_palaces_capacity))
 					    handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ai_settler_perfume_on_founding")) {
-					struct string_slice trimmed = trim_string_slice (&value, 1);
-					if (trimmed.len > 0) {
-						char * extracted = extract_slice (&trimmed);
-						char * cursor = extracted;
-						if (! parse_i31b (&cursor, &cfg->ai_settler_perfume_on_founding))
-							handle_config_error (&p, CPE_BAD_VALUE);
-						free (extracted);
-					} else
+					if (! read_i31b (&value, &cfg->ai_settler_perfume_on_founding))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "land_retreat_rules")) {
 					if (! read_retreat_rules (&value, (int *)&cfg->land_retreat_rules))
@@ -2318,20 +2311,26 @@ get_available_unit_count (Leader * leader, int unit_type_id, int * out_available
 }
 
 int
+add_i31b_to_int (int base, i31b addition)
+{
+	int amount;
+	bool percent;
+	i31b_unpack (addition, &amount, &percent);
+	if (! percent)
+		return base + amount;
+	else {
+		int fraction = (base * int_abs (amount) + 50) / 100;
+		return (amount >= 0) ? base + fraction : base - fraction;
+	}
+}
+
+int
 apply_perfume (enum perfume_kind kind, char const * name, int base_amount)
 {
 	i31b perfume_value;
-	if (stable_look_up (&is->current_config.perfume_specs[kind], name, &perfume_value)) {
-		int amount;
-		bool percent;
-		i31b_unpack (perfume_value, &amount, &percent);
-		if (! percent)
-			return base_amount + amount;
-		else {
-			int fraction = (base_amount * int_abs (amount) + 50) / 100;
-			return (amount >= 0) ? base_amount + fraction : base_amount - fraction;
-		}
-	} else
+	if (stable_look_up (&is->current_config.perfume_specs[kind], name, &perfume_value))
+		return add_i31b_to_int (base_amount, perfume_value);
+	else
 		return base_amount;
 }
 
@@ -2349,6 +2348,33 @@ intercept_consideration (int valuation)
 			order_name = p_bic_data->UnitTypes[order->OrderID].Name;
 	}
 	valuation = apply_perfume (PK_PRODUCTION, order_name, valuation);
+
+	// Apply temp AI settler perfume
+	if ((order->OrderType == COT_Unit) &&
+	    (p_bic_data->UnitTypes[order->OrderID].AI_Strategy & UTAI_Settle) &&
+	    (is->current_config.ai_settler_perfume_on_founding != 0) &&
+	    (is->current_config.ai_settler_perfume_on_founding_duration != 0) &&
+	    (is->turn_no_of_last_founding_for_settler_perfume[city->Body.CivID] >= 0)) {
+		int turns_since_founding = *p_current_turn_no - is->turn_no_of_last_founding_for_settler_perfume[city->Body.CivID];
+		int duration = is->current_config.ai_settler_perfume_on_founding_duration;
+		if (turns_since_founding < duration) {
+			i31b perfume = is->current_config.ai_settler_perfume_on_founding;
+
+			// Scale amount by turns remaining
+			{
+				int amount;
+				bool percent;
+				i31b_unpack (perfume, &amount, &percent);
+
+				int percent_remaining = (100 * (duration - turns_since_founding)) / duration;
+				amount = (amount * percent_remaining + 50) / 100;
+
+				perfume = i31b_pack (amount, percent);
+			}
+
+			valuation = add_i31b_to_int (valuation, perfume);
+		}
+	}
 
 	// Expand the list of valuations if necessary
 	reserve (sizeof is->ai_prod_valuations[0], (void **)&is->ai_prod_valuations, &is->ai_prod_valuations_capacity, is->count_ai_prod_valuations);
