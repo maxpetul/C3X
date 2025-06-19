@@ -1,4 +1,6 @@
 - Allow file locations used by AMB editor to be set manually in an INI file
+- Option to throttle AI's expansion by temporarily applying perfume to settlers each time it founds a city
+  - Controlled by two settings named ai_settler_perfume_on_founding(_duration)
 
 * RELEASE 23 Preview 2
 - AMB editor improvements
