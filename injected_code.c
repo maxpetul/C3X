@@ -10464,6 +10464,17 @@ patch_MappedFile_open_to_load_game (MappedFile * this, int edx, char * file_name
 void * __fastcall
 patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR file_path, unsigned file_size, int is_shared)
 {
+	// Determine if we're currently applying settler perfume to any AI player
+	bool any_current_settler_perfume = false;
+	if (is->current_config.ai_settler_perfume_on_founding != 0) {
+		int duration = is->current_config.ai_settler_perfume_on_founding_duration;
+		for (int n = 0; n < 32; n++) {
+			int last_founding_turn = is->turn_no_of_last_founding_for_settler_perfume[n];
+			if ((last_founding_turn != -1) && ((*p_current_turn_no - last_founding_turn) < duration))
+				any_current_settler_perfume = true;
+		}
+	}
+
 	// Assemble mod save data
 	struct buffer mod_data = {0}; {
 		if (is->extra_defensive_bombards.len > 0) {
@@ -10512,6 +10523,11 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 					}
 				}
 			}
+		}
+		if (any_current_settler_perfume) {
+			serialize_aligned_text ("turn_no_of_last_founding_for_settler_perfume", &mod_data);
+			void * area = buffer_allocate (&mod_data, sizeof is->turn_no_of_last_founding_for_settler_perfume);
+			memcpy (area, is->turn_no_of_last_founding_for_settler_perfume, sizeof is->turn_no_of_last_founding_for_settler_perfume);
 		}
 	}
 
@@ -10663,6 +10679,10 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					error_chunk_name = "extra_city_improvs";;
 					break;
 				}
+
+			} else if (match_save_chunk_name (&cursor, "turn_no_of_last_founding_for_settler_perfume")) {
+				for (int n = 0; n < 32; n++)
+					is->turn_no_of_last_founding_for_settler_perfume[n] = *((int *)cursor)++;
 
 			} else {
 				error_chunk_name = "N/A";
