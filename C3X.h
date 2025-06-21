@@ -258,6 +258,7 @@ struct c3x_config {
 	bool patch_barbarian_diagonal_bug;
 	bool patch_disease_stopping_tech_flag_bug;
 	bool patch_division_by_zero_in_ai_alliance_eval;
+	bool patch_empty_army_movement;
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;

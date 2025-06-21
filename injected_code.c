@@ -1894,6 +1894,8 @@ patch_Leader_impl_would_raze_city (Leader * this, int edx, City * city)
 	return is->current_config.prevent_razing_by_players ? false : Leader_impl_would_raze_city (this, __, city);
 }
 
+int __fastcall patch_Unit_get_max_move_points (Unit * this);
+
 // This function is used to fix a bug where the game would freeze when using disembark all on a transport that contained an immobile unit. The bug
 // comes from the fact that the function to disembark all units loops continuously over units in the transport until there are none left that
 // can be disembarked. The problem is the logic to check disembarkability erroneously reports immobile units as disembarkable when they're not,
@@ -1907,7 +1909,7 @@ patch_Unit_get_max_move_points_for_disembarking (Unit * this)
 	    UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Immobile))
 		return 0;
 	else
-		return Unit_get_max_move_points (this);
+		return patch_Unit_get_max_move_points (this);
 }
 
 // This func implements GA remaining turns indicator. It intercepts a call to some kind of text processing function when it's called to process the
@@ -3111,6 +3113,7 @@ patch_init_floating_point ()
 		{"patch_barbarian_diagonal_bug"                        , true , offsetof (struct c3x_config, patch_barbarian_diagonal_bug)},
 		{"patch_disease_stopping_tech_flag_bug"                , false, offsetof (struct c3x_config, patch_disease_stopping_tech_flag_bug)},
 		{"patch_division_by_zero_in_ai_alliance_eval"          , true , offsetof (struct c3x_config, patch_division_by_zero_in_ai_alliance_eval)},
+		{"patch_empty_army_movement"                           , true , offsetof (struct c3x_config, patch_empty_army_movement)},
 		{"prevent_autorazing"                                  , false, offsetof (struct c3x_config, prevent_autorazing)},
 		{"prevent_razing_by_players"                           , false, offsetof (struct c3x_config, prevent_razing_by_players)},
 		{"suppress_hypertext_links_exceeded_popup"             , true , offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
@@ -3862,7 +3865,7 @@ patch_Unit_move (Unit * this, int edx, int tile_x, int tile_y)
 bool
 has_exhausted_attack (Unit * unit)
 {
-	return (unit->Body.Moves >= Unit_get_max_move_points (unit)) ||
+	return (unit->Body.Moves >= patch_Unit_get_max_move_points (unit)) ||
 		((unit->Body.Status & USF_USED_ATTACK) && ! UnitType_has_ability (&p_bic_data->UnitTypes[unit->Body.UnitTypeID], __, UTA_Blitz));
 }
 
@@ -4477,8 +4480,8 @@ compare_helpers (void const * vp_a, void const * vp_b)
 	     * b = get_unit_ptr (*(int *)vp_b);
 	if ((a != NULL) && (b != NULL)) {
 		// Compute how many movement points each has left (ML = moves left)
-		int ml_a = Unit_get_max_move_points (a) - a->Body.Moves,
-		    ml_b = Unit_get_max_move_points (b) - b->Body.Moves;
+		int ml_a = patch_Unit_get_max_move_points (a) - a->Body.Moves,
+		    ml_b = patch_Unit_get_max_move_points (b) - b->Body.Moves;
 
 		// Whichever one has more MP left comes first in the array
 		if      (ml_a > ml_b) return  1;
@@ -4502,7 +4505,7 @@ issue_stack_worker_command (Unit * unit, int command)
 		if ((uti.id != unit_id) &&
 		    (uti.unit->Body.Container_Unit < 0) &&
 		    (uti.unit->Body.UnitState == 0) &&
-		    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit))) {
+		    (uti.unit->Body.Moves < patch_Unit_get_max_move_points (uti.unit))) {
 			// check if the clicked command is among worker actions that this unit type can perform
 			int actions = p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Worker_Actions;
 			int command_without_category = command & 0x0FFFFFFF;
@@ -4554,7 +4557,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 			    (uti.unit->Body.Container_Unit < 0) &&
 			    (uti.unit->Body.UnitState == 0) &&
 			    (uti.unit->Body.CivID == unit->Body.CivID) &&
-			    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit)))
+			    (uti.unit->Body.Moves < patch_Unit_get_max_move_points (uti.unit)))
 				Unit_set_state (uti.unit, __, UnitState_Fortifying);
 
 	} else if (command == UCV_Upgrade_Unit) {
@@ -4608,7 +4611,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 			if ((uti.unit->Body.UnitTypeID == unit_type_id) &&
 			    (uti.unit->Body.Container_Unit < 0) &&
 			    (uti.unit->Body.UnitState == 0) &&
-			    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit)))
+			    (uti.unit->Body.Moves < patch_Unit_get_max_move_points (uti.unit)))
 				memoize (uti.id);
 
 		if (is->memo_len > 0) {
@@ -4986,7 +4989,7 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 	if ((is->current_config.limit_railroad_movement > 0) && (is->saved_road_movement_rate > 0)) {
 		if ((unit != NULL) && (base_cost == 0)) { // Railroad move
 			if (! is->current_config.limited_railroads_work_like_fast_roads) { // If Civ 4 style RR, scale cost by type's moves
-				int type_moves_available = Unit_get_max_move_points (unit) / p_bic_data->General.RoadsMovementRate;
+				int type_moves_available = patch_Unit_get_max_move_points (unit) / p_bic_data->General.RoadsMovementRate;
 				return type_moves_available * is->railroad_mp_cost_per_move;
 			} else
 				return is->railroad_mp_cost_per_move;
@@ -5010,7 +5013,7 @@ patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y
 	// unit's total MP exceeds what can be stored in a one-byte integer. The cause of the incorrect length is that the pathfinder internally
 	// stores the remaining moves at each node of the search in a single byte. This correction fixes the bug (reported several times) that ETAs
 	// shown in the interface are wrong.
-	if (may_require_length_fix && (Unit_get_max_move_points (unit) > 255)) { // Need to recompute path length if unit's total MP can overflow a uint8
+	if (may_require_length_fix && (patch_Unit_get_max_move_points (unit) > 255)) { // Need to recompute path length if unit's total MP can overflow a uint8
 
 		// First memoize the cost of taking each step along the path. This must be done separately because the pathfinder's internal data only
 		// lets us traverse the path backwards.
@@ -5041,7 +5044,7 @@ patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y
 
 		// Now walk the path forwards tracking how much MP the unit would spend. We must be aware that the unit can't spend more MP than it
 		// has. For example, if a unit with 1 move walks onto an unimproved mountain, that effectively costs only 1 move, not 3.
-		int mp_remaining = Unit_get_max_move_points (unit) - unit->Body.Moves,
+		int mp_remaining = patch_Unit_get_max_move_points (unit) - unit->Body.Moves,
 		    mp_spent = 0;
 		for (int n = is->memo_len - 1; n >= 0; n--) {
 			int cost = is->memo[n];
@@ -5050,7 +5053,7 @@ patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y
 				mp_remaining -= cost;
 			} else {
 				mp_spent += mp_remaining;
-				mp_remaining = Unit_get_max_move_points (unit);
+				mp_remaining = patch_Unit_get_max_move_points (unit);
 			}
 		}
 		*out_path_length_in_mp = mp_spent;
@@ -5058,7 +5061,7 @@ patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y
 	// Also, if this is a move between adjacent tiles, make sure the path length doesn't exceed the unit's remaining MP. Otherwise, the game may
 	// erroneously show an ETA of >1 turn.
 	} else if (may_require_length_fix && are_tiles_adjacent (from_x, from_y, to_x, to_y))
-		*out_path_length_in_mp = not_above (Unit_get_max_move_points (unit) - unit->Body.Moves, *out_path_length_in_mp);
+		*out_path_length_in_mp = not_above (patch_Unit_get_max_move_points (unit) - unit->Body.Moves, *out_path_length_in_mp);
 
 	return tr;
 }
@@ -5678,7 +5681,7 @@ estimate_travel_time (Unit * unit, int to_tile_x, int to_tile_y, int * out_num_t
 	int dist_in_mp;
 	patch_Trade_Net_set_unit_path (p_trade_net, __, unit->Body.X, unit->Body.Y, to_tile_x, to_tile_y, unit, unit->Body.CivID, 1, &dist_in_mp);
 	dist_in_mp += unit->Body.Moves; // Add MP already spent this turn to the distance
-	int max_mp = Unit_get_max_move_points (unit);
+	int max_mp = patch_Unit_get_max_move_points (unit);
 	if ((dist_in_mp >= 0) && (max_mp > 0)) {
 		*out_num_turns = dist_in_mp / max_mp;
 		return 1;
@@ -6485,7 +6488,7 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 		if (unit_body->CivID == p_main_screen_form->Player_CivID) {
 			Unit * unit = (Unit *)((int)unit_body - offsetof (Unit, Body));
 			UnitType * unit_type = &p_bic_data->UnitTypes[unit_body->UnitTypeID];
-			bool no_moves_left = unit_body->Moves >= Unit_get_max_move_points (unit);
+			bool no_moves_left = unit_body->Moves >= patch_Unit_get_max_move_points (unit);
 			if (no_moves_left && is->current_config.gray_out_units_on_menu_with_no_remaining_moves)
 				disable = true;
 
@@ -6985,13 +6988,13 @@ patch_Unit_get_move_points_after_airdrop (Unit * this)
 	int prev_airdrop_count = itable_look_up_or (&is->airdrops_this_turn, this->Body.ID, 0);
 	itable_insert (&is->airdrops_this_turn, this->Body.ID, prev_airdrop_count + 1);
 
-	return is->current_config.dont_end_units_turn_after_airdrop ? this->Body.Moves : Unit_get_max_move_points (this);
+	return is->current_config.dont_end_units_turn_after_airdrop ? this->Body.Moves : patch_Unit_get_max_move_points (this);
 }
 
 int __fastcall
 patch_Unit_get_move_points_after_set_to_intercept (Unit * this)
 {
-	return is->current_config.patch_intercept_lost_turn_bug ? this->Body.Moves : Unit_get_max_move_points (this);
+	return is->current_config.patch_intercept_lost_turn_bug ? this->Body.Moves : patch_Unit_get_max_move_points (this);
 }
 
 void __cdecl
@@ -7221,7 +7224,7 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 				if (! UnitType_has_ability (&p_bic_data->UnitTypes[this->defender->Body.UnitTypeID], __, UTA_Immobile))
 					this->defender_eligible_to_retreat = 1;
 			} else if (retreat_rules == RR_IF_FASTER) {
-				int diff = Unit_get_max_move_points (this->attacker) - Unit_get_max_move_points (this->defender);
+				int diff = patch_Unit_get_max_move_points (this->attacker) - patch_Unit_get_max_move_points (this->defender);
 				this->attacker_eligible_to_retreat = diff > 0;
 				this->defender_eligible_to_retreat = diff < 0;
 			}
@@ -8081,7 +8084,7 @@ patch_Unit_get_interceptor_max_moves (Unit * this)
 		return 0;
 
 	else
-		return Unit_get_max_move_points (this);
+		return patch_Unit_get_max_move_points (this);
 }
 
 int __fastcall
@@ -8091,7 +8094,7 @@ patch_Unit_get_moves_after_interception (Unit * this)
 		this->Body.Status |= USF_USED_ATTACK; // Set status bit indicating that the interceptor has attacked this turn
 		return this->Body.Moves + p_bic_data->General.RoadsMovementRate;
 	} else
-		return Unit_get_max_move_points (this);
+		return patch_Unit_get_max_move_points (this);
 }
 
 void __fastcall
@@ -9323,7 +9326,7 @@ patch_Unit_get_max_moves_after_barricade_attack (Unit * this)
 	if (is->current_config.dont_end_units_turn_after_bombarding_barricade && (this == is->unit_bombard_attacking_tile))
 		return this->Body.Moves + p_bic_data->General.RoadsMovementRate;
 	else
-		return Unit_get_max_move_points (this);
+		return patch_Unit_get_max_move_points (this);
 }
 
 City * __cdecl
@@ -11222,6 +11225,26 @@ patch_find_nearest_city_for_ai_alliance_eval (int tile_x, int tile_y, int owner_
 	if (is->current_config.patch_division_by_zero_in_ai_alliance_eval && (*p_nearest_city_distance == 0))
 		*p_nearest_city_distance = 1;
 	return tr;
+}
+
+int __fastcall
+patch_Unit_get_max_move_points (Unit * this)
+{
+	if (Unit_has_ability (this, __, UTA_Army) && is->current_config.patch_empty_army_movement) {
+		int slowest_member_mp = INT_MAX;
+		bool any_units_in_army = false;
+		FOR_UNITS_ON (uti, tile_at (this->Body.X, this->Body.Y)) {
+			if (uti.unit->Body.Container_Unit == this->Body.ID) {
+				any_units_in_army = true;
+				slowest_member_mp = not_above (Unit_get_max_move_points (uti.unit), slowest_member_mp);
+			}
+		}
+		if (any_units_in_army)
+			return slowest_member_mp + p_bic_data->General.RoadsMovementRate;
+		else
+			return get_max_move_points (&p_bic_data->UnitTypes[this->Body.UnitTypeID], this->Body.CivID);
+	} else
+		return Unit_get_max_move_points (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
