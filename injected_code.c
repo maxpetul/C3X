@@ -8134,6 +8134,19 @@ remove_unit_id_entries_owned_by (struct table * t, int owner_id)
 }
 
 void __fastcall
+patch_Leader_begin_turn (Leader * this)
+{
+	// Eject trespassers
+	if (is->current_config.disallow_trespassing)
+		for (int n = 1; n < 32; n++)
+			if ((*p_player_bits & (1 << n)) &&
+			    (n != this->ID) &&
+			    (! this->At_War[n]) &&
+			    ((this->Relation_Treaties[n] & 2) == 0)) // Check right of passage
+				Leader_bounce_trespassing_units (&leaders[n], __, this->ID);
+}
+
+void __fastcall
 patch_Leader_begin_unit_turns (Leader * this)
 {
 	// Reset the states of all fighters that performed an interception on the previous turn.
