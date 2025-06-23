@@ -378,28 +378,6 @@ void SaveAmbFileAs(HWND hwnd)
     }
 }
 
-// Function to check if a directory has the required Civ3 files
-bool IsCiv3ConquestsFolder(const Path folderPath)
-{
-    Path testPath;
-    
-    // Check for Civ3Conquests.exe
-    strcpy(testPath, folderPath);
-    PathAppend(testPath, "Civ3Conquests.exe");
-    if (!PathFileExists(testPath)) {
-        return false;
-    }
-    
-    // Check for Art folder
-    strcpy(testPath, folderPath);
-    PathAppend(testPath, "Art");
-    if (!PathIsDirectory(testPath)) {
-        return false;
-    }
-    
-    return true;
-}
-
 // Function to check if a directory is the main Civ3 folder
 bool IsCiv3MainFolder(const Path folderPath)
 {
