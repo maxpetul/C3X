@@ -155,6 +155,15 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 #define IDM_EDIT_PRUNE      1011
 #define IDM_HELP_ABOUT      1012
 
+// Accelerator table for hotkeys
+ACCEL g_accelTable[] = {
+    {FCONTROL | FVIRTKEY, 'S', IDM_FILE_SAVE},      // Ctrl+S
+    {FCONTROL | FVIRTKEY, 'Z', IDM_EDIT_UNDO},      // Ctrl+Z
+    {FCONTROL | FVIRTKEY, 'Y', IDM_EDIT_REDO},      // Ctrl+Y
+    {FVIRTKEY, VK_DELETE, IDM_EDIT_DELETE},         // Delete
+    {FVIRTKEY, VK_INSERT, IDM_EDIT_ADD}             // Insert
+};
+
 // Control IDs 
 #define ID_PATH_EDIT        102
 #define ID_PLAY_BUTTON      103
@@ -1764,39 +1773,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
     switch (uMsg)
     {
-        case WM_KEYDOWN:
-            // Handle keyboard shortcuts
-            if (GetKeyState(VK_CONTROL) < 0) {  // Check if Ctrl key is pressed
-                switch (wParam) {
-                    case 'Z':  // Ctrl+Z for Undo
-                        Undo();
-                        return 0;
-                        
-                    case 'Y':  // Ctrl+Y for Redo
-                        Redo();
-                        return 0;
-                        
-                    case 'S':  // Ctrl+S for Save
-                        SaveAmbFileDirectly(hwnd);
-                        return 0;
-                }
-            } else {
-                switch (wParam) {
-                    case VK_DELETE:  // Delete key to delete selected row
-                    {
-                        int selectedRow;
-                        if (GetSelectedRow("Please select a row to delete", &selectedRow))
-                            DeleteRow(selectedRow);
-                        return 0;
-                    }
-
-                    case VK_INSERT:  // Insert key to add a new row
-                        AddRow();
-                        return 0;
-                }
-            }
-            break;
-            
         case WM_CREATE:
             // Read INI settings
             {
@@ -2220,11 +2196,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     
     ShowWindow(hwnd, nCmdShow);
     
+    // Create accelerator table
+    HACCEL hAccel = CreateAcceleratorTable(g_accelTable, sizeof(g_accelTable) / sizeof(g_accelTable[0]));
+    
     // Run the message loop
     MSG msg = {0};
     while (GetMessage(&msg, NULL, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+        if (!TranslateAccelerator(hwnd, hAccel, &msg)) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
     }
     
     return (int)msg.wParam;
