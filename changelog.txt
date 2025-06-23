@@ -1,4 +1,6 @@
-- Allow file locations used by AMB editor to be set manually in an INI file
+- AMB editor improvements
+  - Allow file locations to be set manually in an INI file
+  - Fix hotkeys not working and add Ctrl+O hotkey to open files
 - Option to throttle AI's expansion by temporarily applying perfume to settlers each time it founds a city
   - Controlled by two settings named ai_settler_perfume_on_founding(_duration)
 - Fix empty army movement
