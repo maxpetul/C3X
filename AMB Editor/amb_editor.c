@@ -1526,44 +1526,30 @@ LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lP
     return CallWindowProc(g_oldEditProc, hwnd, uMsg, wParam, lParam);
 }
 
-// Function to delete the currently selected row
-void DeleteSelectedRow(HWND hwndListView)
+// Returns the currently selected row and whether or not any was selected. Optionally displays an error when none is selected.
+bool GetSelectedRow(char const * errorMsg, int * outSelectedRow)
 {
-    // Check if a row is selected
-    int rowCount = SendMessage(hwndListView, LVM_GETITEMCOUNT, 0, 0);
-    
+    int rowCount = SendMessage(g_hwndListView, LVM_GETITEMCOUNT, 0, 0);
     for (int i = 0; i < rowCount; i++) {
-        UINT state = SendMessage(hwndListView, LVM_GETITEMSTATE, i, LVIS_SELECTED);
+        UINT state = SendMessage(g_hwndListView, LVM_GETITEMSTATE, i, LVIS_SELECTED);
         if (state & LVIS_SELECTED) {
-            // Found a selected row, delete it
-            DeleteRow(i);
-            return;
+            *outSelectedRow = i;
+            return true;
         }
     }
-    
+
     // If we get here, no row was selected
-    MessageBox(NULL, "Please select a row to delete", "Information", MB_OK | MB_ICONINFORMATION);
+    if (errorMsg)
+        MessageBox(NULL, errorMsg, "Information", MB_OK | MB_ICONINFORMATION);
+    return false;
 }
 
 // Function to match duration to WAV file for the selected row
 void MatchDurationToWav(HWND hwndListView)
 {
-    // Check if a row is selected
-    int rowCount = SendMessage(hwndListView, LVM_GETITEMCOUNT, 0, 0);
-    int selectedRow = -1;
-    
-    for (int i = 0; i < rowCount; i++) {
-        UINT state = SendMessage(hwndListView, LVM_GETITEMSTATE, i, LVIS_SELECTED);
-        if (state & LVIS_SELECTED) {
-            selectedRow = i;
-            break;
-        }
-    }
-    
-    if (selectedRow == -1) {
-        MessageBox(NULL, "Please select a row to match duration", "Information", MB_OK | MB_ICONINFORMATION);
+    int selectedRow;
+    if (! GetSelectedRow("Please select a row to match duration", &selectedRow))
         return;
-    }
     
     // Make sure we have valid row info
     if (selectedRow >= g_rowCount) {
@@ -1797,9 +1783,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             } else {
                 switch (wParam) {
                     case VK_DELETE:  // Delete key to delete selected row
-                        DeleteSelectedRow(g_hwndListView);
+                    {
+                        int selectedRow;
+                        if (GetSelectedRow("Please select a row to delete", &selectedRow))
+                            DeleteRow(selectedRow);
                         return 0;
-                        
+                    }
+
                     case VK_INSERT:  // Insert key to add a new row
                         AddRow();
                         return 0;
@@ -1881,9 +1871,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     return 0;
                     
                 case IDM_EDIT_DELETE:
+                {
                     // Delete the selected row
-                    DeleteSelectedRow(g_hwndListView);
+                    int selectedRow;
+                    if (GetSelectedRow("Please select a row to delete", &selectedRow))
+                        DeleteRow(selectedRow);
+
                     return 0;
+                }
                     
                 case IDM_EDIT_MATCH_WAV:
                     // Match duration to WAV file
