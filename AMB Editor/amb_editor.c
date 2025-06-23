@@ -157,6 +157,7 @@ BOOL WINAPI GetSaveFileNameA(LPOPENFILENAMEA lpofn);
 
 // Accelerator table for hotkeys
 ACCEL g_accelTable[] = {
+    {FCONTROL | FVIRTKEY, 'O', IDM_FILE_OPEN},      // Ctrl+O
     {FCONTROL | FVIRTKEY, 'S', IDM_FILE_SAVE},      // Ctrl+S
     {FCONTROL | FVIRTKEY, 'Z', IDM_EDIT_UNDO},      // Ctrl+Z
     {FCONTROL | FVIRTKEY, 'Y', IDM_EDIT_REDO},      // Ctrl+Y
@@ -2123,7 +2124,7 @@ HMENU CreateAmbEditorMenu()
     
     // File menu
     hFileMenu = CreatePopupMenu();
-    AppendMenu(hFileMenu, MF_STRING, IDM_FILE_OPEN, "&Open AMB File...");
+    AppendMenu(hFileMenu, MF_STRING, IDM_FILE_OPEN, "&Open AMB File...\tCtrl+O");
     AppendMenu(hFileMenu, MF_STRING, IDM_FILE_SAVE, "&Save\tCtrl+S");
     AppendMenu(hFileMenu, MF_STRING, IDM_FILE_SAVE_AS, "Save &As...");
     AppendMenu(hFileMenu, MF_SEPARATOR, 0, NULL);
