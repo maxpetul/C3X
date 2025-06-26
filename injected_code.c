@@ -11274,5 +11274,19 @@ patch_Unit_is_visible_to_civ_for_bouncing (Unit * this, int edx, int civ_id, int
 		return patch_Unit_is_visible_to_civ (this, __, civ_id, param_2);
 }
 
+void __fastcall
+patch_Leader_make_peace (Leader * this, int edx, int civ_id)
+{
+	Leader_make_peace (this, __, civ_id);
+
+	if (is->current_config.disallow_trespassing &&
+	    (! this->At_War[civ_id]) && // Make sure the war actually ended
+	    ((this->Relation_Treaties[civ_id] & 2) == 0)) { // Check right of passage (just in case)
+		is->do_not_bounce_invisible_units = true;
+		Leader_bounce_trespassing_units (&leaders[civ_id], __, this->ID);
+		is->do_not_bounce_invisible_units = false;
+	}
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
