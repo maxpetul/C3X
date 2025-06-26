@@ -8140,7 +8140,7 @@ patch_Leader_begin_turn (Leader * this)
 {
 	// Eject trespassers
 	is->do_not_bounce_invisible_units = true;
-	if (is->current_config.disallow_trespassing)
+	if (is->current_config.disallow_trespassing && (*p_current_turn_no > 0))
 		for (int n = 1; n < 32; n++)
 			if ((*p_player_bits & (1 << n)) &&
 			    (n != this->ID) &&
@@ -8148,6 +8148,8 @@ patch_Leader_begin_turn (Leader * this)
 			    ((this->Relation_Treaties[n] & 2) == 0)) // Check right of passage
 				Leader_bounce_trespassing_units (&leaders[n], __, this->ID);
 	is->do_not_bounce_invisible_units = false;
+
+	Leader_begin_turn (this);
 }
 
 void __fastcall
