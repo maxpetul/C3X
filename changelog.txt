@@ -3,6 +3,7 @@
   - Fix hotkeys not working and add Ctrl+O hotkey to open files
 - Option to throttle AI's expansion by temporarily applying perfume to settlers each time it founds a city
   - Controlled by two settings named ai_settler_perfume_on_founding(_duration)
+- Disallow trespassing setting kicks trespassers out of each player's territory at the start of their turn and after signing peace
 - Fix empty army movement
 
 * RELEASE 23 Preview 2
