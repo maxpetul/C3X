@@ -940,6 +940,9 @@ struct injected_state {
 	// While Unit::is_visible_to_civ is running, this var is set to the unit in question. Otherwise it's NULL.
 	Unit * checking_visibility_for_unit;
 
+	// Normally false. When true, calls to bounce_trespassing_units won't kick out invisible units even if they're revealed.
+	bool do_not_bounce_invisible_units;
+
 	// ==========
 	// }
 	// ==========

@@ -3435,6 +3435,8 @@ patch_init_floating_point ()
 
 	is->checking_visibility_for_unit = NULL;
 
+	is->do_not_bounce_invisible_units = false;
+
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config);
@@ -8137,6 +8139,7 @@ void __fastcall
 patch_Leader_begin_turn (Leader * this)
 {
 	// Eject trespassers
+	is->do_not_bounce_invisible_units = true;
 	if (is->current_config.disallow_trespassing)
 		for (int n = 1; n < 32; n++)
 			if ((*p_player_bits & (1 << n)) &&
@@ -8144,6 +8147,7 @@ patch_Leader_begin_turn (Leader * this)
 			    (! this->At_War[n]) &&
 			    ((this->Relation_Treaties[n] & 2) == 0)) // Check right of passage
 				Leader_bounce_trespassing_units (&leaders[n], __, this->ID);
+	is->do_not_bounce_invisible_units = false;
 }
 
 void __fastcall
@@ -11258,6 +11262,16 @@ patch_Unit_get_max_move_points (Unit * this)
 			return get_max_move_points (&p_bic_data->UnitTypes[this->Body.UnitTypeID], this->Body.CivID);
 	} else
 		return Unit_get_max_move_points (this);
+}
+
+char __fastcall
+patch_Unit_is_visible_to_civ_for_bouncing (Unit * this, int edx, int civ_id, int param_2)
+{
+	// If we're set not to kick out invisible units and this one is invis. then report that it's not seen so it's left alone
+	if (is->do_not_bounce_invisible_units && Unit_has_ability (this, __, UTA_Invisible))
+		return 0;
+	else
+		return patch_Unit_is_visible_to_civ (this, __, civ_id, param_2);
 }
 
 // TCC requires a main function be defined even though it's never used.
