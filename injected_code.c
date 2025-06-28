@@ -3157,6 +3157,7 @@ patch_init_floating_point ()
 		{"convert_to_landmark_after_planting_forest"           , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
 		{"allow_sale_of_aqueducts_and_hospitals"               , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
 		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
+		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 	};
 
 	struct integer_config_option {
@@ -3415,6 +3416,7 @@ patch_init_floating_point ()
 	memset (&is->unit_type_duplicates    , 0, sizeof is->unit_type_duplicates);
 	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
 	memset (&is->airdrops_this_turn      , 0, sizeof is->airdrops_this_turn);
+	memset (&is->unit_transport_ties     , 0, sizeof is->unit_transport_ties);
 	memset (&is->extra_city_improvs      , 0, sizeof is->extra_city_improvs);
 
 	is->unit_type_count_init_bits = 0;
@@ -5355,6 +5357,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	is->replay_for_players = 0;
 	table_deinit (&is->extra_defensive_bombards);
 	table_deinit (&is->airdrops_this_turn);
+	table_deinit (&is->unit_transport_ties);
 
 	// Clear extra city improvement bits
 	FOR_TABLE_ENTRIES (tei, &is->extra_city_improvs)
@@ -5558,6 +5561,30 @@ patch_Unit_can_hurry_production (Unit * this, int edx, City * city, bool exclude
 		return Unit_can_hurry_production (this, __, city, exclude_cheap_improvements);
 }
 
+bool __fastcall
+patch_Unit_can_load (Unit * this, int edx, Unit * passenger)
+{
+	// If this potential passenger is tied to a different transport, do not allow it to load into this one
+	int tied_transport_id = -1;
+	if (is->current_config.limit_unit_loading_to_one_transport_per_turn &&
+	    (! Unit_has_ability (this, __, UTA_Army)) &&
+	    itable_look_up (&is->unit_transport_ties, passenger->Body.ID, &tied_transport_id) &&
+	    (this->Body.ID != tied_transport_id))
+		return false;
+
+	return Unit_can_load (this, __, passenger);
+}
+
+void __fastcall
+patch_Unit_load (Unit * this, int edx, Unit * transport)
+{
+	Unit_load (this, __, transport);
+
+	// Tie the unit to the transport if configured to do so
+	if (is->current_config.limit_unit_loading_to_one_transport_per_turn && ! Unit_has_ability (transport, __, UTA_Army))
+		itable_insert (&is->unit_transport_ties, this->Body.ID, transport->Body.ID);
+}
+
 bool
 any_enemies_near (Leader const * me, int tile_x, int tile_y, enum UnitTypeClasses class, int num_tiles)
 {
@@ -5669,7 +5696,7 @@ base_impl:
 			if ((units_in_transport + 2 <= transport_capacity) &&
 			    (arty_in_transport < not_below (1, transport_capacity / 3))) {
 				Unit_set_escortee (this, __, -1);
-				Unit_load (this, __, transport);
+				patch_Unit_load (this, __, transport);
 			}
 		}
 	}
@@ -7241,9 +7268,10 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	int owner_id = this->Body.CivID;
 	int type_id = this->Body.UnitTypeID;
 
-	// Clear extra DBs and airdrops used by this unit
+	// Clear extra DBs, airdrops, and transport ties used by this unit
 	itable_remove (&is->extra_defensive_bombards, this->Body.ID);
 	itable_remove (&is->airdrops_this_turn, this->Body.ID);
+	itable_remove (&is->unit_transport_ties, this->Body.ID);
 
 	// If we're despawning the stored ZoC defender, clear that variable so we don't despawn it again in check_life_after_zoc
 	if (this == is->zoc_defender)
@@ -8172,6 +8200,7 @@ patch_Leader_begin_unit_turns (Leader * this)
 	// Reset extra defensive bombard and airdrop counters
 	remove_unit_id_entries_owned_by (&is->extra_defensive_bombards, this->ID);
 	remove_unit_id_entries_owned_by (&is->airdrops_this_turn      , this->ID);
+	remove_unit_id_entries_owned_by (&is->unit_transport_ties     , this->ID);
 
 	Leader_begin_unit_turns (this);
 }
@@ -10507,6 +10536,10 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			serialize_aligned_text ("airdrops_this_turn", &mod_data);
 			itable_serialize (&is->airdrops_this_turn, &mod_data);
 		}
+		if (is->unit_transport_ties.len > 0) {
+			serialize_aligned_text ("unit_transport_ties", &mod_data);
+			itable_serialize (&is->unit_transport_ties, &mod_data);
+		}
 		if ((p_bic_data->ImprovementsCount > 256) && (p_cities->Cities != NULL) && (is->extra_city_improvs.len > 0)) {
 			serialize_aligned_text ("extra_city_improvs", &mod_data);
 			int extra_improv_count = p_bic_data->ImprovementsCount - 256;
@@ -10644,6 +10677,15 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					cursor += bytes_read;
 				else {
 					error_chunk_name = "airdrops_this_turn";
+					break;
+				}
+
+			} else if (match_save_chunk_name (&cursor, "unit_transport_ties")) {
+				int bytes_read = itable_deserialize (cursor, seg + seg_size, &is->unit_transport_ties);
+				if (bytes_read > 0)
+					cursor += bytes_read;
+				else {
+					error_chunk_name = "unit_transport_ties";
 					break;
 				}
 

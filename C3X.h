@@ -226,6 +226,7 @@ struct c3x_config {
 	int city_work_radius;
 	enum work_area_limit work_area_limit;
 	int rebase_range_multiplier;
+	bool limit_unit_loading_to_one_transport_per_turn;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
@@ -942,6 +943,9 @@ struct injected_state {
 
 	// Normally false. When true, calls to bounce_trespassing_units won't kick out invisible units even if they're revealed.
 	bool do_not_bounce_invisible_units;
+
+	// If limit_unit_loading_to_one_transport_per_turn is on, maps unit IDs to the ID of the transport unit they're tied to for the current turn.
+	struct table unit_transport_ties;
 
 	// ==========
 	// }

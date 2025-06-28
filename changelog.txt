@@ -3,6 +3,8 @@
   - Fix hotkeys not working and add Ctrl+O hotkey to open files
 - Option to throttle AI's expansion by temporarily applying perfume to settlers each time it founds a city
   - Controlled by two settings named ai_settler_perfume_on_founding(_duration)
+- Option to block the galley chaining exploit by preventing units from loading into two different transports on the same turn
+  - Option named limit_unit_loading_to_one_transport_per_turn
 - Disallow trespassing setting kicks trespassers out of each player's territory at the start of their turn and after signing peace
 - Fix empty army movement
 
