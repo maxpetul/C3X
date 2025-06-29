@@ -1848,7 +1848,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
                     // Show about dialog
                     MessageBox(hwnd, 
                                "This is a tool for inspecting and modifying the AMB sound files used by Sid Meier's Civilization III.\n\n"
-                               "Last updated in C3X version 23 Preview 2\n\n"
+                               "Last updated in C3X Release 23\n\n"
                                "For more info, see README.txt",
                                "About AMB Editor",
                                MB_OK | MB_ICONINFORMATION);

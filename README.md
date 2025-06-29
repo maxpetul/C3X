@@ -110,6 +110,7 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Option to have a warning when the building you've selected to build would replace another already built in the city
    - Option not to unassign workers from tiles that become polluted
    - Pressing the Z key on the city screen toggles the zoom level of the map display
+   - Option not to draw capital cities larger than they really are, named do_not_make_capital_cities_appear_larger
   #### Optimization
    - Optimize computation of trade networks
       - For details, see the info text file in the Trade Net X folder
@@ -136,6 +137,11 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Cached building maintenance amounts not updated when buildings are obsoleted
    - Barbarian long-range search for targets is limited to tiles directly NW or SE
    - "Disables Diseases From Flood Plains" tech flag hardcoded to tech #8 (off by default)
+   - Possible division by zero in AI logic to evaluate proposed alliances
+   - Available movement computed incorrectly for empty armies
+  #### AMB Editor
+   - A program for inspecting and modifying the special .amb sound files used by Civ 3.
+   - For more info, see README.txt in the AMB Editor folder
   #### Engine Extensions
    - Adjustable minimum city distance
    - Option to limit railroad movement, as in Civ 4 or by converting them to fast roads
@@ -215,6 +221,9 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Adjustable city work area size
       - Radius of area can be set from 1 to 7 tiles (2 is the standard)
       - Area can also be limited by a city's cultural level
+   - Option to throttle AI's expansion by temporarily applying perfume to settlers each time it founds a city
+   - Option to block the galley chaining exploit by preventing units from loading into two different transports on the same turn
+   - Adjustable rebase range as multiple of operational range, setting named rebase_range_multiplier
 </details>
 
 ## How It Works

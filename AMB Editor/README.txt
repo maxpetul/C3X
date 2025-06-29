@@ -38,5 +38,6 @@ The AMB editor combines one MIDI track + Prgm chunk + Kmap chunk into each row o
 
 === Links ===
 
+Example of using the editor to fix GalleyAttack.amb: https://forums.civfanatics.com/threads/amb-sound-editor.698491/
 C3X main page: https://forums.civfanatics.com/resources/c3x.28759/
 C3X GitHub: https://github.com/maxpetul/C3X
