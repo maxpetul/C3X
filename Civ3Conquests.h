@@ -5869,7 +5869,8 @@ struct City_Form
   Sprite ProductionQueueBar_Image;
   Sprite *Improvement_Images_Small;
   Sprite *Improvement_Images_Large;
-  void *Luxury_Res_Images[8];
+  Sprite * small_luxury_icons;
+  int field_6554[7];
   int field_6570[61];
   Sprite Image_1;
   Sprite Image_2;
