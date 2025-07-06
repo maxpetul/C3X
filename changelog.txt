@@ -1,3 +1,5 @@
+- Delete any AI units that somehow end up off the map to fix a rare crash, setting named delete_off_map_ai_units
+
 * RELEASE 23
 - Include AMB editor
 - Option to throttle AI's expansion by temporarily applying perfume to settlers each time it founds a city

@@ -3114,6 +3114,7 @@ patch_init_floating_point ()
 		{"patch_disease_stopping_tech_flag_bug"                , false, offsetof (struct c3x_config, patch_disease_stopping_tech_flag_bug)},
 		{"patch_division_by_zero_in_ai_alliance_eval"          , true , offsetof (struct c3x_config, patch_division_by_zero_in_ai_alliance_eval)},
 		{"patch_empty_army_movement"                           , true , offsetof (struct c3x_config, patch_empty_army_movement)},
+		{"delete_off_map_ai_units"                             , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
 		{"prevent_autorazing"                                  , false, offsetof (struct c3x_config, prevent_autorazing)},
 		{"prevent_razing_by_players"                           , false, offsetof (struct c3x_config, prevent_razing_by_players)},
 		{"suppress_hypertext_links_exceeded_popup"             , true , offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
@@ -8201,6 +8202,21 @@ patch_Leader_begin_unit_turns (Leader * this)
 	remove_unit_id_entries_owned_by (&is->extra_defensive_bombards, this->ID);
 	remove_unit_id_entries_owned_by (&is->airdrops_this_turn      , this->ID);
 	remove_unit_id_entries_owned_by (&is->unit_transport_ties     , this->ID);
+
+	clear_memo ();
+	if (is->current_config.delete_off_map_ai_units &&
+	    ((*p_human_player_bits & (1 << this->ID)) == 0) &&
+	    (p_units->Units != NULL))
+		for (int n = 0; n <= p_units->LastIndex; n++) {
+			Unit_Body * body = p_units->Units[n].Unit;
+			if ((body != NULL) &&
+			    ((int)body != offsetof (Unit, Body)) &&
+			    (body->CivID == this->ID) &&
+			    ! Map_in_range (&p_bic_data->Map, __, body->X, body->Y))
+				memoize (body->ID);
+		}
+	for (int n = 0; n < is->memo_len; n++)
+		patch_Unit_despawn (get_unit_ptr (is->memo[n]), __, 0, 1, 0, 0, 0, 0, 0);
 
 	Leader_begin_unit_turns (this);
 }
