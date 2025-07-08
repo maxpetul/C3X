@@ -3144,6 +3144,7 @@ patch_init_floating_point ()
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
 		{"enable_city_capture_by_barbarians"                   , false, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
 		{"share_visibility_in_hoseat"                          , false, offsetof (struct c3x_config, share_visibility_in_hoseat)},
+		{"share_wonders_in_hotseat"                            , false, offsetof (struct c3x_config, share_wonders_in_hotseat)},
 		{"allow_precision_strikes_against_tile_improvements"   , false, offsetof (struct c3x_config, allow_precision_strikes_against_tile_improvements)},
 		{"dont_end_units_turn_after_bombarding_barricade"      , false, offsetof (struct c3x_config, dont_end_units_turn_after_bombarding_barricade)},
 		{"remove_land_artillery_target_restrictions"           , false, offsetof (struct c3x_config, remove_land_artillery_target_restrictions)},
@@ -11346,6 +11347,36 @@ patch_Leader_make_peace (Leader * this, int edx, int civ_id)
 		Leader_bounce_trespassing_units (&leaders[civ_id], __, this->ID);
 		is->do_not_bounce_invisible_units = false;
 	}
+}
+
+// This patch function replaces calls to Leader::count_wonders_with_flag but is only valid in cases where it only matters whether the return value is
+// zero or non-zero. This function will not return the actual count, just zero if no wonders are present and some >0 value if there is at least one.
+int __fastcall
+patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum ImprovementTypeWonderFeatures flag, City * only_in_city)
+{
+	int tr = Leader_count_wonders_with_flag (this, __, flag, only_in_city);
+
+	if ((tr == 0) &&
+	    (only_in_city == NULL) &&
+	    is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << this->ID) & *p_human_player_bits)) { // is "this" a human player
+
+		// Sum up wonders owned by other human players
+		unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+		int n_player = 1;
+		while (player_bits != 0) {
+			if ((player_bits & 1) && (n_player != this->ID))
+				if (Leader_count_wonders_with_flag (&leaders[n_player], __, flag, only_in_city) > 0) {
+					tr = 1;
+					break;
+				}
+			player_bits >>= 1;
+			n_player++;
+		}
+	}
+
+	return tr;
 }
 
 // TCC requires a main function be defined even though it's never used.
