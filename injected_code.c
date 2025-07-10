@@ -2219,12 +2219,46 @@ tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
 	}
 }
 
+bool __fastcall
+patch_City_has_improvement (City * this, int edx, int improv_id, bool include_auto_improvements)
+{
+	bool tr = City_has_improvement (this, __, improv_id, include_auto_improvements);
+
+	// Check if the improvement is provided for free by another human player's wonder if we're in a hotseat game and the config option is on
+	if ((! tr) &&
+	    include_auto_improvements &&
+	    is->current_config.share_wonders_in_hotseat &&
+	    ((1 << this->Body.CivID) & *p_human_player_bits) &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game)) { // if we're in a hotseat game
+
+		// Loop over every other human player in the game and check if the city would have the improv if they were its owner
+		int actual_owner_id = this->Body.CivID;
+		unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+		int n_player = 1;
+		while (player_bits != 0) {
+			if ((player_bits & 1) && (n_player != actual_owner_id)) {
+				this->Body.CivID = n_player;
+				if (City_has_improvement (this, __, improv_id, include_auto_improvements)) {
+					tr = true;
+					break;
+				}
+			}
+			player_bits >>= 1;
+			n_player++;
+		}
+		this->Body.CivID = actual_owner_id;
+
+	}
+
+	return tr;
+}
+
 bool
 has_active_building (City * city, int improv_id)
 {
 	Leader * owner = &leaders[city->Body.CivID];
 	Improvement * improv = &p_bic_data->Improvements[improv_id];
-	return City_has_improvement (city, __, improv_id, 1) && // building is physically present in city AND
+	return patch_City_has_improvement (city, __, improv_id, 1) && // building is physically present in city AND
 		((improv->ObsoleteID < 0) || (! Leader_has_tech (owner, __, improv->ObsoleteID))) && // building is not obsolete AND
 		((improv->GovernmentID < 0) || (improv->GovernmentID == owner->GovernmentType)); // building is not restricted to a different govt
 }
@@ -3956,7 +3990,7 @@ has_any_destructible_improvements (City * city)
 		if (((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) == 0) && // if improv is not a wonder AND
 		    ((improv->ImprovementFlags & ITF_Center_of_Empire) == 0) && // it's not the palace AND
 		    (improv->SpaceshipPart < 0) && // it's not a spaceship part AND
-		    City_has_improvement (city, __, n, 0)) // it's present in the city ignoring free improvements
+		    patch_City_has_improvement (city, __, n, 0)) // it's present in the city ignoring free improvements
 			return true;
 	}
 	return false;
@@ -7840,7 +7874,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 					(improv->Happy_Faces_All <= 0) && (improv->Happy_Faces <= 0) &&
 					(improv->Production <= 0);
 
-				if (sellable && City_has_improvement (coi.city, __, n, 0)) {
+				if (sellable && patch_City_has_improvement (coi.city, __, n, 0)) {
 					int maint = City_get_improvement_maintenance (coi.city, __, n);
 					if (maint > 0)
 						memoize ((not_above (31, maint) << 26) | (n << 13) | coi.city_id);
@@ -10493,7 +10527,7 @@ patch_City_confirm_production_switch (City * this, int edx, int order_type, int 
 			for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
 				Improvement * other = &p_bic_data->Improvements[n];
 				if ((other->ImprovementFlags & ITF_Replaces_Other_Buildings) &&
-				    City_has_improvement (this, __, n, false)) {
+				    patch_City_has_improvement (this, __, n, false)) {
 					replaced = other;
 					break;
 				}
@@ -10935,7 +10969,7 @@ patch_City_has_unprotected_improv_to_sell (City * this, int edx, int id)
 		return City_has_unprotected_improv (this, __, id);
 
 	// Replicate the logic from the original method but check that the city is below the pop cap instead of that the improv removes the cap
-	else if (City_has_improvement (this, __, id, false)) {
+	else if (patch_City_has_improvement (this, __, id, false)) {
 		Improvement * improv = &p_bic_data->Improvements[id];
 		int max_pop_to_sell = INT_MAX; {
 			if (improv->ImprovementFlags & ITF_Allows_City_Level_2)
