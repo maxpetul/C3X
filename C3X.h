@@ -199,7 +199,7 @@ struct c3x_config {
 	bool do_not_unassign_workers_from_polluted_tiles;
 	bool do_not_make_capital_cities_appear_larger;
 	bool enable_city_capture_by_barbarians;
-	bool share_visibility_in_hoseat;
+	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
 	bool allow_precision_strikes_against_tile_improvements;
 	bool dont_end_units_turn_after_bombarding_barricade;

@@ -1,4 +1,5 @@
 - Delete any AI units that somehow end up off the map to fix a rare crash, setting named delete_off_map_ai_units
+- Correct typo in name of share_visibility_in_hotseat setting. The old, incorrect name still works as an alias.
 
 * RELEASE 23
 - Include AMB editor

@@ -1822,6 +1822,13 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 
+				// if key was previously misspelled
+				} else if (slice_matches_str (&p.key, "share_visibility_in_hoseat")) {
+					if (read_int (&value, &ival))
+						cfg->share_visibility_in_hotseat = ival != 0;
+					else
+						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
+
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
 				}
@@ -1941,7 +1948,7 @@ patch_Leader_is_tile_visible (Leader * this, int edx, int x, int y)
 	unsigned vis_bits = tile->FOWStatus | tile->V3 | tile->Visibility | tile->field_D0_Visibility;
 	if (vis_bits & (1 << this->ID))
 		return true;
-	else if (is->current_config.share_visibility_in_hoseat && // if shared hotseat vis is enabled AND
+	else if (is->current_config.share_visibility_in_hotseat && // if shared hotseat vis is enabled AND
 		 (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game AND
 		 ((1 << this->ID) & *p_human_player_bits) && // "this" is a human player AND
 		 (vis_bits & *p_human_player_bits)) // any human player has visibility on the tile
@@ -3143,7 +3150,7 @@ patch_init_floating_point ()
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
 		{"enable_city_capture_by_barbarians"                   , false, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
-		{"share_visibility_in_hoseat"                          , false, offsetof (struct c3x_config, share_visibility_in_hoseat)},
+		{"share_visibility_in_hotseat"                         , false, offsetof (struct c3x_config, share_visibility_in_hotseat)},
 		{"share_wonders_in_hotseat"                            , false, offsetof (struct c3x_config, share_wonders_in_hotseat)},
 		{"allow_precision_strikes_against_tile_improvements"   , false, offsetof (struct c3x_config, allow_precision_strikes_against_tile_improvements)},
 		{"dont_end_units_turn_after_bombarding_barricade"      , false, offsetof (struct c3x_config, dont_end_units_turn_after_bombarding_barricade)},
@@ -3920,7 +3927,7 @@ patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2)
 
 	char base_vis = Unit_is_visible_to_civ (this, __, civ_id, param_2);
 	if ((! base_vis) && // if unit is not visible to civ_id AND
-	    is->current_config.share_visibility_in_hoseat && // shared hotseat vis is enabled AND
+	    is->current_config.share_visibility_in_hotseat && // shared hotseat vis is enabled AND
 	    ((1 << civ_id) & *p_human_player_bits) && // civ_id is a human player AND
 	    (*p_is_offline_mp_game && ! *p_is_pbem_game)) { // we're in a hotseat game
 
@@ -6873,7 +6880,7 @@ is_explored (Tile * tile, int civ_id)
 	int in_debug_mode = (*p_debug_mode_bits & 8) != 0; // checking bit 3 here b/c that's how resource visibility is checked in open_tile_info
 	if (in_debug_mode || (explored_bits & (1 << civ_id)))
 		return true;
-	else if (is->current_config.share_visibility_in_hoseat && // if shared hotseat vis is enabled AND
+	else if (is->current_config.share_visibility_in_hotseat && // if shared hotseat vis is enabled AND
 		 (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game AND
 		 ((1 << civ_id) & *p_human_player_bits) && // "civ_id" is a human player AND
 		 (explored_bits & *p_human_player_bits)) // any human player has visibility on the tile
@@ -8891,7 +8898,7 @@ patch_Map_get_tile_to_check_visibility (Map * this, int edx, int index)
 {
 	Tile * tr = Map_get_tile (this, __, index);
 	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
+	if (is_hotseat_game && is->current_config.share_visibility_in_hotseat) {
 		int human_bits = *p_human_player_bits;
 		is->dummy_tile->Body.Fog_Of_War          = tr->Body.Fog_Of_War          | ((tr->Body.Fog_Of_War          & human_bits) != 0 ? human_bits : 0);
 		is->dummy_tile->Body.FOWStatus           = tr->Body.FOWStatus           | ((tr->Body.FOWStatus           & human_bits) != 0 ? human_bits : 0);
@@ -8916,7 +8923,7 @@ patch_Map_get_tile_for_fow_status_check (Map * this, int edx, int index)
 {
 	Tile * tile = Map_get_tile (this, __, index);
 	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
+	if (is_hotseat_game && is->current_config.share_visibility_in_hotseat) {
 		is->dummy_tile->Body.FOWStatus = ((tile->Body.FOWStatus & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
 		return is->dummy_tile;
 	} else
@@ -8940,7 +8947,7 @@ patch_Tile_m42_Get_Overlays (Tile * this, int edx, byte visible_to_civ)
 {
 	unsigned base_vis_overlays = Tile_m42_Get_Overlays (this, __, visible_to_civ);
 	if ((visible_to_civ != 0) && // if we're seeing from a player's persp. instead of seeing the actual overlays AND
-	    is->current_config.share_visibility_in_hoseat && // shared hotseat vis is enabled AND
+	    is->current_config.share_visibility_in_hotseat && // shared hotseat vis is enabled AND
 	    ((1 << visible_to_civ) & *p_human_player_bits) && // the perspective is of a human player AND
 	    (base_vis_overlays != this->Overlays) && // that player can't already see all the actual overlays AND
 	    (*p_is_offline_mp_game && ! *p_is_pbem_game)) { // we're in a hotseat game
@@ -9305,7 +9312,7 @@ patch_tile_at_for_v3_check (int x, int y)
 {
 	Tile * tile = tile_at (x, y);
 	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
+	if (is_hotseat_game && is->current_config.share_visibility_in_hotseat) {
 		is->dummy_tile->Body.V3 = ((tile->Body.V3 & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
 		return is->dummy_tile;
 	} else
@@ -9317,7 +9324,7 @@ patch_Unit_check_contact_bit_6_on_right_click (Unit * this, int edx, int civ_id)
 {
 	bool tr = Unit_check_contact_bit_6 (this, __, civ_id);
 	if ((! tr) &&
-	    is->current_config.share_visibility_in_hoseat &&
+	    is->current_config.share_visibility_in_hotseat &&
 	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
 	    ((1 << civ_id) & *p_human_player_bits)) { // is civ_id a human player
 		if ((1 << this->Body.CivID) & *p_human_player_bits)
