@@ -3482,6 +3482,9 @@ patch_init_floating_point ()
 
 	is->do_not_bounce_invisible_units = false;
 
+	is->saved_improv_counts = NULL;
+	is->saved_improv_counts_capacity = 0;
+
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config);
@@ -11415,6 +11418,85 @@ patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum Im
 			player_bits >>= 1;
 			n_player++;
 		}
+	}
+
+	return tr;
+}
+
+void __fastcall
+patch_City_add_happiness_from_buildings (City * this, int edx, int * inout_happiness, int * inout_unhappiness)
+{
+	// If we're in a hotseat game with shared wonder effects, merge all human player's improvement counts together so the base function checks for
+	// happiness from improvements owned by other human players.
+	Leader * owner = &leaders[this->Body.CivID];
+	bool restore_improv_counts = false;
+	if (is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << this->Body.CivID) & *p_human_player_bits)) { // "this" is owned by a human player
+
+		// Ensure the space we've set aside for saving the real improv counts is large enough
+		if ((is->saved_improv_counts == NULL) || (is->saved_improv_counts_capacity < p_bic_data->ImprovementsCount)) {
+			free (is->saved_improv_counts);
+			is->saved_improv_counts = calloc (p_bic_data->ImprovementsCount, sizeof is->saved_improv_counts[0]);
+			is->saved_improv_counts_capacity = (is->saved_improv_counts != NULL) ? p_bic_data->ImprovementsCount : 0;
+		}
+
+
+		if (is->saved_improv_counts != NULL) {
+			// Save the owner's real improv counts and remember to restore them before returning
+			restore_improv_counts = true;
+			for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
+				is->saved_improv_counts[n] = owner->Improvement_Counts[n];
+
+			// Add in improv counts for wonders from all other human players in the game
+			unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+			int n_player = 1;
+			while (player_bits != 0) {
+				if ((player_bits & 1) && (n_player != owner->ID))
+					for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
+						if (p_bic_data->Improvements[n].Characteristics & (ITC_Wonder | ITC_Small_Wonder))
+							owner->Improvement_Counts[n] += leaders[n_player].Improvement_Counts[n];
+				player_bits >>= 1;
+				n_player++;
+			}
+		}
+
+	}
+
+	City_add_happiness_from_buildings (this, __, inout_happiness, inout_unhappiness);
+
+	if (restore_improv_counts) {
+		for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
+			owner->Improvement_Counts[n] = is->saved_improv_counts[n];
+	}
+}
+
+int __fastcall
+patch_City_count_other_cont_happiness_buildings (City * this, int edx, int improv_id)
+{
+	int tr = City_count_other_buildings_on_continent (this, __, improv_id);
+
+	// If it's a hotseat game where we're sharing wonders, "improv_id" refers to a wonder, and "this" is owned by a human player
+	if (is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((p_bic_data->Improvements[improv_id].Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0) &&
+	    ((1 << this->Body.CivID) & *p_human_player_bits)) {
+
+		// Add in instances of this improvment on this continent owned by other human players
+		Tile * this_city_tile = tile_at (this->Body.X, this->Body.Y);
+		int this_cont_id = this_city_tile->vtable->m46_Get_ContinentID (this_city_tile);
+		for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+			City * city = get_city_ptr (city_index);
+			if ((city != NULL) && (city != this) &&
+			    (city->Body.CivID != this->Body.CivID) && // if city is owned by a different player AND
+			    ((1 << city->Body.CivID) & *p_human_player_bits)) { // that player is a human
+				Tile * that_city_tile = tile_at (city->Body.X, city->Body.Y);
+				int that_cont_id = that_city_tile->vtable->m46_Get_ContinentID (that_city_tile);
+				if ((this_cont_id == that_cont_id) && patch_City_has_improvement (city, __, improv_id, true))
+					tr++;
+			}
+		}
+
 	}
 
 	return tr;

@@ -949,6 +949,10 @@ struct injected_state {
 	// If limit_unit_loading_to_one_transport_per_turn is on, maps unit IDs to the ID of the transport unit they're tied to for the current turn.
 	struct table unit_transport_ties;
 
+	// Initialized to NULL/0, used in patch_City_add_happiness_from_buildings
+	short * saved_improv_counts;
+	int saved_improv_counts_capacity;
+
 	// ==========
 	// }
 	// ==========
