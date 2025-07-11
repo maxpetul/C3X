@@ -717,6 +717,8 @@ repl call, 0x565693,	0x571A45,	0x565643,	"Leader_count_any_shared_wonders_with_f
 inlead,	   0x4BD420,	0x4C4A80,	0x4BD4B0,	"City_add_happiness_from_buildings",		"void (__fastcall *) (City * this, int edx, int * inout_happiness, int * inout_unhappiness)"
 define,	   0x4BDDE0,	0x4C5410,	0x4BDE70,	"City_count_other_buildings_on_continent",	"int (__fastcall *) (City * this, int edx, int improv_id)"
 repl call, 0x4BD5F0,	0x4C4C50,	0x4BD680,	"City_count_other_cont_happiness_buildings",	""
+repl call, 0x5C056D,	0x5CF10D,	0x5C027D,	"Leader_count_any_shared_wonders_with_flag",	""
+repl call, 0x4ACEFE,	0x4B3ED3,	0x4ACF8E,	"Leader_count_any_shared_wonders_with_flag",	""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
