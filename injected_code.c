@@ -11502,5 +11502,50 @@ patch_City_count_other_cont_happiness_buildings (City * this, int edx, int impro
 	return tr;
 }
 
+void __fastcall
+patch_Leader_update_great_library_unlocks (Leader * this)
+{
+	// If it's a hotseat game with shared wonder effects and "this" is a human player, share contacts among all human players so that "this" gets
+	// techs from civs known to any human player in the game. Save the real contact info and restore it afterward. NOTE: Contact info has to go
+	// two ways here; we must mark that "this" has contacted the AIs and vice-versa otherwise the techs won't be granted. That's why we must save
+	// & restore all contact bits for all players.
+	bool restore_contacts = false;
+	struct contact_set {
+		int contacts[32];
+	} saved_contact_sets[32];
+	if (is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << this->ID) & *p_human_player_bits)) { // "this" is a human player
+
+		restore_contacts = true;
+		for (int n = 0; n < 32; n++)
+			for (int k = 0; k < 32; k++)
+				saved_contact_sets[n].contacts[k] = leaders[n].Contacts[k];
+
+		unsigned human_player_bits = *(unsigned *)p_human_player_bits >> 1;
+		int n_human = 1;
+		while (human_player_bits != 0) {
+			if ((human_player_bits & 1) && (n_human != this->ID)) // n_human is ID of a human player other than "this"
+				for (int n_ai = 0; n_ai < 32; n_ai++)
+					if ((*p_player_bits & (1 << n_ai)) && ((*p_human_player_bits & (1 << n_ai)) == 0)) {
+						// If the human and AI players have contact, mark "this" as having contact with the AI and vice-versa
+						if (leaders[n_human].Contacts[n_ai] & 1) {
+							this->Contacts[n_ai] |= 1;
+							leaders[n_ai].Contacts[this->ID] |= 1;
+						}
+					}
+			human_player_bits >>= 1;
+			n_human++;
+		}
+	}
+
+	Leader_update_great_library_unlocks (this);
+
+	if (restore_contacts)
+		for (int n = 0; n < 32; n++)
+			for (int k = 0; k < 32; k++)
+				 leaders[n].Contacts[k] = saved_contact_sets[n].contacts[k];
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

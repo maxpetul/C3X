@@ -719,6 +719,8 @@ define,	   0x4BDDE0,	0x4C5410,	0x4BDE70,	"City_count_other_buildings_on_continen
 repl call, 0x4BD5F0,	0x4C4C50,	0x4BD680,	"City_count_other_cont_happiness_buildings",	""
 repl call, 0x5C056D,	0x5CF10D,	0x5C027D,	"Leader_count_any_shared_wonders_with_flag",	""
 repl call, 0x4ACEFE,	0x4B3ED3,	0x4ACF8E,	"Leader_count_any_shared_wonders_with_flag",	""
+inlead,	   0x562380,	0x56E4F0,	0x562330,	"Leader_update_great_library_unlocks",		"void (__fastcall *) (Leader * this)"
+repl call, 0x562390,	0x56E4FB,	0x562340,	"Leader_count_any_shared_wonders_with_flag",	""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
