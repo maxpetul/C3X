@@ -6651,21 +6651,26 @@ patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3
 }
 
 bool
-is_pop_unit (UnitType const * type)
+is_material_unit (UnitType const * type)
 {
 	int join_city_action = UCV_Join_City & 0x0FFFFFFF; // To get the join city action code, use the command value and mask out the top 4 category bits
 	int noncombat = (type->Attack | type->Defence | type->Bombard_Strength) == 0;
-	return noncombat &&
-		(type->PopulationCost > 0) &&
-		(type->Worker_Actions == join_city_action);
+	return (   noncombat
+		&& (   (   (type->PopulationCost > 0)
+			&& (type->Worker_Actions == join_city_action))
+		    || (type->Worker_Actions == 0)));
 }
 
 void
-ai_move_pop_unit (Unit * this)
+ai_move_material_unit (Unit * this)
 {
 	int type_id = this->Body.UnitTypeID;
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
 	UnitType * type = &p_bic_data->UnitTypes[type_id];
+
+	// Determine whether this is a pop unit (will search for a city to join) or a caravan (will search for a city to disband)
+	int join_city_action = UCV_Join_City & 0x0FFFFFFF;
+	bool pop_else_caravan = type->Worker_Actions == join_city_action;
 
 	int continent_id = tile->vtable->m46_Get_ContinentID (tile);
 
@@ -6687,38 +6692,50 @@ ai_move_pop_unit (Unit * this)
 		return;
 	}
 
-	// Find the best city to join
-	City * best_join_loc = NULL;
-	int best_join_value = -1;
+	// Find the best city to act on
+	City * best_city = NULL;
+	int best_city_value = -1;
 	FOR_CITIES_OF (coi, this->Body.CivID) {
 		City * city = coi.city;
 		Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
 		if (continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) {
 
-			// Skip this city if it can't support another citizen
-			if ((city->Body.FoodIncome <= 0) ||
-			    (City_requires_improvement_to_grow (city) > -1))
-				continue;
-
-			int value = 100;
+			if (pop_else_caravan) {
+				// Skip this city if it can't support another citizen
+				if ((city->Body.FoodIncome <= 0) ||
+				    (City_requires_improvement_to_grow (city) > -1))
+					continue;
+			} else {
+				// Skip this city if its current build can't be rushed
+				;
+			}
 
 			// Consider distance.
 			int dist_in_turns;
 			if (! estimate_travel_time (this, city->Body.X, city->Body.Y, &dist_in_turns))
 				continue; // No path or unit cannot move
-			value = (value * 10) / (10 + dist_in_turns);
 
-			// Scale value by city corruption rate.
-			int good_shields    = city->Body.ProductionIncome,
-			    corrupt_shields = city->Body.ProductionLoss;
-			if (good_shields + corrupt_shields > 0)
-				value = (value * good_shields) / (good_shields + corrupt_shields);
-			else
-				continue;
+			int value;
+			if (pop_else_caravan)
+				value = 1000 / (10 + dist_in_turns); // Base value of 100 * 10 / (10 + dist_in_turn)
+			else {
+				// value is number of shields we'd get by moving to this city and disbanding there
+				value = 0;
+			}
 
-			if (value > best_join_value) {
-				best_join_loc = city;
-				best_join_value = value;
+			// Scale value by city corruption rate for pop units or caravan units targeting cities building improvs
+			if (pop_else_caravan || (city->Body.Order_Type == COT_Improvement)) {
+				int good_shields    = city->Body.ProductionIncome,
+				    corrupt_shields = city->Body.ProductionLoss;
+				if (good_shields + corrupt_shields > 0)
+					value = (value * good_shields) / (good_shields + corrupt_shields);
+				else
+					value = -1;
+			}
+
+			if (value > best_city_value) {
+				best_city = city;
+				best_city_value = value;
 			}
 		}
 	}
@@ -6727,13 +6744,14 @@ ai_move_pop_unit (Unit * this)
 	// nearest established city and wait.
 	City * in_city = get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
 	City * moving_to_city = NULL;
-	if (best_join_loc != NULL) {
-		if ((best_join_loc == in_city) &&
+	if (best_city != NULL) {
+		if (pop_else_caravan &&
+		    (best_city == in_city) &&
 		    patch_Unit_can_perform_command (this, __, UCV_Join_City)) {
 			Unit_join_city (this, __, in_city);
 			return;
 		} else
-			moving_to_city = best_join_loc;
+			moving_to_city = best_city;
 	} else if (in_city == NULL)
 		moving_to_city = find_nearest_established_city (this, continent_id);
 
@@ -6759,8 +6777,8 @@ patch_Unit_ai_move_terraformer (Unit * this)
 	if (is->current_config.enable_pop_unit_ai &&
 	    (tile != NULL) && (tile != p_null_tile) &&
 	    (type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
-	    is_pop_unit (&p_bic_data->UnitTypes[type_id])) {
-		ai_move_pop_unit (this);
+	    is_material_unit (&p_bic_data->UnitTypes[type_id])) {
+		ai_move_material_unit (this);
 		return;
 	}
 
