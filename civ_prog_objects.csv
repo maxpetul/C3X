@@ -723,6 +723,13 @@ inlead,	   0x562380,	0x56E4F0,	0x562330,	"Leader_update_great_library_unlocks",	
 repl call, 0x562390,	0x56E4FB,	0x562340,	"Leader_count_any_shared_wonders_with_flag",	""
 define,	   0x4B5050,	0x4BC030,	0x4B50E0,	"City_can_take_outside_shields",		"bool (__fastcall *) (City * this, int edx, int param_1)"
 define,	   0x56A210,	0x5766B0,	0x56A1C0,	"Leader_get_unit_cost",				"int (__fastcall *) (Leader * this, int edx, int id, bool ignore_difficulty)"
+repl call, 0x4A101C,	0x4A7BDC,	0x4A10AC,	"Leader_count_any_shared_wonders_with_flag",	""
+repl call, 0x4A10B8,	0x4A7C70,	0x4A1148,	"Leader_count_any_shared_wonders_with_flag",	""
+repl call, 0x4C0D41,	0x4C8341,	0x4C0DD1,	"Leader_count_any_shared_wonders_with_flag",	""
+repl call, 0x4C0D87,	0x4C8387,	0x4C0E17,	"Leader_count_any_shared_wonders_with_flag",	""
+repl call, 0x4C118D,	0x4C8779,	0x4C121D,	"Leader_count_any_shared_wonders_with_flag",	""
+repl call, 0x4BD95E,	0x4C4FB4,	0x4BD9EE,	"Leader_count_any_shared_wonders_with_flag",	""
+repl call, 0x4B24E5,	0x4B946C,	0x4B2575,	"Leader_count_any_shared_wonders_with_flag",	""
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
