@@ -6654,11 +6654,13 @@ bool
 is_material_unit (UnitType const * type)
 {
 	int join_city_action = UCV_Join_City & 0x0FFFFFFF; // To get the join city action code, use the command value and mask out the top 4 category bits
+	int disband_action = UCV_Disband & 0x0FFFFFFF;
 	int noncombat = (type->Attack | type->Defence | type->Bombard_Strength) == 0;
 	return (   noncombat
 		&& (   (   (type->PopulationCost > 0)
 			&& (type->Worker_Actions == join_city_action))
-		    || (type->Worker_Actions == 0)));
+		    || (   (type->Standard_Actions & disband_action)
+		        && (type->Worker_Actions == 0))));
 }
 
 void
@@ -6694,7 +6696,7 @@ ai_move_material_unit (Unit * this)
 
 	// Find the best city to act on
 	City * best_city = NULL;
-	int best_city_value = -1;
+	int best_city_value = pop_else_caravan ? -1 : 0; // min value to act is 0 for pop units, 1 for caravans
 	FOR_CITIES_OF (coi, this->Body.CivID) {
 		City * city = coi.city;
 		Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
@@ -6707,7 +6709,8 @@ ai_move_material_unit (Unit * this)
 					continue;
 			} else {
 				// Skip this city if its current build can't be rushed
-				;
+				if (! City_can_take_outside_shields (city, __, 0))
+					continue;
 			}
 
 			// Consider distance.
@@ -6719,8 +6722,11 @@ ai_move_material_unit (Unit * this)
 			if (pop_else_caravan)
 				value = 1000 / (10 + dist_in_turns); // Base value of 100 * 10 / (10 + dist_in_turn)
 			else {
-				// value is number of shields we'd get by moving to this city and disbanding there
-				value = 0;
+				// value is number of useful shields we'd get by moving to this city and disbanding there
+				int shields_per_turn = get_city_production_rate (city, city->Body.Order_Type, city->Body.Order_ID),
+				    shields_to_complete_build = City_get_order_cost (city) - City_get_order_progress (city) - shields_per_turn,
+				    disband_value = Leader_get_unit_cost (&leaders[city->Body.CivID], __, type_id, false) >> 2;
+				value = not_above (shields_to_complete_build, disband_value) - shields_per_turn * dist_in_turns;
 			}
 
 			// Scale value by city corruption rate for pop units or caravan units targeting cities building improvs
@@ -6745,11 +6751,14 @@ ai_move_material_unit (Unit * this)
 	City * in_city = get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
 	City * moving_to_city = NULL;
 	if (best_city != NULL) {
-		if (pop_else_caravan &&
-		    (best_city == in_city) &&
-		    patch_Unit_can_perform_command (this, __, UCV_Join_City)) {
-			Unit_join_city (this, __, in_city);
-			return;
+		if (best_city == in_city) {
+			if (pop_else_caravan && patch_Unit_can_perform_command (this, __, UCV_Join_City)) {
+				Unit_join_city (this, __, in_city);
+				return;
+			} else if ((! pop_else_caravan) && patch_Unit_can_perform_command (this, __, UCV_Disband)) {
+				Unit_disband (this);
+				return;
+			}
 		} else
 			moving_to_city = best_city;
 	} else if (in_city == NULL)
