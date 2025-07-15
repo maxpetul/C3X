@@ -3139,6 +3139,7 @@ patch_init_floating_point ()
 		{"replace_leader_unit_ai"                              , true , offsetof (struct c3x_config, replace_leader_unit_ai)},
 		{"fix_ai_army_composition"                             , true , offsetof (struct c3x_config, fix_ai_army_composition)},
 		{"enable_pop_unit_ai"                                  , true , offsetof (struct c3x_config, enable_pop_unit_ai)},
+		{"enable_caravan_unit_ai"                              , true , offsetof (struct c3x_config, enable_caravan_unit_ai)},
 		{"remove_unit_limit"                                   , true , offsetof (struct c3x_config, remove_unit_limit)},
 		{"remove_city_improvement_limit"                       , true , offsetof (struct c3x_config, remove_city_improvement_limit)},
 		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
@@ -6651,16 +6652,21 @@ patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3
 }
 
 bool
-is_material_unit (UnitType const * type)
+is_material_unit (UnitType const * type, bool * out_is_pop_else_caravan)
 {
 	int join_city_action = UCV_Join_City & 0x0FFFFFFF; // To get the join city action code, use the command value and mask out the top 4 category bits
 	int disband_action = UCV_Disband & 0x0FFFFFFF;
-	int noncombat = (type->Attack | type->Defence | type->Bombard_Strength) == 0;
-	return (   noncombat
-		&& (   (   (type->PopulationCost > 0)
-			&& (type->Worker_Actions == join_city_action))
-		    || (   (type->Standard_Actions & disband_action)
-		        && (type->Worker_Actions == 0))));
+	if ((type->Attack | type->Defence | type->Bombard_Strength) == 0) { // if non-combat unit
+		if ((type->PopulationCost > 0) && (type->Worker_Actions == join_city_action)) {
+			*out_is_pop_else_caravan = true;
+			return true;
+		} else if ((type->Standard_Actions & disband_action) && (type->Worker_Actions == 0)) {
+			*out_is_pop_else_caravan = false;
+			return true;
+		} else
+			return false;
+	} else
+		return false;
 }
 
 void
@@ -6783,10 +6789,12 @@ patch_Unit_ai_move_terraformer (Unit * this)
 {
 	int type_id = this->Body.UnitTypeID;
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
-	if (is->current_config.enable_pop_unit_ai &&
-	    (tile != NULL) && (tile != p_null_tile) &&
+	bool pop_else_caravan;
+	if ((tile != NULL) && (tile != p_null_tile) &&
 	    (type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
-	    is_material_unit (&p_bic_data->UnitTypes[type_id])) {
+	    is_material_unit (&p_bic_data->UnitTypes[type_id], &pop_else_caravan) &&
+	    ((pop_else_caravan && is->current_config.enable_pop_unit_ai) ||
+	     ((! pop_else_caravan) && is->current_config.enable_caravan_unit_ai))) {
 		ai_move_material_unit (this);
 		return;
 	}

@@ -241,6 +241,7 @@ struct c3x_config {
 	bool replace_leader_unit_ai;
 	bool fix_ai_army_composition;
 	bool enable_pop_unit_ai;
+	bool enable_caravan_unit_ai;
 	int max_ai_naval_escorts;
 	int ai_worker_requirement_percent;
 
