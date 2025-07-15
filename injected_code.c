@@ -11582,5 +11582,33 @@ patch_Leader_update_great_library_unlocks (Leader * this)
 				 leaders[n].Contacts[k] = saved_contact_sets[n].contacts[k];
 }
 
+bool __fastcall
+patch_Leader_has_wonder_doubling_happiness_from (Leader * this, int edx, int improv_id)
+{
+	bool tr = Leader_has_wonder_doubling_happiness_from (this, __, improv_id);
+
+	// If we're sharing wonder effects in a hotseat game and "this" is a human player, return true when another human player in the game has a
+	// wonder doubling happiness
+	if ((! tr) &&
+	    is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << this->ID) & *p_human_player_bits)) { // "this" is a human player
+		unsigned human_player_bits = *(unsigned *)p_human_player_bits >> 1;
+		int n_human = 1;
+		while (human_player_bits != 0) {
+			if ((human_player_bits & 1) &&
+			    (n_human != this->ID) &&
+			    Leader_has_wonder_doubling_happiness_from (&leaders[n_human], __, improv_id)) {
+				tr = true;
+				break;
+			}
+			human_player_bits >>= 1;
+			n_human++;
+		}
+	}
+
+	return tr;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
