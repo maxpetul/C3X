@@ -2219,6 +2219,8 @@ tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
 	}
 }
 
+int __fastcall patch_Leader_count_wonders_with_small_flag (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null);
+
 bool __fastcall
 patch_City_has_improvement (City * this, int edx, int improv_id, bool include_auto_improvements)
 {
@@ -9618,7 +9620,7 @@ patch_Leader_get_optimal_city_number (Leader * this)
 		return Leader_get_optimal_city_number (this);
 	else {
 		int num_sans_fp = Leader_get_optimal_city_number (this), // OCN w/o contrib from num of FPs
-		    fp_count = Leader_count_wonders_with_small_flag (this, __, ITSW_Reduces_Corruption, NULL),
+		    fp_count = patch_Leader_count_wonders_with_small_flag (this, __, ITSW_Reduces_Corruption, NULL),
 		    s_diff = p_bic_data->DifficultyLevels[this->field_30].Optimal_Cities, // Difficulty scaling, called "percentage of optimal cities" in the editor
 		    base_ocn = p_bic_data->WorldSizes[p_bic_data->Map.World.World_Size].OptimalCityCount;
 		return num_sans_fp + (s_diff * fp_count * base_ocn + 50) / 100; // Add 50 to round off
@@ -9629,7 +9631,7 @@ int __fastcall
 patch_Leader_count_forbidden_palaces_for_ocn (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null)
 {
 	if (! is->current_config.strengthen_forbidden_palace_ocn_effect)
-		return Leader_count_wonders_with_small_flag (this, __, flag, city_or_null);
+		return patch_Leader_count_wonders_with_small_flag (this, __, flag, city_or_null);
 	else
 		return 0; // We'll add in the FP effect later with a different weight
 }
@@ -11457,6 +11459,46 @@ patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum Im
 
 	return tr;
 }
+
+int const shared_small_wonder_flags =
+	ITSW_Increases_Chance_of_Leader_Appearance |
+	ITSW_Build_Armies_Without_Leader |
+	ITSW_Build_Larger_Armies |
+	ITSW_Treasury_Earns_5_Percent |
+	ITSW_Decreases_Success_Of_Missile_Attacks |
+	ITSW_Allows_Spy_Missions |
+	ITSW_Allows_Healing_In_Enemy_Territory |
+	ITSW_Requires_Victorous_Army |
+	ITSE_Requires_Elite_Naval_Units;
+
+
+int __fastcall
+patch_Leader_count_wonders_with_small_flag (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null)
+{
+	int tr = Leader_count_wonders_with_small_flag (this, __, flag, city_or_null);
+
+	// If "this" is a human player who's sharing wonders in hotseat and the flag is one of the ones that gets shared, include the wonders owned by
+	// all other humans in the game
+	if ((city_or_null == NULL) &&
+	    (flag & shared_small_wonder_flags) &&
+	    is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << this->ID) & *p_human_player_bits)) { // is "this" a human player
+
+		unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+		int n_player = 1;
+		while (player_bits != 0) {
+			if ((player_bits & 1) && (n_player != this->ID))
+				tr += Leader_count_wonders_with_small_flag (&leaders[n_player], __, flag, city_or_null);
+			player_bits >>= 1;
+			n_player++;
+		}
+
+	}
+
+	return tr;
+}
+
 
 void __fastcall
 patch_City_add_happiness_from_buildings (City * this, int edx, int * inout_happiness, int * inout_unhappiness)

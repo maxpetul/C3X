@@ -430,7 +430,7 @@ repl vptr, 0x66BF68,	0x68905C,	0x66BF68,	"Demographics_Form_m22_draw",			"void (
 define,	   0x600070,	0x615570,	0x5FFF50,	"PCX_Image_fill_area",				"int (__fastcall *) (PCX_Image * this, int edx, RECT * rect, int color)"
 define,	   0x5FD360,	0x611290,	0x5FD240,	"PCX_Image_set_text_effects",			"void (__fastcall *) (PCX_Image * this, int edx, int text_color, int shadow_color, int shadow_offset_x, int shadow_offset_y)"
 inlead,	   0x5676C0,	0x573AB0,	0x567670,	"Leader_get_optimal_city_number",		"int (__fastcall *) (Leader * this)"
-define,	   0x55AA10,	0x566930,	0x55A9C0,	"Leader_count_wonders_with_small_flag",		"int (__fastcall *) (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null)"
+inlead,	   0x55AA10,	0x566930,	0x55A9C0,	"Leader_count_wonders_with_small_flag",		"int (__fastcall *) (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null)"
 repl call, 0x567706,	0x573AF6,	0x5676B6,	"Leader_count_forbidden_palaces_for_ocn",	""
 repl call, 0x550F99,	0x55C0E1,	0x550F49,	"Unit_can_do_worker_command_for_button_setup",	""
 repl call, 0x55132D,	0x55C484,	0x5512DD,	"Unit_can_do_worker_command_for_button_setup",	""
