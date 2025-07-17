@@ -2219,6 +2219,7 @@ tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
 	}
 }
 
+int __fastcall patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum ImprovementTypeWonderFeatures flag, City * only_in_city);
 int __fastcall patch_Leader_count_wonders_with_small_flag (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null);
 
 bool __fastcall
@@ -8799,7 +8800,7 @@ patch_City_get_building_defense_bonus (City * this)
 			if ((is_size_level_1 || (improv->Combat_Bombard == 0)) && has_active_building (this, improv_id)) {
 				int multiplier;
 				if ((improv->Combat_Bombard > 0) &&
-				    (Leader_count_wonders_with_flag (&leaders[(this->Body).CivID], __, ITW_Doubles_City_Defenses, NULL) > 0))
+				    (patch_Leader_count_any_shared_wonders_with_flag (&leaders[(this->Body).CivID], __, ITW_Doubles_City_Defenses, NULL) > 0))
 					multiplier = 2;
 				else
 					multiplier = 1;
