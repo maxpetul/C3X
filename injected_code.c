@@ -3333,6 +3333,7 @@ patch_init_floating_point ()
 	}
 
 	is->sb_next_up = NULL;
+	is->trade_net = p_original_trade_net;
 	is->tnx_cache = NULL;
 	is->is_computing_city_connections = false;
 	is->keep_tnx_cache = false;
@@ -3895,7 +3896,7 @@ void
 recompute_resources_if_necessary ()
 {
 	if (is->must_recompute_resources_for_mill_inputs)
-		patch_Trade_Net_recompute_resources (p_trade_net, __, false);
+		patch_Trade_Net_recompute_resources (is->trade_net, __, false);
 }
 
 void __fastcall
@@ -5758,7 +5759,7 @@ int
 estimate_travel_time (Unit * unit, int to_tile_x, int to_tile_y, int * out_num_turns)
 {
 	int dist_in_mp;
-	patch_Trade_Net_set_unit_path (p_trade_net, __, unit->Body.X, unit->Body.Y, to_tile_x, to_tile_y, unit, unit->Body.CivID, 1, &dist_in_mp);
+	patch_Trade_Net_set_unit_path (is->trade_net, __, unit->Body.X, unit->Body.Y, to_tile_x, to_tile_y, unit, unit->Body.CivID, 1, &dist_in_mp);
 	dist_in_mp += unit->Body.Moves; // Add MP already spent this turn to the distance
 	int max_mp = patch_Unit_get_max_move_points (unit);
 	if ((dist_in_mp >= 0) && (max_mp > 0)) {
@@ -5926,7 +5927,7 @@ patch_Unit_ai_move_leader (Unit * this)
 		moving_to_city = find_nearest_established_city (this, continent_id);
 	}
 	if (moving_to_city) {
-		int first_move = patch_Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
+		int first_move = patch_Trade_Net_set_unit_path (is->trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
 		if (first_move > 0) {
 			Unit_set_escortee (this, __, -1);
 			this->vtable->Move (this, __, first_move, 0);
@@ -6774,7 +6775,7 @@ ai_move_material_unit (Unit * this)
 		moving_to_city = find_nearest_established_city (this, continent_id);
 
 	if (moving_to_city) {
-		int first_move = patch_Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
+		int first_move = patch_Trade_Net_set_unit_path (is->trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
 		if (first_move > 0) {
 			Unit_set_escortee (this, __, -1);
 			this->vtable->Move (this, __, first_move, 0);
@@ -7294,7 +7295,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 		    ((improv->ImprovementFlags & ITF_Allows_Water_Trade) == 0) &&
 		    ((improv->ImprovementFlags & ITF_Allows_Air_Trade)   == 0) &&
 		    ((improv->WonderFlags      & ITW_Safe_Sea_Travel)    == 0))
-			patch_Trade_Net_recompute_resources (p_trade_net, __, 0);
+			patch_Trade_Net_recompute_resources (is->trade_net, __, 0);
 
 		// If the mill adds yields or might be a link in a resource production chain that does, recompute yields in the city.
 		if (is_yielding_mill || generates_input)
