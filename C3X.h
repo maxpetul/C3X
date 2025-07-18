@@ -504,6 +504,9 @@ struct injected_state {
 
 	Trade_Net * trade_net; // Pointer to the trade net object. If it hasn't been moved by the mod, this equals p_original_trade_net.
 
+	enum init_state trade_net_refs_load_state;
+	int * trade_net_refs;
+
 	HMODULE trade_net_x;
 	void (__stdcall * set_exe_version) (int);
 	void * (__stdcall * create_tnx_cache) (Map *);
