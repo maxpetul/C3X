@@ -11494,12 +11494,42 @@ patch_Leader_count_wonders_with_small_flag (Leader * this, int edx, enum Improve
 			player_bits >>= 1;
 			n_player++;
 		}
-
 	}
 
 	return tr;
 }
 
+bool __fastcall
+patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, bool param_2)
+{
+	// If the improv in question is a small wonder and "this" is a human player who's sharing wonders in hotseat, temporarily combine the status
+	// flags for victorious army and elite naval unit from other humans in the game so that builability is shared for SWs using those flags.
+	bool restore_status = false;
+	int saved_status;
+	if ((p_bic_data->Improvements[i_improv].Characteristics & ITC_Small_Wonder) &&
+	    is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << this->ID) & *p_human_player_bits)) { // is "this" a human player
+		restore_status = true;
+		saved_status = this->Status;
+
+		unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+		int n_player = 1;
+		while (player_bits != 0) {
+			if ((player_bits & 1) && (n_player != this->ID))
+				this->Status |= leaders[n_player].Status & (LSF_HAS_VICTORIOUS_ARMY | LSF_HAS_ELITE_NAVAL_UNIT);
+			player_bits >>= 1;
+			n_player++;
+		}
+	}
+
+	bool tr = Leader_can_build_city_improvement (this, __, i_improv, param_2);
+
+	if (restore_status)
+		this->Status = saved_status;
+	return tr;
+
+}
 
 void __fastcall
 patch_City_add_happiness_from_buildings (City * this, int edx, int * inout_happiness, int * inout_unhappiness)
