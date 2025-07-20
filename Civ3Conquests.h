@@ -1478,6 +1478,20 @@ typedef enum advisor_kind
 	AK_7
 } AdvisorKind;
 
+typedef enum leader_status_flags
+{
+	LSF_HAS_VICTORIOUS_ARMY  = 0x1,
+	LSF_0x2                  = 0x2,   // \ 
+	LSF_0x4                  = 0x4,   // |
+	LSF_0x8                  = 0x8,   // |
+	LSF_0x10                 = 0x10,  // |-- Mostly (all?) about what popups have been shown
+	LSF_0x20                 = 0x20,  // |
+	LSF_0x40                 = 0x40,  // |
+	LSF_0x80                 = 0x80,  // /
+	LSF_HAS_ELITE_NAVAL_UNIT = 0x100,
+	LSF_SHOWN_PLAGUE_POPUP   = 0x200
+} LeaderStatusFlags;
+
 struct IntList
 {
   int field_0;
