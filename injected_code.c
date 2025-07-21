@@ -11684,13 +11684,13 @@ patch_Leader_has_wonder_doubling_happiness_from (Leader * this, int edx, int imp
 	return tr;
 }
 
-void __fastcall
-patch_City_draw_citizens (City * this, int edx, PCX_Image * canvas, RECT * rect, char param_3)
+int __fastcall
+patch_Sprite_draw_citizen_head (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
 	// Reset variable
 	is->specialist_icon_drawing_running_x = INT_MIN;
 
-	City_draw_citizens (this, __, canvas, rect, param_3);
+	return Sprite_draw (this, __, canvas, pixel_x, pixel_y, color_table);
 }
 
 int
