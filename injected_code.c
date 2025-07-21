@@ -3160,6 +3160,7 @@ patch_init_floating_point ()
 		{"patch_division_by_zero_in_ai_alliance_eval"          , true , offsetof (struct c3x_config, patch_division_by_zero_in_ai_alliance_eval)},
 		{"patch_empty_army_movement"                           , true , offsetof (struct c3x_config, patch_empty_army_movement)},
 		{"delete_off_map_ai_units"                             , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
+		{"fix_overlapping_specialist_yield_icons"              , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
 		{"prevent_autorazing"                                  , false, offsetof (struct c3x_config, prevent_autorazing)},
 		{"prevent_razing_by_players"                           , false, offsetof (struct c3x_config, prevent_razing_by_players)},
 		{"suppress_hypertext_links_exceeded_popup"             , true , offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
@@ -4916,11 +4917,11 @@ patch_City_Form_print_production_info (City_Form *this, int edx, String256 * out
 }
 
 int __fastcall
-patch_Sprite_draw_strat_res_on_city_screen (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
+patch_Sprite_draw_strat_res_on_city_screen (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
 	if (is->current_config.compact_strategic_resource_display_on_city_screen)
 		pixel_x -= 13 * is->drawn_strat_resource_count + 17;
-	return Sprite_draw (this, __, canvas, pixel_x, pixel_y, param_4);
+	return Sprite_draw (this, __, canvas, pixel_x, pixel_y, color_table);
 }
 
 int __fastcall
@@ -9963,9 +9964,9 @@ patch_Leader_erase_export (Leader * this, int edx, int importer_civ_id, int reso
 }
 
 int __fastcall
-patch_Sprite_draw_improv_img_on_city_form (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
+patch_Sprite_draw_improv_img_on_city_form (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
-	int tr = Sprite_draw (this, __, canvas, pixel_x, pixel_y, param_4);
+	int tr = Sprite_draw (this, __, canvas, pixel_x, pixel_y, color_table);
 
 	int generated_resources[16];
 	int generated_resource_count = 0;
@@ -10034,7 +10035,7 @@ patch_City_get_tourism_amount_to_draw (City * this, int edx, int improv_id)
 }
 
 int __fastcall
-patch_Sprite_draw_tourism_gold (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
+patch_Sprite_draw_tourism_gold (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
 	// Replace the yield sprite we're drawing with food or a shield if needed.
 	Sprite * sprite = NULL; {
@@ -10056,7 +10057,7 @@ patch_Sprite_draw_tourism_gold (Sprite * this, int edx, PCX_Image * canvas, int 
 
 	int tr = 0; // return value is not used by caller
 	if (sprite != NULL)
-		tr = Sprite_draw (sprite, __, canvas, pixel_x, pixel_y, param_4);
+		tr = Sprite_draw (sprite, __, canvas, pixel_x, pixel_y, color_table);
 	is->tourism_icon_counter++;
 	return tr;
 }
@@ -11178,7 +11179,7 @@ patch_Unit_check_rebase_target (Unit * this, int edx, int tile_x, int tile_y)
 }
 
 int __fastcall
-patch_Sprite_draw_already_worked_tile_img (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
+patch_Sprite_draw_already_worked_tile_img (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
 	Sprite * to_draw = this;
 
@@ -11213,7 +11214,7 @@ patch_Sprite_draw_already_worked_tile_img (Sprite * this, int edx, PCX_Image * c
 			to_draw = &is->tile_already_worked_zoomed_out_sprite;
 	}
 
-	return Sprite_draw (to_draw, __, canvas, pixel_x, pixel_y, param_4);
+	return Sprite_draw (to_draw, __, canvas, pixel_x, pixel_y, color_table);
 }
 
 int __fastcall
@@ -11681,6 +11682,59 @@ patch_Leader_has_wonder_doubling_happiness_from (Leader * this, int edx, int imp
 	}
 
 	return tr;
+}
+
+void __fastcall
+patch_City_draw_citizens (City * this, int edx, PCX_Image * canvas, RECT * rect, char param_3)
+{
+	// Reset variable
+	is->specialist_icon_drawing_running_x = INT_MIN;
+
+	City_draw_citizens (this, __, canvas, rect, param_3);
+}
+
+int
+adjust_specialist_yield_icon_x (int pixel_x, int width)
+{
+	if (is->current_config.fix_overlapping_specialist_yield_icons) {
+		if (is->specialist_icon_drawing_running_x == INT_MIN) // first icon drawn
+			is->specialist_icon_drawing_running_x = pixel_x;
+		int tr = is->specialist_icon_drawing_running_x;
+		is->specialist_icon_drawing_running_x += width;
+		return tr;
+	} else
+		return pixel_x;
+}
+
+int __fastcall
+patch_Sprite_draw_entertainer_yield_icon (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	int width = p_city_form->City_Icons_Images.Icon_12_Happy_Faces.Width / 2;
+	return Sprite_draw (this, __, canvas, adjust_specialist_yield_icon_x (pixel_x, width), pixel_y, color_table);
+}
+int __fastcall
+patch_Sprite_draw_scientist_yield_icon (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	int width = p_city_form->City_Icons_Images.Icon_16_Science.Width / 2;
+	return Sprite_draw (this, __, canvas, adjust_specialist_yield_icon_x (pixel_x, width), pixel_y, color_table);
+}
+int __fastcall
+patch_Sprite_draw_tax_collector_yield_icon (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	int width = p_city_form->City_Icons_Images.Icon_14_Gold.Width / 2;
+	return Sprite_draw (this, __, canvas, adjust_specialist_yield_icon_x (pixel_x, width), pixel_y, color_table);
+}
+int __fastcall
+patch_Sprite_draw_civil_engineer_yield_icon (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	int width = p_city_form->City_Icons_Images.Icon_13_Shield.Width / 2;
+	return Sprite_draw (this, __, canvas, adjust_specialist_yield_icon_x (pixel_x, width), pixel_y, color_table);
+}
+int __fastcall
+patch_Sprite_draw_police_officer_yield_icon (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	int width = p_city_form->City_Icons_Images.Icon_17_Gold_Outcome.Width / 2;
+	return Sprite_draw (this, __, canvas, adjust_specialist_yield_icon_x (pixel_x, width), pixel_y, color_table);
 }
 
 // TCC requires a main function be defined even though it's never used.

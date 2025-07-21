@@ -263,6 +263,7 @@ struct c3x_config {
 	bool patch_division_by_zero_in_ai_alliance_eval;
 	bool patch_empty_army_movement;
 	bool delete_off_map_ai_units;
+	bool fix_overlapping_specialist_yield_icons;
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
@@ -953,6 +954,9 @@ struct injected_state {
 	// Initialized to NULL/0, used in patch_City_add_happiness_from_buildings
 	short * saved_improv_counts;
 	int saved_improv_counts_capacity;
+
+	// Used to de-overlap specialist yield icons (option name fix_overlapping_specialist_yield_icons)
+	int specialist_icon_drawing_running_x;
 
 	// ==========
 	// }
