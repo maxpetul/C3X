@@ -11464,7 +11464,6 @@ patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum Im
 
 int const shared_small_wonder_flags =
 	ITSW_Increases_Chance_of_Leader_Appearance |
-	ITSW_Build_Armies_Without_Leader |
 	ITSW_Build_Larger_Armies |
 	ITSW_Treasury_Earns_5_Percent |
 	ITSW_Decreases_Success_Of_Missile_Attacks |
