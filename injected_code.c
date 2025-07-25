@@ -11499,6 +11499,21 @@ patch_Leader_count_wonders_with_small_flag (Leader * this, int edx, enum Improve
 	return tr;
 }
 
+int
+find_human_player_with_small_wonder (int improv_id)
+{
+	unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+	int n_player = 1;
+	while (player_bits != 0) {
+		if (player_bits & 1)
+			if (leaders[n_player].Small_Wonders[improv_id] != -1)
+				return n_player;
+		player_bits >>= 1;
+		n_player++;
+	}
+	return -1;
+}
+
 bool __fastcall
 patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, bool param_2)
 {
@@ -11509,29 +11524,29 @@ patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, b
 	    is->current_config.share_wonders_in_hotseat && // if we're configured to share wonder effects
 	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // if in a hotseat game
 	    ((1 << this->ID) & *p_human_player_bits)) { // if "this" is a human player
-		restore_status = true;
-		saved_status = this->Status;
 
-		// Loop over all other human players in the game
-		unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
-		int n_player = 1;
-		while (player_bits != 0) {
-			if ((player_bits & 1) && (n_player != this->ID)) {
+		// If another human player has already built this small wonder and it has no non-shared effects, then make it unbuildable
+		if ((find_human_player_with_small_wonder (i_improv) != -1) &&
+		    ((p_bic_data->Improvements[i_improv].SmallWonderFlags & ~shared_small_wonder_flags) == 0))
+			already_shared = true;
 
-				// If another human player has already built this small wonder and it has no non-shared effects, then make it
-				// unbuildable for this player
-				if ((leaders[n_player].Small_Wonders[i_improv] != -1) &&
-				    ((p_bic_data->Improvements[i_improv].SmallWonderFlags & ~shared_small_wonder_flags) == 0)) {
-					already_shared = true;
-					break;
+		else {
+			restore_status = true;
+			saved_status = this->Status;
+
+			// Loop over all other human players in the game
+			unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+			int n_player = 1;
+			while (player_bits != 0) {
+				if ((player_bits & 1) && (n_player != this->ID)) {
+
+					// Combine status bits
+					this->Status |= leaders[n_player].Status & (LSF_HAS_VICTORIOUS_ARMY | LSF_HAS_ELITE_NAVAL_UNIT);
+
 				}
-
-				// Combine status bits
-				this->Status |= leaders[n_player].Status & (LSF_HAS_VICTORIOUS_ARMY | LSF_HAS_ELITE_NAVAL_UNIT);
-
+				player_bits >>= 1;
+				n_player++;
 			}
-			player_bits >>= 1;
-			n_player++;
 		}
 	}
 
@@ -11746,6 +11761,45 @@ patch_Sprite_draw_police_officer_yield_icon (Sprite * this, int edx, PCX_Image *
 {
 	int width = p_city_form->City_Icons_Images.Icon_17_Gold_Outcome.Width / 2;
 	return Sprite_draw (this, __, canvas, adjust_specialist_yield_icon_x (pixel_x, width), pixel_y, color_table);
+}
+
+void __fastcall
+patch_City_add_building_if_done (City * this)
+{
+	// If sharing small wonders in hotseat, check whether the city is building a small wonder that's no longer available to the player b/c its
+	// effects are provided from another.
+	int improv_id = this->Body.Order_ID;
+	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	int already_built_by_id;
+	if ((improv->Characteristics & ITC_Small_Wonder) &&
+	    is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << this->Body.CivID) & *p_human_player_bits) && // city owned by a human player
+	    ((already_built_by_id = find_human_player_with_small_wonder (improv_id)) != -1) && // SW already built by another human player
+	    ((improv->SmallWonderFlags & ~shared_small_wonder_flags) == 0)) { // SW has no non-shared effects
+
+		// Switch city production to something else and notify the player
+		this->vtable->set_production_to_most_expensive_option (this);
+		if ((this->Body.CivID == p_main_screen_form->Player_CivID) && (already_built_by_id != p_main_screen_form->Player_CivID)) {
+			char * new_build_name = (this->Body.Order_Type == COT_Improvement) ?
+				p_bic_data->Improvements[this->Body.Order_ID].Name.S :
+				p_bic_data->UnitTypes[this->Body.Order_ID].Name;
+			PopupForm * popup = get_popup_form ();
+			set_popup_str_param (0, this->Body.CityName, -1, -1);
+			set_popup_str_param (1, improv->Name.S, -1, -1);
+			set_popup_str_param (2, Leader_get_civ_noun (&leaders[already_built_by_id]), -1, -1);
+			set_popup_str_param (3, new_build_name, -1, -1);
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_SHARED_WONDER_CHANGE", -1, 0, 0, 0);
+			int response = patch_show_popup (popup, __, 0, 0);
+			if (response == 0)
+				*p_zoom_to_city_after_update = true;
+		}
+
+		// As in the base logic, if production gets switched, the game doesn't check if it might still complete on the same turn.
+		return;
+	}
+
+	City_add_building_if_done (this);
 }
 
 // TCC requires a main function be defined even though it's never used.

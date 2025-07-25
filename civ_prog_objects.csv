@@ -738,6 +738,8 @@ repl call, 0x4BF912,	0x4C6EC2,	0x4BF9A2,	"Sprite_draw_scientist_yield_icon",		""
 repl call, 0x4BF8C0,	0x4C6E70,	0x4BF950,	"Sprite_draw_tax_collector_yield_icon",		""
 repl call, 0x4BF9E1,	0x4C6FA1,	0x4BFA71,	"Sprite_draw_civil_engineer_yield_icon",	""
 repl call, 0x4BFA45,	0x4C7005,	0x4BFAD5,	"Sprite_draw_police_officer_yield_icon",	""
+inlead,	   0x4B9270,	0x4C08E0,	0x4B9300,	"City_add_building_if_done",			"void (__fastcall *) (City * this)"
+define,	   0x9C34E4,	0x9E5CDC,	0x9C34A4,	"p_zoom_to_city_after_update",			"bool *"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
