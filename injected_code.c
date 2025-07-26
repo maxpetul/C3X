@@ -10157,7 +10157,7 @@ patch_City_spawn_unit_if_done (City * this)
 					popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_LIMITED_UNIT_CHANGE", -1, 0, 0, 0);
 					int response = patch_show_popup (popup, __, 0, 0);
 					if (response == 0)
-						City_zoom_to (this, __, 0);
+						*p_zoom_to_city_after_update = true;
 				}
 			}
 
