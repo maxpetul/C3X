@@ -11517,22 +11517,25 @@ find_human_player_with_small_wonder (int improv_id)
 bool __fastcall
 patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, bool param_2)
 {
-	bool restore_status = false;
+	Improvement * improv = &p_bic_data->Improvements[i_improv];
+	bool restore = false;
 	bool already_shared = false;
-	int saved_status;
-	if ((p_bic_data->Improvements[i_improv].Characteristics & ITC_Small_Wonder) && // if the improv in question is a small wonder
+	int saved_status, saved_required_building_count;
+	if ((improv->Characteristics & ITC_Small_Wonder) && // if the improv in question is a small wonder
 	    is->current_config.share_wonders_in_hotseat && // if we're configured to share wonder effects
 	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // if in a hotseat game
 	    ((1 << this->ID) & *p_human_player_bits)) { // if "this" is a human player
 
 		// If another human player has already built this small wonder and it has no non-shared effects, then make it unbuildable
 		if ((find_human_player_with_small_wonder (i_improv) != -1) &&
-		    ((p_bic_data->Improvements[i_improv].SmallWonderFlags & ~shared_small_wonder_flags) == 0))
+		    ((improv->SmallWonderFlags & ~shared_small_wonder_flags) == 0))
 			already_shared = true;
 
 		else {
-			restore_status = true;
+			restore = true;
 			saved_status = this->Status;
+			if (improv->RequiredBuildingID != -1)
+				saved_required_building_count = this->Improvement_Counts[improv->RequiredBuildingID];
 
 			// Loop over all other human players in the game
 			unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
@@ -11543,6 +11546,10 @@ patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, b
 					// Combine status bits
 					this->Status |= leaders[n_player].Status & (LSF_HAS_VICTORIOUS_ARMY | LSF_HAS_ELITE_NAVAL_UNIT);
 
+					// Combine building counts for the required building if there is one
+					if (improv->RequiredBuildingID != -1)
+						this->Improvement_Counts[improv->RequiredBuildingID] += leaders[n_player].Improvement_Counts[improv->RequiredBuildingID];
+
 				}
 				player_bits >>= 1;
 				n_player++;
@@ -11552,8 +11559,12 @@ patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, b
 
 	bool tr = (! already_shared) && Leader_can_build_city_improvement (this, __, i_improv, param_2);
 
-	if (restore_status)
+	if (restore) {
 		this->Status = saved_status;
+		if (improv->RequiredBuildingID != -1)
+			this->Improvement_Counts[improv->RequiredBuildingID] = saved_required_building_count;
+
+	}
 	return tr;
 
 }
