@@ -3194,7 +3194,7 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 				else if ((instr[0] == 0x89) && ((instr[1] >= 0x0D) && (instr[1] <= 0x3D)) && // move other regs to field
 					 (offset = int_from_bytes (&instr[2]) - p_old, (offset >= 0) && (offset < 100)))
 					int_to_bytes (&instr[2], p_new + offset);
-				else if ((instr[0] == 0x8B) && ((instr[1] == 0x35) || (instr[1] == 0x3D)) && // mov field to esi or edi
+				else if ((instr[0] == 0x8B) && ((instr[1] == 0x35) || (instr[1] == 0x3D) || (instr[1] == 0x0D)) && // mov field to esi, edi or ecx
 					 (offset = int_from_bytes (&instr[2]) - p_old, (offset >= 0) && (offset < 100)))
 					int_to_bytes (&instr[2], p_new + offset);
 				else if (! popped_up_error) {
