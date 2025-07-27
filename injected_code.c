@@ -11521,13 +11521,14 @@ patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, b
 	bool restore = false;
 	bool already_shared = false;
 	int saved_status, saved_required_building_count, saved_armies_count;
-	if ((improv->Characteristics & ITC_Small_Wonder) && // if the improv in question is a small wonder
+	if ((improv->Characteristics & (ITC_Small_Wonder | ITC_Wonder)) && // if the improv in question is a great or small wonder
 	    is->current_config.share_wonders_in_hotseat && // if we're configured to share wonder effects
 	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // if in a hotseat game
 	    ((1 << this->ID) & *p_human_player_bits)) { // if "this" is a human player
 
 		// If another human player has already built this small wonder and it has no non-shared effects, then make it unbuildable
-		if ((find_human_player_with_small_wonder (i_improv) != -1) &&
+		if ((improv->Characteristics & ITC_Small_Wonder) &&
+		    (find_human_player_with_small_wonder (i_improv) != -1) &&
 		    ((improv->SmallWonderFlags & ~shared_small_wonder_flags) == 0))
 			already_shared = true;
 
