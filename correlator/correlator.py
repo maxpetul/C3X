@@ -125,7 +125,7 @@ def find_most_similar_function(target_function, candidate_functions, size_weight
 
 def is_real_name(name):
     """Check if a function has a real name or is an auto-generated name"""
-    return name and not name.startswith("FUN_")
+    return name and not any([name.startswith(x) for x in ["FUN_", "thunk_", "Unwind@", "__", "FID_conflict:"]])
 
 def find_named_functions(functions):
     """Return list of functions with real names (not auto-generated)"""
@@ -202,6 +202,8 @@ def test_name_matching(steam_functions, gog_functions, size_weight, ref_weight):
     return correct_matches / total  # Return success rate
 
 def main():
+    global gog_functions, steam_functions
+
     # Set default weights
     size_weight = 0.6
     ref_weight = 0.4
@@ -213,7 +215,7 @@ def main():
     if not gog_functions or not steam_functions:
         print("Error loading function data. Exiting.")
         sys.exit(1)
-    
+
     # Check for test mode
     if len(sys.argv) >= 2 and sys.argv[1] == "--test":
         # If weights are provided, use them
@@ -240,11 +242,11 @@ def main():
         print("  python correlator.py <function_address> [size_weight] [ref_weight]")
         print("  python correlator.py --test [size_weight] [ref_weight]")
         print("\nExamples:")
-        print("  python correlator.py 00100400")
-        print("  python correlator.py 00100400 0.7 0.3")
+        print("  python correlator.py 00401000")
+        print("  python correlator.py 00401000 0.7 0.3")
         print("  python correlator.py --test")
         print("  python correlator.py --test 0.7 0.3")
-        sys.exit(1)
+        return
     
     target_address = sys.argv[1]
     
