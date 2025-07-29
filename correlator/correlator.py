@@ -143,8 +143,20 @@ def group_by_name(functions):
     # Only keep names that have a single function
     return {name: funcs[0] for name, funcs in name_groups.items() if len(funcs) == 1}
 
+# Global arrays to store match examples for inspection
+correct_matches = []
+incorrect_matches = []
+ambiguous_matches = []
+
 def test_name_matching(steam_functions, gog_functions, size_weight, ref_weight):
     """Test how well our similarity metric matches already-named functions"""
+    global correct_matches, incorrect_matches, ambiguous_matches
+    
+    # Clear previous examples
+    correct_matches.clear()
+    incorrect_matches.clear()
+    ambiguous_matches.clear()
+    
     print(f"Testing name matching with weights: Size={size_weight:.2f}, References={ref_weight:.2f}")
     
     # Get named functions from steam
@@ -155,11 +167,8 @@ def test_name_matching(steam_functions, gog_functions, size_weight, ref_weight):
     steam_name_map = group_by_name(named_steam_funcs)
     print(f"After removing duplicates: {len(steam_name_map)} unique named functions")
     
-    # Counter for statistics
+    # Keep track of total for progress
     total = 0
-    correct_matches = 0
-    incorrect_matches = 0
-    ambiguous_matches = 0
     
     # Progress tracking
     progress_step = max(1, len(steam_name_map) // 20)  # Show progress in ~5% increments
@@ -172,7 +181,7 @@ def test_name_matching(steam_functions, gog_functions, size_weight, ref_weight):
             print(f"Progress: {idx}/{len(steam_name_map)} ({idx/len(steam_name_map)*100:.1f}%)")
         
         # Find most similar functions in GOG
-        best_matches, _ = find_most_similar_function(
+        best_matches, similarity_score = find_most_similar_function(
             steam_func, 
             gog_functions,
             size_weight=size_weight,
@@ -184,22 +193,34 @@ def test_name_matching(steam_functions, gog_functions, size_weight, ref_weight):
         # Check if best match has the same name
         if len(best_matches) > 1:
             # Ambiguous match (multiple with same score)
-            ambiguous_matches += 1
+            ambiguous_matches.append({
+                'steam_func': steam_func,
+                'gog_matches': best_matches,
+                'similarity_score': similarity_score
+            })
         else:
             best_match = best_matches[0]
             if best_match["name"] == name:
-                correct_matches += 1
+                correct_matches.append({
+                    'steam_func': steam_func,
+                    'gog_match': best_match,
+                    'similarity_score': similarity_score
+                })
             else:
-                incorrect_matches += 1
+                incorrect_matches.append({
+                    'steam_func': steam_func,
+                    'gog_match': best_match,
+                    'similarity_score': similarity_score
+                })
     
     # Print final statistics
     print("\nMatching Results:")
     print(f"Total functions tested: {total}")
-    print(f"Correct matches: {correct_matches} ({correct_matches/total*100:.2f}%)")
-    print(f"Incorrect matches: {incorrect_matches} ({incorrect_matches/total*100:.2f}%)")
-    print(f"Ambiguous matches: {ambiguous_matches} ({ambiguous_matches/total*100:.2f}%)")
+    print(f"Correct matches: {len(correct_matches)} ({len(correct_matches)/total*100:.2f}%)")
+    print(f"Incorrect matches: {len(incorrect_matches)} ({len(incorrect_matches)/total*100:.2f}%)")
+    print(f"Ambiguous matches: {len(ambiguous_matches)} ({len(ambiguous_matches)/total*100:.2f}%)")
     
-    return correct_matches / total  # Return success rate
+    return len(correct_matches) / total  # Return success rate
 
 def main():
     global gog_functions, steam_functions
