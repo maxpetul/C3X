@@ -5,6 +5,18 @@ import sys
 import os
 from typing import List, Dict, Any
 
+def precompute_function_features(functions):
+    """Precompute expensive features for all functions"""
+    print(f"Precomputing opcode features for {len(functions)} functions...")
+    for i, func in enumerate(functions):
+        if i % 1000 == 0 and i > 0:
+            print(f"  Processed {i}/{len(functions)} functions...")
+        
+        opcodes = extract_opcodes(func.get("disassembly", []))
+        func['_bigrams'] = set(get_opcode_ngrams(opcodes, 2))
+        func['_trigrams'] = set(get_opcode_ngrams(opcodes, 3))
+    print(f"  Completed preprocessing {len(functions)} functions")
+
 def load_ghidra_export(filepath: str) -> List[Dict[str, Any]]:
     """
     Load function data exported from Ghidra by ExportProgForPython.py
@@ -38,6 +50,10 @@ def load_ghidra_export(filepath: str) -> List[Dict[str, Any]]:
             data = json.load(f)
         
         print(f"Successfully loaded {len(data)} functions from {filepath}")
+        
+        # Precompute opcode features
+        precompute_function_features(data)
+        
         return data
     except json.JSONDecodeError:
         print(f"Error: {filepath} contains invalid JSON")
@@ -114,22 +130,29 @@ def jaccard_similarity(set1, set2):
     return intersection / union
 
 def calculate_opcode_similarity(func1, func2):
-    """Calculate similarity based on instruction opcode patterns"""
-    opcodes1 = extract_opcodes(func1.get("disassembly", []))
-    opcodes2 = extract_opcodes(func2.get("disassembly", []))
+    """Calculate similarity based on instruction opcode patterns using precomputed n-grams"""
+    # Use precomputed n-grams if available, otherwise compute on the fly
+    bigrams1 = func1.get('_bigrams')
+    bigrams2 = func2.get('_bigrams')
+    trigrams1 = func1.get('_trigrams')
+    trigrams2 = func2.get('_trigrams')
     
-    if not opcodes1 and not opcodes2:
-        return 1.0
-    if not opcodes1 or not opcodes2:
-        return 0.0
+    if bigrams1 is None or bigrams2 is None or trigrams1 is None or trigrams2 is None:
+        # Fallback to computing on the fly (for backward compatibility)
+        opcodes1 = extract_opcodes(func1.get("disassembly", []))
+        opcodes2 = extract_opcodes(func2.get("disassembly", []))
+        
+        if not opcodes1 and not opcodes2:
+            return 1.0
+        if not opcodes1 or not opcodes2:
+            return 0.0
+        
+        bigrams1 = set(get_opcode_ngrams(opcodes1, 2))
+        bigrams2 = set(get_opcode_ngrams(opcodes2, 2))
+        trigrams1 = set(get_opcode_ngrams(opcodes1, 3))
+        trigrams2 = set(get_opcode_ngrams(opcodes2, 3))
     
-    # Get 2-grams and 3-grams
-    bigrams1 = set(get_opcode_ngrams(opcodes1, 2))
-    bigrams2 = set(get_opcode_ngrams(opcodes2, 2))
-    trigrams1 = set(get_opcode_ngrams(opcodes1, 3))
-    trigrams2 = set(get_opcode_ngrams(opcodes2, 3))
-    
-    # Calculate similarities
+    # Calculate similarities using precomputed or computed n-grams
     bigram_sim = jaccard_similarity(bigrams1, bigrams2)
     trigram_sim = jaccard_similarity(trigrams1, trigrams2)
     
