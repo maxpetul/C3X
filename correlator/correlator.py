@@ -222,6 +222,77 @@ def test_name_matching(steam_functions, gog_functions, size_weight, ref_weight):
     
     return len(correct_matches) / total  # Return success rate
 
+def analyze_address_differences():
+    """Analyze address differences between functions with identical real names"""
+    global gog_functions, steam_functions
+    
+    if not gog_functions or not steam_functions:
+        print("Function data not loaded. Run main() first.")
+        return
+    
+    print("Finding functions with identical real names in both executables...")
+    
+    # Get functions with real names from both executables
+    steam_named = {f['name']: f for f in steam_functions if is_real_name(f['name'])}
+    gog_named = {f['name']: f for f in gog_functions if is_real_name(f['name'])}
+    
+    # Find functions that exist in both with identical names
+    common_names = set(steam_named.keys()) & set(gog_named.keys())
+    print(f"Found {len(common_names)} functions with identical real names in both executables")
+    
+    if not common_names:
+        print("No matching named functions found.")
+        return
+    
+    address_diffs = []
+    for name in common_names:
+        steam_func = steam_named[name]
+        gog_func = gog_named[name]
+        
+        steam_addr = int(steam_func['address'], 16)
+        gog_addr = int(gog_func['address'], 16)
+        diff = gog_addr - steam_addr
+        
+        address_diffs.append({
+            'function_name': name,
+            'steam_addr': steam_addr,
+            'gog_addr': gog_addr,
+            'difference': diff,
+            'abs_difference': abs(diff)
+        })
+    
+    # Sort by absolute difference to see patterns
+    address_diffs.sort(key=lambda x: x['abs_difference'])
+    
+    # Calculate statistics
+    diffs = [item['abs_difference'] for item in address_diffs]
+    min_diff = min(diffs)
+    max_diff = max(diffs)
+    avg_diff = sum(diffs) / len(diffs)
+    
+    # Find most common difference
+    from collections import Counter
+    diff_counts = Counter(diffs)
+    most_common_diff = diff_counts.most_common(1)[0]
+    
+    print(f"\nAddress difference statistics:")
+    print(f"  Min difference: 0x{min_diff:08x} ({min_diff})")
+    print(f"  Max difference: 0x{max_diff:08x} ({max_diff})")
+    print(f"  Average difference: 0x{int(avg_diff):08x} ({int(avg_diff)})")
+    print(f"  Most common difference: 0x{most_common_diff[0]:08x} ({most_common_diff[0]}) - appears {most_common_diff[1]} times")
+    
+    # Show distribution of differences
+    print(f"\nTop 10 most common differences:")
+    for diff, count in diff_counts.most_common(10):
+        print(f"  0x{diff:08x} ({diff:8d}): {count:3d} functions")
+    
+    # Show some examples
+    print(f"\nFirst 10 examples (sorted by absolute difference):")
+    for i, item in enumerate(address_diffs[:10]):
+        print(f"  {item['function_name']:30s} Steam: 0x{item['steam_addr']:08x} GOG: 0x{item['gog_addr']:08x} Diff: 0x{item['difference']:08x} (abs: 0x{item['abs_difference']:08x})")
+    
+    return address_diffs
+
 def main():
     global gog_functions, steam_functions
 
@@ -237,6 +308,11 @@ def main():
         print("Error loading function data. Exiting.")
         sys.exit(1)
 
+    # Check for analysis mode
+    if len(sys.argv) >= 2 and sys.argv[1] == "--analyze":
+        analyze_address_differences()
+        return
+    
     # Check for test mode
     if len(sys.argv) >= 2 and sys.argv[1] == "--test":
         # If weights are provided, use them
