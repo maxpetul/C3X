@@ -91,16 +91,74 @@ def calculate_reference_similarity(func1, func2):
     # Use the ratio of the smaller to the larger reference count
     return min(ref1, ref2) / max(ref1, ref2)
 
-def calculate_combined_similarity(func1, func2, size_weight=0.6, ref_weight=0.4):
-    """Calculate weighted combination of size and reference similarity"""
+def extract_opcodes(disassembly):
+    """Extract just the instruction mnemonics from disassembly"""
+    if not disassembly:
+        return []
+    return [instr["instruction"].split()[0] for instr in disassembly]
+
+def get_opcode_ngrams(opcodes, n=2):
+    """Generate n-grams from opcode sequence"""
+    if len(opcodes) < n:
+        return []
+    return [tuple(opcodes[i:i+n]) for i in range(len(opcodes)-n+1)]
+
+def jaccard_similarity(set1, set2):
+    """Calculate Jaccard similarity between two sets"""
+    if not set1 and not set2:
+        return 1.0
+    if not set1 or not set2:
+        return 0.0
+    intersection = len(set1 & set2)
+    union = len(set1 | set2)
+    return intersection / union
+
+def calculate_opcode_similarity(func1, func2):
+    """Calculate similarity based on instruction opcode patterns"""
+    opcodes1 = extract_opcodes(func1.get("disassembly", []))
+    opcodes2 = extract_opcodes(func2.get("disassembly", []))
+    
+    if not opcodes1 and not opcodes2:
+        return 1.0
+    if not opcodes1 or not opcodes2:
+        return 0.0
+    
+    # Get 2-grams and 3-grams
+    bigrams1 = set(get_opcode_ngrams(opcodes1, 2))
+    bigrams2 = set(get_opcode_ngrams(opcodes2, 2))
+    trigrams1 = set(get_opcode_ngrams(opcodes1, 3))
+    trigrams2 = set(get_opcode_ngrams(opcodes2, 3))
+    
+    # Calculate similarities
+    bigram_sim = jaccard_similarity(bigrams1, bigrams2)
+    trigram_sim = jaccard_similarity(trigrams1, trigrams2)
+    
+    # Weight trigrams more heavily as they capture more specific patterns
+    return (bigram_sim * 0.4) + (trigram_sim * 0.6)
+
+def calculate_address_similarity(func1, func2, max_diff=86852):
+    """Calculate similarity based on address proximity"""
+    addr1 = int(func1["address"], 16)
+    addr2 = int(func2["address"], 16)
+    diff = abs(addr1 - addr2)
+    
+    # Convert to similarity score (1.0 is perfect match, 0.0 is max_diff or greater)
+    if diff >= max_diff:
+        return 0.0
+    return 1.0 - (diff / max_diff)
+
+def calculate_combined_similarity(func1, func2, size_weight=0.5, ref_weight=0.45, addr_weight=0.05, opcode_weight=0.0, max_addr_diff=86852):
+    """Calculate weighted combination of size, reference, address, and opcode similarity"""
     size_sim = calculate_size_similarity(func1, func2)
     ref_sim = calculate_reference_similarity(func1, func2)
+    addr_sim = calculate_address_similarity(func1, func2, max_addr_diff)
+    opcode_sim = calculate_opcode_similarity(func1, func2)
     
     # Apply weights
-    return (size_sim * size_weight) + (ref_sim * ref_weight)
+    return (size_sim * size_weight) + (ref_sim * ref_weight) + (addr_sim * addr_weight) + (opcode_sim * opcode_weight)
 
-def find_most_similar_function(target_function, candidate_functions, size_weight=0.6, ref_weight=0.4):
-    """Find the most similar function based on weighted combination of size and reference count"""
+def find_most_similar_function(target_function, candidate_functions, size_weight=0.5, ref_weight=0.45, addr_weight=0.05, opcode_weight=0.0, max_addr_diff=86852):
+    """Find the most similar function based on weighted combination of size, reference count, address, and opcodes"""
     best_matches = []
     best_score = -1
     
@@ -108,7 +166,7 @@ def find_most_similar_function(target_function, candidate_functions, size_weight
     SIMILARITY_THRESHOLD = 0.999
     
     for candidate in candidate_functions:
-        score = calculate_combined_similarity(target_function, candidate, size_weight, ref_weight)
+        score = calculate_combined_similarity(target_function, candidate, size_weight, ref_weight, addr_weight, opcode_weight, max_addr_diff)
         
         # Round to 4 decimal places to avoid floating point comparison issues
         score = round(score, 4)
@@ -148,7 +206,7 @@ correct_matches = []
 incorrect_matches = []
 ambiguous_matches = []
 
-def test_name_matching(steam_functions, gog_functions, size_weight, ref_weight):
+def test_name_matching(steam_functions, gog_functions, size_weight, ref_weight, addr_weight=0.05, opcode_weight=0.0, max_addr_diff=86852):
     """Test how well our similarity metric matches already-named functions"""
     global correct_matches, incorrect_matches, ambiguous_matches
     
@@ -157,7 +215,7 @@ def test_name_matching(steam_functions, gog_functions, size_weight, ref_weight):
     incorrect_matches.clear()
     ambiguous_matches.clear()
     
-    print(f"Testing name matching with weights: Size={size_weight:.2f}, References={ref_weight:.2f}")
+    print(f"Testing name matching with weights: Size={size_weight:.2f}, References={ref_weight:.2f}, Address={addr_weight:.2f}, Opcode={opcode_weight:.2f}")
     
     # Get named functions from steam
     named_steam_funcs = find_named_functions(steam_functions)
@@ -185,7 +243,10 @@ def test_name_matching(steam_functions, gog_functions, size_weight, ref_weight):
             steam_func, 
             gog_functions,
             size_weight=size_weight,
-            ref_weight=ref_weight
+            ref_weight=ref_weight,
+            addr_weight=addr_weight,
+            opcode_weight=opcode_weight,
+            max_addr_diff=max_addr_diff
         )
         
         total += 1
@@ -297,8 +358,11 @@ def main():
     global gog_functions, steam_functions
 
     # Set default weights
-    size_weight = 0.6
-    ref_weight = 0.4
+    size_weight = 0.5
+    ref_weight = 0.45
+    addr_weight = 0.05
+    opcode_weight = 0.0
+    max_addr_diff = 86852  # Average from analysis
     
     # Load functions from both files
     gog_functions = load_ghidra_export("gog.json")
@@ -320,29 +384,36 @@ def main():
             try:
                 size_weight = float(sys.argv[2])
                 ref_weight = float(sys.argv[3])
+                if len(sys.argv) >= 5:
+                    addr_weight = float(sys.argv[4])
+                if len(sys.argv) >= 6:
+                    opcode_weight = float(sys.argv[5])
                 # Normalize weights if they don't sum to 1
-                total = size_weight + ref_weight
+                total = size_weight + ref_weight + addr_weight + opcode_weight
                 if total != 1.0:
                     size_weight /= total
                     ref_weight /= total
+                    addr_weight /= total
+                    opcode_weight /= total
             except ValueError:
                 print("Error: Weights must be numeric values")
                 sys.exit(1)
         
         # Run test mode
-        test_name_matching(steam_functions, gog_functions, size_weight, ref_weight)
+        test_name_matching(steam_functions, gog_functions, size_weight, ref_weight, addr_weight, opcode_weight, max_addr_diff)
         return
     
     # Normal mode - lookup a specific function
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  python correlator.py <function_address> [size_weight] [ref_weight]")
-        print("  python correlator.py --test [size_weight] [ref_weight]")
+        print("  python correlator.py <function_address> [size_weight] [ref_weight] [addr_weight] [opcode_weight]")
+        print("  python correlator.py --test [size_weight] [ref_weight] [addr_weight] [opcode_weight]")
+        print("  python correlator.py --analyze")
         print("\nExamples:")
         print("  python correlator.py 00401000")
-        print("  python correlator.py 00401000 0.7 0.3")
+        print("  python correlator.py 00401000 0.4 0.3 0.1 0.2")
         print("  python correlator.py --test")
-        print("  python correlator.py --test 0.7 0.3")
+        print("  python correlator.py --test 0.4 0.3 0.1 0.2")
         return
     
     target_address = sys.argv[1]
@@ -352,11 +423,17 @@ def main():
         try:
             size_weight = float(sys.argv[2])
             ref_weight = float(sys.argv[3])
+            if len(sys.argv) >= 5:
+                addr_weight = float(sys.argv[4])
+            if len(sys.argv) >= 6:
+                opcode_weight = float(sys.argv[5])
             # Normalize weights if they don't sum to 1
-            total = size_weight + ref_weight
+            total = size_weight + ref_weight + addr_weight + opcode_weight
             if total != 1.0:
                 size_weight /= total
                 ref_weight /= total
+                addr_weight /= total
+                opcode_weight /= total
         except ValueError:
             print("Error: Weights must be numeric values")
             sys.exit(1)
@@ -371,14 +448,17 @@ def main():
     print(f"Found target function: {target_function['name']} at {target_function['address']}")
     print(f"Function size: {target_size} bytes")
     print(f"References: {target_function['reference_count']}")
-    print(f"Using weights: Size={size_weight:.2f}, References={ref_weight:.2f}")
+    print(f"Using weights: Size={size_weight:.2f}, References={ref_weight:.2f}, Address={addr_weight:.2f}, Opcode={opcode_weight:.2f}")
     
     # Find the most similar function in steam.json
     best_matches, similarity_score = find_most_similar_function(
         target_function, 
         steam_functions,
         size_weight=size_weight,
-        ref_weight=ref_weight
+        ref_weight=ref_weight,
+        addr_weight=addr_weight,
+        opcode_weight=opcode_weight,
+        max_addr_diff=max_addr_diff
     )
     
     print("\nBest matches in steam.json:")
@@ -391,11 +471,15 @@ def main():
         match_size = len(match['raw_bytes'])
         size_sim = calculate_size_similarity(target_function, match)
         ref_sim = calculate_reference_similarity(target_function, match)
+        addr_sim = calculate_address_similarity(target_function, match, max_addr_diff)
+        opcode_sim = calculate_opcode_similarity(target_function, match)
         
         print(f"\nMatch {i+1}:")
         print(f"Function: {match['name']} at {match['address']}")
         print(f"Size: {match_size} bytes (similarity: {size_sim:.4f})")
         print(f"References: {match['reference_count']} (similarity: {ref_sim:.4f})")
+        print(f"Address similarity: {addr_sim:.4f}")
+        print(f"Opcode similarity: {opcode_sim:.4f}")
         
         # Show size difference as percentage
         size_diff_pct = abs(target_size - match_size) / target_size * 100
