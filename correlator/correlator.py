@@ -170,7 +170,7 @@ def calculate_address_similarity(func1, func2, max_diff=86852):
         return 0.0
     return 1.0 - (diff / max_diff)
 
-def calculate_combined_similarity(func1, func2, size_weight=0.5, ref_weight=0.45, addr_weight=0.05, opcode_weight=0.0, max_addr_diff=86852):
+def calculate_combined_similarity(func1, func2, size_weight=0.35, ref_weight=0.27, addr_weight=0.03, opcode_weight=0.35, max_addr_diff=86852):
     """Calculate weighted combination of size, reference, address, and opcode similarity"""
     size_sim = calculate_size_similarity(func1, func2)
     ref_sim = calculate_reference_similarity(func1, func2)
@@ -180,7 +180,7 @@ def calculate_combined_similarity(func1, func2, size_weight=0.5, ref_weight=0.45
     # Apply weights
     return (size_sim * size_weight) + (ref_sim * ref_weight) + (addr_sim * addr_weight) + (opcode_sim * opcode_weight)
 
-def find_most_similar_function(target_function, candidate_functions, size_weight=0.5, ref_weight=0.45, addr_weight=0.05, opcode_weight=0.0, max_addr_diff=86852):
+def find_most_similar_function(target_function, candidate_functions, size_weight=0.35, ref_weight=0.27, addr_weight=0.03, opcode_weight=0.35, max_addr_diff=86852):
     """Find the most similar function based on weighted combination of size, reference count, address, and opcodes"""
     best_matches = []
     best_score = -1
@@ -229,7 +229,7 @@ correct_matches = []
 incorrect_matches = []
 ambiguous_matches = []
 
-def test_name_matching(steam_functions, gog_functions, size_weight, ref_weight, addr_weight=0.05, opcode_weight=0.0, max_addr_diff=86852):
+def test_name_matching(steam_functions, gog_functions, size_weight, ref_weight, addr_weight=0.03, opcode_weight=0.35, max_addr_diff=86852):
     """Test how well our similarity metric matches already-named functions"""
     global correct_matches, incorrect_matches, ambiguous_matches
     
@@ -381,10 +381,10 @@ def main():
     global gog_functions, steam_functions
 
     # Set default weights
-    size_weight = 0.5
-    ref_weight = 0.45
-    addr_weight = 0.05
-    opcode_weight = 0.0
+    size_weight = 0.35
+    ref_weight = 0.27
+    addr_weight = 0.03
+    opcode_weight = 0.35
     max_addr_diff = 86852  # Average from analysis
     
     # Load functions from both files
