@@ -377,6 +377,140 @@ def analyze_address_differences():
     
     return address_diffs
 
+def generate_training_data():
+    """Generate training data from functions with known matches and mismatches"""
+    global gog_functions, steam_functions
+    
+    if not gog_functions or not steam_functions:
+        print("Function data not loaded. Run main() first.")
+        return [], []
+    
+    print("Generating training data for logistic regression...")
+    
+    # Get functions with real names from both executables
+    steam_named = {f['name']: f for f in steam_functions if is_real_name(f['name'])}
+    gog_named = {f['name']: f for f in gog_functions if is_real_name(f['name'])}
+    
+    # Find functions that exist in both with identical names (positive examples)
+    common_names = set(steam_named.keys()) & set(gog_named.keys())
+    print(f"Found {len(common_names)} positive examples (identical names)")
+    
+    features = []
+    labels = []
+    
+    # Positive examples: functions with identical names
+    for name in common_names:
+        steam_func = steam_named[name]
+        gog_func = gog_named[name]
+        
+        # Calculate all similarity features
+        size_sim = calculate_size_similarity(steam_func, gog_func)
+        ref_sim = calculate_reference_similarity(steam_func, gog_func)
+        addr_sim = calculate_address_similarity(steam_func, gog_func)
+        opcode_sim = calculate_opcode_similarity(steam_func, gog_func)
+        
+        features.append([size_sim, ref_sim, addr_sim, opcode_sim])
+        labels.append(1)  # Correct match
+    
+    # Negative examples: generate mismatches
+    # For each positive example, find some functions that are NOT matches
+    print("Generating negative examples...")
+    import random
+    random.seed(42)  # For reproducibility
+    
+    negative_count = 0
+    target_negatives = len(common_names) * 2  # 2:1 ratio of negatives to positives
+    
+    steam_funcs_list = list(steam_named.values())
+    gog_funcs_list = list(gog_named.values())
+    
+    for _ in range(target_negatives):
+        if negative_count >= target_negatives:
+            break
+            
+        # Pick random functions that don't have the same name
+        steam_func = random.choice(steam_funcs_list)
+        gog_func = random.choice(gog_funcs_list)
+        
+        # Skip if they actually match
+        if steam_func['name'] == gog_func['name']:
+            continue
+            
+        # Calculate similarity features
+        size_sim = calculate_size_similarity(steam_func, gog_func)
+        ref_sim = calculate_reference_similarity(steam_func, gog_func)
+        addr_sim = calculate_address_similarity(steam_func, gog_func)
+        opcode_sim = calculate_opcode_similarity(steam_func, gog_func)
+        
+        features.append([size_sim, ref_sim, addr_sim, opcode_sim])
+        labels.append(0)  # Incorrect match
+        negative_count += 1
+    
+    print(f"Generated {len([l for l in labels if l == 1])} positive and {len([l for l in labels if l == 0])} negative examples")
+    return features, labels
+
+def train_logistic_regression():
+    """Train logistic regression model to learn optimal feature weights"""
+    try:
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.model_selection import cross_val_score
+        from sklearn.preprocessing import StandardScaler
+        import numpy as np
+    except ImportError:
+        print("Error: scikit-learn not available. Install with: pip install scikit-learn")
+        return None
+    
+    # Generate training data
+    features, labels = generate_training_data()
+    if not features:
+        print("No training data generated")
+        return None
+    
+    features = np.array(features)
+    labels = np.array(labels)
+    
+    print(f"Training on {len(features)} examples...")
+    
+    # Standardize features (important for logistic regression)
+    scaler = StandardScaler()
+    features_scaled = scaler.fit_transform(features)
+    
+    # Train logistic regression with L2 regularization
+    model = LogisticRegression(random_state=42, max_iter=1000)
+    model.fit(features_scaled, labels)
+    
+    # Evaluate with cross-validation
+    cv_scores = cross_val_score(model, features_scaled, labels, cv=5)
+    print(f"Cross-validation accuracy: {cv_scores.mean():.3f} (+/- {cv_scores.std() * 2:.3f})")
+    
+    # Get feature importance (coefficients)
+    coefficients = model.coef_[0]
+    feature_names = ['Size', 'References', 'Address', 'Opcode']
+    
+    print("\nLearned feature coefficients:")
+    for name, coef in zip(feature_names, coefficients):
+        print(f"  {name}: {coef:.4f}")
+    
+    # Convert to normalized weights (positive, sum to 1)
+    # Take absolute values and normalize
+    abs_coefficients = np.abs(coefficients)
+    normalized_weights = abs_coefficients / np.sum(abs_coefficients)
+    
+    print("\nNormalized weights for correlator:")
+    for name, weight in zip(feature_names, normalized_weights):
+        print(f"  {name}: {weight:.3f}")
+    
+    print(f"\nSuggested command line:")
+    print(f"python correlator.py --test {normalized_weights[0]:.3f} {normalized_weights[1]:.3f} {normalized_weights[2]:.3f} {normalized_weights[3]:.3f}")
+    
+    return {
+        'model': model,
+        'scaler': scaler,
+        'weights': normalized_weights,
+        'coefficients': coefficients,
+        'cv_accuracy': cv_scores.mean()
+    }
+
 def main():
     global gog_functions, steam_functions
 
@@ -398,6 +532,11 @@ def main():
     # Check for analysis mode
     if len(sys.argv) >= 2 and sys.argv[1] == "--analyze":
         analyze_address_differences()
+        return
+    
+    # Check for ML training mode
+    if len(sys.argv) >= 2 and sys.argv[1] == "--train":
+        train_logistic_regression()
         return
     
     # Check for test mode
@@ -432,11 +571,13 @@ def main():
         print("  python correlator.py <function_address> [size_weight] [ref_weight] [addr_weight] [opcode_weight]")
         print("  python correlator.py --test [size_weight] [ref_weight] [addr_weight] [opcode_weight]")
         print("  python correlator.py --analyze")
+        print("  python correlator.py --train")
         print("\nExamples:")
         print("  python correlator.py 00401000")
         print("  python correlator.py 00401000 0.4 0.3 0.1 0.2")
         print("  python correlator.py --test")
         print("  python correlator.py --test 0.4 0.3 0.1 0.2")
+        print("  python correlator.py --train  # Learn optimal weights with ML")
         return
     
     target_address = sys.argv[1]
