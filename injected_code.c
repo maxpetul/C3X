@@ -3163,16 +3163,28 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	}
 
 	int * trade_net_refs;
-	if ((is->trade_net == p_original_trade_net) && ((trade_net_refs = load_trade_net_refs ()) != NULL)) {
-		// Allocate and initialize new trade net object. To construct it, all we have to do is zero a few fields and set the vptr.
-		is->trade_net = calloc (1, sizeof *is->trade_net);
-		is->trade_net->vtable = p_original_trade_net->vtable;
+	bool already_moved_trade_net = is->trade_net != p_original_trade_net,
+	     want_moved_trade_net = cfg->move_trade_net_object;
+	if (((trade_net_refs = load_trade_net_refs ()) != NULL) &&
+	    ((already_moved_trade_net && ! want_moved_trade_net) || (want_moved_trade_net && ! already_moved_trade_net))) {
+		// Allocate a new trade net object if necessary. To construct it, all we have to do is zero a few fields and set the vptr. Otherwise,
+		// set the allocated object aside for deletion later. Also set new & old addresses to the locations we're moving to & from.
+		Trade_Net * to_free = NULL;
+		int p_old, p_new;
+		if (want_moved_trade_net) {
+			is->trade_net = calloc (1, sizeof *is->trade_net);
+			is->trade_net->vtable = p_original_trade_net->vtable;
+			p_old = (int)p_original_trade_net;
+			p_new = (int)is->trade_net;
+		} else {
+			to_free = is->trade_net;
+			p_old = (int)is->trade_net;
+			p_new = (int)p_original_trade_net;
+			is->trade_net = p_original_trade_net;
+		}
 
-		// Patch all references to point to the new object
-
-		int p_old = (int)p_original_trade_net,
-		    p_new = (int)is->trade_net,
-		    offset;
+		// Patch all references from the "old" object to the "new" one
+		int offset;
 		bool popped_up_error = false;
 		for (int n_ref = 0; n_ref < TRADE_NET_REF_COUNT; n_ref++) {
 			int addr = trade_net_refs[TRADE_NET_REF_COUNT * exe_version_index + n_ref];
@@ -3204,6 +3216,11 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 					popped_up_error = true;
 				}
 			}
+		}
+
+		if (to_free) {
+			to_free->vtable->destruct (to_free, __, 0);
+			free (to_free);
 		}
 	}
 }
@@ -3274,6 +3291,7 @@ patch_init_floating_point ()
 		{"remove_city_improvement_limit"                       , true , offsetof (struct c3x_config, remove_city_improvement_limit)},
 		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
 		{"remove_cap_on_turn_limit"                            , true , offsetof (struct c3x_config, remove_cap_on_turn_limit)},
+		{"move_trade_net_object"                               , false, offsetof (struct c3x_config, move_trade_net_object)},
 		{"patch_submarine_bug"                                 , true , offsetof (struct c3x_config, patch_submarine_bug)},
 		{"patch_science_age_bug"                               , true , offsetof (struct c3x_config, patch_science_age_bug)},
 		{"patch_pedia_texture_bug"                             , true , offsetof (struct c3x_config, patch_pedia_texture_bug)},
