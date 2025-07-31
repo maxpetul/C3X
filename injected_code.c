@@ -2911,7 +2911,7 @@ set_nopification (int yes_or_no, byte * addr, int size)
 }
 
 void
-apply_machine_code_edits (struct c3x_config const * cfg)
+apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 {
 	DWORD old_protect, unused;
 
@@ -3165,7 +3165,8 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	int * trade_net_refs;
 	bool already_moved_trade_net = is->trade_net != p_original_trade_net,
 	     want_moved_trade_net = cfg->move_trade_net_object;
-	if (((trade_net_refs = load_trade_net_refs ()) != NULL) &&
+	if ((! at_program_start) &&
+	    ((trade_net_refs = load_trade_net_refs ()) != NULL) &&
 	    ((already_moved_trade_net && ! want_moved_trade_net) || (want_moved_trade_net && ! already_moved_trade_net))) {
 		// Allocate a new trade net object if necessary. To construct it, all we have to do is zero a few fields and set the vptr. Otherwise,
 		// set the allocated object aside for deletion later. Also set new & old addresses to the locations we're moving to & from.
@@ -3639,7 +3640,7 @@ patch_init_floating_point ()
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
-	apply_machine_code_edits (&is->current_config);
+	apply_machine_code_edits (&is->current_config, true);
 }
 
 void __fastcall
@@ -5485,7 +5486,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	if (0 != strcmp (scenario_config_file_name, scenario_config_path))
 		load_config (scenario_config_path, 0);
 	load_config ("custom.c3x_config.ini", 1);
-	apply_machine_code_edits (&is->current_config);
+	apply_machine_code_edits (&is->current_config, false);
 
 	// Initialize Trade Net X
 	if (is->current_config.enable_trade_net_x && (is->tnx_init_state == IS_UNINITED)) {
