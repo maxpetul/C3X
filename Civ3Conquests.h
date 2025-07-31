@@ -1665,7 +1665,7 @@ struct Tile_vtable
   int (__fastcall *m13_Check_Fortress)(Tile *, __, int);
   char (__fastcall *m14_Check_Barricade)(Tile *, __, int);
   char (__fastcall *m15_Check_Goody_Hut)(Tile *, __, int);
-  int m16;
+  int (__fastcall * m16_is_hills_or_mountain) (Tile *);
   bool (__fastcall *m17_Check_Irrigation)(Tile *, __, int);
   int (__fastcall *m18_Check_Mines)(Tile *, __, int);
   char (__fastcall *m19_Check_Outpost)(Tile *, __, int);
@@ -2048,8 +2048,7 @@ struct Map_vtable
   void (__fastcall * generate) (Map * this, __, int seed, bool is_multiplayer_game, int num_seafaring_civs);
 //  void (__thiscall *m30_Init_Tiles)(Map *this, int SquareType, int);
   void *m30_Init_Tiles;
-//  void (__thiscall *m31)(Map *this);
-  void *m31;
+  void (__fastcall * identify_continents) (Map * this);
 //  void (__thiscall *m32)(Map *);
   void *m32;
   Continent * (__fastcall * m33_Get_Continent) (Map *, __, int);
