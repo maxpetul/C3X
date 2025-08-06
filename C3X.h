@@ -264,6 +264,7 @@ struct c3x_config {
 	bool patch_empty_army_movement;
 	bool delete_off_map_ai_units;
 	bool fix_overlapping_specialist_yield_icons;
+	bool patch_premature_truncation_of_found_paths;
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;

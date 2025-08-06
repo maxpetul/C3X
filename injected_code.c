@@ -3079,6 +3079,10 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	WITH_MEM_PROTECTION (ADDR_SPAWN_POLLUTION_MOD, 4, PAGE_EXECUTE_READWRITE) {
 		int_to_bytes (ADDR_SPAWN_POLLUTION_MOD, is->workable_tile_count - 1);
 	}
+
+	WITH_MEM_PROTECTION (ADDR_PATHFINDER_RECONSTRUCTION_MAX_LEN, 4, PAGE_EXECUTE_READWRITE) {
+		int_to_bytes (ADDR_PATHFINDER_RECONSTRUCTION_MAX_LEN, cfg->patch_premature_truncation_of_found_paths ? 2560 : 256);
+	}
 }
 
 void
@@ -3159,6 +3163,7 @@ patch_init_floating_point ()
 		{"patch_disease_stopping_tech_flag_bug"                , false, offsetof (struct c3x_config, patch_disease_stopping_tech_flag_bug)},
 		{"patch_division_by_zero_in_ai_alliance_eval"          , true , offsetof (struct c3x_config, patch_division_by_zero_in_ai_alliance_eval)},
 		{"patch_empty_army_movement"                           , true , offsetof (struct c3x_config, patch_empty_army_movement)},
+		{"patch_premature_truncation_of_found_paths"           , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
 		{"delete_off_map_ai_units"                             , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
 		{"fix_overlapping_specialist_yield_icons"              , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
 		{"prevent_autorazing"                                  , false, offsetof (struct c3x_config, prevent_autorazing)},
