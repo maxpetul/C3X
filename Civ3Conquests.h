@@ -4460,7 +4460,7 @@ struct City_Body
   int field_364;
   int field_368;
   CTPG CTPG;
-  int Current_Improvement_Shields;
+  int stored_production_from_specialists; // Used to prevent civil engineers from contributing to unit builds after production switch
   int struct_198;
   int field_3A4[96];
   int Last;

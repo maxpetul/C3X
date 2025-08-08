@@ -265,6 +265,7 @@ struct c3x_config {
 	bool delete_off_map_ai_units;
 	bool fix_overlapping_specialist_yield_icons;
 	bool patch_premature_truncation_of_found_paths;
+	bool patch_zero_production_crash;
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;

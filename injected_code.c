@@ -3164,6 +3164,7 @@ patch_init_floating_point ()
 		{"patch_division_by_zero_in_ai_alliance_eval"          , true , offsetof (struct c3x_config, patch_division_by_zero_in_ai_alliance_eval)},
 		{"patch_empty_army_movement"                           , true , offsetof (struct c3x_config, patch_empty_army_movement)},
 		{"patch_premature_truncation_of_found_paths"           , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
+		{"patch_zero_production_crash"                         , true , offsetof (struct c3x_config, patch_zero_production_crash)},
 		{"delete_off_map_ai_units"                             , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
 		{"fix_overlapping_specialist_yield_icons"              , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
 		{"prevent_autorazing"                                  , false, offsetof (struct c3x_config, prevent_autorazing)},
@@ -4937,6 +4938,28 @@ patch_PCX_Image_do_draw_cntd_text_for_strat_res (PCX_Image * this, int edx, char
 	int tr = PCX_Image_do_draw_centered_text (this, __, str, x, y, width, str_len);
 	is->drawn_strat_resource_count++;
 	return tr;
+}
+
+int __fastcall
+patch_City_get_turns_to_build (City * this, int edx, enum City_Order_Types order_type, int order_id, bool param_3)
+{
+	// To fix the zero production crash, return 9999 when the city's total production rate is zero, avoiding a division by zero. That's only
+	// possible when producing an improvement due to negative shields from specialists. The original logic attempts to return 9999 in case of zero
+	// production but checks for that before including shields from specialists.
+	if (is->current_config.patch_zero_production_crash && (order_type == COT_Improvement)) {
+
+		int specialist_shields = 0;
+		FOR_CITIZENS_IN (ci, this)
+			if ((ci.ctzn->Body.field_20[0] & 0xFF) == 0)
+				specialist_shields += p_bic_data->CitizenTypes[ci.ctzn->Body.WorkerType].Construction;
+
+		// Return 9999 if the denominator in the base function's calculation would be zero. Note the base calc is incorrect in that it
+		// considers specialist shields to count toward Wealth, however we're not going to address that issue here, just stop the crash.
+		if (this->Body.ProductionIncome + specialist_shields <= 0)
+			return 9999;
+	}
+
+	return City_get_turns_to_build (this, __, order_type, order_id, param_3);
 }
 
 bool
