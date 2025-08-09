@@ -1,3 +1,4 @@
+* RELEASE 24
 - Option to share wonders among human players in hotseat mode, setting named share_wonders_in_hotseat
 - AI routine for "caravan units", which are modded units whose purpose is to be disbanded for shields
   - Controlled by config option enable_caravan_unit_ai

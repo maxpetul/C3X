@@ -122,7 +122,8 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Replace leader unit AI to fix bugs and improve behavior
    - Fix bug preventing AI from filling its armies
    - Improve AI army composition to discourage mixing types & exclude HN units
-   - AI routine for "pop units" that may appear in mods
+   - AI routine for "pop units", which are modded units whose only purpose is to be joined into cities
+   - AI routine for "caravan units", which are modded units whose only purpose is to be disbanded for shields
    - Can limit the number of escorts the AI assigns to its naval transports and carriers
    - Adjustable AI worker requirement
    - Option to stop AI from escorting units without the "requires escort" flag
@@ -139,6 +140,10 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - "Disables Diseases From Flood Plains" tech flag hardcoded to tech #8 (off by default)
    - Possible division by zero in AI logic to evaluate proposed alliances
    - Available movement computed incorrectly for empty armies
+   - Off-map AI units may crash the game (fixed by deleting them at the start of their turns)
+   - Pathfinder improperly truncates long paths, sending AI units on nonsensical or invalid paths
+   - Cities with zero production crash the game due to division by zero
+   - Icons for different kinds of specialist yields are drawn on top of, instead of next to, one another
   #### AMB Editor
    - A program for inspecting and modifying the special .amb sound files used by Civ 3.
    - For more info, see README.txt in the AMB Editor folder
@@ -223,7 +228,9 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
       - Area can also be limited by a city's cultural level
    - Option to throttle AI's expansion by temporarily applying perfume to settlers each time it founds a city
    - Option to block the galley chaining exploit by preventing units from loading into two different transports on the same turn
-   - Adjustable rebase range as multiple of operational range, setting named rebase_range_multiplier
+   - Adjustable rebase range as multiple of operational range
+   - Option to share wonders among human players in hotseat mode
+   - Experimental option to move the game's trade net object to a different location in memory
 </details>
 
 ## How It Works
