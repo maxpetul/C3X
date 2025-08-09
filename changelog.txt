@@ -1,6 +1,7 @@
 - Option to share wonders among human players in hotseat mode, setting named share_wonders_in_hotseat
 - AI routine for "caravan units", which are modded units whose purpose is to be disbanded for shields
   - Controlled by config option enable_caravan_unit_ai
+- Experimental option to move the game's trade net object to a different location in memory named move_trade_net_object
 - Delete any AI units that somehow end up off the map to fix a rare crash, setting named delete_off_map_ai_units
 - Fix pathfinder bug (see config for details), setting named patch_premature_truncation_of_found_paths
 - Fix crash due to division by zero when cities have zero production, setting named patch_zero_production_crash
