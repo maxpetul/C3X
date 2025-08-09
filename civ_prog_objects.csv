@@ -80,7 +80,7 @@ inlead,    0x5C5420,	0x5D4120,	0x5C5130,	"Unit_disembark_passengers",			"int (__
 define,    0xCAA330,	0xCCCB98,	0xCAA2F0,	"p_null_tile",					"Tile *"
 define,    0x45A35F,	0x45C56F,	0x45A3DF,	"ADDR_HOUSEBOAT_BUG_PATCH",			"byte *"
 define,    0x45A386,	0x45C596,	0x45A406,	"ADDR_HOUSEBOAT_BUG_PATCH_END",			"byte *"
-define,    0xB72888,	0xB950A8,	0xB72848,	"p_trade_net",					"Trade_Net *"
+define,    0xB72888,	0xB950A8,	0xB72848,	"p_original_trade_net",				"Trade_Net *"
 inlead,    0x580540,	0x58D270,	0x5802A0,	"Trade_Net_set_unit_path",			"int (__fastcall *) (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp)"
 define,    0x5B3290,	0x5C1BE0,	0x5B2FA0,	"Unit_pop_next_move_from_path",			"byte (__fastcall *) (Unit * this)"
 inlead,    0x45FED0,	0x4622A0,	0x45FF50,	"Unit_ai_move_leader",				"void (__fastcall *) (Unit * this)"

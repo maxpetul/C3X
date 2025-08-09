@@ -2734,6 +2734,88 @@ filter_zoc_candidate (struct register_set * reg)
 	return 1;
 }
 
+#define TRADE_NET_REF_COUNT 315
+
+int *
+load_trade_net_refs ()
+{
+	if (is->trade_net_refs_load_state == IS_OK)
+		return is->trade_net_refs;
+	else if (is->trade_net_refs_load_state == IS_INIT_FAILED)
+		return NULL;
+
+	bool success = false;
+	char err_msg[300] = {0};
+
+	is->trade_net_refs = calloc (3 * TRADE_NET_REF_COUNT, sizeof is->trade_net_refs[0]);
+	if (! is->trade_net_refs) {
+		snprintf (err_msg, (sizeof err_msg) - 1, "Bad alloc");
+		goto done;
+	}
+
+	char file_path[MAX_PATH] = {0};
+	snprintf (file_path, (sizeof file_path) - 1, "%s\\trade_net_refs.txt", is->mod_rel_dir);
+	char * refs_file = file_to_string (file_path);
+	if (! refs_file) {
+		snprintf (err_msg, (sizeof err_msg) - 1, "Couldn't load %s", file_path);
+		goto done;
+	}
+
+	char * cursor = refs_file;
+	int loaded_count = 0;
+	while (true) {
+		if (*cursor == '#') { // comment line
+			skip_line (&cursor);
+			continue;
+		}
+
+		skip_horiz_space (&cursor);
+		if (*cursor == '\n') { // empty line
+			cursor++;
+			continue;
+		} else if (*cursor == '\0') // end of file
+			break;
+
+		// otherwise we must be on a line with some addresses
+		int ref;
+		bool got_any_addresses = false;
+		while (parse_int (&cursor, &ref)) {
+			if (loaded_count >= 3 * TRADE_NET_REF_COUNT) {
+				snprintf (err_msg, (sizeof err_msg) - 1, "Too many values in file (expected %d exactly)", 3 * TRADE_NET_REF_COUNT);
+				goto done;
+			}
+			is->trade_net_refs[loaded_count] = ref;
+			loaded_count++;
+			got_any_addresses = true;
+		}
+
+		if (! got_any_addresses) {
+			snprintf (err_msg, (sizeof err_msg) - 1, "Parse error");
+			goto done;
+		}
+	}
+
+	if (loaded_count < 3 * TRADE_NET_REF_COUNT) {
+		snprintf (err_msg, (sizeof err_msg) - 1, "Too few values in file (expected %d exactly)", 3 * TRADE_NET_REF_COUNT);
+		goto done;
+	}
+
+	success = true;
+
+done:
+	free (refs_file);
+	if (! success) {
+		char full_err_msg[300] = {0};
+		snprintf (full_err_msg, (sizeof full_err_msg) - 1, "Failed to load trade net refs: %s", err_msg);
+		MessageBox (NULL, full_err_msg, NULL, MB_ICONERROR);
+		is->trade_net_refs_load_state = IS_INIT_FAILED;
+		return NULL;
+	} else {
+		is->trade_net_refs_load_state = IS_OK;
+		return is->trade_net_refs;
+	}
+}
+
 enum branch_kind { BK_CALL, BK_JUMP };
 
 byte *
@@ -2829,7 +2911,7 @@ set_nopification (int yes_or_no, byte * addr, int size)
 }
 
 void
-apply_machine_code_edits (struct c3x_config const * cfg)
+apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 {
 	DWORD old_protect, unused;
 
@@ -3083,6 +3165,69 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 	WITH_MEM_PROTECTION (ADDR_PATHFINDER_RECONSTRUCTION_MAX_LEN, 4, PAGE_EXECUTE_READWRITE) {
 		int_to_bytes (ADDR_PATHFINDER_RECONSTRUCTION_MAX_LEN, cfg->patch_premature_truncation_of_found_paths ? 2560 : 256);
 	}
+
+	int * trade_net_refs;
+	bool already_moved_trade_net = is->trade_net != p_original_trade_net,
+	     want_moved_trade_net = cfg->move_trade_net_object;
+	if ((! at_program_start) &&
+	    ((trade_net_refs = load_trade_net_refs ()) != NULL) &&
+	    ((already_moved_trade_net && ! want_moved_trade_net) || (want_moved_trade_net && ! already_moved_trade_net))) {
+		// Allocate a new trade net object if necessary. To construct it, all we have to do is zero a few fields and set the vptr. Otherwise,
+		// set the allocated object aside for deletion later. Also set new & old addresses to the locations we're moving to & from.
+		Trade_Net * to_free = NULL;
+		int p_old, p_new;
+		if (want_moved_trade_net) {
+			is->trade_net = calloc (1, sizeof *is->trade_net);
+			is->trade_net->vtable = p_original_trade_net->vtable;
+			p_old = (int)p_original_trade_net;
+			p_new = (int)is->trade_net;
+		} else {
+			to_free = is->trade_net;
+			p_old = (int)is->trade_net;
+			p_new = (int)p_original_trade_net;
+			is->trade_net = p_original_trade_net;
+		}
+
+		// Patch all references from the "old" object to the "new" one
+		int offset;
+		bool popped_up_error = false;
+		for (int n_ref = 0; n_ref < TRADE_NET_REF_COUNT; n_ref++) {
+			int addr = trade_net_refs[TRADE_NET_REF_COUNT * exe_version_index + n_ref];
+			WITH_MEM_PROTECTION ((void *)(addr - 10), 20, PAGE_EXECUTE_READWRITE) {
+				byte * instr = (byte *)addr;
+				if ((instr[0] == 0xB9) && (int_from_bytes (&instr[1]) == p_old)) // move trade net ptr to ecx
+					int_to_bytes (&instr[1], p_new);
+				else if ((instr[0] == 0xC7) && (instr[1] == 0x05) && (int_from_bytes (&instr[2]) == p_old)) // write trade net vtable ptr
+					int_to_bytes (&instr[2], p_new);
+				else if ((instr[0] == 0x81) && (instr[1] == 0xFE) && (int_from_bytes (&instr[2]) == (int)p_original_trade_net)) // cmp esi, trade net location
+					; // Do not patch this location because it's the upper limit for a memcpy
+				else if ((instr[0] == 0x81) && (instr[1] == 0xFF) && (int_from_bytes (&instr[2]) == (int)p_original_trade_net)) // cmp edi, trade net location
+					; // Same
+				else if ((instr[0] == 0x81) && (instr[1] == 0xFA) && (int_from_bytes (&instr[2]) == (int)&p_original_trade_net->Data2)) // cmp edx, trade net data2 location
+					; // Same
+				else if (((instr[0] == 0xA3) || (instr[0] == 0xA1)) && // move eax to field or vice-versa
+					 (offset = int_from_bytes (&instr[1]) - p_old, (offset >= 0) && (offset < 100)))
+					int_to_bytes (&instr[1], p_new + offset);
+				else if ((instr[0] == 0x89) && ((instr[1] >= 0x0D) && (instr[1] <= 0x3D)) && // move other regs to field
+					 (offset = int_from_bytes (&instr[2]) - p_old, (offset >= 0) && (offset < 100)))
+					int_to_bytes (&instr[2], p_new + offset);
+				else if ((instr[0] == 0x8B) && ((instr[1] == 0x35) || (instr[1] == 0x3D) || (instr[1] == 0x0D)) && // mov field to esi, edi or ecx
+					 (offset = int_from_bytes (&instr[2]) - p_old, (offset >= 0) && (offset < 100)))
+					int_to_bytes (&instr[2], p_new + offset);
+				else if (! popped_up_error) {
+					char err_msg[200] = {0};
+					snprintf (err_msg, (sizeof err_msg) - 1, "Can't move trade net object from address 0x%x. Pattern doesn't match.", addr);
+					MessageBox (NULL, err_msg, NULL, MB_ICONERROR);
+					popped_up_error = true;
+				}
+			}
+		}
+
+		if (to_free) {
+			to_free->vtable->destruct (to_free, __, 0);
+			free (to_free);
+		}
+	}
 }
 
 void
@@ -3151,6 +3296,7 @@ patch_init_floating_point ()
 		{"remove_city_improvement_limit"                       , true , offsetof (struct c3x_config, remove_city_improvement_limit)},
 		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
 		{"remove_cap_on_turn_limit"                            , true , offsetof (struct c3x_config, remove_cap_on_turn_limit)},
+		{"move_trade_net_object"                               , false, offsetof (struct c3x_config, move_trade_net_object)},
 		{"patch_submarine_bug"                                 , true , offsetof (struct c3x_config, patch_submarine_bug)},
 		{"patch_science_age_bug"                               , true , offsetof (struct c3x_config, patch_science_age_bug)},
 		{"patch_pedia_texture_bug"                             , true , offsetof (struct c3x_config, patch_pedia_texture_bug)},
@@ -3340,6 +3486,9 @@ patch_init_floating_point ()
 	}
 
 	is->sb_next_up = NULL;
+	is->trade_net = p_original_trade_net;
+	is->trade_net_refs_load_state = IS_UNINITED;
+	is->trade_net_refs = NULL;
 	is->tnx_cache = NULL;
 	is->is_computing_city_connections = false;
 	is->keep_tnx_cache = false;
@@ -3498,7 +3647,7 @@ patch_init_floating_point ()
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
-	apply_machine_code_edits (&is->current_config);
+	apply_machine_code_edits (&is->current_config, true);
 }
 
 void __fastcall
@@ -3902,7 +4051,7 @@ void
 recompute_resources_if_necessary ()
 {
 	if (is->must_recompute_resources_for_mill_inputs)
-		patch_Trade_Net_recompute_resources (p_trade_net, __, false);
+		patch_Trade_Net_recompute_resources (is->trade_net, __, false);
 }
 
 void __fastcall
@@ -5366,7 +5515,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	if (0 != strcmp (scenario_config_file_name, scenario_config_path))
 		load_config (scenario_config_path, 0);
 	load_config ("custom.c3x_config.ini", 1);
-	apply_machine_code_edits (&is->current_config);
+	apply_machine_code_edits (&is->current_config, false);
 
 	// Initialize Trade Net X
 	if (is->current_config.enable_trade_net_x && (is->tnx_init_state == IS_UNINITED)) {
@@ -5787,7 +5936,7 @@ int
 estimate_travel_time (Unit * unit, int to_tile_x, int to_tile_y, int * out_num_turns)
 {
 	int dist_in_mp;
-	patch_Trade_Net_set_unit_path (p_trade_net, __, unit->Body.X, unit->Body.Y, to_tile_x, to_tile_y, unit, unit->Body.CivID, 1, &dist_in_mp);
+	patch_Trade_Net_set_unit_path (is->trade_net, __, unit->Body.X, unit->Body.Y, to_tile_x, to_tile_y, unit, unit->Body.CivID, 1, &dist_in_mp);
 	dist_in_mp += unit->Body.Moves; // Add MP already spent this turn to the distance
 	int max_mp = patch_Unit_get_max_move_points (unit);
 	if ((dist_in_mp >= 0) && (max_mp > 0)) {
@@ -5955,7 +6104,7 @@ patch_Unit_ai_move_leader (Unit * this)
 		moving_to_city = find_nearest_established_city (this, continent_id);
 	}
 	if (moving_to_city) {
-		int first_move = patch_Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
+		int first_move = patch_Trade_Net_set_unit_path (is->trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
 		if (first_move > 0) {
 			Unit_set_escortee (this, __, -1);
 			this->vtable->Move (this, __, first_move, 0);
@@ -6803,7 +6952,7 @@ ai_move_material_unit (Unit * this)
 		moving_to_city = find_nearest_established_city (this, continent_id);
 
 	if (moving_to_city) {
-		int first_move = patch_Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
+		int first_move = patch_Trade_Net_set_unit_path (is->trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
 		if (first_move > 0) {
 			Unit_set_escortee (this, __, -1);
 			this->vtable->Move (this, __, first_move, 0);
@@ -7323,7 +7472,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 		    ((improv->ImprovementFlags & ITF_Allows_Water_Trade) == 0) &&
 		    ((improv->ImprovementFlags & ITF_Allows_Air_Trade)   == 0) &&
 		    ((improv->WonderFlags      & ITW_Safe_Sea_Travel)    == 0))
-			patch_Trade_Net_recompute_resources (p_trade_net, __, 0);
+			patch_Trade_Net_recompute_resources (is->trade_net, __, 0);
 
 		// If the mill adds yields or might be a link in a resource production chain that does, recompute yields in the city.
 		if (is_yielding_mill || generates_input)

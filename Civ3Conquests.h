@@ -78,6 +78,7 @@ typedef struct Unit_vtable Unit_vtable;
 typedef struct _188_vtable _188_vtable;
 typedef struct Advisor_Renderer Advisor_Renderer;
 typedef struct Trade_Net Trade_Net;
+typedef struct Trade_Net_vtable Trade_Net_vtable;
 typedef struct Map_Worker_Job_Info Map_Worker_Job_Info;
 typedef struct Airfield_Body Airfield_Body;
 typedef struct Colony_Body Colony_Body;
@@ -2677,9 +2678,14 @@ struct Advisor_Renderer
   int field_2070;
 };
 
+struct Trade_Net_vtable
+{
+  void (__fastcall * destruct) (Trade_Net * this, __, byte deallocate);
+};
+
 struct Trade_Net
 {
-  int vtable;
+  Trade_Net_vtable * vtable;
   int Map_Width;
   int Current_Unit_X;
   int Current_Unit_Y;

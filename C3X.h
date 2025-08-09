@@ -249,6 +249,7 @@ struct c3x_config {
 	bool remove_city_improvement_limit;
 	bool remove_era_limit;
 	bool remove_cap_on_turn_limit;
+	bool move_trade_net_object;
 
 	bool patch_submarine_bug;
 	bool patch_science_age_bug;
@@ -504,6 +505,11 @@ struct injected_state {
 	void * (* memcpy) (void *, void const *, size_t);
 
 	Unit * sb_next_up; // The unit currently doing a stack bombard or NULL otherwise. Gets set to NULL if the unit is despawned.
+
+	Trade_Net * trade_net; // Pointer to the trade net object. If it hasn't been moved by the mod, this equals p_original_trade_net.
+
+	enum init_state trade_net_refs_load_state;
+	int * trade_net_refs;
 
 	HMODULE trade_net_x;
 	void (__stdcall * set_exe_version) (int);
