@@ -3358,6 +3358,7 @@ patch_init_floating_point ()
 		{"allow_sale_of_aqueducts_and_hospitals"               , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
 		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
 		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
+		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
 	};
 
 	struct integer_config_option {
@@ -11994,6 +11995,19 @@ patch_City_add_building_if_done (City * this)
 	}
 
 	City_add_building_if_done (this);
+}
+
+
+bool __fastcall
+patch_City_can_build_upgrade_type (City * this, int edx, int unit_type_id, bool exclude_upgradable, int param_3, bool allow_kings)
+{
+	UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
+	if (is->current_config.prevent_old_units_from_upgrading_past_ability_block &&
+	    ((type->Special_Actions & UCV_Upgrade_Unit) == 0) &&
+	    (type->Available_To & (1 << leaders[this->Body.CivID].RaceID)))
+		exclude_upgradable = false;
+
+	return patch_City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
 }
 
 // TCC requires a main function be defined even though it's never used.

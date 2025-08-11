@@ -228,6 +228,7 @@ struct c3x_config {
 	enum work_area_limit work_area_limit;
 	int rebase_range_multiplier;
 	bool limit_unit_loading_to_one_transport_per_turn;
+	bool prevent_old_units_from_upgrading_past_ability_block;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
