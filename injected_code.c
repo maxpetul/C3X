@@ -108,6 +108,27 @@ rand_div (int num, int denom)
 	return q + (rand_int (p_rand_object, __, denom) < r);
 }
 
+bool
+are_tiles_adjacent (int ax, int ay, int bx, int by)
+{
+	int x_dist = int_abs (ax - bx),
+	    y_dist = int_abs (ay - by);
+
+	// Handle edge wrapping by counting from the opposite direction if it would be shorter
+	if (p_bic_data->Map.Flags & 1) { // if map wraps horizontally
+		int width = p_bic_data->Map.Width;
+		if (x_dist > (width>>1))
+			x_dist = width - x_dist;
+	}
+	if (p_bic_data->Map.Flags & 2) { // if map wraps vertically
+		int height = p_bic_data->Map.Height;
+		if (y_dist > (height>>1))
+			y_dist = height - y_dist;
+	}
+
+	return (x_dist + y_dist) == 2;
+}
+
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
 	bool redundant; // If true, this pause would overlap a previous one and so should not be counted
@@ -286,20 +307,307 @@ clear_memo ()
 	is->memo_len = 0;
 }
 
+// The maximum possible cultural neighbor index. We don't bother dealing with indices beyond this b/c it's the last tile in the seventh ring. Also
+// equals one less than the tile count up to & inc. the seventh ring b/c of the zeroth tile.
+#define MAX_CULTURAL_NI 192
+
+// Number of workable tiles including the city center for each workable radius
+unsigned char const workable_tile_counts[8] = {1, 9, 21, 37, 61, 89, 137, 193};
+
+char const cultural_ni_to_diffs[(MAX_CULTURAL_NI + 1) * 2] =
+{
+	0, 0,
+
+// first ring
+	1, -1,   2, 0,   1, 1,   0, 2,   -1, 1,   -2, 0,   -1, -1,
+	0, -2,
+
+// second ring
+	 1, -3,    2, -2,    3, -1,    3,  1,   2, 2,   1, 3,   -1, 3,   -2, 2,
+	-3,  1,   -3, -1,   -2, -2,   -1, -3,
+
+// third ring
+	0, -4,   4, 0,    0, 4,   -4, 0,    2, -4,    3, -3,    4, -2,    4,  2,
+	3,  3,   2, 4,   -2, 4,   -3, 3,   -4,  2,   -4, -2,   -3, -3,   -2, -4,
+
+// fourth ring
+	1, -5,   5, -1,    5, 1,    1, 5,   -1,  5,   -5,  1,   -5, -1,   -1, -5,
+	0, -6,   6,  0,    0, 6,   -6, 0,    3, -5,    4, -4,    5, -3,    5,  3,
+	4,  4,   3,  5,   -3, 5,   -4, 4,   -5,  3,   -5, -3,   -4, -4,   -3, -5,
+
+// fifth ring
+	 1, -7,    2, -6,    6, -2,    7, -1,    7,  1,    6,  2,    2,  6,    1,  7,
+	-1,  7,   -2,  6,   -6,  2,   -7,  1,   -7, -1,   -6, -2,   -2, -6,   -1, -7,
+	 4, -6,    5, -5,    6, -4,    6,  4,    5,  5,    4,  6,   -4,  6,   -5,  5,
+	-6,  4,   -6, -4,   -5, -5,   -4, -6,
+
+// sixth ring
+	 0, -8,    8,  0,    0,  8,   -8,  0,    1, -9,    2, -8,    3, -7,    7, -3,
+	 8, -2,    9, -1,    9,  1,    8,  2,    7,  3,    3,  7,    2,  8,    1,  9,
+	-1,  9,   -2,  8,   -3,  7,   -7,  3,   -8,  2,   -9,  1,   -9, -1,   -8, -2,
+	-7, -3,   -3, -7,   -2, -8,   -1, -9,    4, -8,    5, -7,    6, -6,    7, -5,
+	 8, -4,    8,  4,    7,  5,    6,  6,    5,  7,    4,  8,   -4,  8,   -5,  7,
+	-6,  6,   -7,  5,   -8,  4,   -8, -4,   -7, -5,   -6, -6,   -5, -7,   -4, -8,
+
+// seventh ring
+	  0, -10,    10,  0,    0,  10,   -10,   0,     1, -11,     2, -10,     3, -9,     9,  -3,
+	 10,  -2,    11, -1,   11,   1,    10,   2,     9,   3,     3,   9,     2, 10,     1,  11,
+	 -1,  11,    -2, 10,   -3,   9,    -9,   3,   -10,   2,   -11,   1,   -11, -1,   -10,  -2,
+	 -9,  -3,    -3, -9,   -2, -10,    -1, -11,     4, -10,     5,  -9,     6, -8,     7,  -7,
+	  8,  -6,     9, -5,   10,  -4,    10,   4,     9,   5,     8,   6,     7,  7,     6,   8,
+	  5,   9,     4, 10,   -4,  10,    -5,   9,    -6,   8,    -7,   7,    -8,  6,    -9,   5,
+	-10,   4,   -10, -4,   -9,  -5,    -8,  -6,    -7,  -7,    -6,  -8,    -5, -9,    -4, -10
+};
+
+// Like neighbor_index_to_diff, but enumerates tiles in an order that matches cultural border expansion. Only valid for 0 <= neighbor_index <= MAX_CULTURAL_NI.
+void __cdecl
+patch_ni_to_diff_for_work_area (int neighbor_index, int * x_disp, int * y_disp)
+{
+	if (neighbor_index <= 0) {
+		*x_disp = *y_disp = 0;
+		return;
+	} else if (neighbor_index > MAX_CULTURAL_NI)
+		neighbor_index = neighbor_index % (MAX_CULTURAL_NI + 1);
+
+	int i = neighbor_index << 1;
+	char const * p = &cultural_ni_to_diffs[neighbor_index << 1];
+	*x_disp = p[0];
+	*y_disp = p[1];
+}
+
+int __fastcall
+patch_City_find_min_value_tile (City * this)
+{
+	int tr = City_find_min_value_tile (this);
+
+	// The original function has been edited to enumerate tiles in our custom order matching cultural borders instead of the game's original
+	// order. It returns a neighbor index from that enumeration. We must convert it to standard order if it's beyond the range where the two
+	// enumerations overlap.
+	if (tr >= 21)
+		tr = (tr <= MAX_CULTURAL_NI) ? is->cultural_ni_to_standard[tr] : 0;
+
+	return tr;
+}
+
+int __fastcall
+patch_City_find_best_tile_to_work (City * this, int edx, Unit * worker, bool param_2)
+{
+	int tr = City_find_best_tile_to_work (this, __, worker, param_2);
+	if (tr >= 21) // Like in find_min_value_tile, convert return value from cultural to standard n.i.
+		tr = (tr <= MAX_CULTURAL_NI) ? is->cultural_ni_to_standard[tr] : 0;
+	return tr;
+}
+
+bool __fastcall
+City_stop_working_tile_conv_ni (City * this, int edx, int neighbor_index)
+{
+	if ((neighbor_index >= 21) && (neighbor_index <= MAX_CULTURAL_NI))
+		neighbor_index = is->cultural_ni_to_standard[neighbor_index];
+	return City_stop_working_tile (this, __, neighbor_index);
+}
+
+void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y);
+void wrap_tile_coords (Map * map, int * x, int * y);
+
+int __fastcall
+patch_Map_compute_ni_for_work_area (Map * this, int edx, int x_home, int y_home, int x_neigh, int y_neigh, int lim)
+{
+	// Within the first two rings, there's no difference b/w the standard and custom "work area" neighbor indices so fall back to the base game's
+	// function in that case.
+	if (is->workable_tile_count <= 21)
+		return Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, lim);
+
+	// If the work area has been expanded, compute the neighbor index then check that it's within the area. Ignore the limit we were passed and
+	// instead use the number of tiles in the workable area, doubled to cover the difference between cultural vs standard enumeration.
+	else {
+		int ni = Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, 2 * is->workable_tile_count);
+		if ((ni >= 0) && (ni <= ARRAY_LEN (is->ni_to_work_radius)) &&
+		    (is->ni_to_work_radius[ni] >= 0) &&
+		    (is->ni_to_work_radius[ni] <= is->current_config.city_work_radius))
+			return ni;
+		else
+			return -1;
+	}
+}
+
+int __fastcall
+patch_Map_m28_find_cnter_neigh_point_for_work_area (Map * this, int edx, int x_home, int y_home, int x_neigh, int y_neigh, int lim)
+{
+	int ret_addr = ((int *)&x_home)[-1];
+	if (ret_addr != ADDR_FIND_CENTER_NP_SPOTLIGHT_RET)
+		return Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, lim);
+	else
+		return patch_Map_compute_ni_for_work_area (this, __, x_home, y_home, x_neigh, y_neigh, 500);
+}
+
+int
+get_work_ring_limit_by_culture (City * city)
+{
+	if (is->current_config.work_area_limit == WAL_NONE)
+		return INT_MAX;
+	else {
+		int lower_lim = (is->current_config.work_area_limit == WAL_CULTURAL_MIN_2) ? 2 : 1;
+		return not_below (lower_lim, city->Body.cultural_level);
+	}
+}
+
+bool __fastcall
+patch_City_controls_tile (City * this, int edx, int neighbor_index, bool consider_enemy_units)
+{
+	// Check that this tile is not outside the city's work area. We've deleted a check from the base game code that verifies the n.i. is within 21
+	// tiles so we can replicate it here in a way that also works for an expanded work area.
+	int work_radius = ((neighbor_index >= 0) && (neighbor_index < ARRAY_LEN (is->ni_to_work_radius))) ? is->ni_to_work_radius[neighbor_index] : -1;
+	if ((work_radius > is->current_config.city_work_radius) || (work_radius < 0))
+		return false;
+
+	int work_ring_limit = get_work_ring_limit_by_culture (this);
+	if (work_radius > work_ring_limit) {
+
+		// May consider this tile within the limit if any adjacent tiles are within the limit & within borders
+		bool exempt_from_limit;
+		if (is->current_config.work_area_limit != WAL_CULTURAL_OR_ADJACENT)
+			exempt_from_limit = false;
+		else if (neighbor_index >= 9) {
+			exempt_from_limit = false;
+			int center_x, center_y;
+			get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &center_x, &center_y);
+			int neighbors_checked = 0;
+			for (int ni = 1; ni < ARRAY_LEN (is->ni_to_work_radius); ni++) {
+				int nx, ny;
+				get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, ni, &nx, &ny);
+				if (are_tiles_adjacent (center_x, center_y, nx, ny)) {
+					neighbors_checked++;
+					int wr = is->ni_to_work_radius[ni];
+					Tile * neighbor;
+					if (((wr >= 0) && (wr <= work_ring_limit)) &&
+					    (neighbor = tile_at (nx, ny)) &&
+					    (neighbor->vtable->m38_Get_Territory_OwnerID (neighbor) == this->Body.CivID)) {
+						exempt_from_limit = true;
+						break;
+					}
+				}
+				if (neighbors_checked == 8)
+					break;
+			}
+		} else
+			exempt_from_limit = true;
+
+		if (! exempt_from_limit)
+			return false;
+	}
+
+	return City_controls_tile (this, __, neighbor_index, consider_enemy_units);
+}
+
+bool __fastcall
+patch_City_controls_tile_conv_ni (City * this, int edx, int neighbor_index, bool consider_enemy_units)
+{
+	if ((neighbor_index >= 0) && (neighbor_index <= MAX_CULTURAL_NI))
+		return patch_City_controls_tile (this, __, is->cultural_ni_to_standard[neighbor_index], consider_enemy_units);
+	else
+		return false;
+}
+
+bool __fastcall
+patch_City_stop_working_tile_conv_ni (City * this, int edx, int neighbor_index)
+{
+	if ((neighbor_index >= 0) && (neighbor_index <= MAX_CULTURAL_NI))
+		return City_stop_working_tile (this, __, is->cultural_ni_to_standard[neighbor_index]);
+	else
+		return false;
+}
+
+bool __fastcall
+patch_City_start_working_tile_conv_ni (City * this, int edx, int neighbor_index)
+{
+	if ((neighbor_index >= 0) && (neighbor_index <= MAX_CULTURAL_NI))
+		return City_start_working_tile (this, __, is->cultural_ni_to_standard[neighbor_index]);
+	else
+		return false;
+}
+
+void __fastcall
+patch_City_add_or_remove_tile_yield_conv_ni (City * this, int edx, int neighbor_index, bool add_else_remove)
+{
+	if ((neighbor_index >= 0) && (neighbor_index <= MAX_CULTURAL_NI))
+		City_add_or_remove_tile_yield (this, __, is->cultural_ni_to_standard[neighbor_index], add_else_remove);
+}
+
+bool __fastcall
+patch_City_is_neighboring_tile_in_area_conv_ni (City * this, int edx, int neighbor_index)
+{
+	if ((neighbor_index >= 0) && (neighbor_index <= MAX_CULTURAL_NI))
+		return City_is_neighboring_tile_in_area (this, __, is->cultural_ni_to_standard[neighbor_index]);
+	else
+		return false;
+}
+
+int
+get_city_screen_center_y (City * city)
+{
+	int y = city->Body.Y;
+	if (p_bic_data->is_zoomed_out)
+		return y + 7; // when zoomed out, shift map up to center city
+	else if (is->current_config.city_work_radius >= 3)
+		return y + 4; // when work radius is 3, shift map up one extra tile so as not to overlap citizen heads
+	else
+		return y + 2; // base game behavior
+}
+
+void __fastcall
+patch_Main_Screen_Form_bring_cnter_view_city_focus (Main_Screen_Form * this, int edx, int x, int y, int param_3, bool always_update_tile_bounds, bool param_5)
+{
+	// If the city we're viewing can work tiles in the 4+ ring then zoom out the map display to show them
+	int effective_radius = not_above (get_work_ring_limit_by_culture (p_city_form->CurrentCity), is->current_config.city_work_radius);
+	if (is->current_config.work_area_limit == WAL_CULTURAL_OR_ADJACENT)
+		effective_radius = not_above (is->current_config.city_work_radius, effective_radius + 1);
+	if (effective_radius >= 4)
+		p_bic_data->is_zoomed_out = true;
+
+	Main_Screen_Form_bring_tile_into_view (this, __, x, get_city_screen_center_y (p_city_form->CurrentCity), param_3, always_update_tile_bounds, param_5);
+}
+
+void __fastcall
+patch_Main_Screen_Form_bring_cnter_view_city_arrow (Main_Screen_Form * this, int edx, int x, int y, int param_3, bool always_update_tile_bounds, bool param_5)
+{
+	Main_Screen_Form_bring_tile_into_view (this, __, x, get_city_screen_center_y (p_city_form->CurrentCity), param_3, always_update_tile_bounds, param_5);
+}
+
+void tile_index_to_coords (Map * map, int index, int * out_x, int * out_y);
+
+Tile * __fastcall
+patch_Map_get_tile_for_work_area_drawing (Map * this, int edx, int index)
+{
+	Tile * tr = Map_get_tile (this, __, index);
+
+	if (tr != p_null_tile) {
+		int x, y;
+		tile_index_to_coords (this, index, &x, &y);
+		City * viewing_city = p_city_form->CurrentCity;
+		int ni = Map_compute_neighbor_index (this, __, viewing_city->Body.X, viewing_city->Body.Y, x, y, 1000);
+		if ((ni > 0) && ! patch_City_controls_tile (viewing_city, __, ni, false))
+			tr = p_null_tile;
+	}
+
+	return tr;
+}
+
 // Resets is->current_config to the base config and updates the list of config names. Does NOT re-apply machine code edits.
 void
 reset_to_base_config ()
 {
 	struct c3x_config * cc = &is->current_config;
 
-	stable_deinit (&cc->perfume_specs);
+	for (int n = 0; n < ARRAY_LEN (cc->limit_units_per_tile); n++)
+		cc->limit_units_per_tile[n] = 0;
+
+	for (int n = 0; n < COUNT_PERFUME_KINDS; n++)
+		stable_deinit (&cc->perfume_specs[n]);
 
 	// Free building-unit prereqs table
-	size_t building_unit_prereqs_capacity = table_capacity (&cc->building_unit_prereqs);
-	for (size_t n = 0; n < building_unit_prereqs_capacity; n++) {
-		int ptr;
-		if (table_get_by_index (&cc->building_unit_prereqs, n, &ptr) && ((ptr & 1) == 0))
-			free ((void *)ptr);
+	FOR_TABLE_ENTRIES (tei, &cc->building_unit_prereqs) {
+		if ((tei.value & 1) == 0)
+			free ((void *)tei.value);
 	}
 	table_deinit (&cc->building_unit_prereqs);
 
@@ -318,12 +626,13 @@ reset_to_base_config ()
 		cc->ai_multi_start_extra_palaces_capacity = 0;
 	}
 
-	// Free list of PTW artillery types
-	if (cc->ptw_arty_types != NULL) {
-		free (cc->ptw_arty_types);
-		cc->ptw_arty_types = NULL;
-		cc->count_ptw_arty_types = 0;
-		cc->ptw_arty_types_capacity = 0;
+	// Free set of PTW artillery types and list of converted types
+	table_deinit (&cc->ptw_arty_types);
+	if (is->charmed_types_converted_to_ptw_arty != NULL) {
+		free (is->charmed_types_converted_to_ptw_arty);
+		is->charmed_types_converted_to_ptw_arty = NULL;
+		is->count_charmed_types_converted_to_ptw_arty = 0;
+		is->charmed_types_converted_to_ptw_arty_capacity = 0;
 	}
 
 	// Free era alias lists
@@ -353,12 +662,8 @@ reset_to_base_config ()
 	}
 
 	// Free unit limits table
-	size_t unit_limits_capacity = table_capacity (&cc->unit_limits);
-	for (size_t n = 0; n < unit_limits_capacity; n++) {
-		int ptr;
-		if (table_get_by_index (&cc->unit_limits, n, &ptr))
-			free ((void *)ptr);
-	}
+	FOR_TABLE_ENTRIES (tei, &cc->unit_limits)
+		free ((void *)tei.value);
 	stable_deinit (&cc->unit_limits);
 
 	// Free the linked list of loaded config names and the string name contained in each one
@@ -379,6 +684,128 @@ reset_to_base_config ()
 	is->loaded_config_names = malloc (sizeof *is->loaded_config_names);
 	is->loaded_config_names->name = strdup ("(base)");
 	is->loaded_config_names->next = NULL;
+
+	// Update IS variable that's tied to a config value
+	is->workable_tile_count = workable_tile_counts[is->current_config.city_work_radius];
+}
+
+struct id_list {
+	int length;
+	int capacity;
+	int ids[0];
+};
+
+struct id_list *
+alloc_id_list (int capacity, struct id_list const * copy)
+{
+	struct id_list * tr = malloc ((sizeof *tr) + capacity * sizeof(tr->ids[0]));
+	tr->length = 0;
+	tr->capacity = capacity;
+	if (copy != NULL) {
+		int new_len = not_above (capacity, copy->length);
+		for (int n = 0; n < new_len; n++)
+			tr->ids[n] = copy->ids[n];
+		tr->length = new_len;
+	}
+	return tr;
+}
+
+// This is the largest ID that will be stored inline inside sidtables. The amount here must be smaller than any pointer we'd get from malloc since the
+// sidtable code compares values against this amount to determine which are inlined values versus pointers.
+#define SID_TABLE_MAX_INLINE_ID 10000
+
+void
+sidtable_deinit (struct table * t)
+{
+	FOR_TABLE_ENTRIES (tei, t) {
+		free ((void *)tei.key);
+		if (tei.value > SID_TABLE_MAX_INLINE_ID)
+			free ((void *)tei.value);
+	}
+	table_deinit (t);
+}
+
+void
+sidtable_append (struct table * t, struct string_slice const * key, int id)
+{
+	// Expand or allocate table as needed
+	if (t->len >= table_capacity (t) / 2)
+		table__expand (t, hash_str, compare_str_keys);
+
+	size_t index = table__place (t, compare_slice_and_str_keys, (int)key, hash_slice ((int)key));
+	int * entry = &((int *)TABLE__BASE (t))[2*index];
+	if (table__is_occupied (t, index)) { // If key is already in the table
+		int prev_val = entry[1];
+		if (prev_val <= SID_TABLE_MAX_INLINE_ID) { // If prev value is an id, convert it to a list
+			struct id_list * new_list = alloc_id_list (2, NULL);
+			new_list->ids[0] = prev_val;
+			new_list->ids[1] = id;
+			new_list->length = 2;
+			entry[1] = (int)new_list;
+		} else { // Else, prev value is a list so append the new ID to it
+			struct id_list * list = (void *)prev_val;
+			if (list->length >= list->capacity) { // Expand list if necessary
+				struct id_list * new_list = alloc_id_list (2 * list->capacity, list);
+				entry[1] = (int)new_list;
+				free (list);
+				list = new_list;
+			}
+			list->ids[list->length] = id;
+			list->length++;
+		}
+	} else { // Key is not in the table, add it for the first time
+		entry[0] = (int)extract_slice (key);
+		if (id <= SID_TABLE_MAX_INLINE_ID) // Write ID inline if possible
+			entry[1] = id;
+		else { // Otherwise create a list for this one ID
+			struct id_list * new_list = alloc_id_list (2, NULL);
+			new_list->ids[0] = id;
+			new_list->length = 1;
+			entry[1] = (int)new_list;
+		}
+		table__set_occupation (t, index, 1);
+		t->len++;
+	}
+}
+
+bool
+sidtable_get_by_index (struct table const * t, size_t index, int ** out_ids, int * out_count)
+{
+	size_t capacity = table_capacity (t);
+	if ((capacity > 0) && (index < capacity) && table__is_occupied (t, index)) {
+		int * entry = &((int *)TABLE__BASE (t))[2*index];
+		int val = entry[1];
+		if (val <= SID_TABLE_MAX_INLINE_ID) { // Value is an ID
+			*out_ids = &entry[1];
+			*out_count = 1;
+		} else {
+			struct id_list * list = (void *)val;
+			*out_ids = &list->ids[0];
+			*out_count = list->length;
+		}
+		return true;
+	} else
+		return false;
+}
+
+bool
+sidtable_look_up (struct table const * t, char const * key, int ** out_ids, int * out_count)
+{
+	if (t->len > 0) {
+		size_t index = table__place (t, compare_str_keys, (int)key, hash_str ((int)key));
+		return sidtable_get_by_index (t, index, out_ids, out_count);
+	} else
+		return false;
+}
+
+bool
+sidtable_look_up_slice (struct table const * t, struct string_slice const * key, int ** out_ids, int * out_count)
+{
+	if (t->len > 0) {
+		size_t index = table__place (t, compare_slice_and_str_keys, (int)key, hash_slice ((int)key));
+		return sidtable_get_by_index (t, index, out_ids, out_count);
+	} else
+		return false;
 }
 
 struct error_line {
@@ -459,6 +886,75 @@ find_resource_id_by_name (struct string_slice const * name, int * out)
 	return false;
 }
 
+enum game_object_kind {
+	GOK_UNIT_TYPE = 0,
+	GOK_BUILDING,
+	GOK_RESOURCE,
+	GOK_TECHNOLOGY,
+	GOK_GOVERNMENT,
+
+	COUNT_GAME_OBJECT_KINDS
+};
+
+bool
+find_game_object_id_by_name (enum game_object_kind kind, struct string_slice const * name, int start_id, int * out)
+{
+	switch (kind) {
+	case GOK_UNIT_TYPE: {
+		UnitType * unit_type;
+		if (name->len <= sizeof unit_type->Name)
+			for (int n = start_id; n < p_bic_data->UnitTypeCount; n++)
+				if (slice_matches_str (name, p_bic_data->UnitTypes[n].Name)) {
+					*out = n;
+					return true;
+				}
+		return false;
+	}
+	case GOK_BUILDING: {
+		Improvement * improv;
+		if (name->len <= sizeof improv->Name)
+			for (int n = start_id; n < p_bic_data->ImprovementsCount; n++)
+				if (slice_matches_str (name, p_bic_data->Improvements[n].Name.S)) {
+					*out = n;
+					return true;
+				}
+		return false;
+	}
+	case GOK_RESOURCE: {
+		Resource_Type * res_type;
+		if (name->len <= sizeof res_type->Name)
+			for (int n = start_id; n < p_bic_data->ResourceTypeCount; n++)
+				if (slice_matches_str (name, p_bic_data->ResourceTypes[n].Name)) {
+					*out = n;
+					return true;
+				}
+		return false;
+	}
+	case GOK_TECHNOLOGY: {
+		Advance * adv;
+		if (name->len <= sizeof adv->Name)
+			for (int n = start_id; n < p_bic_data->AdvanceCount; n++)
+				if (slice_matches_str (name, p_bic_data->Advances[n].Name)) {
+					*out = n;
+					return true;
+				}
+		return false;
+	}
+	case GOK_GOVERNMENT: {
+		Government * govt;
+		if (name->len <= sizeof govt->Name)
+			for (int n = start_id; n < p_bic_data->GovernmentsCount; n++)
+				if (slice_matches_str (name, p_bic_data->Governments[n].Name.S)) {
+					*out = n;
+					return true;
+				}
+		return false;
+	}
+	default:
+		return false;
+	}
+}
+
 // Converts a build name (like "Spearman" or "Granary") into a City_Order struct. Returns whether or not any improvement or unit type was found under
 // the given name.
 bool
@@ -514,25 +1010,29 @@ enum recognizable_parse_result {
 
 struct perfume_spec {
 	char name[36]; // Must be large enough to fit the name of a unit type or improvement
-	int amount;
+	i31b value; // Int component stores amount, bool stores whether it's a percentage or not
 };
 
 enum recognizable_parse_result
-parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_perfume_spec)
+parse_perfume_spec (char ** p_cursor, enum perfume_kind kind, struct error_line ** p_unrecognized_lines, void * out_perfume_spec)
 {
 	char * cur = *p_cursor;
 	struct string_slice name;
-	City_Order unused;
-	int amount;
+	City_Order unused_city_order;
+	int unused_id;
+	i31b value;
 	if (parse_string (&cur, &name) &&
 	    skip_punctuation (&cur, ':') &&
-	    parse_int (&cur, &amount)) {
+	    parse_i31b (&cur, &value)) {
 		*p_cursor = cur;
-		if (find_city_order_by_name (&name, &unused)) {
+
+		if (((kind == PK_PRODUCTION) && find_city_order_by_name (&name, &unused_city_order)) ||
+		    ((kind == PK_TECHNOLOGY) && find_game_object_id_by_name (GOK_TECHNOLOGY, &name, 0, &unused_id)) ||
+		    ((kind == PK_GOVERNMENT) && find_game_object_id_by_name (GOK_GOVERNMENT, &name, 0, &unused_id))) {
 			struct perfume_spec * out = out_perfume_spec;
 			snprintf (out->name, sizeof out->name, "%.*s", name.len, name.str);
 			out->name[(sizeof out->name) - 1] = '\0';
-			out->amount = amount;
+			out->value = value;
 			return RPR_OK;
 		} else {
 			add_unrecognized_line (p_unrecognized_lines, &name);
@@ -540,6 +1040,24 @@ parse_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines,
 		}
 	} else
 		return RPR_PARSE_ERROR;
+}
+
+enum recognizable_parse_result
+parse_production_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_perfume_spec)
+{
+	return parse_perfume_spec (p_cursor, PK_PRODUCTION, p_unrecognized_lines, out_perfume_spec);
+}
+
+enum recognizable_parse_result
+parse_technology_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_perfume_spec)
+{
+	return parse_perfume_spec (p_cursor, PK_TECHNOLOGY, p_unrecognized_lines, out_perfume_spec);
+}
+
+enum recognizable_parse_result
+parse_government_perfume_spec (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_perfume_spec)
+{
+	return parse_perfume_spec (p_cursor, PK_GOVERNMENT, p_unrecognized_lines, out_perfume_spec);
 }
 
 enum recognizable_parse_result
@@ -807,6 +1325,57 @@ read_recognizables (struct string_slice const * s,
 	return success ? -1 : cursor - extracted_slice;
 }
 
+// Reads a "sidtable" from text. A sidtable maps strings to IDs of scenario objects. The string keys are also expected to be a type of scenario
+// object. This method reads text such as:
+//   Factory: Battleship, Stable: Horseman Knight Cavalry, "Siege Workshop": Catapult Trebuchet
+// and converts it to a table mapping "Factory", "Stable", and "Siege Workshop" to the corresponding unit type IDs. All new entries are appended to
+// the given table; existing entries are not removed.
+// Like read_recognizables, this method returns -1 for success or the location of an error if there is one.
+int
+read_sidtable (struct string_slice const * s,
+	       struct error_line ** p_unrecognized_lines,
+	       enum game_object_kind key_kind,
+	       enum game_object_kind list_elem_kind,
+	       struct table * sidtable)
+{
+	if (s->len <= 0)
+		return -1;
+	char * extracted_slice = extract_slice (s);
+	char * cursor = extracted_slice;
+	bool success = false;
+
+	while (1) {
+		struct string_slice key;
+		if (skip_white_space (&cursor) && parse_string (&cursor, &key)) {
+			int unused;
+			bool recognized_key = find_game_object_id_by_name (key_kind, &key, 0, &unused);
+			if (! recognized_key)
+				add_unrecognized_line (p_unrecognized_lines, &key);
+			if (! skip_punctuation (&cursor, ':'))
+				break;
+			struct string_slice elem_name;
+			while (skip_white_space (&cursor) && parse_string (&cursor, &elem_name)) {
+				bool recognized_elem = false;
+				int elem_id = -1;
+				while (find_game_object_id_by_name (list_elem_kind, &elem_name, elem_id + 1, &elem_id)) {
+					recognized_elem = true;
+					if (recognized_key)
+						sidtable_append (sidtable, &key, elem_id);
+				}
+				if (! recognized_elem)
+					add_unrecognized_line (p_unrecognized_lines, &elem_name);
+			}
+			skip_punctuation (&cursor, ',');
+		} else {
+			success = (*cursor == '\0');
+			break;
+		}
+	}
+
+	free (extracted_slice);
+	return success ? -1 : cursor - extracted_slice;
+}
+
 // Like read_recognizables, returns -1 for success or the location of an error if there is one
 int
 read_building_unit_prereqs (struct string_slice const * s,
@@ -896,9 +1465,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 bool
 read_ptw_arty_types (struct string_slice const * s,
 		     struct error_line ** p_unrecognized_lines,
-		     int ** p_ptw_arty_types,
-		     int * p_count_ptw_arty_types,
-		     int * p_ptw_arty_types_capacity)
+		     struct table * ptw_arty_types)
 {
 	if (s->len <= 0)
 		return true;
@@ -910,13 +1477,11 @@ read_ptw_arty_types (struct string_slice const * s,
 		struct string_slice name;
 		if (parse_string (&cursor, &name)) {
 
-			int id = -1, matched_any = 0;
+			int id = -1;
+			bool matched_any = false;
 			while (find_unit_type_id_by_name (&name, id + 1, &id)) {
-				int count = *p_count_ptw_arty_types;
-				reserve (sizeof **p_ptw_arty_types, (void **)p_ptw_arty_types, p_ptw_arty_types_capacity, count);
-				(*p_ptw_arty_types)[count] = id;
-				*p_count_ptw_arty_types = count + 1;
-				matched_any = 1;
+				itable_insert (ptw_arty_types, id, 1);
+				matched_any = true;
 			}
 
 			if (! matched_any)
@@ -992,6 +1557,18 @@ read_line_drawing_override (struct string_slice const * s, int * out_val)
 		return false;
 }
 
+bool
+read_work_area_limit (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "none"                )) { *out_val = WAL_NONE;                 return true; }
+	else if (slice_matches_str (&trimmed, "cultural"            )) { *out_val = WAL_CULTURAL;             return true; }
+	else if (slice_matches_str (&trimmed, "cultural-min-2"      )) { *out_val = WAL_CULTURAL_MIN_2;       return true; }
+	else if (slice_matches_str (&trimmed, "cultural-or-adjacent")) { *out_val = WAL_CULTURAL_OR_ADJACENT; return true; }
+	else
+		return false;
+}
+
 struct parsable_field_bit {
 	char * name;
 	int bit_value;
@@ -1040,6 +1617,30 @@ read_bit_field (struct string_slice const * s, struct parsable_field_bit const *
 	return true;
 }
 
+int
+read_units_per_tile_limit (struct string_slice const * s, int * out_limits)
+{
+	int single_val;
+	if (read_int (s, &single_val)) {
+		out_limits[0] = out_limits[1] = out_limits[2] = single_val;
+		return true;
+
+	} else {
+		bool success = false;
+		char * extracted_slice = extract_slice (s);
+		char * cursor = extracted_slice;
+		int vals[3];
+		if (parse_int (&cursor, &vals[0]) && parse_int (&cursor, &vals[1]) && parse_int (&cursor, &vals[2]) &&
+		    skip_horiz_space (&cursor) && (*cursor == '\0')) {
+			for (int n = 0; n < ARRAY_LEN (vals); n++)
+				out_limits[n] = vals[n];
+			success = true;
+		}
+		free (extracted_slice);
+		return success;
+	}
+}
+
 struct config_parsing {
 	char * file_path;
 	char * text;
@@ -1053,6 +1654,7 @@ enum config_parse_error {
 	CPE_BAD_VALUE,
 	CPE_BAD_BOOL_VALUE,
 	CPE_BAD_INT_VALUE,
+	CPE_BAD_STACK_LIMIT_VALUE,
 	CPE_BAD_KEY
 };
 
@@ -1082,6 +1684,8 @@ handle_config_error_at (struct config_parsing * p, char * error_loc, enum config
 			snprintf (err_msg, sizeof err_msg, "^The value for \"%.*s\" is invalid. Expected \"true\" or \"false\".", p->key.len, p->key.str);
 		else if (err == CPE_BAD_INT_VALUE)
 			snprintf (err_msg, sizeof err_msg, "^The value for \"%.*s\" is invalid. Expected an integer.", p->key.len, p->key.str);
+		else if (err == CPE_BAD_STACK_LIMIT_VALUE)
+			snprintf (err_msg, sizeof err_msg, "^The value for \"%.*s\" is invalid. Expected \"false\", an integer, or a list of exactly three of those.", p->key.len, p->key.str);
 		else if (err == CPE_BAD_KEY)
 			snprintf (err_msg, sizeof err_msg, "^The key name \"%.*s\" is not recognized.", p->key.len, p->key.str);
 		err_msg[(sizeof err_msg) - 1] = '\0';
@@ -1131,8 +1735,10 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		}
 	}
 
-	struct perfume_spec * perfume_spec_list = NULL;
-	int perfume_spec_count = 0;
+	struct perfume_spec_list {
+		struct perfume_spec * items;
+		int count;
+	} perfume_spec_lists[COUNT_PERFUME_KINDS] = {0};
 
 	struct parsed_unit_type_limit * parsed_unit_type_limits = NULL;
 	int parsed_unit_type_limit_count = 0;
@@ -1169,14 +1775,41 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
 
+				// Handle city_work_radius separately from the other int options so we can clamp it and update the count var
+				} else if (slice_matches_str (&p.key, "city_work_radius")) {
+					if (read_int (&value, &ival)) {
+						cfg->city_work_radius = clamp (1, 7, ival);
+						is->workable_tile_count = workable_tile_counts[cfg->city_work_radius];
+					} else
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
+
 				// if key is for something special
-				} else if (slice_matches_str (&p.key, "perfume_specs")) {
+				} else if (slice_matches_str (&p.key, "limit_units_per_tile")) {
+					if (! read_units_per_tile_limit (&value, &cfg->limit_units_per_tile[0]))
+						handle_config_error (&p, CPE_BAD_STACK_LIMIT_VALUE);
+				} else if (slice_matches_str (&p.key, "production_perfume") || slice_matches_str (&p.key, "perfume_specs")) {
 					if (0 <= (recog_err_offset = read_recognizables (&value,
 											 &unrecognized_lines,
 											 sizeof (struct perfume_spec),
-											 parse_perfume_spec,
-											 (void **)&perfume_spec_list,
-											 &perfume_spec_count)))
+											 parse_production_perfume_spec,
+											 (void **)&perfume_spec_lists[PK_PRODUCTION].items,
+											 &perfume_spec_lists[PK_PRODUCTION].count)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "technology_perfume")) {
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct perfume_spec),
+											 parse_technology_perfume_spec,
+											 (void **)&perfume_spec_lists[PK_TECHNOLOGY].items,
+											 &perfume_spec_lists[PK_TECHNOLOGY].count)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "government_perfume")) {
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct perfume_spec),
+											 parse_government_perfume_spec,
+											 (void **)&perfume_spec_lists[PK_GOVERNMENT].items,
+											 &perfume_spec_lists[PK_GOVERNMENT].count)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "building_prereqs_for_units")) {
 					if (0 <= (recog_err_offset = read_building_unit_prereqs (&value, &unrecognized_lines, &cfg->building_unit_prereqs)))
@@ -1196,6 +1829,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 										 &cfg->count_ai_multi_start_extra_palaces,
 										 &cfg->ai_multi_start_extra_palaces_capacity))
 					    handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "ai_settler_perfume_on_founding")) {
+					if (! read_i31b (&value, &cfg->ai_settler_perfume_on_founding))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "land_retreat_rules")) {
 					if (! read_retreat_rules (&value, (int *)&cfg->land_retreat_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -1223,12 +1859,13 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_zone_of_control_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "work_area_limit")) {
+					if (! read_work_area_limit (&value, (int *)&cfg->work_area_limit))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_ptw_arty_types (&value,
 								   &unrecognized_lines,
-								   &cfg->ptw_arty_types,
-								   &cfg->count_ptw_arty_types,
-								   &cfg->ptw_arty_types_capacity))
+								   &cfg->ptw_arty_types))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "civ_aliases_by_era")) {
 					if (0 <= (recog_err_offset = read_recognizables (&value,
@@ -1294,6 +1931,18 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->ai_multi_city_start = (ival != 0) ? 2 : 0;
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
+				} else if (slice_matches_str (&p.key, "polish_non_air_precision_striking")) {
+					if (read_int (&value, &ival))
+						cfg->polish_precision_striking = ival != 0;
+					else
+						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
+
+				// if key was previously misspelled
+				} else if (slice_matches_str (&p.key, "share_visibility_in_hoseat")) {
+					if (read_int (&value, &ival))
+						cfg->share_visibility_in_hotseat = ival != 0;
+					else
+						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 
 				} else {
 					handle_config_error (&p, CPE_BAD_KEY);
@@ -1323,13 +1972,17 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		patch_show_popup (popup, __, 0, 0);
 	}
 
-	// Copy perfume specs from list to table
-	if (perfume_spec_list != NULL) {
-		for (int n = 0; n < perfume_spec_count; n++) {
-			struct perfume_spec * ps = &perfume_spec_list[n];
-			stable_insert (&cfg->perfume_specs, ps->name, ps->amount);
+	// Copy perfume specs from lists to tables
+	for (int n = 0; n < COUNT_PERFUME_KINDS; n++) {
+		struct table * table = &cfg->perfume_specs[n];
+		struct perfume_spec_list * list = &perfume_spec_lists[n];
+		if (list->items != NULL) {
+			for (int k = 0; k < list->count; k++) {
+				struct perfume_spec * ps = &list->items[k];
+				stable_insert (table, ps->name, ps->value);
+			}
+			free (list->items);
 		}
-		free (perfume_spec_list);
 	}
 
 	// Copy unit type limits from list to table
@@ -1363,6 +2016,8 @@ patch_Leader_impl_would_raze_city (Leader * this, int edx, City * city)
 	return is->current_config.prevent_razing_by_players ? false : Leader_impl_would_raze_city (this, __, city);
 }
 
+int __fastcall patch_Unit_get_max_move_points (Unit * this);
+
 // This function is used to fix a bug where the game would freeze when using disembark all on a transport that contained an immobile unit. The bug
 // comes from the fact that the function to disembark all units loops continuously over units in the transport until there are none left that
 // can be disembarked. The problem is the logic to check disembarkability erroneously reports immobile units as disembarkable when they're not,
@@ -1376,7 +2031,7 @@ patch_Unit_get_max_move_points_for_disembarking (Unit * this)
 	    UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Immobile))
 		return 0;
 	else
-		return Unit_get_max_move_points (this);
+		return patch_Unit_get_max_move_points (this);
 }
 
 // This func implements GA remaining turns indicator. It intercepts a call to some kind of text processing function when it's called to process the
@@ -1408,7 +2063,7 @@ patch_Leader_is_tile_visible (Leader * this, int edx, int x, int y)
 	unsigned vis_bits = tile->FOWStatus | tile->V3 | tile->Visibility | tile->field_D0_Visibility;
 	if (vis_bits & (1 << this->ID))
 		return true;
-	else if (is->current_config.share_visibility_in_hoseat && // if shared hotseat vis is enabled AND
+	else if (is->current_config.share_visibility_in_hotseat && // if shared hotseat vis is enabled AND
 		 (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game AND
 		 ((1 << this->ID) & *p_human_player_bits) && // "this" is a human player AND
 		 (vis_bits & *p_human_player_bits)) // any human player has visibility on the tile
@@ -1679,12 +2334,49 @@ tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
 	}
 }
 
+int __fastcall patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum ImprovementTypeWonderFeatures flag, City * only_in_city);
+int __fastcall patch_Leader_count_wonders_with_small_flag (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null);
+
+bool __fastcall
+patch_City_has_improvement (City * this, int edx, int improv_id, bool include_auto_improvements)
+{
+	bool tr = City_has_improvement (this, __, improv_id, include_auto_improvements);
+
+	// Check if the improvement is provided for free by another human player's wonder if we're in a hotseat game and the config option is on
+	if ((! tr) &&
+	    include_auto_improvements &&
+	    is->current_config.share_wonders_in_hotseat &&
+	    ((1 << this->Body.CivID) & *p_human_player_bits) &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game)) { // if we're in a hotseat game
+
+		// Loop over every other human player in the game and check if the city would have the improv if they were its owner
+		int actual_owner_id = this->Body.CivID;
+		unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+		int n_player = 1;
+		while (player_bits != 0) {
+			if ((player_bits & 1) && (n_player != actual_owner_id)) {
+				this->Body.CivID = n_player;
+				if (City_has_improvement (this, __, improv_id, include_auto_improvements)) {
+					tr = true;
+					break;
+				}
+			}
+			player_bits >>= 1;
+			n_player++;
+		}
+		this->Body.CivID = actual_owner_id;
+
+	}
+
+	return tr;
+}
+
 bool
 has_active_building (City * city, int improv_id)
 {
 	Leader * owner = &leaders[city->Body.CivID];
 	Improvement * improv = &p_bic_data->Improvements[improv_id];
-	return City_has_improvement (city, __, improv_id, 1) && // building is physically present in city AND
+	return patch_City_has_improvement (city, __, improv_id, 1) && // building is physically present in city AND
 		((improv->ObsoleteID < 0) || (! Leader_has_tech (owner, __, improv->ObsoleteID))) && // building is not obsolete AND
 		((improv->GovernmentID < 0) || (improv->GovernmentID == owner->GovernmentType)); // building is not restricted to a different govt
 }
@@ -1709,9 +2401,7 @@ init_unit_type_count (Leader * leader)
 		for (int n = 0; n <= p_units->LastIndex; n++) {
 			Unit_Body * body = p_units->Units[n].Unit;
 			if ((body != NULL) && ((int)body != offsetof (Unit, Body)) && (body->CivID == id)) {
-				int prev_count;
-				if (! itable_look_up (counts, body->UnitTypeID, &prev_count))
-					prev_count = 0;
+				int prev_count = itable_look_up_or (counts, body->UnitTypeID, 0);
 				itable_insert (counts, body->UnitTypeID, prev_count + 1);
 			}
 		}
@@ -1728,11 +2418,7 @@ get_unit_type_count (Leader * leader, int unit_type_id)
 	if ((is->unit_type_count_init_bits & 1<<id) == 0)
 		init_unit_type_count (leader);
 
-	int count;
-	if (itable_look_up (counts, unit_type_id, &count))
-		return count;
-	else
-		return 0;
+	return itable_look_up_or (counts, unit_type_id, 0);
 }
 
 void
@@ -1743,9 +2429,7 @@ change_unit_type_count (Leader * leader, int unit_type_id, int amount)
 	if ((is->unit_type_count_init_bits & (1 << id)) == 0)
 		init_unit_type_count (leader);
 
-	int prev_amount;
-	if (! itable_look_up (counts, unit_type_id, &prev_amount))
-		prev_amount = 0;
+	int prev_amount = itable_look_up_or (counts, unit_type_id, 0);
 	itable_insert (counts, unit_type_id, prev_amount + amount);
 }
 
@@ -1787,23 +2471,71 @@ get_available_unit_count (Leader * leader, int unit_type_id, int * out_available
 		return false;
 }
 
+int
+add_i31b_to_int (int base, i31b addition)
+{
+	int amount;
+	bool percent;
+	i31b_unpack (addition, &amount, &percent);
+	if (! percent)
+		return base + amount;
+	else {
+		int fraction = (base * int_abs (amount) + 50) / 100;
+		return (amount >= 0) ? base + fraction : base - fraction;
+	}
+}
+
+int
+apply_perfume (enum perfume_kind kind, char const * name, int base_amount)
+{
+	i31b perfume_value;
+	if (stable_look_up (&is->current_config.perfume_specs[kind], name, &perfume_value))
+		return add_i31b_to_int (base_amount, perfume_value);
+	else
+		return base_amount;
+}
+
 int __stdcall
 intercept_consideration (int valuation)
 {
 	City * city = is->ai_considering_production_for_city;
 	City_Order * order = &is->ai_considering_order;
 
+	// Apply perfume
 	char * order_name; {
 		if (order->OrderType == COT_Improvement)
 			order_name = p_bic_data->Improvements[order->OrderID].Name.S;
 		else
 			order_name = p_bic_data->UnitTypes[order->OrderID].Name;
 	}
+	valuation = apply_perfume (PK_PRODUCTION, order_name, valuation);
 
-	// Apply perfume
-	int perfume_amount;
-	if (stable_look_up (&is->current_config.perfume_specs, order_name, &perfume_amount))
-		valuation += perfume_amount;
+	// Apply temp AI settler perfume
+	if ((order->OrderType == COT_Unit) &&
+	    (p_bic_data->UnitTypes[order->OrderID].AI_Strategy & UTAI_Settle) &&
+	    (is->current_config.ai_settler_perfume_on_founding != 0) &&
+	    (is->current_config.ai_settler_perfume_on_founding_duration != 0) &&
+	    (is->turn_no_of_last_founding_for_settler_perfume[city->Body.CivID] >= 0)) {
+		int turns_since_founding = *p_current_turn_no - is->turn_no_of_last_founding_for_settler_perfume[city->Body.CivID];
+		int duration = is->current_config.ai_settler_perfume_on_founding_duration;
+		if (turns_since_founding < duration) {
+			i31b perfume = is->current_config.ai_settler_perfume_on_founding;
+
+			// Scale amount by turns remaining
+			{
+				int amount;
+				bool percent;
+				i31b_unpack (perfume, &amount, &percent);
+
+				int percent_remaining = (100 * (duration - turns_since_founding)) / duration;
+				amount = (amount * percent_remaining + 50) / 100;
+
+				perfume = i31b_pack (amount, percent);
+			}
+
+			valuation = add_i31b_to_int (valuation, perfume);
+		}
+	}
 
 	// Expand the list of valuations if necessary
 	reserve (sizeof is->ai_prod_valuations[0], (void **)&is->ai_prod_valuations, &is->ai_prod_valuations_capacity, is->count_ai_prod_valuations);
@@ -1905,9 +2637,14 @@ has_resources_required_by_building_r (City * city, int improv_id, int max_req_re
 		int finds[2] = {0, 0};
 
 		int civ_id = city->Body.CivID;
-		FOR_TILES_AROUND(tai, 21, city->Body.X, city->Body.Y) {
-			if (tai.tile->vtable->m38_Get_Territory_OwnerID (tai.tile) == civ_id) {
-				int res_here = Tile_get_resource_visible_to (tai.tile, __, civ_id);
+		for (int n = 0; n < is->workable_tile_count; n++) {
+			int dx, dy;
+			patch_ni_to_diff_for_work_area (n, &dx, &dy);
+			int x = city->Body.X + dx, y = city->Body.Y + dy;
+			wrap_tile_coords (&p_bic_data->Map, &x, &y);
+			Tile * tile = tile_at (x, y);
+			if (tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id) {
+				int res_here = Tile_get_resource_visible_to (tile, __, civ_id);
 				if (res_here >= 0) {
 					finds[0] |= targets[0] == res_here;
 					finds[1] |= targets[1] == res_here;
@@ -2112,6 +2849,88 @@ filter_zoc_candidate (struct register_set * reg)
 	return 1;
 }
 
+#define TRADE_NET_REF_COUNT 315
+
+int *
+load_trade_net_refs ()
+{
+	if (is->trade_net_refs_load_state == IS_OK)
+		return is->trade_net_refs;
+	else if (is->trade_net_refs_load_state == IS_INIT_FAILED)
+		return NULL;
+
+	bool success = false;
+	char err_msg[300] = {0};
+
+	is->trade_net_refs = calloc (3 * TRADE_NET_REF_COUNT, sizeof is->trade_net_refs[0]);
+	if (! is->trade_net_refs) {
+		snprintf (err_msg, (sizeof err_msg) - 1, "Bad alloc");
+		goto done;
+	}
+
+	char file_path[MAX_PATH] = {0};
+	snprintf (file_path, (sizeof file_path) - 1, "%s\\trade_net_refs.txt", is->mod_rel_dir);
+	char * refs_file = file_to_string (file_path);
+	if (! refs_file) {
+		snprintf (err_msg, (sizeof err_msg) - 1, "Couldn't load %s", file_path);
+		goto done;
+	}
+
+	char * cursor = refs_file;
+	int loaded_count = 0;
+	while (true) {
+		if (*cursor == '#') { // comment line
+			skip_line (&cursor);
+			continue;
+		}
+
+		skip_horiz_space (&cursor);
+		if (*cursor == '\n') { // empty line
+			cursor++;
+			continue;
+		} else if (*cursor == '\0') // end of file
+			break;
+
+		// otherwise we must be on a line with some addresses
+		int ref;
+		bool got_any_addresses = false;
+		while (parse_int (&cursor, &ref)) {
+			if (loaded_count >= 3 * TRADE_NET_REF_COUNT) {
+				snprintf (err_msg, (sizeof err_msg) - 1, "Too many values in file (expected %d exactly)", 3 * TRADE_NET_REF_COUNT);
+				goto done;
+			}
+			is->trade_net_refs[loaded_count] = ref;
+			loaded_count++;
+			got_any_addresses = true;
+		}
+
+		if (! got_any_addresses) {
+			snprintf (err_msg, (sizeof err_msg) - 1, "Parse error");
+			goto done;
+		}
+	}
+
+	if (loaded_count < 3 * TRADE_NET_REF_COUNT) {
+		snprintf (err_msg, (sizeof err_msg) - 1, "Too few values in file (expected %d exactly)", 3 * TRADE_NET_REF_COUNT);
+		goto done;
+	}
+
+	success = true;
+
+done:
+	free (refs_file);
+	if (! success) {
+		char full_err_msg[300] = {0};
+		snprintf (full_err_msg, (sizeof full_err_msg) - 1, "Failed to load trade net refs: %s", err_msg);
+		MessageBox (NULL, full_err_msg, NULL, MB_ICONERROR);
+		is->trade_net_refs_load_state = IS_INIT_FAILED;
+		return NULL;
+	} else {
+		is->trade_net_refs_load_state = IS_OK;
+		return is->trade_net_refs;
+	}
+}
+
 enum branch_kind { BK_CALL, BK_JUMP };
 
 byte *
@@ -2207,7 +3026,7 @@ set_nopification (int yes_or_no, byte * addr, int size)
 }
 
 void
-apply_machine_code_edits (struct c3x_config const * cfg)
+apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 {
 	DWORD old_protect, unused;
 
@@ -2433,6 +3252,97 @@ apply_machine_code_edits (struct c3x_config const * cfg)
 		for (int n = 0; n < 4; n++)
 			ADDR_LUXURY_BOX_ROW_HEIGHT[n] = cfg->compact_luxury_display_on_city_screen ? compact[n] : normal[n];
 	}
+
+	WITH_MEM_PROTECTION (ADDR_MOST_STRAT_RES_ON_CITY_SCREEN, 1, PAGE_EXECUTE_READWRITE) {
+		*(byte *)ADDR_MOST_STRAT_RES_ON_CITY_SCREEN = cfg->compact_strategic_resource_display_on_city_screen ? 13 : 8;
+	}
+
+	// Remove a check that a returned neighbor index is within the 21 tile work area in code related to hoving the mouse over the work area on the
+	// city screen. This check is redundant and could be removed always, but only do so if work area is expanded.
+	set_nopification (cfg->city_work_radius > 2, ADDR_REDUNDANT_CHECK_ON_WORK_AREA_HOVER, 6);
+
+	// Skip redundant check of clicked tile's neighbor index in City_Form::handle_left_click.
+	WITH_MEM_PROTECTION (ADDR_CITY_FORM_LEFT_CLICK_JUMP, 1, PAGE_EXECUTE_READWRITE) {
+		*ADDR_CITY_FORM_LEFT_CLICK_JUMP = 0xEB; // 0x7C (jl) -> 0xEB (jmp)
+	}
+
+	// Skip check that neighbor index passed to City::controls_tile is within work radius. This check is now implemented in the patch func.
+	WITH_MEM_PROTECTION (ADDR_CONTROLS_TILE_JUMP, 1, PAGE_EXECUTE_READWRITE) {
+		*ADDR_CONTROLS_TILE_JUMP = 0xEB; // 0x7C (jl) -> 0xEB (jmp)
+	}
+
+	// When searching for a tile on which to spawn pollution, the game wraps its search around by using remainder after division. Here, we replace
+	// the dividend to match a potentially expanded city work area.
+	WITH_MEM_PROTECTION (ADDR_SPAWN_POLLUTION_MOD, 4, PAGE_EXECUTE_READWRITE) {
+		int_to_bytes (ADDR_SPAWN_POLLUTION_MOD, is->workable_tile_count - 1);
+	}
+
+	WITH_MEM_PROTECTION (ADDR_PATHFINDER_RECONSTRUCTION_MAX_LEN, 4, PAGE_EXECUTE_READWRITE) {
+		int_to_bytes (ADDR_PATHFINDER_RECONSTRUCTION_MAX_LEN, cfg->patch_premature_truncation_of_found_paths ? 2560 : 256);
+	}
+
+	int * trade_net_refs;
+	bool already_moved_trade_net = is->trade_net != p_original_trade_net,
+	     want_moved_trade_net = cfg->move_trade_net_object;
+	if ((! at_program_start) &&
+	    ((trade_net_refs = load_trade_net_refs ()) != NULL) &&
+	    ((already_moved_trade_net && ! want_moved_trade_net) || (want_moved_trade_net && ! already_moved_trade_net))) {
+		// Allocate a new trade net object if necessary. To construct it, all we have to do is zero a few fields and set the vptr. Otherwise,
+		// set the allocated object aside for deletion later. Also set new & old addresses to the locations we're moving to & from.
+		Trade_Net * to_free = NULL;
+		int p_old, p_new;
+		if (want_moved_trade_net) {
+			is->trade_net = calloc (1, sizeof *is->trade_net);
+			is->trade_net->vtable = p_original_trade_net->vtable;
+			p_old = (int)p_original_trade_net;
+			p_new = (int)is->trade_net;
+		} else {
+			to_free = is->trade_net;
+			p_old = (int)is->trade_net;
+			p_new = (int)p_original_trade_net;
+			is->trade_net = p_original_trade_net;
+		}
+
+		// Patch all references from the "old" object to the "new" one
+		int offset;
+		bool popped_up_error = false;
+		for (int n_ref = 0; n_ref < TRADE_NET_REF_COUNT; n_ref++) {
+			int addr = trade_net_refs[TRADE_NET_REF_COUNT * exe_version_index + n_ref];
+			WITH_MEM_PROTECTION ((void *)(addr - 10), 20, PAGE_EXECUTE_READWRITE) {
+				byte * instr = (byte *)addr;
+				if ((instr[0] == 0xB9) && (int_from_bytes (&instr[1]) == p_old)) // move trade net ptr to ecx
+					int_to_bytes (&instr[1], p_new);
+				else if ((instr[0] == 0xC7) && (instr[1] == 0x05) && (int_from_bytes (&instr[2]) == p_old)) // write trade net vtable ptr
+					int_to_bytes (&instr[2], p_new);
+				else if ((instr[0] == 0x81) && (instr[1] == 0xFE) && (int_from_bytes (&instr[2]) == (int)p_original_trade_net)) // cmp esi, trade net location
+					; // Do not patch this location because it's the upper limit for a memcpy
+				else if ((instr[0] == 0x81) && (instr[1] == 0xFF) && (int_from_bytes (&instr[2]) == (int)p_original_trade_net)) // cmp edi, trade net location
+					; // Same
+				else if ((instr[0] == 0x81) && (instr[1] == 0xFA) && (int_from_bytes (&instr[2]) == (int)&p_original_trade_net->Data2)) // cmp edx, trade net data2 location
+					; // Same
+				else if (((instr[0] == 0xA3) || (instr[0] == 0xA1)) && // move eax to field or vice-versa
+					 (offset = int_from_bytes (&instr[1]) - p_old, (offset >= 0) && (offset < 100)))
+					int_to_bytes (&instr[1], p_new + offset);
+				else if ((instr[0] == 0x89) && ((instr[1] >= 0x0D) && (instr[1] <= 0x3D)) && // move other regs to field
+					 (offset = int_from_bytes (&instr[2]) - p_old, (offset >= 0) && (offset < 100)))
+					int_to_bytes (&instr[2], p_new + offset);
+				else if ((instr[0] == 0x8B) && ((instr[1] == 0x35) || (instr[1] == 0x3D) || (instr[1] == 0x0D)) && // mov field to esi, edi or ecx
+					 (offset = int_from_bytes (&instr[2]) - p_old, (offset >= 0) && (offset < 100)))
+					int_to_bytes (&instr[2], p_new + offset);
+				else if (! popped_up_error) {
+					char err_msg[200] = {0};
+					snprintf (err_msg, (sizeof err_msg) - 1, "Can't move trade net object from address 0x%x. Pattern doesn't match.", addr);
+					MessageBox (NULL, err_msg, NULL, MB_ICONERROR);
+					popped_up_error = true;
+				}
+			}
+		}
+
+		if (to_free) {
+			to_free->vtable->destruct (to_free, __, 0);
+			free (to_free);
+		}
+	}
 }
 
 Cities *    get_p_cities     () { return p_cities;     }
@@ -2480,6 +3390,8 @@ patch_init_floating_point ()
 		{"enable_disorder_warning"                             , true , offsetof (struct c3x_config, enable_disorder_warning)},
 		{"allow_stealth_attack_against_single_unit"            , false, offsetof (struct c3x_config, allow_stealth_attack_against_single_unit)},
 		{"show_detailed_city_production_info"                  , true , offsetof (struct c3x_config, show_detailed_city_production_info)},
+		{"limited_railroads_work_like_fast_roads"              , false, offsetof (struct c3x_config, limited_railroads_work_like_fast_roads)},
+		{"exclude_cities_from_units_per_tile_limit"            , false, offsetof (struct c3x_config, exclude_cities_from_units_per_tile_limit)},
 		{"enable_free_buildings_from_small_wonders"            , true , offsetof (struct c3x_config, enable_free_buildings_from_small_wonders)},
 		{"enable_stack_unit_commands"                          , true , offsetof (struct c3x_config, enable_stack_unit_commands)},
 		{"skip_repeated_tile_improv_replacement_asks"          , true , offsetof (struct c3x_config, skip_repeated_tile_improv_replacement_asks)},
@@ -2495,6 +3407,7 @@ patch_init_floating_point ()
 		{"cut_research_spending_to_avoid_bankruptcy"           , true , offsetof (struct c3x_config, cut_research_spending_to_avoid_bankruptcy)},
 		{"dont_pause_for_love_the_king_messages"               , true , offsetof (struct c3x_config, dont_pause_for_love_the_king_messages)},
 		{"reverse_specialist_order_with_shift"                 , true , offsetof (struct c3x_config, reverse_specialist_order_with_shift)},
+		{"toggle_zoom_with_z_on_city_screen"                   , true , offsetof (struct c3x_config, toggle_zoom_with_z_on_city_screen)},
 		{"dont_give_king_names_in_non_regicide_games"          , true , offsetof (struct c3x_config, dont_give_king_names_in_non_regicide_games)},
 		{"no_elvis_easter_egg"                                 , false, offsetof (struct c3x_config, no_elvis_easter_egg)},
 		{"disable_worker_automation"                           , false, offsetof (struct c3x_config, disable_worker_automation)},
@@ -2519,9 +3432,12 @@ patch_init_floating_point ()
 		{"replace_leader_unit_ai"                              , true , offsetof (struct c3x_config, replace_leader_unit_ai)},
 		{"fix_ai_army_composition"                             , true , offsetof (struct c3x_config, fix_ai_army_composition)},
 		{"enable_pop_unit_ai"                                  , true , offsetof (struct c3x_config, enable_pop_unit_ai)},
+		{"enable_caravan_unit_ai"                              , true , offsetof (struct c3x_config, enable_caravan_unit_ai)},
 		{"remove_unit_limit"                                   , true , offsetof (struct c3x_config, remove_unit_limit)},
+		{"remove_city_improvement_limit"                       , true , offsetof (struct c3x_config, remove_city_improvement_limit)},
 		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
 		{"remove_cap_on_turn_limit"                            , true , offsetof (struct c3x_config, remove_cap_on_turn_limit)},
+		{"move_trade_net_object"                               , false, offsetof (struct c3x_config, move_trade_net_object)},
 		{"patch_submarine_bug"                                 , true , offsetof (struct c3x_config, patch_submarine_bug)},
 		{"patch_science_age_bug"                               , true , offsetof (struct c3x_config, patch_science_age_bug)},
 		{"patch_pedia_texture_bug"                             , true , offsetof (struct c3x_config, patch_pedia_texture_bug)},
@@ -2531,6 +3447,13 @@ patch_init_floating_point ()
 		{"patch_phantom_resource_bug"                          , true , offsetof (struct c3x_config, patch_phantom_resource_bug)},
 		{"patch_maintenance_persisting_for_obsolete_buildings" , true , offsetof (struct c3x_config, patch_maintenance_persisting_for_obsolete_buildings)},
 		{"patch_barbarian_diagonal_bug"                        , true , offsetof (struct c3x_config, patch_barbarian_diagonal_bug)},
+		{"patch_disease_stopping_tech_flag_bug"                , false, offsetof (struct c3x_config, patch_disease_stopping_tech_flag_bug)},
+		{"patch_division_by_zero_in_ai_alliance_eval"          , true , offsetof (struct c3x_config, patch_division_by_zero_in_ai_alliance_eval)},
+		{"patch_empty_army_movement"                           , true , offsetof (struct c3x_config, patch_empty_army_movement)},
+		{"patch_premature_truncation_of_found_paths"           , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
+		{"patch_zero_production_crash"                         , true , offsetof (struct c3x_config, patch_zero_production_crash)},
+		{"delete_off_map_ai_units"                             , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
+		{"fix_overlapping_specialist_yield_icons"              , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
 		{"prevent_autorazing"                                  , false, offsetof (struct c3x_config, prevent_autorazing)},
 		{"prevent_razing_by_players"                           , false, offsetof (struct c3x_config, prevent_razing_by_players)},
 		{"suppress_hypertext_links_exceeded_popup"             , true , offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
@@ -2539,7 +3462,7 @@ patch_init_floating_point ()
 		{"include_stealth_attack_cancel_option"                , false, offsetof (struct c3x_config, include_stealth_attack_cancel_option)},
 		{"intercept_recon_missions"                            , false, offsetof (struct c3x_config, intercept_recon_missions)},
 		{"charge_one_move_for_recon_and_interception"          , false, offsetof (struct c3x_config, charge_one_move_for_recon_and_interception)},
-		{"polish_non_air_precision_striking"                   , true , offsetof (struct c3x_config, polish_non_air_precision_striking)},
+		{"polish_precision_striking"                           , true , offsetof (struct c3x_config, polish_precision_striking)},
 		{"enable_stealth_attack_via_bombardment"               , false, offsetof (struct c3x_config, enable_stealth_attack_via_bombardment)},
 		{"immunize_aircraft_against_bombardment"               , false, offsetof (struct c3x_config, immunize_aircraft_against_bombardment)},
 		{"replay_ai_moves_in_hotseat_games"                    , false, offsetof (struct c3x_config, replay_ai_moves_in_hotseat_games)},
@@ -2551,11 +3474,16 @@ patch_init_floating_point ()
 		{"show_untradable_techs_on_trade_screen"               , false, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
 		{"disallow_useless_bombard_vs_airfields"               , true , offsetof (struct c3x_config, disallow_useless_bombard_vs_airfields)},
 		{"compact_luxury_display_on_city_screen"               , false, offsetof (struct c3x_config, compact_luxury_display_on_city_screen)},
+		{"compact_strategic_resource_display_on_city_screen"   , false, offsetof (struct c3x_config, compact_strategic_resource_display_on_city_screen)},
+		{"warn_when_chosen_building_would_replace_another"     , false, offsetof (struct c3x_config, warn_when_chosen_building_would_replace_another)},
+		{"do_not_unassign_workers_from_polluted_tiles"         , false, offsetof (struct c3x_config, do_not_unassign_workers_from_polluted_tiles)},
+		{"do_not_make_capital_cities_appear_larger"            , false, offsetof (struct c3x_config, do_not_make_capital_cities_appear_larger)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
 		{"enable_city_capture_by_barbarians"                   , false, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
-		{"share_visibility_in_hoseat"                          , false, offsetof (struct c3x_config, share_visibility_in_hoseat)},
+		{"share_visibility_in_hotseat"                         , false, offsetof (struct c3x_config, share_visibility_in_hotseat)},
+		{"share_wonders_in_hotseat"                            , false, offsetof (struct c3x_config, share_wonders_in_hotseat)},
 		{"allow_precision_strikes_against_tile_improvements"   , false, offsetof (struct c3x_config, allow_precision_strikes_against_tile_improvements)},
 		{"dont_end_units_turn_after_bombarding_barricade"      , false, offsetof (struct c3x_config, dont_end_units_turn_after_bombarding_barricade)},
 		{"remove_land_artillery_target_restrictions"           , false, offsetof (struct c3x_config, remove_land_artillery_target_restrictions)},
@@ -2564,6 +3492,13 @@ patch_init_floating_point ()
 		{"strengthen_forbidden_palace_ocn_effect"              , false, offsetof (struct c3x_config, strengthen_forbidden_palace_ocn_effect)},
 		{"allow_upgrades_in_any_city"                          , false, offsetof (struct c3x_config, allow_upgrades_in_any_city)},
 		{"do_not_generate_volcanos"                            , false, offsetof (struct c3x_config, do_not_generate_volcanos)},
+		{"do_not_pollute_impassable_tiles"                     , false, offsetof (struct c3x_config, do_not_pollute_impassable_tiles)},
+		{"show_hp_of_stealth_attack_options"                   , false, offsetof (struct c3x_config, show_hp_of_stealth_attack_options)},
+		{"exclude_invisible_units_from_stealth_attack"         , false, offsetof (struct c3x_config, exclude_invisible_units_from_stealth_attack)},
+		{"convert_to_landmark_after_planting_forest"           , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
+		{"allow_sale_of_aqueducts_and_hospitals"               , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
+		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
+		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 	};
 
 	struct integer_config_option {
@@ -2571,18 +3506,21 @@ patch_init_floating_point ()
 		int base_val;
 		int offset;
 	} integer_config_options[] = {
-		{"limit_railroad_movement"            ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
-		{"minimum_city_separation"            ,     1, offsetof (struct c3x_config, minimum_city_separation)},
-		{"anarchy_length_percent"             ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
-		{"ai_multi_city_start"                ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
-		{"max_tries_to_place_fp_city"         , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
-		{"ai_research_multiplier"             ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
-		{"extra_unit_maintenance_per_shields" ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
-		{"ai_build_artillery_ratio"           ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
-		{"ai_artillery_value_damage_percent"  ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
-		{"ai_build_bomber_ratio"              ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
-		{"max_ai_naval_escorts"               ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
-		{"ai_worker_requirement_percent"      ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
+		{"limit_railroad_movement"                     ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
+		{"minimum_city_separation"                     ,     1, offsetof (struct c3x_config, minimum_city_separation)},
+		{"anarchy_length_percent"                      ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
+		{"ai_multi_city_start"                         ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
+		{"max_tries_to_place_fp_city"                  , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
+		{"ai_research_multiplier"                      ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
+		{"ai_settler_perfume_on_founding_duration"     ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
+		{"extra_unit_maintenance_per_shields"          ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
+		{"ai_build_artillery_ratio"                    ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
+		{"ai_artillery_value_damage_percent"           ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
+		{"ai_build_bomber_ratio"                       ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
+		{"max_ai_naval_escorts"                        ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
+		{"ai_worker_requirement_percent"               ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
+		{"chance_for_nukes_to_destroy_max_one_hp_units",   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
+		{"rebase_range_multiplier"                     ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -2726,7 +3664,10 @@ patch_init_floating_point ()
 	struct c3x_config base_config = {0};
 	base_config.land_retreat_rules = RR_STANDARD;
 	base_config.sea_retreat_rules  = RR_STANDARD;
+	base_config.ai_settler_perfume_on_founding = 0;
+	base_config.work_area_limit = WAL_NONE;
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
+	base_config.city_work_radius = 2;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)
@@ -2776,6 +3717,10 @@ patch_init_floating_point ()
 		}
 	}
 
+	is->sb_next_up = NULL;
+	is->trade_net = p_original_trade_net;
+	is->trade_net_refs_load_state = IS_UNINITED;
+	is->trade_net_refs = NULL;
 	is->tnx_cache = NULL;
 	is->is_computing_city_connections = false;
 	is->keep_tnx_cache = false;
@@ -2803,6 +3748,32 @@ patch_init_floating_point ()
 	is->memo = NULL;
 	is->memo_len = 0;
 	is->memo_capacity = 0;
+
+	// Fill in array mapping cultural NIs to standard ones.
+	is->cultural_ni_to_standard = malloc (MAX_CULTURAL_NI + 1);
+	for (int n = 0; n <= MAX_CULTURAL_NI; n++) {
+		char const * p = &cultural_ni_to_diffs[n << 1];
+		is->cultural_ni_to_standard[n] = diff_to_neighbor_index (p[0], p[1], 1000);
+	}
+
+	// Fill in array mapping standard NIs to work radii AKA work ring numbers
+	for (int n = 0; n < ARRAY_LEN (is->ni_to_work_radius); n++) {
+		int work_radius = -1;
+		int dx, dy;
+		neighbor_index_to_diff (n, &dx, &dy);
+		for (int ring_no = 0; ring_no <= 7; ring_no++) {
+			for (int k = workable_tile_counts[ring_no-1]; k < workable_tile_counts[ring_no]; k++) {
+				char const * p = &cultural_ni_to_diffs[k<<1];
+				if ((p[0] == dx) && (p[1] == dy)) {
+					work_radius = ring_no;
+					break;
+				}
+			}
+			if (work_radius != -1)
+				break;
+		}
+		is->ni_to_work_radius[n] = work_radius;
+	}
 
 	is->city_loc_display_perspective = -1;
 
@@ -2844,7 +3815,10 @@ patch_init_floating_point ()
 
 	is->dummy_tile = calloc (1, sizeof *is->dummy_tile);
 
+	is->bombarding_unit = NULL;
+
 	is->unit_bombard_attacking_tile = NULL;
+	is->attacking_tile_x = is->attacking_tile_y = -1;
 
 	is->temporarily_disallow_lethal_zoc = false;
 	is->moving_unit_to_adjacent_tile = false;
@@ -2876,6 +3850,9 @@ patch_init_floating_point ()
 	memset (&is->unit_type_alt_strategies, 0, sizeof is->unit_type_alt_strategies);
 	memset (&is->unit_type_duplicates    , 0, sizeof is->unit_type_duplicates);
 	memset (&is->extra_defensive_bombards, 0, sizeof is->extra_defensive_bombards);
+	memset (&is->airdrops_this_turn      , 0, sizeof is->airdrops_this_turn);
+	memset (&is->unit_transport_ties     , 0, sizeof is->unit_transport_ties);
+	memset (&is->extra_city_improvs      , 0, sizeof is->extra_city_improvs);
 
 	is->unit_type_count_init_bits = 0;
 	for (int n = 0; n < 32; n++)
@@ -2885,10 +3862,24 @@ patch_init_floating_point ()
 	is->penciled_in_upgrade_count = is->penciled_in_upgrade_capacity = 0;
 
 	is->currently_capturing_city = NULL;
+	is->accessing_save_file = NULL;
+
+	is->drawn_strat_resource_count = 0;
+
+	is->charmed_types_converted_to_ptw_arty = NULL;
+	is->count_charmed_types_converted_to_ptw_arty = 0;
+	is->charmed_types_converted_to_ptw_arty_capacity = 0;
+
+	is->checking_visibility_for_unit = NULL;
+
+	is->do_not_bounce_invisible_units = false;
+
+	is->saved_improv_counts = NULL;
+	is->saved_improv_counts_capacity = 0;
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
-	apply_machine_code_edits (&is->current_config);
+	apply_machine_code_edits (&is->current_config, true);
 }
 
 void __fastcall
@@ -3061,7 +4052,6 @@ init_unit_rcm_icons ()
 {
 	if (is->unit_rcm_icon_state != IS_UNINITED)
 		return;
-	is->unit_rcm_icon_state = IS_INIT_FAILED;
 
 	PCX_Image pcx;
 	PCX_Image_construct (&pcx);
@@ -3070,16 +4060,19 @@ init_unit_rcm_icons ()
 	get_mod_art_path ("UnitRCMIcons.pcx", temp_path, sizeof temp_path);
 
 	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
-	int width;
 	if ((pcx.JGL.Image == NULL) ||
-	    (2 >= (width = pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image)))){
-		(*p_OutputDebugStringA) ("[C3X] PCX file for unit RCM icons failed to load or is too narrow.");
+	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) < 57) ||
+	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) < 64)) {
+		(*p_OutputDebugStringA) ("[C3X] PCX file for unit RCM icons failed to load or is too small.");
 		goto cleanup;
 	}
 
-	for (int n = 0; n < COUNT_UNIT_RCM_ICONS; n++) {
-		Sprite_construct (&is->unit_rcm_icons[n]);
-		Sprite_slice_pcx (&is->unit_rcm_icons[n], __, &pcx, 1, 1 + 16*n, width-2, 15, 1, 0);
+	for (int set = 0; set < COUNT_UNIT_RCM_ICON_SETS; set++) {
+		Sprite * icons = &is->unit_rcm_icons[set * COUNT_UNIT_RCM_ICONS];
+		for (int n = 0; n < COUNT_UNIT_RCM_ICONS; n++) {
+			Sprite_construct (&icons[n]);
+			Sprite_slice_pcx (&icons[n], __, &pcx, 1 + 14*set, 1 + 16*n, 14, 15, 1, 0);
+		}
 	}
 
 	is->unit_rcm_icon_state = IS_OK;
@@ -3091,12 +4084,48 @@ void
 deinit_unit_rcm_icons ()
 {
 	if (is->unit_rcm_icon_state == IS_OK) {
-		for (int n = 0; n < COUNT_UNIT_RCM_ICONS; n++) {
+		int total_icon_count = COUNT_UNIT_RCM_ICONS * COUNT_UNIT_RCM_ICON_SETS;
+		for (int n = 0; n < total_icon_count; n++) {
 			Sprite * sprite = &is->unit_rcm_icons[n];
 			sprite->vtable->destruct (sprite, __, 0);
 		}
 		is->unit_rcm_icon_state = IS_UNINITED;
 	}
+}
+
+void
+init_red_food_icon ()
+{
+	if (is->red_food_icon_state != IS_UNINITED)
+		return;
+
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
+
+	char temp_path[2*MAX_PATH];
+	get_mod_art_path ("MoreCityIcons.pcx", temp_path, sizeof temp_path);
+
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if ((pcx.JGL.Image != NULL) &&
+	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) >= 32) &&
+	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) == 32)) {
+		Sprite_construct (&is->red_food_icon);
+		Sprite_slice_pcx (&is->red_food_icon, __, &pcx, 1, 1, 30, 30, 1, 1);
+		is->red_food_icon_state = IS_OK;
+	} else {
+		(*p_OutputDebugStringA) ("[C3X] PCX file for red food icon failed to load or is not the correct size.");
+		is->red_food_icon_state = IS_INIT_FAILED;
+	}
+
+	pcx.vtable->destruct (&pcx, __, 0);
+}
+
+void
+deinit_red_food_icon ()
+{
+	if (is->red_food_icon_state == IS_OK)
+		is->red_food_icon.vtable->destruct (&is->red_food_icon, __, 0);
+	is->red_food_icon_state = IS_UNINITED;
 }
 
 int __cdecl
@@ -3254,15 +4283,17 @@ void
 recompute_resources_if_necessary ()
 {
 	if (is->must_recompute_resources_for_mill_inputs)
-		patch_Trade_Net_recompute_resources (p_trade_net, __, false);
+		patch_Trade_Net_recompute_resources (is->trade_net, __, false);
 }
 
 void __fastcall
 patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 {
+	is->bombarding_unit = this;
 	record_ai_unit_seen (this, x, y);
 	Unit_bombard_tile (this, __, x, y);
 	is->bombard_stealth_target = NULL;
+	is->bombarding_unit = NULL;
 }
 
 void __fastcall
@@ -3272,15 +4303,22 @@ patch_Unit_move (Unit * this, int edx, int tile_x, int tile_y)
 	Unit_move (this, __, tile_x, tile_y);
 }
 
+// Returns true if the unit has attacked & does not have blitz or if it's run out of movement points for the turn
 bool
-can_attack_this_turn (Unit * unit)
+has_exhausted_attack (Unit * unit)
 {
-	UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
-	return (unit->Body.Moves < Unit_get_max_move_points (unit)) && // Unit can move at all AND
-		(((unit->Body.Status & USF_USED_ATTACK) == 0) || UnitType_has_ability (type, __, UTA_Blitz)) && // (Unit has not attacked OR has blitz) AND
-		((type->Attack > 0) || // (Unit can do a regular attack OR
-		 ((type->Special_Actions & UCV_Bombard & 0x0FFFFFFF) && // (unit can perform bombard AND
-		  ((type->Bombard_Strength > 0) || UnitType_has_ability (type, __, UTA_Nuclear_Weapon)))); // (unit has bombard strength OR is a nuclear weapon)))
+	return (unit->Body.Moves >= patch_Unit_get_max_move_points (unit)) ||
+		((unit->Body.Status & USF_USED_ATTACK) && ! UnitType_has_ability (&p_bic_data->UnitTypes[unit->Body.UnitTypeID], __, UTA_Blitz));
+}
+
+// Returns whether or not the unit type is a combat type and can do damage on offense (as opposed to only being able to defend). This includes units
+// that can only do damage by bombarding and nuclear weapons.
+bool
+is_offensive_combat_type (UnitType * unit_type)
+{
+	return (unit_type->Attack > 0) ||
+		((((unit_type->Special_Actions & UCV_Bombard) | (unit_type->Air_Missions & UCV_Bombing)) & 0x0FFFFFFF) && // (type can perform bombard or bombing AND
+		 ((unit_type->Bombard_Strength > 0) || UnitType_has_ability (unit_type, __, UTA_Nuclear_Weapon))); // (unit has bombard strength OR is a nuclear weapon))
 }
 
 bool
@@ -3312,9 +4350,13 @@ can_damage_bombarding (UnitType * attacker_type, Unit * defender, Tile * defende
 char __fastcall
 patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2)
 {
+	// Save the previous value here b/c this function gets called recursively
+	Unit * prev_checking = is->checking_visibility_for_unit;
+	is->checking_visibility_for_unit = this;
+
 	char base_vis = Unit_is_visible_to_civ (this, __, civ_id, param_2);
 	if ((! base_vis) && // if unit is not visible to civ_id AND
-	    is->current_config.share_visibility_in_hoseat && // shared hotseat vis is enabled AND
+	    is->current_config.share_visibility_in_hotseat && // shared hotseat vis is enabled AND
 	    ((1 << civ_id) & *p_human_player_bits) && // civ_id is a human player AND
 	    (*p_is_offline_mp_game && ! *p_is_pbem_game)) { // we're in a hotseat game
 
@@ -3331,6 +4373,7 @@ patch_Unit_is_visible_to_civ (Unit * this, int edx, int civ_id, int param_2)
 		}
 	}
 
+	is->checking_visibility_for_unit = prev_checking;
 	return base_vis;
 }
 
@@ -3342,7 +4385,7 @@ has_any_destructible_improvements (City * city)
 		if (((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) == 0) && // if improv is not a wonder AND
 		    ((improv->ImprovementFlags & ITF_Center_of_Empire) == 0) && // it's not the palace AND
 		    (improv->SpaceshipPart < 0) && // it's not a spaceship part AND
-		    City_has_improvement (city, __, n, 0)) // it's present in the city ignoring free improvements
+		    patch_City_has_improvement (city, __, n, 0)) // it's present in the city ignoring free improvements
 			return true;
 	}
 	return false;
@@ -3415,7 +4458,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 		    (uti.unit->Body.UnitTypeID == attacker_type_id) &&
 		    ((uti.unit->Body.Container_Unit < 0) || (attacker_type->Unit_Class == UTC_Air)) &&
 		    (uti.unit->Body.UnitState == 0) &&
-		    can_attack_this_turn (uti.unit))
+		    ! has_exhausted_attack (uti.unit))
 			memoize (uti.id);
 	int count_attackers = is->memo_len;
 	
@@ -3449,7 +4492,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 		attacking_tile = (! has_airfield) || (num_air_units_on_target_tile == 0);
 	}
 
-	Unit * next_up = this->Current_Unit;
+	is->sb_next_up = this->Current_Unit;
 	int i_next_attacker = 0;
 	int anything_left_to_attack;
 	int last_attack_didnt_happen;
@@ -3463,20 +4506,21 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 				*p_preferences |= P_ANIMATE_BATTLES;
 		}
 
-		int moves_before_bombard = next_up->Body.Moves;
+		int moves_before_bombard = is->sb_next_up->Body.Moves;
 
-		patch_Unit_bombard_tile (next_up, __, x, y);
+		patch_Unit_bombard_tile (is->sb_next_up, __, x, y);
+		// At this point sb_next_up may have become NULL if the unit was a bomber that got shot down.
 
 		// Check if the last unit sent into battle actually did anything. If it didn't we should at least skip over
 		// it to avoid an infinite loop, but actually the only time this should happen is if the player is not at
 		// war with the targetted civ and chose not to declare when prompted. In this case it's better to just stop
 		// trying to attack so as to not spam the player with prompts.
-		last_attack_didnt_happen = (next_up->Body.Moves == moves_before_bombard);
+		last_attack_didnt_happen = (is->sb_next_up == NULL) || (is->sb_next_up->Body.Moves == moves_before_bombard);
 
-		if (! can_attack_this_turn (next_up)) {
-			next_up = NULL;
-			while ((i_next_attacker < count_attackers) && (next_up == NULL))
-				next_up = get_unit_ptr (attackers[i_next_attacker++]);
+		if ((is->sb_next_up == NULL) || has_exhausted_attack (is->sb_next_up)) {
+			is->sb_next_up = NULL;
+			while ((i_next_attacker < count_attackers) && (is->sb_next_up == NULL))
+				is->sb_next_up = get_unit_ptr (attackers[i_next_attacker++]);
 		}
 		
 		if (attacking_units) {
@@ -3500,9 +4544,10 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 			anything_left_to_attack = has_any_destructible_overlays (target_tile, false);
 		else
 			anything_left_to_attack = 0;
-	} while ((next_up != NULL) && anything_left_to_attack && (! last_attack_didnt_happen));
+	} while ((is->sb_next_up != NULL) && anything_left_to_attack && (! last_attack_didnt_happen));
 
 	is->sb_activated_by_button = 0;
+	is->sb_next_up = NULL;
 	*p_preferences = init_prefs;
 	this->GUI.Base.vtable->m73_call_m22_Draw ((Base_Form *)&this->GUI);
 }
@@ -3886,8 +4931,8 @@ compare_helpers (void const * vp_a, void const * vp_b)
 	     * b = get_unit_ptr (*(int *)vp_b);
 	if ((a != NULL) && (b != NULL)) {
 		// Compute how many movement points each has left (ML = moves left)
-		int ml_a = Unit_get_max_move_points (a) - a->Body.Moves,
-		    ml_b = Unit_get_max_move_points (b) - b->Body.Moves;
+		int ml_a = patch_Unit_get_max_move_points (a) - a->Body.Moves,
+		    ml_b = patch_Unit_get_max_move_points (b) - b->Body.Moves;
 
 		// Whichever one has more MP left comes first in the array
 		if      (ml_a > ml_b) return  1;
@@ -3911,7 +4956,7 @@ issue_stack_worker_command (Unit * unit, int command)
 		if ((uti.id != unit_id) &&
 		    (uti.unit->Body.Container_Unit < 0) &&
 		    (uti.unit->Body.UnitState == 0) &&
-		    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit))) {
+		    (uti.unit->Body.Moves < patch_Unit_get_max_move_points (uti.unit))) {
 			// check if the clicked command is among worker actions that this unit type can perform
 			int actions = p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Worker_Actions;
 			int command_without_category = command & 0x0FFFFFFF;
@@ -3963,7 +5008,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 			    (uti.unit->Body.Container_Unit < 0) &&
 			    (uti.unit->Body.UnitState == 0) &&
 			    (uti.unit->Body.CivID == unit->Body.CivID) &&
-			    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit)))
+			    (uti.unit->Body.Moves < patch_Unit_get_max_move_points (uti.unit)))
 				Unit_set_state (uti.unit, __, UnitState_Fortifying);
 
 	} else if (command == UCV_Upgrade_Unit) {
@@ -4017,7 +5062,7 @@ issue_stack_unit_mgmt_command (Unit * unit, int command)
 			if ((uti.unit->Body.UnitTypeID == unit_type_id) &&
 			    (uti.unit->Body.Container_Unit < 0) &&
 			    (uti.unit->Body.UnitState == 0) &&
-			    (uti.unit->Body.Moves < Unit_get_max_move_points (uti.unit)))
+			    (uti.unit->Body.Moves < patch_Unit_get_max_move_points (uti.unit)))
 				memoize (uti.id);
 
 		if (is->memo_len > 0) {
@@ -4181,6 +5226,8 @@ patch_City_Form_draw (City_Form * this)
 	int form_top = (p_bic_data->ScreenHeight - this->Background_Image.Height) / 2;
 	this->Production_Storage_Indicator.top = form_top + 621 + (is->current_config.show_detailed_city_production_info ? 34 : 0);
 
+	is->drawn_strat_resource_count = 0;
+
 	City_Form_draw (this);
 
 	if (is->current_config.show_detailed_city_production_info) {
@@ -4265,6 +5312,73 @@ patch_City_Form_print_production_info (City_Form *this, int edx, String256 * out
 		out_strs[1].S[0] = '\0';
 }
 
+int __fastcall
+patch_Sprite_draw_strat_res_on_city_screen (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	if (is->current_config.compact_strategic_resource_display_on_city_screen)
+		pixel_x -= 13 * is->drawn_strat_resource_count + 17;
+	return Sprite_draw (this, __, canvas, pixel_x, pixel_y, color_table);
+}
+
+int __fastcall
+patch_PCX_Image_do_draw_cntd_text_for_strat_res (PCX_Image * this, int edx, char * str, int x, int y, int width, unsigned str_len)
+{
+	if (is->current_config.compact_strategic_resource_display_on_city_screen)
+		x -= 13 * is->drawn_strat_resource_count + 17;
+	int tr = PCX_Image_do_draw_centered_text (this, __, str, x, y, width, str_len);
+	is->drawn_strat_resource_count++;
+	return tr;
+}
+
+int __fastcall
+patch_City_get_turns_to_build (City * this, int edx, enum City_Order_Types order_type, int order_id, bool param_3)
+{
+	// To fix the zero production crash, return 9999 when the city's total production rate is zero, avoiding a division by zero. That's only
+	// possible when producing an improvement due to negative shields from specialists. The original logic attempts to return 9999 in case of zero
+	// production but checks for that before including shields from specialists.
+	if (is->current_config.patch_zero_production_crash && (order_type == COT_Improvement)) {
+
+		int specialist_shields = 0;
+		FOR_CITIZENS_IN (ci, this)
+			if ((ci.ctzn->Body.field_20[0] & 0xFF) == 0)
+				specialist_shields += p_bic_data->CitizenTypes[ci.ctzn->Body.WorkerType].Construction;
+
+		// Return 9999 if the denominator in the base function's calculation would be zero. Note the base calc is incorrect in that it
+		// considers specialist shields to count toward Wealth, however we're not going to address that issue here, just stop the crash.
+		if (this->Body.ProductionIncome + specialist_shields <= 0)
+			return 9999;
+	}
+
+	return City_get_turns_to_build (this, __, order_type, order_id, param_3);
+}
+
+bool
+is_below_stack_limit (Tile * tile, int civ_id, enum UnitTypeClasses class)
+{
+	int stack_limit = is->current_config.limit_units_per_tile[class];
+	if (stack_limit <= 0)
+		return true;
+
+	if (is->current_config.exclude_cities_from_units_per_tile_limit &&
+	    get_city_ptr (tile->CityID) != NULL)
+		return true;
+
+	FOR_UNITS_ON (uti, tile) {
+		// If there is a foreign unit on the tile then consider it as being below the stack limit. This ensures that the stack limit doesn't
+		// block combat between players.
+		if (uti.unit->Body.CivID != civ_id)
+			return true;
+
+		if ((uti.unit->Body.Container_Unit < 0) &&
+		    (class == p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Unit_Class)) {
+			stack_limit -= 1;
+			if (stack_limit <= 0)
+				return false;
+		}
+	}
+	return true;
+}
+
 // Returns the ID of the civ this move is trespassing against, or 0 if it's not trespassing.
 int
 check_trespassing (int civ_id, Tile * from, Tile * to)
@@ -4298,6 +5412,15 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 {
 	AdjacentMoveValidity base_validity = Unit_can_move_to_adjacent_tile (this, __, neighbor_index, param_2);
 
+	// Apply unit count per tile limit
+	enum UnitTypeClasses class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
+	if ((base_validity == AMV_OK) && (is->current_config.limit_units_per_tile[class] > 0)) {
+		int nx, ny;
+		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
+		if (! is_below_stack_limit (tile_at (nx, ny), this->Body.CivID, class))
+			return AMV_CANNOT_PASS_BETWEEN;
+	}
+
 	// Apply trespassing restriction
 	if (is->current_config.disallow_trespassing && (base_validity == AMV_OK)) {
 		Tile * from = tile_at (this->Body.X, this->Body.Y);
@@ -4325,6 +5448,10 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 
 	int const base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, neighbor_index, dist_info);
 
+	// Apply unit count per tile limit
+	if ((unit != NULL) && ! is_below_stack_limit (tile_at (to_x, to_y), unit->Body.CivID, p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class))
+		return -1;
+
 	// Apply trespassing restriction
 	if (is->current_config.disallow_trespassing &&
 	    check_trespassing (civ_id, tile_at (from_x, from_y), tile_at (to_x, to_y)) &&
@@ -4334,8 +5461,11 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 	// Adjust movement cost to enforce limited railroad movement
 	if ((is->current_config.limit_railroad_movement > 0) && (is->saved_road_movement_rate > 0)) {
 		if ((unit != NULL) && (base_cost == 0)) { // Railroad move
-			int type_moves_available = Unit_get_max_move_points (unit) / p_bic_data->General.RoadsMovementRate;
-			return type_moves_available * is->railroad_mp_cost_per_move;
+			if (! is->current_config.limited_railroads_work_like_fast_roads) { // If Civ 4 style RR, scale cost by type's moves
+				int type_moves_available = patch_Unit_get_max_move_points (unit) / p_bic_data->General.RoadsMovementRate;
+				return type_moves_available * is->railroad_mp_cost_per_move;
+			} else
+				return is->railroad_mp_cost_per_move;
 		} else if (base_cost == 1) // Road move
 			return is->road_mp_cost;
 	}
@@ -4348,13 +5478,15 @@ patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y
 {
 	int tr = Trade_Net_set_unit_path (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, out_path_length_in_mp);
 
+	bool may_require_length_fix = (is->current_config.limit_railroad_movement > 0) && // if railroad movement is limited AND
+		(tr > 0) && (out_path_length_in_mp != NULL) && // path was found AND caller wants to know its length AND
+		(unit != NULL); // the path is for an actual unit
+
 	// We might have to correct the path length returned by the base game's pathfinder. This occurs when railroad movement is limited and the
 	// unit's total MP exceeds what can be stored in a one-byte integer. The cause of the incorrect length is that the pathfinder internally
 	// stores the remaining moves at each node of the search in a single byte. This correction fixes the bug (reported several times) that ETAs
 	// shown in the interface are wrong.
-	if ((is->current_config.limit_railroad_movement > 0) && // if railroad movement is limited AND
-	    (tr > 0) && (out_path_length_in_mp != NULL) && // path was found AND caller wants to know its length AND
-	    (unit != NULL) && (Unit_get_max_move_points (unit) > 255)) { // an actual unit was used AND that unit's total MP overflows a uint8
+	if (may_require_length_fix && (patch_Unit_get_max_move_points (unit) > 255)) { // Need to recompute path length if unit's total MP can overflow a uint8
 
 		// First memoize the cost of taking each step along the path. This must be done separately because the pathfinder's internal data only
 		// lets us traverse the path backwards.
@@ -4385,7 +5517,7 @@ patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y
 
 		// Now walk the path forwards tracking how much MP the unit would spend. We must be aware that the unit can't spend more MP than it
 		// has. For example, if a unit with 1 move walks onto an unimproved mountain, that effectively costs only 1 move, not 3.
-		int mp_remaining = Unit_get_max_move_points (unit) - unit->Body.Moves,
+		int mp_remaining = patch_Unit_get_max_move_points (unit) - unit->Body.Moves,
 		    mp_spent = 0;
 		for (int n = is->memo_len - 1; n >= 0; n--) {
 			int cost = is->memo[n];
@@ -4394,11 +5526,15 @@ patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y
 				mp_remaining -= cost;
 			} else {
 				mp_spent += mp_remaining;
-				mp_remaining = Unit_get_max_move_points (unit);
+				mp_remaining = patch_Unit_get_max_move_points (unit);
 			}
 		}
 		*out_path_length_in_mp = mp_spent;
-	}
+
+	// Also, if this is a move between adjacent tiles, make sure the path length doesn't exceed the unit's remaining MP. Otherwise, the game may
+	// erroneously show an ETA of >1 turn.
+	} else if (may_require_length_fix && are_tiles_adjacent (from_x, from_y, to_x, to_y))
+		*out_path_length_in_mp = not_above (patch_Unit_get_max_move_points (unit) - unit->Body.Moves, *out_path_length_in_mp);
 
 	return tr;
 }
@@ -4539,6 +5675,13 @@ patch_do_save_game (char const * file_path, char param_2, GUID * guid)
 	}
 	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = is->aliased_leader_title_bits = 0;
 
+	// Do not save unit types with the charm bits cleared if they were cleared by convertion to PTW targeting. The special actions field must not
+	// include the top category bits that are part of the UCV_* enum
+	for (int n = 0; n < is->count_charmed_types_converted_to_ptw_arty; n++) {
+		UnitType * converted_type = &p_bic_data->UnitTypes[is->charmed_types_converted_to_ptw_arty[n]];
+		converted_type->Special_Actions |= (0x00FFFFFF & UCV_Charm_Bombard);
+	}
+
 	int tr = do_save_game (file_path, param_2, guid);
 
 	if (restore_rmr)
@@ -4550,6 +5693,12 @@ patch_do_save_game (char const * file_path, char param_2, GUID * guid)
 	for (int n = 0; n < 32; n++)
 		if (*p_player_bits & (1 << n))
 			apply_era_specific_names (&leaders[n]);
+
+	// Reclear charm bits on converted types
+	for (int n = 0; n < is->count_charmed_types_converted_to_ptw_arty; n++) {
+		UnitType * converted_type = &p_bic_data->UnitTypes[is->charmed_types_converted_to_ptw_arty[n]];
+		converted_type->Special_Actions &= ~(0x00FFFFFF & UCV_Charm_Bombard);
+	}
 
 	return tr;
 }
@@ -4606,7 +5755,8 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	// BIC_get_asset_path returns the file name when it can't find the file
 	if (0 != strcmp (scenario_config_file_name, scenario_config_path))
 		load_config (scenario_config_path, 0);
-	apply_machine_code_edits (&is->current_config);
+	load_config ("custom.c3x_config.ini", 1);
+	apply_machine_code_edits (&is->current_config, false);
 
 	// Initialize Trade Net X
 	if (is->current_config.enable_trade_net_x && (is->tnx_init_state == IS_UNINITED)) {
@@ -4653,6 +5803,15 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	deinit_disabled_command_buttons ();
 	deinit_trade_scroll_buttons ();
 	deinit_unit_rcm_icons ();
+	deinit_red_food_icon ();
+	if (is->tile_already_worked_zoomed_out_sprite_init_state != IS_UNINITED) {
+		enum init_state * state = &is->tile_already_worked_zoomed_out_sprite_init_state;
+		if (*state == IS_OK) {
+			Sprite * sprite = &is->tile_already_worked_zoomed_out_sprite;
+			sprite->vtable->destruct (sprite, __, 0);
+		}
+		*state = IS_UNINITED;
+	}
 
 	// Need to clear this since the resource count might have changed
 	if (is->extra_available_resources != NULL) {
@@ -4666,11 +5825,22 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		is->interceptor_reset_lists[n].count = 0;
 	is->replay_for_players = 0;
 	table_deinit (&is->extra_defensive_bombards);
+	table_deinit (&is->airdrops_this_turn);
+	table_deinit (&is->unit_transport_ties);
+
+	// Clear extra city improvement bits
+	FOR_TABLE_ENTRIES (tei, &is->extra_city_improvs)
+		free ((void *)tei.value);
+	table_deinit (&is->extra_city_improvs);
 
 	// Clear unit type counts
 	for (int n = 0; n < 32; n++)
 		table_deinit (&is->unit_type_counts[n]);
 	is->unit_type_count_init_bits = 0;
+
+	// Clear last city founding turn numbers
+	for (int n = 0; n < 32; n++)
+		is->turn_no_of_last_founding_for_settler_perfume[n] = -1;
 
 	// Load resources.pcx
 	{
@@ -4719,15 +5889,19 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 
 	// Convert charm-flagged units to using PTW targeting if necessary
 	if (is->current_config.charm_flag_triggers_ptw_like_targeting) {
-		struct c3x_config * cc = &is->current_config;
-
 		for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
 			UnitType * type = &p_bic_data->UnitTypes[n];
 			if (type->Special_Actions & UCV_Charm_Bombard) {
-				// Add this type ID to the PTW targeting list
-				reserve (sizeof cc->ptw_arty_types[0], (void **)&cc->ptw_arty_types, &cc->ptw_arty_types_capacity, cc->count_ptw_arty_types);
-				cc->ptw_arty_types[cc->count_ptw_arty_types] = n;
-				cc->count_ptw_arty_types++;
+				// Also add it to the list of converted types
+				reserve (sizeof is->charmed_types_converted_to_ptw_arty[0], // item size
+					 (void **)&is->charmed_types_converted_to_ptw_arty, // ptr to items
+					 &is->charmed_types_converted_to_ptw_arty_capacity, // ptr to capacity
+					 is->count_charmed_types_converted_to_ptw_arty); // count
+				is->charmed_types_converted_to_ptw_arty[is->count_charmed_types_converted_to_ptw_arty] = n;
+				is->count_charmed_types_converted_to_ptw_arty += 1;
+
+				// Add this type ID to the table
+				itable_insert (&is->current_config.ptw_arty_types, n, 1);
 
 				// Clear the charm flag, taking care not to clear the category bit. This is necessary for the PTW targeting to work
 				// since the logic to implement it only applies to the non-charm code path. It wouldn't make sense to have both charm
@@ -4856,6 +6030,30 @@ patch_Unit_can_hurry_production (Unit * this, int edx, City * city, bool exclude
 		return Unit_can_hurry_production (this, __, city, exclude_cheap_improvements);
 }
 
+bool __fastcall
+patch_Unit_can_load (Unit * this, int edx, Unit * passenger)
+{
+	// If this potential passenger is tied to a different transport, do not allow it to load into this one
+	int tied_transport_id = -1;
+	if (is->current_config.limit_unit_loading_to_one_transport_per_turn &&
+	    (! Unit_has_ability (this, __, UTA_Army)) &&
+	    itable_look_up (&is->unit_transport_ties, passenger->Body.ID, &tied_transport_id) &&
+	    (this->Body.ID != tied_transport_id))
+		return false;
+
+	return Unit_can_load (this, __, passenger);
+}
+
+void __fastcall
+patch_Unit_load (Unit * this, int edx, Unit * transport)
+{
+	Unit_load (this, __, transport);
+
+	// Tie the unit to the transport if configured to do so
+	if (is->current_config.limit_unit_loading_to_one_transport_per_turn && ! Unit_has_ability (transport, __, UTA_Army))
+		itable_insert (&is->unit_transport_ties, this->Body.ID, transport->Body.ID);
+}
+
 bool
 any_enemies_near (Leader const * me, int tile_x, int tile_y, enum UnitTypeClasses class, int num_tiles)
 {
@@ -4967,7 +6165,7 @@ base_impl:
 			if ((units_in_transport + 2 <= transport_capacity) &&
 			    (arty_in_transport < not_below (1, transport_capacity / 3))) {
 				Unit_set_escortee (this, __, -1);
-				Unit_load (this, __, transport);
+				patch_Unit_load (this, __, transport);
 			}
 		}
 	}
@@ -4979,9 +6177,9 @@ int
 estimate_travel_time (Unit * unit, int to_tile_x, int to_tile_y, int * out_num_turns)
 {
 	int dist_in_mp;
-	patch_Trade_Net_set_unit_path (p_trade_net, __, unit->Body.X, unit->Body.Y, to_tile_x, to_tile_y, unit, unit->Body.CivID, 1, &dist_in_mp);
+	patch_Trade_Net_set_unit_path (is->trade_net, __, unit->Body.X, unit->Body.Y, to_tile_x, to_tile_y, unit, unit->Body.CivID, 1, &dist_in_mp);
 	dist_in_mp += unit->Body.Moves; // Add MP already spent this turn to the distance
-	int max_mp = Unit_get_max_move_points (unit);
+	int max_mp = patch_Unit_get_max_move_points (unit);
 	if ((dist_in_mp >= 0) && (max_mp > 0)) {
 		*out_num_turns = dist_in_mp / max_mp;
 		return 1;
@@ -5147,7 +6345,7 @@ patch_Unit_ai_move_leader (Unit * this)
 		moving_to_city = find_nearest_established_city (this, continent_id);
 	}
 	if (moving_to_city) {
-		int first_move = patch_Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
+		int first_move = patch_Trade_Net_set_unit_path (is->trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
 		if (first_move > 0) {
 			Unit_set_escortee (this, __, -1);
 			this->vtable->Move (this, __, first_move, 0);
@@ -5254,28 +6452,29 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 {
 	bool base = City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
 
-	// Apply building prereqs
 	if (base) {
+		// Apply building prereqs
 		int building_prereq;
 		if (itable_look_up (&is->current_config.building_unit_prereqs, unit_type_id, &building_prereq)) {
 			// If the prereq is an encoded building ID
-			if (building_prereq & 1)
-				return has_active_building (this, building_prereq >> 1);
+			if (building_prereq & 1) {
+				if (! has_active_building (this, building_prereq >> 1))
+					return false;
 
 			// Else it's a pointer to a list of building IDs
-			else {
+			} else {
 				int * list = (int *)building_prereq;
 				for (int n = 0; n < MAX_BUILDING_PREREQS_FOR_UNIT; n++)
 					if ((list[n] >= 0) && ! has_active_building (this, list[n]))
 						return false;
 			}
 		}
-	}
 
-	// Apply unit type limit
-	int available;
-	if (get_available_unit_count (&leaders[this->Body.CivID], unit_type_id, &available) && (available <= 0))
-		return false;
+		// Apply unit type limit
+		int available;
+		if (get_available_unit_count (&leaders[this->Body.CivID], unit_type_id, &available) && (available <= 0))
+			return false;
+	}
 
 	return base;
 }
@@ -5668,43 +6867,46 @@ is_zero_strength (UnitType * ut)
 }
 
 bool
-uses_ptw_arty_targeting (Unit * u)
-{
-	int type_id = u->Body.UnitTypeID;
-	for (int n = 0; n < is->current_config.count_ptw_arty_types; n++)
-		if (type_id == is->current_config.ptw_arty_types[n])
-			return true;
-	return false;
-}
-
-bool
 is_captured (Unit_Body * u)
 {
 	return (u->RaceID >= 0) && (u->CivID >= 0) && (u->CivID < 32) && leaders[u->CivID].RaceID != u->RaceID;
 }
 
-// Decides whether or not units "a" and "b" are duplicates, i.e., whether they are completely interchangeable.
+// Decides whether or not units "a" and "b" are duplicates, i.e., whether they are interchangeable.
+// If surface_only is set, the function checks only surface-level characteristics, meaning those that are visible to other players.
 bool
-are_units_duplicate (Unit_Body * a, Unit_Body * b)
+are_units_duplicate (Unit_Body * a, Unit_Body * b, bool surface_only)
 {
 	UnitType * a_type = &p_bic_data->UnitTypes[a->UnitTypeID],
-	         * b_type = &p_bic_data->UnitTypes[b->UnitTypeID];
+		 * b_type = &p_bic_data->UnitTypes[b->UnitTypeID];
 
-	// a and b are duplicates if...
-	return
+	// If only doing a surface comparison, look through the alternate strategy types to the base types. The difference b/w the alt types is only
+	// their AI strategies, and that isn't considered a surface feature.
+	if (surface_only) {
+		while (a_type->alternate_strategy_for_id >= 0)
+			a_type = &p_bic_data->UnitTypes[a_type->alternate_strategy_for_id];
+		while (b_type->alternate_strategy_for_id >= 0)
+			b_type = &p_bic_data->UnitTypes[b_type->alternate_strategy_for_id];
+	}
+
+	// a and b are duplicates "on the surface" if...
+	bool are_surface_duplicates =
+		// ... they belong to the same player ...
+		(a->CivID == b->CivID) &&
+
 		// ... they have the same type that is not [a leader OR army] AND not a transport AND ...
 		(a_type == b_type) &&
 		(! (UnitType_has_ability (a_type, __, UTA_Leader) || UnitType_has_ability (a_type, __, UTA_Army))) &&
 		(a_type->Transport_Capacity == 0) &&
 
-		// ... they've taken the same amount of damage AND used up the same number of moves AND ...
-		(a->Damage == b->Damage) && (a->Moves == b->Moves) &&
+		// ... they've taken the same amount of damage AND have the same charm status AND ...
+		(a->Damage == b->Damage) && (a->charmed == b->charmed) &&
 
-		// ... they have matching statuses (has attacked this turn, etc.) AND states (is fortified, is doing worker action, etc.) AND charm status AND automation status AND ...
-		(a->Status == b->Status) && (a->UnitState == b->UnitState) && (a->charmed == b->charmed) && (a->automated == b->automated) &&
+		// ... they're either both fortified or both not AND ...
+		(! (a->UnitState == UnitState_Fortifying) ^ (b->UnitState == UnitState_Fortifying)) &&
 
-		// ... [they have the same experience level OR are both zero strength units] AND ...
-		((a->Combat_Experience == b->Combat_Experience) || (is_zero_strength (a_type) && is_zero_strength (b_type))) &&
+		// ... [they have the same experience level OR are zero strength units] AND ...
+		((a->Combat_Experience == b->Combat_Experience) || is_zero_strength (a_type)) &&
 
 		// ... [they are both not contained in any unit OR they are both contained in the same unit] AND ...
 		(((a->Container_Unit < 0) && (b->Container_Unit < 0)) || (a->Container_Unit == b->Container_Unit)) &&
@@ -5712,8 +6914,36 @@ are_units_duplicate (Unit_Body * a, Unit_Body * b)
 		// ... neither one is carrying a princess AND ...
 		((a->carrying_princess_of_race < 0) && (b->carrying_princess_of_race < 0)) &&
 
-		// ... [they are both captured units OR are both native units].
-		(! (is_captured (a) ^ is_captured (b)));
+		// ... [they are both captured units OR are both native units] AND ...
+		(! (is_captured (a) ^ is_captured (b))) &&
+
+		// ... their custom names are identical.
+		(0 == strncmp (a->Custom_Name.S, b->Custom_Name.S, sizeof (a->Custom_Name)));
+
+	if ((! are_surface_duplicates) || surface_only)
+		return are_surface_duplicates;
+
+	// a and b are additionally "deep", i.e. in all ways, duplicates if...
+	bool are_deep_duplicates =
+		// ...  they've used up the same number of moves AND ...
+		(a->Moves == b->Moves) &&
+
+		// ... they have matching statuses (has attacked this turn, etc.) AND states (is fortified, is doing worker action, etc.) AND automation status AND ...
+		(a->Status == b->Status) && (a->UnitState == b->UnitState) && (a->automated == b->automated) &&
+
+		// ... they have both done the same number of airdrops this turn.
+		(itable_look_up_or (&is->airdrops_this_turn, a->ID, 0) == itable_look_up_or (&is->airdrops_this_turn, b->ID, 0));
+
+	return are_deep_duplicates;
+}
+
+bool
+is_busy (Unit * unit)
+{
+	int state = unit->Body.UnitState;
+	return ((state >= UnitState_Build_Mines) && (state <= UnitState_Explore)) ||
+		(state == UnitState_Auto_Bombard) || (state == UnitState_Auto_Air_Bombard) ||
+		unit->Body.automated;
 }
 
 int __fastcall
@@ -5731,7 +6961,7 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 	int unit_id;
 	Unit_Body * unit_body;
 	bool disable = false, put_icon = false;
-	enum unit_rcm_icon icon = URCMI_UNMOVED_CAN_ATTACK;
+	int icon_index = 0;
 	if ((0 <= (unit_id = item_id - (0x13 + p_bic_data->UnitTypeCount))) &&
 	    (NULL != (unit_body = p_units->Units[unit_id].Unit)) &&
 	    (unit_body->UnitTypeID >= 0) && (unit_body->UnitTypeID < p_bic_data->UnitTypeCount)) {
@@ -5744,7 +6974,7 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 				Unit_Body * dup_body;
 				if ((dup_unit_id >= 0) &&
 				    (NULL != (dup_body = p_units->Units[dup_unit_id].Unit)) &&
-				    are_units_duplicate (unit_body, dup_body)) {
+				    are_units_duplicate (unit_body, dup_body, unit_body->CivID != p_main_screen_form->Player_CivID)) {
 					// The new item is a duplicate of the nth. Mark that in the duplicate counts array and return without actually
 					// adding the item. It doesn't matter what value we return because the caller doesn't use it.
 					is->unit_menu_duplicates[n] += 1;
@@ -5756,7 +6986,7 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 		if (unit_body->CivID == p_main_screen_form->Player_CivID) {
 			Unit * unit = (Unit *)((int)unit_body - offsetof (Unit, Body));
 			UnitType * unit_type = &p_bic_data->UnitTypes[unit_body->UnitTypeID];
-			bool no_moves_left = unit_body->Moves >= Unit_get_max_move_points (unit);
+			bool no_moves_left = unit_body->Moves >= patch_Unit_get_max_move_points (unit);
 			if (no_moves_left && is->current_config.gray_out_units_on_menu_with_no_remaining_moves)
 				disable = true;
 
@@ -5766,15 +6996,24 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 			    ((NULL == (container = get_unit_ptr (unit_body->Container_Unit))) ||
 			     (! UnitType_has_ability (&p_bic_data->UnitTypes[container->Body.UnitTypeID], __, UTA_Army)))) {
 				put_icon = true;
-				if (no_moves_left)
-					icon = URCMI_CANT_MOVE;
-				else {
-					bool can_attack = can_attack_this_turn (unit);
-					if (unit_body->Moves == 0)
-						icon = can_attack ? URCMI_UNMOVED_CAN_ATTACK : URCMI_UNMOVED_NO_ATTACK;
+
+				bool attacker = is_offensive_combat_type (unit_type) || (Unit_has_ability (unit, __, UTA_Army) && (Unit_count_contained_units (unit) >= 1)),
+				     busy = is_busy (unit);
+
+				int icon_set_index = ((int)busy << 1) + (int)(! attacker);
+
+				int icon_row; {
+					if (no_moves_left)
+						icon_row = URCMI_CANT_MOVE;
+					else if (unit_body->Moves == 0)
+						icon_row = URCMI_UNMOVED;
+					else if (! attacker)
+						icon_row = URCMI_MOVED_NO_ATTACK;
 					else
-						icon = can_attack ? URCMI_MOVED_CAN_ATTACK : URCMI_MOVED_NO_ATTACK;
+						icon_row = (! has_exhausted_attack (unit)) ? URCMI_MOVED_CAN_ATTACK : URCMI_MOVED_NO_ATTACK;
 				}
+
+				icon_index = icon_set_index * COUNT_UNIT_RCM_ICONS + icon_row;
 			}
 		}
 	}
@@ -5787,7 +7026,7 @@ patch_Context_Menu_add_item_and_set_color (Context_Menu * this, int edx, int ite
 	if (put_icon) {
 		init_unit_rcm_icons ();
 		if (is->unit_rcm_icon_state == IS_OK)
-			Context_Menu_put_image_on_item (this, __, item_id, &is->unit_rcm_icons[icon]);
+			Context_Menu_put_image_on_item (this, __, item_id, &is->unit_rcm_icons[icon_index]);
 	}
 
 	return tr;
@@ -5835,21 +7074,33 @@ patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3
 }
 
 bool
-is_pop_unit (UnitType const * type)
+is_material_unit (UnitType const * type, bool * out_is_pop_else_caravan)
 {
 	int join_city_action = UCV_Join_City & 0x0FFFFFFF; // To get the join city action code, use the command value and mask out the top 4 category bits
-	int noncombat = (type->Attack | type->Defence | type->Bombard_Strength) == 0;
-	return noncombat &&
-		(type->PopulationCost > 0) &&
-		(type->Worker_Actions == join_city_action);
+	int disband_action = UCV_Disband & 0x0FFFFFFF;
+	if ((type->Attack | type->Defence | type->Bombard_Strength) == 0) { // if non-combat unit
+		if ((type->PopulationCost > 0) && (type->Worker_Actions == join_city_action)) {
+			*out_is_pop_else_caravan = true;
+			return true;
+		} else if ((type->Standard_Actions & disband_action) && (type->Worker_Actions == 0)) {
+			*out_is_pop_else_caravan = false;
+			return true;
+		} else
+			return false;
+	} else
+		return false;
 }
 
 void
-ai_move_pop_unit (Unit * this)
+ai_move_material_unit (Unit * this)
 {
 	int type_id = this->Body.UnitTypeID;
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
 	UnitType * type = &p_bic_data->UnitTypes[type_id];
+
+	// Determine whether this is a pop unit (will search for a city to join) or a caravan (will search for a city to disband)
+	int join_city_action = UCV_Join_City & 0x0FFFFFFF;
+	bool pop_else_caravan = type->Worker_Actions == join_city_action;
 
 	int continent_id = tile->vtable->m46_Get_ContinentID (tile);
 
@@ -5871,38 +7122,54 @@ ai_move_pop_unit (Unit * this)
 		return;
 	}
 
-	// Find the best city to join
-	City * best_join_loc = NULL;
-	int best_join_value = -1;
+	// Find the best city to act on
+	City * best_city = NULL;
+	int best_city_value = pop_else_caravan ? -1 : 0; // min value to act is 0 for pop units, 1 for caravans
 	FOR_CITIES_OF (coi, this->Body.CivID) {
 		City * city = coi.city;
 		Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
 		if (continent_id == city_tile->vtable->m46_Get_ContinentID (city_tile)) {
 
-			// Skip this city if it can't support another citizen
-			if ((city->Body.FoodIncome <= 0) ||
-			    (City_requires_improvement_to_grow (city) > -1))
-				continue;
-
-			int value = 100;
+			if (pop_else_caravan) {
+				// Skip this city if it can't support another citizen
+				if ((city->Body.FoodIncome <= 0) ||
+				    (City_requires_improvement_to_grow (city) > -1))
+					continue;
+			} else {
+				// Skip this city if its current build can't be rushed
+				if (! City_can_take_outside_shields (city, __, 0))
+					continue;
+			}
 
 			// Consider distance.
 			int dist_in_turns;
 			if (! estimate_travel_time (this, city->Body.X, city->Body.Y, &dist_in_turns))
 				continue; // No path or unit cannot move
-			value = (value * 10) / (10 + dist_in_turns);
 
-			// Scale value by city corruption rate.
-			int good_shields    = city->Body.ProductionIncome,
-			    corrupt_shields = city->Body.ProductionLoss;
-			if (good_shields + corrupt_shields > 0)
-				value = (value * good_shields) / (good_shields + corrupt_shields);
-			else
-				continue;
+			int value;
+			if (pop_else_caravan)
+				value = 1000 / (10 + dist_in_turns); // Base value of 100 * 10 / (10 + dist_in_turn)
+			else {
+				// value is number of useful shields we'd get by moving to this city and disbanding there
+				int shields_per_turn = get_city_production_rate (city, city->Body.Order_Type, city->Body.Order_ID),
+				    shields_to_complete_build = City_get_order_cost (city) - City_get_order_progress (city) - shields_per_turn,
+				    disband_value = Leader_get_unit_cost (&leaders[city->Body.CivID], __, type_id, false) >> 2;
+				value = not_above (shields_to_complete_build, disband_value) - shields_per_turn * dist_in_turns;
+			}
 
-			if (value > best_join_value) {
-				best_join_loc = city;
-				best_join_value = value;
+			// Scale value by city corruption rate for pop units or caravan units targeting cities building improvs
+			if (pop_else_caravan || (city->Body.Order_Type == COT_Improvement)) {
+				int good_shields    = city->Body.ProductionIncome,
+				    corrupt_shields = city->Body.ProductionLoss;
+				if (good_shields + corrupt_shields > 0)
+					value = (value * good_shields) / (good_shields + corrupt_shields);
+				else
+					value = -1;
+			}
+
+			if (value > best_city_value) {
+				best_city = city;
+				best_city_value = value;
 			}
 		}
 	}
@@ -5911,18 +7178,22 @@ ai_move_pop_unit (Unit * this)
 	// nearest established city and wait.
 	City * in_city = get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
 	City * moving_to_city = NULL;
-	if (best_join_loc != NULL) {
-		if ((best_join_loc == in_city) &&
-		    patch_Unit_can_perform_command (this, __, UCV_Join_City)) {
-			Unit_join_city (this, __, in_city);
-			return;
+	if (best_city != NULL) {
+		if (best_city == in_city) {
+			if (pop_else_caravan && patch_Unit_can_perform_command (this, __, UCV_Join_City)) {
+				Unit_join_city (this, __, in_city);
+				return;
+			} else if ((! pop_else_caravan) && patch_Unit_can_perform_command (this, __, UCV_Disband)) {
+				Unit_disband (this);
+				return;
+			}
 		} else
-			moving_to_city = best_join_loc;
+			moving_to_city = best_city;
 	} else if (in_city == NULL)
 		moving_to_city = find_nearest_established_city (this, continent_id);
 
 	if (moving_to_city) {
-		int first_move = patch_Trade_Net_set_unit_path (p_trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
+		int first_move = patch_Trade_Net_set_unit_path (is->trade_net, __, this->Body.X, this->Body.Y, moving_to_city->Body.X, moving_to_city->Body.Y, this, this->Body.CivID, 0x101, NULL);
 		if (first_move > 0) {
 			Unit_set_escortee (this, __, -1);
 			this->vtable->Move (this, __, first_move, 0);
@@ -5940,11 +7211,13 @@ patch_Unit_ai_move_terraformer (Unit * this)
 {
 	int type_id = this->Body.UnitTypeID;
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
-	if (is->current_config.enable_pop_unit_ai &&
-	    (tile != NULL) && (tile != p_null_tile) &&
+	bool pop_else_caravan;
+	if ((tile != NULL) && (tile != p_null_tile) &&
 	    (type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
-	    is_pop_unit (&p_bic_data->UnitTypes[type_id])) {
-		ai_move_pop_unit (this);
+	    is_material_unit (&p_bic_data->UnitTypes[type_id], &pop_else_caravan) &&
+	    ((pop_else_caravan && is->current_config.enable_pop_unit_ai) ||
+	     ((! pop_else_caravan) && is->current_config.enable_caravan_unit_ai))) {
+		ai_move_material_unit (this);
 		return;
 	}
 
@@ -6052,6 +7325,12 @@ patch_City_Form_m82_handle_key_event (City_Form * this, int edx, int virtual_key
 			PopupForm_add_text (popup, __, s, 0);
 		}
 		patch_show_popup (popup, __, 0, 0);
+
+	} else if (is->current_config.toggle_zoom_with_z_on_city_screen &&
+		   (virtual_key_code == VK_Z) && is_down) {
+		p_bic_data->is_zoomed_out = ! p_bic_data->is_zoomed_out;
+		Main_Screen_Form_bring_tile_into_view (p_main_screen_form, __, this->CurrentCity->Body.X, get_city_screen_center_y (this->CurrentCity), 0, true, false); // also redraws map
+		this->Base.vtable->m73_call_m22_Draw ((Base_Form *)this);
 	}
 
 	City_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
@@ -6078,6 +7357,16 @@ patch_open_tile_info (void * this, int edx, int mouse_x, int mouse_y, int civ_id
 	return open_tile_info (this, __, mouse_x, mouse_y, civ_id);
 }
 
+int __fastcall
+patch_Match_ai_eval_city_location (void * this, int edx, int x, int y, int civ_id, bool param_4, int * out_breakdown)
+{
+	is->ai_evaling_city_loc_x = x;
+	is->ai_evaling_city_loc_y = y;
+	is->ai_evaling_city_field_30_get_counter = 0;
+
+	return Match_ai_eval_city_location (this, __, x, y, civ_id, param_4, out_breakdown);
+}
+
 bool
 is_explored (Tile * tile, int civ_id)
 {
@@ -6085,7 +7374,7 @@ is_explored (Tile * tile, int civ_id)
 	int in_debug_mode = (*p_debug_mode_bits & 8) != 0; // checking bit 3 here b/c that's how resource visibility is checked in open_tile_info
 	if (in_debug_mode || (explored_bits & (1 << civ_id)))
 		return true;
-	else if (is->current_config.share_visibility_in_hoseat && // if shared hotseat vis is enabled AND
+	else if (is->current_config.share_visibility_in_hotseat && // if shared hotseat vis is enabled AND
 		 (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game AND
 		 ((1 << civ_id) & *p_human_player_bits) && // "civ_id" is a human player AND
 		 (explored_bits & *p_human_player_bits)) // any human player has visibility on the tile
@@ -6123,7 +7412,7 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 
 		if ((is->city_loc_display_perspective >= 0) &&
 		    ((1 << is->city_loc_display_perspective) & *p_player_bits)) {
-			int eval = ai_eval_city_location (is->viewing_tile_info_x, is->viewing_tile_info_y, is->city_loc_display_perspective, false, NULL);
+			int eval = patch_Match_ai_eval_city_location (p_match, __, is->viewing_tile_info_x, is->viewing_tile_info_y, is->city_loc_display_perspective, false, NULL);
 			if (eval > 0) {
 				snprintf (s, sizeof s, "%d", eval - 1000000);
 				PCX_Image_draw_text (this, __, s, x + 95, y, strlen (s));
@@ -6180,7 +7469,7 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 
 		init_tile_highlights ();
 		if (is->tile_highlight_state == IS_OK) {
-			int eval = ai_eval_city_location (tile_x, tile_y, is->city_loc_display_perspective, false, NULL);
+			int eval = patch_Match_ai_eval_city_location (p_match, __, tile_x, tile_y, is->city_loc_display_perspective, false, NULL);
 			if (eval > 0) {
 				int step_size = 10;
 				int midpoint = (COUNT_TILE_HIGHLIGHTS % 2 == 0) ? 1000000 : (1000000 - step_size/2);
@@ -6228,13 +7517,16 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 int __fastcall
 patch_Unit_get_move_points_after_airdrop (Unit * this)
 {
-	return is->current_config.dont_end_units_turn_after_airdrop ? this->Body.Moves : Unit_get_max_move_points (this);
+	int prev_airdrop_count = itable_look_up_or (&is->airdrops_this_turn, this->Body.ID, 0);
+	itable_insert (&is->airdrops_this_turn, this->Body.ID, prev_airdrop_count + 1);
+
+	return is->current_config.dont_end_units_turn_after_airdrop ? this->Body.Moves : patch_Unit_get_max_move_points (this);
 }
 
 int __fastcall
 patch_Unit_get_move_points_after_set_to_intercept (Unit * this)
 {
-	return is->current_config.patch_intercept_lost_turn_bug ? this->Body.Moves : Unit_get_max_move_points (this);
+	return is->current_config.patch_intercept_lost_turn_bug ? this->Body.Moves : patch_Unit_get_max_move_points (this);
 }
 
 void __cdecl
@@ -6398,7 +7690,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
 
 	// Update things in case we've added or removed a mill. This is only necessary while in-game. If the game is still loading the scenario, it
-	// will recompute trade & resources after it's done.
+	// will recompute resources after it's done and we'll recompute yields and happiness ourselves.
 	if (! is->is_placing_scenario_things) {
 		// Collect info about this mill, if in fact the added or removed improvement is a mill. If it's not, all these vars will be left
 		// false. "generates_input" tracks whether or not the mill generates a resource that's an input for another mill.
@@ -6421,7 +7713,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 		    ((improv->ImprovementFlags & ITF_Allows_Water_Trade) == 0) &&
 		    ((improv->ImprovementFlags & ITF_Allows_Air_Trade)   == 0) &&
 		    ((improv->WonderFlags      & ITW_Safe_Sea_Travel)    == 0))
-			patch_Trade_Net_recompute_resources (p_trade_net, __, 0);
+			patch_Trade_Net_recompute_resources (is->trade_net, __, 0);
 
 		// If the mill adds yields or might be a link in a resource production chain that does, recompute yields in the city.
 		if (is_yielding_mill || generates_input)
@@ -6458,10 +7750,13 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 		if (retreat_rules != RR_STANDARD) {
 			if (retreat_rules == RR_NONE)
 				this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 0;
-			else if (retreat_rules == RR_ALL_UNITS)
-				this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 1;
-			else if (retreat_rules == RR_IF_FASTER) {
-				int diff = Unit_get_max_move_points (this->attacker) - Unit_get_max_move_points (this->defender);
+			else if (retreat_rules == RR_ALL_UNITS) {
+				if (! UnitType_has_ability (&p_bic_data->UnitTypes[this->attacker->Body.UnitTypeID], __, UTA_Immobile))
+					this->attacker_eligible_to_retreat = 1;
+				if (! UnitType_has_ability (&p_bic_data->UnitTypes[this->defender->Body.UnitTypeID], __, UTA_Immobile))
+					this->defender_eligible_to_retreat = 1;
+			} else if (retreat_rules == RR_IF_FASTER) {
+				int diff = patch_Unit_get_max_move_points (this->attacker) - patch_Unit_get_max_move_points (this->defender);
 				this->attacker_eligible_to_retreat = diff > 0;
 				this->defender_eligible_to_retreat = diff < 0;
 			}
@@ -6476,10 +7771,17 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	int owner_id = this->Body.CivID;
 	int type_id = this->Body.UnitTypeID;
 
-	// Clear extra DBs used by this unit
-	int extra_dbs;
-	if (itable_look_up (&is->extra_defensive_bombards, this->Body.ID, &extra_dbs) && (extra_dbs != 0))
-		itable_insert (&is->extra_defensive_bombards, this->Body.ID, 0);
+	// Clear extra DBs, airdrops, and transport ties used by this unit
+	itable_remove (&is->extra_defensive_bombards, this->Body.ID);
+	itable_remove (&is->airdrops_this_turn, this->Body.ID);
+	itable_remove (&is->unit_transport_ties, this->Body.ID);
+
+	// If we're despawning the stored ZoC defender, clear that variable so we don't despawn it again in check_life_after_zoc
+	if (this == is->zoc_defender)
+		is->zoc_defender = NULL;
+
+	if (this == is->sb_next_up)
+		is->sb_next_up = NULL;
 
 	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 
@@ -6582,6 +7884,9 @@ remove_extra_palaces (City * city, City * excluded_destination)
 void
 on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 {
+	if (reason == CGR_FOUNDED)
+		is->turn_no_of_last_founding_for_settler_perfume[leader->ID] = *p_current_turn_no;
+
 	// Handle extra palaces for AI multi-city start
 	if (((*p_human_player_bits & (1<<leader->ID)) == 0) && // If leader is an AI AND
 	    (is->current_config.ai_multi_city_start > 1) && // AI multi-city start is enabled AND
@@ -6894,7 +8199,7 @@ adjust_sliders_preproduction (Leader * this)
 int __fastcall
 patch_Leader_count_maintenance_free_units (Leader * this)
 {
-	if (is->current_config.extra_unit_maintenance_per_shields <= 0)
+	if ((is->current_config.extra_unit_maintenance_per_shields <= 0) && (this->ID != 0))
 		return Leader_count_maintenance_free_units (this);
 	else {
 		int tr = 0;
@@ -6907,10 +8212,17 @@ patch_Leader_count_maintenance_free_units (Leader * this)
 				if ((unit->Body.RaceID != this->RaceID) || (type->b_Not_King == 0))
 					tr++;
 
-				// Otherwise, reduce the free unit count by however many times this unit's cost is above the threshold for extra
-				// maintenace. It's alright if the resulting free unit count is negative since all callers of this function subtract
-				// its return value from the total unit count to obtain the count of units that must be paid for.
-				else
+				// If this unit belongs to the barbs and has a tribe ID set (indicating it was spawned in a barb camp) then count it
+				// as a free unit in order not to bankrupt the barb player if the barb player controls any cities. A tribe ID of 75 is
+				// the generic ID that's assigned to barb units when they're spawned with no specific tribe ID.
+				else if ((unit->Body.CivID == 0) && (unit->Body.barb_tribe_id >= 0) && (unit->Body.barb_tribe_id < 75))
+					tr++;
+
+				// Otherwise, if we're configured to apply extra maintenance based on shield cost, reduce the free unit count by
+				// however many times this unit's cost is above the threshold for extra maintenace. It's alright if the resulting free
+				// unit count is negative since all callers of this function subtract its return value from the total unit count to
+				// obtain the count of units that must be paid for.
+				else if (is->current_config.extra_unit_maintenance_per_shields > 0)
 					tr -= type->Cost / is->current_config.extra_unit_maintenance_per_shields;
 			}
 		}
@@ -7022,7 +8334,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 					(improv->Happy_Faces_All <= 0) && (improv->Happy_Faces <= 0) &&
 					(improv->Production <= 0);
 
-				if (sellable && City_has_improvement (coi.city, __, n, 0)) {
+				if (sellable && patch_City_has_improvement (coi.city, __, n, 0)) {
 					int maint = City_get_improvement_maintenance (coi.city, __, n);
 					if (maint > 0)
 						memoize ((not_above (31, maint) << 26) | (n << 13) | coi.city_id);
@@ -7239,6 +8551,9 @@ patch_Unit_can_stealth_attack (Unit * this, int edx, Unit * target)
 	    ! can_damage_bombarding (&p_bic_data->UnitTypes[this->Body.UnitTypeID], target, tile_at (target->Body.X, target->Body.Y)))
 		return false;
 
+	else if (tr && is->current_config.exclude_invisible_units_from_stealth_attack && ! patch_Unit_is_visible_to_civ (target, __, this->Body.CivID, 1))
+		return false;
+
 	else
 		return tr;
 }
@@ -7258,7 +8573,17 @@ patch_PopupSelection_add_stealth_attack_target (PopupSelection * this, int edx, 
 		PopupSelection_add_item (this, __, is->c3x_labels[CL_NO_STEALTH_ATTACK], -1);
 		is->added_any_stealth_target = 1;
 	}
-	return PopupSelection_add_item (this, __, text, value);
+
+	Unit * unit;
+	if (is->current_config.show_hp_of_stealth_attack_options &&
+	    ((unit = get_unit_ptr (value)) != NULL)) {
+		char s[500];
+		int max_hp = Unit_get_max_hp (unit);
+		snprintf (s, sizeof s, "(%d/%d) %s", max_hp - unit->Body.Damage, max_hp, text);
+		s[(sizeof s) - 1] = '\0';
+		return PopupSelection_add_item (this, __, s, value);
+	} else
+		return PopupSelection_add_item (this, __, text, value);
 }
 
 void __fastcall
@@ -7292,7 +8617,7 @@ patch_Unit_get_interceptor_max_moves (Unit * this)
 		return 0;
 
 	else
-		return Unit_get_max_move_points (this);
+		return patch_Unit_get_max_move_points (this);
 }
 
 int __fastcall
@@ -7302,7 +8627,7 @@ patch_Unit_get_moves_after_interception (Unit * this)
 		this->Body.Status |= USF_USED_ATTACK; // Set status bit indicating that the interceptor has attacked this turn
 		return this->Body.Moves + p_bic_data->General.RoadsMovementRate;
 	} else
-		return Unit_get_max_move_points (this);
+		return patch_Unit_get_max_move_points (this);
 }
 
 void __fastcall
@@ -7325,6 +8650,39 @@ patch_Unit_set_state_after_interception (Unit * this, int edx, int new_state)
 	}
 }
 
+// Goes through every entry in a table with unit IDs as keys and filters out any that belong to the given owner (or are invalid).
+void
+remove_unit_id_entries_owned_by (struct table * t, int owner_id)
+{
+	if (t->len > 0) {
+		clear_memo ();
+		FOR_TABLE_ENTRIES (tei, t) {
+			Unit * unit = get_unit_ptr (tei.key);
+			if ((unit == NULL) || (unit->Body.CivID == owner_id))
+				memoize (tei.key);
+		}
+		for (int n = 0; n < is->memo_len; n++)
+			itable_remove (t, is->memo[n]);
+	}
+}
+
+void __fastcall
+patch_Leader_begin_turn (Leader * this)
+{
+	// Eject trespassers
+	is->do_not_bounce_invisible_units = true;
+	if (is->current_config.disallow_trespassing && (*p_current_turn_no > 0))
+		for (int n = 1; n < 32; n++)
+			if ((*p_player_bits & (1 << n)) &&
+			    (n != this->ID) &&
+			    (! this->At_War[n]) &&
+			    ((this->Relation_Treaties[n] & 2) == 0)) // Check right of passage
+				Leader_bounce_trespassing_units (&leaders[n], __, this->ID);
+	is->do_not_bounce_invisible_units = false;
+
+	Leader_begin_turn (this);
+}
+
 void __fastcall
 patch_Leader_begin_unit_turns (Leader * this)
 {
@@ -7342,16 +8700,25 @@ patch_Leader_begin_unit_turns (Leader * this)
 	}
 	irl->count = 0;
 
-	// Reset all extra defensive bombard uses, if necessary
-	if (is->extra_defensive_bombards.len > 0)
+	// Reset extra defensive bombard and airdrop counters
+	remove_unit_id_entries_owned_by (&is->extra_defensive_bombards, this->ID);
+	remove_unit_id_entries_owned_by (&is->airdrops_this_turn      , this->ID);
+	remove_unit_id_entries_owned_by (&is->unit_transport_ties     , this->ID);
+
+	clear_memo ();
+	if (is->current_config.delete_off_map_ai_units &&
+	    ((*p_human_player_bits & (1 << this->ID)) == 0) &&
+	    (p_units->Units != NULL))
 		for (int n = 0; n <= p_units->LastIndex; n++) {
-			Unit * unit = get_unit_ptr (n);
-			if ((unit != NULL) && (unit->Body.CivID == this->ID)) {
-				int unused;
-				if (itable_look_up (&is->extra_defensive_bombards, n, &unused))
-					itable_insert (&is->extra_defensive_bombards, n, 0);
-			}
+			Unit_Body * body = p_units->Units[n].Unit;
+			if ((body != NULL) &&
+			    ((int)body != offsetof (Unit, Body)) &&
+			    (body->CivID == this->ID) &&
+			    ! Map_in_range (&p_bic_data->Map, __, body->X, body->Y))
+				memoize (body->ID);
 		}
+	for (int n = 0; n < is->memo_len; n++)
+		patch_Unit_despawn (get_unit_ptr (is->memo[n]), __, 0, 1, 0, 0, 0, 0, 0);
 
 	Leader_begin_unit_turns (this);
 }
@@ -7365,24 +8732,49 @@ patch_Fighter_find_actual_bombard_defender (Fighter * this, int edx, Unit * bomb
 		return is->bombard_stealth_target;
 }
 
+Unit *
+select_stealth_attack_bombard_target (Unit * unit, int tile_x, int tile_y)
+{
+	bool land_lethal = Unit_has_ability (unit, __, UTA_Lethal_Land_Bombardment),
+	     sea_lethal  = Unit_has_ability (unit, __, UTA_Lethal_Sea_Bombardment);
+	Unit * defender = Fighter_find_defender_against_bombardment (&p_bic_data->fighter, __, unit, tile_x, tile_y, unit->Body.CivID, land_lethal, sea_lethal);
+	if (defender != NULL) {
+		Unit * target;
+		is->selecting_stealth_target_for_bombard = 1;
+		bool got_one = patch_Unit_select_stealth_attack_target (unit, __, defender->Body.CivID, tile_x, tile_y, true, &target);
+		is->selecting_stealth_target_for_bombard = 0;
+		return got_one ? target : NULL;
+	} else
+		return NULL;
+}
+
 bool __fastcall
 patch_Unit_try_flying_for_precision_strike (Unit * this, int edx, int x, int y)
 {
-	if (is->current_config.polish_non_air_precision_striking &&
-	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air))
+	bool is_cruise_missile = UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Cruise_Missile);
+	if (is->current_config.polish_precision_striking &&
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air) &&
+	    ! is_cruise_missile)
 		// This method returns -1 when some kind of error occurs. In that case, return true implying the unit was shot down so the caller
 		// doesn't do anything more. Otherwise, return false so it goes ahead and applies damage.
 		return Unit_play_bombard_fire_animation (this, __, x, y) == -1;
-	else
+
+	else if (is->current_config.polish_precision_striking && is_cruise_missile) {
+		Unit_animate_cruise_missile_strike (this, __, x, y);
+		return false;
+
+	} else
 		return Unit_try_flying_over_tile (this, __, x, y);
 }
 
 void __fastcall
 patch_Unit_play_bombing_anim_for_precision_strike (Unit * this, int edx, int x, int y)
 {
-	// For non-air units we don't play the bombard animation here (do it above instead) since it can fail, for whatever reason.
-	if ((! is->current_config.polish_non_air_precision_striking) ||
-	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air))
+	// Only play the bombing animation here if we haven't already played an animation in the above method. We don't want to play all animations
+	// here since the bombard fire animation can fail for whatever reason but this method can't handle failure.
+	bool is_cruise_missile = UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Cruise_Missile);
+	if ((! is->current_config.polish_precision_striking) ||
+	    ((p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air) && ! is_cruise_missile))
 		Unit_play_bombing_animation (this, __, x, y);
 }
 
@@ -7390,21 +8782,11 @@ int __fastcall
 patch_Unit_play_anim_for_bombard_tile (Unit * this, int edx, int x, int y)
 {
 	Unit * stealth_attack_target = NULL;
-	if (is->current_config.enable_stealth_attack_via_bombardment &&
+	if (((p_bic_data->UnitTypes[this->Body.UnitTypeID].Special_Actions & UCV_Stealth_Attack) != 0) &&
+	    is->current_config.enable_stealth_attack_via_bombardment &&
 	    (! is_online_game ()) &&
-	    patch_Leader_is_tile_visible (&leaders[p_main_screen_form->Player_CivID], __, x, y)) {
-		bool land_lethal = Unit_has_ability (this, __, UTA_Lethal_Land_Bombardment),
-		     sea_lethal  = Unit_has_ability (this, __, UTA_Lethal_Sea_Bombardment);
-		Unit * defender = Fighter_find_defender_against_bombardment (&p_bic_data->fighter, __, this, x, y, this->Body.CivID, land_lethal, sea_lethal);
-		if (defender != NULL) {
-			Unit * target;
-			is->selecting_stealth_target_for_bombard = 1;
-			bool got_one = patch_Unit_select_stealth_attack_target (this, __, defender->Body.CivID, x, y, true, &target);
-			is->selecting_stealth_target_for_bombard = 0;
-			if (got_one)
-				is->bombard_stealth_target = target;
-		}
-	}
+	    patch_Leader_is_tile_visible (&leaders[this->Body.CivID], __, x, y))
+		is->bombard_stealth_target = select_stealth_attack_bombard_target (this, x, y);
 
 	return Unit_play_bombard_fire_animation (this, __, x, y);
 }
@@ -7413,7 +8795,7 @@ void __fastcall
 patch_Main_Screen_Form_issue_precision_strike_cmd (Main_Screen_Form * this, int edx, Unit * unit)
 {
 	UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
-	if ((! is->current_config.polish_non_air_precision_striking) || (type->Unit_Class == UTC_Air))
+	if ((! is->current_config.polish_precision_striking) || (type->Unit_Class == UTC_Air))
 		Main_Screen_Form_issue_precision_strike_cmd (this, __, unit);
 	else {
 		// issue_precision_strike_cmd will use the unit type's operational range. To make it use bombard range instead, place that value in
@@ -7424,6 +8806,22 @@ patch_Main_Screen_Form_issue_precision_strike_cmd (Main_Screen_Form * this, int 
 		Main_Screen_Form_issue_precision_strike_cmd (this, __, unit);
 		type->OperationalRange = saved_op_range;
 	}
+}
+
+int __fastcall
+patch_Map_compute_neighbor_index_for_cm_strike (Map * this, int edx, int x_home, int y_home, int x_neigh, int y_neigh, int lim)
+{
+	int tr = Map_compute_neighbor_index (this, __, x_home, y_home, x_neigh, y_neigh, lim);
+
+	if ((tr >= 0) &&
+	    (is->bombarding_unit != NULL) &&
+	    ((p_bic_data->UnitTypes[is->bombarding_unit->Body.UnitTypeID].Special_Actions & UCV_Stealth_Attack) != 0) &&
+	    is->current_config.enable_stealth_attack_via_bombardment &&
+	    (! is_online_game ()) &&
+	    patch_Leader_is_tile_visible (&leaders[is->bombarding_unit->Body.CivID], __, x_neigh, y_neigh))
+		is->bombard_stealth_target = select_stealth_attack_bombard_target (is->bombarding_unit, x_neigh, y_neigh);
+
+	return tr;
 }
 
 int __fastcall
@@ -7716,7 +9114,7 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 	// Check if we're going to do PTW-like targeting, if not fall back on the base game's do_bombard_tile method. We'll also fall back on that
 	// method in the case where we're in an online game and the bombard can't happen b/c the tile is occupied by another battle. In that case, no
 	// bombard is possible but we'll call the base method anyway since it will show a little message saying as much.
-	if (uses_ptw_arty_targeting (unit) &&
+	if (itable_look_up_or (&is->current_config.ptw_arty_types, unit->Body.UnitTypeID, 0) &&
 	    (is->bombard_stealth_target == NULL) &&
 	    ! (is_online_game () && mp_check_current_combat (p_mp_object, __, mp_tile_x, mp_tile_y))) {
 
@@ -7821,7 +9219,7 @@ patch_City_get_building_defense_bonus (City * this)
 			if ((is_size_level_1 || (improv->Combat_Bombard == 0)) && has_active_building (this, improv_id)) {
 				int multiplier;
 				if ((improv->Combat_Bombard > 0) &&
-				    (Leader_count_wonders_with_flag (&leaders[(this->Body).CivID], __, ITW_Doubles_City_Defenses, NULL) > 0))
+				    (patch_Leader_count_any_shared_wonders_with_flag (&leaders[(this->Body).CivID], __, ITW_Doubles_City_Defenses, NULL) > 0))
 					multiplier = 2;
 				else
 					multiplier = 1;
@@ -7857,19 +9255,22 @@ patch_Unit_eval_escort_requirement (Unit * this)
 {
 	UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
 	int ai_strat = type->AI_Strategy;
+	bool owned_by_ai = (*p_human_player_bits & 1<<this->Body.CivID) == 0; // We must not reduce the escort requirement for human-owned units
+									      // because that will interfere with group movement of units.
 
 	// Apply special escort rules
-	if (is->current_config.dont_escort_unflagged_units && ! UnitType_has_ability (type, __, UTA_Requires_Escort))
+	if (owned_by_ai && is->current_config.dont_escort_unflagged_units && ! UnitType_has_ability (type, __, UTA_Requires_Escort))
 		return 0;
-	if (is->current_config.use_offensive_artillery_ai && (ai_strat & UTAI_Artillery))
+	else if (owned_by_ai && is->current_config.use_offensive_artillery_ai && (ai_strat & UTAI_Artillery))
 		return 1;
 
-	int base = Unit_eval_escort_requirement (this);
-	if ((~*p_human_player_bits & 1<<this->Body.CivID) && // Applying this to a human player's units messes with group movement (for some reason)
-	    (ai_strat & (UTAI_Naval_Transport | UTAI_Naval_Carrier | UTAI_Naval_Missile_Transport)))
-		return not_above (is->current_config.max_ai_naval_escorts, base);
-	else
-		return base;
+	else {
+		int base = Unit_eval_escort_requirement (this);
+		if (owned_by_ai && (ai_strat & (UTAI_Naval_Transport | UTAI_Naval_Carrier | UTAI_Naval_Missile_Transport)))
+			return not_above (is->current_config.max_ai_naval_escorts, base);
+		else
+			return base;
+	}
 }
 
 bool __fastcall
@@ -7991,7 +9392,7 @@ patch_Map_get_tile_to_check_visibility (Map * this, int edx, int index)
 {
 	Tile * tr = Map_get_tile (this, __, index);
 	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
+	if (is_hotseat_game && is->current_config.share_visibility_in_hotseat) {
 		int human_bits = *p_human_player_bits;
 		is->dummy_tile->Body.Fog_Of_War          = tr->Body.Fog_Of_War          | ((tr->Body.Fog_Of_War          & human_bits) != 0 ? human_bits : 0);
 		is->dummy_tile->Body.FOWStatus           = tr->Body.FOWStatus           | ((tr->Body.FOWStatus           & human_bits) != 0 ? human_bits : 0);
@@ -8016,7 +9417,7 @@ patch_Map_get_tile_for_fow_status_check (Map * this, int edx, int index)
 {
 	Tile * tile = Map_get_tile (this, __, index);
 	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
+	if (is_hotseat_game && is->current_config.share_visibility_in_hotseat) {
 		is->dummy_tile->Body.FOWStatus = ((tile->Body.FOWStatus & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
 		return is->dummy_tile;
 	} else
@@ -8040,7 +9441,7 @@ patch_Tile_m42_Get_Overlays (Tile * this, int edx, byte visible_to_civ)
 {
 	unsigned base_vis_overlays = Tile_m42_Get_Overlays (this, __, visible_to_civ);
 	if ((visible_to_civ != 0) && // if we're seeing from a player's persp. instead of seeing the actual overlays AND
-	    is->current_config.share_visibility_in_hoseat && // shared hotseat vis is enabled AND
+	    is->current_config.share_visibility_in_hotseat && // shared hotseat vis is enabled AND
 	    ((1 << visible_to_civ) & *p_human_player_bits) && // the perspective is of a human player AND
 	    (base_vis_overlays != this->Overlays) && // that player can't already see all the actual overlays AND
 	    (*p_is_offline_mp_game && ! *p_is_pbem_game)) { // we're in a hotseat game
@@ -8152,6 +9553,19 @@ patch_Fighter_check_zoc_anim_visibility (Fighter * this, int edx, Unit * attacke
 	}
 }
 
+int __fastcall
+patch_City_sum_buildings_naval_power_for_zoc (City * this)
+{
+	// Cancel out city's naval power if the unit has only one HP left. This prevents coastal fortresses from knocking that last hit point off
+	// passing units when lethal ZoC is enabled, because to make that work we delete an earlier check excusing 1-HP units from ZoC.
+	if ((is->zoc_defender != NULL) &&
+	    ((Unit_get_max_hp (is->zoc_defender) - is->zoc_defender->Body.Damage) <= 1))
+		return 0;
+
+	else
+		return City_sum_buildings_naval_power (this);
+}
+
 void __fastcall
 patch_Fighter_apply_zone_of_control (Fighter * this, int edx, Unit * unit, int from_x, int from_y, int to_x, int to_y)
 {
@@ -8215,9 +9629,9 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 {
 	is->moving_unit_to_adjacent_tile = true;
 
-	is->zoc_interceptor = NULL;
+	is->zoc_interceptor = is->zoc_defender = NULL;
 	int tr = Unit_move_to_adjacent_tile (this, __, neighbor_index, param_2, param_3, param_4);
-	if (check_life_after_zoc (this, is->zoc_interceptor))
+	if ((this == is->zoc_defender) && check_life_after_zoc (this, is->zoc_interceptor))
 		tr = ! is_online_game (); // This is what the original method returns when the unit was destroyed in combat
 
 	is->temporarily_disallow_lethal_zoc = false;
@@ -8243,10 +9657,7 @@ can_do_defensive_bombard (Unit * unit, UnitType * type)
 
 		// If the "blitz" special DB rule is activated and this unit has blitz, check if it still has an extra DB to use
 		else if ((is->current_config.special_defensive_bombard_rules & SDBR_BLITZ) && UnitType_has_ability (type, __, UTA_Blitz)) {
-			int extra_dbs;
-			int got_value = itable_look_up (&is->extra_defensive_bombards, unit->Body.ID, &extra_dbs);
-			if (! got_value)
-				extra_dbs = 0;
+			int extra_dbs = itable_look_up_or (&is->extra_defensive_bombards, unit->Body.ID, 0);
 			return type->Movement > extra_dbs + 1;
 
 		} else
@@ -8269,7 +9680,7 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 		if ((Unit_get_defense_strength (attacker) < 1) || // if attacker cannot defend OR
 		    (defender_tile == NULL) || (defender_tile == p_null_tile) || // defender tile is invalid OR
 		    (((special_rules & SDBR_LETHAL) == 0) && attacker_has_one_hp) || // (DB is non-lethal AND attacker has one HP remaining) OR
-		    ((special_rules & SDBR_NOT_INVISIBLE) && ! Unit_is_visible_to_civ (attacker, __, defender->Body.CivID, 1))) // (invisible units are immune to DB AND attacker is invisible)
+		    ((special_rules & SDBR_NOT_INVISIBLE) && ! patch_Unit_is_visible_to_civ (attacker, __, defender->Body.CivID, 1))) // (invisible units are immune to DB AND attacker is invisible)
 			return NULL;
 
 		Unit * tr = NULL;
@@ -8310,9 +9721,8 @@ patch_Fighter_damage_by_db_in_main_loop (Fighter * this, int edx, Unit * bombard
 
 	// If the unit has already performed DB this turn, then record that it's consumed one of its extra DBs
 	if (bombarder->Body.Status & USF_USED_DEFENSIVE_BOMBARD) {
-		int extra_dbs;
-		int got_value = itable_look_up (&is->extra_defensive_bombards, bombarder->Body.ID, &extra_dbs);
-		itable_insert (&is->extra_defensive_bombards, bombarder->Body.ID, got_value ? (extra_dbs + 1) : 1);
+		int extra_dbs = itable_look_up_or (&is->extra_defensive_bombards, bombarder->Body.ID, 0);
+		itable_insert (&is->extra_defensive_bombards, bombarder->Body.ID, extra_dbs + 1);
 	}
 
 	int damage_before = defender->Body.Damage;
@@ -8396,7 +9806,7 @@ patch_tile_at_for_v3_check (int x, int y)
 {
 	Tile * tile = tile_at (x, y);
 	int is_hotseat_game = *p_is_offline_mp_game && ! *p_is_pbem_game;
-	if (is_hotseat_game && is->current_config.share_visibility_in_hoseat) {
+	if (is_hotseat_game && is->current_config.share_visibility_in_hotseat) {
 		is->dummy_tile->Body.V3 = ((tile->Body.V3 & *p_human_player_bits) != 0) << p_main_screen_form->Player_CivID;
 		return is->dummy_tile;
 	} else
@@ -8408,7 +9818,7 @@ patch_Unit_check_contact_bit_6_on_right_click (Unit * this, int edx, int civ_id)
 {
 	bool tr = Unit_check_contact_bit_6 (this, __, civ_id);
 	if ((! tr) &&
-	    is->current_config.share_visibility_in_hoseat &&
+	    is->current_config.share_visibility_in_hotseat &&
 	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
 	    ((1 << civ_id) & *p_human_player_bits)) { // is civ_id a human player
 		if ((1 << this->Body.CivID) & *p_human_player_bits)
@@ -8439,12 +9849,28 @@ patch_Unit_check_precision_strike_target (Unit * this, int edx, int tile_x, int 
 }
 
 void __fastcall
+patch_Unit_play_attack_animation_vs_tile (Unit * this, int edx, int direction)
+{
+	if (is->current_config.polish_precision_striking &&
+	    UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Cruise_Missile) &&
+	    (is->attacking_tile_x != this->Body.X) && (is->attacking_tile_y != this->Body.Y))
+		Unit_animate_cruise_missile_strike (this, __, is->attacking_tile_x, is->attacking_tile_y);
+	else
+		Unit_play_attack_animation (this, __, direction);
+}
+
+void __fastcall
 patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 {
+	is->attacking_tile_x = x;
+	is->attacking_tile_y = y;
 	if (bombarding)
 		is->unit_bombard_attacking_tile = this;
+
 	Unit_attack_tile (this, __, x, y, bombarding);
+
 	is->unit_bombard_attacking_tile = NULL;
+	is->attacking_tile_x = is->attacking_tile_y = -1;
 }
 
 void __fastcall
@@ -8454,6 +9880,10 @@ patch_Unit_do_precision_strike (Unit * this, int edx, int x, int y)
 		patch_Unit_attack_tile (this, __, x, y, 1);
 	else
 		Unit_do_precision_strike (this, __, x, y);
+
+	if (is->current_config.polish_precision_striking &&
+	    UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Cruise_Missile))
+		Unit_despawn (this, __, 0, false, false, 0, 0, 0, 0);
 }
 
 int __fastcall
@@ -8462,7 +9892,7 @@ patch_Unit_get_max_moves_after_barricade_attack (Unit * this)
 	if (is->current_config.dont_end_units_turn_after_bombarding_barricade && (this == is->unit_bombard_attacking_tile))
 		return this->Body.Moves + p_bic_data->General.RoadsMovementRate;
 	else
-		return Unit_get_max_move_points (this);
+		return patch_Unit_get_max_move_points (this);
 }
 
 City * __cdecl
@@ -8521,12 +9951,16 @@ patch_Unit_can_disembark_anything (Unit * this, int edx, int tile_x, int tile_y)
 	Tile * this_tile = tile_at (this->Body.X, this->Body.Y);
 	bool base = Unit_can_disembark_anything (this, __, tile_x, tile_y);
 
+	// Apply units per tile limit
+	if (base && ! is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, UTC_Land))
+		return false;
+
 	// Apply trespassing restriction. First check if this civ may move into (tile_x, tile_y) without trespassing. If it would be trespassing, then
 	// we can only disembark anything if this transport has a passenger that can ignore the restriction. Without this check, the game can enter an
 	// infinite loop under rare circumstances.
-	if (base &&
-	    is->current_config.disallow_trespassing &&
-	    check_trespassing (this->Body.CivID, this_tile, tile_at (tile_x, tile_y))) {
+	else if (base &&
+		 is->current_config.disallow_trespassing &&
+		 check_trespassing (this->Body.CivID, this_tile, tile_at (tile_x, tile_y))) {
 		bool any_exempt_passengers = false;
 		FOR_UNITS_ON (uti, this_tile)
 			if ((uti.unit->Body.Container_Unit == this->Body.ID) && is_allowed_to_trespass (uti.unit)) {
@@ -8606,7 +10040,7 @@ patch_Leader_get_optimal_city_number (Leader * this)
 		return Leader_get_optimal_city_number (this);
 	else {
 		int num_sans_fp = Leader_get_optimal_city_number (this), // OCN w/o contrib from num of FPs
-		    fp_count = Leader_count_wonders_with_small_flag (this, __, ITSW_Reduces_Corruption, NULL),
+		    fp_count = patch_Leader_count_wonders_with_small_flag (this, __, ITSW_Reduces_Corruption, NULL),
 		    s_diff = p_bic_data->DifficultyLevels[this->field_30].Optimal_Cities, // Difficulty scaling, called "percentage of optimal cities" in the editor
 		    base_ocn = p_bic_data->WorldSizes[p_bic_data->Map.World.World_Size].OptimalCityCount;
 		return num_sans_fp + (s_diff * fp_count * base_ocn + 50) / 100; // Add 50 to round off
@@ -8617,7 +10051,7 @@ int __fastcall
 patch_Leader_count_forbidden_palaces_for_ocn (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null)
 {
 	if (! is->current_config.strengthen_forbidden_palace_ocn_effect)
-		return Leader_count_wonders_with_small_flag (this, __, flag, city_or_null);
+		return patch_Leader_count_wonders_with_small_flag (this, __, flag, city_or_null);
 	else
 		return 0; // We'll add in the FP effect later with a different weight
 }
@@ -8843,14 +10277,30 @@ patch_OpenGLRenderer_draw_line (OpenGLRenderer * this, int edx, int x1, int y1, 
 int __fastcall
 patch_Tile_check_water_for_retreat_on_defense (Tile * this)
 {
-	int is_water = this->vtable->m35_Check_Is_Water (this);
-	if (is->current_config.allow_defensive_retreat_on_water &&
-	    is_water &&
-	    (p_bic_data->fighter.defender != NULL) &&
-	    (p_bic_data->UnitTypes[p_bic_data->fighter.defender->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
-		return 0; // Say this is not water so the retreat is allowed to happen
-	} else
-		return is_water;
+	Unit * defender = p_bic_data->fighter.defender;
+
+	// Under the standard game rules, defensively retreating onto a water tile is not allowed. Set retreat_blocked to true if "this" is a water
+	// tile and we're not configured to allow retreating onto water tiles.
+	bool retreat_blocked; {
+		if (this->vtable->m35_Check_Is_Water (this)) {
+			if (is->current_config.allow_defensive_retreat_on_water &&
+			    (defender != NULL) &&
+			    (p_bic_data->UnitTypes[defender->Body.UnitTypeID].Unit_Class == UTC_Sea))
+				retreat_blocked = false;
+			else
+				retreat_blocked = true;
+		} else
+			retreat_blocked = false;
+	}
+
+	// Check stack limit
+	if ((! retreat_blocked) &&
+	    (defender != NULL) &&
+	    ! is_below_stack_limit (this, defender->Body.CivID, p_bic_data->UnitTypes[defender->Body.UnitTypeID].Unit_Class))
+		retreat_blocked = true;
+
+	// The return from this call is only used to filter the given tile as a possible retreat destination based on whether it's water or not
+	return (int)retreat_blocked;
 }
 
 int __fastcall
@@ -8943,9 +10393,9 @@ patch_Leader_erase_export (Leader * this, int edx, int importer_civ_id, int reso
 }
 
 int __fastcall
-patch_Sprite_draw_improv_img_on_city_form (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
+patch_Sprite_draw_improv_img_on_city_form (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
-	int tr = Sprite_draw (this, __, canvas, pixel_x, pixel_y, param_4);
+	int tr = Sprite_draw (this, __, canvas, pixel_x, pixel_y, color_table);
 
 	int generated_resources[16];
 	int generated_resource_count = 0;
@@ -9005,32 +10455,38 @@ patch_City_get_tourism_amount_to_draw (City * this, int edx, int improv_id)
 
 	int mill_food, mill_shields, mill_commerce;
 	gather_mill_yields (this, improv_id, &mill_food, &mill_shields, &mill_commerce);
-
-	// TODO: Properly display negative mill yields. Right now negative values will mess with the arithmetic so I'm clamping the displayed yields
-	// at zero to prevent that.
-	mill_food     = not_below (0, mill_food);
-	mill_shields  = not_below (0, mill_shields);
-	mill_commerce = not_below (0, mill_commerce);
+	int combined_commerce = mill_commerce + City_get_tourism_amount (this, __, improv_id);
 
 	is->convert_displayed_tourism_to_food = mill_food;
 	is->convert_displayed_tourism_to_shields = mill_shields;
-	return City_get_tourism_amount (this, __, improv_id) + mill_food + mill_shields + mill_commerce;
+	is->combined_tourism_and_mill_commerce = combined_commerce;
+	return int_abs (mill_food) + int_abs (mill_shields) + int_abs (combined_commerce);
 }
 
 int __fastcall
-patch_Sprite_draw_tourism_gold (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, int param_4)
+patch_Sprite_draw_tourism_gold (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
 	// Replace the yield sprite we're drawing with food or a shield if needed.
-	Sprite * sprite; {
-		if (is->tourism_icon_counter < is->convert_displayed_tourism_to_food)
-			sprite = &p_city_form->City_Icons_Images.Icon_15_Food;
-		else if (is->tourism_icon_counter < is->convert_displayed_tourism_to_food + is->convert_displayed_tourism_to_shields)
-			sprite = &p_city_form->City_Icons_Images.Icon_13_Shield;
+	Sprite * sprite = NULL; {
+		if (is->tourism_icon_counter < int_abs (is->convert_displayed_tourism_to_food)) {
+			if (is->convert_displayed_tourism_to_food >= 0)
+				sprite = &p_city_form->City_Icons_Images.Icon_15_Food;
+			else {
+				init_red_food_icon ();
+				if (is->red_food_icon_state == IS_OK)
+					sprite = &is->red_food_icon;
+			}
+		} else if (is->tourism_icon_counter < int_abs (is->convert_displayed_tourism_to_food) + int_abs (is->convert_displayed_tourism_to_shields))
+			sprite = (is->convert_displayed_tourism_to_shields >= 0) ? &p_city_form->City_Icons_Images.Icon_13_Shield : &p_city_form->City_Icons_Images.Icon_05_Shield_Outcome;
+		else if (is->combined_tourism_and_mill_commerce < 0)
+			sprite = &p_city_form->City_Icons_Images.Icon_17_Gold_Outcome;
 		else
 			sprite = this;
 	}
 
-	int tr = Sprite_draw (sprite, __, canvas, pixel_x, pixel_y, param_4);
+	int tr = 0; // return value is not used by caller
+	if (sprite != NULL)
+		tr = Sprite_draw (sprite, __, canvas, pixel_x, pixel_y, color_table);
 	is->tourism_icon_counter++;
 	return tr;
 }
@@ -9130,14 +10586,19 @@ patch_City_spawn_unit_if_done (City * this)
 					popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_LIMITED_UNIT_CHANGE", -1, 0, 0, 0);
 					int response = patch_show_popup (popup, __, 0, 0);
 					if (response == 0)
-						City_zoom_to (this, __, 0);
+						*p_zoom_to_city_after_update = true;
 				}
 			}
 
 		} else {
-			City_Order unused;
-			patch_City_ai_choose_production (this, __, &unused);
+			City_Order order;
+			patch_City_ai_choose_production (this, __, &order);
+			City_set_production (this, __, order.OrderType, order.OrderID, false);
 		}
+
+		// If the player changed production to something other than a unit, don't spawn anything
+		if (this->Body.Order_Type != COT_Unit)
+			skip_spawn = true;
 
 		// Just as a final check, if we weren't able to switch production off the limited unit, prevent it from being spawned so the limit
 		// doesn't get violated.
@@ -9298,6 +10759,17 @@ patch_City_raze (City * this, int edx, int civ_id_responsible, bool checking_eli
 {
 	on_lose_city (&leaders[this->Body.CivID], this, CLR_DESTROYED);
 	City_raze (this, __, civ_id_responsible, checking_elimination);
+
+	// Delete the extra improvement bits records for this city
+	City_Improvements * improv_lists[2] = {&this->Body.Improvements_1, &this->Body.Improvements_2};
+	for (int n = 0; n < ARRAY_LEN (improv_lists); n++) {
+		City_Improvements * improv_list = improv_lists[n];
+		byte * extra_bits;
+		if (itable_look_up (&is->extra_city_improvs, (int)improv_list, (int *)&extra_bits)) {
+			free (extra_bits);
+			itable_remove (&is->extra_city_improvs, (int)improv_list);
+		}
+	}
 }
 
 void __fastcall
@@ -9331,8 +10803,11 @@ patch_City_draw_on_map (City * this, int edx, Map_Renderer * map_renderer, int p
 	Leader * owner = &leaders[this->Body.CivID];
 	int restore_capital = owner->CapitalID;
 
+	if (is->current_config.do_not_make_capital_cities_appear_larger)
+		owner->CapitalID = -1;
+
 	// Temporarily set this city as the capital if it has an extra palace so it gets drawn with the next larger size
-	if ((is->current_config.ai_multi_city_start > 1) &&
+	else if ((is->current_config.ai_multi_city_start > 1) &&
 	    ((*p_human_player_bits & (1 << owner->ID)) == 0) &&
 	    has_extra_palace (this))
 		owner->CapitalID = this->Body.ID;
@@ -9349,7 +10824,7 @@ get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 	struct state_desc {
 		enum c3x_label label;
 		bool is_doing_worker_job;
-	} state_descs[33] = {
+	} state_descs[35] = {
 		{CL_IDLE                , false}, // [No state] = 0x0
 		{CL_FORTIFIED           , false}, // Fortifying = 0x1
 		{CL_MINING              , true }, // Build_Mines = 0x2
@@ -9377,19 +10852,24 @@ get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 		{CL_AUTOMATED           , true }, // Auto_Clear_Pollution = 0x18
 		{CL_AUTOMATED           , true }, // Auto_Save_City_Tiles = 0x19
 		{CL_EXPLORING           , false}, // Explore = 0x1A
-		{-1                     , false}, // ? = 0x1B
-		{-1                     , false}, // Fleeing = 0x1C
-		{-1                     , false}, // ? = 0x1D
-		{-1                     , false}, // ? = 0x1E
+		{CL_IN_STATE_27         , false}, // ? = 0x1B
+		{CL_IN_STATE_28         , false}, // Fleeing = 0x1C
+		{CL_IN_STATE_29         , false}, // ? = 0x1D
+		{CL_IN_STATE_30         , false}, // ? = 0x1E
 		{CL_BOMBARDING          , false}, // Auto_Bombard = 0x1F
 		{CL_BOMBARDING          , false}, // Auto_Air_Bombard = 0x20
+		{CL_BOMBARDING          , false}, // Auto_Precision_Strike = 0x21
+		{CL_IDLE                , false}, // Exhausted = 0x22
 	};
 	enum UnitStateType state = unit->Body.UnitState;
 	struct state_desc const * desc;
-	if ((state >= 0) && (state < ARRAY_LEN (state_descs)) && (desc = &state_descs[state]) && (desc->label >= 0)) {
+	if ((state >= 0) && (state < ARRAY_LEN (state_descs)) && (desc = &state_descs[state]) && (desc->label >= 0) && (desc->label < COUNT_C3X_LABELS)) {
 		enum c3x_label label = desc->label;
-		if (((label == CL_IDLE) || (label == CL_MOVING) || desc->is_doing_worker_job) && unit->Body.automated)
+		Unit * container;
+		if (((label == CL_IDLE) || (label == CL_MOVING) || (label == CL_IN_STATE_29) || desc->is_doing_worker_job) && unit->Body.automated)
 			label = CL_AUTOMATED;
+		else if ((label == CL_FORTIFIED) && (NULL != (container = get_unit_ptr (unit->Body.Container_Unit))) && ! Unit_has_ability (container, __, UTA_Army))
+			label = CL_TRANSPORTED;
 		else if ((label == CL_FORTIFIED) && (unit->Body.Status & (USF_SENTRY | USF_SENTRY_ENEMY_ONLY)))
 			label = CL_SENTRY;
 
@@ -9407,7 +10887,8 @@ patch_MenuUnitItem_write_text_to_temp_str (MenuUnitItem * this)
 
 	Unit * unit = this->unit;
 	char repl_verb[30];
-	if ((unit->Body.CivID == p_main_screen_form->Player_CivID) &&
+	if (is->current_config.describe_states_of_units_on_menu &&
+	    (unit->Body.CivID == p_main_screen_form->Player_CivID) &&
 	    (Unit_get_containing_army (unit) == NULL) &&
 	    get_menu_verb_for_unit (unit, repl_verb, sizeof repl_verb)) {
 		char * verb = (unit->Body.UnitState == UnitState_Fortifying) ? (*p_labels)[LBL_WAKE] : (*p_labels)[LBL_ACTIVATE];
@@ -9434,7 +10915,18 @@ void __fastcall
 patch_Map_place_scenario_things (Map * this)
 {
 	is->is_placing_scenario_things = true;
+
 	Map_place_scenario_things (this);
+
+	// If there are any mills in the config then recompute yields & happiness in all cities. This must be done because we avoid doing this as
+	// mills are added to cities while placing scenario things.
+	if (is->current_config.count_mills > 0)
+		for (int n = 0; n <= p_cities->LastIndex; n++) {
+			City * city = get_city_ptr (n);
+			if (city != NULL)
+				City_recompute_yields_and_happiness (city);
+		}
+
 	is->is_placing_scenario_things = false;
 }
 
@@ -9470,6 +10962,1290 @@ patch_Context_Menu_get_selected_item_on_unit_rcm (Context_Menu * this)
 		return (is_enabled || is_unit_item) ? index : -1;
 	}
 	return -1;
+}
+
+int __fastcall
+patch_Tile_check_water_to_block_pollution (Tile * this)
+{
+	if (this->vtable->m35_Check_Is_Water (this))
+		return 1;
+	else if (is->current_config.do_not_pollute_impassable_tiles) {
+		enum SquareTypes terrain_type = this->vtable->m50_Get_Square_BaseType (this);
+		return p_bic_data->TileTypes[terrain_type].Flags.Impassable;
+	} else
+		return 0;
+}
+
+void __fastcall
+patch_Tile_set_flag_for_eruption_damage (Tile * this, int edx, int param_1, int param_2, int x, int y)
+{
+	if (! (is->current_config.do_not_pollute_impassable_tiles &&
+	       p_bic_data->TileTypes[this->vtable->m50_Get_Square_BaseType (this)].Flags.Impassable))
+		this->vtable->m56_Set_Tile_Flags (this, __, param_1, param_2, x, y);
+}
+
+bool __fastcall
+patch_City_confirm_production_switch (City * this, int edx, int order_type, int order_id)
+{
+	bool tr = City_confirm_production_switch (this, __, order_type, order_id);
+	if (tr &&
+	    (order_type == COT_Improvement) && (order_id >= 0) && (order_id < p_bic_data->ImprovementsCount) &&
+	    (this->Body.CivID == p_main_screen_form->Player_CivID) &&
+	    is->current_config.warn_when_chosen_building_would_replace_another) {
+		Improvement * improv = &p_bic_data->Improvements[order_id];
+		if (improv->ImprovementFlags & ITF_Replaces_Other_Buildings) {
+			Improvement * replaced = NULL;
+			for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+				Improvement * other = &p_bic_data->Improvements[n];
+				if ((other->ImprovementFlags & ITF_Replaces_Other_Buildings) &&
+				    patch_City_has_improvement (this, __, n, false)) {
+					replaced = other;
+					break;
+				}
+			}
+			if (replaced != NULL) {
+				PopupForm * popup = get_popup_form ();
+				set_popup_str_param (0, improv->Name.S, -1, -1);
+				set_popup_str_param (1, replaced->Name.S, -1, -1);
+				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARN_ABOUT_BUILDING_REPLACEMENT", -1, 0, 0, 0);
+				if (patch_show_popup (popup, __, 0, 0) == 1)
+					return false;
+			}
+		}
+	}
+	return tr;
+}
+
+byte const c3x_save_segment_bookend[4] = {0x22, 'C', '3', 'X'};
+
+// Writes a string to the buffer and pads the end so it's four-byte aligned (assuming the existing contents is already so aligned).
+void
+serialize_aligned_text (char const * text, struct buffer * b)
+{
+	int len = strlen (text);
+	if (len > 0) {
+		int padded_len = (len + 4) & ~3; // +1 for null terminator then +3 & ~3 for alignment
+		byte * p = buffer_allocate (b, padded_len);
+		strcpy (p, text);
+		for (int n = 0; n < padded_len - len; n++)
+			p[len + n] = (byte)0;
+	}
+}
+
+void * __fastcall
+patch_MappedFile_open_to_load_game (MappedFile * this, int edx, char * file_name, int sequential_access)
+{
+	void * tr = MappedFile_open (this, __, file_name, sequential_access);
+	if (tr != NULL)
+		is->accessing_save_file = this;
+	return tr;
+}
+
+void * __fastcall
+patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR file_path, unsigned file_size, int is_shared)
+{
+	// Determine if we're currently applying settler perfume to any AI player
+	bool any_current_settler_perfume = false;
+	if (is->current_config.ai_settler_perfume_on_founding != 0) {
+		int duration = is->current_config.ai_settler_perfume_on_founding_duration;
+		for (int n = 0; n < 32; n++) {
+			int last_founding_turn = is->turn_no_of_last_founding_for_settler_perfume[n];
+			if ((last_founding_turn != -1) && ((*p_current_turn_no - last_founding_turn) < duration))
+				any_current_settler_perfume = true;
+		}
+	}
+
+	// Assemble mod save data
+	struct buffer mod_data = {0}; {
+		if (is->extra_defensive_bombards.len > 0) {
+			serialize_aligned_text ("extra_defensive_bombards", &mod_data);
+			itable_serialize (&is->extra_defensive_bombards, &mod_data);
+		}
+		if (is->airdrops_this_turn.len > 0) {
+			serialize_aligned_text ("airdrops_this_turn", &mod_data);
+			itable_serialize (&is->airdrops_this_turn, &mod_data);
+		}
+		if (is->unit_transport_ties.len > 0) {
+			serialize_aligned_text ("unit_transport_ties", &mod_data);
+			itable_serialize (&is->unit_transport_ties, &mod_data);
+		}
+		if ((p_bic_data->ImprovementsCount > 256) && (p_cities->Cities != NULL) && (is->extra_city_improvs.len > 0)) {
+			serialize_aligned_text ("extra_city_improvs", &mod_data);
+			int extra_improv_count = p_bic_data->ImprovementsCount - 256;
+			*(int *)buffer_allocate (&mod_data, sizeof(int)) = extra_improv_count;
+
+			int count_entries = 0; {
+				for (int n = 0; n <= p_cities->LastIndex; n++) {
+					City_Body * body = p_cities->Cities[n].City;
+					if ((body != NULL) && ((int)body != offsetof (City, Body))) {
+						int unused;
+						if (itable_look_up (&is->extra_city_improvs, (int)&body->Improvements_1, &unused) ||
+						    itable_look_up (&is->extra_city_improvs, (int)&body->Improvements_2, &unused))
+							count_entries++;
+					}
+				}
+			}
+			*(int *)buffer_allocate (&mod_data, sizeof(int)) = count_entries;
+
+			int ints_per_list = (extra_improv_count + 31) / 32;
+			int bytes_per_list = (extra_improv_count + 7) / 8;
+			for (int n = 0; n <= p_cities->LastIndex; n++) {
+				City_Body * body = p_cities->Cities[n].City;
+				if ((body != NULL) && ((int)body != offsetof (City, Body))) {
+					byte * extra_bit_lists[2];
+					extra_bit_lists[0] = (byte *)itable_look_up_or (&is->extra_city_improvs, (int)&body->Improvements_1, 0);
+					extra_bit_lists[1] = (byte *)itable_look_up_or (&is->extra_city_improvs, (int)&body->Improvements_2, 0);
+					if ((extra_bit_lists[0] != NULL) || (extra_bit_lists[1] != NULL)) {
+						*(int *)buffer_allocate (&mod_data, sizeof(int)) = body->ID;
+						for (int k = 0; k < 2; k++) {
+							int list_size = sizeof(int) * ints_per_list;
+							int * list = (int *)buffer_allocate (&mod_data, list_size);
+							memset (list, 0, list_size);
+							if (extra_bit_lists[k] != NULL)
+								memcpy (list, extra_bit_lists[k], bytes_per_list);
+						}
+					}
+				}
+			}
+		}
+		if (any_current_settler_perfume) {
+			serialize_aligned_text ("turn_no_of_last_founding_for_settler_perfume", &mod_data);
+			void * area = buffer_allocate (&mod_data, sizeof is->turn_no_of_last_founding_for_settler_perfume);
+			memcpy (area, is->turn_no_of_last_founding_for_settler_perfume, sizeof is->turn_no_of_last_founding_for_settler_perfume);
+		}
+	}
+
+	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
+
+	void * tr = MappedFile_create_file (this, __, file_path, file_size + mod_data.length + metadata_size, is_shared);
+	if (tr != NULL) {
+		is->accessing_save_file = this;
+		if ((mod_data.length > 0) && (mod_data.length + metadata_size <= this->size)) {
+			// Write first bookend to mod's segment in the save data
+			byte * seg_start = (byte *)tr + file_size;
+			for (int n = 0; n < ARRAY_LEN (c3x_save_segment_bookend); n++)
+				seg_start[n] = c3x_save_segment_bookend[n];
+
+			// Write actual mod game data
+			memcpy ((byte *)tr + file_size + 4, mod_data.contents, mod_data.length);
+
+			// Write size of mod data
+			byte * seg_end = (byte *)tr + file_size + 4 + mod_data.length;
+			int_to_bytes (seg_end, mod_data.length);
+
+			// Finish off with another bookend
+			for (int n = 0; n < ARRAY_LEN (c3x_save_segment_bookend); n++)
+				seg_end[4+n] = c3x_save_segment_bookend[n];
+		}
+	}
+	buffer_deinit (&mod_data);
+	return tr;
+}
+
+bool
+match_save_chunk_name (byte ** cursor, char const * name)
+{
+	if (strcmp (name, *cursor) == 0) {
+		// Move cursor past the string if it matched. Also move past any padding that was added to ensure alignment (see serialize_aligned_text).
+		*cursor = (byte *)((int)*cursor + strlen (name) + 4 & ~3);
+		return true;
+	} else
+		return false;
+}
+
+bool
+match_save_segment_bookend (byte * b)
+{
+	return memcmp (c3x_save_segment_bookend, b, ARRAY_LEN (c3x_save_segment_bookend)) == 0;
+}
+
+int __cdecl
+patch_move_game_data (byte * buffer, bool save_else_load)
+{
+	int tr = move_game_data (buffer, save_else_load);
+
+	// Check for a mod save data section and load it if present
+	MappedFile * save;
+	int seg_size;
+	byte * seg;
+	if ((! save_else_load) &&
+	    ((save = is->accessing_save_file) != NULL) &&
+	    (save->size >= 8) &&
+	    match_save_segment_bookend ((byte *)((int)save->base_addr + save->size - 4)) &&
+	    ((seg_size = int_from_bytes ((byte *)((int)save->base_addr + save->size - 8))) > 0) &&
+	    (save->size >= seg_size + 12) &&
+	    match_save_segment_bookend ((byte *)((int)save->base_addr + save->size - seg_size - 12)) &&
+	    ((seg = malloc (seg_size)) != NULL)) {
+		memcpy (seg, (void *)((int)save->base_addr + save->size - seg_size - 8), seg_size);
+
+		byte * cursor = seg;
+		char * error_chunk_name = NULL;
+		while (cursor < seg + seg_size) {
+			if (match_save_chunk_name (&cursor, "special save message")) {
+				char * msg = (char *)cursor;
+				cursor = (byte *)((int)cursor + strlen (msg) + 4 & ~3);
+
+				PopupForm * popup = get_popup_form ();
+				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
+				PopupForm_add_text (popup, __, "This save contains a special message:", 0);
+				PopupForm_add_text (popup, __, msg, 0);
+				patch_show_popup (popup, __, 0, 0);
+
+			} else if (match_save_chunk_name (&cursor, "extra_defensive_bombards")) {
+				int bytes_read = itable_deserialize (cursor, seg + seg_size, &is->extra_defensive_bombards);
+				if (bytes_read > 0)
+					cursor += bytes_read;
+				else {
+					error_chunk_name = "extra_defensive_bombards";
+					break;
+				}
+
+			} else if (match_save_chunk_name (&cursor, "airdrops_this_turn")) {
+				int bytes_read = itable_deserialize (cursor, seg + seg_size, &is->airdrops_this_turn);
+				if (bytes_read > 0)
+					cursor += bytes_read;
+				else {
+					error_chunk_name = "airdrops_this_turn";
+					break;
+				}
+
+			} else if (match_save_chunk_name (&cursor, "unit_transport_ties")) {
+				int bytes_read = itable_deserialize (cursor, seg + seg_size, &is->unit_transport_ties);
+				if (bytes_read > 0)
+					cursor += bytes_read;
+				else {
+					error_chunk_name = "unit_transport_ties";
+					break;
+				}
+
+			} else if (match_save_chunk_name (&cursor, "extra_city_improvs")) {
+				bool success = false;
+				int remaining_bytes = (seg + seg_size) - cursor;
+
+				// Read two int vars from this save chunk
+				int file_extra_improv_count, count_entries;
+				if (remaining_bytes >= 8) {
+					file_extra_improv_count = *((int *)cursor)++;
+					count_entries = *((int *)cursor)++;
+					remaining_bytes -= 8;
+				} else
+					goto done_with_extra_city_improvs;
+
+				// Check that the extra improv counts are valid. They must be greater than zero and what was stored in the save must
+				// match what we got from the current scenario data.
+				int extra_improv_count = not_below (0, p_bic_data->ImprovementsCount - 256);
+				if ((file_extra_improv_count <= 0) || (extra_improv_count != file_extra_improv_count))
+					goto done_with_extra_city_improvs;
+
+				// The extra bits data in the save is stored in 32-bit chunks, "ints", to maintain alignment. Compute how many ints we
+				// need for each list of bits and check that reading all entries won't overrun the buffer.
+				int ints_per_list = (extra_improv_count + 31) / 32,
+				    ints_per_entry = 1 + 2 * ints_per_list;
+				if (count_entries * ints_per_entry * sizeof(int) > remaining_bytes)
+					goto done_with_extra_city_improvs;
+
+				// Main loop reading the extra bits data
+				for (int n = 0; n < count_entries; n++) {
+					City * city = get_city_ptr (*((int *)cursor)++);
+					if (city == NULL)
+						goto done_with_extra_city_improvs;
+
+					byte * extra_bits_1 = calloc (sizeof (int), ints_per_list);
+					for (int k = 0; k < ints_per_list; k++)
+						((int *)extra_bits_1)[k] = *((int *)cursor)++;
+					itable_insert (&is->extra_city_improvs, (int)&city->Body.Improvements_1, (int)extra_bits_1);
+
+					byte * extra_bits_2 = calloc (sizeof (int), ints_per_list);
+					for (int k = 0; k < ints_per_list; k++)
+						((int *)extra_bits_2)[k] = *((int *)cursor)++;
+					itable_insert (&is->extra_city_improvs, (int)&city->Body.Improvements_2, (int)extra_bits_2);
+				}
+
+				// Rebuild the trade network since it may have changed as a result of the additional buildings. This method also
+				// refreshes the free improvement tables and recomputes city happiness.
+				patch_Map_build_trade_network (&p_bic_data->Map);
+
+				success = true;
+
+			done_with_extra_city_improvs:
+				if (! success) {
+					error_chunk_name = "extra_city_improvs";;
+					break;
+				}
+
+			} else if (match_save_chunk_name (&cursor, "turn_no_of_last_founding_for_settler_perfume")) {
+				for (int n = 0; n < 32; n++)
+					is->turn_no_of_last_founding_for_settler_perfume[n] = *((int *)cursor)++;
+
+			} else {
+				error_chunk_name = "N/A";
+				break;
+			}
+		}
+
+		if (error_chunk_name != NULL) {
+			char s[200];
+			snprintf (s, sizeof s, "Failed to read mod save data. Error occured in chunk: %s", error_chunk_name);
+			s[(sizeof s) - 1] = '\0';
+			pop_up_in_game_error (s);
+		}
+
+		free (seg);
+	}
+
+	return tr;
+}
+
+void __fastcall
+patch_MappedFile_deinit_after_saving_or_loading (MappedFile * this)
+{
+	is->accessing_save_file = NULL;
+	MappedFile_deinit (this);
+}
+
+bool __fastcall
+patch_Tile_m7_Check_Barbarian_Camp (Tile * this, int edx, int visible_to_civ)
+{
+	int * p_stack = (int *)&visible_to_civ;
+	int ret_addr = p_stack[-1];
+
+	// If the barb unit AI is calling this method to check if there's a camp to defend, return true if we're allowing barb city capture and the
+	// tile has a city. This causes barb units to defend cities they've captured, otherwise they'll ignore them.
+	if ((ret_addr == ADDR_CHECK_BARB_CAMP_TO_DEFEND_RETURN) &&
+	    is->current_config.enable_city_capture_by_barbarians &&
+	    Tile_has_city (this))
+		return true;
+	else
+		return Tile_m7_Check_Barbarian_Camp (this, __, visible_to_civ);
+}
+
+bool __fastcall
+patch_Unit_can_airdrop (Unit * this)
+{
+	return Unit_can_airdrop (this) && (itable_look_up_or (&is->airdrops_this_turn, this->Body.ID, 0) == 0);
+}
+
+bool __fastcall
+patch_City_Improvements_contains (City_Improvements * this, int edx, int id)
+{
+	byte * extra_bits;
+	if ((id < 256) || ! is->current_config.remove_city_improvement_limit)
+		return City_Improvements_contains (this, __, id);
+	else if (itable_look_up (&is->extra_city_improvs, (int)this, (int *)&extra_bits)) {
+		int extra_id = id - 256;
+		return (extra_bits[extra_id>>3] >> (extra_id & 7)) & 1;
+	} else
+		return false;
+}
+
+void __fastcall
+patch_City_Improvements_set (City_Improvements * this, int edx, int id, bool add_else_remove)
+{
+	if ((id < 256) || ! is->current_config.remove_city_improvement_limit)
+		return City_Improvements_set (this, __, id, add_else_remove);
+	else {
+		byte * extra_bits = (byte *)itable_look_up_or (&is->extra_city_improvs, (int)this, 0);
+		int extra_id = id - 256;
+		byte mask = 1 << (extra_id & 7);
+		if (add_else_remove) {
+			if (! extra_bits) {
+				int extra_bits_size = (not_below (0, p_bic_data->ImprovementsCount - 256) >> 3) + 1;
+				extra_bits = calloc (1, extra_bits_size);
+				itable_insert (&is->extra_city_improvs, (int)this, (int)extra_bits);
+			}
+			extra_bits[extra_id>>3] |= mask;
+		} else if ((! add_else_remove) && (extra_bits != NULL))
+			extra_bits[extra_id>>3] &= ~mask;
+	}
+}
+
+bool __fastcall
+patch_Leader_has_tech_to_stop_disease (Leader * this, int edx, int id)
+{
+	if (! is->current_config.patch_disease_stopping_tech_flag_bug)
+		return Leader_has_tech (this, __, id);
+	else
+		return Leader_has_tech_with_flag (this, __, ATF_Disabled_Deseases_From_Flood_Plains);
+}
+
+void __fastcall
+patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
+{
+	is->lmify_tile_after_working_simple_job = NULL;
+	Unit_work_simple_job (this, __, job_id);
+	if (is->lmify_tile_after_working_simple_job != NULL)
+		is->lmify_tile_after_working_simple_job->vtable->m31_set_landmark (is->lmify_tile_after_working_simple_job, __, true);
+}
+
+void __fastcall
+patch_Map_change_tile_terrain_by_worker (Map * this, int edx, enum SquareTypes new_terrain_type, int x, int y)
+{
+	Map_change_tile_terrain (this, __, new_terrain_type, x, y);
+
+	if (is->current_config.convert_to_landmark_after_planting_forest && (new_terrain_type == SQ_Forest))
+		is->lmify_tile_after_working_simple_job = tile_at (x, y);
+}
+
+int __fastcall
+patch_Leader_ai_eval_technology (Leader * this, int edx, int id, bool param_2, bool param_3)
+{
+	int base = Leader_ai_eval_technology (this, __, id, param_2, param_3);
+	return apply_perfume (PK_TECHNOLOGY, p_bic_data->Advances[id].Name, base);
+}
+
+int __fastcall
+patch_Leader_ai_eval_government (Leader * this, int edx, int id)
+{
+	int base = Leader_ai_eval_government (this, __, id);
+	return apply_perfume (PK_GOVERNMENT, p_bic_data->Governments[id].Name.S, base);
+}
+
+bool
+roll_to_spare_unit_from_nuke (Unit * unit)
+{
+	int one_hp_destroy_chance = is->current_config.chance_for_nukes_to_destroy_max_one_hp_units;
+	UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
+	if ((one_hp_destroy_chance < 100) &&
+	    (Unit_get_max_hp (unit) <= 1) &&
+	    (type->Defence > 0) &&
+	    ((type->Unit_Class == UTC_Land) || (type->Unit_Class == UTC_Sea)))
+		return ! (rand_int (p_rand_object, __, 100) < one_hp_destroy_chance);
+	else
+		return false;
+}
+
+void __fastcall
+patch_Unit_despawn_after_killed_by_nuke (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
+{
+	if (roll_to_spare_unit_from_nuke (this))
+		this->Body.Damage = Unit_get_max_hp (this) - 1;
+	else
+		patch_Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
+}
+
+void __fastcall
+patch_mp_despawn_after_killed_by_nuke (void * this, int edx, int unit_id, int civ_id_responsible, byte param_3, byte param_4, byte param_5, byte param_6)
+{
+	Unit * unit = get_unit_ptr (unit_id);
+	if ((unit != NULL) && roll_to_spare_unit_from_nuke (unit))
+		unit->Body.Damage = Unit_get_max_hp (unit) - 1;
+	else
+		mp_despawn (this, __, unit_id, civ_id_responsible, param_3, param_4, param_5, param_6);
+}
+
+bool __fastcall
+patch_City_has_unprotected_improv_to_sell (City * this, int edx, int id)
+{
+	if (! is->current_config.allow_sale_of_aqueducts_and_hospitals)
+		return City_has_unprotected_improv (this, __, id);
+
+	// Replicate the logic from the original method but check that the city is below the pop cap instead of that the improv removes the cap
+	else if (patch_City_has_improvement (this, __, id, false)) {
+		Improvement * improv = &p_bic_data->Improvements[id];
+		int max_pop_to_sell = INT_MAX; {
+			if (improv->ImprovementFlags & ITF_Allows_City_Level_2)
+				max_pop_to_sell = p_bic_data->General.MaximumSize_Town;
+			else if (improv->ImprovementFlags & ITF_Allows_City_Level_3)
+				max_pop_to_sell = p_bic_data->General.MaximumSize_City;
+		}
+		return ((improv->Characteristics & ITC_Wonder) == 0) &&
+			((improv->Characteristics & ITC_Small_Wonder) == 0) &&
+			((improv->ImprovementFlags & ITF_Center_of_Empire) == 0) &&
+			(this->Body.Population.Size <= max_pop_to_sell);
+
+	} else
+		return false;
+}
+
+bool __fastcall
+patch_UnitType_has_detector_ability_for_vis_check (UnitType * this, int edx, enum UnitTypeAbilities a)
+{
+	bool tr = UnitType_has_ability (this, __, a);
+
+	// Restrict detection by sea units to other sea units and non-sea units to other non-sea units
+	if (tr &&
+	    is->current_config.no_cross_shore_detection &&
+	    (is->checking_visibility_for_unit != NULL) &&
+	    ((this->Unit_Class == UTC_Sea) ^ (p_bic_data->UnitTypes[is->checking_visibility_for_unit->Body.UnitTypeID].Unit_Class == UTC_Sea)))
+		tr = false;
+
+	return tr;
+}
+
+bool
+is_airdrop_trespassing (Unit * unit, int target_x, int target_y)
+{
+	if (is->current_config.disallow_trespassing &&
+	    check_trespassing (unit->Body.CivID, tile_at (unit->Body.X, unit->Body.Y), tile_at (target_x, target_y))) {
+		bool allowed = is_allowed_to_trespass (unit);
+
+		// If "unit" is an air unit that can carry others, like helicopters, then this airdrop is only allowed if all of its passengers are
+		// allowed to trespass.
+		UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
+		if (allowed && (type->Unit_Class == UTC_Air) && (type->Transport_Capacity > 0))
+			FOR_UNITS_ON (uti, tile_at (unit->Body.X, unit->Body.Y))
+				if ((uti.unit->Body.Container_Unit == unit->Body.ID) &&
+				    (! is_allowed_to_trespass (uti.unit))) {
+					allowed = false;
+					break;
+				}
+
+		return ! allowed;
+	} else
+		return false;
+}
+
+bool __fastcall
+patch_Unit_check_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
+{
+	return Unit_check_airdrop_target (this, __, tile_x, tile_y) &&
+		is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class) &&
+		! is_airdrop_trespassing (this, tile_x, tile_y);
+}
+
+bool __fastcall
+patch_Unit_check_airlift_target (Unit * this, int edx, int tile_x, int tile_y)
+{
+	return Unit_check_airlift_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+}
+
+int __fastcall
+patch_City_count_airports_for_ai_airlift_target (City * this, int edx, enum ImprovementTypeFlags airport_flag)
+{
+	int tr = City_count_improvements_with_flag (this, __, airport_flag);
+
+	// Check the stack limit here. If the city's tile is at the limit, return that it has no airport so the AI can't airlift there. The two calls
+	// to this patch function come from the off. & def. unit AI, so only for land units.
+	if ((tr > 0) && ! is_below_stack_limit (tile_at (this->Body.X, this->Body.Y), this->Body.CivID, UTC_Land))
+		return 0;
+
+	else
+		return tr;
+}
+
+int __fastcall
+patch_Unit_ai_eval_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
+{
+	int tr = Unit_ai_eval_airdrop_target (this, __, tile_x, tile_y);
+
+	// Prevent the AI from airdropping onto tiles in violation of the stack limit or trespassing restriction
+	if ((tr > 0) &&
+	    ((! is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class)) ||
+	     is_airdrop_trespassing (this, tile_x, tile_y)))
+		tr = 0;
+
+	return tr;
+}
+
+bool __fastcall
+patch_Unit_find_telepad_on_tile (Unit * this, int edx, int x, int y, bool show_selection_popup, Unit ** out_unit_telepad)
+{
+	if (! is_below_stack_limit (tile_at (x, y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class)) {
+		*out_unit_telepad = NULL;
+		return false;
+	} else
+		return Unit_find_telepad_on_tile (this, __, x, y, show_selection_popup, out_unit_telepad);
+}
+
+bool __fastcall
+patch_Unit_ai_go_to_capital (Unit * this)
+{
+	City * capital = get_city_ptr (leaders[this->Body.CivID].CapitalID);
+
+	// Block going to capital if the capital's tile is at the stack limit. This stops the AI from airlifting there (would violate the limit) and
+	// saves it from trying to pathfind there.
+	if ((capital != NULL) &&
+	    ! is_below_stack_limit (tile_at (capital->Body.X, capital->Body.Y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+		return false;
+
+	return Unit_ai_go_to_capital (this);
+}
+
+bool __fastcall
+patch_Unit_is_in_rebase_range (Unit * this, int edx, int tile_x, int tile_y)
+{
+	bool in_range;
+
+	// 6 is the game's standard value, so fall back on the base game logic in that case
+	if (is->current_config.rebase_range_multiplier == 6)
+		in_range = Unit_is_in_rebase_range (this, __, tile_x, tile_y);
+
+	else {
+		int op_range = p_bic_data->UnitTypes[this->Body.UnitTypeID].OperationalRange;
+		if (op_range < 1)
+			op_range = 500;
+
+		int x_dist = Map_get_x_dist (&p_bic_data->Map, __, tile_x, this->Body.X),
+		    y_dist = Map_get_y_dist (&p_bic_data->Map, __, tile_y, this->Body.Y);
+
+		in_range = ((x_dist + y_dist) >> 1) <= (op_range * is->current_config.rebase_range_multiplier);
+	}
+
+	return in_range && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+}
+
+bool __fastcall
+patch_Unit_check_rebase_target (Unit * this, int edx, int tile_x, int tile_y)
+{
+	// 6 is the game's standard value, so fall back on the base game logic in that case
+	if (is->current_config.rebase_range_multiplier == 6) {
+		return Unit_check_rebase_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+
+	// Otherwise, we have to redo the range check. Unlike Unit::is_in_rebase_range, the base method here does more than just check the range so we
+	// want to make sure to call it even if we determine that the target is in range. In that case, set the range to unlimited temporarily so the
+	// base game's range check passes.
+	} else {
+		if (patch_Unit_is_in_rebase_range (this, __, tile_x, tile_y)) {
+			int * p_op_range = &p_bic_data->UnitTypes[this->Body.UnitTypeID].OperationalRange;
+			int original_op_range = *p_op_range;
+			*p_op_range = 0;
+			bool tr = Unit_check_rebase_target (this, __, tile_x, tile_y);
+			*p_op_range = original_op_range;
+			return tr;
+		} else
+			return false;
+	}
+}
+
+int __fastcall
+patch_Sprite_draw_already_worked_tile_img (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	Sprite * to_draw = this;
+
+	if (is->do_not_draw_already_worked_tile_img)
+		return 0;
+
+	if (is->current_config.toggle_zoom_with_z_on_city_screen && p_bic_data->is_zoomed_out) {
+
+		// Load sprite if necessary
+		if (is->tile_already_worked_zoomed_out_sprite_init_state == IS_UNINITED) {
+			is->tile_already_worked_zoomed_out_sprite_init_state = IS_INIT_FAILED;
+			PCX_Image * pcx = malloc (sizeof *pcx);
+			if (pcx != NULL) {
+				memset (pcx, 0, sizeof *pcx);
+				PCX_Image_construct (pcx);
+				char path[2*MAX_PATH];
+				get_mod_art_path ("TileAlreadyWorkedZoomedOut.pcx", path, sizeof path);
+				PCX_Image_read_file (pcx, __, path, NULL, 0, 0x100, 2);
+				if (pcx->JGL.Image != NULL) {
+					Sprite * sprite = &is->tile_already_worked_zoomed_out_sprite;
+					memset (sprite, 0, sizeof *sprite);
+					Sprite_construct (sprite);
+					Sprite_slice_pcx (sprite, __, pcx, 0, 0, 64, 32, 1, 1);
+					is->tile_already_worked_zoomed_out_sprite_init_state = IS_OK;
+				}
+				pcx->vtable->destruct (pcx, __, 0);
+				free (pcx);
+			}
+		}
+
+		if (is->tile_already_worked_zoomed_out_sprite_init_state == IS_OK)
+			to_draw = &is->tile_already_worked_zoomed_out_sprite;
+	}
+
+	return Sprite_draw (to_draw, __, canvas, pixel_x, pixel_y, color_table);
+}
+
+int __fastcall
+patch_Tile_m43_Get_field_30_for_city_loc_eval (Tile * this)
+{
+	int tr = this->vtable->m43_Get_field_30 (this);
+
+	// This patch function replaces two places where ai_eval_city_location calls Tile::m43_Get_field_30 to check the 18th bit, which indicates
+	// whether the tile is in the workable area of any city. If it is but the work area has been expanded, check that it's actually within the
+	// normal 20-tile area. This prevents work area expansion from causing AIs to space their cities further apart.
+	// The field_30_get_counter is a crazy workaround for the fact that the game doesn't have any way to determine a tile's coordinates given a
+	// pointer to its object. So we track the initial (x, y) for the tile we're evaluating and then count calls to this func to know what
+	// neighboring coords "this" corresponds to.
+	int get_counter = is->ai_evaling_city_field_30_get_counter;
+	if (((tr >> 17) & 1) && (is->current_config.city_work_radius >= 3)) {
+		bool found_city = false;
+		int this_x, this_y; {
+			int dx, dy;
+			patch_ni_to_diff_for_work_area (get_counter, &dx, &dy);
+			this_x = is->ai_evaling_city_loc_x + dx;
+			this_y = is->ai_evaling_city_loc_y + dy;
+			wrap_tile_coords (&p_bic_data->Map, &this_x, &this_y);
+		}
+		FOR_TILES_AROUND (tai, 21, this_x, this_y)
+			if (Tile_has_city (tai.tile)) {
+				found_city = true;
+				break;
+			}
+		if (! found_city)
+			tr &= ~(1 << 17);
+	}
+	get_counter++;
+	if (get_counter >= 21)
+		get_counter = 0;
+	is->ai_evaling_city_field_30_get_counter = get_counter;
+
+	return tr;
+
+}
+
+// Intercept the call where the game gets a random index at which to start searching for a suitable tile to become polluted. Normally, it passes 20 as
+// the limit here. We must replace that to cover a potentially modded work area.
+int __fastcall
+patch_rand_int_to_place_pollution (void * this, int edx, int lim)
+{
+	return rand_int (this, __, is->workable_tile_count - 1);
+}
+
+void __fastcall
+patch_Main_Screen_Form_t2s_coords_to_draw_yields (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int * out_x, int * out_y)
+{
+	Main_Screen_Form_tile_to_screen_coords (this, __, tile_x, tile_y, out_x, out_y);
+
+	// If we've zoomed out the map on the city screen, we may end up drawing the tile yields off screen depending on the map size. If this is the
+	// case, detected by negative screen coords, then shift the coords over by one map-screen back onto the actual screen. The shift amounts are
+	// 64*map_width/2 and 32*map_height/2 for x and y because (64, 32) is the size of a zoomed out tile and /2 is for overlap (I think).
+	if (p_bic_data->is_zoomed_out && (*out_x < 0))
+		*out_x += p_bic_data->Map.Width << 5;
+	if (p_bic_data->is_zoomed_out && (*out_y < 0))
+		*out_y += p_bic_data->Map.Height << 4;
+}
+
+void
+set_clip_area_to_map_view (City_Form * city_form)
+{
+	int left_margin = (p_bic_data->ScreenWidth  - city_form->Background_Image.Width)  / 2,
+	    top_margin  = (p_bic_data->ScreenHeight - city_form->Background_Image.Height) / 2;
+	RECT map_view_on_screen = { .left = left_margin, .top = top_margin + 92, .right = left_margin + 1024, .bottom = top_margin + 508 };
+	JGL_Image * jgl_canvas = city_form->Base.Data.Canvas.JGL.Image;
+	jgl_canvas->vtable->m13_Set_Clip_Region (jgl_canvas, __, &map_view_on_screen);
+}
+
+void
+clear_clip_area (City_Form * city_form)
+{
+	JGL_Image * jgl_canvas = city_form->Base.Data.Canvas.JGL.Image;
+	jgl_canvas->vtable->m13_Set_Clip_Region (jgl_canvas, __, &jgl_canvas->Image_Rect);
+}
+
+void __fastcall
+patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
+{
+	// If we're zoomed in and the city work radius is at least 4 then it's likely we'll end up drawing things outside of the city screen's usual
+	// map area. Set the clip area to the map area so none of those draws are visible.
+	bool changed_clip_area = false;
+	if ((is->current_config.city_work_radius >= 4) && ! p_bic_data->is_zoomed_out) {
+		set_clip_area_to_map_view (this);
+		changed_clip_area = true;
+	}
+
+	is->do_not_draw_already_worked_tile_img = false;
+	City_Form_draw_yields_on_worked_tiles (this);
+
+	// If we're zoomed out then draw the yields again but this time skip drawing of the tile-already-worked sprites. This is because the
+	// transparent regions of those sprites get drawn overtop of the yield sprites when zoomed out, and that overdrawing deletes parts of the
+	// yields, i.e., it overwrites their colored pixels with transparent ones. The simplest solution is to draw the yields again after the
+	// already-worked sprites to ensure the former get drawn overtop of the latter.
+	if (p_bic_data->is_zoomed_out) {
+		is->do_not_draw_already_worked_tile_img = true;
+		City_Form_draw_yields_on_worked_tiles (this);
+	}
+
+	if (changed_clip_area)
+		clear_clip_area (this);
+}
+
+bool __fastcall
+patch_City_Form_draw_highlighted_yields (City_Form * this, int edx, int tile_x, int tile_y, int neighbor_index)
+{
+	// Make sure we don't draw outside the map area
+	bool changed_clip_area = false;
+	if ((is->current_config.city_work_radius >= 4) && ! p_bic_data->is_zoomed_out) {
+		set_clip_area_to_map_view (this);
+		changed_clip_area = true;
+	}
+
+	bool tr = City_Form_draw_highlighted_yields (this, __, tile_x, tile_y, neighbor_index);
+
+	if (changed_clip_area)
+		clear_clip_area (this);
+	return tr;
+}
+
+void __fastcall
+patch_City_Form_draw_border_around_workable_tiles (City_Form * this)
+{
+	// Make sure we don't draw outside the map area
+	bool changed_clip_area = false;
+	if ((is->current_config.city_work_radius >= 4) && ! p_bic_data->is_zoomed_out) {
+		set_clip_area_to_map_view (this);
+		changed_clip_area = true;
+	}
+
+	City_Form_draw_border_around_workable_tiles (this);
+
+	if (changed_clip_area)
+		clear_clip_area (this);
+}
+
+bool __fastcall
+patch_City_stop_working_polluted_tile (City * this, int edx, int neighbor_index)
+{
+	if (is->current_config.do_not_unassign_workers_from_polluted_tiles &&
+	    (*p_human_player_bits & (1 << this->Body.CivID)))
+		return false; // do nothing; return value is not used
+	else
+		return City_stop_working_tile (this, __, neighbor_index);
+}
+
+void __fastcall
+patch_City_manage_by_governor (City * this, int edx, bool param_1)
+{
+	int * p_stack = (int *)&param_1;
+	int ret_addr = p_stack[-1];
+
+	// Do nothing if called after spawning pollution but didn't unassign worker
+	if ((ret_addr == ADDR_MANAGE_CITY_AFTER_POLLUTION_RETURN) &&
+	    is->current_config.do_not_unassign_workers_from_polluted_tiles &&
+	    (*p_human_player_bits & (1 << this->Body.CivID)))
+		return;
+
+	City_manage_by_governor (this, __, param_1);
+}
+
+City * __cdecl
+patch_find_nearest_city_for_ai_alliance_eval (int tile_x, int tile_y, int owner_id, int continent_id, int ignore_owner_id, int perspective_id, City * ignore_city)
+{
+	City * tr = find_nearest_city (tile_x, tile_y, owner_id, continent_id, ignore_owner_id, perspective_id, ignore_city);
+	if (is->current_config.patch_division_by_zero_in_ai_alliance_eval && (*p_nearest_city_distance == 0))
+		*p_nearest_city_distance = 1;
+	return tr;
+}
+
+int __fastcall
+patch_Unit_get_max_move_points (Unit * this)
+{
+	if (Unit_has_ability (this, __, UTA_Army) && is->current_config.patch_empty_army_movement) {
+		int slowest_member_mp = INT_MAX;
+		bool any_units_in_army = false;
+		FOR_UNITS_ON (uti, tile_at (this->Body.X, this->Body.Y)) {
+			if (uti.unit->Body.Container_Unit == this->Body.ID) {
+				any_units_in_army = true;
+				slowest_member_mp = not_above (Unit_get_max_move_points (uti.unit), slowest_member_mp);
+			}
+		}
+		if (any_units_in_army)
+			return slowest_member_mp + p_bic_data->General.RoadsMovementRate;
+		else
+			return get_max_move_points (&p_bic_data->UnitTypes[this->Body.UnitTypeID], this->Body.CivID);
+	} else
+		return Unit_get_max_move_points (this);
+}
+
+char __fastcall
+patch_Unit_is_visible_to_civ_for_bouncing (Unit * this, int edx, int civ_id, int param_2)
+{
+	// If we're set not to kick out invisible units and this one is invis. then report that it's not seen so it's left alone
+	if (is->do_not_bounce_invisible_units && Unit_has_ability (this, __, UTA_Invisible))
+		return 0;
+	else
+		return patch_Unit_is_visible_to_civ (this, __, civ_id, param_2);
+}
+
+void __fastcall
+patch_Leader_make_peace (Leader * this, int edx, int civ_id)
+{
+	Leader_make_peace (this, __, civ_id);
+
+	if (is->current_config.disallow_trespassing &&
+	    (! this->At_War[civ_id]) && // Make sure the war actually ended
+	    ((this->Relation_Treaties[civ_id] & 2) == 0)) { // Check right of passage (just in case)
+		is->do_not_bounce_invisible_units = true;
+		Leader_bounce_trespassing_units (&leaders[civ_id], __, this->ID);
+		is->do_not_bounce_invisible_units = false;
+	}
+}
+
+// This patch function replaces calls to Leader::count_wonders_with_flag but is only valid in cases where it only matters whether the return value is
+// zero or non-zero. This function will not return the actual count, just zero if no wonders are present and some >0 value if there is at least one.
+int __fastcall
+patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum ImprovementTypeWonderFeatures flag, City * only_in_city)
+{
+	int tr = Leader_count_wonders_with_flag (this, __, flag, only_in_city);
+
+	if ((tr == 0) &&
+	    (only_in_city == NULL) &&
+	    is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << this->ID) & *p_human_player_bits)) { // is "this" a human player
+
+		// Sum up wonders owned by other human players
+		unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+		int n_player = 1;
+		while (player_bits != 0) {
+			if ((player_bits & 1) && (n_player != this->ID))
+				if (Leader_count_wonders_with_flag (&leaders[n_player], __, flag, only_in_city) > 0) {
+					tr = 1;
+					break;
+				}
+			player_bits >>= 1;
+			n_player++;
+		}
+	}
+
+	return tr;
+}
+
+int const shared_small_wonder_flags =
+	ITSW_Increases_Chance_of_Leader_Appearance |
+	ITSW_Build_Larger_Armies |
+	ITSW_Treasury_Earns_5_Percent |
+	ITSW_Decreases_Success_Of_Missile_Attacks |
+	ITSW_Allows_Spy_Missions |
+	ITSW_Allows_Healing_In_Enemy_Territory |
+	ITSW_Requires_Victorous_Army |
+	ITSE_Requires_Elite_Naval_Units;
+
+
+int __fastcall
+patch_Leader_count_wonders_with_small_flag (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null)
+{
+	int tr = Leader_count_wonders_with_small_flag (this, __, flag, city_or_null);
+
+	// If "this" is a human player who's sharing wonders in hotseat and the flag is one of the ones that gets shared, include the wonders owned by
+	// all other humans in the game
+	if ((city_or_null == NULL) &&
+	    (flag & shared_small_wonder_flags) &&
+	    is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << this->ID) & *p_human_player_bits)) { // is "this" a human player
+
+		unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+		int n_player = 1;
+		while (player_bits != 0) {
+			if ((player_bits & 1) && (n_player != this->ID))
+				tr += Leader_count_wonders_with_small_flag (&leaders[n_player], __, flag, city_or_null);
+			player_bits >>= 1;
+			n_player++;
+		}
+	}
+
+	return tr;
+}
+
+int
+find_human_player_with_small_wonder (int improv_id)
+{
+	unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+	int n_player = 1;
+	while (player_bits != 0) {
+		if (player_bits & 1)
+			if (leaders[n_player].Small_Wonders[improv_id] != -1)
+				return n_player;
+		player_bits >>= 1;
+		n_player++;
+	}
+	return -1;
+}
+
+bool __fastcall
+patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, bool param_2)
+{
+	Improvement * improv = &p_bic_data->Improvements[i_improv];
+	bool restore = false;
+	bool already_shared = false;
+	int saved_status, saved_required_building_count, saved_armies_count;
+	if ((improv->Characteristics & (ITC_Small_Wonder | ITC_Wonder)) && // if the improv in question is a great or small wonder
+	    is->current_config.share_wonders_in_hotseat && // if we're configured to share wonder effects
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // if in a hotseat game
+	    ((1 << this->ID) & *p_human_player_bits)) { // if "this" is a human player
+
+		// If another human player has already built this small wonder and it has no non-shared effects, then make it unbuildable
+		if ((improv->Characteristics & ITC_Small_Wonder) &&
+		    (find_human_player_with_small_wonder (i_improv) != -1) &&
+		    ((improv->SmallWonderFlags & ~shared_small_wonder_flags) == 0))
+			already_shared = true;
+
+		else {
+			restore = true;
+			saved_status = this->Status;
+			if (improv->RequiredBuildingID != -1)
+				saved_required_building_count = this->Improvement_Counts[improv->RequiredBuildingID];
+			saved_armies_count = this->Armies_Count;
+
+			// Loop over all other human players in the game
+			unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+			int n_player = 1;
+			while (player_bits != 0) {
+				if ((player_bits & 1) && (n_player != this->ID)) {
+
+					// Combine status bits
+					this->Status |= leaders[n_player].Status & (LSF_HAS_VICTORIOUS_ARMY | LSF_HAS_ELITE_NAVAL_UNIT);
+
+					// Combine building counts for the required building if there is one
+					if (improv->RequiredBuildingID != -1)
+						this->Improvement_Counts[improv->RequiredBuildingID] += leaders[n_player].Improvement_Counts[improv->RequiredBuildingID];
+
+					// Combine army counts
+					this->Armies_Count += leaders[n_player].Armies_Count;
+
+				}
+				player_bits >>= 1;
+				n_player++;
+			}
+		}
+	}
+
+	bool tr = (! already_shared) && Leader_can_build_city_improvement (this, __, i_improv, param_2);
+
+	if (restore) {
+		this->Status = saved_status;
+		if (improv->RequiredBuildingID != -1)
+			this->Improvement_Counts[improv->RequiredBuildingID] = saved_required_building_count;
+
+		this->Armies_Count = saved_armies_count;
+	}
+	return tr;
+
+}
+
+void __fastcall
+patch_City_add_happiness_from_buildings (City * this, int edx, int * inout_happiness, int * inout_unhappiness)
+{
+	// If we're in a hotseat game with shared wonder effects, merge all human player's improvement counts together so the base function checks for
+	// happiness from improvements owned by other human players.
+	Leader * owner = &leaders[this->Body.CivID];
+	bool restore_improv_counts = false;
+	if (is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << this->Body.CivID) & *p_human_player_bits)) { // "this" is owned by a human player
+
+		// Ensure the space we've set aside for saving the real improv counts is large enough
+		if ((is->saved_improv_counts == NULL) || (is->saved_improv_counts_capacity < p_bic_data->ImprovementsCount)) {
+			free (is->saved_improv_counts);
+			is->saved_improv_counts = calloc (p_bic_data->ImprovementsCount, sizeof is->saved_improv_counts[0]);
+			is->saved_improv_counts_capacity = (is->saved_improv_counts != NULL) ? p_bic_data->ImprovementsCount : 0;
+		}
+
+
+		if (is->saved_improv_counts != NULL) {
+			// Save the owner's real improv counts and remember to restore them before returning
+			restore_improv_counts = true;
+			for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
+				is->saved_improv_counts[n] = owner->Improvement_Counts[n];
+
+			// Add in improv counts for wonders from all other human players in the game
+			unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+			int n_player = 1;
+			while (player_bits != 0) {
+				if ((player_bits & 1) && (n_player != owner->ID))
+					for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
+						if (p_bic_data->Improvements[n].Characteristics & (ITC_Wonder | ITC_Small_Wonder))
+							owner->Improvement_Counts[n] += leaders[n_player].Improvement_Counts[n];
+				player_bits >>= 1;
+				n_player++;
+			}
+		}
+
+	}
+
+	City_add_happiness_from_buildings (this, __, inout_happiness, inout_unhappiness);
+
+	if (restore_improv_counts) {
+		for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
+			owner->Improvement_Counts[n] = is->saved_improv_counts[n];
+	}
+}
+
+int __fastcall
+patch_City_count_other_cont_happiness_buildings (City * this, int edx, int improv_id)
+{
+	int tr = City_count_other_buildings_on_continent (this, __, improv_id);
+
+	// If it's a hotseat game where we're sharing wonders, "improv_id" refers to a wonder, and "this" is owned by a human player
+	if (is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((p_bic_data->Improvements[improv_id].Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0) &&
+	    ((1 << this->Body.CivID) & *p_human_player_bits)) {
+
+		// Add in instances of this improvment on this continent owned by other human players
+		Tile * this_city_tile = tile_at (this->Body.X, this->Body.Y);
+		int this_cont_id = this_city_tile->vtable->m46_Get_ContinentID (this_city_tile);
+		for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+			City * city = get_city_ptr (city_index);
+			if ((city != NULL) && (city != this) &&
+			    (city->Body.CivID != this->Body.CivID) && // if city is owned by a different player AND
+			    ((1 << city->Body.CivID) & *p_human_player_bits)) { // that player is a human
+				Tile * that_city_tile = tile_at (city->Body.X, city->Body.Y);
+				int that_cont_id = that_city_tile->vtable->m46_Get_ContinentID (that_city_tile);
+				if ((this_cont_id == that_cont_id) && patch_City_has_improvement (city, __, improv_id, true))
+					tr++;
+			}
+		}
+
+	}
+
+	return tr;
+}
+
+void __fastcall
+patch_Leader_update_great_library_unlocks (Leader * this)
+{
+	// If it's a hotseat game with shared wonder effects and "this" is a human player, share contacts among all human players so that "this" gets
+	// techs from civs known to any human player in the game. Save the real contact info and restore it afterward. NOTE: Contact info has to go
+	// two ways here; we must mark that "this" has contacted the AIs and vice-versa otherwise the techs won't be granted. That's why we must save
+	// & restore all contact bits for all players.
+	bool restore_contacts = false;
+	struct contact_set {
+		int contacts[32];
+	} saved_contact_sets[32];
+	if (is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << this->ID) & *p_human_player_bits)) { // "this" is a human player
+
+		restore_contacts = true;
+		for (int n = 0; n < 32; n++)
+			for (int k = 0; k < 32; k++)
+				saved_contact_sets[n].contacts[k] = leaders[n].Contacts[k];
+
+		unsigned human_player_bits = *(unsigned *)p_human_player_bits >> 1;
+		int n_human = 1;
+		while (human_player_bits != 0) {
+			if ((human_player_bits & 1) && (n_human != this->ID)) // n_human is ID of a human player other than "this"
+				for (int n_ai = 0; n_ai < 32; n_ai++)
+					if ((*p_player_bits & (1 << n_ai)) && ((*p_human_player_bits & (1 << n_ai)) == 0)) {
+						// If the human and AI players have contact, mark "this" as having contact with the AI and vice-versa
+						if (leaders[n_human].Contacts[n_ai] & 1) {
+							this->Contacts[n_ai] |= 1;
+							leaders[n_ai].Contacts[this->ID] |= 1;
+						}
+					}
+			human_player_bits >>= 1;
+			n_human++;
+		}
+	}
+
+	Leader_update_great_library_unlocks (this);
+
+	if (restore_contacts)
+		for (int n = 0; n < 32; n++)
+			for (int k = 0; k < 32; k++)
+				 leaders[n].Contacts[k] = saved_contact_sets[n].contacts[k];
+}
+
+bool __fastcall
+patch_Leader_has_wonder_doubling_happiness_from (Leader * this, int edx, int improv_id)
+{
+	bool tr = Leader_has_wonder_doubling_happiness_from (this, __, improv_id);
+
+	// If we're sharing wonder effects in a hotseat game and "this" is a human player, return true when another human player in the game has a
+	// wonder doubling happiness
+	if ((! tr) &&
+	    is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << this->ID) & *p_human_player_bits)) { // "this" is a human player
+		unsigned human_player_bits = *(unsigned *)p_human_player_bits >> 1;
+		int n_human = 1;
+		while (human_player_bits != 0) {
+			if ((human_player_bits & 1) &&
+			    (n_human != this->ID) &&
+			    Leader_has_wonder_doubling_happiness_from (&leaders[n_human], __, improv_id)) {
+				tr = true;
+				break;
+			}
+			human_player_bits >>= 1;
+			n_human++;
+		}
+	}
+
+	return tr;
+}
+
+int __fastcall
+patch_Sprite_draw_citizen_head (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	// Reset variable
+	is->specialist_icon_drawing_running_x = INT_MIN;
+
+	return Sprite_draw (this, __, canvas, pixel_x, pixel_y, color_table);
+}
+
+int
+adjust_specialist_yield_icon_x (int pixel_x, int width)
+{
+	if (is->current_config.fix_overlapping_specialist_yield_icons) {
+		if (is->specialist_icon_drawing_running_x == INT_MIN) // first icon drawn
+			is->specialist_icon_drawing_running_x = pixel_x;
+		int tr = is->specialist_icon_drawing_running_x;
+		is->specialist_icon_drawing_running_x += width;
+		return tr;
+	} else
+		return pixel_x;
+}
+
+int __fastcall
+patch_Sprite_draw_entertainer_yield_icon (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	int width = p_city_form->City_Icons_Images.Icon_12_Happy_Faces.Width / 2;
+	return Sprite_draw (this, __, canvas, adjust_specialist_yield_icon_x (pixel_x, width), pixel_y, color_table);
+}
+int __fastcall
+patch_Sprite_draw_scientist_yield_icon (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	int width = p_city_form->City_Icons_Images.Icon_16_Science.Width / 2;
+	return Sprite_draw (this, __, canvas, adjust_specialist_yield_icon_x (pixel_x, width), pixel_y, color_table);
+}
+int __fastcall
+patch_Sprite_draw_tax_collector_yield_icon (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	int width = p_city_form->City_Icons_Images.Icon_14_Gold.Width / 2;
+	return Sprite_draw (this, __, canvas, adjust_specialist_yield_icon_x (pixel_x, width), pixel_y, color_table);
+}
+int __fastcall
+patch_Sprite_draw_civil_engineer_yield_icon (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	int width = p_city_form->City_Icons_Images.Icon_13_Shield.Width / 2;
+	return Sprite_draw (this, __, canvas, adjust_specialist_yield_icon_x (pixel_x, width), pixel_y, color_table);
+}
+int __fastcall
+patch_Sprite_draw_police_officer_yield_icon (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	int width = p_city_form->City_Icons_Images.Icon_17_Gold_Outcome.Width / 2;
+	return Sprite_draw (this, __, canvas, adjust_specialist_yield_icon_x (pixel_x, width), pixel_y, color_table);
+}
+
+void __fastcall
+patch_City_add_building_if_done (City * this)
+{
+	// If sharing small wonders in hotseat, check whether the city is building a small wonder that's no longer available to the player b/c its
+	// effects are provided from another.
+	int improv_id = this->Body.Order_ID;
+	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	int already_built_by_id;
+	if ((improv->Characteristics & ITC_Small_Wonder) &&
+	    is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << this->Body.CivID) & *p_human_player_bits) && // city owned by a human player
+	    ((already_built_by_id = find_human_player_with_small_wonder (improv_id)) != -1) && // SW already built by another human player
+	    ((improv->SmallWonderFlags & ~shared_small_wonder_flags) == 0)) { // SW has no non-shared effects
+
+		// Switch city production to something else and notify the player
+		this->vtable->set_production_to_most_expensive_option (this);
+		if ((this->Body.CivID == p_main_screen_form->Player_CivID) && (already_built_by_id != p_main_screen_form->Player_CivID)) {
+			char * new_build_name = (this->Body.Order_Type == COT_Improvement) ?
+				p_bic_data->Improvements[this->Body.Order_ID].Name.S :
+				p_bic_data->UnitTypes[this->Body.Order_ID].Name;
+			PopupForm * popup = get_popup_form ();
+			set_popup_str_param (0, this->Body.CityName, -1, -1);
+			set_popup_str_param (1, improv->Name.S, -1, -1);
+			set_popup_str_param (2, Leader_get_civ_noun (&leaders[already_built_by_id]), -1, -1);
+			set_popup_str_param (3, new_build_name, -1, -1);
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_SHARED_WONDER_CHANGE", -1, 0, 0, 0);
+			int response = patch_show_popup (popup, __, 0, 0);
+			if (response == 0)
+				*p_zoom_to_city_after_update = true;
+		}
+
+		// As in the base logic, if production gets switched, the game doesn't check if it might still complete on the same turn.
+		return;
+	}
+
+	City_add_building_if_done (this);
 }
 
 // This function needs to know the addresses of many patch functions. The easiest way is to define it last.

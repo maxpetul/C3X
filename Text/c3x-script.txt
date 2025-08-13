@@ -114,4 +114,19 @@ $CITY0 can no longer work on a $UNIT1 because our civilization can only command 
 Zoom to City.
 Sounds Good.
 
+#C3X_WARN_ABOUT_BUILDING_REPLACEMENT
+#advisor Domestic Happy
+Constructing the $IMPROVEMENT0 in this city would replace its $IMPROVEMENT1.
+#itemlist
+That's fine.
+Nevermind then.
+
+#C3X_SHARED_WONDER_CHANGE
+#map_center 0
+#advisor Domestic
+$CITY0 can no longer work on $IMPROVEMENT1 because we are already receiving its effects from the $CIVNOUN2. Production has been switched to $BUILD3.
+#itemlist
+Zoom to City.
+Sounds Good.
+
 # ; This line must remain at end of file

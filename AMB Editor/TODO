@@ -1,0 +1,10 @@
+- See if the Kmap params do anything useful
+
+Low priority:
+- ArcherRun.amb is missing WAV file names for breath sounds. This is fixable.
+- Add row on HopliteAttackA.amb doesn't work properly b/c of the orphan sound track
+- Put asterisk in window title if there are unsaved changes
+- Warning when you run multiple instances of the editor. Doing so breaks playing of previews.
+- Option to create a "new" AMB file
+- Consider moving all .c files into a source folder
+- Consider adding a column with program numbers

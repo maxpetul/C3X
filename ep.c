@@ -585,7 +585,7 @@ find_patch_function (TCCState * tcc, char const * obj_name, int prepend_patch)
 	return mss.matching_val;
 }
 
-enum reg { REG_EAX = 0, REG_ECX, REG_EDX, REG_EBX, REG_EBP, REG_ESI, REG_EDI };
+enum reg { REG_EAX = 0, REG_ECX, REG_EDX, REG_EBX, REG_ESP, REG_EBP, REG_ESI, REG_EDI };
 
 // This writes a call to intercept_consideration at the cursor. intercept_consideration takes a single parameter, the point value of the thing being
 // considered and it returns a new, possibly modified, value for it. Because this call gets inserted into a stream of instructions we must take care
@@ -618,7 +618,7 @@ emit_consideration_intercept_call (byte ** p_cursor, byte * code_base, void * ad
 	*p_cursor = cursor;
 }
 
-enum jump_kind { JK_UNCOND = 0, JK_LESS };
+enum jump_kind { JK_UNCOND = 0, JK_LESS, JK_GREATER_EQ };
 
 void
 emit_jump (byte ** p_cursor, byte * code_base, int jump_target, byte * addr_airlock, enum jump_kind kind)
@@ -629,6 +629,9 @@ emit_jump (byte ** p_cursor, byte * code_base, int jump_target, byte * addr_airl
 	else if (kind == JK_LESS) {
 		*cursor++ = 0x0F; // | jl
 		*cursor++ = 0x8C; // |
+	} else if (kind == JK_GREATER_EQ) {
+		*cursor++ = 0x0F; // | jge
+		*cursor++ = 0x8D; // |
 	}
 	cursor = int_to_bytes (cursor, jump_target - ((int)addr_airlock + (cursor - code_base) + 4));
 	*p_cursor = cursor;
@@ -912,7 +915,7 @@ ENTRY_POINT ()
 		for (int n = 0; n < count_civ_prog_objects; n++)
 			if (civ_prog_objects[n].job == OJ_INLEAD)
 				count++;
-		inleads_capacity = count + 20; // Allocate some extra space for various uses
+		inleads_capacity = count + 40; // Allocate some extra space for various uses
 	}
 	int inleads_size = inleads_capacity * sizeof (struct inlead);
 	struct inlead * inleads = alloc_prog_memory (".c3xinl", NULL, inleads_size, MAA_READ_WRITE_EXECUTE);
@@ -927,6 +930,8 @@ ENTRY_POINT ()
 	write_prog_int (&injected_state->mod_info_button_images_state, IS_UNINITED);
 	write_prog_int (&injected_state->disabled_command_img_state, IS_UNINITED);
 	write_prog_int (&injected_state->unit_rcm_icon_state, IS_UNINITED);
+	write_prog_int (&injected_state->red_food_icon_state, IS_UNINITED);
+	write_prog_int (&injected_state->tile_already_worked_zoomed_out_sprite_init_state, IS_UNINITED);
 	tcc_define_pointer (tcc, "ADDR_INJECTED_STATE", injected_state);
 
 	// Pass through prog objects before compiling to set things up for compilation
@@ -1046,7 +1051,8 @@ ENTRY_POINT ()
 	// Pass through prog objects after compiling to redirect control flow to patches
 	for (int n = 0; n < count_civ_prog_objects; n++) {
 		struct civ_prog_object const * obj = &civ_prog_objects[n];
-		if (obj->job != OJ_IGNORE) {
+		if ((obj->job != OJ_IGNORE) &&
+		    ! ((obj->job == OJ_REPL_CALL) && (obj->addr == 0x0FF))) { // Special address 0x0FF ("OFF") ignores call repl on a per-exe basis
 			ASSERT ((obj->addr != 0) || (0 == strcmp (obj->name, "exe_version_index")));
 
 			if (obj->job == OJ_INLEAD)
@@ -1111,6 +1117,81 @@ ENTRY_POINT ()
 		}
 		REQUIRE (addr_intercept_set_resource_bit != 0, "Couldn't find ADDR_INTERCEPT_SET_RESOURCE_BIT in prog objects");
 		init_set_resource_bit_airlock (tcc, addr_set_resource_bit_airlock, addr_intercept_set_resource_bit);
+	}
+
+	// Process the "ext walup" jobs, which involves extending loops over city work areas by redirecting their final jump instruction (that would
+	// normally begin a new cycle) to an inlead where we redo the comparison against our own work area tile count variable then reproduce the
+	// jumps to either cycle again or exit the loop.
+	// Complications include: (1) There are many different loops to patch and they use different registers to contain the loop variable. We must
+	// detect which register is being used for each. (2) Some jump instructions are only 2 bytes. We must overwrite more than just the original
+	// jmp instr in those cases in order to insert a jump to the inlead (req. 5 bytes).
+	for (int n = 0; n < count_civ_prog_objects; n++) {
+		struct civ_prog_object const * obj = &civ_prog_objects[n];
+		if (obj->job != OJ_EXT_WALUP)
+			continue;
+
+		int addr_jump = obj->addr;
+
+		byte * orig_code = read_prog_memory ((void *)(addr_jump - 20), 40);
+		byte * jump_instr = &orig_code[20];
+
+		// Determine if this is a 6-byte or 2-byte jump and make sure the jump instruction matches one of the ones we can handle.
+		int jump_instr_size = length_disasm (jump_instr);
+		REQUIRE (   ((jump_instr_size == 6) && (jump_instr[0] == 0x0F) && ((jump_instr[1] == 0x8C) || (jump_instr[1] == 0x8D)))
+			 || ((jump_instr_size == 2) && (jump_instr[0] == 0x7C)),
+			 "Work area jump address invalid or type of jump not supported");
+		bool small_jump = jump_instr_size == 2,
+		     cond_ge = (jump_instr_size == 6) && (jump_instr[1] == 0x8D); // One jump's condition is GE, all others are less-than
+
+		// Determine what register contains the loop index (which is also neighbor index around the city). We need to know this in order to
+		// reproduce the cmp instruction.
+		enum reg reg; {
+			byte * cursor = orig_code;
+			do {
+				if ((cursor[0] == 0x83) && (cursor[1] >= 0xF8) && (cursor[2] == 0x15)) {
+					reg = (enum reg)(cursor[1] - 0xF8);
+					break;
+				}
+				cursor++;
+			} while (cursor < jump_instr);
+			REQUIRE (cursor != jump_instr, "Couldn't find cmp instruction in lead up to work area jump");
+		}
+
+		// If we're redirecting a 2-byte jump, check that the instruction sequence is specifically increment, compare, jump, and that the
+		// increment and compare concern the same register.
+		if (small_jump) {
+			byte incr_instr = 0x40 + (int)reg;
+			REQUIRE ((jump_instr[-4] == incr_instr) && (jump_instr[-3] == 0x83) && (jump_instr[-1] == 0x15),
+				"2-byte work area jump pattern not matched");
+		}
+
+		int jump_offset = small_jump ? (int)*(char *)&jump_instr[1] : read_prog_int ((void const *)(addr_jump + 2));
+		int orig_jump_target = addr_jump + jump_instr_size + jump_offset;
+
+		ASSERT (i_next_free_inlead < inleads_capacity);
+		byte * wae_inlead = (byte *)&inleads[i_next_free_inlead];
+		i_next_free_inlead++;
+
+		// Replace original jump with an uncond. one heading to the inlead. If the jump is only 2 bytes, replace the instruction preceeding
+		// it, too, which we have already determined is the 3-byte compare.
+		byte jump_repl[6] = {0xE9, 0, 0, 0, 0, 0x90};
+		int addr_new_jump = small_jump ? addr_jump - 3 : addr_jump;
+		int_to_bytes (&jump_repl[1], (int)wae_inlead - (addr_new_jump + 5));
+		write_prog_memory ((byte *)addr_new_jump, jump_repl, small_jump ? 5 : 6);
+
+		// At the inlead, replace the original cmp, cond. jump, and also add second jmp exiting the loop in case the cond. doesn't pass
+		{
+			byte code[sizeof (struct inlead)] = {0};
+			byte * cursor = code;
+			*cursor++ = 0x3B;
+			*cursor++ = 0x05 + 8 * (int)reg;
+			cursor = int_to_bytes (cursor, (int)&injected_state->workable_tile_count);
+			emit_jump (&cursor, code, orig_jump_target, wae_inlead, cond_ge ? JK_GREATER_EQ : JK_LESS);
+			emit_jump (&cursor, code, addr_jump + jump_instr_size, wae_inlead, JK_UNCOND);
+			write_prog_memory (wae_inlead, code, sizeof code);
+		}
+
+		free (orig_code);
 	}
 
 	// Give up write permission on Civ proc's code injection pages

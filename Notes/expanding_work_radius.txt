@@ -1,0 +1,107 @@
+
+To test addresses:
+  - click map to work a tile
+  - sell harbor, verify food updates correctly for worker in 3+ ring
+  - found city
+  - raze city
+  - grow city, also w/ wonder that grows two at a time
+  - starve city
+  - join a worker
+  - click center city tile to manage citizens
+  - kick a citizen off of a tile by moving a hostile unit onto it
+  - run through a bunch of turns w/ automated workers
+  - set city production to something that gets mobilization bonus
+  - spawn and clear pollution
+  - have pollution kick a citizen off a tile
+  - kick a citizen off a tile by founding a city on it
+  - test various city screen things: click to work tile, click off tile, hover, click center tile
+
+GOG/Steam/PCG patch locations for expanded city work radius (0x):
+4adb68/4b4b4c/4adbf8 [jumps: 6/6/6 eax/ebp/eax]
+  in add_or_remove_improvement
+  ...basically should check every call to calc_tile_yield_at
+4ae51e/4b5504/4ae5ae [jumps: 6/6/6 ebx/eax/ebx]
+  sets tile flags in City::initialize
+4ae83b/4b580c/4ae8cb [jumps: 6/2/6 eax/ebx/eax]
+  another loop in City::initialize
+  annoying example of a 2-byte jump
+4af02d/4b5ffc/4af0bd [jumps: 6/6/6 eax/ebx/eax], 4af0c7/4b6092/4af157 [jumps: 6/6/6 eax/eax/eax]
+  in City::raze, double loop to clear tile flags around the city
+  ...this is why it would be difficult to have workable ranges that vary between cities
+4af3d4/4b639d/4af464 [jumps: 6/6/6 ebp/ebx/ebp]
+  in City::raze, again setting tile flags (feels redundant)
+4af5a3/4b6568/4af633 [jumps: 6/6/6 ebp/ebp/ebp]
+  in City::raze, looks like setting a dirty flag re: visibility
+4afcf4
+  in City::set_production, re: mobilization bonus
+4b1040
+  recomputing tile yields
+4b2489, 4b2620
+  in City::update_growth, again recomputing yields
+  ...basically should check every call to add_or_remove_tile_yield
+4ba197
+  in City::add_population
+4ba677
+  in City::remove_population
+4bb4eb
+  in City::controls_tile
+  cut out this check by editing the jump. we've replicated this check in the patched version of City::controls_tile
+43550a
+  in City::find_min_value_tile (m13)
+4356ef, 4357d0, 435954
+  in City::manage_by_governor (m14)
+435d67
+  in City::instruct_worker (m15), sets lim for Map::compute_neighbor_index
+4367fe
+  in City::find_best_tile_to_work
+436981
+  in City::m17
+4373b1
+  in City::m23
+42053d
+  in City_Form::handle_left_click, call to Map::compute_neighbor_index
+420547
+  in City_Form::handle_left_click, redundantly checks the index returned from above
+  cut out this check entirely by editing the jump instr here
+420efe, 42117b
+  in funcs called by City_Form::draw, drawing tiles around city
+421047
+  in second func above, lim on compute_neighbor_index
+5da3a8
+  in Tile::m56_Set_Tile_Flags, lim on compute_neighbor_index
+
+
+Consider radius for resources. That should be expanded too, no?
+  one place that would need to be edited is has_resources_required_by_building_r
+
+
+Locations NOT patched (yet):
+4b2ac2 - counting foreign tiles around city for culture flip
+4b479b - for triggering disease
+56b8ae - for revealing area around capital after establishing embassy
+443cde - for AI judging whether to raze a city
+461a99 - for forest harvesting
+442b9c - in ai_eval_city_location
+442ecf - again ^^^
+5f3668 - in Map::m17
+4ddbf8 - not a loop, a condition checking ni < 0x15, need to investigate
+4de1e1 - related to drawing something (?)
+44427a - check for resources around an area
+565329 - something about visibility or FOW around captured cities
+494c4d - revealing tiles
+526ce9 - revealing tiles for investigate city mission
+4ddcca - in a method for Main_Screen_Form
+4373b4 - in City::m23, computes defense priority (I think), shouldn't patch
+438ee4 - checking for resources again
+
+
+
+
+tile counts for each workable radius, inc. city center:
+1: 9
+2: 21
+3: 37
+4: 61
+5: 89
+6: 137
+7: 193 <-- count for a hypothetical 7th ring at one million culture

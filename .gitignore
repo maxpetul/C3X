@@ -5,3 +5,9 @@
 __pycache__
 Thumbs.db
 releases
+correlator/gog.json
+correlator/steam.json
+correlator/pcg.json
+AMB Editor/references
+AMB Editor/package-lock.json
+**/.claude/settings.local.json

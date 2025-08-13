@@ -1,3 +1,100 @@
+* RELEASE 24
+- Option to share wonders among human players in hotseat mode, setting named share_wonders_in_hotseat
+- AI routine for "caravan units", which are modded units whose purpose is to be disbanded for shields
+  - Controlled by config option enable_caravan_unit_ai
+- Experimental option to move the game's trade net object to a different location in memory named move_trade_net_object
+- Delete any AI units that somehow end up off the map to fix a rare crash, setting named delete_off_map_ai_units
+- Fix pathfinder bug (see config for details), setting named patch_premature_truncation_of_found_paths
+- Fix crash due to division by zero when cities have zero production, setting named patch_zero_production_crash
+- Fix icons for different kinds of specialist yields obscuring each other, setting named fix_overlapping_specialist_yield_icons
+- Correct typo in name of share_visibility_in_hotseat setting. The old, incorrect name still works as an alias.
+
+* RELEASE 23
+- Include AMB editor
+- Option to throttle AI's expansion by temporarily applying perfume to settlers each time it founds a city
+  - Controlled by two settings named ai_settler_perfume_on_founding(_duration)
+- Disallow trespassing setting kicks trespassers out of each player's territory at the start of their turn and after signing peace
+- Option to block the galley chaining exploit by preventing units from loading into two different transports on the same turn
+  - Option named limit_unit_loading_to_one_transport_per_turn
+- Adjustable rebase range as multiple of operational range, setting named rebase_range_multiplier
+- Option not to draw capital cities larger than they really are, named do_not_make_capital_cities_appear_larger
+- Fix division by zero in AI logic to evaluate proposed alliances
+- Fix possible crash when unit performing stack bombard is destroyed
+- Prevent airdrops from violating the trespassing restriction
+- Fix city screen zooming out for adjacent tiles that aren't actually workable due to maximum work radius
+- Fix empty army movement
+
+* RELEASE 22
+- Can adjust the size of the area cities can work
+  - Setting named city_work_radius, standard radius is 2, can be set 1 - 7
+  - work_area_limit option allows the workable areas to be limited based on cities' cultural levels
+- Option do_not_unassign_workers_from_polluted_tiles (off by default)
+- Fix AI players sometimes spawning nonsensical units when hitting a unit limit
+- Pressing the Z key on the city screen toggles the zoom level of the map display
+
+* RELEASE 21
+- Allow perfume amounts to be specified as percentages
+- Option to limit how many units can share each tile, named limit_units_per_tile
+- Adjustable chance for max one HP units to be destroyed by nuclear strikes
+  - Controlled by config option chance_for_nukes_to_destroy_max_one_hp_units
+- Add limited_railroads_work_like_fast_roads option which does just that
+- Option to allow sale of buildings like aqueducts that uncap population growth, named allow_sale_of_aqueducts_and_hospitals
+- Option stopping non-sea detector units from revealing invisible sea units and vice-versa, named no_cross_shore_detection
+- Do not apply all-units special retreat rule to immobile units
+- Group foreign units on the right-click menu based only on their surface characteristics
+- Fix charm flag controlling PTW arty targeting not working for reloaded games
+- Fix building unit prereqs interfering with unit limits
+- Fix double despawn of barb unit entering city after hit by lethal ZoC
+- Fix incorrect ETAs shown for one tile paths when railroad movement is limited
+
+* RELEASE 20
+- Remove city improvement limit
+  - Controlled by config option remove_city_improvement_limit
+- Polish precision striking by cruise missiles
+  - Now plays the correct animations and despawns the unit afterward
+  - Controlled by the polish_precision_striking config option, which used to be named polish_non_air_precision_striking
+- Enable cruise missiles to perform stealth attack bombard
+- Add ability to perfume technologies and governments
+  - Options named technology_perfume and government_perfume, respectively
+  - The perfume_specs option from before has been renamed to production_perfume but the old name still works as an alias
+- Fix bug related to "Disables Diseases From Flood Plains" tech flag
+  - Option named patch_disease_stopping_tech_flag_bug, off by default b/c this fix causes a lot more disease under the standard rules
+- Option to show unit hitpoints on the stealth attack target selection popup (named show_hp_of_stealth_attack_options in config)
+- Option to have a warning when the building you've selected to build would replace another already built in the city
+  - Named warn_when_chosen_building_would_replace_another in config, off by default
+- Option to prevent stealth attacks from targeting units that are invisible and unrevealed (named exclude_invisible_units_from_stealth_attack)
+- Display negative yields from generated resources
+- Option to show more strategic resources (up to 13) in the box on the top left of the city screen by packing them in more tightly
+  - Named compact_strategic_resource_display_on_city_screen, off by default
+- Option to make planting forests produce LM forest terrain (named convert_to_landmark_after_planting_forest)
+- Stop barbarian spawns from bankrupting the barbarian player (matters only if barbs are allowed to capture cities)
+- Option stopping pollution of impassable tiles also covers volcanic eruptions
+- Make barbarians defend cities they've captured as if they were camps
+- Load a third config file, custom.c3x_config.ini, if present
+- Fix AIs not switching off a unit build when it can't complete due to a limit
+- Fix free unit glitch from switching production to a building through the unit limit reached popup
+- Stop units from airdropping multiple times in one turn
+  - This only matters when dont_end_units_turn_after_airdrop has been activated
+- Do not group together units with different names on right-click menu
+- Record which units have used extra defensive bombards in save files
+- Rebuild the trade network after loading save data for improvements beyond the limit
+- Fix describe_states_of_units_on_menu setting being ignored
+- Fix tile visibility check in stealth attack bombard
+- Fix yields from resource generating buildings not always appearing after a new scenario is loaded
+- Touch up action descriptions for auto precision striking and fortified exhausted units
+- Correct description of lethal zone of control setting in default config
+
+* RELEASE 19
+- Option to stop pollution from appearing on impassable tiles
+- Rework UnitRCMIcons.pcx so busy & combat units can be given special icons
+- Fix bombers not doing stack bombard and not showing as attack-capable on right-click menu
+- Fix crash when opening right-click menu with fleeing automated workers
+- Fix lethal ZoC setting allowing coastal fortresses to knock the last hit point off passing units
+- Fix dont_escort_unflagged_units option interfering with group movement of units
+- Put right-click menu sword icon on non-empty armies
+- Describe the action of passenger units as "Transported" instead of "Fortified"
+- Describe the action of units waiting to fortify as "Fortified" instead of leaving it unreplaced
+
 * RELEASE 18B
 - Fix Wake/Activate replacement not working on Steam version
 
