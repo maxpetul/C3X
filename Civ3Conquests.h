@@ -251,6 +251,8 @@ typedef struct Tile_Info_Form Tile_Info_Form;
 typedef struct Main_GUI Main_GUI;
 typedef struct Advisor_Culture_Form Advisor_Culture_Form;
 typedef struct Advisor_Foreign_Form Advisor_Foreign_Form;
+typedef struct UnitIDItem UnitIDItem;
+typedef struct UnitIDList UnitIDList;
 typedef struct Main_Screen_Form Main_Screen_Form;
 typedef struct Governor_Form Governor_Form;
 typedef struct File_Dialog_Form File_Dialog_Form;
@@ -6072,6 +6074,22 @@ struct Advisor_Foreign_Form
   int Selected_Details_Civ;
 };
 
+struct UnitIDItem
+{
+  void * vtable; // = 0x666B34
+  int id;
+  UnitIDItem * next;
+  UnitIDItem * prev;
+};
+
+struct UnitIDList
+{
+  void * vtable; // = 0x666B2C
+  int length;
+  UnitIDItem * first;
+  UnitIDItem * last;
+};
+
 struct Main_Screen_Form
 {
   Base_Form_vtable *vtable;
@@ -6112,7 +6130,9 @@ struct Main_Screen_Form
   Base_Form Units_Control;
   int field_544C;
   Main_GUI GUI;
-  int field_2E14C[6];
+  int field_2E14C;
+  UnitIDList selectable_units;
+  int field_2E160;
   Timer ambient_sound_timer;
   int field_2E194;
   char turn_end_flag;
