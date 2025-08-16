@@ -4206,7 +4206,7 @@ struct Leader
   int RaceID;
   int field_24[2];
   int CapitalID;
-  int field_30;
+  int player_difficulty;
   int field_34;
   int field_38;
   int Golden_Age_End;

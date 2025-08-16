@@ -9801,7 +9801,7 @@ patch_Leader_get_optimal_city_number (Leader * this)
 	else {
 		int num_sans_fp = Leader_get_optimal_city_number (this), // OCN w/o contrib from num of FPs
 		    fp_count = patch_Leader_count_wonders_with_small_flag (this, __, ITSW_Reduces_Corruption, NULL),
-		    s_diff = p_bic_data->DifficultyLevels[this->field_30].Optimal_Cities, // Difficulty scaling, called "percentage of optimal cities" in the editor
+		    s_diff = p_bic_data->DifficultyLevels[this->player_difficulty].Optimal_Cities, // Difficulty scaling, called "percentage of optimal cities" in the editor
 		    base_ocn = p_bic_data->WorldSizes[p_bic_data->Map.World.World_Size].OptimalCityCount;
 		return num_sans_fp + (s_diff * fp_count * base_ocn + 50) / 100; // Add 50 to round off
 	}
