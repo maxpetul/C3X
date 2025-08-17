@@ -7494,6 +7494,22 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	    add && (improv->ImprovementFlags & ITF_Center_of_Empire) &&
 	    ((*p_human_player_bits & (1 << this->Body.CivID)) == 0))
 		remove_extra_palaces (this, is->currently_capturing_city);
+
+	// If sharing wonders in hotseat mode, we must recompute improvement maintenance for all human players when any one of them gains or loses a
+	// wonder that grants free improvements.
+	if ((! is->is_placing_scenario_things) &&
+	    is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << this->Body.CivID) & *p_human_player_bits)) { // is this city owned by a human player
+		unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+		int n_player = 1;
+		while (player_bits != 0) {
+			if ((player_bits & 1) && (n_player != this->Body.CivID))
+				Leader_recompute_buildings_maintenance (&leaders[n_player]);
+			player_bits >>= 1;
+			n_player++;
+		}
+	}
 }
 
 void __fastcall
@@ -7957,6 +7973,41 @@ adjust_sliders_preproduction (Leader * this)
 }
 
 int __fastcall
+patch_City_get_improvement_maintenance (City * this, int edx, int improv_id)
+{
+	// Check if this improvment is provided for free by another player via shared wonder effects
+	int civ_id = this->Body.CivID;
+	bool free_from_sharing = false;
+	if (is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << civ_id) & *p_human_player_bits)) { // is this city owned by a human player
+
+		// Check if any other human player in the game has this improv in their auto improvs table, including for this city's continent
+		bool has_free_improv = false;
+		Tile * city_tile = tile_at (this->Body.X, this->Body.Y);
+		int continent_id = city_tile->vtable->m46_Get_ContinentID (city_tile);
+		int cont_coded_key = (continent_id + 1) * p_bic_data->ImprovementsCount + improv_id;;
+		unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+		int n_player = 1;
+		while (player_bits != 0) {
+			if ((player_bits & 1) && (n_player != civ_id))
+				if (Hash_Table_look_up (&leaders[n_player].Auto_Improvements, __, improv_id     , NULL) ||
+				    Hash_Table_look_up (&leaders[n_player].Auto_Improvements, __, cont_coded_key, NULL)) {
+					free_from_sharing = true;
+					break;
+				}
+			player_bits >>= 1;
+			n_player++;
+		}
+	}
+
+	if (! free_from_sharing)
+		return City_get_improvement_maintenance (this, __, improv_id);
+	else
+		return 0;
+}
+
+int __fastcall
 patch_Leader_count_maintenance_free_units (Leader * this)
 {
 	if ((is->current_config.extra_unit_maintenance_per_shields <= 0) && (this->ID != 0))
@@ -8095,7 +8146,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 					(improv->Production <= 0);
 
 				if (sellable && patch_City_has_improvement (coi.city, __, n, 0)) {
-					int maint = City_get_improvement_maintenance (coi.city, __, n);
+					int maint = patch_City_get_improvement_maintenance (coi.city, __, n);
 					if (maint > 0)
 						memoize ((not_above (31, maint) << 26) | (n << 13) | coi.city_id);
 				}
@@ -8110,7 +8161,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 			int improv_id = ((1<<13) - 1) & (is->memo[count_sold] >> 13),
 			    city_id   = ((1<<13) - 1) &  is->memo[count_sold];
 			City * city = get_city_ptr (city_id);
-			improv_cost -= City_get_improvement_maintenance (city, __, improv_id);
+			improv_cost -= patch_City_get_improvement_maintenance (city, __, improv_id);
 			City_sell_improvement (city, __, improv_id, false);
 			treasury = leader->Gold_Encoded + leader->Gold_Decrement;
 			count_sold++;
@@ -9089,7 +9140,7 @@ patch_City_get_improv_maintenance_for_ui (City * this, int edx, int improv_id)
 	    (improv->ObsoleteID >= 0) && Leader_has_tech (&leaders[this->Body.CivID], __, improv->ObsoleteID))
 		return 0;
 	else
-		return City_get_improvement_maintenance (this, __, improv_id);
+		return patch_City_get_improvement_maintenance (this, __, improv_id);
 }
 
 // Patch for barbarian diagonal bug. This bug is a small mistake in the original code, maybe a copy+paste error. The original code tries to loop over
