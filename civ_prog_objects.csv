@@ -745,6 +745,7 @@ inlead,	   0x4BFD40,	0x4C7300,	0x4BFDD0,	"City_get_turns_to_build",			"int (__fa
 repl call, 0x4C06C0,	0x4C7C80,	0x4C0750,	"City_can_build_upgrade_type",			""
 define,	   0x4C1F80,	0x4C96B0,	0x4C2010,	"Hash_Table_look_up",				"bool (__fastcall *) (Hash_Table * this, int edx, int key, int * out_value)"
 inlead,	   0x557720,	0x0,		0x0,		"Main_GUI_position_elements",			"void (__fastcall *) (Main_GUI * this)"
+repl vptr, 0x66AFF0,	0x0,		0x0,		"Civilopedia_Article_m01_Draw_GCON_or_RACE",	"void (__fastcall *) (Civilopedia_Article * this)"
 
 ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"

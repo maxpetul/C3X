@@ -12069,5 +12069,37 @@ patch_Main_GUI_position_elements (Main_GUI * this)
 	this->Mini_Map_Click_Rect.right += 100;
 }
 
+void __fastcall
+patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
+{
+	bool restore_more_text = false;
+	char ** saved_more_text_lines;
+	int saved_more_text_line_count;
+
+	// The description text gets lazily loaded inside m01_Draw. If it hasn't been loaded yet, don't restore it to this point. Also, if it hasn't
+	// been loaded yet, that means the article was just opened and isn't showing the description anyway so there's nothing we need to do.
+	if (this->more_text_line_count != -1) {
+
+		restore_more_text = true;
+		saved_more_text_lines = this->more_text_lines;
+		saved_more_text_line_count = this->more_text_line_count;
+
+		char * test_new_lines[] = {
+			"simple test",
+			"^ of changing",
+			"lines in the pedia"
+		};
+		this->more_text_lines = test_new_lines;
+		this->more_text_line_count = 3;
+	}
+
+	Civilopedia_Article_m01_Draw_GCON_or_RACE (this);
+
+	if (restore_more_text) {
+		this->more_text_lines = saved_more_text_lines;
+		this->more_text_line_count = saved_more_text_line_count;
+	}
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
