@@ -1495,6 +1495,26 @@ typedef enum leader_status_flags
 	LSF_SHOWN_PLAGUE_POPUP   = 0x200
 } LeaderStatusFlags;
 
+typedef enum civilopedia_article_kind
+{
+	CAK_GAME_CONCEPT            = 0x0,
+	CAK_0x1                     = 0x1,
+	CAK_0x2                     = 0x2,
+	CAK_RESOURCE                = 0x3,
+	CAK_GOVERNMENT              = 0x4,
+	CAK_CITY_IMPROVEMENT        = 0x5,
+	CAK_CIVILIZATION_ADVANCE    = 0x6,
+	CAK_WORKER_ACTION           = 0x7,
+	CAK_TERRAIN                 = 0x8,
+	CAK_UNIT                    = 0x9,
+	CAK_GREAT_WONDER            = 0xA,
+	CAK_SMALL_WONDER            = 0xB,
+	CAK_TRIBE                   = 0xC,
+	CAK_LIST_WITHIN_CATEGORY    = 0xD,
+	CAK_LIST_WITHIN_SUBCATEGORY = 0xE,
+	CAK_MAIN_LIST               = 0xF,
+} CivilopediaArticleKind;
+
 struct IntList
 {
   int field_0;
@@ -2562,14 +2582,14 @@ struct Civilopedia_Article
   String64 Civilopedia_Entry;
   String64 PCX_Small;
   String64 PCX_Large;
-  int b_Show_Description;
+  int b_Show_Description; // Also for the more/previous buttons
   int field_108;
-  int Article_Type;
+  CivilopediaArticleKind article_kind;
   int IconID;
-  int field_114;
-  int field_118;
-  int field_11C;
-  int field_120;
+  char ** more_text_lines;
+  int more_text_line_count;
+  char ** text_lines;
+  int text_line_count;
   int field_124;
   int field_128;
   UnitType * unit_type;
