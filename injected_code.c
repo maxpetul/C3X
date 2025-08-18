@@ -12061,5 +12061,13 @@ patch_City_can_build_upgrade_type (City * this, int edx, int unit_type_id, bool 
 	return patch_City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
 }
 
+void __fastcall
+patch_Main_GUI_position_elements (Main_GUI * this)
+{
+	Main_GUI_position_elements (this);
+	this->Mini_Map_Click_Rect.top -= 100;
+	this->Mini_Map_Click_Rect.right += 100;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
