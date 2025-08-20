@@ -3646,6 +3646,8 @@ patch_init_floating_point ()
 	is->saved_improv_counts = NULL;
 	is->saved_improv_counts_capacity = 0;
 
+	memset (&is->cmpd, 0, sizeof is->cmpd);
+
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config, true);
@@ -12048,7 +12050,6 @@ patch_City_add_building_if_done (City * this)
 	City_add_building_if_done (this);
 }
 
-
 bool __fastcall
 patch_City_can_build_upgrade_type (City * this, int edx, int unit_type_id, bool exclude_upgradable, int param_3, bool allow_kings)
 {
@@ -12069,36 +12070,51 @@ patch_Main_GUI_position_elements (Main_GUI * this)
 	this->Mini_Map_Click_Rect.right += 100;
 }
 
+#define PEDIA_DESC_LINES_PER_PAGE 37
+
+// Returns whether or not the line should be drawn
+bool
+do_next_line_for_pedia_desc (PCX_Image * canvas, int * inout_y)
+{
+	if (is->cmpd.active_now) {
+		int first_line_on_shown_page = is->cmpd.shown_page * PEDIA_DESC_LINES_PER_PAGE;
+		bool shown_line = is->cmpd.line_count / PEDIA_DESC_LINES_PER_PAGE == is->cmpd.shown_page;
+		if (shown_line)
+			*inout_y -= is->cmpd.shown_page * PEDIA_DESC_LINES_PER_PAGE * PCX_Image_get_text_line_height (canvas);
+		is->cmpd.line_count += 1;
+		return shown_line;
+	}
+	return true;
+}
+
+int __fastcall
+patch_PCX_Image_do_draw_centered_text_in_wrap_func (PCX_Image * this, int edx, char * str, int x, int y, int width, unsigned str_len)
+{
+	if (do_next_line_for_pedia_desc (this, &y))
+		return PCX_Image_do_draw_centered_text (this, __, str, x, y, width, str_len);
+	else
+		return 0; // Caller does not use return value
+}
+
+int __fastcall
+patch_PCX_Image_draw_text_in_wrap_func (PCX_Image * this, int edx, char * str, int x, int y, int str_len)
+{
+	if (do_next_line_for_pedia_desc (this, &y))
+		return PCX_Image_draw_text (this, __, str, x, y, str_len);
+	else
+		return PCX_Image_draw_text (this, __, " ", x, y, 1); // Caller uses the return value here so draw an empty string isntead of doing nothing
+}
+
 void __fastcall
 patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
 {
-	bool restore_more_text = false;
-	char ** saved_more_text_lines;
-	int saved_more_text_line_count;
-
-	// The description text gets lazily loaded inside m01_Draw. If it hasn't been loaded yet, don't restore it to this point. Also, if it hasn't
-	// been loaded yet, that means the article was just opened and isn't showing the description anyway so there's nothing we need to do.
-	if (this->more_text_line_count != -1) {
-
-		restore_more_text = true;
-		saved_more_text_lines = this->more_text_lines;
-		saved_more_text_line_count = this->more_text_line_count;
-
-		char * test_new_lines[] = {
-			"simple test",
-			"^ of changing",
-			"lines in the pedia"
-		};
-		this->more_text_lines = test_new_lines;
-		this->more_text_line_count = 3;
-	}
+	is->cmpd.active_now = true;
+	is->cmpd.line_count = 0;
+	is->cmpd.shown_page = 0;
 
 	Civilopedia_Article_m01_Draw_GCON_or_RACE (this);
 
-	if (restore_more_text) {
-		this->more_text_lines = saved_more_text_lines;
-		this->more_text_line_count = saved_more_text_line_count;
-	}
+	is->cmpd.active_now = false;
 }
 
 // TCC requires a main function be defined even though it's never used.

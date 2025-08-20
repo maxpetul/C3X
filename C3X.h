@@ -967,6 +967,13 @@ struct injected_state {
 	// Used to de-overlap specialist yield icons (option name fix_overlapping_specialist_yield_icons)
 	int specialist_icon_drawing_running_x;
 
+	// Initialized to 0, used to draw multipage descriptions in the Civilopedia
+	struct civilopedia_multipage_description {
+		bool active_now;
+		int line_count;
+		int shown_page; // zero-based
+	} cmpd;
+
 	// ==========
 	// }
 	// ==========
