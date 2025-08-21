@@ -60,6 +60,9 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 
 #define MOD_INFO_BUTTON_ID 0x222003
 
+#define PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID 0x222004
+#define PEDIA_MULTIPAGE_PREV_BUTTON_ID 0x222005
+
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
 
@@ -12115,6 +12118,50 @@ patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
 	Civilopedia_Article_m01_Draw_GCON_or_RACE (this);
 
 	is->cmpd.active_now = false;
+}
+
+void __cdecl
+activate_pedia_multipage_button (int control_id)
+{
+}
+
+int __fastcall
+patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int param_1, void * param_2, void * param_3)
+{
+	Button * bs[] = {malloc (sizeof Button), malloc (sizeof Button)};
+	for (int n = 0; n < ARRAY_LEN (bs); n++) {
+		if (bs[n] == NULL)
+			continue;
+		Button_construct (bs[n]);
+
+		int desc_btn_x = 535, desc_btn_y = 222, desc_btn_height = 17;
+
+		Button_initialize (bs[n], __,
+				   n == 0 ? "Button 1" : "Button 2",
+				   n == 0 ? PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID : PEDIA_MULTIPAGE_PREV_BUTTON_ID, // control ID
+				   desc_btn_x, // location x
+				   desc_btn_y + (n == 0 ? -2 : 2) * desc_btn_height, // location y
+				   MOD_INFO_BUTTON_WIDTH, MOD_INFO_BUTTON_HEIGHT, // width, height
+				   (Base_Form *)this, // parent
+				   0); // ?
+
+		for (int k = 0; k < 3; k++)
+			bs[n]->Images[k] = &this->Description_Btn_Images[k];
+		bs[n]->activation_handler = &activate_pedia_multipage_button;
+
+		// Need to draw once manually or the button won't look right
+		bs[n]->vtable->m73_call_m22_Draw ((Base_Form *)bs[n]);
+	}
+
+	int tr = Civilopedia_Form_m68_Show_Dialog (this, __, param_1, param_2, param_3);
+
+	for (int n = 0; n < ARRAY_LEN (bs); n++)
+		if (bs[n] != NULL) {
+			bs[n]->vtable->destruct ((Base_Form *)bs[n], __, 0);
+			free (bs[n]);
+		}
+
+	return tr;
 }
 
 // TCC requires a main function be defined even though it's never used.
