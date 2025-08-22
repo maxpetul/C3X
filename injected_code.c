@@ -12081,11 +12081,15 @@ do_next_line_for_pedia_desc (PCX_Image * canvas, int * inout_y)
 {
 	if (is->cmpd.active_now) {
 		int first_line_on_shown_page = is->cmpd.shown_page * PEDIA_DESC_LINES_PER_PAGE;
-		bool shown_line = is->cmpd.line_count / PEDIA_DESC_LINES_PER_PAGE == is->cmpd.shown_page;
-		if (shown_line)
-			*inout_y -= is->cmpd.shown_page * PEDIA_DESC_LINES_PER_PAGE * PCX_Image_get_text_line_height (canvas);
+		int page = is->cmpd.line_count / PEDIA_DESC_LINES_PER_PAGE;
 		is->cmpd.line_count += 1;
-		return shown_line;
+		is->cmpd.last_page = (page > is->cmpd.last_page) ? page : is->cmpd.last_page;
+
+		if (page == is->cmpd.shown_page) {
+			*inout_y -= is->cmpd.shown_page * PEDIA_DESC_LINES_PER_PAGE * PCX_Image_get_text_line_height (canvas);
+			return true;
+		} else
+			return false;
 	}
 	return true;
 }
@@ -12111,9 +12115,8 @@ patch_PCX_Image_draw_text_in_wrap_func (PCX_Image * this, int edx, char * str, i
 void __fastcall
 patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
 {
+	memset (&is->cmpd, 0, sizeof is->cmpd);
 	is->cmpd.active_now = true;
-	is->cmpd.line_count = 0;
-	is->cmpd.shown_page = 0;
 
 	Civilopedia_Article_m01_Draw_GCON_or_RACE (this);
 
@@ -12123,6 +12126,12 @@ patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
 void __cdecl
 activate_pedia_multipage_button (int control_id)
 {
+	if (control_id == PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID)
+		*(bool *)&p_civilopedia_form->Articles[p_civilopedia_form->Current_Article_ID]->b_Show_Description = false;
+	else if (control_id == PEDIA_MULTIPAGE_PREV_BUTTON_ID)
+		is->cmpd.shown_page = not_below (0, is->cmpd.shown_page - 1);
+
+	p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
 }
 
 int __fastcall

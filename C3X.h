@@ -972,6 +972,7 @@ struct injected_state {
 		bool active_now;
 		int line_count;
 		int shown_page; // zero-based
+		int last_page; // also zero-based
 	} cmpd;
 
 	// ==========
