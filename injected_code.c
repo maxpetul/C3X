@@ -12124,27 +12124,24 @@ patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
 	is->cmpd.active_now = false;
 }
 
-void __cdecl
-activate_pedia_multipage_button (int control_id)
-{
-	Civilopedia_Article * current_article = (p_civilopedia_form->Current_Article_ID >= 0) ? p_civilopedia_form->Articles[p_civilopedia_form->Current_Article_ID] : NULL;
-
-	if ((control_id == PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID) && (current_article != NULL))
-		current_article->show_description = false;
-	else if (control_id == PEDIA_MULTIPAGE_PREV_BUTTON_ID)
-		is->cmpd.shown_page = not_below (0, is->cmpd.shown_page - 1);
-
-	p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
-}
-
 void __fastcall
 patch_Civilopedia_Form_m53_On_Control_Click (Civilopedia_Form * this, int edx, CivilopediaControlID control_id)
 {
 	Civilopedia_Article * current_article = (p_civilopedia_form->Current_Article_ID >= 0) ? p_civilopedia_form->Articles[p_civilopedia_form->Current_Article_ID] : NULL;
 
-	if ((control_id == CCID_DESCRIPTION_BTN) && // if description/more/prev button was clicked AND
-	    (current_article != NULL) && current_article->show_description && // currently showing a description of an article AND
-	    (is->cmpd.last_page > 0)) { // this is a multi-page description
+	// "Effects" button leaves description mode, returns to showing effects
+	if ((control_id == PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID) && (current_article != NULL)) {
+		current_article->show_description = false;
+		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
+
+	// "Previous" button shows the previous page of a multi-page description
+	} else if (control_id == PEDIA_MULTIPAGE_PREV_BUTTON_ID) {
+		is->cmpd.shown_page = not_below (0, is->cmpd.shown_page - 1);
+		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
+
+	} else if ((control_id == CCID_DESCRIPTION_BTN) && // if description/more/prev button was clicked AND
+		   (current_article != NULL) && current_article->show_description && // currently showing a description of an article AND
+		   (is->cmpd.last_page > 0)) { // this is a multi-page description
 
 		// Show the next page of the multi-page description
 		is->cmpd.shown_page = not_above (is->cmpd.last_page, is->cmpd.shown_page + 1);
@@ -12176,7 +12173,6 @@ patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int pa
 
 		for (int k = 0; k < 3; k++)
 			bs[n]->Images[k] = &this->Description_Btn_Images[k];
-		bs[n]->activation_handler = &activate_pedia_multipage_button;
 
 		// Need to draw once manually or the button won't look right
 		bs[n]->vtable->m73_call_m22_Draw ((Base_Form *)bs[n]);
