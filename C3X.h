@@ -969,7 +969,7 @@ struct injected_state {
 
 	// Initialized to 0, used to draw multipage descriptions in the Civilopedia
 	struct civilopedia_multipage_description {
-		bool active_now;
+		bool drawing_lines;
 		int line_count;
 		int shown_page; // zero-based
 		int last_page; // also zero-based

@@ -12079,7 +12079,7 @@ patch_Main_GUI_position_elements (Main_GUI * this)
 bool
 do_next_line_for_pedia_desc (PCX_Image * canvas, int * inout_y)
 {
-	if (is->cmpd.active_now) {
+	if (is->cmpd.drawing_lines) {
 		int first_line_on_shown_page = is->cmpd.shown_page * PEDIA_DESC_LINES_PER_PAGE;
 		int page = is->cmpd.line_count / PEDIA_DESC_LINES_PER_PAGE;
 		is->cmpd.line_count += 1;
@@ -12117,11 +12117,11 @@ patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
 {
 	// memset (&is->cmpd, 0, sizeof is->cmpd);
 	is->cmpd.line_count = 0;
-	is->cmpd.active_now = true;
+	is->cmpd.drawing_lines = this->show_description;
 
 	Civilopedia_Article_m01_Draw_GCON_or_RACE (this);
 
-	is->cmpd.active_now = false;
+	is->cmpd.drawing_lines = false;
 }
 
 void __fastcall
