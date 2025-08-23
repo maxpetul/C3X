@@ -12115,7 +12115,8 @@ patch_PCX_Image_draw_text_in_wrap_func (PCX_Image * this, int edx, char * str, i
 void __fastcall
 patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
 {
-	memset (&is->cmpd, 0, sizeof is->cmpd);
+	// memset (&is->cmpd, 0, sizeof is->cmpd);
+	is->cmpd.line_count = 0;
 	is->cmpd.active_now = true;
 
 	Civilopedia_Article_m01_Draw_GCON_or_RACE (this);
@@ -12126,12 +12127,31 @@ patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
 void __cdecl
 activate_pedia_multipage_button (int control_id)
 {
-	if (control_id == PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID)
-		*(bool *)&p_civilopedia_form->Articles[p_civilopedia_form->Current_Article_ID]->b_Show_Description = false;
+	Civilopedia_Article * current_article = (p_civilopedia_form->Current_Article_ID >= 0) ? p_civilopedia_form->Articles[p_civilopedia_form->Current_Article_ID] : NULL;
+
+	if ((control_id == PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID) && (current_article != NULL))
+		current_article->show_description = false;
 	else if (control_id == PEDIA_MULTIPAGE_PREV_BUTTON_ID)
 		is->cmpd.shown_page = not_below (0, is->cmpd.shown_page - 1);
 
 	p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
+}
+
+void __fastcall
+patch_Civilopedia_Form_m53_On_Control_Click (Civilopedia_Form * this, int edx, CivilopediaControlID control_id)
+{
+	Civilopedia_Article * current_article = (p_civilopedia_form->Current_Article_ID >= 0) ? p_civilopedia_form->Articles[p_civilopedia_form->Current_Article_ID] : NULL;
+
+	if ((control_id == CCID_DESCRIPTION_BTN) && // if description/more/prev button was clicked AND
+	    (current_article != NULL) && current_article->show_description && // currently showing a description of an article AND
+	    (is->cmpd.last_page > 0)) { // this is a multi-page description
+
+		// Show the next page of the multi-page description
+		is->cmpd.shown_page = not_above (is->cmpd.last_page, is->cmpd.shown_page + 1);
+		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
+
+	} else
+		Civilopedia_Form_m53_On_Control_Click (this, __, control_id);
 }
 
 int __fastcall

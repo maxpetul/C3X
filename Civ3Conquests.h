@@ -1515,6 +1515,17 @@ typedef enum civilopedia_article_kind
 	CAK_MAIN_LIST               = 0xF,
 } CivilopediaArticleKind;
 
+typedef enum civilopedia_control_id
+{
+	CCID_CLOSE_BTN       = 0,
+	CCID_RIGHT_BTN       = 1,
+	CCID_LEFT_BTN        = 2,
+	CCID_UP_BTN          = 3,
+	CCID_NEXT_BTN        = 4,
+	CCID_PREV_BTN        = 5,
+	CCID_DESCRIPTION_BTN = 6
+} CivilopediaControlID;
+
 struct IntList
 {
   int field_0;
@@ -2582,7 +2593,8 @@ struct Civilopedia_Article
   String64 Civilopedia_Entry;
   String64 PCX_Small;
   String64 PCX_Large;
-  int b_Show_Description; // Also for the more/previous buttons
+  bool show_description; // Also used to show "more" on articles with no descriptions
+  byte field_105[3];
   int field_108;
   CivilopediaArticleKind article_kind;
   int IconID;
@@ -5469,9 +5481,9 @@ struct Civilopedia_Form
   Button Up_Btn;
   Button Right_Btn;
   Button Left_Btn;
-  Button Next_Btn;
-  Button Prev_Btn;
-  Button Description_Btn;
+  Button Next_Btn; // Arrow pointing right at top of form
+  Button Prev_Btn; // Arrow pointing left at top of form
+  Button Description_Btn; // Also the more/prev button for articles that don't have descriptions like for RACE
   int History;
   char gap_662C[696];
   int field_68E4;
