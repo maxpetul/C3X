@@ -1463,10 +1463,12 @@ typedef enum map_rcm_item {
 
 typedef enum unit_status_flags
 {
-	USF_USED_ATTACK = 0x4, // the unit has attacked at least once this turn
-	USF_USED_DEFENSIVE_BOMBARD = 0x40, // the unit has performed def. bombard already this turn
-	USF_SENTRY = 0x80,
-	USF_SENTRY_ENEMY_ONLY = 0x100,
+	USF_SKIPPED_FULL_TURN_WITH_DAMAGE = 0x1,
+	USF_USED_ATTACK                   = 0x4, // the unit has attacked at least once this turn
+	USF_PERFORMED_AIR_RECON           = 0x8,
+	USF_USED_DEFENSIVE_BOMBARD        = 0x40, // the unit has performed def. bombard already this turn
+	USF_SENTRY                        = 0x80,
+	USF_SENTRY_ENEMY_ONLY             = 0x100,
 } UnitStatusFlags;
 
 typedef enum advisor_kind
@@ -4673,7 +4675,7 @@ struct Tile_Type
   String32 LM_Name;
   String32 LM_Entry;
   int field_E8;
-  int field_EC;
+  int disease_strength;
 };
 
 struct PCX_Image
