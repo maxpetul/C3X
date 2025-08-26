@@ -12154,28 +12154,43 @@ patch_Civilopedia_Form_m53_On_Control_Click (Civilopedia_Form * this, int edx, C
 int __fastcall
 patch_Button_initialize_civilopedia_description (Button * this, int edx, char * text, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)
 {
-	int tr = Button_initialize (this, __, text, control_id, x, y, width, height, parent, param_8);
+	Civilopedia_Article * current_article = (p_civilopedia_form->Current_Article_ID >= 0) ? p_civilopedia_form->Articles[p_civilopedia_form->Current_Article_ID] : NULL;
 
 	// Set button visibility for multi-page descriptions if we're showing such a thing right now
-	Civilopedia_Article * current_article = (p_civilopedia_form->Current_Article_ID >= 0) ? p_civilopedia_form->Articles[p_civilopedia_form->Current_Article_ID] : NULL;
+	bool show_desc_btn = true, show_effects_btn = false, show_previous_btn = false;
 	if ((current_article != NULL) && current_article->show_description && (is->cmpd.last_page > 0)) {
 
 		// For a two-page description, show the effects button and the description button which will act as a next/previous button
 		if (is->cmpd.last_page == 1) {
-
-			is->cmpd.previous_btn->vtable->m02_Show_Disabled ((Base_Form *)is->cmpd.previous_btn);
+			show_effects_btn = true;
 
 		// For a three or more page description, show the effects button, and show the description button only if we're not on the last page
 		// (b/c it's the next button), and show the previous button only if we're not on the first page.
 		} else {
+			show_effects_btn = true;
 			if (is->cmpd.shown_page >= is->cmpd.last_page)
-				this->vtable->m02_Show_Disabled ((Base_Form *)this);
-
-			if (is->cmpd.shown_page > 0)
-				is->cmpd.previous_btn->vtable->m01_Show_Enabled ((Base_Form *)is->cmpd.previous_btn, __, 0);
-			else
-				is->cmpd.previous_btn->vtable->m02_Show_Disabled ((Base_Form *)is->cmpd.previous_btn);
+				show_desc_btn = false;
+			show_previous_btn = is->cmpd.shown_page > 0;
 		}
+	}
+
+	int tr = Button_initialize (this, __, text, control_id, x, y, width, height, parent, param_8);
+
+	if (! show_desc_btn)
+		this->vtable->m02_Show_Disabled ((Base_Form *)this);
+
+	if (is->cmpd.effects_btn != NULL) {
+		if (show_effects_btn)
+			is->cmpd.effects_btn->vtable->m01_Show_Enabled ((Base_Form *)is->cmpd.effects_btn, __, 0);
+		else
+			is->cmpd.effects_btn->vtable->m02_Show_Disabled ((Base_Form *)is->cmpd.effects_btn);
+	}
+
+	if (is->cmpd.previous_btn != NULL) {
+		if (show_previous_btn)
+			is->cmpd.previous_btn->vtable->m01_Show_Enabled ((Base_Form *)is->cmpd.previous_btn, __, 0);
+		else
+			is->cmpd.previous_btn->vtable->m02_Show_Disabled ((Base_Form *)is->cmpd.previous_btn);
 	}
 
 	return tr;
@@ -12204,8 +12219,8 @@ patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int pa
 		for (int k = 0; k < 3; k++)
 			bs[n]->Images[k] = &this->Description_Btn_Images[k];
 
-		// Need to draw once manually or the button won't look right
-		bs[n]->vtable->m73_call_m22_Draw ((Base_Form *)bs[n]);
+		// Do now draw the button until needed
+		bs[n]->vtable->m02_Show_Disabled ((Base_Form *)bs[n]);
 	}
 	is->cmpd.effects_btn  = bs[0];
 	is->cmpd.previous_btn = bs[1];
