@@ -1593,9 +1593,13 @@ handle_config_error (struct config_parsing * p, enum config_parse_error err)
 void 
 load_district_advance_prereqs ()
 {
+	if (! is->current_config.enable_districts) 
+		return;
+
 	char err_msg[1000];
 	int recog_err_offset;
 
+	/*
 	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++) {
 		int tech_id;
 		Advance * adv;
@@ -1604,6 +1608,7 @@ load_district_advance_prereqs ()
 				is->district_prereqs[i]->tech_id = n;
 			}
 	}
+	*/
 }
 
 // Loads a config from the given file, layering it on top of is->current_config and appending its name to the list of loaded configs. Does NOT
@@ -3378,6 +3383,10 @@ patch_init_floating_point ()
 		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
 		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
+
+		// Districts config
+		{"enable_districts" 								   , false, offsetof (struct c3x_config, enable_districts)},
+		{"enable_day_night_cycle"                              , false, offsetof (struct c3x_config, enable_day_night_cycle)},
 	};
 
 	struct integer_config_option {
@@ -4391,7 +4400,7 @@ set_up_stack_bombard_buttons (Main_GUI * this)
 void
 init_district_command_buttons ()
 {
-	if (is_online_game () || is->dc_btn_img_state != IS_UNINITED)
+	if (! is->current_config.enable_districts || is_online_game () || is->dc_btn_img_state != IS_UNINITED)
 		return;
 
 	PCX_Image pcx;
@@ -4438,7 +4447,7 @@ void
 set_up_district_buttons (Main_GUI * this)
 {
 
-	if (is_online_game ()) // is online game
+	if (! is->current_config.enable_districts || is_online_game ()) // is online game
 		return;
 
 	//Unit * unit = this->Current_Unit;
@@ -4815,12 +4824,12 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 		enum UnitTypeClasses class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
 		return ((class != UTC_Land) || (! tile->vtable->m35_Check_Is_Water (tile))) &&
 			Unit_can_perform_command (this, __, unit_command_value);
-	} else if (unit_command_value <= UCV_Build_Encampment) {
+	} else if (is->current_config.enable_districts && unit_command_value <= UCV_Build_Encampment) {
 		// Check if requisite tech is present
-		int district_id = get_district_id_from_command_id (unit_command_value);
-		if (district_id != -1 && &is->district_prereqs[district_id]->tech_id)
-			if (Leader_has_tech (&leaders[this->Body.CivID], __, is->district_prereqs[district_id]->tech_id))
-				return true;
+		//int district_id = get_district_id_from_command_id (unit_command_value);
+		//if (district_id != -1 && &is->district_prereqs[district_id]->tech_id)
+		//	if (Leader_has_tech (&leaders[this->Body.CivID], __, is->district_prereqs[district_id]->tech_id))
+		//		return true;
 		return false;
 	} else
 		return Unit_can_perform_command (this, __, unit_command_value);
@@ -4911,13 +4920,16 @@ issue_stack_worker_command (Unit * unit, int command)
 void
 issue_district_worker_command (Unit * unit, int command)
 {
+	if (! is->current_config.enable_districts)
+		return;
+
 	char ss[200];
 	//snprintf (ss, sizeof ss, "issue_district_worker_command");
 	//pop_up_in_game_error (ss);
 
-	Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
-	int unit_type_id = unit->Body.UnitTypeID;
-	int unit_id = unit->Body.ID;
+	//Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
+	//int unit_type_id = unit->Body.UnitTypeID;
+	//int unit_id = unit->Body.ID;
 
 	// TODO Check if requisite tech available
 	// TODO make sure not on mountain
@@ -4925,17 +4937,19 @@ issue_district_worker_command (Unit * unit, int command)
 	// TODO patch_Unit_can_perform_command ?
 
 	// Set tile DistrictID
+	/*
 	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++) {
 		if (district_infos[i].command == command) {
 			tile->DistrictID = i;
 			break;
 		}
 	}
+	*/
 
 	// Tile now tracks the district type, so track everything as a mine behind the scenes.
 	// 
-	int pseudo_command = UCV_Build_Mine;
-	Main_Screen_Form_issue_command (p_main_screen_form, __, pseudo_command, unit);
+	//int pseudo_command = UCV_Build_Mine;
+	//Main_Screen_Form_issue_command (p_main_screen_form, __, pseudo_command, unit);
 
 	// TODO Factor in turns to completion - patch_Unit_work_simple_job ?
 	// TODO Patch City::can_build_improvement at 0x4BFF80
@@ -5056,13 +5070,13 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 	//pop_up_in_game_error (ss);
 
 	// Encampment is highest district int, all of which are negative
-	if (command <= UCV_Build_Encampment) {
+	if (is->current_config.enable_districts && command <= UCV_Build_Encampment) {
 		//snprintf (ss, sizeof ss, "Is district command: %d", command);
 		//pop_up_in_game_error (ss);
 		// Replicate behavior of function we're replacing
-		clear_something_1 ();
-		Timer_clear (&this->timer_1);
-		issue_district_worker_command (p_main_screen_form->Current_Unit, command);
+		//clear_something_1 ();
+		//Timer_clear (&this->timer_1);
+		//issue_district_worker_command (p_main_screen_form->Current_Unit, command);
 		return;
 	}
 
@@ -5731,7 +5745,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	apply_machine_code_edits (&is->current_config, false);
 
 	// Load district prerequisites
-	load_district_advance_prereqs ();
+	//load_district_advance_prereqs ();
 
 	// Initialize Trade Net X
 	if (is->current_config.enable_trade_net_x && (is->tnx_init_state == IS_UNINITED)) {
@@ -6458,6 +6472,10 @@ bool __fastcall
 patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param_2)
 {
 	bool base = City_can_build_improvement (this, __, i_improv, param_2);
+	if (! is->current_config.enable_districts)
+		return base;
+
+	/*
 	Leader leader = leaders[this->Body.CivID];
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
 
@@ -6485,7 +6503,7 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 			}
 		}
 	}
-
+	*/
 	return base;
 }
 
@@ -12412,11 +12430,12 @@ patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int pa
 void
 init_district_images ()
 {
+
 	char ss[200];
 	//snprintf (ss, sizeof ss, "init_district_images");
 	//pop_up_in_game_error (ss);
 
-	if (is_online_game () || is->dc_img_state != IS_UNINITED)
+	if (! is->current_config.enable_districts || is_online_game () || is->dc_img_state != IS_UNINITED)
 		return;
 
 	char temp_path[2*MAX_PATH];
@@ -12497,12 +12516,17 @@ init_district_images ()
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
+	if (! is->current_config.enable_districts)
+		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+
 	char ss[200];
 
 	Tile * tile = tile_at (tile_x, tile_y);
 
 	if (tile->DistrictID != NULL) {
 
+		/*
 		// Check if job is complete
 		unsigned overlays = patch_Tile_m42_Get_Overlays(tile, __, 1);
 		unsigned int done = overlays >> 2 & 1 | (overlays >> 10) << 8;
@@ -12564,6 +12588,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 			// Draw district
 			Sprite_draw_on_map (&district_sprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 		}
+		*/
 	}
 	else {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);

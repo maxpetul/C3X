@@ -271,6 +271,12 @@ struct c3x_config {
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
+
+	/////////////////////
+	// Districts config
+	/////////////////////
+	bool enable_districts;
+	bool enable_day_night_cycle;
 };
 
 enum stackable_command {
