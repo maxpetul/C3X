@@ -511,6 +511,92 @@ def train_logistic_regression():
         'cv_accuracy': cv_scores.mean()
     }
 
+def process_multiple_addresses(addresses, gog_functions, steam_functions, size_weight, ref_weight, addr_weight, opcode_weight, max_addr_diff):
+    """Process multiple addresses and find matches for each"""
+    results = []
+    
+    print(f"Processing {len(addresses)} addresses with default weights...")
+    print(f"Using weights: Size={size_weight:.2f}, References={ref_weight:.2f}, Address={addr_weight:.2f}, Opcode={opcode_weight:.2f}")
+    print("=" * 80)
+    
+    for i, address in enumerate(addresses):
+        print(f"\n[{i+1}/{len(addresses)}] Processing address: {address}")
+        print("-" * 40)
+        
+        # Find the target function in gog.json
+        target_function = find_function_by_address(gog_functions, address)
+        if not target_function:
+            print(f"No function found at address {address} in gog.json")
+            results.append({
+                'address': address,
+                'found': False,
+                'error': f"No function found at address {address}"
+            })
+            continue
+        
+        target_size = len(target_function["raw_bytes"])
+        print(f"Found target function: {target_function['name']} at {target_function['address']}")
+        print(f"Function size: {target_size} bytes, References: {target_function['reference_count']}")
+        
+        # Find the most similar function in steam.json
+        best_matches, similarity_score = find_most_similar_function(
+            target_function, 
+            steam_functions,
+            size_weight=size_weight,
+            ref_weight=ref_weight,
+            addr_weight=addr_weight,
+            opcode_weight=opcode_weight,
+            max_addr_diff=max_addr_diff
+        )
+        
+        print(f"Combined similarity score: {similarity_score:.4f}")
+        
+        # Store results
+        match_data = []
+        for match in best_matches:
+            match_size = len(match['raw_bytes'])
+            size_sim = calculate_size_similarity(target_function, match)
+            ref_sim = calculate_reference_similarity(target_function, match)
+            addr_sim = calculate_address_similarity(target_function, match, max_addr_diff)
+            opcode_sim = calculate_opcode_similarity(target_function, match)
+            
+            match_info = {
+                'name': match['name'],
+                'address': match['address'],
+                'size': match_size,
+                'references': match['reference_count'],
+                'size_similarity': size_sim,
+                'ref_similarity': ref_sim,
+                'addr_similarity': addr_sim,
+                'opcode_similarity': opcode_sim
+            }
+            match_data.append(match_info)
+            
+            print(f"Best match: {match['name']} at {match['address']}")
+            print(f"  Size: {match_size} bytes (similarity: {size_sim:.4f})")
+            print(f"  References: {match['reference_count']} (similarity: {ref_sim:.4f})")
+            print(f"  Address similarity: {addr_sim:.4f}")
+            print(f"  Opcode similarity: {opcode_sim:.4f}")
+        
+        if len(best_matches) > 1:
+            print(f"WARNING: Found {len(best_matches)} functions with the same similarity score!")
+        
+        results.append({
+            'address': address,
+            'found': True,
+            'target_function': {
+                'name': target_function['name'],
+                'address': target_function['address'],
+                'size': target_size,
+                'references': target_function['reference_count']
+            },
+            'matches': match_data,
+            'similarity_score': similarity_score,
+            'match_count': len(best_matches)
+        })
+    
+    return results
+
 def main():
     global gog_functions, steam_functions
 
@@ -537,6 +623,35 @@ def main():
     # Check for ML training mode
     if len(sys.argv) >= 2 and sys.argv[1] == "--train":
         train_logistic_regression()
+        return
+    
+    # Check for list mode
+    if len(sys.argv) >= 2 and sys.argv[1] == "--list":
+        if len(sys.argv) < 3:
+            print("Error: --list requires at least one address")
+            sys.exit(1)
+        addresses = sys.argv[2:]
+        
+        results = process_multiple_addresses(addresses, gog_functions, steam_functions, size_weight, ref_weight, addr_weight, opcode_weight, max_addr_diff)
+        
+        # Print summary
+        print("\n" + "=" * 80)
+        print("SUMMARY")
+        print("=" * 80)
+        
+        found_count = sum(1 for r in results if r['found'])
+        print(f"Total addresses processed: {len(results)}")
+        print(f"Functions found: {found_count}")
+        print(f"Functions not found: {len(results) - found_count}")
+        
+        if found_count > 0:
+            avg_score = sum(r['similarity_score'] for r in results if r['found']) / found_count
+            print(f"Average similarity score: {avg_score:.4f}")
+            
+            ambiguous_count = sum(1 for r in results if r['found'] and r['match_count'] > 1)
+            if ambiguous_count > 0:
+                print(f"Ambiguous matches (multiple with same score): {ambiguous_count}")
+        
         return
     
     # Check for test mode
@@ -569,12 +684,14 @@ def main():
     if len(sys.argv) < 2:
         print("Usage:")
         print("  python correlator.py <function_address> [size_weight] [ref_weight] [addr_weight] [opcode_weight]")
+        print("  python correlator.py --list <address1> <address2> ... <addressN>")
         print("  python correlator.py --test [size_weight] [ref_weight] [addr_weight] [opcode_weight]")
         print("  python correlator.py --analyze")
         print("  python correlator.py --train")
         print("\nExamples:")
         print("  python correlator.py 00401000")
         print("  python correlator.py 00401000 0.4 0.3 0.1 0.2")
+        print("  python correlator.py --list 00401000 00402000 00403000")
         print("  python correlator.py --test")
         print("  python correlator.py --test 0.4 0.3 0.1 0.2")
         print("  python correlator.py --train  # Learn optimal weights with ML")
