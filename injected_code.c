@@ -12158,23 +12158,28 @@ patch_Button_initialize_civilopedia_description (Button * this, int edx, char * 
 
 	// Set button visibility for multi-page descriptions if we're showing such a thing right now
 	bool show_desc_btn = true, show_effects_btn = false, show_previous_btn = false;
+	char * desc_btn_text = text;
 	if ((current_article != NULL) && current_article->show_description && (is->cmpd.last_page > 0)) {
 
 		// For a two-page description, show the effects button and the description button which will act as a next/previous button
 		if (is->cmpd.last_page == 1) {
 			show_effects_btn = true;
+			desc_btn_text = is->cmpd.shown_page == 0 ? (*p_labels)[LBL_MORE] : (*p_labels)[LBL_PREVIOUS];
 
 		// For a three or more page description, show the effects button, and show the description button only if we're not on the last page
-		// (b/c it's the next button), and show the previous button only if we're not on the first page.
+		// (b/c it's the next button), and show the previous button only if we're not on the first page. If the desc button is visible, make
+		// it say "More".
 		} else {
 			show_effects_btn = true;
 			if (is->cmpd.shown_page >= is->cmpd.last_page)
 				show_desc_btn = false;
+			else
+				desc_btn_text = (*p_labels)[LBL_MORE];
 			show_previous_btn = is->cmpd.shown_page > 0;
 		}
 	}
 
-	int tr = Button_initialize (this, __, text, control_id, x, y, width, height, parent, param_8);
+	int tr = Button_initialize (this, __, desc_btn_text, control_id, x, y, width, height, parent, param_8);
 
 	if (! show_desc_btn)
 		this->vtable->m02_Show_Disabled ((Base_Form *)this);
@@ -12208,7 +12213,7 @@ patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int pa
 		int desc_btn_x = 535, desc_btn_y = 222, desc_btn_height = 17;
 
 		Button_initialize (bs[n], __,
-				   n == 0 ? "Button 1" : "Button 2",
+				   n == 0 ? (*p_labels)[LBL_EFFECTS] : (*p_labels)[LBL_PREVIOUS],
 				   n == 0 ? PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID : PEDIA_MULTIPAGE_PREV_BUTTON_ID, // control ID
 				   desc_btn_x, // location x
 				   desc_btn_y + (n == 0 ? -2 : 2) * desc_btn_height, // location y
