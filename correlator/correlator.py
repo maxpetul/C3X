@@ -229,7 +229,7 @@ correct_matches = []
 incorrect_matches = []
 ambiguous_matches = []
 
-def test_name_matching(steam_functions, gog_functions, size_weight, ref_weight, addr_weight=0.03, opcode_weight=0.35, max_addr_diff=86852):
+def test_name_matching(steam_functions, gog_functions, size_weight, ref_weight, addr_weight=0.03, opcode_weight=0.35, max_addr_diff=86852, comparison_label="Steam"):
     """Test how well our similarity metric matches already-named functions"""
     global correct_matches, incorrect_matches, ambiguous_matches
     
@@ -238,11 +238,11 @@ def test_name_matching(steam_functions, gog_functions, size_weight, ref_weight, 
     incorrect_matches.clear()
     ambiguous_matches.clear()
     
-    print(f"Testing name matching with weights: Size={size_weight:.2f}, References={ref_weight:.2f}, Address={addr_weight:.2f}, Opcode={opcode_weight:.2f}")
+    print(f"Testing name matching between GOG and {comparison_label} with weights: Size={size_weight:.2f}, References={ref_weight:.2f}, Address={addr_weight:.2f}, Opcode={opcode_weight:.2f}")
     
-    # Get named functions from steam
+    # Get named functions from comparison file
     named_steam_funcs = find_named_functions(steam_functions)
-    print(f"Found {len(named_steam_funcs)} named functions in steam.json")
+    print(f"Found {len(named_steam_funcs)} named functions in comparison file ({comparison_label})")
     
     # Group by name, excluding duplicates
     steam_name_map = group_by_name(named_steam_funcs)
@@ -511,7 +511,7 @@ def train_logistic_regression():
         'cv_accuracy': cv_scores.mean()
     }
 
-def process_multiple_addresses(addresses, gog_functions, steam_functions, size_weight, ref_weight, addr_weight, opcode_weight, max_addr_diff):
+def process_multiple_addresses(addresses, gog_functions, steam_functions, size_weight, ref_weight, addr_weight, opcode_weight, max_addr_diff, comparison_label="Steam"):
     """Process multiple addresses and find matches for each"""
     results = []
     
@@ -538,7 +538,7 @@ def process_multiple_addresses(addresses, gog_functions, steam_functions, size_w
         print(f"Found target function: {target_function['name']} at {target_function['address']}")
         print(f"Function size: {target_size} bytes, References: {target_function['reference_count']}")
         
-        # Find the most similar function in steam.json
+        # Find the most similar function in comparison file
         best_matches, similarity_score = find_most_similar_function(
             target_function, 
             steam_functions,
@@ -572,7 +572,7 @@ def process_multiple_addresses(addresses, gog_functions, steam_functions, size_w
             }
             match_data.append(match_info)
             
-            print(f"Best match: {match['name']} at {match['address']}")
+            print(f"Best match in {comparison_label}: {match['name']} at {match['address']}")
             print(f"  Size: {match_size} bytes (similarity: {size_sim:.4f})")
             print(f"  References: {match['reference_count']} (similarity: {ref_sim:.4f})")
             print(f"  Address similarity: {addr_sim:.4f}")
@@ -600,6 +600,12 @@ def process_multiple_addresses(addresses, gog_functions, steam_functions, size_w
 def main():
     global gog_functions, steam_functions
 
+    # Check for --pcg flag first (before loading files)
+    use_pcg = "--pcg" in sys.argv
+    if use_pcg:
+        # Remove --pcg from argv so it doesn't interfere with other parsing
+        sys.argv = [arg for arg in sys.argv if arg != "--pcg"]
+    
     # Set default weights
     size_weight = 0.35
     ref_weight = 0.27
@@ -608,8 +614,11 @@ def main():
     max_addr_diff = 86852  # Average from analysis
     
     # Load functions from both files
+    comparison_file = "pcg.json" if use_pcg else "steam.json"
+    comparison_label = "PCGames.de" if use_pcg else "Steam"
+    
     gog_functions = load_ghidra_export("gog.json")
-    steam_functions = load_ghidra_export("steam.json")
+    steam_functions = load_ghidra_export(comparison_file)
     
     if not gog_functions or not steam_functions:
         print("Error loading function data. Exiting.")
@@ -632,7 +641,7 @@ def main():
             sys.exit(1)
         addresses = sys.argv[2:]
         
-        results = process_multiple_addresses(addresses, gog_functions, steam_functions, size_weight, ref_weight, addr_weight, opcode_weight, max_addr_diff)
+        results = process_multiple_addresses(addresses, gog_functions, steam_functions, size_weight, ref_weight, addr_weight, opcode_weight, max_addr_diff, comparison_label)
         
         # Print summary
         print("\n" + "=" * 80)
@@ -677,23 +686,28 @@ def main():
                 sys.exit(1)
         
         # Run test mode
-        test_name_matching(steam_functions, gog_functions, size_weight, ref_weight, addr_weight, opcode_weight, max_addr_diff)
+        test_name_matching(steam_functions, gog_functions, size_weight, ref_weight, addr_weight, opcode_weight, max_addr_diff, comparison_label)
         return
     
     # Normal mode - lookup a specific function
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  python correlator.py <function_address> [size_weight] [ref_weight] [addr_weight] [opcode_weight]")
-        print("  python correlator.py --list <address1> <address2> ... <addressN>")
-        print("  python correlator.py --test [size_weight] [ref_weight] [addr_weight] [opcode_weight]")
-        print("  python correlator.py --analyze")
-        print("  python correlator.py --train")
+        print("  python correlator.py <function_address> [size_weight] [ref_weight] [addr_weight] [opcode_weight] [--pcg]")
+        print("  python correlator.py --list <address1> <address2> ... <addressN> [--pcg]")
+        print("  python correlator.py --test [size_weight] [ref_weight] [addr_weight] [opcode_weight] [--pcg]")
+        print("  python correlator.py --analyze [--pcg]")
+        print("  python correlator.py --train [--pcg]")
+        print("\nOptions:")
+        print("  --pcg    Use pcg.json (PCGames.de version) instead of steam.json for comparison")
         print("\nExamples:")
         print("  python correlator.py 00401000")
+        print("  python correlator.py 00401000 --pcg")
         print("  python correlator.py 00401000 0.4 0.3 0.1 0.2")
         print("  python correlator.py --list 00401000 00402000 00403000")
+        print("  python correlator.py --list 00401000 00402000 --pcg")
         print("  python correlator.py --test")
-        print("  python correlator.py --test 0.4 0.3 0.1 0.2")
+        print("  python correlator.py --test --pcg")
+        print("  python correlator.py --test 0.4 0.3 0.1 0.2 --pcg")
         print("  python correlator.py --train  # Learn optimal weights with ML")
         return
     
@@ -731,7 +745,7 @@ def main():
     print(f"References: {target_function['reference_count']}")
     print(f"Using weights: Size={size_weight:.2f}, References={ref_weight:.2f}, Address={addr_weight:.2f}, Opcode={opcode_weight:.2f}")
     
-    # Find the most similar function in steam.json
+    # Find the most similar function in comparison file
     best_matches, similarity_score = find_most_similar_function(
         target_function, 
         steam_functions,
@@ -742,7 +756,7 @@ def main():
         max_addr_diff=max_addr_diff
     )
     
-    print("\nBest matches in steam.json:")
+    print(f"\nBest matches in {comparison_label}:")
     print(f"Combined similarity score: {similarity_score:.4f}")
     
     if len(best_matches) > 1:
