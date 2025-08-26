@@ -766,6 +766,22 @@ enum Unit_Command_Values
   UCV_Rename		      = 0x40010000,
 
   UCV_Stack_Bombard = 0x80000001,
+
+  // Special Worker/Engineer District Actions
+  UCV_Build_Encampment = -10000001,
+  UCV_Build_Campus = -10000002,
+  UCV_Build_Theater = -10000003,
+  UCV_Build_HolySite = -10000004,
+  UCV_Build_CommercialHub = -10000005,
+  UCV_Build_Port = -10000006,
+  UCV_Build_IndustrialZone = -10000007,
+  UCV_Build_EntertainmentComplex = -10000008,
+  UCV_Build_WaterPark = -10000009,
+  UCV_Build_Borough = -10000010,
+  UCV_Build_Canal = -10000011,
+  UCV_Build_Dam = -10000012,
+  UCV_Build_Aerodrome = -10000013,
+  UCV_Build_Spaceport = -10000014,
 };
 
 enum Unit_Mode_Actions
@@ -1463,12 +1479,10 @@ typedef enum map_rcm_item {
 
 typedef enum unit_status_flags
 {
-	USF_SKIPPED_FULL_TURN_WITH_DAMAGE = 0x1,
-	USF_USED_ATTACK                   = 0x4, // the unit has attacked at least once this turn
-	USF_PERFORMED_AIR_RECON           = 0x8,
-	USF_USED_DEFENSIVE_BOMBARD        = 0x40, // the unit has performed def. bombard already this turn
-	USF_SENTRY                        = 0x80,
-	USF_SENTRY_ENEMY_ONLY             = 0x100,
+	USF_USED_ATTACK = 0x4, // the unit has attacked at least once this turn
+	USF_USED_DEFENSIVE_BOMBARD = 0x40, // the unit has performed def. bombard already this turn
+	USF_SENTRY = 0x80,
+	USF_SENTRY_ENEMY_ONLY = 0x100,
 } UnitStatusFlags;
 
 typedef enum advisor_kind
@@ -1516,17 +1530,6 @@ typedef enum civilopedia_article_kind
 	CAK_LIST_WITHIN_SUBCATEGORY = 0xE,
 	CAK_MAIN_LIST               = 0xF,
 } CivilopediaArticleKind;
-
-typedef enum civilopedia_control_id
-{
-	CCID_CLOSE_BTN       = 0,
-	CCID_RIGHT_BTN       = 1,
-	CCID_LEFT_BTN        = 2,
-	CCID_UP_BTN          = 3,
-	CCID_NEXT_BTN        = 4,
-	CCID_PREV_BTN        = 5,
-	CCID_DESCRIPTION_BTN = 6
-} CivilopediaControlID;
 
 struct IntList
 {
@@ -2426,7 +2429,7 @@ struct Map_Renderer_vtable
   void *m39_Draw_Grassland_Jungles_Large;
 //  int (__thiscall *m40_Draw_Grassland_Jungles_Small)(Map_Renderer *, signed int, int, int, int, int);
   void *m40_Draw_Grassland_Jungles_Small;
-//  void (__thiscall *m41_Draw_Mines)(Map_Renderer *, int, int, int);
+//void (__fastcall * m41_Draw_Mines) (Map_Renderer *, Map_Renderer * param_1, int param_2, int param_3);
   void *m41_Draw_Mines;
   int m42_Draw_Mountains;
 //  int (__thiscall *m43_Draw_Marsh_Large)(Map_Renderer *, signed int, int, int, int, int);
@@ -2595,8 +2598,7 @@ struct Civilopedia_Article
   String64 Civilopedia_Entry;
   String64 PCX_Small;
   String64 PCX_Large;
-  bool show_description; // Also used to show "more" on articles with no descriptions
-  byte field_105[3];
+  int b_Show_Description; // Also for the more/previous buttons
   int field_108;
   CivilopediaArticleKind article_kind;
   int IconID;
@@ -4675,7 +4677,7 @@ struct Tile_Type
   String32 LM_Name;
   String32 LM_Entry;
   int field_E8;
-  int disease_strength;
+  int field_EC;
 };
 
 struct PCX_Image
@@ -5047,6 +5049,8 @@ struct Tile
   int field_34;
   int field_38;
   Tile_Body Body;
+
+  int DistrictID;
 };
 
 struct Map
@@ -5483,9 +5487,9 @@ struct Civilopedia_Form
   Button Up_Btn;
   Button Right_Btn;
   Button Left_Btn;
-  Button Next_Btn; // Arrow pointing right at top of form
-  Button Prev_Btn; // Arrow pointing left at top of form
-  Button Description_Btn; // Also the more/prev button for articles that don't have descriptions like for RACE
+  Button Next_Btn;
+  Button Prev_Btn;
+  Button Description_Btn;
   int History;
   char gap_662C[696];
   int field_68E4;

@@ -1590,6 +1590,22 @@ handle_config_error (struct config_parsing * p, enum config_parse_error err)
 	handle_config_error_at (p, p->cursor, err);
 }
 
+void 
+load_district_advance_prereqs ()
+{
+	char err_msg[1000];
+	int recog_err_offset;
+
+	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++) {
+		int tech_id;
+		Advance * adv;
+		for (int n = 0; n < p_bic_data->AdvanceCount; n++)
+			if (district_infos[i].advance_prereq == p_bic_data->Advances[n].Name) {
+				is->district_prereqs[i]->tech_id = n;
+			}
+	}
+}
+
 // Loads a config from the given file, layering it on top of is->current_config and appending its name to the list of loaded configs. Does NOT
 // re-apply machine code edits.
 void
@@ -4373,6 +4389,128 @@ set_up_stack_bombard_buttons (Main_GUI * this)
 }
 
 void
+init_district_command_buttons ()
+{
+	if (is_online_game () || is->dc_btn_img_state != IS_UNINITED)
+		return;
+
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
+	for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++)
+		for (int n = 0; n < 4; n++)
+			Sprite_construct (&is->district_btn_img_sets[dc].imgs[n]);
+
+	char temp_path[2*MAX_PATH];
+
+	is->dc_btn_img_state = IS_INIT_FAILED;
+
+	// For each button sprite type (normal, rollover, highlighted, alpha)
+	char const * filenames[4] = {"WorkerDistrictButtonsNorm.pcx", "WorkerDistrictButtonsRollover.pcx", "WorkerDistrictButtonsHighlighted.pcx", "WorkerDistrictButtonsAlpha.pcx"};
+	for (int n = 0; n < 4; n++) {
+		get_mod_art_path (filenames[n], temp_path, sizeof temp_path);
+		PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+		if (pcx.JGL.Image == NULL) {
+			(*p_OutputDebugStringA) ("[C3X] Failed to load work district command buttons sprite sheet.");
+			for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++)
+				for (int k = 0; k < 4; k++) {
+					Sprite * sprite = &is->district_btn_img_sets[dc].imgs[k];
+					sprite->vtable->destruct (sprite, __, 0);
+				}
+			pcx.vtable->destruct (&pcx, __, 0);
+			return;
+		}
+
+		// For each district type
+		for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
+			int x = 32 * district_infos[dc].btn_tile_sheet_column,
+			    y = 32 * district_infos[dc].btn_tile_sheet_row;
+			Sprite_slice_pcx (&is->district_btn_img_sets[dc].imgs[n], __, &pcx, x, y, 32, 32, 1, 0);
+		}
+
+		pcx.vtable->clear_JGL (&pcx);
+	}
+
+	is->dc_btn_img_state = IS_OK;
+	pcx.vtable->destruct (&pcx, __, 0);
+}
+
+void
+set_up_district_buttons (Main_GUI * this)
+{
+
+	if (is_online_game ()) // is online game
+		return;
+
+	//Unit * unit = this->Current_Unit;
+	//int unit_type_id = unit->Body.UnitTypeID;
+	// p_main_screen_form->Current_Unit?
+
+
+	init_district_command_buttons ();
+
+	// Debug: output dc_img_state
+	char ss[200];
+	//snprintf (ss, sizeof ss, "dc_img_state: %d", is->dc_img_state);
+	//pop_up_in_game_error (ss);
+
+	if (is->dc_btn_img_state != IS_OK)
+		return;
+
+	// TODO: confirm whether to proceed based on if this is worker or not, as well as tile conditions
+	// p_main_screen_form->Current_Unit
+
+	// Not sure this is necessary, but try to recreate the bombard example,
+	// for which we need some active button. This will allow these lines:
+	//
+	// free_button->field_6D8 = bombard_button->field_6D8;
+	// free_button->Button.field_664 = bombard_button->Button.field_664;
+	//
+	// No idea if these are necessary.
+	Command_Button * automate_button = NULL; int i_starting_button; {
+		for (int n = 0; n < 42; n++)
+			if (((this->Unit_Command_Buttons[n].Button.Base_Data.Status2 & 1) != 0) &&
+				(this->Unit_Command_Buttons[n].Command == UCV_Automate)) {
+				automate_button = &this->Unit_Command_Buttons[n];
+				i_starting_button = n;
+				break;
+			}
+	}
+
+	if (automate_button == NULL)
+		return;
+
+	// For each district type
+	for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
+
+		Command_Button * free_button = NULL; {
+			for (int n = i_starting_button + 1; n < 42; n++)
+				if ((this->Unit_Command_Buttons[n].Button.Base_Data.Status2 & 1) == 0) {
+					free_button = &this->Unit_Command_Buttons[n];
+					i_starting_button = n;
+					break;
+				}
+
+			if (free_button == NULL)
+				return;
+
+			// Set up free button for creating district
+			free_button->Command = district_infos[dc].command;
+
+			// Replace the button's image with the district image. Disabling & re-enabling and
+			// clearing field_5FC[13] are all necessary to trigger a redraw.
+			free_button->Button.vtable->m02_Show_Disabled ((Base_Form *)&free_button->Button);
+			free_button->field_6D8 = automate_button->field_6D8;
+			for (int k = 0; k < 4; k++)
+				free_button->Button.Images[k] = &is->district_btn_img_sets[dc].imgs[k];
+			free_button->Button.field_664 = automate_button->Button.field_664;
+			Button_set_tooltip (&free_button->Button, __, (char *)district_infos[dc].tooltip);
+			free_button->Button.field_5FC[13] = 0;
+			free_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&free_button->Button, __, 0);
+		}
+	}
+}
+
+void
 set_up_stack_worker_buttons (Main_GUI * this)
 {
 	if ((((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 == 0) ||  // (control key is not down OR
@@ -4425,6 +4563,7 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 	Main_GUI_set_up_unit_command_buttons (this);
 	set_up_stack_bombard_buttons (this);
 	set_up_stack_worker_buttons (this);
+	set_up_district_buttons (this);
 
 	// If the minimum city separation is increased, then gray out the found city button if we're too close to another city.
 	if ((is->current_config.minimum_city_separation > 1) && (p_main_screen_form->Current_Unit != NULL) && (is->disabled_command_img_state == IS_OK)) {
@@ -4653,6 +4792,16 @@ patch_Unit_can_upgrade (Unit * this)
 		return base;
 }
 
+int
+get_district_id_from_command_id (int command_id)
+{
+	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++) {
+		if (district_infos[i].command == command_id)
+			return i;
+	}
+	return -1;
+}
+
 bool __fastcall
 patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 {
@@ -4666,6 +4815,13 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 		enum UnitTypeClasses class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
 		return ((class != UTC_Land) || (! tile->vtable->m35_Check_Is_Water (tile))) &&
 			Unit_can_perform_command (this, __, unit_command_value);
+	} else if (unit_command_value <= UCV_Build_Encampment) {
+		// Check if requisite tech is present
+		int district_id = get_district_id_from_command_id (unit_command_value);
+		if (district_id != -1 && &is->district_prereqs[district_id]->tech_id)
+			if (Leader_has_tech (&leaders[this->Body.CivID], __, is->district_prereqs[district_id]->tech_id))
+				return true;
+		return false;
 	} else
 		return Unit_can_perform_command (this, __, unit_command_value);
 }
@@ -4750,6 +4906,40 @@ issue_stack_worker_command (Unit * unit, int command)
 		while ((i_next_helper < is->memo_len) && (next_up == NULL))
 			next_up = get_unit_ptr (is->memo[i_next_helper++]);
 	} while ((next_up != NULL) && (! last_action_didnt_happen));
+}
+
+void
+issue_district_worker_command (Unit * unit, int command)
+{
+	char ss[200];
+	//snprintf (ss, sizeof ss, "issue_district_worker_command");
+	//pop_up_in_game_error (ss);
+
+	Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
+	int unit_type_id = unit->Body.UnitTypeID;
+	int unit_id = unit->Body.ID;
+
+	// TODO Check if requisite tech available
+	// TODO make sure not on mountain
+	// TODO make sure on water if water-based district
+	// TODO patch_Unit_can_perform_command ?
+
+	// Set tile DistrictID
+	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++) {
+		if (district_infos[i].command == command) {
+			tile->DistrictID = i;
+			break;
+		}
+	}
+
+	// Tile now tracks the district type, so track everything as a mine behind the scenes.
+	// 
+	int pseudo_command = UCV_Build_Mine;
+	Main_Screen_Form_issue_command (p_main_screen_form, __, pseudo_command, unit);
+
+	// TODO Factor in turns to completion - patch_Unit_work_simple_job ?
+	// TODO Patch City::can_build_improvement at 0x4BFF80
+
 }
 
 void
@@ -4857,7 +5047,24 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 			is->sb_activated_by_button = 0;
 	}
 
+	Button * button = &this->Unit_Command_Buttons[button_id].Button;
 	int command = this->Unit_Command_Buttons[button_id].Command;
+
+	// Debug: output button_id, command and tooltip
+	char ss[200];
+	//snprintf (ss, sizeof ss, "button_id: %d, command: %d, tooltip: %s", button_id, command, button->ToolTip);
+	//pop_up_in_game_error (ss);
+
+	// Encampment is highest district int, all of which are negative
+	if (command <= UCV_Build_Encampment) {
+		//snprintf (ss, sizeof ss, "Is district command: %d", command);
+		//pop_up_in_game_error (ss);
+		// Replicate behavior of function we're replacing
+		clear_something_1 ();
+		Timer_clear (&this->timer_1);
+		issue_district_worker_command (p_main_screen_form->Current_Unit, command);
+		return;
+	}
 
 	struct sc_button_info const * stack_button_info; {
 		stack_button_info = NULL;
@@ -5523,6 +5730,9 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	load_config ("custom.c3x_config.ini", 1);
 	apply_machine_code_edits (&is->current_config, false);
 
+	// Load district prerequisites
+	load_district_advance_prereqs ();
+
 	// Initialize Trade Net X
 	if (is->current_config.enable_trade_net_x && (is->tnx_init_state == IS_UNINITED)) {
 		char path[MAX_PATH];
@@ -5865,7 +6075,7 @@ patch_Unit_ai_move_artillery (Unit * this)
 	UnitType const * this_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
 	int num_escorters_req = this->vtable->eval_escort_requirement (this);
 
-	if ((in_city == NULL) || (count_escorters (this) >= num_escorters_req))
+	if ((in_city == NULL) || (count_escorters (this) >= num_escorters_req)) 
 		goto base_impl;
 
 	// Don't assign escort if there are any enemies around because in that case it might be a serious mistake to take a defender out of the city
@@ -6239,6 +6449,41 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 		int available;
 		if (get_available_unit_count (&leaders[this->Body.CivID], unit_type_id, &available) && (available <= 0))
 			return false;
+	}
+
+	return base;
+}
+
+bool __fastcall
+patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param_2)
+{
+	bool base = City_can_build_improvement (this, __, i_improv, param_2);
+	Leader leader = leaders[this->Body.CivID];
+	Tile * tile = tile_at (this->Body.X, this->Body.Y);
+
+	if (base) {
+		// For each district type
+		for (int district_id = 0; district_id < COUNT_DISTRICT_TYPES; district_id++) {
+			// For each improvement that belongs to this district type
+			for (int improv_id = 0; improv_id < 5; improv_id++) {
+				// If we must have a certain district to make building
+				if (is->district_improvs[district_id]->improv_ids[improv_id] != NULL && 
+					is->district_improvs[district_id]->improv_ids[improv_id] == i_improv) {
+
+					// Check if City has district within radius
+					
+					FOR_TILES_AROUND (tai, workable_tile_counts[is->current_config.city_work_radius], this->Body.X, this->Body.Y) {
+						if (tai.n == 0)
+							continue;
+						if (tai.tile->Territory_OwnerID != this->Body.CivID)
+							continue;
+
+						// If tile has this district
+
+					}
+				}
+			}
+		}
 	}
 
 	return base;
@@ -12079,17 +12324,13 @@ patch_Main_GUI_position_elements (Main_GUI * this)
 bool
 do_next_line_for_pedia_desc (PCX_Image * canvas, int * inout_y)
 {
-	if (is->cmpd.drawing_lines) {
+	if (is->cmpd.active_now) {
 		int first_line_on_shown_page = is->cmpd.shown_page * PEDIA_DESC_LINES_PER_PAGE;
-		int page = is->cmpd.line_count / PEDIA_DESC_LINES_PER_PAGE;
-		is->cmpd.line_count += 1;
-		is->cmpd.last_page = (page > is->cmpd.last_page) ? page : is->cmpd.last_page;
-
-		if (page == is->cmpd.shown_page) {
+		bool shown_line = is->cmpd.line_count / PEDIA_DESC_LINES_PER_PAGE == is->cmpd.shown_page;
+		if (shown_line)
 			*inout_y -= is->cmpd.shown_page * PEDIA_DESC_LINES_PER_PAGE * PCX_Image_get_text_line_height (canvas);
-			return true;
-		} else
-			return false;
+		is->cmpd.line_count += 1;
+		return shown_line;
 	}
 	return true;
 }
@@ -12115,90 +12356,18 @@ patch_PCX_Image_draw_text_in_wrap_func (PCX_Image * this, int edx, char * str, i
 void __fastcall
 patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
 {
-	// memset (&is->cmpd, 0, sizeof is->cmpd);
+	is->cmpd.active_now = true;
 	is->cmpd.line_count = 0;
-	is->cmpd.drawing_lines = this->show_description;
+	is->cmpd.shown_page = 0;
 
 	Civilopedia_Article_m01_Draw_GCON_or_RACE (this);
 
-	is->cmpd.drawing_lines = false;
+	is->cmpd.active_now = false;
 }
 
-void __fastcall
-patch_Civilopedia_Form_m53_On_Control_Click (Civilopedia_Form * this, int edx, CivilopediaControlID control_id)
+void __cdecl
+activate_pedia_multipage_button (int control_id)
 {
-	Civilopedia_Article * current_article = (p_civilopedia_form->Current_Article_ID >= 0) ? p_civilopedia_form->Articles[p_civilopedia_form->Current_Article_ID] : NULL;
-
-	// "Effects" button leaves description mode, returns to showing effects
-	if ((control_id == PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID) && (current_article != NULL)) {
-		current_article->show_description = false;
-		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
-
-	// "Previous" button shows the previous page of a multi-page description
-	} else if (control_id == PEDIA_MULTIPAGE_PREV_BUTTON_ID) {
-		is->cmpd.shown_page = not_below (0, is->cmpd.shown_page - 1);
-		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
-
-	} else if ((control_id == CCID_DESCRIPTION_BTN) && // if description/more/prev button was clicked AND
-		   (current_article != NULL) && current_article->show_description && // currently showing a description of an article AND
-		   (is->cmpd.last_page > 0)) { // this is a multi-page description
-
-		// Show the next page of the multi-page description
-		is->cmpd.shown_page = not_above (is->cmpd.last_page, is->cmpd.shown_page + 1);
-		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
-
-	} else
-		Civilopedia_Form_m53_On_Control_Click (this, __, control_id);
-}
-
-int __fastcall
-patch_Button_initialize_civilopedia_description (Button * this, int edx, char * text, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)
-{
-	Civilopedia_Article * current_article = (p_civilopedia_form->Current_Article_ID >= 0) ? p_civilopedia_form->Articles[p_civilopedia_form->Current_Article_ID] : NULL;
-
-	// Set button visibility for multi-page descriptions if we're showing such a thing right now
-	bool show_desc_btn = true, show_effects_btn = false, show_previous_btn = false;
-	char * desc_btn_text = text;
-	if ((current_article != NULL) && current_article->show_description && (is->cmpd.last_page > 0)) {
-
-		// For a two-page description, show the effects button and the description button which will act as a next/previous button
-		if (is->cmpd.last_page == 1) {
-			show_effects_btn = true;
-			desc_btn_text = is->cmpd.shown_page == 0 ? (*p_labels)[LBL_MORE] : (*p_labels)[LBL_PREVIOUS];
-
-		// For a three or more page description, show the effects button, and show the description button only if we're not on the last page
-		// (b/c it's the next button), and show the previous button only if we're not on the first page. If the desc button is visible, make
-		// it say "More".
-		} else {
-			show_effects_btn = true;
-			if (is->cmpd.shown_page >= is->cmpd.last_page)
-				show_desc_btn = false;
-			else
-				desc_btn_text = (*p_labels)[LBL_MORE];
-			show_previous_btn = is->cmpd.shown_page > 0;
-		}
-	}
-
-	int tr = Button_initialize (this, __, desc_btn_text, control_id, x, y, width, height, parent, param_8);
-
-	if (! show_desc_btn)
-		this->vtable->m02_Show_Disabled ((Base_Form *)this);
-
-	if (is->cmpd.effects_btn != NULL) {
-		if (show_effects_btn)
-			is->cmpd.effects_btn->vtable->m01_Show_Enabled ((Base_Form *)is->cmpd.effects_btn, __, 0);
-		else
-			is->cmpd.effects_btn->vtable->m02_Show_Disabled ((Base_Form *)is->cmpd.effects_btn);
-	}
-
-	if (is->cmpd.previous_btn != NULL) {
-		if (show_previous_btn)
-			is->cmpd.previous_btn->vtable->m01_Show_Enabled ((Base_Form *)is->cmpd.previous_btn, __, 0);
-		else
-			is->cmpd.previous_btn->vtable->m02_Show_Disabled ((Base_Form *)is->cmpd.previous_btn);
-	}
-
-	return tr;
 }
 
 int __fastcall
@@ -12213,7 +12382,7 @@ patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int pa
 		int desc_btn_x = 535, desc_btn_y = 222, desc_btn_height = 17;
 
 		Button_initialize (bs[n], __,
-				   n == 0 ? (*p_labels)[LBL_EFFECTS] : (*p_labels)[LBL_PREVIOUS],
+				   n == 0 ? "Button 1" : "Button 2",
 				   n == 0 ? PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID : PEDIA_MULTIPAGE_PREV_BUTTON_ID, // control ID
 				   desc_btn_x, // location x
 				   desc_btn_y + (n == 0 ? -2 : 2) * desc_btn_height, // location y
@@ -12223,12 +12392,11 @@ patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int pa
 
 		for (int k = 0; k < 3; k++)
 			bs[n]->Images[k] = &this->Description_Btn_Images[k];
+		bs[n]->activation_handler = &activate_pedia_multipage_button;
 
-		// Do now draw the button until needed
-		bs[n]->vtable->m02_Show_Disabled ((Base_Form *)bs[n]);
+		// Need to draw once manually or the button won't look right
+		bs[n]->vtable->m73_call_m22_Draw ((Base_Form *)bs[n]);
 	}
-	is->cmpd.effects_btn  = bs[0];
-	is->cmpd.previous_btn = bs[1];
 
 	int tr = Civilopedia_Form_m68_Show_Dialog (this, __, param_1, param_2, param_3);
 
@@ -12237,9 +12405,169 @@ patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int pa
 			bs[n]->vtable->destruct ((Base_Form *)bs[n], __, 0);
 			free (bs[n]);
 		}
-	is->cmpd.effects_btn = is->cmpd.previous_btn = NULL;
 
 	return tr;
+}
+
+void
+init_district_images ()
+{
+	char ss[200];
+	//snprintf (ss, sizeof ss, "init_district_images");
+	//pop_up_in_game_error (ss);
+
+	if (is_online_game () || is->dc_img_state != IS_UNINITED)
+		return;
+
+	char temp_path[2*MAX_PATH];
+
+	is->dc_img_state = IS_INIT_FAILED;
+
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
+
+	// For each district type
+	for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
+
+		// Debug: print dc
+		//snprintf (ss, sizeof ss, "init_district_images: %d", dc);
+		//pop_up_in_game_error (ss);
+
+		// For each image file with this district
+		for (int img_path_i = 0; img_path_i < 4; img_path_i++) {
+
+			if (district_infos[dc].img_paths[img_path_i] == NULL)
+				break;
+
+			// Debug: print img_path_i and district_infos[dc].img_paths[img_path_i]
+			//snprintf (ss, sizeof ss, "init_district_images: %d, %s", img_path_i, district_infos[dc].img_paths[img_path_i]);
+			//pop_up_in_game_error (ss);
+
+			// Read PCX file
+			get_mod_art_path (district_infos[dc].img_paths[img_path_i], temp_path, sizeof temp_path);
+			PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+
+			if (pcx.JGL.Image == NULL) {
+
+				// Debug: print img_path_i and district_infos[dc].img_paths[img_path_i]
+				//snprintf (ss, sizeof ss, "loading failed: %d, %s", img_path_i, district_infos[dc].img_paths[img_path_i]);
+				//pop_up_in_game_error (ss);
+
+				(*p_OutputDebugStringA) ("[C3X] Failed to load districts sprite sheet.");
+				for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++)
+					for (int era_i = 0; era_i < 4; era_i++) {
+						for (int col = 0; col < district_infos[dc].total_img_columns; col++) {
+							Sprite * sprite = &is->district_img_sets[dc].imgs[era_i][col];
+							sprite->vtable->destruct (sprite, __, 0);
+						}
+					}
+				pcx.vtable->destruct (&pcx, __, 0);
+				return;
+			}
+
+			// For each era
+			for (int era_i = 0; era_i < 4; era_i++) {
+
+				// Debug: print dc, img_path_i and era_i
+				//snprintf (ss, sizeof ss, "init_district_images: %d, %d, %d", dc, img_path_i, era_i);
+				//pop_up_in_game_error (ss);
+
+				// For each column in the image (variations on the district image for that era)
+				for (int col = 0; col < district_infos[dc].total_img_columns; col++) {
+
+					// Debug: print dc, img_path_i, era_i and col
+					//snprintf (ss, sizeof ss, "init_district_images: %d, %d, %d, %d", dc, img_path_i, era_i, col);
+					//pop_up_in_game_error (ss);
+
+					Sprite_construct (&is->district_img_sets[dc].imgs[era_i][col]);
+
+					int x = 128 * col,
+						y = 64 * era_i;
+					Sprite_slice_pcx (&is->district_img_sets[dc].imgs[era_i][col], __, &pcx, x, y, 128, 64, 1, 1);
+				}
+			}
+
+			pcx.vtable->clear_JGL (&pcx);
+		}
+	}
+	is->dc_img_state = IS_OK;
+	pcx.vtable->destruct (&pcx, __, 0);
+}
+
+void __fastcall
+patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
+{
+	char ss[200];
+
+	Tile * tile = tile_at (tile_x, tile_y);
+
+	if (tile->DistrictID != NULL) {
+
+		// Check if job is complete
+		unsigned overlays = patch_Tile_m42_Get_Overlays(tile, __, 1);
+		unsigned int done = overlays >> 2 & 1 | (overlays >> 10) << 8;
+
+		if (done) {
+
+			if (is->dc_img_state == IS_UNINITED)
+				init_district_images ();
+
+			if (is->dc_img_state != IS_OK) {
+				return;
+			}
+
+			Sprite district_sprite;
+			// Need to find era
+			// Need to find culture
+
+			// Should probably be based on whose territory tile is in
+			int territory_owner_id = tile->Territory_OwnerID;
+
+			// Debug: territory_owner_id
+			//snprintf (ss, sizeof ss, "territory_owner_id: %d", territory_owner_id);
+			//pop_up_in_game_error (ss);
+			
+			int era = 0;
+			int culture = 0;
+			if (territory_owner_id) {
+				Leader * leader = &leaders[territory_owner_id];
+				era = leader->Era;
+				culture = leader->RaceID;
+
+				// Debug: territory_owner_id, leader, era, culture
+				//snprintf (ss, sizeof ss, "territory_owner_id: %d, leader: %d, era: %d, culture: %d", territory_owner_id, leader, era, culture);
+				//pop_up_in_game_error (ss);
+			}
+
+			// Debug: find lengths of is->district_img_sets[idx].imgs
+			//int img_count = sizeof(is->district_img_sets[idx].imgs) / sizeof(is->district_img_sets[idx].imgs[0]);
+			//snprintf(ss, sizeof ss, "is->district_img_sets[%d].imgs length: %d", idx, img_count);
+			//pop_up_in_game_error(ss);
+
+			// TODO: find nearest city; buildings present will influence sprite selection
+
+			switch (district_infos[tile->DistrictID].command) {
+			case UCV_Build_Encampment:
+				district_sprite = is->district_img_sets[tile->DistrictID].imgs[era][0];
+				break;
+			case UCV_Build_Campus:
+				district_sprite = this->Terrain_Buldings_Barbarian_Camp;
+				break;
+			case UCV_Build_HolySite:
+				district_sprite = this->Terrain_Buldings_Barbarian_Camp;
+				break;
+			default:
+				district_sprite = this->Terrain_Buldings_Barbarian_Camp;
+				break;
+			}
+
+			// Draw district
+			Sprite_draw_on_map (&district_sprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+		}
+	}
+	else {
+		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.

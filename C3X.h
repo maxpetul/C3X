@@ -320,6 +320,43 @@ struct sc_button_info {
 	/* Disband */    { .command = UCV_Disband        , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 3, .tile_sheet_row = 0 },
 };
 
+// ==========
+// Districts
+// ==========
+
+const int COUNT_DISTRICT_TYPES = 1;
+
+struct district_info {
+	enum Unit_Command_Values command;
+	char const * tooltip;
+	char const * advance_prereq;
+	char const * dependent_improvements[5];
+	char const * img_paths[4];
+	int allow_multiple,
+		index,
+		btn_tile_sheet_column,
+	    btn_tile_sheet_row,
+		total_img_columns;
+} const district_infos[1] = {
+	{ 
+		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_paths = {"DistrictEncampment.pcx"},
+		.advance_prereq = "Bronze Working", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
+		.allow_multiple = 0, .index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_columns = 4
+	},
+	//{ 
+	//	.command = UCV_Build_Campus, .tooltip = "Build Campus", .img_paths = {"DistrictCampus.pcx"}, 
+	//	.prerequisite = "Literature", .allow_multiple = 0, .index = 1, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_columns = 4
+	//},
+	//{ 
+	//	.command = UCV_Build_HolySite, .tooltip = "Build Holy Site", .img_paths = {"DistrictHolySite.pcx"}, 
+	//	.prerequisite = "Ceremonial Burial", .allow_multiple = 0, .index = 2, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0, .total_img_columns = 4
+	//}
+};
+
+// ==========
+// End Districts
+// ==========
+
 enum init_state {
 	IS_UNINITED = 0,
 	IS_OK,
@@ -447,6 +484,8 @@ struct injected_state {
 	char mod_rel_dir[MAX_PATH];
 
 	enum init_state sc_img_state;
+	enum init_state dc_img_state;
+	enum init_state dc_btn_img_state;
 	enum init_state tile_highlight_state;
 	enum init_state mod_info_button_images_state;
 	enum init_state disabled_command_img_state;
@@ -969,13 +1008,27 @@ struct injected_state {
 
 	// Initialized to 0, used to draw multipage descriptions in the Civilopedia
 	struct civilopedia_multipage_description {
-		bool drawing_lines;
+		bool active_now;
 		int line_count;
 		int shown_page; // zero-based
-		int last_page; // also zero-based
-		Button * effects_btn;
-		Button * previous_btn;
 	} cmpd;
+
+	// Districts data
+	struct district_image_set {
+		Sprite imgs[4][10]; // 1st dimension = era, 2nd dimension = district image variant
+	} district_img_sets[1];
+
+	struct district_button_image_set {
+		Sprite imgs[4];
+	} district_btn_img_sets[1];
+
+	struct district_prereq {
+		int tech_id;
+	} * district_prereqs[1];
+
+	struct district_improv {
+		int improv_ids[5];
+	} * district_improvs[1];
 
 	// ==========
 	// }
