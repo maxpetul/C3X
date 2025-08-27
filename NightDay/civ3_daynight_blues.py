@@ -211,7 +211,7 @@ def ensure_palette_has_colors(image: Image.Image, colors: List[Tuple[int, int, i
 
 # ---------- Image processing ----------
 
-def process_indexed_pcx(in_path: str, out_path: str, hour_1_24: int, params: LookParams) -> None:
+def process_indexed_pcx(in_path: str, out_path: str, hour_1_24: int, params: LookParams, light_key: Tuple[int,int,int]) -> None:
     f = hour_factor(hour_1_24)
     im = Image.open(in_path)
     if im.mode != 'P':
@@ -223,7 +223,7 @@ def process_indexed_pcx(in_path: str, out_path: str, hour_1_24: int, params: Loo
 
     for i in range(256):
         r, g, b = palette[3*i], palette[3*i+1], palette[3*i+2]
-        if (r, g, b) == MAGENTA or (r, g, b) == GREEN:
+        if (r, g, b) == MAGENTA or (r, g, b) == GREEN  or (r,g,b) == light_key:
             continue
         nr, ng, nb = transform_rgb_triplet(r, g, b, f, params)
         new_palette[3*i:3*i+3] = [nr, ng, nb]
@@ -234,16 +234,18 @@ def process_indexed_pcx(in_path: str, out_path: str, hour_1_24: int, params: Loo
     pal_after = get_palette(im)
     idx_mag = find_color_index(pal_after, MAGENTA)
     idx_grn = find_color_index(pal_after, GREEN)
+    idx_light = find_color_index(pal_after, light_key)
 
     src_rgb = Image.open(in_path).convert('RGB')
     w, h = src_rgb.size
     src_pixels = src_rgb.load()
 
-    if idx_mag == -1 or idx_grn == -1:
-        pal_after = ensure_palette_has_colors(im, [MAGENTA, GREEN])
+    if idx_mag == -1 or idx_grn == -1 or idx_light == -1:
+        pal_after = ensure_palette_has_colors(im, [MAGENTA, GREEN, light_key])
         put_palette(im, pal_after)
         idx_mag = find_color_index(pal_after, MAGENTA)
         idx_grn = find_color_index(pal_after, GREEN)
+        idx_light = find_color_index(pal_after, light_key)
 
     dst_px = im.load()  # palette indices
     for y in range(h):
@@ -253,12 +255,14 @@ def process_indexed_pcx(in_path: str, out_path: str, hour_1_24: int, params: Loo
                 dst_px[x, y] = idx_mag
             elif (r, g, b) == GREEN:
                 dst_px[x, y] = idx_grn
+            elif (r, g, b) == light_key:
+                dst_px[x, y] = idx_light
 
     im.save(out_path, format='PCX')
 
 
 def process_folder(terrain_dir: str, noon_subfolder: str,
-                   params: LookParams, only_hour: int = None, only_file: str = None) -> None:
+                   params: LookParams, only_hour: int = None, only_file: str = None, light_key: Tuple[int,int,int] = (255,0,254)) -> None:
     base_dir = os.path.join(terrain_dir, noon_subfolder)
     if not os.path.isdir(base_dir):
         raise SystemExit(f"No such folder: {base_dir}")
@@ -290,7 +294,8 @@ def process_folder(terrain_dir: str, noon_subfolder: str,
         for name in pcx_names:
             in_path = os.path.join(base_dir, name)
             out_path = os.path.join(out_dir, name)
-            process_indexed_pcx(in_path, out_path, hour_1_24, params)
+            print(f"Processing hour {hhh}, '{name}' \t-> '{out_path}'")
+            process_indexed_pcx(in_path, out_path, hour_1_24, params, light_key)
 
 def main():
     ap = argparse.ArgumentParser(description="Civ 3 day-night PCX transformer (pure Python, Pillow)")
@@ -298,6 +303,9 @@ def main():
     ap.add_argument("--noon", default="1200", help="Name of noon subfolder (default: 1200)")
     ap.add_argument("--only-hour", type=int, help="Process a single hour folder (e.g., 2400)")
     ap.add_argument("--only-file", help="Process a single PCX filename from the noon folder")
+
+    ap.add_argument("--light-key", type=str, default="#ff00fe",
+                    help="Placeholder window color to preserve (R,G,B or #rrggbb). Default: #ff00fe")
 
     # Look params (all optional)
     ap.add_argument("--darken-max", type=float, default=0.12,
@@ -343,6 +351,8 @@ def main():
         shadow_tint_pow=args.shadow_tint_pow,
         gamma_mid=args.gamma_mid,
     )
+
+    light_key = parse_hex_rgb(args.light_key)
 
     process_folder(args.terrain, args.noon, params, args.only_hour, args.only_file)
 
