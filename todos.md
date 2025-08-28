@@ -20,33 +20,46 @@
 
 ## Districts
 - Campus
-  - Library
-  - University
-  - Research Lab
+  - Bonus: Science (?)
+  - Enables
+    - Library
+    - University
+    - Research Lab
 - Holy Site
-  - Temple
-  - Cathedral
+  - Bonus: Culture (?)
+  - Enables
+    - Temple
+    - Cathedral
 - Encampment
-  - Barracks
-  - SAM Missile Battery
+  - Enables
+    - Barracks
+    - SAM Missile Battery
+  - Bonus: 50% tile defense
 - Commercial Hub
-  - Marketplace
-  - Bank
-  - Stock Exchange
+  - Bonus: +1 gold surrounding tiles?
+  - Enables
+    - Marketplace
+    - Bank
+    - Stock Exchange
 - Port
-  - Harbor
-  - Commercial Dock
-  - Offshort Platform
-  - Coastal Fortress
+  - Enables
+    - Harbor
+    - Commercial Dock
+    - Offshore Platform
+    - Coastal Fortress
 - Industrial Zone
-  - Factory
-  - Manufacturing Plant
-  - Power plants
-  - Recycling Center
+  - Bonus: +1 shield surrounding tiles?
+  - Enables
+    - Factory
+    - Manufacturing Plant
+    - Power plants
+    - Recycling Center
 - Entertainment Complex
-  - Colosseum
+  - Enables
+    - Colosseum
 - Aerodrome
-  - Airport
+  - Enables
+    - Airport
 - Borough
 
 - Water Park (?)
@@ -56,10 +69,4 @@
 - Spaceport (?)
 - Waterfront (?)
 - Arsenal (?)
-- Theater Square (?)
-
-
-## Future projects?
-- Updated art to be more like Civ 6 - test, but probably wouldn't render well
-- Day/night cycle art? - way too much work
-- Prominent vs. non-prominent roads? Weird when every tile has a road, could find shortest distance between cities like trade network, then render using same algo railroads use to visually emphasize main roads, but functionality remains the same
+- Bridge (?)

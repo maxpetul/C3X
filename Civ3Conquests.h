@@ -4772,7 +4772,6 @@ struct Map_Renderer
   Sprite LM_Forests_Pines_Images[12];
   Sprite LM_Hills_Images[16];
   SpriteList LM_Terrain_Images[9];
-  Sub_Map_Renderer Sub_Map_Renderers[24];
 };
 
 struct Tile_Type
