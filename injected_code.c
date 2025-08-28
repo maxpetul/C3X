@@ -12071,7 +12071,7 @@ patch_Main_GUI_position_elements (Main_GUI * this)
 	this->Mini_Map_Click_Rect.right += 229;
 }
 
-#define PEDIA_DESC_LINES_PER_PAGE 37
+#define PEDIA_DESC_LINES_PER_PAGE 38
 
 // Returns whether or not the line should be drawn
 bool
@@ -12108,6 +12108,14 @@ patch_PCX_Image_draw_text_in_wrap_func (PCX_Image * this, int edx, char * str, i
 		return PCX_Image_draw_text (this, __, str, x, y, str_len);
 	else
 		return PCX_Image_draw_text (this, __, " ", x, y, 1); // Caller uses the return value here so draw an empty string isntead of doing nothing
+}
+
+// Steam code is slightly different; this no-len version of draw_text gets called sometimes. It's the same as draw_text instead it computes the string
+// length itself instead of taking it in as a parameter.
+int __fastcall
+patch_PCX_Image_draw_text_no_len_in_wrap_func (PCX_Image * this, int edx, char * str, int x, int y)
+{
+	return patch_PCX_Image_draw_text_in_wrap_func (this, __, str, x, y, strlen (str));
 }
 
 void
