@@ -973,6 +973,7 @@ struct injected_state {
 		int line_count;
 		int shown_page; // zero-based
 		int last_page; // also zero-based
+		Civilopedia_Article * article;
 		Button * effects_btn;
 		Button * previous_btn;
 	} cmpd;

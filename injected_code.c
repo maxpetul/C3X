@@ -3649,8 +3649,6 @@ patch_init_floating_point ()
 	is->saved_improv_counts = NULL;
 	is->saved_improv_counts_capacity = 0;
 
-	memset (&is->cmpd, 0, sizeof is->cmpd);
-
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config, true);
@@ -12115,7 +12113,13 @@ patch_PCX_Image_draw_text_in_wrap_func (PCX_Image * this, int edx, char * str, i
 void __fastcall
 patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
 {
-	// memset (&is->cmpd, 0, sizeof is->cmpd);
+	// If the article changed then clear things from the old one
+	if (is->cmpd.article != this) {
+		is->cmpd.last_page = 0;
+		is->cmpd.shown_page = 0;
+		is->cmpd.article = this;
+	}
+
 	is->cmpd.line_count = 0;
 	is->cmpd.drawing_lines = this->show_description;
 
@@ -12222,6 +12226,8 @@ patch_Button_initialize_civilopedia_description (Button * this, int edx, char * 
 int __fastcall
 patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int param_1, void * param_2, void * param_3)
 {
+	memset (&is->cmpd, 0, sizeof is->cmpd);
+
 	Button * bs[] = {malloc (sizeof Button), malloc (sizeof Button)};
 	for (int n = 0; n < ARRAY_LEN (bs); n++) {
 		if (bs[n] == NULL)
