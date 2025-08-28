@@ -12110,22 +12110,34 @@ patch_PCX_Image_draw_text_in_wrap_func (PCX_Image * this, int edx, char * str, i
 		return PCX_Image_draw_text (this, __, " ", x, y, 1); // Caller uses the return value here so draw an empty string isntead of doing nothing
 }
 
-void __fastcall
-patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
+void
+draw_civilopedia_article (void (__fastcall * base) (Civilopedia_Article *), Civilopedia_Article * article)
 {
 	// If the article changed then clear things from the old one
-	if (is->cmpd.article != this) {
+	if (is->cmpd.article != article) {
 		is->cmpd.last_page = 0;
 		is->cmpd.shown_page = 0;
-		is->cmpd.article = this;
+		is->cmpd.article = article;
 	}
 
 	is->cmpd.line_count = 0;
-	is->cmpd.drawing_lines = this->show_description;
+	is->cmpd.drawing_lines = article->show_description;
 
-	Civilopedia_Article_m01_Draw_GCON_or_RACE (this);
+	base (article);
 
 	is->cmpd.drawing_lines = false;
+}
+
+void __fastcall
+patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
+{
+	draw_civilopedia_article (Civilopedia_Article_m01_Draw_GCON_or_RACE, this);
+}
+
+void __fastcall
+patch_Civilopedia_Article_m01_Draw_UNIT (Civilopedia_Article * this)
+{
+	draw_civilopedia_article (Civilopedia_Article_m01_Draw_UNIT, this);
 }
 
 void __fastcall
@@ -12150,8 +12162,12 @@ patch_Civilopedia_Form_m53_On_Control_Click (Civilopedia_Form * this, int edx, C
 		   (current_article != NULL) && current_article->show_description && // currently showing a description of an article AND
 		   (is->cmpd.last_page > 0)) { // this is a multi-page description
 
-		// Show the next page of the multi-page description
-		is->cmpd.shown_page = not_above (is->cmpd.last_page, is->cmpd.shown_page + 1);
+		// Show the next page of the multi-page description unless it's a two-page description and we're on the second page, in which case go
+		// back to the first.
+		if ((is->cmpd.last_page == 1) && (is->cmpd.shown_page == 1))
+			is->cmpd.shown_page = 0;
+		else
+			is->cmpd.shown_page = not_above (is->cmpd.last_page, is->cmpd.shown_page + 1);
 		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
 
 	} else

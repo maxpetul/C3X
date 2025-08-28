@@ -747,6 +747,7 @@ define,	   0x4C1F80,	0x4C96B0,	0x4C2010,	"Hash_Table_look_up",				"bool (__fastc
 inlead,	   0x557720,	0x0,		0x0,		"Main_GUI_position_elements",			"void (__fastcall *) (Main_GUI * this)"
 define,	   0x5FE8A0,	0x0,		0x0,		"PCX_Image_get_text_line_height",		"int (__fastcall *) (PCX_Image * this)"
 repl vptr, 0x66AFF0,	0x0,		0x0,		"Civilopedia_Article_m01_Draw_GCON_or_RACE",	"void (__fastcall *) (Civilopedia_Article * this)"
+repl vptr, 0X66AFA8,	0x0,		0x0,		"Civilopedia_Article_m01_Draw_UNIT",		"void (__fastcall *) (Civilopedia_Article * this)"
 repl call, 0x5FF8B5,	0x0,		0x0,		"PCX_Image_do_draw_centered_text_in_wrap_func",	""
 repl call, 0x5FF7E0,	0x0,		0x0,		"PCX_Image_draw_text_in_wrap_func",		""
 repl vptr, 0x66B1B8,	0x0,		0x0,		"Civilopedia_Form_m68_Show_Dialog",		"int (__fastcall *) (Civilopedia_Form * this, int edx, int param_1, void * param_2, void * param_3)"
