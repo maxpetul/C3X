@@ -12134,9 +12134,12 @@ patch_Civilopedia_Form_m53_On_Control_Click (Civilopedia_Form * this, int edx, C
 		current_article->show_description = false;
 		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
 
-	// "Previous" button shows the previous page of a multi-page description
+	// "Previous" button shows the previous page of a multi-page description or switches to effects mode if on the first page
 	} else if (control_id == PEDIA_MULTIPAGE_PREV_BUTTON_ID) {
-		is->cmpd.shown_page = not_below (0, is->cmpd.shown_page - 1);
+		if (is->cmpd.shown_page > 0)
+			is->cmpd.shown_page -= 1;
+		else
+			current_article->show_description = false;
 		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
 
 	} else if ((control_id == CCID_DESCRIPTION_BTN) && // if description/more/prev button was clicked AND
@@ -12155,27 +12158,42 @@ int __fastcall
 patch_Button_initialize_civilopedia_description (Button * this, int edx, char * text, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)
 {
 	Civilopedia_Article * current_article = (p_civilopedia_form->Current_Article_ID >= 0) ? p_civilopedia_form->Articles[p_civilopedia_form->Current_Article_ID] : NULL;
+	if (current_article == NULL)
+		return Button_initialize (this, __, text, control_id, x, y, width, height, parent, param_8);
 
 	// Set button visibility for multi-page descriptions if we're showing such a thing right now
 	bool show_desc_btn = true, show_effects_btn = false, show_previous_btn = false;
 	char * desc_btn_text = text;
-	if ((current_article != NULL) && current_article->show_description && (is->cmpd.last_page > 0)) {
+	if (current_article->show_description && (is->cmpd.last_page > 0)) {
 
-		// For a two-page description, show the effects button and the description button which will act as a next/previous button
-		if (is->cmpd.last_page == 1) {
-			show_effects_btn = true;
-			desc_btn_text = is->cmpd.shown_page == 0 ? (*p_labels)[LBL_MORE] : (*p_labels)[LBL_PREVIOUS];
+		// Tribe articles act like one long descripton.
+		if (current_article->article_kind == CAK_TRIBE) {
 
-		// For a three or more page description, show the effects button, and show the description button only if we're not on the last page
-		// (b/c it's the next button), and show the previous button only if we're not on the first page. If the desc button is visible, make
-		// it say "More".
-		} else {
-			show_effects_btn = true;
+			// Show the more button as long as we're not on the last page. Show the previous always since we're in description mode.
+			show_previous_btn = true;
+			desc_btn_text = (*p_labels)[LBL_MORE];
 			if (is->cmpd.shown_page >= is->cmpd.last_page)
 				show_desc_btn = false;
-			else
-				desc_btn_text = (*p_labels)[LBL_MORE];
-			show_previous_btn = is->cmpd.shown_page > 0;
+
+		// Unit articles have separate description/effects modes.
+		} else if (current_article->article_kind == CAK_UNIT) {
+
+			// For a two-page description, show the effects button and the description button which will act as a next/previous button
+			if (is->cmpd.last_page == 1) {
+				show_effects_btn = true;
+				desc_btn_text = is->cmpd.shown_page == 0 ? (*p_labels)[LBL_MORE] : (*p_labels)[LBL_PREVIOUS];
+
+			// For a three or more page description, show the effects button, and show the description button only if we're not on the
+			// last page (b/c it's the next button), and show the previous button only if we're not on the first page. If the desc button
+			// is visible, make it say "More".
+			} else {
+				show_effects_btn = true;
+				if (is->cmpd.shown_page >= is->cmpd.last_page)
+					show_desc_btn = false;
+				else
+					desc_btn_text = (*p_labels)[LBL_MORE];
+				show_previous_btn = is->cmpd.shown_page > 0;
+			}
 		}
 	}
 
