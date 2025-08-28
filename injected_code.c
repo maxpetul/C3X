@@ -12595,5 +12595,38 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 	}
 }
 
+void __fastcall
+patch_Map_Renderer_load_images(Map_Renderer * this)
+{
+	Map_Renderer_load_images(this);
+
+	char ss[200];
+
+	if (is->current_config.enable_day_night_cycle) {
+
+		for (int hour = 0; hour < 24; hour++) {
+			Map_Renderer_load_day_night_images(this, hour);
+		}
+
+	}
+
+	// Load district images
+	/*
+	for (int i = 0; i < MAX_DISTRICT_TYPES; i++) {
+		for (int j = 0; j < MAX_ERA_TYPES; j++) {
+			for (int k = 0; k < MAX_IMAGE_VARIATIONS; k++) {
+				Sprite_load_image(&this->district_img_sets[i].imgs[j][k]);
+			}
+		}
+	}
+	*/
+}
+
+void
+Map_Renderer_load_day_night_images(Map_Renderer * this, int hour)
+{
+  
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

@@ -23,7 +23,9 @@ python civ3_city_lights.py --data "$ORIG_CITIES_PATH" --noon "$ORIG_CITIES_PATH"
   --core-gain 2.1  --halo-gain 20.0 \
   --halo-sep 0.75  --halo-gamma 1.4 \
   --highlight-gain 0.6 \
-  --size-boost 1.1 --size-radius 6.5 --size-gamma 0.75 \
+  --size-boost 0.5 --size-radius 3.5 \ 
+  # --size-boost 1.1 --size-radius 6.5 \ # More diffuse, looks good on ancient
+  --size-gamma 0.75 \
   --clip-interior yes --clip-erode 0 \
   --blend-mode screen 
 

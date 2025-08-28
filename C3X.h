@@ -1036,6 +1036,9 @@ struct injected_state {
 		int improv_ids[5];
 	} * district_improvs[1];
 
+	// Day-Night cycle data
+	int current_day_night_cycle;
+
 	// ==========
 	// }
 	// ==========
