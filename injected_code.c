@@ -12067,8 +12067,10 @@ void __fastcall
 patch_Main_GUI_position_elements (Main_GUI * this)
 {
 	Main_GUI_position_elements (this);
-	this->Mini_Map_Click_Rect.top -= 105;
-	this->Mini_Map_Click_Rect.right += 229;
+
+	// Double size of minimap
+	// this->Mini_Map_Click_Rect.top -= 105;
+	// this->Mini_Map_Click_Rect.right += 229;
 }
 
 #define PEDIA_DESC_LINES_PER_PAGE 38
