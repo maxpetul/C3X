@@ -12156,6 +12156,7 @@ patch_Civilopedia_Form_m53_On_Control_Click (Civilopedia_Form * this, int edx, C
 	// "Effects" button leaves description mode, returns to showing effects
 	if ((control_id == PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID) && (current_article != NULL)) {
 		current_article->show_description = false;
+		play_sound_effect (26); // 26 = SE_SELECT
 		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
 
 	// "Previous" button shows the previous page of a multi-page description or switches to effects mode if on the first page
@@ -12164,6 +12165,7 @@ patch_Civilopedia_Form_m53_On_Control_Click (Civilopedia_Form * this, int edx, C
 			is->cmpd.shown_page -= 1;
 		else
 			current_article->show_description = false;
+		play_sound_effect (26);
 		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
 
 	} else if ((control_id == CCID_DESCRIPTION_BTN) && // if description/more/prev button was clicked AND
@@ -12176,6 +12178,7 @@ patch_Civilopedia_Form_m53_On_Control_Click (Civilopedia_Form * this, int edx, C
 			is->cmpd.shown_page = 0;
 		else
 			is->cmpd.shown_page = not_above (is->cmpd.last_page, is->cmpd.shown_page + 1);
+		play_sound_effect (26);
 		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
 
 	} else
