@@ -492,6 +492,7 @@ struct injected_state {
 	enum init_state sc_img_state;
 	enum init_state dc_img_state;
 	enum init_state dc_btn_img_state;
+	enum init_state day_night_cycle_img_state;
 	enum init_state tile_highlight_state;
 	enum init_state mod_info_button_images_state;
 	enum init_state disabled_command_img_state;
@@ -1095,7 +1096,6 @@ struct injected_state {
 		String260 PCX_Delta_Rivers;
 		String260 PCX_Rivers;
 		String260 PCX_Std_Terrain_Images[9];
-		City * spotlight_on_city;
 		int field_3E98[3];
 		int field_3EA4;
 		int field_3EA8;
@@ -1164,7 +1164,9 @@ struct injected_state {
 		Sprite LM_Forests_Pines_Images[12];
 		Sprite LM_Hills_Images[16];
 		SpriteList LM_Terrain_Images[9];
-	} * day_night_cycle_imgs[1];
+	} * zday_night_cycle_imgs[24];
+
+	Map_Renderer day_night_cycle_imgs[24];
 
 	// ==========
 	// }
