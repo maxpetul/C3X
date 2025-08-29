@@ -12990,48 +12990,23 @@ void DayNight_Map_Renderer_load_images(Map_Renderer *this, const char *art_dir)
 
     // Resources
     read_in_dir(&img, art_dir, "resources.pcx", NULL);
-    {   const int step = 0x32, tile = 0x31;
-        int W = PCX_Image_get_width(&img), H = PCX_Image_get_height(&img);
-        int cols = (W > 0) ? (W / step) : 0;
-        int rows = (H > 0) ? (H / step) : 0;
-        if (cols > 0 && rows > 0) {
-            size_t count = (size_t)cols * (size_t)rows;
-            Sprite *arr = sprite_array_new(count);
-            if (arr) {
-                size_t k = 0;
-                for (int ry=0, y=1; ry<rows; ++ry, y+=step) {
-                    for (int cx=0, x=1; cx<cols; ++cx, x+=step) {
-                        Sprite_slice_pcx(&arr[k++], __, &img, x, y, tile, tile, 1, 1);
-                    }
-                }
-                this->Resources = arr;
-            } // else: alloc failed; leave NULL
+    size_t k = 0;
+    for (int r = 0, y = 1; r < 6; ++r, y += 50) {
+        for (int c = 0, x = 1; c < 6; ++c, x += 50) {
+            Sprite_slice_pcx(&this->Resources[k++], __, &img, x, y, 49, 49, 1, 1);
         }
     }
 
     // Resource shadows
     read_in_dir(&img, art_dir, "resources_shadows.pcx", NULL);
-    {   const int step = 0x32, tile = 0x31;
-        int W = PCX_Image_get_width(&img), H = PCX_Image_get_height(&img);
-        int cols = (W > 0) ? (W / step) : 0;
-        int rows = (H > 0) ? (H / step) : 0;
-        if (cols > 0 && rows > 0) {
-            size_t count = (size_t)cols * (size_t)rows;
-            Sprite *arr = sprite_array_new(count);
-            if (arr) {
-                size_t k = 0;
-                for (int ry=0, y=1; ry<rows; ++ry, y+=step) {
-                    for (int cx=0, x=1; cx<cols; ++cx, x+=step) {
-                        Sprite_slice_pcx(&arr[k++], __, &img, x, y, tile, tile, 1, 1);
-                    }
-                }
-                this->ResourcesShadows = arr;
-            }
+    k = 0;
+    for (int r = 0, y = 1; r < 6; ++r, y += 50) {
+        for (int c = 0, x = 1; c < 6; ++c, x += 50) {
+            Sprite_slice_pcx(&this->ResourcesShadows[k++], __, &img, x, y, 49, 49, 1, 1);
         }
     }
 
-    PCX_Image_clear_JGL(&img);
-    PCX_Image_destroy(&img);
+	img.vtable->destruct (&img, __, 0);
 }
 
 void
