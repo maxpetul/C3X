@@ -3340,6 +3340,7 @@ patch_init_floating_point ()
 		{"warn_when_chosen_building_would_replace_another"     , false, offsetof (struct c3x_config, warn_when_chosen_building_would_replace_another)},
 		{"do_not_unassign_workers_from_polluted_tiles"         , false, offsetof (struct c3x_config, do_not_unassign_workers_from_polluted_tiles)},
 		{"do_not_make_capital_cities_appear_larger"            , false, offsetof (struct c3x_config, do_not_make_capital_cities_appear_larger)},
+		{"show_territory_colors_on_water_tiles_in_minimap"     , false, offsetof (struct c3x_config, show_territory_colors_on_water_tiles_in_minimap)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -12293,6 +12294,15 @@ patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int pa
 	is->cmpd.effects_btn = is->cmpd.previous_btn = NULL;
 
 	return tr;
+}
+
+int __fastcall
+patch_Tile_check_water_for_navigator_cell_coloring (Tile * this)
+{
+	if (! is->current_config.show_territory_colors_on_water_tiles_in_minimap)
+		return this->vtable->m35_Check_Is_Water (this);
+	else
+		return 0;
 }
 
 // TCC requires a main function be defined even though it's never used.

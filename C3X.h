@@ -198,6 +198,7 @@ struct c3x_config {
 	bool warn_when_chosen_building_would_replace_another;
 	bool do_not_unassign_workers_from_polluted_tiles;
 	bool do_not_make_capital_cities_appear_larger;
+	bool show_territory_colors_on_water_tiles_in_minimap;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
