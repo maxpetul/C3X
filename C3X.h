@@ -1031,11 +1031,11 @@ struct injected_state {
 
 	struct district_prereq {
 		int tech_id;
-	} * district_prereqs[1];
+	} district_prereqs[1];
 
 	struct district_improv {
 		int improv_ids[5];
-	} * district_improvs[1];
+	} district_improvs[1];
 
 	// Day-Night cycle data
 	int current_day_night_cycle;
@@ -1164,7 +1164,7 @@ struct injected_state {
 		Sprite LM_Forests_Pines_Images[12];
 		Sprite LM_Hills_Images[16];
 		SpriteList LM_Terrain_Images[9];
-	} * zday_night_cycle_imgs[24];
+	} zday_night_cycle_imgs[24];
 
 	Map_Renderer day_night_cycle_imgs[24];
 
