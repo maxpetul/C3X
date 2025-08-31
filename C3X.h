@@ -198,6 +198,7 @@ struct c3x_config {
 	bool warn_when_chosen_building_would_replace_another;
 	bool do_not_unassign_workers_from_polluted_tiles;
 	bool do_not_make_capital_cities_appear_larger;
+	bool show_territory_colors_on_water_tiles_in_minimap;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
@@ -272,9 +273,6 @@ struct c3x_config {
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
 
-	/////////////////////
-	// Districts config
-	/////////////////////
 	bool enable_districts;
 	bool enable_day_night_cycle;
 };
@@ -325,43 +323,6 @@ struct sc_button_info {
 	/* Upgrade */    { .command = UCV_Upgrade_Unit   , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 7, .tile_sheet_row = 1 },
 	/* Disband */    { .command = UCV_Disband        , .kind = SCK_UNIT_MGMT, .tile_sheet_column = 3, .tile_sheet_row = 0 },
 };
-
-// ==========
-// Districts
-// ==========
-
-const int COUNT_DISTRICT_TYPES = 1;
-
-struct district_info {
-	enum Unit_Command_Values command;
-	char const * tooltip;
-	char const * advance_prereq;
-	char const * dependent_improvements[5];
-	char const * img_paths[4];
-	int allow_multiple,
-		index,
-		btn_tile_sheet_column,
-	    btn_tile_sheet_row,
-		total_img_columns;
-} const district_infos[1] = {
-	{ 
-		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_paths = {"DistrictEncampment.pcx"},
-		.advance_prereq = "Bronze Working", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
-		.allow_multiple = 0, .index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_columns = 4
-	},
-	//{ 
-	//	.command = UCV_Build_Campus, .tooltip = "Build Campus", .img_paths = {"DistrictCampus.pcx"}, 
-	//	.prerequisite = "Literature", .allow_multiple = 0, .index = 1, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_columns = 4
-	//},
-	//{ 
-	//	.command = UCV_Build_HolySite, .tooltip = "Build Holy Site", .img_paths = {"DistrictHolySite.pcx"}, 
-	//	.prerequisite = "Ceremonial Burial", .allow_multiple = 0, .index = 2, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0, .total_img_columns = 4
-	//}
-};
-
-// ==========
-// End Districts
-// ==========
 
 enum init_state {
 	IS_UNINITED = 0,
@@ -490,15 +451,13 @@ struct injected_state {
 	char mod_rel_dir[MAX_PATH];
 
 	enum init_state sc_img_state;
-	enum init_state dc_img_state;
-	enum init_state dc_btn_img_state;
-	enum init_state day_night_cycle_img_state;
 	enum init_state tile_highlight_state;
 	enum init_state mod_info_button_images_state;
 	enum init_state disabled_command_img_state;
 	enum init_state unit_rcm_icon_state;
 	enum init_state red_food_icon_state;
 	enum init_state tile_already_worked_zoomed_out_sprite_init_state;
+	enum init_state day_night_cycle_img_state;
 
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
@@ -1015,90 +974,22 @@ struct injected_state {
 
 	// Initialized to 0, used to draw multipage descriptions in the Civilopedia
 	struct civilopedia_multipage_description {
-		bool active_now;
+		bool drawing_lines;
 		int line_count;
 		int shown_page; // zero-based
+		int last_page; // also zero-based
+		Civilopedia_Article * article;
+		Button * effects_btn;
+		Button * previous_btn;
 	} cmpd;
-
-	// Districts data
-	struct district_image_set {
-		Sprite imgs[4][10]; // 1st dimension = era, 2nd dimension = district image variant
-	} district_img_sets[1];
-
-	struct district_button_image_set {
-		Sprite imgs[4];
-	} district_btn_img_sets[1];
-
-	struct district_prereq {
-		int tech_id;
-	} district_prereqs[1];
-
-	struct district_improv {
-		int improv_ids[5];
-	} district_improvs[1];
 
 	// Day-Night cycle data
 	int current_day_night_cycle;
 
-	struct Day_Night_Map_Renderer
+	struct table day_night_sprite_proxy_by_hour[24];
+
+	struct day_night_cycle_img_set
 	{
-		int field_4[173];
-		int MapGrid_Flag;
-		int b_Action_Mode;
-		int field_2C0;
-		int field_2C4;
-		int field_2C8;
-		int field_2CC;
-		int Action_Mode_Range;
-		int Action_Mode_CenterX;
-		int Action_Mode_CenterY;
-		int Flags;
-		int field_2E4[50];
-		String260 PCX_Airfields_and_Detect;
-		String260 PCX_Airfields_and_Detect_Shadow;
-		String260 PCX_Flood_Plains;
-		String260 PCX_Fog_of_War;
-		String260 PCX_Grassland_Forests;
-		String260 PCX_Plains_Forests;
-		String260 PCX_Tundra_Forests;
-		String260 PCX_Goody_Huts;
-		String260 PCX_Hills;
-		String260 PCX_Hills_Forests;
-		String260 PCX_Hills_Jungles;
-		String260 PCX_Irrigation_Desert;
-		String260 PCX_Irrigation;
-		String260 PCX_Irrigation_Plains;
-		String260 PCX_Irrigation_Tundra;
-		String260 PCX_Mountains;
-		String260 PCX_Mountain_Forests;
-		String260 PCX_Mountain_Jungles;
-		String260 PCX_Mountains_Show;
-		String260 PCX_LM_Hills;
-		String260 PCX_LM_Mountains;
-		String260 PCX_LM_Forests;
-		String260 PCX_LM_Terrain_Images[9];
-		String260 PCX_Marsh;
-		String260 PCX_Volcanos;
-		String260 PCX_Volcanos_Forests;
-		String260 PCX_Volcanos_Jungles;
-		String260 PCX_Volcanos_Snow;
-		String260 PCX_Polar_Icecaps;
-		String260 PCX_Pollution;
-		String260 PCX_Craters;
-		String260 PCX_Railroads;
-		String260 PCX_Roads;
-		String260 PCX_Terrain_Buildings;
-		String260 PCX_Territory;
-		String260 PCX_Tnt;
-		String260 PCX_Victory;
-		String260 PCX_Waterfalls;
-		String260 PCX_LM_Terrain;
-		String260 PCX_Delta_Rivers;
-		String260 PCX_Rivers;
-		String260 PCX_Std_Terrain_Images[9];
-		int field_3E98[3];
-		int field_3EA4;
-		int field_3EA8;
 		Sprite *Resources;
 		Sprite *ResourcesShadows;
 		Sprite Terrain_Buldings_Barbarian_Camp;
@@ -1164,9 +1055,7 @@ struct injected_state {
 		Sprite LM_Forests_Pines_Images[12];
 		Sprite LM_Hills_Images[16];
 		SpriteList LM_Terrain_Images[9];
-	} zday_night_cycle_imgs[24];
-
-	Map_Renderer day_night_cycle_imgs[24];
+	} day_night_cycle_imgs[24];
 
 	// ==========
 	// }
