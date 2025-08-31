@@ -12305,5 +12305,31 @@ patch_Tile_check_water_for_navigator_cell_coloring (Tile * this)
 		return 0;
 }
 
+int __fastcall
+patch_PopupForm_impl_do_show_popup (PopupForm * this)
+{
+	if (strcmp (this->text_key, "HURRY_NOT_ENOUGH_GOLD") != 0)
+		return PopupForm_impl_do_show_popup (this);
+
+	else {
+		unsigned saved_prefs = *p_preferences;
+		int saved_flags = this->field_1BF0[0xE4];
+
+		*p_preferences |= P_SHOW_FEWER_MP_POPUPS;
+		this->field_1BF0[0xE4] |= 0x4000;
+		int tr = PopupForm_impl_do_show_popup (this);
+
+		this->field_1BF0[0xE4] = saved_flags;
+		*p_preferences = saved_prefs;
+		return tr;
+	}
+}
+
+bool __stdcall
+patch_is_online_game_for_show_popup ()
+{
+	return true;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
