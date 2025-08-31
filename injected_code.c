@@ -9210,23 +9210,66 @@ void load_day_night_images(struct day_night_cycle_img_set *this, const char *art
 	//pop_up_in_game_error(ss);
 }
 
+void
+insert_spritelist_proxies(SpriteList *ss, SpriteList *ps, int hour, int len1, int len2) {
+	for (int i = 0; i < len1; i++) {
+		for (int j = 0; j < len2; j++) {
+			Sprite *s = &ss[i].field_0[j];
+			Sprite *p = &ps[i].field_0[j];
+			if (s && p) {
+				itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
+			}
+		}
+	}
+}
+
+void
+insert_sprite_proxies(Sprite *ss, Sprite *ps, int hour, int len) {
+	for (int i = 0; i < len; i++) {
+		Sprite *s = &ss[i];
+		Sprite *p = &ps[i];
+		if (s && p) {
+			itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
+		}
+	}
+}
+
+void
+insert_sprite_proxy(Sprite *s, Sprite *p, int hour) {
+	if (s && p) {
+		itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
+	}
+}
+
 void 
 build_sprite_proxies_24(Map_Renderer *mr) {
-    // Optional: clear any previous mappings
-    //for (int h = 0; h < 24; ++h) { 
-	//	table_deinit(&is->day_night_sprite_proxy_by_hour[h]); 
-	//	memset(&is->day_night_sprite_proxy_by_hour[h], 0, sizeof is->day_night_sprite_proxy_by_hour[h]); 
-	//}
+	Sprite *s;
+	Sprite *p;
 
-    for (int i = 0; i < 9; ++i) {
-        for (int j = 0; j < 81; ++j) {
-            Sprite *s = &mr->Std_Terrain_Images[i].field_0[j];
-            for (int h = 0; h < 24; ++h) {
-                Sprite *p = &is->day_night_cycle_imgs[h].Std_Terrain_Images[i].field_0[j];
-                itable_insert(&is->day_night_sprite_proxy_by_hour[h], kptr(s), kptr(p));
-            }
-        }
-    }
+	for (int h = 0; h < 24; ++h) {
+		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
+		insert_spritelist_proxies(mr->LM_Terrain_Images, is->day_night_cycle_imgs[h].LM_Terrain_Images, h, 9, 81);
+		// Skip Resources for now 
+		insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &is->day_night_cycle_imgs[h].Terrain_Buldings_Barbarian_Camp, h);
+		insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &is->day_night_cycle_imgs[h].Terrain_Buldings_Mines, h);
+		insert_sprite_proxies(mr->Flood_Plains_Images, is->day_night_cycle_imgs[h].Flood_Plains_Images, h, 16);
+		insert_sprite_proxies(mr->Polar_Icecaps_Images, is->day_night_cycle_imgs[h].Polar_Icecaps_Images, h, 32);
+		insert_sprite_proxies(mr->Roads_Images, is->day_night_cycle_imgs[h].Roads_Images, h, 256);
+		insert_sprite_proxies(mr->Terrain_Buldings_Airfields, is->day_night_cycle_imgs[h].Terrain_Buldings_Airfields, h, 2);
+		insert_sprite_proxies(mr->Terrain_Buldings_Camp, is->day_night_cycle_imgs[h].Terrain_Buldings_Camp, h, 4);
+		insert_sprite_proxies(mr->Terrain_Buldings_Fortress, is->day_night_cycle_imgs[h].Terrain_Buldings_Fortress, h, 4);
+		insert_sprite_proxies(mr->Terrain_Buldings_Barricade, is->day_night_cycle_imgs[h].Terrain_Buldings_Barricade, h, 4);
+		insert_sprite_proxies(mr->Goody_Huts_Images, is->day_night_cycle_imgs[h].Goody_Huts_Images, h, 8);
+		insert_sprite_proxies(mr->Terrain_Buldings_Outposts, is->day_night_cycle_imgs[h].Terrain_Buldings_Outposts, h, 3);
+		insert_sprite_proxies(mr->Pollution, is->day_night_cycle_imgs[h].Pollution, h, 25);
+		insert_sprite_proxies(mr->Craters, is->day_night_cycle_imgs[h].Craters, h, 25);
+		insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &is->day_night_cycle_imgs[h].Terrain_Buldings_Radar, h);
+		insert_sprite_proxies(mr->Tnt_Images, is->day_night_cycle_imgs[h].Tnt_Images, h, 18);
+		insert_sprite_proxies(mr->Waterfalls_Images, is->day_night_cycle_imgs[h].Waterfalls_Images, h, 4);
+		insert_sprite_proxies(mr->LM_Terrain, is->day_night_cycle_imgs[h].LM_Terrain, h, 7);
+
+
+	}
 }
 
 void
@@ -9240,10 +9283,11 @@ init_day_night_images()
 		return;
 
 	const char *hour_strs[24] = {
-		"1200", "1300", "1400", "1500", "1600", "1700", "1800", "1900",
-		"2000", "2100", "2200", "2300", "2400", "0100", "0200", "0300",
-		"0400", "0500", "0600", "0700", "0800", "0900", "1000", "1100"
+		"2400", "0100", "0200", "0300", "0400", "0500", "0600", "0700",
+		"0800", "0900", "1000", "1100", "1200", "1300", "1400", "1500", 
+		"1600", "1700", "1800", "1900", "2000", "2100", "2200", "2300"
 	};
+
 	for (int i = 0; i < 24; i++) {
 
 		// Debug
@@ -9259,17 +9303,18 @@ init_day_night_images()
 	pop_up_in_game_error(ss);
 
 	Map_Renderer * mr = &p_bic_data->Map.Renderer;
+	build_sprite_proxies_24(mr);
 
 	// Create sprite proxies
-	for (int i = 0; i < 9; ++i) {
-        for (int j = 0; j < 81; ++j) {
-            Sprite *s = &mr->Std_Terrain_Images[i].field_0[j];
-            for (int h = 0; h < 24; ++h) {
-                Sprite *p = &is->day_night_cycle_imgs[h].Std_Terrain_Images[i].field_0[j];
-                itable_insert(&is->day_night_sprite_proxy_by_hour[h], kptr(s), kptr(p));
-            }
-        }
-    }
+	//for (int i = 0; i < 9; ++i) {
+    //    for (int j = 0; j < 81; ++j) {
+    //        Sprite *s = &mr->Std_Terrain_Images[i].field_0[j];
+    //        for (int h = 0; h < 24; ++h) {
+    //            Sprite *p = &is->day_night_cycle_imgs[h].Std_Terrain_Images[i].field_0[j];
+    //            itable_insert(&is->day_night_sprite_proxy_by_hour[h], kptr(s), kptr(p));
+    //        }
+    //    }
+    //}
 
 	snprintf(ss, sizeof ss, "Completed creating sprite proxies for Day/Night cycle");
 	pop_up_in_game_error(ss);
