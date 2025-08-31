@@ -990,8 +990,8 @@ struct injected_state {
 
 	struct day_night_cycle_img_set
 	{
-		Sprite *Resources;
-		Sprite *ResourcesShadows;
+		Sprite Resources[36];
+		Sprite ResourcesShadows[36];
 		Sprite Terrain_Buldings_Barbarian_Camp;
 		Sprite Terrain_Buldings_Mines;
 		Sprite Victory_Image;
