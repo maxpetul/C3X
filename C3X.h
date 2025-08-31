@@ -1017,8 +1017,6 @@ struct injected_state {
 		Sprite LM_Terrain[7];
 		Sprite Marsh_Large[8];
 		Sprite Marsh_Small[10];
-		Sprite field_C650;
-		Sprite field_C67C;
 		Sprite Volcanos_Images[16];
 		Sprite Volcanos_Forests_Images[16];
 		Sprite Volcanos_Jungles_Images[16];
