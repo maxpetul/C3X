@@ -3,8 +3,11 @@
 
 """
 Civ 3 day-night PCX transformer (SIMPLE, recursive; split blue controls + multiple light-keys)
+
 - Recursively walks Data/1200 (or provided noon folder) and writes siblings 0100..2400.
-- Preserves #ff00ff, #00ff00, and ALL provided --light-key colors exactly.
+- Preserves #ff00ff (MAGENTA) and ALL provided --light-key colors exactly.
+- NEW: Converts GREEN (#00ff00) pixels to MAGENTA and pins MAGENTA to palette index 255.
+  (GREEN remains usable for detection but is not used in outputs.)
 - Pins #ff00ff to palette index 255 and tries to keep each light-key at the SAME
   palette index as in the source PCX (when possible), for index-stability.
 - Blue is split: --blue-water and --blue-land.
@@ -15,8 +18,8 @@ from typing import List, Tuple, Dict
 from PIL import Image
 import colorsys
 
-MAGENTA = (255, 0, 255)
-GREEN   = (0, 255, 0)
+MAGENTA = (255, 0, 255)   # ff00ff
+GREEN   = (0, 255, 0)     # 00ff00
 
 # --------- helpers ---------
 
@@ -80,7 +83,7 @@ def ensure_palette_has_colors(image: Image.Image, colors: List[Tuple[int,int,int
     hist = image.histogram() if image.mode == 'P' else None
     candidates = sorted(range(256), key=(lambda i: hist[i])) if (hist and len(hist)==256) else list(range(255, -1, -1))
     protected = set()
-    for rgb in colors + [MAGENTA, GREEN]:
+    for rgb in colors + [MAGENTA]:
         idx = find_color_index(palette, rgb)
         if idx != -1: protected.add(idx)
     replace_slots = []
@@ -111,7 +114,13 @@ def quantize_to_p_256(img: Image.Image) -> Image.Image:
     except Exception:
         return rgb.quantize(colors=256, dither=dnone)
 
+# --------- palette pinning for magenta & multiple light-keys ---------
+
 def force_magenta_at_255(im: Image.Image) -> int:
+    """
+    Ensure palette index 255 is #ff00ff (MAGENTA).
+    Returns replacement_idx: where the old slot-255 color now lives (or 255 if none).
+    """
     pal = get_palette(im)
     old255 = (pal[3*255], pal[3*255+1], pal[3*255+2])
     idx_mag = find_color_index(pal, MAGENTA)
@@ -135,10 +144,10 @@ def pin_lightkeys_to_source_indices(im: Image.Image,
                                    ) -> Tuple[Dict[Tuple[int,int,int],int], Dict[int,int]]:
     pal = ensure_palette_has_colors(im, light_keys); put_palette(im, pal); pal = get_palette(im)
     reserved = {255}
-    lk_to_target: Dict[Tuple[int,int,int],int] = {}
+    lk_to_target: Dict[Tuple[int,int,int], int] = {}
     for rgb in light_keys:
         src_idx = find_color_index(src_palette, rgb)
-        t = choose_fallback_slot(im, reserved) if (src_idx in (-1,255)) else src_idx
+        t = choose_fallback_slot(im, reserved) if (src_idx in (-1, 255)) else src_idx
         lk_to_target[rgb] = t; reserved.add(t)
     swap_map: Dict[int,int] = {}
     pal = get_palette(im)
@@ -172,7 +181,7 @@ def transform_rgb_triplet(r:int,g:int,b:int,hour_1_24:int,night:float,blue_water
         local_blue= blue_water if is_waterish else (blue_land if is_greenish else 0.5*(blue_water+blue_land))
         h=(h+(0.40*local_blue)*f*delta)%1.0
     if _hue_in_range(h0,140,215) and s0>0.12:
-        h0deg=h0*360.0; t_lin=max(0.0,min(1.0,(h0deg-140.0)/(215.0-140.0))); t=t_lin*t_lin*(3-2*t_lin)
+        h0deg=h0*360.0; t_lin = max(0.0, min(1.0, (h0deg - 140.0) / (215.0 - 140.0))); t=t_lin*t_lin*(3-2*t_lin)
         target=((232.0/360.0)*(1-t))+((238.0/360.0)*t); pull=((0.55)*(1-t))+((0.95)*t); satb=((0.35)*(1-t))+((0.60)*t)
         d=target-h
         if d>0.5: d-=1.0
@@ -205,40 +214,54 @@ def process_indexed_pcx(in_path: str, out_path: str, hour_1_24: int,
         im = quantize_to_p_256(im)
 
     palette = get_palette(im); new_palette = palette.copy()
-    skip = set([MAGENTA, GREEN] + light_keys)
+    # Skip MAGENTA and all light-keys (GREEN is not “preserved”; it will be remapped to MAGENTA on pixels)
+    skip = set([MAGENTA] + light_keys)
     for i in range(256):
         r,g,b = palette[3*i:3*i+3]
-        if (r,g,b) in skip: continue
+        if (r,g,b) in skip:
+            continue
         nr,ng,nb = transform_rgb_triplet(r,g,b,hour_1_24,night,blue_water,blue_land,sunset)
         new_palette[3*i:3*i+3] = [nr,ng,nb]
     put_palette(im, new_palette)
 
+    # Ensure MAGENTA + all light-keys exist (GREEN not required)
     pal_after = get_palette(im)
     need = []
     if find_color_index(pal_after, MAGENTA) == -1: need.append(MAGENTA)
-    if find_color_index(pal_after, GREEN)   == -1: need.append(GREEN)
     for lk in light_keys:
         if find_color_index(pal_after, lk) == -1: need.append(lk)
     if need:
         pal_after = ensure_palette_has_colors(im, need); put_palette(im, pal_after)
 
+    # Pin magenta at 255
     replacement_idx_255 = force_magenta_at_255(im)
+
+    # Pin each light-key to the same index as source (when possible)
     lk_to_target, swap_partner = pin_lightkeys_to_source_indices(im, src_pal, light_keys)
 
-    pal_after = get_palette(im); idx_grn = find_color_index(pal_after, GREEN)
+    # Final index correction on pixels:
+    # - MAGENTA → 255
+    # - GREEN   → 255  (convert green to magenta)
+    # - each light-key → its pinned target index
+    # - any non-key pixel at 255 (due to quantizer) → move to replacement idx
+    pal_after = get_palette(im)
     lk_index_map: Dict[Tuple[int,int,int],int] = {rgb:idx for rgb,idx in lk_to_target.items()}
 
     src_rgb = Image.open(in_path).convert('RGB')
     w,h = src_rgb.size; src_px = src_rgb.load(); dst_px = im.load()
+
     for y in range(h):
         for x in range(w):
             r,g,b = src_px[x,y]; cur = dst_px[x,y]
-            if (r,g,b) == MAGENTA: dst_px[x,y] = 255
-            elif (r,g,b) == GREEN and idx_grn != -1: dst_px[x,y] = idx_grn
-            elif (r,g,b) in lk_index_map: dst_px[x,y] = lk_index_map[(r,g,b)]
+            if (r,g,b) == MAGENTA or (r,g,b) == GREEN:
+                dst_px[x,y] = 255
+            elif (r,g,b) in lk_index_map:
+                dst_px[x,y] = lk_index_map[(r,g,b)]
             else:
-                if cur in swap_partner: dst_px[x,y] = swap_partner[cur]
-                elif cur == 255 and replacement_idx_255 != 255: dst_px[x,y] = replacement_idx_255
+                if cur in swap_partner:
+                    dst_px[x,y] = swap_partner[cur]
+                elif cur == 255 and replacement_idx_255 != 255:
+                    dst_px[x,y] = replacement_idx_255
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     im.save(out_path, format='PCX')
@@ -276,17 +299,17 @@ def process_tree(data_dir:str, noon_subfolder:str, night:float, blue_water:float
 
 def main():
     ap = argparse.ArgumentParser(description="Civ 3 day-night (recursive; split blue controls; multiple light-keys)")
-    ap.add_argument("--data", required=True)
-    ap.add_argument("--noon", default="1200")
-    ap.add_argument("--only-hour", type=int)
-    ap.add_argument("--only-file")
-    ap.add_argument("--night",  type=float, default=0.60)
-    ap.add_argument("--blue-water", type=float, default=0.85)
-    ap.add_argument("--blue-land",  type=float, default=0.85)
-    ap.add_argument("--blue", type=float, default=None, help="[Deprecated] Sets both water & land if not provided.")
-    ap.add_argument("--sunset", type=float, default=0.12)
+    ap.add_argument("--data", required=True, help="Path to Data root (contains the noon subfolder)")
+    ap.add_argument("--noon", default="1200", help="Name of noon subfolder under --data (default: 1200)")
+    ap.add_argument("--only-hour", type=int, help="Process a single hour (e.g., 2400)")
+    ap.add_argument("--only-file", help="Process a single PCX filename or relative path")
+    ap.add_argument("--night",  type=float, default=0.60, help="Midnight darkness strength (0..1)")
+    ap.add_argument("--blue-water", type=float, default=0.85, help="Blue emphasis for ocean/shoreline (0..1)")
+    ap.add_argument("--blue-land",  type=float, default=0.85, help="Blue emphasis for land/greens (0..1)")
+    ap.add_argument("--blue", type=float, default=None, help="[Deprecated] Set both --blue-water and --blue-land if not individually provided.")
+    ap.add_argument("--sunset", type=float, default=0.12, help="Evening warmth at ~19:00 (0..1)")
     ap.add_argument("--light-key", action="append", default=["#00feff"],
-                    help="Repeat for multiple (accepts #rrggbb or R,G,B)")
+                    help="Placeholder color(s) to preserve. Repeat flag for multiple. Accepts #rrggbb or R,G,B.")
 
     args = ap.parse_args()
     bw, bl = args.blue_water, args.blue_land
@@ -296,7 +319,8 @@ def main():
         print("Note: --blue is deprecated; prefer --blue-water and --blue-land.")
     light_keys = parse_rgb_list(args.light_key)
 
-    process_tree(args.data, args.noon, args.night, bw, bl, args.sunset, args.only_hour, args.only_file, light_keys)
+    process_tree(args.data, args.noon, args.night, bw, bl, args.sunset,
+                 args.only_hour, args.only_file, light_keys)
 
 if __name__ == "__main__":
     main()
