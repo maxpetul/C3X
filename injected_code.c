@@ -4600,6 +4600,16 @@ patch_DiploForm_do_diplomacy (DiploForm * this, int edx, int diplo_message, int 
 	is->eligible_for_trade_scroll = 0;
 }
 
+int __fastcall
+patch_PCX_Image_read_file (PCX_Image * this, int edx, char * file_path, PCX_Color_Table * out_color_table, int ct_start, int ct_count, unsigned flags)
+{
+	char ss[200];
+	snprintf(ss, sizeof ss, "Reading file in path: %s", file_path);
+	(*p_OutputDebugStringA) (ss);
+
+	return PCX_Image_read_file (this, __, file_path, out_color_table, ct_start, ct_count, flags);
+}
+
 void __fastcall
 patch_DiploForm_m22_Draw (DiploForm * this)
 {
@@ -8915,9 +8925,30 @@ void load_day_night_images(struct day_night_cycle_img_set *this, const char *art
 	PCX_Image_construct(&img);
 
     // 1) Std terrain (9 sheets): 6x9 of 128x64 over 0x480x0x240
+
+	/*
+	1- xtgc
+	2- xpgc?
+	3- xdpc
+	4- xggc?
+	5- xdgc?
+	6- xdgp
+	7-
+	8-
+	9-
+	*/
+
     const char *STD_SHEETS[9] = {
-		"xtgc.pcx","xpgc.pcx","xggc.pcx","xdgc.pcx","xdgp.pcx","xdpc.pcx",
-		"wOOO.pcx","wCSO.pcx","wSSS.pcx",
+		"xtgc.pcx",
+		"xpgc.pcx", 
+		"xdgc.pcx",
+		"xdpc.pcx",
+		"xdgp.pcx",
+		"xggc.pcx",
+
+		"wCSO.pcx",
+		"wSSS.pcx",
+		"wOOO.pcx"
 	};
     for (int i = 0; i < 9; ++i) {
     	read_in_dir(&img, art_dir, STD_SHEETS[i], NULL);
@@ -8929,8 +8960,16 @@ void load_day_night_images(struct day_night_cycle_img_set *this, const char *art
 	
     // 2) LM terrain (9): same slicing
 	const char *LMT_SHEETS[9] = {
-		"lxtgc.pcx","lxpgc.pcx","lxggc.pcx","lxdgc.pcx","lxdgp.pcx","lxdpc.pcx",
-		"lwOOO.pcx","lwCSO.pcx","lwSSS.pcx",
+		"lxtgc.pcx",
+		"lxpgc.pcx",
+		"lxdgc.pcx",
+		"lxdpc.pcx",
+		"lxdgp.pcx",
+		"lxggc.pcx",
+
+		"lwCSO.pcx",
+		"lwSSS.pcx",
+		"lwOOO.pcx"
 	};
     for (int i = 0; i < 9; ++i) {
 		read_in_dir(&img, art_dir, LMT_SHEETS[i], NULL);
@@ -9249,7 +9288,6 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 	for (int h = 0; h < 24; ++h) {
 		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
 		insert_spritelist_proxies(mr->LM_Terrain_Images, is->day_night_cycle_imgs[h].LM_Terrain_Images, h, 9, 81);
-		// Skip Resources for now 
 		insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &is->day_night_cycle_imgs[h].Terrain_Buldings_Barbarian_Camp, h);
 		insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &is->day_night_cycle_imgs[h].Terrain_Buldings_Mines, h);
 		insert_sprite_proxies(mr->Flood_Plains_Images, is->day_night_cycle_imgs[h].Flood_Plains_Images, h, 16);
@@ -9383,6 +9421,7 @@ patch_perform_interturn_in_main_loop ()
 
 	if (is->current_config.enable_day_night_cycle) {
 		if (is->day_night_cycle_img_state == IS_UNINITED) {
+			is->current_day_night_cycle = 12;
 			init_day_night_images ();
 		}
 		if (is->day_night_cycle_img_state == IS_OK) {

@@ -33,7 +33,7 @@ define,	   0x5CDDF0,	0x5DCEB0,	0x5CDD10,	"get_max_move_points",				"int (__cdecl
 inlead,    0x5BE470,	0x5CD030,	0x5BE180,	"Unit_get_max_move_points",			"int (__fastcall *) (Unit * this)"
 define,    0x60B370,	0x625850,	0x60B290,	"Button_set_tooltip",				"int (__fastcall *) (Button * this, int edx, char * str)"
 define,    0x5FC420,	0x60FC10,	0x5FC300,	"PCX_Image_construct",				"PCX_Image * (__fastcall *) (PCX_Image * this)"
-define,    0x5FC820,	0x610360,	0x5FC700,	"PCX_Image_read_file",				"int (__fastcall *) (PCX_Image * this, int edx, char * file_path, PCX_Color_Table * out_color_table, int ct_start, int ct_count, unsigned flags)"
+inlead,    0x5FC820,	0x610360,	0x5FC700,	"PCX_Image_read_file",				"int (__fastcall *) (PCX_Image * this, int edx, char * file_path, PCX_Color_Table * out_color_table, int ct_start, int ct_count, unsigned flags)"
 define,    0x5F7E50,	0x608170,	0x5F7D80,	"Sprite_construct",				"Sprite * (__fastcall *) (Sprite * this)"
 define,    0x5F7F90,	0x6083D0,	0x5F7EC0,	"Sprite_slice_pcx",				"int (__fastcall *) (Sprite * this, int edx, PCX_Image * img, int up_left_x, int up_left_y, int w, int h, int arg6, int arg7)"
 define,    0x49FC50,	0x4A6790,	0x49FCE0,	"get_popup_form",				"PopupForm * (__stdcall *) ()"
