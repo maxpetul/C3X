@@ -4600,16 +4600,6 @@ patch_DiploForm_do_diplomacy (DiploForm * this, int edx, int diplo_message, int 
 	is->eligible_for_trade_scroll = 0;
 }
 
-int __fastcall
-patch_PCX_Image_read_file (PCX_Image * this, int edx, char * file_path, PCX_Color_Table * out_color_table, int ct_start, int ct_count, unsigned flags)
-{
-	char ss[200];
-	snprintf(ss, sizeof ss, "Reading file in path: %s", file_path);
-	(*p_OutputDebugStringA) (ss);
-
-	return PCX_Image_read_file (this, __, file_path, out_color_table, ct_start, ct_count, flags);
-}
-
 void __fastcall
 patch_DiploForm_m22_Draw (DiploForm * this)
 {
