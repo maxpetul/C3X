@@ -9182,10 +9182,10 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 	//snprintf(ss, sizeof ss, "Completed loading Airfields / Outposts / Radar images");
 	//pop_up_in_game_error(ss);
 
-	read_in_dir(&img, art_dir, "X_AIRfields_and_detect.pcx", NULL);
-    for (int i=0, x=0; i<2; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Airfields_Shadow[i], __, &img, x, 0x00, 0x80, 0x40, 1, 1);
-    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Outposts_Shadow[i],  __, &img, x, 0x40, 0x80, 0x80, 1, 1);
-    Sprite_slice_pcx(&this->Terrain_Buldings_Radar_Shadow, __, &img, 0x00, 0xC0, 0x80, 0x80, 1, 1);
+	//read_in_dir(&img, art_dir, "X_AIRfields_and_detect.pcx", NULL);
+    //for (int i=0, x=0; i<2; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Airfields_Shadow[i], __, &img, x, 0x00, 0x80, 0x40, 1, 1);
+    //for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Outposts_Shadow[i],  __, &img, x, 0x40, 0x80, 0x80, 1, 1);
+    //Sprite_slice_pcx(&this->Terrain_Buldings_Radar_Shadow, __, &img, 0x00, 0xC0, 0x80, 0x80, 1, 1);
 
 	//snprintf(ss, sizeof ss, "Completed loading Airfields / Outposts / Radar Shadow images");
 	//pop_up_in_game_error(ss);
@@ -9306,6 +9306,7 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 		insert_sprite_proxies(city_sprites_wall, is->day_night_cycle_imgs[h].Walled_City_Images, h, 80);
 		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
 		insert_spritelist_proxies(mr->LM_Terrain_Images, is->day_night_cycle_imgs[h].LM_Terrain_Images, h, 9, 81);
+		insert_sprite_proxies(mr->Resources, is->day_night_cycle_imgs[h].Resources, h, 36);
 		insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &is->day_night_cycle_imgs[h].Terrain_Buldings_Barbarian_Camp, h);
 		insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &is->day_night_cycle_imgs[h].Terrain_Buldings_Mines, h);
 		insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &is->day_night_cycle_imgs[h].Terrain_Buldings_Radar, h);

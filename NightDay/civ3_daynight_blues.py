@@ -2,361 +2,444 @@
 # -*- coding: utf-8 -*-
 
 """
-Civ 3 day-night PCX transformer (pure Python, Pillow) — Blue Hour version
-- Palette-safe transform with exact preservation of #ff00ff and #00ff00.
-- Creates sibling hour folders 100..2400 (skipping noon folder).
-- Adds luminance-aware cool tint + soft fog for a Civ 6–style dusky night.
-
-Example:
-  python civ3_daynight_palette_cli.py --terrain "/path/Terrain" --noon 1200 \
-    --only-hour 2400 \
-    --tint "#a5c8ff" --tint-max 0.35 --fog-max 0.18 --shadow-tint-pow 1.3 \
-    --darken-max 0.12 --value-floor 0.08 --desat-max 0.22 \
-    --hue-shift 0.15 --hue-target-deg 210 --gamma-mid 0.9
+Civ 3 day-night PCX transformer (SIMPLE, recursive; refined land-to-blue at night)
+- Recursively walks Data/1200 (or provided noon folder) and writes siblings 0100..2400.
+- Preserves #ff00ff and ALL provided --light-key colors exactly (index-stable).
+- GREEN (#00ff00) pixels are written out as MAGENTA at index 255 (so green never leaks).
+- Blue split: --blue-water and --blue-land.
+- Stronger, clearer sunset warmth (water + vegetation), mountains/deserts protected.
 """
 
-import argparse
-import math
-import os
-from dataclasses import dataclass
-from typing import List, Tuple
-
+import argparse, math, os
+from typing import List, Tuple, Dict
 from PIL import Image
+import colorsys
 
 MAGENTA = (255, 0, 255)   # ff00ff
 GREEN   = (0, 255, 0)     # 00ff00
 
+# --------- helpers ---------
 
-# ---------- Look controls ----------
+def parse_rgb_one(s: str) -> Tuple[int,int,int]:
+    s = s.strip()
+    if s.startswith("#"):
+        s = s[1:]
+        if len(s) != 6: raise ValueError("Hex color must be #rrggbb")
+        return (int(s[0:2],16), int(s[2:4],16), int(s[4:6],16))
+    parts = [int(p) for p in s.split(",")]
+    if len(parts) != 3: raise ValueError("RGB must be R,G,B")
+    return tuple(max(0,min(255,v)) for v in parts)  # type: ignore
 
-@dataclass
-class LookParams:
-    # Classic controls (still used, but defaults tuned for dusk)
-    darken_max: float = 0.12      # gentle dimming at midnight (0..1)
-    value_floor: float = 0.08     # white-ish lift at midnight (0..1)
-    desat_max: float = 0.22       # desaturation at midnight (0..1)
-    hue_shift: float = 0.15       # fraction toward hue_target at midnight (0..1)
-    hue_target_deg: float = 210.0 # cool blue (0..360)
-
-    # Blue-hour controls
-    tint_rgb: Tuple[float, float, float] = (0.647, 0.784, 1.000)  # #a5c8ff as 0..1
-    tint_max: float = 0.35          # max weight of tint at midnight (0..1)
-    fog_max: float = 0.18           # max white blend at midnight (0..1)
-    shadow_tint_pow: float = 1.3    # >1 = more tint in darker pixels
-    gamma_mid: float = 0.90         # <1 lifts midtones a touch
-
-    fog_tint_mix: float = 0.70   # 0=white fog (current), 1=tinted fog (use --tint)
-    tint_base: float = 0.35      # minimum tint even in highlights (0..1)
-
-def _clamp01(x: float) -> float:
-    return 0.0 if x < 0.0 else 1.0 if x > 1.0 else x
+def parse_rgb_list(values: List[str]) -> List[Tuple[int,int,int]]:
+    out: List[Tuple[int,int,int]] = []
+    for raw in values or []:
+        tokens = [t for t in raw.replace(";", " ").split() if t]
+        for tok in tokens:
+            out.append(parse_rgb_one(tok))
+    if not out:
+        out = [(0,254,255)]  # sensible default: #00feff
+    dedup: List[Tuple[int,int,int]] = []
+    seen = set()
+    for c in out:
+        if c not in seen:
+            seen.add(c); dedup.append(c)
+    return dedup
 
 def hour_factor(hour_1_24: int) -> float:
     """0 at 12 (no change), 1 at 24/0 (midnight). Smooth cosine easing."""
     d = abs(hour_1_24 - 12)
-    if d > 12:
-        d = 24 - d
+    if d > 12: d = 24 - d
     return 0.5 * (1.0 - math.cos(math.pi * (d / 12.0)))
 
-def _to_byte(x: float) -> int:
-    return int(min(255, max(0, round(x))))
-
-def _srgb_to_unit(r: int, g: int, b: int) -> Tuple[float, float, float]:
-    return r/255.0, g/255.0, b/255.0
-
-def _unit_to_srgb(rr: float, gg: float, bb: float) -> Tuple[int, int, int]:
-    return _to_byte(rr*255.0), _to_byte(gg*255.0), _to_byte(bb*255.0)
-
-def _luma_srgb(rr: float, gg: float, bb: float) -> float:
-    # sRGB luma approximation
-    return 0.299*rr + 0.587*gg + 0.114*bb
-
-def _lerp(a: float, b: float, t: float) -> float:
-    return a + (b - a) * t
-
-def _lerp3(c: Tuple[float, float, float], d: Tuple[float, float, float], t: float):
-    return (_lerp(c[0], d[0], t), _lerp(c[1], d[1], t), _lerp(c[2], d[2], t))
-
-def parse_hex_rgb(s: str) -> Tuple[float, float, float]:
-    s = s.strip().lstrip("#")
-    if len(s) != 6:
-        raise ValueError("Hex color must be RRGGBB")
-    r = int(s[0:2], 16)/255.0
-    g = int(s[2:4], 16)/255.0
-    b = int(s[4:6], 16)/255.0
-    return (r, g, b)
-
-def transform_rgb_triplet(r: int, g: int, b: int, f: float, p: LookParams) -> Tuple[int, int, int]:
-    """
-    Blue-hour transform:
-      1) Fog blend toward white (uniform).
-      2) Shadow-weighted tint toward p.tint_rgb.
-      3) Gentle desaturation.
-      4) Slight hue nudge toward p.hue_target_deg (to avoid greenish seas).
-      5) Overall brightness floor + mild dim.
-      6) Midtone gamma lift.
-    """
-    import colorsys
-
-    # clamp/normalize params
-    dm = _clamp01(p.darken_max)
-    vf = _clamp01(p.value_floor)
-    ds = _clamp01(p.desat_max)
-    hs = _clamp01(p.hue_shift)
-    ht = (p.hue_target_deg % 360.0) / 360.0
-    tint_w = _clamp01(p.tint_max) * f
-    fog_w  = _clamp01(p.fog_max)  * f
-    pow_k  = max(0.2, p.shadow_tint_pow)
-    gm     = max(0.01, p.gamma_mid)
-
-    rr, gg, bb = _srgb_to_unit(r, g, b)
-    y = _luma_srgb(rr, gg, bb)
-
-    # 1) Fog (ambient lift) — now can be tinted
-    if fog_w > 0.0:
-        fog_color = _lerp3((1.0, 1.0, 1.0), p.tint_rgb, _clamp01(p.fog_tint_mix))
-        rr, gg, bb = _lerp3((rr, gg, bb), fog_color, fog_w)
-
-    # 2) Cool tint (more in darker pixels, but some in highlights too)
-    if tint_w > 0.0:
-        shadow_mix = (1.0 - y) ** pow_k
-        t = tint_w * (p.tint_base + (1.0 - p.tint_base) * shadow_mix)
-        rr, gg, bb = _lerp3((rr, gg, bb), p.tint_rgb, _clamp01(t))
-
-
-    # 3) Gentle desaturation toward luma
-    if ds > 0.0 and f > 0.0:
-        y2 = _luma_srgb(rr, gg, bb)
-        rr, gg, bb = _lerp3((rr, gg, bb), (y2, y2, y2), ds * f)
-
-    # 4) Micro hue nudge to avoid green cast in seas/grass
-    if hs > 0.0 and f > 0.0:
-        h, s, v = colorsys.rgb_to_hsv(rr, gg, bb)
-        # shortest-arc shift
-        delta = ht - h
-        if delta > 0.5:   delta -= 1.0
-        elif delta < -0.5: delta += 1.0
-        h = (h + hs*f*delta) % 1.0
-        rr, gg, bb = colorsys.hsv_to_rgb(h, s, v)
-
-    # 5) Brightness floor + gentle darken
-    rr = rr * (1 - dm*f) + vf*f
-    gg = gg * (1 - dm*f) + vf*f
-    bb = bb * (1 - dm*f) + vf*f
-
-    # 6) Midtone gamma lift
-    if gm != 1.0:
-        rr = max(0.0, min(1.0, rr)) ** gm
-        gg = max(0.0, min(1.0, gg)) ** gm
-        bb = max(0.0, min(1.0, bb)) ** gm
-
-    return _unit_to_srgb(rr, gg, bb)
-
-
-# ---------- Palette helpers (Pillow) ----------
+def evening_weight(hour_1_24: int, center: float = 19.0, width: float = 3.5) -> float:
+    """Cosine window centered at `center`, 1 at center, 0 at center±width."""
+    d = abs(hour_1_24 - center)
+    d = min(d, 24.0 - d)
+    if d >= width or width <= 0: return 0.0
+    t = d / width
+    return 0.5 * (1.0 + math.cos(math.pi * t))
 
 def get_palette(image: Image.Image) -> List[int]:
     pal = image.getpalette() or []
-    if len(pal) < 256*3:
-        pal = pal + [0] * (256*3 - len(pal))
+    if len(pal) < 256*3: pal += [0] * (256*3 - len(pal))
     return pal[:256*3]
 
 def put_palette(image: Image.Image, palette: List[int]) -> None:
-    if len(palette) < 256*3:
-        palette = palette + [0] * (256*3 - len(palette))
+    if len(palette) < 256*3: palette += [0] * (256*3 - len(palette))
     image.putpalette(palette[:256*3])
 
-def find_color_index(palette: List[int], rgb: Tuple[int, int, int]) -> int:
-    r, g, b = rgb
+def find_color_index(palette: List[int], rgb: Tuple[int,int,int]) -> int:
+    r,g,b = rgb
     for i in range(256):
-        if palette[3*i] == r and palette[3*i+1] == g and palette[3*i+2] == b:
+        if palette[3*i]==r and palette[3*i+1]==g and palette[3*i+2]==b:
             return i
     return -1
 
-def ensure_palette_has_colors(image: Image.Image, colors: List[Tuple[int, int, int]]) -> List[int]:
+def ensure_palette_has_colors(image: Image.Image, colors: List[Tuple[int,int,int]]) -> List[int]:
     palette = get_palette(image)
     to_add = [c for c in colors if find_color_index(palette, c) == -1]
-    if not to_add:
-        return palette
-
-    hist = image.histogram()
-    if image.mode != 'P' or len(hist) != 256:
-        candidates = list(range(255, -1, -1))
-    else:
-        candidates = sorted(range(256), key=lambda i: hist[i])
-
+    if not to_add: return palette
+    hist = image.histogram() if image.mode == 'P' else None
+    candidates = sorted(range(256), key=(lambda i: hist[i])) if (hist and len(hist)==256) else list(range(255, -1, -1))
+    # protect magic + wanted colors
     protected = set()
-    for rgb in colors + [MAGENTA, GREEN]:
+    for rgb in colors + [MAGENTA]:
         idx = find_color_index(palette, rgb)
-        if idx != -1:
-            protected.add(idx)
-
+        if idx != -1: protected.add(idx)
     replace_slots = []
     for i in candidates:
-        if i in protected:
-            continue
+        if i in protected: continue
         replace_slots.append(i)
-        if len(replace_slots) >= len(to_add):
-            break
-
+        if len(replace_slots) >= len(to_add): break
     if len(replace_slots) < len(to_add):
         tail = [i for i in range(255, -1, -1) if i not in protected][:len(to_add)-len(replace_slots)]
         replace_slots.extend(tail)
-
     for slot, rgb in zip(replace_slots, to_add):
         palette[3*slot:3*slot+3] = list(rgb)
-
     return palette
 
+def _hue_in_range(h01: float, start_deg: float, end_deg: float) -> bool:
+    a = (start_deg % 360.0) / 360.0
+    b = (end_deg   % 360.0) / 360.0
+    return (a <= b and a <= h01 <= b) or (a > b and (h01 >= a or h01 <= b))
 
-# ---------- Image processing ----------
+def quantize_to_p_256(img: Image.Image) -> Image.Image:
+    """Convert to RGB then quantize with FASTOCTREE (works on RGB/RGBA)."""
+    try:
+        dnone = Image.Dither.NONE
+    except Exception:
+        dnone = getattr(Image, "NONE", 0)
+    img_rgb = img.convert('RGB')
+    try:
+        return img_rgb.quantize(colors=256, method=Image.FASTOCTREE, dither=dnone)
+    except Exception:
+        return img_rgb.quantize(colors=256, dither=dnone)
 
-def process_indexed_pcx(in_path: str, out_path: str, hour_1_24: int, params: LookParams, light_key: Tuple[int,int,int]) -> None:
-    f = hour_factor(hour_1_24)
+# --------- palette pinning for magenta & multiple light-keys ---------
+
+def force_magenta_at_255(im: Image.Image) -> int:
+    """
+    Ensure palette index 255 is #ff00ff (MAGENTA).
+    Returns replacement_idx: where the old slot-255 color now lives (or 255 if none).
+    """
+    pal = get_palette(im)
+    old255 = (pal[3*255], pal[3*255+1], pal[3*255+2])
+    idx_mag = find_color_index(pal, MAGENTA)
+    if idx_mag == -1:
+        pal = ensure_palette_has_colors(im, [MAGENTA])
+        put_palette(im, pal)
+        pal = get_palette(im)
+        idx_mag = find_color_index(pal, MAGENTA)
+    if idx_mag == 255:
+        return 255
+    pal[3*255:3*255+3] = list(MAGENTA)
+    pal[3*idx_mag:3*idx_mag+3] = list(old255)
+    put_palette(im, pal)
+    return idx_mag
+
+def choose_fallback_slot(im: Image.Image, reserved: set) -> int:
+    """Pick a slot from high to low avoiding reserved (255, etc.)."""
+    for i in range(254, -1, -1):
+        if i not in reserved:
+            return i
+    return 254
+
+def pin_lightkeys_to_source_indices(im: Image.Image,
+                                    src_palette: List[int],
+                                    light_keys: List[Tuple[int,int,int]]
+                                   ) -> Tuple[Dict[Tuple[int,int,int],int], Dict[int,int]]:
+    """
+    Try to keep each light-key at the SAME index as in the source palette.
+    Returns:
+      lk_to_target_index: mapping rgb -> desired target index
+      swap_partner_for_target: mapping target_index -> partner_index (if we swapped)
+    """
+    # ensure keys exist
+    pal = ensure_palette_has_colors(im, light_keys)
+    put_palette(im, pal)
+    pal = get_palette(im)
+
+    reserved = {255}
+    lk_to_target: Dict[Tuple[int,int,int], int] = {}
+    for rgb in light_keys:
+        src_idx = find_color_index(src_palette, rgb)
+        if src_idx == -1 or src_idx == 255:
+            t = choose_fallback_slot(im, reserved)
+        else:
+            t = src_idx
+        lk_to_target[rgb] = t
+        reserved.add(t)
+
+    # perform swaps if needed
+    swap_map: Dict[int,int] = {}  # target -> partner
+    pal = get_palette(im)
+    for rgb, target in lk_to_target.items():
+        cur = find_color_index(pal, rgb)
+        if cur == -1 or cur == target:
+            continue
+        rT,gT,bT = pal[3*target], pal[3*target+1], pal[3*target+2]
+        rC,gC,bC = pal[3*cur],    pal[3*cur+1],    pal[3*cur+2]
+        pal[3*target:3*target+3] = [rC,gC,bC]
+        pal[3*cur:3*cur+3]       = [rT,gT,bT]
+        put_palette(im, pal)
+        pal = get_palette(im)
+        swap_map[target] = cur
+
+    return lk_to_target, swap_map
+
+# --------- refined color grading ---------
+
+def _wrap_delta(a: float, b: float) -> float:
+    """Shortest signed delta on a unit hue circle (both in [0,1))."""
+    d = (b - a) % 1.0
+    if d > 0.5: d -= 1.0
+    return d
+
+def transform_rgb_triplet(
+    r: int, g: int, b: int,
+    hour_1_24: int,
+    night: float,
+    blue_water: float,
+    blue_land: float,
+    sunset: float
+) -> Tuple[int,int,int]:
+    """
+    Oceans: as before (you said they look good).
+    Vegetation (55°–140°): now hue-lerps strongly toward ~230° at night, so grass/tundra read BLUE.
+    Mountains/deserts (≈20°–55°) remain protected from purple.
+    """
+    # clamp
+    night      = max(0.0, min(1.0, night))
+    blue_water = max(0.0, min(1.0, blue_water))
+    blue_land  = max(0.0, min(1.0, blue_land))
+    sunset     = max(0.0, min(1.0, sunset))
+
+    f  = hour_factor(hour_1_24)               # 0..1
+    ew = evening_weight(hour_1_24, 19.0, 3.5) # 0..1
+
+    h0, s0, v0 = colorsys.rgb_to_hsv(r/255.0, g/255.0, b/255.0)
+    h,  s,  v  = h0, s0, v0
+    hdeg = h0 * 360.0
+
+    # Darkness (same as before)
+    max_darken = 0.78
+    floor_mid  = 0.02
+    v = v * (1 - (max_darken*night)*f) + (floor_mid*night)*f
+    v = pow(max(0.0, min(1.0, v)), 1.0 + 0.25*night*f)
+
+    # Categories
+    warm_min, warm_max = 20/360.0, 55/360.0   # desert/mountain protection
+    is_warm_narrow = (warm_min <= h <= warm_max)
+
+    is_waterish = (130.0 <= hdeg <= 190.0) and (s0 > 0.12)
+    is_veg_yellowgreen = (55.0 <= hdeg < 95.0)  and (s0 > 0.12)
+    is_veg_green       = (95.0 <= hdeg <= 140.0) and (s0 > 0.12)
+    is_vegetation      = is_veg_yellowgreen or is_veg_green
+
+    # Mild global cool-down (unchanged, but weaker baseline for non-veg)
+    if not is_warm_narrow and s > 0.20 and v > 0.20:
+        target_cool = 220/360.0
+        d = _wrap_delta(h, target_cool)
+        local_blue = blue_water if is_waterish else (blue_land if is_vegetation else 0.25*(blue_water + blue_land))
+        h = (h + (0.35*local_blue)*f * d) % 1.0
+
+    # WATER: keep your “good” behavior (slight tweaks retained)
+    if is_waterish:
+        t_lin = max(0.0, min(1.0, (hdeg - 140.0) / (190.0 - 140.0)))
+        t = t_lin * t_lin * (3 - 2*t_lin)  # smoothstep
+        target = ((230.0/360.0) * (1 - t)) + ((238.0/360.0) * t)
+        pull   = ((0.55)          * (1 - t)) + ((0.95)          * t)
+        satb   = ((0.30)          * (1 - t)) + ((0.58)          * t)
+        d = _wrap_delta(h, target)
+        h = (h + (pull * blue_water * f) * d) % 1.0
+        s = s + (1.0 - s) * (satb * blue_water * f)
+
+    # LAND: push vegetation decisively toward blue at night (hue-lerp)
+    # We compute a night-scaled lerp amount with a small baseline so even
+    # blue_land~0.3 shows clear blue at midnight.
+    if is_vegetation:
+        # Target hue: slightly variable so green (95–140) goes ~232°, yellow-green (55–95) ~226°
+        if is_veg_green:
+            target = 232/360.0
+        else:
+            target = 226/360.0
+
+        # Lerp strength: baseline + user control, all scaled by night factor.
+        # Midnight w/ blue_land=1.0 -> ~0.80; with 0.3 -> ~0.55; with 0.1 -> ~0.45
+        base_push = 0.30
+        user_push = 0.50 * blue_land
+        amt = f * (base_push + user_push)
+
+        # Apply hue lerp on the circle
+        d = _wrap_delta(h, target)
+        h = (h + amt * d) % 1.0
+
+        # Ensure it reads as BLUE not teal: add sat boost in blue sector
+        if _hue_in_range(h, 190, 260):
+            s = s + (1.0 - s) * (0.30 + 0.25*blue_land) * f
+
+        # Slight value roll-off to avoid neon grass
+        v = v * (1.0 - 0.06 * f * (0.5 + 0.5*blue_land))
+
+    # Extra blue-sector pop (common for ocean/sky/now-blue land)
+    if _hue_in_range(h, 200, 255):
+        s = s + (1.0 - s) * (0.06 + 0.24*blue_water) * f
+
+    # Sunset warmth (visible now): water strongest, veg moderate, deserts/mountains skipped
+    if ew > 0:
+        if is_waterish:
+            target_warm = 22/360.0
+            dW = _wrap_delta(h, target_warm)
+            h = (h + (0.40*sunset) * ew * dW) % 1.0
+            s = s + (1.0 - s) * (0.10*sunset) * ew
+            v = v + (1.0 - v) * (0.04*sunset) * ew
+        elif is_vegetation and not is_warm_narrow:
+            target_warm = 28/360.0
+            dL = _wrap_delta(h, target_warm)
+            h = (h + (0.20*sunset) * ew * dL) % 1.0
+            s = s + (1.0 - s) * (0.06*sunset) * ew
+
+    # clamp & back to RGB
+    s = max(0.0, min(1.0, s))
+    v = max(0.0, min(1.0, v))
+    rr, gg, bb = colorsys.hsv_to_rgb(h, s, v)
+    return int(round(rr*255.0)), int(round(gg*255.0)), int(round(bb*255.0))
+
+# --------- processing ---------
+
+def process_indexed_pcx(in_path: str, out_path: str, hour_1_24: int,
+                        night: float, blue_water: float, blue_land: float,
+                        sunset: float, light_keys: List[Tuple[int,int,int]]) -> None:
+    print(f"Processing {in_path} → {out_path} [hour {hour_1_24}]")
+    # Load source (for palette indices) and working image
+    src_img = Image.open(in_path)
+    src_pal = get_palette(src_img if src_img.mode == 'P' else src_img.convert('P'))
+
     im = Image.open(in_path)
     if im.mode != 'P':
-        im = im.convert('RGBA')
-        im = im.quantize(colors=256, method=Image.MEDIANCUT, dither=Image.NONE)
+        im = quantize_to_p_256(im)  # robust palettization
 
     palette = get_palette(im)
     new_palette = palette.copy()
 
+    # remap palette (skip magenta + all light-keys)
+    skip = set([MAGENTA] + light_keys)
     for i in range(256):
-        r, g, b = palette[3*i], palette[3*i+1], palette[3*i+2]
-        if (r, g, b) == MAGENTA or (r, g, b) == GREEN  or (r,g,b) == light_key:
+        r,g,b = palette[3*i], palette[3*i+1], palette[3*i+2]
+        if (r,g,b) in skip:
             continue
-        nr, ng, nb = transform_rgb_triplet(r, g, b, f, params)
-        new_palette[3*i:3*i+3] = [nr, ng, nb]
+        nr,ng,nb = transform_rgb_triplet(r,g,b, hour_1_24, night, blue_water, blue_land, sunset)
+        new_palette[3*i:3*i+3] = [nr,ng,nb]
 
     put_palette(im, new_palette)
 
-    # Guarantee exact magic colors, then enforce exact indices for magic pixels
+    # ensure magic + keys exist
     pal_after = get_palette(im)
-    idx_mag = find_color_index(pal_after, MAGENTA)
-    idx_grn = find_color_index(pal_after, GREEN)
-    idx_light = find_color_index(pal_after, light_key)
-
-    src_rgb = Image.open(in_path).convert('RGB')
-    w, h = src_rgb.size
-    src_pixels = src_rgb.load()
-
-    if idx_mag == -1 or idx_grn == -1 or idx_light == -1:
-        pal_after = ensure_palette_has_colors(im, [MAGENTA, GREEN, light_key])
+    need = []
+    if find_color_index(pal_after, MAGENTA) == -1: need.append(MAGENTA)
+    for lk in light_keys:
+        if find_color_index(pal_after, lk) == -1: need.append(lk)
+    if need:
+        pal_after = ensure_palette_has_colors(im, need)
         put_palette(im, pal_after)
-        idx_mag = find_color_index(pal_after, MAGENTA)
-        idx_grn = find_color_index(pal_after, GREEN)
-        idx_light = find_color_index(pal_after, light_key)
 
-    dst_px = im.load()  # palette indices
+    # pin magenta at 255
+    replacement_idx_255 = force_magenta_at_255(im)
+
+    # pin each light-key to the same index as source (when possible)
+    lk_to_target, swap_partner = pin_lightkeys_to_source_indices(im, src_pal, light_keys)
+
+    # Apply pixel remap: magic to 255, GREEN->255, keys to their pinned slots
+    src_rgb = Image.open(in_path).convert('RGB')
+    w,h = src_rgb.size
+    src_px = src_rgb.load()
+    dst_px = im.load()
+
+    lk_index_map: Dict[Tuple[int,int,int], int] = {rgb: tgt for rgb, tgt in lk_to_target.items()}
+
     for y in range(h):
         for x in range(w):
-            r, g, b = src_pixels[x, y]
-            if (r, g, b) == MAGENTA:
-                dst_px[x, y] = idx_mag
-            elif (r, g, b) == GREEN:
-                dst_px[x, y] = idx_grn
-            elif (r, g, b) == light_key:
-                dst_px[x, y] = idx_light
+            r,g,b = src_px[x,y]
+            cur = dst_px[x,y]
+            if (r,g,b) == MAGENTA or (r,g,b) == GREEN:
+                dst_px[x,y] = 255
+            elif (r,g,b) in lk_index_map:
+                dst_px[x,y] = lk_index_map[(r,g,b)]
+            else:
+                if cur in swap_partner:
+                    dst_px[x,y] = swap_partner[cur]
+                elif cur == 255 and replacement_idx_255 != 255:
+                    dst_px[x,y] = replacement_idx_255
 
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
     im.save(out_path, format='PCX')
 
-
-def process_folder(terrain_dir: str, noon_subfolder: str,
-                   params: LookParams, only_hour: int = None, only_file: str = None, light_key: Tuple[int,int,int] = (255,0,254)) -> None:
-    base_dir = os.path.join(terrain_dir, noon_subfolder)
-    if not os.path.isdir(base_dir):
-        raise SystemExit(f"No such folder: {base_dir}")
-
-    pcx_names = [f for f in os.listdir(base_dir) if f.lower().endswith('.pcx')]
-    if not pcx_names:
-        raise SystemExit(f"No PCX files found in {base_dir}")
+def process_tree(data_dir:str, noon_subfolder:str, night:float, blue_water:float, blue_land:float,
+                 sunset:float, only_hour:int=None, only_file:str=None,
+                 light_keys: List[Tuple[int,int,int]] = [(0,254,255)]) -> None:
+    base_dir = os.path.join(data_dir, noon_subfolder)
+    if not os.path.isdir(base_dir): raise SystemExit(f"No such folder: {base_dir}")
 
     hours = [h for h in range(100, 2500, 100) if h != 1200]
     if only_hour is not None:
-        if only_hour == 1200:
-            raise SystemExit("1200 is the base (left untouched). Choose another hour.")
+        if only_hour == 1200: raise SystemExit("1200 is the base (left untouched). Choose another hour.")
         if only_hour % 100 != 0 or only_hour < 100 or only_hour > 2400:
             raise SystemExit("--only-hour must be one of 100, 200, ..., 2400.")
         hours = [only_hour]
 
-    if only_file is not None:
-        pcx_names = [only_file] if only_file in pcx_names else []
+    norm_only = os.path.normcase(only_file) if only_file else None
 
-    if not pcx_names:
-        raise SystemExit("The requested --only-file was not found in the noon folder." if only_file else
-                         "No PCX files to process.")
+    for dirpath, _, filenames in os.walk(base_dir):
+        rel_dir = os.path.relpath(dirpath, base_dir)
+        rel_dir = "" if rel_dir == "." else rel_dir
 
-    for hhh in hours:
-        hour_1_24 = hhh // 100
-        out_dir = os.path.join(terrain_dir, f"{hhh}")
-        os.makedirs(out_dir, exist_ok=True)
+        for hhh in hours:
+            out_dir = os.path.join(data_dir, f"{hhh:04d}", rel_dir)
+            os.makedirs(out_dir, exist_ok=True)
 
-        for name in pcx_names:
-            in_path = os.path.join(base_dir, name)
-            out_path = os.path.join(out_dir, name)
-            print(f"Processing hour {hhh}, '{name}' \t-> '{out_path}'")
-            process_indexed_pcx(in_path, out_path, hour_1_24, params, light_key)
+        for name in filenames:
+            if not name.lower().endswith(".pcx"):
+                continue
+            if norm_only:
+                rel_file = os.path.normcase(os.path.join(rel_dir, name))
+                if norm_only != os.path.normcase(name) and norm_only != rel_file:
+                    continue
+
+            in_path = os.path.join(dirpath, name)
+            for hhh in hours:
+                hour_1_24 = hhh // 100
+                out_path = os.path.join(data_dir, f"{hhh:04d}", rel_dir, name)
+                process_indexed_pcx(
+                    in_path, out_path, hour_1_24, night, blue_water, blue_land, sunset, light_keys
+                )
 
 def main():
-    ap = argparse.ArgumentParser(description="Civ 3 day-night PCX transformer (pure Python, Pillow)")
-    ap.add_argument("--terrain", required=True, help="Path to Terrain folder (parent of noon subfolder)")
-    ap.add_argument("--noon", default="1200", help="Name of noon subfolder (default: 1200)")
-    ap.add_argument("--only-hour", type=int, help="Process a single hour folder (e.g., 2400)")
-    ap.add_argument("--only-file", help="Process a single PCX filename from the noon folder")
-
-    ap.add_argument("--light-key", type=str, default="#ff00fe",
-                    help="Placeholder window color to preserve (R,G,B or #rrggbb). Default: #ff00fe")
-
-    # Look params (all optional)
-    ap.add_argument("--darken-max", type=float, default=0.12,
-                    help="Max dimming of brightness at midnight (0..1). Default: 0.12")
-    ap.add_argument("--value-floor", type=float, default=0.08,
-                    help="Brightness floor added at midnight (0..1). Default: 0.08")
-    ap.add_argument("--desat-max", type=float, default=0.22,
-                    help="Max desaturation at midnight (0..1). Default: 0.22")
-    ap.add_argument("--hue-shift", type=float, default=0.15,
-                    help="Fraction of the way toward hue-target at midnight (0..1). Default: 0.15")
-    ap.add_argument("--hue-target-deg", type=float, default=210.0,
-                    help="Target hue in degrees (0..360). Default: 210 (dusky blue)")
-
-    # Blue-hour controls
-    ap.add_argument("--tint", type=str, default="#265db7",
-                    help="Hex cool tint (RRGGBB). Default: #265db7")
-    ap.add_argument("--tint-max", type=float, default=0.35,
-                    help="Max tint blend at midnight (0..1). Default: 0.35")
-    ap.add_argument("--fog-max", type=float, default=0.18,
-                    help="Max white/ambient blend at midnight (0..1). Default: 0.18")
-    ap.add_argument("--shadow-tint-pow", type=float, default=1.3,
-                    help="Exponent for stronger tint in shadows. Default: 1.3")
-    ap.add_argument("--gamma-mid", type=float, default=0.90,
-                    help="Midtone gamma (<1 brightens mids). Default: 0.90")
-    
-    # Fog controls
-    ap.add_argument("--fog-tint-mix", type=float, default=0.70,
-                    help="0=white fog, 1=fog toward --tint. Default: 0.70")
-    ap.add_argument("--tint-base", type=float, default=0.35,
-                    help="Minimum tint in highlights (0..1). Default: 0.35")
+    ap = argparse.ArgumentParser(description="Civ 3 day-night (recursive; bluer land at night; multi light-keys)")
+    ap.add_argument("--data", required=True, help="Path to Data root (contains the noon subfolder)")
+    ap.add_argument("--noon", default="1200", help="Name of noon subfolder under --data (default: 1200)")
+    ap.add_argument("--only-hour", type=int, help="Process a single hour (e.g., 2400)")
+    ap.add_argument("--only-file", help="Process a single PCX filename or relative path")
+    ap.add_argument("--night",  type=float, default=0.60, help="Midnight darkness strength (0..1). Default: 0.60")
+    ap.add_argument("--blue-water", type=float, default=0.85, help="Blue emphasis for ocean/shoreline (0..1). Default: 0.85")
+    ap.add_argument("--blue-land",  type=float, default=0.85, help="Blue emphasis for land/greens (0..1). Default: 0.85")
+    ap.add_argument("--blue", type=float, default=None, help="[Deprecated] Sets both --blue-water and --blue-land if they are not provided.")
+    ap.add_argument("--sunset", type=float, default=0.20, help="Evening warmth at ~19:00 (0..1). Default: 0.20 (stronger)")
+    ap.add_argument("--light-key", action="append", default=["#00feff"],
+                    help="Placeholder color(s) to preserve. Repeat flag for multiple. Accepts #rrggbb or R,G,B.")
 
     args = ap.parse_args()
 
-    params = LookParams(
-        darken_max=args.darken_max,
-        value_floor=args.value_floor,
-        desat_max=args.desat_max,
-        hue_shift=args.hue_shift,
-        hue_target_deg=args.hue_target_deg,
-        tint_rgb=parse_hex_rgb(args.tint),
-        tint_max=args.tint_max,
-        fog_max=args.fog_max,
-        shadow_tint_pow=args.shadow_tint_pow,
-        gamma_mid=args.gamma_mid,
-    )
+    bw = args.blue_water
+    bl = args.blue_land
+    if args.blue is not None:
+        if bw == ap.get_default("blue_water"): bw = args.blue
+        if bl == ap.get_default("blue_land"):  bl = args.blue
+        print("Note: --blue is deprecated; prefer --blue-water and --blue-land.")
 
-    light_key = parse_hex_rgb(args.light_key)
+    light_keys = parse_rgb_list(args.light_key)
 
-    process_folder(args.terrain, args.noon, params, args.only_hour, args.only_file)
-
+    process_tree(args.data, args.noon, args.night, bw, bl, args.sunset,
+                 args.only_hour, args.only_file, light_keys)
 
 if __name__ == "__main__":
     main()
-
