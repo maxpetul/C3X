@@ -3,12 +3,12 @@ LIGHT_KEY="#00feff"
 HOUR=2400
 
 # Terrain
-python civ3_daynight_simple.py --data "$ART_PATH" --noon "1200" \
-  --night 0.75 --blue-water 0.4 --blue-land 0.4 --sunset 1.0 --light-key "$LIGHT_KEY" #--only-hour "$HOUR"
+#python civ3_daynight_simple.py --data "$ART_PATH" --noon "1200" \
+#  --night 0.75 --blue-water 0.4 --blue-land 0.4 --sunset 1.0 --light-key "$LIGHT_KEY" #--only-hour "$HOUR"
 
 # Cities
-python civ3_daynight_simple.py --data "$ART_PATH" --noon "1200" \
-  --night 0.75 --blue-water 0.4 --blue-land 0.4 --sunset 1.0 --light-key "$LIGHT_KEY" #--only-hour "$HOUR"
+#python civ3_daynight_simple.py --data "$ART_PATH" --noon "1200" \
+#  --night 0.75 --blue-water 0.4 --blue-land 0.4 --sunset 1.0 --light-key "$LIGHT_KEY" #--only-hour "$HOUR"
 
 python civ3_city_lights.py --data "$ART_PATH" --noon "1200" #--only-hour "$HOUR" \
   --light-key "$LIGHT_KEY" \

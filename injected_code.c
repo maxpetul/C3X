@@ -63,6 +63,9 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID 0x222004
 #define PEDIA_MULTIPAGE_PREV_BUTTON_ID 0x222005
 
+#define STRIDE_CULTURE 44
+#define STRIDE_ERA 5
+
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
 
@@ -8894,40 +8897,25 @@ read_in_dir(PCX_Image *img,
         snprintf(store->S, sizeof store->S, "%s", pbuf);
     }
 
-	char ss[200];
 	char temp_path[2*MAX_PATH];
-	//snprintf(ss, sizeof ss, "Reading file in path: %s", pbuf);
-	//pop_up_in_game_error(ss);
 
 	snprintf(temp_path, sizeof temp_path, "%s\\%s", art_dir, filename);
     PCX_Image_read_file(img, __, temp_path, NULL, 0, 0x100, 2);
 
 	if (img->JGL.Image == NULL) {
+		char ss[200];
 		snprintf(ss, sizeof ss, "Failed to load image: %s", temp_path);
 		pop_up_in_game_error(ss);
 	}
 }
 
-void load_day_night_images(struct day_night_cycle_img_set *this, const char *art_dir)
+void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char *art_dir)
 {
 	char ss[200];
     PCX_Image img; 
 	PCX_Image_construct(&img);
 
     // 1) Std terrain (9 sheets): 6x9 of 128x64 over 0x480x0x240
-
-	/*
-	1- xtgc
-	2- xpgc?
-	3- xdpc
-	4- xggc?
-	5- xdgc?
-	6- xdgp
-	7-
-	8-
-	9-
-	*/
-
     const char *STD_SHEETS[9] = {
 		"xtgc.pcx",
 		"xpgc.pcx", 
@@ -9222,6 +9210,7 @@ void load_day_night_images(struct day_night_cycle_img_set *this, const char *art
 	//pop_up_in_game_error(ss);
 
     // Resource shadows
+	/*
     read_in_dir(&img, art_dir, "resources_shadows.pcx", NULL);
     k = 0;
     for (int r = 0, y = 1; r < 6; ++r, y += 50) {
@@ -9229,14 +9218,51 @@ void load_day_night_images(struct day_night_cycle_img_set *this, const char *art
             Sprite_slice_pcx(&this->ResourcesShadows[k++], __, &img, x, y, 49, 49, 1, 1);
         }
     }
+	*/
 
-	//snprintf(ss, sizeof ss, "Completed loading Resource Shadows images");
+	// Base cities
+	static const char *CITY_BASE[5] = {
+        "rAMER.pcx", "rEURO.pcx", "rROMAN.pcx", "rMIDEAST.pcx", "rASIAN.pcx"
+    };
+	for (int culture = 0; culture < 5; culture++) {
+		read_in_dir(&img, art_dir, CITY_BASE[culture], NULL);
+		int y = 0;
+		for (int era = 0; era < 4; ++era, y += 95) {
+			int x = 0;
+			for (int size = 0; size < 3; ++size, x += 167) {
+				//const int idx = i*44 + era*5 + size; // <-- match game layout
+				const int idx = (culture + 5*(era) + 20*(size));
+				Sprite_slice_pcx(&this->Base_City_Images[idx], __, &img, x, y, 167, 95, 1, 1);
+			}
+		}
+	}
+
+	// Walled cities
+    static const char *CITY_WALL[5] = {
+        "AMERWALL.pcx", "EUROWALL.pcx", "ROMANWALL.pcx", "MIDEASTWALL.pcx", "ASIANWALL.pcx"
+    };
+	for (int culture = 0; culture < 5; ++culture) {
+		read_in_dir(&img, art_dir, CITY_WALL[culture], NULL);
+		int y = 0;
+		for (int era = 0; era < 4; ++era, y += 95) {
+			const int idx = ((culture) + 5*(era) + 20*(3));
+			Sprite_slice_pcx(&this->Walled_City_Images[idx], __, &img, 0, y, 167, 95, 1, 1);
+		}
+	}
+	//snprintf(ss, sizeof ss, "Completed loading Walled Cities images");
 	//pop_up_in_game_error(ss);
 
 	img.vtable->destruct (&img, __, 0);
 
 	//snprintf(ss, sizeof ss, "Completed destruct");
 	//pop_up_in_game_error(ss);
+}
+
+void
+load_load_day_night_city_images ()
+{
+	PCX_Image img;
+    PCX_Image_construct(&img);
 }
 
 void
@@ -9330,6 +9356,9 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 		insert_sprite_proxies(mr->LM_Forests_Small_Images, is->day_night_cycle_imgs[h].LM_Forests_Small_Images, h, 10);
 		insert_sprite_proxies(mr->LM_Forests_Pines_Images, is->day_night_cycle_imgs[h].LM_Forests_Pines_Images, h, 12);
 		insert_sprite_proxies(mr->LM_Hills_Images, is->day_night_cycle_imgs[h].LM_Hills_Images, h, 16);
+
+		insert_sprite_proxies(city_sprites_base, is->day_night_cycle_imgs[h].Base_City_Images, h, 220);
+		insert_sprite_proxies(city_sprites_wall, is->day_night_cycle_imgs[h].Walled_City_Images, h, 220);
 	}
 }
 
@@ -9357,7 +9386,7 @@ init_day_night_images()
 
 		char art_dir[200];
 		snprintf(art_dir, sizeof art_dir, "%s\\Art\\NightDay\\Load\\%s", is->mod_rel_dir, hour_strs[i]);
-		load_day_night_images(&is->day_night_cycle_imgs[i], art_dir);
+		load_day_night_hour_images(&is->day_night_cycle_imgs[i], art_dir);
 	}
 
 	snprintf(ss, sizeof ss, "Completed loading Day/Night cycle images");
@@ -9365,17 +9394,6 @@ init_day_night_images()
 
 	Map_Renderer * mr = &p_bic_data->Map.Renderer;
 	build_sprite_proxies_24(mr);
-
-	// Create sprite proxies
-	//for (int i = 0; i < 9; ++i) {
-    //    for (int j = 0; j < 81; ++j) {
-    //        Sprite *s = &mr->Std_Terrain_Images[i].field_0[j];
-    //        for (int h = 0; h < 24; ++h) {
-    //            Sprite *p = &is->day_night_cycle_imgs[h].Std_Terrain_Images[i].field_0[j];
-    //            itable_insert(&is->day_night_sprite_proxy_by_hour[h], kptr(s), kptr(p));
-    //        }
-    //    }
-    //}
 
 	snprintf(ss, sizeof ss, "Completed creating sprite proxies for Day/Night cycle");
 	pop_up_in_game_error(ss);
@@ -12877,6 +12895,15 @@ patch_Tile_check_water_for_navigator_cell_coloring (Tile * this)
 		return this->vtable->m35_Check_Is_Water (this);
 	else
 		return 0;
+}
+
+Sprite *
+get_city_sprite(int culture, int era, int size, int walls) {
+    if (!walls) {
+        return &city_sprites_base[culture*STRIDE_CULTURE + era*STRIDE_ERA + size];
+    } else {
+        return &city_sprites_wall[culture*STRIDE_CULTURE + era*STRIDE_ERA + 0];
+    }
 }
 
 // TCC requires a main function be defined even though it's never used.
