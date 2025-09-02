@@ -9191,8 +9191,8 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 	//pop_up_in_game_error(ss);
 
     // 22) Victory (single 128x64)
-	read_in_dir(&img, art_dir, "x_victory.pcx", NULL);
-    Sprite_slice_pcx(&this->Victory_Image, __, &img, 0, 0, 0x80, 0x40, 1, 1);
+	// read_in_dir(&img, art_dir, "x_victory.pcx", NULL);
+    // Sprite_slice_pcx(&this->Victory_Image, __, &img, 0, 0, 0x80, 0x40, 1, 1);
 
 	//snprintf(ss, sizeof ss, "Completed loading Victory images");
 	//pop_up_in_game_error(ss);
@@ -9302,10 +9302,13 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 	Sprite *p;
 
 	for (int h = 0; h < 24; ++h) {
+		insert_sprite_proxies(city_sprites_base, is->day_night_cycle_imgs[h].Base_City_Images, h, 80);
+		insert_sprite_proxies(city_sprites_wall, is->day_night_cycle_imgs[h].Walled_City_Images, h, 80);
 		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
 		insert_spritelist_proxies(mr->LM_Terrain_Images, is->day_night_cycle_imgs[h].LM_Terrain_Images, h, 9, 81);
 		insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &is->day_night_cycle_imgs[h].Terrain_Buldings_Barbarian_Camp, h);
 		insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &is->day_night_cycle_imgs[h].Terrain_Buldings_Mines, h);
+		insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &is->day_night_cycle_imgs[h].Terrain_Buldings_Radar, h);
 		insert_sprite_proxies(mr->Flood_Plains_Images, is->day_night_cycle_imgs[h].Flood_Plains_Images, h, 16);
 		insert_sprite_proxies(mr->Polar_Icecaps_Images, is->day_night_cycle_imgs[h].Polar_Icecaps_Images, h, 32);
 		insert_sprite_proxies(mr->Roads_Images, is->day_night_cycle_imgs[h].Roads_Images, h, 256);
@@ -9317,7 +9320,6 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 		insert_sprite_proxies(mr->Terrain_Buldings_Outposts, is->day_night_cycle_imgs[h].Terrain_Buldings_Outposts, h, 3);
 		insert_sprite_proxies(mr->Pollution, is->day_night_cycle_imgs[h].Pollution, h, 25);
 		insert_sprite_proxies(mr->Craters, is->day_night_cycle_imgs[h].Craters, h, 25);
-		insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &is->day_night_cycle_imgs[h].Terrain_Buldings_Radar, h);
 		insert_sprite_proxies(mr->Tnt_Images, is->day_night_cycle_imgs[h].Tnt_Images, h, 18);
 		insert_sprite_proxies(mr->Waterfalls_Images, is->day_night_cycle_imgs[h].Waterfalls_Images, h, 4);
 		insert_sprite_proxies(mr->LM_Terrain, is->day_night_cycle_imgs[h].LM_Terrain, h, 7);
@@ -9356,18 +9358,15 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 		insert_sprite_proxies(mr->LM_Forests_Small_Images, is->day_night_cycle_imgs[h].LM_Forests_Small_Images, h, 10);
 		insert_sprite_proxies(mr->LM_Forests_Pines_Images, is->day_night_cycle_imgs[h].LM_Forests_Pines_Images, h, 12);
 		insert_sprite_proxies(mr->LM_Hills_Images, is->day_night_cycle_imgs[h].LM_Hills_Images, h, 16);
-
-		insert_sprite_proxies(city_sprites_base, is->day_night_cycle_imgs[h].Base_City_Images, h, 220);
-		insert_sprite_proxies(city_sprites_wall, is->day_night_cycle_imgs[h].Walled_City_Images, h, 220);
 	}
 }
 
 void
 init_day_night_images()
 {
-	char ss[200];
-	snprintf(ss, sizeof ss, "init_day_night_images");
-	pop_up_in_game_error(ss);
+	//char ss[200];
+	//snprintf(ss, sizeof ss, "init_day_night_images");
+	//pop_up_in_game_error(ss);
 
 	if (is->day_night_cycle_img_state != IS_UNINITED)
 		return;
@@ -9385,18 +9384,18 @@ init_day_night_images()
 		//pop_up_in_game_error(ss);
 
 		char art_dir[200];
-		snprintf(art_dir, sizeof art_dir, "%s\\Art\\NightDay\\Load\\%s", is->mod_rel_dir, hour_strs[i]);
+		snprintf(art_dir, sizeof art_dir, "%s\\Art\\NightDay\\%s", is->mod_rel_dir, hour_strs[i]);
 		load_day_night_hour_images(&is->day_night_cycle_imgs[i], art_dir);
 	}
 
-	snprintf(ss, sizeof ss, "Completed loading Day/Night cycle images");
-	pop_up_in_game_error(ss);
+	//snprintf(ss, sizeof ss, "Completed loading Day/Night cycle images");
+	//pop_up_in_game_error(ss);
 
 	Map_Renderer * mr = &p_bic_data->Map.Renderer;
 	build_sprite_proxies_24(mr);
 
-	snprintf(ss, sizeof ss, "Completed creating sprite proxies for Day/Night cycle");
-	pop_up_in_game_error(ss);
+	//snprintf(ss, sizeof ss, "Completed creating sprite proxies for Day/Night cycle");
+	//pop_up_in_game_error(ss);
 
 	is->day_night_cycle_img_state = IS_OK;
 }

@@ -1,10 +1,10 @@
-ART_PATH="/c/Program Files (x86)/GOG Galaxy/Games/Civilization III Complete/Conquests/C3X_Districts/Art/NightDay/Load"
+ART_PATH="/c/Program Files (x86)/GOG Galaxy/Games/Civilization III Complete/Conquests/C3X_Districts/Art/NightDay"
 LIGHT_KEY="#00feff"
 HOUR=2400
 
 # Terrain
-#python civ3_daynight_simple.py --data "$ART_PATH" --noon "1200" \
-#  --night 0.75 --blue-water 0.4 --blue-land 0.4 --sunset 1.0 --light-key "$LIGHT_KEY" #--only-hour "$HOUR"
+python civ3_daynight_simple.py --data "$ART_PATH" --noon "1200" \
+  --night 0.75 --blue-water 0.4 --blue-land 0.4 --sunset 1.0 --light-key "$LIGHT_KEY" #--only-hour "$HOUR"
 
 # Cities
 #python civ3_daynight_simple.py --data "$ART_PATH" --noon "1200" \
@@ -42,9 +42,9 @@ python civ3_city_lights.py --data "$ART_PATH" --noon "1200" #--only-hour "$HOUR"
 #cp "$ORIG_TERRAIN_PATH/Territory.pcx" "$CURRENT_TERRAIN_PATH"
 
 # Copy 'Territory.pcx' from '1200' to every other folder
-for dir in "$ART_PATH"/[0-9][0-9][0-9][0-9]; do
-  if [ "$dir" != "$ART_PATH/1200" ]; then
-    echo "Copying '$ART_PATH/1200/Territory.pcx' -> '$dir/Territory.pcx'..."
-    cp "$ART_PATH/1200/Territory.pcx" "$dir"
-  fi
-done
+#for dir in "$ART_PATH"/[0-9][0-9][0-9][0-9]; do
+#  if [ "$dir" != "$ART_PATH/1200" ]; then
+#    echo "Copying '$ART_PATH/1200/Territory.pcx' -> '$dir/Territory.pcx'..."
+#    cp "$ART_PATH/1200/Territory.pcx" "$dir"
+#  fi
+#done
