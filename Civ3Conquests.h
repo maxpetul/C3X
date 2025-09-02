@@ -6277,7 +6277,7 @@ struct PopupFormVTable
 	void * unk0[91];
 	void (__fastcall * set_text_key_and_flags) (PopupForm *, __, char *, char *, int, int, int, int);
 	void * unk1[10];
-	int (__fastcall * do_show_popup) (PopupForm *);
+	int (__fastcall * begin_showing_popup) (PopupForm *);
 	void * unk2[3];
 };
 

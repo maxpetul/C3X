@@ -12314,7 +12314,7 @@ is_skippable_popup (char * text_key)
 				   "TRADEEMBARGOENDS", // embargo vs player ends
 				   "SUMMARY_CIV_DESTROYED_BY_CIV", "SUMMARY_CIV_DESTROYED", // foreign civs destroyed not by player
 				   "LOSTGOOD", // 'We lost our supply of ...!'
-				   "TRADEEMBARGO", "MILITARYALLIANCEWARONUS", // temporary
+				   "TRADEEMBARGO", "MILITARYALLIANCEWARONUS", // trade embargo or alliance vs player
 				   "SUMMARY_TRAVELERS_REPORT"}; // another civs starts a wonder
 
 	for (int n = 0; n < ARRAY_LEN (skippable_keys); n++)
@@ -12324,10 +12324,10 @@ is_skippable_popup (char * text_key)
 }
 
 int __fastcall
-patch_PopupForm_impl_do_show_popup (PopupForm * this)
+patch_PopupForm_impl_begin_showing_popup (PopupForm * this)
 {
 	if (! is_skippable_popup (this->text_key))
-		return PopupForm_impl_do_show_popup (this);
+		return PopupForm_impl_begin_showing_popup (this);
 
 	else {
 		unsigned saved_prefs = *p_preferences;
@@ -12335,10 +12335,14 @@ patch_PopupForm_impl_do_show_popup (PopupForm * this)
 
 		*p_preferences |= P_SHOW_FEWER_MP_POPUPS;
 		this->field_1BF0[0xE4] |= 0x4000;
-		int tr = PopupForm_impl_do_show_popup (this);
+		int tr = PopupForm_impl_begin_showing_popup (this);
+
+		*(bool *)(p_main_screen_form->animator.field_18E4 + 10) = true; // Set what must be a dirty flag
+		Animator_update (&p_main_screen_form->animator); // Make sure message appears
 
 		this->field_1BF0[0xE4] = saved_flags;
 		*p_preferences = saved_prefs;
+
 		return tr;
 	}
 }
