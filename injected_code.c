@@ -12305,10 +12305,28 @@ patch_Tile_check_water_for_navigator_cell_coloring (Tile * this)
 		return 0;
 }
 
+bool
+is_skippable_popup (char * text_key)
+{
+	char * skippable_keys[] = {"SUMMARY_END_GOLDEN_AGE", "SUMMARY_END_SCIENCE_AGE", "SUMMARY_NEW_SMALL_WONDER", // unimportant domestic things
+				   "WONDERPRODUCE", // another civ completed a wonder
+				   "MAKEPEACE", "MUTUALPROTECTIONPACT", "MILITARYALLIANCE", "SUMMARY_DECLARE_WAR", // diplo events not involving the player
+				   "TRADEEMBARGOENDS", // embargo vs player ends
+				   "SUMMARY_CIV_DESTROYED_BY_CIV", "SUMMARY_CIV_DESTROYED", // foreign civs destroyed not by player
+				   "LOSTGOOD", // 'We lost our supply of ...!'
+				   "TRADEEMBARGO", "MILITARYALLIANCEWARONUS", // temporary
+				   "SUMMARY_TRAVELERS_REPORT"}; // another civs starts a wonder
+
+	for (int n = 0; n < ARRAY_LEN (skippable_keys); n++)
+		if (strcmp (text_key, skippable_keys[n]) == 0)
+			return true;
+	return false;
+}
+
 int __fastcall
 patch_PopupForm_impl_do_show_popup (PopupForm * this)
 {
-	if (strcmp (this->text_key, "HURRY_NOT_ENOUGH_GOLD") != 0)
+	if (! is_skippable_popup (this->text_key))
 		return PopupForm_impl_do_show_popup (this);
 
 	else {
