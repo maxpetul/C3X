@@ -60,7 +60,8 @@ def parse_styles(values: List[str]) -> Dict[Tuple[int,int,int], Dict[str,object]
         if "core" in kv: entry["core_color"] = parse_rgb_one(kv["core"])
         if "glow" in kv: entry["glow_color"] = parse_rgb_one(kv["glow"])
         for numk in ["core_gain","halo_gain","core_radius","halo_radius","halo_sep","halo_gamma","highlight","size_boost","size_radius","size_gamma"]:
-            if numk in kv: entry[numk] = float(kv[numk])
+            if numk in kv: 
+                entry[numk] = float(kv[numk])
         styles[key_rgb] = entry
     return styles
 
