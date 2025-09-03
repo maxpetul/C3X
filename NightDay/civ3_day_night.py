@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """
-civ3_daynight_pcx.py — v4 (half-hour increments)
+civ3_daynight_pcx.py — v4.3 (stronger nighttime blue + stable noon-neutral zone)
 
-Adds --step-minutes to generate time slices every N minutes (default 60).
-Typical use for half-hour steps: --step-minutes 30
+Highlights:
+- Half-hour (or any divisor of an hour) time slices via --step-minutes.
+- Green→Magenta index remap (on by default).
+- Palette-only tinting; indices preserved (except the optional index remap).
+- Noon-neutral zone keeps ~10:00–14:00 close to base 1200.
+- NEW: Stronger nighttime blue response using the existing --blue knob,
+       with an additional night-only hue shift (blue up, red/green down).
 
-Examples:
-  # Half-hour outputs (0030..2330 + 2400), leave 1200 as base
-  python civ3_daynight_pcx.py --data NightDay --step-minutes 30
-
-  # Debug a single slice
-  python civ3_daynight_pcx.py --data NightDay --step-minutes 30 --only-hour 1930
+Tested knobs (your current favorites work unchanged):
+  --warmth 1.05  --blue 2.0 --darkness 1.1 --desat 0.85 --sat 1.2 --contrast 1.08
+  --sunrise-center 5.0 --sunset-center 18.0 --twilight-width 3.0
+  --noon-blend 0.7 --noon-sigma 1.0
 """
 
 import argparse
@@ -41,7 +44,7 @@ def parse_rgb(s: str) -> Tuple[int, int, int]:
 def time_labels(step_minutes: int) -> List[str]:
     """
     Generate HHMM labels from step to 23:59 stepwise; exclude 0000; add 2400.
-    For step=60: 0100..2300 + 2400  (back-compat)
+    For step=60: 0100..2300 + 2400
     For step=30: 0030, 0100, 0130..2330 + 2400
     """
     if step_minutes <= 0 or 60 % step_minutes != 0:
@@ -66,6 +69,8 @@ def clamp_byte(x: float) -> int:
 
 def _gauss(x: float, mu: float, sigma: float) -> float:
     from math import exp
+    if sigma <= 0.0:
+        return 0.0
     return exp(-0.5 * ((x - mu) / sigma) ** 2)
 
 
@@ -82,33 +87,40 @@ def hour_adjustments(
 ) -> dict:
     """
     hour_value can be fractional (e.g., 19.5 for 19:30). Period is 24h.
+    Returns a dict with per-channel multipliers, gray blend, brightness,
+    and 'night' + 'blue_push' factors for night-only hue shift.
     """
     from math import cos, pi
 
-    # Wrap to [0,24)
     h = hour_value % 24.0
 
-    # Daylight: peak noon, low midnight (cosine)
+    # Daylight (cosine): 1 at noon, ~0 at midnight
     daylight = max(0.0, cos(pi * (h - 12.0) / 12.0))  # 0..1
+    night = 1.0 - daylight
 
     # Warmth around sunrise/sunset
     warmth = 0.85 * (_gauss(h, sunrise_center, twilight_sigma) +
                      _gauss(h, sunset_center, twilight_sigma))
     warmth *= warmth_scale
 
-    night = 1.0 - daylight
-
     # Brightness: darker at night; scaled by darkness_scale (>1 = darker nights)
     base_brightness = 0.60 + 0.40 * daylight
     night_darkening = 1.0 - (0.12 * (darkness_scale - 1.0) * night)
     brightness = base_brightness * night_darkening
 
+    # Channel multipliers
     r_mul = 0.97 + 0.12 * daylight + 0.30 * warmth
     g_mul = 0.97 + 0.12 * daylight + 0.12 * warmth
     b_mul = 0.97 + 0.12 * daylight - 0.18 * warmth + (0.28 * blue_scale) * night
 
+    # Desaturation (toward gray) stronger at night; scaled by desat_scale
     gray_blend = (0.10 + 0.50 * night) * desat_scale
     gray_blend = min(max(gray_blend, 0.0), 0.85)
+
+    # Night-only blue push factor (extra hue shift at night)
+    #  - grows with (blue_scale - 1) and with 'night'
+    #  - kept separate from b_mul so daytime remains unchanged
+    blue_push = max(0.0, blue_scale - 1.0) * night  # 0 at day, up to (blue-1) at night
 
     # Clamp gentle bounds
     r_mul = min(max(r_mul, 0.65), 1.45)
@@ -121,6 +133,8 @@ def hour_adjustments(
         g_mul=g_mul,
         b_mul=b_mul,
         gray_blend=gray_blend,
+        night=night,
+        blue_push=blue_push,
     )
 
 
@@ -138,6 +152,28 @@ def _apply_contrast(rgb: Tuple[float, float, float], contrast: float) -> Tuple[f
     r = 128 + (r - 128) * contrast
     g = 128 + (g - 128) * contrast
     b = 128 + (b - 128) * contrast
+    return r, g, b
+
+
+def _apply_night_blue_push(
+    rgb: Tuple[float, float, float],
+    blue_push: float,
+) -> Tuple[float, float, float]:
+    """
+    Extra night-only hue shift:
+      - Slightly reduces R and G
+      - Increases B
+    'blue_push' is ~ (blue_scale - 1) * night, so this is zero in daytime.
+    Coefficients tuned to be visible but not cartoonish; adjust if needed.
+    """
+    if blue_push <= 0.0:
+        return rgb
+    r, g, b = rgb
+    c = blue_push  # c in [0..(blue-1)] scaled by night
+    # Gentle but noticeable: at c=1 (e.g., --blue 2.0 at full night)
+    r *= (1.0 - 0.15 * c)
+    g *= (1.0 - 0.10 * c)
+    b *= (1.0 + 0.35 * c)
     return r, g, b
 
 
@@ -159,10 +195,104 @@ def tint_rgb(
     g_f = (1 - t) * g_f + t * gray
     b_f = (1 - t) * b_f + t * gray
 
+    # Global saturation, then extra night-only blue hue push, then contrast
     r_f, g_f, b_f = _apply_saturation((r_f, g_f, b_f), sat_boost)
+    r_f, g_f, b_f = _apply_night_blue_push((r_f, g_f, b_f), params.get("blue_push", 0.0))
     r_f, g_f, b_f = _apply_contrast((r_f, g_f, b_f), contrast)
 
     return (clamp_byte(r_f), clamp_byte(g_f), clamp_byte(b_f))
+
+
+# --------------------------- Noon-neutral weighting ---------------------------
+
+def _smoothstep01(t: float) -> float:
+    """Cubic smoothstep on [0,1]."""
+    if t <= 0.0:
+        return 0.0
+    if t >= 1.0:
+        return 1.0
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _interval_membership(x: float, a: float, b: float, soft: float) -> float:
+    """
+    Smooth membership of time-of-day x (0..24) inside interval [a,b] (hours),
+    with soft edge width 'soft' (hours). Supports wrapped intervals (a>b).
+    Returns 0..1.
+    """
+    x = x % 24.0
+    a = a % 24.0
+    b = b % 24.0
+    soft = max(0.0, soft)
+
+    def segment_membership(x: float, s: float, e: float, soft: float) -> float:
+        # Non-wrapped segment s <= e in [0,24]
+        if soft <= 0.0:
+            return 1.0 if (s <= x <= e) else 0.0
+
+        # Left ramp [s-soft, s]
+        if s - soft <= x < s:
+            t = (x - (s - soft)) / soft  # 0..1
+            return _smoothstep01(t)
+
+        # Core [s, e]
+        if s <= x <= e:
+            return 1.0
+
+        # Right ramp [e, e+soft]
+        if e < x <= e + soft:
+            t = (x - e) / soft  # 0..1
+            return 1.0 - _smoothstep01(t)
+
+        return 0.0
+
+    if a <= b:
+        return segment_membership(x, a, b, soft)
+    else:
+        # Wrapped interval: union of [a,24) and [0,b]
+        m1 = segment_membership(x, a, 24.0, soft)
+        m2 = segment_membership(x, 0.0, b, soft)
+        return max(m1, m2)
+
+
+def _noon_weight(hour_value: float, blend: float, sigma: float,
+                 w_start: float, w_end: float, w_soft: float) -> float:
+    """
+    Combined noon weight in 0..1:
+      - Gaussian around 12:00 with width 'sigma' (hours), scaled by 'blend'.
+      - Smooth interval window [w_start, w_end] with soft edges 'w_soft',
+        also scaled by 'blend'.
+      - The final weight is max of both components, clamped 0..1.
+    """
+    try:
+        h = hour_value % 24.0
+    except Exception:
+        h = 0.0
+    blend = float(blend) if blend is not None else 0.0
+    sigma = float(sigma) if sigma is not None else 0.0
+    w_start = float(w_start) if w_start is not None else 10.0
+    w_end = float(w_end) if w_end is not None else 14.0
+    w_soft = max(0.0, float(w_soft) if w_soft is not None else 0.7)
+
+    if blend <= 0.0:
+        return 0.0
+
+    # Gaussian around noon
+    from math import exp
+    d = abs(h - 12.0)
+    d = min(d, 24.0 - d)
+    g = exp(-0.5 * (d / sigma) ** 2) if sigma > 0.0 else 0.0
+    g *= blend
+
+    # Smooth window
+    window_m = _interval_membership(h, w_start, w_end, w_soft) * blend
+
+    w = max(g, window_m)
+    if w < 0.0:
+        return 0.0
+    if w > 1.0:
+        return 1.0
+    return w
 
 
 # --------------------------- Palette helpers ---------------------------
@@ -198,6 +328,7 @@ def adjust_palette_for_time(
     hour_value: float,
     reserved_colors: Iterable[Tuple[int, int, int]],
     *,
+    # look controls
     warmth_scale: float,
     blue_scale: float,
     darkness_scale: float,
@@ -207,6 +338,12 @@ def adjust_palette_for_time(
     sunrise_center: float,
     sunset_center: float,
     twilight_sigma: float,
+    # noon neutral zone controls
+    noon_blend: float,
+    noon_sigma: float,
+    noon_window_start: float,
+    noon_window_end: float,
+    noon_window_soft: float,
 ) -> List[int]:
     params = hour_adjustments(
         hour_value,
@@ -220,6 +357,16 @@ def adjust_palette_for_time(
     )
     reserved = set(reserved_colors)
 
+    # Noon weight (0..1): stronger near 10:00–14:00, peak at 12:00
+    noon_w = _noon_weight(
+        hour_value, noon_blend, noon_sigma,
+        noon_window_start, noon_window_end, noon_window_soft
+    )
+
+    # Damp sat/contrast near noon to avoid “pop”
+    sat_eff = 1.0 + (sat_boost - 1.0) * (1.0 - noon_w)
+    contrast_eff = 1.0 + (contrast - 1.0) * (1.0 - noon_w)
+
     out = pal[:]  # copy
     for i in range(256):
         r, g, b = pal[3 * i:3 * i + 3]
@@ -231,7 +378,14 @@ def adjust_palette_for_time(
             out[3 * i + 2] = b
             continue
 
-        nr, ng, nb = tint_rgb(rgb, params, sat_boost=sat_boost, contrast=contrast)
+        nr, ng, nb = tint_rgb(rgb, params, sat_boost=sat_eff, contrast=contrast_eff)
+
+        if noon_w > 0.0:
+            # Blend back toward the original (noon) palette color at the SAME index
+            nr = int(round((1.0 - noon_w) * nr + noon_w * r))
+            ng = int(round((1.0 - noon_w) * ng + noon_w * g))
+            nb = int(round((1.0 - noon_w) * nb + noon_w * b))
+
         out[3 * i + 0] = nr
         out[3 * i + 1] = ng
         out[3 * i + 2] = nb
@@ -276,6 +430,7 @@ def process_time_label(
     reserved_colors: Iterable[Tuple[int, int, int]],
     *,
     do_index_remap: bool,
+    # look controls
     warmth_scale: float,
     blue_scale: float,
     darkness_scale: float,
@@ -285,6 +440,12 @@ def process_time_label(
     sunrise_center: float,
     sunset_center: float,
     twilight_sigma: float,
+    # noon neutral controls
+    noon_blend: float,
+    noon_sigma: float,
+    noon_window_start: float,
+    noon_window_end: float,
+    noon_window_soft: float,
 ) -> None:
     noon_dir = base_dir / noon_label
     out_dir = base_dir / label
@@ -312,6 +473,11 @@ def process_time_label(
                 sunrise_center=sunrise_center,
                 sunset_center=sunset_center,
                 twilight_sigma=twilight_sigma,
+                noon_blend=noon_blend,
+                noon_sigma=noon_sigma,
+                noon_window_start=noon_window_start,
+                noon_window_end=noon_window_end,
+                noon_window_soft=noon_window_soft,
             )
             set_palette(im, new_pal)
             im.save(pcx_path, format="PCX")
@@ -320,7 +486,7 @@ def process_time_label(
 # --------------------------- Main ---------------------------
 
 def main():
-    p = argparse.ArgumentParser(description="Civ3 PCX day/night generator with variable time steps.")
+    p = argparse.ArgumentParser(description="Civ3 PCX day/night generator with variable time steps and noon-neutral zone.")
     p.add_argument("--data", required=True,
                    help="Parent folder containing the noon folder and sibling time folders (e.g., NightDay).")
     p.add_argument("--noon", default="1200",
@@ -333,7 +499,7 @@ def main():
     p.add_argument("--light-key", action="append", default=[],
                    help="Reserved color that must not change. Repeatable. '#RRGGBB' or 'R,G,B'.")
 
-    # Look/feel controls (same defaults as v3)
+    # Look/feel controls
     p.add_argument("--warmth", type=float, default=1.10,
                    help="Scale for sunrise/sunset warmth (1.0 = base).")
     p.add_argument("--blue", type=float, default=1.12,
@@ -354,6 +520,18 @@ def main():
                    help="Hour center for sunset warmth bump (0-23).")
     p.add_argument("--twilight-width", type=float, default=1.8,
                    help="Sigma for sunrise/sunset warmth spread (higher = broader).")
+
+    # Noon-neutral zone controls (defaults keep ~10:00–14:00 close to noon)
+    p.add_argument("--noon-blend", type=float, default=0.85,
+                   help="0..1 strength to blend toward base palette near 12:00 (0=off).")
+    p.add_argument("--noon-sigma", type=float, default=1.1,
+                   help="Gaussian width (hours) around 12:00 (larger = broader).")
+    p.add_argument("--noon-window-start", type=float, default=10.0,
+                   help="Start hour of the noon-like window (default 10.0).")
+    p.add_argument("--noon-window-end", type=float, default=14.0,
+                   help="End hour of the noon-like window (default 14.0).")
+    p.add_argument("--noon-window-soft", type=float, default=0.7,
+                   help="Soft edge (hours) for window ramps (0=hard).")
 
     # Index remap control
     g = p.add_mutually_exclusive_group()
@@ -377,7 +555,7 @@ def main():
     # Determine remap behavior (default ON)
     do_index_remap = not args.keep_green_index or args.map_green_index
 
-    # Build time labels for the given step, then exclude noon folder
+    # Build time labels for the given step, then exclude noon folder itself
     labels = [lbl for lbl in time_labels(args.step_minutes) if lbl != args.noon]
 
     # only-hour (accept 0000 -> 2400)
@@ -410,6 +588,11 @@ def main():
             sunrise_center=args.sunrise_center,
             sunset_center=args.sunset_center,
             twilight_sigma=args.twilight_width,
+            noon_blend=args.noon_blend,
+            noon_sigma=args.noon_sigma,
+            noon_window_start=args.noon_window_start,
+            noon_window_end=args.noon_window_end,
+            noon_window_soft=args.noon_window_soft,
         )
 
     print("Done.")

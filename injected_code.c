@@ -8917,52 +8917,27 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 
     // 1) Std terrain (9 sheets): 6x9 of 128x64 over 0x480x0x240
     const char *STD_SHEETS[9] = {
-		"xtgc.pcx",
-		"xpgc.pcx", 
-		"xdgc.pcx",
-		"xdpc.pcx",
-		"xdgp.pcx",
-		"xggc.pcx",
-
-		"wCSO.pcx",
-		"wSSS.pcx",
-		"wOOO.pcx"
+		"xtgc.pcx", "xpgc.pcx", "xdgc.pcx", "xdpc.pcx", "xdgp.pcx", "xggc.pcx",
+		"wCSO.pcx", "wSSS.pcx", "wOOO.pcx"
 	};
     for (int i = 0; i < 9; ++i) {
     	read_in_dir(&img, art_dir, STD_SHEETS[i], NULL);
         slice_grid_into_list(&this->Std_Terrain_Images[i], &img, 0x80, 0x40, 0x480, 0x240);
     }
-
-	//snprintf(ss, sizeof ss, "Completed loading Standard Terrain images");
-	//pop_up_in_game_error(ss);
 	
     // 2) LM terrain (9): same slicing
 	const char *LMT_SHEETS[9] = {
-		"lxtgc.pcx",
-		"lxpgc.pcx",
-		"lxdgc.pcx",
-		"lxdpc.pcx",
-		"lxdgp.pcx",
-		"lxggc.pcx",
-
-		"lwCSO.pcx",
-		"lwSSS.pcx",
-		"lwOOO.pcx"
+		"lxtgc.pcx", "lxpgc.pcx", "lxdgc.pcx", "lxdpc.pcx", "lxdgp.pcx", "lxggc.pcx",
+		"lwCSO.pcx", "lwSSS.pcx", "lwOOO.pcx"
 	};
     for (int i = 0; i < 9; ++i) {
 		read_in_dir(&img, art_dir, LMT_SHEETS[i], NULL);
         slice_grid_into_list(&this->LM_Terrain_Images[i], &img, 0x80, 0x40, 0x480, 0x240);
     }
 
-	//snprintf(ss, sizeof ss, "Completed loading LM Terrain images");
-	//pop_up_in_game_error(ss);
-
     // 3) Polar icecaps: 8x4 of 128x64
 	read_in_dir(&img, art_dir, "polarICEcaps-final.pcx", NULL);
     slice_grid(this->Polar_Icecaps_Images, &img, 0x80, 0x40, 0x400, 0x100);
-
-	//snprintf(ss, sizeof ss, "Completed loading Polar Icecaps images");
-	//pop_up_in_game_error(ss);
 
     // 4) Hills / LM Hills: 4x3 of 128x72
 	read_in_dir(&img, art_dir, "xhills.pcx", NULL);
@@ -8974,15 +8949,9 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     read_in_dir(&img, art_dir, "LMHills.pcx", NULL);
     slice_grid(this->LM_Hills_Images, &img, 0x80, 0x48, 0x200, 0x120);
 
-	//snprintf(ss, sizeof ss, "Completed loading LM Hills images");
-	//pop_up_in_game_error(ss);
-
     // 5) Flood plains: 4x4 of 128x64
 	read_in_dir(&img, art_dir, "floodplains.pcx", NULL);
     slice_grid(this->Flood_Plains_Images, &img, 0x80, 0x40, 0x200, 0x100);
-
-	//snprintf(ss, sizeof ss, "Completed loading Flood Plains images");
-	//pop_up_in_game_error(ss);
 
     // 6) Delta + Mountain rivers: 4x4 each, interleaved across one contiguous block
     {
@@ -8999,15 +8968,9 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
         }
     }
 
-	//snprintf(ss, sizeof ss, "Completed loading River images");
-	//pop_up_in_game_error(ss);
-
     // 7) Waterfalls: 4x1 of 128x64
 	read_in_dir(&img, art_dir, "waterfalls.pcx", NULL);
     slice_grid(this->Waterfalls_Images, &img, 0x80, 0x40, 0x200, 0x40);
-
-	//snprintf(ss, sizeof ss, "Completed loading Waterfalls images");
-	//pop_up_in_game_error(ss);
 
     // 8) Irrigation (desert/plains/normal/tundra): each 4x4 of 128x64
     read_in_dir(&img, art_dir, "irrigation DESETT.pcx", NULL);
@@ -9019,9 +8982,6 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     read_in_dir(&img, art_dir, "irrigation TUNDRA.pcx", NULL);
     slice_grid(this->Irrigation_Tundra_Images, &img, 0x80, 0x40, 0x200, 0x100);
 
-	//snprintf(ss, sizeof ss, "Completed loading Irrigation images");
-	//pop_up_in_game_error(ss);
-
     // 9) Volcanos (plain/forests/jungles/snow): 4x4 of 128x88
 	read_in_dir(&img, art_dir, "Volcanos.pcx", NULL);
     slice_grid(this->Volcanos_Images, &img, 0x80, 0x58, 0x200, 0x160);
@@ -9032,9 +8992,6 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     read_in_dir(&img, art_dir, "Volcanos-snow.pcx", NULL);
     slice_grid(this->Volcanos_Snow_Images, &img, 0x80, 0x58, 0x200, 0x160);
 
-	//snprintf(ss, sizeof ss, "Completed loading Volcanos images");
-	//pop_up_in_game_error(ss);
-
     // 10) Marsh: Large band then Small band (tiles 128x88)
     read_in_dir(&img, art_dir, "marsh.pcx", NULL);
     // Large (2 rows, 4 cols)
@@ -9043,9 +9000,6 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     // Small (2 rows, 5 cols)
     { int k=0; for (int y=0xb0; y<0x160; y+=0x58) for (int x=0; x<0x280; x+=0x80)
         Sprite_slice_pcx(&this->Marsh_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-
-	//snprintf(ss, sizeof ss, "Completed loading Marsh images");
-	//pop_up_in_game_error(ss);
 
     // 11) LM mountains + standard mountains (plain/forests/jungles/snow): 4x4 of 128x88
     read_in_dir(&img, art_dir, "LMMountains.pcx", NULL);
@@ -9059,22 +9013,11 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     read_in_dir(&img, art_dir, "Mountains-snow.pcx", NULL);
     slice_grid(this->Mountains_Snow_Images, &img, 0x80, 0x58, 0x200, 0x160);
 
-	//snprintf(ss, sizeof ss, "Completed loading Mountains images");
-	//pop_up_in_game_error(ss);
-
     // 12) Roads (16x16) and Railroads (16x17), tiles 128x64
     read_in_dir(&img, art_dir, "roads.pcx", NULL);
     slice_grid(this->Roads_Images, &img, 0x80, 0x40, 0x800, 0x400);
     read_in_dir(&img, art_dir, "railroads.pcx", NULL);
     slice_grid(this->Railroads_Images, &img, 0x80, 0x40, 0x800, 0x440);
-
-	//snprintf(ss, sizeof ss, "Completed loading Roads and Railroads images");
-	//pop_up_in_game_error(ss);
-
-    // 13) Territory (2x3) tiles 128x72 (fills 6 of 8)
-    //READ_IN_DIR(img, art_dir, ART("Territory.pcx"), this->PCX_Territory);
-    //{ int k=0; for (int y=0; y<0x120; y+=0x48) for (int x=0; x<0x100; x+=0x80)
-    //    Sprite_slice_pcx(&this->Territory_Images[k++], &img, x, y, 0x80, 0x48, 1, 1); }
 
     // 14) LM Forests (Large 2x4, Small 2x6, Pines 2x6), tiles 128x88
 	read_in_dir(&img, art_dir, "LMForests.pcx", NULL);
@@ -9084,9 +9027,6 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
         Sprite_slice_pcx(&this->LM_Forests_Small_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
     { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x300; x+=0x80)
         Sprite_slice_pcx(&this->LM_Forests_Pines_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-
-	//snprintf(ss, sizeof ss, "Completed loading LM Forests images");
-	//pop_up_in_game_error(ss);
 
     // 15) Grassland/Plains/Tundra forests & jungles (bands; tiles 128x88) — order is important
 	read_in_dir(&img, art_dir, "grassland forests.pcx", NULL);
@@ -9119,16 +9059,10 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     { int k=0; for (int y=0x2c0; y<0x370; y+=0x58) for (int x=0; x<0x300; x+=0x80)
         Sprite_slice_pcx(&this->Tundra_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
 
-	//snprintf(ss, sizeof ss, "Completed loading Tundra Forests images");
-	//pop_up_in_game_error(ss);
-
     // 16) LM Terrain (7 single 128x64, vertical strip)
 	read_in_dir(&img, art_dir, "landmark_terrain.pcx", NULL);
     for (int i = 0, y = 0; i < 7; ++i, y += 0x40)
         Sprite_slice_pcx(&this->LM_Terrain[i], __, &img, 0, y, 0x80, 0x40, 1, 1);
-
-	//snprintf(ss, sizeof ss, "Completed loading LM Terrain images");
-	//pop_up_in_game_error(ss);
 
     // 17) TNT (same funky ordering as original)
 	read_in_dir(&img, art_dir, "tnt.pcx", NULL);
@@ -9139,9 +9073,6 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[15+i], __, &img, x, 0x100, 0x80, 0x40, 1, 1);
     for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[3+i],  __, &img, x, 0x140, 0x80, 0x40, 1, 1);
 
-	//snprintf(ss, sizeof ss, "Completed loading TNT images");
-	//pop_up_in_game_error(ss);
-
     // 18) Goody huts: 8 tiles, x=(i%3)*0x80, y=(i/3)*0x40
 	read_in_dir(&img, art_dir, "goodyhuts.pcx", NULL);
     for (int i = 0; i < 8; ++i) {
@@ -9149,9 +9080,6 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
         int y = (i / 3) << 6;
         Sprite_slice_pcx(&this->Goody_Huts_Images[i], __, &img, x, y, 0x80, 0x40, 1, 1);
     }
-
-	//snprintf(ss, sizeof ss, "Completed loading Goody Huts images");
-	//pop_up_in_game_error(ss);
 
     // 19) Terrain buildings (fortress/camp/barbarian camp/mines/barricade)
 	read_in_dir(&img, art_dir, "TerrainBuildings.pcx", NULL);
@@ -9161,17 +9089,11 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     Sprite_slice_pcx(&this->Terrain_Buldings_Mines,          __, &img, 0x100, 0x40, 0x80, 0x40, 1, 1);
     for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Barricade[i], __, &img, 0x180, y, 0x80, 0x40, 1, 1);
 
-	//snprintf(ss, sizeof ss, "Completed loading Terrain Buildings images");
-	//pop_up_in_game_error(ss);
-
     // 20) Pollution & Craters (5x5 of 128x64)
 	read_in_dir(&img, art_dir, "pollution.pcx", NULL);
     slice_grid(this->Pollution, &img, 0x80, 0x40, 0x280, 0x140);
 	read_in_dir(&img, art_dir, "craters.pcx", NULL);
     slice_grid(this->Craters, &img, 0x80, 0x40, 0x280, 0x140);
-
-	//snprintf(ss, sizeof ss, "Completed loading Craters images");
-	//pop_up_in_game_error(ss);
 
     // 21) Airfields / Outposts / Radar (and SHADOWS) 
 	read_in_dir(&img, art_dir, "x_airfields_and_detect.pcx", NULL);
@@ -9179,23 +9101,9 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Outposts[i],  __, &img, x, 0x40, 0x80, 0x80, 1, 1);
     Sprite_slice_pcx(&this->Terrain_Buldings_Radar, __, &img, 0x00, 0xC0, 0x80, 0x80, 1, 1);
 
-	//snprintf(ss, sizeof ss, "Completed loading Airfields / Outposts / Radar images");
-	//pop_up_in_game_error(ss);
-
-	//read_in_dir(&img, art_dir, "X_AIRfields_and_detect.pcx", NULL);
-    //for (int i=0, x=0; i<2; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Airfields_Shadow[i], __, &img, x, 0x00, 0x80, 0x40, 1, 1);
-    //for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Outposts_Shadow[i],  __, &img, x, 0x40, 0x80, 0x80, 1, 1);
-    //Sprite_slice_pcx(&this->Terrain_Buldings_Radar_Shadow, __, &img, 0x00, 0xC0, 0x80, 0x80, 1, 1);
-
-	//snprintf(ss, sizeof ss, "Completed loading Airfields / Outposts / Radar Shadow images");
-	//pop_up_in_game_error(ss);
-
     // 22) Victory (single 128x64)
-	// read_in_dir(&img, art_dir, "x_victory.pcx", NULL);
-    // Sprite_slice_pcx(&this->Victory_Image, __, &img, 0, 0, 0x80, 0x40, 1, 1);
-
-	//snprintf(ss, sizeof ss, "Completed loading Victory images");
-	//pop_up_in_game_error(ss);
+	read_in_dir(&img, art_dir, "x_victory.pcx", NULL);
+    Sprite_slice_pcx(&this->Victory_Image, __, &img, 0, 0, 0x80, 0x40, 1, 1);
 
     // Resources
     read_in_dir(&img, art_dir, "resources.pcx", NULL);
@@ -9205,20 +9113,6 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
             Sprite_slice_pcx(&this->Resources[k++], __, &img, x, y, 49, 49, 1, 1);
         }
     }
-
-	//snprintf(ss, sizeof ss, "Completed loading Resource images");
-	//pop_up_in_game_error(ss);
-
-    // Resource shadows
-	/*
-    read_in_dir(&img, art_dir, "resources_shadows.pcx", NULL);
-    k = 0;
-    for (int r = 0, y = 1; r < 6; ++r, y += 50) {
-        for (int c = 0, x = 1; c < 6; ++c, x += 50) {
-            Sprite_slice_pcx(&this->ResourcesShadows[k++], __, &img, x, y, 49, 49, 1, 1);
-        }
-    }
-	*/
 
 	// Base cities
 	static const char *CITY_BASE[5] = {
@@ -9249,13 +9143,8 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 			Sprite_slice_pcx(&this->Walled_City_Images[idx], __, &img, 0, y, 167, 95, 1, 1);
 		}
 	}
-	//snprintf(ss, sizeof ss, "Completed loading Walled Cities images");
-	//pop_up_in_game_error(ss);
 
 	img.vtable->destruct (&img, __, 0);
-
-	//snprintf(ss, sizeof ss, "Completed destruct");
-	//pop_up_in_game_error(ss);
 }
 
 void
@@ -9302,8 +9191,8 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 	Sprite *p;
 
 	for (int h = 0; h < 24; ++h) {
-		insert_sprite_proxies(city_sprites_base, is->day_night_cycle_imgs[h].Base_City_Images, h, 80);
-		insert_sprite_proxies(city_sprites_wall, is->day_night_cycle_imgs[h].Walled_City_Images, h, 80);
+		insert_sprite_proxies(city_sprites, is->day_night_cycle_imgs[h].Base_City_Images, h, 80);
+		insert_sprite_proxies(walled_city_sprites, is->day_night_cycle_imgs[h].Walled_City_Images, h, 80);
 		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
 		insert_spritelist_proxies(mr->LM_Terrain_Images, is->day_night_cycle_imgs[h].LM_Terrain_Images, h, 9, 81);
 		insert_sprite_proxies(mr->Resources, is->day_night_cycle_imgs[h].Resources, h, 36);
@@ -9365,10 +9254,6 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 void
 init_day_night_images()
 {
-	//char ss[200];
-	//snprintf(ss, sizeof ss, "init_day_night_images");
-	//pop_up_in_game_error(ss);
-
 	if (is->day_night_cycle_img_state != IS_UNINITED)
 		return;
 
@@ -9380,23 +9265,13 @@ init_day_night_images()
 
 	for (int i = 0; i < 24; i++) {
 
-		// Debug
-		//snprintf(ss, sizeof ss, "Loading Day/Night cycle images for hour: %s", hour_strs[i]);
-		//pop_up_in_game_error(ss);
-
 		char art_dir[200];
 		snprintf(art_dir, sizeof art_dir, "%s\\Art\\NightDay\\%s", is->mod_rel_dir, hour_strs[i]);
 		load_day_night_hour_images(&is->day_night_cycle_imgs[i], art_dir);
 	}
 
-	//snprintf(ss, sizeof ss, "Completed loading Day/Night cycle images");
-	//pop_up_in_game_error(ss);
-
 	Map_Renderer * mr = &p_bic_data->Map.Renderer;
 	build_sprite_proxies_24(mr);
-
-	//snprintf(ss, sizeof ss, "Completed creating sprite proxies for Day/Night cycle");
-	//pop_up_in_game_error(ss);
 
 	is->day_night_cycle_img_state = IS_OK;
 }
@@ -9435,6 +9310,10 @@ patch_perform_interturn_in_main_loop ()
 		if (is->day_night_cycle_img_state == IS_OK) {
 			int hour = is->current_day_night_cycle;
 			is->current_day_night_cycle = (hour + 1) % 24;
+
+			//char ss[100];
+			//snprintf(ss, sizeof(ss), "Current hour: %d", hour);
+			//pop_up_in_game_error(ss);
 
 			p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 		}
@@ -12895,15 +12774,6 @@ patch_Tile_check_water_for_navigator_cell_coloring (Tile * this)
 		return this->vtable->m35_Check_Is_Water (this);
 	else
 		return 0;
-}
-
-Sprite *
-get_city_sprite(int culture, int era, int size, int walls) {
-    if (!walls) {
-        return &city_sprites_base[culture*STRIDE_CULTURE + era*STRIDE_ERA + size];
-    } else {
-        return &city_sprites_wall[culture*STRIDE_CULTURE + era*STRIDE_ERA + 0];
-    }
 }
 
 // TCC requires a main function be defined even though it's never used.

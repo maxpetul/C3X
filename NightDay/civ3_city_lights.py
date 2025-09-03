@@ -345,6 +345,7 @@ def process_tree(data_dir: str, noon_subfolder: str,
                 hour_dir  = os.path.join(data_dir, f"{hhh:04d}", rel_dir)
                 out_lights= os.path.join(hour_dir, lights_name)
                 out_plain = os.path.join(hour_dir, plain_name)
+                print(f"Processing {hhh:04d}: {lights_name} -> {out_lights}")
 
                 if os.path.exists(out_plain):
                     base_bg = Image.open(out_plain).convert('RGBA'); base_rgb = Image.open(out_plain).convert('RGB')
