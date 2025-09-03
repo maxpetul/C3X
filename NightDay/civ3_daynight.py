@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """
-civ3_daynight_pcx.py — v3
+civ3_daynight_pcx.py — v4 (half-hour increments)
 
-- Copies noon PCX to hour folders (0100..2300, 2400).
-- Tints ONLY the palette (keeps pixel indices intact) for time-of-day looks.
-- Preserves reserved colors (Magenta 255,0,255; Green 0,255,0; and any --light-key).
-- NEW: Remaps all pixels whose index is the Green color index to the Magenta index
-       (i.e., changes the pixel indices), unless --keep-green-index is set.
+Adds --step-minutes to generate time slices every N minutes (default 60).
+Typical use for half-hour steps: --step-minutes 30
 
-CLI examples:
-  python civ3_daynight_pcx.py --data /path/to/NightDay
-  python civ3_daynight_pcx.py --data /path/to/NightDay --only-hour 2400
-  python civ3_daynight_pcx.py --data /path/to/NightDay --warmth 1.2 --blue 1.15 --darkness 1.1
-  python civ3_daynight_pcx.py --data /path/to/NightDay --keep-green-index  # disables index remap
+Examples:
+  # Half-hour outputs (0030..2330 + 2400), leave 1200 as base
+  python civ3_daynight_pcx.py --data NightDay --step-minutes 30
+
+  # Debug a single slice
+  python civ3_daynight_pcx.py --data NightDay --step-minutes 30 --only-hour 1930
 """
 
 import argparse
@@ -40,8 +38,22 @@ def parse_rgb(s: str) -> Tuple[int, int, int]:
     raise ValueError(f"Unrecognized color format: {s}")
 
 
-def hour_labels() -> List[str]:
-    labels = [f"{h:02d}00" for h in range(1, 24)]
+def time_labels(step_minutes: int) -> List[str]:
+    """
+    Generate HHMM labels from step to 23:59 stepwise; exclude 0000; add 2400.
+    For step=60: 0100..2300 + 2400  (back-compat)
+    For step=30: 0030, 0100, 0130..2330 + 2400
+    """
+    if step_minutes <= 0 or 60 % step_minutes != 0:
+        raise ValueError("--step-minutes must be a positive divisor of 60 (e.g., 5,10,15,20,30,60).")
+    labels: List[str] = []
+    total_minutes = 24 * 60
+    m = step_minutes
+    while m < total_minutes:
+        h = m // 60
+        mm = m % 60
+        labels.append(f"{h:02d}{mm:02d}")
+        m += step_minutes
     labels.append("2400")
     return labels
 
@@ -58,7 +70,7 @@ def _gauss(x: float, mu: float, sigma: float) -> float:
 
 
 def hour_adjustments(
-    hour_int: int,
+    hour_value: float,
     *,
     warmth_scale: float,
     blue_scale: float,
@@ -68,15 +80,25 @@ def hour_adjustments(
     sunset_center: float,
     twilight_sigma: float,
 ) -> dict:
+    """
+    hour_value can be fractional (e.g., 19.5 for 19:30). Period is 24h.
+    """
     from math import cos, pi
 
-    h = hour_int % 24
-    daylight = max(0.0, cos(pi * (h - 12) / 12))  # 0..1
+    # Wrap to [0,24)
+    h = hour_value % 24.0
+
+    # Daylight: peak noon, low midnight (cosine)
+    daylight = max(0.0, cos(pi * (h - 12.0) / 12.0))  # 0..1
+
+    # Warmth around sunrise/sunset
     warmth = 0.85 * (_gauss(h, sunrise_center, twilight_sigma) +
                      _gauss(h, sunset_center, twilight_sigma))
     warmth *= warmth_scale
+
     night = 1.0 - daylight
 
+    # Brightness: darker at night; scaled by darkness_scale (>1 = darker nights)
     base_brightness = 0.60 + 0.40 * daylight
     night_darkening = 1.0 - (0.12 * (darkness_scale - 1.0) * night)
     brightness = base_brightness * night_darkening
@@ -88,6 +110,7 @@ def hour_adjustments(
     gray_blend = (0.10 + 0.50 * night) * desat_scale
     gray_blend = min(max(gray_blend, 0.0), 0.85)
 
+    # Clamp gentle bounds
     r_mul = min(max(r_mul, 0.65), 1.45)
     g_mul = min(max(g_mul, 0.65), 1.40)
     b_mul = min(max(b_mul, 0.65), 1.55)
@@ -170,9 +193,9 @@ def find_color_index(pal: Sequence[int], color: Tuple[int, int, int]) -> int:
 
 # --------------------------- Core operations ---------------------------
 
-def adjust_palette_for_hour(
+def adjust_palette_for_time(
     pal: List[int],
-    hour_int: int,
+    hour_value: float,
     reserved_colors: Iterable[Tuple[int, int, int]],
     *,
     warmth_scale: float,
@@ -186,7 +209,7 @@ def adjust_palette_for_hour(
     twilight_sigma: float,
 ) -> List[int]:
     params = hour_adjustments(
-        hour_int,
+        hour_value,
         warmth_scale=warmth_scale,
         blue_scale=blue_scale,
         darkness_scale=darkness_scale,
@@ -203,7 +226,6 @@ def adjust_palette_for_hour(
         rgb = (r, g, b)
 
         if rgb in reserved:
-            # Leave reserved entries exactly as-is
             out[3 * i + 0] = r
             out[3 * i + 1] = g
             out[3 * i + 2] = b
@@ -218,38 +240,37 @@ def adjust_palette_for_hour(
 
 
 def remap_green_to_magenta_indices(img: Image.Image, pal: Sequence[int]) -> Image.Image:
-    """
-    Remap ALL pixel indices that equal the Green index (0,255,0) to the
-    Magenta index (255,0,255). Returns an image (mode 'P') with indices remapped.
-    Palette itself is not changed here (so Magenta and Green entries remain reserved).
-    """
     green_idx = find_color_index(pal, (0, 255, 0))
     magenta_idx = find_color_index(pal, (255, 0, 255))
     if green_idx < 0 or magenta_idx < 0 or green_idx == magenta_idx:
-        # Nothing to do (missing color or both map to same index)
         return img
-
-    # Build LUT: map green_idx -> magenta_idx, others unchanged
     lut = [magenta_idx if i == green_idx else i for i in range(256)]
-    # Apply index remap (keep 'P' mode)
-    remapped = img.point(lut, mode="P")
-    return remapped
+    return img.point(lut, mode="P")
 
 
 # --------------------------- File ops ---------------------------
 
-def copy_noon_to_hour(noon_dir: Path, hour_dir: Path) -> List[Path]:
-    hour_dir.mkdir(parents=True, exist_ok=True)
+def copy_noon_to_label(noon_dir: Path, label_dir: Path) -> List[Path]:
+    label_dir.mkdir(parents=True, exist_ok=True)
     copied: List[Path] = []
     for src in noon_dir.glob("*.pcx"):
-        dst = hour_dir / src.name
+        dst = label_dir / src.name
         shutil.copy2(src, dst)
         copied.append(dst)
     return copied
 
 
-def process_hour_folder(
-    hour_label: str,
+def label_to_hour_value(label: str) -> float:
+    """Convert 'HHMM' or '2400' to hour value (fractional hours)."""
+    if label == "2400":
+        return 0.0
+    h = int(label[:2])
+    m = int(label[2:])
+    return (h % 24) + (m / 60.0)
+
+
+def process_time_label(
+    label: str,
     base_dir: Path,
     noon_label: str,
     reserved_colors: Iterable[Tuple[int, int, int]],
@@ -266,10 +287,10 @@ def process_hour_folder(
     twilight_sigma: float,
 ) -> None:
     noon_dir = base_dir / noon_label
-    hour_dir = base_dir / hour_label
-    hour = 0 if hour_label == "2400" else int(hour_label[:2])
+    out_dir = base_dir / label
+    hour_value = label_to_hour_value(label)
 
-    copied_files = copy_noon_to_hour(noon_dir, hour_dir)
+    copied_files = copy_noon_to_label(noon_dir, out_dir)
 
     for pcx_path in copied_files:
         with Image.open(pcx_path) as im:
@@ -277,15 +298,11 @@ def process_hour_folder(
                 im = im.convert("P")
             pal = get_palette(im)
 
-            # 1) Optional index remap: map green-index -> magenta-index
             if do_index_remap:
                 im = remap_green_to_magenta_indices(im, pal)
-                # After remap, refresh palette reference (unchanged values, same size)
-                # but we still have pal variable with the palette content for tinting.
 
-            # 2) Tint palette for the given hour (indices unchanged by tint)
-            new_pal = adjust_palette_for_hour(
-                pal, hour, reserved_colors,
+            new_pal = adjust_palette_for_time(
+                pal, hour_value, reserved_colors,
                 warmth_scale=warmth_scale,
                 blue_scale=blue_scale,
                 darkness_scale=darkness_scale,
@@ -297,24 +314,26 @@ def process_hour_folder(
                 twilight_sigma=twilight_sigma,
             )
             set_palette(im, new_pal)
-
             im.save(pcx_path, format="PCX")
 
 
 # --------------------------- Main ---------------------------
 
 def main():
-    p = argparse.ArgumentParser(description="Civ3 PCX day-night palette tinter with green→magenta index remap.")
+    p = argparse.ArgumentParser(description="Civ3 PCX day/night generator with variable time steps.")
     p.add_argument("--data", required=True,
-                   help="Parent folder containing the noon folder and sibling hour folders (e.g., NightDay).")
+                   help="Parent folder containing the noon folder and sibling time folders (e.g., NightDay).")
     p.add_argument("--noon", default="1200",
                    help="Name of the noon folder (default: 1200).")
     p.add_argument("--only-hour", default=None,
-                   help="Process only a single hour folder label (e.g., 1900 or 2400).")
+                   help="Process only a single time label (e.g., 1900, 1930, or 2400).")
+    p.add_argument("--step-minutes", type=int, default=60,
+                   help="Time step in minutes; must divide 60 (e.g., 5,10,15,20,30,60). Default: 60.")
+
     p.add_argument("--light-key", action="append", default=[],
                    help="Reserved color that must not change. Repeatable. '#RRGGBB' or 'R,G,B'.")
 
-    # Look/feel controls (subtle defaults)
+    # Look/feel controls (same defaults as v3)
     p.add_argument("--warmth", type=float, default=1.10,
                    help="Scale for sunrise/sunset warmth (1.0 = base).")
     p.add_argument("--blue", type=float, default=1.12,
@@ -328,7 +347,7 @@ def main():
     p.add_argument("--contrast", type=float, default=1.03,
                    help="Global contrast multiplier around mid 128 (1.0 = none).")
 
-    # Curve placement/width (optional fine-tuning)
+    # Curve placement/width
     p.add_argument("--sunrise-center", type=float, default=6.0,
                    help="Hour center for sunrise warmth bump (0-23).")
     p.add_argument("--sunset-center", type=float, default=18.0,
@@ -350,15 +369,18 @@ def main():
     if not noon_dir.is_dir():
         raise SystemExit(f"Noon folder not found: {noon_dir}")
 
-    # Reserved colors: Magenta + Green + user-defined light-keys
+    # Reserved colors (Magenta + Green + user light-keys)
     reserved: List[Tuple[int, int, int]] = [(255, 0, 255), (0, 255, 0)]
     for s in args.light_key:
         reserved.append(parse_rgb(s))
 
-    # Determine remap behavior (default ON unless explicitly disabled)
+    # Determine remap behavior (default ON)
     do_index_remap = not args.keep_green_index or args.map_green_index
 
-    labels = [lbl for lbl in hour_labels() if lbl != args.noon]
+    # Build time labels for the given step, then exclude noon folder
+    labels = [lbl for lbl in time_labels(args.step_minutes) if lbl != args.noon]
+
+    # only-hour (accept 0000 -> 2400)
     if args.only_hour:
         only = "2400" if args.only_hour == "0000" else args.only_hour
         if only == args.noon:
@@ -370,12 +392,13 @@ def main():
 
     print(f"Base: {base_dir}")
     print(f"Noon source: {noon_dir}")
+    print(f"Time step: {args.step_minutes} minutes")
     print(f"Index remap green→magenta: {'ON' if do_index_remap else 'OFF'}")
-    print(f"Processing: {', '.join(labels)}")
+    print(f"Generating labels: {', '.join(labels)}")
 
     for lbl in labels:
         print(f"  -> Generating {lbl} ...")
-        process_hour_folder(
+        process_time_label(
             lbl, base_dir, args.noon, reserved,
             do_index_remap=do_index_remap,
             warmth_scale=args.warmth,
