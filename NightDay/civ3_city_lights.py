@@ -13,6 +13,7 @@ Civ 3 city lights compositor for *_lights.pcx
 import argparse, os, math, shutil
 from typing import List, Tuple, Dict, Optional
 from PIL import Image, ImageChops, ImageFilter
+from argparse import RawTextHelpFormatter
 
 MAGENTA = (255, 0, 255)
 GREEN   = (0, 255, 0)

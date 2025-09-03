@@ -30,8 +30,8 @@ def main():
                         help="Include palette indices that occur 0 times.")
     parser.add_argument("--max-index", type=int, default=254,
                         help="Highest palette index to consider (default: 254).")
-    parser.add_argument("--top", type=int, default=10,
-                        help="How many least-used colors to return (default: 10).")
+    parser.add_argument("--top", type=int, default=5,
+                        help="How many least-used colors to return (default: 5).")
     args = parser.parse_args()
 
     # Open image
