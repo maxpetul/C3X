@@ -3,7 +3,7 @@ set -euo pipefail
 ### === CONFIG ===
 DATA_DIR="/c/Program Files (x86)/GOG Galaxy/Games/Civilization III Complete/Conquests/C3X_Districts/Art/NightDay"
 NOON_SUBFOLDER="1200"
-ONLY_HOUR=""       # set empty "" to process all hours
+ONLY_HOUR="2400"       # set empty "" to process all hours
 
 # ---- Day/Night settings ----
 WARMTH=1.15           # Scale for sunrise/sunset warmth (1.0 = base)
@@ -30,8 +30,8 @@ NOON_SIGMA=1.0        # Gaussian width (hours) around 12:00 (larger = broader)
 # /1200/*_light.pcx files.
 LIGHT_KEYS=(
   # Main colors
-  "#F6915E" # Warm Orange, soft glow
-  "#FEF500" # Yellow, intense
+  "#F6915E" # Orange
+  "#FEF500" # Yellow
 
   # Supporting colors, mostly on modern buildings
   "#00feff" # Teal
@@ -42,10 +42,26 @@ LIGHT_KEYS=(
 )
 
 LIGHT_STYLES=(
-  # Orange
+  # Orange - softer, ambient lighting
   "key=#F6915E; core=#ff8a20; glow=#dc6a00; core_gain=1.0; highlight_gain=0.0; size_radius=1.5; size_boost=0.05; halo_gain=6.0; halo_radius=1.0; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
-  # Yellow
+
+  # Yellow - intense, bright, focused lighting
   "key=#FEF500; core=#ff8a20; glow=#dc6a00; core_gain=2.5; highlight_gain=1.0; size_radius=6.5; size_boost=1.5; halo_gain=20.0; halo_radius=0.1; core_radius=1.1; halo_gamma=1.3; size_gamma=0.75;"
+
+  # Red - mostly modern building tops, individual pixels
+  "key=#E4080A; core=#E4080A; glow=#E4080A; core_gain=0.3; highlight_gain=0.0; size_radius=1.0; size_boost=0.4; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
+  
+  # Teal
+  "key=#00feff; core=#00feff; glow=#00feff; core_gain=0.3; highlight_gain=0.0; size_radius=1.0; size_boost=0.4; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
+
+  # Blue
+  "key=#2208E6; core=#2208E6; glow=#2208E6; core_gain=0.3; highlight_gain=0.0; size_radius=1.0; size_boost=0.4; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
+
+  # Green
+  "key=#2D9C01; core=#2D9C01; glow=#2D9C01; core_gain=0.3; highlight_gain=0.0; size_radius=1.0; size_boost=0.4; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
+
+  # Pink
+  "key=#FF25C8; core=#FF25C8; glow=#FF25C8; core_gain=0.3; highlight_gain=0.0; size_radius=1.0; size_boost=0.4; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
 )
 
 # ---- City Lights settings ----
