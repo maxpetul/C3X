@@ -7,9 +7,9 @@ ONLY_HOUR="2400"       # set empty "" to process all hours
 
 # ---- Day/Night settings ----
 WARMTH=1.15           # Scale for sunrise/sunset warmth (1.0 = base)
-BLUE=1.7              # Scale for night-time blue emphasis (1.0 = base)
+BLUE=1.6              # Scale for night-time blue emphasis (1.0 = base)
 DARKNESS=1.0          # Scale for extra night darkening (1.0 = base)
-DESAT=1.0             # Scale for dusk/night desaturation toward gray (lower = richer)
+DESAT=0.9             # Scale for dusk/night desaturation toward gray (lower = richer)
 SAT=1.1               # Global saturation multiplier after tint (1.0 = none)
 CONTRAST=1.08         # Global contrast multiplier around mid 128 (1.0 = none)
 SUNRISE_CENTER=6.0    # Hour center for sunrise warmth bump (0-23)
