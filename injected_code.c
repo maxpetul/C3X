@@ -3314,6 +3314,7 @@ patch_init_floating_point ()
 		{"patch_empty_army_movement"                           , true , offsetof (struct c3x_config, patch_empty_army_movement)},
 		{"patch_premature_truncation_of_found_paths"           , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
 		{"patch_zero_production_crash"                         , true , offsetof (struct c3x_config, patch_zero_production_crash)},
+		{"patch_ai_can_sacrifice_without_special_ability"      , true , offsetof (struct c3x_config, patch_ai_can_sacrifice_without_special_ability)},
 		{"delete_off_map_ai_units"                             , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
 		{"fix_overlapping_specialist_yield_icons"              , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
 		{"prevent_autorazing"                                  , false, offsetof (struct c3x_config, prevent_autorazing)},
@@ -12351,6 +12352,17 @@ bool __stdcall
 patch_is_online_game_for_show_popup ()
 {
 	return true;
+}
+
+bool __fastcall
+patch_Unit_ai_can_sacrifice (Unit * this, int edx, bool requires_city)
+{
+	int sacrifice_action = UCV_Sacrifice & 0x0FFFFFFF; // Mask out top four category bits
+	UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+	if (is->current_config.patch_ai_can_sacrifice_without_special_ability && ((type->Special_Actions & sacrifice_action) == 0))
+		return false;
+	else
+		return Unit_ai_can_sacrifice (this, __, requires_city);
 }
 
 // TCC requires a main function be defined even though it's never used.

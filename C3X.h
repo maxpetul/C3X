@@ -269,6 +269,7 @@ struct c3x_config {
 	bool fix_overlapping_specialist_yield_icons;
 	bool patch_premature_truncation_of_found_paths;
 	bool patch_zero_production_crash;
+	bool patch_ai_can_sacrifice_without_special_ability;
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
