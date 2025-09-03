@@ -65,7 +65,7 @@ def parse_styles(values: List[str]) -> Dict[Tuple[int,int,int], Dict[str,object]
 
 # ---------- time window ----------
 
-def hour_weight_lights(hour_1_24: int, start: float = 19.0, end: float = 6.0, floor: float = 0.80) -> float:
+def hour_weight_lights(hour_1_24: int, start: float = 18.0, end: float = 6.0, floor: float = 0.80) -> float:
     h = float(hour_1_24) % 24.0
     inwin = (h >= start) or (h <= end)
     if not inwin: return 0.0
@@ -76,7 +76,7 @@ def hour_weight_lights(hour_1_24: int, start: float = 19.0, end: float = 6.0, fl
     return max(0.0, min(1.0, w))
 
 def is_night_hour(hour_1_24: int) -> bool:
-    return (19 <= hour_1_24 <= 24) or (1 <= hour_1_24 <= 6)
+    return (18 <= hour_1_24 <= 24) or (1 <= hour_1_24 <= 6)
 
 # ---------- palette ----------
 
@@ -380,38 +380,103 @@ def process_tree(data_dir: str, noon_subfolder: str,
                             save_with_palette_and_magic(base_bg, out_plain, base_rgb)
 
 def main():
-    ap = argparse.ArgumentParser(description="Civ 3 city lights compositor (multi light-keys + per-key styles)")
-    ap.add_argument("--data", required=True)
-    ap.add_argument("--noon", default="1200")
-    ap.add_argument("--only-hour", type=int)
-    ap.add_argument("--only-file")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Render glowing city lights from *_lights.pcx files.\n"
+            "• Multiple light-keys supported (+ per-key styles)\n"
+            "• Night hours (19..24,1..6) also overwrite the paired non-lights file\n"
+            "• MAGENTA pinned to index 255; GREEN written out as MAGENTA"
+        ),
+        formatter_class=RawTextHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  Basic (one key):\n"
+            "    python civ3_city_lights.py --data ./Data --noon 1200 \\\n"
+            "      --light-key \"#00feff\" --core-color \"#fff87a\" --glow-color \"#ff8a20\"\n"
+            "\n"
+            "  Multiple keys with per-key styles:\n"
+            "    python civ3_city_lights.py --data ./Data --noon 1200 \\\n"
+            "      --light-key \"#00feff\" --light-key \"#fe00ff\" \\\n"
+            "      --light-style \"key=#00feff; core=#fff87a; glow=#ff9a2b; halo_gain=18; halo_radius=14\" \\\n"
+            "      --light-style \"key=#fe00ff; core=#ffd0ff; glow=#e07aff; core_gain=1.4; halo_gain=12\"\n"
+            "\n"
+            "  Make large light clusters pop more:\n"
+            "    --size-boost 1.2 --size-radius 4 --size-gamma 0.8\n"
+            "\n"
+            "Notes:\n"
+            "  • Increase --halo-radius and --halo-gain for a bigger, softer glow.\n"
+            "  • If you see a dark ring between core/halo, reduce --halo-sep or increase --halo-gamma.\n"
+            "  • 'screen' blend is safer for colors; 'add' is punchier but can clip highlights."
+        )
+    )
 
-    ap.add_argument("--light-key", action="append", default=["#00feff"],
-                    help="Repeat for multiple (accepts #rrggbb or R,G,B)")
-    ap.add_argument("--light-style", action="append", default=[],
-                    help='Per-key overrides: "key=#00feff; core=#fff87a; glow=#ff8a20; core_gain=1.6; halo_gain=4.0; halo_sep=0.75; halo_gamma=1.35; core_radius=1.2; halo_radius=14; highlight=0.6"')
+    # Required paths
+    parser.add_argument("--data", required=True,
+        help="Path to the Data root (contains the noon folder). Sibling hour folders 0100..2400 will be created here.")
+    parser.add_argument("--noon", default="1200",
+        help="Name of the noon subfolder under --data (default: 1200).")
 
-    # Global defaults (each key can override)
-    ap.add_argument("--core-radius", type=float, default=1.1)
-    ap.add_argument("--halo-radius", type=float, default=13.0)
-    ap.add_argument("--core-gain",   type=float, default=2.1)
-    ap.add_argument("--halo-gain",   type=float, default=20.0)
-    ap.add_argument("--core-color", type=str, default="#ff8a20")
-    ap.add_argument("--glow-color", type=str, default="#dc6a00")
-    ap.add_argument("--highlight-gain", type=float, default=0.6)
+    # Scope limiting
+    parser.add_argument("--only-hour", type=int,
+        help="Process a single hour (100..2400 step 100, excluding 1200). Example: --only-hour 2400")
+    parser.add_argument("--only-file",
+        help="Process a single *_lights.pcx (filename or relative path under the noon folder).")
 
-    ap.add_argument("--size-boost",  type=float, default=1.1)
-    ap.add_argument("--size-radius", type=float, default=3.5)
-    ap.add_argument("--size-gamma",  type=float, default=0.75)
+    # Light keys & per-key styles
+    parser.add_argument("--light-key", action="append", default=["#00feff"],
+        help=(
+            "Placeholder color(s) in *_lights.pcx that mark light sources.\n"
+            "Repeat the flag for multiple keys. Accepts '#rrggbb' or 'R,G,B'.\n"
+            "Keys referenced in --light-style are auto-included; you don't need to repeat them."
+        ))
+    parser.add_argument("--light-style", action="append", default=[],
+        help=(
+            "Per-key overrides (tints/strengths/shapes). Format (use ';' or ',' between fields):\n"
+            "  \"key=#00feff; core=#fff87a; glow=#ff8a20; core_gain=1.6; halo_gain=4.0;\n"
+            "   halo_sep=0.75; halo_gamma=1.35; core_radius=1.2; halo_radius=14; highlight=0.6\"\n"
+            "Only 'key' is required. Any provided numeric field overrides the global default\n"
+            "for that key. Colors accept '#rrggbb' or 'R,G,B'."
+        ))
 
-    ap.add_argument("--clip-interior", type=str, default="yes", choices=["yes","no"])
-    ap.add_argument("--clip-erode", type=int, default=0)
+    # Global defaults (each can be overridden per-key via --light-style)
+    parser.add_argument("--core-radius", type=float, default=1.1,
+        help="Gaussian blur radius (pixels) of the bright core. Higher = wider/softer core.")
+    parser.add_argument("--halo-radius", type=float, default=13.0,
+        help="Gaussian blur radius (pixels) of the outer halo. Higher = glow spreads further outward.")
+    parser.add_argument("--core-gain",   type=float, default=2.1,
+        help="Intensity multiplier for the core alpha (brightness/opacity of the center). Higher = brighter core.")
+    parser.add_argument("--halo-gain",   type=float, default=20.0,
+        help="Intensity multiplier for the halo alpha (strength of the outer glow). Higher = stronger/fatter halo.")
+    parser.add_argument("--core-color", type=str, default="#ff8a20",
+        help="Tint color for the bright core (e.g., '#fff87a' for warm yellow).")
+    parser.add_argument("--glow-color", type=str, default="#dc6a00",
+        help="Tint color for the outer halo (e.g., '#ff8a20' for orange).")
+    parser.add_argument("--highlight-gain", type=float, default=0.6,
+        help="Extra white highlight added from the core mask (0..~1 typical). Higher = hotter specular highlight.")
 
-    ap.add_argument("--halo-sep", type=float, default=0.75)
-    ap.add_argument("--halo-gamma", type=float, default=1.4)
-    ap.add_argument("--blend-mode", type=str, default="screen", choices=["screen","add"])
+    # Size-aware modulation (lets larger light clusters feel brighter/bigger)
+    parser.add_argument("--size-boost",  type=float, default=1.1,
+        help="How much cluster size increases intensity (0 disables). Higher = large groups pop more.")
+    parser.add_argument("--size-radius", type=float, default=3.5,
+        help="Neighborhood radius (pixels) when measuring cluster size. Higher = smoother/broader size effect.")
+    parser.add_argument("--size-gamma",  type=float, default=0.75,
+        help="Gamma on the size map. <1 emphasizes medium clusters; >1 favors only the largest clusters.")
 
-    args = ap.parse_args()
+    # Clipping against magenta/green background
+    parser.add_argument("--clip-interior", type=str, default="yes", choices=["yes","no"],
+        help="If 'yes', lights only affect non-transparent interior (avoids glow on MAGENTA/GREEN). Recommended: yes.")
+    parser.add_argument("--clip-erode", type=int, default=0,
+        help="Erode the interior mask by N pixels. Higher = more conservative (keeps glow off edges).")
+
+    # Halo shaping & blend mode
+    parser.add_argument("--halo-sep", type=float, default=0.75,
+        help="0..1: subtracts a fraction of the core from the halo. 0 = seamless merge; 1 = distinct outer ring.")
+    parser.add_argument("--halo-gamma", type=float, default=1.4,
+        help="Gamma on the halo-only mask. >1 pushes energy outward (softer tail); <1 concentrates near source.")
+    parser.add_argument("--blend-mode", type=str, default="screen", choices=["screen","add"],
+        help="How layers combine. 'screen' (default) is safer; 'add' is punchier but can clip highlights.")
+
+    args = parser.parse_args()
 
     light_keys = parse_rgb_list(args.light_key)
     styles = parse_styles(args.light_style)
@@ -425,12 +490,13 @@ def main():
         core_gain=args.core_gain, halo_gain=args.halo_gain,
         core_color=core_color, glow_color=glow_color,
         size_boost=args.size_boost, size_radius=args.size_radius, size_gamma=args.size_gamma,
-        clip_interior=(args.clip_interor if hasattr(args,'clip_interor') else args.clip_interior)=="yes",
+        clip_interior=(args.clip_interior=="yes"),
         clip_erode=args.clip_erode,
         highlight_gain=args.highlight_gain, blend_mode=args.blend_mode,
         halo_sep=args.halo_sep, halo_gamma=args.halo_gamma,
         only_hour=args.only_hour, only_file=args.only_file
     )
+
 
 if __name__ == "__main__":
     main()

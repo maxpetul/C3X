@@ -13,34 +13,39 @@ LIGHT_STYLES=(
 )
 
 # ---- Day/Night settings ----
-WARMTH=1.05
-BLUE=1.5
-DARKNESS=1.1
-DESAT=0.85
-SAT=1.2
-CONTRAST=1.08
-SUNRISE_CENTER=5.0
-SUNSET_CENTER=18.0
-TWILIGHT_WIDTH=3.0
-NOON_BLEND=0.7
-NOON_SIGMA=1.0
+WARMTH=1.15           # Scale for sunrise/sunset warmth (1.0 = base)
+BLUE=1.7              # Scale for night-time blue emphasis (1.0 = base)
+DARKNESS=1.0          # Scale for extra night darkening (1.0 = base)
+DESAT=1.0             # Scale for dusk/night desaturation toward gray (lower = richer)
+SAT=1.1               # Global saturation multiplier after tint (1.0 = none)
+CONTRAST=1.08         # Global contrast multiplier around mid 128 (1.0 = none)
+SUNRISE_CENTER=6.0    # Hour center for sunrise warmth bump (0-23)
+SUNSET_CENTER=18.0    # Hour center for sunset warmth bump (0-23)
+TWILIGHT_WIDTH=2.0    # Sigma for sunrise/sunset warmth spread (higher = broader)
+NOON_BLEND=0.5        # 0..1 strength to blend toward base palette near 12:00 (0=off)
+NOON_SIGMA=1.0        # Gaussian width (hours) around 12:00 (larger = broader)
 
 # ---- City Lights settings ----
-CORE_COLOR="#ff8a20"
-GLOW_COLOR="#dc6a00"
-CORE_RADIUS=1.1
-CORE_GAIN=2.5
-HALO_RADIUS=13
-HALO_GAIN=20.0
-HALO_SEP=0.75
-HALO_GAMMA=1.4
-HIGHLIGHT_GAIN=0.6
-SIZE_BOOST=1.7
-SIZE_RADIUS=6.5
-SIZE_GAMMA=0.75
-CLIP_INTERIOR="yes"   # yes|no
-CLIP_ERODE=0
-BLEND_MODE="screen"   # screen|add
+CORE_COLOR="#ff8a20"  # Tint color for the bright core (e.g., '#fff87a' for warm yellow)
+GLOW_COLOR="#dc6a00"  # Tint color for the outer halo (e.g., '#ff8a20' for orange)
+CORE_RADIUS=1.1       # Gaussian blur radius (pixels) of the bright core. Higher = wider/softer core
+CORE_GAIN=2.5         # Intensity multiplier for the core alpha (brightness/opacity of the center)
+HALO_RADIUS=13        # Gaussian blur radius (pixels) of the outer halo. Higher = glow spreads further outward
+HALO_GAIN=20.0        # Intensity multiplier for the halo alpha (strength of the outer glow)
+HALO_SEP=0.75         # 0..1: subtracts a fraction of the core from the halo. 0 = seamless merge; 1 = distinct outer ring
+HALO_GAMMA=1.4        # Gamma on the halo-only mask. >1 pushes energy outward (softer tail); <1 concentrates near source
+HIGHLIGHT_GAIN=0.6    # Extra white highlight added from the core mask (0..~1 typical). Higher = hotter specular highlight
+SIZE_BOOST=1.7        # How much cluster size increases intensity (0 disables). Higher = large groups pop more
+SIZE_RADIUS=6.5       # Neighborhood radius (pixels) when measuring cluster size. Higher = smoother/broader size effect
+SIZE_GAMMA=0.75       # Gamma on the size map. <1 emphasizes medium clusters; >1 favors only the largest clusters
+CLIP_INTERIOR="yes"   # If 'yes', lights only affect non-transparent interior (avoids glow on MAGENTA/GREEN). Recommended: yes.
+CLIP_ERODE=0          # Erode the interior mask by N pixels. Higher = more conservative (keeps glow off edges)
+BLEND_MODE="screen"   # How layers combine. 'screen' (default) is safer; 'add' is punchier but can clip highlights
+
+# Notes:
+#   • Increase --halo-radius and --halo-gain for a bigger, softer glow.
+#   • If you see a dark ring between core/halo, reduce --halo-sep or increase --halo-gamma.
+#   • 'screen' blend is safer for colors; 'add' is punchier but can clip highlights."
 
 ### === BUILD ARGS ===
 LK_ARGS=()
@@ -139,9 +144,6 @@ python civ3_city_lights.py "${CL_ARGS[@]}"
 #  --halo-gamma", type=float, default=1.4)
 #  --blend-mode", type=str, default="screen", choices=["screen","add"])
 
-###############
-# Best settings
-###############
 
 # Copy 'Territory.pcx' from '1200' to every other folder
 #for dir in "$ART_PATH"/[0-9][0-9][0-9][0-9]; do
