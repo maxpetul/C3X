@@ -3,18 +3,18 @@ set -euo pipefail
 ### === CONFIG ===
 DATA_DIR="/c/Program Files (x86)/GOG Galaxy/Games/Civilization III Complete/Conquests/C3X_Districts/Art/NightDay"
 NOON_SUBFOLDER="1200"
-ONLY_HOUR="2400"       # set empty "" to process all hours
+ONLY_HOUR=""       # set empty "" to process all hours
 
 # ---- Day/Night settings ----
 WARMTH=1.15           # Scale for sunrise/sunset warmth (1.0 = base)
 BLUE=1.6              # Scale for night-time blue emphasis (1.0 = base)
 DARKNESS=1.0          # Scale for extra night darkening (1.0 = base)
-DESAT=0.9             # Scale for dusk/night desaturation toward gray (lower = richer)
+DESAT=0.8             # Scale for dusk/night desaturation toward gray (lower = richer)
 SAT=1.1               # Global saturation multiplier after tint (1.0 = none)
 CONTRAST=1.08         # Global contrast multiplier around mid 128 (1.0 = none)
 SUNRISE_CENTER=6.0    # Hour center for sunrise warmth bump (0-23)
 SUNSET_CENTER=18.0    # Hour center for sunset warmth bump (0-23)
-TWILIGHT_WIDTH=2.0    # Sigma for sunrise/sunset warmth spread (higher = broader)
+TWILIGHT_WIDTH=2.6    # Sigma for sunrise/sunset warmth spread (higher = broader)
 NOON_BLEND=0.5        # 0..1 strength to blend toward base palette near 12:00 (0=off)
 NOON_SIGMA=1.0        # Gaussian width (hours) around 12:00 (larger = broader)
 
