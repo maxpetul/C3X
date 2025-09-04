@@ -1,4 +1,4 @@
-- Allow Civilopedia descriptions for units and civilizations to span multiple pages
+- Allow Civilopedia descriptions for units, civilizations, and game concepts to span multiple pages
 - Option to prevent units from upgrading past an intermediate type that does not have the upgrade ability
   - Setting named prevent_old_units_from_upgrading_past_ability_block
 - Fix AI players being able to sacrifice units that don't have the sacrifice special ability set on their type

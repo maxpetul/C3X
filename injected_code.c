@@ -12160,6 +12160,7 @@ patch_Civilopedia_Form_m53_On_Control_Click (Civilopedia_Form * this, int edx, C
 	// "Effects" button leaves description mode, returns to showing effects
 	if ((control_id == PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID) && (current_article != NULL)) {
 		current_article->show_description = false;
+		is->cmpd.shown_page = 0;
 		play_sound_effect (26); // 26 = SE_SELECT
 		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
 
@@ -12202,7 +12203,7 @@ patch_Button_initialize_civilopedia_description (Button * this, int edx, char * 
 	if (current_article->show_description && (is->cmpd.last_page > 0)) {
 
 		// Tribe articles act like one long descripton.
-		if (current_article->article_kind == CAK_TRIBE) {
+		if ((current_article->article_kind == CAK_TRIBE) || (current_article->article_kind == CAK_GAME_CONCEPT)) {
 
 			// Show the more button as long as we're not on the last page. Show the previous always since we're in description mode.
 			show_previous_btn = true;
