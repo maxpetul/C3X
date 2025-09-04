@@ -49,10 +49,10 @@ LIGHT_STYLES=(
   "key=#FEF500; core=#ff8a20; glow=#dc6a00; core_gain=2.5; highlight_gain=1.0; size_radius=6.5; size_boost=1.5; halo_gain=20.0; halo_radius=0.1; core_radius=1.1; halo_gamma=1.3; size_gamma=0.75;"
 
   # Red - mostly modern building tops, individual pixels
-  "key=#E4080A; core=#E4080A; glow=#E4080A; core_gain=0.3; highlight_gain=0.0; size_radius=1.0; size_boost=0.4; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
+  "key=#E4080A; core=#E4080A; glow=#E4080A; core_gain=0.3; highlight_gain=0.0; size_radius=1.5; size_boost=0.05; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
   
   # Teal
-  "key=#00feff; core=#00feff; glow=#00feff; core_gain=0.3; highlight_gain=0.0; size_radius=1.0; size_boost=0.4; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
+  "key=#00feff; core=#00feff; glow=#00feff; core_gain=0.3; highlight_gain=0.0; size_radius=0.9; size_boost=0.3; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
 
   # Blue
   "key=#2208E6; core=#2208E6; glow=#2208E6; core_gain=0.3; highlight_gain=0.0; size_radius=1.0; size_boost=0.4; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
