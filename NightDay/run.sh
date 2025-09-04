@@ -58,10 +58,10 @@ LIGHT_STYLES=(
   "key=#2208E6; core=#2208E6; glow=#2208E6; core_gain=0.3; highlight_gain=0.0; size_radius=1.0; size_boost=0.4; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
 
   # Green
-  "key=#2D9C01; core=#2D9C01; glow=#2D9C01; core_gain=0.3; highlight_gain=0.0; size_radius=1.0; size_boost=0.4; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
+  "key=#2D9C01; core=#2D9C01; glow=#2D9C01; core_gain=0.6; highlight_gain=0.0; size_radius=0.9; size_boost=0.3; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
 
   # Pink
-  "key=#FF25C8; core=#FF25C8; glow=#FF25C8; core_gain=0.3; highlight_gain=0.0; size_radius=1.0; size_boost=0.4; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
+  "key=#FF25C8; core=#FF25C8; glow=#FF25C8; core_gain=0.6; highlight_gain=0.0; size_radius=0.9; size_boost=0.3; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
 )
 
 # ---- City Lights settings ----
