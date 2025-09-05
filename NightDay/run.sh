@@ -40,6 +40,7 @@ LIGHT_KEYS=(
   "#2D9C01" # Green
   "#FF25C8" # Pink
   "#0A02EB" # Blue
+  "#8262ED" # Indigo
 )
 
 LIGHT_STYLES=(
@@ -66,6 +67,9 @@ LIGHT_STYLES=(
 
   # Blue
   "key=#0A02EB; core=#0A02EB; glow=#0A02EB; core_gain=0.2; highlight_gain=0.0; size_radius=0.9; size_boost=0.3; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
+
+  # Indigo
+  "key=#8262ED; core=#7521DC; glow=#7521DC; core_gain=0.2; highlight_gain=0.0; size_radius=0.9; size_boost=0.3; halo_gain=8.0; halo_radius=0.1; core_radius=0.5; halo_gamma=1.5; size_gamma=0.1;"
 )
 
 # ---- City Lights settings ----
