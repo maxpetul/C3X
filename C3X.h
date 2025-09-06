@@ -981,6 +981,10 @@ struct injected_state {
 		Button * previous_btn;
 	} cmpd;
 
+	// Initialized to 0. Every time Main_Screen_Form::m82_handle_key_event receives an event with is_down == 0, the virtual key code is prepended
+	// to this list.
+	int last_main_screen_key_up_events[5];
+
 	// ==========
 	// }
 	// ==========

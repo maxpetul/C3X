@@ -3652,6 +3652,8 @@ patch_init_floating_point ()
 	is->saved_improv_counts = NULL;
 	is->saved_improv_counts_capacity = 0;
 
+	memset (is->last_main_screen_key_up_events, 0, sizeof is->last_main_screen_key_up_events);
+
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config, true);
@@ -7251,11 +7253,20 @@ void __fastcall
 patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, int virtual_key_code, int is_down)
 {
 	char s[200];
+	int * last_events = is->last_main_screen_key_up_events;
+	bool in_game = *p_player_bits != 0; // Player bits all zero indicates we aren't currently in a game. Need to check for this because UI events
+					    // on the main menu also pass through this function.
+
+	if (! is_down) {
+		for (int n = ARRAY_LEN (is->last_main_screen_key_up_events) - 1; n > 0; n--)
+			last_events[n] = last_events[n - 1];
+		last_events[0] = virtual_key_code;
+	}
+
 	if (is->current_config.enable_ai_city_location_desirability_display &&
 	    (virtual_key_code == VK_L) && is_down &&
 	    (! (is_command_button_active (&this->GUI, UCV_Load) || is_command_button_active (&this->GUI, UCV_Unload))) &&
-	    (*p_player_bits != 0)) { // Player bits all zero indicates we aren't currently in a game. Need to check for this because UI events on the
-		                     // main menu also pass through this function.
+	    in_game) {
 		int is_debug_mode = (*p_debug_mode_bits & 4) != 0; // This is how the check is done in open_tile_info. Actually there are two debug
 		                                                   // mode bits (4 and 8) and I don't know what the difference is.
 		PopupForm * popup = get_popup_form ();
@@ -7276,7 +7287,12 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 			is->city_loc_display_perspective = (sel >= 1) ? sel : -1;
 			this->vtable->m73_call_m22_Draw ((Base_Form *)this); // Trigger map redraw
 		}
+
+	} else if ((in_game && ! is_down) &&
+		   (last_events[4] == VK_D) && (last_events[3] == VK_E) && (last_events[2] == VK_B) && (last_events[1] == VK_U) && (last_events[0] == VK_G)) {
+		pop_up_in_game_error ("Typed d e b u g");
 	}
+
 	Main_Screen_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
 }
 
