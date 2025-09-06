@@ -1,6 +1,8 @@
 - Allow Civilopedia descriptions for units, civilizations, and game concepts to span multiple pages
 - Option to prevent units from upgrading past an intermediate type that does not have the upgrade ability
   - Setting named prevent_old_units_from_upgrading_past_ability_block
+- Option to show some popup messages as online-multiplayer-style notifications
+  - Setting named convert_some_popups_into_online_mp_messages, off by default, see config for which popups are affected
 - Fix AI players being able to sacrifice units that don't have the sacrifice special ability set on their type
 - Option to tint coast and sea tiles on minimap based on cultural borders
   - Setting named show_territory_colors_on_water_tiles_in_minimap, off by default

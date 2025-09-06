@@ -3342,6 +3342,7 @@ patch_init_floating_point ()
 		{"do_not_unassign_workers_from_polluted_tiles"         , false, offsetof (struct c3x_config, do_not_unassign_workers_from_polluted_tiles)},
 		{"do_not_make_capital_cities_appear_larger"            , false, offsetof (struct c3x_config, do_not_make_capital_cities_appear_larger)},
 		{"show_territory_colors_on_water_tiles_in_minimap"     , false, offsetof (struct c3x_config, show_territory_colors_on_water_tiles_in_minimap)},
+		{"convert_some_popups_into_online_mp_messages"         , false, offsetof (struct c3x_config, convert_some_popups_into_online_mp_messages)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -12343,7 +12344,9 @@ is_skippable_popup (char * text_key)
 int __fastcall
 patch_PopupForm_impl_begin_showing_popup (PopupForm * this)
 {
-	if (! is_skippable_popup (this->text_key))
+	if (is_online_game () ||
+	    (! is->current_config.convert_some_popups_into_online_mp_messages) ||
+	    (! is_skippable_popup (this->text_key)))
 		return PopupForm_impl_begin_showing_popup (this);
 
 	else {
@@ -12367,7 +12370,7 @@ patch_PopupForm_impl_begin_showing_popup (PopupForm * this)
 bool __stdcall
 patch_is_online_game_for_show_popup ()
 {
-	return true;
+	return is->current_config.convert_some_popups_into_online_mp_messages ? true : is_online_game ();
 }
 
 bool __fastcall
