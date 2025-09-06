@@ -4177,7 +4177,7 @@ calculate_current_day_night_cycle_hour ()
 
 	// The increment may exceed 23, so wrap it around to stay within range
 	if (output > 23) {
-		output = output - is->current_day_night_cycle - is->current_config.fixed_hours_per_turn_for_day_night_cycle;
+		output = output - 24;
 	}
 	return output;
 }
