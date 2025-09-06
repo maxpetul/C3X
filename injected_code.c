@@ -3343,6 +3343,7 @@ patch_init_floating_point ()
 		{"do_not_make_capital_cities_appear_larger"            , false, offsetof (struct c3x_config, do_not_make_capital_cities_appear_larger)},
 		{"show_territory_colors_on_water_tiles_in_minimap"     , false, offsetof (struct c3x_config, show_territory_colors_on_water_tiles_in_minimap)},
 		{"convert_some_popups_into_online_mp_messages"         , false, offsetof (struct c3x_config, convert_some_popups_into_online_mp_messages)},
+		{"enable_debug_mode_switch"                            , false, offsetof (struct c3x_config, enable_debug_mode_switch)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -7288,9 +7289,24 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 			this->vtable->m73_call_m22_Draw ((Base_Form *)this); // Trigger map redraw
 		}
 
-	} else if ((in_game && ! is_down) &&
+	} else if (is->current_config.enable_debug_mode_switch &&
+		   (in_game && ! is_down) &&
 		   (last_events[4] == VK_D) && (last_events[3] == VK_E) && (last_events[2] == VK_B) && (last_events[1] == VK_U) && (last_events[0] == VK_G)) {
-		pop_up_in_game_error ("Typed d e b u g");
+		PopupForm * popup = get_popup_form ();
+		if ((*p_debug_mode_bits & 0xC) != 0) { // Consider debug mode on if either bit is set
+			*p_debug_mode_bits &= ~0xC;
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
+			PopupForm_add_text (popup, __, "Debug mode deactivated.", 0);
+			patch_show_popup (popup, __, 0, 0);
+		} else {
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_DEBUG_ACTIVATION", -1, 0, 0, 0);
+			int sel = patch_show_popup (popup, __, 0, 0);
+			if (sel == 0) {
+				*p_debug_mode_bits |= 0xC;
+				*(bool *)((int)p_human_player_bits + 37) = true; // Set MegaTrainerXL flag indicating edited save
+			}
+		}
+		this->vtable->m73_call_m22_Draw ((Base_Form *)this); // Trigger map redraw
 	}
 
 	Main_Screen_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);

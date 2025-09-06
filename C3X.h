@@ -200,6 +200,7 @@ struct c3x_config {
 	bool do_not_make_capital_cities_appear_larger;
 	bool show_territory_colors_on_water_tiles_in_minimap;
 	bool convert_some_popups_into_online_mp_messages;
+	bool enable_debug_mode_switch;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
