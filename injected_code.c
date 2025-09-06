@@ -3236,6 +3236,439 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	}
 }
 
+Sprite* 
+SpriteList_at(SpriteList *list, int i) {
+    return &list->field_0[i];
+}
+
+void 
+set_path(String260 *dst, const char *p) {
+    snprintf(dst->S, sizeof(dst->S), "%s", p);
+}
+
+void 
+slice_grid(Sprite *out, PCX_Image *img,
+            int tile_w, int tile_h, int full_w, int full_h)
+{
+    for (int y = 0; y < full_h; y += tile_h)
+        for (int x = 0; x < full_w; x += tile_w)
+            Sprite_slice_pcx(out++, __, img, x, y, tile_w, tile_h, 1, 1);
+}
+
+void 
+slice_grid_into_list(SpriteList *bucket, PCX_Image *img,
+                                 int tile_w, int tile_h, int full_w, int full_h)
+{
+    int k = 0;
+    for (int y = 0; y < full_h; y += tile_h)
+        for (int x = 0; x < full_w; x += tile_w)
+            Sprite_slice_pcx(SpriteList_at(bucket, k++), __, img, x, y, tile_w, tile_h, 1, 1);
+}
+
+void 
+join_path(char *out, size_t out_sz, const char *dir, const char *file)
+{
+    size_t n = strlen(dir);
+    int need_sep = (n > 0 && dir[n-1] != '/' && dir[n-1] != '\\');
+    snprintf(out, out_sz, "%s%s%s", dir, need_sep ? "\\" : "", file);
+}
+
+void 
+read_in_dir(PCX_Image *img,
+            const char *art_dir,
+            const char *filename,
+            String260 *store) {
+    char pbuf[512];
+    join_path(pbuf, sizeof pbuf, art_dir, filename);
+    if (store) {
+        // assumes: typedef struct { char S[260]; } String260;
+        snprintf(store->S, sizeof store->S, "%s", pbuf);
+    }
+
+	char temp_path[2*MAX_PATH];
+
+	snprintf(temp_path, sizeof temp_path, "%s\\%s", art_dir, filename);
+    PCX_Image_read_file(img, __, temp_path, NULL, 0, 0x100, 2);
+
+	if (img->JGL.Image == NULL) {
+		char ss[200];
+		snprintf(ss, sizeof ss, "Failed to load image: %s", temp_path);
+		pop_up_in_game_error(ss);
+	}
+}
+
+void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char *art_dir)
+{
+	char ss[200];
+    PCX_Image img; 
+	PCX_Image_construct(&img);
+
+    // 1) Std terrain (9 sheets): 6x9 of 128x64 over 0x480x0x240
+    const char *STD_SHEETS[9] = {
+		"xtgc.pcx", "xpgc.pcx", "xdgc.pcx", "xdpc.pcx", "xdgp.pcx", "xggc.pcx",
+		"wCSO.pcx", "wSSS.pcx", "wOOO.pcx"
+	};
+    for (int i = 0; i < 9; ++i) {
+    	read_in_dir(&img, art_dir, STD_SHEETS[i], NULL);
+        slice_grid_into_list(&this->Std_Terrain_Images[i], &img, 0x80, 0x40, 0x480, 0x240);
+    }
+	
+    // 2) LM terrain (9): same slicing
+	const char *LMT_SHEETS[9] = {
+		"lxtgc.pcx", "lxpgc.pcx", "lxdgc.pcx", "lxdpc.pcx", "lxdgp.pcx", "lxggc.pcx",
+		"lwCSO.pcx", "lwSSS.pcx", "lwOOO.pcx"
+	};
+    for (int i = 0; i < 9; ++i) {
+		read_in_dir(&img, art_dir, LMT_SHEETS[i], NULL);
+        slice_grid_into_list(&this->LM_Terrain_Images[i], &img, 0x80, 0x40, 0x480, 0x240);
+    }
+
+    // 3) Polar icecaps: 8x4 of 128x64
+	read_in_dir(&img, art_dir, "polarICEcaps-final.pcx", NULL);
+    slice_grid(this->Polar_Icecaps_Images, &img, 0x80, 0x40, 0x400, 0x100);
+
+    // 4) Hills / LM Hills: 4x3 of 128x72
+	read_in_dir(&img, art_dir, "xhills.pcx", NULL);
+    slice_grid(this->Hills_Images, &img, 0x80, 0x48, 0x200, 0x120);
+    read_in_dir(&img, art_dir, "hill forests.pcx", NULL);
+    slice_grid(this->Hills_Forests_Images, &img, 0x80, 0x48, 0x200, 0x120);
+    read_in_dir(&img, art_dir, "hill jungle.pcx", NULL);
+    slice_grid(this->Hills_Jungle_Images, &img, 0x80, 0x48, 0x200, 0x120);
+    read_in_dir(&img, art_dir, "LMHills.pcx", NULL);
+    slice_grid(this->LM_Hills_Images, &img, 0x80, 0x48, 0x200, 0x120);
+
+    // 5) Flood plains: 4x4 of 128x64
+	read_in_dir(&img, art_dir, "floodplains.pcx", NULL);
+    slice_grid(this->Flood_Plains_Images, &img, 0x80, 0x40, 0x200, 0x100);
+
+    // 6) Delta + Mountain rivers: 4x4 each, interleaved across one contiguous block
+    {
+        const char *RIV_SHEETS[2] = { "deltaRivers.pcx", "mtnRivers.pcx" };
+        Sprite *contig = this->Delta_Rivers_Images; // Mountain_Rivers_Images follows
+        for (int s = 0; s < 2; ++s) {
+			read_in_dir(&img, art_dir, RIV_SHEETS[s], NULL);
+            Sprite *p = contig + s; // even=delta, odd=mountain
+            for (int y = 0; y < 0x100; y += 0x40)
+                for (int x = 0; x < 0x200; x += 0x80) {
+                    Sprite_slice_pcx(p, __, &img, x, y, 0x80, 0x40, 1, 1);
+                    p += 2;
+                }
+        }
+    }
+
+    // 7) Waterfalls: 4x1 of 128x64
+	read_in_dir(&img, art_dir, "waterfalls.pcx", NULL);
+    slice_grid(this->Waterfalls_Images, &img, 0x80, 0x40, 0x200, 0x40);
+
+    // 8) Irrigation (desert/plains/normal/tundra): each 4x4 of 128x64
+    read_in_dir(&img, art_dir, "irrigation DESETT.pcx", NULL);
+    slice_grid(this->Irrigation_Desert_Images, &img, 0x80, 0x40, 0x200, 0x100);
+    read_in_dir(&img, art_dir, "irrigation PLAINS.pcx", NULL);
+    slice_grid(this->Irrigation_Plains_Images, &img, 0x80, 0x40, 0x200, 0x100);
+    read_in_dir(&img, art_dir, "irrigation.pcx", NULL);
+    slice_grid(this->Irrigation_Images, &img, 0x80, 0x40, 0x200, 0x100);
+    read_in_dir(&img, art_dir, "irrigation TUNDRA.pcx", NULL);
+    slice_grid(this->Irrigation_Tundra_Images, &img, 0x80, 0x40, 0x200, 0x100);
+
+    // 9) Volcanos (plain/forests/jungles/snow): 4x4 of 128x88
+	read_in_dir(&img, art_dir, "Volcanos.pcx", NULL);
+    slice_grid(this->Volcanos_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "Volcanos forests.pcx", NULL);
+    slice_grid(this->Volcanos_Forests_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "Volcanos jungles.pcx", NULL);
+    slice_grid(this->Volcanos_Jungles_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "Volcanos-snow.pcx", NULL);
+    slice_grid(this->Volcanos_Snow_Images, &img, 0x80, 0x58, 0x200, 0x160);
+
+    // 10) Marsh: Large band then Small band (tiles 128x88)
+    read_in_dir(&img, art_dir, "marsh.pcx", NULL);
+    // Large (2 rows, 4 cols)
+    { int k=0; for (int y=0; y<0xb0; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->Marsh_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    // Small (2 rows, 5 cols)
+    { int k=0; for (int y=0xb0; y<0x160; y+=0x58) for (int x=0; x<0x280; x+=0x80)
+        Sprite_slice_pcx(&this->Marsh_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+
+    // 11) LM mountains + standard mountains (plain/forests/jungles/snow): 4x4 of 128x88
+    read_in_dir(&img, art_dir, "LMMountains.pcx", NULL);
+    slice_grid(this->LM_Mountains_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "Mountains.pcx", NULL);
+    slice_grid(this->Mountains_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "mountain forests.pcx", NULL);
+    slice_grid(this->Mountains_Forests_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "mountain jungles.pcx", NULL);
+    slice_grid(this->Mountains_Jungles_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "Mountains-snow.pcx", NULL);
+    slice_grid(this->Mountains_Snow_Images, &img, 0x80, 0x58, 0x200, 0x160);
+
+    // 12) Roads (16x16) and Railroads (16x17), tiles 128x64
+    read_in_dir(&img, art_dir, "roads.pcx", NULL);
+    slice_grid(this->Roads_Images, &img, 0x80, 0x40, 0x800, 0x400);
+    read_in_dir(&img, art_dir, "railroads.pcx", NULL);
+    slice_grid(this->Railroads_Images, &img, 0x80, 0x40, 0x800, 0x440);
+
+    // 14) LM Forests (Large 2x4, Small 2x6, Pines 2x6), tiles 128x88
+	read_in_dir(&img, art_dir, "LMForests.pcx", NULL);
+    { int k=0; for (int y=0; y<0xb0; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->LM_Forests_Large_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0xb0; y<0x160; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->LM_Forests_Small_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->LM_Forests_Pines_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+
+    // 15) Grassland/Plains/Tundra forests & jungles (bands; tiles 128x88) — order is important
+	read_in_dir(&img, art_dir, "grassland forests.pcx", NULL);
+    // Jungles Large, Small
+    { int k=0; for (int y=0; y<0xb0; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->Grassland_Jungles_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0xb0; y<0x160; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->Grassland_Jungles_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    // Forests Large, Small, Pines
+    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->Grassland_Forests_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x210; y<0x2c0; y+=0x58) for (int x=0; x<0x280; x+=0x80)
+        Sprite_slice_pcx(&this->Grassland_Forests_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x2c0; y<0x370; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->Grassland_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+
+	read_in_dir(&img, art_dir, "plains forests.pcx", NULL);
+    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->Plains_Forests_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x210; y<0x2c0; y+=0x58) for (int x=0; x<0x280; x+=0x80)
+        Sprite_slice_pcx(&this->Plains_Forests_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x2c0; y<0x370; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->Plains_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+
+	read_in_dir(&img, art_dir, "tundra forests.pcx", NULL);
+    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->Tundra_Forests_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x210; y<0x2c0; y+=0x58) for (int x=0; x<0x280; x+=0x80)
+        Sprite_slice_pcx(&this->Tundra_Forests_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x2c0; y<0x370; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->Tundra_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+
+    // 16) LM Terrain (7 single 128x64, vertical strip)
+	read_in_dir(&img, art_dir, "landmark_terrain.pcx", NULL);
+    for (int i = 0, y = 0; i < 7; ++i, y += 0x40)
+        Sprite_slice_pcx(&this->LM_Terrain[i], __, &img, 0, y, 0x80, 0x40, 1, 1);
+
+    // 17) TNT (same funky ordering as original)
+	read_in_dir(&img, art_dir, "tnt.pcx", NULL);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[6+i],  __, &img, x, 0x00, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[9+i],  __, &img, x, 0x40, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[12+i], __, &img, x, 0x80, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[0+i],  __, &img, x, 0xC0, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[15+i], __, &img, x, 0x100, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[3+i],  __, &img, x, 0x140, 0x80, 0x40, 1, 1);
+
+    // 18) Goody huts: 8 tiles, x=(i%3)*0x80, y=(i/3)*0x40
+	read_in_dir(&img, art_dir, "goodyhuts.pcx", NULL);
+    for (int i = 0; i < 8; ++i) {
+        int x = (i % 3) << 7;
+        int y = (i / 3) << 6;
+        Sprite_slice_pcx(&this->Goody_Huts_Images[i], __, &img, x, y, 0x80, 0x40, 1, 1);
+    }
+
+    // 19) Terrain buildings (fortress/camp/barbarian camp/mines/barricade)
+	read_in_dir(&img, art_dir, "TerrainBuildings.pcx", NULL);
+    for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Fortress[i], __, &img, 0x00, y, 0x80, 0x40, 1, 1);
+    for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Camp[i],     __, &img, 0x80, y, 0x80, 0x40, 1, 1);
+    Sprite_slice_pcx(&this->Terrain_Buldings_Barbarian_Camp, __, &img, 0x100, 0x00, 0x80, 0x40, 1, 1);
+    Sprite_slice_pcx(&this->Terrain_Buldings_Mines,          __, &img, 0x100, 0x40, 0x80, 0x40, 1, 1);
+    for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Barricade[i], __, &img, 0x180, y, 0x80, 0x40, 1, 1);
+
+    // 20) Pollution & Craters (5x5 of 128x64)
+	read_in_dir(&img, art_dir, "pollution.pcx", NULL);
+    slice_grid(this->Pollution, &img, 0x80, 0x40, 0x280, 0x140);
+	read_in_dir(&img, art_dir, "craters.pcx", NULL);
+    slice_grid(this->Craters, &img, 0x80, 0x40, 0x280, 0x140);
+
+    // 21) Airfields / Outposts / Radar (and SHADOWS) 
+	read_in_dir(&img, art_dir, "x_airfields_and_detect.pcx", NULL);
+    for (int i=0, x=0; i<2; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Airfields[i], __, &img, x, 0x00, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Outposts[i],  __, &img, x, 0x40, 0x80, 0x80, 1, 1);
+    Sprite_slice_pcx(&this->Terrain_Buldings_Radar, __, &img, 0x00, 0xC0, 0x80, 0x80, 1, 1);
+
+    // 22) Victory (single 128x64)
+	read_in_dir(&img, art_dir, "x_victory.pcx", NULL);
+    Sprite_slice_pcx(&this->Victory_Image, __, &img, 0, 0, 0x80, 0x40, 1, 1);
+
+    // Resources
+    read_in_dir(&img, art_dir, "resources.pcx", NULL);
+    size_t k = 0;
+    for (int r = 0, y = 1; r < 6; ++r, y += 50) {
+        for (int c = 0, x = 1; c < 6; ++c, x += 50) {
+            Sprite_slice_pcx(&this->Resources[k++], __, &img, x, y, 49, 49, 1, 1);
+        }
+    }
+
+	// Base cities
+	static const char *CITY_BASE[5] = {
+        "rAMER.pcx", "rEURO.pcx", "rROMAN.pcx", "rMIDEAST.pcx", "rASIAN.pcx"
+    };
+	for (int culture = 0; culture < 5; culture++) {
+		read_in_dir(&img, art_dir, CITY_BASE[culture], NULL);
+		int y = 0;
+		for (int era = 0; era < 4; ++era, y += 95) {
+			int x = 0;
+			for (int size = 0; size < 3; ++size, x += 167) {
+				//const int idx = i*44 + era*5 + size; // <-- match game layout
+				const int idx = (culture + 5*(era) + 20*(size));
+				Sprite_slice_pcx(&this->Base_City_Images[idx], __, &img, x, y, 167, 95, 1, 1);
+			}
+		}
+	}
+
+	// Walled cities
+    static const char *CITY_WALL[5] = {
+        "AMERWALL.pcx", "EUROWALL.pcx", "ROMANWALL.pcx", "MIDEASTWALL.pcx", "ASIANWALL.pcx"
+    };
+	for (int culture = 0; culture < 5; ++culture) {
+		read_in_dir(&img, art_dir, CITY_WALL[culture], NULL);
+		int y = 0;
+		for (int era = 0; era < 4; ++era, y += 95) {
+			const int idx = ((culture) + 5*(era) + 20*(3));
+			Sprite_slice_pcx(&this->Walled_City_Images[idx], __, &img, 0, y, 167, 95, 1, 1);
+		}
+	}
+
+	img.vtable->destruct (&img, __, 0);
+}
+
+int kptr(const void *p) { return (int)(intptr_t)p; }
+Sprite *vptr(int v) { return (Sprite*)(intptr_t)v; }
+
+Sprite *
+get_sprite_proxy_for_current_hour(Sprite *s) {
+    int v;
+    int hour = is->current_day_night_cycle;  // 0..23
+    if (itable_look_up(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), &v))
+        return vptr(v);
+    return NULL;  // not proxied, fall back to s
+}
+
+void
+insert_spritelist_proxies(SpriteList *ss, SpriteList *ps, int hour, int len1, int len2) {
+	for (int i = 0; i < len1; i++) {
+		for (int j = 0; j < len2; j++) {
+			Sprite *s = &ss[i].field_0[j];
+			Sprite *p = &ps[i].field_0[j];
+			if (s && p) {
+				itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
+			}
+		}
+	}
+}
+
+void
+insert_sprite_proxies(Sprite *ss, Sprite *ps, int hour, int len) {
+	for (int i = 0; i < len; i++) {
+		Sprite *s = &ss[i];
+		Sprite *p = &ps[i];
+		if (s && p) {
+			itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
+		}
+	}
+}
+
+void
+insert_sprite_proxy(Sprite *s, Sprite *p, int hour) {
+	if (s && p) {
+		itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
+	}
+}
+
+void 
+build_sprite_proxies_24(Map_Renderer *mr) {
+	Sprite *s;
+	Sprite *p;
+
+	for (int h = 0; h < 24; ++h) {
+		insert_sprite_proxies(city_sprites, is->day_night_cycle_imgs[h].Base_City_Images, h, 80);
+		insert_sprite_proxies(walled_city_sprites, is->day_night_cycle_imgs[h].Walled_City_Images, h, 80);
+		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
+		insert_spritelist_proxies(mr->LM_Terrain_Images, is->day_night_cycle_imgs[h].LM_Terrain_Images, h, 9, 81);
+		insert_sprite_proxies(mr->Resources, is->day_night_cycle_imgs[h].Resources, h, 36);
+		insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &is->day_night_cycle_imgs[h].Terrain_Buldings_Barbarian_Camp, h);
+		insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &is->day_night_cycle_imgs[h].Terrain_Buldings_Mines, h);
+		insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &is->day_night_cycle_imgs[h].Terrain_Buldings_Radar, h);
+		insert_sprite_proxies(mr->Flood_Plains_Images, is->day_night_cycle_imgs[h].Flood_Plains_Images, h, 16);
+		insert_sprite_proxies(mr->Polar_Icecaps_Images, is->day_night_cycle_imgs[h].Polar_Icecaps_Images, h, 32);
+		insert_sprite_proxies(mr->Roads_Images, is->day_night_cycle_imgs[h].Roads_Images, h, 256);
+		insert_sprite_proxies(mr->Terrain_Buldings_Airfields, is->day_night_cycle_imgs[h].Terrain_Buldings_Airfields, h, 2);
+		insert_sprite_proxies(mr->Terrain_Buldings_Camp, is->day_night_cycle_imgs[h].Terrain_Buldings_Camp, h, 4);
+		insert_sprite_proxies(mr->Terrain_Buldings_Fortress, is->day_night_cycle_imgs[h].Terrain_Buldings_Fortress, h, 4);
+		insert_sprite_proxies(mr->Terrain_Buldings_Barricade, is->day_night_cycle_imgs[h].Terrain_Buldings_Barricade, h, 4);
+		insert_sprite_proxies(mr->Goody_Huts_Images, is->day_night_cycle_imgs[h].Goody_Huts_Images, h, 8);
+		insert_sprite_proxies(mr->Terrain_Buldings_Outposts, is->day_night_cycle_imgs[h].Terrain_Buldings_Outposts, h, 3);
+		insert_sprite_proxies(mr->Pollution, is->day_night_cycle_imgs[h].Pollution, h, 25);
+		insert_sprite_proxies(mr->Craters, is->day_night_cycle_imgs[h].Craters, h, 25);
+		insert_sprite_proxies(mr->Tnt_Images, is->day_night_cycle_imgs[h].Tnt_Images, h, 18);
+		insert_sprite_proxies(mr->Waterfalls_Images, is->day_night_cycle_imgs[h].Waterfalls_Images, h, 4);
+		insert_sprite_proxies(mr->LM_Terrain, is->day_night_cycle_imgs[h].LM_Terrain, h, 7);
+		insert_sprite_proxies(mr->Marsh_Large, is->day_night_cycle_imgs[h].Marsh_Large, h, 8);
+		insert_sprite_proxies(mr->Marsh_Small, is->day_night_cycle_imgs[h].Marsh_Small, h, 10);
+		insert_sprite_proxies(mr->Volcanos_Images, is->day_night_cycle_imgs[h].Volcanos_Images, h, 16);
+		insert_sprite_proxies(mr->Volcanos_Forests_Images, is->day_night_cycle_imgs[h].Volcanos_Forests_Images, h, 16);
+		insert_sprite_proxies(mr->Volcanos_Jungles_Images, is->day_night_cycle_imgs[h].Volcanos_Jungles_Images, h, 16);
+		insert_sprite_proxies(mr->Volcanos_Snow_Images, is->day_night_cycle_imgs[h].Volcanos_Snow_Images, h, 16);
+		insert_sprite_proxies(mr->Grassland_Forests_Large, is->day_night_cycle_imgs[h].Grassland_Forests_Large, h, 8);
+		insert_sprite_proxies(mr->Plains_Forests_Large, is->day_night_cycle_imgs[h].Plains_Forests_Large, h, 8);
+		insert_sprite_proxies(mr->Tundra_Forests_Large, is->day_night_cycle_imgs[h].Tundra_Forests_Large, h, 8);
+		insert_sprite_proxies(mr->Grassland_Forests_Small, is->day_night_cycle_imgs[h].Grassland_Forests_Small, h, 10);
+		insert_sprite_proxies(mr->Plains_Forests_Small, is->day_night_cycle_imgs[h].Plains_Forests_Small, h, 10);
+		insert_sprite_proxies(mr->Tundra_Forests_Small, is->day_night_cycle_imgs[h].Tundra_Forests_Small, h, 10);
+		insert_sprite_proxies(mr->Grassland_Forests_Pines, is->day_night_cycle_imgs[h].Grassland_Forests_Pines, h, 12);
+		insert_sprite_proxies(mr->Plains_Forests_Pines, is->day_night_cycle_imgs[h].Plains_Forests_Pines, h, 12);
+		insert_sprite_proxies(mr->Tundra_Forests_Pines, is->day_night_cycle_imgs[h].Tundra_Forests_Pines, h, 12);
+		insert_sprite_proxies(mr->Irrigation_Desert_Images, is->day_night_cycle_imgs[h].Irrigation_Desert_Images, h, 16);
+		insert_sprite_proxies(mr->Irrigation_Plains_Images, is->day_night_cycle_imgs[h].Irrigation_Plains_Images, h, 16);
+		insert_sprite_proxies(mr->Irrigation_Images, is->day_night_cycle_imgs[h].Irrigation_Images, h, 16);
+		insert_sprite_proxies(mr->Irrigation_Tundra_Images, is->day_night_cycle_imgs[h].Irrigation_Tundra_Images, h, 16);
+		insert_sprite_proxies(mr->Grassland_Jungles_Large, is->day_night_cycle_imgs[h].Grassland_Jungles_Large, h, 8);
+		insert_sprite_proxies(mr->Grassland_Jungles_Small, is->day_night_cycle_imgs[h].Grassland_Jungles_Small, h, 12);
+		insert_sprite_proxies(mr->Mountains_Images, is->day_night_cycle_imgs[h].Mountains_Images, h, 16);
+		insert_sprite_proxies(mr->Mountains_Forests_Images, is->day_night_cycle_imgs[h].Mountains_Forests_Images, h, 16);
+		insert_sprite_proxies(mr->Mountains_Jungles_Images, is->day_night_cycle_imgs[h].Mountains_Jungles_Images, h, 16);
+		insert_sprite_proxies(mr->Mountains_Snow_Images, is->day_night_cycle_imgs[h].Mountains_Snow_Images, h, 16);
+		insert_sprite_proxies(mr->Hills_Images, is->day_night_cycle_imgs[h].Hills_Images, h, 16);
+		insert_sprite_proxies(mr->Hills_Forests_Images, is->day_night_cycle_imgs[h].Hills_Forests_Images, h, 16);
+		insert_sprite_proxies(mr->Hills_Jungle_Images, is->day_night_cycle_imgs[h].Hills_Jungle_Images, h, 16);
+		insert_sprite_proxies(mr->Delta_Rivers_Images, is->day_night_cycle_imgs[h].Delta_Rivers_Images, h, 16);
+		insert_sprite_proxies(mr->Mountain_Rivers_Images, is->day_night_cycle_imgs[h].Mountain_Rivers_Images, h, 16);
+		insert_sprite_proxies(mr->LM_Mountains_Images, is->day_night_cycle_imgs[h].LM_Mountains_Images, h, 16);
+		insert_sprite_proxies(mr->LM_Forests_Large_Images, is->day_night_cycle_imgs[h].LM_Forests_Large_Images, h, 8);
+		insert_sprite_proxies(mr->LM_Forests_Small_Images, is->day_night_cycle_imgs[h].LM_Forests_Small_Images, h, 10);
+		insert_sprite_proxies(mr->LM_Forests_Pines_Images, is->day_night_cycle_imgs[h].LM_Forests_Pines_Images, h, 12);
+		insert_sprite_proxies(mr->LM_Hills_Images, is->day_night_cycle_imgs[h].LM_Hills_Images, h, 16);
+	}
+}
+
+void
+init_day_night_images()
+{
+	if (is->day_night_cycle_img_state != IS_UNINITED)
+		return;
+
+	const char *hour_strs[24] = {
+		"2400", "0100", "0200", "0300", "0400", "0500", "0600", "0700",
+		"0800", "0900", "1000", "1100", "1200", "1300", "1400", "1500", 
+		"1600", "1700", "1800", "1900", "2000", "2100", "2200", "2300"
+	};
+
+	for (int i = 0; i < 24; i++) {
+
+		char art_dir[200];
+		snprintf(art_dir, sizeof art_dir, "%s\\Art\\NightDay\\%s", is->mod_rel_dir, hour_strs[i]);
+		load_day_night_hour_images(&is->day_night_cycle_imgs[i], art_dir);
+	}
+
+	Map_Renderer * mr = &p_bic_data->Map.Renderer;
+	build_sprite_proxies_24(mr);
+
+	is->day_night_cycle_img_state = IS_OK;
+}
+
 void
 patch_init_floating_point ()
 {
@@ -3659,6 +4092,11 @@ patch_init_floating_point ()
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config, true);
+
+	if (is->day_night_cycle_img_state == IS_UNINITED) {
+		is->current_day_night_cycle = 12;
+		init_day_night_images ();
+	}
 }
 
 void __fastcall
@@ -7226,18 +7664,6 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, bool 
 	return tr;
 }
 
-int kptr(const void *p) { return (int)(intptr_t)p; }
-Sprite *vptr(int v) { return (Sprite*)(intptr_t)v; }
-
-Sprite *
-get_sprite_proxy_for_current_hour(Sprite *s) {
-    int v;
-    int hour = is->current_day_night_cycle;  // 0..23
-    if (itable_look_up(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), &v))
-        return vptr(v);
-    return NULL;  // not proxied, fall back to s
-}
-
 int __fastcall
 patch_Sprite_draw_on_map (Sprite * this, int edx, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7)
 {
@@ -8848,434 +9274,6 @@ find_human_players_seeing_ai_units ()
 	return tr;
 }
 
-Sprite* 
-SpriteList_at(SpriteList *list, int i) {
-    return &list->field_0[i];
-}
-
-void 
-set_path(String260 *dst, const char *p) {
-    snprintf(dst->S, sizeof(dst->S), "%s", p);
-}
-
-void 
-slice_grid(Sprite *out, PCX_Image *img,
-            int tile_w, int tile_h, int full_w, int full_h)
-{
-    for (int y = 0; y < full_h; y += tile_h)
-        for (int x = 0; x < full_w; x += tile_w)
-            Sprite_slice_pcx(out++, __, img, x, y, tile_w, tile_h, 1, 1);
-}
-
-void 
-slice_grid_into_list(SpriteList *bucket, PCX_Image *img,
-                                 int tile_w, int tile_h, int full_w, int full_h)
-{
-    int k = 0;
-    for (int y = 0; y < full_h; y += tile_h)
-        for (int x = 0; x < full_w; x += tile_w)
-            Sprite_slice_pcx(SpriteList_at(bucket, k++), __, img, x, y, tile_w, tile_h, 1, 1);
-}
-
-void 
-join_path(char *out, size_t out_sz, const char *dir, const char *file)
-{
-    size_t n = strlen(dir);
-    int need_sep = (n > 0 && dir[n-1] != '/' && dir[n-1] != '\\');
-    snprintf(out, out_sz, "%s%s%s", dir, need_sep ? "\\" : "", file);
-}
-
-void 
-read_in_dir(PCX_Image *img,
-            const char *art_dir,
-            const char *filename,
-            String260 *store) {
-    char pbuf[512];
-    join_path(pbuf, sizeof pbuf, art_dir, filename);
-    if (store) {
-        // assumes: typedef struct { char S[260]; } String260;
-        snprintf(store->S, sizeof store->S, "%s", pbuf);
-    }
-
-	char temp_path[2*MAX_PATH];
-
-	snprintf(temp_path, sizeof temp_path, "%s\\%s", art_dir, filename);
-    PCX_Image_read_file(img, __, temp_path, NULL, 0, 0x100, 2);
-
-	if (img->JGL.Image == NULL) {
-		char ss[200];
-		snprintf(ss, sizeof ss, "Failed to load image: %s", temp_path);
-		pop_up_in_game_error(ss);
-	}
-}
-
-void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char *art_dir)
-{
-	char ss[200];
-    PCX_Image img; 
-	PCX_Image_construct(&img);
-
-    // 1) Std terrain (9 sheets): 6x9 of 128x64 over 0x480x0x240
-    const char *STD_SHEETS[9] = {
-		"xtgc.pcx", "xpgc.pcx", "xdgc.pcx", "xdpc.pcx", "xdgp.pcx", "xggc.pcx",
-		"wCSO.pcx", "wSSS.pcx", "wOOO.pcx"
-	};
-    for (int i = 0; i < 9; ++i) {
-    	read_in_dir(&img, art_dir, STD_SHEETS[i], NULL);
-        slice_grid_into_list(&this->Std_Terrain_Images[i], &img, 0x80, 0x40, 0x480, 0x240);
-    }
-	
-    // 2) LM terrain (9): same slicing
-	const char *LMT_SHEETS[9] = {
-		"lxtgc.pcx", "lxpgc.pcx", "lxdgc.pcx", "lxdpc.pcx", "lxdgp.pcx", "lxggc.pcx",
-		"lwCSO.pcx", "lwSSS.pcx", "lwOOO.pcx"
-	};
-    for (int i = 0; i < 9; ++i) {
-		read_in_dir(&img, art_dir, LMT_SHEETS[i], NULL);
-        slice_grid_into_list(&this->LM_Terrain_Images[i], &img, 0x80, 0x40, 0x480, 0x240);
-    }
-
-    // 3) Polar icecaps: 8x4 of 128x64
-	read_in_dir(&img, art_dir, "polarICEcaps-final.pcx", NULL);
-    slice_grid(this->Polar_Icecaps_Images, &img, 0x80, 0x40, 0x400, 0x100);
-
-    // 4) Hills / LM Hills: 4x3 of 128x72
-	read_in_dir(&img, art_dir, "xhills.pcx", NULL);
-    slice_grid(this->Hills_Images, &img, 0x80, 0x48, 0x200, 0x120);
-    read_in_dir(&img, art_dir, "hill forests.pcx", NULL);
-    slice_grid(this->Hills_Forests_Images, &img, 0x80, 0x48, 0x200, 0x120);
-    read_in_dir(&img, art_dir, "hill jungle.pcx", NULL);
-    slice_grid(this->Hills_Jungle_Images, &img, 0x80, 0x48, 0x200, 0x120);
-    read_in_dir(&img, art_dir, "LMHills.pcx", NULL);
-    slice_grid(this->LM_Hills_Images, &img, 0x80, 0x48, 0x200, 0x120);
-
-    // 5) Flood plains: 4x4 of 128x64
-	read_in_dir(&img, art_dir, "floodplains.pcx", NULL);
-    slice_grid(this->Flood_Plains_Images, &img, 0x80, 0x40, 0x200, 0x100);
-
-    // 6) Delta + Mountain rivers: 4x4 each, interleaved across one contiguous block
-    {
-        const char *RIV_SHEETS[2] = { "deltaRivers.pcx", "mtnRivers.pcx" };
-        Sprite *contig = this->Delta_Rivers_Images; // Mountain_Rivers_Images follows
-        for (int s = 0; s < 2; ++s) {
-			read_in_dir(&img, art_dir, RIV_SHEETS[s], NULL);
-            Sprite *p = contig + s; // even=delta, odd=mountain
-            for (int y = 0; y < 0x100; y += 0x40)
-                for (int x = 0; x < 0x200; x += 0x80) {
-                    Sprite_slice_pcx(p, __, &img, x, y, 0x80, 0x40, 1, 1);
-                    p += 2;
-                }
-        }
-    }
-
-    // 7) Waterfalls: 4x1 of 128x64
-	read_in_dir(&img, art_dir, "waterfalls.pcx", NULL);
-    slice_grid(this->Waterfalls_Images, &img, 0x80, 0x40, 0x200, 0x40);
-
-    // 8) Irrigation (desert/plains/normal/tundra): each 4x4 of 128x64
-    read_in_dir(&img, art_dir, "irrigation DESETT.pcx", NULL);
-    slice_grid(this->Irrigation_Desert_Images, &img, 0x80, 0x40, 0x200, 0x100);
-    read_in_dir(&img, art_dir, "irrigation PLAINS.pcx", NULL);
-    slice_grid(this->Irrigation_Plains_Images, &img, 0x80, 0x40, 0x200, 0x100);
-    read_in_dir(&img, art_dir, "irrigation.pcx", NULL);
-    slice_grid(this->Irrigation_Images, &img, 0x80, 0x40, 0x200, 0x100);
-    read_in_dir(&img, art_dir, "irrigation TUNDRA.pcx", NULL);
-    slice_grid(this->Irrigation_Tundra_Images, &img, 0x80, 0x40, 0x200, 0x100);
-
-    // 9) Volcanos (plain/forests/jungles/snow): 4x4 of 128x88
-	read_in_dir(&img, art_dir, "Volcanos.pcx", NULL);
-    slice_grid(this->Volcanos_Images, &img, 0x80, 0x58, 0x200, 0x160);
-    read_in_dir(&img, art_dir, "Volcanos forests.pcx", NULL);
-    slice_grid(this->Volcanos_Forests_Images, &img, 0x80, 0x58, 0x200, 0x160);
-    read_in_dir(&img, art_dir, "Volcanos jungles.pcx", NULL);
-    slice_grid(this->Volcanos_Jungles_Images, &img, 0x80, 0x58, 0x200, 0x160);
-    read_in_dir(&img, art_dir, "Volcanos-snow.pcx", NULL);
-    slice_grid(this->Volcanos_Snow_Images, &img, 0x80, 0x58, 0x200, 0x160);
-
-    // 10) Marsh: Large band then Small band (tiles 128x88)
-    read_in_dir(&img, art_dir, "marsh.pcx", NULL);
-    // Large (2 rows, 4 cols)
-    { int k=0; for (int y=0; y<0xb0; y+=0x58) for (int x=0; x<0x200; x+=0x80)
-        Sprite_slice_pcx(&this->Marsh_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-    // Small (2 rows, 5 cols)
-    { int k=0; for (int y=0xb0; y<0x160; y+=0x58) for (int x=0; x<0x280; x+=0x80)
-        Sprite_slice_pcx(&this->Marsh_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-
-    // 11) LM mountains + standard mountains (plain/forests/jungles/snow): 4x4 of 128x88
-    read_in_dir(&img, art_dir, "LMMountains.pcx", NULL);
-    slice_grid(this->LM_Mountains_Images, &img, 0x80, 0x58, 0x200, 0x160);
-    read_in_dir(&img, art_dir, "Mountains.pcx", NULL);
-    slice_grid(this->Mountains_Images, &img, 0x80, 0x58, 0x200, 0x160);
-    read_in_dir(&img, art_dir, "mountain forests.pcx", NULL);
-    slice_grid(this->Mountains_Forests_Images, &img, 0x80, 0x58, 0x200, 0x160);
-    read_in_dir(&img, art_dir, "mountain jungles.pcx", NULL);
-    slice_grid(this->Mountains_Jungles_Images, &img, 0x80, 0x58, 0x200, 0x160);
-    read_in_dir(&img, art_dir, "Mountains-snow.pcx", NULL);
-    slice_grid(this->Mountains_Snow_Images, &img, 0x80, 0x58, 0x200, 0x160);
-
-    // 12) Roads (16x16) and Railroads (16x17), tiles 128x64
-    read_in_dir(&img, art_dir, "roads.pcx", NULL);
-    slice_grid(this->Roads_Images, &img, 0x80, 0x40, 0x800, 0x400);
-    read_in_dir(&img, art_dir, "railroads.pcx", NULL);
-    slice_grid(this->Railroads_Images, &img, 0x80, 0x40, 0x800, 0x440);
-
-    // 14) LM Forests (Large 2x4, Small 2x6, Pines 2x6), tiles 128x88
-	read_in_dir(&img, art_dir, "LMForests.pcx", NULL);
-    { int k=0; for (int y=0; y<0xb0; y+=0x58) for (int x=0; x<0x200; x+=0x80)
-        Sprite_slice_pcx(&this->LM_Forests_Large_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-    { int k=0; for (int y=0xb0; y<0x160; y+=0x58) for (int x=0; x<0x300; x+=0x80)
-        Sprite_slice_pcx(&this->LM_Forests_Small_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x300; x+=0x80)
-        Sprite_slice_pcx(&this->LM_Forests_Pines_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-
-    // 15) Grassland/Plains/Tundra forests & jungles (bands; tiles 128x88) — order is important
-	read_in_dir(&img, art_dir, "grassland forests.pcx", NULL);
-    // Jungles Large, Small
-    { int k=0; for (int y=0; y<0xb0; y+=0x58) for (int x=0; x<0x200; x+=0x80)
-        Sprite_slice_pcx(&this->Grassland_Jungles_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-    { int k=0; for (int y=0xb0; y<0x160; y+=0x58) for (int x=0; x<0x300; x+=0x80)
-        Sprite_slice_pcx(&this->Grassland_Jungles_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-    // Forests Large, Small, Pines
-    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x200; x+=0x80)
-        Sprite_slice_pcx(&this->Grassland_Forests_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-    { int k=0; for (int y=0x210; y<0x2c0; y+=0x58) for (int x=0; x<0x280; x+=0x80)
-        Sprite_slice_pcx(&this->Grassland_Forests_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-    { int k=0; for (int y=0x2c0; y<0x370; y+=0x58) for (int x=0; x<0x300; x+=0x80)
-        Sprite_slice_pcx(&this->Grassland_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-
-	read_in_dir(&img, art_dir, "plains forests.pcx", NULL);
-    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x200; x+=0x80)
-        Sprite_slice_pcx(&this->Plains_Forests_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-    { int k=0; for (int y=0x210; y<0x2c0; y+=0x58) for (int x=0; x<0x280; x+=0x80)
-        Sprite_slice_pcx(&this->Plains_Forests_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-    { int k=0; for (int y=0x2c0; y<0x370; y+=0x58) for (int x=0; x<0x300; x+=0x80)
-        Sprite_slice_pcx(&this->Plains_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-
-	read_in_dir(&img, art_dir, "tundra forests.pcx", NULL);
-    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x200; x+=0x80)
-        Sprite_slice_pcx(&this->Tundra_Forests_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-    { int k=0; for (int y=0x210; y<0x2c0; y+=0x58) for (int x=0; x<0x280; x+=0x80)
-        Sprite_slice_pcx(&this->Tundra_Forests_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-    { int k=0; for (int y=0x2c0; y<0x370; y+=0x58) for (int x=0; x<0x300; x+=0x80)
-        Sprite_slice_pcx(&this->Tundra_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
-
-    // 16) LM Terrain (7 single 128x64, vertical strip)
-	read_in_dir(&img, art_dir, "landmark_terrain.pcx", NULL);
-    for (int i = 0, y = 0; i < 7; ++i, y += 0x40)
-        Sprite_slice_pcx(&this->LM_Terrain[i], __, &img, 0, y, 0x80, 0x40, 1, 1);
-
-    // 17) TNT (same funky ordering as original)
-	read_in_dir(&img, art_dir, "tnt.pcx", NULL);
-    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[6+i],  __, &img, x, 0x00, 0x80, 0x40, 1, 1);
-    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[9+i],  __, &img, x, 0x40, 0x80, 0x40, 1, 1);
-    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[12+i], __, &img, x, 0x80, 0x80, 0x40, 1, 1);
-    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[0+i],  __, &img, x, 0xC0, 0x80, 0x40, 1, 1);
-    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[15+i], __, &img, x, 0x100, 0x80, 0x40, 1, 1);
-    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[3+i],  __, &img, x, 0x140, 0x80, 0x40, 1, 1);
-
-    // 18) Goody huts: 8 tiles, x=(i%3)*0x80, y=(i/3)*0x40
-	read_in_dir(&img, art_dir, "goodyhuts.pcx", NULL);
-    for (int i = 0; i < 8; ++i) {
-        int x = (i % 3) << 7;
-        int y = (i / 3) << 6;
-        Sprite_slice_pcx(&this->Goody_Huts_Images[i], __, &img, x, y, 0x80, 0x40, 1, 1);
-    }
-
-    // 19) Terrain buildings (fortress/camp/barbarian camp/mines/barricade)
-	read_in_dir(&img, art_dir, "TerrainBuildings.pcx", NULL);
-    for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Fortress[i], __, &img, 0x00, y, 0x80, 0x40, 1, 1);
-    for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Camp[i],     __, &img, 0x80, y, 0x80, 0x40, 1, 1);
-    Sprite_slice_pcx(&this->Terrain_Buldings_Barbarian_Camp, __, &img, 0x100, 0x00, 0x80, 0x40, 1, 1);
-    Sprite_slice_pcx(&this->Terrain_Buldings_Mines,          __, &img, 0x100, 0x40, 0x80, 0x40, 1, 1);
-    for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Barricade[i], __, &img, 0x180, y, 0x80, 0x40, 1, 1);
-
-    // 20) Pollution & Craters (5x5 of 128x64)
-	read_in_dir(&img, art_dir, "pollution.pcx", NULL);
-    slice_grid(this->Pollution, &img, 0x80, 0x40, 0x280, 0x140);
-	read_in_dir(&img, art_dir, "craters.pcx", NULL);
-    slice_grid(this->Craters, &img, 0x80, 0x40, 0x280, 0x140);
-
-    // 21) Airfields / Outposts / Radar (and SHADOWS) 
-	read_in_dir(&img, art_dir, "x_airfields_and_detect.pcx", NULL);
-    for (int i=0, x=0; i<2; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Airfields[i], __, &img, x, 0x00, 0x80, 0x40, 1, 1);
-    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Outposts[i],  __, &img, x, 0x40, 0x80, 0x80, 1, 1);
-    Sprite_slice_pcx(&this->Terrain_Buldings_Radar, __, &img, 0x00, 0xC0, 0x80, 0x80, 1, 1);
-
-    // 22) Victory (single 128x64)
-	read_in_dir(&img, art_dir, "x_victory.pcx", NULL);
-    Sprite_slice_pcx(&this->Victory_Image, __, &img, 0, 0, 0x80, 0x40, 1, 1);
-
-    // Resources
-    read_in_dir(&img, art_dir, "resources.pcx", NULL);
-    size_t k = 0;
-    for (int r = 0, y = 1; r < 6; ++r, y += 50) {
-        for (int c = 0, x = 1; c < 6; ++c, x += 50) {
-            Sprite_slice_pcx(&this->Resources[k++], __, &img, x, y, 49, 49, 1, 1);
-        }
-    }
-
-	// Base cities
-	static const char *CITY_BASE[5] = {
-        "rAMER.pcx", "rEURO.pcx", "rROMAN.pcx", "rMIDEAST.pcx", "rASIAN.pcx"
-    };
-	for (int culture = 0; culture < 5; culture++) {
-		read_in_dir(&img, art_dir, CITY_BASE[culture], NULL);
-		int y = 0;
-		for (int era = 0; era < 4; ++era, y += 95) {
-			int x = 0;
-			for (int size = 0; size < 3; ++size, x += 167) {
-				//const int idx = i*44 + era*5 + size; // <-- match game layout
-				const int idx = (culture + 5*(era) + 20*(size));
-				Sprite_slice_pcx(&this->Base_City_Images[idx], __, &img, x, y, 167, 95, 1, 1);
-			}
-		}
-	}
-
-	// Walled cities
-    static const char *CITY_WALL[5] = {
-        "AMERWALL.pcx", "EUROWALL.pcx", "ROMANWALL.pcx", "MIDEASTWALL.pcx", "ASIANWALL.pcx"
-    };
-	for (int culture = 0; culture < 5; ++culture) {
-		read_in_dir(&img, art_dir, CITY_WALL[culture], NULL);
-		int y = 0;
-		for (int era = 0; era < 4; ++era, y += 95) {
-			const int idx = ((culture) + 5*(era) + 20*(3));
-			Sprite_slice_pcx(&this->Walled_City_Images[idx], __, &img, 0, y, 167, 95, 1, 1);
-		}
-	}
-
-	img.vtable->destruct (&img, __, 0);
-}
-
-void
-load_load_day_night_city_images ()
-{
-	PCX_Image img;
-    PCX_Image_construct(&img);
-}
-
-void
-insert_spritelist_proxies(SpriteList *ss, SpriteList *ps, int hour, int len1, int len2) {
-	for (int i = 0; i < len1; i++) {
-		for (int j = 0; j < len2; j++) {
-			Sprite *s = &ss[i].field_0[j];
-			Sprite *p = &ps[i].field_0[j];
-			if (s && p) {
-				itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
-			}
-		}
-	}
-}
-
-void
-insert_sprite_proxies(Sprite *ss, Sprite *ps, int hour, int len) {
-	for (int i = 0; i < len; i++) {
-		Sprite *s = &ss[i];
-		Sprite *p = &ps[i];
-		if (s && p) {
-			itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
-		}
-	}
-}
-
-void
-insert_sprite_proxy(Sprite *s, Sprite *p, int hour) {
-	if (s && p) {
-		itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
-	}
-}
-
-void 
-build_sprite_proxies_24(Map_Renderer *mr) {
-	Sprite *s;
-	Sprite *p;
-
-	for (int h = 0; h < 24; ++h) {
-		insert_sprite_proxies(city_sprites, is->day_night_cycle_imgs[h].Base_City_Images, h, 80);
-		insert_sprite_proxies(walled_city_sprites, is->day_night_cycle_imgs[h].Walled_City_Images, h, 80);
-		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
-		insert_spritelist_proxies(mr->LM_Terrain_Images, is->day_night_cycle_imgs[h].LM_Terrain_Images, h, 9, 81);
-		insert_sprite_proxies(mr->Resources, is->day_night_cycle_imgs[h].Resources, h, 36);
-		insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &is->day_night_cycle_imgs[h].Terrain_Buldings_Barbarian_Camp, h);
-		insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &is->day_night_cycle_imgs[h].Terrain_Buldings_Mines, h);
-		insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &is->day_night_cycle_imgs[h].Terrain_Buldings_Radar, h);
-		insert_sprite_proxies(mr->Flood_Plains_Images, is->day_night_cycle_imgs[h].Flood_Plains_Images, h, 16);
-		insert_sprite_proxies(mr->Polar_Icecaps_Images, is->day_night_cycle_imgs[h].Polar_Icecaps_Images, h, 32);
-		insert_sprite_proxies(mr->Roads_Images, is->day_night_cycle_imgs[h].Roads_Images, h, 256);
-		insert_sprite_proxies(mr->Terrain_Buldings_Airfields, is->day_night_cycle_imgs[h].Terrain_Buldings_Airfields, h, 2);
-		insert_sprite_proxies(mr->Terrain_Buldings_Camp, is->day_night_cycle_imgs[h].Terrain_Buldings_Camp, h, 4);
-		insert_sprite_proxies(mr->Terrain_Buldings_Fortress, is->day_night_cycle_imgs[h].Terrain_Buldings_Fortress, h, 4);
-		insert_sprite_proxies(mr->Terrain_Buldings_Barricade, is->day_night_cycle_imgs[h].Terrain_Buldings_Barricade, h, 4);
-		insert_sprite_proxies(mr->Goody_Huts_Images, is->day_night_cycle_imgs[h].Goody_Huts_Images, h, 8);
-		insert_sprite_proxies(mr->Terrain_Buldings_Outposts, is->day_night_cycle_imgs[h].Terrain_Buldings_Outposts, h, 3);
-		insert_sprite_proxies(mr->Pollution, is->day_night_cycle_imgs[h].Pollution, h, 25);
-		insert_sprite_proxies(mr->Craters, is->day_night_cycle_imgs[h].Craters, h, 25);
-		insert_sprite_proxies(mr->Tnt_Images, is->day_night_cycle_imgs[h].Tnt_Images, h, 18);
-		insert_sprite_proxies(mr->Waterfalls_Images, is->day_night_cycle_imgs[h].Waterfalls_Images, h, 4);
-		insert_sprite_proxies(mr->LM_Terrain, is->day_night_cycle_imgs[h].LM_Terrain, h, 7);
-		insert_sprite_proxies(mr->Marsh_Large, is->day_night_cycle_imgs[h].Marsh_Large, h, 8);
-		insert_sprite_proxies(mr->Marsh_Small, is->day_night_cycle_imgs[h].Marsh_Small, h, 10);
-		insert_sprite_proxies(mr->Volcanos_Images, is->day_night_cycle_imgs[h].Volcanos_Images, h, 16);
-		insert_sprite_proxies(mr->Volcanos_Forests_Images, is->day_night_cycle_imgs[h].Volcanos_Forests_Images, h, 16);
-		insert_sprite_proxies(mr->Volcanos_Jungles_Images, is->day_night_cycle_imgs[h].Volcanos_Jungles_Images, h, 16);
-		insert_sprite_proxies(mr->Volcanos_Snow_Images, is->day_night_cycle_imgs[h].Volcanos_Snow_Images, h, 16);
-		insert_sprite_proxies(mr->Grassland_Forests_Large, is->day_night_cycle_imgs[h].Grassland_Forests_Large, h, 8);
-		insert_sprite_proxies(mr->Plains_Forests_Large, is->day_night_cycle_imgs[h].Plains_Forests_Large, h, 8);
-		insert_sprite_proxies(mr->Tundra_Forests_Large, is->day_night_cycle_imgs[h].Tundra_Forests_Large, h, 8);
-		insert_sprite_proxies(mr->Grassland_Forests_Small, is->day_night_cycle_imgs[h].Grassland_Forests_Small, h, 10);
-		insert_sprite_proxies(mr->Plains_Forests_Small, is->day_night_cycle_imgs[h].Plains_Forests_Small, h, 10);
-		insert_sprite_proxies(mr->Tundra_Forests_Small, is->day_night_cycle_imgs[h].Tundra_Forests_Small, h, 10);
-		insert_sprite_proxies(mr->Grassland_Forests_Pines, is->day_night_cycle_imgs[h].Grassland_Forests_Pines, h, 12);
-		insert_sprite_proxies(mr->Plains_Forests_Pines, is->day_night_cycle_imgs[h].Plains_Forests_Pines, h, 12);
-		insert_sprite_proxies(mr->Tundra_Forests_Pines, is->day_night_cycle_imgs[h].Tundra_Forests_Pines, h, 12);
-		insert_sprite_proxies(mr->Irrigation_Desert_Images, is->day_night_cycle_imgs[h].Irrigation_Desert_Images, h, 16);
-		insert_sprite_proxies(mr->Irrigation_Plains_Images, is->day_night_cycle_imgs[h].Irrigation_Plains_Images, h, 16);
-		insert_sprite_proxies(mr->Irrigation_Images, is->day_night_cycle_imgs[h].Irrigation_Images, h, 16);
-		insert_sprite_proxies(mr->Irrigation_Tundra_Images, is->day_night_cycle_imgs[h].Irrigation_Tundra_Images, h, 16);
-		insert_sprite_proxies(mr->Grassland_Jungles_Large, is->day_night_cycle_imgs[h].Grassland_Jungles_Large, h, 8);
-		insert_sprite_proxies(mr->Grassland_Jungles_Small, is->day_night_cycle_imgs[h].Grassland_Jungles_Small, h, 12);
-		insert_sprite_proxies(mr->Mountains_Images, is->day_night_cycle_imgs[h].Mountains_Images, h, 16);
-		insert_sprite_proxies(mr->Mountains_Forests_Images, is->day_night_cycle_imgs[h].Mountains_Forests_Images, h, 16);
-		insert_sprite_proxies(mr->Mountains_Jungles_Images, is->day_night_cycle_imgs[h].Mountains_Jungles_Images, h, 16);
-		insert_sprite_proxies(mr->Mountains_Snow_Images, is->day_night_cycle_imgs[h].Mountains_Snow_Images, h, 16);
-		insert_sprite_proxies(mr->Hills_Images, is->day_night_cycle_imgs[h].Hills_Images, h, 16);
-		insert_sprite_proxies(mr->Hills_Forests_Images, is->day_night_cycle_imgs[h].Hills_Forests_Images, h, 16);
-		insert_sprite_proxies(mr->Hills_Jungle_Images, is->day_night_cycle_imgs[h].Hills_Jungle_Images, h, 16);
-		insert_sprite_proxies(mr->Delta_Rivers_Images, is->day_night_cycle_imgs[h].Delta_Rivers_Images, h, 16);
-		insert_sprite_proxies(mr->Mountain_Rivers_Images, is->day_night_cycle_imgs[h].Mountain_Rivers_Images, h, 16);
-		insert_sprite_proxies(mr->LM_Mountains_Images, is->day_night_cycle_imgs[h].LM_Mountains_Images, h, 16);
-		insert_sprite_proxies(mr->LM_Forests_Large_Images, is->day_night_cycle_imgs[h].LM_Forests_Large_Images, h, 8);
-		insert_sprite_proxies(mr->LM_Forests_Small_Images, is->day_night_cycle_imgs[h].LM_Forests_Small_Images, h, 10);
-		insert_sprite_proxies(mr->LM_Forests_Pines_Images, is->day_night_cycle_imgs[h].LM_Forests_Pines_Images, h, 12);
-		insert_sprite_proxies(mr->LM_Hills_Images, is->day_night_cycle_imgs[h].LM_Hills_Images, h, 16);
-	}
-}
-
-void
-init_day_night_images()
-{
-	if (is->day_night_cycle_img_state != IS_UNINITED)
-		return;
-
-	const char *hour_strs[24] = {
-		"2400", "0100", "0200", "0300", "0400", "0500", "0600", "0700",
-		"0800", "0900", "1000", "1100", "1200", "1300", "1400", "1500", 
-		"1600", "1700", "1800", "1900", "2000", "2100", "2200", "2300"
-	};
-
-	for (int i = 0; i < 24; i++) {
-
-		char art_dir[200];
-		snprintf(art_dir, sizeof art_dir, "%s\\Art\\NightDay\\%s", is->mod_rel_dir, hour_strs[i]);
-		load_day_night_hour_images(&is->day_night_cycle_imgs[i], art_dir);
-	}
-
-	Map_Renderer * mr = &p_bic_data->Map.Renderer;
-	build_sprite_proxies_24(mr);
-
-	is->day_night_cycle_img_state = IS_OK;
-}
-
 void __cdecl
 patch_perform_interturn_in_main_loop ()
 {
@@ -9303,10 +9301,6 @@ patch_perform_interturn_in_main_loop ()
 	perform_interturn ();
 
 	if (is->current_config.enable_day_night_cycle) {
-		if (is->day_night_cycle_img_state == IS_UNINITED) {
-			is->current_day_night_cycle = 12;
-			init_day_night_images ();
-		}
 		if (is->day_night_cycle_img_state == IS_OK) {
 			int hour = is->current_day_night_cycle;
 			is->current_day_night_cycle = (hour + 1) % 24;
