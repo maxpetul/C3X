@@ -12194,9 +12194,9 @@ patch_Civilopedia_Form_m53_On_Control_Click (Civilopedia_Form * this, int edx, C
 void __fastcall
 patch_Civilopedia_Form_m22_Draw (Civilopedia_Form * this)
 {
-	// Make sure the new buttons are not visible and the shown page is cleared whenever we transition off description mode
+	// Make sure the new buttons are not visible and the multipage variables are cleared when we exit description mode
 	if ((this->Current_Article_ID < 0) || ! this->Articles[this->Current_Article_ID]->show_description) {
-		is->cmpd.shown_page = 0;
+		is->cmpd.shown_page = is->cmpd.last_page = 0;
 		if (is->cmpd.effects_btn != NULL)
 			is->cmpd.effects_btn->vtable->m02_Show_Disabled ((Base_Form *)is->cmpd.effects_btn);
 		if (is->cmpd.previous_btn != NULL)
