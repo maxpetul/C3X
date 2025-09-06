@@ -12331,7 +12331,7 @@ is_skippable_popup (char * text_key)
 				   "TRADEEMBARGOENDS", // embargo vs player ends
 				   "SUMMARY_CIV_DESTROYED_BY_CIV", "SUMMARY_CIV_DESTROYED", // foreign civs destroyed not by player
 				   "LOSTGOOD", // 'We lost our supply of ...!'
-				   "TRADEEMBARGO", "MILITARYALLIANCEWARONUS", // trade embargo or alliance vs player
+				   "TRADEEMBARGO", "MILITARYALLIANCEWARONUS", "MILITARYALLIANCEAGAINSTUS", // trade embargo or alliance vs player
 				   "SUMMARY_TRAVELERS_REPORT"}; // another civs starts a wonder
 
 	for (int n = 0; n < ARRAY_LEN (skippable_keys); n++)
