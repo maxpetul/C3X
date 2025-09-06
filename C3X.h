@@ -274,7 +274,11 @@ struct c3x_config {
 	bool prevent_razing_by_players;
 
 	bool enable_districts;
-	bool enable_day_night_cycle;
+
+	int day_night_cycle_mode;
+	int elapsed_minutes_per_day_night_hour_transition;
+	int fixed_hours_per_turn_for_day_night_cycle;
+	int pinned_hour_for_day_night_cycle;
 };
 
 enum stackable_command {
@@ -985,6 +989,7 @@ struct injected_state {
 
 	// Day-Night cycle data
 	int current_day_night_cycle;
+	LARGE_INTEGER last_day_night_cycle_update_time;
 
 	struct table day_night_sprite_proxy_by_hour[24];
 

@@ -3502,6 +3502,15 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
         }
     }
 
+	// Resources shadows
+	read_in_dir(&img, art_dir, "resources_shadows.pcx", NULL);
+    k = 0;
+    for (int r = 0, y = 1; r < 6; ++r, y += 50) {
+        for (int c = 0, x = 1; c < 6; ++c, x += 50) {
+            Sprite_slice_pcx(&this->ResourcesShadows[k++], __, &img, x, y, 49, 49, 1, 1);
+        }
+    }
+
 	// Base cities
 	static const char *CITY_BASE[5] = {
         "rAMER.pcx", "rEURO.pcx", "rROMAN.pcx", "rMIDEAST.pcx", "rASIAN.pcx"
@@ -3589,6 +3598,7 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
 		insert_spritelist_proxies(mr->LM_Terrain_Images, is->day_night_cycle_imgs[h].LM_Terrain_Images, h, 9, 81);
 		insert_sprite_proxies(mr->Resources, is->day_night_cycle_imgs[h].Resources, h, 36);
+		insert_sprite_proxies(mr->ResourcesShadows, is->day_night_cycle_imgs[h].ResourcesShadows, h, 36);
 		insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &is->day_night_cycle_imgs[h].Terrain_Buldings_Barbarian_Camp, h);
 		insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &is->day_night_cycle_imgs[h].Terrain_Buldings_Mines, h);
 		insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &is->day_night_cycle_imgs[h].Terrain_Buldings_Radar, h);
@@ -3801,7 +3811,6 @@ patch_init_floating_point ()
 		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
 
 		{"enable_districts"                                    , false, offsetof (struct c3x_config, enable_districts)},
-		{"enable_day_night_cycle"                              , false, offsetof (struct c3x_config, enable_day_night_cycle)},
 	};
 
 	struct integer_config_option {
@@ -3809,21 +3818,26 @@ patch_init_floating_point ()
 		int base_val;
 		int offset;
 	} integer_config_options[] = {
-		{"limit_railroad_movement"                     ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
-		{"minimum_city_separation"                     ,     1, offsetof (struct c3x_config, minimum_city_separation)},
-		{"anarchy_length_percent"                      ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
-		{"ai_multi_city_start"                         ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
-		{"max_tries_to_place_fp_city"                  , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
-		{"ai_research_multiplier"                      ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
-		{"ai_settler_perfume_on_founding_duration"     ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
-		{"extra_unit_maintenance_per_shields"          ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
-		{"ai_build_artillery_ratio"                    ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
-		{"ai_artillery_value_damage_percent"           ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
-		{"ai_build_bomber_ratio"                       ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
-		{"max_ai_naval_escorts"                        ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
-		{"ai_worker_requirement_percent"               ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
-		{"chance_for_nukes_to_destroy_max_one_hp_units",   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
-		{"rebase_range_multiplier"                     ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
+		{"limit_railroad_movement"                      ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
+		{"minimum_city_separation"                      ,     1, offsetof (struct c3x_config, minimum_city_separation)},
+		{"anarchy_length_percent"                       ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
+		{"ai_multi_city_start"                          ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
+		{"max_tries_to_place_fp_city"                   , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
+		{"ai_research_multiplier"                       ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
+		{"ai_settler_perfume_on_founding_duration"      ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
+		{"extra_unit_maintenance_per_shields"           ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
+		{"ai_build_artillery_ratio"                     ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
+		{"ai_artillery_value_damage_percent"            ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
+		{"ai_build_bomber_ratio"                        ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
+		{"max_ai_naval_escorts"                         ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
+		{"ai_worker_requirement_percent"                ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
+		{"chance_for_nukes_to_destroy_max_one_hp_units" ,   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
+		{"rebase_range_multiplier"                      ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
+		 
+		{"day_night_cycle_mode"                         ,     0, offsetof (struct c3x_config, day_night_cycle_mode)},
+		{"elapsed_minutes_per_day_night_hour_transition",     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
+		{"fixed_hours_per_turn_for_day_night_cycle"     ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
+		{"pinned_hour_for_day_night_cycle"              ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -4092,11 +4106,80 @@ patch_init_floating_point ()
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config, true);
+}
 
-	if (is->day_night_cycle_img_state == IS_UNINITED) {
-		is->current_day_night_cycle = 12;
-		init_day_night_images ();
+int
+calculate_current_day_night_cycle_hour ()
+{
+	char ss[200];
+
+	int output = 12; // Default to noon
+	bool is_first_turn = (*p_current_turn_no == 0);
+
+	switch (is->current_config.day_night_cycle_mode) {
+
+		// Disabled. This shouldn't be possible, but default to noon to be safe
+		case 0: 
+			return output;
+
+		// Time elapsed since last update
+		case 1: {
+			LARGE_INTEGER perf_freq;
+			QueryPerformanceFrequency(&perf_freq);
+
+			if (is_first_turn) {
+				is->current_day_night_cycle = output;
+				QueryPerformanceCounter(&is->last_day_night_cycle_update_time);
+			}
+
+			LARGE_INTEGER time_now;
+			QueryPerformanceCounter(&time_now);
+
+			double elapsed_seconds =
+				(double)(time_now.QuadPart - is->last_day_night_cycle_update_time.QuadPart) /
+				(double)perf_freq.QuadPart;
+
+			if (elapsed_seconds > (double)is->current_config.elapsed_minutes_per_day_night_hour_transition * 60.0) {
+				output = is->current_day_night_cycle + is->current_config.fixed_hours_per_turn_for_day_night_cycle;
+				is->last_day_night_cycle_update_time = time_now;
+			} else {
+				output = is->current_day_night_cycle;
+			}
+			break;
+		}
+
+		// Match user's current time
+		case 2: { 
+			LPSYSTEMTIME lpSystemTime = (LPSYSTEMTIME)malloc(sizeof(SYSTEMTIME));
+			GetLocalTime (lpSystemTime);
+			output = lpSystemTime->wHour;
+			free (lpSystemTime);
+			break;
+		}
+
+		// Increment fixed amount each interturn
+		case 3: {
+			int increment = is->current_config.fixed_hours_per_turn_for_day_night_cycle;
+			if (is_first_turn) {
+				increment = 0;
+				is->current_day_night_cycle = output;
+			}
+			output = is->current_day_night_cycle + increment;
+			break;
+		}
+
+		// Pin the hour to a specific value
+		case 4: {
+			output = is->current_config.pinned_hour_for_day_night_cycle;
+			break;
+		}
 	}
+
+	// The increment may exceed 23, so wrap it around to stay within range
+	if (output > 23) {
+		output = output - is->current_day_night_cycle - is->current_config.fixed_hours_per_turn_for_day_night_cycle;
+	}
+	return output;
 }
 
 void __fastcall
@@ -6171,6 +6254,15 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 
 	// Clear old alias bits
 	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = is->aliased_leader_title_bits = 0;
+
+	// Initialize day/night cycle and re-calculate hour, if applicable
+	if (is->current_config.day_night_cycle_mode) {
+		is->current_day_night_cycle = calculate_current_day_night_cycle_hour ();
+
+		if (is->day_night_cycle_img_state == IS_UNINITED) {
+			init_day_night_images ();
+		}
+	}
 
 	return tr;
 }
@@ -9300,16 +9392,18 @@ patch_perform_interturn_in_main_loop ()
 
 	perform_interturn ();
 
-	if (is->current_config.enable_day_night_cycle) {
+	if (is->current_config.day_night_cycle_mode) {
 		if (is->day_night_cycle_img_state == IS_OK) {
-			int hour = is->current_day_night_cycle;
-			is->current_day_night_cycle = (hour + 1) % 24;
+			int new_hour = calculate_current_day_night_cycle_hour ();
+			if (new_hour != is->current_day_night_cycle) {
+				is->current_day_night_cycle = new_hour;
 
-			//char ss[100];
-			//snprintf(ss, sizeof(ss), "Current hour: %d", hour);
-			//pop_up_in_game_error(ss);
+				char ss[100];
+				snprintf(ss, sizeof(ss), "New hour: %d", is->current_day_night_cycle);
+				pop_up_in_game_error(ss);
 
-			p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+				p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+			}
 		}
 	}
 
