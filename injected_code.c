@@ -3502,15 +3502,6 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
         }
     }
 
-	// Resources shadows
-	read_in_dir(&img, art_dir, "resources_shadows.pcx", NULL);
-    k = 0;
-    for (int r = 0, y = 1; r < 6; ++r, y += 50) {
-        for (int c = 0, x = 1; c < 6; ++c, x += 50) {
-            Sprite_slice_pcx(&this->ResourcesShadows[k++], __, &img, x, y, 49, 49, 1, 1);
-        }
-    }
-
 	// Base cities
 	static const char *CITY_BASE[5] = {
         "rAMER.pcx", "rEURO.pcx", "rROMAN.pcx", "rMIDEAST.pcx", "rASIAN.pcx"
@@ -3521,7 +3512,6 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 		for (int era = 0; era < 4; ++era, y += 95) {
 			int x = 0;
 			for (int size = 0; size < 3; ++size, x += 167) {
-				//const int idx = i*44 + era*5 + size; // <-- match game layout
 				const int idx = (culture + 5*(era) + 20*(size));
 				Sprite_slice_pcx(&this->Base_City_Images[idx], __, &img, x, y, 167, 95, 1, 1);
 			}
@@ -3574,6 +3564,7 @@ insert_sprite_proxies(Sprite *ss, Sprite *ps, int hour, int len) {
 	for (int i = 0; i < len; i++) {
 		Sprite *s = &ss[i];
 		Sprite *p = &ps[i];
+
 		if (s && p) {
 			itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
 		}
@@ -3589,16 +3580,12 @@ insert_sprite_proxy(Sprite *s, Sprite *p, int hour) {
 
 void 
 build_sprite_proxies_24(Map_Renderer *mr) {
-	Sprite *s;
-	Sprite *p;
-
 	for (int h = 0; h < 24; ++h) {
 		insert_sprite_proxies(city_sprites, is->day_night_cycle_imgs[h].Base_City_Images, h, 80);
 		insert_sprite_proxies(walled_city_sprites, is->day_night_cycle_imgs[h].Walled_City_Images, h, 80);
+		insert_sprite_proxies(mr->Resources, is->day_night_cycle_imgs[h].Resources, h, 36);
 		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
 		insert_spritelist_proxies(mr->LM_Terrain_Images, is->day_night_cycle_imgs[h].LM_Terrain_Images, h, 9, 81);
-		insert_sprite_proxies(mr->Resources, is->day_night_cycle_imgs[h].Resources, h, 36);
-		insert_sprite_proxies(mr->ResourcesShadows, is->day_night_cycle_imgs[h].ResourcesShadows, h, 36);
 		insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &is->day_night_cycle_imgs[h].Terrain_Buldings_Barbarian_Camp, h);
 		insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &is->day_night_cycle_imgs[h].Terrain_Buldings_Mines, h);
 		insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &is->day_night_cycle_imgs[h].Terrain_Buldings_Radar, h);
@@ -3677,6 +3664,95 @@ init_day_night_images()
 	build_sprite_proxies_24(mr);
 
 	is->day_night_cycle_img_state = IS_OK;
+}
+
+int
+calculate_current_day_night_cycle_hour ()
+{
+	int output = 12; // Default to noon
+	int increment = is->current_config.fixed_hours_per_turn_for_day_night_cycle;
+	bool is_first_turn = (*p_current_turn_no == 0);
+
+	switch (is->current_config.day_night_cycle_mode) {
+
+		// Disabled. This shouldn't be possible, but default to noon to be safe
+		case 0: 
+			return output;
+
+		// Time elapsed since last update
+		case 1: {
+			LARGE_INTEGER perf_freq;
+			QueryPerformanceFrequency(&perf_freq);
+
+			if (is_first_turn) {
+				is->current_day_night_cycle = output;
+				QueryPerformanceCounter(&is->last_day_night_cycle_update_time);
+			}
+
+			LARGE_INTEGER time_now;
+			QueryPerformanceCounter(&time_now);
+
+			double elapsed_seconds =
+				(double)(time_now.QuadPart - is->last_day_night_cycle_update_time.QuadPart) /
+				(double)perf_freq.QuadPart;
+
+			if (elapsed_seconds > (double)is->current_config.elapsed_minutes_per_day_night_hour_transition * 60.0) {
+				output = is->current_day_night_cycle + increment;
+				is->last_day_night_cycle_update_time = time_now;
+			} else {
+				output = is->current_day_night_cycle;
+			}
+			break;
+		}
+
+		// Match user's current time
+		case 2: { 
+			LPSYSTEMTIME lpSystemTime = (LPSYSTEMTIME)malloc(sizeof(SYSTEMTIME));
+			GetLocalTime (lpSystemTime);
+			output = lpSystemTime->wHour;
+			free (lpSystemTime);
+			break;
+		}
+
+		// Increment fixed amount each interturn
+		case 3: {
+			if (is_first_turn) {
+				increment = 0;
+				is->current_day_night_cycle = output;
+			}
+			output = is->current_day_night_cycle + increment;
+			break;
+		}
+
+		// Pin the hour to a specific value
+		case 4: {
+			output = is->current_config.pinned_hour_for_day_night_cycle;
+			break;
+		}
+	}
+
+	// The increment may exceed 23, so wrap it around to stay within range
+	if (output > 23) {
+		output = output - 24;
+		if (output < 0) output = 0;
+		if (output > 23) output = 23;
+	}
+	return output;
+}
+
+void __fastcall
+patch_Map_Renderer_load_images (Map_Renderer *this, int edx)
+{
+	Map_Renderer_load_images(this, __);
+
+	// Initialize day/night cycle and re-calculate hour, if applicable
+	if (is->current_config.day_night_cycle_mode) {
+		is->current_day_night_cycle = calculate_current_day_night_cycle_hour ();
+
+		if (is->day_night_cycle_img_state == IS_UNINITED) {
+			init_day_night_images ();
+		}
+	}
 }
 
 void
@@ -4106,80 +4182,6 @@ patch_init_floating_point ()
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config, true);
-}
-
-int
-calculate_current_day_night_cycle_hour ()
-{
-	char ss[200];
-
-	int output = 12; // Default to noon
-	bool is_first_turn = (*p_current_turn_no == 0);
-
-	switch (is->current_config.day_night_cycle_mode) {
-
-		// Disabled. This shouldn't be possible, but default to noon to be safe
-		case 0: 
-			return output;
-
-		// Time elapsed since last update
-		case 1: {
-			LARGE_INTEGER perf_freq;
-			QueryPerformanceFrequency(&perf_freq);
-
-			if (is_first_turn) {
-				is->current_day_night_cycle = output;
-				QueryPerformanceCounter(&is->last_day_night_cycle_update_time);
-			}
-
-			LARGE_INTEGER time_now;
-			QueryPerformanceCounter(&time_now);
-
-			double elapsed_seconds =
-				(double)(time_now.QuadPart - is->last_day_night_cycle_update_time.QuadPart) /
-				(double)perf_freq.QuadPart;
-
-			if (elapsed_seconds > (double)is->current_config.elapsed_minutes_per_day_night_hour_transition * 60.0) {
-				output = is->current_day_night_cycle + is->current_config.fixed_hours_per_turn_for_day_night_cycle;
-				is->last_day_night_cycle_update_time = time_now;
-			} else {
-				output = is->current_day_night_cycle;
-			}
-			break;
-		}
-
-		// Match user's current time
-		case 2: { 
-			LPSYSTEMTIME lpSystemTime = (LPSYSTEMTIME)malloc(sizeof(SYSTEMTIME));
-			GetLocalTime (lpSystemTime);
-			output = lpSystemTime->wHour;
-			free (lpSystemTime);
-			break;
-		}
-
-		// Increment fixed amount each interturn
-		case 3: {
-			int increment = is->current_config.fixed_hours_per_turn_for_day_night_cycle;
-			if (is_first_turn) {
-				increment = 0;
-				is->current_day_night_cycle = output;
-			}
-			output = is->current_day_night_cycle + increment;
-			break;
-		}
-
-		// Pin the hour to a specific value
-		case 4: {
-			output = is->current_config.pinned_hour_for_day_night_cycle;
-			break;
-		}
-	}
-
-	// The increment may exceed 23, so wrap it around to stay within range
-	if (output > 23) {
-		output = output - 24;
-	}
-	return output;
 }
 
 void __fastcall
@@ -6254,15 +6256,6 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 
 	// Clear old alias bits
 	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = is->aliased_leader_title_bits = 0;
-
-	// Initialize day/night cycle and re-calculate hour, if applicable
-	if (is->current_config.day_night_cycle_mode) {
-		is->current_day_night_cycle = calculate_current_day_night_cycle_hour ();
-
-		if (is->day_night_cycle_img_state == IS_UNINITED) {
-			init_day_night_images ();
-		}
-	}
 
 	return tr;
 }
@@ -9397,11 +9390,6 @@ patch_perform_interturn_in_main_loop ()
 			int new_hour = calculate_current_day_night_cycle_hour ();
 			if (new_hour != is->current_day_night_cycle) {
 				is->current_day_night_cycle = new_hour;
-
-				char ss[100];
-				snprintf(ss, sizeof(ss), "New hour: %d", is->current_day_night_cycle);
-				pop_up_in_game_error(ss);
-
 				p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 			}
 		}
