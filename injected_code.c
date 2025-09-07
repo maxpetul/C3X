@@ -3564,7 +3564,6 @@ insert_sprite_proxies(Sprite *ss, Sprite *ps, int hour, int len) {
 	for (int i = 0; i < len; i++) {
 		Sprite *s = &ss[i];
 		Sprite *p = &ps[i];
-
 		if (s && p) {
 			itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
 		}
@@ -3731,12 +3730,12 @@ calculate_current_day_night_cycle_hour ()
 		}
 	}
 
-	// The increment may exceed 23, so wrap it around to stay within range
-	if (output > 23) {
-		output = output - 24;
-		if (output < 0) output = 0;
-		if (output > 23) output = 23;
-	}
+	// If midnight or over, restart at 0 or later
+	if (output > 23) output = output - 24; 
+
+	// Clamp to valid range of 0-23 in case of weird config values
+	output = clamp (0, 23, output);
+
 	return output;
 }
 
