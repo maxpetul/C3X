@@ -2,10 +2,11 @@
 ## Day/Night Cycle
 - [ ] Art
   - [x] Asian
-  - [ ] Roman
-  - [ ] European
-  - [ ] American
-  - [ ] Mideast
+  - [x] Roman
+  - [x] European
+  - [x] American
+  - [x] Mideast
+  - [ ] Walled cities
   - [ ] Terrain buildings
   - [ ] Volcanos
   - [ ] Railroads
@@ -81,5 +82,4 @@
 - Dam (?)
 - Spaceport (?)
 - Waterfront (?)
-- Arsenal (?)
 - Bridge (?)
