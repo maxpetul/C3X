@@ -1,0 +1,74 @@
+Patch locations for matrix stride in record_connection:
+(in GOG EXE:)
+        0057d84e c1 e5 09        SHL        EBP,0x9
+        0057d86e c1 e1 09        SHL        this,0x9
+        0057d88b c1 e6 0b        SHL        ESI,0xb
+        0057d8c9 81 c6 00        ADD        ESI,0x800
+                 08 00 00
+        0057d932 81 c7 00        ADD        EDI,0x800
+                 08 00 00
+        0057d957 81 c6 00        ADD        ESI,0x200
+                 02 00 00
+(in Steam EXE:)
+        0058a55e c1 e0 09        SHL        EAX,0x9
+        0058a581 c1 e1 09        SHL        this,0x9
+        0058a59e c1 e6 0b        SHL        ESI,0xb
+        0058a5db 81 c6 00        ADD        ESI,0x800
+                 08 00 00
+        0058a641 81 c7 00        ADD        EDI,0x800
+                 08 00 00
+        0058a657 81 c1 00        ADD        this,0x200
+                 02 00 00
+(in PCG EXE:)
+        0057d5ae c1 e5 09        SHL        EBP,0x9
+        0057d5ce c1 e1 09        SHL        this,0x9
+        0057d5eb c1 e6 0b        SHL        ESI,0xb
+        0057d629 81 c6 00        ADD        ESI,0x800
+                 08 00 00
+        0057d692 81 c7 00        ADD        EDI,0x800
+                 08 00 00
+        0057d6b7 81 c6 00        ADD        ESI,0x200
+                 02 00 00
+
+In recompute_city_connections:
+(GOG:)
+        0057d9db 81 c3 00        ADD        EBX,0x800
+                 08 00 00
+        0057db9b 8d 9c 90        LEA        EBX,[EAX + EDX*0x4 + 0x838]      ; 0x838 = 0x38 byte offset to Matrix + 0x800 byte stride
+                 38 08 00 00
+        0057dc1c 81 c3 00        ADD        EBX,0x800
+                 08 00 00
+        0057dc33 81 c2 00        ADD        EDX,0x200
+                 02 00 00
+        0057de5a 81 c2 00        ADD        EDX,0x200
+                 02 00 00
+(Steam:)
+        0058a6df 81 c5 00        ADD        EBP,0x800
+                 08 00 00
+        0058a8ad 8d 9c 90        LEA        EBX,[EAX + EDX*0x4 + 0x838]
+                 38 08 00 00
+        0058a92e 81 c3 00        ADD        EBX,0x800
+                 08 00 00
+        0058a94d 81 c7 00        ADD        EDI,0x200
+                 02 00 00
+        0058ab93 81 c2 00        ADD        EDX,0x200
+                 02 00 00
+(PCG:)
+        0057d73b 81 c3 00        ADD        EBX,0x800
+                 08 00 00
+        0057d8fb 8d 9c 90        LEA        EBX,[EAX + EDX*0x4 + 0x838]
+                 38 08 00 00
+        0057d97c 81 c3 00        ADD        EBX,0x800
+                 08 00 00
+        0057d993 81 c2 00        ADD        EDX,0x200
+                 02 00 00
+        0057dbba 81 c2 00        ADD        EDX,0x200
+                 02 00 00
+
+
+
+
+
+
+
+
