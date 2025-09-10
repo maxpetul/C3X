@@ -1,14 +1,14 @@
 set -euo pipefail
 
 ### === CONFIG ===
-DATA_DIR="/c/Program Files (x86)/GOG Galaxy/Games/Civilization III Complete/Conquests/C3X_Districts/Art/NightDay"
+DATA_DIR="/c/Program Files (x86)/GOG Galaxy/Games/Civilization III Complete/Conquests/C3X_Districts/Art/DayNight"
 NOON_SUBFOLDER="1200"
-ONLY_HOUR=""       # set empty "" to process all hours
+ONLY_HOUR="2400"       # set empty "" to process all hours
 
 # ---- Day/Night settings ----
 WARMTH=1.15           # Scale for sunrise/sunset warmth (1.0 = base)
 BLUE=1.6              # Scale for night-time blue emphasis (1.0 = base)
-DARKNESS=1.0          # Scale for extra night darkening (1.0 = base)
+DARKNESS=2.5          # Scale for extra night darkening (1.0 = base)
 DESAT=0.8             # Scale for dusk/night desaturation toward gray (lower = richer)
 SAT=1.1               # Global saturation multiplier after tint (1.0 = none)
 CONTRAST=1.08         # Global contrast multiplier around mid 128 (1.0 = none)
@@ -131,12 +131,18 @@ CL_ARGS=(
   --blend-mode "$BLEND_MODE"
 )
 
-if [[ -n "${ONLY_HOUR}" ]]; then DN_ARGS+=( --only-hour "$ONLY_HOUR" ); CL_ARGS+=( --only-hour "$ONLY_HOUR" ); fi
+PP_ARGS=(
+  --data "$DATA_DIR"
+  --noon "$NOON_SUBFOLDER"
+  --verbose
+)
+
+if [[ -n "${ONLY_HOUR}" ]]; then DN_ARGS+=( --only-hour "$ONLY_HOUR" ); CL_ARGS+=( --only-hour "$ONLY_HOUR" ); PP_ARGS+=( --only-hour "$ONLY_HOUR" ); fi
 
 
 python civ3_day_night.py "${DN_ARGS[@]}"
 python civ3_city_lights.py "${CL_ARGS[@]}"
-python civ3_postprocess_pixels.py --data "$DATA_DIR" --noon "$NOON_SUBFOLDER" --verbose
+python civ3_postprocess_pixels.py "${PP_ARGS[@]}"
 
 
 # Copy 'Territory.pcx' from '1200' to every other folder
