@@ -997,6 +997,7 @@ struct injected_state {
 
 	// Day-Night cycle data
 	int current_day_night_cycle;
+	bool day_night_cycle_img_proxies_indexed;
 	LARGE_INTEGER last_day_night_cycle_update_time;
 
 	struct table day_night_sprite_proxy_by_hour[24];

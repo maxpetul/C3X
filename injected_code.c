@@ -3692,6 +3692,7 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 		insert_sprite_proxies(mr->LM_Forests_Pines_Images, is->day_night_cycle_imgs[h].LM_Forests_Pines_Images, h, 12);
 		insert_sprite_proxies(mr->LM_Hills_Images, is->day_night_cycle_imgs[h].LM_Hills_Images, h, 16);
 	}
+	is->day_night_cycle_img_proxies_indexed = true;
 }
 
 void
@@ -3726,6 +3727,14 @@ init_day_night_images()
 	build_sprite_proxies_24(mr);
 
 	is->day_night_cycle_img_state = IS_OK;
+}
+
+void
+deindex_day_night_image_proxies()
+{
+	for (int i = 0; i < 24; i++) {
+		table_deinit (&is->day_night_sprite_proxy_by_hour[i]);
+	}
 }
 
 int
@@ -3813,6 +3822,11 @@ patch_Map_Renderer_load_images (Map_Renderer *this, int edx)
 
 		if (is->day_night_cycle_img_state == IS_UNINITED) {
 			init_day_night_images ();
+		}
+
+		// Sprite proxies are deindexed during each load event as sprite instances (really only Resources, which are reloaded) may change.
+		if (!is->day_night_cycle_img_proxies_indexed) {
+			build_sprite_proxies_24(this);
 		}
 	}
 }
@@ -6318,6 +6332,12 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 
 	// Clear old alias bits
 	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = is->aliased_leader_title_bits = 0;
+
+	// Deindex day-night cycle sprite proxies, if necessary.
+	if (is->day_night_cycle_img_proxies_indexed) {
+		deindex_day_night_image_proxies ();
+		is->day_night_cycle_img_proxies_indexed = false;
+	}
 
 	return tr;
 }
