@@ -1460,6 +1460,19 @@ read_work_area_limit (struct string_slice const * s, int * out_val)
 		return false;
 }
 
+bool
+read_day_night_cycle_mode (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "disabled"  )) { *out_val = DNCM_DISABLED;   return true; }
+	else if (slice_matches_str (&trimmed, "timer"     )) { *out_val = DNCM_TIMER;      return true; }
+	else if (slice_matches_str (&trimmed, "user-time" )) { *out_val = DNCM_USER_TIME;  return true; }
+	else if (slice_matches_str (&trimmed, "every-turn")) { *out_val = DNCM_EVERY_TURN; return true; }
+	else if (slice_matches_str (&trimmed, "specified" )) { *out_val = DNCM_SPECIFIED;  return true; }
+	else
+		return false;
+}
+
 struct parsable_field_bit {
 	char * name;
 	int bit_value;
@@ -1752,6 +1765,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "work_area_limit")) {
 					if (! read_work_area_limit (&value, (int *)&cfg->work_area_limit))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "day_night_cycle_mode")) {
+					if (! read_day_night_cycle_mode (&value, (int *)&cfg->day_night_cycle_mode))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_ptw_arty_types (&value,
@@ -3289,64 +3305,67 @@ read_in_dir(PCX_Image *img,
 
 	snprintf(temp_path, sizeof temp_path, "%s\\%s", art_dir, filename);
     PCX_Image_read_file(img, __, temp_path, NULL, 0, 0x100, 2);
-
-	if (img->JGL.Image == NULL) {
-		char ss[200];
-		snprintf(ss, sizeof ss, "Failed to load image: %s", temp_path);
-		pop_up_in_game_error(ss);
-	}
 }
 
-void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char *art_dir)
+bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char *art_dir)
 {
 	char ss[200];
     PCX_Image img; 
 	PCX_Image_construct(&img);
 
-    // 1) Std terrain (9 sheets): 6x9 of 128x64 over 0x480x0x240
+    // Std terrain (9 sheets): 6x9 of 128x64 over 0x480x0x240
     const char *STD_SHEETS[9] = {
 		"xtgc.pcx", "xpgc.pcx", "xdgc.pcx", "xdpc.pcx", "xdgp.pcx", "xggc.pcx",
 		"wCSO.pcx", "wSSS.pcx", "wOOO.pcx"
 	};
     for (int i = 0; i < 9; ++i) {
     	read_in_dir(&img, art_dir, STD_SHEETS[i], NULL);
+		if (img.JGL.Image == NULL) return false;
         slice_grid_into_list(&this->Std_Terrain_Images[i], &img, 0x80, 0x40, 0x480, 0x240);
     }
 	
-    // 2) LM terrain (9): same slicing
+    // LM terrain (9): same slicing
 	const char *LMT_SHEETS[9] = {
 		"lxtgc.pcx", "lxpgc.pcx", "lxdgc.pcx", "lxdpc.pcx", "lxdgp.pcx", "lxggc.pcx",
 		"lwCSO.pcx", "lwSSS.pcx", "lwOOO.pcx"
 	};
     for (int i = 0; i < 9; ++i) {
 		read_in_dir(&img, art_dir, LMT_SHEETS[i], NULL);
+		if (img.JGL.Image == NULL) return false;
         slice_grid_into_list(&this->LM_Terrain_Images[i], &img, 0x80, 0x40, 0x480, 0x240);
     }
 
-    // 3) Polar icecaps: 8x4 of 128x64
+    // Polar icecaps: 8x4 of 128x64
 	read_in_dir(&img, art_dir, "polarICEcaps-final.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Polar_Icecaps_Images, &img, 0x80, 0x40, 0x400, 0x100);
 
-    // 4) Hills / LM Hills: 4x3 of 128x72
+    // Hills / LM Hills: 4x3 of 128x72
 	read_in_dir(&img, art_dir, "xhills.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Hills_Images, &img, 0x80, 0x48, 0x200, 0x120);
     read_in_dir(&img, art_dir, "hill forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Hills_Forests_Images, &img, 0x80, 0x48, 0x200, 0x120);
     read_in_dir(&img, art_dir, "hill jungle.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Hills_Jungle_Images, &img, 0x80, 0x48, 0x200, 0x120);
     read_in_dir(&img, art_dir, "LMHills.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->LM_Hills_Images, &img, 0x80, 0x48, 0x200, 0x120);
 
-    // 5) Flood plains: 4x4 of 128x64
+    // Flood plains: 4x4 of 128x64
 	read_in_dir(&img, art_dir, "floodplains.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Flood_Plains_Images, &img, 0x80, 0x40, 0x200, 0x100);
 
-    // 6) Delta + Mountain rivers: 4x4 each, interleaved across one contiguous block
+    // Delta + Mountain rivers: 4x4 each, interleaved across one contiguous block
     {
         const char *RIV_SHEETS[2] = { "deltaRivers.pcx", "mtnRivers.pcx" };
         Sprite *contig = this->Delta_Rivers_Images; // Mountain_Rivers_Images follows
         for (int s = 0; s < 2; ++s) {
 			read_in_dir(&img, art_dir, RIV_SHEETS[s], NULL);
+			if (img.JGL.Image == NULL) return false;
             Sprite *p = contig + s; // even=delta, odd=mountain
             for (int y = 0; y < 0x100; y += 0x40)
                 for (int x = 0; x < 0x200; x += 0x80) {
@@ -3356,32 +3375,42 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
         }
     }
 
-    // 7) Waterfalls: 4x1 of 128x64
+    // Waterfalls: 4x1 of 128x64
 	read_in_dir(&img, art_dir, "waterfalls.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Waterfalls_Images, &img, 0x80, 0x40, 0x200, 0x40);
 
-    // 8) Irrigation (desert/plains/normal/tundra): each 4x4 of 128x64
+    // Irrigation (desert/plains/normal/tundra): each 4x4 of 128x64
     read_in_dir(&img, art_dir, "irrigation DESETT.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Irrigation_Desert_Images, &img, 0x80, 0x40, 0x200, 0x100);
     read_in_dir(&img, art_dir, "irrigation PLAINS.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Irrigation_Plains_Images, &img, 0x80, 0x40, 0x200, 0x100);
     read_in_dir(&img, art_dir, "irrigation.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Irrigation_Images, &img, 0x80, 0x40, 0x200, 0x100);
     read_in_dir(&img, art_dir, "irrigation TUNDRA.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Irrigation_Tundra_Images, &img, 0x80, 0x40, 0x200, 0x100);
 
-    // 9) Volcanos (plain/forests/jungles/snow): 4x4 of 128x88
+    // Volcanos (plain/forests/jungles/snow): 4x4 of 128x88
 	read_in_dir(&img, art_dir, "Volcanos.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Volcanos_Images, &img, 0x80, 0x58, 0x200, 0x160);
     read_in_dir(&img, art_dir, "Volcanos forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Volcanos_Forests_Images, &img, 0x80, 0x58, 0x200, 0x160);
     read_in_dir(&img, art_dir, "Volcanos jungles.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Volcanos_Jungles_Images, &img, 0x80, 0x58, 0x200, 0x160);
     read_in_dir(&img, art_dir, "Volcanos-snow.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Volcanos_Snow_Images, &img, 0x80, 0x58, 0x200, 0x160);
 
-    // 10) Marsh: Large band then Small band (tiles 128x88)
+    // Marsh: Large band then Small band (tiles 128x88)
     read_in_dir(&img, art_dir, "marsh.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     // Large (2 rows, 4 cols)
     { int k=0; for (int y=0; y<0xb0; y+=0x58) for (int x=0; x<0x200; x+=0x80)
         Sprite_slice_pcx(&this->Marsh_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
@@ -3389,26 +3418,34 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     { int k=0; for (int y=0xb0; y<0x160; y+=0x58) for (int x=0; x<0x280; x+=0x80)
         Sprite_slice_pcx(&this->Marsh_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
 
-    // 11) LM mountains + standard mountains (plain/forests/jungles/snow): 4x4 of 128x88
+    // LM mountains + standard mountains (plain/forests/jungles/snow): 4x4 of 128x88
     read_in_dir(&img, art_dir, "LMMountains.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->LM_Mountains_Images, &img, 0x80, 0x58, 0x200, 0x160);
     read_in_dir(&img, art_dir, "Mountains.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Mountains_Images, &img, 0x80, 0x58, 0x200, 0x160);
     read_in_dir(&img, art_dir, "mountain forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Mountains_Forests_Images, &img, 0x80, 0x58, 0x200, 0x160);
     read_in_dir(&img, art_dir, "mountain jungles.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Mountains_Jungles_Images, &img, 0x80, 0x58, 0x200, 0x160);
     read_in_dir(&img, art_dir, "Mountains-snow.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Mountains_Snow_Images, &img, 0x80, 0x58, 0x200, 0x160);
 
-    // 12) Roads (16x16) and Railroads (16x17), tiles 128x64
+    // Roads (16x16) and Railroads (16x17), tiles 128x64
     read_in_dir(&img, art_dir, "roads.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Roads_Images, &img, 0x80, 0x40, 0x800, 0x400);
     read_in_dir(&img, art_dir, "railroads.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Railroads_Images, &img, 0x80, 0x40, 0x800, 0x440);
 
-    // 14) LM Forests (Large 2x4, Small 2x6, Pines 2x6), tiles 128x88
+    // LM Forests (Large 2x4, Small 2x6, Pines 2x6), tiles 128x88
 	read_in_dir(&img, art_dir, "LMForests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     { int k=0; for (int y=0; y<0xb0; y+=0x58) for (int x=0; x<0x200; x+=0x80)
         Sprite_slice_pcx(&this->LM_Forests_Large_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
     { int k=0; for (int y=0xb0; y<0x160; y+=0x58) for (int x=0; x<0x300; x+=0x80)
@@ -3416,8 +3453,9 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x300; x+=0x80)
         Sprite_slice_pcx(&this->LM_Forests_Pines_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
 
-    // 15) Grassland/Plains/Tundra forests & jungles (bands; tiles 128x88) — order is important
+    // Grassland/Plains/Tundra forests & jungles (bands; tiles 128x88) — order is important
 	read_in_dir(&img, art_dir, "grassland forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     // Jungles Large, Small
     { int k=0; for (int y=0; y<0xb0; y+=0x58) for (int x=0; x<0x200; x+=0x80)
         Sprite_slice_pcx(&this->Grassland_Jungles_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
@@ -3432,6 +3470,7 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
         Sprite_slice_pcx(&this->Grassland_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
 
 	read_in_dir(&img, art_dir, "plains forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x200; x+=0x80)
         Sprite_slice_pcx(&this->Plains_Forests_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
     { int k=0; for (int y=0x210; y<0x2c0; y+=0x58) for (int x=0; x<0x280; x+=0x80)
@@ -3440,6 +3479,7 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
         Sprite_slice_pcx(&this->Plains_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
 
 	read_in_dir(&img, art_dir, "tundra forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x200; x+=0x80)
         Sprite_slice_pcx(&this->Tundra_Forests_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
     { int k=0; for (int y=0x210; y<0x2c0; y+=0x58) for (int x=0; x<0x280; x+=0x80)
@@ -3447,13 +3487,15 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     { int k=0; for (int y=0x2c0; y<0x370; y+=0x58) for (int x=0; x<0x300; x+=0x80)
         Sprite_slice_pcx(&this->Tundra_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
 
-    // 16) LM Terrain (7 single 128x64, vertical strip)
+    // LM Terrain (7 single 128x64, vertical strip)
 	read_in_dir(&img, art_dir, "landmark_terrain.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     for (int i = 0, y = 0; i < 7; ++i, y += 0x40)
         Sprite_slice_pcx(&this->LM_Terrain[i], __, &img, 0, y, 0x80, 0x40, 1, 1);
 
-    // 17) TNT (same funky ordering as original)
+    // 1TNT (same odd ordering as original)
 	read_in_dir(&img, art_dir, "tnt.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[6+i],  __, &img, x, 0x00, 0x80, 0x40, 1, 1);
     for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[9+i],  __, &img, x, 0x40, 0x80, 0x40, 1, 1);
     for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[12+i], __, &img, x, 0x80, 0x80, 0x40, 1, 1);
@@ -3461,40 +3503,47 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[15+i], __, &img, x, 0x100, 0x80, 0x40, 1, 1);
     for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[3+i],  __, &img, x, 0x140, 0x80, 0x40, 1, 1);
 
-    // 18) Goody huts: 8 tiles, x=(i%3)*0x80, y=(i/3)*0x40
+    // Goody huts: 8 tiles, x=(i%3)*0x80, y=(i/3)*0x40
 	read_in_dir(&img, art_dir, "goodyhuts.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     for (int i = 0; i < 8; ++i) {
         int x = (i % 3) << 7;
         int y = (i / 3) << 6;
         Sprite_slice_pcx(&this->Goody_Huts_Images[i], __, &img, x, y, 0x80, 0x40, 1, 1);
     }
 
-    // 19) Terrain buildings (fortress/camp/barbarian camp/mines/barricade)
+    // Terrain buildings (fortress/camp/barbarian camp/mines/barricade)
 	read_in_dir(&img, art_dir, "TerrainBuildings.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Fortress[i], __, &img, 0x00, y, 0x80, 0x40, 1, 1);
     for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Camp[i],     __, &img, 0x80, y, 0x80, 0x40, 1, 1);
     Sprite_slice_pcx(&this->Terrain_Buldings_Barbarian_Camp, __, &img, 0x100, 0x00, 0x80, 0x40, 1, 1);
     Sprite_slice_pcx(&this->Terrain_Buldings_Mines,          __, &img, 0x100, 0x40, 0x80, 0x40, 1, 1);
     for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Barricade[i], __, &img, 0x180, y, 0x80, 0x40, 1, 1);
 
-    // 20) Pollution & Craters (5x5 of 128x64)
+    // Pollution & Craters (5x5 of 128x64)
 	read_in_dir(&img, art_dir, "pollution.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Pollution, &img, 0x80, 0x40, 0x280, 0x140);
 	read_in_dir(&img, art_dir, "craters.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     slice_grid(this->Craters, &img, 0x80, 0x40, 0x280, 0x140);
 
-    // 21) Airfields / Outposts / Radar (and SHADOWS) 
+    // Airfields / Outposts / Radar
 	read_in_dir(&img, art_dir, "x_airfields_and_detect.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     for (int i=0, x=0; i<2; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Airfields[i], __, &img, x, 0x00, 0x80, 0x40, 1, 1);
     for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Outposts[i],  __, &img, x, 0x40, 0x80, 0x80, 1, 1);
     Sprite_slice_pcx(&this->Terrain_Buldings_Radar, __, &img, 0x00, 0xC0, 0x80, 0x80, 1, 1);
 
-    // 22) Victory (single 128x64)
+    // Victory (single 128x64)
 	read_in_dir(&img, art_dir, "x_victory.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     Sprite_slice_pcx(&this->Victory_Image, __, &img, 0, 0, 0x80, 0x40, 1, 1);
 
     // Resources
     read_in_dir(&img, art_dir, "resources.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
     size_t k = 0;
     for (int r = 0, y = 1; r < 6; ++r, y += 50) {
         for (int c = 0, x = 1; c < 6; ++c, x += 50) {
@@ -3508,6 +3557,7 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     };
 	for (int culture = 0; culture < 5; culture++) {
 		read_in_dir(&img, art_dir, CITY_BASE[culture], NULL);
+		if (img.JGL.Image == NULL) return false;
 		int y = 0;
 		for (int era = 0; era < 4; ++era, y += 95) {
 			int x = 0;
@@ -3524,6 +3574,7 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     };
 	for (int culture = 0; culture < 5; ++culture) {
 		read_in_dir(&img, art_dir, CITY_WALL[culture], NULL);
+		if (img.JGL.Image == NULL) return false;
 		int y = 0;
 		for (int era = 0; era < 4; ++era, y += 95) {
 			const int idx = ((culture) + 5*(era) + 20*(3));
@@ -3532,6 +3583,8 @@ void load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 	}
 
 	img.vtable->destruct (&img, __, 0);
+
+	return true;
 }
 
 int kptr(const void *p) { return (int)(intptr_t)p; }
@@ -3656,7 +3709,12 @@ init_day_night_images()
 
 		char art_dir[200];
 		snprintf(art_dir, sizeof art_dir, "%s\\Art\\NightDay\\%s", is->mod_rel_dir, hour_strs[i]);
-		load_day_night_hour_images(&is->day_night_cycle_imgs[i], art_dir);
+		bool success = load_day_night_hour_images(&is->day_night_cycle_imgs[i], art_dir);
+
+		if (!success) {
+			is->day_night_cycle_img_state = IS_INIT_FAILED;
+			return;
+		}
 	}
 
 	Map_Renderer * mr = &p_bic_data->Map.Renderer;
@@ -3675,11 +3733,11 @@ calculate_current_day_night_cycle_hour ()
 	switch (is->current_config.day_night_cycle_mode) {
 
 		// Disabled. This shouldn't be possible, but default to noon to be safe
-		case 0: 
+		case DNCM_DISABLED: 
 			return output;
 
 		// Time elapsed since last update
-		case 1: {
+		case DNCM_TIMER: {
 			LARGE_INTEGER perf_freq;
 			QueryPerformanceFrequency(&perf_freq);
 
@@ -3705,7 +3763,7 @@ calculate_current_day_night_cycle_hour ()
 		}
 
 		// Match user's current time
-		case 2: { 
+		case DNCM_USER_TIME: { 
 			LPSYSTEMTIME lpSystemTime = (LPSYSTEMTIME)malloc(sizeof(SYSTEMTIME));
 			GetLocalTime (lpSystemTime);
 			output = lpSystemTime->wHour;
@@ -3714,7 +3772,7 @@ calculate_current_day_night_cycle_hour ()
 		}
 
 		// Increment fixed amount each interturn
-		case 3: {
+		case DNCM_EVERY_TURN: {
 			if (is_first_turn) {
 				increment = 0;
 				is->current_day_night_cycle = output;
@@ -3724,7 +3782,7 @@ calculate_current_day_night_cycle_hour ()
 		}
 
 		// Pin the hour to a specific value
-		case 4: {
+		case DNCM_SPECIFIED: {
 			output = is->current_config.pinned_hour_for_day_night_cycle;
 			break;
 		}
@@ -3745,7 +3803,7 @@ patch_Map_Renderer_load_images (Map_Renderer *this, int edx)
 	Map_Renderer_load_images(this, __);
 
 	// Initialize day/night cycle and re-calculate hour, if applicable
-	if (is->current_config.day_night_cycle_mode) {
+	if (is->current_config.day_night_cycle_mode != DNCM_DISABLED) {
 		is->current_day_night_cycle = calculate_current_day_night_cycle_hour ();
 
 		if (is->day_night_cycle_img_state == IS_UNINITED) {
@@ -3909,7 +3967,6 @@ patch_init_floating_point ()
 		{"chance_for_nukes_to_destroy_max_one_hp_units" ,   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
 		{"rebase_range_multiplier"                      ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
 		 
-		{"day_night_cycle_mode"                         ,     0, offsetof (struct c3x_config, day_night_cycle_mode)},
 		{"elapsed_minutes_per_day_night_hour_transition",     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
 		{"fixed_hours_per_turn_for_day_night_cycle"     ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
 		{"pinned_hour_for_day_night_cycle"              ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
@@ -3969,6 +4026,7 @@ patch_init_floating_point ()
 	base_config.work_area_limit = WAL_NONE;
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
 	base_config.city_work_radius = 2;
+	base_config.day_night_cycle_mode = DNCM_DISABLED;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)

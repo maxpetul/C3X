@@ -101,6 +101,14 @@ enum work_area_limit {
 	WAL_CULTURAL_OR_ADJACENT
 };
 
+enum day_night_cycle_mode {
+	DNCM_DISABLED = 0,
+	DNCM_TIMER,
+	DNCM_USER_TIME,
+	DNCM_EVERY_TURN,
+	DNCM_SPECIFIED
+};
+
 enum perfume_kind {
 	PK_PRODUCTION = 0,
 	PK_TECHNOLOGY,

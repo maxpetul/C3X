@@ -3,7 +3,7 @@ set -euo pipefail
 ### === CONFIG ===
 DATA_DIR="/c/Program Files (x86)/GOG Galaxy/Games/Civilization III Complete/Conquests/C3X_Districts/Art/NightDay"
 NOON_SUBFOLDER="1200"
-ONLY_HOUR="2400"       # set empty "" to process all hours
+ONLY_HOUR=""       # set empty "" to process all hours
 
 # ---- Day/Night settings ----
 WARMTH=1.15           # Scale for sunrise/sunset warmth (1.0 = base)

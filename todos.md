@@ -6,11 +6,11 @@
   - [x] European
   - [x] American
   - [x] Mideast
-  - [ ] Walled cities
-  - [ ] Terrain buildings
-  - [ ] Volcanos
+  - [x] Walled cities
+  - [x] Terrain buildings
+  - [x] Volcanos
   - [ ] Railroads
-- [ ] Mechanics
+- [x] Mechanics
 
 ## Districts
 - [x] Workers see district buttons
