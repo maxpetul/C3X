@@ -65,10 +65,71 @@ In recompute_city_connections:
         0057dbba 81 c2 00        ADD        EDX,0x200
                  02 00 00
 
+In recompute_network_around:
+(GOG:)
+        0057e2c0 c1 e2 09        SHL        EDX,0x9
+(Steam:)
+        0058afba c1 e2 09        SHL        EDX,0x9
+(PCG:)
+        0057e020 c1 e2 09        SHL        EDX,0x9
 
+In recompute_resources:
+(GOG:)
+        0057e8cd c1 e6 09        SHL        ESI,0x9
+        0057e7b4 c1 e6 09        SHL        ESI,0x9
+(Steam:)
+        0058b61a c1 e6 09        SHL        ESI,0x9
+        0058b4f9 c1 e6 09        SHL        ESI,0x9
+(PCG:)
+        0057e62d c1 e6 09        SHL        ESI,0x9
+        0057e514 c1 e6 09        SHL        ESI,0x9
 
+In record_resource_access:
+(GOG:)
+        0057ee6b c1 e5 09        SHL        EBP,0x9
+        0057eea2 c1 e6 09        SHL        ESI,0x9
+        0057ef55 c1 e1 09        SHL        this,0x9
+        0057ef6f c1 e0 09        SHL        EAX,0x9
+(Steam:)
+        0058bb94 c1 e5 09        SHL        EBP,0x9
+        0058bbc6 c1 e6 09        SHL        ESI,0x9
+        0058bc79 c1 e1 09        SHL        this,0x9
+        0058bc93 c1 e0 09        SHL        EAX,0x9
+(PCG:)
+        0057ebcb c1 e5 09        SHL        EBP,0x9
+        0057ec02 c1 e6 09        SHL        ESI,0x9
+        0057ecb5 c1 e1 09        SHL        this,0x9
+        0057eccf c1 e0 09        SHL        EAX,0x9
 
+In have_trade_connection:
+(GOG:)
+        0057f0ee c1 e1 09        SHL        this,0x9
+        0057f110 c1 e0 09        SHL        EAX,0x9
+(Steam:)
+        0058bdfe c1 e1 09        SHL        this,0x9
+        0058be20 c1 e0 09        SHL        EAX,0x9
+(PCG:)
+        0057ee4e c1 e1 09        SHL        this,0x9
+        0057ee70 c1 e0 09        SHL        EAX,0x9
 
+In is_tile_connected_to_city:
+(GOG:)
+        0057f1ae c1 e6 09        SHL        ESI,0x9
+(Steam:)
+        0058bee3 c1 e6 09        SHL        ESI,0x9
+        0058bf0f c1 e6 09        SHL        ESI,0x9
+(PCG:)
+        0057ef0e c1 e6 09        SHL        ESI,0x9
 
+In reset:
+(GOG:)
+        0057f2a9 b9 00 00        MOV        this,0x40000
+                 04 00
+(Steam:)
+        0058bfc9 b9 00 00        MOV        this,0x40000
+                 04 00
+(PCG:)
+        0057f009 b9 00 00        MOV        this,0x40000
+                 04 00
 
 
