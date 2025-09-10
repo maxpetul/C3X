@@ -3582,6 +3582,14 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 		}
 	}
 
+	// Destroyed cities
+	read_in_dir(&img, art_dir, "DESTROY.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    int x = 0;
+    for (int i = 0; i < 3; ++i, x += 167) {
+        Sprite_slice_pcx(&this->Destroyed_City_Images[i], __, &img, x, 0, 167, 95, 1, 1);
+    }
+
 	img.vtable->destruct (&img, __, 0);
 
 	return true;
@@ -3635,6 +3643,7 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 	for (int h = 0; h < 24; ++h) {
 		insert_sprite_proxies(city_sprites, is->day_night_cycle_imgs[h].Base_City_Images, h, 80);
 		insert_sprite_proxies(walled_city_sprites, is->day_night_cycle_imgs[h].Walled_City_Images, h, 80);
+		insert_sprite_proxies(destroyed_city_sprites, is->day_night_cycle_imgs[h].Destroyed_City_Images, h, 3);
 		insert_sprite_proxies(mr->Resources, is->day_night_cycle_imgs[h].Resources, h, 36);
 		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
 		insert_spritelist_proxies(mr->LM_Terrain_Images, is->day_night_cycle_imgs[h].LM_Terrain_Images, h, 9, 81);
@@ -6337,6 +6346,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	// Deindex day-night cycle sprite proxies, if necessary.
 	if (is->day_night_cycle_img_proxies_indexed) {
 		deindex_day_night_image_proxies ();
+		is->current_day_night_cycle = 12;
 		is->day_night_cycle_img_proxies_indexed = false;
 	}
 

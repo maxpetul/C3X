@@ -1004,8 +1004,11 @@ struct injected_state {
 
 	struct day_night_cycle_img_set
 	{
+		SpriteList Std_Terrain_Images[9];
+		SpriteList LM_Terrain_Images[9];
 		Sprite Base_City_Images[80];
 		Sprite Walled_City_Images[80];
+		Sprite Destroyed_City_Images[3];
 		Sprite Resources[36];
 		Sprite ResourcesShadows[36];
 		Sprite Terrain_Buldings_Barbarian_Camp;
@@ -1059,7 +1062,6 @@ struct injected_state {
 		Sprite Hills_Images[16];
 		Sprite Hills_Forests_Images[16];
 		Sprite Hills_Jungle_Images[16];
-		SpriteList Std_Terrain_Images[9];
 		Sprite Delta_Rivers_Images[16];
 		Sprite Mountain_Rivers_Images[16];
 		Sprite Territory_Images[8];
@@ -1068,7 +1070,6 @@ struct injected_state {
 		Sprite LM_Forests_Small_Images[10];
 		Sprite LM_Forests_Pines_Images[12];
 		Sprite LM_Hills_Images[16];
-		SpriteList LM_Terrain_Images[9];
 	} day_night_cycle_imgs[24];
 
 	// ==========
