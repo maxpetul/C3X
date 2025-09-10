@@ -136,7 +136,7 @@ if [[ -n "${ONLY_HOUR}" ]]; then DN_ARGS+=( --only-hour "$ONLY_HOUR" ); CL_ARGS+
 
 python civ3_day_night.py "${DN_ARGS[@]}"
 python civ3_city_lights.py "${CL_ARGS[@]}"
-
+python civ3_postprocess_pixels.py --data "$DATA_DIR" --noon "$NOON_SUBFOLDER" --verbose
 
 
 # Copy 'Territory.pcx' from '1200' to every other folder
