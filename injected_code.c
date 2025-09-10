@@ -3713,6 +3713,10 @@ init_day_night_images()
 		bool success = load_day_night_hour_images(&is->day_night_cycle_imgs[i], art_dir);
 
 		if (!success) {
+			char ss[200];
+			snprintf(ss, sizeof ss, "Failed to load day/night cycle images for hour %s, reverting to base game art.", hour_strs[i]);
+			pop_up_in_game_error (ss);
+
 			is->day_night_cycle_img_state = IS_INIT_FAILED;
 			return;
 		}
