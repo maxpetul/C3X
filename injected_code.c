@@ -1464,7 +1464,7 @@ bool
 read_day_night_cycle_mode (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
-	if      (slice_matches_str (&trimmed, "disabled"  )) { *out_val = DNCM_DISABLED;   return true; }
+	if      (slice_matches_str (&trimmed, "off"       )) { *out_val = DNCM_OFF;        return true; }
 	else if (slice_matches_str (&trimmed, "timer"     )) { *out_val = DNCM_TIMER;      return true; }
 	else if (slice_matches_str (&trimmed, "user-time" )) { *out_val = DNCM_USER_TIME;  return true; }
 	else if (slice_matches_str (&trimmed, "every-turn")) { *out_val = DNCM_EVERY_TURN; return true; }
@@ -3757,7 +3757,7 @@ calculate_current_day_night_cycle_hour ()
 	switch (is->current_config.day_night_cycle_mode) {
 
 		// Disabled. This shouldn't be possible, but default to noon to be safe
-		case DNCM_DISABLED: 
+		case DNCM_OFF: 
 			return output;
 
 		// Time elapsed since last update
@@ -3827,7 +3827,7 @@ patch_Map_Renderer_load_images (Map_Renderer *this, int edx)
 	Map_Renderer_load_images(this, __);
 
 	// Initialize day/night cycle and re-calculate hour, if applicable
-	if (is->current_config.day_night_cycle_mode != DNCM_DISABLED) {
+	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
 		is->current_day_night_cycle = calculate_current_day_night_cycle_hour ();
 
 		if (is->day_night_cycle_img_state == IS_UNINITED) {
@@ -4055,7 +4055,7 @@ patch_init_floating_point ()
 	base_config.work_area_limit = WAL_NONE;
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
 	base_config.city_work_radius = 2;
-	base_config.day_night_cycle_mode = DNCM_DISABLED;
+	base_config.day_night_cycle_mode = DNCM_OFF;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)

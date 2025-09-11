@@ -6,6 +6,9 @@ DATA_DIR="/c/Program Files (x86)/GOG Galaxy/Games/Civilization III Complete/Conq
 NOON_SUBFOLDER="1200"
 ONLY_HOUR=""       # set empty "" to process all hours
 
+# Copy and overwrite all light annotation files to 1200
+cp "$ANNOTATION_DIR"/* "$DATA_DIR/$NOON_SUBFOLDER"
+
 # ---- Day/Night settings ----
 WARMTH=1.7            # Scale for sunrise/sunset warmth (1.0 = base)
 BLUE=1.6              # Scale for night-time blue emphasis (1.0 = base)

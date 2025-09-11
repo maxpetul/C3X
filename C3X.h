@@ -102,7 +102,7 @@ enum work_area_limit {
 };
 
 enum day_night_cycle_mode {
-	DNCM_DISABLED = 0,
+	DNCM_OFF = 0,
 	DNCM_TIMER,
 	DNCM_USER_TIME,
 	DNCM_EVERY_TURN,
