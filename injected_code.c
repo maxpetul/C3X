@@ -63,6 +63,9 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID 0x222004
 #define PEDIA_MULTIPAGE_PREV_BUTTON_ID 0x222005
 
+#define STRIDE_CULTURE 44
+#define STRIDE_ERA 5
+
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
 
@@ -1457,6 +1460,19 @@ read_work_area_limit (struct string_slice const * s, int * out_val)
 		return false;
 }
 
+bool
+read_day_night_cycle_mode (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "off"       )) { *out_val = DNCM_OFF;        return true; }
+	else if (slice_matches_str (&trimmed, "timer"     )) { *out_val = DNCM_TIMER;      return true; }
+	else if (slice_matches_str (&trimmed, "user-time" )) { *out_val = DNCM_USER_TIME;  return true; }
+	else if (slice_matches_str (&trimmed, "every-turn")) { *out_val = DNCM_EVERY_TURN; return true; }
+	else if (slice_matches_str (&trimmed, "specified" )) { *out_val = DNCM_SPECIFIED;  return true; }
+	else
+		return false;
+}
+
 struct parsable_field_bit {
 	char * name;
 	int bit_value;
@@ -1749,6 +1765,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "work_area_limit")) {
 					if (! read_work_area_limit (&value, (int *)&cfg->work_area_limit))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "day_night_cycle_mode")) {
+					if (! read_day_night_cycle_mode (&value, (int *)&cfg->day_night_cycle_mode))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_ptw_arty_types (&value,
@@ -3233,6 +3252,595 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	}
 }
 
+Sprite* 
+SpriteList_at(SpriteList *list, int i) {
+    return &list->field_0[i];
+}
+
+void 
+set_path(String260 *dst, const char *p) {
+    snprintf(dst->S, sizeof(dst->S), "%s", p);
+}
+
+void 
+slice_grid(Sprite *out, PCX_Image *img,
+            int tile_w, int tile_h, int full_w, int full_h)
+{
+    for (int y = 0; y < full_h; y += tile_h)
+        for (int x = 0; x < full_w; x += tile_w)
+            Sprite_slice_pcx(out++, __, img, x, y, tile_w, tile_h, 1, 1);
+}
+
+void 
+slice_grid_into_list(SpriteList *bucket, PCX_Image *img,
+                                 int tile_w, int tile_h, int full_w, int full_h)
+{
+    int k = 0;
+    for (int y = 0; y < full_h; y += tile_h)
+        for (int x = 0; x < full_w; x += tile_w)
+            Sprite_slice_pcx(SpriteList_at(bucket, k++), __, img, x, y, tile_w, tile_h, 1, 1);
+}
+
+void 
+join_path(char *out, size_t out_sz, const char *dir, const char *file)
+{
+    size_t n = strlen(dir);
+    int need_sep = (n > 0 && dir[n-1] != '/' && dir[n-1] != '\\');
+    snprintf(out, out_sz, "%s%s%s", dir, need_sep ? "\\" : "", file);
+}
+
+void 
+read_in_dir(PCX_Image *img,
+            const char *art_dir,
+            const char *filename,
+            String260 *store) {
+    char pbuf[512];
+    join_path(pbuf, sizeof pbuf, art_dir, filename);
+    if (store) {
+        // assumes: typedef struct { char S[260]; } String260;
+        snprintf(store->S, sizeof store->S, "%s", pbuf);
+    }
+
+	char temp_path[2*MAX_PATH];
+
+	snprintf(temp_path, sizeof temp_path, "%s\\%s", art_dir, filename);
+    PCX_Image_read_file(img, __, temp_path, NULL, 0, 0x100, 2);
+}
+
+bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char *art_dir)
+{
+	char ss[200];
+    PCX_Image img; 
+	PCX_Image_construct(&img);
+
+    // Std terrain (9 sheets): 6x9 of 128x64 over 0x480x0x240
+    const char *STD_SHEETS[9] = {
+		"xtgc.pcx", "xpgc.pcx", "xdgc.pcx", "xdpc.pcx", "xdgp.pcx", "xggc.pcx",
+		"wCSO.pcx", "wSSS.pcx", "wOOO.pcx"
+	};
+    for (int i = 0; i < 9; ++i) {
+    	read_in_dir(&img, art_dir, STD_SHEETS[i], NULL);
+		if (img.JGL.Image == NULL) return false;
+        slice_grid_into_list(&this->Std_Terrain_Images[i], &img, 0x80, 0x40, 0x480, 0x240);
+    }
+	
+    // LM terrain (9): same slicing
+	const char *LMT_SHEETS[9] = {
+		"lxtgc.pcx", "lxpgc.pcx", "lxdgc.pcx", "lxdpc.pcx", "lxdgp.pcx", "lxggc.pcx",
+		"lwCSO.pcx", "lwSSS.pcx", "lwOOO.pcx"
+	};
+    for (int i = 0; i < 9; ++i) {
+		read_in_dir(&img, art_dir, LMT_SHEETS[i], NULL);
+		if (img.JGL.Image == NULL) return false;
+        slice_grid_into_list(&this->LM_Terrain_Images[i], &img, 0x80, 0x40, 0x480, 0x240);
+    }
+
+    // Polar icecaps: 8x4 of 128x64
+	read_in_dir(&img, art_dir, "polarICEcaps-final.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Polar_Icecaps_Images, &img, 0x80, 0x40, 0x400, 0x100);
+
+    // Hills / LM Hills: 4x3 of 128x72
+	read_in_dir(&img, art_dir, "xhills.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Hills_Images, &img, 0x80, 0x48, 0x200, 0x120);
+    read_in_dir(&img, art_dir, "hill forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Hills_Forests_Images, &img, 0x80, 0x48, 0x200, 0x120);
+    read_in_dir(&img, art_dir, "hill jungle.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Hills_Jungle_Images, &img, 0x80, 0x48, 0x200, 0x120);
+    read_in_dir(&img, art_dir, "LMHills.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->LM_Hills_Images, &img, 0x80, 0x48, 0x200, 0x120);
+
+    // Flood plains: 4x4 of 128x64
+	read_in_dir(&img, art_dir, "floodplains.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Flood_Plains_Images, &img, 0x80, 0x40, 0x200, 0x100);
+
+    // Delta + Mountain rivers: 4x4 each, interleaved across one contiguous block
+    {
+        const char *RIV_SHEETS[2] = { "deltaRivers.pcx", "mtnRivers.pcx" };
+        Sprite *contig = this->Delta_Rivers_Images; // Mountain_Rivers_Images follows
+        for (int s = 0; s < 2; ++s) {
+			read_in_dir(&img, art_dir, RIV_SHEETS[s], NULL);
+			if (img.JGL.Image == NULL) return false;
+            Sprite *p = contig + s; // even=delta, odd=mountain
+            for (int y = 0; y < 0x100; y += 0x40)
+                for (int x = 0; x < 0x200; x += 0x80) {
+                    Sprite_slice_pcx(p, __, &img, x, y, 0x80, 0x40, 1, 1);
+                    p += 2;
+                }
+        }
+    }
+
+    // Waterfalls: 4x1 of 128x64
+	read_in_dir(&img, art_dir, "waterfalls.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Waterfalls_Images, &img, 0x80, 0x40, 0x200, 0x40);
+
+    // Irrigation (desert/plains/normal/tundra): each 4x4 of 128x64
+    read_in_dir(&img, art_dir, "irrigation DESETT.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Irrigation_Desert_Images, &img, 0x80, 0x40, 0x200, 0x100);
+    read_in_dir(&img, art_dir, "irrigation PLAINS.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Irrigation_Plains_Images, &img, 0x80, 0x40, 0x200, 0x100);
+    read_in_dir(&img, art_dir, "irrigation.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Irrigation_Images, &img, 0x80, 0x40, 0x200, 0x100);
+    read_in_dir(&img, art_dir, "irrigation TUNDRA.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Irrigation_Tundra_Images, &img, 0x80, 0x40, 0x200, 0x100);
+
+    // Volcanos (plain/forests/jungles/snow): 4x4 of 128x88
+	read_in_dir(&img, art_dir, "Volcanos.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Volcanos_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "Volcanos forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Volcanos_Forests_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "Volcanos jungles.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Volcanos_Jungles_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "Volcanos-snow.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Volcanos_Snow_Images, &img, 0x80, 0x58, 0x200, 0x160);
+
+    // Marsh: Large band then Small band (tiles 128x88)
+    read_in_dir(&img, art_dir, "marsh.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    // Large (2 rows, 4 cols)
+    { int k=0; for (int y=0; y<0xb0; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->Marsh_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    // Small (2 rows, 5 cols)
+    { int k=0; for (int y=0xb0; y<0x160; y+=0x58) for (int x=0; x<0x280; x+=0x80)
+        Sprite_slice_pcx(&this->Marsh_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+
+    // LM mountains + standard mountains (plain/forests/jungles/snow): 4x4 of 128x88
+    read_in_dir(&img, art_dir, "LMMountains.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->LM_Mountains_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "Mountains.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Mountains_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "mountain forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Mountains_Forests_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "mountain jungles.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Mountains_Jungles_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "Mountains-snow.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Mountains_Snow_Images, &img, 0x80, 0x58, 0x200, 0x160);
+
+    // Roads (16x16) and Railroads (16x17), tiles 128x64
+    read_in_dir(&img, art_dir, "roads.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Roads_Images, &img, 0x80, 0x40, 0x800, 0x400);
+    read_in_dir(&img, art_dir, "railroads.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Railroads_Images, &img, 0x80, 0x40, 0x800, 0x440);
+
+    // LM Forests (Large 2x4, Small 2x6, Pines 2x6), tiles 128x88
+	read_in_dir(&img, art_dir, "LMForests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    { int k=0; for (int y=0; y<0xb0; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->LM_Forests_Large_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0xb0; y<0x160; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->LM_Forests_Small_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->LM_Forests_Pines_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+
+    // Grassland/Plains/Tundra forests & jungles (bands; tiles 128x88) — order is important
+	read_in_dir(&img, art_dir, "grassland forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    // Jungles Large, Small
+    { int k=0; for (int y=0; y<0xb0; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->Grassland_Jungles_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0xb0; y<0x160; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->Grassland_Jungles_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    // Forests Large, Small, Pines
+    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->Grassland_Forests_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x210; y<0x2c0; y+=0x58) for (int x=0; x<0x280; x+=0x80)
+        Sprite_slice_pcx(&this->Grassland_Forests_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x2c0; y<0x370; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->Grassland_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+
+	read_in_dir(&img, art_dir, "plains forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->Plains_Forests_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x210; y<0x2c0; y+=0x58) for (int x=0; x<0x280; x+=0x80)
+        Sprite_slice_pcx(&this->Plains_Forests_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x2c0; y<0x370; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->Plains_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+
+	read_in_dir(&img, art_dir, "tundra forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->Tundra_Forests_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x210; y<0x2c0; y+=0x58) for (int x=0; x<0x280; x+=0x80)
+        Sprite_slice_pcx(&this->Tundra_Forests_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x2c0; y<0x370; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->Tundra_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+
+    // LM Terrain (7 single 128x64, vertical strip)
+	read_in_dir(&img, art_dir, "landmark_terrain.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    for (int i = 0, y = 0; i < 7; ++i, y += 0x40)
+        Sprite_slice_pcx(&this->LM_Terrain[i], __, &img, 0, y, 0x80, 0x40, 1, 1);
+
+    // 1TNT (same odd ordering as original)
+	read_in_dir(&img, art_dir, "tnt.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[6+i],  __, &img, x, 0x00, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[9+i],  __, &img, x, 0x40, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[12+i], __, &img, x, 0x80, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[0+i],  __, &img, x, 0xC0, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[15+i], __, &img, x, 0x100, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[3+i],  __, &img, x, 0x140, 0x80, 0x40, 1, 1);
+
+    // Goody huts: 8 tiles, x=(i%3)*0x80, y=(i/3)*0x40
+	read_in_dir(&img, art_dir, "goodyhuts.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    for (int i = 0; i < 8; ++i) {
+        int x = (i % 3) << 7;
+        int y = (i / 3) << 6;
+        Sprite_slice_pcx(&this->Goody_Huts_Images[i], __, &img, x, y, 0x80, 0x40, 1, 1);
+    }
+
+    // Terrain buildings (fortress/camp/barbarian camp/mines/barricade)
+	read_in_dir(&img, art_dir, "TerrainBuildings.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Fortress[i], __, &img, 0x00, y, 0x80, 0x40, 1, 1);
+    for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Camp[i],     __, &img, 0x80, y, 0x80, 0x40, 1, 1);
+    Sprite_slice_pcx(&this->Terrain_Buldings_Barbarian_Camp, __, &img, 0x100, 0x00, 0x80, 0x40, 1, 1);
+    Sprite_slice_pcx(&this->Terrain_Buldings_Mines,          __, &img, 0x100, 0x40, 0x80, 0x40, 1, 1);
+    for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Barricade[i], __, &img, 0x180, y, 0x80, 0x40, 1, 1);
+
+    // Pollution & Craters (5x5 of 128x64)
+	read_in_dir(&img, art_dir, "pollution.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Pollution, &img, 0x80, 0x40, 0x280, 0x140);
+	read_in_dir(&img, art_dir, "craters.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Craters, &img, 0x80, 0x40, 0x280, 0x140);
+
+    // Airfields / Outposts / Radar
+	read_in_dir(&img, art_dir, "x_airfields_and_detect.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    for (int i=0, x=0; i<2; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Airfields[i], __, &img, x, 0x00, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Outposts[i],  __, &img, x, 0x40, 0x80, 0x80, 1, 1);
+    Sprite_slice_pcx(&this->Terrain_Buldings_Radar, __, &img, 0x00, 0xC0, 0x80, 0x80, 1, 1);
+
+    // Victory (single 128x64)
+	read_in_dir(&img, art_dir, "x_victory.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    Sprite_slice_pcx(&this->Victory_Image, __, &img, 0, 0, 0x80, 0x40, 1, 1);
+
+    // Resources
+    read_in_dir(&img, art_dir, "resources.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    size_t k = 0;
+    for (int r = 0, y = 1; r < 6; ++r, y += 50) {
+        for (int c = 0, x = 1; c < 6; ++c, x += 50) {
+            Sprite_slice_pcx(&this->Resources[k++], __, &img, x, y, 49, 49, 1, 1);
+        }
+    }
+
+	// Base cities
+	static const char *CITY_BASE[5] = {
+        "rAMER.pcx", "rEURO.pcx", "rROMAN.pcx", "rMIDEAST.pcx", "rASIAN.pcx"
+    };
+	for (int culture = 0; culture < 5; culture++) {
+		read_in_dir(&img, art_dir, CITY_BASE[culture], NULL);
+		if (img.JGL.Image == NULL) return false;
+		int y = 0;
+		for (int era = 0; era < 4; ++era, y += 95) {
+			int x = 0;
+			for (int size = 0; size < 3; ++size, x += 167) {
+				const int idx = culture + 5*era + 20*size;
+				Sprite_slice_pcx(&this->City_Images[idx], __, &img, x, y, 167, 95, 1, 1);
+			}
+		}
+	}
+
+	// Walled cities
+    static const char *CITY_WALL[5] = {
+        "AMERWALL.pcx", "EUROWALL.pcx", "ROMANWALL.pcx", "MIDEASTWALL.pcx", "ASIANWALL.pcx"
+    };
+	for (int culture = 0; culture < 5; ++culture) {
+		read_in_dir(&img, art_dir, CITY_WALL[culture], NULL);
+		if (img.JGL.Image == NULL) return false;
+		int y = 0;
+		for (int era = 0; era < 4; ++era, y += 95) {
+			const int size = 3; // walled towns are a special category
+        	const int idx = culture + 5*era + 20*size;
+        	Sprite_slice_pcx(&this->City_Images[idx], __, &img, 0, y, 167, 95, 1, 1);
+		}
+	}
+
+	// Destroyed cities
+	read_in_dir(&img, art_dir, "DESTROY.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    int x = 0;
+    for (int i = 0; i < 3; ++i, x += 167) {
+        Sprite_slice_pcx(&this->Destroyed_City_Images[i], __, &img, x, 0, 167, 95, 1, 1);
+    }
+
+	img.vtable->destruct (&img, __, 0);
+
+	return true;
+}
+
+int kptr(const void *p) { return (int)(intptr_t)p; }
+Sprite *vptr(int v) { return (Sprite*)(intptr_t)v; }
+
+Sprite *
+get_sprite_proxy_for_current_hour(Sprite *s) {
+    int v;
+    int hour = is->current_day_night_cycle;  // 0..23
+    if (itable_look_up(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), &v))
+        return vptr(v);
+    return NULL;  // not proxied, fall back to s
+}
+
+void
+insert_spritelist_proxies(SpriteList *ss, SpriteList *ps, int hour, int len1, int len2) {
+	for (int i = 0; i < len1; i++) {
+		for (int j = 0; j < len2; j++) {
+			Sprite *s = &ss[i].field_0[j];
+			Sprite *p = &ps[i].field_0[j];
+			if (s && p) {
+				itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
+			}
+		}
+	}
+}
+
+void
+insert_sprite_proxies(Sprite *ss, Sprite *ps, int hour, int len) {
+	for (int i = 0; i < len; i++) {
+		Sprite *s = &ss[i];
+		Sprite *p = &ps[i];
+		if (s && p) {
+			itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
+		}
+	}
+}
+
+void
+insert_sprite_proxy(Sprite *s, Sprite *p, int hour) {
+	if (s && p) {
+		itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
+	}
+}
+
+void 
+build_sprite_proxies_24(Map_Renderer *mr) {
+	for (int h = 0; h < 24; ++h) {
+		insert_sprite_proxies(city_sprites, is->day_night_cycle_imgs[h].City_Images, h, 80);
+		insert_sprite_proxies(destroyed_city_sprites, is->day_night_cycle_imgs[h].Destroyed_City_Images, h, 3);
+		insert_sprite_proxies(mr->Resources, is->day_night_cycle_imgs[h].Resources, h, 36);
+		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
+		insert_spritelist_proxies(mr->LM_Terrain_Images, is->day_night_cycle_imgs[h].LM_Terrain_Images, h, 9, 81);
+		insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &is->day_night_cycle_imgs[h].Terrain_Buldings_Barbarian_Camp, h);
+		insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &is->day_night_cycle_imgs[h].Terrain_Buldings_Mines, h);
+		insert_sprite_proxy(&mr->Victory_Image, &is->day_night_cycle_imgs[h].Victory_Image, h);
+		insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &is->day_night_cycle_imgs[h].Terrain_Buldings_Radar, h);
+		insert_sprite_proxies(mr->Flood_Plains_Images, is->day_night_cycle_imgs[h].Flood_Plains_Images, h, 16);
+		insert_sprite_proxies(mr->Polar_Icecaps_Images, is->day_night_cycle_imgs[h].Polar_Icecaps_Images, h, 32);
+		insert_sprite_proxies(mr->Roads_Images, is->day_night_cycle_imgs[h].Roads_Images, h, 256);
+		insert_sprite_proxies(mr->Railroads_Images, is->day_night_cycle_imgs[h].Railroads_Images, h, 272);
+		insert_sprite_proxies(mr->Terrain_Buldings_Airfields, is->day_night_cycle_imgs[h].Terrain_Buldings_Airfields, h, 2);
+		insert_sprite_proxies(mr->Terrain_Buldings_Camp, is->day_night_cycle_imgs[h].Terrain_Buldings_Camp, h, 4);
+		insert_sprite_proxies(mr->Terrain_Buldings_Fortress, is->day_night_cycle_imgs[h].Terrain_Buldings_Fortress, h, 4);
+		insert_sprite_proxies(mr->Terrain_Buldings_Barricade, is->day_night_cycle_imgs[h].Terrain_Buldings_Barricade, h, 4);
+		insert_sprite_proxies(mr->Goody_Huts_Images, is->day_night_cycle_imgs[h].Goody_Huts_Images, h, 8);
+		insert_sprite_proxies(mr->Terrain_Buldings_Outposts, is->day_night_cycle_imgs[h].Terrain_Buldings_Outposts, h, 3);
+		insert_sprite_proxies(mr->Pollution, is->day_night_cycle_imgs[h].Pollution, h, 25);
+		insert_sprite_proxies(mr->Craters, is->day_night_cycle_imgs[h].Craters, h, 25);
+		insert_sprite_proxies(mr->Tnt_Images, is->day_night_cycle_imgs[h].Tnt_Images, h, 18);
+		insert_sprite_proxies(mr->Waterfalls_Images, is->day_night_cycle_imgs[h].Waterfalls_Images, h, 4);
+		insert_sprite_proxies(mr->LM_Terrain, is->day_night_cycle_imgs[h].LM_Terrain, h, 7);
+		insert_sprite_proxies(mr->Marsh_Large, is->day_night_cycle_imgs[h].Marsh_Large, h, 8);
+		insert_sprite_proxies(mr->Marsh_Small, is->day_night_cycle_imgs[h].Marsh_Small, h, 10);
+		insert_sprite_proxies(mr->Volcanos_Images, is->day_night_cycle_imgs[h].Volcanos_Images, h, 16);
+		insert_sprite_proxies(mr->Volcanos_Forests_Images, is->day_night_cycle_imgs[h].Volcanos_Forests_Images, h, 16);
+		insert_sprite_proxies(mr->Volcanos_Jungles_Images, is->day_night_cycle_imgs[h].Volcanos_Jungles_Images, h, 16);
+		insert_sprite_proxies(mr->Volcanos_Snow_Images, is->day_night_cycle_imgs[h].Volcanos_Snow_Images, h, 16);
+		insert_sprite_proxies(mr->Grassland_Forests_Large, is->day_night_cycle_imgs[h].Grassland_Forests_Large, h, 8);
+		insert_sprite_proxies(mr->Plains_Forests_Large, is->day_night_cycle_imgs[h].Plains_Forests_Large, h, 8);
+		insert_sprite_proxies(mr->Tundra_Forests_Large, is->day_night_cycle_imgs[h].Tundra_Forests_Large, h, 8);
+		insert_sprite_proxies(mr->Grassland_Forests_Small, is->day_night_cycle_imgs[h].Grassland_Forests_Small, h, 10);
+		insert_sprite_proxies(mr->Plains_Forests_Small, is->day_night_cycle_imgs[h].Plains_Forests_Small, h, 10);
+		insert_sprite_proxies(mr->Tundra_Forests_Small, is->day_night_cycle_imgs[h].Tundra_Forests_Small, h, 10);
+		insert_sprite_proxies(mr->Grassland_Forests_Pines, is->day_night_cycle_imgs[h].Grassland_Forests_Pines, h, 12);
+		insert_sprite_proxies(mr->Plains_Forests_Pines, is->day_night_cycle_imgs[h].Plains_Forests_Pines, h, 12);
+		insert_sprite_proxies(mr->Tundra_Forests_Pines, is->day_night_cycle_imgs[h].Tundra_Forests_Pines, h, 12);
+		insert_sprite_proxies(mr->Irrigation_Desert_Images, is->day_night_cycle_imgs[h].Irrigation_Desert_Images, h, 16);
+		insert_sprite_proxies(mr->Irrigation_Plains_Images, is->day_night_cycle_imgs[h].Irrigation_Plains_Images, h, 16);
+		insert_sprite_proxies(mr->Irrigation_Images, is->day_night_cycle_imgs[h].Irrigation_Images, h, 16);
+		insert_sprite_proxies(mr->Irrigation_Tundra_Images, is->day_night_cycle_imgs[h].Irrigation_Tundra_Images, h, 16);
+		insert_sprite_proxies(mr->Grassland_Jungles_Large, is->day_night_cycle_imgs[h].Grassland_Jungles_Large, h, 8);
+		insert_sprite_proxies(mr->Grassland_Jungles_Small, is->day_night_cycle_imgs[h].Grassland_Jungles_Small, h, 12);
+		insert_sprite_proxies(mr->Mountains_Images, is->day_night_cycle_imgs[h].Mountains_Images, h, 16);
+		insert_sprite_proxies(mr->Mountains_Forests_Images, is->day_night_cycle_imgs[h].Mountains_Forests_Images, h, 16);
+		insert_sprite_proxies(mr->Mountains_Jungles_Images, is->day_night_cycle_imgs[h].Mountains_Jungles_Images, h, 16);
+		insert_sprite_proxies(mr->Mountains_Snow_Images, is->day_night_cycle_imgs[h].Mountains_Snow_Images, h, 16);
+		insert_sprite_proxies(mr->Hills_Images, is->day_night_cycle_imgs[h].Hills_Images, h, 16);
+		insert_sprite_proxies(mr->Hills_Forests_Images, is->day_night_cycle_imgs[h].Hills_Forests_Images, h, 16);
+		insert_sprite_proxies(mr->Hills_Jungle_Images, is->day_night_cycle_imgs[h].Hills_Jungle_Images, h, 16);
+		insert_sprite_proxies(mr->Delta_Rivers_Images, is->day_night_cycle_imgs[h].Delta_Rivers_Images, h, 16);
+		insert_sprite_proxies(mr->Mountain_Rivers_Images, is->day_night_cycle_imgs[h].Mountain_Rivers_Images, h, 16);
+		insert_sprite_proxies(mr->LM_Mountains_Images, is->day_night_cycle_imgs[h].LM_Mountains_Images, h, 16);
+		insert_sprite_proxies(mr->LM_Forests_Large_Images, is->day_night_cycle_imgs[h].LM_Forests_Large_Images, h, 8);
+		insert_sprite_proxies(mr->LM_Forests_Small_Images, is->day_night_cycle_imgs[h].LM_Forests_Small_Images, h, 10);
+		insert_sprite_proxies(mr->LM_Forests_Pines_Images, is->day_night_cycle_imgs[h].LM_Forests_Pines_Images, h, 12);
+		insert_sprite_proxies(mr->LM_Hills_Images, is->day_night_cycle_imgs[h].LM_Hills_Images, h, 16);
+	}
+	is->day_night_cycle_img_proxies_indexed = true;
+}
+
+void
+init_day_night_images()
+{
+	if (is->day_night_cycle_img_state != IS_UNINITED)
+		return;
+
+	const char *hour_strs[24] = {
+		"2400", "0100", "0200", "0300", "0400", "0500", "0600", "0700",
+		"0800", "0900", "1000", "1100", "1200", "1300", "1400", "1500", 
+		"1600", "1700", "1800", "1900", "2000", "2100", "2200", "2300"
+	};
+
+	for (int i = 0; i < 24; i++) {
+
+		char art_dir[200];
+		snprintf(art_dir, sizeof art_dir, "%s\\Art\\DayNight\\%s", is->mod_rel_dir, hour_strs[i]);
+		bool success = load_day_night_hour_images(&is->day_night_cycle_imgs[i], art_dir);
+
+		if (!success) {
+			char ss[200];
+			snprintf(ss, sizeof ss, "Failed to load day/night cycle images for hour %s, reverting to base game art.", hour_strs[i]);
+			pop_up_in_game_error (ss);
+
+			is->day_night_cycle_img_state = IS_INIT_FAILED;
+			return;
+		}
+	}
+
+	Map_Renderer * mr = &p_bic_data->Map.Renderer;
+	build_sprite_proxies_24(mr);
+
+	is->day_night_cycle_img_state = IS_OK;
+}
+
+void
+deindex_day_night_image_proxies()
+{
+	for (int i = 0; i < 24; i++) {
+		table_deinit (&is->day_night_sprite_proxy_by_hour[i]);
+	}
+}
+
+int
+calculate_current_day_night_cycle_hour ()
+{
+	int output = 12; // Default to noon
+	int increment = is->current_config.fixed_hours_per_turn_for_day_night_cycle;
+	bool is_first_turn = (*p_current_turn_no == 0);
+
+	switch (is->current_config.day_night_cycle_mode) {
+
+		// Disabled. This shouldn't be possible, but default to noon to be safe
+		case DNCM_OFF: 
+			return output;
+
+		// Time elapsed since last update
+		case DNCM_TIMER: {
+			LARGE_INTEGER perf_freq;
+			QueryPerformanceFrequency(&perf_freq);
+
+			if (is_first_turn) {
+				is->current_day_night_cycle = output;
+				QueryPerformanceCounter(&is->last_day_night_cycle_update_time);
+			}
+
+			LARGE_INTEGER time_now;
+			QueryPerformanceCounter(&time_now);
+
+			double elapsed_seconds =
+				(double)(time_now.QuadPart - is->last_day_night_cycle_update_time.QuadPart) /
+				(double)perf_freq.QuadPart;
+
+			if (elapsed_seconds > (double)is->current_config.elapsed_minutes_per_day_night_hour_transition * 60.0) {
+				output = is->current_day_night_cycle + increment;
+				is->last_day_night_cycle_update_time = time_now;
+			} else {
+				output = is->current_day_night_cycle;
+			}
+			break;
+		}
+
+		// Match user's current time
+		case DNCM_USER_TIME: { 
+			LPSYSTEMTIME lpSystemTime = (LPSYSTEMTIME)malloc(sizeof(SYSTEMTIME));
+			GetLocalTime (lpSystemTime);
+			output = lpSystemTime->wHour;
+			free (lpSystemTime);
+			break;
+		}
+
+		// Increment fixed amount each interturn
+		case DNCM_EVERY_TURN: {
+			if (is_first_turn) {
+				increment = 0;
+				is->current_day_night_cycle = output;
+			}
+			output = is->current_day_night_cycle + increment;
+			break;
+		}
+
+		// Pin the hour to a specific value
+		case DNCM_SPECIFIED: {
+			output = is->current_config.pinned_hour_for_day_night_cycle;
+			break;
+		}
+	}
+
+	// If midnight or over, restart at 0 or later
+	if (output > 23) output = output - 24; 
+
+	// Clamp to valid range of 0-23 in case of weird config values
+	output = clamp (0, 23, output);
+
+	return output;
+}
+
+void __fastcall
+patch_Map_Renderer_load_images (Map_Renderer *this, int edx)
+{
+	Map_Renderer_load_images(this, __);
+
+	// Initialize day/night cycle and re-calculate hour, if applicable
+	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
+		is->current_day_night_cycle = calculate_current_day_night_cycle_hour ();
+
+		if (is->day_night_cycle_img_state == IS_UNINITED) {
+			init_day_night_images ();
+		}
+
+		// Sprite proxies are deindexed during each load event as sprite instances (really only Resources, which are reloaded) may change.
+		if (!is->day_night_cycle_img_proxies_indexed) {
+			build_sprite_proxies_24(this);
+		}
+	}
+}
+
 void
 patch_init_floating_point ()
 {
@@ -3340,6 +3948,7 @@ patch_init_floating_point ()
 		{"warn_when_chosen_building_would_replace_another"     , false, offsetof (struct c3x_config, warn_when_chosen_building_would_replace_another)},
 		{"do_not_unassign_workers_from_polluted_tiles"         , false, offsetof (struct c3x_config, do_not_unassign_workers_from_polluted_tiles)},
 		{"do_not_make_capital_cities_appear_larger"            , false, offsetof (struct c3x_config, do_not_make_capital_cities_appear_larger)},
+		{"show_territory_colors_on_water_tiles_in_minimap"     , false, offsetof (struct c3x_config, show_territory_colors_on_water_tiles_in_minimap)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -3362,6 +3971,8 @@ patch_init_floating_point ()
 		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
 		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
+
+		{"enable_districts"                                    , false, offsetof (struct c3x_config, enable_districts)},
 	};
 
 	struct integer_config_option {
@@ -3369,21 +3980,25 @@ patch_init_floating_point ()
 		int base_val;
 		int offset;
 	} integer_config_options[] = {
-		{"limit_railroad_movement"                     ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
-		{"minimum_city_separation"                     ,     1, offsetof (struct c3x_config, minimum_city_separation)},
-		{"anarchy_length_percent"                      ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
-		{"ai_multi_city_start"                         ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
-		{"max_tries_to_place_fp_city"                  , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
-		{"ai_research_multiplier"                      ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
-		{"ai_settler_perfume_on_founding_duration"     ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
-		{"extra_unit_maintenance_per_shields"          ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
-		{"ai_build_artillery_ratio"                    ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
-		{"ai_artillery_value_damage_percent"           ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
-		{"ai_build_bomber_ratio"                       ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
-		{"max_ai_naval_escorts"                        ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
-		{"ai_worker_requirement_percent"               ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
-		{"chance_for_nukes_to_destroy_max_one_hp_units",   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
-		{"rebase_range_multiplier"                     ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
+		{"limit_railroad_movement"                      ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
+		{"minimum_city_separation"                      ,     1, offsetof (struct c3x_config, minimum_city_separation)},
+		{"anarchy_length_percent"                       ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
+		{"ai_multi_city_start"                          ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
+		{"max_tries_to_place_fp_city"                   , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
+		{"ai_research_multiplier"                       ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
+		{"ai_settler_perfume_on_founding_duration"      ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
+		{"extra_unit_maintenance_per_shields"           ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
+		{"ai_build_artillery_ratio"                     ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
+		{"ai_artillery_value_damage_percent"            ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
+		{"ai_build_bomber_ratio"                        ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
+		{"max_ai_naval_escorts"                         ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
+		{"ai_worker_requirement_percent"                ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
+		{"chance_for_nukes_to_destroy_max_one_hp_units" ,   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
+		{"rebase_range_multiplier"                      ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
+		 
+		{"elapsed_minutes_per_day_night_hour_transition",     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
+		{"fixed_hours_per_turn_for_day_night_cycle"     ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
+		{"pinned_hour_for_day_night_cycle"              ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -3440,6 +4055,7 @@ patch_init_floating_point ()
 	base_config.work_area_limit = WAL_NONE;
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
 	base_config.city_work_radius = 2;
+	base_config.day_night_cycle_mode = DNCM_OFF;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)
@@ -3648,8 +4264,6 @@ patch_init_floating_point ()
 
 	is->saved_improv_counts = NULL;
 	is->saved_improv_counts_capacity = 0;
-
-	memset (&is->cmpd, 0, sizeof is->cmpd);
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -5729,6 +6343,13 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	// Clear old alias bits
 	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = is->aliased_leader_title_bits = 0;
 
+	// Deindex day-night cycle sprite proxies, if necessary.
+	if (is->day_night_cycle_img_proxies_indexed) {
+		deindex_day_night_image_proxies ();
+		is->current_day_night_cycle = 12;
+		is->day_night_cycle_img_proxies_indexed = false;
+	}
+
 	return tr;
 }
 
@@ -7219,6 +7840,14 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, bool 
 	}
 
 	return tr;
+}
+
+int __fastcall
+patch_Sprite_draw_on_map (Sprite * this, int edx, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7)
+{
+	Sprite *to_draw = get_sprite_proxy_for_current_hour(this);
+
+	return Sprite_draw_on_map(to_draw ? to_draw : this, __, map_renderer, pixel_x, pixel_y, param_4, param_5, param_6, param_7);
 }
 
 void __fastcall
@@ -8848,6 +9477,16 @@ patch_perform_interturn_in_main_loop ()
 		*p_preferences &= ~(P_ANIMATE_BATTLES | P_SHOW_FRIEND_MOVES | P_SHOW_ENEMY_MOVES);
 
 	perform_interturn ();
+
+	if (is->current_config.day_night_cycle_mode) {
+		if (is->day_night_cycle_img_state == IS_OK) {
+			int new_hour = calculate_current_day_night_cycle_hour ();
+			if (new_hour != is->current_day_night_cycle) {
+				is->current_day_night_cycle = new_hour;
+				p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+			}
+		}
+	}
 
 	if (is->current_config.measure_turn_times) {
 		long long ts_after;
@@ -12069,11 +12708,13 @@ void __fastcall
 patch_Main_GUI_position_elements (Main_GUI * this)
 {
 	Main_GUI_position_elements (this);
-	this->Mini_Map_Click_Rect.top -= 105;
-	this->Mini_Map_Click_Rect.right += 229;
+
+	// Double size of minimap
+	// this->Mini_Map_Click_Rect.top -= 105;
+	// this->Mini_Map_Click_Rect.right += 229;
 }
 
-#define PEDIA_DESC_LINES_PER_PAGE 37
+#define PEDIA_DESC_LINES_PER_PAGE 38
 
 // Returns whether or not the line should be drawn
 bool
@@ -12112,16 +12753,42 @@ patch_PCX_Image_draw_text_in_wrap_func (PCX_Image * this, int edx, char * str, i
 		return PCX_Image_draw_text (this, __, " ", x, y, 1); // Caller uses the return value here so draw an empty string isntead of doing nothing
 }
 
+// Steam code is slightly different; this no-len version of draw_text gets called sometimes. It's the same as draw_text instead it computes the string
+// length itself instead of taking it in as a parameter.
+int __fastcall
+patch_PCX_Image_draw_text_no_len_in_wrap_func (PCX_Image * this, int edx, char * str, int x, int y)
+{
+	return patch_PCX_Image_draw_text_in_wrap_func (this, __, str, x, y, strlen (str));
+}
+
+void
+draw_civilopedia_article (void (__fastcall * base) (Civilopedia_Article *), Civilopedia_Article * article)
+{
+	// If the article changed then clear things from the old one
+	if (is->cmpd.article != article) {
+		is->cmpd.last_page = 0;
+		is->cmpd.shown_page = 0;
+		is->cmpd.article = article;
+	}
+
+	is->cmpd.line_count = 0;
+	is->cmpd.drawing_lines = article->show_description;
+
+	base (article);
+
+	is->cmpd.drawing_lines = false;
+}
+
 void __fastcall
 patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
 {
-	// memset (&is->cmpd, 0, sizeof is->cmpd);
-	is->cmpd.line_count = 0;
-	is->cmpd.drawing_lines = this->show_description;
+	draw_civilopedia_article (Civilopedia_Article_m01_Draw_GCON_or_RACE, this);
+}
 
-	Civilopedia_Article_m01_Draw_GCON_or_RACE (this);
-
-	is->cmpd.drawing_lines = false;
+void __fastcall
+patch_Civilopedia_Article_m01_Draw_UNIT (Civilopedia_Article * this)
+{
+	draw_civilopedia_article (Civilopedia_Article_m01_Draw_UNIT, this);
 }
 
 void __fastcall
@@ -12132,19 +12799,29 @@ patch_Civilopedia_Form_m53_On_Control_Click (Civilopedia_Form * this, int edx, C
 	// "Effects" button leaves description mode, returns to showing effects
 	if ((control_id == PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID) && (current_article != NULL)) {
 		current_article->show_description = false;
+		play_sound_effect (26); // 26 = SE_SELECT
 		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
 
-	// "Previous" button shows the previous page of a multi-page description
+	// "Previous" button shows the previous page of a multi-page description or switches to effects mode if on the first page
 	} else if (control_id == PEDIA_MULTIPAGE_PREV_BUTTON_ID) {
-		is->cmpd.shown_page = not_below (0, is->cmpd.shown_page - 1);
+		if (is->cmpd.shown_page > 0)
+			is->cmpd.shown_page -= 1;
+		else
+			current_article->show_description = false;
+		play_sound_effect (26);
 		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
 
 	} else if ((control_id == CCID_DESCRIPTION_BTN) && // if description/more/prev button was clicked AND
 		   (current_article != NULL) && current_article->show_description && // currently showing a description of an article AND
 		   (is->cmpd.last_page > 0)) { // this is a multi-page description
 
-		// Show the next page of the multi-page description
-		is->cmpd.shown_page = not_above (is->cmpd.last_page, is->cmpd.shown_page + 1);
+		// Show the next page of the multi-page description unless it's a two-page description and we're on the second page, in which case go
+		// back to the first.
+		if ((is->cmpd.last_page == 1) && (is->cmpd.shown_page == 1))
+			is->cmpd.shown_page = 0;
+		else
+			is->cmpd.shown_page = not_above (is->cmpd.last_page, is->cmpd.shown_page + 1);
+		play_sound_effect (26);
 		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
 
 	} else
@@ -12155,27 +12832,42 @@ int __fastcall
 patch_Button_initialize_civilopedia_description (Button * this, int edx, char * text, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)
 {
 	Civilopedia_Article * current_article = (p_civilopedia_form->Current_Article_ID >= 0) ? p_civilopedia_form->Articles[p_civilopedia_form->Current_Article_ID] : NULL;
+	if (current_article == NULL)
+		return Button_initialize (this, __, text, control_id, x, y, width, height, parent, param_8);
 
 	// Set button visibility for multi-page descriptions if we're showing such a thing right now
 	bool show_desc_btn = true, show_effects_btn = false, show_previous_btn = false;
 	char * desc_btn_text = text;
-	if ((current_article != NULL) && current_article->show_description && (is->cmpd.last_page > 0)) {
+	if (current_article->show_description && (is->cmpd.last_page > 0)) {
 
-		// For a two-page description, show the effects button and the description button which will act as a next/previous button
-		if (is->cmpd.last_page == 1) {
-			show_effects_btn = true;
-			desc_btn_text = is->cmpd.shown_page == 0 ? (*p_labels)[LBL_MORE] : (*p_labels)[LBL_PREVIOUS];
+		// Tribe articles act like one long descripton.
+		if (current_article->article_kind == CAK_TRIBE) {
 
-		// For a three or more page description, show the effects button, and show the description button only if we're not on the last page
-		// (b/c it's the next button), and show the previous button only if we're not on the first page. If the desc button is visible, make
-		// it say "More".
-		} else {
-			show_effects_btn = true;
+			// Show the more button as long as we're not on the last page. Show the previous always since we're in description mode.
+			show_previous_btn = true;
+			desc_btn_text = (*p_labels)[LBL_MORE];
 			if (is->cmpd.shown_page >= is->cmpd.last_page)
 				show_desc_btn = false;
-			else
-				desc_btn_text = (*p_labels)[LBL_MORE];
-			show_previous_btn = is->cmpd.shown_page > 0;
+
+		// Unit articles have separate description/effects modes.
+		} else if (current_article->article_kind == CAK_UNIT) {
+
+			// For a two-page description, show the effects button and the description button which will act as a next/previous button
+			if (is->cmpd.last_page == 1) {
+				show_effects_btn = true;
+				desc_btn_text = is->cmpd.shown_page == 0 ? (*p_labels)[LBL_MORE] : (*p_labels)[LBL_PREVIOUS];
+
+			// For a three or more page description, show the effects button, and show the description button only if we're not on the
+			// last page (b/c it's the next button), and show the previous button only if we're not on the first page. If the desc button
+			// is visible, make it say "More".
+			} else {
+				show_effects_btn = true;
+				if (is->cmpd.shown_page >= is->cmpd.last_page)
+					show_desc_btn = false;
+				else
+					desc_btn_text = (*p_labels)[LBL_MORE];
+				show_previous_btn = is->cmpd.shown_page > 0;
+			}
 		}
 	}
 
@@ -12204,6 +12896,8 @@ patch_Button_initialize_civilopedia_description (Button * this, int edx, char * 
 int __fastcall
 patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int param_1, void * param_2, void * param_3)
 {
+	memset (&is->cmpd, 0, sizeof is->cmpd);
+
 	Button * bs[] = {malloc (sizeof Button), malloc (sizeof Button)};
 	for (int n = 0; n < ARRAY_LEN (bs); n++) {
 		if (bs[n] == NULL)
@@ -12240,6 +12934,15 @@ patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int pa
 	is->cmpd.effects_btn = is->cmpd.previous_btn = NULL;
 
 	return tr;
+}
+
+int __fastcall
+patch_Tile_check_water_for_navigator_cell_coloring (Tile * this)
+{
+	if (! is->current_config.show_territory_colors_on_water_tiles_in_minimap)
+		return this->vtable->m35_Check_Is_Water (this);
+	else
+		return 0;
 }
 
 // TCC requires a main function be defined even though it's never used.
