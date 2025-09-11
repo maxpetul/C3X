@@ -3923,6 +3923,7 @@ patch_init_floating_point ()
 		{"patch_empty_army_movement"                           , true , offsetof (struct c3x_config, patch_empty_army_movement)},
 		{"patch_premature_truncation_of_found_paths"           , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
 		{"patch_zero_production_crash"                         , true , offsetof (struct c3x_config, patch_zero_production_crash)},
+		{"patch_ai_can_sacrifice_without_special_ability"      , true , offsetof (struct c3x_config, patch_ai_can_sacrifice_without_special_ability)},
 		{"delete_off_map_ai_units"                             , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
 		{"fix_overlapping_specialist_yield_icons"              , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
 		{"prevent_autorazing"                                  , false, offsetof (struct c3x_config, prevent_autorazing)},
@@ -3950,6 +3951,8 @@ patch_init_floating_point ()
 		{"do_not_unassign_workers_from_polluted_tiles"         , false, offsetof (struct c3x_config, do_not_unassign_workers_from_polluted_tiles)},
 		{"do_not_make_capital_cities_appear_larger"            , false, offsetof (struct c3x_config, do_not_make_capital_cities_appear_larger)},
 		{"show_territory_colors_on_water_tiles_in_minimap"     , false, offsetof (struct c3x_config, show_territory_colors_on_water_tiles_in_minimap)},
+		{"convert_some_popups_into_online_mp_messages"         , false, offsetof (struct c3x_config, convert_some_popups_into_online_mp_messages)},
+		{"enable_debug_mode_switch"                            , false, offsetof (struct c3x_config, enable_debug_mode_switch)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -4262,6 +4265,8 @@ patch_init_floating_point ()
 
 	is->saved_improv_counts = NULL;
 	is->saved_improv_counts_capacity = 0;
+
+	memset (is->last_main_screen_key_up_events, 0, sizeof is->last_main_screen_key_up_events);
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -7876,11 +7881,20 @@ void __fastcall
 patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, int virtual_key_code, int is_down)
 {
 	char s[200];
+	int * last_events = is->last_main_screen_key_up_events;
+	bool in_game = *p_player_bits != 0; // Player bits all zero indicates we aren't currently in a game. Need to check for this because UI events
+					    // on the main menu also pass through this function.
+
+	if (! is_down) {
+		for (int n = ARRAY_LEN (is->last_main_screen_key_up_events) - 1; n > 0; n--)
+			last_events[n] = last_events[n - 1];
+		last_events[0] = virtual_key_code;
+	}
+
 	if (is->current_config.enable_ai_city_location_desirability_display &&
 	    (virtual_key_code == VK_L) && is_down &&
 	    (! (is_command_button_active (&this->GUI, UCV_Load) || is_command_button_active (&this->GUI, UCV_Unload))) &&
-	    (*p_player_bits != 0)) { // Player bits all zero indicates we aren't currently in a game. Need to check for this because UI events on the
-		                     // main menu also pass through this function.
+	    in_game) {
 		int is_debug_mode = (*p_debug_mode_bits & 4) != 0; // This is how the check is done in open_tile_info. Actually there are two debug
 		                                                   // mode bits (4 and 8) and I don't know what the difference is.
 		PopupForm * popup = get_popup_form ();
@@ -7901,7 +7915,27 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 			is->city_loc_display_perspective = (sel >= 1) ? sel : -1;
 			this->vtable->m73_call_m22_Draw ((Base_Form *)this); // Trigger map redraw
 		}
+
+	} else if (is->current_config.enable_debug_mode_switch &&
+		   (in_game && ! is_down) &&
+		   (last_events[4] == VK_D) && (last_events[3] == VK_E) && (last_events[2] == VK_B) && (last_events[1] == VK_U) && (last_events[0] == VK_G)) {
+		PopupForm * popup = get_popup_form ();
+		if ((*p_debug_mode_bits & 0xC) != 0) { // Consider debug mode on if either bit is set
+			*p_debug_mode_bits &= ~0xC;
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
+			PopupForm_add_text (popup, __, "Debug mode deactivated.", 0);
+			patch_show_popup (popup, __, 0, 0);
+		} else {
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_DEBUG_ACTIVATION", -1, 0, 0, 0);
+			int sel = patch_show_popup (popup, __, 0, 0);
+			if (sel == 0) {
+				*p_debug_mode_bits |= 0xC;
+				*(bool *)((int)p_human_player_bits + 37) = true; // Set MegaTrainerXL flag indicating edited save
+			}
+		}
+		this->vtable->m73_call_m22_Draw ((Base_Form *)this); // Trigger map redraw
 	}
+
 	Main_Screen_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
 }
 
@@ -12796,6 +12830,7 @@ patch_Civilopedia_Form_m53_On_Control_Click (Civilopedia_Form * this, int edx, C
 	// "Effects" button leaves description mode, returns to showing effects
 	if ((control_id == PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID) && (current_article != NULL)) {
 		current_article->show_description = false;
+		is->cmpd.shown_page = 0;
 		play_sound_effect (26); // 26 = SE_SELECT
 		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
 
@@ -12825,6 +12860,21 @@ patch_Civilopedia_Form_m53_On_Control_Click (Civilopedia_Form * this, int edx, C
 		Civilopedia_Form_m53_On_Control_Click (this, __, control_id);
 }
 
+void __fastcall
+patch_Civilopedia_Form_m22_Draw (Civilopedia_Form * this)
+{
+	// Make sure the new buttons are not visible and the multipage variables are cleared when we exit description mode
+	if ((this->Current_Article_ID < 0) || ! this->Articles[this->Current_Article_ID]->show_description) {
+		is->cmpd.shown_page = is->cmpd.last_page = 0;
+		if (is->cmpd.effects_btn != NULL)
+			is->cmpd.effects_btn->vtable->m02_Show_Disabled ((Base_Form *)is->cmpd.effects_btn);
+		if (is->cmpd.previous_btn != NULL)
+			is->cmpd.previous_btn->vtable->m02_Show_Disabled ((Base_Form *)is->cmpd.previous_btn);
+	}
+
+	Civilopedia_Form_m22_Draw (this);
+}
+
 int __fastcall
 patch_Button_initialize_civilopedia_description (Button * this, int edx, char * text, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)
 {
@@ -12838,7 +12888,7 @@ patch_Button_initialize_civilopedia_description (Button * this, int edx, char * 
 	if (current_article->show_description && (is->cmpd.last_page > 0)) {
 
 		// Tribe articles act like one long descripton.
-		if (current_article->article_kind == CAK_TRIBE) {
+		if ((current_article->article_kind == CAK_TRIBE) || (current_article->article_kind == CAK_GAME_CONCEPT)) {
 
 			// Show the more button as long as we're not on the last page. Show the previous always since we're in description mode.
 			show_previous_btn = true;
@@ -12940,6 +12990,67 @@ patch_Tile_check_water_for_navigator_cell_coloring (Tile * this)
 		return this->vtable->m35_Check_Is_Water (this);
 	else
 		return 0;
+}
+
+bool
+is_skippable_popup (char * text_key)
+{
+	char * skippable_keys[] = {"SUMMARY_END_GOLDEN_AGE", "SUMMARY_END_SCIENCE_AGE", "SUMMARY_NEW_SMALL_WONDER", // unimportant domestic things
+				   "WONDERPRODUCE", // another civ completed a wonder
+				   "MAKEPEACE", "MUTUALPROTECTIONPACT", "MILITARYALLIANCE", "SUMMARY_DECLARE_WAR", // diplo events not involving the player
+				   "TRADEEMBARGOENDS", // embargo vs player ends
+				   "SUMMARY_CIV_DESTROYED_BY_CIV", "SUMMARY_CIV_DESTROYED", // foreign civs destroyed not by player
+				   "LOSTGOOD", // 'We lost our supply of ...!'
+				   "TRADEEMBARGO", "MILITARYALLIANCEWARONUS", "MILITARYALLIANCEAGAINSTUS", // trade embargo or alliance vs player
+				   "SUMMARY_TRAVELERS_REPORT"}; // another civs starts a wonder
+
+	for (int n = 0; n < ARRAY_LEN (skippable_keys); n++)
+		if (strcmp (text_key, skippable_keys[n]) == 0)
+			return true;
+	return false;
+}
+
+int __fastcall
+patch_PopupForm_impl_begin_showing_popup (PopupForm * this)
+{
+	if (is_online_game () ||
+	    (! is->current_config.convert_some_popups_into_online_mp_messages) ||
+	    (! is_skippable_popup (this->text_key)))
+		return PopupForm_impl_begin_showing_popup (this);
+
+	else {
+		unsigned saved_prefs = *p_preferences;
+		int saved_flags = this->field_1BF0[0xE4];
+
+		*p_preferences |= P_SHOW_FEWER_MP_POPUPS;
+		this->field_1BF0[0xE4] |= 0x4000;
+		int tr = PopupForm_impl_begin_showing_popup (this);
+
+		*(bool *)(p_main_screen_form->animator.field_18E4 + 10) = true; // Set what must be a dirty flag
+		Animator_update (&p_main_screen_form->animator); // Make sure message appears
+
+		this->field_1BF0[0xE4] = saved_flags;
+		*p_preferences = saved_prefs;
+
+		return tr;
+	}
+}
+
+bool __stdcall
+patch_is_online_game_for_show_popup ()
+{
+	return is->current_config.convert_some_popups_into_online_mp_messages ? true : is_online_game ();
+}
+
+bool __fastcall
+patch_Unit_ai_can_sacrifice (Unit * this, int edx, bool requires_city)
+{
+	int sacrifice_action = UCV_Sacrifice & 0x0FFFFFFF; // Mask out top four category bits
+	UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+	if (is->current_config.patch_ai_can_sacrifice_without_special_ability && ((type->Special_Actions & sacrifice_action) == 0))
+		return false;
+	else
+		return Unit_ai_can_sacrifice (this, __, requires_city);
 }
 
 // TCC requires a main function be defined even though it's never used.

@@ -207,6 +207,8 @@ struct c3x_config {
 	bool do_not_unassign_workers_from_polluted_tiles;
 	bool do_not_make_capital_cities_appear_larger;
 	bool show_territory_colors_on_water_tiles_in_minimap;
+	bool convert_some_popups_into_online_mp_messages;
+	bool enable_debug_mode_switch;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
@@ -277,6 +279,7 @@ struct c3x_config {
 	bool fix_overlapping_specialist_yield_icons;
 	bool patch_premature_truncation_of_found_paths;
 	bool patch_zero_production_crash;
+	bool patch_ai_can_sacrifice_without_special_ability;
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
@@ -1068,6 +1071,10 @@ struct injected_state {
 		Sprite LM_Forests_Pines_Images[12];
 		Sprite LM_Hills_Images[16];
 	} day_night_cycle_imgs[24];
+  
+	// Initialized to 0. Every time Main_Screen_Form::m82_handle_key_event receives an event with is_down == 0, the virtual key code is prepended
+	// to this list.
+	int last_main_screen_key_up_events[5];
 
 	// ==========
 	// }

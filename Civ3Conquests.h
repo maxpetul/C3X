@@ -6137,7 +6137,7 @@ struct Main_Screen_Form
   int field_4D80;
   int field_4D84;
   Timer timer_1;
-  int field_4DB8;
+  int scroll_speed;
   int Player_CivID;
   int field_4DC0[25];
   Timer timer_2;
@@ -6276,7 +6276,9 @@ struct PopupFormVTable
 	PopupForm * (__fastcall * destruct) (PopupForm *, __, byte);
 	void * unk0[91];
 	void (__fastcall * set_text_key_and_flags) (PopupForm *, __, char *, char *, int, int, int, int);
-	void * unk1[14];
+	void * unk1[10];
+	int (__fastcall * begin_showing_popup) (PopupForm *);
+	void * unk2[3];
 };
 
 // Note: This is the type of the statically allocated global Popup thing that you get if you call get_popup_form. I don't think
@@ -6284,14 +6286,25 @@ struct PopupFormVTable
 // GUI_Form_1. Also, PopupForm inherits from GUI_Form_1, that's why the first fields are the same.
 struct PopupForm
 {
-	PopupFormVTable * vtable;
+	PopupFormVTable * vtable; // = 0x666408
 	Base_Form_Data base_data;
-	int unk0[26];
+	int field_574;
+	int field_578;
+	char * script_path;
+	char * text_key;
+	int field_584;
+	int field_588;
+	int field_58C;
+	int field_590;
+	int field_594[11];
+	int field_5C0[7];
 	Button ok_button;
 	Button cancel_button;
-	int unk1[57];
+	int field_1384[9];
+	Sprite field_13A8;
+	int field_13D4[37];
 	PopupSelection selection;
-	int unk2[338];
+	int field_1BF0[338];
 };
 
 struct TradableItem
