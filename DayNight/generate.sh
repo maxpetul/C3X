@@ -147,12 +147,3 @@ if [[ -n "${ONLY_HOUR}" ]]; then DN_ARGS+=( --only-hour "$ONLY_HOUR" ); CL_ARGS+
 python civ3_day_night.py "${DN_ARGS[@]}"
 python civ3_city_lights.py "${CL_ARGS[@]}"
 python civ3_postprocess_pixels.py "${PP_ARGS[@]}"
-
-
-# Copy 'Territory.pcx' from '1200' to every other folder
-#for dir in "$ART_PATH"/[0-9][0-9][0-9][0-9]; do
-#  if [ "$dir" != "$ART_PATH/1200" ]; then
-#    echo "Copying '$ART_PATH/1200/Territory.pcx' -> '$dir/Territory.pcx'..."
-#    cp "$ART_PATH/1200/Territory.pcx" "$dir"
-#  fi
-#done
