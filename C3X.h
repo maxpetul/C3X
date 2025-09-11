@@ -1006,8 +1006,7 @@ struct injected_state {
 	{
 		SpriteList Std_Terrain_Images[9];
 		SpriteList LM_Terrain_Images[9];
-		Sprite Base_City_Images[80];
-		Sprite Walled_City_Images[80];
+		Sprite City_Images[80];
 		Sprite Destroyed_City_Images[3];
 		Sprite Resources[36];
 		Sprite ResourcesShadows[36];

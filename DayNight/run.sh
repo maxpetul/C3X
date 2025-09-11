@@ -1,12 +1,13 @@
 set -euo pipefail
 
 ### === CONFIG ===
+ANNOTATION_DIR="/c/Program Files (x86)/GOG Galaxy/Games/Civilization III Complete/Conquests/C3X_Districts/Art/DayNight/Annotations"
 DATA_DIR="/c/Program Files (x86)/GOG Galaxy/Games/Civilization III Complete/Conquests/C3X_Districts/Art/DayNight"
 NOON_SUBFOLDER="1200"
 ONLY_HOUR=""       # set empty "" to process all hours
 
 # ---- Day/Night settings ----
-WARMTH=1.2            # Scale for sunrise/sunset warmth (1.0 = base)
+WARMTH=1.7            # Scale for sunrise/sunset warmth (1.0 = base)
 BLUE=1.6              # Scale for night-time blue emphasis (1.0 = base)
 DARKNESS=3.0          # Scale for extra night darkening (1.0 = base)
 DESAT=0.8             # Scale for dusk/night desaturation toward gray (lower = richer)

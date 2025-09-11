@@ -1,6 +1,6 @@
 # TODOs
 ## Day/Night Cycle
-- [ ] Art
+- [x] Art
   - [x] Asian
   - [x] Roman
   - [x] European
@@ -9,7 +9,7 @@
   - [x] Walled cities
   - [x] Terrain buildings
   - [x] Volcanos
-  - [ ] Railroads
+  - [x] Railroads
 - [x] Mechanics
 
 ## Districts

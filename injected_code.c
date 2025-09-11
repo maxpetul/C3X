@@ -3562,8 +3562,8 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 		for (int era = 0; era < 4; ++era, y += 95) {
 			int x = 0;
 			for (int size = 0; size < 3; ++size, x += 167) {
-				const int idx = (culture + 5*(era) + 20*(size));
-				Sprite_slice_pcx(&this->Base_City_Images[idx], __, &img, x, y, 167, 95, 1, 1);
+				const int idx = culture + 5*era + 20*size;
+				Sprite_slice_pcx(&this->City_Images[idx], __, &img, x, y, 167, 95, 1, 1);
 			}
 		}
 	}
@@ -3577,8 +3577,9 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 		if (img.JGL.Image == NULL) return false;
 		int y = 0;
 		for (int era = 0; era < 4; ++era, y += 95) {
-			const int idx = ((culture) + 5*(era) + 20*(3));
-			Sprite_slice_pcx(&this->Walled_City_Images[idx], __, &img, 0, y, 167, 95, 1, 1);
+			const int size = 3; // walled towns are a special category
+        	const int idx = culture + 5*era + 20*size;
+        	Sprite_slice_pcx(&this->City_Images[idx], __, &img, 0, y, 167, 95, 1, 1);
 		}
 	}
 
@@ -3641,8 +3642,7 @@ insert_sprite_proxy(Sprite *s, Sprite *p, int hour) {
 void 
 build_sprite_proxies_24(Map_Renderer *mr) {
 	for (int h = 0; h < 24; ++h) {
-		insert_sprite_proxies(city_sprites, is->day_night_cycle_imgs[h].Base_City_Images, h, 80);
-		insert_sprite_proxies(walled_city_sprites, is->day_night_cycle_imgs[h].Walled_City_Images, h, 80);
+		insert_sprite_proxies(city_sprites, is->day_night_cycle_imgs[h].City_Images, h, 80);
 		insert_sprite_proxies(destroyed_city_sprites, is->day_night_cycle_imgs[h].Destroyed_City_Images, h, 3);
 		insert_sprite_proxies(mr->Resources, is->day_night_cycle_imgs[h].Resources, h, 36);
 		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
