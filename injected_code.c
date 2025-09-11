@@ -63,9 +63,6 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID 0x222004
 #define PEDIA_MULTIPAGE_PREV_BUTTON_ID 0x222005
 
-#define STRIDE_CULTURE 44
-#define STRIDE_ERA 5
-
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
 
@@ -3742,9 +3739,13 @@ init_day_night_images()
 void
 deindex_day_night_image_proxies()
 {
+	if (!is->day_night_cycle_img_proxies_indexed)
+		return;
+
 	for (int i = 0; i < 24; i++) {
 		table_deinit (&is->day_night_sprite_proxy_by_hour[i]);
 	}
+	is->day_night_cycle_img_proxies_indexed = false;
 }
 
 int
@@ -3993,7 +3994,6 @@ patch_init_floating_point ()
 		{"ai_worker_requirement_percent"                ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
 		{"chance_for_nukes_to_destroy_max_one_hp_units" ,   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
 		{"rebase_range_multiplier"                      ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
-		 
 		{"elapsed_minutes_per_day_night_hour_transition",     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
 		{"fixed_hours_per_turn_for_day_night_cycle"     ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
 		{"pinned_hour_for_day_night_cycle"              ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
@@ -6345,7 +6345,6 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	if (is->day_night_cycle_img_proxies_indexed) {
 		deindex_day_night_image_proxies ();
 		is->current_day_night_cycle = 12;
-		is->day_night_cycle_img_proxies_indexed = false;
 	}
 
 	return tr;
