@@ -5,6 +5,7 @@
 ref/
 __pycache__
 temp.exe
+todos.md
 Thumbs.db
 releases
 correlator/gog.json

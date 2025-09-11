@@ -281,8 +281,6 @@ struct c3x_config {
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
 
-	bool enable_districts;
-
 	int day_night_cycle_mode;
 	int elapsed_minutes_per_day_night_hour_transition;
 	int fixed_hours_per_turn_for_day_night_cycle;
