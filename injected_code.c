@@ -2738,26 +2738,30 @@ filter_zoc_candidate (struct register_set * reg)
 }
 
 #define TRADE_NET_REF_COUNT 315
+#define TRADE_NET_INSTR_COUNT_GOG   22
+#define TRADE_NET_INSTR_COUNT_STEAM 23
+#define TRADE_NET_INSTR_COUNT_PCG   22
+#define TRADE_NET_ADDR_TOTAL_COUNT ((TRADE_NET_REF_COUNT * 3) + TRADE_NET_INSTR_COUNT_GOG + TRADE_NET_INSTR_COUNT_STEAM + TRADE_NET_INSTR_COUNT_PCG)
 
 int *
-load_trade_net_refs ()
+load_trade_net_addrs ()
 {
-	if (is->trade_net_refs_load_state == IS_OK)
-		return is->trade_net_refs;
-	else if (is->trade_net_refs_load_state == IS_INIT_FAILED)
+	if (is->trade_net_addrs_load_state == IS_OK)
+		return is->trade_net_addrs;
+	else if (is->trade_net_addrs_load_state == IS_INIT_FAILED)
 		return NULL;
 
 	bool success = false;
 	char err_msg[300] = {0};
 
-	is->trade_net_refs = calloc (3 * TRADE_NET_REF_COUNT, sizeof is->trade_net_refs[0]);
-	if (! is->trade_net_refs) {
+	is->trade_net_addrs = calloc (3 * TRADE_NET_ADDR_TOTAL_COUNT, sizeof is->trade_net_addrs[0]);
+	if (! is->trade_net_addrs) {
 		snprintf (err_msg, (sizeof err_msg) - 1, "Bad alloc");
 		goto done;
 	}
 
 	char file_path[MAX_PATH] = {0};
-	snprintf (file_path, (sizeof file_path) - 1, "%s\\trade_net_refs.txt", is->mod_rel_dir);
+	snprintf (file_path, (sizeof file_path) - 1, "%s\\trade_net_addresses.txt", is->mod_rel_dir);
 	char * refs_file = file_to_string (file_path);
 	if (! refs_file) {
 		snprintf (err_msg, (sizeof err_msg) - 1, "Couldn't load %s", file_path);
@@ -2783,11 +2787,11 @@ load_trade_net_refs ()
 		int ref;
 		bool got_any_addresses = false;
 		while (parse_int (&cursor, &ref)) {
-			if (loaded_count >= 3 * TRADE_NET_REF_COUNT) {
-				snprintf (err_msg, (sizeof err_msg) - 1, "Too many values in file (expected %d exactly)", 3 * TRADE_NET_REF_COUNT);
+			if (loaded_count >= TRADE_NET_ADDR_TOTAL_COUNT) {
+				snprintf (err_msg, (sizeof err_msg) - 1, "Too many values in file (expected %d exactly)", TRADE_NET_ADDR_TOTAL_COUNT);
 				goto done;
 			}
-			is->trade_net_refs[loaded_count] = ref;
+			is->trade_net_addrs[loaded_count] = ref;
 			loaded_count++;
 			got_any_addresses = true;
 		}
@@ -2798,8 +2802,8 @@ load_trade_net_refs ()
 		}
 	}
 
-	if (loaded_count < 3 * TRADE_NET_REF_COUNT) {
-		snprintf (err_msg, (sizeof err_msg) - 1, "Too few values in file (expected %d exactly)", 3 * TRADE_NET_REF_COUNT);
+	if (loaded_count < TRADE_NET_ADDR_TOTAL_COUNT) {
+		snprintf (err_msg, (sizeof err_msg) - 1, "Too few values in file (expected %d exactly)", TRADE_NET_ADDR_TOTAL_COUNT);
 		goto done;
 	}
 
@@ -2811,11 +2815,11 @@ done:
 		char full_err_msg[300] = {0};
 		snprintf (full_err_msg, (sizeof full_err_msg) - 1, "Failed to load trade net refs: %s", err_msg);
 		MessageBox (NULL, full_err_msg, NULL, MB_ICONERROR);
-		is->trade_net_refs_load_state = IS_INIT_FAILED;
+		is->trade_net_addrs_load_state = IS_INIT_FAILED;
 		return NULL;
 	} else {
-		is->trade_net_refs_load_state = IS_OK;
-		return is->trade_net_refs;
+		is->trade_net_addrs_load_state = IS_OK;
+		return is->trade_net_addrs;
 	}
 }
 
@@ -3169,11 +3173,11 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		int_to_bytes (ADDR_PATHFINDER_RECONSTRUCTION_MAX_LEN, cfg->patch_premature_truncation_of_found_paths ? 2560 : 256);
 	}
 
-	int * trade_net_refs;
+	int * trade_net_addrs;
 	bool already_moved_trade_net = is->trade_net != p_original_trade_net,
 	     want_moved_trade_net = cfg->move_trade_net_object;
 	if ((! at_program_start) &&
-	    ((trade_net_refs = load_trade_net_refs ()) != NULL) &&
+	    ((trade_net_addrs = load_trade_net_addrs ()) != NULL) &&
 	    ((already_moved_trade_net && ! want_moved_trade_net) || (want_moved_trade_net && ! already_moved_trade_net))) {
 		// Allocate a new trade net object if necessary. To construct it, all we have to do is zero a few fields and set the vptr. Otherwise,
 		// set the allocated object aside for deletion later. Also set new & old addresses to the locations we're moving to & from.
@@ -3194,8 +3198,16 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		// Patch all references from the "old" object to the "new" one
 		int offset;
 		bool popped_up_error = false;
+		int * refs; {
+			if (exe_version_index == 0)
+				refs = trade_net_addrs;
+			else if (exe_version_index == 1) // Steam version, skip refs and instructions for GOG
+				refs = &trade_net_addrs[TRADE_NET_REF_COUNT + TRADE_NET_INSTR_COUNT_GOG];
+			else // PCGames.de version, skip two sets of refs and instrs for GOG & Steam
+				refs = &trade_net_addrs[2 * TRADE_NET_REF_COUNT + TRADE_NET_INSTR_COUNT_GOG + TRADE_NET_INSTR_COUNT_STEAM];
+		}
 		for (int n_ref = 0; n_ref < TRADE_NET_REF_COUNT; n_ref++) {
-			int addr = trade_net_refs[TRADE_NET_REF_COUNT * exe_version_index + n_ref];
+			int addr = refs[n_ref];
 			WITH_MEM_PROTECTION ((void *)(addr - 10), 20, PAGE_EXECUTE_READWRITE) {
 				byte * instr = (byte *)addr;
 				if ((instr[0] == 0xB9) && (int_from_bytes (&instr[1]) == p_old)) // move trade net ptr to ecx
@@ -3495,8 +3507,8 @@ patch_init_floating_point ()
 
 	is->sb_next_up = NULL;
 	is->trade_net = p_original_trade_net;
-	is->trade_net_refs_load_state = IS_UNINITED;
-	is->trade_net_refs = NULL;
+	is->trade_net_addrs_load_state = IS_UNINITED;
+	is->trade_net_addrs = NULL;
 	is->tnx_cache = NULL;
 	is->is_computing_city_connections = false;
 	is->keep_tnx_cache = false;
