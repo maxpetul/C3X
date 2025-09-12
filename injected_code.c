@@ -2860,18 +2860,18 @@ struct nopified_area {
 	byte original_contents[];
 };
 
-// Replaces an area of code with no-ops. The original contents of the area are saved and can be restored with restore_area. This method assumes that
+// Saves an area of base game code and optionally replaces it with no-ops. The area can be restored with restore_code_area. This method assumes that
 // the necessary memory protection has already been set on the area, specifically that it can be written to. The method will do nothing if the area
-// has already been nopified with the same size. It's an error to re-nopify an address with a different size or overlap two nopified areas.
+// has already been saved with the same size. It's an error to re-save an address with a different size or overlap two saved areas.
 void
-nopify_area (byte * addr, int size)
+save_code_area (byte * addr, int size, bool nopify)
 {
 	struct nopified_area * na;
 	if (itable_look_up (&is->nopified_areas, (int)addr, (int *)&na)) {
 		if (na->size != 0) {
 			if (na->size != size) {
 				char s[200];
-				snprintf (s, sizeof s, "Nopification conflict: address %p was already nopified with size %d, conflicting with new size %d.", addr, na->size, size);
+				snprintf (s, sizeof s, "Save code area conflict: address %p was already saved with size %d, conflicting with new size %d.", addr, na->size, size);
 				s[(sizeof s) - 1] = '\0';
 				pop_up_in_game_error (s);
 			}
@@ -2883,13 +2883,14 @@ nopify_area (byte * addr, int size)
 	}
 	na->size = size;
 	memcpy (&na->original_contents, addr, size);
-	memset (addr, 0x90, size);
+	if (nopify)
+		memset (addr, 0x90, size);
 }
 
-// De-nopifies an area, restoring the original contents. Does nothing if the area hasn't been nopified. Assumes the appropriate memory protection has
+// Restores a saved chunk of code to its original contents. Does nothing if the area hasn't been saved. Assumes the appropriate memory protection has
 // already been set.
 void
-restore_area (byte * addr)
+restore_code_area (byte * addr)
 {
 	struct nopified_area * na;
 	if (itable_look_up (&is->nopified_areas, (int)addr, (int *)&na)) {
@@ -2899,7 +2900,7 @@ restore_area (byte * addr)
 }
 
 bool
-is_area_nopified (byte * addr)
+is_code_area_saved (byte * addr)
 {
 	struct nopified_area * na;
 	return itable_look_up (&is->nopified_areas, (int)addr, (int *)&na) && (na->size > 0);
@@ -2911,9 +2912,9 @@ set_nopification (int yes_or_no, byte * addr, int size)
 {
 	WITH_MEM_PROTECTION (addr, size, PAGE_EXECUTE_READWRITE) {
 		if (yes_or_no)
-			nopify_area (addr, size);
+			save_code_area (addr, size, true);
 		else
-			restore_area (addr);
+			restore_code_area (addr);
 	}
 }
 
@@ -2968,14 +2969,14 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	// https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-10#post-16085242
 	WITH_MEM_PROTECTION (ADDR_HOUSEBOAT_BUG_PATCH, ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH, PAGE_EXECUTE_READWRITE) {
 		if (cfg->patch_houseboat_bug) {
-			nopify_area (ADDR_HOUSEBOAT_BUG_PATCH, ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH);
+			save_code_area (ADDR_HOUSEBOAT_BUG_PATCH, ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH, true);
 			byte * cursor = ADDR_HOUSEBOAT_BUG_PATCH;
 			*cursor++ = 0x50; // push eax
 			int call_offset = (int)&tile_at_city_or_null - ((int)cursor + 5);
 			*cursor++ = 0xE8; // call
 			cursor = int_to_bytes (cursor, call_offset);
 		} else
-			restore_area (ADDR_HOUSEBOAT_BUG_PATCH);
+			restore_code_area (ADDR_HOUSEBOAT_BUG_PATCH);
 	}
 
 	// NoRaze
@@ -3093,12 +3094,12 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	// those jumps lets us run the civ production code for the barbs as well.
 	WITH_MEM_PROTECTION (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP, 6, PAGE_EXECUTE_READWRITE) {
 		if (cfg->enable_city_capture_by_barbarians) {
-			nopify_area (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP, 6);
+			save_code_area (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP, 6, true);
 			byte jump_to_civ[6] = {0x0F, 0x8D, 0x0C, 0x00, 0x00, 0x00}; // jge +0x12
 			for (int n = 0; n < 6; n++)
 				ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP[n] = jump_to_civ[n];
 		} else
-			restore_area (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP);
+			restore_code_area (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP);
 	}
 	set_nopification (cfg->enable_city_capture_by_barbarians, ADDR_PROD_PHASE_BARB_DONE_JUMP, 5);
 
@@ -3107,9 +3108,9 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		     * addr_airlock = (domain == 0) ? ADDR_SEA_ZOC_FILTER_AIRLOCK      : ADDR_LAND_ZOC_FILTER_AIRLOCK;
 
 		WITH_MEM_PROTECTION (addr_skip, 6, PAGE_EXECUTE_READWRITE) {
-			if ((cfg->special_zone_of_control_rules != 0) && ! is_area_nopified (addr_skip)) {
+			if ((cfg->special_zone_of_control_rules != 0) && ! is_code_area_saved (addr_skip)) {
 				byte * original_target = addr_skip + 6 + int_from_bytes (addr_skip + 2); // target addr of jump instr we're replacing
-				nopify_area (addr_skip, 6);
+				save_code_area (addr_skip, 6, true);
 
 				// Initialize airlock. The airlock preserves all registers and calls filter_zoc_candidate then either follows or skips the
 				// original jump depending on what it returns. If zero is returned, follows the jump, skipping a bunch of code and filtering
@@ -3130,7 +3131,7 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 				// Write jump to airlock
 				emit_branch (BK_JUMP, addr_skip, addr_airlock);
 			} else if (cfg->special_zone_of_control_rules == 0)
-				restore_area (addr_skip);
+				restore_code_area (addr_skip);
 		}
 	}
 
@@ -3183,13 +3184,17 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		// set the allocated object aside for deletion later. Also set new & old addresses to the locations we're moving to & from.
 		Trade_Net * to_free = NULL;
 		int p_old, p_new;
+		int lifted_city_limit_exp = 11;
+		int lifted_city_limit = 1 << lifted_city_limit_exp;
 		if (want_moved_trade_net) {
-			is->trade_net = calloc (1, sizeof *is->trade_net);
+			is->trade_net = calloc (1, (sizeof (Trade_Net)) - (4 * 512 * 512) + (4 * lifted_city_limit * lifted_city_limit));
+			is->city_limit = lifted_city_limit;
 			is->trade_net->vtable = p_original_trade_net->vtable;
 			p_old = (int)p_original_trade_net;
 			p_new = (int)is->trade_net;
 		} else {
 			to_free = is->trade_net;
+			is->city_limit = 512;
 			p_old = (int)is->trade_net;
 			p_new = (int)p_original_trade_net;
 			is->trade_net = p_original_trade_net;
@@ -3198,6 +3203,7 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		// Patch all references from the "old" object to the "new" one
 		int offset;
 		bool popped_up_error = false;
+		char err_msg[200] = {0};
 		int * refs; {
 			if (exe_version_index == 0)
 				refs = trade_net_addrs;
@@ -3230,10 +3236,59 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 					 (offset = int_from_bytes (&instr[2]) - p_old, (offset >= 0) && (offset < 100)))
 					int_to_bytes (&instr[2], p_new + offset);
 				else if (! popped_up_error) {
-					char err_msg[200] = {0};
 					snprintf (err_msg, (sizeof err_msg) - 1, "Can't move trade net object from address 0x%x. Pattern doesn't match.", addr);
 					MessageBox (NULL, err_msg, NULL, MB_ICONERROR);
 					popped_up_error = true;
+				}
+			}
+		}
+
+		// Patch all instructions that involve the stride of Trade_Net.Matrix
+		int * addrs, addr_count; {
+			if (exe_version_index == 0) {
+				addrs = &trade_net_addrs[TRADE_NET_REF_COUNT];
+				addr_count = TRADE_NET_INSTR_COUNT_GOG;
+			} else if (exe_version_index == 1) {
+				addrs = &trade_net_addrs[2 * TRADE_NET_REF_COUNT + TRADE_NET_INSTR_COUNT_GOG];
+				addr_count = TRADE_NET_INSTR_COUNT_STEAM;
+			} else {
+				addrs = &trade_net_addrs[3 * TRADE_NET_REF_COUNT + TRADE_NET_INSTR_COUNT_GOG + TRADE_NET_INSTR_COUNT_STEAM];
+				addr_count = TRADE_NET_INSTR_COUNT_GOG;
+			}
+			for (int n = 0; n < addr_count; n++) {
+				byte * instr = (byte *)addrs[n];
+				WITH_MEM_PROTECTION (instr, 10, PAGE_EXECUTE_READWRITE) {
+					if (is->city_limit == 512)
+						restore_code_area (instr);
+
+					else {
+						if ((instr[0] == 0xC1) && (instr[1] >= 0xE0) && (instr[1] <= 0xE7)) { // shl
+							save_code_area (instr, 3, false);
+							// shift amount is either 9 (1<<9 == 512) or 11 (1<<11 == 4*512, stride in bytes)
+							// in the second case, replace with lifted_exp + 2 to convert to bytes
+							instr[2] = lifted_city_limit_exp + ((instr[2] == 11) ? 2 : 0);
+
+						} else if ((instr[0] == 0x81) && (instr[1] >= 0xC0) && (instr[1] <= 0xC7)) { // add
+							save_code_area (instr, 6, false);
+							int amount = int_from_bytes (&instr[2]);
+							// amount is either 512 or 4*512, replace with lifted_lim or 4*lifted_lim
+							int_to_bytes (&instr[2], (amount == 512) ? lifted_city_limit : 4*lifted_city_limit);
+
+						} else if ((instr[0] == 0x8D) && (instr[1] == 0x9C) && (instr[2] == 0x90)) { // lea
+							save_code_area (instr, 7, false);
+							int offset = 4 * lifted_city_limit + 0x38; // stride in bytes plus 0x38 offset to Matrix in Trade_Net object
+							int_to_bytes (&instr[3], offset);
+
+						} else if (instr[0] == 0xB9) { // mov
+							save_code_area (instr, 5, false);
+							int_to_bytes (&instr[1], lifted_city_limit * lifted_city_limit);
+
+						} else if (! popped_up_error) {
+							snprintf (err_msg, (sizeof err_msg) - 1, "Can't patch matrix stride at address 0x%x. Pattern doesn't match.", (int)instr);
+							MessageBox (NULL, err_msg, NULL, MB_ICONERROR);
+							popped_up_error = true;
+						}
+					}
 				}
 			}
 		}
@@ -3507,6 +3562,7 @@ patch_init_floating_point ()
 
 	is->sb_next_up = NULL;
 	is->trade_net = p_original_trade_net;
+	is->city_limit = 512;
 	is->trade_net_addrs_load_state = IS_UNINITED;
 	is->trade_net_addrs = NULL;
 	is->tnx_cache = NULL;

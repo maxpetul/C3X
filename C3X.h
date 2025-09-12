@@ -512,6 +512,7 @@ struct injected_state {
 	Unit * sb_next_up; // The unit currently doing a stack bombard or NULL otherwise. Gets set to NULL if the unit is despawned.
 
 	Trade_Net * trade_net; // Pointer to the trade net object. If it hasn't been moved by the mod, this equals p_original_trade_net.
+	int city_limit;
 
 	enum init_state trade_net_addrs_load_state;
 	int * trade_net_addrs;
