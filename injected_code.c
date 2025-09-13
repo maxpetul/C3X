@@ -3293,6 +3293,14 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 			}
 		}
 
+		// Patch two other instructions that contain the city limit
+		WITH_MEM_PROTECTION (ADDR_CITY_LIM_CMP_IN_CONT_BEGIN_TURN, 6, PAGE_EXECUTE_READWRITE) {
+			int_to_bytes (&ADDR_CITY_LIM_CMP_IN_CONT_BEGIN_TURN[2], is->city_limit);
+		}
+		WITH_MEM_PROTECTION (ADDR_CITY_LIM_CMP_IN_CREATE_CITY, 5, PAGE_EXECUTE_READWRITE) {
+			int_to_bytes (&ADDR_CITY_LIM_CMP_IN_CREATE_CITY[1], is->city_limit);
+		}
+
 		if (to_free) {
 			to_free->vtable->destruct (to_free, __, 0);
 			free (to_free);
@@ -9943,7 +9951,7 @@ patch_Demographics_Form_m22_draw (Demographics_Form * this)
 
 		// Draw text on top of the backdrop
 		char s[100];
-		snprintf (s, sizeof s, "%s %d / 512", is->c3x_labels[CL_TOTAL_CITIES], city_count);
+		snprintf (s, sizeof s, "%s %d / %d", is->c3x_labels[CL_TOTAL_CITIES], city_count, is->city_limit);
 		s[(sizeof s) - 1] = '\0';
 		PCX_Image_set_text_effects (canvas, __, 0x80000000, -1, 2, 2); // Set text color to black
 		PCX_Image_draw_centered_text (canvas, __, get_font (14, FSF_NONE), s, 1024/2 - 100, 730, 200, strlen (s));
