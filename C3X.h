@@ -1104,16 +1104,6 @@ struct injected_state {
 		Sprite imgs[4][10]; // 1st dimension = era, 2nd dimension = district image variant
 	} district_img_sets[COUNT_DISTRICT_TYPES];
 
-	/* TODO implement day/night cycle for district images
-	struct district_image_set {
-		Sprite imgs[4][10]; // 1st dimension = era, 2nd dimension = district image variant
-	};
-	
-	struct district_day_night_img_set {
-		struct district_image_set hours[24];
-	} district_img_sets[COUNT_DISTRICT_TYPES];
-	*/
-
 	struct district_button_image_set {
 		Sprite imgs[4];
 	} district_btn_img_sets[COUNT_DISTRICT_TYPES];

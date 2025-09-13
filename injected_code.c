@@ -5038,7 +5038,6 @@ set_up_stack_bombard_buttons (Main_GUI * this)
 	free_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&free_button->Button, __, 0);
 }
 
-/*
 void
 init_district_command_buttons ()
 {
@@ -5084,9 +5083,7 @@ init_district_command_buttons ()
 	is->dc_btn_img_state = IS_OK;
 	pcx.vtable->destruct (&pcx, __, 0);
 }
-*/
 
-/*
 void
 set_up_district_buttons (Main_GUI * this)
 {
@@ -5113,6 +5110,8 @@ set_up_district_buttons (Main_GUI * this)
 
 	if (automate_button == NULL)
 		return;
+
+	// TODO: for each district type, check if it can be built on the current tile
 
 	// For each district type
 	for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
@@ -5144,7 +5143,6 @@ set_up_district_buttons (Main_GUI * this)
 		}
 	}
 }
-*/
 
 void
 set_up_stack_worker_buttons (Main_GUI * this)
@@ -5199,7 +5197,7 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 	Main_GUI_set_up_unit_command_buttons (this);
 	set_up_stack_bombard_buttons (this);
 	set_up_stack_worker_buttons (this);
-	//set_up_district_buttons (this);
+	set_up_district_buttons (this);
 
 	// If the minimum city separation is increased, then gray out the found city button if we're too close to another city.
 	if ((is->current_config.minimum_city_separation > 1) && (p_main_screen_form->Current_Unit != NULL) && (is->disabled_command_img_state == IS_OK)) {
@@ -5449,6 +5447,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 			Unit_can_perform_command (this, __, unit_command_value);
 	} else if (is->current_config.enable_districts && 
 		 is_district_command (unit_command_value)) {
+		// TODO: check if unit is worker and district can be built on tile
 		return true;
 	} else
 		return Unit_can_perform_command (this, __, unit_command_value);
@@ -5536,7 +5535,6 @@ issue_stack_worker_command (Unit * unit, int command)
 	} while ((next_up != NULL) && (! last_action_didnt_happen));
 }
 
-/*
 void
 issue_district_worker_command (Unit * unit, int command)
 {
@@ -5548,18 +5546,36 @@ issue_district_worker_command (Unit * unit, int command)
 	int unit_type_id = unit->Body.UnitTypeID;
 	int unit_id = unit->Body.ID;
 
-	// TODO Check if requisite tech available
-	// TODO make sure not on mountain
-	// TODO patch_Unit_can_perform_command ?
+	// Check tech prerequisite for the selected district, if any
+	if (is->current_config.enable_districts) {
+		int district_id;
+		if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
+			int prereq_id = is->district_infos[district_id].advance_prereq_id;
+			// Only enforce if a prereq is configured
+			if (prereq_id < 0 || !Leader_has_tech (&leaders[unit->Body.CivID], __, prereq_id)) {
+				return; // Civ lacks required tech; do not issue command
+			}
+		}
+	}
+    // Disallow placing districts on mountain tiles for simplicity/per design
+    if (tile != NULL && tile != p_null_tile) {
+        enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType(tile);
+        if (base_type == SQ_Mountains) {
+            return;
+        }
+    }
 
-	// Set tile DistrictID
+	// Set tile -> DistrictID mapping in `district_tile_map`
+	if (is->current_config.enable_districts && tile != NULL && tile != p_null_tile) {
+		int district_id;
+		if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
+			itable_insert (&is->district_tile_map, (int)tile, district_id);
+		}
+	}
 
-	// Tile now tracks the district type, so track everything as a mine behind the scenes.
-	// 
 	int pseudo_command = UCV_Build_Mine;
 	Main_Screen_Form_issue_command (p_main_screen_form, __, pseudo_command, unit);
 }
-*/
 
 void
 issue_stack_unit_mgmt_command (Unit * unit, int command)
@@ -5668,14 +5684,12 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 
 	int command = this->Unit_Command_Buttons[button_id].Command;
 
-	/*
 	if (is_district_command (command)) {
 		clear_something_1 ();
 		Timer_clear (&this->timer_1);
 		issue_district_worker_command (p_main_screen_form->Current_Unit, command);
 		return;
 	}
-	*/
 
 	struct sc_button_info const * stack_button_info; {
 		stack_button_info = NULL;
@@ -13184,7 +13198,6 @@ patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int pa
 	return tr;
 }
 
-/*
 void
 init_district_images ()
 {
@@ -13241,80 +13254,38 @@ init_district_images ()
 	is->dc_img_state = IS_OK;
 	pcx.vtable->destruct (&pcx, __, 0);
 }
-*/
 
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
-	Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+    // If districts enabled and this tile is mapped to a district, draw only the district (suppress base mine drawing)
+    if (is->current_config.enable_districts) {
+        Tile * tile = tile_at (tile_x, tile_y);
+        if (tile != NULL && tile != p_null_tile) {
+            int district_id;
+            if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
+                if (is->dc_img_state == IS_UNINITED)
+                    init_district_images ();
+                if (is->dc_img_state == IS_OK) {
+                    int era = 0;
+                    int culture = 0;
+                    int territory_owner_id = tile->Territory_OwnerID;
+                    if (territory_owner_id) {
+                        Leader * leader = &leaders[territory_owner_id];
+                        era = leader->Era;
+                        culture = leader->RaceID;
+                    }
+                    int col = 0;
+                    Sprite * district_sprite = &is->district_img_sets[district_id].imgs[era][col];
+                    Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+                    return; // do not draw vanilla mine when district present
+                }
+            }
+        }
+    }
 
-
-	/*
-	char ss[200];
-
-	Tile * tile = tile_at (tile_x, tile_y);
-	int command;
-	int district_id;
-
-	if (1==0) {
-
-		// Check if job is complete
-		unsigned overlays = patch_Tile_m42_Get_Overlays(tile, __, 1);
-		unsigned int done = overlays >> 2 & 1 | (overlays >> 10) << 8;
-
-		if (done) {
-
-			if (is->dc_img_state == IS_UNINITED)
-				init_district_images ();
-
-			if (is->dc_img_state != IS_OK) {
-				return;
-			}
-
-			Sprite district_sprite;
-			int territory_owner_id = tile->Territory_OwnerID;
-			int era = 0;
-			int culture = 0;
-			if (territory_owner_id) {
-				Leader * leader = &leaders[territory_owner_id];
-				era = leader->Era;
-				culture = leader->RaceID;
-
-				// Debug: territory_owner_id, leader, era, culture
-				//snprintf (ss, sizeof ss, "territory_owner_id: %d, leader: %d, era: %d, culture: %d", territory_owner_id, leader, era, culture);
-				//pop_up_in_game_error (ss);
-			}
-
-			// Debug: find lengths of is->district_img_sets[idx].imgs
-			//int img_count = sizeof(is->district_img_sets[idx].imgs) / sizeof(is->district_img_sets[idx].imgs[0]);
-			//snprintf(ss, sizeof ss, "is->district_img_sets[%d].imgs length: %d", idx, img_count);
-			//pop_up_in_game_error(ss);
-
-			// TODO: find nearest city; buildings present will influence sprite selection
-
-			switch (command) {
-			case UCV_Build_Encampment:
-				district_sprite = is->district_img_sets[district_id].imgs[era][0];
-				break;
-			case UCV_Build_Campus:
-				district_sprite = this->Terrain_Buldings_Barbarian_Camp;
-				break;
-			case UCV_Build_HolySite:
-				district_sprite = this->Terrain_Buldings_Barbarian_Camp;
-				break;
-			default:
-				district_sprite = this->Terrain_Buldings_Barbarian_Camp;
-				break;
-			}
-
-			// Draw district
-			Sprite_draw_on_map (&district_sprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
-		}
-	}
-	else {
-		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
-	}
-	*/
+    // Fallback: no district present or images not ready — draw base buildings (including mines)
+    Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 }
 
 int __fastcall
