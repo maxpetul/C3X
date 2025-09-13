@@ -5097,7 +5097,25 @@ set_up_district_buttons (Main_GUI * this)
 	if (is->dc_btn_img_state != IS_OK)
 		return;
 
-	// TODO: confirm whether to proceed based on if this is worker or not, as well as tile conditions
+	// Only proceed if the selected unit is a worker, the tile is valid
+	// (not a mountain), and the civ meets at least one district tech prereq.
+	Unit * selected_unit = p_main_screen_form->Current_Unit;
+	if (selected_unit == NULL)
+		return;
+
+	int unit_type_id = selected_unit->Body.UnitTypeID;
+	// Must be a worker-type unit (has worker actions)
+	if (p_bic_data->UnitTypes[unit_type_id].Worker_Actions == 0)
+		return;
+
+	Tile * tile = tile_at (selected_unit->Body.X, selected_unit->Body.Y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
+
+	// Disallow on mountain tiles
+	if (tile->vtable->m50_Get_Square_BaseType (tile) == SQ_Mountains)
+		return;
+
 	Command_Button * automate_button = NULL; int i_starting_button; {
 		for (int n = 0; n < 42; n++)
 			if (((this->Unit_Command_Buttons[n].Button.Base_Data.Status2 & 1) != 0) &&
@@ -5115,6 +5133,11 @@ set_up_district_buttons (Main_GUI * this)
 
 	// For each district type
 	for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
+
+		// Check if civ has prereq tech for this district type, if any
+		int prereq_id = is->district_infos[dc].advance_prereq_id;
+		if ((prereq_id >= 0) && !Leader_has_tech(&leaders[selected_unit->Body.CivID], __, prereq_id))
+			continue;
 
 		Command_Button * free_button = NULL; {
 			for (int n = i_starting_button + 1; n < 42; n++)
@@ -13275,7 +13298,13 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                         era = leader->Era;
                         culture = leader->RaceID;
                     }
+                    int total_cols = district_configs[district_id].total_img_columns;
                     int col = 0;
+                    if (total_cols > 1) {
+                        if (culture < 0) culture = 0;
+                        if (culture >= total_cols) culture = total_cols - 1;
+                        col = culture;
+                    }
                     Sprite * district_sprite = &is->district_img_sets[district_id].imgs[era][col];
                     Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
                     return; // do not draw vanilla mine when district present
