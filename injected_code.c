@@ -1928,6 +1928,10 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 			// Map improvement prereqs to districts
 			for (int j = 0; j < 10; j++) {
 				int improv_id;
+
+				if (district_configs[i].dependent_improvements[j] == "" || district_configs[i].dependent_improvements[j] == NULL)
+					continue;
+
 				struct string_slice improv_name = { .str = (char *)district_configs[i].dependent_improvements[j], .len = (int)strlen (district_configs[i].dependent_improvements[j]) };
 				if (find_game_object_id_by_name (GOK_BUILDING, &improv_name, 0, &improv_id)) {
 
