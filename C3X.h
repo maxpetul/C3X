@@ -16,6 +16,8 @@ typedef unsigned char byte;
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
+#define COUNT_DISTRICT_TYPES 1
+
 // Initialize to zero. Implementation is in common.c
 struct table {
 	void * block;
@@ -288,6 +290,8 @@ struct c3x_config {
 	int elapsed_minutes_per_day_night_hour_transition;
 	int fixed_hours_per_turn_for_day_night_cycle;
 	int pinned_hour_for_day_night_cycle;
+
+	bool enable_districts;
 };
 
 enum stackable_command {
@@ -451,6 +455,25 @@ enum city_loss_reason {
 	CLR_CONQUERED,
 	CLR_CONVERTED, // covers culture flips & bribes
 	CLR_TRADED
+};
+
+struct district_config {
+	enum Unit_Command_Values command;
+	char const * tooltip;
+	char const * advance_prereq;
+	char const * dependent_improvements[5];
+	char const * img_path;
+	int allow_multiple,
+		index,
+		btn_tile_sheet_column,
+		btn_tile_sheet_row,
+		total_img_columns;
+} const district_configs[COUNT_DISTRICT_TYPES] = {
+	{ 
+		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_path = "DistrictEncampment.pcx",
+		.advance_prereq = "Bronze Working", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
+		.allow_multiple = 0, .index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_columns = 4
+	}
 };
 
 struct injected_state {
@@ -1071,7 +1094,50 @@ struct injected_state {
 		Sprite LM_Forests_Pines_Images[12];
 		Sprite LM_Hills_Images[16];
 	} day_night_cycle_imgs[24];
-  
+
+	// Districts
+	enum init_state dc_img_state;
+	enum init_state dc_btn_img_state;
+
+	// Districts data
+	struct district_image_set {
+		Sprite imgs[4][10]; // 1st dimension = era, 2nd dimension = district image variant
+	} district_img_sets[COUNT_DISTRICT_TYPES];
+
+	/* TODO implement day/night cycle for district images
+	struct district_image_set {
+		Sprite imgs[4][10]; // 1st dimension = era, 2nd dimension = district image variant
+	};
+	
+	struct district_day_night_img_set {
+		struct district_image_set hours[24];
+	} district_img_sets[COUNT_DISTRICT_TYPES];
+	*/
+
+	struct district_button_image_set {
+		Sprite imgs[4];
+	} district_btn_img_sets[COUNT_DISTRICT_TYPES];
+
+	// A mapping from int tech ID keys -> district ID. If a tech (aka advance) ID is present in the
+	// table that means that tech enables a district. This also means one tech can enable at most one district.
+	struct table district_tech_prereqs;
+
+	// A mapping from int building ID keys -> district ID. If a building ID is present in the
+	// table that means that building can only be built if there is a corresponding district is present in the city radius.
+	struct table district_building_prereqs;
+
+	// A mapping from tile pointer IDs -> district ID. If a tile ID is present in the
+	// table that means that tile has a district built on it.
+	struct table district_tile_map;
+
+	struct table command_id_to_district_id;
+
+	struct district_infos {
+		int advance_prereq_id; // Tech ID that enables the district
+		int dependent_building_ids[5]; // Building types the district enables
+	} district_infos[COUNT_DISTRICT_TYPES];
+
+
 	// Initialized to 0. Every time Main_Screen_Form::m82_handle_key_event receives an event with is_down == 0, the virtual key code is prepended
 	// to this list.
 	int last_main_screen_key_up_events[5];
