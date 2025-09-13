@@ -1915,14 +1915,14 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				struct string_slice tech_name = { .str = (char *)district_configs[i].advance_prereq, .len = (int)strlen (district_configs[i].advance_prereq) };
 				if (find_game_object_id_by_name (GOK_TECHNOLOGY, &tech_name, 0, &tech_id))
 
-					snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\".", tech_name.len, tech_name.str, district_configs[i].advance_prereq);
-					pop_up_in_game_error (ss);
-
 					// Set the prereq ID in the district info struct
 					is->district_infos[i].advance_prereq_id = tech_id;
 
 					// Map the tech ID to the district index
 					itable_insert (&is->district_tech_prereqs, tech_id, i);
+
+					snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d", tech_name.len, tech_name.str, district_configs[i].advance_prereq, tech_id);
+					pop_up_in_game_error (ss);
 			}
 
 			// Map improvement prereqs to districts
@@ -1931,14 +1931,14 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				struct string_slice improv_name = { .str = (char *)district_configs[i].dependent_improvements[j], .len = (int)strlen (district_configs[i].dependent_improvements[j]) };
 				if (find_game_object_id_by_name (GOK_BUILDING, &improv_name, 0, &improv_id)) {
 
-					snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\".", improv_name.len, improv_name.str, district_configs[i].dependent_improvements[j]);
-					pop_up_in_game_error (ss);
-
 					// Append the improvement ID to the list in the district info struct	
 					is->district_infos[i].dependent_building_ids[j] = improv_id;
 
 					// Map the improv ID to the district index
 					itable_insert (&is->district_building_prereqs, improv_id, i);
+
+					snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d", improv_name.len, improv_name.str, district_configs[i].dependent_improvements[j], improv_id);
+					pop_up_in_game_error (ss);
 				}
 			}
 		}
@@ -5034,6 +5034,7 @@ set_up_stack_bombard_buttons (Main_GUI * this)
 	free_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&free_button->Button, __, 0);
 }
 
+/*
 void
 init_district_command_buttons ()
 {
@@ -5079,7 +5080,9 @@ init_district_command_buttons ()
 	is->dc_btn_img_state = IS_OK;
 	pcx.vtable->destruct (&pcx, __, 0);
 }
+*/
 
+/*
 void
 set_up_district_buttons (Main_GUI * this)
 {
@@ -5137,6 +5140,7 @@ set_up_district_buttons (Main_GUI * this)
 		}
 	}
 }
+*/
 
 void
 set_up_stack_worker_buttons (Main_GUI * this)
@@ -5191,7 +5195,7 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 	Main_GUI_set_up_unit_command_buttons (this);
 	set_up_stack_bombard_buttons (this);
 	set_up_stack_worker_buttons (this);
-	set_up_district_buttons (this);
+	//set_up_district_buttons (this);
 
 	// If the minimum city separation is increased, then gray out the found city button if we're too close to another city.
 	if ((is->current_config.minimum_city_separation > 1) && (p_main_screen_form->Current_Unit != NULL) && (is->disabled_command_img_state == IS_OK)) {
@@ -5528,6 +5532,7 @@ issue_stack_worker_command (Unit * unit, int command)
 	} while ((next_up != NULL) && (! last_action_didnt_happen));
 }
 
+/*
 void
 issue_district_worker_command (Unit * unit, int command)
 {
@@ -5550,6 +5555,7 @@ issue_district_worker_command (Unit * unit, int command)
 	int pseudo_command = UCV_Build_Mine;
 	Main_Screen_Form_issue_command (p_main_screen_form, __, pseudo_command, unit);
 }
+*/
 
 void
 issue_stack_unit_mgmt_command (Unit * unit, int command)
@@ -5658,12 +5664,14 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 
 	int command = this->Unit_Command_Buttons[button_id].Command;
 
+	/*
 	if (is_district_command (command)) {
 		clear_something_1 ();
 		Timer_clear (&this->timer_1);
 		issue_district_worker_command (p_main_screen_form->Current_Unit, command);
 		return;
 	}
+	*/
 
 	struct sc_button_info const * stack_button_info; {
 		stack_button_info = NULL;
@@ -13172,6 +13180,7 @@ patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int pa
 	return tr;
 }
 
+/*
 void
 init_district_images ()
 {
@@ -13228,10 +13237,15 @@ init_district_images ()
 	is->dc_img_state = IS_OK;
 	pcx.vtable->destruct (&pcx, __, 0);
 }
+*/
 
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
+	Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+
+
+	/*
 	char ss[200];
 
 	Tile * tile = tile_at (tile_x, tile_y);
@@ -13296,6 +13310,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 	else {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 	}
+	*/
 }
 
 int __fastcall
