@@ -1921,8 +1921,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					// Map the tech ID to the district index
 					itable_insert (&is->district_tech_prereqs, tech_id, i);
 
-					snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d", tech_name.len, tech_name.str, district_configs[i].advance_prereq, tech_id);
-					pop_up_in_game_error (ss);
+					//snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d", tech_name.len, tech_name.str, district_configs[i].advance_prereq, tech_id);
+					//pop_up_in_game_error (ss);
 			}
 
 			// Map improvement prereqs to districts
@@ -1941,8 +1941,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					// Map the improv ID to the district index
 					itable_insert (&is->district_building_prereqs, improv_id, i);
 
-					snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d", improv_name.len, improv_name.str, district_configs[i].dependent_improvements[j], improv_id);
-					pop_up_in_game_error (ss);
+					//snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d", improv_name.len, improv_name.str, district_configs[i].dependent_improvements[j], improv_id);
+					//pop_up_in_game_error (ss);
 				}
 			}
 		}
@@ -5044,6 +5044,8 @@ init_district_command_buttons ()
 	if (is_online_game () || is->dc_btn_img_state != IS_UNINITED)
 		return;
 
+	char ss[200];
+
 	PCX_Image pcx;
 	PCX_Image_construct (&pcx);
 	for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++)
@@ -5055,7 +5057,10 @@ init_district_command_buttons ()
 	is->dc_btn_img_state = IS_INIT_FAILED;
 
 	// For each button sprite type (normal, rollover, highlighted, alpha)
-	char const * filenames[4] = {"WorkerDistrictButtonsNorm.pcx", "WorkerDistrictButtonsRollover.pcx", "WorkerDistrictButtonsHighlighted.pcx", "WorkerDistrictButtonsAlpha.pcx"};
+	char const * filenames[4] = {
+		"Districts\\WorkerDistrictButtonsNorm.pcx", "Districts\\WorkerDistrictButtonsRollover.pcx", 
+		"Districts\\WorkerDistrictButtonsHighlighted.pcx", "Districts\\WorkerDistrictButtonsAlpha.pcx"
+	};
 	for (int n = 0; n < 4; n++) {
 		get_mod_art_path (filenames[n], temp_path, sizeof temp_path);
 		PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
@@ -5067,6 +5072,10 @@ init_district_command_buttons ()
 					sprite->vtable->destruct (sprite, __, 0);
 				}
 			pcx.vtable->destruct (&pcx, __, 0);
+
+			snprintf (ss, sizeof ss, "[C3X] Failed to load district command button images from %s", temp_path);
+			pop_up_in_game_error (ss);
+
 			return;
 		}
 
@@ -5080,6 +5089,10 @@ init_district_command_buttons ()
 		pcx.vtable->clear_JGL (&pcx);
 	}
 
+	
+	//snprintf (ss, sizeof ss, "[C3X] Loaded district command button images from %s", temp_path);
+	//pop_up_in_game_error (ss);
+
 	is->dc_btn_img_state = IS_OK;
 	pcx.vtable->destruct (&pcx, __, 0);
 }
@@ -5087,6 +5100,9 @@ init_district_command_buttons ()
 void
 set_up_district_buttons (Main_GUI * this)
 {
+	char ss[200];
+	//snprintf (ss, sizeof ss, "set_up_district_buttons");
+	//pop_up_in_game_error (ss);
 
 	if (is_online_game () || ! is->current_config.enable_districts) 
 		return;
@@ -5097,16 +5113,25 @@ set_up_district_buttons (Main_GUI * this)
 	if (is->dc_btn_img_state != IS_OK)
 		return;
 
+	//snprintf (ss, sizeof ss, "Checking if is a worker");
+	//pop_up_in_game_error (ss);
+
 	// Only proceed if the selected unit is a worker, the tile is valid
 	// (not a mountain), and the civ meets at least one district tech prereq.
 	Unit * selected_unit = p_main_screen_form->Current_Unit;
 	if (selected_unit == NULL)
 		return;
 
+	//snprintf (ss, sizeof ss, "Selected unit ID %d", selected_unit->Body.ID);
+	//pop_up_in_game_error (ss);
+
 	int unit_type_id = selected_unit->Body.UnitTypeID;
 	// Must be a worker-type unit (has worker actions)
 	if (p_bic_data->UnitTypes[unit_type_id].Worker_Actions == 0)
 		return;
+
+	//snprintf (ss, sizeof ss, "[C3X] Selected unit is a worker");
+	//pop_up_in_game_error (ss);
 
 	Tile * tile = tile_at (selected_unit->Body.X, selected_unit->Body.Y);
 	if ((tile == NULL) || (tile == p_null_tile))
@@ -5115,6 +5140,9 @@ set_up_district_buttons (Main_GUI * this)
 	// Disallow on mountain tiles
 	if (tile->vtable->m50_Get_Square_BaseType (tile) == SQ_Mountains)
 		return;
+
+	//snprintf (ss, sizeof ss, "[C3X] Selected unit is not on a mountain tile");
+	//pop_up_in_game_error (ss);
 
 	Command_Button * automate_button = NULL; int i_starting_button; {
 		for (int n = 0; n < 42; n++)
@@ -5129,15 +5157,24 @@ set_up_district_buttons (Main_GUI * this)
 	if (automate_button == NULL)
 		return;
 
+	//snprintf (ss, sizeof ss, "[C3X] Found automate button at index %d", i_starting_button);
+	//pop_up_in_game_error (ss);
+
 	// TODO: for each district type, check if it can be built on the current tile
 
 	// For each district type
 	for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
 
+		//snprintf (ss, sizeof ss, "[C3X] Considering district type %d", dc);
+		//pop_up_in_game_error (ss);
+
 		// Check if civ has prereq tech for this district type, if any
 		int prereq_id = is->district_infos[dc].advance_prereq_id;
 		if ((prereq_id >= 0) && !Leader_has_tech(&leaders[selected_unit->Body.CivID], __, prereq_id))
 			continue;
+
+		//snprintf (ss, sizeof ss, "[C3X] Civ has prereq tech for district type %d", dc);
+		//pop_up_in_game_error (ss);
 
 		Command_Button * free_button = NULL; {
 			for (int n = i_starting_button + 1; n < 42; n++)
@@ -5468,8 +5505,12 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 		enum UnitTypeClasses class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
 		return ((class != UTC_Land) || (! tile->vtable->m35_Check_Is_Water (tile))) &&
 			Unit_can_perform_command (this, __, unit_command_value);
-	} else if (is->current_config.enable_districts && 
-		 is_district_command (unit_command_value)) {
+	} else if (is->current_config.enable_districts && is_district_command (unit_command_value)) {
+
+		char ss[200];
+		sprintf (ss, "patch_Unit_can_perform_command: unit_command_value = %d", unit_command_value);
+		pop_up_in_game_error (ss);
+
 		// TODO: check if unit is worker and district can be built on tile
 		return true;
 	} else
@@ -5565,21 +5606,25 @@ issue_district_worker_command (Unit * unit, int command)
 	//snprintf (ss, sizeof ss, "issue_district_worker_command");
 	//pop_up_in_game_error (ss);
 
+	if (! is->current_config.enable_districts)
+		return;
+
 	Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
 	int unit_type_id = unit->Body.UnitTypeID;
 	int unit_id = unit->Body.ID;
 
 	// Check tech prerequisite for the selected district, if any
-	if (is->current_config.enable_districts) {
-		int district_id;
-		if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
-			int prereq_id = is->district_infos[district_id].advance_prereq_id;
-			// Only enforce if a prereq is configured
-			if (prereq_id < 0 || !Leader_has_tech (&leaders[unit->Body.CivID], __, prereq_id)) {
-				return; // Civ lacks required tech; do not issue command
-			}
+	int district_id;
+	if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
+		int prereq_id = is->district_infos[district_id].advance_prereq_id;
+		// Only enforce if a prereq is configured
+		if (prereq_id < 0 || !Leader_has_tech (&leaders[unit->Body.CivID], __, prereq_id)) {
+			return; // Civ lacks required tech; do not issue command
 		}
 	}
+	//snprintf (ss, sizeof ss, "C3X: Civ has prereq tech for district command %d", command);
+	//pop_up_in_game_error (ss);
+
     // Disallow placing districts on mountain tiles for simplicity/per design
     if (tile != NULL && tile != p_null_tile) {
         enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType(tile);
@@ -5588,9 +5633,15 @@ issue_district_worker_command (Unit * unit, int command)
         }
     }
 
+	//snprintf (ss, sizeof ss, "C3X: Issuing district worker command %d", command);
+	//pop_up_in_game_error (ss);
+
 	// Set tile -> DistrictID mapping in `district_tile_map`
-	if (is->current_config.enable_districts && tile != NULL && tile != p_null_tile) {
-		int district_id;
+	if (tile != NULL && tile != p_null_tile) {
+
+		//snprintf (ss, sizeof ss, "C3X: Setting district_tile_map entry for tile");
+		//pop_up_in_game_error (ss);
+
 		if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
 			itable_insert (&is->district_tile_map, (int)tile, district_id);
 		}
@@ -13224,10 +13275,17 @@ patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int pa
 void
 init_district_images ()
 {
+	char ss[200];
+	//snprintf (ss, sizeof ss, "init_district_images: starting to load district images");
+	//pop_up_in_game_error (ss);
+
 	if (is_online_game () || is->dc_img_state != IS_UNINITED)
 		return;
 
-	char temp_path[2*MAX_PATH];
+	char art_dir[200];
+
+	//snprintf (ss, sizeof ss, "init_district_images: loading district images");
+	//pop_up_in_game_error (ss);
 
 	is->dc_img_state = IS_INIT_FAILED;
 
@@ -13241,10 +13299,16 @@ init_district_images ()
 			break;
 
 		// Read PCX file
-		get_mod_art_path (district_configs[dc].img_path, temp_path, sizeof temp_path);
-		PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+		snprintf(art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, district_configs[dc].img_path);
+		//snprintf (ss, sizeof ss, "init_district_images: loading district images from %s", art_dir);
+		//pop_up_in_game_error (ss);
+
+		PCX_Image_read_file (&pcx, __, art_dir, NULL, 0, 0x100, 2);
 
 		if (pcx.JGL.Image == NULL) {
+
+			snprintf (ss, sizeof ss, "init_district_images: failed to load district images from %s", art_dir);
+			pop_up_in_game_error (ss);
 
 			(*p_OutputDebugStringA) ("[C3X] Failed to load districts sprite sheet.");
 			for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++)
@@ -13264,6 +13328,9 @@ init_district_images ()
 			// For each column in the image (variations on the district image for that era)
 			for (int col = 0; col < district_configs[dc].total_img_columns; col++) {
 
+				//snprintf (ss, sizeof ss, "init_district_images: loading district %d era %d column %d", dc, era_i, col);
+				//pop_up_in_game_error (ss);
+
 				Sprite_construct (&is->district_img_sets[dc].imgs[era_i][col]);
 
 				int x = 128 * col,
@@ -13276,20 +13343,46 @@ init_district_images ()
 	}
 	is->dc_img_state = IS_OK;
 	pcx.vtable->destruct (&pcx, __, 0);
+
+	//snprintf (ss, sizeof ss, "init_district_images: finished loading district images");
+	//pop_up_in_game_error (ss);
+
 }
 
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
+	char ss[200];
+
     // If districts enabled and this tile is mapped to a district, draw only the district (suppress base mine drawing)
     if (is->current_config.enable_districts) {
         Tile * tile = tile_at (tile_x, tile_y);
         if (tile != NULL && tile != p_null_tile) {
             int district_id;
             if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
-                if (is->dc_img_state == IS_UNINITED)
+
+				//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: tile (%d,%d) has district id %d", tile_x, tile_y, district_id);
+				//pop_up_in_game_error (ss);
+
+                if (is->dc_img_state == IS_UNINITED) {
+
+					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: initializing district images");
+					//pop_up_in_game_error (ss);
+
                     init_district_images ();
+				}
                 if (is->dc_img_state == IS_OK) {
+
+					// Check if job is complete
+					unsigned overlays = patch_Tile_m42_Get_Overlays(tile, __, 1);
+					unsigned int done = overlays >> 2 & 1 | (overlays >> 10) << 8;
+
+					if (! done)
+						return;
+
+					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: drawing district %d on tile (%d,%d)", district_id, tile_x, tile_y);
+					//pop_up_in_game_error (ss);
+
                     int era = 0;
                     int culture = 0;
                     int territory_owner_id = tile->Territory_OwnerID;
@@ -13297,18 +13390,29 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                         Leader * leader = &leaders[territory_owner_id];
                         era = leader->Era;
                         culture = leader->RaceID;
+
+						//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: tile (%d,%d) owned by civ %d (culture %d) in era %d", tile_x, tile_y, territory_owner_id, culture, era);
+						//pop_up_in_game_error (ss);
+
                     }
                     int total_cols = district_configs[district_id].total_img_columns;
                     int col = 0;
-                    if (total_cols > 1) {
-                        if (culture < 0) culture = 0;
-                        if (culture >= total_cols) culture = total_cols - 1;
-                        col = culture;
-                    }
+
+					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district %d has %d image columns", district_id, total_cols);
+					//pop_up_in_game_error (ss);
+
                     Sprite * district_sprite = &is->district_img_sets[district_id].imgs[era][col];
                     Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+
+					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: finished drawing district %d on tile (%d,%d)", district_id, tile_x, tile_y);
+					//pop_up_in_game_error (ss);
+
                     return; // do not draw vanilla mine when district present
                 }
+				else {
+					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district images not ready, state %d", is->dc_img_state);
+					//pop_up_in_game_error (ss);
+				}
             }
         }
     }

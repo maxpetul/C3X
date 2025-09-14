@@ -470,7 +470,7 @@ struct district_config {
 		total_img_columns;
 } const district_configs[COUNT_DISTRICT_TYPES] = {
 	{ 
-		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_path = "DistrictEncampment.pcx",
+		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_path = "Encampment.pcx",
 		.advance_prereq = "Bronze Working", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
 		.allow_multiple = 0, .index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_columns = 4
 	}
@@ -1101,7 +1101,7 @@ struct injected_state {
 
 	// Districts data
 	struct district_image_set {
-		Sprite imgs[4][10]; // 1st dimension = era, 2nd dimension = district image variant
+		Sprite imgs[4][4]; // 1st dimension = era, 2nd dimension = district image variant depending on buildings present
 	} district_img_sets[COUNT_DISTRICT_TYPES];
 
 	struct district_button_image_set {
