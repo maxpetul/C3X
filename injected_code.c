@@ -5178,6 +5178,20 @@ set_up_district_buttons (Main_GUI * this)
 				continue;
 		}
 
+		// Skip if district is already nearby, unless allow_multiple is true
+		if (!district_configs[dc].allow_multiple) {
+			bool found_same_district_nearby = false;
+			FOR_TILES_AROUND(tai, is->workable_tile_count, selected_unit->Body.X, selected_unit->Body.Y) {
+				int nearby_district_id;
+				if (itable_look_up(&is->district_tile_map, (int)tai.tile, &nearby_district_id) && (nearby_district_id == dc)) {
+					found_same_district_nearby = true;
+					break;
+				}
+			}
+			if (found_same_district_nearby)
+				continue;
+		}
+
 		// Check if civ has prereq tech for this district type, if any
 		int prereq_id = is->district_infos[dc].advance_prereq_id;
 		if ((prereq_id >= 0) && !Leader_has_tech(&leaders[selected_unit->Body.CivID], __, prereq_id))
@@ -7169,6 +7183,11 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 bool __fastcall
 patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param_2)
 {
+	char ss[200];
+
+	//snprintf (ss, sizeof(ss), "City %d can build improvement %d", this->Body.ID, i_improv);
+	//pop_up_in_game_error(ss);
+
 	// First defer to the base game's logic
 	bool base = City_can_build_improvement (this, __, i_improv, param_2);
 	if (! base)
@@ -7178,19 +7197,20 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 	if (! is->current_config.enable_districts)
 		return base;
 
+	//sprintf(ss, "Checking district prereqs for improvement %d", i_improv);
+	//pop_up_in_game_error(ss);
+
 	int required_district_id;
 	if (! itable_look_up (&is->district_building_prereqs, i_improv, &required_district_id))
 		return base;
 
-	// Scan workable tiles in city radius for the required district, mirroring
-	// the city-radius resource search pattern used in has_resources_required_by_building_r.
+	snprintf (ss, sizeof(ss), "City %d needs district %d to build improvement %d, workable tiles %d", this->Body.ID, required_district_id, i_improv, is->workable_tile_count);
+	pop_up_in_game_error(ss);
+
+	// Scan workable tiles in city radius for the required district
 	int civ_id = this->Body.CivID;
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = this->Body.X + dx, y = this->Body.Y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
+	FOR_TILES_AROUND (tai, is->workable_tile_count, this->Body.X, this->Body.Y) {
+		Tile * tile = tai.tile;
 		if (tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id) {
 			int district_id_on_tile;
 			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id_on_tile) &&
@@ -7198,6 +7218,9 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 				return true; // Found required district in city radius
 		}
 	}
+
+	snprintf (ss, sizeof(ss), "No required district %d found in city radius", required_district_id);
+	pop_up_in_game_error(ss);
 
 	// No qualifying district found in city radius
 	return false;
@@ -13483,15 +13506,13 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 
 						//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: tile (%d,%d) owned by civ %d (culture %d) in era %d", tile_x, tile_y, territory_owner_id, culture, era);
 						//pop_up_in_game_error (ss);
-
                     }
-                    int total_cols = district_configs[district_id].total_img_columns;
-                    int col = 0;
 
 					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district %d has %d image columns", district_id, total_cols);
 					//pop_up_in_game_error (ss);
 
                     Sprite * district_sprite;
+					int col = 0;
 
 					switch (district_configs[district_id].command) {
 						case UCV_Build_Encampment:
@@ -13503,7 +13524,6 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 					}
 
 					district_sprite = &is->district_img_sets[district_id].imgs[era][col];
-
                     Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 
 					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: finished drawing district %d on tile (%d,%d)", district_id, tile_x, tile_y);
