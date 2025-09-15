@@ -463,16 +463,31 @@ struct district_config {
 	char const * advance_prereq;
 	char const * dependent_improvements[5];
 	char const * img_path;
-	int allow_multiple,
-		index,
+	bool allow_multiple,
+		 is_workable;
+	int index,
 		btn_tile_sheet_column,
 		btn_tile_sheet_row,
-		total_img_columns;
+		total_img_columns,
+		defense_bonus_multiplier,
+		culture_bonus,
+		science_bonus,
+		food_bonus,
+		gold_bonus,
+		production_bonus,
+		adjacent_food_bonus,
+		adjacent_gold_bonus,
+		adjacent_production_bonus;
 } const district_configs[COUNT_DISTRICT_TYPES] = {
 	{ 
-		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_path = "Encampment.pcx",
+		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_path = "Encampment.pcx", .index = 0, 
 		.advance_prereq = "Bronze Working", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
-		.allow_multiple = 0, .index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_columns = 4
+		.btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_columns = 4,
+		.defense_bonus_multiplier = 1.5, 
+		.allow_multiple = false,  .is_workable = false,
+		.culture_bonus = 0,       .science_bonus = 0,
+		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0,         
+		.adjacent_food_bonus = 0, .adjacent_gold_bonus = 0, .adjacent_production_bonus = 0
 	}
 };
 

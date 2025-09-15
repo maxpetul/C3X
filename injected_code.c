@@ -1965,6 +1965,16 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 	top_lcn->next = new_lcn;
 }
 
+bool 
+district_is_complete(Tile * tile, int district_id)
+{
+	if (! is->current_config.enable_districts || (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+		return false;
+
+	unsigned overlays = Tile_m42_Get_Overlays(tile, __, 1);
+	return overlays >> 2 & 1 | (overlays >> 10) << 8;
+}
+
 bool __fastcall
 patch_Leader_impl_would_raze_city (Leader * this, int edx, City * city)
 {
@@ -5160,6 +5170,8 @@ set_up_district_buttons (Main_GUI * this)
 	if (automate_button == NULL)
 		return;
 
+	//i_starting_button = 0;
+
 	//snprintf (ss, sizeof ss, "[C3X] Found automate button at index %d", i_starting_button);
 	//pop_up_in_game_error (ss);
 
@@ -7197,15 +7209,15 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 	if (! is->current_config.enable_districts)
 		return base;
 
-	//sprintf(ss, "Checking district prereqs for improvement %d", i_improv);
+	//snprintf(ss, sizeof(ss), "Checking district prereqs for improvement %d", i_improv);
 	//pop_up_in_game_error(ss);
 
 	int required_district_id;
 	if (! itable_look_up (&is->district_building_prereqs, i_improv, &required_district_id))
 		return base;
 
-	snprintf (ss, sizeof(ss), "City %d needs district %d to build improvement %d, workable tiles %d", this->Body.ID, required_district_id, i_improv, is->workable_tile_count);
-	pop_up_in_game_error(ss);
+	//snprintf (ss, sizeof(ss), "City %d needs district %d to build improvement %d, workable tiles %d", this->Body.ID, required_district_id, i_improv, is->workable_tile_count);
+	//pop_up_in_game_error(ss);
 
 	// Scan workable tiles in city radius for the required district
 	int civ_id = this->Body.CivID;
@@ -7214,13 +7226,14 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 		if (tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id) {
 			int district_id_on_tile;
 			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id_on_tile) &&
-			    (district_id_on_tile == required_district_id))
+			    (district_id_on_tile == required_district_id) &&
+				district_is_complete (tile, required_district_id))
 				return true; // Found required district in city radius
 		}
 	}
 
-	snprintf (ss, sizeof(ss), "No required district %d found in city radius", required_district_id);
-	pop_up_in_game_error(ss);
+	//snprintf (ss, sizeof(ss), "No required district %d found in city radius", required_district_id);
+	//pop_up_in_game_error(ss);
 
 	// No qualifying district found in city radius
 	return false;
@@ -8534,9 +8547,6 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 			n_player++;
 		}
 	}
-
-	// TODO: check if the i_improv (building_id) is enabled by a district_id within the work radius of this city.
-	// If it is, re-render tile buildings there
 }
 
 void __fastcall
@@ -11206,6 +11216,42 @@ patch_City_calc_tile_yield_while_gathering (City * this, int edx, YieldKind kind
 		else if (kind == YK_COMMERCE) tr += mill_commerce;
 	}
 
+	// If enabled, include yields from districts
+	if (is->current_config.enable_districts) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			int district_id;
+			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
+				if (district_is_complete (tile, district_id)) {
+					if (district_configs[district_id].is_workable) {
+						if      (kind == YK_FOOD)     tr += district_configs[district_id].food_bonus;
+						else if (kind == YK_SHIELDS)  tr += district_configs[district_id].production_bonus;
+						else if (kind == YK_COMMERCE) tr += district_configs[district_id].gold_bonus;
+					} else {
+						return 0;
+					}
+				}
+			}  
+			// If the tile doesn't have a district but is adjacent to one AND the adjacent district has
+			// an adjacent_*_bonus, add those. Iterate the 8 adjacent tiles (first ring only).
+			int nx, ny;
+			for (int ni = 1; ni <= 8; ni++) {
+				get_neighbor_coords (&p_bic_data->Map, tile_x, tile_y, ni, &nx, &ny);
+				Tile * neigh = tile_at (nx, ny);
+				if ((neigh != NULL) && (neigh != p_null_tile)) {
+					int adj_district_id;
+					if (itable_look_up (&is->district_tile_map, (int)neigh, &adj_district_id) &&
+					    district_is_complete (neigh, adj_district_id)) {
+						struct district_config const * cfg = &district_configs[adj_district_id];
+						if      (kind == YK_FOOD)     tr += cfg->adjacent_food_bonus;
+						else if (kind == YK_SHIELDS)  tr += cfg->adjacent_production_bonus;
+						else if (kind == YK_COMMERCE) tr += cfg->adjacent_gold_bonus;
+					}
+				}
+			}
+		}
+	}
+
 	return tr;
 }
 
@@ -13455,10 +13501,8 @@ static inline bool
 district_has_nearby_building_by_name (int tile_x, int tile_y, int district_id, const char * building_name)
 {
     int building_id;
-    if (!building_name)
-        return false;
-    if (!stable_look_up(&is->building_name_to_id, building_name, &building_id))
-        return false;
+    if (!building_name) return false;
+    if (!stable_look_up(&is->building_name_to_id, building_name, &building_id)) return false;
     return tile_coords_has_city_with_building_in_district_radius(tile_x, tile_y, district_id, building_id);
 }
 
@@ -13486,11 +13530,9 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 				}
                 if (is->dc_img_state == IS_OK) {
 
-					// Check if job is complete
-					unsigned overlays = patch_Tile_m42_Get_Overlays(tile, __, 1);
-					unsigned int done = overlays >> 2 & 1 | (overlays >> 10) << 8;
+					bool completed = district_is_complete(tile, district_id);
 
-					if (! done)
+					if (! completed)
 						return;
 
 					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: drawing district %d on tile (%d,%d)", district_id, tile_x, tile_y);
@@ -13611,6 +13653,33 @@ patch_Unit_ai_can_sacrifice (Unit * this, int edx, bool requires_city)
 		return false;
 	else
 		return Unit_ai_can_sacrifice (this, __, requires_city);
+}
+
+int __cdecl
+patch_get_building_defense_bonus_at (int x, int y, int param_3)
+{
+    // Get base building defense bonus first
+    int base = get_building_defense_bonus_at (x, y, param_3);
+
+    // If districts are disabled, return base
+    if (!is->current_config.enable_districts)
+        return base;
+
+    // Look up district on this tile, if any
+    Tile * tile = tile_at (x, y);
+    if ((tile == NULL) || (tile == p_null_tile))
+        return base;
+
+    int district_id;
+    if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
+        double mult = (double)district_configs[district_id].defense_bonus_multiplier;
+        if (mult > 0.0 && mult != 1.0) {
+            int adjusted = (int)((double)base * mult);
+            return adjusted;
+        }
+    }
+
+    return base;
 }
 
 // TCC requires a main function be defined even though it's never used.
