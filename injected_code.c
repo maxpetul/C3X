@@ -1941,6 +1941,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					// Map the improv ID to the district index
 					itable_insert (&is->district_building_prereqs, improv_id, i);
 
+					// Map the building name to its ID
+					stable_insert (&is->building_name_to_id, improv_name.str, improv_id);
+
 					//snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d", improv_name.len, improv_name.str, district_configs[i].dependent_improvements[j], improv_id);
 					//pop_up_in_game_error (ss);
 				}
@@ -5168,6 +5171,13 @@ set_up_district_buttons (Main_GUI * this)
 		//snprintf (ss, sizeof ss, "[C3X] Considering district type %d", dc);
 		//pop_up_in_game_error (ss);
 
+		// Skip if a district already exists on this tile
+		{
+			int existing_district_id;
+			if (itable_look_up(&is->district_tile_map, (int)tile, &existing_district_id))
+				continue;
+		}
+
 		// Check if civ has prereq tech for this district type, if any
 		int prereq_id = is->district_infos[dc].advance_prereq_id;
 		if ((prereq_id >= 0) && !Leader_has_tech(&leaders[selected_unit->Body.CivID], __, prereq_id))
@@ -7156,6 +7166,43 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 	return base;
 }
 
+bool __fastcall
+patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param_2)
+{
+	// First defer to the base game's logic
+	bool base = City_can_build_improvement (this, __, i_improv, param_2);
+	if (! base)
+		return false;
+
+	// If districts are disabled or this improvement has no district prerequisite, allow base result
+	if (! is->current_config.enable_districts)
+		return base;
+
+	int required_district_id;
+	if (! itable_look_up (&is->district_building_prereqs, i_improv, &required_district_id))
+		return base;
+
+	// Scan workable tiles in city radius for the required district, mirroring
+	// the city-radius resource search pattern used in has_resources_required_by_building_r.
+	int civ_id = this->Body.CivID;
+	for (int n = 0; n < is->workable_tile_count; n++) {
+		int dx, dy;
+		patch_ni_to_diff_for_work_area (n, &dx, &dy);
+		int x = this->Body.X + dx, y = this->Body.Y + dy;
+		wrap_tile_coords (&p_bic_data->Map, &x, &y);
+		Tile * tile = tile_at (x, y);
+		if (tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id) {
+			int district_id_on_tile;
+			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id_on_tile) &&
+			    (district_id_on_tile == required_district_id))
+				return true; // Found required district in city radius
+		}
+	}
+
+	// No qualifying district found in city radius
+	return false;
+}
+
 void __fastcall
 patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 {
@@ -8464,6 +8511,9 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 			n_player++;
 		}
 	}
+
+	// TODO: check if the i_improv (building_id) is enabled by a district_id within the work radius of this city.
+	// If it is, re-render tile buildings there
 }
 
 void __fastcall
@@ -13349,6 +13399,46 @@ init_district_images ()
 
 }
 
+bool
+tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, int district_id, int i_improv)
+{
+	Tile * center = tile_at (tile_x, tile_y);
+
+    if ((center == NULL) || (center == p_null_tile))
+        return false;
+
+    int owner_id = center->Territory_OwnerID;
+    if (owner_id <= 0)
+        return false;
+
+    // Loop over tiles in work radius around the center tile
+    FOR_TILES_AROUND(tai, is->workable_tile_count, tile_x, tile_y) {
+        Tile * t = tai.tile;
+        if (t == p_null_tile)
+            continue;
+
+        // Only consider cities belonging to the same civ as the territory owner
+        City * city = get_city_ptr (t->vtable->m45_Get_City_ID (t));
+        if ((city != NULL) && (city->Body.CivID == owner_id)) {
+            if (has_active_building (city, i_improv))
+                return true;
+        }
+    }
+
+    return false;
+}
+
+static inline bool
+district_has_nearby_building_by_name (int tile_x, int tile_y, int district_id, const char * building_name)
+{
+    int building_id;
+    if (!building_name)
+        return false;
+    if (!stable_look_up(&is->building_name_to_id, building_name, &building_id))
+        return false;
+    return tile_coords_has_city_with_building_in_district_radius(tile_x, tile_y, district_id, building_id);
+}
+
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
@@ -13401,7 +13491,19 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district %d has %d image columns", district_id, total_cols);
 					//pop_up_in_game_error (ss);
 
-                    Sprite * district_sprite = &is->district_img_sets[district_id].imgs[era][col];
+                    Sprite * district_sprite;
+
+					switch (district_configs[district_id].command) {
+						case UCV_Build_Encampment:
+						{
+							bool has_barracks = district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Barracks");
+							if (has_barracks) col = 1;
+							break;
+						}
+					}
+
+					district_sprite = &is->district_img_sets[district_id].imgs[era][col];
+
                     Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 
 					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: finished drawing district %d on tile (%d,%d)", district_id, tile_x, tile_y);

@@ -1122,6 +1122,8 @@ struct injected_state {
 
 	struct table command_id_to_district_id;
 
+	struct table building_name_to_id;
+
 	struct district_infos {
 		int advance_prereq_id; // Tech ID that enables the district
 		int dependent_building_ids[5]; // Building types the district enables
