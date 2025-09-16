@@ -3600,7 +3600,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     for (int i = 0, y = 0; i < 7; ++i, y += 0x40)
         Sprite_slice_pcx(&this->LM_Terrain[i], __, &img, 0, y, 0x80, 0x40, 1, 1);
 
-    // 1TNT (same odd ordering as original)
+    // TNT (same odd ordering as original)
 	read_in_dir(&img, art_dir, "tnt.pcx", NULL);
 	if (img.JGL.Image == NULL) return false;
     for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[6+i],  __, &img, x, 0x00, 0x80, 0x40, 1, 1);
@@ -3698,8 +3698,9 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
         Sprite_slice_pcx(&this->Destroyed_City_Images[i], __, &img, x, 0, 167, 95, 1, 1);
     }
 
+	// Districts (if enabled)
 	if (is->current_config.enable_districts) {
-		char districts_hour_dir[512];
+		char districts_hour_dir[200];
 		snprintf(districts_hour_dir, sizeof districts_hour_dir, "%s\\Art\\Districts\\%s", is->mod_rel_dir, hour);
 		for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
 			const char *img_path = district_configs[dc].img_path;
@@ -3716,8 +3717,6 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 					Sprite_slice_pcx(&this->District_Images[dc][era][col], __, &img, tile_x, tile_y, 128, 64, 1, 1);
 				}
 			}
-
-			img.vtable->clear_JGL(&img);
 		}
 	}
 
@@ -3834,6 +3833,7 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 				const char *img_path = district_configs[dc].img_path;
 				if ((img_path == NULL) || (img_path[0] == '\0'))
 					continue;
+
 				int total_cols = district_configs[dc].total_img_columns;
 				for (int era = 0; era < 4; era++) {
 					for (int col = 0; col < total_cols; col++) {
@@ -13620,7 +13620,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 					}
 
 					district_sprite = &is->district_img_sets[district_id].imgs[era][col];
-                    Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+                    patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 
 					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: finished drawing district %d on tile (%d,%d)", district_id, tile_x, tile_y);
 					//pop_up_in_game_error (ss);

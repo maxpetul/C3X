@@ -10,7 +10,7 @@ DAYNIGHT_DATA_DIR="../Art/DayNight"
 DISTRICT_ANNOTATION_DIR="../Art/Districts/Annotations"
 DISTRICT_DATA_DIR="../Art/Districts"
 NOON_SUBFOLDER="1200"
-ONLY_HOUR=""       # set empty "" to process all hours
+ONLY_HOUR="2400"       # set empty "" to process all hours
 
 # ---- Day/Night settings ----
 WARMTH=1.7            # Scale for sunrise/sunset warmth (1.0 = base)
