@@ -1036,6 +1036,7 @@ struct injected_state {
 
 	// Day-Night cycle data
 	int current_day_night_cycle;
+	bool is_first_turn;
 	bool day_night_cycle_img_proxies_indexed;
 	LARGE_INTEGER last_day_night_cycle_update_time;
 

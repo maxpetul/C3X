@@ -3703,15 +3703,12 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 	return true;
 }
 
-int kptr(const void *p) { return (int)(intptr_t)p; }
-Sprite *vptr(int v) { return (Sprite*)(intptr_t)v; }
-
 Sprite *
 get_sprite_proxy_for_current_hour(Sprite *s) {
     int v;
     int hour = is->current_day_night_cycle;  // 0..23
-    if (itable_look_up(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), &v))
-        return vptr(v);
+    if (itable_look_up(&is->day_night_sprite_proxy_by_hour[hour], (int)s, &v))
+        return (Sprite *)v;
     return NULL;  // not proxied, fall back to s
 }
 
@@ -3722,7 +3719,7 @@ insert_spritelist_proxies(SpriteList *ss, SpriteList *ps, int hour, int len1, in
 			Sprite *s = &ss[i].field_0[j];
 			Sprite *p = &ps[i].field_0[j];
 			if (s && p) {
-				itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
+				itable_insert(&is->day_night_sprite_proxy_by_hour[hour], (int)s, (int)p);
 			}
 		}
 	}
@@ -3734,7 +3731,7 @@ insert_sprite_proxies(Sprite *ss, Sprite *ps, int hour, int len) {
 		Sprite *s = &ss[i];
 		Sprite *p = &ps[i];
 		if (s && p) {
-			itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
+			itable_insert(&is->day_night_sprite_proxy_by_hour[hour], (int)s, (int)p);
 		}
 	}
 }
@@ -3742,7 +3739,7 @@ insert_sprite_proxies(Sprite *ss, Sprite *ps, int hour, int len) {
 void
 insert_sprite_proxy(Sprite *s, Sprite *p, int hour) {
 	if (s && p) {
-		itable_insert(&is->day_night_sprite_proxy_by_hour[hour], kptr(s), kptr(p));
+		itable_insert(&is->day_night_sprite_proxy_by_hour[hour], (int)s, (int)p);
 	}
 }
 
@@ -3863,7 +3860,6 @@ calculate_current_day_night_cycle_hour ()
 {
 	int output = 12; // Default to noon
 	int increment = is->current_config.fixed_hours_per_turn_for_day_night_cycle;
-	bool is_first_turn = (*p_current_turn_no == 0);
 
 	switch (is->current_config.day_night_cycle_mode) {
 
@@ -3876,7 +3872,7 @@ calculate_current_day_night_cycle_hour ()
 			LARGE_INTEGER perf_freq;
 			QueryPerformanceFrequency(&perf_freq);
 
-			if (is_first_turn) {
+			if (is->is_first_turn) {
 				is->current_day_night_cycle = output;
 				QueryPerformanceCounter(&is->last_day_night_cycle_update_time);
 			}
@@ -3908,7 +3904,7 @@ calculate_current_day_night_cycle_hour ()
 
 		// Increment fixed amount each interturn
 		case DNCM_EVERY_TURN: {
-			if (is_first_turn) {
+			if (is->is_first_turn) {
 				increment = 0;
 				is->current_day_night_cycle = output;
 			}
@@ -3928,6 +3924,7 @@ calculate_current_day_night_cycle_hour ()
 
 	// Clamp to valid range of 0-23 in case of weird config values
 	output = clamp (0, 23, output);
+	is->is_first_turn = false;
 
 	return output;
 }
@@ -3945,9 +3942,12 @@ patch_Map_Renderer_load_images (Map_Renderer *this, int edx)
 			init_day_night_images ();
 		}
 
-		// Sprite proxies are deindexed during each load event as sprite instances (really only Resources, which are reloaded) may change.
-		if (!is->day_night_cycle_img_proxies_indexed) {
-			build_sprite_proxies_24(this);
+		if (is->day_night_cycle_img_state == IS_OK) {
+
+			// Sprite proxies are deindexed during each load event as sprite instances (really only Resources, which are reloaded) may change.
+			if (!is->day_night_cycle_img_proxies_indexed) {
+				build_sprite_proxies_24(this);
+			}
 		}
 	}
 }
@@ -6720,10 +6720,13 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	// Clear old alias bits
 	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = is->aliased_leader_title_bits = 0;
 
-	// Deindex day-night cycle sprite proxies, if necessary.
-	if (is->day_night_cycle_img_proxies_indexed) {
-		deindex_day_night_image_proxies ();
+	// Set as first turn and deindex day-night cycle sprite proxies, if necessary.
+	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
+		is->is_first_turn = true;
 		is->current_day_night_cycle = 12;
+		if (is->day_night_cycle_img_proxies_indexed) {
+			deindex_day_night_image_proxies ();
+		}
 	}
 
 	return tr;
