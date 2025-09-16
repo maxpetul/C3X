@@ -1109,6 +1109,7 @@ struct injected_state {
 		Sprite LM_Forests_Small_Images[10];
 		Sprite LM_Forests_Pines_Images[12];
 		Sprite LM_Hills_Images[16];
+		Sprite District_Images[COUNT_DISTRICT_TYPES][4][4]; // [district][era][variant]
 	} day_night_cycle_imgs[24];
 
 	// Districts

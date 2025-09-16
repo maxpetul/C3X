@@ -3414,7 +3414,7 @@ read_in_dir(PCX_Image *img,
     PCX_Image_read_file(img, __, temp_path, NULL, 0, 0x100, 2);
 }
 
-bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char *art_dir)
+bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char *art_dir, const char *hour)
 {
 	char ss[200];
     PCX_Image img; 
@@ -3698,6 +3698,29 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
         Sprite_slice_pcx(&this->Destroyed_City_Images[i], __, &img, x, 0, 167, 95, 1, 1);
     }
 
+	if (is->current_config.enable_districts) {
+		char districts_hour_dir[512];
+		snprintf(districts_hour_dir, sizeof districts_hour_dir, "%s\\Art\\Districts\\%s", is->mod_rel_dir, hour);
+		for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
+			const char *img_path = district_configs[dc].img_path;
+			if ((img_path == NULL) || (img_path[0] == '\0'))
+				continue;
+
+			read_in_dir(&img, districts_hour_dir, img_path, NULL);
+			if (img.JGL.Image == NULL) return false;
+
+			for (int era = 0; era < 4; era++) {
+				for (int col = 0; col < district_configs[dc].total_img_columns; col++) {
+					int tile_x = 128 * col;
+					int tile_y = 64 * era;
+					Sprite_slice_pcx(&this->District_Images[dc][era][col], __, &img, tile_x, tile_y, 128, 64, 1, 1);
+				}
+			}
+
+			img.vtable->clear_JGL(&img);
+		}
+	}
+
 	img.vtable->destruct (&img, __, 0);
 
 	return true;
@@ -3805,6 +3828,22 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 		insert_sprite_proxies(mr->LM_Forests_Small_Images, is->day_night_cycle_imgs[h].LM_Forests_Small_Images, h, 10);
 		insert_sprite_proxies(mr->LM_Forests_Pines_Images, is->day_night_cycle_imgs[h].LM_Forests_Pines_Images, h, 12);
 		insert_sprite_proxies(mr->LM_Hills_Images, is->day_night_cycle_imgs[h].LM_Hills_Images, h, 16);
+		
+		if (is->current_config.enable_districts) {
+			for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
+				const char *img_path = district_configs[dc].img_path;
+				if ((img_path == NULL) || (img_path[0] == '\0'))
+					continue;
+				int total_cols = district_configs[dc].total_img_columns;
+				for (int era = 0; era < 4; era++) {
+					for (int col = 0; col < total_cols; col++) {
+						Sprite *base = &is->district_img_sets[dc].imgs[era][col];
+						Sprite *proxy = &is->day_night_cycle_imgs[h].District_Images[dc][era][col];
+						insert_sprite_proxy(base, proxy, h);
+					}
+				}
+			}
+		}
 	}
 	is->day_night_cycle_img_proxies_indexed = true;
 }
@@ -3825,7 +3864,7 @@ init_day_night_images()
 
 		char art_dir[200];
 		snprintf(art_dir, sizeof art_dir, "%s\\Art\\DayNight\\%s", is->mod_rel_dir, hour_strs[i]);
-		bool success = load_day_night_hour_images(&is->day_night_cycle_imgs[i], art_dir);
+		bool success = load_day_night_hour_images(&is->day_night_cycle_imgs[i], art_dir, hour_strs[i]);
 
 		if (!success) {
 			char ss[200];
