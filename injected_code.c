@@ -3832,9 +3832,12 @@ patch_Map_Renderer_load_images (Map_Renderer *this, int edx)
 			init_day_night_images ();
 		}
 
-		// Sprite proxies are deindexed during each load event as sprite instances (really only Resources, which are reloaded) may change.
-		if (!is->day_night_cycle_img_proxies_indexed) {
-			build_sprite_proxies_24(this);
+		if (is->day_night_cycle_img_state == IS_OK) {
+			
+			// Sprite proxies are deindexed during each load event as sprite instances (really only Resources, which are reloaded) may change.
+			if (!is->day_night_cycle_img_proxies_indexed) {
+				build_sprite_proxies_24(this);
+			}
 		}
 	}
 }

@@ -1,8 +1,10 @@
 set -euo pipefail
 
 ### === CONFIG ===
-ANNOTATION_DIR="/c/Program Files (x86)/GOG Galaxy/Games/Civilization III Complete/Conquests/C3X_Districts/Art/DayNight/Annotations"
-DATA_DIR="/c/Program Files (x86)/GOG Galaxy/Games/Civilization III Complete/Conquests/C3X_Districts/Art/DayNight"
+# Assumed to be run from DayNight/ directory
+
+ANNOTATION_DIR="../Art/DayNight/Annotations"
+DATA_DIR="../Art/DayNight"
 NOON_SUBFOLDER="1200"
 ONLY_HOUR=""       # set empty "" to process all hours
 
