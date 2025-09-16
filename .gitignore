@@ -2,7 +2,9 @@
 *.obj
 *.exp
 *.lib
+ref/
 __pycache__
+temp.exe
 Thumbs.db
 releases
 correlator/gog.json

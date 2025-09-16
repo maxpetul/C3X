@@ -101,6 +101,14 @@ enum work_area_limit {
 	WAL_CULTURAL_OR_ADJACENT
 };
 
+enum day_night_cycle_mode {
+	DNCM_OFF = 0,
+	DNCM_TIMER,
+	DNCM_USER_TIME,
+	DNCM_EVERY_TURN,
+	DNCM_SPECIFIED
+};
+
 enum perfume_kind {
 	PK_PRODUCTION = 0,
 	PK_TECHNOLOGY,
@@ -275,6 +283,11 @@ struct c3x_config {
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
+
+	int day_night_cycle_mode;
+	int elapsed_minutes_per_day_night_hour_transition;
+	int fixed_hours_per_turn_for_day_night_cycle;
+	int pinned_hour_for_day_night_cycle;
 };
 
 enum stackable_command {
@@ -457,6 +470,7 @@ struct injected_state {
 	enum init_state unit_rcm_icon_state;
 	enum init_state red_food_icon_state;
 	enum init_state tile_already_worked_zoomed_out_sprite_init_state;
+	enum init_state day_night_cycle_img_state;
 
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
@@ -982,6 +996,83 @@ struct injected_state {
 		Button * previous_btn;
 	} cmpd;
 
+	// Day-Night cycle data
+	int current_day_night_cycle;
+	bool is_first_turn;
+	bool day_night_cycle_img_proxies_indexed;
+	LARGE_INTEGER last_day_night_cycle_update_time;
+
+	struct table day_night_sprite_proxy_by_hour[24];
+
+	struct day_night_cycle_img_set
+	{
+		SpriteList Std_Terrain_Images[9];
+		SpriteList LM_Terrain_Images[9];
+		Sprite City_Images[80];
+		Sprite Destroyed_City_Images[3];
+		Sprite Resources[36];
+		Sprite ResourcesShadows[36];
+		Sprite Terrain_Buldings_Barbarian_Camp;
+		Sprite Terrain_Buldings_Mines;
+		Sprite Victory_Image;
+		Sprite Flood_Plains_Images[16];
+		Sprite Fog_Of_War_Images[81];
+		Sprite Polar_Icecaps_Images[32];
+		Sprite Railroads_Images[272];
+		Sprite Roads_Images[256];
+		Sprite Terrain_Buldings_Airfields[2];
+		Sprite Terrain_Buldings_Airfields_Shadow[2];
+		Sprite Terrain_Buldings_Camp[4];
+		Sprite Terrain_Buldings_Fortress[4];
+		Sprite Terrain_Buldings_Barricade[4];
+		Sprite Goody_Huts_Images[8];
+		Sprite Terrain_Buldings_Outposts[3];
+		Sprite Terrain_Buldings_Outposts_Shadow[3];
+		Sprite Pollution[25];
+		Sprite Craters[25];
+		Sprite Terrain_Buldings_Radar;
+		Sprite Terrain_Buldings_Radar_Shadow;
+		Sprite Tnt_Images[18];
+		Sprite Waterfalls_Images[4];
+		Sprite LM_Terrain[7];
+		Sprite Marsh_Large[8];
+		Sprite Marsh_Small[10];
+		Sprite Volcanos_Images[16];
+		Sprite Volcanos_Forests_Images[16];
+		Sprite Volcanos_Jungles_Images[16];
+		Sprite Volcanos_Snow_Images[16];
+		Sprite Grassland_Forests_Large[8];
+		Sprite Plains_Forests_Large[8];
+		Sprite Tundra_Forests_Large[8];
+		Sprite Grassland_Forests_Small[10];
+		Sprite Plains_Forests_Small[10];
+		Sprite Tundra_Forests_Small[10];
+		Sprite Grassland_Forests_Pines[12];
+		Sprite Plains_Forests_Pines[12];
+		Sprite Tundra_Forests_Pines[12];
+		Sprite Irrigation_Desert_Images[16];
+		Sprite Irrigation_Plains_Images[16];
+		Sprite Irrigation_Images[16];
+		Sprite Irrigation_Tundra_Images[16];
+		Sprite Grassland_Jungles_Large[8];
+		Sprite Grassland_Jungles_Small[12];
+		Sprite Mountains_Images[16];
+		Sprite Mountains_Forests_Images[16];
+		Sprite Mountains_Jungles_Images[16];
+		Sprite Mountains_Snow_Images[16];
+		Sprite Hills_Images[16];
+		Sprite Hills_Forests_Images[16];
+		Sprite Hills_Jungle_Images[16];
+		Sprite Delta_Rivers_Images[16];
+		Sprite Mountain_Rivers_Images[16];
+		Sprite Territory_Images[8];
+		Sprite LM_Mountains_Images[16];
+		Sprite LM_Forests_Large_Images[8];
+		Sprite LM_Forests_Small_Images[10];
+		Sprite LM_Forests_Pines_Images[12];
+		Sprite LM_Hills_Images[16];
+	} day_night_cycle_imgs[24];
+  
 	// Initialized to 0. Every time Main_Screen_Form::m82_handle_key_event receives an event with is_down == 0, the virtual key code is prepended
 	// to this list.
 	int last_main_screen_key_up_events[5];
