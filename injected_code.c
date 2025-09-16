@@ -2627,6 +2627,55 @@ has_resources_required_by_building (City * city, int improv_id)
 	return has_resources_required_by_building_r (city, improv_id, INT_MAX);
 }
 
+void __fastcall
+patch_City_recompute_yields_and_happiness (City * this, int edx)
+{
+	City_recompute_yields_and_happiness (this, __);
+
+	if (! is->current_config.enable_districts) return;
+
+	// TODO: this doesn't seem to be having any effect. Come back to it
+	
+	// Loop over all workable tiles and apply district yields
+    FOR_TILES_AROUND(tai, is->workable_tile_count, this->Body.X, this->Body.Y) {
+        Tile * tile = tai.tile;
+        if ((tile == NULL) || (tile == p_null_tile))
+            continue;
+
+        int district_id;
+        if (!itable_look_up(&is->district_tile_map, (int)tile, &district_id))
+            continue;
+
+        if (!district_is_complete(tile, district_id))
+            continue;
+
+        struct district_config const * cfg = &district_configs[district_id];
+
+        this->Body.Tiles_Food       += cfg->food_bonus;
+        this->Body.Tiles_Production += cfg->production_bonus;
+        this->Body.Tiles_Commerce   += cfg->gold_bonus;
+
+        if ((cfg->adjacent_food_bonus != 0) ||
+            (cfg->adjacent_production_bonus != 0) ||
+            (cfg->adjacent_gold_bonus != 0)) {
+            int tx, ty;
+            tai_get_coords(&tai, &tx, &ty);
+            int nx, ny;
+            for (int ni = 1; ni <= 8; ni++) {
+                get_neighbor_coords(&p_bic_data->Map, tx, ty, ni, &nx, &ny);
+                Tile * neigh = tile_at(nx, ny);
+                if ((neigh != NULL) && (neigh != p_null_tile)) {
+                    this->Body.Tiles_Food       += cfg->adjacent_food_bonus;
+                    this->Body.Tiles_Production += cfg->adjacent_production_bonus;
+                    this->Body.Tiles_Commerce   += cfg->adjacent_gold_bonus;
+                }
+            }
+        }
+    }
+
+	City_recompute_production(this);
+	City_recompute_commerce(this);
+}
 
 // Recomputes yields in cities with active mills that depend on input resources. Intended to be called when an input resource has been potentially
 // gained or lost. Recomputes only for the cities of a given leader or, if NULL, for all cities on the map.
@@ -2650,7 +2699,7 @@ recompute_mill_yields_after_resource_change (Leader * leader_or_null)
 					}
 				}
 				if (any_relevant_mills)
-					City_recompute_yields_and_happiness (city);
+					patch_City_recompute_yields_and_happiness (city, __);
 			}
 		}
 }
@@ -8514,7 +8563,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 
 		// If the mill adds yields or might be a link in a resource production chain that does, recompute yields in the city.
 		if (is_yielding_mill || generates_input)
-			City_recompute_yields_and_happiness (this);
+			patch_City_recompute_yields_and_happiness (this, __);
 	}
 
 	// Adding or removing an obsolete improvement should not change the total maintenance since obsolete improvs shouldn't cost maintenance. In
@@ -11201,7 +11250,6 @@ gather_mill_yields (City * city, int only_improv_id, int * out_food, int * out_s
 	*out_commerce = commerce;
 }
 
-
 int __fastcall
 patch_City_calc_tile_yield_while_gathering (City * this, int edx, YieldKind kind, int tile_x, int tile_y)
 {
@@ -11214,42 +11262,6 @@ patch_City_calc_tile_yield_while_gathering (City * this, int edx, YieldKind kind
 		if      (kind == YK_FOOD)     tr += mill_food;
 		else if (kind == YK_SHIELDS)  tr += mill_shields;
 		else if (kind == YK_COMMERCE) tr += mill_commerce;
-	}
-
-	// If enabled, include yields from districts
-	if (is->current_config.enable_districts) {
-		Tile * tile = tile_at (tile_x, tile_y);
-		if ((tile != NULL) && (tile != p_null_tile)) {
-			int district_id;
-			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
-				if (district_is_complete (tile, district_id)) {
-					if (district_configs[district_id].is_workable) {
-						if      (kind == YK_FOOD)     tr += district_configs[district_id].food_bonus;
-						else if (kind == YK_SHIELDS)  tr += district_configs[district_id].production_bonus;
-						else if (kind == YK_COMMERCE) tr += district_configs[district_id].gold_bonus;
-					} else {
-						return 0;
-					}
-				}
-			}  
-			// If the tile doesn't have a district but is adjacent to one AND the adjacent district has
-			// an adjacent_*_bonus, add those. Iterate the 8 adjacent tiles (first ring only).
-			int nx, ny;
-			for (int ni = 1; ni <= 8; ni++) {
-				get_neighbor_coords (&p_bic_data->Map, tile_x, tile_y, ni, &nx, &ny);
-				Tile * neigh = tile_at (nx, ny);
-				if ((neigh != NULL) && (neigh != p_null_tile)) {
-					int adj_district_id;
-					if (itable_look_up (&is->district_tile_map, (int)neigh, &adj_district_id) &&
-					    district_is_complete (neigh, adj_district_id)) {
-						struct district_config const * cfg = &district_configs[adj_district_id];
-						if      (kind == YK_FOOD)     tr += cfg->adjacent_food_bonus;
-						else if (kind == YK_SHIELDS)  tr += cfg->adjacent_production_bonus;
-						else if (kind == YK_COMMERCE) tr += cfg->adjacent_gold_bonus;
-					}
-				}
-			}
-		}
 	}
 
 	return tr;
@@ -11807,7 +11819,7 @@ patch_Map_place_scenario_things (Map * this)
 		for (int n = 0; n <= p_cities->LastIndex; n++) {
 			City * city = get_city_ptr (n);
 			if (city != NULL)
-				City_recompute_yields_and_happiness (city);
+				patch_City_recompute_yields_and_happiness (city, __);
 		}
 
 	is->is_placing_scenario_things = false;
