@@ -11591,6 +11591,10 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			void * area = buffer_allocate (&mod_data, sizeof is->turn_no_of_last_founding_for_settler_perfume);
 			memcpy (area, is->turn_no_of_last_founding_for_settler_perfume, sizeof is->turn_no_of_last_founding_for_settler_perfume);
 		}
+		if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
+			serialize_aligned_text ("current_day_night_cycle", &mod_data);
+			int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_day_night_cycle), is->current_day_night_cycle);
+		}
 	}
 
 	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
@@ -11754,6 +11758,21 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 			} else if (match_save_chunk_name (&cursor, "turn_no_of_last_founding_for_settler_perfume")) {
 				for (int n = 0; n < 32; n++)
 					is->turn_no_of_last_founding_for_settler_perfume[n] = *((int *)cursor)++;
+
+			} else if (match_save_chunk_name (&cursor, "current_day_night_cycle")) {
+				is->current_day_night_cycle = *((int *)cursor)++;
+
+				// The day/night cycle sprite proxies will have been cleared in patch_load_scenario. They will not necessarily be set
+				// up again in the usual way because Map_Renderer::load_images is not necessarily called when loading a save. The game
+				// skips reloading all graphics when loading a save while in-game with another that uses the same graphics (possibly
+				// only the standard graphics; I didn't test). If day/night cycle mode is active, restore the proxies now if they
+				// haven't already been.
+				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
+					build_sprite_proxies_24 (&p_bic_data->Map.Renderer);
+
+				// Because we've restored current_day_night_cycle from the save, set that is is not the first turn so the cycle
+				// doesn't get restarted.
+				is->is_first_turn = false;
 
 			} else {
 				error_chunk_name = "N/A";
