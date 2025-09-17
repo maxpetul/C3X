@@ -2412,43 +2412,34 @@ remove_building_if_no_district (City * city, int district_id, int building_id)
 }
 
 void
-remove_dependent_buildings_for_district (int district_id, int center_x, int center_y, bool has_center_coords)
+remove_dependent_buildings_for_district (int district_id, int center_x, int center_y)
 {
 	if (! is->current_config.enable_districts || (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
 		return;
 
 	struct district_infos * info = &is->district_infos[district_id];
 
-	if (has_center_coords) {
-		FOR_TILES_AROUND (tai, is->workable_tile_count, center_x, center_y) {
-			Tile * tile = tai.tile;
-			if (tile == p_null_tile)
-				continue;
-			City * city = get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
-			if (city == NULL)
-				continue;
-			for (int i = 0; i < ARRAY_LEN (info->dependent_building_ids); i++) {
-				int building_id = info->dependent_building_ids[i];
-				if (building_id >= 0)
-					remove_building_if_no_district (city, district_id, building_id);
-			}
-		}
-	} else {
-		for (int civ_id = 0; civ_id < p_bic_data->Player_Count; civ_id++) {
-			FOR_CITIES_OF (coi, civ_id) {
-				City * city = coi.city;
-				for (int i = 0; i < ARRAY_LEN (info->dependent_building_ids); i++) {
-					int building_id = info->dependent_building_ids[i];
-					if (building_id >= 0)
-						remove_building_if_no_district (city, district_id, building_id);
-				}
-			}
+	if ((center_x < 0) || (center_y < 0) ||
+	    (center_x >= p_bic_data->Map.Width) || (center_y >= p_bic_data->Map.Height))
+		return;
+
+	FOR_TILES_AROUND (tai, is->workable_tile_count, center_x, center_y) {
+		Tile * tile = tai.tile;
+		if (tile == p_null_tile)
+			continue;
+		City * city = get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
+		if (city == NULL)
+			continue;
+		for (int i = 0; i < ARRAY_LEN (info->dependent_building_ids); i++) {
+			int building_id = info->dependent_building_ids[i];
+			if (building_id >= 0)
+				remove_building_if_no_district (city, district_id, building_id);
 		}
 	}
 }
 
 static void
-handle_district_removed (Tile * tile, int district_id, int center_x, int center_y, bool has_center_coords)
+handle_district_removed (Tile * tile, int district_id, int center_x, int center_y)
 {
 	if ((tile == NULL) || (tile == p_null_tile) || ! is->current_config.enable_districts)
 		return;
@@ -2456,10 +2447,24 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	itable_remove (&is->district_tile_map, (int)tile);
 
 	if (district_id >= 0)
-		remove_dependent_buildings_for_district (district_id, center_x, center_y, has_center_coords);
+		remove_dependent_buildings_for_district (district_id, center_x, center_y);
 
 	if (tile->vtable->m60_Set_Ruins != NULL)
 		tile->vtable->m60_Set_Ruins (tile, __, 1);
+}
+
+static void
+handle_district_destroyed_by_attack (Tile * tile, int tile_x, int tile_y)
+{
+	if (! is->current_config.enable_districts)
+		return;
+
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
+
+	int district_id;
+	if (itable_look_up (&is->district_tile_map, (int)tile, &district_id))
+		handle_district_removed (tile, district_id, tile_x, tile_y);
 }
 
 void __fastcall
@@ -2485,7 +2490,7 @@ patch_Tile_impl_m51_Unset_Tile_Flags (Tile * this, int edx, int param_1, unsigne
 	Tile_impl_m51_Unset_Tile_Flags (this, __, param_1, param_2, param_3, param_4);
 
 	if (removing_district)
-		handle_district_removed (this, district_id, tile_x, tile_y, have_coords);
+		handle_district_removed (this, district_id, have_coords ? tile_x : -1, have_coords ? tile_y : -1);
 }
 
 bool
@@ -4967,11 +4972,28 @@ recompute_resources_if_necessary ()
 void __fastcall
 patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 {
+	Tile * target_tile = NULL;
+	bool had_district_before = false;
+	int tile_x = x;
+	int tile_y = y;
+
+	if (is->current_config.enable_districts) {
+		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+		target_tile = tile_at (tile_x, tile_y);
+		if ((target_tile != NULL) && (target_tile != p_null_tile)) {
+			int dummy_id;
+			had_district_before = itable_look_up (&is->district_tile_map, (int)target_tile, &dummy_id);
+		}
+	}
+
 	is->bombarding_unit = this;
 	record_ai_unit_seen (this, x, y);
 	Unit_bombard_tile (this, __, x, y);
 	is->bombard_stealth_target = NULL;
 	is->bombarding_unit = NULL;
+
+	if (had_district_before)
+		handle_district_destroyed_by_attack (target_tile, tile_x, tile_y);
 }
 
 void __fastcall
@@ -10950,6 +10972,20 @@ patch_Unit_play_attack_animation_vs_tile (Unit * this, int edx, int direction)
 void __fastcall
 patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 {
+	Tile * target_tile = NULL;
+	bool had_district_before = false;
+	int tile_x = x;
+	int tile_y = y;
+
+	if (bombarding && is->current_config.enable_districts) {
+		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+		target_tile = tile_at (tile_x, tile_y);
+		if ((target_tile != NULL) && (target_tile != p_null_tile)) {
+			int dummy_id;
+			had_district_before = itable_look_up (&is->district_tile_map, (int)target_tile, &dummy_id);
+		}
+	}
+
 	is->attacking_tile_x = x;
 	is->attacking_tile_y = y;
 	if (bombarding)
@@ -10959,6 +10995,9 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 
 	is->unit_bombard_attacking_tile = NULL;
 	is->attacking_tile_x = is->attacking_tile_y = -1;
+
+	if (bombarding && had_district_before)
+		handle_district_destroyed_by_attack (target_tile, tile_x, tile_y);
 }
 
 void __fastcall
@@ -13834,6 +13873,14 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 						{
 							bool has_barracks = district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Barracks");
 							if (has_barracks) col = 1;
+							break;
+						}
+						case UCV_Build_Campus:
+						{
+							bool has_library    = district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Library");
+							bool has_university = district_has_nearby_building_by_name(tile_x, tile_y, district_id, "University");
+							if (has_university)   col = 2;
+							else if (has_library) col = 1;
 							break;
 						}
 					}
