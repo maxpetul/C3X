@@ -2094,6 +2094,41 @@ tile_index_to_coords (Map * map, int index, int * out_x, int * out_y)
 		*out_x = *out_y = -1;
 }
 
+static bool
+tile_coords_from_ptr (Map * map, Tile * tile, int * out_x, int * out_y)
+{
+	if ((tile == NULL) || (tile == p_null_tile) || (map == NULL))
+		return false;
+
+	int tile_count = map->TileCount;
+	for (int index = 0; index < tile_count; index++) {
+		Tile * candidate = Map_get_tile (map, __, index);
+		if (candidate == tile) {
+			tile_index_to_coords (map, index, out_x, out_y);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static void
+reset_district_state (bool reset_tile_map)
+{
+	table_deinit (&is->district_tech_prereqs);
+	table_deinit (&is->district_building_prereqs);
+	table_deinit (&is->command_id_to_district_id);
+	stable_deinit (&is->building_name_to_id);
+	if (reset_tile_map)
+		table_deinit (&is->district_tile_map);
+
+	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++) {
+		is->district_infos[i].advance_prereq_id = -1;
+		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].dependent_building_ids); j++)
+			is->district_infos[i].dependent_building_ids[j] = -1;
+	}
+}
+
 Tile *
 tile_at_index (Map * map, int i)
 {
@@ -3894,7 +3929,7 @@ calculate_current_day_night_cycle_hour ()
 			LARGE_INTEGER perf_freq;
 			QueryPerformanceFrequency(&perf_freq);
 
-			if (is->is_first_turn) {
+			if (is->day_night_cycle_unstarted) {
 				is->current_day_night_cycle = output;
 				QueryPerformanceCounter(&is->last_day_night_cycle_update_time);
 			}
@@ -3926,7 +3961,7 @@ calculate_current_day_night_cycle_hour ()
 
 		// Increment fixed amount each interturn
 		case DNCM_EVERY_TURN: {
-			if (is->is_first_turn) {
+			if (is->day_night_cycle_unstarted) {
 				increment = 0;
 				is->current_day_night_cycle = output;
 			}
@@ -3946,7 +3981,7 @@ calculate_current_day_night_cycle_hour ()
 
 	// Clamp to valid range of 0-23 in case of weird config values
 	output = clamp (0, 23, output);
-	is->is_first_turn = false;
+	is->day_night_cycle_unstarted = false;
 
 	return output;
 }
@@ -4400,6 +4435,8 @@ patch_init_floating_point ()
 	is->saved_improv_counts_capacity = 0;
 
 	memset (is->last_main_screen_key_up_events, 0, sizeof is->last_main_screen_key_up_events);
+
+	reset_district_state (true);
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -6526,6 +6563,8 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	if ((ret_addr == ADDR_LOAD_SCENARIO_PREVIEW_RETURN) || (ret_addr == ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN))
 		return tr;
 
+	reset_district_state (true);
+
 	reset_to_base_config ();
 	load_config ("default.c3x_config.ini", 1);
 	char * scenario_config_file_name = "scenario.c3x_config.ini";
@@ -6744,7 +6783,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 
 	// Set as first turn and deindex day-night cycle sprite proxies, if necessary.
 	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
-		is->is_first_turn = true;
+		is->day_night_cycle_unstarted = true;
 		is->current_day_night_cycle = 12;
 		if (is->day_night_cycle_img_proxies_indexed) {
 			deindex_day_night_image_proxies ();
@@ -12033,6 +12072,36 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			void * area = buffer_allocate (&mod_data, sizeof is->turn_no_of_last_founding_for_settler_perfume);
 			memcpy (area, is->turn_no_of_last_founding_for_settler_perfume, sizeof is->turn_no_of_last_founding_for_settler_perfume);
 		}
+
+		if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
+			serialize_aligned_text ("current_day_night_cycle", &mod_data);
+			int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_day_night_cycle), is->current_day_night_cycle);
+		}
+
+		if (is->current_config.enable_districts && (is->district_tile_map.len > 0)) {
+			serialize_aligned_text ("district_tile_map", &mod_data);
+			int entry_capacity = is->district_tile_map.len;
+			int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 3 * entry_capacity));
+			int * out = chunk + 1;
+			int written = 0;
+			FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+				Tile * tile = (Tile *)tei.key;
+				int x, y;
+				if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &x, &y))
+					continue;
+				out[0] = x;
+				out[1] = y;
+				out[2] = tei.value;
+				out += 3;
+				written++;
+			}
+			chunk[0] = written;
+			int unused_entries = entry_capacity - written;
+			if (unused_entries > 0) {
+				int trimmed_bytes = unused_entries * 3 * (int)sizeof(int);
+				mod_data.length -= trimmed_bytes;
+			}
+		}
 	}
 
 	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
@@ -12083,6 +12152,9 @@ int __cdecl
 patch_move_game_data (byte * buffer, bool save_else_load)
 {
 	int tr = move_game_data (buffer, save_else_load);
+
+	if (! save_else_load)
+		table_deinit (&is->district_tile_map);
 
 	// Check for a mod save data section and load it if present
 	MappedFile * save;
@@ -12197,7 +12269,54 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				for (int n = 0; n < 32; n++)
 					is->turn_no_of_last_founding_for_settler_perfume[n] = *((int *)cursor)++;
 
-			} else {
+			} else if (match_save_chunk_name (&cursor, "current_day_night_cycle")) {
+				is->current_day_night_cycle = *((int *)cursor)++;
+
+				// The day/night cycle sprite proxies will have been cleared in patch_load_scenario. They will not necessarily be set
+				// up again in the usual way because Map_Renderer::load_images is not necessarily called when loading a save. The game
+				// skips reloading all graphics when loading a save while in-game with another that uses the same graphics (possibly
+				// only the standard graphics; I didn't test). If day/night cycle mode is active, restore the proxies now if they
+				// haven't already been.
+				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
+					build_sprite_proxies_24 (&p_bic_data->Map.Renderer);
+
+				// Because we've restored current_day_night_cycle from the save, set that is is not the first turn so the cycle
+				// doesn't get restarted.
+				is->day_night_cycle_unstarted = false;
+			} else if (match_save_chunk_name (&cursor, "district_tile_map")) {
+				bool success = false;
+				int remaining_bytes = (seg + seg_size) - cursor;
+				if (remaining_bytes >= (int)sizeof(int)) {
+					int * ints = (int *)cursor;
+					int entry_count = *ints++;
+					cursor = (byte *)ints;
+					remaining_bytes -= (int)sizeof(int);
+					if ((entry_count >= 0) && (remaining_bytes >= entry_count * 3 * (int)sizeof(int))) {
+						table_deinit (&is->district_tile_map);
+						success = true;
+						for (int n = 0; n < entry_count; n++) {
+							if (remaining_bytes < 3 * (int)sizeof(int)) {
+								success = false;
+								break;
+							}
+							int x = *ints++;
+							int y = *ints++;
+							int district_id = *ints++;
+							cursor = (byte *)ints;
+							remaining_bytes -= 3 * (int)sizeof(int);
+							if ((district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+								continue;
+							Tile * tile = tile_at (x, y);
+							if ((tile != NULL) && (tile != p_null_tile))
+								itable_insert (&is->district_tile_map, (int)tile, district_id);
+						}
+					}
+				}
+				if (! success) {
+					error_chunk_name = "district_tile_map";
+					break;
+				}
+			 } else {
 				error_chunk_name = "N/A";
 				break;
 			}
