@@ -1915,18 +1915,18 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				struct string_slice tech_name = { .str = (char *)district_configs[i].advance_prereq, .len = (int)strlen (district_configs[i].advance_prereq) };
 				if (find_game_object_id_by_name (GOK_TECHNOLOGY, &tech_name, 0, &tech_id))
 
+					//snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d", tech_name.len, tech_name.str, district_configs[i].advance_prereq, tech_id);
+					//pop_up_in_game_error (ss);
+
 					// Set the prereq ID in the district info struct
 					is->district_infos[i].advance_prereq_id = tech_id;
 
 					// Map the tech ID to the district index
 					itable_insert (&is->district_tech_prereqs, tech_id, i);
-
-					//snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d", tech_name.len, tech_name.str, district_configs[i].advance_prereq, tech_id);
-					//pop_up_in_game_error (ss);
 			}
 
 			// Map improvement prereqs to districts
-			for (int j = 0; j < 10; j++) {
+			for (int j = 0; j < 3; j++) {
 				int improv_id;
 
 				if (district_configs[i].dependent_improvements[j] == "" || district_configs[i].dependent_improvements[j] == NULL)
@@ -1934,6 +1934,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 
 				struct string_slice improv_name = { .str = (char *)district_configs[i].dependent_improvements[j], .len = (int)strlen (district_configs[i].dependent_improvements[j]) };
 				if (find_game_object_id_by_name (GOK_BUILDING, &improv_name, 0, &improv_id)) {
+
+					//snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d", improv_name.len, improv_name.str, district_configs[i].dependent_improvements[j], improv_id);
+					//pop_up_in_game_error (ss);
 
 					// Append the improvement ID to the list in the district info struct	
 					is->district_infos[i].dependent_building_ids[j] = improv_id;
@@ -1943,9 +1946,6 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 
 					// Map the building name to its ID
 					stable_insert (&is->building_name_to_id, improv_name.str, improv_id);
-
-					//snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d", improv_name.len, improv_name.str, district_configs[i].dependent_improvements[j], improv_id);
-					//pop_up_in_game_error (ss);
 				}
 			}
 		}
@@ -2654,23 +2654,6 @@ patch_City_recompute_yields_and_happiness (City * this, int edx)
         this->Body.Tiles_Food       += cfg->food_bonus;
         this->Body.Tiles_Production += cfg->production_bonus;
         this->Body.Tiles_Commerce   += cfg->gold_bonus;
-
-        if ((cfg->adjacent_food_bonus != 0) ||
-            (cfg->adjacent_production_bonus != 0) ||
-            (cfg->adjacent_gold_bonus != 0)) {
-            int tx, ty;
-            tai_get_coords(&tai, &tx, &ty);
-            int nx, ny;
-            for (int ni = 1; ni <= 8; ni++) {
-                get_neighbor_coords(&p_bic_data->Map, tx, ty, ni, &nx, &ny);
-                Tile * neigh = tile_at(nx, ny);
-                if ((neigh != NULL) && (neigh != p_null_tile)) {
-                    this->Body.Tiles_Food       += cfg->adjacent_food_bonus;
-                    this->Body.Tiles_Production += cfg->adjacent_production_bonus;
-                    this->Body.Tiles_Commerce   += cfg->adjacent_gold_bonus;
-                }
-            }
-        }
     }
 
 	City_recompute_production(this);
@@ -13473,8 +13456,8 @@ init_district_images ()
 
 		// Read PCX file
 		snprintf(art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, district_configs[dc].img_path);
-		//snprintf (ss, sizeof ss, "init_district_images: loading district images from %s", art_dir);
-		//pop_up_in_game_error (ss);
+		snprintf (ss, sizeof ss, "init_district_images: loading district images from %s", art_dir);
+		pop_up_in_game_error (ss);
 
 		PCX_Image_read_file (&pcx, __, art_dir, NULL, 0, 0x100, 2);
 

@@ -16,7 +16,7 @@ typedef unsigned char byte;
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
-#define COUNT_DISTRICT_TYPES 1
+#define COUNT_DISTRICT_TYPES 2
 
 // Initialize to zero. Implementation is in common.c
 struct table {
@@ -465,29 +465,34 @@ struct district_config {
 	char const * img_path;
 	bool allow_multiple,
 		 is_workable;
+	float defense_bonus_multiplier;
 	int index,
 		btn_tile_sheet_column,
 		btn_tile_sheet_row,
 		total_img_columns,
-		defense_bonus_multiplier,
 		culture_bonus,
 		science_bonus,
 		food_bonus,
 		gold_bonus,
-		production_bonus,
-		adjacent_food_bonus,
-		adjacent_gold_bonus,
-		adjacent_production_bonus;
+		production_bonus;
 } const district_configs[COUNT_DISTRICT_TYPES] = {
 	{ 
 		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_path = "Encampment.pcx", .index = 0, 
-		.advance_prereq = "Bronze Working", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
 		.btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_columns = 4,
+		.advance_prereq = "Bronze Working", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
 		.defense_bonus_multiplier = 1.5, 
 		.allow_multiple = false,  .is_workable = false,
 		.culture_bonus = 0,       .science_bonus = 0,
-		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0,         
-		.adjacent_food_bonus = 0, .adjacent_gold_bonus = 0, .adjacent_production_bonus = 0
+		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0
+	},
+	{ 
+		.command = UCV_Build_Campus, .tooltip = "Build Campus", .img_path = "Campus.pcx", .index = 1, 
+		.btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_columns = 4,
+		.advance_prereq = "Literature", .dependent_improvements = {"Library", "University"},
+		.defense_bonus_multiplier = 1.0, 
+		.allow_multiple = false,  .is_workable = false,
+		.culture_bonus = 0,       .science_bonus = 0,
+		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0
 	}
 };
 
@@ -1036,7 +1041,7 @@ struct injected_state {
 
 	// Day-Night cycle data
 	int current_day_night_cycle;
-	bool is_first_turn;
+	bool day_night_cycle_unstarted;
 	bool day_night_cycle_img_proxies_indexed;
 	LARGE_INTEGER last_day_night_cycle_update_time;
 
