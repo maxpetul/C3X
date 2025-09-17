@@ -1,3 +1,4 @@
+- Enable tile graphics to cycle over day and night, see "Day/Night Cycle" section of default config for details
 - Allow Civilopedia descriptions for units, civilizations, and game concepts to span multiple pages
 - Option to prevent units from upgrading past an intermediate type that does not have the upgrade ability
   - Setting named prevent_old_units_from_upgrading_past_ability_block
