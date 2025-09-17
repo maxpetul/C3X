@@ -63,6 +63,8 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID 0x222004
 #define PEDIA_MULTIPAGE_PREV_BUTTON_ID 0x222005
 
+#define TILE_FLAG_MINE 0x8
+
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
 
@@ -1965,14 +1967,22 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 	top_lcn->next = new_lcn;
 }
 
-bool 
-district_is_complete(Tile * tile, int district_id)
+static bool
+tile_coords_from_ptr (Map * map, Tile * tile, int * out_x, int * out_y)
 {
-	if (! is->current_config.enable_districts || (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+	if ((tile == NULL) || (tile == p_null_tile) || (map == NULL))
 		return false;
 
-	unsigned overlays = Tile_m42_Get_Overlays(tile, __, 1);
-	return overlays >> 2 & 1 | (overlays >> 10) << 8;
+	int tile_count = map->TileCount;
+	for (int index = 0; index < tile_count; index++) {
+		Tile * candidate = Map_get_tile (map, __, index);
+		if (candidate == tile) {
+			tile_index_to_coords (map, index, out_x, out_y);
+			return true;
+		}
+	}
+
+	return false;
 }
 
 bool __fastcall
@@ -2092,24 +2102,6 @@ tile_index_to_coords (Map * map, int index, int * out_x, int * out_y)
 		}
 	} else
 		*out_x = *out_y = -1;
-}
-
-static bool
-tile_coords_from_ptr (Map * map, Tile * tile, int * out_x, int * out_y)
-{
-	if ((tile == NULL) || (tile == p_null_tile) || (map == NULL))
-		return false;
-
-	int tile_count = map->TileCount;
-	for (int index = 0; index < tile_count; index++) {
-		Tile * candidate = Map_get_tile (map, __, index);
-		if (candidate == tile) {
-			tile_index_to_coords (map, index, out_x, out_y);
-			return true;
-		}
-	}
-
-	return false;
 }
 
 static void
@@ -2337,6 +2329,16 @@ tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
 int __fastcall patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum ImprovementTypeWonderFeatures flag, City * only_in_city);
 int __fastcall patch_Leader_count_wonders_with_small_flag (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null);
 
+bool 
+district_is_complete(Tile * tile, int district_id)
+{
+	if (! is->current_config.enable_districts || (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+		return false;
+
+	unsigned overlays = Tile_m42_Get_Overlays(tile, __, 1);
+	return overlays >> 2 & 1 | (overlays >> 10) << 8;
+}
+
 bool __fastcall
 patch_City_has_improvement (City * this, int edx, int improv_id, bool include_auto_improvements)
 {
@@ -2369,6 +2371,121 @@ patch_City_has_improvement (City * this, int edx, int improv_id, bool include_au
 	}
 
 	return tr;
+}
+
+bool
+city_has_required_district (City * city, int district_id)
+{
+	if ((city == NULL) || (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+		return false;
+
+	int civ_id = city->Body.CivID;
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
+		Tile * candidate = tai.tile;
+		if (candidate == p_null_tile)
+			continue;
+		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id)
+			continue;
+
+		int mapped_id;
+		if (itable_look_up (&is->district_tile_map, (int)candidate, &mapped_id) &&
+		    (mapped_id == district_id) &&
+		    district_is_complete (candidate, district_id))
+			return true;
+	}
+	return false;
+}
+
+void
+remove_building_if_no_district (City * city, int district_id, int building_id)
+{
+	if ((city == NULL) || (building_id < 0))
+		return;
+
+	if (! patch_City_has_improvement (city, __, building_id, false))
+		return;
+
+	if (city_has_required_district (city, district_id))
+		return;
+
+	City_add_or_remove_improvement (city, __, building_id, 0, false);
+}
+
+void
+remove_dependent_buildings_for_district (int district_id, int center_x, int center_y, bool has_center_coords)
+{
+	if (! is->current_config.enable_districts || (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+		return;
+
+	struct district_infos * info = &is->district_infos[district_id];
+
+	if (has_center_coords) {
+		FOR_TILES_AROUND (tai, is->workable_tile_count, center_x, center_y) {
+			Tile * tile = tai.tile;
+			if (tile == p_null_tile)
+				continue;
+			City * city = get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
+			if (city == NULL)
+				continue;
+			for (int i = 0; i < ARRAY_LEN (info->dependent_building_ids); i++) {
+				int building_id = info->dependent_building_ids[i];
+				if (building_id >= 0)
+					remove_building_if_no_district (city, district_id, building_id);
+			}
+		}
+	} else {
+		for (int civ_id = 0; civ_id < p_bic_data->Player_Count; civ_id++) {
+			FOR_CITIES_OF (coi, civ_id) {
+				City * city = coi.city;
+				for (int i = 0; i < ARRAY_LEN (info->dependent_building_ids); i++) {
+					int building_id = info->dependent_building_ids[i];
+					if (building_id >= 0)
+						remove_building_if_no_district (city, district_id, building_id);
+				}
+			}
+		}
+	}
+}
+
+static void
+handle_district_removed (Tile * tile, int district_id, int center_x, int center_y, bool has_center_coords)
+{
+	if ((tile == NULL) || (tile == p_null_tile) || ! is->current_config.enable_districts)
+		return;
+
+	itable_remove (&is->district_tile_map, (int)tile);
+
+	if (district_id >= 0)
+		remove_dependent_buildings_for_district (district_id, center_x, center_y, has_center_coords);
+
+	if (tile->vtable->m60_Set_Ruins != NULL)
+		tile->vtable->m60_Set_Ruins (tile, __, 1);
+}
+
+void __fastcall
+patch_Tile_impl_m51_Unset_Tile_Flags (Tile * this, int edx, int param_1, unsigned int param_2, int param_3, int param_4)
+{
+	bool removing_district = false;
+	bool have_coords = false;
+	int tile_x = param_3;
+	int tile_y = param_4;
+	int district_id = -1;
+
+	if (is->current_config.enable_districts && (param_2 & TILE_FLAG_MINE)) {
+		if (itable_look_up (&is->district_tile_map, (int)this, &district_id)) {
+			removing_district = true;
+			if ((tile_x >= 0) && (tile_y >= 0) &&
+			    (tile_x < p_bic_data->Map.Width) && (tile_y < p_bic_data->Map.Height))
+				have_coords = true;
+			else
+				have_coords = tile_coords_from_ptr (&p_bic_data->Map, this, &tile_x, &tile_y);
+		}
+	}
+
+	Tile_impl_m51_Unset_Tile_Flags (this, __, param_1, param_2, param_3, param_4);
+
+	if (removing_district)
+		handle_district_removed (this, district_id, tile_x, tile_y, have_coords);
 }
 
 bool
@@ -5255,10 +5372,10 @@ set_up_district_buttons (Main_GUI * this)
 	//pop_up_in_game_error (ss);
 
 	Tile * tile = tile_at (selected_unit->Body.X, selected_unit->Body.Y);
-	if ((tile == NULL) || (tile == p_null_tile))
+	if ((tile == NULL) || (tile == p_null_tile) || (tile->CityID >= 0))
 		return;
 
-	// Disallow on mountain tiles
+	// TODO: Disallow on mountain tiles
 	if (tile->vtable->m50_Get_Square_BaseType (tile) == SQ_Mountains)
 		return;
 
@@ -13575,8 +13692,8 @@ init_district_images ()
 
 		// Read PCX file
 		snprintf(art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, district_configs[dc].img_path);
-		snprintf (ss, sizeof ss, "init_district_images: loading district images from %s", art_dir);
-		pop_up_in_game_error (ss);
+		//snprintf (ss, sizeof ss, "init_district_images: loading district images from %s", art_dir);
+		//pop_up_in_game_error (ss);
 
 		PCX_Image_read_file (&pcx, __, art_dir, NULL, 0, 0x100, 2);
 
