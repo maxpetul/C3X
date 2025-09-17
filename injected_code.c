@@ -2871,7 +2871,7 @@ check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect
 
 void __fastcall adjust_sliders_preproduction (Leader * this);
 
-struct nopified_area {
+struct saved_code_area {
 	int size;
 	byte original_contents[];
 };
@@ -2882,23 +2882,23 @@ struct nopified_area {
 void
 save_code_area (byte * addr, int size, bool nopify)
 {
-	struct nopified_area * na;
-	if (itable_look_up (&is->nopified_areas, (int)addr, (int *)&na)) {
-		if (na->size != 0) {
-			if (na->size != size) {
+	struct saved_code_area * sca;
+	if (itable_look_up (&is->saved_code_areas, (int)addr, (int *)&sca)) {
+		if (sca->size != 0) {
+			if (sca->size != size) {
 				char s[200];
-				snprintf (s, sizeof s, "Save code area conflict: address %p was already saved with size %d, conflicting with new size %d.", addr, na->size, size);
+				snprintf (s, sizeof s, "Save code area conflict: address %p was already saved with size %d, conflicting with new size %d.", addr, sca->size, size);
 				s[(sizeof s) - 1] = '\0';
 				pop_up_in_game_error (s);
 			}
 			return;
 		}
 	} else {
-		na = malloc (size + sizeof *na);
-		itable_insert (&is->nopified_areas, (int)addr, (int)na);
+		sca = malloc (size + sizeof *sca);
+		itable_insert (&is->saved_code_areas, (int)addr, (int)sca);
 	}
-	na->size = size;
-	memcpy (&na->original_contents, addr, size);
+	sca->size = size;
+	memcpy (&sca->original_contents, addr, size);
 	if (nopify)
 		memset (addr, 0x90, size);
 }
@@ -2908,18 +2908,18 @@ save_code_area (byte * addr, int size, bool nopify)
 void
 restore_code_area (byte * addr)
 {
-	struct nopified_area * na;
-	if (itable_look_up (&is->nopified_areas, (int)addr, (int *)&na)) {
-		memcpy (addr, &na->original_contents, na->size);
-		na->size = 0;
+	struct saved_code_area * sca;
+	if (itable_look_up (&is->saved_code_areas, (int)addr, (int *)&sca)) {
+		memcpy (addr, &sca->original_contents, sca->size);
+		sca->size = 0;
 	}
 }
 
 bool
 is_code_area_saved (byte * addr)
 {
-	struct nopified_area * na;
-	return itable_look_up (&is->nopified_areas, (int)addr, (int *)&na) && (na->size > 0);
+	struct saved_code_area * sca;
+	return itable_look_up (&is->saved_code_areas, (int)addr, (int *)&sca) && (sca->size > 0);
 }
 
 // Nopifies or restores an area depending on if yes_or_no is 1 or 0. Sets the necessary memory protections.
@@ -4206,7 +4206,7 @@ patch_init_floating_point ()
 	is->trade_scroll_button_state = IS_UNINITED;
 	is->eligible_for_trade_scroll = 0;
 
-	memset (&is->nopified_areas, 0, sizeof is->nopified_areas);
+	memset (&is->saved_code_areas, 0, sizeof is->saved_code_areas);
 
 	is->unit_menu_duplicates = NULL;
 
