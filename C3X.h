@@ -259,9 +259,9 @@ struct c3x_config {
 
 	bool remove_unit_limit;
 	bool remove_city_improvement_limit;
-	bool remove_era_limit;
+	bool lift_city_limit;
 	bool remove_cap_on_turn_limit;
-	bool move_trade_net_object;
+	bool remove_era_limit;
 
 	bool patch_submarine_bug;
 	bool patch_science_age_bug;

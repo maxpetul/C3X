@@ -1840,6 +1840,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->polish_precision_striking = ival != 0;
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
+				} else if (slice_matches_str (&p.key, "move_trade_net_object")) {
+					; // No nothing. This setting no longer serves any purpose.
 
 				// if key was previously misspelled
 				} else if (slice_matches_str (&p.key, "share_visibility_in_hoseat")) {
@@ -3192,7 +3194,7 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 
 	int * trade_net_addrs;
 	bool already_moved_trade_net = is->trade_net != p_original_trade_net,
-	     want_moved_trade_net = cfg->move_trade_net_object;
+	     want_moved_trade_net = cfg->lift_city_limit;
 	if ((! at_program_start) &&
 	    ((trade_net_addrs = load_trade_net_addrs ()) != NULL) &&
 	    ((already_moved_trade_net && ! want_moved_trade_net) || (want_moved_trade_net && ! already_moved_trade_net))) {
@@ -3981,9 +3983,9 @@ patch_init_floating_point ()
 		{"enable_caravan_unit_ai"                              , true , offsetof (struct c3x_config, enable_caravan_unit_ai)},
 		{"remove_unit_limit"                                   , true , offsetof (struct c3x_config, remove_unit_limit)},
 		{"remove_city_improvement_limit"                       , true , offsetof (struct c3x_config, remove_city_improvement_limit)},
-		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
+		{"lift_city_limit"                                     , true , offsetof (struct c3x_config, lift_city_limit)},
 		{"remove_cap_on_turn_limit"                            , true , offsetof (struct c3x_config, remove_cap_on_turn_limit)},
-		{"move_trade_net_object"                               , false, offsetof (struct c3x_config, move_trade_net_object)},
+		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
 		{"patch_submarine_bug"                                 , true , offsetof (struct c3x_config, patch_submarine_bug)},
 		{"patch_science_age_bug"                               , true , offsetof (struct c3x_config, patch_science_age_bug)},
 		{"patch_pedia_texture_bug"                             , true , offsetof (struct c3x_config, patch_pedia_texture_bug)},

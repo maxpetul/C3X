@@ -1,3 +1,5 @@
+- Increase city limit to 2048
+  - Setting named lift_city_limit, included in new "Limits Removed" section with other limit increases/removals
 - Enable tile graphics to cycle over day and night, see "Day/Night Cycle" section of default config for details
 - Allow Civilopedia descriptions for units, civilizations, and game concepts to span multiple pages
 - Option to prevent units from upgrading past an intermediate type that does not have the upgrade ability
