@@ -3762,7 +3762,7 @@ calculate_current_day_night_cycle_hour ()
 			LARGE_INTEGER perf_freq;
 			QueryPerformanceFrequency(&perf_freq);
 
-			if (is->is_first_turn) {
+			if (is->day_night_cycle_unstarted) {
 				is->current_day_night_cycle = output;
 				QueryPerformanceCounter(&is->last_day_night_cycle_update_time);
 			}
@@ -3794,7 +3794,7 @@ calculate_current_day_night_cycle_hour ()
 
 		// Increment fixed amount each interturn
 		case DNCM_EVERY_TURN: {
-			if (is->is_first_turn) {
+			if (is->day_night_cycle_unstarted) {
 				increment = 0;
 				is->current_day_night_cycle = output;
 			}
@@ -3814,7 +3814,7 @@ calculate_current_day_night_cycle_hour ()
 
 	// Clamp to valid range of 0-23 in case of weird config values
 	output = clamp (0, 23, output);
-	is->is_first_turn = false;
+	is->day_night_cycle_unstarted = false;
 
 	return output;
 }
@@ -6346,9 +6346,9 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	// Clear old alias bits
 	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = is->aliased_leader_title_bits = 0;
 
-	// Set as first turn and deindex day-night cycle sprite proxies, if necessary.
+	// Clear day/night cycle vars and deindex sprite proxies, if necessary.
 	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
-		is->is_first_turn = true;
+		is->day_night_cycle_unstarted = true;
 		is->current_day_night_cycle = 12;
 		if (is->day_night_cycle_img_proxies_indexed) {
 			deindex_day_night_image_proxies ();
@@ -11761,6 +11761,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 
 			} else if (match_save_chunk_name (&cursor, "current_day_night_cycle")) {
 				is->current_day_night_cycle = *((int *)cursor)++;
+				is->day_night_cycle_unstarted = false;
 
 				// The day/night cycle sprite proxies will have been cleared in patch_load_scenario. They will not necessarily be set
 				// up again in the usual way because Map_Renderer::load_images is not necessarily called when loading a save. The game
@@ -11769,10 +11770,6 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				// haven't already been.
 				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
 					build_sprite_proxies_24 (&p_bic_data->Map.Renderer);
-
-				// Because we've restored current_day_night_cycle from the save, set that is is not the first turn so the cycle
-				// doesn't get restarted.
-				is->is_first_turn = false;
 
 			} else {
 				error_chunk_name = "N/A";
