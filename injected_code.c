@@ -2593,7 +2593,7 @@ patch_City_update_growth (City * this)
 	}
 
 	if (! show_message) return;
-	
+
 	// Only notify the human player occasionally to avoid spam.
 	if (this->Body.CivID != p_main_screen_form->Player_CivID) return;
 	if (is_online_game ()) return;
@@ -4489,6 +4489,7 @@ patch_init_floating_point ()
 		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
 		{"enable_districts"                                    , false, offsetof (struct c3x_config, enable_districts)},
+		{"enable_neighborhood_districts"                       , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
 	};
 
 	struct integer_config_option {
@@ -4514,6 +4515,8 @@ patch_init_floating_point ()
 		{"elapsed_minutes_per_day_night_hour_transition",     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
 		{"fixed_hours_per_turn_for_day_night_cycle"     ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
 		{"pinned_hour_for_day_night_cycle"              ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
+		{"no_neighborhood_pop_threshold"				,     8, offsetof (struct c3x_config, no_neighborhood_pop_threshold)},
+		{"per_neighborhood_pop_growth_enabled"			,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
