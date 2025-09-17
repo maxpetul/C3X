@@ -1967,7 +1967,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 	top_lcn->next = new_lcn;
 }
 
-static bool
+bool
 tile_coords_from_ptr (Map * map, Tile * tile, int * out_x, int * out_y)
 {
 	if ((tile == NULL) || (tile == p_null_tile) || (map == NULL))
@@ -2104,7 +2104,7 @@ tile_index_to_coords (Map * map, int index, int * out_x, int * out_y)
 		*out_x = *out_y = -1;
 }
 
-static void
+void
 reset_district_state (bool reset_tile_map)
 {
 	table_deinit (&is->district_tech_prereqs);
@@ -2339,6 +2339,33 @@ district_is_complete(Tile * tile, int district_id)
 	return overlays >> 2 & 1 | (overlays >> 10) << 8;
 }
 
+void __fastcall
+patch_Main_Screen_Form_show_map_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, bool pause)
+{
+	WITH_PAUSE_FOR_POPUP {
+		Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, pause);
+	}
+}
+
+int __cdecl
+patch_process_text_for_map_message (char * in, char * out)
+{
+	if (is->map_message_text_override != NULL) {
+		strcpy (out, is->map_message_text_override);
+		is->map_message_text_override = NULL;
+		return 0;
+	} else
+		return process_text_snippet (in, out);
+}
+
+// Works like show_map_message but takes a bit of text to display instead of a key for script.txt
+void
+show_map_specific_text (int tile_x, int tile_y, char const * text, bool pause)
+{
+	is->map_message_text_override = text;
+	patch_Main_Screen_Form_show_map_message (p_main_screen_form, __, tile_x, tile_y, "LANDCONQUER", pause); // Use any key here. It will be overridden.
+}
+
 bool __fastcall
 patch_City_has_improvement (City * this, int edx, int improv_id, bool include_auto_improvements)
 {
@@ -2394,6 +2421,203 @@ city_has_required_district (City * city, int district_id)
 			return true;
 	}
 	return false;
+}
+
+bool
+tile_counts_for_city_neighborhood (City * city, Tile * tile)
+{
+	if ((city == NULL) || (tile == NULL) || (tile == p_null_tile))
+		return false;
+	if ((int)tile->Body.CityAreaID != city->Body.ID)
+		return false;
+	return tile->vtable->m38_Get_Territory_OwnerID (tile) == city->Body.CivID;
+}
+
+int
+count_neighborhoods_in_city_radius (City * city)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_neighborhood_districts ||
+	    (city == NULL))
+		return 0;
+
+	int count = 0;
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
+		Tile * tile = tai.tile;
+		if (! tile_counts_for_city_neighborhood (city, tile))
+			continue;
+
+		int district_id;
+		if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) &&
+		    (district_id >= 0) && (district_id < COUNT_DISTRICT_TYPES) &&
+		    (district_configs[district_id].command == UCV_Build_Neighborhood) &&
+		    district_is_complete (tile, district_id))
+			count++;
+	}
+	return count;
+}
+
+int
+get_neighborhood_pop_cap (City * city)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_neighborhood_districts ||
+	    (city == NULL))
+		return -1;
+
+	int base_cap = is->current_config.no_neighborhood_pop_threshold;
+	if (base_cap <= 0)
+		return -1;
+
+	int per_neighborhood = is->current_config.per_neighborhood_pop_growth_enabled;
+	if (per_neighborhood < 0)
+		per_neighborhood = 0;
+
+	int neighborhoods = count_neighborhoods_in_city_radius (city);
+	long long cap = (long long)base_cap + (long long)per_neighborhood * neighborhoods;
+	if (cap > 0xfe)
+		cap = 0xfe;
+	if (cap < base_cap)
+		cap = base_cap;
+	return (int)cap;
+}
+
+bool
+city_is_at_neighborhood_cap (City * city)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_neighborhood_districts ||
+	    (city == NULL))
+		return false;
+
+	int cap = get_neighborhood_pop_cap (city);
+	if (cap < 0)
+		return false;
+
+	return city->Body.Population.Size >= cap;
+}
+
+void __fastcall
+patch_City_update_growth (City * this)
+{
+	if ((this == NULL) ||
+	    ! is->current_config.enable_districts ||
+	    ! is->current_config.enable_neighborhood_districts) {
+		// Fall back to vanilla growth logic when neighborhoods are disabled.
+		City_update_growth (this);
+		return;
+	}
+
+	int cap = get_neighborhood_pop_cap (this);
+	if (cap < 0) {
+		// No cap for this city; run the original routine.
+		City_update_growth (this);
+		return;
+	}
+
+	if (this->Body.Population.Size < cap) {
+		// City is below the cap, so allow normal growth processing.
+		City_update_growth (this);
+		return;
+	}
+
+	int orig_income = this->Body.FoodIncome;
+	int orig_stored = this->Body.StoredFood;
+
+	int civ_id = this->Body.CivID;
+	int growth_cost = 0;
+	bool have_growth_cost = false;
+	if (civ_id >= 0) {
+		// Recreate the vanilla food threshold the city must reach to grow.
+		int factor = Leader_get_food_cost_factor (&leaders[civ_id], false);
+		int size_class = City_get_size_class (this);
+		growth_cost = factor * (size_class + 1) * 2;
+		have_growth_cost = true;
+	}
+
+	bool blocked_growth = false;
+	bool show_message = false;
+	int clamp_income = orig_income;
+	int clamp_stored = orig_stored;
+
+	if (have_growth_cost && (orig_income >= 0)) {
+		// Force stored food + income under the growth threshold so the vanilla
+		// routine refuses to grow the city this turn.
+		if (growth_cost < 0)
+			growth_cost = 0;
+
+		if ((growth_cost > 0) && (orig_stored + orig_income >= growth_cost))
+			show_message = true;
+
+		if (growth_cost > 0) {
+			if (clamp_stored > growth_cost)
+				clamp_stored = growth_cost;
+
+			int max_income = growth_cost - 1 - clamp_stored;
+			if (max_income < 0) {
+				clamp_income = 0;
+				clamp_stored = growth_cost - 1;
+				if (clamp_stored < 0)
+					clamp_stored = 0;
+			} else if (clamp_income > max_income)
+				clamp_income = max_income;
+		} else {
+			clamp_income = 0;
+			clamp_stored = 0;
+		}
+
+		if (clamp_income < 0)
+			clamp_income = 0;
+
+		this->Body.StoredFood = clamp_stored;
+		this->Body.FoodIncome = clamp_income;
+		blocked_growth = true;
+	}
+
+	City_update_growth (this);
+
+	if (! blocked_growth)
+		return;
+
+	// Restore visible food income so the interface still shows actual yields.
+	this->Body.FoodIncome = orig_income;
+
+	if (have_growth_cost) {
+		// Keep stored food within the vanilla bounds after blocking growth.
+		if (growth_cost < 0)
+			growth_cost = 0;
+		if (this->Body.StoredFood > growth_cost)
+			this->Body.StoredFood = growth_cost;
+		if (this->Body.StoredFood < 0)
+			this->Body.StoredFood = 0;
+	}
+
+	if (! show_message) return;
+	
+	// Only notify the human player occasionally to avoid spam.
+	if (this->Body.CivID != p_main_screen_form->Player_CivID) return;
+	if (is_online_game ()) return;
+	if (((byte)(*p_current_turn_no) & 0x1f) != 0) return;
+
+	char const * city_name = this->Body.CityName;
+	if ((city_name == NULL) || (*city_name == '\0'))
+		city_name = "This city";
+
+	char msg[128];
+	snprintf (msg, sizeof msg, "%s needs a Neighborhood to grow.", city_name);
+	msg[(sizeof msg) - 1] = '\0';
+	show_map_specific_text (this->Body.X, this->Body.Y, msg, true);
+}
+
+bool __cdecl
+patch_is_not_pop_capped_or_starving (City * city, int edx)
+{
+	bool tr = is_not_pop_capped_or_starving (city, __);
+	if (! tr) return false;
+
+	if (city_is_at_neighborhood_cap (city)) return false;
+
+	return true;
 }
 
 void
@@ -4565,33 +4789,6 @@ patch_init_floating_point ()
 	apply_machine_code_edits (&is->current_config, true);
 }
 
-void __fastcall
-patch_Main_Screen_Form_show_map_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, bool pause)
-{
-	WITH_PAUSE_FOR_POPUP {
-		Main_Screen_Form_show_map_message (this, __, tile_x, tile_y, text_key, pause);
-	}
-}
-
-int __cdecl
-patch_process_text_for_map_message (char * in, char * out)
-{
-	if (is->map_message_text_override != NULL) {
-		strcpy (out, is->map_message_text_override);
-		is->map_message_text_override = NULL;
-		return 0;
-	} else
-		return process_text_snippet (in, out);
-}
-
-// Works like show_map_message but takes a bit of text to display instead of a key for script.txt
-void
-show_map_specific_text (int tile_x, int tile_y, char const * text, bool pause)
-{
-	is->map_message_text_override = text;
-	patch_Main_Screen_Form_show_map_message (p_main_screen_form, __, tile_x, tile_y, "LANDCONQUER", pause); // Use any key here. It will be overridden.
-}
-
 void
 get_mod_art_path (char const * file_name, char * out_path, int path_buf_size)
 {
@@ -5772,7 +5969,7 @@ patch_Unit_can_upgrade (Unit * this)
 bool
 is_district_command (int unit_command_value)
 {
-	return (unit_command_value <= UCV_Build_Encampment) && (unit_command_value >= UCV_Build_Borough);
+	return (unit_command_value <= UCV_Build_Encampment) && (unit_command_value >= UCV_Build_Neighborhood);
 }
 
 bool __fastcall
@@ -8799,6 +8996,41 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 			n_player++;
 		}
 	}
+}
+
+void __fastcall
+patch_City_add_population (City * this, int edx, int num, int race_id)
+{
+	if ((this == NULL) || (num <= 0)) {
+		City_add_population (this, __, num, race_id);
+		return;
+	}
+
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_neighborhood_districts) {
+		City_add_population (this, __, num, race_id);
+		return;
+	}
+
+	int cap = get_neighborhood_pop_cap (this);
+	if (cap < 0) {
+		City_add_population (this, __, num, race_id);
+		return;
+	}
+
+	int current_pop = this->Body.Population.Size;
+	if (current_pop >= cap)
+		return;
+
+	int allowed = cap - current_pop;
+	if (allowed <= 0)
+		return;
+
+	int actual = num;
+	if (actual > allowed)
+		actual = allowed;
+
+	City_add_population (this, __, actual, race_id);
 }
 
 void __fastcall
@@ -13885,10 +14117,9 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 						}
 					case UCV_Build_Neighborhood:
 						{
-							// Neighborhood is a special case, as it has no dependent buildings, but 4 images, each slightly different visually.
+							// Neighborhood is a special case, as it has no dependent buildings, but also 4 images, each slightly different visually (for variety).
 							// We use a deterministic pseudo-random index from the tile coordinates so the same tile always renders with the same variant using
-							// the MurmurHash3 finalizer, which quickly produces well-distributed low bits, ensuring each image variant is selected with (near)
-							// equal probability while remaining branch-free.
+							// the MurmurHash3 finalizer, which produces well-distributed low bits, ensuring each image variant is selected with (near) equal probability.
 							unsigned int hash = (unsigned int)tile_x * 0x9E3779B1u ^ (unsigned int)tile_y * 0x85EBCA77u;
 							hash ^= hash >> 16;
 							hash *= 0x7FEB352Du;

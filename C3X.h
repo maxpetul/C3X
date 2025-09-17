@@ -16,7 +16,7 @@ typedef unsigned char byte;
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
-#define COUNT_DISTRICT_TYPES 2
+#define COUNT_DISTRICT_TYPES 3
 
 // Initialize to zero. Implementation is in common.c
 struct table {
@@ -292,6 +292,9 @@ struct c3x_config {
 	int pinned_hour_for_day_night_cycle;
 
 	bool enable_districts;
+	bool enable_neighborhood_districts;
+	int no_neighborhood_pop_threshold;
+	int per_neighborhood_pop_growth_enabled;
 };
 
 enum stackable_command {
@@ -497,7 +500,7 @@ struct district_config {
 	{ 
 		.command = UCV_Build_Neighborhood, .tooltip = "Build Neighborhood", .img_path = "Neighborhood.pcx", .index = 2, 
 		.btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_columns = 4,
-		.advance_prereq = "Construction", .dependent_improvements = {},
+		.advance_prereq = "Construction", .dependent_improvements = {NULL},
 		.defense_bonus_multiplier = 1.25, 
 		.allow_multiple = false,  .is_workable = false,
 		.culture_bonus = 2,       .science_bonus = 0,
