@@ -770,11 +770,12 @@ enum Unit_Command_Values
   // District Actions
   UCV_Build_Encampment = -10000001,
   UCV_Build_Campus = -10000002,
-  UCV_Build_HolySite = -10000003,
-  UCV_Build_CommercialHub = -10000004,
-  UCV_Build_IndustrialZone = -10000005,
-  UCV_Build_EntertainmentComplex = -10000006,
-  UCV_Build_Borough = -10000007
+  UCV_Build_Theater = -10000003,
+  UCV_Build_HolySite = -10000004,
+  UCV_Build_CommercialHub = -10000005,
+  UCV_Build_IndustrialZone = -10000006,
+  UCV_Build_EntertainmentComplex = -10000007,
+  UCV_Build_Neighborhood = -10000008
 };
 
 enum Unit_Mode_Actions

@@ -493,6 +493,15 @@ struct district_config {
 		.allow_multiple = false,  .is_workable = false,
 		.culture_bonus = 0,       .science_bonus = 0,
 		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0
+	},
+	{ 
+		.command = UCV_Build_Neighborhood, .tooltip = "Build Neighborhood", .img_path = "Neighborhood.pcx", .index = 2, 
+		.btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_columns = 4,
+		.advance_prereq = "Construction", .dependent_improvements = {},
+		.defense_bonus_multiplier = 1.25, 
+		.allow_multiple = false,  .is_workable = false,
+		.culture_bonus = 2,       .science_bonus = 0,
+		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0
 	}
 };
 

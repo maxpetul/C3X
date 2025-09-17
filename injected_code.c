@@ -13883,6 +13883,21 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 							else if (has_library) col = 1;
 							break;
 						}
+					case UCV_Build_Neighborhood:
+						{
+							// Neighborhood is a special case, as it has no dependent buildings, but 4 images, each slightly different visually.
+							// We use a deterministic pseudo-random index from the tile coordinates so the same tile always renders with the same variant using
+							// the MurmurHash3 finalizer, which quickly produces well-distributed low bits, ensuring each image variant is selected with (near)
+							// equal probability while remaining branch-free.
+							unsigned int hash = (unsigned int)tile_x * 0x9E3779B1u ^ (unsigned int)tile_y * 0x85EBCA77u;
+							hash ^= hash >> 16;
+							hash *= 0x7FEB352Du;
+							hash ^= hash >> 15;
+							hash *= 0x846CA68Bu;
+							hash ^= hash >> 16;
+							col = hash & 3;
+							break;
+						}
 					}
 
 					district_sprite = &is->district_img_sets[district_id].imgs[era][col];
