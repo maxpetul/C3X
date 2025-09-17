@@ -68,6 +68,30 @@
 # 1 ref to data5
 0x57D805
 
+# 6 instructions containing matrix stride in record_connection
+0x57D84E 0x57D86E 0x57D88B 0x57D8C9 0x57D932 0x57D957
+
+# 5 instructions in recompute_city_connections
+0x57D9DB 0x57DB9B 0x57DC1C 0x57DC33 0x57DE5A
+
+# 1 instruction in recompute_network_around
+0x57E2C0
+
+# 2 instructions in recompute_resources
+0x57E8CD 0x57E7B4
+
+# 4 instructions in record_resource_access
+0x57EE6B 0x57EEA2 0x57EF55 0x57EF6F
+
+# 2 instructions in have_trade_connection
+0x57F0EE 0x57F110
+
+# 1 instruction in is_tile_connected_to_city
+0x57F1AE
+
+# 1 instruction in reset
+0x57F2A9
+
 
 
 ########## Steam Addresses ##########
@@ -140,6 +164,30 @@
 # 1 ref to data5
 0x58A515
 
+# 6 instructions containing matrix stride in record_connection
+0x58A55E 0x58A581 0x58A59E 0x58A5DB 0x58A641 0x58A657
+
+# 5 instructions in recompute_city_connections
+0x58A6DF 0x58A8AD 0x58A92E 0x58A94D 0x58AB93
+
+# 1 instruction in recompute_network_around
+0x58AFBA
+
+# 2 instructions in recompute_resources
+0x58B61A 0x58B4F9
+
+# 4 instructions in record_resource_access
+0x58BB94 0x58BBC6 0x58BC79 0x58BC93
+
+# 2 instructions in have_trade_connection
+0x58BDFE 0x58BE20
+
+# 2 instructions in is_tile_connected_to_city
+0x58BEE3 0x58BF0F
+
+# 1 instruction in reset
+0x58BFC9
+
 
 
 ########## PCGames.de Addresses ##########
@@ -211,3 +259,27 @@
 
 # 1 ref to data5
 0x57D565
+
+# 6 instructions containing matrix stride in record_connection
+0x57D5AE 0x57D5CE 0x57D5EB 0x57D629 0x57D692 0x57D6B7
+
+# 5 instructions in recompute_city_connections
+0x57D73B 0x57D8FB 0x57D97C 0x57D993 0x57DBBA
+
+# 1 instruction in recompute_network_around
+0x57E020
+
+# 2 instructions in recompute_resources
+0x57E62D 0x57E514
+
+# 4 instructions in record_resource_access
+0x57EBCB 0x57EC02 0x57ECB5 0x57ECCF
+
+# 2 instructions in have_trade_connection
+0x57EE4E 0x57EE70
+
+# 1 instruction in is_tile_connected_to_city
+0x57EF0E
+
+# 1 instruction in reset
+0x57F009
