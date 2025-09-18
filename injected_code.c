@@ -2107,11 +2107,12 @@ tile_index_to_coords (Map * map, int index, int * out_x, int * out_y)
 bool 
 district_is_complete(Tile * tile, int district_id)
 {
-	if (! is->current_config.enable_districts || (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+	if (! is->current_config.enable_districts ||
+	    (tile == NULL) || (tile == p_null_tile) ||
+	    (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
 		return false;
 
-	unsigned overlays = Tile_m42_Get_Overlays(tile, __, 1);
-	return overlays >> 2 & 1 | (overlays >> 10) << 8;
+	return tile->vtable->m18_Check_Mines (tile, __, 0) != 0;
 }
 
 static void
@@ -2167,8 +2168,8 @@ reset_district_state (bool reset_tile_map)
 	table_deinit (&is->district_building_prereqs);
 	table_deinit (&is->command_id_to_district_id);
 	stable_deinit (&is->building_name_to_id);
-	//if (reset_tile_map)
-	//	table_deinit (&is->district_tile_map);
+	if (reset_tile_map)
+		table_deinit (&is->district_tile_map);
 
 	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++) {
 		is->district_infos[i].advance_prereq_id = -1;
@@ -2233,13 +2234,17 @@ get_district_job_assignment (Unit * unit)
 	return (struct district_job_assignment *)(long)itable_look_up_or (&is->district_job_assignments, unit->Body.ID, 0);
 }
 
+static bool handle_existing_district_assignment (Unit * unit, struct district_job_assignment * job);
+
 static void
-finalize_district_job_assignment (int unit_id, struct district_job_assignment * job, bool success, bool requeue_request)
+finalize_district_job_assignment (Unit * unit, struct district_job_assignment * job, bool success, bool requeue_request)
 {
 	char ss[200];
 
 	if (job == NULL)
 		return;
+
+	int unit_id = (unit != NULL) ? unit->Body.ID : job->unit_id;
 
 	if (success) {
 		//snprintf (ss, sizeof ss, "Finalizing district job assignment, successful, for unit %d on tile (%d,%d) for district ID %d", unit_id, job->tile_x, job->tile_y, job->district_id);
@@ -2247,23 +2252,21 @@ finalize_district_job_assignment (int unit_id, struct district_job_assignment * 
 		if (job->city != NULL) {
 			clear_city_district_request (job->city, job->district_id);
 		}
-	} else {
-		if ((job->tile != NULL) && ! district_is_complete (job->tile, job->district_id)) {
-			snprintf (ss, sizeof ss, "Finalizing district job assignment, removing incomplete district on tile (%d,%d) for unit %d for district ID %d", job->tile_x, job->tile_y, unit_id, job->district_id);
-			pop_up_in_game_error (ss);
-			itable_remove (&is->district_tile_map, (int)job->tile);
-		}
-		if (requeue_request && (job->city != NULL)) {
-			//snprintf (ss, sizeof ss, "Re-queuing district request for district ID %d", job->district_id);
-			//pop_up_in_game_error (ss);
-			mark_city_needs_district (job->city, job->district_id);
-		}
 	}
+	if (! success && ! requeue_request && unit != NULL) {
+		handle_existing_district_assignment (unit, job);
+		return;
+	}
+
+	if (requeue_request && (job->city != NULL))
+		mark_city_needs_district (job->city, job->district_id);
+	
 
 	//snprintf (ss, sizeof ss, "Removing district job assignment for unit %d on tile (%d,%d) for district ID %d", unit_id, job->tile_x, job->tile_y, job->district_id);
 	//pop_up_in_game_error (ss);
 	free (job);
-	itable_remove (&is->district_job_assignments, unit_id);
+	if (unit_id >= 0)
+		itable_remove (&is->district_job_assignments, unit_id);
 }
 
 static struct district_job_assignment *
@@ -2282,7 +2285,7 @@ create_district_job_assignment (Unit * unit, Tile * tile, int tile_x, int tile_y
 	if (existing != NULL) {
 		snprintf (ss, sizeof ss, "Unit %d already has a district job assignment on tile (%d,%d) for district ID %d", unit->Body.ID, existing->tile_x, existing->tile_y, existing->district_id);
 		pop_up_in_game_error (ss);
-		finalize_district_job_assignment (unit->Body.ID, existing, false, true);
+		finalize_district_job_assignment (unit, existing, false, true);
 	}
 
 	struct district_job_assignment * job = malloc (sizeof *job);
@@ -2297,6 +2300,7 @@ create_district_job_assignment (Unit * unit, Tile * tile, int tile_x, int tile_y
 	job->tile_x = tile_x;
 	job->tile_y = tile_y;
 	job->district_id = district_id;
+	job->unit_id = unit->Body.ID;
 	job->job_started = false;
 
 	snprintf (ss, sizeof ss, "Created district job assignment for unit %d on tile (%d,%d) for district ID %d", unit->Body.ID, tile_x, tile_y, district_id);
@@ -2576,7 +2580,7 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 	if ((tile == NULL) || (tile == p_null_tile)) {
 		tile = tile_at (target_x, target_y);
 		if ((tile == NULL) || (tile == p_null_tile)) {
-			finalize_district_job_assignment (unit_id, job, false, true);
+			finalize_district_job_assignment (unit, job, false, true);
 			return false;
 		}
 		job->tile = tile;
@@ -2585,12 +2589,15 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 	itable_insert (&is->district_tile_map, (int)tile, job->district_id);
 
 	if (district_is_complete (tile, job->district_id)) {
-		finalize_district_job_assignment (unit_id, job, true, false);
+		finalize_district_job_assignment (unit, job, true, false);
 		return false;
 	}
 
 	if ((unit->Body.X == target_x) && (unit->Body.Y == target_y)) {
-		if (Leader_can_do_worker_job (&leaders[unit->Body.CivID], __, WJ_Build_Mines, target_x, target_y, 1)) {
+		bool can_do_job =
+			Leader_can_do_worker_job (&leaders[unit->Body.CivID], __,
+				WJ_Build_Mines, target_x, target_y, 1);
+		if (can_do_job) {
 			if (unit->Body.UnitState != UnitState_Build_Mines) {
 				Unit_set_escortee (unit, __, -1);
 				Unit_set_state (unit, __, UnitState_Build_Mines);
@@ -2602,10 +2609,15 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 
 			job->job_started = true;
 			return true;
-		} else {
-			finalize_district_job_assignment (unit_id, job, false, true);
-			return false;
 		}
+
+		if (job->job_started && (unit->Body.UnitState == UnitState_Build_Mines)) {
+			unit->vtable->work (unit);
+			return true;
+		}
+
+		finalize_district_job_assignment (unit, job, false, true);
+		return false;
 	}
 
 	if ((unit->Body.UnitState == UnitState_Go_To) &&
@@ -2631,7 +2643,7 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 		return true;
 	}
 
-	finalize_district_job_assignment (unit_id, job, false, true);
+	finalize_district_job_assignment (unit, job, false, true);
 	return false;
 }
 
@@ -2758,7 +2770,7 @@ remove_district_assignments_for_civ (int civ_id)
 		int unit_id = is->memo[i];
 		struct district_job_assignment * job = (struct district_job_assignment *)(long)itable_look_up_or (&is->district_job_assignments, unit_id, 0);
 		if (job != NULL)
-			finalize_district_job_assignment (unit_id, job, false, true);
+			finalize_district_job_assignment (get_unit_ptr (unit_id), job, false, true);
 	}
 
 	//snprintf (ss, sizeof ss, "Removed district job assignments for civ %d", civ_id);
@@ -3076,7 +3088,7 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	if ((tile == NULL) || (tile == p_null_tile) || ! is->current_config.enable_districts)
 		return;
 
-	//itable_remove (&is->district_tile_map, (int)tile);
+	itable_remove (&is->district_tile_map, (int)tile);
 
 	if (district_id >= 0)
 		remove_dependent_buildings_for_district (district_id, center_x, center_y);
@@ -3088,10 +3100,7 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 static void
 handle_district_destroyed_by_attack (Tile * tile, int tile_x, int tile_y, bool leave_ruins)
 {
-	if (! is->current_config.enable_districts)
-		return;
-
-	if ((tile == NULL) || (tile == p_null_tile))
+	if (! is->current_config.enable_districts || tile == NULL || tile == p_null_tile)
 		return;
 
 	int district_id;
@@ -3102,27 +3111,7 @@ handle_district_destroyed_by_attack (Tile * tile, int tile_x, int tile_y, bool l
 void __fastcall
 patch_Tile_impl_m51_Unset_Tile_Flags (Tile * this, int edx, int param_1, unsigned int param_2, int param_3, int param_4)
 {
-	bool removing_district = false;
-	bool have_coords = false;
-	int tile_x = param_3;
-	int tile_y = param_4;
-	int district_id = -1;
-
-	if (is->current_config.enable_districts && (param_2 & TILE_FLAG_MINE)) {
-		if (itable_look_up (&is->district_tile_map, (int)this, &district_id)) {
-			removing_district = true;
-			if ((tile_x >= 0) && (tile_y >= 0) &&
-			    (tile_x < p_bic_data->Map.Width) && (tile_y < p_bic_data->Map.Height))
-				have_coords = true;
-			else
-				have_coords = tile_coords_from_ptr (&p_bic_data->Map, this, &tile_x, &tile_y);
-		}
-	}
-
 	Tile_impl_m51_Unset_Tile_Flags (this, __, param_1, param_2, param_3, param_4);
-
-	if (removing_district)
-		handle_district_removed (this, district_id, have_coords ? tile_x : -1, have_coords ? tile_y : -1, false);
 }
 
 bool
@@ -5589,8 +5578,8 @@ patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 		target_tile = tile_at (tile_x, tile_y);
 		if ((target_tile != NULL) && (target_tile != p_null_tile)) {
-			int dummy_id;
-			had_district_before = itable_look_up (&is->district_tile_map, (int)target_tile, &dummy_id);
+			int district_id;
+            had_district_before = itable_look_up (&is->district_tile_map, (int)target_tile, &district_id);
 		}
 	}
 
@@ -8842,8 +8831,8 @@ patch_Unit_ai_move_terraformer (Unit * this)
 		return;
 	}
 
-	//if (ai_try_assign_district_job (this))
-	//	return;
+	if (ai_try_assign_district_job (this))
+		return;
 
 	Unit_ai_move_terraformer (this);
 }
@@ -11644,8 +11633,8 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 	is->unit_bombard_attacking_tile = NULL;
 	is->attacking_tile_x = is->attacking_tile_y = -1;
 
-	if (bombarding && had_district_before)
-		handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, false);
+	if (had_district_before)
+		handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, true);
 }
 
 void __fastcall
@@ -13227,9 +13216,9 @@ patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
 			tile = job->tile = tile_at (this->Body.X, this->Body.Y);
 		bool complete = (tile != NULL) && district_is_complete (tile, job->district_id);
 		if (complete)
-			finalize_district_job_assignment (this->Body.ID, job, true, false);
+			finalize_district_job_assignment (this, job, true, false);
 		else if (this->Body.UnitState != UnitState_Build_Mines)
-			finalize_district_job_assignment (this->Body.ID, job, false, true);
+			finalize_district_job_assignment (this, job, false, true);
 	}
 	if (is->lmify_tile_after_working_simple_job != NULL)
 		is->lmify_tile_after_working_simple_job->vtable->m31_set_landmark (is->lmify_tile_after_working_simple_job, __, true);
@@ -14498,6 +14487,7 @@ void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
 	char ss[200];
+	*p_debug_mode_bits |= 0xC;
 	//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: called for tile (%d,%d) at pixel (%d,%d)", tile_x, tile_y, pixel_x, pixel_y);
 	//pop_up_in_game_error (ss);
 

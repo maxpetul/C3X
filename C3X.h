@@ -346,8 +346,8 @@ struct sc_button_info {
 
 enum init_state {
 	IS_UNINITED = 0,
-	IS_OK = 1,
-	IS_INIT_FAILED = 2
+	IS_OK,
+	IS_INIT_FAILED
 };
 
 enum c3x_label {
@@ -482,7 +482,7 @@ struct district_config {
 	{ 
 		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_path = "Encampment.pcx", .index = 0, 
 		.btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_columns = 3,
-		.advance_prereq = "Bronze Working", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
+		.advance_prereq = "Warrior Code", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
 		.defense_bonus_multiplier = 1.5, 
 		.allow_multiple = false,  .is_workable = false,
 		.culture_bonus = 0,       .science_bonus = 0,
@@ -514,6 +514,7 @@ struct district_job_assignment {
 	int tile_x;
 	int tile_y;
 	int district_id;
+	int unit_id;
 	bool job_started;
 };
 
