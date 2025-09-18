@@ -346,8 +346,8 @@ struct sc_button_info {
 
 enum init_state {
 	IS_UNINITED = 0,
-	IS_OK,
-	IS_INIT_FAILED
+	IS_OK = 1,
+	IS_INIT_FAILED = 2
 };
 
 enum c3x_label {
@@ -481,7 +481,7 @@ struct district_config {
 } const district_configs[COUNT_DISTRICT_TYPES] = {
 	{ 
 		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_path = "Encampment.pcx", .index = 0, 
-		.btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_columns = 4,
+		.btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_columns = 3,
 		.advance_prereq = "Bronze Working", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
 		.defense_bonus_multiplier = 1.5, 
 		.allow_multiple = false,  .is_workable = false,
@@ -490,7 +490,7 @@ struct district_config {
 	},
 	{ 
 		.command = UCV_Build_Campus, .tooltip = "Build Campus", .img_path = "Campus.pcx", .index = 1, 
-		.btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_columns = 4,
+		.btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_columns = 3,
 		.advance_prereq = "Literature", .dependent_improvements = {"Library", "University"},
 		.defense_bonus_multiplier = 1.0, 
 		.allow_multiple = false,  .is_workable = false,

@@ -2122,8 +2122,13 @@ mark_city_needs_district (City * city, int district_id)
 	    (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
 		return;
 
+	// Humans manage their own district construction
 	if ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)
 		return;
+
+	char ss[200];
+	snprintf (ss, sizeof ss, "Marking city (ID %d) as needing district ID %d", city->Body.ID, district_id);
+	pop_up_in_game_error (ss);
 
 	int key = (int)(long)city;
 	int mask = itable_look_up_or (&is->city_pending_district_requests, key, 0);
@@ -2142,8 +2147,8 @@ clear_district_job_assignments (bool requeue_requests)
 	FOR_TABLE_ENTRIES (tei, &is->district_job_assignments) {
 		struct district_job_assignment * job = (struct district_job_assignment *)tei.value;
 		if (job != NULL) {
-			if ((job->tile != NULL) && ! district_is_complete (job->tile, job->district_id))
-				itable_remove (&is->district_tile_map, (int)(long)job->tile);
+			//if ((job->tile != NULL) && ! district_is_complete (job->tile, job->district_id))
+			//	itable_remove (&is->district_tile_map, (int)job->tile);
 			if (requeue_requests && (job->city != NULL))
 				mark_city_needs_district (job->city, job->district_id);
 			free (job);
@@ -2162,8 +2167,8 @@ reset_district_state (bool reset_tile_map)
 	table_deinit (&is->district_building_prereqs);
 	table_deinit (&is->command_id_to_district_id);
 	stable_deinit (&is->building_name_to_id);
-	if (reset_tile_map)
-		table_deinit (&is->district_tile_map);
+	//if (reset_tile_map)
+	//	table_deinit (&is->district_tile_map);
 
 	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++) {
 		is->district_infos[i].advance_prereq_id = -1;
@@ -2183,7 +2188,7 @@ clear_city_district_request (City * city, int district_id)
 	    (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
 		return;
 
-	int key = (int)(long)city;
+	int key = (int)city;
 	int mask;
 	if (itable_look_up (&is->city_pending_district_requests, key, &mask)) {
 		mask &= ~(1 << district_id);
@@ -2231,19 +2236,32 @@ get_district_job_assignment (Unit * unit)
 static void
 finalize_district_job_assignment (int unit_id, struct district_job_assignment * job, bool success, bool requeue_request)
 {
+	char ss[200];
+
 	if (job == NULL)
 		return;
 
 	if (success) {
-		if (job->city != NULL)
+		//snprintf (ss, sizeof ss, "Finalizing district job assignment, successful, for unit %d on tile (%d,%d) for district ID %d", unit_id, job->tile_x, job->tile_y, job->district_id);
+		//pop_up_in_game_error (ss);
+		if (job->city != NULL) {
 			clear_city_district_request (job->city, job->district_id);
+		}
 	} else {
-		if ((job->tile != NULL) && ! district_is_complete (job->tile, job->district_id))
-			itable_remove (&is->district_tile_map, (int)(long)job->tile);
-		if (requeue_request && (job->city != NULL))
+		if ((job->tile != NULL) && ! district_is_complete (job->tile, job->district_id)) {
+			snprintf (ss, sizeof ss, "Finalizing district job assignment, removing incomplete district on tile (%d,%d) for unit %d for district ID %d", job->tile_x, job->tile_y, unit_id, job->district_id);
+			pop_up_in_game_error (ss);
+			itable_remove (&is->district_tile_map, (int)job->tile);
+		}
+		if (requeue_request && (job->city != NULL)) {
+			//snprintf (ss, sizeof ss, "Re-queuing district request for district ID %d", job->district_id);
+			//pop_up_in_game_error (ss);
 			mark_city_needs_district (job->city, job->district_id);
+		}
 	}
 
+	//snprintf (ss, sizeof ss, "Removing district job assignment for unit %d on tile (%d,%d) for district ID %d", unit_id, job->tile_x, job->tile_y, job->district_id);
+	//pop_up_in_game_error (ss);
 	free (job);
 	itable_remove (&is->district_job_assignments, unit_id);
 }
@@ -2251,17 +2269,28 @@ finalize_district_job_assignment (int unit_id, struct district_job_assignment * 
 static struct district_job_assignment *
 create_district_job_assignment (Unit * unit, Tile * tile, int tile_x, int tile_y, int district_id, City * city)
 {
+	char ss[200];
+
 	if ((unit == NULL) || (tile == NULL) ||
 	    (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
 		return NULL;
 
+	snprintf (ss, sizeof ss, "Creating district job assignment for unit %d on tile (%d,%d) for district ID %d", unit->Body.ID, tile_x, tile_y, district_id);
+	pop_up_in_game_error (ss);
+
 	struct district_job_assignment * existing = get_district_job_assignment (unit);
-	if (existing != NULL)
+	if (existing != NULL) {
+		snprintf (ss, sizeof ss, "Unit %d already has a district job assignment on tile (%d,%d) for district ID %d", unit->Body.ID, existing->tile_x, existing->tile_y, existing->district_id);
+		pop_up_in_game_error (ss);
 		finalize_district_job_assignment (unit->Body.ID, existing, false, true);
+	}
 
 	struct district_job_assignment * job = malloc (sizeof *job);
-	if (job == NULL)
+	if (job == NULL) {
+		snprintf (ss, sizeof ss, "Failed to allocate memory for district job assignment for unit %d on tile (%d,%d) for district ID %d", unit->Body.ID, tile_x, tile_y, district_id);
+		pop_up_in_game_error (ss);
 		return NULL;
+	}
 
 	job->tile = tile;
 	job->city = city;
@@ -2270,9 +2299,12 @@ create_district_job_assignment (Unit * unit, Tile * tile, int tile_x, int tile_y
 	job->district_id = district_id;
 	job->job_started = false;
 
-		itable_insert (&is->district_job_assignments, unit->Body.ID, (int)(long)job);
-		itable_insert (&is->district_tile_map, (int)(long)tile, district_id);
-		return job;
+	snprintf (ss, sizeof ss, "Created district job assignment for unit %d on tile (%d,%d) for district ID %d", unit->Body.ID, tile_x, tile_y, district_id);
+	pop_up_in_game_error (ss);
+
+	itable_insert (&is->district_job_assignments, unit->Body.ID, (int)job);
+	itable_insert (&is->district_tile_map, (int)tile, district_id);
+	return job;
 }
 
 Tile *
@@ -2505,7 +2537,7 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 		if ((base_type == SQ_Mountains) || (base_type == SQ_Volcano))
 			continue;
 		int mapped_id;
-		if (itable_look_up (&is->district_tile_map, (int)(long)tile, &mapped_id) && (mapped_id != district_id))
+		if (itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) && (mapped_id != district_id))
 			continue;
 		if (district_assignment_exists_for_tile (tile))
 			continue;
@@ -2532,6 +2564,8 @@ int __fastcall patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int fro
 static bool
 handle_existing_district_assignment (Unit * unit, struct district_job_assignment * job)
 {
+	char ss[200];
+
 	if ((unit == NULL) || (job == NULL))
 		return false;
 
@@ -2548,7 +2582,7 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 		job->tile = tile;
 	}
 
-	itable_insert (&is->district_tile_map, (int)(long)tile, job->district_id);
+	itable_insert (&is->district_tile_map, (int)tile, job->district_id);
 
 	if (district_is_complete (tile, job->district_id)) {
 		finalize_district_job_assignment (unit_id, job, true, false);
@@ -2562,6 +2596,10 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 				Unit_set_state (unit, __, UnitState_Build_Mines);
 				unit->vtable->update_while_active (unit);
 			}
+
+			snprintf (ss, sizeof ss, "District job started for unit %d on tile (%d,%d) for district ID %d", unit_id, target_x, target_y, job->district_id);
+			pop_up_in_game_error (ss);
+
 			job->job_started = true;
 			return true;
 		} else {
@@ -2586,6 +2624,10 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 		unit->Body.path_dest_x = target_x;
 		unit->Body.path_dest_y = target_y;
 		unit->vtable->work (unit);
+
+		snprintf (ss, sizeof ss, "District job path set for unit %d on tile (%d,%d) for district ID %d", unit_id, target_x, target_y, job->district_id);
+		pop_up_in_game_error (ss);
+
 		return true;
 	}
 
@@ -2621,23 +2663,39 @@ city_has_required_district (City * city, int district_id)
 static bool
 ai_try_assign_district_job (Unit * unit)
 {
+	char ss[200];
+	//snprintf (ss, sizeof ss, "AI trying to assign district job for unit %d", (unit != NULL) ? unit->Body.ID : -1);
+	//pop_up_in_game_error (ss);
+
 	if (! is->current_config.enable_districts || (unit == NULL))
 		return false;
 
 	int civ_id = unit->Body.CivID;
-	if (*p_human_player_bits & (1 << civ_id))
+	if (*p_human_player_bits & (1 << civ_id)) {
 		return false;
-	if (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Worker_Actions == 0)
+	}
+	if (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Worker_Actions == 0) {
 		return false;
-	if (unit->Body.Container_Unit >= 0)
+	}
+	if (unit->Body.Container_Unit >= 0) {
 		return false;
+	}
+
+	//snprintf (ss, sizeof ss, "Unit %d is eligible for district job assignment", unit->Body.ID);
+	//pop_up_in_game_error (ss);
 
 	struct district_job_assignment * job = get_district_job_assignment (unit);
 	if (job != NULL)
 		return handle_existing_district_assignment (unit, job);
 
-	if (is->city_pending_district_requests.len == 0)
+	if (is->city_pending_district_requests.len == 0) {
+		//snprintf (ss, sizeof ss, "No pending district requests for civ %d", civ_id);
+		//pop_up_in_game_error (ss);
 		return false;
+	}
+
+	//snprintf (ss, sizeof ss, "There are pending district requests for civ %d", civ_id);
+	//pop_up_in_game_error (ss);
 
 	FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests) {
 		City * city = (City *)(long)tei.key;
@@ -2657,12 +2715,21 @@ ai_try_assign_district_job (Unit * unit)
 
 			int target_x, target_y;
 			Tile * tile = find_tile_for_district (city, district_id, &target_x, &target_y);
-			if (tile == NULL)
+			if (tile == NULL) {
+				snprintf (ss, sizeof ss, "No valid tile found for district ID %d for city ID %d", district_id, city->Body.ID);
+				pop_up_in_game_error (ss);
 				continue;
+			}
 
 			struct district_job_assignment * new_job = create_district_job_assignment (unit, tile, target_x, target_y, district_id, city);
-			if (new_job == NULL)
+			if (new_job == NULL) {
+				snprintf (ss, sizeof ss, "Failed to create new district job assignment for unit %d on tile (%d,%d) for district ID %d", unit->Body.ID, target_x, target_y, district_id);
+				pop_up_in_game_error (ss);
 				return false;
+			}
+
+			snprintf (ss, sizeof ss, "Created new district job assignment for unit %d on tile (%d,%d) for district ID %d", unit->Body.ID, target_x, target_y, district_id);
+			pop_up_in_game_error (ss);
 
 			return handle_existing_district_assignment (unit, new_job);
 		}
@@ -2674,6 +2741,10 @@ ai_try_assign_district_job (Unit * unit)
 static void
 remove_district_assignments_for_civ (int civ_id)
 {
+	char ss[200];
+	//snprintf (ss, sizeof ss, "Removing district job assignments for civ %d", civ_id);
+	//pop_up_in_game_error (ss);
+
 	if (is->district_job_assignments.len == 0)
 		return;
 
@@ -2689,6 +2760,9 @@ remove_district_assignments_for_civ (int civ_id)
 		if (job != NULL)
 			finalize_district_job_assignment (unit_id, job, false, true);
 	}
+
+	//snprintf (ss, sizeof ss, "Removed district job assignments for civ %d", civ_id);
+	//pop_up_in_game_error (ss);
 }
 
 int __fastcall patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum ImprovementTypeWonderFeatures flag, City * only_in_city);
@@ -3002,7 +3076,7 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	if ((tile == NULL) || (tile == p_null_tile) || ! is->current_config.enable_districts)
 		return;
 
-	itable_remove (&is->district_tile_map, (int)tile);
+	//itable_remove (&is->district_tile_map, (int)tile);
 
 	if (district_id >= 0)
 		remove_dependent_buildings_for_district (district_id, center_x, center_y);
@@ -6325,8 +6399,8 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 	} else if (is->current_config.enable_districts && is_district_command (unit_command_value)) {
 
 		char ss[200];
-		sprintf (ss, "patch_Unit_can_perform_command: unit_command_value = %d", unit_command_value);
-		pop_up_in_game_error (ss);
+		//sprintf (ss, "patch_Unit_can_perform_command: unit_command_value = %d", unit_command_value);
+		//pop_up_in_game_error (ss);
 
 		// TODO: check if unit is worker and district can be built on tile
 		return true;
@@ -6454,8 +6528,15 @@ issue_district_worker_command (Unit * unit, int command)
 	//pop_up_in_game_error (ss);
 
 	// Set tile -> DistrictID mapping in `district_tile_map`
-	if ((tile != NULL) && (tile != p_null_tile) && (district_id >= 0))
-		create_district_job_assignment (unit, tile, unit->Body.X, unit->Body.Y, district_id, NULL);
+	if (tile != NULL && tile != p_null_tile) {
+
+		//snprintf (ss, sizeof ss, "C3X: Setting district_tile_map entry for tile");
+		//pop_up_in_game_error (ss);
+
+		if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
+			itable_insert (&is->district_tile_map, (int)tile, district_id);
+		}
+	}
 
 	int pseudo_command = UCV_Build_Mine;
 	Main_Screen_Form_issue_command (p_main_screen_form, __, pseudo_command, unit);
@@ -8761,8 +8842,8 @@ patch_Unit_ai_move_terraformer (Unit * this)
 		return;
 	}
 
-	if (ai_try_assign_district_job (this))
-		return;
+	//if (ai_try_assign_district_job (this))
+	//	return;
 
 	Unit_ai_move_terraformer (this);
 }
@@ -10370,7 +10451,7 @@ patch_Leader_begin_unit_turns (Leader * this)
 	remove_unit_id_entries_owned_by (&is->extra_defensive_bombards, this->ID);
 	remove_unit_id_entries_owned_by (&is->airdrops_this_turn      , this->ID);
 	remove_unit_id_entries_owned_by (&is->unit_transport_ties     , this->ID);
-	remove_district_assignments_for_civ (this->ID);
+	//remove_district_assignments_for_civ (this->ID);
 
 	clear_memo ();
 	if (is->current_config.delete_off_map_ai_units &&
@@ -13130,6 +13211,7 @@ patch_Leader_has_tech_to_stop_disease (Leader * this, int edx, int id)
 		return Leader_has_tech_with_flag (this, __, ATF_Disabled_Deseases_From_Flood_Plains);
 }
 
+/*
 void __fastcall
 patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
 {
@@ -13149,6 +13231,16 @@ patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
 		else if (this->Body.UnitState != UnitState_Build_Mines)
 			finalize_district_job_assignment (this->Body.ID, job, false, true);
 	}
+	if (is->lmify_tile_after_working_simple_job != NULL)
+		is->lmify_tile_after_working_simple_job->vtable->m31_set_landmark (is->lmify_tile_after_working_simple_job, __, true);
+}
+*/
+
+void __fastcall
+patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
+{
+	is->lmify_tile_after_working_simple_job = NULL;
+	Unit_work_simple_job (this, __, job_id);
 	if (is->lmify_tile_after_working_simple_job != NULL)
 		is->lmify_tile_after_working_simple_job->vtable->m31_set_landmark (is->lmify_tile_after_working_simple_job, __, true);
 }
@@ -14348,6 +14440,9 @@ init_district_images ()
 				int x = 128 * col,
 					y = 64 * era_i;
 				Sprite_slice_pcx (&is->district_img_sets[dc].imgs[era_i][col], __, &pcx, x, y, 128, 64, 1, 1);
+
+				//snprintf (ss, sizeof ss, "init_district_images: loaded district %d era %d column %d", dc, era_i, col);
+				//pop_up_in_game_error (ss);
 			}
 		}
 
@@ -14356,8 +14451,8 @@ init_district_images ()
 	is->dc_img_state = IS_OK;
 	pcx.vtable->destruct (&pcx, __, 0);
 
-	//snprintf (ss, sizeof ss, "init_district_images: finished loading district images");
-	//pop_up_in_game_error (ss);
+	snprintf (ss, sizeof ss, "init_district_images: finished loading district images, img state %d", is->dc_img_state);
+	pop_up_in_game_error (ss);
 
 }
 
@@ -14403,6 +14498,8 @@ void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
 	char ss[200];
+	//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: called for tile (%d,%d) at pixel (%d,%d)", tile_x, tile_y, pixel_x, pixel_y);
+	//pop_up_in_game_error (ss);
 
     // If districts enabled and this tile is mapped to a district, draw only the district (suppress base mine drawing)
     if (is->current_config.enable_districts) {
@@ -14411,7 +14508,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
             int district_id;
             if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
 
-				//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: tile (%d,%d) has district id %d", tile_x, tile_y, district_id);
+				//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: tile (%d,%d) has district %d, img_state %d, is_completed %d", tile_x, tile_y, district_id, is->dc_img_state, district_is_complete(tile, district_id));
 				//pop_up_in_game_error (ss);
 
                 if (is->dc_img_state == IS_UNINITED) {
@@ -14425,8 +14522,11 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 
 					bool completed = district_is_complete(tile, district_id);
 
-					if (! completed)
+					if (! completed) {
+						//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district %d is not complete", district_id);
+						//pop_up_in_game_error (ss);
 						return;
+					}
 
 					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: drawing district %d on tile (%d,%d)", district_id, tile_x, tile_y);
 					//pop_up_in_game_error (ss);
@@ -14443,7 +14543,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 						//pop_up_in_game_error (ss);
                     }
 
-					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district %d has %d image columns", district_id, total_cols);
+					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district %d", district_id);
 					//pop_up_in_game_error (ss);
 
                     Sprite * district_sprite;
@@ -14464,7 +14564,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 							else if (has_library) col = 1;
 							break;
 						}
-					case UCV_Build_Neighborhood:
+						case UCV_Build_Neighborhood:
 						{
 							// Neighborhood is a special case, as it has no dependent buildings, but also 4 images, each slightly different visually (for variety).
 							// We use a deterministic pseudo-random index from the tile coordinates so the same tile always renders with the same variant using
@@ -14480,6 +14580,9 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 						}
 					}
 
+					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district %d era %d culture %d column %d", district_id, era, culture, col);
+					//pop_up_in_game_error (ss);
+
 					district_sprite = &is->district_img_sets[district_id].imgs[era][col];
                     patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 
@@ -14489,8 +14592,9 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                     return; // do not draw vanilla mine when district present
                 }
 				else {
-					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district images not ready, state %d", is->dc_img_state);
-					//pop_up_in_game_error (ss);
+					snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district images not ready, state %d", is->dc_img_state);
+					pop_up_in_game_error (ss);
+					return;
 				}
             }
         }
