@@ -1967,7 +1967,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 	top_lcn->next = new_lcn;
 }
 
-bool
+static bool
 tile_coords_from_ptr (Map * map, Tile * tile, int * out_x, int * out_y)
 {
 	if ((tile == NULL) || (tile == p_null_tile) || (map == NULL))
@@ -2104,7 +2104,58 @@ tile_index_to_coords (Map * map, int index, int * out_x, int * out_y)
 		*out_x = *out_y = -1;
 }
 
-void
+bool 
+district_is_complete(Tile * tile, int district_id)
+{
+	if (! is->current_config.enable_districts || (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+		return false;
+
+	unsigned overlays = Tile_m42_Get_Overlays(tile, __, 1);
+	return overlays >> 2 & 1 | (overlays >> 10) << 8;
+}
+
+static void
+mark_city_needs_district (City * city, int district_id)
+{
+	if (! is->current_config.enable_districts ||
+	    (city == NULL) ||
+	    (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+		return;
+
+	if ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)
+		return;
+
+	int key = (int)(long)city;
+	int mask = itable_look_up_or (&is->city_pending_district_requests, key, 0);
+	mask |= (1 << district_id);
+	itable_insert (&is->city_pending_district_requests, key, mask);
+}
+
+
+static void
+clear_district_job_assignments (bool requeue_requests)
+{
+	if (is->district_job_assignments.len == 0)
+		return;
+
+	clear_memo ();
+	FOR_TABLE_ENTRIES (tei, &is->district_job_assignments) {
+		struct district_job_assignment * job = (struct district_job_assignment *)tei.value;
+		if (job != NULL) {
+			if ((job->tile != NULL) && ! district_is_complete (job->tile, job->district_id))
+				itable_remove (&is->district_tile_map, (int)(long)job->tile);
+			if (requeue_requests && (job->city != NULL))
+				mark_city_needs_district (job->city, job->district_id);
+			free (job);
+		}
+		memoize (tei.key);
+	}
+	for (int n = 0; n < is->memo_len; n++)
+		itable_remove (&is->district_job_assignments, is->memo[n]);
+	table_deinit (&is->district_job_assignments);
+}
+
+static void
 reset_district_state (bool reset_tile_map)
 {
 	table_deinit (&is->district_tech_prereqs);
@@ -2119,6 +2170,109 @@ reset_district_state (bool reset_tile_map)
 		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].dependent_building_ids); j++)
 			is->district_infos[i].dependent_building_ids[j] = -1;
 	}
+
+	clear_district_job_assignments (false);
+	table_deinit (&is->city_pending_district_requests);
+}
+
+static void
+clear_city_district_request (City * city, int district_id)
+{
+	if (! is->current_config.enable_districts ||
+	    (city == NULL) ||
+	    (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+		return;
+
+	int key = (int)(long)city;
+	int mask;
+	if (itable_look_up (&is->city_pending_district_requests, key, &mask)) {
+		mask &= ~(1 << district_id);
+		if (mask != 0)
+			itable_insert (&is->city_pending_district_requests, key, mask);
+		else
+			itable_remove (&is->city_pending_district_requests, key);
+	}
+}
+
+static bool
+district_assignment_exists_for_city (City * city, int district_id)
+{
+	if (city == NULL)
+		return false;
+	FOR_TABLE_ENTRIES (tei, &is->district_job_assignments) {
+		struct district_job_assignment * job = (struct district_job_assignment *)tei.value;
+		if ((job != NULL) && (job->city == city) && (job->district_id == district_id))
+			return true;
+	}
+	return false;
+}
+
+static bool
+district_assignment_exists_for_tile (Tile * tile)
+{
+	if (tile == NULL)
+		return false;
+	FOR_TABLE_ENTRIES (tei, &is->district_job_assignments) {
+		struct district_job_assignment * job = (struct district_job_assignment *)tei.value;
+		if ((job != NULL) && (job->tile == tile))
+			return true;
+	}
+	return false;
+}
+
+static struct district_job_assignment *
+get_district_job_assignment (Unit * unit)
+{
+	if (unit == NULL)
+		return NULL;
+	return (struct district_job_assignment *)(long)itable_look_up_or (&is->district_job_assignments, unit->Body.ID, 0);
+}
+
+static void
+finalize_district_job_assignment (int unit_id, struct district_job_assignment * job, bool success, bool requeue_request)
+{
+	if (job == NULL)
+		return;
+
+	if (success) {
+		if (job->city != NULL)
+			clear_city_district_request (job->city, job->district_id);
+	} else {
+		if ((job->tile != NULL) && ! district_is_complete (job->tile, job->district_id))
+			itable_remove (&is->district_tile_map, (int)(long)job->tile);
+		if (requeue_request && (job->city != NULL))
+			mark_city_needs_district (job->city, job->district_id);
+	}
+
+	free (job);
+	itable_remove (&is->district_job_assignments, unit_id);
+}
+
+static struct district_job_assignment *
+create_district_job_assignment (Unit * unit, Tile * tile, int tile_x, int tile_y, int district_id, City * city)
+{
+	if ((unit == NULL) || (tile == NULL) ||
+	    (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+		return NULL;
+
+	struct district_job_assignment * existing = get_district_job_assignment (unit);
+	if (existing != NULL)
+		finalize_district_job_assignment (unit->Body.ID, existing, false, true);
+
+	struct district_job_assignment * job = malloc (sizeof *job);
+	if (job == NULL)
+		return NULL;
+
+	job->tile = tile;
+	job->city = city;
+	job->tile_x = tile_x;
+	job->tile_y = tile_y;
+	job->district_id = district_id;
+	job->job_started = false;
+
+		itable_insert (&is->district_job_assignments, unit->Body.ID, (int)(long)job);
+		itable_insert (&is->district_tile_map, (int)(long)tile, district_id);
+		return job;
 }
 
 Tile *
@@ -2326,18 +2480,220 @@ tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
 	}
 }
 
+static Tile *
+find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
+{
+	if ((city == NULL) || (out_x == NULL) || (out_y == NULL))
+		return NULL;
+
+	Tile * best_tile = NULL;
+	int best_score = INT_MIN;
+	int city_x = city->Body.X;
+	int city_y = city->Body.Y;
+
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city_x, city_y) {
+		Tile * tile = tai.tile;
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+		if (tile->CityID >= 0)
+			continue;
+		if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID)
+			continue;
+		if (tile->vtable->m35_Check_Is_Water (tile))
+			continue;
+		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+		if ((base_type == SQ_Mountains) || (base_type == SQ_Volcano))
+			continue;
+		int mapped_id;
+		if (itable_look_up (&is->district_tile_map, (int)(long)tile, &mapped_id) && (mapped_id != district_id))
+			continue;
+		if (district_assignment_exists_for_tile (tile))
+			continue;
+
+		int tx, ty;
+		tai_get_coords (&tai, &tx, &ty);
+		int dx = int_abs (tx - city_x);
+		int dy = int_abs (ty - city_y);
+		int score = - (dx + dy);
+
+		if (score > best_score) {
+			best_score = score;
+			best_tile = tile;
+			*out_x = tx;
+			*out_y = ty;
+		}
+	}
+
+	return best_tile;
+}
+
+int __fastcall patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp);
+
+static bool
+handle_existing_district_assignment (Unit * unit, struct district_job_assignment * job)
+{
+	if ((unit == NULL) || (job == NULL))
+		return false;
+
+	int unit_id = unit->Body.ID;
+	int target_x = job->tile_x;
+	int target_y = job->tile_y;
+	Tile * tile = job->tile;
+	if ((tile == NULL) || (tile == p_null_tile)) {
+		tile = tile_at (target_x, target_y);
+		if ((tile == NULL) || (tile == p_null_tile)) {
+			finalize_district_job_assignment (unit_id, job, false, true);
+			return false;
+		}
+		job->tile = tile;
+	}
+
+	itable_insert (&is->district_tile_map, (int)(long)tile, job->district_id);
+
+	if (district_is_complete (tile, job->district_id)) {
+		finalize_district_job_assignment (unit_id, job, true, false);
+		return false;
+	}
+
+	if ((unit->Body.X == target_x) && (unit->Body.Y == target_y)) {
+		if (Leader_can_do_worker_job (&leaders[unit->Body.CivID], __, WJ_Build_Mines, target_x, target_y, 1)) {
+			if (unit->Body.UnitState != UnitState_Build_Mines) {
+				Unit_set_escortee (unit, __, -1);
+				Unit_set_state (unit, __, UnitState_Build_Mines);
+				unit->vtable->update_while_active (unit);
+			}
+			job->job_started = true;
+			return true;
+		} else {
+			finalize_district_job_assignment (unit_id, job, false, true);
+			return false;
+		}
+	}
+
+	if ((unit->Body.UnitState == UnitState_Go_To) &&
+	    (unit->Body.path_dest_x == target_x) &&
+	    (unit->Body.path_dest_y == target_y)) {
+		unit->vtable->work (unit);
+		return true;
+	}
+
+	int dist_in_mp;
+	int path_result = patch_Trade_Net_set_unit_path (is->trade_net, __,
+		unit->Body.X, unit->Body.Y, target_x, target_y, unit, unit->Body.CivID, 1, &dist_in_mp);
+	if (path_result > 0) {
+		Unit_set_escortee (unit, __, -1);
+		Unit_set_state (unit, __, UnitState_Go_To);
+		unit->Body.path_dest_x = target_x;
+		unit->Body.path_dest_y = target_y;
+		unit->vtable->work (unit);
+		return true;
+	}
+
+	finalize_district_job_assignment (unit_id, job, false, true);
+	return false;
+}
+
+bool
+city_has_required_district (City * city, int district_id)
+{
+	if ((city == NULL) || (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+		return false;
+
+	int civ_id = city->Body.CivID;
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
+		Tile * candidate = tai.tile;
+		if (candidate == p_null_tile)
+			continue;
+		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id)
+			continue;
+
+		int mapped_id;
+		if (itable_look_up (&is->district_tile_map, (int)candidate, &mapped_id) &&
+		    (mapped_id == district_id) &&
+		    district_is_complete (candidate, district_id)) {
+			clear_city_district_request (city, district_id);
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool
+ai_try_assign_district_job (Unit * unit)
+{
+	if (! is->current_config.enable_districts || (unit == NULL))
+		return false;
+
+	int civ_id = unit->Body.CivID;
+	if (*p_human_player_bits & (1 << civ_id))
+		return false;
+	if (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Worker_Actions == 0)
+		return false;
+	if (unit->Body.Container_Unit >= 0)
+		return false;
+
+	struct district_job_assignment * job = get_district_job_assignment (unit);
+	if (job != NULL)
+		return handle_existing_district_assignment (unit, job);
+
+	if (is->city_pending_district_requests.len == 0)
+		return false;
+
+	FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests) {
+		City * city = (City *)(long)tei.key;
+		if ((city == NULL) || (city->Body.CivID != civ_id))
+			continue;
+		int mask = tei.value;
+		for (int district_id = 0; district_id < COUNT_DISTRICT_TYPES; district_id++) {
+			if ((mask & (1 << district_id)) == 0)
+				continue;
+			if (district_assignment_exists_for_city (city, district_id))
+				continue;
+			if (city_has_required_district (city, district_id))
+				continue;
+			int prereq = is->district_infos[district_id].advance_prereq_id;
+			if ((prereq >= 0) && ! Leader_has_tech (&leaders[civ_id], __, prereq))
+				continue;
+
+			int target_x, target_y;
+			Tile * tile = find_tile_for_district (city, district_id, &target_x, &target_y);
+			if (tile == NULL)
+				continue;
+
+			struct district_job_assignment * new_job = create_district_job_assignment (unit, tile, target_x, target_y, district_id, city);
+			if (new_job == NULL)
+				return false;
+
+			return handle_existing_district_assignment (unit, new_job);
+		}
+	}
+
+	return false;
+}
+
+static void
+remove_district_assignments_for_civ (int civ_id)
+{
+	if (is->district_job_assignments.len == 0)
+		return;
+
+	clear_memo ();
+	FOR_TABLE_ENTRIES (tei, &is->district_job_assignments) {
+		Unit * unit = get_unit_ptr (tei.key);
+		if (unit == NULL)
+			memoize (tei.key);
+	}
+	for (int i = 0; i < is->memo_len; i++) {
+		int unit_id = is->memo[i];
+		struct district_job_assignment * job = (struct district_job_assignment *)(long)itable_look_up_or (&is->district_job_assignments, unit_id, 0);
+		if (job != NULL)
+			finalize_district_job_assignment (unit_id, job, false, true);
+	}
+}
+
 int __fastcall patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum ImprovementTypeWonderFeatures flag, City * only_in_city);
 int __fastcall patch_Leader_count_wonders_with_small_flag (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null);
 
-bool 
-district_is_complete(Tile * tile, int district_id)
-{
-	if (! is->current_config.enable_districts || (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
-		return false;
-
-	unsigned overlays = Tile_m42_Get_Overlays(tile, __, 1);
-	return overlays >> 2 & 1 | (overlays >> 10) << 8;
-}
 
 void __fastcall
 patch_Main_Screen_Form_show_map_message (Main_Screen_Form * this, int edx, int tile_x, int tile_y, char * text_key, bool pause)
@@ -2398,29 +2754,6 @@ patch_City_has_improvement (City * this, int edx, int improv_id, bool include_au
 	}
 
 	return tr;
-}
-
-bool
-city_has_required_district (City * city, int district_id)
-{
-	if ((city == NULL) || (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
-		return false;
-
-	int civ_id = city->Body.CivID;
-	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
-		Tile * candidate = tai.tile;
-		if (candidate == p_null_tile)
-			continue;
-		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id)
-			continue;
-
-		int mapped_id;
-		if (itable_look_up (&is->district_tile_map, (int)candidate, &mapped_id) &&
-		    (mapped_id == district_id) &&
-		    district_is_complete (candidate, district_id))
-			return true;
-	}
-	return false;
 }
 
 bool
@@ -2659,11 +2992,12 @@ remove_dependent_buildings_for_district (int district_id, int center_x, int cent
 			if (building_id >= 0)
 				remove_building_if_no_district (city, district_id, building_id);
 		}
+		mark_city_needs_district (city, district_id);
 	}
 }
 
 static void
-handle_district_removed (Tile * tile, int district_id, int center_x, int center_y)
+handle_district_removed (Tile * tile, int district_id, int center_x, int center_y, bool leave_ruins)
 {
 	if ((tile == NULL) || (tile == p_null_tile) || ! is->current_config.enable_districts)
 		return;
@@ -2673,12 +3007,12 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	if (district_id >= 0)
 		remove_dependent_buildings_for_district (district_id, center_x, center_y);
 
-	if (tile->vtable->m60_Set_Ruins != NULL)
+	if (leave_ruins && (tile->vtable->m60_Set_Ruins != NULL))
 		tile->vtable->m60_Set_Ruins (tile, __, 1);
 }
 
 static void
-handle_district_destroyed_by_attack (Tile * tile, int tile_x, int tile_y)
+handle_district_destroyed_by_attack (Tile * tile, int tile_x, int tile_y, bool leave_ruins)
 {
 	if (! is->current_config.enable_districts)
 		return;
@@ -2688,7 +3022,7 @@ handle_district_destroyed_by_attack (Tile * tile, int tile_x, int tile_y)
 
 	int district_id;
 	if (itable_look_up (&is->district_tile_map, (int)tile, &district_id))
-		handle_district_removed (tile, district_id, tile_x, tile_y);
+		handle_district_removed (tile, district_id, tile_x, tile_y, leave_ruins);
 }
 
 void __fastcall
@@ -2714,7 +3048,7 @@ patch_Tile_impl_m51_Unset_Tile_Flags (Tile * this, int edx, int param_1, unsigne
 	Tile_impl_m51_Unset_Tile_Flags (this, __, param_1, param_2, param_3, param_4);
 
 	if (removing_district)
-		handle_district_removed (this, district_id, have_coords ? tile_x : -1, have_coords ? tile_y : -1);
+		handle_district_removed (this, district_id, have_coords ? tile_x : -1, have_coords ? tile_y : -1, false);
 }
 
 bool
@@ -5193,7 +5527,7 @@ patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 	is->bombarding_unit = NULL;
 
 	if (had_district_before)
-		handle_district_destroyed_by_attack (target_tile, tile_x, tile_y);
+		handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, false);
 }
 
 void __fastcall
@@ -6120,15 +6454,8 @@ issue_district_worker_command (Unit * unit, int command)
 	//pop_up_in_game_error (ss);
 
 	// Set tile -> DistrictID mapping in `district_tile_map`
-	if (tile != NULL && tile != p_null_tile) {
-
-		//snprintf (ss, sizeof ss, "C3X: Setting district_tile_map entry for tile");
-		//pop_up_in_game_error (ss);
-
-		if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
-			itable_insert (&is->district_tile_map, (int)tile, district_id);
-		}
-	}
+	if ((tile != NULL) && (tile != p_null_tile) && (district_id >= 0))
+		create_district_job_assignment (unit, tile, unit->Body.X, unit->Body.Y, district_id, NULL);
 
 	int pseudo_command = UCV_Build_Mine;
 	Main_Screen_Form_issue_command (p_main_screen_form, __, pseudo_command, unit);
@@ -7688,6 +8015,7 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 	//pop_up_in_game_error(ss);
 
 	// No qualifying district found in city radius
+	mark_city_needs_district (this, required_district_id);
 	return false;
 }
 
@@ -8432,6 +8760,9 @@ patch_Unit_ai_move_terraformer (Unit * this)
 		ai_move_material_unit (this);
 		return;
 	}
+
+	if (ai_try_assign_district_job (this))
+		return;
 
 	Unit_ai_move_terraformer (this);
 }
@@ -10039,6 +10370,7 @@ patch_Leader_begin_unit_turns (Leader * this)
 	remove_unit_id_entries_owned_by (&is->extra_defensive_bombards, this->ID);
 	remove_unit_id_entries_owned_by (&is->airdrops_this_turn      , this->ID);
 	remove_unit_id_entries_owned_by (&is->unit_transport_ties     , this->ID);
+	remove_district_assignments_for_civ (this->ID);
 
 	clear_memo ();
 	if (is->current_config.delete_off_map_ai_units &&
@@ -11232,7 +11564,7 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 	is->attacking_tile_x = is->attacking_tile_y = -1;
 
 	if (bombarding && had_district_before)
-		handle_district_destroyed_by_attack (target_tile, tile_x, tile_y);
+		handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, false);
 }
 
 void __fastcall
@@ -12802,7 +13134,21 @@ void __fastcall
 patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
 {
 	is->lmify_tile_after_working_simple_job = NULL;
+	bool track_district_job = is->current_config.enable_districts && (job_id == WJ_Build_Mines);
+	struct district_job_assignment * job = track_district_job ? get_district_job_assignment (this) : NULL;
+	if ((job != NULL) && (job->tile == NULL))
+		job->tile = tile_at (this->Body.X, this->Body.Y);
 	Unit_work_simple_job (this, __, job_id);
+	if (job != NULL) {
+		Tile * tile = job->tile;
+		if ((tile == NULL) || (tile == p_null_tile))
+			tile = job->tile = tile_at (this->Body.X, this->Body.Y);
+		bool complete = (tile != NULL) && district_is_complete (tile, job->district_id);
+		if (complete)
+			finalize_district_job_assignment (this->Body.ID, job, true, false);
+		else if (this->Body.UnitState != UnitState_Build_Mines)
+			finalize_district_job_assignment (this->Body.ID, job, false, true);
+	}
 	if (is->lmify_tile_after_working_simple_job != NULL)
 		is->lmify_tile_after_working_simple_job->vtable->m31_set_landmark (is->lmify_tile_after_working_simple_job, __, true);
 }
