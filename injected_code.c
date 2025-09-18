@@ -2112,7 +2112,27 @@ district_is_complete(Tile * tile, int district_id)
 	    (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
 		return false;
 
-	return tile->vtable->m18_Check_Mines (tile, __, 0) != 0;
+	bool completed = tile->vtable->m18_Check_Mines (tile, __, 0) != 0;
+
+	if (! completed) {
+		int mapped_id;
+		if (itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) &&
+		    (mapped_id == district_id)) {
+			bool worker_present = false;
+			FOR_UNITS_ON (uti, tile) {
+				Unit * unit = uti.unit;
+				if ((unit != NULL) &&
+				    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Worker_Actions != 0)) {
+					worker_present = true;
+					break;
+				}
+			}
+			if (! worker_present)
+				itable_remove (&is->district_tile_map, (int)tile);
+		}
+	}
+
+	return completed;
 }
 
 static void
