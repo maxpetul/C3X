@@ -2104,6 +2104,211 @@ tile_index_to_coords (Map * map, int index, int * out_x, int * out_y)
 		*out_x = *out_y = -1;
 }
 
+Tile *
+tile_at_index (Map * map, int i)
+{
+	int x, y;
+	tile_index_to_coords (map, i, &x, &y);
+	return tile_at (x, y);
+}
+
+void
+get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y)
+{
+	int dx, dy;
+	neighbor_index_to_diff (neighbor_index, &dx, &dy);
+	*out_x = x + dx;
+	*out_y = y + dy;
+	wrap_tile_coords (map, out_x, out_y);
+}
+
+City *
+get_city_ptr (int id)
+{
+	if ((p_cities->Cities != NULL) &&
+	    (id >= 0) && (id <= p_cities->LastIndex)) {
+		City_Body * body = p_cities->Cities[id].City;
+		if (body != NULL) {
+			City * city = (City *)((char *)body - offsetof (City, Body));
+			if (city != NULL)
+				return city;
+		}
+	}
+	return NULL;
+}
+
+Tile * __stdcall
+tile_at_city_or_null (City * city_or_null)
+{
+	if (city_or_null)
+		return tile_at (city_or_null->Body.X, city_or_null->Body.Y);
+	else
+		return p_null_tile;
+}
+
+Unit *
+get_unit_ptr (int id)
+{
+	if ((p_units->Units != NULL) &&
+	    (id >= 0) && (id <= p_units->LastIndex)) {
+		Unit_Body * body = p_units->Units[id].Unit;
+		if (body != NULL) {
+			Unit * unit = (Unit *)((char *)body - offsetof (Unit, Body));
+			if (unit != NULL)
+				return unit;
+		}
+	}
+	return NULL;
+}
+
+struct unit_tile_iter {
+	int id;
+	int item_index;
+	Unit * unit;
+};
+
+void
+uti_next (struct unit_tile_iter * uti)
+{
+	if (((p_tile_units->Base.Items == NULL) || (uti->item_index < 0)) ||
+	    (uti->item_index > p_tile_units->Base.LastIndex)) {
+		uti->item_index = -1;
+		uti->id = p_tile_units->DefaultValue;
+	} else {
+		Base_List_Item * item = &p_tile_units->Base.Items[uti->item_index];
+		uti->item_index = item->V;
+		uti->id = (int)item->Object;
+	}
+	uti->unit = get_unit_ptr (uti->id);
+}
+
+struct unit_tile_iter
+uti_init (Tile * tile)
+{
+	struct unit_tile_iter tr;
+	int tile_unit_id = tile->vtable->m40_get_TileUnit_ID (tile);
+	tr.id = TileUnits_TileUnitID_to_UnitID (p_tile_units, __, tile_unit_id, &tr.item_index);
+	tr.unit = get_unit_ptr (tr.id);
+	return tr;
+}
+
+#define FOR_UNITS_ON(uti_name, tile) for (struct unit_tile_iter uti_name = uti_init (tile); uti_name.id != -1; uti_next (&uti_name))
+
+struct citizen_iter {
+	int index;
+	Citizens * list;
+	Citizen_Base * ctzn;
+};
+
+void
+ci_next (struct citizen_iter * ci)
+{
+	while (1) {
+		ci->index++;
+		if (ci->index > ci->list->LastIndex) {
+			ci->ctzn = NULL;
+			break;
+		} else {
+			Citizen_Body * body = ci->list->Items[ci->index].Body;
+			if ((body != NULL) && ((int)body != offsetof (Citizen_Base, Body))) {
+				ci->ctzn = (Citizen_Base *)((int)body - offsetof (Citizen_Base, Body));
+				break;
+			}
+		}
+	}
+}
+
+struct citizen_iter
+ci_init (City * city)
+{
+	struct citizen_iter tr;
+	tr.index = -1;
+	tr.list = &city->Body.Citizens;
+	tr.ctzn = NULL;
+	if (city->Body.Citizens.Items != NULL)
+		ci_next (&tr);
+	return tr;
+}
+
+#define FOR_CITIZENS_IN(ci_name, city) for (struct citizen_iter ci_name = ci_init (city); (ci_name.list->Items != NULL) && (ci_name.index <= ci.list->LastIndex); ci_next (&ci_name))
+
+struct city_of_iter {
+	int city_id;
+	int civ_id;
+	City * city;
+};
+
+void
+coi_next (struct city_of_iter * coi)
+{
+	coi->city_id++;
+	while (coi->city_id <= p_cities->LastIndex) {
+		City_Body * body = p_cities->Cities[coi->city_id].City;
+		if ((body != NULL) && ((int)body != offsetof (City, Body)) && (body->CivID == coi->civ_id)) {
+			coi->city = (City *)((char *)body - offsetof (City, Body));
+			break;
+		}
+		coi->city_id++;
+	}
+}
+
+struct city_of_iter
+coi_init (int civ_id)
+{
+	struct city_of_iter tr = { .city_id = -1, .civ_id = civ_id, .city = NULL };
+	if (p_cities->Cities != NULL)
+		coi_next (&tr);
+	else
+		tr.city_id = p_cities->LastIndex + 1;
+	return tr;
+}
+
+#define FOR_CITIES_OF(coi_name, civ_id) for (struct city_of_iter coi_name = coi_init (civ_id); coi_name.city_id <= p_cities->LastIndex; coi_next (&coi_name))
+
+struct tiles_around_iter {
+	int center_x, center_y;
+	int n, num_tiles;
+	Tile * tile;
+};
+
+void
+tai_next (struct tiles_around_iter * tai)
+{
+	tai->tile = p_null_tile;
+	while ((tai->n < tai->num_tiles) && (tai->tile == p_null_tile)) {
+		tai->n += 1;
+		int tx, ty;
+		get_neighbor_coords (&p_bic_data->Map, tai->center_x, tai->center_y, tai->n, &tx, &ty);
+		if ((tx >= 0) && (tx < p_bic_data->Map.Width) && (ty >= 0) && (ty < p_bic_data->Map.Height))
+			tai->tile = tile_at (tx, ty);
+	}
+}
+
+struct tiles_around_iter
+tai_init (int num_tiles, int x, int y)
+{
+	struct tiles_around_iter tr;
+	tr.center_x = x;
+	tr.center_y = y;
+	tr.n = 0;
+	tr.num_tiles = num_tiles;
+	tr.tile = tile_at (x, y);
+	return tr;
+}
+
+#define FOR_TILES_AROUND(tai_name, _num_tiles, _x, _y) for (struct tiles_around_iter tai_name = tai_init (_num_tiles, _x, _y); (tai_name.n < tai_name.num_tiles); tai_next (&tai_name))
+
+void
+tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
+{
+	if (tai->tile != p_null_tile)
+		get_neighbor_coords (&p_bic_data->Map, tai->center_x, tai->center_y, tai->n, out_x, out_y);
+	else {
+		*out_x = -1;
+		*out_y = -1;
+	}
+}
+
 bool 
 district_is_complete(Tile * tile, int district_id)
 {
@@ -2331,211 +2536,6 @@ create_district_job_assignment (Unit * unit, Tile * tile, int tile_x, int tile_y
 	return job;
 }
 
-Tile *
-tile_at_index (Map * map, int i)
-{
-	int x, y;
-	tile_index_to_coords (map, i, &x, &y);
-	return tile_at (x, y);
-}
-
-void
-get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y)
-{
-	int dx, dy;
-	neighbor_index_to_diff (neighbor_index, &dx, &dy);
-	*out_x = x + dx;
-	*out_y = y + dy;
-	wrap_tile_coords (map, out_x, out_y);
-}
-
-City *
-get_city_ptr (int id)
-{
-	if ((p_cities->Cities != NULL) &&
-	    (id >= 0) && (id <= p_cities->LastIndex)) {
-		City_Body * body = p_cities->Cities[id].City;
-		if (body != NULL) {
-			City * city = (City *)((char *)body - offsetof (City, Body));
-			if (city != NULL)
-				return city;
-		}
-	}
-	return NULL;
-}
-
-Tile * __stdcall
-tile_at_city_or_null (City * city_or_null)
-{
-	if (city_or_null)
-		return tile_at (city_or_null->Body.X, city_or_null->Body.Y);
-	else
-		return p_null_tile;
-}
-
-Unit *
-get_unit_ptr (int id)
-{
-	if ((p_units->Units != NULL) &&
-	    (id >= 0) && (id <= p_units->LastIndex)) {
-		Unit_Body * body = p_units->Units[id].Unit;
-		if (body != NULL) {
-			Unit * unit = (Unit *)((char *)body - offsetof (Unit, Body));
-			if (unit != NULL)
-				return unit;
-		}
-	}
-	return NULL;
-}
-
-struct unit_tile_iter {
-	int id;
-	int item_index;
-	Unit * unit;
-};
-
-void
-uti_next (struct unit_tile_iter * uti)
-{
-	if (((p_tile_units->Base.Items == NULL) || (uti->item_index < 0)) ||
-	    (uti->item_index > p_tile_units->Base.LastIndex)) {
-		uti->item_index = -1;
-		uti->id = p_tile_units->DefaultValue;
-	} else {
-		Base_List_Item * item = &p_tile_units->Base.Items[uti->item_index];
-		uti->item_index = item->V;
-		uti->id = (int)item->Object;
-	}
-	uti->unit = get_unit_ptr (uti->id);
-}
-
-struct unit_tile_iter
-uti_init (Tile * tile)
-{
-	struct unit_tile_iter tr;
-	int tile_unit_id = tile->vtable->m40_get_TileUnit_ID (tile);
-	tr.id = TileUnits_TileUnitID_to_UnitID (p_tile_units, __, tile_unit_id, &tr.item_index);
-	tr.unit = get_unit_ptr (tr.id);
-	return tr;
-}
-
-#define FOR_UNITS_ON(uti_name, tile) for (struct unit_tile_iter uti_name = uti_init (tile); uti_name.id != -1; uti_next (&uti_name))
-
-struct citizen_iter {
-	int index;
-	Citizens * list;
-	Citizen_Base * ctzn;
-};
-
-void
-ci_next (struct citizen_iter * ci)
-{
-	while (1) {
-		ci->index++;
-		if (ci->index > ci->list->LastIndex) {
-			ci->ctzn = NULL;
-			break;
-		} else {
-			Citizen_Body * body = ci->list->Items[ci->index].Body;
-			if ((body != NULL) && ((int)body != offsetof (Citizen_Base, Body))) {
-				ci->ctzn = (Citizen_Base *)((int)body - offsetof (Citizen_Base, Body));
-				break;
-			}
-		}
-	}
-}
-
-struct citizen_iter
-ci_init (City * city)
-{
-	struct citizen_iter tr;
-	tr.index = -1;
-	tr.list = &city->Body.Citizens;
-	tr.ctzn = NULL;
-	if (city->Body.Citizens.Items != NULL)
-		ci_next (&tr);
-	return tr;
-}
-
-#define FOR_CITIZENS_IN(ci_name, city) for (struct citizen_iter ci_name = ci_init (city); (ci_name.list->Items != NULL) && (ci_name.index <= ci.list->LastIndex); ci_next (&ci_name))
-
-struct city_of_iter {
-	int city_id;
-	int civ_id;
-	City * city;
-};
-
-void
-coi_next (struct city_of_iter * coi)
-{
-	coi->city_id++;
-	while (coi->city_id <= p_cities->LastIndex) {
-		City_Body * body = p_cities->Cities[coi->city_id].City;
-		if ((body != NULL) && ((int)body != offsetof (City, Body)) && (body->CivID == coi->civ_id)) {
-			coi->city = (City *)((char *)body - offsetof (City, Body));
-			break;
-		}
-		coi->city_id++;
-	}
-}
-
-struct city_of_iter
-coi_init (int civ_id)
-{
-	struct city_of_iter tr = { .city_id = -1, .civ_id = civ_id, .city = NULL };
-	if (p_cities->Cities != NULL)
-		coi_next (&tr);
-	else
-		tr.city_id = p_cities->LastIndex + 1;
-	return tr;
-}
-
-#define FOR_CITIES_OF(coi_name, civ_id) for (struct city_of_iter coi_name = coi_init (civ_id); coi_name.city_id <= p_cities->LastIndex; coi_next (&coi_name))
-
-struct tiles_around_iter {
-	int center_x, center_y;
-	int n, num_tiles;
-	Tile * tile;
-};
-
-void
-tai_next (struct tiles_around_iter * tai)
-{
-	tai->tile = p_null_tile;
-	while ((tai->n < tai->num_tiles) && (tai->tile == p_null_tile)) {
-		tai->n += 1;
-		int tx, ty;
-		get_neighbor_coords (&p_bic_data->Map, tai->center_x, tai->center_y, tai->n, &tx, &ty);
-		if ((tx >= 0) && (tx < p_bic_data->Map.Width) && (ty >= 0) && (ty < p_bic_data->Map.Height))
-			tai->tile = tile_at (tx, ty);
-	}
-}
-
-struct tiles_around_iter
-tai_init (int num_tiles, int x, int y)
-{
-	struct tiles_around_iter tr;
-	tr.center_x = x;
-	tr.center_y = y;
-	tr.n = 0;
-	tr.num_tiles = num_tiles;
-	tr.tile = tile_at (x, y);
-	return tr;
-}
-
-#define FOR_TILES_AROUND(tai_name, _num_tiles, _x, _y) for (struct tiles_around_iter tai_name = tai_init (_num_tiles, _x, _y); (tai_name.n < tai_name.num_tiles); tai_next (&tai_name))
-
-void
-tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
-{
-	if (tai->tile != p_null_tile)
-		get_neighbor_coords (&p_bic_data->Map, tai->center_x, tai->center_y, tai->n, out_x, out_y);
-	else {
-		*out_x = -1;
-		*out_y = -1;
-	}
-}
-
 static Tile *
 find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 {
@@ -2543,10 +2543,15 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 		return NULL;
 
 	Tile * best_tile = NULL;
-	int best_score = INT_MIN;
+	bool is_neighborhood = (district_configs[district_id].command == UCV_Build_Neighborhood);
+	int best_priority = -1;
+	int best_ring_priority = -1;
+	int best_yield_sum = INT_MAX;
+	int best_distance = INT_MAX;
 	int city_x = city->Body.X;
 	int city_y = city->Body.Y;
 
+	// Evaluate each workable tile and choose the one that best matches the district preferences.
 	FOR_TILES_AROUND (tai, is->workable_tile_count, city_x, city_y) {
 		Tile * tile = tai.tile;
 		if ((tile == NULL) || (tile == p_null_tile))
@@ -2566,17 +2571,48 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 		if (district_assignment_exists_for_tile (tile))
 			continue;
 
+		// Score the candidate based on distance metrics and existing yields.
 		int tx, ty;
 		tai_get_coords (&tai, &tx, &ty);
 		int dx = int_abs (tx - city_x);
 		int dy = int_abs (ty - city_y);
-		int score = - (dx + dy);
+		int chebyshev = (dx > dy) ? dx : dy;
+		int distance = dx + dy;
+		int food = City_calc_tile_yield_at (city, __, YK_FOOD, tx, ty);
+		int shields = City_calc_tile_yield_at (city, __, YK_SHIELDS, tx, ty);
+		int commerce = City_calc_tile_yield_at (city, __, YK_COMMERCE, tx, ty);
+		int yield_sum = food + shields + commerce;
 
-		if (score > best_score) {
-			best_score = score;
-			best_tile = tile;
-			*out_x = tx;
-			*out_y = ty;
+		if (is_neighborhood) {
+			// Neighborhoods prefer tiles directly adjacent to the city center.
+			int priority = (chebyshev == 1) ? 1 : 0;
+			if ((priority > best_priority) ||
+			    ((priority == best_priority) && (yield_sum < best_yield_sum)) ||
+			    ((priority == best_priority) && (yield_sum == best_yield_sum) && (distance < best_distance))) {
+				best_priority = priority;
+				best_ring_priority = -1;
+				best_yield_sum = yield_sum;
+				best_distance = distance;
+				best_tile = tile;
+				*out_x = tx;
+				*out_y = ty;
+			}
+		} else {
+			// Other districts avoid the immediate ring and lean toward low-yield tiles just beyond it.
+			int adjacency_priority = (distance > 1) ? 1 : 0;
+			int ring_priority = (distance == 2) ? 1 : 0;
+			if ((adjacency_priority > best_priority) ||
+			    ((adjacency_priority == best_priority) && (ring_priority > best_ring_priority)) ||
+			    ((adjacency_priority == best_priority) && (ring_priority == best_ring_priority) && (yield_sum < best_yield_sum)) ||
+			    ((adjacency_priority == best_priority) && (ring_priority == best_ring_priority) && (yield_sum == best_yield_sum) && (distance < best_distance))) {
+				best_priority = adjacency_priority;
+				best_ring_priority = ring_priority;
+				best_yield_sum = yield_sum;
+				best_distance = distance;
+				best_tile = tile;
+				*out_x = tx;
+				*out_y = ty;
+			}
 		}
 	}
 
@@ -2690,6 +2726,50 @@ city_has_required_district (City * city, int district_id)
 		}
 	}
 	return false;
+}
+
+static int
+get_neighborhood_district_id (void)
+{
+	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++)
+		if (district_configs[i].command == UCV_Build_Neighborhood)
+			return i;
+	return -1;
+}
+
+static void
+ensure_neighborhood_request_for_city (City * city)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_neighborhood_districts ||
+	    (city == NULL))
+		return;
+
+	int civ_id = city->Body.CivID;
+	if (civ_id < 0)
+		return;
+	if (*p_human_player_bits & (1 << civ_id))
+		return;
+
+	int district_id = get_neighborhood_district_id ();
+	if (district_id < 0)
+		return;
+
+	int prereq = is->district_infos[district_id].advance_prereq_id;
+	if ((prereq >= 0) && ! Leader_has_tech (&leaders[civ_id], __, prereq))
+		return;
+
+	if (city_has_required_district (city, district_id))
+		return;
+	if (district_assignment_exists_for_city (city, district_id))
+		return;
+
+	int key = (int)(long)city;
+	int mask = itable_look_up_or (&is->city_pending_district_requests, key, 0);
+	if ((mask & (1 << district_id)) != 0)
+		return;
+
+	mark_city_needs_district (city, district_id);
 }
 
 static bool
@@ -2933,7 +3013,11 @@ city_is_at_neighborhood_cap (City * city)
 	if (cap < 0)
 		return false;
 
-	return city->Body.Population.Size >= cap;
+	if (city->Body.Population.Size < cap)
+		return false;
+
+	ensure_neighborhood_request_for_city (city);
+	return true;
 }
 
 void __fastcall
@@ -3018,6 +3102,8 @@ patch_City_update_growth (City * this)
 	if (! blocked_growth)
 		return;
 
+	ensure_neighborhood_request_for_city (this);
+
 	// Restore visible food income so the interface still shows actual yields.
 	this->Body.FoodIncome = orig_income;
 
@@ -3038,11 +3124,15 @@ patch_City_update_growth (City * this)
 	if (is_online_game ()) return;
 	if (((byte)(*p_current_turn_no) & 0x1f) != 0) return;
 
-	char const * city_name = this->Body.CityName;
-	if ((city_name == NULL) || (*city_name == '\0'))
+	char city_name_buf[sizeof this->Body.CityName + 1];
+	memcpy (city_name_buf, this->Body.CityName, sizeof this->Body.CityName);
+	city_name_buf[sizeof this->Body.CityName] = '\0';
+
+	char const * city_name = city_name_buf;
+	if (*city_name == '\0')
 		city_name = "This city";
 
-	char msg[128];
+	static char msg[128];
 	snprintf (msg, sizeof msg, "%s needs a Neighborhood to grow.", city_name);
 	msg[(sizeof msg) - 1] = '\0';
 	show_map_specific_text (this->Body.X, this->Body.Y, msg, true);
@@ -7583,20 +7673,41 @@ patch_Main_Screen_Form_handle_key_up (Main_Screen_Form * this, int edx, int virt
 char __fastcall
 patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing)
 {
-	if ((p_main_screen_form->Player_CivID != this->ID) || (! is->current_config.skip_repeated_tile_improv_replacement_asks))
-		return Leader_can_do_worker_job (this, __, job, tile_x, tile_y, ask_if_replacing);
+	char tr;
+	bool skip_replacement_logic =
+		(p_main_screen_form->Player_CivID == this->ID) && is->current_config.skip_repeated_tile_improv_replacement_asks;
+
+	if (! skip_replacement_logic)
+		tr = Leader_can_do_worker_job (this, __, job, tile_x, tile_y, ask_if_replacing);
 	else if (is->have_job_and_loc_to_skip &&
 		 (is->to_skip.job == job) && (is->to_skip.tile_x == tile_x) && (is->to_skip.tile_y == tile_y))
-		return Leader_can_do_worker_job (this, __, job, tile_x, tile_y, 0);
+		tr = Leader_can_do_worker_job (this, __, job, tile_x, tile_y, 0);
 	else {
 		is->show_popup_was_called = 0;
-		int tr = Leader_can_do_worker_job (this, __, job, tile_x, tile_y, ask_if_replacing);
-		if (is->show_popup_was_called && tr) { // Check that the popup was shown and the playeer chose to replace
+		tr = Leader_can_do_worker_job (this, __, job, tile_x, tile_y, ask_if_replacing);
+		if (is->show_popup_was_called && tr) { // Check that the popup was shown and the player chose to replace
 			is->to_skip = (struct worker_job_and_location) { .job = job, .tile_x = tile_x, .tile_y = tile_y };
 			is->have_job_and_loc_to_skip = 1;
 		}
-		return tr;
 	}
+
+	if (! tr && is->current_config.enable_districts && (job == WJ_Build_Mines)) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile != NULL) && (tile != p_null_tile) && district_assignment_exists_for_tile (tile)) {
+			int district_id;
+			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) &&
+			    (district_id >= 0) && (district_id < COUNT_DISTRICT_TYPES) &&
+			    ! tile->vtable->m35_Check_Is_Water (tile) &&
+			    (tile->CityID < 0) &&
+			    ! tile->vtable->m18_Check_Mines (tile, __, 0)) {
+				int owner_civ = tile->vtable->m38_Get_Territory_OwnerID (tile);
+				if ((owner_civ == this->ID) || (owner_civ == 0))
+					tr = 1;
+			}
+		}
+	}
+
+	return tr;
 }
 
 bool __fastcall
