@@ -13002,6 +13002,59 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_day_night_cycle), is->current_day_night_cycle);
 		}
 
+		if (is->current_config.enable_districts && (is->district_job_assignments.len > 0)) {
+			int valid_count = 0;
+			FOR_TABLE_ENTRIES (tei, &is->district_job_assignments) {
+				struct district_job_assignment * job = (struct district_job_assignment *)tei.value;
+				if (job != NULL)
+					valid_count++;
+			}
+			if (valid_count > 0) {
+				serialize_aligned_text ("district_job_assignments", &mod_data);
+				int ints_per_entry = 6;
+				int total_ints = 1 + ints_per_entry * valid_count;
+				int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * total_ints);
+				int * out = chunk + 1;
+				chunk[0] = valid_count;
+				FOR_TABLE_ENTRIES (tei, &is->district_job_assignments) {
+					struct district_job_assignment * job = (struct district_job_assignment *)tei.value;
+					if (job == NULL)
+						continue;
+					out[0] = job->unit_id;
+					out[1] = job->district_id;
+					out[2] = job->tile_x;
+					out[3] = job->tile_y;
+					out[4] = (job->city != NULL) ? job->city->Body.ID : -1;
+					out[5] = job->job_started ? 1 : 0;
+					out += ints_per_entry;
+				}
+			}
+		}
+
+		if (is->current_config.enable_districts && (is->city_pending_district_requests.len > 0)) {
+			int entry_count = 0;
+			FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests) {
+				City * city = (City *)(long)tei.key;
+				if ((city != NULL) && (tei.value != 0))
+					entry_count++;
+			}
+			if (entry_count > 0) {
+				serialize_aligned_text ("district_pending_requests", &mod_data);
+				int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 2 * entry_count));
+				int * out = chunk + 1;
+				chunk[0] = entry_count;
+				FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests) {
+					City * city = (City *)(long)tei.key;
+					int mask = tei.value;
+					if ((city == NULL) || (mask == 0))
+						continue;
+					out[0] = city->Body.ID;
+					out[1] = mask;
+					out += 2;
+				}
+			}
+		}
+
 		if (is->current_config.enable_districts && (is->district_tile_map.len > 0)) {
 			serialize_aligned_text ("district_tile_map", &mod_data);
 			int entry_capacity = is->district_tile_map.len;
@@ -13207,6 +13260,100 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				// Because we've restored current_day_night_cycle from the save, set that is is not the first turn so the cycle
 				// doesn't get restarted.
 				is->day_night_cycle_unstarted = false;
+			} else if (match_save_chunk_name (&cursor, "district_job_assignments")) {
+				bool success = false;
+				int remaining_bytes = (seg + seg_size) - cursor;
+				if (remaining_bytes >= (int)sizeof(int)) {
+					int * ints = (int *)cursor;
+					int entry_count = *ints++;
+					cursor = (byte *)ints;
+					remaining_bytes -= (int)sizeof(int);
+					int ints_per_entry = 6;
+					if ((entry_count >= 0) &&
+					    (remaining_bytes >= entry_count * ints_per_entry * (int)sizeof(int))) {
+						clear_district_job_assignments (false);
+						success = true;
+						for (int n = 0; n < entry_count; n++) {
+							if (remaining_bytes < ints_per_entry * (int)sizeof(int)) {
+								success = false;
+								break;
+							}
+							int unit_id = *ints++;
+							int district_id = *ints++;
+							int tile_x = *ints++;
+							int tile_y = *ints++;
+							int city_id = *ints++;
+							int job_started = *ints++;
+							cursor = (byte *)ints;
+							remaining_bytes -= ints_per_entry * (int)sizeof(int);
+							if ((district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+								continue;
+							Tile * tile = tile_at (tile_x, tile_y);
+							if ((tile == NULL) || (tile == p_null_tile))
+								continue;
+							Unit * unit = get_unit_ptr (unit_id);
+							if (unit == NULL)
+								continue;
+							City * city = (city_id >= 0) ? get_city_ptr (city_id) : NULL;
+							struct district_job_assignment * job = malloc (sizeof *job);
+							if (job == NULL) {
+								success = false;
+								break;
+							}
+							job->tile = tile;
+							job->city = city;
+							job->tile_x = tile_x;
+							job->tile_y = tile_y;
+							job->district_id = district_id;
+							job->unit_id = unit_id;
+							job->job_started = (job_started != 0);
+							itable_insert (&is->district_job_assignments, unit_id, (int)job);
+							itable_insert (&is->district_tile_map, (int)tile, district_id);
+						}
+						if (! success)
+							clear_district_job_assignments (false);
+					}
+				}
+				if (! success) {
+					error_chunk_name = "district_job_assignments";
+					break;
+				}
+			} else if (match_save_chunk_name (&cursor, "district_pending_requests")) {
+				bool success = false;
+				int remaining_bytes = (seg + seg_size) - cursor;
+				if (remaining_bytes >= (int)sizeof(int)) {
+					int * ints = (int *)cursor;
+					int entry_count = *ints++;
+					cursor = (byte *)ints;
+					remaining_bytes -= (int)sizeof(int);
+					if ((entry_count >= 0) &&
+					    (remaining_bytes >= entry_count * 2 * (int)sizeof(int))) {
+						table_deinit (&is->city_pending_district_requests);
+						success = true;
+						for (int n = 0; n < entry_count; n++) {
+							if (remaining_bytes < 2 * (int)sizeof(int)) {
+								success = false;
+								break;
+							}
+							int city_id = *ints++;
+							int mask = *ints++;
+							cursor = (byte *)ints;
+							remaining_bytes -= 2 * (int)sizeof(int);
+							if (mask == 0)
+								continue;
+							City * city = get_city_ptr (city_id);
+							if (city == NULL)
+								continue;
+							itable_insert (&is->city_pending_district_requests, (int)(long)city, mask);
+						}
+						if (! success)
+							table_deinit (&is->city_pending_district_requests);
+					}
+				}
+				if (! success) {
+					error_chunk_name = "district_pending_requests";
+					break;
+				}
 			} else if (match_save_chunk_name (&cursor, "district_tile_map")) {
 				bool success = false;
 				int remaining_bytes = (seg + seg_size) - cursor;
