@@ -3324,6 +3324,22 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 			free (to_free);
 		}
 	}
+
+	WITH_MEM_PROTECTION (ADDR_CULTURE_DOUBLING_TIME_CMP_INSTR, 6, PAGE_EXECUTE_READWRITE) {
+		byte * instr = ADDR_CULTURE_DOUBLING_TIME_CMP_INSTR;
+		if (cfg->years_to_double_building_culture == 1000)
+			restore_code_area (instr);
+		else {
+			if (instr[0] == 0x3D) { // in GOG and PCG EXEs, instr is cmp eax, 0x3E8
+				save_code_area (instr, 5, false);
+				int_to_bytes (&instr[1], cfg->years_to_double_building_culture);
+			} else if (instr[0] == 0x3B) { // in Steam EXE, instr is cmp eax, dword ptr 0x688C9C
+				save_code_area (instr, 6, true);
+				instr[0] = 0x3D;
+				int_to_bytes (&instr[1], cfg->years_to_double_building_culture);
+			}
+		}
+	}
 }
 
 Sprite* 
@@ -4077,6 +4093,8 @@ patch_init_floating_point ()
 		{"elapsed_minutes_per_day_night_hour_transition",     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
 		{"fixed_hours_per_turn_for_day_night_cycle"     ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
 		{"pinned_hour_for_day_night_cycle"              ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
+		{"years_to_double_building_culture"             ,  1000, offsetof (struct c3x_config, years_to_double_building_culture)},
+		{"tourism_time_scale_percent"                   ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -13148,6 +13166,18 @@ patch_Unit_ai_can_sacrifice (Unit * this, int edx, bool requires_city)
 		return false;
 	else
 		return Unit_ai_can_sacrifice (this, __, requires_city);
+}
+
+int __fastcall
+patch_Buildings_Info_get_age_in_years_for_tourism (Buildings_Info * this, int edx, int building_index)
+{
+	int base = Buildings_Info_get_age_in_years (this, __, building_index);
+	if (is->current_config.tourism_time_scale_percent == 100)
+		return base;
+	else if (is->current_config.tourism_time_scale_percent <= 0)
+		return INT_MAX;
+	else
+		return (base * 100 + 50) / is->current_config.tourism_time_scale_percent;
 }
 
 // TCC requires a main function be defined even though it's never used.

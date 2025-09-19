@@ -240,6 +240,8 @@ struct c3x_config {
 	int rebase_range_multiplier;
 	bool limit_unit_loading_to_one_transport_per_turn;
 	bool prevent_old_units_from_upgrading_past_ability_block;
+	int years_to_double_building_culture;
+	int tourism_time_scale_percent;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
