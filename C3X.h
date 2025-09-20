@@ -474,6 +474,7 @@ struct injected_state {
 	enum init_state red_food_icon_state;
 	enum init_state tile_already_worked_zoomed_out_sprite_init_state;
 	enum init_state day_night_cycle_img_state;
+	enum init_state large_minimap_frame_img_state;
 
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
@@ -729,6 +730,12 @@ struct injected_state {
 	// ==========
 
 	Sprite red_food_icon;
+
+	// ==========
+	// } These are valid only if init_large_minimap_frame has been called and large_minimap_frame_img_state equals IS_OK {
+	// ==========
+
+	Sprite double_size_box_left_color_pcx, double_size_box_left_alpha_pcx;
 
 	// ==========
 	// } These fields are temporary/situational {

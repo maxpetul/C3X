@@ -4616,6 +4616,56 @@ deinit_red_food_icon ()
 	is->red_food_icon_state = IS_UNINITED;
 }
 
+enum init_state
+init_large_minimap_frame ()
+{
+	if (is->large_minimap_frame_img_state != IS_UNINITED)
+		return is->large_minimap_frame_img_state;
+
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
+
+	char temp_path[2*MAX_PATH];
+
+	get_mod_art_path ("interface\\DoubleSizeBoxLeftColor.pcx", temp_path, sizeof temp_path);
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if (pcx.JGL.Image != NULL) {
+		Sprite_construct (&is->double_size_box_left_color_pcx);
+		int width  = pcx.JGL.Image->vtable->m54_Get_Width  (pcx.JGL.Image),
+		    height = pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image);
+		Sprite_slice_pcx (&is->double_size_box_left_color_pcx, __, &pcx, 0, 0, width, height, 1, 1);
+	} else {
+		pcx.vtable->destruct (&pcx, __, 0);
+		return is->large_minimap_frame_img_state = IS_INIT_FAILED;
+	}
+
+	get_mod_art_path ("interface\\DoubleSizeBoxLeftAlpha.pcx", temp_path, sizeof temp_path);
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if (pcx.JGL.Image != NULL) {
+		Sprite_construct (&is->double_size_box_left_alpha_pcx);
+		int width  = pcx.JGL.Image->vtable->m54_Get_Width  (pcx.JGL.Image),
+		    height = pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image);
+		Sprite_slice_pcx (&is->double_size_box_left_alpha_pcx, __, &pcx, 0, 0, width, height, 1, 1);
+	} else {
+		is->double_size_box_left_color_pcx.vtable->destruct (&is->double_size_box_left_color_pcx, __, 0);
+		pcx.vtable->destruct (&pcx, __, 0);
+		return is->large_minimap_frame_img_state = IS_INIT_FAILED;;
+	}
+
+	pcx.vtable->destruct (&pcx, __, 0);
+	return is->large_minimap_frame_img_state = IS_OK;
+}
+
+void
+deinit_large_minimap_frame ()
+{
+	if (is->large_minimap_frame_img_state == IS_OK) {
+		is->double_size_box_left_color_pcx.vtable->destruct (&is->double_size_box_left_color_pcx, __, 0);
+		is->double_size_box_left_alpha_pcx.vtable->destruct (&is->double_size_box_left_alpha_pcx, __, 0);
+	}
+	is->large_minimap_frame_img_state = IS_UNINITED;
+}
+
 int __cdecl
 patch_get_tile_occupier_for_ai_path (int x, int y, int pov_civ_id, bool respect_unit_invisibility)
 {
@@ -6283,6 +6333,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	deinit_trade_scroll_buttons ();
 	deinit_unit_rcm_icons ();
 	deinit_red_food_icon ();
+	deinit_large_minimap_frame ();
 	if (is->tile_already_worked_zoomed_out_sprite_init_state != IS_UNINITED) {
 		enum init_state * state = &is->tile_already_worked_zoomed_out_sprite_init_state;
 		if (*state == IS_OK) {
@@ -12865,8 +12916,10 @@ patch_Main_GUI_position_elements (Main_GUI * this)
 	Main_GUI_position_elements (this);
 
 	// Double size of minimap
-	// this->Mini_Map_Click_Rect.top -= 105;
-	// this->Mini_Map_Click_Rect.right += 229;
+	if (init_large_minimap_frame () == IS_OK) {
+		this->Mini_Map_Click_Rect.top -= 105;
+		this->Mini_Map_Click_Rect.right += 229;
+	}
 }
 
 #define PEDIA_DESC_LINES_PER_PAGE 38
@@ -13187,6 +13240,15 @@ patch_Buildings_Info_get_age_in_years_for_tourism (Buildings_Info * this, int ed
 		return INT_MAX;
 	else
 		return (base * 100 + 50) / is->current_config.tourism_time_scale_percent;
+}
+
+int __fastcall
+patch_Sprite_draw_minimap_frame (Sprite * this, int edx, Sprite * alpha, int param_2, PCX_Image * canvas, int x, int y, int param_6)
+{
+	if (init_large_minimap_frame () == IS_OK)
+		return Sprite_draw_for_hud (&is->double_size_box_left_color_pcx, __, &is->double_size_box_left_alpha_pcx, param_2, canvas, x, y, param_6);
+	else
+		return Sprite_draw_for_hud (this, __, alpha, param_2, canvas, x, y, param_6);
 }
 
 // TCC requires a main function be defined even though it's never used.

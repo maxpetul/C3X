@@ -931,6 +931,8 @@ ENTRY_POINT ()
 	write_prog_int (&injected_state->unit_rcm_icon_state, IS_UNINITED);
 	write_prog_int (&injected_state->red_food_icon_state, IS_UNINITED);
 	write_prog_int (&injected_state->tile_already_worked_zoomed_out_sprite_init_state, IS_UNINITED);
+	write_prog_int (&injected_state->day_night_cycle_img_state, IS_UNINITED);
+	write_prog_int (&injected_state->large_minimap_frame_img_state, IS_UNINITED);
 	tcc_define_pointer (tcc, "ADDR_INJECTED_STATE", injected_state);
 
 	// Pass through prog objects before compiling to set things up for compilation
