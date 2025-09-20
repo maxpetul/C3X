@@ -2373,8 +2373,8 @@ clear_district_job_assignments (bool requeue_requests)
 	FOR_TABLE_ENTRIES (tei, &is->district_job_assignments) {
 		struct district_job_assignment * job = (struct district_job_assignment *)tei.value;
 		if (job != NULL) {
-			//if ((job->tile != NULL) && ! district_is_complete (job->tile, job->district_id))
-			//	itable_remove (&is->district_tile_map, (int)job->tile);
+			if ((job->tile != NULL) && ! district_is_complete (job->tile, job->district_id))
+				itable_remove (&is->district_tile_map, (int)job->tile);
 			if (requeue_requests && (job->city != NULL))
 				mark_city_needs_district (job->city, job->district_id);
 			free (job);
