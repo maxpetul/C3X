@@ -3696,8 +3696,7 @@ struct JGL_Image_vtable
 //  char *(__thiscall *m05_m07_Get_Pixel)(JGL_Image *this, int X, int Y);
   void *m05_m07_Get_Pixel;
   int m06;
-//  char *(__thiscall *m07_m05_Get_Pixel)(JGL_Image *this, int X, int Y);
-  void *m07_m05_Get_Pixel;
+  unsigned short * (__fastcall * m07_m05_Get_Pixel) (JGL_Image * this, int edx, int x, int y);
   int m08_Get_Bits_Data;
   int m09;
   HDC (__fastcall * acquire_dc) (JGL_Image * this);

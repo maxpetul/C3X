@@ -987,6 +987,11 @@ ENTRY_POINT ()
 	tcc__define_symbol (tcc, "ADDR_LAND_ZOC_FILTER_AIRLOCK", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead + 1]));
 	i_next_free_inlead += 2;
 
+	// Again to replace the call to get_pixel in draw_city_dot b/c the instruction is too small to edit with repl_call
+	ASSERT (i_next_free_inlead + 1 < inleads_capacity);
+	tcc__define_symbol (tcc, "ADDR_INLEAD_FOR_CITY_DOT_DRAW_PIXEL_REPL", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead]));
+	i_next_free_inlead++;
+
 	tcc__define_symbol (tcc, "INLEAD_SIZE", temp_format ("%u", sizeof (struct inlead)));
 
 	// Compile C code to inject

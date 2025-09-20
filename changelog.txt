@@ -16,6 +16,8 @@
 - Option to tint coast and sea tiles on minimap based on cultural borders
   - Setting named show_territory_colors_on_water_tiles_in_minimap, off by default
 - Do not charge maintenance for buildings provided for free by shared wonder effects
+- Option to draw small shadows underneath city dots on the minimap to make them more visible
+  - Setting named accentuate_cities_on_minimap, off by default because it doesn't quite work properly
 
 * RELEASE 24
 - Option to share wonders among human players in hotseat mode, setting named share_wonders_in_hotseat

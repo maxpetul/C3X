@@ -2841,6 +2841,20 @@ done:
 	}
 }
 
+unsigned short * __fastcall
+patch_get_pixel_to_draw_city_dot (JGL_Image * this, int edx, int x, int y)
+{
+	unsigned short * tr = this->vtable->m07_m05_Get_Pixel (this, __, x, y);
+
+	if ((x + 1 < p_main_screen_form->GUI.Navigator_Data.Mini_Map_Width2) && (y + 1 < p_main_screen_form->GUI.Navigator_Data.Mini_Map_Height2)) {
+		unsigned short * below = this->vtable->m07_m05_Get_Pixel (this, __, x + 1, y + 1);
+		if (below != NULL)
+			*below = 0;
+	}
+
+	return tr;
+}
+
 enum branch_kind { BK_CALL, BK_JUMP };
 
 byte *
@@ -3339,6 +3353,20 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 				int_to_bytes (&instr[1], cfg->years_to_double_building_culture);
 			}
 		}
+	}
+
+	WITH_MEM_PROTECTION (ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT, 5, PAGE_EXECUTE_READWRITE) {
+		if (cfg->accentuate_cities_on_minimap) {
+			save_code_area (ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT, 5, false);
+			emit_branch (BK_JUMP, ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT, ADDR_INLEAD_FOR_CITY_DOT_DRAW_PIXEL_REPL);
+		} else
+			restore_code_area (ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT);
+	}
+	WITH_MEM_PROTECTION (ADDR_INLEAD_FOR_CITY_DOT_DRAW_PIXEL_REPL, INLEAD_SIZE, PAGE_EXECUTE_READWRITE) {
+		byte * code = ADDR_INLEAD_FOR_CITY_DOT_DRAW_PIXEL_REPL;
+		code[0] = 0x55; code[1] = 0x53; // write push ebp and push ebx, two overwritten instrs before the call
+		emit_branch (BK_CALL, &code[2], &patch_get_pixel_to_draw_city_dot); // call patch func
+		emit_branch (BK_JUMP, &code[7], ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT + 5); // jump back to original code
 	}
 }
 
@@ -4046,6 +4074,7 @@ patch_init_floating_point ()
 		{"show_territory_colors_on_water_tiles_in_minimap"     , false, offsetof (struct c3x_config, show_territory_colors_on_water_tiles_in_minimap)},
 		{"convert_some_popups_into_online_mp_messages"         , false, offsetof (struct c3x_config, convert_some_popups_into_online_mp_messages)},
 		{"enable_debug_mode_switch"                            , false, offsetof (struct c3x_config, enable_debug_mode_switch)},
+		{"accentuate_cities_on_minimap"                        , false, offsetof (struct c3x_config, accentuate_cities_on_minimap)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
