@@ -4068,6 +4068,7 @@ patch_init_floating_point ()
 		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
 		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
+		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
 	};
 
 	struct integer_config_option {
@@ -9254,6 +9255,14 @@ patch_Leader_begin_turn (Leader * this)
 			    ((this->Relation_Treaties[n] & 2) == 0)) // Check right of passage
 				Leader_bounce_trespassing_units (&leaders[n], __, this->ID);
 	is->do_not_bounce_invisible_units = false;
+
+	if (is->current_config.introduce_all_human_players_at_start_of_hotseat_game &&
+	    (*p_current_turn_no == 0) &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((*p_human_player_bits & (1 << this->ID)) != 0))
+		for (int n = 0; n < 32; n++)
+			if (*p_human_player_bits & (1 << n))
+				Leader_make_contact (this, __, n, false);
 
 	Leader_begin_turn (this);
 }

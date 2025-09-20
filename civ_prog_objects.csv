@@ -772,6 +772,7 @@ define,	   0x5663F0,	0x57275D,	0x5663A0,	"ADDR_CITY_LIM_CMP_IN_CREATE_CITY",		"b
 define,	   0x4F8D76,	0x5024E6,	0x4F8E36,	"ADDR_CULTURE_DOUBLING_TIME_CMP_INSTR",		"byte *"
 define,	   0x4C2420,	0x4C9C10,	0x4C2440,	"Buildings_Info_get_age_in_years",		"int (__fastcall *) (Buildings_Info * this, int edx, int building_index)"
 repl call, 0x4B073C,	0x4B76F0,	0x4B07CC,	"Buildings_Info_get_age_in_years_for_tourism",	""
+define,	   0x501CD0,	0x50B960,	0x501D70,	"Leader_make_contact",				"void (__fastcall *) (Leader * this, int edx, int civ_id, bool no_online_sync)"
 
 ignore,	   0x5FC710,	0x0,		0x0,		"PCX_Image_create_and_init_jgl_image",		"int (__fastcall *) (PCX_Image * this, int edx, int width, int height, int bit_depth, int param_4, int param_5, int param_6)"
 ignore,	   0x5FCC50,	0x0,		0x0,		"PCX_Image_draw_region_to_location",		"void (__fastcall *) (PCX_Image * this, int edx, PCX_Image * canvas, int src_x, int src_y, int dest_x, int dest_y, int width, int height)"
