@@ -2053,7 +2053,7 @@ struct Map_vtable
   void *m00_Create_Tiles;
 //  int (__thiscall *m01_Create_WH_Tiles)(Map *);
   void *m01_Create_WH_Tiles;
-  int m02;
+  int (__fastcall * m02_eval_city_location) (Map * this, __, int x, int y);
   void (__fastcall * push_loading_bar) (Map * this);
 //  void (__thiscall *m04_Clear_Tiles)(Map *);
   void *m04_Clear_Tiles;

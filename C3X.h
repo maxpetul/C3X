@@ -80,6 +80,12 @@ enum line_drawing_override {
 	LDO_ALWAYS
 };
 
+enum minimap_doubling_mode {
+	MDM_NEVER = 0,
+	MDM_HIGH_DEF,
+	MDM_ALWAYS
+};
+
 enum special_defensive_bombard_rules {
 	SDBR_LETHAL         =  1,
 	SDBR_NOT_INVISIBLE  =  2,
@@ -210,6 +216,7 @@ struct c3x_config {
 	bool convert_some_popups_into_online_mp_messages;
 	bool enable_debug_mode_switch;
 	bool accentuate_cities_on_minimap;
+	enum minimap_doubling_mode double_minimap_size;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;

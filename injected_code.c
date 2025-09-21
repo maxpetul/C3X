@@ -1446,6 +1446,17 @@ read_line_drawing_override (struct string_slice const * s, int * out_val)
 }
 
 bool
+read_minimap_doubling_mode (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "never"   )) { *out_val = MDM_NEVER;    return true; }
+	else if (slice_matches_str (&trimmed, "high-def")) { *out_val = MDM_HIGH_DEF; return true; }
+	else if (slice_matches_str (&trimmed, "always"  )) { *out_val = MDM_ALWAYS;   return true; }
+	else
+		return false;
+}
+
+bool
 read_work_area_limit (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
@@ -1741,6 +1752,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "draw_lines_using_gdi_plus")) {
 					if (! read_line_drawing_override (&value, (int *)&cfg->draw_lines_using_gdi_plus))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "double_minimap_size")) {
+					if (! read_minimap_doubling_mode (&value, (int *)&cfg->double_minimap_size))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_defensive_bombard_rules")) {
 					struct parsable_field_bit bits[] = {
@@ -4180,6 +4194,7 @@ patch_init_floating_point ()
 	base_config.ai_settler_perfume_on_founding = 0;
 	base_config.work_area_limit = WAL_NONE;
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
+	base_config.double_minimap_size = MDM_HIGH_DEF;
 	base_config.city_work_radius = 2;
 	base_config.day_night_cycle_mode = DNCM_OFF;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
@@ -12944,8 +12959,10 @@ patch_Main_GUI_position_elements (Main_GUI * this)
 {
 	Main_GUI_position_elements (this);
 
-	// Double size of minimap
-	if (init_large_minimap_frame () == IS_OK) {
+	// Double size of minimap if configured
+	bool want_larger_minimap = (is->current_config.double_minimap_size == MDM_ALWAYS) ||
+		((is->current_config.double_minimap_size == MDM_HIGH_DEF) && (p_bic_data->ScreenWidth >= 1920));
+	if (want_larger_minimap && (init_large_minimap_frame () == IS_OK)) {
 		this->Mini_Map_Click_Rect.top -= 105;
 		this->Mini_Map_Click_Rect.right += 229;
 	}
@@ -13274,7 +13291,9 @@ patch_Buildings_Info_get_age_in_years_for_tourism (Buildings_Info * this, int ed
 int __fastcall
 patch_Sprite_draw_minimap_frame (Sprite * this, int edx, Sprite * alpha, int param_2, PCX_Image * canvas, int x, int y, int param_6)
 {
-	if (init_large_minimap_frame () == IS_OK)
+	bool want_larger_minimap = (is->current_config.double_minimap_size == MDM_ALWAYS) ||
+		((is->current_config.double_minimap_size == MDM_HIGH_DEF) && (p_bic_data->ScreenWidth >= 1920));
+	if (want_larger_minimap && (init_large_minimap_frame () == IS_OK))
 		return Sprite_draw_for_hud (&is->double_size_box_left_color_pcx, __, &is->double_size_box_left_alpha_pcx, param_2, canvas, x, y, param_6);
 	else
 		return Sprite_draw_for_hud (this, __, alpha, param_2, canvas, x, y, param_6);

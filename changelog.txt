@@ -8,6 +8,7 @@
 - Can adjust times to generate tourism gold, setting named tourism_time_scale_percent
 - Option to put all human players in contact with each other at the start of a hotseat game
   - Setting named introduce_all_human_players_at_start_of_hotseat_game
+- Double size of minimap when running in high definition (>= 1920 horizontal pixels), setting named double_minimap_size
 - Option to show some popup messages as online-multiplayer-style notifications
   - Setting named convert_some_popups_into_online_mp_messages, off by default, see config for which popups are affected
 - Option to switch debug mode on or off for games in progress
