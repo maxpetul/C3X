@@ -2506,6 +2506,29 @@ create_district_job_assignment (Unit * unit, Tile * tile, int tile_x, int tile_y
 	return job;
 }
 
+bool
+tile_not_suitable_for_district(Tile * tile, int district_id, City * city)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return true;
+	if (tile->CityID >= 0)
+		return true;
+	if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID)
+		return true;
+	if (tile->vtable->m35_Check_Is_Water (tile))
+		return true;
+	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+	if ((base_type == SQ_Mountains) || (base_type == SQ_Volcano))
+		return true;
+	int mapped_id;
+	if (itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) && (mapped_id != district_id))
+		return true;
+	if (district_assignment_exists_for_tile (tile))
+		return true;
+
+	return false;
+}
+
 static Tile *
 find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 {
@@ -2521,24 +2544,48 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 	int city_x = city->Body.X;
 	int city_y = city->Body.Y;
 
-	// Evaluate each workable tile and choose the one that best matches the district preferences.
+	// For non-neighborhood districts, first pass: look for non-adjacent tiles
+	if (!is_neighborhood) {
+		FOR_TILES_AROUND (tai, is->workable_tile_count, city_x, city_y) {
+			Tile * tile = tai.tile;
+			if (tile_not_suitable_for_district(tile, district_id, city))
+				continue;
+
+			int tx, ty;
+			tai_get_coords (&tai, &tx, &ty);
+			int dx = int_abs (tx - city_x);
+			int dy = int_abs (ty - city_y);
+			int chebyshev = (dx > dy) ? dx : dy;
+			int distance = dx + dy;
+
+			// Only consider non-adjacent tiles in first pass
+			if (chebyshev <= 1)
+				continue;
+
+			int food = City_calc_tile_yield_at (city, __, YK_FOOD, tx, ty);
+			int shields = City_calc_tile_yield_at (city, __, YK_SHIELDS, tx, ty);
+			int commerce = City_calc_tile_yield_at (city, __, YK_COMMERCE, tx, ty);
+			int yield_sum = food + shields + commerce;
+
+			int ring_priority = (chebyshev == 2) ? 1 : 0;
+			if ((ring_priority > best_ring_priority) ||
+			    ((ring_priority == best_ring_priority) && (yield_sum < best_yield_sum)) ||
+			    ((ring_priority == best_ring_priority) && (yield_sum == best_yield_sum) && (distance < best_distance))) {
+				best_priority = 2;  // Non-adjacent priority
+				best_ring_priority = ring_priority;
+				best_yield_sum = yield_sum;
+				best_distance = distance;
+				best_tile = tile;
+				*out_x = tx;
+				*out_y = ty;
+			}
+		}
+	}
+
+	// Second pass: evaluate all tiles (for neighborhoods) or adjacent tiles (fallback for non-neighborhoods)
 	FOR_TILES_AROUND (tai, is->workable_tile_count, city_x, city_y) {
 		Tile * tile = tai.tile;
-		if ((tile == NULL) || (tile == p_null_tile))
-			continue;
-		if (tile->CityID >= 0)
-			continue;
-		if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID)
-			continue;
-		if (tile->vtable->m35_Check_Is_Water (tile))
-			continue;
-		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-		if ((base_type == SQ_Mountains) || (base_type == SQ_Volcano))
-			continue;
-		int mapped_id;
-		if (itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) && (mapped_id != district_id))
-			continue;
-		if (district_assignment_exists_for_tile (tile))
+		if (tile_not_suitable_for_district(tile, district_id, city))
 			continue;
 
 		// Score the candidate based on distance metrics and existing yields.
@@ -2548,6 +2595,11 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 		int dy = int_abs (ty - city_y);
 		int chebyshev = (dx > dy) ? dx : dy;
 		int distance = dx + dy;
+
+		// For non-neighborhoods, skip if we already found a non-adjacent tile
+		if (!is_neighborhood && best_tile != NULL && chebyshev <= 1)
+			continue;
+
 		int food = City_calc_tile_yield_at (city, __, YK_FOOD, tx, ty);
 		int shields = City_calc_tile_yield_at (city, __, YK_SHIELDS, tx, ty);
 		int commerce = City_calc_tile_yield_at (city, __, YK_COMMERCE, tx, ty);
@@ -2568,20 +2620,18 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 				*out_y = ty;
 			}
 		} else {
-			// Other districts avoid the immediate ring and lean toward low-yield tiles just beyond it.
-			int adjacency_priority = (distance > 1) ? 1 : 0;
-			int ring_priority = (distance == 2) ? 1 : 0;
-			if ((adjacency_priority > best_priority) ||
-			    ((adjacency_priority == best_priority) && (ring_priority > best_ring_priority)) ||
-			    ((adjacency_priority == best_priority) && (ring_priority == best_ring_priority) && (yield_sum < best_yield_sum)) ||
-			    ((adjacency_priority == best_priority) && (ring_priority == best_ring_priority) && (yield_sum == best_yield_sum) && (distance < best_distance))) {
-				best_priority = adjacency_priority;
-				best_ring_priority = ring_priority;
-				best_yield_sum = yield_sum;
-				best_distance = distance;
-				best_tile = tile;
-				*out_x = tx;
-				*out_y = ty;
+			// Adjacent tiles as fallback (only if no non-adjacent tile was found)
+			if (chebyshev == 1) {
+				if ((yield_sum < best_yield_sum) ||
+				    ((yield_sum == best_yield_sum) && (distance < best_distance))) {
+					best_priority = 1;  // Adjacent fallback priority
+					best_ring_priority = 0;
+					best_yield_sum = yield_sum;
+					best_distance = distance;
+					best_tile = tile;
+					*out_x = tx;
+					*out_y = ty;
+				}
 			}
 		}
 	}
@@ -4494,18 +4544,20 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 		char districts_hour_dir[200];
 		snprintf(districts_hour_dir, sizeof districts_hour_dir, "%s\\Art\\Districts\\%s", is->mod_rel_dir, hour);
 		for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
-			const char *img_path = district_configs[dc].img_path;
-			if ((img_path == NULL) || (img_path[0] == '\0'))
-				continue;
+			for (int variant_i = 0; variant_i < district_configs[dc].num_img_paths; variant_i++) {
+				const char *img_path = district_configs[dc].img_paths[variant_i];
+				if ((img_path == NULL) || (img_path[0] == '\0'))
+					continue;
 
-			read_in_dir(&img, districts_hour_dir, img_path, NULL);
-			if (img.JGL.Image == NULL) return false;
+				read_in_dir(&img, districts_hour_dir, img_path, NULL);
+				if (img.JGL.Image == NULL) return false;
 
-			for (int era = 0; era < 4; era++) {
-				for (int col = 0; col < district_configs[dc].total_img_columns; col++) {
-					int tile_x = 128 * col;
-					int tile_y = 64 * era;
-					Sprite_slice_pcx(&this->District_Images[dc][era][col], __, &img, tile_x, tile_y, 128, 64, 1, 1);
+				for (int era = 0; era < 4; era++) {
+					for (int col = 0; col < district_configs[dc].total_img_columns; col++) {
+						int tile_x = 128 * col;
+						int tile_y = 64 * era;
+						Sprite_slice_pcx(&this->District_Images[dc][variant_i][era][col], __, &img, tile_x, tile_y, 128, 64, 1, 1);
+					}
 				}
 			}
 		}
@@ -4621,16 +4673,18 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 		
 		if (is->current_config.enable_districts) {
 			for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
-				const char *img_path = district_configs[dc].img_path;
-				if ((img_path == NULL) || (img_path[0] == '\0'))
-					continue;
+				for (int variant_i = 0; variant_i < district_configs[dc].num_img_paths; variant_i++) {
+					const char *img_path = district_configs[dc].img_paths[variant_i];
+					if ((img_path == NULL) || (img_path[0] == '\0'))
+						continue;
 
-				int total_cols = district_configs[dc].total_img_columns;
-				for (int era = 0; era < 4; era++) {
-					for (int col = 0; col < total_cols; col++) {
-						Sprite *base = &is->district_img_sets[dc].imgs[era][col];
-						Sprite *proxy = &is->day_night_cycle_imgs[h].District_Images[dc][era][col];
-						insert_sprite_proxy(base, proxy, h);
+					int total_cols = district_configs[dc].total_img_columns;
+					for (int era = 0; era < 4; era++) {
+						for (int col = 0; col < total_cols; col++) {
+							Sprite *base = &is->district_img_sets[dc].imgs[variant_i][era][col];
+							Sprite *proxy = &is->day_night_cycle_imgs[h].District_Images[dc][variant_i][era][col];
+							insert_sprite_proxy(base, proxy, h);
+						}
 					}
 				}
 			}
@@ -6044,7 +6098,7 @@ set_up_district_buttons (Main_GUI * this)
 	if (automate_button == NULL)
 		return;
 
-	//i_starting_button = 0;
+	i_starting_button = 5; // Middle seems to be 5
 
 	//snprintf (ss, sizeof ss, "[C3X] Found automate button at index %d", i_starting_button);
 	//pop_up_in_game_error (ss);
@@ -6528,7 +6582,9 @@ issue_district_worker_command (Unit * unit, int command)
 	if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
 		int prereq_id = is->district_infos[district_id].advance_prereq_id;
 		// Only enforce if a prereq is configured
-		if (prereq_id < 0 || !Leader_has_tech (&leaders[unit->Body.CivID], __, prereq_id)) {
+		if (prereq_id >= 0 && !Leader_has_tech (&leaders[unit->Body.CivID], __, prereq_id)) {
+			//snprintf (ss, sizeof ss, "C3X: Civ lacks prereq tech %d for district command %d", prereq_id, command);
+			//pop_up_in_game_error (ss);
 			return; // Civ lacks required tech; do not issue command
 		}
 	}
@@ -12675,6 +12731,15 @@ get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 			label = CL_TRANSPORTED;
 		else if ((label == CL_FORTIFIED) && (unit->Body.Status & (USF_SENTRY | USF_SENTRY_ENEMY_ONLY)))
 			label = CL_SENTRY;
+		else if ((label == CL_MINING) && is->current_config.enable_districts) {
+			// Check if this unit is actually building a district instead of a mine
+			Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
+			if ((tile != NULL) && (tile != p_null_tile) && district_assignment_exists_for_tile (tile)) {
+				strncpy (out_str, "Building District", str_capacity);
+				out_str[str_capacity - 1] = '\0';
+				return true;
+			}
+		}
 
 		strncpy (out_str, is->c3x_labels[label], str_capacity);
 		out_str[str_capacity - 1] = '\0';
@@ -14586,60 +14651,65 @@ init_district_images ()
 	// For each district type
 	for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
 
-		if (district_configs[dc].img_path == NULL)
-			break;
+		// For each cultural variant (or single image if num_img_paths = 1)
+		for (int variant_i = 0; variant_i < district_configs[dc].num_img_paths; variant_i++) {
 
-		// Read PCX file
-		snprintf(art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, district_configs[dc].img_path);
-		//snprintf (ss, sizeof ss, "init_district_images: loading district images from %s", art_dir);
-		//pop_up_in_game_error (ss);
+			if (district_configs[dc].img_paths[variant_i] == NULL)
+				break;
 
-		PCX_Image_read_file (&pcx, __, art_dir, NULL, 0, 0x100, 2);
+			// Read PCX file
+			snprintf(art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, district_configs[dc].img_paths[variant_i]);
+			//snprintf (ss, sizeof ss, "init_district_images: loading district images from %s", art_dir);
+			//pop_up_in_game_error (ss);
 
-		if (pcx.JGL.Image == NULL) {
+			PCX_Image_read_file (&pcx, __, art_dir, NULL, 0, 0x100, 2);
 
-			snprintf (ss, sizeof ss, "init_district_images: failed to load district images from %s", art_dir);
-			pop_up_in_game_error (ss);
+			if (pcx.JGL.Image == NULL) {
 
-			(*p_OutputDebugStringA) ("[C3X] Failed to load districts sprite sheet.");
-			for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++)
-				for (int era_i = 0; era_i < 4; era_i++) {
-					for (int col = 0; col < district_configs[dc].total_img_columns; col++) {
-						Sprite * sprite = &is->district_img_sets[dc].imgs[era_i][col];
-						sprite->vtable->destruct (sprite, __, 0);
-					}
-				}
-			pcx.vtable->destruct (&pcx, __, 0);
-			return;
-		}
+				snprintf (ss, sizeof ss, "init_district_images: failed to load district images from %s", art_dir);
+				pop_up_in_game_error (ss);
 
-		// For each era
-		for (int era_i = 0; era_i < 4; era_i++) {
-
-			// For each column in the image (variations on the district image for that era)
-			for (int col = 0; col < district_configs[dc].total_img_columns; col++) {
-
-				//snprintf (ss, sizeof ss, "init_district_images: loading district %d era %d column %d", dc, era_i, col);
-				//pop_up_in_game_error (ss);
-
-				Sprite_construct (&is->district_img_sets[dc].imgs[era_i][col]);
-
-				int x = 128 * col,
-					y = 64 * era_i;
-				Sprite_slice_pcx (&is->district_img_sets[dc].imgs[era_i][col], __, &pcx, x, y, 128, 64, 1, 1);
-
-				//snprintf (ss, sizeof ss, "init_district_images: loaded district %d era %d column %d", dc, era_i, col);
-				//pop_up_in_game_error (ss);
+				(*p_OutputDebugStringA) ("[C3X] Failed to load districts sprite sheet.");
+				for (int dc2 = 0; dc2 < COUNT_DISTRICT_TYPES; dc2++)
+					for (int variant_i2 = 0; variant_i2 < district_configs[dc2].num_img_paths; variant_i2++)
+						for (int era_i = 0; era_i < 4; era_i++) {
+							for (int col = 0; col < district_configs[dc2].total_img_columns; col++) {
+								Sprite * sprite = &is->district_img_sets[dc2].imgs[variant_i2][era_i][col];
+								sprite->vtable->destruct (sprite, __, 0);
+							}
+						}
+				pcx.vtable->destruct (&pcx, __, 0);
+				return;
 			}
-		}
 
-		pcx.vtable->clear_JGL (&pcx);
+			// For each era
+			for (int era_i = 0; era_i < 4; era_i++) {
+
+				// For each column in the image (variations on the district image for that era)
+				for (int col = 0; col < district_configs[dc].total_img_columns; col++) {
+
+					//snprintf (ss, sizeof ss, "init_district_images: loading district %d culture %d era %d column %d", dc, culture_i, era_i, col);
+					//pop_up_in_game_error (ss);
+
+					Sprite_construct (&is->district_img_sets[dc].imgs[variant_i][era_i][col]);
+
+					int x = 128 * col,
+						y = 64 * era_i;
+					Sprite_slice_pcx (&is->district_img_sets[dc].imgs[variant_i][era_i][col], __, &pcx, x, y, 128, 64, 1, 1);
+
+					//snprintf (ss, sizeof ss, "init_district_images: loaded district %d culture %d era %d column %d", dc, culture_i, era_i, col);
+					//pop_up_in_game_error (ss);
+				}
+			}
+
+			pcx.vtable->clear_JGL (&pcx);
+		}
 	}
 	is->dc_img_state = IS_OK;
 	pcx.vtable->destruct (&pcx, __, 0);
 
-	snprintf (ss, sizeof ss, "init_district_images: finished loading district images, img state %d", is->dc_img_state);
-	pop_up_in_game_error (ss);
+	//snprintf (ss, sizeof ss, "init_district_images: finished loading district images, img state %d", is->dc_img_state);
+	//pop_up_in_game_error (ss);
 
 }
 
@@ -14719,13 +14789,14 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: drawing district %d on tile (%d,%d)", district_id, tile_x, tile_y);
 					//pop_up_in_game_error (ss);
 
+					int variant = 0;
                     int era = 0;
                     int culture = 0;
                     int territory_owner_id = tile->Territory_OwnerID;
                     if (territory_owner_id) {
                         Leader * leader = &leaders[territory_owner_id];
+                        culture = p_bic_data->Races[leaders[territory_owner_id].RaceID].CultureGroupID;
                         era = leader->Era;
-                        culture = leader->RaceID;
 
 						//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: tile (%d,%d) owned by civ %d (culture %d) in era %d", tile_x, tile_y, territory_owner_id, culture, era);
 						//pop_up_in_game_error (ss);
@@ -14735,35 +14806,41 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 					//pop_up_in_game_error (ss);
 
                     Sprite * district_sprite;
-					int col = 0;
+					int buildings_column = 0;
 
 					switch (district_configs[district_id].command) {
 						case UCV_Build_Encampment:
 						{
 							bool has_barracks = district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Barracks");
-							if (has_barracks) col = 1;
+							if (has_barracks) buildings_column = 1;
 							break;
 						}
 						case UCV_Build_Campus:
 						{
 							bool has_library    = district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Library");
 							bool has_university = district_has_nearby_building_by_name(tile_x, tile_y, district_id, "University");
-							if (has_university)   col = 2;
-							else if (has_library) col = 1;
+							if (has_university)   buildings_column = 2;
+							else if (has_library) buildings_column = 1;
 							break;
 						}
 						case UCV_Build_Neighborhood:
 						{
 							// Neighborhood is a special case, as it has no dependent buildings, but also 4 images, each slightly different visually (for variety).
-							// We use a deterministic pseudo-random index from the tile coordinates so the same tile always renders with the same variant using
-							// the MurmurHash3 finalizer, which produces well-distributed low bits, ensuring each image variant is selected with (near) equal probability.
-							unsigned int hash = (unsigned int)tile_x * 0x9E3779B1u ^ (unsigned int)tile_y * 0x85EBCA77u;
-							hash ^= hash >> 16;
-							hash *= 0x7FEB352Du;
-							hash ^= hash >> 15;
-							hash *= 0x846CA68Bu;
-							hash ^= hash >> 16;
-							col = hash & 3;
+
+							int px = tile_x & 1;        /* x parity bit */
+							int py = tile_y & 1;        /* y parity bit */
+
+							int bx = (tile_x >> 1) & 1; /* block-x parity */
+							int by = (tile_y >> 1) & 1; /* block-y parity */
+
+							int kx = by;
+							int ky = bx ^ by;           /* bx + by (mod 2) */
+
+							int ox = px ^ kx;
+							int oy = py ^ ky;
+
+							buildings_column = (ox << 1) | oy; /* final 0..3 */
+							variant = culture;
 							break;
 						}
 					}
@@ -14771,7 +14848,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district %d era %d culture %d column %d", district_id, era, culture, col);
 					//pop_up_in_game_error (ss);
 
-					district_sprite = &is->district_img_sets[district_id].imgs[era][col];
+					district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings_column];
                     patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 
 					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: finished drawing district %d on tile (%d,%d)", district_id, tile_x, tile_y);

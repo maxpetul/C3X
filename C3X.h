@@ -16,7 +16,7 @@ typedef unsigned char byte;
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
-#define COUNT_DISTRICT_TYPES 2
+#define COUNT_DISTRICT_TYPES 3
 
 // Initialize to zero. Implementation is in common.c
 struct table {
@@ -465,7 +465,8 @@ struct district_config {
 	char const * tooltip;
 	char const * advance_prereq;
 	char const * dependent_improvements[5];
-	char const * img_path;
+	char const * img_paths[5]; // Up to 5 cultural variants
+	int num_img_paths;
 	bool allow_multiple,
 		 is_workable;
 	float defense_bonus_multiplier;
@@ -479,33 +480,33 @@ struct district_config {
 		gold_bonus,
 		production_bonus;
 } const district_configs[COUNT_DISTRICT_TYPES] = {
-	{ 
-		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_path = "Encampment.pcx", .index = 0, 
-		.btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_columns = 3,
+	{
+		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_paths = {"Encampment.pcx"}, 
+		.num_img_paths = 1, .index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_columns = 3,
 		.advance_prereq = "Warrior Code", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
-		.defense_bonus_multiplier = 1.5, 
+		.defense_bonus_multiplier = 1.5,
 		.allow_multiple = false,  .is_workable = false,
 		.culture_bonus = 0,       .science_bonus = 0,
 		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0
 	},
-	{ 
-		.command = UCV_Build_Campus, .tooltip = "Build Campus", .img_path = "Campus.pcx", .index = 1, 
-		.btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_columns = 3,
+	{
+		.command = UCV_Build_Campus, .tooltip = "Build Campus", .img_paths = {"Campus.pcx"}, 
+		.num_img_paths = 1, .index = 1, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_columns = 3,
 		.advance_prereq = "Literature", .dependent_improvements = {"Library", "University"},
-		.defense_bonus_multiplier = 1.0, 
+		.defense_bonus_multiplier = 1.0,
 		.allow_multiple = false,  .is_workable = false,
 		.culture_bonus = 0,       .science_bonus = 0,
 		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0
 	},
-	//{ 
-	//	.command = UCV_Build_Neighborhood, .tooltip = "Build Neighborhood", .img_path = "Neighborhood.pcx", .index = 2, 
-	//	.btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_columns = 4,
-	//	.advance_prereq = "Construction", .dependent_improvements = {},
-	//	.defense_bonus_multiplier = 1.25, 
-	//	.allow_multiple = false,  .is_workable = false,
-	//	.culture_bonus = 2,       .science_bonus = 0,
-	//	.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0
-	//}
+	{
+		.command = UCV_Build_Neighborhood, .tooltip = "Build Neighborhood", .img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"}, 
+		.num_img_paths = 5, .index = 2, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 1, .total_img_columns = 4,
+		.advance_prereq = "", .dependent_improvements = {NULL},
+		.defense_bonus_multiplier = 1.25,
+		.allow_multiple = true,  .is_workable = false,
+		.culture_bonus = 2,       .science_bonus = 0,
+		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0
+	}
 };
 
 struct district_job_assignment {
@@ -1136,7 +1137,7 @@ struct injected_state {
 		Sprite LM_Forests_Small_Images[10];
 		Sprite LM_Forests_Pines_Images[12];
 		Sprite LM_Hills_Images[16];
-		Sprite District_Images[COUNT_DISTRICT_TYPES][4][4]; // [district][era][variant]
+		Sprite District_Images[COUNT_DISTRICT_TYPES][5][4][4]; // [district][variant][era][buildings]
 	} day_night_cycle_imgs[24];
 
 	// Districts
@@ -1145,7 +1146,7 @@ struct injected_state {
 
 	// Districts data
 	struct district_image_set {
-		Sprite imgs[4][4]; // 1st dimension = era, 2nd dimension = district image variant depending on buildings present
+		Sprite imgs[5][4][4]; // [variant][era][buildings]
 	} district_img_sets[COUNT_DISTRICT_TYPES];
 
 	struct district_button_image_set {
