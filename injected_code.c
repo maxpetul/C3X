@@ -2479,7 +2479,6 @@ finalize_district_job_assignment (Unit * unit, struct district_job_assignment * 
 		}
 	}
 	if (! success && ! requeue_request && unit != NULL) {
-		handle_existing_district_assignment (unit, job);
 		return;
 	}
 
@@ -2627,7 +2626,7 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 	char ss[200];
 
 	if ((unit == NULL) || (job == NULL))
-		return false;
+		return true;
 
 	int unit_id = unit->Body.ID;
 	int target_x = job->tile_x;
@@ -2637,7 +2636,7 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 		tile = tile_at (target_x, target_y);
 		if ((tile == NULL) || (tile == p_null_tile)) {
 			finalize_district_job_assignment (unit, job, false, true);
-			return false;
+			return true;
 		}
 		job->tile = tile;
 	}
@@ -2646,7 +2645,7 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 
 	if (district_is_complete (tile, job->district_id)) {
 		finalize_district_job_assignment (unit, job, true, false);
-		return false;
+		return true;
 	}
 
 	if ((unit->Body.X == target_x) && (unit->Body.Y == target_y)) {
@@ -2673,7 +2672,7 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 		}
 
 		finalize_district_job_assignment (unit, job, false, true);
-		return false;
+		return true;
 	}
 
 	if ((unit->Body.UnitState == UnitState_Go_To) &&
@@ -2691,6 +2690,7 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 		Unit_set_state (unit, __, UnitState_Go_To);
 		unit->Body.path_dest_x = target_x;
 		unit->Body.path_dest_y = target_y;
+		unit->Body.Auto_CityID = -1;
 		unit->vtable->work (unit);
 
 		snprintf (ss, sizeof ss, "District job path set for unit %d on tile (%d,%d) for district ID %d", unit_id, target_x, target_y, job->district_id);
@@ -2700,7 +2700,7 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 	}
 
 	finalize_district_job_assignment (unit, job, false, true);
-	return false;
+	return true;
 }
 
 bool
