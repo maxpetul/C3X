@@ -16,7 +16,7 @@ typedef unsigned char byte;
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
-#define COUNT_DISTRICT_TYPES 3
+#define COUNT_DISTRICT_TYPES 4
 
 // Initialize to zero. Implementation is in common.c
 struct table {
@@ -473,6 +473,7 @@ struct district_config {
 	int index,
 		btn_tile_sheet_column,
 		btn_tile_sheet_row,
+		total_img_rows,
 		total_img_columns,
 		culture_bonus,
 		science_bonus,
@@ -482,7 +483,7 @@ struct district_config {
 } const district_configs[COUNT_DISTRICT_TYPES] = {
 	{
 		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_paths = {"Encampment.pcx"}, 
-		.num_img_paths = 1, .index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_columns = 3,
+		.num_img_paths = 1, .index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 3,
 		.advance_prereq = "Warrior Code", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
 		.defense_bonus_multiplier = 1.5,
 		.allow_multiple = false,  .is_workable = false,
@@ -490,8 +491,17 @@ struct district_config {
 		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0
 	},
 	{
+		.command = UCV_Build_HolySite, .tooltip = "Build Holy Site", .img_paths = {"HolySite_AMER.pcx", "HolySite_EURO.pcx", "HolySite_ROMAN.pcx", "HolySite_MIDEAST.pcx", "HolySite_ASIAN.pcx"}, 
+		.num_img_paths = 5, .index = 1, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 1, .total_img_rows = 1, .total_img_columns = 3,
+		.advance_prereq = "Ceremonial Burial", .dependent_improvements = {"Temple", "Cathedral"},
+		.defense_bonus_multiplier = 1.0,
+		.allow_multiple = true,   .is_workable = false,
+		.culture_bonus = 2,       .science_bonus = 0,
+		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0
+	},
+	{
 		.command = UCV_Build_Campus, .tooltip = "Build Campus", .img_paths = {"Campus.pcx"}, 
-		.num_img_paths = 1, .index = 1, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_columns = 3,
+		.num_img_paths = 1, .index = 2, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 3,
 		.advance_prereq = "Literature", .dependent_improvements = {"Library", "University"},
 		.defense_bonus_multiplier = 1.0,
 		.allow_multiple = false,  .is_workable = false,
@@ -500,7 +510,7 @@ struct district_config {
 	},
 	{
 		.command = UCV_Build_Neighborhood, .tooltip = "Build Neighborhood", .img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"}, 
-		.num_img_paths = 5, .index = 2, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 1, .total_img_columns = 4,
+		.num_img_paths = 5, .index = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 1, .total_img_rows = 4, .total_img_columns = 4,
 		.advance_prereq = "", .dependent_improvements = {NULL},
 		.defense_bonus_multiplier = 1.25,
 		.allow_multiple = true,  .is_workable = false,

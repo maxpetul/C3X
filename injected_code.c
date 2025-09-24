@@ -2529,6 +2529,88 @@ tile_not_suitable_for_district(Tile * tile, int district_id, City * city)
 	return false;
 }
 
+int __fastcall
+patch_City_calc_tile_yield_at (City * this, int edx, int yield_type, int tile_x, int tile_y)
+{
+	// TODO: doesn't currently work as expected, fix
+	/*
+	if (is->current_config.enable_districts) {
+		Tile * tile = tile_at(tile_x, tile_y);
+		if (tile != NULL && tile != p_null_tile) {
+			int district_id;
+			if (itable_look_up(&is->district_tile_map, (int)tile, &district_id)) {
+				if (district_is_complete(tile, district_id)) {
+					struct district_config const * cfg = &district_configs[district_id];
+
+					if (cfg->is_workable) {
+						switch (yield_type) {
+							case 0: // Food
+								return cfg->food_bonus;
+							case 1: // Production
+								return cfg->production_bonus;
+							case 2: // Commerce/Gold
+								return cfg->gold_bonus;
+						}
+					} else {
+						// If district is not workable, override base tile yields to 0
+						return 0;
+					}
+				}
+			}
+		}
+	}
+	*/
+	return City_calc_tile_yield_at (this, __, yield_type, tile_x, tile_y);
+}
+
+int __fastcall
+patch_Map_calc_food_yield_at (Map *this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City *city)
+{
+	// TODO: doesn't currently work as expected, fix
+	/*
+	if (is->current_config.enable_districts) {
+		Tile * tile = tile_at(tile_x, tile_y);
+		if (tile != NULL && tile != p_null_tile) {
+			int district_id;
+			if (itable_look_up(&is->district_tile_map, (int)tile, &district_id)) {
+				if (district_is_complete(tile, district_id)) {
+					struct district_config const * cfg = &district_configs[district_id];
+					if (cfg->is_workable)
+						return cfg->food_bonus;
+					else
+						return 0;
+				}
+			}
+		}
+	}
+	*/
+	return Map_calc_food_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
+}
+
+int __fastcall
+patch_Map_calc_shield_yield_at (Map *this, int edx, int tile_x, int tile_y, int civ_id, City *city, int param_5, int param_6)
+{
+	// TODO: doesn't currently work as expected, fix
+	/*
+	if (is->current_config.enable_districts) {
+		Tile * tile = tile_at(tile_x, tile_y);
+		if (tile != NULL && tile != p_null_tile) {
+			int district_id;
+			if (itable_look_up(&is->district_tile_map, (int)tile, &district_id)) {
+				if (district_is_complete(tile, district_id)) {
+					struct district_config const * cfg = &district_configs[district_id];
+					if (cfg->is_workable)
+						return cfg->production_bonus;
+					else
+						return 0;
+				}
+			}
+		}
+	}
+	*/
+	return Map_calc_shield_yield_at (this, __, tile_x, tile_y, civ_id, city, param_5, param_6);
+}
+
 static Tile *
 find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 {
@@ -2562,9 +2644,9 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 			if (chebyshev <= 1)
 				continue;
 
-			int food = City_calc_tile_yield_at (city, __, YK_FOOD, tx, ty);
-			int shields = City_calc_tile_yield_at (city, __, YK_SHIELDS, tx, ty);
-			int commerce = City_calc_tile_yield_at (city, __, YK_COMMERCE, tx, ty);
+			int food = patch_City_calc_tile_yield_at (city, __, YK_FOOD, tx, ty);
+			int shields = patch_City_calc_tile_yield_at (city, __, YK_SHIELDS, tx, ty);
+			int commerce = patch_City_calc_tile_yield_at (city, __, YK_COMMERCE, tx, ty);
 			int yield_sum = food + shields + commerce;
 
 			int ring_priority = (chebyshev == 2) ? 1 : 0;
@@ -2600,9 +2682,9 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 		if (!is_neighborhood && best_tile != NULL && chebyshev <= 1)
 			continue;
 
-		int food = City_calc_tile_yield_at (city, __, YK_FOOD, tx, ty);
-		int shields = City_calc_tile_yield_at (city, __, YK_SHIELDS, tx, ty);
-		int commerce = City_calc_tile_yield_at (city, __, YK_COMMERCE, tx, ty);
+		int food = patch_City_calc_tile_yield_at (city, __, YK_FOOD, tx, ty);
+		int shields = patch_City_calc_tile_yield_at (city, __, YK_SHIELDS, tx, ty);
+		int commerce = patch_City_calc_tile_yield_at (city, __, YK_COMMERCE, tx, ty);
 		int yield_sum = food + shields + commerce;
 
 		if (is_neighborhood) {
@@ -3489,33 +3571,6 @@ void __fastcall
 patch_City_recompute_yields_and_happiness (City * this, int edx)
 {
 	City_recompute_yields_and_happiness (this, __);
-
-	if (! is->current_config.enable_districts) return;
-
-	// TODO: this doesn't seem to be having any effect. Come back to it
-	
-	// Loop over all workable tiles and apply district yields
-    FOR_TILES_AROUND(tai, is->workable_tile_count, this->Body.X, this->Body.Y) {
-        Tile * tile = tai.tile;
-        if ((tile == NULL) || (tile == p_null_tile))
-            continue;
-
-        int district_id;
-        if (!itable_look_up(&is->district_tile_map, (int)tile, &district_id))
-            continue;
-
-        if (!district_is_complete(tile, district_id))
-            continue;
-
-        struct district_config const * cfg = &district_configs[district_id];
-
-        this->Body.Tiles_Food       += cfg->food_bonus;
-        this->Body.Tiles_Production += cfg->production_bonus;
-        this->Body.Tiles_Commerce   += cfg->gold_bonus;
-    }
-
-	City_recompute_production(this);
-	City_recompute_commerce(this);
 }
 
 // Recomputes yields in cities with active mills that depend on input resources. Intended to be called when an input resource has been potentially
@@ -9773,7 +9828,7 @@ eval_starting_location (Map * map, int const * alt_starting_locs, int alt_starti
 				continue; // Skip tile that would be covered by the city
 			int x, y;
 			tai_get_coords (&tai, &x, &y);
-			int tile_food = Map_calc_food_yield_at (map, __, x, y, tai.tile->vtable->m50_Get_Square_BaseType (tai.tile), civ_id, 0, NULL);
+			int tile_food = patch_Map_calc_food_yield_at (map, __, x, y, tai.tile->vtable->m50_Get_Square_BaseType (tai.tile), civ_id, 0, NULL);
 			int food_required = p_bic_data->General.FoodPerCitizen + (tai.tile->vtable->m35_Check_Is_Water (tai.tile) ? 1 : 0);
 			break_even_food_tiles += tile_food >= food_required;
 		}
@@ -12217,7 +12272,7 @@ gather_mill_yields (City * city, int only_improv_id, int * out_food, int * out_s
 int __fastcall
 patch_City_calc_tile_yield_while_gathering (City * this, int edx, YieldKind kind, int tile_x, int tile_y)
 {
-	int tr = City_calc_tile_yield_at (this, __, kind, tile_x, tile_y);
+	int tr = patch_City_calc_tile_yield_at (this, __, kind, tile_x, tile_y);
 
 	// Include yields from generated resources
 	if ((this->Body.X == tile_x) && (this->Body.Y == tile_y)) {
@@ -14683,19 +14738,19 @@ init_district_images ()
 			}
 
 			// For each era
-			for (int era_i = 0; era_i < 4; era_i++) {
+			for (int era_i = 0; era_i < district_configs[dc].total_img_rows; era_i++) {
 
 				// For each column in the image (variations on the district image for that era)
-				for (int col = 0; col < district_configs[dc].total_img_columns; col++) {
+				for (int col_i = 0; col_i < district_configs[dc].total_img_columns; col_i++) {
 
 					//snprintf (ss, sizeof ss, "init_district_images: loading district %d culture %d era %d column %d", dc, culture_i, era_i, col);
 					//pop_up_in_game_error (ss);
 
-					Sprite_construct (&is->district_img_sets[dc].imgs[variant_i][era_i][col]);
+					Sprite_construct (&is->district_img_sets[dc].imgs[variant_i][era_i][col_i]);
 
-					int x = 128 * col,
+					int x = 128 * col_i,
 						y = 64 * era_i;
-					Sprite_slice_pcx (&is->district_img_sets[dc].imgs[variant_i][era_i][col], __, &pcx, x, y, 128, 64, 1, 1);
+					Sprite_slice_pcx (&is->district_img_sets[dc].imgs[variant_i][era_i][col_i], __, &pcx, x, y, 128, 64, 1, 1);
 
 					//snprintf (ss, sizeof ss, "init_district_images: loaded district %d culture %d era %d column %d", dc, culture_i, era_i, col);
 					//pop_up_in_game_error (ss);
