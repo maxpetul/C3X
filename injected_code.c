@@ -2824,8 +2824,7 @@ get_neighborhood_district_id (void)
 static void
 ensure_neighborhood_request_for_city (City * city)
 {
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_neighborhood_districts ||
+	if (! is->current_config.enable_neighborhood_districts ||
 	    (city == NULL))
 		return;
 
@@ -3007,8 +3006,7 @@ tile_counts_for_city_neighborhood (City * city, Tile * tile)
 int
 count_neighborhoods_in_city_radius (City * city)
 {
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_neighborhood_districts ||
+	if (! is->current_config.enable_neighborhood_districts ||
 	    (city == NULL))
 		return 0;
 
@@ -3031,8 +3029,7 @@ count_neighborhoods_in_city_radius (City * city)
 int
 get_neighborhood_pop_cap (City * city)
 {
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_neighborhood_districts ||
+	if (! is->current_config.enable_neighborhood_districts ||
 	    (city == NULL))
 		return -1;
 
@@ -3056,8 +3053,7 @@ get_neighborhood_pop_cap (City * city)
 bool
 city_is_at_neighborhood_cap (City * city)
 {
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_neighborhood_districts ||
+	if (! is->current_config.enable_neighborhood_districts ||
 	    (city == NULL))
 		return false;
 
@@ -3076,7 +3072,6 @@ void __fastcall
 patch_City_update_growth (City * this)
 {
 	if ((this == NULL) ||
-	    ! is->current_config.enable_districts ||
 	    ! is->current_config.enable_neighborhood_districts) {
 		// Fall back to vanilla growth logic when neighborhoods are disabled.
 		City_update_growth (this);
@@ -14861,40 +14856,39 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 					//pop_up_in_game_error (ss);
 
                     Sprite * district_sprite;
-					int buildings_column = 0;
+					int buildings = 0;
 
 					switch (district_configs[district_id].command) {
 						case UCV_Build_Encampment:
 						{
-							bool has_barracks = district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Barracks");
-							if (has_barracks) buildings_column = 1;
+							if (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Barracks")) buildings = 1;
 							break;
 						}
 						case UCV_Build_Campus:
 						{
-							bool has_library    = district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Library");
-							bool has_university = district_has_nearby_building_by_name(tile_x, tile_y, district_id, "University");
-							if (has_university)   buildings_column = 2;
-							else if (has_library) buildings_column = 1;
+							if      (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "University")) buildings = 2;
+							else if (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Library"))    buildings = 1;
+							break;
+						}
+						case UCV_Build_HolySite:
+						{
+							if      (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Cathedral")) buildings = 2;
+							else if (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Temple"))    buildings = 1;
+							variant = culture;
 							break;
 						}
 						case UCV_Build_Neighborhood:
 						{
 							// Neighborhood is a special case, as it has no dependent buildings, but also 4 images, each slightly different visually (for variety).
-
 							int px = tile_x & 1;        /* x parity bit */
 							int py = tile_y & 1;        /* y parity bit */
-
 							int bx = (tile_x >> 1) & 1; /* block-x parity */
 							int by = (tile_y >> 1) & 1; /* block-y parity */
-
 							int kx = by;
 							int ky = bx ^ by;           /* bx + by (mod 2) */
-
 							int ox = px ^ kx;
 							int oy = py ^ ky;
-
-							buildings_column = (ox << 1) | oy; /* final 0..3 */
+							buildings = (ox << 1) | oy; /* final 0..3 */
 							variant = culture;
 							break;
 						}
@@ -14903,7 +14897,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district %d era %d culture %d column %d", district_id, era, culture, col);
 					//pop_up_in_game_error (ss);
 
-					district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings_column];
+					district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
                     patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 
 					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: finished drawing district %d on tile (%d,%d)", district_id, tile_x, tile_y);
