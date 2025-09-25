@@ -6655,8 +6655,8 @@ issue_district_worker_command (Unit * unit, int command)
 	// Set tile -> DistrictID mapping in `district_tile_map`
 	if (tile != NULL && tile != p_null_tile) {
 
-		//snprintf (ss, sizeof ss, "C3X: Setting district_tile_map entry for tile");
-		//pop_up_in_game_error (ss);
+		snprintf (ss, sizeof ss, "C3X: Setting district_tile_map entry for tile %d,%d", unit->Body.X, unit->Body.Y);
+		pop_up_in_game_error (ss);
 
 		if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
 			itable_insert (&is->district_tile_map, (int)tile, district_id);

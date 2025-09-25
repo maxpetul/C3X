@@ -522,7 +522,7 @@ struct district_config {
 	{
 		.command = UCV_Build_Neighborhood, .tooltip = "Build Neighborhood", .img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"}, 
 		.num_img_paths = 5, .index = 4, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 1, .total_img_rows = 4, .total_img_columns = 4,
-		.advance_prereq = "", .dependent_improvements = {NULL},
+		.advance_prereq = NULL, .dependent_improvements = {NULL},
 		.defense_bonus_multiplier = 1.25,
 		.allow_multiple = true,  .is_workable = false,
 		.culture_bonus = 2,       .science_bonus = 0,
@@ -1193,7 +1193,7 @@ struct injected_state {
 	} district_img_sets[COUNT_DISTRICT_TYPES];
 
 	struct wonder_district_image_set {
-		Sprite img
+		Sprite img;
 	} wonder_district_img_sets[COUNT_WONDER_DISTRICT_TYPES];
 
 	struct district_button_image_set {
