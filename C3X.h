@@ -492,7 +492,7 @@ struct district_config {
 	},
 	{
 		.command = UCV_Build_HolySite, .tooltip = "Build Holy Site", .img_paths = {"HolySite_AMER.pcx", "HolySite_EURO.pcx", "HolySite_ROMAN.pcx", "HolySite_MIDEAST.pcx", "HolySite_ASIAN.pcx"}, 
-		.num_img_paths = 5, .index = 1, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 1, .total_img_rows = 1, .total_img_columns = 3,
+		.num_img_paths = 5, .index = 1, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0, .total_img_rows = 1, .total_img_columns = 3,
 		.advance_prereq = "Ceremonial Burial", .dependent_improvements = {"Temple", "Cathedral"},
 		.defense_bonus_multiplier = 1.0,
 		.allow_multiple = true,   .is_workable = false,
