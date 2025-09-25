@@ -6503,7 +6503,7 @@ patch_Unit_can_upgrade (Unit * this)
 bool
 is_district_command (int unit_command_value)
 {
-	return (unit_command_value <= UCV_Build_Encampment) && (unit_command_value >= UCV_Build_Neighborhood);
+	return (unit_command_value <= UCV_Build_Encampment) && (unit_command_value >= UCV_Build_WonderDistrict);
 }
 
 bool __fastcall
@@ -14861,7 +14861,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 					switch (district_configs[district_id].command) {
 						case UCV_Build_Encampment:
 						{
-							if (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Barracks")) buildings = 1;
+							if      (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Barracks")) buildings = 1;
 							break;
 						}
 						case UCV_Build_Campus:
@@ -14875,6 +14875,11 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 							if      (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Cathedral")) buildings = 2;
 							else if (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Temple"))    buildings = 1;
 							variant = culture;
+							break;
+						}
+						case UCV_Build_EntertainmentComplex:
+						{
+							if      (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Colosseum")) buildings = 1;
 							break;
 						}
 						case UCV_Build_Neighborhood:

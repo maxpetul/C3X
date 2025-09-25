@@ -16,7 +16,8 @@ typedef unsigned char byte;
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
-#define COUNT_DISTRICT_TYPES 5
+#define COUNT_DISTRICT_TYPES 6
+#define COUNT_WONDER_DISTRICT_TYPES 5
 
 // Initialize to zero. Implementation is in common.c
 struct table {
@@ -295,6 +296,7 @@ struct c3x_config {
 	bool enable_neighborhood_districts;
 	int no_neighborhood_pop_threshold;
 	int per_neighborhood_pop_growth_enabled;
+	bool enable_wonder_districts;
 };
 
 enum stackable_command {
@@ -510,7 +512,7 @@ struct district_config {
 	},
 	{
 		.command = UCV_Build_EntertainmentComplex, .tooltip = "Build Entertainment Complex", .img_paths = {"EntertainmentComplex.pcx"}, 
-		.num_img_paths = 1, .index = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 2,
+		.num_img_paths = 1, .index = 3, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 2,
 		.advance_prereq = "Construction", .dependent_improvements = {"Colosseum"},
 		.defense_bonus_multiplier = 1.0,
 		.allow_multiple = false,  .is_workable = false,
@@ -519,13 +521,35 @@ struct district_config {
 	},
 	{
 		.command = UCV_Build_Neighborhood, .tooltip = "Build Neighborhood", .img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"}, 
-		.num_img_paths = 5, .index = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 1, .total_img_rows = 4, .total_img_columns = 4,
+		.num_img_paths = 5, .index = 4, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 1, .total_img_rows = 4, .total_img_columns = 4,
 		.advance_prereq = "", .dependent_improvements = {NULL},
 		.defense_bonus_multiplier = 1.25,
 		.allow_multiple = true,  .is_workable = false,
 		.culture_bonus = 2,       .science_bonus = 0,
 		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0
-	}
+	},
+	{
+		.command = UCV_Build_WonderDistrict, .tooltip = "Build Wonder District", .img_paths = {"WonderDistrict.pcx"}, 
+		.num_img_paths = 1, .index = 5, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 1,
+		.advance_prereq = NULL, .dependent_improvements = {"The Pyramids", "The Hanging Guardens", "The Oracle", "Copernicus' Observatory", "The Great Library"},
+		.defense_bonus_multiplier = 1.0,
+		.allow_multiple = true,   .is_workable = false,
+		.culture_bonus = 0,       .science_bonus = 0,
+		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0
+	},
+};
+
+struct wonder_district_config {
+	char const * wonder_name;
+	int index,
+		img_row,
+		img_column;
+} const wonder_district_configs[COUNT_WONDER_DISTRICT_TYPES] = {
+	{ .index = 0, .img_row = 0, .img_column = 0, .wonder_name = "The Pyramids" },
+	{ .index = 1, .img_row = 0, .img_column = 1, .wonder_name = "The Hanging Gardens" },
+	{ .index = 2, .img_row = 0, .img_column = 3, .wonder_name = "The Oracle" },
+	{ .index = 3, .img_row = 1, .img_column = 0, .wonder_name = "Copernicus' Observatory" },
+	{ .index = 4, .img_row = 1, .img_column = 2, .wonder_name = "The Great Library" }
 };
 
 struct district_job_assignment {
@@ -1167,6 +1191,10 @@ struct injected_state {
 	struct district_image_set {
 		Sprite imgs[5][4][4]; // [variant][era][buildings]
 	} district_img_sets[COUNT_DISTRICT_TYPES];
+
+	struct wonder_district_image_set {
+		Sprite img
+	} wonder_district_img_sets[COUNT_WONDER_DISTRICT_TYPES];
 
 	struct district_button_image_set {
 		Sprite imgs[4];
