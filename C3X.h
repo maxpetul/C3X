@@ -16,7 +16,7 @@ typedef unsigned char byte;
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
-#define COUNT_DISTRICT_TYPES 4
+#define COUNT_DISTRICT_TYPES 5
 
 // Initialize to zero. Implementation is in common.c
 struct table {
@@ -503,6 +503,15 @@ struct district_config {
 		.command = UCV_Build_Campus, .tooltip = "Build Campus", .img_paths = {"Campus.pcx"}, 
 		.num_img_paths = 1, .index = 2, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 3,
 		.advance_prereq = "Literature", .dependent_improvements = {"Library", "University"},
+		.defense_bonus_multiplier = 1.0,
+		.allow_multiple = false,  .is_workable = false,
+		.culture_bonus = 0,       .science_bonus = 0,
+		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0
+	},
+	{
+		.command = UCV_Build_EntertainmentComplex, .tooltip = "Build Entertainment Complex", .img_paths = {"EntertainmentComplex.pcx"}, 
+		.num_img_paths = 1, .index = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 2,
+		.advance_prereq = "Construction", .dependent_improvements = {"Colosseum"},
 		.defense_bonus_multiplier = 1.0,
 		.allow_multiple = false,  .is_workable = false,
 		.culture_bonus = 0,       .science_bonus = 0,
