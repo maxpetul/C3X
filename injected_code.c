@@ -3328,11 +3328,6 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	if ((tile == NULL) || (tile == p_null_tile) || ! is->current_config.enable_districts)
 		return;
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "handle_district_removed: tile=%p district_id=%d center=(%d,%d) leave_ruins=%d",
-		(void *)tile, district_id, center_x, center_y, leave_ruins ? 1 : 0);
-	pop_up_in_game_error (ss);
-
 	itable_remove (&is->district_tile_map, (int)tile);
 
 	// Remove any wonder overlay mapping for this tile
@@ -3341,8 +3336,12 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	if (district_id >= 0)
 		remove_dependent_buildings_for_district (district_id, center_x, center_y);
 
-	if (leave_ruins && (tile->vtable->m60_Set_Ruins != NULL))
+	if (leave_ruins && (tile->vtable->m60_Set_Ruins != NULL)) {
 		tile->vtable->m60_Set_Ruins (tile, __, 1);
+
+		// TODO: figure out how to redraw only this tile, not the whole map
+		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+	}
 }
 
 static bool
@@ -3511,36 +3510,7 @@ handle_district_destroyed_by_attack (Tile * tile, int tile_x, int tile_y, bool l
 void __fastcall
 patch_Tile_impl_m51_Unset_Tile_Flags (Tile * this, int edx, int param_1, unsigned int param_2, int param_3, int param_4)
 {
-	// Intercept attempts to remove mine flag for completed Wonder Districts if configured
-	if (is->current_config.enable_districts && is->current_config.enable_wonder_districts && (param_2 & TILE_FLAG_MINE)) {
-		int district_id;
-		if (itable_look_up (&is->district_tile_map, (int)this, &district_id)) {
-			int wonder_district_id = get_wonder_district_id ();
-			if ((district_id == wonder_district_id) &&
-			    itable_look_up_or (&is->wonder_district_tile_map, (int)this, -1) >= 0) {
-				if (! is->current_config.completed_wonder_districts_can_be_destroyed) {
-					return; // block destruction
-				}
-			}
-		}
-	}
-
 	Tile_impl_m51_Unset_Tile_Flags (this, __, param_1, param_2, param_3, param_4);
-
-	// If a Wonder District was actually destroyed here and allowed, clean up mapping and dependencies
-	/* TODO: this seems to fire every time a district is built (or more) and not working as intended. Fix
-	if (is->current_config.enable_districts && (param_2 & TILE_FLAG_MINE)) {
-		char ss[200];
-		snprintf (ss, sizeof ss, "patch_Tile_impl_m51_Unset_Tile_Flags: tile=%p flags=0x%X", (void *)this, param_2);
-		pop_up_in_game_error (ss);
-		int district_id;
-		if (itable_look_up (&is->district_tile_map, (int)this, &district_id)) {
-			int x, y;
-			if (tile_coords_from_ptr (&p_bic_data->Map, this, &x, &y))
-				handle_district_destroyed_by_attack (this, x, y, true);
-		}
-	}
-	*/
 }
 
 bool
@@ -12240,7 +12210,7 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 	int tile_x = x;
 	int tile_y = y;
 
-	if (bombarding && is->current_config.enable_districts) {
+	if (is->current_config.enable_districts) {
 		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 		target_tile = tile_at (tile_x, tile_y);
 		if ((target_tile != NULL) && (target_tile != p_null_tile)) {
