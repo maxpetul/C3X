@@ -2795,6 +2795,7 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 }
 
 int __fastcall patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp);
+static bool free_wonder_district_for_city (City * city);
 
 static bool
 handle_existing_district_assignment (Unit * unit, struct district_job_assignment * job)
@@ -3337,6 +3338,16 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 		tile->vtable->m60_Set_Ruins (tile, __, 1);
 }
 
+bool
+has_active_building (City * city, int improv_id)
+{
+	Leader * owner = &leaders[city->Body.CivID];
+	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	return patch_City_has_improvement (city, __, improv_id, 1) && // building is physically present in city AND
+		((improv->ObsoleteID < 0) || (! Leader_has_tech (owner, __, improv->ObsoleteID))) && // building is not obsolete AND
+		((improv->GovernmentID < 0) || (improv->GovernmentID == owner->GovernmentType)); // building is not restricted to a different govt
+}
+
 static bool
 city_has_active_wonder_for_district (City * city)
 {
@@ -3351,6 +3362,65 @@ city_has_active_wonder_for_district (City * city)
 			return true;
 	}
 	return false;
+}
+
+static bool
+city_requires_district_for_improvement (City * city, int improv_id, int * out_district_id)
+{
+	int district_id;
+	if (! itable_look_up (&is->district_building_prereqs, improv_id, &district_id))
+		return false;
+	if (city_has_required_district (city, district_id))
+		return false;
+	if (out_district_id != NULL)
+		*out_district_id = district_id;
+	return true;
+}
+
+static void
+clear_best_feasible_order (City * city)
+{
+	int key = (int)(long)city;
+	int stored_int;
+	if (itable_look_up (&is->ai_best_feasible_orders, key, &stored_int)) {
+		struct ai_best_feasible_order * stored = (struct ai_best_feasible_order *)(long)stored_int;
+		free (stored);
+		itable_remove (&is->ai_best_feasible_orders, key);
+	}
+}
+
+static void
+record_best_feasible_order (City * city, City_Order const * order, int value)
+{
+	int key = (int)(long)city;
+	int stored_int;
+	struct ai_best_feasible_order * stored;
+	if (itable_look_up (&is->ai_best_feasible_orders, key, &stored_int))
+		stored = (struct ai_best_feasible_order *)(long)stored_int;
+	else {
+		stored = malloc (sizeof *stored);
+		if (stored == NULL)
+			return;
+		stored->order = *order;
+		stored->value = value;
+		itable_insert (&is->ai_best_feasible_orders, key, (int)(long)stored);
+		return;
+	}
+
+	if (value > stored->value) {
+		stored->order = *order;
+		stored->value = value;
+	}
+}
+
+static struct ai_best_feasible_order *
+get_best_feasible_order (City * city)
+{
+	int stored_int;
+	if (itable_look_up (&is->ai_best_feasible_orders, (int)(long)city, &stored_int))
+		return (struct ai_best_feasible_order *)(long)stored_int;
+	else
+		return NULL;
 }
 
 static bool
@@ -3463,16 +3533,6 @@ patch_Tile_impl_m51_Unset_Tile_Flags (Tile * this, int edx, int param_1, unsigne
 				handle_district_destroyed_by_attack (this, x, y, true);
 		}
 	}
-}
-
-bool
-has_active_building (City * city, int improv_id)
-{
-	Leader * owner = &leaders[city->Body.CivID];
-	Improvement * improv = &p_bic_data->Improvements[improv_id];
-	return patch_City_has_improvement (city, __, improv_id, 1) && // building is physically present in city AND
-		((improv->ObsoleteID < 0) || (! Leader_has_tech (owner, __, improv->ObsoleteID))) && // building is not obsolete AND
-		((improv->GovernmentID < 0) || (improv->GovernmentID == owner->GovernmentType)); // building is not restricted to a different govt
 }
 
 bool
@@ -3629,6 +3689,27 @@ intercept_consideration (int valuation)
 
 			valuation = add_i31b_to_int (valuation, perfume);
 		}
+	}
+
+	if (is->current_config.enable_districts &&
+	    (city != NULL) &&
+	    ((*p_human_player_bits & (1 << city->Body.CivID)) == 0)) {
+		bool feasible = false;
+		switch (order->OrderType) {
+		case COT_Improvement:
+			if ((order->OrderID >= 0) && (order->OrderID < p_bic_data->ImprovementsCount) &&
+			    (! city_requires_district_for_improvement (city, order->OrderID, NULL)))
+				feasible = true;
+			break;
+		case COT_Unit:
+			if ((order->OrderID >= 0) && (order->OrderID < p_bic_data->UnitTypeCount))
+				feasible = true;
+			break;
+		default:
+			break;
+		}
+		if (feasible)
+			record_best_feasible_order (city, order, valuation);
 	}
 
 	// Expand the list of valuations if necessary
@@ -8410,11 +8491,6 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 bool __fastcall
 patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param_2)
 {
-	char ss[200];
-
-	//snprintf (ss, sizeof(ss), "City %d can build improvement %d", this->Body.ID, i_improv);
-	//pop_up_in_game_error(ss);
-
 	// First defer to the base game's logic
 	bool base = City_can_build_improvement (this, __, i_improv, param_2);
 	if (! base)
@@ -8424,33 +8500,10 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 	if (! is->current_config.enable_districts)
 		return base;
 
-	//snprintf(ss, sizeof(ss), "Checking district prereqs for improvement %d", i_improv);
-	//pop_up_in_game_error(ss);
-
 	int required_district_id;
-	if (! itable_look_up (&is->district_building_prereqs, i_improv, &required_district_id))
+	if (! city_requires_district_for_improvement (this, i_improv, &required_district_id))
 		return base;
 
-	//snprintf (ss, sizeof(ss), "City %d needs district %d to build improvement %d, workable tiles %d", this->Body.ID, required_district_id, i_improv, is->workable_tile_count);
-	//pop_up_in_game_error(ss);
-
-	// Scan workable tiles in city radius for the required district
-	int civ_id = this->Body.CivID;
-	FOR_TILES_AROUND (tai, is->workable_tile_count, this->Body.X, this->Body.Y) {
-		Tile * tile = tai.tile;
-		if (tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id) {
-			int district_id_on_tile;
-			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id_on_tile) &&
-			    (district_id_on_tile == required_district_id) &&
-				district_is_complete (tile, required_district_id))
-				return true; // Found required district in city radius
-		}
-	}
-
-	//snprintf (ss, sizeof(ss), "No required district %d found in city radius", required_district_id);
-	//pop_up_in_game_error(ss);
-
-	// No qualifying district found in city radius
 	mark_city_needs_district (this, required_district_id);
 	if (is->current_config.enable_wonder_districts) {
 		int wonder_district_id = get_wonder_district_id ();
@@ -8462,15 +8515,55 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 				remember_pending_wonder_order (this, i_improv);
 		}
 	}
-	return false;
+
+	if (*p_human_player_bits & (1 << this->Body.CivID))
+		return false;
+	else
+		return true;
 }
 
 void __fastcall
 patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 {
+	clear_best_feasible_order (this);
 	is->ai_considering_production_for_city = this;
 
 	City_ai_choose_production (this, __, out);
+
+	bool swapped_to_fallback = false;
+	City_Order fallback_order = {0};
+	if (is->current_config.enable_districts &&
+	    ((*p_human_player_bits & (1 << this->Body.CivID)) == 0) &&
+	    (out->OrderType == COT_Improvement) &&
+	    (out->OrderID >= 0) && (out->OrderID < p_bic_data->ImprovementsCount)) {
+		if (city_requires_district_for_improvement (this, out->OrderID, NULL)) {
+			struct ai_best_feasible_order * stored = get_best_feasible_order (this);
+			if (stored != NULL) {
+				bool fallback_is_feasible = true;
+				if (stored->order.OrderType == COT_Improvement) {
+					if ((stored->order.OrderID < 0) ||
+					    (stored->order.OrderID >= p_bic_data->ImprovementsCount) ||
+					    city_requires_district_for_improvement (this, stored->order.OrderID, NULL))
+						fallback_is_feasible = false;
+				} else if (stored->order.OrderType == COT_Unit) {
+					if ((stored->order.OrderID < 0) ||
+					    (stored->order.OrderID >= p_bic_data->UnitTypeCount))
+						fallback_is_feasible = false;
+				} else
+					fallback_is_feasible = false;
+
+				if (fallback_is_feasible) {
+					fallback_order = stored->order;
+					swapped_to_fallback = true;
+				}
+			}
+		}
+	}
+
+	clear_best_feasible_order (this);
+
+	if (swapped_to_fallback)
+		*out = fallback_order;
 
 	Leader * me = &leaders[this->Body.CivID];
 	int arty_ratio = is->current_config.ai_build_artillery_ratio;
@@ -8566,6 +8659,8 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 			}
 		}
 	}
+
+	is->ai_considering_production_for_city = NULL;
 }
 
 int __fastcall
@@ -9840,6 +9935,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 			is->sharing_buildings_by_districts_in_progress = false;
 		}
 	}
+
 }
 
 void __fastcall

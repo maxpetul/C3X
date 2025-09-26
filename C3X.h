@@ -566,6 +566,11 @@ struct district_job_assignment {
 	bool job_started;
 };
 
+struct ai_best_feasible_order {
+	City_Order order;
+	int value;
+};
+
 struct injected_state {
 	// ==========
 	// These fields are valid at any time in the injected code because they're set by the patcher {
@@ -1224,6 +1229,7 @@ struct injected_state {
 	struct table district_job_assignments;
 	struct table city_pending_district_requests;
 	struct table city_pending_wonder_orders;
+	struct table ai_best_feasible_orders;
 
 	struct table building_name_to_id;
 
