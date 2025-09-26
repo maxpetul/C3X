@@ -297,7 +297,8 @@ struct c3x_config {
 	int no_neighborhood_pop_threshold;
 	int per_neighborhood_pop_growth_enabled;
 	bool enable_wonder_districts;
-	bool completed_wonder_districts_can_be_destroyed;
+	bool wonders_can_be_destroyed;
+	bool cities_can_share_buildings_by_districts;
 };
 
 enum stackable_command {
@@ -467,7 +468,7 @@ struct district_config {
 	enum Unit_Command_Values command;
 	char const * tooltip;
 	char const * advance_prereq;
-	char const * dependent_improvements[20];
+	char const * dependent_improvements[5];
 	char const * img_paths[5]; // Up to 5 cultural variants
 	int num_img_paths;
 	bool allow_multiple,
@@ -513,17 +514,17 @@ struct district_config {
 	},
 	{
 		.command = UCV_Build_EntertainmentComplex, .tooltip = "Build Entertainment Complex", .img_paths = {"EntertainmentComplex.pcx"}, 
-		.num_img_paths = 1, .index = 3, .btn_tile_sheet_column = 5, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 3,
+		.num_img_paths = 1, .index = 3, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 2,
 		.advance_prereq = "Construction", .dependent_improvements = {"Colosseum"},
 		.defense_bonus_multiplier = 1.0,
-		.allow_multiple = true,   .is_workable = false,
-		.culture_bonus = 2,       .science_bonus = 0,
+		.allow_multiple = false,  .is_workable = false,
+		.culture_bonus = 0,       .science_bonus = 0,
 		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0
 	},
 	{
 		.command = UCV_Build_Neighborhood, .tooltip = "Build Neighborhood", .img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"}, 
 		.num_img_paths = 5, .index = 4, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 1, .total_img_rows = 4, .total_img_columns = 4,
-		.advance_prereq = "", .dependent_improvements = {NULL},
+		.advance_prereq = NULL, .dependent_improvements = {NULL},
 		.defense_bonus_multiplier = 1.25,
 		.allow_multiple = true,  .is_workable = false,
 		.culture_bonus = 2,       .science_bonus = 0,
@@ -531,11 +532,11 @@ struct district_config {
 	},
 	{
 		.command = UCV_Build_WonderDistrict, .tooltip = "Build Wonder District", .img_paths = {"WonderDistrict.pcx"}, 
-		.num_img_paths = 1, .index = 5, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 1,
+		.num_img_paths = 1, .index = 5, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 1,
 		.advance_prereq = NULL, .dependent_improvements = {"The Pyramids", "The Hanging Guardens", "The Oracle", "Copernicus' Observatory", "The Great Library"},
 		.defense_bonus_multiplier = 1.0,
 		.allow_multiple = true,   .is_workable = false,
-		.culture_bonus = 2,       .science_bonus = 0,
+		.culture_bonus = 0,       .science_bonus = 0,
 		.food_bonus = 0,          .gold_bonus = 0,          .production_bonus = 0
 	},
 };
@@ -1227,6 +1228,9 @@ struct injected_state {
 		int advance_prereq_id; // Tech ID that enables the district
 		int dependent_building_ids[5]; // Building types the district enables
 	} district_infos[COUNT_DISTRICT_TYPES];
+
+	// Guard to prevent recursive sharing when auto-adding buildings across cities
+	bool sharing_buildings_by_districts_in_progress;
 
 
 	// Initialized to 0. Every time Main_Screen_Form::m82_handle_key_event receives an event with is_down == 0, the virtual key code is prepended

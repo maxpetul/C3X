@@ -5081,6 +5081,7 @@ patch_init_floating_point ()
 		{"enable_neighborhood_districts"                       , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
 		{"enable_wonder_districts"                             , false, offsetof (struct c3x_config, enable_wonder_districts)},
 		{"completed_wonder_districts_can_be_destroyed"         , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
+		{"cities_can_share_buildings_by_districts"             , false, offsetof (struct c3x_config, cities_can_share_buildings_by_districts)},
 	};
 
 	struct integer_config_option {
@@ -5377,6 +5378,9 @@ patch_init_floating_point ()
 	memset (is->last_main_screen_key_up_events, 0, sizeof is->last_main_screen_key_up_events);
 
 	reset_district_state (true);
+
+	// District sharing guard
+	is->sharing_buildings_by_districts_in_progress = false;
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -9541,10 +9545,61 @@ patch_City_get_pollution_from_pop (City * this)
 int __fastcall
 patch_City_get_total_pollution (City * this)
 {
-	return City_get_pollution_from_buildings (this) + patch_City_get_pollution_from_pop (this);
+    return City_get_pollution_from_buildings (this) + patch_City_get_pollution_from_pop (this);
 }
 
 void remove_extra_palaces (City * city, City * excluded_destination);
+
+// When a city adds a building that depends on a district, optionally mirror that
+// building to all other same-civ cities that can also work the district tile.
+static void
+share_building_with_cities_in_radius (City * source, int improv_id, int required_district_id)
+{
+    if (! is->current_config.enable_districts) return;
+    if (! is->current_config.cities_can_share_buildings_by_districts) return;
+    if (source == NULL) return;
+
+    // Don't propagate wonders or small wonders
+    Improvement * improv = &p_bic_data->Improvements[improv_id];
+    if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0)
+        return;
+
+    int civ_id = source->Body.CivID;
+
+    // For each district tile within source city's workable area matching the required district,
+    // copy the building to other cities that can also work that tile.
+    FOR_TILES_AROUND (tai, is->workable_tile_count, source->Body.X, source->Body.Y) {
+        Tile * tile = tai.tile;
+        if (tile == p_null_tile) continue;
+        if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id) continue;
+
+        int mapped_id;
+        if (! itable_look_up (&is->district_tile_map, (int)tile, &mapped_id)) continue;
+        if (mapped_id != required_district_id) continue;
+        if (! district_is_complete (tile, required_district_id)) continue;
+
+        int tx, ty;
+        if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tx, &ty)) continue;
+
+        FOR_CITIES_OF (coi, civ_id) {
+            City * city = coi.city;
+            if (city == NULL) continue;
+            if (city == source) continue;
+
+            // Check if the district tile is inside this city's work radius
+            int ni = Map_compute_neighbor_index (&p_bic_data->Map, __, city->Body.X, city->Body.Y, tx, ty, 1000);
+            int wr = ((ni >= 0) && (ni < ARRAY_LEN (is->ni_to_work_radius))) ? is->ni_to_work_radius[ni] : -1;
+            if ((wr < 0) || (wr > is->current_config.city_work_radius)) continue;
+
+            // Must be within same civ's territory (like the build check)
+            if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID) continue;
+
+            if (! patch_City_has_improvement (city, __, improv_id, false)) {
+                City_add_or_remove_improvement (city, __, improv_id, 1, false);
+            }
+        }
+    }
+}
 
 void __fastcall
 patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int add, bool param_3)
@@ -9624,6 +9679,19 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 				Leader_recompute_buildings_maintenance (&leaders[n_player]);
 			player_bits >>= 1;
 			n_player++;
+		}
+	}
+
+	// Optionally share district-dependent buildings to other cities in range of the same district
+	if ((! is->is_placing_scenario_things) && add &&
+	    is->current_config.enable_districts &&
+	    is->current_config.cities_can_share_buildings_by_districts &&
+	    (! is->sharing_buildings_by_districts_in_progress)) {
+		int required_district_id;
+		if (itable_look_up (&is->district_building_prereqs, improv_id, &required_district_id)) {
+			is->sharing_buildings_by_districts_in_progress = true;
+			share_building_with_cities_in_radius (this, improv_id, required_district_id);
+			is->sharing_buildings_by_districts_in_progress = false;
 		}
 	}
 }
