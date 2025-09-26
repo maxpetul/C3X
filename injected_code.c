@@ -2353,6 +2353,62 @@ district_is_complete(Tile * tile, int district_id)
 }
 
 static void
+remember_pending_wonder_order (City * city, int improvement_id)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_wonder_districts ||
+	    (city == NULL) ||
+	    (improvement_id < 0))
+		return;
+
+	if ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)
+		return;
+
+	itable_insert (&is->city_pending_wonder_orders, (int)(long)city, improvement_id);
+}
+
+static bool
+lookup_pending_wonder_order (City * city, int * out_improv_id)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_wonder_districts ||
+	    (city == NULL) ||
+	    (out_improv_id == NULL))
+		return false;
+
+	return itable_look_up (&is->city_pending_wonder_orders, (int)(long)city, out_improv_id);
+}
+
+static void
+forget_pending_wonder_order (City * city)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_wonder_districts ||
+	    (city == NULL))
+		return;
+
+	itable_remove (&is->city_pending_wonder_orders, (int)(long)city);
+}
+
+static int
+get_neighborhood_district_id (void)
+{
+	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++)
+		if (district_configs[i].command == UCV_Build_Neighborhood)
+			return i;
+	return -1;
+}
+
+static int
+get_wonder_district_id (void)
+{
+	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++)
+		if (district_configs[i].command == UCV_Build_WonderDistrict)
+			return i;
+	return -1;
+}
+
+static void
 mark_city_needs_district (City * city, int district_id)
 {
 	if (! is->current_config.enable_districts ||
@@ -2415,6 +2471,7 @@ reset_district_state (bool reset_tile_map)
 
 	clear_district_job_assignments (false);
 	table_deinit (&is->city_pending_district_requests);
+	table_deinit (&is->city_pending_wonder_orders);
 }
 
 static void
@@ -2425,14 +2482,17 @@ clear_city_district_request (City * city, int district_id)
 	    (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
 		return;
 
-	int key = (int)city;
+	int key = (int)(long)city;
 	int mask;
 	if (itable_look_up (&is->city_pending_district_requests, key, &mask)) {
+		bool had_request = (mask & (1 << district_id)) != 0;
 		mask &= ~(1 << district_id);
 		if (mask != 0)
 			itable_insert (&is->city_pending_district_requests, key, mask);
 		else
 			itable_remove (&is->city_pending_district_requests, key);
+		if (had_request && (district_id == get_wonder_district_id ()))
+			forget_pending_wonder_order (city);
 	}
 }
 
@@ -2758,6 +2818,17 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 	itable_insert (&is->district_tile_map, (int)(long)tile, job->district_id);
 
 	if (district_is_complete (tile, job->district_id)) {
+		if (is->current_config.enable_wonder_districts &&
+		    (job->district_id == get_wonder_district_id ()) &&
+		    (job->city != NULL)) {
+			int wonder_improv_id;
+			if (lookup_pending_wonder_order (job->city, &wonder_improv_id)) {
+				if ((wonder_improv_id >= 0) &&
+				    City_can_build_improvement (job->city, __, wonder_improv_id, false))
+					City_set_production (job->city, __, COT_Improvement, wonder_improv_id, false);
+				forget_pending_wonder_order (job->city);
+			}
+		}
 		finalize_district_job_assignment (unit_id, job, true, false);
 		return false;
 	}
@@ -2823,24 +2894,6 @@ city_has_required_district (City * city, int district_id)
 		}
 	}
 	return false;
-}
-
-static int
-get_neighborhood_district_id (void)
-{
-	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++)
-		if (district_configs[i].command == UCV_Build_Neighborhood)
-			return i;
-	return -1;
-}
-
-static int
-get_wonder_district_id (void)
-{
-	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++)
-		if (district_configs[i].command == UCV_Build_WonderDistrict)
-			return i;
-	return -1;
 }
 
 static void
@@ -8316,6 +8369,16 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 
 	// No qualifying district found in city radius
 	mark_city_needs_district (this, required_district_id);
+	if (is->current_config.enable_wonder_districts) {
+		int wonder_district_id = get_wonder_district_id ();
+		if ((wonder_district_id >= 0) &&
+		    (required_district_id == wonder_district_id) &&
+		    ((*p_human_player_bits & (1 << this->Body.CivID)) == 0)) {
+			Improvement * improv = &p_bic_data->Improvements[i_improv];
+			if (improv->Characteristics & ITC_Wonder)
+				remember_pending_wonder_order (this, i_improv);
+		}
+	}
 	return false;
 }
 
@@ -13251,6 +13314,33 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			}
 		}
 
+		if (is->current_config.enable_districts &&
+	    is->current_config.enable_wonder_districts &&
+	    (is->city_pending_wonder_orders.len > 0)) {
+		int entry_count = 0;
+		FOR_TABLE_ENTRIES (tei, &is->city_pending_wonder_orders) {
+			City * city = (City *)(long)tei.key;
+			int improv_id = tei.value;
+			if ((city != NULL) && (improv_id >= 0))
+				entry_count++;
+		}
+		if (entry_count > 0) {
+			serialize_aligned_text ("wonder_pending_orders", &mod_data);
+			int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 2 * entry_count));
+			int * out = chunk + 1;
+			chunk[0] = entry_count;
+			FOR_TABLE_ENTRIES (tei, &is->city_pending_wonder_orders) {
+				City * city = (City *)(long)tei.key;
+				int improv_id = tei.value;
+				if ((city == NULL) || (improv_id < 0))
+					continue;
+				out[0] = city->Body.ID;
+				out[1] = improv_id;
+				out += 2;
+			}
+		}
+	}
+
 		if (is->current_config.enable_districts && (is->district_tile_map.len > 0)) {
 			serialize_aligned_text ("district_tile_map", &mod_data);
 			int entry_capacity = is->district_tile_map.len;
@@ -13574,6 +13664,42 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				}
 				if (! success) {
 					error_chunk_name = "district_pending_requests";
+					break;
+				}
+			} else if (match_save_chunk_name (&cursor, "wonder_pending_orders")) {
+				bool success = false;
+				int remaining_bytes = (seg + seg_size) - cursor;
+				if (remaining_bytes >= (int)sizeof(int)) {
+					int * ints = (int *)cursor;
+					int entry_count = *ints++;
+					cursor = (byte *)ints;
+					remaining_bytes -= (int)sizeof(int);
+					if ((entry_count >= 0) &&
+					    (remaining_bytes >= entry_count * 2 * (int)sizeof(int))) {
+						table_deinit (&is->city_pending_wonder_orders);
+						success = true;
+						for (int n = 0; n < entry_count; n++) {
+							if (remaining_bytes < 2 * (int)sizeof(int)) {
+								success = false;
+								break;
+							}
+							int city_id = *ints++;
+							int improv_id = *ints++;
+							cursor = (byte *)ints;
+							remaining_bytes -= 2 * (int)sizeof(int);
+							if (improv_id < 0)
+								continue;
+							City * city = get_city_ptr (city_id);
+							if (city == NULL)
+								continue;
+							itable_insert (&is->city_pending_wonder_orders, (int)(long)city, improv_id);
+						}
+						if (! success)
+							table_deinit (&is->city_pending_wonder_orders);
+					}
+				}
+				if (! success) {
+					error_chunk_name = "wonder_pending_orders";
 					break;
 				}
 			} else if (match_save_chunk_name (&cursor, "district_tile_map")) {

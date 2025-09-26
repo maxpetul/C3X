@@ -293,12 +293,14 @@ struct c3x_config {
 	int pinned_hour_for_day_night_cycle;
 
 	bool enable_districts;
+	bool cities_can_share_buildings_by_districts;
+
 	bool enable_neighborhood_districts;
 	int no_neighborhood_pop_threshold;
 	int per_neighborhood_pop_growth_enabled;
+	
 	bool enable_wonder_districts;
-	bool wonders_can_be_destroyed;
-	bool cities_can_share_buildings_by_districts;
+	bool completed_wonder_districts_can_be_destroyed;
 };
 
 enum stackable_command {
@@ -1221,6 +1223,7 @@ struct injected_state {
 	struct table command_id_to_district_id;
 	struct table district_job_assignments;
 	struct table city_pending_district_requests;
+	struct table city_pending_wonder_orders;
 
 	struct table building_name_to_id;
 
