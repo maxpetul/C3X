@@ -2969,6 +2969,11 @@ ai_try_assign_district_job (Unit * unit)
 
 			int target_x, target_y;
 			Tile * tile = find_tile_for_district (city, district_id, &target_x, &target_y);
+			if ((tile == NULL) &&
+			    is->current_config.enable_wonder_districts &&
+			    (district_id != get_wonder_district_id ()) &&
+			    free_wonder_district_for_city (city))
+				tile = find_tile_for_district (city, district_id, &target_x, &target_y);
 			if (tile == NULL)
 				continue;
 
@@ -3330,6 +3335,84 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 
 	if (leave_ruins && (tile->vtable->m60_Set_Ruins != NULL))
 		tile->vtable->m60_Set_Ruins (tile, __, 1);
+}
+
+static bool
+city_has_active_wonder_for_district (City * city)
+{
+	int wonder_district_id = get_wonder_district_id ();
+	if ((city == NULL) || (wonder_district_id < 0))
+		return false;
+
+	struct district_infos * info = &is->district_infos[wonder_district_id];
+	for (int n = 0; n < ARRAY_LEN (info->dependent_building_ids); n++) {
+		int building_id = info->dependent_building_ids[n];
+		if ((building_id >= 0) && has_active_building (city, building_id))
+			return true;
+	}
+	return false;
+}
+
+static bool
+city_is_currently_building_wonder (City * city)
+{
+	if ((city == NULL) || (city->Body.Order_Type != COT_Improvement))
+		return false;
+	int order_id = city->Body.Order_ID;
+	if ((order_id < 0) || (order_id >= p_bic_data->ImprovementsCount))
+		return false;
+	return (p_bic_data->Improvements[order_id].Characteristics & ITC_Wonder) != 0;
+}
+
+static bool
+city_needs_wonder_district (City * city)
+{
+	if (! is->current_config.enable_wonder_districts || (city == NULL))
+		return false;
+	int pending_improv_id;
+	if (lookup_pending_wonder_order (city, &pending_improv_id))
+		return true;
+	if (city_is_currently_building_wonder (city))
+		return true;
+	if (city_has_active_wonder_for_district (city))
+		return true;
+	return false;
+}
+
+static bool
+free_wonder_district_for_city (City * city)
+{
+	if (! is->current_config.enable_wonder_districts || (city == NULL))
+		return false;
+	if ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)
+		return false;
+	if (city_needs_wonder_district (city))
+		return false;
+
+	int wonder_district_id = get_wonder_district_id ();
+	if (wonder_district_id < 0)
+		return false;
+
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
+		Tile * tile = tai.tile;
+		if (tile == p_null_tile)
+			continue;
+		int mapped_id;
+		if (! itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) || (mapped_id != wonder_district_id))
+			continue;
+		if (district_assignment_exists_for_tile (tile))
+			continue;
+		if (itable_look_up_or (&is->wonder_district_tile_map, (int)tile, -1) >= 0)
+			continue;
+		int tile_x, tile_y;
+		if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
+			continue;
+		tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
+		handle_district_removed (tile, wonder_district_id, city->Body.X, city->Body.Y, false);
+		return true;
+	}
+
+	return false;
 }
 
 static void
