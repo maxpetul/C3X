@@ -386,6 +386,18 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 			return false;
 	}
 
+	if (neighbor_index >= 0) {
+		int tile_x, tile_y;
+		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &tile_x, &tile_y);
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			int district_id;
+			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) &&
+			    tile->vtable->m18_Check_Mines (tile, __, 0))
+				return false;
+		}
+	}
+
 	return City_controls_tile (this, __, neighbor_index, consider_enemy_units);
 }
 
@@ -2420,12 +2432,15 @@ mark_city_needs_district (City * city, int district_id)
 	if ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)
 		return;
 
+	char ss[200];
+	snprintf (ss, sizeof ss, "mark_city_needs_district: %d\n", district_id);
+	pop_up_in_game_error (ss);
+
 	int key = (int)(long)city;
 	int mask = itable_look_up_or (&is->city_pending_district_requests, key, 0);
 	mask |= (1 << district_id);
 	itable_insert (&is->city_pending_district_requests, key, mask);
 }
-
 
 static void
 clear_district_job_assignments (bool requeue_requests)
@@ -2448,6 +2463,49 @@ clear_district_job_assignments (bool requeue_requests)
 	for (int n = 0; n < is->memo_len; n++)
 		itable_remove (&is->district_job_assignments, is->memo[n]);
 	table_deinit (&is->district_job_assignments);
+}
+
+static void
+set_tile_unworkable_for_all_cities (Tile * tile, int tile_x, int tile_y)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
+
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+
+	City * assigned_city = NULL;
+	int assigned_city_id = tile->Body.CityAreaID;
+	if (assigned_city_id >= 0)
+		assigned_city = get_city_ptr (assigned_city_id);
+
+	if (assigned_city != NULL) {
+		int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __,
+			assigned_city->Body.X, assigned_city->Body.Y, tile_x, tile_y, 1000);
+		bool removed_assignment = false;
+		if ((neighbor_index > 0) && (neighbor_index < ARRAY_LEN (is->ni_to_work_radius)))
+			removed_assignment = City_stop_working_tile (assigned_city, __, neighbor_index);
+		if (! removed_assignment)
+			tile->Body.CityAreaID = -1;
+		if (! removed_assignment)
+			City_recompute_yields_and_happiness (assigned_city, __);
+	} else
+		tile->Body.CityAreaID = -1;
+
+	if (p_cities->Cities != NULL) {
+		for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+			City * city = get_city_ptr (city_index);
+			if ((city == NULL) || (city == assigned_city))
+				continue;
+			int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __,
+				city->Body.X, city->Body.Y, tile_x, tile_y, 1000);
+			if ((neighbor_index <= 0) || (neighbor_index >= ARRAY_LEN (is->ni_to_work_radius)))
+				continue;
+			int work_radius = is->ni_to_work_radius[neighbor_index];
+			if ((work_radius < 0) || (work_radius > is->current_config.city_work_radius))
+				continue;
+			City_recompute_yields_and_happiness (city, __);
+		}
+	}
 }
 
 static void
@@ -2541,6 +2599,8 @@ finalize_district_job_assignment (int unit_id, struct district_job_assignment * 
 	if (success) {
 		if (job->city != NULL)
 			clear_city_district_request (job->city, job->district_id);
+		if (job->tile != NULL)
+			set_tile_unworkable_for_all_cities (job->tile, job->tile_x, job->tile_y);
 	} else {
 		if ((job->tile != NULL) && ! district_is_complete (job->tile, job->district_id))
 			itable_remove (&is->district_tile_map, (int)(long)job->tile);
@@ -2605,82 +2665,21 @@ tile_not_suitable_for_district(Tile * tile, int district_id, City * city)
 int __fastcall
 patch_City_calc_tile_yield_at (City * this, int edx, int yield_type, int tile_x, int tile_y)
 {
-	// TODO: doesn't currently work as expected, fix
-	/*
-	if (is->current_config.enable_districts) {
-		Tile * tile = tile_at(tile_x, tile_y);
-		if (tile != NULL && tile != p_null_tile) {
-			int district_id;
-			if (itable_look_up(&is->district_tile_map, (int)tile, &district_id)) {
-				if (district_is_complete(tile, district_id)) {
-					struct district_config const * cfg = &district_configs[district_id];
-
-					if (cfg->is_workable) {
-						switch (yield_type) {
-							case 0: // Food
-								return cfg->food_bonus;
-							case 1: // Production
-								return cfg->production_bonus;
-							case 2: // Commerce/Gold
-								return cfg->gold_bonus;
-						}
-					} else {
-						// If district is not workable, override base tile yields to 0
-						return 0;
-					}
-				}
-			}
-		}
-	}
-	*/
+	// District tiles are forced unworkable, defer to the base calculation.
 	return City_calc_tile_yield_at (this, __, yield_type, tile_x, tile_y);
 }
 
 int __fastcall
 patch_Map_calc_food_yield_at (Map *this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City *city)
 {
-	// TODO: doesn't currently work as expected, fix
-	/*
-	if (is->current_config.enable_districts) {
-		Tile * tile = tile_at(tile_x, tile_y);
-		if (tile != NULL && tile != p_null_tile) {
-			int district_id;
-			if (itable_look_up(&is->district_tile_map, (int)tile, &district_id)) {
-				if (district_is_complete(tile, district_id)) {
-					struct district_config const * cfg = &district_configs[district_id];
-					if (cfg->is_workable)
-						return cfg->food_bonus;
-					else
-						return 0;
-				}
-			}
-		}
-	}
-	*/
+	// District tiles are unworkable, so there are no custom yields to apply.
 	return Map_calc_food_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
 }
 
 int __fastcall
 patch_Map_calc_shield_yield_at (Map *this, int edx, int tile_x, int tile_y, int civ_id, City *city, int param_5, int param_6)
 {
-	// TODO: doesn't currently work as expected, fix
-	/*
-	if (is->current_config.enable_districts) {
-		Tile * tile = tile_at(tile_x, tile_y);
-		if (tile != NULL && tile != p_null_tile) {
-			int district_id;
-			if (itable_look_up(&is->district_tile_map, (int)tile, &district_id)) {
-				if (district_is_complete(tile, district_id)) {
-					struct district_config const * cfg = &district_configs[district_id];
-					if (cfg->is_workable)
-						return cfg->production_bonus;
-					else
-						return 0;
-				}
-			}
-		}
-	}
-	*/
+	// District tiles are unworkable, so production bonuses are not applied here.
 	return Map_calc_shield_yield_at (this, __, tile_x, tile_y, civ_id, city, param_5, param_6);
 }
 
@@ -2795,7 +2794,11 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 }
 
 int __fastcall patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp);
+
+static bool city_needs_wonder_district (City * city);
+static void handle_district_removed (Tile * tile, int district_id, int center_x, int center_y, bool leave_ruins);
 static bool free_wonder_district_for_city (City * city);
+bool has_active_building (City * city, int improv_id);
 
 static bool
 handle_existing_district_assignment (Unit * unit, struct district_job_assignment * job)
@@ -2900,7 +2903,8 @@ city_has_required_district (City * city, int district_id)
 static void
 ensure_neighborhood_request_for_city (City * city)
 {
-	if (! is->current_config.enable_neighborhood_districts ||
+	if (! is->current_config.enable_districts ||
+		! is->current_config.enable_neighborhood_districts ||
 	    (city == NULL))
 		return;
 
@@ -3087,7 +3091,8 @@ tile_counts_for_city_neighborhood (City * city, Tile * tile)
 int
 count_neighborhoods_in_city_radius (City * city)
 {
-	if (! is->current_config.enable_neighborhood_districts ||
+	if (! is->current_config.enable_districts ||
+		! is->current_config.enable_neighborhood_districts ||
 	    (city == NULL))
 		return 0;
 
@@ -3110,7 +3115,8 @@ count_neighborhoods_in_city_radius (City * city)
 int
 get_neighborhood_pop_cap (City * city)
 {
-	if (! is->current_config.enable_neighborhood_districts ||
+	if (! is->current_config.enable_districts ||
+		! is->current_config.enable_neighborhood_districts ||
 	    (city == NULL))
 		return -1;
 
@@ -3134,7 +3140,8 @@ get_neighborhood_pop_cap (City * city)
 bool
 city_is_at_neighborhood_cap (City * city)
 {
-	if (! is->current_config.enable_neighborhood_districts ||
+	if (! is->current_config.enable_districts ||
+		! is->current_config.enable_neighborhood_districts ||
 	    (city == NULL))
 		return false;
 
@@ -3150,25 +3157,20 @@ city_is_at_neighborhood_cap (City * city)
 }
 
 void __fastcall
-patch_City_update_growth (City * this)
+patch_City_update_growth (City * this, int edx)
 {
 	if ((this == NULL) ||
+		! is->current_config.enable_districts ||
 	    ! is->current_config.enable_neighborhood_districts) {
 		// Fall back to vanilla growth logic when neighborhoods are disabled.
-		City_update_growth (this);
+		City_update_growth (this, __);
 		return;
 	}
 
 	int cap = get_neighborhood_pop_cap (this);
-	if (cap < 0) {
-		// No cap for this city; run the original routine.
-		City_update_growth (this);
-		return;
-	}
-
-	if (this->Body.Population.Size < cap) {
-		// City is below the cap, so allow normal growth processing.
-		City_update_growth (this);
+	if (cap < 0 || this->Body.Population.Size < cap) {
+		// No cap for this city or below the cap; run the original routine.
+		City_update_growth (this, __);
 		return;
 	}
 
@@ -3225,7 +3227,7 @@ patch_City_update_growth (City * this)
 		blocked_growth = true;
 	}
 
-	City_update_growth (this);
+	City_update_growth (this, __);
 
 	if (! blocked_growth)
 		return;
@@ -3326,6 +3328,11 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	if ((tile == NULL) || (tile == p_null_tile) || ! is->current_config.enable_districts)
 		return;
 
+	char ss[200];
+	snprintf (ss, sizeof ss, "handle_district_removed: tile=%p district_id=%d center=(%d,%d) leave_ruins=%d",
+		(void *)tile, district_id, center_x, center_y, leave_ruins ? 1 : 0);
+	pop_up_in_game_error (ss);
+
 	itable_remove (&is->district_tile_map, (int)tile);
 
 	// Remove any wonder overlay mapping for this tile
@@ -3336,16 +3343,6 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 
 	if (leave_ruins && (tile->vtable->m60_Set_Ruins != NULL))
 		tile->vtable->m60_Set_Ruins (tile, __, 1);
-}
-
-bool
-has_active_building (City * city, int improv_id)
-{
-	Leader * owner = &leaders[city->Body.CivID];
-	Improvement * improv = &p_bic_data->Improvements[improv_id];
-	return patch_City_has_improvement (city, __, improv_id, 1) && // building is physically present in city AND
-		((improv->ObsoleteID < 0) || (! Leader_has_tech (owner, __, improv->ObsoleteID))) && // building is not obsolete AND
-		((improv->GovernmentID < 0) || (improv->GovernmentID == owner->GovernmentType)); // building is not restricted to a different govt
 }
 
 static bool
@@ -3478,6 +3475,12 @@ free_wonder_district_for_city (City * city)
 		if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
 			continue;
 		tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
+
+		char ss[200];
+		snprintf (ss, sizeof ss, "free_wonder_district_for_city: city=%p tile=%p (%d,%d)",
+			(void *)city, (void *)tile, tile_x, tile_y);
+		pop_up_in_game_error (ss);
+
 		handle_district_removed (tile, wonder_district_id, city->Body.X, city->Body.Y, false);
 		return true;
 	}
@@ -3525,7 +3528,11 @@ patch_Tile_impl_m51_Unset_Tile_Flags (Tile * this, int edx, int param_1, unsigne
 	Tile_impl_m51_Unset_Tile_Flags (this, __, param_1, param_2, param_3, param_4);
 
 	// If a Wonder District was actually destroyed here and allowed, clean up mapping and dependencies
+	/* TODO: this seems to fire every time a district is built (or more) and not working as intended. Fix
 	if (is->current_config.enable_districts && (param_2 & TILE_FLAG_MINE)) {
+		char ss[200];
+		snprintf (ss, sizeof ss, "patch_Tile_impl_m51_Unset_Tile_Flags: tile=%p flags=0x%X", (void *)this, param_2);
+		pop_up_in_game_error (ss);
 		int district_id;
 		if (itable_look_up (&is->district_tile_map, (int)this, &district_id)) {
 			int x, y;
@@ -3533,6 +3540,17 @@ patch_Tile_impl_m51_Unset_Tile_Flags (Tile * this, int edx, int param_1, unsigne
 				handle_district_destroyed_by_attack (this, x, y, true);
 		}
 	}
+	*/
+}
+
+bool
+has_active_building (City * city, int improv_id)
+{
+	Leader * owner = &leaders[city->Body.CivID];
+	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	return patch_City_has_improvement (city, __, improv_id, 1) && // building is physically present in city AND
+		((improv->ObsoleteID < 0) || (! Leader_has_tech (owner, __, improv->ObsoleteID))) && // building is not obsolete AND
+		((improv->GovernmentID < 0) || (improv->GovernmentID == owner->GovernmentType)); // building is not restricted to a different govt
 }
 
 bool
@@ -3841,6 +3859,42 @@ void __fastcall
 patch_City_recompute_yields_and_happiness (City * this, int edx)
 {
 	City_recompute_yields_and_happiness (this, __);
+
+	if (! is->current_config.enable_districts)
+		return;
+
+	int bonus_food = 0;
+	int bonus_production = 0;
+	int bonus_gold = 0;
+
+	FOR_TILES_AROUND (tai, is->workable_tile_count, this->Body.X, this->Body.Y) {
+		if (tai.n == 0)
+			continue; // skip the city tile itself
+		Tile * tile = tai.tile;
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+		int district_id;
+		if (! itable_look_up (&is->district_tile_map, (int)tile, &district_id))
+			continue;
+		if (! district_is_complete (tile, district_id))
+			continue;
+		struct district_config const * cfg = &district_configs[district_id];
+		bonus_food       += cfg->food_bonus;
+		bonus_production += cfg->production_bonus;
+		bonus_gold       += cfg->gold_bonus;
+	}
+
+	if ((bonus_food == 0) && (bonus_production == 0) && (bonus_gold == 0))
+		return;
+
+	this->Body.Tiles_Food       += bonus_food;
+	this->Body.Tiles_Production += bonus_production;
+	this->Body.Tiles_Commerce   += bonus_gold;
+
+	City_update_food_consumption (this);
+	City_recompute_production (this);
+	City_recompute_commerce (this);
+	City_recompute_happiness (this);
 }
 
 // Recomputes yields in cities with active mills that depend on input resources. Intended to be called when an input resource has been potentially
@@ -8493,50 +8547,50 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 {
 	// First defer to the base game's logic
 	bool base = City_can_build_improvement (this, __, i_improv, param_2);
-	if (! base)
-		return false;
+	if (! base) return false;
+	if (! is->current_config.enable_districts) return base;
 
-	// If districts are disabled or this improvement has no district prerequisite, allow base result
-	if (! is->current_config.enable_districts)
-		return base;
+	// Different logic for human vs AI players
+	bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
 
+	// Check if the improvement requires a district and output the required district id when it does
 	int required_district_id;
-	if (! city_requires_district_for_improvement (this, i_improv, &required_district_id))
-		return base;
+	bool needs_district = city_requires_district_for_improvement (this, i_improv, &required_district_id);
+	if (! needs_district)
+		return true;
 
-	mark_city_needs_district (this, required_district_id);
-	if (is->current_config.enable_wonder_districts) {
-		int wonder_district_id = get_wonder_district_id ();
-		if ((wonder_district_id >= 0) &&
-		    (required_district_id == wonder_district_id) &&
-		    ((*p_human_player_bits & (1 << this->Body.CivID)) == 0)) {
-			Improvement * improv = &p_bic_data->Improvements[i_improv];
-			if (improv->Characteristics & ITC_Wonder)
-				remember_pending_wonder_order (this, i_improv);
-		}
+	// Human doesn't have appropriate district but needs one
+	if (needs_district && is_human) {
+		return false;
 	}
 
-	if (*p_human_player_bits & (1 << this->Body.CivID))
+	// Ensure AI has the prereq tech for the district
+	int prereq_id = is->district_infos[required_district_id].advance_prereq_id;
+	if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id))
 		return false;
-	else
-		return true;
+
+	// Superficially allow the AI to choose the improvement for scoring and production.
+	// If a disallowed improvement is chosen in ai_choose_production, we'll swap it out for a feasible fallback later 
+	// after prioritizing the district to be built
+	return true;
 }
 
 void __fastcall
 patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 {
-	clear_best_feasible_order (this);
 	is->ai_considering_production_for_city = this;
-
 	City_ai_choose_production (this, __, out);
 
+	// Begin district logic
+	clear_best_feasible_order (this);
 	bool swapped_to_fallback = false;
 	City_Order fallback_order = {0};
+	int required_district_id;
 	if (is->current_config.enable_districts &&
 	    ((*p_human_player_bits & (1 << this->Body.CivID)) == 0) &&
 	    (out->OrderType == COT_Improvement) &&
 	    (out->OrderID >= 0) && (out->OrderID < p_bic_data->ImprovementsCount)) {
-		if (city_requires_district_for_improvement (this, out->OrderID, NULL)) {
+		if (city_requires_district_for_improvement (this, out->OrderID, &required_district_id)) {
 			struct ai_best_feasible_order * stored = get_best_feasible_order (this);
 			if (stored != NULL) {
 				bool fallback_is_feasible = true;
@@ -8560,10 +8614,22 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 		}
 	}
 
-	clear_best_feasible_order (this);
-
-	if (swapped_to_fallback)
+	if (swapped_to_fallback) {
 		*out = fallback_order;
+		mark_city_needs_district (this, required_district_id);
+		if (is->current_config.enable_wonder_districts) {
+			int wonder_district_id = get_wonder_district_id ();
+			if ((wonder_district_id >= 0) &&
+				(required_district_id == wonder_district_id)) {
+				Improvement * improv = &p_bic_data->Improvements[out->OrderID];
+				if (improv->Characteristics & ITC_Wonder)
+					remember_pending_wonder_order (this, out->OrderID);
+			}
+		}
+	}
+
+	clear_best_feasible_order (this);
+	// End district logic
 
 	Leader * me = &leaders[this->Body.CivID];
 	int arty_ratio = is->current_config.ai_build_artillery_ratio;
@@ -13800,6 +13866,8 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							job->job_started = (job_started != 0);
 							itable_insert (&is->district_job_assignments, unit_id, (int)job);
 							itable_insert (&is->district_tile_map, (int)tile, district_id);
+							if (tile->vtable->m18_Check_Mines (tile, __, 0))
+								set_tile_unworkable_for_all_cities (tile, tile_x, tile_y);
 						}
 						if (! success)
 							clear_district_job_assignments (false);
@@ -13897,17 +13965,20 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 								success = false;
 								break;
 							}
-							int x = *ints++;
-							int y = *ints++;
-							int district_id = *ints++;
-							cursor = (byte *)ints;
-							remaining_bytes -= 3 * (int)sizeof(int);
-							if ((district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
-								continue;
-							Tile * tile = tile_at (x, y);
-							if ((tile != NULL) && (tile != p_null_tile))
-								itable_insert (&is->district_tile_map, (int)tile, district_id);
-						}
+				int x = *ints++;
+				int y = *ints++;
+				int district_id = *ints++;
+				cursor = (byte *)ints;
+				remaining_bytes -= 3 * (int)sizeof(int);
+				if ((district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+					continue;
+				Tile * tile = tile_at (x, y);
+				if ((tile != NULL) && (tile != p_null_tile)) {
+					itable_insert (&is->district_tile_map, (int)tile, district_id);
+					if (tile->vtable->m18_Check_Mines (tile, __, 0))
+						set_tile_unworkable_for_all_cities (tile, x, y);
+				}
+			}
 					}
 				}
 				if (! success) {
