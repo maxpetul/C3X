@@ -776,7 +776,8 @@ enum Unit_Command_Values
   UCV_Build_IndustrialZone = -10000006,
   UCV_Build_EntertainmentComplex = -10000007,
   UCV_Build_Neighborhood = -10000008,
-  UCV_Build_WonderDistrict = -10000009
+  UCV_Build_WonderDistrict = -10000009,
+  UCV_Build_DistributionHub = -10000010
 };
 
 enum Unit_Mode_Actions

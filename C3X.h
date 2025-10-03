@@ -16,7 +16,7 @@ typedef unsigned char byte;
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
-#define COUNT_DISTRICT_TYPES 6
+#define COUNT_DISTRICT_TYPES 7
 #define COUNT_WONDER_DISTRICT_TYPES 5
 
 // Initialize to zero. Implementation is in common.c
@@ -147,6 +147,7 @@ struct c3x_config {
 	bool dont_pause_for_love_the_king_messages;
 	bool reverse_specialist_order_with_shift;
 	bool toggle_zoom_with_z_on_city_screen;
+	bool enable_mouse_wheel_zoom;
 	bool dont_give_king_names_in_non_regicide_games;
 	bool no_elvis_easter_egg;
 	bool disable_worker_automation;
@@ -301,6 +302,12 @@ struct c3x_config {
 	
 	bool enable_wonder_districts;
 	bool completed_wonder_districts_can_be_destroyed;
+
+	bool enable_distribution_hub_districts;
+	int distribution_hub_food_yield_divisor;
+	int distribution_hub_shield_yield_divisor;
+	int distribution_hub_food_resource_id;
+	int distribution_hub_shield_resource_id;
 };
 
 enum stackable_command {
@@ -487,41 +494,47 @@ struct district_config {
 		production_bonus;
 } const district_configs[COUNT_DISTRICT_TYPES] = {
 	{
-		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_paths = {"Encampment.pcx"}, 
-		.num_img_paths = 1, .index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 3,
-		.advance_prereq = "Warrior Code", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
-		.defense_bonus_multiplier = 1.5, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .production_bonus = 0
-	},
-	{
-		.command = UCV_Build_HolySite, .tooltip = "Build Holy Site", .img_paths = {"HolySite_AMER.pcx", "HolySite_EURO.pcx", "HolySite_ROMAN.pcx", "HolySite_MIDEAST.pcx", "HolySite_ASIAN.pcx"}, 
-		.num_img_paths = 5, .index = 1, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0, .total_img_rows = 1, .total_img_columns = 3,
-		.advance_prereq = "Ceremonial Burial", .dependent_improvements = {"Temple", "Cathedral"},
-		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .production_bonus = 0
-	},
-	{
-		.command = UCV_Build_Campus, .tooltip = "Build Campus", .img_paths = {"Campus.pcx"}, 
-		.num_img_paths = 1, .index = 2, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 3,
-		.advance_prereq = "Literature", .dependent_improvements = {"Library", "University"},
-		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .production_bonus = 0
-	},
-	{
-		.command = UCV_Build_EntertainmentComplex, .tooltip = "Build Entertainment Complex", .img_paths = {"EntertainmentComplex.pcx"}, 
-		.num_img_paths = 1, .index = 3, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 2,
-		.advance_prereq = "Construction", .dependent_improvements = {"Colosseum"},
-		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .production_bonus = 0
-	},
-	{
 		.command = UCV_Build_Neighborhood, .tooltip = "Build Neighborhood", .img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"}, 
-		.num_img_paths = 5, .index = 4, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 1, .total_img_rows = 4, .total_img_columns = 4,
+		.num_img_paths = 5, .index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 1, .total_img_rows = 4, .total_img_columns = 4,
 		.advance_prereq = NULL, .dependent_improvements = {NULL},
 		.defense_bonus_multiplier = 1.25, .allow_multiple = true, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .production_bonus = 0
 	},
 	{
 		.command = UCV_Build_WonderDistrict, .tooltip = "Build Wonder District", .img_paths = {"WonderDistrict.pcx"}, 
-		.num_img_paths = 1, .index = 5, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 1,
+		.num_img_paths = 1, .index = 1, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 1,
 		.advance_prereq = NULL, .dependent_improvements = {"The Pyramids", "The Hanging Guardens", "The Oracle", "Copernicus' Observatory", "The Great Library"},
 		.defense_bonus_multiplier = 1.0, .allow_multiple = true, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .production_bonus = 0
 	},
+	{
+		.command = UCV_Build_DistributionHub, .tooltip = "Build Distribution Hub", .img_paths = {"DistributionHub.pcx"}, 
+		.num_img_paths = 1, .index = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 1,
+		.advance_prereq = "Construction", .dependent_improvements = {NULL},
+		.defense_bonus_multiplier = 1.0, .allow_multiple = true, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .production_bonus = 0
+	},
+	{
+		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_paths = {"Encampment.pcx"}, 
+		.num_img_paths = 1, .index = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 3,
+		.advance_prereq = "Warrior Code", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
+		.defense_bonus_multiplier = 1.5, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .production_bonus = 0
+	},
+	{
+		.command = UCV_Build_HolySite, .tooltip = "Build Holy Site", .img_paths = {"HolySite_AMER.pcx", "HolySite_EURO.pcx", "HolySite_ROMAN.pcx", "HolySite_MIDEAST.pcx", "HolySite_ASIAN.pcx"}, 
+		.num_img_paths = 5, .index = 4, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0, .total_img_rows = 1, .total_img_columns = 3,
+		.advance_prereq = "Ceremonial Burial", .dependent_improvements = {"Temple", "Cathedral"},
+		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .production_bonus = 0
+	},
+	{
+		.command = UCV_Build_Campus, .tooltip = "Build Campus", .img_paths = {"Campus.pcx"}, 
+		.num_img_paths = 1, .index = 5, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 3,
+		.advance_prereq = "Literature", .dependent_improvements = {"Library", "University"},
+		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .production_bonus = 0
+	},
+	{
+		.command = UCV_Build_EntertainmentComplex, .tooltip = "Build Entertainment Complex", .img_paths = {"EntertainmentComplex.pcx"}, 
+		.num_img_paths = 1, .index = 6, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 2,
+		.advance_prereq = "Construction", .dependent_improvements = {"Colosseum"},
+		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .production_bonus = 0
+	}
 };
 
 struct wonder_district_config {
@@ -545,6 +558,15 @@ struct district_job_assignment {
 	int district_id;
 	int unit_id;
 	bool job_started;
+};
+
+struct distribution_hub_record {
+	Tile * tile;
+	int tile_x;
+	int tile_y;
+	int civ_id;
+	int food_yield;
+	int shield_yield;
 };
 
 struct ai_best_feasible_order {
@@ -701,6 +723,9 @@ struct injected_state {
 	// The maximum number of tiles workable by cities including the city tile itself (21 under standard game rules). Updated whenever the
 	// city_work_radius config value gets changed.
 	int workable_tile_count;
+
+	// Multi-level zoom system (0-5, where 3 is default zoom level)
+	int current_zoom_level;
 
 	// The civ ID of the player from whose perspective we're currently showing city loc desirability, or -1 if none. Initialized to -1.
 	int city_loc_display_perspective;
@@ -1218,6 +1243,14 @@ struct injected_state {
 		int advance_prereq_id; // Tech ID that enables the district
 		int dependent_building_ids[5]; // Building types the district enables
 	} district_infos[COUNT_DISTRICT_TYPES];
+
+	struct table distribution_hub_records;
+	int * distribution_hub_food_bonus_per_city;
+	int * distribution_hub_shield_bonus_per_city;
+	int distribution_hub_bonus_capacity;
+	int * distribution_hub_food_per_civ;
+	int * distribution_hub_shield_per_civ;
+	int distribution_hub_civ_capacity;
 
 	// Guard to prevent recursive sharing when auto-adding buildings across cities
 	bool sharing_buildings_by_districts_in_progress;

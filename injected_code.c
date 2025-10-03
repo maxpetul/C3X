@@ -6933,7 +6933,7 @@ patch_Unit_can_upgrade (Unit * this)
 bool
 is_district_command (int unit_command_value)
 {
-	return (unit_command_value <= UCV_Build_Encampment) && (unit_command_value >= UCV_Build_WonderDistrict);
+	return (unit_command_value <= UCV_Build_Encampment) && (unit_command_value >= UCV_Build_DistributionHub);
 }
 
 bool __fastcall
@@ -7097,16 +7097,12 @@ issue_district_worker_command (Unit * unit, int command)
 				if (sel == 0) {
 					itable_remove (&is->district_tile_map, (int)tile);
 
-					// Remove the underlying mine improvement
 					tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
-
-					// Unset both the mine flag AND the overlay flags
 					int tile_x, tile_y;
 					if (tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y)) {
-						// First unset the mine flag
 						tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
-						// Then unset the overlay flags (0xf covers all improvement overlays)
 						tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, 0xf, tile_x, tile_y);
+						handle_district_removed(tile, district_id, tile_x, tile_y, false);
 					}
 				} else {
 					return;
@@ -9721,7 +9717,6 @@ int __fastcall
 patch_Sprite_draw_on_map (Sprite * this, int edx, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7)
 {
 	Sprite *to_draw = get_sprite_proxy_for_current_hour(this);
-
 	return Sprite_draw_on_map(to_draw ? to_draw : this, __, map_renderer, pixel_x, pixel_y, param_4, param_5, param_6, param_7);
 }
 
@@ -15711,7 +15706,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 					//pop_up_in_game_error (ss);
 
 					district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
-                    patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+                    patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
 
 					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: finished drawing district %d on tile (%d,%d)", district_id, tile_x, tile_y);
 					//pop_up_in_game_error (ss);
