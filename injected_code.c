@@ -3113,6 +3113,86 @@ count_neighborhoods_in_city_radius (City * city)
 }
 
 int
+count_utilized_neighborhoods_in_city_radius (City * city)
+{
+	if (! is->current_config.enable_districts ||
+		! is->current_config.enable_neighborhood_districts ||
+	    (city == NULL))
+		return 0;
+
+	int base_cap = is->current_config.no_neighborhood_pop_threshold;
+	if (base_cap <= 0)
+		return 0;
+
+	int per_neighborhood = is->current_config.per_neighborhood_pop_growth_enabled;
+	if (per_neighborhood <= 0)
+		return 0;
+
+	int pop = city->Body.Population.Size;
+	if (pop <= base_cap)
+		return 0;
+
+	int excess_pop = pop - base_cap;
+	int utilized = (excess_pop + per_neighborhood - 1) / per_neighborhood;
+	int total_neighborhoods = count_neighborhoods_in_city_radius (city);
+
+	if (utilized > total_neighborhoods)
+		utilized = total_neighborhoods;
+
+	return utilized;
+}
+
+void
+calculate_district_culture_science_bonuses (City * city, int * culture_bonus, int * science_bonus)
+{
+	if (culture_bonus != NULL)
+		*culture_bonus = 0;
+	if (science_bonus != NULL)
+		*science_bonus = 0;
+
+	if (! is->current_config.enable_districts || (city == NULL))
+		return;
+
+	int total_culture = 0;
+	int total_science = 0;
+	int utilized_neighborhoods = count_utilized_neighborhoods_in_city_radius (city);
+
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
+		if (tai.n == 0)
+			continue;
+		Tile * tile = tai.tile;
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+		int district_id;
+		if (! itable_look_up (&is->district_tile_map, (int)tile, &district_id))
+			continue;
+		if ((district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+			continue;
+		if (! district_is_complete (tile, district_id))
+			continue;
+
+		struct district_config const * cfg = &district_configs[district_id];
+
+		bool is_neighborhood = (cfg->command == UCV_Build_Neighborhood);
+		if (is_neighborhood) {
+			if (utilized_neighborhoods > 0) {
+				total_culture += cfg->culture_bonus;
+				total_science += cfg->science_bonus;
+				utilized_neighborhoods--;
+			}
+		} else {
+			total_culture += cfg->culture_bonus;
+			total_science += cfg->science_bonus;
+		}
+	}
+
+	if (culture_bonus != NULL)
+		*culture_bonus = total_culture;
+	if (science_bonus != NULL)
+		*science_bonus = total_science;
+}
+
+int
 get_neighborhood_pop_cap (City * city)
 {
 	if (! is->current_config.enable_districts ||
@@ -3826,6 +3906,24 @@ has_resources_required_by_building (City * city, int improv_id)
 }
 
 void __fastcall
+patch_City_recompute_commerce (City * this, int edx)
+{
+	City_recompute_commerce (this, __);
+
+	if (! is->current_config.enable_districts)
+		return;
+
+	int science_bonus = 0;
+	calculate_district_culture_science_bonuses (this, NULL, &science_bonus);
+
+	if (science_bonus != 0) {
+		this->Body.Science += science_bonus;
+		if (this->Body.Science < 0)
+			this->Body.Science = 0;
+	}
+}
+
+void __fastcall
 patch_City_recompute_yields_and_happiness (City * this, int edx)
 {
 	City_recompute_yields_and_happiness (this, __);
@@ -3863,8 +3961,26 @@ patch_City_recompute_yields_and_happiness (City * this, int edx)
 
 	City_update_food_consumption (this);
 	City_recompute_production (this);
-	City_recompute_commerce (this);
+	City_recompute_commerce (this, __);
 	City_recompute_happiness (this);
+}
+
+void __fastcall
+patch_City_recompute_culture_income (City * this, int edx)
+{
+	City_recompute_culture_income (this, __);
+
+	if (! is->current_config.enable_districts)
+		return;
+
+	int culture_bonus = 0;
+	calculate_district_culture_science_bonuses (this, &culture_bonus, NULL);
+
+	if (culture_bonus != 0) {
+		this->Body.CultureIncome += culture_bonus;
+		if (this->Body.CultureIncome < 0)
+			this->Body.CultureIncome = 0;
+	}
 }
 
 // Recomputes yields in cities with active mills that depend on input resources. Intended to be called when an input resource has been potentially
