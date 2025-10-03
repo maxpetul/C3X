@@ -132,4 +132,19 @@ Yes
 No
 #active 1
 
+#C3X_CONFIRMCANCELTERRAFORM
+#advisor Domestic
+This worker has been ordered to build a district. Do you want them to stop?
+#itemlist
+Yes. There is more important work to do.
+No. Carry on.
+
+#C3X_CONFIRMREMOVEDISTRICT
+#advisor Domestic
+A district already exists here. Removing it will destroy all buildings in the district. Are you sure you want to proceed?
+#itemlist
+Yes. There are better uses for this tile.
+No. Leave the district.
+
+
 # ; This line must remain at end of file

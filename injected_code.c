@@ -6433,8 +6433,8 @@ set_up_district_buttons (Main_GUI * this)
 	if ((tile == NULL) || (tile == p_null_tile) || (tile->CityID >= 0))
 		return;
 
-	// TODO: Disallow on mountain tiles
-	if (tile->vtable->m50_Get_Square_BaseType (tile) == SQ_Mountains)
+	int base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+	if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle)
 		return;
 
 	//snprintf (ss, sizeof ss, "[C3X] Unit located at (%d, %d)", selected_unit->Body.X, selected_unit->Body.Y);
@@ -6469,10 +6469,10 @@ set_up_district_buttons (Main_GUI * this)
 		if ((dc == UCV_Build_Neighborhood) && !is->current_config.enable_neighborhood_districts) continue;
 		if ((dc == UCV_Build_WonderDistrict) && !is->current_config.enable_wonder_districts) continue;
 
-		// Skip if a district already exists on this tile
+		// Skip if this specific district type is already on the tile
 		{
 			int existing_district_id;
-			if (itable_look_up(&is->district_tile_map, (int)tile, &existing_district_id))
+			if (itable_look_up(&is->district_tile_map, (int)tile, &existing_district_id) && (existing_district_id == dc))
 				continue;
 		}
 
@@ -6835,11 +6835,12 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 			Unit_can_perform_command (this, __, unit_command_value);
 	} else if (is->current_config.enable_districts && is_district_command (unit_command_value)) {
 
-		char ss[200];
-		//sprintf (ss, "patch_Unit_can_perform_command: unit_command_value = %d", unit_command_value);
-		//pop_up_in_game_error (ss);
+		Tile * tile = tile_at (this->Body.X, this->Body.Y);
+		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 
-		// TODO: check if unit is worker and district can be built on tile
+		// Districts cannot be built on mountains, forests, or jungles
+		if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle)
+			return false;
 		return true;
 	} else
 		return Unit_can_perform_command (this, __, unit_command_value);
@@ -6971,6 +6972,30 @@ issue_district_worker_command (Unit * unit, int command)
 
 		//snprintf (ss, sizeof ss, "C3X: Setting district_tile_map entry for tile");
 		//pop_up_in_game_error (ss);
+
+		int district_id;
+		if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) && district_is_complete(tile, district_id) ) {
+			PopupForm * popup = get_popup_form ();
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRMREMOVEDISTRICT", -1, 0, 0, 0);
+			int sel = patch_show_popup (popup, __, 0, 0);
+				if (sel == 0) {
+					itable_remove (&is->district_tile_map, (int)tile);
+
+					// Remove the underlying mine improvement
+					tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+
+					// Unset both the mine flag AND the overlay flags
+					int tile_x, tile_y;
+					if (tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y)) {
+						// First unset the mine flag
+						tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
+						// Then unset the overlay flags (0xf covers all improvement overlays)
+						tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, 0xf, tile_x, tile_y);
+					}
+				} else {
+					return;
+				}
+		}
 
 		if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
 			itable_insert (&is->district_tile_map, (int)tile, district_id);
@@ -13221,9 +13246,11 @@ get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 		else if ((label == CL_FORTIFIED) && (unit->Body.Status & (USF_SENTRY | USF_SENTRY_ENEMY_ONLY)))
 			label = CL_SENTRY;
 		else if ((label == CL_MINING) && is->current_config.enable_districts) {
+
 			// Check if this unit is actually building a district instead of a mine
 			Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
-			if ((tile != NULL) && (tile != p_null_tile) && district_assignment_exists_for_tile (tile)) {
+			int district_id;
+			if ((tile != NULL) && (tile != p_null_tile) && itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
 				strncpy (out_str, "Building District", str_capacity);
 				out_str[str_capacity - 1] = '\0';
 				return true;
@@ -14072,36 +14099,69 @@ patch_Leader_has_tech_to_stop_disease (Leader * this, int edx, int id)
 		return Leader_has_tech_with_flag (this, __, ATF_Disabled_Deseases_From_Flood_Plains);
 }
 
-/*
-void __fastcall
-patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
+static void
+set_worker_animation_type(Unit * unit, AnimationType anim_type)
 {
-	is->lmify_tile_after_working_simple_job = NULL;
-	bool track_district_job = is->current_config.enable_districts && (job_id == WJ_Build_Mines);
-	struct district_job_assignment * job = track_district_job ? get_district_job_assignment (this) : NULL;
-	if ((job != NULL) && (job->tile == NULL))
-		job->tile = tile_at (this->Body.X, this->Body.Y);
-	Unit_work_simple_job (this, __, job_id);
-	if (job != NULL) {
-		Tile * tile = job->tile;
-		if ((tile == NULL) || (tile == p_null_tile))
-			tile = job->tile = tile_at (this->Body.X, this->Body.Y);
-		bool complete = (tile != NULL) && district_is_complete (tile, job->district_id);
-		if (complete)
-			finalize_district_job_assignment (this->Body.ID, job, true, false);
-		else if (this->Body.UnitState != UnitState_Build_Mines)
-			finalize_district_job_assignment (this->Body.ID, job, false, true);
+	if (unit == NULL)
+		return;
+
+	FLC_Animation * animation = &unit->Body.Animation;
+	AnimationSummary * summary = &animation->summary;
+	if (summary->current_anim_type == anim_type)
+		return;
+
+	if (unit->Body.field_231) {
+		summary->queued_anim_type = anim_type;
+		return;
 	}
-	if (is->lmify_tile_after_working_simple_job != NULL)
-		is->lmify_tile_after_working_simple_job->vtable->m31_set_landmark (is->lmify_tile_after_working_simple_job, __, true);
+
+	summary->current_anim_type = anim_type;
+	Animation_Info * info = animation->Animation_Info;
+	int frame_count = 0;
+	if ((info != NULL) && (info->Frame_Counts != NULL) &&
+	    (anim_type >= 0) && (anim_type < 19))
+		frame_count = info->Frame_Counts[anim_type];
+	if (frame_count > 0) {
+		int r = rand ();
+		animation->field_FC = r % frame_count;
+	} else
+		animation->field_FC = 0;
+
+	summary->queued_anim_type = AT_BLANK;
 }
-*/
+
+void __fastcall
+patch_set_worker_animation (void * this, int edx, Unit * unit, int job_id)
+{
+	AnimationType anim_type;
+
+	// Check if this is a district being built (mine job but actually a district)
+	if ((! is->current_config.enable_districts) ||
+	    (unit == NULL) ||
+	    (job_id != WJ_Build_Mines)) {
+		set_worker_animation(this, __, unit, job_id);
+		return;
+	} 
+	
+	// If tile has a district and not completed
+	Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
+	int district_id;
+	if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) && ! district_is_complete (tile, district_id)) {
+		if (job_id == WJ_Build_Mines) {
+			set_worker_animation_type (unit, AT_FORTRESS);
+			return;
+		}
+	}
+	
+	set_worker_animation(this, __, unit, job_id);
+}
 
 void __fastcall
 patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
 {
 	is->lmify_tile_after_working_simple_job = NULL;
 	Unit_work_simple_job (this, __, job_id);
+
 	if (is->lmify_tile_after_working_simple_job != NULL)
 		is->lmify_tile_after_working_simple_job->vtable->m31_set_landmark (is->lmify_tile_after_working_simple_job, __, true);
 }
@@ -15332,7 +15392,7 @@ init_district_images ()
 				// For each column in the image (variations on the district image for that era)
 				for (int col_i = 0; col_i < district_configs[dc].total_img_columns; col_i++) {
 
-					//snprintf (ss, sizeof ss, "init_district_images: loading district %d culture %d era %d column %d", dc, culture_i, era_i, col);
+					//snprintf (ss, sizeof ss, "init_district_images: loading district %d variant %d era %d column %d", dc, variant_i, era_i, col_i);
 					//pop_up_in_game_error (ss);
 
 					Sprite_construct (&is->district_img_sets[dc].imgs[variant_i][era_i][col_i]);
@@ -15341,7 +15401,7 @@ init_district_images ()
 						y = 64 * era_i;
 					Sprite_slice_pcx (&is->district_img_sets[dc].imgs[variant_i][era_i][col_i], __, &pcx, x, y, 128, 64, 1, 1);
 
-					//snprintf (ss, sizeof ss, "init_district_images: loaded district %d culture %d era %d column %d", dc, culture_i, era_i, col);
+					//snprintf (ss, sizeof ss, "init_district_images: loaded district %d variant %d era %d column %d", dc, variant_i, era_i, col_i);
 					//pop_up_in_game_error (ss);
 				}
 			}
@@ -15650,6 +15710,32 @@ patch_get_building_defense_bonus_at (int x, int y, int param_3)
     }
 
     return base;
+}
+
+void __fastcall
+patch_Unit_select (Unit * this)
+{
+	if (is->current_config.enable_districts) {
+		int district_id;
+		Tile * tile = tile_at (this->Body.X, this->Body.Y);
+		if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) && ! district_is_complete (tile, district_id)) {
+			PopupForm * popup = get_popup_form ();
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRMCANCELTERRAFORM", -1, 0, 0, 0);
+			int sel = patch_show_popup (popup, __, 0, 0);
+			if (sel == 0) {
+				itable_remove (&is->district_tile_map, (int)tile);
+				struct district_job_assignment * job = get_district_job_assignment (this);
+				if (job != NULL) {
+					finalize_district_job_assignment (this->Body.ID, job, false, false);
+				}
+				Unit_set_escortee (this, __, -1);
+				Unit_set_state (this, __, 0);
+			} 
+			return;
+		}
+	}
+
+	Unit_select (this);
 }
 
 // TCC requires a main function be defined even though it's never used.

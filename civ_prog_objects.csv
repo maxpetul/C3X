@@ -259,6 +259,7 @@ inlead,	   0x561220,	0x56D350,	0x5611D0,	"Leader_begin_unit_turns",			"void (__f
 define,	   0x4A1FA0,	0x4A8BB0,	0x4A2030,	"Fighter_find_defender_against_bombardment",	"Unit * (__fastcall *) (Fighter * this, int edx, Unit * bombarder, int tile_x, int tile_y, int bombarder_civ_id, bool land_lethal, bool sea_lethal)"
 repl call, 0x4A3ED9,	0x4AAB85,	0x4A3F69,	"Fighter_find_actual_bombard_defender",		""
 repl call, 0x4A2BAA,	0x4A97F6,	0x4A2C3A,	"Fighter_find_actual_bombard_defender",		""
+inlead,    0x5C6290,    0x0,        0x0,        "Unit_select",                            "void (__fastcall *) (Unit *this)"
 inlead,	   0x5B6820,	0x5C5180,	0x5B6530,	"Unit_select_stealth_attack_target",		"bool (__fastcall *) (Unit * this, int edx, int target_civ_id, int x, int y, bool allow_popup, Unit ** out_selected_target)"
 repl call, 0x5C73FF,	0x5D629C,	0x5C710F,	"Unit_try_flying_for_precision_strike",		""
 define,	   0x5C1210,	0x5CFDA0,	0x5C0F20,	"Unit_play_bombard_fire_animation",		"int (__fastcall *) (Unit * this, int edx, int x, int y)"
@@ -805,3 +806,4 @@ inlead,    0x4B9F60,    0x0,        0x0,        "City_add_population",          
 define,    0x5660E0,    0x0,        0x0,        "Leader_get_food_cost_factor",        "int (__fastcall *) (Leader *this,bool ignore_difficulty)"
 define,    0x427540,    0x0,        0x0,        "City_get_size_class",               "int (__fastcall *) (City *this)"
 inlead,    0x5B39A0,    0x0,        0x0,        "is_not_pop_capped_or_starving",     "bool (__cdecl *) (City * city, int edx)"    
+inlead,    0x4068E0,    0x0,        0x0,        "set_worker_animation",               "void (__fastcall *) (void *this, int edx, Unit *unit, int job_id)"
