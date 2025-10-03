@@ -306,8 +306,6 @@ struct c3x_config {
 	bool enable_distribution_hub_districts;
 	int distribution_hub_food_yield_divisor;
 	int distribution_hub_shield_yield_divisor;
-	int distribution_hub_food_resource_id;
-	int distribution_hub_shield_resource_id;
 };
 
 enum stackable_command {
@@ -508,7 +506,7 @@ struct district_config {
 	{
 		.command = UCV_Build_DistributionHub, .tooltip = "Build Distribution Hub", .img_paths = {"DistributionHub.pcx"}, 
 		.num_img_paths = 1, .index = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 1,
-		.advance_prereq = "Construction", .dependent_improvements = {NULL},
+		.advance_prereq = NULL, .dependent_improvements = {NULL},
 		.defense_bonus_multiplier = 1.0, .allow_multiple = true, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .production_bonus = 0
 	},
 	{
@@ -565,8 +563,12 @@ struct distribution_hub_record {
 	int tile_x;
 	int tile_y;
 	int civ_id;
+	int city_id;
 	int food_yield;
 	int shield_yield;
+	int raw_food_yield;
+	int raw_shield_yield;
+	bool is_active;
 };
 
 struct ai_best_feasible_order {
@@ -590,6 +592,7 @@ struct injected_state {
 	enum init_state disabled_command_img_state;
 	enum init_state unit_rcm_icon_state;
 	enum init_state red_food_icon_state;
+	enum init_state distribution_hub_icons_img_state;
 	enum init_state tile_already_worked_zoomed_out_sprite_init_state;
 	enum init_state day_night_cycle_img_state;
 
@@ -1245,16 +1248,22 @@ struct injected_state {
 	} district_infos[COUNT_DISTRICT_TYPES];
 
 	struct table distribution_hub_records;
+	struct table distribution_hub_coverage_counts;
 	int * distribution_hub_food_bonus_per_city;
 	int * distribution_hub_shield_bonus_per_city;
 	int distribution_hub_bonus_capacity;
 	int * distribution_hub_food_per_civ;
 	int * distribution_hub_shield_per_civ;
 	int distribution_hub_civ_capacity;
+	bool distribution_hub_totals_dirty;
+	int distribution_hub_last_food_divisor;
+	int distribution_hub_last_shield_divisor;
+
+	Sprite distribution_hub_production_icon;
+	Sprite distribution_hub_food_icon;
 
 	// Guard to prevent recursive sharing when auto-adding buildings across cities
 	bool sharing_buildings_by_districts_in_progress;
-
 
 	// Initialized to 0. Every time Main_Screen_Form::m82_handle_key_event receives an event with is_down == 0, the virtual key code is prepended
 	// to this list.
