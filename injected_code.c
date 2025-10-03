@@ -2339,8 +2339,36 @@ tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
 
 int __fastcall patch_City_calc_tile_yield_at (City * this, int edx, int yield_type, int tile_x, int tile_y);
 void __fastcall patch_City_recompute_yields_and_happiness (City * this, int edx);
+static void on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city);
 
-bool 
+static int
+get_neighborhood_district_id (void)
+{
+	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++)
+		if (district_configs[i].command == UCV_Build_Neighborhood)
+			return i;
+	return -1;
+}
+
+static int
+get_wonder_district_id (void)
+{
+	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++)
+		if (district_configs[i].command == UCV_Build_WonderDistrict)
+			return i;
+	return -1;
+}
+
+static int
+get_distribution_hub_district_id (void)
+{
+	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++)
+		if (district_configs[i].command == UCV_Build_DistributionHub)
+			return i;
+	return -1;
+}
+
+bool
 district_is_complete(Tile * tile, int district_id)
 {
 	if (! is->current_config.enable_districts ||
@@ -2350,7 +2378,7 @@ district_is_complete(Tile * tile, int district_id)
 
 	bool completed = tile->vtable->m18_Check_Mines (tile, __, 0) != 0;
 
-	// If district was never completed and there are no workers present, 
+	// If district was never completed and there are no workers present,
 	// remove the tile from the district map
 	if (! completed) {
 		int mapped_id;
@@ -2367,6 +2395,15 @@ district_is_complete(Tile * tile, int district_id)
 			}
 			if (! worker_present)
 				itable_remove (&is->district_tile_map, (int)tile);
+		}
+	} else {
+		// District just completed - activate distribution hub if applicable
+		if (is->current_config.enable_distribution_hub_districts &&
+		    (district_id == get_distribution_hub_district_id ())) {
+			int tile_x, tile_y;
+			if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
+				return completed;
+			on_distribution_hub_completed (tile, tile_x, tile_y, NULL);
 		}
 	}
 
@@ -2409,33 +2446,6 @@ forget_pending_wonder_order (City * city)
 		return;
 
 	itable_remove (&is->city_pending_wonder_orders, (int)(long)city);
-}
-
-static int
-get_neighborhood_district_id (void)
-{
-	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++)
-		if (district_configs[i].command == UCV_Build_Neighborhood)
-			return i;
-	return -1;
-}
-
-static int
-get_wonder_district_id (void)
-{
-	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++)
-		if (district_configs[i].command == UCV_Build_WonderDistrict)
-			return i;
-	return -1;
-}
-
-static int
-get_distribution_hub_district_id (void)
-{
-	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++)
-		if (district_configs[i].command == UCV_Build_DistributionHub)
-			return i;
-	return -1;
 }
 
 static void
@@ -2756,29 +2766,24 @@ on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city)
 		return;
 
 	struct distribution_hub_record * rec = get_distribution_hub_record (tile);
-	if (rec == NULL) {
-		rec = malloc (sizeof *rec);
-		if (rec == NULL)
-			return;
-		rec->tile = tile;
-		rec->tile_x = tile_x;
-		rec->tile_y = tile_y;
-		rec->civ_id = (tile != NULL) ? tile->vtable->m38_Get_Territory_OwnerID (tile) : -1;
-		rec->city_id = (city != NULL) ? city->Body.ID : -1;
-		rec->food_yield = 0;
-		rec->shield_yield = 0;
-		rec->raw_food_yield = 0;
-		rec->raw_shield_yield = 0;
-		rec->is_active = false;
-		itable_insert (&is->distribution_hub_records, (int)tile, (int)(long)rec);
-		adjust_distribution_hub_coverage (rec, +1);
-	} else {
-		rec->tile = tile;
-		rec->tile_x = tile_x;
-		rec->tile_y = tile_y;
-		rec->civ_id = (tile != NULL) ? tile->vtable->m38_Get_Territory_OwnerID (tile) : rec->civ_id;
-		rec->city_id = (city != NULL) ? city->Body.ID : rec->city_id;
-	}
+	if (rec != NULL)
+		return; // Already activated, don't process again
+
+	rec = malloc (sizeof *rec);
+	if (rec == NULL)
+		return;
+	rec->tile = tile;
+	rec->tile_x = tile_x;
+	rec->tile_y = tile_y;
+	rec->civ_id = (tile != NULL) ? tile->vtable->m38_Get_Territory_OwnerID (tile) : -1;
+	rec->city_id = (city != NULL) ? city->Body.ID : -1;
+	rec->food_yield = 0;
+	rec->shield_yield = 0;
+	rec->raw_food_yield = 0;
+	rec->raw_shield_yield = 0;
+	rec->is_active = false;
+	itable_insert (&is->distribution_hub_records, (int)tile, (int)(long)rec);
+	adjust_distribution_hub_coverage (rec, +1);
 
 	City * anchor_city = (city != NULL) ? city : find_city_for_distribution_hub (rec);
 	if (anchor_city != NULL)
