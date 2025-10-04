@@ -1712,7 +1712,7 @@ struct Tile_vtable
   unsigned char (__fastcall *m24_Check_River)(Tile *);
   int (__fastcall *m25_Check_Roads)(Tile *this, __, int);
   char (__fastcall *m26_Check_Tile_Building)(Tile *);
-  int (__fastcall *m27_Check_Special_Resource)(Tile *);
+  bool (__fastcall *m27_Check_Shield_Bonus)(Tile *); // Whether the tile would be bonus grassland if it were grassland (it may or may not be)
   bool (__fastcall *m28_is_revealed_by_scenario_setting)(Tile *);
   int (__fastcall *m29_Check_Mountain_Snowcap)(Tile *);
   int (__fastcall *m30_Check_is_LM)(Tile *);
@@ -2069,7 +2069,7 @@ struct Map_vtable
   int m14;
   int m15_null;
   int m16;
-  int m17;
+  bool (__fastcall * can_spawn_resource_at) (Map * this, __, int x, int y, int res_type_id, bool double_min_cont_size);
   bool (__fastcall * check_goody_hut_location) (Map *, __, int, int);
   byte (__fastcall * m19_Create_Tiles)(Map * this, __, Tile ** out_array);
   int m20;
@@ -4646,7 +4646,7 @@ struct Tile_Type
 {
   int V0;
   int field_4;
-  int Ptr1;
+  unsigned char * resource_bits; // One bit per resource, tracks possibility of appearance
   String32 Name;
   String32 Civilopedia_Entry;
   int IrrigationBonus;
@@ -4654,7 +4654,7 @@ struct Tile_Type
   int RoadsBonus;
   int DefenceBonus;
   int MoveCost;
-  int field_60;
+  int resource_bit_count; // Length of resource_bits array, in number of bits
   int FoodBase;
   int ProductionBase;
   int TradeBase;
