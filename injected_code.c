@@ -6450,6 +6450,44 @@ deinit_red_food_icon ()
 }
 
 void
+init_distribution_hub_icons ()
+{
+	if (is->distribution_hub_icons_img_state != IS_UNINITED)
+		return;
+
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
+
+	char temp_path[2*MAX_PATH];
+	get_mod_art_path ("Districts/DistributionHubIncomeIcons.pcx", temp_path, sizeof temp_path);
+
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if ((pcx.JGL.Image == NULL) ||
+	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) < 776) ||
+	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) < 32)) {
+		(*p_OutputDebugStringA) ("[C3X] PCX file for distribution hub icons failed to load or is too small.");
+		is->distribution_hub_icons_img_state = IS_INIT_FAILED;
+		goto cleanup;
+	}
+
+	// Extract shield icon (index 4: x = 1 + 4*31 = 125, width 30)
+	Sprite_construct (&is->distribution_hub_production_icon);
+	Sprite_slice_pcx (&is->distribution_hub_production_icon, __, &pcx, 1 + 4*31, 1, 30, 30, 1, 1);
+
+	// Extract surplus food icon (index 6: x = 1 + 6*31 = 187, width 30)
+	Sprite_construct (&is->distribution_hub_food_icon);
+	Sprite_slice_pcx (&is->distribution_hub_food_icon, __, &pcx, 1 + 6*31, 1, 30, 30, 1, 1);
+
+	// Extract eaten food icon (index 7: x = 1 + 7*31 = 218, width 30)
+	Sprite_construct (&is->distribution_hub_eaten_food_icon);
+	Sprite_slice_pcx (&is->distribution_hub_eaten_food_icon, __, &pcx, 1 + 7*31, 1, 30, 30, 1, 1);
+
+	is->distribution_hub_icons_img_state = IS_OK;
+cleanup:
+	pcx.vtable->destruct (&pcx, __, 0);
+}
+
+void
 deinit_distribution_hub_icons ()
 {
 	if (is->distribution_hub_icons_img_state == IS_OK) {
@@ -15196,6 +15234,80 @@ clear_clip_area (City_Form * city_form)
 	jgl_canvas->vtable->m13_Set_Clip_Region (jgl_canvas, __, &jgl_canvas->Image_Rect);
 }
 
+void
+draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, int tile_y, int screen_x, int screen_y)
+{
+	// Get the distribution hub record for this tile
+	struct distribution_hub_record * rec = get_distribution_hub_record (tile);
+	if (rec == NULL || !rec->is_active)
+		return;
+
+	int food_yield = rec->food_yield;
+	int shield_yield = rec->shield_yield;
+	int total_yield = food_yield + shield_yield;
+
+	if (total_yield <= 0)
+		return;
+
+	// Lazy load distribution hub icons
+	if (is->distribution_hub_icons_img_state == IS_UNINITED)
+		init_distribution_hub_icons ();
+	if (is->distribution_hub_icons_img_state != IS_OK)
+		return;
+
+	Sprite * food_sprite = &is->distribution_hub_food_icon;
+	Sprite * shield_sprite = &is->distribution_hub_production_icon;
+
+	int sprite_height = food_sprite->Height;
+	int food_width = food_sprite->Width3;
+	int shield_width = shield_sprite->Width3;
+
+	// Calculate total width of all icons
+	int total_width = 0;
+	if (food_yield > 0)
+		total_width += food_width * food_yield;
+	if (shield_yield > 0)
+		total_width += shield_width * shield_yield;
+
+	// Center the icons horizontally
+	int half_width = total_width >> 1;
+	int tile_width = p_bic_data->is_zoomed_out ? 64 : 128;
+	int max_offset = (tile_width >> 1) - 5;
+	if (half_width > max_offset)
+		half_width = max_offset;
+
+	int pixel_x = screen_x - half_width;
+	int pixel_y = screen_y - (sprite_height >> 1);
+
+	// Adjust spacing if icons would exceed tile width
+	int spacing_food = food_width;
+	int spacing_shield = shield_width;
+
+	if (total_width > tile_width - 10) {
+		if (total_yield > 1) {
+			int spacing = (tile_width - 10 - food_width) / (total_yield - 1);
+			if (spacing < 1)
+				spacing = 1;
+			else if (spacing > food_width)
+				spacing = food_width;
+			spacing_food = spacing;
+			spacing_shield = spacing;
+		}
+	}
+
+	// Draw food icons first
+	for (int i = 0; i < food_yield; i++) {
+		Sprite_draw (food_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing_food;
+	}
+
+	// Draw shield icons
+	for (int i = 0; i < shield_yield; i++) {
+		Sprite_draw (shield_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing_shield;
+	}
+}
+
 void __fastcall
 patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 {
@@ -15219,6 +15331,52 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 		City_Form_draw_yields_on_worked_tiles (this);
 	}
 
+	// Draw distribution hub yields on hub tiles (they are not workable, so the original function skips them)
+	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
+		City * city = this->CurrentCity;
+		if (city == NULL)
+			goto skip_distribution_hub_yields;
+
+		int city_x = city->Body.X;
+		int city_y = city->Body.Y;
+		int civ_id = city->Body.CivID;
+
+		// Calculate screen coordinates for city center
+		int center_screen_x, center_screen_y;
+		Main_Screen_Form_tile_to_screen_coords (p_main_screen_form, __, city_x, city_y, &center_screen_x, &center_screen_y);
+
+		int tile_half_width = p_bic_data->is_zoomed_out ? 32 : 64;
+		int tile_half_height = p_bic_data->is_zoomed_out ? 16 : 32;
+		center_screen_x += tile_half_width;
+		center_screen_y += tile_half_height;
+
+		// Iterate through all neighbor tiles
+		for (int neighbor_index = 0; neighbor_index < is->workable_tile_count; neighbor_index++) {
+			int dx, dy;
+			neighbor_index_to_diff (neighbor_index, &dx, &dy);
+			int tile_x = city_x + dx, tile_y = city_y + dy;
+
+			// Check if tile is within map bounds
+			if (tile_x < 0 || tile_x >= p_bic_data->Map.Width || tile_y < 0 || tile_y >= p_bic_data->Map.Height)
+				continue;
+
+			Tile * tile = tile_at (tile_x, tile_y);
+			if (tile == NULL || tile == p_null_tile) continue;
+			if ((tile->Body.Fog_Of_War & (1 << civ_id)) == 0) continue; 
+			if (tile->Territory_OwnerID != civ_id) continue;
+			int district_id;
+			if (!itable_look_up (&is->district_tile_map, (int)tile, &district_id)) continue;
+			if (district_id != get_distribution_hub_district_id ()) continue;
+
+			// Calculate screen coordinates for this tile
+			int screen_x = center_screen_x + (dx * tile_half_width);
+			int screen_y = center_screen_y + (dy * tile_half_height);
+
+			draw_distribution_hub_yields (this, tile, tile_x, tile_y, screen_x, screen_y);
+		}
+	}
+
+skip_distribution_hub_yields:
 	if (changed_clip_area)
 		clear_clip_area (this);
 }
@@ -16427,44 +16585,6 @@ patch_Unit_select (Unit * this)
 	Unit_select (this);
 }
 
-void
-init_distribution_hub_icons ()
-{
-	if (is->distribution_hub_icons_img_state != IS_UNINITED)
-		return;
-
-	PCX_Image pcx;
-	PCX_Image_construct (&pcx);
-
-	char temp_path[2*MAX_PATH];
-	get_mod_art_path ("Districts/DistributionHubIncomeIcons.pcx", temp_path, sizeof temp_path);
-
-	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
-	if ((pcx.JGL.Image == NULL) ||
-	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) < 776) ||
-	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) < 32)) {
-		(*p_OutputDebugStringA) ("[C3X] PCX file for distribution hub icons failed to load or is too small.");
-		is->distribution_hub_icons_img_state = IS_INIT_FAILED;
-		goto cleanup;
-	}
-
-	// Extract shield icon (index 4: x = 1 + 4*31 = 125, width 30)
-	Sprite_construct (&is->distribution_hub_production_icon);
-	Sprite_slice_pcx (&is->distribution_hub_production_icon, __, &pcx, 1 + 4*31, 1, 30, 30, 1, 1);
-
-	// Extract surplus food icon (index 6: x = 1 + 6*31 = 187, width 30)
-	Sprite_construct (&is->distribution_hub_food_icon);
-	Sprite_slice_pcx (&is->distribution_hub_food_icon, __, &pcx, 1 + 6*31, 1, 30, 30, 1, 1);
-
-	// Extract eaten food icon (index 7: x = 1 + 7*31 = 218, width 30)
-	Sprite_construct (&is->distribution_hub_eaten_food_icon);
-	Sprite_slice_pcx (&is->distribution_hub_eaten_food_icon, __, &pcx, 1 + 7*31, 1, 30, 30, 1, 1);
-
-	is->distribution_hub_icons_img_state = IS_OK;
-cleanup:
-	pcx.vtable->destruct (&pcx, __, 0);
-}
-
 void __fastcall
 patch_City_Form_draw_food_income_icons (City_Form * this, int edx)
 {
@@ -16497,34 +16617,89 @@ patch_City_Form_draw_food_income_icons (City_Form * this, int edx)
 	if (district_food <= 0)
 		return;
 
-	// Calculate positioning based on original function logic for surplus food (right side)
-	Sprite * base_sprite = &(this->City_Icons_Images).Icon_06;
-	Sprite * district_sprite = &is->distribution_hub_food_icon;
-	int sprite_width = base_sprite->Width;
-	int sprite_height = base_sprite->Height;
-
-	struct tagRECT * rect = &this->Food_Storage_Rect;
-	int rect_width = rect->right - rect->left;
 	int food_income = city->Body.FoodIncome;
+	int food_required = city->Body.FoodRequired;
 
-	// Calculate spacing (matches original logic from lines 36672-36689)
-	int spacing = sprite_width;
-	if ((food_income > 1) && (food_income * sprite_width - rect_width != 0) && (rect_width <= food_income * sprite_width)) {
-		spacing = (rect_width - sprite_width) / (food_income - 1);
-		if (spacing < 1)
-			spacing = 1;
-		else if (spacing > sprite_width)
-			spacing = sprite_width;
+	// Calculate how many district food icons go to eaten vs surplus
+	// If we have 10 total food, 8 eaten (required), 2 surplus (income)
+	// And 4 district food: 2 go to eaten (from right), 2 go to surplus
+	int district_food_eaten = 0;
+	int district_food_surplus = 0;
+
+	if (district_food >= food_income) {
+		// All surplus is from districts, plus some eaten
+		district_food_surplus = food_income;
+		district_food_eaten = district_food - food_income;
+	} else {
+		// All districts go to surplus
+		district_food_surplus = district_food;
+		district_food_eaten = 0;
 	}
 
-	// Draw district food icons from right to left (matches original at lines 36691-36700)
-	int x_offset = 0;
-	for (int i = 0; i < district_food && i < food_income; i++) {
-		int x = rect->right - x_offset - sprite_width;
-		int y = rect->top + ((rect->bottom - rect->top >> 1) - (sprite_height >> 1)) - 1;
+	// Draw eaten district food icons (left side, from right to left within the consumption rect)
+	if (district_food_eaten > 0) {
+		Sprite * eaten_sprite = &is->distribution_hub_eaten_food_icon;
+		Sprite * base_eaten_sprite = &(this->City_Icons_Images).Icon_07;
+		int eaten_sprite_width = base_eaten_sprite->Width;
+		int eaten_sprite_height = base_eaten_sprite->Height;
 
-		Sprite_draw (district_sprite, __, &(this->Base).Data.Canvas, x, y, NULL);
-		x_offset += spacing;
+		struct tagRECT * eaten_rect = &this->Food_Consumption_Rect;
+		int eaten_rect_width = eaten_rect->right - eaten_rect->left;
+
+		// Calculate spacing
+		int eaten_spacing = eaten_sprite_width;
+		if ((food_required > 1) && (food_required * eaten_sprite_width - eaten_rect_width != 0) &&
+		    (eaten_rect_width <= food_required * eaten_sprite_width)) {
+			eaten_spacing = (eaten_rect_width - eaten_sprite_width) / (food_required - 1);
+			if (eaten_spacing < 1)
+				eaten_spacing = 1;
+			else if (eaten_spacing > eaten_sprite_width)
+				eaten_spacing = eaten_sprite_width;
+		}
+
+		// Draw from right to left (starting from rightmost position)
+		int eaten_x_offset = eaten_spacing * (food_required - 1);
+		for (int i = 0; i < district_food_eaten && i < food_required; i++) {
+			int x = eaten_rect->left + eaten_x_offset;
+			int y = eaten_rect->top + ((eaten_rect->bottom - eaten_rect->top >> 1) -
+			                           (eaten_sprite_height >> 1));
+
+			Sprite_draw (eaten_sprite, __, &(this->Base).Data.Canvas, x, y, NULL);
+			eaten_x_offset -= eaten_spacing;
+		}
+	}
+
+	// Draw surplus district food icons (right side, from right to left)
+	if (district_food_surplus > 0) {
+		Sprite * surplus_sprite = &is->distribution_hub_food_icon;
+		Sprite * base_surplus_sprite = &(this->City_Icons_Images).Icon_06;
+		int surplus_sprite_width = base_surplus_sprite->Width;
+		int surplus_sprite_height = base_surplus_sprite->Height;
+
+		struct tagRECT * surplus_rect = &this->Food_Storage_Rect;
+		int surplus_rect_width = surplus_rect->right - surplus_rect->left;
+
+		// Calculate spacing 
+		int surplus_spacing = surplus_sprite_width;
+		if ((food_income > 1) && (food_income * surplus_sprite_width - surplus_rect_width != 0) &&
+		    (surplus_rect_width <= food_income * surplus_sprite_width)) {
+			surplus_spacing = (surplus_rect_width - surplus_sprite_width) / (food_income - 1);
+			if (surplus_spacing < 1)
+				surplus_spacing = 1;
+			else if (surplus_spacing > surplus_sprite_width)
+				surplus_spacing = surplus_sprite_width;
+		}
+
+		// Draw from right to left
+		int surplus_x_offset = 0;
+		for (int i = 0; i < district_food_surplus && i < food_income; i++) {
+			int x = surplus_rect->right - surplus_x_offset - surplus_sprite_width;
+			int y = surplus_rect->top + ((surplus_rect->bottom - surplus_rect->top >> 1) -
+			                             (surplus_sprite_height >> 1)) - 1;
+
+			Sprite_draw (surplus_sprite, __, &(this->Base).Data.Canvas, x, y, NULL);
+			surplus_x_offset += surplus_spacing;
+		}
 	}
 }
 
