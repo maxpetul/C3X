@@ -6450,44 +6450,6 @@ deinit_red_food_icon ()
 }
 
 void
-init_distribution_hub_icons ()
-{
-	if (is->distribution_hub_icons_img_state != IS_UNINITED)
-		return;
-
-	PCX_Image pcx;
-	PCX_Image_construct (&pcx);
-
-	char temp_path[2*MAX_PATH];
-	get_mod_art_path ("Districts/DistributionHubIncomeIcons.pcx", temp_path, sizeof temp_path);
-
-	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
-	if ((pcx.JGL.Image == NULL) ||
-	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) < 776) ||
-	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) < 32)) {
-		(*p_OutputDebugStringA) ("[C3X] PCX file for distribution hub icons failed to load or is too small.");
-		is->distribution_hub_icons_img_state = IS_INIT_FAILED;
-		goto cleanup;
-	}
-
-	// Extract shield icon (index 4: x = 1 + 4*31 = 125, width 30)
-	Sprite_construct (&is->distribution_hub_production_icon);
-	Sprite_slice_pcx (&is->distribution_hub_production_icon, __, &pcx, 1 + 4*31, 1, 30, 30, 1, 1);
-
-	// Extract surplus food icon (index 6: x = 1 + 6*31 = 187, width 30)
-	Sprite_construct (&is->distribution_hub_food_icon);
-	Sprite_slice_pcx (&is->distribution_hub_food_icon, __, &pcx, 1 + 6*31, 1, 30, 30, 1, 1);
-
-	// Extract eaten food icon (index 7: x = 1 + 7*31 = 218, width 30)
-	Sprite_construct (&is->distribution_hub_eaten_food_icon);
-	Sprite_slice_pcx (&is->distribution_hub_eaten_food_icon, __, &pcx, 1 + 7*31, 1, 30, 30, 1, 1);
-
-	is->distribution_hub_icons_img_state = IS_OK;
-cleanup:
-	pcx.vtable->destruct (&pcx, __, 0);
-}
-
-void
 deinit_distribution_hub_icons ()
 {
 	if (is->distribution_hub_icons_img_state == IS_OK) {
@@ -15235,6 +15197,52 @@ clear_clip_area (City_Form * city_form)
 }
 
 void
+init_distribution_hub_icons ()
+{
+	if (is->distribution_hub_icons_img_state != IS_UNINITED)
+		return;
+
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
+
+	char temp_path[2*MAX_PATH];
+	get_mod_art_path ("Districts/DistributionHubIncomeIcons.pcx", temp_path, sizeof temp_path);
+
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if ((pcx.JGL.Image == NULL) ||
+	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) < 776) ||
+	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) < 32)) {
+		(*p_OutputDebugStringA) ("[C3X] PCX file for distribution hub icons failed to load or is too small.");
+		is->distribution_hub_icons_img_state = IS_INIT_FAILED;
+		goto cleanup;
+	}
+
+	// Extract shield icon (index 4: x = 1 + 4*31 = 125, width 30)
+	Sprite_construct (&is->distribution_hub_production_icon);
+	Sprite_slice_pcx (&is->distribution_hub_production_icon, __, &pcx, 1 + 4*31, 1, 30, 30, 1, 1);
+
+	// Extract small shield icon (index 13)
+	Sprite_construct (&is->distribution_hub_production_icon_small);
+	Sprite_slice_pcx (&is->distribution_hub_production_icon_small, __, &pcx, 1 + 13*31, 1, 30, 30, 1, 1);
+
+	// Extract surplus food icon (index 6: x = 1 + 6*31 = 187, width 30)
+	Sprite_construct (&is->distribution_hub_food_icon);
+	Sprite_slice_pcx (&is->distribution_hub_food_icon, __, &pcx, 1 + 6*31, 1, 30, 30, 1, 1);
+
+	// Extract small surplus food icon (index 15)
+	Sprite_construct (&is->distribution_hub_food_icon_small);
+	Sprite_slice_pcx (&is->distribution_hub_food_icon_small, __, &pcx, 1 + 15*31, 1, 30, 30, 1, 1);
+
+	// Extract eaten food icon (index 7: x = 1 + 7*31 = 218, width 30)
+	Sprite_construct (&is->distribution_hub_eaten_food_icon);
+	Sprite_slice_pcx (&is->distribution_hub_eaten_food_icon, __, &pcx, 1 + 7*31, 1, 30, 30, 1, 1);
+
+	is->distribution_hub_icons_img_state = IS_OK;
+cleanup:
+	pcx.vtable->destruct (&pcx, __, 0);
+}
+
+void
 draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, int tile_y, int screen_x, int screen_y)
 {
 	// Get the distribution hub record for this tile
@@ -15255,12 +15263,24 @@ draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, in
 	if (is->distribution_hub_icons_img_state != IS_OK)
 		return;
 
-	Sprite * food_sprite = &is->distribution_hub_food_icon;
-	Sprite * shield_sprite = &is->distribution_hub_production_icon;
+	Sprite * food_sprite = &is->distribution_hub_food_icon_small;
+	Sprite * shield_sprite = &is->distribution_hub_production_icon_small;
+
+	if (food_sprite->Width3 == 0)
+		food_sprite = &is->distribution_hub_food_icon;
+	if (shield_sprite->Width3 == 0)
+		shield_sprite = &is->distribution_hub_production_icon;
 
 	int sprite_height = food_sprite->Height;
+	if (sprite_height == 0)
+		sprite_height = shield_sprite->Height;
+
 	int food_width = food_sprite->Width3;
 	int shield_width = shield_sprite->Width3;
+	if ((food_width <= 0) && (shield_width > 0))
+		food_width = shield_width;
+	if ((shield_width <= 0) && (food_width > 0))
+		shield_width = food_width;
 
 	// Calculate total width of all icons
 	int total_width = 0;
@@ -16726,6 +16746,11 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 	int district_shields = 0;
 	if (is->distribution_hub_shield_bonus_per_city != NULL)
 		district_shields = is->distribution_hub_shield_bonus_per_city[city_id];
+
+	//char ss[200];
+	//snprintf (ss, sizeof ss, "patch_City_draw_production_income_icons: city %d has %d district shields", city_id, district_shields);
+	//pop_up_in_game_error (ss);
+	// Note: outputs '3' for shields, so is working
 
 	if (district_shields <= 0)
 		return;
