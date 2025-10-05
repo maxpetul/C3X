@@ -1265,6 +1265,18 @@ struct injected_state {
 	Sprite distribution_hub_production_icon_small;
 	Sprite distribution_hub_food_icon_small;
 
+	enum init_state district_icons_img_state;
+	Sprite district_science_icon;
+	Sprite district_commerce_icon;
+	Sprite district_shield_icon;
+	Sprite district_food_icon;
+	Sprite district_food_eaten_icon;
+	Sprite district_shield_icon_small;
+	Sprite district_commerce_icon_small;
+	Sprite district_food_icon_small;
+	Sprite district_science_icon_small;
+	Sprite district_culture_icon_small;
+
 	// Guard to prevent recursive sharing when auto-adding buildings across cities
 	bool sharing_buildings_by_districts_in_progress;
 

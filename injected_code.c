@@ -6460,6 +6460,24 @@ deinit_distribution_hub_icons ()
 	is->distribution_hub_icons_img_state = IS_UNINITED;
 }
 
+void
+deinit_district_icons ()
+{
+	if (is->district_icons_img_state == IS_OK) {
+		is->district_science_icon.vtable->destruct (&is->district_science_icon, __, 0);
+		is->district_commerce_icon.vtable->destruct (&is->district_commerce_icon, __, 0);
+		is->district_shield_icon.vtable->destruct (&is->district_shield_icon, __, 0);
+		is->district_food_icon.vtable->destruct (&is->district_food_icon, __, 0);
+		is->district_food_eaten_icon.vtable->destruct (&is->district_food_eaten_icon, __, 0);
+		is->district_shield_icon_small.vtable->destruct (&is->district_shield_icon_small, __, 0);
+		is->district_commerce_icon_small.vtable->destruct (&is->district_commerce_icon_small, __, 0);
+		is->district_food_icon_small.vtable->destruct (&is->district_food_icon_small, __, 0);
+		is->district_science_icon_small.vtable->destruct (&is->district_science_icon_small, __, 0);
+		is->district_culture_icon_small.vtable->destruct (&is->district_culture_icon_small, __, 0);
+	}
+	is->district_icons_img_state = IS_UNINITED;
+}
+
 int __cdecl
 patch_get_tile_occupier_for_ai_path (int x, int y, int pov_civ_id, bool respect_unit_invisibility)
 {
@@ -8443,6 +8461,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	deinit_unit_rcm_icons ();
 	deinit_red_food_icon ();
 	deinit_distribution_hub_icons ();
+	deinit_district_icons ();
 	if (is->tile_already_worked_zoomed_out_sprite_init_state != IS_UNINITED) {
 		enum init_state * state = &is->tile_already_worked_zoomed_out_sprite_init_state;
 		if (*state == IS_OK) {
@@ -15238,6 +15257,72 @@ init_distribution_hub_icons ()
 	Sprite_slice_pcx (&is->distribution_hub_eaten_food_icon, __, &pcx, 1 + 7*31, 1, 30, 30, 1, 1);
 
 	is->distribution_hub_icons_img_state = IS_OK;
+cleanup:
+	pcx.vtable->destruct (&pcx, __, 0);
+}
+
+void
+init_district_icons ()
+{
+	if (is->district_icons_img_state != IS_UNINITED)
+		return;
+
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
+
+	char temp_path[2*MAX_PATH];
+	get_mod_art_path ("Districts/DistrictIncomeIcons.pcx", temp_path, sizeof temp_path);
+
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if ((pcx.JGL.Image == NULL) ||
+	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) < 776) ||
+	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) < 32)) {
+		(*p_OutputDebugStringA) ("[C3X] PCX file for district icons failed to load or is too small.");
+		is->district_icons_img_state = IS_INIT_FAILED;
+		goto cleanup;
+	}
+
+	// Extract science icon (index 1: x = 1 + 1*31 = 32, width 30)
+	Sprite_construct (&is->district_science_icon);
+	Sprite_slice_pcx (&is->district_science_icon, __, &pcx, 1 + 1*31, 1, 30, 30, 1, 1);
+
+	// Extract commerce icon (index 2: x = 1 + 2*31 = 63, width 30)
+	Sprite_construct (&is->district_commerce_icon);
+	Sprite_slice_pcx (&is->district_commerce_icon, __, &pcx, 1 + 2*31, 1, 30, 30, 1, 1);
+
+	// Extract shield icon (index 4: x = 1 + 4*31 = 125, width 30)
+	Sprite_construct (&is->district_shield_icon);
+	Sprite_slice_pcx (&is->district_shield_icon, __, &pcx, 1 + 4*31, 1, 30, 30, 1, 1);
+
+	// Extract food icon (index 6: x = 1 + 6*31 = 187, width 30)
+	Sprite_construct (&is->district_food_icon);
+	Sprite_slice_pcx (&is->district_food_icon, __, &pcx, 1 + 6*31, 1, 30, 30, 1, 1);
+
+	// Extract food eaten icon (index 7: x = 1 + 7*31 = 218, width 30)
+	Sprite_construct (&is->district_food_eaten_icon);
+	Sprite_slice_pcx (&is->district_food_eaten_icon, __, &pcx, 1 + 7*31, 1, 30, 30, 1, 1);
+
+	// Extract small shield icon (index 13: x = 1 + 13*31 = 404, width 30)
+	Sprite_construct (&is->district_shield_icon_small);
+	Sprite_slice_pcx (&is->district_shield_icon_small, __, &pcx, 1 + 13*31, 1, 30, 30, 1, 1);
+
+	// Extract small commerce icon (index 14: x = 1 + 14*31 = 435, width 30)
+	Sprite_construct (&is->district_commerce_icon_small);
+	Sprite_slice_pcx (&is->district_commerce_icon_small, __, &pcx, 1 + 14*31, 1, 30, 30, 1, 1);
+
+	// Extract small food icon (index 15: x = 1 + 15*31 = 466, width 30)
+	Sprite_construct (&is->district_food_icon_small);
+	Sprite_slice_pcx (&is->district_food_icon_small, __, &pcx, 1 + 15*31, 1, 30, 30, 1, 1);
+
+	// Extract small science icon (index 16: x = 1 + 16*31 = 497, width 30)
+	Sprite_construct (&is->district_science_icon_small);
+	Sprite_slice_pcx (&is->district_science_icon_small, __, &pcx, 1 + 16*31, 1, 30, 30, 1, 1);
+
+	// Extract small culture icon (index 18: x = 1 + 18*31 = 559, width 30)
+	Sprite_construct (&is->district_culture_icon_small);
+	Sprite_slice_pcx (&is->district_culture_icon_small, __, &pcx, 1 + 18*31, 1, 30, 30, 1, 1);
+
+	is->district_icons_img_state = IS_OK;
 cleanup:
 	pcx.vtable->destruct (&pcx, __, 0);
 }
