@@ -297,7 +297,7 @@ struct c3x_config {
 	bool cities_can_share_buildings_by_districts;
 
 	bool enable_neighborhood_districts;
-	int no_neighborhood_pop_threshold;
+	int maximum_pop_before_neighborhood_needed;
 	int per_neighborhood_pop_growth_enabled;
 	
 	bool enable_wonder_districts;

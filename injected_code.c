@@ -3581,7 +3581,7 @@ count_utilized_neighborhoods_in_city_radius (City * city)
 	    (city == NULL))
 		return 0;
 
-	int base_cap = is->current_config.no_neighborhood_pop_threshold;
+	int base_cap = is->current_config.maximum_pop_before_neighborhood_needed;
 	if (base_cap <= 0)
 		return 0;
 
@@ -3661,7 +3661,7 @@ get_neighborhood_pop_cap (City * city)
 	    (city == NULL))
 		return -1;
 
-	int base_cap = is->current_config.no_neighborhood_pop_threshold;
+	int base_cap = is->current_config.maximum_pop_before_neighborhood_needed;
 	if (base_cap <= 0)
 		return -1;
 
@@ -5948,7 +5948,7 @@ patch_init_floating_point ()
 		{"elapsed_minutes_per_day_night_hour_transition",     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
 		{"fixed_hours_per_turn_for_day_night_cycle"     ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
 		{"pinned_hour_for_day_night_cycle"              ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
-		{"no_neighborhood_pop_threshold"				,     8, offsetof (struct c3x_config, no_neighborhood_pop_threshold)},
+		{"maximum_pop_before_neighborhood_needed"				,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
 		{"per_neighborhood_pop_growth_enabled"			,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
 		{"distribution_hub_food_yield_divisor"			,     1, offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
 		{"distribution_hub_shield_yield_divisor"		,     1, offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
@@ -15671,6 +15671,21 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 		center_screen_x += tile_half_width;
 		center_screen_y += tile_half_height;
 
+		// Calculate how many neighborhoods are utilized before drawing
+		int utilized_neighborhoods = 0;
+		if (is->current_config.enable_neighborhood_districts) {
+			int base_cap = is->current_config.maximum_pop_before_neighborhood_needed;
+			int per_neighborhood = is->current_config.per_neighborhood_pop_growth_enabled;
+			int pop = city->Body.Population.Size;
+
+			if (base_cap > 0 && per_neighborhood > 0 && pop > base_cap) {
+				int excess_pop = pop - base_cap;
+				utilized_neighborhoods = (excess_pop + per_neighborhood - 1) / per_neighborhood;
+			}
+		}
+
+		int neighborhoods_drawn = 0;
+
 		// Iterate through all neighbor tiles
 		for (int neighbor_index = 0; neighbor_index < is->workable_tile_count; neighbor_index++) {
 			int dx, dy;
@@ -15691,6 +15706,15 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 
 			// Skip distribution hub districts (they have their own drawing logic below)
 			if (district_id == get_distribution_hub_district_id ()) continue;
+
+			// For neighborhood districts, check if population is high enough to utilize them
+			if (is->current_config.enable_neighborhood_districts &&
+			    district_configs[district_id].command == UCV_Build_Neighborhood) {
+				// Only draw yields if this neighborhood is utilized
+				if (neighborhoods_drawn >= utilized_neighborhoods)
+					continue;
+				neighborhoods_drawn++;
+			}
 
 			// Calculate screen coordinates for this tile
 			int screen_x = center_screen_x + (dx * tile_half_width);
