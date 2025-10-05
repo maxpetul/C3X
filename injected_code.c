@@ -7872,6 +7872,8 @@ patch_City_Form_open (City_Form * this, int edx, City * city, int param_2)
 	}
 }
 
+void init_district_icons ();
+
 void __fastcall
 patch_City_Form_draw (City_Form * this)
 {
@@ -7955,6 +7957,123 @@ patch_City_Form_draw (City_Form * this)
 		PCX_Image_draw_centered_text (&this->Base.Data.Canvas, __, font, line1, left, top - 42, width, strlen (line1));
 		PCX_Image_draw_centered_text (&this->Base.Data.Canvas, __, font, line2, left, top - 28, width, strlen (line2));
 		PCX_Image_draw_centered_text (&this->Base.Data.Canvas, __, font, line3, left, top - 14, width, strlen (line3));
+	}
+
+	// Draw district commerce bonuses (gold and science)
+	if (! is->current_config.enable_districts)
+		return;
+
+	// Lazy load district icons
+	if (is->district_icons_img_state == IS_UNINITED)
+		init_district_icons ();
+	if (is->district_icons_img_state != IS_OK)
+		return;
+
+	City * city = this->CurrentCity;
+	if (city == NULL)
+		return;
+
+	// Calculate district gold and science bonuses by iterating workable tiles
+	int district_gold = 0;
+	int district_science = 0;
+	int city_x = city->Body.X;
+	int city_y = city->Body.Y;
+
+	for (int dy = -2; dy <= 2; dy++) {
+		for (int dx = -2; dx <= 2; dx++) {
+			// Skip if outside city radius
+			if ((dx*dx + dy*dy) > 5)
+				continue;
+
+			int tile_x = city_x + dx;
+			int tile_y = city_y + dy;
+			Tile * tile = tile_at (tile_x, tile_y);
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+
+			// Check if tile has a district
+			int district_id;
+			if (! itable_look_up (&is->district_tile_map, (int)tile, &district_id))
+				continue;
+
+			// Verify district is complete (has mines)
+			if (! tile->vtable->m18_Check_Mines (tile, __, 0))
+				continue;
+
+			// Add bonuses from this district
+			if ((district_id >= 0) && (district_id < COUNT_DISTRICT_TYPES)) {
+				district_gold += district_configs[district_id].gold_bonus;
+				district_science += district_configs[district_id].science_bonus;
+			}
+		}
+	}
+
+	// Draw district gold icons
+	if (district_gold > 0) {
+		Sprite * gold_sprite = &is->district_commerce_icon;
+		int sprite_width = gold_sprite->Width;
+		int sprite_height = gold_sprite->Height;
+
+		struct tagRECT * gold_rect = &this->Gold_Income_Rect;
+		int total_gold = City_get_net_commerce (city, __, 2, true);
+
+		// Calculate spacing
+		int spacing = sprite_width;
+		if ((total_gold > 1) && (total_gold * sprite_width != (gold_rect->right - gold_rect->left))) {
+			int rect_width = gold_rect->right - gold_rect->left;
+			if (rect_width <= total_gold * sprite_width) {
+				spacing = (rect_width - sprite_width) / (total_gold - 1);
+				if (spacing < 1)
+					spacing = 1;
+				else if (spacing > sprite_width)
+					spacing = sprite_width;
+			}
+		}
+
+		// Draw from right to left
+		int x_offset = 0;
+		for (int i = 0; i < district_gold && i < total_gold; i++) {
+			int x = gold_rect->right - x_offset - sprite_width;
+			int y = gold_rect->top + ((gold_rect->bottom - gold_rect->top >> 1) -
+			                          (sprite_height >> 1));
+
+			Sprite_draw (gold_sprite, __, &(this->Base).Data.Canvas, x, y, NULL);
+			x_offset += spacing;
+		}
+	}
+
+	// Draw district science icons
+	if (district_science > 0) {
+		Sprite * science_sprite = &is->district_science_icon;
+		int sprite_width = science_sprite->Width;
+		int sprite_height = science_sprite->Height;
+
+		struct tagRECT * science_rect = &this->Science_Income_Rect;
+		int total_science = City_get_net_commerce (city, __, 1, true);
+
+		// Calculate spacing
+		int spacing = sprite_width;
+		if ((total_science > 1) && (total_science * sprite_width != (science_rect->right - science_rect->left))) {
+			int rect_width = science_rect->right - science_rect->left;
+			if (rect_width <= total_science * sprite_width) {
+				spacing = (rect_width - sprite_width) / (total_science - 1);
+				if (spacing < 1)
+					spacing = 1;
+				else if (spacing > sprite_width)
+					spacing = sprite_width;
+			}
+		}
+
+		// Draw from right to left
+		int x_offset = 0;
+		for (int i = 0; i < district_science && i < total_science; i++) {
+			int x = science_rect->right - x_offset - sprite_width;
+			int y = science_rect->top + ((science_rect->bottom - science_rect->top >> 1) -
+			                             (sprite_height >> 1));
+
+			Sprite_draw (science_sprite, __, &(this->Base).Data.Canvas, x, y, NULL);
+			x_offset += spacing;
+		}
 	}
 }
 
@@ -15328,6 +15447,103 @@ cleanup:
 }
 
 void
+draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int screen_x, int screen_y)
+{
+	// Lazy load district icons
+	if (is->district_icons_img_state == IS_UNINITED)
+		init_district_icons ();
+	if (is->district_icons_img_state != IS_OK)
+		return;
+
+	// Get district configuration
+	struct district_config const * config = &district_configs[district_id];
+
+	// Count total yields from bonuses
+	int total_yield = 0;
+	if (config->food_bonus > 0) total_yield += config->food_bonus;
+	if (config->production_bonus > 0) total_yield += config->production_bonus;
+	if (config->gold_bonus > 0) total_yield += config->gold_bonus;
+	if (config->science_bonus > 0) total_yield += config->science_bonus;
+	if (config->culture_bonus > 0) total_yield += config->culture_bonus;
+
+	if (total_yield <= 0)
+		return;
+
+	// Get sprites
+	Sprite * food_sprite = &is->district_food_icon_small;
+	Sprite * shield_sprite = &is->district_shield_icon_small;
+	Sprite * commerce_sprite = &is->district_commerce_icon_small;
+	Sprite * science_sprite = &is->district_science_icon_small;
+	Sprite * culture_sprite = &is->district_culture_icon_small;
+
+	// Determine sprite dimensions
+	int sprite_width = food_sprite->Width3;
+	if (sprite_width <= 0) sprite_width = shield_sprite->Width3;
+	if (sprite_width <= 0) sprite_width = commerce_sprite->Width3;
+	if (sprite_width <= 0) sprite_width = science_sprite->Width3;
+	if (sprite_width <= 0) sprite_width = culture_sprite->Width3;
+	if (sprite_width <= 0) sprite_width = 30;
+
+	int sprite_height = food_sprite->Height;
+	if (sprite_height <= 0) sprite_height = shield_sprite->Height;
+	if (sprite_height <= 0) sprite_height = commerce_sprite->Height;
+	if (sprite_height <= 0) sprite_height = science_sprite->Height;
+	if (sprite_height <= 0) sprite_height = culture_sprite->Height;
+	if (sprite_height <= 0) sprite_height = 30;
+
+	// Calculate total width of all icons
+	int total_width = total_yield * sprite_width;
+
+	// Center the icons horizontally
+	int half_width = total_width >> 1;
+	int tile_width = p_bic_data->is_zoomed_out ? 64 : 128;
+	int max_offset = (tile_width >> 1) - 5;
+	if (half_width > max_offset)
+		half_width = max_offset;
+
+	int pixel_x = screen_x - half_width;
+	int pixel_y = screen_y - (sprite_height >> 1);
+
+	// Adjust spacing if icons would exceed tile width
+	int spacing = sprite_width;
+	if (total_width > tile_width - 10) {
+		if (total_yield > 1) {
+			spacing = (tile_width - 10 - sprite_width) / (total_yield - 1);
+			if (spacing < 1)
+				spacing = 1;
+			else if (spacing > sprite_width)
+				spacing = sprite_width;
+		}
+	}
+
+	// Draw icons in order: shields, food, science, commerce, culture
+	for (int i = 0; i < config->production_bonus; i++) {
+		Sprite_draw (shield_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
+
+	for (int i = 0; i < config->food_bonus; i++) {
+		Sprite_draw (food_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
+
+	for (int i = 0; i < config->science_bonus; i++) {
+		Sprite_draw (science_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
+
+	for (int i = 0; i < config->gold_bonus; i++) {
+		Sprite_draw (commerce_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
+
+	for (int i = 0; i < config->culture_bonus; i++) {
+		Sprite_draw (culture_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
+}
+
+void
 draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, int tile_y, int screen_x, int screen_y)
 {
 	// Get the distribution hub record for this tile
@@ -15436,6 +15652,55 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 		City_Form_draw_yields_on_worked_tiles (this);
 	}
 
+	// Draw district bonuses on district tiles
+	if (is->current_config.enable_districts) {
+		City * city = this->CurrentCity;
+		if (city == NULL)
+			goto skip_district_yields;
+
+		int city_x = city->Body.X;
+		int city_y = city->Body.Y;
+		int civ_id = city->Body.CivID;
+
+		// Calculate screen coordinates for city center
+		int center_screen_x, center_screen_y;
+		Main_Screen_Form_tile_to_screen_coords (p_main_screen_form, __, city_x, city_y, &center_screen_x, &center_screen_y);
+
+		int tile_half_width = p_bic_data->is_zoomed_out ? 32 : 64;
+		int tile_half_height = p_bic_data->is_zoomed_out ? 16 : 32;
+		center_screen_x += tile_half_width;
+		center_screen_y += tile_half_height;
+
+		// Iterate through all neighbor tiles
+		for (int neighbor_index = 0; neighbor_index < is->workable_tile_count; neighbor_index++) {
+			int dx, dy;
+			neighbor_index_to_diff (neighbor_index, &dx, &dy);
+			int tile_x = city_x + dx, tile_y = city_y + dy;
+
+			// Check if tile is within map bounds
+			if (tile_x < 0 || tile_x >= p_bic_data->Map.Width || tile_y < 0 || tile_y >= p_bic_data->Map.Height)
+				continue;
+
+			Tile * tile = tile_at (tile_x, tile_y);
+			if (tile == NULL || tile == p_null_tile) continue;
+			if ((tile->Body.Fog_Of_War & (1 << civ_id)) == 0) continue;
+			if (tile->Territory_OwnerID != civ_id) continue;
+
+			int district_id;
+			if (!itable_look_up (&is->district_tile_map, (int)tile, &district_id)) continue;
+
+			// Skip distribution hub districts (they have their own drawing logic below)
+			if (district_id == get_distribution_hub_district_id ()) continue;
+
+			// Calculate screen coordinates for this tile
+			int screen_x = center_screen_x + (dx * tile_half_width);
+			int screen_y = center_screen_y + (dy * tile_half_height);
+
+			draw_district_yields (this, tile, district_id, screen_x, screen_y);
+		}
+	}
+
+skip_district_yields:
 	// Draw distribution hub yields on hub tiles (they are not workable, so the original function skips them)
 	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
 		City * city = this->CurrentCity;
@@ -15467,7 +15732,7 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 
 			Tile * tile = tile_at (tile_x, tile_y);
 			if (tile == NULL || tile == p_null_tile) continue;
-			if ((tile->Body.Fog_Of_War & (1 << civ_id)) == 0) continue; 
+			if ((tile->Body.Fog_Of_War & (1 << civ_id)) == 0) continue;
 			if (tile->Territory_OwnerID != civ_id) continue;
 			int district_id;
 			if (!itable_look_up (&is->district_tile_map, (int)tile, &district_id)) continue;
