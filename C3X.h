@@ -506,7 +506,7 @@ struct district_config {
 	},
 	{
 		.command = UCV_Build_DistributionHub, .tooltip = "Build Distribution Hub", .img_paths = {"DistributionHub.pcx"}, 
-		.num_img_paths = 1, .index = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 1,
+		.num_img_paths = 1, .index = 2, .btn_tile_sheet_column = 6, .btn_tile_sheet_row = 4, .total_img_rows = 4, .total_img_columns = 1,
 		.advance_prereq = NULL, .dependent_improvements = {NULL},
 		.defense_bonus_multiplier = 1.0, .allow_multiple = true, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .production_bonus = 0
 	},

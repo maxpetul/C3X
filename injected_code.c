@@ -63,7 +63,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID 0x222004
 #define PEDIA_MULTIPAGE_PREV_BUTTON_ID 0x222005
 
-#define TILE_FLAG_MINE 0x8
+#define TILE_FLAG_MINE 0x4
 
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
@@ -7470,12 +7470,12 @@ set_up_district_buttons (Main_GUI * this)
 	// For each district type
 	for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
 
-		//snprintf (ss, sizeof ss, "[C3X] Considering district type %d", dc);
+		//snprintf (ss, sizeof ss, "[C3X] Considering district type %d, enable_neighborhood_districts: %d", dc, is->current_config.enable_neighborhood_districts);
 		//pop_up_in_game_error (ss);
 
-		if ((dc == UCV_Build_Neighborhood) && !is->current_config.enable_neighborhood_districts) continue;
-		if ((dc == UCV_Build_WonderDistrict) && !is->current_config.enable_wonder_districts) continue;
-		if ((dc == UCV_Build_DistributionHub) && !is->current_config.enable_distribution_hub_districts) continue;
+		if ((district_configs[dc].command == UCV_Build_Neighborhood) && !is->current_config.enable_neighborhood_districts) continue;
+		if ((district_configs[dc].command == UCV_Build_WonderDistrict) && !is->current_config.enable_wonder_districts) continue;
+		if ((district_configs[dc].command == UCV_Build_DistributionHub) && !is->current_config.enable_distribution_hub_districts) continue;
 
 		// Skip if this specific district type is already on the tile
 		{
@@ -7984,7 +7984,7 @@ issue_district_worker_command (Unit * unit, int command)
 		int district_id;
 		if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) && district_is_complete(tile, district_id) ) {
 			PopupForm * popup = get_popup_form ();
-			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRMREMOVEDISTRICT", -1, 0, 0, 0);
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_REMOVE_DISTRICT", -1, 0, 0, 0);
 			int sel = patch_show_popup (popup, __, 0, 0);
 				if (sel == 0) {
 					itable_remove (&is->district_tile_map, (int)tile);
@@ -7993,7 +7993,6 @@ issue_district_worker_command (Unit * unit, int command)
 					int tile_x, tile_y;
 					if (tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y)) {
 						tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
-						tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, 0xf, tile_x, tile_y);
 						handle_district_removed(tile, district_id, tile_x, tile_y, false);
 					}
 				} else {
@@ -8002,10 +8001,21 @@ issue_district_worker_command (Unit * unit, int command)
 		}
 
 		if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
+			unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
+			unsigned int removable_flags = overlay_flags & 0xfc;
+			if (removable_flags != 0) {
+				PopupForm * popup = get_popup_form ();
+				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_BUILD_DISTRICT_OVER_EXISTING", -1, 0, 0, 0);
+				int sel = patch_show_popup (popup, __, 0, 0);
+				if (sel != 0)
+					return;
+			}
+
 			int tile_x, tile_y;
 			if (tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y)) {
+				if (removable_flags != 0)
+					tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, tile_x, tile_y);
 				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
-				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, 0xf, tile_x, tile_y);
 			}
 
 			itable_insert (&is->district_tile_map, (int)tile, district_id);
@@ -17452,7 +17462,7 @@ patch_Unit_select (Unit * this)
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
 		if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) && ! district_is_complete (tile, district_id)) {
 			PopupForm * popup = get_popup_form ();
-			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRMCANCELTERRAFORM", -1, 0, 0, 0);
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_CANCEL_TERRAFORM", -1, 0, 0, 0);
 			int sel = patch_show_popup (popup, __, 0, 0);
 			if (sel == 0) {
 				itable_remove (&is->district_tile_map, (int)tile);
