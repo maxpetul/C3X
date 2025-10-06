@@ -3720,6 +3720,7 @@ remove_district_assignments_for_civ (int civ_id)
 
 int __fastcall patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum ImprovementTypeWonderFeatures flag, City * only_in_city);
 int __fastcall patch_Leader_count_wonders_with_small_flag (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null);
+void __fastcall patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int add, bool param_3);
 
 
 void __fastcall
@@ -4079,7 +4080,7 @@ patch_City_update_growth (City * this, int edx)
 	if (is_online_game ()) return;
 
 	static char msg[128];
-	snprintf (msg, sizeof msg, "City needs a Neighborhood to grow.");
+	snprintf (msg, sizeof msg, "City needs a Neighborhood to grow");
 	msg[(sizeof msg) - 1] = '\0';
 	show_map_specific_text (this->Body.X, this->Body.Y, msg, true);
 }
@@ -4107,7 +4108,7 @@ remove_building_if_no_district (City * city, int district_id, int building_id)
 	if (city_has_required_district (city, district_id))
 		return;
 
-	City_add_or_remove_improvement (city, __, building_id, 0, false);
+	patch_City_add_or_remove_improvement (city, __, building_id, 0, false);
 }
 
 void
@@ -4115,6 +4116,10 @@ remove_dependent_buildings_for_district (int district_id, int center_x, int cent
 {
 	if (! is->current_config.enable_districts || (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
 		return;
+
+	char ss[200];
+	snprintf (ss, sizeof ss, "[C3X] remove_dependent_buildings_for_district: district_id=%d at (%d,%d)\n", district_id, center_x, center_y);
+	(*p_OutputDebugStringA) (ss);
 
 	struct district_infos * info = &is->district_infos[district_id];
 
@@ -4131,10 +4136,12 @@ remove_dependent_buildings_for_district (int district_id, int center_x, int cent
 			continue;
 		for (int i = 0; i < ARRAY_LEN (info->dependent_building_ids); i++) {
 			int building_id = info->dependent_building_ids[i];
-			if (building_id >= 0)
+			if (building_id >= 0) {
 				remove_building_if_no_district (city, district_id, building_id);
+			}
 		}
-		mark_city_needs_district (city, district_id);
+		if ((*p_human_player_bits & (1 << city->Body.CivID)) == 0)
+			mark_city_needs_district (city, district_id);
 	}
 }
 
@@ -4143,6 +4150,11 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 {
 	if ((tile == NULL) || (tile == p_null_tile) || ! is->current_config.enable_districts)
 		return;
+
+	char ss[200];
+	snprintf (ss, sizeof ss, "[C3X] handle_district_removed: tile=%p district_id=%d at (%d,%d) leave_ruins=%d\n",
+		(void*)tile, district_id, center_x, center_y, leave_ruins);
+	(*p_OutputDebugStringA) (ss);
 
 	int actual_district_id = district_id;
 	if (actual_district_id < 0)
@@ -4300,6 +4312,11 @@ city_needs_wonder_district (City * city)
 {
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
 		return false;
+
+	char ss[200];
+	snprintf (ss, sizeof ss, "city_needs_wonder_district: city=%p\n", (void *)city);
+	(*p_OutputDebugStringA) (ss);
+
 	int pending_improv_id;
 	if (lookup_pending_wonder_order (city, &pending_improv_id))
 		return true;
@@ -4344,6 +4361,7 @@ free_wonder_district_for_city (City * city)
 		snprintf (ss, sizeof ss, "free_wonder_district_for_city: city=%p tile=%p (%d,%d)",
 			(void *)city, (void *)tile, tile_x, tile_y);
 		pop_up_in_game_error (ss);
+		(*p_OutputDebugStringA) (ss);
 
 		handle_district_removed (tile, wonder_district_id, city->Body.X, city->Body.Y, false);
 		return true;
@@ -4358,16 +4376,29 @@ handle_district_destroyed_by_attack (Tile * tile, int tile_x, int tile_y, bool l
 	if (! is->current_config.enable_districts || tile == NULL || tile == p_null_tile)
 		return;
 
+	char ss[200];
+	snprintf (ss, sizeof ss, "handle_district_destroyed_by_attack: tile=%p (%d,%d)", (void *)tile, tile_x, tile_y);
+	(*p_OutputDebugStringA) (ss);
+
 	int district_id;
 	if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
+
+		snprintf (ss, sizeof ss, "handle_district_destroyed_by_attack: district_id=%d", district_id);
+		(*p_OutputDebugStringA) (ss);
+
 		// If this is a Wonder District with a completed wonder image and wonders can't be destroyed, ignore
 		if (is->current_config.enable_wonder_districts) {
 			int wonder_district_id = get_wonder_district_id ();
 			if ((district_id == wonder_district_id) &&
 			    itable_look_up_or (&is->wonder_district_tile_map, (int)tile, -1) >= 0 &&
-			    (! is->current_config.completed_wonder_districts_can_be_destroyed))
-				return;
+			    (! is->current_config.completed_wonder_districts_can_be_destroyed)) {
+					snprintf (ss, sizeof ss, "handle_district_destroyed_by_attack: district_id=%d is a wonder district and cannot be destroyed", district_id);
+					(*p_OutputDebugStringA) (ss);
+					return;
+				}
 		}
+		snprintf (ss, sizeof ss, "handle_district_destroyed_by_attack: Removing district_id=%d", district_id);
+		(*p_OutputDebugStringA) (ss);
 		handle_district_removed (tile, district_id, tile_x, tile_y, leave_ruins);
 	}
 }
@@ -6266,6 +6297,7 @@ patch_init_floating_point ()
 		{"enable_wonder_districts"                             , false, offsetof (struct c3x_config, enable_wonder_districts)},
 		{"enable_distribution_hub_districts"                   , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"completed_wonder_districts_can_be_destroyed"         , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
+		{"destroyed_wonders_can_be_rebuilt"         		   , false, offsetof (struct c3x_config, destroyed_wonders_can_be_rebuilt)},
 		{"cities_can_share_buildings_by_districts"             , false, offsetof (struct c3x_config, cities_can_share_buildings_by_districts)},
 	};
 
@@ -7970,12 +8002,18 @@ issue_district_worker_command (Unit * unit, int command)
 		}
 
 		if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
+			int tile_x, tile_y;
+			if (tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y)) {
+				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
+				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, 0xf, tile_x, tile_y);
+			}
+
 			itable_insert (&is->district_tile_map, (int)tile, district_id);
+
+			int pseudo_command = UCV_Build_Mine;
+			Main_Screen_Form_issue_command (p_main_screen_form, __, pseudo_command, unit);
 		}
 	}
-
-	int pseudo_command = UCV_Build_Mine;
-	Main_Screen_Form_issue_command (p_main_screen_form, __, pseudo_command, unit);
 }
 
 void
@@ -10981,6 +11019,19 @@ patch_City_get_total_pollution (City * this)
 
 void remove_extra_palaces (City * city, City * excluded_destination);
 
+static void
+set_wonder_built_flag (int improv_id, bool is_built)
+{
+	if ((p_match == NULL) || (improv_id < 0) || (improv_id >= p_bic_data->ImprovementsCount))
+		return;
+
+	byte * built_flags = *(byte **)((byte *)p_match + 0x4fc);
+	if (built_flags == NULL)
+		return;
+
+	built_flags[improv_id] = is_built;
+}
+
 // When a city adds a building that depends on a district, optionally mirror that
 // building to all other same-civ cities that can also work the district tile.
 static void
@@ -11050,6 +11101,18 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 		improv->Pollution = saved_pollution_amount;
 	} else
 		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
+
+	if (! add &&
+	    is->current_config.destroyed_wonders_can_be_rebuilt &&
+	    (improv->Characteristics & ITC_Wonder) &&
+	    (! is->is_placing_scenario_things)) {
+			set_wonder_built_flag (improv_id, false);
+
+			PopupForm * popup = get_popup_form ();
+			set_popup_str_param (0, improv->Name.S, -1, -1);
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_DISTRICT_DESTROYED", -1, 0, 0, 0);
+			patch_show_popup (popup, __, 0, 0);
+		}
 
 	// After adding a world wonder, if wonder districts are enabled,
 	// assign the wonder image to one of the city's Wonder District tiles (first match).
@@ -13417,13 +13480,13 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 	if (bombarding)
 		is->unit_bombard_attacking_tile = this;
 
+	if (had_district_before)
+		handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, true);
+
 	Unit_attack_tile (this, __, x, y, bombarding);
 
 	is->unit_bombard_attacking_tile = NULL;
 	is->attacking_tile_x = is->attacking_tile_y = -1;
-
-	if (had_district_before)
-		handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, true);
 }
 
 void __fastcall

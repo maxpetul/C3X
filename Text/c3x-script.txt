@@ -125,6 +125,11 @@ $CITY0 can no longer work on $IMPROVEMENT1 because we are already receiving its 
 Zoom to City.
 Sounds Good.
 
+#C3X_DISTRICT_DESTROYED
+#advisor Domestic
+#text
+It seems the $IMPROVEMENT0 has been destroyed! Perhaps we should consider building it ourselves...
+
 #C3X_CONFIRM_DEBUG_ACTIVATION
 Activate debug mode?
 #itemlist

@@ -302,6 +302,7 @@ struct c3x_config {
 	
 	bool enable_wonder_districts;
 	bool completed_wonder_districts_can_be_destroyed;
+	bool destroyed_wonders_can_be_rebuilt;
 
 	bool enable_distribution_hub_districts;
 	int distribution_hub_food_yield_divisor;
