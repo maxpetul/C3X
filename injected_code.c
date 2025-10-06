@@ -4671,6 +4671,34 @@ patch_City_recompute_yields_and_happiness (City * this, int edx)
 }
 
 void __fastcall
+patch_City_update_culture (City * this, int edx)
+{
+	City_update_culture (this, __);
+
+	if ((this == NULL) || ! is->current_config.enable_districts)
+		return;
+
+	int culture_bonus = 0;
+	calculate_district_culture_science_bonuses (this, &culture_bonus, NULL);
+
+	if (culture_bonus == 0)
+		return;
+
+	int culture_income = this->Body.CultureIncome + culture_bonus;
+	if (culture_income < 0)
+		culture_income = 0;
+	this->Body.CultureIncome = culture_income;
+
+	int civ_id = this->Body.CivID;
+	int total_culture = this->Body.Total_Cultures[civ_id] + culture_bonus;
+	if (total_culture < 0)
+		total_culture = 0;
+	this->Body.Total_Cultures[civ_id] = total_culture;
+
+	City_recompute_cultural_level (this, '\0', '\0', '\0');
+}
+
+void __fastcall
 patch_City_recompute_culture_income (City * this, int edx)
 {
 	City_recompute_culture_income (this, __);
