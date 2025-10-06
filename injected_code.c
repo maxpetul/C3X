@@ -393,8 +393,10 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 		if ((tile != NULL) && (tile != p_null_tile)) {
 			int district_id;
 			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) &&
-			    tile->vtable->m18_Check_Mines (tile, __, 0))
-				return false;
+			    tile->vtable->m18_Check_Mines (tile, __, 0)) {
+					(*p_OutputDebugStringA) ("[C3X] City_controls_tile: tile is a mine\n");
+					return false;
+				}
 			if (is->current_config.enable_districts &&
 		    is->current_config.enable_distribution_hub_districts) {
 				int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
@@ -2381,6 +2383,7 @@ district_is_complete(Tile * tile, int district_id)
 	// If district was never completed and there are no workers present,
 	// remove the tile from the district map
 	if (! completed) {
+		(*p_OutputDebugStringA) ("[C3X] district_is_complete: district not complete\n");
 		int mapped_id;
 		if (itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) &&
 		    (mapped_id == district_id)) {
@@ -2393,8 +2396,10 @@ district_is_complete(Tile * tile, int district_id)
 					break;
 				}
 			}
-			if (! worker_present)
+			if (! worker_present) {
+				(*p_OutputDebugStringA) ("[C3X] district_is_complete: removing tile from district map\n");
 				itable_remove (&is->district_tile_map, (int)tile);
+			}
 		}
 	} else {
 		// District just completed - activate distribution hub if applicable
@@ -2403,6 +2408,7 @@ district_is_complete(Tile * tile, int district_id)
 			int tile_x, tile_y;
 			if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
 				return completed;
+			(*p_OutputDebugStringA) ("[C3X] district_is_complete: activating distribution hub effects\n");
 			on_distribution_hub_completed (tile, tile_x, tile_y, NULL);
 		}
 	}
@@ -2422,6 +2428,7 @@ remember_pending_wonder_order (City * city, int improvement_id)
 	if ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)
 		return;
 
+	(*p_OutputDebugStringA) ("[C3X] remember_pending_wonder_order: recording pending wonder order\n");
 	itable_insert (&is->city_pending_wonder_orders, (int)(long)city, improvement_id);
 }
 
@@ -2434,6 +2441,7 @@ lookup_pending_wonder_order (City * city, int * out_improv_id)
 	    (out_improv_id == NULL))
 		return false;
 
+	(*p_OutputDebugStringA) ("[C3X] lookup_pending_wonder_order: checking for pending wonder order\n");
 	return itable_look_up (&is->city_pending_wonder_orders, (int)(long)city, out_improv_id);
 }
 
@@ -2445,6 +2453,7 @@ forget_pending_wonder_order (City * city)
 	    (city == NULL))
 		return;
 
+	(*p_OutputDebugStringA) ("[C3X] forget_pending_wonder_order: removing pending wonder order\n");
 	itable_remove (&is->city_pending_wonder_orders, (int)(long)city);
 }
 
@@ -2460,9 +2469,7 @@ mark_city_needs_district (City * city, int district_id)
 	if ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)
 		return;
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "mark_city_needs_district: %d\n", district_id);
-	pop_up_in_game_error (ss);
+	(*p_OutputDebugStringA) ("[C3X] mark_city_needs_district: marking city as needing district\n");
 
 	int key = (int)(long)city;
 	int mask = itable_look_up_or (&is->city_pending_district_requests, key, 0);
@@ -2475,6 +2482,8 @@ clear_district_job_assignments (bool requeue_requests)
 {
 	if (is->district_job_assignments.len == 0)
 		return;
+
+	(*p_OutputDebugStringA) ("[C3X] clear_district_job_assignments: clearing district job assignments\n");
 
 	clear_memo ();
 	FOR_TABLE_ENTRIES (tei, &is->district_job_assignments) {
@@ -2498,6 +2507,8 @@ set_tile_unworkable_for_all_cities (Tile * tile, int tile_x, int tile_y)
 {
 	if ((tile == NULL) || (tile == p_null_tile))
 		return;
+
+	(*p_OutputDebugStringA) ("[C3X] set_tile_unworkable_for_all_cities: removing tile from all cities' workable areas\n");
 
 	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 
@@ -2542,6 +2553,8 @@ get_distribution_hub_record (Tile * tile)
 	if ((tile == NULL) || (tile == p_null_tile))
 		return NULL;
 
+	(*p_OutputDebugStringA) ("[C3X] get_distribution_hub_record: looking up distribution hub record\n");
+
 	int stored;
 	if (itable_look_up (&is->distribution_hub_records, (int)tile, &stored))
 		return (struct distribution_hub_record *)(long)stored;
@@ -2554,6 +2567,8 @@ ensure_distribution_hub_city_capacity (int min_capacity)
 {
 	if (min_capacity <= is->distribution_hub_bonus_capacity)
 		return true;
+
+	(*p_OutputDebugStringA) ("[C3X] ensure_distribution_hub_city_capacity: ensuring distribution hub city capacity\n");
 
 	int new_capacity = not_below (min_capacity, is->distribution_hub_bonus_capacity + 32);
 	int * new_food = calloc (new_capacity, sizeof *new_food);
@@ -2588,6 +2603,8 @@ ensure_distribution_hub_civ_capacity (int min_capacity)
 {
 	if (min_capacity <= is->distribution_hub_civ_capacity)
 		return true;
+
+	(*p_OutputDebugStringA) ("[C3X] ensure_distribution_hub_civ_capacity: ensuring distribution hub civ capacity\n");
 
 	int new_capacity = not_below (min_capacity, is->distribution_hub_civ_capacity + 8);
 	int * new_food = calloc (new_capacity, sizeof *new_food);
@@ -2626,6 +2643,7 @@ mark_distribution_hub_totals_dirty (void)
 static void
 clear_distribution_hub_tables (void)
 {
+	(*p_OutputDebugStringA) ("[C3X] clear_distribution_hub_tables: clearing distribution hub tables\n");
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
 		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
 		free (rec);
@@ -2640,6 +2658,8 @@ adjust_distribution_hub_coverage (struct distribution_hub_record * rec, int delt
 {
 	if ((rec == NULL) || (delta == 0))
 		return;
+
+	(*p_OutputDebugStringA) ("[C3X] adjust_distribution_hub_coverage: adjusting distribution hub coverage\n");
 
 	FOR_TILES_AROUND (tai, workable_tile_counts[1], rec->tile_x, rec->tile_y) {
 		Tile * area_tile = tai.tile;
@@ -2667,6 +2687,7 @@ city_radius_contains_tile (City * city, int tile_x, int tile_y)
 {
 	if (city == NULL)
 		return false;
+	(*p_OutputDebugStringA) ("[C3X] city_radius_contains_tile: checking if city radius contains tile\n");
 	int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __,
 		city->Body.X, city->Body.Y, tile_x, tile_y, 2 * is->workable_tile_count);
 	return (neighbor_index >= 0) && (neighbor_index < is->workable_tile_count);
@@ -2677,6 +2698,8 @@ find_city_for_distribution_hub (struct distribution_hub_record * rec)
 {
 	if ((rec == NULL) || (rec->civ_id < 0))
 		return NULL;
+
+	(*p_OutputDebugStringA) ("[C3X] find_city_for_distribution_hub: searching for city to anchor distribution hub\n");
 
 	City * city = get_city_ptr (rec->city_id);
 	if ((city != NULL) &&
@@ -2697,6 +2720,8 @@ find_city_for_distribution_hub (struct distribution_hub_record * rec)
 static void
 compute_distribution_hub_yields (struct distribution_hub_record * rec, City * anchor_city)
 {
+	(*p_OutputDebugStringA) ("[C3X] compute_distribution_hub_yields: computing distribution hub yields\n");
+
 	if ((rec == NULL) || (anchor_city == NULL)) {
 		if (rec != NULL) {
 			rec->food_yield = 0;
@@ -2768,6 +2793,8 @@ on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city)
 	    ! is->current_config.enable_distribution_hub_districts)
 		return;
 
+	(*p_OutputDebugStringA) ("[C3X] on_distribution_hub_completed: processing distribution hub completion\n");
+
 	struct distribution_hub_record * rec = get_distribution_hub_record (tile);
 	if (rec != NULL)
 		return; // Already activated, don't process again
@@ -2800,6 +2827,8 @@ on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city)
 static void
 remove_distribution_hub_record (Tile * tile)
 {
+	(*p_OutputDebugStringA) ("[C3X] remove_distribution_hub_record: removing distribution hub record\n");
+
 	struct distribution_hub_record * rec = get_distribution_hub_record (tile);
 	if (rec == NULL)
 		return;
@@ -2820,6 +2849,8 @@ refresh_distribution_hubs_for_city (City * city)
 	    ! is->current_config.enable_distribution_hub_districts ||
 	    (city == NULL))
 		return;
+
+	(*p_OutputDebugStringA) ("[C3X] refresh_distribution_hubs_for_city: refreshing distribution hubs for city\n");
 
 	int district_id = get_distribution_hub_district_id ();
 	if (district_id < 0)
@@ -2842,6 +2873,8 @@ refresh_distribution_hubs_for_city (City * city)
 static void
 recalculate_distribution_hub_totals (void)
 {
+	(*p_OutputDebugStringA) ("[C3X] recalculate_distribution_hub_totals: recalculating distribution hub totals\n");
+
 	is->distribution_hub_last_food_divisor = is->current_config.distribution_hub_food_yield_divisor;
 	is->distribution_hub_last_shield_divisor = is->current_config.distribution_hub_shield_yield_divisor;
 
@@ -2934,6 +2967,7 @@ recalculate_distribution_hub_totals (void)
 static void
 recalculate_distribution_hub_totals_if_needed (void)
 {
+	(*p_OutputDebugStringA) ("[C3X] recalculate_distribution_hub_totals_if_needed: checking if recalculation needed\n");
 	if ((is->distribution_hub_last_food_divisor != is->current_config.distribution_hub_food_yield_divisor) ||
 	    (is->distribution_hub_last_shield_divisor != is->current_config.distribution_hub_shield_yield_divisor))
 		mark_distribution_hub_totals_dirty ();
@@ -2945,6 +2979,8 @@ recalculate_distribution_hub_totals_if_needed (void)
 static void
 reset_district_state (bool reset_tile_map)
 {
+	(*p_OutputDebugStringA) ("[C3X] reset_district_state: resetting district state\n");
+
 	table_deinit (&is->district_tech_prereqs);
 	table_deinit (&is->district_building_prereqs);
 	table_deinit (&is->command_id_to_district_id);
@@ -2998,6 +3034,7 @@ clear_city_district_request (City * city, int district_id)
 	    (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
 		return;
 
+	(*p_OutputDebugStringA) ("[C3X] clear_city_district_request: clearing city district request\n");
 	int key = (int)(long)city;
 	int mask;
 	if (itable_look_up (&is->city_pending_district_requests, key, &mask)) {
@@ -3017,6 +3054,7 @@ district_assignment_exists_for_city (City * city, int district_id)
 {
 	if (city == NULL)
 		return false;
+	(*p_OutputDebugStringA) ("[C3X] district_assignment_exists_for_city: checking for existing district assignment\n");
 	FOR_TABLE_ENTRIES (tei, &is->district_job_assignments) {
 		struct district_job_assignment * job = (struct district_job_assignment *)tei.value;
 		if ((job != NULL) && (job->city == city) && (job->district_id == district_id))
@@ -3030,6 +3068,7 @@ district_assignment_exists_for_tile (Tile * tile)
 {
 	if (tile == NULL)
 		return false;
+	(*p_OutputDebugStringA) ("[C3X] district_assignment_exists_for_tile: checking for existing district assignment\n");
 	FOR_TABLE_ENTRIES (tei, &is->district_job_assignments) {
 		struct district_job_assignment * job = (struct district_job_assignment *)tei.value;
 		if ((job != NULL) && (job->tile == tile))
@@ -3070,6 +3109,7 @@ finalize_district_job_assignment (int unit_id, struct district_job_assignment * 
 	}
 
 	free (job);
+	(*p_OutputDebugStringA) ("[C3X] finalize_district_job_assignment: finalized district job assignment\n");
 	itable_remove (&is->district_job_assignments, unit_id);
 }
 
@@ -3097,6 +3137,7 @@ create_district_job_assignment (Unit * unit, Tile * tile, int tile_x, int tile_y
 
 	itable_insert (&is->district_job_assignments, unit->Body.ID, (int)(long)job);
 	itable_insert (&is->district_tile_map, (int)(long)tile, district_id);
+	(*p_OutputDebugStringA) ("[C3X] create_district_job_assignment: created new district job assignment\n");
 	return job;
 }
 
@@ -3119,6 +3160,8 @@ tile_not_suitable_for_district(Tile * tile, int district_id, City * city)
 		return true;
 	if (district_assignment_exists_for_tile (tile))
 		return true;
+
+	(*p_OutputDebugStringA) ("[C3X] tile_not_suitable_for_district: tile is suitable for district\n");
 
 	return false;
 }
@@ -3149,6 +3192,8 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 {
 	if ((city == NULL) || (out_x == NULL) || (out_y == NULL))
 		return NULL;
+
+	(*p_OutputDebugStringA) ("[C3X] find_tile_for_district: searching for tile for district\n");
 
 	Tile * best_tile = NULL;
 	bool is_neighborhood = (district_configs[district_id].command == UCV_Build_Neighborhood);
@@ -3267,6 +3312,8 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 	if ((unit == NULL) || (job == NULL))
 		return false;
 
+	(*p_OutputDebugStringA) ("[C3X] handle_existing_district_assignment: Processing existing district job assignment\n");
+
 	int unit_id = unit->Body.ID;
 	int target_x = job->tile_x;
 	int target_y = job->tile_y;
@@ -3274,6 +3321,7 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 	if ((tile == NULL) || (tile == p_null_tile)) {
 		tile = tile_at (target_x, target_y);
 		if ((tile == NULL) || (tile == p_null_tile)) {
+			(*p_OutputDebugStringA) ("[C3X] handle_existing_district_assignment: Tile no longer valid\n");
 			finalize_district_job_assignment (unit_id, job, false, true);
 			return false;
 		}
@@ -3290,10 +3338,12 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 			if (lookup_pending_wonder_order (job->city, &wonder_improv_id)) {
 				if ((wonder_improv_id >= 0) &&
 				    City_can_build_improvement (job->city, __, wonder_improv_id, false))
+					(*p_OutputDebugStringA) ("[C3X] handle_existing_district_assignment: Setting wonder production\n");
 					City_set_production (job->city, __, COT_Improvement, wonder_improv_id, false);
 				forget_pending_wonder_order (job->city);
 			}
 		}
+		(*p_OutputDebugStringA) ("[C3X] handle_existing_district_assignment: District already complete\n");
 		finalize_district_job_assignment (unit_id, job, true, false);
 		return false;
 	}
@@ -3306,8 +3356,10 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 				unit->vtable->update_while_active (unit);
 			}
 			job->job_started = true;
+			(*p_OutputDebugStringA) ("[C3X] handle_existing_district_assignment: Starting district construction\n");
 			return true;
 		} else {
+			(*p_OutputDebugStringA) ("[C3X] handle_existing_district_assignment: Cannot build district here\n");
 			finalize_district_job_assignment (unit_id, job, false, true);
 			return false;
 		}
@@ -3317,6 +3369,7 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 	    (unit->Body.path_dest_x == target_x) &&
 	    (unit->Body.path_dest_y == target_y)) {
 		unit->vtable->work (unit);
+		(*p_OutputDebugStringA) ("[C3X] handle_existing_district_assignment: Continuing on path to district site\n");
 		return true;
 	}
 
@@ -3329,9 +3382,11 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 		unit->Body.path_dest_x = target_x;
 		unit->Body.path_dest_y = target_y;
 		unit->vtable->work (unit);
+		(*p_OutputDebugStringA) ("[C3X] handle_existing_district_assignment: Moving to district site\n");
 		return true;
 	}
 
+	(*p_OutputDebugStringA) ("[C3X] handle_existing_district_assignment: Cannot path to district site\n");
 	finalize_district_job_assignment (unit_id, job, false, true);
 	return false;
 }
@@ -3341,6 +3396,8 @@ city_has_required_district (City * city, int district_id)
 {
 	if ((city == NULL) || (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
 		return false;
+
+	(*p_OutputDebugStringA) ("[C3X] city_has_required_district: Checking city for existing district\n");
 
 	int civ_id = city->Body.CivID;
 	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
@@ -3355,9 +3412,11 @@ city_has_required_district (City * city, int district_id)
 		    (mapped_id == district_id) &&
 		    district_is_complete (candidate, district_id)) {
 			clear_city_district_request (city, district_id);
+			(*p_OutputDebugStringA) ("[C3X] city_has_required_district: City has district\n");
 			return true;
 		}
 	}
+	(*p_OutputDebugStringA) ("[C3X] city_has_required_district: City does not have district\n");
 	return false;
 }
 
@@ -3368,6 +3427,8 @@ ensure_neighborhood_request_for_city (City * city)
 		! is->current_config.enable_neighborhood_districts ||
 	    (city == NULL))
 		return;
+
+	(*p_OutputDebugStringA) ("[C3X] ensure_neighborhood_request_for_city: Checking city for neighborhood request\n");
 
 	int civ_id = city->Body.CivID;
 	if (civ_id < 0)
@@ -3380,19 +3441,28 @@ ensure_neighborhood_request_for_city (City * city)
 		return;
 
 	int prereq = is->district_infos[district_id].advance_prereq_id;
-	if ((prereq >= 0) && ! Leader_has_tech (&leaders[civ_id], __, prereq))
+	if ((prereq >= 0) && ! Leader_has_tech (&leaders[civ_id], __, prereq)) {
+		(*p_OutputDebugStringA) ("[C3X] ensure_neighborhood_request_for_city: City civ lacks tech prereq\n");
 		return;
+	}
 
-	if (city_has_required_district (city, district_id))
+	if (city_has_required_district (city, district_id)) {
+		(*p_OutputDebugStringA) ("[C3X] ensure_neighborhood_request_for_city: City has required district\n");
 		return;
-	if (district_assignment_exists_for_city (city, district_id))
+	}
+	if (district_assignment_exists_for_city (city, district_id)) {
+		(*p_OutputDebugStringA) ("[C3X] ensure_neighborhood_request_for_city: City has existing district assignment\n");
 		return;
+	}
 
 	int key = (int)(long)city;
 	int mask = itable_look_up_or (&is->city_pending_district_requests, key, 0);
-	if ((mask & (1 << district_id)) != 0)
+	if ((mask & (1 << district_id)) != 0) {
+		(*p_OutputDebugStringA) ("[C3X] ensure_neighborhood_request_for_city: City already has pending district request\n");
 		return;
+	}
 
+	(*p_OutputDebugStringA) ("[C3X] ensure_neighborhood_request_for_city: Marking city as needing district\n");
 	mark_city_needs_district (city, district_id);
 }
 
@@ -3447,6 +3517,7 @@ ai_try_assign_district_job (Unit * unit)
 			if (new_job == NULL)
 				return false;
 
+			(*p_OutputDebugStringA) ("[C3X] ai_try_assign_district_job: AI assigned district job\n");
 			return handle_existing_district_assignment (unit, new_job);
 		}
 	}
@@ -3459,6 +3530,8 @@ remove_district_assignments_for_civ (int civ_id)
 {
 	if (is->district_job_assignments.len == 0)
 		return;
+
+	(*p_OutputDebugStringA) ("[C3X] remove_district_assignments_for_civ: Removing district assignments\n");
 
 	clear_memo ();
 	FOR_TABLE_ENTRIES (tei, &is->district_job_assignments) {
@@ -6267,7 +6340,7 @@ init_stackable_command_buttons ()
 		get_mod_art_path (filenames[n], temp_path, sizeof temp_path);
 		PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 		if (pcx.JGL.Image == NULL) {
-			(*p_OutputDebugStringA) ("[C3X] Failed to load stacked command buttons sprite sheet.");
+			(*p_OutputDebugStringA) ("[C3X] Failed to load stacked command buttons sprite sheet.\n");
 			for (int sc = 0; sc < COUNT_STACKABLE_COMMANDS; sc++)
 				for (int k = 0; k < 4; k++) {
 					Sprite * sprite = &is->sc_button_image_sets[sc].imgs[k];
@@ -6305,7 +6378,7 @@ init_disabled_command_buttons ()
 	get_mod_art_path ("DisabledButtons.pcx", temp_path, sizeof temp_path);
 	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 	if (pcx.JGL.Image == NULL) {
-		(*p_OutputDebugStringA) ("[C3X] Failed to load disabled command buttons sprite sheet.");
+		(*p_OutputDebugStringA) ("[C3X] Failed to load disabled command buttons sprite sheet.\n");
 		pcx.vtable->destruct (&pcx, __, 0);
 		return;
 	}
@@ -6356,7 +6429,7 @@ init_tile_highlights ()
 	temp_path[(sizeof temp_path) - 1] = '\0';
 	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 	if (pcx.JGL.Image == NULL) {
-		(*p_OutputDebugStringA) ("[C3X] Failed to load stacked command buttons sprite sheet.");
+		(*p_OutputDebugStringA) ("[C3X] Failed to load stacked command buttons sprite sheet.\n");
 		goto cleanup;
 	}
 
@@ -6384,7 +6457,7 @@ init_unit_rcm_icons ()
 	if ((pcx.JGL.Image == NULL) ||
 	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) < 57) ||
 	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) < 64)) {
-		(*p_OutputDebugStringA) ("[C3X] PCX file for unit RCM icons failed to load or is too small.");
+		(*p_OutputDebugStringA) ("[C3X] PCX file for unit RCM icons failed to load or is too small.\n");
 		goto cleanup;
 	}
 
@@ -6434,7 +6507,7 @@ init_red_food_icon ()
 		Sprite_slice_pcx (&is->red_food_icon, __, &pcx, 1, 1, 30, 30, 1, 1);
 		is->red_food_icon_state = IS_OK;
 	} else {
-		(*p_OutputDebugStringA) ("[C3X] PCX file for red food icon failed to load or is not the correct size.");
+		(*p_OutputDebugStringA) ("[C3X] PCX file for red food icon failed to load or is not the correct size.\n");
 		is->red_food_icon_state = IS_INIT_FAILED;
 	}
 
@@ -6523,7 +6596,7 @@ init_trade_scroll_buttons (DiploForm * diplo_form)
 	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 	if (pcx.JGL.Image == NULL) {
 		is->trade_scroll_button_state = IS_INIT_FAILED;
-		(*p_OutputDebugStringA) ("[C3X] Failed to load TradeScrollButtons.pcx");
+		(*p_OutputDebugStringA) ("[C3X] Failed to load TradeScrollButtons.pcx\n");
 		goto cleanup;
 	}
 
@@ -6590,7 +6663,7 @@ init_mod_info_button_images ()
 	char * descbox_path = BIC_get_asset_path (p_bic_data, __, "art\\civilopedia\\descbox.pcx", true);
 	PCX_Image_read_file (descbox_pcx, __, descbox_path, NULL, 0, 0x100, 1);
 	if (descbox_pcx->JGL.Image == NULL) {
-		(*p_OutputDebugStringA) ("[C3X] Failed to load descbox.pcx");
+		(*p_OutputDebugStringA) ("[C3X] Failed to load descbox.pcx\n");
 		return;
 	}
 
@@ -6992,7 +7065,7 @@ init_district_command_buttons ()
 		get_mod_art_path (filenames[n], temp_path, sizeof temp_path);
 		PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 		if (pcx.JGL.Image == NULL) {
-			(*p_OutputDebugStringA) ("[C3X] Failed to load work district command buttons sprite sheet.");
+			(*p_OutputDebugStringA) ("[C3X] Failed to load work district command buttons sprite sheet.\n");
 			for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++)
 				for (int k = 0; k < 4; k++) {
 					Sprite * sprite = &is->district_btn_img_sets[dc].imgs[k];
@@ -10112,6 +10185,7 @@ patch_Unit_ai_move_terraformer (Unit * this)
 		return;
 	}
 
+	(*p_OutputDebugStringA) ("[C3X] patch_Unit_ai_move_terraformer\n");
 	if (ai_try_assign_district_job (this))
 		return;
 
@@ -10761,8 +10835,11 @@ patch_City_add_population (City * this, int edx, int num, int race_id)
 		return;
 	}
 
+	(*p_OutputDebugStringA) ("[C3X] City_add_population\n");
+
 	int cap = get_neighborhood_pop_cap (this);
 	if (cap < 0) {
+		(*p_OutputDebugStringA) ("[C3X] City_add_population: cap < 0\n");
 		City_add_population (this, __, num, race_id);
 		return;
 	}
@@ -14927,6 +15004,8 @@ set_worker_animation_type(Unit * unit, AnimationType anim_type)
 	if (unit == NULL)
 		return;
 
+	(*p_OutputDebugStringA) ("[C3X] set_worker_animation_type\n");
+
 	FLC_Animation * animation = &unit->Body.Animation;
 	AnimationSummary * summary = &animation->summary;
 	if (summary->current_anim_type == anim_type)
@@ -14955,6 +15034,12 @@ set_worker_animation_type(Unit * unit, AnimationType anim_type)
 void __fastcall
 patch_set_worker_animation (void * this, int edx, Unit * unit, int job_id)
 {
+	(*p_OutputDebugStringA) ("[C3X] set_worker_animation\n");
+
+	set_worker_animation(this, __, unit, job_id);
+	return;
+
+	/*
 	AnimationType anim_type;
 
 	// Check if this is a district being built (mine job but actually a district)
@@ -14976,6 +15061,7 @@ patch_set_worker_animation (void * this, int edx, Unit * unit, int job_id)
 	}
 	
 	set_worker_animation(this, __, unit, job_id);
+	*/
 }
 
 void __fastcall
@@ -15343,6 +15429,8 @@ init_distribution_hub_icons ()
 	PCX_Image pcx;
 	PCX_Image_construct (&pcx);
 
+	(*p_OutputDebugStringA) ("[C3X] init_distribution_hub_icons: Loading distribution hub icons.\n");
+
 	char temp_path[2*MAX_PATH];
 	get_mod_art_path ("Districts/DistributionHubIncomeIcons.pcx", temp_path, sizeof temp_path);
 
@@ -15350,7 +15438,7 @@ init_distribution_hub_icons ()
 	if ((pcx.JGL.Image == NULL) ||
 	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) < 776) ||
 	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) < 32)) {
-		(*p_OutputDebugStringA) ("[C3X] PCX file for distribution hub icons failed to load or is too small.");
+		(*p_OutputDebugStringA) ("[C3X] PCX file for distribution hub icons failed to load or is too small.\n");
 		is->distribution_hub_icons_img_state = IS_INIT_FAILED;
 		goto cleanup;
 	}
@@ -15386,6 +15474,8 @@ init_district_icons ()
 	if (is->district_icons_img_state != IS_UNINITED)
 		return;
 
+	(*p_OutputDebugStringA) ("[C3X] init_district_icons: Loading district icons.\n");
+
 	PCX_Image pcx;
 	PCX_Image_construct (&pcx);
 
@@ -15396,7 +15486,7 @@ init_district_icons ()
 	if ((pcx.JGL.Image == NULL) ||
 	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) < 776) ||
 	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) < 32)) {
-		(*p_OutputDebugStringA) ("[C3X] PCX file for district icons failed to load or is too small.");
+		(*p_OutputDebugStringA) ("[C3X] PCX file for district icons failed to load or is too small.\n");
 		is->district_icons_img_state = IS_INIT_FAILED;
 		goto cleanup;
 	}
@@ -15454,6 +15544,8 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 		init_district_icons ();
 	if (is->district_icons_img_state != IS_OK)
 		return;
+
+	(*p_OutputDebugStringA) ("[C3X] draw_district_yields: Drawing district yields.\n");
 
 	// Get district configuration
 	struct district_config const * config = &district_configs[district_id];
@@ -15546,6 +15638,8 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 void
 draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, int tile_y, int screen_x, int screen_y)
 {
+	(*p_OutputDebugStringA) ("[C3X] draw_distribution_hub_yields: Drawing distribution hub yields.\n");
+
 	// Get the distribution hub record for this tile
 	struct distribution_hub_record * rec = get_distribution_hub_record (tile);
 	if (rec == NULL || !rec->is_active)
@@ -15654,6 +15748,8 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 
 	// Draw district bonuses on district tiles
 	if (is->current_config.enable_districts) {
+		(*p_OutputDebugStringA) ("[C3X] patch_City_Form_draw_yields_on_worked_tiles: Drawing district yields.\n");
+
 		City * city = this->CurrentCity;
 		if (city == NULL)
 			goto skip_district_yields;
@@ -16298,6 +16394,7 @@ patch_City_add_building_if_done (City * this)
 						if (t->vtable->m38_Get_Territory_OwnerID (t) != civ_id) continue;
 						int d_id;
 						if (itable_look_up (&is->district_tile_map, (int)t, &d_id) && (d_id == wonder_district_id) && district_is_complete (t, d_id)) {
+							(*p_OutputDebugStringA) ("[C3X] Assigning wonder district tile for wonder\n");
 							itable_insert (&is->wonder_district_tile_map, (int)t, matched_windex);
 							break; // assign to first matching tile
 						}
@@ -16609,7 +16706,7 @@ init_district_images ()
 				snprintf (ss, sizeof ss, "init_district_images: failed to load district images from %s", art_dir);
 				pop_up_in_game_error (ss);
 
-				(*p_OutputDebugStringA) ("[C3X] Failed to load districts sprite sheet.");
+				(*p_OutputDebugStringA) ("[C3X] Failed to load districts sprite sheet.\n");
 				for (int dc2 = 0; dc2 < COUNT_DISTRICT_TYPES; dc2++)
 					for (int variant_i2 = 0; variant_i2 < district_configs[dc2].num_img_paths; variant_i2++)
 						for (int era_i = 0; era_i < 4; era_i++) {
@@ -16713,9 +16810,10 @@ void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
 	char ss[200];
-	//*p_debug_mode_bits |= 0xC;
+	*p_debug_mode_bits |= 0xC;
 	//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: called for tile (%d,%d) at pixel (%d,%d)", tile_x, tile_y, pixel_x, pixel_y);
 	//pop_up_in_game_error (ss);
+	(*p_OutputDebugStringA) ("[C3X] patch_Map_Renderer_m12_Draw_Tile_Buildings called.\n");
 
     // If districts enabled and this tile is mapped to a district, draw only the district (suppress base mine drawing)
     if (is->current_config.enable_districts) {
