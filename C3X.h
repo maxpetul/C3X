@@ -17,7 +17,7 @@ typedef unsigned char byte;
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
 #define COUNT_DISTRICT_TYPES 7
-#define COUNT_WONDER_DISTRICT_TYPES 5
+#define COUNT_WONDER_DISTRICT_TYPES 1
 
 // Initialize to zero. Implementation is in common.c
 struct table {
@@ -500,7 +500,7 @@ struct district_config {
 	{
 		.command = UCV_Build_WonderDistrict, .tooltip = "Build Wonder District", .img_paths = {"WonderDistrict.pcx"}, 
 		.num_img_paths = 1, .index = 1, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 1,
-		.advance_prereq = NULL, .dependent_improvements = {"The Pyramids", "The Hanging Guardens", "The Oracle", "Copernicus' Observatory", "The Great Library"},
+		.advance_prereq = NULL, .dependent_improvements = {"The Pyramids"}, //, "The Hanging Guardens", "The Oracle", "Copernicus' Observatory", "The Great Library"},
 		.defense_bonus_multiplier = 1.0, .allow_multiple = true, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .production_bonus = 0
 	},
 	{
@@ -1214,6 +1214,7 @@ struct injected_state {
 
 	struct wonder_district_image_set {
 		Sprite img;
+		Sprite construct_img;
 	} wonder_district_img_sets[COUNT_WONDER_DISTRICT_TYPES];
 
 	struct district_button_image_set {

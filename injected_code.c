@@ -2421,6 +2421,22 @@ district_is_complete(Tile * tile, int district_id)
 	return completed;
 }
 
+static int
+find_wonder_config_index_by_improvement_id (int improv_id)
+{
+	if (improv_id < 0)
+		return -1;
+
+	for (int wi = 0; wi < COUNT_WONDER_DISTRICT_TYPES; wi++) {
+		int bid;
+		if (stable_look_up (&is->building_name_to_id, wonder_district_configs[wi].wonder_name, &bid) &&
+		    (bid == improv_id))
+			return wi;
+	}
+
+	return -1;
+}
+
 static void
 remember_pending_wonder_order (City * city, int improvement_id)
 {
@@ -3027,12 +3043,41 @@ recalculate_distribution_hub_totals_if_needed (void)
 		recalculate_distribution_hub_totals ();
 }
 
+void
+deinit_district_images (void)
+{
+	if (is->dc_img_state == IS_OK) {
+		for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
+			int variant_count = district_configs[dc].num_img_paths;
+			for (int variant = 0; variant < variant_count; variant++)
+				for (int era = 0; era < 4; era++)
+					for (int col = 0; col < district_configs[dc].total_img_columns; col++) {
+						Sprite * sprite = &is->district_img_sets[dc].imgs[variant][era][col];
+						if (sprite->vtable != NULL)
+							sprite->vtable->destruct (sprite, __, 0);
+					}
+		}
+
+		for (int wi = 0; wi < COUNT_WONDER_DISTRICT_TYPES; wi++) {
+			struct wonder_district_image_set * set = &is->wonder_district_img_sets[wi];
+			if (set->img.vtable != NULL)
+				set->img.vtable->destruct (&set->img, __, 0);
+			if (set->construct_img.vtable != NULL)
+				set->construct_img.vtable->destruct (&set->construct_img, __, 0);
+		}
+	}
+
+	is->dc_img_state = IS_UNINITED;
+}
+
 static void
 reset_district_state (bool reset_tile_map)
 {
 	char ss[200];
 	snprintf (ss, sizeof ss, "[C3X] reset_district_state: reset_tile_map=%d\n", reset_tile_map);
 	(*p_OutputDebugStringA) (ss);
+
+	deinit_district_images ();
 
 	table_deinit (&is->district_tech_prereqs);
 	table_deinit (&is->district_building_prereqs);
@@ -4207,6 +4252,47 @@ city_is_currently_building_wonder (City * city)
 	if ((order_id < 0) || (order_id >= p_bic_data->ImprovementsCount))
 		return false;
 	return (p_bic_data->Improvements[order_id].Characteristics & ITC_Wonder) != 0;
+}
+
+static bool
+wonder_district_tile_under_construction (Tile * tile, int tile_x, int tile_y, int * out_windex)
+{
+	if (! is->current_config.enable_wonder_districts ||
+	    (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	int wonder_district_id = get_wonder_district_id ();
+	if (wonder_district_id < 0)
+		return false;
+
+	int mapped_id;
+	if (! itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) || (mapped_id != wonder_district_id))
+		return false;
+
+	if (itable_look_up_or (&is->wonder_district_tile_map, (int)tile, -1) >= 0)
+		return false; // already has completed wonder art
+
+	int owner_id = tile->Territory_OwnerID;
+	if (owner_id <= 0)
+		return false;
+
+	FOR_CITIES_OF (coi, owner_id) {
+		City * city = coi.city;
+		if ((city == NULL) || ! city_radius_contains_tile (city, tile_x, tile_y))
+			continue;
+		if (! city_is_currently_building_wonder (city) || (city->Body.Order_Type != COT_Improvement))
+			continue;
+
+		int order_id = city->Body.Order_ID;
+		int windex = find_wonder_config_index_by_improvement_id (order_id);
+		if (windex >= 0) {
+			if (out_windex != NULL)
+				*out_windex = windex;
+			return true;
+		}
+	}
+
+	return false;
 }
 
 static bool
@@ -10969,16 +11055,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	// assign the wonder image to one of the city's Wonder District tiles (first match).
 	if (add && is->current_config.enable_districts && is->current_config.enable_wonder_districts) {
 		if (improv->Characteristics & ITC_Wonder) {
-			// Find which wonder index this is by name mapping
-			int matched_windex = -1;
-			for (int wi = 0; wi < COUNT_WONDER_DISTRICT_TYPES; wi++) {
-				int bid;
-				struct string_slice wn = { .str = (char *)wonder_district_configs[wi].wonder_name, .len = (int)strlen (wonder_district_configs[wi].wonder_name) };
-				if (stable_look_up (&is->building_name_to_id, wn.str, &bid) && (bid == improv_id)) {
-					matched_windex = wi;
-					break;
-				}
-			}
+			int matched_windex = find_wonder_config_index_by_improvement_id (improv_id);
 
 			if (matched_windex >= 0) {
 				int wonder_district_id = get_wonder_district_id ();
@@ -17021,10 +17098,15 @@ init_district_images ()
 		PCX_Image_read_file (&wpcx, __, art_dir, NULL, 0, 0x100, 2);
 		if (wpcx.JGL.Image != NULL) {
 			for (int wi = 0; wi < COUNT_WONDER_DISTRICT_TYPES; wi++) {
-				Sprite_construct (&is->wonder_district_img_sets[wi].img);
+				struct wonder_district_image_set * set = &is->wonder_district_img_sets[wi];
+				Sprite_construct (&set->img);
 				int x = 128 * wonder_district_configs[wi].img_column;
 				int y =  64 * wonder_district_configs[wi].img_row;
-				Sprite_slice_pcx (&is->wonder_district_img_sets[wi].img, __, &wpcx, x, y, 128, 64, 1, 1);
+				Sprite_slice_pcx (&set->img, __, &wpcx, x, y, 128, 64, 1, 1);
+				Sprite_construct (&set->construct_img);
+				int cx = 128 * wonder_district_configs[wi].img_construct_column;
+				int cy =  64 * wonder_district_configs[wi].img_construct_row;
+				Sprite_slice_pcx (&set->construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
 			}
 			wpcx.vtable->clear_JGL (&wpcx);
 		}
@@ -17090,49 +17172,42 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
     // If districts enabled and this tile is mapped to a district, draw only the district (suppress base mine drawing)
     if (is->current_config.enable_districts) {
         Tile * tile = tile_at (tile_x, tile_y);
-        if (tile != NULL && tile != p_null_tile) {
+        if ((tile != NULL) && (tile != p_null_tile)) {
             int district_id;
             if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
-                // If this is a Wonder District with a completed wonder, draw the wonder image instead
-                if (is->current_config.enable_wonder_districts) {
-                    int wonder_district_id = get_wonder_district_id ();
-                    if ((district_id == wonder_district_id) &&
-                        (is->dc_img_state == IS_UNINITED ? (init_district_images (), 1) : 1) &&
-                        (is->dc_img_state == IS_OK)) {
-                        int windex;
-                        if (itable_look_up (&is->wonder_district_tile_map, (int)tile, &windex) &&
-                            (windex >= 0) && (windex < COUNT_WONDER_DISTRICT_TYPES)) {
-                            Sprite * wsprite = &is->wonder_district_img_sets[windex].img;
-                            patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
-                            return; // draw wonder and suppress base mine
+                if (is->dc_img_state == IS_UNINITED)
+                    init_district_images ();
+
+                if (is->dc_img_state == IS_OK) {
+                    bool completed = district_is_complete (tile, district_id);
+
+                    if (is->current_config.enable_wonder_districts) {
+                        int wonder_district_id = get_wonder_district_id ();
+                        if (district_id == wonder_district_id) {
+                            int windex;
+                            if (itable_look_up (&is->wonder_district_tile_map, (int)tile, &windex) &&
+                                (windex >= 0) && (windex < COUNT_WONDER_DISTRICT_TYPES)) {
+                                Sprite * wsprite = &is->wonder_district_img_sets[windex].img;
+                                patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+                                return;
+                            }
+
+                            if (completed) {
+                                int construct_windex = -1;
+                                if (wonder_district_tile_under_construction (tile, tile_x, tile_y, &construct_windex) &&
+                                    (construct_windex >= 0) && (construct_windex < COUNT_WONDER_DISTRICT_TYPES)) {
+                                    Sprite * csprite = &is->wonder_district_img_sets[construct_windex].construct_img;
+                                    patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+                                    return;
+                                }
+                            }
                         }
                     }
-                }
 
-				//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: tile (%d,%d) has district %d, img_state %d, is_completed %d", tile_x, tile_y, district_id, is->dc_img_state, district_is_complete(tile, district_id));
-				//pop_up_in_game_error (ss);
+                    if (! completed)
+                        return;
 
-                if (is->dc_img_state == IS_UNINITED) {
-
-					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: initializing district images");
-					//pop_up_in_game_error (ss);
-
-                    init_district_images ();
-				}
-                if (is->dc_img_state == IS_OK) {
-
-					bool completed = district_is_complete(tile, district_id);
-
-					if (! completed) {
-						//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district %d is not complete", district_id);
-						//pop_up_in_game_error (ss);
-						return;
-					}
-
-					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: drawing district %d on tile (%d,%d)", district_id, tile_x, tile_y);
-					//pop_up_in_game_error (ss);
-
-					int variant = 0;
+                    int variant = 0;
                     int era = 0;
                     int culture = 0;
                     int territory_owner_id = tile->Territory_OwnerID;
@@ -17140,84 +17215,67 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                         Leader * leader = &leaders[territory_owner_id];
                         culture = p_bic_data->Races[leaders[territory_owner_id].RaceID].CultureGroupID;
                         era = leader->Era;
-
-						//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: tile (%d,%d) owned by civ %d (culture %d) in era %d", tile_x, tile_y, territory_owner_id, culture, era);
-						//pop_up_in_game_error (ss);
                     }
 
-					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district %d", district_id);
-					//pop_up_in_game_error (ss);
-
                     Sprite * district_sprite;
-					int buildings = 0;
+                    int buildings = 0;
 
-					switch (district_configs[district_id].command) {
-						case UCV_Build_Encampment:
-						{
-							if      (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Barracks")) buildings = 1;
-							break;
-						}
-						case UCV_Build_Campus:
-						{
-							if      (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "University")) buildings = 2;
-							else if (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Library"))    buildings = 1;
-							break;
-						}
-						case UCV_Build_HolySite:
-						{
-							if      (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Cathedral")) buildings = 2;
-							else if (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Temple"))    buildings = 1;
-							variant = culture;
-							break;
-						}
-						case UCV_Build_EntertainmentComplex:
-						{
-							if      (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Colosseum")) buildings = 1;
-							break;
-						}
-						case UCV_Build_Neighborhood:
-						{
-							// Neighborhood has 4 visual variants. Use a small 2D mix of tile coords
-							// to pick a stable index 0..3 that spreads neighboring tiles apart.
-							// This avoids visible repetition on adjacent tiles without needing extra state.
-							unsigned v = (unsigned)tile_x * 0x9E3779B1u + (unsigned)tile_y * 0x85EBCA6Bu;
-							v ^= v >> 16;
-							v *= 0x7FEB352Du;
-							v ^= v >> 15;
-							v *= 0x846CA68Bu;
-							v ^= v >> 16;
-							buildings = clamp(0, 3, (int)(v & 3u));  /* final 0..3 */
-							variant = culture;
-							break;
-						}
-						case UCV_Build_WonderDistrict:
-						{
-							// Wonder district itself has no dependent buildings, wonder image drawn separately if applicable
-							break;
-						}
-						case UCV_Build_DistributionHub:
-						{
-							// Distribution hub has no dependent buildings
-							break;
-						}
-					}
+                    switch (district_configs[district_id].command) {
+                        case UCV_Build_Encampment:
+                        {
+                            if      (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Barracks")) buildings = 1;
+                            break;
+                        }
+                        case UCV_Build_Campus:
+                        {
+                            if      (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "University")) buildings = 2;
+                            else if (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Library"))    buildings = 1;
+                            break;
+                        }
+                        case UCV_Build_HolySite:
+                        {
+                            if      (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Cathedral")) buildings = 2;
+                            else if (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Temple"))    buildings = 1;
+                            variant = culture;
+                            break;
+                        }
+                        case UCV_Build_EntertainmentComplex:
+                        {
+                            if      (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Colosseum")) buildings = 1;
+                            break;
+                        }
+                        case UCV_Build_Neighborhood:
+                        {
+                            unsigned v = (unsigned)tile_x * 0x9E3779B1u + (unsigned)tile_y * 0x85EBCA6Bu;
+                            v ^= v >> 16;
+                            v *= 0x7FEB352Du;
+                            v ^= v >> 15;
+                            v *= 0x846CA68Bu;
+                            v ^= v >> 16;
+                            buildings = clamp(0, 3, (int)(v & 3u));  /* final 0..3 */
+                            variant = culture;
+                            break;
+                        }
+                        case UCV_Build_WonderDistrict:
+                        {
+                            // Wonder district itself has no dependent buildings; special art handled above
+                            break;
+                        }
+                        case UCV_Build_DistributionHub:
+                        {
+                            // Distribution hub has no dependent buildings
+                            break;
+                        }
+                    }
 
-					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district %d era %d culture %d column %d", district_id, era, culture, col);
-					//pop_up_in_game_error (ss);
-
-					district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
+                    district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
                     patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-
-					//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: finished drawing district %d on tile (%d,%d)", district_id, tile_x, tile_y);
-					//pop_up_in_game_error (ss);
-
                     return; // do not draw vanilla mine when district present
+                } else {
+                    snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district images not ready, state %d", is->dc_img_state);
+                    pop_up_in_game_error (ss);
+                    return;
                 }
-				else {
-					snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district images not ready, state %d", is->dc_img_state);
-					pop_up_in_game_error (ss);
-					return;
-				}
             }
         }
     }
