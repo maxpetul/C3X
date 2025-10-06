@@ -128,7 +128,7 @@ Sounds Good.
 #C3X_DISTRICT_DESTROYED
 #advisor Domestic
 #text
-It seems the $IMPROVEMENT0 has been destroyed! Perhaps we should consider building it ourselves...
+It seems the $IMPROVEMENT0 has been destroyed! Maybe we should rebuild it ourselves...
 
 #C3X_CONFIRM_DEBUG_ACTIVATION
 Activate debug mode?
