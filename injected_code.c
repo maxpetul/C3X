@@ -8106,6 +8106,9 @@ patch_City_Form_draw (City_Form * this)
 
 	is->drawn_strat_resource_count = 0;
 
+	// Make sure culture income (including from districts) is up to date before the draw event
+	patch_City_recompute_culture_income(this->CurrentCity, __);
+
 	City_Form_draw (this);
 
 	if (is->current_config.show_detailed_city_production_info) {
