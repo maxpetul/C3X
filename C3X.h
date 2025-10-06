@@ -539,13 +539,15 @@ struct wonder_district_config {
 	char const * wonder_name;
 	int index,
 		img_row,
-		img_column;
+		img_column,
+		img_construct_row,
+		img_construct_column;
 } const wonder_district_configs[COUNT_WONDER_DISTRICT_TYPES] = {
-	{ .index = 0, .img_row = 0, .img_column = 0, .wonder_name = "The Pyramids" },
-	{ .index = 1, .img_row = 0, .img_column = 1, .wonder_name = "The Hanging Gardens" },
-	{ .index = 2, .img_row = 0, .img_column = 3, .wonder_name = "The Oracle" },
-	{ .index = 3, .img_row = 1, .img_column = 0, .wonder_name = "Copernicus' Observatory" },
-	{ .index = 4, .img_row = 1, .img_column = 2, .wonder_name = "The Great Library" }
+	{ .index = 0, .img_row = 0, .img_column = 0, .img_construct_row = 0, .img_construct_column = 1, .wonder_name = "The Pyramids" },
+	//{ .index = 1, .img_row = 0, .img_column = 1, .img_construct_row = 0, .img_construct_column = 2, .wonder_name = "The Hanging Gardens" },
+	//{ .index = 2, .img_row = 0, .img_column = 3, .img_construct_row = 0, .img_construct_column = 4, .wonder_name = "The Oracle" },
+	//{ .index = 3, .img_row = 1, .img_column = 0, .img_construct_row = 1, .img_construct_column = 1, .wonder_name = "Copernicus' Observatory" },
+	//{ .index = 4, .img_row = 1, .img_column = 2, .img_construct_row = 1, .img_construct_column = 3, .wonder_name = "The Great Library" }
 };
 
 struct district_job_assignment {

@@ -2796,6 +2796,14 @@ compute_distribution_hub_yields (struct distribution_hub_record * rec, City * an
 		// Only include tiles that belong to the distribution hub owner
 		if (area_tile->vtable->m38_Get_Territory_OwnerID (area_tile) != rec->civ_id)
 			continue;
+		// Skip city tiles and any tiles already reserved by another district
+		if (area_tile->CityID >= 0)
+			continue;
+		int mapped_district_id;
+		if (itable_look_up (&is->district_tile_map, (int)area_tile, &mapped_district_id))
+			continue;
+		if (itable_look_up (&is->wonder_district_tile_map, (int)area_tile, &mapped_district_id))
+			continue;
 		int tx, ty;
 		tai_get_coords (&tai, &tx, &ty);
 		food_sum   += patch_City_calc_tile_yield_at (anchor_city, __, 0, tx, ty);
