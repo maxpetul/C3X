@@ -16,7 +16,7 @@ typedef unsigned char byte;
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
-#define COUNT_DISTRICT_TYPES 7
+#define COUNT_DISTRICT_TYPES 8
 #define COUNT_WONDER_DISTRICT_TYPES 1
 
 // Initialize to zero. Implementation is in common.c
@@ -535,6 +535,12 @@ struct district_config {
 		.num_img_paths = 1, .index = 6, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 2,
 		.advance_prereq = "Construction", .dependent_improvements = {"Colosseum"},
 		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 1, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 1, .production_bonus = 0
+	},
+	{
+		.command = UCV_Build_CommercialHub, .tooltip = "Build Commercial Hub", .img_paths = {"CommercialHub.pcx"}, 
+		.num_img_paths = 1, .index = 7, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 4,
+		.advance_prereq = "Currency", .dependent_improvements = {"Marketplace", "Bank", "Stock Exchange"},
+		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 2, .production_bonus = 0
 	}
 };
 

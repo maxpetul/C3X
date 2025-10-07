@@ -17511,6 +17511,13 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                             if      (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Colosseum")) buildings = 1;
                             break;
                         }
+						case UCV_Build_CommercialHub:
+						{
+							if      (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Stock Exchange")) buildings = 3;
+							else if (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Bank"))           buildings = 2;
+							else if (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Market"))         buildings = 1;
+							break;
+						}
                         case UCV_Build_Neighborhood:
                         {
                             unsigned v = (unsigned)tile_x * 0x9E3779B1u + (unsigned)tile_y * 0x85EBCA6Bu;
