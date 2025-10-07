@@ -8159,7 +8159,7 @@ issue_district_worker_command (Unit * unit, int command)
 			itable_insert (&is->district_tile_map, (int)tile, district_id);
 
 			int pseudo_command = UCV_Build_Mine;
-			Main_Screen_Form_issue_command (p_main_screen_form, __, pseudo_command, unit);
+			Unit_set_state(unit, __, UnitState_Build_Mines);
 		}
 	}
 }
@@ -15668,70 +15668,6 @@ patch_Leader_has_tech_to_stop_disease (Leader * this, int edx, int id)
 		return Leader_has_tech_with_flag (this, __, ATF_Disabled_Deseases_From_Flood_Plains);
 }
 
-void
-set_worker_animation_type(Unit * unit, AnimationType anim_type)
-{
-	if (unit == NULL)
-		return;
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] set_worker_animation_type: unit_id=%d anim_type=%d\n", unit->Body.ID, anim_type);
-	(*p_OutputDebugStringA) (ss);
-
-	FLC_Animation * animation = &unit->Body.Animation;
-	AnimationSummary * summary = &animation->summary;
-	Animation_Info * info = animation->Animation_Info;
-
-	// Validate animation info exists
-	if ((info == NULL) || (info->Frame_Counts == NULL))
-		return;
-
-	// Validate animation type is non-negative
-	if (anim_type < 0)
-		return;
-
-	// Check if we can safely access Frame_Counts for this animation type
-	// We determine validity by attempting to read the frame count and only
-	// proceeding if it's valid. This avoids hardcoding animation type limits.
-	int frame_count = 0;
-	bool valid_anim_type = false;
-
-	// Safely attempt to read frame count - if anim_type is out of bounds,
-	// this will read garbage or crash, so we need a bounds check.
-	// The frame count array appears to have entries for animation types 0-18
-	// based on the original code, but to be safe we check a reasonable upper bound.
-	if (anim_type < 32) {  // Conservative upper bound to prevent buffer overrun
-		frame_count = info->Frame_Counts[anim_type];
-		// A valid animation type should have a reasonable frame count (0-1000)
-		// Negative or extremely large values indicate invalid index
-		if (frame_count >= 0 && frame_count < 10000)
-			valid_anim_type = true;
-	}
-
-	if (!valid_anim_type)
-		return;
-
-	if (summary->current_anim_type == anim_type)
-		return;
-
-	if (unit->Body.field_231) {
-		summary->queued_anim_type = anim_type;
-		return;
-	}
-
-	// Only set current_anim_type after validation
-	summary->current_anim_type = anim_type;
-	if (frame_count > 0) {
-		int r = rand ();
-		snprintf (ss, sizeof ss, "[C3X] set_worker_animation_type: unit_id=%d anim_type=%d frame_count=%d rand=%d\n", unit->Body.ID, anim_type, frame_count, r);
-		(*p_OutputDebugStringA) (ss);
-		animation->field_FC = r % frame_count;
-	} else
-		animation->field_FC = 0;
-
-	summary->queued_anim_type = AT_BLANK;
-}
-
 void __fastcall
 patch_set_worker_animation (void * this, int edx, Unit * unit, int job_id)
 {
@@ -15739,13 +15675,9 @@ patch_set_worker_animation (void * this, int edx, Unit * unit, int job_id)
 	snprintf (ss, sizeof ss, "[C3X] set_worker_animation: unit_id=%d job_id=%d\n", unit ? unit->Body.ID : -1, job_id);
 	(*p_OutputDebugStringA) (ss);
 
-	set_worker_animation(this, __, unit, job_id);
-	return;
-
-	/*
 	AnimationType anim_type;
 
-	// Check if this is a district being built (mine job but actually a district)
+	// If districts disabled or unit is null or job is not building mines, use base logic
 	if ((! is->current_config.enable_districts) ||
 	    (unit == NULL) ||
 	    (job_id != WJ_Build_Mines)) {
@@ -15753,21 +15685,17 @@ patch_set_worker_animation (void * this, int edx, Unit * unit, int job_id)
 		return;
 	} 
 	
-	// If tile has a district and not completed
+	// If tile has a district under construction
 	Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
 	int district_id;
-	if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) && ! district_is_complete (tile, district_id)) {
-		if (job_id == WJ_Build_Mines) {
-			set_worker_animation_type (unit, AT_FORTRESS);
-			return;
-		}
-	}
+	if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) && 
+		! district_is_complete (tile, district_id) && job_id == WJ_Build_Mines) {
 
-	snprintf (ss, sizeof ss, "[C3X] set_worker_animation: unit_id=%d job_id=%d\n", unit ? unit->Body.ID : -1, job_id);
-	(*p_OutputDebugStringA) (ss);
+		// Override and ensure build animation is used
+		job_id = AT_BUILD; 
+	}
 	
 	set_worker_animation(this, __, unit, job_id);
-	*/
 }
 
 void __fastcall
