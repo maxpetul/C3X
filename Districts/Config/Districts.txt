@@ -1,0 +1,17 @@
+#District
+#name                     Encampment
+#tooltip                  Build Encampment
+#img_paths                Encampment.pcx
+#btn_tile_sheet_row       0
+#btn_tile_sheet_column    0
+#vary_img_by_era          1
+#vary_img_by_culture      0
+#advance_prereq           Warrior Code
+#dependent_improvs        Barracks,SAM Missile Battery
+#defense_bonus_multiplier 1.5
+#allow_multiple           0
+#culture_bonus            0
+#science_bonus            0
+#food_bonus               0
+#gold_bonus               0
+#shield_bonus             0
