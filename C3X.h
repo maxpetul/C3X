@@ -294,19 +294,21 @@ struct c3x_config {
 	int pinned_hour_for_day_night_cycle;
 
 	bool enable_districts;
+	bool enable_neighborhood_districts;
+	bool enable_wonder_districts;
+	bool enable_distribution_hub_districts;
+
 	bool cities_can_share_buildings_by_districts;
 
-	bool enable_neighborhood_districts;
 	int maximum_pop_before_neighborhood_needed;
 	int per_neighborhood_pop_growth_enabled;
 	
-	bool enable_wonder_districts;
 	bool completed_wonder_districts_can_be_destroyed;
 	bool destroyed_wonders_can_be_rebuilt;
 
-	bool enable_distribution_hub_districts;
 	int distribution_hub_food_yield_divisor;
 	int distribution_hub_shield_yield_divisor;
+	int ai_ideal_distribution_hub_count_per_100_cities;
 };
 
 enum stackable_command {

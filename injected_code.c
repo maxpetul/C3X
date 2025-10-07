@@ -119,6 +119,89 @@ are_tiles_adjacent (int ax, int ay, int bx, int by)
 	return (x_dist + y_dist) == 2;
 }
 
+int
+compute_wrapped_component (int diff, int size, bool wraps)
+{
+	if (! wraps || (size <= 0))
+		return diff;
+
+	int half = size >> 1;
+	if (diff > half)
+		diff = size - diff;
+	return diff;
+}
+
+void
+compute_wrapped_deltas (int ax, int ay, int bx, int by, int * out_dx, int * out_dy)
+{
+	int dx = int_abs (ax - bx);
+	int dy = int_abs (ay - by);
+	bool wraps_horiz = (p_bic_data->Map.Flags & 1) != 0;
+	bool wraps_vert  = (p_bic_data->Map.Flags & 2) != 0;
+	dx = compute_wrapped_component (dx, p_bic_data->Map.Width, wraps_horiz);
+	dy = compute_wrapped_component (dy, p_bic_data->Map.Height, wraps_vert);
+	if (out_dx != NULL)
+		*out_dx = dx;
+	if (out_dy != NULL)
+		*out_dy = dy;
+}
+
+int
+compute_wrapped_manhattan_distance (int ax, int ay, int bx, int by)
+{
+	int dx, dy;
+	compute_wrapped_deltas (ax, ay, bx, by, &dx, &dy);
+	return dx + dy;
+}
+
+int
+compute_wrapped_chebyshev_distance (int ax, int ay, int bx, int by)
+{
+	int dx, dy;
+	compute_wrapped_deltas (ax, ay, bx, by, &dx, &dy);
+	return (dx > dy) ? dx : dy;
+}
+
+bool
+tile_has_resource (Tile * tile)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	int resource_type = tile->vtable->m39_Get_Resource_Type (tile);
+	return (resource_type >= 0) && (resource_type < p_bic_data->ResourceTypeCount);
+}
+
+City *
+get_city_ptr (int id)
+{
+	if ((p_cities->Cities != NULL) &&
+	    (id >= 0) && (id <= p_cities->LastIndex)) {
+		City_Body * body = p_cities->Cities[id].City;
+		if (body != NULL) {
+			City * city = (City *)((char *)body - offsetof (City, Body));
+			if (city != NULL)
+				return city;
+		}
+	}
+	return NULL;
+}
+
+bool
+tile_is_adjacent_to_any_city (int tile_x, int tile_y)
+{
+	if ((p_cities == NULL) || (p_cities->Cities == NULL))
+		return false;
+
+	for (int idx = 0; idx <= p_cities->LastIndex; idx++) {
+		City * city = get_city_ptr (idx);
+		if (city == NULL)
+			continue;
+		if (compute_wrapped_chebyshev_distance (tile_x, tile_y, city->Body.X, city->Body.Y) <= 1)
+			return true;
+	}
+	return false;
+}
+
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
 	bool redundant; // If true, this pause would overlap a previous one and so should not be counted
@@ -2152,21 +2235,6 @@ get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, i
 	wrap_tile_coords (map, out_x, out_y);
 }
 
-City *
-get_city_ptr (int id)
-{
-	if ((p_cities->Cities != NULL) &&
-	    (id >= 0) && (id <= p_cities->LastIndex)) {
-		City_Body * body = p_cities->Cities[id].City;
-		if (body != NULL) {
-			City * city = (City *)((char *)body - offsetof (City, Body));
-			if (city != NULL)
-				return city;
-		}
-	}
-	return NULL;
-}
-
 Tile * __stdcall
 tile_at_city_or_null (City * city_or_null)
 {
@@ -3239,8 +3307,14 @@ create_district_job_assignment (Unit * unit, Tile * tile, int tile_x, int tile_y
 }
 
 bool
-tile_not_suitable_for_district(Tile * tile, int district_id, City * city)
+tile_not_suitable_for_district (Tile * tile, int district_id, City * city, bool * out_has_resource)
 {
+	bool has_resource = false;
+	if ((tile != NULL) && (tile != p_null_tile))
+		has_resource = tile_has_resource (tile);
+	if (out_has_resource != NULL)
+		*out_has_resource = has_resource;
+
 	if ((tile == NULL) || (tile == p_null_tile))
 		return true;
 	if (tile->CityID >= 0)
@@ -3259,7 +3333,8 @@ tile_not_suitable_for_district(Tile * tile, int district_id, City * city)
 		return true;
 
 	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] tile_not_suitable_for_district: tile=%p is SUITABLE for district_id=%d\n", (void*)tile, district_id);
+	snprintf (ss, sizeof ss, "[C3X] tile_not_suitable_for_district: tile=%p is SUITABLE for district_id=%d resource=%d\n",
+	          (void*)tile, district_id, has_resource ? 1 : 0);
 	(*p_OutputDebugStringA) (ss);
 
 	return false;
@@ -3286,118 +3361,206 @@ patch_Map_calc_shield_yield_at (Map *this, int edx, int tile_x, int tile_y, int 
 	return Map_calc_shield_yield_at (this, __, tile_x, tile_y, civ_id, city, param_5, param_6);
 }
 
+int
+compute_city_tile_yield_sum (City * city, int tile_x, int tile_y)
+{
+	if (city == NULL)
+		return 0;
+	int food = patch_City_calc_tile_yield_at (city, __, YK_FOOD, tile_x, tile_y);
+	int shields = patch_City_calc_tile_yield_at (city, __, YK_SHIELDS, tile_x, tile_y);
+	int commerce = patch_City_calc_tile_yield_at (city, __, YK_COMMERCE, tile_x, tile_y);
+	return food + shields + commerce;
+}
+
+Tile *
+find_tile_for_neighborhood_district (City * city, int district_id, int * out_x, int * out_y)
+{
+	if (city == NULL)
+		return NULL;
+
+	const int resource_penalty = 100;
+	Tile * best_tile = NULL;
+	int best_priority = -1;
+	int best_adjusted_yield = INT_MAX;
+	int best_distance = INT_MAX;
+	bool best_has_resource = true;
+	int city_x = city->Body.X;
+	int city_y = city->Body.Y;
+
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city_x, city_y) {
+		Tile * tile = tai.tile;
+		bool has_resource;
+		if (tile_not_suitable_for_district (tile, district_id, city, &has_resource))
+			continue;
+
+		int tx, ty;
+		tai_get_coords (&tai, &tx, &ty);
+		int chebyshev = compute_wrapped_chebyshev_distance (tx, ty, city_x, city_y);
+		int priority = (chebyshev == 1) ? 1 : 0;
+		int adjusted_yield = compute_city_tile_yield_sum (city, tx, ty) + (has_resource ? resource_penalty : 0);
+		int distance = compute_wrapped_manhattan_distance (tx, ty, city_x, city_y);
+
+		if ((priority > best_priority) ||
+		    ((priority == best_priority) && (adjusted_yield < best_adjusted_yield)) ||
+		    ((priority == best_priority) && (adjusted_yield == best_adjusted_yield) && (distance < best_distance)) ||
+		    ((priority == best_priority) && (adjusted_yield == best_adjusted_yield) && (distance == best_distance) && (! has_resource && best_has_resource))) {
+			best_tile = tile;
+			best_priority = priority;
+			best_adjusted_yield = adjusted_yield;
+			best_distance = distance;
+			best_has_resource = has_resource;
+			*out_x = tx;
+			*out_y = ty;
+		}
+	}
+
+	return best_tile;
+}
+
+Tile *
+find_tile_for_distribution_hub_district (City * city, int district_id, int * out_x, int * out_y)
+{
+	if ((city == NULL) || ! City_has_trade_connection_to_capital (city))
+		return NULL;
+
+	const int resource_penalty = 100;
+	Tile * best_tile = NULL;
+	int best_score = INT_MIN;
+	int best_adjusted_yield = INT_MIN;
+	int best_distance = -1;
+	bool best_has_resource = true;
+	int city_x = city->Body.X;
+	int city_y = city->Body.Y;
+
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city_x, city_y) {
+		Tile * tile = tai.tile;
+		bool has_resource;
+		if (tile_not_suitable_for_district (tile, district_id, city, &has_resource))
+			continue;
+
+		int tx, ty;
+		tai_get_coords (&tai, &tx, &ty);
+		int chebyshev = compute_wrapped_chebyshev_distance (tx, ty, city_x, city_y);
+		if (chebyshev <= 1)
+			continue;
+		if (tile_is_adjacent_to_any_city (tx, ty))
+			continue;
+
+		int raw_yield = compute_city_tile_yield_sum (city, tx, ty);
+		int adjusted_yield = raw_yield - (has_resource ? resource_penalty : 0);
+		int score = adjusted_yield * 100 + chebyshev;
+		int distance = compute_wrapped_manhattan_distance (tx, ty, city_x, city_y);
+
+		if ((score > best_score) ||
+		    ((score == best_score) && (adjusted_yield > best_adjusted_yield)) ||
+		    ((score == best_score) && (adjusted_yield == best_adjusted_yield) && (distance > best_distance)) ||
+		    ((score == best_score) && (adjusted_yield == best_adjusted_yield) && (distance == best_distance) && (! has_resource && best_has_resource))) {
+			best_tile = tile;
+			best_score = score;
+			best_adjusted_yield = adjusted_yield;
+			best_distance = distance;
+			best_has_resource = has_resource;
+			*out_x = tx;
+			*out_y = ty;
+		}
+	}
+
+	return best_tile;
+}
+
 Tile *
 find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 {
 	if ((city == NULL) || (out_x == NULL) || (out_y == NULL))
+		return NULL;
+	if ((district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
 		return NULL;
 
 	char ss[200];
 	snprintf (ss, sizeof ss, "[C3X] find_tile_for_district: city=%p district_id=%d\n", (void*)city, district_id);
 	(*p_OutputDebugStringA) (ss);
 
+	enum Unit_Command_Values command = district_configs[district_id].command;
+	if (command == UCV_Build_Neighborhood)
+		return find_tile_for_neighborhood_district (city, district_id, out_x, out_y);
+	if (command == UCV_Build_DistributionHub)
+		return find_tile_for_distribution_hub_district (city, district_id, out_x, out_y);
+
+	const int resource_penalty = 100;
 	Tile * best_tile = NULL;
-	bool is_neighborhood = (district_configs[district_id].command == UCV_Build_Neighborhood);
-	int best_priority = -1;
 	int best_ring_priority = -1;
-	int best_yield_sum = INT_MAX;
+	int best_adjusted_yield = INT_MAX;
 	int best_distance = INT_MAX;
+	bool best_has_resource = true;
 	int city_x = city->Body.X;
 	int city_y = city->Body.Y;
 
-	// For non-neighborhood districts, first pass: look for non-adjacent tiles
-	if (!is_neighborhood) {
-		FOR_TILES_AROUND (tai, is->workable_tile_count, city_x, city_y) {
-			Tile * tile = tai.tile;
-			if (tile_not_suitable_for_district(tile, district_id, city))
-				continue;
-
-			int tx, ty;
-			tai_get_coords (&tai, &tx, &ty);
-			int dx = int_abs (tx - city_x);
-			int dy = int_abs (ty - city_y);
-			int chebyshev = (dx > dy) ? dx : dy;
-			int distance = dx + dy;
-
-			// Only consider non-adjacent tiles in first pass
-			if (chebyshev <= 1)
-				continue;
-
-			int food = patch_City_calc_tile_yield_at (city, __, YK_FOOD, tx, ty);
-			int shields = patch_City_calc_tile_yield_at (city, __, YK_SHIELDS, tx, ty);
-			int commerce = patch_City_calc_tile_yield_at (city, __, YK_COMMERCE, tx, ty);
-			int yield_sum = food + shields + commerce;
-
-			int ring_priority = (chebyshev == 2) ? 1 : 0;
-			if ((ring_priority > best_ring_priority) ||
-			    ((ring_priority == best_ring_priority) && (yield_sum < best_yield_sum)) ||
-			    ((ring_priority == best_ring_priority) && (yield_sum == best_yield_sum) && (distance < best_distance))) {
-				best_priority = 2;  // Non-adjacent priority
-				best_ring_priority = ring_priority;
-				best_yield_sum = yield_sum;
-				best_distance = distance;
-				best_tile = tile;
-				*out_x = tx;
-				*out_y = ty;
-			}
-		}
-	}
-
-	// Second pass: evaluate all tiles (for neighborhoods) or adjacent tiles (fallback for non-neighborhoods)
 	FOR_TILES_AROUND (tai, is->workable_tile_count, city_x, city_y) {
 		Tile * tile = tai.tile;
-		if (tile_not_suitable_for_district(tile, district_id, city))
+		bool has_resource;
+		if (tile_not_suitable_for_district (tile, district_id, city, &has_resource))
 			continue;
 
-		// Score the candidate based on distance metrics and existing yields.
 		int tx, ty;
 		tai_get_coords (&tai, &tx, &ty);
-		int dx = int_abs (tx - city_x);
-		int dy = int_abs (ty - city_y);
-		int chebyshev = (dx > dy) ? dx : dy;
-		int distance = dx + dy;
-
-		// For non-neighborhoods, skip if we already found a non-adjacent tile
-		if (!is_neighborhood && best_tile != NULL && chebyshev <= 1)
+		int chebyshev = compute_wrapped_chebyshev_distance (tx, ty, city_x, city_y);
+		if (chebyshev <= 1)
 			continue;
 
-		int food = patch_City_calc_tile_yield_at (city, __, YK_FOOD, tx, ty);
-		int shields = patch_City_calc_tile_yield_at (city, __, YK_SHIELDS, tx, ty);
-		int commerce = patch_City_calc_tile_yield_at (city, __, YK_COMMERCE, tx, ty);
-		int yield_sum = food + shields + commerce;
+		int adjusted_yield = compute_city_tile_yield_sum (city, tx, ty) + (has_resource ? resource_penalty : 0);
+		int distance = compute_wrapped_manhattan_distance (tx, ty, city_x, city_y);
+		int ring_priority = (chebyshev == 2) ? 1 : 0;
 
-		if (is_neighborhood) {
-			// Neighborhoods prefer tiles directly adjacent to the city center.
-			int priority = (chebyshev == 1) ? 1 : 0;
-			if ((priority > best_priority) ||
-			    ((priority == best_priority) && (yield_sum < best_yield_sum)) ||
-			    ((priority == best_priority) && (yield_sum == best_yield_sum) && (distance < best_distance))) {
-				best_priority = priority;
-				best_ring_priority = -1;
-				best_yield_sum = yield_sum;
-				best_distance = distance;
-				best_tile = tile;
-				*out_x = tx;
-				*out_y = ty;
-			}
-		} else {
-			// Adjacent tiles as fallback (only if no non-adjacent tile was found)
-			if (chebyshev == 1) {
-				if ((yield_sum < best_yield_sum) ||
-				    ((yield_sum == best_yield_sum) && (distance < best_distance))) {
-					best_priority = 1;  // Adjacent fallback priority
-					best_ring_priority = 0;
-					best_yield_sum = yield_sum;
-					best_distance = distance;
-					best_tile = tile;
-					*out_x = tx;
-					*out_y = ty;
-				}
-			}
+		if ((ring_priority > best_ring_priority) ||
+		    ((ring_priority == best_ring_priority) && (adjusted_yield < best_adjusted_yield)) ||
+		    ((ring_priority == best_ring_priority) && (adjusted_yield == best_adjusted_yield) && (distance < best_distance)) ||
+		    ((ring_priority == best_ring_priority) && (adjusted_yield == best_adjusted_yield) && (distance == best_distance) && (! has_resource && best_has_resource))) {
+			best_tile = tile;
+			best_ring_priority = ring_priority;
+			best_adjusted_yield = adjusted_yield;
+			best_distance = distance;
+			best_has_resource = has_resource;
+			*out_x = tx;
+			*out_y = ty;
 		}
 	}
 
-	return best_tile;
+	if (best_tile != NULL)
+		return best_tile;
+
+	Tile * fallback_tile = NULL;
+	int fallback_adjusted_yield = INT_MAX;
+	int fallback_distance = INT_MAX;
+	bool fallback_has_resource = true;
+
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city_x, city_y) {
+		Tile * tile = tai.tile;
+		bool has_resource;
+		if (tile_not_suitable_for_district (tile, district_id, city, &has_resource))
+			continue;
+
+		int tx, ty;
+		tai_get_coords (&tai, &tx, &ty);
+		int chebyshev = compute_wrapped_chebyshev_distance (tx, ty, city_x, city_y);
+		if (chebyshev != 1)
+			continue;
+
+		int adjusted_yield = compute_city_tile_yield_sum (city, tx, ty) + (has_resource ? resource_penalty : 0);
+		int distance = compute_wrapped_manhattan_distance (tx, ty, city_x, city_y);
+
+		if ((adjusted_yield < fallback_adjusted_yield) ||
+		    ((adjusted_yield == fallback_adjusted_yield) && (distance < fallback_distance)) ||
+		    ((adjusted_yield == fallback_adjusted_yield) && (distance == fallback_distance) && (! has_resource && fallback_has_resource))) {
+			fallback_tile = tile;
+			fallback_adjusted_yield = adjusted_yield;
+			fallback_distance = distance;
+			fallback_has_resource = has_resource;
+			*out_x = tx;
+			*out_y = ty;
+		}
+	}
+
+	return fallback_tile;
 }
 
 int __fastcall patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp);
@@ -3593,26 +3756,15 @@ ensure_neighborhood_request_for_city (City * city)
 		return;
 
 	int district_id = get_neighborhood_district_id ();
-	if (district_id < 0)
-		return;
-
 	int prereq = is->district_infos[district_id].advance_prereq_id;
-	if ((prereq >= 0) && ! Leader_has_tech (&leaders[civ_id], __, prereq)) {
-		return;
-	}
-
-	if (city_has_required_district (city, district_id)) {
-		return;
-	}
-	if (district_assignment_exists_for_city (city, district_id)) {
-		return;
-	}
+	
+	if ((prereq >= 0) && ! Leader_has_tech (&leaders[civ_id], __, prereq)) return;
+	if (city_has_required_district (city, district_id)) return;
+	if (district_assignment_exists_for_city (city, district_id)) return;
 
 	int key = (int)(long)city;
 	int mask = itable_look_up_or (&is->city_pending_district_requests, key, 0);
-	if ((mask & (1 << district_id)) != 0) {
-		return;
-	}
+	if ((mask & (1 << district_id)) != 0) return;
 
 	mark_city_needs_district (city, district_id);
 }
@@ -4034,8 +4186,6 @@ patch_City_update_growth (City * this, int edx)
 	if (! blocked_growth)
 		return;
 
-	ensure_neighborhood_request_for_city (this);
-
 	// Restore visible food income so the interface still shows actual yields.
 	this->Body.FoodIncome = orig_income;
 
@@ -4050,10 +4200,19 @@ patch_City_update_growth (City * this, int edx)
 	}
 
 	if (! show_message) return;
-
-	// Only notify the human player occasionally to avoid spam.
-	if (this->Body.CivID != p_main_screen_form->Player_CivID) return;
 	if (is_online_game ()) return;
+	if (civ_id != p_main_screen_form->Player_CivID) return;
+
+	if ((*p_human_player_bits & (1u << civ_id)) == 0) {
+		ensure_neighborhood_request_for_city (this);
+		return;
+	}
+
+	// Rate-limit notifications to once every five turns per city, varying time by city position
+	unsigned int turn_no = (unsigned int)*p_current_turn_no;
+	unsigned int throttle = ((unsigned int)this->Body.X << 5) ^ (unsigned int)this->Body.Y;
+	if (((turn_no + throttle) % 4) != 0) 
+		return;
 
 	show_map_specific_text (this->Body.X, this->Body.Y, "City requires a Neighborhood to grow", true);
 }
@@ -6284,28 +6443,29 @@ patch_init_floating_point ()
 		int base_val;
 		int offset;
 	} integer_config_options[] = {
-		{"limit_railroad_movement"                      ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
-		{"minimum_city_separation"                      ,     1, offsetof (struct c3x_config, minimum_city_separation)},
-		{"anarchy_length_percent"                       ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
-		{"ai_multi_city_start"                          ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
-		{"max_tries_to_place_fp_city"                   , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
-		{"ai_research_multiplier"                       ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
-		{"ai_settler_perfume_on_founding_duration"      ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
-		{"extra_unit_maintenance_per_shields"           ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
-		{"ai_build_artillery_ratio"                     ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
-		{"ai_artillery_value_damage_percent"            ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
-		{"ai_build_bomber_ratio"                        ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
-		{"max_ai_naval_escorts"                         ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
-		{"ai_worker_requirement_percent"                ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
-		{"chance_for_nukes_to_destroy_max_one_hp_units" ,   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
-		{"rebase_range_multiplier"                      ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
-		{"elapsed_minutes_per_day_night_hour_transition",     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
-		{"fixed_hours_per_turn_for_day_night_cycle"     ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
-		{"pinned_hour_for_day_night_cycle"              ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
-		{"maximum_pop_before_neighborhood_needed"				,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
-		{"per_neighborhood_pop_growth_enabled"			,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
-		{"distribution_hub_food_yield_divisor"			,     1, offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
-		{"distribution_hub_shield_yield_divisor"		,     1, offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
+		{"limit_railroad_movement"                       ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
+		{"minimum_city_separation"                       ,     1, offsetof (struct c3x_config, minimum_city_separation)},
+		{"anarchy_length_percent"                        ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
+		{"ai_multi_city_start"                           ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
+		{"max_tries_to_place_fp_city"                    , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
+		{"ai_research_multiplier"                        ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
+		{"ai_settler_perfume_on_founding_duration"       ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
+		{"extra_unit_maintenance_per_shields"            ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
+		{"ai_build_artillery_ratio"                      ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
+		{"ai_artillery_value_damage_percent"             ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
+		{"ai_build_bomber_ratio"                         ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
+		{"max_ai_naval_escorts"                          ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
+		{"ai_worker_requirement_percent"                 ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
+		{"chance_for_nukes_to_destroy_max_one_hp_units"  ,   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
+		{"rebase_range_multiplier"                       ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
+		{"elapsed_minutes_per_day_night_hour_transition" ,     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
+		{"fixed_hours_per_turn_for_day_night_cycle"      ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
+		{"pinned_hour_for_day_night_cycle"               ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
+		{"maximum_pop_before_neighborhood_needed"		 		,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
+		{"per_neighborhood_pop_growth_enabled"			 ,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
+		{"distribution_hub_food_yield_divisor"			 ,     1, offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
+		{"distribution_hub_shield_yield_divisor"		 ,     1, offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
+		{"ai_ideal_distribution_hub_count_per_100_cities",     1, offsetof (struct c3x_config, ai_ideal_distribution_hub_count_per_100_cities)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -7949,11 +8109,6 @@ issue_district_worker_command (Unit * unit, int command)
             return;
         }
     }
-
-	if ((*p_human_player_bits & (1 << unit->Body.CivID)) != 0) {
-		snprintf (ss, sizeof ss, "C3X: is a human player");
-		pop_up_in_game_error (ss);
-	}
 
 	//snprintf (ss, sizeof ss, "C3X: Issuing district worker command %d", command);
 	//pop_up_in_game_error (ss);
@@ -12916,10 +13071,131 @@ patch_Map_wrap_vert_for_barb_ai (Map * this, int edx, int y)
 	return Map_wrap_vert (this, __, is->current_config.patch_barbarian_diagonal_bug ? (y + is->barb_diag_patch_dy_fix) : y);
 }
 
+void
+ai_update_distribution_hub_goal_for_leader (Leader * leader)
+{
+	if (leader == NULL)
+		return;
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_distribution_hub_districts)
+		return;
+
+	int civ_id = leader->ID;
+	if ((1 << civ_id) & *p_human_player_bits)
+		return;
+
+	int ideal_per_100 = is->current_config.ai_ideal_distribution_hub_count_per_100_cities;
+	if (ideal_per_100 <= 0)
+		return;
+
+	int district_id = get_distribution_hub_district_id ();
+	if (district_id < 0)
+		return;
+
+	int city_count = leader->Cities_Count;
+	if (city_count <= 0)
+		return;
+
+	int desired = (city_count * ideal_per_100) / 100;
+	if (desired <= 0)
+		return;
+
+	int current = 0;
+	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
+		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
+		if ((rec != NULL) && (rec->civ_id == civ_id))
+			current++;
+	}
+
+	int in_progress = 0;
+	FOR_TABLE_ENTRIES (tei, &is->district_job_assignments) {
+		struct district_job_assignment * job = (struct district_job_assignment *)tei.value;
+		if ((job != NULL) &&
+		    (job->district_id == district_id) &&
+		    (job->city != NULL) &&
+		    (job->city->Body.CivID == civ_id))
+			in_progress++;
+	}
+
+	int pending = 0;
+	FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests) {
+		City * city = (City *)(long)tei.key;
+		if ((city != NULL) &&
+		    (city->Body.CivID == civ_id) &&
+		    ((tei.value & (1 << district_id)) != 0))
+			pending++;
+	}
+
+	int planned = current + in_progress + pending;
+	if (planned >= desired)
+		return;
+
+	City * capital = get_city_ptr (leader->CapitalID);
+	bool has_capital = (capital != NULL);
+	int capital_x = has_capital ? capital->Body.X : 0;
+	int capital_y = has_capital ? capital->Body.Y : 0;
+
+	while (planned < desired) {
+		City * best_city = NULL;
+		int best_tile_x = 0;
+		int best_tile_y = 0;
+		int best_score = INT_MIN;
+
+		FOR_CITIES_OF (coi, civ_id) {
+			City * city = coi.city;
+			if (city == NULL)
+				continue;
+			if (! City_has_trade_connection_to_capital (city))
+				continue;
+			if (city_has_required_district (city, district_id))
+				continue;
+			if (district_assignment_exists_for_city (city, district_id))
+				continue;
+
+			int pending_mask = itable_look_up_or (&is->city_pending_district_requests, (int)(long)city, 0);
+			if ((pending_mask & (1 << district_id)) != 0)
+				continue;
+
+			int tile_x, tile_y;
+			Tile * candidate = find_tile_for_distribution_hub_district (city, district_id, &tile_x, &tile_y);
+			if (candidate == NULL)
+				continue;
+
+			int yield_sum = compute_city_tile_yield_sum (city, tile_x, tile_y);
+			int distance_to_capital = 0;
+			if (has_capital)
+				distance_to_capital = compute_wrapped_manhattan_distance (city->Body.X, city->Body.Y, capital_x, capital_y);
+
+			int score = yield_sum * 100 + distance_to_capital;
+			if (tile_has_resource (candidate))
+				score -= 500;
+
+			if (score > best_score) {
+				best_score = score;
+				best_city = city;
+				best_tile_x = tile_x;
+				best_tile_y = tile_y;
+			}
+		}
+
+		if (best_city == NULL)
+			break;
+
+		mark_city_needs_district (best_city, district_id);
+		planned++;
+
+		char ss[200];
+		snprintf (ss, sizeof ss, "[C3X] ai_update_distribution_hub_goal_for_leader: civ=%d request city=%p tile=(%d,%d) planned=%d desired=%d\n",
+		          civ_id, (void*)best_city, best_tile_x, best_tile_y, planned, desired);
+		(*p_OutputDebugStringA) (ss);
+	}
+}
+
 void __fastcall
 patch_Leader_do_production_phase (Leader * this)
 {
 	recompute_resources_if_necessary ();
+	ai_update_distribution_hub_goal_for_leader (this);
 
 	// Before production advances, halt builds that lost their required district and switch to another item
 	if (is->current_config.enable_districts) {
@@ -12934,11 +13210,11 @@ patch_Leader_do_production_phase (Leader * this)
 			// Request AI to build the needed district and switch production
 			mark_city_needs_district (city, req_district_id);
 			city->vtable->set_production_to_most_expensive_option (city);
-			// Optional: notify only occasionally for human player to avoid spam
-			if ((city->Body.CivID == p_main_screen_form->Player_CivID) && (((byte)(*p_current_turn_no) & 0x1f) == 0)) {
+			
+			if (city->Body.CivID == p_main_screen_form->Player_CivID) {
 				char msg[160];
 				char const * bname = p_bic_data->Improvements[i_improv].Name.S;
-				snprintf (msg, sizeof msg, "%s construction halted: required district missing.", bname);
+				snprintf (msg, sizeof msg, "%s construction halted: required district missing", bname);
 				msg[(sizeof msg) - 1] = '\0';
 				show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
 			}
@@ -17219,11 +17495,9 @@ void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
 	char ss[200];
-	//*p_debug_mode_bits |= 0xC;
-	//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: called for tile (%d,%d) at pixel (%d,%d)", tile_x, tile_y, pixel_x, pixel_y);
-	//pop_up_in_game_error (ss);
-	snprintf (ss, sizeof ss, "[C3X] patch_Map_Renderer_m12_Draw_Tile_Buildings: tile=(%d,%d) pixel=(%d,%d)\n", tile_x, tile_y, pixel_x, pixel_y);
-	(*p_OutputDebugStringA) (ss);
+	*p_debug_mode_bits |= 0xC;
+	//snprintf (ss, sizeof ss, "[C3X] patch_Map_Renderer_m12_Draw_Tile_Buildings: tile=(%d,%d) pixel=(%d,%d)\n", tile_x, tile_y, pixel_x, pixel_y);
+	//(*p_OutputDebugStringA) (ss);
 
     // If districts enabled and this tile is mapped to a district, draw only the district (suppress base mine drawing)
     if (is->current_config.enable_districts) {
