@@ -479,7 +479,7 @@ struct district_config {
 	char const * tooltip;
 	char const * advance_prereq;
 	char const * dependent_improvements[5];
-	char const * img_paths[5]; // Up to 5 cultural variants
+	char const * img_paths[10]; 
 	bool allow_multiple;
 	float defense_bonus_multiplier;
 	int index,
@@ -495,8 +495,8 @@ struct district_config {
 		production_bonus;
 } const district_configs[COUNT_DISTRICT_TYPES] = {
 	{
-		.command = UCV_Build_Neighborhood, .tooltip = "Build Neighborhood", .img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"}, 
-		.num_img_paths = 5, .index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 1, .total_img_rows = 4, .total_img_columns = 4,
+		.command = UCV_Build_Neighborhood, .tooltip = "Build Neighborhood", .img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx", "Neighborhood_Abandoned.pcx"}, 
+		.num_img_paths = 6, .index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 1, .total_img_rows = 4, .total_img_columns = 4,
 		.advance_prereq = NULL, .dependent_improvements = {NULL},
 		.defense_bonus_multiplier = 1.25, .allow_multiple = true, .culture_bonus = 1, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 1, .production_bonus = 0
 	},
@@ -1212,7 +1212,7 @@ struct injected_state {
 
 	// Districts data
 	struct district_image_set {
-		Sprite imgs[5][4][4]; // [variant][era][buildings]
+		Sprite imgs[10][4][4]; // [variant][era][buildings]
 	} district_img_sets[COUNT_DISTRICT_TYPES];
 
 	struct wonder_district_image_set {

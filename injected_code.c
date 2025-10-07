@@ -17423,7 +17423,7 @@ void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
 	char ss[200];
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	//snprintf (ss, sizeof ss, "[C3X] patch_Map_Renderer_m12_Draw_Tile_Buildings: tile=(%d,%d) pixel=(%d,%d)\n", tile_x, tile_y, pixel_x, pixel_y);
 	//(*p_OutputDebugStringA) (ss);
 
@@ -17469,14 +17469,23 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                     int era = 0;
                     int culture = 0;
                     int territory_owner_id = tile->Territory_OwnerID;
-                    if (territory_owner_id) {
+                    int buildings = 0;
+					Sprite * district_sprite;
+
+                    if (territory_owner_id > 0) {
                         Leader * leader = &leaders[territory_owner_id];
                         culture = p_bic_data->Races[leaders[territory_owner_id].RaceID].CultureGroupID;
                         era = leader->Era;
-                    }
+                    } else {
+						//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: territory_owner_id=%d, district_id=%d, era=%d", territory_owner_id, district_id, era);
+                    	//pop_up_in_game_error (ss);
 
-                    Sprite * district_sprite;
-                    int buildings = 0;
+						// Render abandoned district, special index 5
+						int variant = 5;
+						district_sprite = &is->district_img_sets[0].imgs[variant][era][buildings];
+						patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+						return;
+					}
 
                     switch (district_configs[district_id].command) {
                         case UCV_Build_Encampment:
