@@ -1096,6 +1096,9 @@ struct injected_state {
 	// to this list.
 	int last_main_screen_key_up_events[5];
 
+	// Stores the parameters to Unit::can_load while it's running, NULL otherwise.
+	Unit * can_load_transport, * can_load_passenger;
+
 	// ==========
 	// }
 	// ==========

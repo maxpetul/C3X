@@ -1664,7 +1664,7 @@ struct UnitType
   int field_C4;
   int field_C8;
   int field_CC;
-  int b_Not_King;
+  int requires_support;
   int field_D4;
   int field_D8;
   IntList unit_telepads;

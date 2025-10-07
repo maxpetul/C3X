@@ -4409,6 +4409,8 @@ patch_init_floating_point ()
 
 	memset (is->last_main_screen_key_up_events, 0, sizeof is->last_main_screen_key_up_events);
 
+	is->can_load_transport = is->can_load_passenger = NULL;
+
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config, true);
@@ -6616,15 +6618,23 @@ patch_Unit_can_hurry_production (Unit * this, int edx, City * city, bool exclude
 bool __fastcall
 patch_Unit_can_load (Unit * this, int edx, Unit * passenger)
 {
+	is->can_load_transport = this;
+	is->can_load_passenger = passenger;
+	bool tr;
+
 	// If this potential passenger is tied to a different transport, do not allow it to load into this one
 	int tied_transport_id = -1;
 	if (is->current_config.limit_unit_loading_to_one_transport_per_turn &&
 	    (! Unit_has_ability (this, __, UTA_Army)) &&
 	    itable_look_up (&is->unit_transport_ties, passenger->Body.ID, &tied_transport_id) &&
 	    (this->Body.ID != tied_transport_id))
-		return false;
+		tr = false;
 
-	return Unit_can_load (this, __, passenger);
+	else
+		tr = Unit_can_load (this, __, passenger);
+
+	is->can_load_transport = is->can_load_passenger = NULL;
+	return tr;
 }
 
 void __fastcall
@@ -8880,7 +8890,7 @@ patch_Leader_count_maintenance_free_units (Leader * this)
 				UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
 
 				// If this is a free unit
-				if ((unit->Body.RaceID != this->RaceID) || (type->b_Not_King == 0))
+				if ((unit->Body.RaceID != this->RaceID) || (type->requires_support == 0))
 					tr++;
 
 				// If this unit belongs to the barbs and has a tribe ID set (indicating it was spawned in a barb camp) then count it
