@@ -4905,7 +4905,7 @@ patch_City_recompute_yields_and_happiness (City * this, int edx)
 			continue;
 		struct district_config const * cfg = &district_configs[district_id];
 		bonus_food       += cfg->food_bonus;
-		bonus_production += cfg->production_bonus;
+		bonus_production += cfg->shield_bonus;
 		bonus_gold       += cfg->gold_bonus;
 	}
 
@@ -7963,7 +7963,7 @@ patch_Unit_can_upgrade (Unit * this)
 bool
 is_district_command (int unit_command_value)
 {
-	return (unit_command_value <= UCV_Build_Encampment) && (unit_command_value >= UCV_Build_DistributionHub);
+	return (unit_command_value <= UCV_Build_Encampment) && (unit_command_value >= UCV_Build_Aerodrome);
 }
 
 bool __fastcall
@@ -16193,7 +16193,7 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	// Count total yields from bonuses
 	int total_yield = 0;
 	if (config->food_bonus > 0) total_yield += config->food_bonus;
-	if (config->production_bonus > 0) total_yield += config->production_bonus;
+	if (config->shield_bonus > 0) total_yield += config->shield_bonus;
 	if (config->gold_bonus > 0) total_yield += config->gold_bonus;
 	if (config->science_bonus > 0) total_yield += config->science_bonus;
 	if (config->culture_bonus > 0) total_yield += config->culture_bonus;
@@ -16249,7 +16249,7 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	}
 
 	// Draw icons in order: shields, food, science, commerce, culture
-	for (int i = 0; i < config->production_bonus; i++) {
+	for (int i = 0; i < config->shield_bonus; i++) {
 		Sprite_draw (shield_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
@@ -17518,6 +17518,11 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 							else if (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Market"))         buildings = 1;
 							break;
 						}
+						case UCV_Build_Aerodrome:
+						{
+							if 	    (district_has_nearby_building_by_name(tile_x, tile_y, district_id, "Airport")) buildings = 1;
+							break;
+						}
                         case UCV_Build_Neighborhood:
                         {
                             unsigned v = (unsigned)tile_x * 0x9E3779B1u + (unsigned)tile_y * 0x85EBCA6Bu;
@@ -17873,7 +17878,7 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 			continue;
 		if (! district_is_complete (tai.tile, district_id))
 			continue;
-		standard_district_shields += district_configs[district_id].production_bonus;
+		standard_district_shields += district_configs[district_id].shield_bonus;
 	}
 
 	// Get distribution hub shield bonus
