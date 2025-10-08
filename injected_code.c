@@ -3105,8 +3105,7 @@ deinit_district_images (void)
 {
 	if (is->dc_img_state == IS_OK) {
 		for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
-			int variant_count = district_configs[dc].num_img_paths;
-			for (int variant = 0; variant < variant_count; variant++)
+			for (int variant = 0; variant < ARRAY_LEN (is->district_img_sets[dc].imgs); variant++)
 				for (int era = 0; era < 4; era++)
 					for (int col = 0; col < district_configs[dc].total_img_columns; col++) {
 						Sprite * sprite = &is->district_img_sets[dc].imgs[variant][era][col];
@@ -6034,7 +6033,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 		char districts_hour_dir[200];
 		snprintf(districts_hour_dir, sizeof districts_hour_dir, "%s\\Art\\Districts\\%s", is->mod_rel_dir, hour);
 		for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
-			for (int variant_i = 0; variant_i < district_configs[dc].num_img_paths; variant_i++) {
+			for (int variant_i = 0; variant_i < ARRAY_LEN (is->district_img_sets[dc].imgs); variant_i++) {
 				const char *img_path = district_configs[dc].img_paths[variant_i];
 				if ((img_path == NULL) || (img_path[0] == '\0'))
 					continue;
@@ -6163,7 +6162,7 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 		
 		if (is->current_config.enable_districts) {
 			for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
-				for (int variant_i = 0; variant_i < district_configs[dc].num_img_paths; variant_i++) {
+				for (int variant_i = 0; variant_i < ARRAY_LEN (district_configs[dc].img_paths); variant_i++) {
 					const char *img_path = district_configs[dc].img_paths[variant_i];
 					if ((img_path == NULL) || (img_path[0] == '\0'))
 						continue;
@@ -17393,8 +17392,8 @@ init_district_images ()
 	// For each district type
 	for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++) {
 
-		// For each cultural variant (or single image if num_img_paths = 1)
-		for (int variant_i = 0; variant_i < district_configs[dc].num_img_paths; variant_i++) {
+		// For each cultural variant
+		for (int variant_i = 0; variant_i < ARRAY_LEN (district_configs[dc].img_paths); variant_i++) {
 
 			if (district_configs[dc].img_paths[variant_i] == NULL)
 				break;
@@ -17413,7 +17412,7 @@ init_district_images ()
 
 				(*p_OutputDebugStringA) ("[C3X] Failed to load districts sprite sheet.\n");
 				for (int dc2 = 0; dc2 < COUNT_DISTRICT_TYPES; dc2++)
-					for (int variant_i2 = 0; variant_i2 < district_configs[dc2].num_img_paths; variant_i2++)
+					for (int variant_i2 = 0; variant_i2 < ARRAY_LEN (district_configs[dc2].img_paths); variant_i2++)
 						for (int era_i = 0; era_i < 4; era_i++) {
 							for (int col = 0; col < district_configs[dc2].total_img_columns; col++) {
 								Sprite * sprite = &is->district_img_sets[dc2].imgs[variant_i2][era_i][col];

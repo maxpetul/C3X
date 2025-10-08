@@ -78,7 +78,7 @@
 #btn_tile_sheet_column    4
 #vary_img_by_era          1
 #vary_img_by_culture      0
-#advance_prereq           Construction
+#advance_prereq           Currency
 #dependent_improvs        Marketplace,Bank,Stock Exchange
 #defense_bonus_multiplier 1
 #allow_multiple           0
