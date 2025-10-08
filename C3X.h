@@ -299,6 +299,7 @@ struct c3x_config {
 	bool enable_distribution_hub_districts;
 
 	bool cities_can_share_buildings_by_districts;
+	bool air_units_use_aerodrome_districts_not_cities;
 
 	int maximum_pop_before_neighborhood_needed;
 	int per_neighborhood_pop_growth_enabled;

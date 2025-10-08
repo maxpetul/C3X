@@ -6436,6 +6436,7 @@ patch_init_floating_point ()
 		{"completed_wonder_districts_can_be_destroyed"         , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
 		{"destroyed_wonders_can_be_rebuilt"         		   , false, offsetof (struct c3x_config, destroyed_wonders_can_be_rebuilt)},
 		{"cities_can_share_buildings_by_districts"             , false, offsetof (struct c3x_config, cities_can_share_buildings_by_districts)},
+        {"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
 	};
 
 	struct integer_config_option {
@@ -15918,6 +15919,47 @@ patch_Unit_is_in_rebase_range (Unit * this, int edx, int tile_x, int tile_y)
 bool __fastcall
 patch_Unit_check_rebase_target (Unit * this, int edx, int tile_x, int tile_y)
 {
+	// Check if this is an air unit
+	bool is_air_unit = (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air);
+
+	// If districts are enabled and this is an air unit, check for aerodrome districts
+	if (is_air_unit && is->current_config.enable_districts) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			int district_id;
+			// Check if tile has a district
+			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
+				// Get the aerodrome district ID
+				int aerodrome_id = -1;
+                for (int i = 0; i < COUNT_DISTRICT_TYPES; i++)
+                    if (district_configs[i].command == UCV_Build_Aerodrome)
+                        aerodrome_id = i;
+                        break;
+
+				// Check if this is an aerodrome district owned by this unit's civ
+				if (district_id == aerodrome_id && tile->Territory_OwnerID == this->Body.CivID) {
+					// Check if aerodrome is complete
+					if (district_is_complete (tile, district_id)) {
+						// Perform range check
+						bool in_range = patch_Unit_is_in_rebase_range (this, __, tile_x, tile_y);
+						if (in_range) {
+							return is_below_stack_limit (tile, this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+						}
+					}
+				}
+			}
+
+			// If air_units_use_aerodrome_districts_not_cities is enabled, check if there's a city and disallow it
+			if (is->current_config.air_units_use_aerodrome_districts_not_cities) {
+				City * target_city = city_at (tile_x, tile_y);
+				if (target_city != NULL && target_city->Body.CivID == this->Body.CivID) {
+					// There's a friendly city here - disallow landing since configured to use aerodromes/airfields/carriers only
+					return false;
+				}
+			}
+		}
+	}
+
 	// 6 is the game's standard value, so fall back on the base game logic in that case
 	if (is->current_config.rebase_range_multiplier == 6) {
 		return Unit_check_rebase_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
