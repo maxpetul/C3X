@@ -17519,9 +17519,6 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                         culture = p_bic_data->Races[leaders[territory_owner_id].RaceID].CultureGroupID;
                         era = leader->Era;
                     } else {
-						//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: territory_owner_id=%d, district_id=%d, era=%d", territory_owner_id, district_id, era);
-                    	//pop_up_in_game_error (ss);
-
 						// Render abandoned district, special index 5
 						int variant = 5;
 						district_sprite = &is->district_img_sets[0].imgs[variant][era][buildings];
