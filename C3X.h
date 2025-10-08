@@ -514,6 +514,12 @@ struct district_config {
 		.defense_bonus_multiplier = 1.0, .allow_multiple = true, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0
 	},
 	{
+		.command = UCV_Build_Aerodrome, .tooltip = "Build Aerodrome", .img_paths = {"Aerodrome.pcx"}, 
+		.num_img_paths = 1, .index = 8, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 3, .total_img_rows = 4, .total_img_columns = 2,
+		.advance_prereq = "Flight", .dependent_improvements = {"Airport"},
+		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0
+	},
+	{
 		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_paths = {"Encampment.pcx"}, 
 		.num_img_paths = 1, .index = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 3,
 		.advance_prereq = "Warrior Code", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
@@ -542,12 +548,6 @@ struct district_config {
 		.num_img_paths = 1, .index = 7, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 4,
 		.advance_prereq = "Currency", .dependent_improvements = {"Marketplace", "Bank", "Stock Exchange"},
 		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 2, .shield_bonus = 0
-	},
-	{
-		.command = UCV_Build_Aerodrome, .tooltip = "Build Aerodrome", .img_paths = {"Aerodrome.pcx"}, 
-		.num_img_paths = 1, .index = 8, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 3, .total_img_rows = 4, .total_img_columns = 2,
-		.advance_prereq = "Flight", .dependent_improvements = {"Airport"},
-		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0
 	}
 };
 
