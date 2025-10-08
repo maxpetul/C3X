@@ -776,6 +776,7 @@ define,	   0x501CD0,	0x50B960,	0x501D70,	"Leader_make_contact",				"void (__fast
 define,	   0x5F83E0,	0x608910,	0x5F8310,	"Sprite_draw_for_hud",				"int (__fastcall *) (Sprite * this, int edx, Sprite * alpha, int param_2, PCX_Image * canvas, int x, int y, int param_6)"
 repl call, 0x55374D,	0x55EDF8,	0x5536FD,	"Sprite_draw_minimap_frame",			""
 define,	   0x5792AB,	0x5863CB,	0x57921B,	"ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT",		"byte *"
+repl call, 0x44580E,	0x44760E,	0x44588E,	"Unit_has_king_ability_for_find_unsupported",	""
 
 ignore,	   0x5FC710,	0x0,		0x0,		"PCX_Image_create_and_init_jgl_image",		"int (__fastcall *) (PCX_Image * this, int edx, int width, int height, int bit_depth, int param_4, int param_5, int param_6)"
 ignore,	   0x5FCC50,	0x0,		0x0,		"PCX_Image_draw_region_to_location",		"void (__fastcall *) (PCX_Image * this, int edx, PCX_Image * canvas, int src_x, int src_y, int dest_x, int dest_y, int width, int height)"

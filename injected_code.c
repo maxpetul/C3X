@@ -9146,6 +9146,18 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 	Leader_set_treasury (leader, __, treasury - improv_cost - unit_cost);
 }
 
+bool __fastcall
+patch_Unit_has_king_ability_for_find_unsupported (Unit * this, int edx, enum UnitTypeAbilities king_ability)
+{
+	// If we're set to aggressively penalize bankruptcy and this unit doesn't require support, return that it is a king so it doesn't get
+	// disbanded.
+	if (is->current_config.aggressively_penalize_bankruptcy && ! p_bic_data->UnitTypes[this->Body.UnitTypeID].requires_support)
+		return true;
+
+	else
+		return Unit_has_ability (this, __, king_ability);
+}
+
 void __fastcall
 patch_Leader_pay_unit_maintenance (Leader * this)
 {
