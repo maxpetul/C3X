@@ -2006,75 +2006,6 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 		free (parsed_unit_type_limits);
 	}
 
-	if (cfg->enable_districts) {
-
-		char ss[200];
-
-		for (int i = 0; i < is->district_count; i++) {
-
-			// Map command ID to district index
-			if (is->district_configs[i].command != 0)
-				itable_insert (&is->command_id_to_district_id, is->district_configs[i].command, i);
-
-			is->district_infos[i].advance_prereq_id = -1;
-
-			// Map advance prereqs to districts
-			if (is->district_configs[i].advance_prereq != NULL && is->district_configs[i].advance_prereq != "") {
-				int tech_id;
-				struct string_slice tech_name = { .str = (char *)is->district_configs[i].advance_prereq, .len = (int)strlen (is->district_configs[i].advance_prereq) };
-				if (find_game_object_id_by_name (GOK_TECHNOLOGY, &tech_name, 0, &tech_id)) {
-
-					//snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d", tech_name.len, tech_name.str, is->district_configs[i].advance_prereq, tech_id);
-					//pop_up_in_game_error (ss);
-
-					// Set the prereq ID in the district info struct
-					is->district_infos[i].advance_prereq_id = tech_id;
-
-					// Map the tech ID to the district index
-					itable_insert (&is->district_tech_prereqs, tech_id, i);
-				} else {
-					is->district_infos[i].advance_prereq_id = -1;
-				}
-			}
-
-			// Map improvement prereqs to districts
-			int stored_count = 0;
-			for (int j = 0; j < is->district_configs[i].dependent_improvement_count; j++) {
-				int improv_id;
-
-				if (is->district_configs[i].dependent_improvements[j] == "" || is->district_configs[i].dependent_improvements[j] == NULL)
-					continue;
-
-				// Gate wonder district prereqs behind enable_wonder_districts
-				if ((is->district_configs[i].command == UCV_Build_WonderDistrict) &&
-				    (! cfg->enable_wonder_districts))
-					continue;
-
-				struct string_slice improv_name = { .str = (char *)is->district_configs[i].dependent_improvements[j], .len = (int)strlen (is->district_configs[i].dependent_improvements[j]) };
-				if (find_game_object_id_by_name (GOK_BUILDING, &improv_name, 0, &improv_id)) {
-
-					//snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d", improv_name.len, improv_name.str, is->district_configs[i].dependent_improvements[j], improv_id);
-					//pop_up_in_game_error (ss);
-
-					// Append the improvement ID to the list in the district info struct	
-					if (stored_count < ARRAY_LEN (is->district_infos[i].dependent_building_ids)) {
-						is->district_infos[i].dependent_building_ids[stored_count] = improv_id;
-						stored_count += 1;
-					}
-
-					// Map the improv ID to the district index
-					itable_insert (&is->district_building_prereqs, improv_id, i);
-
-					// Map the building name to its ID
-					stable_insert (&is->building_name_to_id, improv_name.str, improv_id);
-				} else {
-					is->district_infos[i].dependent_building_ids[j] = -1;
-			}
-			is->district_infos[i].dependent_building_count = stored_count;
-		}
-	}
-	}
-
 	free (text);
 	free_error_lines (unrecognized_lines);
 
@@ -3977,6 +3908,76 @@ load_districts_config (void)
 	load_dynamic_district_configs ();
 	load_dynamic_wonder_configs ();
 	is->district_count = is->special_district_count + is->dynamic_district_count;
+
+	struct c3x_config * cfg = &is->current_config;
+	if (cfg->enable_districts) {
+
+		char ss[200];
+
+		for (int i = 0; i < is->district_count; i++) {
+
+			// Map command ID to district index
+			if (is->district_configs[i].command != 0)
+				itable_insert (&is->command_id_to_district_id, is->district_configs[i].command, i);
+
+			is->district_infos[i].advance_prereq_id = -1;
+
+			// Map advance prereqs to districts
+			if (is->district_configs[i].advance_prereq != NULL && is->district_configs[i].advance_prereq != "") {
+				int tech_id;
+				struct string_slice tech_name = { .str = (char *)is->district_configs[i].advance_prereq, .len = (int)strlen (is->district_configs[i].advance_prereq) };
+				if (find_game_object_id_by_name (GOK_TECHNOLOGY, &tech_name, 0, &tech_id)) {
+
+					snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d", tech_name.len, tech_name.str, is->district_configs[i].advance_prereq, tech_id);
+					pop_up_in_game_error (ss);
+
+					// Set the prereq ID in the district info struct
+					is->district_infos[i].advance_prereq_id = tech_id;
+
+					// Map the tech ID to the district index
+					itable_insert (&is->district_tech_prereqs, tech_id, i);
+				} else {
+					is->district_infos[i].advance_prereq_id = -1;
+				}
+			}
+
+			// Map improvement prereqs to districts
+			int stored_count = 0;
+			for (int j = 0; j < is->district_configs[i].dependent_improvement_count; j++) {
+				int improv_id;
+
+				if (is->district_configs[i].dependent_improvements[j] == "" || is->district_configs[i].dependent_improvements[j] == NULL)
+					continue;
+
+				// Gate wonder district prereqs behind enable_wonder_districts
+				if ((is->district_configs[i].command == UCV_Build_WonderDistrict) &&
+				    (! cfg->enable_wonder_districts))
+					continue;
+
+				struct string_slice improv_name = { .str = (char *)is->district_configs[i].dependent_improvements[j], .len = (int)strlen (is->district_configs[i].dependent_improvements[j]) };
+				if (find_game_object_id_by_name (GOK_BUILDING, &improv_name, 0, &improv_id)) {
+
+					snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d", improv_name.len, improv_name.str, is->district_configs[i].dependent_improvements[j], improv_id);
+					pop_up_in_game_error (ss);
+
+					// Append the improvement ID to the list in the district info struct	
+					if (stored_count < ARRAY_LEN (is->district_infos[i].dependent_building_ids)) {
+						is->district_infos[i].dependent_building_ids[stored_count] = improv_id;
+						stored_count += 1;
+					}
+
+					// Map the improv ID to the district index
+					itable_insert (&is->district_building_prereqs, improv_id, i);
+
+					// Map the building name to its ID
+					stable_insert (&is->building_name_to_id, improv_name.str, improv_id);
+				} else {
+					is->district_infos[i].dependent_building_ids[j] = -1;
+				}
+				is->district_infos[i].dependent_building_count = stored_count;
+			}
+		}
+	}
 }
 
 void
