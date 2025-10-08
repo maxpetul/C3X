@@ -16,8 +16,12 @@ typedef unsigned char byte;
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
-#define COUNT_DISTRICT_TYPES 9
-#define COUNT_WONDER_DISTRICT_TYPES 1
+#define COUNT_SPECIAL_DISTRICT_TYPES 10
+#define USED_SPECIAL_DISTRICT_TYPES 4
+#define MAX_DYNAMIC_DISTRICT_TYPES 22
+#define COUNT_DISTRICT_TYPES (COUNT_SPECIAL_DISTRICT_TYPES + MAX_DYNAMIC_DISTRICT_TYPES)
+#define MAX_WONDER_DISTRICT_TYPES 32
+#define C3X_DISTRICT_COMMAND_BASE (-11000000)
 
 // Initialize to zero. Implementation is in common.c
 struct table {
@@ -477,76 +481,26 @@ enum city_loss_reason {
 
 struct district_config {
 	enum Unit_Command_Values command;
+	char const * name;
 	char const * tooltip;
 	char const * advance_prereq;
 	char const * dependent_improvements[5];
-	char const * img_paths[10]; 
+	char const * img_paths[10];
 	bool allow_multiple;
-	float defense_bonus_multiplier;
-	int btn_tile_sheet_column,
-		btn_tile_sheet_row,
-		total_img_rows,
-		total_img_columns,
-		culture_bonus,
-		science_bonus,
-		food_bonus,
-		gold_bonus,
-		shield_bonus;
-} const district_configs[COUNT_DISTRICT_TYPES] = {
-	{
-		.command = UCV_Build_Neighborhood, .tooltip = "Build Neighborhood", .img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx", "Neighborhood_Abandoned.pcx"}, 
-		.btn_tile_sheet_column = 0, .btn_tile_sheet_row = 1, .total_img_rows = 4, .total_img_columns = 4,
-		.advance_prereq = NULL, .dependent_improvements = {NULL},
-		.defense_bonus_multiplier = 1.25, .allow_multiple = true, .culture_bonus = 1, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0
-	},
-	{
-		.command = UCV_Build_WonderDistrict, .tooltip = "Build Wonder District", .img_paths = {"WonderDistrict.pcx"}, 
-		.btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 1,
-		.advance_prereq = NULL, .dependent_improvements = {"The Pyramids"}, //, "The Hanging Guardens", "The Oracle", "Copernicus' Observatory", "The Great Library"},
-		.defense_bonus_multiplier = 1.0, .allow_multiple = true, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0
-	},
-	{
-		.command = UCV_Build_DistributionHub, .tooltip = "Build Distribution Hub", .img_paths = {"DistributionHub.pcx"}, 
-		.btn_tile_sheet_column = 6, .btn_tile_sheet_row = 4, .total_img_rows = 4, .total_img_columns = 1,
-		.advance_prereq = NULL, .dependent_improvements = {NULL},
-		.defense_bonus_multiplier = 1.0, .allow_multiple = true, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0
-	},
-	{
-		.command = UCV_Build_Aerodrome, .tooltip = "Build Aerodrome", .img_paths = {"Aerodrome.pcx"}, 
-		.btn_tile_sheet_column = 0, .btn_tile_sheet_row = 3, .total_img_rows = 4, .total_img_columns = 2,
-		.advance_prereq = "Flight", .dependent_improvements = {"Airport"},
-		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0
-	},
-	{
-		.command = UCV_Build_Encampment, .tooltip = "Build Encampment", .img_paths = {"Encampment.pcx"}, 
-		.btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 3,
-		.advance_prereq = "Warrior Code", .dependent_improvements = {"Barracks", "SAM Missile Battery"},
-		.defense_bonus_multiplier = 1.5, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0
-	},
-	{
-		.command = UCV_Build_HolySite, .tooltip = "Build Holy Site", .img_paths = {"HolySite_AMER.pcx", "HolySite_EURO.pcx", "HolySite_ROMAN.pcx", "HolySite_MIDEAST.pcx", "HolySite_ASIAN.pcx"}, 
-		.btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0, .total_img_rows = 1, .total_img_columns = 3,
-		.advance_prereq = "Ceremonial Burial", .dependent_improvements = {"Temple", "Cathedral"},
-		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 1, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0
-	},
-	{
-		.command = UCV_Build_Campus, .tooltip = "Build Campus", .img_paths = {"Campus.pcx"}, 
-		.btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 3,
-		.advance_prereq = "Literature", .dependent_improvements = {"Library", "University"},
-		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0
-	},
-	{
-		.command = UCV_Build_EntertainmentComplex, .tooltip = "Build Entertainment Complex", .img_paths = {"EntertainmentComplex.pcx"}, 
-		.btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 2,
-		.advance_prereq = "Construction", .dependent_improvements = {"Colosseum"},
-		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 1, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0
-	},
-	{
-		.command = UCV_Build_CommercialHub, .tooltip = "Build Commercial Hub", .img_paths = {"CommercialHub.pcx"}, 
-		.btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .total_img_rows = 4, .total_img_columns = 4,
-		.advance_prereq = "Currency", .dependent_improvements = {"Marketplace", "Bank", "Stock Exchange"},
-		.defense_bonus_multiplier = 1.0, .allow_multiple = false, .culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 2, .shield_bonus = 0
-	}
+	bool vary_img_by_era;
+	bool vary_img_by_culture;
+	bool is_dynamic;
+	int dependent_improvement_count;
+	int img_path_count;
+	int max_building_stage;
+	int btn_tile_sheet_column;
+	int btn_tile_sheet_row;
+	int culture_bonus;
+	int science_bonus;
+	int food_bonus;
+	int gold_bonus;
+	int shield_bonus;
+	int defense_bonus_multiplier_pct;
 };
 
 struct wonder_district_config {
@@ -556,12 +510,102 @@ struct wonder_district_config {
 		img_column,
 		img_construct_row,
 		img_construct_column;
-} const wonder_district_configs[COUNT_WONDER_DISTRICT_TYPES] = {
-	{ .index = 0, .img_row = 0, .img_column = 0, .img_construct_row = 0, .img_construct_column = 1, .wonder_name = "The Pyramids" },
-	//{ .index = 1, .img_row = 0, .img_column = 1, .img_construct_row = 0, .img_construct_column = 2, .wonder_name = "The Hanging Gardens" },
-	//{ .index = 2, .img_row = 0, .img_column = 3, .img_construct_row = 0, .img_construct_column = 4, .wonder_name = "The Oracle" },
-	//{ .index = 3, .img_row = 1, .img_column = 0, .img_construct_row = 1, .img_construct_column = 1, .wonder_name = "Copernicus' Observatory" },
-	//{ .index = 4, .img_row = 1, .img_column = 2, .img_construct_row = 1, .img_construct_column = 3, .wonder_name = "The Great Library" }
+	bool is_dynamic;
+};
+
+const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYPES] = {
+	{
+		.command = UCV_Build_Neighborhood,
+		.name = "Neighborhood",
+		.tooltip = "Build Neighborhood",
+		.advance_prereq = NULL,
+		.allow_multiple = true,
+		.vary_img_by_era = true,
+		.vary_img_by_culture = true,
+		.is_dynamic = false,
+		.dependent_improvement_count = 0,
+		.img_path_count = 6,
+		.max_building_stage = 3,
+		.btn_tile_sheet_column = 0,
+		.btn_tile_sheet_row = 1,
+		.culture_bonus = 1,
+		.science_bonus = 0,
+		.food_bonus = 0,
+		.gold_bonus = 1,
+		.shield_bonus = 0,
+		.defense_bonus_multiplier_pct = 1.25f,
+		.dependent_improvements = {0},
+		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx", "Neighborhood_Abandoned.pcx"}
+	},
+	{
+		.command = UCV_Build_WonderDistrict,
+		.name = "Wonder District",
+		.tooltip = "Build Wonder District",
+		.advance_prereq = NULL,
+		.allow_multiple = true,
+		.vary_img_by_era = true,
+		.vary_img_by_culture = false,
+		.is_dynamic = false,
+		.dependent_improvement_count = 0,
+		.img_path_count = 1,
+		.max_building_stage = 0,
+		.btn_tile_sheet_column = 4,
+		.btn_tile_sheet_row = 0,
+		.culture_bonus = 0,
+		.science_bonus = 0,
+		.food_bonus = 0,
+		.gold_bonus = 0,
+		.shield_bonus = 0,
+		.defense_bonus_multiplier_pct = 1.0f,
+		.dependent_improvements = {0},
+		.img_paths = {"WonderDistrict.pcx"}
+	},
+	{
+		.command = UCV_Build_DistributionHub,
+		.name = "Distribution Hub",
+		.tooltip = "Build Distribution Hub",
+		.advance_prereq = NULL,
+		.allow_multiple = true,
+		.vary_img_by_era = true,
+		.vary_img_by_culture = false,
+		.is_dynamic = false,
+		.dependent_improvement_count = 0,
+		.img_path_count = 1,
+		.max_building_stage = 0,
+		.btn_tile_sheet_column = 6,
+		.btn_tile_sheet_row = 4,
+		.culture_bonus = 0,
+		.science_bonus = 0,
+		.food_bonus = 0,
+		.gold_bonus = 0,
+		.shield_bonus = 0,
+		.defense_bonus_multiplier_pct = 1.0f,
+		.dependent_improvements = {0},
+		.img_paths = {"DistributionHub.pcx"}
+	},
+	{
+		.command = UCV_Build_Aerodrome,
+		.name = "Aerodrome",
+		.tooltip = "Build Aerodrome",
+		.advance_prereq = "Flight",
+		.allow_multiple = false,
+		.vary_img_by_era = true,
+		.vary_img_by_culture = false,
+		.is_dynamic = false,
+		.dependent_improvement_count = 1,
+		.img_path_count = 1,
+		.max_building_stage = 1,
+		.btn_tile_sheet_column = 0,
+		.btn_tile_sheet_row = 3,
+		.culture_bonus = 0,
+		.science_bonus = 0,
+		.food_bonus = 0,
+		.gold_bonus = 1,
+		.shield_bonus = 0,
+		.defense_bonus_multiplier_pct = 1.0f,
+		.dependent_improvements = {"Airport"},
+		.img_paths = {"Aerodrome.pcx"}
+	}
 };
 
 struct district_job_assignment {
@@ -652,6 +696,7 @@ struct injected_state {
 	void * (* realloc) (void *, size_t);
 	void (* free) (void *);
 	long (* strtol) (char const *, char **, int);
+	float (* strtof) (char const *, char **);
 	int (* strcmp) (char const *, char const *);
 	int (* strncmp) (char const *, char const *, size_t);
 	size_t (* strlen) (char const *);
@@ -1214,7 +1259,7 @@ struct injected_state {
 		Sprite LM_Forests_Small_Images[10];
 		Sprite LM_Forests_Pines_Images[12];
 		Sprite LM_Hills_Images[16];
-		Sprite District_Images[COUNT_DISTRICT_TYPES][5][4][4]; // [district][variant][era][buildings]
+		Sprite District_Images[COUNT_DISTRICT_TYPES][10][4][6]; // [district][variant][era][building_stage]
 	} day_night_cycle_imgs[24];
 
 	// Districts
@@ -1222,14 +1267,17 @@ struct injected_state {
 	enum init_state dc_btn_img_state;
 
 	// Districts data
+	struct district_config district_configs[COUNT_DISTRICT_TYPES];
+	struct wonder_district_config wonder_district_configs[MAX_WONDER_DISTRICT_TYPES];
+
 	struct district_image_set {
-		Sprite imgs[10][4][4]; // [variant][era][buildings]
+		Sprite imgs[10][4][6]; // [variant][era][building_stage]
 	} district_img_sets[COUNT_DISTRICT_TYPES];
 
 	struct wonder_district_image_set {
 		Sprite img;
 		Sprite construct_img;
-	} wonder_district_img_sets[COUNT_WONDER_DISTRICT_TYPES];
+	} wonder_district_img_sets[MAX_WONDER_DISTRICT_TYPES];
 
 	struct district_button_image_set {
 		Sprite imgs[4];
@@ -1261,8 +1309,15 @@ struct injected_state {
 
 	struct district_infos {
 		int advance_prereq_id; // Tech ID that enables the district
+		int dependent_building_count;
 		int dependent_building_ids[5]; // Building types the district enables
 	} district_infos[COUNT_DISTRICT_TYPES];
+
+	int district_count;
+	int special_district_count;
+	int dynamic_district_count;
+	int wonder_district_count;
+	int next_custom_dynamic_command_index;
 
 	struct table distribution_hub_records;
 	struct table distribution_hub_coverage_counts;

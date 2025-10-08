@@ -1,89 +1,89 @@
 #District
-#name                     Encampment
-#tooltip                  Build Encampment
-#img_paths                Encampment.pcx
-#btn_tile_sheet_row       0
-#btn_tile_sheet_column    0
-#vary_img_by_era          1
-#vary_img_by_culture      0
-#advance_prereq           Warrior Code
-#dependent_improvs        Barracks,SAM Missile Battery
-#defense_bonus_multiplier 1.5
-#allow_multiple           0
-#culture_bonus            0
-#science_bonus            0
-#food_bonus               0
-#gold_bonus               0
-#shield_bonus             0
+#name                         Encampment
+#tooltip                      Build Encampment
+#img_paths                    Encampment.pcx
+#btn_tile_sheet_row           0
+#btn_tile_sheet_column        0
+#vary_img_by_era              1
+#vary_img_by_culture          0
+#advance_prereq               Warrior Code
+#dependent_improvs            Barracks,"SAM Missile Battery"
+#defense_bonus_multiplier_pct 150
+#allow_multiple               0
+#culture_bonus                0
+#science_bonus                0
+#food_bonus                   0
+#gold_bonus                   0
+#shield_bonus                 0
 
 #District
-#name                     Holy Site
-#tooltip                  Build Holy Site
-#img_paths                HolySite.pcx
-#btn_tile_sheet_row       0
-#btn_tile_sheet_column    2
-#vary_img_by_era          0
-#vary_img_by_culture      1
-#advance_prereq           Ceremonial Burial
-#dependent_improvs        Temple,Cathedral
-#defense_bonus_multiplier 1
-#allow_multiple           0
-#culture_bonus            1
-#science_bonus            0
-#food_bonus               0
-#gold_bonus               0
-#shield_bonus             0
+#name                         Holy Site
+#tooltip                      Build Holy Site
+#img_paths                    HolySite.pcx
+#btn_tile_sheet_row           0
+#btn_tile_sheet_column        2
+#vary_img_by_era              0
+#vary_img_by_culture          1
+#advance_prereq               "Ceremonial Burial"
+#dependent_improvs            Temple,Cathedral
+#defense_bonus_multiplier_pct 100
+#allow_multiple               0
+#culture_bonus                1
+#science_bonus                0
+#food_bonus                   0
+#gold_bonus                   0
+#shield_bonus                 0
 
 #District
-#name                     Campus
-#tooltip                  Build Campus
-#img_paths                Campus.pcx
-#btn_tile_sheet_row       0
-#btn_tile_sheet_column    1
-#vary_img_by_era          1
-#vary_img_by_culture      0
-#advance_prereq           Literature
-#dependent_improvs        Library,University,Research Lab
-#defense_bonus_multiplier 1
-#allow_multiple           0
-#culture_bonus            0
-#science_bonus            1
-#food_bonus               0
-#gold_bonus               0
-#shield_bonus             0
+#name                         Campus
+#tooltip                      Build Campus
+#img_paths                    Campus.pcx
+#btn_tile_sheet_row           0
+#btn_tile_sheet_column        1
+#vary_img_by_era              1
+#vary_img_by_culture          0
+#advance_prereq               Literature
+#dependent_improvs            Library,University,"Research Lab"
+#defense_bonus_multiplier_pct 100
+#allow_multiple               0
+#culture_bonus                0
+#science_bonus                1
+#food_bonus                   0
+#gold_bonus                   0
+#shield_bonus                 0
 
 #District
-#name                     Entertainment Complex
-#tooltip                  Build Entertainment Complex
-#img_paths                EntertainmentComplex.pcx
-#btn_tile_sheet_row       0
-#btn_tile_sheet_column    4
-#vary_img_by_era          1
-#vary_img_by_culture      0
-#advance_prereq           Construction
-#dependent_improvs        Colosseum
-#defense_bonus_multiplier 1
-#allow_multiple           0
-#culture_bonus            1
-#science_bonus            0
-#food_bonus               0
-#gold_bonus               1
-#shield_bonus             0
+#name                         Entertainment Complex
+#tooltip                      Build Entertainment Complex
+#img_paths                    EntertainmentComplex.pcx
+#btn_tile_sheet_row           0
+#btn_tile_sheet_column        4
+#vary_img_by_era              1
+#vary_img_by_culture          0
+#advance_prereq               Construction
+#dependent_improvs            Colosseum
+#defense_bonus_multiplier_pct 100
+#allow_multiple               0
+#culture_bonus                1
+#science_bonus                0
+#food_bonus                   0
+#gold_bonus                   1
+#shield_bonus                 0
 
 #District
-#name                     Commercial Hub
-#tooltip                  Build Commercial Hub
-#img_paths                CommercialHub.pcx
-#btn_tile_sheet_row       0
-#btn_tile_sheet_column    4
-#vary_img_by_era          1
-#vary_img_by_culture      0
-#advance_prereq           Currency
-#dependent_improvs        Marketplace,Bank,Stock Exchange
-#defense_bonus_multiplier 1
-#allow_multiple           0
-#culture_bonus            0
-#science_bonus            0
-#food_bonus               0
-#gold_bonus               2
-#shield_bonus             0
+#name                         Commercial Hub
+#tooltip                      Build Commercial Hub
+#img_paths                    CommercialHub.pcx
+#btn_tile_sheet_row           0
+#btn_tile_sheet_column        4
+#vary_img_by_era              1
+#vary_img_by_culture          0
+#advance_prereq               Currency
+#dependent_improvs            Marketplace,Bank,"Stock Exchange"
+#defense_bonus_multiplier_pct 100
+#allow_multiple               0
+#culture_bonus                0
+#science_bonus                0
+#food_bonus                   0
+#gold_bonus                   2
+#shield_bonus                 0

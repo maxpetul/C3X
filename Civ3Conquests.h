@@ -768,17 +768,10 @@ enum Unit_Command_Values
   UCV_Stack_Bombard = 0x80000001,
 
   // District Actions
-  UCV_Build_Encampment = -10000001,
-  UCV_Build_Campus = -10000002,
-  UCV_Build_Theater = -10000003,
-  UCV_Build_HolySite = -10000004,
-  UCV_Build_CommercialHub = -10000005,
-  UCV_Build_IndustrialZone = -10000006,
-  UCV_Build_EntertainmentComplex = -10000007,
-  UCV_Build_Neighborhood = -10000008,
-  UCV_Build_WonderDistrict = -10000009,
-  UCV_Build_DistributionHub = -10000010,
-  UCV_Build_Aerodrome = -10000011,
+  UCV_Build_Neighborhood = -10000001,
+  UCV_Build_WonderDistrict = -10000002,
+  UCV_Build_DistributionHub = -10000003,
+  UCV_Build_Aerodrome = -10000004,
 };
 
 enum Unit_Mode_Actions
