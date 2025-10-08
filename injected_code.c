@@ -3666,15 +3666,20 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 	return false;
 }
 
-bool
-city_has_required_district (City * city, int district_id)
+static int
+get_aerodrome_district_id ()
+{
+	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++)
+		if (district_configs[i].command == UCV_Build_Aerodrome)
+			return i;
+	return -1;
+}
+
+static Tile *
+get_completed_district_tile_for_city (City * city, int district_id, int * out_x, int * out_y)
 {
 	if ((city == NULL) || (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
-		return false;
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] city_has_required_district: city=%p district_id=%d\n", (void*)city, district_id);
-	(*p_OutputDebugStringA) (ss);
+		return NULL;
 
 	int civ_id = city->Body.CivID;
 	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
@@ -3688,11 +3693,36 @@ city_has_required_district (City * city, int district_id)
 		if (itable_look_up (&is->district_tile_map, (int)candidate, &mapped_id) &&
 		    (mapped_id == district_id) &&
 		    district_is_complete (candidate, district_id)) {
-			clear_city_district_request (city, district_id);
-			snprintf (ss, sizeof ss, "[C3X] city_has_required_district: City has district_id=%d\n", district_id);
-			(*p_OutputDebugStringA) (ss);
-			return true;
+			if ((out_x != NULL) || (out_y != NULL)) {
+				int tx, ty;
+				tai_get_coords (&tai, &tx, &ty);
+				if (out_x != NULL)
+					*out_x = tx;
+				if (out_y != NULL)
+					*out_y = ty;
+			}
+			return candidate;
 		}
+	}
+
+	return NULL;
+}
+
+bool
+city_has_required_district (City * city, int district_id)
+{
+	if ((city == NULL) || (district_id < 0) || (district_id >= COUNT_DISTRICT_TYPES))
+		return false;
+
+	char ss[200];
+	snprintf (ss, sizeof ss, "[C3X] city_has_required_district: city=%p district_id=%d\n", (void*)city, district_id);
+	(*p_OutputDebugStringA) (ss);
+
+	if (get_completed_district_tile_for_city (city, district_id, NULL, NULL) != NULL) {
+		clear_city_district_request (city, district_id);
+		snprintf (ss, sizeof ss, "[C3X] city_has_required_district: City has district_id=%d\n", district_id);
+		(*p_OutputDebugStringA) (ss);
+		return true;
 	}
 	snprintf (ss, sizeof ss, "[C3X] city_has_required_district: City does not have district_id=%d\n", district_id);
 	(*p_OutputDebugStringA) (ss);
@@ -9817,6 +9847,15 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 		int available;
 		if (get_available_unit_count (&leaders[this->Body.CivID], unit_type_id, &available) && (available <= 0))
 			return false;
+
+		if (is->current_config.enable_districts &&
+		    is->current_config.air_units_use_aerodrome_districts_not_cities) {
+			UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
+			int aerodrome_id = get_aerodrome_district_id ();
+			if ((type->Unit_Class == UTC_Air) && (aerodrome_id >= 0) &&
+			    ! city_has_required_district (this, aerodrome_id))
+				return false;
+		}
 	}
 
 	return base;
@@ -14371,7 +14410,29 @@ patch_Sprite_draw_tourism_gold (Sprite * this, int edx, PCX_Image * canvas, int 
 Unit * __fastcall
 patch_Leader_spawn_unit (Leader * this, int edx, int type_id, int tile_x, int tile_y, int barb_tribe_id, int id, bool param_6, LeaderKind leader_kind, int race_id)
 {
-	Unit * tr = Leader_spawn_unit (this, __, type_id, tile_x, tile_y, barb_tribe_id, id, param_6, leader_kind, race_id);
+	int spawn_x = tile_x,
+	    spawn_y = tile_y;
+
+	if (is->current_config.enable_districts &&
+	    is->current_config.air_units_use_aerodrome_districts_not_cities) {
+		UnitType * type = &p_bic_data->UnitTypes[type_id];
+		int aerodrome_id = get_aerodrome_district_id ();
+		if ((type->Unit_Class == UTC_Air) && (aerodrome_id >= 0)) {
+			City * spawn_city = city_at (tile_x, tile_y);
+			if ((spawn_city != NULL) && (spawn_city->Body.CivID == this->ID)) {
+				int district_x, district_y;
+				Tile * district_tile = get_completed_district_tile_for_city (spawn_city, aerodrome_id, &district_x, &district_y);
+				if ((district_tile != NULL) && (district_tile != p_null_tile) &&
+				    (district_tile->Territory_OwnerID == this->ID) &&
+				    is_below_stack_limit (district_tile, this->ID, type->Unit_Class)) {
+					spawn_x = district_x;
+					spawn_y = district_y;
+				}
+			}
+		}
+	}
+
+	Unit * tr = Leader_spawn_unit (this, __, type_id, spawn_x, spawn_y, barb_tribe_id, id, param_6, leader_kind, race_id);
 	if (tr != NULL)
 		change_unit_type_count (this, type_id, 1);
 	return tr;
@@ -15929,15 +15990,9 @@ patch_Unit_check_rebase_target (Unit * this, int edx, int tile_x, int tile_y)
 			int district_id;
 			// Check if tile has a district
 			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
-				// Get the aerodrome district ID
-				int aerodrome_id = -1;
-                for (int i = 0; i < COUNT_DISTRICT_TYPES; i++)
-                    if (district_configs[i].command == UCV_Build_Aerodrome)
-                        aerodrome_id = i;
-                        break;
-
+				int aerodrome_id = get_aerodrome_district_id ();
 				// Check if this is an aerodrome district owned by this unit's civ
-				if (district_id == aerodrome_id && tile->Territory_OwnerID == this->Body.CivID) {
+				if ((aerodrome_id >= 0) && (district_id == aerodrome_id) && (tile->Territory_OwnerID == this->Body.CivID)) {
 					// Check if aerodrome is complete
 					if (district_is_complete (tile, district_id)) {
 						// Perform range check
@@ -17519,6 +17574,9 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                         culture = p_bic_data->Races[leaders[territory_owner_id].RaceID].CultureGroupID;
                         era = leader->Era;
                     } else {
+						//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: territory_owner_id=%d, district_id=%d, era=%d", territory_owner_id, district_id, era);
+                    	//pop_up_in_game_error (ss);
+
 						// Render abandoned district, special index 5
 						int variant = 5;
 						district_sprite = &is->district_img_sets[0].imgs[variant][era][buildings];
