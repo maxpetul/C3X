@@ -87,3 +87,21 @@
 #food_bonus                   0
 #gold_bonus                   2
 #shield_bonus                 0
+
+#District
+#name                         Industrial Zone
+#tooltip                      Build Industrial Zone
+#img_paths                    IndustrialZone.pcx
+#btn_tile_sheet_row           0
+#btn_tile_sheet_column        6
+#vary_img_by_era              1
+#vary_img_by_culture          0
+#advance_prereq               Industrialization
+#dependent_improvs            Factory, "Manufacturing Plant"
+#defense_bonus_multiplier_pct 100
+#allow_multiple               0
+#culture_bonus                0
+#science_bonus                0
+#food_bonus                   0
+#gold_bonus                   0
+#shield_bonus                 4
