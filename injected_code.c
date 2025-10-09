@@ -5260,7 +5260,10 @@ city_is_currently_building_wonder (City * city)
 	int order_id = city->Body.Order_ID;
 	if ((order_id < 0) || (order_id >= p_bic_data->ImprovementsCount))
 		return false;
-	return (p_bic_data->Improvements[order_id].Characteristics & ITC_Wonder) != 0;
+	char ss[200];
+	snprintf (ss, sizeof ss, "city_is_currently_building_wonder: city=%p order_id=%d\n", (void *)city, order_id);
+	(*p_OutputDebugStringA) (ss);
+	return (p_bic_data->Improvements[order_id].Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0;
 }
 
 bool
@@ -5303,8 +5306,11 @@ wonder_district_tile_under_construction (Tile * tile, int tile_x, int tile_y, in
 		snprintf (ss, sizeof ss, "wonder_district_tile_under_construction: city=%p (%d,%d) owned by civ %d\n", (void *)city, city->Body.X, city->Body.Y, city->Body.CivID);
 		(*p_OutputDebugStringA) (ss);
 
-		if (! city_is_currently_building_wonder (city) || (city->Body.Order_Type != COT_Improvement))
+		if (! city_is_currently_building_wonder (city) || (city->Body.Order_Type != COT_Improvement)) {
+			snprintf (ss, sizeof ss, "wonder_district_tile_under_construction: city=%p (%d,%d) is not building a wonder\n", (void *)city, city->Body.X, city->Body.Y);
+			(*p_OutputDebugStringA) (ss);
 			continue;
+		}
 
 		snprintf (ss, sizeof ss, "wonder_district_tile_under_construction: city=%p (%d,%d) is building a wonder\n", (void *)city, city->Body.X, city->Body.Y);
 		(*p_OutputDebugStringA) (ss);
@@ -10803,7 +10809,7 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 	if (is_human && is->current_config.enable_wonder_districts &&
 	    (i_improv >= 0) && (i_improv < p_bic_data->ImprovementsCount)) {
 		Improvement * improv = &p_bic_data->Improvements[i_improv];
-		if (improv->Characteristics & ITC_Wonder) {
+		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
 			// Can only build wonders if an incomplete wonder district exists
 			if (! city_has_incomplete_wonder_district (this))
 				return false;
@@ -10852,7 +10858,7 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 		bool needs_wonder_district = false;
 		if (is->current_config.enable_wonder_districts) {
 			Improvement * improv = &p_bic_data->Improvements[out->OrderID];
-			if ((improv->Characteristics & ITC_Wonder) &&
+			if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) &&
 			    (! city_has_incomplete_wonder_district (this))) {
 				needs_wonder_district = true;
 			}
@@ -10870,7 +10876,7 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 					// If fallback is feasible and is a wonder, check if it has an incomplete wonder district
 					if (fallback_is_feasible && is->current_config.enable_wonder_districts) {
 						Improvement * fallback_improv = &p_bic_data->Improvements[stored->order.OrderID];
-						if ((fallback_improv->Characteristics & ITC_Wonder) &&
+						if ((fallback_improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) &&
 						    (! city_has_incomplete_wonder_district (this)))
 							fallback_is_feasible = false;
 					}
@@ -10897,7 +10903,7 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 			if ((wonder_district_id >= 0) &&
 				(required_district_id == wonder_district_id)) {
 				Improvement * improv = &p_bic_data->Improvements[out->OrderID];
-				if (improv->Characteristics & ITC_Wonder)
+				if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder))
 					remember_pending_wonder_order (this, out->OrderID);
 			}
 		}
@@ -12219,7 +12225,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 
 	if (! add &&
 	    is->current_config.destroyed_wonders_can_be_rebuilt &&
-	    (improv->Characteristics & ITC_Wonder) &&
+	    (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) &&
 	    (! is->is_placing_scenario_things)) {
 			set_wonder_built_flag (improv_id, false);
 
@@ -12232,7 +12238,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	// After adding a world wonder, if wonder districts are enabled,
 	// assign the wonder image to one of the city's Wonder District tiles (first match).
 	if (add && is->current_config.enable_districts && is->current_config.enable_wonder_districts) {
-		if (improv->Characteristics & ITC_Wonder) {
+		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
 			int matched_windex = find_wonder_config_index_by_improvement_id (improv_id);
 
 			if (matched_windex >= 0) {
