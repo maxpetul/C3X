@@ -28,6 +28,7 @@ or even different art by culture, or both:
 
 <img width="1113" height="288" alt="image" src="https://github.com/user-attachments/assets/f4861fbf-e72c-4a4b-810b-a9761f2d1a19" />
 
+Districts are also fully compatible with the Day/Night Cycle.
 
 # District Types
 
@@ -136,7 +137,7 @@ Wonder art entries (both under construction and completed, separate slots) can b
 
 AI workers are triggered to build Wonder Districts in generally the same workflow as Standard Districts, based on when an AI city chooses a Wonder, triggering a worker to build a Wonder District. The only difference is that unlike Standard Districts, Wonders are specifically ["remembered"](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L10907) and [city production set to building the Wonder as soon as the Wonder District is completed](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L4434-L4448).
 
-With so many tiles taken up by Districts, you may be wondering how to actually feed your cities or gain shields. First, it's probably a good idea to expand your `city_work_radius` (e.g., to 3, adding at least one more ring of workable tiles around your city) and `minimum_city_separation` to some higher value. Beyond that though, enter Distribution Hubs.
+With so many tiles taken up by Districts, you may be wondering how to actually feed your cities or gain shields. First, it's probably a good idea to expand your `city_work_radius` (e.g., to 3, adding at least one more ring of workable tiles around your city) and `minimum_city_separation` to some higher value. Beyond that though, enter Distribution Hubs:
 
 ## Distribution Hubs
 
@@ -156,7 +157,7 @@ Distribution hub food and shields are shown in the City view with green outline:
 
 Distribution Hubs are thus essentially "breadbaskets" and heavy mining areas far from your urban centers (think: Egypt feeding ancient Rome, Ukraine feeding the Soviet Union, the American midwest feeding the coasts, etc.). 
 
-Creating a Distribution Hub significantly minimizes the growth potential and production output of a nearby city, so should be built wisely, likely far from your urban city cores, and well defended!. Distribution Hub yields are not subject to corruption.
+Creating a Distribution Hub significantly minimizes the growth potential and production output of a nearby city, so should be built wisely, likely far from your urban city cores, and well defended! Distribution Hub yields are also not subject to corruption.
 
 AI workers are triggered to build Distribution Hubs when their civ's "ideal" number of Distribution Hubs (calculated using `ai_ideal_distribution_hub_count_per_100_cities`) falls below the existing Distribution Hub count, [assessed in the production phase of each turn](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L14106-L14158). The AI determines the best potential Distribution Hub tile based on [distance from the capital (farther = better) and aggregate yields of all surrounding tiles](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L14117-L14152).
 
@@ -166,6 +167,13 @@ The Aerodrome District reuses and slightly modifies the base game airfield art. 
 
 <img width="778" height="382" alt="image" src="https://github.com/user-attachments/assets/c4b88569-266b-4a1c-aed3-1806e7e8c35c" />
 
+
+## Roadmap
+
+If I have the time, I hope to:
+
+1. Add a Seasonal Cycle for art (spring/summer/fall/winter), like the Day/Night Cycle. This is not strictly part of Districts, but would be fully compatible.
+2. Add support for Ports and other general Naval Districts.
 
 ## Special Thanks
 1. [@maxpetul](https://github.com/maxpetul/) (I'm standing on the shoulders of giants!) and others whose work made C3X possible
