@@ -109,6 +109,12 @@ Each culture has 4 possible Neighborhood art designs for each era, for visual va
 
 ## Wonder Districts
 
+Wonder districts can be enabled via `enable_wonder_districts`. Wonder districts enable Wonders (both Great and Small) to be dependant on having a tile reserved for them. Wonder district art will change when you initiate and complete the Wonder:
+
+<img width="1335" height="250" alt="image" src="https://github.com/user-attachments/assets/dde0fcdd-cbf9-42ed-a3c7-2ac5cd973d7c" />
+
+Additionally, if you set `completed_wonder_districts_can_be_destroyed` to true, well, be prepared to defend your Wonders! Setting `destroyed_wonders_can_be_rebuilt` to true puts destroyed Wonders back into play, such that any civ can once again build them.
+
 ## Distribution Hubs
 
 ## Other Districts
