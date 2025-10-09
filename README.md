@@ -10,7 +10,7 @@ Once districts are built, they become unworkable and the tile can no longer be u
 
 <img width="331" height="263" alt="image" src="https://github.com/user-attachments/assets/bdd97212-8b9f-4d22-90c1-8b3350efdaaf" />
 
-Bonuses received from Districts are automatically shown in the City view (with purple shadow around them):
+Bonuses received from Districts are automatically shown in the City view with purple a outline:
 <img width="487" height="205" alt="image" src="https://github.com/user-attachments/assets/e0f7f75a-b548-4b3e-b10a-3f5eae0a465a" />
 
 If a District has food or shield bonuses, you'll also see those in the Production, Food, and Commerce sections:
@@ -107,6 +107,8 @@ Each culture has 4 possible Neighborhood art designs for each era, for visual va
 
 <img width="612" height="306" alt="image" src="https://github.com/user-attachments/assets/e3ed1da2-97e6-4110-bd10-857e80c00db7" />
 
+AI workers are [triggered to build Neighborhoods when they reach their population and food storage cap](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L5070-L5072).
+
 ## Wonder Districts
 
 Wonder districts can be enabled via `enable_wonder_districts`. Wonder districts enable Wonders (both Great and Small) to be dependant on having a tile reserved for them. Wonder district art will change when you initiate and complete the Wonder:
@@ -115,7 +117,40 @@ Wonder districts can be enabled via `enable_wonder_districts`. Wonder districts 
 
 Additionally, if you set `completed_wonder_districts_can_be_destroyed` to true, well, be prepared to defend your Wonders! Setting `destroyed_wonders_can_be_rebuilt` to true puts destroyed Wonders back into play, such that any civ can once again build them.
 
+Like Standard Districts, the Wonders which required a Wonder District can be configured under [`./Districts/Config/Wonders.txt`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/Districts/Config/Wonders.txt) in the format:
+
+```
+#Wonder
+#name                     The Pyramids
+#img_row                  0
+#img_column               0
+#img_construct_row        0
+#img_construct_column     1
+```
+
+Wonder art entries (both under construction and completed, separate slots) can be configured in the file [`./Art/Districts/1200/Wonders.PCX`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/Art/Districts/1200/Wonders.PCX).
+
+AI workers are triggered to build Wonder Districts in generally the same workflow as Standard Districts, based on when an AI city chooses a Wonder, triggering a worker to build a Wonder District. The only difference is that unlike Standard Districts, Wonders are specifically ["remembered"](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L10907) and [city production set to building the Wonder as soon as the Wonder District is completed](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L4434-L4448).
+
+With so many tiles taken up by Districts, you may be wondering how to actually feed your cities or gain shields. First, it's probably a good idea to expand your `city_work_radius` (e.g., to 3, adding at least one more ring of workable tiles around your city) and minimum_city_separation to some higher value. Beyond that though, enter Distribution Hubs.
+
 ## Distribution Hubs
+
+Distribution Hub districts can be enabled via `enable_distribution_hub_districts`. Building a Distribution Hub makes all of the surrounding tiles unworkable by its surrounding cities and instead makes the food and shields from those tiles available to all cities in your civ connected by trade route, divided by `distribution_hub_food_yield_divisor` and `distribution_hub_shield_yield_divisor`.
+
+For example, say `distribution_hub_food_yield_divisor` = 2 and `distribution_hub_shield_yield_divisor` = 3 and you have one distribution hub. The **raw** yields of the hub are 10 food and 9 shields.
+
+10 / 2 = 5 food and 9 / 3 = 3 shields. Thus all of your connected cities would gain a bonus 5 food and 3 shields. 
+
+<img width="540" height="272" alt="image" src="https://github.com/user-attachments/assets/4528f5c8-e2bc-4fd6-99c4-ddfcf821547f" />
+
+Distribution hub food and shields are shown in the City view with green outline:
+
+<img width="610" height="462" alt="image" src="https://github.com/user-attachments/assets/c34dd610-452a-4427-a9c3-70369c2889cc" />
+
+This effectively enables "breadbaskets" and heavy mining areas far from your urban centers (think: Egypt feeding ancient Rome, the American midwest feeding the coasts, etc.). Creating a Distribution Hub significantly minimizes the growth potential and production output of a given city, so should be built wisely (and likely far from your urban centers). Distribution Hub yields are not subject to corruption.
+
+AI workers are triggered to build Distribution Hubs when their civ's "ideal" number of Distribution Hubs (calculated using `ai_ideal_distribution_hub_count_per_100_cities`) falls below the existing Distribution Hub count, [assessed in the production phase of each turn](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L14106-L14158). The AI determines the best potential Distribution Hub tile based on [distance from the capital (farther = better) and aggregate yields of all surrounding tiles](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L14117-L14152).
 
 ## Other Districts
 
