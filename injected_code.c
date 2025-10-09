@@ -2810,7 +2810,7 @@ compute_distribution_hub_yields (struct distribution_hub_record * rec, City * an
 		if (area_tile->vtable->m38_Get_Territory_OwnerID (area_tile) != rec->civ_id)
 			continue;
 		// Skip city tiles and any tiles already reserved by another district
-		if (area_tile->CityID >= 0)
+		if (Tile_has_city (area_tile))
 			continue;
 		int mapped_district_id;
 		if (itable_look_up (&is->district_tile_map, (int)area_tile, &mapped_district_id))
@@ -3650,6 +3650,8 @@ add_dynamic_wonder_from_definition (struct parsed_wonder_definition * def, int s
 	cfg->img_construct_row = def->img_construct_row;
 	cfg->img_construct_column = def->img_construct_column;
 
+	is->wonder_district_count += 1;
+
 	return true;
 }
 
@@ -3894,11 +3896,21 @@ load_districts_config (void)
 			if (is->wonder_district_configs[wi].wonder_name == NULL || is->wonder_district_configs[wi].wonder_name[0] == '\0')
 				continue;
 
+			//snprintf (ss, sizeof ss, "Wonder district \"%s\"", is->wonder_district_configs[wi].wonder_name);
+			//pop_up_in_game_error (ss);
+
 			int improv_id;
 			struct string_slice wonder_name = { .str = (char *)is->wonder_district_configs[wi].wonder_name, .len = (int)strlen (is->wonder_district_configs[wi].wonder_name) };
 			if (find_game_object_id_by_name (GOK_BUILDING, &wonder_name, 0, &improv_id)) {
+
+				//snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for wonder district \"%s\", ID %d", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name, improv_id);
+				//pop_up_in_game_error (ss);
+
 				// Map the wonder name to its improvement ID
 				stable_insert (&is->building_name_to_id, wonder_name.str, improv_id);
+			} else {
+				snprintf (ss, sizeof ss, "Could not find improvement prereq \"%.*s\" for wonder district \"%s\"", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name);
+				pop_up_in_game_error (ss);
 			}
 		}
 	}
@@ -5106,13 +5118,9 @@ remove_dependent_buildings_for_district (int district_id, int center_x, int cent
 	for (int i = 0; i < info->dependent_building_count; i++) {
 			int building_id = info->dependent_building_ids[i];
 			if (building_id >= 0) {
-				snprintf (ss, sizeof ss, "[C3X] remove_dependent_buildings_for_district: Checking city=%p for district_id=%d building_id=%d\n", (void*)city, district_id, building_id);
-				pop_up_in_game_error (ss);
 				remove_building_if_no_district (city, district_id, building_id);
 			}
 		}
-		snprintf (ss, sizeof ss, "[C3X] remove_dependent_buildings_for_district: Checked city=%p for district_id=%d, civ=%d\n", (void*)city, district_id, city->Body.CivID);
-		pop_up_in_game_error (ss);
 
 		if ((*p_human_player_bits & (1 << city->Body.CivID)) == 0)
 			mark_city_needs_district (city, district_id);
@@ -5251,12 +5259,22 @@ wonder_district_tile_under_construction (Tile * tile, int tile_x, int tile_y, in
 	if (wonder_district_id < 0)
 		return false;
 
+	char ss[200];
+	snprintf (ss, sizeof ss, "wonder_district_tile_under_construction: tile=%p (%d,%d)\n", (void *)tile, tile_x, tile_y);
+	(*p_OutputDebugStringA) (ss);
+
 	int mapped_id;
 	if (! itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) || (mapped_id != wonder_district_id))
 		return false;
 
+	snprintf (ss, sizeof ss, "wonder_district_tile_under_construction: tile=%p (%d,%d) is a wonder district\n", (void *)tile, tile_x, tile_y);
+	(*p_OutputDebugStringA) (ss);
+
 	if (itable_look_up_or (&is->wonder_district_tile_map, (int)tile, -1) >= 0)
 		return false; // already has completed wonder art
+
+	snprintf (ss, sizeof ss, "wonder_district_tile_under_construction: tile=%p (%d,%d) is an incomplete wonder district\n", (void *)tile, tile_x, tile_y);
+	(*p_OutputDebugStringA) (ss);
 
 	int owner_id = tile->Territory_OwnerID;
 	if (owner_id <= 0)
@@ -5266,11 +5284,20 @@ wonder_district_tile_under_construction (Tile * tile, int tile_x, int tile_y, in
 		City * city = coi.city;
 		if ((city == NULL) || ! city_radius_contains_tile (city, tile_x, tile_y))
 			continue;
+
+		snprintf (ss, sizeof ss, "wonder_district_tile_under_construction: city=%p (%d,%d) owned by civ %d\n", (void *)city, city->Body.X, city->Body.Y, city->Body.CivID);
+		(*p_OutputDebugStringA) (ss);
+
 		if (! city_is_currently_building_wonder (city) || (city->Body.Order_Type != COT_Improvement))
 			continue;
 
+		snprintf (ss, sizeof ss, "wonder_district_tile_under_construction: city=%p (%d,%d) is building a wonder\n", (void *)city, city->Body.X, city->Body.Y);
+		(*p_OutputDebugStringA) (ss);
+
 		int order_id = city->Body.Order_ID;
 		int windex = find_wonder_config_index_by_improvement_id (order_id);
+		snprintf (ss, sizeof ss, "wonder_district_tile_under_construction: city=%p (%d,%d) is building wonder index %d, order ID %d\n", (void *)city, city->Body.X, city->Body.Y, windex, order_id);
+		(*p_OutputDebugStringA) (ss);
 		if (windex >= 0) {
 			if (out_windex != NULL)
 				*out_windex = windex;
@@ -5334,7 +5361,6 @@ free_wonder_district_for_city (City * city)
 		char ss[200];
 		snprintf (ss, sizeof ss, "free_wonder_district_for_city: city=%p tile=%p (%d,%d)",
 			(void *)city, (void *)tile, tile_x, tile_y);
-		pop_up_in_game_error (ss);
 		(*p_OutputDebugStringA) (ss);
 
 		handle_district_removed (tile, wonder_district_id, city->Body.X, city->Body.Y, false);
@@ -18294,21 +18320,25 @@ init_district_images ()
 	if (is->current_config.enable_wonder_districts) {
 		PCX_Image wpcx;
 		PCX_Image_construct (&wpcx);
-		//snprintf(art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, "Wonders.pcx");
+		snprintf(art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, "Wonders.pcx");
 		//snprintf (ss, sizeof ss, "init_district_images: loading wonder district images from %s", art_dir);
-		pop_up_in_game_error (ss);
+		//pop_up_in_game_error (ss);
 		PCX_Image_read_file (&wpcx, __, art_dir, NULL, 0, 0x100, 2);
 		if (wpcx.JGL.Image != NULL) {
 			for (int wi = 0; wi < is->wonder_district_count; wi++) {
-				struct wonder_district_image_set * set = &is->wonder_district_img_sets[wi];
-				Sprite_construct (&set->img);
+
+				//snprintf (ss, sizeof ss, "init_district_images: loading wonder district %d, img row %d, column %d", wi, is->wonder_district_configs[wi].img_row, is->wonder_district_configs[wi].img_column);
+				//pop_up_in_game_error (ss);
+
+				Sprite_construct (&is->wonder_district_img_sets[wi].img);
 				int x = 128 * is->wonder_district_configs[wi].img_column;
 				int y =  64 * is->wonder_district_configs[wi].img_row;
-				Sprite_slice_pcx (&set->img, __, &wpcx, x, y, 128, 64, 1, 1);
-				Sprite_construct (&set->construct_img);
+				Sprite_slice_pcx (&is->wonder_district_img_sets[wi].img, __, &wpcx, x, y, 128, 64, 1, 1);
+
+				Sprite_construct (&is->wonder_district_img_sets[wi].construct_img);
 				int cx = 128 * is->wonder_district_configs[wi].img_construct_column;
 				int cy =  64 * is->wonder_district_configs[wi].img_construct_row;
-				Sprite_slice_pcx (&set->construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
+				Sprite_slice_pcx (&is->wonder_district_img_sets[wi].construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
 			}
 			wpcx.vtable->clear_JGL (&wpcx);
 		} else {
@@ -18320,10 +18350,6 @@ init_district_images ()
 
 	is->dc_img_state = IS_OK;
 	pcx.vtable->destruct (&pcx, __, 0);
-
-	snprintf (ss, sizeof ss, "init_district_images: finished loading district images, img state %d", is->dc_img_state);
-	pop_up_in_game_error (ss);
-
 }
 
 bool
@@ -18396,10 +18422,10 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                             if (completed) {
                                 int construct_windex = -1;
                                 if (wonder_district_tile_under_construction (tile, tile_x, tile_y, &construct_windex) &&
-                                    (construct_windex >= 0) && (construct_windex < is->wonder_district_count)) {
+                                    (construct_windex >= 0)) {
 									//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) under construction windex %d\n",
 									//		  construct_windex, tile_x, tile_y, district_id);
-									//pop_up_in_game_error (ss);
+									//(OutputDebugStringA) (ss);
                                     Sprite * csprite = &is->wonder_district_img_sets[construct_windex].construct_img;
                                     patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
                                     return;
@@ -18884,10 +18910,12 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 	}
 }
 
+// TODO: figure out why this won't draw or just remove
 void __fastcall
 patch_Advisor_Trade_Form_draw_local_resources (Advisor_Trade_Form * this, int edx, int * rect_ptr, int civ_id)
 {
 	Advisor_Trade_Form_draw_local_resources (this, __, rect_ptr, civ_id);
+	return;
 
 	if (! is->current_config.enable_districts ||
 	    ! is->current_config.enable_distribution_hub_districts ||
@@ -18918,12 +18946,10 @@ patch_Advisor_Trade_Form_draw_local_resources (Advisor_Trade_Form * this, int ed
 	PCX_Image * canvas = &this->Base_Data.Canvas;
 
 	int local_resource_count = 0;
-	if ((leaders != NULL) && (p_main_screen_form != NULL) && (p_bic_data->ResourceTypeCount > 0) &&
-	    (civ_id >= 0) && (civ_id < 32)) {
+	if (p_bic_data->ResourceTypeCount > 0) {
 		Leader * leader = &leaders[civ_id];
-		int importer_civ_id = p_main_screen_form->Player_CivID;
 		for (int resource_id = 0; resource_id < p_bic_data->ResourceTypeCount; resource_id++) {
-			if (Leader_can_offer_resource_to_civ (leader, importer_civ_id, resource_id, 1, 1, 1))
+			if (Leader_can_offer_resource_to_civ (leader, p_main_screen_form->Player_CivID, resource_id, 1, 1, 1))
 				local_resource_count++;
 		}
 	}
@@ -18980,6 +19006,137 @@ patch_Advisor_Trade_Form_draw_local_resources (Advisor_Trade_Form * this, int ed
 		draw_x += icon_spacing;
 		icons_drawn++;
 	}
+}
+
+// TODO: figure out why this won't draw or just remove
+void __fastcall
+patch_Advisor_Trade_Form_draw_all_trade_resources (Advisor_Trade_Form * this, int edx)
+{
+	Advisor_Trade_Form_draw_all_trade_resources (this, edx);
+
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_distribution_hub_districts)
+		return;
+
+	return;
+
+	recalculate_distribution_hub_totals_if_needed ();
+
+	char ss[200];
+
+	if ((is->distribution_hub_food_per_civ == NULL) ||
+	    (is->distribution_hub_shield_per_civ == NULL) ||
+	    (is->distribution_hub_civ_capacity <= 0))
+		return;
+
+	if (is->distribution_hub_icons_img_state == IS_UNINITED)
+		init_distribution_hub_icons ();
+	if (is->distribution_hub_icons_img_state != IS_OK)
+		return;
+
+	int player_civ_id = p_main_screen_form->Player_CivID;
+	if ((player_civ_id < 0) || (player_civ_id >= is->distribution_hub_civ_capacity))
+		return;
+
+	int hub_food = is->distribution_hub_food_per_civ[player_civ_id];
+	int hub_shields = is->distribution_hub_shield_per_civ[player_civ_id];
+	if ((hub_food <= 0) && (hub_shields <= 0))
+		return;
+
+	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_all_trade_resources: player_civ_id=%d hub_food=%d hub_shields=%d\n",
+		player_civ_id, hub_food, hub_shields);
+	pop_up_in_game_error (ss);
+
+	struct tagRECT * rect = &this->Local_Resources_Rect;
+	PCX_Image * canvas = &this->Base_Data.Canvas;
+
+	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_all_trade_resources: rect=(%d,%d)-(%d,%d) canvas=(%p)\n",
+		rect->left, rect->top, rect->right, rect->bottom, canvas);
+	pop_up_in_game_error (ss);
+
+	int local_resource_count = 0;
+	if (p_bic_data->ResourceTypeCount > 0) {
+		Leader * player_leader = &leaders[player_civ_id];
+		for (int resource_id = 0; resource_id < p_bic_data->ResourceTypeCount; resource_id++) {
+			if (Leader_can_offer_resource_to_civ (player_leader, player_civ_id, resource_id, 1, 1, 1))
+				local_resource_count++;
+		}
+	}
+
+	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_all_trade_resources: local_resource_count=%d\n",
+		local_resource_count);
+	pop_up_in_game_error (ss);
+
+	int base_x = rect->left + 0x5a;
+	int spacing = 0x24;
+	int width_available = rect->right - rect->left;
+	if ((local_resource_count >= 2) &&
+	    (local_resource_count * spacing > width_available - 0x5a)) {
+		int numerator = width_available - 0x7e;
+		if (numerator < 0)
+			numerator = 0;
+		int computed = (local_resource_count > 1) ? (numerator / (local_resource_count - 1)) : spacing;
+		if (computed < 1)
+			spacing = 1;
+		else if (computed > 0x24)
+			spacing = 0x24;
+		else
+			spacing = computed;
+	}
+
+	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_all_trade_resources: base_x=%d spacing=%d width_available=%d computed_spacing=%d\n",
+		base_x, spacing, width_available, (local_resource_count > 1) ? ((width_available - 0x7e) / (local_resource_count - 1)) : spacing);
+	pop_up_in_game_error (ss);
+
+	int icon_width   = is->distribution_hub_food_icon_small.Width;
+	int icon_height  = is->distribution_hub_food_icon_small.Height;
+	int icon_spacing = icon_width + 4;
+	int draw_x = base_x + spacing * local_resource_count;
+
+	if (local_resource_count > 0) draw_x += 4;
+	int right_limit = rect->right - icon_width;
+
+	if (draw_x > right_limit) draw_x = right_limit;
+	if (draw_x < base_x)      draw_x = base_x;
+
+	int draw_y = rect->top + ((rect->bottom - rect->top - icon_height) / 2);
+	if (draw_y < rect->top)
+		draw_y = rect->top;
+
+	int max_icons = (rect->right > draw_x) ? ((rect->right - draw_x) / icon_spacing) + 1 : 0;
+	if (max_icons <= 0)
+		return;
+
+	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_all_trade_resources: draw_x=%d right_limit=%d draw_y=%d max_icons=%d\n",
+		draw_x, right_limit, draw_y, max_icons);
+	pop_up_in_game_error (ss);
+
+	draw_x = 0;
+	draw_y = 0;
+
+	int icons_drawn = 0;
+	for (int i = 0; (i < hub_food) && (icons_drawn < max_icons) && (draw_x <= right_limit); i++) {
+		Sprite_draw (&is->distribution_hub_food_icon_small, __, canvas, draw_x, draw_y, NULL);
+		draw_x += icon_spacing;
+		icons_drawn++;
+	}
+
+	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_all_trade_resources: draw_x after food=%d icons_drawn=%d\n",
+		draw_x, icons_drawn);
+	pop_up_in_game_error (ss);
+
+	if ((hub_food > 0) && (hub_shields > 0))
+		draw_x += 4;
+
+	for (int i = 0; (i < hub_shields) && (icons_drawn < max_icons) && (draw_x <= right_limit); i++) {
+		Sprite_draw (&is->distribution_hub_production_icon_small, __, canvas, draw_x, draw_y, NULL);
+		draw_x += icon_spacing;
+		icons_drawn++;
+	}
+
+	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_all_trade_resources: draw_x after shields=%d icons_drawn=%d\n",
+		draw_x, icons_drawn);
+	pop_up_in_game_error (ss);
 }
 
 // TCC requires a main function be defined even though it's never used.

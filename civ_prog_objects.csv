@@ -814,3 +814,4 @@ inlead,    0x5B39A0,    0x0,        0x0,        "is_not_pop_capped_or_starving",
 inlead,    0x4068E0,    0x0,        0x0,        "set_worker_animation",               "void (__fastcall *) (void *this, int edx, Unit *unit, int job_id)"
 inlead,    0x5AD6A0,    0x0,        0x0,        "Advisor_Trade_Form_draw_local_resources", "void (__fastcall *) (Advisor_Trade_Form * this, int edx, int * rect_ptr, int civ_id)"
 define,    0x55EAE0,    0x0,        0x0,        "Leader_can_offer_resource_to_civ",   "bool (__fastcall *) (Leader *this, int param_1, int param_2, int param_3, int param_4, int param_5)"
+inlead,    0x5AC050,    0x0,        0x0,        "Advisor_Trade_Form_draw_all_trade_resources", "void (__fastcall *) (Advisor_Trade_Form * this, int edx)"
