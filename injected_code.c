@@ -8381,6 +8381,8 @@ set_up_stack_bombard_buttons (Main_GUI * this)
 	free_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&free_button->Button, __, 0);
 }
 
+bool __fastcall patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value);
+
 void
 init_district_command_buttons ()
 {
@@ -8444,8 +8446,6 @@ void
 set_up_district_buttons (Main_GUI * this)
 {
 	char ss[200];
-	//snprintf (ss, sizeof ss, "set_up_district_buttons");
-	//pop_up_in_game_error (ss);
 
 	if (is_online_game () || ! is->current_config.enable_districts) 
 		return;
@@ -8456,25 +8456,16 @@ set_up_district_buttons (Main_GUI * this)
 	if (is->dc_btn_img_state != IS_OK)
 		return;
 
-	//snprintf (ss, sizeof ss, "Checking if is a worker");
-	//pop_up_in_game_error (ss);
-
 	// Only proceed if the selected unit is a worker, the tile is valid
 	// (not a mountain), and the civ meets at least one district tech prereq.
 	Unit * selected_unit = p_main_screen_form->Current_Unit;
 	if (selected_unit == NULL)
 		return;
 
-	//snprintf (ss, sizeof ss, "Selected unit ID %d", selected_unit->Body.ID);
-	//pop_up_in_game_error (ss);
-
 	int unit_type_id = selected_unit->Body.UnitTypeID;
 	// Must be a worker-type unit (has worker actions)
 	if (p_bic_data->UnitTypes[unit_type_id].Worker_Actions == 0)
 		return;
-
-	//snprintf (ss, sizeof ss, "[C3X] Selected unit is a worker");
-	//pop_up_in_game_error (ss);
 
 	Tile * tile = tile_at (selected_unit->Body.X, selected_unit->Body.Y);
 	if ((tile == NULL) || (tile == p_null_tile) || (tile->CityID >= 0))
@@ -8483,9 +8474,6 @@ set_up_district_buttons (Main_GUI * this)
 	int base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 	if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle)
 		return;
-
-	//snprintf (ss, sizeof ss, "[C3X] Unit located at (%d, %d)", selected_unit->Body.X, selected_unit->Body.Y);
-	//pop_up_in_game_error (ss);
 
 	Command_Button * automate_button = NULL; int i_starting_button; {
 		for (int n = 0; n < 42; n++)
@@ -8502,16 +8490,26 @@ set_up_district_buttons (Main_GUI * this)
 
 	i_starting_button = 4; // Middle seems to be 5
 
-	//snprintf (ss, sizeof ss, "[C3X] Found automate button at index %d", i_starting_button);
-	//pop_up_in_game_error (ss);
-
-	// TODO: for each district type, check if it can be built on the current tile
+	// Check if there's already a district on this tile. If so, and the unit can build mines,
+	// ensure the mine button is enabled so the worker can continue construction.
+	int existing_district_id;
+	if (itable_look_up(&is->district_tile_map, (int)tile, &existing_district_id)) {
+		if (patch_Unit_can_perform_command(selected_unit, __, UCV_Build_Mine)) {
+			for (int n = 0; n < 42; n++) {
+				if (this->Unit_Command_Buttons[n].Command == UCV_Build_Mine) {
+					Command_Button * mine_button = &this->Unit_Command_Buttons[n];
+					if ((mine_button->Button.Base_Data.Status2 & 1) == 0) {
+						mine_button->Button.field_5FC[13] = 0;
+						mine_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&mine_button->Button, __, 0);
+					}
+					break;
+				}
+			}
+		}
+	}
 
 	// For each district type
 	for (int dc = 0; dc < is->district_count; dc++) {
-
-		//snprintf (ss, sizeof ss, "[C3X] Considering district type %d, enable_neighborhood_districts: %d", dc, is->current_config.enable_neighborhood_districts);
-		//pop_up_in_game_error (ss);
 
 		if (is->district_configs[dc].command == 0)
 			continue;
@@ -8525,9 +8523,6 @@ set_up_district_buttons (Main_GUI * this)
 			if (itable_look_up(&is->district_tile_map, (int)tile, &existing_district_id) && (existing_district_id == dc))
 				continue;
 		}
-
-		//snprintf (ss, sizeof ss, "[C3X] No existing district on this tile");
-		//pop_up_in_game_error (ss);
 
 		// Skip if district is already nearby, unless allow_multiple is true
 		if (!is->district_configs[dc].allow_multiple) {
@@ -8543,16 +8538,10 @@ set_up_district_buttons (Main_GUI * this)
 				continue;
 		}
 
-		//snprintf (ss, sizeof ss, "[C3X] No existing district of type %d nearby", dc);
-		//pop_up_in_game_error (ss);
-
 		// Check if civ has prereq tech for this district type, if any
 		int prereq_id = is->district_infos[dc].advance_prereq_id;
 		if ((prereq_id >= 0) && !Leader_has_tech(&leaders[selected_unit->Body.CivID], __, prereq_id))
 			continue;
-
-		//snprintf (ss, sizeof ss, "[C3X] Civ has prereq tech for district type %d", dc);
-		//pop_up_in_game_error (ss);
 
 		Command_Button * free_button = NULL; {
 			for (int n = i_starting_button + 1; n < 42; n++)
@@ -8849,8 +8838,21 @@ is_worker_or_settler_command (int unit_command_value)
 		((unit_command_value >= UCV_Build_Remote_Colony) && (unit_command_value <= UCV_Auto_Save_Tiles));
 }
 
+bool
+command_would_replace_district (int unit_command_value)
+{
+	// Only these worker commands would replace a district (mine):
+	// - Building a mine
+	// - Irrigation
+	// - Planting forest
+	// Roads, railroads, etc. can coexist with the district
+	return (unit_command_value == UCV_Build_Mine) ||
+	       (unit_command_value == UCV_Irrigate) ||
+	       (unit_command_value == UCV_Plant_Forest);
+}
+
 bool __fastcall
-patch_Unit_can_upgrade (Unit * this)
+	patch_Unit_can_upgrade (Unit * this)
 {
 	bool base = Unit_can_upgrade (this);
 	int available;
@@ -8874,6 +8876,23 @@ is_district_command (int unit_command_value)
 bool __fastcall
 patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 {
+	char ss[200];
+	if (is->current_config.enable_districts) {
+		Tile * tile = tile_at (this->Body.X, this->Body.Y);
+		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+
+		if (is_district_command (unit_command_value)) {
+			return (base_type != SQ_Mountains && base_type != SQ_Forest && base_type != SQ_Jungle);
+		}
+		else if (unit_command_value == UCV_Build_Mine) {
+			int district_id;
+			bool has_district = itable_look_up (&is->district_tile_map, (int)tile, &district_id);
+
+			if (has_district) {
+				return (base_type != SQ_FloodPlain && base_type != SQ_Forest && base_type != SQ_Jungle);
+			}
+		}
+	} 
 	if (is->current_config.disable_worker_automation &&
 	    (this->Body.CivID == p_main_screen_form->Player_CivID) &&
 	    (unit_command_value == UCV_Automate))
@@ -8884,17 +8903,9 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 		enum UnitTypeClasses class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
 		return ((class != UTC_Land) || (! tile->vtable->m35_Check_Is_Water (tile))) &&
 			Unit_can_perform_command (this, __, unit_command_value);
-	} else if (is->current_config.enable_districts && is_district_command (unit_command_value)) {
-
-		Tile * tile = tile_at (this->Body.X, this->Body.Y);
-		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-
-		// Districts cannot be built on mountains, forests, or jungles
-		if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle)
-			return false;
-		return true;
-	} else
-		return Unit_can_perform_command (this, __, unit_command_value);
+	} 
+	
+	return Unit_can_perform_command (this, __, unit_command_value);
 }
 
 bool __fastcall
@@ -9176,11 +9187,49 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 
 	int command = this->Unit_Command_Buttons[button_id].Command;
 
-	if (is_district_command (command)) {
+	if (is->current_config.enable_districts && is_district_command (command)) {
 		clear_something_1 ();
 		Timer_clear (&this->timer_1);
 		issue_district_worker_command (p_main_screen_form->Current_Unit, command);
 		return;
+	}
+
+	// Check if command is a worker build command (not a district) and a district exists on the tile
+	if (is->current_config.enable_districts &&
+	    (is_worker_or_settler_command(command)) &&
+	    p_main_screen_form->Current_Unit != NULL) {
+
+		Unit * unit = p_main_screen_form->Current_Unit;
+		if (patch_Unit_can_perform_command(unit, __, command) && command_would_replace_district(command)) {
+			Tile * tile = tile_at(unit->Body.X, unit->Body.Y);
+
+			if (tile != NULL && tile != p_null_tile) {
+				int district_id;
+				if (itable_look_up(&is->district_tile_map, (int)tile, &district_id) && district_is_complete(tile, district_id)) {
+
+					PopupForm * popup = get_popup_form();
+					popup->vtable->set_text_key_and_flags(popup, __, is->mod_script_path, "C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT", -1, 0, 0, 0);
+					int sel = patch_show_popup(popup, __, 0, 0);
+					if (sel == 0) {  
+						itable_remove(&is->district_tile_map, (int)tile);
+						tile->vtable->m62_Set_Tile_BuildingID(tile, __, -1);
+						int tile_x, tile_y;
+						if (tile_coords_from_ptr(&p_bic_data->Map, tile, &tile_x, &tile_y)) {
+							tile->vtable->m51_Unset_Tile_Flags(tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
+							handle_district_removed(tile, district_id, tile_x, tile_y, false);
+						}
+
+						clear_something_1();
+						Timer_clear(&this->timer_1);
+						Main_GUI_handle_button_press(this, __, button_id);
+						return;
+					} else {
+						// User cancelled, don't execute the command
+						return;
+					}
+				}
+			}
+		}
 	}
 
 	struct sc_button_info const * stack_button_info; {
@@ -18925,12 +18974,14 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 	}
 }
 
-// TODO: figure out why this won't draw or just remove
 void __fastcall
 patch_Advisor_Trade_Form_draw_local_resources_box (Advisor_Trade_Form * this, int edx)
 {
 	Advisor_Trade_Form_draw_local_resources_box (this, edx);
 
+	/* TODO: figure out why this won't draw or just remove. The distribution hub yields are not drawn at all.
+	         Interestingly, if the debug popups are removed the game crashes, hinting at possible race conditions. 
+	*/
 	return;
 
 	if (! is->current_config.enable_districts ||

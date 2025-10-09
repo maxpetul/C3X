@@ -158,4 +158,11 @@ An improvement already exists here. Are you sure you want to remove it and build
 Yes. There are better uses for this tile.
 No, nevermind.
 
+#C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT
+#advisor Domestic
+A district already exists here. Are you sure you want to remove it and build a different improvement? Doing so will remove any dependent buildings.
+#itemlist
+Yes. There are better uses for this tile.
+No, nevermind.
+
 # ; This line must remain at end of file
