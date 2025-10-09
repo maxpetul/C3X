@@ -2428,11 +2428,19 @@ find_wonder_config_index_by_improvement_id (int improv_id)
 	if (improv_id < 0)
 		return -1;
 
+	char ss[200];
+
 	for (int wi = 0; wi < is->wonder_district_count; wi++) {
 		int bid;
+		snprintf (ss, sizeof ss, "[C3X] find_wonder_config_index_by_improvement_id: checking wonder %s (improv_id=%d)\n",
+			  is->wonder_district_configs[wi].wonder_name, improv_id);
+		(*p_OutputDebugStringA) (ss);
 		if (stable_look_up (&is->building_name_to_id, is->wonder_district_configs[wi].wonder_name, &bid) &&
 		    (bid == improv_id))
 			return wi;
+		snprintf (ss, sizeof ss, "[C3X] find_wonder_config_index_by_improvement_id: no match for wonder %s (improv_id=%d), bid=%d\n",
+			  is->wonder_district_configs[wi].wonder_name, improv_id, bid);
+		(*p_OutputDebugStringA) (ss);
 	}
 
 	return -1;
@@ -18477,17 +18485,17 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                             int windex;
                             if (itable_look_up (&is->wonder_district_tile_map, (int)tile, &windex) &&
                                 (windex >= 0) && (windex < is->wonder_district_count)) {
-								//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) windex %d\n",
-								//		  district_id, tile_x, tile_y, windex);
-                    			//pop_up_in_game_error (ss);
+								snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) windex %d\n",
+										  district_id, tile_x, tile_y, windex);
+                    			//(OutputDebugStringA) (ss);
                                 Sprite * wsprite = &is->wonder_district_img_sets[windex].img;
                                 patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
                                 return;
                             }
 
-							//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) windex lookup failed\n",
-                    		//			  district_id, tile_x, tile_y);
-							//pop_up_in_game_error (ss);
+							snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) windex lookup failed\n",
+                    					  district_id, tile_x, tile_y);
+							//(OutputDebugStringA) (ss);
 
                             if (completed) {
                                 int construct_windex = -1;
