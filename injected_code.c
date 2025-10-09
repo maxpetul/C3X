@@ -3251,23 +3251,14 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		return false;
 
 	if (district_name_exists (def->name)) {
-		char ss[256];
-		snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: duplicate district name \"%s\" (line %d)", def->name, section_start_line);
-		(*p_OutputDebugStringA) (ss);
 		return false;
 	}
 
 	if (def->img_path_count <= 0) {
-		char ss[256];
-		snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: district \"%s\" missing img_paths (line %d)", def->name, section_start_line);
-		(*p_OutputDebugStringA) (ss);
 		return false;
 	}
 
 	if (is->special_district_count + is->dynamic_district_count >= COUNT_DISTRICT_TYPES) {
-		char ss[256];
-		snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: too many districts defined, skipping \"%s\"", def->name);
-		(*p_OutputDebugStringA) (ss);
 		return false;
 	}
 
@@ -3354,46 +3345,27 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 static void
 load_dynamic_district_configs (void)
 {
-	char ss[256];
-
-	// Safety check: ensure is pointer is valid
-	if (is == NULL) {
-		pop_up_in_game_error ("[C3X] load_dynamic_district_configs: CRITICAL - is pointer is NULL");
+	if (is == NULL || is->mod_rel_dir == NULL)
 		return;
-	}
-
-	pop_up_in_game_error ("[C3X] load_dynamic_district_configs: Starting");
-
-	// Safety check: ensure mod_rel_dir is valid
-	if (is->mod_rel_dir == NULL) {
-		pop_up_in_game_error ("[C3X] load_dynamic_district_configs: CRITICAL - mod_rel_dir is NULL");
-		return;
-	}
-
-	snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: mod_rel_dir=%s", is->mod_rel_dir);
-	pop_up_in_game_error (ss);
 
 	char path[MAX_PATH];
 	snprintf (path, sizeof path, "%s\\Districts\\Config\\Districts.txt", is->mod_rel_dir);
 
-	snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Attempting to open %s", path);
-	pop_up_in_game_error (ss);
-
 	char * text = file_to_string (path);
 	if (text == NULL) {
-		snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: File not found or cannot open: %s", path);
-		pop_up_in_game_error (ss);
+		char ss[256];
+		snprintf (ss, sizeof ss, "[C3X] Districts config file not found: %s", path);
 		(*p_OutputDebugStringA) (ss);
 		return;
 	}
-
-	pop_up_in_game_error ("[C3X] load_dynamic_district_configs: File opened successfully");
 
 	struct parsed_district_definition def = {0};
 	def.defense_bonus_multiplier_pct = 100;
 	bool in_section = false;
 	int section_start_line = 0;
 	int line_number = 0;
+	struct error_line * unrecognized_keys = NULL;
+	struct error_line * parse_errors = NULL;
 
 	char * cursor = text;
 	while (*cursor != '\0') {
@@ -3408,11 +3380,7 @@ load_dynamic_district_configs (void)
 		*line_end = '\0';
 
 		char * trimmed = trim_whitespace_inplace (line_start);
-		if (*trimmed == '\0') {
-			cursor = has_newline ? line_end + 1 : line_end;
-			continue;
-		}
-		if (*trimmed != '#') {
+		if (*trimmed == '\0' || *trimmed != '#') {
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
 		}
@@ -3424,13 +3392,7 @@ load_dynamic_district_configs (void)
 		}
 
 		if (strcmp (trimmed, "District") == 0) {
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Found District section at line %d", line_number);
-			pop_up_in_game_error (ss);
-
 			if (in_section) {
-				snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Processing previous section (started at line %d)", section_start_line);
-				pop_up_in_game_error (ss);
-
 				add_dynamic_district_from_definition (&def, section_start_line);
 				def.defense_bonus_multiplier_pct = 100;
 			}
@@ -3449,7 +3411,6 @@ load_dynamic_district_configs (void)
 		while ((*value != '\0') && ! is_space_char (*value))
 			value++;
 
-		char * key_end = value;
 		if (*value != '\0') {
 			*value = '\0';
 			value++;
@@ -3458,166 +3419,196 @@ load_dynamic_district_configs (void)
 		char * key = trimmed;
 		value = trim_whitespace_inplace (value);
 
+		bool key_recognized = true;
 		if (strcmp (key, "name") == 0) {
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Processing name='%s' at line %d", value, line_number);
-			pop_up_in_game_error (ss);
-
-			if (*value != '\0') {
-				def.name = strdup (value);
-				if (def.name == NULL) {
-					snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: CRITICAL - strdup failed for name at line %d", line_number);
-					pop_up_in_game_error (ss);
-				} else {
-					snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Successfully allocated name='%s'", def.name);
-					pop_up_in_game_error (ss);
-				}
-			} else {
-				def.name = NULL;
-			}
+			def.name = (*value != '\0') ? strdup (value) : NULL;
 		} else if (strcmp (key, "tooltip") == 0) {
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Processing tooltip='%s' at line %d", value, line_number);
-			pop_up_in_game_error (ss);
-
 			def.tooltip = (*value != '\0') ? strdup (value) : NULL;
 		} else if (strcmp (key, "advance_prereq") == 0) {
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Processing advance_prereq='%s' at line %d", value, line_number);
-			pop_up_in_game_error (ss);
-
 			def.advance_prereq = (*value != '\0') ? strdup (value) : NULL;
 		} else if (strcmp (key, "img_paths") == 0) {
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Processing img_paths='%s' at line %d", value, line_number);
-			pop_up_in_game_error (ss);
-
 			def.img_path_count = 0;
 			if (*value != '\0') {
-				char * cursor = value;
+				char * img_cursor = value;
 				struct string_slice item_slice;
 				while (1) {
-					skip_white_space (&cursor);
-					if (parse_string (&cursor, &item_slice)) {
+					skip_white_space (&img_cursor);
+					if (parse_string (&img_cursor, &item_slice)) {
 						if (item_slice.len > 0 && def.img_path_count < ARRAY_LEN (def.img_paths)) {
-							// Allocate and copy the string
 							char * path_copy = malloc (item_slice.len + 1);
 							if (path_copy != NULL) {
 								memcpy (path_copy, item_slice.str, item_slice.len);
 								path_copy[item_slice.len] = '\0';
 								def.img_paths[def.img_path_count++] = path_copy;
-								snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Added img_path #%d: '%s'", def.img_path_count, path_copy);
-								pop_up_in_game_error (ss);
 							}
-						} else if (def.img_path_count >= ARRAY_LEN (def.img_paths)) {
-							snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: too many img_paths for \"%s\" (line %d)", def.name != NULL ? def.name : "(unnamed)", line_number);
-							pop_up_in_game_error (ss);
-							(*p_OutputDebugStringA) (ss);
 						}
-						skip_punctuation (&cursor, ',');
+						skip_punctuation (&img_cursor, ',');
 					} else {
-						skip_white_space (&cursor);
 						break;
 					}
 				}
 			}
-
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Finished img_paths processing");
-			pop_up_in_game_error (ss);
 		} else if (strcmp (key, "dependent_improvs") == 0) {
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Processing dependent_improvs='%s' at line %d", value, line_number);
-			pop_up_in_game_error (ss);
-
 			def.dependent_improvement_count = 0;
 			if (*value != '\0') {
-				char * cursor = value;
+				char * dep_cursor = value;
 				struct string_slice item_slice;
 				while (1) {
-					skip_white_space (&cursor);
-					if (parse_string (&cursor, &item_slice)) {
+					skip_white_space (&dep_cursor);
+					if (parse_string (&dep_cursor, &item_slice)) {
 						if (item_slice.len > 0 && def.dependent_improvement_count < ARRAY_LEN (def.dependent_improvements)) {
-							// Allocate and copy the string
 							char * item_str = malloc (item_slice.len + 1);
 							if (item_str != NULL) {
 								memcpy (item_str, item_slice.str, item_slice.len);
 								item_str[item_slice.len] = '\0';
 								def.dependent_improvements[def.dependent_improvement_count++] = item_str;
-								snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Added dependent_improv #%d: '%s'", def.dependent_improvement_count, item_str);
-								pop_up_in_game_error (ss);
 							}
-						} else if (def.dependent_improvement_count >= ARRAY_LEN (def.dependent_improvements)) {
-							snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: too many dependent_improvs for \"%s\" (line %d)", def.name != NULL ? def.name : "(unnamed)", line_number);
-							pop_up_in_game_error (ss);
-							(*p_OutputDebugStringA) (ss);
 						}
-						skip_punctuation (&cursor, ',');
+						skip_punctuation (&dep_cursor, ',');
 					} else {
-						skip_white_space (&cursor);
 						break;
 					}
 				}
 			}
 		} else if (strcmp (key, "allow_multiple") == 0) {
-			def.allow_multiple = (strtol (value, NULL, 10) != 0);
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Set allow_multiple=%d at line %d", def.allow_multiple, line_number);
-			pop_up_in_game_error (ss);
+			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
+			int ival;
+			if (read_int (&val_slice, &ival))
+				def.allow_multiple = (ival != 0);
+			else {
+				struct error_line * err = add_error_line (&parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
+			}
 		} else if (strcmp (key, "vary_img_by_era") == 0) {
-			def.vary_img_by_era = (strtol (value, NULL, 10) != 0);
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Set vary_img_by_era=%d at line %d", def.vary_img_by_era, line_number);
-			pop_up_in_game_error (ss);
+			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
+			int ival;
+			if (read_int (&val_slice, &ival))
+				def.vary_img_by_era = (ival != 0);
+			else {
+				struct error_line * err = add_error_line (&parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
+			}
 		} else if (strcmp (key, "vary_img_by_culture") == 0) {
-			def.vary_img_by_culture = (strtol (value, NULL, 10) != 0);
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Set vary_img_by_culture=%d at line %d", def.vary_img_by_culture, line_number);
-			pop_up_in_game_error (ss);
+			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
+			int ival;
+			if (read_int (&val_slice, &ival))
+				def.vary_img_by_culture = (ival != 0);
+			else {
+				struct error_line * err = add_error_line (&parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
+			}
 		} else if (strcmp (key, "btn_tile_sheet_column") == 0) {
-			def.btn_tile_sheet_column = (int)strtol (value, NULL, 10);
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Set btn_tile_sheet_column=%d at line %d", def.btn_tile_sheet_column, line_number);
-			pop_up_in_game_error (ss);
+			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
+			int ival;
+			if (read_int (&val_slice, &ival))
+				def.btn_tile_sheet_column = ival;
+			else {
+				struct error_line * err = add_error_line (&parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
+			}
 		} else if (strcmp (key, "btn_tile_sheet_row") == 0) {
-			def.btn_tile_sheet_row = (int)strtol (value, NULL, 10);
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Set btn_tile_sheet_row=%d at line %d", def.btn_tile_sheet_row, line_number);
-			pop_up_in_game_error (ss);
+			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
+			int ival;
+			if (read_int (&val_slice, &ival))
+				def.btn_tile_sheet_row = ival;
+			else {
+				struct error_line * err = add_error_line (&parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
+			}
 		} else if (strcmp (key, "defense_bonus_multiplier_pct") == 0) {
-			def.defense_bonus_multiplier_pct = (int)strtol (value, NULL, 10);
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Set defense_bonus_multiplier_pct=%d at line %d", def.defense_bonus_multiplier_pct, line_number);
-			pop_up_in_game_error (ss);
+			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
+			int ival;
+			if (read_int (&val_slice, &ival))
+				def.defense_bonus_multiplier_pct = ival;
+			else {
+				struct error_line * err = add_error_line (&parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
+			}
 		} else if (strcmp (key, "culture_bonus") == 0) {
-			def.culture_bonus = (int)strtol (value, NULL, 10);
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Set culture_bonus=%d at line %d", def.culture_bonus, line_number);
-			pop_up_in_game_error (ss);
+			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
+			int ival;
+			if (read_int (&val_slice, &ival))
+				def.culture_bonus = ival;
+			else {
+				struct error_line * err = add_error_line (&parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
+			}
 		} else if (strcmp (key, "science_bonus") == 0) {
-			def.science_bonus = (int)strtol (value, NULL, 10);
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Set science_bonus=%d at line %d", def.science_bonus, line_number);
-			pop_up_in_game_error (ss);
+			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
+			int ival;
+			if (read_int (&val_slice, &ival))
+				def.science_bonus = ival;
+			else {
+				struct error_line * err = add_error_line (&parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
+			}
 		} else if (strcmp (key, "food_bonus") == 0) {
-			def.food_bonus = (int)strtol (value, NULL, 10);
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Set food_bonus=%d at line %d", def.food_bonus, line_number);
-			pop_up_in_game_error (ss);
+			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
+			int ival;
+			if (read_int (&val_slice, &ival))
+				def.food_bonus = ival;
+			else {
+				struct error_line * err = add_error_line (&parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
+			}
 		} else if (strcmp (key, "gold_bonus") == 0) {
-			def.gold_bonus = (int)strtol (value, NULL, 10);
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Set gold_bonus=%d at line %d", def.gold_bonus, line_number);
-			pop_up_in_game_error (ss);
+			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
+			int ival;
+			if (read_int (&val_slice, &ival))
+				def.gold_bonus = ival;
+			else {
+				struct error_line * err = add_error_line (&parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
+			}
 		} else if (strcmp (key, "shield_bonus") == 0) {
-			def.shield_bonus = (int)strtol (value, NULL, 10);
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Set shield_bonus=%d at line %d", def.shield_bonus, line_number);
-			pop_up_in_game_error (ss);
+			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
+			int ival;
+			if (read_int (&val_slice, &ival))
+				def.shield_bonus = ival;
+			else {
+				struct error_line * err = add_error_line (&parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
+			}
+		} else {
+			key_recognized = false;
+		}
+
+		if (! key_recognized) {
+			struct error_line * err_line = add_error_line (&unrecognized_keys);
+			snprintf (err_line->text, sizeof err_line->text, "^  Line %d: %s", line_number, key);
+			err_line->text[(sizeof err_line->text) - 1] = '\0';
 		}
 
 		cursor = has_newline ? line_end + 1 : line_end;
 	}
 
-	pop_up_in_game_error ("[C3X] load_dynamic_district_configs: Finished reading file");
-
-	if (in_section) {
-		snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: Processing final section (started at line %d)", section_start_line);
-		pop_up_in_game_error (ss);
-
+	if (in_section)
 		add_dynamic_district_from_definition (&def, section_start_line);
-	}
 
-	pop_up_in_game_error ("[C3X] load_dynamic_district_configs: Freeing final definition");
 	free_parsed_district_definition (&def);
-
-	pop_up_in_game_error ("[C3X] load_dynamic_district_configs: Freeing text buffer");
 	free (text);
 
-	pop_up_in_game_error ("[C3X] load_dynamic_district_configs: Completed successfully");
+	if (parse_errors != NULL || unrecognized_keys != NULL) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "Config errors in %s:", path);
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, false);
+		if (parse_errors != NULL) {
+			for (struct error_line * line = parse_errors; line != NULL; line = line->next)
+				PopupForm_add_text (popup, __, line->text, false);
+		}
+		if (unrecognized_keys != NULL) {
+			PopupForm_add_text (popup, __, "", false);
+			PopupForm_add_text (popup, __, "Unrecognized keys:", false);
+			for (struct error_line * line = unrecognized_keys; line != NULL; line = line->next)
+				PopupForm_add_text (popup, __, line->text, false);
+		}
+		patch_show_popup (popup, __, 0, 0);
+		free_error_lines (parse_errors);
+		free_error_lines (unrecognized_keys);
+	}
 }
 
 struct parsed_wonder_definition {
@@ -3642,93 +3633,22 @@ add_dynamic_wonder_from_definition (struct parsed_wonder_definition * def, int s
 {
 	char ss[256];
 
-	// Safety check: ensure def pointer is valid
-	if (def == NULL) {
-		pop_up_in_game_error ("[C3X] add_dynamic_wonder_from_definition: CRITICAL - def pointer is NULL");
-		return false;
-	}
-
-	snprintf (ss, sizeof ss, "[C3X] add_dynamic_wonder_from_definition: Processing definition from line %d", section_start_line);
-	pop_up_in_game_error (ss);
-
-	if (def->name == NULL) {
-		snprintf (ss, sizeof ss, "[C3X] add_dynamic_wonder_from_definition: Skipping - name is NULL (line %d)", section_start_line);
-		pop_up_in_game_error (ss);
-		return false;
-	}
-
-	snprintf (ss, sizeof ss, "[C3X] add_dynamic_wonder_from_definition: name='%s'", def->name);
-	pop_up_in_game_error (ss);
-
-	// Safety check: ensure is pointer is valid
-	if (is == NULL) {
-		pop_up_in_game_error ("[C3X] add_dynamic_wonder_from_definition: CRITICAL - is pointer is NULL");
-		return false;
-	}
-
-	pop_up_in_game_error ("[C3X] add_dynamic_wonder_from_definition: Checking for duplicate wonder name");
-	if (wonder_name_exists (def->name)) {
-		snprintf (ss, sizeof ss, "[C3X] add_dynamic_wonder_from_definition: duplicate wonder \"%s\" (line %d)", def->name, section_start_line);
-		pop_up_in_game_error (ss);
-		(*p_OutputDebugStringA) (ss);
-		return false;
-	}
-
-	pop_up_in_game_error ("[C3X] add_dynamic_wonder_from_definition: No duplicate found");
-
-	snprintf (ss, sizeof ss, "[C3X] add_dynamic_wonder_from_definition: Current wonder_district_count=%d, MAX=%d",
-		is->wonder_district_count, MAX_WONDER_DISTRICT_TYPES);
-	pop_up_in_game_error (ss);
-
-	if (is->wonder_district_count >= MAX_WONDER_DISTRICT_TYPES) {
-		snprintf (ss, sizeof ss, "[C3X] add_dynamic_wonder_from_definition: too many wonder overlays, skipping \"%s\"", def->name);
-		pop_up_in_game_error (ss);
-		(*p_OutputDebugStringA) (ss);
-		return false;
-	}
-
 	int dest = is->wonder_district_count;
-	snprintf (ss, sizeof ss, "[C3X] add_dynamic_wonder_from_definition: dest index=%d", dest);
-	pop_up_in_game_error (ss);
 
 	// Safety check: ensure dest is within bounds
 	if (dest < 0 || dest >= MAX_WONDER_DISTRICT_TYPES) {
-		snprintf (ss, sizeof ss, "[C3X] add_dynamic_wonder_from_definition: CRITICAL - dest index %d out of bounds", dest);
-		pop_up_in_game_error (ss);
 		return false;
 	}
 
-	pop_up_in_game_error ("[C3X] add_dynamic_wonder_from_definition: Getting config pointer");
 	struct wonder_district_config * cfg = &is->wonder_district_configs[dest];
 
-	pop_up_in_game_error ("[C3X] add_dynamic_wonder_from_definition: Setting index and is_dynamic flag first");
 	cfg->index = dest;
 	cfg->is_dynamic = true;
-
-	pop_up_in_game_error ("[C3X] add_dynamic_wonder_from_definition: Transferring name pointer");
 	cfg->wonder_name = def->name;
-	def->name = NULL;
-
-	snprintf (ss, sizeof ss, "[C3X] add_dynamic_wonder_from_definition: Setting img_row=%d, img_column=%d",
-		def->img_row, def->img_column);
-	pop_up_in_game_error (ss);
-
 	cfg->img_row = def->img_row;
 	cfg->img_column = def->img_column;
-
-	snprintf (ss, sizeof ss, "[C3X] add_dynamic_wonder_from_definition: Setting img_construct_row=%d, img_construct_column=%d",
-		def->img_construct_row, def->img_construct_column);
-	pop_up_in_game_error (ss);
-
 	cfg->img_construct_row = def->img_construct_row;
 	cfg->img_construct_column = def->img_construct_column;
-
-	pop_up_in_game_error ("[C3X] add_dynamic_wonder_from_definition: Incrementing wonder_district_count");
-	is->wonder_district_count += 1;
-
-	snprintf (ss, sizeof ss, "[C3X] add_dynamic_wonder_from_definition: Successfully added wonder '%s', new count=%d",
-		cfg->wonder_name, is->wonder_district_count);
-	pop_up_in_game_error (ss);
 
 	return true;
 }
@@ -3736,45 +3656,26 @@ add_dynamic_wonder_from_definition (struct parsed_wonder_definition * def, int s
 static void
 load_dynamic_wonder_configs (void)
 {
-	char ss[256];
-
-	// Safety check: ensure is pointer is valid
-	if (is == NULL) {
-		pop_up_in_game_error ("[C3X] load_dynamic_wonder_configs: CRITICAL - is pointer is NULL");
+	if (is == NULL || is->mod_rel_dir == NULL)
 		return;
-	}
-
-	pop_up_in_game_error ("[C3X] load_dynamic_wonder_configs: Starting");
-
-	// Safety check: ensure mod_rel_dir is valid
-	if (is->mod_rel_dir == NULL) {
-		pop_up_in_game_error ("[C3X] load_dynamic_wonder_configs: CRITICAL - mod_rel_dir is NULL");
-		return;
-	}
-
-	snprintf (ss, sizeof ss, "[C3X] load_dynamic_wonder_configs: mod_rel_dir=%s", is->mod_rel_dir);
-	pop_up_in_game_error (ss);
 
 	char path[MAX_PATH];
 	snprintf (path, sizeof path, "%s\\Districts\\Config\\Wonders.txt", is->mod_rel_dir);
 
-	snprintf (ss, sizeof ss, "[C3X] load_dynamic_wonder_configs: Attempting to open %s", path);
-	pop_up_in_game_error (ss);
-
 	char * text = file_to_string (path);
 	if (text == NULL) {
-		snprintf (ss, sizeof ss, "[C3X] load_dynamic_wonder_configs: File not found or cannot open: %s", path);
-		pop_up_in_game_error (ss);
+		char ss[256];
+		snprintf (ss, sizeof ss, "[C3X] Wonders config file not found: %s", path);
 		(*p_OutputDebugStringA) (ss);
 		return;
 	}
-
-	pop_up_in_game_error ("[C3X] load_dynamic_wonder_configs: File opened successfully");
 
 	struct parsed_wonder_definition def = {0};
 	bool in_section = false;
 	int section_start_line = 0;
 	int line_number = 0;
+	struct error_line * unrecognized_keys = NULL;
+	struct error_line * parse_errors = NULL;
 
 	char * cursor = text;
 	while (*cursor != '\0') {
@@ -3789,11 +3690,7 @@ load_dynamic_wonder_configs (void)
 		*line_end = '\0';
 
 		char * trimmed = trim_whitespace_inplace (line_start);
-		if (*trimmed == '\0') {
-			cursor = has_newline ? line_end + 1 : line_end;
-			continue;
-		}
-		if (*trimmed != '#') {
+		if (*trimmed == '\0' || *trimmed != '#') {
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
 		}
@@ -3805,16 +3702,8 @@ load_dynamic_wonder_configs (void)
 		}
 
 		if (strcmp (trimmed, "Wonder") == 0) {
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_wonder_configs: Found Wonder section at line %d", line_number);
-			pop_up_in_game_error (ss);
-
 			if (in_section) {
-				snprintf (ss, sizeof ss, "[C3X] load_dynamic_wonder_configs: Processing previous section (started at line %d)", section_start_line);
-				pop_up_in_game_error (ss);
-
 				add_dynamic_wonder_from_definition (&def, section_start_line);
-
-				pop_up_in_game_error ("[C3X] load_dynamic_wonder_configs: Freeing previous definition");
 				free_parsed_wonder_definition (&def);
 			}
 			in_section = true;
@@ -3840,64 +3729,87 @@ load_dynamic_wonder_configs (void)
 		char * key = trimmed;
 		value = trim_whitespace_inplace (value);
 
+		bool key_recognized = true;
 		if (strcmp (key, "name") == 0) {
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_wonder_configs: Processing name='%s' at line %d", value, line_number);
-			pop_up_in_game_error (ss);
-
-			if (def.name != NULL) {
-				pop_up_in_game_error ("[C3X] load_dynamic_wonder_configs: Freeing existing name");
+			if (def.name != NULL)
 				free (def.name);
-			}
-
-			if (*value != '\0') {
-				def.name = strdup (value);
-				if (def.name == NULL) {
-					snprintf (ss, sizeof ss, "[C3X] load_dynamic_wonder_configs: CRITICAL - strdup failed for name at line %d", line_number);
-					pop_up_in_game_error (ss);
-				} else {
-					snprintf (ss, sizeof ss, "[C3X] load_dynamic_wonder_configs: Successfully allocated name='%s'", def.name);
-					pop_up_in_game_error (ss);
-				}
-			} else {
-				def.name = NULL;
-			}
+			def.name = (*value != '\0') ? strdup (value) : NULL;
 		} else if (strcmp (key, "img_row") == 0) {
-			def.img_row = (int)strtol (value, NULL, 10);
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_wonder_configs: Set img_row=%d at line %d", def.img_row, line_number);
-			pop_up_in_game_error (ss);
+			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
+			int ival;
+			if (read_int (&val_slice, &ival))
+				def.img_row = ival;
+			else {
+				struct error_line * err = add_error_line (&parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
+			}
 		} else if (strcmp (key, "img_column") == 0) {
-			def.img_column = (int)strtol (value, NULL, 10);
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_wonder_configs: Set img_column=%d at line %d", def.img_column, line_number);
-			pop_up_in_game_error (ss);
+			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
+			int ival;
+			if (read_int (&val_slice, &ival))
+				def.img_column = ival;
+			else {
+				struct error_line * err = add_error_line (&parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
+			}
 		} else if (strcmp (key, "img_construct_row") == 0) {
-			def.img_construct_row = (int)strtol (value, NULL, 10);
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_wonder_configs: Set img_construct_row=%d at line %d", def.img_construct_row, line_number);
-			pop_up_in_game_error (ss);
+			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
+			int ival;
+			if (read_int (&val_slice, &ival))
+				def.img_construct_row = ival;
+			else {
+				struct error_line * err = add_error_line (&parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
+			}
 		} else if (strcmp (key, "img_construct_column") == 0) {
-			def.img_construct_column = (int)strtol (value, NULL, 10);
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_wonder_configs: Set img_construct_column=%d at line %d", def.img_construct_column, line_number);
-			pop_up_in_game_error (ss);
+			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
+			int ival;
+			if (read_int (&val_slice, &ival))
+				def.img_construct_column = ival;
+			else {
+				struct error_line * err = add_error_line (&parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
+			}
+		} else {
+			key_recognized = false;
+		}
+
+		if (! key_recognized) {
+			struct error_line * err_line = add_error_line (&unrecognized_keys);
+			snprintf (err_line->text, sizeof err_line->text, "^  Line %d: %s", line_number, key);
+			err_line->text[(sizeof err_line->text) - 1] = '\0';
 		}
 
 		cursor = has_newline ? line_end + 1 : line_end;
 	}
 
-	pop_up_in_game_error ("[C3X] load_dynamic_wonder_configs: Finished reading file");
-
-	if (in_section) {
-		snprintf (ss, sizeof ss, "[C3X] load_dynamic_wonder_configs: Processing final section (started at line %d)", section_start_line);
-		pop_up_in_game_error (ss);
-
+	if (in_section)
 		add_dynamic_wonder_from_definition (&def, section_start_line);
-	}
 
-	pop_up_in_game_error ("[C3X] load_dynamic_wonder_configs: Freeing final definition");
 	free_parsed_wonder_definition (&def);
-
-	pop_up_in_game_error ("[C3X] load_dynamic_wonder_configs: Freeing text buffer");
 	free (text);
 
-	pop_up_in_game_error ("[C3X] load_dynamic_wonder_configs: Completed successfully");
+	if (parse_errors != NULL || unrecognized_keys != NULL) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "Config errors in %s:", path);
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, false);
+		if (parse_errors != NULL) {
+			for (struct error_line * line = parse_errors; line != NULL; line = line->next)
+				PopupForm_add_text (popup, __, line->text, false);
+		}
+		if (unrecognized_keys != NULL) {
+			PopupForm_add_text (popup, __, "", false);
+			PopupForm_add_text (popup, __, "Unrecognized keys:", false);
+			for (struct error_line * line = unrecognized_keys; line != NULL; line = line->next)
+				PopupForm_add_text (popup, __, line->text, false);
+		}
+		patch_show_popup (popup, __, 0, 0);
+		free_error_lines (parse_errors);
+		free_error_lines (unrecognized_keys);
+	}
 }
 
 void
@@ -3927,8 +3839,8 @@ load_districts_config (void)
 				struct string_slice tech_name = { .str = (char *)is->district_configs[i].advance_prereq, .len = (int)strlen (is->district_configs[i].advance_prereq) };
 				if (find_game_object_id_by_name (GOK_TECHNOLOGY, &tech_name, 0, &tech_id)) {
 
-					snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d", tech_name.len, tech_name.str, is->district_configs[i].advance_prereq, tech_id);
-					pop_up_in_game_error (ss);
+					//snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d", tech_name.len, tech_name.str, is->district_configs[i].advance_prereq, tech_id);
+					//pop_up_in_game_error (ss);
 
 					// Set the prereq ID in the district info struct
 					is->district_infos[i].advance_prereq_id = tech_id;
@@ -3956,8 +3868,8 @@ load_districts_config (void)
 				struct string_slice improv_name = { .str = (char *)is->district_configs[i].dependent_improvements[j], .len = (int)strlen (is->district_configs[i].dependent_improvements[j]) };
 				if (find_game_object_id_by_name (GOK_BUILDING, &improv_name, 0, &improv_id)) {
 
-					snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d", improv_name.len, improv_name.str, is->district_configs[i].dependent_improvements[j], improv_id);
-					pop_up_in_game_error (ss);
+					//snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d", improv_name.len, improv_name.str, is->district_configs[i].dependent_improvements[j], improv_id);
+					//pop_up_in_game_error (ss);
 
 					// Append the improvement ID to the list in the district info struct	
 					if (stored_count < ARRAY_LEN (is->district_infos[i].dependent_building_ids)) {
