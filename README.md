@@ -38,7 +38,7 @@ There are 4 categories of Districts:
 
 ## Standard Districts
 
-Standard Districts are, well, standard. They may require a technology to be made available and can have zero or more buildings dependent on them. The default standard Districts are:
+Standard Districts are, well, standard. They may require a technology to be made available and can have zero or more buildings dependent on them. The default Standard Districts are:
 
 - **Encampment** - allows Barracks, SAM Missile Battery. Enabled by Warrior Code
 
@@ -91,7 +91,7 @@ Standard Districts are defined under [`./Districts/Config/Districts.txt`](https:
 
 District art (for all Districts, not only standard) is under [`./Art/Districts/1200`](https://github.com/instafluff0/C3X_Districts/tree/districts_v1/Art/Districts/1200). 
 
-> Note that if `#vary_img_by_culture` is set to 1 (true), you **must** have 5 PCX images in the order of: American, Euro, Roman, Mideast, Asian. For example:
+> Note that if `#vary_img_by_culture` is set to 1 (true), you **must** have 5 PCX images in the order of: American, European, Roman, Mideast, Asian. For example:
 
   ```
   #img_paths HolySite_AMER.pcx, HolySite_EURO.pcx, HolySite_ROMAN.pcx, HolySite_MIDEAST.pcx, HolySite_ASIAN.pcx
@@ -101,7 +101,7 @@ AI workers are triggered to build Standard Districts [when an AI city attempts t
 
 ## Neighborhoods
 
-Neighborhoods can be enabled via `enable_neighborhood_districts`. Neighborhoods allow a city to expand in population beyond a certain amount set by `cities_can_share_buildings_by_districts`. After that point, a city will need Neighborhoods, each of what allow the city population to grow at `per_neighborhood_pop_growth_enabled` for each Neighborhood. 
+Enabled via `enable_neighborhood_districts`. Neighborhoods allow a city to expand in population beyond a certain amount set by `maximum_pop_before_neighborhood_needed`. After that point, a city will need Neighborhoods, each of what allow the city population to grow at `per_neighborhood_pop_growth_enabled` for each Neighborhood. 
 
 Each culture has 4 possible Neighborhood art designs for each era, for visual variety. We use a [semi-random algorithm keyed by tile X and Y coordinates](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L18537-L18548)to (mostly) ensure adjancent tiles use different art while keeping the chosen art deterministic (consistent every time it is rendered).
 
@@ -111,7 +111,7 @@ AI workers are [triggered to build Neighborhoods when they reach their populatio
 
 ## Wonder Districts
 
-Wonder districts can be enabled via `enable_wonder_districts`. Wonder districts enable Wonders (both Great and Small) to be dependent on having a tile reserved for them. Wonder district art will change when you initiate and complete the Wonder:
+Enabled via `enable_wonder_districts`. Wonder districts enable Wonders (both Great and Small) to be dependent on having a tile reserved for them. Wonder district art will change when you initiate and complete the Wonder:
 
 <img width="1335" height="250" alt="image" src="https://github.com/user-attachments/assets/dde0fcdd-cbf9-42ed-a3c7-2ac5cd973d7c" />
 
@@ -136,7 +136,7 @@ With so many tiles taken up by Districts, you may be wondering how to actually f
 
 ## Distribution Hubs
 
-Distribution Hub districts can be enabled via `enable_distribution_hub_districts`. Building a Distribution Hub makes all of the surrounding tiles unworkable by its surrounding cities and instead makes the food and shields from those tiles available to **ALL** cities in your civ connected by trade route, divided by `distribution_hub_food_yield_divisor` and `distribution_hub_shield_yield_divisor`.
+Enabled via `enable_distribution_hub_districts`. Building a Distribution Hub makes all of the surrounding tiles unworkable by its surrounding cities and instead makes the food and shields from those tiles available to **ALL** cities in your civ connected by trade route, divided by `distribution_hub_food_yield_divisor` and `distribution_hub_shield_yield_divisor`.
 
 For example, say `distribution_hub_food_yield_divisor` = 2 and `distribution_hub_shield_yield_divisor` = 3 and you have one distribution hub which has **raw** yields of 10 food and 9 shields.
 
