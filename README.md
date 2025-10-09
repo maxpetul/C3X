@@ -152,7 +152,12 @@ This effectively enables "breadbaskets" and heavy mining areas far from your urb
 
 AI workers are triggered to build Distribution Hubs when their civ's "ideal" number of Distribution Hubs (calculated using `ai_ideal_distribution_hub_count_per_100_cities`) falls below the existing Distribution Hub count, [assessed in the production phase of each turn](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L14106-L14158). The AI determines the best potential Distribution Hub tile based on [distance from the capital (farther = better) and aggregate yields of all surrounding tiles](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L14117-L14152).
 
-## Other Districts
+## Other Non-Standard Districts
+
+The Aerodrome District reuses and slightly modifies the base game airfield art. If `air_units_use_aerodrome_districts_not_cities` is set to true, air units can only be built in cities with an Aerodrome in their radius and can only land on Aerodromes (or vanilla game airfields & carriers), not cities.
+
+<img width="778" height="382" alt="image" src="https://github.com/user-attachments/assets/c4b88569-266b-4a1c-aed3-1806e7e8c35c" />
+
 
 ## Special Thanks
-1. maxpetul and others whose work made C3X possible
+1. maxpetul (I'm standing on the shoulders of giants!) and others whose work made C3X possible
