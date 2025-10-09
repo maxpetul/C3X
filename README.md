@@ -107,7 +107,7 @@ Enabled via `enable_neighborhood_districts`. Neighborhoods allow a city to expan
 
 For example, imagine `maximum_pop_before_neighborhood_needed` = 6 and `per_neighborhood_pop_growth_enabled` = 2. Once a city reaches a population of 6, it can't grow to 7 until it has at least one Neighborhood. If it has one, it can grow up to a population of 8 (6 + 2 = 8). Neighborhood bonuses (+1 gold & +1 culture) are only factored in if Neighborhoods are actually used by a city, so it is not useful to spam them unnecessarily.
 
-Each culture has 4 possible Neighborhood art designs for each era, for visual variety. We use a [semi-random algorithm keyed by tile X and Y coordinates](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L18537-L18548) to (mostly) ensure adjancent tiles use different art while keeping the chosen art deterministic (consistent every time it is rendered).
+Each culture has 4 possible Neighborhood art designs for each era, for visual variety. We use a [semi-random algorithm keyed by tile X and Y coordinates](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L18537-L18548) to (mostly) ensure adjacent tiles use different art while keeping the chosen art deterministic (consistent every time it is rendered).
 
 <img width="612" height="306" alt="image" src="https://github.com/user-attachments/assets/e3ed1da2-97e6-4110-bd10-857e80c00db7" />
 
