@@ -10,11 +10,11 @@ Once districts are built, they become unworkable and the tile can no longer be u
 
 <img width="331" height="263" alt="image" src="https://github.com/user-attachments/assets/bdd97212-8b9f-4d22-90c1-8b3350efdaaf" />
 
-Bonuses received from Districts are automatically shown in the City view with purple a outline:
-<img width="487" height="205" alt="image" src="https://github.com/user-attachments/assets/e0f7f75a-b548-4b3e-b10a-3f5eae0a465a" />
+Bonuses received from Districts are automatically shown in the City view with a purple outline:
+<img width="651" height="275" alt="image" src="https://github.com/user-attachments/assets/57e169ee-c6eb-4507-866c-320ee0706a01" />
 
 If a District has food or shield bonuses, you'll also see those in the Production, Food, and Commerce sections:
-<img width="612" height="182" alt="image" src="https://github.com/user-attachments/assets/bbe6587c-c9a9-4889-add8-b3b3c90c49c5" />
+<img width="870" height="290" alt="image" src="https://github.com/user-attachments/assets/fcd0b16c-1dee-4a72-975d-bad9bd57baee" />
 
 Districts also have certain implications for combat: destroying a District automatically removes any dependant buildings in surrounding cities.
 
