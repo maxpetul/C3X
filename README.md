@@ -16,7 +16,7 @@ Bonuses received from Districts are automatically shown in the City view with a 
 If a District has food or shield bonuses, you'll also see those in the Production, Food, and Commerce sections:
 <img width="870" height="290" alt="image" src="https://github.com/user-attachments/assets/fcd0b16c-1dee-4a72-975d-bad9bd57baee" />
 
-Districts also have certain implications for combat: destroying a District automatically removes any dependant buildings in surrounding cities.
+Districts also have certain implications for combat: destroying a District automatically removes any dependent buildings in surrounding cities.
 
 In terms of art, besides showing which buildings are present, Districts can also show different art by era:
 
@@ -31,16 +31,16 @@ or even different art by culture, or both:
 
 There are 4 categories of Districts:
 
-- [Standard Districts](#standard-districts) - fully customizable, configuration-dependant art and building dependencies 
+- [Standard Districts](#standard-districts) - fully customizable, configuration-dependent art and building dependencies 
 - [Neighborhoods](#neighborhoods) - optional, enable population growth and visual urban sprawl
 - [Wonder Districts](#wonder-districts) - optional, enable configurable wonders (both built and under construction) to appear on the map
 - [Distribution Hubs](#distribution-hubs) - optional, enable certain food and shields from one area to be "distributed" to all connected cities
 
 ## Standard Districts
 
-Standard Districts are, well, standard. They may require a technology to be made available and can have zero or more buildings dependant on them. The default standard Districts are:
+Standard Districts are, well, standard. They may require a technology to be made available and can have zero or more buildings dependent on them. The default standard Districts are:
 
-- **Encampment** - allows Barracks, SAM Missle Battery. Enabled by Warrior Code
+- **Encampment** - allows Barracks, SAM Missile Battery. Enabled by Warrior Code
 
     <img width="258" height="130" alt="image" src="https://github.com/user-attachments/assets/41ca18ce-576e-458d-9059-1462898a11cc" />
 
@@ -97,7 +97,7 @@ District art (for all Districts, not only standard) is under [`./Art/Districts/1
   #img_paths HolySite_AMER.pcx, HolySite_EURO.pcx, HolySite_ROMAN.pcx, HolySite_MIDEAST.pcx, HolySite_ASIAN.pcx
   ```
 
-AI workers are triggered to build Standard Districts [when an AI city attempts to build a dependant building](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L10900). This is reverted to its 2nd-most valued production item [while the nearest worker builds the District](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L4637). After completion, the AI is able to build the dependant building.
+AI workers are triggered to build Standard Districts [when an AI city attempts to build a dependent building](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L10900). This is reverted to its 2nd-most valued production item [while the nearest worker builds the District](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L4637). After completion, the AI is able to build the dependent building.
 
 ## Neighborhoods
 
@@ -111,7 +111,7 @@ AI workers are [triggered to build Neighborhoods when they reach their populatio
 
 ## Wonder Districts
 
-Wonder districts can be enabled via `enable_wonder_districts`. Wonder districts enable Wonders (both Great and Small) to be dependant on having a tile reserved for them. Wonder district art will change when you initiate and complete the Wonder:
+Wonder districts can be enabled via `enable_wonder_districts`. Wonder districts enable Wonders (both Great and Small) to be dependent on having a tile reserved for them. Wonder district art will change when you initiate and complete the Wonder:
 
 <img width="1335" height="250" alt="image" src="https://github.com/user-attachments/assets/dde0fcdd-cbf9-42ed-a3c7-2ac5cd973d7c" />
 
