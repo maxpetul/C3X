@@ -101,6 +101,12 @@ AI workers are triggered to build Standard Districts [when an AI city attempts t
 
 ## Neighborhoods
 
+Neighborhoods can be enabled via `enable_neighborhood_districts`. Neighborhoods allow a city to expand in population beyond a certain amount set by `cities_can_share_buildings_by_districts`. After that point, a city will need Neighborhoods, each of what allow the city population to grow at `per_neighborhood_pop_growth_enabled` for each Neighborhood. 
+
+Each culture has 4 possible Neighborhood art designs for each era, for visual variety. We use a [semi-random algorithm keyed by tile X and Y coordinates](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L18537-L18548)to (mostly) ensure adjancent tiles use different art while keeping the chosen art deterministic (consistent every time it is rendered).
+
+<img width="612" height="306" alt="image" src="https://github.com/user-attachments/assets/e3ed1da2-97e6-4110-bd10-857e80c00db7" />
+
 ## Wonder Districts
 
 ## Distribution Hubs
