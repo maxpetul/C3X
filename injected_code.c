@@ -18927,122 +18927,29 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 
 // TODO: figure out why this won't draw or just remove
 void __fastcall
-patch_Advisor_Trade_Form_draw_local_resources (Advisor_Trade_Form * this, int edx, int * rect_ptr, int civ_id)
+patch_Advisor_Trade_Form_draw_local_resources_box (Advisor_Trade_Form * this, int edx)
 {
-	Advisor_Trade_Form_draw_local_resources (this, __, rect_ptr, civ_id);
+	Advisor_Trade_Form_draw_local_resources_box (this, edx);
+
 	return;
-
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_distribution_hub_districts ||
-	    (rect_ptr == NULL))
-		return;
-
-	recalculate_distribution_hub_totals_if_needed ();
-
-	if ((is->distribution_hub_food_per_civ == NULL) ||
-	    (is->distribution_hub_shield_per_civ == NULL) ||
-	    (is->distribution_hub_civ_capacity <= 0))
-		return;
-
-	if ((civ_id < 0) || (civ_id >= is->distribution_hub_civ_capacity))
-		return;
-
-	int hub_food = is->distribution_hub_food_per_civ[civ_id];
-	int hub_shields = is->distribution_hub_shield_per_civ[civ_id];
-	if ((hub_food <= 0) && (hub_shields <= 0))
-		return;
-
-	if (is->distribution_hub_icons_img_state == IS_UNINITED)
-		init_distribution_hub_icons ();
-	if (is->distribution_hub_icons_img_state != IS_OK)
-		return;
-
-	struct tagRECT * rect = (struct tagRECT *)rect_ptr;
-	PCX_Image * canvas = &this->Base_Data.Canvas;
-
-	int local_resource_count = 0;
-	if (p_bic_data->ResourceTypeCount > 0) {
-		Leader * leader = &leaders[civ_id];
-		for (int resource_id = 0; resource_id < p_bic_data->ResourceTypeCount; resource_id++) {
-			if (Leader_can_offer_resource_to_civ (leader, p_main_screen_form->Player_CivID, resource_id, 1, 1, 1))
-				local_resource_count++;
-		}
-	}
-
-	int base_x = rect->left + 0x5a;
-	int spacing = 0x24;
-	int width_available = rect->right - rect->left;
-	if ((local_resource_count >= 2) &&
-	    (local_resource_count * spacing > width_available - 0x5a)) {
-		int numerator = width_available - 0x7e;
-		if (numerator < 0)
-			numerator = 0;
-		int computed = (local_resource_count > 1) ? (numerator / (local_resource_count - 1)) : spacing;
-		if (computed < 1)
-			spacing = 1;
-		else if (computed > 0x24)
-			spacing = 0x24;
-		else
-			spacing = computed;
-	}
-
-	int icon_width = is->distribution_hub_food_icon_small.Width;
-	int icon_height = is->distribution_hub_food_icon_small.Height;
-	int icon_spacing = icon_width + 4;
-	int draw_x = base_x + spacing * local_resource_count;
-	if (local_resource_count > 0)
-		draw_x += 4;
-	int right_limit = rect->right - icon_width;
-	if (draw_x > right_limit)
-		draw_x = right_limit;
-	if (draw_x < base_x)
-		draw_x = base_x;
-
-	int draw_y = rect->top + ((rect->bottom - rect->top - icon_height) / 2);
-	if (draw_y < rect->top)
-		draw_y = rect->top;
-
-	int max_icons = (rect->right > draw_x) ? ((rect->right - draw_x) / icon_spacing) + 1 : 0;
-	if (max_icons <= 0)
-		return;
-
-	int icons_drawn = 0;
-	for (int i = 0; (i < hub_food) && (icons_drawn < max_icons) && (draw_x <= right_limit); i++) {
-		Sprite_draw (&is->distribution_hub_food_icon_small, __, canvas, draw_x, draw_y, NULL);
-		draw_x += icon_spacing;
-		icons_drawn++;
-	}
-
-	if ((hub_food > 0) && (hub_shields > 0))
-		draw_x += 4;
-
-	for (int i = 0; (i < hub_shields) && (icons_drawn < max_icons) && (draw_x <= right_limit); i++) {
-		Sprite_draw (&is->distribution_hub_production_icon_small, __, canvas, draw_x, draw_y, NULL);
-		draw_x += icon_spacing;
-		icons_drawn++;
-	}
-}
-
-// TODO: figure out why this won't draw or just remove
-void __fastcall
-patch_Advisor_Trade_Form_draw_all_trade_resources (Advisor_Trade_Form * this, int edx)
-{
-	Advisor_Trade_Form_draw_all_trade_resources (this, edx);
 
 	if (! is->current_config.enable_districts ||
 	    ! is->current_config.enable_distribution_hub_districts)
 		return;
 
-	return;
+	char ss[200];
+	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_local_resources_box: enter");
+    pop_up_in_game_error (ss);
 
 	recalculate_distribution_hub_totals_if_needed ();
-
-	char ss[200];
 
 	if ((is->distribution_hub_food_per_civ == NULL) ||
 	    (is->distribution_hub_shield_per_civ == NULL) ||
 	    (is->distribution_hub_civ_capacity <= 0))
 		return;
+
+	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_local_resources_box: data ok");
+    pop_up_in_game_error (ss);
 
 	if (is->distribution_hub_icons_img_state == IS_UNINITED)
 		init_distribution_hub_icons ();
@@ -19053,41 +18960,40 @@ patch_Advisor_Trade_Form_draw_all_trade_resources (Advisor_Trade_Form * this, in
 	if ((player_civ_id < 0) || (player_civ_id >= is->distribution_hub_civ_capacity))
 		return;
 
+	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_local_resources_box: player civ id %d", player_civ_id);
+	pop_up_in_game_error (ss);
+
 	int hub_food = is->distribution_hub_food_per_civ[player_civ_id];
 	int hub_shields = is->distribution_hub_shield_per_civ[player_civ_id];
 	if ((hub_food <= 0) && (hub_shields <= 0))
 		return;
 
-	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_all_trade_resources: player_civ_id=%d hub_food=%d hub_shields=%d\n",
-		player_civ_id, hub_food, hub_shields);
-	pop_up_in_game_error (ss);
-
 	struct tagRECT * rect = &this->Local_Resources_Rect;
 	PCX_Image * canvas = &this->Base_Data.Canvas;
 
-	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_all_trade_resources: rect=(%d,%d)-(%d,%d) canvas=(%p)\n",
-		rect->left, rect->top, rect->right, rect->bottom, canvas);
+	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_local_resources_box: hub food %d shields %d rect (%d,%d)-(%d,%d)",
+			  hub_food, hub_shields, rect->left, rect->top, rect->right, rect->bottom);
 	pop_up_in_game_error (ss);
 
 	int local_resource_count = 0;
 	if (p_bic_data->ResourceTypeCount > 0) {
 		Leader * player_leader = &leaders[player_civ_id];
 		for (int resource_id = 0; resource_id < p_bic_data->ResourceTypeCount; resource_id++) {
-			if (Leader_can_offer_resource_to_civ (player_leader, player_civ_id, resource_id, 1, 1, 1))
-				local_resource_count++;
+			if (Leader_can_offer_resource_to_civ (player_leader, player_civ_id, resource_id, 1, 1, 1)) {
+				local_resource_count += 1 + player_leader->Available_Resources_Counts[resource_id];
+			}
 		}
 	}
 
-	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_all_trade_resources: local_resource_count=%d\n",
-		local_resource_count);
+	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_local_resources_box: local resource count %d", local_resource_count);
 	pop_up_in_game_error (ss);
 
-	int base_x = rect->left + 0x5a;
+	int base_x = rect->left + 0x37;
 	int spacing = 0x24;
 	int width_available = rect->right - rect->left;
 	if ((local_resource_count >= 2) &&
-	    (local_resource_count * spacing > width_available - 0x5a)) {
-		int numerator = width_available - 0x7e;
+	    (local_resource_count * spacing > width_available - 0x46)) {
+		int numerator = width_available - 0x6a;
 		if (numerator < 0)
 			numerator = 0;
 		int computed = (local_resource_count > 1) ? (numerator / (local_resource_count - 1)) : spacing;
@@ -19099,8 +19005,7 @@ patch_Advisor_Trade_Form_draw_all_trade_resources (Advisor_Trade_Form * this, in
 			spacing = computed;
 	}
 
-	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_all_trade_resources: base_x=%d spacing=%d width_available=%d computed_spacing=%d\n",
-		base_x, spacing, width_available, (local_resource_count > 1) ? ((width_available - 0x7e) / (local_resource_count - 1)) : spacing);
+	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_local_resources_box: base_x %d spacing %d", base_x, spacing);
 	pop_up_in_game_error (ss);
 
 	int icon_width   = is->distribution_hub_food_icon_small.Width;
@@ -19114,20 +19019,11 @@ patch_Advisor_Trade_Form_draw_all_trade_resources (Advisor_Trade_Form * this, in
 	if (draw_x > right_limit) draw_x = right_limit;
 	if (draw_x < base_x)      draw_x = base_x;
 
-	int draw_y = rect->top + ((rect->bottom - rect->top - icon_height) / 2);
-	if (draw_y < rect->top)
-		draw_y = rect->top;
+	int draw_y = rect->top + 10;
 
 	int max_icons = (rect->right > draw_x) ? ((rect->right - draw_x) / icon_spacing) + 1 : 0;
 	if (max_icons <= 0)
 		return;
-
-	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_all_trade_resources: draw_x=%d right_limit=%d draw_y=%d max_icons=%d\n",
-		draw_x, right_limit, draw_y, max_icons);
-	pop_up_in_game_error (ss);
-
-	draw_x = 0;
-	draw_y = 0;
 
 	int icons_drawn = 0;
 	for (int i = 0; (i < hub_food) && (icons_drawn < max_icons) && (draw_x <= right_limit); i++) {
@@ -19135,10 +19031,6 @@ patch_Advisor_Trade_Form_draw_all_trade_resources (Advisor_Trade_Form * this, in
 		draw_x += icon_spacing;
 		icons_drawn++;
 	}
-
-	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_all_trade_resources: draw_x after food=%d icons_drawn=%d\n",
-		draw_x, icons_drawn);
-	pop_up_in_game_error (ss);
 
 	if ((hub_food > 0) && (hub_shields > 0))
 		draw_x += 4;
@@ -19148,10 +19040,6 @@ patch_Advisor_Trade_Form_draw_all_trade_resources (Advisor_Trade_Form * this, in
 		draw_x += icon_spacing;
 		icons_drawn++;
 	}
-
-	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_all_trade_resources: draw_x after shields=%d icons_drawn=%d\n",
-		draw_x, icons_drawn);
-	pop_up_in_game_error (ss);
 }
 
 // TCC requires a main function be defined even though it's never used.
