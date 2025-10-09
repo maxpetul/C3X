@@ -2706,6 +2706,21 @@ adjust_distribution_hub_coverage (struct distribution_hub_record * rec, int delt
 		if ((area_tile == NULL) || (area_tile == p_null_tile))
 			continue;
 
+		// Only include tiles that belong to the distribution hub owner
+		if (area_tile->vtable->m38_Get_Territory_OwnerID (area_tile) != rec->civ_id)
+			continue;
+
+		// Skip city tiles - they should never be marked as unworkable
+		if (Tile_has_city (area_tile))
+			continue;
+
+		// Skip tiles already reserved by another district
+		int mapped_district_id;
+		if (itable_look_up (&is->district_tile_map, (int)area_tile, &mapped_district_id))
+			continue;
+		if (itable_look_up (&is->wonder_district_tile_map, (int)area_tile, &mapped_district_id))
+			continue;
+
 		int key = (int)area_tile;
 		int prev = itable_look_up_or (&is->distribution_hub_coverage_counts, key, 0);
 		int next = prev + delta;
