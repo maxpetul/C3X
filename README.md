@@ -103,7 +103,9 @@ AI workers are triggered to build Standard Districts [when an AI city attempts t
 
 Enabled via `enable_neighborhood_districts`. Neighborhoods allow a city to expand in population beyond a certain amount set by `maximum_pop_before_neighborhood_needed`. After that point, a city will need Neighborhoods, each of what allow the city population to grow at `per_neighborhood_pop_growth_enabled` for each Neighborhood. 
 
-Each culture has 4 possible Neighborhood art designs for each era, for visual variety. We use a [semi-random algorithm keyed by tile X and Y coordinates](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L18537-L18548)to (mostly) ensure adjancent tiles use different art while keeping the chosen art deterministic (consistent every time it is rendered).
+For example, imagine `maximum_pop_before_neighborhood_needed` = 6 and `per_neighborhood_pop_growth_enabled` = 2. Once a city reaches a population of 6, it can't grow to 7 until it has at least one Neighborhood. If it has one, it can grow up to a population of 8 (6 + 2 = 8). Neighborhood bonuses (+1 gold & +1 culture) are only factored in if Neighborhoods are actually used by a city, so it is not useful to spam them unnecessarily.
+
+Each culture has 4 possible Neighborhood art designs for each era, for visual variety. We use a [semi-random algorithm keyed by tile X and Y coordinates](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L18537-L18548) to (mostly) ensure adjancent tiles use different art while keeping the chosen art deterministic (consistent every time it is rendered).
 
 <img width="612" height="306" alt="image" src="https://github.com/user-attachments/assets/e3ed1da2-97e6-4110-bd10-857e80c00db7" />
 
@@ -148,7 +150,7 @@ Distribution hub food and shields are shown in the City view with green outline:
 
 <img width="610" height="462" alt="image" src="https://github.com/user-attachments/assets/c34dd610-452a-4427-a9c3-70369c2889cc" />
 
-### Distrubution Hub Strategy
+### Distribution Hub Strategy
 
 Distribution Hubs are thus essentially "breadbaskets" and heavy mining areas far from your urban centers (think: Egypt feeding ancient Rome, Ukraine feeding the Soviet Union, the American midwest feeding the coasts, etc.). 
 
