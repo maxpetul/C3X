@@ -160,4 +160,4 @@ The Aerodrome District reuses and slightly modifies the base game airfield art. 
 
 
 ## Special Thanks
-1. maxpetul (I'm standing on the shoulders of giants!) and others whose work made C3X possible
+1. [@maxpetul](https://github.com/maxpetul/) (I'm standing on the shoulders of giants!) and others whose work made C3X possible
