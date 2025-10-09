@@ -4059,6 +4059,7 @@ patch_init_floating_point ()
 		{"patch_premature_truncation_of_found_paths"           , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
 		{"patch_zero_production_crash"                         , true , offsetof (struct c3x_config, patch_zero_production_crash)},
 		{"patch_ai_can_sacrifice_without_special_ability"      , true , offsetof (struct c3x_config, patch_ai_can_sacrifice_without_special_ability)},
+		{"patch_crash_in_leader_unit_ai"                       , true , offsetof (struct c3x_config, patch_crash_in_leader_unit_ai)},
 		{"delete_off_map_ai_units"                             , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
 		{"fix_overlapping_specialist_yield_icons"              , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
 		{"prevent_autorazing"                                  , false, offsetof (struct c3x_config, prevent_autorazing)},
@@ -13319,6 +13320,17 @@ patch_Sprite_draw_minimap_frame (Sprite * this, int edx, Sprite * alpha, int par
 		return Sprite_draw_for_hud (&is->double_size_box_left_color_pcx, __, &is->double_size_box_left_alpha_pcx, param_2, canvas, x, y, param_6);
 	else
 		return Sprite_draw_for_hud (this, __, alpha, param_2, canvas, x, y, param_6);
+}
+
+int __fastcall
+patch_City_get_turns_to_build_2_for_ai_move_leader (City * this, int edx, City_Order * order, bool param_2)
+{
+	// Initialize order variable to city's current build. This is not done in the base logic and can cause crashes.
+	City_Order current_order = { .OrderID = this->Body.Order_ID, .OrderType = this->Body.Order_Type };
+	if (is->current_config.patch_crash_in_leader_unit_ai)
+		order = &current_order;
+
+	return City_get_turns_to_build_2 (this, __, order, param_2);
 }
 
 // TCC requires a main function be defined even though it's never used.

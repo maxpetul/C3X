@@ -1,4 +1,5 @@
 - Fix support-free units being disbanded on bankruptcy while aggressively_penalize_bankruptcy is set
+- Fix possible crash in base game leader unit AI
 
 * RELEASE 25 PREVIEW 1
 - Increase city limit to 2048

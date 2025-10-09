@@ -777,6 +777,9 @@ define,	   0x5F83E0,	0x608910,	0x5F8310,	"Sprite_draw_for_hud",				"int (__fastc
 repl call, 0x55374D,	0x55EDF8,	0x5536FD,	"Sprite_draw_minimap_frame",			""
 define,	   0x5792AB,	0x5863CB,	0x57921B,	"ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT",		"byte *"
 repl call, 0x44580E,	0x44760E,	0x44588E,	"Unit_has_king_ability_for_find_unsupported",	""
+define,	   0x4BFD20,	0x4C72E0,	0x4BFDB0,	"City_get_turns_to_build_2",			"int (__fastcall *) (City * this, int edx, City_Order * order, bool param_2)"
+repl call, 0x45FF66,	0x462336,	0x45FFE6,	"City_get_turns_to_build_2_for_ai_move_leader",	""
+repl call, 0x4600F8,	0x4624E5,	0x460178,	"City_get_turns_to_build_2_for_ai_move_leader",	""
 
 ignore,	   0x5FC710,	0x0,		0x0,		"PCX_Image_create_and_init_jgl_image",		"int (__fastcall *) (PCX_Image * this, int edx, int width, int height, int bit_depth, int param_4, int param_5, int param_6)"
 ignore,	   0x5FCC50,	0x0,		0x0,		"PCX_Image_draw_region_to_location",		"void (__fastcall *) (PCX_Image * this, int edx, PCX_Image * canvas, int src_x, int src_y, int dest_x, int dest_y, int width, int height)"
