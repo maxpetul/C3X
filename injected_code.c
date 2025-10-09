@@ -3888,6 +3888,19 @@ load_districts_config (void)
 				is->district_infos[i].dependent_building_count = stored_count;
 			}
 		}
+
+		// Map wonder names to their improvement IDs for rendering under-construction wonders
+		for (int wi = 0; wi < is->wonder_district_count; wi++) {
+			if (is->wonder_district_configs[wi].wonder_name == NULL || is->wonder_district_configs[wi].wonder_name[0] == '\0')
+				continue;
+
+			int improv_id;
+			struct string_slice wonder_name = { .str = (char *)is->wonder_district_configs[wi].wonder_name, .len = (int)strlen (is->wonder_district_configs[wi].wonder_name) };
+			if (find_game_object_id_by_name (GOK_BUILDING, &wonder_name, 0, &improv_id)) {
+				// Map the wonder name to its improvement ID
+				stable_insert (&is->building_name_to_id, wonder_name.str, improv_id);
+			}
+		}
 	}
 }
 
@@ -18368,33 +18381,33 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                             int windex;
                             if (itable_look_up (&is->wonder_district_tile_map, (int)tile, &windex) &&
                                 (windex >= 0) && (windex < is->wonder_district_count)) {
-								snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) windex %d\n",
-										  district_id, tile_x, tile_y, windex);
-                    			pop_up_in_game_error (ss);
+								//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) windex %d\n",
+								//		  district_id, tile_x, tile_y, windex);
+                    			//pop_up_in_game_error (ss);
                                 Sprite * wsprite = &is->wonder_district_img_sets[windex].img;
                                 patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
                                 return;
                             }
 
-							snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) windex lookup failed\n",
-                    					  district_id, tile_x, tile_y);
-							pop_up_in_game_error (ss);
+							//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) windex lookup failed\n",
+                    		//			  district_id, tile_x, tile_y);
+							//pop_up_in_game_error (ss);
 
                             if (completed) {
                                 int construct_windex = -1;
                                 if (wonder_district_tile_under_construction (tile, tile_x, tile_y, &construct_windex) &&
                                     (construct_windex >= 0) && (construct_windex < is->wonder_district_count)) {
-									snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) under construction windex %d\n",
-											  construct_windex, tile_x, tile_y, district_id);
-									pop_up_in_game_error (ss);
+									//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) under construction windex %d\n",
+									//		  construct_windex, tile_x, tile_y, district_id);
+									//pop_up_in_game_error (ss);
                                     Sprite * csprite = &is->wonder_district_img_sets[construct_windex].construct_img;
                                     patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
                                     return;
                                 }
                             }
-							snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) under construction windex lookup failed\n",
-									  district_id, tile_x, tile_y);
-							pop_up_in_game_error (ss);
+							//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) under construction windex lookup failed\n",
+							//		  district_id, tile_x, tile_y);
+							//pop_up_in_game_error (ss);
                         }
                     }
 
@@ -18868,6 +18881,104 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 		int y = rect_ptr[1] + 8;
 		Sprite_draw (&is->distribution_hub_production_icon, __, (PCX_Image *)canvas, x, y, NULL);
 		x_offset += spacing;
+	}
+}
+
+void __fastcall
+patch_Advisor_Trade_Form_draw_local_resources (Advisor_Trade_Form * this, int edx, int * rect_ptr, int civ_id)
+{
+	Advisor_Trade_Form_draw_local_resources (this, __, rect_ptr, civ_id);
+
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_distribution_hub_districts ||
+	    (rect_ptr == NULL))
+		return;
+
+	recalculate_distribution_hub_totals_if_needed ();
+
+	if ((is->distribution_hub_food_per_civ == NULL) ||
+	    (is->distribution_hub_shield_per_civ == NULL) ||
+	    (is->distribution_hub_civ_capacity <= 0))
+		return;
+
+	if ((civ_id < 0) || (civ_id >= is->distribution_hub_civ_capacity))
+		return;
+
+	int hub_food = is->distribution_hub_food_per_civ[civ_id];
+	int hub_shields = is->distribution_hub_shield_per_civ[civ_id];
+	if ((hub_food <= 0) && (hub_shields <= 0))
+		return;
+
+	if (is->distribution_hub_icons_img_state == IS_UNINITED)
+		init_distribution_hub_icons ();
+	if (is->distribution_hub_icons_img_state != IS_OK)
+		return;
+
+	struct tagRECT * rect = (struct tagRECT *)rect_ptr;
+	PCX_Image * canvas = &this->Base_Data.Canvas;
+
+	int local_resource_count = 0;
+	if ((leaders != NULL) && (p_main_screen_form != NULL) && (p_bic_data->ResourceTypeCount > 0) &&
+	    (civ_id >= 0) && (civ_id < 32)) {
+		Leader * leader = &leaders[civ_id];
+		int importer_civ_id = p_main_screen_form->Player_CivID;
+		for (int resource_id = 0; resource_id < p_bic_data->ResourceTypeCount; resource_id++) {
+			if (Leader_can_offer_resource_to_civ (leader, importer_civ_id, resource_id, 1, 1, 1))
+				local_resource_count++;
+		}
+	}
+
+	int base_x = rect->left + 0x5a;
+	int spacing = 0x24;
+	int width_available = rect->right - rect->left;
+	if ((local_resource_count >= 2) &&
+	    (local_resource_count * spacing > width_available - 0x5a)) {
+		int numerator = width_available - 0x7e;
+		if (numerator < 0)
+			numerator = 0;
+		int computed = (local_resource_count > 1) ? (numerator / (local_resource_count - 1)) : spacing;
+		if (computed < 1)
+			spacing = 1;
+		else if (computed > 0x24)
+			spacing = 0x24;
+		else
+			spacing = computed;
+	}
+
+	int icon_width = is->distribution_hub_food_icon_small.Width;
+	int icon_height = is->distribution_hub_food_icon_small.Height;
+	int icon_spacing = icon_width + 4;
+	int draw_x = base_x + spacing * local_resource_count;
+	if (local_resource_count > 0)
+		draw_x += 4;
+	int right_limit = rect->right - icon_width;
+	if (draw_x > right_limit)
+		draw_x = right_limit;
+	if (draw_x < base_x)
+		draw_x = base_x;
+
+	int draw_y = rect->top + ((rect->bottom - rect->top - icon_height) / 2);
+	if (draw_y < rect->top)
+		draw_y = rect->top;
+
+	int max_icons = (rect->right > draw_x) ? ((rect->right - draw_x) / icon_spacing) + 1 : 0;
+	if (max_icons <= 0)
+		return;
+
+	int icons_drawn = 0;
+	for (int i = 0; (i < hub_food) && (icons_drawn < max_icons) && (draw_x <= right_limit); i++) {
+		Sprite_draw (&is->distribution_hub_food_icon_small, __, canvas, draw_x, draw_y, NULL);
+		draw_x += icon_spacing;
+		icons_drawn++;
+	}
+
+	if ((hub_food > 0) && (hub_shields > 0))
+		draw_x += 4;
+
+	for (int i = 0; (i < hub_shields) && (icons_drawn < max_icons) && (draw_x <= right_limit); i++) {
+		Sprite_draw (&is->distribution_hub_production_icon_small, __, canvas, draw_x, draw_y, NULL);
+		draw_x += icon_spacing;
+		icons_drawn++;
 	}
 }
 
