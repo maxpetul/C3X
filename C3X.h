@@ -270,7 +270,7 @@ struct c3x_config {
 
 	bool remove_unit_limit;
 	bool remove_city_improvement_limit;
-	bool lift_city_limit;
+	int city_limit;
 	bool remove_cap_on_turn_limit;
 	bool remove_era_limit;
 
@@ -539,7 +539,7 @@ struct injected_state {
 	Unit * sb_next_up; // The unit currently doing a stack bombard or NULL otherwise. Gets set to NULL if the unit is despawned.
 
 	Trade_Net * trade_net; // Pointer to the trade net object. If it hasn't been moved by the mod, this equals p_original_trade_net.
-	int city_limit;
+	int city_limit; // Stores the current actual city limit. Not necessarily the same as the stride of the trade net matrix or the config setting.
 
 	enum init_state trade_net_addrs_load_state;
 	int * trade_net_addrs;

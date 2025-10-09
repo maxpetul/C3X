@@ -1,3 +1,5 @@
+- Allow city limit to be configured to any value up to 2048
+  - New integer setting "city_limit" replaces the previous "lift_city_limit" switch
 - Fix support-free units being disbanded on bankruptcy while aggressively_penalize_bankruptcy is set
 - Fix possible crash in base game leader unit AI
 

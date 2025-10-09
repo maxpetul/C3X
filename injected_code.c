@@ -3222,7 +3222,7 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 
 	int * trade_net_addrs;
 	bool already_moved_trade_net = is->trade_net != p_original_trade_net,
-	     want_moved_trade_net = cfg->lift_city_limit;
+	     want_moved_trade_net = cfg->city_limit > 512;
 	if ((! at_program_start) &&
 	    ((trade_net_addrs = load_trade_net_addrs ()) != NULL) &&
 	    ((already_moved_trade_net && ! want_moved_trade_net) || (want_moved_trade_net && ! already_moved_trade_net))) {
@@ -3245,6 +3245,7 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 			p_new = (int)p_original_trade_net;
 			is->trade_net = p_original_trade_net;
 		}
+		already_moved_trade_net = is->trade_net != p_original_trade_net; // Keep this variable up to date
 
 		// Patch all references from the "old" object to the "new" one
 		int offset;
@@ -3304,7 +3305,7 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 			for (int n = 0; n < addr_count; n++) {
 				byte * instr = (byte *)addrs[n];
 				WITH_MEM_PROTECTION (instr, 10, PAGE_EXECUTE_READWRITE) {
-					if (is->city_limit == 512)
+					if (! want_moved_trade_net)
 						restore_code_area (instr);
 
 					else {
@@ -3339,18 +3340,19 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 			}
 		}
 
-		// Patch two other instructions that contain the city limit
-		WITH_MEM_PROTECTION (ADDR_CITY_LIM_CMP_IN_CONT_BEGIN_TURN, 6, PAGE_EXECUTE_READWRITE) {
-			int_to_bytes (&ADDR_CITY_LIM_CMP_IN_CONT_BEGIN_TURN[2], is->city_limit);
-		}
-		WITH_MEM_PROTECTION (ADDR_CITY_LIM_CMP_IN_CREATE_CITY, 5, PAGE_EXECUTE_READWRITE) {
-			int_to_bytes (&ADDR_CITY_LIM_CMP_IN_CREATE_CITY[1], is->city_limit);
-		}
-
 		if (to_free) {
 			to_free->vtable->destruct (to_free, __, 0);
 			free (to_free);
 		}
+	}
+
+	// Set is->city_limit and patch two instructions that contain the limit
+	is->city_limit = clamp (0, already_moved_trade_net ? 2048 : 512, cfg->city_limit);
+	WITH_MEM_PROTECTION (ADDR_CITY_LIM_CMP_IN_CONT_BEGIN_TURN, 6, PAGE_EXECUTE_READWRITE) {
+		int_to_bytes (&ADDR_CITY_LIM_CMP_IN_CONT_BEGIN_TURN[2], is->city_limit);
+	}
+	WITH_MEM_PROTECTION (ADDR_CITY_LIM_CMP_IN_CREATE_CITY, 5, PAGE_EXECUTE_READWRITE) {
+		int_to_bytes (&ADDR_CITY_LIM_CMP_IN_CREATE_CITY[1], is->city_limit);
 	}
 
 	WITH_MEM_PROTECTION (ADDR_CULTURE_DOUBLING_TIME_CMP_INSTR, 6, PAGE_EXECUTE_READWRITE) {
@@ -4041,7 +4043,6 @@ patch_init_floating_point ()
 		{"enable_caravan_unit_ai"                              , true , offsetof (struct c3x_config, enable_caravan_unit_ai)},
 		{"remove_unit_limit"                                   , true , offsetof (struct c3x_config, remove_unit_limit)},
 		{"remove_city_improvement_limit"                       , true , offsetof (struct c3x_config, remove_city_improvement_limit)},
-		{"lift_city_limit"                                     , true , offsetof (struct c3x_config, lift_city_limit)},
 		{"remove_cap_on_turn_limit"                            , true , offsetof (struct c3x_config, remove_cap_on_turn_limit)},
 		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
 		{"patch_submarine_bug"                                 , true , offsetof (struct c3x_config, patch_submarine_bug)},
@@ -4140,6 +4141,7 @@ patch_init_floating_point ()
 		{"pinned_hour_for_day_night_cycle"              ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
 		{"years_to_double_building_culture"             ,  1000, offsetof (struct c3x_config, years_to_double_building_culture)},
 		{"tourism_time_scale_percent"                   ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
+		{"city_limit"                                   ,  2048, offsetof (struct c3x_config, city_limit)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
