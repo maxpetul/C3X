@@ -19,7 +19,7 @@
 #District
 #name                         Holy Site
 #tooltip                      Build Holy Site
-#img_paths                    HolySite.pcx
+#img_paths                    HolySite_AMER.pcx, HolySite_EURO.pcx, HolySite_ROMAN.pcx, HolySite_MIDEAST.pcx, HolySite_ASIAN.pcx
 #btn_tile_sheet_row           0
 #btn_tile_sheet_column        2
 #vary_img_by_era              0
@@ -43,7 +43,7 @@
 #vary_img_by_era              1
 #vary_img_by_culture          0
 #advance_prereq               Literature
-#dependent_improvs            Library,University,"Research Lab"
+#dependent_improvs            Library, University, "Research Lab"
 #defense_bonus_multiplier_pct 100
 #allow_multiple               0
 #culture_bonus                0
@@ -79,7 +79,7 @@
 #vary_img_by_era              1
 #vary_img_by_culture          0
 #advance_prereq               Currency
-#dependent_improvs            Marketplace,Bank,"Stock Exchange"
+#dependent_improvs            Marketplace, Bank, "Stock Exchange"
 #defense_bonus_multiplier_pct 100
 #allow_multiple               0
 #culture_bonus                0

@@ -492,7 +492,7 @@ struct district_config {
 	bool is_dynamic;
 	int dependent_improvement_count;
 	int img_path_count;
-	int max_building_stage;
+	int max_building_index;
 	int btn_tile_sheet_column;
 	int btn_tile_sheet_row;
 	int culture_bonus;
@@ -525,7 +525,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.is_dynamic = false,
 		.dependent_improvement_count = 0,
 		.img_path_count = 6,
-		.max_building_stage = 3,
+		.max_building_index = 3,
 		.btn_tile_sheet_column = 0,
 		.btn_tile_sheet_row = 1,
 		.culture_bonus = 1,
@@ -533,7 +533,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.food_bonus = 0,
 		.gold_bonus = 1,
 		.shield_bonus = 0,
-		.defense_bonus_multiplier_pct = 1.25f,
+		.defense_bonus_multiplier_pct = 100,
 		.dependent_improvements = {0},
 		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx", "Neighborhood_Abandoned.pcx"}
 	},
@@ -548,7 +548,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.is_dynamic = false,
 		.dependent_improvement_count = 0,
 		.img_path_count = 1,
-		.max_building_stage = 0,
+		.max_building_index = 0,
 		.btn_tile_sheet_column = 4,
 		.btn_tile_sheet_row = 0,
 		.culture_bonus = 0,
@@ -556,7 +556,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.food_bonus = 0,
 		.gold_bonus = 0,
 		.shield_bonus = 0,
-		.defense_bonus_multiplier_pct = 1.0f,
+		.defense_bonus_multiplier_pct = 100,
 		.dependent_improvements = {0},
 		.img_paths = {"WonderDistrict.pcx"}
 	},
@@ -571,7 +571,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.is_dynamic = false,
 		.dependent_improvement_count = 0,
 		.img_path_count = 1,
-		.max_building_stage = 0,
+		.max_building_index = 0,
 		.btn_tile_sheet_column = 6,
 		.btn_tile_sheet_row = 4,
 		.culture_bonus = 0,
@@ -579,7 +579,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.food_bonus = 0,
 		.gold_bonus = 0,
 		.shield_bonus = 0,
-		.defense_bonus_multiplier_pct = 1.0f,
+		.defense_bonus_multiplier_pct = 100,
 		.dependent_improvements = {0},
 		.img_paths = {"DistributionHub.pcx"}
 	},
@@ -594,7 +594,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.is_dynamic = false,
 		.dependent_improvement_count = 1,
 		.img_path_count = 1,
-		.max_building_stage = 1,
+		.max_building_index = 1,
 		.btn_tile_sheet_column = 0,
 		.btn_tile_sheet_row = 3,
 		.culture_bonus = 0,
@@ -602,7 +602,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.food_bonus = 0,
 		.gold_bonus = 1,
 		.shield_bonus = 0,
-		.defense_bonus_multiplier_pct = 1.0f,
+		.defense_bonus_multiplier_pct = 100,
 		.dependent_improvements = {"Airport"},
 		.img_paths = {"Aerodrome.pcx"}
 	}

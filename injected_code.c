@@ -3273,8 +3273,8 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 
 	int dest = is->special_district_count + is->dynamic_district_count;
 	struct district_config * cfg = &is->district_configs[dest];
-	//free_dynamic_district_config (cfg);
-	//memset (cfg, 0, sizeof *cfg);
+	free_dynamic_district_config (cfg);
+	memset (cfg, 0, sizeof *cfg);
 	cfg->is_dynamic = true;
 
 	cfg->name = def->name;
@@ -3330,7 +3330,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 			char ss[256];
 			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: district \"%s\" requires culture-specific art but none provided (line %d)", cfg->name, section_start_line);
 			(*p_OutputDebugStringA) (ss);
-			//free_dynamic_district_config (cfg);
+			free_dynamic_district_config (cfg);
 			return false;
 		}
 		while ((cfg->img_path_count < required_variants) &&
@@ -3340,9 +3340,8 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		}
 	}
 
-	cfg->max_building_stage = cfg->dependent_improvement_count;
-	if (cfg->max_building_stage > 5)
-		cfg->max_building_stage = 5;
+	cfg->max_building_index = cfg->dependent_improvement_count;
+	if (cfg->max_building_index > 5) cfg->max_building_index = 5;
 
 	cfg->command = allocate_dynamic_district_command (cfg->name);
 
@@ -6929,7 +6928,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 			if (era_count < 1)
 				era_count = 1;
 			int column_capacity = ARRAY_LEN (this->District_Images[dc][0][0]);
-			int column_count = clamp (1, column_capacity, cfg->max_building_stage + 1);
+			int column_count = clamp (1, column_capacity, cfg->max_building_index + 1);
 
 			for (int variant_i = 0; variant_i < variant_count; variant_i++) {
 				const char * img_path = cfg->img_paths[variant_i];
@@ -7070,16 +7069,13 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 					variant_count = variant_capacity;
 
 				int era_count = cfg->vary_img_by_era ? 4 : 1;
-				if (era_count < 1)
-					era_count = 1;
-				int column_capacity = ARRAY_LEN (is->district_img_sets[dc].imgs[0][0]);
-				int total_cols = clamp (1, column_capacity, cfg->max_building_stage + 1);
+				int column_count = clamp (0, 5, cfg->max_building_index);
 
 				for (int variant_i = 0; variant_i < variant_count; variant_i++) {
 					if ((cfg->img_paths[variant_i] == NULL) || (cfg->img_paths[variant_i][0] == '\0'))
 						continue;
 					for (int era = 0; era < era_count; era++) {
-						for (int col = 0; col < total_cols; col++) {
+						for (int col = 0; col < column_count; col++) {
 							Sprite * base = &is->district_img_sets[dc].imgs[variant_i][era][col];
 							Sprite * proxy = &is->day_night_cycle_imgs[h].District_Images[dc][variant_i][era][col];
 							insert_sprite_proxy (base, proxy, h);
@@ -18314,9 +18310,7 @@ init_district_images ()
 			continue;
 
 		int era_count = cfg->vary_img_by_era ? 4 : 1;
-		if (era_count < 1)
-			era_count = 1;
-		int column_count = clamp (1, ARRAY_LEN (is->district_img_sets[dc].imgs[0][0]), cfg->max_building_stage + 1);
+		int column_count = cfg->max_building_index + 1;
 
 		// For each cultural variant
 		for (int variant_i = 0; variant_i < variant_count; variant_i++) {
@@ -18375,7 +18369,9 @@ init_district_images ()
 	if (is->current_config.enable_wonder_districts) {
 		PCX_Image wpcx;
 		PCX_Image_construct (&wpcx);
-		snprintf(art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, "Wonders.pcx");
+		//snprintf(art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, "Wonders.pcx");
+		//snprintf (ss, sizeof ss, "init_district_images: loading wonder district images from %s", art_dir);
+		pop_up_in_game_error (ss);
 		PCX_Image_read_file (&wpcx, __, art_dir, NULL, 0, 0x100, 2);
 		if (wpcx.JGL.Image != NULL) {
 			for (int wi = 0; wi < is->wonder_district_count; wi++) {
@@ -18390,6 +18386,9 @@ init_district_images ()
 				Sprite_slice_pcx (&set->construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
 			}
 			wpcx.vtable->clear_JGL (&wpcx);
+		} else {
+			snprintf (ss, sizeof ss, "init_district_images: failed to load wonder district images from %s", art_dir);
+			pop_up_in_game_error (ss);
 		}
 		wpcx.vtable->destruct (&wpcx, __, 0);
 	}
@@ -18397,8 +18396,8 @@ init_district_images ()
 	is->dc_img_state = IS_OK;
 	pcx.vtable->destruct (&pcx, __, 0);
 
-	//snprintf (ss, sizeof ss, "init_district_images: finished loading district images, img state %d", is->dc_img_state);
-	//pop_up_in_game_error (ss);
+	snprintf (ss, sizeof ss, "init_district_images: finished loading district images, img state %d", is->dc_img_state);
+	pop_up_in_game_error (ss);
 
 }
 
@@ -18431,15 +18430,6 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
     return false;
 }
 
-inline bool
-district_has_nearby_building_by_name (int tile_x, int tile_y, int district_id, const char * building_name)
-{
-    int building_id;
-    if (!building_name) return false;
-    if (!stable_look_up(&is->building_name_to_id, building_name, &building_id)) return false;
-    return tile_coords_has_city_with_building_in_district_radius(tile_x, tile_y, district_id, building_id);
-}
-
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
@@ -18466,69 +18456,73 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                             int windex;
                             if (itable_look_up (&is->wonder_district_tile_map, (int)tile, &windex) &&
                                 (windex >= 0) && (windex < is->wonder_district_count)) {
+								snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) windex %d\n",
+										  district_id, tile_x, tile_y, windex);
+                    			pop_up_in_game_error (ss);
                                 Sprite * wsprite = &is->wonder_district_img_sets[windex].img;
-                                patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+                                patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
                                 return;
                             }
+
+							snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) windex lookup failed\n",
+                    					  district_id, tile_x, tile_y);
+							pop_up_in_game_error (ss);
 
                             if (completed) {
                                 int construct_windex = -1;
                                 if (wonder_district_tile_under_construction (tile, tile_x, tile_y, &construct_windex) &&
                                     (construct_windex >= 0) && (construct_windex < is->wonder_district_count)) {
+									snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) under construction windex %d\n",
+											  construct_windex, tile_x, tile_y, district_id);
+									pop_up_in_game_error (ss);
                                     Sprite * csprite = &is->wonder_district_img_sets[construct_windex].construct_img;
-                                    patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+                                    patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
                                     return;
                                 }
                             }
+							snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) under construction windex lookup failed\n",
+									  district_id, tile_x, tile_y);
+							pop_up_in_game_error (ss);
                         }
                     }
 
                     if (! completed)
                         return;
 
+					struct district_config const * cfg = &is->district_configs[district_id];
                     int territory_owner_id = tile->Territory_OwnerID;
-                    struct district_config const * cfg = &is->district_configs[district_id];
-                    int variant_capacity = ARRAY_LEN (is->district_img_sets[district_id].imgs);
-                    int variant_count = cfg->img_path_count;
-                    if (variant_count <= 0) variant_count = 1;
-                    if (variant_count > variant_capacity) variant_count = variant_capacity;
-
-                    int column_capacity = ARRAY_LEN (is->district_img_sets[district_id].imgs[0][0]);
-                    int column_count = clamp (1, column_capacity, cfg->max_building_stage + 1);
-                    int era_count = cfg->vary_img_by_era ? 4 : 1;
-                    if (era_count < 1) era_count = 1;
-
                     int variant = 0;
                     int era = 0;
                     int culture = 0;
+					int buildings = 0;
+					Sprite * district_sprite;
+
                     if (territory_owner_id > 0) {
                         Leader * leader = &leaders[territory_owner_id];
                         culture = p_bic_data->Races[leader->RaceID].CultureGroupID;
                         if (cfg->vary_img_by_culture)
-                            variant = clamp (0, variant_count - 1, culture);
+                            variant = culture;
                         if (cfg->vary_img_by_era)
-                            era = clamp (0, era_count - 1, leader->Era);
-                    } else if ((cfg->command == UCV_Build_Neighborhood) && (variant_count > 5)) {
-                        variant = clamp (0, variant_count - 1, 5);
-                    }
-
-                    int buildings = 0;
+                            era = leader->Era;
+                    } else {
+						// Render abandoned district, special index 5
+						int variant = 5;
+						district_sprite = &is->district_img_sets[0].imgs[variant][era][buildings];
+						patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+						return;
+					}
 
                     switch (cfg->command) {
                         case UCV_Build_Neighborhood:
                         {
-                            if (territory_owner_id > 0) {
-                                unsigned v = (unsigned)tile_x * 0x9E3779B1u + (unsigned)tile_y * 0x85EBCA6Bu;
-                                v ^= v >> 16;
-                                v *= 0x7FEB352Du;
-                                v ^= v >> 15;
-                                v *= 0x846CA68Bu;
-                                v ^= v >> 16;
-                                if (column_count > 1)
-                                    buildings = (int)(v % column_count);
-                                if (cfg->vary_img_by_culture)
-                                    variant = clamp (0, variant_count - 1, culture);
-                            }
+                            unsigned v = (unsigned)tile_x * 0x9E3779B1u + (unsigned)tile_y * 0x85EBCA6Bu;
+                            v ^= v >> 16;
+                            v *= 0x7FEB352Du;
+                            v ^= v >> 15;
+                            v *= 0x846CA68Bu;
+                            v ^= v >> 16;
+                            buildings = clamp(0, 3, (int)(v & 3u));  /* final 0..3 */
+                            variant = culture;
                             break;
                         }
                         case UCV_Build_WonderDistrict:
@@ -18550,16 +18544,16 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                         }
                     }
 
-					buildings = clamp (0, column_count - 1, buildings);
-					variant   = clamp (0, variant_count - 1, variant);
-					era       = clamp (0, era_count - 1, era);
+					//snprintf (ss, sizeof ss, "[C3X] patch_Map_Renderer_m12_Draw_Tile_Buildings: district %d variant %d era %d buildings %d\n",
+					//	  district_id, variant, era, buildings);
+					//pop_up_in_game_error (ss);
 
-					Sprite * district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
+					district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
                     patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
                     return; // do not draw vanilla mine when district present
                 } else {
-                    snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district images not ready, state %d", is->dc_img_state);
-                    pop_up_in_game_error (ss);
+                    //snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district images not ready, state %d", is->dc_img_state);
+                    //pop_up_in_game_error (ss);
                     return;
                 }
             }
@@ -18657,7 +18651,7 @@ patch_get_building_defense_bonus_at (int x, int y, int param_3)
 
     int district_id;
     if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
-        double mult = (double)is->district_configs[district_id].defense_bonus_multiplier_pct;
+        double mult = (double)is->district_configs[district_id].defense_bonus_multiplier_pct / 100.0;
         if (mult > 0.0 && mult != 1.0) {
             int adjusted = (int)((double)base * mult);
             return adjusted;
