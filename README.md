@@ -132,13 +132,13 @@ Wonder art entries (both under construction and completed, separate slots) can b
 
 AI workers are triggered to build Wonder Districts in generally the same workflow as Standard Districts, based on when an AI city chooses a Wonder, triggering a worker to build a Wonder District. The only difference is that unlike Standard Districts, Wonders are specifically ["remembered"](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L10907) and [city production set to building the Wonder as soon as the Wonder District is completed](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L4434-L4448).
 
-With so many tiles taken up by Districts, you may be wondering how to actually feed your cities or gain shields. First, it's probably a good idea to expand your `city_work_radius` (e.g., to 3, adding at least one more ring of workable tiles around your city) and minimum_city_separation to some higher value. Beyond that though, enter Distribution Hubs.
+With so many tiles taken up by Districts, you may be wondering how to actually feed your cities or gain shields. First, it's probably a good idea to expand your `city_work_radius` (e.g., to 3, adding at least one more ring of workable tiles around your city) and `minimum_city_separation` to some higher value. Beyond that though, enter Distribution Hubs.
 
 ## Distribution Hubs
 
-Distribution Hub districts can be enabled via `enable_distribution_hub_districts`. Building a Distribution Hub makes all of the surrounding tiles unworkable by its surrounding cities and instead makes the food and shields from those tiles available to all cities in your civ connected by trade route, divided by `distribution_hub_food_yield_divisor` and `distribution_hub_shield_yield_divisor`.
+Distribution Hub districts can be enabled via `enable_distribution_hub_districts`. Building a Distribution Hub makes all of the surrounding tiles unworkable by its surrounding cities and instead makes the food and shields from those tiles available to **ALL** cities in your civ connected by trade route, divided by `distribution_hub_food_yield_divisor` and `distribution_hub_shield_yield_divisor`.
 
-For example, say `distribution_hub_food_yield_divisor` = 2 and `distribution_hub_shield_yield_divisor` = 3 and you have one distribution hub. The **raw** yields of the hub are 10 food and 9 shields.
+For example, say `distribution_hub_food_yield_divisor` = 2 and `distribution_hub_shield_yield_divisor` = 3 and you have one distribution hub which has **raw** yields of 10 food and 9 shields.
 
 10 / 2 = 5 food and 9 / 3 = 3 shields. Thus all of your connected cities would gain a bonus 5 food and 3 shields. 
 
