@@ -2,7 +2,7 @@
 
 **C3X Districts** is a mod which enables fully customizable, interactive "Districts" to appear on the Civ 3 map. C3X Districts is inspired by the [Districts feature in Civ 6](https://civilization.fandom.com/wiki/District_(Civ6)) and is built off of [C3X](https://github.com/maxpetul/C3X), a brilliant mod which makes improvements and allows changes to Civ 3 Conquests EXE.
 
-The goal of C3X Districts is to make the Civ 3 map **feel more alive and interesting**. Districts enable large cities to sprawl, infrastructure to be visualized, and - if you enable them - new gameplay additions which make the map more interactive and interesting without fundamentally altering core Civ 3 mechanics. Districts are also 100% customizable and modular, so you can pick and choose types you like, or simply craft your own with custom art, tech dependencies, buildings, and bonuses.
+The goal of C3X Districts is to **make the Civ 3 map feel more alive and interesting**. Districts enable large cities to sprawl, infrastructure to be visualized, and - if you enable them - new gameplay additions which make the map more interactive and interesting without fundamentally altering core Civ 3 mechanics. Districts are also 100% customizable and modular, so you can pick and choose types you like, or simply craft your own with custom art, tech dependencies, buildings, and bonuses.
 
 The core purpose of a District is to enable one or more city improvements (buildings). Barracks, for example, require an Encampment District in a city's work radius before they can be built. Once you do so, the Barracks appear within the Encampment:
 
