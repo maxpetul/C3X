@@ -148,9 +148,11 @@ Distribution hub food and shields are shown in the City view with green outline:
 
 <img width="610" height="462" alt="image" src="https://github.com/user-attachments/assets/c34dd610-452a-4427-a9c3-70369c2889cc" />
 
-This effectively enables "breadbaskets" and heavy mining areas far from your urban centers (think: Egypt feeding ancient Rome, Ukraine feeding the Soviet Union, the American midwest feeding the coasts, etc.). 
+### Distrubution Hub Strategy
 
-Creating a Distribution Hub significantly minimizes the growth potential and production output of a given city, so should be built wisely, likely far from your urban city cores, and well defended!. Distribution Hub yields are not subject to corruption.
+Distribution Hubs are thus essentially "breadbaskets" and heavy mining areas far from your urban centers (think: Egypt feeding ancient Rome, Ukraine feeding the Soviet Union, the American midwest feeding the coasts, etc.). 
+
+Creating a Distribution Hub significantly minimizes the growth potential and production output of a nearby city, so should be built wisely, likely far from your urban city cores, and well defended!. Distribution Hub yields are not subject to corruption.
 
 AI workers are triggered to build Distribution Hubs when their civ's "ideal" number of Distribution Hubs (calculated using `ai_ideal_distribution_hub_count_per_100_cities`) falls below the existing Distribution Hub count, [assessed in the production phase of each turn](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L14106-L14158). The AI determines the best potential Distribution Hub tile based on [distance from the capital (farther = better) and aggregate yields of all surrounding tiles](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L14117-L14152).
 
