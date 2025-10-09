@@ -24,7 +24,7 @@ In terms of art, besides showing which buildings are present, Districts can also
 
 or even different art by culture, or both:
 
-<img width="1111" height="293" alt="image" src="https://github.com/user-attachments/assets/87d4b807-edbe-4a36-b4a1-ed7553f78ff8" />
+<img width="1113" height="288" alt="image" src="https://github.com/user-attachments/assets/f4861fbf-e72c-4a4b-810b-a9761f2d1a19" />
 
 
 # District Types
@@ -40,12 +40,32 @@ There are 4 categories of Districts:
 
 Standard Districts are, well, standard. They may require a technology to be made available and can have zero or more buildings dependant on them. The default standard Districts are:
 
-- **Encampment**
-- **Campus**
-- **Holy Site**
-- **Commercial Hub**
-- **Entertainment Complex**
-- **Industrial Zone**
+- **Encampment** - allows Barracks, SAM Missle Battery. Enabled by Warrior Code
+
+    <img width="258" height="130" alt="image" src="https://github.com/user-attachments/assets/41ca18ce-576e-458d-9059-1462898a11cc" />
+
+    
+- **Campus** - allows Library, University, Research Lab. Enabled by Literature
+
+    <img width="252" height="132" alt="image" src="https://github.com/user-attachments/assets/43a2980c-69a9-453e-a369-5d9d2c35a834" />
+
+- **Holy Site** - allows Temple, Cathedral. Enabled by Ceremonial Burial.
+
+    <img width="256" height="125" alt="image" src="https://github.com/user-attachments/assets/a4697bcd-de62-4d50-8e6c-aeabd7cb3539" />
+ 
+- **Commercial Hub** - allows Marketplace, Bank, Stock Exchange. Enabled by Currency.
+
+    <img width="255" height="129" alt="image" src="https://github.com/user-attachments/assets/d73b4b30-2eaf-4a85-8280-0d727147644d" />
+
+- **Entertainment Complex** - allows Colosseum. Enabled by Construction.
+
+    <img width="255" height="129" alt="image" src="https://github.com/user-attachments/assets/501e6883-6b54-4939-8fc4-62b47041791f" />
+
+- **Industrial Zone** - allows Factory, Manufacturing Plant. Enabled by Industrialization.
+
+    <img width="256" height="132" alt="image" src="https://github.com/user-attachments/assets/70eb7fd2-5026-421d-ab05-e71ee2d405e6" />
+
+> Note that each District above has various art by era/culture/buildings not shown.
 
 Standard Districts are defined under [`./Districts/Config/Districts.txt`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/Districts/Config/Districts.txt) in the format:
 
@@ -71,11 +91,13 @@ Standard Districts are defined under [`./Districts/Config/Districts.txt`](https:
 
 District art (for all Districts, not only standard) is under [`./Art/Districts/1200`](https://github.com/instafluff0/C3X_Districts/tree/districts_v1/Art/Districts/1200). 
 
-Note that if `#vary_img_by_culture` is set to 1 (true), you **must** have 5 PCX images in the order of: American, Euro, Roman, Mideast, Asian. For example:
+> Note that if `#vary_img_by_culture` is set to 1 (true), you **must** have 5 PCX images in the order of: American, Euro, Roman, Mideast, Asian. For example:
 
-```
-#img_paths HolySite_AMER.pcx, HolySite_EURO.pcx, HolySite_ROMAN.pcx, HolySite_MIDEAST.pcx, HolySite_ASIAN.pcx
-```
+  ```
+  #img_paths HolySite_AMER.pcx, HolySite_EURO.pcx, HolySite_ROMAN.pcx, HolySite_MIDEAST.pcx, HolySite_ASIAN.pcx
+  ```
+
+AI workers are triggered to build Standard Districts [when an AI city attempts to build a dependant building](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L10900). This is reverted to its 2nd-most valued production item [while the nearest worker builds the District](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L4637). After completion, the AI is able to build the dependant building.
 
 ## Neighborhoods
 
