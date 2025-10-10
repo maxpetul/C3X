@@ -4,13 +4,13 @@
 
 The goal of C3X Districts is to **make the Civ 3 map feel more alive and interesting**. Districts enable large cities to sprawl, infrastructure to be visualized, and - if you enable them - new gameplay additions which make the map more interactive and interesting without fundamentally altering core Civ 3 mechanics. Districts are also 100% customizable and modular, so you can pick and choose types you like, or simply craft your own with custom art, tech dependencies, buildings, and bonuses.
 
-The core purpose of a District is to enable one or more city improvements (buildings). A Barracks, for example, may require an Encampment District in a city's work radius before they can be built. Once you do so, the Barracks appear within the Encampment:
-
-<img width="1290" height="307" alt="image" src="https://github.com/user-attachments/assets/663dbb1c-07a6-47d3-b362-e5a9550ab7c4" />
-
 Districts are buildable by Workers, like any other build action:
 
 <img width="405" height="403" alt="image" src="https://github.com/user-attachments/assets/784221c3-bfd6-4089-94ae-a28acfd79c6c" />
+
+The core purpose of a District is to enable one or more city improvements (buildings). A Barracks, for example, may require an Encampment District in a city's work radius before they can be built. Once you do so, the Barracks appear within the Encampment:
+
+<img width="1290" height="307" alt="image" src="https://github.com/user-attachments/assets/663dbb1c-07a6-47d3-b362-e5a9550ab7c4" />
 
 After Districts are built, they become unworkable and the tile can no longer be used by the city unless the District is removed. So placing Districts requires a bit of thought beforehand. Once built, however, Districts can offer certain bonuses - shields, food, gold, science, culture, or defensive boost (all configurable) - to ALL cities within their work radius. So cities with Districts in between them (e.g., Rome and Veii have the same Encampment in their work radius) can share the benefits. If `cities_can_share_buildings_by_districts` is set to true, cities can even share buildings within a District. For example, Veii can automatically "use" the Barracks built by Rome, as they share an Encampment.
 
@@ -153,15 +153,15 @@ For example, say `distribution_hub_food_yield_divisor` = 2 and `distribution_hub
 
 10 / 2 = 5 food and 9 / 3 = 3 shields. Thus all of your connected cities would gain a bonus 5 food and 3 shields. 
 
-<img width="540" height="272" alt="image" src="https://github.com/user-attachments/assets/4528f5c8-e2bc-4fd6-99c4-ddfcf821547f" />
+<img width="494" height="326" alt="image" src="https://github.com/user-attachments/assets/5cf6911f-afc2-4865-b5cc-ecd51f24270b" />
 
 Distribution hub food and shields are shown in the City view with green outline:
 
-<img width="610" height="462" alt="image" src="https://github.com/user-attachments/assets/c34dd610-452a-4427-a9c3-70369c2889cc" />
+<img width="671" height="520" alt="image" src="https://github.com/user-attachments/assets/dc7ab50b-dfd9-42ad-876b-8abc60ebf10a" />
 
 ### Distribution Hub Strategy
 
-Distribution Hubs are thus essentially "breadbaskets" and heavy mining areas far from your urban centers (think: Egypt feeding ancient Rome, Ukraine feeding the Soviet Union, the American MidWest feeding the coasts, etc.). 
+Distribution Hubs are thus essentially "breadbaskets" and heavy mining areas far from your urban centers (think: Egypt feeding ancient Rome, Ukraine feeding the Soviet Union, the American Midwest feeding the coasts, etc.). 
 
 Creating a Distribution Hub significantly minimizes the growth potential and production output of a nearby city, so should be built wisely, likely far from your urban city cores, and well defended! Distribution Hub yields are also not subject to corruption.
 
