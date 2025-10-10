@@ -7516,10 +7516,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 				variant_count = variant_capacity;
 
 			int era_count = cfg->vary_img_by_era ? 4 : 1;
-			if (era_count < 1)
-				era_count = 1;
-			int column_capacity = ARRAY_LEN (this->District_Images[dc][0][0]);
-			int column_count = clamp (1, column_capacity, cfg->max_building_index + 1);
+			int column_count = cfg->max_building_index + 1;
 
 			for (int variant_i = 0; variant_i < variant_count; variant_i++) {
 				const char * img_path = cfg->img_paths[variant_i];
@@ -7538,6 +7535,28 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 					}
 				}
 			}
+		}
+
+		// Load wonder district images (single-sheet) for this hour
+		if (is->current_config.enable_wonder_districts) {
+			PCX_Image wpcx;
+			PCX_Image_construct (&wpcx);
+			read_in_dir (&wpcx, districts_hour_dir, "Wonders.pcx", NULL);
+			if (wpcx.JGL.Image != NULL) {
+				for (int wi = 0; wi < is->wonder_district_count; wi++) {
+					Sprite_construct (&this->Wonder_District_Images[wi].img);
+					int x = 128 * is->wonder_district_configs[wi].img_column;
+					int y =  64 * is->wonder_district_configs[wi].img_row;
+					Sprite_slice_pcx (&this->Wonder_District_Images[wi].img, __, &wpcx, x, y, 128, 64, 1, 1);
+
+					Sprite_construct (&this->Wonder_District_Images[wi].construct_img);
+					int cx = 128 * is->wonder_district_configs[wi].img_construct_column;
+					int cy =  64 * is->wonder_district_configs[wi].img_construct_row;
+					Sprite_slice_pcx (&this->Wonder_District_Images[wi].construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
+				}
+				wpcx.vtable->clear_JGL (&wpcx);
+			}
+			wpcx.vtable->destruct (&wpcx, __, 0);
 		}
 	}
 
@@ -7660,7 +7679,7 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 					variant_count = variant_capacity;
 
 				int era_count = cfg->vary_img_by_era ? 4 : 1;
-				int column_count = clamp (0, 5, cfg->max_building_index);
+				int column_count = cfg->max_building_index + 1;
 
 				for (int variant_i = 0; variant_i < variant_count; variant_i++) {
 					if ((cfg->img_paths[variant_i] == NULL) || (cfg->img_paths[variant_i][0] == '\0'))
@@ -7672,6 +7691,19 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 							insert_sprite_proxy (base, proxy, h);
 						}
 					}
+				}
+			}
+
+			// Wonder district proxy indexing
+			if (is->current_config.enable_wonder_districts) {
+				for (int wi = 0; wi < is->wonder_district_count; wi++) {
+					Sprite * base_img = &is->wonder_district_img_sets[wi].img;
+					Sprite * proxy_img = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].img;
+					insert_sprite_proxy (base_img, proxy_img, h);
+
+					Sprite * base_construct = &is->wonder_district_img_sets[wi].construct_img;
+					Sprite * proxy_construct = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].construct_img;
+					insert_sprite_proxy (base_construct, proxy_construct, h);
 				}
 			}
 		}

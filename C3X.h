@@ -516,96 +516,35 @@ struct wonder_district_config {
 
 const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYPES] = {
 	{
-		.command = UCV_Build_Neighborhood,
-		.name = "Neighborhood",
-		.tooltip = "Build Neighborhood",
-		.advance_prereq = NULL,
-		.allow_multiple = true,
-		.vary_img_by_era = true,
-		.vary_img_by_culture = true,
-		.is_dynamic = false,
-		.dependent_improvement_count = 0,
-		.img_path_count = 6,
-		.max_building_index = 3,
-		.btn_tile_sheet_column = 0,
-		.btn_tile_sheet_row = 1,
-		.culture_bonus = 1,
-		.science_bonus = 0,
-		.food_bonus = 0,
-		.gold_bonus = 1,
-		.shield_bonus = 0,
-		.defense_bonus_multiplier_pct = 100,
-		.dependent_improvements = {0},
-		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx", "Neighborhood_Abandoned.pcx"}
+		.command = UCV_Build_Neighborhood, .name = "Neighborhood", .tooltip = "Build Neighborhood",
+		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = true, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx", "Neighborhood_Abandoned.pcx"},
+		.img_path_count = 6, .max_building_index = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 1,
+		.culture_bonus = 1, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100
+		
 	},
 	{
-		.command = UCV_Build_WonderDistrict,
-		.name = "Wonder District",
-		.tooltip = "Build Wonder District",
-		.advance_prereq = NULL,
-		.allow_multiple = true,
-		.vary_img_by_era = true,
-		.vary_img_by_culture = false,
-		.is_dynamic = false,
-		.dependent_improvement_count = 0,
-		.img_path_count = 1,
-		.max_building_index = 0,
-		.btn_tile_sheet_column = 4,
-		.btn_tile_sheet_row = 0,
-		.culture_bonus = 0,
-		.science_bonus = 0,
-		.food_bonus = 0,
-		.gold_bonus = 0,
-		.shield_bonus = 0,
-		.defense_bonus_multiplier_pct = 100,
-		.dependent_improvements = {0},
-		.img_paths = {"WonderDistrict.pcx"}
+		.command = UCV_Build_WonderDistrict, .name = "Wonder District", .tooltip = "Build Wonder District",
+		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.img_paths = {"WonderDistrict.pcx"},
+		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100
+		
 	},
 	{
-		.command = UCV_Build_DistributionHub,
-		.name = "Distribution Hub",
-		.tooltip = "Build Distribution Hub",
-		.advance_prereq = NULL,
-		.allow_multiple = true,
-		.vary_img_by_era = true,
-		.vary_img_by_culture = false,
-		.is_dynamic = false,
-		.dependent_improvement_count = 0,
-		.img_path_count = 1,
-		.max_building_index = 0,
-		.btn_tile_sheet_column = 6,
-		.btn_tile_sheet_row = 4,
-		.culture_bonus = 0,
-		.science_bonus = 0,
-		.food_bonus = 0,
-		.gold_bonus = 0,
-		.shield_bonus = 0,
-		.defense_bonus_multiplier_pct = 100,
-		.dependent_improvements = {0},
-		.img_paths = {"DistributionHub.pcx"}
+		.command = UCV_Build_DistributionHub, .name = "Distribution Hub", .tooltip = "Build Distribution Hub",
+		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.img_paths = {"DistributionHub.pcx"},
+		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 6, .btn_tile_sheet_row = 4,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100
+		
 	},
 	{
-		.command = UCV_Build_Aerodrome,
-		.name = "Aerodrome",
-		.tooltip = "Build Aerodrome",
-		.advance_prereq = "Flight",
-		.allow_multiple = false,
-		.vary_img_by_era = true,
-		.vary_img_by_culture = false,
-		.is_dynamic = false,
-		.dependent_improvement_count = 1,
-		.img_path_count = 1,
-		.max_building_index = 1,
-		.btn_tile_sheet_column = 0,
-		.btn_tile_sheet_row = 3,
-		.culture_bonus = 0,
-		.science_bonus = 0,
-		.food_bonus = 0,
-		.gold_bonus = 1,
-		.shield_bonus = 0,
-		.defense_bonus_multiplier_pct = 100,
-		.dependent_improvements = {"Airport"},
-		.img_paths = {"Aerodrome.pcx"}
+		.command = UCV_Build_Aerodrome, .name = "Aerodrome", .tooltip = "Aerodrome Hub",
+		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.img_paths = {"Aerodrome.pcx"},
+		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 3,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100	
 	}
 };
 
@@ -1193,6 +1132,11 @@ struct injected_state {
 
 	struct table day_night_sprite_proxy_by_hour[24];
 
+	struct wonder_district_image_set {
+		Sprite img;
+		Sprite construct_img;
+	} wonder_district_img_sets[MAX_WONDER_DISTRICT_TYPES];
+
 	struct day_night_cycle_img_set
 	{
 		SpriteList Std_Terrain_Images[9];
@@ -1261,6 +1205,7 @@ struct injected_state {
 		Sprite LM_Forests_Pines_Images[12];
 		Sprite LM_Hills_Images[16];
 		Sprite District_Images[COUNT_DISTRICT_TYPES][10][4][6]; // [district][variant][era][building_stage]
+		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
 	} day_night_cycle_imgs[24];
 
 	// Districts
@@ -1274,11 +1219,6 @@ struct injected_state {
 	struct district_image_set {
 		Sprite imgs[10][4][6]; // [variant][era][building_stage]
 	} district_img_sets[COUNT_DISTRICT_TYPES];
-
-	struct wonder_district_image_set {
-		Sprite img;
-		Sprite construct_img;
-	} wonder_district_img_sets[MAX_WONDER_DISTRICT_TYPES];
 
 	struct district_button_image_set {
 		Sprite imgs[4];

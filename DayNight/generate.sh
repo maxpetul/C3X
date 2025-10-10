@@ -180,5 +180,5 @@ process_art_set() {
   python civ3_postprocess_pixels.py "${pp_args[@]}"
 }
 
-process_art_set "$DAYNIGHT_DATA_DIR" "$DAYNIGHT_ANNOTATION_DIR"
+#process_art_set "$DAYNIGHT_DATA_DIR" "$DAYNIGHT_ANNOTATION_DIR"
 process_art_set "$DISTRICT_DATA_DIR" "$DISTRICT_ANNOTATION_DIR"
