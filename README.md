@@ -153,11 +153,11 @@ For example, say `distribution_hub_food_yield_divisor` = 2 and `distribution_hub
 
 10 / 2 = 5 food and 9 / 3 = 3 shields. Thus all of your connected cities would gain a bonus 5 food and 3 shields. 
 
-<img width="540" height="272" alt="image" src="https://github.com/user-attachments/assets/4528f5c8-e2bc-4fd6-99c4-ddfcf821547f" />
+<img width="494" height="326" alt="image" src="https://github.com/user-attachments/assets/5cf6911f-afc2-4865-b5cc-ecd51f24270b" />
 
 Distribution hub food and shields are shown in the City view with green outline:
 
-<img width="610" height="462" alt="image" src="https://github.com/user-attachments/assets/c34dd610-452a-4427-a9c3-70369c2889cc" />
+<img width="671" height="520" alt="image" src="https://github.com/user-attachments/assets/dc7ab50b-dfd9-42ad-876b-8abc60ebf10a" />
 
 ### Distribution Hub Strategy
 
