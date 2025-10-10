@@ -76,6 +76,8 @@ Standard Districts are, well, standard. They may require a technology to be made
 
 > Note that each District above has various art by era/culture/buildings not shown.
 
+### Configuration
+
 Standard Districts are defined under [`./Districts/Config/Districts.txt`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/Districts/Config/Districts.txt) in the format:
 
 ```
@@ -99,6 +101,23 @@ shield_bonus                 = 0
 ```
 
 District art (for all Districts, not only standard) is under [`./Art/Districts/1200`](https://github.com/instafluff0/C3X_Districts/tree/districts_v1/Art/Districts/1200). 
+
+Special District configurations can also be overwritten in the same file, if you wish:
+
+```
+#District
+name                         = Neighborhood
+advance_prereq               = 
+defense_bonus_multiplier_pct = 100
+allow_multiple               = 0
+culture_bonus                = 1
+science_bonus                = 0
+food_bonus                   = 0
+gold_bonus                   = 1
+shield_bonus                 = 0
+```
+
+Omitting fields is fine and leaves the default values.
 
 > Note that if `vary_img_by_culture` is set to 1 (true), you **must** have 5 PCX images in the order of: American, European, Roman, Mideast, Asian. For example:
 
