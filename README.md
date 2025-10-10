@@ -100,8 +100,6 @@ gold_bonus                   = 0
 shield_bonus                 = 0
 ```
 
-District art (for all Districts, not only standard) is under [`./Art/Districts/1200`](https://github.com/instafluff0/C3X_Districts/tree/districts_v1/Art/Districts/1200). 
-
 Special District configurations can also be overwritten in the same file, if you wish:
 
 ```
@@ -124,6 +122,8 @@ Omitting fields is fine and leaves the default values.
   ```
   img_paths = HolySite_AMER.pcx, HolySite_EURO.pcx, HolySite_ROMAN.pcx, HolySite_MIDEAST.pcx, HolySite_ASIAN.pcx
   ```
+
+District art (for all Districts, not only Standard) is under [`./Art/Districts/1200`](https://github.com/instafluff0/C3X_Districts/tree/districts_v1/Art/Districts/1200). 
 
 AI workers are triggered to build Standard Districts [when an AI city attempts to build a dependent building](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L10900). This is reverted to its 2nd-most valued production item [while the nearest worker builds the District](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L4637). After completion, the AI is able to build the dependent building.
 
