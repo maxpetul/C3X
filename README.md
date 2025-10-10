@@ -161,7 +161,7 @@ Distribution hub food and shields are shown in the City view with green outline:
 
 ### Distribution Hub Strategy
 
-Distribution Hubs are thus essentially "breadbaskets" and heavy mining areas far from your urban centers (think: Egypt feeding ancient Rome, Ukraine feeding the Soviet Union, the American MidWest feeding the coasts, etc.). 
+Distribution Hubs are thus essentially "breadbaskets" and heavy mining areas far from your urban centers (think: Egypt feeding ancient Rome, Ukraine feeding the Soviet Union, the American Midwest feeding the coasts, etc.). 
 
 Creating a Distribution Hub significantly minimizes the growth potential and production output of a nearby city, so should be built wisely, likely far from your urban city cores, and well defended! Distribution Hub yields are also not subject to corruption.
 
