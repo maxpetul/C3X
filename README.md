@@ -144,7 +144,7 @@ Once a city reaches a population of 6, it can't grow to 7 until it has at least 
 
 <img width="396" height="203" alt="image" src="https://github.com/user-attachments/assets/c4546271-469b-435e-8c38-6132cb468b31" />
 
-Neighborhoods have no direct interactions with other Aquaducts or Hospitals, so at population levels 6 and 12, for example, growth may be blocked by both lack of those improvements and Neighborhoods, depending on your configuration.
+Neighborhoods have no direct interactions with other Aqueducts or Hospitals, so at population levels 6 and 12, for example, growth may be blocked by both lack of those improvements and Neighborhoods, depending on your configuration.
 
 Each culture has 4 possible Neighborhood art designs for each era, for visual variety. I use a [semi-random algorithm keyed by tile X and Y coordinates](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L18537-L18548) to (mostly) ensure adjacent tiles use different art while keeping the chosen art deterministic (consistent every time it is rendered).
 
