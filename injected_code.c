@@ -5149,6 +5149,42 @@ get_completed_district_tile_for_city (City * city, int district_id, int * out_x,
 	return NULL;
 }
 
+static bool
+tile_has_friendly_aerodrome_district (Tile * tile, int civ_id, bool require_available)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_aerodrome_districts ||
+	    (tile == NULL) ||
+	    (tile == p_null_tile) ||
+	    (civ_id < 0) || (civ_id >= 32))
+		return false;
+
+	int aerodrome_id = get_aerodrome_district_id ();
+	if (aerodrome_id < 0)
+		return false;
+
+	int mapped_id;
+	if (! itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) ||
+	    (mapped_id != aerodrome_id))
+		return false;
+
+	if (! district_is_complete (tile, aerodrome_id))
+		return false;
+
+	int territory_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	if (territory_owner != civ_id)
+		return false;
+
+	if (require_available) {
+		int usage_mask;
+		if (itable_look_up (&is->aerodrome_airlift_usage, (int)tile, &usage_mask) &&
+		    (usage_mask & (1 << civ_id)))
+			return false;
+	}
+
+	return true;
+}
+
 bool
 city_has_required_district (City * city, int district_id)
 {
@@ -14031,6 +14067,28 @@ remove_unit_id_entries_owned_by (struct table * t, int owner_id)
 void __fastcall
 patch_Leader_begin_turn (Leader * this)
 {
+	if (is->aerodrome_airlift_usage.len > 0) {
+		int civ_bit = 1 << this->ID;
+		clear_memo ();
+		FOR_TABLE_ENTRIES (tei, &is->aerodrome_airlift_usage) {
+			int mask = tei.value;
+			if (mask & civ_bit) {
+				int new_mask = mask & ~civ_bit;
+				memoize (tei.key);
+				memoize (new_mask);
+			}
+		}
+		for (int n = 0; n < is->memo_len; n += 2) {
+			int key = is->memo[n];
+			int new_mask = is->memo[n + 1];
+			if (new_mask == 0)
+				itable_remove (&is->aerodrome_airlift_usage, key);
+			else
+				itable_insert (&is->aerodrome_airlift_usage, key, new_mask);
+		}
+		clear_memo ();
+	}
+
 	// Eject trespassers
 	is->do_not_bounce_invisible_units = true;
 	if (is->current_config.disallow_trespassing && (*p_current_turn_no > 0))
@@ -17521,9 +17579,84 @@ patch_Unit_check_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
 }
 
 bool __fastcall
+patch_Unit_can_airlift (Unit * this, int edx)
+{
+	bool base = Unit_can_airlift (this, __);
+
+	if (! (is->current_config.enable_districts &&
+	       is->current_config.enable_aerodrome_districts &&
+	       is->current_config.air_units_use_aerodrome_districts_not_cities))
+		return base;
+
+	Tile * tile = tile_at (this->Body.X, this->Body.Y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return base;
+
+	bool allow_from_non_city = false;
+	if (base) {
+		City * city = city_at (this->Body.X, this->Body.Y);
+		if ((city == NULL) || (city->Body.CivID != this->Body.CivID))
+			allow_from_non_city = true;
+	}
+
+	if (allow_from_non_city)
+		return true;
+
+	return tile_has_friendly_aerodrome_district (tile, this->Body.CivID, true);
+}
+
+bool __fastcall
 patch_Unit_check_airlift_target (Unit * this, int edx, int tile_x, int tile_y)
 {
-	return Unit_check_airlift_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+	bool base = Unit_check_airlift_target (this, __, tile_x, tile_y);
+	bool allowed = base;
+
+	Tile * tile = tile_at (tile_x, tile_y);
+
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_aerodrome_districts &&
+	    is->current_config.air_units_use_aerodrome_districts_not_cities) {
+		if ((tile == NULL) || (tile == p_null_tile)) {
+			allowed = false;
+		} else {
+			City * target_city = city_at (tile_x, tile_y);
+			if (allowed &&
+			    (target_city != NULL) &&
+			    (target_city->Body.CivID == this->Body.CivID))
+				allowed = false;
+
+			if (! allowed)
+				allowed = tile_has_friendly_aerodrome_district (tile, this->Body.CivID, false);
+		}
+	}
+
+	if (! allowed)
+		return false;
+
+	return is_below_stack_limit (tile, this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+}
+
+void __fastcall
+patch_Unit_airlift (Unit * this, int edx, int tile_x, int tile_y)
+{
+	Tile * source_tile = NULL;
+	bool mark_usage = false;
+
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_aerodrome_districts &&
+	    is->current_config.air_units_use_aerodrome_districts_not_cities) {
+		source_tile = tile_at (this->Body.X, this->Body.Y);
+		if (tile_has_friendly_aerodrome_district (source_tile, this->Body.CivID, true))
+			mark_usage = true;
+	}
+
+	Unit_airlift (this, __, tile_x, tile_y);
+
+	if (mark_usage && (source_tile != NULL) && (source_tile != p_null_tile)) {
+		int mask = itable_look_up_or (&is->aerodrome_airlift_usage, (int)source_tile, 0);
+		mask |= (1 << this->Body.CivID);
+		itable_insert (&is->aerodrome_airlift_usage, (int)source_tile, mask);
+	}
 }
 
 int __fastcall

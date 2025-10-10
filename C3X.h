@@ -1239,6 +1239,8 @@ struct injected_state {
 	// A mapping from tile pointer IDs -> wonder index for completed Wonder Districts.
 	// When present, the Wonder image will render instead of the base district art.
 	struct table wonder_district_tile_map;
+	// Tracks per-turn airlift usage for aerodrome districts (tile pointer -> civ bitmask).
+	struct table aerodrome_airlift_usage;
 
 	struct table command_id_to_district_id;
 	struct table district_job_assignments;
