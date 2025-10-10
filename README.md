@@ -30,7 +30,7 @@ In terms of art, besides showing which buildings are present, Districts can also
 
 or even different art by culture, or both:
 
-<img width="1147" height="904" alt="image" src="https://github.com/user-attachments/assets/a1f4f7e0-c335-448c-8000-c1e59e18a071" />
+<img width="1143" height="904" alt="image" src="https://github.com/user-attachments/assets/29d3cb8d-f923-4cdf-8165-df15bd3e8b99" />
 
 Districts are also fully compatible with the Day/Night Cycle:
 
