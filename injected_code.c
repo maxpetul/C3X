@@ -2821,6 +2821,27 @@ find_city_for_distribution_hub (struct distribution_hub_record * rec)
 	return NULL;
 }
 
+bool
+distribution_hub_has_road_connection_to_anchor (Tile * hub_tile, City * anchor_city, int civ_id)
+{
+	if ((hub_tile == NULL) || (hub_tile == p_null_tile) ||
+	    (anchor_city == NULL) || (civ_id < 0) || (civ_id >= 32))
+		return false;
+	if (anchor_city->Body.CivID != civ_id)
+		return false;
+
+	Tile * anchor_tile = tile_at (anchor_city->Body.X, anchor_city->Body.Y);
+	if ((anchor_tile == NULL) || (anchor_tile == p_null_tile))
+		return false;
+
+	int hub_network_id = hub_tile->Body.connected_city_ids[civ_id];
+	int anchor_network_id = anchor_tile->Body.connected_city_ids[civ_id];
+	if ((hub_network_id < 0) || (anchor_network_id < 0))
+		return false;
+
+	return hub_network_id == anchor_network_id;
+}
+
 void
 compute_distribution_hub_yields (struct distribution_hub_record * rec, City * anchor_city)
 {
@@ -2852,6 +2873,15 @@ compute_distribution_hub_yields (struct distribution_hub_record * rec, City * an
 	rec->tile = tile;
 	int district_id = get_distribution_hub_district_id ();
 	if ((district_id < 0) || ! district_is_complete (tile, district_id)) {
+		rec->food_yield = 0;
+		rec->shield_yield = 0;
+		rec->raw_food_yield = 0;
+		rec->raw_shield_yield = 0;
+		rec->is_active = false;
+		return;
+	}
+
+	if (! distribution_hub_has_road_connection_to_anchor (tile, anchor_city, rec->civ_id)) {
 		rec->food_yield = 0;
 		rec->shield_yield = 0;
 		rec->raw_food_yield = 0;
@@ -17946,6 +17976,12 @@ draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, in
 	// Get the distribution hub record for this tile
 	struct distribution_hub_record * rec = get_distribution_hub_record (tile);
 	if (rec == NULL || !rec->is_active)
+		return;
+
+	City * anchor_city = get_city_ptr (rec->city_id);
+	if ((anchor_city == NULL) || (anchor_city->Body.CivID != rec->civ_id))
+		anchor_city = find_city_for_distribution_hub (rec);
+	if (! distribution_hub_has_road_connection_to_anchor (tile, anchor_city, rec->civ_id))
 		return;
 
 	int food_yield = rec->food_yield;
