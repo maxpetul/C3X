@@ -5786,6 +5786,42 @@ remove_dependent_buildings_for_district (int district_id, int center_x, int cent
 }
 
 void
+remove_wonder_improvement_for_destroyed_district (int wonder_improv_id)
+{
+	if ((wonder_improv_id < 0) || (wonder_improv_id >= p_bic_data->ImprovementsCount))
+		return;
+
+	if ((p_cities == NULL) || (p_cities->Cities == NULL))
+		return;
+
+	char ss[200];
+	for (int idx = 0; idx <= p_cities->LastIndex; idx++) {
+		City * city = get_city_ptr (idx);
+		if (city == NULL)
+			continue;
+		if (! patch_City_has_improvement (city, __, wonder_improv_id, false))
+			continue;
+
+		snprintf (ss, sizeof ss, "[C3X] remove_wonder_improvement_for_destroyed_district: city=%p improv_id=%d at (%d,%d)\n",
+			(void *)city, wonder_improv_id, city->Body.X, city->Body.Y);
+		(*p_OutputDebugStringA) (ss);
+
+		patch_City_add_or_remove_improvement (city, __, wonder_improv_id, 0, false);
+
+		if ((*p_human_player_bits & (1 << city->Body.CivID)) == 0) {
+			int wonder_district_id = get_wonder_district_id ();
+			if (wonder_district_id >= 0)
+				mark_city_needs_district (city, wonder_district_id);
+		}
+
+		return;
+	}
+
+	snprintf (ss, sizeof ss, "[C3X] remove_wonder_improvement_for_destroyed_district: improv_id=%d not found in any city\n", wonder_improv_id);
+	(*p_OutputDebugStringA) (ss);
+}
+
+void
 handle_district_removed (Tile * tile, int district_id, int center_x, int center_y, bool leave_ruins)
 {
 	if ((tile == NULL) || (tile == p_null_tile) || ! is->current_config.enable_districts)
@@ -5797,6 +5833,7 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	(*p_OutputDebugStringA) (ss);
 
 	int wonder_windex = itable_look_up_or (&is->wonder_district_tile_map, (int)tile, -1);
+	int wonder_improv_id = -1;
 
 	int actual_district_id = district_id;
 	if (actual_district_id < 0)
@@ -5809,12 +5846,13 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 
 	if (is->current_config.enable_wonder_districts &&
 	    (actual_district_id == get_wonder_district_id ()) &&
-	    (wonder_windex >= 0)) {
-		int wonder_improv_id = get_wonder_improvement_id_from_index (wonder_windex);
-		if (wonder_improv_id >= 0) {
-			is->suppress_next_wonder_destroy_popup_improv_id = wonder_improv_id;
-			show_wonder_destroyed_popup (wonder_improv_id);
-		}
+	    (wonder_windex >= 0))
+		wonder_improv_id = get_wonder_improvement_id_from_index (wonder_windex);
+
+	if (wonder_improv_id >= 0) {
+		is->suppress_next_wonder_destroy_popup_improv_id = wonder_improv_id;
+		remove_wonder_improvement_for_destroyed_district (wonder_improv_id);
+		show_wonder_destroyed_popup (wonder_improv_id);
 	}
 
 	if (is->current_config.enable_distribution_hub_districts &&
