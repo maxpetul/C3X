@@ -1,6 +1,6 @@
 #Wonder
-#name                     The Pyramids
-#img_row                  0
-#img_column               0
-#img_construct_row        0
-#img_construct_column     1
+name                 = The Pyramids
+img_row              = 0
+img_column           = 0
+img_construct_row    = 0
+img_construct_column = 1

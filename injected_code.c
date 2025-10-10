@@ -2722,12 +2722,6 @@ ensure_distribution_hub_civ_capacity (int min_capacity)
 }
 
 void
-mark_distribution_hub_totals_dirty (void)
-{
-	is->distribution_hub_totals_dirty = true;
-}
-
-void
 clear_distribution_hub_tables (void)
 {
 	char ss[200];
@@ -2906,44 +2900,20 @@ compute_distribution_hub_yields (struct distribution_hub_record * rec, City * an
 		rec->is_active = City_has_trade_connection_to_capital (anchor_city);
 }
 
+void recalculate_distribution_hub_totals ();
+
 void
-on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city)
+recalculate_distribution_hub_totals_if_needed (void)
 {
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_distribution_hub_districts)
-		return;
-
 	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] on_distribution_hub_completed: tile=%p at (%d,%d) city=%p\n", (void*)tile, tile_x, tile_y, (void*)city);
+	snprintf (ss, sizeof ss, "[C3X] recalculate_distribution_hub_totals_if_needed: dirty=%d\n", is->distribution_hub_totals_dirty);
 	(*p_OutputDebugStringA) (ss);
+	if ((is->distribution_hub_last_food_divisor != is->current_config.distribution_hub_food_yield_divisor) ||
+	    (is->distribution_hub_last_shield_divisor != is->current_config.distribution_hub_shield_yield_divisor))
+		is->distribution_hub_totals_dirty = true;
 
-	struct distribution_hub_record * rec = get_distribution_hub_record (tile);
-	if (rec != NULL)
-		return; // Already activated, don't process again
-
-	rec = malloc (sizeof *rec);
-	if (rec == NULL)
-		return;
-	rec->tile = tile;
-	rec->tile_x = tile_x;
-	rec->tile_y = tile_y;
-	rec->civ_id = (tile != NULL) ? tile->vtable->m38_Get_Territory_OwnerID (tile) : -1;
-	rec->city_id = (city != NULL) ? city->Body.ID : -1;
-	rec->food_yield = 0;
-	rec->shield_yield = 0;
-	rec->raw_food_yield = 0;
-	rec->raw_shield_yield = 0;
-	rec->is_active = false;
-	itable_insert (&is->distribution_hub_records, (int)tile, (int)(long)rec);
-	adjust_distribution_hub_coverage (rec, +1);
-
-	City * anchor_city = (city != NULL) ? city : find_city_for_distribution_hub (rec);
-	if (anchor_city != NULL)
-		rec->city_id = anchor_city->Body.ID;
-	compute_distribution_hub_yields (rec, anchor_city);
-	mark_distribution_hub_totals_dirty ();
-	if (anchor_city != NULL)
-		patch_City_recompute_yields_and_happiness (anchor_city, __);
+	if (is->distribution_hub_totals_dirty)
+		recalculate_distribution_hub_totals ();
 }
 
 void
@@ -2957,47 +2927,25 @@ remove_distribution_hub_record (Tile * tile)
 	if (rec == NULL)
 		return;
 
-	City * anchor_city = find_city_for_distribution_hub (rec);
+	int affected_civ_id = rec->civ_id;
 	adjust_distribution_hub_coverage (rec, -1);
 	itable_remove (&is->distribution_hub_records, (int)tile);
 	free (rec);
-	mark_distribution_hub_totals_dirty ();
-	if (anchor_city != NULL)
-		patch_City_recompute_yields_and_happiness (anchor_city, __);
-}
+	is->distribution_hub_totals_dirty = true;
+	recalculate_distribution_hub_totals_if_needed ();
 
-void
-refresh_distribution_hubs_for_city (City * city)
-{
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_distribution_hub_districts ||
-	    (city == NULL))
-		return;
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] refresh_distribution_hubs_for_city: city=%p\n", (void*)city);
-	(*p_OutputDebugStringA) (ss);
-
-	int district_id = get_distribution_hub_district_id ();
-	if (district_id < 0)
-		return;
-
-	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
-		Tile * tile = tai.tile;
-		if ((tile == NULL) || (tile == p_null_tile))
-			continue;
-		int mapped_id;
-		if (! itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) ||
-		    (mapped_id != district_id))
-			continue;
-		int tx, ty;
-		tai_get_coords (&tai, &tx, &ty);
-		on_distribution_hub_completed (tile, tx, ty, city);
+	// Recalculate yields for all cities of this civ
+	if ((affected_civ_id >= 0) && (p_cities->Cities != NULL)) {
+		for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+			City * target_city = get_city_ptr (city_index);
+			if ((target_city != NULL) && (target_city->Body.CivID == affected_civ_id))
+				City_recompute_yields_and_happiness (target_city, __);
+		}
 	}
 }
 
 void
-recalculate_distribution_hub_totals (void)
+recalculate_distribution_hub_totals ()
 {
 	char ss[200];
 	snprintf (ss, sizeof ss, "[C3X] recalculate_distribution_hub_totals: count=%d\n", is->distribution_hub_records.len);
@@ -3038,6 +2986,7 @@ recalculate_distribution_hub_totals (void)
 	}
 
 	clear_memo ();
+	int civs_needing_recalc[32] = {0};  // Track which civs need yield recalculation
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
 		Tile * tile = (Tile *)tei.key;
 		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
@@ -3051,7 +3000,15 @@ recalculate_distribution_hub_totals (void)
 			continue;
 		}
 		rec->tile = current_tile;
+		int old_civ_id = rec->civ_id;
 		rec->civ_id = current_tile->vtable->m38_Get_Territory_OwnerID (current_tile);
+
+		// If ownership changed, mark both old and new civs for recalculation
+		if ((old_civ_id != rec->civ_id) && (old_civ_id >= 0) && (old_civ_id < 32))
+			civs_needing_recalc[old_civ_id] = 1;
+		if ((rec->civ_id >= 0) && (rec->civ_id < 32))
+			civs_needing_recalc[rec->civ_id] = 1;
+
 		City * anchor = find_city_for_distribution_hub (rec);
 		if (anchor != NULL)
 			rec->city_id = anchor->Body.ID;
@@ -3089,21 +3046,97 @@ recalculate_distribution_hub_totals (void)
 			}
 		}
 
+	// Recalculate yields for cities of civs whose distribution hub ownership changed
+	for (int civ_id = 0; civ_id < 32; civ_id++) {
+		if (civs_needing_recalc[civ_id] && (p_cities->Cities != NULL)) {
+			for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+				City * city = get_city_ptr (city_index);
+				if ((city != NULL) && (city->Body.CivID == civ_id))
+					City_recompute_yields_and_happiness (city, __);
+			}
+		}
+	}
+
 	is->distribution_hub_totals_dirty = false;
 }
 
 void
-recalculate_distribution_hub_totals_if_needed (void)
+on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city)
 {
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] recalculate_distribution_hub_totals_if_needed: dirty=%d\n", is->distribution_hub_totals_dirty);
-	(*p_OutputDebugStringA) (ss);
-	if ((is->distribution_hub_last_food_divisor != is->current_config.distribution_hub_food_yield_divisor) ||
-	    (is->distribution_hub_last_shield_divisor != is->current_config.distribution_hub_shield_yield_divisor))
-		mark_distribution_hub_totals_dirty ();
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_distribution_hub_districts)
+		return;
 
-	if (is->distribution_hub_totals_dirty)
-		recalculate_distribution_hub_totals ();
+	char ss[200];
+	snprintf (ss, sizeof ss, "[C3X] on_distribution_hub_completed: tile=%p at (%d,%d) city=%p\n", (void*)tile, tile_x, tile_y, (void*)city);
+	(*p_OutputDebugStringA) (ss);
+
+	struct distribution_hub_record * rec = get_distribution_hub_record (tile);
+	if (rec != NULL)
+		return; // Already activated, don't process again
+
+	rec = malloc (sizeof *rec);
+	if (rec == NULL)
+		return;
+	rec->tile = tile;
+	rec->tile_x = tile_x;
+	rec->tile_y = tile_y;
+	rec->civ_id = (tile != NULL) ? tile->vtable->m38_Get_Territory_OwnerID (tile) : -1;
+	rec->city_id = (city != NULL) ? city->Body.ID : -1;
+	rec->food_yield = 0;
+	rec->shield_yield = 0;
+	rec->raw_food_yield = 0;
+	rec->raw_shield_yield = 0;
+	rec->is_active = false;
+	itable_insert (&is->distribution_hub_records, (int)tile, (int)(long)rec);
+	adjust_distribution_hub_coverage (rec, +1);
+
+	City * anchor_city = (city != NULL) ? city : find_city_for_distribution_hub (rec);
+	if (anchor_city != NULL)
+		rec->city_id = anchor_city->Body.ID;
+	compute_distribution_hub_yields (rec, anchor_city);
+	is->distribution_hub_totals_dirty = true;
+	recalculate_distribution_hub_totals_if_needed ();
+
+	// Recalculate yields for all cities of this civ
+	int affected_civ_id = rec->civ_id;
+	if ((affected_civ_id >= 0) && (p_cities->Cities != NULL)) {
+		for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+			City * target_city = get_city_ptr (city_index);
+			if ((target_city != NULL) && (target_city->Body.CivID == affected_civ_id))
+				City_recompute_yields_and_happiness (target_city, __);
+		}
+	}
+}
+
+void
+refresh_distribution_hubs_for_city (City * city)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_distribution_hub_districts ||
+	    (city == NULL))
+		return;
+
+	char ss[200];
+	snprintf (ss, sizeof ss, "[C3X] refresh_distribution_hubs_for_city: city=%p\n", (void*)city);
+	(*p_OutputDebugStringA) (ss);
+
+	int district_id = get_distribution_hub_district_id ();
+	if (district_id < 0)
+		return;
+
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
+		Tile * tile = tai.tile;
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+		int mapped_id;
+		if (! itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) ||
+		    (mapped_id != district_id))
+			continue;
+		int tx, ty;
+		tai_get_coords (&tai, &tx, &ty);
+		on_distribution_hub_completed (tile, tx, ty, city);
+	}
 }
 
 static bool
@@ -3122,21 +3155,73 @@ is_space_char (char c)
 	}
 }
 
-static char *
-trim_whitespace_inplace (char * text)
+enum key_value_parse_status {
+	KVP_SUCCESS,
+	KVP_NO_EQUALS,
+	KVP_EMPTY_KEY
+};
+
+static enum key_value_parse_status
+parse_trimmed_key_value (struct string_slice const * trimmed,
+			 struct string_slice * out_key,
+			 struct string_slice * out_value)
 {
-	if (text == NULL)
+	if ((trimmed == NULL) || (trimmed->len <= 0))
+		return KVP_NO_EQUALS;
+
+	char * equals = NULL;
+	for (int i = 0; i < trimmed->len; i++) {
+		if (trimmed->str[i] == '=') {
+			equals = trimmed->str + i;
+			break;
+		}
+	}
+	if (equals == NULL)
+		return KVP_NO_EQUALS;
+
+	struct string_slice key = { .str = trimmed->str, .len = (int)(equals - trimmed->str) };
+	key = trim_string_slice (&key, 0);
+	if (key.len == 0)
+		return KVP_EMPTY_KEY;
+
+	struct string_slice value = { .str = equals + 1, .len = (int)((trimmed->str + trimmed->len) - (equals + 1)) };
+	*out_key = key;
+	*out_value = trim_string_slice (&value, 0);
+	return KVP_SUCCESS;
+}
+
+static void
+add_key_parse_error (struct error_line ** parse_errors,
+		     int line_number,
+		     struct string_slice const * key,
+		     char const * message_suffix)
+{
+	struct error_line * err = add_error_line (parse_errors);
+	char * key_str = extract_slice (key);
+	snprintf (err->text, sizeof err->text, "^  Line %d: %s %s", line_number, key_str, message_suffix);
+	err->text[(sizeof err->text) - 1] = '\0';
+	free (key_str);
+}
+
+static void
+add_unrecognized_key_error (struct error_line ** unrecognized_keys,
+			    int line_number,
+			    struct string_slice const * key)
+{
+	struct error_line * err_line = add_error_line (unrecognized_keys);
+	char * key_str = extract_slice (key);
+	snprintf (err_line->text, sizeof err_line->text, "^  Line %d: %s", line_number, key_str);
+	err_line->text[(sizeof err_line->text) - 1] = '\0';
+	free (key_str);
+}
+
+static char *
+copy_trimmed_string_or_null (struct string_slice const * slice, int remove_quotes)
+{
+	struct string_slice trimmed = trim_string_slice (slice, remove_quotes);
+	if (trimmed.len == 0)
 		return NULL;
-
-	while ((*text != '\0') && is_space_char (*text))
-		text++;
-
-	char * end = text + strlen (text);
-	while ((end > text) && is_space_char (end[-1]))
-		end--;
-	*end = '\0';
-
-	return text;
+	return extract_slice (&trimmed);
 }
 
 static void
@@ -3231,12 +3316,51 @@ wonder_name_exists (char const * name)
 }
 
 static void
+free_special_district_override_strings (struct district_config * cfg, struct district_config const * defaults)
+{
+	if (cfg == NULL || defaults == NULL)
+		return;
+
+	if ((cfg->tooltip != NULL) && (cfg->tooltip != defaults->tooltip)) {
+		free ((void *)cfg->tooltip);
+		cfg->tooltip = NULL;
+	}
+	if ((cfg->advance_prereq != NULL) && (cfg->advance_prereq != defaults->advance_prereq)) {
+		free ((void *)cfg->advance_prereq);
+		cfg->advance_prereq = NULL;
+	}
+
+	for (int i = 0; i < ARRAY_LEN (cfg->dependent_improvements); i++) {
+		char const * default_value = (i < defaults->dependent_improvement_count) ? defaults->dependent_improvements[i] : NULL;
+		if ((cfg->dependent_improvements[i] != NULL) &&
+		    (cfg->dependent_improvements[i] != default_value)) {
+			free ((void *)cfg->dependent_improvements[i]);
+		}
+		cfg->dependent_improvements[i] = NULL;
+	}
+	cfg->dependent_improvement_count = defaults->dependent_improvement_count;
+
+	for (int i = 0; i < ARRAY_LEN (cfg->img_paths); i++) {
+		char const * default_value = (i < defaults->img_path_count) ? defaults->img_paths[i] : NULL;
+		if ((cfg->img_paths[i] != NULL) &&
+		    (cfg->img_paths[i] != default_value)) {
+			free ((void *)cfg->img_paths[i]);
+		}
+		cfg->img_paths[i] = NULL;
+	}
+	cfg->img_path_count = defaults->img_path_count;
+}
+
+static void
 clear_dynamic_district_definitions (void)
 {
 	for (int i = USED_SPECIAL_DISTRICT_TYPES; i < COUNT_DISTRICT_TYPES; i++) {
 		if (is->district_configs[i].is_dynamic)
 			free_dynamic_district_config (&is->district_configs[i]);
 	}
+
+	for (int i = 0; i < USED_SPECIAL_DISTRICT_TYPES; i++)
+		free_special_district_override_strings (&is->district_configs[i], &special_district_defaults[i]);
 
 	for (int i = 0; i < MAX_WONDER_DISTRICT_TYPES; i++) {
 		if (is->wonder_district_configs[i].is_dynamic)
@@ -3261,8 +3385,8 @@ struct parsed_district_definition {
 	char * tooltip;
 	char * advance_prereq;
 	char * dependent_improvements[ARRAY_LEN (is->district_configs[0].dependent_improvements)];
-	int dependent_improvement_count;
 	char * img_paths[ARRAY_LEN (is->district_configs[0].img_paths)];
+	int dependent_improvement_count;
 	int img_path_count;
 	bool allow_multiple;
 	bool vary_img_by_era;
@@ -3275,11 +3399,38 @@ struct parsed_district_definition {
 	int food_bonus;
 	int gold_bonus;
 	int shield_bonus;
+	bool has_name;
+	bool has_tooltip;
+	bool has_advance_prereq;
+	bool has_dependent_improvements;
+	bool has_img_paths;
+	bool has_allow_multiple;
+	bool has_vary_img_by_era;
+	bool has_vary_img_by_culture;
+	bool has_btn_tile_sheet_column;
+	bool has_btn_tile_sheet_row;
+	bool has_defense_bonus_multiplier_pct;
+	bool has_culture_bonus;
+	bool has_science_bonus;
+	bool has_food_bonus;
+	bool has_gold_bonus;
+	bool has_shield_bonus;
 };
+
+static void
+init_parsed_district_definition (struct parsed_district_definition * def)
+{
+	memset (def, 0, sizeof *def);
+	def->img_path_count = -1;
+	def->defense_bonus_multiplier_pct = 100;
+}
 
 static void
 free_parsed_district_definition (struct parsed_district_definition * def)
 {
+	if (def == NULL)
+		return;
+
 	if (def->name != NULL) {
 		free (def->name);
 		def->name = NULL;
@@ -3308,19 +3459,261 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 		}
 	}
 	def->img_path_count = 0;
+
+	init_parsed_district_definition (def);
+}
+
+static int
+find_special_district_index_by_name (char const * name)
+{
+	if (name == NULL)
+		return -1;
+
+	for (int i = 0; i < is->special_district_count; i++) {
+		if ((is->district_configs[i].name != NULL) &&
+		    (strcmp (is->district_configs[i].name, name) == 0))
+			return i;
+	}
+	return -1;
+}
+
+static bool
+ensure_culture_variant_art (struct district_config * cfg, int section_start_line)
+{
+	if ((cfg == NULL) || (! cfg->vary_img_by_culture))
+		return true;
+
+	const int required_variants = 5;
+	const int max_img_paths = ARRAY_LEN (is->district_configs[0].img_paths);
+	if (cfg->img_path_count <= 0) {
+		char ss[256];
+		snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: district \"%s\" requires culture-specific art but none provided (line %d)", cfg->name, section_start_line);
+		(*p_OutputDebugStringA) (ss);
+		return false;
+	}
+
+	while ((cfg->img_path_count < required_variants) &&
+	       (cfg->img_path_count < max_img_paths)) {
+		cfg->img_paths[cfg->img_path_count] = strdup (cfg->img_paths[0]);
+		cfg->img_path_count += 1;
+	}
+
+	return true;
+}
+
+static bool
+parse_config_string_list (char * value_text,
+			  char ** dest,
+			  int capacity,
+			  int * out_count,
+			  struct error_line ** parse_errors,
+			  int line_number,
+			  char const * key)
+{
+	for (int i = 0; i < capacity; i++) {
+		if (dest[i] != NULL) {
+			free (dest[i]);
+			dest[i] = NULL;
+		}
+	}
+	*out_count = 0;
+
+	if (value_text == NULL || *value_text == '\0')
+		return true;
+
+	char * cursor = value_text;
+	while (1) {
+		while (is_space_char (*cursor))
+			cursor++;
+
+		if (*cursor == '\0')
+			break;
+
+		char * item_start;
+		char * item_end;
+		if (*cursor == '"') {
+			cursor++;
+			item_start = cursor;
+			while ((*cursor != '\0') && (*cursor != '"'))
+				cursor++;
+			if (*cursor != '"') {
+				struct error_line * err = add_error_line (parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: %s (missing closing quote)", line_number, key);
+				err->text[(sizeof err->text) - 1] = '\0';
+				for (int j = 0; j < capacity; j++) {
+					if (dest[j] != NULL) {
+						free (dest[j]);
+						dest[j] = NULL;
+					}
+				}
+				*out_count = 0;
+				return false;
+			}
+			item_end = cursor;
+			cursor++;
+		} else {
+			item_start = cursor;
+			while ((*cursor != '\0') && (*cursor != ','))
+				cursor++;
+			item_end = cursor;
+		}
+
+		while ((item_end > item_start) && is_space_char (item_end[-1]))
+			item_end--;
+
+		int item_len = item_end - item_start;
+		if (item_len > 0) {
+			if (*out_count < capacity) {
+				char * copy = malloc (item_len + 1);
+				if (copy == NULL) {
+					struct error_line * err = add_error_line (parse_errors);
+					snprintf (err->text, sizeof err->text, "^  Line %d: %s (out of memory)", line_number, key);
+					err->text[(sizeof err->text) - 1] = '\0';
+					for (int j = 0; j < capacity; j++) {
+						if (dest[j] != NULL) {
+							free (dest[j]);
+							dest[j] = NULL;
+						}
+					}
+					*out_count = 0;
+					return false;
+				}
+				memcpy (copy, item_start, item_len);
+				copy[item_len] = '\0';
+				dest[*out_count] = copy;
+				*out_count += 1;
+			}
+		}
+
+		while (is_space_char (*cursor))
+			cursor++;
+
+		if (*cursor == ',') {
+			cursor++;
+			continue;
+		}
+		if (*cursor == '\0')
+			break;
+	}
+
+	return true;
+}
+
+static bool
+override_special_district_from_definition (struct parsed_district_definition * def, int section_start_line)
+{
+	if ((! def->has_name) || (def->name == NULL))
+		return false;
+
+	int index = find_special_district_index_by_name (def->name);
+	if (index < 0)
+		return false;
+
+	struct district_config * cfg = &is->district_configs[index];
+	struct district_config const * defaults = &special_district_defaults[index];
+
+	free (def->name);
+	def->name = NULL;
+	def->has_name = false;
+
+	if (def->has_tooltip) {
+		if ((cfg->tooltip != NULL) && (cfg->tooltip != defaults->tooltip))
+			free ((void *)cfg->tooltip);
+		cfg->tooltip = def->tooltip;
+		def->tooltip = NULL;
+	}
+
+	if (def->has_advance_prereq) {
+		if ((cfg->advance_prereq != NULL) && (cfg->advance_prereq != defaults->advance_prereq))
+			free ((void *)cfg->advance_prereq);
+		cfg->advance_prereq = def->advance_prereq;
+		def->advance_prereq = NULL;
+	}
+
+	if (def->has_allow_multiple)
+		cfg->allow_multiple = def->allow_multiple;
+	if (def->has_vary_img_by_era)
+		cfg->vary_img_by_era = def->vary_img_by_era;
+	if (def->has_vary_img_by_culture)
+		cfg->vary_img_by_culture = def->vary_img_by_culture;
+	if (def->has_btn_tile_sheet_column)
+		cfg->btn_tile_sheet_column = def->btn_tile_sheet_column;
+	if (def->has_btn_tile_sheet_row)
+		cfg->btn_tile_sheet_row = def->btn_tile_sheet_row;
+	if (def->has_defense_bonus_multiplier_pct)
+		cfg->defense_bonus_multiplier_pct = def->defense_bonus_multiplier_pct;
+	if (def->has_culture_bonus)
+		cfg->culture_bonus = def->culture_bonus;
+	if (def->has_science_bonus)
+		cfg->science_bonus = def->science_bonus;
+	if (def->has_food_bonus)
+		cfg->food_bonus = def->food_bonus;
+	if (def->has_gold_bonus)
+		cfg->gold_bonus = def->gold_bonus;
+	if (def->has_shield_bonus)
+		cfg->shield_bonus = def->shield_bonus;
+
+	if (def->has_dependent_improvements) {
+		for (int i = 0; i < ARRAY_LEN (cfg->dependent_improvements); i++) {
+			char const * default_value = (i < defaults->dependent_improvement_count) ? defaults->dependent_improvements[i] : NULL;
+			if ((cfg->dependent_improvements[i] != NULL) &&
+			    (cfg->dependent_improvements[i] != default_value))
+				free ((void *)cfg->dependent_improvements[i]);
+			cfg->dependent_improvements[i] = NULL;
+		}
+
+		cfg->dependent_improvement_count = def->dependent_improvement_count;
+		const int max_entries = ARRAY_LEN (cfg->dependent_improvements);
+		if (cfg->dependent_improvement_count > max_entries)
+			cfg->dependent_improvement_count = max_entries;
+		for (int i = 0; i < cfg->dependent_improvement_count; i++) {
+			cfg->dependent_improvements[i] = def->dependent_improvements[i];
+			def->dependent_improvements[i] = NULL;
+		}
+		cfg->max_building_index = cfg->dependent_improvement_count;
+		if (cfg->max_building_index > 5)
+			cfg->max_building_index = 5;
+	}
+
+	if (def->has_img_paths) {
+		for (int i = 0; i < ARRAY_LEN (cfg->img_paths); i++) {
+			char const * default_value = (i < defaults->img_path_count) ? defaults->img_paths[i] : NULL;
+			if ((cfg->img_paths[i] != NULL) &&
+			    (cfg->img_paths[i] != default_value))
+				free ((void *)cfg->img_paths[i]);
+			cfg->img_paths[i] = NULL;
+		}
+
+		cfg->img_path_count = def->img_path_count;
+		const int max_img_paths = ARRAY_LEN (cfg->img_paths);
+		if (cfg->img_path_count > max_img_paths)
+			cfg->img_path_count = max_img_paths;
+		for (int i = 0; i < cfg->img_path_count; i++) {
+			cfg->img_paths[i] = def->img_paths[i];
+			def->img_paths[i] = NULL;
+		}
+	}
+
+	if (! ensure_culture_variant_art (cfg, section_start_line)) {
+		free_special_district_override_strings (cfg, defaults);
+		*cfg = *defaults;
+		return false;
+	}
+
+	return true;
 }
 
 static bool
 add_dynamic_district_from_definition (struct parsed_district_definition * def, int section_start_line)
 {
-	if (def->name == NULL)
+	if ((! def->has_name) || (def->name == NULL))
 		return false;
 
 	if (district_name_exists (def->name)) {
 		return false;
 	}
 
-	if (def->img_path_count <= 0) {
+	if ((! def->has_img_paths) || (def->img_path_count <= 0)) {
 		return false;
 	}
 
@@ -3337,7 +3730,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	cfg->name = def->name;
 	def->name = NULL;
 
-	if (def->tooltip != NULL) {
+	if (def->has_tooltip) {
 		cfg->tooltip = def->tooltip;
 		def->tooltip = NULL;
 	} else {
@@ -3346,24 +3739,24 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		cfg->tooltip = strdup (buffer);
 	}
 
-	if (def->advance_prereq != NULL) {
+	if (def->has_advance_prereq) {
 		cfg->advance_prereq = def->advance_prereq;
 		def->advance_prereq = NULL;
 	}
 
-	cfg->allow_multiple = def->allow_multiple;
-	cfg->vary_img_by_era = def->vary_img_by_era;
-	cfg->vary_img_by_culture = def->vary_img_by_culture;
-	cfg->btn_tile_sheet_column = def->btn_tile_sheet_column;
-	cfg->btn_tile_sheet_row = def->btn_tile_sheet_row;
-	cfg->defense_bonus_multiplier_pct = def->defense_bonus_multiplier_pct;
-	cfg->culture_bonus = def->culture_bonus;
-	cfg->science_bonus = def->science_bonus;
-	cfg->food_bonus = def->food_bonus;
-	cfg->gold_bonus = def->gold_bonus;
-	cfg->shield_bonus = def->shield_bonus;
+	cfg->allow_multiple = def->has_allow_multiple ? def->allow_multiple : false;
+	cfg->vary_img_by_era = def->has_vary_img_by_era ? def->vary_img_by_era : false;
+	cfg->vary_img_by_culture = def->has_vary_img_by_culture ? def->vary_img_by_culture : false;
+	cfg->btn_tile_sheet_column = def->has_btn_tile_sheet_column ? def->btn_tile_sheet_column : 0;
+	cfg->btn_tile_sheet_row = def->has_btn_tile_sheet_row ? def->btn_tile_sheet_row : 0;
+	cfg->defense_bonus_multiplier_pct = def->has_defense_bonus_multiplier_pct ? def->defense_bonus_multiplier_pct : 100;
+	cfg->culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
+	cfg->science_bonus = def->has_science_bonus ? def->science_bonus : 0;
+	cfg->food_bonus = def->has_food_bonus ? def->food_bonus : 0;
+	cfg->gold_bonus = def->has_gold_bonus ? def->gold_bonus : 0;
+	cfg->shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
 
-	cfg->dependent_improvement_count = def->dependent_improvement_count;
+	cfg->dependent_improvement_count = def->has_dependent_improvements ? def->dependent_improvement_count : 0;
 	const int max_dependent_entries = ARRAY_LEN (is->district_configs[0].dependent_improvements);
 	if (cfg->dependent_improvement_count > max_dependent_entries)
 		cfg->dependent_improvement_count = max_dependent_entries;
@@ -3381,20 +3774,9 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		def->img_paths[i] = NULL;
 	}
 
-	if (cfg->vary_img_by_culture) {
-		const int required_variants = 5;
-		if (cfg->img_path_count == 0) {
-			char ss[256];
-			snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: district \"%s\" requires culture-specific art but none provided (line %d)", cfg->name, section_start_line);
-			(*p_OutputDebugStringA) (ss);
-			free_dynamic_district_config (cfg);
-			return false;
-		}
-		while ((cfg->img_path_count < required_variants) &&
-		       (cfg->img_path_count < max_img_paths)) {
-			cfg->img_paths[cfg->img_path_count] = strdup (cfg->img_paths[0]);
-			cfg->img_path_count += 1;
-		}
+	if (! ensure_culture_variant_art (cfg, section_start_line)) {
+		free_dynamic_district_config (cfg);
+		return false;
 	}
 
 	cfg->max_building_index = cfg->dependent_improvement_count;
@@ -3406,6 +3788,196 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	is->district_count = is->special_district_count + is->dynamic_district_count;
 
 	return true;
+}
+
+static void
+finalize_parsed_district_definition (struct parsed_district_definition * def, int section_start_line)
+{
+	if ((! def->has_name) || (def->name == NULL))
+		return;
+
+	if (! override_special_district_from_definition (def, section_start_line))
+		add_dynamic_district_from_definition (def, section_start_line);
+
+	free_parsed_district_definition (def);
+}
+
+static void
+handle_district_definition_key (struct parsed_district_definition * def,
+				struct string_slice const * key,
+				struct string_slice const * value,
+				int line_number,
+				struct error_line ** parse_errors,
+				struct error_line ** unrecognized_keys)
+{
+	if (slice_matches_str (key, "name")) {
+		if (def->name != NULL) {
+			free (def->name);
+			def->name = NULL;
+		}
+
+		char * name_copy = copy_trimmed_string_or_null (value, 1);
+		if (name_copy == NULL) {
+			def->has_name = false;
+			add_key_parse_error (parse_errors, line_number, key, "(value is required)");
+		} else {
+			def->name = name_copy;
+			def->has_name = true;
+		}
+
+	} else if (slice_matches_str (key, "tooltip")) {
+		if (def->tooltip != NULL) {
+			free (def->tooltip);
+			def->tooltip = NULL;
+		}
+		def->tooltip = copy_trimmed_string_or_null (value, 1);
+		def->has_tooltip = true;
+
+	} else if (slice_matches_str (key, "advance_prereq")) {
+		if (def->advance_prereq != NULL) {
+			free (def->advance_prereq);
+			def->advance_prereq = NULL;
+		}
+		def->advance_prereq = copy_trimmed_string_or_null (value, 1);
+		def->has_advance_prereq = true;
+
+	} else if (slice_matches_str (key, "img_paths")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->img_paths,
+					      ARRAY_LEN (def->img_paths),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					      "img_paths")) {
+			def->img_path_count = list_count;
+			def->has_img_paths = true;
+		} else {
+			def->img_path_count = 0;
+			def->has_img_paths = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "dependent_improvs")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->dependent_improvements,
+					      ARRAY_LEN (def->dependent_improvements),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					      "dependent_improvs")) {
+			def->dependent_improvement_count = list_count;
+			def->has_dependent_improvements = true;
+		} else {
+			def->dependent_improvement_count = 0;
+			def->has_dependent_improvements = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "allow_multiple")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->allow_multiple = (ival != 0);
+			def->has_allow_multiple = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else if (slice_matches_str (key, "vary_img_by_era")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->vary_img_by_era = (ival != 0);
+			def->has_vary_img_by_era = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else if (slice_matches_str (key, "vary_img_by_culture")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->vary_img_by_culture = (ival != 0);
+			def->has_vary_img_by_culture = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else if (slice_matches_str (key, "btn_tile_sheet_column")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->btn_tile_sheet_column = ival;
+			def->has_btn_tile_sheet_column = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else if (slice_matches_str (key, "btn_tile_sheet_row")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->btn_tile_sheet_row = ival;
+			def->has_btn_tile_sheet_row = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else if (slice_matches_str (key, "defense_bonus_multiplier_pct")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->defense_bonus_multiplier_pct = ival;
+			def->has_defense_bonus_multiplier_pct = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else if (slice_matches_str (key, "culture_bonus")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->culture_bonus = ival;
+			def->has_culture_bonus = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else if (slice_matches_str (key, "science_bonus")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->science_bonus = ival;
+			def->has_science_bonus = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else if (slice_matches_str (key, "food_bonus")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->food_bonus = ival;
+			def->has_food_bonus = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else if (slice_matches_str (key, "gold_bonus")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->gold_bonus = ival;
+			def->has_gold_bonus = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else if (slice_matches_str (key, "shield_bonus")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->shield_bonus = ival;
+			def->has_shield_bonus = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else
+		add_unrecognized_key_error (unrecognized_keys, line_number, key);
 }
 
 static void
@@ -3425,8 +3997,8 @@ load_dynamic_district_configs (void)
 		return;
 	}
 
-	struct parsed_district_definition def = {0};
-	def.defense_bonus_multiplier_pct = 100;
+	struct parsed_district_definition def;
+	init_parsed_district_definition (&def);
 	bool in_section = false;
 	int section_start_line = 0;
 	int line_number = 0;
@@ -3439,31 +4011,32 @@ load_dynamic_district_configs (void)
 
 		char * line_start = cursor;
 		char * line_end = cursor;
-		while (*line_end != '\0' && *line_end != '\n')
+		while ((*line_end != '\0') && (*line_end != '\n'))
 			line_end++;
 
+		int line_len = line_end - line_start;
 		bool has_newline = (*line_end == '\n');
-		*line_end = '\0';
+		if (has_newline)
+			*line_end = '\0';
 
-		char * trimmed = trim_whitespace_inplace (line_start);
-		if (*trimmed == '\0' || *trimmed != '#') {
+		struct string_slice line_slice = { .str = line_start, .len = line_len };
+		struct string_slice trimmed = trim_string_slice (&line_slice, 0);
+		if ((trimmed.len == 0) || (trimmed.str[0] == ';')) {
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
 		}
 
-		trimmed = trim_whitespace_inplace (trimmed + 1);
-		if (*trimmed == '\0') {
-			cursor = has_newline ? line_end + 1 : line_end;
-			continue;
-		}
-
-		if (strcmp (trimmed, "District") == 0) {
-			if (in_section) {
-				add_dynamic_district_from_definition (&def, section_start_line);
-				def.defense_bonus_multiplier_pct = 100;
+		if (trimmed.str[0] == '#') {
+			struct string_slice directive = trimmed;
+			directive.str += 1;
+			directive.len -= 1;
+			directive = trim_string_slice (&directive, 0);
+			if ((directive.len > 0) && slice_matches_str (&directive, "District")) {
+				if (in_section)
+					finalize_parsed_district_definition (&def, section_start_line);
+				in_section = true;
+				section_start_line = line_number;
 			}
-			in_section = true;
-			section_start_line = line_number;
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
 		}
@@ -3473,183 +4046,31 @@ load_dynamic_district_configs (void)
 			continue;
 		}
 
-		char * value = trimmed;
-		while ((*value != '\0') && ! is_space_char (*value))
-			value++;
-
-		if (*value != '\0') {
-			*value = '\0';
-			value++;
+		struct string_slice key_slice = {0};
+		struct string_slice value_slice = {0};
+		enum key_value_parse_status status = parse_trimmed_key_value (&trimmed, &key_slice, &value_slice);
+		if (status == KVP_NO_EQUALS) {
+			char * line_text = extract_slice (&trimmed);
+			struct error_line * err = add_error_line (&parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected '=')", line_number, line_text);
+			err->text[(sizeof err->text) - 1] = '\0';
+			free (line_text);
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		} else if (status == KVP_EMPTY_KEY) {
+			struct error_line * err = add_error_line (&parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: (missing key)", line_number);
+			err->text[(sizeof err->text) - 1] = '\0';
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
 		}
 
-		char * key = trimmed;
-		value = trim_whitespace_inplace (value);
-
-		bool key_recognized = true;
-		if (strcmp (key, "name") == 0) {
-			def.name = (*value != '\0') ? strdup (value) : NULL;
-		} else if (strcmp (key, "tooltip") == 0) {
-			def.tooltip = (*value != '\0') ? strdup (value) : NULL;
-		} else if (strcmp (key, "advance_prereq") == 0) {
-			def.advance_prereq = (*value != '\0') ? strdup (value) : NULL;
-		} else if (strcmp (key, "img_paths") == 0) {
-			def.img_path_count = 0;
-			if (*value != '\0') {
-				char * img_cursor = value;
-				struct string_slice item_slice;
-				while (1) {
-					skip_white_space (&img_cursor);
-					if (parse_string (&img_cursor, &item_slice)) {
-						if (item_slice.len > 0 && def.img_path_count < ARRAY_LEN (def.img_paths)) {
-							char * path_copy = malloc (item_slice.len + 1);
-							if (path_copy != NULL) {
-								memcpy (path_copy, item_slice.str, item_slice.len);
-								path_copy[item_slice.len] = '\0';
-								def.img_paths[def.img_path_count++] = path_copy;
-							}
-						}
-						skip_punctuation (&img_cursor, ',');
-					} else {
-						break;
-					}
-				}
-			}
-		} else if (strcmp (key, "dependent_improvs") == 0) {
-			def.dependent_improvement_count = 0;
-			if (*value != '\0') {
-				char * dep_cursor = value;
-				struct string_slice item_slice;
-				while (1) {
-					skip_white_space (&dep_cursor);
-					if (parse_string (&dep_cursor, &item_slice)) {
-						if (item_slice.len > 0 && def.dependent_improvement_count < ARRAY_LEN (def.dependent_improvements)) {
-							char * item_str = malloc (item_slice.len + 1);
-							if (item_str != NULL) {
-								memcpy (item_str, item_slice.str, item_slice.len);
-								item_str[item_slice.len] = '\0';
-								def.dependent_improvements[def.dependent_improvement_count++] = item_str;
-							}
-						}
-						skip_punctuation (&dep_cursor, ',');
-					} else {
-						break;
-					}
-				}
-			}
-		} else if (strcmp (key, "allow_multiple") == 0) {
-			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
-			int ival;
-			if (read_int (&val_slice, &ival))
-				def.allow_multiple = (ival != 0);
-			else {
-				struct error_line * err = add_error_line (&parse_errors);
-				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
-			}
-		} else if (strcmp (key, "vary_img_by_era") == 0) {
-			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
-			int ival;
-			if (read_int (&val_slice, &ival))
-				def.vary_img_by_era = (ival != 0);
-			else {
-				struct error_line * err = add_error_line (&parse_errors);
-				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
-			}
-		} else if (strcmp (key, "vary_img_by_culture") == 0) {
-			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
-			int ival;
-			if (read_int (&val_slice, &ival))
-				def.vary_img_by_culture = (ival != 0);
-			else {
-				struct error_line * err = add_error_line (&parse_errors);
-				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
-			}
-		} else if (strcmp (key, "btn_tile_sheet_column") == 0) {
-			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
-			int ival;
-			if (read_int (&val_slice, &ival))
-				def.btn_tile_sheet_column = ival;
-			else {
-				struct error_line * err = add_error_line (&parse_errors);
-				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
-			}
-		} else if (strcmp (key, "btn_tile_sheet_row") == 0) {
-			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
-			int ival;
-			if (read_int (&val_slice, &ival))
-				def.btn_tile_sheet_row = ival;
-			else {
-				struct error_line * err = add_error_line (&parse_errors);
-				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
-			}
-		} else if (strcmp (key, "defense_bonus_multiplier_pct") == 0) {
-			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
-			int ival;
-			if (read_int (&val_slice, &ival))
-				def.defense_bonus_multiplier_pct = ival;
-			else {
-				struct error_line * err = add_error_line (&parse_errors);
-				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
-			}
-		} else if (strcmp (key, "culture_bonus") == 0) {
-			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
-			int ival;
-			if (read_int (&val_slice, &ival))
-				def.culture_bonus = ival;
-			else {
-				struct error_line * err = add_error_line (&parse_errors);
-				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
-			}
-		} else if (strcmp (key, "science_bonus") == 0) {
-			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
-			int ival;
-			if (read_int (&val_slice, &ival))
-				def.science_bonus = ival;
-			else {
-				struct error_line * err = add_error_line (&parse_errors);
-				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
-			}
-		} else if (strcmp (key, "food_bonus") == 0) {
-			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
-			int ival;
-			if (read_int (&val_slice, &ival))
-				def.food_bonus = ival;
-			else {
-				struct error_line * err = add_error_line (&parse_errors);
-				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
-			}
-		} else if (strcmp (key, "gold_bonus") == 0) {
-			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
-			int ival;
-			if (read_int (&val_slice, &ival))
-				def.gold_bonus = ival;
-			else {
-				struct error_line * err = add_error_line (&parse_errors);
-				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
-			}
-		} else if (strcmp (key, "shield_bonus") == 0) {
-			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
-			int ival;
-			if (read_int (&val_slice, &ival))
-				def.shield_bonus = ival;
-			else {
-				struct error_line * err = add_error_line (&parse_errors);
-				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
-			}
-		} else {
-			key_recognized = false;
-		}
-
-		if (! key_recognized) {
-			struct error_line * err_line = add_error_line (&unrecognized_keys);
-			snprintf (err_line->text, sizeof err_line->text, "^  Line %d: %s", line_number, key);
-			err_line->text[(sizeof err_line->text) - 1] = '\0';
-		}
-
+		handle_district_definition_key (&def, &key_slice, &value_slice, line_number, &parse_errors, &unrecognized_keys);
 		cursor = has_newline ? line_end + 1 : line_end;
 	}
 
 	if (in_section)
-		add_dynamic_district_from_definition (&def, section_start_line);
+		finalize_parsed_district_definition (&def, section_start_line);
 
 	free_parsed_district_definition (&def);
 	free (text);
@@ -3658,7 +4079,7 @@ load_dynamic_district_configs (void)
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
 		char s[200];
-		snprintf (s, sizeof s, "Config errors in %s:", path);
+		snprintf (s, sizeof s, "District Config errors in %s:", path);
 		s[(sizeof s) - 1] = '\0';
 		PopupForm_add_text (popup, __, s, false);
 		if (parse_errors != NULL) {
@@ -3677,13 +4098,25 @@ load_dynamic_district_configs (void)
 	}
 }
 
+
 struct parsed_wonder_definition {
 	char * name;
 	int img_row;
 	int img_column;
 	int img_construct_row;
 	int img_construct_column;
+	bool has_name;
+	bool has_img_row;
+	bool has_img_column;
+	bool has_img_construct_row;
+	bool has_img_construct_column;
 };
+
+static void
+init_parsed_wonder_definition (struct parsed_wonder_definition * def)
+{
+	memset (def, 0, sizeof *def);
+}
 
 static void
 free_parsed_wonder_definition (struct parsed_wonder_definition * def)
@@ -3692,6 +4125,8 @@ free_parsed_wonder_definition (struct parsed_wonder_definition * def)
 		free (def->name);
 		def->name = NULL;
 	}
+
+	init_parsed_wonder_definition (def);
 }
 
 static bool
@@ -3722,6 +4157,137 @@ add_dynamic_wonder_from_definition (struct parsed_wonder_definition * def, int s
 }
 
 static void
+finalize_parsed_wonder_definition (struct parsed_wonder_definition * def,
+				   int section_start_line,
+				   struct error_line ** parse_errors)
+{
+	bool ok = true;
+
+	if ((! def->has_name) || (def->name == NULL)) {
+		ok = false;
+		if (parse_errors != NULL) {
+			struct error_line * err = add_error_line (parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: name (value is required)", section_start_line);
+			err->text[(sizeof err->text) - 1] = '\0';
+		}
+	}
+	if (! def->has_img_row) {
+		ok = false;
+		if (parse_errors != NULL) {
+			struct error_line * err = add_error_line (parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: img_row (value is required)", section_start_line);
+			err->text[(sizeof err->text) - 1] = '\0';
+		}
+	}
+	if (! def->has_img_column) {
+		ok = false;
+		if (parse_errors != NULL) {
+			struct error_line * err = add_error_line (parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: img_column (value is required)", section_start_line);
+			err->text[(sizeof err->text) - 1] = '\0';
+		}
+	}
+	if (! def->has_img_construct_row) {
+		ok = false;
+		if (parse_errors != NULL) {
+			struct error_line * err = add_error_line (parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: img_construct_row (value is required)", section_start_line);
+			err->text[(sizeof err->text) - 1] = '\0';
+		}
+	}
+	if (! def->has_img_construct_column) {
+		ok = false;
+		if (parse_errors != NULL) {
+			struct error_line * err = add_error_line (parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: img_construct_column (value is required)", section_start_line);
+			err->text[(sizeof err->text) - 1] = '\0';
+		}
+	}
+
+	if (ok)
+		add_dynamic_wonder_from_definition (def, section_start_line);
+
+	free_parsed_wonder_definition (def);
+}
+
+static void
+handle_wonder_definition_key (struct parsed_wonder_definition * def,
+			      struct string_slice const * key,
+			      struct string_slice const * value,
+			      int line_number,
+			      struct error_line ** parse_errors,
+			      struct error_line ** unrecognized_keys)
+{
+	if (slice_matches_str (key, "name")) {
+		if (def->name != NULL) {
+			free (def->name);
+			def->name = NULL;
+		}
+
+		struct string_slice unquoted = trim_string_slice (value, 1);
+		if (unquoted.len == 0) {
+			def->has_name = false;
+			add_key_parse_error (parse_errors, line_number, key, "(value is required)");
+		} else {
+			char * name_copy = extract_slice (&unquoted);
+			if (name_copy == NULL) {
+				def->has_name = false;
+				add_key_parse_error (parse_errors, line_number, key, "(out of memory)");
+			} else {
+				def->name = name_copy;
+				def->has_name = true;
+			}
+		}
+
+	} else if (slice_matches_str (key, "img_row")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->img_row = ival;
+			def->has_img_row = true;
+		} else {
+			def->has_img_row = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "img_column")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->img_column = ival;
+			def->has_img_column = true;
+		} else {
+			def->has_img_column = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "img_construct_row")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->img_construct_row = ival;
+			def->has_img_construct_row = true;
+		} else {
+			def->has_img_construct_row = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "img_construct_column")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->img_construct_column = ival;
+			def->has_img_construct_column = true;
+		} else {
+			def->has_img_construct_column = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else
+		add_unrecognized_key_error (unrecognized_keys, line_number, key);
+}
+
+static void
 load_dynamic_wonder_configs (void)
 {
 	if (is == NULL || is->mod_rel_dir == NULL)
@@ -3738,7 +4304,8 @@ load_dynamic_wonder_configs (void)
 		return;
 	}
 
-	struct parsed_wonder_definition def = {0};
+	struct parsed_wonder_definition def;
+	init_parsed_wonder_definition (&def);
 	bool in_section = false;
 	int section_start_line = 0;
 	int line_number = 0;
@@ -3751,31 +4318,32 @@ load_dynamic_wonder_configs (void)
 
 		char * line_start = cursor;
 		char * line_end = cursor;
-		while (*line_end != '\0' && *line_end != '\n')
+		while ((*line_end != '\0') && (*line_end != '\n'))
 			line_end++;
 
+		int line_len = line_end - line_start;
 		bool has_newline = (*line_end == '\n');
-		*line_end = '\0';
+		if (has_newline)
+			*line_end = '\0';
 
-		char * trimmed = trim_whitespace_inplace (line_start);
-		if (*trimmed == '\0' || *trimmed != '#') {
+		struct string_slice line_slice = { .str = line_start, .len = line_len };
+		struct string_slice trimmed = trim_string_slice (&line_slice, 0);
+		if ((trimmed.len == 0) || (trimmed.str[0] == ';')) {
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
 		}
 
-		trimmed = trim_whitespace_inplace (trimmed + 1);
-		if (*trimmed == '\0') {
-			cursor = has_newline ? line_end + 1 : line_end;
-			continue;
-		}
-
-		if (strcmp (trimmed, "Wonder") == 0) {
-			if (in_section) {
-				add_dynamic_wonder_from_definition (&def, section_start_line);
-				free_parsed_wonder_definition (&def);
+		if (trimmed.str[0] == '#') {
+			struct string_slice directive = trimmed;
+			directive.str += 1;
+			directive.len -= 1;
+			directive = trim_string_slice (&directive, 0);
+			if ((directive.len > 0) && slice_matches_str (&directive, "Wonder")) {
+				if (in_section)
+					finalize_parsed_wonder_definition (&def, section_start_line, &parse_errors);
+				in_section = true;
+				section_start_line = line_number;
 			}
-			in_section = true;
-			section_start_line = line_number;
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
 		}
@@ -3785,74 +4353,31 @@ load_dynamic_wonder_configs (void)
 			continue;
 		}
 
-		char * value = trimmed;
-		while ((*value != '\0') && ! is_space_char (*value))
-			value++;
-
-		if (*value != '\0') {
-			*value = '\0';
-			value++;
+		struct string_slice key_slice = {0};
+		struct string_slice value_slice = {0};
+		enum key_value_parse_status status = parse_trimmed_key_value (&trimmed, &key_slice, &value_slice);
+		if (status == KVP_NO_EQUALS) {
+			char * line_text = extract_slice (&trimmed);
+			struct error_line * err = add_error_line (&parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected '=')", line_number, line_text);
+			err->text[(sizeof err->text) - 1] = '\0';
+			free (line_text);
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		} else if (status == KVP_EMPTY_KEY) {
+			struct error_line * err = add_error_line (&parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: (missing key)", line_number);
+			err->text[(sizeof err->text) - 1] = '\0';
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
 		}
 
-		char * key = trimmed;
-		value = trim_whitespace_inplace (value);
-
-		bool key_recognized = true;
-		if (strcmp (key, "name") == 0) {
-			if (def.name != NULL)
-				free (def.name);
-			def.name = (*value != '\0') ? strdup (value) : NULL;
-		} else if (strcmp (key, "img_row") == 0) {
-			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
-			int ival;
-			if (read_int (&val_slice, &ival))
-				def.img_row = ival;
-			else {
-				struct error_line * err = add_error_line (&parse_errors);
-				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
-			}
-		} else if (strcmp (key, "img_column") == 0) {
-			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
-			int ival;
-			if (read_int (&val_slice, &ival))
-				def.img_column = ival;
-			else {
-				struct error_line * err = add_error_line (&parse_errors);
-				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
-			}
-		} else if (strcmp (key, "img_construct_row") == 0) {
-			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
-			int ival;
-			if (read_int (&val_slice, &ival))
-				def.img_construct_row = ival;
-			else {
-				struct error_line * err = add_error_line (&parse_errors);
-				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
-			}
-		} else if (strcmp (key, "img_construct_column") == 0) {
-			struct string_slice val_slice = { .str = value, .len = (int)strlen (value) };
-			int ival;
-			if (read_int (&val_slice, &ival))
-				def.img_construct_column = ival;
-			else {
-				struct error_line * err = add_error_line (&parse_errors);
-				snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected integer)", line_number, key);
-			}
-		} else {
-			key_recognized = false;
-		}
-
-		if (! key_recognized) {
-			struct error_line * err_line = add_error_line (&unrecognized_keys);
-			snprintf (err_line->text, sizeof err_line->text, "^  Line %d: %s", line_number, key);
-			err_line->text[(sizeof err_line->text) - 1] = '\0';
-		}
-
+		handle_wonder_definition_key (&def, &key_slice, &value_slice, line_number, &parse_errors, &unrecognized_keys);
 		cursor = has_newline ? line_end + 1 : line_end;
 	}
 
 	if (in_section)
-		add_dynamic_wonder_from_definition (&def, section_start_line);
+		finalize_parsed_wonder_definition (&def, section_start_line, &parse_errors);
 
 	free_parsed_wonder_definition (&def);
 	free (text);
@@ -3861,7 +4386,7 @@ load_dynamic_wonder_configs (void)
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
 		char s[200];
-		snprintf (s, sizeof s, "Config errors in %s:", path);
+		snprintf (s, sizeof s, "Wonder District Config errors in %s:", path);
 		s[(sizeof s) - 1] = '\0';
 		PopupForm_add_text (popup, __, s, false);
 		if (parse_errors != NULL) {
@@ -5833,7 +6358,7 @@ patch_City_recompute_yields_and_happiness (City * this, int edx)
 		return;
 
 	if (is->current_config.enable_distribution_hub_districts && (is->distribution_hub_records.len > 0))
-		mark_distribution_hub_totals_dirty ();
+		is->distribution_hub_totals_dirty = true;
 	recalculate_distribution_hub_totals_if_needed ();
 
 	int bonus_food = 0;
@@ -7404,6 +7929,7 @@ patch_init_floating_point ()
 		{"enable_neighborhood_districts"                       , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
 		{"enable_wonder_districts"                             , false, offsetof (struct c3x_config, enable_wonder_districts)},
 		{"enable_distribution_hub_districts"                   , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
+		{"enable_aerodrome_districts"                          , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
 		{"completed_wonder_districts_can_be_destroyed"         , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
 		{"destroyed_wonders_can_be_rebuilt"         		   , false, offsetof (struct c3x_config, destroyed_wonders_can_be_rebuilt)},
 		{"cities_can_share_buildings_by_districts"             , false, offsetof (struct c3x_config, cities_can_share_buildings_by_districts)},
@@ -8586,6 +9112,7 @@ set_up_district_buttons (Main_GUI * this)
 		if ((is->district_configs[dc].command == UCV_Build_Neighborhood) && !is->current_config.enable_neighborhood_districts) continue;
 		if ((is->district_configs[dc].command == UCV_Build_WonderDistrict) && !is->current_config.enable_wonder_districts) continue;
 		if ((is->district_configs[dc].command == UCV_Build_DistributionHub) && !is->current_config.enable_distribution_hub_districts) continue;
+		if ((is->district_configs[dc].command == UCV_Build_Aerodrome) && !is->current_config.enable_aerodrome_districts) continue;
 
 		// Skip if this specific district type is already on the tile
 		{
@@ -10846,6 +11373,7 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 			return false;
 
 		if (is->current_config.enable_districts &&
+			is->current_config.enable_aerodrome_districts &&
 		    is->current_config.air_units_use_aerodrome_districts_not_cities) {
 			UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
 			int aerodrome_id = get_aerodrome_district_id ();
@@ -12643,7 +13171,7 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 	}
 
 	refresh_distribution_hubs_for_city (city);
-	mark_distribution_hub_totals_dirty ();
+	is->distribution_hub_totals_dirty = true;
 }
 
 void
@@ -12654,7 +13182,8 @@ on_lose_city (Leader * leader, City * city, enum city_loss_reason reason)
 	    (is->current_config.ai_multi_city_start > 1))
 		remove_extra_palaces (city, NULL);
 
-	mark_distribution_hub_totals_dirty ();
+	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts)
+		is->distribution_hub_totals_dirty = true;
 }
 
 // Returns -1 if the location is unusable, 0-9 if it's usable but doesn't satisfy all criteria, and 10 if it couldn't be better
@@ -15024,7 +15553,9 @@ patch_Trade_Net_recompute_city_connections (Trade_Net * this, int edx, int civ_i
 	}
 
 	Trade_Net_recompute_city_connections (this, __, civ_id, redo_road_network, param_3, redo_roads_for_city_id);
-	mark_distribution_hub_totals_dirty ();
+
+	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts)
+		is->distribution_hub_totals_dirty = true;
 
 	long long ts_after;
 	QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
@@ -15041,7 +15572,8 @@ patch_Map_build_trade_network (Map * this)
 	is->keep_tnx_cache = true;
 	Map_build_trade_network (this);
 	is->keep_tnx_cache = false;
-	mark_distribution_hub_totals_dirty ();
+	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts)
+		is->distribution_hub_totals_dirty = true;
 }
 
 void __fastcall
@@ -15049,10 +15581,13 @@ patch_Trade_Net_recompute_city_cons_and_res (Trade_Net * this, int edx, bool par
 {
 	if ((is->tnx_init_state == IS_OK) && (is->tnx_cache != NULL))
 		is->set_up_before_building_network (is->tnx_cache);
+
 	is->keep_tnx_cache = true;
 	Trade_Net_recompute_city_cons_and_res (this, __, param_1);
 	is->keep_tnx_cache = false;
-	mark_distribution_hub_totals_dirty ();
+
+	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts)
+		is->distribution_hub_totals_dirty = true;
 }
 
 int __fastcall
@@ -17011,7 +17546,9 @@ patch_Unit_check_rebase_target (Unit * this, int edx, int tile_x, int tile_y)
 	bool is_air_unit = (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air);
 
 	// If districts are enabled and this is an air unit, check for aerodrome districts
-	if (is_air_unit && is->current_config.enable_districts) {
+	if (is_air_unit && is->current_config.enable_districts && 
+		is->current_config.enable_aerodrome_districts) {
+
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
 			int district_id;
@@ -17550,7 +18087,7 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 
 		int neighborhoods_drawn = 0;
 
-		// Iterate through all neighbor tiles
+		// Iterate through all neighbor tiles 
 		for (int neighbor_index = 0; neighbor_index < is->workable_tile_count; neighbor_index++) {
 			int dx, dy;
 			neighbor_index_to_diff (neighbor_index, &dx, &dy);
@@ -17560,19 +18097,23 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 			if (tile_x < 0 || tile_x >= p_bic_data->Map.Width || tile_y < 0 || tile_y >= p_bic_data->Map.Height)
 				continue;
 
+			int district_id;
 			Tile * tile = tile_at (tile_x, tile_y);
 			if (tile == NULL || tile == p_null_tile) continue;
 			if ((tile->Body.Fog_Of_War & (1 << civ_id)) == 0) continue;
 			if (tile->Territory_OwnerID != civ_id) continue;
-
-			int district_id;
 			if (!itable_look_up (&is->district_tile_map, (int)tile, &district_id)) continue;
+			if (!district_is_complete (tile, district_id)) continue;
 
-			// Skip distribution hub districts (they have their own drawing logic below)
-			if (district_id == get_distribution_hub_district_id ()) continue;
+			int is_distribution_hub = (district_id == get_distribution_hub_district_id ());
+
+			// Skip distribution hubs if the feature is not enabled
+			if (is_distribution_hub && !is->current_config.enable_distribution_hub_districts)
+				continue;
 
 			// For neighborhood districts, check if population is high enough to utilize them
-			if (is->current_config.enable_neighborhood_districts &&
+			if (!is_distribution_hub &&
+			    is->current_config.enable_neighborhood_districts &&
 			    is->district_configs[district_id].command == UCV_Build_Neighborhood) {
 				// Only draw yields if this neighborhood is utilized
 				if (neighborhoods_drawn >= utilized_neighborhoods)
@@ -17584,57 +18125,16 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 			int screen_x = center_screen_x + (dx * tile_half_width);
 			int screen_y = center_screen_y + (dy * tile_half_height);
 
-			draw_district_yields (this, tile, district_id, screen_x, screen_y);
+			// Call the appropriate drawing function
+			if (is_distribution_hub) {
+				draw_distribution_hub_yields (this, tile, tile_x, tile_y, screen_x, screen_y);
+			} else {
+				draw_district_yields (this, tile, district_id, screen_x, screen_y);
+			}
 		}
 	}
 
 skip_district_yields:
-	// Draw distribution hub yields on hub tiles (they are not workable, so the original function skips them)
-	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
-		City * city = this->CurrentCity;
-		if (city == NULL)
-			goto skip_distribution_hub_yields;
-
-		int city_x = city->Body.X;
-		int city_y = city->Body.Y;
-		int civ_id = city->Body.CivID;
-
-		// Calculate screen coordinates for city center
-		int center_screen_x, center_screen_y;
-		Main_Screen_Form_tile_to_screen_coords (p_main_screen_form, __, city_x, city_y, &center_screen_x, &center_screen_y);
-
-		int tile_half_width = p_bic_data->is_zoomed_out ? 32 : 64;
-		int tile_half_height = p_bic_data->is_zoomed_out ? 16 : 32;
-		center_screen_x += tile_half_width;
-		center_screen_y += tile_half_height;
-
-		// Iterate through all neighbor tiles
-		for (int neighbor_index = 0; neighbor_index < is->workable_tile_count; neighbor_index++) {
-			int dx, dy;
-			neighbor_index_to_diff (neighbor_index, &dx, &dy);
-			int tile_x = city_x + dx, tile_y = city_y + dy;
-
-			// Check if tile is within map bounds
-			if (tile_x < 0 || tile_x >= p_bic_data->Map.Width || tile_y < 0 || tile_y >= p_bic_data->Map.Height)
-				continue;
-
-			Tile * tile = tile_at (tile_x, tile_y);
-			if (tile == NULL || tile == p_null_tile) continue;
-			if ((tile->Body.Fog_Of_War & (1 << civ_id)) == 0) continue;
-			if (tile->Territory_OwnerID != civ_id) continue;
-			int district_id;
-			if (!itable_look_up (&is->district_tile_map, (int)tile, &district_id)) continue;
-			if (district_id != get_distribution_hub_district_id ()) continue;
-
-			// Calculate screen coordinates for this tile
-			int screen_x = center_screen_x + (dx * tile_half_width);
-			int screen_y = center_screen_y + (dy * tile_half_height);
-
-			draw_distribution_hub_yields (this, tile, tile_x, tile_y, screen_x, screen_y);
-		}
-	}
-
-skip_distribution_hub_yields:
 	if (changed_clip_area)
 		clear_clip_area (this);
 }

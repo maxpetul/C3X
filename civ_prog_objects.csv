@@ -64,6 +64,7 @@ define,    0x4B07C0,	0x0,	    0x0,	    "City_recompute_commerce",			"void (__fas
 inlead,    0x4B0B70,	0x0,	    0x0,	    "City_recompute_culture_income",				"void (__fastcall *) (City * this, int edx)"
 inlead,    0x4B2680,	0x0,	    0x0,	    "City_update_culture",				"void (__fastcall *) (City * this, int edx)"
 define,    0x4B0C60,	0x0,	    0x0,	    "City_recompute_cultural_level",				"void (__fastcall *) (City *this, char param_1, char param_2, char param_3)"
+define,    0x4B10F0,	0x0,	    0x0,	    "recompute_food_eaten_production_commerce_and_happiness", "void (__fastcall *) (City *this)"
 inlead,    0x55A560,	0x566470,	0x55A510,	"Leader_recompute_auto_improvements",		"void (__fastcall *) (Leader * this)"
 inlead,    0x539030,	0x543650,	0x5390B0,	"get_wonder_city_id",				"int (__fastcall *) (void * this, int edx, int wonder_improvement_id)"
 define,    0x55A62E,	0x566538,	0x55A5DE,	"ADDR_SMALL_WONDER_FREE_IMPROVS_RETURN",	"int"

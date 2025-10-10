@@ -301,6 +301,7 @@ struct c3x_config {
 	bool enable_neighborhood_districts;
 	bool enable_wonder_districts;
 	bool enable_distribution_hub_districts;
+	bool enable_aerodrome_districts;
 
 	bool cities_can_share_buildings_by_districts;
 	bool air_units_use_aerodrome_districts_not_cities;
