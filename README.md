@@ -181,7 +181,9 @@ AI workers are triggered to build Wonder Districts in generally the same workflo
 
 With so many tiles taken up by Districts, you may be wondering how to actually feed your cities or gain shields. First, it's probably a good idea to expand your `city_work_radius` (e.g., to 3, adding at least one more ring of workable tiles around your city) and `minimum_city_separation` to some higher value. Beyond that though, enter Distribution Hubs:
 
-Enabled via `enable_distribution_hub_districts`. Building a Distribution Hub makes all of the surrounding tiles unworkable by its surrounding cities and instead makes the food and shields from those tiles available to **ALL** cities in your civ connected by trade route, divided by `distribution_hub_food_yield_divisor` and `distribution_hub_shield_yield_divisor`. The purpose of the `divisors` is to provide a mechanism to prevent distribution hubs from being too powerful, as well as a bit of realism (10 food from one distribution hub in a civ with 10 cities would effectively otherwise become 100 food!). `Divisors` also have no relation or effect regarding the number of cities a civ has.
+Enabled via `enable_distribution_hub_districts`. Building a Distribution Hub makes all of the surrounding tiles unworkable by its surrounding cities and instead makes the food and shields from those tiles available to **ALL** cities in your civ connected by trade route, divided by `distribution_hub_food_yield_divisor` and `distribution_hub_shield_yield_divisor`. 
+
+> The purpose of the `divisors` is to provide a mechanism to prevent distribution hubs from being too powerful, as well as a bit of realism (10 food from one distribution hub in a civ with 10 cities would effectively otherwise become 100 food!). `Divisors` also have no relation or effect regarding the number of cities a civ has.
 
 For example, say you configure the following: 
 
