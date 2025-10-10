@@ -92,7 +92,7 @@ inlead,    0x5C00A0,	0x5CEC20,	0x5BFDB0,	"Unit_can_hurry_production",			"bool (_
 define,    0x5C0420,	0x5CEFC0,	0x5C0130,	"Unit_hurry_production",			"void (__fastcall *) (Unit * this)"
 define,    0x5C0300,	0x5CEE90,	0x5C0010,	"Unit_ai_can_start_science_age",		"bool (__fastcall *) (Unit * this)"
 define,    0x5C03B0,	0x5CEF50,	0x5C00C0,	"Unit_start_science_age",			"void (__fastcall *) (Unit * this)"
-define,    0x5BC980,	0x5CB510,	0x5BC690,	"Unit_ai_can_form_army",			"bool (__fastcall *) (Unit * this)"
+inlead,    0x5BC980,	0x5CB510,	0x5BC690,	"Unit_ai_can_form_army",			"bool (__fastcall *) (Unit * this)"
 define,    0x5BCA20,	0x5CB5B0,	0x5BC730,	"Unit_form_army",				"Unit * (__fastcall *) (Unit * this)"
 repl vptr, 0x66DD28,	0x68AE08,	0x66DD28,	"impl_ai_is_good_army_addition",		"bool (__fastcall *) (Unit * this, int edx, Unit * candidate)"
 repl vptr, 0x666578,	0x6835CC,	0x666578,	"PopupForm_set_text_key_and_flags",		"void (__fastcall *) (PopupForm * this, int edx, char * script_path, char * text_key, int param_3, int param_4, int param_5, int param_6)"

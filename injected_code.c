@@ -4059,6 +4059,7 @@ patch_init_floating_point ()
 		{"patch_empty_army_movement"                           , true , offsetof (struct c3x_config, patch_empty_army_movement)},
 		{"patch_premature_truncation_of_found_paths"           , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
 		{"patch_zero_production_crash"                         , true , offsetof (struct c3x_config, patch_zero_production_crash)},
+		{"patch_ai_can_form_army_without_special_ability"      , true , offsetof (struct c3x_config, patch_ai_can_form_army_without_special_ability)},
 		{"patch_ai_can_sacrifice_without_special_ability"      , true , offsetof (struct c3x_config, patch_ai_can_sacrifice_without_special_ability)},
 		{"patch_crash_in_leader_unit_ai"                       , true , offsetof (struct c3x_config, patch_crash_in_leader_unit_ai)},
 		{"delete_off_map_ai_units"                             , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
@@ -6807,6 +6808,17 @@ find_nearest_established_city (Unit * unit, int continent_id)
 	return least_unattractive_city;
 }
 
+bool __fastcall
+patch_Unit_ai_can_form_army (Unit * this)
+{
+	int build_army_action = UCV_Build_Army & 0x0FFFFFFF; // Mask out top four category bits
+	UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+	if (is->current_config.patch_ai_can_form_army_without_special_ability && ((type->Special_Actions & build_army_action) == 0))
+		return false;
+	else
+		return Unit_ai_can_form_army (this);
+}
+
 void __fastcall
 patch_Unit_ai_move_leader (Unit * this)
 {
@@ -6866,7 +6878,9 @@ patch_Unit_ai_move_leader (Unit * this)
 	// aggression divided by the number of armies already in the field.
 	int num_armies = leaders[this->Body.CivID].Armies_Count;
 	int form_army_value = -1;
+	int build_army_action = UCV_Build_Army & 0x0FFFFFFF; // Mask out top four category bits
 	if ((this->Body.leader_kind & LK_Military) &&
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Special_Actions & build_army_action) &&
 	    ((num_armies + 1) * p_bic_data->General.ArmySupportCities <= leaders[this->Body.CivID].Cities_Count) &&
 	    (p_bic_data->General.BuildArmyUnitID >= 0) &&
 	    (p_bic_data->General.BuildArmyUnitID < p_bic_data->UnitTypeCount)) {
@@ -6933,7 +6947,7 @@ patch_Unit_ai_move_leader (Unit * this)
 			return;
 		} else
 			moving_to_city = best_rush_loc;
-	} else if ((form_army_value > -1) && (Unit_ai_can_form_army (this))) {
+	} else if ((form_army_value > -1) && patch_Unit_ai_can_form_army (this)) {
 		Unit_form_army (this);
 		return;
 	} else if (in_city == NULL) {
