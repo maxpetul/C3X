@@ -1317,6 +1317,7 @@ struct injected_state {
 	int special_district_count;
 	int dynamic_district_count;
 	int wonder_district_count;
+	int suppress_next_wonder_destroy_popup_improv_id;
 	int next_custom_dynamic_command_index;
 
 	struct table distribution_hub_records;

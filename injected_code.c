@@ -2431,7 +2431,7 @@ find_wonder_config_index_by_improvement_id (int improv_id)
 	char ss[200];
 
 	for (int wi = 0; wi < is->wonder_district_count; wi++) {
-		int bid;
+		int bid = -1;
 		snprintf (ss, sizeof ss, "[C3X] find_wonder_config_index_by_improvement_id: checking wonder %s (improv_id=%d)\n",
 			  is->wonder_district_configs[wi].wonder_name, improv_id);
 		(*p_OutputDebugStringA) (ss);
@@ -2444,6 +2444,49 @@ find_wonder_config_index_by_improvement_id (int improv_id)
 	}
 
 	return -1;
+}
+
+void set_wonder_built_flag (int improv_id, bool is_built);
+
+int
+get_wonder_improvement_id_from_index (int windex)
+{
+	if ((windex < 0) || (windex >= is->wonder_district_count))
+		return -1;
+
+	char const * wonder_name = is->wonder_district_configs[windex].wonder_name;
+	if ((wonder_name == NULL) || (wonder_name[0] == '\0'))
+		return -1;
+
+	int improv_id;
+	if (stable_look_up (&is->building_name_to_id, (char *)wonder_name, &improv_id))
+		return improv_id;
+	else
+		return -1;
+}
+
+void
+show_wonder_destroyed_popup (int improv_id)
+{
+	if ((improv_id < 0) || (improv_id >= p_bic_data->ImprovementsCount))
+		return;
+
+	if (is->current_config.destroyed_wonders_can_be_rebuilt)
+		set_wonder_built_flag (improv_id, false);
+
+	if (is->is_placing_scenario_things)
+		return;
+
+	Improvement * improv = &p_bic_data->Improvements[improv_id];
+
+	char ss[200];
+	snprintf (ss, sizeof ss, "[C3X] show_wonder_destroyed_popup: improv_id=%d\n", improv_id);
+	(*p_OutputDebugStringA) (ss);
+
+	PopupForm * popup = get_popup_form ();
+	set_popup_str_param (0, improv->Name.S, -1, -1);
+	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_DISTRICT_WONDER_DESTROYED", -1, 0, 0, 0);
+	patch_show_popup (popup, __, 0, 0);
 }
 
 void
@@ -3667,7 +3710,7 @@ add_dynamic_wonder_from_definition (struct parsed_wonder_definition * def, int s
 
 	cfg->index = dest;
 	cfg->is_dynamic = true;
-	cfg->wonder_name = def->name;
+	cfg->wonder_name = strdup (def->name);
 	cfg->img_row = def->img_row;
 	cfg->img_column = def->img_column;
 	cfg->img_construct_row = def->img_construct_row;
@@ -4010,6 +4053,7 @@ reset_district_state (bool reset_tile_map)
 
 	clear_dynamic_district_definitions ();
 	is->district_count = is->special_district_count;
+	is->suppress_next_wonder_destroy_popup_improv_id = -1;
 
 	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++) {
 		is->district_infos[i].advance_prereq_id = -1;
@@ -5161,6 +5205,8 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 		(void*)tile, district_id, center_x, center_y, leave_ruins);
 	(*p_OutputDebugStringA) (ss);
 
+	int wonder_windex = itable_look_up_or (&is->wonder_district_tile_map, (int)tile, -1);
+
 	int actual_district_id = district_id;
 	if (actual_district_id < 0)
 		itable_look_up (&is->district_tile_map, (int)tile, &actual_district_id);
@@ -5169,6 +5215,16 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 
 	// Remove any wonder overlay mapping for this tile
 	itable_remove (&is->wonder_district_tile_map, (int)tile);
+
+	if (is->current_config.enable_wonder_districts &&
+	    (actual_district_id == get_wonder_district_id ()) &&
+	    (wonder_windex >= 0)) {
+		int wonder_improv_id = get_wonder_improvement_id_from_index (wonder_windex);
+		if (wonder_improv_id >= 0) {
+			is->suppress_next_wonder_destroy_popup_improv_id = wonder_improv_id;
+			show_wonder_destroyed_popup (wonder_improv_id);
+		}
+	}
 
 	if (is->current_config.enable_distribution_hub_districts &&
 	    (actual_district_id == get_distribution_hub_district_id ()))
@@ -12217,6 +12273,14 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 {
 	int init_maintenance = this->Body.Improvements_Maintenance;
 	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	bool is_wonder_removal = (! add) &&
+		((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0) &&
+		(! is->is_placing_scenario_things);
+	bool suppress_wonder_destroy_popup = false;
+	if (is_wonder_removal && (improv_id == is->suppress_next_wonder_destroy_popup_improv_id)) {
+		suppress_wonder_destroy_popup = true;
+		is->suppress_next_wonder_destroy_popup_improv_id = -1;
+	}
 
 	// The enable_negative_pop_pollution feature changes the rules so that improvements flagged as removing pop pollution and having a negative
 	// pollution amount contribute to the city's pop pollution instead of building pollution. Here we make sure that such improvements do not
@@ -12231,17 +12295,32 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	} else
 		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
 
-	if (! add &&
-	    is->current_config.destroyed_wonders_can_be_rebuilt &&
-	    (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) &&
-	    (! is->is_placing_scenario_things)) {
+	// Debug logging for wonder removal
+	if (! add && (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder))) {
+		char ss[200];
+		snprintf (ss, sizeof ss, "[C3X] Wonder removal: improv_id=%d add=%d is_placing=%d\n",
+			improv_id, add, is->is_placing_scenario_things);
+		(*p_OutputDebugStringA) (ss);
+	}
+
+	if (is_wonder_removal) {
+		if (is->current_config.destroyed_wonders_can_be_rebuilt)
 			set_wonder_built_flag (improv_id, false);
 
+		char ss[200];
+		if (suppress_wonder_destroy_popup)
+			snprintf (ss, sizeof ss, "[C3X] Suppressing wonder destroyed popup for improv_id=%d\n", improv_id);
+		else
+			snprintf (ss, sizeof ss, "[C3X] Showing wonder destroyed popup for improv_id=%d\n", improv_id);
+		(*p_OutputDebugStringA) (ss);
+
+		if (! suppress_wonder_destroy_popup) {
 			PopupForm * popup = get_popup_form ();
 			set_popup_str_param (0, improv->Name.S, -1, -1);
-			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_DISTRICT_DESTROYED", -1, 0, 0, 0);
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_DISTRICT_WONDER_DESTROYED", -1, 0, 0, 0);
 			patch_show_popup (popup, __, 0, 0);
 		}
+	}
 
 	// After adding a world wonder, if wonder districts are enabled,
 	// assign the wonder image to one of the city's Wonder District tiles (first match).
@@ -12345,7 +12424,6 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 			is->sharing_buildings_by_districts_in_progress = false;
 		}
 	}
-
 }
 
 void __fastcall
@@ -14713,6 +14791,7 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 {
 	Tile * target_tile = NULL;
 	bool had_district_before = false;
+	int district_id_before = -1;
 	int tile_x = x;
 	int tile_y = y;
 
@@ -14720,8 +14799,7 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 		target_tile = tile_at (tile_x, tile_y);
 		if ((target_tile != NULL) && (target_tile != p_null_tile)) {
-			int dummy_id;
-			had_district_before = itable_look_up (&is->district_tile_map, (int)target_tile, &dummy_id);
+			had_district_before = itable_look_up (&is->district_tile_map, (int)target_tile, &district_id_before);
 		}
 	}
 
@@ -14730,10 +14808,18 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 	if (bombarding)
 		is->unit_bombard_attacking_tile = this;
 
-	if (had_district_before)
-		handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, true);
-
 	Unit_attack_tile (this, __, x, y, bombarding);
+
+	// Check if the district was destroyed by the attack
+	if (had_district_before && (target_tile != NULL) && (target_tile != p_null_tile)) {
+		int district_id_after;
+		bool has_district_after = itable_look_up (&is->district_tile_map, (int)target_tile, &district_id_after);
+
+		// If the district existed before but not after, or the tile no longer has a mine, the district was destroyed
+		if (!has_district_after || !(target_tile->vtable->m42_Get_Overlays (target_tile, __, 0) & TILE_FLAG_MINE)) {
+			handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, true);
+		}
+	}
 
 	is->unit_bombard_attacking_tile = NULL;
 	is->attacking_tile_x = is->attacking_tile_y = -1;
