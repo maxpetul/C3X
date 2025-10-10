@@ -4,6 +4,12 @@
 
 The goal of C3X Districts is to **make the Civ 3 map feel more alive and interesting**. Districts enable large cities to sprawl, infrastructure to be visualized, and - if you enable them - new gameplay additions which make the map more interactive and interesting without fundamentally altering core Civ 3 mechanics. Districts are also 100% customizable and modular, so you can pick and choose types you like, or simply craft your own with custom art, tech dependencies, buildings, and bonuses.
 
+> Why Districts? I've tried to play various newer Civ games over the years, but none ever felt quite as elegantly simple yet deep, positive, and fun as Civ 3. I tried hard to enjoy Civ 6 and found that Districts finally made individual *cities* feel grand, much in the same way that Civ 3 itself made *empires* feel grand. Yet Civ 6 simply wasn't enjoyable for me (I completely agree with [livinginaz](https://forums.civfanatics.com/threads/why-are-you-playing-civ-3-after-all-these-years.676431/post-16260822) and [Civinator's posts](https://forums.civfanatics.com/threads/why-are-you-playing-civ-3-after-all-these-years.676431/post-16312711) on the topic). Districts ended up needing too much micromanagement and feeling overly consequential for my taste.
+> 
+> I wanted a mechanic in Civ 3 which captured the grandness and realism of Districs, but made it much easier to build, discard, move, and rebuild them over time.
+
+### How Districts work
+
 Districts are buildable by Workers, like any other build action:
 
 <img width="405" height="403" alt="image" src="https://github.com/user-attachments/assets/784221c3-bfd6-4089-94ae-a28acfd79c6c" />
