@@ -122,6 +122,8 @@ Enabled via `enable_wonder_districts`. Wonder districts enable Wonders (both Gre
 
 Additionally, if you set `completed_wonder_districts_can_be_destroyed` to true, well, be prepared to defend your Wonders! Setting `destroyed_wonders_can_be_rebuilt` to true puts destroyed Wonders back into play, such that any civ can once again build them.
 
+<img width="457" height="339" alt="image" src="https://github.com/user-attachments/assets/7f1e6da2-4829-464b-9e93-de8960e7bf11" />
+
 Like Standard Districts, the Wonders which required a Wonder District can be configured under [`./Districts/Config/Wonders.txt`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/Districts/Config/Wonders.txt) in the format:
 
 ```
