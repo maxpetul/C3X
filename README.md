@@ -118,7 +118,7 @@ AI workers are [triggered to build Neighborhoods when they reach their populatio
 
 Enabled via `enable_wonder_districts`. Wonder districts enable Wonders (both Great and Small) to be dependent on having a tile reserved for them. Wonder district art will change when you initiate and complete the Wonder:
 
-<img width="1335" height="250" alt="image" src="https://github.com/user-attachments/assets/dde0fcdd-cbf9-42ed-a3c7-2ac5cd973d7c" />
+<img width="1041" height="355" alt="image" src="https://github.com/user-attachments/assets/0e70259d-7812-40d3-88c0-acda9c7a02fd" />
 
 Additionally, if you set `completed_wonder_districts_can_be_destroyed` to true, well, be prepared to defend your Wonders! Setting `destroyed_wonders_can_be_rebuilt` to true puts destroyed Wonders back into play, such that any civ can once again build them.
 
