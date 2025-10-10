@@ -155,7 +155,7 @@ Distribution hub food and shields are shown in the City view with green outline:
 
 ### Distribution Hub Strategy
 
-Distribution Hubs are thus essentially "breadbaskets" and heavy mining areas far from your urban centers (think: Egypt feeding ancient Rome, Ukraine feeding the Soviet Union, the American midwest feeding the coasts, etc.). 
+Distribution Hubs are thus essentially "breadbaskets" and heavy mining areas far from your urban centers (think: Egypt feeding ancient Rome, Ukraine feeding the Soviet Union, the American MidWest feeding the coasts, etc.). 
 
 Creating a Distribution Hub significantly minimizes the growth potential and production output of a nearby city, so should be built wisely, likely far from your urban city cores, and well defended! Distribution Hub yields are also not subject to corruption.
 
@@ -165,8 +165,7 @@ AI workers are triggered to build Distribution Hubs when their civ's "ideal" num
 
 The Aerodrome District reuses and slightly modifies the base game airfield art. If `air_units_use_aerodrome_districts_not_cities` is set to true, air units can only be built in cities with an Aerodrome in their radius and can only land on Aerodromes (or vanilla game airfields & carriers), not cities.
 
-<img width="778" height="382" alt="image" src="https://github.com/user-attachments/assets/c4b88569-266b-4a1c-aed3-1806e7e8c35c" />
-
+<img width="511" height="253" alt="image" src="https://github.com/user-attachments/assets/e7a20ee5-9efc-4f6b-a921-2a906f3ef9b5" />
 
 ## Roadmap
 
@@ -174,6 +173,7 @@ If I have the time, I hope to:
 
 1. Add a Seasonal Cycle for art (spring/summer/fall/winter), like the Day/Night Cycle. This is not strictly part of Districts, but would be fully compatible.
 2. Add support for Ports and other general Naval Districts.
+3. Art, art, art. I would love community help in making the art blend better and look nicer. This is extremely time-intensive and many of the art files don't look as nice as I'd like.
 
 ## Special Thanks
-1. [@maxpetul](https://github.com/maxpetul/) (I'm standing on the shoulders of giants!) and others whose work made C3X possible
+[@maxpetul](https://github.com/maxpetul/) (I'm standing on the shoulders of giants!) and others whose work made C3X possible
