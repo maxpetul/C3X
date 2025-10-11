@@ -40,6 +40,26 @@ Pillaged Districts are shown as ruins:
 
 <img width="361" height="205" alt="image" src="https://github.com/user-attachments/assets/355d686d-c640-4095-a2f7-427ed01cfcb6" />
 
+### Rebuilding and Moving Districts
+
+C3X Districts is implemented such that removing and rebuilding a District (e.g., on a different tile) is not an incredibly weighty decision, with the goal of keeping the game fun (and, well, more realistic - cities in real life change over time!).
+
+As long as `allow_multiple` is set for a given District type, it is straightforward to build the same District type nearby and not lose any buildings. Imagine, for example, that Rome has a Holy Site with a Temple:
+
+<img width="430" height="316" alt="image" src="https://github.com/user-attachments/assets/b401b98e-9076-4f3c-8d4f-f98f7e9600c8" />
+
+The player decides the Holy Site would be better elsewhere, so constructs another Holy Site next to it:
+
+<img width="455" height="306" alt="image" src="https://github.com/user-attachments/assets/4c6c21fb-7dcf-403b-a310-4ae895d49552" />
+
+C3X Districts will check whether replacing an existing District would cause any dependent buildings to be lost in nearby cities and let you know:
+
+<img width="486" height="541" alt="image" src="https://github.com/user-attachments/assets/67a1d06a-11f3-47c1-90fe-0ddbf9caf4e9" />
+
+After the improvement (or new District, if replacing and existing District type with another) is done, Rome maintains the Temple and the Holy Site is in a new location:
+
+<img width="535" height="346" alt="image" src="https://github.com/user-attachments/assets/29c34fe2-e98b-4304-b572-7100a9ab5fac" />
+
 ### Art
 
 As discussed, Districts visually show which buildings are present in nearby cities. However they can also show different art by era:
@@ -149,7 +169,7 @@ AI workers are triggered to build Standard Districts [when an AI city attempts t
 
 <img width="533" height="271" alt="image" src="https://github.com/user-attachments/assets/4f51c633-3ee8-4088-aede-40ef35739fc9" />
 
-Enabled via `enable_neighborhood_districts`. Neighborhoods allow a city to expand in population beyond a certain amount set by `maximum_pop_before_neighborhood_needed`. After that point, a city will need Neighborhoods, each of what allow the city population to grow at `per_neighborhood_pop_growth_enabled`. 
+Enabled via `enable_neighborhood_districts`. Neighborhoods allow a city to expand in population beyond a certain amount set by `maximum_pop_before_neighborhood_needed`. After that point, a city will need Neighborhoods, each of which allow the city population to grow at `per_neighborhood_pop_growth_enabled`. 
 
 For example, imagine the following configuration:
 
