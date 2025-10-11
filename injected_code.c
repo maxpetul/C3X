@@ -15053,21 +15053,58 @@ patch_Leader_do_production_phase (Leader * this)
 			if (city == NULL) continue;
 			if (city->Body.Order_Type != COT_Improvement) continue;
 			int i_improv = city->Body.Order_ID;
+
+			// Check regular buildings dependent on districts
 			int req_district_id;
-			if (! itable_look_up (&is->district_building_prereqs, i_improv, &req_district_id)) continue;
-			if (city_has_required_district (city, req_district_id)) continue;
-			// Request AI to build the needed district and switch production
-			mark_city_needs_district (city, req_district_id);
-			city->vtable->set_production_to_most_expensive_option (city);
-			
-			if (city->Body.CivID == p_main_screen_form->Player_CivID) {
-				char msg[160];
-				char const * bname = p_bic_data->Improvements[i_improv].Name.S;
-				char const * dname = is->district_configs[req_district_id].name;
-				// TODO: add the name of the missing district, not just "district"
-				snprintf (msg, sizeof msg, "%s construction halted: required %s missing", bname, dname);
-				msg[(sizeof msg) - 1] = '\0';
-				show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
+			if (itable_look_up (&is->district_building_prereqs, i_improv, &req_district_id)) {
+				if (! city_has_required_district (city, req_district_id)) {
+					// Switch production to another option
+					city->vtable->set_production_to_most_expensive_option (city);
+
+					// For AI players, request the needed district to be built
+					if (((*p_human_player_bits & (1 << city->Body.CivID)) == 0))
+						mark_city_needs_district (city, req_district_id);
+
+					// Show message to human player
+					if (city->Body.CivID == p_main_screen_form->Player_CivID) {
+						char msg[160];
+						char const * bname = p_bic_data->Improvements[i_improv].Name.S;
+						char const * dname = is->district_configs[req_district_id].name;
+						snprintf (msg, sizeof msg, "%s construction halted: required %s missing", bname, dname);
+						msg[(sizeof msg) - 1] = '\0';
+						show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
+					}
+					continue;
+				}
+			}
+
+			// Check wonders dependent on wonder districts
+			if (is->current_config.enable_wonder_districts &&
+			    (i_improv >= 0) && (i_improv < p_bic_data->ImprovementsCount)) {
+				Improvement * improv = &p_bic_data->Improvements[i_improv];
+				// Only check if this is a wonder AND it's configured to require a wonder district
+				if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0 &&
+				    find_wonder_config_index_by_improvement_id (i_improv) >= 0) {
+					if (! city_has_incomplete_wonder_district (city)) {
+						// Switch production to another option
+						city->vtable->set_production_to_most_expensive_option (city);
+
+						// For AI players, request a wonder district to be built
+						if (((*p_human_player_bits & (1 << city->Body.CivID)) == 0)) {
+							int wonder_district_id = get_wonder_district_id ();
+							mark_city_needs_district (city, wonder_district_id);
+						}
+
+						// Show message to human player
+						if (city->Body.CivID == p_main_screen_form->Player_CivID) {
+							char msg[160];
+							char const * bname = improv->Name.S;
+							snprintf (msg, sizeof msg, "%s construction halted: required Wonder District missing", bname);
+							msg[(sizeof msg) - 1] = '\0';
+							show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
+						}
+					}
+				}
 			}
 		}
 	}
