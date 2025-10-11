@@ -5789,6 +5789,43 @@ city_has_other_completed_district (City * city, int district_id, int removed_x, 
 	return false;
 }
 
+bool
+any_nearby_city_would_lose_district_benefits (int district_id, int civ_id, int removed_x, int removed_y)
+{
+	if (! is->current_config.enable_districts || (district_id < 0) || (district_id >= is->district_count))
+		return false;
+
+	struct district_infos * info = &is->district_infos[district_id];
+
+	// If there are no dependent buildings, no city can lose benefits
+	if (info->dependent_building_count == 0)
+		return false;
+
+	// Check all cities within work radius of the removed district
+	FOR_TILES_AROUND (tai, is->workable_tile_count, removed_x, removed_y) {
+		Tile * tile = tai.tile;
+		if (tile == p_null_tile)
+			continue;
+
+		City * city = get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
+		if (city == NULL || city->Body.CivID != civ_id)
+			continue;
+
+		// Check if this city has another completed district of the same type nearby (excluding the one being removed)
+		if (city_has_other_completed_district (city, district_id, removed_x, removed_y))
+			continue;
+
+		// This city doesn't have another district, check if it has any dependent buildings
+		for (int i = 0; i < info->dependent_building_count; i++) {
+			int building_id = info->dependent_building_ids[i];
+			if (building_id >= 0 && patch_City_has_improvement (city, __, building_id, false))
+				return true; // Found a city that would lose a building
+		}
+	}
+
+	return false;
+}
+
 void
 remove_dependent_buildings_for_district (int district_id, int center_x, int center_y)
 {
@@ -9767,10 +9804,6 @@ issue_stack_worker_command (Unit * unit, int command)
 void
 issue_district_worker_command (Unit * unit, int command)
 {
-	char ss[200];
-	//snprintf (ss, sizeof ss, "issue_district_worker_command");
-	//pop_up_in_game_error (ss);
-
 	if (! is->current_config.enable_districts)
 		return;
 
@@ -9789,9 +9822,6 @@ issue_district_worker_command (Unit * unit, int command)
 			return; // Civ lacks required tech; do not issue command
 		}
 	}
-	//snprintf (ss, sizeof ss, "C3X: Civ has prereq tech for district command %d", command);
-	//pop_up_in_game_error (ss);
-
     // Disallow placing districts on mountain tiles for simplicity/per design
     if (tile != NULL && tile != p_null_tile) {
         enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType(tile);
@@ -9800,32 +9830,35 @@ issue_district_worker_command (Unit * unit, int command)
         }
     }
 
-	//snprintf (ss, sizeof ss, "C3X: Issuing district worker command %d", command);
-	//pop_up_in_game_error (ss);
-
 	// Set tile -> DistrictID mapping in `district_tile_map`
 	if (tile != NULL && tile != p_null_tile) {
 
-		//snprintf (ss, sizeof ss, "C3X: Setting district_tile_map entry for tile");
-		//pop_up_in_game_error (ss);
-
 		int district_id;
 		if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) && district_is_complete(tile, district_id) ) {
-			PopupForm * popup = get_popup_form ();
-			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_REMOVE_DISTRICT", -1, 0, 0, 0);
-			int sel = patch_show_popup (popup, __, 0, 0);
-				if (sel == 0) {
-					itable_remove (&is->district_tile_map, (int)tile);
+			int tile_x, tile_y;
+			if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
+				return;
 
-					tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
-					int tile_x, tile_y;
-					if (tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y)) {
-						tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
-						handle_district_removed(tile, district_id, tile_x, tile_y, false);
-					}
-				} else {
-					return;
-				}
+			int civ_id = unit->Body.CivID;
+
+			PopupForm * popup = get_popup_form ();
+			popup->vtable->set_text_key_and_flags (
+				popup, __, is->mod_script_path, 
+				any_nearby_city_would_lose_district_benefits (district_id, civ_id, tile_x, tile_y) 
+					? "C3X_CONFIRM_REMOVE_DISTRICT" : "C3X_CONFIRM_REMOVE_DISTRICT_SAFE", 
+				-1, 0, 0, 0
+			);
+			
+			int sel = patch_show_popup (popup, __, 0, 0);
+			if (sel == 0) {
+				itable_remove (&is->district_tile_map, (int)tile);
+
+				tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
+				handle_district_removed(tile, district_id, tile_x, tile_y, false);
+			} else {
+				return;
+			}
 		}
 
 		if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {

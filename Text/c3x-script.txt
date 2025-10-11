@@ -144,16 +144,16 @@ This worker has been ordered to build a District. Do you want them to stop?
 Yes. There is more important work to do.
 No. Carry on.
 
-#C3X_CONFIRM_REMOVE_DISTRICT_SAFE
+#C3X_CONFIRM_REMOVE_DISTRICT
 #advisor Domestic
-A District exists here, but another of the same District is nearby so no dependent buildings will be lost. Do you want to proceed?
+A District already exists here. Removing it will destroy buildings dependent on it. Are you sure you want to proceed?
 #itemlist
 Yes. There are better uses for this tile.
 No. Leave the District.
 
-#C3X_CONFIRM_REMOVE_DISTRICT
+#C3X_CONFIRM_REMOVE_DISTRICT_SAFE
 #advisor Domestic
-A District already exists here. Removing it will destroy buildings dependent on it. Are you sure you want to proceed?
+A District exists here, but another of the same District is nearby so no dependent buildings will be lost. Do you want to proceed?
 #itemlist
 Yes. There are better uses for this tile.
 No. Leave the District.
