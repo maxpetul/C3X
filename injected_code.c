@@ -2466,30 +2466,6 @@ get_wonder_improvement_id_from_index (int windex)
 }
 
 void
-show_wonder_destroyed_popup (int improv_id)
-{
-	if ((improv_id < 0) || (improv_id >= p_bic_data->ImprovementsCount))
-		return;
-
-	if (is->current_config.destroyed_wonders_can_be_rebuilt)
-		set_wonder_built_flag (improv_id, false);
-
-	if (is->is_placing_scenario_things)
-		return;
-
-	Improvement * improv = &p_bic_data->Improvements[improv_id];
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] show_wonder_destroyed_popup: improv_id=%d\n", improv_id);
-	(*p_OutputDebugStringA) (ss);
-
-	PopupForm * popup = get_popup_form ();
-	set_popup_str_param (0, improv->Name.S, -1, -1);
-	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_DISTRICT_WONDER_DESTROYED", -1, 0, 0, 0);
-	patch_show_popup (popup, __, 0, 0);
-}
-
-void
 remember_pending_wonder_order (City * city, int improvement_id)
 {
 	if (! is->current_config.enable_districts ||
@@ -4608,7 +4584,6 @@ reset_district_state (bool reset_tile_map)
 
 	clear_dynamic_district_definitions ();
 	is->district_count = is->special_district_count;
-	is->suppress_next_wonder_destroy_popup_improv_id = -1;
 
 	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++) {
 		is->district_infos[i].advance_prereq_id = -1;
@@ -5849,11 +5824,8 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	    (wonder_windex >= 0))
 		wonder_improv_id = get_wonder_improvement_id_from_index (wonder_windex);
 
-	if (wonder_improv_id >= 0) {
-		is->suppress_next_wonder_destroy_popup_improv_id = wonder_improv_id;
+	if (wonder_improv_id >= 0)
 		remove_wonder_improvement_for_destroyed_district (wonder_improv_id);
-		show_wonder_destroyed_popup (wonder_improv_id);
-	}
 
 	if (is->current_config.enable_distribution_hub_districts &&
 	    (actual_district_id == get_distribution_hub_district_id ()))
@@ -12940,11 +12912,6 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	bool is_wonder_removal = (! add) &&
 		((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0) &&
 		(! is->is_placing_scenario_things);
-	bool suppress_wonder_destroy_popup = false;
-	if (is_wonder_removal && (improv_id == is->suppress_next_wonder_destroy_popup_improv_id)) {
-		suppress_wonder_destroy_popup = true;
-		is->suppress_next_wonder_destroy_popup_improv_id = -1;
-	}
 
 	// The enable_negative_pop_pollution feature changes the rules so that improvements flagged as removing pop pollution and having a negative
 	// pollution amount contribute to the city's pop pollution instead of building pollution. Here we make sure that such improvements do not
@@ -12972,18 +12939,13 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 			set_wonder_built_flag (improv_id, false);
 
 		char ss[200];
-		if (suppress_wonder_destroy_popup)
-			snprintf (ss, sizeof ss, "[C3X] Suppressing wonder destroyed popup for improv_id=%d\n", improv_id);
-		else
-			snprintf (ss, sizeof ss, "[C3X] Showing wonder destroyed popup for improv_id=%d\n", improv_id);
+		snprintf (ss, sizeof ss, "[C3X] Showing wonder destroyed popup for improv_id=%d\n", improv_id);
 		(*p_OutputDebugStringA) (ss);
 
-		if (! suppress_wonder_destroy_popup) {
-			PopupForm * popup = get_popup_form ();
-			set_popup_str_param (0, improv->Name.S, -1, -1);
-			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_DISTRICT_WONDER_DESTROYED", -1, 0, 0, 0);
-			patch_show_popup (popup, __, 0, 0);
-		}
+		PopupForm * popup = get_popup_form ();
+		set_popup_str_param (0, improv->Name.S, -1, -1);
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_DISTRICT_WONDER_DESTROYED", -1, 0, 0, 0);
+		patch_show_popup (popup, __, 0, 0);
 	}
 
 	// After adding a world wonder, if wonder districts are enabled,

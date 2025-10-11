@@ -1224,30 +1224,47 @@ struct injected_state {
 		Sprite imgs[4];
 	} district_btn_img_sets[COUNT_DISTRICT_TYPES];
 
-	// A mapping from int tech ID keys -> district ID. If a tech (aka advance) ID is present in the
+	// Tech ID keys -> district ID. If a tech (aka advance) ID is present in the
 	// table that means that tech enables a district. This also means one tech can enable at most one district.
 	struct table district_tech_prereqs;
 
-	// A mapping from int building ID keys -> district ID. If a building ID is present in the
+	// Building ID keys -> district ID. If a building ID is present in the
 	// table that means that building can only be built if there is a corresponding district is present in the city radius.
 	struct table district_building_prereqs;
 
-	// A mapping from tile pointer IDs -> district ID. If a tile ID is present in the
+	// Tile pointer IDs -> district ID. If a tile ID is present in the
 	// table that means that tile has a district built on it.
 	struct table district_tile_map;
 
-	// A mapping from tile pointer IDs -> wonder index for completed Wonder Districts.
+	// Tile pointer IDs -> wonder index for completed Wonder Districts.
 	// When present, the Wonder image will render instead of the base district art.
 	struct table wonder_district_tile_map;
+
 	// Tracks per-turn airlift usage for aerodrome districts (tile pointer -> civ bitmask).
 	struct table aerodrome_airlift_usage;
 
+	// Command ID keys -> district ID. Used to identify which district
+	// a unit command (e.g., build order) corresponds to.
 	struct table command_id_to_district_id;
+
+	// Unit ID keys -> district_job_assignment pointer. Tracks which units
+	// are currently assigned to build districts and their job details.
 	struct table district_job_assignments;
+
+	// City pointer keys -> district bitmask. Tracks which district types
+	// a city has requested but not yet assigned workers to build.
 	struct table city_pending_district_requests;
+
+	// City pointer keys -> improvement ID. Tracks which Wonder Districts
+	// a city has ordered to be built (pending worker assignment).
 	struct table city_pending_wonder_orders;
+
+	// AI cache mapping city pointer keys -> AI_Order pointer. Stores the best feasible
+	// production order for AI cities to optimize decision-making.
 	struct table ai_best_feasible_orders;
 
+	// String building/wonder name keys -> int building/improvement ID.
+	// Used to look up building IDs by their text names from the game data.
 	struct table building_name_to_id;
 
 	struct district_infos {
@@ -1260,7 +1277,6 @@ struct injected_state {
 	int special_district_count;
 	int dynamic_district_count;
 	int wonder_district_count;
-	int suppress_next_wonder_destroy_popup_improv_id;
 	int next_custom_dynamic_command_index;
 
 	struct table distribution_hub_records;
