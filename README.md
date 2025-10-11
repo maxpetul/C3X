@@ -117,7 +117,7 @@ Special District configurations can also be overwritten in the same file, if you
 name                         = Neighborhood
 advance_prereq               = 
 defense_bonus_multiplier_pct = 100
-allow_multiple               = 0
+allow_multiple               = 1
 culture_bonus                = 1
 science_bonus                = 0
 food_bonus                   = 0
