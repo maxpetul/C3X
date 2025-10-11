@@ -4,7 +4,7 @@
 
 The goal of C3X Districts is to **make the Civ 3 map feel more alive and interesting**. Districts enable large cities to sprawl, infrastructure to be visualized, and - if you enable them - new gameplay additions which make the map more interactive and interesting without fundamentally altering core Civ 3 mechanics. Districts are also 100% customizable and modular, so you can pick and choose types you like, or simply craft your own with custom art, tech dependencies, buildings, and bonuses.
 
-> Why Districts? I've tried to play various newer Civ games over the years, but none ever felt quite as elegantly simple yet deep, positive, and fun as Civ 3. I tried hard to enjoy Civ 6 and found that Districts finally made individual *cities* feel grand, much in the same way that Civ 3 itself made *empires* feel grand. Yet Civ 6 simply wasn't enjoyable for me (I completely agree with [livinginaz](https://forums.civfanatics.com/threads/why-are-you-playing-civ-3-after-all-these-years.676431/post-16260822) and [Civinator's posts](https://forums.civfanatics.com/threads/why-are-you-playing-civ-3-after-all-these-years.676431/post-16312711) on the topic). Districts ended up needing too much micromanagement and feeling overly consequential for my taste.
+> Why Districts? I've tried to play various newer Civ games over the years, but none ever felt quite as elegantly simple yet deep, positive, and fun as Civ 3. I tried hard to enjoy Civ 6 and found that Districts finally made individual *cities* feel grand, much in the same way that Civ 3 itself made *empires* feel grand. Yet Civ 6 simply wasn't enjoyable for me ([livinginaz](https://forums.civfanatics.com/threads/why-are-you-playing-civ-3-after-all-these-years.676431/post-16260822) and [Civinator](https://forums.civfanatics.com/threads/why-are-you-playing-civ-3-after-all-these-years.676431/post-16312711) said it best). Districts ended up needing too much micromanagement and feeling overly consequential for my taste.
 > 
 > I wanted a mechanic in Civ 3 which captured the grandness and realism of Districs, but made it much easier to build, discard, move, and rebuild them over time.
 
@@ -222,7 +222,7 @@ AI workers are triggered to build Distribution Hubs when their civ's "ideal" num
 
 ## Other Non-Standard Districts
 
-The Aerodrome District reuses and slightly modifies the base game airfield art. If `air_units_use_aerodrome_districts_not_cities` is set to true, air units can only be built in cities with an Aerodrome in their radius, spawn on Aerodromes, and can only land on Aerodromes (or vanilla game airfields & carriers), not cities.
+The Aerodrome District reuses and slightly modifies the base game airfield art. If `air_units_use_aerodrome_districts_not_cities` is set to true, air units can only be built in cities with an Aerodrome in their radius, spawn on Aerodromes, and can only land on Aerodromes (or vanilla game airfields & carriers), not cities. Airlifts similarly are limited to Aerodromes.
 
 <img width="511" height="253" alt="image" src="https://github.com/user-attachments/assets/e7a20ee5-9efc-4f6b-a921-2a906f3ef9b5" />
 
