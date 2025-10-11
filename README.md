@@ -149,7 +149,7 @@ AI workers are triggered to build Standard Districts [when an AI city attempts t
 
 <img width="533" height="271" alt="image" src="https://github.com/user-attachments/assets/4f51c633-3ee8-4088-aede-40ef35739fc9" />
 
-Enabled via `enable_neighborhood_districts`. Neighborhoods allow a city to expand in population beyond a certain amount set by `maximum_pop_before_neighborhood_needed`. After that point, a city will need Neighborhoods, each of what allow the city population to grow at `per_neighborhood_pop_growth_enabled`. 
+Enabled via `enable_neighborhood_districts`. Neighborhoods allow a city to expand in population beyond a certain amount set by `maximum_pop_before_neighborhood_needed`. After that point, a city will need Neighborhoods, each of which allow the city population to grow at `per_neighborhood_pop_growth_enabled`. 
 
 For example, imagine the following configuration:
 
