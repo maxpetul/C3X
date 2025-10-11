@@ -5792,14 +5792,22 @@ city_has_other_completed_district (City * city, int district_id, int removed_x, 
 bool
 any_nearby_city_would_lose_district_benefits (int district_id, int civ_id, int removed_x, int removed_y)
 {
-	if (! is->current_config.enable_districts || (district_id < 0) || (district_id >= is->district_count))
+	if (! is->current_config.enable_districts)
 		return false;
 
 	struct district_infos * info = &is->district_infos[district_id];
 
+	char ss[200];
+
+	snprintf (ss, sizeof ss, "[C3X] any_nearby_city_would_lose_district_benefits: district_id=%d civ_id=%d at (%d,%d) dependent_building_count=%d\n", district_id, civ_id, removed_x, removed_y, info->dependent_building_count);
+	(*p_OutputDebugStringA) (ss);
+
 	// If there are no dependent buildings, no city can lose benefits
 	if (info->dependent_building_count == 0)
 		return false;
+
+	snprintf (ss, sizeof ss, "[C3X] any_nearby_city_would_lose_district_benefits: district_id=%d civ_id=%d at (%d,%d)\n", district_id, civ_id, removed_x, removed_y);
+	(*p_OutputDebugStringA) (ss);
 
 	// Check all cities within work radius of the removed district
 	FOR_TILES_AROUND (tai, is->workable_tile_count, removed_x, removed_y) {
@@ -5811,13 +5819,21 @@ any_nearby_city_would_lose_district_benefits (int district_id, int civ_id, int r
 		if (city == NULL || city->Body.CivID != civ_id)
 			continue;
 
+		snprintf (ss, sizeof ss, "[C3X] any_nearby_city_would_lose_district_benefits: city=%p at (%d,%d)\n", (void*)city, city->Body.X, city->Body.Y);
+		(*p_OutputDebugStringA) (ss);
+
 		// Check if this city has another completed district of the same type nearby (excluding the one being removed)
 		if (city_has_other_completed_district (city, district_id, removed_x, removed_y))
 			continue;
 
+		snprintf (ss, sizeof ss, "[C3X] any_nearby_city_would_lose_district_benefits: city=%p would lose district_id=%d benefits\n", (void*)city, district_id);
+		(*p_OutputDebugStringA) (ss);
+
 		// This city doesn't have another district, check if it has any dependent buildings
 		for (int i = 0; i < info->dependent_building_count; i++) {
 			int building_id = info->dependent_building_ids[i];
+			snprintf (ss, sizeof ss, "[C3X] any_nearby_city_would_lose_district_benefits: checking building_id=%d\n", building_id);
+			(*p_OutputDebugStringA) (ss);
 			if (building_id >= 0 && patch_City_has_improvement (city, __, building_id, false))
 				return true; // Found a city that would lose a building
 		}
@@ -9830,9 +9846,9 @@ issue_district_worker_command (Unit * unit, int command)
         }
     }
 
-	// Set tile -> DistrictID mapping in `district_tile_map`
 	if (tile != NULL && tile != p_null_tile) {
 
+		// If District will be replaced by another District
 		int district_id;
 		if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) && district_is_complete(tile, district_id) ) {
 			int tile_x, tile_y;
@@ -9840,12 +9856,16 @@ issue_district_worker_command (Unit * unit, int command)
 				return;
 
 			int civ_id = unit->Body.CivID;
+			bool would_lose_buildings = any_nearby_city_would_lose_district_benefits(district_id, civ_id, tile_x, tile_y);
 
+			// "A District already exists here. Removing it will destroy buildings dependent on it. Are you sure you want to proceed?" OR
+			// "A District exists here, but another of the same District is nearby so no dependent buildings will be lost. Do you want to proceed?"
 			PopupForm * popup = get_popup_form ();
 			popup->vtable->set_text_key_and_flags (
 				popup, __, is->mod_script_path, 
-				any_nearby_city_would_lose_district_benefits (district_id, civ_id, tile_x, tile_y) 
-					? "C3X_CONFIRM_REMOVE_DISTRICT" : "C3X_CONFIRM_REMOVE_DISTRICT_SAFE", 
+				would_lose_buildings
+					? "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT" 
+					: "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT_SAFE", 
 				-1, 0, 0, 0
 			);
 			
@@ -9861,12 +9881,15 @@ issue_district_worker_command (Unit * unit, int command)
 			}
 		}
 
+		// If District will replace an improvement
 		if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
 			unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
 			unsigned int removable_flags = overlay_flags & 0xfc;
+
+			// "An improvement already exists here. Are you sure you want to remove it and build a District?"
 			if (removable_flags != 0) {
 				PopupForm * popup = get_popup_form ();
-				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_BUILD_DISTRICT_OVER_EXISTING", -1, 0, 0, 0);
+				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_BUILD_DISTRICT_OVER_IMPROVEMENT", -1, 0, 0, 0);
 				int sel = patch_show_popup (popup, __, 0, 0);
 				if (sel != 0)
 					return;
@@ -9878,12 +9901,12 @@ issue_district_worker_command (Unit * unit, int command)
 					tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, tile_x, tile_y);
 				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
 			}
-
-			itable_insert (&is->district_tile_map, (int)tile, district_id);
-
-			int pseudo_command = UCV_Build_Mine;
-			Unit_set_state(unit, __, UnitState_Build_Mines);
 		}
+
+		itable_insert (&is->district_tile_map, (int)tile, district_id);
+
+		int pseudo_command = UCV_Build_Mine;
+		Unit_set_state(unit, __, UnitState_Build_Mines);
 	}
 }
 
@@ -9994,6 +10017,7 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 
 	int command = this->Unit_Command_Buttons[button_id].Command;
 
+	// If a district, run district build logic
 	if (is->current_config.enable_districts && is_district_command (command)) {
 		clear_something_1 ();
 		Timer_clear (&this->timer_1);
@@ -10011,20 +10035,32 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 			Tile * tile = tile_at(unit->Body.X, unit->Body.Y);
 
 			if (tile != NULL && tile != p_null_tile) {
+
+				// If district would be replaced by improvement
 				int district_id;
 				if (itable_look_up(&is->district_tile_map, (int)tile, &district_id) && district_is_complete(tile, district_id)) {
+					int tile_x, tile_y;
+					if (!tile_coords_from_ptr(&p_bic_data->Map, tile, &tile_x, &tile_y))
+						return;
 
+					int civ_id = unit->Body.CivID;
+					bool would_lose_buildings = any_nearby_city_would_lose_district_benefits(district_id, civ_id, tile_x, tile_y);
+
+					// "A District exists here with dependent buildings. Are you sure you want to proceed? Doing so will remove any dependent buildings." OR
+					// "A District exists here, but another of the same District is nearby so no dependent buildings will be lost. Do you want to build proceed?"
 					PopupForm * popup = get_popup_form();
-					popup->vtable->set_text_key_and_flags(popup, __, is->mod_script_path, "C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT", -1, 0, 0, 0);
+					popup->vtable->set_text_key_and_flags(
+						popup, __, is->mod_script_path,
+						would_lose_buildings
+							? "C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT"
+							: "C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT_SAFE",
+						-1, 0, 0, 0);
 					int sel = patch_show_popup(popup, __, 0, 0);
 					if (sel == 0) {  
 						itable_remove(&is->district_tile_map, (int)tile);
 						tile->vtable->m62_Set_Tile_BuildingID(tile, __, -1);
-						int tile_x, tile_y;
-						if (tile_coords_from_ptr(&p_bic_data->Map, tile, &tile_x, &tile_y)) {
-							tile->vtable->m51_Unset_Tile_Flags(tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
-							handle_district_removed(tile, district_id, tile_x, tile_y, false);
-						}
+						tile->vtable->m51_Unset_Tile_Flags(tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
+						handle_district_removed(tile, district_id, tile_x, tile_y, false);
 
 						clear_something_1();
 						Timer_clear(&this->timer_1);
