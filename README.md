@@ -28,7 +28,15 @@ Bonuses received from Districts are automatically shown in the City view with a 
 If a District has food or shield bonuses, you'll also see those in the Production, Food, and Commerce sections:
 <img width="870" height="280" alt="image" src="https://github.com/user-attachments/assets/ebe06c4b-c414-4043-8bbb-37bbb1b56c8b" />
 
-Districts also have certain implications for combat: destroying a District automatically removes any dependent buildings in surrounding cities. Pillaged Districts are shown as ruins:
+### Combat
+
+Districts also have certain implications for combat: destroying a District automatically removes any dependent buildings in surrounding cities *unless* they have another District of the same kind within their work radius. Districts with an occupying enemy unit on them do not yield any bonuses. Districts can also provide a combat bonus (or penalty); see `defense_bonus_multiplier_pct` in the configuration example below ("100" means no bonus).
+
+Any buildings or Wonders in progress that lose a required District are forced to revert to their next-favored production option:
+
+<img width="548" height="351" alt="image" src="https://github.com/user-attachments/assets/a2bf5cec-3b94-4268-ac13-b473b9657817" />
+
+Pillaged Districts are shown as ruins:
 
 <img width="361" height="205" alt="image" src="https://github.com/user-attachments/assets/355d686d-c640-4095-a2f7-427ed01cfcb6" />
 
