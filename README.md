@@ -60,6 +60,8 @@ After the improvement (or new District, if replacing and existing District type 
 
 <img width="535" height="346" alt="image" src="https://github.com/user-attachments/assets/29c34fe2-e98b-4304-b572-7100a9ab5fac" />
 
+Note that the major *exception* to this is completed Wonders in [Wonder Districts](#wonder-districts), which cannot be moved once built.
+
 ### Art
 
 As discussed, Districts visually show which buildings are present in nearby cities. However they can also show different art by era:
