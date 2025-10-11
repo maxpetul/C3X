@@ -4115,6 +4115,7 @@ patch_init_floating_point ()
 		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
 		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
+		{"polish_land_transports"                              , false, offsetof (struct c3x_config, polish_land_transports)},
 	};
 
 	struct integer_config_option {
@@ -13347,6 +13348,20 @@ patch_City_get_turns_to_build_2_for_ai_move_leader (City * this, int edx, City_O
 		order = &current_order;
 
 	return City_get_turns_to_build_2 (this, __, order, param_2);
+}
+
+bool __fastcall
+patch_Unit_has_ability_no_load_non_army_passengers (Unit * this, int edx, enum UnitTypeAbilities army_ability)
+{
+	// This call comes from Unit::can_load at the point where it's determined that the passenger (this) has transport capacity > 0 and is checking
+	// whether it's an army. If not, it can't be loaded. To polish land transport functionality, allow it to load if the target is a sea unit.
+	if (is->current_config.polish_land_transports &&
+	    (p_bic_data->UnitTypes[this                  ->Body.UnitTypeID].Unit_Class == UTC_Land) &&
+	    (p_bic_data->UnitTypes[is->can_load_transport->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
+		return true;
+
+	} else
+		return Unit_has_ability (this, __, army_ability);
 }
 
 // TCC requires a main function be defined even though it's never used.

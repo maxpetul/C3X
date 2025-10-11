@@ -249,6 +249,7 @@ struct c3x_config {
 	bool limit_unit_loading_to_one_transport_per_turn;
 	bool prevent_old_units_from_upgrading_past_ability_block;
 	bool introduce_all_human_players_at_start_of_hotseat_game;
+	bool polish_land_transports;
 	int years_to_double_building_culture;
 	int tourism_time_scale_percent;
 
