@@ -28,13 +28,17 @@ Bonuses received from Districts are automatically shown in the City view with a 
 If a District has food or shield bonuses, you'll also see those in the Production, Food, and Commerce sections:
 <img width="870" height="280" alt="image" src="https://github.com/user-attachments/assets/ebe06c4b-c414-4043-8bbb-37bbb1b56c8b" />
 
-Districts also have certain implications for combat: destroying a District automatically removes any dependent buildings in surrounding cities.
+Districts also have certain implications for combat: destroying a District automatically removes any dependent buildings in surrounding cities. Pillaged Districts are shown as ruins:
 
-In terms of art, besides showing which buildings are present, Districts can also show different art by era:
+<img width="361" height="205" alt="image" src="https://github.com/user-attachments/assets/355d686d-c640-4095-a2f7-427ed01cfcb6" />
+
+### Art
+
+As discussed, Districts visually show which buildings are present in nearby cities. However they can also show different art by era:
 
 <img width="785" height="497" alt="image" src="https://github.com/user-attachments/assets/345a6318-1da5-4d67-9bc7-b342e062d715" />
 
-or even different art by culture, or both:
+or even by culture, or both:
 
 <img width="1143" height="904" alt="image" src="https://github.com/user-attachments/assets/29d3cb8d-f923-4cdf-8165-df15bd3e8b99" />
 
