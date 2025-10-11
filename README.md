@@ -4,6 +4,12 @@
 
 The goal of C3X Districts is to **make the Civ 3 map feel more alive and interesting**. Districts enable large cities to sprawl, infrastructure to be visualized, and - if you enable them - new gameplay additions which make the map more interactive and interesting without fundamentally altering core Civ 3 mechanics. Districts are also 100% customizable and modular, so you can pick and choose types you like, or simply craft your own with custom art, tech dependencies, buildings, and bonuses.
 
+> Why Districts? I've tried to play various newer Civ games over the years, but none ever felt quite as elegantly simple yet deep, positive, and fun as Civ 3. I tried hard to enjoy Civ 6 and found that Districts finally made individual *cities* feel grand, much in the same way that Civ 3 itself made *empires* feel grand. Yet Civ 6 simply wasn't enjoyable for me ([Civinator](https://forums.civfanatics.com/threads/why-are-you-playing-civ-3-after-all-these-years.676431/post-16312711) and [livinginaz](https://forums.civfanatics.com/threads/why-are-you-playing-civ-3-after-all-these-years.676431/post-16260822) said it best). Districts ended up needing too much micromanagement and feeling overly consequential for my taste.
+> 
+> I wanted a mechanic in Civ 3 which captured the grandness and realism of Districs, but made it much easier to build, discard, move, and rebuild them over time.
+
+### How Districts work
+
 Districts are buildable by Workers, like any other build action:
 
 <img width="405" height="403" alt="image" src="https://github.com/user-attachments/assets/784221c3-bfd6-4089-94ae-a28acfd79c6c" />
@@ -12,7 +18,7 @@ The core purpose of a District is to enable one or more city improvements (build
 
 <img width="1290" height="307" alt="image" src="https://github.com/user-attachments/assets/663dbb1c-07a6-47d3-b362-e5a9550ab7c4" />
 
-After Districts are built, they become unworkable and the tile can no longer be used by the city unless the District is removed. So placing Districts requires a bit of thought beforehand. Once built, however, Districts can offer certain bonuses - shields, food, gold, science, culture, or defensive boost (all configurable) - to each city within their work radius. So cities with Districts in between them (e.g., Rome and Veii have the same Encampment in their work radius) can share the benefits. If `cities_can_share_buildings_by_districts` is set to true, cities can even share buildings within a District. For example, Veii can automatically "use" the Barracks built by Rome, as they share an Encampment.
+After Districts are built, they become unworkable and the tile can no longer be used by the city unless the District is removed. So placing Districts requires a bit of thought beforehand. Once built, however, Districts can offer certain bonuses - shields, food, gold, science, culture, or defensive boost (all configurable) - to each city within their work radius. So cities with Districts in between them (e.g., Rome and Veii have the same Encampment in their work radius) can share the benefits. If `cities_can_share_buildings_by_districts` is set to true, cities can even share buildings within a District. For example, Veii can automatically "use" the Barracks built by Rome (a one-time copy is made), as they share an Encampment.
 
 <img width="331" height="263" alt="image" src="https://github.com/user-attachments/assets/bdd97212-8b9f-4d22-90c1-8b3350efdaaf" />
 
@@ -22,13 +28,17 @@ Bonuses received from Districts are automatically shown in the City view with a 
 If a District has food or shield bonuses, you'll also see those in the Production, Food, and Commerce sections:
 <img width="870" height="280" alt="image" src="https://github.com/user-attachments/assets/ebe06c4b-c414-4043-8bbb-37bbb1b56c8b" />
 
-Districts also have certain implications for combat: destroying a District automatically removes any dependent buildings in surrounding cities.
+Districts also have certain implications for combat: destroying a District automatically removes any dependent buildings in surrounding cities. Pillaged Districts are shown as ruins:
 
-In terms of art, besides showing which buildings are present, Districts can also show different art by era:
+<img width="361" height="205" alt="image" src="https://github.com/user-attachments/assets/355d686d-c640-4095-a2f7-427ed01cfcb6" />
+
+### Art
+
+As discussed, Districts visually show which buildings are present in nearby cities. However they can also show different art by era:
 
 <img width="785" height="497" alt="image" src="https://github.com/user-attachments/assets/345a6318-1da5-4d67-9bc7-b342e062d715" />
 
-or even different art by culture, or both:
+or even by culture, or both:
 
 <img width="1143" height="904" alt="image" src="https://github.com/user-attachments/assets/29d3cb8d-f923-4cdf-8165-df15bd3e8b99" />
 
@@ -212,7 +222,7 @@ AI workers are triggered to build Distribution Hubs when their civ's "ideal" num
 
 ## Other Non-Standard Districts
 
-The Aerodrome District reuses and slightly modifies the base game airfield art. If `air_units_use_aerodrome_districts_not_cities` is set to true, air units can only be built in cities with an Aerodrome in their radius, spawn on Aerodromes, and can only land on Aerodromes (or vanilla game airfields & carriers), not cities.
+The Aerodrome District reuses and slightly modifies the base game airfield art. If `air_units_use_aerodrome_districts_not_cities` is set to true, air units can only be built in cities with an Aerodrome in their radius, spawn on Aerodromes, and can only land on Aerodromes (or vanilla game airfields & carriers), not cities. Airlifts similarly are limited to Aerodromes.
 
 <img width="511" height="253" alt="image" src="https://github.com/user-attachments/assets/e7a20ee5-9efc-4f6b-a921-2a906f3ef9b5" />
 
