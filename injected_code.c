@@ -2878,6 +2878,15 @@ compute_distribution_hub_yields (struct distribution_hub_record * rec, City * an
 		return;
 	}
 
+	if (tile->vtable->m20_Check_Pollution (tile, __, 0)) {
+		rec->food_yield = 0;
+		rec->shield_yield = 0;
+		rec->raw_food_yield = 0;
+		rec->raw_shield_yield = 0;
+		rec->is_active = false;
+		return;
+	}
+
 	if (tile_has_enemy_unit (tile, rec->civ_id)) {
 		rec->food_yield = 0;
 		rec->shield_yield = 0;
@@ -5593,6 +5602,7 @@ calculate_district_culture_science_bonuses (City * city, int * culture_bonus, in
 		Tile * tile = tai.tile;
 		if ((tile == NULL) || (tile == p_null_tile)) continue;
 		if (tile_has_enemy_unit (tile, city_civ_id)) continue;
+		if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
 		int district_id;
 		if (! itable_look_up (&is->district_tile_map, (int)tile, &district_id)) continue;
 		if ((district_id < 0) || (district_id >= is->district_count)) continue;
@@ -5947,6 +5957,7 @@ remove_wonder_improvement_for_destroyed_district (int wonder_improv_id)
 		return;
 
 	char ss[200];
+	bool removed_any = false;
 	for (int idx = 0; idx <= p_cities->LastIndex; idx++) {
 		City * city = get_city_ptr (idx);
 		if (city == NULL)
@@ -5966,11 +5977,13 @@ remove_wonder_improvement_for_destroyed_district (int wonder_improv_id)
 				mark_city_needs_district (city, wonder_district_id);
 		}
 
-		return;
+		removed_any = true;
 	}
 
-	snprintf (ss, sizeof ss, "[C3X] remove_wonder_improvement_for_destroyed_district: improv_id=%d not found in any city\n", wonder_improv_id);
-	(*p_OutputDebugStringA) (ss);
+	if (! removed_any) {
+		snprintf (ss, sizeof ss, "[C3X] remove_wonder_improvement_for_destroyed_district: improv_id=%d not found in any city\n", wonder_improv_id);
+		(*p_OutputDebugStringA) (ss);
+	}
 }
 
 void
@@ -6638,6 +6651,8 @@ patch_City_recompute_yields_and_happiness (City * this, int edx)
 		if ((tile == NULL) || (tile == p_null_tile))
 			continue;
 		if (tile_has_enemy_unit (tile, city_civ_id))
+			continue;
+		if (tile->vtable->m20_Check_Pollution (tile, __, 0))
 			continue;
 		int district_id;
 		if (! itable_look_up (&is->district_tile_map, (int)tile, &district_id))
@@ -8232,7 +8247,8 @@ patch_init_floating_point ()
 		{"enable_aerodrome_districts"                          , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
 		{"completed_wonder_districts_can_be_destroyed"         , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
 		{"destroyed_wonders_can_be_rebuilt"         		   , false, offsetof (struct c3x_config, destroyed_wonders_can_be_rebuilt)},
-		{"cities_can_share_buildings_by_districts"             , false, offsetof (struct c3x_config, cities_can_share_buildings_by_districts)},
+		{"cities_with_mutual_district_receive_buildings"       , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
+		{"cities_with_mutual_district_receive_wonders"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
         {"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
 	};
 
@@ -10440,6 +10456,8 @@ patch_City_Form_draw (City_Form * this)
 			if ((tile == NULL) || (tile == p_null_tile))
 				continue;
 			if (tile_has_enemy_unit (tile, city_civ_id))
+				continue;
+			if (tile->vtable->m20_Check_Pollution (tile, __, 0))
 				continue;
 
 			// Check if tile has a district
@@ -13122,20 +13140,23 @@ set_wonder_built_flag (int improv_id, bool is_built)
 // When a city adds a building that depends on a district, optionally mirror that
 // building to all other same-civ cities that can also work the district tile.
 void
-share_building_with_cities_in_radius (City * source, int improv_id, int required_district_id)
+copy_building_with_cities_in_radius (City * source, int improv_id, int required_district_id)
 {
-    if (! is->current_config.enable_districts) return;
-    if (! is->current_config.cities_can_share_buildings_by_districts) return;
-    if (source == NULL) return;
+	if (! is->current_config.enable_districts) return;
+	if (source == NULL) return;
 
-    // Don't propagate wonders or small wonders
-    Improvement * improv = &p_bic_data->Improvements[improv_id];
-    if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0)
-        return;
+	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	bool is_wonder = (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0;
 
-    int civ_id = source->Body.CivID;
+	if (is_wonder) {
+		if (! is->current_config.cities_with_mutual_district_receive_wonders)
+			return;
+	} else if (! is->current_config.cities_with_mutual_district_receive_buildings)
+		return;
 
-    // For each district tile within source city's workable area matching the required district,
+	int civ_id = source->Body.CivID;
+
+	// For each district tile within source city's workable area matching the required district,
     // copy the building to other cities that can also work that tile.
     FOR_TILES_AROUND (tai, is->workable_tile_count, source->Body.X, source->Body.Y) {
         Tile * tile = tai.tile;
@@ -13167,7 +13188,83 @@ share_building_with_cities_in_radius (City * source, int improv_id, int required
                 City_add_or_remove_improvement (city, __, improv_id, 1, false);
             }
         }
-    }
+	}
+}
+
+void
+grant_existing_district_buildings_to_city (City * city)
+{
+	if (! is->current_config.enable_districts ||
+	    (! is->current_config.cities_with_mutual_district_receive_buildings &&
+	     ! is->current_config.cities_with_mutual_district_receive_wonders) ||
+	    (city == NULL))
+		return;
+
+	int civ_id = city->Body.CivID;
+	bool prev_flag = is->sharing_buildings_by_districts_in_progress;
+	is->sharing_buildings_by_districts_in_progress = true;
+
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
+		Tile * tile = tai.tile;
+		if (tile == p_null_tile)
+			continue;
+		if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id)
+			continue;
+
+		int district_id;
+		if (! itable_look_up (&is->district_tile_map, (int)tile, &district_id))
+			continue;
+		if ((district_id < 0) || (district_id >= is->district_count))
+			continue;
+		if (! district_is_complete (tile, district_id))
+			continue;
+
+		struct district_infos * info = &is->district_infos[district_id];
+		if (info->dependent_building_count <= 0)
+			continue;
+
+		int tx, ty;
+		if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tx, &ty))
+			continue;
+
+		FOR_CITIES_OF (coi, civ_id) {
+			City * other = coi.city;
+			if ((other == NULL) || (other == city))
+				continue;
+
+			int ni = Map_compute_neighbor_index (&p_bic_data->Map, __, other->Body.X, other->Body.Y, tx, ty, 1000);
+			int wr = ((ni >= 0) && (ni < ARRAY_LEN (is->ni_to_work_radius))) ? is->ni_to_work_radius[ni] : -1;
+			if ((wr < 0) || (wr > is->current_config.city_work_radius))
+				continue;
+
+			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != other->Body.CivID)
+				continue;
+
+			for (int i = 0; i < info->dependent_building_count; i++) {
+				int building_id = info->dependent_building_ids[i];
+				if (building_id < 0)
+					continue;
+
+				Improvement * building = &p_bic_data->Improvements[building_id];
+				bool is_wonder = (building->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0;
+
+				if (is_wonder && ! is->current_config.cities_with_mutual_district_receive_wonders)
+					continue;
+				if (! is_wonder && ! is->current_config.cities_with_mutual_district_receive_buildings)
+					continue;
+
+				if (! patch_City_has_improvement (other, __, building_id, false))
+					continue;
+
+				if (patch_City_has_improvement (city, __, building_id, false))
+					continue;
+
+				City_add_or_remove_improvement (city, __, building_id, 1, false);
+			}
+		}
+	}
+
+	is->sharing_buildings_by_districts_in_progress = prev_flag;
 }
 
 void __fastcall
@@ -13304,16 +13401,21 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 		}
 	}
 
-	// Optionally share district-dependent buildings to other cities in range of the same district
+	// Optionally share district-dependent buildings or wonders to other cities in range of the same district
 	if ((! is->is_placing_scenario_things) && add &&
 	    is->current_config.enable_districts &&
-	    is->current_config.cities_can_share_buildings_by_districts &&
+	    (is->current_config.cities_with_mutual_district_receive_buildings || is->current_config.cities_with_mutual_district_receive_wonders) &&
 	    (! is->sharing_buildings_by_districts_in_progress)) {
+		bool allow_wonder_sharing   = is->current_config.cities_with_mutual_district_receive_wonders;
+		bool allow_building_sharing = is->current_config.cities_with_mutual_district_receive_buildings;
 		int required_district_id;
 		if (itable_look_up (&is->district_building_prereqs, improv_id, &required_district_id)) {
-			is->sharing_buildings_by_districts_in_progress = true;
-			share_building_with_cities_in_radius (this, improv_id, required_district_id);
-			is->sharing_buildings_by_districts_in_progress = false;
+			bool is_wonder = (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0;
+			if ((is_wonder && allow_wonder_sharing) || (! is_wonder && allow_building_sharing)) {
+				is->sharing_buildings_by_districts_in_progress = true;
+				copy_building_with_cities_in_radius (this, improv_id, required_district_id);
+				is->sharing_buildings_by_districts_in_progress = false;
+			}
 		}
 	}
 }
@@ -13533,6 +13635,11 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 		if (free_extra_palace >= 0)
 			City_add_or_remove_improvement (city, __, free_extra_palace, 1, false);
 	}
+
+	if (is->current_config.enable_districts &&
+	    (is->current_config.cities_with_mutual_district_receive_buildings ||
+	     is->current_config.cities_with_mutual_district_receive_wonders))
+		grant_existing_district_buildings_to_city (city);
 
 	refresh_distribution_hubs_for_city (city);
 	is->distribution_hub_totals_dirty = true;
@@ -17672,7 +17779,34 @@ patch_Tile_m7_Check_Barbarian_Camp (Tile * this, int edx, int visible_to_civ)
 bool __fastcall
 patch_Unit_can_airdrop (Unit * this)
 {
-	return Unit_can_airdrop (this) && (itable_look_up_or (&is->airdrops_this_turn, this->Body.ID, 0) == 0);
+	bool allowed = Unit_can_airdrop (this);
+
+	bool require_aerodrome = (is->current_config.enable_districts &&
+				  is->current_config.enable_aerodrome_districts &&
+				  is->current_config.air_units_use_aerodrome_districts_not_cities);
+
+	if (require_aerodrome) {
+		Tile * tile = tile_at (this->Body.X, this->Body.Y);
+		bool has_aerodrome = false;
+
+		if ((tile != NULL) && (tile != p_null_tile))
+			has_aerodrome = tile_has_friendly_aerodrome_district (tile, this->Body.CivID, false);
+
+		if (! has_aerodrome)
+			allowed = false;
+		else if (! allowed) {
+			UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+			if ((type->Unit_Class != UTC_Air) &&
+			    (type->Air_Missions & UCV_Airdrop) &&
+			    (this->Body.Moves == 0))
+				allowed = true;
+		}
+	}
+
+	if (! allowed)
+		return false;
+
+	return itable_look_up_or (&is->airdrops_this_turn, this->Body.ID, 0) == 0;
 }
 
 bool __fastcall
@@ -18352,6 +18486,8 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	int owner_civ = tile->Territory_OwnerID;
 	if (tile_has_enemy_unit (tile, owner_civ))
 		return;
+	if (tile->vtable->m20_Check_Pollution (tile, __, 0))
+		return;
 
 	// Get district configuration
 	struct district_config const * config = &is->district_configs[district_id];
@@ -18451,6 +18587,9 @@ draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, in
 	// Get the distribution hub record for this tile
 	struct distribution_hub_record * rec = get_distribution_hub_record (tile);
 	if (rec == NULL || !rec->is_active)
+		return;
+
+	if (tile->vtable->m20_Check_Pollution (tile, __, 0))
 		return;
 
 	int owner_civ = rec->civ_id;
@@ -18610,8 +18749,9 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 			if ((tile->Body.Fog_Of_War & (1 << civ_id)) == 0) continue;
 			if (tile->Territory_OwnerID != civ_id) continue;
 			if (!itable_look_up (&is->district_tile_map, (int)tile, &district_id)) continue;
-			if (!district_is_complete (tile, district_id)) continue;
-			if (tile_has_enemy_unit (tile, civ_id)) continue;
+				if (!district_is_complete (tile, district_id)) continue;
+				if (tile_has_enemy_unit (tile, civ_id)) continue;
+				if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
 
 			int is_distribution_hub = (district_id == get_distribution_hub_district_id ());
 
@@ -19836,6 +19976,8 @@ patch_City_Form_draw_food_income_icons (City_Form * this, int edx)
 			continue;
 		if (tile_has_enemy_unit (tai.tile, civ_id))
 			continue;
+		if (tai.tile->vtable->m20_Check_Pollution (tai.tile, __, 0))
+			continue;
 		int district_id;
 		if (! itable_look_up (&is->district_tile_map, (int)tai.tile, &district_id))
 			continue;
@@ -19998,6 +20140,8 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 		if (tai.tile->Territory_OwnerID != civ_id)
 			continue;
 		if (tile_has_enemy_unit (tai.tile, civ_id))
+			continue;
+		if (tai.tile->vtable->m20_Check_Pollution (tai.tile, __, 0))
 			continue;
 		int district_id;
 		if (! itable_look_up (&is->district_tile_map, (int)tai.tile, &district_id))
