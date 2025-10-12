@@ -315,8 +315,6 @@ struct c3x_config {
 	int distribution_hub_food_yield_divisor;
 	int distribution_hub_shield_yield_divisor;
 	int ai_ideal_distribution_hub_count_per_100_cities;
-
-	bool highlight_trade_route_roads;
 };
 
 enum stackable_command {
@@ -1325,17 +1323,6 @@ struct injected_state {
 
 	// Guard to prevent recursive sharing when auto-adding buildings across cities
 	bool sharing_buildings_by_districts_in_progress;
-
-	// Critical trade path tracking: Maps tile pointer keys -> civ bitmask (int values).
-	// If a tile is present in the table with a civ bit set, that tile's road is on a critical
-	// trade path for that civ (shortest path between connected cities).
-	// Only recomputed when trade network changes, lookups are O(1).
-	struct table critical_trade_path_tiles;
-
-	// Variables to pass tile coordinates from m16_Draw_Tile_Roads to impl_m52_Draw_Roads
-	int current_road_tile_x;
-	int current_road_tile_y;
-	int current_road_civ_id;
 
 	// Initialized to 0. Every time Main_Screen_Form::m82_handle_key_event receives an event with is_down == 0, the virtual key code is prepended
 	// to this list.

@@ -7798,13 +7798,6 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 		}
 	}
 
-	// Minor roads (16x16), tiles 128x64 - same dimensions as roads (only if highlight_trade_route_roads is enabled)
-	if (is->current_config.highlight_trade_route_roads) {
-		read_in_dir(&img, art_dir, "minor_roads.pcx", NULL);
-		if (img.JGL.Image == NULL) return false;
-		slice_grid(this->Minor_Roads_Images, &img, 0x80, 0x40, 0x800, 0x400);
-	}
-
 	img.vtable->destruct (&img, __, 0);
 
 	return true;
@@ -7951,11 +7944,6 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 					insert_sprite_proxy (base_construct, proxy_construct, h);
 				}
 			}
-		}
-
-		// Minor roads proxy indexing (if highlight_trade_route_roads is enabled)
-		if (is->current_config.highlight_trade_route_roads) {
-			insert_sprite_proxies(is->minor_roads_images, is->day_night_cycle_imgs[h].Minor_Roads_Images, h, 256);
 		}
 	}
 	is->day_night_cycle_img_proxies_indexed = true;
@@ -8237,7 +8225,6 @@ patch_init_floating_point ()
 		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
 		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
-		{"highlight_trade_route_roads"                         , false, offsetof (struct c3x_config, highlight_trade_route_roads)},
 		{"enable_districts"                                    , false, offsetof (struct c3x_config, enable_districts)},
 		{"enable_neighborhood_districts"                       , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
 		{"enable_wonder_districts"                             , false, offsetof (struct c3x_config, enable_wonder_districts)},
@@ -8247,7 +8234,6 @@ patch_init_floating_point ()
 		{"destroyed_wonders_can_be_rebuilt"         		   , false, offsetof (struct c3x_config, destroyed_wonders_can_be_rebuilt)},
 		{"cities_can_share_buildings_by_districts"             , false, offsetof (struct c3x_config, cities_can_share_buildings_by_districts)},
         {"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
-		{"highlight_trade_route_roads"        				   , false, offsetof (struct c3x_config, highlight_trade_route_roads	)},
 	};
 
 	struct integer_config_option {
@@ -16159,36 +16145,6 @@ patch_Trade_Net_recompute_city_connections (Trade_Net * this, int edx, int civ_i
 
 	Trade_Net_recompute_city_connections (this, __, civ_id, redo_road_network, param_3, redo_roads_for_city_id);
 
-	// After trade network is recomputed, compute critical paths for this civ
-	// Only if the feature is enabled
-	if (is->current_config.highlight_trade_route_roads && redo_road_network) {
-		// Clear the civ's bit from all tiles first
-		// We need to collect keys to modify since we can't modify during iteration
-		int keys_to_clear[1000]; // Reasonable limit for tiles to update per civ
-		int clear_count = 0;
-
-		FOR_TABLE_ENTRIES (tei, &is->critical_trade_path_tiles) {
-			if (clear_count < 1000) {
-				keys_to_clear[clear_count] = tei.key;
-				clear_count++;
-			}
-		}
-
-		// Now clear the civ's bit from collected keys
-		for (int i = 0; i < clear_count; i++) {
-			int tile_key = keys_to_clear[i];
-			int civ_bits = itable_look_up_or(&is->critical_trade_path_tiles, tile_key, 0);
-			civ_bits &= ~(1 << civ_id); // Clear this civ's bit
-			if (civ_bits == 0)
-				itable_remove(&is->critical_trade_path_tiles, tile_key); // No civs use this tile anymore
-			else
-				itable_insert(&is->critical_trade_path_tiles, tile_key, civ_bits);
-		}
-
-		// Now compute and mark new critical paths for this civ
-		compute_critical_trade_paths_for_civ(civ_id);
-	}
-
 	if (is->current_config.enable_districts && 
 		is->current_config.enable_distribution_hub_districts)
 		is->distribution_hub_totals_dirty = true;
@@ -20293,72 +20249,6 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 		int y = rect_ptr[1] + 8;
 		Sprite_draw (&is->distribution_hub_production_icon, __, (PCX_Image *)canvas, x, y, NULL);
 		x_offset += spacing;
-	}
-}
-
-// Returns true if the road/railroad at (tile_x, tile_y) is critical for trade.
-// This is a simple O(1) table lookup - paths are precomputed when trade network changes.
-bool
-is_road_critical_for_trade(int tile_x, int tile_y, int civ_id)
-{
-	Tile * tile = tile_at(tile_x, tile_y);
-	if ((tile == NULL) || (tile == p_null_tile))
-		return false;
-
-	// Check if the tile has a road/railroad
-	int has_road = tile->Overlays & 1;
-	if (!has_road)
-		return false;
-
-	// O(1) table lookup
-	int tile_key = (int)tile;
-	int civ_bits = itable_look_up_or(&is->critical_trade_path_tiles, tile_key, 0);
-	return (civ_bits & (1 << civ_id)) != 0;
-}
-
-void __fastcall
-patch_Map_Renderer_impl_m16_Draw_Tile_Roads (Map_Renderer *this, int edx, int visible_to_civ_id,int tile_x,int tile_y,int pixel_x,int pixel_y, int param_6)
-{
-	// Store tile coordinates for use by impl_m52_Draw_Roads
-	is->current_road_tile_x = tile_x;
-	is->current_road_tile_y = tile_y;
-	is->current_road_civ_id = visible_to_civ_id;
-
-	// Call the original function
-	Map_Renderer_impl_m16_Draw_Tile_Roads (this, __, visible_to_civ_id, tile_x, tile_y, pixel_x, pixel_y, param_6);
-
-	// Clear the tile coordinates
-	is->current_road_tile_x = -1;
-	is->current_road_tile_y = -1;
-	is->current_road_civ_id = -1;
-}
-
-void __fastcall
-patch_Map_Renderer_impl_m52_Draw_Roads (Map_Renderer *this, int image_index, Map_Renderer *map_renderer, int pixel_x, int pixel_y)
-{
-	// Check if we should render minor roads instead for critical trade paths
-	bool use_minor_roads = false;
-	if (is->current_config.highlight_trade_route_roads &&
-	    is->current_road_tile_x >= 0 && is->current_road_tile_y >= 0 &&
-	    is->current_road_civ_id >= 0 && is->current_road_civ_id < 32) {
-		// Initialize minor roads on first use
-		if (is->minor_roads_img_state == IS_UNINITED) {
-			init_minor_roads();
-		}
-
-		if (is->minor_roads_img_state == IS_OK) {
-			// Check if this tile's road is on a critical trade path
-			use_minor_roads = is_road_critical_for_trade(is->current_road_tile_x, is->current_road_tile_y, is->current_road_civ_id);
-		}
-	}
-
-	if (use_minor_roads && image_index >= 0 && image_index < 256) {
-		// Draw minor roads instead
-		Sprite * sprite = &is->minor_roads_images[image_index];
-		patch_Sprite_draw_on_map (sprite, __, map_renderer, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != 0) + 1, 0);
-	} else {
-		// Call the original function with regular roads
-		Map_Renderer_impl_m52_Draw_Roads (this, __, image_index, map_renderer, pixel_x, pixel_y);
 	}
 }
 
