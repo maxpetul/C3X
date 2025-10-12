@@ -315,6 +315,8 @@ struct c3x_config {
 	int distribution_hub_food_yield_divisor;
 	int distribution_hub_shield_yield_divisor;
 	int ai_ideal_distribution_hub_count_per_100_cities;
+
+	bool highlight_trade_route_roads;
 };
 
 enum stackable_command {
@@ -480,12 +482,16 @@ enum city_loss_reason {
 	CLR_TRADED
 };
 
+enum {
+	MAX_DISTRICT_DEPENDENTS = 64
+};
+
 struct district_config {
 	enum Unit_Command_Values command;
 	char const * name;
 	char const * tooltip;
 	char const * advance_prereq;
-	char const * dependent_improvements[5];
+	char const * dependent_improvements[MAX_DISTRICT_DEPENDENTS];
 	char const * img_paths[10];
 	bool allow_multiple;
 	bool vary_img_by_era;
@@ -595,6 +601,7 @@ struct injected_state {
 	enum init_state distribution_hub_icons_img_state;
 	enum init_state tile_already_worked_zoomed_out_sprite_init_state;
 	enum init_state day_night_cycle_img_state;
+	enum init_state minor_roads_img_state;
 
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
@@ -853,6 +860,12 @@ struct injected_state {
 	// ==========
 
 	Sprite red_food_icon;
+
+	// ==========
+	// } These are valid only if init_minor_roads has been called and minor_roads_img_state equals IS_OK {
+	// ==========
+
+	Sprite minor_roads_images[256];
 
 	// ==========
 	// } These fields are temporary/situational {
@@ -1153,6 +1166,7 @@ struct injected_state {
 		Sprite Polar_Icecaps_Images[32];
 		Sprite Railroads_Images[272];
 		Sprite Roads_Images[256];
+		Sprite Minor_Roads_Images[256];
 		Sprite Terrain_Buldings_Airfields[2];
 		Sprite Terrain_Buldings_Airfields_Shadow[2];
 		Sprite Terrain_Buldings_Camp[4];
@@ -1270,7 +1284,7 @@ struct injected_state {
 	struct district_infos {
 		int advance_prereq_id; // Tech ID that enables the district
 		int dependent_building_count;
-		int dependent_building_ids[5]; // Building types the district enables
+		int dependent_building_ids[MAX_DISTRICT_DEPENDENTS]; // Building types the district enables
 	} district_infos[COUNT_DISTRICT_TYPES];
 
 	int district_count;
@@ -1311,6 +1325,17 @@ struct injected_state {
 
 	// Guard to prevent recursive sharing when auto-adding buildings across cities
 	bool sharing_buildings_by_districts_in_progress;
+
+	// Critical trade path tracking: Maps tile pointer keys -> civ bitmask (int values).
+	// If a tile is present in the table with a civ bit set, that tile's road is on a critical
+	// trade path for that civ (shortest path between connected cities).
+	// Only recomputed when trade network changes, lookups are O(1).
+	struct table critical_trade_path_tiles;
+
+	// Variables to pass tile coordinates from m16_Draw_Tile_Roads to impl_m52_Draw_Roads
+	int current_road_tile_x;
+	int current_road_tile_y;
+	int current_road_civ_id;
 
 	// Initialized to 0. Every time Main_Screen_Form::m82_handle_key_event receives an event with is_down == 0, the virtual key code is prepended
 	// to this list.

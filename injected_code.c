@@ -7798,6 +7798,13 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 		}
 	}
 
+	// Minor roads (16x16), tiles 128x64 - same dimensions as roads (only if highlight_trade_route_roads is enabled)
+	if (is->current_config.highlight_trade_route_roads) {
+		read_in_dir(&img, art_dir, "minor_roads.pcx", NULL);
+		if (img.JGL.Image == NULL) return false;
+		slice_grid(this->Minor_Roads_Images, &img, 0x80, 0x40, 0x800, 0x400);
+	}
+
 	img.vtable->destruct (&img, __, 0);
 
 	return true;
@@ -7944,6 +7951,11 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 					insert_sprite_proxy (base_construct, proxy_construct, h);
 				}
 			}
+		}
+
+		// Minor roads proxy indexing (if highlight_trade_route_roads is enabled)
+		if (is->current_config.highlight_trade_route_roads) {
+			insert_sprite_proxies(is->minor_roads_images, is->day_night_cycle_imgs[h].Minor_Roads_Images, h, 256);
 		}
 	}
 	is->day_night_cycle_img_proxies_indexed = true;
@@ -8225,6 +8237,7 @@ patch_init_floating_point ()
 		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
 		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
+		{"highlight_trade_route_roads"                         , false, offsetof (struct c3x_config, highlight_trade_route_roads)},
 		{"enable_districts"                                    , false, offsetof (struct c3x_config, enable_districts)},
 		{"enable_neighborhood_districts"                       , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
 		{"enable_wonder_districts"                             , false, offsetof (struct c3x_config, enable_wonder_districts)},
@@ -8234,6 +8247,7 @@ patch_init_floating_point ()
 		{"destroyed_wonders_can_be_rebuilt"         		   , false, offsetof (struct c3x_config, destroyed_wonders_can_be_rebuilt)},
 		{"cities_can_share_buildings_by_districts"             , false, offsetof (struct c3x_config, cities_can_share_buildings_by_districts)},
         {"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
+		{"highlight_trade_route_roads"        				   , false, offsetof (struct c3x_config, highlight_trade_route_roads	)},
 	};
 
 	struct integer_config_option {
@@ -8259,7 +8273,7 @@ patch_init_floating_point ()
 		{"elapsed_minutes_per_day_night_hour_transition" ,     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
 		{"fixed_hours_per_turn_for_day_night_cycle"      ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
 		{"pinned_hour_for_day_night_cycle"               ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
-		{"maximum_pop_before_neighborhood_needed"		 		,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
+		{"maximum_pop_before_neighborhood_needed"        ,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
 		{"per_neighborhood_pop_growth_enabled"			 ,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
 		{"distribution_hub_food_yield_divisor"			 ,     1, offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
 		{"distribution_hub_shield_yield_divisor"		 ,     1, offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
@@ -8759,6 +8773,54 @@ deinit_red_food_icon ()
 	if (is->red_food_icon_state == IS_OK)
 		is->red_food_icon.vtable->destruct (&is->red_food_icon, __, 0);
 	is->red_food_icon_state = IS_UNINITED;
+}
+
+void
+init_minor_roads ()
+{
+	if (is->minor_roads_img_state != IS_UNINITED)
+		return;
+
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
+
+	char temp_path[2*MAX_PATH];
+	get_mod_art_path ("Districts\\minor_roads.pcx", temp_path, sizeof temp_path);
+
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if ((pcx.JGL.Image != NULL) &&
+	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) == 0x800) &&
+	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) == 0x400)) {
+		// Initialize all 256 sprites (16x16 grid of 128x64 tiles)
+		for (int i = 0; i < 256; i++) {
+			Sprite_construct (&is->minor_roads_images[i]);
+		}
+		// Use slice_grid pattern matching roads.pcx: 16x16 grid, each tile 128x64
+		int k = 0;
+		for (int y = 0; y < 0x400; y += 0x40) {
+			for (int x = 0; x < 0x800; x += 0x80) {
+				Sprite_slice_pcx (&is->minor_roads_images[k++], __, &pcx, x, y, 0x80, 0x40, 1, 1);
+			}
+		}
+		is->minor_roads_img_state = IS_OK;
+	} else {
+		(*p_OutputDebugStringA) ("[C3X] PCX file for minor roads failed to load or is not the correct size (expected 2048x1024).\n");
+		is->minor_roads_img_state = IS_INIT_FAILED;
+	}
+
+	pcx.vtable->destruct (&pcx, __, 0);
+}
+
+void
+deinit_minor_roads ()
+{
+	if (is->minor_roads_img_state == IS_OK) {
+		for (int i = 0; i < 256; i++) {
+			Sprite * sprite = &is->minor_roads_images[i];
+			sprite->vtable->destruct (sprite, __, 0);
+		}
+	}
+	is->minor_roads_img_state = IS_UNINITED;
 }
 
 void
@@ -10988,6 +11050,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	deinit_trade_scroll_buttons ();
 	deinit_unit_rcm_icons ();
 	deinit_red_food_icon ();
+	deinit_minor_roads ();
 	deinit_distribution_hub_icons ();
 	deinit_district_icons ();
 	if (is->tile_already_worked_zoomed_out_sprite_init_state != IS_UNINITED) {
@@ -15913,6 +15976,172 @@ patch_Leader_count_forbidden_palaces_for_ocn (Leader * this, int edx, enum Impro
 		return 0; // We'll add in the FP effect later with a different weight
 }
 
+void
+mark_tile_on_critical_path(Tile * tile, int civ_id)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
+
+	int tile_key = (int)tile;
+	int civ_bits = itable_look_up_or(&is->critical_trade_path_tiles, tile_key, 0);
+	civ_bits |= (1 << civ_id);
+	itable_insert(&is->critical_trade_path_tiles, tile_key, civ_bits);
+}
+
+void
+find_and_mark_path_between_cities(int from_x, int from_y, int to_x, int to_y, int civ_id, int network_id)
+{
+	// Use a simple BFS with parent tracking to reconstruct the path
+	struct queue_node {
+		short x, y;
+		int parent_index; // Index in the queue of the parent node (-1 for start)
+	};
+
+	int map_width = p_bic_data->Map.Width;
+	int map_height = p_bic_data->Map.Height;
+	int map_size = map_width * map_height;
+
+	// Allocate queue - in practice will be much smaller than worst case
+	struct queue_node * queue = (struct queue_node *)malloc(map_size * sizeof(struct queue_node));
+	if (queue == NULL)
+		return;
+
+	// Visited tracking: use a byte array indexed by tile coordinates for O(1) lookup
+	// This is much faster than table lookups for dense maps
+	byte * visited = (byte *)calloc(map_size, sizeof(byte));
+	if (visited == NULL) {
+		free(queue);
+		return;
+	}
+
+	int queue_start = 0;
+	int queue_end = 0;
+
+	// Add starting position
+	queue[queue_end].x = from_x;
+	queue[queue_end].y = from_y;
+	queue[queue_end].parent_index = -1;
+	queue_end++;
+
+	// Mark start as visited (use simple array indexing)
+	int start_idx = (from_y * (map_width >> 1)) + (from_x >> 1);
+	if (start_idx >= 0 && start_idx < map_size)
+		visited[start_idx] = 1;
+
+	int found_index = -1;
+
+	// BFS loop
+	while (queue_start < queue_end) {
+		int curr_x = queue[queue_start].x;
+		int curr_y = queue[queue_start].y;
+		int curr_index = queue_start;
+		queue_start++;
+
+		// Found destination?
+		if ((curr_x == to_x) && (curr_y == to_y)) {
+			found_index = curr_index;
+			break;
+		}
+
+		// Explore neighbors
+		for (int dir = 1; dir <= 8; dir++) {
+			int dx, dy;
+			neighbor_index_to_diff(dir, &dx, &dy);
+			int nx = curr_x + dx;
+			int ny = curr_y + dy;
+			wrap_tile_coords (&p_bic_data->Map, &nx, &ny);
+
+			if ((nx < 0) || (nx >= map_width) || (ny < 0) || (ny >= map_height))
+				continue;
+
+			// Check visited using array index
+			int neighbor_idx = (ny * (map_width >> 1)) + (nx >> 1);
+			if (neighbor_idx < 0 || neighbor_idx >= map_size)
+				continue;
+			if (visited[neighbor_idx])
+				continue;
+
+			Tile * neighbor = tile_at(nx, ny);
+			if ((neighbor == NULL) || (neighbor == p_null_tile))
+				continue;
+
+			// Must be in same trade network
+			if (neighbor->Body.connected_city_ids[civ_id] != network_id)
+				continue;
+
+			// Add to queue
+			queue[queue_end].x = nx;
+			queue[queue_end].y = ny;
+			queue[queue_end].parent_index = curr_index;
+			queue_end++;
+			visited[neighbor_idx] = 1;
+		}
+	}
+
+	// Reconstruct and mark path by following parent pointers backwards
+	if (found_index >= 0) {
+		int idx = found_index;
+		while (idx >= 0) {
+			int x = queue[idx].x;
+			int y = queue[idx].y;
+			Tile * tile = tile_at(x, y);
+			mark_tile_on_critical_path(tile, civ_id);
+			idx = queue[idx].parent_index;
+		}
+	}
+
+	// Cleanup
+	free(visited);
+	free(queue);
+}
+
+// Compute critical trade paths for a single civ by finding shortest paths between all connected city pairs.
+void
+compute_critical_trade_paths_for_civ(int civ_id)
+{
+	int max_city_index = p_cities->LastIndex;
+	if (max_city_index < 0)
+		return;
+
+	// Loop through all city pairs
+	for (int city_a_idx = 0; city_a_idx <= max_city_index; city_a_idx++) {
+		City * city_a = get_city_ptr (city_a_idx);
+		if (city_a == NULL)
+			continue;
+
+		int city_a_x = city_a->Body.X;
+		int city_a_y = city_a->Body.Y;
+		Tile * tile_a = tile_at(city_a_x, city_a_y);
+		if ((tile_a == NULL) || (tile_a == p_null_tile))
+			continue;
+
+		int network_id_a = tile_a->Body.connected_city_ids[civ_id];
+		if (network_id_a < 0)
+			continue;
+
+		// Only check cities with higher indices to avoid duplicates
+		for (int city_b_idx = city_a_idx + 1; city_b_idx <= max_city_index; city_b_idx++) {
+			City * city_b = get_city_ptr (city_b_idx);
+			if (city_b == NULL)
+				continue;
+
+			int city_b_x = city_b->Body.X;
+			int city_b_y = city_b->Body.Y;
+			Tile * tile_b = tile_at(city_b_x, city_b_y);
+			if ((tile_b == NULL) || (tile_b == p_null_tile))
+				continue;
+
+			int network_id_b = tile_b->Body.connected_city_ids[civ_id];
+
+			// Check if both cities are in the same trade network
+			if ((network_id_b >= 0) && (network_id_a == network_id_b)) {
+				// Find and mark shortest path
+				find_and_mark_path_between_cities(city_a_x, city_a_y, city_b_x, city_b_y, civ_id, network_id_a);
+			}
+		}
+	}
+}
+
 void __fastcall
 patch_Trade_Net_recompute_city_connections (Trade_Net * this, int edx, int civ_id, bool redo_road_network, byte param_3, int redo_roads_for_city_id)
 {
@@ -15930,7 +16159,38 @@ patch_Trade_Net_recompute_city_connections (Trade_Net * this, int edx, int civ_i
 
 	Trade_Net_recompute_city_connections (this, __, civ_id, redo_road_network, param_3, redo_roads_for_city_id);
 
-	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts)
+	// After trade network is recomputed, compute critical paths for this civ
+	// Only if the feature is enabled
+	if (is->current_config.highlight_trade_route_roads && redo_road_network) {
+		// Clear the civ's bit from all tiles first
+		// We need to collect keys to modify since we can't modify during iteration
+		int keys_to_clear[1000]; // Reasonable limit for tiles to update per civ
+		int clear_count = 0;
+
+		FOR_TABLE_ENTRIES (tei, &is->critical_trade_path_tiles) {
+			if (clear_count < 1000) {
+				keys_to_clear[clear_count] = tei.key;
+				clear_count++;
+			}
+		}
+
+		// Now clear the civ's bit from collected keys
+		for (int i = 0; i < clear_count; i++) {
+			int tile_key = keys_to_clear[i];
+			int civ_bits = itable_look_up_or(&is->critical_trade_path_tiles, tile_key, 0);
+			civ_bits &= ~(1 << civ_id); // Clear this civ's bit
+			if (civ_bits == 0)
+				itable_remove(&is->critical_trade_path_tiles, tile_key); // No civs use this tile anymore
+			else
+				itable_insert(&is->critical_trade_path_tiles, tile_key, civ_bits);
+		}
+
+		// Now compute and mark new critical paths for this civ
+		compute_critical_trade_paths_for_civ(civ_id);
+	}
+
+	if (is->current_config.enable_districts && 
+		is->current_config.enable_distribution_hub_districts)
 		is->distribution_hub_totals_dirty = true;
 
 	long long ts_after;
@@ -20036,122 +20296,69 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 	}
 }
 
-void __fastcall
-patch_Advisor_Trade_Form_draw_local_resources_box (Advisor_Trade_Form * this, int edx)
+// Returns true if the road/railroad at (tile_x, tile_y) is critical for trade.
+// This is a simple O(1) table lookup - paths are precomputed when trade network changes.
+bool
+is_road_critical_for_trade(int tile_x, int tile_y, int civ_id)
 {
-	Advisor_Trade_Form_draw_local_resources_box (this, edx);
+	Tile * tile = tile_at(tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
 
-	/* TODO: figure out why this won't draw or just remove. The distribution hub yields are not drawn at all.
-	         Interestingly, if the debug popups are removed the game crashes, hinting at possible race conditions. 
-	*/
-	return;
+	// Check if the tile has a road/railroad
+	int has_road = tile->Overlays & 1;
+	if (!has_road)
+		return false;
 
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_distribution_hub_districts)
-		return;
+	// O(1) table lookup
+	int tile_key = (int)tile;
+	int civ_bits = itable_look_up_or(&is->critical_trade_path_tiles, tile_key, 0);
+	return (civ_bits & (1 << civ_id)) != 0;
+}
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_local_resources_box: enter");
-    pop_up_in_game_error (ss);
+void __fastcall
+patch_Map_Renderer_impl_m16_Draw_Tile_Roads (Map_Renderer *this, int edx, int visible_to_civ_id,int tile_x,int tile_y,int pixel_x,int pixel_y, int param_6)
+{
+	// Store tile coordinates for use by impl_m52_Draw_Roads
+	is->current_road_tile_x = tile_x;
+	is->current_road_tile_y = tile_y;
+	is->current_road_civ_id = visible_to_civ_id;
 
-	recalculate_distribution_hub_totals_if_needed ();
+	// Call the original function
+	Map_Renderer_impl_m16_Draw_Tile_Roads (this, __, visible_to_civ_id, tile_x, tile_y, pixel_x, pixel_y, param_6);
 
-	if ((is->distribution_hub_food_per_civ == NULL) ||
-	    (is->distribution_hub_shield_per_civ == NULL) ||
-	    (is->distribution_hub_civ_capacity <= 0))
-		return;
+	// Clear the tile coordinates
+	is->current_road_tile_x = -1;
+	is->current_road_tile_y = -1;
+	is->current_road_civ_id = -1;
+}
 
-	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_local_resources_box: data ok");
-    pop_up_in_game_error (ss);
+void __fastcall
+patch_Map_Renderer_impl_m52_Draw_Roads (Map_Renderer *this, int image_index, Map_Renderer *map_renderer, int pixel_x, int pixel_y)
+{
+	// Check if we should render minor roads instead for critical trade paths
+	bool use_minor_roads = false;
+	if (is->current_config.highlight_trade_route_roads &&
+	    is->current_road_tile_x >= 0 && is->current_road_tile_y >= 0 &&
+	    is->current_road_civ_id >= 0 && is->current_road_civ_id < 32) {
+		// Initialize minor roads on first use
+		if (is->minor_roads_img_state == IS_UNINITED) {
+			init_minor_roads();
+		}
 
-	if (is->distribution_hub_icons_img_state == IS_UNINITED)
-		init_distribution_hub_icons ();
-	if (is->distribution_hub_icons_img_state != IS_OK)
-		return;
-
-	int player_civ_id = p_main_screen_form->Player_CivID;
-	if ((player_civ_id < 0) || (player_civ_id >= is->distribution_hub_civ_capacity))
-		return;
-
-	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_local_resources_box: player civ id %d", player_civ_id);
-	pop_up_in_game_error (ss);
-
-	int hub_food = is->distribution_hub_food_per_civ[player_civ_id];
-	int hub_shields = is->distribution_hub_shield_per_civ[player_civ_id];
-	if ((hub_food <= 0) && (hub_shields <= 0))
-		return;
-
-	struct tagRECT * rect = &this->Local_Resources_Rect;
-	PCX_Image * canvas = &this->Base_Data.Canvas;
-
-	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_local_resources_box: hub food %d shields %d rect (%d,%d)-(%d,%d)",
-			  hub_food, hub_shields, rect->left, rect->top, rect->right, rect->bottom);
-	pop_up_in_game_error (ss);
-
-	int local_resource_count = 0;
-	if (p_bic_data->ResourceTypeCount > 0) {
-		Leader * player_leader = &leaders[player_civ_id];
-		for (int resource_id = 0; resource_id < p_bic_data->ResourceTypeCount; resource_id++) {
-			if (Leader_can_offer_resource_to_civ (player_leader, player_civ_id, resource_id, 1, 1, 1)) {
-				local_resource_count += 1 + player_leader->Available_Resources_Counts[resource_id];
-			}
+		if (is->minor_roads_img_state == IS_OK) {
+			// Check if this tile's road is on a critical trade path
+			use_minor_roads = is_road_critical_for_trade(is->current_road_tile_x, is->current_road_tile_y, is->current_road_civ_id);
 		}
 	}
 
-	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_local_resources_box: local resource count %d", local_resource_count);
-	pop_up_in_game_error (ss);
-
-	int base_x = rect->left + 0x37;
-	int spacing = 0x24;
-	int width_available = rect->right - rect->left;
-	if ((local_resource_count >= 2) &&
-	    (local_resource_count * spacing > width_available - 0x46)) {
-		int numerator = width_available - 0x6a;
-		if (numerator < 0)
-			numerator = 0;
-		int computed = (local_resource_count > 1) ? (numerator / (local_resource_count - 1)) : spacing;
-		if (computed < 1)
-			spacing = 1;
-		else if (computed > 0x24)
-			spacing = 0x24;
-		else
-			spacing = computed;
-	}
-
-	snprintf (ss, sizeof ss, "[C3X] patch_Advisor_Trade_Form_draw_local_resources_box: base_x %d spacing %d", base_x, spacing);
-	pop_up_in_game_error (ss);
-
-	int icon_width   = is->distribution_hub_food_icon_small.Width;
-	int icon_height  = is->distribution_hub_food_icon_small.Height;
-	int icon_spacing = icon_width + 4;
-	int draw_x = base_x + spacing * local_resource_count;
-
-	if (local_resource_count > 0) draw_x += 4;
-	int right_limit = rect->right - icon_width;
-
-	if (draw_x > right_limit) draw_x = right_limit;
-	if (draw_x < base_x)      draw_x = base_x;
-
-	int draw_y = rect->top + 10;
-
-	int max_icons = (rect->right > draw_x) ? ((rect->right - draw_x) / icon_spacing) + 1 : 0;
-	if (max_icons <= 0)
-		return;
-
-	int icons_drawn = 0;
-	for (int i = 0; (i < hub_food) && (icons_drawn < max_icons) && (draw_x <= right_limit); i++) {
-		Sprite_draw (&is->distribution_hub_food_icon_small, __, canvas, draw_x, draw_y, NULL);
-		draw_x += icon_spacing;
-		icons_drawn++;
-	}
-
-	if ((hub_food > 0) && (hub_shields > 0))
-		draw_x += 4;
-
-	for (int i = 0; (i < hub_shields) && (icons_drawn < max_icons) && (draw_x <= right_limit); i++) {
-		Sprite_draw (&is->distribution_hub_production_icon_small, __, canvas, draw_x, draw_y, NULL);
-		draw_x += icon_spacing;
-		icons_drawn++;
+	if (use_minor_roads && image_index >= 0 && image_index < 256) {
+		// Draw minor roads instead
+		Sprite * sprite = &is->minor_roads_images[image_index];
+		patch_Sprite_draw_on_map (sprite, __, map_renderer, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != 0) + 1, 0);
+	} else {
+		// Call the original function with regular roads
+		Map_Renderer_impl_m52_Draw_Roads (this, __, image_index, map_renderer, pixel_x, pixel_y);
 	}
 }
 
