@@ -18,7 +18,9 @@ The core purpose of a District is to enable one or more city improvements (build
 
 <img width="1290" height="307" alt="image" src="https://github.com/user-attachments/assets/663dbb1c-07a6-47d3-b362-e5a9550ab7c4" />
 
-After Districts are built, they become unworkable and the tile can no longer be used by the city unless the District is removed. So placing Districts requires a bit of thought beforehand. Once built, however, Districts can offer certain bonuses - shields, food, gold, science, culture, or defensive boost (all configurable) - to each city within their work radius. So cities with Districts in between them (e.g., Rome and Veii have the same Encampment in their work radius) can share the benefits. If `cities_with_mutual_district_receive_buildings` is set to true, cities can even share buildings within a District. For example, Veii can automatically receive a separate Barracks as well if built by Rome, as they share an Encampment. If `cities_with_mutual_district_receive_wonders` is true, cities can even share Wonders.
+After Districts are built, they become unworkable and the tile can no longer be used by the city unless the District is removed. So placing Districts requires a bit of thought beforehand. Once built, however, Districts can offer certain bonuses - shields, food, gold, science, culture, or defensive boost (all configurable) - to each city within their work radius. So cities with Districts in between them (e.g., Rome and Veii have the same Encampment in their work radius) can share the benefits. If `cities_with_mutual_district_receive_buildings` is set to true, cities can even share buildings within a District. For example, Veii can automatically receive a separate Barracks as well if built by Rome, as they share an Encampment. 
+
+If `cities_with_mutual_district_receive_wonders` is true, cities can even share Wonders.
 
 <img width="331" height="263" alt="image" src="https://github.com/user-attachments/assets/bdd97212-8b9f-4d22-90c1-8b3350efdaaf" />
 
