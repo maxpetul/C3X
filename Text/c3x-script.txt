@@ -174,7 +174,7 @@ No, nevermind.
 
 #C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT_SAFE
 #advisor Domestic
-A District exists here, but another of the same District is nearby so no dependent buildings will be lost. Do you want to build proceed?
+A District exists here, but another of the same District is nearby so no dependent buildings will be lost. Do you want to proceed?
 #itemlist
 Yes. There are better uses for this tile.
 No, nevermind.

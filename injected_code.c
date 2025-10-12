@@ -4443,6 +4443,63 @@ load_dynamic_wonder_configs (void)
 	}
 }
 
+static bool
+district_config_has_dependent_improvement (struct district_config * cfg, char const * name)
+{
+	if ((cfg == NULL) || (name == NULL) || (name[0] == '\0'))
+		return false;
+
+	for (int i = 0; i < cfg->dependent_improvement_count; i++) {
+		char const * existing = cfg->dependent_improvements[i];
+		if ((existing != NULL) && (strcmp (existing, name) == 0))
+			return true;
+	}
+	return false;
+}
+
+static void
+append_wonders_to_wonder_district_config (void)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_wonder_districts)
+		return;
+
+	int wonder_district_id = get_wonder_district_id ();
+	if (wonder_district_id < 0)
+		return;
+
+	struct district_config * cfg = &is->district_configs[wonder_district_id];
+	for (int wi = 0; wi < is->wonder_district_count; wi++) {
+		char const * wonder_name = is->wonder_district_configs[wi].wonder_name;
+		if ((wonder_name == NULL) || (wonder_name[0] == '\0'))
+			continue;
+		if (district_config_has_dependent_improvement (cfg, wonder_name))
+			continue;
+
+		int dest = cfg->dependent_improvement_count;
+		if (dest >= ARRAY_LEN (cfg->dependent_improvements)) {
+			char ss[200];
+			snprintf (ss, sizeof ss, "[C3X] append_wonders_to_wonder_district_config: exhausted dependent slots for \"%s\"", wonder_name);
+			(*p_OutputDebugStringA) (ss);
+			continue;
+		}
+
+		char * copy = strdup (wonder_name);
+		if (copy == NULL) {
+			char ss[200];
+			snprintf (ss, sizeof ss, "[C3X] append_wonders_to_wonder_district_config: strdup failed for \"%s\"", wonder_name);
+			(*p_OutputDebugStringA) (ss);
+			continue;
+		}
+
+		cfg->dependent_improvements[dest] = copy;
+		cfg->dependent_improvement_count = dest + 1;
+	}
+
+	if (cfg->max_building_index < cfg->dependent_improvement_count)
+		cfg->max_building_index = cfg->dependent_improvement_count;
+}
+
 void
 load_districts_config (void)
 {
@@ -4450,6 +4507,8 @@ load_districts_config (void)
 	load_dynamic_district_configs ();
 	load_dynamic_wonder_configs ();
 	is->district_count = is->special_district_count + is->dynamic_district_count;
+
+	append_wonders_to_wonder_district_config ();
 
 	struct c3x_config * cfg = &is->current_config;
 	if (cfg->enable_districts) {
@@ -5982,6 +6041,17 @@ city_requires_district_for_improvement (City * city, int improv_id, int * out_di
 	int district_id;
 	if (! itable_look_up (&is->district_building_prereqs, improv_id, &district_id))
 		return false;
+	if (is->current_config.enable_wonder_districts) {
+		int wonder_district_id = get_wonder_district_id ();
+		if ((wonder_district_id >= 0) &&
+		    (district_id == wonder_district_id)) {
+			if (city_has_incomplete_wonder_district (city))
+				return false;
+			if (out_district_id != NULL)
+				*out_district_id = district_id;
+			return true;
+		}
+	}
 	if (city_has_required_district (city, district_id))
 		return false;
 	if (out_district_id != NULL)
@@ -11689,7 +11759,7 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 	clear_best_feasible_order (this);
 	bool swapped_to_fallback = false;
 	City_Order fallback_order = {0};
-	int required_district_id;
+	int required_district_id = -1;
 	if (is->current_config.enable_districts &&
 	    ((*p_human_player_bits & (1 << this->Body.CivID)) == 0) &&
 	    (out->OrderType == COT_Improvement) &&
@@ -11697,15 +11767,21 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 
 		// Check if AI is trying to build a wonder without an incomplete wonder district
 		bool needs_wonder_district = false;
+		bool requires_district = city_requires_district_for_improvement (this, out->OrderID, &required_district_id);
 		if (is->current_config.enable_wonder_districts) {
 			Improvement * improv = &p_bic_data->Improvements[out->OrderID];
 			if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) &&
 			    (! city_has_incomplete_wonder_district (this))) {
 				needs_wonder_district = true;
+				if (required_district_id < 0) {
+					int wonder_district_id = get_wonder_district_id ();
+					if (wonder_district_id >= 0)
+						required_district_id = wonder_district_id;
+				}
 			}
 		}
 
-		if (needs_wonder_district || city_requires_district_for_improvement (this, out->OrderID, &required_district_id)) {
+		if (needs_wonder_district || requires_district) {
 			struct ai_best_feasible_order * stored = get_best_feasible_order (this);
 			if (stored != NULL) {
 				bool fallback_is_feasible = true;
