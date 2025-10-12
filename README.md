@@ -54,7 +54,7 @@ The player decides the Holy Site would be better elsewhere, so constructs anothe
 
 C3X Districts will check whether replacing an existing District would cause any dependent buildings to be lost in nearby cities and let you know:
 
-<img width="486" height="541" alt="image" src="https://github.com/user-attachments/assets/67a1d06a-11f3-47c1-90fe-0ddbf9caf4e9" />
+<img width="417" height="397" alt="image" src="https://github.com/user-attachments/assets/07a3b672-25f7-4bc5-9df2-e9fe539368b8" />
 
 After the improvement (or new District, if replacing and existing District type with another) is done, Rome maintains the Temple and the Holy Site is in a new location:
 
