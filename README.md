@@ -54,7 +54,7 @@ The player decides the Holy Site would be better elsewhere, so constructs anothe
 
 C3X Districts will check whether replacing an existing District would cause any dependent buildings to be lost in nearby cities and let you know:
 
-<img width="486" height="541" alt="image" src="https://github.com/user-attachments/assets/67a1d06a-11f3-47c1-90fe-0ddbf9caf4e9" />
+<img width="417" height="397" alt="image" src="https://github.com/user-attachments/assets/07a3b672-25f7-4bc5-9df2-e9fe539368b8" />
 
 After the improvement (or new District, if replacing and existing District type with another) is done, Rome maintains the Temple and the Holy Site is in a new location:
 
@@ -252,7 +252,7 @@ AI workers are triggered to build Distribution Hubs when their civ's "ideal" num
 
 ## Other Non-Standard Districts
 
-The Aerodrome District reuses and slightly modifies the base game airfield art. If `air_units_use_aerodrome_districts_not_cities` is set to true, air units can only be built in cities with an Aerodrome in their radius, spawn on Aerodromes, and can only land on Aerodromes (or vanilla game airfields & carriers), not cities. Airlifts similarly are limited to Aerodromes.
+The Aerodrome District reuses and slightly modifies the base game airfield art. If `air_units_use_aerodrome_districts_not_cities` is set to true, air units can only be built in cities with an Aerodrome in their radius, spawn on Aerodromes, and can only land on Aerodromes (or vanilla game airfields & carriers), not cities. Airlifts and Airdrops are similarly are limited to Aerodromes.
 
 <img width="511" height="253" alt="image" src="https://github.com/user-attachments/assets/e7a20ee5-9efc-4f6b-a921-2a906f3ef9b5" />
 
