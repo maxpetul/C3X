@@ -252,7 +252,7 @@ AI workers are triggered to build Distribution Hubs when their civ's "ideal" num
 
 ## Other Non-Standard Districts
 
-The Aerodrome District reuses and slightly modifies the base game airfield art. If `air_units_use_aerodrome_districts_not_cities` is set to true, air units can only be built in cities with an Aerodrome in their radius, spawn on Aerodromes, and can only land on Aerodromes (or vanilla game airfields & carriers), not cities. Airlifts similarly are limited to Aerodromes.
+The Aerodrome District reuses and slightly modifies the base game airfield art. If `air_units_use_aerodrome_districts_not_cities` is set to true, air units can only be built in cities with an Aerodrome in their radius, spawn on Aerodromes, and can only land on Aerodromes (or vanilla game airfields & carriers), not cities. Airlifts and Airdrops are similarly are limited to Aerodromes.
 
 <img width="511" height="253" alt="image" src="https://github.com/user-attachments/assets/e7a20ee5-9efc-4f6b-a921-2a906f3ef9b5" />
 
