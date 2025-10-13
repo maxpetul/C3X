@@ -54,7 +54,7 @@ The player decides the Holy Site would be better elsewhere, so constructs anothe
 
 <img width="455" height="306" alt="image" src="https://github.com/user-attachments/assets/4c6c21fb-7dcf-403b-a310-4ae895d49552" />
 
-C3X Districts will check whether replacing an existing District would cause any dependent buildings to be lost in nearby cities and let you know:
+Afterward, the worker returns to the original Holy Site (left) and chooses to replace the Holy Site with Irrigation. C3X Districts will check whether replacing an existing District would cause any dependent buildings to be lost in nearby cities and let you know:
 
 <img width="417" height="397" alt="image" src="https://github.com/user-attachments/assets/07a3b672-25f7-4bc5-9df2-e9fe539368b8" />
 
