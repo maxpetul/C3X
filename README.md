@@ -30,6 +30,8 @@ Bonuses received from Districts are automatically shown in the City view with a 
 If a District has food or shield bonuses, you'll also see those in the Production, Food, and Commerce sections:
 <img width="870" height="280" alt="image" src="https://github.com/user-attachments/assets/ebe06c4b-c414-4043-8bbb-37bbb1b56c8b" />
 
+Districts with pollution or enemy units on them yield no bonuses.
+
 ### Combat
 
 Districts also have certain implications for combat: destroying a District automatically removes any dependent buildings in surrounding cities *unless* they have another District of the same kind within their work radius. Districts with an occupying enemy unit on them do not yield any bonuses. Districts can also provide a combat bonus (or penalty); see `defense_bonus_multiplier_pct` in the configuration example below ("100" means no bonus).
@@ -56,7 +58,7 @@ The player decides the Holy Site would be better elsewhere, so constructs anothe
 
 Afterward, the worker returns to the original Holy Site (left) and chooses to replace the Holy Site with Irrigation. C3X Districts will check whether replacing an existing District would cause any dependent buildings to be lost in nearby cities and let you know:
 
-<img width="417" height="397" alt="image" src="https://github.com/user-attachments/assets/07a3b672-25f7-4bc5-9df2-e9fe539368b8" />
+<img width="370" height="332" alt="image" src="https://github.com/user-attachments/assets/77ac0662-bd67-4b07-938d-74f8a8378780" />
 
 After the improvement (or new District, if replacing and existing District type with another) is done, Rome maintains the Temple and the Holy Site is in a new location:
 
