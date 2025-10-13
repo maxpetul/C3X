@@ -3279,32 +3279,6 @@ allocate_dynamic_district_command (char const * name)
 	return (enum Unit_Command_Values)value;
 }
 
-static bool
-district_name_exists (char const * name)
-{
-	if (name == NULL)
-		return false;
-
-	for (int i = 0; i < is->district_count; i++)
-		if ((is->district_configs[i].name != NULL) &&
-		    (strcmp (is->district_configs[i].name, name) == 0))
-			return true;
-	return false;
-}
-
-static bool
-wonder_name_exists (char const * name)
-{
-	if (name == NULL)
-		return false;
-
-	for (int i = 0; i < is->wonder_district_count; i++)
-		if ((is->wonder_district_configs[i].wonder_name != NULL) &&
-		    (strcmp (is->wonder_district_configs[i].wonder_name, name) == 0))
-			return true;
-	return false;
-}
-
 static void
 free_special_district_override_strings (struct district_config * cfg, struct district_config const * defaults)
 {
@@ -3699,83 +3673,105 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	if ((! def->has_name) || (def->name == NULL))
 		return false;
 
-	if (district_name_exists (def->name)) {
+	if ((! def->has_img_paths) || (def->img_path_count <= 0))
 		return false;
+
+	int existing_index = -1;
+	for (int i = is->special_district_count; i < is->district_count; i++) {
+		if ((is->district_configs[i].name != NULL) &&
+		    (strcmp (is->district_configs[i].name, def->name) == 0)) {
+			existing_index = i;
+			break;
+		}
 	}
 
-	if ((! def->has_img_paths) || (def->img_path_count <= 0)) {
+	bool reusing_existing = existing_index >= 0;
+	int dest_index = reusing_existing ? existing_index : (is->special_district_count + is->dynamic_district_count);
+
+	if ((! reusing_existing) && (dest_index >= COUNT_DISTRICT_TYPES))
 		return false;
-	}
 
-	if (is->special_district_count + is->dynamic_district_count >= COUNT_DISTRICT_TYPES) {
-		return false;
-	}
+	enum Unit_Command_Values preserved_command = 0;
+	if (reusing_existing)
+		preserved_command = is->district_configs[dest_index].command;
 
-	int dest = is->special_district_count + is->dynamic_district_count;
-	struct district_config * cfg = &is->district_configs[dest];
-	free_dynamic_district_config (cfg);
-	memset (cfg, 0, sizeof *cfg);
-	cfg->is_dynamic = true;
+	struct district_config new_cfg;
+	memset (&new_cfg, 0, sizeof new_cfg);
+	new_cfg.is_dynamic = true;
 
-	cfg->name = def->name;
+	new_cfg.name = def->name;
 	def->name = NULL;
 
 	if (def->has_tooltip) {
-		cfg->tooltip = def->tooltip;
+		new_cfg.tooltip = def->tooltip;
 		def->tooltip = NULL;
-	} else {
+	} else if (new_cfg.name != NULL) {
 		char buffer[128];
-		snprintf (buffer, sizeof buffer, "Build %s", cfg->name);
-		cfg->tooltip = strdup (buffer);
+		snprintf (buffer, sizeof buffer, "Build %s", new_cfg.name);
+		new_cfg.tooltip = strdup (buffer);
 	}
 
 	if (def->has_advance_prereq) {
-		cfg->advance_prereq = def->advance_prereq;
+		new_cfg.advance_prereq = def->advance_prereq;
 		def->advance_prereq = NULL;
 	}
 
-	cfg->allow_multiple = def->has_allow_multiple ? def->allow_multiple : false;
-	cfg->vary_img_by_era = def->has_vary_img_by_era ? def->vary_img_by_era : false;
-	cfg->vary_img_by_culture = def->has_vary_img_by_culture ? def->vary_img_by_culture : false;
-	cfg->btn_tile_sheet_column = def->has_btn_tile_sheet_column ? def->btn_tile_sheet_column : 0;
-	cfg->btn_tile_sheet_row = def->has_btn_tile_sheet_row ? def->btn_tile_sheet_row : 0;
-	cfg->defense_bonus_multiplier_pct = def->has_defense_bonus_multiplier_pct ? def->defense_bonus_multiplier_pct : 100;
-	cfg->culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
-	cfg->science_bonus = def->has_science_bonus ? def->science_bonus : 0;
-	cfg->food_bonus = def->has_food_bonus ? def->food_bonus : 0;
-	cfg->gold_bonus = def->has_gold_bonus ? def->gold_bonus : 0;
-	cfg->shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
+	new_cfg.allow_multiple = def->has_allow_multiple ? def->allow_multiple : false;
+	new_cfg.vary_img_by_era = def->has_vary_img_by_era ? def->vary_img_by_era : false;
+	new_cfg.vary_img_by_culture = def->has_vary_img_by_culture ? def->vary_img_by_culture : false;
+	new_cfg.btn_tile_sheet_column = def->has_btn_tile_sheet_column ? def->btn_tile_sheet_column : 0;
+	new_cfg.btn_tile_sheet_row = def->has_btn_tile_sheet_row ? def->btn_tile_sheet_row : 0;
+	new_cfg.defense_bonus_multiplier_pct = def->has_defense_bonus_multiplier_pct ? def->defense_bonus_multiplier_pct : 100;
+	new_cfg.culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
+	new_cfg.science_bonus = def->has_science_bonus ? def->science_bonus : 0;
+	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
+	new_cfg.gold_bonus = def->has_gold_bonus ? def->gold_bonus : 0;
+	new_cfg.shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
 
-	cfg->dependent_improvement_count = def->has_dependent_improvements ? def->dependent_improvement_count : 0;
+	new_cfg.dependent_improvement_count = def->has_dependent_improvements ? def->dependent_improvement_count : 0;
 	const int max_dependent_entries = ARRAY_LEN (is->district_configs[0].dependent_improvements);
-	if (cfg->dependent_improvement_count > max_dependent_entries)
-		cfg->dependent_improvement_count = max_dependent_entries;
-	for (int i = 0; i < cfg->dependent_improvement_count; i++) {
-		cfg->dependent_improvements[i] = def->dependent_improvements[i];
+	if (new_cfg.dependent_improvement_count > max_dependent_entries)
+		new_cfg.dependent_improvement_count = max_dependent_entries;
+	for (int i = 0; i < new_cfg.dependent_improvement_count; i++) {
+		new_cfg.dependent_improvements[i] = def->dependent_improvements[i];
 		def->dependent_improvements[i] = NULL;
 	}
 
-	cfg->img_path_count = def->img_path_count;
+	new_cfg.img_path_count = def->img_path_count;
 	const int max_img_paths = ARRAY_LEN (is->district_configs[0].img_paths);
-	if (cfg->img_path_count > max_img_paths)
-		cfg->img_path_count = max_img_paths;
-	for (int i = 0; i < cfg->img_path_count; i++) {
-		cfg->img_paths[i] = def->img_paths[i];
+	if (new_cfg.img_path_count > max_img_paths)
+		new_cfg.img_path_count = max_img_paths;
+	for (int i = 0; i < new_cfg.img_path_count; i++) {
+		new_cfg.img_paths[i] = def->img_paths[i];
 		def->img_paths[i] = NULL;
 	}
 
-	if (! ensure_culture_variant_art (cfg, section_start_line)) {
-		free_dynamic_district_config (cfg);
+	if (! ensure_culture_variant_art (&new_cfg, section_start_line)) {
+		free_dynamic_district_config (&new_cfg);
 		return false;
 	}
 
-	cfg->max_building_index = cfg->dependent_improvement_count;
-	if (cfg->max_building_index > 5) cfg->max_building_index = 5;
+	new_cfg.max_building_index = new_cfg.dependent_improvement_count;
+	if (new_cfg.max_building_index > 5)
+		new_cfg.max_building_index = 5;
 
-	cfg->command = allocate_dynamic_district_command (cfg->name);
+	if (reusing_existing)
+		new_cfg.command = preserved_command;
+	else
+		new_cfg.command = allocate_dynamic_district_command (new_cfg.name);
 
-	is->dynamic_district_count += 1;
-	is->district_count = is->special_district_count + is->dynamic_district_count;
+	struct district_config * dest_cfg = &is->district_configs[dest_index];
+	if (reusing_existing) {
+		enum Unit_Command_Values saved_command = preserved_command;
+		free_dynamic_district_config (dest_cfg);
+		*dest_cfg = new_cfg;
+		dest_cfg->command = saved_command;
+	} else {
+		free_dynamic_district_config (dest_cfg);
+		*dest_cfg = new_cfg;
+		is->dynamic_district_count += 1;
+		is->district_count = is->special_district_count + is->dynamic_district_count;
+	}
 
 	return true;
 }
@@ -3971,19 +3967,28 @@ handle_district_definition_key (struct parsed_district_definition * def,
 }
 
 static void
-load_dynamic_district_configs (void)
+load_dynamic_district_config_file (char const * file_path, int path_is_relative_to_mod_dir, int log_missing)
 {
-	if (is == NULL || is->mod_rel_dir == NULL)
+	if (is == NULL)
 		return;
 
 	char path[MAX_PATH];
-	snprintf (path, sizeof path, "%s\\Districts\\Config\\Districts.txt", is->mod_rel_dir);
+	if (path_is_relative_to_mod_dir) {
+		if (is->mod_rel_dir == NULL)
+			return;
+		snprintf (path, sizeof path, "%s\\%s", is->mod_rel_dir, file_path);
+	} else {
+		strncpy (path, file_path, sizeof path);
+	}
+	path[(sizeof path) - 1] = '\0';
 
 	char * text = file_to_string (path);
 	if (text == NULL) {
-		char ss[256];
-		snprintf (ss, sizeof ss, "[C3X] Districts config file not found: %s", path);
-		(*p_OutputDebugStringA) (ss);
+		if (log_missing) {
+			char ss[256];
+			snprintf (ss, sizeof ss, "[C3X] Districts config file not found: %s", path);
+			(*p_OutputDebugStringA) (ss);
+		}
 		return;
 	}
 
@@ -4088,6 +4093,23 @@ load_dynamic_district_configs (void)
 	}
 }
 
+static void
+load_dynamic_district_configs (void)
+{
+	if (is == NULL)
+		return;
+
+	load_dynamic_district_config_file ("default.districts_config.txt", 1, 1);
+	load_dynamic_district_config_file ("custom.districts_config.txt", 1, 0);
+
+	char * scenario_file_name = "scenario.districts_config.txt";
+	char * scenario_path = NULL;
+	if (p_bic_data != NULL)
+		scenario_path = BIC_get_asset_path (p_bic_data, __, scenario_file_name, false);
+	if ((scenario_path != NULL) && (0 != strcmp (scenario_file_name, scenario_path)))
+		load_dynamic_district_config_file (scenario_path, 0, 0);
+}
+
 
 struct parsed_wonder_definition {
 	char * name;
@@ -4122,26 +4144,40 @@ free_parsed_wonder_definition (struct parsed_wonder_definition * def)
 static bool
 add_dynamic_wonder_from_definition (struct parsed_wonder_definition * def, int section_start_line)
 {
-	char ss[256];
-
-	int dest = is->wonder_district_count;
-
-	// Safety check: ensure dest is within bounds
-	if (dest < 0 || dest >= MAX_WONDER_DISTRICT_TYPES) {
-		return false;
+	int existing_index = -1;
+	for (int i = 0; i < is->wonder_district_count; i++) {
+		if ((is->wonder_district_configs[i].wonder_name != NULL) &&
+		    (strcmp (is->wonder_district_configs[i].wonder_name, def->name) == 0)) {
+			existing_index = i;
+			break;
+		}
 	}
 
-	struct wonder_district_config * cfg = &is->wonder_district_configs[dest];
+	int dest = (existing_index >= 0) ? existing_index : is->wonder_district_count;
+	if ((dest < 0) || (dest >= MAX_WONDER_DISTRICT_TYPES))
+		return false;
 
-	cfg->index = dest;
-	cfg->is_dynamic = true;
-	cfg->wonder_name = strdup (def->name);
-	cfg->img_row = def->img_row;
-	cfg->img_column = def->img_column;
-	cfg->img_construct_row = def->img_construct_row;
-	cfg->img_construct_column = def->img_construct_column;
+	struct wonder_district_config new_cfg;
+	memset (&new_cfg, 0, sizeof new_cfg);
+	new_cfg.index = dest;
+	new_cfg.is_dynamic = true;
+	new_cfg.wonder_name = strdup (def->name);
+	new_cfg.img_row = def->img_row;
+	new_cfg.img_column = def->img_column;
+	new_cfg.img_construct_row = def->img_construct_row;
+	new_cfg.img_construct_column = def->img_construct_column;
 
-	is->wonder_district_count += 1;
+	if (existing_index >= 0) {
+		struct wonder_district_config * cfg = &is->wonder_district_configs[existing_index];
+		free_dynamic_wonder_config (cfg);
+		*cfg = new_cfg;
+		cfg->index = existing_index;
+	} else {
+		struct wonder_district_config * cfg = &is->wonder_district_configs[dest];
+		free_dynamic_wonder_config (cfg);
+		*cfg = new_cfg;
+		is->wonder_district_count += 1;
+	}
 
 	return true;
 }
@@ -4278,19 +4314,28 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 }
 
 static void
-load_dynamic_wonder_configs (void)
+load_dynamic_wonder_config_file (char const * file_path, int path_is_relative_to_mod_dir, int log_missing)
 {
-	if (is == NULL || is->mod_rel_dir == NULL)
+	if (is == NULL)
 		return;
 
 	char path[MAX_PATH];
-	snprintf (path, sizeof path, "%s\\Districts\\Config\\Wonders.txt", is->mod_rel_dir);
+	if (path_is_relative_to_mod_dir) {
+		if (is->mod_rel_dir == NULL)
+			return;
+		snprintf (path, sizeof path, "%s\\%s", is->mod_rel_dir, file_path);
+	} else {
+		strncpy (path, file_path, sizeof path);
+	}
+	path[(sizeof path) - 1] = '\0';
 
 	char * text = file_to_string (path);
 	if (text == NULL) {
-		char ss[256];
-		snprintf (ss, sizeof ss, "[C3X] Wonders config file not found: %s", path);
-		(*p_OutputDebugStringA) (ss);
+		if (log_missing) {
+			char ss[256];
+			snprintf (ss, sizeof ss, "[C3X] Wonders config file not found: %s", path);
+			(*p_OutputDebugStringA) (ss);
+		}
 		return;
 	}
 
@@ -4393,6 +4438,22 @@ load_dynamic_wonder_configs (void)
 		free_error_lines (parse_errors);
 		free_error_lines (unrecognized_keys);
 	}
+}
+
+static void
+load_dynamic_wonder_configs (void)
+{
+	if (is == NULL)
+		return;
+
+	load_dynamic_wonder_config_file ("default.districts_wonders_config.txt", 1, 1);
+	load_dynamic_wonder_config_file ("custom.districts_wonders_config.txt", 1, 0);
+	char * scenario_file_name = "scenario.districts_wonders_config.txt";
+	char * scenario_path = NULL;
+	if (p_bic_data != NULL)
+		scenario_path = BIC_get_asset_path (p_bic_data, __, scenario_file_name, false);
+	if ((scenario_path != NULL) && (0 != strcmp (scenario_file_name, scenario_path)))
+		load_dynamic_wonder_config_file (scenario_path, 0, 0);
 }
 
 static bool
