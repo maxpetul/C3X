@@ -66,6 +66,12 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 
 #define TILE_FLAG_MINE 0x4
 
+#define NEIGHBORHOOD_DISTRICT_ID     0
+#define WONDER_DISTRICT_ID           1
+#define DISTRIBUTION_HUB_DISTRICT_ID 2
+#define AERODROME_DISTRICT_ID        3
+
+
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
 
@@ -2351,33 +2357,6 @@ int __fastcall patch_City_calc_tile_yield_at (City * this, int edx, int yield_ty
 void __fastcall patch_City_recompute_yields_and_happiness (City * this, int edx);
 void on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city);
 
-int
-get_neighborhood_district_id (void)
-{
-	for (int i = 0; i < is->district_count; i++)
-		if (is->district_configs[i].command == UCV_Build_Neighborhood)
-			return i;
-	return -1;
-}
-
-int
-get_wonder_district_id (void)
-{
-	for (int i = 0; i < is->district_count; i++)
-		if (is->district_configs[i].command == UCV_Build_WonderDistrict)
-			return i;
-	return -1;
-}
-
-int
-get_distribution_hub_district_id (void)
-{
-	for (int i = 0; i < is->district_count; i++)
-		if (is->district_configs[i].command == UCV_Build_DistributionHub)
-			return i;
-	return -1;
-}
-
 bool
 district_is_complete(Tile * tile, int district_id)
 {
@@ -2411,7 +2390,7 @@ district_is_complete(Tile * tile, int district_id)
 	} else {
 		// District just completed - activate distribution hub if applicable
 		if (is->current_config.enable_distribution_hub_districts &&
-		    (district_id == get_distribution_hub_district_id ())) {
+		    (district_id == DISTRIBUTION_HUB_DISTRICT_ID)) {
 			int tile_x, tile_y;
 			if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
 				return completed;
@@ -2868,7 +2847,7 @@ compute_distribution_hub_yields (struct distribution_hub_record * rec, City * an
 	}
 
 	rec->tile = tile;
-	int district_id = get_distribution_hub_district_id ();
+	int district_id = DISTRIBUTION_HUB_DISTRICT_ID;
 	if ((district_id < 0) || ! district_is_complete (tile, district_id)) {
 		rec->food_yield = 0;
 		rec->shield_yield = 0;
@@ -3026,7 +3005,7 @@ recalculate_distribution_hub_totals ()
 		return;
 	}
 
-	int district_id = get_distribution_hub_district_id ();
+	int district_id = DISTRIBUTION_HUB_DISTRICT_ID;
 	if (district_id < 0) {
 		is->distribution_hub_totals_dirty = false;
 		return;
@@ -3168,7 +3147,7 @@ refresh_distribution_hubs_for_city (City * city)
 	snprintf (ss, sizeof ss, "[C3X] refresh_distribution_hubs_for_city: city=%p\n", (void*)city);
 	(*p_OutputDebugStringA) (ss);
 
-	int district_id = get_distribution_hub_district_id ();
+	int district_id = DISTRIBUTION_HUB_DISTRICT_ID;
 	if (district_id < 0)
 		return;
 
@@ -4473,7 +4452,7 @@ append_wonders_to_wonder_district_config (void)
 	    ! is->current_config.enable_wonder_districts)
 		return;
 
-	int wonder_district_id = get_wonder_district_id ();
+	int wonder_district_id = WONDER_DISTRICT_ID;
 	if (wonder_district_id < 0)
 		return;
 
@@ -4717,7 +4696,7 @@ clear_city_district_request (City * city, int district_id)
 			itable_insert (&is->city_pending_district_requests, key, mask);
 		else
 			itable_remove (&is->city_pending_district_requests, key);
-		if (had_request && (district_id == get_wonder_district_id ()))
+		if (had_request && (district_id == WONDER_DISTRICT_ID))
 			forget_pending_wonder_order (city);
 	}
 }
@@ -4776,7 +4755,7 @@ finalize_district_job_assignment (int unit_id, struct district_job_assignment * 
 		if (job->tile != NULL)
 			set_tile_unworkable_for_all_cities (job->tile, job->tile_x, job->tile_y);
 		if ((job->tile != NULL) &&
-		    (job->district_id == get_distribution_hub_district_id ()))
+		    (job->district_id == DISTRIBUTION_HUB_DISTRICT_ID))
 			on_distribution_hub_completed (job->tile, job->tile_x, job->tile_y, job->city);
 	} else {
 		if ((job->tile != NULL) && ! district_is_complete (job->tile, job->district_id))
@@ -5115,7 +5094,7 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 
 	if (district_is_complete (tile, job->district_id)) {
 		if (is->current_config.enable_wonder_districts &&
-		    (job->district_id == get_wonder_district_id ()) &&
+		    (job->district_id == WONDER_DISTRICT_ID) &&
 		    (job->city != NULL)) {
 			int wonder_improv_id;
 			if (lookup_pending_wonder_order (job->city, &wonder_improv_id)) {
@@ -5182,15 +5161,6 @@ handle_existing_district_assignment (Unit * unit, struct district_job_assignment
 	return false;
 }
 
-static int
-get_aerodrome_district_id ()
-{
-	for (int i = 0; i < is->district_count; i++)
-		if (is->district_configs[i].command == UCV_Build_Aerodrome)
-			return i;
-	return -1;
-}
-
 static Tile *
 get_completed_district_tile_for_city (City * city, int district_id, int * out_x, int * out_y)
 {
@@ -5234,7 +5204,7 @@ tile_has_friendly_aerodrome_district (Tile * tile, int civ_id, bool require_avai
 	    (civ_id < 0) || (civ_id >= 32))
 		return false;
 
-	int aerodrome_id = get_aerodrome_district_id ();
+	int aerodrome_id = AERODROME_DISTRICT_ID;
 	if (aerodrome_id < 0)
 		return false;
 
@@ -5287,7 +5257,7 @@ city_has_wonder_district_with_no_completed_wonder (City * city)
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
 		return false;
 
-	int wonder_district_id = get_wonder_district_id ();
+	int wonder_district_id = WONDER_DISTRICT_ID;
 	if (wonder_district_id < 0)
 		return false;
 
@@ -5338,7 +5308,7 @@ ensure_neighborhood_request_for_city (City * city)
 	if (civ_id < 0)
 		return;
 
-	int district_id = get_neighborhood_district_id ();
+	int district_id = NEIGHBORHOOD_DISTRICT_ID;
 	int prereq = is->district_infos[district_id].advance_prereq_id;
 	
 	if ((prereq >= 0) && ! Leader_has_tech (&leaders[civ_id], __, prereq)) return;
@@ -5393,7 +5363,7 @@ ai_try_assign_district_job (Unit * unit)
 			Tile * tile = find_tile_for_district (city, district_id, &target_x, &target_y);
 			if ((tile == NULL) &&
 			    is->current_config.enable_wonder_districts &&
-			    (district_id != get_wonder_district_id ()) &&
+			    (district_id != WONDER_DISTRICT_ID) &&
 			    free_wonder_district_for_city (city))
 				tile = find_tile_for_district (city, district_id, &target_x, &target_y);
 			if (tile == NULL)
@@ -5973,7 +5943,7 @@ remove_wonder_improvement_for_destroyed_district (int wonder_improv_id)
 		patch_City_add_or_remove_improvement (city, __, wonder_improv_id, 0, false);
 
 		if ((*p_human_player_bits & (1 << city->Body.CivID)) == 0) {
-			int wonder_district_id = get_wonder_district_id ();
+			int wonder_district_id = WONDER_DISTRICT_ID;
 			if (wonder_district_id >= 0)
 				mark_city_needs_district (city, wonder_district_id);
 		}
@@ -6011,7 +5981,7 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	itable_remove (&is->wonder_district_tile_map, (int)tile);
 
 	if (is->current_config.enable_wonder_districts &&
-	    (actual_district_id == get_wonder_district_id ()) &&
+	    (actual_district_id == WONDER_DISTRICT_ID) &&
 	    (wonder_windex >= 0))
 		wonder_improv_id = get_wonder_improvement_id_from_index (wonder_windex);
 
@@ -6019,7 +5989,7 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 		remove_wonder_improvement_for_destroyed_district (wonder_improv_id);
 
 	if (is->current_config.enable_distribution_hub_districts &&
-	    (actual_district_id == get_distribution_hub_district_id ()))
+	    (actual_district_id == DISTRIBUTION_HUB_DISTRICT_ID))
 		remove_distribution_hub_record (tile);
 
 	if (district_id >= 0)
@@ -6036,7 +6006,7 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 bool
 city_has_active_wonder_for_district (City * city)
 {
-	int wonder_district_id = get_wonder_district_id ();
+	int wonder_district_id = WONDER_DISTRICT_ID;
 	if ((city == NULL) || (wonder_district_id < 0))
 		return false;
 
@@ -6056,7 +6026,7 @@ city_requires_district_for_improvement (City * city, int improv_id, int * out_di
 	if (! itable_look_up (&is->district_building_prereqs, improv_id, &district_id))
 		return false;
 	if (is->current_config.enable_wonder_districts) {
-		int wonder_district_id = get_wonder_district_id ();
+		int wonder_district_id = WONDER_DISTRICT_ID;
 		if ((wonder_district_id >= 0) &&
 		    (district_id == wonder_district_id)) {
 			if (city_has_wonder_district_with_no_completed_wonder (city))
@@ -6140,7 +6110,7 @@ wonder_district_tile_under_construction (Tile * tile, int tile_x, int tile_y, in
 	    (tile == NULL) || (tile == p_null_tile))
 		return false;
 
-	int wonder_district_id = get_wonder_district_id ();
+	int wonder_district_id = WONDER_DISTRICT_ID;
 	if (wonder_district_id < 0)
 		return false;
 
@@ -6226,7 +6196,7 @@ free_wonder_district_for_city (City * city)
 	if (city_needs_wonder_district (city))
 		return false;
 
-	int wonder_district_id = get_wonder_district_id ();
+	int wonder_district_id = WONDER_DISTRICT_ID;
 	if (wonder_district_id < 0)
 		return false;
 
@@ -6276,7 +6246,7 @@ handle_district_destroyed_by_attack (Tile * tile, int tile_x, int tile_y, bool l
 
 		// If this is a Wonder District with a completed wonder image and wonders can't be destroyed, restore overlay and keep district
 		if (is->current_config.enable_wonder_districts) {
-			int wonder_district_id = get_wonder_district_id ();
+			int wonder_district_id = WONDER_DISTRICT_ID;
 			if ((district_id == wonder_district_id) &&
 			    itable_look_up_or (&is->wonder_district_tile_map, (int)tile, -1) >= 0 &&
 			    (! is->current_config.completed_wonder_districts_can_be_destroyed)) {
@@ -9898,7 +9868,7 @@ patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y)
 	if (! itable_look_up (&is->district_tile_map, (int)tile, &district_id))
 		return true;
 
-	int wonder_district_id = get_wonder_district_id ();
+	int wonder_district_id = WONDER_DISTRICT_ID;
 	if (district_id != wonder_district_id)
 		return true;
 
@@ -11802,7 +11772,7 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 			is->current_config.enable_aerodrome_districts &&
 		    is->current_config.air_units_use_aerodrome_districts_not_cities) {
 			UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
-			int aerodrome_id = get_aerodrome_district_id ();
+			int aerodrome_id = AERODROME_DISTRICT_ID;
 			if ((type->Unit_Class == UTC_Air) && (aerodrome_id >= 0) &&
 			    ! city_has_required_district (this, aerodrome_id))
 				return false;
@@ -11881,7 +11851,7 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 			    (! city_has_wonder_district_with_no_completed_wonder (this))) {
 				needs_wonder_district = true;
 				if (required_district_id < 0) {
-					int wonder_district_id = get_wonder_district_id ();
+					int wonder_district_id = WONDER_DISTRICT_ID;
 					if (wonder_district_id >= 0)
 						required_district_id = wonder_district_id;
 				}
@@ -11923,7 +11893,7 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 		*out = fallback_order;
 		mark_city_needs_district (this, required_district_id);
 		if (is->current_config.enable_wonder_districts) {
-			int wonder_district_id = get_wonder_district_id ();
+			int wonder_district_id = WONDER_DISTRICT_ID;
 			if ((wonder_district_id >= 0) &&
 				(required_district_id == wonder_district_id)) {
 				Improvement * improv = &p_bic_data->Improvements[out->OrderID];
@@ -13358,7 +13328,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 			int matched_windex = find_wonder_config_index_by_improvement_id (improv_id);
 
 			if (matched_windex >= 0) {
-				int wonder_district_id = get_wonder_district_id ();
+				int wonder_district_id = WONDER_DISTRICT_ID;
 				if (wonder_district_id >= 0) {
 					int civ_id = this->Body.CivID;
 					FOR_TILES_AROUND (tai, is->workable_tile_count, this->Body.X, this->Body.Y) {
@@ -15209,7 +15179,7 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 	if (ideal_per_100 <= 0)
 		return;
 
-	int district_id = get_distribution_hub_district_id ();
+	int district_id = DISTRIBUTION_HUB_DISTRICT_ID;
 	if (district_id < 0)
 		return;
 
@@ -15363,7 +15333,7 @@ patch_Leader_do_production_phase (Leader * this)
 
 						// For AI players, request a wonder district to be built
 						if (((*p_human_player_bits & (1 << city->Body.CivID)) == 0)) {
-							int wonder_district_id = get_wonder_district_id ();
+							int wonder_district_id = WONDER_DISTRICT_ID;
 							mark_city_needs_district (city, wonder_district_id);
 						}
 
@@ -16571,7 +16541,7 @@ patch_Leader_spawn_unit (Leader * this, int edx, int type_id, int tile_x, int ti
 	if (is->current_config.enable_districts &&
 	    is->current_config.air_units_use_aerodrome_districts_not_cities) {
 		UnitType * type = &p_bic_data->UnitTypes[type_id];
-		int aerodrome_id = get_aerodrome_district_id ();
+		int aerodrome_id = AERODROME_DISTRICT_ID;
 		if ((type->Unit_Class == UTC_Air) && (aerodrome_id >= 0)) {
 			City * spawn_city = city_at (tile_x, tile_y);
 			if ((spawn_city != NULL) && (spawn_city->Body.CivID == this->ID)) {
@@ -18249,7 +18219,7 @@ patch_Unit_check_rebase_target (Unit * this, int edx, int tile_x, int tile_y)
 			int district_id;
 			// Check if tile has a district
 			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
-				int aerodrome_id = get_aerodrome_district_id ();
+				int aerodrome_id = AERODROME_DISTRICT_ID;
 				// Check if this is an aerodrome district owned by this unit's civ
 				if ((aerodrome_id >= 0) && (district_id == aerodrome_id) && (tile->Territory_OwnerID == this->Body.CivID)) {
 					// Check if aerodrome is complete
@@ -18813,7 +18783,7 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 				if (tile_has_enemy_unit (tile, civ_id)) continue;
 				if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
 
-			int is_distribution_hub = (district_id == get_distribution_hub_district_id ());
+			int is_distribution_hub = (district_id == DISTRIBUTION_HUB_DISTRICT_ID);
 
 			// Skip distribution hubs if the feature is not enabled
 			if (is_distribution_hub && !is->current_config.enable_distribution_hub_districts)
@@ -19774,7 +19744,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                     bool completed = district_is_complete (tile, district_id);
 
                     if (is->current_config.enable_wonder_districts) {
-                        int wonder_district_id = get_wonder_district_id ();
+                        int wonder_district_id = WONDER_DISTRICT_ID;
                         if (district_id == wonder_district_id) {
                             int windex;
                             if (itable_look_up (&is->wonder_district_tile_map, (int)tile, &windex) &&
