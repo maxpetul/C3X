@@ -37,3 +37,11 @@ img_construct_row    = 2
 img_construct_column = 0
 img_row              = 2
 img_column           = 1
+
+#Wonder
+name                 = The Statue of Zeus
+img_path             = Wonders.pcx
+img_construct_row    = 2
+img_construct_column = 2
+img_row              = 2
+img_column           = 3
