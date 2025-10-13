@@ -9341,6 +9341,33 @@ init_district_command_buttons ()
 	pcx.vtable->destruct (&pcx, __, 0);
 }
 
+static int
+parse_turns_from_tooltip (char const * tooltip)
+{
+	if ((tooltip == NULL) || (*tooltip == '\0'))
+		return -1;
+
+	char const * last_paren = NULL;
+	for (char const * cursor = tooltip; *cursor != '\0'; cursor++)
+		if (*cursor == '(')
+			last_paren = cursor;
+	if (last_paren == NULL)
+		return -1;
+
+	char const * digit_ptr = last_paren + 1;
+	while (*digit_ptr == ' ')
+		digit_ptr++;
+
+	int turns = 0;
+	bool have_digit = false;
+	while ((*digit_ptr >= '0') && (*digit_ptr <= '9')) {
+		have_digit = true;
+		turns = (turns * 10) + (*digit_ptr - '0');
+		digit_ptr++;
+	}
+	return have_digit ? turns : -1;
+}
+
 void
 set_up_district_buttons (Main_GUI * this)
 {
@@ -9374,14 +9401,20 @@ set_up_district_buttons (Main_GUI * this)
 	if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle)
 		return;
 
-	Command_Button * automate_button = NULL; int i_starting_button; {
-		for (int n = 0; n < 42; n++)
-			if (((this->Unit_Command_Buttons[n].Button.Base_Data.Status2 & 1) != 0) &&
-				(this->Unit_Command_Buttons[n].Command == UCV_Automate)) {
-				automate_button = &this->Unit_Command_Buttons[n];
-				i_starting_button = n;
-				break;
-			}
+	Command_Button * automate_button = NULL; 
+	int i_starting_button;
+	int mine_turns = -1;
+	for (int n = 0; n < 42; n++) {
+		if (((this->Unit_Command_Buttons[n].Button.Base_Data.Status2 & 1) != 0) &&
+			(this->Unit_Command_Buttons[n].Command == UCV_Automate)) {
+			automate_button = &this->Unit_Command_Buttons[n];
+			i_starting_button = n;
+		}
+		if (this->Unit_Command_Buttons[n].Command == UCV_Build_Mine) {
+			mine_turns = parse_turns_from_tooltip (this->Unit_Command_Buttons[n].Button.ToolTip);
+		}
+		if (automate_button != NULL && mine_turns >= 0)
+			break;
 	}
 
 	if (automate_button == NULL)
@@ -9391,7 +9424,7 @@ set_up_district_buttons (Main_GUI * this)
 
 	// Check if there's already a district on this tile. If so, and the unit can build mines,
 	// ensure the mine button is enabled so the worker can continue construction.
-	int existing_district_id;
+	int existing_district_id = -1;
 	if (itable_look_up(&is->district_tile_map, (int)tile, &existing_district_id)) {
 		if (patch_Unit_can_perform_command(selected_unit, __, UCV_Build_Mine)) {
 			for (int n = 0; n < 42; n++) {
@@ -9407,22 +9440,23 @@ set_up_district_buttons (Main_GUI * this)
 		}
 	}
 
+	bool district_completed = district_is_complete (tile, existing_district_id);
+
 	// For each district type
 	for (int dc = 0; dc < is->district_count; dc++) {
 
-		if (is->district_configs[dc].command == 0)
-			continue;
 		if ((is->district_configs[dc].command == UCV_Build_Neighborhood) && !is->current_config.enable_neighborhood_districts) continue;
 		if ((is->district_configs[dc].command == UCV_Build_WonderDistrict) && !is->current_config.enable_wonder_districts) continue;
 		if ((is->district_configs[dc].command == UCV_Build_DistributionHub) && !is->current_config.enable_distribution_hub_districts) continue;
 		if ((is->district_configs[dc].command == UCV_Build_Aerodrome) && !is->current_config.enable_aerodrome_districts) continue;
 
-		// Skip if this specific district type is already on the tile
-		{
-			int existing_district_id;
-			if (itable_look_up(&is->district_tile_map, (int)tile, &existing_district_id) && (existing_district_id == dc))
-				continue;
-		}
+		// Skip if this specific district type is already on the tile and done
+		if (existing_district_id == dc && district_completed)
+			continue;
+
+		// Skip if a different district type is under construction but not yet done
+		if ((existing_district_id >= 0) && (existing_district_id != dc) && (! district_completed))
+			continue;
 
 		// Skip if district is already nearby, unless allow_multiple is true
 		if (!is->district_configs[dc].allow_multiple) {
@@ -9464,7 +9498,14 @@ set_up_district_buttons (Main_GUI * this)
 			for (int k = 0; k < 4; k++)
 				free_button->Button.Images[k] = &is->district_btn_img_sets[dc].imgs[k];
 			free_button->Button.field_664 = automate_button->Button.field_664;
-			Button_set_tooltip (&free_button->Button, __, (char *)is->district_configs[dc].tooltip);
+			if (mine_turns >= 0) {
+				char tooltip[256];
+				char const * turn_word = (mine_turns == 1) ? "turn" : "turns";
+				snprintf (tooltip, sizeof tooltip, "%s (%d %s)", is->district_configs[dc].tooltip, mine_turns, turn_word);
+				tooltip[(sizeof tooltip) - 1] = '\0';
+				Button_set_tooltip (&free_button->Button, __, tooltip);
+			} else
+				Button_set_tooltip (&free_button->Button, __, (char *)is->district_configs[dc].tooltip);
 			free_button->Button.field_5FC[13] = 0;
 			free_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&free_button->Button, __, 0);
 		}
@@ -9971,6 +10012,8 @@ issue_district_worker_command (Unit * unit, int command)
 			// "A District already exists here. Removing it will destroy buildings dependent on it. Are you sure you want to proceed?" OR
 			// "A District exists here, but another of the same District is nearby so no dependent buildings will be lost. Do you want to proceed?"
 			PopupForm * popup = get_popup_form ();
+			set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
+			set_popup_str_param (1, (char*)is->district_configs[district_id].name, -1, -1);
 			popup->vtable->set_text_key_and_flags (
 				popup, __, is->mod_script_path, 
 				would_lose_buildings
@@ -9996,9 +10039,9 @@ issue_district_worker_command (Unit * unit, int command)
 			unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
 			unsigned int removable_flags = overlay_flags & 0xfc;
 
-			// "An improvement already exists here. Are you sure you want to remove it and build a District?"
 			if (removable_flags != 0) {
 				PopupForm * popup = get_popup_form ();
+				set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
 				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_BUILD_DISTRICT_OVER_IMPROVEMENT", -1, 0, 0, 0);
 				int sel = patch_show_popup (popup, __, 0, 0);
 				if (sel != 0)
@@ -10017,6 +10060,7 @@ issue_district_worker_command (Unit * unit, int command)
 
 		int pseudo_command = UCV_Build_Mine;
 		Unit_set_state(unit, __, UnitState_Build_Mines);
+		unit->Body.Job_ID = WJ_Build_Mines;
 	}
 }
 
@@ -10157,6 +10201,8 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 					bool would_lose_buildings = any_nearby_city_would_lose_district_benefits(district_id, civ_id, tile_x, tile_y);
 
 					PopupForm * popup = get_popup_form();
+					set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
+					set_popup_str_param (1, (char*)is->district_configs[district_id].name, -1, -1);
 					popup->vtable->set_text_key_and_flags(
 						popup, __, is->mod_script_path,
 						would_lose_buildings
@@ -16905,7 +16951,8 @@ get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 			Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
 			int district_id;
 			if ((tile != NULL) && (tile != p_null_tile) && itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
-				strncpy (out_str, "Building District", str_capacity);
+				char const * district_name = is->district_configs[district_id].name;
+				snprintf (out_str, str_capacity, "Building %s", district_name);
 				out_str[str_capacity - 1] = '\0';
 				return true;
 			}
@@ -19937,7 +19984,9 @@ patch_Unit_select (Unit * this)
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
 		if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) && ! district_is_complete (tile, district_id)) {
 			PopupForm * popup = get_popup_form ();
-			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_CANCEL_TERRAFORM", -1, 0, 0, 0);
+			set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_CANCEL_BUILD_DISTRICT", -1, 0, 0, 0);
+			
 			int sel = patch_show_popup (popup, __, 0, 0);
 			if (sel == 0) {
 				itable_remove (&is->district_tile_map, (int)tile);

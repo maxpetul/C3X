@@ -820,4 +820,5 @@ define,    0x5660E0,    0x0,        0x0,        "Leader_get_food_cost_factor",  
 define,    0x427540,    0x0,        0x0,        "City_get_size_class",               "int (__fastcall *) (City *this)"
 inlead,    0x5B39A0,    0x0,        0x0,        "is_not_pop_capped_or_starving",     "bool (__cdecl *) (City * city, int edx)"    
 inlead,    0x4068E0,    0x0,        0x0,        "set_worker_animation",               "void (__fastcall *) (void *this, int edx, Unit *unit, int job_id)"
+define,    0x5C66D0,    0x0,        0x0,        "get_worker_remaining_turns_to_complete", "int (__fastcall *) (Unit *this, int job_id)"
 define,    0x55EAE0,    0x0,        0x0,        "Leader_can_offer_resource_to_civ",   "bool (__fastcall *) (Leader *this, int param_1, int param_2, int param_3, int param_4, int param_5)"
