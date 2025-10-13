@@ -511,6 +511,7 @@ struct district_config {
 
 struct wonder_district_config {
 	char const * wonder_name;
+	char const * img_path;
 	int index,
 		img_row,
 		img_column,

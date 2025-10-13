@@ -144,7 +144,7 @@ No
 
 #C3X_CONFIRM_CANCEL_BUILD_DISTRICT
 #advisor Domestic
-This worker has been ordered to build a $DISTRICT0. Do you want them to stop?
+This worker has been ordered to build a $DISTRICT0 and will be done in $NUM1 turns. Do you want them to stop?
 #itemlist
 Yes. There is more important work to do.
 No. Carry on.

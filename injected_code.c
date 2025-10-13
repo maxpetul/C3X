@@ -3267,6 +3267,11 @@ free_dynamic_wonder_config (struct wonder_district_config * cfg)
 		cfg->wonder_name = NULL;
 	}
 
+	if (cfg->img_path != NULL) {
+		free ((void *)cfg->img_path);
+		cfg->img_path = NULL;
+	}
+
 	memset (cfg, 0, sizeof *cfg);
 }
 
@@ -4113,11 +4118,13 @@ load_dynamic_district_configs (void)
 
 struct parsed_wonder_definition {
 	char * name;
+	char * img_path;
 	int img_row;
 	int img_column;
 	int img_construct_row;
 	int img_construct_column;
 	bool has_name;
+	bool has_img_path;
 	bool has_img_row;
 	bool has_img_column;
 	bool has_img_construct_row;
@@ -4136,6 +4143,11 @@ free_parsed_wonder_definition (struct parsed_wonder_definition * def)
 	if (def->name != NULL) {
 		free (def->name);
 		def->name = NULL;
+	}
+
+	if (def->img_path != NULL) {
+		free (def->img_path);
+		def->img_path = NULL;
 	}
 
 	init_parsed_wonder_definition (def);
@@ -4162,6 +4174,7 @@ add_dynamic_wonder_from_definition (struct parsed_wonder_definition * def, int s
 	new_cfg.index = dest;
 	new_cfg.is_dynamic = true;
 	new_cfg.wonder_name = strdup (def->name);
+	new_cfg.img_path = (def->img_path != NULL) ? strdup (def->img_path) : strdup ("Wonders.pcx");
 	new_cfg.img_row = def->img_row;
 	new_cfg.img_column = def->img_column;
 	new_cfg.img_construct_row = def->img_construct_row;
@@ -4262,6 +4275,25 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			} else {
 				def->name = name_copy;
 				def->has_name = true;
+			}
+		}
+
+	} else if (slice_matches_str (key, "img_path")) {
+		if (def->img_path != NULL) {
+			free (def->img_path);
+			def->img_path = NULL;
+		}
+
+		struct string_slice unquoted = trim_string_slice (value, 1);
+		if (unquoted.len == 0) {
+			def->has_img_path = false;
+		} else {
+			char * path_copy = extract_slice (&unquoted);
+			if (path_copy == NULL) {
+				def->has_img_path = false;
+			} else {
+				def->img_path = path_copy;
+				def->has_img_path = true;
 			}
 		}
 
@@ -7789,25 +7821,50 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 			}
 		}
 
-		// Load wonder district images (single-sheet) for this hour
+		// Load wonder district images (dynamically per wonder) for this hour
 		if (is->current_config.enable_wonder_districts) {
+			char const * last_img_path = NULL;
 			PCX_Image wpcx;
 			PCX_Image_construct (&wpcx);
-			read_in_dir (&wpcx, districts_hour_dir, "Wonders.pcx", NULL);
-			if (wpcx.JGL.Image != NULL) {
-				for (int wi = 0; wi < is->wonder_district_count; wi++) {
-					Sprite_construct (&this->Wonder_District_Images[wi].img);
-					int x = 128 * is->wonder_district_configs[wi].img_column;
-					int y =  64 * is->wonder_district_configs[wi].img_row;
-					Sprite_slice_pcx (&this->Wonder_District_Images[wi].img, __, &wpcx, x, y, 128, 64, 1, 1);
+			bool pcx_loaded = false;
 
-					Sprite_construct (&this->Wonder_District_Images[wi].construct_img);
-					int cx = 128 * is->wonder_district_configs[wi].img_construct_column;
-					int cy =  64 * is->wonder_district_configs[wi].img_construct_row;
-					Sprite_slice_pcx (&this->Wonder_District_Images[wi].construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
+			for (int wi = 0; wi < is->wonder_district_count; wi++) {
+				char const * img_path = is->wonder_district_configs[wi].img_path;
+				if (img_path == NULL)
+					img_path = "Wonders.pcx";
+
+				// Load new image file if different from previous
+				if ((last_img_path == NULL) || (strcmp (img_path, last_img_path) != 0)) {
+					if (pcx_loaded)
+						wpcx.vtable->clear_JGL (&wpcx);
+
+					read_in_dir (&wpcx, districts_hour_dir, img_path, NULL);
+
+					if (wpcx.JGL.Image == NULL) {
+						pcx_loaded = false;
+						continue;
+					}
+
+					pcx_loaded = true;
+					last_img_path = img_path;
 				}
-				wpcx.vtable->clear_JGL (&wpcx);
+
+				if (! pcx_loaded)
+					continue;
+
+				Sprite_construct (&this->Wonder_District_Images[wi].img);
+				int x = 128 * is->wonder_district_configs[wi].img_column;
+				int y =  64 * is->wonder_district_configs[wi].img_row;
+				Sprite_slice_pcx (&this->Wonder_District_Images[wi].img, __, &wpcx, x, y, 128, 64, 1, 1);
+
+				Sprite_construct (&this->Wonder_District_Images[wi].construct_img);
+				int cx = 128 * is->wonder_district_configs[wi].img_construct_column;
+				int cy =  64 * is->wonder_district_configs[wi].img_construct_row;
+				Sprite_slice_pcx (&this->Wonder_District_Images[wi].construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
 			}
+
+			if (pcx_loaded)
+				wpcx.vtable->clear_JGL (&wpcx);
 			wpcx.vtable->destruct (&wpcx, __, 0);
 		}
 	}
@@ -10121,7 +10178,7 @@ issue_district_worker_command (Unit * unit, int command)
 
 		int pseudo_command = UCV_Build_Mine;
 		Unit_set_state(unit, __, UnitState_Build_Mines);
-		unit->Body.Job_ID = WJ_Build_Mines;
+		unit->Body.Job_ID = 0;
 	}
 }
 
@@ -19730,35 +19787,53 @@ init_district_images ()
 			pcx.vtable->clear_JGL (&pcx);
 		}
 	}
-	// Load wonder district images (single-sheet)
+	// Load wonder district images (dynamically per wonder)
 	if (is->current_config.enable_wonder_districts) {
+		char const * last_img_path = NULL;
 		PCX_Image wpcx;
 		PCX_Image_construct (&wpcx);
-		snprintf(art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, "Wonders.pcx");
-		//snprintf (ss, sizeof ss, "init_district_images: loading wonder district images from %s", art_dir);
-		//pop_up_in_game_error (ss);
-		PCX_Image_read_file (&wpcx, __, art_dir, NULL, 0, 0x100, 2);
-		if (wpcx.JGL.Image != NULL) {
-			for (int wi = 0; wi < is->wonder_district_count; wi++) {
+		bool pcx_loaded = false;
 
-				//snprintf (ss, sizeof ss, "init_district_images: loading wonder district %d, img row %d, column %d", wi, is->wonder_district_configs[wi].img_row, is->wonder_district_configs[wi].img_column);
-				//pop_up_in_game_error (ss);
+		for (int wi = 0; wi < is->wonder_district_count; wi++) {
+			char const * img_path = is->wonder_district_configs[wi].img_path;
+			if (img_path == NULL)
+				img_path = "Wonders.pcx";
 
-				Sprite_construct (&is->wonder_district_img_sets[wi].img);
-				int x = 128 * is->wonder_district_configs[wi].img_column;
-				int y =  64 * is->wonder_district_configs[wi].img_row;
-				Sprite_slice_pcx (&is->wonder_district_img_sets[wi].img, __, &wpcx, x, y, 128, 64, 1, 1);
+			// Load new image file if different from previous
+			if ((last_img_path == NULL) || (strcmp (img_path, last_img_path) != 0)) {
+				if (pcx_loaded)
+					wpcx.vtable->clear_JGL (&wpcx);
 
-				Sprite_construct (&is->wonder_district_img_sets[wi].construct_img);
-				int cx = 128 * is->wonder_district_configs[wi].img_construct_column;
-				int cy =  64 * is->wonder_district_configs[wi].img_construct_row;
-				Sprite_slice_pcx (&is->wonder_district_img_sets[wi].construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
+				snprintf(art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, img_path);
+				PCX_Image_read_file (&wpcx, __, art_dir, NULL, 0, 0x100, 2);
+
+				if (wpcx.JGL.Image == NULL) {
+					snprintf (ss, sizeof ss, "init_district_images: failed to load wonder district images from %s", art_dir);
+					pop_up_in_game_error (ss);
+					pcx_loaded = false;
+					continue;
+				}
+
+				pcx_loaded = true;
+				last_img_path = img_path;
 			}
-			wpcx.vtable->clear_JGL (&wpcx);
-		} else {
-			snprintf (ss, sizeof ss, "init_district_images: failed to load wonder district images from %s", art_dir);
-			pop_up_in_game_error (ss);
+
+			if (! pcx_loaded)
+				continue;
+
+			Sprite_construct (&is->wonder_district_img_sets[wi].img);
+			int x = 128 * is->wonder_district_configs[wi].img_column;
+			int y =  64 * is->wonder_district_configs[wi].img_row;
+			Sprite_slice_pcx (&is->wonder_district_img_sets[wi].img, __, &wpcx, x, y, 128, 64, 1, 1);
+
+			Sprite_construct (&is->wonder_district_img_sets[wi].construct_img);
+			int cx = 128 * is->wonder_district_configs[wi].img_construct_column;
+			int cy =  64 * is->wonder_district_configs[wi].img_construct_row;
+			Sprite_slice_pcx (&is->wonder_district_img_sets[wi].construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
 		}
+
+		if (pcx_loaded)
+			wpcx.vtable->clear_JGL (&wpcx);
 		wpcx.vtable->destruct (&wpcx, __, 0);
 	}
 
@@ -20045,7 +20120,9 @@ patch_Unit_select (Unit * this)
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
 		if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) && ! district_is_complete (tile, district_id)) {
 			PopupForm * popup = get_popup_form ();
+			int remaining_turns = get_worker_remaining_turns_to_complete (this, 0);
 			set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
+			set_popup_int_param (1, remaining_turns);
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_CANCEL_BUILD_DISTRICT", -1, 0, 0, 0);
 			
 			int sel = patch_show_popup (popup, __, 0, 0);
