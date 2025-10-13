@@ -19887,6 +19887,17 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
     Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 }
 
+bool __fastcall
+patch_Tile_has_city_or_district (Tile * this)
+{
+	bool has_city = Tile_has_city (this);
+	if (is->current_config.enable_districts) {
+		int district_id;
+		return has_city || itable_look_up (&is->district_tile_map, (int)this, &district_id);
+	}
+	return has_city;
+}
+
 int __fastcall
 patch_Tile_check_water_for_navigator_cell_coloring (Tile * this)
 {
