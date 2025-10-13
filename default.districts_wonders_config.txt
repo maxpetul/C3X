@@ -5,3 +5,11 @@ img_construct_row    = 0
 img_construct_column = 0
 img_row              = 0
 img_column           = 1
+
+#Wonder
+name                 = The Hanging Gardens
+img_path             = Wonders.pcx
+img_construct_row    = 0
+img_construct_column = 2
+img_row              = 0
+img_column           = 3
