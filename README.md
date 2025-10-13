@@ -219,6 +219,8 @@ img_column           = 1
 
 Wonder art entries (both under construction and completed, separate slots) are by default configured in the file [`./Art/Districts/1200/Wonders.PCX`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/Art/Districts/1200/Wonders.PCX).
 
+<img width="1019" height="508" alt="image" src="https://github.com/user-attachments/assets/5ecfe42b-bd41-4a3a-b751-87ddd3dd0b9c" />
+
 As with Districts configuration, you can specify `default.districts_wonders_config.txt`, `custom.districts_wonders_config.txt`, and `scenario.districts_wonders_config.txt` files, which are checked in that order.
 
 AI workers are triggered to build Wonder Districts in generally the same workflow as Standard Districts, based on when an AI city chooses a Wonder, triggering a worker to build a Wonder District. The only difference is that unlike Standard Districts, Wonders are specifically ["remembered"](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L10907) and [city production set to building the Wonder as soon as the Wonder District is completed](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L4434-L4448).
