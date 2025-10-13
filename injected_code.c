@@ -5282,7 +5282,7 @@ city_has_required_district (City * city, int district_id)
 }
 
 bool
-city_has_incomplete_wonder_district (City * city)
+city_has_wonder_district_with_no_completed_wonder (City * city)
 {
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
 		return false;
@@ -5292,7 +5292,7 @@ city_has_incomplete_wonder_district (City * city)
 		return false;
 
 	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] city_has_incomplete_wonder_district: city=%p\n", (void*)city);
+	snprintf (ss, sizeof ss, "[C3X] city_has_wonder_district_with_no_completed_wonder: city=%p\n", (void*)city);
 	(*p_OutputDebugStringA) (ss);
 
 	int civ_id = city->Body.CivID;
@@ -5305,7 +5305,8 @@ city_has_incomplete_wonder_district (City * city)
 
 		int mapped_id;
 		if (itable_look_up (&is->district_tile_map, (int)candidate, &mapped_id) &&
-		    (mapped_id == wonder_district_id)) {
+		    (mapped_id == wonder_district_id) &&
+			(district_is_complete (candidate, wonder_district_id))) {
 			// Check if the wonder district is already complete (has a wonder built on it)
 			if (itable_look_up_or (&is->wonder_district_tile_map, (int)candidate, -1) >= 0)
 				continue; // This wonder district is complete, skip it
@@ -5315,7 +5316,7 @@ city_has_incomplete_wonder_district (City * city)
 		}
 	}
 
-	snprintf (ss, sizeof ss, "[C3X] city_has_incomplete_wonder_district: City does not have incomplete wonder district\n");
+	snprintf (ss, sizeof ss, "[C3X] city_has_wonder_district_with_no_completed_wonder: City does not have incomplete wonder district\n");
 	(*p_OutputDebugStringA) (ss);
 
 	return false;
@@ -6058,7 +6059,7 @@ city_requires_district_for_improvement (City * city, int improv_id, int * out_di
 		int wonder_district_id = get_wonder_district_id ();
 		if ((wonder_district_id >= 0) &&
 		    (district_id == wonder_district_id)) {
-			if (city_has_incomplete_wonder_district (city))
+			if (city_has_wonder_district_with_no_completed_wonder (city))
 				return false;
 			if (out_district_id != NULL)
 				*out_district_id = district_id;
@@ -6273,16 +6274,19 @@ handle_district_destroyed_by_attack (Tile * tile, int tile_x, int tile_y, bool l
 		snprintf (ss, sizeof ss, "handle_district_destroyed_by_attack: district_id=%d", district_id);
 		(*p_OutputDebugStringA) (ss);
 
-		// If this is a Wonder District with a completed wonder image and wonders can't be destroyed, ignore
+		// If this is a Wonder District with a completed wonder image and wonders can't be destroyed, restore overlay and keep district
 		if (is->current_config.enable_wonder_districts) {
 			int wonder_district_id = get_wonder_district_id ();
 			if ((district_id == wonder_district_id) &&
 			    itable_look_up_or (&is->wonder_district_tile_map, (int)tile, -1) >= 0 &&
 			    (! is->current_config.completed_wonder_districts_can_be_destroyed)) {
-					snprintf (ss, sizeof ss, "handle_district_destroyed_by_attack: district_id=%d is a wonder district and cannot be destroyed", district_id);
-					(*p_OutputDebugStringA) (ss);
-					return;
-				}
+				snprintf (ss, sizeof ss, "handle_district_destroyed_by_attack: preserving wonder district_id=%d", district_id);
+				(*p_OutputDebugStringA) (ss);
+				unsigned int overlays = tile->vtable->m42_Get_Overlays (tile, __, 0);
+				if ((overlays & TILE_FLAG_MINE) == 0)
+					tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
+				return;
+			}
 		}
 		snprintf (ss, sizeof ss, "handle_district_destroyed_by_attack: Removing district_id=%d", district_id);
 		(*p_OutputDebugStringA) (ss);
@@ -9342,6 +9346,7 @@ set_up_stack_bombard_buttons (Main_GUI * this)
 }
 
 bool __fastcall patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value);
+bool __fastcall patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y);
 
 void
 init_district_command_buttons ()
@@ -9837,7 +9842,6 @@ is_district_command (int unit_command_value)
 bool __fastcall
 patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 {
-	char ss[200];
 	if (is->current_config.enable_districts) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
 		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
@@ -9864,9 +9868,47 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 		enum UnitTypeClasses class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
 		return ((class != UTC_Land) || (! tile->vtable->m35_Check_Is_Water (tile))) &&
 			Unit_can_perform_command (this, __, unit_command_value);
-	} 
+	}
+
+	if ((unit_command_value == UCV_Pillage) &&
+	    ! patch_Unit_can_pillage (this, __, this->Body.X, this->Body.Y)) {
+		return false;
+	}
 	
 	return Unit_can_perform_command (this, __, unit_command_value);
+}
+
+bool __fastcall
+patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y)
+{
+	bool base = Unit_can_pillage (this, __, tile_x, tile_y);
+	if (! base)
+		return false;
+
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_wonder_districts ||
+	    is->current_config.completed_wonder_districts_can_be_destroyed)
+		return true;
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return true;
+
+	int district_id;
+	if (! itable_look_up (&is->district_tile_map, (int)tile, &district_id))
+		return true;
+
+	int wonder_district_id = get_wonder_district_id ();
+	if (district_id != wonder_district_id)
+		return true;
+
+	if (! district_is_complete (tile, district_id))
+		return true;
+
+	if (itable_look_up_or (&is->wonder_district_tile_map, (int)tile, -1) < 0)
+		return true;
+
+	return false;
 }
 
 bool __fastcall
@@ -10180,8 +10222,6 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 					int civ_id = unit->Body.CivID;
 					bool would_lose_buildings = any_nearby_city_would_lose_district_benefits(district_id, civ_id, tile_x, tile_y);
 
-					// "A District exists here with dependent buildings. Are you sure you want to proceed? Doing so will remove any dependent buildings." OR
-					// "A District exists here, but another of the same District is nearby so no dependent buildings will be lost. Do you want to build proceed?"
 					PopupForm * popup = get_popup_form();
 					popup->vtable->set_text_key_and_flags(
 						popup, __, is->mod_script_path,
@@ -11789,7 +11829,7 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 		Improvement * improv = &p_bic_data->Improvements[i_improv];
 		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
 			// Can only build wonders if an incomplete wonder district exists
-			if (! city_has_incomplete_wonder_district (this))
+			if (! city_has_wonder_district_with_no_completed_wonder (this))
 				return false;
 		}
 	}
@@ -11838,7 +11878,7 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 		if (is->current_config.enable_wonder_districts) {
 			Improvement * improv = &p_bic_data->Improvements[out->OrderID];
 			if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) &&
-			    (! city_has_incomplete_wonder_district (this))) {
+			    (! city_has_wonder_district_with_no_completed_wonder (this))) {
 				needs_wonder_district = true;
 				if (required_district_id < 0) {
 					int wonder_district_id = get_wonder_district_id ();
@@ -11861,7 +11901,7 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 					if (fallback_is_feasible && is->current_config.enable_wonder_districts) {
 						Improvement * fallback_improv = &p_bic_data->Improvements[stored->order.OrderID];
 						if ((fallback_improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) &&
-						    (! city_has_incomplete_wonder_district (this)))
+						    (! city_has_wonder_district_with_no_completed_wonder (this)))
 							fallback_is_feasible = false;
 					}
 				} else if (stored->order.OrderType == COT_Unit) {
@@ -15317,7 +15357,7 @@ patch_Leader_do_production_phase (Leader * this)
 				// Only check if this is a wonder AND it's configured to require a wonder district
 				if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0 &&
 				    find_wonder_config_index_by_improvement_id (i_improv) >= 0) {
-					if (! city_has_incomplete_wonder_district (city)) {
+					if (! city_has_wonder_district_with_no_completed_wonder (city)) {
 						// Switch production to another option
 						city->vtable->set_production_to_most_expensive_option (city);
 
@@ -15857,6 +15897,26 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 	int tile_y = y;
 
 	if (is->current_config.enable_districts) {
+
+		// Check if this is a completed wonder district that cannot be destroyed
+		if (is->current_config.enable_wonder_districts && 
+			!is->current_config.completed_wonder_districts_can_be_destroyed) {
+			wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+			target_tile = tile_at (tile_x, tile_y);
+			if ((target_tile != NULL) && (target_tile != p_null_tile)) {
+				int wonder_index = itable_look_up_or (&is->wonder_district_tile_map, (int)target_tile, -1);
+				if (wonder_index >= 0) {
+					// This tile has a completed wonder district and they can't be destroyed
+					if ((*p_human_player_bits & (1 << this->Body.CivID)) != 0) {
+						PopupForm * popup = get_popup_form ();
+						popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CANT_PILLAGE", -1, 0, 0, 0);
+						patch_show_popup (popup, __, 0, 0);
+					}
+					return;
+				}
+			}
+		}
+
 		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 		target_tile = tile_at (tile_x, tile_y);
 		if ((target_tile != NULL) && (target_tile != p_null_tile)) {
