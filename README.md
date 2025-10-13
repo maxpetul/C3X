@@ -94,7 +94,6 @@ Standard Districts are, well, standard. They may require a technology to be made
 - **Encampment** - allows Barracks, SAM Missile Battery. Enabled by Warrior Code
 
     <img width="258" height="130" alt="image" src="https://github.com/user-attachments/assets/41ca18ce-576e-458d-9059-1462898a11cc" />
-
     
 - **Campus** - allows Library, University, Research Lab. Enabled by Literature
 
@@ -120,7 +119,7 @@ Standard Districts are, well, standard. They may require a technology to be made
 
 ### Configuration
 
-Standard Districts are defined under [`./Districts/Config/Districts.txt`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/Districts/Config/Districts.txt) in the format:
+Standard Districts are defined in [`./default.districts_config.txt`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/default.districts_config.txt) in the format:
 
 ```
 #District
@@ -158,6 +157,8 @@ shield_bonus                 = 0
 ```
 
 Omitting fields is fine and leaves the default values.
+
+Just like using the standard `c3x_config.ini` files, you can specify `default.districts_config.txt`, `custom.districts_config.txt`, and `scenario.districts_config.txt` files, which are checked in that order.
 
 > Note that if `vary_img_by_culture` is set to 1 (true), you **must** have 5 PCX images in the order of: American, European, Roman, Mideast, Asian. For example:
 
@@ -204,18 +205,21 @@ Additionally, if you set `completed_wonder_districts_can_be_destroyed` to true, 
 
 <img width="457" height="339" alt="image" src="https://github.com/user-attachments/assets/7f1e6da2-4829-464b-9e93-de8960e7bf11" />
 
-Like Standard Districts, the Wonders which required a Wonder District can be configured under [`./Districts/Config/Wonders.txt`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/Districts/Config/Wonders.txt) in the format:
+Like Standard Districts, the Wonders which required a Wonder District can be configured in [`./default.districts_wonders_config.txt`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/default.districts_wonders_config.txt) in the format:
 
 ```
 #Wonder
-name                     = The Pyramids
-img_row                  = 0
-img_column               = 0
-img_construct_row        = 0
-img_construct_column     = 1
+name                 = The Pyramids
+img_path             = Wonders.pcx
+img_construct_row    = 0
+img_construct_column = 0
+img_row              = 0
+img_column           = 1
 ```
 
-Wonder art entries (both under construction and completed, separate slots) can be configured in the file [`./Art/Districts/1200/Wonders.PCX`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/Art/Districts/1200/Wonders.PCX).
+Wonder art entries (both under construction and completed, separate slots) are by default configured in the file [`./Art/Districts/1200/Wonders.PCX`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/Art/Districts/1200/Wonders.PCX).
+
+As with Districts configuration, you can specify `default.districts_wonders_config.txt`, `custom.districts_wonders_config.txt`, and `scenario.districts_wonders_config.txt` files, which are checked in that order.
 
 AI workers are triggered to build Wonder Districts in generally the same workflow as Standard Districts, based on when an AI city chooses a Wonder, triggering a worker to build a Wonder District. The only difference is that unlike Standard Districts, Wonders are specifically ["remembered"](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L10907) and [city production set to building the Wonder as soon as the Wonder District is completed](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L4434-L4448).
 
