@@ -2819,63 +2819,27 @@ tile_has_enemy_unit (Tile * tile, int civ_id)
 }
 
 void
-compute_distribution_hub_yields (struct distribution_hub_record * rec, City * anchor_city)
+recompute_distribution_hub_yields (struct distribution_hub_record * rec, City * anchor_city)
 {
 	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] compute_distribution_hub_yields: rec=%p anchor_city=%p\n", (void*)rec, (void*)anchor_city);
+	snprintf (ss, sizeof ss, "[C3X] recompute_distribution_hub_yields: rec=%p anchor_city=%p\n", (void*)rec, (void*)anchor_city);
 	(*p_OutputDebugStringA) (ss);
 
-	if ((rec == NULL) || (anchor_city == NULL)) {
-		if (rec != NULL) {
-			rec->food_yield = 0;
-			rec->shield_yield = 0;
-			rec->raw_food_yield = 0;
-			rec->raw_shield_yield = 0;
-			rec->is_active = false;
-		}
+	if (rec == NULL)
 		return;
-	}
 
 	Tile * tile = tile_at (rec->tile_x, rec->tile_y);
-	if ((tile == NULL) || (tile == p_null_tile)) {
-		rec->food_yield = 0;
-		rec->shield_yield = 0;
-		rec->raw_food_yield = 0;
-		rec->raw_shield_yield = 0;
-		rec->is_active = false;
-		return;
-	}
-
 	rec->tile = tile;
 	int district_id = DISTRIBUTION_HUB_DISTRICT_ID;
-	if ((district_id < 0) || ! district_is_complete (tile, district_id)) {
-		rec->food_yield = 0;
-		rec->shield_yield = 0;
-		rec->raw_food_yield = 0;
-		rec->raw_shield_yield = 0;
-		rec->is_active = false;
-		return;
-	}
 
-	if (tile->vtable->m20_Check_Pollution (tile, __, 0)) {
-		rec->food_yield = 0;
-		rec->shield_yield = 0;
-		rec->raw_food_yield = 0;
-		rec->raw_shield_yield = 0;
-		rec->is_active = false;
-		return;
-	}
-
-	if (tile_has_enemy_unit (tile, rec->civ_id)) {
-		rec->food_yield = 0;
-		rec->shield_yield = 0;
-		rec->raw_food_yield = 0;
-		rec->raw_shield_yield = 0;
-		rec->is_active = false;
-		return;
-	}
-
-	if (! distribution_hub_has_road_connection_to_anchor (tile, anchor_city, rec->civ_id)) {
+	if ((anchor_city == NULL) ||
+	    (tile == NULL) ||
+	    (tile == p_null_tile) ||
+	    (district_id < 0) ||
+	    ! district_is_complete (tile, district_id) ||
+	    tile->vtable->m20_Check_Pollution (tile, __, 0) ||
+	    tile_has_enemy_unit (tile, rec->civ_id) ||
+	    ! distribution_hub_has_road_connection_to_anchor (tile, anchor_city, rec->civ_id)) {
 		rec->food_yield = 0;
 		rec->shield_yield = 0;
 		rec->raw_food_yield = 0;
@@ -2926,20 +2890,20 @@ compute_distribution_hub_yields (struct distribution_hub_record * rec, City * an
 		rec->is_active = City_has_trade_connection_to_capital (anchor_city);
 }
 
-void recalculate_distribution_hub_totals ();
+void recompute_distribution_hub_totals ();
 
 void
-recalculate_distribution_hub_totals_if_needed (void)
+recompute_distribution_hub_totals_if_needed (void)
 {
 	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] recalculate_distribution_hub_totals_if_needed: dirty=%d\n", is->distribution_hub_totals_dirty);
+	snprintf (ss, sizeof ss, "[C3X] recompute_distribution_hub_totals_if_needed: dirty=%d\n", is->distribution_hub_totals_dirty);
 	(*p_OutputDebugStringA) (ss);
 	if ((is->distribution_hub_last_food_divisor != is->current_config.distribution_hub_food_yield_divisor) ||
 	    (is->distribution_hub_last_shield_divisor != is->current_config.distribution_hub_shield_yield_divisor))
 		is->distribution_hub_totals_dirty = true;
 
 	if (is->distribution_hub_totals_dirty)
-		recalculate_distribution_hub_totals ();
+		recompute_distribution_hub_totals ();
 }
 
 void
@@ -2958,7 +2922,7 @@ remove_distribution_hub_record (Tile * tile)
 	itable_remove (&is->distribution_hub_records, (int)tile);
 	free (rec);
 	is->distribution_hub_totals_dirty = true;
-	recalculate_distribution_hub_totals_if_needed ();
+	recompute_distribution_hub_totals_if_needed ();
 
 	// Recalculate yields for all cities of this civ
 	if ((affected_civ_id >= 0) && (p_cities->Cities != NULL)) {
@@ -2971,10 +2935,10 @@ remove_distribution_hub_record (Tile * tile)
 }
 
 void
-recalculate_distribution_hub_totals ()
+recompute_distribution_hub_totals ()
 {
 	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] recalculate_distribution_hub_totals: count=%d\n", is->distribution_hub_records.len);
+	snprintf (ss, sizeof ss, "[C3X] recompute_distribution_hub_totals: count=%d\n", is->distribution_hub_records.len);
 	(*p_OutputDebugStringA) (ss);
 
 	is->distribution_hub_last_food_divisor = is->current_config.distribution_hub_food_yield_divisor;
@@ -3038,7 +3002,7 @@ recalculate_distribution_hub_totals ()
 		City * anchor = find_city_for_distribution_hub (rec);
 		if (anchor != NULL)
 			rec->city_id = anchor->Body.ID;
-		compute_distribution_hub_yields (rec, anchor);
+		recompute_distribution_hub_yields (rec, anchor);
 		if (rec->is_active &&
 		    (rec->civ_id >= 0) &&
 		    (rec->civ_id < is->distribution_hub_civ_capacity)) {
@@ -3120,9 +3084,9 @@ on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city)
 	City * anchor_city = (city != NULL) ? city : find_city_for_distribution_hub (rec);
 	if (anchor_city != NULL)
 		rec->city_id = anchor_city->Body.ID;
-	compute_distribution_hub_yields (rec, anchor_city);
+	recompute_distribution_hub_yields (rec, anchor_city);
 	is->distribution_hub_totals_dirty = true;
-	recalculate_distribution_hub_totals_if_needed ();
+	recompute_distribution_hub_totals_if_needed ();
 
 	// Recalculate yields for all cities of this civ
 	int affected_civ_id = rec->civ_id;
@@ -6610,7 +6574,7 @@ patch_City_recompute_yields_and_happiness (City * this, int edx)
 
 	if (is->current_config.enable_distribution_hub_districts && (is->distribution_hub_records.len > 0))
 		is->distribution_hub_totals_dirty = true;
-	recalculate_distribution_hub_totals_if_needed ();
+	recompute_distribution_hub_totals_if_needed ();
 
 	int bonus_food = 0;
 	int bonus_production = 0;
