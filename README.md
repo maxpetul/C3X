@@ -12,7 +12,7 @@ The goal of C3X Districts is to **make the Civ 3 map feel more alive and interes
 
 Districts are buildable by Workers, like any other build action:
 
-<img width="405" height="403" alt="image" src="https://github.com/user-attachments/assets/784221c3-bfd6-4089-94ae-a28acfd79c6c" />
+<img width="388" height="387" alt="image" src="https://github.com/user-attachments/assets/c5637371-8063-4c9c-aa5c-86e8ad4e8e6d" />
 
 The core purpose of a District is to enable one or more city improvements (buildings). A Barracks, for example, may require an Encampment District in a city's work radius before they can be built. Once you do so, the Barracks appear within the Encampment:
 
