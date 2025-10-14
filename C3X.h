@@ -316,6 +316,8 @@ struct c3x_config {
 	int distribution_hub_food_yield_divisor;
 	int distribution_hub_shield_yield_divisor;
 	int ai_ideal_distribution_hub_count_per_100_cities;
+
+	bool ai_defends_districts;
 };
 
 enum stackable_command {

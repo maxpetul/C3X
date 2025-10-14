@@ -8306,6 +8306,7 @@ patch_init_floating_point ()
 		{"cities_with_mutual_district_receive_buildings"       , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
 		{"cities_with_mutual_district_receive_wonders"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
         {"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
+		{"ai_defends_districts"         		               , false, offsetof (struct c3x_config, ai_defends_districts)},
 	};
 
 	struct integer_config_option {
@@ -13427,15 +13428,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	} else
 		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
 
-	// Debug logging for wonder removal
-	if (! add && (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder))) {
-		char ss[200];
-		snprintf (ss, sizeof ss, "[C3X] Wonder removal: improv_id=%d add=%d is_placing=%d\n",
-			improv_id, add, is->is_placing_scenario_things);
-		(*p_OutputDebugStringA) (ss);
-	}
-
-	if (is_wonder_removal) {
+	if (is_wonder_removal && ((improv->Characteristics & ITC_Wonder) != 0)) {
 		if (is->current_config.destroyed_wonders_can_be_rebuilt)
 			set_wonder_built_flag (improv_id, false);
 
@@ -20420,6 +20413,172 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 		Sprite_draw (&is->distribution_hub_production_icon, __, (PCX_Image *)canvas, x, y, NULL);
 		x_offset += spacing;
 	}
+}
+
+bool
+district_tile_needs_defense (Tile * tile, int tile_x, int tile_y, int district_id, int civ_id, int work_radius)
+{
+	if ((tile == NULL) || (tile == p_null_tile)) return false;
+	if (! district_is_complete (tile, district_id)) return false;
+	if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id) return false;
+
+	// Check if already has enough defenders (less than 2 for most, less than 3 for airfields)
+	int defender_count = count_units_at (tile_x, tile_y, UF_DEFENDER_VIS_TO_A_OF_CLASS_B, civ_id, 0, -1);
+	int max_defenders = (district_id == AERODROME_DISTRICT_ID) ? 3 : 2;
+	if (defender_count >= max_defenders)
+		return false;
+
+	// Wonder districts always needs defense if can be destroyed
+	if (district_id == WONDER_DISTRICT_ID && is->current_config.completed_wonder_districts_can_be_destroyed)
+		return true;
+
+	// For other districts: check if enemies or border territory nearby
+	bool threat_nearby = false;
+	for (int dx = -work_radius; dx <= work_radius && !threat_nearby; dx++) {
+		for (int dy = -work_radius; dy <= work_radius && !threat_nearby; dy++) {
+			if (dx == 0 && dy == 0)
+				continue;
+
+			int check_x = Map_wrap_horiz (&p_bic_data->Map, __, tile_x + dx);
+			int check_y = Map_wrap_vert (&p_bic_data->Map, __, tile_y + dy);
+
+			if ((check_x < 0) || (check_x >= p_bic_data->Map.Width) ||
+			    (check_y < 0) || (check_y >= p_bic_data->Map.Height))
+				continue;
+
+			Tile * check_tile = tile_at (check_x, check_y);
+			if ((check_tile == NULL) || (check_tile == p_null_tile))
+				continue;
+
+			// Check for enemy territory
+			int territory_owner = check_tile->vtable->m38_Get_Territory_OwnerID (check_tile);
+			if ((territory_owner != 0) && (territory_owner != civ_id)) {
+				threat_nearby = true;
+				break;
+			}
+
+			// Check for enemy units
+			if (get_tile_occupier_id (check_x, check_y, civ_id, true) != -1) {
+				threat_nearby = true;
+				break;
+			}
+		}
+	}
+
+	return threat_nearby;
+}
+
+// Patch seek_colony to actively search for undefended districts
+int __fastcall
+patch_Unit_seek_colony (Unit * this, int edx, bool for_own_defense, int max_distance)
+{
+	// Only intercept if defending own assets and districts are enabled
+	if (!for_own_defense ||
+	    !is->current_config.enable_districts ||
+	    !is->current_config.ai_defends_districts)
+		return Unit_seek_colony (this, __, for_own_defense, max_distance);
+
+	int civ_id = this->Body.CivID;
+	int unit_x = this->Body.X;
+	int unit_y = this->Body.Y;
+
+	Tile * current_tile = tile_at (unit_x, unit_y);
+	if ((current_tile == NULL) || (current_tile == p_null_tile))
+		return Unit_seek_colony (this, __, for_own_defense, max_distance);
+
+	int continent_id = current_tile->vtable->m46_Get_ContinentID (current_tile);
+
+	int best_x = -1;
+	int best_y = -1;
+	int best_score = 0;
+	int best_path_length = 9999;
+
+	// Priority 1: Wonder districts (if can be destroyed)
+	if (is->current_config.enable_wonder_districts &&
+	    is->current_config.completed_wonder_districts_can_be_destroyed) {
+
+		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+			Tile * district_tile = (Tile *)tei.key;
+			int district_id = tei.value;
+			if (district_id != WONDER_DISTRICT_ID) continue;
+			int tile_x, tile_y;
+			if (! tile_coords_from_ptr (&p_bic_data->Map, district_tile, &tile_x, &tile_y)) continue;
+			int tile_continent = district_tile->vtable->m46_Get_ContinentID (district_tile);
+			if (tile_continent != continent_id) continue;
+			if (! district_tile_needs_defense (district_tile, tile_x, tile_y, district_id, civ_id, 5)) continue;
+
+			// Try to set path
+			int path_length;
+			int path_result = Trade_Net_set_unit_path (is->trade_net, __, unit_x, unit_y, tile_x, tile_y,
+			                                            this, civ_id, 0x81, &path_length);
+			if (path_result <= 0)
+				continue;
+
+			// Wonder districts are highest priority - score 1000 base, minus distance
+			int score = 1000 - path_length;
+			if (score > best_score) {
+				best_score = score;
+				best_x = tile_x;
+				best_y = tile_y;
+				best_path_length = path_length;
+			}
+		}
+	}
+
+	// Priority 2: Other districts near threats (if no wonder district found)
+	if (best_x < 0) {
+		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+			Tile * district_tile = (Tile *)tei.key;
+			int district_id = tei.value;
+			if (district_id == WONDER_DISTRICT_ID) continue;
+			int tile_x, tile_y;
+			if (! tile_coords_from_ptr (&p_bic_data->Map, district_tile, &tile_x, &tile_y)) continue;
+			int tile_continent = district_tile->vtable->m46_Get_ContinentID (district_tile);
+			if (tile_continent != continent_id) continue;
+			if (! district_tile_needs_defense (district_tile, tile_x, tile_y, district_id, civ_id, 5)) continue;
+
+			// Try to set path
+			int path_length;
+			int path_result = Trade_Net_set_unit_path (is->trade_net, __, unit_x, unit_y, tile_x, tile_y,
+			                                            this, civ_id, 0x81, &path_length);
+			if (path_result <= 0)
+				continue;
+
+			// Regular districts: score 500 base, minus distance
+			int score = 500 - path_length;
+			if (score > best_score) {
+				best_score = score;
+				best_x = tile_x;
+				best_y = tile_y;
+				best_path_length = path_length;
+			}
+		}
+	}
+
+	// If found a district to defend, set the path and return success
+	if ((best_x >= 0) && (best_y >= 0)) {
+		int result = Trade_Net_set_unit_path (is->trade_net, __, unit_x, unit_y, best_x, best_y,
+		                                       this, civ_id, 0x181, NULL);
+		return result;
+	}
+
+	return Unit_seek_colony (this, __, for_own_defense, max_distance);
+}
+
+// Patch has_colony to make units stay on districts, only patches within Unit::ai_move_defensive_unit
+bool __fastcall
+patch_Tile_has_district_or_colony (Tile * this)
+{
+	if (is->current_config.enable_districts &&
+	    is->current_config.ai_defends_districts) {
+
+		int district_id;
+		return (itable_look_up (&is->district_tile_map, (int)this, &district_id)) 
+			&& (district_is_complete (this, district_id));
+	}
+
+	// Fallback to original has_colony logic
+	return Tile_has_colony (this);
 }
 
 // TCC requires a main function be defined even though it's never used.

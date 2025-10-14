@@ -79,6 +79,8 @@ inlead,    0x455140,	0x457310,	0x4551C0,	"Unit_ai_move_artillery",			"void (__fa
 define,    0x5E6E50,	0x5F66A0,	0x5E6D80,	"neighbor_index_to_diff",			"void (__cdecl *) (int neighbor_index, int * out_x, int * out_y)"
 define,    0x5B3040,	0x5C1970,	0x5B2D50,	"Unit_set_state",				"void (__fastcall *) (Unit * this, int edx, int new_state)"
 define,    0x5B2F10,	0x5C1840,	0x5B2C20,	"Unit_set_escortee",				"void (__fastcall *) (Unit * this, int edx, int escortee)"
+inlead,    0x44D980,    0x0,        0x0,        "Unit_seek_colony",              "int (__fastcall *) (Unit *this, int edx, bool for_own_defense, int max_distance)"
+repl call, 0x4527BE,    0x0,        0x0,        "Tile_has_district_or_colony",   ""
 define,    0xA526B4,	0xA74EAC,	0xA52674,	"p_rand_object",				"void *"
 define,    0x60BAB0,	0x626440,	0x60B9E0,	"rand_int",					"int (__fastcall *) (void * this, int edx, int lim)"
 inlead,    0x42C8A0,	0x42E430,	0x42C920,	"City_ai_choose_production",			"void (__fastcall *) (City * this, int edx, City_Order * out)"
