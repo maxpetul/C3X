@@ -781,6 +781,7 @@ define,	   0x4BFD20,	0x4C72E0,	0x4BFDB0,	"City_get_turns_to_build_2",			"int (__
 repl call, 0x45FF66,	0x462336,	0x45FFE6,	"City_get_turns_to_build_2_for_ai_move_leader",	""
 repl call, 0x4600F8,	0x4624E5,	0x460178,	"City_get_turns_to_build_2_for_ai_move_leader",	""
 repl call, 0x5C5C82,	0x5D4A23,	0x5C5992,	"Unit_has_ability_no_load_non_army_passengers",	""
+repl call, 0x5C5C93,	0x5D4A34,	0x5C59A3,	"Unit_has_ability_no_load_transport_into_army",	""
 
 
 

@@ -13354,14 +13354,34 @@ bool __fastcall
 patch_Unit_has_ability_no_load_non_army_passengers (Unit * this, int edx, enum UnitTypeAbilities army_ability)
 {
 	// This call comes from Unit::can_load at the point where it's determined that the passenger (this) has transport capacity > 0 and is checking
-	// whether it's an army. If not, it can't be loaded. To polish land transport functionality, allow it to load if the target is a sea unit.
-	if (is->current_config.polish_land_transports &&
-	    (p_bic_data->UnitTypes[this                  ->Body.UnitTypeID].Unit_Class == UTC_Land) &&
-	    (p_bic_data->UnitTypes[is->can_load_transport->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
-		return true;
+	// whether it's an army. If not, it can't be loaded. To polish land transport functionality, allow it to load if the target is a sea unit OR
+	// (the target is an army AND the passenger is empty)
+	if (is->current_config.polish_land_transports) {
+		UnitType * transport_type = &p_bic_data->UnitTypes[is->can_load_transport->Body.UnitTypeID],
+			 * passenger_type = &p_bic_data->UnitTypes[this                  ->Body.UnitTypeID];
+		if ((passenger_type->Unit_Class == UTC_Land) && ! Unit_has_ability (this, __, army_ability)) { // if it's a land transport
+			if ((transport_type->Unit_Class == UTC_Sea) ||
+			    (Unit_has_ability (is->can_load_transport, __, army_ability) && (Unit_count_contained_units (this) == 0)))
+				return true;
+		}
+	}
 
-	} else
-		return Unit_has_ability (this, __, army_ability);
+	return Unit_has_ability (this, __, army_ability);
+}
+
+bool __fastcall
+patch_Unit_has_ability_no_load_transport_into_army (Unit * this, int edx, enum UnitTypeAbilities army_ability)
+{
+	// Similar to above, here it checks if the target unit is an army and rejects the load if it is (again, already determined that the passenger
+	// has transport capacity). Modify this rule to allow land transports to be loaded into armies. We don't have to check that the LT is empty
+	// since that is already disallowed by the modified check above.
+	bool is_army = Unit_has_ability (this, __, army_ability);
+	if (is->current_config.polish_land_transports && is_army &&
+	    (p_bic_data->UnitTypes[is->can_load_passenger->Body.UnitTypeID].Unit_Class == UTC_Land))
+		return false;
+
+	else
+		return is_army;
 }
 
 // TCC requires a main function be defined even though it's never used.
