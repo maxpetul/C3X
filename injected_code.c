@@ -1776,8 +1776,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "land_transport_rules")) {
 					struct parsable_field_bit bits[] = {
-						{"load-onto-boat", LTR_LOAD_ONTO_BOAT},
-						{"join-army"     , LTR_JOIN_ARMY},
+						{"load-onto-boat"        , LTR_LOAD_ONTO_BOAT},
+						{"join-army"             , LTR_JOIN_ARMY},
+						{"no-defense-from-inside", LTR_NO_DEFENSE_FROM_INSIDE},
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->land_transport_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -10387,6 +10388,14 @@ bool
 can_do_defensive_bombard (Unit * unit, UnitType * type)
 {
 	if ((type->Bombard_Strength > 0) && (! Unit_has_ability (unit, __, UTA_Cruise_Missile))) {
+		// Make sure it's not in a land transport if we're configured to disallow def. bombard from inside one
+		Unit * container;
+		if ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) &&
+		    ((container = get_unit_ptr (unit->Body.Container_Unit)) != NULL) &&
+		    (p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Land) &&
+		    ! Unit_has_ability (container, __, UTA_Army))
+			return false;
+
 		if ((unit->Body.Status & USF_USED_DEFENSIVE_BOMBARD) == 0) // has not already done DB this turn
 			return true;
 
@@ -10404,8 +10413,8 @@ can_do_defensive_bombard (Unit * unit, UnitType * type)
 Unit * __fastcall
 patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker, Unit * defender)
 {
-	int special_rules = is->current_config.special_defensive_bombard_rules;
-	if (special_rules == 0)
+	int special_db_rules = is->current_config.special_defensive_bombard_rules;
+	if ((special_db_rules == 0) && ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) == 0))
 		return Fighter_find_defensive_bombarder (this, __, attacker, defender);
 	else {
 		enum UnitTypeClasses attacker_class = p_bic_data->UnitTypes[attacker->Body.UnitTypeID].Unit_Class;
@@ -10414,8 +10423,8 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 		Tile * defender_tile = tile_at (defender->Body.X, defender->Body.Y);
 		if ((Unit_get_defense_strength (attacker) < 1) || // if attacker cannot defend OR
 		    (defender_tile == NULL) || (defender_tile == p_null_tile) || // defender tile is invalid OR
-		    (((special_rules & SDBR_LETHAL) == 0) && attacker_has_one_hp) || // (DB is non-lethal AND attacker has one HP remaining) OR
-		    ((special_rules & SDBR_NOT_INVISIBLE) && ! patch_Unit_is_visible_to_civ (attacker, __, defender->Body.CivID, 1))) // (invisible units are immune to DB AND attacker is invisible)
+		    (((special_db_rules & SDBR_LETHAL) == 0) && attacker_has_one_hp) || // (DB is non-lethal AND attacker has one HP remaining) OR
+		    ((special_db_rules & SDBR_NOT_INVISIBLE) && ! patch_Unit_is_visible_to_civ (attacker, __, defender->Body.CivID, 1))) // (invisible units are immune to DB AND attacker is invisible)
 			return NULL;
 
 		Unit * tr = NULL;
@@ -10429,10 +10438,10 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 			    (candidate != defender) &&
 			    (Unit_get_containing_army (candidate) != defender) &&
 			    ((attacker_class == candidate_type->Unit_Class) ||
-			     ((special_rules & SDBR_AERIAL) &&
+			     ((special_db_rules & SDBR_AERIAL) &&
 			      (candidate_type->Unit_Class == UTC_Air) &&
 			      (candidate_type->Air_Missions & UCV_Bombing)) ||
-			     ((special_rules & SDBR_DOCKED_VS_LAND) &&
+			     ((special_db_rules & SDBR_DOCKED_VS_LAND) &&
 			      (candidate_type->Unit_Class == UTC_Sea) &&
 			      (get_city_ptr (defender_tile->CityID) != NULL))) &&
 			    ((! attacker_has_one_hp) || UnitType_has_ability (candidate_type, __, lethal_bombard_req))) {

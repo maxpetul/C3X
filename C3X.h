@@ -101,8 +101,9 @@ enum special_zone_of_control_rules {
 };
 
 enum land_transport_rules {
-	LTR_LOAD_ONTO_BOAT = 1,
-	LTR_JOIN_ARMY      = 2
+	LTR_LOAD_ONTO_BOAT         = 1,
+	LTR_JOIN_ARMY              = 2,
+	LTR_NO_DEFENSE_FROM_INSIDE = 4,
 };
 
 enum work_area_limit {
