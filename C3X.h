@@ -100,6 +100,11 @@ enum special_zone_of_control_rules {
 	SZOCR_AMPHIBIOUS = 4,
 };
 
+enum land_transport_rules {
+	LTR_LOAD_ONTO_BOAT = 1,
+	LTR_JOIN_ARMY      = 2
+};
+
 enum work_area_limit {
 	WAL_NONE = 0,
 	WAL_CULTURAL,
@@ -249,7 +254,7 @@ struct c3x_config {
 	bool limit_unit_loading_to_one_transport_per_turn;
 	bool prevent_old_units_from_upgrading_past_ability_block;
 	bool introduce_all_human_players_at_start_of_hotseat_game;
-	bool polish_land_transports;
+	enum land_transport_rules land_transport_rules;
 	int years_to_double_building_culture;
 	int tourism_time_scale_percent;
 

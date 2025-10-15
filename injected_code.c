@@ -1774,6 +1774,13 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_zone_of_control_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "land_transport_rules")) {
+					struct parsable_field_bit bits[] = {
+						{"load-onto-boat", LTR_LOAD_ONTO_BOAT},
+						{"join-army"     , LTR_JOIN_ARMY},
+					};
+					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->land_transport_rules))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "work_area_limit")) {
 					if (! read_work_area_limit (&value, (int *)&cfg->work_area_limit))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -4115,7 +4122,6 @@ patch_init_floating_point ()
 		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
 		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
-		{"polish_land_transports"                              , false, offsetof (struct c3x_config, polish_land_transports)},
 	};
 
 	struct integer_config_option {
@@ -13354,14 +13360,16 @@ bool __fastcall
 patch_Unit_has_ability_no_load_non_army_passengers (Unit * this, int edx, enum UnitTypeAbilities army_ability)
 {
 	// This call comes from Unit::can_load at the point where it's determined that the passenger (this) has transport capacity > 0 and is checking
-	// whether it's an army. If not, it can't be loaded. To polish land transport functionality, allow it to load if the target is a sea unit OR
-	// (the target is an army AND the passenger is empty)
-	if (is->current_config.polish_land_transports) {
+	// whether it's an army. If not, it can't be loaded. Add two exceptions here for land transports, if configured, one to allow LTs to load into
+	// naval units and another to allow empty LTs to load into armies.
+	if (is->current_config.land_transport_rules != 0) {
 		UnitType * transport_type = &p_bic_data->UnitTypes[is->can_load_transport->Body.UnitTypeID],
 			 * passenger_type = &p_bic_data->UnitTypes[this                  ->Body.UnitTypeID];
 		if ((passenger_type->Unit_Class == UTC_Land) && ! Unit_has_ability (this, __, army_ability)) { // if it's a land transport
-			if ((transport_type->Unit_Class == UTC_Sea) ||
-			    (Unit_has_ability (is->can_load_transport, __, army_ability) && (Unit_count_contained_units (this) == 0)))
+			if ((is->current_config.land_transport_rules & LTR_LOAD_ONTO_BOAT) && (transport_type->Unit_Class == UTC_Sea))
+				return true;
+			if ((is->current_config.land_transport_rules & LTR_JOIN_ARMY) &&
+			    Unit_has_ability (is->can_load_transport, __, army_ability) && (Unit_count_contained_units (this) == 0))
 				return true;
 		}
 	}
@@ -13373,10 +13381,10 @@ bool __fastcall
 patch_Unit_has_ability_no_load_transport_into_army (Unit * this, int edx, enum UnitTypeAbilities army_ability)
 {
 	// Similar to above, here it checks if the target unit is an army and rejects the load if it is (again, already determined that the passenger
-	// has transport capacity). Modify this rule to allow land transports to be loaded into armies. We don't have to check that the LT is empty
-	// since that is already disallowed by the modified check above.
+	// has transport capacity). Modify this rule to return false for land transports trying to join armies if configured. We don't have to check
+	// that the LT is empty since that is already disallowed by the modified check above.
 	bool is_army = Unit_has_ability (this, __, army_ability);
-	if (is->current_config.polish_land_transports && is_army &&
+	if ((is->current_config.land_transport_rules & LTR_JOIN_ARMY) && is_army &&
 	    (p_bic_data->UnitTypes[is->can_load_passenger->Body.UnitTypeID].Unit_Class == UTC_Land))
 		return false;
 
