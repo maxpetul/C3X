@@ -2415,11 +2415,12 @@ find_wonder_config_index_by_improvement_id (int improv_id)
 			  is->wonder_district_configs[wi].wonder_name, improv_id);
 		(*p_OutputDebugStringA) (ss);
 		if (stable_look_up (&is->building_name_to_id, is->wonder_district_configs[wi].wonder_name, &bid) &&
-		    (bid == improv_id))
+		    (bid == improv_id)) {
 			return wi;
-		snprintf (ss, sizeof ss, "[C3X] find_wonder_config_index_by_improvement_id: no match for wonder %s (improv_id=%d), bid=%d\n",
-			  is->wonder_district_configs[wi].wonder_name, improv_id, bid);
-		(*p_OutputDebugStringA) (ss);
+			snprintf (ss, sizeof ss, "[C3X] find_wonder_config_index_by_improvement_id: no match for wonder %s (improv_id=%d), bid=%d\n",
+				is->wonder_district_configs[wi].wonder_name, improv_id, bid);
+			(*p_OutputDebugStringA) (ss);
+		}
 	}
 
 	return -1;
@@ -19867,7 +19868,7 @@ void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
 	char ss[200];
-	//*p_debug_mode_bits |= 0xC;
+	*p_debug_mode_bits |= 0xC;
 	//snprintf (ss, sizeof ss, "[C3X] patch_Map_Renderer_m12_Draw_Tile_Buildings: tile=(%d,%d) pixel=(%d,%d)\n", tile_x, tile_y, pixel_x, pixel_y);
 	//(*p_OutputDebugStringA) (ss);
 
