@@ -549,22 +549,13 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_Aerodrome, .name = "Aerodrome", .tooltip = "Aerodrome Hub",
-		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.advance_prereq = "Flight", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"Aerodrome.pcx"},
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100	
 	}
 };
 
-struct district_job_assignment {
-	Tile * tile;
-	City * city;
-	int tile_x;
-	int tile_y;
-	int district_id;
-	int unit_id;
-	bool job_started;
-};
 
 struct distribution_hub_record {
 	Tile * tile;
@@ -1263,17 +1254,13 @@ struct injected_state {
 	// a unit command (e.g., build order) corresponds to.
 	struct table command_id_to_district_id;
 
-	// Unit ID keys -> district_job_assignment pointer. Tracks which units
-	// are currently assigned to build districts and their job details.
-	struct table district_job_assignments;
-
 	// City pointer keys -> district bitmask. Tracks which district types
 	// a city has requested but not yet assigned workers to build.
 	struct table city_pending_district_requests;
 
-	// City pointer keys -> improvement ID. Tracks which Wonder Districts
-	// a city has ordered to be built (pending worker assignment).
-	struct table city_pending_wonder_orders;
+	// City pointer keys -> improvement ID. Tracks which improvements (buildings/wonders)
+	// requiring districts a city has ordered to be built (pending district completion).
+	struct table city_pending_building_orders;
 
 	// AI cache mapping city pointer keys -> AI_Order pointer. Stores the best feasible
 	// production order for AI cities to optimize decision-making.
