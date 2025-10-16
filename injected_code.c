@@ -10385,15 +10385,19 @@ patch_Unit_teleport (Unit * this, int edx, int tile_x, int tile_y, Unit * unit_t
 }
 
 bool
+is_in_land_transport (Unit * unit)
+{
+	Unit * container;
+	return ((container = get_unit_ptr (unit->Body.Container_Unit)) != NULL) &&
+		(p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Land) &&
+		! Unit_has_ability (container, __, UTA_Army);
+}
+
+bool
 can_do_defensive_bombard (Unit * unit, UnitType * type)
 {
 	if ((type->Bombard_Strength > 0) && (! Unit_has_ability (unit, __, UTA_Cruise_Missile))) {
-		// Make sure it's not in a land transport if we're configured to disallow def. bombard from inside one
-		Unit * container;
-		if ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) &&
-		    ((container = get_unit_ptr (unit->Body.Container_Unit)) != NULL) &&
-		    (p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Land) &&
-		    ! Unit_has_ability (container, __, UTA_Army))
+		if ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) && is_in_land_transport (unit))
 			return false;
 
 		if ((unit->Body.Status & USF_USED_DEFENSIVE_BOMBARD) == 0) // has not already done DB this turn
@@ -13404,16 +13408,23 @@ patch_Unit_has_ability_no_load_transport_into_army (Unit * this, int edx, enum U
 bool __fastcall
 patch_Fighter_unit_can_defend (Fighter * this, int edx, Unit * unit, int tile_x, int tile_y)
 {
-	// Return false if we're configured to stop units inside land transports from defending and this unit is in one
-	Unit * container;
-	if ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) &&
-	    ((container = get_unit_ptr (unit->Body.Container_Unit)) != NULL) &&
-	    (p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Land) &&
-	    ! Unit_has_ability (container, __, UTA_Army))
+	if ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) && is_in_land_transport (unit))
 		return false;
-
 	else
 		return Fighter_unit_can_defend (this, __, unit, tile_x, tile_y);
+}
+
+bool __fastcall
+patch_Leader_is_enemy_unit_for_ground_aa (Leader * this, int edx, Unit * bomber)
+{
+	// When this function is called, the potential interceptor unit is stored in register ESI.
+	Unit * interceptor;
+	__asm__ __volatile__("mov %%esi, %0" : "=r" (interceptor));
+
+	if ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) && is_in_land_transport (interceptor))
+		return false; // Exclude this unit as candidate to intercept
+	else
+		return Leader_is_enemy_unit (this, __, bomber);
 }
 
 // TCC requires a main function be defined even though it's never used.
