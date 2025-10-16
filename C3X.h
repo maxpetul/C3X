@@ -549,7 +549,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_Aerodrome, .name = "Aerodrome", .tooltip = "Aerodrome Hub",
-		.advance_prereq = "Flight", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"Aerodrome.pcx"},
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100	
@@ -1246,6 +1246,10 @@ struct injected_state {
 	// Tile pointer IDs -> wonder index for completed Wonder Districts.
 	// When present, the Wonder image will render instead of the base district art.
 	struct table wonder_district_tile_map;
+
+	// Tile pointer IDs -> city pointer. Tracks which city is currently using a Wonder district
+	// for wonder construction. Prevents multiple cities from using the same Wonder district simultaneously.
+	struct table wonder_district_reservations;
 
 	// Tracks per-turn airlift usage for aerodrome districts (tile pointer -> civ bitmask).
 	struct table aerodrome_airlift_usage;

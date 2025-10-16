@@ -2585,7 +2585,7 @@ mark_city_needs_district (City * city, int district_id)
 
 	char ss[200];
 	snprintf (ss, sizeof ss, "[C3X] mark_city_needs_district: city=%p district_id=%d\n", (void*)city, district_id);
-	(*p_OutputDebugStringA) (ss);
+	pop_up_in_game_error (ss);
 
 	int key = (int)(long)city;
 	int mask = itable_look_up_or (&is->city_pending_district_requests, key, 0);
@@ -4746,6 +4746,7 @@ reset_district_state (bool reset_tile_map)
 
 	// Always clear wonder overlay mappings when resetting
 	table_deinit (&is->wonder_district_tile_map);
+	table_deinit (&is->wonder_district_reservations);
 	clear_distribution_hub_tables ();
 
 	if (is->distribution_hub_food_bonus_per_city != NULL) {
@@ -4839,7 +4840,7 @@ tile_not_suitable_for_district (Tile * tile, int district_id, City * city, bool 
 	if (tile->vtable->m35_Check_Is_Water (tile))
 		return true;
 	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	if ((base_type == SQ_Mountains) || (base_type == SQ_Volcano))
+	if ((base_type == SQ_Mountains) || (base_type == SQ_Volcano) || (base_type == SQ_Forest) || (base_type == SQ_Jungle))
 		return true;
 	int mapped_id;
 	if (itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) && (mapped_id != district_id))
@@ -5204,7 +5205,15 @@ city_has_wonder_district_with_no_completed_wonder (City * city)
 			if (itable_look_up_or (&is->wonder_district_tile_map, (int)candidate, -1) >= 0)
 				continue; // This wonder district is complete, skip it
 
-			// Found an incomplete wonder district
+			// Check if another city has reserved this Wonder district for construction
+			int reserved_city_ptr;
+			if (itable_look_up (&is->wonder_district_reservations, (int)candidate, &reserved_city_ptr)) {
+				City * reserved_city = (City *)(long)reserved_city_ptr;
+				if ((reserved_city != NULL) && (reserved_city != city))
+					continue; // This Wonder district is reserved by another city
+			}
+
+			// Found an incomplete wonder district that's available for this city
 			return true;
 		}
 	}
@@ -5760,6 +5769,9 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	// Remove any wonder overlay mapping for this tile
 	itable_remove (&is->wonder_district_tile_map, (int)tile);
 
+	// Remove any wonder district reservation for this tile
+	itable_remove (&is->wonder_district_reservations, (int)tile);
+
 	if (is->current_config.enable_wonder_districts &&
 	    (actual_district_id == WONDER_DISTRICT_ID) &&
 	    (wonder_windex >= 0))
@@ -5982,6 +5994,75 @@ free_wonder_district_for_city (City * city)
 	}
 
 	return false;
+}
+
+void
+reserve_wonder_district_for_city (City * city)
+{
+	if (! is->current_config.enable_wonder_districts || (city == NULL))
+		return;
+
+	int wonder_district_id = WONDER_DISTRICT_ID;
+	if (wonder_district_id < 0)
+		return;
+
+	int civ_id = city->Body.CivID;
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
+		Tile * candidate = tai.tile;
+		if (candidate == p_null_tile)
+			continue;
+		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id)
+			continue;
+
+		int mapped_id;
+		if (! itable_look_up (&is->district_tile_map, (int)candidate, &mapped_id) || (mapped_id != wonder_district_id))
+			continue;
+		if (! district_is_complete (candidate, wonder_district_id))
+			continue;
+		if (itable_look_up_or (&is->wonder_district_tile_map, (int)candidate, -1) >= 0)
+			continue; // Already has completed wonder
+
+		// Check if already reserved by this city
+		int reserved_city_ptr;
+		if (itable_look_up (&is->wonder_district_reservations, (int)candidate, &reserved_city_ptr)) {
+			City * reserved_city = (City *)(long)reserved_city_ptr;
+			if (reserved_city == city)
+				return; // Already reserved by this city
+			continue; // Reserved by another city
+		}
+
+		// Reserve this Wonder district for this city
+		itable_insert (&is->wonder_district_reservations, (int)candidate, (int)(long)city);
+		return;
+	}
+}
+
+void
+release_wonder_district_reservation (City * city)
+{
+	if (! is->current_config.enable_wonder_districts || (city == NULL))
+		return;
+
+	int wonder_district_id = WONDER_DISTRICT_ID;
+	if (wonder_district_id < 0)
+		return;
+
+	// Find and remove any reservations for this city
+	int civ_id = city->Body.CivID;
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
+		Tile * candidate = tai.tile;
+		if (candidate == p_null_tile)
+			continue;
+		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id)
+			continue;
+
+		int reserved_city_ptr;
+		if (itable_look_up (&is->wonder_district_reservations, (int)candidate, &reserved_city_ptr)) {
+			City * reserved_city = (City *)(long)reserved_city_ptr;
+			if (reserved_city == city)
+				itable_remove (&is->wonder_district_reservations, (int)candidate);
+		}
+	}
 }
 
 void
@@ -9796,10 +9877,10 @@ issue_district_worker_command (Unit * unit, int command)
 			return; // Civ lacks required tech; do not issue command
 		}
 	}
-    // Disallow placing districts on mountain tiles for simplicity/per design
+    // Disallow placing districts on mountain, forest, or jungle tiles
     if (tile != NULL && tile != p_null_tile) {
         enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType(tile);
-        if (base_type == SQ_Mountains) {
+        if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle) {
             return;
         }
     }
@@ -11093,6 +11174,36 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 	char tr;
 	bool skip_replacement_logic =
 		(p_main_screen_form->Player_CivID == this->ID) && is->current_config.skip_repeated_tile_improv_replacement_asks;
+
+	// Check if AI is trying to change a district tile (before calling vanilla logic)
+	if (is->current_config.enable_districts && ((*p_human_player_bits & (1 << this->ID)) == 0)) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			int district_id;
+			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) &&
+			    (district_id >= 0) && (district_id < is->district_count)) {
+
+				// For Wonder Districts: check if unused (can be replaced)
+				if (is->current_config.enable_wonder_districts && (district_id == WONDER_DISTRICT_ID)) {
+					// If there's a reservation (wonder being built), block replacement
+					int reserved_city_ptr;
+					if (itable_look_up (&is->wonder_district_reservations, (int)tile, &reserved_city_ptr))
+						return 0;
+
+					// If wonder is complete (mapped in wonder_district_tile_map), block replacement
+					int wonder_index;
+					if (itable_look_up (&is->wonder_district_tile_map, (int)tile, &wonder_index) && (wonder_index >= 0))
+						return 0;
+
+					// Wonder district is not being used - allow replacement
+					return 1;
+				}
+
+				// For all other district types: AI should not change them
+				return 0;
+			}
+		}
+	}
 
 	if (! skip_replacement_logic)
 		tr = Leader_can_do_worker_job (this, __, job, tile_x, tile_y, ask_if_replacing);
@@ -13218,6 +13329,8 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 						int d_id;
 						if (itable_look_up (&is->district_tile_map, (int)t, &d_id) && (d_id == wonder_district_id) && district_is_complete (t, d_id)) {
 							itable_insert (&is->wonder_district_tile_map, (int)t, matched_windex);
+							// Release the reservation since the wonder is now complete
+							itable_remove (&is->wonder_district_reservations, (int)t);
 							break; // assign to first matching tile
 						}
 					}
@@ -15044,6 +15157,10 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 	    ! is->current_config.enable_distribution_hub_districts)
 		return;
 
+	char ss[200];
+	snprintf (ss, sizeof ss, "[C3X] ai_update_distribution_hub_goal_for_leader: entering for civ %d\n", leader->ID);
+	(*p_OutputDebugStringA) (ss);
+
 	int civ_id = leader->ID;
 	if ((1 << civ_id) & *p_human_player_bits)
 		return;
@@ -15148,6 +15265,10 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 
 		mark_city_needs_district (best_city, district_id);
 		planned++;
+
+		snprintf (ss, sizeof ss, "[C3X] ai_update_distribution_hub_goal_for_leader: civ=%d request city=%p tile=(%d,%d) planned=%d desired=%d\n",
+		          civ_id, (void*)best_city, best_tile_x, best_tile_y, planned, desired);
+		(*p_OutputDebugStringA) (ss);
 	}
 }
 
@@ -15241,69 +15362,76 @@ patch_Leader_do_production_phase (Leader * this)
 		FOR_CITIES_OF (coi, this->ID) {
 			City * city = coi.city;
 			if (city == NULL) continue;
-			if (city->Body.Order_Type != COT_Improvement) continue;
-			int i_improv = city->Body.Order_ID;
+
 			bool is_human = (*p_human_player_bits & (1 << city->Body.CivID)) != 0;
 
-			// Check regular buildings dependent on districts
-			int req_district_id;
-			if (itable_look_up (&is->district_building_prereqs, i_improv, &req_district_id)) {
-				if (! city_has_required_district (city, req_district_id)) {
-					// Switch production to another option
-					bool reassigned = false;
-					if (! is_human)
-						reassigned = assign_ai_fallback_production (city, i_improv);
-					if (! reassigned)
-						city->vtable->set_production_to_most_expensive_option (city);
+			// Check if AI cities are at neighborhood cap and need to request neighborhood districts
+			if (! is_human &&
+			    is->current_config.enable_neighborhood_districts &&
+			    city_is_at_neighborhood_cap (city))
+				ensure_neighborhood_request_for_city (city);
 
-					// For AI players, request the needed district to be built
-					if (! is_human)
-						mark_city_needs_district (city, req_district_id);
-
-					// Show message to human player
-					if (is_human && (city->Body.CivID == p_main_screen_form->Player_CivID)) {
-						char msg[160];
-						char const * bname = p_bic_data->Improvements[i_improv].Name.S;
-						char const * dname = is->district_configs[req_district_id].name;
-						snprintf (msg, sizeof msg, "%s construction halted: required %s missing", bname, dname);
-						msg[(sizeof msg) - 1] = '\0';
-						show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
-					}
-					continue;
+			// Update Wonder district reservations for cities building wonders
+			if (is->current_config.enable_wonder_districts) {
+				if (city_is_currently_building_wonder (city)) {
+					reserve_wonder_district_for_city (city);
+				} else {
+					release_wonder_district_reservation (city);
 				}
 			}
 
+			if (city->Body.Order_Type != COT_Improvement) continue;
+			int i_improv = city->Body.Order_ID;
+
+			// Check if production needs to be halted due to missing district
+			int req_district_id = -1;
+			char const * district_description = NULL;
+			bool needs_halt = false;
+
+			// Check regular buildings dependent on districts
+			if (itable_look_up (&is->district_building_prereqs, i_improv, &req_district_id)) {
+				if (! city_has_required_district (city, req_district_id)) {
+					needs_halt = true;
+					district_description = is->district_configs[req_district_id].name;
+				}
+			}
 			// Check wonders dependent on wonder districts
-			if (is->current_config.enable_wonder_districts &&
-			    (i_improv >= 0) && (i_improv < p_bic_data->ImprovementsCount)) {
+			else if (is->current_config.enable_wonder_districts &&
+			         (i_improv >= 0) && (i_improv < p_bic_data->ImprovementsCount)) {
 				Improvement * improv = &p_bic_data->Improvements[i_improv];
 				// Only check if this is a wonder AND it's configured to require a wonder district
 				if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0 &&
 				    find_wonder_config_index_by_improvement_id (i_improv) >= 0) {
 					if (! city_has_wonder_district_with_no_completed_wonder (city)) {
-						// Switch production to another option
-						bool reassigned = false;
-						if (! is_human)
-							reassigned = assign_ai_fallback_production (city, i_improv);
-						if (! reassigned)
-							city->vtable->set_production_to_most_expensive_option (city);
-
-						// For AI players, request a wonder district to be built
-						if (! is_human) {
-							int wonder_district_id = WONDER_DISTRICT_ID;
-							mark_city_needs_district (city, wonder_district_id);
-						}
-
-						// Show message to human player
-						if (is_human && (city->Body.CivID == p_main_screen_form->Player_CivID)) {
-							char msg[160];
-							char const * bname = improv->Name.S;
-							snprintf (msg, sizeof msg, "%s construction halted: required Wonder District missing", bname);
-							msg[(sizeof msg) - 1] = '\0';
-							show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
-						}
+						needs_halt = true;
+						req_district_id = WONDER_DISTRICT_ID;
+						district_description = "Wonder District";
 					}
 				}
+			}
+
+			// If production needs to be halted, handle the reassignment and messaging
+			if (needs_halt) {
+				// Switch production to another option
+				bool reassigned = false;
+				if (! is_human)
+					reassigned = assign_ai_fallback_production (city, i_improv);
+				if (! reassigned)
+					city->vtable->set_production_to_most_expensive_option (city);
+
+				// For AI players, request the needed district to be built
+				if (! is_human)
+					mark_city_needs_district (city, req_district_id);
+
+				// Show message to human player
+				if (is_human && (city->Body.CivID == p_main_screen_form->Player_CivID)) {
+					char msg[160];
+					char const * bname = p_bic_data->Improvements[i_improv].Name.S;
+					snprintf (msg, sizeof msg, "%s construction halted: required %s missing", bname, district_description);
+					msg[(sizeof msg) - 1] = '\0';
+					show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
+				}
+				continue;
 			}
 		}
 	}
@@ -17278,6 +17406,34 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 				mod_data.length -= trimmed_bytes;
 			}
 		}
+
+		// Save wonder district reservations (tile -> city pointer)
+		if (is->current_config.enable_districts && is->current_config.enable_wonder_districts && (is->wonder_district_reservations.len > 0)) {
+			serialize_aligned_text ("wonder_district_reservations", &mod_data);
+			int entry_capacity = is->wonder_district_reservations.len;
+			int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 3 * entry_capacity));
+			int * out = chunk + 1;
+			int written = 0;
+			FOR_TABLE_ENTRIES (tei, &is->wonder_district_reservations) {
+				Tile * tile = (Tile *)tei.key;
+				City * city = (City *)tei.value;
+				int x, y;
+				if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &x, &y))
+					continue;
+				int city_id = city->Body.ID;
+				out[0] = x;
+				out[1] = y;
+				out[2] = city_id;
+				out += 3;
+				written++;
+			}
+			chunk[0] = written;
+			int unused_entries = entry_capacity - written;
+			if (unused_entries > 0) {
+				int trimmed_bytes = unused_entries * 3 * (int)sizeof(int);
+				mod_data.length -= trimmed_bytes;
+			}
+		}
 	}
 
 	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
@@ -17632,6 +17788,35 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					}
 				}
 				if (! success) { error_chunk_name = "wonder_district_tile_map"; break; }
+			} else if (match_save_chunk_name (&cursor, "wonder_district_reservations")) {
+				bool success = false;
+				int remaining_bytes = (seg + seg_size) - cursor;
+				if (remaining_bytes >= (int)sizeof(int)) {
+					int * ints = (int *)cursor;
+					int entry_count = *ints++;
+					cursor = (byte *)ints;
+					remaining_bytes -= (int)sizeof(int);
+					if ((entry_count >= 0) && (remaining_bytes >= entry_count * 3 * (int)sizeof(int))) {
+						table_deinit (&is->wonder_district_reservations);
+						success = true;
+						for (int n = 0; n < entry_count; n++) {
+							if (remaining_bytes < 3 * (int)sizeof(int)) { success = false; break; }
+							int x = *ints++;
+							int y = *ints++;
+							int city_id = *ints++;
+							cursor = (byte *)ints;
+							remaining_bytes -= 3 * (int)sizeof(int);
+							Tile * tile = tile_at (x, y);
+							if ((tile == NULL) || (tile == p_null_tile))
+								continue;
+							City * city = get_city_ptr (city_id);
+							if (city == NULL)
+								continue;
+							itable_insert (&is->wonder_district_reservations, (int)tile, (int)city);
+						}
+					}
+				}
+				if (! success) { error_chunk_name = "wonder_district_reservations"; break; }
 			 } else {
 				error_chunk_name = "N/A";
 				break;
@@ -19646,33 +19831,21 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                             int windex;
                             if (itable_look_up (&is->wonder_district_tile_map, (int)tile, &windex) &&
                                 (windex >= 0) && (windex < is->wonder_district_count)) {
-								snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) windex %d\n",
-										  district_id, tile_x, tile_y, windex);
-                    			//(OutputDebugStringA) (ss);
                                 Sprite * wsprite = &is->wonder_district_img_sets[windex].img;
                                 patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
                                 return;
                             }
 
-							snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) windex lookup failed\n",
-                    					  district_id, tile_x, tile_y);
-							//(OutputDebugStringA) (ss);
 
                             if (completed) {
                                 int construct_windex = -1;
                                 if (wonder_district_tile_under_construction (tile, tile_x, tile_y, &construct_windex) &&
                                     (construct_windex >= 0)) {
-									//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) under construction windex %d\n",
-									//		  construct_windex, tile_x, tile_y, district_id);
-									//(OutputDebugStringA) (ss);
                                     Sprite * csprite = &is->wonder_district_img_sets[construct_windex].construct_img;
                                     patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
                                     return;
                                 }
                             }
-							//snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: wonder district %d at (%d,%d) under construction windex lookup failed\n",
-							//		  district_id, tile_x, tile_y);
-							//pop_up_in_game_error (ss);
                         }
                     }
 
@@ -19734,16 +19907,10 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                         }
                     }
 
-					//snprintf (ss, sizeof ss, "[C3X] patch_Map_Renderer_m12_Draw_Tile_Buildings: district %d variant %d era %d buildings %d\n",
-					//	  district_id, variant, era, buildings);
-					//pop_up_in_game_error (ss);
-
 					district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
                     patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
                     return; // do not draw vanilla mine when district present
                 } else {
-                    //snprintf (ss, sizeof ss, "patch_Map_Renderer_m12_Draw_Tile_Buildings: district images not ready, state %d", is->dc_img_state);
-                    //pop_up_in_game_error (ss);
                     return;
                 }
             }
