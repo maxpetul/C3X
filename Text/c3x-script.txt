@@ -150,7 +150,7 @@ Yes. There is more important work to do.
 No. Carry on.
 
 #C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT
-#advisor Domestic
+#advisor Domestic Angry
 A $DISTRICT0 already exists here. Removing it will destroy buildings dependent on it. Are you sure you want to proceed?
 #itemlist
 Yes. There are better uses for this tile.
@@ -158,7 +158,7 @@ No, nevermind.
 
 #C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT_SAFE
 #advisor Domestic
-A $DISTRICT0 exists here, but another $DISTRICT1 is nearby so no dependent buildings will be lost. Do you want to proceed?
+A $DISTRICT0 exists here, but either it has no dependent buildings or another $DISTRICT1 is nearby so no buildings will be lost. Do you want to proceed?
 #itemlist
 Yes. There are better uses for this tile.
 No, nevermind.
@@ -171,7 +171,7 @@ Yes. There are better uses for this tile.
 No, nevermind.
 
 #C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT
-#advisor Domestic
+#advisor Domestic Angry
 A $DISTRICT0 exists here with dependent buildings. Are you sure you want to proceed? Doing so will remove any dependent buildings.
 #itemlist
 Yes. There are better uses for this tile.
@@ -179,7 +179,7 @@ No, nevermind.
 
 #C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT_SAFE
 #advisor Domestic
-A $DISTRICT0 exists here, but another $DISTRICT1 is nearby so no dependent buildings will be lost. Do you want to proceed?
+A $DISTRICT0 exists here, but either it has no dependent buildings or another $DISTRICT1 is nearby so no buildings will be lost. Do you want to proceed?
 #itemlist
 Yes. There are better uses for this tile.
 No, nevermind.

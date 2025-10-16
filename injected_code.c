@@ -394,6 +394,7 @@ bool district_is_complete(Tile * tile, int district_id);
 char __fastcall patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing);
 bool city_requires_district_for_improvement (City * city, int improv_id, int * out_district_id);
 void clear_city_district_request (City * city, int district_id);
+void set_tile_unworkable_for_all_cities (Tile * tile, int tile_x, int tile_y);
 
 struct wonder_district_info *
 get_wonder_district_info (Tile * tile)
@@ -588,12 +589,20 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &tile_x, &tile_y);
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
-			int district_id;
-			if (is->current_config.enable_districts &&
-		    is->current_config.enable_distribution_hub_districts) {
-				int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
-				if (covered > 0)
+			if (is->current_config.enable_districts) {
+				// Check if the tile itself is a completed district
+				int district_id;
+				if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) &&
+				    district_is_complete (tile, district_id)) {
 					return false;
+				}
+
+				// Check if the tile is covered by a distribution hub
+				if (is->current_config.enable_distribution_hub_districts) {
+					int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
+					if (covered > 0)
+						return false;
+				}
 			}
 		}
 	}
@@ -2516,7 +2525,6 @@ district_is_complete(Tile * tile, int district_id)
 	// If district was never completed and there are no workers present,
 	// remove the tile from the district map
 	if (! completed) {
-		char ss[200];
 		int mapped_id;
 		if (itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) &&
 		    (mapped_id == district_id)) {
@@ -2534,13 +2542,16 @@ district_is_complete(Tile * tile, int district_id)
 			}
 		}
 	} else {
-		// District just completed - activate distribution hub if applicable
-		if (is->current_config.enable_distribution_hub_districts &&
-		    (district_id == DISTRIBUTION_HUB_DISTRICT_ID)) {
-			int tile_x, tile_y;
-			if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
-				return completed;
-			on_distribution_hub_completed (tile, tile_x, tile_y, NULL);
+		// District just completed - handle completion side effects
+		int tile_x, tile_y;
+		if (tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y)) {
+			set_tile_unworkable_for_all_cities (tile, tile_x, tile_y);
+
+			// Activate distribution hub if applicable
+			if (is->current_config.enable_distribution_hub_districts &&
+			    (district_id == DISTRIBUTION_HUB_DISTRICT_ID)) {
+				on_distribution_hub_completed (tile, tile_x, tile_y, NULL);
+			}
 		}
 	}
 
@@ -5905,6 +5916,32 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 
 	if (district_id >= 0)
 		remove_dependent_buildings_for_district (district_id, center_x, center_y);
+
+	// Make the tile workable again by resetting CityAreaID and recomputing yields for nearby cities
+	tile->Body.CityAreaID = -1;
+
+	int tile_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+
+	// Check all tiles within city work radius to find cities that might now be able to work this tile
+	FOR_TILES_AROUND (tai, is->workable_tile_count, center_x, center_y) {
+		Tile * nearby_tile = tai.tile;
+		if ((nearby_tile == NULL) || (nearby_tile == p_null_tile))
+			continue;
+
+		int city_id = nearby_tile->vtable->m45_Get_City_ID (nearby_tile);
+		if (city_id < 0)
+			continue;
+
+		City * city = get_city_ptr (city_id);
+		if (city == NULL)
+			continue;
+
+		// Only recompute for cities of the same civ that owns this tile
+		if (city->Body.CivID != tile_owner)
+			continue;
+
+		City_recompute_yields_and_happiness (city, __);
+	}
 
 	if (leave_ruins && (tile->vtable->m60_Set_Ruins != NULL)) {
 		tile->vtable->m60_Set_Ruins (tile, __, 1);
@@ -18038,6 +18075,51 @@ void __fastcall
 patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
 {
 	is->lmify_tile_after_working_simple_job = NULL;
+
+	// Check if districts are enabled
+	if (is->current_config.enable_districts) {
+		int tile_x = this->Body.X;
+		int tile_y = this->Body.Y;
+		Tile * tile = tile_at (tile_x, tile_y);
+
+		if (tile != NULL && tile != p_null_tile) {
+			int district_id;
+			// Check if there's a completed district on this tile
+			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) &&
+			    district_is_complete(tile, district_id)) {
+
+
+				if (*p_human_player_bits & (1 << this->Body.CivID)) {
+
+					if (district_id == WONDER_DISTRICT_ID) {
+						// For wonder districts: allow removal only if unused
+						int stored_ptr;
+						struct wonder_district_info * info = NULL;
+						if (itable_look_up (&is->wonder_district_info_map, (int)tile, &stored_ptr)) {
+							info = (struct wonder_district_info *)(long)stored_ptr;
+						}
+
+						// If the wonder district is not in unused state, prevent removal
+						if (info == NULL || info->state != WDS_UNUSED) {
+							Unit_set_state (this, __, 0);
+							return;
+						}
+
+						// It's unused, so allow removal - clean up the district first
+						itable_remove (&is->district_tile_map, (int)tile);
+						tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+						tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
+						handle_district_removed(tile, district_id, tile_x, tile_y, false);
+					} else {
+						// For non-wonder districts: prevent AI removal entirely
+						Unit_set_state (this, __, 0);
+						return;
+					}
+				} 
+			}
+		}
+	}
+
 	Unit_work_simple_job (this, __, job_id);
 
 	if (is->lmify_tile_after_working_simple_job != NULL)
@@ -18048,15 +18130,10 @@ bool __fastcall
 patch_Unit_work (Unit * this, int edx)
 {
 	return Unit_work (this, __);
-	/*
+
 	if (is->current_config.enable_districts) {
 		int tile_y = this->Body.Y;
   		int tile_x = this->Body.X;
-
-		char ss[200];
-		snprintf (ss, sizeof ss, "[C3X] patch_Unit_work: Unit ID %d at (%d,%d) state %d auto city %d",
-			  this->Body.ID, tile_x, tile_y, this->Body.UnitState, this->Body.Auto_CityID);
-		//pop_up_in_game_error (ss);
 
 		if (this->Body.Auto_CityID > 0 && this->Body.UnitState == UnitState_Build_Mines) {
 			City * city = get_city_ptr (this->Body.Auto_CityID);
@@ -18073,7 +18150,6 @@ patch_Unit_work (Unit * this, int edx)
 		}
 	}
 	return Unit_work (this, __);
-	*/
 }
 
 void __fastcall
@@ -19887,7 +19963,7 @@ void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
 	char ss[200];
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 
     // If districts enabled and this tile is mapped to a district, draw only the district (suppress base mine drawing)
     if (is->current_config.enable_districts) {
