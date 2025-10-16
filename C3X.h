@@ -311,7 +311,7 @@ struct c3x_config {
 	int per_neighborhood_pop_growth_enabled;
 	
 	bool completed_wonder_districts_can_be_destroyed;
-	bool destroyed_wonders_can_be_rebuilt;
+	bool destroyed_wonders_can_be_built_elsewhere;
 
 	int distribution_hub_food_yield_divisor;
 	int distribution_hub_shield_yield_divisor;
@@ -573,6 +573,19 @@ struct distribution_hub_record {
 struct ai_best_feasible_order {
 	City_Order order;
 	int value;
+};
+
+enum wonder_district_state {
+	WDS_UNUSED = 0,      // Wonder district built, no wonder assigned
+	WDS_UNDER_CONSTRUCTION,        // Reserved by a city for wonder construction
+	WDS_COMPLETED,       // Wonder completed on this district
+	WDS_RUINED           // (Future) Wonder was destroyed
+};
+
+struct wonder_district_info {
+	enum wonder_district_state state;
+	City * city;          // City that reserved/completed (NULL if unused)
+	int wonder_index;     // Wonder index (-1 if unused/reserved, valid if completed)
 };
 
 struct injected_state {
@@ -1243,13 +1256,12 @@ struct injected_state {
 	// table that means that tile has a district built on it.
 	struct table district_tile_map;
 
-	// Tile pointer IDs -> wonder index for completed Wonder Districts.
-	// When present, the Wonder image will render instead of the base district art.
-	struct table wonder_district_tile_map;
-
-	// Tile pointer IDs -> city pointer. Tracks which city is currently using a Wonder district
-	// for wonder construction. Prevents multiple cities from using the same Wonder district simultaneously.
-	struct table wonder_district_reservations;
+	// Tile pointer IDs -> wonder_district_info pointer. Unified table tracking wonder district state.
+	// Maps tile pointers to dynamically allocated wonder_district_info structs that track:
+	//   - State (unused, reserved, completed, ruined)
+	//   - Which city reserved/completed the wonder (if applicable)
+	//   - Which wonder index is on this district (if completed)
+	struct table wonder_district_info_map;
 
 	// Tracks per-turn airlift usage for aerodrome districts (tile pointer -> civ bitmask).
 	struct table aerodrome_airlift_usage;

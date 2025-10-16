@@ -395,6 +395,19 @@ char __fastcall patch_Leader_can_do_worker_job (Leader * this, int edx, enum Wor
 bool city_requires_district_for_improvement (City * city, int improv_id, int * out_district_id);
 void clear_city_district_request (City * city, int district_id);
 
+struct wonder_district_info *
+get_wonder_district_info (Tile * tile)
+{
+	if (tile == NULL || tile == p_null_tile)
+		return NULL;
+
+	int stored_ptr;
+	if (! itable_look_up (&is->wonder_district_info_map, (int)tile, &stored_ptr))
+		return NULL;
+
+	return (struct wonder_district_info *)(long)stored_ptr;
+}
+
 int
 find_best_district_work_for_city (City * city, int * out_district_id, int * out_target_x, int * out_target_y, Tile ** out_tile)
 {
@@ -2808,11 +2821,13 @@ adjust_distribution_hub_coverage (struct distribution_hub_record * rec, int delt
 		if (Tile_has_city (area_tile))
 			continue;
 
-		// Skip tiles already reserved by another district
+		// Skip tiles already reserved by a district or completed wonder
 		int mapped_district_id;
 		if (itable_look_up (&is->district_tile_map, (int)area_tile, &mapped_district_id))
 			continue;
-		if (itable_look_up (&is->wonder_district_tile_map, (int)area_tile, &mapped_district_id))
+		// Also skip if this tile has a completed wonder on it
+		struct wonder_district_info * area_info = get_wonder_district_info (area_tile);
+		if (area_info != NULL && area_info->state == WDS_COMPLETED)
 			continue;
 
 		int key = (int)area_tile;
@@ -2959,7 +2974,9 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec, City * 
 		int mapped_district_id;
 		if (itable_look_up (&is->district_tile_map, (int)area_tile, &mapped_district_id))
 			continue;
-		if (itable_look_up (&is->wonder_district_tile_map, (int)area_tile, &mapped_district_id))
+		// Also skip if this tile has a completed wonder on it
+		struct wonder_district_info * area_info2 = get_wonder_district_info (area_tile);
+		if (area_info2 != NULL && area_info2->state == WDS_COMPLETED)
 			continue;
 		int tx, ty;
 		tai_get_coords (&tai, &tx, &ty);
@@ -4785,9 +4802,13 @@ reset_district_state (bool reset_tile_map)
 	if (reset_tile_map)
 		table_deinit (&is->district_tile_map);
 
-	// Always clear wonder overlay mappings when resetting
-	table_deinit (&is->wonder_district_tile_map);
-	table_deinit (&is->wonder_district_reservations);
+	// Clear wonder district info (free all allocated structs first)
+	FOR_TABLE_ENTRIES (tei, &is->wonder_district_info_map) {
+		struct wonder_district_info * info = (struct wonder_district_info *)(long)tei.value;
+		if (info != NULL)
+			free (info);
+	}
+	table_deinit (&is->wonder_district_info_map);
 	clear_distribution_hub_tables ();
 
 	if (is->distribution_hub_food_bonus_per_city != NULL) {
@@ -4921,8 +4942,8 @@ compute_city_tile_yield_sum (City * city, int tile_x, int tile_y)
 {
 	if (city == NULL)
 		return 0;
-	int food = patch_City_calc_tile_yield_at (city, __, YK_FOOD, tile_x, tile_y);
-	int shields = patch_City_calc_tile_yield_at (city, __, YK_SHIELDS, tile_x, tile_y);
+	int food     = patch_City_calc_tile_yield_at (city, __, YK_FOOD, tile_x, tile_y);
+	int shields  = patch_City_calc_tile_yield_at (city, __, YK_SHIELDS, tile_x, tile_y);
 	int commerce = patch_City_calc_tile_yield_at (city, __, YK_COMMERCE, tile_x, tile_y);
 	return food + shields + commerce;
 }
@@ -5025,6 +5046,23 @@ find_tile_for_distribution_hub_district (City * city, int district_id, int * out
 	return best_tile;
 }
 
+int
+count_cities_in_work_radius_of_tile (int tile_x, int tile_y, int civ_id)
+{
+	int count = 0;
+
+	FOR_TILES_AROUND (tai, is->workable_tile_count, tile_x, tile_y) {
+		Tile * tile = tai.tile;
+		if ((tile != NULL) && (tile != p_null_tile) && (tile->CityID >= 0)) {
+			City * city = get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
+			if ((city != NULL) && (city->Body.CivID == civ_id))
+				count += 1;
+		}
+	}
+
+	return count;
+}
+
 Tile *
 find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 {
@@ -5043,19 +5081,20 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 	if (command == UCV_Build_DistributionHub)
 		return find_tile_for_distribution_hub_district (city, district_id, out_x, out_y);
 
-	const int resource_penalty = 100;
+	const int multi_city_bonus_per_city = 100;
 	Tile * best_tile = NULL;
 	int best_ring_priority = -1;
 	int best_adjusted_yield = INT_MAX;
 	int best_distance = INT_MAX;
 	bool best_has_resource = true;
+	int best_city_count = 0;
 	int city_x = city->Body.X;
 	int city_y = city->Body.Y;
 
 	FOR_TILES_AROUND (tai, is->workable_tile_count, city_x, city_y) {
 		Tile * tile = tai.tile;
 		bool has_resource;
-		if (tile_not_suitable_for_district (tile, district_id, city, &has_resource))
+		if (tile_not_suitable_for_district (tile, district_id, city, &has_resource) || has_resource)
 			continue;
 
 		int tx, ty;
@@ -5064,19 +5103,22 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 		if (chebyshev <= 1)
 			continue;
 
-		int adjusted_yield = compute_city_tile_yield_sum (city, tx, ty) + (has_resource ? resource_penalty : 0);
+		int city_count = count_cities_in_work_radius_of_tile (tx, ty, city->Body.CivID);
+		int multi_city_bonus = (city_count > 1) ? ((city_count - 1) * multi_city_bonus_per_city) : 0;
+		int adjusted_yield = compute_city_tile_yield_sum (city, tx, ty) - multi_city_bonus;
 		int distance = compute_wrapped_manhattan_distance (tx, ty, city_x, city_y);
 		int ring_priority = (chebyshev == 2) ? 1 : 0;
 
 		if ((ring_priority > best_ring_priority) ||
 		    ((ring_priority == best_ring_priority) && (adjusted_yield < best_adjusted_yield)) ||
 		    ((ring_priority == best_ring_priority) && (adjusted_yield == best_adjusted_yield) && (distance < best_distance)) ||
-		    ((ring_priority == best_ring_priority) && (adjusted_yield == best_adjusted_yield) && (distance == best_distance) && (! has_resource && best_has_resource))) {
+		    ((ring_priority == best_ring_priority) && (adjusted_yield == best_adjusted_yield) && (distance == best_distance))) {
 			best_tile = tile;
 			best_ring_priority = ring_priority;
 			best_adjusted_yield = adjusted_yield;
 			best_distance = distance;
 			best_has_resource = has_resource;
+			best_city_count = city_count;
 			*out_x = tx;
 			*out_y = ty;
 		}
@@ -5089,11 +5131,12 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 	int fallback_adjusted_yield = INT_MAX;
 	int fallback_distance = INT_MAX;
 	bool fallback_has_resource = true;
+	int fallback_city_count = 0;
 
 	FOR_TILES_AROUND (tai, is->workable_tile_count, city_x, city_y) {
 		Tile * tile = tai.tile;
 		bool has_resource;
-		if (tile_not_suitable_for_district (tile, district_id, city, &has_resource))
+		if (tile_not_suitable_for_district (tile, district_id, city, &has_resource) || has_resource)
 			continue;
 
 		int tx, ty;
@@ -5102,16 +5145,19 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 		if (chebyshev != 1)
 			continue;
 
-		int adjusted_yield = compute_city_tile_yield_sum (city, tx, ty) + (has_resource ? resource_penalty : 0);
+		int city_count = count_cities_in_work_radius_of_tile (tx, ty, city->Body.CivID);
+		int multi_city_bonus = (city_count > 1) ? ((city_count - 1) * multi_city_bonus_per_city) : 0;
+		int adjusted_yield = compute_city_tile_yield_sum (city, tx, ty) - multi_city_bonus;
 		int distance = compute_wrapped_manhattan_distance (tx, ty, city_x, city_y);
 
 		if ((adjusted_yield < fallback_adjusted_yield) ||
 		    ((adjusted_yield == fallback_adjusted_yield) && (distance < fallback_distance)) ||
-		    ((adjusted_yield == fallback_adjusted_yield) && (distance == fallback_distance) && (! has_resource && fallback_has_resource))) {
+		    ((adjusted_yield == fallback_adjusted_yield) && (distance == fallback_distance))) {
 			fallback_tile = tile;
 			fallback_adjusted_yield = adjusted_yield;
 			fallback_distance = distance;
 			fallback_has_resource = has_resource;
+			fallback_city_count = city_count;
 			*out_x = tx;
 			*out_y = ty;
 		}
@@ -5210,6 +5256,42 @@ city_has_required_district (City * city, int district_id)
 	return false;
 }
 
+struct wonder_district_info *
+ensure_wonder_district_info (Tile * tile)
+{
+	if (tile == NULL || tile == p_null_tile)
+		return NULL;
+
+	struct wonder_district_info * info = get_wonder_district_info (tile);
+	if (info != NULL)
+		return info;
+
+	// Create new info structure
+	info = (struct wonder_district_info *)calloc (1, sizeof(struct wonder_district_info));
+	if (info == NULL)
+		return NULL;
+
+	info->state = WDS_UNUSED;
+	info->city = NULL;
+	info->wonder_index = -1;
+
+	itable_insert (&is->wonder_district_info_map, (int)tile, (int)(long)info);
+	return info;
+}
+
+void
+remove_wonder_district_info (Tile * tile)
+{
+	if (tile == NULL || tile == p_null_tile)
+		return;
+
+	struct wonder_district_info * info = get_wonder_district_info (tile);
+	if (info != NULL) {
+		free (info);
+		itable_remove (&is->wonder_district_info_map, (int)tile);
+	}
+}
+
 bool
 city_has_wonder_district_with_no_completed_wonder (City * city)
 {
@@ -5229,24 +5311,31 @@ city_has_wonder_district_with_no_completed_wonder (City * city)
 			continue;
 
 		int mapped_id;
-		if (itable_look_up (&is->district_tile_map, (int)candidate, &mapped_id) &&
-		    (mapped_id == wonder_district_id) &&
-			(district_is_complete (candidate, wonder_district_id))) {
-			// Check if the wonder district is already complete (has a wonder built on it)
-			if (itable_look_up_or (&is->wonder_district_tile_map, (int)candidate, -1) >= 0)
-				continue; // This wonder district is complete, skip it
+		if (! itable_look_up (&is->district_tile_map, (int)candidate, &mapped_id))
+			continue;
+		if (mapped_id != wonder_district_id)
+			continue;
+		if (! district_is_complete (candidate, wonder_district_id))
+			continue;
 
-			// Check if this wonder district is reserved by THIS city
-			int reserved_city_ptr;
-			if (itable_look_up (&is->wonder_district_reservations, (int)candidate, &reserved_city_ptr)) {
-				City * reserved_city = (City *)(long)reserved_city_ptr;
-				if (reserved_city == city) {
-					// This city has a valid reservation for this wonder district
-					return true;
-				}
-			}
-			// If there's no reservation or it's reserved by another city, continue searching
-		}
+		// Get wonder district info
+		struct wonder_district_info * info = get_wonder_district_info (candidate);
+
+		// If no info exists yet, this is an unused wonder district (available!)
+		if (info == NULL)
+			return true;
+
+		// Check the state of this wonder district
+		if (info->state == WDS_COMPLETED)
+			continue; // Already has completed wonder, skip it
+
+		if (info->state == WDS_UNUSED)
+			return true; // Unreserved and available
+
+		if (info->state == WDS_UNDER_CONSTRUCTION && info->city == city)
+			return true; // Reserved by this city
+
+		// Otherwise (reserved by another city), continue searching
 	}
 
 	return false;
@@ -5785,8 +5874,13 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	if ((tile == NULL) || (tile == p_null_tile) || ! is->current_config.enable_districts)
 		return;
 
-	int wonder_windex = itable_look_up_or (&is->wonder_district_tile_map, (int)tile, -1);
+	int wonder_windex = -1;
 	int wonder_improv_id = -1;
+
+	// Get wonder district info before removing
+	struct wonder_district_info * info = get_wonder_district_info (tile);
+	if (info != NULL && info->state == WDS_COMPLETED)
+		wonder_windex = info->wonder_index;
 
 	int actual_district_id = district_id;
 	if (actual_district_id < 0)
@@ -5794,11 +5888,8 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 
 	itable_remove (&is->district_tile_map, (int)tile);
 
-	// Remove any wonder overlay mapping for this tile
-	itable_remove (&is->wonder_district_tile_map, (int)tile);
-
-	// Remove any wonder district reservation for this tile
-	itable_remove (&is->wonder_district_reservations, (int)tile);
+	// Remove wonder district info (replaces both old tables)
+	remove_wonder_district_info (tile);
 
 	if (is->current_config.enable_wonder_districts &&
 	    (actual_district_id == WONDER_DISTRICT_ID) &&
@@ -5935,15 +6026,11 @@ wonder_district_tile_under_construction (Tile * tile, int tile_x, int tile_y, in
 	if (! itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) || (mapped_id != wonder_district_id))
 		return false;
 
-	if (itable_look_up_or (&is->wonder_district_tile_map, (int)tile, -1) >= 0)
-		return false; // already has completed wonder art
+	struct wonder_district_info * info = get_wonder_district_info (tile);
+	if (info == NULL || info->state != WDS_UNDER_CONSTRUCTION)
+		return false; 
 
-	// Check if this tile has a wonder district reservation
-	int reserved_city_ptr;
-	if (! itable_look_up (&is->wonder_district_reservations, (int)tile, &reserved_city_ptr))
-		return false; // No reservation means no active construction
-
-	City * reserved_city = (City *)(long)reserved_city_ptr;
+	City * reserved_city = info->city;
 	if (reserved_city == NULL)
 		return false;
 
@@ -6012,8 +6099,11 @@ free_wonder_district_for_city (City * city)
 		int mapped_id;
 		if (! itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) || (mapped_id != wonder_district_id))
 			continue;
-		if (itable_look_up_or (&is->wonder_district_tile_map, (int)tile, -1) >= 0)
-			continue;
+
+		struct wonder_district_info * info = get_wonder_district_info (tile);
+		if (info != NULL && info->state == WDS_COMPLETED)
+			continue; // Don't remove completed wonder districts
+
 		int tile_x, tile_y;
 		if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
 			continue;
@@ -6026,45 +6116,38 @@ free_wonder_district_for_city (City * city)
 	return false;
 }
 
-void
+bool
 reserve_wonder_district_for_city (City * city)
 {
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
-		return;
+		return false;
 
 	int wonder_district_id = WONDER_DISTRICT_ID;
-	if (wonder_district_id < 0)
-		return;
 
 	int civ_id = city->Body.CivID;
 	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
 		Tile * candidate = tai.tile;
-		if (candidate == p_null_tile)
-			continue;
-		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id)
-			continue;
+		if (candidate == NULL || candidate == p_null_tile) continue;
+		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id) continue;
 
 		int mapped_id;
-		if (! itable_look_up (&is->district_tile_map, (int)candidate, &mapped_id) || (mapped_id != wonder_district_id))
-			continue;
-		if (! district_is_complete (candidate, wonder_district_id))
-			continue;
-		if (itable_look_up_or (&is->wonder_district_tile_map, (int)candidate, -1) >= 0)
-			continue; // Already has completed wonder
+		if (! itable_look_up (&is->district_tile_map, (int)candidate, &mapped_id) || (mapped_id != wonder_district_id)) continue;
+		if (! district_is_complete (candidate, wonder_district_id)) continue;
 
-		// Check if already reserved by this city
-		int reserved_city_ptr;
-		if (itable_look_up (&is->wonder_district_reservations, (int)candidate, &reserved_city_ptr)) {
-			City * reserved_city = (City *)(long)reserved_city_ptr;
-			if (reserved_city == city)
-				return; // Already reserved by this city
-			continue; // Reserved by another city
-		}
+		struct wonder_district_info * info = ensure_wonder_district_info (candidate);
+		if (info == NULL) continue;
+		if (info->state == WDS_COMPLETED) continue;
+		if (info->state == WDS_UNDER_CONSTRUCTION && info->city == city) return true;
+		if (info->state == WDS_UNDER_CONSTRUCTION && info->city != city) continue;
 
 		// Reserve this Wonder district for this city
-		itable_insert (&is->wonder_district_reservations, (int)candidate, (int)(long)city);
-		return;
+		info->state = WDS_UNDER_CONSTRUCTION;
+		info->city = city;
+		info->wonder_index = -1;
+		return true;
 	}
+
+	return false;
 }
 
 void
@@ -6086,11 +6169,11 @@ release_wonder_district_reservation (City * city)
 		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id)
 			continue;
 
-		int reserved_city_ptr;
-		if (itable_look_up (&is->wonder_district_reservations, (int)candidate, &reserved_city_ptr)) {
-			City * reserved_city = (City *)(long)reserved_city_ptr;
-			if (reserved_city == city)
-				itable_remove (&is->wonder_district_reservations, (int)candidate);
+		struct wonder_district_info * info = get_wonder_district_info (candidate);
+		if (info != NULL && info->state == WDS_UNDER_CONSTRUCTION && info->city == city) {
+			info->state = WDS_UNUSED;
+			info->city = NULL;
+			info->wonder_index = -1;
 		}
 	}
 }
@@ -6104,11 +6187,12 @@ handle_district_destroyed_by_attack (Tile * tile, int tile_x, int tile_y, bool l
 	int district_id;
 	if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
 
-		// If this is a Wonder District with a completed wonder image and wonders can't be destroyed, restore overlay and keep district
+		// If this is a Wonder District with a completed wonder and wonders can't be destroyed, restore overlay and keep district
 		if (is->current_config.enable_wonder_districts) {
 			int wonder_district_id = WONDER_DISTRICT_ID;
+			struct wonder_district_info * info = get_wonder_district_info (tile);
 			if ((district_id == wonder_district_id) &&
-			    itable_look_up_or (&is->wonder_district_tile_map, (int)tile, -1) >= 0 &&
+			    (info != NULL && info->state == WDS_COMPLETED) &&
 			    (! is->current_config.completed_wonder_districts_can_be_destroyed)) {
 				unsigned int overlays = tile->vtable->m42_Get_Overlays (tile, __, 0);
 				if ((overlays & TILE_FLAG_MINE) == 0)
@@ -8101,7 +8185,7 @@ patch_init_floating_point ()
 		{"enable_distribution_hub_districts"                   , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"enable_aerodrome_districts"                          , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
 		{"completed_wonder_districts_can_be_destroyed"         , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
-		{"destroyed_wonders_can_be_rebuilt"         		   , false, offsetof (struct c3x_config, destroyed_wonders_can_be_rebuilt)},
+		{"destroyed_wonders_can_be_built_elsewhere"            , false, offsetof (struct c3x_config, destroyed_wonders_can_be_built_elsewhere)},
 		{"cities_with_mutual_district_receive_buildings"       , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
 		{"cities_with_mutual_district_receive_wonders"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
         {"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
@@ -9798,7 +9882,9 @@ patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y)
 	if (! district_is_complete (tile, district_id))
 		return true;
 
-	if (itable_look_up_or (&is->wonder_district_tile_map, (int)tile, -1) < 0)
+	// Check if this wonder district has a completed wonder on it
+	struct wonder_district_info * info = get_wonder_district_info (tile);
+	if (info == NULL || info->state != WDS_COMPLETED)
 		return true;
 
 	return false;
@@ -11215,14 +11301,10 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 
 				// For Wonder Districts: check if unused (can be replaced)
 				if (is->current_config.enable_wonder_districts && (district_id == WONDER_DISTRICT_ID)) {
-					// If there's a reservation (wonder being built), block replacement
-					int reserved_city_ptr;
-					if (itable_look_up (&is->wonder_district_reservations, (int)tile, &reserved_city_ptr))
-						return 0;
+					struct wonder_district_info * info = get_wonder_district_info (tile);
 
-					// If wonder is complete (mapped in wonder_district_tile_map), block replacement
-					int wonder_index;
-					if (itable_look_up (&is->wonder_district_tile_map, (int)tile, &wonder_index) && (wonder_index >= 0))
+					// If there's a reservation (wonder being built) or completed wonder, block replacement
+					if (info != NULL && info->state != WDS_UNUSED)
 						return 0;
 
 					// Wonder district is not being used - allow replacement
@@ -13333,7 +13415,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
 
 	if (is_wonder_removal && ((improv->Characteristics & ITC_Wonder) != 0)) {
-		if (is->current_config.destroyed_wonders_can_be_rebuilt)
+		if (is->current_config.destroyed_wonders_can_be_built_elsewhere)
 			set_wonder_built_flag (improv_id, false);
 
 		PopupForm * popup = get_popup_form ();
@@ -13357,10 +13439,17 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 						if (t == p_null_tile) continue;
 						if (t->vtable->m38_Get_Territory_OwnerID (t) != civ_id) continue;
 						int d_id;
-						if (itable_look_up (&is->district_tile_map, (int)t, &d_id) && (d_id == wonder_district_id) && district_is_complete (t, d_id)) {
-							itable_insert (&is->wonder_district_tile_map, (int)t, matched_windex);
-							// Release the reservation since the wonder is now complete
-							itable_remove (&is->wonder_district_reservations, (int)t);
+						if (! itable_look_up (&is->district_tile_map, (int)t, &d_id) || (d_id != wonder_district_id))
+							continue;
+						if (! district_is_complete (t, d_id))
+							continue;
+
+						// Mark this wonder district as completed with the wonder
+						struct wonder_district_info * info = ensure_wonder_district_info (t);
+						if (info != NULL) {
+							info->state = WDS_COMPLETED;
+							info->city = this;
+							info->wonder_index = matched_windex;
 							break; // assign to first matching tile
 						}
 					}
@@ -15401,15 +15490,6 @@ patch_Leader_do_production_phase (Leader * this)
 			    city_is_at_neighborhood_cap (city))
 				ensure_neighborhood_request_for_city (city);
 
-			// Update Wonder district reservations for cities building wonders
-			if (is->current_config.enable_wonder_districts) {
-				if (city_is_currently_building_wonder (city)) {
-					reserve_wonder_district_for_city (city);
-				} else {
-					release_wonder_district_reservation (city);
-				}
-			}
-
 			if (city->Body.Order_Type != COT_Improvement) continue;
 			int i_improv = city->Body.Order_ID;
 
@@ -15418,25 +15498,25 @@ patch_Leader_do_production_phase (Leader * this)
 			char const * district_description = NULL;
 			bool needs_halt = false;
 
-			// Check regular buildings dependent on districts
+			// Check buildings & wonders dependent on districts
 			if (itable_look_up (&is->district_building_prereqs, i_improv, &req_district_id)) {
 				if (! city_has_required_district (city, req_district_id)) {
 					needs_halt = true;
 					district_description = is->district_configs[req_district_id].name;
 				}
 			}
-			// Check wonders dependent on wonder districts
-			else if (is->current_config.enable_wonder_districts &&
-			         (i_improv >= 0) && (i_improv < p_bic_data->ImprovementsCount)) {
-				Improvement * improv = &p_bic_data->Improvements[i_improv];
-				// Only check if this is a wonder AND it's configured to require a wonder district
-				if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0 &&
-				    find_wonder_config_index_by_improvement_id (i_improv) >= 0) {
-					if (! city_has_wonder_district_with_no_completed_wonder (city)) {
+
+			// Wonders
+			if (is->current_config.enable_wonder_districts) {
+				if (city_is_currently_building_wonder (city)) {
+					bool has_wonder_district = reserve_wonder_district_for_city (city);
+					if (! has_wonder_district) {
 						needs_halt = true;
 						req_district_id = WONDER_DISTRICT_ID;
 						district_description = "Wonder District";
 					}
+				} else {
+					release_wonder_district_reservation (city);
 				}
 			}
 
@@ -15982,13 +16062,13 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 	if (is->current_config.enable_districts) {
 
 		// Check if this is a completed wonder district that cannot be destroyed
-		if (is->current_config.enable_wonder_districts && 
+		if (is->current_config.enable_wonder_districts &&
 			!is->current_config.completed_wonder_districts_can_be_destroyed) {
 			wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 			target_tile = tile_at (tile_x, tile_y);
 			if ((target_tile != NULL) && (target_tile != p_null_tile)) {
-				int wonder_index = itable_look_up_or (&is->wonder_district_tile_map, (int)target_tile, -1);
-				if (wonder_index >= 0) {
+				struct wonder_district_info * info = get_wonder_district_info (target_tile);
+				if (info != NULL && info->state == WDS_COMPLETED) {
 					// This tile has a completed wonder district and they can't be destroyed
 					if ((*p_human_player_bits & (1 << this->Body.CivID)) != 0) {
 						PopupForm * popup = get_popup_form ();
@@ -17409,56 +17489,34 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			}
 		}
 
-		// Save wonder district assignments (tile -> wonder index)
-		if (is->current_config.enable_districts && is->current_config.enable_wonder_districts && (is->wonder_district_tile_map.len > 0)) {
-			serialize_aligned_text ("wonder_district_tile_map", &mod_data);
-			int entry_capacity = is->wonder_district_tile_map.len;
-			int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 3 * entry_capacity));
+		// Save wonder district info (unified table replacing old tile_map and reservations)
+		if (is->current_config.enable_districts && is->current_config.enable_wonder_districts && (is->wonder_district_info_map.len > 0)) {
+			serialize_aligned_text ("wonder_district_info_map", &mod_data);
+			int entry_capacity = is->wonder_district_info_map.len;
+			int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 5 * entry_capacity));
 			int * out = chunk + 1;
 			int written = 0;
-			FOR_TABLE_ENTRIES (tei, &is->wonder_district_tile_map) {
+			FOR_TABLE_ENTRIES (tei, &is->wonder_district_info_map) {
 				Tile * tile = (Tile *)tei.key;
+				struct wonder_district_info * info = (struct wonder_district_info *)(long)tei.value;
+				if (info == NULL)
+					continue;
 				int x, y;
 				if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &x, &y))
 					continue;
+				int city_id = (info->city != NULL) ? info->city->Body.ID : -1;
 				out[0] = x;
 				out[1] = y;
-				out[2] = tei.value; // wonder index
-				out += 3;
+				out[2] = (int)info->state;
+				out[3] = city_id;
+				out[4] = info->wonder_index;
+				out += 5;
 				written++;
 			}
 			chunk[0] = written;
 			int unused_entries = entry_capacity - written;
 			if (unused_entries > 0) {
-				int trimmed_bytes = unused_entries * 3 * (int)sizeof(int);
-				mod_data.length -= trimmed_bytes;
-			}
-		}
-
-		// Save wonder district reservations (tile -> city pointer)
-		if (is->current_config.enable_districts && is->current_config.enable_wonder_districts && (is->wonder_district_reservations.len > 0)) {
-			serialize_aligned_text ("wonder_district_reservations", &mod_data);
-			int entry_capacity = is->wonder_district_reservations.len;
-			int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 3 * entry_capacity));
-			int * out = chunk + 1;
-			int written = 0;
-			FOR_TABLE_ENTRIES (tei, &is->wonder_district_reservations) {
-				Tile * tile = (Tile *)tei.key;
-				City * city = (City *)tei.value;
-				int x, y;
-				if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &x, &y))
-					continue;
-				int city_id = city->Body.ID;
-				out[0] = x;
-				out[1] = y;
-				out[2] = city_id;
-				out += 3;
-				written++;
-			}
-			chunk[0] = written;
-			int unused_entries = entry_capacity - written;
-			if (unused_entries > 0) {
-				int trimmed_bytes = unused_entries * 3 * (int)sizeof(int);
+				int trimmed_bytes = unused_entries * 5 * (int)sizeof(int);
 				mod_data.length -= trimmed_bytes;
 			}
 		}
@@ -17790,7 +17848,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					error_chunk_name = "distribution_hub_records";
 					break;
 				}
-			} else if (match_save_chunk_name (&cursor, "wonder_district_tile_map")) {
+			} else if (match_save_chunk_name (&cursor, "wonder_district_info_map")) {
 				bool success = false;
 				int remaining_bytes = (seg + seg_size) - cursor;
 				if (remaining_bytes >= (int)sizeof(int)) {
@@ -17798,54 +17856,41 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					int entry_count = *ints++;
 					cursor = (byte *)ints;
 					remaining_bytes -= (int)sizeof(int);
-					if ((entry_count >= 0) && (remaining_bytes >= entry_count * 3 * (int)sizeof(int))) {
-						table_deinit (&is->wonder_district_tile_map);
+					if ((entry_count >= 0) && (remaining_bytes >= entry_count * 5 * (int)sizeof(int))) {
+						// Clear old table and free all structs
+						FOR_TABLE_ENTRIES (tei, &is->wonder_district_info_map) {
+							struct wonder_district_info * old_info = (struct wonder_district_info *)(long)tei.value;
+							if (old_info != NULL)
+								free (old_info);
+						}
+						table_deinit (&is->wonder_district_info_map);
 						success = true;
 						for (int n = 0; n < entry_count; n++) {
-							if (remaining_bytes < 3 * (int)sizeof(int)) { success = false; break; }
+							if (remaining_bytes < 5 * (int)sizeof(int)) { success = false; break; }
 							int x = *ints++;
 							int y = *ints++;
+							int state = *ints++;
+							int city_id = *ints++;
 							int windex = *ints++;
 							cursor = (byte *)ints;
-							remaining_bytes -= 3 * (int)sizeof(int);
-							if ((windex < 0) || (windex >= is->wonder_district_count)) continue;
-							Tile * tile = tile_at (x, y);
-							if ((tile != NULL) && (tile != p_null_tile))
-								itable_insert (&is->wonder_district_tile_map, (int)tile, windex);
-						}
-					}
-				}
-				if (! success) { error_chunk_name = "wonder_district_tile_map"; break; }
-			} else if (match_save_chunk_name (&cursor, "wonder_district_reservations")) {
-				bool success = false;
-				int remaining_bytes = (seg + seg_size) - cursor;
-				if (remaining_bytes >= (int)sizeof(int)) {
-					int * ints = (int *)cursor;
-					int entry_count = *ints++;
-					cursor = (byte *)ints;
-					remaining_bytes -= (int)sizeof(int);
-					if ((entry_count >= 0) && (remaining_bytes >= entry_count * 3 * (int)sizeof(int))) {
-						table_deinit (&is->wonder_district_reservations);
-						success = true;
-						for (int n = 0; n < entry_count; n++) {
-							if (remaining_bytes < 3 * (int)sizeof(int)) { success = false; break; }
-							int x = *ints++;
-							int y = *ints++;
-							int city_id = *ints++;
-							cursor = (byte *)ints;
-							remaining_bytes -= 3 * (int)sizeof(int);
+							remaining_bytes -= 5 * (int)sizeof(int);
 							Tile * tile = tile_at (x, y);
 							if ((tile == NULL) || (tile == p_null_tile))
 								continue;
-							City * city = get_city_ptr (city_id);
-							if (city == NULL)
-								continue;
-							itable_insert (&is->wonder_district_reservations, (int)tile, (int)city);
+							City * city = (city_id >= 0) ? get_city_ptr (city_id) : NULL;
+							// Create and populate info struct
+							struct wonder_district_info * info = (struct wonder_district_info *)calloc (1, sizeof(struct wonder_district_info));
+							if (info != NULL) {
+								info->state = (enum wonder_district_state)state;
+								info->city = city;
+								info->wonder_index = windex;
+								itable_insert (&is->wonder_district_info_map, (int)tile, (int)(long)info);
+							}
 						}
 					}
 				}
-				if (! success) { error_chunk_name = "wonder_district_reservations"; break; }
-			 } else {
+				if (! success) { error_chunk_name = "wonder_district_info_map"; break; }
+			} else {
 				error_chunk_name = "N/A";
 				break;
 			}
@@ -19859,10 +19904,10 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                     if (is->current_config.enable_wonder_districts) {
                         int wonder_district_id = WONDER_DISTRICT_ID;
                         if (district_id == wonder_district_id) {
-                            int windex;
-                            if (itable_look_up (&is->wonder_district_tile_map, (int)tile, &windex) &&
-                                (windex >= 0) && (windex < is->wonder_district_count)) {
-                                Sprite * wsprite = &is->wonder_district_img_sets[windex].img;
+                            struct wonder_district_info * info = get_wonder_district_info (tile);
+                            if (info != NULL && info->state == WDS_COMPLETED &&
+                                info->wonder_index >= 0 && info->wonder_index < is->wonder_district_count) {
+                                Sprite * wsprite = &is->wonder_district_img_sets[info->wonder_index].img;
                                 patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
                                 return;
                             }
