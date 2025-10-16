@@ -209,6 +209,24 @@ tile_is_adjacent_to_any_city (int tile_x, int tile_y)
 	return false;
 }
 
+bool
+tile_is_within_distance_of_ai_city (int tile_x, int tile_y, int max_distance)
+{
+	if ((p_cities == NULL) || (p_cities->Cities == NULL))
+		return false;
+
+	for (int idx = 0; idx <= p_cities->LastIndex; idx++) {
+		City * city = get_city_ptr (idx);
+		if (city == NULL)
+			continue;
+		if ((*p_human_player_bits & (1 << city->Body.CivID)) == 0) {
+			if (compute_wrapped_chebyshev_distance (tile_x, tile_y, city->Body.X, city->Body.Y) <= max_distance)
+				return true;
+		}
+	}
+	return false;
+}
+
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
 	bool redundant; // If true, this pause would overlap a previous one and so should not be counted
@@ -375,6 +393,7 @@ bool free_wonder_district_for_city (City * city);
 bool district_is_complete(Tile * tile, int district_id);
 char __fastcall patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing);
 bool city_requires_district_for_improvement (City * city, int improv_id, int * out_district_id);
+void clear_city_district_request (City * city, int district_id);
 
 int
 find_best_district_work_for_city (City * city, int * out_district_id, int * out_target_x, int * out_target_y, Tile ** out_tile)
@@ -451,28 +470,6 @@ patch_City_find_best_tile_to_work (City * this, int edx, Unit * worker, bool par
 	if (tr >= 21)
 		tr = (tr <= MAX_CULTURAL_NI) ? is->cultural_ni_to_standard[tr] : 0;
 	return tr;
-}
-
-// This is called when the worker arrives at a tile and needs to know what to build
-enum UnitStateType __fastcall
-patch_City_instruct_worker (City * this, int edx, int tile_x, int tile_y, bool param_3, Unit * worker)
-{
-	if (is->current_config.enable_districts) {
-		Tile * tile = tile_at (tile_x, tile_y);
-		int district_id, target_x, target_y;
-		int ni = find_best_district_work_for_city (this, &district_id, &target_x, &target_y, &tile);
-
-		char ss[200];
-
-		if (ni > 0 && tile != NULL && target_x == tile_x && target_y == tile_y) {
-			itable_insert (&is->district_tile_map, (int)(long)tile, district_id);
-			snprintf (ss, sizeof ss, "[C3X] patch_City_instruct_worker: Instructing worker to build district_id=%d at (%d,%d)\n", district_id, tile_x, tile_y);
-			//pop_up_in_game_error (ss);
-			return UnitState_Build_Mines;
-		}
-	}
-
-	return City_instruct_worker (this, __, tile_x, tile_y, param_3, worker);
 }
 
 bool __fastcall
@@ -2449,6 +2446,50 @@ int __fastcall patch_City_calc_tile_yield_at (City * this, int edx, int yield_ty
 void __fastcall patch_City_recompute_yields_and_happiness (City * this, int edx);
 void on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city);
 
+enum UnitStateType __fastcall
+patch_City_instruct_worker (City * this, int edx, int tile_x, int tile_y, bool param_3, Unit * worker)
+{
+	if (is->current_config.enable_districts) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		int district_id, target_x, target_y;
+		int ni = find_best_district_work_for_city (this, &district_id, &target_x, &target_y, &tile);
+
+		if (ni > 0 && tile != NULL && target_x == tile_x && target_y == tile_y) {
+
+			// Final check: verify this district type is still needed, as neighboring cities may have built it in the meantime
+			// Check if already complete or under construction in city radius
+			int civ_id = this->Body.CivID;
+			FOR_TILES_AROUND (tai, is->workable_tile_count, this->Body.X, this->Body.Y) {
+				Tile * nearby = tai.tile;
+				if (nearby == p_null_tile || nearby == tile) continue;
+				if (nearby->vtable->m38_Get_Territory_OwnerID (nearby) != civ_id) continue;
+
+				int mapped_id;
+				if (itable_look_up (&is->district_tile_map, (int)nearby, &mapped_id) &&
+				    (mapped_id == district_id)) {
+
+					// Don't build a duplicate
+					clear_city_district_request (this, district_id);
+					return City_instruct_worker (this, __, tile_x, tile_y, param_3, worker);
+				}
+			}
+
+			bool can_build_railroad = Leader_can_do_worker_job (&leaders[this->Body.CivID], __, WJ_Build_Railroad, tile_x, tile_y, 0);
+			bool has_railroad = (*tile->vtable->m23_Check_Railroads)(tile, __, 0);
+			if (can_build_railroad && !has_railroad)
+				return UnitState_Build_Railroad;
+
+			bool has_road = (*tile->vtable->m25_Check_Roads)(tile, __, 0);
+			if (!has_road) return UnitState_Build_Road;
+
+			itable_insert (&is->district_tile_map, (int)(long)tile, district_id);
+			return UnitState_Build_Mines;
+		}
+	}
+
+	return City_instruct_worker (this, __, tile_x, tile_y, param_3, worker);
+}
+
 bool
 district_is_complete(Tile * tile, int district_id)
 {
@@ -2585,7 +2626,7 @@ mark_city_needs_district (City * city, int district_id)
 
 	char ss[200];
 	snprintf (ss, sizeof ss, "[C3X] mark_city_needs_district: city=%p district_id=%d\n", (void*)city, district_id);
-	pop_up_in_game_error (ss);
+	(*p_OutputDebugStringA) (ss);
 
 	int key = (int)(long)city;
 	int mask = itable_look_up_or (&is->city_pending_district_requests, key, 0);
@@ -4840,7 +4881,7 @@ tile_not_suitable_for_district (Tile * tile, int district_id, City * city, bool 
 	if (tile->vtable->m35_Check_Is_Water (tile))
 		return true;
 	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	if ((base_type == SQ_Mountains) || (base_type == SQ_Volcano) || (base_type == SQ_Forest) || (base_type == SQ_Jungle))
+	if ((base_type == SQ_Mountains) || (base_type == SQ_Volcano) || (base_type == SQ_Forest) || (base_type == SQ_Jungle) || (base_type == SQ_Swamp))
 		return true;
 	int mapped_id;
 	if (itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) && (mapped_id != district_id))
@@ -4958,6 +4999,8 @@ find_tile_for_distribution_hub_district (City * city, int district_id, int * out
 		if (chebyshev <= 1)
 			continue;
 		if (tile_is_adjacent_to_any_city (tx, ty))
+			continue;
+		if (tile_is_within_distance_of_ai_city (tx, ty, 1))
 			continue;
 
 		int raw_yield = compute_city_tile_yield_sum (city, tx, ty);
@@ -5160,18 +5203,10 @@ city_has_required_district (City * city, int district_id)
 	if ((city == NULL) || (district_id < 0) || (district_id >= is->district_count))
 		return false;
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] city_has_required_district: city=%p district_id=%d\n", (void*)city, district_id);
-	(*p_OutputDebugStringA) (ss);
-
 	if (get_completed_district_tile_for_city (city, district_id, NULL, NULL) != NULL) {
 		clear_city_district_request (city, district_id);
-		snprintf (ss, sizeof ss, "[C3X] city_has_required_district: City has district_id=%d\n", district_id);
-		(*p_OutputDebugStringA) (ss);
 		return true;
 	}
-	snprintf (ss, sizeof ss, "[C3X] city_has_required_district: City does not have district_id=%d\n", district_id);
-	(*p_OutputDebugStringA) (ss);
 	return false;
 }
 
@@ -5184,10 +5219,6 @@ city_has_wonder_district_with_no_completed_wonder (City * city)
 	int wonder_district_id = WONDER_DISTRICT_ID;
 	if (wonder_district_id < 0)
 		return false;
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] city_has_wonder_district_with_no_completed_wonder: city=%p\n", (void*)city);
-	(*p_OutputDebugStringA) (ss);
 
 	int civ_id = city->Body.CivID;
 	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
@@ -5205,21 +5236,18 @@ city_has_wonder_district_with_no_completed_wonder (City * city)
 			if (itable_look_up_or (&is->wonder_district_tile_map, (int)candidate, -1) >= 0)
 				continue; // This wonder district is complete, skip it
 
-			// Check if another city has reserved this Wonder district for construction
+			// Check if this wonder district is reserved by THIS city
 			int reserved_city_ptr;
 			if (itable_look_up (&is->wonder_district_reservations, (int)candidate, &reserved_city_ptr)) {
 				City * reserved_city = (City *)(long)reserved_city_ptr;
-				if ((reserved_city != NULL) && (reserved_city != city))
-					continue; // This Wonder district is reserved by another city
+				if (reserved_city == city) {
+					// This city has a valid reservation for this wonder district
+					return true;
+				}
 			}
-
-			// Found an incomplete wonder district that's available for this city
-			return true;
+			// If there's no reservation or it's reserved by another city, continue searching
 		}
 	}
-
-	snprintf (ss, sizeof ss, "[C3X] city_has_wonder_district_with_no_completed_wonder: City does not have incomplete wonder district\n");
-	(*p_OutputDebugStringA) (ss);
 
 	return false;
 }
@@ -5910,29 +5938,31 @@ wonder_district_tile_under_construction (Tile * tile, int tile_x, int tile_y, in
 	if (itable_look_up_or (&is->wonder_district_tile_map, (int)tile, -1) >= 0)
 		return false; // already has completed wonder art
 
-	int owner_id = tile->Territory_OwnerID;
-	if (owner_id <= 0)
+	// Check if this tile has a wonder district reservation
+	int reserved_city_ptr;
+	if (! itable_look_up (&is->wonder_district_reservations, (int)tile, &reserved_city_ptr))
+		return false; // No reservation means no active construction
+
+	City * reserved_city = (City *)(long)reserved_city_ptr;
+	if (reserved_city == NULL)
 		return false;
 
-	FOR_CITIES_OF (coi, owner_id) {
-		City * city = coi.city;
-		if ((city == NULL) || ! city_radius_contains_tile (city, tile_x, tile_y))
-			continue;
+	// Verify the reserved city is still building a wonder
+	if (! city_is_currently_building_wonder (reserved_city))
+		return false;
 
-		if (! city_is_currently_building_wonder (city) || (city->Body.Order_Type != COT_Improvement)) {
-			continue;
-		}
+	// Verify this tile is within the reserved city's radius
+	if (! city_radius_contains_tile (reserved_city, tile_x, tile_y))
+		return false;
 
-		int order_id = city->Body.Order_ID;
+	// Get the wonder index for the wonder being built
+	if (out_windex != NULL) {
+		int order_id = reserved_city->Body.Order_ID;
 		int windex = find_wonder_config_index_by_improvement_id (order_id);
-		if (windex >= 0) {
-			if (out_windex != NULL)
-				*out_windex = windex;
-			return true;
-		}
+		*out_windex = windex;
 	}
 
-	return false;
+	return true;
 }
 
 bool
@@ -9286,7 +9316,7 @@ set_up_district_buttons (Main_GUI * this)
 		return;
 
 	int base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle)
+	if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp)
 		return;
 
 	Command_Button * automate_button = NULL; 
@@ -9710,7 +9740,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 
 		if (is_district_command (unit_command_value)) {
-			return (base_type != SQ_Mountains && base_type != SQ_Forest && base_type != SQ_Jungle);
+			return (base_type != SQ_Mountains && base_type != SQ_Forest && base_type != SQ_Jungle && base_type != SQ_Swamp);
 		}
 		else if (unit_command_value == UCV_Build_Mine) {
 			int district_id;
@@ -9880,7 +9910,7 @@ issue_district_worker_command (Unit * unit, int command)
     // Disallow placing districts on mountain, forest, or jungle tiles
     if (tile != NULL && tile != p_null_tile) {
         enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType(tile);
-        if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle) {
+        if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp) {
             return;
         }
     }
@@ -15416,8 +15446,6 @@ patch_Leader_do_production_phase (Leader * this)
 				bool reassigned = false;
 				if (! is_human)
 					reassigned = assign_ai_fallback_production (city, i_improv);
-				if (! reassigned)
-					city->vtable->set_production_to_most_expensive_option (city);
 
 				// For AI players, request the needed district to be built
 				if (! is_human)
@@ -17974,6 +18002,8 @@ patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
 bool __fastcall
 patch_Unit_work (Unit * this, int edx)
 {
+	return Unit_work (this, __);
+	/*
 	if (is->current_config.enable_districts) {
 		int tile_y = this->Body.Y;
   		int tile_x = this->Body.X;
@@ -17998,6 +18028,7 @@ patch_Unit_work (Unit * this, int edx)
 		}
 	}
 	return Unit_work (this, __);
+	*/
 }
 
 void __fastcall
