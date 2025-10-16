@@ -396,17 +396,69 @@ bool city_requires_district_for_improvement (City * city, int improv_id, int * o
 void clear_city_district_request (City * city, int district_id);
 void set_tile_unworkable_for_all_cities (Tile * tile, int tile_x, int tile_y);
 
+struct district_instance *
+get_district_instance (Tile * tile)
+{
+	if (tile == NULL || tile == p_null_tile)
+		return NULL;
+
+	int stored_ptr;
+	if (! itable_look_up (&is->district_tile_map, (int)tile, &stored_ptr))
+		return NULL;
+
+	return (struct district_instance *)(long)stored_ptr;
+}
+
 struct wonder_district_info *
 get_wonder_district_info (Tile * tile)
 {
 	if (tile == NULL || tile == p_null_tile)
 		return NULL;
 
-	int stored_ptr;
-	if (! itable_look_up (&is->wonder_district_info_map, (int)tile, &stored_ptr))
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL)
 		return NULL;
 
-	return (struct wonder_district_info *)(long)stored_ptr;
+	return &inst->wonder_info;
+}
+
+struct district_instance *
+ensure_district_instance (Tile * tile, int district_type)
+{
+	if (tile == NULL || tile == p_null_tile)
+		return NULL;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst != NULL)
+		return inst;
+
+	inst = (struct district_instance *)calloc (1, sizeof(struct district_instance));
+	if (inst == NULL)
+		return NULL;
+
+	inst->state = DS_UNDER_CONSTRUCTION;
+	inst->district_type = district_type;
+
+	// Initialize wonder_info (only relevant for wonder districts)
+	inst->wonder_info.state = WDS_UNUSED;
+	inst->wonder_info.city = NULL;
+	inst->wonder_info.wonder_index = -1;
+
+	itable_insert (&is->district_tile_map, (int)tile, (int)(long)inst);
+	return inst;
+}
+
+void
+remove_district_instance (Tile * tile)
+{
+	if (tile == NULL || tile == p_null_tile)
+		return;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst != NULL) {
+		free (inst);
+		itable_remove (&is->district_tile_map, (int)tile);
+	}
 }
 
 int
@@ -591,9 +643,8 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 		if ((tile != NULL) && (tile != p_null_tile)) {
 			if (is->current_config.enable_districts) {
 				// Check if the tile itself is a completed district
-				int district_id;
-				if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) &&
-				    district_is_complete (tile, district_id)) {
+				struct district_instance * inst = get_district_instance (tile);
+				if (inst != NULL && district_is_complete (tile, inst->district_type)) {
 					return false;
 				}
 
@@ -2486,10 +2537,8 @@ patch_City_instruct_worker (City * this, int edx, int tile_x, int tile_y, bool p
 				if (nearby == p_null_tile || nearby == tile) continue;
 				if (nearby->vtable->m38_Get_Territory_OwnerID (nearby) != civ_id) continue;
 
-				int mapped_id;
-				if (itable_look_up (&is->district_tile_map, (int)nearby, &mapped_id) &&
-				    (mapped_id == district_id)) {
-
+				struct district_instance * nearby_inst = get_district_instance (nearby);
+				if (nearby_inst != NULL && nearby_inst->district_type == district_id) {
 					// Don't build a duplicate
 					clear_city_district_request (this, district_id);
 					return City_instruct_worker (this, __, tile_x, tile_y, param_3, worker);
@@ -2504,7 +2553,7 @@ patch_City_instruct_worker (City * this, int edx, int tile_x, int tile_y, bool p
 			bool has_road = (*tile->vtable->m25_Check_Roads)(tile, __, 0);
 			if (!has_road) return UnitState_Build_Road;
 
-			itable_insert (&is->district_tile_map, (int)(long)tile, district_id);
+			ensure_district_instance (tile, district_id);
 			return UnitState_Build_Mines;
 		}
 	}
@@ -2520,42 +2569,49 @@ district_is_complete(Tile * tile, int district_id)
 	    (district_id < 0) || (district_id >= is->district_count))
 		return false;
 
-	bool completed = tile->vtable->m18_Check_Mines (tile, __, 0) != 0;
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL || inst->district_type != district_id)
+		return false;
 
-	// If district was never completed and there are no workers present,
-	// remove the tile from the district map
-	if (! completed) {
-		int mapped_id;
-		if (itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) &&
-		    (mapped_id == district_id)) {
-			bool worker_present = false;
-			FOR_UNITS_ON (uti, tile) {
-				Unit * unit = uti.unit;
-				if ((unit != NULL) &&
-				    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Worker_Actions != 0)) {
-					worker_present = true;
-					break;
-				}
-			}
-			if (! worker_present) {
-				itable_remove (&is->district_tile_map, (int)tile);
+	// If already marked COMPLETED, just return true
+	if (inst->state == DS_COMPLETED)
+		return true;
+
+	// State is UNDER_CONSTRUCTION - check if tile has mines now
+	bool has_mines = tile->vtable->m18_Check_Mines (tile, __, 0) != 0;
+
+	if (! has_mines) {
+		// Still under construction - check if we should clean it up
+		bool worker_present = false;
+		FOR_UNITS_ON (uti, tile) {
+			Unit * unit = uti.unit;
+			if ((unit != NULL) &&
+			    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Worker_Actions != 0)) {
+				worker_present = true;
+				break;
 			}
 		}
-	} else {
-		// District just completed - handle completion side effects
-		int tile_x, tile_y;
-		if (tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y)) {
-			set_tile_unworkable_for_all_cities (tile, tile_x, tile_y);
+		if (! worker_present) {
+			remove_district_instance (tile);
+		}
+		return false;
+	}
 
-			// Activate distribution hub if applicable
-			if (is->current_config.enable_distribution_hub_districts &&
-			    (district_id == DISTRIBUTION_HUB_DISTRICT_ID)) {
-				on_distribution_hub_completed (tile, tile_x, tile_y, NULL);
-			}
+	// Transition from UNDER_CONSTRUCTION to COMPLETED - run side effects once
+	inst->state = DS_COMPLETED;
+
+	int tile_x, tile_y;
+	if (tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y)) {
+		set_tile_unworkable_for_all_cities (tile, tile_x, tile_y);
+
+		// Activate distribution hub if applicable
+		if (is->current_config.enable_distribution_hub_districts &&
+		    (district_id == DISTRIBUTION_HUB_DISTRICT_ID)) {
+			on_distribution_hub_completed (tile, tile_x, tile_y, NULL);
 		}
 	}
 
-	return completed;
+	return true;
 }
 
 int
@@ -2833,8 +2889,7 @@ adjust_distribution_hub_coverage (struct distribution_hub_record * rec, int delt
 			continue;
 
 		// Skip tiles already reserved by a district or completed wonder
-		int mapped_district_id;
-		if (itable_look_up (&is->district_tile_map, (int)area_tile, &mapped_district_id))
+		if (get_district_instance (area_tile) != NULL)
 			continue;
 		// Also skip if this tile has a completed wonder on it
 		struct wonder_district_info * area_info = get_wonder_district_info (area_tile);
@@ -2982,8 +3037,7 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec, City * 
 			continue;
 		if (tile_has_enemy_unit (area_tile, rec->civ_id))
 			continue;
-		int mapped_district_id;
-		if (itable_look_up (&is->district_tile_map, (int)area_tile, &mapped_district_id))
+		if (get_district_instance (area_tile) != NULL)
 			continue;
 		// Also skip if this tile has a completed wonder on it
 		struct wonder_district_info * area_info2 = get_wonder_district_info (area_tile);
@@ -3241,9 +3295,8 @@ refresh_distribution_hubs_for_city (City * city)
 		Tile * tile = tai.tile;
 		if ((tile == NULL) || (tile == p_null_tile))
 			continue;
-		int mapped_id;
-		if (! itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) ||
-		    (mapped_id != district_id))
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst == NULL || inst->district_type != district_id)
 			continue;
 		int tx, ty;
 		tai_get_coords (&tai, &tx, &ty);
@@ -4810,16 +4863,17 @@ reset_district_state (bool reset_tile_map)
 	table_deinit (&is->district_building_prereqs);
 	table_deinit (&is->command_id_to_district_id);
 	stable_deinit (&is->building_name_to_id);
-	if (reset_tile_map)
+	if (reset_tile_map) {
+		// Free all district_instance structs first
+		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+			struct district_instance * inst = (struct district_instance *)(long)tei.value;
+			if (inst != NULL)
+				free (inst);
+		}
 		table_deinit (&is->district_tile_map);
-
-	// Clear wonder district info (free all allocated structs first)
-	FOR_TABLE_ENTRIES (tei, &is->wonder_district_info_map) {
-		struct wonder_district_info * info = (struct wonder_district_info *)(long)tei.value;
-		if (info != NULL)
-			free (info);
 	}
-	table_deinit (&is->wonder_district_info_map);
+
+	// Wonder district info is now part of district_instance, so no separate cleanup needed
 	clear_distribution_hub_tables ();
 
 	if (is->distribution_hub_food_bonus_per_city != NULL) {
@@ -4915,8 +4969,8 @@ tile_not_suitable_for_district (Tile * tile, int district_id, City * city, bool 
 	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 	if ((base_type == SQ_Mountains) || (base_type == SQ_Volcano) || (base_type == SQ_Forest) || (base_type == SQ_Jungle) || (base_type == SQ_Swamp))
 		return true;
-	int mapped_id;
-	if (itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) && (mapped_id != district_id))
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst != NULL && inst->district_type != district_id)
 		return true;
 
 	char ss[200];
@@ -5199,9 +5253,9 @@ get_completed_district_tile_for_city (City * city, int district_id, int * out_x,
 		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id)
 			continue;
 
-		int mapped_id;
-		if (itable_look_up (&is->district_tile_map, (int)candidate, &mapped_id) &&
-		    (mapped_id == district_id) &&
+		struct district_instance * inst = get_district_instance (candidate);
+		if (inst != NULL &&
+		    inst->district_type == district_id &&
 		    district_is_complete (candidate, district_id)) {
 			if ((out_x != NULL) || (out_y != NULL)) {
 				int tx, ty;
@@ -5232,9 +5286,8 @@ tile_has_friendly_aerodrome_district (Tile * tile, int civ_id, bool require_avai
 	if (aerodrome_id < 0)
 		return false;
 
-	int mapped_id;
-	if (! itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) ||
-	    (mapped_id != aerodrome_id))
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL || inst->district_type != aerodrome_id)
 		return false;
 
 	if (! district_is_complete (tile, aerodrome_id))
@@ -5267,41 +5320,6 @@ city_has_required_district (City * city, int district_id)
 	return false;
 }
 
-struct wonder_district_info *
-ensure_wonder_district_info (Tile * tile)
-{
-	if (tile == NULL || tile == p_null_tile)
-		return NULL;
-
-	struct wonder_district_info * info = get_wonder_district_info (tile);
-	if (info != NULL)
-		return info;
-
-	// Create new info structure
-	info = (struct wonder_district_info *)calloc (1, sizeof(struct wonder_district_info));
-	if (info == NULL)
-		return NULL;
-
-	info->state = WDS_UNUSED;
-	info->city = NULL;
-	info->wonder_index = -1;
-
-	itable_insert (&is->wonder_district_info_map, (int)tile, (int)(long)info);
-	return info;
-}
-
-void
-remove_wonder_district_info (Tile * tile)
-{
-	if (tile == NULL || tile == p_null_tile)
-		return;
-
-	struct wonder_district_info * info = get_wonder_district_info (tile);
-	if (info != NULL) {
-		free (info);
-		itable_remove (&is->wonder_district_info_map, (int)tile);
-	}
-}
 
 bool
 city_has_wonder_district_with_no_completed_wonder (City * city)
@@ -5321,10 +5339,8 @@ city_has_wonder_district_with_no_completed_wonder (City * city)
 		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id)
 			continue;
 
-		int mapped_id;
-		if (! itable_look_up (&is->district_tile_map, (int)candidate, &mapped_id))
-			continue;
-		if (mapped_id != wonder_district_id)
+		struct district_instance * inst = get_district_instance (candidate);
+		if (inst == NULL || inst->district_type != wonder_district_id)
 			continue;
 		if (! district_is_complete (candidate, wonder_district_id))
 			continue;
@@ -5471,11 +5487,11 @@ count_neighborhoods_in_city_radius (City * city)
 		if (! tile_counts_for_city_neighborhood (city, tile))
 			continue;
 
-		int district_id;
-		if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) &&
-		    (district_id >= 0) && (district_id < is->district_count) &&
-		    (is->district_configs[district_id].command == UCV_Build_Neighborhood) &&
-		    district_is_complete (tile, district_id))
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst != NULL &&
+		    inst->district_type >= 0 && inst->district_type < is->district_count &&
+		    is->district_configs[inst->district_type].command == UCV_Build_Neighborhood &&
+		    district_is_complete (tile, inst->district_type))
 			count++;
 	}
 	return count;
@@ -5534,8 +5550,9 @@ calculate_district_culture_science_bonuses (City * city, int * culture_bonus, in
 		if ((tile == NULL) || (tile == p_null_tile)) continue;
 		if (tile_has_enemy_unit (tile, city_civ_id)) continue;
 		if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
-		int district_id;
-		if (! itable_look_up (&is->district_tile_map, (int)tile, &district_id)) continue;
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst == NULL) continue;
+		int district_id = inst->district_type;
 		if ((district_id < 0) || (district_id >= is->district_count)) continue;
 		if (! district_is_complete (tile, district_id)) continue;
 
@@ -5768,8 +5785,8 @@ city_has_other_completed_district (City * city, int district_id, int removed_x, 
 		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id)
 			continue;
 
-		int mapped_id;
-		if (! itable_look_up (&is->district_tile_map, (int)candidate, &mapped_id) || (mapped_id != district_id))
+		struct district_instance * inst = get_district_instance (candidate);
+		if (inst == NULL || inst->district_type != district_id)
 			continue;
 
 		if (! district_is_complete (candidate, district_id))
@@ -5894,13 +5911,13 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 		wonder_windex = info->wonder_index;
 
 	int actual_district_id = district_id;
-	if (actual_district_id < 0)
-		itable_look_up (&is->district_tile_map, (int)tile, &actual_district_id);
+	if (actual_district_id < 0) {
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst != NULL)
+			actual_district_id = inst->district_type;
+	}
 
-	itable_remove (&is->district_tile_map, (int)tile);
-
-	// Remove wonder district info (replaces both old tables)
-	remove_wonder_district_info (tile);
+	remove_district_instance (tile);
 
 	if (is->current_config.enable_wonder_districts &&
 	    (actual_district_id == WONDER_DISTRICT_ID) &&
@@ -6059,8 +6076,8 @@ wonder_district_tile_under_construction (Tile * tile, int tile_x, int tile_y, in
 	if (wonder_district_id < 0)
 		return false;
 
-	int mapped_id;
-	if (! itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) || (mapped_id != wonder_district_id))
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL || inst->district_type != wonder_district_id)
 		return false;
 
 	struct wonder_district_info * info = get_wonder_district_info (tile);
@@ -6133,8 +6150,8 @@ free_wonder_district_for_city (City * city)
 		Tile * tile = tai.tile;
 		if (tile == p_null_tile)
 			continue;
-		int mapped_id;
-		if (! itable_look_up (&is->district_tile_map, (int)tile, &mapped_id) || (mapped_id != wonder_district_id))
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst == NULL || inst->district_type != wonder_district_id)
 			continue;
 
 		struct wonder_district_info * info = get_wonder_district_info (tile);
@@ -6167,12 +6184,11 @@ reserve_wonder_district_for_city (City * city)
 		if (candidate == NULL || candidate == p_null_tile) continue;
 		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id) continue;
 
-		int mapped_id;
-		if (! itable_look_up (&is->district_tile_map, (int)candidate, &mapped_id) || (mapped_id != wonder_district_id)) continue;
+		struct district_instance * inst = get_district_instance (candidate);
+		if (inst == NULL || inst->district_type != wonder_district_id) continue;
 		if (! district_is_complete (candidate, wonder_district_id)) continue;
 
-		struct wonder_district_info * info = ensure_wonder_district_info (candidate);
-		if (info == NULL) continue;
+		struct wonder_district_info * info = &inst->wonder_info;
 		if (info->state == WDS_COMPLETED) continue;
 		if (info->state == WDS_UNDER_CONSTRUCTION && info->city == city) return true;
 		if (info->state == WDS_UNDER_CONSTRUCTION && info->city != city) continue;
@@ -6221,8 +6237,9 @@ handle_district_destroyed_by_attack (Tile * tile, int tile_x, int tile_y, bool l
 	if (! is->current_config.enable_districts || tile == NULL || tile == p_null_tile)
 		return;
 
-	int district_id;
-	if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst != NULL) {
+		int district_id = inst->district_type;
 
 		// If this is a Wonder District with a completed wonder and wonders can't be destroyed, restore overlay and keep district
 		if (is->current_config.enable_wonder_districts) {
@@ -6605,9 +6622,10 @@ patch_City_recompute_yields_and_happiness (City * this, int edx)
 			continue;
 		if (tile->vtable->m20_Check_Pollution (tile, __, 0))
 			continue;
-		int district_id;
-		if (! itable_look_up (&is->district_tile_map, (int)tile, &district_id))
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst == NULL)
 			continue;
+		int district_id = inst->district_type;
 		if (! district_is_complete (tile, district_id))
 			continue;
 		struct district_config const * cfg = &is->district_configs[district_id];
@@ -9001,8 +9019,7 @@ patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 		target_tile = tile_at (tile_x, tile_y);
 		if ((target_tile != NULL) && (target_tile != p_null_tile)) {
-			int district_id;
-            had_district_before = itable_look_up (&is->district_tile_map, (int)target_tile, &district_id);
+            had_district_before = (get_district_instance (target_tile) != NULL);
 		}
 	}
 
@@ -9464,7 +9481,9 @@ set_up_district_buttons (Main_GUI * this)
 	// Check if there's already a district on this tile. If so, and the unit can build mines,
 	// ensure the mine button is enabled so the worker can continue construction.
 	int existing_district_id = -1;
-	if (itable_look_up(&is->district_tile_map, (int)tile, &existing_district_id)) {
+	struct district_instance * existing_inst = get_district_instance (tile);
+	if (existing_inst != NULL) {
+		existing_district_id = existing_inst->district_type;
 		if (patch_Unit_can_perform_command(selected_unit, __, UCV_Build_Mine)) {
 			for (int n = 0; n < 42; n++) {
 				if (this->Unit_Command_Buttons[n].Command == UCV_Build_Mine) {
@@ -9501,8 +9520,8 @@ set_up_district_buttons (Main_GUI * this)
 		if (!is->district_configs[dc].allow_multiple) {
 			bool found_same_district_nearby = false;
 			FOR_TILES_AROUND(tai, is->workable_tile_count, selected_unit->Body.X, selected_unit->Body.Y) {
-				int nearby_district_id;
-				if (itable_look_up(&is->district_tile_map, (int)tai.tile, &nearby_district_id) && (nearby_district_id == dc)) {
+				struct district_instance * nearby_inst = get_district_instance (tai.tile);
+				if (nearby_inst != NULL && nearby_inst->district_type == dc) {
 					found_same_district_nearby = true;
 					break;
 				}
@@ -9864,8 +9883,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 			return (base_type != SQ_Mountains && base_type != SQ_Forest && base_type != SQ_Jungle && base_type != SQ_Swamp);
 		}
 		else if (unit_command_value == UCV_Build_Mine) {
-			int district_id;
-			bool has_district = itable_look_up (&is->district_tile_map, (int)tile, &district_id);
+			bool has_district = (get_district_instance (tile) != NULL);
 
 			if (has_district) {
 				return (base_type != SQ_FloodPlain && base_type != SQ_Forest && base_type != SQ_Jungle);
@@ -9908,10 +9926,11 @@ patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y)
 	if ((tile == NULL) || (tile == p_null_tile))
 		return true;
 
-	int district_id;
-	if (! itable_look_up (&is->district_tile_map, (int)tile, &district_id))
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL)
 		return true;
 
+	int district_id = inst->district_type;
 	int wonder_district_id = WONDER_DISTRICT_ID;
 	if (district_id != wonder_district_id)
 		return true;
@@ -10041,8 +10060,9 @@ issue_district_worker_command (Unit * unit, int command)
 	if (tile != NULL && tile != p_null_tile) {
 
 		// If District will be replaced by another District
-		int district_id;
-		if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) && district_is_complete(tile, district_id) ) {
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst != NULL && district_is_complete(tile, inst->district_type) ) {
+			int district_id = inst->district_type;
 			int tile_x, tile_y;
 			if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
 				return;
@@ -10065,7 +10085,7 @@ issue_district_worker_command (Unit * unit, int command)
 			
 			int sel = patch_show_popup (popup, __, 0, 0);
 			if (sel == 0) {
-				itable_remove (&is->district_tile_map, (int)tile);
+				remove_district_instance (tile);
 
 				tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
 				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
@@ -10097,7 +10117,7 @@ issue_district_worker_command (Unit * unit, int command)
 			}
 		}
 
-		itable_insert (&is->district_tile_map, (int)tile, district_id);
+		ensure_district_instance (tile, district_id);
 
 		int pseudo_command = UCV_Build_Mine;
 		Unit_set_state(unit, __, UnitState_Build_Mines);
@@ -10232,8 +10252,9 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 			if (tile != NULL && tile != p_null_tile) {
 
 				// If district would be replaced by improvement
-				int district_id;
-				if (itable_look_up(&is->district_tile_map, (int)tile, &district_id) && district_is_complete(tile, district_id)) {
+				struct district_instance * inst = get_district_instance (tile);
+				if (inst != NULL && district_is_complete(tile, inst->district_type)) {
+					int district_id = inst->district_type;
 					int tile_x, tile_y;
 					if (!tile_coords_from_ptr(&p_bic_data->Map, tile, &tile_x, &tile_y))
 						return;
@@ -10251,8 +10272,8 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 							: "C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT_SAFE",
 						-1, 0, 0, 0);
 					int sel = patch_show_popup(popup, __, 0, 0);
-					if (sel == 0) {  
-						itable_remove(&is->district_tile_map, (int)tile);
+					if (sel == 0) {
+						remove_district_instance (tile);
 						tile->vtable->m62_Set_Tile_BuildingID(tile, __, -1);
 						tile->vtable->m51_Unset_Tile_Flags(tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
 						handle_district_removed(tile, district_id, tile_x, tile_y, false);
@@ -10522,9 +10543,10 @@ patch_City_Form_draw (City_Form * this)
 				continue;
 
 			// Check if tile has a district
-			int district_id;
-			if (! itable_look_up (&is->district_tile_map, (int)tile, &district_id))
+			struct district_instance * inst = get_district_instance (tile);
+			if (inst == NULL)
 				continue;
+			int district_id = inst->district_type;
 
 			// Verify district is complete (has mines)
 			if (! tile->vtable->m18_Check_Mines (tile, __, 0))
@@ -11332,9 +11354,10 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 	if (is->current_config.enable_districts && ((*p_human_player_bits & (1 << this->ID)) == 0)) {
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
-			int district_id;
-			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) &&
-			    (district_id >= 0) && (district_id < is->district_count)) {
+			struct district_instance * inst = get_district_instance (tile);
+			if (inst != NULL &&
+			    inst->district_type >= 0 && inst->district_type < is->district_count) {
+				int district_id = inst->district_type;
 
 				// For Wonder Districts: check if unused (can be replaced)
 				if (is->current_config.enable_wonder_districts && (district_id == WONDER_DISTRICT_ID)) {
@@ -11371,9 +11394,9 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 	if (! tr && is->current_config.enable_districts && (job == WJ_Build_Mines)) {
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
-			int district_id;
-			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) &&
-			    (district_id >= 0) && (district_id < is->district_count) &&
+			struct district_instance * inst = get_district_instance (tile);
+			if (inst != NULL &&
+			    inst->district_type >= 0 && inst->district_type < is->district_count &&
 			    ! tile->vtable->m35_Check_Is_Water (tile) &&
 			    (tile->CityID < 0) &&
 			    ! tile->vtable->m18_Check_Mines (tile, __, 0)) {
@@ -12746,10 +12769,11 @@ check_completed_district_at_worker_location (Unit * worker)
 	if ((tile == NULL) || (tile == p_null_tile))
 		return;
 
-	int district_id;
-	if (! itable_look_up (&is->district_tile_map, (int)(long)tile, &district_id))
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL)
 		return;
 
+	int district_id = inst->district_type;
 	if (! district_is_complete (tile, district_id))
 		return;
 
@@ -13325,9 +13349,8 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
         if (tile == p_null_tile) continue;
         if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id) continue;
 
-        int mapped_id;
-        if (! itable_look_up (&is->district_tile_map, (int)tile, &mapped_id)) continue;
-        if (mapped_id != required_district_id) continue;
+        struct district_instance * inst = get_district_instance (tile);
+        if (inst == NULL || inst->district_type != required_district_id) continue;
         if (! district_is_complete (tile, required_district_id)) continue;
 
         int tx, ty;
@@ -13373,9 +13396,10 @@ grant_existing_district_buildings_to_city (City * city)
 		if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id)
 			continue;
 
-		int district_id;
-		if (! itable_look_up (&is->district_tile_map, (int)tile, &district_id))
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst == NULL)
 			continue;
+		int district_id = inst->district_type;
 		if ((district_id < 0) || (district_id >= is->district_count))
 			continue;
 		if (! district_is_complete (tile, district_id))
@@ -13475,20 +13499,18 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 						Tile * t = tai.tile;
 						if (t == p_null_tile) continue;
 						if (t->vtable->m38_Get_Territory_OwnerID (t) != civ_id) continue;
-						int d_id;
-						if (! itable_look_up (&is->district_tile_map, (int)t, &d_id) || (d_id != wonder_district_id))
+						struct district_instance * inst = get_district_instance (t);
+						if (inst == NULL || inst->district_type != wonder_district_id)
 							continue;
-						if (! district_is_complete (t, d_id))
+						if (! district_is_complete (t, inst->district_type))
 							continue;
 
 						// Mark this wonder district as completed with the wonder
-						struct wonder_district_info * info = ensure_wonder_district_info (t);
-						if (info != NULL) {
-							info->state = WDS_COMPLETED;
-							info->city = this;
-							info->wonder_index = matched_windex;
-							break; // assign to first matching tile
-						}
+						struct wonder_district_info * info = &inst->wonder_info;
+						info->state = WDS_COMPLETED;
+						info->city = this;
+						info->wonder_index = matched_windex;
+						break; // assign to first matching tile
 					}
 				}
 			}
@@ -16120,7 +16142,11 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 		target_tile = tile_at (tile_x, tile_y);
 		if ((target_tile != NULL) && (target_tile != p_null_tile)) {
-			had_district_before = itable_look_up (&is->district_tile_map, (int)target_tile, &district_id_before);
+			struct district_instance * inst = get_district_instance (target_tile);
+			if (inst != NULL) {
+				had_district_before = true;
+				district_id_before = inst->district_type;
+			}
 		}
 	}
 
@@ -16133,8 +16159,9 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 
 	// Check if the district was destroyed by the attack
 	if (had_district_before && (target_tile != NULL) && (target_tile != p_null_tile)) {
-		int district_id_after;
-		bool has_district_after = itable_look_up (&is->district_tile_map, (int)target_tile, &district_id_after);
+		struct district_instance * inst_after = get_district_instance (target_tile);
+		bool has_district_after = (inst_after != NULL);
+		int district_id_after = (inst_after != NULL) ? inst_after->district_type : -1;
 
 		// If the district existed before but not after, or the tile no longer has a mine, the district was destroyed
 		if (!has_district_after || !(target_tile->vtable->m42_Get_Overlays (target_tile, __, 0) & TILE_FLAG_MINE)) {
@@ -17169,9 +17196,9 @@ get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 
 			// Check if this unit is actually building a district instead of a mine
 			Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
-			int district_id;
-			if ((tile != NULL) && (tile != p_null_tile) && itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
-				char const * district_name = is->district_configs[district_id].name;
+			struct district_instance * inst = get_district_instance (tile);
+			if ((tile != NULL) && (tile != p_null_tile) && inst != NULL) {
+				char const * district_name = is->district_configs[inst->district_type].name;
 				snprintf (out_str, str_capacity, "Building %s", district_name);
 				out_str[str_capacity - 1] = '\0';
 				return true;
@@ -17477,24 +17504,33 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		if (is->current_config.enable_districts && (is->district_tile_map.len > 0)) {
 			serialize_aligned_text ("district_tile_map", &mod_data);
 			int entry_capacity = is->district_tile_map.len;
-			int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 3 * entry_capacity));
+			// Now includes wonder_info: x, y, district_type, state, wonder_state, wonder_city_id, wonder_index
+			int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 7 * entry_capacity));
 			int * out = chunk + 1;
 			int written = 0;
 			FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
 				Tile * tile = (Tile *)tei.key;
+				struct district_instance * inst = (struct district_instance *)(long)tei.value;
+				if (inst == NULL)
+					continue;
 				int x, y;
 				if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &x, &y))
 					continue;
+				int wonder_city_id = (inst->wonder_info.city != NULL) ? inst->wonder_info.city->Body.ID : -1;
 				out[0] = x;
 				out[1] = y;
-				out[2] = tei.value;
-				out += 3;
+				out[2] = inst->district_type;
+				out[3] = (int)inst->state;
+				out[4] = (int)inst->wonder_info.state;
+				out[5] = wonder_city_id;
+				out[6] = inst->wonder_info.wonder_index;
+				out += 7;
 				written++;
 			}
 			chunk[0] = written;
 			int unused_entries = entry_capacity - written;
 			if (unused_entries > 0) {
-				int trimmed_bytes = unused_entries * 3 * (int)sizeof(int);
+				int trimmed_bytes = unused_entries * 7 * (int)sizeof(int);
 				mod_data.length -= trimmed_bytes;
 			}
 		}
@@ -17526,37 +17562,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			}
 		}
 
-		// Save wonder district info (unified table replacing old tile_map and reservations)
-		if (is->current_config.enable_districts && is->current_config.enable_wonder_districts && (is->wonder_district_info_map.len > 0)) {
-			serialize_aligned_text ("wonder_district_info_map", &mod_data);
-			int entry_capacity = is->wonder_district_info_map.len;
-			int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 5 * entry_capacity));
-			int * out = chunk + 1;
-			int written = 0;
-			FOR_TABLE_ENTRIES (tei, &is->wonder_district_info_map) {
-				Tile * tile = (Tile *)tei.key;
-				struct wonder_district_info * info = (struct wonder_district_info *)(long)tei.value;
-				if (info == NULL)
-					continue;
-				int x, y;
-				if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &x, &y))
-					continue;
-				int city_id = (info->city != NULL) ? info->city->Body.ID : -1;
-				out[0] = x;
-				out[1] = y;
-				out[2] = (int)info->state;
-				out[3] = city_id;
-				out[4] = info->wonder_index;
-				out += 5;
-				written++;
-			}
-			chunk[0] = written;
-			int unused_entries = entry_capacity - written;
-			if (unused_entries > 0) {
-				int trimmed_bytes = unused_entries * 5 * (int)sizeof(int);
-				mod_data.length -= trimmed_bytes;
-			}
-		}
+		// Wonder district info is now saved as part of district_tile_map above
 	}
 
 	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
@@ -17608,8 +17614,15 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 {
 	int tr = move_game_data (buffer, save_else_load);
 
-	if (! save_else_load)
+	if (! save_else_load) {
+		// Free all district_instance structs first
+		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+			struct district_instance * inst = (struct district_instance *)(long)tei.value;
+			if (inst != NULL)
+				free (inst);
+		}
 		table_deinit (&is->district_tile_map);
+	}
 
 	// Check for a mod save data section and load it if present
 	MappedFile * save;
@@ -17818,24 +17831,40 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					int entry_count = *ints++;
 					cursor = (byte *)ints;
 					remaining_bytes -= (int)sizeof(int);
-					if ((entry_count >= 0) && (remaining_bytes >= entry_count * 3 * (int)sizeof(int))) {
+					if ((entry_count >= 0) && (remaining_bytes >= entry_count * 7 * (int)sizeof(int))) {
+						// Free all existing district_instance structs first
+						FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+							struct district_instance * inst = (struct district_instance *)(long)tei.value;
+							if (inst != NULL)
+								free (inst);
+						}
 						table_deinit (&is->district_tile_map);
 						success = true;
 						for (int n = 0; n < entry_count; n++) {
-							if (remaining_bytes < 3 * (int)sizeof(int)) {
+							if (remaining_bytes < 7 * (int)sizeof(int)) {
 								success = false;
 								break;
 							}
 							int x = *ints++;
 							int y = *ints++;
 							int district_id = *ints++;
+							int state = *ints++;
+							int wonder_state = *ints++;
+							int wonder_city_id = *ints++;
+							int wonder_index = *ints++;
 							cursor = (byte *)ints;
-							remaining_bytes -= 3 * (int)sizeof(int);
+							remaining_bytes -= 7 * (int)sizeof(int);
 							if ((district_id < 0) || (district_id >= is->district_count))
 								continue;
 							Tile * tile = tile_at (x, y);
 							if ((tile != NULL) && (tile != p_null_tile)) {
-								itable_insert (&is->district_tile_map, (int)tile, district_id);
+								struct district_instance * inst = ensure_district_instance (tile, district_id);
+								if (inst != NULL) {
+									inst->state = (enum district_state)state;
+									inst->wonder_info.state = (enum wonder_district_state)wonder_state;
+									inst->wonder_info.city = (wonder_city_id >= 0) ? get_city_ptr (wonder_city_id) : NULL;
+									inst->wonder_info.wonder_index = wonder_index;
+								}
 								if (tile->vtable->m18_Check_Mines (tile, __, 0))
 									set_tile_unworkable_for_all_cities (tile, x, y);
 							}
@@ -17885,48 +17914,6 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					error_chunk_name = "distribution_hub_records";
 					break;
 				}
-			} else if (match_save_chunk_name (&cursor, "wonder_district_info_map")) {
-				bool success = false;
-				int remaining_bytes = (seg + seg_size) - cursor;
-				if (remaining_bytes >= (int)sizeof(int)) {
-					int * ints = (int *)cursor;
-					int entry_count = *ints++;
-					cursor = (byte *)ints;
-					remaining_bytes -= (int)sizeof(int);
-					if ((entry_count >= 0) && (remaining_bytes >= entry_count * 5 * (int)sizeof(int))) {
-						// Clear old table and free all structs
-						FOR_TABLE_ENTRIES (tei, &is->wonder_district_info_map) {
-							struct wonder_district_info * old_info = (struct wonder_district_info *)(long)tei.value;
-							if (old_info != NULL)
-								free (old_info);
-						}
-						table_deinit (&is->wonder_district_info_map);
-						success = true;
-						for (int n = 0; n < entry_count; n++) {
-							if (remaining_bytes < 5 * (int)sizeof(int)) { success = false; break; }
-							int x = *ints++;
-							int y = *ints++;
-							int state = *ints++;
-							int city_id = *ints++;
-							int windex = *ints++;
-							cursor = (byte *)ints;
-							remaining_bytes -= 5 * (int)sizeof(int);
-							Tile * tile = tile_at (x, y);
-							if ((tile == NULL) || (tile == p_null_tile))
-								continue;
-							City * city = (city_id >= 0) ? get_city_ptr (city_id) : NULL;
-							// Create and populate info struct
-							struct wonder_district_info * info = (struct wonder_district_info *)calloc (1, sizeof(struct wonder_district_info));
-							if (info != NULL) {
-								info->state = (enum wonder_district_state)state;
-								info->city = city;
-								info->wonder_index = windex;
-								itable_insert (&is->wonder_district_info_map, (int)tile, (int)(long)info);
-							}
-						}
-					}
-				}
-				if (! success) { error_chunk_name = "wonder_district_info_map"; break; }
 			} else {
 				error_chunk_name = "N/A";
 				break;
@@ -18060,9 +18047,9 @@ patch_set_worker_animation (void * this, int edx, Unit * unit, int job_id)
 	
 	// If tile has a district under construction
 	Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
-	int district_id;
-	if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) && 
-		! district_is_complete (tile, district_id) && job_id == WJ_Build_Mines) {
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst != NULL &&
+		! district_is_complete (tile, inst->district_type) && job_id == WJ_Build_Mines) {
 
 		// Override and ensure build animation is used
 		job_id = AT_BUILD; 
@@ -18083,30 +18070,26 @@ patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
 		Tile * tile = tile_at (tile_x, tile_y);
 
 		if (tile != NULL && tile != p_null_tile) {
-			int district_id;
 			// Check if there's a completed district on this tile
-			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) &&
-			    district_is_complete(tile, district_id)) {
+			struct district_instance * inst = get_district_instance (tile);
+			if (inst != NULL && district_is_complete(tile, inst->district_type)) {
+				int district_id = inst->district_type;
 
 
 				if (*p_human_player_bits & (1 << this->Body.CivID)) {
 
 					if (district_id == WONDER_DISTRICT_ID) {
 						// For wonder districts: allow removal only if unused
-						int stored_ptr;
-						struct wonder_district_info * info = NULL;
-						if (itable_look_up (&is->wonder_district_info_map, (int)tile, &stored_ptr)) {
-							info = (struct wonder_district_info *)(long)stored_ptr;
-						}
+						struct wonder_district_info * info = &inst->wonder_info;
 
 						// If the wonder district is not in unused state, prevent removal
-						if (info == NULL || info->state != WDS_UNUSED) {
+						if (info->state != WDS_UNUSED) {
 							Unit_set_state (this, __, 0);
 							return;
 						}
 
 						// It's unused, so allow removal - clean up the district first
-						itable_remove (&is->district_tile_map, (int)tile);
+						remove_district_instance (tile);
 						tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
 						tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
 						handle_district_removed(tile, district_id, tile_x, tile_y, false);
@@ -18142,7 +18125,7 @@ patch_Unit_work (Unit * this, int edx)
 				int district_id, target_x, target_y;
 				int ni = find_best_district_work_for_city (city, &district_id, &target_x, &target_y, &tile);
 				if (ni > 0 && tile != NULL && target_x == tile_x && target_y == tile_y) {
-					itable_insert (&is->district_tile_map, (int)(long)tile, district_id);
+					ensure_district_instance (tile, district_id);
 					patch_Unit_work_simple_job (this, __, 0); // build mine
 					return true;
 				}
@@ -18446,9 +18429,10 @@ patch_Unit_check_rebase_target (Unit * this, int edx, int tile_x, int tile_y)
 
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
-			int district_id;
 			// Check if tile has a district
-			if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
+			struct district_instance * inst = get_district_instance (tile);
+			if (inst != NULL) {
+				int district_id = inst->district_type;
 				int aerodrome_id = AERODROME_DISTRICT_ID;
 				// Check if this is an aerodrome district owned by this unit's civ
 				if ((aerodrome_id >= 0) && (district_id == aerodrome_id) && (tile->Territory_OwnerID == this->Body.CivID)) {
@@ -18991,12 +18975,13 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 			if (tile_x < 0 || tile_x >= p_bic_data->Map.Width || tile_y < 0 || tile_y >= p_bic_data->Map.Height)
 				continue;
 
-			int district_id;
 			Tile * tile = tile_at (tile_x, tile_y);
 			if (tile == NULL || tile == p_null_tile) continue;
 			if ((tile->Body.Fog_Of_War & (1 << civ_id)) == 0) continue;
 			if (tile->Territory_OwnerID != civ_id) continue;
-			if (!itable_look_up (&is->district_tile_map, (int)tile, &district_id)) continue;
+			struct district_instance * inst = get_district_instance (tile);
+			if (inst == NULL) continue;
+			int district_id = inst->district_type;
 				if (!district_is_complete (tile, district_id)) continue;
 				if (tile_has_enemy_unit (tile, civ_id)) continue;
 				if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
@@ -19969,8 +19954,9 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
     if (is->current_config.enable_districts) {
         Tile * tile = tile_at (tile_x, tile_y);
         if ((tile != NULL) && (tile != p_null_tile)) {
-            int district_id;
-            if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
+            struct district_instance * inst = get_district_instance (tile);
+            if (inst != NULL) {
+                int district_id = inst->district_type;
                 if (is->dc_img_state == IS_UNINITED)
                     init_district_images ();
 
@@ -20078,8 +20064,7 @@ patch_Tile_has_city_or_district (Tile * this)
 {
 	bool has_city = Tile_has_city (this);
 	if (is->current_config.enable_districts) {
-		int district_id;
-		return has_city || itable_look_up (&is->district_tile_map, (int)this, &district_id);
+		return has_city || (get_district_instance (this) != NULL);
 	}
 	return has_city;
 }
@@ -20169,8 +20154,9 @@ patch_get_building_defense_bonus_at (int x, int y, int param_3)
     if ((tile == NULL) || (tile == p_null_tile))
         return base;
 
-    int district_id;
-    if (itable_look_up (&is->district_tile_map, (int)tile, &district_id)) {
+    struct district_instance * inst = get_district_instance (tile);
+    if (inst != NULL) {
+        int district_id = inst->district_type;
         double mult = (double)is->district_configs[district_id].defense_bonus_multiplier_pct / 100.0;
         if (mult > 0.0 && mult != 1.0) {
             int adjusted = (int)((double)base * mult);
@@ -20185,9 +20171,10 @@ void __fastcall
 patch_Unit_select (Unit * this)
 {
 	if (is->current_config.enable_districts) {
-		int district_id;
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
-		if (itable_look_up (&is->district_tile_map, (int)tile, &district_id) && ! district_is_complete (tile, district_id)) {
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst != NULL && ! district_is_complete (tile, inst->district_type)) {
+			int district_id = inst->district_type;
 			PopupForm * popup = get_popup_form ();
 			int remaining_turns = get_worker_remaining_turns_to_complete (this, 0);
 			set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
@@ -20196,7 +20183,7 @@ patch_Unit_select (Unit * this)
 			
 			int sel = patch_show_popup (popup, __, 0, 0);
 			if (sel == 0) {
-				itable_remove (&is->district_tile_map, (int)tile);
+				remove_district_instance (tile);
 				Unit_set_escortee (this, __, -1);
 				Unit_set_state (this, __, 0);
 			} 
@@ -20235,9 +20222,10 @@ patch_City_Form_draw_food_income_icons (City_Form * this, int edx)
 			continue;
 		if (tai.tile->vtable->m20_Check_Pollution (tai.tile, __, 0))
 			continue;
-		int district_id;
-		if (! itable_look_up (&is->district_tile_map, (int)tai.tile, &district_id))
+		struct district_instance * inst = get_district_instance (tai.tile);
+		if (inst == NULL)
 			continue;
+		int district_id = inst->district_type;
 		if ((district_id < 0) || (district_id >= is->district_count))
 			continue;
 		if (! district_is_complete (tai.tile, district_id))
@@ -20400,9 +20388,10 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 			continue;
 		if (tai.tile->vtable->m20_Check_Pollution (tai.tile, __, 0))
 			continue;
-		int district_id;
-		if (! itable_look_up (&is->district_tile_map, (int)tai.tile, &district_id))
+		struct district_instance * inst = get_district_instance (tai.tile);
+		if (inst == NULL)
 			continue;
+		int district_id = inst->district_type;
 		if ((district_id < 0) || (district_id >= is->district_count))
 			continue;
 		if (! district_is_complete (tai.tile, district_id))
@@ -20644,9 +20633,8 @@ patch_Tile_has_district_or_colony (Tile * this)
 	if (is->current_config.enable_districts &&
 	    is->current_config.ai_defends_districts) {
 
-		int district_id;
-		return (itable_look_up (&is->district_tile_map, (int)this, &district_id)) 
-			&& (district_is_complete (this, district_id));
+		struct district_instance * inst = get_district_instance (this);
+		return (inst != NULL) && district_is_complete (this, inst->district_type);
 	}
 
 	// Fallback to original has_colony logic

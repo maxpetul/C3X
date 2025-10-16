@@ -588,6 +588,17 @@ struct wonder_district_info {
 	int wonder_index;     // Wonder index (-1 if unused/reserved, valid if completed)
 };
 
+enum district_state {
+	DS_UNDER_CONSTRUCTION = 0,
+	DS_COMPLETED
+};
+
+struct district_instance {
+	enum district_state state;
+	int district_type;    // Index into district_configs array
+	struct wonder_district_info wonder_info; // Only used if district_type is a wonder district
+};
+
 struct injected_state {
 	// ==========
 	// These fields are valid at any time in the injected code because they're set by the patcher {
@@ -1252,16 +1263,11 @@ struct injected_state {
 	// table that means that building can only be built if there is a corresponding district is present in the city radius.
 	struct table district_building_prereqs;
 
-	// Tile pointer IDs -> district ID. If a tile ID is present in the
-	// table that means that tile has a district built on it.
+	// Tile pointer IDs -> district_instance pointer. Maps tiles to dynamically allocated
+	// district_instance structs tracking district type and state (UNDER_CONSTRUCTION or COMPLETED).
+	// For wonder districts, the wonder_info field tracks wonder-specific state (unused, reserved, completed, ruined),
+	// which city reserved/completed the wonder, and which wonder index is on this district.
 	struct table district_tile_map;
-
-	// Tile pointer IDs -> wonder_district_info pointer. Unified table tracking wonder district state.
-	// Maps tile pointers to dynamically allocated wonder_district_info structs that track:
-	//   - State (unused, reserved, completed, ruined)
-	//   - Which city reserved/completed the wonder (if applicable)
-	//   - Which wonder index is on this district (if completed)
-	struct table wonder_district_info_map;
 
 	// Tracks per-turn airlift usage for aerodrome districts (tile pointer -> civ bitmask).
 	struct table aerodrome_airlift_usage;
