@@ -782,7 +782,7 @@ repl call, 0x45FF66,	0x462336,	0x45FFE6,	"City_get_turns_to_build_2_for_ai_move_
 repl call, 0x4600F8,	0x4624E5,	0x460178,	"City_get_turns_to_build_2_for_ai_move_leader",	""
 repl call, 0x5C5C82,	0x5D4A23,	0x5C5992,	"Unit_has_ability_no_load_non_army_passengers",	""
 repl call, 0x5C5C93,	0x5D4A34,	0x5C59A3,	"Unit_has_ability_no_load_transport_into_army",	""
-
+inlead,	   0x4A1590,	0x4A8140,	0x4A1620,	"Fighter_unit_can_defend",			"bool (__fastcall *) (Fighter * this, int edx, Unit * unit, int tile_x, int tile_y)"
 
 
 

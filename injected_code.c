@@ -13401,5 +13401,20 @@ patch_Unit_has_ability_no_load_transport_into_army (Unit * this, int edx, enum U
 		return is_army;
 }
 
+bool __fastcall
+patch_Fighter_unit_can_defend (Fighter * this, int edx, Unit * unit, int tile_x, int tile_y)
+{
+	// Return false if we're configured to stop units inside land transports from defending and this unit is in one
+	Unit * container;
+	if ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) &&
+	    ((container = get_unit_ptr (unit->Body.Container_Unit)) != NULL) &&
+	    (p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Land) &&
+	    ! Unit_has_ability (container, __, UTA_Army))
+		return false;
+
+	else
+		return Fighter_unit_can_defend (this, __, unit, tile_x, tile_y);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
