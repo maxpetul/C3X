@@ -5545,7 +5545,14 @@ struct Espionage_Form
   Scroll_Bar Scroll_Bar;
   int field_294C[1311];
   int field_3DC8[174];
-  int field_4080[8];
+  int mouse_over_control;
+  int selected_civ_list_index;
+  int selected_city_id;
+  EspionageMission selected_mission;
+  int selected_operational_cost; // 0 = imm., 1 = carefully, 2 = safely
+  int selected_spy_else_diplo;
+  int field_4098;
+  int selected_civ_id;
   int field_40A0;
   int Last;
 };
