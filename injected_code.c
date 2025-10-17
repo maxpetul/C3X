@@ -396,6 +396,19 @@ bool city_requires_district_for_improvement (City * city, int improv_id, int * o
 void clear_city_district_request (City * city, int district_id);
 void set_tile_unworkable_for_all_cities (Tile * tile, int tile_x, int tile_y);
 
+struct district_instance *
+get_district_instance (Tile * tile)
+{
+	if (tile == NULL || tile == p_null_tile)
+		return NULL;
+
+	int stored_ptr;
+	if (! itable_look_up (&is->district_tile_map, (int)tile, &stored_ptr))
+		return NULL;
+
+	return (struct district_instance *)(long)stored_ptr;
+}
+
 struct wonder_district_info *
 get_wonder_district_info (Tile * tile)
 {
@@ -409,18 +422,6 @@ get_wonder_district_info (Tile * tile)
 	return &inst->wonder_info;
 }
 
-struct district_instance *
-get_district_instance (Tile * tile)
-{
-	if (tile == NULL || tile == p_null_tile)
-		return NULL;
-
-	int stored_ptr;
-	if (! itable_look_up (&is->district_tile_map, (int)tile, &stored_ptr))
-		return NULL;
-
-	return (struct district_instance *)(long)stored_ptr;
-}
 
 struct district_instance *
 ensure_district_instance (Tile * tile, int district_type)
@@ -9468,33 +9469,21 @@ set_up_district_buttons (Main_GUI * this)
 {
 	char ss[200];
 
-	if (is_online_game () || ! is->current_config.enable_districts) 
-		return;
+	if (is_online_game () || ! is->current_config.enable_districts)  return;
+	if (is->dc_btn_img_state == IS_UNINITED) init_district_command_buttons ();
+	if (is->dc_btn_img_state != IS_OK) return;
 
-	if (is->dc_btn_img_state == IS_UNINITED)
-		init_district_command_buttons ();
-
-	if (is->dc_btn_img_state != IS_OK)
-		return;
-
-	// Only proceed if the selected unit is a worker, the tile is valid
-	// (not a mountain), and the civ meets at least one district tech prereq.
 	Unit * selected_unit = p_main_screen_form->Current_Unit;
-	if (selected_unit == NULL)
-		return;
+	if (selected_unit == NULL) return;
 
 	int unit_type_id = selected_unit->Body.UnitTypeID;
-	// Must be a worker-type unit (has worker actions)
-	if (p_bic_data->UnitTypes[unit_type_id].Worker_Actions == 0)
-		return;
+	if (p_bic_data->UnitTypes[unit_type_id].Worker_Actions == 0) return;
 
 	Tile * tile = tile_at (selected_unit->Body.X, selected_unit->Body.Y);
-	if ((tile == NULL) || (tile == p_null_tile) || (tile->CityID >= 0))
-		return;
+	if ((tile == NULL) || (tile == p_null_tile) || (tile->CityID >= 0)) return;
 
 	int base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp)
-		return;
+	if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp) return;
 
 	Command_Button * automate_button = NULL; 
 	int i_starting_button;
@@ -9515,7 +9504,7 @@ set_up_district_buttons (Main_GUI * this)
 	if (automate_button == NULL)
 		return;
 
-	i_starting_button = 4; // Middle seems to be 5
+	i_starting_button = -1;
 
 	// Check if there's already a district on this tile. If so, and the unit can build mines,
 	// ensure the mine button is enabled so the worker can continue construction.
@@ -9539,23 +9528,20 @@ set_up_district_buttons (Main_GUI * this)
 
 	bool district_completed = district_is_complete (tile, existing_district_id);
 
-	// For each district type
+	// First pass: collect which district types should be shown
+	int active_districts[COUNT_DISTRICT_TYPES];
+	int active_count = 0;
+
 	for (int dc = 0; dc < is->district_count; dc++) {
 
-		if ((is->district_configs[dc].command == UCV_Build_Neighborhood) && !is->current_config.enable_neighborhood_districts) continue;
-		if ((is->district_configs[dc].command == UCV_Build_WonderDistrict) && !is->current_config.enable_wonder_districts) continue;
+		if ((is->district_configs[dc].command == UCV_Build_Neighborhood)    && !is->current_config.enable_neighborhood_districts)     continue;
+		if ((is->district_configs[dc].command == UCV_Build_WonderDistrict)  && !is->current_config.enable_wonder_districts)           continue;
 		if ((is->district_configs[dc].command == UCV_Build_DistributionHub) && !is->current_config.enable_distribution_hub_districts) continue;
-		if ((is->district_configs[dc].command == UCV_Build_Aerodrome) && !is->current_config.enable_aerodrome_districts) continue;
+		if ((is->district_configs[dc].command == UCV_Build_Aerodrome)       && !is->current_config.enable_aerodrome_districts)        continue;
 
-		// Skip if this specific district type is already on the tile and done
-		if (existing_district_id == dc && district_completed)
-			continue;
+		if (existing_district_id == dc && district_completed) continue;
+		if ((existing_district_id >= 0) && (existing_district_id != dc) && (! district_completed)) continue;
 
-		// Skip if a different district type is under construction but not yet done
-		if ((existing_district_id >= 0) && (existing_district_id != dc) && (! district_completed))
-			continue;
-
-		// Skip if district is already nearby, unless allow_multiple is true
 		if (!is->district_configs[dc].allow_multiple) {
 			bool found_same_district_nearby = false;
 			FOR_TILES_AROUND(tai, is->workable_tile_count, selected_unit->Body.X, selected_unit->Body.Y) {
@@ -9569,43 +9555,59 @@ set_up_district_buttons (Main_GUI * this)
 				continue;
 		}
 
-		// Check if civ has prereq tech for this district type, if any
 		int prereq_id = is->district_infos[dc].advance_prereq_id;
-		if ((prereq_id >= 0) && !Leader_has_tech(&leaders[selected_unit->Body.CivID], __, prereq_id))
-			continue;
+		if ((prereq_id >= 0) && !Leader_has_tech(&leaders[selected_unit->Body.CivID], __, prereq_id)) continue;
 
-		Command_Button * free_button = NULL; {
-			for (int n = i_starting_button + 1; n < 42; n++)
-				if ((this->Unit_Command_Buttons[n].Button.Base_Data.Status2 & 1) == 0) {
-					free_button = &this->Unit_Command_Buttons[n];
-					i_starting_button = n;
-					break;
-				}
+		// This district should be shown
+		active_districts[active_count++] = dc;
+	}
 
-			if (free_button == NULL)
-				return;
+	if (active_count == 0)
+		return;
 
-			// Set up free button for creating district
-			free_button->Command = is->district_configs[dc].command;
+	// Calculate centered starting position
+	// For odd counts, center perfectly; for even counts, favor left of center
+	int center_pos = 6;
+	i_starting_button = center_pos - (active_count / 2);
+	if (i_starting_button < 0)
+		i_starting_button = 0;
 
-			// Replace the button's image with the district image. Disabling & re-enabling and
-			// clearing field_5FC[13] are all necessary to trigger a redraw.
-			free_button->Button.vtable->m02_Show_Disabled ((Base_Form *)&free_button->Button);
-			free_button->field_6D8 = automate_button->field_6D8;
-			for (int k = 0; k < 4; k++)
-				free_button->Button.Images[k] = &is->district_btn_img_sets[dc].imgs[k];
-			free_button->Button.field_664 = automate_button->Button.field_664;
-			if (mine_turns >= 0) {
-				char tooltip[256];
-				char const * turn_word = (mine_turns == 1) ? "turn" : "turns";
-				snprintf (tooltip, sizeof tooltip, "%s (%d %s)", is->district_configs[dc].tooltip, mine_turns, turn_word);
-				tooltip[(sizeof tooltip) - 1] = '\0';
-				Button_set_tooltip (&free_button->Button, __, tooltip);
-			} else
-				Button_set_tooltip (&free_button->Button, __, (char *)is->district_configs[dc].tooltip);
-			free_button->Button.field_5FC[13] = 0;
-			free_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&free_button->Button, __, 0);
+	// Second pass: render the buttons
+	for (int idx = 0; idx < active_count; idx++) {
+		int dc = active_districts[idx];
+
+		Command_Button * free_button = NULL;
+		for (int n = i_starting_button; n < 42; n++) {
+			if ((this->Unit_Command_Buttons[n].Button.Base_Data.Status2 & 1) == 0) {
+				free_button = &this->Unit_Command_Buttons[n];
+				i_starting_button = n + 1;
+				break;
+			}
 		}
+
+		if (free_button == NULL)
+			return;
+
+		// Set up free button for creating district
+		free_button->Command = is->district_configs[dc].command;
+
+		// Replace the button's image with the district image. Disabling & re-enabling and
+		// clearing field_5FC[13] are all necessary to trigger a redraw.
+		free_button->Button.vtable->m02_Show_Disabled ((Base_Form *)&free_button->Button);
+		free_button->field_6D8 = automate_button->field_6D8;
+		for (int k = 0; k < 4; k++)
+			free_button->Button.Images[k] = &is->district_btn_img_sets[dc].imgs[k];
+		free_button->Button.field_664 = automate_button->Button.field_664;
+		if (mine_turns >= 0) {
+			char tooltip[256];
+			char const * turn_word = (mine_turns == 1) ? "turn" : "turns";
+			snprintf (tooltip, sizeof tooltip, "%s (%d %s)", is->district_configs[dc].tooltip, mine_turns, turn_word);
+			tooltip[(sizeof tooltip) - 1] = '\0';
+			Button_set_tooltip (&free_button->Button, __, tooltip);
+		} else
+			Button_set_tooltip (&free_button->Button, __, (char *)is->district_configs[dc].tooltip);
+		free_button->Button.field_5FC[13] = 0;
+		free_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&free_button->Button, __, 0);
 	}
 }
 
