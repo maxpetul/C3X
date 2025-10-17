@@ -596,6 +596,8 @@ enum district_state {
 struct district_instance {
 	enum district_state state;
 	int district_type;    // Index into district_configs array
+	int tile_x;
+	int tile_y;
 	struct wonder_district_info wonder_info; // Only used if district_type is a wonder district
 };
 
@@ -1315,6 +1317,7 @@ struct injected_state {
 	bool distribution_hub_totals_dirty;
 	int distribution_hub_last_food_divisor;
 	int distribution_hub_last_shield_divisor;
+	bool distribution_hub_refresh_in_progress;
 
 	Sprite distribution_hub_production_icon;
 	Sprite distribution_hub_food_icon;
