@@ -11408,12 +11408,12 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 					if (info != NULL && info->state != WDS_UNUSED)
 						return 0;
 
-					// Wonder district is not being used - allow replacement
-					return 1;
+					// Wonder district is unused - fall through to normal tech checks
 				}
-
-				// For all other district types: AI should not change them
-				return 0;
+				else {
+					// For all other district types: AI should not change them
+					return 0;
+				}
 			}
 		}
 	}
@@ -11442,8 +11442,12 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 			    (tile->CityID < 0) &&
 			    ! tile->vtable->m18_Check_Mines (tile, __, 0)) {
 				int owner_civ = tile->vtable->m38_Get_Territory_OwnerID (tile);
-				if ((owner_civ == this->ID) || (owner_civ == 0))
-					tr = 1;
+				if ((owner_civ == this->ID) || (owner_civ == 0)) {
+					// Check if the leader has the tech prereq for this district
+					int prereq_id = is->district_infos[inst->district_type].advance_prereq_id;
+					if (prereq_id < 0 || Leader_has_tech (this, __, prereq_id))
+						tr = 1;
+				}
 			}
 		}
 	}
@@ -12861,11 +12865,7 @@ patch_Unit_ai_move_terraformer (Unit * this)
 
 	if (is->current_config.enable_districts)
 		check_completed_district_at_worker_location (this);
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] patch_Unit_ai_move_terraformer: worker=%p at (%d,%d) civ=%d\n", (void*)this, this->Body.X, this->Body.Y, this->Body.CivID);
-	(*p_OutputDebugStringA) (ss);
-
+	
 	Unit_ai_move_terraformer (this);
 }
 
@@ -13050,8 +13050,15 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 {
 	Tile * tile = tile_at (is->viewing_tile_info_x, is->viewing_tile_info_y);
 	if (tile != p_null_tile) {
-		// Draw tile coords on line below terrain name
+		// Draw tile coords on line below terrain name, with district name if present
 		char s[200];
+		if (is->current_config.enable_districts) {
+			struct district_instance * dist = get_district_instance (tile);
+			if (dist != NULL) {
+				snprintf (s, sizeof s, "%s", is->district_configs[dist->district_type].name);
+				PCX_Image_draw_text (this, __, s, x + 80, y, strlen (s));
+			}
+		}
 		snprintf (s, sizeof s, "(%d, %d)", is->viewing_tile_info_x, is->viewing_tile_info_y);
 		PCX_Image_draw_text (this, __, s, x, y + 14, strlen (s));
 
@@ -17352,6 +17359,32 @@ patch_Tile_check_water_to_block_pollution (Tile * this)
 void __fastcall
 patch_Tile_set_flag_for_eruption_damage (Tile * this, int edx, int param_1, int param_2, int x, int y)
 {
+	if (is->current_config.enable_districts) {
+		struct district_instance * inst = get_district_instance (this);
+		if (inst != NULL) {
+			// District found - handle removal
+			int district_id = inst->district_type;
+
+			// Notify human player if this tile is in their territory
+			int territory_owner = this->vtable->m38_Get_Territory_OwnerID (this);
+			if (territory_owner == p_main_screen_form->Player_CivID) {
+				char msg[160];
+				char const * district_name = is->district_configs[district_id].name;
+				snprintf (msg, sizeof msg, "Volcanic eruption destroys %s!", district_name);
+				msg[(sizeof msg) - 1] = '\0';
+				show_map_specific_text (x, y, msg, true);
+			}
+
+			// Remove the district
+			handle_district_removed (this, district_id, x, y, false);
+
+			// Clear the mine flags
+			this->vtable->m62_Set_Tile_BuildingID (this, __, -1);
+			this->vtable->m51_Unset_Tile_Flags (this, __, 0, TILE_FLAG_MINE, x, y);
+		}
+	}
+
+	// Apply the normal eruption damage (lava flag) if allowed
 	if (! (is->current_config.do_not_pollute_impassable_tiles &&
 	       p_bic_data->TileTypes[this->vtable->m50_Get_Square_BaseType (this)].Flags.Impassable))
 		this->vtable->m56_Set_Tile_Flags (this, __, param_1, param_2, x, y);
@@ -19989,7 +20022,7 @@ void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
 	char ss[200];
-	//*p_debug_mode_bits |= 0xC;
+	*p_debug_mode_bits |= 0xC;
 
     // If districts enabled and this tile is mapped to a district, draw only the district (suppress base mine drawing)
     if (is->current_config.enable_districts) {
@@ -20518,9 +20551,12 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 }
 
 bool
-district_tile_needs_defense (Tile * tile, int tile_x, int tile_y, int district_id, int civ_id, int work_radius)
+district_tile_needs_defense (Tile * tile, int tile_x, int tile_y, struct district_instance * inst, int civ_id, int work_radius)
 {
 	if ((tile == NULL) || (tile == p_null_tile)) return false;
+	if (inst == NULL) return false;
+
+	int district_id = inst->district_type;
 	if (! district_is_complete (tile, district_id)) return false;
 	if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id) return false;
 
@@ -20530,9 +20566,14 @@ district_tile_needs_defense (Tile * tile, int tile_x, int tile_y, int district_i
 	if (defender_count >= max_defenders)
 		return false;
 
-	// Wonder districts always needs defense if can be destroyed
-	if (district_id == WONDER_DISTRICT_ID && is->current_config.completed_wonder_districts_can_be_destroyed)
-		return true;
+	// Wonder districts need defense if under construction or completed (not unused)
+	if (district_id == WONDER_DISTRICT_ID && is->current_config.completed_wonder_districts_can_be_destroyed) {
+		enum wonder_district_state state = inst->wonder_info.state;
+		if (state == WDS_UNDER_CONSTRUCTION || state == WDS_COMPLETED)
+			return true;
+		// Unused wonder districts don't need defense
+		return false;
+	}
 
 	// For other districts: check if enemies or border territory nearby
 	bool threat_nearby = false;
@@ -20574,6 +20615,8 @@ district_tile_needs_defense (Tile * tile, int tile_x, int tile_y, int district_i
 int __fastcall
 patch_Unit_seek_colony (Unit * this, int edx, bool for_own_defense, int max_distance)
 {
+	return Unit_seek_colony (this, __, for_own_defense, max_distance);
+
 	// Only intercept if defending own assets and districts are enabled
 	if (!for_own_defense ||
 	    !is->current_config.enable_districts ||
@@ -20601,13 +20644,14 @@ patch_Unit_seek_colony (Unit * this, int edx, bool for_own_defense, int max_dist
 
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
 			Tile * district_tile = (Tile *)tei.key;
-			int district_id = tei.value;
-			if (district_id != WONDER_DISTRICT_ID) continue;
+			struct district_instance * inst = get_district_instance (district_tile);
+			if (inst == NULL) continue;
+			if (inst->district_type != WONDER_DISTRICT_ID) continue;
 			int tile_x, tile_y;
 			if (! tile_coords_from_ptr (&p_bic_data->Map, district_tile, &tile_x, &tile_y)) continue;
 			int tile_continent = district_tile->vtable->m46_Get_ContinentID (district_tile);
 			if (tile_continent != continent_id) continue;
-			if (! district_tile_needs_defense (district_tile, tile_x, tile_y, district_id, civ_id, 5)) continue;
+			if (! district_tile_needs_defense (district_tile, tile_x, tile_y, inst, civ_id, 5)) continue;
 
 			// Try to set path
 			int path_length;
@@ -20631,13 +20675,14 @@ patch_Unit_seek_colony (Unit * this, int edx, bool for_own_defense, int max_dist
 	if (best_x < 0) {
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
 			Tile * district_tile = (Tile *)tei.key;
-			int district_id = tei.value;
-			if (district_id == WONDER_DISTRICT_ID) continue;
+			struct district_instance * inst = get_district_instance (district_tile);
+			if (inst == NULL) continue;
+			if (inst->district_type == WONDER_DISTRICT_ID) continue;
 			int tile_x, tile_y;
 			if (! tile_coords_from_ptr (&p_bic_data->Map, district_tile, &tile_x, &tile_y)) continue;
 			int tile_continent = district_tile->vtable->m46_Get_ContinentID (district_tile);
 			if (tile_continent != continent_id) continue;
-			if (! district_tile_needs_defense (district_tile, tile_x, tile_y, district_id, civ_id, 5)) continue;
+			if (! district_tile_needs_defense (district_tile, tile_x, tile_y, inst, civ_id, 5)) continue;
 
 			// Try to set path
 			int path_length;
