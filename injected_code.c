@@ -6635,6 +6635,18 @@ patch_City_recompute_commerce (City * this, int edx)
 }
 
 void __fastcall
+patch_City_update (City * this, int edx)
+{
+	// Call the original update function first
+	City_update (this, __);
+
+	// Ensure district bonuses are applied at the interturn
+	if (is->current_config.enable_districts) {
+		patch_City_recompute_yields_and_happiness (this, __);
+	}
+}
+
+void __fastcall
 patch_City_recompute_yields_and_happiness (City * this, int edx)
 {
 	City_recompute_yields_and_happiness (this, __);
@@ -20562,7 +20574,7 @@ district_tile_needs_defense (Tile * tile, int tile_x, int tile_y, struct distric
 
 	// Check if already has enough defenders (less than 2 for most, less than 3 for airfields)
 	int defender_count = count_units_at (tile_x, tile_y, UF_DEFENDER_VIS_TO_A_OF_CLASS_B, civ_id, 0, -1);
-	int max_defenders = (district_id == AERODROME_DISTRICT_ID) ? 3 : 2;
+	int max_defenders = (district_id == AERODROME_DISTRICT_ID) ? 3 : 1;
 	if (defender_count >= max_defenders)
 		return false;
 
@@ -20615,8 +20627,6 @@ district_tile_needs_defense (Tile * tile, int tile_x, int tile_y, struct distric
 int __fastcall
 patch_Unit_seek_colony (Unit * this, int edx, bool for_own_defense, int max_distance)
 {
-	return Unit_seek_colony (this, __, for_own_defense, max_distance);
-
 	// Only intercept if defending own assets and districts are enabled
 	if (!for_own_defense ||
 	    !is->current_config.enable_districts ||
