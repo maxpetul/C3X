@@ -248,7 +248,7 @@ distribution_hub_shield_yield_divisor = 3
 
 and you have one distribution hub which has **raw** yields of 2 food and 6 shields.
 
-2 / 2 = 1 food and 6 / 3 = 2 shields. Thus all of your connected cities would gain a bonus 1 food and 2 shields:
+2 / 2 = 1 food and 6 / 3 = 2 shields. Divisor results are **rounded down** if not an integer (e.g., 9 / 4 = 2.25, which would become a yield of 2). Thus all of your connected cities would gain a bonus 1 food and 2 shields:
 
 <img width="494" height="326" alt="image" src="https://github.com/user-attachments/assets/5cf6911f-afc2-4865-b5cc-ecd51f24270b" />
 
