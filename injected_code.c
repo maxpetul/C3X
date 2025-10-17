@@ -396,19 +396,6 @@ bool city_requires_district_for_improvement (City * city, int improv_id, int * o
 void clear_city_district_request (City * city, int district_id);
 void set_tile_unworkable_for_all_cities (Tile * tile, int tile_x, int tile_y);
 
-struct district_instance *
-get_district_instance (Tile * tile)
-{
-	if (tile == NULL || tile == p_null_tile)
-		return NULL;
-
-	int stored_ptr;
-	if (! itable_look_up (&is->district_tile_map, (int)tile, &stored_ptr))
-		return NULL;
-
-	return (struct district_instance *)(long)stored_ptr;
-}
-
 struct wonder_district_info *
 get_wonder_district_info (Tile * tile)
 {
@@ -420,6 +407,19 @@ get_wonder_district_info (Tile * tile)
 		return NULL;
 
 	return &inst->wonder_info;
+}
+
+struct district_instance *
+get_district_instance (Tile * tile)
+{
+	if (tile == NULL || tile == p_null_tile)
+		return NULL;
+
+	int stored_ptr;
+	if (! itable_look_up (&is->district_tile_map, (int)tile, &stored_ptr))
+		return NULL;
+
+	return (struct district_instance *)(long)stored_ptr;
 }
 
 struct district_instance *
@@ -2524,6 +2524,44 @@ patch_City_instruct_worker (City * this, int edx, int tile_x, int tile_y, bool p
 {
 	if (is->current_config.enable_districts) {
 		Tile * tile = tile_at (tile_x, tile_y);
+
+		// FIRST: Check if this tile already has a completed district
+		// Prevent AI from working on it, UNLESS it's an unused wonder district
+		if (tile != NULL && tile != p_null_tile) {
+			struct district_instance * existing_inst = get_district_instance (tile);
+			if (existing_inst != NULL && district_is_complete(tile, existing_inst->district_type)) {
+				int existing_district_id = existing_inst->district_type;
+				bool allow_replacement = false;
+
+				// Only allow replacement if it's an unused wonder district
+				if (existing_district_id == WONDER_DISTRICT_ID) {
+					struct wonder_district_info * info = &existing_inst->wonder_info;
+					if (info->state == WDS_UNUSED) {
+						allow_replacement = true;
+					}
+				}
+
+				// If not allowed to replace, only do road/railroad work
+				if (!allow_replacement) {
+					bool has_road = (*tile->vtable->m25_Check_Roads)(tile, __, 0);
+					if (!has_road) {
+						return UnitState_Build_Road;
+					}
+
+					bool can_build_railroad = Leader_can_do_worker_job (&leaders[this->Body.CivID], __, WJ_Build_Railroad, tile_x, tile_y, 0);
+					bool has_railroad = (*tile->vtable->m23_Check_Railroads)(tile, __, 0);
+					if (can_build_railroad && !has_railroad) {
+						return UnitState_Build_Railroad;
+					}
+
+					// District is complete and has roads/railroads - nothing to do
+					return 0;
+				}
+				// Otherwise fall through and allow the AI to work on this tile normally
+			}
+		}
+
+		// SECOND: Check if we want to build a NEW district on this tile
 		int district_id, target_x, target_y;
 		int ni = find_best_district_work_for_city (this, &district_id, &target_x, &target_y, &tile);
 
@@ -2541,10 +2579,11 @@ patch_City_instruct_worker (City * this, int edx, int tile_x, int tile_y, bool p
 				if (nearby_inst != NULL && nearby_inst->district_type == district_id) {
 					// Don't build a duplicate
 					clear_city_district_request (this, district_id);
-					return City_instruct_worker (this, __, tile_x, tile_y, param_3, worker);
+					return UnitState_Build_Trade_Routes;
 				}
 			}
 
+			// Road/railroad checks before building the district
 			bool can_build_railroad = Leader_can_do_worker_job (&leaders[this->Body.CivID], __, WJ_Build_Railroad, tile_x, tile_y, 0);
 			bool has_railroad = (*tile->vtable->m23_Check_Railroads)(tile, __, 0);
 			if (can_build_railroad && !has_railroad)
@@ -18074,12 +18113,12 @@ patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
 			struct district_instance * inst = get_district_instance (tile);
 			if (inst != NULL && district_is_complete(tile, inst->district_type)) {
 				int district_id = inst->district_type;
+				bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
 
-
-				if (*p_human_player_bits & (1 << this->Body.CivID)) {
-
+				// AI players only (human removal is handled via issue_district_worker_command)
+				if (!is_human) {
 					if (district_id == WONDER_DISTRICT_ID) {
-						// For wonder districts: allow removal only if unused
+						// For wonder districts: allow AI removal only if unused
 						struct wonder_district_info * info = &inst->wonder_info;
 
 						// If the wonder district is not in unused state, prevent removal
@@ -18098,7 +18137,7 @@ patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
 						Unit_set_state (this, __, 0);
 						return;
 					}
-				} 
+				}
 			}
 		}
 	}
