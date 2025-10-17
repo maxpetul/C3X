@@ -6,13 +6,13 @@ The goal of C3X Districts is to **make the Civ 3 map feel more alive and interes
 
 > Why Districts? I've tried to play various newer Civ games over the years, but none ever felt quite as elegantly simple yet deep, positive, and fun as Civ 3. I tried hard to enjoy Civ 6 and found that Districts finally made individual *cities* feel grand, much in the same way that Civ 3 itself made *empires* feel grand. Yet Civ 6 simply wasn't enjoyable for me ([Civinator](https://forums.civfanatics.com/threads/why-are-you-playing-civ-3-after-all-these-years.676431/post-16312711) and [livinginaz](https://forums.civfanatics.com/threads/why-are-you-playing-civ-3-after-all-these-years.676431/post-16260822) said it best). Districts ended up needing too much micromanagement and feeling overly consequential for my taste.
 > 
-> I wanted a mechanic in Civ 3 which captured the grandness and realism of Districs, but made it much easier to build, discard, move, and rebuild them over time.
+> I wanted a mechanism in Civ 3 which captured the grandness and realism of Districs, but made it much easier to build, discard, move, and rebuild them over time.
 
 ### How Districts work
 
 Districts are buildable by Workers, like any other build action:
 
-<img width="388" height="387" alt="image" src="https://github.com/user-attachments/assets/c5637371-8063-4c9c-aa5c-86e8ad4e8e6d" />
+<img width="327" height="327" alt="image" src="https://github.com/user-attachments/assets/6a355515-c5f6-4afd-bbd0-1763ce77b66b" />
 
 The core purpose of a District is to enable one or more city improvements (buildings). A Barracks, for example, may require an Encampment District in a city's work radius before they can be built. Once you do so, the Barracks appear within the Encampment:
 
@@ -64,13 +64,15 @@ After the improvement (or new District, if replacing and existing District type 
 
 <img width="535" height="346" alt="image" src="https://github.com/user-attachments/assets/29c34fe2-e98b-4304-b572-7100a9ab5fac" />
 
+**Key takeaway: build your replacement District *first*, then remove your previous one**.
+
 Note that the major *exception* to this is completed Wonders in [Wonder Districts](#wonder-districts), which cannot be moved once built.
 
 ### Art
 
 As discussed, Districts visually show which buildings are present in nearby cities. However they can also show different art by era:
 
-<img width="785" height="497" alt="image" src="https://github.com/user-attachments/assets/345a6318-1da5-4d67-9bc7-b342e062d715" />
+<img width="839" height="547" alt="image" src="https://github.com/user-attachments/assets/32ba6de0-e13d-4027-8e8f-2f069a728e7d" />
 
 or even by culture, or both:
 
@@ -82,7 +84,7 @@ Districts are also fully compatible with the Day/Night Cycle:
 
 # District Types
 
-There are 4 categories of Districts:
+There are 4 types of Districts:
 
 - [Standard Districts](#standard-districts) - fully customizable, configuration-dependent art and building dependencies 
 - [Neighborhoods](#neighborhoods) - optional, enable population growth and visual urban sprawl
@@ -95,23 +97,23 @@ Standard Districts are, well, standard. They may require a technology to be made
 
 - **Encampment** - allows Barracks, SAM Missile Battery. Enabled by Warrior Code
 
-    <img width="258" height="130" alt="image" src="https://github.com/user-attachments/assets/41ca18ce-576e-458d-9059-1462898a11cc" />
-    
+    <img width="257" height="131" alt="image" src="https://github.com/user-attachments/assets/4f482eb2-802a-4306-b2cd-b1b0634c6af4" />
+
 - **Campus** - allows Library, University, Research Lab. Enabled by Literature
 
     <img width="252" height="132" alt="image" src="https://github.com/user-attachments/assets/43a2980c-69a9-453e-a369-5d9d2c35a834" />
 
 - **Holy Site** - allows Temple, Cathedral. Enabled by Ceremonial Burial.
 
-    <img width="256" height="125" alt="image" src="https://github.com/user-attachments/assets/a4697bcd-de62-4d50-8e6c-aeabd7cb3539" />
- 
+    <img width="258" height="123" alt="image" src="https://github.com/user-attachments/assets/5646c143-130f-41df-95e0-4abd3e358f11" />
+
 - **Commercial Hub** - allows Marketplace, Bank, Stock Exchange. Enabled by Currency.
 
     <img width="255" height="129" alt="image" src="https://github.com/user-attachments/assets/d73b4b30-2eaf-4a85-8280-0d727147644d" />
 
 - **Entertainment Complex** - allows Colosseum. Enabled by Construction.
 
-    <img width="255" height="129" alt="image" src="https://github.com/user-attachments/assets/501e6883-6b54-4939-8fc4-62b47041791f" />
+    <img width="253" height="129" alt="image" src="https://github.com/user-attachments/assets/20ca29da-3f4d-44fa-9243-65043dddc595" />
 
 - **Industrial Zone** - allows Factory, Manufacturing Plant. Enabled by Industrialization.
 
@@ -170,7 +172,9 @@ Just like using the standard `c3x_config.ini` files, you can specify `default.di
 
 District art (for all Districts, not only Standard) is under [`./Art/Districts/1200`](https://github.com/instafluff0/C3X_Districts/tree/districts_v1/Art/Districts/1200). 
 
-AI workers are triggered to build Standard Districts [when an AI city attempts to build a dependent building](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L10900). This is reverted to its 2nd-most valued production item [while the nearest worker builds the District](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L4637). After completion, the AI is able to build the dependent building.
+AI workers are triggered to build Standard Districts when an AI city attempts to build a dependent building. This is reverted to its 2nd-most valued production item while the nearest worker builds the District, while the intended building is "remembered". After completion, the AI city will change production back to depedent building:
+
+<img width="1434" height="772" alt="Screenshot 2025-10-16 at 5 59 19 PM" src="https://github.com/user-attachments/assets/08130be4-e693-4232-afa7-b9db848c196a" />
 
 ## Neighborhoods
 
@@ -221,11 +225,11 @@ img_column           = 1
 
 Wonder art entries (both under construction and completed, separate slots) are by default configured in the file [`./Art/Districts/1200/Wonders.PCX`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/Art/Districts/1200/Wonders.PCX).
 
-<img width="1019" height="508" alt="image" src="https://github.com/user-attachments/assets/5ecfe42b-bd41-4a3a-b751-87ddd3dd0b9c" />
+<img width="1019" height="509" alt="image" src="https://github.com/user-attachments/assets/4d63e395-0a9d-4ba4-9edb-0ee19ffec126" />
 
 As with Districts configuration, you can specify `default.districts_wonders_config.txt`, `custom.districts_wonders_config.txt`, and `scenario.districts_wonders_config.txt` files, which are checked in that order.
 
-AI workers are triggered to build Wonder Districts in generally the same workflow as Standard Districts, based on when an AI city chooses a Wonder, triggering a worker to build a Wonder District. The only difference is that unlike Standard Districts, Wonders are specifically ["remembered"](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L10907) and [city production set to building the Wonder as soon as the Wonder District is completed](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L4434-L4448).
+AI workers are triggered to build Wonder Districts in generally the same workflow as Standard Districts, based on when an AI city chooses a Wonder, triggering a worker to build a Wonder District. The as with Standard Distrits, Wonders are specifically "remembered" and city production set to building the Wonder as soon as the Wonder District is completed.
 
 ## Distribution Hubs
 
@@ -264,15 +268,15 @@ AI workers are triggered to build Distribution Hubs when their civ's "ideal" num
 
 The Aerodrome District reuses and slightly modifies the base game airfield art. If `air_units_use_aerodrome_districts_not_cities` is set to true, air units can only be built in cities with an Aerodrome in their radius, spawn on Aerodromes, and can only land on Aerodromes (or vanilla game airfields & carriers), not cities. Airlifts and Airdrops are similarly are limited to Aerodromes.
 
-<img width="511" height="253" alt="image" src="https://github.com/user-attachments/assets/e7a20ee5-9efc-4f6b-a921-2a906f3ef9b5" />
+<img width="513" height="254" alt="image" src="https://github.com/user-attachments/assets/10773593-520f-42d2-8420-624e70961dfd" />
 
 ## Roadmap
 
 If I have the time, I hope to:
 
 1. Add a Seasonal Cycle for art (spring/summer/fall/winter), like the Day/Night Cycle. This is not strictly part of Districts, but would be fully compatible.
-2. Add support for Ports and other general Naval Districts.
-3. Art, art, art. I would love community help in making the art blend better and look nicer. This is extremely time-intensive and many of the art files don't look as nice as I'd like.
+3. Add support for Ports and other general Naval Districts.
+4. Art, art, art. I would love community help in making the art blend better and look nicer. This is extremely time-intensive and many of the art files don't look as nice as I'd like.
 
 ## Special Thanks
-[@maxpetul](https://github.com/maxpetul/) (I'm standing on the shoulders of giants!) and others whose work made C3X possible
+[@maxpetul](https://github.com/maxpetul/) (I'm standing on the shoulders of giants!) and others whose work made C3X possible.
