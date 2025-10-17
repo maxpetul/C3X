@@ -172,7 +172,7 @@ Just like using the standard `c3x_config.ini` files, you can specify `default.di
 
 District art (for all Districts, not only Standard) is under [`./Art/Districts/1200`](https://github.com/instafluff0/C3X_Districts/tree/districts_v1/Art/Districts/1200). 
 
-AI workers are triggered to build Standard Districts when an AI city attempts to build a dependent building. This is reverted to its 2nd-most valued production item while the nearest worker builds the District, while the intended building is "remembered". After completion, the AI city will change production back to dependent building:
+AI workers are triggered to build Standard Districts when an AI city attempts to build a dependent building. This is reverted to its 2nd-most valued production item while the nearest worker builds the District, while the intended building is "remembered". After completion, the AI city will change production back to the dependent building:
 
 <img width="1434" height="772" alt="Screenshot 2025-10-16 at 5 59 19 PM" src="https://github.com/user-attachments/assets/08130be4-e693-4232-afa7-b9db848c196a" />
 
