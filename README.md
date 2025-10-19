@@ -64,9 +64,7 @@ After the improvement (or new District, if replacing and existing District type 
 
 <img width="535" height="346" alt="image" src="https://github.com/user-attachments/assets/29c34fe2-e98b-4304-b572-7100a9ab5fac" />
 
-**Key takeaway: build your replacement District *first*, then remove your previous one**.
-
-Note that the major *exception* to this is completed Wonders in [Wonder Districts](#wonder-districts), which cannot be moved once built.
+**Key takeaway: build your replacement District *first*, then remove your previous one**. Note that the major *exception* to this is completed Wonders in [Wonder Districts](#wonder-districts), which cannot be moved once built.
 
 ### Art
 
@@ -174,7 +172,7 @@ District art (for all Districts, not only Standard) is under [`./Art/Districts/1
 
 AI workers are triggered to build Standard Districts when an AI city attempts to build a dependent building. This is reverted to its 2nd-most valued production item while the nearest worker builds the District, while the intended building is "remembered". After completion, the AI city will change production back to the dependent building:
 
-<img width="1434" height="772" alt="Screenshot 2025-10-16 at 5 59 19 PM" src="https://github.com/user-attachments/assets/08130be4-e693-4232-afa7-b9db848c196a" />
+<img width="1087" height="732" alt="Screenshot 2025-10-19 at 3 00 43 PM" src="https://github.com/user-attachments/assets/ea37c7cf-5a0b-425d-8147-41b88b01d062" />
 
 ## Neighborhoods
 
@@ -266,7 +264,7 @@ AI workers are triggered to build Distribution Hubs when their civ's "ideal" num
 
 ## Other Non-Standard Districts
 
-The Aerodrome District reuses and slightly modifies the base game airfield art. If `air_units_use_aerodrome_districts_not_cities` is set to true, air units can only be built in cities with an Aerodrome in their radius, spawn on Aerodromes, and can only land on Aerodromes (or vanilla game airfields & carriers), not cities. Airlifts and Airdrops are similarly are limited to Aerodromes.
+The Aerodrome District reuses and slightly modifies the base game airfield art. If `air_units_use_aerodrome_districts_not_cities` is set to true, air units can only be built in cities with an Aerodrome in their radius, spawn on Aerodromes, and can only land on Aerodromes (or vanilla game airfields & carriers), not cities. Airlifts and Airdrops are similarly limited to Aerodromes.
 
 <img width="513" height="254" alt="image" src="https://github.com/user-attachments/assets/10773593-520f-42d2-8420-624e70961dfd" />
 
