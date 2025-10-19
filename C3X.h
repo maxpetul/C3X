@@ -1003,6 +1003,9 @@ struct injected_state {
 	// Normally false. When true, calls to bounce_trespassing_units won't kick out invisible units even if they're revealed.
 	bool do_not_bounce_invisible_units;
 
+	// Normally false. When true, Unit::despawn also despawns any passenger units inside instead of making exceptions in some cases.
+	bool always_despawn_passengers;
+
 	// If limit_unit_loading_to_one_transport_per_turn is on, maps unit IDs to the ID of the transport unit they're tied to for the current turn.
 	struct table unit_transport_ties;
 

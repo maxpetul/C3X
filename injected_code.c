@@ -1779,6 +1779,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						{"load-onto-boat"        , LTR_LOAD_ONTO_BOAT},
 						{"join-army"             , LTR_JOIN_ARMY},
 						{"no-defense-from-inside", LTR_NO_DEFENSE_FROM_INSIDE},
+						{"no-escape"             , LTR_NO_ESCAPE},
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->land_transport_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -4415,6 +4416,7 @@ patch_init_floating_point ()
 	is->checking_visibility_for_unit = NULL;
 
 	is->do_not_bounce_invisible_units = false;
+	is->always_despawn_passengers = false;
 
 	is->saved_improv_counts = NULL;
 	is->saved_improv_counts_capacity = 0;
@@ -13425,6 +13427,14 @@ patch_Leader_is_enemy_unit_for_ground_aa (Leader * this, int edx, Unit * bomber)
 		return false; // Exclude this unit as candidate to intercept
 	else
 		return Leader_is_enemy_unit (this, __, bomber);
+}
+
+bool __fastcall
+patch_Unit_has_army_ability_for_passenger_despawn (Unit * this, int edx, enum UnitTypeAbilities army_ability)
+{
+	// If the unit has the army ability, the game will always despawn the passengers. Otherwise there are exceptions like land unit passengers
+	// won't be despawned if the transport is on a land tile.
+	return is->always_despawn_passengers || Unit_has_ability (this, __, army_ability);
 }
 
 // TCC requires a main function be defined even though it's never used.
