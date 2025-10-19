@@ -73,11 +73,11 @@ shield_bonus                 = 0
 #District
 name                         = Commercial Hub
 tooltip                      = Build Commercial Hub
-img_paths                    = CommercialHub.pcx
+img_paths                    = CommercialHub_AMER.pcx, CommercialHub_EURO.pcx, CommercialHub_ROMAN.pcx, CommercialHub_MIDEAST.pcx, CommercialHub_ASIAN.pcx
 btn_tile_sheet_row           = 1
 btn_tile_sheet_column        = 6
 vary_img_by_era              = 1
-vary_img_by_culture          = 0
+vary_img_by_culture          = 1
 advance_prereq               = Currency
 dependent_improvs            = Marketplace, Bank, "Stock Exchange"
 defense_bonus_multiplier_pct = 100
