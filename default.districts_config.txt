@@ -55,7 +55,7 @@ shield_bonus                 = 0
 #District
 name                         = Entertainment Complex
 tooltip                      = Build Entertainment Complex
-img_paths                    = EntertainmentComplex_AMER.pcx, EntertainmentComplex_EURO.pcx, CEntertainmentComplex_ROMAN.pcx, CEntertainmentComplex_MIDEAST.pcx, EntertainmentComplex_ASIAN.pcx
+img_paths                    = EntertainmentComplex_AMER.pcx, EntertainmentComplex_EURO.pcx, EntertainmentComplex_ROMAN.pcx, EntertainmentComplex_MIDEAST.pcx, EntertainmentComplex_ASIAN.pcx
 btn_tile_sheet_row           = 1
 btn_tile_sheet_column        = 5
 vary_img_by_era              = 1
