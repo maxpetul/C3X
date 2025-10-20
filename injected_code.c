@@ -2581,6 +2581,12 @@ recompute_city_yields_with_districts (City * city)
 enum UnitStateType __fastcall
 patch_City_instruct_worker (City * this, int edx, int tile_x, int tile_y, bool param_3, Unit * worker)
 {
+	if (this == NULL || worker == NULL) {
+		(*p_OutputDebugStringA) ("[C3X] patch_City_instruct_worker: NULL city or worker pointer\n");
+		return City_instruct_worker (this, __, tile_x, tile_y, param_3, worker);
+	}
+
+
 	if (is->current_config.enable_districts) {
 		Tile * tile = tile_at (tile_x, tile_y);
 
@@ -5850,10 +5856,20 @@ patch_City_update_growth (City * this, int edx)
 bool __cdecl
 patch_is_not_pop_capped_or_starving (City * city, int edx)
 {
+	char ss[200];
+	snprintf (ss, sizeof ss, "[C3X] patch_is_not_pop_capped_or_starving: city=%p\n", (void*)city);
+	(*p_OutputDebugStringA) (ss);
+
 	bool tr = is_not_pop_capped_or_starving (city, __);
 	if (! tr) return false;
 
+	snprintf (ss, sizeof ss, "[C3X] city_is_at_neighborhood_cap: city=%p\n", (void*)city);
+	(*p_OutputDebugStringA) (ss);
+
 	if (city_is_at_neighborhood_cap (city)) return false;
+
+	snprintf (ss, sizeof ss, "[C3X] passed patch_is_not_pop_capped_or_starving: city=%p\n", (void*)city);
+	(*p_OutputDebugStringA) (ss);
 
 	return true;
 }
@@ -10950,6 +10966,11 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 int __fastcall
 patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp)
 {
+	char ss[200];
+	snprintf (ss, sizeof ss, "[C3X] patch_Trade_Net_set_unit_path: from (%d,%d) to (%d,%d), unit %p, civ %d, flags %x\n",
+	          from_x, from_y, to_x, to_y, unit, civ_id, flags);
+	(*p_OutputDebugStringA) (ss);
+
 	int tr = Trade_Net_set_unit_path (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, out_path_length_in_mp);
 
 	bool may_require_length_fix = (is->current_config.limit_railroad_movement > 0) && // if railroad movement is limited AND
@@ -12906,6 +12927,25 @@ ai_move_material_unit (Unit * this)
 	Unit_set_state (this, __, UnitState_Fortifying);
 }
 
+void __fastcall
+patch_Unit_join_city (Unit * this, int edx, City * city)
+{
+	char ss[200];
+	int unit_id = (this != NULL) ? this->Body.ID : -1;
+	void * city_ptr = (void *)city;
+	snprintf (ss, sizeof ss, "[C3X] patch_Unit_join_city: entering, unit %d joining city %p\n", unit_id, city_ptr);
+	(*p_OutputDebugStringA) (ss);
+
+	Unit_join_city (this, __, city);
+
+	Unit * unit_after = (unit_id >= 0) ? get_unit_ptr (unit_id) : NULL;
+	if (unit_after != NULL)
+		snprintf (ss, sizeof ss, "[C3X] patch_Unit_join_city: exiting, unit %d joined city %p\n", unit_id, city_ptr);
+	else
+		snprintf (ss, sizeof ss, "[C3X] patch_Unit_join_city: exiting, unit %d joined city %p (unit despawned)\n", unit_id, city_ptr);
+	(*p_OutputDebugStringA) (ss);
+}
+
 void
 check_completed_district_at_worker_location (Unit * worker)
 {
@@ -12952,31 +12992,6 @@ check_completed_district_at_worker_location (Unit * worker)
 		City_set_production (city, __, COT_Improvement, pending_improv_id, false);
 	}
 	forget_pending_building_order (city);
-}
-
-void __fastcall
-patch_Unit_ai_move_terraformer (Unit * this)
-{
-	char ss[200];
-	snprintf (ss, sizeof ss, "patch_Unit_ai_move_terraformer: unit=%p type_id=%d at (%d,%d)\n", (void*)this, this->Body.UnitTypeID, this->Body.X, this->Body.Y);
-	(*p_OutputDebugStringA) (ss);
-
-	int type_id = this->Body.UnitTypeID;
-	Tile * tile = tile_at (this->Body.X, this->Body.Y);
-	bool pop_else_caravan;
-	if ((tile != NULL) && (tile != p_null_tile) &&
-	    (type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
-	    is_material_unit (&p_bic_data->UnitTypes[type_id], &pop_else_caravan) &&
-	    ((pop_else_caravan && is->current_config.enable_pop_unit_ai) ||
-	     ((! pop_else_caravan) && is->current_config.enable_caravan_unit_ai))) {
-		ai_move_material_unit (this);
-		return;
-	}
-
-	if (is->current_config.enable_districts)
-		check_completed_district_at_worker_location (this);
-	
-	Unit_ai_move_terraformer (this);
 }
 
 int __stdcall
@@ -13759,6 +13774,9 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 void __fastcall
 patch_City_add_population (City * this, int edx, int num, int race_id)
 {
+	City_add_population (this, __, num, race_id);
+	return;
+
 	if ((this == NULL) || (num <= 0)) {
 		City_add_population (this, __, num, race_id);
 		return;
@@ -13826,6 +13844,10 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 void __fastcall
 patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
 {
+	char ss[200];
+	snprintf (ss, sizeof ss, "patch_Unit_despawn: unit=%p id=%d type=%d\n", (void*)this, this->Body.ID, this->Body.UnitTypeID);
+	(*p_OutputDebugStringA) (ss);
+	
 	int owner_id = this->Body.CivID;
 	int type_id = this->Body.UnitTypeID;
 
@@ -13844,6 +13866,9 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 
 	change_unit_type_count (&leaders[owner_id], type_id, -1);
+
+	snprintf (ss, sizeof ss, "patch_Unit_despawn: unit despawned\n");
+	(*p_OutputDebugStringA) (ss);
 }
 
 void __fastcall
@@ -20328,15 +20353,147 @@ bool __fastcall
 patch_Unit_ai_move_unit (Unit * this, int edx)
 {
 	char ss[200];
-	snprintf (ss, sizeof ss, "patch_Unit_ai_move_unit: checking if unit %d can move\n", this->Body.ID);
+	int unit_id = (this != NULL) ? this->Body.ID : -1;
+	int start_x = (this != NULL) ? this->Body.X : 0;
+	int start_y = (this != NULL) ? this->Body.Y : 0;
+	snprintf (ss, sizeof ss, "patch_Unit_ai_move_unit: checking if unit %d can move at (%d, %d)\n", unit_id, start_x, start_y);
 	(*p_OutputDebugStringA) (ss);
 
-	return Unit_ai_move_unit (this, __);
+	bool val = Unit_ai_move_unit (this, __);
+
+	snprintf (ss, sizeof ss, "patch_Unit_ai_move_unit: exiting");
+	(*p_OutputDebugStringA) (ss);
+
+	return val;
+}
+
+void __fastcall
+patch_Unit_ai_move_terraformer (Unit * this)
+{
+	(*p_OutputDebugStringA) ("[C3X] patch_Unit_ai_move_terraformer: called\n");
+
+	char ss[256];
+	Map * map = &p_bic_data->Map;
+	int type_id = this->Body.UnitTypeID;
+	int civ_id = this->Body.CivID;
+
+	snprintf (ss, sizeof ss, "[C3X] patch_Unit_ai_move_terraformer: entering unit=%p type_id=%d civ_id=%d at (%d,%d)\n",
+	          (void*)this, type_id, civ_id, this->Body.X, this->Body.Y);
+	(*p_OutputDebugStringA) (ss);
+	/*
+	if (this == NULL) {
+		snprintf (ss, sizeof ss, "[C3X] patch_Unit_ai_move_terraformer: null unit pointer received\n");
+		(*p_OutputDebugStringA) (ss);
+		return;
+	}
+
+	if (p_bic_data == NULL) {
+		snprintf (ss, sizeof ss, "[C3X] patch_Unit_ai_move_terraformer: p_bic_data is NULL for unit=%p\n", (void *)this);
+		(*p_OutputDebugStringA) (ss);
+		return;
+	}
+
+	if ((civ_id < 0) || (civ_id >= 32)) {
+		snprintf (ss, sizeof ss, "[C3X] patch_Unit_ai_move_terraformer: civ_id=%d out of range for unit=%p\n", civ_id, (void *)this);
+		(*p_OutputDebugStringA) (ss);
+		return;
+	}
+
+	
+	if ((type_id < 0) || (type_id >= p_bic_data->UnitTypeCount)) {
+		snprintf (ss, sizeof ss, "[C3X] patch_Unit_ai_move_terraformer: invalid unit type %d (unit=%p)\n", type_id, (void *)this);
+		(*p_OutputDebugStringA) (ss);
+		return;
+	}
+
+	
+	if ((map->Width <= 0) || (map->Height <= 0)) {
+		snprintf (ss, sizeof ss, "[C3X] patch_Unit_ai_move_terraformer: bad map dimensions %d x %d\n", map->Width, map->Height);
+		(*p_OutputDebugStringA) (ss);
+		return;
+	}
+	*/
+
+	int x = this->Body.X;
+	int y = this->Body.Y;
+	bool coords_out_of_bounds = (x < 0) || (x >= map->Width) || (y < 0) || (y >= map->Height);
+	if (coords_out_of_bounds) {
+		int wrapped_x = x;
+		int wrapped_y = y;
+		wrap_tile_coords (map, &wrapped_x, &wrapped_y);
+		snprintf (ss, sizeof ss, "[C3X] patch_Unit_ai_move_terraformer: unit=%p coords out of bounds (%d,%d) -> wrapped (%d,%d)\n",
+		          (void *)this, x, y, wrapped_x, wrapped_y);
+		(*p_OutputDebugStringA) (ss);
+		if ((wrapped_x < 0) || (wrapped_x >= map->Width) || (wrapped_y < 0) || (wrapped_y >= map->Height)) {
+			snprintf (ss, sizeof ss, "[C3X] patch_Unit_ai_move_terraformer: wrapped coords still invalid, skipping vanilla call\n");
+			(*p_OutputDebugStringA) (ss);
+			return;
+		}
+		this->Body.X = wrapped_x;
+		this->Body.Y = wrapped_y;
+		x = wrapped_x;
+		y = wrapped_y;
+	}
+
+	Tile * tile = tile_at (x, y);
+	if ((tile == NULL) || (tile == p_null_tile)) {
+		snprintf (ss, sizeof ss, "[C3X] patch_Unit_ai_move_terraformer: tile lookup failed for unit=%p at (%d,%d)\n", (void *)this, x, y);
+		(*p_OutputDebugStringA) (ss);
+		return;
+	}
+
+	bool pop_else_caravan;
+	if ((tile != NULL) && (tile != p_null_tile) &&
+	    (type_id >= 0) && (type_id < p_bic_data->UnitTypeCount) &&
+	    is_material_unit (&p_bic_data->UnitTypes[type_id], &pop_else_caravan) &&
+	    ((pop_else_caravan && is->current_config.enable_pop_unit_ai) ||
+	     ((! pop_else_caravan) && is->current_config.enable_caravan_unit_ai))) {
+		ai_move_material_unit (this);
+		return;
+	}
+
+	if (is->current_config.enable_districts)
+		check_completed_district_at_worker_location (this);
+	
+	Unit_ai_move_terraformer (this);
+
+	//snprintf (ss, sizeof ss, "patch_Unit_ai_move_terraformer: exiting");
+	//(*p_OutputDebugStringA) (ss);
+}
+
+void __fastcall
+patch_Unit_ai_move_settler (Unit * this, int edx)
+{
+	if (this == NULL) {
+		(*p_OutputDebugStringA) ("[C3X] patch_Unit_ai_move_settler: null unit pointer received\n");
+		return;
+	}
+
+	char ss[200];
+	int unit_id = (this != NULL) ? this->Body.ID : -1;
+	int start_x = (this != NULL) ? this->Body.X : 0;
+	int start_y = (this != NULL) ? this->Body.Y : 0;
+	snprintf (ss, sizeof ss, "patch_Unit_ai_move_settler: checking if unit %d can move at (%d, %d)\n", unit_id, start_x, start_y);
+	(*p_OutputDebugStringA) (ss);
+
+	Unit_ai_move_settler (this, __);
+
+	Unit * unit_after = (unit_id >= 0) ? get_unit_ptr (unit_id) : NULL;
+	if (unit_after != NULL)
+		snprintf (ss, sizeof ss, "patch_Unit_ai_move_settler: exiting, unit %d move complete at (%d, %d)\n", unit_id, unit_after->Body.X, unit_after->Body.Y);
+	else
+		snprintf (ss, sizeof ss, "patch_Unit_ai_move_settler: exiting, unit %d no longer exists\n", unit_id);
+	(*p_OutputDebugStringA) (ss);
 }
 
 bool __fastcall
 patch_Unit_ai_can_sacrifice (Unit * this, int edx, bool requires_city)
 {
+	if (this == NULL) {
+		(*p_OutputDebugStringA) ("[C3X] patch_Unit_ai_can_sacrifice: null unit pointer received\n");
+		return false;
+	}
+
 	char ss[200];
 	snprintf (ss, sizeof ss, "patch_Unit_ai_can_sacrifice: checking if unit %d can sacrifice\n", this->Body.ID);
 	(*p_OutputDebugStringA) (ss);
@@ -20352,6 +20509,11 @@ patch_Unit_ai_can_sacrifice (Unit * this, int edx, bool requires_city)
 bool __fastcall
 patch_Unit_ai_move_escorter (Unit * this, int edx)
 {
+	if (this == NULL) {
+		(*p_OutputDebugStringA) ("[C3X] patch_Unit_ai_move_escorter: null unit pointer received\n");
+		return false;
+	}
+
 	char ss[200];
 	snprintf (ss, sizeof ss, "patch_Unit_ai_ai_move_escorter: checking if unit %d can move as an escorter\n", this->Body.ID);
 	(*p_OutputDebugStringA) (ss);
@@ -20362,6 +20524,11 @@ patch_Unit_ai_move_escorter (Unit * this, int edx)
 bool __fastcall
 patch_Unit_clear_escortee_set_state_and_work (Unit * this, int edx, int state)
 {
+	if (this == NULL) {
+		(*p_OutputDebugStringA) ("[C3X] patch_Unit_clear_escortee_set_state_and_work: null unit pointer received\n");
+		return false;
+	}
+
 	char ss[200];
 	snprintf (ss, sizeof ss, "patch_clear_escortee_set_state_and_work: checking if unit %d can clear escortee and set state to %d\n", this->Body.ID, state);
 	(*p_OutputDebugStringA) (ss);
@@ -20400,6 +20567,11 @@ patch_get_building_defense_bonus_at (int x, int y, int param_3)
 void __fastcall
 patch_Unit_select (Unit * this)
 {
+	if (this == NULL) {
+		(*p_OutputDebugStringA) ("[C3X] patch_Unit_select: null unit pointer received\n");
+		return;
+	}
+
 	if (is->current_config.enable_districts) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
 		struct district_instance * inst = get_district_instance (tile);
