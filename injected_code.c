@@ -20457,8 +20457,8 @@ patch_Unit_ai_move_terraformer (Unit * this)
 	
 	Unit_ai_move_terraformer (this);
 
-	//snprintf (ss, sizeof ss, "patch_Unit_ai_move_terraformer: exiting");
-	//(*p_OutputDebugStringA) (ss);
+	snprintf (ss, sizeof ss, "patch_Unit_ai_move_terraformer: exiting");
+	(*p_OutputDebugStringA) (ss);
 }
 
 void __fastcall
