@@ -826,3 +826,6 @@ define,    0x5C66D0,    0x0,        0x0,        "get_worker_remaining_turns_to_c
 define,    0x55EAE0,    0x0,        0x0,        "Leader_can_offer_resource_to_civ",   "bool (__fastcall *) (Leader *this, int param_1, int param_2, int param_3, int param_4, int param_5)"
 inlead,    0x435BA0,    0x0,        0x0,        "City_instruct_worker",               "bool (__fastcall *) (City * this, int edx, int tile_x, int tile_y, bool param_3, Unit * worker)"
 inlead,    0x4677E0,    0x0,        0x0,        "Unit_work",                          "bool (__fastcall *) (Unit *this, int edx)"
+inlead,	   0x4611F0,	0x0,	    0x0,	    "Unit_ai_move_unit",			      "bool (__fastcall *) (Unit * this, int edx)"
+inlead,    0x44E8E0,    0x0,        0x0,        "Unit_ai_move_escorter",              "bool (__fastcall *) (Unit * this, int edx)"
+inlead,    0x466A60,    0x0,        0x0,        "Unit_clear_escortee_set_state_and_work",  "bool (__fastcall *) (Unit * this, int edx, int state)"

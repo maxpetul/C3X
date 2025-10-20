@@ -12957,6 +12957,10 @@ check_completed_district_at_worker_location (Unit * worker)
 void __fastcall
 patch_Unit_ai_move_terraformer (Unit * this)
 {
+	char ss[200];
+	snprintf (ss, sizeof ss, "patch_Unit_ai_move_terraformer: unit=%p type_id=%d at (%d,%d)\n", (void*)this, this->Body.UnitTypeID, this->Body.X, this->Body.Y);
+	(*p_OutputDebugStringA) (ss);
+
 	int type_id = this->Body.UnitTypeID;
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
 	bool pop_else_caravan;
@@ -20321,14 +20325,48 @@ patch_is_online_game_for_show_popup ()
 }
 
 bool __fastcall
+patch_Unit_ai_move_unit (Unit * this, int edx)
+{
+	char ss[200];
+	snprintf (ss, sizeof ss, "patch_Unit_ai_move_unit: checking if unit %d can move\n", this->Body.ID);
+	(*p_OutputDebugStringA) (ss);
+
+	return Unit_ai_move_unit (this, __);
+}
+
+bool __fastcall
 patch_Unit_ai_can_sacrifice (Unit * this, int edx, bool requires_city)
 {
+	char ss[200];
+	snprintf (ss, sizeof ss, "patch_Unit_ai_can_sacrifice: checking if unit %d can sacrifice\n", this->Body.ID);
+	(*p_OutputDebugStringA) (ss);
+
 	int sacrifice_action = UCV_Sacrifice & 0x0FFFFFFF; // Mask out top four category bits
 	UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
 	if (is->current_config.patch_ai_can_sacrifice_without_special_ability && ((type->Special_Actions & sacrifice_action) == 0))
 		return false;
 	else
 		return Unit_ai_can_sacrifice (this, __, requires_city);
+}
+
+bool __fastcall
+patch_Unit_ai_move_escorter (Unit * this, int edx)
+{
+	char ss[200];
+	snprintf (ss, sizeof ss, "patch_Unit_ai_ai_move_escorter: checking if unit %d can move as an escorter\n", this->Body.ID);
+	(*p_OutputDebugStringA) (ss);
+
+	return Unit_ai_move_escorter (this, __);
+}
+
+bool __fastcall
+patch_Unit_clear_escortee_set_state_and_work (Unit * this, int edx, int state)
+{
+	char ss[200];
+	snprintf (ss, sizeof ss, "patch_clear_escortee_set_state_and_work: checking if unit %d can clear escortee and set state to %d\n", this->Body.ID, state);
+	(*p_OutputDebugStringA) (ss);
+
+	return Unit_clear_escortee_set_state_and_work (this, __, state);
 }
 
 int __cdecl
