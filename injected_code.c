@@ -566,17 +566,10 @@ patch_City_find_best_tile_to_work (City * this, int edx, Unit * worker, bool par
 	if (is->current_config.enable_districts && 
 		(worker != NULL) && ((*p_human_player_bits & (1 << this->Body.CivID)) == 0)) {
 
-		char ss[200];
-		snprintf (ss, sizeof ss, "[C3X] patch_City_find_best_tile_to_work: Looking for district work for city %s (id=%d) owned by civ %d\n",
-			this->Body.CityName, this->Body.ID, this->Body.CivID);
-		//(*p_OutputDebugStringA) (ss);
-
 		int district_id, target_x, target_y;
 		Tile * tile;
 		int ni = find_best_district_work_for_city (this, &district_id, &target_x, &target_y, &tile);
 		
-		snprintf (ss, sizeof ss, "[C3X] patch_City_find_best_tile_to_work: Found district work district_id=%d at ni=%d (%d,%d)\n", district_id, ni, target_x, target_y);
-		//(*p_OutputDebugStringA) (ss);
 		if (ni > 0) {
 			return ni;
 		}
@@ -2622,7 +2615,7 @@ patch_City_instruct_worker (City * this, int edx, int tile_x, int tile_y, bool p
 					}
 
 					// District is complete and has roads/railroads - nothing to do
-					return 0;
+					return UnitState_Build_Trade_Routes;
 				}
 				// Otherwise fall through and allow the AI to work on this tile normally
 			}
@@ -2788,9 +2781,6 @@ remember_pending_building_order (City * city, int improvement_id)
 	if ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)
 		return;
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] remember_pending_building_order: city=%p improvement_id=%d\n", (void*)city, improvement_id);
-	(*p_OutputDebugStringA) (ss);
 	itable_insert (&is->city_pending_building_orders, (int)(long)city, improvement_id);
 }
 
@@ -2802,9 +2792,6 @@ lookup_pending_building_order (City * city, int * out_improv_id)
 	    (out_improv_id == NULL))
 		return false;
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] lookup_pending_building_order: city=%p\n", (void*)city);
-	(*p_OutputDebugStringA) (ss);
 	return itable_look_up (&is->city_pending_building_orders, (int)(long)city, out_improv_id);
 }
 
@@ -2815,9 +2802,6 @@ forget_pending_building_order (City * city)
 	    (city == NULL))
 		return;
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] forget_pending_building_order: city=%p\n", (void*)city);
-	(*p_OutputDebugStringA) (ss);
 	itable_remove (&is->city_pending_building_orders, (int)(long)city);
 }
 
@@ -2828,10 +2812,6 @@ mark_city_needs_district (City * city, int district_id)
 	    (city == NULL) ||
 	    (district_id < 0) || (district_id >= is->district_count))
 		return;
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] mark_city_needs_district: city=%p district_id=%d\n", (void*)city, district_id);
-	(*p_OutputDebugStringA) (ss);
 
 	int key = (int)(long)city;
 	int mask = itable_look_up_or (&is->city_pending_district_requests, key, 0);
@@ -2888,10 +2868,6 @@ get_distribution_hub_record (Tile * tile)
 	if ((tile == NULL) || (tile == p_null_tile))
 		return NULL;
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] get_distribution_hub_record: tile=%p\n", (void*)tile);
-	(*p_OutputDebugStringA) (ss);
-
 	int stored;
 	if (itable_look_up (&is->distribution_hub_records, (int)tile, &stored))
 		return (struct distribution_hub_record *)(long)stored;
@@ -2904,10 +2880,6 @@ ensure_distribution_hub_city_capacity (int min_capacity)
 {
 	if (min_capacity <= is->distribution_hub_bonus_capacity)
 		return true;
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] ensure_distribution_hub_city_capacity: min=%d new=%d\n", min_capacity, not_below (min_capacity, is->distribution_hub_bonus_capacity + 32));
-	(*p_OutputDebugStringA) (ss);
 
 	int new_capacity = not_below (min_capacity, is->distribution_hub_bonus_capacity + 32);
 	int * new_food = calloc (new_capacity, sizeof *new_food);
@@ -2943,10 +2915,6 @@ ensure_distribution_hub_civ_capacity (int min_capacity)
 	if (min_capacity <= is->distribution_hub_civ_capacity)
 		return true;
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] ensure_distribution_hub_civ_capacity: min=%d new=%d\n", min_capacity, not_below (min_capacity, is->distribution_hub_civ_capacity + 8));
-	(*p_OutputDebugStringA) (ss);
-
 	int new_capacity = not_below (min_capacity, is->distribution_hub_civ_capacity + 8);
 	int * new_food = calloc (new_capacity, sizeof *new_food);
 	int * new_shields = calloc (new_capacity, sizeof *new_shields);
@@ -2978,9 +2946,6 @@ ensure_distribution_hub_civ_capacity (int min_capacity)
 void
 clear_distribution_hub_tables (void)
 {
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] clear_distribution_hub_tables: count=%d\n", is->distribution_hub_records.len);
-	(*p_OutputDebugStringA) (ss);
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
 		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
 		free (rec);
@@ -2995,10 +2960,6 @@ adjust_distribution_hub_coverage (struct distribution_hub_record * rec, int delt
 {
 	if ((rec == NULL) || (delta == 0))
 		return;
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] adjust_distribution_hub_coverage: at (%d,%d) delta=%d\n", rec->tile_x, rec->tile_y, delta);
-	(*p_OutputDebugStringA) (ss);
 
 	FOR_TILES_AROUND (tai, workable_tile_counts[1], rec->tile_x, rec->tile_y) {
 		Tile * area_tile = tai.tile;
@@ -3042,9 +3003,6 @@ city_radius_contains_tile (City * city, int tile_x, int tile_y)
 {
 	if (city == NULL)
 		return false;
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] city_radius_contains_tile: city=%p tile=(%d,%d)\n", (void*)city, tile_x, tile_y);
-	(*p_OutputDebugStringA) (ss);
 	int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __,
 		city->Body.X, city->Body.Y, tile_x, tile_y, 2 * is->workable_tile_count);
 	return (neighbor_index >= 0) && (neighbor_index < is->workable_tile_count);
@@ -3055,10 +3013,6 @@ find_city_for_distribution_hub (struct distribution_hub_record * rec)
 {
 	if ((rec == NULL) || (rec->civ_id < 0))
 		return NULL;
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] find_city_for_distribution_hub: civ_id=%d at (%d,%d)\n", rec->civ_id, rec->tile_x, rec->tile_y);
-	(*p_OutputDebugStringA) (ss);
 
 	City * city = get_city_ptr (rec->city_id);
 	if ((city != NULL) &&
@@ -3121,10 +3075,6 @@ tile_has_enemy_unit (Tile * tile, int civ_id)
 void
 recompute_distribution_hub_yields (struct distribution_hub_record * rec, City * anchor_city)
 {
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] recompute_distribution_hub_yields: rec=%p anchor_city=%p\n", (void*)rec, (void*)anchor_city);
-	(*p_OutputDebugStringA) (ss);
-
 	if (rec == NULL)
 		return;
 
@@ -3196,9 +3146,6 @@ void recompute_distribution_hub_totals ();
 void
 recompute_distribution_hub_totals_if_needed (void)
 {
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] recompute_distribution_hub_totals_if_needed: dirty=%d\n", is->distribution_hub_totals_dirty);
-	(*p_OutputDebugStringA) (ss);
 	if ((is->distribution_hub_last_food_divisor != is->current_config.distribution_hub_food_yield_divisor) ||
 	    (is->distribution_hub_last_shield_divisor != is->current_config.distribution_hub_shield_yield_divisor))
 		is->distribution_hub_totals_dirty = true;
@@ -3210,10 +3157,6 @@ recompute_distribution_hub_totals_if_needed (void)
 void
 remove_distribution_hub_record (Tile * tile)
 {
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] remove_distribution_hub_record: tile=%p\n", (void*)tile);
-	(*p_OutputDebugStringA) (ss);
-
 	struct distribution_hub_record * rec = get_distribution_hub_record (tile);
 	if (rec == NULL)
 		return;
@@ -3238,10 +3181,6 @@ remove_distribution_hub_record (Tile * tile)
 void
 recompute_distribution_hub_totals ()
 {
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] recompute_distribution_hub_totals: count=%d\n", is->distribution_hub_records.len);
-	(*p_OutputDebugStringA) (ss);
-
 	is->distribution_hub_last_food_divisor = is->current_config.distribution_hub_food_yield_divisor;
 	is->distribution_hub_last_shield_divisor = is->current_config.distribution_hub_shield_yield_divisor;
 
@@ -3358,10 +3297,6 @@ on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city)
 	    ! is->current_config.enable_distribution_hub_districts)
 		return;
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] on_distribution_hub_completed: tile=%p at (%d,%d) city=%p\n", (void*)tile, tile_x, tile_y, (void*)city);
-	(*p_OutputDebugStringA) (ss);
-
 	struct distribution_hub_record * rec = get_distribution_hub_record (tile);
 	if (rec != NULL)
 		return; // Already activated, don't process again
@@ -3407,10 +3342,6 @@ refresh_distribution_hubs_for_city (City * city)
 	    ! is->current_config.enable_distribution_hub_districts ||
 	    (city == NULL))
 		return;
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] refresh_distribution_hubs_for_city: city=%p\n", (void*)city);
-	(*p_OutputDebugStringA) (ss);
 
 	int district_id = DISTRIBUTION_HUB_DISTRICT_ID;
 	if (district_id < 0)
@@ -4823,17 +4754,11 @@ append_wonders_to_wonder_district_config (void)
 
 		int dest = cfg->dependent_improvement_count;
 		if (dest >= ARRAY_LEN (cfg->dependent_improvements)) {
-			char ss[200];
-			snprintf (ss, sizeof ss, "[C3X] append_wonders_to_wonder_district_config: exhausted dependent slots for \"%s\"", wonder_name);
-			(*p_OutputDebugStringA) (ss);
 			continue;
 		}
 
 		char * copy = strdup (wonder_name);
 		if (copy == NULL) {
-			char ss[200];
-			snprintf (ss, sizeof ss, "[C3X] append_wonders_to_wonder_district_config: strdup failed for \"%s\"", wonder_name);
-			(*p_OutputDebugStringA) (ss);
 			continue;
 		}
 
@@ -4978,10 +4903,6 @@ deinit_district_images (void)
 void
 reset_district_state (bool reset_tile_map)
 {
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] reset_district_state: reset_tile_map=%d\n", reset_tile_map);
-	(*p_OutputDebugStringA) (ss);
-
 	deinit_district_images ();
 
 	table_deinit (&is->district_tech_prereqs);
@@ -5046,9 +4967,6 @@ clear_city_district_request (City * city, int district_id)
 	    (district_id < 0) || (district_id >= is->district_count))
 		return;
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] clear_city_district_request: city=%p district_id=%d\n", (void*)city, district_id);
-	(*p_OutputDebugStringA) (ss);
 	int key = (int)(long)city;
 	int mask;
 	if (itable_look_up (&is->city_pending_district_requests, key, &mask)) {
@@ -5264,10 +5182,6 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 	if ((district_id < 0) || (district_id >= is->district_count))
 		return NULL;
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] find_tile_for_district: city=%p district_id=%d\n", (void*)city, district_id);
-	(*p_OutputDebugStringA) (ss);
-
 	enum Unit_Command_Values command = is->district_configs[district_id].command;
 	if (command == UCV_Build_Neighborhood)
 		return find_tile_for_neighborhood_district (city, district_id, out_x, out_y);
@@ -5467,10 +5381,6 @@ ensure_neighborhood_request_for_city (City * city)
 		! is->current_config.enable_neighborhood_districts ||
 	    (city == NULL))
 		return;
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] ensure_neighborhood_request_for_city: city=%p\n", (void*)city);
-	(*p_OutputDebugStringA) (ss);
 
 	int civ_id = city->Body.CivID;
 	if (civ_id < 0)
@@ -5726,10 +5636,6 @@ patch_City_update_growth (City * this)
 		return;
 	}
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] patch_City_update_growth: city=%p pop=%d\n", (void*)this->Body.CityName, this->Body.Population.Size);
-	(*p_OutputDebugStringA) (ss);
-
 	int cap = get_neighborhood_pop_cap (this);
 	if (cap < 0 || this->Body.Population.Size < cap) {
 		// No cap for this city or below the cap; run the original routine.
@@ -5833,20 +5739,10 @@ patch_City_update_growth (City * this)
 bool __stdcall
 patch_is_not_pop_capped_or_starving (City * city)
 {
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] patch_is_not_pop_capped_or_starving: city=%p\n", (void*)city);
-	(*p_OutputDebugStringA) (ss);
-
 	bool tr = is_not_pop_capped_or_starving (city);
 	if (! tr) return false;
 
-	snprintf (ss, sizeof ss, "[C3X] city_is_at_neighborhood_cap: city=%p\n", (void*)city);
-	(*p_OutputDebugStringA) (ss);
-
 	if (city_is_at_neighborhood_cap (city)) return false;
-
-	snprintf (ss, sizeof ss, "[C3X] passed patch_is_not_pop_capped_or_starving: city=%p\n", (void*)city);
-	(*p_OutputDebugStringA) (ss);
 
 	return true;
 }
@@ -6236,10 +6132,6 @@ city_needs_wonder_district (City * city)
 {
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
 		return false;
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "city_needs_wonder_district: city name='%s' city=%p\n", city->Body.CityName, (void*)city);
-	(*p_OutputDebugStringA) (ss);
 
 	int pending_improv_id;
 	if (lookup_pending_building_order (city, &pending_improv_id)) {
@@ -10966,11 +10858,6 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 int __fastcall
 patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp)
 {
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] patch_Trade_Net_set_unit_path: from (%d,%d) to (%d,%d), unit %p, civ %d, flags %x\n",
-	          from_x, from_y, to_x, to_y, unit, civ_id, flags);
-	(*p_OutputDebugStringA) (ss);
-
 	int tr = Trade_Net_set_unit_path (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, out_path_length_in_mp);
 
 	bool may_require_length_fix = (is->current_config.limit_railroad_movement > 0) && // if railroad movement is limited AND
@@ -12927,34 +12814,11 @@ ai_move_material_unit (Unit * this)
 	Unit_set_state (this, __, UnitState_Fortifying);
 }
 
-void __fastcall
-patch_Unit_join_city (Unit * this, int edx, City * city)
-{
-	char ss[200];
-	int unit_id = (this != NULL) ? this->Body.ID : -1;
-	void * city_ptr = (void *)city;
-	snprintf (ss, sizeof ss, "[C3X] patch_Unit_join_city: entering, unit %d joining city %p\n", unit_id, city_ptr);
-	(*p_OutputDebugStringA) (ss);
-
-	Unit_join_city (this, __, city);
-
-	Unit * unit_after = (unit_id >= 0) ? get_unit_ptr (unit_id) : NULL;
-	if (unit_after != NULL)
-		snprintf (ss, sizeof ss, "[C3X] patch_Unit_join_city: exiting, unit %d joined city %p\n", unit_id, city_ptr);
-	else
-		snprintf (ss, sizeof ss, "[C3X] patch_Unit_join_city: exiting, unit %d joined city %p (unit despawned)\n", unit_id, city_ptr);
-	(*p_OutputDebugStringA) (ss);
-}
-
 void
 check_completed_district_at_worker_location (Unit * worker)
 {
 	if (! is->current_config.enable_districts || (worker == NULL))
 		return;
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] check_completed_district_at_worker_location: worker=%p at (%d,%d) civ=%d\n", (void*)worker, worker->Body.X, worker->Body.Y, worker->Body.CivID);
-	(*p_OutputDebugStringA) (ss);
 
 	Tile * tile = tile_at (worker->Body.X, worker->Body.Y);
 	if ((tile == NULL) || (tile == p_null_tile))
@@ -12987,6 +12851,7 @@ check_completed_district_at_worker_location (Unit * worker)
 
 	// Set production to the pending building if the city can build it
 	if ((pending_improv_id >= 0) && City_can_build_improvement (city, __, pending_improv_id, false)) {
+		char ss[200];
 		snprintf (ss, sizeof ss, "[C3X] check_completed_district_at_worker_location: Setting production improv_id=%d for city=%p\n", pending_improv_id, (void*)city);
 		(*p_OutputDebugStringA) (ss);
 		City_set_production (city, __, COT_Improvement, pending_improv_id, false);
@@ -13866,10 +13731,6 @@ patch_City_add_population (City * this, int edx, int num, int race_id)
 		return;
 	}
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] City_add_population: city=%p num=%d\n", (void*)this, num);
-	(*p_OutputDebugStringA) (ss);
-
 	int cap = get_neighborhood_pop_cap (this);
 
 	int current_pop = this->Body.Population.Size;
@@ -13883,9 +13744,6 @@ patch_City_add_population (City * this, int edx, int num, int race_id)
 	int actual = num;
 	if (actual > allowed)
 		actual = allowed;
-
-	snprintf (ss, sizeof ss, "[C3X] City_add_population: cap=%d allowed=%d actual=%d\n", cap, allowed, actual);
-	(*p_OutputDebugStringA) (ss);
 
 	City_add_population (this, __, actual, race_id);
 }
@@ -13922,10 +13780,6 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 void __fastcall
 patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
 {
-	char ss[200];
-	snprintf (ss, sizeof ss, "patch_Unit_despawn: unit=%p id=%d type=%d\n", (void*)this, this->Body.ID, this->Body.UnitTypeID);
-	(*p_OutputDebugStringA) (ss);
-	
 	int owner_id = this->Body.CivID;
 	int type_id = this->Body.UnitTypeID;
 
@@ -13944,9 +13798,6 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 
 	change_unit_type_count (&leaders[owner_id], type_id, -1);
-
-	snprintf (ss, sizeof ss, "patch_Unit_despawn: unit despawned\n");
-	(*p_OutputDebugStringA) (ss);
 }
 
 void __fastcall
@@ -15596,10 +15447,6 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 	    ! is->current_config.enable_distribution_hub_districts)
 		return;
 
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] ai_update_distribution_hub_goal_for_leader: entering for civ %d\n", leader->ID);
-	(*p_OutputDebugStringA) (ss);
-
 	int civ_id = leader->ID;
 	if ((1 << civ_id) & *p_human_player_bits)
 		return;
@@ -15704,10 +15551,6 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 
 		mark_city_needs_district (best_city, district_id);
 		planned++;
-
-		snprintf (ss, sizeof ss, "[C3X] ai_update_distribution_hub_goal_for_leader: civ=%d request city=%p tile=(%d,%d) planned=%d desired=%d\n",
-		          civ_id, (void*)best_city, best_tile_x, best_tile_y, planned, desired);
-		(*p_OutputDebugStringA) (ss);
 	}
 }
 
@@ -20427,43 +20270,16 @@ patch_is_online_game_for_show_popup ()
 	return is->current_config.convert_some_popups_into_online_mp_messages ? true : is_online_game ();
 }
 
-bool __fastcall
-patch_Unit_ai_move_unit (Unit * this, int edx)
-{
-	char ss[200];
-	int unit_id = (this != NULL) ? this->Body.ID : -1;
-	int start_x = (this != NULL) ? this->Body.X : 0;
-	int start_y = (this != NULL) ? this->Body.Y : 0;
-	snprintf (ss, sizeof ss, "patch_Unit_ai_move_unit: checking if unit %d can move at (%d, %d)\n", unit_id, start_x, start_y);
-	(*p_OutputDebugStringA) (ss);
-
-	bool val = Unit_ai_move_unit (this, __);
-
-	snprintf (ss, sizeof ss, "patch_Unit_ai_move_unit: exiting\n");
-	(*p_OutputDebugStringA) (ss);
-
-	return val;
-}
-
 void __fastcall
 patch_Unit_ai_move_terraformer (Unit * this)
 {
-	(*p_OutputDebugStringA) ("[C3X] patch_Unit_ai_move_terraformer: called\n");
-
-	char ss[256];
 	Map * map = &p_bic_data->Map;
 	int type_id = this->Body.UnitTypeID;
 	int civ_id = this->Body.CivID;
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
 
-	snprintf (ss, sizeof ss, "[C3X] patch_Unit_ai_move_terraformer: entering unit=%p type_id=%d civ_id=%d at (%d,%d)\n",
-	          (void*)this, type_id, civ_id, this->Body.X, this->Body.Y);
-	(*p_OutputDebugStringA) (ss);
-
 	if (is->current_config.enable_districts) {
 		if (assign_worker_to_pending_district (this)) {
-			snprintf (ss, sizeof ss, "[C3X] patch_Unit_ai_move_terraformer: assigned worker %p to pending district\n", (void *)this);
-			(*p_OutputDebugStringA) (ss);
 			return;
 		}
 		check_completed_district_at_worker_location (this);
@@ -20480,84 +20296,17 @@ patch_Unit_ai_move_terraformer (Unit * this)
 	}
 
 	Unit_ai_move_terraformer (this);
-
-	snprintf (ss, sizeof ss, "patch_Unit_ai_move_terraformer: exiting\n");
-	(*p_OutputDebugStringA) (ss);
-}
-
-void __fastcall
-patch_Unit_ai_move_settler (Unit * this, int edx)
-{
-	if (this == NULL) {
-		(*p_OutputDebugStringA) ("[C3X] patch_Unit_ai_move_settler: null unit pointer received\n");
-		return;
-	}
-
-	char ss[200];
-	int unit_id = (this != NULL) ? this->Body.ID : -1;
-	int start_x = (this != NULL) ? this->Body.X : 0;
-	int start_y = (this != NULL) ? this->Body.Y : 0;
-	snprintf (ss, sizeof ss, "patch_Unit_ai_move_settler: checking if unit %d can move at (%d, %d)\n", unit_id, start_x, start_y);
-	(*p_OutputDebugStringA) (ss);
-
-	Unit_ai_move_settler (this, __);
-
-	Unit * unit_after = (unit_id >= 0) ? get_unit_ptr (unit_id) : NULL;
-	if (unit_after != NULL)
-		snprintf (ss, sizeof ss, "patch_Unit_ai_move_settler: exiting, unit %d move complete at (%d, %d)\n", unit_id, unit_after->Body.X, unit_after->Body.Y);
-	else
-		snprintf (ss, sizeof ss, "patch_Unit_ai_move_settler: exiting, unit %d no longer exists\n", unit_id);
-	(*p_OutputDebugStringA) (ss);
 }
 
 bool __fastcall
 patch_Unit_ai_can_sacrifice (Unit * this, int edx, bool requires_city)
 {
-	if (this == NULL) {
-		(*p_OutputDebugStringA) ("[C3X] patch_Unit_ai_can_sacrifice: null unit pointer received\n");
-		return false;
-	}
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "patch_Unit_ai_can_sacrifice: checking if unit %d can sacrifice\n", this->Body.ID);
-	(*p_OutputDebugStringA) (ss);
-
 	int sacrifice_action = UCV_Sacrifice & 0x0FFFFFFF; // Mask out top four category bits
 	UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
 	if (is->current_config.patch_ai_can_sacrifice_without_special_ability && ((type->Special_Actions & sacrifice_action) == 0))
 		return false;
 	else
 		return Unit_ai_can_sacrifice (this, __, requires_city);
-}
-
-bool __fastcall
-patch_Unit_ai_move_escorter (Unit * this, int edx)
-{
-	if (this == NULL) {
-		(*p_OutputDebugStringA) ("[C3X] patch_Unit_ai_move_escorter: null unit pointer received\n");
-		return false;
-	}
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "patch_Unit_ai_move_escorter: checking if unit %d can move as an escorter\n", this->Body.ID);
-	(*p_OutputDebugStringA) (ss);
-
-	return Unit_ai_move_escorter (this, __);
-}
-
-bool __fastcall
-patch_Unit_clear_escortee_set_state_and_work (Unit * this, int edx, int state)
-{
-	if (this == NULL) {
-		(*p_OutputDebugStringA) ("[C3X] patch_Unit_clear_escortee_set_state_and_work: null unit pointer received\n");
-		return false;
-	}
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "patch_clear_escortee_set_state_and_work: checking if unit %d can clear escortee and set state to %d\n", this->Body.ID, state);
-	(*p_OutputDebugStringA) (ss);
-
-	return Unit_clear_escortee_set_state_and_work (this, __, state);
 }
 
 int __cdecl
@@ -20591,11 +20340,6 @@ patch_get_building_defense_bonus_at (int x, int y, int param_3)
 void __fastcall
 patch_Unit_select (Unit * this)
 {
-	if (this == NULL) {
-		(*p_OutputDebugStringA) ("[C3X] patch_Unit_select: null unit pointer received\n");
-		return;
-	}
-
 	if (is->current_config.enable_districts) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
 		struct district_instance * inst = get_district_instance (tile);

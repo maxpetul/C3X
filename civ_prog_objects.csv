@@ -825,7 +825,3 @@ inlead,    0x4068E0,    0x0,        0x0,        "set_worker_animation",         
 define,    0x5C66D0,    0x0,        0x0,        "get_worker_remaining_turns_to_complete", "int (__fastcall *) (Unit *this, int edx, int job_id)"
 inlead,    0x435BA0,    0x0,        0x0,        "City_instruct_worker",               "bool (__fastcall *) (City * this, int edx, int tile_x, int tile_y, bool param_3, Unit * worker)"
 inlead,    0x4677E0,    0x0,        0x0,        "Unit_work",                          "bool (__fastcall *) (Unit * this, int edx)"
-inlead,	   0x4611F0,	0x0,	    0x0,	    "Unit_ai_move_unit",			      "bool (__fastcall *) (Unit * this, int edx)"
-inlead,    0x44E8E0,    0x0,        0x0,        "Unit_ai_move_escorter",              "bool (__fastcall *) (Unit * this, int edx)"
-inlead,    0x45f630,    0x0,        0x0,        "Unit_ai_move_settler",                    "void (__fastcall *) (Unit * this, int edx)"
-inlead,    0x466A60,    0x0,        0x0,        "Unit_clear_escortee_set_state_and_work",  "bool (__fastcall *) (Unit * this, int edx, int state)"
