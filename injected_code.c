@@ -8441,6 +8441,8 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 void __fastcall
 patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
 {
+	int ret_addr = ((int *)&civ_id_responsible)[-1];
+
 	int owner_id = this->Body.CivID;
 	int type_id = this->Body.UnitTypeID;
 
@@ -8456,7 +8458,23 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	if (this == is->sb_next_up)
 		is->sb_next_up = NULL;
 
+	// Set always_despawn_passengers to true if the unit to be despawned is a land transport, the no-escape rule is in effect, and it's being
+	// despawned involuntarily, i.e. because of the actions of another player not the choice of its owner. Save the original to restore later.
+	bool prev_always_despawn_passengers = is->always_despawn_passengers;
+	if (is->current_config.land_transport_rules & LTR_NO_ESCAPE) {
+		if ((p_bic_data->UnitTypes[type_id].Unit_Class == UTC_Land) &&
+		    (p_bic_data->UnitTypes[type_id].Transport_Capacity > 0) &&
+		    ! Unit_has_ability (this, __, UTA_Army)) {
+			if ((ret_addr == DESPAWN_TO_FIGHT_1_RETURN) || (ret_addr == DESPAWN_TO_FIGHT_2_RETURN) ||
+			    (ret_addr == DESPAWN_TO_DO_BOMBARD_TILE_RETURN) || (ret_addr == DESPAWN_TO_CRUISE_MISSILE_DEFENDER_RETURN) ||
+			    (ret_addr == DESPAWN_TO_BOUNCE_TRESPASSING_UNITS_RETURN) || (ret_addr == DESPAWN_TO_NUKE_DAMAGE_RETURN))
+				is->always_despawn_passengers = true;
+		}
+	}
+
 	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
+
+	is->always_despawn_passengers = prev_always_despawn_passengers;
 
 	change_unit_type_count (&leaders[owner_id], type_id, -1);
 }

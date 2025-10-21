@@ -104,6 +104,7 @@ enum land_transport_rules {
 	LTR_LOAD_ONTO_BOAT         = 1,
 	LTR_JOIN_ARMY              = 2,
 	LTR_NO_DEFENSE_FROM_INSIDE = 4,
+	LTR_NO_ESCAPE              = 8,
 };
 
 enum work_area_limit {
