@@ -20535,39 +20535,27 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 	}
 }
 
-void __fastcall
-patch_City_draw_production_income_icons (City * this, int edx, int canvas, int * rect_ptr)
+void
+recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 {
-	// Call original function first
-	City_draw_production_income_icons (this, __, canvas, rect_ptr);
-
 	if (! is->current_config.enable_districts)
 		return;
 
-	int city_id = this->Body.ID;
-	int civ_id = this->Body.CivID;
-	int production_income = this->Body.ProductionIncome;
-	int production_loss = this->Body.ProductionLoss;
+	int city_id = city->Body.ID;
+	int civ_id = city->Body.CivID;
 
 	// Calculate standard district production bonus
 	int standard_district_shields = 0;
-	FOR_TILES_AROUND (tai, is->workable_tile_count, this->Body.X, this->Body.Y) {
-		if (tai.tile == NULL || tai.tile == p_null_tile)
-			continue;
-		if (tai.tile->Territory_OwnerID != civ_id)
-			continue;
-		if (tile_has_enemy_unit (tai.tile, civ_id))
-			continue;
-		if (tai.tile->vtable->m20_Check_Pollution (tai.tile, __, 0))
-			continue;
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
+		if (tai.tile == NULL || tai.tile == p_null_tile) continue;
+		if (tai.tile->Territory_OwnerID != civ_id) continue;
+		if (tile_has_enemy_unit (tai.tile, civ_id)) continue;
+		if (tai.tile->vtable->m20_Check_Pollution (tai.tile, __, 0)) continue;
 		struct district_instance * inst = get_district_instance (tai.tile);
-		if (inst == NULL)
-			continue;
+		if (inst == NULL) continue;
 		int district_id = inst->district_type;
-		if ((district_id < 0) || (district_id >= is->district_count))
-			continue;
-		if (! district_is_complete (tai.tile, district_id))
-			continue;
+		if ((district_id < 0) || (district_id >= is->district_count)) continue;
+		if (! district_is_complete (tai.tile, district_id)) continue;
 		standard_district_shields += is->district_configs[district_id].shield_bonus;
 	}
 
@@ -20579,95 +20567,49 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 		distribution_hub_shields = is->distribution_hub_shield_bonus_per_city[city_id];
 	}
 
-	// Total district shields
-	int total_district_shields = standard_district_shields + distribution_hub_shields;
-	if (total_district_shields <= 0)
+	is->non_district_shield_icons_remaining = city->Body.ProductionIncome + city->Body.ProductionLoss - standard_district_shields - distribution_hub_shields;
+	is->district_shield_icons_remaining = standard_district_shields;
+	is->distribution_hub_shield_icons_remaining = distribution_hub_shields;
+}
+
+void __fastcall
+patch_City_draw_production_income_icons (City * this, int edx, int canvas, int * rect_ptr)
+{
+	if (! is->current_config.enable_districts) {
+		City_draw_production_income_icons (this, __, canvas, rect_ptr);
 		return;
-
-	// Lazy load icons
-	if (is->current_config.enable_distribution_hub_districts) {
-		if (is->distribution_hub_icons_img_state == IS_UNINITED)
-			init_distribution_hub_icons ();
-		if (is->distribution_hub_icons_img_state != IS_OK)
-			return;
-	}
-	if (is->district_icons_img_state == IS_UNINITED)
-		init_district_icons ();
-	if (is->district_icons_img_state != IS_OK)
-		return;
-
-	// Recompute yields to get the full production count including district bonuses
-	City_recompute_yields_and_happiness (this, __);
-	int total_production = this->Body.Tiles_Production;
-
-	// Run the patched recompute to restore the original state
-	patch_City_recompute_yields_and_happiness (this, __);
-
-	// Clamp total district shields to not exceed what's actually being drawn
-	if (total_district_shields > total_production)
-		total_district_shields = total_production;
-	if (total_district_shields > production_income)
-		total_district_shields = production_income;
-
-	// Clamp individual shield types proportionally if needed
-	if (standard_district_shields + distribution_hub_shields > total_district_shields) {
-		float ratio = (float)total_district_shields / (float)(standard_district_shields + distribution_hub_shields);
-		standard_district_shields = (int)(standard_district_shields * ratio);
-		distribution_hub_shields = total_district_shields - standard_district_shields;
 	}
 
-	if (p_city_form == NULL)
-		return;
+	recompute_district_and_distribution_hub_shields_for_city_view (this);
+	City_draw_production_income_icons (this, __, canvas, rect_ptr);
 
-	int production_icon_count = production_income;
-	int production_loss_count = production_loss;
-	int total_icon_count = production_icon_count + production_loss_count;
-	if (production_icon_count <= 0 || total_icon_count <= 0)
-		return;
+	is->non_district_shield_icons_remaining = 0;
+	is->district_shield_icons_remaining = 0;
+	is->distribution_hub_shield_icons_remaining = 0;
+}
 
-	City_Icon_Images * city_icons = &p_city_form->City_Icons_Images;
-	int rect_left = rect_ptr[0];
-	int rect_right = rect_ptr[2];
-	int rect_width = rect_right - rect_left;
-	int base_spacing_width = city_icons->Icon_04.Width;
-	int spacing_factor = production_icon_count + 2 + production_loss_count;
-	long long spacing_width_total = (long long)spacing_factor * (long long)base_spacing_width;
-	int spacing = base_spacing_width;
-	if (!((spacing_factor < 2) ||
-	      (spacing_width_total - rect_width == 0) ||
-	      (spacing_width_total < rect_width))) {
-		spacing = (rect_width - base_spacing_width) / (total_icon_count + 1);
-		if (base_spacing_width < 1)
-			spacing = 1;
-		else if (spacing < 1)
-			spacing = 1;
-		else if (base_spacing_width < spacing)
-			spacing = base_spacing_width;
+int __fastcall
+patch_Sprite_draw_production_income_icon (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	if (is->current_config.enable_districts) {
+		if (is->non_district_shield_icons_remaining > 0) {
+			is->non_district_shield_icons_remaining--;
+			return Sprite_draw (this, __, canvas, pixel_x, pixel_y, color_table);
+		}
+		if (is->district_icons_img_state == IS_OK && (is->district_shield_icons_remaining > 0 || is->distribution_hub_shield_icons_remaining > 0)) {
+			Sprite to_draw;
+			
+			if (is->district_shield_icons_remaining > 0) {
+				to_draw = is->district_shield_icon;
+				is->district_shield_icons_remaining--;
+			} else {
+				to_draw = is->distribution_hub_production_icon;
+				is->distribution_hub_shield_icons_remaining--;
+			}
+			return Sprite_draw (&to_draw, __, canvas, pixel_x, pixel_y, color_table);
+		}
 	}
-
-	int base_width = city_icons->Icon_05_Shield_Outcome.Width;
-	int base_height = city_icons->Icon_05_Shield_Outcome.Height;
-	int standard_width = is->district_shield_icon.Width;
-	int standard_height = is->district_shield_icon.Height;
-	int distribution_width = is->distribution_hub_production_icon.Width;
-	int distribution_height = is->distribution_hub_production_icon.Height;
-	int standard_y = rect_ptr[1] + 8 + ((base_height - standard_height) >> 1);
-	int distribution_y = rect_ptr[1] + 8 + ((base_height - distribution_height) >> 1);
-
-	// Draw district shield icons from right to left using the calculated spacing
-	int x_offset = 0;
-	// Draw standard district shields first
-	for (int i = 0; i < standard_district_shields && x_offset < rect_width; i++) {
-		int x = rect_right - x_offset - standard_width;
-		Sprite_draw (&is->district_shield_icon, __, (PCX_Image *)canvas, x, standard_y, NULL);
-		x_offset += spacing;
-	}
-	// Draw distribution hub shields
-	for (int i = 0; i < distribution_hub_shields && x_offset < rect_width; i++) {
-		int x = rect_right - x_offset - distribution_width;
-		Sprite_draw (&is->distribution_hub_production_icon, __, (PCX_Image *)canvas, x, distribution_y, NULL);
-		x_offset += spacing;
-	}
+	return Sprite_draw (this, __, canvas, pixel_x, pixel_y, color_table);
 }
 
 bool

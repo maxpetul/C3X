@@ -1324,6 +1324,9 @@ struct injected_state {
 	Sprite distribution_hub_eaten_food_icon;
 	Sprite distribution_hub_production_icon_small;
 	Sprite distribution_hub_food_icon_small;
+	int non_district_shield_icons_remaining;
+	int district_shield_icons_remaining;
+	int distribution_hub_shield_icons_remaining;
 
 	enum init_state district_icons_img_state;
 	Sprite district_science_icon;
