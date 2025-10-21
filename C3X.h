@@ -589,8 +589,9 @@ struct wonder_district_info {
 };
 
 enum district_state {
-	DS_UNDER_CONSTRUCTION = 0,
-	DS_COMPLETED
+	DS_PLANNED = 0,
+	DS_UNDER_CONSTRUCTION = 1,
+	DS_COMPLETED = 2
 };
 
 struct district_instance {
@@ -598,6 +599,8 @@ struct district_instance {
 	int district_type;    // Index into district_configs array
 	int tile_x;
 	int tile_y;
+	int planned_city_id;
+	int planned_worker_id;
 	struct wonder_district_info wonder_info; // Only used if district_type is a wonder district
 };
 
