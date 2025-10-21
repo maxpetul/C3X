@@ -5831,13 +5831,13 @@ patch_City_update_growth (City * this)
 }
 
 bool __stdcall
-patch_is_not_pop_capped_or_starving (City * city, int edx)
+patch_is_not_pop_capped_or_starving (City * city)
 {
 	char ss[200];
 	snprintf (ss, sizeof ss, "[C3X] patch_is_not_pop_capped_or_starving: city=%p\n", (void*)city);
 	(*p_OutputDebugStringA) (ss);
 
-	bool tr = is_not_pop_capped_or_starving (city, __);
+	bool tr = is_not_pop_capped_or_starving (city);
 	if (! tr) return false;
 
 	snprintf (ss, sizeof ss, "[C3X] city_is_at_neighborhood_cap: city=%p\n", (void*)city);
@@ -20439,7 +20439,7 @@ patch_Unit_ai_move_unit (Unit * this, int edx)
 
 	bool val = Unit_ai_move_unit (this, __);
 
-	snprintf (ss, sizeof ss, "patch_Unit_ai_move_unit: exiting");
+	snprintf (ss, sizeof ss, "patch_Unit_ai_move_unit: exiting\n");
 	(*p_OutputDebugStringA) (ss);
 
 	return val;
@@ -20481,7 +20481,7 @@ patch_Unit_ai_move_terraformer (Unit * this)
 
 	Unit_ai_move_terraformer (this);
 
-	snprintf (ss, sizeof ss, "patch_Unit_ai_move_terraformer: exiting");
+	snprintf (ss, sizeof ss, "patch_Unit_ai_move_terraformer: exiting\n");
 	(*p_OutputDebugStringA) (ss);
 }
 
@@ -20539,7 +20539,7 @@ patch_Unit_ai_move_escorter (Unit * this, int edx)
 	}
 
 	char ss[200];
-	snprintf (ss, sizeof ss, "patch_Unit_ai_ai_move_escorter: checking if unit %d can move as an escorter\n", this->Body.ID);
+	snprintf (ss, sizeof ss, "patch_Unit_ai_move_escorter: checking if unit %d can move as an escorter\n", this->Body.ID);
 	(*p_OutputDebugStringA) (ss);
 
 	return Unit_ai_move_escorter (this, __);
@@ -20561,10 +20561,10 @@ patch_Unit_clear_escortee_set_state_and_work (Unit * this, int edx, int state)
 }
 
 int __cdecl
-patch_get_building_defense_bonus_at (int x, int edx, int y, int param_3)
+patch_get_building_defense_bonus_at (int x, int y, int param_3)
 {
     // Get base building defense bonus first
-    int base = get_building_defense_bonus_at (x, __, y, param_3);
+    int base = get_building_defense_bonus_at (x, y, param_3);
 
     // If districts are disabled, return base
     if (!is->current_config.enable_districts)
