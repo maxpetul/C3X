@@ -3644,7 +3644,7 @@ remove_distribution_hub_record (Tile * tile)
 void
 recompute_distribution_hub_totals ()
 {
-	is->distribution_hub_last_food_divisor = is->current_config.distribution_hub_food_yield_divisor;
+	is->distribution_hub_last_food_divisor   = is->current_config.distribution_hub_food_yield_divisor;
 	is->distribution_hub_last_shield_divisor = is->current_config.distribution_hub_shield_yield_divisor;
 
 	int max_city_id = (p_cities->Cities != NULL) ? (p_cities->LastIndex + 1) : 0;
@@ -3677,6 +3677,9 @@ recompute_distribution_hub_totals ()
 		is->distribution_hub_totals_dirty = false;
 		return;
 	}
+
+	struct table new_coverage_counts = {0};
+	struct table newly_covered_tiles = {0};
 
 	clear_memo ();
 	reset_distribution_hub_tile_claim_tables ();
@@ -3737,8 +3740,16 @@ recompute_distribution_hub_totals ()
 			struct wonder_district_info * area_info2 = get_wonder_district_info (area_tile);
 			if ((area_info2 != NULL) && (area_info2->state == WDS_COMPLETED))
 				continue;
+			int key = (int)area_tile;
+			int prev_cover_pass = itable_look_up_or (&new_coverage_counts, key, 0);
+			int prev_cover_old = itable_look_up_or (&is->distribution_hub_coverage_counts, key, 0);
 			int tx, ty;
 			tai_get_coords (&tai, &tx, &ty);
+			itable_insert (&new_coverage_counts, key, prev_cover_pass + 1);
+			if ((prev_cover_pass == 0) && (prev_cover_old <= 0)) {
+				int anchor_id = (anchor != NULL) ? anchor->Body.ID : -1;
+				itable_insert (&newly_covered_tiles, key, anchor_id);
+			}
 			record_distribution_hub_tile_claim (rec, area_tile, tx, ty);
 		}
 	}
@@ -3779,6 +3790,27 @@ recompute_distribution_hub_totals ()
 			is->distribution_hub_shield_per_civ[rec->civ_id] += rec->shield_yield;
 		}
 	}
+
+	table_deinit (&is->distribution_hub_coverage_counts);
+	is->distribution_hub_coverage_counts = new_coverage_counts;
+	memset (&new_coverage_counts, 0, sizeof new_coverage_counts);
+
+	FOR_TABLE_ENTRIES (tei, &newly_covered_tiles) {
+		Tile * covered_tile = (Tile *)(long)tei.key;
+		if ((covered_tile == NULL) || (covered_tile == p_null_tile))
+			continue;
+		int tx, ty;
+		if (! tile_coords_from_ptr (&p_bic_data->Map, covered_tile, &tx, &ty))
+			continue;
+		set_tile_unworkable_for_all_cities (covered_tile, tx, ty);
+		int anchor_id = tei.value;
+		if (anchor_id >= 0) {
+			City * anchor_city = get_city_ptr (anchor_id);
+			if ((anchor_city != NULL) && city_radius_contains_tile (anchor_city, tx, ty))
+				covered_tile->Body.CityAreaID = anchor_city->Body.ID;
+		}
+	}
+	table_deinit (&newly_covered_tiles);
 
 	reset_distribution_hub_tile_claim_tables ();
 
@@ -16219,11 +16251,14 @@ patch_Leader_do_production_phase (Leader * this)
 			if (city == NULL) continue;
 
 			bool is_human = (*p_human_player_bits & (1 << city->Body.CivID)) != 0;
+			unsigned int turn_no = (unsigned int)*p_current_turn_no;
+			unsigned int throttle = ((unsigned int)city->Body.X << 5) ^ (unsigned int)city->Body.Y;
 
 			// Check if AI cities are at neighborhood cap and need to request neighborhood districts
 			if (! is_human &&
 			    is->current_config.enable_neighborhood_districts &&
-			    city_is_at_neighborhood_cap (city))
+			    city_is_at_neighborhood_cap (city) &&
+				((turn_no + throttle) % 4) == 0) // Only mark once every 4 turns per city
 				ensure_neighborhood_request_for_city (city);
 
 			if (city->Body.Order_Type != COT_Improvement) continue;
@@ -20664,7 +20699,7 @@ void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
 	char ss[200];
-	*p_debug_mode_bits |= 0xC;
+	// *p_debug_mode_bits |= 0xC;
 
     // If districts enabled and this tile is mapped to a district, draw only the district (suppress base mine drawing)
     if (is->current_config.enable_districts) {
