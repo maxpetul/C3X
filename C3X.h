@@ -1311,6 +1311,8 @@ struct injected_state {
 
 	struct table distribution_hub_records;
 	struct table distribution_hub_coverage_counts;
+	struct table distribution_hub_tile_claims;
+	struct table distribution_hub_tile_claim_distances;
 	int * distribution_hub_food_bonus_per_city;
 	int * distribution_hub_shield_bonus_per_city;
 	int distribution_hub_bonus_capacity;
