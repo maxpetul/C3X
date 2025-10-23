@@ -292,10 +292,10 @@ create_pending_district_request (City * city, int district_id)
 		return NULL;
 	}
 
-	//char ss[200];
-	//snprintf (ss, sizeof ss, "Creating pending district request for city %s (ID %d) district ID %d with key %d\n",
-	//	  city->Body.CityName, city->Body.ID, district_id, key);
-	//pop_up_in_game_error (ss);
+	char ss[200];
+	snprintf (ss, sizeof ss, "Creating pending district request for city %s (ID %d) district ID %d with key %d\n",
+		  city->Body.CityName, city->Body.ID, district_id, key);
+	(*p_OutputDebugStringA) (ss);
 
 	itable_insert (&is->city_pending_district_requests, key, (int)(long)req);
 	return req;
@@ -2752,9 +2752,9 @@ update_tracked_worker_for_unit (Unit * worker)
 	int type_id = worker->Body.UnitTypeID;
 	if ((type_id < 0) || (type_id >= p_bic_data->UnitTypeCount)) return;
 
-	//char ss[200];
-	//snprintf (ss, sizeof ss, "Updating tracked worker for unit %d of type %d", worker->Body.ID, type_id);
-	//pop_up_in_game_error (ss);
+	char ss[200];
+	snprintf (ss, sizeof ss, "Updating tracked worker for unit %d of type %d", worker->Body.ID, type_id);
+	(*p_OutputDebugStringA) (ss);
 
 	int worker_actions = p_bic_data->UnitTypes[type_id].Worker_Actions;
 	if (worker_actions == 0 || !(worker_actions & (UCV_Build_Road | UCV_Build_Mine | UCV_Irrigate))) {
@@ -2781,9 +2781,9 @@ assign_worker_to_district (struct pending_district_request * req, Unit * worker,
 	worker->Body.Auto_CityID = city->Body.ID;
 
 	char ss[200];
-	//snprintf (ss, sizeof ss, "Assigned worker unit %d to build district %d in city %s at (%d,%d)",
-	//	  worker->Body.ID, district_id, city->Body.CityName, tile_x, tile_y);
-	//pop_up_in_game_error (ss);
+	snprintf (ss, sizeof ss, "Assigned worker unit %d to build district %d in city %s at (%d,%d)",
+		  worker->Body.ID, district_id, city->Body.CityName, tile_x, tile_y);
+	(*p_OutputDebugStringA) (ss);
 
 	if (record != NULL) {
 		record->pending_req = req;
@@ -2818,29 +2818,29 @@ find_best_worker_for_district (Leader * leader, City * city, int district_id, in
 	char ss[200];
 
 	if ((leader == NULL) || (city == NULL)) {
-		//snprintf (ss, sizeof ss, "Invalid leader or city when finding best worker for district %d", district_id);
-		//pop_up_in_game_error (ss);
+		snprintf (ss, sizeof ss, "Invalid leader or city when finding best worker for district %d", district_id);
+		(*p_OutputDebugStringA) (ss);
 		return NULL;
 	}
 
 	int civ_id = leader->ID;
 	if ((civ_id < 0) || (civ_id >= 32)) {
-		//snprintf (ss, sizeof ss, "Invalid civ_id %d when finding best worker for district %d", civ_id, district_id);
-		//pop_up_in_game_error (ss);
+		snprintf (ss, sizeof ss, "Invalid civ_id %d when finding best worker for district %d", civ_id, district_id);
+		(*p_OutputDebugStringA) (ss);
 		return NULL;
 	}
 
 	if (is->district_worker_tables[civ_id].len == 0) {
-		//snprintf (ss, sizeof ss, "No tracked workers for civ %d when finding best worker for district %d", civ_id, district_id);
-		//pop_up_in_game_error (ss);
+		snprintf (ss, sizeof ss, "No tracked workers for civ %d when finding best worker for district %d", civ_id, district_id);
+		(*p_OutputDebugStringA) (ss);
 		return NULL;
 	}
 
 	Tile * target_tile = tile_at (target_x, target_y);
 	if ((target_tile == NULL) || (target_tile == p_null_tile)) {
-		//snprintf (ss, sizeof ss, "Invalid target tile (%d,%d) when finding best worker for district %d in city %s",
-		//	  target_x, target_y, district_id, city->Body.CityName);
-		//pop_up_in_game_error (ss);
+		snprintf (ss, sizeof ss, "Invalid target tile (%d,%d) when finding best worker for district %d in city %s",
+			  target_x, target_y, district_id, city->Body.CityName);
+		(*p_OutputDebugStringA) (ss);
 		return NULL;
 	}
 
@@ -2848,62 +2848,42 @@ find_best_worker_for_district (Leader * leader, City * city, int district_id, in
 	Unit * best_worker      = NULL;
 	int best_dist           = INT_MAX;
 
-	//snprintf (ss, sizeof ss, "Finding best worker for district %d in city %s at (%d,%d)", district_id, city->Body.CityName, target_x, target_y);
-	//pop_up_in_game_error (ss);
+	snprintf (ss, sizeof ss, "Finding best worker for district %d in city %s at (%d,%d)", district_id, city->Body.CityName, target_x, target_y);
+	(*p_OutputDebugStringA) (ss);
 
 	FOR_TABLE_ENTRIES (tei, &is->district_worker_tables[civ_id]) {
 		struct district_worker_record * rec = (struct district_worker_record *)(long)tei.value;
 
-		//snprintf (ss, sizeof ss, "Considering tracked worker record for civ %d", civ_id);
-		//pop_up_in_game_error (ss);
+		snprintf (ss, sizeof ss, "Considering tracked worker record for civ %d", civ_id);
+		(*p_OutputDebugStringA) (ss);
 
 		if (rec == NULL) {
-			//snprintf (ss, sizeof ss, "Tracked worker record for civ %d is NULL; skipping", civ_id);
-			//pop_up_in_game_error (ss);
 			continue;
 		}
 
 		Unit * candidate_worker = rec->worker;
 		if ((candidate_worker == NULL) || (candidate_worker->Body.ID != rec->unit_id) || (candidate_worker->Body.CivID != civ_id)) {
-			//snprintf (ss, sizeof ss, "Tracked worker record for civ %d has invalid worker; skipping", civ_id);
-			//pop_up_in_game_error (ss);
 			remove_tracked_worker_record (candidate_worker->Body.CivID, candidate_worker->Body.ID);
 			continue;
 		}
 
 		if (! worker_is_available_for_district (candidate_worker)) {
-			//snprintf (ss, sizeof ss, "Tracked worker record for civ %d has unavailable worker %d; skipping",
-			//	  civ_id, candidate_worker->Body.ID);
-			//pop_up_in_game_error (ss);
 			continue;
 		}
 
 		Tile * worker_tile = tile_at (candidate_worker->Body.X, candidate_worker->Body.Y);
 		if ((worker_tile == NULL) || (worker_tile == p_null_tile)) {
-			//snprintf (ss, sizeof ss, "Tracked worker record for civ %d has worker %d on invalid tile; skipping",
-			//	  civ_id, candidate_worker->Body.ID);
-			//pop_up_in_game_error (ss);
 			continue;
 		}
 
 		int worker_continent_id = worker_tile->vtable->m46_Get_ContinentID (worker_tile);
 		if ((target_continent_id >= 0) && (worker_continent_id != target_continent_id)) {
-			//snprintf (ss, sizeof ss, "Tracked worker record for civ %d has worker %d on continent %d; target is on continent %d; skipping",
-			//	  civ_id, candidate_worker->Body.ID, worker_continent_id, target_continent_id);
-			//pop_up_in_game_error (ss);
 			continue;
 		}
 
 		int dist = compute_wrapped_chebyshev_distance (candidate_worker->Body.X, candidate_worker->Body.Y, target_x, target_y);
 
-		//snprintf (ss, sizeof ss, "Tracked worker record for civ %d has worker %d at (%d,%d); distance to target is %d",
-		//	  civ_id, candidate_worker->Body.ID, candidate_worker->Body.X, candidate_worker->Body.Y, dist);
-		//pop_up_in_game_error (ss);
-
 		if (dist < best_dist) {
-			//snprintf (ss, sizeof ss, "Tracked worker record for civ %d has worker %d as new best candidate (distance %d)",
-			//	  civ_id, candidate_worker->Body.ID, dist);
-			//pop_up_in_game_error (ss);
 			best_worker = candidate_worker;
 			best_dist   = dist;
 			if (dist == 0)
@@ -2960,17 +2940,17 @@ process_pending_district_request (Leader * leader, struct pending_district_reque
 		return;
 	}
 
-	//char ss[200];
-	//snprintf (ss, sizeof ss, "Assigning worker for district %d in city %s at (%d,%d)", district_id, city->Body.CityName, target_x, target_y);
-	//pop_up_in_game_error (ss);
+	char ss[200];
+	snprintf (ss, sizeof ss, "Assigning worker for district %d in city %s at (%d,%d)", district_id, city->Body.CityName, target_x, target_y);
+	(*p_OutputDebugStringA) (ss);
 
 	Unit * worker = find_best_worker_for_district (leader, city, district_id, target_x, target_y);
 	if (worker == NULL)
 		return;
 
-	//snprintf (ss, sizeof ss, "Found worker %d for district %d in city %s at (%d,%d)",
-	//	  worker->Body.ID, district_id, city->Body.CityName, target_x, target_y);
-	//pop_up_in_game_error (ss);
+	snprintf (ss, sizeof ss, "Found worker %d for district %d in city %s at (%d,%d)",
+		  worker->Body.ID, district_id, city->Body.CityName, target_x, target_y);
+	(*p_OutputDebugStringA) (ss);
 
 	assign_worker_to_district (req, worker, city, district_id, target_x, target_y);
 }
@@ -3084,6 +3064,30 @@ forget_pending_building_order (City * city)
 	itable_remove (&is->city_pending_building_orders, (int)(long)city);
 }
 
+bool
+is_wonder_or_small_wonder_already_being_built (City * city, int improv_id)
+{
+	if ((city == NULL) || (improv_id < 0) || (improv_id >= p_bic_data->ImprovementsCount))
+		return false;
+
+	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) == 0)
+		return false;
+
+	int civ_id = city->Body.CivID;
+	FOR_CITIES_OF (coi, civ_id) {
+		City * other_city = coi.city;
+		if ((other_city == NULL) || (other_city == city))
+			continue;
+
+		if ((other_city->Body.Order_Type == COT_Improvement) &&
+		    (other_city->Body.Order_ID == improv_id))
+			return true;
+	}
+
+	return false;
+}
+
 
 bool
 district_is_complete(Tile * tile, int district_id)
@@ -3133,18 +3137,18 @@ district_is_complete(Tile * tile, int district_id)
 			on_distribution_hub_completed (tile, tile_x, tile_y, NULL);
 		}
 
-		//char ss[200];
-		//snprintf (ss, sizeof ss, "District %d completed at tile (%d,%d)", district_id, tile_x, tile_y);
-		//pop_up_in_game_error (ss);
+		char ss[200];
+		snprintf (ss, sizeof ss, "District %d completed at tile (%d,%d)", district_id, tile_x, tile_y);
+		(*p_OutputDebugStringA) (ss);
 
 		// Check if this was an AI-requested district
 		struct pending_district_request * req = find_pending_district_request_by_coords (NULL, tile_x, tile_y, district_id);
 		if (req != NULL) {
 			City * requesting_city = req->city;
 			if (requesting_city != NULL) {
-				//snprintf (ss, sizeof ss, "District %d at tile (%d,%d) was ordered by city %s",
-				//	  district_id, tile_x, tile_y, requesting_city->Body.CityName);
-				//pop_up_in_game_error (ss);
+				snprintf (ss, sizeof ss, "District %d at tile (%d,%d) was ordered by city %s",
+					  district_id, tile_x, tile_y, requesting_city->Body.CityName);
+				(*p_OutputDebugStringA) (ss);
 
 				// Check if city has pending building order that depends on this district
 				int pending_improv_id;
@@ -3152,15 +3156,24 @@ district_is_complete(Tile * tile, int district_id)
 					int prereq_district_id;
 					if (itable_look_up (&is->district_building_prereqs, pending_improv_id, &prereq_district_id)) {
 						if (prereq_district_id == district_id) {
-							//snprintf (ss, sizeof ss, "City %s setting production to improvement %d",
-							//	  requesting_city->Body.CityName, pending_improv_id);
-							//pop_up_in_game_error (ss);
+							snprintf (ss, sizeof ss, "City %s setting production to improvement %d",
+								  requesting_city->Body.CityName, pending_improv_id);
+							(*p_OutputDebugStringA) (ss);
+
+							// Check if another city is already building this wonder/small wonder
+							bool can_set_production = true;
+							if (is_wonder_or_small_wonder_already_being_built (requesting_city, pending_improv_id)) {
+								snprintf (ss, sizeof ss, "City %s cannot build improvement %d - already being built elsewhere",
+									  requesting_city->Body.CityName, pending_improv_id);
+								(*p_OutputDebugStringA) (ss);
+								can_set_production = false;
+							}
 
 							// Set city production to the pending improvement
-							if (City_can_build_improvement (requesting_city, __, pending_improv_id, false)) {
-								//snprintf (ss, sizeof ss, "City %s can now build improvement %d",
-								//	  requesting_city->Body.CityName, pending_improv_id);
-								//pop_up_in_game_error (ss);
+							if (can_set_production && City_can_build_improvement (requesting_city, __, pending_improv_id, false)) {
+								snprintf (ss, sizeof ss, "City %s can now build improvement %d",
+									  requesting_city->Body.CityName, pending_improv_id);
+								(*p_OutputDebugStringA) (ss);
 								City_set_production (requesting_city, __, COT_Improvement, pending_improv_id, false);
 							}
 
@@ -3172,8 +3185,8 @@ district_is_complete(Tile * tile, int district_id)
 
 				// Clear worker assignment so worker is freed up for other tasks
 				if (req->assigned_worker_id >= 0) {
-					//snprintf (ss, sizeof ss, "Clearing worker assignment for unit %d", req->assigned_worker_id);
-					//pop_up_in_game_error (ss);
+					snprintf (ss, sizeof ss, "Clearing worker assignment for unit %d", req->assigned_worker_id);
+					(*p_OutputDebugStringA) (ss);
 					int civ_id = requesting_city->Body.CivID;
 					clear_tracked_worker_assignment_by_id (civ_id, req->assigned_worker_id);
 				}
@@ -5332,8 +5345,8 @@ load_districts_config (void)
 				struct string_slice tech_name = { .str = (char *)is->district_configs[i].advance_prereq, .len = (int)strlen (is->district_configs[i].advance_prereq) };
 				if (find_game_object_id_by_name (GOK_TECHNOLOGY, &tech_name, 0, &tech_id)) {
 
-					//snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d", tech_name.len, tech_name.str, is->district_configs[i].advance_prereq, tech_id);
-					//pop_up_in_game_error (ss);
+					snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d", tech_name.len, tech_name.str, is->district_configs[i].advance_prereq, tech_id);
+					(*p_OutputDebugStringA) (ss);
 
 					// Set the prereq ID in the district info struct
 					is->district_infos[i].advance_prereq_id = tech_id;
@@ -5361,8 +5374,8 @@ load_districts_config (void)
 				struct string_slice improv_name = { .str = (char *)is->district_configs[i].dependent_improvements[j], .len = (int)strlen (is->district_configs[i].dependent_improvements[j]) };
 				if (find_game_object_id_by_name (GOK_BUILDING, &improv_name, 0, &improv_id)) {
 
-					//snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d", improv_name.len, improv_name.str, is->district_configs[i].dependent_improvements[j], improv_id);
-					//pop_up_in_game_error (ss);
+					snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d", improv_name.len, improv_name.str, is->district_configs[i].dependent_improvements[j], improv_id);
+					(*p_OutputDebugStringA) (ss);
 
 					// Append the improvement ID to the list in the district info struct	
 					if (stored_count < ARRAY_LEN (is->district_infos[i].dependent_building_ids)) {
@@ -5387,21 +5400,18 @@ load_districts_config (void)
 			if (is->wonder_district_configs[wi].wonder_name == NULL || is->wonder_district_configs[wi].wonder_name[0] == '\0')
 				continue;
 
-			//snprintf (ss, sizeof ss, "Wonder district \"%s\"", is->wonder_district_configs[wi].wonder_name);
-			//pop_up_in_game_error (ss);
-
 			int improv_id;
 			struct string_slice wonder_name = { .str = (char *)is->wonder_district_configs[wi].wonder_name, .len = (int)strlen (is->wonder_district_configs[wi].wonder_name) };
 			if (find_game_object_id_by_name (GOK_BUILDING, &wonder_name, 0, &improv_id)) {
 
-				//snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for wonder district \"%s\", ID %d", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name, improv_id);
-				//pop_up_in_game_error (ss);
+				snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for wonder district \"%s\", ID %d", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name, improv_id);
+				(*p_OutputDebugStringA) (ss);
 
 				// Map the wonder name to its improvement ID
 				stable_insert (&is->building_name_to_id, wonder_name.str, improv_id);
 			} else {
-				//snprintf (ss, sizeof ss, "Could not find improvement prereq \"%.*s\" for wonder district \"%s\"", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name);
-				//pop_up_in_game_error (ss);
+				snprintf (ss, sizeof ss, "Could not find improvement prereq \"%.*s\" for wonder district \"%s\"", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name);
+				(*p_OutputDebugStringA) (ss);
 			}
 		}
 	}
@@ -5949,16 +5959,10 @@ ensure_neighborhood_request_for_city (City * city)
 	if (civ_id < 0)
 		return;
 
-	int district_id = NEIGHBORHOOD_DISTRICT_ID;
-	int prereq = is->district_infos[district_id].advance_prereq_id;
-	
+	int prereq = is->district_infos[NEIGHBORHOOD_DISTRICT_ID].advance_prereq_id;
 	if ((prereq >= 0) && ! Leader_has_tech (&leaders[civ_id], __, prereq)) return;
-	if (city_has_required_district (city, district_id)) return;
 
-	if (find_pending_district_request (city, district_id) != NULL)
-		return;
-
-	mark_city_needs_district (city, district_id);
+	mark_city_needs_district (city, NEIGHBORHOOD_DISTRICT_ID);
 }
 
 int __fastcall patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum ImprovementTypeWonderFeatures flag, City * only_in_city);
@@ -6757,11 +6761,11 @@ city_has_assigned_wonder_district (City * city, Tile * ignore_tile)
 		if ((inst == NULL) || (inst->district_type != wonder_district_id))
 			continue;
 
-		struct wonder_district_info * info = get_wonder_district_info (candidate);
+		struct wonder_district_info * info = inst ? &inst->wonder_info : NULL;
 		if ((info != NULL) && (info->city == city) &&
-		    ((info->state == WDS_UNDER_CONSTRUCTION) || (info->state == WDS_COMPLETED)))
-			return true;
-	}
+			(info->state == WDS_UNDER_CONSTRUCTION))
+				return true;
+		}
 
 	return false;
 }
@@ -10695,8 +10699,6 @@ issue_district_worker_command (Unit * unit, int command)
 		int prereq_id = is->district_infos[district_id].advance_prereq_id;
 		// Only enforce if a prereq is configured
 		if (prereq_id >= 0 && !Leader_has_tech (&leaders[unit->Body.CivID], __, prereq_id)) {
-			//snprintf (ss, sizeof ss, "C3X: Civ lacks prereq tech %d for district command %d", prereq_id, command);
-			//pop_up_in_game_error (ss);
 			return; // Civ lacks required tech; do not issue command
 		}
 	}
@@ -12610,10 +12612,7 @@ ai_handle_district_production_requirements (City * city, City_Order * out)
 	City_Order fallback_order = {0};
 	int required_district_id = -1;
 
-	//char ss[200];
-	//snprintf (ss, sizeof ss, "ai_handle_district_production_requirements: City %d (%s) considering order type %d, unit %d\n",
-	//	  city->Body.ID, city->Body.CityName, out->OrderType, out->OrderID);
-    //pop_up_in_game_error (ss);
+	char ss[200];
 
 	if (is->current_config.enable_districts &&
 	    (out->OrderType == COT_Improvement) &&
@@ -12672,10 +12671,10 @@ ai_handle_district_production_requirements (City * city, City_Order * out)
 
 				if (fallback_is_feasible) {
 					// Remember pending building order for any improvement that requires a district
-					//snprintf (ss, sizeof ss, "ai_handle_district_production_requirements: Remembering fallback pending building order for city %d (%s): order type %d id %d\n",
-					//	city->Body.ID, city->Body.CityName, out->OrderType, out->OrderID);
-					//pop_up_in_game_error (ss);
-					//remember_pending_building_order (city, out->OrderID);
+					snprintf (ss, sizeof ss, "ai_handle_district_production_requirements: Remembering fallback pending building order for city %d (%s): order type %d id %d\n",
+						city->Body.ID, city->Body.CityName, out->OrderType, out->OrderID);
+					(*p_OutputDebugStringA) (ss);
+					remember_pending_building_order (city, out->OrderID);
 
 					fallback_order = stored->order;
 					swapped_to_fallback = true;
@@ -16107,7 +16106,8 @@ assign_ai_fallback_production (City * city, int disallowed_improvement_id)
 		if ((new_order.OrderID >= 0) &&
 		    (new_order.OrderID < p_bic_data->ImprovementsCount) &&
 		    (new_order.OrderID != disallowed_improvement_id) &&
-		    ! city_requires_district_for_improvement (city, new_order.OrderID, NULL))
+		    ! city_requires_district_for_improvement (city, new_order.OrderID, NULL) &&
+		    ! is_wonder_or_small_wonder_already_being_built (city, new_order.OrderID))
 			order_ok = true;
 	} else if (new_order.OrderType == COT_Unit) {
 		if ((new_order.OrderID >= 0) &&
@@ -16116,11 +16116,11 @@ assign_ai_fallback_production (City * city, int disallowed_improvement_id)
 			order_ok = true;
 	}
 
-	//char ss[200];
-	//snprintf (ss, sizeof ss, "assign_ai_fallback_production: Remembering fallback pending building order for city %d (%s): id %d\n",
-	//	city->Body.ID, city->Body.CityName, disallowed_improvement_id);
-	//pop_up_in_game_error (ss);
-	//remember_pending_building_order (city, disallowed_improvement_id);
+	char ss[200];
+	snprintf (ss, sizeof ss, "assign_ai_fallback_production: Remembering fallback pending building order for city %d (%s): id %d\n",
+		city->Body.ID, city->Body.CityName, disallowed_improvement_id);
+	(*p_OutputDebugStringA) (ss);
+	remember_pending_building_order (city, disallowed_improvement_id);
 
 	if (order_ok) {
 		City_set_production (city, __, new_order.OrderType, new_order.OrderID, false);
@@ -20423,17 +20423,10 @@ patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int pa
 void
 init_district_images ()
 {
-	char ss[200];
-	//snprintf (ss, sizeof ss, "init_district_images: starting to load district images");
-	//pop_up_in_game_error (ss);
-
 	if (is_online_game () || is->dc_img_state != IS_UNINITED)
 		return;
 
 	char art_dir[200];
-
-	//snprintf (ss, sizeof ss, "init_district_images: loading district images");
-	//pop_up_in_game_error (ss);
 
 	is->dc_img_state = IS_INIT_FAILED;
 
@@ -20456,13 +20449,12 @@ init_district_images ()
 				continue;
 			// Read PCX file
 			snprintf (art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, cfg->img_paths[variant_i]);
-			//snprintf (ss, sizeof ss, "init_district_images: loading district images from %s", art_dir);
-			//pop_up_in_game_error (ss);
 
 			PCX_Image_read_file (&pcx, __, art_dir, NULL, 0, 0x100, 2);
 
 			if (pcx.JGL.Image == NULL) {
 
+				char ss[200];
 				snprintf (ss, sizeof ss, "init_district_images: failed to load district images from %s", art_dir);
 				pop_up_in_game_error (ss);
 
@@ -20485,18 +20477,11 @@ init_district_images ()
 
 				// For each column in the image (variations on the district image for that era)
 				for (int col_i = 0; col_i < column_count; col_i++) {
-
-					//snprintf (ss, sizeof ss, "init_district_images: loading district %d variant %d era %d column %d", dc, variant_i, era_i, col_i);
-					//pop_up_in_game_error (ss);
-
 					Sprite_construct (&is->district_img_sets[dc].imgs[variant_i][era_i][col_i]);
 
 					int x = 128 * col_i,
 						y = 64 * era_i;
 					Sprite_slice_pcx (&is->district_img_sets[dc].imgs[variant_i][era_i][col_i], __, &pcx, x, y, 128, 64, 1, 1);
-
-					//snprintf (ss, sizeof ss, "init_district_images: loaded district %d variant %d era %d column %d", dc, variant_i, era_i, col_i);
-					//pop_up_in_game_error (ss);
 				}
 			}
 
@@ -20524,6 +20509,7 @@ init_district_images ()
 				PCX_Image_read_file (&wpcx, __, art_dir, NULL, 0, 0x100, 2);
 
 				if (wpcx.JGL.Image == NULL) {
+					char ss[200];
 					snprintf (ss, sizeof ss, "init_district_images: failed to load wonder district images from %s", art_dir);
 					pop_up_in_game_error (ss);
 					pcx_loaded = false;
@@ -20777,8 +20763,8 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		return false;
 
 	char ss[200];
-	//snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d assigned to build district", worker->Body.ID);
-	//pop_up_in_game_error (ss);
+	snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d assigned to build district", worker->Body.ID);
+	(*p_OutputDebugStringA) (ss);
 
 	// Check the original request city made for district
 	struct pending_district_request * req = rec->pending_req;
@@ -20787,14 +20773,14 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 	    (req->target_x < 0) || (req->target_y < 0))
 		return false;
 
-	//snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d moving to (%d,%d) to build district", worker->Body.ID, req->target_x, req->target_y);
-	//pop_up_in_game_error (ss);
+	snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d moving to (%d,%d) to build district", worker->Body.ID, req->target_x, req->target_y);
+	(*p_OutputDebugStringA) (ss);
 
 	// If the worker has arrived
 	if ((worker->Body.X == req->target_x) && (worker->Body.Y == req->target_y)) {
 
-		//snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d arrived at (%d,%d) to build district", worker->Body.ID, worker->Body.X, worker->Body.Y);
-		//pop_up_in_game_error (ss);
+		snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d arrived at (%d,%d) to build district", worker->Body.ID, worker->Body.X, worker->Body.Y);
+		(*p_OutputDebugStringA) (ss);
 
 		Tile * tile = tile_at (worker->Body.X, worker->Body.Y);
 		struct district_instance * inst = get_district_instance (tile);
@@ -20804,8 +20790,8 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		if ((inst != NULL) && district_is_complete (tile, inst->district_type)) {
 			int existing_district_id = inst->district_type;
 
-			//snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d found existing district ID %d at (%d,%d)", worker->Body.ID, existing_district_id, worker->Body.X, worker->Body.Y);
-			//pop_up_in_game_error (ss);
+			snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d found existing district ID %d at (%d,%d)", worker->Body.ID, existing_district_id, worker->Body.X, worker->Body.Y);
+			(*p_OutputDebugStringA) (ss);
 
 			if (existing_district_id == req->district_id) {
 				clear_city_district_request (req->city, req->district_id);
@@ -20839,8 +20825,8 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 			}
 		}
 
-		//snprintf (ss, sizeof ss, "ai_move_district_worker: Checking for duplicate districts near worker ID %d at (%d,%d)", worker->Body.ID, worker->Body.X, worker->Body.Y);
-		//pop_up_in_game_error (ss);
+		snprintf (ss, sizeof ss, "ai_move_district_worker: Checking for duplicate districts near worker ID %d at (%d,%d)", worker->Body.ID, worker->Body.X, worker->Body.Y);
+		(*p_OutputDebugStringA) (ss);
 
 		// One final check: do we still need the district? Check for any dupes nearby
 		if (req->district_id != DISTRIBUTION_HUB_DISTRICT_ID) {
@@ -20858,16 +20844,18 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 			}
 		}
 
-		//snprintf (ss, sizeof ss, "ai_move_district_worker: Checking for forest or wetlands at worker ID %d location (%d,%d)", worker->Body.ID, worker->Body.X, worker->Body.Y);
-		//pop_up_in_game_error (ss);
+		snprintf (ss, sizeof ss, "ai_move_district_worker: Checking for forest or wetlands at worker ID %d location (%d,%d)", worker->Body.ID, worker->Body.X, worker->Body.Y);
+		(*p_OutputDebugStringA) (ss);
 
 		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+		unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
+		unsigned int removable_flags = overlay_flags & 0xfc;
 
 		// If replacing an existing district, clear overlays
 		if (do_replacement) {
 			remove_district_instance (tile);
 			tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
-			tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, worker->Body.X, worker->Body.Y);
+			tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, worker->Body.X, worker->Body.Y);
 			handle_district_removed (tile, req->district_id, worker->Body.X, worker->Body.Y, false);
 		}
 
@@ -20882,12 +20870,12 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 			return true;
 		}
 
-		//snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d starting construction of district at (%d,%d)", worker->Body.ID, worker->Body.X, worker->Body.Y);
-		//pop_up_in_game_error (ss);
+		snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d starting construction of district at (%d,%d)", worker->Body.ID, worker->Body.X, worker->Body.Y);
+		(*p_OutputDebugStringA) (ss);
 
-		// Clear any existing mines
+		// Clear any existing improvements (irrigation and mines)
 		tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
-		tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, worker->Body.X, worker->Body.Y);
+		tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, worker->Body.X, worker->Body.Y);
 
 		// Start construction of district
 		inst = ensure_district_instance (tile, req->district_id, req->target_x, req->target_y);
@@ -20905,8 +20893,8 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 				worker, worker->Body.CivID, 0x41, NULL);
 			if (path_result > 0) {
 
-				//snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d path set to (%d,%d) to build district", worker->Body.ID, req->target_x, req->target_y);
-				//pop_up_in_game_error (ss);
+				snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d path set to (%d,%d) to build district", worker->Body.ID, req->target_x, req->target_y);
+				(*p_OutputDebugStringA) (ss);
 
 				Unit_set_escortee (worker, __, -1);
 				Unit_set_state (worker, __, UnitState_Go_To);
