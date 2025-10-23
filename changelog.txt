@@ -1,5 +1,6 @@
 - Allow city limit to be configured to any value up to 2048
   - New integer setting "city_limit" replaces the previous "lift_city_limit" switch
+- Fix cities beyond the first 512 not being tradable
 - Fix support-free units being disbanded on bankruptcy while aggressively_penalize_bankruptcy is set
 - Fix AI players being able to build armies with leader units that don't have the "build army" special ability set on their type
 - Fix possible crash in base game leader unit AI

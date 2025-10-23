@@ -3223,6 +3223,8 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	int * trade_net_addrs;
 	bool already_moved_trade_net = is->trade_net != p_original_trade_net,
 	     want_moved_trade_net = cfg->city_limit > 512;
+	int lifted_city_limit_exp = 11;
+	int lifted_city_limit = 1 << lifted_city_limit_exp;
 	if ((! at_program_start) &&
 	    ((trade_net_addrs = load_trade_net_addrs ()) != NULL) &&
 	    ((already_moved_trade_net && ! want_moved_trade_net) || (want_moved_trade_net && ! already_moved_trade_net))) {
@@ -3230,8 +3232,6 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		// set the allocated object aside for deletion later. Also set new & old addresses to the locations we're moving to & from.
 		Trade_Net * to_free = NULL;
 		int p_old, p_new;
-		int lifted_city_limit_exp = 11;
-		int lifted_city_limit = 1 << lifted_city_limit_exp;
 		if (want_moved_trade_net) {
 			is->trade_net = calloc (1, (sizeof (Trade_Net)) - (4 * 512 * 512) + (4 * lifted_city_limit * lifted_city_limit));
 			is->city_limit = lifted_city_limit;
@@ -3340,6 +3340,19 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 			}
 		}
 
+		// Reallocate diplo_form->tradable_cities array so it matches the city limit
+		civ_prog_free (p_diplo_form->tradable_cities);
+		int tradable_cities_len = want_moved_trade_net ? lifted_city_limit : 512,
+		    tradable_cities_size = tradable_cities_len * sizeof (TradableItem);
+		p_diplo_form->tradable_cities = new (tradable_cities_size);
+		for (int n = 0; n < tradable_cities_len; n++)
+			p_diplo_form->tradable_cities[n] = (TradableItem) {.label = (char *)-1, 0}; // clear label to -1 and other fields to 0
+
+		// Patch the size limit on some code that clears the tradable cities array when starting a new game
+		WITH_MEM_PROTECTION (ADDR_TRADABLE_CITIES_SIZE_TO_CLEAR, 4, PAGE_EXECUTE_READWRITE) {
+			int_to_bytes (ADDR_TRADABLE_CITIES_SIZE_TO_CLEAR, tradable_cities_size);
+		}
+
 		if (to_free) {
 			to_free->vtable->destruct (to_free, __, 0);
 			free (to_free);
@@ -3347,12 +3360,15 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	}
 
 	// Set is->city_limit and patch two instructions that contain the limit
-	is->city_limit = clamp (0, already_moved_trade_net ? 2048 : 512, cfg->city_limit);
+	is->city_limit = clamp (0, already_moved_trade_net ? lifted_city_limit : 512, cfg->city_limit);
 	WITH_MEM_PROTECTION (ADDR_CITY_LIM_CMP_IN_CONT_BEGIN_TURN, 6, PAGE_EXECUTE_READWRITE) {
 		int_to_bytes (&ADDR_CITY_LIM_CMP_IN_CONT_BEGIN_TURN[2], is->city_limit);
 	}
 	WITH_MEM_PROTECTION (ADDR_CITY_LIM_CMP_IN_CREATE_CITY, 5, PAGE_EXECUTE_READWRITE) {
 		int_to_bytes (&ADDR_CITY_LIM_CMP_IN_CREATE_CITY[1], is->city_limit);
+	}
+	WITH_MEM_PROTECTION (ADDR_MAX_TRADABLE_CITY_ID, 4, PAGE_EXECUTE_READWRITE) {
+		int_to_bytes (ADDR_MAX_TRADABLE_CITY_ID, already_moved_trade_net ? lifted_city_limit : 512);
 	}
 
 	WITH_MEM_PROTECTION (ADDR_CULTURE_DOUBLING_TIME_CMP_INSTR, 6, PAGE_EXECUTE_READWRITE) {
