@@ -575,6 +575,22 @@ struct ai_best_feasible_order {
 	int value;
 };
 
+struct pending_district_request {
+	City * city;
+	int district_id;
+	int assigned_worker_id;
+	int target_x;
+	int target_y;
+	int worker_assigned_turn;
+};
+
+struct district_worker_record {
+	Unit * worker;
+	int unit_id;
+	int continent_id;
+	struct pending_district_request * pending_req;
+};
+
 enum wonder_district_state {
 	WDS_UNUSED = 0,      // Wonder district built, no wonder assigned
 	WDS_UNDER_CONSTRUCTION,        // Reserved by a city for wonder construction
@@ -589,9 +605,8 @@ struct wonder_district_info {
 };
 
 enum district_state {
-	DS_PLANNED = 0,
-	DS_UNDER_CONSTRUCTION = 1,
-	DS_COMPLETED = 2
+	DS_UNDER_CONSTRUCTION = 0,
+	DS_COMPLETED = 1
 };
 
 struct district_instance {
@@ -599,10 +614,9 @@ struct district_instance {
 	int district_type;    // Index into district_configs array
 	int tile_x;
 	int tile_y;
-	int planned_city_id;
-	int planned_worker_id;
 	struct wonder_district_info wonder_info; // Only used if district_type is a wonder district
 };
+
 
 struct injected_state {
 	// ==========
@@ -1281,8 +1295,7 @@ struct injected_state {
 	// a unit command (e.g., build order) corresponds to.
 	struct table command_id_to_district_id;
 
-	// City pointer keys -> district bitmask. Tracks which district types
-	// a city has requested but not yet assigned workers to build.
+	// Table of pending district requests keyed by city & district (values are struct pending_district_request pointers).
 	struct table city_pending_district_requests;
 
 	// City pointer keys -> improvement ID. Tracks which improvements (buildings/wonders)
@@ -1347,6 +1360,9 @@ struct injected_state {
 
 	// Guard to prevent recursive sharing when auto-adding buildings across cities
 	bool sharing_buildings_by_districts_in_progress;
+
+	// Worker tracking: 32 tables (one per civ), each mapping unit_id -> district_worker_record pointer
+	struct table district_worker_tables[32];
 
 	// Initialized to 0. Every time Main_Screen_Form::m82_handle_key_event receives an event with is_down == 0, the virtual key code is prepended
 	// to this list.
