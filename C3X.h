@@ -577,6 +577,8 @@ struct ai_best_feasible_order {
 
 struct pending_district_request {
 	City * city;
+	int city_id;
+	int civ_id;
 	int district_id;
 	int assigned_worker_id;
 	int target_x;
@@ -601,6 +603,7 @@ enum wonder_district_state {
 struct wonder_district_info {
 	enum wonder_district_state state;
 	City * city;          // City that reserved/completed (NULL if unused)
+	int city_id;
 	int wonder_index;     // Wonder index (-1 if unused/reserved, valid if completed)
 };
 
@@ -1295,8 +1298,8 @@ struct injected_state {
 	// a unit command (e.g., build order) corresponds to.
 	struct table command_id_to_district_id;
 
-	// Table of pending district requests keyed by city & district (values are struct pending_district_request pointers).
-	struct table city_pending_district_requests;
+	// Array of 32 tables (one per civ) of pending district requests keyed by city & district (values are struct pending_district_request pointers).
+	struct table city_pending_district_requests[32];
 
 	// City pointer keys -> improvement ID. Tracks which improvements (buildings/wonders)
 	// requiring districts a city has ordered to be built (pending district completion).
