@@ -237,6 +237,10 @@ bool assign_worker_to_district (struct pending_district_request * req, Unit * wo
 void pop_up_in_game_error (char const * msg);
 void detach_workers_from_request (struct pending_district_request * req);
 bool ai_move_district_worker (Unit * worker, struct district_worker_record * rec);
+bool city_needs_wonder_district (City * city);
+void handle_district_removed (Tile * tile, int district_id, int center_x, int center_y, bool leave_ruins);
+bool free_wonder_district_for_city (City * city);
+bool has_active_building (City * city, int improv_id);
 
 static int
 get_pending_district_request_key (int city_id, int district_id)
@@ -309,8 +313,8 @@ create_pending_district_request (City * city, int district_id)
 	}
 
 	char ss[200];
-	snprintf (ss, sizeof ss, "Creating pending district request for city %s (ID %d) district ID %d with key %d\n",
-		  city->Body.CityName, city->Body.ID, district_id, key);
+	snprintf (ss, sizeof ss, "create_pending_district_request: Creating pending district request for city %s (ID %d) district ID %d with key %d\n",
+		city->Body.CityName, city->Body.ID, district_id, key);
 	(*p_OutputDebugStringA) (ss);
 
 	itable_insert (&is->city_pending_district_requests[civ_id], key, (int)(long)req);
@@ -2799,7 +2803,7 @@ update_tracked_worker_for_unit (Unit * worker)
 	if ((type_id < 0) || (type_id >= p_bic_data->UnitTypeCount)) return;
 
 	char ss[200];
-	snprintf (ss, sizeof ss, "Updating tracked worker for unit %d of type %d", worker->Body.ID, type_id);
+	snprintf (ss, sizeof ss, "Updating tracked worker for unit %d of type %d\n", worker->Body.ID, type_id);
 	(*p_OutputDebugStringA) (ss);
 
 	int worker_actions = p_bic_data->UnitTypes[type_id].Worker_Actions;
@@ -2829,8 +2833,8 @@ assign_worker_to_district (struct pending_district_request * req, Unit * worker,
 	worker->Body.Auto_CityID  = city->Body.ID;
 
 	char ss[200];
-	snprintf (ss, sizeof ss, "Assigned worker unit %d to build district %d in city %s at (%d,%d)",
-		  worker->Body.ID, district_id, city->Body.CityName, tile_x, tile_y);
+	snprintf (ss, sizeof ss, "assign_worker_to_district: Assigned worker unit %d to build district %d in city %s at (%d,%d)\n",
+		worker->Body.ID, district_id, city->Body.CityName, tile_x, tile_y);
 	(*p_OutputDebugStringA) (ss);
 
 	struct district_worker_record * record = ensure_tracked_worker_record (worker);
@@ -2867,27 +2871,27 @@ find_best_worker_for_district (Leader * leader, City * city, int district_id, in
 	char ss[200];
 
 	if ((leader == NULL) || (city == NULL)) {
-		snprintf (ss, sizeof ss, "Invalid leader or city when finding best worker for district %d", district_id);
+		snprintf (ss, sizeof ss, "Invalid leader or city when finding best worker for district %d\n", district_id);
 		(*p_OutputDebugStringA) (ss);
 		return NULL;
 	}
 
 	int civ_id = leader->ID;
 	if ((civ_id < 0) || (civ_id >= 32)) {
-		snprintf (ss, sizeof ss, "Invalid civ_id %d when finding best worker for district %d", civ_id, district_id);
+		snprintf (ss, sizeof ss, "Invalid civ_id %d when finding best worker for district %d\n", civ_id, district_id);
 		(*p_OutputDebugStringA) (ss);
 		return NULL;
 	}
 
 	if (is->district_worker_tables[civ_id].len == 0) {
-		snprintf (ss, sizeof ss, "No tracked workers for civ %d when finding best worker for district %d", civ_id, district_id);
+		snprintf (ss, sizeof ss, "No tracked workers for civ %d when finding best worker for district %d\n", civ_id, district_id);
 		(*p_OutputDebugStringA) (ss);
 		return NULL;
 	}
 
 	Tile * target_tile = tile_at (target_x, target_y);
 	if ((target_tile == NULL) || (target_tile == p_null_tile)) {
-		snprintf (ss, sizeof ss, "Invalid target tile (%d,%d) when finding best worker for district %d in city %s",
+		snprintf (ss, sizeof ss, "Invalid target tile (%d,%d) when finding best worker for district %d in city %s\n",
 			  target_x, target_y, district_id, city->Body.CityName);
 		(*p_OutputDebugStringA) (ss);
 		return NULL;
@@ -2897,14 +2901,11 @@ find_best_worker_for_district (Leader * leader, City * city, int district_id, in
 	Unit * best_worker      = NULL;
 	int best_dist           = INT_MAX;
 
-	snprintf (ss, sizeof ss, "Finding best worker for district %d in city %s at (%d,%d)", district_id, city->Body.CityName, target_x, target_y);
+	snprintf (ss, sizeof ss, "Finding best worker for district %d in city %s at (%d,%d)\n", district_id, city->Body.CityName, target_x, target_y);
 	(*p_OutputDebugStringA) (ss);
 
 	FOR_TABLE_ENTRIES (tei, &is->district_worker_tables[civ_id]) {
 		struct district_worker_record * rec = (struct district_worker_record *)(long)tei.value;
-
-		snprintf (ss, sizeof ss, "Considering tracked worker record for civ %d", civ_id);
-		(*p_OutputDebugStringA) (ss);
 
 		if (rec == NULL) {
 			continue;
@@ -2968,8 +2969,13 @@ process_pending_district_request (Leader * leader, struct pending_district_reque
 		return;
 	}
 
-	// City already has the district; clear the request
-	if (city_has_required_district (city, district_id)) {
+	// Check if city already has the district if not a neighborhood or distribution hub
+	if (district_id != NEIGHBORHOOD_DISTRICT_ID &&
+		district_id != DISTRIBUTION_HUB_DISTRICT_ID &&
+		is->district_configs[district_id].allow_multiple == false && 
+		city_has_required_district (city, district_id)) {
+
+		// Clear the request
 		clear_city_district_request (city, district_id);
 		return;
 	}
@@ -2983,10 +2989,12 @@ process_pending_district_request (Leader * leader, struct pending_district_reque
 			if ((*p_current_turn_no - req->worker_assigned_turn) > 5 && !worker_at_target) {
 				clear_tracked_worker_assignment_by_id (civ_id, req->assigned_worker_id);
 				req->assigned_worker_id = -1;
+				req->worker_assigned_turn = *p_current_turn_no;
 			} else {
 				return;
 			}
 		} else {
+			// Assigned worker is null, make sure we get a new one
 			clear_tracked_worker_assignment_by_id (civ_id, req->assigned_worker_id);
 			req->assigned_worker_id = -1;
 		}
@@ -3000,17 +3008,18 @@ process_pending_district_request (Leader * leader, struct pending_district_reque
 		clear_city_district_request (city, district_id);
 		return;
 	}
+	wrap_tile_coords (&p_bic_data->Map, &target_x, &target_y);
 
 	char ss[200];
-	snprintf (ss, sizeof ss, "Assigning worker for district %d in city %s at (%d,%d)", district_id, city->Body.CityName, target_x, target_y);
+	snprintf (ss, sizeof ss, "Assigning worker for district %d in city %s at (%d,%d)\n", district_id, city->Body.CityName, target_x, target_y);
 	(*p_OutputDebugStringA) (ss);
 
 	Unit * worker = find_best_worker_for_district (leader, city, district_id, target_x, target_y);
 	if (worker == NULL)
 		return;
 
-	snprintf (ss, sizeof ss, "Found worker %d for district %d in city %s at (%d,%d)",
-		  worker->Body.ID, district_id, city->Body.CityName, target_x, target_y);
+	snprintf (ss, sizeof ss, "Found worker %d for district %d in city %s at (%d,%d)\n",
+		worker->Body.ID, district_id, city->Body.CityName, target_x, target_y);
 	(*p_OutputDebugStringA) (ss);
 
 	assign_worker_to_district (req, worker, city, district_id, target_x, target_y);
@@ -3219,7 +3228,7 @@ district_is_complete(Tile * tile, int district_id)
 		}
 
 		char ss[200];
-		snprintf (ss, sizeof ss, "District %d completed at tile (%d,%d)", district_id, tile_x, tile_y);
+		snprintf (ss, sizeof ss, "District %d completed at tile (%d,%d)\n", district_id, tile_x, tile_y);
 		(*p_OutputDebugStringA) (ss);
 
 		// Check if this was an AI-requested district
@@ -3228,7 +3237,7 @@ district_is_complete(Tile * tile, int district_id)
 			City * requesting_city = get_city_ptr (req->city_id);
 			if (requesting_city != NULL) {
 				req->city = requesting_city;
-				snprintf (ss, sizeof ss, "District %d at tile (%d,%d) was ordered by city %s",
+				snprintf (ss, sizeof ss, "District %d at tile (%d,%d) was ordered by city %s\n",
 					  district_id, tile_x, tile_y, requesting_city->Body.CityName);
 				(*p_OutputDebugStringA) (ss);
 
@@ -3238,14 +3247,14 @@ district_is_complete(Tile * tile, int district_id)
 					int prereq_district_id;
 					if (itable_look_up (&is->district_building_prereqs, pending_improv_id, &prereq_district_id)) {
 						if (prereq_district_id == district_id) {
-							snprintf (ss, sizeof ss, "City %s setting production to improvement %d",
+							snprintf (ss, sizeof ss, "City %s setting production to improvement %d\n",
 								  requesting_city->Body.CityName, pending_improv_id);
 							(*p_OutputDebugStringA) (ss);
 
 							// Check if another city is already building this wonder/small wonder
 							bool can_set_production = true;
 							if (is_wonder_or_small_wonder_already_being_built (requesting_city, pending_improv_id)) {
-								snprintf (ss, sizeof ss, "City %s cannot build improvement %d - already being built elsewhere",
+								snprintf (ss, sizeof ss, "City %s cannot build improvement %d - already being built elsewhere\n",
 									  requesting_city->Body.CityName, pending_improv_id);
 								(*p_OutputDebugStringA) (ss);
 								can_set_production = false;
@@ -3253,7 +3262,7 @@ district_is_complete(Tile * tile, int district_id)
 
 							// Set city production to the pending improvement
 							if (can_set_production && City_can_build_improvement (requesting_city, __, pending_improv_id, false)) {
-								snprintf (ss, sizeof ss, "City %s can now build improvement %d",
+								snprintf (ss, sizeof ss, "City %s can now build improvement %d\n",
 									  requesting_city->Body.CityName, pending_improv_id);
 								(*p_OutputDebugStringA) (ss);
 								City_set_production (requesting_city, __, COT_Improvement, pending_improv_id, false);
@@ -3267,7 +3276,7 @@ district_is_complete(Tile * tile, int district_id)
 
 				// Clear worker assignment so worker is freed up for other tasks
 				if (req->assigned_worker_id >= 0) {
-					snprintf (ss, sizeof ss, "Clearing worker assignment for unit %d", req->assigned_worker_id);
+					snprintf (ss, sizeof ss, "Clearing worker assignment for unit %d\n", req->assigned_worker_id);
 					(*p_OutputDebugStringA) (ss);
 					int civ_id = req->civ_id;
 					clear_tracked_worker_assignment_by_id (civ_id, req->assigned_worker_id);
@@ -4315,7 +4324,7 @@ ensure_culture_variant_art (struct district_config * cfg, int section_start_line
 	const int max_img_paths = ARRAY_LEN (is->district_configs[0].img_paths);
 	if (cfg->img_path_count <= 0) {
 		char ss[256];
-		snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: district \"%s\" requires culture-specific art but none provided (line %d)", cfg->name, section_start_line);
+		snprintf (ss, sizeof ss, "[C3X] load_dynamic_district_configs: district \"%s\" requires culture-specific art but none provided (line %d)\n", cfg->name, section_start_line);
 		(*p_OutputDebugStringA) (ss);
 		return false;
 	}
@@ -5427,7 +5436,7 @@ load_districts_config (void)
 				struct string_slice tech_name = { .str = (char *)is->district_configs[i].advance_prereq, .len = (int)strlen (is->district_configs[i].advance_prereq) };
 				if (find_game_object_id_by_name (GOK_TECHNOLOGY, &tech_name, 0, &tech_id)) {
 
-					snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d", tech_name.len, tech_name.str, is->district_configs[i].advance_prereq, tech_id);
+					snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d\n", tech_name.len, tech_name.str, is->district_configs[i].advance_prereq, tech_id);
 					(*p_OutputDebugStringA) (ss);
 
 					// Set the prereq ID in the district info struct
@@ -5456,7 +5465,7 @@ load_districts_config (void)
 				struct string_slice improv_name = { .str = (char *)is->district_configs[i].dependent_improvements[j], .len = (int)strlen (is->district_configs[i].dependent_improvements[j]) };
 				if (find_game_object_id_by_name (GOK_BUILDING, &improv_name, 0, &improv_id)) {
 
-					snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d", improv_name.len, improv_name.str, is->district_configs[i].dependent_improvements[j], improv_id);
+					snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d\n", improv_name.len, improv_name.str, is->district_configs[i].dependent_improvements[j], improv_id);
 					(*p_OutputDebugStringA) (ss);
 
 					// Append the improvement ID to the list in the district info struct	
@@ -5486,13 +5495,13 @@ load_districts_config (void)
 			struct string_slice wonder_name = { .str = (char *)is->wonder_district_configs[wi].wonder_name, .len = (int)strlen (is->wonder_district_configs[wi].wonder_name) };
 			if (find_game_object_id_by_name (GOK_BUILDING, &wonder_name, 0, &improv_id)) {
 
-				snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for wonder district \"%s\", ID %d", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name, improv_id);
+				snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for wonder district \"%s\", ID %d\n", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name, improv_id);
 				(*p_OutputDebugStringA) (ss);
 
 				// Map the wonder name to its improvement ID
 				stable_insert (&is->building_name_to_id, wonder_name.str, improv_id);
 			} else {
-				snprintf (ss, sizeof ss, "Could not find improvement prereq \"%.*s\" for wonder district \"%s\"", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name);
+				snprintf (ss, sizeof ss, "Could not find improvement prereq \"%.*s\" for wonder district \"%s\"\n", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name);
 				(*p_OutputDebugStringA) (ss);
 			}
 		}
@@ -5902,12 +5911,6 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 
 int __fastcall patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp);
 
-bool city_needs_wonder_district (City * city);
-void handle_district_removed (Tile * tile, int district_id, int center_x, int center_y, bool leave_ruins);
-bool free_wonder_district_for_city (City * city);
-bool has_active_building (City * city, int improv_id);
-
-
 Tile *
 get_completed_district_tile_for_city (City * city, int district_id, int * out_x, int * out_y)
 {
@@ -6039,30 +6042,6 @@ city_has_wonder_district_with_no_completed_wonder (City * city)
 	return false;
 }
 
-void
-ensure_neighborhood_request_for_city (City * city)
-{
-	if (! is->current_config.enable_districts ||
-		! is->current_config.enable_neighborhood_districts ||
-	    (city == NULL))
-		return;
-
-	int civ_id = city->Body.CivID;
-	if (civ_id < 0)
-		return;
-
-	int district_id = NEIGHBORHOOD_DISTRICT_ID;
-	int prereq = is->district_infos[district_id].advance_prereq_id;
-	
-	if ((prereq >= 0) && ! Leader_has_tech (&leaders[civ_id], __, prereq)) return;
-	if (city_has_required_district (city, district_id)) return;
-
-	if (find_pending_district_request (city, district_id) != NULL)
-		return;
-
-	mark_city_needs_district (city, district_id);
-}
-
 int __fastcall patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum ImprovementTypeWonderFeatures flag, City * only_in_city);
 int __fastcall patch_Leader_count_wonders_with_small_flag (Leader * this, int edx, enum ImprovementTypeSmallWonderFeatures flag, City * city_or_null);
 void __fastcall patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int add, bool param_3);
@@ -6129,16 +6108,6 @@ patch_City_has_improvement (City * this, int edx, int improv_id, bool include_au
 	return tr;
 }
 
-bool
-tile_counts_for_city_neighborhood (City * city, Tile * tile)
-{
-	if ((city == NULL) || (tile == NULL) || (tile == p_null_tile))
-		return false;
-	// Check territory ownership instead of CityAreaID to ensure neighborhoods
-	// count even if the tile isn't currently being worked by the city
-	return tile->vtable->m38_Get_Territory_OwnerID (tile) == city->Body.CivID;
-}
-
 int
 count_neighborhoods_in_city_radius (City * city)
 {
@@ -6150,13 +6119,13 @@ count_neighborhoods_in_city_radius (City * city)
 	int count = 0;
 	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
 		Tile * tile = tai.tile;
-		if (! tile_counts_for_city_neighborhood (city, tile))
+		if (! (tile->vtable->m38_Get_Territory_OwnerID (tile) == city->Body.CivID))
 			continue;
 
 		struct district_instance * inst = get_district_instance (tile);
 		if (inst != NULL &&
 		    inst->district_type >= 0 && inst->district_type < is->district_count &&
-		    is->district_configs[inst->district_type].command == UCV_Build_Neighborhood &&
+		    inst->district_type == NEIGHBORHOOD_DISTRICT_ID &&
 		    district_is_complete (tile, inst->district_type))
 			count++;
 	}
@@ -6191,6 +6160,65 @@ count_utilized_neighborhoods_in_city_radius (City * city)
 		utilized = total_neighborhoods;
 
 	return utilized;
+}
+
+int
+get_neighborhood_pop_cap (City * city)
+{
+	if (! is->current_config.enable_districts ||
+		! is->current_config.enable_neighborhood_districts ||
+	    (city == NULL))
+		return -1;
+
+	int base_cap = is->current_config.maximum_pop_before_neighborhood_needed;
+	if (base_cap <= 0)
+		return -1;
+
+	int per_neighborhood = is->current_config.per_neighborhood_pop_growth_enabled;
+	if (per_neighborhood < 0)
+		per_neighborhood = 0;
+
+	int neighborhoods = count_neighborhoods_in_city_radius (city);
+	long long cap     = (long long)base_cap + (long long)per_neighborhood * neighborhoods;
+	if (cap < base_cap) 
+		cap = base_cap;
+
+	return (int)cap;
+}
+
+bool
+city_is_at_neighborhood_cap (City * city)
+{
+	if (! is->current_config.enable_districts ||
+		! is->current_config.enable_neighborhood_districts ||
+	    (city == NULL))
+		return false;
+
+	int cap = get_neighborhood_pop_cap (city);
+	if (cap <= 0)
+		return false;
+
+	return city->Body.Population.Size == cap;
+}
+
+void
+ensure_neighborhood_request_for_city (City * city)
+{
+	if (! is->current_config.enable_districts ||
+		! is->current_config.enable_neighborhood_districts ||
+	    (city == NULL))
+		return;
+
+	int district_id = NEIGHBORHOOD_DISTRICT_ID;
+	if (district_id < 0 || district_id >= is->district_count) return;
+
+	int civ_id = city->Body.CivID;
+	if (civ_id < 0) return;
+
+	int prereq = is->district_infos[district_id].advance_prereq_id;
+	if ((prereq >= 0) && ! Leader_has_tech (&leaders[civ_id], __, prereq)) return;
+
+	mark_city_needs_district (city, district_id);
 }
 
 void
@@ -6241,52 +6269,6 @@ calculate_district_culture_science_bonuses (City * city, int * culture_bonus, in
 		*culture_bonus = total_culture;
 	if (science_bonus != NULL)
 		*science_bonus = total_science;
-}
-
-int
-get_neighborhood_pop_cap (City * city)
-{
-	if (! is->current_config.enable_districts ||
-		! is->current_config.enable_neighborhood_districts ||
-	    (city == NULL))
-		return -1;
-
-	int base_cap = is->current_config.maximum_pop_before_neighborhood_needed;
-	if (base_cap <= 0)
-		return -1;
-
-	int per_neighborhood = is->current_config.per_neighborhood_pop_growth_enabled;
-	if (per_neighborhood < 0)
-		per_neighborhood = 0;
-
-	int neighborhoods = count_neighborhoods_in_city_radius (city);
-	long long cap = (long long)base_cap + (long long)per_neighborhood * neighborhoods;
-	if (cap > 0xfe)
-		cap = 0xfe;
-	if (cap < base_cap)
-		cap = base_cap;
-
-	return (int)cap;
-}
-
-bool
-city_is_at_neighborhood_cap (City * city)
-{
-	if (! is->current_config.enable_districts ||
-		! is->current_config.enable_neighborhood_districts ||
-	    (city == NULL))
-		return false;
-
-	int cap = get_neighborhood_pop_cap (city);
-	if (cap < 0)
-		return false;
-
-	if (city->Body.Population.Size < cap)
-		return false;
-
-	ensure_neighborhood_request_for_city (city);
-	
-	return true;
 }
 
 void __fastcall
@@ -6362,8 +6344,9 @@ patch_City_update_growth (City * this)
 
 	City_update_growth (this);
 
-	if (! blocked_growth)
+	if (! blocked_growth) {
 		return;
+	}
 
 	// Restore visible food income so the interface still shows actual yields.
 	this->Body.FoodIncome = orig_income;
@@ -10664,6 +10647,10 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 				if ((type_id >= 0) && (type_id < p_bic_data->UnitTypeCount)) {
 					int worker_actions = p_bic_data->UnitTypes[type_id].Worker_Actions;
 					if (worker_actions != 0 && (worker_actions & (UCV_Build_Road | UCV_Build_Mine | UCV_Irrigate))) {
+						int civ_id = this->Body.CivID;
+						if (civ_id >= 0 && civ_id < 32) {
+							return is->city_pending_district_requests[civ_id].len == 0;
+						}
 						return false;
 					}
 				}
@@ -16294,14 +16281,11 @@ patch_Leader_do_production_phase (Leader * this)
 			if (city == NULL) continue;
 
 			bool is_human = (*p_human_player_bits & (1 << city->Body.CivID)) != 0;
-			unsigned int turn_no = (unsigned int)*p_current_turn_no;
-			unsigned int throttle = ((unsigned int)city->Body.X << 5) ^ (unsigned int)city->Body.Y;
 
 			// Check if AI cities are at neighborhood cap and need to request neighborhood districts
 			if (! is_human &&
 			    is->current_config.enable_neighborhood_districts &&
-			    city_is_at_neighborhood_cap (city) &&
-				((turn_no + throttle) % 4) == 0) // Only mark once every 4 turns per city
+			    city_is_at_neighborhood_cap (city))
 				ensure_neighborhood_request_for_city (city);
 
 			if (city->Body.Order_Type != COT_Improvement) continue;
@@ -20922,7 +20906,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		return false;
 
 	char ss[200];
-	snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d assigned to build district", worker->Body.ID);
+	snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d assigned to build district\n", worker->Body.ID);
 	(*p_OutputDebugStringA) (ss);
 
 	// Check the original request city made for district
@@ -20932,7 +20916,8 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 	    (req->target_x < 0) || (req->target_y < 0))
 		return false;
 
-	snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d moving to (%d,%d) to build district", worker->Body.ID, req->target_x, req->target_y);
+	int district_id = req->district_id;
+	snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d moving to (%d,%d) to build district\n", worker->Body.ID, req->target_x, req->target_y);
 	(*p_OutputDebugStringA) (ss);
 
 	City * request_city = get_city_ptr (req->city_id);
@@ -20946,7 +20931,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 	// If the worker has arrived
 	if ((worker->Body.X == req->target_x) && (worker->Body.Y == req->target_y)) {
 
-		snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d arrived at (%d,%d) to build district", worker->Body.ID, worker->Body.X, worker->Body.Y);
+		snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d arrived at (%d,%d) to build district\n", worker->Body.ID, worker->Body.X, worker->Body.Y);
 		(*p_OutputDebugStringA) (ss);
 
 		Tile * tile = tile_at (worker->Body.X, worker->Body.Y);
@@ -20957,7 +20942,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		if ((inst != NULL) && district_is_complete (tile, inst->district_type)) {
 			int existing_district_id = inst->district_type;
 
-			snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d found existing district ID %d at (%d,%d)", worker->Body.ID, existing_district_id, worker->Body.X, worker->Body.Y);
+			snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d found existing district ID %d at (%d,%d)\n", worker->Body.ID, existing_district_id, worker->Body.X, worker->Body.Y);
 			(*p_OutputDebugStringA) (ss);
 
 			if (existing_district_id == req->district_id) {
@@ -20973,26 +20958,11 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 			}
 
 			if (!do_replacement) {
-				bool has_road = (*tile->vtable->m25_Check_Roads)(tile, __, 0);
-				if (!has_road) {
-					Unit_set_state(worker, __, UnitState_Build_Road);
-					worker->Body.Job_ID = 3; // Build road
-					return true;
-				}
-
-				bool can_build_railroad = Leader_can_do_worker_job (&leaders[worker->Body.CivID], __, WJ_Build_Railroad, worker->Body.X, worker->Body.Y, 0);
-				bool has_railroad = (*tile->vtable->m23_Check_Railroads)(tile, __, 0);
-				if (can_build_railroad && !has_railroad) {
-					Unit_set_state(worker, __, UnitState_Build_Railroad);
-					worker->Body.Job_ID = 4; // Build railroad
-					return true;
-				}
-
 				return false; // Nothing left to do here
 			}
 		}
 
-		snprintf (ss, sizeof ss, "ai_move_district_worker: Checking for duplicate districts near city at (%d,%d)", request_city->Body.X, request_city->Body.Y);
+		snprintf (ss, sizeof ss, "ai_move_district_worker: Checking for duplicate districts near city at (%d,%d)\n", request_city->Body.X, request_city->Body.Y);
 		(*p_OutputDebugStringA) (ss);
 
 		// One final check: do we still need the district? Check for any dupes nearby
@@ -21006,24 +20976,26 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 
 				struct district_instance * nearby_inst = get_district_instance (nearby);
 				if (nearby_inst != NULL && nearby_inst->district_type == req->district_id) {
+					snprintf (ss, sizeof ss, "ai_move_district_worker: Found duplicate district ID %d near city at (%d,%d), cancelling request\n", req->district_id, request_city->Body.X, request_city->Body.Y);
+					(*p_OutputDebugStringA) (ss);
 					clear_city_district_request (request_city, req->district_id);
 					return false;
 				}
 			}
 		}
 
-		snprintf (ss, sizeof ss, "ai_move_district_worker: Checking for forest or wetlands at worker ID %d location (%d,%d)", worker->Body.ID, worker->Body.X, worker->Body.Y);
+		snprintf (ss, sizeof ss, "ai_move_district_worker: Checking for forest or wetlands at worker ID %d location (%d,%d)\n", worker->Body.ID, worker->Body.X, worker->Body.Y);
 		(*p_OutputDebugStringA) (ss);
 
 		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 		unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
 		unsigned int removable_flags = overlay_flags & 0xfc;
 
-		// If replacing an existing district, clear overlays
+		// Remove any existing improvements
+		tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+		tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, worker->Body.X, worker->Body.Y);
 		if (do_replacement) {
-			remove_district_instance (tile);
-			tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
-			tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, worker->Body.X, worker->Body.Y);
+			remove_district_instance (tile);	
 			handle_district_removed (tile, req->district_id, worker->Body.X, worker->Body.Y, false);
 		}
 
@@ -21038,7 +21010,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 			return true;
 		}
 
-		snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d starting construction of district at (%d,%d)", worker->Body.ID, worker->Body.X, worker->Body.Y);
+		snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d starting construction of district at (%d,%d)\n", worker->Body.ID, worker->Body.X, worker->Body.Y);
 		(*p_OutputDebugStringA) (ss);
 
 		// Clear any existing improvements (irrigation and mines)
@@ -21061,7 +21033,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 				worker, worker->Body.CivID, 0x41, NULL);
 			if (path_result > 0) {
 
-				snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d path set to (%d,%d) to build district", worker->Body.ID, req->target_x, req->target_y);
+				snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d path set to (%d,%d) to build district\n", worker->Body.ID, req->target_x, req->target_y);
 				(*p_OutputDebugStringA) (ss);
 
 				Unit_set_escortee (worker, __, -1);
@@ -21087,10 +21059,31 @@ patch_Unit_ai_move_terraformer (Unit * this)
 
 	update_tracked_worker_for_unit (this);
 	if (is->current_config.enable_districts) {
+
 		struct district_worker_record * rec = get_tracked_worker_record (this);
 		if (rec->pending_req != NULL) {
 			if (ai_move_district_worker (this, rec))
 				return;
+		}
+
+		if (get_district_instance (tile) != NULL) {
+			// Roads should be made after district builds. The district is complete but 
+			// worker is still likely on the tile, so check here and build road if needed
+			bool has_road = (*tile->vtable->m25_Check_Roads)(tile, __, 0);
+			if (get_district_instance (tile) != NULL && !has_road) {
+				Unit_set_state(this, __, UnitState_Build_Road);
+				this->Body.Job_ID = 3;
+				return;
+			}
+
+			// Same check for railroads
+			bool can_build_railroad = Leader_can_do_worker_job (&leaders[this->Body.CivID], __, WJ_Build_Railroad, this->Body.X, this->Body.Y, 0);
+			bool has_railroad = (*tile->vtable->m23_Check_Railroads)(tile, __, 0);
+			if (can_build_railroad && !has_railroad) {
+				Unit_set_state(this, __, UnitState_Build_Railroad);
+				this->Body.Job_ID = 4; 
+				return;
+			}
 		}
 	}
 
