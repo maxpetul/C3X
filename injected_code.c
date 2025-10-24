@@ -7489,7 +7489,7 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 bool
 is_zero_strength (UnitType * ut)
 {
-	return (ut->Attack == 0) && (ut->Defence == 0) && (ut->Bombard_Strength == 0) && (ut->Air_Defence == 0);
+	return (ut->Attack == 0) && (ut->Defence == 0);
 }
 
 bool
