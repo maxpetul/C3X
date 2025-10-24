@@ -3505,45 +3505,6 @@ adjust_distribution_hub_coverage (struct distribution_hub_record * rec, int delt
 }
 
 void
-reset_distribution_hub_tile_claim_tables (void)
-{
-	table_deinit (&is->distribution_hub_tile_claims);
-	table_deinit (&is->distribution_hub_tile_claim_distances);
-}
-
-void
-record_distribution_hub_tile_claim (struct distribution_hub_record * rec, Tile * area_tile, int tile_x, int tile_y)
-{
-	if ((rec == NULL) || (area_tile == NULL) || (area_tile == p_null_tile))
-		return;
-
-	int key = (int)area_tile;
-	int distance = compute_wrapped_manhattan_distance (rec->tile_x, rec->tile_y, tile_x, tile_y);
-	int best_distance = itable_look_up_or (&is->distribution_hub_tile_claim_distances, key, INT_MAX);
-	if (best_distance < distance)
-		return;
-
-	if (best_distance == distance) {
-		int existing_val;
-		struct distribution_hub_record * existing = NULL;
-		if (itable_look_up (&is->distribution_hub_tile_claims, key, &existing_val))
-			existing = (struct distribution_hub_record *)(long)existing_val;
-		if ((existing != NULL) && (existing != rec)) {
-			if (existing->tile_y < rec->tile_y)
-				return;
-			if ((existing->tile_y == rec->tile_y) && (existing->tile_x < rec->tile_x))
-				return;
-			if ((existing->tile_y == rec->tile_y) && (existing->tile_x == rec->tile_x) && ((long)existing < (long)rec))
-				return;
-		} else if (existing == rec)
-			return;
-	}
-
-	itable_insert (&is->distribution_hub_tile_claim_distances, key, distance);
-	itable_insert (&is->distribution_hub_tile_claims, key, (int)(long)rec);
-}
-
-void
 clear_distribution_hub_tables (void)
 {
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
@@ -3552,7 +3513,6 @@ clear_distribution_hub_tables (void)
 	}
 	table_deinit (&is->distribution_hub_records);
 	table_deinit (&is->distribution_hub_coverage_counts);
-	reset_distribution_hub_tile_claim_tables ();
 	is->distribution_hub_totals_dirty = true;
 }
 
@@ -3640,28 +3600,75 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec, City * 
 		Tile * area_tile = tai.tile;
 		if (area_tile == p_null_tile)
 			continue;
+
+		int tx, ty;
+		tai_get_coords (&tai, &tx, &ty);
+
 		// Only include tiles that belong to the distribution hub owner
 		if (area_tile->vtable->m38_Get_Territory_OwnerID (area_tile) != rec->civ_id)
 			continue;
-		// Skip city tiles and any tiles already reserved by another district
+
+		// Skip city tiles
 		if (Tile_has_city (area_tile))
 			continue;
+
+		// Skip tiles with enemy units
 		if (tile_has_enemy_unit (area_tile, rec->civ_id))
 			continue;
-		if (get_district_instance (area_tile) != NULL)
+
+		// Skip tiles with pollution
+		if (area_tile->vtable->m20_Check_Pollution (area_tile, __, 0))
 			continue;
-		// Also skip if this tile has a completed wonder on it
-		struct wonder_district_info * area_info2 = get_wonder_district_info (area_tile);
-		if (area_info2 != NULL && area_info2->state == WDS_COMPLETED)
+
+		// Skip tiles that are other districts (but not this hub itself)
+		struct district_instance * area_district = get_district_instance (area_tile);
+		if ((area_district != NULL) && ((tx != rec->tile_x) || (ty != rec->tile_y)))
 			continue;
-		int key = (int)area_tile;
-		int stored;
-		if (! itable_look_up (&is->distribution_hub_tile_claims, key, &stored))
+
+		// Skip tiles with completed wonders
+		struct wonder_district_info * area_info = get_wonder_district_info (area_tile);
+		if ((area_info != NULL) && (area_info->state == WDS_COMPLETED))
 			continue;
-		if ((struct distribution_hub_record *)(long)stored != rec)
+
+		// Check if another hub of the same civ is closer to this tile
+		int my_distance = compute_wrapped_manhattan_distance (rec->tile_x, rec->tile_y, tx, ty);
+		bool tile_belongs_to_me = true;
+
+		FOR_TABLE_ENTRIES (other_tei, &is->distribution_hub_records) {
+			struct distribution_hub_record * other_rec = (struct distribution_hub_record *)(long)other_tei.value;
+			if ((other_rec == NULL) || (other_rec == rec))
+				continue;
+			if (other_rec->civ_id != rec->civ_id)
+				continue;
+			if (! other_rec->is_active)
+				continue;
+
+			int other_distance = compute_wrapped_manhattan_distance (other_rec->tile_x, other_rec->tile_y, tx, ty);
+			if (other_distance < my_distance) {
+				tile_belongs_to_me = false;
+				break;
+			}
+			if (other_distance == my_distance) {
+				// Tie-breaking: prefer hub with lower Y, then lower X, then lower pointer value
+				if (other_rec->tile_y < rec->tile_y) {
+					tile_belongs_to_me = false;
+					break;
+				}
+				if ((other_rec->tile_y == rec->tile_y) && (other_rec->tile_x < rec->tile_x)) {
+					tile_belongs_to_me = false;
+					break;
+				}
+				if ((other_rec->tile_y == rec->tile_y) && (other_rec->tile_x == rec->tile_x) &&
+				    ((long)other_rec < (long)rec)) {
+					tile_belongs_to_me = false;
+					break;
+				}
+			}
+		}
+
+		if (! tile_belongs_to_me)
 			continue;
-		int tx, ty;
-		tai_get_coords (&tai, &tx, &ty);
+
 		food_sum   += patch_City_calc_tile_yield_at (anchor_city, __, 0, tx, ty);
 		shield_sum += patch_City_calc_tile_yield_at (anchor_city, __, 1, tx, ty);
 	}
@@ -3761,13 +3768,14 @@ recompute_distribution_hub_totals ()
 	struct table newly_covered_tiles = {0};
 
 	clear_memo ();
-	reset_distribution_hub_tile_claim_tables ();
-	int civs_needing_recalc[32] = {0};  // Track which civs need yield recalculation
+	int civs_needing_recalc[32] = {0};
+
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
 		Tile * tile = (Tile *)tei.key;
 		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
 		if (rec == NULL)
 			continue;
+
 		Tile * current_tile = tile_at (rec->tile_x, rec->tile_y);
 		if ((current_tile == NULL) ||
 		    (current_tile == p_null_tile) ||
@@ -3775,16 +3783,17 @@ recompute_distribution_hub_totals ()
 			memoize (tei.key);
 			continue;
 		}
+
 		rec->tile = current_tile;
 		rec->food_yield = 0;
 		rec->shield_yield = 0;
 		rec->raw_food_yield = 0;
 		rec->raw_shield_yield = 0;
 		rec->is_active = false;
+
 		int old_civ_id = rec->civ_id;
 		rec->civ_id = current_tile->vtable->m38_Get_Territory_OwnerID (current_tile);
 
-		// If ownership changed, mark both old and new civs for recalculation
 		if ((old_civ_id != rec->civ_id) && (old_civ_id >= 0) && (old_civ_id < 32))
 			civs_needing_recalc[old_civ_id] = 1;
 		if ((rec->civ_id >= 0) && (rec->civ_id < 32))
@@ -3804,32 +3813,40 @@ recompute_distribution_hub_totals ()
 			continue;
 
 		rec->is_active = true;
+
 		FOR_TILES_AROUND (tai, workable_tile_counts[1], rec->tile_x, rec->tile_y) {
 			Tile * area_tile = tai.tile;
 			if (area_tile == p_null_tile)
 				continue;
+
+			int tx, ty;
+			tai_get_coords (&tai, &tx, &ty);
+
 			if (area_tile->vtable->m38_Get_Territory_OwnerID (area_tile) != rec->civ_id)
 				continue;
 			if (Tile_has_city (area_tile))
 				continue;
 			if (tile_has_enemy_unit (area_tile, rec->civ_id))
 				continue;
-			if (get_district_instance (area_tile) != NULL)
+			if (area_tile->vtable->m20_Check_Pollution (area_tile, __, 0))
 				continue;
-			struct wonder_district_info * area_info2 = get_wonder_district_info (area_tile);
-			if ((area_info2 != NULL) && (area_info2->state == WDS_COMPLETED))
+
+			struct district_instance * area_district = get_district_instance (area_tile);
+			if ((area_district != NULL) && ((tx != rec->tile_x) || (ty != rec->tile_y)))
 				continue;
+
+			struct wonder_district_info * area_info = get_wonder_district_info (area_tile);
+			if ((area_info != NULL) && (area_info->state == WDS_COMPLETED))
+				continue;
+
 			int key = (int)area_tile;
 			int prev_cover_pass = itable_look_up_or (&new_coverage_counts, key, 0);
 			int prev_cover_old = itable_look_up_or (&is->distribution_hub_coverage_counts, key, 0);
-			int tx, ty;
-			tai_get_coords (&tai, &tx, &ty);
 			itable_insert (&new_coverage_counts, key, prev_cover_pass + 1);
 			if ((prev_cover_pass == 0) && (prev_cover_old <= 0)) {
 				int anchor_id = (anchor != NULL) ? anchor->Body.ID : -1;
 				itable_insert (&newly_covered_tiles, key, anchor_id);
 			}
-			record_distribution_hub_tile_claim (rec, area_tile, tx, ty);
 		}
 	}
 
@@ -3890,8 +3907,6 @@ recompute_distribution_hub_totals ()
 		}
 	}
 	table_deinit (&newly_covered_tiles);
-
-	reset_distribution_hub_tile_claim_tables ();
 
 	if (p_cities->Cities != NULL)
 		for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
@@ -6198,7 +6213,7 @@ city_is_at_neighborhood_cap (City * city)
 	if (cap <= 0)
 		return false;
 
-	return city->Body.Population.Size == cap;
+	return city->Body.Population.Size >= cap;
 }
 
 void
@@ -21070,7 +21085,7 @@ patch_Unit_ai_move_terraformer (Unit * this)
 			// Roads should be made after district builds. The district is complete but 
 			// worker is still likely on the tile, so check here and build road if needed
 			bool has_road = (*tile->vtable->m25_Check_Roads)(tile, __, 0);
-			if (get_district_instance (tile) != NULL && !has_road) {
+			if (! has_road) {
 				Unit_set_state(this, __, UnitState_Build_Road);
 				this->Body.Job_ID = 3;
 				return;
