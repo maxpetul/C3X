@@ -6580,7 +6580,7 @@ patch_Leader_recompute_auto_improvements (Leader * this)
 }
 
 int __fastcall
-patch_get_wonder_city_id (void * this, int edx, int wonder_improvement_id)
+patch_Game_get_wonder_city_id (Game * this, int edx, int wonder_improvement_id)
 {
 	int ret_addr = ((int *)&wonder_improvement_id)[-1];
 	if ((is->current_config.enable_free_buildings_from_small_wonders) && (ret_addr == ADDR_SMALL_WONDER_FREE_IMPROVS_RETURN)) {
@@ -6591,7 +6591,7 @@ patch_get_wonder_city_id (void * this, int edx, int wonder_improvement_id)
 			return (leader->Small_Wonders != NULL) ? leader->Small_Wonders[wonder_improvement_id] : -1;
 		}
 	}
-	return get_wonder_city_id (this, __, wonder_improvement_id);
+	return Game_get_wonder_city_id (this, __, wonder_improvement_id);
 }
 
 int __fastcall
