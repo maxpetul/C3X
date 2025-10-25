@@ -241,6 +241,7 @@ bool city_needs_wonder_district (City * city);
 void handle_district_removed (Tile * tile, int district_id, int center_x, int center_y, bool leave_ruins);
 bool free_wonder_district_for_city (City * city);
 bool has_active_building (City * city, int improv_id);
+void recompute_distribution_hub_totals ();
 
 static int
 get_pending_district_request_key (int city_id, int district_id)
@@ -3690,19 +3691,6 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec, City * 
 		rec->is_active = City_has_trade_connection_to_capital (anchor_city);
 }
 
-void recompute_distribution_hub_totals ();
-
-void
-recompute_distribution_hub_totals_if_needed (void)
-{
-	if ((is->distribution_hub_last_food_divisor != is->current_config.distribution_hub_food_yield_divisor) ||
-	    (is->distribution_hub_last_shield_divisor != is->current_config.distribution_hub_shield_yield_divisor))
-		is->distribution_hub_totals_dirty = true;
-
-	if (is->distribution_hub_totals_dirty)
-		recompute_distribution_hub_totals ();
-}
-
 void
 remove_distribution_hub_record (Tile * tile)
 {
@@ -3715,7 +3703,7 @@ remove_distribution_hub_record (Tile * tile)
 	itable_remove (&is->distribution_hub_records, (int)tile);
 	free (rec);
 	is->distribution_hub_totals_dirty = true;
-	recompute_distribution_hub_totals_if_needed ();
+	recompute_distribution_hub_totals ();
 
 	// Recalculate yields for all cities of this civ
 	if ((affected_civ_id >= 0) && (p_cities->Cities != NULL)) {
@@ -3730,9 +3718,6 @@ remove_distribution_hub_record (Tile * tile)
 void
 recompute_distribution_hub_totals ()
 {
-	is->distribution_hub_last_food_divisor   = is->current_config.distribution_hub_food_yield_divisor;
-	is->distribution_hub_last_shield_divisor = is->current_config.distribution_hub_shield_yield_divisor;
-
 	int max_city_id = (p_cities->Cities != NULL) ? (p_cities->LastIndex + 1) : 0;
 	if (! ensure_distribution_hub_city_capacity (max_city_id))
 		return;
@@ -3974,7 +3959,7 @@ on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city)
 	if (anchor_city != NULL)
 		rec->city_id = anchor_city->Body.ID;
 	is->distribution_hub_totals_dirty = true;
-	recompute_distribution_hub_totals_if_needed ();
+	recompute_distribution_hub_totals ();
 
 	// Recalculate yields for all cities of this civ
 	int affected_civ_id = rec->civ_id;
@@ -5592,8 +5577,6 @@ reset_district_state (bool reset_tile_map)
 	}
 	is->distribution_hub_civ_capacity = 0;
 	is->distribution_hub_totals_dirty = true;
-	is->distribution_hub_last_food_divisor = 0;
-	is->distribution_hub_last_shield_divisor = 0;
 
 	clear_dynamic_district_definitions ();
 	is->district_count = is->special_district_count;
@@ -7361,8 +7344,9 @@ patch_City_recompute_yields_and_happiness (City * this, int edx)
 		return;
 
 	if (is->current_config.enable_distribution_hub_districts &&
-	    ! is->distribution_hub_refresh_in_progress)
-		recompute_distribution_hub_totals_if_needed ();
+	    ! is->distribution_hub_refresh_in_progress &&
+		is->distribution_hub_totals_dirty)
+		recompute_distribution_hub_totals ();
 
 	int bonus_food = 0;
 	int bonus_production = 0;
@@ -7370,22 +7354,30 @@ patch_City_recompute_yields_and_happiness (City * this, int edx)
 
 	int city_civ_id = this->Body.CivID;
 
+	int utilized_neighborhoods = count_utilized_neighborhoods_in_city_radius (this);
+	int neighborhoods_counted = 0;
+
 	FOR_TILES_AROUND (tai, is->workable_tile_count, this->Body.X, this->Body.Y) {
-		if (tai.n == 0)
-			continue; // skip the city tile itself
+		if (tai.n == 0) continue;
 		Tile * tile = tai.tile;
-		if ((tile == NULL) || (tile == p_null_tile))
-			continue;
-		if (tile_has_enemy_unit (tile, city_civ_id))
-			continue;
-		if (tile->vtable->m20_Check_Pollution (tile, __, 0))
-			continue;
+		if ((tile == NULL) || (tile == p_null_tile)) continue;
+		if (tile->Territory_OwnerID != city_civ_id) continue;
+		if (tile_has_enemy_unit (tile, city_civ_id)) continue;
+		if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
 		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL)
-			continue;
+		if (inst == NULL) continue;
 		int district_id = inst->district_type;
-		if (! district_is_complete (tile, district_id))
-			continue;
+		if (! district_is_complete (tile, district_id)) continue;
+
+		// For neighborhood districts, check if population is high enough to utilize them
+		if (is->current_config.enable_neighborhood_districts &&
+		    is->district_configs[district_id].command == UCV_Build_Neighborhood) {
+			// Only count yields if this neighborhood is utilized
+			if (neighborhoods_counted >= utilized_neighborhoods)
+				continue;
+			neighborhoods_counted++;
+		}
+
 		struct district_config const * cfg = &is->district_configs[district_id];
 		bonus_food       += cfg->food_bonus;
 		bonus_production += cfg->shield_bonus;
@@ -10192,8 +10184,6 @@ parse_turns_from_tooltip (char const * tooltip)
 void
 set_up_district_buttons (Main_GUI * this)
 {
-	char ss[200];
-
 	if (is_online_game () || ! is->current_config.enable_districts)  return;
 	if (is->dc_btn_img_state == IS_UNINITED) init_district_command_buttons ();
 	if (is->dc_btn_img_state != IS_OK) return;
@@ -11226,7 +11216,8 @@ patch_City_Form_draw (City_Form * this)
 	is->drawn_strat_resource_count = 0;
 
 	// Make sure culture income (including from districts) is up to date before the draw event
-	patch_City_recompute_culture_income(this->CurrentCity);
+	if (is->current_config.enable_districts)
+		patch_City_recompute_culture_income(this->CurrentCity);
 
 	City_Form_draw (this);
 
@@ -11319,47 +11310,32 @@ patch_City_Form_draw (City_Form * this)
 
 	// Calculate district gold and science bonuses by iterating workable tiles
 	int district_gold = 0;
-	int district_science = 0;
 	int city_x = city->Body.X;
 	int city_y = city->Body.Y;
 	int city_civ_id = city->Body.CivID;
 
-	for (int dy = -2; dy <= 2; dy++) {
-		for (int dx = -2; dx <= 2; dx++) {
-			// Skip if outside city radius
-			if ((dx*dx + dy*dy) > 5)
-				continue;
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city_x, city_y) {
+		if (tai.n == 0) continue;
+		Tile * tile = tai.tile;
+		if ((tile == NULL) || (tile == p_null_tile)) continue;
+		if (tile->Territory_OwnerID != city_civ_id) continue;
+		if (tile_has_enemy_unit (tile, city_civ_id)) continue;
+		if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst == NULL) continue;
+		int district_id = inst->district_type;
+		if (! district_is_complete (tile, district_id)) continue;
 
-			int tile_x = city_x + dx;
-			int tile_y = city_y + dy;
-			Tile * tile = tile_at (tile_x, tile_y);
-			if ((tile == NULL) || (tile == p_null_tile))
-				continue;
-			if (tile_has_enemy_unit (tile, city_civ_id))
-				continue;
-			if (tile->vtable->m20_Check_Pollution (tile, __, 0))
-				continue;
-
-			// Check if tile has a district
-			struct district_instance * inst = get_district_instance (tile);
-			if (inst == NULL)
-				continue;
-			int district_id = inst->district_type;
-
-			// Verify district is complete (has mines)
-			if (! tile->vtable->m18_Check_Mines (tile, __, 0))
-				continue;
-
-			// Add bonuses from this district
-			if ((district_id >= 0) && (district_id < is->district_count)) {
-				district_gold += is->district_configs[district_id].gold_bonus;
-				district_science += is->district_configs[district_id].science_bonus;
-			}
-		}
+		struct district_config const * cfg = &is->district_configs[district_id];
+		district_gold += cfg->gold_bonus;
 	}
 
+	Leader * leader = &leaders[city_civ_id];
+	int gold_proportion    = (district_gold * leader->gold_slider) / 10;
+	int science_proportion = (district_gold * leader->science_slider) / 10;
+
 	// Draw district gold icons
-	if (district_gold > 0) {
+	if (gold_proportion > 0) {
 		Sprite * gold_sprite = &is->district_commerce_icon;
 		int sprite_width = gold_sprite->Width;
 		int sprite_height = gold_sprite->Height;
@@ -11383,7 +11359,7 @@ patch_City_Form_draw (City_Form * this)
 		// Draw from right to left
 		int x_offset = 0;
 		int y_offset = 5;
-		for (int i = 0; i < district_gold && i < total_gold; i++) {
+		for (int i = 0; i < gold_proportion && i < total_gold; i++) {
 			int x = gold_rect->right - x_offset - sprite_width;
 			int y = gold_rect->top + ((gold_rect->bottom - gold_rect->top >> 1) -
 			                          (sprite_height >> 1)) + y_offset;
@@ -11394,7 +11370,7 @@ patch_City_Form_draw (City_Form * this)
 	}
 
 	// Draw district science icons
-	if (district_science > 0) {
+	if (science_proportion > 0) {
 		Sprite * science_sprite = &is->district_commerce_icon;
 		int sprite_width = science_sprite->Width;
 		int sprite_height = science_sprite->Height;
@@ -11418,7 +11394,7 @@ patch_City_Form_draw (City_Form * this)
 		// Draw from right to left
 		int x_offset = 0;
 		int y_offset = 5;
-		for (int i = 0; i < district_science && i < total_science; i++) {
+		for (int i = 0; i < science_proportion && i < total_science; i++) {
 			int x = science_rect->right - x_offset - sprite_width;
 			int y = science_rect->top + ((science_rect->bottom - science_rect->top >> 1) -
 			                             (sprite_height >> 1)) + y_offset;
@@ -15645,6 +15621,20 @@ patch_do_load_game (char * param_1)
 			mr->vtable->m68_Toggle_Grid (mr);
 	}
 
+	// Recompute distribution hub totals and refresh yields for all cities if districts are enabled
+	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
+		recompute_distribution_hub_totals ();
+
+		// Refresh yields for all cities to ensure distribution hub bonuses are properly applied
+		if (p_cities->Cities != NULL) {
+			for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+				City * city = get_city_ptr (city_index);
+				if (city != NULL)
+					recompute_city_yields_with_districts (city);
+			}
+		}
+	}
+
 	return tr;
 }
 
@@ -19523,12 +19513,6 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	if (is->district_icons_img_state != IS_OK)
 		return;
 
-	int owner_civ = tile->Territory_OwnerID;
-	if (tile_has_enemy_unit (tile, owner_civ))
-		return;
-	if (tile->vtable->m20_Check_Pollution (tile, __, 0))
-		return;
-
 	// Get district configuration
 	struct district_config const * config = &is->district_configs[district_id];
 
@@ -19544,26 +19528,15 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 		return;
 
 	// Get sprites
-	Sprite * food_sprite = &is->district_food_icon_small;
-	Sprite * shield_sprite = &is->district_shield_icon_small;
+	Sprite * food_sprite     = &is->district_food_icon_small;
+	Sprite * shield_sprite   = &is->district_shield_icon_small;
 	Sprite * commerce_sprite = &is->district_commerce_icon_small;
-	Sprite * science_sprite = &is->district_science_icon_small;
-	Sprite * culture_sprite = &is->district_culture_icon_small;
+	Sprite * science_sprite  = &is->district_science_icon_small;
+	Sprite * culture_sprite  = &is->district_culture_icon_small;
 
 	// Determine sprite dimensions
-	int sprite_width = food_sprite->Width3;
-	if (sprite_width <= 0) sprite_width = shield_sprite->Width3;
-	if (sprite_width <= 0) sprite_width = commerce_sprite->Width3;
-	if (sprite_width <= 0) sprite_width = science_sprite->Width3;
-	if (sprite_width <= 0) sprite_width = culture_sprite->Width3;
-	if (sprite_width <= 0) sprite_width = 30;
-
+	int sprite_width  = food_sprite->Width3;
 	int sprite_height = food_sprite->Height;
-	if (sprite_height <= 0) sprite_height = shield_sprite->Height;
-	if (sprite_height <= 0) sprite_height = commerce_sprite->Height;
-	if (sprite_height <= 0) sprite_height = science_sprite->Height;
-	if (sprite_height <= 0) sprite_height = culture_sprite->Height;
-	if (sprite_height <= 0) sprite_height = 30;
 
 	// Calculate total width of all icons
 	int total_width = total_yield * sprite_width;
@@ -19625,22 +19598,15 @@ draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, in
 	if (rec == NULL || !rec->is_active)
 		return;
 
-	if (tile->vtable->m20_Check_Pollution (tile, __, 0))
-		return;
-
-	int owner_civ = rec->civ_id;
-	if ((owner_civ >= 0) && (owner_civ < 32) && tile_has_enemy_unit (tile, owner_civ))
-		return;
-
 	City * anchor_city = get_city_ptr (rec->city_id);
 	if ((anchor_city == NULL) || (anchor_city->Body.CivID != rec->civ_id))
 		anchor_city = find_city_for_distribution_hub (rec);
 	if (! distribution_hub_has_road_connection_to_anchor (tile, anchor_city, rec->civ_id))
 		return;
 
-	int food_yield = rec->food_yield;
+	int food_yield   = rec->food_yield;
 	int shield_yield = rec->shield_yield;
-	int total_yield = food_yield + shield_yield;
+	int total_yield  = food_yield + shield_yield;
 
 	if (total_yield <= 0)
 		return;
@@ -19769,22 +19735,19 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 		for (int neighbor_index = 0; neighbor_index < is->workable_tile_count; neighbor_index++) {
 			int dx, dy;
 			neighbor_index_to_diff (neighbor_index, &dx, &dy);
-			int tile_x = city_x + dx, tile_y = city_y + dy;
-
-			// Check if tile is within map bounds
-			if (tile_x < 0 || tile_x >= p_bic_data->Map.Width || tile_y < 0 || tile_y >= p_bic_data->Map.Height)
-				continue;
+			int tile_x = city_x + dx;
+			int tile_y = city_y + dy;
+			wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 
 			Tile * tile = tile_at (tile_x, tile_y);
 			if (tile == NULL || tile == p_null_tile) continue;
-			if ((tile->Body.Fog_Of_War & (1 << civ_id)) == 0) continue;
 			if (tile->Territory_OwnerID != civ_id) continue;
 			struct district_instance * inst = get_district_instance (tile);
 			if (inst == NULL) continue;
 			int district_id = inst->district_type;
-				if (!district_is_complete (tile, district_id)) continue;
-				if (tile_has_enemy_unit (tile, civ_id)) continue;
-				if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
+			if (!district_is_complete (tile, district_id)) continue;
+			if (tile_has_enemy_unit (tile, civ_id)) continue;
+			if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
 
 			int is_distribution_hub = (district_id == DISTRIBUTION_HUB_DISTRICT_ID);
 
@@ -21201,22 +21164,16 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 	// Calculate standard district food bonus
 	int standard_district_food = 0;
 	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
-		if (tai.tile == NULL || tai.tile == p_null_tile)
-			continue;
-		if (tai.tile->Territory_OwnerID != civ_id)
-			continue;
-		if (tile_has_enemy_unit (tai.tile, civ_id))
-			continue;
-		if (tai.tile->vtable->m20_Check_Pollution (tai.tile, __, 0))
-			continue;
+		if (tai.tile == NULL || tai.tile == p_null_tile) continue;
+		if (tai.tile->Territory_OwnerID != civ_id) continue;
+		if (tile_has_enemy_unit (tai.tile, civ_id)) continue;
+		if (tai.tile->vtable->m20_Check_Pollution (tai.tile, __, 0)) continue;
 		struct district_instance * inst = get_district_instance (tai.tile);
-		if (inst == NULL)
-			continue;
+		if (inst == NULL) continue;
 		int district_id = inst->district_type;
-		if ((district_id < 0) || (district_id >= is->district_count))
-			continue;
-		if (! district_is_complete (tai.tile, district_id))
-			continue;
+		if ((district_id < 0) || (district_id >= is->district_count)) continue;
+		if (! district_is_complete (tai.tile, district_id)) continue;
+
 		standard_district_food += is->district_configs[district_id].food_bonus;
 	}
 
@@ -21357,6 +21314,8 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 {
 	if (! is->current_config.enable_districts)
 		return;
+
+	recompute_city_yields_with_districts (city);
 
 	int city_id = city->Body.ID;
 	int civ_id = city->Body.CivID;

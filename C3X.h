@@ -1265,7 +1265,6 @@ struct injected_state {
 	enum init_state dc_img_state;
 	enum init_state dc_btn_img_state;
 
-	// Districts data
 	struct district_config district_configs[COUNT_DISTRICT_TYPES];
 	struct wonder_district_config wonder_district_configs[MAX_WONDER_DISTRICT_TYPES];
 
@@ -1334,8 +1333,6 @@ struct injected_state {
 	int * distribution_hub_shield_per_civ;
 	int distribution_hub_civ_capacity;
 	bool distribution_hub_totals_dirty;
-	int distribution_hub_last_food_divisor;
-	int distribution_hub_last_shield_divisor;
 	bool distribution_hub_refresh_in_progress;
 
 	Sprite distribution_hub_production_icon;
