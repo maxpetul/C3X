@@ -4,6 +4,7 @@
 - Fix support-free units being disbanded on bankruptcy while aggressively_penalize_bankruptcy is set
 - Fix AI players being able to build armies with leader units that don't have the "build army" special ability set on their type
 - Fix possible crash in base game leader unit AI
+- Group non-combat artillery and flak units of different experience levels together on right-click menu
 
 * RELEASE 25 PREVIEW 1
 - Increase city limit to 2048
