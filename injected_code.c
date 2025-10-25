@@ -3569,6 +3569,12 @@ tile_has_enemy_unit (Tile * tile, int civ_id)
 	return false;
 }
 
+int
+distribution_hub_calc_tile_yield_at (City * city, int yield_type, int tile_x, int tile_y)
+{
+	return City_calc_tile_yield_at (city, __, yield_type, tile_x, tile_y);
+}
+
 void
 recompute_distribution_hub_yields (struct distribution_hub_record * rec, City * anchor_city)
 {
@@ -3670,8 +3676,8 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec, City * 
 		if (! tile_belongs_to_me)
 			continue;
 
-		food_sum   += patch_City_calc_tile_yield_at (anchor_city, __, 0, tx, ty);
-		shield_sum += patch_City_calc_tile_yield_at (anchor_city, __, 1, tx, ty);
+		food_sum   += distribution_hub_calc_tile_yield_at (anchor_city, 0, tx, ty);
+		shield_sum += distribution_hub_calc_tile_yield_at (anchor_city, 1, tx, ty);
 	}
 
 	rec->raw_food_yield = food_sum;
@@ -5662,6 +5668,49 @@ tile_suitable_for_district (Tile * tile, int district_id, City * city, bool * ou
 int __fastcall
 patch_City_calc_tile_yield_at (City * this, int edx, int yield_type, int tile_x, int tile_y)
 {
+	if (! is->current_config.enable_districts)
+		return City_calc_tile_yield_at (this, __, yield_type, tile_x, tile_y);
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile != NULL) && (tile != p_null_tile)) {
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst != NULL && district_is_complete (tile, inst->district_type)) {
+			return 0;
+		}
+
+		// If distribution hubs are enabled, check if this tile is in the civ's territory
+		// and either has a distribution hub or is adjacent to one - if so, return 0
+		if (is->current_config.enable_distribution_hub_districts) {
+			int civ_id = this->Body.CivID;
+			if (tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id) {
+				// Check if this tile itself is a distribution hub (already got inst above)
+				if (inst != NULL && inst->district_type == DISTRIBUTION_HUB_DISTRICT_ID) {
+					return 0;
+				}
+
+				// Check if any adjacent tile is a distribution hub
+				FOR_TILES_AROUND (tai, workable_tile_counts[1], tile_x, tile_y) {
+					Tile * adj_tile = tai.tile;
+					if (adj_tile == p_null_tile)
+						continue;
+
+					int adj_x, adj_y;
+					tai_get_coords (&tai, &adj_x, &adj_y);
+
+					// Skip the center tile (we already checked it)
+					if (adj_x == tile_x && adj_y == tile_y)
+						continue;
+
+					struct district_instance * adj_inst = get_district_instance (adj_tile);
+					if (adj_inst != NULL && adj_inst->district_type == DISTRIBUTION_HUB_DISTRICT_ID &&
+					    district_is_complete (adj_tile, DISTRIBUTION_HUB_DISTRICT_ID)) {
+						return 0;
+					}
+				}
+			}
+		}
+	}
+
 	// District tiles are forced unworkable, defer to the base calculation.
 	return City_calc_tile_yield_at (this, __, yield_type, tile_x, tile_y);
 }
@@ -5669,14 +5718,34 @@ patch_City_calc_tile_yield_at (City * this, int edx, int yield_type, int tile_x,
 int __fastcall
 patch_Map_calc_food_yield_at (Map *this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City *city)
 {
-	// District tiles are unworkable, so there are no custom yields to apply.
+	if (! is->current_config.enable_districts)
+		Map_calc_food_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile != NULL) && (tile != p_null_tile)) {
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst != NULL && district_is_complete (tile, inst->district_type)) {
+			return 0;
+		}
+	}
+
 	return Map_calc_food_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
 }
 
 int __fastcall
 patch_Map_calc_shield_yield_at (Map *this, int edx, int tile_x, int tile_y, int civ_id, City *city, int param_5, int param_6)
 {
-	// District tiles are unworkable, so production bonuses are not applied here.
+	if (! is->current_config.enable_districts)
+		return Map_calc_shield_yield_at (this, __, tile_x, tile_y, civ_id, city, param_5, param_6);
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile != NULL) && (tile != p_null_tile)) {
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst != NULL && district_is_complete (tile, inst->district_type)) {
+			return 0;
+		}
+	}
+
 	return Map_calc_shield_yield_at (this, __, tile_x, tile_y, civ_id, city, param_5, param_6);
 }
 
@@ -5756,6 +5825,7 @@ find_tile_for_distribution_hub_district (City * city, int district_id, int * out
 	const int capital_distance_weight = 45;
 	const int desired_min_capital_distance = 8;
 	const int proximity_penalty_scale = 300;
+	const int different_continent_bonus = 5000;
 
 	Tile * best_tile = NULL;
 	int best_score = INT_MIN;
@@ -5770,12 +5840,16 @@ find_tile_for_distribution_hub_district (City * city, int district_id, int * out
 	bool has_capital = false;
 	int capital_x = 0;
 	int capital_y = 0;
+	int capital_continent_id = -1;
 	if ((civ_id >= 0) && (civ_id < 32)) {
 		City * capital = get_city_ptr (leaders[civ_id].CapitalID);
 		if (capital != NULL) {
 			has_capital = true;
 			capital_x = capital->Body.X;
 			capital_y = capital->Body.Y;
+			Tile * capital_tile = tile_at (capital_x, capital_y);
+			if ((capital_tile != NULL) && (capital_tile != p_null_tile))
+				capital_continent_id = capital_tile->vtable->m46_Get_ContinentID (capital_tile);
 		}
 	}
 
@@ -5791,6 +5865,22 @@ find_tile_for_distribution_hub_district (City * city, int district_id, int * out
 		if (chebyshev <= 1)
 			continue;
 
+		bool too_close_to_existing_hub = false;
+		FOR_TILES_AROUND (tai2, workable_tile_counts[2], tx, ty) {
+			Tile * nearby_tile = tai2.tile;
+			if ((nearby_tile != NULL) && (nearby_tile != p_null_tile)) {
+				struct district_instance * nearby_inst = get_district_instance (nearby_tile);
+				if ((nearby_inst != NULL) &&
+				    (nearby_inst->district_type == district_id) &&
+				    district_is_complete (nearby_tile, district_id)) {
+					too_close_to_existing_hub = true;
+					break;
+				}
+			}
+		}
+		if (too_close_to_existing_hub)
+			continue;
+
 		int raw_yield = compute_city_tile_yield_sum (city, tx, ty);
 		int adjusted_yield = raw_yield - (has_resource ? resource_penalty : 0);
 		int distance = compute_wrapped_manhattan_distance (tx, ty, city_x, city_y);
@@ -5802,11 +5892,19 @@ find_tile_for_distribution_hub_district (City * city, int district_id, int * out
 		if (has_capital && (distance_to_capital < desired_min_capital_distance))
 			proximity_penalty = (desired_min_capital_distance - distance_to_capital) * proximity_penalty_scale;
 
+		int continent_bonus = 0;
+		if ((capital_continent_id >= 0) && (tile != NULL) && (tile != p_null_tile)) {
+			int tile_continent_id = tile->vtable->m46_Get_ContinentID (tile);
+			if ((tile_continent_id >= 0) && (tile_continent_id != capital_continent_id))
+				continent_bonus = different_continent_bonus;
+		}
+
 		int score =
 			adjusted_yield * yield_weight +
 			distance * city_distance_weight +
 			distance_to_capital * capital_distance_weight -
-			proximity_penalty;
+			proximity_penalty +
+			continent_bonus;
 
 		if ((score > best_score) ||
 		    ((score == best_score) && (distance_to_capital > best_distance_to_capital)) ||
@@ -7371,7 +7469,7 @@ patch_City_recompute_yields_and_happiness (City * this, int edx)
 
 		// For neighborhood districts, check if population is high enough to utilize them
 		if (is->current_config.enable_neighborhood_districts &&
-		    is->district_configs[district_id].command == UCV_Build_Neighborhood) {
+		    district_id == NEIGHBORHOOD_DISTRICT_ID) {
 			// Only count yields if this neighborhood is utilized
 			if (neighborhoods_counted >= utilized_neighborhoods)
 				continue;
@@ -9588,6 +9686,7 @@ deinit_district_icons ()
 		is->district_science_icon.vtable->destruct (&is->district_science_icon, __, 0);
 		is->district_commerce_icon.vtable->destruct (&is->district_commerce_icon, __, 0);
 		is->district_shield_icon.vtable->destruct (&is->district_shield_icon, __, 0);
+		is->district_corruption_icon.vtable->destruct (&is->district_corruption_icon, __, 0);
 		is->district_food_icon.vtable->destruct (&is->district_food_icon, __, 0);
 		is->district_food_eaten_icon.vtable->destruct (&is->district_food_eaten_icon, __, 0);
 		is->district_shield_icon_small.vtable->destruct (&is->district_shield_icon_small, __, 0);
@@ -19471,6 +19570,10 @@ init_district_icons ()
 	Sprite_construct (&is->district_shield_icon);
 	Sprite_slice_pcx (&is->district_shield_icon, __, &pcx, 1 + 4*31, 1, 30, 30, 1, 1);
 
+	// Extract shield icon (index 5: x = 1 + 5*31 = 156, width 30)
+	Sprite_construct (&is->district_shield_icon);
+	Sprite_slice_pcx (&is->district_shield_icon, __, &pcx, 1 + 5*31, 1, 30, 30, 1, 1);
+
 	// Extract food icon (index 6: x = 1 + 6*31 = 187, width 30)
 	Sprite_construct (&is->district_food_icon);
 	Sprite_slice_pcx (&is->district_food_icon, __, &pcx, 1 + 6*31, 1, 30, 30, 1, 1);
@@ -19702,6 +19805,8 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 		City * city = this->CurrentCity;
 		if (city == NULL)
 			goto skip_district_yields;
+
+		recompute_city_yields_with_districts (city);
 
 		int city_x = city->Body.X;
 		int city_y = city->Body.Y;
@@ -21332,6 +21437,7 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 		int district_id = inst->district_type;
 		if ((district_id < 0) || (district_id >= is->district_count)) continue;
 		if (! district_is_complete (tai.tile, district_id)) continue;
+		
 		standard_district_shields += is->district_configs[district_id].shield_bonus;
 	}
 

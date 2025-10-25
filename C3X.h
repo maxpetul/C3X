@@ -1336,11 +1336,13 @@ struct injected_state {
 	bool distribution_hub_refresh_in_progress;
 
 	Sprite distribution_hub_production_icon;
+	Sprite distribution_hub_corruption_icon;
 	Sprite distribution_hub_food_icon;
 	Sprite distribution_hub_eaten_food_icon;
 	Sprite distribution_hub_production_icon_small;
 	Sprite distribution_hub_food_icon_small;
 	int non_district_shield_icons_remaining;
+	int corruption_shield_icons_remaining;
 	int district_shield_icons_remaining;
 	int distribution_hub_shield_icons_remaining;
 
@@ -1348,6 +1350,7 @@ struct injected_state {
 	Sprite district_science_icon;
 	Sprite district_commerce_icon;
 	Sprite district_shield_icon;
+	Sprite district_corruption_icon;
 	Sprite district_food_icon;
 	Sprite district_food_eaten_icon;
 	Sprite district_shield_icon_small;
