@@ -5682,7 +5682,12 @@ patch_City_calc_tile_yield_at (City * this, int edx, int yield_type, int tile_x,
 		// and either has a distribution hub or is adjacent to one - if so, return 0
 		if (is->current_config.enable_distribution_hub_districts) {
 			int civ_id = this->Body.CivID;
-			if (tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id) {
+			// Short-circuit: if civ has no distribution hub yields, skip the checks
+			if (civ_id < is->distribution_hub_civ_capacity &&
+			    (is->distribution_hub_food_per_civ[civ_id] > 0 ||
+			     is->distribution_hub_shield_per_civ[civ_id] > 0) &&
+			    tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id) {
+
 				// Check if this tile itself is a distribution hub (already got inst above)
 				if (inst != NULL && inst->district_type == DISTRIBUTION_HUB_DISTRICT_ID) {
 					return 0;
@@ -9672,7 +9677,7 @@ void
 deinit_distribution_hub_icons ()
 {
 	if (is->distribution_hub_icons_img_state == IS_OK) {
-		is->distribution_hub_production_icon.vtable->destruct (&is->distribution_hub_production_icon, __, 0);
+		is->distribution_hub_shield_icon.vtable->destruct (&is->distribution_hub_shield_icon, __, 0);
 		is->distribution_hub_food_icon.vtable->destruct (&is->distribution_hub_food_icon, __, 0);
 		is->distribution_hub_eaten_food_icon.vtable->destruct (&is->distribution_hub_eaten_food_icon, __, 0);
 	}
@@ -19509,12 +19514,12 @@ init_distribution_hub_icons ()
 	}
 
 	// Extract shield icon (index 4: x = 1 + 4*31 = 125, width 30)
-	Sprite_construct (&is->distribution_hub_production_icon);
-	Sprite_slice_pcx (&is->distribution_hub_production_icon, __, &pcx, 1 + 4*31, 1, 30, 30, 1, 1);
+	Sprite_construct (&is->distribution_hub_shield_icon);
+	Sprite_slice_pcx (&is->distribution_hub_shield_icon, __, &pcx, 1 + 4*31, 1, 30, 30, 1, 1);
 
 	// Extract small shield icon (index 13)
-	Sprite_construct (&is->distribution_hub_production_icon_small);
-	Sprite_slice_pcx (&is->distribution_hub_production_icon_small, __, &pcx, 1 + 13*31, 1, 30, 30, 1, 1);
+	Sprite_construct (&is->distribution_hub_shield_icon_small);
+	Sprite_slice_pcx (&is->distribution_hub_shield_icon_small, __, &pcx, 1 + 13*31, 1, 30, 30, 1, 1);
 
 	// Extract surplus food icon (index 6: x = 1 + 6*31 = 187, width 30)
 	Sprite_construct (&is->distribution_hub_food_icon);
@@ -19721,10 +19726,10 @@ draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, in
 		return;
 
 	Sprite * food_sprite = &is->distribution_hub_food_icon_small;
-	Sprite * shield_sprite = &is->distribution_hub_production_icon_small;
+	Sprite * shield_sprite = &is->distribution_hub_shield_icon_small;
 
 	if (food_sprite->Width3 == 0)   food_sprite = &is->distribution_hub_food_icon;
-	if (shield_sprite->Width3 == 0) shield_sprite = &is->distribution_hub_production_icon;
+	if (shield_sprite->Width3 == 0) shield_sprite = &is->distribution_hub_shield_icon;
 
 	int sprite_height = food_sprite->Height;
 	if (sprite_height == 0) sprite_height = shield_sprite->Height;
@@ -21485,7 +21490,7 @@ patch_Sprite_draw_production_income_icon (Sprite * this, int edx, PCX_Image * ca
 				to_draw = is->district_shield_icon;
 				is->district_shield_icons_remaining--;
 			} else {
-				to_draw = is->distribution_hub_production_icon;
+				to_draw = is->distribution_hub_shield_icon;
 				is->distribution_hub_shield_icons_remaining--;
 			}
 			return Sprite_draw (&to_draw, __, canvas, pixel_x, pixel_y, color_table);
