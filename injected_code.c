@@ -15725,20 +15725,6 @@ patch_do_load_game (char * param_1)
 			mr->vtable->m68_Toggle_Grid (mr);
 	}
 
-	// Recompute distribution hub totals and refresh yields for all cities if districts are enabled
-	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
-		recompute_distribution_hub_totals ();
-
-		// Refresh yields for all cities to ensure distribution hub bonuses are properly applied
-		if (p_cities->Cities != NULL) {
-			for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
-				City * city = get_city_ptr (city_index);
-				if (city != NULL)
-					recompute_city_yields_with_districts (city);
-			}
-		}
-	}
-
 	return tr;
 }
 
@@ -19793,6 +19779,10 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 		changed_clip_area = true;
 	}
 
+	if (is->current_config.enable_districts && this->CurrentCity != NULL) {
+		recompute_city_yields_with_districts (this->CurrentCity);
+	}
+
 	is->do_not_draw_already_worked_tile_img = false;
 	City_Form_draw_yields_on_worked_tiles (this);
 
@@ -19810,8 +19800,6 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 		City * city = this->CurrentCity;
 		if (city == NULL)
 			goto skip_district_yields;
-
-		recompute_city_yields_with_districts (city);
 
 		int city_x = city->Body.X;
 		int city_y = city->Body.Y;
@@ -21425,8 +21413,6 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 	if (! is->current_config.enable_districts)
 		return;
 
-	recompute_city_yields_with_districts (city);
-
 	int city_id = city->Body.ID;
 	int civ_id = city->Body.CivID;
 
@@ -21454,9 +21440,62 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 		distribution_hub_shields = is->distribution_hub_shield_bonus_per_city[city_id];
 	}
 
-	is->non_district_shield_icons_remaining = city->Body.ProductionIncome + city->Body.ProductionLoss - standard_district_shields - distribution_hub_shields;
-	is->district_shield_icons_remaining = standard_district_shields;
-	is->distribution_hub_shield_icons_remaining = distribution_hub_shields;
+	City_recompute_yields_and_happiness (city, __);
+	int base_production_income  = city->Body.ProductionIncome;
+	int base_production_loss    = city->Body.ProductionLoss;
+
+	recompute_city_yields_with_districts (city);
+	int total_production_income = city->Body.ProductionIncome;
+	int total_production_loss   = city->Body.ProductionLoss;
+
+	// Calculate net shields (after corruption)
+	int base_net_shields  = base_production_income + base_production_loss;   // negative loss
+	int total_net_shields = total_production_income + total_production_loss; // negative loss
+
+	// Calculate how much corruption increased due to adding district/hub yields
+	int additional_corruption = total_production_loss - base_production_loss; // negative - negative
+
+	// Start with the assumption that all district/hub shields survive
+	int district_shields_remaining = standard_district_shields;
+	int hub_shields_remaining      = distribution_hub_shields;
+
+	// If we lost more to corruption after adding districts, reduce the special yields proportionally
+	// Default to taking from standard districts first
+	if (additional_corruption < 0) { // More corruption (more negative)
+		int extra_loss = -additional_corruption;
+
+		// Take from standard districts first
+		if (district_shields_remaining > 0) {
+			int from_districts = (extra_loss < district_shields_remaining) ? extra_loss : district_shields_remaining;
+			district_shields_remaining -= from_districts;
+			extra_loss -= from_districts;
+		}
+
+		// If still have loss remaining, take from distribution hub
+		if ((extra_loss > 0) && (hub_shields_remaining > 0)) {
+			int from_hub = (extra_loss < hub_shields_remaining) ? extra_loss : hub_shields_remaining;
+			hub_shields_remaining -= from_hub;
+			extra_loss -= from_hub;
+		}
+	}
+
+	// Calculate non-district shields (base shields that survived)
+	int non_district_shields_remaining = total_net_shields - district_shields_remaining - hub_shields_remaining;
+
+	// Calculate corruption breakdown
+	int total_corruption               = -total_production_loss; // Make positive
+	int district_corruption            = standard_district_shields - district_shields_remaining;
+	int hub_corruption 				   = distribution_hub_shields - hub_shields_remaining;
+	int base_corruption 			   = total_corruption - district_corruption - hub_corruption;
+
+	// Set the values
+	is->non_district_shield_icons_remaining         = non_district_shields_remaining;
+	is->district_shield_icons_remaining	            = district_shields_remaining;
+	is->distribution_hub_shield_icons_remaining     = hub_shields_remaining;
+
+	is->corruption_shield_icons_remaining           = base_corruption;
+	is->district_corruption_icons_remaining         = district_corruption;
+	is->distribution_hub_corruption_icons_remaining = hub_corruption;
 }
 
 void __fastcall
@@ -21470,31 +21509,47 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 	recompute_district_and_distribution_hub_shields_for_city_view (this);
 	City_draw_production_income_icons (this, __, canvas, rect_ptr);
 
-	is->non_district_shield_icons_remaining = 0;
-	is->district_shield_icons_remaining = 0;
-	is->distribution_hub_shield_icons_remaining = 0;
+	is->corruption_shield_icons_remaining           = 0;
+	is->district_corruption_icons_remaining         = 0;
+	is->distribution_hub_corruption_icons_remaining = 0;
+
+	is->non_district_shield_icons_remaining         = 0;
+	is->district_shield_icons_remaining             = 0;
+	is->distribution_hub_shield_icons_remaining     = 0;
 }
 
 int __fastcall
 patch_Sprite_draw_production_income_icon (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
-	if (is->current_config.enable_districts) {
-		if (is->non_district_shield_icons_remaining > 0) {
-			is->non_district_shield_icons_remaining--;
-			return Sprite_draw (this, __, canvas, pixel_x, pixel_y, color_table);
+	if (is->current_config.enable_districts && is->district_icons_img_state == IS_OK) {
+		Sprite to_draw = *this;
+		if (is->corruption_shield_icons_remaining > 0 || 
+			is->district_corruption_icons_remaining > 0 || 
+			is->distribution_hub_corruption_icons_remaining > 0) {
+
+			if (is->corruption_shield_icons_remaining > 0) {
+				is->corruption_shield_icons_remaining--;
+			} else if (is->district_corruption_icons_remaining > 0) {
+				to_draw = is->district_corruption_icon;
+				is->district_corruption_icons_remaining--;
+			} else {
+				to_draw = is->distribution_hub_corruption_icon;
+				is->distribution_hub_corruption_icons_remaining--;
+			}
 		}
-		if (is->district_icons_img_state == IS_OK && (is->district_shield_icons_remaining > 0 || is->distribution_hub_shield_icons_remaining > 0)) {
-			Sprite to_draw;
-			
-			if (is->district_shield_icons_remaining > 0) {
+		else if (is->district_shield_icons_remaining > 0 || is->distribution_hub_shield_icons_remaining > 0) {
+			if (is->non_district_shield_icons_remaining > 0) {
+				is->non_district_shield_icons_remaining--;
+			} else if (is->district_shield_icons_remaining > 0) {
 				to_draw = is->district_shield_icon;
 				is->district_shield_icons_remaining--;
 			} else {
 				to_draw = is->distribution_hub_shield_icon;
 				is->distribution_hub_shield_icons_remaining--;
 			}
-			return Sprite_draw (&to_draw, __, canvas, pixel_x, pixel_y, color_table);
+			
 		}
+		return Sprite_draw (&to_draw, __, canvas, pixel_x, pixel_y, color_table);
 	}
 	return Sprite_draw (this, __, canvas, pixel_x, pixel_y, color_table);
 }
