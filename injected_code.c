@@ -4108,6 +4108,7 @@ patch_init_floating_point ()
 		{"convert_some_popups_into_online_mp_messages"         , false, offsetof (struct c3x_config, convert_some_popups_into_online_mp_messages)},
 		{"enable_debug_mode_switch"                            , false, offsetof (struct c3x_config, enable_debug_mode_switch)},
 		{"accentuate_cities_on_minimap"                        , false, offsetof (struct c3x_config, accentuate_cities_on_minimap)},
+		{"allow_multipage_civilopedia_descriptions"            , true , offsetof (struct c3x_config, allow_multipage_civilopedia_descriptions)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -13029,7 +13030,7 @@ patch_Main_GUI_position_elements (Main_GUI * this)
 bool
 do_next_line_for_pedia_desc (PCX_Image * canvas, int * inout_y)
 {
-	if (is->cmpd.drawing_lines) {
+	if (is->cmpd.drawing_lines && is->current_config.allow_multipage_civilopedia_descriptions) {
 		int first_line_on_shown_page = is->cmpd.shown_page * PEDIA_DESC_LINES_PER_PAGE;
 		int page = is->cmpd.line_count / PEDIA_DESC_LINES_PER_PAGE;
 		is->cmpd.line_count += 1;

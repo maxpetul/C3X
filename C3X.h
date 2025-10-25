@@ -217,6 +217,7 @@ struct c3x_config {
 	bool enable_debug_mode_switch;
 	bool accentuate_cities_on_minimap;
 	enum minimap_doubling_mode double_minimap_size;
+	bool allow_multipage_civilopedia_descriptions;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
