@@ -21537,7 +21537,10 @@ patch_Sprite_draw_production_income_icon (Sprite * this, int edx, PCX_Image * ca
 				is->distribution_hub_corruption_icons_remaining--;
 			}
 		}
-		else if (is->district_shield_icons_remaining > 0 || is->distribution_hub_shield_icons_remaining > 0) {
+		else if (is->non_district_shield_icons_remaining > 0 ||
+			is->district_shield_icons_remaining > 0 || 
+			is->distribution_hub_shield_icons_remaining > 0) {
+				
 			if (is->non_district_shield_icons_remaining > 0) {
 				is->non_district_shield_icons_remaining--;
 			} else if (is->district_shield_icons_remaining > 0) {
