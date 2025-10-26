@@ -13817,15 +13817,32 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 {
 	Tile * tile = tile_at (is->viewing_tile_info_x, is->viewing_tile_info_y);
 	if (tile != p_null_tile) {
-		// Draw tile coords on line below terrain name, with district name if present
+		bool show_district_name = false;
+		
 		char s[200];
 		if (is->current_config.enable_districts) {
+			// Draw district name to the right of terrain name if tile has one
 			struct district_instance * dist = get_district_instance (tile);
 			if (dist != NULL) {
-				snprintf (s, sizeof s, "%s", is->district_configs[dist->district_type].name);
-				PCX_Image_draw_text (this, __, s, x + 80, y, strlen (s));
+				show_district_name = true;
+				char const * display_name = is->district_configs[dist->district_type].name;
+
+				// If it's a wonder district with a completed wonder, show the wonder name instead
+				if ((dist->district_type == WONDER_DISTRICT_ID) &&
+				    (dist->wonder_info.state == WDS_COMPLETED) &&
+				    (dist->wonder_info.wonder_index >= 0) &&
+				    (dist->wonder_info.wonder_index < is->wonder_district_count)) {
+					char const * wonder_name = is->wonder_district_configs[dist->wonder_info.wonder_index].wonder_name;
+					if ((wonder_name != NULL) && (wonder_name[0] != '\0')) {
+						display_name = wonder_name;
+					}
+				}
+
+				snprintf (s, sizeof s, "%s", display_name);
+				PCX_Image_draw_text (this, __, s, x + 68, y, strlen (s));
 			}
 		}
+		// Draw tile coords on line below terrain name
 		snprintf (s, sizeof s, "(%d, %d)", is->viewing_tile_info_x, is->viewing_tile_info_y);
 		PCX_Image_draw_text (this, __, s, x, y + 14, strlen (s));
 
@@ -13838,8 +13855,8 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 			}
 		}
 
-		// If tile has been chopped, indicate that to the right of the terrain name
-		if (! can_harvest_shields_from_forest (tile))
+		// If tile has been chopped and district name not shown (uses same space), indicate that to the right of the terrain name
+		if (! can_harvest_shields_from_forest (tile) && !show_district_name)
 			PCX_Image_draw_text (this, __, is->c3x_labels[CL_CHOPPED], x + 145, y, strlen (is->c3x_labels[CL_CHOPPED]));
 	}
 	return PCX_Image_draw_text (this, __, str, x, y, str_len);
