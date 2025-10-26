@@ -273,8 +273,10 @@ The Aerodrome District reuses and slightly modifies the base game airfield art. 
 If I have the time, I hope to:
 
 1. Add a Seasonal Cycle for art (spring/summer/fall/winter), like the Day/Night Cycle. This is not strictly part of Districts, but would be fully compatible.
-3. Add support for Ports and other general Naval Districts.
-4. Art, art, art. I would love community help in making the art blend better and look nicer. This is extremely time-intensive and many of the art files don't look as nice as I'd like.
+2. Look into adding support for districts into [Quintillus' Cross-Platform Civ3 Editor](https://forums.civfanatics.com/resources/cross-platform-civ3-editor.15288/)
+3. Add optional feature to visually de-emphasize minor roads and distinguish from major roads (shortest paths between cities). Mostly for visual variety
+4. Add support for Ports and other general Naval Districts.
+5. Art, art, art. I would love community help in making the art blend better and look nicer. This is extremely time-intensive and many of the art files don't look as nice as I'd like.
 
 ## Special Thanks
 [@maxpetul](https://github.com/maxpetul/) (I'm standing on the shoulders of giants!) and others whose work made C3X possible.
