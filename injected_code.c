@@ -209,11 +209,19 @@ tile_is_adjacent_to_any_city (int tile_x, int tile_y)
 	return false;
 }
 
-bool city_has_required_district (City * city, int district_id);
+int __fastcall patch_City_calc_tile_yield_at (City * this, int edx, int yield_type, int tile_x, int tile_y);
+void __fastcall patch_City_recompute_yields_and_happiness (City * this, int edx);
+int __fastcall patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp);
+void __fastcall patch_Map_build_trade_network (Map * this);
+char __fastcall patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing);
+struct district_instance * ensure_district_instance (Tile * tile, int district_type, int tile_x, int tile_y);
+struct district_instance * get_district_instance (Tile * tile);
+Unit * get_unit_ptr (int id);
 Tile * find_tile_for_district (City * city, int district_id, int * out_x, int * out_y);
+enum UnitStateType __fastcall patch_City_instruct_worker (City * this, int edx, int tile_x, int tile_y, bool param_3, Unit * worker);
+bool city_has_required_district (City * city, int district_id);
 bool free_wonder_district_for_city (City * city);
 bool district_is_complete(Tile * tile, int district_id);
-char __fastcall patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing);
 bool city_requires_district_for_improvement (City * city, int improv_id, int * out_district_id);
 void clear_city_district_request (City * city, int district_id);
 void set_tile_unworkable_for_all_cities (Tile * tile, int tile_x, int tile_y);
@@ -222,16 +230,9 @@ bool tile_suitable_for_district (Tile * tile, int district_id, City * city, bool
 void mark_city_needs_district (City * city, int district_id);
 void wrap_tile_coords (Map * map, int * x, int * y);
 bool tile_coords_from_ptr (Map * map, Tile * tile, int * out_x, int * out_y);
-enum UnitStateType __fastcall patch_City_instruct_worker (City * this, int edx, int tile_x, int tile_y, bool param_3, Unit * worker);
-int __fastcall patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp);
 bool district_instance_is_redundant (struct district_instance * inst, Tile * tile);
 bool city_has_other_completed_district (City * city, int district_id, int removed_x, int removed_y);
-struct district_instance * ensure_district_instance (Tile * tile, int district_type, int tile_x, int tile_y);
-Unit * get_unit_ptr (int id);
 void remove_district_instance (Tile * tile);
-struct district_instance * get_district_instance (Tile * tile);
-int __fastcall patch_City_calc_tile_yield_at (City * this, int edx, int yield_type, int tile_x, int tile_y);
-void __fastcall patch_City_recompute_yields_and_happiness (City * this, int edx);
 void on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city);
 bool assign_worker_to_district (struct pending_district_request * req, Unit * worker, City * city, int district_id, int tile_x, int tile_y);
 void pop_up_in_game_error (char const * msg);
@@ -6009,8 +6010,6 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 
 	return NULL;
 }
-
-int __fastcall patch_Trade_Net_set_unit_path (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, int flags, int * out_path_length_in_mp);
 
 Tile *
 get_completed_district_tile_for_city (City * city, int district_id, int * out_x, int * out_y)
@@ -15729,6 +15728,7 @@ patch_do_load_game (char * param_1)
 
 	// Recompute distribution hub yields and city yields/happiness
 	if (is->current_config.enable_districts) {
+		patch_Map_build_trade_network (&p_bic_data->Map);
 
 		if (is->current_config.enable_distribution_hub_districts) {
 			// Connected-city ids are blank immediately after load until the trade net is rebuilt.
