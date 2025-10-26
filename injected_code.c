@@ -8068,13 +8068,24 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, bool 
 		int actual_capital_id = leader->CapitalID;
 		for (int improv_id = 0; improv_id < p_bic_data->ImprovementsCount; improv_id++) {
 			Improvement * improv = &p_bic_data->Improvements[improv_id];
-			City * fp_city;
-			if ((improv->SmallWonderFlags & ITSW_Reduces_Corruption) &&
-			    (NULL != (fp_city = get_city_ptr (leader->Small_Wonders[improv_id])))) {
-				leader->CapitalID = fp_city->Body.ID;
-				int fp_corrupted_yield = City_compute_corrupted_yield (this, __, gross_yield, is_production);
-				if (fp_corrupted_yield < tr)
-					tr = fp_corrupted_yield;
+			City * pseudo_capital = NULL;
+			if (improv->SmallWonderFlags & ITSW_Reduces_Corruption) {
+				if (improv->Characteristics & ITC_Small_Wonder) {
+					pseudo_capital = get_city_ptr (leader->Small_Wonders[improv_id]);
+				}
+				else if (improv->Characteristics & ITC_Wonder) {
+					pseudo_capital = get_city_ptr (Game_get_wonder_city_id(p_game, __, improv_id));
+					// If the city is not owned by the same civ, ignore
+					if (pseudo_capital->Body.CivID != this->Body.CivID)
+						pseudo_capital = NULL;
+				}
+
+				if (pseudo_capital != NULL && pseudo_capital->Body.ID != actual_capital_id) {
+					leader->CapitalID = pseudo_capital->Body.ID;
+					int fp_corrupted_yield = City_compute_corrupted_yield (this, __, gross_yield, is_production);
+					if (fp_corrupted_yield < tr)
+						tr = fp_corrupted_yield;
+				}
 			}
 		}
 		leader->CapitalID = actual_capital_id;
