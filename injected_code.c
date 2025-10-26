@@ -15686,6 +15686,8 @@ patch_show_intro_after_load_popup (void * this, int edx, int param_1, int param_
 	}
 }
 
+void __fastcall patch_Trade_Net_recompute_city_connections (Trade_Net * this, int edx, int civ_id, bool redo_road_network, byte param_3, int redo_roads_for_city_id);
+
 void * __cdecl
 patch_do_load_game (char * param_1)
 {
@@ -15723,6 +15725,34 @@ patch_do_load_game (char * param_1)
 		Map_Renderer * mr = &p_bic_data->Map.Renderer;
 		if (grid_on && ! mr->MapGrid_Flag)
 			mr->vtable->m68_Toggle_Grid (mr);
+	}
+
+	// Recompute distribution hub yields and city yields/happiness
+	if (is->current_config.enable_districts) {
+
+		if (is->current_config.enable_distribution_hub_districts) {
+			// Connected-city ids are blank immediately after load until the trade net is rebuilt.
+			if (is->trade_net != NULL) {
+				int player_bits = (p_player_bits != NULL) ? *p_player_bits : 0;
+				for (int civ_id = 0; civ_id < 32; civ_id++) {
+					if ((player_bits != 0) && ((player_bits & (1 << civ_id)) == 0))
+						continue;
+					patch_Trade_Net_recompute_city_connections (is->trade_net, __, civ_id, 1, 0, -1);
+				}
+			}
+
+			is->distribution_hub_totals_dirty = true;
+			recompute_distribution_hub_totals ();
+		}
+
+		// Recompute yields and happiness for all cities
+		if (p_cities->Cities != NULL) {
+			for (int n = 0; n <= p_cities->LastIndex; n++) {
+				City * city = get_city_ptr (n);
+				if (city != NULL)
+					patch_City_recompute_yields_and_happiness (city, __);
+			}
+		}
 	}
 
 	return tr;
@@ -21540,7 +21570,7 @@ patch_Sprite_draw_production_income_icon (Sprite * this, int edx, PCX_Image * ca
 		else if (is->non_district_shield_icons_remaining > 0 ||
 			is->district_shield_icons_remaining > 0 || 
 			is->distribution_hub_shield_icons_remaining > 0) {
-				
+
 			if (is->non_district_shield_icons_remaining > 0) {
 				is->non_district_shield_icons_remaining--;
 			} else if (is->district_shield_icons_remaining > 0) {
