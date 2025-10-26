@@ -10754,12 +10754,12 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 				int type_id = this->Body.UnitTypeID;
 				if ((type_id >= 0) && (type_id < p_bic_data->UnitTypeCount)) {
 					int worker_actions = p_bic_data->UnitTypes[type_id].Worker_Actions;
-					if (worker_actions != 0 && (worker_actions & (UCV_Build_Road | UCV_Build_Mine | UCV_Irrigate))) {
+					if (worker_actions != 0 && (worker_actions & (UCV_Automate))) {
 						int civ_id = this->Body.CivID;
 						if (civ_id >= 0 && civ_id < 32) {
 							return is->city_pending_district_requests[civ_id].len == 0;
 						}
-						return false;
+						return true;
 					}
 				}
 			}
