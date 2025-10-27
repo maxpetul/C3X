@@ -9184,6 +9184,7 @@ patch_init_floating_point ()
 		{"cities_with_mutual_district_receive_wonders"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
         {"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
 		{"ai_defends_districts"         		               , false, offsetof (struct c3x_config, ai_defends_districts)},
+		{"highlight_city_district_work_radii_on_select_worker" , false, offsetof (struct c3x_config, highlight_city_district_work_radii_on_select_worker)},
 	};
 
 	struct integer_config_option {
@@ -10372,6 +10373,100 @@ parse_turns_from_tooltip (char const * tooltip)
 }
 
 void
+clear_highlighted_worker_tiles_for_districts ()
+{
+	FOR_TABLE_ENTRIES (tei, &is->highlighted_city_radius_tile_pointers) {
+		struct highlighted_city_radius_tile_info * info = (struct highlighted_city_radius_tile_info *)(long)tei.value;
+		if (info != NULL)
+			free (info);
+	}
+	table_deinit (&is->highlighted_city_radius_tile_pointers);
+}
+
+void
+compute_highlighted_worker_tiles_for_districts ()
+{
+	if (is_online_game () 
+		|| ! is->current_config.enable_districts 
+		|| ! is->current_config.highlight_city_district_work_radii_on_select_worker)
+		return;
+
+	Unit * selected_unit = p_main_screen_form->Current_Unit;
+	if (selected_unit == NULL)
+		return;
+
+	int unit_type_id = selected_unit->Body.UnitTypeID;
+	if (p_bic_data->UnitTypes[unit_type_id].Worker_Actions == 0)
+		return;
+
+	if (is->tile_highlight_state == IS_UNINITED)
+		init_tile_highlights ();
+	if (is->tile_highlight_state != IS_OK)
+		return;
+
+	int worker_civ_id = selected_unit->Body.CivID;
+	int worker_x = selected_unit->Body.X;
+	int worker_y = selected_unit->Body.Y;
+	wrap_tile_coords (&p_bic_data->Map, &worker_x, &worker_y);
+
+	// Loop around worker position to find cities of the same civ within radius 7
+	FOR_TILES_AROUND (tai, workable_tile_counts[7], worker_x, worker_y) {
+		Tile * tile = tai.tile;
+		if ((tile == NULL) || (tile == p_null_tile)) continue;
+
+		int city_id = tile->CityID;
+		if (city_id < 0) continue;
+
+		City * city = get_city_ptr (city_id);
+		if ((city == NULL) || (city->Body.CivID != worker_civ_id)) continue;
+
+		// Check if the worker is within the working radius of this city
+		for (int n = 0; n < is->workable_tile_count; n++) {
+			int dx, dy;
+			patch_ni_to_diff_for_work_area (n, &dx, &dy);
+			int tile_x = city->Body.X + dx;
+			int tile_y = city->Body.Y + dy;
+			wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+
+			if (tile_x == worker_x && tile_y == worker_y) {
+				// Add the city center tile with highlight_level = 2
+				Tile * city_center_tile = tile_at (city->Body.X, city->Body.Y);
+				if ((city_center_tile != NULL) && (city_center_tile != p_null_tile)) {
+					int stored_ptr;
+					struct highlighted_city_radius_tile_info * info = malloc (sizeof (struct highlighted_city_radius_tile_info));
+					info->highlight_level = 3;
+					itable_insert (&is->highlighted_city_radius_tile_pointers, (int)city_center_tile, (int)info);
+				}
+			}
+		}
+
+		// Add all workable tiles around the city (excluding city center)
+		for (int n = 1; n < is->workable_tile_count; n++) {
+			int dx, dy;
+			patch_ni_to_diff_for_work_area (n, &dx, &dy);
+			int tile_x = city->Body.X + dx;
+			int tile_y = city->Body.Y + dy;
+			wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+
+			Tile * workable_tile = tile_at (tile_x, tile_y);
+			if ((workable_tile == NULL) || (workable_tile == p_null_tile)) continue;
+			if (workable_tile->vtable->m38_Get_Territory_OwnerID (workable_tile) != worker_civ_id) continue;
+
+			// Upsert into highlighted_city_radius_tile_pointers
+			int stored_ptr;
+			if (! itable_look_up (&is->highlighted_city_radius_tile_pointers, (int)workable_tile, &stored_ptr)) {
+				struct highlighted_city_radius_tile_info * info = malloc (sizeof (struct highlighted_city_radius_tile_info));
+				info->highlight_level = 0;
+				itable_insert (&is->highlighted_city_radius_tile_pointers, (int)workable_tile, (int)info);
+			} else {
+				struct highlighted_city_radius_tile_info * info = (struct highlighted_city_radius_tile_info *)stored_ptr;
+				info->highlight_level = 3;
+			}
+		}
+	}
+}
+
+void
 set_up_district_buttons (Main_GUI * this)
 {
 	if (is_online_game () || ! is->current_config.enable_districts)  return;
@@ -10569,7 +10664,10 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 	Main_GUI_set_up_unit_command_buttons (this);
 	set_up_stack_bombard_buttons (this);
 	set_up_stack_worker_buttons (this);
-	set_up_district_buttons (this);
+
+	if (is->current_config.enable_districts) {
+		set_up_district_buttons (this);
+	}
 
 	// If the minimum city separation is increased, then gray out the found city button if we're too close to another city.
 	if ((is->current_config.minimum_city_separation > 1) && (p_main_screen_form->Current_Unit != NULL) && (is->disabled_command_img_state == IS_OK)) {
@@ -11211,58 +11309,65 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 	}
 
 	// Check if command is a worker build command (not a district) and a district exists on the tile
-	if (is->current_config.enable_districts &&
-	    (is_worker_or_settler_command(command)) &&
-	    p_main_screen_form->Current_Unit != NULL) {
+	if (is->current_config.enable_districts) {
+		if (is->current_config.highlight_city_district_work_radii_on_select_worker && is->highlight_city_radii) {
+			Unit * unit = p_main_screen_form->Current_Unit;
+			if (unit != NULL) {
+				Main_Screen_Form_bring_tile_into_view (p_main_screen_form, __, unit->Body.X, unit->Body.Y, 0, true, false); 
+				this->Base.vtable->m73_call_m22_Draw ((Base_Form *)this);
+			}
+		}
 
-		Unit * unit = p_main_screen_form->Current_Unit;
-		if (patch_Unit_can_perform_command(unit, __, command) && command_would_replace_district(command)) {
-			Tile * tile = tile_at(unit->Body.X, unit->Body.Y);
+		if (is_worker_or_settler_command(command) && p_main_screen_form->Current_Unit != NULL) {
+			Unit * unit = p_main_screen_form->Current_Unit;
+			if (patch_Unit_can_perform_command(unit, __, command) && command_would_replace_district(command)) {
+				Tile * tile = tile_at(unit->Body.X, unit->Body.Y);
 
-			if (tile != NULL && tile != p_null_tile) {
+				if (tile != NULL && tile != p_null_tile) {
 
-				// If district would be replaced by improvement
-				struct district_instance * inst = get_district_instance (tile);
-				if (inst != NULL && district_is_complete(tile, inst->district_type)) {
-					int district_id = inst->district_type;
-						int tile_x, tile_y;
-						if (!district_instance_get_coords (inst, tile, &tile_x, &tile_y))
+					// If district would be replaced by improvement
+					struct district_instance * inst = get_district_instance (tile);
+					if (inst != NULL && district_is_complete(tile, inst->district_type)) {
+						int district_id = inst->district_type;
+							int tile_x, tile_y;
+							if (!district_instance_get_coords (inst, tile, &tile_x, &tile_y))
+								return;
+
+						int civ_id = unit->Body.CivID;
+						bool redundant_district = district_instance_is_redundant (inst, tile);
+						bool would_lose_buildings = any_nearby_city_would_lose_district_benefits (district_id, civ_id, tile_x, tile_y);
+						if (redundant_district)
+							would_lose_buildings = false;
+
+						bool remove_existing = redundant_district;
+						if (! remove_existing) {
+							PopupForm * popup = get_popup_form();
+							set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
+							set_popup_str_param (1, (char*)is->district_configs[district_id].name, -1, -1);
+							popup->vtable->set_text_key_and_flags(
+								popup, __, is->mod_script_path,
+								would_lose_buildings
+									? "C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT"
+									: "C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT_SAFE",
+								-1, 0, 0, 0);
+							int sel = patch_show_popup(popup, __, 0, 0);
+							if (sel == 0)
+								remove_existing = true;
+							else
+								return; // User cancelled, don't execute the command
+						}
+
+						if (remove_existing) {
+							remove_district_instance (tile);
+							tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+							tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
+							handle_district_removed (tile, district_id, tile_x, tile_y, false);
+
+							clear_something_1();
+							Timer_clear (&this->timer_1);
+							Main_GUI_handle_button_press (this, __, button_id);
 							return;
-
-					int civ_id = unit->Body.CivID;
-					bool redundant_district = district_instance_is_redundant (inst, tile);
-					bool would_lose_buildings = any_nearby_city_would_lose_district_benefits (district_id, civ_id, tile_x, tile_y);
-					if (redundant_district)
-						would_lose_buildings = false;
-
-					bool remove_existing = redundant_district;
-					if (! remove_existing) {
-						PopupForm * popup = get_popup_form();
-						set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
-						set_popup_str_param (1, (char*)is->district_configs[district_id].name, -1, -1);
-						popup->vtable->set_text_key_and_flags(
-							popup, __, is->mod_script_path,
-							would_lose_buildings
-								? "C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT"
-								: "C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT_SAFE",
-							-1, 0, 0, 0);
-						int sel = patch_show_popup(popup, __, 0, 0);
-						if (sel == 0)
-							remove_existing = true;
-						else
-							return; // User cancelled, don't execute the command
-					}
-
-					if (remove_existing) {
-						remove_district_instance (tile);
-						tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
-						tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
-						handle_district_removed (tile, district_id, tile_x, tile_y, false);
-
-						clear_something_1();
-						Timer_clear (&this->timer_1);
-						Main_GUI_handle_button_press (this, __, button_id);
-						return;
+						}
 					}
 				}
 			}
@@ -11320,8 +11425,14 @@ patch_Main_Screen_Form_handle_key_down (Main_Screen_Form * this, int edx, int ch
 	if ((virtual_key_code == VK_B) || (precision_strike_is_available && (virtual_key_code == VK_P)))
 		is->sb_activated_by_button = 0;
 
-	if ((virtual_key_code & 0xFF) == VK_CONTROL)
+	if ((virtual_key_code & 0xFF) == VK_CONTROL) {
 		set_up_stack_worker_buttons (&this->GUI);
+
+		if (is->current_config.highlight_city_district_work_radii_on_select_worker && ! is->highlight_city_radii) {
+			is->highlight_city_radii = true;
+			compute_highlighted_worker_tiles_for_districts ();
+		}
+	}
 
 	char original_turn_end_flag = this->turn_end_flag;
 	int tr = Main_Screen_Form_handle_key_down (this, __, char_code, virtual_key_code);
@@ -12306,8 +12417,14 @@ patch_get_wonder_city_id (void * this, int edx, int wonder_improvement_id)
 int __fastcall
 patch_Main_Screen_Form_handle_key_up (Main_Screen_Form * this, int edx, int virtual_key_code)
 {
-	if ((virtual_key_code & 0xFF) == VK_CONTROL)
+	if ((virtual_key_code & 0xFF) == VK_CONTROL) {
 		patch_Main_GUI_set_up_unit_command_buttons (&this->GUI);
+
+		if (is->current_config.highlight_city_district_work_radii_on_select_worker && is->highlight_city_radii) {
+			is->highlight_city_radii = false;
+			clear_highlighted_worker_tiles_for_districts ();
+		}
+	}
 
 	return Main_Screen_Form_handle_key_up (this, __, virtual_key_code);
 }
@@ -14010,6 +14127,24 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 				int grade = (eval >= midpoint) ? (eval - midpoint) / step_size : (eval - midpoint) / step_size - 1;
 				int i_highlight = clamp (0, COUNT_TILE_HIGHLIGHTS - 1, COUNT_TILE_HIGHLIGHTS/2 + grade);
 				Sprite_draw_on_map (&is->tile_highlights[i_highlight], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+			}
+		}
+	}
+
+	// Draw city work radius highlights for selected worker
+	if (is->current_config.enable_districts &&
+	    is->current_config.highlight_city_district_work_radii_on_select_worker &&
+	    is->highlight_city_radii &&
+	    (((tile_x + tile_y) % 2) == 0)) { // Replicate a check from the base game code. Without this we'd be drawing additional tiles half-way off the grid.
+
+		if (is->tile_highlight_state == IS_OK) {
+			Tile * tile = tile_at (tile_x, tile_y);
+			if ((tile != NULL) && (tile != p_null_tile)) {
+				int stored_ptr;
+				if (itable_look_up (&is->highlighted_city_radius_tile_pointers, (int)tile, &stored_ptr)) {
+					struct highlighted_city_radius_tile_info * info = (struct highlighted_city_radius_tile_info *)stored_ptr;
+					Sprite_draw_on_map (&is->tile_highlights[info->highlight_level], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+				}
 			}
 		}
 	}
@@ -21378,6 +21513,7 @@ patch_Unit_select (Unit * this)
 {
 	if (is->current_config.enable_districts) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
+
 		struct district_instance * inst = get_district_instance (tile);
 		if (inst != NULL && ! district_is_complete (tile, inst->district_type)) {
 			int district_id = inst->district_type;

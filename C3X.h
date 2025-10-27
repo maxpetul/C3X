@@ -318,6 +318,8 @@ struct c3x_config {
 	int ai_ideal_distribution_hub_count_per_100_cities;
 
 	bool ai_defends_districts;
+
+	bool highlight_city_district_work_radii_on_select_worker;
 };
 
 enum stackable_command {
@@ -620,6 +622,9 @@ struct district_instance {
 	struct wonder_district_info wonder_info; // Only used if district_type is a wonder district
 };
 
+struct highlighted_city_radius_tile_info {
+	int highlight_level;
+};
 
 struct injected_state {
 	// ==========
@@ -1366,6 +1371,9 @@ struct injected_state {
 
 	// Worker tracking: 32 tables (one per civ), each mapping unit_id -> district_worker_record pointer
 	struct table district_worker_tables[32];
+
+	bool highlight_city_radii;
+	struct table highlighted_city_radius_tile_pointers;
 
 	// Initialized to 0. Every time Main_Screen_Form::m82_handle_key_event receives an event with is_down == 0, the virtual key code is prepended
 	// to this list.
