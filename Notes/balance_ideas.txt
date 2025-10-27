@@ -1,3 +1,17 @@
+* Nerf unit stacking
+  - What if the defending stack of units didn't have the luxury of selecting the best defender each time it's attacked? This would remove a major
+    incentive to gather all units into one doomstack.
+  - Units sort themselves by defense ability only on entering a tile or at the start of their player's movement phase. That way, repeated attacks
+    against a stack of units hit the same unit until it's destroyed.
+    - Maybe, after winning on defense, a unit could resort itself only if it's fortified? That tilts combat to favor defenders since city garrisons
+      are almost always fortified while attacking stacks rarely are.
+    - Maybe units can resort themselves once for each point of movement they have? This buffs mounted units which are already OP and makes this rule
+      change mostly pointless.
+    - This idea only works because the top defender doesn't depend on the attacker. It wouldn't work in Civ 4 where units couldn't sort themselves by
+      defense strength without a hypothetical attacker to compare against.
+  - "Flank attack" that works like reverse defensive bombard. Attack a tile and an allied mounted unit gets a free hit in from the opposite
+    direction. Encourages players to spread units out more, but on its own won't disincentivize stacks much.
+
 * Buff fascism
   - Permanent mobilization bonus? Not too interesting.
   - Military police also reduce corruption like police specialists

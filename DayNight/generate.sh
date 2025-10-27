@@ -5,10 +5,15 @@ set -euo pipefail
 ### === CONFIG ===
 # Assumed to be run from DayNight/ directory
 
+<<<<<<< HEAD
 DAYNIGHT_ANNOTATION_DIR="../Art/DayNight/Annotations"
 DAYNIGHT_DATA_DIR="../Art/DayNight"
 DISTRICT_ANNOTATION_DIR="../Art/Districts/Annotations"
 DISTRICT_DATA_DIR="../Art/Districts"
+=======
+ANNOTATION_DIR="../Art/DayNight/Annotations"
+DATA_DIR="../Art/DayNight"
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 NOON_SUBFOLDER="1200"
 ONLY_HOUR=""       # set empty "" to process all hours
 

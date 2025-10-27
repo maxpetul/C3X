@@ -1491,16 +1491,16 @@ typedef enum advisor_kind
 
 typedef enum leader_status_flags
 {
-	LSF_HAS_VICTORIOUS_ARMY  = 0x1,
-	LSF_0x2                  = 0x2,   // \ 
-	LSF_0x4                  = 0x4,   // |
-	LSF_0x8                  = 0x8,   // |
-	LSF_0x10                 = 0x10,  // |-- Mostly (all?) about what popups have been shown
-	LSF_0x20                 = 0x20,  // |
-	LSF_0x40                 = 0x40,  // |
-	LSF_0x80                 = 0x80,  // /
-	LSF_HAS_ELITE_NAVAL_UNIT = 0x100,
-	LSF_SHOWN_PLAGUE_POPUP   = 0x200
+	LSF_HAS_VICTORIOUS_ARMY   = 0x1,
+	LSF_0x2                   = 0x2,
+	LSF_CAN_FOUND_MORE_CITIES = 0x4,
+	LSF_0x8                   = 0x8,   // \ 
+	LSF_0x10                  = 0x10,  // |
+	LSF_0x20                  = 0x20,  // |-- Mostly (all?) about what popups have been shown
+	LSF_0x40                  = 0x40,  // |
+	LSF_0x80                  = 0x80,  // /
+	LSF_HAS_ELITE_NAVAL_UNIT  = 0x100,
+	LSF_SHOWN_PLAGUE_POPUP    = 0x200
 } LeaderStatusFlags;
 
 typedef enum civilopedia_article_kind
@@ -1670,7 +1670,7 @@ struct UnitType
   int field_C4;
   int field_C8;
   int field_CC;
-  int b_Not_King;
+  int requires_support;
   int field_D4;
   int field_D8;
   IntList unit_telepads;
@@ -1718,7 +1718,7 @@ struct Tile_vtable
   unsigned char (__fastcall *m24_Check_River)(Tile *);
   int (__fastcall *m25_Check_Roads)(Tile *this, __, int);
   char (__fastcall *m26_Check_Tile_Building)(Tile *);
-  int (__fastcall *m27_Check_Special_Resource)(Tile *);
+  bool (__fastcall *m27_Check_Shield_Bonus)(Tile *); // Whether the tile would be bonus grassland if it were grassland (it may or may not be)
   bool (__fastcall *m28_is_revealed_by_scenario_setting)(Tile *);
   int (__fastcall *m29_Check_Mountain_Snowcap)(Tile *);
   int (__fastcall *m30_Check_is_LM)(Tile *);
@@ -2059,7 +2059,7 @@ struct Map_vtable
   void *m00_Create_Tiles;
 //  int (__thiscall *m01_Create_WH_Tiles)(Map *);
   void *m01_Create_WH_Tiles;
-  int m02;
+  int (__fastcall * m02_eval_city_location) (Map * this, __, int x, int y);
   void (__fastcall * push_loading_bar) (Map * this);
 //  void (__thiscall *m04_Clear_Tiles)(Map *);
   void *m04_Clear_Tiles;
@@ -2075,7 +2075,7 @@ struct Map_vtable
   int m14;
   int m15_null;
   int m16;
-  int m17;
+  bool (__fastcall * can_spawn_resource_at) (Map * this, __, int x, int y, int res_type_id, bool double_min_cont_size);
   bool (__fastcall * check_goody_hut_location) (Map *, __, int, int);
   byte (__fastcall * m19_Create_Tiles)(Map * this, __, Tile ** out_array);
   int m20;
@@ -3702,8 +3702,7 @@ struct JGL_Image_vtable
 //  char *(__thiscall *m05_m07_Get_Pixel)(JGL_Image *this, int X, int Y);
   void *m05_m07_Get_Pixel;
   int m06;
-//  char *(__thiscall *m07_m05_Get_Pixel)(JGL_Image *this, int X, int Y);
-  void *m07_m05_Get_Pixel;
+  unsigned short * (__fastcall * m07_m05_Get_Pixel) (JGL_Image * this, int edx, int x, int y);
   int m08_Get_Bits_Data;
   int m09;
   HDC (__fastcall * acquire_dc) (JGL_Image * this);
@@ -4653,7 +4652,7 @@ struct Tile_Type
 {
   int V0;
   int field_4;
-  int Ptr1;
+  unsigned char * resource_bits; // One bit per resource, tracks possibility of appearance
   String32 Name;
   String32 Civilopedia_Entry;
   int IrrigationBonus;
@@ -4661,7 +4660,7 @@ struct Tile_Type
   int RoadsBonus;
   int DefenceBonus;
   int MoveCost;
-  int field_60;
+  int resource_bit_count; // Length of resource_bits array, in number of bits
   int FoodBase;
   int ProductionBase;
   int TradeBase;
@@ -5552,7 +5551,14 @@ struct Espionage_Form
   Scroll_Bar Scroll_Bar;
   int field_294C[1311];
   int field_3DC8[174];
-  int field_4080[8];
+  int mouse_over_control;
+  int selected_civ_list_index;
+  int selected_city_id;
+  EspionageMission selected_mission;
+  int selected_operational_cost; // 0 = imm., 1 = carefully, 2 = safely
+  int selected_spy_else_diplo;
+  int field_4098;
+  int selected_civ_id;
   int field_40A0;
   int Last;
 };

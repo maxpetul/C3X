@@ -10,8 +10,8 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
-#define MOD_VERSION 2400
-#define MOD_PREVIEW_VERSION 0
+#define MOD_VERSION 2500
+#define MOD_PREVIEW_VERSION 1
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -85,6 +85,12 @@ enum line_drawing_override {
 	LDO_NEVER = 0,
 	LDO_WINE,
 	LDO_ALWAYS
+};
+
+enum minimap_doubling_mode {
+	MDM_NEVER = 0,
+	MDM_HIGH_DEF,
+	MDM_ALWAYS
 };
 
 enum special_defensive_bombard_rules {
@@ -217,6 +223,9 @@ struct c3x_config {
 	bool show_territory_colors_on_water_tiles_in_minimap;
 	bool convert_some_popups_into_online_mp_messages;
 	bool enable_debug_mode_switch;
+	bool accentuate_cities_on_minimap;
+	enum minimap_doubling_mode double_minimap_size;
+	bool allow_multipage_civilopedia_descriptions;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
@@ -248,6 +257,9 @@ struct c3x_config {
 	int rebase_range_multiplier;
 	bool limit_unit_loading_to_one_transport_per_turn;
 	bool prevent_old_units_from_upgrading_past_ability_block;
+	bool introduce_all_human_players_at_start_of_hotseat_game;
+	int years_to_double_building_culture;
+	int tourism_time_scale_percent;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
@@ -267,9 +279,9 @@ struct c3x_config {
 
 	bool remove_unit_limit;
 	bool remove_city_improvement_limit;
-	bool remove_era_limit;
+	int city_limit;
 	bool remove_cap_on_turn_limit;
-	bool move_trade_net_object;
+	bool remove_era_limit;
 
 	bool patch_submarine_bug;
 	bool patch_science_age_bug;
@@ -287,7 +299,9 @@ struct c3x_config {
 	bool fix_overlapping_specialist_yield_icons;
 	bool patch_premature_truncation_of_found_paths;
 	bool patch_zero_production_crash;
+	bool patch_ai_can_form_army_without_special_ability;
 	bool patch_ai_can_sacrifice_without_special_ability;
+	bool patch_crash_in_leader_unit_ai;
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
@@ -645,7 +659,11 @@ struct injected_state {
 	enum init_state distribution_hub_icons_img_state;
 	enum init_state tile_already_worked_zoomed_out_sprite_init_state;
 	enum init_state day_night_cycle_img_state;
+<<<<<<< HEAD
 	enum init_state minor_roads_img_state;
+=======
+	enum init_state large_minimap_frame_img_state;
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
@@ -702,9 +720,10 @@ struct injected_state {
 	Unit * sb_next_up; // The unit currently doing a stack bombard or NULL otherwise. Gets set to NULL if the unit is despawned.
 
 	Trade_Net * trade_net; // Pointer to the trade net object. If it hasn't been moved by the mod, this equals p_original_trade_net.
+	int city_limit; // Stores the current actual city limit. Not necessarily the same as the stride of the trade net matrix or the config setting.
 
-	enum init_state trade_net_refs_load_state;
-	int * trade_net_refs;
+	enum init_state trade_net_addrs_load_state;
+	int * trade_net_addrs;
 
 	HMODULE trade_net_x;
 	void (__stdcall * set_exe_version) (int);
@@ -759,7 +778,7 @@ struct injected_state {
 	int have_job_and_loc_to_skip; // 0 or 1 if the variable below has anything actionable in it. Gets cleared to 0 after every turn.
 	struct worker_job_and_location to_skip;
 
-	struct table nopified_areas;
+	struct table saved_code_areas;
 
 	int * unit_menu_duplicates; // NULL initialized, allocated to an array of 0x100 ints when needed
 
@@ -906,10 +925,17 @@ struct injected_state {
 	Sprite red_food_icon;
 
 	// ==========
+<<<<<<< HEAD
 	// } These are valid only if init_minor_roads has been called and minor_roads_img_state equals IS_OK {
 	// ==========
 
 	Sprite minor_roads_images[256];
+=======
+	// } These are valid only if init_large_minimap_frame has been called and large_minimap_frame_img_state equals IS_OK {
+	// ==========
+
+	Sprite double_size_box_left_color_pcx, double_size_box_left_alpha_pcx;
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 
 	// ==========
 	// } These fields are temporary/situational {
@@ -1183,7 +1209,11 @@ struct injected_state {
 
 	// Day-Night cycle data
 	int current_day_night_cycle;
+<<<<<<< HEAD
 	bool day_night_cycle_unstarted;
+=======
+	bool day_night_cycle_unstarted; // If current_day_night_cycle has not been set, f.e. because it's the first turn of a new game.
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 	bool day_night_cycle_img_proxies_indexed;
 	LARGE_INTEGER last_day_night_cycle_update_time;
 
@@ -1378,6 +1408,9 @@ struct injected_state {
 	// Initialized to 0. Every time Main_Screen_Form::m82_handle_key_event receives an event with is_down == 0, the virtual key code is prepended
 	// to this list.
 	int last_main_screen_key_up_events[5];
+
+	// Stores the parameters to Unit::can_load while it's running, NULL otherwise.
+	Unit * can_load_transport, * can_load_passenger;
 
 	// ==========
 	// }

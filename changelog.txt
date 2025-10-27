@@ -1,6 +1,24 @@
+- Allow city limit to be configured to any value up to 2048
+  - New integer setting "city_limit" replaces the previous "lift_city_limit" switch
+- Fix cities beyond the first 512 not being tradable
+- Fix support-free units being disbanded on bankruptcy while aggressively_penalize_bankruptcy is set
+- Fix AI players being able to build armies with leader units that don't have the "build army" special ability set on their type
+- Fix possible crash in base game leader unit AI
+- Group non-combat artillery and flak units of different experience levels together on right-click menu
+- Add config option allow_multipage_civilopedia_descriptions
+
+* RELEASE 25 PREVIEW 1
+- Increase city limit to 2048
+  - Setting named lift_city_limit, included in new "Limits Removed" section with other limit increases/removals
+- Enable tile graphics to cycle over day and night, see "Day/Night Cycle" section of default config for details
 - Allow Civilopedia descriptions for units, civilizations, and game concepts to span multiple pages
+- Can adjust time to double building culture, setting named years_to_double_building_culture
 - Option to prevent units from upgrading past an intermediate type that does not have the upgrade ability
   - Setting named prevent_old_units_from_upgrading_past_ability_block
+- Can adjust times to generate tourism gold, setting named tourism_time_scale_percent
+- Option to put all human players in contact with each other at the start of a hotseat game
+  - Setting named introduce_all_human_players_at_start_of_hotseat_game
+- Double size of minimap when running in high definition (>= 1920 horizontal pixels), setting named double_minimap_size
 - Option to show some popup messages as online-multiplayer-style notifications
   - Setting named convert_some_popups_into_online_mp_messages, off by default, see config for which popups are affected
 - Option to switch debug mode on or off for games in progress
@@ -9,6 +27,8 @@
 - Option to tint coast and sea tiles on minimap based on cultural borders
   - Setting named show_territory_colors_on_water_tiles_in_minimap, off by default
 - Do not charge maintenance for buildings provided for free by shared wonder effects
+- Option to draw small shadows underneath city dots on the minimap to make them more visible
+  - Setting named accentuate_cities_on_minimap, off by default because it doesn't quite work properly
 
 * RELEASE 24
 - Option to share wonders among human players in hotseat mode, setting named share_wonders_in_hotseat

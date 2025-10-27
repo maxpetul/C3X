@@ -1863,6 +1863,17 @@ read_line_drawing_override (struct string_slice const * s, int * out_val)
 }
 
 bool
+read_minimap_doubling_mode (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "never"   )) { *out_val = MDM_NEVER;    return true; }
+	else if (slice_matches_str (&trimmed, "high-def")) { *out_val = MDM_HIGH_DEF; return true; }
+	else if (slice_matches_str (&trimmed, "always"  )) { *out_val = MDM_ALWAYS;   return true; }
+	else
+		return false;
+}
+
+bool
 read_work_area_limit (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
@@ -2159,6 +2170,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				} else if (slice_matches_str (&p.key, "draw_lines_using_gdi_plus")) {
 					if (! read_line_drawing_override (&value, (int *)&cfg->draw_lines_using_gdi_plus))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "double_minimap_size")) {
+					if (! read_minimap_doubling_mode (&value, (int *)&cfg->double_minimap_size))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_defensive_bombard_rules")) {
 					struct parsable_field_bit bits[] = {
 						{"lethal"        , SDBR_LETHAL},
@@ -2257,6 +2271,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->polish_precision_striking = ival != 0;
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
+				} else if (slice_matches_str (&p.key, "move_trade_net_object")) {
+					; // No nothing. This setting no longer serves any purpose.
 
 				// if key was previously misspelled
 				} else if (slice_matches_str (&p.key, "share_visibility_in_hoseat")) {
@@ -7829,26 +7845,30 @@ filter_zoc_candidate (struct register_set * reg)
 }
 
 #define TRADE_NET_REF_COUNT 315
+#define TRADE_NET_INSTR_COUNT_GOG   22
+#define TRADE_NET_INSTR_COUNT_STEAM 23
+#define TRADE_NET_INSTR_COUNT_PCG   22
+#define TRADE_NET_ADDR_TOTAL_COUNT ((TRADE_NET_REF_COUNT * 3) + TRADE_NET_INSTR_COUNT_GOG + TRADE_NET_INSTR_COUNT_STEAM + TRADE_NET_INSTR_COUNT_PCG)
 
 int *
-load_trade_net_refs ()
+load_trade_net_addrs ()
 {
-	if (is->trade_net_refs_load_state == IS_OK)
-		return is->trade_net_refs;
-	else if (is->trade_net_refs_load_state == IS_INIT_FAILED)
+	if (is->trade_net_addrs_load_state == IS_OK)
+		return is->trade_net_addrs;
+	else if (is->trade_net_addrs_load_state == IS_INIT_FAILED)
 		return NULL;
 
 	bool success = false;
 	char err_msg[300] = {0};
 
-	is->trade_net_refs = calloc (3 * TRADE_NET_REF_COUNT, sizeof is->trade_net_refs[0]);
-	if (! is->trade_net_refs) {
+	is->trade_net_addrs = calloc (3 * TRADE_NET_ADDR_TOTAL_COUNT, sizeof is->trade_net_addrs[0]);
+	if (! is->trade_net_addrs) {
 		snprintf (err_msg, (sizeof err_msg) - 1, "Bad alloc");
 		goto done;
 	}
 
 	char file_path[MAX_PATH] = {0};
-	snprintf (file_path, (sizeof file_path) - 1, "%s\\trade_net_refs.txt", is->mod_rel_dir);
+	snprintf (file_path, (sizeof file_path) - 1, "%s\\trade_net_addresses.txt", is->mod_rel_dir);
 	char * refs_file = file_to_string (file_path);
 	if (! refs_file) {
 		snprintf (err_msg, (sizeof err_msg) - 1, "Couldn't load %s", file_path);
@@ -7874,11 +7894,11 @@ load_trade_net_refs ()
 		int ref;
 		bool got_any_addresses = false;
 		while (parse_int (&cursor, &ref)) {
-			if (loaded_count >= 3 * TRADE_NET_REF_COUNT) {
-				snprintf (err_msg, (sizeof err_msg) - 1, "Too many values in file (expected %d exactly)", 3 * TRADE_NET_REF_COUNT);
+			if (loaded_count >= TRADE_NET_ADDR_TOTAL_COUNT) {
+				snprintf (err_msg, (sizeof err_msg) - 1, "Too many values in file (expected %d exactly)", TRADE_NET_ADDR_TOTAL_COUNT);
 				goto done;
 			}
-			is->trade_net_refs[loaded_count] = ref;
+			is->trade_net_addrs[loaded_count] = ref;
 			loaded_count++;
 			got_any_addresses = true;
 		}
@@ -7889,8 +7909,8 @@ load_trade_net_refs ()
 		}
 	}
 
-	if (loaded_count < 3 * TRADE_NET_REF_COUNT) {
-		snprintf (err_msg, (sizeof err_msg) - 1, "Too few values in file (expected %d exactly)", 3 * TRADE_NET_REF_COUNT);
+	if (loaded_count < TRADE_NET_ADDR_TOTAL_COUNT) {
+		snprintf (err_msg, (sizeof err_msg) - 1, "Too few values in file (expected %d exactly)", TRADE_NET_ADDR_TOTAL_COUNT);
 		goto done;
 	}
 
@@ -7902,12 +7922,26 @@ done:
 		char full_err_msg[300] = {0};
 		snprintf (full_err_msg, (sizeof full_err_msg) - 1, "Failed to load trade net refs: %s", err_msg);
 		MessageBox (NULL, full_err_msg, NULL, MB_ICONERROR);
-		is->trade_net_refs_load_state = IS_INIT_FAILED;
+		is->trade_net_addrs_load_state = IS_INIT_FAILED;
 		return NULL;
 	} else {
-		is->trade_net_refs_load_state = IS_OK;
-		return is->trade_net_refs;
+		is->trade_net_addrs_load_state = IS_OK;
+		return is->trade_net_addrs;
 	}
+}
+
+unsigned short * __fastcall
+patch_get_pixel_to_draw_city_dot (JGL_Image * this, int edx, int x, int y)
+{
+	unsigned short * tr = this->vtable->m07_m05_Get_Pixel (this, __, x, y);
+
+	if ((x + 1 < p_main_screen_form->GUI.Navigator_Data.Mini_Map_Width2) && (y + 1 < p_main_screen_form->GUI.Navigator_Data.Mini_Map_Height2)) {
+		unsigned short * below = this->vtable->m07_m05_Get_Pixel (this, __, x + 1, y + 1);
+		if (below != NULL)
+			*below = 0;
+	}
+
+	return tr;
 }
 
 enum branch_kind { BK_CALL, BK_JUMP };
@@ -7942,54 +7976,55 @@ check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect
 
 void __fastcall adjust_sliders_preproduction (Leader * this);
 
-struct nopified_area {
+struct saved_code_area {
 	int size;
 	byte original_contents[];
 };
 
-// Replaces an area of code with no-ops. The original contents of the area are saved and can be restored with restore_area. This method assumes that
+// Saves an area of base game code and optionally replaces it with no-ops. The area can be restored with restore_code_area. This method assumes that
 // the necessary memory protection has already been set on the area, specifically that it can be written to. The method will do nothing if the area
-// has already been nopified with the same size. It's an error to re-nopify an address with a different size or overlap two nopified areas.
+// has already been saved with the same size. It's an error to re-save an address with a different size or overlap two saved areas.
 void
-nopify_area (byte * addr, int size)
+save_code_area (byte * addr, int size, bool nopify)
 {
-	struct nopified_area * na;
-	if (itable_look_up (&is->nopified_areas, (int)addr, (int *)&na)) {
-		if (na->size != 0) {
-			if (na->size != size) {
+	struct saved_code_area * sca;
+	if (itable_look_up (&is->saved_code_areas, (int)addr, (int *)&sca)) {
+		if (sca->size != 0) {
+			if (sca->size != size) {
 				char s[200];
-				snprintf (s, sizeof s, "Nopification conflict: address %p was already nopified with size %d, conflicting with new size %d.", addr, na->size, size);
+				snprintf (s, sizeof s, "Save code area conflict: address %p was already saved with size %d, conflicting with new size %d.", addr, sca->size, size);
 				s[(sizeof s) - 1] = '\0';
 				pop_up_in_game_error (s);
 			}
 			return;
 		}
 	} else {
-		na = malloc (size + sizeof *na);
-		itable_insert (&is->nopified_areas, (int)addr, (int)na);
+		sca = malloc (size + sizeof *sca);
+		itable_insert (&is->saved_code_areas, (int)addr, (int)sca);
 	}
-	na->size = size;
-	memcpy (&na->original_contents, addr, size);
-	memset (addr, 0x90, size);
+	sca->size = size;
+	memcpy (&sca->original_contents, addr, size);
+	if (nopify)
+		memset (addr, 0x90, size);
 }
 
-// De-nopifies an area, restoring the original contents. Does nothing if the area hasn't been nopified. Assumes the appropriate memory protection has
+// Restores a saved chunk of code to its original contents. Does nothing if the area hasn't been saved. Assumes the appropriate memory protection has
 // already been set.
 void
-restore_area (byte * addr)
+restore_code_area (byte * addr)
 {
-	struct nopified_area * na;
-	if (itable_look_up (&is->nopified_areas, (int)addr, (int *)&na)) {
-		memcpy (addr, &na->original_contents, na->size);
-		na->size = 0;
+	struct saved_code_area * sca;
+	if (itable_look_up (&is->saved_code_areas, (int)addr, (int *)&sca)) {
+		memcpy (addr, &sca->original_contents, sca->size);
+		sca->size = 0;
 	}
 }
 
 bool
-is_area_nopified (byte * addr)
+is_code_area_saved (byte * addr)
 {
-	struct nopified_area * na;
-	return itable_look_up (&is->nopified_areas, (int)addr, (int *)&na) && (na->size > 0);
+	struct saved_code_area * sca;
+	return itable_look_up (&is->saved_code_areas, (int)addr, (int *)&sca) && (sca->size > 0);
 }
 
 // Nopifies or restores an area depending on if yes_or_no is 1 or 0. Sets the necessary memory protections.
@@ -7998,9 +8033,9 @@ set_nopification (int yes_or_no, byte * addr, int size)
 {
 	WITH_MEM_PROTECTION (addr, size, PAGE_EXECUTE_READWRITE) {
 		if (yes_or_no)
-			nopify_area (addr, size);
+			save_code_area (addr, size, true);
 		else
-			restore_area (addr);
+			restore_code_area (addr);
 	}
 }
 
@@ -8055,14 +8090,14 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	// https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-10#post-16085242
 	WITH_MEM_PROTECTION (ADDR_HOUSEBOAT_BUG_PATCH, ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH, PAGE_EXECUTE_READWRITE) {
 		if (cfg->patch_houseboat_bug) {
-			nopify_area (ADDR_HOUSEBOAT_BUG_PATCH, ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH);
+			save_code_area (ADDR_HOUSEBOAT_BUG_PATCH, ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH, true);
 			byte * cursor = ADDR_HOUSEBOAT_BUG_PATCH;
 			*cursor++ = 0x50; // push eax
 			int call_offset = (int)&tile_at_city_or_null - ((int)cursor + 5);
 			*cursor++ = 0xE8; // call
 			cursor = int_to_bytes (cursor, call_offset);
 		} else
-			restore_area (ADDR_HOUSEBOAT_BUG_PATCH);
+			restore_code_area (ADDR_HOUSEBOAT_BUG_PATCH);
 	}
 
 	// NoRaze
@@ -8180,12 +8215,12 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	// those jumps lets us run the civ production code for the barbs as well.
 	WITH_MEM_PROTECTION (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP, 6, PAGE_EXECUTE_READWRITE) {
 		if (cfg->enable_city_capture_by_barbarians) {
-			nopify_area (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP, 6);
+			save_code_area (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP, 6, true);
 			byte jump_to_civ[6] = {0x0F, 0x8D, 0x0C, 0x00, 0x00, 0x00}; // jge +0x12
 			for (int n = 0; n < 6; n++)
 				ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP[n] = jump_to_civ[n];
 		} else
-			restore_area (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP);
+			restore_code_area (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP);
 	}
 	set_nopification (cfg->enable_city_capture_by_barbarians, ADDR_PROD_PHASE_BARB_DONE_JUMP, 5);
 
@@ -8194,9 +8229,9 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		     * addr_airlock = (domain == 0) ? ADDR_SEA_ZOC_FILTER_AIRLOCK      : ADDR_LAND_ZOC_FILTER_AIRLOCK;
 
 		WITH_MEM_PROTECTION (addr_skip, 6, PAGE_EXECUTE_READWRITE) {
-			if ((cfg->special_zone_of_control_rules != 0) && ! is_area_nopified (addr_skip)) {
+			if ((cfg->special_zone_of_control_rules != 0) && ! is_code_area_saved (addr_skip)) {
 				byte * original_target = addr_skip + 6 + int_from_bytes (addr_skip + 2); // target addr of jump instr we're replacing
-				nopify_area (addr_skip, 6);
+				save_code_area (addr_skip, 6, true);
 
 				// Initialize airlock. The airlock preserves all registers and calls filter_zoc_candidate then either follows or skips the
 				// original jump depending on what it returns. If zero is returned, follows the jump, skipping a bunch of code and filtering
@@ -8217,7 +8252,7 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 				// Write jump to airlock
 				emit_branch (BK_JUMP, addr_skip, addr_airlock);
 			} else if (cfg->special_zone_of_control_rules == 0)
-				restore_area (addr_skip);
+				restore_code_area (addr_skip);
 		}
 	}
 
@@ -8260,33 +8295,47 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		int_to_bytes (ADDR_PATHFINDER_RECONSTRUCTION_MAX_LEN, cfg->patch_premature_truncation_of_found_paths ? 2560 : 256);
 	}
 
-	int * trade_net_refs;
+	int * trade_net_addrs;
 	bool already_moved_trade_net = is->trade_net != p_original_trade_net,
-	     want_moved_trade_net = cfg->move_trade_net_object;
+	     want_moved_trade_net = cfg->city_limit > 512;
+	int lifted_city_limit_exp = 11;
+	int lifted_city_limit = 1 << lifted_city_limit_exp;
 	if ((! at_program_start) &&
-	    ((trade_net_refs = load_trade_net_refs ()) != NULL) &&
+	    ((trade_net_addrs = load_trade_net_addrs ()) != NULL) &&
 	    ((already_moved_trade_net && ! want_moved_trade_net) || (want_moved_trade_net && ! already_moved_trade_net))) {
 		// Allocate a new trade net object if necessary. To construct it, all we have to do is zero a few fields and set the vptr. Otherwise,
 		// set the allocated object aside for deletion later. Also set new & old addresses to the locations we're moving to & from.
 		Trade_Net * to_free = NULL;
 		int p_old, p_new;
 		if (want_moved_trade_net) {
-			is->trade_net = calloc (1, sizeof *is->trade_net);
+			is->trade_net = calloc (1, (sizeof (Trade_Net)) - (4 * 512 * 512) + (4 * lifted_city_limit * lifted_city_limit));
+			is->city_limit = lifted_city_limit;
 			is->trade_net->vtable = p_original_trade_net->vtable;
 			p_old = (int)p_original_trade_net;
 			p_new = (int)is->trade_net;
 		} else {
 			to_free = is->trade_net;
+			is->city_limit = 512;
 			p_old = (int)is->trade_net;
 			p_new = (int)p_original_trade_net;
 			is->trade_net = p_original_trade_net;
 		}
+		already_moved_trade_net = is->trade_net != p_original_trade_net; // Keep this variable up to date
 
 		// Patch all references from the "old" object to the "new" one
 		int offset;
 		bool popped_up_error = false;
+		char err_msg[200] = {0};
+		int * refs; {
+			if (exe_version_index == 0)
+				refs = trade_net_addrs;
+			else if (exe_version_index == 1) // Steam version, skip refs and instructions for GOG
+				refs = &trade_net_addrs[TRADE_NET_REF_COUNT + TRADE_NET_INSTR_COUNT_GOG];
+			else // PCGames.de version, skip two sets of refs and instrs for GOG & Steam
+				refs = &trade_net_addrs[2 * TRADE_NET_REF_COUNT + TRADE_NET_INSTR_COUNT_GOG + TRADE_NET_INSTR_COUNT_STEAM];
+		}
 		for (int n_ref = 0; n_ref < TRADE_NET_REF_COUNT; n_ref++) {
-			int addr = trade_net_refs[TRADE_NET_REF_COUNT * exe_version_index + n_ref];
+			int addr = refs[n_ref];
 			WITH_MEM_PROTECTION ((void *)(addr - 10), 20, PAGE_EXECUTE_READWRITE) {
 				byte * instr = (byte *)addr;
 				if ((instr[0] == 0xB9) && (int_from_bytes (&instr[1]) == p_old)) // move trade net ptr to ecx
@@ -8309,7 +8358,6 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 					 (offset = int_from_bytes (&instr[2]) - p_old, (offset >= 0) && (offset < 100)))
 					int_to_bytes (&instr[2], p_new + offset);
 				else if (! popped_up_error) {
-					char err_msg[200] = {0};
 					snprintf (err_msg, (sizeof err_msg) - 1, "Can't move trade net object from address 0x%x. Pattern doesn't match.", addr);
 					MessageBox (NULL, err_msg, NULL, MB_ICONERROR);
 					popped_up_error = true;
@@ -8317,10 +8365,115 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 			}
 		}
 
+		// Patch all instructions that involve the stride of Trade_Net.Matrix
+		int * addrs, addr_count; {
+			if (exe_version_index == 0) {
+				addrs = &trade_net_addrs[TRADE_NET_REF_COUNT];
+				addr_count = TRADE_NET_INSTR_COUNT_GOG;
+			} else if (exe_version_index == 1) {
+				addrs = &trade_net_addrs[2 * TRADE_NET_REF_COUNT + TRADE_NET_INSTR_COUNT_GOG];
+				addr_count = TRADE_NET_INSTR_COUNT_STEAM;
+			} else {
+				addrs = &trade_net_addrs[3 * TRADE_NET_REF_COUNT + TRADE_NET_INSTR_COUNT_GOG + TRADE_NET_INSTR_COUNT_STEAM];
+				addr_count = TRADE_NET_INSTR_COUNT_GOG;
+			}
+			for (int n = 0; n < addr_count; n++) {
+				byte * instr = (byte *)addrs[n];
+				WITH_MEM_PROTECTION (instr, 10, PAGE_EXECUTE_READWRITE) {
+					if (! want_moved_trade_net)
+						restore_code_area (instr);
+
+					else {
+						if ((instr[0] == 0xC1) && (instr[1] >= 0xE0) && (instr[1] <= 0xE7)) { // shl
+							save_code_area (instr, 3, false);
+							// shift amount is either 9 (1<<9 == 512) or 11 (1<<11 == 4*512, stride in bytes)
+							// in the second case, replace with lifted_exp + 2 to convert to bytes
+							instr[2] = lifted_city_limit_exp + ((instr[2] == 11) ? 2 : 0);
+
+						} else if ((instr[0] == 0x81) && (instr[1] >= 0xC0) && (instr[1] <= 0xC7)) { // add
+							save_code_area (instr, 6, false);
+							int amount = int_from_bytes (&instr[2]);
+							// amount is either 512 or 4*512, replace with lifted_lim or 4*lifted_lim
+							int_to_bytes (&instr[2], (amount == 512) ? lifted_city_limit : 4*lifted_city_limit);
+
+						} else if ((instr[0] == 0x8D) && (instr[1] == 0x9C) && (instr[2] == 0x90)) { // lea
+							save_code_area (instr, 7, false);
+							int offset = 4 * lifted_city_limit + 0x38; // stride in bytes plus 0x38 offset to Matrix in Trade_Net object
+							int_to_bytes (&instr[3], offset);
+
+						} else if (instr[0] == 0xB9) { // mov
+							save_code_area (instr, 5, false);
+							int_to_bytes (&instr[1], lifted_city_limit * lifted_city_limit);
+
+						} else if (! popped_up_error) {
+							snprintf (err_msg, (sizeof err_msg) - 1, "Can't patch matrix stride at address 0x%x. Pattern doesn't match.", (int)instr);
+							MessageBox (NULL, err_msg, NULL, MB_ICONERROR);
+							popped_up_error = true;
+						}
+					}
+				}
+			}
+		}
+
+		// Reallocate diplo_form->tradable_cities array so it matches the city limit
+		civ_prog_free (p_diplo_form->tradable_cities);
+		int tradable_cities_len = want_moved_trade_net ? lifted_city_limit : 512,
+		    tradable_cities_size = tradable_cities_len * sizeof (TradableItem);
+		p_diplo_form->tradable_cities = new (tradable_cities_size);
+		for (int n = 0; n < tradable_cities_len; n++)
+			p_diplo_form->tradable_cities[n] = (TradableItem) {.label = (char *)-1, 0}; // clear label to -1 and other fields to 0
+
+		// Patch the size limit on some code that clears the tradable cities array when starting a new game
+		WITH_MEM_PROTECTION (ADDR_TRADABLE_CITIES_SIZE_TO_CLEAR, 4, PAGE_EXECUTE_READWRITE) {
+			int_to_bytes (ADDR_TRADABLE_CITIES_SIZE_TO_CLEAR, tradable_cities_size);
+		}
+
 		if (to_free) {
 			to_free->vtable->destruct (to_free, __, 0);
 			free (to_free);
 		}
+	}
+
+	// Set is->city_limit and patch two instructions that contain the limit
+	is->city_limit = clamp (0, already_moved_trade_net ? lifted_city_limit : 512, cfg->city_limit);
+	WITH_MEM_PROTECTION (ADDR_CITY_LIM_CMP_IN_CONT_BEGIN_TURN, 6, PAGE_EXECUTE_READWRITE) {
+		int_to_bytes (&ADDR_CITY_LIM_CMP_IN_CONT_BEGIN_TURN[2], is->city_limit);
+	}
+	WITH_MEM_PROTECTION (ADDR_CITY_LIM_CMP_IN_CREATE_CITY, 5, PAGE_EXECUTE_READWRITE) {
+		int_to_bytes (&ADDR_CITY_LIM_CMP_IN_CREATE_CITY[1], is->city_limit);
+	}
+	WITH_MEM_PROTECTION (ADDR_MAX_TRADABLE_CITY_ID, 4, PAGE_EXECUTE_READWRITE) {
+		int_to_bytes (ADDR_MAX_TRADABLE_CITY_ID, already_moved_trade_net ? lifted_city_limit : 512);
+	}
+
+	WITH_MEM_PROTECTION (ADDR_CULTURE_DOUBLING_TIME_CMP_INSTR, 6, PAGE_EXECUTE_READWRITE) {
+		byte * instr = ADDR_CULTURE_DOUBLING_TIME_CMP_INSTR;
+		if (cfg->years_to_double_building_culture == 1000)
+			restore_code_area (instr);
+		else {
+			if (instr[0] == 0x3D) { // in GOG and PCG EXEs, instr is cmp eax, 0x3E8
+				save_code_area (instr, 5, false);
+				int_to_bytes (&instr[1], cfg->years_to_double_building_culture);
+			} else if (instr[0] == 0x3B) { // in Steam EXE, instr is cmp eax, dword ptr 0x688C9C
+				save_code_area (instr, 6, true);
+				instr[0] = 0x3D;
+				int_to_bytes (&instr[1], cfg->years_to_double_building_culture);
+			}
+		}
+	}
+
+	WITH_MEM_PROTECTION (ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT, 5, PAGE_EXECUTE_READWRITE) {
+		if (cfg->accentuate_cities_on_minimap) {
+			save_code_area (ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT, 5, false);
+			emit_branch (BK_JUMP, ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT, ADDR_INLEAD_FOR_CITY_DOT_DRAW_PIXEL_REPL);
+		} else
+			restore_code_area (ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT);
+	}
+	WITH_MEM_PROTECTION (ADDR_INLEAD_FOR_CITY_DOT_DRAW_PIXEL_REPL, INLEAD_SIZE, PAGE_EXECUTE_READWRITE) {
+		byte * code = ADDR_INLEAD_FOR_CITY_DOT_DRAW_PIXEL_REPL;
+		code[0] = 0x55; code[1] = 0x53; // write push ebp and push ebx, two overwritten instrs before the call
+		emit_branch (BK_CALL, &code[2], &patch_get_pixel_to_draw_city_dot); // call patch func
+		emit_branch (BK_JUMP, &code[7], ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT + 5); // jump back to original code
 	}
 }
 
@@ -9031,7 +9184,11 @@ patch_Map_Renderer_load_images (Map_Renderer *this)
 		}
 
 		if (is->day_night_cycle_img_state == IS_OK) {
+<<<<<<< HEAD
 
+=======
+			
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 			// Sprite proxies are deindexed during each load event as sprite instances (really only Resources, which are reloaded) may change.
 			if (!is->day_night_cycle_img_proxies_indexed) {
 				build_sprite_proxies_24(this);
@@ -9104,9 +9261,8 @@ patch_init_floating_point ()
 		{"enable_caravan_unit_ai"                              , true , offsetof (struct c3x_config, enable_caravan_unit_ai)},
 		{"remove_unit_limit"                                   , true , offsetof (struct c3x_config, remove_unit_limit)},
 		{"remove_city_improvement_limit"                       , true , offsetof (struct c3x_config, remove_city_improvement_limit)},
-		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
 		{"remove_cap_on_turn_limit"                            , true , offsetof (struct c3x_config, remove_cap_on_turn_limit)},
-		{"move_trade_net_object"                               , false, offsetof (struct c3x_config, move_trade_net_object)},
+		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
 		{"patch_submarine_bug"                                 , true , offsetof (struct c3x_config, patch_submarine_bug)},
 		{"patch_science_age_bug"                               , true , offsetof (struct c3x_config, patch_science_age_bug)},
 		{"patch_pedia_texture_bug"                             , true , offsetof (struct c3x_config, patch_pedia_texture_bug)},
@@ -9121,7 +9277,9 @@ patch_init_floating_point ()
 		{"patch_empty_army_movement"                           , true , offsetof (struct c3x_config, patch_empty_army_movement)},
 		{"patch_premature_truncation_of_found_paths"           , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
 		{"patch_zero_production_crash"                         , true , offsetof (struct c3x_config, patch_zero_production_crash)},
+		{"patch_ai_can_form_army_without_special_ability"      , true , offsetof (struct c3x_config, patch_ai_can_form_army_without_special_ability)},
 		{"patch_ai_can_sacrifice_without_special_ability"      , true , offsetof (struct c3x_config, patch_ai_can_sacrifice_without_special_ability)},
+		{"patch_crash_in_leader_unit_ai"                       , true , offsetof (struct c3x_config, patch_crash_in_leader_unit_ai)},
 		{"delete_off_map_ai_units"                             , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
 		{"fix_overlapping_specialist_yield_icons"              , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
 		{"prevent_autorazing"                                  , false, offsetof (struct c3x_config, prevent_autorazing)},
@@ -9151,6 +9309,8 @@ patch_init_floating_point ()
 		{"show_territory_colors_on_water_tiles_in_minimap"     , false, offsetof (struct c3x_config, show_territory_colors_on_water_tiles_in_minimap)},
 		{"convert_some_popups_into_online_mp_messages"         , false, offsetof (struct c3x_config, convert_some_popups_into_online_mp_messages)},
 		{"enable_debug_mode_switch"                            , false, offsetof (struct c3x_config, enable_debug_mode_switch)},
+		{"accentuate_cities_on_minimap"                        , false, offsetof (struct c3x_config, accentuate_cities_on_minimap)},
+		{"allow_multipage_civilopedia_descriptions"            , true , offsetof (struct c3x_config, allow_multipage_civilopedia_descriptions)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -9173,6 +9333,7 @@ patch_init_floating_point ()
 		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
 		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
+<<<<<<< HEAD
 		{"enable_districts"                                    , false, offsetof (struct c3x_config, enable_districts)},
 		{"enable_neighborhood_districts"                       , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
 		{"enable_wonder_districts"                             , false, offsetof (struct c3x_config, enable_wonder_districts)},
@@ -9185,6 +9346,9 @@ patch_init_floating_point ()
         {"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
 		{"ai_defends_districts"         		               , false, offsetof (struct c3x_config, ai_defends_districts)},
 		{"highlight_city_district_work_radii_on_select_worker" , false, offsetof (struct c3x_config, highlight_city_district_work_radii_on_select_worker)},
+=======
+		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 	};
 
 	struct integer_config_option {
@@ -9192,6 +9356,7 @@ patch_init_floating_point ()
 		int base_val;
 		int offset;
 	} integer_config_options[] = {
+<<<<<<< HEAD
 		{"limit_railroad_movement"                       ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
 		{"minimum_city_separation"                       ,     1, offsetof (struct c3x_config, minimum_city_separation)},
 		{"anarchy_length_percent"                        ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
@@ -9215,6 +9380,29 @@ patch_init_floating_point ()
 		{"distribution_hub_food_yield_divisor"			 ,     1, offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
 		{"distribution_hub_shield_yield_divisor"		 ,     1, offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
 		{"ai_ideal_distribution_hub_count_per_100_cities",     1, offsetof (struct c3x_config, ai_ideal_distribution_hub_count_per_100_cities)},
+=======
+		{"limit_railroad_movement"                      ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
+		{"minimum_city_separation"                      ,     1, offsetof (struct c3x_config, minimum_city_separation)},
+		{"anarchy_length_percent"                       ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
+		{"ai_multi_city_start"                          ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
+		{"max_tries_to_place_fp_city"                   , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
+		{"ai_research_multiplier"                       ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
+		{"ai_settler_perfume_on_founding_duration"      ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
+		{"extra_unit_maintenance_per_shields"           ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
+		{"ai_build_artillery_ratio"                     ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
+		{"ai_artillery_value_damage_percent"            ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
+		{"ai_build_bomber_ratio"                        ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
+		{"max_ai_naval_escorts"                         ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
+		{"ai_worker_requirement_percent"                ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
+		{"chance_for_nukes_to_destroy_max_one_hp_units" ,   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
+		{"rebase_range_multiplier"                      ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
+		{"elapsed_minutes_per_day_night_hour_transition",     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
+		{"fixed_hours_per_turn_for_day_night_cycle"     ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
+		{"pinned_hour_for_day_night_cycle"              ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
+		{"years_to_double_building_culture"             ,  1000, offsetof (struct c3x_config, years_to_double_building_culture)},
+		{"tourism_time_scale_percent"                   ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
+		{"city_limit"                                   ,  2048, offsetof (struct c3x_config, city_limit)},
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -9270,6 +9458,7 @@ patch_init_floating_point ()
 	base_config.ai_settler_perfume_on_founding = 0;
 	base_config.work_area_limit = WAL_NONE;
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
+	base_config.double_minimap_size = MDM_HIGH_DEF;
 	base_config.city_work_radius = 2;
 	base_config.day_night_cycle_mode = DNCM_OFF;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
@@ -9323,8 +9512,9 @@ patch_init_floating_point ()
 
 	is->sb_next_up = NULL;
 	is->trade_net = p_original_trade_net;
-	is->trade_net_refs_load_state = IS_UNINITED;
-	is->trade_net_refs = NULL;
+	is->city_limit = 512;
+	is->trade_net_addrs_load_state = IS_UNINITED;
+	is->trade_net_addrs = NULL;
 	is->tnx_cache = NULL;
 	is->is_computing_city_connections = false;
 	is->keep_tnx_cache = false;
@@ -9345,7 +9535,7 @@ patch_init_floating_point ()
 	is->trade_scroll_button_state = IS_UNINITED;
 	is->eligible_for_trade_scroll = 0;
 
-	memset (&is->nopified_areas, 0, sizeof is->nopified_areas);
+	memset (&is->saved_code_areas, 0, sizeof is->saved_code_areas);
 
 	is->unit_menu_duplicates = NULL;
 
@@ -9483,10 +9673,14 @@ patch_init_floating_point ()
 
 	memset (is->last_main_screen_key_up_events, 0, sizeof is->last_main_screen_key_up_events);
 
+<<<<<<< HEAD
 	reset_district_state (true);
 
 	// District sharing guard
 	is->sharing_buildings_by_districts_in_progress = false;
+=======
+	is->can_load_transport = is->can_load_passenger = NULL;
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -9712,16 +9906,25 @@ deinit_red_food_icon ()
 	is->red_food_icon_state = IS_UNINITED;
 }
 
+<<<<<<< HEAD
 void
 init_minor_roads ()
 {
 	if (is->minor_roads_img_state != IS_UNINITED)
 		return;
+=======
+enum init_state
+init_large_minimap_frame ()
+{
+	if (is->large_minimap_frame_img_state != IS_UNINITED)
+		return is->large_minimap_frame_img_state;
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 
 	PCX_Image pcx;
 	PCX_Image_construct (&pcx);
 
 	char temp_path[2*MAX_PATH];
+<<<<<<< HEAD
 	get_mod_art_path ("Districts\\minor_roads.pcx", temp_path, sizeof temp_path);
 
 	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
@@ -9800,6 +10003,46 @@ deinit_district_command_buttons ()
 				sprite->vtable->destruct (sprite, __, 0);
 			}
 	is->dc_btn_img_state = IS_UNINITED;
+=======
+
+	get_mod_art_path ("interface\\DoubleSizeBoxLeftColor.pcx", temp_path, sizeof temp_path);
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if (pcx.JGL.Image != NULL) {
+		Sprite_construct (&is->double_size_box_left_color_pcx);
+		int width  = pcx.JGL.Image->vtable->m54_Get_Width  (pcx.JGL.Image),
+		    height = pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image);
+		Sprite_slice_pcx (&is->double_size_box_left_color_pcx, __, &pcx, 0, 0, width, height, 1, 1);
+	} else {
+		pcx.vtable->destruct (&pcx, __, 0);
+		return is->large_minimap_frame_img_state = IS_INIT_FAILED;
+	}
+
+	get_mod_art_path ("interface\\DoubleSizeBoxLeftAlpha.pcx", temp_path, sizeof temp_path);
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if (pcx.JGL.Image != NULL) {
+		Sprite_construct (&is->double_size_box_left_alpha_pcx);
+		int width  = pcx.JGL.Image->vtable->m54_Get_Width  (pcx.JGL.Image),
+		    height = pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image);
+		Sprite_slice_pcx (&is->double_size_box_left_alpha_pcx, __, &pcx, 0, 0, width, height, 1, 1);
+	} else {
+		is->double_size_box_left_color_pcx.vtable->destruct (&is->double_size_box_left_color_pcx, __, 0);
+		pcx.vtable->destruct (&pcx, __, 0);
+		return is->large_minimap_frame_img_state = IS_INIT_FAILED;;
+	}
+
+	pcx.vtable->destruct (&pcx, __, 0);
+	return is->large_minimap_frame_img_state = IS_OK;
+}
+
+void
+deinit_large_minimap_frame ()
+{
+	if (is->large_minimap_frame_img_state == IS_OK) {
+		is->double_size_box_left_color_pcx.vtable->destruct (&is->double_size_box_left_color_pcx, __, 0);
+		is->double_size_box_left_alpha_pcx.vtable->destruct (&is->double_size_box_left_alpha_pcx, __, 0);
+	}
+	is->large_minimap_frame_img_state = IS_UNINITED;
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 }
 
 int __cdecl
@@ -12216,10 +12459,14 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	deinit_trade_scroll_buttons ();
 	deinit_unit_rcm_icons ();
 	deinit_red_food_icon ();
+<<<<<<< HEAD
 	deinit_minor_roads ();
 	deinit_district_command_buttons ();
 	deinit_district_icons ();
 	deinit_distribution_hub_icons ();
+=======
+	deinit_large_minimap_frame ();
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 	if (is->tile_already_worked_zoomed_out_sprite_init_state != IS_UNINITED) {
 		enum init_state * state = &is->tile_already_worked_zoomed_out_sprite_init_state;
 		if (*state == IS_OK) {
@@ -12380,7 +12627,11 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	// Clear old alias bits
 	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = is->aliased_leader_title_bits = 0;
 
+<<<<<<< HEAD
 	// Set as first turn and deindex day-night cycle sprite proxies, if necessary.
+=======
+	// Clear day/night cycle vars and deindex sprite proxies, if necessary.
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
 		is->day_night_cycle_unstarted = true;
 		is->current_day_night_cycle = 12;
@@ -12400,7 +12651,7 @@ patch_Leader_recompute_auto_improvements (Leader * this)
 }
 
 int __fastcall
-patch_get_wonder_city_id (void * this, int edx, int wonder_improvement_id)
+patch_Game_get_wonder_city_id (Game * this, int edx, int wonder_improvement_id)
 {
 	int ret_addr = ((int *)&wonder_improvement_id)[-1];
 	if ((is->current_config.enable_free_buildings_from_small_wonders) && (ret_addr == ADDR_SMALL_WONDER_FREE_IMPROVS_RETURN)) {
@@ -12411,7 +12662,7 @@ patch_get_wonder_city_id (void * this, int edx, int wonder_improvement_id)
 			return (leader->Small_Wonders != NULL) ? leader->Small_Wonders[wonder_improvement_id] : -1;
 		}
 	}
-	return get_wonder_city_id (this, __, wonder_improvement_id);
+	return Game_get_wonder_city_id (this, __, wonder_improvement_id);
 }
 
 int __fastcall
@@ -12516,15 +12767,23 @@ patch_Unit_can_hurry_production (Unit * this, int edx, City * city, bool exclude
 bool __fastcall
 patch_Unit_can_load (Unit * this, int edx, Unit * passenger)
 {
+	is->can_load_transport = this;
+	is->can_load_passenger = passenger;
+	bool tr;
+
 	// If this potential passenger is tied to a different transport, do not allow it to load into this one
 	int tied_transport_id = -1;
 	if (is->current_config.limit_unit_loading_to_one_transport_per_turn &&
 	    (! Unit_has_ability (this, __, UTA_Army)) &&
 	    itable_look_up (&is->unit_transport_ties, passenger->Body.ID, &tied_transport_id) &&
 	    (this->Body.ID != tied_transport_id))
-		return false;
+		tr = false;
 
-	return Unit_can_load (this, __, passenger);
+	else
+		tr = Unit_can_load (this, __, passenger);
+
+	is->can_load_transport = is->can_load_passenger = NULL;
+	return tr;
 }
 
 void __fastcall
@@ -12694,6 +12953,17 @@ find_nearest_established_city (Unit * unit, int continent_id)
 	return least_unattractive_city;
 }
 
+bool __fastcall
+patch_Unit_ai_can_form_army (Unit * this)
+{
+	int build_army_action = UCV_Build_Army & 0x0FFFFFFF; // Mask out top four category bits
+	UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+	if (is->current_config.patch_ai_can_form_army_without_special_ability && ((type->Special_Actions & build_army_action) == 0))
+		return false;
+	else
+		return Unit_ai_can_form_army (this);
+}
+
 void __fastcall
 patch_Unit_ai_move_leader (Unit * this)
 {
@@ -12753,7 +13023,9 @@ patch_Unit_ai_move_leader (Unit * this)
 	// aggression divided by the number of armies already in the field.
 	int num_armies = leaders[this->Body.CivID].Armies_Count;
 	int form_army_value = -1;
+	int build_army_action = UCV_Build_Army & 0x0FFFFFFF; // Mask out top four category bits
 	if ((this->Body.leader_kind & LK_Military) &&
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Special_Actions & build_army_action) &&
 	    ((num_armies + 1) * p_bic_data->General.ArmySupportCities <= leaders[this->Body.CivID].Cities_Count) &&
 	    (p_bic_data->General.BuildArmyUnitID >= 0) &&
 	    (p_bic_data->General.BuildArmyUnitID < p_bic_data->UnitTypeCount)) {
@@ -12820,7 +13092,7 @@ patch_Unit_ai_move_leader (Unit * this)
 			return;
 		} else
 			moving_to_city = best_rush_loc;
-	} else if ((form_army_value > -1) && (Unit_ai_can_form_army (this))) {
+	} else if ((form_army_value > -1) && patch_Unit_ai_can_form_army (this)) {
 		Unit_form_army (this);
 		return;
 	} else if (in_city == NULL) {
@@ -13501,7 +13773,7 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 bool
 is_zero_strength (UnitType * ut)
 {
-	return (ut->Attack == 0) && (ut->Defence == 0) && (ut->Bombard_Strength == 0) && (ut->Air_Defence == 0);
+	return (ut->Attack == 0) && (ut->Defence == 0);
 }
 
 bool
@@ -15241,7 +15513,7 @@ patch_Leader_count_maintenance_free_units (Leader * this)
 				UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
 
 				// If this is a free unit
-				if ((unit->Body.RaceID != this->RaceID) || (type->b_Not_King == 0))
+				if ((unit->Body.RaceID != this->RaceID) || (type->requires_support == 0))
 					tr++;
 
 				// If this unit belongs to the barbs and has a tribe ID set (indicating it was spawned in a barb camp) then count it
@@ -15497,6 +15769,18 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 	Leader_set_treasury (leader, __, treasury - improv_cost - unit_cost);
 }
 
+bool __fastcall
+patch_Unit_has_king_ability_for_find_unsupported (Unit * this, int edx, enum UnitTypeAbilities king_ability)
+{
+	// If we're set to aggressively penalize bankruptcy and this unit doesn't require support, return that it is a king so it doesn't get
+	// disbanded.
+	if (is->current_config.aggressively_penalize_bankruptcy && ! p_bic_data->UnitTypes[this->Body.UnitTypeID].requires_support)
+		return true;
+
+	else
+		return Unit_has_ability (this, __, king_ability);
+}
+
 void __fastcall
 patch_Leader_pay_unit_maintenance (Leader * this)
 {
@@ -15733,6 +16017,14 @@ patch_Leader_begin_turn (Leader * this)
 			    ((this->Relation_Treaties[n] & 2) == 0)) // Check right of passage
 				Leader_bounce_trespassing_units (&leaders[n], __, this->ID);
 	is->do_not_bounce_invisible_units = false;
+
+	if (is->current_config.introduce_all_human_players_at_start_of_hotseat_game &&
+	    (*p_current_turn_no == 0) &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((*p_human_player_bits & (1 << this->ID)) != 0))
+		for (int n = 0; n < 32; n++)
+			if (*p_human_player_bits & (1 << n))
+				Leader_make_contact (this, __, n, false);
 
 	Leader_begin_turn (this);
 }
@@ -17450,7 +17742,7 @@ patch_Demographics_Form_m22_draw (Demographics_Form * this)
 
 		// Draw text on top of the backdrop
 		char s[100];
-		snprintf (s, sizeof s, "%s %d / 512", is->c3x_labels[CL_TOTAL_CITIES], city_count);
+		snprintf (s, sizeof s, "%s %d / %d", is->c3x_labels[CL_TOTAL_CITIES], city_count, is->city_limit);
 		s[(sizeof s) - 1] = '\0';
 		PCX_Image_set_text_effects (canvas, __, 0x80000000, -1, 2, 2); // Set text color to black
 		PCX_Image_draw_centered_text (canvas, __, get_font (14, FSF_NONE), s, 1024/2 - 100, 730, 200, strlen (s));
@@ -18595,11 +18887,15 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			void * area = buffer_allocate (&mod_data, sizeof is->turn_no_of_last_founding_for_settler_perfume);
 			memcpy (area, is->turn_no_of_last_founding_for_settler_perfume, sizeof is->turn_no_of_last_founding_for_settler_perfume);
 		}
+<<<<<<< HEAD
 
+=======
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 		if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
 			serialize_aligned_text ("current_day_night_cycle", &mod_data);
 			int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_day_night_cycle), is->current_day_night_cycle);
 		}
+<<<<<<< HEAD
 
 	if (is->current_config.enable_districts) {
 		int entry_count = 0;
@@ -18726,6 +19022,8 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		}
 
 		// Wonder district info is now saved as part of district_tile_map above
+=======
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 	}
 
 	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
@@ -18903,6 +19201,10 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 
 			} else if (match_save_chunk_name (&cursor, "current_day_night_cycle")) {
 				is->current_day_night_cycle = *((int *)cursor)++;
+<<<<<<< HEAD
+=======
+				is->day_night_cycle_unstarted = false;
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 
 				// The day/night cycle sprite proxies will have been cleared in patch_load_scenario. They will not necessarily be set
 				// up again in the usual way because Map_Renderer::load_images is not necessarily called when loading a save. The game
@@ -18912,6 +19214,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
 					build_sprite_proxies_24 (&p_bic_data->Map.Renderer);
 
+<<<<<<< HEAD
 				// Because we've restored current_day_night_cycle from the save, set that is is not the first turn so the cycle
 				// doesn't get restarted.
 				is->day_night_cycle_unstarted = false;
@@ -19114,6 +19417,8 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					error_chunk_name = "distribution_hub_records";
 					break;
 				}
+=======
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 			} else {
 				error_chunk_name = "N/A";
 				break;
@@ -20688,9 +20993,13 @@ patch_Main_GUI_position_elements (Main_GUI * this)
 {
 	Main_GUI_position_elements (this);
 
-	// Double size of minimap
-	// this->Mini_Map_Click_Rect.top -= 105;
-	// this->Mini_Map_Click_Rect.right += 229;
+	// Double size of minimap if configured
+	bool want_larger_minimap = (is->current_config.double_minimap_size == MDM_ALWAYS) ||
+		((is->current_config.double_minimap_size == MDM_HIGH_DEF) && (p_bic_data->ScreenWidth >= 1920));
+	if (want_larger_minimap && (init_large_minimap_frame () == IS_OK)) {
+		this->Mini_Map_Click_Rect.top -= 105;
+		this->Mini_Map_Click_Rect.right += 229;
+	}
 }
 
 #define PEDIA_DESC_LINES_PER_PAGE 38
@@ -20699,7 +21008,7 @@ patch_Main_GUI_position_elements (Main_GUI * this)
 bool
 do_next_line_for_pedia_desc (PCX_Image * canvas, int * inout_y)
 {
-	if (is->cmpd.drawing_lines) {
+	if (is->cmpd.drawing_lines && is->current_config.allow_multipage_civilopedia_descriptions) {
 		int first_line_on_shown_page = is->cmpd.shown_page * PEDIA_DESC_LINES_PER_PAGE;
 		int page = is->cmpd.line_count / PEDIA_DESC_LINES_PER_PAGE;
 		is->cmpd.line_count += 1;
@@ -21480,6 +21789,7 @@ patch_Unit_ai_can_sacrifice (Unit * this, int edx, bool requires_city)
 		return Unit_ai_can_sacrifice (this, __, requires_city);
 }
 
+<<<<<<< HEAD
 int __cdecl
 patch_get_building_defense_bonus_at (int x, int y, int param_3)
 {
@@ -22072,6 +22382,40 @@ patch_Tile_has_district_or_colony (Tile * this)
 
 	// Fallback to original has_colony logic
 	return Tile_has_colony (this);
+=======
+int __fastcall
+patch_Buildings_Info_get_age_in_years_for_tourism (Buildings_Info * this, int edx, int building_index)
+{
+	int base = Buildings_Info_get_age_in_years (this, __, building_index);
+	if (is->current_config.tourism_time_scale_percent == 100)
+		return base;
+	else if (is->current_config.tourism_time_scale_percent <= 0)
+		return INT_MAX;
+	else
+		return (base * 100 + 50) / is->current_config.tourism_time_scale_percent;
+}
+
+int __fastcall
+patch_Sprite_draw_minimap_frame (Sprite * this, int edx, Sprite * alpha, int param_2, PCX_Image * canvas, int x, int y, int param_6)
+{
+	bool want_larger_minimap = (is->current_config.double_minimap_size == MDM_ALWAYS) ||
+		((is->current_config.double_minimap_size == MDM_HIGH_DEF) && (p_bic_data->ScreenWidth >= 1920));
+	if (want_larger_minimap && (init_large_minimap_frame () == IS_OK))
+		return Sprite_draw_for_hud (&is->double_size_box_left_color_pcx, __, &is->double_size_box_left_alpha_pcx, param_2, canvas, x, y, param_6);
+	else
+		return Sprite_draw_for_hud (this, __, alpha, param_2, canvas, x, y, param_6);
+}
+
+int __fastcall
+patch_City_get_turns_to_build_2_for_ai_move_leader (City * this, int edx, City_Order * order, bool param_2)
+{
+	// Initialize order variable to city's current build. This is not done in the base logic and can cause crashes.
+	City_Order current_order = { .OrderID = this->Body.Order_ID, .OrderType = this->Body.Order_Type };
+	if (is->current_config.patch_crash_in_leader_unit_ai)
+		order = &current_order;
+
+	return City_get_turns_to_build_2 (this, __, order, param_2);
+>>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 }
 
 // TCC requires a main function be defined even though it's never used.
