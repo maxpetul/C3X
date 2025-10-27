@@ -20841,9 +20841,6 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
-	char ss[200];
-	*p_debug_mode_bits |= 0xC;
-
     // If districts enabled and this tile is mapped to a district, draw only the district (suppress base mine drawing)
     if (is->current_config.enable_districts) {
         Tile * tile = tile_at (tile_x, tile_y);
