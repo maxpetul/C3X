@@ -16,6 +16,13 @@ typedef unsigned char byte;
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
+#define COUNT_SPECIAL_DISTRICT_TYPES 10
+#define USED_SPECIAL_DISTRICT_TYPES 4
+#define MAX_DYNAMIC_DISTRICT_TYPES 22
+#define COUNT_DISTRICT_TYPES (COUNT_SPECIAL_DISTRICT_TYPES + MAX_DYNAMIC_DISTRICT_TYPES)
+#define MAX_WONDER_DISTRICT_TYPES 32
+#define C3X_DISTRICT_COMMAND_BASE (-11000000)
+
 // Initialize to zero. Implementation is in common.c
 struct table {
 	void * block;
@@ -150,6 +157,7 @@ struct c3x_config {
 	bool dont_pause_for_love_the_king_messages;
 	bool reverse_specialist_order_with_shift;
 	bool toggle_zoom_with_z_on_city_screen;
+	bool enable_mouse_wheel_zoom;
 	bool dont_give_king_names_in_non_regicide_games;
 	bool no_elvis_easter_egg;
 	bool disable_worker_automation;
@@ -302,6 +310,30 @@ struct c3x_config {
 	int elapsed_minutes_per_day_night_hour_transition;
 	int fixed_hours_per_turn_for_day_night_cycle;
 	int pinned_hour_for_day_night_cycle;
+
+	bool enable_districts;
+	bool enable_neighborhood_districts;
+	bool enable_wonder_districts;
+	bool enable_distribution_hub_districts;
+	bool enable_aerodrome_districts;
+
+	bool cities_with_mutual_district_receive_buildings;
+	bool cities_with_mutual_district_receive_wonders;
+	bool air_units_use_aerodrome_districts_not_cities;
+
+	int maximum_pop_before_neighborhood_needed;
+	int per_neighborhood_pop_growth_enabled;
+	
+	bool completed_wonder_districts_can_be_destroyed;
+	bool destroyed_wonders_can_be_built_elsewhere;
+
+	int distribution_hub_food_yield_divisor;
+	int distribution_hub_shield_yield_divisor;
+	int ai_ideal_distribution_hub_count_per_100_cities;
+
+	bool ai_defends_districts;
+
+	bool highlight_city_district_work_radii_on_select_worker;
 };
 
 enum stackable_command {
@@ -467,6 +499,183 @@ enum city_loss_reason {
 	CLR_TRADED
 };
 
+enum {
+	MAX_DISTRICT_DEPENDENTS = 64
+};
+
+struct district_config {
+	enum Unit_Command_Values command;
+	char const * name;
+	char const * tooltip;
+	char const * advance_prereq;
+	char const * dependent_improvements[MAX_DISTRICT_DEPENDENTS];
+	char const * img_paths[10];
+	bool allow_multiple;
+	bool vary_img_by_era;
+	bool vary_img_by_culture;
+	bool is_dynamic;
+	int dependent_improvement_count;
+	int img_path_count;
+	int max_building_index;
+	int btn_tile_sheet_column;
+	int btn_tile_sheet_row;
+	int culture_bonus;
+	int science_bonus;
+	int food_bonus;
+	int gold_bonus;
+	int shield_bonus;
+	int defense_bonus_multiplier_pct;
+};
+
+struct wonder_district_config {
+	char const * wonder_name;
+	char const * img_path;
+	int index,
+		img_row,
+		img_column,
+		img_construct_row,
+		img_construct_column;
+	bool is_dynamic;
+};
+
+const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYPES] = {
+	{
+		.command = UCV_Build_Neighborhood, .name = "Neighborhood", .tooltip = "Build Neighborhood",
+		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = true, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx", "Neighborhood_Abandoned.pcx"},
+		.img_path_count = 6, .max_building_index = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
+		.culture_bonus = 1, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100
+		
+	},
+	{
+		.command = UCV_Build_WonderDistrict, .name = "Wonder District", .tooltip = "Build Wonder District",
+		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.img_paths = {"WonderDistrict.pcx"},
+		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100
+		
+	},
+	{
+		.command = UCV_Build_DistributionHub, .name = "Distribution Hub", .tooltip = "Build Distribution Hub",
+		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.img_paths = {"DistributionHub.pcx"},
+		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100
+		
+	},
+	{
+		.command = UCV_Build_Aerodrome, .name = "Aerodrome", .tooltip = "Aerodrome Hub",
+		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.img_paths = {"Aerodrome.pcx"},
+		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100	
+	}
+};
+
+struct parsed_district_definition {
+	char * name;
+	char * tooltip;
+	char * advance_prereq;
+	char * dependent_improvements[5];
+	char * img_paths[5];
+	int dependent_improvement_count;
+	int img_path_count;
+	bool allow_multiple;
+	bool vary_img_by_era;
+	bool vary_img_by_culture;
+	int btn_tile_sheet_column;
+	int btn_tile_sheet_row;
+	int defense_bonus_multiplier_pct;
+	int culture_bonus;
+	int science_bonus;
+	int food_bonus;
+	int gold_bonus;
+	int shield_bonus;
+	bool has_name;
+	bool has_tooltip;
+	bool has_advance_prereq;
+	bool has_dependent_improvements;
+	bool has_img_paths;
+	bool has_allow_multiple;
+	bool has_vary_img_by_era;
+	bool has_vary_img_by_culture;
+	bool has_btn_tile_sheet_column;
+	bool has_btn_tile_sheet_row;
+	bool has_defense_bonus_multiplier_pct;
+	bool has_culture_bonus;
+	bool has_science_bonus;
+	bool has_food_bonus;
+	bool has_gold_bonus;
+	bool has_shield_bonus;
+};
+
+struct distribution_hub_record {
+	Tile * tile;
+	int tile_x;
+	int tile_y;
+	int civ_id;
+	int city_id;
+	int food_yield;
+	int shield_yield;
+	int raw_food_yield;
+	int raw_shield_yield;
+	bool is_active;
+};
+
+struct ai_best_feasible_order {
+	City_Order order;
+	int value;
+};
+
+struct pending_district_request {
+	City * city;
+	int city_id;
+	int civ_id;
+	int district_id;
+	int assigned_worker_id;
+	int target_x;
+	int target_y;
+	int worker_assigned_turn;
+};
+
+struct district_worker_record {
+	Unit * worker;
+	int unit_id;
+	int continent_id;
+	struct pending_district_request * pending_req;
+};
+
+enum wonder_district_state {
+	WDS_UNUSED = 0,      // Wonder district built, no wonder assigned
+	WDS_UNDER_CONSTRUCTION,        // Reserved by a city for wonder construction
+	WDS_COMPLETED,       // Wonder completed on this district
+	WDS_RUINED           // (Future) Wonder was destroyed
+};
+
+struct wonder_district_info {
+	enum wonder_district_state state;
+	City * city;          // City that reserved/completed (NULL if unused)
+	int city_id;
+	int wonder_index;     // Wonder index (-1 if unused/reserved, valid if completed)
+};
+
+enum district_state {
+	DS_UNDER_CONSTRUCTION = 0,
+	DS_COMPLETED = 1
+};
+
+struct district_instance {
+	enum district_state state;
+	int district_type;    // Index into district_configs array
+	int tile_x;
+	int tile_y;
+	struct wonder_district_info wonder_info; // Only used if district_type is a wonder district
+};
+
+struct highlighted_city_radius_tile_info {
+	int highlight_level;
+};
+
 struct injected_state {
 	// ==========
 	// These fields are valid at any time in the injected code because they're set by the patcher {
@@ -483,6 +692,7 @@ struct injected_state {
 	enum init_state disabled_command_img_state;
 	enum init_state unit_rcm_icon_state;
 	enum init_state red_food_icon_state;
+	enum init_state distribution_hub_icons_img_state;
 	enum init_state tile_already_worked_zoomed_out_sprite_init_state;
 	enum init_state day_night_cycle_img_state;
 	enum init_state large_minimap_frame_img_state;
@@ -527,6 +737,7 @@ struct injected_state {
 	void * (* realloc) (void *, size_t);
 	void (* free) (void *);
 	long (* strtol) (char const *, char **, int);
+	float (* strtof) (char const *, char **);
 	int (* strcmp) (char const *, char const *);
 	int (* strncmp) (char const *, char const *, size_t);
 	size_t (* strlen) (char const *);
@@ -618,6 +829,9 @@ struct injected_state {
 	// The maximum number of tiles workable by cities including the city tile itself (21 under standard game rules). Updated whenever the
 	// city_work_radius config value gets changed.
 	int workable_tile_count;
+
+	// Multi-level zoom system (0-5, where 3 is default zoom level)
+	int current_zoom_level;
 
 	// The civ ID of the player from whose perspective we're currently showing city loc desirability, or -1 if none. Initialized to -1.
 	int city_loc_display_perspective;
@@ -1026,6 +1240,11 @@ struct injected_state {
 
 	struct table day_night_sprite_proxy_by_hour[24];
 
+	struct wonder_district_image_set {
+		Sprite img;
+		Sprite construct_img;
+	} wonder_district_img_sets[MAX_WONDER_DISTRICT_TYPES];
+
 	struct day_night_cycle_img_set
 	{
 		SpriteList Std_Terrain_Images[9];
@@ -1042,6 +1261,7 @@ struct injected_state {
 		Sprite Polar_Icecaps_Images[32];
 		Sprite Railroads_Images[272];
 		Sprite Roads_Images[256];
+		Sprite Minor_Roads_Images[256];
 		Sprite Terrain_Buldings_Airfields[2];
 		Sprite Terrain_Buldings_Airfields_Shadow[2];
 		Sprite Terrain_Buldings_Camp[4];
@@ -1093,8 +1313,119 @@ struct injected_state {
 		Sprite LM_Forests_Small_Images[10];
 		Sprite LM_Forests_Pines_Images[12];
 		Sprite LM_Hills_Images[16];
+		Sprite District_Images[COUNT_DISTRICT_TYPES][10][4][6]; // [district][variant][era][building_stage]
+		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
 	} day_night_cycle_imgs[24];
-  
+
+	// Districts
+	enum init_state dc_img_state;
+	enum init_state dc_btn_img_state;
+
+	struct district_config district_configs[COUNT_DISTRICT_TYPES];
+	struct wonder_district_config wonder_district_configs[MAX_WONDER_DISTRICT_TYPES];
+
+	struct district_image_set {
+		Sprite imgs[10][4][6]; // [variant][era][building_stage]
+	} district_img_sets[COUNT_DISTRICT_TYPES];
+
+	struct district_button_image_set {
+		Sprite imgs[4];
+	} district_btn_img_sets[COUNT_DISTRICT_TYPES];
+
+	// Tech ID keys -> district ID. If a tech (aka advance) ID is present in the
+	// table that means that tech enables a district. This also means one tech can enable at most one district.
+	struct table district_tech_prereqs;
+
+	// Building ID keys -> district ID. If a building ID is present in the
+	// table that means that building can only be built if there is a corresponding district is present in the city radius.
+	struct table district_building_prereqs;
+
+	// Tile pointer IDs -> district_instance pointer. Maps tiles to dynamically allocated
+	// district_instance structs tracking district type and state (UNDER_CONSTRUCTION or COMPLETED).
+	// For wonder districts, the wonder_info field tracks wonder-specific state (unused, reserved, completed, ruined),
+	// which city reserved/completed the wonder, and which wonder index is on this district.
+	struct table district_tile_map;
+
+	// Tracks per-turn airlift usage for aerodrome districts (tile pointer -> civ bitmask).
+	struct table aerodrome_airlift_usage;
+
+	// Command ID keys -> district ID. Used to identify which district
+	// a unit command (e.g., build order) corresponds to.
+	struct table command_id_to_district_id;
+
+	// Array of 32 tables (one per civ) of pending district requests keyed by city & district (values are struct pending_district_request pointers).
+	struct table city_pending_district_requests[32];
+
+	// City pointer keys -> improvement ID. Tracks which improvements (buildings/wonders)
+	// requiring districts a city has ordered to be built (pending district completion).
+	struct table city_pending_building_orders;
+
+	// AI cache mapping city pointer keys -> AI_Order pointer. Stores the best feasible
+	// production order for AI cities to optimize decision-making.
+	struct table ai_best_feasible_orders;
+
+	// String building/wonder name keys -> int building/improvement ID.
+	// Used to look up building IDs by their text names from the game data.
+	struct table building_name_to_id;
+
+	struct district_infos {
+		int advance_prereq_id; // Tech ID that enables the district
+		int dependent_building_count;
+		int dependent_building_ids[MAX_DISTRICT_DEPENDENTS]; // Building types the district enables
+	} district_infos[COUNT_DISTRICT_TYPES];
+
+	int district_count;
+	int special_district_count;
+	int dynamic_district_count;
+	int wonder_district_count;
+	int next_custom_dynamic_command_index;
+
+	struct table distribution_hub_records;
+	struct table distribution_hub_coverage_counts;
+	int * distribution_hub_food_bonus_per_city;
+	int * distribution_hub_shield_bonus_per_city;
+	int distribution_hub_bonus_capacity;
+	int * distribution_hub_food_per_civ;
+	int * distribution_hub_shield_per_civ;
+	int distribution_hub_civ_capacity;
+	bool distribution_hub_totals_dirty;
+	bool distribution_hub_refresh_in_progress;
+
+	Sprite distribution_hub_shield_icon;
+	Sprite distribution_hub_corruption_icon;
+	Sprite distribution_hub_food_icon;
+	Sprite distribution_hub_eaten_food_icon;
+	Sprite distribution_hub_shield_icon_small;
+	Sprite distribution_hub_food_icon_small;
+	int non_district_shield_icons_remaining;
+	int corruption_shield_icons_remaining;
+	int district_shield_icons_remaining;
+	int distribution_hub_shield_icons_remaining;
+	int district_corruption_icons_remaining;
+	int distribution_hub_corruption_icons_remaining;
+
+	enum init_state district_icons_img_state;
+	Sprite district_science_icon;
+	Sprite district_commerce_icon;
+	Sprite district_shield_icon;
+	Sprite district_corruption_icon;
+	Sprite district_food_icon;
+	Sprite district_food_eaten_icon;
+	Sprite district_shield_icon_small;
+	Sprite district_commerce_icon_small;
+	Sprite district_food_icon_small;
+	Sprite district_science_icon_small;
+	Sprite district_culture_icon_small;
+
+	// Guard to prevent recursive sharing when auto-adding buildings across cities
+	bool sharing_buildings_by_districts_in_progress;
+
+	// Worker tracking: 32 tables (one per civ), each mapping unit_id -> district_worker_record pointer
+	struct table district_worker_tables[32];
+
+	bool highlight_city_radii;
+	struct table highlighted_city_radius_tile_pointers;
+
 	// Initialized to 0. Every time Main_Screen_Form::m82_handle_key_event receives an event with is_down == 0, the virtual key code is prepended
 	// to this list.
 	int last_main_screen_key_up_events[5];

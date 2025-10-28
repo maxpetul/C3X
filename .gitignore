@@ -13,3 +13,9 @@ correlator/pcg.json
 AMB Editor/references
 AMB Editor/package-lock.json
 **/.claude/settings.local.json
+custom.c3x_config.ini
+**/scenario.c3x_config.ini
+custom.districts_config.txt
+**/scenario.districts_config.txt
+custom.districts_wonders_config.txt
+**/scenario.districts_wonders_config.txt
