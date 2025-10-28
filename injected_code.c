@@ -2992,9 +2992,27 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		*(byte *)ADDR_CHECK_ARTILLERY_IN_CITY = cfg->use_offensive_artillery_ai ? 0xEB : 0x74;
 	
 	// Remove unit limit
-	// replacing 0x7C (= jump if less than [unit limit]) with 0xEB (= uncond. jump)
-	WITH_MEM_PROTECTION (ADDR_UNIT_COUNT_CHECK, 1, PAGE_EXECUTE_READWRITE)
-		*(byte *)ADDR_UNIT_COUNT_CHECK = cfg->remove_unit_limit ? 0xEB : 0x7C;
+	if (! at_program_start) {
+		// Replace 0x7C (= jump if less than [unit limit]) with 0xEB (= uncond. jump) in Leader::spawn_unit
+		WITH_MEM_PROTECTION (ADDR_UNIT_COUNT_CHECK, 1, PAGE_EXECUTE_READWRITE)
+			*(byte *)ADDR_UNIT_COUNT_CHECK = cfg->remove_unit_limit ? 0xEB : 0x7C;
+
+		// Increase max ID to search for tradable units by 10x if limit removed
+		WITH_MEM_PROTECTION (ADDR_MAX_TRADABLE_UNIT_ID, 4, PAGE_EXECUTE_READWRITE)
+			int_to_bytes (ADDR_MAX_TRADABLE_UNIT_ID, cfg->remove_unit_limit ? 81920 : 8192);
+
+		// Reallocate diplo_form->tradable_units array so it's 10x long if limit removed
+		civ_prog_free (p_diplo_form->tradable_units);
+		int tradable_units_len = cfg->remove_unit_limit ? 81920 : 8192,
+		    tradable_units_size = tradable_units_len * sizeof (TradableItem);
+		p_diplo_form->tradable_units = new (tradable_units_size);
+		for (int n = 0; n < tradable_units_len; n++)
+			p_diplo_form->tradable_units[n] = (TradableItem) {.label = (char *)-1, 0}; // clear label to -1 and other fields to 0
+
+		// Patch the size limit on some code that clears the tradable units array when starting a new game
+		WITH_MEM_PROTECTION (ADDR_TRADABLE_UNITS_SIZE_TO_CLEAR, 4, PAGE_EXECUTE_READWRITE)
+			int_to_bytes (ADDR_TRADABLE_UNITS_SIZE_TO_CLEAR, tradable_units_size);
+	}
 
 	// Remove era limit
 	// replacing 0x74 (= jump if zero [after cmp'ing era count with 4]) with 0xEB
