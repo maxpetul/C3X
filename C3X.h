@@ -572,6 +572,42 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	}
 };
 
+struct parsed_district_definition {
+	char * name;
+	char * tooltip;
+	char * advance_prereq;
+	char * dependent_improvements[5];
+	char * img_paths[5];
+	int dependent_improvement_count;
+	int img_path_count;
+	bool allow_multiple;
+	bool vary_img_by_era;
+	bool vary_img_by_culture;
+	int btn_tile_sheet_column;
+	int btn_tile_sheet_row;
+	int defense_bonus_multiplier_pct;
+	int culture_bonus;
+	int science_bonus;
+	int food_bonus;
+	int gold_bonus;
+	int shield_bonus;
+	bool has_name;
+	bool has_tooltip;
+	bool has_advance_prereq;
+	bool has_dependent_improvements;
+	bool has_img_paths;
+	bool has_allow_multiple;
+	bool has_vary_img_by_era;
+	bool has_vary_img_by_culture;
+	bool has_btn_tile_sheet_column;
+	bool has_btn_tile_sheet_row;
+	bool has_defense_bonus_multiplier_pct;
+	bool has_culture_bonus;
+	bool has_science_bonus;
+	bool has_food_bonus;
+	bool has_gold_bonus;
+	bool has_shield_bonus;
+};
 
 struct distribution_hub_record {
 	Tile * tile;
