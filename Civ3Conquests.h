@@ -1668,7 +1668,7 @@ struct UnitType
   int field_D4;
   int field_D8;
   IntList unit_telepads;
-  int field_F4;
+  int enslave_results_in;
   IntList stealth_attack_targets;
   IntList building_telepads;
   int Create_Craters;

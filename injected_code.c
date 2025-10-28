@@ -4447,6 +4447,7 @@ patch_init_floating_point ()
 	is->checking_visibility_for_unit = NULL;
 
 	is->do_not_bounce_invisible_units = false;
+	is->do_not_enslave_units = false;
 
 	is->saved_improv_counts = NULL;
 	is->saved_improv_counts_capacity = 0;
@@ -13394,6 +13395,14 @@ patch_City_get_turns_to_build_2_for_ai_move_leader (City * this, int edx, City_O
 		order = &current_order;
 
 	return City_get_turns_to_build_2 (this, __, order, param_2);
+}
+
+int __fastcall
+patch_rand_int_to_enslave (void * this, int edx, int lim)
+{
+	// lim is 100, enslaving happens if the return value is < 33
+	int r = rand_int (this, __, lim);
+	return is->do_not_enslave_units ? 100 : r;
 }
 
 // TCC requires a main function be defined even though it's never used.
