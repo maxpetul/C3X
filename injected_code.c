@@ -5487,13 +5487,13 @@ reset_district_state (bool reset_tile_map)
 {
 	clear_all_tracked_workers ();
 	deinit_district_images ();
+	clear_highlighted_worker_tiles_for_districts ();
 
 	table_deinit (&is->district_tech_prereqs);
 	table_deinit (&is->district_building_prereqs);
 	table_deinit (&is->command_id_to_district_id);
 	stable_deinit (&is->building_name_to_id);
 	if (reset_tile_map) {
-		// Free all district_instance structs first
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
 			struct district_instance * inst = (struct district_instance *)(long)tei.value;
 			if (inst != NULL)
@@ -5502,7 +5502,6 @@ reset_district_state (bool reset_tile_map)
 		table_deinit (&is->district_tile_map);
 	}
 
-	// Wonder district info is now part of district_instance, so no separate cleanup needed
 	clear_distribution_hub_tables ();
 
 	if (is->distribution_hub_food_bonus_per_city != NULL) {
