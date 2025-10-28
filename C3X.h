@@ -181,7 +181,7 @@ struct c3x_config {
 	int * ai_multi_start_extra_palaces;
 	int count_ai_multi_start_extra_palaces;
 	int ai_multi_start_extra_palaces_capacity;
-	bool promote_forbidden_palace_decorruption;
+	bool promote_wonder_decorruption_effect;
 	bool allow_military_leaders_to_hurry_wonders;
 	int ai_research_multiplier;
 	int ai_settler_perfume_on_founding;

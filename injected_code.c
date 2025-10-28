@@ -1854,6 +1854,11 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->polish_precision_striking = ival != 0;
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
+				} else if (slice_matches_str (&p.key, "promote_forbidden_palace_decorruption")) {
+					if (read_int (&value, &ival))
+						cfg->promote_wonder_decorruption_effect = ival != 0;
+					else
+						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 				} else if (slice_matches_str (&p.key, "move_trade_net_object")) {
 					; // No nothing. This setting no longer serves any purpose.
 
@@ -4047,7 +4052,7 @@ patch_init_floating_point ()
 		{"allow_airdrop_without_airport"                       , false, offsetof (struct c3x_config, allow_airdrop_without_airport)},
 		{"enable_negative_pop_pollution"                       , true , offsetof (struct c3x_config, enable_negative_pop_pollution)},
 		{"allow_defensive_retreat_on_water"                    , false, offsetof (struct c3x_config, allow_defensive_retreat_on_water)},
-		{"promote_forbidden_palace_decorruption"               , false, offsetof (struct c3x_config, promote_forbidden_palace_decorruption)},
+		{"promote_wonder_decorruption_effect"                  , false, offsetof (struct c3x_config, promote_wonder_decorruption_effect)},
 		{"allow_military_leaders_to_hurry_wonders"             , false, offsetof (struct c3x_config, allow_military_leaders_to_hurry_wonders)},
 		{"aggressively_penalize_bankruptcy"                    , false, offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
 		{"no_penalty_exception_for_agri_fresh_water_city_tiles", false, offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
@@ -8064,7 +8069,7 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, bool 
 
 	int tr = City_compute_corrupted_yield (this, __, gross_yield, is_production);
 
-	if (is->current_config.promote_forbidden_palace_decorruption) {
+	if (is->current_config.promote_wonder_decorruption_effect) {
 		int actual_capital_id = leader->CapitalID;
 		for (int improv_id = 0; improv_id < p_bic_data->ImprovementsCount; improv_id++) {
 			Improvement * improv = &p_bic_data->Improvements[improv_id];
@@ -8072,15 +8077,11 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, bool 
 			if (improv->SmallWonderFlags & ITSW_Reduces_Corruption) {
 				if (improv->Characteristics & ITC_Small_Wonder) {
 					pseudo_capital = get_city_ptr (leader->Small_Wonders[improv_id]);
-				}
-				else if (improv->Characteristics & ITC_Wonder) {
+				} else if (improv->Characteristics & ITC_Wonder) {
 					pseudo_capital = get_city_ptr (Game_get_wonder_city_id(p_game, __, improv_id));
-					// If the city is not owned by the same civ, ignore
-					if (pseudo_capital->Body.CivID != this->Body.CivID)
-						pseudo_capital = NULL;
 				}
 
-				if (pseudo_capital != NULL && pseudo_capital->Body.ID != actual_capital_id) {
+				if (pseudo_capital != NULL && pseudo_capital->Body.CivID == this->Body.CivID && pseudo_capital->Body.ID != actual_capital_id) {
 					leader->CapitalID = pseudo_capital->Body.ID;
 					int fp_corrupted_yield = City_compute_corrupted_yield (this, __, gross_yield, is_production);
 					if (fp_corrupted_yield < tr)
