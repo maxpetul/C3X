@@ -1320,6 +1320,7 @@ struct injected_state {
 	// Districts
 	enum init_state dc_img_state;
 	enum init_state dc_btn_img_state;
+	enum init_state dc_icons_img_state;
 
 	struct district_config district_configs[COUNT_DISTRICT_TYPES];
 	struct wonder_district_config wonder_district_configs[MAX_WONDER_DISTRICT_TYPES];
@@ -1374,12 +1375,16 @@ struct injected_state {
 		int dependent_building_ids[MAX_DISTRICT_DEPENDENTS]; // Building types the district enables
 	} district_infos[COUNT_DISTRICT_TYPES];
 
+	// District tracking counters: total = special (hard-coded) + dynamic (from config/scenario)
+	// next_custom_dynamic_command_index assigns unique command IDs for custom dynamic commands
 	int district_count;
 	int special_district_count;
 	int dynamic_district_count;
 	int wonder_district_count;
 	int next_custom_dynamic_command_index;
 
+	// Distribution Hub tracking: records keyed by tile, coverage counts per tile, yield bonuses per city/civ
+	// dirty/refresh flags control when totals are recalculated to avoid redundant computation
 	struct table distribution_hub_records;
 	struct table distribution_hub_coverage_counts;
 	int * distribution_hub_food_bonus_per_city;
@@ -1391,6 +1396,8 @@ struct injected_state {
 	bool distribution_hub_totals_dirty;
 	bool distribution_hub_refresh_in_progress;
 
+	// Distribution Hub UI sprites loaded from PCX files for rendering food/shield icons in city interface
+	// *_icons_remaining counters track how many icons to draw from each source (non-district, district, hub, corruption)
 	Sprite distribution_hub_shield_icon;
 	Sprite distribution_hub_corruption_icon;
 	Sprite distribution_hub_food_icon;
@@ -1404,7 +1411,8 @@ struct injected_state {
 	int district_corruption_icons_remaining;
 	int distribution_hub_corruption_icons_remaining;
 
-	enum init_state district_icons_img_state;
+	// District UI sprites loaded from PCX files for rendering yield icons (science, commerce, shield, food, culture)
+	// Available in both regular and small sizes for different UI contexts in city interface
 	Sprite district_science_icon;
 	Sprite district_commerce_icon;
 	Sprite district_shield_icon;
@@ -1423,6 +1431,7 @@ struct injected_state {
 	// Worker tracking: 32 tables (one per civ), each mapping unit_id -> district_worker_record pointer
 	struct table district_worker_tables[32];
 
+	// City work radius highlighting: flag to enable/disable, table mapping tile pointers to highlight_level for visual feedback
 	bool highlight_city_radii;
 	struct table highlighted_city_radius_tile_pointers;
 

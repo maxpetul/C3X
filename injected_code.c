@@ -11657,9 +11657,9 @@ patch_City_Form_draw (City_Form * this)
 		return;
 
 	// Lazy load district icons
-	if (is->district_icons_img_state == IS_UNINITED)
+	if (is->dc_icons_img_state == IS_UNINITED)
 		init_district_icons ();
-	if (is->district_icons_img_state != IS_OK)
+	if (is->dc_icons_img_state != IS_OK)
 		return;
 
 	City * city = this->CurrentCity;
@@ -19916,11 +19916,11 @@ cleanup:
 void
 init_district_icons ()
 {
-	if (is->district_icons_img_state != IS_UNINITED)
+	if (is->dc_icons_img_state != IS_UNINITED)
 		return;
 
 	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] init_district_icons: state=%d\n", is->district_icons_img_state);
+	snprintf (ss, sizeof ss, "[C3X] init_district_icons: state=%d\n", is->dc_icons_img_state);
 	(*p_OutputDebugStringA) (ss);
 
 	PCX_Image pcx;
@@ -19934,7 +19934,7 @@ init_district_icons ()
 	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) < 776) ||
 	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) < 32)) {
 		(*p_OutputDebugStringA) ("[C3X] PCX file for district icons failed to load or is too small.\n");
-		is->district_icons_img_state = IS_INIT_FAILED;
+		is->dc_icons_img_state = IS_INIT_FAILED;
 		goto cleanup;
 	}
 
@@ -19982,7 +19982,7 @@ init_district_icons ()
 	Sprite_construct (&is->district_culture_icon_small);
 	Sprite_slice_pcx (&is->district_culture_icon_small, __, &pcx, 1 + 18*31, 1, 30, 30, 1, 1);
 
-	is->district_icons_img_state = IS_OK;
+	is->dc_icons_img_state = IS_OK;
 cleanup:
 	pcx.vtable->destruct (&pcx, __, 0);
 }
@@ -19991,9 +19991,9 @@ void
 draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int screen_x, int screen_y)
 {
 	// Lazy load district icons
-	if (is->district_icons_img_state == IS_UNINITED)
+	if (is->dc_icons_img_state == IS_UNINITED)
 		init_district_icons ();
-	if (is->district_icons_img_state != IS_OK)
+	if (is->dc_icons_img_state != IS_OK)
 		return;
 
 	// Get district configuration
@@ -21690,9 +21690,9 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 		if (is->distribution_hub_icons_img_state != IS_OK)
 			return;
 	}
-	if (is->district_icons_img_state == IS_UNINITED)
+	if (is->dc_icons_img_state == IS_UNINITED)
 		init_district_icons ();
-	if (is->district_icons_img_state != IS_OK)
+	if (is->dc_icons_img_state != IS_OK)
 		return;
 
 	int food_income = city->Body.FoodIncome;
@@ -21923,7 +21923,7 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 int __fastcall
 patch_Sprite_draw_production_income_icon (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
-	if (is->current_config.enable_districts && is->district_icons_img_state == IS_OK) {
+	if (is->current_config.enable_districts && is->dc_icons_img_state == IS_OK) {
 		Sprite to_draw = *this;
 		if (is->corruption_shield_icons_remaining > 0 || 
 			is->district_corruption_icons_remaining > 0 || 
