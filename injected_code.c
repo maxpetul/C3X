@@ -1983,6 +1983,11 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->polish_precision_striking = ival != 0;
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
+				} else if (slice_matches_str (&p.key, "promote_forbidden_palace_decorruption")) {
+					if (read_int (&value, &ival))
+						cfg->promote_wonder_decorruption_effect = ival != 0;
+					else
+						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
 				} else if (slice_matches_str (&p.key, "move_trade_net_object")) {
 					; // No nothing. This setting no longer serves any purpose.
 
@@ -7977,9 +7982,27 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		*(byte *)ADDR_CHECK_ARTILLERY_IN_CITY = cfg->use_offensive_artillery_ai ? 0xEB : 0x74;
 	
 	// Remove unit limit
-	// replacing 0x7C (= jump if less than [unit limit]) with 0xEB (= uncond. jump)
-	WITH_MEM_PROTECTION (ADDR_UNIT_COUNT_CHECK, 1, PAGE_EXECUTE_READWRITE)
-		*(byte *)ADDR_UNIT_COUNT_CHECK = cfg->remove_unit_limit ? 0xEB : 0x7C;
+	if (! at_program_start) {
+		// Replace 0x7C (= jump if less than [unit limit]) with 0xEB (= uncond. jump) in Leader::spawn_unit
+		WITH_MEM_PROTECTION (ADDR_UNIT_COUNT_CHECK, 1, PAGE_EXECUTE_READWRITE)
+			*(byte *)ADDR_UNIT_COUNT_CHECK = cfg->remove_unit_limit ? 0xEB : 0x7C;
+
+		// Increase max ID to search for tradable units by 10x if limit removed
+		WITH_MEM_PROTECTION (ADDR_MAX_TRADABLE_UNIT_ID, 4, PAGE_EXECUTE_READWRITE)
+			int_to_bytes (ADDR_MAX_TRADABLE_UNIT_ID, cfg->remove_unit_limit ? 81920 : 8192);
+
+		// Reallocate diplo_form->tradable_units array so it's 10x long if limit removed
+		civ_prog_free (p_diplo_form->tradable_units);
+		int tradable_units_len = cfg->remove_unit_limit ? 81920 : 8192,
+		    tradable_units_size = tradable_units_len * sizeof (TradableItem);
+		p_diplo_form->tradable_units = new (tradable_units_size);
+		for (int n = 0; n < tradable_units_len; n++)
+			p_diplo_form->tradable_units[n] = (TradableItem) {.label = (char *)-1, 0}; // clear label to -1 and other fields to 0
+
+		// Patch the size limit on some code that clears the tradable units array when starting a new game
+		WITH_MEM_PROTECTION (ADDR_TRADABLE_UNITS_SIZE_TO_CLEAR, 4, PAGE_EXECUTE_READWRITE)
+			int_to_bytes (ADDR_TRADABLE_UNITS_SIZE_TO_CLEAR, tradable_units_size);
+	}
 
 	// Remove era limit
 	// replacing 0x74 (= jump if zero [after cmp'ing era count with 4]) with 0xEB
@@ -9160,7 +9183,7 @@ patch_init_floating_point ()
 		{"allow_airdrop_without_airport"                       , false, offsetof (struct c3x_config, allow_airdrop_without_airport)},
 		{"enable_negative_pop_pollution"                       , true , offsetof (struct c3x_config, enable_negative_pop_pollution)},
 		{"allow_defensive_retreat_on_water"                    , false, offsetof (struct c3x_config, allow_defensive_retreat_on_water)},
-		{"promote_forbidden_palace_decorruption"               , false, offsetof (struct c3x_config, promote_forbidden_palace_decorruption)},
+		{"promote_wonder_decorruption_effect"                  , false, offsetof (struct c3x_config, promote_wonder_decorruption_effect)},
 		{"allow_military_leaders_to_hurry_wonders"             , false, offsetof (struct c3x_config, allow_military_leaders_to_hurry_wonders)},
 		{"aggressively_penalize_bankruptcy"                    , false, offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
 		{"no_penalty_exception_for_agri_fresh_water_city_tiles", false, offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
@@ -14140,17 +14163,24 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, bool 
 
 	int tr = City_compute_corrupted_yield (this, __, gross_yield, is_production);
 
-	if (is->current_config.promote_forbidden_palace_decorruption) {
+	if (is->current_config.promote_wonder_decorruption_effect) {
 		int actual_capital_id = leader->CapitalID;
 		for (int improv_id = 0; improv_id < p_bic_data->ImprovementsCount; improv_id++) {
 			Improvement * improv = &p_bic_data->Improvements[improv_id];
-			City * fp_city;
-			if ((improv->SmallWonderFlags & ITSW_Reduces_Corruption) &&
-			    (NULL != (fp_city = get_city_ptr (leader->Small_Wonders[improv_id])))) {
-				leader->CapitalID = fp_city->Body.ID;
-				int fp_corrupted_yield = City_compute_corrupted_yield (this, __, gross_yield, is_production);
-				if (fp_corrupted_yield < tr)
-					tr = fp_corrupted_yield;
+			City * pseudo_capital = NULL;
+			if (improv->SmallWonderFlags & ITSW_Reduces_Corruption) {
+				if (improv->Characteristics & ITC_Small_Wonder) {
+					pseudo_capital = get_city_ptr (leader->Small_Wonders[improv_id]);
+				} else if (improv->Characteristics & ITC_Wonder) {
+					pseudo_capital = get_city_ptr (Game_get_wonder_city_id(p_game, __, improv_id));
+				}
+
+				if (pseudo_capital != NULL && pseudo_capital->Body.CivID == this->Body.CivID && pseudo_capital->Body.ID != actual_capital_id) {
+					leader->CapitalID = pseudo_capital->Body.ID;
+					int fp_corrupted_yield = City_compute_corrupted_yield (this, __, gross_yield, is_production);
+					if (fp_corrupted_yield < tr)
+						tr = fp_corrupted_yield;
+				}
 			}
 		}
 		leader->CapitalID = actual_capital_id;
