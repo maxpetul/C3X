@@ -210,7 +210,7 @@ tile_is_adjacent_to_any_city (int tile_x, int tile_y)
 }
 
 // Declare various functions needed for districts and hard to untangle and reorder here
-void __fastcall patch_City_recompute_yields_and_happiness (City * this, int edx);
+void __fastcall patch_City_recompute_yields_and_happiness (City * this);
 void __fastcall patch_Map_build_trade_network (Map * this);
 Tile * find_tile_for_district (City * city, int district_id, int * out_x, int * out_y);
 struct district_instance * get_district_instance (Tile * tile);
@@ -3073,7 +3073,7 @@ recompute_city_yields_with_districts (City * city)
 
 	bool prev_flag = is->distribution_hub_refresh_in_progress;
 	is->distribution_hub_refresh_in_progress = true;
-	patch_City_recompute_yields_and_happiness (city, __);
+	patch_City_recompute_yields_and_happiness (city);
 	is->distribution_hub_refresh_in_progress = prev_flag;
 }
 
@@ -7459,9 +7459,9 @@ patch_City_recompute_commerce (City * this)
 }
 
 void __fastcall
-patch_City_recompute_yields_and_happiness (City * this, int edx)
+patch_City_recompute_yields_and_happiness (City * this)
 {
-	City_recompute_yields_and_happiness (this, __);
+	City_recompute_yields_and_happiness (this);
 
 	if (! is->current_config.enable_districts)
 		return;
@@ -7605,7 +7605,7 @@ recompute_mill_yields_after_resource_change (Leader * leader_or_null)
 					}
 				}
 				if (any_relevant_mills)
-					patch_City_recompute_yields_and_happiness (city, __);
+					patch_City_recompute_yields_and_happiness (city);
 			}
 		}
 }
@@ -14708,7 +14708,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 
 		// If the mill adds yields or might be a link in a resource production chain that does, recompute yields in the city.
 		if (is_yielding_mill || generates_input)
-			patch_City_recompute_yields_and_happiness (this, __);
+			patch_City_recompute_yields_and_happiness (this);
 	}
 
 	// Adding or removing an obsolete improvement should not change the total maintenance since obsolete improvs shouldn't cost maintenance. In
@@ -16115,7 +16115,7 @@ patch_do_load_game (char * param_1)
 			for (int n = 0; n <= p_cities->LastIndex; n++) {
 				City * city = get_city_ptr (n);
 				if (city != NULL)
-					patch_City_recompute_yields_and_happiness (city, __);
+					patch_City_recompute_yields_and_happiness (city);
 			}
 		}
 	}
@@ -18483,7 +18483,7 @@ patch_Map_place_scenario_things (Map * this)
 		for (int n = 0; n <= p_cities->LastIndex; n++) {
 			City * city = get_city_ptr (n);
 			if (city != NULL)
-				patch_City_recompute_yields_and_happiness (city, __);
+				patch_City_recompute_yields_and_happiness (city);
 		}
 
 	is->is_placing_scenario_things = false;
@@ -19404,12 +19404,6 @@ patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
 		is->lmify_tile_after_working_simple_job->vtable->m31_set_landmark (is->lmify_tile_after_working_simple_job, __, true);
 }
 
-bool __fastcall
-patch_Unit_work (Unit * this, int edx)
-{
-	return Unit_work (this, __);
-}
-
 void __fastcall
 patch_Map_change_tile_terrain_by_worker (Map * this, int edx, enum SquareTypes new_terrain_type, int x, int y)
 {
@@ -19537,9 +19531,9 @@ patch_Unit_check_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
 }
 
 bool __fastcall
-patch_Unit_can_airlift (Unit * this, int edx)
+patch_Unit_can_airlift (Unit * this)
 {
-	bool base = Unit_can_airlift (this, __);
+	bool base = Unit_can_airlift (this);
 
 	if (! (is->current_config.enable_districts &&
 	       is->current_config.enable_aerodrome_districts &&
@@ -21848,7 +21842,7 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 		distribution_hub_shields = is->distribution_hub_shield_bonus_per_city[city_id];
 	}
 
-	City_recompute_yields_and_happiness (city, __);
+	City_recompute_yields_and_happiness (city);
 	int base_production_income  = city->Body.ProductionIncome;
 	int base_production_loss    = city->Body.ProductionLoss;
 
