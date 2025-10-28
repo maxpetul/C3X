@@ -7117,12 +7117,6 @@ handle_district_destroyed_by_attack (Tile * tile, int tile_x, int tile_y, bool l
 	}
 }
 
-void __fastcall
-patch_Tile_impl_m51_Unset_Tile_Flags (Tile * this, int edx, int param_1, unsigned int param_2, int param_3, int param_4)
-{
-	Tile_impl_m51_Unset_Tile_Flags (this, __, param_1, param_2, param_3, param_4);
-}
-
 bool
 has_active_building (City * city, int improv_id)
 {
