@@ -659,11 +659,7 @@ struct injected_state {
 	enum init_state distribution_hub_icons_img_state;
 	enum init_state tile_already_worked_zoomed_out_sprite_init_state;
 	enum init_state day_night_cycle_img_state;
-<<<<<<< HEAD
-	enum init_state minor_roads_img_state;
-=======
 	enum init_state large_minimap_frame_img_state;
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
@@ -925,17 +921,10 @@ struct injected_state {
 	Sprite red_food_icon;
 
 	// ==========
-<<<<<<< HEAD
-	// } These are valid only if init_minor_roads has been called and minor_roads_img_state equals IS_OK {
-	// ==========
-
-	Sprite minor_roads_images[256];
-=======
 	// } These are valid only if init_large_minimap_frame has been called and large_minimap_frame_img_state equals IS_OK {
 	// ==========
 
 	Sprite double_size_box_left_color_pcx, double_size_box_left_alpha_pcx;
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 
 	// ==========
 	// } These fields are temporary/situational {
@@ -1209,11 +1198,7 @@ struct injected_state {
 
 	// Day-Night cycle data
 	int current_day_night_cycle;
-<<<<<<< HEAD
-	bool day_night_cycle_unstarted;
-=======
 	bool day_night_cycle_unstarted; // If current_day_night_cycle has not been set, f.e. because it's the first turn of a new game.
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 	bool day_night_cycle_img_proxies_indexed;
 	LARGE_INTEGER last_day_night_cycle_update_time;
 

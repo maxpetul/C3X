@@ -9184,11 +9184,7 @@ patch_Map_Renderer_load_images (Map_Renderer *this)
 		}
 
 		if (is->day_night_cycle_img_state == IS_OK) {
-<<<<<<< HEAD
-
-=======
 			
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 			// Sprite proxies are deindexed during each load event as sprite instances (really only Resources, which are reloaded) may change.
 			if (!is->day_night_cycle_img_proxies_indexed) {
 				build_sprite_proxies_24(this);
@@ -9333,7 +9329,6 @@ patch_init_floating_point ()
 		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
 		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
-<<<<<<< HEAD
 		{"enable_districts"                                    , false, offsetof (struct c3x_config, enable_districts)},
 		{"enable_neighborhood_districts"                       , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
 		{"enable_wonder_districts"                             , false, offsetof (struct c3x_config, enable_wonder_districts)},
@@ -9346,9 +9341,7 @@ patch_init_floating_point ()
         {"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
 		{"ai_defends_districts"         		               , false, offsetof (struct c3x_config, ai_defends_districts)},
 		{"highlight_city_district_work_radii_on_select_worker" , false, offsetof (struct c3x_config, highlight_city_district_work_radii_on_select_worker)},
-=======
 		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 	};
 
 	struct integer_config_option {
@@ -9356,7 +9349,6 @@ patch_init_floating_point ()
 		int base_val;
 		int offset;
 	} integer_config_options[] = {
-<<<<<<< HEAD
 		{"limit_railroad_movement"                       ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
 		{"minimum_city_separation"                       ,     1, offsetof (struct c3x_config, minimum_city_separation)},
 		{"anarchy_length_percent"                        ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
@@ -9375,34 +9367,14 @@ patch_init_floating_point ()
 		{"elapsed_minutes_per_day_night_hour_transition" ,     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
 		{"fixed_hours_per_turn_for_day_night_cycle"      ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
 		{"pinned_hour_for_day_night_cycle"               ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
+		{"years_to_double_building_culture"              ,  1000, offsetof (struct c3x_config, years_to_double_building_culture)},
+		{"tourism_time_scale_percent"                    ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
+		{"city_limit"                                    ,  2048, offsetof (struct c3x_config, city_limit)},
 		{"maximum_pop_before_neighborhood_needed"        ,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
 		{"per_neighborhood_pop_growth_enabled"			 ,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
 		{"distribution_hub_food_yield_divisor"			 ,     1, offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
 		{"distribution_hub_shield_yield_divisor"		 ,     1, offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
 		{"ai_ideal_distribution_hub_count_per_100_cities",     1, offsetof (struct c3x_config, ai_ideal_distribution_hub_count_per_100_cities)},
-=======
-		{"limit_railroad_movement"                      ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
-		{"minimum_city_separation"                      ,     1, offsetof (struct c3x_config, minimum_city_separation)},
-		{"anarchy_length_percent"                       ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
-		{"ai_multi_city_start"                          ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
-		{"max_tries_to_place_fp_city"                   , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
-		{"ai_research_multiplier"                       ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
-		{"ai_settler_perfume_on_founding_duration"      ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
-		{"extra_unit_maintenance_per_shields"           ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
-		{"ai_build_artillery_ratio"                     ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
-		{"ai_artillery_value_damage_percent"            ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
-		{"ai_build_bomber_ratio"                        ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
-		{"max_ai_naval_escorts"                         ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
-		{"ai_worker_requirement_percent"                ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
-		{"chance_for_nukes_to_destroy_max_one_hp_units" ,   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
-		{"rebase_range_multiplier"                      ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
-		{"elapsed_minutes_per_day_night_hour_transition",     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
-		{"fixed_hours_per_turn_for_day_night_cycle"     ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
-		{"pinned_hour_for_day_night_cycle"              ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
-		{"years_to_double_building_culture"             ,  1000, offsetof (struct c3x_config, years_to_double_building_culture)},
-		{"tourism_time_scale_percent"                   ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
-		{"city_limit"                                   ,  2048, offsetof (struct c3x_config, city_limit)},
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -9673,14 +9645,10 @@ patch_init_floating_point ()
 
 	memset (is->last_main_screen_key_up_events, 0, sizeof is->last_main_screen_key_up_events);
 
-<<<<<<< HEAD
 	reset_district_state (true);
 
-	// District sharing guard
 	is->sharing_buildings_by_districts_in_progress = false;
-=======
 	is->can_load_transport = is->can_load_passenger = NULL;
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -9906,104 +9874,16 @@ deinit_red_food_icon ()
 	is->red_food_icon_state = IS_UNINITED;
 }
 
-<<<<<<< HEAD
-void
-init_minor_roads ()
-{
-	if (is->minor_roads_img_state != IS_UNINITED)
-		return;
-=======
 enum init_state
 init_large_minimap_frame ()
 {
 	if (is->large_minimap_frame_img_state != IS_UNINITED)
 		return is->large_minimap_frame_img_state;
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 
 	PCX_Image pcx;
 	PCX_Image_construct (&pcx);
 
 	char temp_path[2*MAX_PATH];
-<<<<<<< HEAD
-	get_mod_art_path ("Districts\\minor_roads.pcx", temp_path, sizeof temp_path);
-
-	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
-	if ((pcx.JGL.Image != NULL) &&
-	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) == 0x800) &&
-	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) == 0x400)) {
-		// Initialize all 256 sprites (16x16 grid of 128x64 tiles)
-		for (int i = 0; i < 256; i++) {
-			Sprite_construct (&is->minor_roads_images[i]);
-		}
-		// Use slice_grid pattern matching roads.pcx: 16x16 grid, each tile 128x64
-		int k = 0;
-		for (int y = 0; y < 0x400; y += 0x40) {
-			for (int x = 0; x < 0x800; x += 0x80) {
-				Sprite_slice_pcx (&is->minor_roads_images[k++], __, &pcx, x, y, 0x80, 0x40, 1, 1);
-			}
-		}
-		is->minor_roads_img_state = IS_OK;
-	} else {
-		(*p_OutputDebugStringA) ("[C3X] PCX file for minor roads failed to load or is not the correct size (expected 2048x1024).\n");
-		is->minor_roads_img_state = IS_INIT_FAILED;
-	}
-
-	pcx.vtable->destruct (&pcx, __, 0);
-}
-
-void
-deinit_minor_roads ()
-{
-	if (is->minor_roads_img_state == IS_OK) {
-		for (int i = 0; i < 256; i++) {
-			Sprite * sprite = &is->minor_roads_images[i];
-			sprite->vtable->destruct (sprite, __, 0);
-		}
-	}
-	is->minor_roads_img_state = IS_UNINITED;
-}
-
-void
-deinit_distribution_hub_icons ()
-{
-	if (is->distribution_hub_icons_img_state == IS_OK) {
-		is->distribution_hub_shield_icon.vtable->destruct (&is->distribution_hub_shield_icon, __, 0);
-		is->distribution_hub_food_icon.vtable->destruct (&is->distribution_hub_food_icon, __, 0);
-		is->distribution_hub_eaten_food_icon.vtable->destruct (&is->distribution_hub_eaten_food_icon, __, 0);
-	}
-	is->distribution_hub_icons_img_state = IS_UNINITED;
-}
-
-void
-deinit_district_icons ()
-{
-	if (is->district_icons_img_state == IS_OK) {
-		is->district_science_icon.vtable->destruct (&is->district_science_icon, __, 0);
-		is->district_commerce_icon.vtable->destruct (&is->district_commerce_icon, __, 0);
-		is->district_shield_icon.vtable->destruct (&is->district_shield_icon, __, 0);
-		is->district_corruption_icon.vtable->destruct (&is->district_corruption_icon, __, 0);
-		is->district_food_icon.vtable->destruct (&is->district_food_icon, __, 0);
-		is->district_food_eaten_icon.vtable->destruct (&is->district_food_eaten_icon, __, 0);
-		is->district_shield_icon_small.vtable->destruct (&is->district_shield_icon_small, __, 0);
-		is->district_commerce_icon_small.vtable->destruct (&is->district_commerce_icon_small, __, 0);
-		is->district_food_icon_small.vtable->destruct (&is->district_food_icon_small, __, 0);
-		is->district_science_icon_small.vtable->destruct (&is->district_science_icon_small, __, 0);
-		is->district_culture_icon_small.vtable->destruct (&is->district_culture_icon_small, __, 0);
-	}
-	is->district_icons_img_state = IS_UNINITED;
-}
-
-void
-deinit_district_command_buttons ()
-{
-	if (is->dc_btn_img_state == IS_OK)
-		for (int dc = 0; dc < COUNT_DISTRICT_TYPES; dc++)
-			for (int n = 0; n < 4; n++) {
-				Sprite * sprite = &is->district_btn_img_sets[dc].imgs[n];
-				sprite->vtable->destruct (sprite, __, 0);
-			}
-	is->dc_btn_img_state = IS_UNINITED;
-=======
 
 	get_mod_art_path ("interface\\DoubleSizeBoxLeftColor.pcx", temp_path, sizeof temp_path);
 	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
@@ -10042,7 +9922,6 @@ deinit_large_minimap_frame ()
 		is->double_size_box_left_alpha_pcx.vtable->destruct (&is->double_size_box_left_alpha_pcx, __, 0);
 	}
 	is->large_minimap_frame_img_state = IS_UNINITED;
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 }
 
 int __cdecl
@@ -12459,14 +12338,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	deinit_trade_scroll_buttons ();
 	deinit_unit_rcm_icons ();
 	deinit_red_food_icon ();
-<<<<<<< HEAD
-	deinit_minor_roads ();
-	deinit_district_command_buttons ();
-	deinit_district_icons ();
-	deinit_distribution_hub_icons ();
-=======
 	deinit_large_minimap_frame ();
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 	if (is->tile_already_worked_zoomed_out_sprite_init_state != IS_UNINITED) {
 		enum init_state * state = &is->tile_already_worked_zoomed_out_sprite_init_state;
 		if (*state == IS_OK) {
@@ -12627,11 +12499,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	// Clear old alias bits
 	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = is->aliased_leader_title_bits = 0;
 
-<<<<<<< HEAD
-	// Set as first turn and deindex day-night cycle sprite proxies, if necessary.
-=======
 	// Clear day/night cycle vars and deindex sprite proxies, if necessary.
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
 		is->day_night_cycle_unstarted = true;
 		is->current_day_night_cycle = 12;
@@ -18887,15 +18755,10 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			void * area = buffer_allocate (&mod_data, sizeof is->turn_no_of_last_founding_for_settler_perfume);
 			memcpy (area, is->turn_no_of_last_founding_for_settler_perfume, sizeof is->turn_no_of_last_founding_for_settler_perfume);
 		}
-<<<<<<< HEAD
-
-=======
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 		if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
 			serialize_aligned_text ("current_day_night_cycle", &mod_data);
 			int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_day_night_cycle), is->current_day_night_cycle);
 		}
-<<<<<<< HEAD
 
 	if (is->current_config.enable_districts) {
 		int entry_count = 0;
@@ -19022,8 +18885,6 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		}
 
 		// Wonder district info is now saved as part of district_tile_map above
-=======
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 	}
 
 	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
@@ -19201,10 +19062,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 
 			} else if (match_save_chunk_name (&cursor, "current_day_night_cycle")) {
 				is->current_day_night_cycle = *((int *)cursor)++;
-<<<<<<< HEAD
-=======
 				is->day_night_cycle_unstarted = false;
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 
 				// The day/night cycle sprite proxies will have been cleared in patch_load_scenario. They will not necessarily be set
 				// up again in the usual way because Map_Renderer::load_images is not necessarily called when loading a save. The game
@@ -19214,7 +19072,6 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
 					build_sprite_proxies_24 (&p_bic_data->Map.Renderer);
 
-<<<<<<< HEAD
 				// Because we've restored current_day_night_cycle from the save, set that is is not the first turn so the cycle
 				// doesn't get restarted.
 				is->day_night_cycle_unstarted = false;
@@ -19417,8 +19274,6 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					error_chunk_name = "distribution_hub_records";
 					break;
 				}
-=======
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 			} else {
 				error_chunk_name = "N/A";
 				break;
@@ -21789,7 +21644,6 @@ patch_Unit_ai_can_sacrifice (Unit * this, int edx, bool requires_city)
 		return Unit_ai_can_sacrifice (this, __, requires_city);
 }
 
-<<<<<<< HEAD
 int __cdecl
 patch_get_building_defense_bonus_at (int x, int y, int param_3)
 {
@@ -22382,7 +22236,6 @@ patch_Tile_has_district_or_colony (Tile * this)
 
 	// Fallback to original has_colony logic
 	return Tile_has_colony (this);
-=======
 int __fastcall
 patch_Buildings_Info_get_age_in_years_for_tourism (Buildings_Info * this, int edx, int building_index)
 {
@@ -22415,7 +22268,6 @@ patch_City_get_turns_to_build_2_for_ai_move_leader (City * this, int edx, City_O
 		order = &current_order;
 
 	return City_get_turns_to_build_2 (this, __, order, param_2);
->>>>>>> f5d880870edde0605c6ea83707760d4e93585f5c
 }
 
 // TCC requires a main function be defined even though it's never used.
