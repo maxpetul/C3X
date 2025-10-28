@@ -5483,6 +5483,18 @@ deinit_district_images (void)
 }
 
 void
+clear_highlighted_worker_tiles_for_districts ()
+{
+	FOR_TABLE_ENTRIES (tei, &is->highlighted_city_radius_tile_pointers) {
+		struct highlighted_city_radius_tile_info * info = (struct highlighted_city_radius_tile_info *)(long)tei.value;
+		if (info != NULL)
+			free (info);
+	}
+	table_deinit (&is->highlighted_city_radius_tile_pointers);
+}
+
+
+void
 reset_district_state (bool reset_tile_map)
 {
 	clear_all_tracked_workers ();
@@ -9271,7 +9283,7 @@ patch_init_floating_point ()
 		{"cities_with_mutual_district_receive_wonders"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
         {"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
 		{"ai_defends_districts"         		               , false, offsetof (struct c3x_config, ai_defends_districts)},
-		{"highlight_city_district_work_radii_on_select_worker" , false, offsetof (struct c3x_config, highlight_city_district_work_radii_on_select_worker)},
+		{"enable_city_work_radii_highlights" , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
 	};
 
@@ -10426,22 +10438,11 @@ parse_turns_from_tooltip (char const * tooltip)
 }
 
 void
-clear_highlighted_worker_tiles_for_districts ()
-{
-	FOR_TABLE_ENTRIES (tei, &is->highlighted_city_radius_tile_pointers) {
-		struct highlighted_city_radius_tile_info * info = (struct highlighted_city_radius_tile_info *)(long)tei.value;
-		if (info != NULL)
-			free (info);
-	}
-	table_deinit (&is->highlighted_city_radius_tile_pointers);
-}
-
-void
 compute_highlighted_worker_tiles_for_districts ()
 {
 	if (is_online_game () 
 		|| ! is->current_config.enable_districts 
-		|| ! is->current_config.highlight_city_district_work_radii_on_select_worker)
+		|| ! is->current_config.enable_city_work_radii_highlights)
 		return;
 
 	Unit * selected_unit = p_main_screen_form->Current_Unit;
@@ -11363,7 +11364,7 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 
 	// Check if command is a worker build command (not a district) and a district exists on the tile
 	if (is->current_config.enable_districts) {
-		if (is->current_config.highlight_city_district_work_radii_on_select_worker && 
+		if (is->current_config.enable_city_work_radii_highlights && 
 			is->highlight_city_radii &&
 			(((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 != 0)) {
 			Unit * unit = p_main_screen_form->Current_Unit;
@@ -11483,7 +11484,7 @@ patch_Main_Screen_Form_handle_key_down (Main_Screen_Form * this, int edx, int ch
 	if ((virtual_key_code & 0xFF) == VK_CONTROL) {
 		set_up_stack_worker_buttons (&this->GUI);
 
-		if (is->current_config.highlight_city_district_work_radii_on_select_worker && 
+		if (is->current_config.enable_city_work_radii_highlights && 
 			! is->highlight_city_radii) {
 			is->highlight_city_radii = true;
 			compute_highlighted_worker_tiles_for_districts ();
@@ -12473,7 +12474,7 @@ patch_Main_Screen_Form_handle_key_up (Main_Screen_Form * this, int edx, int virt
 	if ((virtual_key_code & 0xFF) == VK_CONTROL) {
 		patch_Main_GUI_set_up_unit_command_buttons (&this->GUI);
 
-		if (is->current_config.highlight_city_district_work_radii_on_select_worker && 
+		if (is->current_config.enable_city_work_radii_highlights && 
 			is->highlight_city_radii) {
 			is->highlight_city_radii = false;
 			clear_highlighted_worker_tiles_for_districts ();
@@ -14215,7 +14216,7 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 
 	// Draw city work radius highlights for selected worker
 	if (is->current_config.enable_districts &&
-	    is->current_config.highlight_city_district_work_radii_on_select_worker &&
+	    is->current_config.enable_city_work_radii_highlights &&
 	    is->highlight_city_radii &&
 	    (((tile_x + tile_y) % 2) == 0)) { // Replicate a check from the base game code. Without this we'd be drawing additional tiles half-way off the grid.
 

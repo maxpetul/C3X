@@ -333,7 +333,7 @@ struct c3x_config {
 
 	bool ai_defends_districts;
 
-	bool highlight_city_district_work_radii_on_select_worker;
+	bool enable_city_work_radii_highlights;
 };
 
 enum stackable_command {
