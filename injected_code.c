@@ -5456,6 +5456,415 @@ load_districts_config (void)
 	}
 }
 
+int
+find_district_index_by_name (char const * name)
+{
+	if ((name == NULL) || (name[0] == '\0'))
+		return -1;
+
+	for (int i = 0; i < is->district_count; i++) {
+		char const * existing = is->district_configs[i].name;
+		if ((existing != NULL) && (strcmp (existing, name) == 0))
+			return i;
+	}
+
+	return -1;
+}
+
+int
+find_wonder_district_index_by_name (char const * name)
+{
+	if ((name == NULL) || (name[0] == '\0'))
+		return -1;
+
+	int improv_id;
+	if (! stable_look_up (&is->building_name_to_id, (char *)name, &improv_id))
+		return -1;
+
+	return find_wonder_config_index_by_improvement_id (improv_id);
+}
+
+City *
+find_city_by_name (char const * name)
+{
+	if ((name == NULL) || (name[0] == '\0') || (p_cities == NULL) || (p_cities->Cities == NULL))
+		return NULL;
+
+	for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+		City * city = get_city_ptr (city_index);
+		if ((city != NULL) && (city->Body.CityName != NULL)) {
+			(*p_OutputDebugStringA) (city->Body.CityName);
+		}
+		if ((city != NULL) && (city->Body.CityName != NULL) && (strcmp (city->Body.CityName, name) == 0))
+			return city;
+	}
+
+	return NULL;
+}
+
+struct scenario_district_entry {
+	int tile_x;
+	int tile_y;
+	int has_coordinates;
+	char * district_name;
+	int has_district_name;
+	char * wonder_city_name;
+	int has_wonder_city;
+	char * wonder_name;
+	int has_wonder_name;
+};
+
+void
+init_scenario_district_entry (struct scenario_district_entry * entry)
+{
+	if (entry == NULL)
+		return;
+
+	memset (entry, 0, sizeof *entry);
+}
+
+void
+free_scenario_district_entry (struct scenario_district_entry * entry)
+{
+	if (entry == NULL)
+		return;
+
+	if (entry->district_name != NULL) {
+		free (entry->district_name);
+		entry->district_name = NULL;
+	}
+	if (entry->wonder_city_name != NULL) {
+		free (entry->wonder_city_name);
+		entry->wonder_city_name = NULL;
+	}
+	if (entry->wonder_name != NULL) {
+		free (entry->wonder_name);
+		entry->wonder_name = NULL;
+	}
+	entry->has_coordinates = 0;
+	entry->has_district_name = 0;
+	entry->has_wonder_city = 0;
+	entry->has_wonder_name = 0;
+}
+
+void
+add_scenario_district_error (struct error_line ** parse_errors,
+			        int line_number,
+			        char const * message)
+{
+	if (message == NULL)
+		return;
+
+	struct error_line * err = add_error_line (parse_errors);
+	snprintf (err->text, sizeof err->text, "^  Line %d: %s", line_number, message);
+	err->text[(sizeof err->text) - 1] = '\0';
+}
+
+int
+parse_scenario_district_coordinates (struct string_slice const * value, int * out_x, int * out_y)
+{
+	if ((value == NULL) || (out_x == NULL) || (out_y == NULL))
+		return 0;
+
+	char * text = trim_and_extract_slice (value, 0);
+	if (text == NULL)
+		return 0;
+
+	char * cursor = text;
+	int success = 0;
+	int x, y;
+	if (parse_int (&cursor, &x) &&
+	    skip_punctuation (&cursor, ',') &&
+	    parse_int (&cursor, &y)) {
+		skip_horiz_space (&cursor);
+		success = (*cursor == '\0');
+		if (success) {
+			*out_x = x;
+			*out_y = y;
+		}
+	}
+
+	free (text);
+	return success;
+}
+
+int
+finalize_scenario_district_entry (struct scenario_district_entry * entry,
+				     int section_start_line,
+				     struct error_line ** parse_errors)
+{
+	int success = 1;
+	if ((entry == NULL) || (parse_errors == NULL))
+		return 0;
+
+	if (! entry->has_coordinates)
+		add_scenario_district_error (parse_errors, section_start_line, "coordinates (value is required)");
+	if ((! entry->has_district_name) || (entry->district_name == NULL) || (entry->district_name[0] == '\0'))
+		add_scenario_district_error (parse_errors, section_start_line, "district (value is required)");
+
+	if ((! entry->has_coordinates) || (! entry->has_district_name) ||
+	    (entry->district_name == NULL) || (entry->district_name[0] == '\0'))
+		success = 0;
+
+	int map_x = entry->tile_x;
+	int map_y = entry->tile_y;
+	if (success) {
+		wrap_tile_coords (&p_bic_data->Map, &map_x, &map_y);
+		Tile * tile = tile_at (map_x, map_y);
+		if ((tile == NULL) || (tile == p_null_tile)) {
+			add_scenario_district_error (parse_errors, section_start_line, "Invalid coordinates (tile not found)");
+			success = 0;
+		} else {
+			int district_id = find_district_index_by_name (entry->district_name);
+			if ((district_id < 0) || (district_id >= is->district_count)) {
+				add_scenario_district_error (parse_errors, section_start_line, "district (unrecognized name)");
+				success = 0;
+			} else {
+				struct district_instance * inst = ensure_district_instance (tile, district_id, map_x, map_y);
+				if (inst == NULL) {
+					add_scenario_district_error (parse_errors, section_start_line, "Failed to create district instance");
+					success = 0;
+				} else {
+					inst->district_type = district_id;
+					district_instance_set_coords (inst, map_x, map_y);
+					inst->state = DS_COMPLETED;
+					inst->wonder_info.state = WDS_UNUSED;
+					inst->wonder_info.city = NULL;
+					inst->wonder_info.city_id = -1;
+					inst->wonder_info.wonder_index = -1;
+
+					int wonder_district_id = WONDER_DISTRICT_ID;
+					if ((district_id == wonder_district_id) && (entry->has_wonder_city || entry->has_wonder_name)) {
+						int has_city = (entry->wonder_city_name != NULL) && (entry->wonder_city_name[0] != '\0');
+						int has_wonder = (entry->wonder_name != NULL) && (entry->wonder_name[0] != '\0');
+						if (! has_city || ! has_wonder) {
+							add_scenario_district_error (parse_errors, section_start_line, "Wonder district requires both wonder_city and wonder_name");
+							success = 0;
+						} else {
+							int wonder_index = find_wonder_district_index_by_name (entry->wonder_name);
+							if (wonder_index < 0) {
+								add_scenario_district_error (parse_errors, section_start_line, "wonder_name (unrecognized)");
+								success = 0;
+							} else {
+								// Cities haven't yet been loaded at this point, so we actually can't match to city name or find pointers to a city.
+								// However, Wonders defined here are already completed, and the city pointer is really only useful for tracking 
+								// ownership during construction, so we can leave it NULL without ill effects.
+								inst->wonder_info.city = NULL;
+								inst->wonder_info.city_id = -1;
+
+								inst->wonder_info.state = WDS_COMPLETED;
+								inst->wonder_info.wonder_index = wonder_index;
+							}
+						}
+					} else if ((district_id != wonder_district_id) && (entry->has_wonder_city || entry->has_wonder_name)) {
+						add_scenario_district_error (parse_errors, section_start_line, "wonder_* fields only valid for Wonder District entries");
+						// Leave success as-is so the district still loads.
+					}
+
+					if (success) {
+						if (tile->vtable->m18_Check_Mines (tile, __, 0))
+							set_tile_unworkable_for_all_cities (tile, map_x, map_y);
+					}
+				}
+			}
+		}
+	}
+
+	free_scenario_district_entry (entry);
+	init_scenario_district_entry (entry);
+	return success;
+}
+
+void
+handle_scenario_district_key (struct scenario_district_entry * entry,
+			     struct string_slice const * key,
+			     struct string_slice const * value,
+			     int line_number,
+			     struct error_line ** parse_errors,
+			     struct error_line ** unrecognized_keys)
+{
+	if ((entry == NULL) || (key == NULL) || (value == NULL))
+		return;
+
+	if (slice_matches_str (key, "coordinates")) {
+		int x, y;
+		if (parse_scenario_district_coordinates (value, &x, &y)) {
+			entry->tile_x = x;
+			entry->tile_y = y;
+			entry->has_coordinates = 1;
+		} else
+			add_scenario_district_error (parse_errors, line_number, "coordinates (expected format: x,y)");
+
+	} else if (slice_matches_str (key, "district")) {
+		if (entry->district_name != NULL) {
+			free (entry->district_name);
+			entry->district_name = NULL;
+		}
+		entry->district_name = copy_trimmed_string_or_null (value, 1);
+		entry->has_district_name = (entry->district_name != NULL);
+		if (! entry->has_district_name)
+			add_scenario_district_error (parse_errors, line_number, "district (value is required)");
+
+	} else if (slice_matches_str (key, "wonder_city")) {
+		if (entry->wonder_city_name != NULL) {
+			free (entry->wonder_city_name);
+			entry->wonder_city_name = NULL;
+		}
+		entry->wonder_city_name = copy_trimmed_string_or_null (value, 1);
+		entry->has_wonder_city = (entry->wonder_city_name != NULL);
+
+	} else if (slice_matches_str (key, "wonder_name")) {
+		if (entry->wonder_name != NULL) {
+			free (entry->wonder_name);
+			entry->wonder_name = NULL;
+		}
+		entry->wonder_name = copy_trimmed_string_or_null (value, 1);
+		entry->has_wonder_name = (entry->wonder_name != NULL);
+
+	} else
+		add_unrecognized_key_error (unrecognized_keys, line_number, key);
+}
+
+void
+load_scenario_districts_from_file (char const * scenario_path)
+{
+	if ((scenario_path == NULL) || (scenario_path[0] == '\0'))
+		return;
+
+	size_t path_len = strlen (scenario_path);
+	if (path_len < 4)
+		return;
+	char const * ext = &scenario_path[path_len - 4];
+	int is_biq = ((ext[0] == '.') &&
+	              ((ext[1] == 'b') || (ext[1] == 'B')) &&
+	              ((ext[2] == 'i') || (ext[2] == 'I')) &&
+	              ((ext[3] == 'q') || (ext[3] == 'Q')));
+	if (! is_biq)
+		return;
+
+	char districts_path[MAX_PATH];
+	size_t base_len = path_len - 4;
+	if (base_len >= sizeof districts_path)
+		base_len = sizeof districts_path - 1;
+	memcpy (districts_path, scenario_path, base_len);
+	districts_path[base_len] = '\0';
+	snprintf (districts_path + base_len, sizeof districts_path - base_len, ".c3x.txt");
+	districts_path[(sizeof districts_path) - 1] = '\0';
+
+	char * text = file_to_string (districts_path);
+	if (text == NULL)
+		return;
+
+	struct scenario_district_entry entry;
+	init_scenario_district_entry (&entry);
+	int in_section = 0;
+	int section_start_line = 0;
+	int line_number = 0;
+	int header_seen = 0;
+	struct error_line * unrecognized_keys = NULL;
+	struct error_line * parse_errors = NULL;
+
+	char * cursor = text;
+	while (*cursor != '\0') {
+		line_number += 1;
+
+		char * line_start = cursor;
+		char * line_end = cursor;
+		while ((*line_end != '\0') && (*line_end != '\n'))
+			line_end++;
+
+		int line_len = line_end - line_start;
+		int has_newline = (*line_end == '\n');
+		if (has_newline)
+			*line_end = '\0';
+
+		struct string_slice line_slice = { .str = line_start, .len = line_len };
+		struct string_slice trimmed = trim_string_slice (&line_slice, 0);
+		if ((trimmed.len == 0) || (trimmed.str[0] == ';')) {
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		if (! header_seen) {
+			if (slice_matches_str (&trimmed, "DISTRICTS")) {
+				header_seen = 1;
+				cursor = has_newline ? line_end + 1 : line_end;
+				continue;
+			} else {
+				add_scenario_district_error (&parse_errors, line_number, "Expected \"DISTRICTS\" header");
+				header_seen = 1;
+				// Fall through to allow parsing of entries even if header missing.
+			}
+		}
+
+		if (trimmed.str[0] == '#') {
+			struct string_slice directive = trimmed;
+			directive.str += 1;
+			directive.len -= 1;
+			directive = trim_string_slice (&directive, 0);
+			if (slice_matches_str (&directive, "District")) {
+				if (in_section)
+					finalize_scenario_district_entry (&entry, section_start_line, &parse_errors);
+				in_section = 1;
+				section_start_line = line_number;
+				free_scenario_district_entry (&entry);
+				init_scenario_district_entry (&entry);
+			}
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		if (! in_section) {
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		struct string_slice key_slice = {0};
+		struct string_slice value_slice = {0};
+		switch (parse_trimmed_key_value (&trimmed, &key_slice, &value_slice)) {
+		case KVP_NO_EQUALS:
+			add_scenario_district_error (&parse_errors, line_number, "(expected '=')");
+			break;
+		case KVP_EMPTY_KEY:
+			add_scenario_district_error (&parse_errors, line_number, "(missing key)");
+			break;
+		case KVP_SUCCESS:
+			handle_scenario_district_key (&entry, &key_slice, &value_slice, line_number, &parse_errors, &unrecognized_keys);
+			break;
+		}
+
+		cursor = has_newline ? line_end + 1 : line_end;
+	}
+
+	if (in_section)
+		finalize_scenario_district_entry (&entry, section_start_line, &parse_errors);
+
+	free_scenario_district_entry (&entry);
+	free (text);
+
+	if ((parse_errors != NULL) || (unrecognized_keys != NULL)) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char header[256];
+		snprintf (header, sizeof header, "District scenario file issues in %s:", districts_path);
+		header[(sizeof header) - 1] = '\0';
+		PopupForm_add_text (popup, __, header, 0);
+		if (parse_errors != NULL)
+			for (struct error_line * line = parse_errors; line != NULL; line = line->next)
+				PopupForm_add_text (popup, __, line->text, 0);
+		if (unrecognized_keys != NULL) {
+			PopupForm_add_text (popup, __, "", 0);
+			PopupForm_add_text (popup, __, "Unrecognized keys:", 0);
+			for (struct error_line * line = unrecognized_keys; line != NULL; line = line->next)
+				PopupForm_add_text (popup, __, line->text, 0);
+		}
+		patch_show_popup (popup, __, 0, 0);
+	}
+
+	free_error_lines (parse_errors);
+	free_error_lines (unrecognized_keys);
+}
+
 void
 deinit_district_images (void)
 {
@@ -12203,6 +12612,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	}
 
 	unsigned tr = load_scenario (this, __, param_1, param_2);
+	char * scenario_path = param_1;
 
 	// There are two cases when load_scenario is called that we don't want to run our own code. These are (1) when the scenario is loaded to
 	// generate a preview (map, etc.) for the "Civ Content" or "Conquests" menu and (2) when the function is called recursively. The recursive
@@ -12210,8 +12620,6 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	// loading the default rules. In any case, we want to ignore that call so we don't run the same code twice.
 	if ((ret_addr == ADDR_LOAD_SCENARIO_PREVIEW_RETURN) || (ret_addr == ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN))
 		return tr;
-
-	reset_district_state (true);
 
 	reset_to_base_config ();
 	load_config ("default.c3x_config.ini", 1);
@@ -12224,7 +12632,9 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	apply_machine_code_edits (&is->current_config, false);
 
 	if (is->current_config.enable_districts) {
+		reset_district_state (true);
 		load_districts_config ();
+		load_scenario_districts_from_file (scenario_path);
 	}
 
 	// Initialize Trade Net X
@@ -21214,7 +21624,6 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                                 patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
                                 return;
                             }
-
 
                             if (completed) {
                                 int construct_windex = -1;
