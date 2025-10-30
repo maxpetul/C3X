@@ -1,3 +1,6 @@
+- Option to prevent land anti-air units from intercepting overflying aircraft while they're loaded in a naval transport
+  - Named no_land_anti_air_from_inside_naval_transport
+
 - Allow city limit to be configured to any value up to 2048
   - New integer setting "city_limit" replaces the previous "lift_city_limit" switch
 - Fix support-free units being disbanded on bankruptcy while aggressively_penalize_bankruptcy is set
