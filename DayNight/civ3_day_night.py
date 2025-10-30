@@ -23,6 +23,51 @@ from typing import Iterable, List, Sequence, Tuple
 
 from PIL import Image
 
+# --------------------------- Config: protected coords ---------------------------
+# If a file name contains "EntertainmentComplex", do NOT change the palette
+# entries used by pixels in these coordinate ranges (inclusive).
+# Each item is ((x1, y1), (x2, y2)) where x1 <= x2 and y1 == y2 (horizontal runs).
+# Edit these as needed.
+PROTECTED_RANGES_ENT_COMPLEX = [
+    ((155, 152), (180, 152)),  # [155,152] - [180,152]
+    ((157, 151), (178, 151)),  # [157,151] - [178,151]
+]
+
+# --------------------------- Helpers for protected coords ---------------------------
+
+def _collect_reserved_colors_for_coords(
+    im: Image.Image,
+    pal: Sequence[int],
+    ranges: Sequence[Tuple[Tuple[int, int], Tuple[int, int]]],
+) -> List[Tuple[int, int, int]]:
+    """
+    From a paletted ('P') image and a list of inclusive horizontal ranges,
+    return the list of RGB colors (from the palette) used by pixels at those coordinates.
+    Coordinates outside the image bounds are ignored.
+    """
+    w, h = im.size
+    reserved_rgb: set[Tuple[int, int, int]] = set()
+
+    for (x1, y1), (x2, y2) in ranges:
+        if y1 != y2:
+            # Only horizontal segments are expected, but handle gracefully.
+            y = y1
+            x_start, x_end = min(x1, x2), max(x1, x2)
+        else:
+            y = y1
+            x_start, x_end = min(x1, x2), max(x1, x2)
+
+        if y < 0 or y >= h:
+            continue
+
+        for x in range(x_start, x_end + 1):
+            if 0 <= x < w:
+                idx = im.getpixel((x, y))  # palette index (0..255)
+                r, g, b = pal[3*idx:3*idx+3]
+                reserved_rgb.add((r, g, b))
+
+    return list(reserved_rgb)
+
 
 # --------------------------- CLI & helpers ---------------------------
 
@@ -430,7 +475,7 @@ def process_time_label(
     reserved_colors: Iterable[Tuple[int, int, int]],
     *,
     do_index_remap: bool,
-    # look controls
+    # look controls...
     warmth_scale: float,
     blue_scale: float,
     darkness_scale: float,
@@ -440,7 +485,7 @@ def process_time_label(
     sunrise_center: float,
     sunset_center: float,
     twilight_sigma: float,
-    # noon neutral controls
+    # noon neutral controls...
     noon_blend: float,
     noon_sigma: float,
     noon_window_start: float,
@@ -459,11 +504,28 @@ def process_time_label(
                 im = im.convert("P")
             pal = get_palette(im)
 
+            # Optional green→magenta remap first (affects indices; palette stays same here)
             if do_index_remap:
                 im = remap_green_to_magenta_indices(im, pal)
 
+            # Build the effective reserved color set (RGB triples)
+            effective_reserved: List[Tuple[int, int, int]] = list(reserved_colors)
+
+            # If this is an Entertainment Complex, also reserve palette entries used
+            # at the protected coordinates so those pixels remain unchanged.
+            if "EntertainmentComplex" in pcx_path.name:
+                extra_reserved = _collect_reserved_colors_for_coords(
+                    im, pal, PROTECTED_RANGES_ENT_COMPLEX
+                )
+                # Avoid duplicates while preserving order as much as possible
+                seen = set(effective_reserved)
+                for rgb in extra_reserved:
+                    if rgb not in seen:
+                        effective_reserved.append(rgb)
+                        seen.add(rgb)
+
             new_pal = adjust_palette_for_time(
-                pal, hour_value, reserved_colors,
+                pal, hour_value, effective_reserved,
                 warmth_scale=warmth_scale,
                 blue_scale=blue_scale,
                 darkness_scale=darkness_scale,
@@ -481,6 +543,7 @@ def process_time_label(
             )
             set_palette(im, new_pal)
             im.save(pcx_path, format="PCX")
+
 
 
 # --------------------------- Main ---------------------------
