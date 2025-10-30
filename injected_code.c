@@ -5662,8 +5662,9 @@ finalize_scenario_district_entry (struct scenario_district_entry * entry,
 					}
 
 					if (success) {
-						if (tile->vtable->m18_Check_Mines (tile, __, 0))
-							set_tile_unworkable_for_all_cities (tile, map_x, map_y);
+						if (! tile->vtable->m18_Check_Mines (tile, __, 0))
+							tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, map_x, map_y);
+						set_tile_unworkable_for_all_cities (tile, map_x, map_y);
 					}
 				}
 			}
@@ -5725,6 +5726,26 @@ handle_scenario_district_key (struct scenario_district_entry * entry,
 		add_unrecognized_key_error (unrecognized_keys, line_number, key);
 }
 
+// Parses a .c3x.txt file corresponding to the given scenario file path, loading district instances as specified.
+// If the scenario file path is NULL, empty, or does not end with .biq, no action is taken.
+//
+// The expected file format itself is very simple. Example:
+// 
+// ```
+// DISTRICTS
+//
+// #District
+// coordinates  = 12,28
+// district     = Entertainment Complex
+//
+// #District
+// coordinates  = 9,23
+// district     = Wonder District
+// wonder_city  = Rome
+// wonder_name  = The Pyramids
+// ```
+//
+// Details at https://github.com/instafluff0/Quintillus_Civ3_Editor_Fork_for_C3X_Districts
 void
 load_scenario_districts_from_file (char const * scenario_path)
 {
