@@ -1,3 +1,5 @@
+- Option to prevent units from being enslaved after being destroyed by lethal bombard
+
 - Allow city limit to be configured to any value up to 2048
   - New integer setting "city_limit" replaces the previous "lift_city_limit" switch
 - Extend promote_forbidden_palace_decorruption to cover great wonders as well and rename it to promote_wonder_decorruption_effect
