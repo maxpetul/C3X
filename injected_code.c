@@ -9702,6 +9702,7 @@ patch_init_floating_point ()
 		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
 		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
+		{"draw_forests_over_roads_and_railroads"               , false, offsetof (struct c3x_config, draw_forests_over_roads_and_railroads)},
 		{"enable_districts"                                    , false, offsetof (struct c3x_config, enable_districts)},
 		{"enable_neighborhood_districts"                       , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
 		{"enable_wonder_districts"                             , false, offsetof (struct c3x_config, enable_wonder_districts)},
@@ -9713,7 +9714,7 @@ patch_init_floating_point ()
 		{"cities_with_mutual_district_receive_wonders"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
         {"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
 		{"ai_defends_districts"         		               , false, offsetof (struct c3x_config, ai_defends_districts)},
-		{"enable_city_work_radii_highlights" , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
+		{"enable_city_work_radii_highlights" 				   , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
 	};
 
@@ -14662,6 +14663,55 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 			}
 		}
 	}
+}
+
+void __fastcall
+patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (Map_Renderer * this, int edx, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
+{
+	if (! is->current_config.draw_forests_over_roads_and_railroads) {
+		Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (this, __, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+    }
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
+
+	is->current_tile_x = -1;
+	is->current_tile_y = -1;
+	if (tile->vtable->m12_Check_Forest_Pines (tile)) {
+		is->current_tile_x = tile_x;
+		is->current_tile_y = tile_y;
+		return;
+	}
+
+	Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (this, __, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+}
+
+void __fastcall
+patch_Map_Renderer_m52_Draw_Roads (Map_Renderer * this, int edx, int image_index, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
+{
+	Map_Renderer_m52_Draw_Roads (this, __, image_index, map_renderer, pixel_x, pixel_y);
+
+	if (! is->current_config.draw_forests_over_roads_and_railroads || 
+		is->current_tile_x == -1 || is->current_tile_y == -1)
+		return;
+
+	// Current tile x & y will only have coordinates if we have a forest (per check in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp),
+	// so go ahead and render the forest on top of the road here.
+	Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (this, __, is->current_tile_x, is->current_tile_y, map_renderer, pixel_x, pixel_y);
+}
+
+void __fastcall
+patch_Map_Renderer_m52_Draw_Railroads (Map_Renderer * this, int edx, int image_index, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
+{
+	Map_Renderer_m52_Draw_Railroads (this, __, image_index, map_renderer, pixel_x, pixel_y);
+
+	if (! is->current_config.draw_forests_over_roads_and_railroads 
+		|| is->current_tile_x == -1 || is->current_tile_y == -1)
+		return;
+
+	Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (this, __, is->current_tile_x, is->current_tile_y, map_renderer, pixel_x, pixel_y);
 }
 
 void __fastcall
@@ -22638,6 +22688,8 @@ patch_City_get_turns_to_build_2_for_ai_move_leader (City * this, int edx, City_O
 
 	return City_get_turns_to_build_2 (this, __, order, param_2);
 }
+
+
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

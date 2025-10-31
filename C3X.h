@@ -306,6 +306,8 @@ struct c3x_config {
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
 
+	bool draw_forests_over_roads_and_railroads;
+
 	int day_night_cycle_mode;
 	int elapsed_minutes_per_day_night_hour_transition;
 	int fixed_hours_per_turn_for_day_night_cycle;
@@ -1441,6 +1443,10 @@ struct injected_state {
 
 	// Stores the parameters to Unit::can_load while it's running, NULL otherwise.
 	Unit * can_load_transport, * can_load_passenger;
+
+	// Tracks the current tile being rendered, used for drawing forests over roads/railroads
+	Tile * current_tile;
+	int current_tile_x, current_tile_y;
 
 	// ==========
 	// }
