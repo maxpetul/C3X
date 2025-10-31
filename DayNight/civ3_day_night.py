@@ -22,82 +22,8 @@ from pathlib import Path
 from typing import Iterable, List, Sequence, Tuple, Set
 
 from PIL import Image
-
-# --------------------------- Config: protected coords ---------------------------
-# Pixels in these ranges remain unchanged ONLY in files with "EntertainmentComplex" in the name.
-# Each entry is ((x1, y1), (x2, y2)) inclusive, typically horizontal runs.
-PROTECTED_RANGES_ENT_COMPLEX = [
-    # Each row of pairs represents a horizontal line of pixels, giving the illusion of lit ground
-
-    # Ancient colosseum 
-    ((159, 18), (169, 18)),
-    ((157, 19), (170, 19)),
-    ((155, 20), (171, 20)),
-    ((153, 21), (172, 21)),
-    ((158, 22), (166, 22)),
-
-    # Middle ages colosseum
-    ((159, 81), (169, 81)),
-    ((157, 82), (170, 82)),
-    ((155, 83), (171, 83)),
-    ((153, 84), (172, 84)),
-    ((158, 85), (166, 85)),
-
-    # Industrial age stadium 
-    ((165, 147), (171, 147)),
-    ((163, 148), (171, 148)),
-    ((161, 149), (175, 149)),
-    ((159, 150), (176, 150)),
-    ((158, 151), (178, 151)),
-    ((155, 152), (180, 152)), 
-    ((157, 151), (178, 151)),
-    ((155, 152), (181, 152)),
-    ((154, 153), (182, 153)),
-    ((152, 154), (183, 154)),
-    ((151, 155), (184, 155)),
-    ((149, 156), (185, 156)),
-    ((148, 157), (184, 157)),
-    ((146, 158), (186, 158)),
-    ((146, 159), (186, 159)),
-    ((145, 160), (185, 160)),
-    ((146, 161), (185, 161)),
-    ((147, 162), (184, 162)),
-    ((148, 163), (183, 163)),
-    ((151, 164), (178, 164)),
-    ((155, 165), (176, 165)),
-    ((157, 166), (175, 166)),
-
-    # Modern age stadium
-    ((161, 208), (163, 208)),
-    ((159, 209), (165, 209)),
-    ((157, 210), (167, 210)),
-    ((155, 211), (169, 211)),
-    ((153, 212), (171, 212)),
-    ((151, 213), (173, 213)),
-    ((149, 214), (175, 214)),
-    ((147, 215), (177, 215)),
-    ((146, 216), (179, 216)),
-    ((148, 217), (181, 217)),
-    ((151, 218), (183, 218)),
-    ((151, 219), (185, 219)),
-    ((150, 220), (186, 220)),
-    ((150, 221), (167, 221)), ((169, 221), (184, 221)), # Light key in the middle
-    ((148, 222), (165, 222)), ((173, 222), (183, 222)), # Stadium light in the middle
-    ((149, 223), (165, 223)), ((173, 223), (181, 223)),
-    ((151, 224), (165, 224)), ((173, 224), (179, 224)),
-    ((151, 225), (165, 225)), ((173, 225), (177, 225)),
-    ((152, 226), (168, 226)), ((170, 226), (175, 226)),
-    ((154, 227), (168, 227)), ((170, 227), (174, 227)),
-    ((155, 228), (168, 228)), ((170, 228), (172, 228)),
-    ((157, 229), (168, 229)), ((170, 229), (171, 229)),
-    ((161, 230), (168, 230)), ((170, 230), (172, 230)),
-    ((163, 231), (168, 231)), ((170, 231), (171, 231)),
-    ((161, 232), (168, 232)),
-    ((161, 233), (168, 233)),
-    ((162, 234), (167, 234)),
-    ((161, 235), (165, 235)),
-    ((161, 236), (163, 236))
-]
+from civ3_city_lights import is_night_hour
+from protected_pixels import PROTECTED_RANGES_ENT_COMPLEX
 
 # Fallback behavior if the palette is full and we cannot allocate a new index
 PROTECTED_FALLBACK_NEIGHBOR_RADIUS = 1  # 1 => 3x3 window, 2 => 5x5, etc.
@@ -874,7 +800,7 @@ def process_time_label(
             reserved_idx: Set[int] = set()
 
             # If this is an Entertainment Complex, protect EXACT pixels by duplicating indices
-            if "EntertainmentComplex" in pcx_path.name:
+            if "EntertainmentComplex" in pcx_path.name and is_night_hour(int(hour_value)):
                 ranges = PROTECTED_RANGES_ENT_COMPLEX
                 ranges = _bridge_small_gaps(ranges, PROTECTED_GAP_BRIDGE)
                 reserved_idx = _protect_exact_pixels_by_index(
