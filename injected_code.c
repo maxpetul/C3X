@@ -14679,7 +14679,7 @@ patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (Map_Renderer * this, int 
 
 	is->current_tile_x = -1;
 	is->current_tile_y = -1;
-	if (tile->vtable->m12_Check_Forest_Pines (tile)) {
+	if (tile->vtable->m50_Get_Square_BaseType (tile) == SQ_Forest) {
 		is->current_tile_x = tile_x;
 		is->current_tile_y = tile_y;
 		return;
@@ -14711,6 +14711,7 @@ patch_Map_Renderer_m52_Draw_Railroads (Map_Renderer * this, int edx, int image_i
 		|| is->current_tile_x == -1 || is->current_tile_y == -1)
 		return;
 
+	// patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp sets x & y only if we have a forest, so render on top of railroad
 	Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (this, __, is->current_tile_x, is->current_tile_y, map_renderer, pixel_x, pixel_y);
 }
 

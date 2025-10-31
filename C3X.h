@@ -1444,8 +1444,7 @@ struct injected_state {
 	// Stores the parameters to Unit::can_load while it's running, NULL otherwise.
 	Unit * can_load_transport, * can_load_passenger;
 
-	// Tracks the current tile being rendered, used for drawing forests over roads/railroads
-	Tile * current_tile;
+	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp. Tracks the current tile coordinates being rendered, then for drawing forests over roads/railroad
 	int current_tile_x, current_tile_y;
 
 	// ==========
