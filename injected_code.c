@@ -70,6 +70,11 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define WONDER_DISTRICT_ID           1
 #define DISTRIBUTION_HUB_DISTRICT_ID 2
 #define AERODROME_DISTRICT_ID        3
+#define NATURAL_WONDER_DISTRICT_ID   4
+
+static int const NATURAL_WONDER_IMAGE_WIDTH  = 128;
+static int const NATURAL_WONDER_IMAGE_HEIGHT = 88;
+static char const * const DEFAULT_NATURAL_WONDER_IMAGE = "NaturalWonders.pcx";
 
 
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
@@ -226,6 +231,8 @@ bool has_active_building (City * city, int improv_id);
 void recompute_distribution_hub_totals ();
 void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y);
 void wrap_tile_coords (Map * map, int * x, int * y);
+static void assign_natural_wonder_to_tile (Tile * tile, int tile_x, int tile_y, int natural_wonder_id);
+void place_natural_wonders_on_map (void);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -1610,6 +1617,23 @@ read_day_night_cycle_mode (struct string_slice const * s, int * out_val)
 		return false;
 }
 
+bool
+read_natural_wonder_terrain_type (struct string_slice const * s, enum natural_wonder_terrain_type * out_type)
+{
+	if (s == NULL || out_type == NULL)
+		return false;
+
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "ocean"        )) { *out_type = NWTERRAIN_OCEAN;        return true; }
+	else if (slice_matches_str (&trimmed, "coast"        )) { *out_type = NWTERRAIN_COAST;        return true; }
+	else if (slice_matches_str (&trimmed, "coastal_land" )) { *out_type = NWTERRAIN_COASTAL_LAND; return true; }
+	else if (slice_matches_str (&trimmed, "desert"       )) { *out_type = NWTERRAIN_DESERT;       return true; }
+	else if (slice_matches_str (&trimmed, "tundra"       )) { *out_type = NWTERRAIN_TUNDRA;       return true; }
+	else if (slice_matches_str (&trimmed, "land"         )) { *out_type = NWTERRAIN_LAND;         return true; }
+	else
+		return false;
+}
+
 struct parsable_field_bit {
 	char * name;
 	int bit_value;
@@ -2283,6 +2307,7 @@ ensure_district_instance (Tile * tile, int district_type, int tile_x, int tile_y
 	inst->wonder_info.city = NULL;
 	inst->wonder_info.city_id = -1;
 	inst->wonder_info.wonder_index = -1;
+	inst->natural_wonder_info.natural_wonder_id = -1;
 
 	district_instance_set_coords (inst, tile_x, tile_y);
 	itable_insert (&is->district_tile_map, (int)tile, (int)(long)inst);
@@ -2314,6 +2339,228 @@ district_instance_get_coords (struct district_instance * inst, Tile * tile, int 
 	}
 
 	return false;
+}
+
+struct natural_wonder_candidate {
+	Tile * tile;
+	short x, y;
+	short continent_id;
+};
+
+struct natural_wonder_candidate_list {
+	struct natural_wonder_candidate * entries;
+	int count;
+	int capacity;
+};
+
+static struct natural_wonder_district_config const * get_natural_wonder_config_by_id (int natural_wonder_id);
+static void get_effective_district_yields (struct district_instance * inst,
+					   struct district_config const * cfg,
+					   int * out_food,
+					   int * out_shields,
+					   int * out_gold,
+					   int * out_science,
+					   int * out_culture);
+static bool natural_wonder_tile_is_clear (Tile * tile, int tile_x, int tile_y);
+static bool natural_wonder_terrain_matches (struct natural_wonder_district_config const * cfg, Tile * tile, int tile_x, int tile_y);
+static bool natural_wonder_exists_within_distance (int tile_x, int tile_y, int min_distance);
+static bool natural_wonder_candidate_list_push (struct natural_wonder_candidate_list * list, Tile * tile, int tile_x, int tile_y, int continent_id);
+
+static void
+assign_natural_wonder_to_tile (Tile * tile, int tile_x, int tile_y, int natural_wonder_id)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_natural_wonder_districts)
+		return;
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
+	if ((natural_wonder_id < 0) || (natural_wonder_id >= is->natural_wonder_count))
+		return;
+
+	if (get_natural_wonder_config_by_id (natural_wonder_id) == NULL)
+		return;
+
+	struct district_instance * inst = ensure_district_instance (tile, NATURAL_WONDER_DISTRICT_ID, tile_x, tile_y);
+	if (inst == NULL)
+		return;
+
+	inst->district_type = NATURAL_WONDER_DISTRICT_ID;
+	inst->state = DS_COMPLETED;
+	inst->natural_wonder_info.natural_wonder_id = natural_wonder_id;
+	set_tile_unworkable_for_all_cities (tile, tile_x, tile_y);
+}
+
+static struct natural_wonder_district_config const *
+get_natural_wonder_config_by_id (int natural_wonder_id)
+{
+	if (! is->current_config.enable_natural_wonder_districts)
+		return NULL;
+	if ((natural_wonder_id < 0) || (natural_wonder_id >= is->natural_wonder_count))
+		return NULL;
+	return &is->natural_wonder_configs[natural_wonder_id];
+}
+
+static void
+get_effective_district_yields (struct district_instance * inst,
+			       struct district_config const * cfg,
+			       int * out_food,
+			       int * out_shields,
+			       int * out_gold,
+			       int * out_science,
+			       int * out_culture)
+{
+	int food = 0, shields = 0, gold = 0, science = 0, culture = 0;
+
+	if (cfg != NULL) {
+		food = cfg->food_bonus;
+		shields = cfg->shield_bonus;
+		gold = cfg->gold_bonus;
+		science = cfg->science_bonus;
+		culture = cfg->culture_bonus;
+	}
+
+	if ((inst != NULL) &&
+	    (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
+		struct natural_wonder_district_config const * nwcfg =
+			get_natural_wonder_config_by_id (inst->natural_wonder_info.natural_wonder_id);
+		if (nwcfg != NULL) {
+			food += nwcfg->food_bonus;
+			shields += nwcfg->shield_bonus;
+			gold += nwcfg->gold_bonus;
+			science += nwcfg->science_bonus;
+			culture += nwcfg->culture_bonus;
+		}
+	}
+
+	if (out_food != NULL)
+		*out_food = food;
+	if (out_shields != NULL)
+		*out_shields = shields;
+	if (out_gold != NULL)
+		*out_gold = gold;
+	if (out_science != NULL)
+		*out_science = science;
+	if (out_culture != NULL)
+		*out_culture = culture;
+}
+
+enum {
+	NATURAL_WONDER_MIN_SEPARATION = 6
+};
+
+static bool
+natural_wonder_candidate_list_push (struct natural_wonder_candidate_list * list, Tile * tile, int tile_x, int tile_y, int continent_id)
+{
+	if (list == NULL)
+		return false;
+
+	if (list->count >= list->capacity) {
+		int new_capacity = (list->capacity > 0) ? (list->capacity * 2) : 8;
+		struct natural_wonder_candidate * grown =
+			(struct natural_wonder_candidate *)realloc (list->entries, new_capacity * sizeof *grown);
+		if (grown == NULL)
+			return false;
+		list->entries = grown;
+		list->capacity = new_capacity;
+	}
+
+	struct natural_wonder_candidate * entry = &list->entries[list->count++];
+	entry->tile = tile;
+	entry->x = (short)tile_x;
+	entry->y = (short)tile_y;
+	entry->continent_id = (short)continent_id;
+	return true;
+}
+
+static bool
+natural_wonder_tile_is_clear (Tile * tile, int tile_x, int tile_y)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (tile->CityID >= 0)
+		return false;
+
+	if (tile->vtable->m20_Check_Pollution (tile, __, 0))
+		return false;
+
+	if (tile->vtable->m15_Check_Goody_Hut (tile, __, 0))
+		return false;
+
+	if (tile->vtable->m39_Get_Resource_Type (tile) >= 0)
+		return false;
+
+	if (tile->vtable->m18_Check_Mines (tile, __, 0))
+		return false;
+
+	if (get_district_instance (tile) != NULL)
+		return false;
+
+	return true;
+}
+
+static bool
+natural_wonder_exists_within_distance (int tile_x, int tile_y, int min_distance)
+{
+	if (min_distance <= 0)
+		return false;
+
+	FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+		struct district_instance * inst = (struct district_instance *)(long)tei.value;
+		if ((inst == NULL) || (inst->district_type != NATURAL_WONDER_DISTRICT_ID))
+			continue;
+
+		Tile * entry_tile = (Tile *)tei.key;
+		int existing_x, existing_y;
+		if (! district_instance_get_coords (inst, entry_tile, &existing_x, &existing_y))
+			continue;
+
+		int dist = compute_wrapped_chebyshev_distance (tile_x, tile_y, existing_x, existing_y);
+		if (dist <= min_distance)
+			return true;
+	}
+
+	return false;
+}
+
+static bool
+natural_wonder_terrain_matches (struct natural_wonder_district_config const * cfg, Tile * tile, int tile_x, int tile_y)
+{
+	if ((cfg == NULL) || (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+	bool is_water = tile->vtable->m35_Check_Is_Water (tile) != 0;
+
+	switch (cfg->terrain_type) {
+	case NWTERRAIN_OCEAN:
+		return is_water && (base_type == SQ_Ocean || base_type == SQ_Sea);
+
+	case NWTERRAIN_COAST:
+		return is_water && (base_type == SQ_Coast || base_type == SQ_Sea);
+
+	case NWTERRAIN_COASTAL_LAND:
+		if (is_water)
+			return false;
+		FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+			if (tai.n == 0)
+				continue;
+			Tile * adj = tai.tile;
+			if ((adj != NULL) && (adj != p_null_tile) && adj->vtable->m35_Check_Is_Water (adj))
+				return true;
+		}
+		return false;
+
+	case NWTERRAIN_DESERT:
+		return (! is_water) && ((base_type == SQ_Desert) || (base_type == SQ_FloodPlain));
+
+	case NWTERRAIN_TUNDRA:
+		return (! is_water) && (base_type == SQ_Tundra);
+
+	case NWTERRAIN_LAND:
+	default:
+		return ! is_water;
+	}
 }
 
 void
@@ -4144,6 +4391,28 @@ free_dynamic_wonder_config (struct wonder_district_config * cfg)
 	memset (cfg, 0, sizeof *cfg);
 }
 
+void
+free_dynamic_natural_wonder_config (struct natural_wonder_district_config * cfg)
+{
+	if (cfg == NULL)
+		return;
+
+	if (! cfg->is_dynamic)
+		return;
+
+	if (cfg->name != NULL) {
+		free ((void *)cfg->name);
+		cfg->name = NULL;
+	}
+
+	if (cfg->img_path != NULL) {
+		free ((void *)cfg->img_path);
+		cfg->img_path = NULL;
+	}
+
+	memset (cfg, 0, sizeof *cfg);
+}
+
 enum Unit_Command_Values
 allocate_dynamic_district_command (char const * name)
 {
@@ -4205,16 +4474,26 @@ clear_dynamic_district_definitions (void)
 			free_dynamic_wonder_config (&is->wonder_district_configs[i]);
 	}
 
+	for (int i = 0; i < MAX_NATURAL_WONDER_DISTRICT_TYPES; i++) {
+		if (is->natural_wonder_configs[i].is_dynamic)
+			free_dynamic_natural_wonder_config (&is->natural_wonder_configs[i]);
+	}
+
 	memset (is->district_configs, 0, sizeof is->district_configs);
 	for (int i = 0; i < USED_SPECIAL_DISTRICT_TYPES; i++)
 		is->district_configs[i] = special_district_defaults[i];
 
 	memset (is->wonder_district_configs, 0, sizeof is->wonder_district_configs);
+	memset (is->natural_wonder_configs, 0, sizeof is->natural_wonder_configs);
+	for (int i = 0; i < MAX_NATURAL_WONDER_DISTRICT_TYPES; i++)
+		is->natural_wonder_img_sets[i].img.vtable = NULL;
+	stable_deinit (&is->natural_wonder_name_to_id);
 
 	is->special_district_count = USED_SPECIAL_DISTRICT_TYPES;
 	is->dynamic_district_count = 0;
 	is->district_count = is->special_district_count;
 	is->wonder_district_count = 0;
+	is->natural_wonder_count = 0;
 	is->next_custom_dynamic_command_index = 0;
 }
 
@@ -5320,6 +5599,432 @@ load_dynamic_wonder_configs (void)
 		load_dynamic_wonder_config_file (scenario_path, 0, 0);
 }
 
+struct parsed_natural_wonder_definition {
+	char * name;
+	char * img_path;
+	enum natural_wonder_terrain_type terrain_type;
+	int img_row;
+	int img_column;
+	int culture_bonus;
+	int science_bonus;
+	int food_bonus;
+	int gold_bonus;
+	int shield_bonus;
+	bool has_name;
+	bool has_img_path;
+	bool has_img_row;
+	bool has_img_column;
+	bool has_terrain_type;
+	bool has_culture_bonus;
+	bool has_science_bonus;
+	bool has_food_bonus;
+	bool has_gold_bonus;
+	bool has_shield_bonus;
+};
+
+void
+init_parsed_natural_wonder_definition (struct parsed_natural_wonder_definition * def)
+{
+	memset (def, 0, sizeof *def);
+	def->terrain_type = NWTERRAIN_LAND;
+}
+
+void
+free_parsed_natural_wonder_definition (struct parsed_natural_wonder_definition * def)
+{
+	if (def->name != NULL) {
+		free (def->name);
+		def->name = NULL;
+	}
+	if (def->img_path != NULL) {
+		free (def->img_path);
+		def->img_path = NULL;
+	}
+	init_parsed_natural_wonder_definition (def);
+}
+
+bool
+add_natural_wonder_from_definition (struct parsed_natural_wonder_definition * def, int section_start_line)
+{
+	if ((def == NULL) || (def->name == NULL))
+		return false;
+
+	int existing_index;
+	bool has_existing = stable_look_up (&is->natural_wonder_name_to_id, def->name, &existing_index);
+
+	int dest = has_existing ? existing_index : is->natural_wonder_count;
+	if ((dest < 0) || (dest >= MAX_NATURAL_WONDER_DISTRICT_TYPES))
+		return false;
+
+	struct natural_wonder_district_config new_cfg;
+	memset (&new_cfg, 0, sizeof new_cfg);
+	new_cfg.index = dest;
+	new_cfg.is_dynamic = true;
+
+	char * name_copy = strdup (def->name);
+	if (name_copy == NULL)
+		return false;
+	new_cfg.name = name_copy;
+
+	char const * img_path_src = (def->img_path != NULL) ? def->img_path : DEFAULT_NATURAL_WONDER_IMAGE;
+	char * img_copy = strdup (img_path_src);
+	if (img_copy == NULL) {
+		free (name_copy);
+		return false;
+	}
+	new_cfg.img_path = img_copy;
+	new_cfg.img_row = def->img_row;
+	new_cfg.img_column = def->img_column;
+	new_cfg.terrain_type = def->terrain_type;
+	new_cfg.culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
+	new_cfg.science_bonus = def->has_science_bonus ? def->science_bonus : 0;
+	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
+	new_cfg.gold_bonus = def->has_gold_bonus ? def->gold_bonus : 0;
+	new_cfg.shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
+
+	if (has_existing) {
+		struct natural_wonder_district_config * cfg = &is->natural_wonder_configs[existing_index];
+		free_dynamic_natural_wonder_config (cfg);
+		*cfg = new_cfg;
+	} else {
+		struct natural_wonder_district_config * cfg = &is->natural_wonder_configs[dest];
+		free_dynamic_natural_wonder_config (cfg);
+		*cfg = new_cfg;
+		is->natural_wonder_count = dest + 1;
+		stable_insert (&is->natural_wonder_name_to_id, new_cfg.name, dest);
+	}
+
+	return true;
+}
+
+void
+finalize_parsed_natural_wonder_definition (struct parsed_natural_wonder_definition * def,
+					   int section_start_line,
+					   struct error_line ** parse_errors)
+{
+	bool ok = true;
+
+	if ((! def->has_name) || (def->name == NULL)) {
+		ok = false;
+		if (parse_errors != NULL) {
+			struct error_line * err = add_error_line (parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: name (value is required)", section_start_line);
+			err->text[(sizeof err->text) - 1] = '\0';
+		}
+	}
+	if (! def->has_img_row) {
+		ok = false;
+		if (parse_errors != NULL) {
+			struct error_line * err = add_error_line (parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: img_row (value is required)", section_start_line);
+			err->text[(sizeof err->text) - 1] = '\0';
+		}
+	}
+	if (! def->has_img_column) {
+		ok = false;
+		if (parse_errors != NULL) {
+			struct error_line * err = add_error_line (parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: img_column (value is required)", section_start_line);
+			err->text[(sizeof err->text) - 1] = '\0';
+		}
+	}
+	if (! def->has_terrain_type) {
+		ok = false;
+		if (parse_errors != NULL) {
+			struct error_line * err = add_error_line (parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: terrain_type (value is required)", section_start_line);
+			err->text[(sizeof err->text) - 1] = '\0';
+		}
+	}
+
+	if (ok)
+		add_natural_wonder_from_definition (def, section_start_line);
+
+	free_parsed_natural_wonder_definition (def);
+}
+
+void
+handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * def,
+				      struct string_slice const * key,
+				      struct string_slice const * value,
+				      int line_number,
+				      struct error_line ** parse_errors,
+				      struct error_line ** unrecognized_keys)
+{
+	if (slice_matches_str (key, "name")) {
+		if (def->name != NULL) {
+			free (def->name);
+			def->name = NULL;
+		}
+
+		struct string_slice unquoted = trim_string_slice (value, 1);
+		if (unquoted.len == 0) {
+			def->has_name = false;
+			add_key_parse_error (parse_errors, line_number, key, "(value is required)");
+		} else {
+			char * name_copy = extract_slice (&unquoted);
+			if (name_copy == NULL) {
+				def->has_name = false;
+				add_key_parse_error (parse_errors, line_number, key, "(out of memory)");
+			} else {
+				def->name = name_copy;
+				def->has_name = true;
+			}
+		}
+
+	} else if (slice_matches_str (key, "terrain_type")) {
+		enum natural_wonder_terrain_type terrain;
+		if (read_natural_wonder_terrain_type (value, &terrain)) {
+			def->terrain_type = terrain;
+			def->has_terrain_type = true;
+		} else {
+			def->has_terrain_type = false;
+			add_key_parse_error (parse_errors, line_number, key, "(unrecognized terrain type)");
+		}
+
+	} else if (slice_matches_str (key, "img_path")) {
+		if (def->img_path != NULL) {
+			free (def->img_path);
+			def->img_path = NULL;
+		}
+
+		struct string_slice unquoted = trim_string_slice (value, 1);
+		if (unquoted.len == 0) {
+			def->has_img_path = false;
+		} else {
+			char * path_copy = extract_slice (&unquoted);
+			if (path_copy == NULL) {
+				def->has_img_path = false;
+			} else {
+				def->img_path = path_copy;
+				def->has_img_path = true;
+			}
+		}
+
+	} else if (slice_matches_str (key, "img_row")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->img_row = ival;
+			def->has_img_row = true;
+		} else {
+			def->has_img_row = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "img_column")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->img_column = ival;
+			def->has_img_column = true;
+		} else {
+			def->has_img_column = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "culture_bonus")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->culture_bonus = ival;
+			def->has_culture_bonus = true;
+		} else {
+			def->has_culture_bonus = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "science_bonus")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->science_bonus = ival;
+			def->has_science_bonus = true;
+		} else {
+			def->has_science_bonus = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "food_bonus")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->food_bonus = ival;
+			def->has_food_bonus = true;
+		} else {
+			def->has_food_bonus = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "gold_bonus")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->gold_bonus = ival;
+			def->has_gold_bonus = true;
+		} else {
+			def->has_gold_bonus = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "shield_bonus")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->shield_bonus = ival;
+			def->has_shield_bonus = true;
+		} else {
+			def->has_shield_bonus = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else
+		add_unrecognized_key_error (unrecognized_keys, line_number, key);
+}
+
+void
+load_natural_wonder_config_file (char const * file_path, int path_is_relative_to_mod_dir, int log_missing)
+{
+	if (is == NULL)
+		return;
+
+	char path[MAX_PATH];
+	if (path_is_relative_to_mod_dir) {
+		if (is->mod_rel_dir == NULL)
+			return;
+		snprintf (path, sizeof path, "%s\\%s", is->mod_rel_dir, file_path);
+	} else {
+		strncpy (path, file_path, sizeof path);
+	}
+	path[(sizeof path) - 1] = '\0';
+
+	char * text = file_to_string (path);
+	if (text == NULL) {
+		if (log_missing) {
+			char ss[256];
+			snprintf (ss, sizeof ss, "[C3X] Natural wonders config file not found: %s", path);
+			(*p_OutputDebugStringA) (ss);
+		}
+		return;
+	}
+
+	struct parsed_natural_wonder_definition def;
+	init_parsed_natural_wonder_definition (&def);
+	bool in_section = false;
+	int section_start_line = 0;
+	int line_number = 0;
+	struct error_line * unrecognized_keys = NULL;
+	struct error_line * parse_errors = NULL;
+
+	char * cursor = text;
+	while (*cursor != '\0') {
+		line_number += 1;
+
+		char * line_start = cursor;
+		char * line_end = cursor;
+		while ((*line_end != '\0') && (*line_end != '\n'))
+			line_end++;
+
+		int line_len = line_end - line_start;
+		bool has_newline = (*line_end == '\n');
+		if (has_newline)
+			*line_end = '\0';
+
+		struct string_slice line_slice = { .str = line_start, .len = line_len };
+		struct string_slice trimmed = trim_string_slice (&line_slice, 0);
+		if ((trimmed.len == 0) || (trimmed.str[0] == ';')) {
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		if (trimmed.str[0] == '#') {
+			struct string_slice directive = trimmed;
+			directive.str += 1;
+			directive.len -= 1;
+			directive = trim_string_slice (&directive, 0);
+			if ((directive.len > 0) && slice_matches_str (&directive, "Wonder")) {
+				if (in_section)
+					finalize_parsed_natural_wonder_definition (&def, section_start_line, &parse_errors);
+				in_section = true;
+				section_start_line = line_number;
+			}
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		if (! in_section) {
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		struct string_slice key_slice = {0};
+		struct string_slice value_slice = {0};
+		enum key_value_parse_status status = parse_trimmed_key_value (&trimmed, &key_slice, &value_slice);
+		if (status == KVP_NO_EQUALS) {
+			char * line_text = extract_slice (&trimmed);
+			struct error_line * err = add_error_line (&parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected '=')", line_number, line_text);
+			err->text[(sizeof err->text) - 1] = '\0';
+			free (line_text);
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		} else if (status == KVP_EMPTY_KEY) {
+			struct error_line * err = add_error_line (&parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Line %d: (missing key)", line_number);
+			err->text[(sizeof err->text) - 1] = '\0';
+			cursor = has_newline ? line_end + 1 : line_end;
+			continue;
+		}
+
+		handle_natural_wonder_definition_key (&def, &key_slice, &value_slice, line_number, &parse_errors, &unrecognized_keys);
+		cursor = has_newline ? line_end + 1 : line_end;
+	}
+
+	if (in_section)
+		finalize_parsed_natural_wonder_definition (&def, section_start_line, &parse_errors);
+
+	free_parsed_natural_wonder_definition (&def);
+	free (text);
+
+	if (parse_errors != NULL || unrecognized_keys != NULL) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+		char s[200];
+		snprintf (s, sizeof s, "Natural Wonder Config errors in %s:", path);
+		s[(sizeof s) - 1] = '\0';
+		PopupForm_add_text (popup, __, s, false);
+		if (parse_errors != NULL) {
+			for (struct error_line * line = parse_errors; line != NULL; line = line->next)
+				PopupForm_add_text (popup, __, line->text, false);
+		}
+		if (unrecognized_keys != NULL) {
+			PopupForm_add_text (popup, __, "", false);
+			PopupForm_add_text (popup, __, "Unrecognized keys:", false);
+			for (struct error_line * line = unrecognized_keys; line != NULL; line = line->next)
+				PopupForm_add_text (popup, __, line->text, false);
+		}
+		patch_show_popup (popup, __, 0, 0);
+		free_error_lines (parse_errors);
+		free_error_lines (unrecognized_keys);
+	}
+}
+
+void
+load_natural_wonder_configs (void)
+{
+	if (is == NULL)
+		return;
+
+	load_natural_wonder_config_file ("default.districts_natural_config.txt", 1, 1);
+	load_natural_wonder_config_file ("custom.districts_natural_config.txt", 1, 0);
+	char * scenario_file_name = "scenario.districts_natural_config.txt";
+	char * scenario_path = NULL;
+	if (p_bic_data != NULL)
+		scenario_path = BIC_get_asset_path (p_bic_data, __, scenario_file_name, false);
+	if ((scenario_path != NULL) && (0 != strcmp (scenario_file_name, scenario_path)))
+		load_natural_wonder_config_file (scenario_path, 0, 0);
+}
+
 bool
 district_config_has_dependent_improvement (struct district_config * cfg, char const * name)
 {
@@ -5377,6 +6082,8 @@ load_districts_config (void)
 	clear_dynamic_district_definitions ();
 	load_dynamic_district_configs ();
 	load_dynamic_wonder_configs ();
+	if (is->current_config.enable_natural_wonder_districts)
+		load_natural_wonder_configs ();
 	is->district_count = is->special_district_count + is->dynamic_district_count;
 
 	append_wonders_to_wonder_district_config ();
@@ -5454,6 +6161,202 @@ load_districts_config (void)
 			}
 		}
 	}
+}
+
+void
+place_natural_wonders_on_map (void)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_natural_wonder_districts)
+		return;
+
+	int wonder_count = is->natural_wonder_count;
+	if (wonder_count <= 0)
+		return;
+
+	struct natural_wonder_candidate_list * candidate_lists =
+		(struct natural_wonder_candidate_list *)calloc (wonder_count, sizeof *candidate_lists);
+	bool * already_placed = (bool *)calloc (wonder_count, sizeof *already_placed);
+
+	if ((candidate_lists == NULL) || (already_placed == NULL)) {
+		if (candidate_lists != NULL) free (candidate_lists);
+		if (already_placed != NULL) free (already_placed);
+		return;
+	}
+
+	struct existing_natural_wonder {
+		short wonder_id;
+		short continent_id;
+	};
+	struct existing_natural_wonder * existing = NULL;
+	int existing_count = 0;
+	int existing_capacity = 0;
+
+	int max_continent_id = -1;
+
+	// Record existing natural wonders
+	FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+		struct district_instance * inst = (struct district_instance *)(long)tei.value;
+		if ((inst == NULL) || (inst->district_type != NATURAL_WONDER_DISTRICT_ID))
+			continue;
+
+		int wonder_id = inst->natural_wonder_info.natural_wonder_id;
+		if ((wonder_id < 0) || (wonder_id >= wonder_count))
+			continue;
+
+		already_placed[wonder_id] = true;
+
+		Tile * tile = (Tile *)tei.key;
+		int tile_x, tile_y;
+		if (! district_instance_get_coords (inst, tile, &tile_x, &tile_y))
+			continue;
+
+		int continent_id = (tile != NULL && tile != p_null_tile) ? tile->vtable->m46_Get_ContinentID (tile) : -1;
+		if (continent_id > max_continent_id)
+			max_continent_id = continent_id;
+
+		if (existing_count >= existing_capacity) {
+			int new_capacity = (existing_capacity > 0) ? existing_capacity * 2 : 4;
+			struct existing_natural_wonder * grown =
+				(struct existing_natural_wonder *)realloc (existing, new_capacity * sizeof *grown);
+			if (grown == NULL)
+				continue;
+			existing = grown;
+			existing_capacity = new_capacity;
+		}
+
+		existing[existing_count++] = (struct existing_natural_wonder){
+			.wonder_id = (short)wonder_id,
+			.continent_id = (short)continent_id
+		};
+	}
+
+	// Build candidate lists
+	int map_width = p_bic_data->Map.Width;
+	int map_height = p_bic_data->Map.Height;
+	for (int y = 0; y < map_height; y++) {
+		for (int x = 0; x < map_width; x++) {
+			Tile * tile = tile_at (x, y);
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+
+			int continent_id = tile->vtable->m46_Get_ContinentID (tile);
+			if (continent_id > max_continent_id)
+				max_continent_id = continent_id;
+
+			if (! natural_wonder_tile_is_clear (tile, x, y))
+				continue;
+
+			// Avoid locations that are already near an existing natural wonder
+			if (natural_wonder_exists_within_distance (x, y, NATURAL_WONDER_MIN_SEPARATION))
+				continue;
+
+			for (int ni = 0; ni < wonder_count; ni++) {
+				if (already_placed[ni])
+					continue;
+
+				struct natural_wonder_district_config const * cfg = &is->natural_wonder_configs[ni];
+				if (cfg->name == NULL)
+					continue;
+
+				if (! natural_wonder_terrain_matches (cfg, tile, x, y))
+					continue;
+
+				natural_wonder_candidate_list_push (&candidate_lists[ni], tile, x, y, continent_id);
+			}
+		}
+	}
+
+	int continent_capacity = (max_continent_id >= 0) ? (max_continent_id + 1) : 1;
+	int * continent_assignment_counts = (int *)calloc (continent_capacity, sizeof *continent_assignment_counts);
+	if (continent_assignment_counts == NULL)
+		continent_capacity = 0;
+
+	// Seed counts with existing placements
+	for (int i = 0; i < existing_count; i++) {
+		int cont = existing[i].continent_id;
+		if ((cont >= 0) && (cont < continent_capacity))
+			continent_assignment_counts[cont] += 1;
+	}
+
+	int newly_placed = 0;
+
+	for (int ni = 0; ni < wonder_count; ni++) {
+		if (already_placed[ni])
+			continue;
+
+		struct natural_wonder_candidate_list * list = &candidate_lists[ni];
+		if (list->count == 0) {
+			char msg[256];
+			snprintf (msg, sizeof msg, "[C3X] No valid tiles to place natural wonder \"%s\".\n",
+				  (is->natural_wonder_configs[ni].name != NULL) ? is->natural_wonder_configs[ni].name : "Natural Wonder");
+			(*p_OutputDebugStringA) (msg);
+			continue;
+		}
+
+		int best_index = -1;
+		int best_score = INT_MAX;
+		int best_tiebreak = INT_MAX;
+
+		for (int ci = 0; ci < list->count; ci++) {
+			struct natural_wonder_candidate * cand = &list->entries[ci];
+			Tile * tile = cand->tile;
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+			if (get_district_instance (tile) != NULL)
+				continue;
+			if (! natural_wonder_tile_is_clear (tile, cand->x, cand->y))
+				continue;
+			if (! natural_wonder_terrain_matches (&is->natural_wonder_configs[ni], tile, cand->x, cand->y))
+				continue;
+			if (natural_wonder_exists_within_distance (cand->x, cand->y, NATURAL_WONDER_MIN_SEPARATION))
+				continue;
+
+			int score = 0;
+			if ((cand->continent_id >= 0) && (cand->continent_id < continent_capacity) && (continent_assignment_counts != NULL))
+				score = continent_assignment_counts[cand->continent_id];
+
+			int tiebreak = rand_int (p_rand_object, __, 0x7FFF);
+			if ((score < best_score) || ((score == best_score) && (tiebreak < best_tiebreak))) {
+				best_score = score;
+				best_tiebreak = tiebreak;
+				best_index = ci;
+			}
+		}
+
+		if (best_index < 0) {
+			char msg[256];
+			snprintf (msg, sizeof msg, "[C3X] Could not find a suitable tile for natural wonder \"%s\" after filtering.\n",
+				  (is->natural_wonder_configs[ni].name != NULL) ? is->natural_wonder_configs[ni].name : "Natural Wonder");
+			(*p_OutputDebugStringA) (msg);
+			continue;
+		}
+
+		struct natural_wonder_candidate * chosen = &list->entries[best_index];
+		assign_natural_wonder_to_tile (chosen->tile, chosen->x, chosen->y, ni);
+		if ((chosen->continent_id >= 0) && (chosen->continent_id < continent_capacity) && (continent_assignment_counts != NULL))
+			continent_assignment_counts[chosen->continent_id] += 1;
+		newly_placed += 1;
+
+		char msg[256];
+		snprintf (msg, sizeof msg, "[C3X] Placed natural wonder \"%s\" at (%d,%d) on continent %d.\n",
+			  (is->natural_wonder_configs[ni].name != NULL) ? is->natural_wonder_configs[ni].name : "Natural Wonder",
+			  chosen->x, chosen->y, chosen->continent_id);
+		(*p_OutputDebugStringA) (msg);
+	}
+
+	char summary[256];
+	snprintf (summary, sizeof summary, "[C3X] Natural wonder placement complete. Newly placed: %d, already present: %d.\n",
+		  newly_placed, existing_count);
+	(*p_OutputDebugStringA) (summary);
+
+	for (int ni = 0; ni < wonder_count; ni++)
+		free (candidate_lists[ni].entries);
+	free (candidate_lists);
+	free (already_placed);
+	free (existing);
+	if (continent_assignment_counts != NULL)
+		free (continent_assignment_counts);
 }
 
 int
@@ -5906,6 +6809,12 @@ deinit_district_images (void)
 				set->img.vtable->destruct (&set->img, __, 0);
 			if (set->construct_img.vtable != NULL)
 				set->construct_img.vtable->destruct (&set->construct_img, __, 0);
+		}
+
+		for (int ni = 0; ni < MAX_NATURAL_WONDER_DISTRICT_TYPES; ni++) {
+			Sprite * sprite = &is->natural_wonder_img_sets[ni].img;
+			if (sprite->vtable != NULL)
+				sprite->vtable->destruct (sprite, __, 0);
 		}
 	}
 
@@ -6765,17 +7674,20 @@ calculate_district_culture_science_bonuses (City * city, int * culture_bonus, in
 		if (! district_is_complete (tile, district_id)) continue;
 
 		struct district_config const * cfg = &is->district_configs[district_id];
+		int district_culture_bonus = 0;
+		int district_science_bonus = 0;
+		get_effective_district_yields (inst, cfg, NULL, NULL, NULL, &district_science_bonus, &district_culture_bonus);
 
 		bool is_neighborhood = (cfg->command == UCV_Build_Neighborhood);
 		if (is_neighborhood) {
 			if (utilized_neighborhoods > 0) {
-				total_culture += cfg->culture_bonus;
-				total_science += cfg->science_bonus;
+				total_culture += district_culture_bonus;
+				total_science += district_science_bonus;
 				utilized_neighborhoods--;
 			}
 		} else {
-			total_culture += cfg->culture_bonus;
-			total_science += cfg->science_bonus;
+			total_culture += district_culture_bonus;
+			total_science += district_science_bonus;
 		}
 	}
 
@@ -7939,9 +8851,11 @@ patch_City_recompute_yields_and_happiness (City * this)
 		}
 
 		struct district_config const * cfg = &is->district_configs[district_id];
-		bonus_food       += cfg->food_bonus;
-		bonus_production += cfg->shield_bonus;
-		bonus_gold       += cfg->gold_bonus;
+		int food_bonus = 0, shield_bonus = 0, gold_bonus = 0;
+		get_effective_district_yields (inst, cfg, &food_bonus, &shield_bonus, &gold_bonus, NULL, NULL);
+		bonus_food       += food_bonus;
+		bonus_production += shield_bonus;
+		bonus_gold       += gold_bonus;
 	}
 
 	if (is->current_config.enable_distribution_hub_districts &&
@@ -9706,6 +10620,7 @@ patch_init_floating_point ()
 		{"enable_districts"                                    , false, offsetof (struct c3x_config, enable_districts)},
 		{"enable_neighborhood_districts"                       , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
 		{"enable_wonder_districts"                             , false, offsetof (struct c3x_config, enable_wonder_districts)},
+		{"enable_natural_wonder_districts"                     , false, offsetof (struct c3x_config, enable_natural_wonder_districts)},
 		{"enable_distribution_hub_districts"                   , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"enable_aerodrome_districts"                          , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
 		{"completed_wonder_districts_can_be_destroyed"         , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
@@ -11019,6 +11934,9 @@ set_up_district_buttons (Main_GUI * this)
 
 	for (int dc = 0; dc < is->district_count; dc++) {
 
+		if (is->district_configs[dc].command == -1)
+			continue;
+
 		if ((is->district_configs[dc].command == UCV_Build_Neighborhood)    && !is->current_config.enable_neighborhood_districts)     continue;
 		if ((is->district_configs[dc].command == UCV_Build_WonderDistrict)  && !is->current_config.enable_wonder_districts)           continue;
 		if ((is->district_configs[dc].command == UCV_Build_DistributionHub) && !is->current_config.enable_distribution_hub_districts) continue;
@@ -11406,6 +12324,16 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 {
 	if (is->current_config.enable_districts) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
+		if ((tile != NULL) && (tile != p_null_tile) &&
+		    is->current_config.enable_natural_wonder_districts) {
+			struct district_instance * inst = get_district_instance (tile);
+			if ((inst != NULL) &&
+			    (inst->district_type == NATURAL_WONDER_DISTRICT_ID) &&
+			    (inst->natural_wonder_info.natural_wonder_id >= 0)) {
+				if (is_worker_or_settler_command (unit_command_value))
+					return false;
+			}
+		}
 		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 
 		if (is_district_command (unit_command_value)) {
@@ -11474,6 +12402,11 @@ patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y)
 	struct district_instance * inst = get_district_instance (tile);
 	if (inst == NULL)
 		return true;
+
+	if (is->current_config.enable_natural_wonder_districts &&
+	    (inst->district_type == NATURAL_WONDER_DISTRICT_ID) &&
+	    (inst->natural_wonder_info.natural_wonder_id >= 0))
+		return false;
 
 	int district_id = inst->district_type;
 	int wonder_district_id = WONDER_DISTRICT_ID;
@@ -12120,7 +13053,9 @@ patch_City_Form_draw (City_Form * this)
 		if (! district_is_complete (tile, district_id)) continue;
 
 		struct district_config const * cfg = &is->district_configs[district_id];
-		district_gold += cfg->gold_bonus;
+		int gold_bonus = 0;
+		get_effective_district_yields (inst, cfg, NULL, NULL, &gold_bonus, NULL, NULL);
+		district_gold += gold_bonus;
 	}
 
 	Leader * leader = &leaders[city_civ_id];
@@ -15717,6 +16652,8 @@ patch_Map_process_after_placing (Map * this, int edx, bool param_1)
 	if ((is->current_config.ai_multi_city_start > 0) && (*p_current_turn_no == 0))
 		set_up_ai_multi_city_start (this, is->current_config.ai_multi_city_start);
 	Map_process_after_placing (this, __, param_1);
+	if (is->current_config.enable_natural_wonder_districts)
+		place_natural_wonders_on_map ();
 }
 
 int __fastcall
@@ -19283,6 +20220,48 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 	}
 
 	if (is->current_config.enable_districts &&
+	    is->current_config.enable_natural_wonder_districts &&
+	    (is->district_tile_map.len > 0)) {
+		int entry_capacity = 0;
+		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+			struct district_instance * inst = (struct district_instance *)(long)tei.value;
+			if ((inst == NULL) || (inst->district_type != NATURAL_WONDER_DISTRICT_ID))
+				continue;
+			if (inst->natural_wonder_info.natural_wonder_id < 0)
+				continue;
+			entry_capacity++;
+		}
+		if (entry_capacity > 0) {
+			serialize_aligned_text ("natural_wonder_districts", &mod_data);
+			int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 3 * entry_capacity));
+			int * out = chunk + 1;
+			int written = 0;
+			FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+				Tile * tile = (Tile *)tei.key;
+				struct district_instance * inst = (struct district_instance *)(long)tei.value;
+				if ((inst == NULL) ||
+				    (inst->district_type != NATURAL_WONDER_DISTRICT_ID) ||
+				    (inst->natural_wonder_info.natural_wonder_id < 0))
+					continue;
+				int x, y;
+				if (! district_instance_get_coords (inst, tile, &x, &y))
+					continue;
+				out[0] = x;
+				out[1] = y;
+				out[2] = inst->natural_wonder_info.natural_wonder_id;
+				out += 3;
+				written++;
+			}
+			chunk[0] = written;
+			int unused_entries = entry_capacity - written;
+			if (unused_entries > 0) {
+				int trimmed_bytes = unused_entries * 3 * (int)sizeof(int);
+				mod_data.length -= trimmed_bytes;
+			}
+		}
+	}
+
+	if (is->current_config.enable_districts &&
 	    is->current_config.enable_distribution_hub_districts &&
 	    (is->distribution_hub_records.len > 0)) {
 			serialize_aligned_text ("distribution_hub_records", &mod_data);
@@ -19655,9 +20634,47 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							}
 						}
 					}
-				}
+			}
 				if (! success) {
 					error_chunk_name = "district_tile_map";
+					break;
+				}
+			} else if (match_save_chunk_name (&cursor, "natural_wonder_districts")) {
+				bool success = false;
+				int remaining_bytes = (seg + seg_size) - cursor;
+				if (remaining_bytes >= (int)sizeof(int)) {
+					int * ints = (int *)cursor;
+					int entry_count = *ints++;
+					cursor = (byte *)ints;
+					remaining_bytes -= (int)sizeof(int);
+					if ((entry_count >= 0) && (remaining_bytes >= entry_count * 3 * (int)sizeof(int))) {
+						success = true;
+						for (int n = 0; n < entry_count; n++) {
+							if (remaining_bytes < 3 * (int)sizeof(int)) {
+								success = false;
+								break;
+							}
+							int x = *ints++;
+							int y = *ints++;
+							int natural_id = *ints++;
+							cursor = (byte *)ints;
+							remaining_bytes -= 3 * (int)sizeof(int);
+							if ((natural_id < 0) || (natural_id >= is->natural_wonder_count))
+								continue;
+							Tile * tile = tile_at (x, y);
+							if ((tile == NULL) || (tile == p_null_tile))
+								continue;
+							struct district_instance * inst = ensure_district_instance (tile, NATURAL_WONDER_DISTRICT_ID, x, y);
+							if (inst == NULL)
+								continue;
+							inst->district_type = NATURAL_WONDER_DISTRICT_ID;
+							inst->state = DS_COMPLETED;
+							inst->natural_wonder_info.natural_wonder_id = natural_id;
+						}
+					}
+				}
+				if (! success) {
+					error_chunk_name = "natural_wonder_districts";
 					break;
 				}
 			} else if (match_save_chunk_name (&cursor, "distribution_hub_records")) {
@@ -20480,14 +21497,18 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 
 	// Get district configuration
 	struct district_config const * config = &is->district_configs[district_id];
+	struct district_instance * inst = get_district_instance (tile);
 
 	// Count total yields from bonuses
+	int food_bonus = 0, shield_bonus = 0, gold_bonus = 0, science_bonus = 0, culture_bonus = 0;
+	get_effective_district_yields (inst, config, &food_bonus, &shield_bonus, &gold_bonus, &science_bonus, &culture_bonus);
+
 	int total_yield = 0;
-	if (config->food_bonus > 0)    total_yield += config->food_bonus;
-	if (config->shield_bonus > 0)  total_yield += config->shield_bonus;
-	if (config->gold_bonus > 0)    total_yield += config->gold_bonus;
-	if (config->science_bonus > 0) total_yield += config->science_bonus;
-	if (config->culture_bonus > 0) total_yield += config->culture_bonus;
+	if (food_bonus > 0)    total_yield += food_bonus;
+	if (shield_bonus > 0)  total_yield += shield_bonus;
+	if (gold_bonus > 0)    total_yield += gold_bonus;
+	if (science_bonus > 0) total_yield += science_bonus;
+	if (culture_bonus > 0) total_yield += culture_bonus;
 
 	if (total_yield <= 0)
 		return;
@@ -20529,27 +21550,27 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	}
 
 	// Draw icons in order: shields, food, science, commerce, culture
-	for (int i = 0; i < config->shield_bonus; i++) {
+	for (int i = 0; i < shield_bonus; i++) {
 		Sprite_draw (shield_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
 
-	for (int i = 0; i < config->food_bonus; i++) {
+	for (int i = 0; i < food_bonus; i++) {
 		Sprite_draw (food_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
 
-	for (int i = 0; i < config->science_bonus; i++) {
+	for (int i = 0; i < science_bonus; i++) {
 		Sprite_draw (science_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
 
-	for (int i = 0; i < config->gold_bonus; i++) {
+	for (int i = 0; i < gold_bonus; i++) {
 		Sprite_draw (commerce_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
 
-	for (int i = 0; i < config->culture_bonus; i++) {
+	for (int i = 0; i < culture_bonus; i++) {
 		Sprite_draw (culture_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
@@ -21633,6 +22654,51 @@ init_district_images ()
 		wpcx.vtable->destruct (&wpcx, __, 0);
 	}
 
+	if (is->current_config.enable_natural_wonder_districts && (is->natural_wonder_count > 0)) {
+		char const * last_img_path = NULL;
+		PCX_Image nwpcx;
+		PCX_Image_construct (&nwpcx);
+		bool pcx_loaded = false;
+
+		for (int ni = 0; ni < is->natural_wonder_count; ni++) {
+			struct natural_wonder_district_config * cfg = &is->natural_wonder_configs[ni];
+			if (cfg->name == NULL)
+				continue;
+
+			char const * img_path = (cfg->img_path != NULL) ? cfg->img_path : DEFAULT_NATURAL_WONDER_IMAGE;
+			if ((last_img_path == NULL) || (strcmp (img_path, last_img_path) != 0)) {
+				if (pcx_loaded)
+					nwpcx.vtable->clear_JGL (&nwpcx);
+
+				snprintf (art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, img_path);
+				PCX_Image_read_file (&nwpcx, __, art_dir, NULL, 0, 0x100, 2);
+
+				if (nwpcx.JGL.Image == NULL) {
+					char ss[200];
+					snprintf (ss, sizeof ss, "init_district_images: failed to load natural wonder images from %s", art_dir);
+					pop_up_in_game_error (ss);
+					pcx_loaded = false;
+					continue;
+				}
+
+				pcx_loaded = true;
+				last_img_path = img_path;
+			}
+
+			if (! pcx_loaded)
+				continue;
+
+			Sprite_construct (&is->natural_wonder_img_sets[ni].img);
+			int x = NATURAL_WONDER_IMAGE_WIDTH  * cfg->img_column;
+			int y = NATURAL_WONDER_IMAGE_HEIGHT * cfg->img_row;
+			Sprite_slice_pcx (&is->natural_wonder_img_sets[ni].img, __, &nwpcx, x, y, NATURAL_WONDER_IMAGE_WIDTH, NATURAL_WONDER_IMAGE_HEIGHT, 1, 1);
+		}
+
+		if (pcx_loaded)
+			nwpcx.vtable->clear_JGL (&nwpcx);
+		nwpcx.vtable->destruct (&nwpcx, __, 0);
+	}
+
 	is->dc_img_state = IS_OK;
 	pcx.vtable->destruct (&pcx, __, 0);
 }
@@ -21708,6 +22774,19 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                             }
                         }
                     }
+
+					if (is->current_config.enable_natural_wonder_districts && district_id == NATURAL_WONDER_DISTRICT_ID) {
+						int natural_id = inst->natural_wonder_info.natural_wonder_id;
+						if (! completed)
+							return;
+						if ((natural_id >= 0) && (natural_id < is->natural_wonder_count)) {
+							Sprite * nsprite = &is->natural_wonder_img_sets[natural_id].img;
+							int y_offset = NATURAL_WONDER_IMAGE_HEIGHT - 64;
+							int draw_y = pixel_y - y_offset;
+							patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+						}
+						return;
+					}
 
                     if (! completed)
                         return;
@@ -22148,7 +23227,9 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 		if ((district_id < 0) || (district_id >= is->district_count)) continue;
 		if (! district_is_complete (tai.tile, district_id)) continue;
 
-		standard_district_food += is->district_configs[district_id].food_bonus;
+		int food_bonus = 0;
+		get_effective_district_yields (inst, &is->district_configs[district_id], &food_bonus, NULL, NULL, NULL, NULL);
+		standard_district_food += food_bonus;
 	}
 
 	// Get distribution hub food bonus
@@ -22312,7 +23393,9 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 		if ((district_id < 0) || (district_id >= is->district_count)) continue;
 		if (! district_is_complete (tile, district_id)) continue;
 
-		standard_district_shields += is->district_configs[district_id].shield_bonus;
+		int shield_bonus = 0;
+		get_effective_district_yields (inst, &is->district_configs[district_id], NULL, &shield_bonus, NULL, NULL, NULL);
+		standard_district_shields += shield_bonus;
 	}
 
 	// Get distribution hub shield bonus
