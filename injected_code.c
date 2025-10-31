@@ -22450,11 +22450,18 @@ district_tile_needs_defense (Tile * tile, int tile_x, int tile_y, struct distric
 	if (! district_is_complete (tile, district_id)) return false;
 	if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id) return false;
 
-	// Check if already has enough defenders (less than 2 for most, less than 3 for airfields)
+	// Check if already has enough defenders (2 for aerodromes, distribution hubs, destroyable completed wonders)
 	int defender_count = count_units_at (tile_x, tile_y, UF_DEFENDER_VIS_TO_A_OF_CLASS_B, civ_id, 0, -1);
-	int max_defenders = (district_id == AERODROME_DISTRICT_ID) ? 3 : 1;
+	int max_defenders = 
+		(district_id == AERODROME_DISTRICT_ID || district_id == DISTRIBUTION_HUB_DISTRICT_ID ||
+		(district_id == WONDER_DISTRICT_ID && is->current_config.completed_wonder_districts_can_be_destroyed)) 
+			? 2 : 1;
 	if (defender_count >= max_defenders)
 		return false;
+
+	// Distribution hubs always need defense
+	if (district_id == DISTRIBUTION_HUB_DISTRICT_ID)
+		return true;
 
 	// Wonder districts need defense if under construction or completed (not unused)
 	if (district_id == WONDER_DISTRICT_ID && is->current_config.completed_wonder_districts_can_be_destroyed) {
@@ -22563,8 +22570,8 @@ patch_Unit_seek_colony (Unit * this, int edx, bool for_own_defense, int max_dist
 
 	bool abort_search = false;
 
-	if (is->current_config.enable_wonder_districts &&
-	    is->current_config.completed_wonder_districts_can_be_destroyed) {
+	if ((is->current_config.enable_wonder_districts && is->current_config.completed_wonder_districts_can_be_destroyed) ||
+		 is->current_config.enable_distribution_hub_districts) {
 		for (int dx = -search_radius; (dx <= search_radius) && !abort_search; dx++) {
 			for (int dy = -search_radius; dy <= search_radius; dy++) {
 				if (evaluated_paths >= max_path_checks) {
@@ -22579,7 +22586,7 @@ patch_Unit_seek_colony (Unit * this, int edx, bool for_own_defense, int max_dist
 					continue;
 
 				struct district_instance * inst = get_district_instance (district_tile);
-				if ((inst == NULL) || (inst->district_type != WONDER_DISTRICT_ID))
+				if ((inst == NULL) || (inst->district_type != WONDER_DISTRICT_ID || inst->district_type != DISTRIBUTION_HUB_DISTRICT_ID))
 					continue;
 
 				int tile_x, tile_y;
