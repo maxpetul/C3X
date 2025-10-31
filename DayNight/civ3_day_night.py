@@ -800,13 +800,12 @@ def process_time_label(
             reserved_idx: Set[int] = set()
 
             # If this is an Entertainment Complex, protect EXACT pixels by duplicating indices
-            if "EntertainmentComplex" in pcx_path.name and is_night_hour(int(hour_value)):
+            if "EntertainmentComplex" in pcx_path.name and is_night_hour(24 if int(hour_value) == 0 else int(hour_value)):
                 ranges = PROTECTED_RANGES_ENT_COMPLEX
                 ranges = _bridge_small_gaps(ranges, PROTECTED_GAP_BRIDGE)
                 reserved_idx = _protect_exact_pixels_by_index(
                     im, pal, ranges, reserved_by_color_rgbs=reserved_by_color_rgbs
                 )
-
 
             new_pal = adjust_palette_for_time(
                 pal, hour_value, effective_reserved_colors,

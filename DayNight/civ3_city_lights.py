@@ -370,16 +370,25 @@ def process_tree(data_dir: str, noon_subfolder: str,
                     halo_sep=halo_sep, halo_gamma=halo_gamma
                 )
 
-                save_with_palette_and_magic(comp, out_lights, base_rgb)
                 if is_night_hour(hour_1_24):
+                    # At night, also write/replace the plain file with the composite
                     save_with_palette_and_magic(comp, out_plain, base_rgb)
+
+                    # ---- Night-only cleanup: remove the hour's *_lights.pcx copy ----
+                    if os.path.exists(out_lights) and ("annotations" not in out_lights.lower()):
+                        try:
+                            os.remove(out_lights)
+                        except Exception as e:
+                            print(f"WARNING: Could not delete {out_lights}: {e}")
                 else:
+                    # Daytime: ensure a plain exists; prefer noon_plain if available
                     if not os.path.exists(out_plain):
                         if os.path.exists(noon_plain):
                             os.makedirs(os.path.dirname(out_plain), exist_ok=True)
                             shutil.copyfile(noon_plain, out_plain)
                         else:
                             save_with_palette_and_magic(base_bg, out_plain, base_rgb)
+
 
 def main():
     parser = argparse.ArgumentParser(
