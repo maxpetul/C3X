@@ -317,7 +317,7 @@ struct c3x_config {
 	bool enable_districts;
 	bool enable_neighborhood_districts;
 	bool enable_wonder_districts;
-	bool enable_natural_wonder_districts;
+	bool enable_natural_wonders;
 	bool enable_distribution_hub_districts;
 	bool enable_aerodrome_districts;
 

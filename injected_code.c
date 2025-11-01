@@ -2445,7 +2445,7 @@ static void
 assign_natural_wonder_to_tile (Tile * tile, int tile_x, int tile_y, int natural_wonder_id)
 {
 	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_natural_wonder_districts)
+	    ! is->current_config.enable_natural_wonders)
 		return;
 	if ((tile == NULL) || (tile == p_null_tile))
 		return;
@@ -2468,7 +2468,7 @@ assign_natural_wonder_to_tile (Tile * tile, int tile_x, int tile_y, int natural_
 static struct natural_wonder_district_config const *
 get_natural_wonder_config_by_id (int natural_wonder_id)
 {
-	if (! is->current_config.enable_natural_wonder_districts)
+	if (! is->current_config.enable_natural_wonders)
 		return NULL;
 	if ((natural_wonder_id < 0) || (natural_wonder_id >= is->natural_wonder_count))
 		return NULL;
@@ -6397,7 +6397,7 @@ load_districts_config (void)
 void
 place_natural_wonders_on_map (void)
 {
-	if (! is->current_config.enable_districts || ! is->current_config.enable_natural_wonder_districts)
+	if (! is->current_config.enable_districts || ! is->current_config.enable_natural_wonders)
 		return;
 
 	int wonder_count = is->natural_wonder_count;
@@ -6507,6 +6507,7 @@ place_natural_wonders_on_map (void)
 		int best_adjacent_count = -1;
 		int best_target_diff = INT_MAX;
 		int best_rand = INT_MAX;
+		int best_same_type_count = -1;
 		int target_x = (wonder_count > 0)
 			? (int)(((long long)(2 * ni + 1) * map_width) / (2 * wonder_count))
 			: (map_width >> 1);
@@ -6536,34 +6537,45 @@ place_natural_wonders_on_map (void)
 				(is->natural_wonder_configs[ni].adjacent_to != (enum SquareTypes)SQ_INVALID) &&
 				(is->natural_wonder_configs[ni].adjacency_dir == DIR_ZERO);
 			int adjacency_count = -1;
-			if (adjacency_bonus_active)
-				adjacency_count = count_adjacent_tiles_of_type (cand->x, cand->y,
-										is->natural_wonder_configs[ni].adjacent_to);
+				if (adjacency_bonus_active)
+					adjacency_count = count_adjacent_tiles_of_type (cand->x, cand->y,
+											is->natural_wonder_configs[ni].adjacent_to);
 
-			bool better = false;
-			if (adjacency_bonus_active) {
-				if (adjacency_count > best_adjacent_count)
-					better = true;
+				int same_type_count = count_adjacent_tiles_of_type (cand->x, cand->y,
+										      is->natural_wonder_configs[ni].terrain_type);
+
+				bool better = false;
+				if (adjacency_bonus_active) {
+					if (adjacency_count > best_adjacent_count)
+						better = true;
 				else if (adjacency_count < best_adjacent_count)
 					continue;
-			}
+				}
 
-			if (! better) {
-				if ((min_dist_sq > best_dist) ||
-				    ((min_dist_sq == best_dist) && (dx_adjusted < best_target_diff)) ||
-				    ((min_dist_sq == best_dist) && (dx_adjusted == best_target_diff) && (rand_val < best_rand)))
-					better = true;
-				else
+				if (! better) {
+					if (same_type_count > best_same_type_count)
+						better = true;
+					else if (same_type_count < best_same_type_count)
+						continue;
+				}
+
+				if (! better) {
+					if ((min_dist_sq > best_dist) ||
+					    ((min_dist_sq == best_dist) && (dx_adjusted < best_target_diff)) ||
+					    ((min_dist_sq == best_dist) && (dx_adjusted == best_target_diff) && (rand_val < best_rand)))
+						better = true;
+					else
 					continue;
 			}
 
 			best_dist = min_dist_sq;
 			best_target_diff = dx_adjusted;
-			best_rand = rand_val;
-			best_index = ci;
-			if (adjacency_bonus_active)
-				best_adjacent_count = adjacency_count;
-		}
+				best_rand = rand_val;
+				best_index = ci;
+				if (adjacency_bonus_active)
+					best_adjacent_count = adjacency_count;
+				best_same_type_count = same_type_count;
+			}
 
 		if (best_index < 0) {
 			char msg[256];
@@ -10875,7 +10887,7 @@ patch_init_floating_point ()
 		{"enable_districts"                                    , false, offsetof (struct c3x_config, enable_districts)},
 		{"enable_neighborhood_districts"                       , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
 		{"enable_wonder_districts"                             , false, offsetof (struct c3x_config, enable_wonder_districts)},
-		{"enable_natural_wonder_districts"                     , false, offsetof (struct c3x_config, enable_natural_wonder_districts)},
+		{"enable_natural_wonders"                     , false, offsetof (struct c3x_config, enable_natural_wonders)},
 		{"enable_distribution_hub_districts"                   , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"enable_aerodrome_districts"                          , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
 		{"completed_wonder_districts_can_be_destroyed"         , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
@@ -12581,7 +12593,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 	if (is->current_config.enable_districts) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
 		if ((tile != NULL) && (tile != p_null_tile) &&
-		    is->current_config.enable_natural_wonder_districts) {
+		    is->current_config.enable_natural_wonders) {
 			struct district_instance * inst = get_district_instance (tile);
 			if ((inst != NULL) &&
 			    (inst->district_type == NATURAL_WONDER_DISTRICT_ID) &&
@@ -12659,7 +12671,7 @@ patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y)
 	if (inst == NULL)
 		return true;
 
-	if (is->current_config.enable_natural_wonder_districts &&
+	if (is->current_config.enable_natural_wonders &&
 	    (inst->district_type == NATURAL_WONDER_DISTRICT_ID) &&
 	    (inst->natural_wonder_info.natural_wonder_id >= 0))
 		return false;
@@ -16529,12 +16541,12 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 		is->saved_tile_count = -1;
 	}
 
-	if (is->current_config.enable_natural_wonder_districts)
+	if (is->current_config.enable_natural_wonders)
 		is->natural_wonder_label_count = 0;
 
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
 
-	if (is->current_config.enable_natural_wonder_districts &&
+	if (is->current_config.enable_natural_wonders &&
 		is->current_config.show_natural_wonder_name_on_map &&
 	    is->natural_wonder_label_count > 0 &&
 	    (p_main_screen_form != NULL)) {
@@ -16930,7 +16942,7 @@ patch_Map_process_after_placing (Map * this, int edx, bool param_1)
 	if ((is->current_config.ai_multi_city_start > 0) && (*p_current_turn_no == 0))
 		set_up_ai_multi_city_start (this, is->current_config.ai_multi_city_start);
 	Map_process_after_placing (this, __, param_1);
-	if (is->current_config.enable_natural_wonder_districts)
+	if (is->current_config.enable_natural_wonders)
 		place_natural_wonders_on_map ();
 }
 
@@ -20498,7 +20510,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 	}
 
 	if (is->current_config.enable_districts &&
-	    is->current_config.enable_natural_wonder_districts &&
+	    is->current_config.enable_natural_wonders &&
 	    (is->district_tile_map.len > 0)) {
 		int entry_capacity = 0;
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
@@ -22932,7 +22944,7 @@ init_district_images ()
 		wpcx.vtable->destruct (&wpcx, __, 0);
 	}
 
-	if (is->current_config.enable_natural_wonder_districts && (is->natural_wonder_count > 0)) {
+	if (is->current_config.enable_natural_wonders && (is->natural_wonder_count > 0)) {
 		char const * last_img_path = NULL;
 		PCX_Image nwpcx;
 		PCX_Image_construct (&nwpcx);
@@ -23055,7 +23067,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                         }
                     }
 
-					if (is->current_config.enable_natural_wonder_districts && district_id == NATURAL_WONDER_DISTRICT_ID) {
+					if (is->current_config.enable_natural_wonders && district_id == NATURAL_WONDER_DISTRICT_ID) {
 						int natural_id = inst->natural_wonder_info.natural_wonder_id;
 						if (! completed)
 							return;
