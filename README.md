@@ -110,7 +110,7 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Option to have a warning when the building you've selected to build would replace another already built in the city
    - Option not to unassign workers from tiles that become polluted
    - Pressing the Z key on the city screen toggles the zoom level of the map display
-   - Option not to draw capital cities larger than they really are, named do_not_make_capital_cities_appear_larger
+   - Option not to draw capital cities larger than they really are
    - Allow Civilopedia descriptions for units, civilizations, and game concepts to span multiple pages
    - Double size of minimap when running in high definition (>= 1920 horizontal pixels)
    - Option to show some popup messages as online-multiplayer-style notifications
