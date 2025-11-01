@@ -1287,9 +1287,17 @@ struct injected_state {
 		Sprite img;
 		Sprite construct_img;
 	} wonder_district_img_sets[MAX_WONDER_DISTRICT_TYPES];
+
 	struct natural_wonder_district_image_set {
-		Sprite img;
-	} natural_wonder_img_sets[MAX_NATURAL_WONDER_DISTRICT_TYPES];
+			Sprite img;
+		} natural_wonder_img_sets[MAX_NATURAL_WONDER_DISTRICT_TYPES];
+	struct natural_wonder_label_draw_info {
+		int text_left;
+		int text_top;
+		int text_width;
+		int font_size;
+		char const * text;
+	};
 
 	struct day_night_cycle_img_set
 	{
@@ -1479,6 +1487,8 @@ struct injected_state {
 	// Worker tracking: 32 tables (one per civ), each mapping unit_id -> district_worker_record pointer
 	struct table district_worker_tables[32];
 	struct table natural_wonder_name_to_id;
+	int natural_wonder_label_count;
+	struct natural_wonder_label_draw_info natural_wonder_labels[MAX_NATURAL_WONDER_DISTRICT_TYPES];
 
 	// City work radius highlighting: flag to enable/disable, table mapping tile pointers to highlight_level for visual feedback
 	bool highlight_city_radii;

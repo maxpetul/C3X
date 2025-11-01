@@ -83,7 +83,7 @@ gold_bonus    = 0
 shield_bonus  = 0
 
 #Wonder
-name          = Zhangjiajie_Muntains
+name          = Zhangjiajie Mountains
 terrain_type  = land
 img_path      = NaturalWonders.pcx
 img_row       = 1

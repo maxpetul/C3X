@@ -16273,7 +16273,28 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 		is->saved_tile_count = -1;
 	}
 
+	if (is->current_config.enable_natural_wonder_districts)
+		is->natural_wonder_label_count = 0;
+
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
+
+	if (is->current_config.enable_natural_wonder_districts &&
+	    (is->natural_wonder_label_count > 0) &&
+	    (p_main_screen_form != NULL)) {
+		PCX_Image * canvas = &p_main_screen_form->Base_Data.Canvas;
+		if ((canvas != NULL) && (canvas->JGL.Image != NULL)) {
+			for (int n = 0; n < is->natural_wonder_label_count; n++) {
+				struct natural_wonder_label_draw_info const * entry = &is->natural_wonder_labels[n];
+				if ((entry->text != NULL) && (entry->text[0] != '\0')) {
+					Object_66C3FC * font = get_font (entry->font_size, FSF_ITALIC);
+					if (font != NULL) {
+						PCX_Image_set_text_effects (canvas, __, 0x80FFFFFF, 0x80000000, 1, 1); // white text with black shadow
+						PCX_Image_draw_centered_text (canvas, __, font, (char *)entry->text, entry->text_left, entry->text_top - 10, entry->text_width, strlen (entry->text));
+					}
+				}
+			}
+		}
+	}
 }
 
 // Returns whether or not city has an "extra palace", a concept used by the AI multi-city start. Extra palaces are small wonders that reduce
@@ -22783,22 +22804,28 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 							return;
 						if ((natural_id >= 0) && (natural_id < is->natural_wonder_count)) {
 							Sprite * nsprite = &is->natural_wonder_img_sets[natural_id].img;
-							int y_offset = NATURAL_WONDER_IMAGE_HEIGHT - 64;
+							int y_offset = NATURAL_WONDER_IMAGE_HEIGHT;
 							int draw_y = pixel_y - y_offset;
 							patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
 							struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
-							if ((nw_cfg != NULL) && (nw_cfg->name != NULL) && (nw_cfg->name[0] != '\0') && (p_main_screen_form != NULL)) {
-								PCX_Image * canvas = &p_main_screen_form->Base_Data.Canvas;
-								if ((canvas != NULL) && (canvas->JGL.Image != NULL)) {
-									int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
-									int scale = is_zoomed_out ? 2 : 1;
-									int text_width = NATURAL_WONDER_IMAGE_WIDTH / scale;
-									int text_left = pixel_x + (NATURAL_WONDER_IMAGE_WIDTH - text_width) / 2;
-									int base_height = is_zoomed_out ? 32 : 64;
-									int text_top = pixel_y + base_height - (is_zoomed_out ? 6 : 12);
-									Object_66C3FC * font = get_font (is_zoomed_out ? 9 : 11, FSF_NONE);
-									if (font != NULL)
-										PCX_Image_draw_centered_text (canvas, __, font, (char *)nw_cfg->name, text_left, text_top, text_width, strlen (nw_cfg->name));
+							if ((nw_cfg != NULL) && (nw_cfg->name != NULL) && (nw_cfg->name[0] != '\0')) {
+								int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
+								int scale = is_zoomed_out ? 2 : 1;
+								int screen_width = NATURAL_WONDER_IMAGE_WIDTH / scale;
+								int screen_height = NATURAL_WONDER_IMAGE_HEIGHT / scale;
+								int text_width = screen_width - (is_zoomed_out ? 4 : 8);
+								if (text_width < 12)
+									text_width = screen_width;
+								int text_left = pixel_x + (screen_width - text_width) / 2;
+								int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
+								int font_size = is_zoomed_out ? 11 : 13;
+								if (is->natural_wonder_label_count < MAX_NATURAL_WONDER_DISTRICT_TYPES) {
+									struct natural_wonder_label_draw_info * entry = &is->natural_wonder_labels[is->natural_wonder_label_count++];
+									entry->text_left = text_left;
+									entry->text_top = text_top;
+									entry->text_width = text_width;
+									entry->font_size = font_size;
+									entry->text = nw_cfg->name;
 								}
 							}
 						}
