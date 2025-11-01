@@ -65,8 +65,8 @@ It is possible to disallow trespassing, which will prevent units from entering a
 #### Small Wonder Free Improvements:
 The free improvements wonder effect (granaries from Pyramids etc.) now works on small wonders. Note to modders, to set this effect you must use a third party editor like Quintillus' ([thread link](https://forums.civfanatics.com/threads/cross-platform-editor-for-conquests-now-available.377188/)) because the option is grayed out in the standard editor. Even worse, if you set the effect then work on the BIQ in the standard editor, the effect won't be saved, so you'd need to set it every time or work exclusively in Quintillus' editor.
 
-#### No-Raze & No Unit Limit:
-The no-raze and no-unit-limit features of earlier modded EXEs have been re-implemented as part of C3X. To enable no-raze, edit the config. There are separate options to prevent autorazing (the forced destruction of size 1 cities) and razing by player's choice.
+#### No-Raze & Limit Removals:
+The no-raze and no-unit-limit features of earlier modded EXEs have been re-implemented as part of C3X. To enable no-raze, edit the config. There are separate options to prevent autorazing (the forced destruction of size 1 cities) and razing by player's choice. In addition to removing the unit limit, C3X also removes the limit of 256 city improvement types, and lifts the city limit to 2048.
 
 ## Full Feature List
 All C3X features are listed below. See the default config (default.c3x\_config.ini) for descriptions.
@@ -111,6 +111,11 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Option not to unassign workers from tiles that become polluted
    - Pressing the Z key on the city screen toggles the zoom level of the map display
    - Option not to draw capital cities larger than they really are, named do_not_make_capital_cities_appear_larger
+   - Allow Civilopedia descriptions for units, civilizations, and game concepts to span multiple pages
+   - Double size of minimap when running in high definition (>= 1920 horizontal pixels)
+   - Option to show some popup messages as online-multiplayer-style notifications
+   - Option to switch debug mode on or off for games in progress
+   - Option to tint coast and sea tiles on minimap based on cultural borders
   #### Optimization
    - Optimize computation of trade networks
       - For details, see the info text file in the Trade Net X folder
@@ -127,6 +132,7 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Can limit the number of escorts the AI assigns to its naval transports and carriers
    - Adjustable AI worker requirement
    - Option to stop AI from escorting units without the "requires escort" flag
+   - Option to draw small shadows underneath city dots on the minimap to make them more visible
   #### Bugs Fixed
    - AI pathfinding collides with invisible units (called the "submarine bug")
    - Science age beakers not actually awarded
@@ -144,14 +150,20 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Pathfinder improperly truncates long paths, sending AI units on nonsensical or invalid paths
    - Cities with zero production crash the game due to division by zero
    - Icons for different kinds of specialist yields are drawn on top of, instead of next to, one another
+   - AI players may sacrifice units without the "sacrifice" special ability
+   - AI players may build armies with leader units that don't have the "build army" special ability
+   - Possible crash in base game leader unit AI
   #### AMB Editor
    - A program for inspecting and modifying the special .amb sound files used by Civ 3.
    - For more info, see README.txt in the AMB Editor folder
+  #### Limits Removed
+   - Removed unit limit
+   - Removed city improvement limit
+   - Lift city limit to 2048 and allow it to be configured
+   - Remove cap on turn limit
   #### Engine Extensions
    - Adjustable minimum city distance
    - Option to limit railroad movement, as in Civ 4 or by converting them to fast roads
-   - Removed unit limit
-   - Removed city improvement limit
    - Option to limit how many units can share each tile
    - Enable free improvements from small wonders
    - Option to share visibility among all human players in a hotseat game
@@ -173,8 +185,7 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Option to modify rules for retreat eligibility
    - AI multi-city start
       - Starter cities can begin with improvements, including "extra palaces" which respawn like the real palace
-   - Remove cap on turn limit
-   - Option to strengthen forbidden palace decorruption effect to match the palace's
+   - Option to strengthen the corruption reducing effect of wonders to match the palace's
    - Option to allow military great leaders to hurry wonders
    - Option to multiply AI research rate by any amount
    - Option to aggressively penalize bankrupt players
@@ -230,7 +241,11 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Option to block the galley chaining exploit by preventing units from loading into two different transports on the same turn
    - Adjustable rebase range as multiple of operational range
    - Option to share wonders among human players in hotseat mode
-   - Experimental option to move the game's trade net object to a different location in memory
+   - Enable tile graphics to cycle over day and night, see "Day/Night Cycle" section of default config for details
+   - Can adjust time to double building culture
+   - Option to prevent units from upgrading past an intermediate type that does not have the upgrade ability
+   - Can adjust times to generate tourism gold
+   - Option to put all human players in contact with each other at the start of a hotseat game
 </details>
 
 ## How It Works
@@ -243,3 +258,4 @@ C3X is open source. The C code that gets injected into the game's EXE is located
 2. Rômulo Prado for his help testing the mod
 3. Civinator for the German translation. See: https://www.civforum.de/showthread.php?113285-Der-Flintlock-Deutsch-Patch
 4. Vaughn Parker for generously commissioning the port to the PCGames.de EXE and many other features
+5. instafluff0 for contributing the day/night cycle feature
