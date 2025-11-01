@@ -325,6 +325,8 @@ struct c3x_config {
 	bool cities_with_mutual_district_receive_wonders;
 	bool air_units_use_aerodrome_districts_not_cities;
 
+	bool show_natural_wonder_name_on_map;
+
 	int maximum_pop_before_neighborhood_needed;
 	int per_neighborhood_pop_growth_enabled;
 	

@@ -3089,6 +3089,22 @@ natural_wonder_adjacent_requirement_met (struct natural_wonder_district_config c
 	return false;
 }
 
+static int
+count_adjacent_tiles_of_type (int tile_x, int tile_y, enum SquareTypes type)
+{
+	if (type == (enum SquareTypes)SQ_INVALID)
+		return 0;
+
+	int count = 0;
+	FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+		if (tai.n == 0)
+			continue;
+		if (tile_square_type_is (tai.tile, type))
+			count += 1;
+	}
+	return count;
+}
+
 static bool
 natural_wonder_terrain_matches (struct natural_wonder_district_config const * cfg, Tile * tile, int tile_x, int tile_y)
 {
@@ -6488,6 +6504,7 @@ place_natural_wonders_on_map (void)
 
 		int best_index = -1;
 		int best_dist = -1;
+		int best_adjacent_count = -1;
 		int best_target_diff = INT_MAX;
 		int best_rand = INT_MAX;
 		int target_x = (wonder_count > 0)
@@ -6515,14 +6532,37 @@ place_natural_wonders_on_map (void)
 			int dx_adjusted = compute_wrapped_component (dx_raw, map_width, wraps_horiz);
 			int rand_val    = rand_int (p_rand_object, __, 0x7FFF);
 
-			if ((min_dist_sq > best_dist) ||
-			    ((min_dist_sq == best_dist) && (dx_adjusted < best_target_diff)) ||
-			    ((min_dist_sq == best_dist) && (dx_adjusted == best_target_diff) && (rand_val < best_rand))) {
-				best_dist = min_dist_sq;
-				best_target_diff = dx_adjusted;
-				best_rand = rand_val;
-				best_index = ci;
+			bool adjacency_bonus_active =
+				(is->natural_wonder_configs[ni].adjacent_to != (enum SquareTypes)SQ_INVALID) &&
+				(is->natural_wonder_configs[ni].adjacency_dir == DIR_ZERO);
+			int adjacency_count = -1;
+			if (adjacency_bonus_active)
+				adjacency_count = count_adjacent_tiles_of_type (cand->x, cand->y,
+										is->natural_wonder_configs[ni].adjacent_to);
+
+			bool better = false;
+			if (adjacency_bonus_active) {
+				if (adjacency_count > best_adjacent_count)
+					better = true;
+				else if (adjacency_count < best_adjacent_count)
+					continue;
 			}
+
+			if (! better) {
+				if ((min_dist_sq > best_dist) ||
+				    ((min_dist_sq == best_dist) && (dx_adjusted < best_target_diff)) ||
+				    ((min_dist_sq == best_dist) && (dx_adjusted == best_target_diff) && (rand_val < best_rand)))
+					better = true;
+				else
+					continue;
+			}
+
+			best_dist = min_dist_sq;
+			best_target_diff = dx_adjusted;
+			best_rand = rand_val;
+			best_index = ci;
+			if (adjacency_bonus_active)
+				best_adjacent_count = adjacency_count;
 		}
 
 		if (best_index < 0) {
@@ -10842,7 +10882,8 @@ patch_init_floating_point ()
 		{"destroyed_wonders_can_be_built_elsewhere"            , false, offsetof (struct c3x_config, destroyed_wonders_can_be_built_elsewhere)},
 		{"cities_with_mutual_district_receive_buildings"       , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
 		{"cities_with_mutual_district_receive_wonders"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
-        {"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
+		{"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
+        {"show_natural_wonder_name_on_map"                     , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
 		{"ai_defends_districts"         		               , false, offsetof (struct c3x_config, ai_defends_districts)},
 		{"enable_city_work_radii_highlights" 				   , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
@@ -16494,7 +16535,8 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
 
 	if (is->current_config.enable_natural_wonder_districts &&
-	    (is->natural_wonder_label_count > 0) &&
+		is->current_config.show_natural_wonder_name_on_map &&
+	    is->natural_wonder_label_count > 0 &&
 	    (p_main_screen_form != NULL)) {
 		PCX_Image * canvas = &p_main_screen_form->Base_Data.Canvas;
 		if ((canvas != NULL) && (canvas->JGL.Image != NULL)) {
@@ -23022,25 +23064,28 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 							int y_offset = NATURAL_WONDER_IMAGE_HEIGHT - 64;
 							int draw_y = pixel_y - y_offset;
 							patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-							struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
-							if ((nw_cfg != NULL) && (nw_cfg->name != NULL) && (nw_cfg->name[0] != '\0')) {
-								int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
-								int scale = is_zoomed_out ? 2 : 1;
-								int screen_width = NATURAL_WONDER_IMAGE_WIDTH / scale;
-								int screen_height = NATURAL_WONDER_IMAGE_HEIGHT / scale;
-								int text_width = screen_width - (is_zoomed_out ? 4 : 8);
-								if (text_width < 12)
-									text_width = screen_width;
-								int text_left = pixel_x + (screen_width - text_width) / 2;
-								int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
-								int font_size = is_zoomed_out ? 11 : 13;
-								if (is->natural_wonder_label_count < MAX_NATURAL_WONDER_DISTRICT_TYPES) {
-									struct natural_wonder_label_draw_info * entry = &is->natural_wonder_labels[is->natural_wonder_label_count++];
-									entry->text_left = text_left;
-									entry->text_top = text_top;
-									entry->text_width = text_width;
-									entry->font_size = font_size;
-									entry->text = nw_cfg->name;
+
+							if (is->current_config.show_natural_wonder_name_on_map) {
+								struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
+								if ((nw_cfg != NULL) && (nw_cfg->name != NULL) && (nw_cfg->name[0] != '\0')) {
+									int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
+									int scale = is_zoomed_out ? 2 : 1;
+									int screen_width = NATURAL_WONDER_IMAGE_WIDTH / scale;
+									int screen_height = NATURAL_WONDER_IMAGE_HEIGHT / scale;
+									int text_width = screen_width - (is_zoomed_out ? 4 : 8);
+									if (text_width < 12)
+										text_width = screen_width;
+									int text_left = pixel_x + (screen_width - text_width) / 2;
+									int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
+									int font_size = is_zoomed_out ? 11 : 13;
+									if (is->natural_wonder_label_count < MAX_NATURAL_WONDER_DISTRICT_TYPES) {
+										struct natural_wonder_label_draw_info * entry = &is->natural_wonder_labels[is->natural_wonder_label_count++];
+										entry->text_left = text_left;
+										entry->text_top = text_top;
+										entry->text_width = text_width;
+										entry->font_size = font_size;
+										entry->text = nw_cfg->name;
+									}
 								}
 							}
 						}
