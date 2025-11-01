@@ -125,6 +125,7 @@ enum day_night_cycle_mode {
 
 enum natural_wonder_terrain_type {
 	NWTERRAIN_OCEAN = 0,
+	NWTERRAIN_SEA,
 	NWTERRAIN_COAST,
 	NWTERRAIN_COASTAL_LAND,
 	NWTERRAIN_DESERT,

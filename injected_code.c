@@ -1625,6 +1625,7 @@ read_natural_wonder_terrain_type (struct string_slice const * s, enum natural_wo
 
 	struct string_slice trimmed = trim_string_slice (s, 1);
 	if      (slice_matches_str (&trimmed, "ocean"        )) { *out_type = NWTERRAIN_OCEAN;        return true; }
+	else if (slice_matches_str (&trimmed, "sea"          )) { *out_type = NWTERRAIN_SEA;          return true; }
 	else if (slice_matches_str (&trimmed, "coast"        )) { *out_type = NWTERRAIN_COAST;        return true; }
 	else if (slice_matches_str (&trimmed, "coastal_land" )) { *out_type = NWTERRAIN_COASTAL_LAND; return true; }
 	else if (slice_matches_str (&trimmed, "desert"       )) { *out_type = NWTERRAIN_DESERT;       return true; }
