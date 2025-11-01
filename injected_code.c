@@ -6016,9 +6016,9 @@ load_natural_wonder_configs (void)
 	if (is == NULL)
 		return;
 
-	load_natural_wonder_config_file ("default.districts_natural_config.txt", 1, 1);
-	load_natural_wonder_config_file ("custom.districts_natural_config.txt", 1, 0);
-	char * scenario_file_name = "scenario.districts_natural_config.txt";
+	load_natural_wonder_config_file ("default.districts_natural_wonders_config.txt", 1, 1);
+	load_natural_wonder_config_file ("custom.districts_natural_wonders_config.txt", 1, 0);
+	char * scenario_file_name = "scenario.districts_natural_wonders_config.txt";
 	char * scenario_path = NULL;
 	if (p_bic_data != NULL)
 		scenario_path = BIC_get_asset_path (p_bic_data, __, scenario_file_name, false);
@@ -6083,8 +6083,7 @@ load_districts_config (void)
 	clear_dynamic_district_definitions ();
 	load_dynamic_district_configs ();
 	load_dynamic_wonder_configs ();
-	if (is->current_config.enable_natural_wonder_districts)
-		load_natural_wonder_configs ();
+	load_natural_wonder_configs ();
 	is->district_count = is->special_district_count + is->dynamic_district_count;
 
 	append_wonders_to_wonder_district_config ();
@@ -22740,6 +22739,8 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x,int pixel_y)
 {
+	*p_debug_mode_bits |= 0xC;
+
     // If districts enabled and this tile is mapped to a district, draw only the district (suppress base mine drawing)
     if (is->current_config.enable_districts) {
         Tile * tile = tile_at (tile_x, tile_y);
@@ -22787,7 +22788,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 							patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
 							struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
 							if ((nw_cfg != NULL) && (nw_cfg->name != NULL) && (nw_cfg->name[0] != '\0') && (p_main_screen_form != NULL)) {
-								PCX_Image * canvas = &p_main_screen_form->Base.Data.Canvas;
+								PCX_Image * canvas = &p_main_screen_form->Base_Data.Canvas;
 								if ((canvas != NULL) && (canvas->JGL.Image != NULL)) {
 									int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
 									int scale = is_zoomed_out ? 2 : 1;

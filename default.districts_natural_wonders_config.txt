@@ -156,7 +156,7 @@ shield_bonus  = 0
 
 #Wonder
 name          = Grand Canyon
-terrain_type  = land
+terrain_type  = desert
 img_path      = NaturalWonders.pcx
 img_row       = 3
 img_column    = 0
