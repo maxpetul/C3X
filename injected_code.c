@@ -2523,46 +2523,6 @@ natural_wonder_exists_within_distance (int tile_x, int tile_y, int min_distance)
 	return false;
 }
 
-static bool
-natural_wonder_terrain_matches (struct natural_wonder_district_config const * cfg, Tile * tile, int tile_x, int tile_y)
-{
-	if ((cfg == NULL) || (tile == NULL) || (tile == p_null_tile))
-		return false;
-
-	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	bool is_water = tile->vtable->m35_Check_Is_Water (tile) != 0;
-
-	switch (cfg->terrain_type) {
-	case NWTERRAIN_OCEAN:
-		return is_water && (base_type == SQ_Ocean || base_type == SQ_Sea);
-
-	case NWTERRAIN_COAST:
-		return is_water && (base_type == SQ_Coast || base_type == SQ_Sea);
-
-	case NWTERRAIN_COASTAL_LAND:
-		if (is_water)
-			return false;
-		FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
-			if (tai.n == 0)
-				continue;
-			Tile * adj = tai.tile;
-			if ((adj != NULL) && (adj != p_null_tile) && adj->vtable->m35_Check_Is_Water (adj))
-				return true;
-		}
-		return false;
-
-	case NWTERRAIN_DESERT:
-		return (! is_water) && ((base_type == SQ_Desert) || (base_type == SQ_FloodPlain));
-
-	case NWTERRAIN_TUNDRA:
-		return (! is_water) && (base_type == SQ_Tundra);
-
-	case NWTERRAIN_LAND:
-	default:
-		return ! is_water;
-	}
-}
-
 void
 detach_workers_from_request (struct pending_district_request * req)
 {
@@ -2927,6 +2887,46 @@ tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
 	else {
 		*out_x = -1;
 		*out_y = -1;
+	}
+}
+
+static bool
+natural_wonder_terrain_matches (struct natural_wonder_district_config const * cfg, Tile * tile, int tile_x, int tile_y)
+{
+	if ((cfg == NULL) || (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+	bool is_water = tile->vtable->m35_Check_Is_Water (tile) != 0;
+
+	switch (cfg->terrain_type) {
+	case NWTERRAIN_OCEAN:
+		return is_water && (base_type == SQ_Ocean || base_type == SQ_Sea);
+
+	case NWTERRAIN_COAST:
+		return is_water && (base_type == SQ_Coast || base_type == SQ_Sea);
+
+	case NWTERRAIN_COASTAL_LAND:
+		if (is_water)
+			return false;
+		FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+			if (tai.n == 0)
+				continue;
+			Tile * adj = tai.tile;
+			if ((adj != NULL) && (adj != p_null_tile) && adj->vtable->m35_Check_Is_Water (adj))
+				return true;
+		}
+		return false;
+
+	case NWTERRAIN_DESERT:
+		return (! is_water) && ((base_type == SQ_Desert) || (base_type == SQ_FloodPlain));
+
+	case NWTERRAIN_TUNDRA:
+		return (! is_water) && (base_type == SQ_Tundra);
+
+	case NWTERRAIN_LAND:
+	default:
+		return ! is_water;
 	}
 }
 
@@ -22784,6 +22784,21 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 							int y_offset = NATURAL_WONDER_IMAGE_HEIGHT - 64;
 							int draw_y = pixel_y - y_offset;
 							patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+							struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
+							if ((nw_cfg != NULL) && (nw_cfg->name != NULL) && (nw_cfg->name[0] != '\0') && (p_main_screen_form != NULL)) {
+								PCX_Image * canvas = &p_main_screen_form->Base.Data.Canvas;
+								if ((canvas != NULL) && (canvas->JGL.Image != NULL)) {
+									int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
+									int scale = is_zoomed_out ? 2 : 1;
+									int text_width = NATURAL_WONDER_IMAGE_WIDTH / scale;
+									int text_left = pixel_x + (NATURAL_WONDER_IMAGE_WIDTH - text_width) / 2;
+									int base_height = is_zoomed_out ? 32 : 64;
+									int text_top = pixel_y + base_height - (is_zoomed_out ? 6 : 12);
+									Object_66C3FC * font = get_font (is_zoomed_out ? 9 : 11, FSF_NONE);
+									if (font != NULL)
+										PCX_Image_draw_centered_text (canvas, __, font, (char *)nw_cfg->name, text_left, text_top, text_width, strlen (nw_cfg->name));
+								}
+							}
 						}
 						return;
 					}
