@@ -1617,20 +1617,90 @@ read_day_night_cycle_mode (struct string_slice const * s, int * out_val)
 		return false;
 }
 
-bool
-read_natural_wonder_terrain_type (struct string_slice const * s, enum natural_wonder_terrain_type * out_type)
+static bool
+read_square_type_value (struct string_slice const * s, enum SquareTypes * out_type)
 {
 	if (s == NULL || out_type == NULL)
 		return false;
 
 	struct string_slice trimmed = trim_string_slice (s, 1);
-	if      (slice_matches_str (&trimmed, "ocean"        )) { *out_type = NWTERRAIN_OCEAN;        return true; }
-	else if (slice_matches_str (&trimmed, "sea"          )) { *out_type = NWTERRAIN_SEA;          return true; }
-	else if (slice_matches_str (&trimmed, "coast"        )) { *out_type = NWTERRAIN_COAST;        return true; }
-	else if (slice_matches_str (&trimmed, "coastal_land" )) { *out_type = NWTERRAIN_COASTAL_LAND; return true; }
-	else if (slice_matches_str (&trimmed, "desert"       )) { *out_type = NWTERRAIN_DESERT;       return true; }
-	else if (slice_matches_str (&trimmed, "tundra"       )) { *out_type = NWTERRAIN_TUNDRA;       return true; }
-	else if (slice_matches_str (&trimmed, "land"         )) { *out_type = NWTERRAIN_LAND;         return true; }
+	if (trimmed.len <= 0)
+		return false;
+
+	struct {
+		char const * name;
+		int value;
+	} const entries[] = {
+		{"desert",     SQ_Desert},
+		{"plains",     SQ_Plains},
+		{"grassland",  SQ_Grassland},
+		{"tundra",     SQ_Tundra},
+		{"floodplain", SQ_FloodPlain},
+		{"hills",      SQ_Hills},
+		{"mountains",  SQ_Mountains},
+		{"forest",     SQ_Forest},
+		{"jungle",     SQ_Jungle},
+		{"swamp",      SQ_Swamp},
+		{"volcano",    SQ_Volcano},
+		{"coast",      SQ_Coast},
+		{"sea",        SQ_Sea},
+		{"ocean",      SQ_Ocean},
+		{"river",      SQ_RIVER},
+		{"any",        SQ_INVALID}
+	};
+
+	for (int i = 0; i < (int)ARRAY_LEN (entries); i++) {
+		if (slice_matches_str (&trimmed, entries[i].name)) {
+			*out_type = (enum SquareTypes)entries[i].value;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool
+read_natural_wonder_terrain_type (struct string_slice const * s, enum SquareTypes * out_type)
+{
+	enum SquareTypes parsed;
+	if (! read_square_type_value (s, &parsed))
+		return false;
+
+	switch (parsed) {
+	case SQ_Desert:
+	case SQ_Plains:
+	case SQ_Grassland:
+	case SQ_Tundra:
+	case SQ_FloodPlain:
+	case SQ_Coast:
+	case SQ_Sea:
+	case SQ_Ocean:
+		*out_type = parsed;
+		return true;
+
+	default:
+		return false;
+	}
+}
+
+static bool
+read_direction_value (struct string_slice const * s, enum direction * out_dir)
+{
+	if (s == NULL || out_dir == NULL)
+		return false;
+
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if (trimmed.len <= 0)
+		return false;
+
+	if      (slice_matches_str (&trimmed, "northeast")) { *out_dir = DIR_NE;  return true; }
+	else if (slice_matches_str (&trimmed, "east"     )) { *out_dir = DIR_E;   return true; }
+	else if (slice_matches_str (&trimmed, "southeast")) { *out_dir = DIR_SE;  return true; }
+	else if (slice_matches_str (&trimmed, "south"    )) { *out_dir = DIR_S;   return true; }
+	else if (slice_matches_str (&trimmed, "southwest")) { *out_dir = DIR_SW;  return true; }
+	else if (slice_matches_str (&trimmed, "west"     )) { *out_dir = DIR_W;   return true; }
+	else if (slice_matches_str (&trimmed, "northwest")) { *out_dir = DIR_NW;  return true; }
+	else if (slice_matches_str (&trimmed, "north"    )) { *out_dir = DIR_N;   return true; }
 	else
 		return false;
 }
@@ -2345,13 +2415,17 @@ district_instance_get_coords (struct district_instance * inst, Tile * tile, int 
 struct natural_wonder_candidate {
 	Tile * tile;
 	short x, y;
-	short continent_id;
 };
 
 struct natural_wonder_candidate_list {
 	struct natural_wonder_candidate * entries;
 	int count;
 	int capacity;
+};
+
+struct wonder_location {
+	short x;
+	short y;
 };
 
 static struct natural_wonder_district_config const * get_natural_wonder_config_by_id (int natural_wonder_id);
@@ -2365,7 +2439,7 @@ static void get_effective_district_yields (struct district_instance * inst,
 static bool natural_wonder_tile_is_clear (Tile * tile, int tile_x, int tile_y);
 static bool natural_wonder_terrain_matches (struct natural_wonder_district_config const * cfg, Tile * tile, int tile_x, int tile_y);
 static bool natural_wonder_exists_within_distance (int tile_x, int tile_y, int min_distance);
-static bool natural_wonder_candidate_list_push (struct natural_wonder_candidate_list * list, Tile * tile, int tile_x, int tile_y, int continent_id);
+static bool natural_wonder_candidate_list_push (struct natural_wonder_candidate_list * list, Tile * tile, int tile_x, int tile_y);
 
 static void
 assign_natural_wonder_to_tile (Tile * tile, int tile_x, int tile_y, int natural_wonder_id)
@@ -2445,12 +2519,28 @@ get_effective_district_yields (struct district_instance * inst,
 		*out_culture = culture;
 }
 
-enum {
-	NATURAL_WONDER_MIN_SEPARATION = 6
-};
+static int
+natural_wonder_min_distance_sq (int x,
+				int y,
+				struct wonder_location const * placements,
+				int placement_count)
+{
+	if ((placements == NULL) || (placement_count <= 0))
+		return INT_MAX;
+
+	int best = INT_MAX;
+	for (int i = 0; i < placement_count; i++) {
+		int dx, dy;
+		compute_wrapped_deltas (x, y, placements[i].x, placements[i].y, &dx, &dy);
+		int dist_sq = dx * dx + dy * dy;
+		if (dist_sq < best)
+			best = dist_sq;
+	}
+	return best;
+}
 
 static bool
-natural_wonder_candidate_list_push (struct natural_wonder_candidate_list * list, Tile * tile, int tile_x, int tile_y, int continent_id)
+natural_wonder_candidate_list_push (struct natural_wonder_candidate_list * list, Tile * tile, int tile_x, int tile_y)
 {
 	if (list == NULL)
 		return false;
@@ -2469,33 +2559,19 @@ natural_wonder_candidate_list_push (struct natural_wonder_candidate_list * list,
 	entry->tile = tile;
 	entry->x = (short)tile_x;
 	entry->y = (short)tile_y;
-	entry->continent_id = (short)continent_id;
 	return true;
 }
 
 static bool
 natural_wonder_tile_is_clear (Tile * tile, int tile_x, int tile_y)
 {
-	if ((tile == NULL) || (tile == p_null_tile))
-		return false;
-
-	if (tile->CityID >= 0)
-		return false;
-
-	if (tile->vtable->m20_Check_Pollution (tile, __, 0))
-		return false;
-
-	if (tile->vtable->m15_Check_Goody_Hut (tile, __, 0))
-		return false;
-
-	if (tile->vtable->m39_Get_Resource_Type (tile) >= 0)
-		return false;
-
-	if (tile->vtable->m18_Check_Mines (tile, __, 0))
-		return false;
-
-	if (get_district_instance (tile) != NULL)
-		return false;
+	if ((tile == NULL) || (tile == p_null_tile)) return false;
+	if (tile->CityID >= 0) return false;
+	if (tile->vtable->m20_Check_Pollution (tile, __, 0)) return false;
+	if (tile->vtable->m15_Check_Goody_Hut (tile, __, 0)) return false;
+	if (tile->vtable->m39_Get_Resource_Type (tile) >= 0) return false;
+	if (tile->vtable->m18_Check_Mines (tile, __, 0)) return false;
+	if (get_district_instance (tile) != NULL) return false;
 
 	return true;
 }
@@ -2669,6 +2745,49 @@ reverse_dir (enum direction dir)
 		return reversed[n];
 	else
 		return DIR_ZERO;
+}
+
+static bool
+direction_to_offset (enum direction dir, int * out_dx, int * out_dy)
+{
+	int dx = 0, dy = 0;
+
+	switch (dir) {
+	case DIR_NE: dx =  1; dy = -1; break;
+	case DIR_E:  dx =  2; dy =  0; break;
+	case DIR_SE: dx =  1; dy =  1; break;
+	case DIR_S:  dx =  0; dy =  2; break;
+	case DIR_SW: dx = -1; dy =  1; break;
+	case DIR_W:  dx = -2; dy =  0; break;
+	case DIR_NW: dx = -1; dy = -1; break;
+	case DIR_N:  dx =  0; dy = -2; break;
+	case DIR_ZERO:
+	default:
+		return false;
+	}
+
+	if (out_dx != NULL)
+		*out_dx = dx;
+	if (out_dy != NULL)
+		*out_dy = dy;
+	return true;
+}
+
+static int
+direction_to_neighbor_bit (enum direction dir)
+{
+	switch (dir) {
+	case DIR_NE: return 1;
+	case DIR_E:  return 2;
+	case DIR_SE: return 3;
+	case DIR_S:  return 4;
+	case DIR_SW: return 5;
+	case DIR_W:  return 6;
+	case DIR_NW: return 7;
+	case DIR_N:  return 0; // Matches engine behaviour where neighbor index 8 maps to 0
+	default:
+		return -1;
+	}
 }
 
 void
@@ -2892,43 +3011,101 @@ tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
 }
 
 static bool
+tile_square_type_is (Tile * tile, enum SquareTypes type)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	return tile->vtable->m50_Get_Square_BaseType (tile) == type;
+}
+
+static bool
+natural_wonder_is_coastal_island (Tile * tile, int tile_x, int tile_y)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (tile->vtable->m35_Check_Is_Water (tile))
+		return false;
+
+	bool has_neighbor = false;
+	FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+		if (tai.n == 0)
+			continue;
+
+		Tile * adj = tai.tile;
+		if ((adj == NULL) || (adj == p_null_tile))
+			return false;
+
+		has_neighbor = true;
+		if (! adj->vtable->m35_Check_Is_Water (adj))
+			return false;
+
+		if (adj->vtable->m50_Get_Square_BaseType (adj) != SQ_Coast)
+			return false;
+	}
+
+	return has_neighbor;
+}
+
+static bool
+natural_wonder_adjacent_requirement_met (struct natural_wonder_district_config const * cfg,
+					 Tile * tile,
+					 int tile_x,
+					 int tile_y)
+{
+	enum SquareTypes required = cfg->adjacent_to;
+	if (required == (enum SquareTypes)SQ_INVALID)
+		return true;
+
+	if (required == SQ_RIVER) {
+		char river_bits = tile->vtable->m37_Get_River_Code (tile);
+		if (cfg->adjacency_dir != DIR_ZERO) {
+			int bit = direction_to_neighbor_bit (cfg->adjacency_dir);
+			if (bit < 0)
+				return false;
+			return (river_bits & (1 << bit)) != 0;
+		} else
+			return river_bits != 0;
+	}
+
+	if (cfg->adjacency_dir != DIR_ZERO) {
+		int dx, dy;
+		if (! direction_to_offset (cfg->adjacency_dir, &dx, &dy))
+			return false;
+		int nx = tile_x + dx;
+		int ny = tile_y + dy;
+		wrap_tile_coords (&p_bic_data->Map, &nx, &ny);
+		Tile * neighbor = tile_at (nx, ny);
+		return tile_square_type_is (neighbor, required);
+	}
+
+	FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+		if (tai.n == 0)
+			continue;
+		if (tile_square_type_is (tai.tile, required))
+			return true;
+	}
+
+	return false;
+}
+
+static bool
 natural_wonder_terrain_matches (struct natural_wonder_district_config const * cfg, Tile * tile, int tile_x, int tile_y)
 {
 	if ((cfg == NULL) || (tile == NULL) || (tile == p_null_tile))
 		return false;
 
 	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	bool is_water = tile->vtable->m35_Check_Is_Water (tile) != 0;
-
-	switch (cfg->terrain_type) {
-	case NWTERRAIN_OCEAN:
-		return is_water && (base_type == SQ_Ocean || base_type == SQ_Sea);
-
-	case NWTERRAIN_COAST:
-		return is_water && (base_type == SQ_Coast || base_type == SQ_Sea);
-
-	case NWTERRAIN_COASTAL_LAND:
-		if (is_water)
-			return false;
-		FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
-			if (tai.n == 0)
-				continue;
-			Tile * adj = tai.tile;
-			if ((adj != NULL) && (adj != p_null_tile) && adj->vtable->m35_Check_Is_Water (adj))
-				return true;
-		}
+	if (base_type != cfg->terrain_type)
 		return false;
 
-	case NWTERRAIN_DESERT:
-		return (! is_water) && ((base_type == SQ_Desert) || (base_type == SQ_FloodPlain));
+	if (natural_wonder_is_coastal_island (tile, tile_x, tile_y))
+		return false;
 
-	case NWTERRAIN_TUNDRA:
-		return (! is_water) && (base_type == SQ_Tundra);
+	if (! natural_wonder_adjacent_requirement_met (cfg, tile, tile_x, tile_y))
+		return false;
 
-	case NWTERRAIN_LAND:
-	default:
-		return ! is_water;
-	}
+	return true;
 }
 
 struct district_worker_record *
@@ -4412,6 +4589,8 @@ free_dynamic_natural_wonder_config (struct natural_wonder_district_config * cfg)
 	}
 
 	memset (cfg, 0, sizeof *cfg);
+	cfg->adjacent_to = (enum SquareTypes)SQ_INVALID;
+	cfg->adjacency_dir = DIR_ZERO;
 }
 
 enum Unit_Command_Values
@@ -4486,6 +4665,10 @@ clear_dynamic_district_definitions (void)
 
 	memset (is->wonder_district_configs, 0, sizeof is->wonder_district_configs);
 	memset (is->natural_wonder_configs, 0, sizeof is->natural_wonder_configs);
+	for (int i = 0; i < MAX_NATURAL_WONDER_DISTRICT_TYPES; i++) {
+		is->natural_wonder_configs[i].adjacent_to = (enum SquareTypes)SQ_INVALID;
+		is->natural_wonder_configs[i].adjacency_dir = DIR_ZERO;
+	}
 	for (int i = 0; i < MAX_NATURAL_WONDER_DISTRICT_TYPES; i++)
 		is->natural_wonder_img_sets[i].img.vtable = NULL;
 	stable_deinit (&is->natural_wonder_name_to_id);
@@ -5603,7 +5786,9 @@ load_dynamic_wonder_configs (void)
 struct parsed_natural_wonder_definition {
 	char * name;
 	char * img_path;
-	enum natural_wonder_terrain_type terrain_type;
+	enum SquareTypes terrain_type;
+	enum SquareTypes adjacent_to;
+	enum direction adjacency_dir;
 	int img_row;
 	int img_column;
 	int culture_bonus;
@@ -5616,6 +5801,8 @@ struct parsed_natural_wonder_definition {
 	bool has_img_row;
 	bool has_img_column;
 	bool has_terrain_type;
+	bool has_adjacent_to;
+	bool has_adjacency_dir;
 	bool has_culture_bonus;
 	bool has_science_bonus;
 	bool has_food_bonus;
@@ -5627,7 +5814,9 @@ void
 init_parsed_natural_wonder_definition (struct parsed_natural_wonder_definition * def)
 {
 	memset (def, 0, sizeof *def);
-	def->terrain_type = NWTERRAIN_LAND;
+	def->terrain_type = SQ_Grassland;
+	def->adjacent_to = (enum SquareTypes)SQ_INVALID;
+	def->adjacency_dir = DIR_ZERO;
 }
 
 void
@@ -5661,6 +5850,8 @@ add_natural_wonder_from_definition (struct parsed_natural_wonder_definition * de
 	memset (&new_cfg, 0, sizeof new_cfg);
 	new_cfg.index = dest;
 	new_cfg.is_dynamic = true;
+	new_cfg.adjacent_to = (enum SquareTypes)SQ_INVALID;
+	new_cfg.adjacency_dir = DIR_ZERO;
 
 	char * name_copy = strdup (def->name);
 	if (name_copy == NULL)
@@ -5677,6 +5868,8 @@ add_natural_wonder_from_definition (struct parsed_natural_wonder_definition * de
 	new_cfg.img_row = def->img_row;
 	new_cfg.img_column = def->img_column;
 	new_cfg.terrain_type = def->terrain_type;
+	new_cfg.adjacent_to = def->adjacent_to;
+	new_cfg.adjacency_dir = def->adjacency_dir;
 	new_cfg.culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
 	new_cfg.science_bonus = def->has_science_bonus ? def->science_bonus : 0;
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
@@ -5774,13 +5967,35 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 		}
 
 	} else if (slice_matches_str (key, "terrain_type")) {
-		enum natural_wonder_terrain_type terrain;
+		enum SquareTypes terrain;
 		if (read_natural_wonder_terrain_type (value, &terrain)) {
 			def->terrain_type = terrain;
 			def->has_terrain_type = true;
 		} else {
 			def->has_terrain_type = false;
 			add_key_parse_error (parse_errors, line_number, key, "(unrecognized terrain type)");
+		}
+
+	} else if (slice_matches_str (key, "adjacent_to")) {
+		enum SquareTypes adj;
+		if (read_square_type_value (value, &adj)) {
+			def->adjacent_to = adj;
+			def->has_adjacent_to = true;
+		} else {
+			def->adjacent_to = (enum SquareTypes)SQ_INVALID;
+			def->has_adjacent_to = false;
+			add_key_parse_error (parse_errors, line_number, key, "(unrecognized square type)");
+		}
+
+	} else if (slice_matches_str (key, "adjacency_dir")) {
+		enum direction dir;
+		if (read_direction_value (value, &dir)) {
+			def->adjacency_dir = dir;
+			def->has_adjacency_dir = true;
+		} else {
+			def->adjacency_dir = DIR_ZERO;
+			def->has_adjacency_dir = false;
+			add_key_parse_error (parse_errors, line_number, key, "(unrecognized direction)");
 		}
 
 	} else if (slice_matches_str (key, "img_path")) {
@@ -6166,16 +6381,14 @@ load_districts_config (void)
 void
 place_natural_wonders_on_map (void)
 {
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_natural_wonder_districts)
+	if (! is->current_config.enable_districts || ! is->current_config.enable_natural_wonder_districts)
 		return;
 
 	int wonder_count = is->natural_wonder_count;
 	if (wonder_count <= 0)
 		return;
 
-	struct natural_wonder_candidate_list * candidate_lists =
-		(struct natural_wonder_candidate_list *)calloc (wonder_count, sizeof *candidate_lists);
+	struct natural_wonder_candidate_list * candidate_lists = (struct natural_wonder_candidate_list *)calloc (wonder_count, sizeof *candidate_lists);
 	bool * already_placed = (bool *)calloc (wonder_count, sizeof *already_placed);
 
 	if ((candidate_lists == NULL) || (already_placed == NULL)) {
@@ -6184,15 +6397,10 @@ place_natural_wonders_on_map (void)
 		return;
 	}
 
-	struct existing_natural_wonder {
-		short wonder_id;
-		short continent_id;
-	};
-	struct existing_natural_wonder * existing = NULL;
+	struct wonder_location * placements = NULL;
+	int placement_count = 0;
+	int placement_capacity = 0;
 	int existing_count = 0;
-	int existing_capacity = 0;
-
-	int max_continent_id = -1;
 
 	// Record existing natural wonders
 	FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
@@ -6211,44 +6419,39 @@ place_natural_wonders_on_map (void)
 		if (! district_instance_get_coords (inst, tile, &tile_x, &tile_y))
 			continue;
 
-		int continent_id = (tile != NULL && tile != p_null_tile) ? tile->vtable->m46_Get_ContinentID (tile) : -1;
-		if (continent_id > max_continent_id)
-			max_continent_id = continent_id;
-
-		if (existing_count >= existing_capacity) {
-			int new_capacity = (existing_capacity > 0) ? existing_capacity * 2 : 4;
-			struct existing_natural_wonder * grown =
-				(struct existing_natural_wonder *)realloc (existing, new_capacity * sizeof *grown);
+		if (placement_count >= placement_capacity) {
+			int new_capacity = (placement_capacity > 0) ? placement_capacity * 2 : 8;
+			struct wonder_location * grown =
+				(struct wonder_location *)realloc (placements, new_capacity * sizeof *grown);
 			if (grown == NULL)
 				continue;
-			existing = grown;
-			existing_capacity = new_capacity;
+			placements = grown;
+			placement_capacity = new_capacity;
 		}
 
-		existing[existing_count++] = (struct existing_natural_wonder){
-			.wonder_id = (short)wonder_id,
-			.continent_id = (short)continent_id
-		};
+		if (placements != NULL) {
+			placements[placement_count++] = (struct wonder_location){
+				.x = (short)tile_x,
+				.y = (short)tile_y
+			};
+			existing_count += 1;
+		}
 	}
 
 	// Build candidate lists
 	int map_width = p_bic_data->Map.Width;
 	int map_height = p_bic_data->Map.Height;
+	int minimum_separation = 6
+	;
 	for (int y = 0; y < map_height; y++) {
 		for (int x = 0; x < map_width; x++) {
 			Tile * tile = tile_at (x, y);
 			if ((tile == NULL) || (tile == p_null_tile))
 				continue;
 
-			int continent_id = tile->vtable->m46_Get_ContinentID (tile);
-			if (continent_id > max_continent_id)
-				max_continent_id = continent_id;
+			if (! natural_wonder_tile_is_clear (tile, x, y)) continue;
 
-			if (! natural_wonder_tile_is_clear (tile, x, y))
-				continue;
-
-			// Avoid locations that are already near an existing natural wonder
-			if (natural_wonder_exists_within_distance (x, y, NATURAL_WONDER_MIN_SEPARATION))
+			if (natural_wonder_exists_within_distance (x, y, minimum_separation))
 				continue;
 
 			for (int ni = 0; ni < wonder_count; ni++) {
@@ -6262,23 +6465,12 @@ place_natural_wonders_on_map (void)
 				if (! natural_wonder_terrain_matches (cfg, tile, x, y))
 					continue;
 
-				natural_wonder_candidate_list_push (&candidate_lists[ni], tile, x, y, continent_id);
+				natural_wonder_candidate_list_push (&candidate_lists[ni], tile, x, y);
 			}
 		}
 	}
 
-	int continent_capacity = (max_continent_id >= 0) ? (max_continent_id + 1) : 1;
-	int * continent_assignment_counts = (int *)calloc (continent_capacity, sizeof *continent_assignment_counts);
-	if (continent_assignment_counts == NULL)
-		continent_capacity = 0;
-
-	// Seed counts with existing placements
-	for (int i = 0; i < existing_count; i++) {
-		int cont = existing[i].continent_id;
-		if ((cont >= 0) && (cont < continent_capacity))
-			continent_assignment_counts[cont] += 1;
-	}
-
+	bool wraps_horiz = (p_bic_data->Map.Flags & 1) != 0;
 	int newly_placed = 0;
 
 	for (int ni = 0; ni < wonder_count; ni++) {
@@ -6295,31 +6487,40 @@ place_natural_wonders_on_map (void)
 		}
 
 		int best_index = -1;
-		int best_score = INT_MAX;
-		int best_tiebreak = INT_MAX;
+		int best_dist = -1;
+		int best_target_diff = INT_MAX;
+		int best_rand = INT_MAX;
+		int target_x = (wonder_count > 0)
+			? (int)(((long long)(2 * ni + 1) * map_width) / (2 * wonder_count))
+			: (map_width >> 1);
 
 		for (int ci = 0; ci < list->count; ci++) {
 			struct natural_wonder_candidate * cand = &list->entries[ci];
 			Tile * tile = cand->tile;
-			if ((tile == NULL) || (tile == p_null_tile))
-				continue;
-			if (get_district_instance (tile) != NULL)
-				continue;
-			if (! natural_wonder_tile_is_clear (tile, cand->x, cand->y))
-				continue;
-			if (! natural_wonder_terrain_matches (&is->natural_wonder_configs[ni], tile, cand->x, cand->y))
-				continue;
-			if (natural_wonder_exists_within_distance (cand->x, cand->y, NATURAL_WONDER_MIN_SEPARATION))
-				continue;
+			if ((tile == NULL) || (tile == p_null_tile)) continue;
+			if (get_district_instance (tile) != NULL) continue;
+			if (! natural_wonder_tile_is_clear (tile, cand->x, cand->y)) continue;
+			if (! natural_wonder_terrain_matches (&is->natural_wonder_configs[ni], tile, cand->x, cand->y)) continue;
+			if (natural_wonder_exists_within_distance (cand->x, cand->y, minimum_separation)) continue;
 
-			int score = 0;
-			if ((cand->continent_id >= 0) && (cand->continent_id < continent_capacity) && (continent_assignment_counts != NULL))
-				score = continent_assignment_counts[cand->continent_id];
+			int min_dist_sq = natural_wonder_min_distance_sq (cand->x, cand->y, placements, placement_count);
+			if (min_dist_sq == INT_MAX) {
+				int span = (map_width * map_width) + (map_height * map_height);
+				if (span <= 0)
+					span = INT_MAX;
+				min_dist_sq = span;
+			}
 
-			int tiebreak = rand_int (p_rand_object, __, 0x7FFF);
-			if ((score < best_score) || ((score == best_score) && (tiebreak < best_tiebreak))) {
-				best_score = score;
-				best_tiebreak = tiebreak;
+			int dx_raw      = int_abs (cand->x - target_x);
+			int dx_adjusted = compute_wrapped_component (dx_raw, map_width, wraps_horiz);
+			int rand_val    = rand_int (p_rand_object, __, 0x7FFF);
+
+			if ((min_dist_sq > best_dist) ||
+			    ((min_dist_sq == best_dist) && (dx_adjusted < best_target_diff)) ||
+			    ((min_dist_sq == best_dist) && (dx_adjusted == best_target_diff) && (rand_val < best_rand))) {
+				best_dist = min_dist_sq;
+				best_target_diff = dx_adjusted;
+				best_rand = rand_val;
 				best_index = ci;
 			}
 		}
@@ -6334,14 +6535,30 @@ place_natural_wonders_on_map (void)
 
 		struct natural_wonder_candidate * chosen = &list->entries[best_index];
 		assign_natural_wonder_to_tile (chosen->tile, chosen->x, chosen->y, ni);
-		if ((chosen->continent_id >= 0) && (chosen->continent_id < continent_capacity) && (continent_assignment_counts != NULL))
-			continent_assignment_counts[chosen->continent_id] += 1;
+
+		if (placement_count >= placement_capacity) {
+			int new_capacity = (placement_capacity > 0) ? placement_capacity * 2 : 8;
+			struct wonder_location * grown =
+				(struct wonder_location *)realloc (placements, new_capacity * sizeof *grown);
+			if (grown != NULL) {
+				placements = grown;
+				placement_capacity = new_capacity;
+			}
+		}
+
+		if ((placements != NULL) && (placement_count < placement_capacity)) {
+			placements[placement_count++] = (struct wonder_location){
+				.x = chosen->x,
+				.y = chosen->y
+			};
+		}
+
 		newly_placed += 1;
 
 		char msg[256];
-		snprintf (msg, sizeof msg, "[C3X] Placed natural wonder \"%s\" at (%d,%d) on continent %d.\n",
+		snprintf (msg, sizeof msg, "[C3X] Placed natural wonder \"%s\" at (%d,%d).\n",
 			  (is->natural_wonder_configs[ni].name != NULL) ? is->natural_wonder_configs[ni].name : "Natural Wonder",
-			  chosen->x, chosen->y, chosen->continent_id);
+			  chosen->x, chosen->y);
 		(*p_OutputDebugStringA) (msg);
 	}
 
@@ -6354,9 +6571,7 @@ place_natural_wonders_on_map (void)
 		free (candidate_lists[ni].entries);
 	free (candidate_lists);
 	free (already_placed);
-	free (existing);
-	if (continent_assignment_counts != NULL)
-		free (continent_assignment_counts);
+	free (placements);
 }
 
 int
@@ -16286,7 +16501,7 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 			for (int n = 0; n < is->natural_wonder_label_count; n++) {
 				struct natural_wonder_label_draw_info const * entry = &is->natural_wonder_labels[n];
 				if ((entry->text != NULL) && (entry->text[0] != '\0')) {
-					Object_66C3FC * font = get_font (entry->font_size, FSF_ITALIC);
+					Object_66C3FC * font = get_font (entry->font_size, FSF_NONE);
 					if (font != NULL) {
 						PCX_Image_set_text_effects (canvas, __, 0x80FFFFFF, 0x80000000, 1, 1); // white text with black shadow
 						PCX_Image_draw_centered_text (canvas, __, font, (char *)entry->text, entry->text_left, entry->text_top - 10, entry->text_width, strlen (entry->text));
@@ -22804,7 +23019,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 							return;
 						if ((natural_id >= 0) && (natural_id < is->natural_wonder_count)) {
 							Sprite * nsprite = &is->natural_wonder_img_sets[natural_id].img;
-							int y_offset = NATURAL_WONDER_IMAGE_HEIGHT;
+							int y_offset = NATURAL_WONDER_IMAGE_HEIGHT - 64;
 							int draw_y = pixel_y - y_offset;
 							patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
 							struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];

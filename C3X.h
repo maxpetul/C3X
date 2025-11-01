@@ -123,18 +123,6 @@ enum day_night_cycle_mode {
 	DNCM_SPECIFIED
 };
 
-enum natural_wonder_terrain_type {
-	NWTERRAIN_OCEAN = 0,
-	NWTERRAIN_SEA,
-	NWTERRAIN_COAST,
-	NWTERRAIN_COASTAL_LAND,
-	NWTERRAIN_DESERT,
-	NWTERRAIN_TUNDRA,
-	NWTERRAIN_LAND,
-
-	COUNT_NATURAL_WONDER_TERRAIN_TYPES
-};
-
 enum perfume_kind {
 	PK_PRODUCTION = 0,
 	PK_TECHNOLOGY,
@@ -554,10 +542,17 @@ struct wonder_district_config {
 	bool is_dynamic;
 };
 
+enum square_type_extras {
+	SQ_INVALID = -1,
+	SQ_RIVER = SQ_Ocean + 1
+};
+
 struct natural_wonder_district_config {
 	char const * name;
 	char const * img_path;
-	enum natural_wonder_terrain_type terrain_type;
+	enum SquareTypes terrain_type;
+	enum SquareTypes adjacent_to;
+	enum direction adjacency_dir;
 	int index;
 	int img_row;
 	int img_column;
@@ -1486,7 +1481,11 @@ struct injected_state {
 
 	// Worker tracking: 32 tables (one per civ), each mapping unit_id -> district_worker_record pointer
 	struct table district_worker_tables[32];
+
+	// Natural Wonder labels: table mapping natural wonder name strings to their IDs, count of defined natural wonders,
 	struct table natural_wonder_name_to_id;
+
+	// Natural Wonder label drawing information
 	int natural_wonder_label_count;
 	struct natural_wonder_label_draw_info natural_wonder_labels[MAX_NATURAL_WONDER_DISTRICT_TYPES];
 
