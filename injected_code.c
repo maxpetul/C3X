@@ -23089,7 +23089,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 										text_width = screen_width;
 									int text_left = pixel_x + (screen_width - text_width) / 2;
 									int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
-									int font_size = is_zoomed_out ? 11 : 13;
+									int font_size = is_zoomed_out ? 8 : 10;
 									if (is->natural_wonder_label_count < MAX_NATURAL_WONDER_DISTRICT_TYPES) {
 										struct natural_wonder_label_draw_info * entry = &is->natural_wonder_labels[is->natural_wonder_label_count++];
 										entry->text_left = text_left;
