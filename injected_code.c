@@ -232,7 +232,6 @@ void recompute_distribution_hub_totals ();
 void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y);
 void wrap_tile_coords (Map * map, int * x, int * y);
 static void assign_natural_wonder_to_tile (Tile * tile, int tile_x, int tile_y, int natural_wonder_id);
-void place_natural_wonders_on_map (void);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -2540,6 +2539,28 @@ natural_wonder_min_distance_sq (int x,
 }
 
 static bool
+continent_has_natural_wonder (int continent_id,
+			      struct wonder_location const * placements,
+			      int placement_count)
+{
+	if (continent_id < 0)
+		return false;
+	if ((placements == NULL) || (placement_count <= 0))
+		return false;
+
+	for (int i = 0; i < placement_count; i++) {
+		Tile * placed_tile = tile_at (placements[i].x, placements[i].y);
+		if ((placed_tile == NULL) || (placed_tile == p_null_tile))
+			continue;
+		int placed_continent_id = placed_tile->vtable->m46_Get_ContinentID (placed_tile);
+		if (placed_continent_id == continent_id)
+			return true;
+	}
+
+	return false;
+}
+
+static bool
 natural_wonder_candidate_list_push (struct natural_wonder_candidate_list * list, Tile * tile, int tile_x, int tile_y)
 {
 	if (list == NULL)
@@ -3090,6 +3111,28 @@ natural_wonder_adjacent_requirement_met (struct natural_wonder_district_config c
 }
 
 static int
+count_diagonal_adjacent_tiles_of_type (int tile_x, int tile_y, enum SquareTypes type)
+{
+	if (type == (enum SquareTypes)SQ_INVALID)
+		return 0;
+
+	enum direction dirs[4] = {DIR_NE, DIR_NW, DIR_SE, DIR_SW};
+	int count = 0;
+	for (int i = 0; i < 4; i++) {
+		int dx, dy;
+		if (! direction_to_offset (dirs[i], &dx, &dy))
+			continue;
+		int nx = tile_x + dx;
+		int ny = tile_y + dy;
+		wrap_tile_coords (&p_bic_data->Map, &nx, &ny);
+		Tile * neighbor = tile_at (nx, ny);
+		if (tile_square_type_is (neighbor, type))
+			count += 1;
+	}
+	return count;
+}
+
+static int
 count_adjacent_tiles_of_type (int tile_x, int tile_y, enum SquareTypes type)
 {
 	if (type == (enum SquareTypes)SQ_INVALID)
@@ -3116,6 +3159,10 @@ natural_wonder_terrain_matches (struct natural_wonder_district_config const * cf
 		return false;
 
 	if (natural_wonder_is_coastal_island (tile, tile_x, tile_y))
+		return false;
+
+	if ((cfg->adjacent_to != SQ_Coast) &&
+	    (count_adjacent_tiles_of_type (tile_x, tile_y, SQ_Coast) > 0))
 		return false;
 
 	if (! natural_wonder_adjacent_requirement_met (cfg, tile, tile_x, tile_y))
@@ -6457,7 +6504,7 @@ place_natural_wonders_on_map (void)
 	// Build candidate lists
 	int map_width = p_bic_data->Map.Width;
 	int map_height = p_bic_data->Map.Height;
-	int minimum_separation = 6
+	int minimum_separation = 10
 	;
 	for (int y = 0; y < map_height; y++) {
 		for (int x = 0; x < map_width; x++) {
@@ -6508,6 +6555,7 @@ place_natural_wonders_on_map (void)
 		int best_target_diff = INT_MAX;
 		int best_rand = INT_MAX;
 		int best_same_type_count = -1;
+		int best_continent_priority = INT_MAX;
 		int target_x = (wonder_count > 0)
 			? (int)(((long long)(2 * ni + 1) * map_width) / (2 * wonder_count))
 			: (map_width >> 1);
@@ -6533,49 +6581,60 @@ place_natural_wonders_on_map (void)
 			int dx_adjusted = compute_wrapped_component (dx_raw, map_width, wraps_horiz);
 			int rand_val    = rand_int (p_rand_object, __, 0x7FFF);
 
+			int continent_id = tile->vtable->m46_Get_ContinentID (tile);
+			int continent_priority = 1;
+			if ((continent_id >= 0) && ! continent_has_natural_wonder (continent_id, placements, placement_count))
+				continent_priority = 0;
+
 			bool adjacency_bonus_active =
 				(is->natural_wonder_configs[ni].adjacent_to != (enum SquareTypes)SQ_INVALID) &&
 				(is->natural_wonder_configs[ni].adjacency_dir == DIR_ZERO);
 			int adjacency_count = -1;
-				if (adjacency_bonus_active)
-					adjacency_count = count_adjacent_tiles_of_type (cand->x, cand->y,
-											is->natural_wonder_configs[ni].adjacent_to);
+			if (adjacency_bonus_active)
+				adjacency_count = count_diagonal_adjacent_tiles_of_type (cand->x, cand->y,
+											  is->natural_wonder_configs[ni].adjacent_to);
 
-				int same_type_count = count_adjacent_tiles_of_type (cand->x, cand->y,
-										      is->natural_wonder_configs[ni].terrain_type);
+			int same_type_count = count_adjacent_tiles_of_type (cand->x, cand->y,
+									      is->natural_wonder_configs[ni].terrain_type);
 
-				bool better = false;
-				if (adjacency_bonus_active) {
-					if (adjacency_count > best_adjacent_count)
-						better = true;
+			bool better = false;
+			if (continent_priority < best_continent_priority)
+				better = true;
+			else if (continent_priority > best_continent_priority)
+				continue;
+
+			if (! better && adjacency_bonus_active) {
+				if (adjacency_count > best_adjacent_count)
+					better = true;
 				else if (adjacency_count < best_adjacent_count)
 					continue;
-				}
+			}
 
-				if (! better) {
-					if (same_type_count > best_same_type_count)
-						better = true;
-					else if (same_type_count < best_same_type_count)
-						continue;
-				}
+			if (! better) {
+				if (same_type_count > best_same_type_count)
+					better = true;
+				else if (same_type_count < best_same_type_count)
+					continue;
+			}
 
-				if (! better) {
-					if ((min_dist_sq > best_dist) ||
-					    ((min_dist_sq == best_dist) && (dx_adjusted < best_target_diff)) ||
-					    ((min_dist_sq == best_dist) && (dx_adjusted == best_target_diff) && (rand_val < best_rand)))
-						better = true;
-					else
+			if (! better) {
+				if ((min_dist_sq > best_dist) ||
+				    ((min_dist_sq == best_dist) && (dx_adjusted < best_target_diff)) ||
+				    ((min_dist_sq == best_dist) && (dx_adjusted == best_target_diff) && (rand_val < best_rand)))
+					better = true;
+				else
 					continue;
 			}
 
 			best_dist = min_dist_sq;
 			best_target_diff = dx_adjusted;
-				best_rand = rand_val;
-				best_index = ci;
-				if (adjacency_bonus_active)
-					best_adjacent_count = adjacency_count;
-				best_same_type_count = same_type_count;
-			}
+			best_rand = rand_val;
+			best_index = ci;
+			best_continent_priority = continent_priority;
+			if (adjacency_bonus_active)
+				best_adjacent_count = adjacency_count;
+			best_same_type_count = same_type_count;
+		}
 
 		if (best_index < 0) {
 			char msg[256];
@@ -23089,7 +23148,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 										text_width = screen_width;
 									int text_left = pixel_x + (screen_width - text_width) / 2;
 									int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
-									int font_size = is_zoomed_out ? 8 : 10;
+									int font_size = 10;
 									if (is->natural_wonder_label_count < MAX_NATURAL_WONDER_DISTRICT_TYPES) {
 										struct natural_wonder_label_draw_info * entry = &is->natural_wonder_labels[is->natural_wonder_label_count++];
 										entry->text_left = text_left;
