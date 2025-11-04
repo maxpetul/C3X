@@ -1,280 +1,261 @@
-# C3X Districts
 
-**C3X Districts** is a mod which enables fully customizable, interactive "Districts" to appear on the Civ 3 map. C3X Districts is inspired by the [Districts feature in Civ 6](https://civilization.fandom.com/wiki/District_(Civ6)) and is built off of [C3X](https://github.com/maxpetul/C3X), a brilliant mod which makes improvements and allows changes to Civ 3 Conquests EXE.
+**C3X** is a mod that makes many improvements to the Civ 3 Conquests EXE. It adds quality of life features including stack unit commands (shown below) and an end-of-turn warning for cities about to riot. C3X also fixes many long standing bugs, including the infamous submarine bug, deepens the AI's ability to fight by enabling it to use artillery and army units, and reduces turn times by correcting a major inefficiency in the game's trade network calculation. C3X also forms a platform for other mods by enabling various gameplay changes not possible through the editor. Examples include resource generation from buildings, era-specific names for leaders and civs, limited trespassing and railroad movement like in Civ 4, and a broad expansion of the zone of control and defensive bombard abilities.
 
-The goal of C3X Districts is to **make the Civ 3 map feel more alive and interesting**. Districts enable large cities to sprawl, infrastructure to be visualized, and - if you enable them - new gameplay additions which make the map more interactive and interesting without fundamentally altering core Civ 3 mechanics. Districts are also 100% customizable and modular, so you can pick and choose types you like, or simply craft your own with custom art, tech dependencies, buildings, and bonuses.
-
-> Why Districts? I've tried to play various newer Civ games over the years, but none ever felt quite as elegantly simple yet deep, positive, and fun as Civ 3. I tried hard to enjoy Civ 6 and found that Districts finally made individual *cities* feel grand, much in the same way that Civ 3 itself made *empires* feel grand. Yet Civ 6 simply wasn't enjoyable for me ([Civinator](https://forums.civfanatics.com/threads/why-are-you-playing-civ-3-after-all-these-years.676431/post-16312711) and [livinginaz](https://forums.civfanatics.com/threads/why-are-you-playing-civ-3-after-all-these-years.676431/post-16260822) said it best). Districts ended up needing too much micromanagement and feeling overly consequential for my taste.
-> 
-> I wanted a mechanism in Civ 3 which captured the grandness and realism of Districs, but made it much easier to build, discard, move, and rebuild them over time.
-
-### How Districts work
-
-Districts are buildable by Workers, like any other build action:
-
-<img width="422" height="422" alt="image" src="https://github.com/user-attachments/assets/f24c1083-3968-4c75-90d4-88b4ff9cfa3f" />
-
-The core purpose of a District is to enable one or more city improvements (buildings). A Barracks, for example, may require an Encampment District in a city's work radius before they can be built. Once you do so, the Barracks appear within the Encampment:
-
-<img width="1290" height="307" alt="image" src="https://github.com/user-attachments/assets/663dbb1c-07a6-47d3-b362-e5a9550ab7c4" />
-
-After Districts are built, they become unworkable and the tile can no longer be used by the city unless the District is removed. So placing Districts requires a bit of thought beforehand. Once built, however, Districts can offer certain bonuses - shields, food, gold, science, culture, or defensive boost (all configurable) - to each city within their work radius. So cities with Districts in between them (e.g., Rome and Veii have the same Encampment in their work radius) can share the benefits. If `cities_with_mutual_district_receive_buildings` is set to true, cities can even share buildings within a District. For example, Veii can automatically receive a separate Barracks as well if built by Rome, as they share an Encampment. 
-
-If `cities_with_mutual_district_receive_wonders` is true, cities can even share Wonders.
-
-<img width="331" height="263" alt="image" src="https://github.com/user-attachments/assets/bdd97212-8b9f-4d22-90c1-8b3350efdaaf" />
-
-Bonuses received from Districts are automatically shown in the City view with a purple outline:
-<img width="651" height="275" alt="image" src="https://github.com/user-attachments/assets/57e169ee-c6eb-4507-866c-320ee0706a01" />
-
-If a District has food or shield bonuses, you'll also see those in the Production, Food, and Commerce sections:
-<img width="870" height="280" alt="image" src="https://github.com/user-attachments/assets/ebe06c4b-c414-4043-8bbb-37bbb1b56c8b" />
-
-Districts with pollution or enemy units on them yield no bonuses.
-
-### Combat
-
-Districts also have certain implications for combat: destroying a District automatically removes any dependent buildings in surrounding cities *unless* they have another District of the same kind within their work radius. Districts with an occupying enemy unit on them do not yield any bonuses. Districts can also provide a combat bonus (or penalty); see `defense_bonus_multiplier_pct` in the configuration example below ("100" means no bonus).
-
-Any buildings or Wonders in progress that lose a required District are forced to revert to their next-favored production option:
-
-<img width="548" height="351" alt="image" src="https://github.com/user-attachments/assets/a2bf5cec-3b94-4268-ac13-b473b9657817" />
-
-Pillaged Districts are shown as ruins:
-
-<img width="361" height="205" alt="image" src="https://github.com/user-attachments/assets/355d686d-c640-4095-a2f7-427ed01cfcb6" />
-
-### Rebuilding and Moving Districts
-
-C3X Districts is implemented such that removing and rebuilding a District (e.g., on a different tile) is not an incredibly weighty decision, with the goal of keeping the game fun (and, well, more realistic - cities in real life change over time!).
-
-As long as `allow_multiple` is set for a given District type, it is straightforward to build the same District type nearby and not lose any buildings. Imagine, for example, that Rome has a Holy Site with a Temple:
-
-<img width="430" height="316" alt="image" src="https://github.com/user-attachments/assets/b401b98e-9076-4f3c-8d4f-f98f7e9600c8" />
-
-The player decides the Holy Site would be better elsewhere, so constructs another Holy Site next to it:
-
-<img width="455" height="306" alt="image" src="https://github.com/user-attachments/assets/4c6c21fb-7dcf-403b-a310-4ae895d49552" />
-
-Afterward, the worker returns to the original Holy Site (left) and chooses to replace the Holy Site with Irrigation. C3X Districts will check whether replacing an existing District would cause any dependent buildings to be lost in nearby cities and let you know:
-
-<img width="370" height="332" alt="image" src="https://github.com/user-attachments/assets/77ac0662-bd67-4b07-938d-74f8a8378780" />
-
-After the improvement (or new District, if replacing and existing District type with another) is done, Rome maintains the Temple and the Holy Site is in a new location:
-
-<img width="535" height="346" alt="image" src="https://github.com/user-attachments/assets/29c34fe2-e98b-4304-b572-7100a9ab5fac" />
-
-**Key takeaway: build your replacement District *first*, then remove your previous one**. Note that the major *exception* to this is completed Wonders in [Wonder Districts](#wonder-districts), which cannot be moved once built.
-
-### Art
-
-As discussed, Districts visually show which buildings are present in nearby cities. However they can also show different art by era:
-
-<img width="839" height="547" alt="image" src="https://github.com/user-attachments/assets/32ba6de0-e13d-4027-8e8f-2f069a728e7d" />
-
-or even by culture, or both:
-
-<img width="1143" height="904" alt="image" src="https://github.com/user-attachments/assets/29d3cb8d-f923-4cdf-8165-df15bd3e8b99" />
-
-Districts are also fully compatible with the Day/Night Cycle:
-
-<img width="612" height="313" alt="image" src="https://github.com/user-attachments/assets/18a8694f-d5e8-457a-b9ef-d767d652c316" />
-
-# District Types
-
-There are 4 types of Districts:
-
-- [Standard Districts](#standard-districts) - fully customizable, configuration-dependent art and building dependencies 
-- [Neighborhoods](#neighborhoods) - optional, enable population growth and visual urban sprawl
-- [Wonder Districts](#wonder-districts) - optional, enable configurable Wonders (both built and under construction) to appear on the map
-- [Distribution Hubs](#distribution-hubs) - optional, enable certain food and shields from one area to be "distributed" to all connected cities
-
-## Standard Districts
-
-Standard Districts are, well, standard. They may require a technology to be made available and can have zero or more buildings dependent on them. The default Standard Districts are:
-
-- **Encampment** - allows Barracks, SAM Missile Battery. Enabled by Warrior Code
-
-    <img width="257" height="131" alt="image" src="https://github.com/user-attachments/assets/4f482eb2-802a-4306-b2cd-b1b0634c6af4" />
-
-- **Campus** - allows Library, University, Research Lab. Enabled by Literature
-
-    <img width="252" height="132" alt="image" src="https://github.com/user-attachments/assets/43a2980c-69a9-453e-a369-5d9d2c35a834" />
-
-- **Holy Site** - allows Temple, Cathedral. Enabled by Ceremonial Burial.
-
-    <img width="258" height="123" alt="image" src="https://github.com/user-attachments/assets/5646c143-130f-41df-95e0-4abd3e358f11" />
-
-- **Commercial Hub** - allows Marketplace, Bank, Stock Exchange. Enabled by Currency.
-
-    <img width="255" height="129" alt="image" src="https://github.com/user-attachments/assets/d73b4b30-2eaf-4a85-8280-0d727147644d" />
-
-- **Entertainment Complex** - allows Colosseum. Enabled by Construction.
-
-    <img width="253" height="129" alt="image" src="https://github.com/user-attachments/assets/20ca29da-3f4d-44fa-9243-65043dddc595" />
-
-- **Industrial Zone** - allows Factory, Manufacturing Plant. Enabled by Industrialization.
-
-    <img width="256" height="132" alt="image" src="https://github.com/user-attachments/assets/70eb7fd2-5026-421d-ab05-e71ee2d405e6" />
-
-> Note that each District above has various art by era/culture/buildings not shown.
-
-### Configuration
-
-Standard Districts are defined in [`./default.districts_config.txt`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/default.districts_config.txt) in the format:
-
-```
-#District
-name                         = Encampment
-tooltip                      = Build Encampment
-img_paths                    = Encampment.pcx
-btn_tile_sheet_row           = 0
-btn_tile_sheet_column        = 0
-vary_img_by_era              = 1
-vary_img_by_culture          = 0
-advance_prereq               = Warrior Code
-dependent_improvs            = Barracks, "SAM Missile Battery"
-defense_bonus_multiplier_pct = 150
-allow_multiple               = 1
-culture_bonus                = 0
-science_bonus                = 0
-food_bonus                   = 0
-gold_bonus                   = 0
-shield_bonus                 = 0
-```
-
-Special District configurations can also be overwritten in the same file, if you wish:
-
-```
-#District
-name                         = Neighborhood
-advance_prereq               = 
-defense_bonus_multiplier_pct = 100
-allow_multiple               = 1
-culture_bonus                = 1
-science_bonus                = 0
-food_bonus                   = 0
-gold_bonus                   = 1
-shield_bonus                 = 0
-```
-
-Omitting fields is fine and leaves the default values.
-
-Just like using the standard `c3x_config.ini` files, you can specify `default.districts_config.txt`, `custom.districts_config.txt`, and `scenario.districts_config.txt` files, which are checked in that order.
-
-> Note that if `vary_img_by_culture` is set to 1 (true), you **must** have 5 PCX images in the order of: American, European, Roman, Mideast, Asian. For example:
-
-  ```
-  img_paths = HolySite_AMER.pcx, HolySite_EURO.pcx, HolySite_ROMAN.pcx, HolySite_MIDEAST.pcx, HolySite_ASIAN.pcx
-  ```
-
-District art (for all Districts, not only Standard) is under [`./Art/Districts/1200`](https://github.com/instafluff0/C3X_Districts/tree/districts_v1/Art/Districts/1200). 
-
-AI workers are triggered to build Standard Districts when an AI city attempts to build a dependent building. This is reverted to its 2nd-most valued production item while the nearest worker builds the District, while the intended building is "remembered". After completion, the AI city will change production back to the dependent building:
-
-<img width="1087" height="732" alt="Screenshot 2025-10-19 at 3 00 43 PM" src="https://github.com/user-attachments/assets/ea37c7cf-5a0b-425d-8147-41b88b01d062" />
-
-## Neighborhoods
-
-<img width="533" height="271" alt="image" src="https://github.com/user-attachments/assets/4f51c633-3ee8-4088-aede-40ef35739fc9" />
-
-Enabled via `enable_neighborhood_districts`. Neighborhoods allow a city to expand in population beyond a certain amount set by `maximum_pop_before_neighborhood_needed`. After that point, a city will need Neighborhoods, each of which allow the city population to grow at `per_neighborhood_pop_growth_enabled`. 
-
-For example, imagine the following configuration:
-
-```
-maximum_pop_before_neighborhood_needed = 6
-per_neighborhood_pop_growth_enabled    = 2
-```
-
-Once a city reaches a population of 6, it can't grow to 7 until it has at least one Neighborhood. If it has one, it can grow up to a population of 8 (6 + 2 = 8). Neighborhood bonuses (+1 gold & +1 culture) are only factored in if Neighborhoods are actually needed by a city, so it is not useful to spam them unnecessarily. Occasional popups (every 4 turns or so, with a different rate per-city) will also let you know a Neighborhood is needed:
-
-<img width="396" height="203" alt="image" src="https://github.com/user-attachments/assets/c4546271-469b-435e-8c38-6132cb468b31" />
-
-Neighborhoods have no direct interactions with other Aqueducts or Hospitals, so at population levels 6 and 12, for example, growth may be blocked by both lack of those improvements and Neighborhoods, depending on your configuration.
-
-Each culture has 4 possible Neighborhood art designs for each era, for visual variety. I use a [semi-random algorithm keyed by tile X and Y coordinates](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L18537-L18548) to (mostly) ensure adjacent tiles use different art while keeping the chosen art deterministic (consistent every time it is rendered).
-
-<img width="612" height="306" alt="image" src="https://github.com/user-attachments/assets/e3ed1da2-97e6-4110-bd10-857e80c00db7" />
-
-AI workers are [triggered to build Neighborhoods when they reach their population and food storage cap](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L5070-L5072).
-
-## Wonder Districts
-
-Enabled via `enable_wonder_districts`. Wonder districts enable Wonders (both Great and Small) to be dependent on having a tile reserved for them. Wonder district art will change when you initiate and complete the Wonder:
-
-<img width="1030" height="346" alt="image" src="https://github.com/user-attachments/assets/fadb5f8e-63ba-43d4-8376-8c62c303b298" />
-
-Additionally, if you set `completed_wonder_districts_can_be_destroyed` to true, well, be prepared to defend your Wonders! Setting `destroyed_wonders_can_be_built_elsewhere` to true puts destroyed Wonders back into play, such that any civ can once again build them.
-
-<img width="457" height="339" alt="image" src="https://github.com/user-attachments/assets/7f1e6da2-4829-464b-9e93-de8960e7bf11" />
-
-Like Standard Districts, the Wonders which required a Wonder District can be configured in [`./default.districts_wonders_config.txt`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/default.districts_wonders_config.txt) in the format:
-
-```
-#Wonder
-name                 = The Pyramids
-img_path             = Wonders.pcx
-img_construct_row    = 0
-img_construct_column = 0
-img_row              = 0
-img_column           = 1
-```
-
-Wonder art entries (both under construction and completed, separate slots) are by default configured in the file [`./Art/Districts/1200/Wonders.PCX`](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/Art/Districts/1200/Wonders.PCX).
-
-<img width="1019" height="509" alt="image" src="https://github.com/user-attachments/assets/4d63e395-0a9d-4ba4-9edb-0ee19ffec126" />
-
-As with Districts configuration, you can specify `default.districts_wonders_config.txt`, `custom.districts_wonders_config.txt`, and `scenario.districts_wonders_config.txt` files, which are checked in that order.
-
-AI workers are triggered to build Wonder Districts in generally the same workflow as Standard Districts, based on when an AI city chooses a Wonder, triggering a worker to build a Wonder District. The as with Standard Distrits, Wonders are specifically "remembered" and city production set to building the Wonder as soon as the Wonder District is completed.
-
-## Distribution Hubs
-
-With so many tiles taken up by Districts, you may be wondering how to actually feed your cities or gain shields. First, it's probably a good idea to expand your `city_work_radius` (e.g., to 3, adding at least one more ring of workable tiles around your city) and `minimum_city_separation` to some higher value. Beyond that though, enter Distribution Hubs:
-
-Enabled via `enable_distribution_hub_districts`. Building a Distribution Hub makes all of the surrounding tiles unworkable by its surrounding cities and instead makes the food and shields from those tiles available to **ALL** cities in your civ connected by trade route, divided by `distribution_hub_food_yield_divisor` and `distribution_hub_shield_yield_divisor`. 
-
-> The purpose of the `divisors` is to provide a mechanism to prevent distribution hubs from being too powerful, as well as a bit of realism (10 food from one distribution hub in a civ with 10 cities would effectively otherwise become 100 food!). `Divisors` also have no relation or effect regarding the number of cities a civ has.
-
-For example, say you configure the following: 
-
-```
-distribution_hub_food_yield_divisor = 2
-distribution_hub_shield_yield_divisor = 3
-```
-
-and you have one distribution hub which has **raw** yields of 2 food and 6 shields.
-
-2 / 2 = 1 food and 6 / 3 = 2 shields. Divisor results are **rounded down** if not an integer (e.g., 9 / 4 = 2.25, which would become a yield of 2). Thus all of your connected cities would gain a bonus 1 food and 2 shields:
-
-<img width="494" height="326" alt="image" src="https://github.com/user-attachments/assets/5cf6911f-afc2-4865-b5cc-ecd51f24270b" />
-
-Distribution hub food and shields are shown in the City view with green outline:
-
-<img width="671" height="520" alt="image" src="https://github.com/user-attachments/assets/dc7ab50b-dfd9-42ad-876b-8abc60ebf10a" />
-
-### Distribution Hub Strategy
-
-Distribution Hubs are thus essentially "breadbaskets" and heavy mining areas far from your urban centers (think: Egypt feeding ancient Rome, Ukraine feeding the Soviet Union, the American Midwest feeding the coasts, etc.). 
-
-Creating a Distribution Hub significantly minimizes the growth potential and production output of a nearby city, so should be built wisely, likely far from your urban city cores, and well defended! Distribution Hub yields are also not subject to corruption.
-
-AI workers are triggered to build Distribution Hubs when their civ's "ideal" number of Distribution Hubs (calculated using `ai_ideal_distribution_hub_count_per_100_cities`) falls below the existing Distribution Hub count, [assessed in the production phase of each turn](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L14106-L14158). The AI determines the best potential Distribution Hub tile based on [distance from the capital (farther = better) and aggregate yields of all surrounding tiles](https://github.com/instafluff0/C3X_Districts/blob/districts_v1/injected_code.c#L14117-L14152).
-
-## Other Non-Standard Districts
-
-The Aerodrome District reuses and slightly modifies the base game airfield art. If `air_units_use_aerodrome_districts_not_cities` is set to true, air units can only be built in cities with an Aerodrome in their radius, spawn on Aerodromes, and can only land on Aerodromes (or vanilla game airfields & carriers), not cities. Airlifts and Airdrops are similarly limited to Aerodromes.
-
-<img width="513" height="254" alt="image" src="https://github.com/user-attachments/assets/10773593-520f-42d2-8420-624e70961dfd" />
-
-## Roadmap
-
-If I have the time, I hope to:
-
-1. Add Natural Wonders
-2. Add a Seasonal Cycle for art (spring/summer/fall/winter), like the Day/Night Cycle. This is not strictly part of Districts, but would be fully compatible.
-4. Add support for Ports and other general Naval Districts.
+|![Demo of stack unit commands in C3X. Holding the control key causes all workers on a tile to build a railroad and causes all bombers to bombard a target.](Misc%20Images/new%20stack%20demo/output_gimp_with_msgs_optimized.gif)|
+|:--:|
+|Stack unit commands. Holding the control key converts most unit action buttons into stack buttons, which issue their commands to all units of the same type on the same tile. Similarly, holding control when selecting a tile to bombard performs a stack bombard. Also note the grouping of units and movement indicators on the right-click menus.|
+
+C3X's primary home is on CivFanatics, see: [main mod page](https://forums.civfanatics.com/resources/c3x.28759/), [releases](https://forums.civfanatics.com/resources/c3x.28759/updates), [discussion thread](https://forums.civfanatics.com/threads/c3x-exe-mod-including-bug-fixes-stack-bombard-and-much-more.666881/latest)
+
+## Video Overview
+See this video by Suede for a demonstration of how to install the mod and of some of its convenience features.
+[![C3X: Incredible Quality of Life mod for Civ 3, Video by Suede CivIII](http://img.youtube.com/vi/VxQ5dVABJcQ/0.jpg)](http://www.youtube.com/watch?v=VxQ5dVABJcQ)
+
+## Installation Details
+Extract the mod, keeping it in its own folder, then copy that folder to your main Conquests directory (i.e. the folder containing Civ3Conquests.exe). Then activate the mod by double-clicking the INSTALL.bat script. You should get a message reporting that the installation was successful. You can also try RUN.bat, which launches a modded version of Civ 3 without installation, however I have received several reports that that script doesn't work for some people.
+
+Notes about installation:
+1. If your Civ 3 is installed inside Program Files then it may be necessary to run INSTALL.bat as administrator due to Windows restrictions on editing the contents of Program Files.
+2. When installing, the mod will create a backup of the original unmodded executable named "Civ3Conquests-Unmodded.exe".
+3. To uninstall the mod, delete the modded executable then rename the backed up version mentioned above to "Civ3Conquests.exe".
+4. It is not necessary to uninstall the mod before installing a different version.
+5. Even after installation, the mod still depends on some files in the mod folder, so you need to keep it around.
+6. R�mulo Prado reports that RUN.bat started working for him after he installed the MS Visual C++ Redistributables versions 2005 and 2019 (while installing GOG Galaxy).
+
+## Configuration
+All aspects of C3X are configurable through INI text files. The basic INI file is called "default.c3x_config.ini" and is located in the mod folder. For example, if you want to turn off grouping of units on the right-click menu (that's what gives you "3x Spearman" instead of 3 identical Spearman entries), you could open that file in any text editor, find the line `group_units_on_right_click_menu = true`, and set it to `false`.
+
+However, because the default config file gets updated with each new release of the mod, it's recommended to put changes like the one above in a new file named "custom.c3x\_config.ini". C3X supports up to three different config files, the default config, a scenario config named "scenario.c3x\_config.ini" located in a scenario's search folder, and a custom config. They are loaded in that order. Scenario configs are intended to contain rule settings relevant to a particular scenario and custom configs are intended to function like user preferences. For a quick example of a scenario config, see [this post](https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-28#post-16212316).
+
+## Compatibility
+C3X is compatible with the GOG and Steam versions of Civ 3 Complete and also with the DRM-free executable available through PCGames.de. If you have a CD version of the game, you can replace its EXE with the one from PCGames.de then install C3X on top of that. For more info about the PCGames.de executable, see this thread: [Civ 3, Windows Update KB3086255, & SafeDisc](https://forums.civfanatics.com/threads/civ-3-windows-update-kb3086255-safedisc.552308/).
+
+For info about running C3X on Mac, see this thread: [Installing, Playing and Modding C3C on Apple Silicon](https://forums.civfanatics.com/threads/installing-playing-and-modding-c3c-on-apple-silicon.681540/)
+
+C3X is compatible with existing saves and saves created with the mod active will still be loadable by the base game.
+
+Online multiplayer is not officially supported but some features of the mod will work. Others will not, including stack unit commands. I have also received reports that C3X can cause crashes in online MP. In general, online play is something I'd like to support but haven't gotten around to yet.
+
+## Feature Highlights
+#### Disorder Warning:
+![C3X disorder warning feature. The domestic advisor is popping up to warn about unhappy cities before the end of a turn.](Misc%20Images/disorder_warning.jpg)
+
+If you try to end the turn with unhappy cities, the domestic advisor will pop up to warn you and give you the option to continue that turn.
+
+#### AI Enhancements:
+Numerous changes have been made to improve the AI's behavior, especially in combat. It can now use its artillery units in the field, i.e., it will take them out of its cities to bombard enemy cities or incoming enemy units. The AI's production of artillery has been significantly increased so that it can take advantage of this ability. The other major change is that the AI can now use armies properly, it builds them when it can and fills them with units, usually the strongest available. There are many smaller changes as well to fix bugs and improve heuristics. Some more details are available as comments in the config file.
+
+#### Trade Screen Improvements:
+![C3X trade screen arrows. Shows the top of the leader window with arrows on either side.](Misc%20Images/c3x_trade_screen_arrows.jpg)
+
+When negotiating with the AI, you can quickly switch back and forth between civs using the added arrow buttons (arrow keys work as well). When asking for or offering gold, the set amount popup will appear with the best amount already filled in. Best amount means, when asking for gold on an acceptable trade, the most you could get, and when offering gold on an unacceptable trade, the least you need to pay.
+
+#### Optimization:
+A major inefficiency in the game's sea trade computation has been fixed. This eliminates one major cause of slow turns in the late game, especially on large maps with many coastal cities and many wars. For details about the problem and how C3X solves it, see [this post](https://forums.civfanatics.com/threads/c3x-exe-mod-including-bug-fixes-stack-bombard-and-much-more.666881/page-83#post-16536108).
+
+#### Adjustable Movement Rules:
+The functions governing unit movement have been modified to enable various adjustments to the game's movement rules not possible through the editor. As with all other engine extensions, the rules are not changed from vanilla Conquests unless the config file is edited.
+
+Unlimited railroad movement can be turned off. The non-unlimited railroads can function like they do in Civ 4, meaning that all units will move the same distance along them regardless of how many moves they have, or they can function like an upgraded version of regular roads that have a lower movement cost. The relevant config variables are "limit\_railroad\_movement" and "limited\_railroads\_work\_like\_fast\_roads".
+
+Enabling land/sea intersections allows sea units to travel over the thin isthmus that exists on the diagonal path between two land tiles. More specifically, imagine a diamond of four tiles with land terrain on the north & south tiles and water on the east & west ones. With land/sea intersections enabled, naval units can pass between the east and west tiles.
+
+It is possible to disallow trespassing, which will prevent units from entering another civ's borders without a right of passage agreement, similar to the rules in Civ 4. Invisible and hidden nationality units are allowed to trespass in any case. It is also possible to impose a stack limit, which will prevent units from entering tiles that already have more than a set number of units occupying them. The stack limit can be set separately for land, sea, and air units.
+
+#### Small Wonder Free Improvements:
+The free improvements wonder effect (granaries from Pyramids etc.) now works on small wonders. Note to modders, to set this effect you must use a third party editor like Quintillus' ([thread link](https://forums.civfanatics.com/threads/cross-platform-editor-for-conquests-now-available.377188/)) because the option is grayed out in the standard editor. Even worse, if you set the effect then work on the BIQ in the standard editor, the effect won't be saved, so you'd need to set it every time or work exclusively in Quintillus' editor.
+
+#### No-Raze & Limit Removals:
+The no-raze and no-unit-limit features of earlier modded EXEs have been re-implemented as part of C3X. To enable no-raze, edit the config. There are separate options to prevent autorazing (the forced destruction of size 1 cities) and razing by player's choice. In addition to removing the unit limit, C3X also removes the limit of 256 city improvement types, and lifts the city limit to 2048.
+
+## Full Feature List
+All C3X features are listed below. See the default config (default.c3x\_config.ini) for descriptions.
+<details>
+  <summary>Included in C3X</summary>
+
+  #### Convenience features
+   - Stack unit commands
+      - Stack bombard
+      - Worker buttons (irrigate, road, etc.) become stack buttons by holding CTRL
+      - Stack fortify, upgrade, and disband also with CTRL
+   - Disorder warning
+   - Detailed city production info
+   - Buttons on trade screen to quickly switch between civs
+   - Ask/offer gold popup autofills best amount
+   - Skip repeated popups asking to replace a tile improvement
+   - Group units on right click menu
+   - Show coordinates and chopped status in tile info box
+   - Show golden age turns remaining
+   - No special king unit names in non-regicide games
+   - Option to disable worker automation
+   - On the city screen, hold shift when clicking a specialist to switch to the previous type
+   - Automatically cut research spending to avoid bankruptcy
+   - Remove pause for "we love the king" messages
+   - Suppress "maximum hypertext links exceeded" popup
+   - Civilopedia indicates when units go obsolete but cannot be upgraded
+   - Message appears after bomber dodges interception by air defense buildings
+   - Option to replay AI moves for all human players in hotseat mode
+   - Restore unit directions on game load
+   - Option to remove Elvis Easter egg
+   - Harbor/airport city icons indicate unit effects not trade abilities
+   - Disallow useless bombard attacks vs airfields
+   - Display total city count (disabled by default, appears on demographics screen)
+   - Fix graphical issues when running on Wine
+   - Option to pack the lists of luxuries and strategic resources more tightly into their boxes on the city screen
+   - Right-click menu enhancements
+      - Place icons next to units showing movement and combat status
+      - Replace Wake/Activate with descriptions of what the units are doing
+      - Gray out units if they have no remaining moves
+   - Apply GridOn setting from conquests.ini after loading a save
+   - Option to have a warning when the building you've selected to build would replace another already built in the city
+   - Option not to unassign workers from tiles that become polluted
+   - Pressing the Z key on the city screen toggles the zoom level of the map display
+   - Option not to draw capital cities larger than they really are
+   - Allow Civilopedia descriptions for units, civilizations, and game concepts to span multiple pages
+   - Double size of minimap when running in high definition (>= 1920 horizontal pixels)
+   - Option to show some popup messages as online-multiplayer-style notifications
+   - Option to switch debug mode on or off for games in progress
+   - Option to tint coast and sea tiles on minimap based on cultural borders
+  #### Optimization
+   - Optimize computation of trade networks
+      - For details, see the info text file in the Trade Net X folder
+   - Optimize improvement loops
+   - Option to measure turn times
+  #### AI Enhancements
+   - Allow AI to use artillery in the field
+   - Force AI to build more artillery and bombers
+   - Replace leader unit AI to fix bugs and improve behavior
+   - Fix bug preventing AI from filling its armies
+   - Improve AI army composition to discourage mixing types & exclude HN units
+   - AI routine for "pop units", which are modded units whose only purpose is to be joined into cities
+   - AI routine for "caravan units", which are modded units whose only purpose is to be disbanded for shields
+   - Can limit the number of escorts the AI assigns to its naval transports and carriers
+   - Adjustable AI worker requirement
+   - Option to stop AI from escorting units without the "requires escort" flag
+   - Option to draw small shadows underneath city dots on the minimap to make them more visible
+  #### Bugs Fixed
+   - AI pathfinding collides with invisible units (called the "submarine bug")
+   - Science age beakers not actually awarded
+   - Pink line in Civilopedia
+   - Crash when doing disembark-all on transport containing immobile unit(s)
+   - Crash possible when AI civ is left alive with only a settler on a transport (called the "houseboat bug")
+   - Resources beyond the first 32 share access records in cities not on the main trade network (called the "phantom resource bug")
+   - Air units lose a turn after being set to intercept
+   - Cached building maintenance amounts not updated when buildings are obsoleted
+   - Barbarian long-range search for targets is limited to tiles directly NW or SE
+   - "Disables Diseases From Flood Plains" tech flag hardcoded to tech #8 (off by default)
+   - Possible division by zero in AI logic to evaluate proposed alliances
+   - Available movement computed incorrectly for empty armies
+   - Off-map AI units may crash the game (fixed by deleting them at the start of their turns)
+   - Pathfinder improperly truncates long paths, sending AI units on nonsensical or invalid paths
+   - Cities with zero production crash the game due to division by zero
+   - Icons for different kinds of specialist yields are drawn on top of, instead of next to, one another
+   - AI players may sacrifice units without the "sacrifice" special ability
+   - AI players may build armies with leader units that don't have the "build army" special ability
+   - Possible crash in base game leader unit AI
+  #### AMB Editor
+   - A program for inspecting and modifying the special .amb sound files used by Civ 3.
+   - For more info, see README.txt in the AMB Editor folder
+  #### Limits Removed
+   - Removed unit limit
+   - Removed city improvement limit
+   - Lift city limit to 2048 and allow it to be configured
+   - Remove cap on turn limit
+  #### Engine Extensions
+   - Adjustable minimum city distance
+   - Option to limit railroad movement, as in Civ 4 or by converting them to fast roads
+   - Option to limit how many units can share each tile
+   - Enable free improvements from small wonders
+   - Option to share visibility among all human players in a hotseat game
+   - Option to prevent autoraze and razing by players
+   - Trespassing prevention
+   - Land/sea intersections
+   - Adjustable anarchy length
+   - Unit limits (stops players from producing units of a given type once they reach a maximum quantity)
+   - "Perfume" city production options, technologies, and governments to control how likely the AI is to choose them
+   - Reveal AI logic
+      - Press P in city screen to see AI point value for each available build
+      - Press L on map to see how desirable the AI finds each tile as a city location
+   - Corruption can be completely removed with "OFF" government setting
+   - Disallow land units from working or settling water tiles
+   - Option to let units move after airdropping
+   - Buildings can generate resources
+   - Buildings can be set as prerequisites for unit production
+   - Can cancel out pop pollution with negative pollution amount on building flagged as removing pop pollution
+   - Option to modify rules for retreat eligibility
+   - AI multi-city start
+      - Starter cities can begin with improvements, including "extra palaces" which respawn like the real palace
+   - Option to strengthen the corruption reducing effect of wonders to match the palace's
+   - Option to allow military great leaders to hurry wonders
+   - Option to multiply AI research rate by any amount
+   - Option to aggressively penalize bankrupt players
+   - Option to remove exception to tile penalty for city tiles with fresh water and Agri trait
+   - Artillery can be set to use PTW-like targeting against cities
+   - Recon missions can be made vulnerable to interception
+   - Option to charge one move for recon missions and interception
+   - Stealth attack changes
+      - Option to perform stealth attack even when there's only one target
+      - Enable stealth attacks via bombardment
+      - Allow players to opt out of stealth attacks
+      - Option to show unit hitpoints on the stealth attack target selection popup
+      - Option to prevent stealth attacks from targeting units that are invisible and unrevealed
+   - Polish precision striking by land or sea units
+      - Use regular bombard animation instead of flying animation
+      - Use bombard range instead of operational range
+      - Despawn unit if cruise missile
+      - Cannot be intercepted
+   - Option to immunize aircraft against bombardment
+   - Option to ignore king flag on defense, so kings aren't always last to defend in a stack
+   - Option to show untradable techs on trade screen
+   - Barbarian city capture & production (experimental)
+   - Option to allow land units to bombard aircraft and naval units in cities
+   - Zone of control changes
+      - Allow land-to-sea and sea-to-land attacks, only using bombard stat
+      - May be lethal
+      - May be exerted by air units
+      - Show attack animation even when attacker is not at the top of its stack
+   - Defensive bombard changes
+      - May be lethal
+      - May be performed by air units
+      - Invisible, undetected units may be made immune
+      - May be performed multiple times per turn with blitz
+      - Naval units in a city may perform defensive bombard vs land attackers
+   - Allow precision strikes to target tile improvements
+   - Option not to end a unit's turn after it bombards a barricade
+   - Option to allow bombardment of other improvements on a tile with an occupied airfield
+   - Option to boost OCN increase from forbidden palaces in non-communal governments
+   - Option to allow airdrops without airports
+   - Can increase unit maintenance costs based on their build costs
+   - Civ and leader names can vary by era
+   - Option to allow upgrades in any city
+   - Option to stop the map generator from placing volcanos
+   - Option to stop pollution from appearing on impassable tiles
+   - Option to make planting forests produce LM forest terrain
+   - Adjustable chance for max one HP units to be destroyed by nuclear strikes
+   - Option to allow sale of buildings like aqueducts that uncap population growth
+   - Option stopping non-sea detector units from revealing invisible sea units and vice-versa
+   - Adjustable city work area size
+      - Radius of area can be set from 1 to 7 tiles (2 is the standard)
+      - Area can also be limited by a city's cultural level
+   - Option to throttle AI's expansion by temporarily applying perfume to settlers each time it founds a city
+   - Option to block the galley chaining exploit by preventing units from loading into two different transports on the same turn
+   - Adjustable rebase range as multiple of operational range
+   - Option to share wonders among human players in hotseat mode
+   - Enable tile graphics to cycle over day and night, see "Day/Night Cycle" section of default config for details
+   - Can adjust time to double building culture
+   - Option to prevent units from upgrading past an intermediate type that does not have the upgrade ability
+   - Can adjust times to generate tourism gold
+   - Option to put all human players in contact with each other at the start of a hotseat game
+</details>
+
+## How It Works
+Some parts of the mod (bug fixes, no-raze, no unit limit) are really just hex edits that are applied to the Civ program code. The real secret sauce is a system to compile and inject arbitrary C code into the process which makes it practical to implement new features in the game. The heart of the system is TCC (Tiny C Compiler) and much work puzzling out the functions and structs inside the executable. Much thanks to Antal1987 for figuring out most of the structs years before I came along, [his work is posted here](https://github.com/Antal1987/C3CPatchFramework)).
+
+C3X is open source. The C code that gets injected into the game's EXE is located in injected_code.c and the code to perform the injection is located in ep.c. You're invited to explore the source code if you're interested.
 
 ## Special Thanks
-[@maxpetul](https://github.com/maxpetul/) (I'm standing on the shoulders of giants!) and others whose work made C3X possible.
+1. Antal1987 for his work reverse engineering Civ3
+2. R�mulo Prado for his help testing the mod
+3. Civinator for the German translation. See: https://www.civforum.de/showthread.php?113285-Der-Flintlock-Deutsch-Patch
+4. Vaughn Parker for generously commissioning the port to the PCGames.de EXE and many other features
+5. instafluff0 for contributing the day/night cycle feature
