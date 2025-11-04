@@ -1664,6 +1664,7 @@ read_natural_wonder_terrain_type (struct string_slice const * s, enum SquareType
 	case SQ_Desert:
 	case SQ_Plains:
 	case SQ_Grassland:
+	case SQ_Jungle:
 	case SQ_Tundra:
 	case SQ_FloodPlain:
 	case SQ_Coast:
@@ -10670,7 +10671,7 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 				}
 			}
 
-			// Wonder district proxy indexing
+			// Wonder districts
 			if (is->current_config.enable_wonder_districts) {
 				for (int wi = 0; wi < is->wonder_district_count; wi++) {
 					Sprite * base_img = &is->wonder_district_img_sets[wi].img;
@@ -10684,6 +10685,7 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 			}
 		}
 
+		// Natural wonders
 		if (is->current_config.enable_natural_wonders && (is->natural_wonder_count > 0)) {
 			for (int ni = 0; ni < is->natural_wonder_count; ni++) {
 				Sprite * base_nw = &is->natural_wonder_img_sets[ni].img;
@@ -15831,7 +15833,7 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 		bool show_district_name = false;
 		
 		char s[200];
-		if (is->current_config.enable_districts) {
+		if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 			// Draw district name to the right of terrain name if tile has one
 			struct district_instance * dist = get_district_instance (tile);
 			if (dist != NULL) {
@@ -15846,6 +15848,14 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 					char const * wonder_name = is->wonder_district_configs[dist->wonder_info.wonder_index].wonder_name;
 					if ((wonder_name != NULL) && (wonder_name[0] != '\0')) {
 						display_name = wonder_name;
+					}
+				} else if ((dist->district_type == NATURAL_WONDER_DISTRICT_ID) &&
+				           (dist->natural_wonder_info.natural_wonder_id >= 0) &&
+				           (dist->natural_wonder_info.natural_wonder_id < is->natural_wonder_count)) {
+					int natural_id = dist->natural_wonder_info.natural_wonder_id;
+					char const * natural_name = is->natural_wonder_configs[natural_id].name;
+					if ((natural_name != NULL) && (natural_name[0] != '\0')) {
+						display_name = natural_name;
 					}
 				}
 

@@ -15,7 +15,7 @@ shield_bonus  = 0
 #Wonder
 name          = Yosemite
 terrain_type  = grassland
-adjacent_to   = hills
+adjacent_to   = mountains
 img_path      = NaturalWonders.pcx
 img_row       = 0
 img_column    = 1
@@ -65,7 +65,7 @@ shield_bonus  = 0
 
 #Wonder
 name          = Zhangjiajie Mountains
-terrain_type  = grassland
+terrain_type  = jungle
 adjacent_to   = jungle
 img_path      = NaturalWonders.pcx
 img_row       = 1
@@ -129,7 +129,7 @@ shield_bonus  = 0
 
 #Wonder
 name          = Tropical Rainforest
-terrain_type  = grassland
+terrain_type  = jungle
 adjacent_to   = jungle
 img_path      = NaturalWonders.pcx
 img_row       = 2
