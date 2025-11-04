@@ -818,7 +818,7 @@ ignore,	   0x5CCBB0,	0x0,		0x0,		"Unit_can_pass_between",			"PassBetweenValidity
 ignore,	   0x452510,	0x454600,	0x452590,	"ai_move_defensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x5E78E0,	0x5F7130,	0x0,		"General_load",					"void (__fastcall *) (General * this, int edx, byte ** buffer)"
 ignore,    0x5E7020,	0x5F6870,	0x0,		"General_clear",				"void (__fastcall *) (General * this)"
-ignore,	   0x4E5580,	0x0,		0x0,		"Main_Screen_Form_draw_city_hud",		"void (__fastcall *) (Main_Screen_Form * this, int edx, PCX_Image * canvas)"
+inlead,    0x4E5580,    0x0,        0x0,        "Main_Screen_Form_draw_city_hud",      "void (__fastcall *) (Main_Screen_Form * this, int edx, PCX_Image * canvas)"
 ignore,	   0x605010,	0x61C6A0,	0x604F00,	"Base_Form_impl_m01_Show_Enabled",		"void (__fastcall *) (Base_Form * this, int edx, byte flags)"
 ignore,	   0x74AF60,	0x0,		0x0,		"p_sync_object",				"void *"
 ignore,    0x5C0E20,	0x5CF9C0,	0x5C0B30,	"Unit_begin_bombarding_tile",			"bool (__fastcall *) (Unit * this, int edx, int x, int y)"

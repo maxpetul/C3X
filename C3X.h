@@ -1506,10 +1506,6 @@ struct injected_state {
 	// Natural Wonder labels: table mapping natural wonder name strings to their IDs, count of defined natural wonders,
 	struct table natural_wonder_name_to_id;
 
-	// Natural Wonder label drawing information
-	int natural_wonder_label_count;
-	struct natural_wonder_label_draw_info natural_wonder_labels[MAX_NATURAL_WONDER_DISTRICT_TYPES];
-
 	// City work radius highlighting: flag to enable/disable, table mapping tile pointers to highlight_level for visual feedback
 	bool highlight_city_radii;
 	struct table highlighted_city_radius_tile_pointers;

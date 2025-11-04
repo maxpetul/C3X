@@ -16655,27 +16655,65 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 		is->saved_tile_count = -1;
 	}
 
-	if (is->current_config.enable_natural_wonders)
-		is->natural_wonder_label_count = 0;
-
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
+}
 
-	if (is->current_config.enable_natural_wonders &&
-		is->current_config.show_natural_wonder_name_on_map &&
-	    is->natural_wonder_label_count > 0 &&
-	    (p_main_screen_form != NULL)) {
-		PCX_Image * canvas = &p_main_screen_form->Base_Data.Canvas;
-		if ((canvas != NULL) && (canvas->JGL.Image != NULL)) {
-			for (int n = 0; n < is->natural_wonder_label_count; n++) {
-				struct natural_wonder_label_draw_info const * entry = &is->natural_wonder_labels[n];
-				if ((entry->text != NULL) && (entry->text[0] != '\0')) {
-					Object_66C3FC * font = get_font (entry->font_size, FSF_NONE);
-					if (font != NULL) {
-						PCX_Image_set_text_effects (canvas, __, 0x80FFFFFF, 0x80000000, 1, 1); // white text with black shadow
-						PCX_Image_draw_centered_text (canvas, __, font, (char *)entry->text, entry->text_left, entry->text_top - 10, entry->text_width, strlen (entry->text));
-					}
-				}
-			}
+void __fastcall
+patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Image * canvas)
+{
+	Main_Screen_Form_draw_city_hud (this, __, canvas);
+
+	if (!is->current_config.enable_natural_wonders ||
+	    !is->current_config.show_natural_wonder_name_on_map)
+		return;
+
+	if (canvas == NULL)
+		canvas = &this->Base_Data.Canvas;
+
+	if ((canvas == NULL) || (canvas->JGL.Image == NULL))
+		return;
+
+	FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+		struct district_instance * inst = (struct district_instance *)(long)tei.value;
+		if ((inst == NULL) || (inst->district_type != NATURAL_WONDER_DISTRICT_ID))
+			continue;
+
+		int natural_id = inst->natural_wonder_info.natural_wonder_id;
+		if ((natural_id < 0) || (natural_id >= is->natural_wonder_count))
+			continue;
+
+		struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
+		if ((nw_cfg == NULL) || (nw_cfg->name == NULL) || (nw_cfg->name[0] == '\0'))
+			continue;
+
+		Tile * tile = (Tile *)(long)tei.key;
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+
+		int tile_x, tile_y;
+		if (!tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
+			continue;
+
+		int screen_x, screen_y;
+		Main_Screen_Form_tile_to_screen_coords (this, __, tile_x, tile_y, &screen_x, &screen_y);
+
+		int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
+		int scale = is_zoomed_out ? 2 : 1;
+		int screen_width = 128 / scale;
+		int screen_height = 88 / scale;
+		int text_width = screen_width - (is_zoomed_out ? 4 : 8);
+		if (text_width < 12)
+			text_width = screen_width;
+
+		int text_left = screen_x + (screen_width - text_width) / 2;
+		int y_offset = 88 - 64;
+		int draw_y = screen_y - y_offset;
+		int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
+
+		Object_66C3FC * font = get_font (10, FSF_NONE);
+		if (font != NULL) {
+			PCX_Image_set_text_effects (canvas, __, 0x80FFFFFF, 0x80000000, 1, 1);
+			PCX_Image_draw_centered_text (canvas, __, font, (char *)nw_cfg->name, text_left, text_top - 10, text_width, strlen (nw_cfg->name));
 		}
 	}
 }
@@ -23140,28 +23178,6 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
     return false;
 }
 
-void
-update_natural_wonder_label_position (struct natural_wonder_district_config const * nw_cfg, int pixel_x, int draw_y)
-{
-	int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
-	int scale = is_zoomed_out ? 2 : 1;
-	int screen_width = 128 / scale;
-	int screen_height = 88 / scale;
-	int text_width = screen_width - (is_zoomed_out ? 4 : 8);
-	if (text_width < 12)
-		text_width = screen_width;
-	int text_left = pixel_x + (screen_width - text_width) / 2;
-	int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
-	if (is->natural_wonder_label_count < MAX_NATURAL_WONDER_DISTRICT_TYPES) {
-		struct natural_wonder_label_draw_info * entry = &is->natural_wonder_labels[is->natural_wonder_label_count++];
-		entry->text_left = text_left;
-		entry->text_top = text_top;
-		entry->text_width = text_width;
-		entry->font_size = 10;
-		entry->text = nw_cfg->name;
-	}
-}
-
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
@@ -23184,20 +23200,16 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 		return;
 
 	// Natural Wonder
-	if (district_id == NATURAL_WONDER_DISTRICT_ID && is->current_config.enable_natural_wonders) {
+	if (district_id == NATURAL_WONDER_DISTRICT_ID) {
+		if (! is->current_config.enable_natural_wonders)
+			return;
+
 		int natural_id = inst->natural_wonder_info.natural_wonder_id;
 		if ((natural_id >= 0) && (natural_id < is->natural_wonder_count)) {
 			Sprite * nsprite = &is->natural_wonder_img_sets[natural_id].img;
 			int y_offset = 88 - 64;
 			int draw_y = pixel_y - y_offset;
 			patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-
-			if (is->current_config.show_natural_wonder_name_on_map) {
-				struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
-				if ((nw_cfg != NULL) && (nw_cfg->name != NULL) && (nw_cfg->name[0] != '\0')) {
-					update_natural_wonder_label_position (nw_cfg, pixel_x, draw_y);
-				}
-			}
 		}
 		return;
 	}
