@@ -4707,7 +4707,6 @@ clear_dynamic_district_definitions (void)
 	is->dynamic_district_count = 0;
 	is->district_count = is->special_district_count;
 	is->wonder_district_count = 0;
-	is->natural_wonder_count = 0;
 	is->next_custom_dynamic_command_index = 0;
 }
 
@@ -6693,6 +6692,20 @@ find_wonder_district_index_by_name (char const * name)
 	return find_wonder_config_index_by_improvement_id (improv_id);
 }
 
+int
+find_natural_wonder_index_by_name (char const * name)
+{
+	if ((name == NULL) || (name[0] == '\0') || (is == NULL))
+		return -1;
+
+	for (int i = 0; i < is->natural_wonder_count; i++) {
+		char const * existing = is->natural_wonder_configs[i].name;
+		if ((existing != NULL) && (strcmp (existing, name) == 0))
+			return i;
+	}
+	return -1;
+}
+
 City *
 find_city_by_name (char const * name)
 {
@@ -6841,11 +6854,13 @@ finalize_scenario_district_entry (struct scenario_district_entry * entry,
 					inst->wonder_info.city = NULL;
 					inst->wonder_info.city_id = -1;
 					inst->wonder_info.wonder_index = -1;
+					inst->natural_wonder_info.natural_wonder_id = -1;
 
-					int wonder_district_id = WONDER_DISTRICT_ID;
-					if ((district_id == wonder_district_id) && (entry->has_wonder_city || entry->has_wonder_name)) {
-						int has_city = (entry->wonder_city_name != NULL) && (entry->wonder_city_name[0] != '\0');
-						int has_wonder = (entry->wonder_name != NULL) && (entry->wonder_name[0] != '\0');
+					if (district_id == WONDER_DISTRICT_ID) {
+						int has_city = entry->has_wonder_city &&
+							(entry->wonder_city_name != NULL) && (entry->wonder_city_name[0] != '\0');
+						int has_wonder = entry->has_wonder_name &&
+							(entry->wonder_name != NULL) && (entry->wonder_name[0] != '\0');
 						if (! has_city || ! has_wonder) {
 							add_scenario_district_error (parse_errors, section_start_line, "Wonder district requires both wonder_city and wonder_name");
 							success = 0;
@@ -6855,23 +6870,34 @@ finalize_scenario_district_entry (struct scenario_district_entry * entry,
 								add_scenario_district_error (parse_errors, section_start_line, "wonder_name (unrecognized)");
 								success = 0;
 							} else {
-								// Cities haven't yet been loaded at this point, so we actually can't match to city name or find pointers to a city.
-								// However, Wonders defined here are already completed, and the city pointer is really only useful for tracking 
-								// ownership during construction, so we can leave it NULL without ill effects.
 								inst->wonder_info.city = NULL;
 								inst->wonder_info.city_id = -1;
-
 								inst->wonder_info.state = WDS_COMPLETED;
 								inst->wonder_info.wonder_index = wonder_index;
 							}
 						}
-					} else if ((district_id != wonder_district_id) && (entry->has_wonder_city || entry->has_wonder_name)) {
-						add_scenario_district_error (parse_errors, section_start_line, "wonder_* fields only valid for Wonder District entries");
-						// Leave success as-is so the district still loads.
+					} else if (district_id == NATURAL_WONDER_DISTRICT_ID) {
+						int has_name = entry->has_wonder_name &&
+							(entry->wonder_name != NULL) && (entry->wonder_name[0] != '\0');
+						if (! has_name) {
+							add_scenario_district_error (parse_errors, section_start_line, "Natural Wonder district requires wonder_name");
+							success = 0;
+						} else {
+							int natural_index = find_natural_wonder_index_by_name (entry->wonder_name);
+							if (natural_index < 0) {
+								add_scenario_district_error (parse_errors, section_start_line, "wonder_name (unrecognized natural wonder)");
+								success = 0;
+							} else
+								inst->natural_wonder_info.natural_wonder_id = natural_index;
+						}
+						if (entry->has_wonder_city)
+							add_scenario_district_error (parse_errors, section_start_line, "wonder_city ignored for Natural Wonder district entries");
+					} else if (entry->has_wonder_city || entry->has_wonder_name) {
+						add_scenario_district_error (parse_errors, section_start_line, "wonder_* fields only valid for Wonder or Natural Wonder district entries");
 					}
 
 					if (success) {
-						if (! tile->vtable->m18_Check_Mines (tile, __, 0))
+						if (district_id != NATURAL_WONDER_DISTRICT_ID && !tile->vtable->m18_Check_Mines (tile, __, 0))
 							tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, map_x, map_y);
 						set_tile_unworkable_for_all_cities (tile, map_x, map_y);
 					}
@@ -6952,6 +6978,11 @@ handle_scenario_district_key (struct scenario_district_entry * entry,
 // district     = Wonder District
 // wonder_city  = Rome
 // wonder_name  = The Pyramids
+// 
+// #District
+// coordinates  = 10,30
+// district     = Natural Wonder
+// wonder_name  = Mount Everest
 // ```
 //
 // Details at https://github.com/instafluff0/Quintillus_Civ3_Editor_Fork_for_C3X_Districts
@@ -11298,6 +11329,9 @@ patch_init_floating_point ()
 
 	reset_district_state (true);
 
+	is->natural_wonder_count = 0;
+	is->skip_natural_wonder_auto_placement = false;
+
 	is->sharing_buildings_by_districts_in_progress = false;
 	is->can_load_transport = is->can_load_passenger = NULL;
 
@@ -11307,7 +11341,7 @@ patch_init_floating_point ()
 }
 
 void
-get_mod_art_path (char const * file_name, char * out_path, int path_buf_size)
+get_mod_art_path (char const * file_name, char * out_path, int  path_buf_size)
 {
 	char s[1000];
 	snprintf (s, sizeof s, "Art\\%s", file_name);
@@ -13945,10 +13979,13 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	char * scenario_config_file_name = "scenario.c3x_config.ini";
 	char * scenario_config_path = BIC_get_asset_path (p_bic_data, __, scenario_config_file_name, false);
 	// BIC_get_asset_path returns the file name when it can't find the file
-	if (0 != strcmp (scenario_config_file_name, scenario_config_path))
+	if (0 != strcmp (scenario_config_file_name, scenario_config_path)) {
 		load_config (scenario_config_path, 0);
+	}
 	load_config ("custom.c3x_config.ini", 1);
 	apply_machine_code_edits (&is->current_config, false);
+
+	(*p_OutputDebugStringA) ("patch_load_scenario\n");
 
 	if (is->current_config.enable_districts) {
 		reset_district_state (true);
@@ -17093,8 +17130,11 @@ patch_Map_process_after_placing (Map * this, int edx, bool param_1)
 {
 	if ((is->current_config.ai_multi_city_start > 0) && (*p_current_turn_no == 0))
 		set_up_ai_multi_city_start (this, is->current_config.ai_multi_city_start);
+
 	Map_process_after_placing (this, __, param_1);
-	if (is->current_config.enable_natural_wonders)
+	
+	if (is->current_config.enable_natural_wonders &&
+	    ! is->skip_natural_wonder_auto_placement)
 		place_natural_wonders_on_map ();
 }
 
@@ -20335,6 +20375,7 @@ void __fastcall
 patch_Map_place_scenario_things (Map * this)
 {
 	is->is_placing_scenario_things = true;
+	is->skip_natural_wonder_auto_placement = true;
 
 	Map_place_scenario_things (this);
 
@@ -23207,7 +23248,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 		int natural_id = inst->natural_wonder_info.natural_wonder_id;
 		if ((natural_id >= 0) && (natural_id < is->natural_wonder_count)) {
 			Sprite * nsprite = &is->natural_wonder_img_sets[natural_id].img;
-			int y_offset = 88 - 64;
+			int y_offset = 88 - 64; // Height of wonder img minus height of tile
 			int draw_y = pixel_y - y_offset;
 			patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
 		}
