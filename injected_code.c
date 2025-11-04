@@ -23141,7 +23141,7 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
 }
 
 void
-update_natural_wonder_label_spacing(struct natural_wonder_district_config const * nw_cfg, int pixel_x, int draw_y)
+update_natural_wonder_label_position (struct natural_wonder_district_config const * nw_cfg, int pixel_x, int draw_y)
 {
 	int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
 	int scale = is_zoomed_out ? 2 : 1;
@@ -23195,7 +23195,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 			if (is->current_config.show_natural_wonder_name_on_map) {
 				struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
 				if ((nw_cfg != NULL) && (nw_cfg->name != NULL) && (nw_cfg->name[0] != '\0')) {
-					update_natural_wonder_label_spacing (nw_cfg, pixel_x, draw_y);
+					update_natural_wonder_label_position (nw_cfg, pixel_x, draw_y);
 				}
 			}
 		}
