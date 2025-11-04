@@ -10489,6 +10489,51 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 				wpcx.vtable->clear_JGL (&wpcx);
 			wpcx.vtable->destruct (&wpcx, __, 0);
 		}
+
+	}
+
+	if (is->current_config.enable_natural_wonders && (is->natural_wonder_count > 0)) {
+		char natural_dir[200];
+		snprintf (natural_dir, sizeof natural_dir, "%s\\Art\\Districts\\%s", is->mod_rel_dir, hour);
+
+		char const * last_img_path = NULL;
+		PCX_Image nwpcx;
+		PCX_Image_construct (&nwpcx);
+		bool pcx_loaded = false;
+
+		for (int ni = 0; ni < is->natural_wonder_count; ni++) {
+			struct natural_wonder_district_config const * cfg = &is->natural_wonder_configs[ni];
+			if ((cfg->img_path == NULL) || (cfg->img_path[0] == '\0'))
+				continue;
+
+			char const * img_path = cfg->img_path;
+			if ((last_img_path == NULL) || (strcmp (img_path, last_img_path) != 0)) {
+				if (pcx_loaded)
+					nwpcx.vtable->clear_JGL (&nwpcx);
+
+				read_in_dir (&nwpcx, natural_dir, img_path, NULL);
+
+				if (nwpcx.JGL.Image == NULL) {
+					pcx_loaded = false;
+					continue;
+				}
+
+				pcx_loaded = true;
+				last_img_path = img_path;
+			}
+
+			if (! pcx_loaded)
+				continue;
+
+			Sprite_construct (&this->Natural_Wonder_Images[ni].img);
+			int x = 128 * cfg->img_column;
+			int y =  88 * cfg->img_row;
+			Sprite_slice_pcx (&this->Natural_Wonder_Images[ni].img, __, &nwpcx, x, y, 128, 88, 1, 1);
+		}
+
+		if (pcx_loaded)
+			nwpcx.vtable->clear_JGL (&nwpcx);
+		nwpcx.vtable->destruct (&nwpcx, __, 0);
 	}
 
 	img.vtable->destruct (&img, __, 0);
@@ -10636,6 +10681,14 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 					Sprite * proxy_construct = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].construct_img;
 					insert_sprite_proxy (base_construct, proxy_construct, h);
 				}
+			}
+		}
+
+		if (is->current_config.enable_natural_wonders && (is->natural_wonder_count > 0)) {
+			for (int ni = 0; ni < is->natural_wonder_count; ni++) {
+				Sprite * base_nw = &is->natural_wonder_img_sets[ni].img;
+				Sprite * proxy_nw = &is->day_night_cycle_imgs[h].Natural_Wonder_Images[ni].img;
+				insert_sprite_proxy (base_nw, proxy_nw, h);
 			}
 		}
 	}
@@ -23092,131 +23145,155 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 {
 	*p_debug_mode_bits |= 0xC;
 
-    // If districts enabled and this tile is mapped to a district, draw only the district (suppress base mine drawing)
-    if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
-        Tile * tile = tile_at (tile_x, tile_y);
-        if ((tile != NULL) && (tile != p_null_tile)) {
-            struct district_instance * inst = get_district_instance (tile);
-            if (inst != NULL) {
-                int district_id = inst->district_type;
-                if (is->dc_img_state == IS_UNINITED)
-                    init_district_images ();
+	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders)
+		return; Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 
-                if (is->dc_img_state == IS_OK) {
-                    bool completed = district_is_complete (tile, district_id);
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
 
-                    if (! completed)
-                        return;
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL) 
+		return Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 
-					struct district_config const * cfg = &is->district_configs[district_id];
-                    int territory_owner_id = tile->Territory_OwnerID;
-                    int variant = 0;
-                    int era = 0;
-                    int culture = 0;
-					int buildings = 0;
-					Sprite * district_sprite;
+	int district_id = inst->district_type;
+	if (is->dc_img_state == IS_UNINITED)
+        init_district_images ();
 
-                    if (territory_owner_id > 0) {
-                        Leader * leader = &leaders[territory_owner_id];
-                        culture = p_bic_data->Races[leader->RaceID].CultureGroupID;
-                        if (cfg->vary_img_by_culture)
-                            variant = culture;
-                        if (cfg->vary_img_by_era)
-                            era = leader->Era;
-                    } else if (district_id != WONDER_DISTRICT_ID && district_id != NATURAL_WONDER_DISTRICT_ID) {
-						// Render abandoned district, special index 5
-						variant = 5;
-						district_sprite = &is->district_img_sets[0].imgs[variant][era][buildings];
-						patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-						return;
-					}
+	if (!is->dc_img_state == IS_OK)
+		return;
 
-                    switch (district_id) {
-                        case NEIGHBORHOOD_DISTRICT_ID:
-                        {
-                            unsigned v = (unsigned)tile_x * 0x9E3779B1u + (unsigned)tile_y * 0x85EBCA6Bu;
-                            v ^= v >> 16;
-                            v *= 0x7FEB352Du;
-                            v ^= v >> 15;
-                            v *= 0x846CA68Bu;
-                            v ^= v >> 16;
-                            buildings = clamp(0, 3, (int)(v & 3u));  /* final 0..3 */
-                            variant = culture;
-                            break;
-                        }
-                        case DISTRIBUTION_HUB_DISTRICT_ID:
-                            buildings = 0;
-                            break;
-						case WONDER_DISTRICT_ID:
-						{
-							if (! is->current_config.enable_wonder_districts)
-								return;
+	// Natural Wonder
+	if (district_id == NATURAL_WONDER_DISTRICT_ID && is->current_config.enable_natural_wonders) {
+		int natural_id = inst->natural_wonder_info.natural_wonder_id;
+		if ((natural_id >= 0) && (natural_id < is->natural_wonder_count)) {
+			Sprite * nsprite = &is->natural_wonder_img_sets[natural_id].img;
+			int y_offset = 88 - 64;
+			int draw_y = pixel_y - y_offset;
+			patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
 
-							struct wonder_district_info * info = get_wonder_district_info (tile);
-                            if (info != NULL && info->state == WDS_COMPLETED &&
-                                info->wonder_index >= 0 && info->wonder_index < is->wonder_district_count) {
-                                Sprite * wsprite = &is->wonder_district_img_sets[info->wonder_index].img;
-                                patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-                                return;
-                            }
+			if (is->current_config.show_natural_wonder_name_on_map) {
+				struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
+				if ((nw_cfg != NULL) && (nw_cfg->name != NULL) && (nw_cfg->name[0] != '\0')) {
+					update_natural_wonder_label_spacing (nw_cfg, pixel_x, draw_y);
+				}
+			}
+		}
+		return;
+	}
 
-                            if (completed) {
-                                int construct_windex = -1;
-                                if (wonder_district_tile_under_construction (tile, tile_x, tile_y, &construct_windex) &&
-                                    (construct_windex >= 0)) {
-                                    Sprite * csprite = &is->wonder_district_img_sets[construct_windex].construct_img;
-                                    patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-                                }
-                            }
-                            return;
-						}
-						case NATURAL_WONDER_DISTRICT_ID:
-						{
-							if (! is->current_config.enable_natural_wonders)
-								return;
+	// Districts
+    if (is->current_config.enable_districts) {
+        bool completed = district_is_complete (tile, district_id);
 
-							int natural_id = inst->natural_wonder_info.natural_wonder_id;
-							if ((natural_id >= 0) && (natural_id < is->natural_wonder_count)) {
-								Sprite * nsprite = &is->natural_wonder_img_sets[natural_id].img;
-								int y_offset = 88 - 64;
-								int draw_y = pixel_y - y_offset;
-								patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+        if (! completed)
+            return;
 
-								if (is->current_config.show_natural_wonder_name_on_map) {
-									struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
-									if ((nw_cfg != NULL) && (nw_cfg->name != NULL) && (nw_cfg->name[0] != '\0')) {
-										update_natural_wonder_label_spacing (nw_cfg, pixel_x, draw_y);
-									}
-								}
-							}
-							return;
-						}
-                        default:
-                        {
-                            struct district_infos * info = &is->district_infos[district_id];
-                            int completed_count = 0;
-                            for (int i = 0; i < info->dependent_building_count; i++) {
-                                int building_id = info->dependent_building_ids[i];
-                                if ((building_id >= 0) &&
-                                    tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id))
-                                    completed_count++;
-                            }
-                            buildings = completed_count;
-                            break;
-                        }
-                    }
+		struct district_config const * cfg = &is->district_configs[district_id];
+        int territory_owner_id = tile->Territory_OwnerID;
+        int variant = 0;
+        int era = 0;
+        int culture = 0;
+		int buildings = 0;
+		Sprite * district_sprite;
 
-					district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
-                    patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-                    return; // do not draw vanilla mine when district present
-                } else {
+        if (territory_owner_id > 0) {
+            Leader * leader = &leaders[territory_owner_id];
+            culture = p_bic_data->Races[leader->RaceID].CultureGroupID;
+            if (cfg->vary_img_by_culture)
+                variant = culture;
+            if (cfg->vary_img_by_era)
+                era = leader->Era;
+        } else if (district_id != WONDER_DISTRICT_ID && district_id != NATURAL_WONDER_DISTRICT_ID) {
+			// Render abandoned district, special index 5
+			variant = 5;
+			district_sprite = &is->district_img_sets[0].imgs[variant][era][buildings];
+			patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+			return;
+		}
+
+        switch (district_id) {
+            case NEIGHBORHOOD_DISTRICT_ID:
+            {
+                unsigned v = (unsigned)tile_x * 0x9E3779B1u + (unsigned)tile_y * 0x85EBCA6Bu;
+                v ^= v >> 16;
+                v *= 0x7FEB352Du;
+                v ^= v >> 15;
+                v *= 0x846CA68Bu;
+                v ^= v >> 16;
+                buildings = clamp(0, 3, (int)(v & 3u));  /* final 0..3 */
+                variant = culture;
+                break;
+            }
+            case DISTRIBUTION_HUB_DISTRICT_ID:
+                buildings = 0;
+                break;
+			case WONDER_DISTRICT_ID:
+			{
+				if (! is->current_config.enable_wonder_districts)
+					return;
+
+				struct wonder_district_info * info = get_wonder_district_info (tile);
+                if (info != NULL && info->state == WDS_COMPLETED &&
+                    info->wonder_index >= 0 && info->wonder_index < is->wonder_district_count) {
+                    Sprite * wsprite = &is->wonder_district_img_sets[info->wonder_index].img;
+                    patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
                     return;
                 }
+
+                if (completed) {
+                    int construct_windex = -1;
+                    if (wonder_district_tile_under_construction (tile, tile_x, tile_y, &construct_windex) &&
+                        (construct_windex >= 0)) {
+                        Sprite * csprite = &is->wonder_district_img_sets[construct_windex].construct_img;
+                        patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+                    }
+                }
+                return;
+			}
+			case NATURAL_WONDER_DISTRICT_ID:
+			{
+				if (! is->current_config.enable_natural_wonders)
+					return;
+
+				int natural_id = inst->natural_wonder_info.natural_wonder_id;
+				if ((natural_id >= 0) && (natural_id < is->natural_wonder_count)) {
+					Sprite * nsprite = &is->natural_wonder_img_sets[natural_id].img;
+					int y_offset = 88 - 64;
+					int draw_y = pixel_y - y_offset;
+					patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+
+					if (is->current_config.show_natural_wonder_name_on_map) {
+						struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
+						if ((nw_cfg != NULL) && (nw_cfg->name != NULL) && (nw_cfg->name[0] != '\0')) {
+							update_natural_wonder_label_spacing (nw_cfg, pixel_x, draw_y);
+						}
+					}
+				}
+				return;
+			}
+            default:
+            {
+                struct district_infos * info = &is->district_infos[district_id];
+                int completed_count = 0;
+                for (int i = 0; i < info->dependent_building_count; i++) {
+                    int building_id = info->dependent_building_ids[i];
+                    if ((building_id >= 0) &&
+                        tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id))
+                        completed_count++;
+                }
+                buildings = completed_count;
+                break;
             }
         }
+
+			district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
+            patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+            return;
+        } else {
+            return;
     }
 
-    // Fallback: no district present or images not ready — draw base buildings (including mines)
     Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 }
 

@@ -1384,6 +1384,7 @@ struct injected_state {
 		Sprite LM_Hills_Images[16];
 		Sprite District_Images[COUNT_DISTRICT_TYPES][10][4][6]; // [district][variant][era][building_stage]
 		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
+		struct natural_wonder_district_image_set Natural_Wonder_Images[MAX_NATURAL_WONDER_DISTRICT_TYPES];
 	} day_night_cycle_imgs[24];
 
 	// Districts
