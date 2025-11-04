@@ -15984,7 +15984,8 @@ patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (Map_Renderer * this, int 
 
 	is->current_tile_x = -1;
 	is->current_tile_y = -1;
-	if (tile->vtable->m50_Get_Square_BaseType (tile) == SQ_Forest) {
+	if ((tile->vtable->m50_Get_Square_BaseType (tile) == SQ_Forest) &&
+		(*tile->vtable->m25_Check_Roads)(tile, __, 0)) {
 		is->current_tile_x = tile_x;
 		is->current_tile_y = tile_y;
 		return;
@@ -23153,8 +23154,6 @@ update_natural_wonder_label_spacing(struct natural_wonder_district_config const 
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
-
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders)
 		return; Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 
@@ -23260,27 +23259,6 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                     }
                 }
                 return;
-			}
-			case NATURAL_WONDER_DISTRICT_ID:
-			{
-				if (! is->current_config.enable_natural_wonders)
-					return;
-
-				int natural_id = inst->natural_wonder_info.natural_wonder_id;
-				if ((natural_id >= 0) && (natural_id < is->natural_wonder_count)) {
-					Sprite * nsprite = &is->natural_wonder_img_sets[natural_id].img;
-					int y_offset = 88 - 64;
-					int draw_y = pixel_y - y_offset;
-					patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-
-					if (is->current_config.show_natural_wonder_name_on_map) {
-						struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
-						if ((nw_cfg != NULL) && (nw_cfg->name != NULL) && (nw_cfg->name[0] != '\0')) {
-							update_natural_wonder_label_spacing (nw_cfg, pixel_x, draw_y);
-						}
-					}
-				}
-				return;
 			}
             default:
             {

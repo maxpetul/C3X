@@ -15,7 +15,7 @@ shield_bonus  = 0
 #Wonder
 name          = Yosemite
 terrain_type  = grassland
-adjacent_to   = mountains
+adjacent_to   = forest
 img_path      = NaturalWonders.pcx
 img_row       = 0
 img_column    = 1
@@ -40,7 +40,7 @@ shield_bonus  = 0
 #Wonder
 name          = Yellowstone
 terrain_type  = grassland
-adjacent_to   = mountains
+adjacent_to   = forest
 img_path      = NaturalWonders.pcx
 img_row       = 0
 img_column    = 3
