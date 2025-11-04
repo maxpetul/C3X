@@ -15240,6 +15240,17 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 CityLocValidity __fastcall
 patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int civ_id, bool check_for_city_on_tile)
 {
+	if (is->current_config.enable_natural_wonders || is->current_config.enable_districts &&
+	    (*p_human_player_bits & (1 << civ_id)) == 0) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (tile);
+			if (inst != NULL) {
+				return CLV_BLOCKED;
+			}
+		}
+	}
+
 	int min_sep = is->current_config.minimum_city_separation;
 	CityLocValidity base_result = Map_check_city_location (this, __, tile_x, tile_y, civ_id, check_for_city_on_tile);
 
@@ -23874,10 +23885,10 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 	int non_district_shields_remaining = total_net_shields - district_shields_remaining - hub_shields_remaining;
 
 	// Calculate corruption breakdown
-	int total_corruption               = -total_production_loss; // Make positive
-	int district_corruption            = standard_district_shields - district_shields_remaining;
-	int hub_corruption 				   = distribution_hub_shields - hub_shields_remaining;
-	int base_corruption 			   = total_corruption - district_corruption - hub_corruption;
+	int total_corruption    = -total_production_loss; // Make positive
+	int district_corruption = standard_district_shields - district_shields_remaining;
+	int hub_corruption 		= distribution_hub_shields - hub_shields_remaining;
+	int base_corruption 	= total_corruption - district_corruption - hub_corruption;
 
 	// Set the values
 	is->non_district_shield_icons_remaining         = non_district_shields_remaining;
