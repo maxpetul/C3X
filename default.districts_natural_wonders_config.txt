@@ -15,6 +15,7 @@ shield_bonus  = 0
 #Wonder
 name          = Yosemite
 terrain_type  = grassland
+adjacent_to   = hills
 img_path      = NaturalWonders.pcx
 img_row       = 0
 img_column    = 1
@@ -116,9 +117,23 @@ shield_bonus  = 0
 #Wonder
 name          = Moraine Lake
 terrain_type  = grassland
+adjacent_to   = mountains
 img_path      = NaturalWonders.pcx
 img_row       = 2
 img_column    = 1
+culture_bonus = 2
+science_bonus = 0
+food_bonus    = 0
+gold_bonus    = 0
+shield_bonus  = 0
+
+#Wonder
+name          = Tropical Rainforest
+terrain_type  = grassland
+adjacent_to   = jungle
+img_path      = NaturalWonders.pcx
+img_row       = 2
+img_column    = 2
 culture_bonus = 2
 science_bonus = 0
 food_bonus    = 0

@@ -314,10 +314,13 @@ struct c3x_config {
 	int fixed_hours_per_turn_for_day_night_cycle;
 	int pinned_hour_for_day_night_cycle;
 
+	bool enable_natural_wonders;
+	bool show_natural_wonder_name_on_map;
+	int minimum_natural_wonder_separation;
+
 	bool enable_districts;
 	bool enable_neighborhood_districts;
 	bool enable_wonder_districts;
-	bool enable_natural_wonders;
 	bool enable_distribution_hub_districts;
 	bool enable_aerodrome_districts;
 
@@ -325,7 +328,6 @@ struct c3x_config {
 	bool cities_with_mutual_district_receive_wonders;
 	bool air_units_use_aerodrome_districts_not_cities;
 
-	bool show_natural_wonder_name_on_map;
 
 	int maximum_pop_before_neighborhood_needed;
 	int per_neighborhood_pop_growth_enabled;
@@ -564,6 +566,22 @@ struct natural_wonder_district_config {
 	int gold_bonus;
 	int shield_bonus;
 	bool is_dynamic;
+};
+
+struct natural_wonder_candidate {
+	Tile * tile;
+	short x, y;
+};
+
+struct natural_wonder_candidate_list {
+	struct natural_wonder_candidate * entries;
+	int count;
+	int capacity;
+};
+
+struct wonder_location {
+	short x;
+	short y;
 };
 
 const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYPES] = {
