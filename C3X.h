@@ -17,10 +17,11 @@ typedef unsigned char byte;
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
 #define COUNT_SPECIAL_DISTRICT_TYPES 10
-#define USED_SPECIAL_DISTRICT_TYPES 4
+#define USED_SPECIAL_DISTRICT_TYPES 5
 #define MAX_DYNAMIC_DISTRICT_TYPES 22
 #define COUNT_DISTRICT_TYPES (COUNT_SPECIAL_DISTRICT_TYPES + MAX_DYNAMIC_DISTRICT_TYPES)
 #define MAX_WONDER_DISTRICT_TYPES 32
+#define MAX_NATURAL_WONDER_DISTRICT_TYPES 32
 #define C3X_DISTRICT_COMMAND_BASE (-11000000)
 
 // Initialize to zero. Implementation is in common.c
@@ -313,6 +314,10 @@ struct c3x_config {
 	int fixed_hours_per_turn_for_day_night_cycle;
 	int pinned_hour_for_day_night_cycle;
 
+	bool enable_natural_wonders;
+	bool show_natural_wonder_name_on_map;
+	int minimum_natural_wonder_separation;
+
 	bool enable_districts;
 	bool enable_neighborhood_districts;
 	bool enable_wonder_districts;
@@ -322,6 +327,7 @@ struct c3x_config {
 	bool cities_with_mutual_district_receive_buildings;
 	bool cities_with_mutual_district_receive_wonders;
 	bool air_units_use_aerodrome_districts_not_cities;
+
 
 	int maximum_pop_before_neighborhood_needed;
 	int per_neighborhood_pop_growth_enabled;
@@ -540,6 +546,44 @@ struct wonder_district_config {
 	bool is_dynamic;
 };
 
+enum square_type_extras {
+	SQ_INVALID = -1,
+	SQ_RIVER = SQ_Ocean + 1
+};
+
+struct natural_wonder_district_config {
+	char const * name;
+	char const * img_path;
+	enum SquareTypes terrain_type;
+	enum SquareTypes adjacent_to;
+	enum direction adjacency_dir;
+	int index;
+	int img_row;
+	int img_column;
+	int culture_bonus;
+	int science_bonus;
+	int food_bonus;
+	int gold_bonus;
+	int shield_bonus;
+	bool is_dynamic;
+};
+
+struct natural_wonder_candidate {
+	Tile * tile;
+	short x, y;
+};
+
+struct natural_wonder_candidate_list {
+	struct natural_wonder_candidate * entries;
+	int count;
+	int capacity;
+};
+
+struct wonder_location {
+	short x;
+	short y;
+};
+
 const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYPES] = {
 	{
 		.command = UCV_Build_Neighborhood, .name = "Neighborhood", .tooltip = "Build Neighborhood",
@@ -571,6 +615,13 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.img_paths = {"Aerodrome.pcx"},
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100	
+	},
+	{
+		.command = -1, 					.name = "Natural Wonder", .tooltip = "Natural Wonder",
+		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.img_paths = {0},
+		.img_path_count = 0, .max_building_index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100
 	}
 };
 
@@ -661,6 +712,10 @@ struct wonder_district_info {
 	int wonder_index;     // Wonder index (-1 if unused/reserved, valid if completed)
 };
 
+struct natural_wonder_district_info {
+	int natural_wonder_id;
+};
+
 enum district_state {
 	DS_UNDER_CONSTRUCTION = 0,
 	DS_COMPLETED = 1
@@ -672,6 +727,7 @@ struct district_instance {
 	int tile_x;
 	int tile_y;
 	struct wonder_district_info wonder_info; // Only used if district_type is a wonder district
+	struct natural_wonder_district_info natural_wonder_info; // Only used if district_type is a natural wonder district
 };
 
 struct highlighted_city_radius_tile_info {
@@ -1247,6 +1303,17 @@ struct injected_state {
 		Sprite construct_img;
 	} wonder_district_img_sets[MAX_WONDER_DISTRICT_TYPES];
 
+	struct natural_wonder_district_image_set {
+			Sprite img;
+		} natural_wonder_img_sets[MAX_NATURAL_WONDER_DISTRICT_TYPES];
+	struct natural_wonder_label_draw_info {
+		int text_left;
+		int text_top;
+		int text_width;
+		int font_size;
+		char const * text;
+	};
+
 	struct day_night_cycle_img_set
 	{
 		SpriteList Std_Terrain_Images[9];
@@ -1317,6 +1384,7 @@ struct injected_state {
 		Sprite LM_Hills_Images[16];
 		Sprite District_Images[COUNT_DISTRICT_TYPES][10][4][6]; // [district][variant][era][building_stage]
 		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
+		struct natural_wonder_district_image_set Natural_Wonder_Images[MAX_NATURAL_WONDER_DISTRICT_TYPES];
 	} day_night_cycle_imgs[24];
 
 	// Districts
@@ -1326,6 +1394,7 @@ struct injected_state {
 
 	struct district_config district_configs[COUNT_DISTRICT_TYPES];
 	struct wonder_district_config wonder_district_configs[MAX_WONDER_DISTRICT_TYPES];
+	struct natural_wonder_district_config natural_wonder_configs[MAX_NATURAL_WONDER_DISTRICT_TYPES];
 
 	struct district_image_set {
 		Sprite imgs[10][4][6]; // [variant][era][building_stage]
@@ -1383,6 +1452,7 @@ struct injected_state {
 	int special_district_count;
 	int dynamic_district_count;
 	int wonder_district_count;
+	int natural_wonder_count;
 	int next_custom_dynamic_command_index;
 
 	// Distribution Hub tracking: records keyed by tile, coverage counts per tile, yield bonuses per city/civ
@@ -1432,6 +1502,13 @@ struct injected_state {
 
 	// Worker tracking: 32 tables (one per civ), each mapping unit_id -> district_worker_record pointer
 	struct table district_worker_tables[32];
+
+	// Natural Wonder labels: table mapping natural wonder name strings to their IDs, count of defined natural wonders,
+	struct table natural_wonder_name_to_id;
+
+	// Natural Wonder label drawing information
+	int natural_wonder_label_count;
+	struct natural_wonder_label_draw_info natural_wonder_labels[MAX_NATURAL_WONDER_DISTRICT_TYPES];
 
 	// City work radius highlighting: flag to enable/disable, table mapping tile pointers to highlight_level for visual feedback
 	bool highlight_city_radii;
