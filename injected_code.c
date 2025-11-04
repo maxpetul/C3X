@@ -6410,7 +6410,7 @@ load_districts_config (void)
 void
 place_natural_wonders_on_map (void)
 {
-	if (! is->current_config.enable_districts || ! is->current_config.enable_natural_wonders)
+	if (! is->current_config.enable_natural_wonders)
 		return;
 
 	int wonder_count = is->natural_wonder_count;
@@ -6501,8 +6501,20 @@ place_natural_wonders_on_map (void)
 
 	bool wraps_horiz = (p_bic_data->Map.Flags & 1) != 0;
 	int newly_placed = 0;
+	int * wonder_order = (int *)malloc (wonder_count * sizeof *wonder_order);
+	if (wonder_order != NULL) {
+		for (int i = 0; i < wonder_count; i++)
+			wonder_order[i] = i;
+		for (int i = wonder_count - 1; i > 0; i--) {
+			int swap_index = rand_int (p_rand_object, __, i + 1);
+			int temp = wonder_order[i];
+			wonder_order[i] = wonder_order[swap_index];
+			wonder_order[swap_index] = temp;
+		}
+	}
 
-	for (int ni = 0; ni < wonder_count; ni++) {
+	for (int order_index = 0; order_index < wonder_count; order_index++) {
+		int ni = (wonder_order != NULL) ? wonder_order[order_index] : order_index;
 		if (already_placed[ni])
 			continue;
 
@@ -6646,6 +6658,7 @@ place_natural_wonders_on_map (void)
 
 	for (int ni = 0; ni < wonder_count; ni++)
 		free (candidate_lists[ni].entries);
+	free (wonder_order);
 	free (candidate_lists);
 	free (already_placed);
 	free (placements);
@@ -23080,7 +23093,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 	*p_debug_mode_bits |= 0xC;
 
     // If districts enabled and this tile is mapped to a district, draw only the district (suppress base mine drawing)
-    if (is->current_config.enable_districts) {
+    if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
         Tile * tile = tile_at (tile_x, tile_y);
         if ((tile != NULL) && (tile != p_null_tile)) {
             struct district_instance * inst = get_district_instance (tile);
