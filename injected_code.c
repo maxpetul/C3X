@@ -4707,6 +4707,7 @@ clear_dynamic_district_definitions (void)
 	is->dynamic_district_count = 0;
 	is->district_count = is->special_district_count;
 	is->wonder_district_count = 0;
+	is->natural_wonder_count = 0;
 	is->next_custom_dynamic_command_index = 0;
 }
 
@@ -11330,7 +11331,6 @@ patch_init_floating_point ()
 	reset_district_state (true);
 
 	is->natural_wonder_count = 0;
-	is->skip_natural_wonder_auto_placement = false;
 
 	is->sharing_buildings_by_districts_in_progress = false;
 	is->can_load_transport = is->can_load_passenger = NULL;
@@ -13987,7 +13987,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 
 	(*p_OutputDebugStringA) ("patch_load_scenario\n");
 
-	if (is->current_config.enable_districts) {
+	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 		reset_district_state (true);
 		load_districts_config ();
 		load_scenario_districts_from_file (scenario_path);
@@ -17132,9 +17132,14 @@ patch_Map_process_after_placing (Map * this, int edx, bool param_1)
 		set_up_ai_multi_city_start (this, is->current_config.ai_multi_city_start);
 
 	Map_process_after_placing (this, __, param_1);
-	
-	if (is->current_config.enable_natural_wonders &&
-	    ! is->skip_natural_wonder_auto_placement)
+}
+
+void __fastcall
+patch_Map_impl_generate (Map * this, int edx, int seed, bool is_multiplayer_game, int num_seafaring_civs)
+{
+	Map_impl_generate (this, __, seed, is_multiplayer_game, num_seafaring_civs);
+
+	if (is->current_config.enable_natural_wonders)
 		place_natural_wonders_on_map ();
 }
 
@@ -20375,7 +20380,6 @@ void __fastcall
 patch_Map_place_scenario_things (Map * this)
 {
 	is->is_placing_scenario_things = true;
-	is->skip_natural_wonder_auto_placement = true;
 
 	Map_place_scenario_things (this);
 

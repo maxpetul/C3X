@@ -1520,9 +1520,6 @@ struct injected_state {
 	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp. Tracks the current tile coordinates being rendered, then for drawing forests over roads/railroad
 	int current_tile_x, current_tile_y;
 
-	// Suppresses automatic natural wonder placement after loading a scenario file
-	bool skip_natural_wonder_auto_placement;
-
 	// ==========
 	// }
 	// ==========
