@@ -23214,22 +23214,26 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders)
-		return; Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
+		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+	}
 
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile == NULL) || (tile == p_null_tile))
 		return;
 
 	struct district_instance * inst = get_district_instance (tile);
-	if (inst == NULL) 
-		return Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+	if (inst == NULL) {
+		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+	}
 
 	int district_id = inst->district_type;
 	if (is->dc_img_state == IS_UNINITED)
         init_district_images ();
 
-	if (!is->dc_img_state == IS_OK)
+	if (is->dc_img_state != IS_OK)
 		return;
 
 	// Natural Wonder
@@ -23291,7 +23295,6 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                 break;
             }
             case DISTRIBUTION_HUB_DISTRICT_ID:
-                buildings = 0;
                 break;
 			case WONDER_DISTRICT_ID:
 			{
@@ -23326,14 +23329,12 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                 buildings = completed_count;
                 break;
             }
-        }
+		}
 
-			district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
-            patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-            return;
-        } else {
-            return;
-    }
+		district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
+		patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+		return;
+	}
 
     Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 }
