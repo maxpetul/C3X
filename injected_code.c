@@ -16465,8 +16465,8 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 		patch_show_popup (popup, __, 0, 0);
 	}
 
-	// After adding a world wonder, if wonder districts are enabled,
-	// assign the wonder image to one of the city's Wonder District tiles (first match).
+	// If the city just finished a wonder and was using a wonder district for that, set the wonder
+	// as completed (which switches the art over and prevents the tile from being used again)
 	if (add && is->current_config.enable_districts && is->current_config.enable_wonder_districts) {
 		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
 			int matched_windex = find_wonder_config_index_by_improvement_id (improv_id);
@@ -16482,7 +16482,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 					Tile * t = tile_at (x, y);
 					if (t == p_null_tile) continue;
 					if (t->vtable->m38_Get_Territory_OwnerID (t) != this->Body.CivID) continue;
-					
+
 					struct district_instance * inst = get_district_instance (t);
 					if (inst == NULL || inst->district_type != WONDER_DISTRICT_ID) continue;
 					if (! district_is_complete (t, inst->district_type)) continue;
