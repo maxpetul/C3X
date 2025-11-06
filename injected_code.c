@@ -8125,8 +8125,10 @@ patch_City_update_growth (City * this)
 			this->Body.StoredFood = 0;
 	}
 
+	// Don't show the meessage if it's online, not a human, or the city needs aqueducts/hospitals as well.
 	if (! show_message) return;
 	if (is_online_game ()) return;
+	if (City_requires_improvement_to_grow (this) >= 0) return;
 	if (civ_id != p_main_screen_form->Player_CivID) return;
 
 	if ((*p_human_player_bits & (1u << civ_id)) == 0) {
@@ -23315,6 +23317,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                     patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
 					return;
                 }
+				break;
 			}
             default:
             {
