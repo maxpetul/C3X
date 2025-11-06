@@ -8550,12 +8550,8 @@ wonder_district_tile_under_construction (Tile * tile, int tile_x, int tile_y, in
 	    (tile == NULL) || (tile == p_null_tile))
 		return false;
 
-	int wonder_district_id = WONDER_DISTRICT_ID;
-	if (wonder_district_id < 0)
-		return false;
-
 	struct district_instance * inst = get_district_instance (tile);
-	if (inst == NULL || inst->district_type != wonder_district_id)
+	if (inst == NULL || inst->district_type != WONDER_DISTRICT_ID)
 		return false;
 
 	struct wonder_district_info * info = get_wonder_district_info (tile);
@@ -12949,27 +12945,24 @@ issue_district_worker_command (Unit * unit, int command)
 				if (redundant_district)
 					would_lose_buildings = false;
 
-				bool remove_existing = redundant_district;
-				if (! remove_existing) {
-					// "A District already exists here. Removing it will destroy buildings dependent on it. Are you sure you want to proceed?" OR
-					// "A District exists here, but another of the same District is nearby so no dependent buildings will be lost. Do you want to proceed?"
-					PopupForm * popup = get_popup_form ();
-					set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
-					set_popup_str_param (1, (char*)is->district_configs[district_id].name, -1, -1);
-					popup->vtable->set_text_key_and_flags (
-						popup, __, is->mod_script_path,
-						would_lose_buildings
-							? "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT"
-							: "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT_SAFE",
-						-1, 0, 0, 0
-					);
+				bool remove_existing = false;
+				
+				PopupForm * popup = get_popup_form ();
+				set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
+				set_popup_str_param (1, (char*)is->district_configs[district_id].name, -1, -1);
+				popup->vtable->set_text_key_and_flags (
+					popup, __, is->mod_script_path,
+					would_lose_buildings
+						? "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT"
+						: "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT_SAFE",
+					-1, 0, 0, 0
+				);
 
-					int sel = patch_show_popup (popup, __, 0, 0);
-					if (sel == 0)
-						remove_existing = true;
-					else
-						return;
-				}
+				int sel = patch_show_popup (popup, __, 0, 0);
+				if (sel == 0)
+					remove_existing = true;
+				else
+					return;
 
 				if (remove_existing) {
 					remove_district_instance (tile);
@@ -23306,22 +23299,19 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 					return;
 
 				struct wonder_district_info * info = get_wonder_district_info (tile);
-                if (info != NULL && info->state == WDS_COMPLETED &&
-                    info->wonder_index >= 0 && info->wonder_index < is->wonder_district_count) {
+				if (info == NULL)
+					return;
+
+				int construct_windex = -1;
+                if (info->state == WDS_COMPLETED) {
                     Sprite * wsprite = &is->wonder_district_img_sets[info->wonder_index].img;
                     patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
                     return;
+                } else if (wonder_district_tile_under_construction (tile, tile_x, tile_y, &construct_windex) && (construct_windex >= 0)) {
+                    Sprite * csprite = &is->wonder_district_img_sets[construct_windex].construct_img;
+                    patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+					return;
                 }
-
-                if (completed) {
-                    int construct_windex = -1;
-                    if (wonder_district_tile_under_construction (tile, tile_x, tile_y, &construct_windex) &&
-                        (construct_windex >= 0)) {
-                        Sprite * csprite = &is->wonder_district_img_sets[construct_windex].construct_img;
-                        patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-                    }
-                }
-                return;
 			}
             default:
             {
@@ -24268,7 +24258,35 @@ patch_City_get_turns_to_build_2_for_ai_move_leader (City * this, int edx, City_O
 	return City_get_turns_to_build_2 (this, __, order, param_2);
 }
 
+void __fastcall
+patch_City_set_production (City * this, int edx, int order_type, int order_id, bool ask_to_confirm)
+{
+	City_set_production (this, __, order_type, order_id, ask_to_confirm);
+	
+	if (! is->current_config.enable_districts || ! is->current_config.enable_wonder_districts)
+		return;
 
+	// If the human player, we need to set/unset a wonder district for this city, depending
+	// on what is being built. The human player wouldn't be able to choose a wonder if a wonder
+	// district wasn't available, so we don't need to worry about feasibility here.
+	// The AI uses a different mechanism to reserve wonder districts via patch_Leader_do_production_phase.
+	bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
+	if (! is_human)
+		return;
+
+	bool release_reservation = true;
+	if ((order_type == COT_Improvement) &&
+	    (order_id >= 0) && (order_id < p_bic_data->ImprovementsCount)) {
+		Improvement * improv = &p_bic_data->Improvements[order_id];
+		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
+			if (reserve_wonder_district_for_city (this))
+				release_reservation = false;
+		}
+	}
+
+	if (release_reservation)
+		release_wonder_district_reservation (this);
+}
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
