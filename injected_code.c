@@ -2460,8 +2460,7 @@ get_effective_district_yields (struct district_instance * inst,
 		culture = cfg->culture_bonus;
 	}
 
-	if ((inst != NULL) &&
-	    (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
+	if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
 		struct natural_wonder_district_config const * nwcfg =
 			get_natural_wonder_config_by_id (inst->natural_wonder_info.natural_wonder_id);
 		if (nwcfg != NULL) {
@@ -8005,6 +8004,7 @@ calculate_district_culture_science_bonuses (City * city, int * culture_bonus, in
 		if ((tile == NULL) || (tile == p_null_tile)) continue;
 		if (tile_has_enemy_unit (tile, city_civ_id)) continue;
 		if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
+		if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city_civ_id) continue;
 		struct district_instance * inst = get_district_instance (tile);
 		if (inst == NULL) continue;
 		int district_id = inst->district_type;
@@ -13124,16 +13124,6 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 
 	// Check if command is a worker build command (not a district) and a district exists on the tile
 	if (is->current_config.enable_districts) {
-		if (is->current_config.enable_city_work_radii_highlights && 
-			is->highlight_city_radii &&
-			(((*p_GetAsyncKeyState) (VK_CONTROL)) >> 8 != 0)) {
-			Unit * unit = p_main_screen_form->Current_Unit;
-			if (unit != NULL) {
-				Main_Screen_Form_bring_tile_into_view (p_main_screen_form, __, unit->Body.X, unit->Body.Y, 0, true, false); 
-				this->Base.vtable->m73_call_m22_Draw ((Base_Form *)this);
-			}
-		}
-
 		if (is_worker_or_settler_command(command) && p_main_screen_form->Current_Unit != NULL) {
 			Unit * unit = p_main_screen_form->Current_Unit;
 			if (patch_Unit_can_perform_command(unit, __, command) && command_would_replace_district(command)) {
@@ -13246,8 +13236,13 @@ patch_Main_Screen_Form_handle_key_down (Main_Screen_Form * this, int edx, int ch
 
 		if (is->current_config.enable_city_work_radii_highlights && 
 			! is->highlight_city_radii) {
-			is->highlight_city_radii = true;
-			compute_highlighted_worker_tiles_for_districts ();
+			Unit * unit = p_main_screen_form->Current_Unit;
+			if (unit != NULL) {
+				is->highlight_city_radii = true;
+				compute_highlighted_worker_tiles_for_districts ();
+				Main_Screen_Form_bring_tile_into_view (p_main_screen_form, __, unit->Body.X, unit->Body.Y, 0, true, false); 
+				this->vtable->m73_call_m22_Draw ((Base_Form *)this);
+			}
 		}
 	}
 
