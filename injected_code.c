@@ -21922,9 +21922,9 @@ init_district_icons ()
 	Sprite_construct (&is->district_shield_icon);
 	Sprite_slice_pcx (&is->district_shield_icon, __, &pcx, 1 + 4*31, 1, 30, 30, 1, 1);
 
-	// Extract shield icon (index 5: x = 1 + 5*31 = 156, width 30)
-	Sprite_construct (&is->district_shield_icon);
-	Sprite_slice_pcx (&is->district_shield_icon, __, &pcx, 1 + 5*31, 1, 30, 30, 1, 1);
+	// Extract corruption icon (index 5: x = 1 + 5*31 = 156, width 30)
+	Sprite_construct (&is->district_corruption_icon);
+	Sprite_slice_pcx (&is->district_corruption_icon, __, &pcx, 1 + 5*31, 1, 30, 30, 1, 1);
 
 	// Extract food icon (index 6: x = 1 + 6*31 = 187, width 30)
 	Sprite_construct (&is->district_food_icon);
