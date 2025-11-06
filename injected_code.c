@@ -22179,32 +22179,21 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 		center_screen_x += tile_half_width;
 		center_screen_y += tile_half_height;
 
-		// Calculate how many neighborhoods are utilized before drawing
-		int utilized_neighborhoods = 0;
-		if (is->current_config.enable_neighborhood_districts) {
-			int base_cap = is->current_config.maximum_pop_before_neighborhood_needed;
-			int per_neighborhood = is->current_config.per_neighborhood_pop_growth_enabled;
-			int pop = city->Body.Population.Size;
-
-			if (base_cap > 0 && per_neighborhood > 0 && pop > base_cap) {
-				int excess_pop = pop - base_cap;
-				utilized_neighborhoods = (excess_pop + per_neighborhood - 1) / per_neighborhood;
-			}
-		}
-
-		int neighborhoods_drawn = 0;
+		int remaining_utilized_neighborhoods = 0;
+		if (is->current_config.enable_neighborhood_districts)
+			remaining_utilized_neighborhoods = count_utilized_neighborhoods_in_city_radius (city);
 
 		// Iterate through all neighbor tiles 
 		for (int neighbor_index = 0; neighbor_index < is->workable_tile_count; neighbor_index++) {
 			int dx, dy;
-			neighbor_index_to_diff (neighbor_index, &dx, &dy);
+			patch_ni_to_diff_for_work_area (neighbor_index, &dx, &dy);
 			int tile_x = city_x + dx;
 			int tile_y = city_y + dy;
 			wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 
 			Tile * tile = tile_at (tile_x, tile_y);
 			if (tile == NULL || tile == p_null_tile) continue;
-			if (tile->Territory_OwnerID != civ_id) continue;
+			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id) continue;
 			struct district_instance * inst = get_district_instance (tile);
 			if (inst == NULL) continue;
 			int district_id = inst->district_type;
@@ -22223,9 +22212,9 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 			    is->current_config.enable_neighborhood_districts &&
 			    is->district_configs[district_id].command == UCV_Build_Neighborhood) {
 				// Only draw yields if this neighborhood is utilized
-				if (neighborhoods_drawn >= utilized_neighborhoods)
+				if (remaining_utilized_neighborhoods <= 0)
 					continue;
-				neighborhoods_drawn++;
+				remaining_utilized_neighborhoods--;
 			}
 
 			// Calculate screen coordinates for this tile
