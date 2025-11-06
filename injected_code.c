@@ -16472,35 +16472,31 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 			int matched_windex = find_wonder_config_index_by_improvement_id (improv_id);
 
 			if (matched_windex >= 0) {
-					int wonder_district_id = WONDER_DISTRICT_ID;
-					if (wonder_district_id >= 0) {
-						int civ_id = this->Body.CivID;
-						int city_x = this->Body.X;
-						int city_y = this->Body.Y;
-						for (int n = 0; n < is->workable_tile_count; n++) {
-							int dx, dy;
-							patch_ni_to_diff_for_work_area (n, &dx, &dy);
-							int x = city_x + dx, y = city_y + dy;
-							wrap_tile_coords (&p_bic_data->Map, &x, &y);
-							Tile * t = tile_at (x, y);
-							if (t == p_null_tile) continue;
-							if (t->vtable->m38_Get_Territory_OwnerID (t) != civ_id) continue;
-							struct district_instance * inst = get_district_instance (t);
-							if (inst == NULL || inst->district_type != wonder_district_id)
-								continue;
-						if (! district_is_complete (t, inst->district_type))
-							continue;
-						if (inst->wonder_info.city_id != this->Body.ID)
-							continue;
+				int city_x = this->Body.X;
+				int city_y = this->Body.Y;
+				for (int n = 0; n < is->workable_tile_count; n++) {
+					int dx, dy;
+					patch_ni_to_diff_for_work_area (n, &dx, &dy);
+					int x = city_x + dx, y = city_y + dy;
+					wrap_tile_coords (&p_bic_data->Map, &x, &y);
+					Tile * t = tile_at (x, y);
+					if (t == p_null_tile) continue;
+					if (t->vtable->m38_Get_Territory_OwnerID (t) != this->Body.CivID) continue;
+					
+					struct district_instance * inst = get_district_instance (t);
+					if (inst == NULL || inst->district_type != WONDER_DISTRICT_ID) continue;
+					if (! district_is_complete (t, inst->district_type)) continue;
 
-						// Mark this wonder district as completed with the wonder
-						struct wonder_district_info * info = &inst->wonder_info;
-						info->city = this;
-						info->city_id = this->Body.ID;
-						info->state = WDS_COMPLETED;
-						info->wonder_index = matched_windex;
-						break;
-					}
+					struct wonder_district_info * info = &inst->wonder_info;
+					if (info->state != WDS_UNDER_CONSTRUCTION) continue;
+					if (info->city_id != this->Body.ID) continue;
+
+					// Mark this wonder district as completed with the wonder
+					info->city = this;
+					info->city_id = this->Body.ID;
+					info->state = WDS_COMPLETED;
+					info->wonder_index = matched_windex;
+					break;
 				}
 			}
 		}
