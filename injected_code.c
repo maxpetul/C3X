@@ -23954,7 +23954,13 @@ patch_City_draw_production_income_icons (City * this, int edx, int canvas, int *
 int __fastcall
 patch_Sprite_draw_production_income_icon (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
 {
-	if (is->current_config.enable_districts && is->dc_icons_img_state == IS_OK) {
+	if (is->distribution_hub_icons_img_state == IS_UNINITED)
+		init_distribution_hub_icons ();
+	if (is->dc_icons_img_state == IS_UNINITED)
+		init_district_icons ();
+
+	if (is->current_config.enable_districts && 
+		is->dc_icons_img_state == IS_OK && is->distribution_hub_icons_img_state == IS_OK) {
 		Sprite to_draw = *this;
 		if (is->corruption_shield_icons_remaining > 0 || 
 			is->district_corruption_icons_remaining > 0 || 

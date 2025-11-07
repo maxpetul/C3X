@@ -750,7 +750,6 @@ struct injected_state {
 	enum init_state disabled_command_img_state;
 	enum init_state unit_rcm_icon_state;
 	enum init_state red_food_icon_state;
-	enum init_state distribution_hub_icons_img_state;
 	enum init_state tile_already_worked_zoomed_out_sprite_init_state;
 	enum init_state day_night_cycle_img_state;
 	enum init_state large_minimap_frame_img_state;
@@ -1391,6 +1390,7 @@ struct injected_state {
 	enum init_state dc_img_state;
 	enum init_state dc_btn_img_state;
 	enum init_state dc_icons_img_state;
+	enum init_state distribution_hub_icons_img_state;
 
 	struct district_config district_configs[COUNT_DISTRICT_TYPES];
 	struct wonder_district_config wonder_district_configs[MAX_WONDER_DISTRICT_TYPES];
