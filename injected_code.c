@@ -18563,7 +18563,7 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 }
 
 bool
-choose_ai_defensive_unit_order (City * city, City_Order * out_order)
+choose_defensive_unit_order (City * city, City_Order * out_order)
 {
 	if ((city == NULL) || (out_order == NULL))
 		return false;
@@ -18637,7 +18637,7 @@ assign_ai_fallback_production (City * city, int disallowed_improvement_id)
 	}
 
 	City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
-	if (choose_ai_defensive_unit_order (city, &defensive_order)) {
+	if (choose_defensive_unit_order (city, &defensive_order)) {
 		City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
 		return true;
 	}
@@ -18703,10 +18703,14 @@ patch_Leader_do_production_phase (Leader * this)
 			// If production needs to be halted, handle the reassignment and messaging
 			if (needs_halt) {
 				// Switch production to another option
-				bool reassigned = false;
 				if (! is_human) {
-					reassigned = assign_ai_fallback_production (city, i_improv);
 					mark_city_needs_district (city, req_district_id);
+					assign_ai_fallback_production (city, i_improv);
+				} else {
+					City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
+					if (choose_defensive_unit_order (city, &defensive_order)) {
+						City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
+					}
 				}
 
 				// Show message to human player
