@@ -21868,6 +21868,10 @@ init_distribution_hub_icons ()
 	Sprite_construct (&is->distribution_hub_shield_icon);
 	Sprite_slice_pcx (&is->distribution_hub_shield_icon, __, &pcx, 1 + 4*31, 1, 30, 30, 1, 1);
 
+	// Extract shield corruption icon (index 5: x = 1 + 5*31 = 156, width 30)
+	Sprite_construct (&is->distribution_hub_corruption_icon);
+	Sprite_slice_pcx (&is->distribution_hub_corruption_icon, __, &pcx, 1 + 5*31, 1, 30, 30, 1, 1);
+
 	// Extract small shield icon (index 13)
 	Sprite_construct (&is->distribution_hub_shield_icon_small);
 	Sprite_slice_pcx (&is->distribution_hub_shield_icon_small, __, &pcx, 1 + 13*31, 1, 30, 30, 1, 1);
