@@ -10378,7 +10378,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
     slice_grid(this->Craters, &img, 0x80, 0x40, 0x280, 0x140);
 
     // Airfields / Outposts / Radar
-	read_in_dir(&img, art_dir, "x_airfields_and_detect.pcx", NULL);
+	read_in_dir(&img, art_dir, "x_airfields and detect.pcx", NULL);
 	if (img.JGL.Image == NULL) return false;
     for (int i=0, x=0; i<2; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Airfields[i], __, &img, x, 0x00, 0x80, 0x40, 1, 1);
     for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Outposts[i],  __, &img, x, 0x40, 0x80, 0x80, 1, 1);
