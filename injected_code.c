@@ -23661,11 +23661,22 @@ patch_Unit_select (Unit * this)
 			
 			int sel = patch_show_popup (popup, __, 0, 0);
 			if (sel == 0) {
-				remove_district_instance (tile);
 				Unit_set_escortee (this, __, -1);
 				Unit_set_state (this, __, 0);
-			} 
-			return;
+
+				bool other_workers_present = false;
+				FOR_UNITS_ON (uti, tile) {
+					Unit * unit = uti.unit;
+					if ((unit != NULL) && (unit != this) &&
+						(p_bic_data->UnitTypes[unit->Body.UnitTypeID].Worker_Actions != 0)) {
+						other_workers_present = true;
+						break;
+					}
+				}
+				if (! other_workers_present) {
+					remove_district_instance (tile);
+				}
+			}
 		}
 	}
 
