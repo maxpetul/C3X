@@ -13235,7 +13235,6 @@ patch_Main_Screen_Form_handle_key_down (Main_Screen_Form * this, int edx, int ch
 			if (unit != NULL) {
 				is->highlight_city_radii = true;
 				compute_highlighted_worker_tiles_for_districts ();
-				Main_Screen_Form_bring_tile_into_view (p_main_screen_form, __, unit->Body.X, unit->Body.Y, 0, true, false); 
 				this->vtable->m73_call_m22_Draw ((Base_Form *)this);
 			}
 		}
@@ -14234,6 +14233,7 @@ patch_Main_Screen_Form_handle_key_up (Main_Screen_Form * this, int edx, int virt
 			is->highlight_city_radii) {
 			is->highlight_city_radii = false;
 			clear_highlighted_worker_tiles_for_districts ();
+			this->vtable->m73_call_m22_Draw ((Base_Form *)this);
 		}
 	}
 
@@ -23668,6 +23668,7 @@ patch_Unit_select (Unit * this)
 				FOR_UNITS_ON (uti, tile) {
 					Unit * unit = uti.unit;
 					if ((unit != NULL) && (unit != this) &&
+						(unit->Body.UnitState == UnitState_Build_Mines) &&
 						(p_bic_data->UnitTypes[unit->Body.UnitTypeID].Worker_Actions != 0)) {
 						other_workers_present = true;
 						break;
