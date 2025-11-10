@@ -7446,7 +7446,7 @@ patch_City_calc_tile_yield_at (City * this, int edx, int yield_type, int tile_x,
 }
 
 int __fastcall
-patch_Map_calc_food_yield_at (Map *this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City *city)
+patch_Map_calc_food_yield_at (Map * this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city)
 {
 	if (! is->current_config.enable_districts)
 		Map_calc_food_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
@@ -7463,7 +7463,7 @@ patch_Map_calc_food_yield_at (Map *this, int edx, int tile_x, int tile_y, int ti
 }
 
 int __fastcall
-patch_Map_calc_shield_yield_at (Map *this, int edx, int tile_x, int tile_y, int civ_id, City *city, int param_5, int param_6)
+patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int civ_id, City * city, int param_5, int param_6)
 {
 	if (! is->current_config.enable_districts)
 		return Map_calc_shield_yield_at (this, __, tile_x, tile_y, civ_id, city, param_5, param_6);
@@ -7477,6 +7477,23 @@ patch_Map_calc_shield_yield_at (Map *this, int edx, int tile_x, int tile_y, int 
 	}
 
 	return Map_calc_shield_yield_at (this, __, tile_x, tile_y, civ_id, city, param_5, param_6);
+}
+
+int __fastcall
+patch_Map_calc_commerce_yield_at (Map *this, int edx, int tile_x, int tile_y)
+{
+	if (! is->current_config.enable_districts)
+		return Map_calc_commerce_yield_at (this, __, tile_x, tile_y);
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile != NULL) && (tile != p_null_tile)) {
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst != NULL && district_is_complete (tile, inst->district_type)) {
+			return 0;
+		}
+	}
+
+	return Map_calc_commerce_yield_at (this, __, tile_x, tile_y);
 }
 
 int
