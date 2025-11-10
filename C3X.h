@@ -603,7 +603,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_DistributionHub, .name = "Distribution Hub", .tooltip = "Build Distribution Hub",
-		.advance_prereq = "Construction", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"DistributionHub.pcx"},
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100
@@ -750,6 +750,7 @@ struct injected_state {
 	enum init_state disabled_command_img_state;
 	enum init_state unit_rcm_icon_state;
 	enum init_state red_food_icon_state;
+	enum init_state distribution_hub_icons_img_state;
 	enum init_state tile_already_worked_zoomed_out_sprite_init_state;
 	enum init_state day_night_cycle_img_state;
 	enum init_state large_minimap_frame_img_state;
@@ -1390,7 +1391,6 @@ struct injected_state {
 	enum init_state dc_img_state;
 	enum init_state dc_btn_img_state;
 	enum init_state dc_icons_img_state;
-	enum init_state distribution_hub_icons_img_state;
 
 	struct district_config district_configs[COUNT_DISTRICT_TYPES];
 	struct wonder_district_config wonder_district_configs[MAX_WONDER_DISTRICT_TYPES];

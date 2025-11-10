@@ -227,6 +227,8 @@ bool has_active_building (City * city, int improv_id);
 void recompute_distribution_hub_totals ();
 void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y);
 void wrap_tile_coords (Map * map, int * x, int * y);
+int count_neighborhoods_in_city_radius (City * city);
+int count_utilized_neighborhoods_in_city_radius (City * city);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -7294,12 +7296,96 @@ tile_suitable_for_district (Tile * tile, int district_id, City * city, bool * ou
 	return true;
 }
 
+void
+calculate_city_center_district_bonus (City * city, int * out_food, int * out_shields, int * out_gold)
+{
+	if (out_food != NULL)
+		*out_food = 0;
+	if (out_shields != NULL)
+		*out_shields = 0;
+	if (out_gold != NULL)
+		*out_gold = 0;
+
+	if (! is->current_config.enable_districts || (city == NULL))
+		return;
+
+	int bonus_food = 0;
+	int bonus_shields = 0;
+	int bonus_gold = 0;
+
+	int city_civ_id = city->Body.CivID;
+	int city_x = city->Body.X;
+	int city_y = city->Body.Y;
+	int utilized_neighborhoods = count_utilized_neighborhoods_in_city_radius (city);
+	int neighborhoods_counted = 0;
+
+	for (int n = 0; n < is->workable_tile_count; n++) {
+		if (n == 0)
+			continue;
+		int dx, dy;
+		patch_ni_to_diff_for_work_area (n, &dx, &dy);
+		int tile_x = city_x + dx;
+		int tile_y = city_y + dy;
+		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+		if (tile_has_enemy_unit (tile, city_civ_id))
+			continue;
+		if (tile->vtable->m20_Check_Pollution (tile, __, 0))
+			continue;
+		if (tile->Territory_OwnerID != city_civ_id)
+			continue;
+
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst == NULL)
+			continue;
+		int district_id = inst->district_type;
+		if ((district_id < 0) || (district_id >= is->district_count))
+			continue;
+		if (! district_is_complete (tile, district_id))
+			continue;
+
+		if (is->current_config.enable_neighborhood_districts &&
+		    (district_id == NEIGHBORHOOD_DISTRICT_ID)) {
+			if (neighborhoods_counted >= utilized_neighborhoods)
+				continue;
+			neighborhoods_counted++;
+		}
+
+		struct district_config const * cfg = &is->district_configs[district_id];
+		int food_bonus = 0, shield_bonus = 0, gold_bonus = 0;
+		get_effective_district_yields (inst, cfg, &food_bonus, &shield_bonus, &gold_bonus, NULL, NULL);
+		bonus_food += food_bonus;
+		bonus_shields += shield_bonus;
+		bonus_gold += gold_bonus;
+	}
+
+	if (is->current_config.enable_distribution_hub_districts &&
+	    (is->distribution_hub_food_bonus_per_city != NULL) &&
+	    (is->distribution_hub_shield_bonus_per_city != NULL)) {
+		int city_id = city->Body.ID;
+		if ((city_id >= 0) && (city_id < is->distribution_hub_bonus_capacity)) {
+			bonus_food   += is->distribution_hub_food_bonus_per_city[city_id];
+			bonus_shields += is->distribution_hub_shield_bonus_per_city[city_id];
+		}
+	}
+
+	if (out_food != NULL)
+		*out_food = bonus_food;
+	if (out_shields != NULL)
+		*out_shields = bonus_shields;
+	if (out_gold != NULL)
+		*out_gold = bonus_gold;
+}
+
 int __fastcall
 patch_City_calc_tile_yield_at (City * this, int edx, int yield_type, int tile_x, int tile_y)
 {
 	if (! is->current_config.enable_districts)
 		return City_calc_tile_yield_at (this, __, yield_type, tile_x, tile_y);
 
+	bool is_city_tile = (this->Body.X == tile_x) && (this->Body.Y == tile_y);
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile != NULL) && (tile != p_null_tile)) {
 		struct district_instance * inst = get_district_instance (tile);
@@ -7346,7 +7432,17 @@ patch_City_calc_tile_yield_at (City * this, int edx, int yield_type, int tile_x,
 	}
 
 	// District tiles are forced unworkable, defer to the base calculation.
-	return City_calc_tile_yield_at (this, __, yield_type, tile_x, tile_y);
+	int base_yield = City_calc_tile_yield_at (this, __, yield_type, tile_x, tile_y);
+
+	if (is_city_tile) {
+		int bonus_food = 0, bonus_shields = 0, bonus_gold = 0;
+		calculate_city_center_district_bonus (this, &bonus_food, &bonus_shields, &bonus_gold);
+		if      (yield_type == YK_FOOD)     base_yield += bonus_food;
+		else if (yield_type == YK_SHIELDS)  base_yield += bonus_shields;
+		else if (yield_type == YK_COMMERCE) base_yield += bonus_gold;
+	}
+
+	return base_yield;
 }
 
 int __fastcall
@@ -8125,7 +8221,7 @@ patch_City_update_growth (City * this)
 			this->Body.StoredFood = 0;
 	}
 
-	// Don't show the meessage if it's online, not a human, or the city needs aqueducts/hospitals as well.
+	// Don't show the message if it's online, not a human, or the city needs aqueducts/hospitals as well.
 	if (! show_message) return;
 	if (is_online_game ()) return;
 	if (City_requires_improvement_to_grow (this) >= 0) return;
@@ -9139,82 +9235,13 @@ patch_City_recompute_commerce (City * this)
 void __fastcall
 patch_City_recompute_yields_and_happiness (City * this)
 {
-	City_recompute_yields_and_happiness (this);
-
-	if (! is->current_config.enable_districts)
-		return;
-
-	if (is->current_config.enable_distribution_hub_districts &&
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_distribution_hub_districts &&
 	    ! is->distribution_hub_refresh_in_progress &&
-		is->distribution_hub_totals_dirty)
+	    is->distribution_hub_totals_dirty)
 		recompute_distribution_hub_totals ();
 
-	int bonus_food = 0;
-	int bonus_production = 0;
-	int bonus_gold = 0;
-
-	int city_civ_id = this->Body.CivID;
-
-	int utilized_neighborhoods = count_utilized_neighborhoods_in_city_radius (this);
-	int neighborhoods_counted = 0;
-
-	int city_x = this->Body.X;
-	int city_y = this->Body.Y;
-
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		if (n == 0) continue;
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
-		if ((tile == NULL) || (tile == p_null_tile)) continue;
-		if (tile->Territory_OwnerID != city_civ_id) continue;
-		if (tile_has_enemy_unit (tile, city_civ_id)) continue;
-		if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL) continue;
-		int district_id = inst->district_type;
-		if (! district_is_complete (tile, district_id)) continue;
-
-		// For neighborhood districts, check if population is high enough to utilize them
-		if (is->current_config.enable_neighborhood_districts &&
-		    district_id == NEIGHBORHOOD_DISTRICT_ID) {
-			// Only count yields if this neighborhood is utilized
-			if (neighborhoods_counted >= utilized_neighborhoods)
-				continue;
-			neighborhoods_counted++;
-		}
-
-		struct district_config const * cfg = &is->district_configs[district_id];
-		int food_bonus = 0, shield_bonus = 0, gold_bonus = 0;
-		get_effective_district_yields (inst, cfg, &food_bonus, &shield_bonus, &gold_bonus, NULL, NULL);
-		bonus_food       += food_bonus;
-		bonus_production += shield_bonus;
-		bonus_gold       += gold_bonus;
-	}
-
-	if (is->current_config.enable_distribution_hub_districts &&
-	    (is->distribution_hub_food_bonus_per_city != NULL) &&
-	    (is->distribution_hub_shield_bonus_per_city != NULL)) {
-		int city_id = this->Body.ID;
-		if ((city_id >= 0) && (city_id < is->distribution_hub_bonus_capacity)) {
-			bonus_food       += is->distribution_hub_food_bonus_per_city[city_id];
-			bonus_production += is->distribution_hub_shield_bonus_per_city[city_id];
-		}
-	}
-
-	if ((bonus_food == 0) && (bonus_production == 0) && (bonus_gold == 0))
-		return;
-
-	this->Body.Tiles_Food       += bonus_food;
-	this->Body.Tiles_Production += bonus_production;
-	this->Body.Tiles_Commerce   += bonus_gold;
-
-	City_update_food_consumption (this);
-	City_recompute_production (this);
-	City_recompute_commerce (this);
-	City_recompute_happiness (this);
+	City_recompute_yields_and_happiness (this);
 }
 
 void __fastcall
