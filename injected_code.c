@@ -7479,23 +7479,6 @@ patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int
 	return Map_calc_shield_yield_at (this, __, tile_x, tile_y, civ_id, city, param_5, param_6);
 }
 
-int __fastcall
-patch_Map_calc_commerce_yield_at (Map *this, int edx, int tile_x, int tile_y)
-{
-	if (! is->current_config.enable_districts)
-		return Map_calc_commerce_yield_at (this, __, tile_x, tile_y);
-
-	Tile * tile = tile_at (tile_x, tile_y);
-	if ((tile != NULL) && (tile != p_null_tile)) {
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst != NULL && district_is_complete (tile, inst->district_type)) {
-			return 0;
-		}
-	}
-
-	return Map_calc_commerce_yield_at (this, __, tile_x, tile_y);
-}
-
 int
 compute_city_tile_yield_sum (City * city, int tile_x, int tile_y)
 {

@@ -182,6 +182,25 @@ process_art_set() {
   python civ3_day_night.py "${dn_args[@]}"
   python civ3_city_lights.py "${cl_args[@]}"
   python civ3_postprocess_pixels.py "${pp_args[@]}"
+
+  ### === CLEANUP: remove *_lights.pcx from hour subfolders (excluding annotation dir) ===
+  # If ONLY_HOUR is set, restrict cleanup to that single folder & noon folder; otherwise clean all 4-digit hour folders.
+  if [[ -n "${ONLY_HOUR}" ]]; then
+    # Only the specified hour
+    if [[ -d "$data_dir/$ONLY_HOUR" ]]; then
+      rm -f "$data_dir/$ONLY_HOUR"/*_lights.pcx || true
+    fi
+    # Also clean the noon folder
+    if [[ -d "$data_dir/$NOON_SUBFOLDER" ]]; then
+      rm -f "$data_dir/$NOON_SUBFOLDER"/*_lights.pcx || true
+    fi
+  else
+    # All hour-named subfolders under data_dir (e.g., 0000, 0100, ..., 2400)
+    # Do not touch the external $annotation_dir.
+    while IFS= read -r -d '' hour_dir; do
+      rm -f "${hour_dir}"/*_lights.pcx || true
+    done < <(find "$data_dir" -mindepth 1 -maxdepth 1 -type d -regex '.*/[0-9]{4}$' -print0)
+  fi
 }
 
 process_art_set "$DAYNIGHT_DATA_DIR" "$DAYNIGHT_ANNOTATION_DIR"
