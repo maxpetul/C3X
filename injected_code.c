@@ -8131,118 +8131,64 @@ calculate_district_culture_science_bonuses (City * city, int * culture_bonus, in
 		*science_bonus = total_science;
 }
 
-void __fastcall
-patch_City_update_growth (City * this)
+int __fastcall
+patch_City_requires_improvement_to_grow (City * this)
 {
-	if ((this == NULL) ||
-		! is->current_config.enable_districts ||
-	    ! is->current_config.enable_neighborhood_districts) {
-		// Fall back to vanilla growth logic when neighborhoods are disabled.
-		City_update_growth (this);
+	int required_improv = City_requires_improvement_to_grow (this);
+	if ((required_improv == -1) &&
+	    (this != NULL) &&
+	    is->current_config.enable_districts &&
+	    is->current_config.enable_neighborhood_districts &&
+	    city_is_at_neighborhood_cap (this)) {
+		return 0; // Neighborhood sentinel
+	}
+
+	return required_improv;
+}
+
+// Replacement check specifically for stalled growth check function, 
+// where we can't pass through the neighborhood sentinel. That function itself
+// doesn't block growth, it just triggers the dialog, so safe to skip it if 
+// neighborhoods are needed.
+int __fastcall
+patch_City_requires_improvement_to_grow_besides_neighborhood (City * this)
+{
+	return City_requires_improvement_to_grow (this);
+}
+
+void __fastcall
+patch_maybe_show_improvement_needed_for_growth_dialog (void * this, int edx, City * city, int * param_2)
+{
+	int required_improv_id = (int)param_2;
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_neighborhood_districts &&
+	    (required_improv_id == 0)) // Neighborhood sentinel
 		return;
-	}
 
-	int cap = get_neighborhood_pop_cap (this);
-	if (cap < 0 || this->Body.Population.Size < cap) {
-		// No cap for this city or below the cap; run the original routine.
-		City_update_growth (this);
-		return;
-	}
+	maybe_show_improvement_needed_for_growth_dialog (this, __, city, param_2);
+}
 
-	int orig_income = this->Body.FoodIncome;
-	int orig_stored = this->Body.StoredFood;
-
-	int civ_id = this->Body.CivID;
-	int growth_cost = 0;
-	bool have_growth_cost = false;
-	if (civ_id >= 0) {
-		// Recreate the vanilla food threshold the city must reach to grow.
-		int factor = Leader_get_food_cost_factor (&leaders[civ_id], __, false);
-		int size_class = City_get_size_class (this);
-		growth_cost = factor * (size_class + 1) * 2;
-		have_growth_cost = true;
-	}
-
-	bool blocked_growth = false;
-	bool show_message = false;
-	int clamp_income = orig_income;
-	int clamp_stored = orig_stored;
-
-	if (have_growth_cost && (orig_income >= 0)) {
-		// Force stored food + income under the growth threshold so the vanilla
-		// routine refuses to grow the city this turn.
-		if (growth_cost < 0)
-			growth_cost = 0;
-
-		if ((growth_cost > 0) && (orig_stored + orig_income >= growth_cost))
-			show_message = true;
-
-		if (growth_cost > 0) {
-			if (clamp_stored > growth_cost)
-				clamp_stored = growth_cost;
-
-			int max_income = growth_cost - 1 - clamp_stored;
-			if (max_income < 0) {
-				clamp_income = 0;
-				clamp_stored = growth_cost - 1;
-				if (clamp_stored < 0)
-					clamp_stored = 0;
-			} else if (clamp_income > max_income)
-				clamp_income = max_income;
-		} else {
-			clamp_income = 0;
-			clamp_stored = 0;
-		}
-
-		if (clamp_income < 0)
-			clamp_income = 0;
-
-		this->Body.StoredFood = clamp_stored;
-		this->Body.FoodIncome = clamp_income;
-		blocked_growth = true;
-	}
-
-	City_update_growth (this);
-
-	if (! blocked_growth) {
-		return;
-	}
-
-	// Restore visible food income so the interface still shows actual yields.
-	this->Body.FoodIncome = orig_income;
-
-	if (have_growth_cost) {
-		// Keep stored food within the vanilla bounds after blocking growth.
-		if (growth_cost < 0)
-			growth_cost = 0;
-		if (this->Body.StoredFood > growth_cost)
-			this->Body.StoredFood = growth_cost;
-		if (this->Body.StoredFood < 0)
-			this->Body.StoredFood = 0;
-	}
-
-	// Don't show the message if it's online, not a human, or the city needs aqueducts/hospitals as well.
-	if (! show_message) return;
+void
+maybe_show_neighborhood_growth_warning (City * city)
+{
+	if ((city == NULL) || ! (is->current_config.enable_districts && is->current_config.enable_neighborhood_districts)) return;
+	int requirement = patch_City_requires_improvement_to_grow (city);
+	if (requirement != 0) return; // Neighborhood sentinel not present
 	if (is_online_game ()) return;
-	if (City_requires_improvement_to_grow (this) >= 0) return;
+	int civ_id = city->Body.CivID;
 	if (civ_id != p_main_screen_form->Player_CivID) return;
+	if ((*p_human_player_bits & (1u << civ_id)) == 0) return;
 
-	if ((*p_human_player_bits & (1u << civ_id)) == 0) {
-		ensure_neighborhood_request_for_city (this);
-		return;
-	}
-
-	// Rate-limit notifications to once every five turns per city, varying time by city position
 	unsigned int turn_no = (unsigned int)*p_current_turn_no;
-	unsigned int throttle = ((unsigned int)this->Body.X << 5) ^ (unsigned int)this->Body.Y;
-	if (((turn_no + throttle) % 4) != 0) 
+	unsigned int throttle = ((unsigned int)city->Body.X << 5) ^ (unsigned int)city->Body.Y;
+	if (((turn_no + throttle) % 4) != 0)
 		return;
 
 	char msg[160];
-	char const * city_name = this->Body.CityName;
+	char const * city_name = city->Body.CityName;
 	snprintf (msg, sizeof msg, "%s requires a Neighborhood to grow", city_name);
 	msg[(sizeof msg) - 1] = '\0';
-	show_map_specific_text (this->Body.X, this->Body.Y, msg, true);
+	show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
 }
 
 bool __stdcall
@@ -18677,9 +18623,7 @@ patch_Leader_do_production_phase (Leader * this)
 {
 	recompute_resources_if_necessary ();
 
-	// Before production advances, halt builds that lost their required district and switch to another item
 	if (is->current_config.enable_districts) {
-
 		assign_workers_for_pending_districts (this);
 
 		if (is->current_config.enable_distribution_hub_districts)
@@ -18690,12 +18634,14 @@ patch_Leader_do_production_phase (Leader * this)
 			if (city == NULL) continue;
 
 			bool is_human = (*p_human_player_bits & (1 << city->Body.CivID)) != 0;
+			bool at_neighborhood_cap = is->current_config.enable_neighborhood_districts && city_is_at_neighborhood_cap (city);
 
-			// Check if AI cities are at neighborhood cap and need to request neighborhood districts
-			if (! is_human &&
-			    is->current_config.enable_neighborhood_districts &&
-			    city_is_at_neighborhood_cap (city))
-				ensure_neighborhood_request_for_city (city);
+			if (at_neighborhood_cap) {
+				if (is_human)
+					maybe_show_neighborhood_growth_warning (city);
+				else
+					ensure_neighborhood_request_for_city (city);
+			}
 
 			if (city->Body.Order_Type != COT_Improvement) continue;
 			int i_improv = city->Body.Order_ID;
@@ -23881,77 +23827,68 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 void
 recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 {
-	if (! is->current_config.enable_districts)
+	if ((! is->current_config.enable_districts) || (city == NULL))
 		return;
 
 	int city_id = city->Body.ID;
-	int civ_id = city->Body.CivID;
-
-	// Calculate standard district production bonus
-	int standard_district_shields = 0;
 	int city_x = city->Body.X;
 	int city_y = city->Body.Y;
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
-		if ((tile == NULL) || (tile == p_null_tile)) continue;
-		if (tile->Territory_OwnerID != civ_id) continue;
-		if (tile_has_enemy_unit (tile, civ_id)) continue;
-		if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL) continue;
-		int district_id = inst->district_type;
-		if ((district_id < 0) || (district_id >= is->district_count)) continue;
-		if (! district_is_complete (tile, district_id)) continue;
 
-		int shield_bonus = 0;
-		get_effective_district_yields (inst, &is->district_configs[district_id], NULL, &shield_bonus, NULL, NULL, NULL);
-		standard_district_shields += shield_bonus;
-	}
+	// District yields are injected through the city center tile in patch_City_calc_tile_yield_at.
+	// Grab the base yield (no districts) directly from the original function, then compute the
+	// district bonus that calculate_city_center_district_bonus will layer on afterward.
+	int city_center_base_shields = City_calc_tile_yield_at (city, __, YK_SHIELDS, city_x, city_y);
+	int total_district_shield_bonus = 0;
+	calculate_city_center_district_bonus (city, NULL, &total_district_shield_bonus, NULL);
 
-	// Get distribution hub shield bonus
+	// Distribution hub contribution is tracked separately for icon rendering.
 	int distribution_hub_shields = 0;
 	if (is->current_config.enable_distribution_hub_districts &&
 	    (city_id >= 0) && (city_id < is->distribution_hub_bonus_capacity) &&
 	    (is->distribution_hub_shield_bonus_per_city != NULL)) {
 		distribution_hub_shields = is->distribution_hub_shield_bonus_per_city[city_id];
+		if (distribution_hub_shields < 0)
+			distribution_hub_shields = 0;
 	}
+	if (distribution_hub_shields > total_district_shield_bonus)
+		distribution_hub_shields = total_district_shield_bonus;
 
-	City_recompute_yields_and_happiness (city);
-	int base_production_income  = city->Body.ProductionIncome;
-	int base_production_loss    = city->Body.ProductionLoss;
+	int standard_district_shields = total_district_shield_bonus - distribution_hub_shields;
+	if (standard_district_shields < 0)
+		standard_district_shields = 0;
 
+	// Recompute yields with districts active so ProductionIncome/Loss reflect the city view.
 	recompute_city_yields_with_districts (city);
 	int total_production_income = city->Body.ProductionIncome;
 	int total_production_loss   = city->Body.ProductionLoss;
+	int total_net_shields       = total_production_income + total_production_loss; // ProductionLoss stored as negative
 
-	// Calculate net shields (after corruption)
-	int base_net_shields  = base_production_income + base_production_loss;   // negative loss
-	int total_net_shields = total_production_income + total_production_loss; // negative loss
+	// Remove the district bonus from the gross tile production and recompute corruption on that base value.
+	int city_center_with_districts = city_center_base_shields + total_district_shield_bonus;
+	int gross_without_specials = city->Body.Tiles_Production - (city_center_with_districts - city_center_base_shields);
+	if (gross_without_specials < 0)
+		gross_without_specials = 0;
 
-	// Calculate how much corruption increased due to adding district/hub yields
-	int additional_corruption = total_production_loss - base_production_loss; // negative - negative
+	int base_corruption_abs = patch_City_compute_corrupted_yield (city, __, gross_without_specials, true);
+	if (base_corruption_abs < 0)
+		base_corruption_abs = 0;
+	int base_production_loss = -base_corruption_abs;
 
-	// Start with the assumption that all district/hub shields survive
+	// Corruption becomes more negative as it increases.
+	int additional_corruption = total_production_loss - base_production_loss;
+
 	int district_shields_remaining = standard_district_shields;
 	int hub_shields_remaining      = distribution_hub_shields;
 
-	// If we lost more to corruption after adding districts, reduce the special yields proportionally
-	// Default to taking from standard districts first
-	if (additional_corruption < 0) { // More corruption (more negative)
+	if (additional_corruption < 0) {
 		int extra_loss = -additional_corruption;
 
-		// Take from standard districts first
 		if (district_shields_remaining > 0) {
 			int from_districts = (extra_loss < district_shields_remaining) ? extra_loss : district_shields_remaining;
 			district_shields_remaining -= from_districts;
 			extra_loss -= from_districts;
 		}
 
-		// If still have loss remaining, take from distribution hub
 		if ((extra_loss > 0) && (hub_shields_remaining > 0)) {
 			int from_hub = (extra_loss < hub_shields_remaining) ? extra_loss : hub_shields_remaining;
 			hub_shields_remaining -= from_hub;
@@ -23959,18 +23896,21 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 		}
 	}
 
-	// Calculate non-district shields (base shields that survived)
 	int non_district_shields_remaining = total_net_shields - district_shields_remaining - hub_shields_remaining;
+	if (non_district_shields_remaining < 0)
+		non_district_shields_remaining = 0;
 
-	// Calculate corruption breakdown
-	int total_corruption    = -total_production_loss; // Make positive
+	int total_corruption    = -total_production_loss;
+	if (total_corruption < 0)
+		total_corruption = 0;
 	int district_corruption = standard_district_shields - district_shields_remaining;
-	int hub_corruption 		= distribution_hub_shields - hub_shields_remaining;
-	int base_corruption 	= total_corruption - district_corruption - hub_corruption;
+	int hub_corruption      = distribution_hub_shields - hub_shields_remaining;
+	int base_corruption     = total_corruption - district_corruption - hub_corruption;
+	if (base_corruption < 0)
+		base_corruption = 0;
 
-	// Set the values
 	is->non_district_shield_icons_remaining         = non_district_shields_remaining;
-	is->district_shield_icons_remaining	            = district_shields_remaining;
+	is->district_shield_icons_remaining             = district_shields_remaining;
 	is->distribution_hub_shield_icons_remaining     = hub_shields_remaining;
 
 	is->corruption_shield_icons_remaining           = base_corruption;

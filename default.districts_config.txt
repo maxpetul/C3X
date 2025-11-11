@@ -142,6 +142,7 @@ shield_bonus                 = 0
 #District
 name                         = Aerodrome
 advance_prereq               = Flight
+dependent_improvs            = Airport
 defense_bonus_multiplier_pct = 100
 allow_multiple               = 1
 culture_bonus                = 0
