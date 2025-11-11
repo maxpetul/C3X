@@ -590,7 +590,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = true, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx", "Neighborhood_Abandoned.pcx"},
 		.img_path_count = 6, .max_building_index = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
-		.culture_bonus = 1, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100
+		.culture_bonus = 1, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100
 		
 	},
 	{
@@ -603,7 +603,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_DistributionHub, .name = "Distribution Hub", .tooltip = "Build Distribution Hub",
-		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.advance_prereq = "Construction", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"DistributionHub.pcx"},
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100
