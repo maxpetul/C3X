@@ -12101,10 +12101,10 @@ compute_highlighted_worker_tiles_for_districts ()
 				info = malloc (sizeof (struct highlighted_city_radius_tile_info));
 				info->highlight_level = 0;
 				itable_insert (&is->highlighted_city_radius_tile_pointers, (int)workable_tile, (int)info);
-			} else
+			} else {
 				info = (struct highlighted_city_radius_tile_info *)stored_ptr;
-
-			info->highlight_level += 3;
+				info->highlight_level += 3;
+			}
 		}
 	}
 }
