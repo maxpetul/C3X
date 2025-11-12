@@ -114,6 +114,7 @@ Building
 ; Districts-related texts
 requires a Neighborhood to grow
 destroyed by volcanic eruption!
+construction halted due to missing
 
 ; This appears instead of the above actions on units that have been loaded into another (except an army).
 Transported

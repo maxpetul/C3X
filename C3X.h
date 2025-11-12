@@ -454,6 +454,7 @@ enum c3x_label {
 	// Districts-related texts
 	CL_REQUIRES_NEIGHBORHOOD_TO_GROW,
 	CL_DISTRICT_DESTROYED_BY_VOLCANO,
+	CL_CONSTRUCTION_HALTED_DUE_TO_MISSING_DISTRICT,
 
 	// "Action" for passenger units
 	CL_TRANSPORTED,

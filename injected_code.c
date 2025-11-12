@@ -18597,7 +18597,7 @@ patch_Leader_do_production_phase (Leader * this)
 				if (is_human && (city->Body.CivID == p_main_screen_form->Player_CivID)) {
 					char msg[160];
 					char const * bname = p_bic_data->Improvements[i_improv].Name.S;
-					snprintf (msg, sizeof msg, "%s construction halted: required %s missing", bname, district_description);
+					snprintf (msg, sizeof msg, "%s %s %s", bname, is->c3x_labels[CL_CONSTRUCTION_HALTED_DUE_TO_MISSING_DISTRICT], district_description);
 					msg[(sizeof msg) - 1] = '\0';
 					show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
 				}
