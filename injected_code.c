@@ -8381,8 +8381,6 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 
 	if (leave_ruins && (tile->vtable->m60_Set_Ruins != NULL)) {
 		tile->vtable->m60_Set_Ruins (tile, __, 1);
-
-		// TODO: figure out how to redraw only this tile, not the whole map
 		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 	}
 }
@@ -10880,11 +10878,11 @@ patch_init_floating_point ()
 		{"enable_districts"                                    , false, offsetof (struct c3x_config, enable_districts)},
 		{"enable_neighborhood_districts"                       , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
 		{"enable_wonder_districts"                             , false, offsetof (struct c3x_config, enable_wonder_districts)},
-		{"enable_natural_wonders"                     , false, offsetof (struct c3x_config, enable_natural_wonders)},
+		{"enable_natural_wonders"                              , false, offsetof (struct c3x_config, enable_natural_wonders)},
 		{"enable_distribution_hub_districts"                   , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"enable_aerodrome_districts"                          , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
 		{"completed_wonder_districts_can_be_destroyed"         , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
-		{"destroyed_wonders_can_be_rebuilt"            , false, offsetof (struct c3x_config, destroyed_wonders_can_be_rebuilt)},
+		{"destroyed_wonders_can_be_built_again"                , false, offsetof (struct c3x_config, destroyed_wonders_can_be_built_again)},
 		{"cities_with_mutual_district_receive_buildings"       , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
 		{"cities_with_mutual_district_receive_wonders"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
 		{"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
@@ -16383,14 +16381,14 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
 
 	if (is_wonder_removal && ((improv->Characteristics & ITC_Wonder) != 0)) {
-		if (is->current_config.destroyed_wonders_can_be_rebuilt)
+		if (is->current_config.destroyed_wonders_can_be_built_again)
 			set_wonder_built_flag (improv_id, false);
 
 		PopupForm * popup = get_popup_form ();
 		set_popup_str_param (0, improv->Name.S, -1, -1);
 		popup->vtable->set_text_key_and_flags (
 			popup, __, is->mod_script_path, 
-			is->current_config.destroyed_wonders_can_be_rebuilt ? "C3X_DISTRICT_WONDER_DESTROYED_REBUILD" : "C3X_DISTRICT_WONDER_DESTROYED", 
+			is->current_config.destroyed_wonders_can_be_built_again ? "C3X_DISTRICT_WONDER_DESTROYED_REBUILD" : "C3X_DISTRICT_WONDER_DESTROYED", 
 			-1, 0, 0, 0
 		);
 		patch_show_popup (popup, __, 0, 0);

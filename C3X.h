@@ -333,7 +333,7 @@ struct c3x_config {
 	int per_neighborhood_pop_growth_enabled;
 	
 	bool completed_wonder_districts_can_be_destroyed;
-	bool destroyed_wonders_can_be_rebuilt;
+	bool destroyed_wonders_can_be_built_again;
 
 	int distribution_hub_food_yield_divisor;
 	int distribution_hub_shield_yield_divisor;

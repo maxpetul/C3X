@@ -131,9 +131,9 @@ Zoom to City.
 Sounds Good.
 
 #C3X_DISTRICT_WONDER_DESTROYED
-#advisor Domestic
+#advisor Domestic Surprised
 #text
-It seems $IMPROVEMENT0 has been destroyed! What a terrible loss.
+It seems $IMPROVEMENT0 has been destroyed and is gone forever! What a terrible loss.
 
 #C3X_DISTRICT_WONDER_DESTROYED_REBUILD
 #advisor Domestic
