@@ -11760,8 +11760,11 @@ patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 	is->bombard_stealth_target = NULL;
 	is->bombarding_unit = NULL;
 
-	if (had_district_before)
-		handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, false);
+	if (had_district_before && target_tile != NULL && target_tile != p_null_tile) {
+		unsigned int overlays = target_tile->vtable->m42_Get_Overlays (target_tile, __, 0);
+		if ((overlays & TILE_FLAG_MINE) == 0)
+			handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, false);
+	}
 }
 
 void __fastcall
