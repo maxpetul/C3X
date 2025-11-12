@@ -194,22 +194,6 @@ get_city_ptr (int id)
 	return NULL;
 }
 
-bool
-tile_is_adjacent_to_any_city (int tile_x, int tile_y)
-{
-	if ((p_cities == NULL) || (p_cities->Cities == NULL))
-		return false;
-
-	for (int idx = 0; idx <= p_cities->LastIndex; idx++) {
-		City * city = get_city_ptr (idx);
-		if (city == NULL)
-			continue;
-		if (compute_wrapped_chebyshev_distance (tile_x, tile_y, city->Body.X, city->Body.Y) <= 1)
-			return true;
-	}
-	return false;
-}
-
 // Declare various functions needed for districts and hard to untangle and reorder here
 void __fastcall patch_City_recompute_yields_and_happiness (City * this);
 void __fastcall patch_Map_build_trade_network (Map * this);
@@ -3969,9 +3953,18 @@ city_radius_contains_tile (City * city, int tile_x, int tile_y)
 {
 	if (city == NULL)
 		return false;
-	int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __,
-		city->Body.X, city->Body.Y, tile_x, tile_y, 2 * is->workable_tile_count);
-	return (neighbor_index >= 0) && (neighbor_index < is->workable_tile_count);
+	bool expanded_work_area = is->workable_tile_count > 21;
+	int lim = expanded_work_area ? 2 * is->workable_tile_count : is->workable_tile_count;
+	int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __, city->Body.X, city->Body.Y, tile_x, tile_y, lim);
+	if (neighbor_index < 0)
+		return false;
+	if (! expanded_work_area)
+		return neighbor_index < is->workable_tile_count;
+
+	if (neighbor_index >= ARRAY_LEN (is->ni_to_work_radius))
+		return false;
+	int work_radius = is->ni_to_work_radius[neighbor_index];
+	return (work_radius >= 0) && (work_radius <= is->current_config.city_work_radius);
 }
 
 bool
@@ -4103,17 +4096,12 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec, City * 
 				break;
 			}
 			if (other_distance == my_distance) {
-				// Tie-breaking: prefer hub with lower Y, then lower X, then lower pointer value
+				// Tie-breaking: prefer hub with lower Y, then lower X
 				if (other_rec->tile_y < rec->tile_y) {
 					tile_belongs_to_me = false;
 					break;
 				}
 				if ((other_rec->tile_y == rec->tile_y) && (other_rec->tile_x < rec->tile_x)) {
-					tile_belongs_to_me = false;
-					break;
-				}
-				if ((other_rec->tile_y == rec->tile_y) && (other_rec->tile_x == rec->tile_x) &&
-				    ((long)other_rec < (long)rec)) {
 					tile_belongs_to_me = false;
 					break;
 				}
@@ -5300,9 +5288,6 @@ handle_district_definition_key (struct parsed_district_definition * def,
 void
 load_dynamic_district_config_file (char const * file_path, int path_is_relative_to_mod_dir, int log_missing)
 {
-	if (is == NULL)
-		return;
-
 	char path[MAX_PATH];
 	if (path_is_relative_to_mod_dir) {
 		if (is->mod_rel_dir == NULL)
@@ -5427,9 +5412,6 @@ load_dynamic_district_config_file (char const * file_path, int path_is_relative_
 void
 load_dynamic_district_configs (void)
 {
-	if (is == NULL)
-		return;
-
 	load_dynamic_district_config_file ("default.districts_config.txt", 1, 1);
 	load_dynamic_district_config_file ("custom.districts_config.txt", 1, 0);
 
@@ -5674,9 +5656,6 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 void
 load_dynamic_wonder_config_file (char const * file_path, int path_is_relative_to_mod_dir, int log_missing)
 {
-	if (is == NULL)
-		return;
-
 	char path[MAX_PATH];
 	if (path_is_relative_to_mod_dir) {
 		if (is->mod_rel_dir == NULL)
@@ -5801,9 +5780,6 @@ load_dynamic_wonder_config_file (char const * file_path, int path_is_relative_to
 void
 load_dynamic_wonder_configs (void)
 {
-	if (is == NULL)
-		return;
-
 	load_dynamic_wonder_config_file ("default.districts_wonders_config.txt", 1, 1);
 	load_dynamic_wonder_config_file ("custom.districts_wonders_config.txt", 1, 0);
 	char * scenario_file_name = "scenario.districts_wonders_config.txt";
@@ -6132,9 +6108,6 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 void
 load_natural_wonder_config_file (char const * file_path, int path_is_relative_to_mod_dir, int log_missing)
 {
-	if (is == NULL)
-		return;
-
 	char path[MAX_PATH];
 	if (path_is_relative_to_mod_dir) {
 		if (is->mod_rel_dir == NULL)
@@ -6259,9 +6232,6 @@ load_natural_wonder_config_file (char const * file_path, int path_is_relative_to
 void
 load_natural_wonder_configs (void)
 {
-	if (is == NULL)
-		return;
-
 	load_natural_wonder_config_file ("default.districts_natural_wonders_config.txt", 1, 1);
 	load_natural_wonder_config_file ("custom.districts_natural_wonders_config.txt", 1, 0);
 	char * scenario_file_name = "scenario.districts_natural_wonders_config.txt";
@@ -6333,80 +6303,6 @@ load_districts_config (void)
 	is->district_count = is->special_district_count + is->dynamic_district_count;
 
 	append_wonders_to_wonder_district_config ();
-
-	struct c3x_config * cfg = &is->current_config;
-	if (cfg->enable_districts) {
-
-		char ss[200];
-
-		for (int i = 0; i < is->district_count; i++) {
-
-			if (is->district_configs[i].command != 0)
-				itable_insert (&is->command_id_to_district_id, is->district_configs[i].command, i);
-
-			is->district_infos[i].advance_prereq_id = -1;
-
-			// Map advance prereqs to districts
-			if (is->district_configs[i].advance_prereq != NULL && is->district_configs[i].advance_prereq != "") {
-				int tech_id;
-				struct string_slice tech_name = { .str = (char *)is->district_configs[i].advance_prereq, .len = (int)strlen (is->district_configs[i].advance_prereq) };
-				if (find_game_object_id_by_name (GOK_TECHNOLOGY, &tech_name, 0, &tech_id)) {
-					snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d\n", tech_name.len, tech_name.str, is->district_configs[i].advance_prereq, tech_id);
-					(*p_OutputDebugStringA) (ss);
-					is->district_infos[i].advance_prereq_id = tech_id;
-					itable_insert (&is->district_tech_prereqs, tech_id, i);
-				} else {
-					is->district_infos[i].advance_prereq_id = -1;
-				}
-			}
-
-			// Map improvement prereqs to districts
-			int stored_count = 0;
-			for (int j = 0; j < is->district_configs[i].dependent_improvement_count; j++) {
-				int improv_id;
-
-				if (is->district_configs[i].dependent_improvements[j] == "" || is->district_configs[i].dependent_improvements[j] == NULL)
-					continue;
-
-				// Gate wonder district prereqs behind enable_wonder_districts
-				if ((is->district_configs[i].command == UCV_Build_WonderDistrict) &&
-				    (! cfg->enable_wonder_districts))
-					continue;
-
-				struct string_slice improv_name = { .str = (char *)is->district_configs[i].dependent_improvements[j], .len = (int)strlen (is->district_configs[i].dependent_improvements[j]) };
-				if (find_game_object_id_by_name (GOK_BUILDING, &improv_name, 0, &improv_id)) {
-					snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d\n", improv_name.len, improv_name.str, is->district_configs[i].dependent_improvements[j], improv_id);
-					(*p_OutputDebugStringA) (ss);
-					if (stored_count < ARRAY_LEN (is->district_infos[i].dependent_building_ids)) {
-						is->district_infos[i].dependent_building_ids[stored_count] = improv_id;
-						stored_count += 1;
-					}
-					itable_insert (&is->district_building_prereqs, improv_id, i);
-					stable_insert (&is->building_name_to_id, improv_name.str, improv_id);
-				} else {
-					is->district_infos[i].dependent_building_ids[j] = -1;
-				}
-				is->district_infos[i].dependent_building_count = stored_count;
-			}
-		}
-
-		// Map wonder names to their improvement IDs for rendering under-construction wonders
-		for (int wi = 0; wi < is->wonder_district_count; wi++) {
-			if (is->wonder_district_configs[wi].wonder_name == NULL || is->wonder_district_configs[wi].wonder_name[0] == '\0')
-				continue;
-
-			int improv_id;
-			struct string_slice wonder_name = { .str = (char *)is->wonder_district_configs[wi].wonder_name, .len = (int)strlen (is->wonder_district_configs[wi].wonder_name) };
-			if (find_game_object_id_by_name (GOK_BUILDING, &wonder_name, 0, &improv_id)) {
-				snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for wonder district \"%s\", ID %d\n", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name, improv_id);
-				(*p_OutputDebugStringA) (ss);
-				stable_insert (&is->building_name_to_id, wonder_name.str, improv_id);
-			} else {
-				snprintf (ss, sizeof ss, "Could not find improvement prereq \"%.*s\" for wonder district \"%s\"\n", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name);
-				(*p_OutputDebugStringA) (ss);
-			}
-		}
-	}
 }
 
 void
@@ -7518,8 +7414,9 @@ find_tile_for_neighborhood_district (City * city, int district_id, int * out_x, 
 		for (int ni = start_ni; ni < end_ni; ni++) {
 			int dx, dy;
 			patch_ni_to_diff_for_work_area (ni, &dx, &dy);
-			int tx = (city_x + dx) & 0xFF;
-			int ty = (city_y + dy) & 0xFF;
+			int tx = city_x + dx;
+			int ty = city_y + dy;
+			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
 			Tile * tile = tile_at (tx, ty);
 
 			if (! tile_suitable_for_district (tile, district_id, city, NULL))
@@ -8186,7 +8083,7 @@ maybe_show_neighborhood_growth_warning (City * city)
 
 	char msg[160];
 	char const * city_name = city->Body.CityName;
-	snprintf (msg, sizeof msg, "%s requires a Neighborhood to grow", city_name);
+	snprintf (msg, sizeof msg, "%s %s", city_name, is->c3x_labels[CL_REQUIRES_NEIGHBORHOOD_TO_GROW]);
 	msg[(sizeof msg) - 1] = '\0';
 	show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
 }
@@ -10987,7 +10884,7 @@ patch_init_floating_point ()
 		{"enable_distribution_hub_districts"                   , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"enable_aerodrome_districts"                          , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
 		{"completed_wonder_districts_can_be_destroyed"         , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
-		{"destroyed_wonders_can_be_built_elsewhere"            , false, offsetof (struct c3x_config, destroyed_wonders_can_be_built_elsewhere)},
+		{"destroyed_wonders_can_be_rebuilt"            , false, offsetof (struct c3x_config, destroyed_wonders_can_be_rebuilt)},
 		{"cities_with_mutual_district_receive_buildings"       , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
 		{"cities_with_mutual_district_receive_wonders"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
 		{"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
@@ -12177,38 +12074,23 @@ compute_highlighted_worker_tiles_for_districts ()
 		return;
 
 	int worker_civ_id = selected_unit->Body.CivID;
-	int worker_x = selected_unit->Body.X;
-	int worker_y = selected_unit->Body.Y;
-	wrap_tile_coords (&p_bic_data->Map, &worker_x, &worker_y);
+	if ((p_cities == NULL) || (p_cities->Cities == NULL))
+		return;
 
-	// Loop around worker position to find cities of the same civ within radius 7
-	FOR_TILES_AROUND (tai, workable_tile_counts[7], worker_x, worker_y) {
-		Tile * tile = tai.tile;
-		if ((tile == NULL) || (tile == p_null_tile)) continue;
+	// Loop over all cities owned by this civ and tally their workable tiles
+	FOR_CITIES_OF (coi, worker_civ_id) {
+		City * city = coi.city;
+		if (city == NULL)
+			continue;
 
-		int city_id = tile->CityID;
-		if (city_id < 0) continue;
-
-		City * city = get_city_ptr (city_id);
-		if ((city == NULL) || (city->Body.CivID != worker_civ_id)) continue;
-
-		// Check if the worker is within the working radius of this city
-		for (int n = 0; n < is->workable_tile_count; n++) {
-			int dx, dy;
-			patch_ni_to_diff_for_work_area (n, &dx, &dy);
-			int tile_x = city->Body.X + dx;
-			int tile_y = city->Body.Y + dy;
-			wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
-
-			if (tile_x == worker_x && tile_y == worker_y) {
-				// If a district would be within the radius of city, highlight city center
-				Tile * city_center_tile = tile_at (city->Body.X, city->Body.Y);
-				if ((city_center_tile != NULL) && (city_center_tile != p_null_tile)) {
-					int stored_ptr;
-					struct highlighted_city_radius_tile_info * info = malloc (sizeof (struct highlighted_city_radius_tile_info));
-					info->highlight_level = 3;
-					itable_insert (&is->highlighted_city_radius_tile_pointers, (int)city_center_tile, (int)info);
-				}
+		// Highlight city center so players can easily see which cities contribute
+		Tile * city_center_tile = tile_at (city->Body.X, city->Body.Y);
+		if ((city_center_tile != NULL) && (city_center_tile != p_null_tile)) {
+			int stored_ptr;
+			if (! itable_look_up (&is->highlighted_city_radius_tile_pointers, (int)city_center_tile, &stored_ptr)) {
+				struct highlighted_city_radius_tile_info * info = malloc (sizeof (struct highlighted_city_radius_tile_info));
+				info->highlight_level = 3;
+				itable_insert (&is->highlighted_city_radius_tile_pointers, (int)city_center_tile, (int)info);
 			}
 		}
 
@@ -12226,14 +12108,15 @@ compute_highlighted_worker_tiles_for_districts ()
 
 			// Upsert into highlighted_city_radius_tile_pointers
 			int stored_ptr;
+			struct highlighted_city_radius_tile_info * info;
 			if (! itable_look_up (&is->highlighted_city_radius_tile_pointers, (int)workable_tile, &stored_ptr)) {
-				struct highlighted_city_radius_tile_info * info = malloc (sizeof (struct highlighted_city_radius_tile_info));
+				info = malloc (sizeof (struct highlighted_city_radius_tile_info));
 				info->highlight_level = 0;
 				itable_insert (&is->highlighted_city_radius_tile_pointers, (int)workable_tile, (int)info);
-			} else {
-				struct highlighted_city_radius_tile_info * info = (struct highlighted_city_radius_tile_info *)stored_ptr;
-				info->highlight_level += 3;
-			}
+			} else
+				info = (struct highlighted_city_radius_tile_info *)stored_ptr;
+
+			info->highlight_level += 3;
 		}
 	}
 }
@@ -12257,23 +12140,23 @@ set_up_district_buttons (Main_GUI * this)
 	int base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 	if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp) return;
 
-	Command_Button * automate_button = NULL; 
+	Command_Button * explore_button = NULL; 
 	int i_starting_button;
 	int mine_turns = -1;
 	for (int n = 0; n < 42; n++) {
 		if (((this->Unit_Command_Buttons[n].Button.Base_Data.Status2 & 1) != 0) &&
-			(this->Unit_Command_Buttons[n].Command == UCV_Automate)) {
-			automate_button = &this->Unit_Command_Buttons[n];
+			(this->Unit_Command_Buttons[n].Command == UCV_Explore)) {
+			explore_button = &this->Unit_Command_Buttons[n];
 			i_starting_button = n;
 		}
 		if (this->Unit_Command_Buttons[n].Command == UCV_Build_Mine) {
 			mine_turns = parse_turns_from_tooltip (this->Unit_Command_Buttons[n].Button.ToolTip);
 		}
-		if (automate_button != NULL && mine_turns >= 0)
+		if (explore_button != NULL && mine_turns >= 0)
 			break;
 	}
 
-	if (automate_button == NULL)
+	if (explore_button == NULL)
 		return;
 
 	i_starting_button = -1;
@@ -12369,10 +12252,10 @@ set_up_district_buttons (Main_GUI * this)
 		// Replace the button's image with the district image. Disabling & re-enabling and
 		// clearing field_5FC[13] are all necessary to trigger a redraw.
 		free_button->Button.vtable->m02_Show_Disabled ((Base_Form *)&free_button->Button);
-		free_button->field_6D8 = automate_button->field_6D8;
+		free_button->field_6D8 = explore_button->field_6D8;
 		for (int k = 0; k < 4; k++)
 			free_button->Button.Images[k] = &is->district_btn_img_sets[dc].imgs[k];
-		free_button->Button.field_664 = automate_button->Button.field_664;
+		free_button->Button.field_664 = explore_button->Button.field_664;
 		if (mine_turns >= 0) {
 			char tooltip[256];
 			char const * turn_word = (mine_turns == 1) ? "turn" : "turns";
@@ -13958,6 +13841,72 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		reset_district_state (true);
 		load_districts_config ();
 		load_scenario_districts_from_file (scenario_path);
+
+		struct c3x_config * cfg = &is->current_config;
+		char ss[200];
+		for (int i = 0; i < is->district_count; i++) {
+			if (is->district_configs[i].command != 0)
+				itable_insert (&is->command_id_to_district_id, is->district_configs[i].command, i);
+			is->district_infos[i].advance_prereq_id = -1;
+
+			// Map advance prereqs to districts
+			if (is->district_configs[i].advance_prereq != NULL && is->district_configs[i].advance_prereq != "") {
+				int tech_id;
+				struct string_slice tech_name = { .str = (char *)is->district_configs[i].advance_prereq, .len = (int)strlen (is->district_configs[i].advance_prereq) };
+				if (find_game_object_id_by_name (GOK_TECHNOLOGY, &tech_name, 0, &tech_id)) {
+					snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d\n", tech_name.len, tech_name.str, is->district_configs[i].advance_prereq, tech_id);
+					(*p_OutputDebugStringA) (ss);
+					is->district_infos[i].advance_prereq_id = tech_id;
+					itable_insert (&is->district_tech_prereqs, tech_id, i);
+				} else {
+					is->district_infos[i].advance_prereq_id = -1;
+				}
+			}
+
+			// Map improvement prereqs to districts
+			int stored_count = 0;
+			for (int j = 0; j < is->district_configs[i].dependent_improvement_count; j++) {
+				int improv_id;
+				if (is->district_configs[i].dependent_improvements[j] == "" || is->district_configs[i].dependent_improvements[j] == NULL)
+					continue;
+
+				// Gate wonder district prereqs behind enable_wonder_districts
+				if ((is->district_configs[i].command == UCV_Build_WonderDistrict) && (! cfg->enable_wonder_districts))
+					continue;
+
+				struct string_slice improv_name = { .str = (char *)is->district_configs[i].dependent_improvements[j], .len = (int)strlen (is->district_configs[i].dependent_improvements[j]) };
+				if (find_game_object_id_by_name (GOK_BUILDING, &improv_name, 0, &improv_id)) {
+					snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d\n", improv_name.len, improv_name.str, is->district_configs[i].dependent_improvements[j], improv_id);
+					(*p_OutputDebugStringA) (ss);
+					if (stored_count < ARRAY_LEN (is->district_infos[i].dependent_building_ids)) {
+						is->district_infos[i].dependent_building_ids[stored_count] = improv_id;
+						stored_count += 1;
+					}
+					itable_insert (&is->district_building_prereqs, improv_id, i);
+					stable_insert (&is->building_name_to_id, improv_name.str, improv_id);
+				} else {
+					is->district_infos[i].dependent_building_ids[j] = -1;
+				}
+				is->district_infos[i].dependent_building_count = stored_count;
+			}
+		}
+
+		// Map wonder names to their improvement IDs for rendering under-construction wonders
+		for (int wi = 0; wi < is->wonder_district_count; wi++) {
+			if (is->wonder_district_configs[wi].wonder_name == NULL || is->wonder_district_configs[wi].wonder_name[0] == '\0')
+				continue;
+
+			int improv_id;
+			struct string_slice wonder_name = { .str = (char *)is->wonder_district_configs[wi].wonder_name, .len = (int)strlen (is->wonder_district_configs[wi].wonder_name) };
+			if (find_game_object_id_by_name (GOK_BUILDING, &wonder_name, 0, &improv_id)) {
+				snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for wonder district \"%s\", ID %d\n", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name, improv_id);
+				(*p_OutputDebugStringA) (ss);
+				stable_insert (&is->building_name_to_id, wonder_name.str, improv_id);
+			} else {
+				snprintf (ss, sizeof ss, "Could not find improvement prereq \"%.*s\" for wonder district \"%s\"\n", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name);
+				(*p_OutputDebugStringA) (ss);
+			}
+		}
 	}
 
 	// Initialize Trade Net X
@@ -15250,7 +15199,7 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
 			struct district_instance * inst = get_district_instance (tile);
-			if (inst != NULL) {
+			if (inst != NULL && (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
 				return CLV_BLOCKED;
 			}
 		}
@@ -16434,14 +16383,14 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
 
 	if (is_wonder_removal && ((improv->Characteristics & ITC_Wonder) != 0)) {
-		if (is->current_config.destroyed_wonders_can_be_built_elsewhere)
+		if (is->current_config.destroyed_wonders_can_be_rebuilt)
 			set_wonder_built_flag (improv_id, false);
 
 		PopupForm * popup = get_popup_form ();
 		set_popup_str_param (0, improv->Name.S, -1, -1);
 		popup->vtable->set_text_key_and_flags (
 			popup, __, is->mod_script_path, 
-			is->current_config.destroyed_wonders_can_be_built_elsewhere ? "C3X_DISTRICT_WONDER_DESTROYED_REBUILD" : "C3X_DISTRICT_WONDER_DESTROYED", 
+			is->current_config.destroyed_wonders_can_be_rebuilt ? "C3X_DISTRICT_WONDER_DESTROYED_REBUILD" : "C3X_DISTRICT_WONDER_DESTROYED", 
 			-1, 0, 0, 0
 		);
 		patch_show_popup (popup, __, 0, 0);
@@ -16563,40 +16512,6 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 			}
 		}
 	}
-}
-
-void __fastcall
-patch_City_add_population (City * this, int edx, int num, int race_id)
-{
-	City_add_population (this, __, num, race_id);
-	return;
-
-	if ((this == NULL) || (num <= 0)) {
-		City_add_population (this, __, num, race_id);
-		return;
-	}
-
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_neighborhood_districts) {
-		City_add_population (this, __, num, race_id);
-		return;
-	}
-
-	int cap = get_neighborhood_pop_cap (this);
-
-	int current_pop = this->Body.Population.Size;
-	if (current_pop >= cap)
-		return;
-
-	int allowed = cap - current_pop;
-	if (allowed <= 0)
-		return;
-
-	int actual = num;
-	if (actual > allowed)
-		actual = allowed;
-
-	City_add_population (this, __, actual, race_id);
 }
 
 void __fastcall
@@ -16809,6 +16724,15 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 {
 	if (reason == CGR_FOUNDED)
 		is->turn_no_of_last_founding_for_settler_perfume[leader->ID] = *p_current_turn_no;
+
+	if (is->current_config.enable_districts) {
+		Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
+		if ((city_tile != NULL) && (city_tile != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (city_tile);
+			if (inst != NULL)
+				handle_district_removed (city_tile, inst->district_type, city->Body.X, city->Body.Y, false);
+		}
+	}
 
 	// Handle extra palaces for AI multi-city start
 	if (((*p_human_player_bits & (1<<leader->ID)) == 0) && // If leader is an AI AND
@@ -17963,35 +17887,6 @@ patch_do_load_game (char * param_1)
 		Map_Renderer * mr = &p_bic_data->Map.Renderer;
 		if (grid_on && ! mr->MapGrid_Flag)
 			mr->vtable->m68_Toggle_Grid (mr);
-	}
-
-	// Recompute distribution hub yields and city yields/happiness
-	if (is->current_config.enable_districts) {
-		patch_Map_build_trade_network (&p_bic_data->Map);
-
-		if (is->current_config.enable_distribution_hub_districts) {
-			// Connected-city ids are blank immediately after load until the trade net is rebuilt.
-			if (is->trade_net != NULL) {
-				int player_bits = (p_player_bits != NULL) ? *p_player_bits : 0;
-				for (int civ_id = 0; civ_id < 32; civ_id++) {
-					if ((player_bits != 0) && ((player_bits & (1 << civ_id)) == 0))
-						continue;
-					patch_Trade_Net_recompute_city_connections (is->trade_net, __, civ_id, 1, 0, -1);
-				}
-			}
-
-			is->distribution_hub_totals_dirty = true;
-			recompute_distribution_hub_totals ();
-		}
-
-		// Recompute yields and happiness for all cities
-		if (p_cities->Cities != NULL) {
-			for (int n = 0; n <= p_cities->LastIndex; n++) {
-				City * city = get_city_ptr (n);
-				if (city != NULL)
-					patch_City_recompute_yields_and_happiness (city);
-			}
-		}
 	}
 
 	return tr;
@@ -20304,7 +20199,7 @@ get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 			struct district_instance * inst = get_district_instance (tile);
 			if ((tile != NULL) && (tile != p_null_tile) && inst != NULL) {
 				char const * district_name = is->district_configs[inst->district_type].name;
-				snprintf (out_str, str_capacity, "Building %s", district_name);
+				snprintf (out_str, str_capacity, "%s %s", is->c3x_labels[CL_BUILDING], district_name);
 				out_str[str_capacity - 1] = '\0';
 				return true;
 			}
@@ -20427,7 +20322,7 @@ patch_Tile_set_flag_for_eruption_damage (Tile * this, int edx, int param_1, int 
 			if (territory_owner == p_main_screen_form->Player_CivID) {
 				char msg[160];
 				char const * district_name = is->district_configs[district_id].name;
-				snprintf (msg, sizeof msg, "Volcanic eruption destroys %s!", district_name);
+				snprintf (msg, sizeof msg, "%s %s", district_name, is->c3x_labels[CL_DISTRICT_DESTROYED_BY_VOLCANO]);
 				msg[(sizeof msg) - 1] = '\0';
 				show_map_specific_text (x, y, msg, true);
 			}
@@ -20640,7 +20535,6 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 	if (is->current_config.enable_districts && (is->district_tile_map.len > 0)) {
 		serialize_aligned_text ("district_tile_map", &mod_data);
 		int entry_capacity = is->district_tile_map.len;
-		// Includes wonder info: x, y, district_type, state, wonder_state, wonder_city_id, wonder_index
 		int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 7 * entry_capacity));
 		int * out = chunk + 1;
 		int written = 0;
@@ -20745,9 +20639,40 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 				int trimmed_bytes = unused_entries * 4 * (int)sizeof(int);
 				mod_data.length -= trimmed_bytes;
 			}
-		}
+	}
 
-		// Wonder district info is now saved as part of district_tile_map above
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_aerodrome_districts &&
+	    is->current_config.air_units_use_aerodrome_districts_not_cities &&
+	    (is->aerodrome_airlift_usage.len > 0)) {
+		serialize_aligned_text ("aerodrome_airlift_usage", &mod_data);
+		int entry_capacity = is->aerodrome_airlift_usage.len;
+		int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 3 * entry_capacity));
+		int * out = chunk + 1;
+		int written = 0;
+		FOR_TABLE_ENTRIES (tei, &is->aerodrome_airlift_usage) {
+			Tile * tile = (Tile *)tei.key;
+			int mask = tei.value;
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+
+			int tile_x, tile_y;
+			if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
+				continue;
+
+			out[0] = tile_x;
+			out[1] = tile_y;
+			out[2] = mask;
+			out += 3;
+			written++;
+		}
+		chunk[0] = written;
+		int unused_entries = entry_capacity - written;
+		if (unused_entries > 0) {
+			int trimmed_bytes = unused_entries * 3 * (int)sizeof(int);
+			mod_data.length -= trimmed_bytes;
+		}
+	}
 	}
 
 	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
@@ -21175,6 +21100,44 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					error_chunk_name = "distribution_hub_records";
 					break;
 				}
+			} else if (match_save_chunk_name (&cursor, "aerodrome_airlift_usage")) {
+				bool success = false;
+				int remaining_bytes = (seg + seg_size) - cursor;
+				if (remaining_bytes >= (int)sizeof(int)) {
+					int * ints = (int *)cursor;
+					int entry_count = *ints++;
+					cursor = (byte *)ints;
+					remaining_bytes -= (int)sizeof(int);
+					if ((entry_count >= 0) &&
+					    (remaining_bytes >= entry_count * 3 * (int)sizeof(int))) {
+						table_deinit (&is->aerodrome_airlift_usage);
+						success = true;
+						for (int n = 0; n < entry_count; n++) {
+							if (remaining_bytes < 3 * (int)sizeof(int)) {
+								success = false;
+								break;
+							}
+							int tile_x = *ints++;
+							int tile_y = *ints++;
+							int mask = *ints++;
+							cursor = (byte *)ints;
+							remaining_bytes -= 3 * (int)sizeof(int);
+
+							Tile * tile = tile_at (tile_x, tile_y);
+							if ((tile == NULL) || (tile == p_null_tile))
+								continue;
+
+							itable_insert (&is->aerodrome_airlift_usage, (int)tile, mask);
+						}
+						if (! success)
+							table_deinit (&is->aerodrome_airlift_usage);
+					}
+				}
+				if (! success) {
+					error_chunk_name = "aerodrome_airlift_usage";
+					break;
+				}
+
 			} else {
 				error_chunk_name = "N/A";
 				break;

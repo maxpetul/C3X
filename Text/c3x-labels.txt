@@ -108,6 +108,13 @@ Automated
 Exploring
 Bombarding
 
+; Generic verb used for Districts right-click menu
+Building
+
+; Districts-related texts
+requires a Neighborhood to grow
+destroyed by volcanic eruption!
+
 ; This appears instead of the above actions on units that have been loaded into another (except an army).
 Transported
 
