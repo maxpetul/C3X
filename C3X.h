@@ -333,7 +333,7 @@ struct c3x_config {
 	int per_neighborhood_pop_growth_enabled;
 	
 	bool completed_wonder_districts_can_be_destroyed;
-	bool destroyed_wonders_can_be_built_elsewhere;
+	bool destroyed_wonders_can_be_built_again;
 
 	int distribution_hub_food_yield_divisor;
 	int distribution_hub_shield_yield_divisor;
@@ -447,6 +447,13 @@ enum c3x_label {
 	CL_AUTOMATED,
 	CL_EXPLORING,
 	CL_BOMBARDING,
+
+	// Generic "Building" phrase for Districts right-click menu
+	CL_BUILDING,
+
+	// Districts-related texts
+	CL_REQUIRES_NEIGHBORHOOD_TO_GROW,
+	CL_DISTRICT_DESTROYED_BY_VOLCANO,
 
 	// "Action" for passenger units
 	CL_TRANSPORTED,
@@ -610,14 +617,14 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		
 	},
 	{
-		.command = UCV_Build_Aerodrome, .name = "Aerodrome", .tooltip = "Aerodrome Hub",
+		.command = UCV_Build_Aerodrome, .name = "Aerodrome", .tooltip = "Build Aerodrome",
 		.advance_prereq = "Flight", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"Aerodrome.pcx"}, .dependent_improvements = {"Airport"},
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_multiplier_pct = 100	
 	},
 	{
-		.command = -1, 					.name = "Natural Wonder", .tooltip = "Natural Wonder",
+		.command = -1, 					.name = "Natural Wonder", .tooltip = NULL,
 		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {0},
 		.img_path_count = 0, .max_building_index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
