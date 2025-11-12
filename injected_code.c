@@ -3874,20 +3874,35 @@ find_city_for_distribution_hub (struct distribution_hub_record * rec)
 	if ((rec == NULL) || (rec->civ_id < 0))
 		return NULL;
 
+	int hub_x = rec->tile_x;
+	int hub_y = rec->tile_y;
+	City * best_city = NULL;
+	int best_distance = INT_MAX;
+
 	City * city = get_city_ptr (rec->city_id);
-	if ((city != NULL) &&
-	    (city->Body.CivID == rec->civ_id) &&
-	    city_radius_contains_tile (city, rec->tile_x, rec->tile_y))
-		return city;
+	if ((city != NULL) && (city->Body.CivID == rec->civ_id)) {
+		best_city = city;
+		best_distance = compute_wrapped_manhattan_distance (city->Body.X, city->Body.Y, hub_x, hub_y);
+	}
 
 	FOR_CITIES_OF (coi, rec->civ_id) {
 		City * candidate = coi.city;
-		if ((candidate != NULL) &&
-		    city_radius_contains_tile (candidate, rec->tile_x, rec->tile_y))
-			return candidate;
+		if ((candidate == NULL) || (candidate->Body.CivID != rec->civ_id))
+			continue;
+
+		int candidate_distance = compute_wrapped_manhattan_distance (candidate->Body.X, candidate->Body.Y, hub_x, hub_y);
+		if ((best_city == NULL) ||
+		    (candidate_distance < best_distance) ||
+		    ((candidate_distance == best_distance) &&
+		     ((candidate->Body.Y < best_city->Body.Y) ||
+		      ((candidate->Body.Y == best_city->Body.Y) &&
+		       (candidate->Body.X < best_city->Body.X))))) {
+			best_city = candidate;
+			best_distance = candidate_distance;
+		}
 	}
 
-	return NULL;
+	return best_city;
 }
 
 void
@@ -3953,8 +3968,9 @@ city_radius_contains_tile (City * city, int tile_x, int tile_y)
 {
 	if (city == NULL)
 		return false;
-	int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __, city->Body.X, city->Body.Y, tile_x, tile_y, 2 * is->workable_tile_count);
-	return (neighbor_index >= 0) && (neighbor_index < is->workable_tile_count);
+
+	int ni = patch_Map_compute_ni_for_work_area (&p_bic_data->Map, __, city->Body.X, city->Body.Y, tile_x, tile_y, is->workable_tile_count);
+	return ni >= 0;
 }
 
 bool
@@ -4277,8 +4293,7 @@ recompute_distribution_hub_totals ()
 
 		City * anchor = get_city_ptr (rec->city_id);
 		if ((anchor == NULL) ||
-		    (anchor->Body.CivID != rec->civ_id) ||
-		    ! city_radius_contains_tile (anchor, rec->tile_x, rec->tile_y)) {
+		    (anchor->Body.CivID != rec->civ_id)) {
 			anchor = find_city_for_distribution_hub (rec);
 			if (anchor != NULL)
 				rec->city_id = anchor->Body.ID;
