@@ -11745,12 +11745,14 @@ patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 	bool had_district_before = false;
 	int tile_x = x;
 	int tile_y = y;
+	struct district_instance * inst;
 
 	if (is->current_config.enable_districts) {
 		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 		target_tile = tile_at (tile_x, tile_y);
 		if ((target_tile != NULL) && (target_tile != p_null_tile)) {
-            had_district_before = (get_district_instance (target_tile) != NULL);
+            inst = get_district_instance (target_tile);
+            had_district_before = (inst != NULL);
 		}
 	}
 
@@ -11760,7 +11762,7 @@ patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 	is->bombard_stealth_target = NULL;
 	is->bombarding_unit = NULL;
 
-	if (had_district_before && target_tile != NULL && target_tile != p_null_tile) {
+	if (had_district_before && target_tile != NULL && target_tile != p_null_tile && inst->district_type != NATURAL_WONDER_DISTRICT_ID) {
 		unsigned int overlays = target_tile->vtable->m42_Get_Overlays (target_tile, __, 0);
 		if ((overlays & TILE_FLAG_MINE) == 0)
 			handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, false);
@@ -16437,7 +16439,11 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 
 		PopupForm * popup = get_popup_form ();
 		set_popup_str_param (0, improv->Name.S, -1, -1);
-		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_DISTRICT_WONDER_DESTROYED", -1, 0, 0, 0);
+		popup->vtable->set_text_key_and_flags (
+			popup, __, is->mod_script_path, 
+			is->current_config.destroyed_wonders_can_be_built_elsewhere ? "C3X_DISTRICT_WONDER_DESTROYED_REBUILD" : "C3X_DISTRICT_WONDER_DESTROYED", 
+			-1, 0, 0, 0
+		);
 		patch_show_popup (popup, __, 0, 0);
 	}
 
@@ -19257,7 +19263,7 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 	Unit_attack_tile (this, __, x, y, bombarding);
 
 	// Check if the district was destroyed by the attack
-	if (had_district_before && (target_tile != NULL) && (target_tile != p_null_tile)) {
+	if (had_district_before && (target_tile != NULL) && (target_tile != p_null_tile) && district_id_before != NATURAL_WONDER_DISTRICT_ID) {
 		struct district_instance * inst_after = get_district_instance (target_tile);
 		bool has_district_after = (inst_after != NULL);
 		int district_id_after = (inst_after != NULL) ? inst_after->district_type : -1;
