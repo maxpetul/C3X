@@ -3953,18 +3953,8 @@ city_radius_contains_tile (City * city, int tile_x, int tile_y)
 {
 	if (city == NULL)
 		return false;
-	bool expanded_work_area = is->workable_tile_count > 21;
-	int lim = expanded_work_area ? 2 * is->workable_tile_count : is->workable_tile_count;
-	int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __, city->Body.X, city->Body.Y, tile_x, tile_y, lim);
-	if (neighbor_index < 0)
-		return false;
-	if (! expanded_work_area)
-		return neighbor_index < is->workable_tile_count;
-
-	if (neighbor_index >= ARRAY_LEN (is->ni_to_work_radius))
-		return false;
-	int work_radius = is->ni_to_work_radius[neighbor_index];
-	return (work_radius >= 0) && (work_radius <= is->current_config.city_work_radius);
+	int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __, city->Body.X, city->Body.Y, tile_x, tile_y, 2 * is->workable_tile_count);
+	return (neighbor_index >= 0) && (neighbor_index < is->workable_tile_count);
 }
 
 bool
