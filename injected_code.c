@@ -12369,6 +12369,13 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 	}
 }
 
+void 
+clear_highlighted_worker_tiles_and_redraw ()
+{
+	clear_highlighted_worker_tiles_for_districts ();
+	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+}
+
 void
 check_happiness_at_end_of_turn ()
 {
@@ -12529,6 +12536,12 @@ intercept_end_of_turn ()
 		check_happiness_at_end_of_turn ();
 		if (p_main_screen_form->turn_end_flag == 1) // Check if player cancelled turn ending in the disorder warning popup
 			return;
+	}
+
+	// Sometimes clearing of highlighted tiles doesn't trigger when CTRL lifted, so double-check here
+	if (is->current_config.enable_city_work_radii_highlights && is->highlight_city_radii) {
+		is->highlight_city_radii = false;
+		clear_highlighted_worker_tiles_and_redraw ();
 	}
 
 	// Clear things that don't apply across turns
@@ -12972,6 +12985,12 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 	}
 
 	int command = this->Unit_Command_Buttons[button_id].Command;
+
+	// Clear any highlighted tiles
+	if (is->current_config.enable_city_work_radii_highlights && is->highlight_city_radii) {
+		is->highlight_city_radii = false;
+		clear_highlighted_worker_tiles_and_redraw ();
+	}
 
 	// If a district, run district build logic
 	if (is->current_config.enable_districts && is_district_command (command)) {
@@ -14159,11 +14178,9 @@ patch_Main_Screen_Form_handle_key_up (Main_Screen_Form * this, int edx, int virt
 	if ((virtual_key_code & 0xFF) == VK_CONTROL) {
 		patch_Main_GUI_set_up_unit_command_buttons (&this->GUI);
 
-		if (is->current_config.enable_city_work_radii_highlights && 
-			is->highlight_city_radii) {
+		if (is->current_config.enable_city_work_radii_highlights && is->highlight_city_radii) {
 			is->highlight_city_radii = false;
-			clear_highlighted_worker_tiles_for_districts ();
-			this->vtable->m73_call_m22_Draw ((Base_Form *)this);
+			clear_highlighted_worker_tiles_and_redraw ();
 		}
 	}
 
@@ -18001,6 +18018,12 @@ patch_perform_interturn_in_main_loop ()
 				p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 			}
 		}
+	}
+
+	if (is->current_config.enable_city_work_radii_highlights && is->highlight_city_radii) {
+		is->highlight_city_radii = false;
+		clear_highlighted_worker_tiles_for_districts ();
+		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 	}
 
 	if (is->current_config.measure_turn_times) {
