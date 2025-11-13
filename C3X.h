@@ -675,7 +675,6 @@ struct distribution_hub_record {
 	int tile_x;
 	int tile_y;
 	int civ_id;
-	int city_id;
 	int food_yield;
 	int shield_yield;
 	int raw_food_yield;
@@ -1463,16 +1462,10 @@ struct injected_state {
 	int natural_wonder_count;
 	int next_custom_dynamic_command_index;
 
-	// Distribution Hub tracking: records keyed by tile, coverage counts per tile, yield bonuses per city/civ
-	// dirty/refresh flags control when totals are recalculated to avoid redundant computation
+	// Distribution Hub tracking: records keyed by tile plus per-tile coverage counts; dirty/refresh flags
+	// control when totals are recalculated
 	struct table distribution_hub_records;
 	struct table distribution_hub_coverage_counts;
-	int * distribution_hub_food_bonus_per_city;
-	int * distribution_hub_shield_bonus_per_city;
-	int distribution_hub_bonus_capacity;
-	int * distribution_hub_food_per_civ;
-	int * distribution_hub_shield_per_civ;
-	int distribution_hub_civ_capacity;
 	bool distribution_hub_totals_dirty;
 	bool distribution_hub_refresh_in_progress;
 
