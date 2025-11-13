@@ -4710,7 +4710,7 @@ init_parsed_district_definition (struct parsed_district_definition * def)
 {
 	memset (def, 0, sizeof *def);
 	def->img_path_count = -1;
-	def->defense_bonus_multiplier_pct = 100;
+	def->defense_bonus_percent = 100;
 }
 
 void
@@ -4928,8 +4928,8 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->btn_tile_sheet_column = def->btn_tile_sheet_column;
 	if (def->has_btn_tile_sheet_row)
 		cfg->btn_tile_sheet_row = def->btn_tile_sheet_row;
-	if (def->has_defense_bonus_multiplier_pct)
-		cfg->defense_bonus_multiplier_pct = def->defense_bonus_multiplier_pct;
+	if (def->has_defense_bonus_percent)
+		cfg->defense_bonus_percent = def->defense_bonus_percent;
 	if (def->has_culture_bonus)
 		cfg->culture_bonus = def->culture_bonus;
 	if (def->has_science_bonus)
@@ -5045,7 +5045,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.vary_img_by_culture = def->has_vary_img_by_culture ? def->vary_img_by_culture : false;
 	new_cfg.btn_tile_sheet_column = def->has_btn_tile_sheet_column ? def->btn_tile_sheet_column : 0;
 	new_cfg.btn_tile_sheet_row = def->has_btn_tile_sheet_row ? def->btn_tile_sheet_row : 0;
-	new_cfg.defense_bonus_multiplier_pct = def->has_defense_bonus_multiplier_pct ? def->defense_bonus_multiplier_pct : 100;
+	new_cfg.defense_bonus_percent = def->has_defense_bonus_percent ? def->defense_bonus_percent : 100;
 	new_cfg.culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
 	new_cfg.science_bonus = def->has_science_bonus ? def->science_bonus : 0;
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
@@ -5232,12 +5232,12 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		} else
 			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
 
-	} else if (slice_matches_str (key, "defense_bonus_multiplier_pct")) {
+	} else if (slice_matches_str (key, "defense_bonus_percent")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->defense_bonus_multiplier_pct = ival;
-			def->has_defense_bonus_multiplier_pct = true;
+			def->defense_bonus_percent = ival;
+			def->has_defense_bonus_percent = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
 
@@ -5418,7 +5418,7 @@ void
 load_dynamic_district_configs (void)
 {
 	load_dynamic_district_config_file ("default.districts_config.txt", 1, 1);
-	load_dynamic_district_config_file ("custom.districts_config.txt", 1, 0);
+	load_dynamic_district_config_file ("user.districts_config.txt", 1, 0);
 
 	char * scenario_file_name = "scenario.districts_config.txt";
 	char * scenario_path = NULL;
@@ -5786,7 +5786,7 @@ void
 load_dynamic_wonder_configs (void)
 {
 	load_dynamic_wonder_config_file ("default.districts_wonders_config.txt", 1, 1);
-	load_dynamic_wonder_config_file ("custom.districts_wonders_config.txt", 1, 0);
+	load_dynamic_wonder_config_file ("user.districts_wonders_config.txt", 1, 0);
 	char * scenario_file_name = "scenario.districts_wonders_config.txt";
 	char * scenario_path = NULL;
 	if (p_bic_data != NULL)
@@ -6238,7 +6238,7 @@ void
 load_natural_wonder_configs (void)
 {
 	load_natural_wonder_config_file ("default.districts_natural_wonders_config.txt", 1, 1);
-	load_natural_wonder_config_file ("custom.districts_natural_wonders_config.txt", 1, 0);
+	load_natural_wonder_config_file ("user.districts_natural_wonders_config.txt", 1, 0);
 	char * scenario_file_name = "scenario.districts_natural_wonders_config.txt";
 	char * scenario_path = NULL;
 	if (p_bic_data != NULL)
@@ -12143,23 +12143,23 @@ set_up_district_buttons (Main_GUI * this)
 	int base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 	if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp) return;
 
-	Command_Button * explore_button = NULL; 
+	Command_Button * fortify_button = NULL; 
 	int i_starting_button;
 	int mine_turns = -1;
 	for (int n = 0; n < 42; n++) {
 		if (((this->Unit_Command_Buttons[n].Button.Base_Data.Status2 & 1) != 0) &&
-			(this->Unit_Command_Buttons[n].Command == UCV_Explore)) {
-			explore_button = &this->Unit_Command_Buttons[n];
+			(this->Unit_Command_Buttons[n].Command == UCV_Fortify)) {
+			fortify_button = &this->Unit_Command_Buttons[n];
 			i_starting_button = n;
 		}
 		if (this->Unit_Command_Buttons[n].Command == UCV_Build_Mine) {
 			mine_turns = parse_turns_from_tooltip (this->Unit_Command_Buttons[n].Button.ToolTip);
 		}
-		if (explore_button != NULL && mine_turns >= 0)
+		if (fortify_button != NULL && mine_turns >= 0)
 			break;
 	}
 
-	if (explore_button == NULL)
+	if (fortify_button == NULL)
 		return;
 
 	i_starting_button = -1;
@@ -12255,10 +12255,10 @@ set_up_district_buttons (Main_GUI * this)
 		// Replace the button's image with the district image. Disabling & re-enabling and
 		// clearing field_5FC[13] are all necessary to trigger a redraw.
 		free_button->Button.vtable->m02_Show_Disabled ((Base_Form *)&free_button->Button);
-		free_button->field_6D8 = explore_button->field_6D8;
+		free_button->field_6D8 = fortify_button->field_6D8;
 		for (int k = 0; k < 4; k++)
 			free_button->Button.Images[k] = &is->district_btn_img_sets[dc].imgs[k];
-		free_button->Button.field_664 = explore_button->Button.field_664;
+		free_button->Button.field_664 = fortify_button->Button.field_664;
 		if (mine_turns >= 0) {
 			char tooltip[256];
 			char const * turn_word = (mine_turns == 1) ? "turn" : "turns";
@@ -23597,19 +23597,13 @@ patch_get_building_defense_bonus_at (int x, int y, int param_3)
     if (!is->current_config.enable_districts)
         return base;
 
-    // Look up district on this tile, if any
     Tile * tile = tile_at (x, y);
     if ((tile == NULL) || (tile == p_null_tile))
         return base;
 
     struct district_instance * inst = get_district_instance (tile);
     if (inst != NULL) {
-        int district_id = inst->district_type;
-        double mult = (double)is->district_configs[district_id].defense_bonus_multiplier_pct / 100.0;
-        if (mult > 0.0 && mult != 1.0) {
-            int adjusted = (int)((double)base * mult);
-            return adjusted;
-        }
+		return is->district_configs[inst->district_type].defense_bonus_percent;
     }
 
     return base;
