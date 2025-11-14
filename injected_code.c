@@ -23603,6 +23603,8 @@ patch_Unit_select (Unit * this)
 				if (! other_workers_present) {
 					remove_district_instance (tile);
 				}
+			} else {
+				return;
 			}
 		}
 	}
