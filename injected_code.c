@@ -14615,13 +14615,9 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 		Improvement * improv = &p_bic_data->Improvements[i_improv];
 		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
 			bool wonder_requires_district = false;
-			int wonder_district_id = WONDER_DISTRICT_ID;
-			if (wonder_district_id >= 0) {
-				int required_id;
-				if (itable_look_up (&is->district_building_prereqs, i_improv, &required_id) &&
-				    (required_id == wonder_district_id))
-					wonder_requires_district = true;
-			}
+			int required_id;
+			if (itable_look_up (&is->district_building_prereqs, i_improv, &required_id) && (required_id == WONDER_DISTRICT_ID))
+				wonder_requires_district = true;
 
 			// Can only build wonders that need districts if an incomplete wonder district exists
 			if (wonder_requires_district &&
