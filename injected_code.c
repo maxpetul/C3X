@@ -7148,7 +7148,47 @@ calculate_city_center_district_bonus (City * city, int * out_food, int * out_shi
 int __fastcall
 patch_City_calc_tile_yield_at (City * this, int edx, int yield_type, int tile_x, int tile_y)
 {
-	return City_calc_tile_yield_at (this, __, yield_type, tile_x, tile_y);
+	int tr = City_calc_tile_yield_at (this, __, yield_type, tile_x, tile_y);
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if (is->current_config.enable_districts && tile != NULL && tile != p_null_tile) {
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst != NULL && district_is_complete (tile, inst->district_type)) {
+			return 0;
+		}
+
+		// If distribution hubs are enabled, check if this tile is in the civ's territory
+		// and covered by a hub - if so, return 0
+		if (is->current_config.enable_distribution_hub_districts) {
+			int civ_id = this->Body.CivID;
+			if (tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id) {
+				int coverage = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
+				if (coverage > 0)
+					return 0;
+			}
+
+			// Check if any adjacent tile is a distribution hub
+			FOR_TILES_AROUND (tai, workable_tile_counts[1], tile_x, tile_y) {
+				Tile * adj_tile = tai.tile;
+				if (adj_tile == p_null_tile)
+					continue;
+
+				int adj_x, adj_y;
+				tai_get_coords (&tai, &adj_x, &adj_y);
+
+				// Skip the center tile (we already checked it)
+				if (adj_x == tile_x && adj_y == tile_y)
+					continue;
+
+				struct district_instance * adj_inst = get_district_instance (adj_tile);
+				if (adj_inst != NULL && adj_inst->district_type == DISTRIBUTION_HUB_DISTRICT_ID &&
+				    district_is_complete (adj_tile, DISTRIBUTION_HUB_DISTRICT_ID)) {
+					return 0;
+				}
+			}
+		}
+	}
+	return tr;
 }
 
 int __fastcall
@@ -19486,53 +19526,6 @@ int __fastcall
 patch_City_calc_tile_yield_while_gathering (City * this, int edx, YieldKind kind, int tile_x, int tile_y)
 {
 	int tr = City_calc_tile_yield_at (this, __, kind, tile_x, tile_y);
-	char ss[200];
-
-	snprintf (ss, sizeof ss, "Calc yield %d at (%d,%d) for %s: base %d\n", kind, tile_x, tile_y, this->Body.CityName, tr);
-	(*p_OutputDebugStringA) (ss);
-
-	Tile * tile = tile_at (tile_x, tile_y);
-	if (is->current_config.enable_districts && tile != NULL && tile != p_null_tile) {
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst != NULL && district_is_complete (tile, inst->district_type)) {
-			snprintf (ss, sizeof ss, "Tile has district %d complete for %s\n", inst->district_type, this->Body.CityName);
-			(*p_OutputDebugStringA) (ss);
-			return 0;
-		}
-
-		// If distribution hubs are enabled, check if this tile is in the civ's territory
-		// and covered by a hub - if so, return 0
-		if (is->current_config.enable_distribution_hub_districts) {
-			int civ_id = this->Body.CivID;
-			if (tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id) {
-				int coverage = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
-				if (coverage > 0)
-					return 0;
-			}
-
-			// Check if any adjacent tile is a distribution hub
-			FOR_TILES_AROUND (tai, workable_tile_counts[1], tile_x, tile_y) {
-				Tile * adj_tile = tai.tile;
-				if (adj_tile == p_null_tile)
-					continue;
-
-				int adj_x, adj_y;
-				tai_get_coords (&tai, &adj_x, &adj_y);
-
-				// Skip the center tile (we already checked it)
-				if (adj_x == tile_x && adj_y == tile_y)
-					continue;
-
-				struct district_instance * adj_inst = get_district_instance (adj_tile);
-				if (adj_inst != NULL && adj_inst->district_type == DISTRIBUTION_HUB_DISTRICT_ID &&
-				    district_is_complete (adj_tile, DISTRIBUTION_HUB_DISTRICT_ID)) {
-					snprintf (ss, sizeof ss, "Tile adjacent to distribution hub at (%d,%d) for %s\n", adj_x, adj_y, this->Body.CityName);
-					(*p_OutputDebugStringA) (ss);
-					return 0;
-				}
-			}
-		}
-	}
 
 	// Include yields from generated resources
 	if ((this->Body.X == tile_x) && (this->Body.Y == tile_y)) {
@@ -19545,17 +19538,11 @@ patch_City_calc_tile_yield_while_gathering (City * this, int edx, YieldKind kind
 		if (is->current_config.enable_districts) {
 			int bonus_food = 0, bonus_shields = 0, bonus_gold = 0;
 			calculate_city_center_district_bonus (this, &bonus_food, &bonus_shields, &bonus_gold);
-			snprintf (ss, sizeof ss, "City center district bonus yield: food %d, shields %d, commerce %d for %s\n",
-				  bonus_food, bonus_shields, bonus_gold, this->Body.CityName);
-			(*p_OutputDebugStringA) (ss);
 			if      (kind == YK_FOOD)     tr += bonus_food;
 			else if (kind == YK_SHIELDS)  tr += bonus_shields;
 			else if (kind == YK_COMMERCE) tr += bonus_gold;
 		}
 	}
-
-	snprintf (ss, sizeof ss, "Total yield %d at (%d,%d) for %s\n", tr, tile_x, tile_y, this->Body.CityName);
-	(*p_OutputDebugStringA) (ss);
 
 	return tr;
 }
