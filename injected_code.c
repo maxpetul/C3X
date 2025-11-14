@@ -3879,8 +3879,6 @@ adjust_distribution_hub_coverage (struct distribution_hub_record * rec, int delt
 	if ((rec == NULL) || (delta == 0))
 		return;
 
-	City * anchor_for_assignment = (delta > 0) ? get_connected_city_for_distribution_hub (rec) : NULL;
-
 	FOR_TILES_AROUND (tai, workable_tile_counts[1], rec->tile_x, rec->tile_y) {
 		Tile * area_tile = tai.tile;
 		if ((area_tile == NULL) || (area_tile == p_null_tile))
@@ -3904,8 +3902,7 @@ adjust_distribution_hub_coverage (struct distribution_hub_record * rec, int delt
 			int tx, ty;
 			tai_get_coords (&tai, &tx, &ty);
 			set_tile_unworkable_for_all_cities (area_tile, tx, ty);
-			if (anchor_for_assignment != NULL)
-				area_tile->Body.CityAreaID = anchor_for_assignment->Body.ID;
+			area_tile->Body.CityAreaID = -1;
 		}
 	}
 }
@@ -4208,10 +4205,8 @@ recompute_distribution_hub_totals ()
 			int prev_cover_pass = itable_look_up_or (&new_coverage_counts, key, 0);
 			int prev_cover_old = itable_look_up_or (&is->distribution_hub_coverage_counts, key, 0);
 			itable_insert (&new_coverage_counts, key, prev_cover_pass + 1);
-			if ((prev_cover_pass == 0) && (prev_cover_old <= 0)) {
-				int anchor_id = (anchor != NULL) ? anchor->Body.ID : -1;
-				itable_insert (&newly_covered_tiles, key, anchor_id);
-			}
+			if ((prev_cover_pass == 0) && (prev_cover_old <= 0))
+				itable_insert (&newly_covered_tiles, key, 1);
 		}
 	}
 
@@ -4249,12 +4244,7 @@ recompute_distribution_hub_totals ()
 		if (! tile_coords_from_ptr (&p_bic_data->Map, covered_tile, &tx, &ty))
 			continue;
 		set_tile_unworkable_for_all_cities (covered_tile, tx, ty);
-		int anchor_id = tei.value;
-		if (anchor_id >= 0) {
-			City * anchor_city = get_city_ptr (anchor_id);
-			if ((anchor_city != NULL) && city_radius_contains_tile (anchor_city, tx, ty))
-				covered_tile->Body.CityAreaID = anchor_city->Body.ID;
-		}
+		covered_tile->Body.CityAreaID = -1;
 	}
 	table_deinit (&newly_covered_tiles);
 
@@ -22020,11 +22010,11 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 		int center_screen_x, center_screen_y;
 		Main_Screen_Form_tile_to_screen_coords (p_main_screen_form, __, city_x, city_y, &center_screen_x, &center_screen_y);
 
-		int tile_half_width = p_bic_data->is_zoomed_out ? 32 : 64;
+		int tile_half_width  = p_bic_data->is_zoomed_out ? 32 : 64;
 		int tile_half_height = p_bic_data->is_zoomed_out ? 16 : 32;
 		center_screen_x += tile_half_width;
 		if (center_screen_x < 0)
-			center_screen_x += p_bic_data->Map.Width;
+			center_screen_x += p_bic_data->Map.Width * tile_half_width;
 		center_screen_y += tile_half_height;
 
 		int remaining_utilized_neighborhoods = 0;
