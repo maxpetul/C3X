@@ -158,35 +158,35 @@ No. Carry on.
 #advisor Domestic Angry
 A $DISTRICT0 already exists here. Removing it will destroy buildings dependent on it. Are you sure you want to proceed?
 #itemlist
-Yes. There are better uses for this tile.
+Yes. There are better uses for this area.
 No, nevermind.
 
 #C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT_SAFE
 #advisor Domestic
 A $DISTRICT0 exists here, but either it has no dependent buildings or another $DISTRICT1 is nearby so no buildings will be lost. Do you want to proceed?
 #itemlist
-Yes. There are better uses for this tile.
+Yes. There are better uses for this area.
 No, nevermind.
 
 #C3X_CONFIRM_BUILD_DISTRICT_OVER_IMPROVEMENT
 #advisor Domestic
 An improvement already exists here. Are you sure you want to remove it and build a $DISTRICT0?
 #itemlist
-Yes. There are better uses for this tile.
+Yes. There are better uses for this area.
 No, nevermind.
 
 #C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT
 #advisor Domestic Angry
 A $DISTRICT0 exists here with dependent buildings. Are you sure you want to proceed? Doing so will remove any dependent buildings.
 #itemlist
-Yes. There are better uses for this tile.
+Yes. There are better uses for this area.
 No, nevermind.
 
 #C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT_SAFE
 #advisor Domestic
 A $DISTRICT0 exists here, but either it has no dependent buildings or another $DISTRICT1 is nearby so no buildings will be lost. Do you want to proceed?
 #itemlist
-Yes. There are better uses for this tile.
+Yes. There are better uses for this area.
 No, nevermind.
 
 # ; This line must remain at end of file

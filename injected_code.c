@@ -11966,6 +11966,29 @@ compute_highlighted_worker_tiles_for_districts ()
 	}
 }
 
+bool is_worker (Unit * unit)
+{
+	if (unit == NULL)
+		return false;
+
+	int unit_type_id = unit->Body.UnitTypeID;
+	if (p_bic_data->UnitTypes[unit_type_id].Worker_Actions == 0)
+		return false;
+	
+	const int worker_commands[] = { 
+		UCV_Build_Mine, UCV_Irrigate, UCV_Build_Road, UCV_Plant_Forest,
+		UCV_Clear_Forest, UCV_Clear_Jungle, UCV_Clear_Pollution, UCV_Build_Outpost,
+	};
+
+	bool can_issue_worker_command = false;
+	for (int n = 0; n < (sizeof worker_commands) / (sizeof worker_commands[0]); n++) {
+		if (patch_Unit_can_perform_command (unit, __, worker_commands[n])) {
+			return true;
+		}
+	}
+	return false;
+}
+
 void
 set_up_district_buttons (Main_GUI * this)
 {
@@ -11974,16 +11997,15 @@ set_up_district_buttons (Main_GUI * this)
 	if (is->dc_btn_img_state != IS_OK) return;
 
 	Unit * selected_unit = p_main_screen_form->Current_Unit;
-	if (selected_unit == NULL) return;
-
-	int unit_type_id = selected_unit->Body.UnitTypeID;
-	if (p_bic_data->UnitTypes[unit_type_id].Worker_Actions == 0) return;
+	if (selected_unit == NULL || ! is_worker(selected_unit)) return;
 
 	Tile * tile = tile_at (selected_unit->Body.X, selected_unit->Body.Y);
 	if ((tile == NULL) || (tile == p_null_tile) || (tile->CityID >= 0)) return;
 
 	int base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 	if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp) return;
+	if (tile->vtable->m21_Check_Crates (tile, __, 0)) return;
+	if (tile->vtable->m20_Check_Pollution (tile, __, 0)) return;
 
 	Command_Button * fortify_button = NULL; 
 	int i_starting_button;
@@ -12633,6 +12655,9 @@ issue_district_worker_command (Unit * unit, int command)
 	int unit_type_id = unit->Body.UnitTypeID;
 	int unit_id = unit->Body.ID;
 
+	if (! is_worker(unit))
+		return;
+
 	// Check tech prerequisite for the selected district, if any
 	int district_id;
 	if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
@@ -12642,8 +12667,12 @@ issue_district_worker_command (Unit * unit, int command)
 			return; // Civ lacks required tech; do not issue command
 		}
 	}
-    // Disallow placing districts on mountain, forest, or jungle tiles
+    // Disallow placing districts on invalid terrain, pollution, or cratered tiles
     if (tile != NULL && tile != p_null_tile) {
+        if (tile->vtable->m21_Check_Crates (tile, __, 0))
+            return;
+        if (tile->vtable->m20_Check_Pollution (tile, __, 0))
+            return;
         enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType(tile);
         if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp) {
             return;
@@ -12717,7 +12746,7 @@ issue_district_worker_command (Unit * unit, int command)
 				inst->state = DS_UNDER_CONSTRUCTION;
 
 		Unit_set_state(unit, __, UnitState_Build_Mines);
-		unit->Body.Job_ID = 0;
+		unit->Body.Job_ID = WJ_Build_Mines;
 	}
 }
 
@@ -21880,7 +21909,8 @@ draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, in
 		return;
 
 	City * anchor_city = get_connected_city_for_distribution_hub (rec);
-	if (! distribution_hub_has_road_connection_to_anchor (tile, anchor_city, rec->civ_id))
+	if (! distribution_hub_has_road_connection_to_anchor (tile, anchor_city, rec->civ_id) ||
+		! distribution_hub_accessible_to_city (rec, city_form->CurrentCity))
 		return;
 
 	int food_yield   = rec->food_yield;
@@ -23287,8 +23317,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		(*p_OutputDebugStringA) (ss);
 
 		// One final check: do we still need the district? Check for any dupes nearby
-		if (req->district_id != DISTRIBUTION_HUB_DISTRICT_ID
-			&& req->district_id != NEIGHBORHOOD_DISTRICT_ID) {
+		if (req->district_id != DISTRIBUTION_HUB_DISTRICT_ID && req->district_id != NEIGHBORHOOD_DISTRICT_ID) {
 			int civ_id = worker->Body.CivID;
 			FOR_TILES_AROUND (tai, is->workable_tile_count, request_city->Body.X, request_city->Body.Y) {
 				Tile * nearby = tai.tile;
@@ -23305,9 +23334,6 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 			}
 		}
 
-		snprintf (ss, sizeof ss, "ai_move_district_worker: Checking for forest or wetlands at worker ID %d location (%d,%d)\n", worker->Body.ID, worker->Body.X, worker->Body.Y);
-		(*p_OutputDebugStringA) (ss);
-
 		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 		unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
 		unsigned int removable_flags = overlay_flags & 0xfc;
@@ -23320,14 +23346,28 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 			handle_district_removed (tile, req->district_id, worker->Body.X, worker->Body.Y, false);
 		}
 
-		// Clear any forest/wetlands first
+		snprintf (ss, sizeof ss, "ai_move_district_worker: Checking for craters or pollution at worker ID %d location (%d,%d)\n", worker->Body.ID, worker->Body.X, worker->Body.Y);
+		(*p_OutputDebugStringA) (ss);
+
+		if (tile->vtable->m21_Check_Crates (tile, __, 0) || tile->vtable->m20_Check_Pollution (tile, __, 0)) {
+			snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d clearing craters or pollution at (%d,%d)\n", worker->Body.ID, worker->Body.X, worker->Body.Y);
+			(*p_OutputDebugStringA) (ss);
+			Unit_set_state(worker, __, UnitState_Clear_Damage);
+			worker->Body.Job_ID = WJ_Clean_Pollution;
+			return true;
+		}
+
+		snprintf (ss, sizeof ss, "ai_move_district_worker: Checking for forest or wetlands at worker ID %d location (%d,%d)\n", worker->Body.ID, worker->Body.X, worker->Body.Y);
+		(*p_OutputDebugStringA) (ss);
+
+		// Clear any forest/wetlands
 		if (base_type == SQ_Forest) {
 			Unit_set_state(worker, __, UnitState_Clear_Forest);
-			worker->Body.Job_ID = 6; // Clear forest
+			worker->Body.Job_ID = WJ_Clean_Forest;
 			return true;
 		} else if ((base_type == SQ_Jungle) || (base_type == SQ_Swamp)) {
 			Unit_set_state(worker, __, UnitState_Clear_Wetlands);
-			worker->Body.Job_ID = 7; // Clear wetlands
+			worker->Body.Job_ID = WJ_Clear_Swamp;
 			return true;
 		}
 
@@ -23341,7 +23381,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		// Start construction of district
 		inst = ensure_district_instance (tile, req->district_id, req->target_x, req->target_y);
 		Unit_set_state(worker, __, UnitState_Build_Mines);
-		worker->Body.Job_ID = 0; // Build district
+		worker->Body.Job_ID = WJ_Build_Mines; // Build district
 		return true;
 
 	// Else if the worker needs to be sent
