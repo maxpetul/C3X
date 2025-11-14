@@ -8396,10 +8396,6 @@ city_has_assigned_wonder_district (City * city, Tile * ignore_tile)
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
 		return false;
 
-	int wonder_district_id = WONDER_DISTRICT_ID;
-	if (wonder_district_id < 0)
-		return false;
-
 	int civ_id = city->Body.CivID;
 	int city_x = city->Body.X;
 	int city_y = city->Body.Y;
@@ -8415,7 +8411,7 @@ city_has_assigned_wonder_district (City * city, Tile * ignore_tile)
 			continue;
 
 		struct district_instance * inst = get_district_instance (candidate);
-		if ((inst == NULL) || (inst->district_type != wonder_district_id))
+		if ((inst == NULL) || (inst->district_type != WONDER_DISTRICT_ID))
 			continue;
 
 		struct wonder_district_info * info = inst ? &inst->wonder_info : NULL;
@@ -8440,10 +8436,6 @@ free_wonder_district_for_city (City * city)
 	if (city_needs_wonder_district (city))
 		return false;
 
-	int wonder_district_id = WONDER_DISTRICT_ID;
-	if (wonder_district_id < 0)
-		return false;
-
 	int city_x = city->Body.X;
 	int city_y = city->Body.Y;
 	for (int n = 0; n < is->workable_tile_count; n++) {
@@ -8455,7 +8447,7 @@ free_wonder_district_for_city (City * city)
 		if (tile == p_null_tile)
 			continue;
 		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL || inst->district_type != wonder_district_id)
+		if (inst == NULL || inst->district_type != WONDER_DISTRICT_ID)
 			continue;
 
 		struct wonder_district_info * info = get_wonder_district_info (tile);
@@ -8467,7 +8459,7 @@ free_wonder_district_for_city (City * city)
 			continue;
 		tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
 
-		handle_district_removed (tile, wonder_district_id, city->Body.X, city->Body.Y, false);
+		handle_district_removed (tile, WONDER_DISTRICT_ID, city->Body.X, city->Body.Y, false);
 		return true;
 	}
 
@@ -8483,8 +8475,6 @@ reserve_wonder_district_for_city (City * city)
 	if (city_has_assigned_wonder_district (city, NULL))
 		return true;
 
-	int wonder_district_id = WONDER_DISTRICT_ID;
-
 	int civ_id = city->Body.CivID;
 	int city_x = city->Body.X;
 	int city_y = city->Body.Y;
@@ -8498,8 +8488,8 @@ reserve_wonder_district_for_city (City * city)
 		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id) continue;
 
 		struct district_instance * inst = get_district_instance (candidate);
-		if (inst == NULL || inst->district_type != wonder_district_id) continue;
-		if (! district_is_complete (candidate, wonder_district_id)) continue;
+		if (inst == NULL || inst->district_type != WONDER_DISTRICT_ID) continue;
+		if (! district_is_complete (candidate, WONDER_DISTRICT_ID)) continue;
 
 		struct wonder_district_info * info = &inst->wonder_info;
 		if (info->state == WDS_COMPLETED) continue;
@@ -8529,10 +8519,6 @@ void
 release_wonder_district_reservation (City * city)
 {
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
-		return;
-
-	int wonder_district_id = WONDER_DISTRICT_ID;
-	if (wonder_district_id < 0)
 		return;
 
 	// Find and remove any reservations for this city
@@ -11934,7 +11920,7 @@ compute_highlighted_worker_tiles_for_districts ()
 			int stored_ptr;
 			if (! itable_look_up (&is->highlighted_city_radius_tile_pointers, (int)city_center_tile, &stored_ptr)) {
 				struct highlighted_city_radius_tile_info * info = malloc (sizeof (struct highlighted_city_radius_tile_info));
-				info->highlight_level = 3;
+				info->highlight_level = 0;
 				itable_insert (&is->highlighted_city_radius_tile_pointers, (int)city_center_tile, (int)info);
 			}
 		}
@@ -12422,14 +12408,79 @@ is_worker_or_settler_command (int unit_command_value)
 bool
 command_would_replace_district (int unit_command_value)
 {
-	// Only these worker commands would replace a district (mine):
-	// - Building a mine
-	// - Irrigation
-	// - Planting forest
-	// Roads, railroads, etc. can coexist with the district
+	// Note: Roads & railroads, etc. can coexist with the district
 	return (unit_command_value == UCV_Build_Mine) ||
 	       (unit_command_value == UCV_Irrigate) ||
-	       (unit_command_value == UCV_Plant_Forest);
+	       (unit_command_value == UCV_Plant_Forest) ||
+		   (unit_command_value == UCV_Build_Outpost) ||
+		   (unit_command_value == UCV_Build_Fortress) ||
+		   (unit_command_value == UCV_Build_Barricade) ||
+		   (unit_command_value == UCV_Build_Airfield) ||
+		   (unit_command_value == UCV_Build_Radar_Tower) ||
+		   (unit_command_value == UCV_Build_Colony);
+}
+
+bool
+handle_worker_command_that_may_replace_district (Unit * unit, int unit_command_value, bool * removed_existing)
+{
+	if (removed_existing != NULL)
+		*removed_existing = false;
+
+	if ((! is->current_config.enable_districts) || (unit == NULL))
+		return true;
+	if (! is_worker_or_settler_command (unit_command_value))
+		return true;
+	if (! command_would_replace_district (unit_command_value))
+		return true;
+	if (! patch_Unit_can_perform_command (unit, __, unit_command_value))
+		return true;
+
+	Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return true;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if ((inst == NULL) || (! district_is_complete (tile, inst->district_type)))
+		return true;
+
+	int tile_x, tile_y;
+	if (! district_instance_get_coords (inst, tile, &tile_x, &tile_y))
+		return false;
+
+	int district_id = inst->district_type;
+	int civ_id = unit->Body.CivID;
+	bool redundant_district = district_instance_is_redundant (inst, tile);
+	bool would_lose_buildings = any_nearby_city_would_lose_district_benefits (district_id, civ_id, tile_x, tile_y);
+	if (redundant_district)
+		would_lose_buildings = false;
+
+	bool remove_existing = redundant_district;
+	if (! remove_existing) {
+		PopupForm * popup = get_popup_form ();
+		set_popup_str_param (0, (char *)is->district_configs[district_id].name, -1, -1);
+		set_popup_str_param (1, (char *)is->district_configs[district_id].name, -1, -1);
+		popup->vtable->set_text_key_and_flags (
+			popup, __, is->mod_script_path,
+			would_lose_buildings
+				? "C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT"
+				: "C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT_SAFE",
+			-1, 0, 0, 0);
+		int sel = patch_show_popup (popup, __, 0, 0);
+		if (sel != 0)
+			return false;
+		remove_existing = true;
+	}
+
+	if (remove_existing) {
+		remove_district_instance (tile);
+		tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+		tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
+		handle_district_removed (tile, district_id, tile_x, tile_y, false);
+		if (removed_existing != NULL)
+			*removed_existing = true;
+	}
+
+	return true;
 }
 
 bool __fastcall
@@ -12544,8 +12595,7 @@ patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y)
 		return false;
 
 	int district_id = inst->district_type;
-	int wonder_district_id = WONDER_DISTRICT_ID;
-	if (district_id != wonder_district_id)
+	if (district_id != WONDER_DISTRICT_ID)
 		return true;
 
 	if (! district_is_complete (tile, district_id))
@@ -12872,60 +12922,15 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 	}
 
 	// Check if command is a worker build command (not a district) and a district exists on the tile
-	if (is->current_config.enable_districts) {
-		if (is_worker_or_settler_command(command) && p_main_screen_form->Current_Unit != NULL) {
-			Unit * unit = p_main_screen_form->Current_Unit;
-			if (patch_Unit_can_perform_command(unit, __, command) && command_would_replace_district(command)) {
-				Tile * tile = tile_at(unit->Body.X, unit->Body.Y);
-
-				if (tile != NULL && tile != p_null_tile) {
-
-					// If district would be replaced by improvement
-					struct district_instance * inst = get_district_instance (tile);
-					if (inst != NULL && district_is_complete(tile, inst->district_type)) {
-						int district_id = inst->district_type;
-							int tile_x, tile_y;
-							if (!district_instance_get_coords (inst, tile, &tile_x, &tile_y))
-								return;
-
-						int civ_id = unit->Body.CivID;
-						bool redundant_district = district_instance_is_redundant (inst, tile);
-						bool would_lose_buildings = any_nearby_city_would_lose_district_benefits (district_id, civ_id, tile_x, tile_y);
-						if (redundant_district)
-							would_lose_buildings = false;
-
-						bool remove_existing = redundant_district;
-						if (! remove_existing) {
-							PopupForm * popup = get_popup_form();
-							set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
-							set_popup_str_param (1, (char*)is->district_configs[district_id].name, -1, -1);
-							popup->vtable->set_text_key_and_flags(
-								popup, __, is->mod_script_path,
-								would_lose_buildings
-									? "C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT"
-									: "C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT_SAFE",
-								-1, 0, 0, 0);
-							int sel = patch_show_popup(popup, __, 0, 0);
-							if (sel == 0)
-								remove_existing = true;
-							else
-								return; // User cancelled, don't execute the command
-						}
-
-						if (remove_existing) {
-							remove_district_instance (tile);
-							tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
-							tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
-							handle_district_removed (tile, district_id, tile_x, tile_y, false);
-
-							clear_something_1();
-							Timer_clear (&this->timer_1);
-							Main_GUI_handle_button_press (this, __, button_id);
-							return;
-						}
-					}
-				}
-			}
+	if (is->current_config.enable_districts && p_main_screen_form->Current_Unit != NULL) {
+		bool removed_existing = false;
+		if (! handle_worker_command_that_may_replace_district (p_main_screen_form->Current_Unit, command, &removed_existing))
+			return;
+		if (removed_existing) {
+			clear_something_1 ();
+			Timer_clear (&this->timer_1);
+			Main_GUI_handle_button_press (this, __, button_id);
+			return;
 		}
 	}
 
@@ -12962,6 +12967,22 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 		Main_GUI_handle_button_press (this, __, button_id);
 }
 
+bool __fastcall
+patch_Main_Screen_Form_issue_command (Main_Screen_Form * this, int edx, int command, Unit * unit)
+{
+	Unit * target_unit = unit;
+	if (target_unit == NULL)
+		target_unit = this->Current_Unit;
+
+	if (is->current_config.enable_districts) {
+		bool removed_existing = false;
+		if (! handle_worker_command_that_may_replace_district (target_unit, command, &removed_existing))
+			return false;
+	}
+
+	return Main_Screen_Form_issue_command (this, __, command, unit);
+}
+
 bool
 is_command_button_active (Main_GUI * main_gui, enum Unit_Command_Values command)
 {
@@ -12991,6 +13012,11 @@ patch_Main_Screen_Form_handle_key_down (Main_Screen_Form * this, int edx, int ch
 				compute_highlighted_worker_tiles_for_districts ();
 				this->vtable->m73_call_m22_Draw ((Base_Form *)this);
 			}
+		}
+	} else {
+		if (is->highlight_city_radii) {
+			is->highlight_city_radii = false;
+			clear_highlighted_worker_tiles_and_redraw ();
 		}
 	}
 
@@ -14695,9 +14721,7 @@ ai_handle_district_production_requirements (City * city, City_Order * out)
 			    (! city_has_wonder_district_with_no_completed_wonder (city))) {
 				needs_wonder_district = true;
 				if (required_district_id < 0) {
-					int wonder_district_id = WONDER_DISTRICT_ID;
-					if (wonder_district_id >= 0)
-						required_district_id = wonder_district_id;
+					required_district_id = WONDER_DISTRICT_ID;
 				}
 			}
 		}
@@ -16111,7 +16135,7 @@ set_wonder_built_flag (int improv_id, bool is_built)
 // When a city adds a building that depends on a district, optionally mirror that
 // building to all other same-civ cities that can also work the district tile.
 void
-copy_building_with_cities_in_radius (City * source, int improv_id, int required_district_id)
+copy_building_with_cities_in_radius (City * source, int improv_id, int required_district_id, int tile_x, int tile_y)
 {
 	if (! is->current_config.enable_districts) return;
 	if (source == NULL) return;
@@ -16125,46 +16149,29 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 	} else if (! is->current_config.cities_with_mutual_district_receive_buildings)
 		return;
 
-	int civ_id = source->Body.CivID;
+	Tile * tile = tile_at (tile_x, tile_y);
+    if (tile == p_null_tile) return;
+    if (tile->vtable->m38_Get_Territory_OwnerID (tile) != source->Body.CivID) return;
 
-	// For each district tile within source city's workable area matching the required district,
-    // copy the building to other cities that can also work that tile.
-	int source_x = source->Body.X;
-	int source_y = source->Body.Y;
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = source_x + dx, y = source_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
-        if (tile == p_null_tile) continue;
-        if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id) continue;
+    struct district_instance * inst = get_district_instance (tile);
+    if (inst == NULL || inst->district_type != required_district_id) return;
+    if (! district_is_complete (tile, required_district_id)) return;
 
-        struct district_instance * inst = get_district_instance (tile);
-        if (inst == NULL || inst->district_type != required_district_id) continue;
-        if (! district_is_complete (tile, required_district_id)) continue;
+    FOR_CITIES_OF (coi, source->Body.CivID) {
+        City * city = coi.city;
+        if (city == NULL) continue;
+        if (city == source) continue;
 
-        int tx, ty;
-        if (! district_instance_get_coords (inst, tile, &tx, &ty)) continue;
+        if (! city_radius_contains_tile (city, tile_x, tile_y))
+			continue;
 
-        FOR_CITIES_OF (coi, civ_id) {
-            City * city = coi.city;
-            if (city == NULL) continue;
-            if (city == source) continue;
+        if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID) 
+			continue;
 
-            // Check if the district tile is inside this city's work radius
-            int ni = Map_compute_neighbor_index (&p_bic_data->Map, __, city->Body.X, city->Body.Y, tx, ty, 1000);
-            int wr = ((ni >= 0) && (ni < ARRAY_LEN (is->ni_to_work_radius))) ? is->ni_to_work_radius[ni] : -1;
-            if ((wr < 0) || (wr > is->current_config.city_work_radius)) continue;
-
-            // Must be within same civ's territory (like the build check)
-            if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID) continue;
-
-            if (! patch_City_has_improvement (city, __, improv_id, false)) {
-                City_add_or_remove_improvement (city, __, improv_id, 1, false);
-            }
+        if (! patch_City_has_improvement (city, __, improv_id, false)) {
+            City_add_or_remove_improvement (city, __, improv_id, 1, false);
         }
-	}
+    }
 }
 
 void
@@ -16289,6 +16296,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 
 	// If the city just finished a wonder and was using a wonder district for that, set the wonder
 	// as completed (which switches the art over and prevents the tile from being used again)
+	int x, y;
 	if (add && is->current_config.enable_districts && is->current_config.enable_wonder_districts) {
 		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
 			int matched_windex = find_wonder_config_index_by_improvement_id (improv_id);
@@ -16299,7 +16307,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 				for (int n = 0; n < is->workable_tile_count; n++) {
 					int dx, dy;
 					patch_ni_to_diff_for_work_area (n, &dx, &dy);
-					int x = city_x + dx, y = city_y + dy;
+					x = city_x + dx, y = city_y + dy;
 					wrap_tile_coords (&p_bic_data->Map, &x, &y);
 					Tile * t = tile_at (x, y);
 					if (t == p_null_tile) continue;
@@ -16387,18 +16395,19 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	}
 
 	// Optionally share district-dependent buildings or wonders to other cities in range of the same district
+	bool allow_wonder_sharing   = is->current_config.cities_with_mutual_district_receive_wonders;
+	bool allow_building_sharing = is->current_config.cities_with_mutual_district_receive_buildings;
+
 	if ((! is->is_placing_scenario_things) && add &&
 	    is->current_config.enable_districts &&
-	    (is->current_config.cities_with_mutual_district_receive_buildings || is->current_config.cities_with_mutual_district_receive_wonders) &&
+	    (allow_building_sharing || allow_wonder_sharing) &&
 	    (! is->sharing_buildings_by_districts_in_progress)) {
-		bool allow_wonder_sharing   = is->current_config.cities_with_mutual_district_receive_wonders;
-		bool allow_building_sharing = is->current_config.cities_with_mutual_district_receive_buildings;
 		int required_district_id;
 		if (itable_look_up (&is->district_building_prereqs, improv_id, &required_district_id)) {
 			bool is_wonder = (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0;
 			if ((is_wonder && allow_wonder_sharing) || (! is_wonder && allow_building_sharing)) {
 				is->sharing_buildings_by_districts_in_progress = true;
-				copy_building_with_cities_in_radius (this, improv_id, required_district_id);
+				copy_building_with_cities_in_radius (this, improv_id, required_district_id, x, y);
 				is->sharing_buildings_by_districts_in_progress = false;
 			}
 		}
@@ -16611,19 +16620,50 @@ remove_extra_palaces (City * city, City * excluded_destination)
 }
 
 void
+grant_nearby_wonders_to_city (City * city)
+{
+	// Give a city any completed wonder districts in work radius, if cities_with_mutual_district_receive_wonders is true.
+	// This is essentially for cases where the original Wonder-constructing city is destroyed, anda new city is built 
+	// that can work the same wonder district tile.
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_wonder_districts ||
+	    ! is->current_config.cities_with_mutual_district_receive_wonders ||
+	    (city == NULL))
+		return;
+
+	for (int n = 0; n < is->workable_tile_count; n++) {
+		int dx, dy;
+		patch_ni_to_diff_for_work_area (n, &dx, &dy);
+		int x = city->Body.X + dx, y = city->Body.Y + dy;
+		wrap_tile_coords (&p_bic_data->Map, &x, &y);
+		Tile * tile = tile_at (x, y);
+
+		// Check if Wonder tile owned by same civ
+		if ((tile == NULL) || (tile == p_null_tile)) continue;
+		if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID) continue;
+
+		// Make sure Wonder is completed
+		struct district_instance * inst = get_district_instance (tile);
+		if ((inst == NULL) || (inst->district_type != WONDER_DISTRICT_ID)) continue;
+		if (! district_is_complete (tile, WONDER_DISTRICT_ID)) continue;
+		struct wonder_district_info * info = &inst->wonder_info;
+		if ((info == NULL) || (info->state != WDS_COMPLETED)) continue;
+
+		// Check that city doesn't already have the Wonder
+		int improv_id = get_wonder_improvement_id_from_index (info->wonder_index);
+		if (improv_id < 0) continue;
+		if (patch_City_has_improvement (city, __, improv_id, false)) continue;
+
+		// Add the Wonder to the city
+		patch_City_add_or_remove_improvement (city, __, improv_id, 1, false);
+	}
+}
+
+void
 on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 {
 	if (reason == CGR_FOUNDED)
 		is->turn_no_of_last_founding_for_settler_perfume[leader->ID] = *p_current_turn_no;
-
-	if (is->current_config.enable_districts) {
-		Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
-		if ((city_tile != NULL) && (city_tile != p_null_tile)) {
-			struct district_instance * inst = get_district_instance (city_tile);
-			if (inst != NULL)
-				handle_district_removed (city_tile, inst->district_type, city->Body.X, city->Body.Y, false);
-		}
-	}
 
 	// Handle extra palaces for AI multi-city start
 	if (((*p_human_player_bits & (1<<leader->ID)) == 0) && // If leader is an AI AND
@@ -16649,13 +16689,36 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 			City_add_or_remove_improvement (city, __, free_extra_palace, 1, false);
 	}
 
-	if (is->current_config.enable_districts &&
-	    (is->current_config.cities_with_mutual_district_receive_buildings ||
-	     is->current_config.cities_with_mutual_district_receive_wonders))
-		grant_existing_district_buildings_to_city (city);
+	if (is->current_config.enable_districts) {
 
-	refresh_distribution_hubs_for_city (city);
-	is->distribution_hub_totals_dirty = true;
+		// Remove any district previously on the tile, if city just founded
+		if (reason == CGR_FOUNDED) {
+			Tile * city_tile = tile_at (city->Body.X, city->Body.Y);
+			if ((city_tile != NULL) && (city_tile != p_null_tile)) {
+				struct district_instance * inst = get_district_instance (city_tile);
+				if (inst != NULL)
+					handle_district_removed (city_tile, inst->district_type, city->Body.X, city->Body.Y, false);
+			}
+		}
+
+		bool receive_buildings = is->current_config.cities_with_mutual_district_receive_buildings;
+		bool receive_wonders   = is->current_config.cities_with_mutual_district_receive_wonders;
+
+		// Grant buildings and wonders from nearby completed districts owned by other cities of same civ, if enabled
+		if (receive_buildings || receive_wonders) {
+			grant_existing_district_buildings_to_city (city);
+		}
+
+		// Grant wonders nearby in same territory, regardless of city (i.e., orphaned wonders from destroyed cities), if enabled
+		if (receive_wonders) {
+			grant_nearby_wonders_to_city (city);
+		}
+
+		if (is->current_config.enable_distribution_hub_districts) {
+			refresh_distribution_hubs_for_city (city);
+			is->distribution_hub_totals_dirty = true;
+		}
+	}
 }
 
 void
@@ -18461,11 +18524,24 @@ patch_Leader_do_production_phase (Leader * this)
 			// Wonders
 			if (is->current_config.enable_wonder_districts) {
 				if (city_is_currently_building_wonder (city)) {
-					bool has_wonder_district = reserve_wonder_district_for_city (city);
-					if (! has_wonder_district) {
-						needs_halt = true;
-						req_district_id = WONDER_DISTRICT_ID;
-						district_description = "Wonder District";
+					bool wonder_requires_district = false;
+					int wonder_district_id = WONDER_DISTRICT_ID;
+					if ((i_improv >= 0) && (wonder_district_id >= 0)) {
+						int required_id;
+						if (itable_look_up (&is->district_building_prereqs, i_improv, &required_id) &&
+						    (required_id == wonder_district_id))
+							wonder_requires_district = true;
+					}
+
+					if (wonder_requires_district) {
+						bool has_wonder_district = reserve_wonder_district_for_city (city);
+						if (! has_wonder_district) {
+							needs_halt = true;
+							req_district_id = WONDER_DISTRICT_ID;
+							district_description = "Wonder District";
+						}
+					} else {
+						release_wonder_district_reservation (city);
 					}
 				} else {
 					release_wonder_district_reservation (city);
@@ -23714,7 +23790,7 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 	int city_x = city->Body.X;
 	int city_y = city->Body.Y;
 
-	// District yields are injected through the city center tile in patch_City_calc_tile_yield_at.
+	// District yields are injected through the city center tile in patch_City_calc_tile_yield_while_gathering.
 	// Grab the base yield (no districts) directly from the original function, then compute the
 	// district bonus that calculate_city_center_district_bonus will layer on afterward.
 	int city_center_base_shields = City_calc_tile_yield_at (city, __, YK_SHIELDS, city_x, city_y);
@@ -24006,7 +24082,7 @@ patch_Unit_seek_colony (Unit * this, int edx, bool for_own_defense, int max_dist
 					continue;
 
 				struct district_instance * inst = get_district_instance (district_tile);
-				if ((inst == NULL) || (inst->district_type != WONDER_DISTRICT_ID || inst->district_type != DISTRIBUTION_HUB_DISTRICT_ID))
+				if ((inst == NULL) || (inst->district_type != WONDER_DISTRICT_ID && inst->district_type != DISTRIBUTION_HUB_DISTRICT_ID))
 					continue;
 
 				int tile_x, tile_y;
