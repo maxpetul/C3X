@@ -22000,6 +22000,8 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 		if (center_screen_x < 0)
 			center_screen_x += p_bic_data->Map.Width * tile_half_width;
 		center_screen_y += tile_half_height;
+		if (center_screen_y < 0)
+			center_screen_y += p_bic_data->Map.Height * tile_half_height;
 
 		int remaining_utilized_neighborhoods = 0;
 		if (is->current_config.enable_neighborhood_districts)
