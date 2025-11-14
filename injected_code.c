@@ -14660,8 +14660,18 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 	    (i_improv >= 0) && (i_improv < p_bic_data->ImprovementsCount)) {
 		Improvement * improv = &p_bic_data->Improvements[i_improv];
 		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
-			// Can only build wonders if an incomplete wonder district exists
-			if (! city_has_wonder_district_with_no_completed_wonder (this))
+			bool wonder_requires_district = false;
+			int wonder_district_id = WONDER_DISTRICT_ID;
+			if (wonder_district_id >= 0) {
+				int required_id;
+				if (itable_look_up (&is->district_building_prereqs, i_improv, &required_id) &&
+				    (required_id == wonder_district_id))
+					wonder_requires_district = true;
+			}
+
+			// Can only build wonders that need districts if an incomplete wonder district exists
+			if (wonder_requires_district &&
+			    ! city_has_wonder_district_with_no_completed_wonder (this))
 				return false;
 		}
 	}
