@@ -16149,29 +16149,61 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 	} else if (! is->current_config.cities_with_mutual_district_receive_buildings)
 		return;
 
-	Tile * tile = tile_at (tile_x, tile_y);
-    if (tile == p_null_tile) return;
-    if (tile->vtable->m38_Get_Territory_OwnerID (tile) != source->Body.CivID) return;
+	// If a Wonder, we know the specific tile it is at, so determine which other cities have that in work radius.
+	if (is_wonder) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if (tile == p_null_tile) return;
+		if (tile->vtable->m38_Get_Territory_OwnerID (tile) != source->Body.CivID) return;
 
-    struct district_instance * inst = get_district_instance (tile);
-    if (inst == NULL || inst->district_type != required_district_id) return;
-    if (! district_is_complete (tile, required_district_id)) return;
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst == NULL || inst->district_type != required_district_id) return;
+		if (! district_is_complete (tile, required_district_id)) return;
+		
+		FOR_CITIES_OF (coi, source->Body.CivID) {
+			City * city = coi.city;
+			if (city == NULL) continue;
+			if (city == source) continue;
 
-    FOR_CITIES_OF (coi, source->Body.CivID) {
-        City * city = coi.city;
-        if (city == NULL) continue;
-        if (city == source) continue;
+			if (! city_radius_contains_tile (city, tile_x, tile_y))
+				continue;
 
-        if (! city_radius_contains_tile (city, tile_x, tile_y))
-			continue;
+			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID) 
+				continue;
 
-        if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID) 
-			continue;
+			if (! patch_City_has_improvement (city, __, improv_id, false)) {
+				City_add_or_remove_improvement (city, __, improv_id, 1, false);
+			}
+    	}
+	} 
+	// Else there may be multiple district instances of this type, so check each tile around the city
+	else {
+		for (int n = 0; n < is->workable_tile_count; n++) {
+			int dx, dy;
+			patch_ni_to_diff_for_work_area (n, &dx, &dy);
+			int x = source->Body.X + dx, y = source->Body.Y + dy;
+			wrap_tile_coords (&p_bic_data->Map, &x, &y);
+			Tile * tile = tile_at (x, y);
+			if (tile == p_null_tile) continue;
+			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != source->Body.CivID) continue;
 
-        if (! patch_City_has_improvement (city, __, improv_id, false)) {
-            City_add_or_remove_improvement (city, __, improv_id, 1, false);
-        }
-    }
+			struct district_instance * inst = get_district_instance (tile);
+			if (inst == NULL || inst->district_type != required_district_id) continue;
+			if (! district_is_complete (tile, required_district_id)) continue;
+
+			FOR_CITIES_OF (coi, source->Body.CivID) {
+				City * city = coi.city;
+				if (city == NULL) continue;
+				if (city == source) continue;
+
+				if (! city_radius_contains_tile (city, x, y))
+					continue;
+
+				if (! patch_City_has_improvement (city, __, improv_id, false)) {
+					City_add_or_remove_improvement (city, __, improv_id, 1, false);
+				}
+			}
+		}
+	}
 }
 
 void
@@ -16399,13 +16431,13 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	bool allow_building_sharing = is->current_config.cities_with_mutual_district_receive_buildings;
 
 	if ((! is->is_placing_scenario_things) && add &&
-	    is->current_config.enable_districts &&
-	    (allow_building_sharing || allow_wonder_sharing) &&
+	    is->current_config.enable_districts && (allow_building_sharing || allow_wonder_sharing) &&
 	    (! is->sharing_buildings_by_districts_in_progress)) {
 		int required_district_id;
 		if (itable_look_up (&is->district_building_prereqs, improv_id, &required_district_id)) {
 			bool is_wonder = (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0;
-			if ((is_wonder && allow_wonder_sharing) || (! is_wonder && allow_building_sharing)) {
+			if ((! is_wonder && allow_building_sharing) || (is_wonder && allow_wonder_sharing)) {
+				pop_up_in_game_error ("patch_City_add_or_remove_improvement: sharing buildings by districts");
 				is->sharing_buildings_by_districts_in_progress = true;
 				copy_building_with_cities_in_radius (this, improv_id, required_district_id, x, y);
 				is->sharing_buildings_by_districts_in_progress = false;
