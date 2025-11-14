@@ -23489,6 +23489,12 @@ patch_Unit_select (Unit * this)
 		}
 	}
 
+	// Sometimes clearing of highlighted tiles doesn't trigger when CTRL lifted, so double-check here
+	if (is->current_config.enable_city_work_radii_highlights && is->highlight_city_radii) {
+		is->highlight_city_radii = false;
+		clear_highlighted_worker_tiles_and_redraw ();
+	}
+
 	Unit_select (this);
 }
 
