@@ -7143,52 +7143,6 @@ calculate_city_center_district_bonus (City * city, int * out_food, int * out_shi
 }
 
 int __fastcall
-patch_City_calc_tile_yield_at (City * this, int edx, int yield_type, int tile_x, int tile_y)
-{
-	int tr = City_calc_tile_yield_at (this, __, yield_type, tile_x, tile_y);
-
-	Tile * tile = tile_at (tile_x, tile_y);
-	if (is->current_config.enable_districts && tile != NULL && tile != p_null_tile) {
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst != NULL && district_is_complete (tile, inst->district_type)) {
-			return 0;
-		}
-
-		// If distribution hubs are enabled, check if this tile is in the civ's territory
-		// and covered by a hub - if so, return 0
-		if (is->current_config.enable_distribution_hub_districts) {
-			int civ_id = this->Body.CivID;
-			if (tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id) {
-				int coverage = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
-				if (coverage > 0)
-					return 0;
-			}
-
-			// Check if any adjacent tile is a distribution hub
-			FOR_TILES_AROUND (tai, workable_tile_counts[1], tile_x, tile_y) {
-				Tile * adj_tile = tai.tile;
-				if (adj_tile == p_null_tile)
-					continue;
-
-				int adj_x, adj_y;
-				tai_get_coords (&tai, &adj_x, &adj_y);
-
-				// Skip the center tile (we already checked it)
-				if (adj_x == tile_x && adj_y == tile_y)
-					continue;
-
-				struct district_instance * adj_inst = get_district_instance (adj_tile);
-				if (adj_inst != NULL && adj_inst->district_type == DISTRIBUTION_HUB_DISTRICT_ID &&
-				    district_is_complete (adj_tile, DISTRIBUTION_HUB_DISTRICT_ID)) {
-					return 0;
-				}
-			}
-		}
-	}
-	return tr;
-}
-
-int __fastcall
 patch_Map_calc_food_yield_at (Map * this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city)
 {
 	if (! is->current_config.enable_districts)
