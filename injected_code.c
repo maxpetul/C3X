@@ -3839,9 +3839,6 @@ distribution_hub_accessible_to_city (struct distribution_hub_record * rec, City 
 	if (anchor_city == city)
 		return true;
 
-	if (is->trade_net == NULL)
-		return false;
-
 	return Trade_Net_have_trade_connection (is->trade_net, __, anchor_city, city, rec->civ_id);
 }
 
