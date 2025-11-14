@@ -16158,7 +16158,7 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 		struct district_instance * inst = get_district_instance (tile);
 		if (inst == NULL || inst->district_type != required_district_id) return;
 		if (! district_is_complete (tile, required_district_id)) return;
-		
+
 		FOR_CITIES_OF (coi, source->Body.CivID) {
 			City * city = coi.city;
 			if (city == NULL) continue;
@@ -16437,7 +16437,6 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 		if (itable_look_up (&is->district_building_prereqs, improv_id, &required_district_id)) {
 			bool is_wonder = (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0;
 			if ((! is_wonder && allow_building_sharing) || (is_wonder && allow_wonder_sharing)) {
-				pop_up_in_game_error ("patch_City_add_or_remove_improvement: sharing buildings by districts");
 				is->sharing_buildings_by_districts_in_progress = true;
 				copy_building_with_cities_in_radius (this, improv_id, required_district_id, x, y);
 				is->sharing_buildings_by_districts_in_progress = false;
