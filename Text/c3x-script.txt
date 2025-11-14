@@ -163,7 +163,7 @@ No, nevermind.
 
 #C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT_SAFE
 #advisor Domestic
-A $DISTRICT0 exists here, but either it has no dependent buildings or another $DISTRICT1 is nearby so no buildings will be lost. Do you want to proceed?
+A $DISTRICT0 exists here, but either it has no dependent buildings or another $DISTRICT1 is nearby, so no buildings will be lost. Do you want to proceed?
 #itemlist
 Yes. There are better uses for this area.
 No, nevermind.
@@ -184,7 +184,7 @@ No, nevermind.
 
 #C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT_SAFE
 #advisor Domestic
-A $DISTRICT0 exists here, but either it has no dependent buildings or another $DISTRICT1 is nearby so no buildings will be lost. Do you want to proceed?
+A $DISTRICT0 exists here, but either it has no dependent buildings or another $DISTRICT1 is nearby, so no buildings will be lost. Do you want to proceed?
 #itemlist
 Yes. There are better uses for this area.
 No, nevermind.

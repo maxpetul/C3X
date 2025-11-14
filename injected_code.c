@@ -12426,14 +12426,10 @@ handle_worker_command_that_may_replace_district (Unit * unit, int unit_command_v
 	if (removed_existing != NULL)
 		*removed_existing = false;
 
-	if ((! is->current_config.enable_districts) || (unit == NULL))
-		return true;
-	if (! is_worker_or_settler_command (unit_command_value))
-		return true;
-	if (! command_would_replace_district (unit_command_value))
-		return true;
-	if (! patch_Unit_can_perform_command (unit, __, unit_command_value))
-		return true;
+	if ((! is->current_config.enable_districts) || (unit == NULL)) return true;
+	if (! is_worker_or_settler_command (unit_command_value)) return true;
+	if (! command_would_replace_district (unit_command_value)) return true;
+	if (! patch_Unit_can_perform_command (unit, __, unit_command_value)) return true;
 
 	Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
 	if ((tile == NULL) || (tile == p_null_tile))
@@ -12455,7 +12451,7 @@ handle_worker_command_that_may_replace_district (Unit * unit, int unit_command_v
 		would_lose_buildings = false;
 
 	bool remove_existing = redundant_district;
-	if (! remove_existing) {
+	if (inst != NULL) {
 		PopupForm * popup = get_popup_form ();
 		set_popup_str_param (0, (char *)is->district_configs[district_id].name, -1, -1);
 		set_popup_str_param (1, (char *)is->district_configs[district_id].name, -1, -1);
