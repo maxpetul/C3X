@@ -16623,7 +16623,7 @@ void
 grant_nearby_wonders_to_city (City * city)
 {
 	// Give a city any completed wonder districts in work radius, if cities_with_mutual_district_receive_wonders is true.
-	// This is essentially for cases where the original Wonder-constructing city is destroyed, anda new city is built 
+	// This is essentially for cases where the original Wonder-constructing city is destroyed and a new city is built 
 	// that can work the same wonder district tile.
 	if (! is->current_config.enable_districts ||
 	    ! is->current_config.enable_wonder_districts ||
