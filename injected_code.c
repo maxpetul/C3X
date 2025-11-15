@@ -4546,7 +4546,7 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 }
 
 void
-clear_dynamic_district_definitions (void)
+reset_regular_district_configs (void)
 {
 	for (int i = USED_SPECIAL_DISTRICT_TYPES; i < COUNT_DISTRICT_TYPES; i++) {
 		if (is->district_configs[i].is_dynamic)
@@ -4556,21 +4556,36 @@ clear_dynamic_district_definitions (void)
 	for (int i = 0; i < USED_SPECIAL_DISTRICT_TYPES; i++)
 		free_special_district_override_strings (&is->district_configs[i], &special_district_defaults[i]);
 
+	memset (is->district_configs, 0, sizeof is->district_configs);
+	for (int i = 0; i < USED_SPECIAL_DISTRICT_TYPES; i++)
+		is->district_configs[i] = special_district_defaults[i];
+
+	is->special_district_count = USED_SPECIAL_DISTRICT_TYPES;
+	is->dynamic_district_count = 0;
+	is->district_count = is->special_district_count;
+	is->next_custom_dynamic_command_index = 0;
+}
+
+void
+reset_wonder_district_configs (void)
+{
 	for (int i = 0; i < MAX_WONDER_DISTRICT_TYPES; i++) {
 		if (is->wonder_district_configs[i].is_dynamic)
 			free_dynamic_wonder_config (&is->wonder_district_configs[i]);
 	}
 
+	memset (is->wonder_district_configs, 0, sizeof is->wonder_district_configs);
+	is->wonder_district_count = 0;
+}
+
+void
+reset_natural_wonder_configs (void)
+{
 	for (int i = 0; i < MAX_NATURAL_WONDER_DISTRICT_TYPES; i++) {
 		if (is->natural_wonder_configs[i].is_dynamic)
 			free_dynamic_natural_wonder_config (&is->natural_wonder_configs[i]);
 	}
 
-	memset (is->district_configs, 0, sizeof is->district_configs);
-	for (int i = 0; i < USED_SPECIAL_DISTRICT_TYPES; i++)
-		is->district_configs[i] = special_district_defaults[i];
-
-	memset (is->wonder_district_configs, 0, sizeof is->wonder_district_configs);
 	memset (is->natural_wonder_configs, 0, sizeof is->natural_wonder_configs);
 	for (int i = 0; i < MAX_NATURAL_WONDER_DISTRICT_TYPES; i++) {
 		is->natural_wonder_configs[i].adjacent_to = (enum SquareTypes)SQ_INVALID;
@@ -4579,13 +4594,15 @@ clear_dynamic_district_definitions (void)
 	for (int i = 0; i < MAX_NATURAL_WONDER_DISTRICT_TYPES; i++)
 		is->natural_wonder_img_sets[i].img.vtable = NULL;
 	stable_deinit (&is->natural_wonder_name_to_id);
-
-	is->special_district_count = USED_SPECIAL_DISTRICT_TYPES;
-	is->dynamic_district_count = 0;
-	is->district_count = is->special_district_count;
-	is->wonder_district_count = 0;
 	is->natural_wonder_count = 0;
-	is->next_custom_dynamic_command_index = 0;
+}
+
+void
+clear_dynamic_district_definitions (void)
+{
+	reset_regular_district_configs ();
+	reset_wonder_district_configs ();
+	reset_natural_wonder_configs ();
 }
 
 void
@@ -5174,7 +5191,10 @@ handle_district_definition_key (struct parsed_district_definition * def,
 }
 
 void
-load_dynamic_district_config_file (char const * file_path, int path_is_relative_to_mod_dir, int log_missing)
+load_dynamic_district_config_file (char const * file_path,
+				   int path_is_relative_to_mod_dir,
+				   int log_missing,
+				   int drop_existing_configs)
 {
 	char path[MAX_PATH];
 	if (path_is_relative_to_mod_dir) {
@@ -5195,6 +5215,9 @@ load_dynamic_district_config_file (char const * file_path, int path_is_relative_
 		}
 		return;
 	}
+
+	if (drop_existing_configs)
+		reset_regular_district_configs ();
 
 	struct parsed_district_definition def;
 	init_parsed_district_definition (&def);
@@ -5300,15 +5323,15 @@ load_dynamic_district_config_file (char const * file_path, int path_is_relative_
 void
 load_dynamic_district_configs (void)
 {
-	load_dynamic_district_config_file ("default.districts_config.txt", 1, 1);
-	load_dynamic_district_config_file ("user.districts_config.txt", 1, 0);
+	load_dynamic_district_config_file ("default.districts_config.txt", 1, 1, 0);
+	load_dynamic_district_config_file ("user.districts_config.txt", 1, 0, 1);
 
 	char * scenario_file_name = "scenario.districts_config.txt";
 	char * scenario_path = NULL;
 	if (p_bic_data != NULL)
 		scenario_path = BIC_get_asset_path (p_bic_data, __, scenario_file_name, false);
 	if ((scenario_path != NULL) && (0 != strcmp (scenario_file_name, scenario_path)))
-		load_dynamic_district_config_file (scenario_path, 0, 0);
+		load_dynamic_district_config_file (scenario_path, 0, 0, 1);
 }
 
 
@@ -5542,7 +5565,10 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 }
 
 void
-load_dynamic_wonder_config_file (char const * file_path, int path_is_relative_to_mod_dir, int log_missing)
+load_dynamic_wonder_config_file (char const * file_path,
+				 int path_is_relative_to_mod_dir,
+				 int log_missing,
+				 int drop_existing_configs)
 {
 	char path[MAX_PATH];
 	if (path_is_relative_to_mod_dir) {
@@ -5563,6 +5589,9 @@ load_dynamic_wonder_config_file (char const * file_path, int path_is_relative_to
 		}
 		return;
 	}
+
+	if (drop_existing_configs)
+		reset_wonder_district_configs ();
 
 	struct parsed_wonder_definition def;
 	init_parsed_wonder_definition (&def);
@@ -5668,14 +5697,14 @@ load_dynamic_wonder_config_file (char const * file_path, int path_is_relative_to
 void
 load_dynamic_wonder_configs (void)
 {
-	load_dynamic_wonder_config_file ("default.districts_wonders_config.txt", 1, 1);
-	load_dynamic_wonder_config_file ("user.districts_wonders_config.txt", 1, 0);
+	load_dynamic_wonder_config_file ("default.districts_wonders_config.txt", 1, 1, 0);
+	load_dynamic_wonder_config_file ("user.districts_wonders_config.txt", 1, 0, 1);
 	char * scenario_file_name = "scenario.districts_wonders_config.txt";
 	char * scenario_path = NULL;
 	if (p_bic_data != NULL)
 		scenario_path = BIC_get_asset_path (p_bic_data, __, scenario_file_name, false);
 	if ((scenario_path != NULL) && (0 != strcmp (scenario_file_name, scenario_path)))
-		load_dynamic_wonder_config_file (scenario_path, 0, 0);
+		load_dynamic_wonder_config_file (scenario_path, 0, 0, 1);
 }
 
 struct parsed_natural_wonder_definition {
@@ -5994,7 +6023,10 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 }
 
 void
-load_natural_wonder_config_file (char const * file_path, int path_is_relative_to_mod_dir, int log_missing)
+load_natural_wonder_config_file (char const * file_path,
+				 int path_is_relative_to_mod_dir,
+				 int log_missing,
+				 int drop_existing_configs)
 {
 	char path[MAX_PATH];
 	if (path_is_relative_to_mod_dir) {
@@ -6015,6 +6047,9 @@ load_natural_wonder_config_file (char const * file_path, int path_is_relative_to
 		}
 		return;
 	}
+
+	if (drop_existing_configs)
+		reset_natural_wonder_configs ();
 
 	struct parsed_natural_wonder_definition def;
 	init_parsed_natural_wonder_definition (&def);
@@ -6120,14 +6155,14 @@ load_natural_wonder_config_file (char const * file_path, int path_is_relative_to
 void
 load_natural_wonder_configs (void)
 {
-	load_natural_wonder_config_file ("default.districts_natural_wonders_config.txt", 1, 1);
-	load_natural_wonder_config_file ("user.districts_natural_wonders_config.txt", 1, 0);
+	load_natural_wonder_config_file ("default.districts_natural_wonders_config.txt", 1, 1, 0);
+	load_natural_wonder_config_file ("user.districts_natural_wonders_config.txt", 1, 0, 1);
 	char * scenario_file_name = "scenario.districts_natural_wonders_config.txt";
 	char * scenario_path = NULL;
 	if (p_bic_data != NULL)
 		scenario_path = BIC_get_asset_path (p_bic_data, __, scenario_file_name, false);
 	if ((scenario_path != NULL) && (0 != strcmp (scenario_file_name, scenario_path)))
-		load_natural_wonder_config_file (scenario_path, 0, 0);
+		load_natural_wonder_config_file (scenario_path, 0, 0, 1);
 }
 
 bool
