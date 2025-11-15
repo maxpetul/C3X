@@ -766,6 +766,12 @@ enum Unit_Command_Values
   UCV_Rename		      = 0x40010000,
 
   UCV_Stack_Bombard = 0x80000001,
+
+  // District Actions
+  UCV_Build_Neighborhood = -10000001,
+  UCV_Build_WonderDistrict = -10000002,
+  UCV_Build_DistributionHub = -10000003,
+  UCV_Build_Aerodrome = -10000004,
 };
 
 enum Unit_Mode_Actions

@@ -20,7 +20,7 @@ Notes about installation:
 3. To uninstall the mod, delete the modded executable then rename the backed up version mentioned above to "Civ3Conquests.exe".
 4. It is not necessary to uninstall the mod before installing a different version.
 5. Even after installation, the mod still depends on some files in the mod folder, so you need to keep it around.
-6. Rômulo Prado reports that RUN.bat started working for him after he installed the MS Visual C++ Redistributables versions 2005 and 2019 (while installing GOG Galaxy).
+6. Rï¿½mulo Prado reports that RUN.bat started working for him after he installed the MS Visual C++ Redistributables versions 2005 and 2019 (while installing GOG Galaxy).
 
 ## Configuration
 All aspects of C3X are configurable through INI text files. The basic INI file is called "default.c3x_config.ini" and is located in the mod folder. For example, if you want to turn off grouping of units on the right-click menu (that's what gives you "3x Spearman" instead of 3 identical Spearman entries), you could open that file in any text editor, find the line `group_units_on_right_click_menu = true`, and set it to `false`.
@@ -255,7 +255,7 @@ C3X is open source. The C code that gets injected into the game's EXE is located
 
 ## Special Thanks
 1. Antal1987 for his work reverse engineering Civ3
-2. Rômulo Prado for his help testing the mod
+2. Rï¿½mulo Prado for his help testing the mod
 3. Civinator for the German translation. See: https://www.civforum.de/showthread.php?113285-Der-Flintlock-Deutsch-Patch
 4. Vaughn Parker for generously commissioning the port to the PCGames.de EXE and many other features
 5. instafluff0 for contributing the day/night cycle feature

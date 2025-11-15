@@ -1,0 +1,152 @@
+#District
+name                  = Encampment
+tooltip               = Build Encampment
+img_paths             = Encampment.pcx
+btn_tile_sheet_row    = 1
+btn_tile_sheet_column = 2
+vary_img_by_era       = 1
+vary_img_by_culture   = 0
+advance_prereq        = Warrior Code
+dependent_improvs     = Barracks,"SAM Missile Battery"
+defense_bonus_percent = 50
+allow_multiple        = 1
+culture_bonus         = 0
+science_bonus         = 0
+food_bonus            = 0
+gold_bonus            = 0
+shield_bonus          = 0
+
+#District
+name                  = Holy Site
+tooltip               = Build Holy Site
+img_paths             = HolySite_AMER.pcx, HolySite_EURO.pcx, HolySite_ROMAN.pcx, HolySite_MIDEAST.pcx, HolySite_ASIAN.pcx
+btn_tile_sheet_row    = 1
+btn_tile_sheet_column = 3
+vary_img_by_era       = 0
+vary_img_by_culture   = 1
+advance_prereq        = "Ceremonial Burial"
+dependent_improvs     = Temple,Cathedral
+defense_bonus_percent = 0
+allow_multiple        = 1
+culture_bonus         = 2
+science_bonus         = 0
+food_bonus            = 0
+gold_bonus            = 0
+shield_bonus          = 0
+
+#District
+name                  = Campus
+tooltip               = Build Campus
+img_paths             = Campus.pcx
+btn_tile_sheet_row    = 1
+btn_tile_sheet_column = 4
+vary_img_by_era       = 1
+vary_img_by_culture   = 0
+advance_prereq        = Literature
+dependent_improvs     = Library, University, "Research Lab"
+defense_bonus_percent = 0
+allow_multiple        = 1
+culture_bonus         = 1
+science_bonus         = 2
+food_bonus            = 0
+gold_bonus            = 0
+shield_bonus          = 0
+
+#District
+name                  = Entertainment Complex
+tooltip               = Build Entertainment Complex
+img_paths             = EntertainmentComplex_AMER.pcx, EntertainmentComplex_EURO.pcx, EntertainmentComplex_ROMAN.pcx, EntertainmentComplex_MIDEAST.pcx, EntertainmentComplex_ASIAN.pcx
+btn_tile_sheet_row    = 1
+btn_tile_sheet_column = 5
+vary_img_by_era       = 1
+vary_img_by_culture   = 1
+advance_prereq        = Construction
+dependent_improvs     = Colosseum
+defense_bonus_percent = 0
+allow_multiple        = 1
+culture_bonus         = 1
+science_bonus         = 0
+food_bonus            = 0
+gold_bonus            = 2
+shield_bonus          = 0
+
+#District
+name                  = Commercial Hub
+tooltip               = Build Commercial Hub
+img_paths             = CommercialHub_AMER.pcx, CommercialHub_EURO.pcx, CommercialHub_ROMAN.pcx, CommercialHub_MIDEAST.pcx, CommercialHub_ASIAN.pcx
+btn_tile_sheet_row    = 1
+btn_tile_sheet_column = 6
+vary_img_by_era       = 1
+vary_img_by_culture   = 1
+advance_prereq        = Currency
+dependent_improvs     = Marketplace, Bank, "Stock Exchange"
+defense_bonus_percent = 0
+allow_multiple        = 1
+culture_bonus         = 0
+science_bonus         = 0
+food_bonus            = 0
+gold_bonus            = 2
+shield_bonus          = 0
+
+#District
+name                  = Industrial Zone
+tooltip               = Build Industrial Zone
+img_paths             = IndustrialZone.pcx
+btn_tile_sheet_row    = 1
+btn_tile_sheet_column = 7
+vary_img_by_era       = 1
+vary_img_by_culture   = 0
+advance_prereq        = Industrialization
+dependent_improvs     = Factory, "Manufacturing Plant"
+defense_bonus_percent = 0
+allow_multiple        = 1
+culture_bonus         = 0
+science_bonus         = 0
+food_bonus            = 0
+gold_bonus            = 0
+shield_bonus          = 4
+
+#District
+name                  = Neighborhood
+advance_prereq        = 
+defense_bonus_percent = 25
+allow_multiple        = 1
+culture_bonus         = 1
+science_bonus         = 1
+food_bonus            = 0
+gold_bonus            = 1
+shield_bonus          = 0
+
+#District
+name                  = Wonder District
+advance_prereq        = 
+defense_bonus_percent = 0
+allow_multiple        = 1
+culture_bonus         = 0
+science_bonus         = 0
+food_bonus            = 0
+gold_bonus            = 0
+shield_bonus          = 0
+
+#District
+name                  = Distribution Hub
+advance_prereq        = Construction
+defense_bonus_percent = 0
+allow_multiple        = 1
+culture_bonus         = 0
+science_bonus         = 0
+food_bonus            = 0
+gold_bonus            = 0
+shield_bonus          = 0
+
+#District
+name                  = Aerodrome
+advance_prereq        = Flight
+dependent_improvs     = Airport
+defense_bonus_percent = 0
+allow_multiple        = 1
+culture_bonus         = 0
+science_bonus         = 0
+food_bonus            = 0
+gold_bonus            = 0
+shield_bonus          = 0
