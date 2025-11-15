@@ -444,11 +444,11 @@ get_work_ring_limit_by_improvements (City * city)
 		for (int n = 0; n < is->current_config.count_work_area_improvements; n++) {
 			struct work_area_improvement * work_area_improvement = &is->current_config.work_area_improvements[n];
 			if (work_area_improvement->work_area_radius_limit > maxRadius &&
-			    (work_area_improvement->improv_id == SHRT_MAX || has_active_building (city, work_area_improvement->improv_id))) {
+			    (work_area_improvement->improv_id == -1 || has_active_building (city, work_area_improvement->improv_id))) {
 				maxRadius = work_area_improvement->work_area_radius_limit;
 			}
 			if (work_area_improvement->work_area_radius_bonus > 0 &&
-				(work_area_improvement->improv_id == SHRT_MAX || has_active_building (city, work_area_improvement->improv_id))) {
+				(work_area_improvement->improv_id == -1 || has_active_building (city, work_area_improvement->improv_id))) {
 				bonusRadius += work_area_improvement->work_area_radius_bonus;
 			}
 		}
@@ -1342,7 +1342,7 @@ parse_work_area_improvement (char ** p_cursor, struct error_line ** p_unrecogniz
 
 		int improv_id;
 		if (slice_matches_str (&improv_name, "default")) {
-			out->improv_id = SHRT_MAX;
+			out->improv_id = -1;
 			*p_cursor = cur;
 			return RPR_OK;
 		} else if (find_improv_id_by_name (&improv_name, &improv_id)) {
@@ -14022,7 +14022,6 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 			}
 		}
 	}
-	//Do we need to do stuff here??
 
 	// Pick out which resources are used as mill inputs
 	if (is->mill_input_resource_bits)
