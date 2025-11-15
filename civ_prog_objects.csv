@@ -813,7 +813,7 @@ ignore,	   0x4507B0,	0x452860,	0x0,		"Unit_ai_move_offensive_unit",			"void (__f
 ignore,    0x44C340,	0x0,		0x0,		"Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
 ignore,    0x558F70,	0x0,		0x0,		"Leader_is_enemy_unit",				"char (__fastcall *) (Leader * this, int edx, Unit * unit)"
 ignore,	   0x4BFD40,	0x0,		0x0,		"City_get_turns_to_build",			"int (__fastcall *) (City * this, int edx, int order_type, int order_id, char param_3)"
-inlead,    0x4BFF80,	0x0,		0x0,		"City_can_build_improvement",			"bool (__fastcall *) (City * this, int edx, int i_improv, char param_2)"
+inlead,    0x4BFF80,	0x0,		0x0,		"City_can_build_improvement",			"bool (__fastcall *) (City * this, int edx, int i_improv, bool apply_strict_rules)"
 ignore,	   0x4E3D90,	0x0,		0x0,		"Main_Screen_Form_is_unit_hidden_from_player",	"bool (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit)"
 ignore,	   0x4E8850,	0x4F14E0,	0x4E8910,	"Main_Screen_Form_open_right_click_unit_menu",	"void (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)"
 ignore,	   0x4DBA70,	0x0,		0x0,		"Main_Screen_Form_set_selected_unit",		"void (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit, bool param_2)"

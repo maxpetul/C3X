@@ -14599,10 +14599,10 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 }
 
 bool __fastcall
-patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param_2)
+patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply_strict_rules)
 {
 	// First defer to the base game's logic
-	bool base = City_can_build_improvement (this, __, i_improv, param_2);
+	bool base = City_can_build_improvement (this, __, i_improv, apply_strict_rules);
 	if (! base) return false;
 	if (! is->current_config.enable_districts) return base;
 
@@ -14620,9 +14620,9 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 				wonder_requires_district = true;
 
 			// Can only build wonders that need districts if an incomplete wonder district exists
-			if (wonder_requires_district &&
-			    ! city_has_wonder_district_with_no_completed_wonder (this))
-				return false;
+				if (wonder_requires_district &&
+				    ! city_has_wonder_district_with_no_completed_wonder (this))
+					return !apply_strict_rules;
 		}
 	}
 
@@ -14632,9 +14632,9 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool param
 	if (! needs_district)
 		return true;
 
-	// Human doesn't have appropriate district but needs one
+	// Human doesn't have appropriate district but needs one; allow relaxed checks so UI can gray entry out
 	if (needs_district && is_human) {
-		return false;
+		return !apply_strict_rules;
 	}
 
 	// Ensure AI has the prereq tech for the district
