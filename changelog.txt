@@ -1,3 +1,7 @@
+* RELEASE 26 PREVIEW 1
+- Enable districts, an elaborate change to the game's economy inspired by Civ 6.
+  - For details, see the default config or this thread: https://forums.civfanatics.com/threads/c3x-districts.700590/
+
 * RELEASE 25
 - Lift city limit and allow it to be configured up to 2048
   - Setting named city_limit, included in new "Limits Removed" section with other limit increases/removals
