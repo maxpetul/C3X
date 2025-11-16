@@ -16338,10 +16338,8 @@ grant_existing_district_buildings_to_city (City * city)
 }
 
 //We need to forwards-declare this
-//edx: return address, doesn't appear to always be used (or at least, running it with 0 doesn't seem to crash the game)
-//param_1: whether to also automatically manage citizen professions
 void __fastcall
-patch_City_manage_by_governor (City * this, int edx, bool param_1);
+patch_City_manage_by_governor (City * this, int edx, bool manage_professions);
 
 void __fastcall
 patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int add, bool param_3)
@@ -16418,14 +16416,10 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 		}
 	}
 	
+	//Calculate if work_area has shrunk, and if so, redistribute citizens.
 	int post_work_area_radius = get_work_ring_limit_total(this);
-	//Need to define label first, include a bool to not enter a loop
-	//This return address doesn't appear to get used, but leaving it here in case.
-	bool managed = false;
-	city_manage_callback_label:
-	if (!managed && post_work_area_radius < init_work_area_radius) {
-		managed = true;
-		patch_City_manage_by_governor(this, (int)&&city_manage_callback_label, false);
+	if (post_work_area_radius < init_work_area_radius) {
+		patch_City_manage_by_governor(this, __, false);
 	}
 
 	// Update things in case we've added or removed a mill. This is only necessary while in-game. If the game is still loading the scenario, it
@@ -22304,9 +22298,9 @@ patch_City_stop_working_polluted_tile (City * this, int edx, int neighbor_index)
 }
 
 void __fastcall
-patch_City_manage_by_governor (City * this, int edx, bool param_1)
+patch_City_manage_by_governor (City * this, int edx, bool manage_professions)
 {
-	int * p_stack = (int *)&param_1;
+	int * p_stack = (int *)&manage_professions;
 	int ret_addr = p_stack[-1];
 
 	// Do nothing if called after spawning pollution but didn't unassign worker
@@ -22315,7 +22309,7 @@ patch_City_manage_by_governor (City * this, int edx, bool param_1)
 	    (*p_human_player_bits & (1 << this->Body.CivID)))
 		return;
 
-	City_manage_by_governor (this, __, param_1);
+	City_manage_by_governor (this, __, manage_professions);
 }
 
 City * __cdecl
