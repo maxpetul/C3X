@@ -433,6 +433,39 @@ get_work_ring_limit_by_culture (City * city)
 	}
 }
 
+int
+get_work_ring_limit_by_improvements (City * city)
+{
+	if (is->current_config.count_work_area_improvements == 0)
+		return INT_MAX;
+	else {
+		int maxRadius = 0;
+		int bonusRadius = 0;
+		for (int n = 0; n < is->current_config.count_work_area_improvements; n++) {
+			struct work_area_improvement * work_area_improvement = &is->current_config.work_area_improvements[n];
+			if (work_area_improvement->work_area_radius_limit > maxRadius &&
+			    (work_area_improvement->improv_id == -1 || has_active_building (city, work_area_improvement->improv_id))) {
+				maxRadius = work_area_improvement->work_area_radius_limit;
+			}
+			if (work_area_improvement->work_area_radius_bonus > 0 &&
+				(work_area_improvement->improv_id == -1 || has_active_building (city, work_area_improvement->improv_id))) {
+				bonusRadius += work_area_improvement->work_area_radius_bonus;
+			}
+		}
+		return maxRadius + bonusRadius;
+	}
+}
+
+int
+get_work_ring_limit_total (City * city)
+{
+	int cultureLimit = get_work_ring_limit_by_culture(city);
+	int improvementLimit = get_work_ring_limit_by_improvements(city);
+	if (cultureLimit < improvementLimit)
+		return cultureLimit;
+	return improvementLimit;
+}
+
 bool __fastcall
 patch_City_controls_tile (City * this, int edx, int neighbor_index, bool consider_enemy_units)
 {
@@ -442,7 +475,7 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 	if ((work_radius > is->current_config.city_work_radius) || (work_radius < 0))
 		return false;
 
-	int work_ring_limit = get_work_ring_limit_by_culture (this);
+	int work_ring_limit = get_work_ring_limit_total (this);
 	if (work_radius > work_ring_limit) {
 
 		// May consider this tile within the limit if any adjacent tiles are within the limit & within borders
@@ -562,7 +595,7 @@ void __fastcall
 patch_Main_Screen_Form_bring_cnter_view_city_focus (Main_Screen_Form * this, int edx, int x, int y, int param_3, bool always_update_tile_bounds, bool param_5)
 {
 	// If the city we're viewing can work tiles in the 4+ ring then zoom out the map display to show them
-	int effective_radius = not_above (get_work_ring_limit_by_culture (p_city_form->CurrentCity), is->current_config.city_work_radius);
+	int effective_radius = not_above (get_work_ring_limit_total (p_city_form->CurrentCity), is->current_config.city_work_radius);
 	if (is->current_config.work_area_limit == WAL_CULTURAL_OR_ADJACENT)
 		effective_radius = not_above (is->current_config.city_work_radius, effective_radius + 1);
 	if (effective_radius >= 4)
@@ -663,6 +696,13 @@ reset_to_base_config ()
 		free (cc->leader_era_alias_lists);
 		cc->leader_era_alias_lists = NULL;
 		cc->count_leader_era_alias_lists = 0;
+	}
+
+	// Free list of work_area_improvements
+	if (cc->work_area_improvements != NULL) {
+		free (cc->work_area_improvements);
+		cc->work_area_improvements = NULL;
+		cc->count_work_area_improvements = 0;
 	}
 
 	// Free unit limits table
@@ -1268,6 +1308,49 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 			return RPR_OK;
 		} else {
 			add_unrecognized_line (p_unrecognized_lines, &name);
+			*p_cursor = cur;
+			return RPR_UNRECOGNIZED;
+		}
+
+	} else
+		return RPR_PARSE_ERROR;
+}
+
+enum recognizable_parse_result
+parse_work_area_improvement (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_work_area_improvement)
+{
+	char * cur = *p_cursor;
+	struct work_area_improvement * out = out_parsed_work_area_improvement;
+
+	struct string_slice improv_name;
+	if (skip_white_space (&cur) &&
+	    parse_string (&cur, &improv_name) &&
+	    skip_punctuation (&cur, ':')) {
+
+		int num;
+		if (! parse_int (&cur, &num))
+			return RPR_PARSE_ERROR;
+
+		struct string_slice ss;
+		if (parse_string (&cur, &ss)) {
+			if (slice_matches_str (&ss, "extra"))
+				out->work_area_radius_bonus += num;
+			else
+				return RPR_PARSE_ERROR;
+		} else
+			out->work_area_radius_limit += num;
+
+		int improv_id;
+		if (slice_matches_str (&improv_name, "default")) {
+			out->improv_id = -1;
+			*p_cursor = cur;
+			return RPR_OK;
+		} else if (find_improv_id_by_name (&improv_name, &improv_id)) {
+			out->improv_id = improv_id;
+			*p_cursor = cur;
+			return RPR_OK;
+		} else {
+			add_unrecognized_line (p_unrecognized_lines, &improv_name);
 			*p_cursor = cur;
 			return RPR_UNRECOGNIZED;
 		}
@@ -1982,6 +2065,14 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				} else if (slice_matches_str (&p.key, "work_area_limit")) {
 					if (! read_work_area_limit (&value, (int *)&cfg->work_area_limit))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "work_area_improvements")) {
+					if (0 <= (recog_err_offset = read_recognizables (&value,
+											 &unrecognized_lines,
+											 sizeof (struct work_area_improvement),
+											 parse_work_area_improvement,
+											 (void **)&cfg->work_area_improvements,
+											 &cfg->count_work_area_improvements)))
+						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "day_night_cycle_mode")) {
 					if (! read_day_night_cycle_mode (&value, (int *)&cfg->day_night_cycle_mode))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -16246,6 +16337,10 @@ grant_existing_district_buildings_to_city (City * city)
 	is->sharing_buildings_by_districts_in_progress = prev_flag;
 }
 
+//We need to forwards-declare this
+void __fastcall
+patch_City_manage_by_governor (City * this, int edx, bool manage_professions);
+
 void __fastcall
 patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int add, bool param_3)
 {
@@ -16254,6 +16349,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	bool is_wonder_removal = (! add) &&
 		((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0) &&
 		(! is->is_placing_scenario_things);
+	int init_work_area_radius = get_work_ring_limit_total(this);
 
 	// The enable_negative_pop_pollution feature changes the rules so that improvements flagged as removing pop pollution and having a negative
 	// pollution amount contribute to the city's pop pollution instead of building pollution. Here we make sure that such improvements do not
@@ -16318,6 +16414,12 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 				}
 			}
 		}
+	}
+	
+	//Calculate if work_area has shrunk, and if so, redistribute citizens.
+	int post_work_area_radius = get_work_ring_limit_total(this);
+	if (post_work_area_radius < init_work_area_radius) {
+		patch_City_manage_by_governor(this, __, false);
 	}
 
 	// Update things in case we've added or removed a mill. This is only necessary while in-game. If the game is still loading the scenario, it
@@ -22196,9 +22298,9 @@ patch_City_stop_working_polluted_tile (City * this, int edx, int neighbor_index)
 }
 
 void __fastcall
-patch_City_manage_by_governor (City * this, int edx, bool param_1)
+patch_City_manage_by_governor (City * this, int edx, bool manage_professions)
 {
-	int * p_stack = (int *)&param_1;
+	int * p_stack = (int *)&manage_professions;
 	int ret_addr = p_stack[-1];
 
 	// Do nothing if called after spawning pollution but didn't unassign worker
@@ -22207,7 +22309,7 @@ patch_City_manage_by_governor (City * this, int edx, bool param_1)
 	    (*p_human_player_bits & (1 << this->Body.CivID)))
 		return;
 
-	City_manage_by_governor (this, __, param_1);
+	City_manage_by_governor (this, __, manage_professions);
 }
 
 City * __cdecl
