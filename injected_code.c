@@ -12243,7 +12243,7 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 	}
 
 	// If the minimum city separation is increased, then gray out the found city button if we're too close to another city.
-	if ((is->current_config.minimum_city_separation.any_chebyshev > 1) && (p_main_screen_form->Current_Unit != NULL) && (is->disabled_command_img_state == IS_OK)) {
+	if ((p_main_screen_form->Current_Unit != NULL) && (is->disabled_command_img_state == IS_OK)) {
 		Unit_Body * selected_unit = &p_main_screen_form->Current_Unit->Body;
 
 		// For each unit command button
@@ -15193,10 +15193,6 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 	if (base_result != CLV_OK && base_result != CLV_CITY_TOO_CLOSE)
 		return base_result;
 	
-	// If rules are default, make no change
-	if (min_sep_chebyshev == 1 && min_sep_manhatten >= 2)
-		return base_result;
-	
 	//Otherwise perform calculation ourselves
 	//start calcing dx/dy at 45 degrees / on a virtual grid
 	for (int dx = -min_sep_box; dx <= min_sep_box; dx++) {
@@ -15215,11 +15211,11 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 			City * city = city_at(tx, ty);
 			if (city != NULL) {
 				//Apply the global rule
-				if (chebyshev < min_sep.any_chebyshev || manhatten < min_sep.any_manhatten)
+				if (chebyshev <= min_sep.any_chebyshev && manhatten <= min_sep.any_manhatten)
 					return CLV_CITY_TOO_CLOSE;
 				//Apply the foreign rule
 				if (city->Body.CivID != civ_id) {
-					if (chebyshev < min_sep.foreign_chebyshev || manhatten < min_sep.foreign_manhatten)
+					if (chebyshev <= min_sep.foreign_chebyshev && manhatten <= min_sep.foreign_manhatten)
 						return CLV_CITY_TOO_CLOSE;
 				}
 			}
