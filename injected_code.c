@@ -15187,7 +15187,7 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 	struct minimum_city_separation min_sep = is->current_config.minimum_city_separation;
 	int min_sep_chebyshev = min_sep.any_chebyshev > min_sep.foreign_chebyshev ? min_sep.any_chebyshev : min_sep.foreign_chebyshev;
 	int min_sep_manhatten = min_sep.any_manhatten > min_sep.foreign_manhatten ? min_sep.any_manhatten : min_sep.foreign_manhatten;
-	int min_sep_box = min_sep_manhatten * 2 < min_sep_chebyshev ? min_sep_manhatten * 2 : min_sep_chebyshev;
+	int min_sep_box = min_sep_manhatten < min_sep_chebyshev ? min_sep_manhatten : min_sep_chebyshev;
 	CityLocValidity base_result = Map_check_city_location (this, __, tile_x, tile_y, civ_id, check_for_city_on_tile);
 
 	if (base_result != CLV_OK && base_result != CLV_CITY_TOO_CLOSE)
