@@ -137,6 +137,13 @@ enum perfume_kind {
 	COUNT_PERFUME_KINDS
 };
 
+struct minimum_city_separation {
+	int any_chebyshev;
+	int any_manhatten;
+	int foreign_chebyshev;
+	int foreign_manhatten;
+};
+
 struct c3x_config {
 	bool enable_stack_bombard;
 	bool enable_disorder_warning;
@@ -150,8 +157,7 @@ struct c3x_config {
 	bool enable_stack_unit_commands;
 	bool skip_repeated_tile_improv_replacement_asks;
 	bool autofill_best_gold_amount_when_trading;
-	int minimum_city_separation;
-	bool disallow_founding_next_to_foreign_city;
+	struct minimum_city_separation minimum_city_separation;
 	bool enable_trade_screen_scroll;
 	bool group_units_on_right_click_menu;
 	bool gray_out_units_on_menu_with_no_remaining_moves;
