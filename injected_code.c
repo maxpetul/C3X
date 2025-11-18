@@ -24189,6 +24189,8 @@ patch_Buildings_Info_get_age_in_years_for_tourism (Buildings_Info * this, int ed
 int __fastcall
 patch_Sprite_draw_minimap_frame (Sprite * this, int edx, Sprite * alpha, int param_2, PCX_Image * canvas, int x, int y, int param_6)
 {
+	*p_debug_mode_bits |= 0xC;
+
 	bool want_larger_minimap = (is->current_config.double_minimap_size == MDM_ALWAYS) ||
 		((is->current_config.double_minimap_size == MDM_HIGH_DEF) && (p_bic_data->ScreenWidth >= 1920));
 	if (want_larger_minimap && (init_large_minimap_frame () == IS_OK))
@@ -24236,6 +24238,20 @@ patch_City_set_production (City * this, int edx, int order_type, int order_id, b
 
 	if (release_reservation)
 		release_wonder_district_reservation (this);
+}
+
+int __fastcall
+patch_Tile_m71_Check_Worker_Job (Tile * this)
+{
+	if (is->current_config.enable_natural_wonders) {
+		struct district_instance * inst = get_district_instance (this);
+		if ((inst != NULL) &&
+		    (inst->district_type == NATURAL_WONDER_DISTRICT_ID) &&
+		    (inst->natural_wonder_info.natural_wonder_id >= 0)) {
+			return -1;  // No worker job allowed on natural wonders
+		}
+	}
+	return Tile_m71_Check_Worker_Job (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
