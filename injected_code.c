@@ -3232,24 +3232,36 @@ clear_all_tracked_workers (void)
 	}
 }
 
+bool is_worker (Unit * unit)
+{
+	if (unit == NULL)
+		return false;
+
+	int unit_type_id = unit->Body.UnitTypeID;
+	int worker_actions = p_bic_data->UnitTypes[unit_type_id].Worker_Actions;
+
+	if (worker_actions == 0 || !(worker_actions & (UCV_Build_Road | UCV_Build_Mine | UCV_Irrigate))) {
+    	return false;
+	}
+
+	return true;
+}
+
 void
 update_tracked_worker_for_unit (Unit * worker)
 {
 	if (worker == NULL || ! is->current_config.enable_districts) return;
 
 	int civ_id = worker->Body.CivID;
+	int type_id = worker->Body.UnitTypeID;
 	if ((civ_id < 0) || (civ_id >= 32)) return;
 	if ((*p_human_player_bits & (1 << civ_id)) != 0) return; 
-
-	int type_id = worker->Body.UnitTypeID;
-	if ((type_id < 0) || (type_id >= p_bic_data->UnitTypeCount)) return;
 
 	char ss[200];
 	snprintf (ss, sizeof ss, "Updating tracked worker for unit %d of type %d\n", worker->Body.ID, type_id);
 	(*p_OutputDebugStringA) (ss);
 
-	int worker_actions = p_bic_data->UnitTypes[type_id].Worker_Actions;
-	if (worker_actions == 0 || !(worker_actions & (UCV_Build_Road | UCV_Build_Mine | UCV_Irrigate))) {
+	if (! is_worker (worker)) {
     	remove_tracked_worker_record(worker->Body.CivID, worker->Body.ID);
     	return;
 	}
@@ -11939,29 +11951,6 @@ compute_highlighted_worker_tiles_for_districts ()
 			}
 		}
 	}
-}
-
-bool is_worker (Unit * unit)
-{
-	if (unit == NULL)
-		return false;
-
-	int unit_type_id = unit->Body.UnitTypeID;
-	if (p_bic_data->UnitTypes[unit_type_id].Worker_Actions == 0)
-		return false;
-	
-	const int worker_commands[] = { 
-		UCV_Build_Mine, UCV_Irrigate, UCV_Build_Road, UCV_Plant_Forest,
-		UCV_Clear_Forest, UCV_Clear_Jungle, UCV_Clear_Pollution, UCV_Build_Outpost,
-	};
-
-	bool can_issue_worker_command = false;
-	for (int n = 0; n < (sizeof worker_commands) / (sizeof worker_commands[0]); n++) {
-		if (patch_Unit_can_perform_command (unit, __, worker_commands[n])) {
-			return true;
-		}
-	}
-	return false;
 }
 
 void
