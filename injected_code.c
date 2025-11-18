@@ -13455,5 +13455,45 @@ patch_Unit_has_army_ability_for_passenger_despawn (Unit * this, int edx, enum Un
 	return is->always_despawn_passengers || Unit_has_ability (this, __, army_ability);
 }
 
+int __cdecl
+patch_count_units_at_in_try_capturing (int x, int y, enum unit_filter filter, int arg_a, int arg_b, int arg_c)
+{
+	Tile * tile = tile_at (x, y);
+
+	// If the no-escape rule is in force for land transports, count units on the tile like the function normally would except skip units in land
+	// transports. Otherwise the units in LTs will prevent movement onto the tile.
+	if ((is->current_config.land_transport_rules & LTR_NO_ESCAPE) && tile->vtable->m35_Check_Is_Water (tile) == 0) {
+		int tr = 0;
+		FOR_UNITS_ON (tai, tile) {
+			if ((arg_b == -1 || p_bic_data->UnitTypes[tai.unit->Body.UnitTypeID].Unit_Class == arg_b) &&
+			    (arg_a == -1 || patch_Unit_is_visible_to_civ (tai.unit, __, arg_a, 1)) &&
+			    (Unit_get_defense_strength (tai.unit) > 0) &&
+			    ! is_in_land_transport (tai.unit))
+				tr++;
+		}
+		return tr;
+
+	} else
+		return count_units_at (x, y, filter, arg_a, arg_b, arg_c);
+}
+
+void __fastcall
+patch_Unit_despawn_after_capture (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
+{
+	// If despawning a land transport with no-escape enabled, despawn any passengers too.
+	clear_memo ();
+	if ((is->current_config.land_transport_rules & LTR_NO_ESCAPE) &&
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land) &&
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Transport_Capacity > 0) &&
+	    ! Unit_has_ability (this, __, UTA_Army))
+		FOR_UNITS_ON (tai, tile_at (this->Body.X, this->Body.Y))
+			if (tai.unit->Body.Container_Unit == this->Body.ID)
+				memoize ((int)tai.unit);
+	for (int n = 0; n < is->memo_len; n++)
+		patch_Unit_despawn ((Unit *)is->memo[n], __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
+
+	patch_Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
