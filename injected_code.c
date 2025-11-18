@@ -14655,9 +14655,9 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 				wonder_requires_district = true;
 
 			// Can only build wonders that need districts if an incomplete wonder district exists
-				if (wonder_requires_district &&
-				    ! city_has_wonder_district_with_no_completed_wonder (this))
-					return !apply_strict_rules;
+			if (wonder_requires_district &&
+				! city_has_wonder_district_with_no_completed_wonder (this))
+				return !apply_strict_rules;
 		}
 	}
 
@@ -14667,15 +14667,15 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 	if (! needs_district)
 		return true;
 
+	// Ensure prereq tech for the district
+	int prereq_id = is->district_infos[required_district_id].advance_prereq_id;
+	if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id))
+		return false;
+
 	// Human doesn't have appropriate district but needs one; allow relaxed checks so UI can gray entry out
 	if (needs_district && is_human) {
 		return !apply_strict_rules;
 	}
-
-	// Ensure AI has the prereq tech for the district
-	int prereq_id = is->district_infos[required_district_id].advance_prereq_id;
-	if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id))
-		return false;
 
 	// If AI already has a pending district request for this required district, return false
 	// to prevent wasting a turn trying to choose this improvement
