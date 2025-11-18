@@ -1653,6 +1653,7 @@ read_natural_wonder_terrain_type (struct string_slice const * s, enum SquareType
 	case SQ_Jungle:
 	case SQ_Tundra:
 	case SQ_FloodPlain:
+	case SQ_Swamp:
 	case SQ_Coast:
 	case SQ_Sea:
 	case SQ_Ocean:
@@ -24197,8 +24198,6 @@ patch_Buildings_Info_get_age_in_years_for_tourism (Buildings_Info * this, int ed
 int __fastcall
 patch_Sprite_draw_minimap_frame (Sprite * this, int edx, Sprite * alpha, int param_2, PCX_Image * canvas, int x, int y, int param_6)
 {
-	*p_debug_mode_bits |= 0xC;
-
 	bool want_larger_minimap = (is->current_config.double_minimap_size == MDM_ALWAYS) ||
 		((is->current_config.double_minimap_size == MDM_HIGH_DEF) && (p_bic_data->ScreenWidth >= 1920));
 	if (want_larger_minimap && (init_large_minimap_frame () == IS_OK))
