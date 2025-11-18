@@ -2546,6 +2546,14 @@ natural_wonder_tile_is_clear (Tile * tile, int tile_x, int tile_y)
 	if (tile->vtable->m18_Check_Mines (tile, __, 0)) return false;
 	if (get_district_instance (tile) != NULL) return false;
 
+	// Check if this tile is a starting location for any civ
+	int tile_index = (p_bic_data->Map.Width >> 1) * tile_y + ((tile_x >> 1) & 0x7FFF);
+	for (int civ = 0; civ < p_bic_data->Map.Civ_Count; civ++) {
+		if (p_bic_data->Map.Starting_Locations[civ] == tile_index) {
+			return false;
+		}
+	}
+
 	return true;
 }
 
