@@ -1654,6 +1654,7 @@ read_natural_wonder_terrain_type (struct string_slice const * s, enum SquareType
 	case SQ_Tundra:
 	case SQ_FloodPlain:
 	case SQ_Swamp:
+	case SQ_Hills:
 	case SQ_Coast:
 	case SQ_Sea:
 	case SQ_Ocean:
@@ -4289,9 +4290,42 @@ on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city)
 	    ! is->current_config.enable_distribution_hub_districts)
 		return;
 
+	int tile_owner = -1;
+	if ((tile != NULL) && (tile != p_null_tile))
+		tile_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+
 	struct distribution_hub_record * rec = get_distribution_hub_record (tile);
-	if (rec != NULL)
-		return; // Already activated, don't process again
+	if (rec != NULL) {
+		int old_civ_id = rec->civ_id;
+		rec->tile = tile;
+		rec->tile_x = tile_x;
+		rec->tile_y = tile_y;
+
+		if (old_civ_id != tile_owner) {
+			adjust_distribution_hub_coverage (rec, -1);
+			rec->civ_id = tile_owner;
+			adjust_distribution_hub_coverage (rec, +1);
+
+			is->distribution_hub_totals_dirty = true;
+			recompute_distribution_hub_totals ();
+
+			// Recompute for old civ
+			for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+				City * target_city = get_city_ptr (city_index);
+				if ((target_city != NULL) && (target_city->Body.CivID == old_civ_id))
+					recompute_city_yields_with_districts (target_city);
+			}
+
+			// Recompute for new civ
+			int new_civ_id = rec->civ_id;
+			for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+				City * target_city = get_city_ptr (city_index);
+				if ((target_city != NULL) && (target_city->Body.CivID == new_civ_id))
+					recompute_city_yields_with_districts (target_city);
+			}
+		}
+		return; // Already activated, ownership refreshed
+	}
 
 	rec = malloc (sizeof *rec);
 	if (rec == NULL)
@@ -4299,7 +4333,7 @@ on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city)
 	rec->tile = tile;
 	rec->tile_x = tile_x;
 	rec->tile_y = tile_y;
-	rec->civ_id = (tile != NULL) ? tile->vtable->m38_Get_Territory_OwnerID (tile) : -1;
+	rec->civ_id = tile_owner;
 	rec->food_yield = 0;
 	rec->shield_yield = 0;
 	rec->raw_food_yield = 0;
