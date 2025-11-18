@@ -23504,9 +23504,11 @@ patch_Unit_ai_move_terraformer (Unit * this)
 	int type_id = this->Body.UnitTypeID;
 	int civ_id = this->Body.CivID;
 	Tile * tile = tile_at (this->Body.X, this->Body.Y);
+	bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
 
-	update_tracked_worker_for_unit (this);
-	if (is->current_config.enable_districts) {
+	
+	if (is->current_config.enable_districts && ! is_human) {
+		update_tracked_worker_for_unit (this);
 
 		struct district_worker_record * rec = get_tracked_worker_record (this);
 		if (rec->pending_req != NULL) {
