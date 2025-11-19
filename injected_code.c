@@ -2408,8 +2408,7 @@ get_natural_wonder_config_by_id (int natural_wonder_id)
 void
 assign_natural_wonder_to_tile (Tile * tile, int tile_x, int tile_y, int natural_wonder_id)
 {
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_natural_wonders)
+	if (! is->current_config.enable_natural_wonders)
 		return;
 	if ((tile == NULL) || (tile == p_null_tile))
 		return;
@@ -12527,8 +12526,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 {
 	if (is->current_config.enable_districts) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
-		if ((tile != NULL) && (tile != p_null_tile) &&
-		    is->current_config.enable_natural_wonders) {
+		if ((tile != NULL) && (tile != p_null_tile) && is->current_config.enable_natural_wonders) {
 			struct district_instance * inst = get_district_instance (tile);
 			if ((inst != NULL) &&
 			    (inst->district_type == NATURAL_WONDER_DISTRICT_ID) &&
@@ -20605,9 +20603,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		}
 	}
 
-	if (is->current_config.enable_districts &&
-	    is->current_config.enable_natural_wonders &&
-	    (is->district_tile_map.len > 0)) {
+	if (is->current_config.enable_natural_wonders && (is->district_tile_map.len > 0)) {
 		int entry_capacity = 0;
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
 			struct district_instance * inst = (struct district_instance *)(long)tei.value;
