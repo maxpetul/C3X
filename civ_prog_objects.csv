@@ -794,6 +794,7 @@ define,	   0x5659E2,	0x571D83,	0x565992,	"DESPAWN_TO_BOUNCE_TRESPASSING_UNITS_RE
 define,	   0x5B4844,	0x5C319E,	0x5B4554,	"DESPAWN_TO_NUKE_DAMAGE_RETURN",		"int"
 repl call, 0x5B8D95,	0x5C7801,	0x5B8AA5,	"count_units_at_in_try_capturing",		""
 repl call, 0x5B845D,	0x5C6E73,	0x5B816D,	"Unit_despawn_after_capture",			""
+define,	   0x5F35C2,	0x603442,	0x5F34F2,	"ADDR_RES_CHECK_JUMP_TILE_INDEX_AT_LEAST_9",	"byte *"
 
 ignore,	   0x5FC710,	0x0,		0x0,		"PCX_Image_create_and_init_jgl_image",		"int (__fastcall *) (PCX_Image * this, int edx, int width, int height, int bit_depth, int param_4, int param_5, int param_6)"
 ignore,	   0x5FCC50,	0x0,		0x0,		"PCX_Image_draw_region_to_location",		"void (__fastcall *) (PCX_Image * this, int edx, PCX_Image * canvas, int src_x, int src_y, int dest_x, int dest_y, int width, int height)"

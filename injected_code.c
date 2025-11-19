@@ -3393,6 +3393,11 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		emit_branch (BK_CALL, &code[2], &patch_get_pixel_to_draw_city_dot); // call patch func
 		emit_branch (BK_JUMP, &code[7], ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT + 5); // jump back to original code
 	}
+
+	// Bypass adjacent resource of different type check
+	// replacing 0x7D (= jge) with 0xEB (= uncond. jump)
+	WITH_MEM_PROTECTION (ADDR_RES_CHECK_JUMP_TILE_INDEX_AT_LEAST_9, 1, PAGE_EXECUTE_READWRITE)
+		*(byte *)ADDR_RES_CHECK_JUMP_TILE_INDEX_AT_LEAST_9 = cfg->allow_adjacent_resources_of_different_types ? 0xEB : 0x7D;
 }
 
 Sprite* 
@@ -4124,6 +4129,7 @@ patch_init_floating_point ()
 		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
 		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
+		{"allow_adjacent_resources_of_different_types"         , false, offsetof (struct c3x_config, allow_adjacent_resources_of_different_types)},
 	};
 
 	struct integer_config_option {
