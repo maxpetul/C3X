@@ -1647,22 +1647,22 @@ read_natural_wonder_terrain_type (struct string_slice const * s, enum SquareType
 		return false;
 
 	switch (parsed) {
-	case SQ_Desert:
-	case SQ_Plains:
-	case SQ_Grassland:
-	case SQ_Jungle:
-	case SQ_Tundra:
-	case SQ_FloodPlain:
-	case SQ_Swamp:
-	case SQ_Hills:
-	case SQ_Coast:
-	case SQ_Sea:
-	case SQ_Ocean:
-		*out_type = parsed;
-		return true;
+		case SQ_Desert:
+		case SQ_Plains:
+		case SQ_Grassland:
+		case SQ_Jungle:
+		case SQ_Tundra:
+		case SQ_FloodPlain:
+		case SQ_Swamp:
+		case SQ_Hills:
+		case SQ_Coast:
+		case SQ_Sea:
+		case SQ_Ocean:
+			*out_type = parsed;
+			return true;
 
-	default:
-		return false;
+		default:
+			return false;
 	}
 }
 
