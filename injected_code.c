@@ -205,7 +205,7 @@ bool city_requires_district_for_improvement (City * city, int improv_id, int * o
 void clear_city_district_request (City * city, int district_id);
 void set_tile_unworkable_for_all_cities (Tile * tile, int tile_x, int tile_y);
 bool city_radius_contains_tile (City * city, int tile_x, int tile_y);
-void on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city);
+void on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y);
 bool ai_move_district_worker (Unit * worker, struct district_worker_record * rec);
 bool has_active_building (City * city, int improv_id);
 void recompute_distribution_hub_totals ();
@@ -3687,7 +3687,7 @@ district_is_complete(Tile * tile, int district_id)
 		// Activate distribution hub if applicable
 		if (is->current_config.enable_distribution_hub_districts &&
 		    (district_id == DISTRIBUTION_HUB_DISTRICT_ID)) {
-			on_distribution_hub_completed (tile, tile_x, tile_y, NULL);
+			on_distribution_hub_completed (tile, tile_x, tile_y);
 		}
 
 		char ss[200];
@@ -3824,7 +3824,7 @@ get_distribution_hub_record (Tile * tile)
 City *
 get_connected_city_for_distribution_hub (struct distribution_hub_record * rec)
 {
-	if ((rec == NULL) || (rec->civ_id < 0) || (rec->civ_id >= 32))
+	if (rec == NULL)
 		return NULL;
 
 	Tile * tile = rec->tile;
@@ -3838,8 +3838,8 @@ get_connected_city_for_distribution_hub (struct distribution_hub_record * rec)
 		return NULL;
 
 	City * city = get_city_ptr (city_id);
-	if ((city == NULL) || (city->Body.CivID != rec->civ_id))
-		return NULL;
+	//if ((city == NULL) || (city->Body.CivID != rec->civ_id))
+	//	return NULL;
 
 	return city;
 }
@@ -3847,7 +3847,7 @@ get_connected_city_for_distribution_hub (struct distribution_hub_record * rec)
 bool
 distribution_hub_accessible_to_city (struct distribution_hub_record * rec, City * city)
 {
-	if ((rec == NULL) || (city == NULL) || !rec->is_active)
+	if ((rec == NULL) || (city == NULL))
 		return false;
 
 	if (city->Body.CivID != rec->civ_id)
@@ -3892,9 +3892,9 @@ get_distribution_hub_yields_for_city (City * city, int * out_food, int * out_shi
 }
 
 void
-adjust_distribution_hub_coverage (struct distribution_hub_record * rec, int delta)
+adjust_distribution_hub_coverage (struct distribution_hub_record * rec)
 {
-	if ((rec == NULL) || (delta == 0))
+	if (rec == NULL)
 		return;
 
 	FOR_TILES_AROUND (tai, workable_tile_counts[1], rec->tile_x, rec->tile_y) {
@@ -3902,26 +3902,51 @@ adjust_distribution_hub_coverage (struct distribution_hub_record * rec, int delt
 		if ((area_tile == NULL) || (area_tile == p_null_tile))
 			continue;
 
-		if (area_tile->vtable->m38_Get_Territory_OwnerID (area_tile) != rec->civ_id) continue;
-		if (Tile_has_city (area_tile)) continue;
-		if (get_district_instance (area_tile) != NULL) continue;
+		int tx, ty;
+		tai_get_coords (&tai, &tx, &ty);
+
+		if (area_tile->vtable->m38_Get_Territory_OwnerID (area_tile) != rec->civ_id)
+			continue;
+		if (Tile_has_city (area_tile))
+			continue;
+		if (get_district_instance (area_tile) != NULL)
+			continue;
+
 		struct wonder_district_info * area_info = get_wonder_district_info (area_tile);
-		if (area_info != NULL && area_info->state == WDS_COMPLETED) continue;
+		if ((area_info != NULL) && (area_info->state == WDS_COMPLETED))
+			continue;
 
 		int key = (int)area_tile;
 		int prev = itable_look_up_or (&is->distribution_hub_coverage_counts, key, 0);
-		int next = prev + delta;
-		if (next > 0)
-			itable_insert (&is->distribution_hub_coverage_counts, key, next);
-		else
-			itable_remove (&is->distribution_hub_coverage_counts, key);
+		itable_insert (&is->distribution_hub_coverage_counts, key, prev + 1);
 
-		if ((prev <= 0) && (next > 0)) {
-			int tx, ty;
-			tai_get_coords (&tai, &tx, &ty);
+		if (area_tile->Body.CityAreaID >= 0) {
 			set_tile_unworkable_for_all_cities (area_tile, tx, ty);
 			area_tile->Body.CityAreaID = -1;
 		}
+	}
+}
+
+void
+release_distribution_hub_coverage (struct distribution_hub_record * rec)
+{
+	if (rec == NULL)
+		return;
+
+	FOR_TILES_AROUND (tai, workable_tile_counts[1], rec->tile_x, rec->tile_y) {
+		Tile * area_tile = tai.tile;
+		if ((area_tile == NULL) || (area_tile == p_null_tile))
+			continue;
+
+		int key = (int)area_tile;
+		int prev = itable_look_up_or (&is->distribution_hub_coverage_counts, key, 0);
+		if (prev <= 0)
+			continue;
+
+		if (prev == 1)
+			itable_remove (&is->distribution_hub_coverage_counts, key);
+		else
+			itable_insert (&is->distribution_hub_coverage_counts, key, prev - 1);
 	}
 }
 
@@ -3948,27 +3973,6 @@ city_radius_contains_tile (City * city, int tile_x, int tile_y)
 }
 
 bool
-distribution_hub_has_road_connection_to_anchor (Tile * hub_tile, City * anchor_city, int civ_id)
-{
-	if ((hub_tile == NULL) || (hub_tile == p_null_tile) ||
-	    (anchor_city == NULL) || (civ_id < 0) || (civ_id >= 32))
-		return false;
-	if (anchor_city->Body.CivID != civ_id)
-		return false;
-
-	Tile * anchor_tile = tile_at (anchor_city->Body.X, anchor_city->Body.Y);
-	if ((anchor_tile == NULL) || (anchor_tile == p_null_tile))
-		return false;
-
-	int hub_network_id = hub_tile->Body.connected_city_ids[civ_id];
-	int anchor_network_id = anchor_tile->Body.connected_city_ids[civ_id];
-	if ((hub_network_id < 0) || (anchor_network_id < 0))
-		return false;
-
-	return hub_network_id == anchor_network_id;
-}
-
- bool
 tile_has_enemy_unit (Tile * tile, int civ_id)
 {
 	if ((tile == NULL) || (tile == p_null_tile))
@@ -3989,40 +3993,33 @@ tile_has_enemy_unit (Tile * tile, int civ_id)
 	return false;
 }
 
-int
-distribution_hub_calc_tile_yield_at (City * city, int yield_type, int tile_x, int tile_y)
-{
-	return City_calc_tile_yield_at (city, __, yield_type, tile_x, tile_y);
-}
+int __fastcall patch_Map_calc_food_yield_at (Map * this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city);
+int __fastcall patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int civ_id, City * city, int param_5, int param_6);
 
 void
-recompute_distribution_hub_yields (struct distribution_hub_record * rec, City * anchor_city)
+recompute_distribution_hub_yields (struct distribution_hub_record * rec)
 {
 	if (rec == NULL)
 		return;
 
 	Tile * tile = tile_at (rec->tile_x, rec->tile_y);
 	rec->tile = tile;
-	int district_id = DISTRIBUTION_HUB_DISTRICT_ID;
 
-	if ((anchor_city == NULL) ||
-	    (tile == NULL) ||
+	if ((tile == NULL) ||
 	    (tile == p_null_tile) ||
-	    (district_id < 0) ||
-	    ! district_is_complete (tile, district_id) ||
+	    ! district_is_complete (tile, DISTRIBUTION_HUB_DISTRICT_ID) ||
 	    tile->vtable->m20_Check_Pollution (tile, __, 0) ||
-	    tile_has_enemy_unit (tile, rec->civ_id) ||
-	    ! distribution_hub_has_road_connection_to_anchor (tile, anchor_city, rec->civ_id)) {
+	    tile_has_enemy_unit (tile, rec->civ_id)) {
 		rec->food_yield = 0;
 		rec->shield_yield = 0;
 		rec->raw_food_yield = 0;
 		rec->raw_shield_yield = 0;
-		rec->is_active = false;
 		return;
 	}
 
 	int food_sum = 0;
 	int shield_sum = 0;
+	City * anchor_city = get_connected_city_for_distribution_hub (rec);
 	FOR_TILES_AROUND (tai, workable_tile_counts[1], rec->tile_x, rec->tile_y) {
 		Tile * area_tile = tai.tile;
 		if (area_tile == p_null_tile)
@@ -4067,8 +4064,6 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec, City * 
 				continue;
 			if (other_rec->civ_id != rec->civ_id)
 				continue;
-			if (! other_rec->is_active)
-				continue;
 
 			int other_distance = compute_wrapped_manhattan_distance (other_rec->tile_x, other_rec->tile_y, tx, ty);
 			if (other_distance < my_distance) {
@@ -4091,8 +4086,8 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec, City * 
 		if (! tile_belongs_to_me)
 			continue;
 
-		food_sum   += distribution_hub_calc_tile_yield_at (anchor_city, 0, tx, ty);
-		shield_sum += distribution_hub_calc_tile_yield_at (anchor_city, 1, tx, ty);
+		food_sum   += City_calc_tile_yield_at (anchor_city, __, 0, tx, ty);
+		shield_sum += City_calc_tile_yield_at (anchor_city, __, 1, tx, ty);
 	}
 
 	rec->raw_food_yield = food_sum;
@@ -4107,7 +4102,6 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec, City * 
 
 	rec->food_yield = food_sum / food_div;
 	rec->shield_yield = shield_sum / shield_div;
-	rec->is_active = (rec->food_yield != 0) || (rec->shield_yield != 0);
 }
 
 void
@@ -4118,7 +4112,7 @@ remove_distribution_hub_record (Tile * tile)
 		return;
 
 	int affected_civ_id = rec->civ_id;
-	adjust_distribution_hub_coverage (rec, -1);
+	release_distribution_hub_coverage (rec);
 	itable_remove (&is->distribution_hub_records, (int)tile);
 	free (rec);
 	is->distribution_hub_totals_dirty = true;
@@ -4143,12 +4137,6 @@ recompute_distribution_hub_totals ()
 		return;
 	}
 
-	int district_id = DISTRIBUTION_HUB_DISTRICT_ID;
-	if (district_id < 0) {
-		is->distribution_hub_totals_dirty = false;
-		return;
-	}
-
 	struct table new_coverage_counts = {0};
 	struct table newly_covered_tiles = {0};
 
@@ -4164,7 +4152,7 @@ recompute_distribution_hub_totals ()
 		Tile * current_tile = tile_at (rec->tile_x, rec->tile_y);
 		if ((current_tile == NULL) ||
 		    (current_tile == p_null_tile) ||
-		    ! district_is_complete (current_tile, district_id)) {
+		    ! district_is_complete (current_tile, DISTRIBUTION_HUB_DISTRICT_ID)) {
 			memoize (tei.key);
 			continue;
 		}
@@ -4174,25 +4162,20 @@ recompute_distribution_hub_totals ()
 		rec->shield_yield = 0;
 		rec->raw_food_yield = 0;
 		rec->raw_shield_yield = 0;
-		rec->is_active = false;
 
 		int old_civ_id = rec->civ_id;
 		rec->civ_id = current_tile->vtable->m38_Get_Territory_OwnerID (current_tile);
 
-		if ((old_civ_id != rec->civ_id) && (old_civ_id >= 0) && (old_civ_id < 32))
+		if (old_civ_id != rec->civ_id)
 			civs_needing_recalc[old_civ_id] = 1;
-		if ((rec->civ_id >= 0) && (rec->civ_id < 32))
-			civs_needing_recalc[rec->civ_id] = 1;
+		civs_needing_recalc[rec->civ_id] = 1;
 
 		City * anchor = get_connected_city_for_distribution_hub (rec);
 
 		if ((anchor == NULL) ||
 		    current_tile->vtable->m20_Check_Pollution (current_tile, __, 0) ||
-		    tile_has_enemy_unit (current_tile, rec->civ_id) ||
-		    ! distribution_hub_has_road_connection_to_anchor (current_tile, anchor, rec->civ_id))
+		    tile_has_enemy_unit (current_tile, rec->civ_id))
 			continue;
-
-		rec->is_active = true;
 
 		FOR_TILES_AROUND (tai, workable_tile_counts[1], rec->tile_x, rec->tile_y) {
 			Tile * area_tile = tai.tile;
@@ -4234,12 +4217,11 @@ recompute_distribution_hub_totals ()
 
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
 		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
-		if ((rec == NULL) || !rec->is_active)
+		if (rec == NULL)
 			continue;
 
 		City * anchor = get_connected_city_for_distribution_hub (rec);
 		if (anchor == NULL) {
-			rec->is_active = false;
 			rec->food_yield = 0;
 			rec->shield_yield = 0;
 			rec->raw_food_yield = 0;
@@ -4247,7 +4229,7 @@ recompute_distribution_hub_totals ()
 			continue;
 		}
 
-		recompute_distribution_hub_yields (rec, anchor);
+		recompute_distribution_hub_yields (rec);
 	}
 
 	table_deinit (&is->distribution_hub_coverage_counts);
@@ -4281,12 +4263,9 @@ recompute_distribution_hub_totals ()
 }
 
 void
-on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city)
+on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y)
 {
-	(void)city;
-
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_distribution_hub_districts)
+	if (! is->current_config.enable_districts || ! is->current_config.enable_distribution_hub_districts)
 		return;
 
 	int tile_owner = -1;
@@ -4300,30 +4279,19 @@ on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city)
 		rec->tile_x = tile_x;
 		rec->tile_y = tile_y;
 
+		release_distribution_hub_coverage (rec);
+		rec->civ_id = tile_owner;
+		is->distribution_hub_totals_dirty = true;
+		recompute_distribution_hub_totals ();
+
 		if (old_civ_id != tile_owner) {
-			adjust_distribution_hub_coverage (rec, -1);
-			rec->civ_id = tile_owner;
-			adjust_distribution_hub_coverage (rec, +1);
-
-			is->distribution_hub_totals_dirty = true;
-			recompute_distribution_hub_totals ();
-
 			// Recompute for old civ
 			for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
 				City * target_city = get_city_ptr (city_index);
 				if ((target_city != NULL) && (target_city->Body.CivID == old_civ_id))
 					recompute_city_yields_with_districts (target_city);
 			}
-
-			// Recompute for new civ
-			int new_civ_id = rec->civ_id;
-			for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
-				City * target_city = get_city_ptr (city_index);
-				if ((target_city != NULL) && (target_city->Body.CivID == new_civ_id))
-					recompute_city_yields_with_districts (target_city);
-			}
 		}
-		return; // Already activated, ownership refreshed
 	}
 
 	rec = malloc (sizeof *rec);
@@ -4337,9 +4305,8 @@ on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y, City * city)
 	rec->shield_yield = 0;
 	rec->raw_food_yield = 0;
 	rec->raw_shield_yield = 0;
-	rec->is_active = false;
 	itable_insert (&is->distribution_hub_records, (int)tile, (int)(long)rec);
-	adjust_distribution_hub_coverage (rec, +1);
+	adjust_distribution_hub_coverage (rec);
 
 	is->distribution_hub_totals_dirty = true;
 	recompute_distribution_hub_totals ();
@@ -4363,10 +4330,6 @@ refresh_distribution_hubs_for_city (City * city)
 	    (city == NULL))
 		return;
 
-	int district_id = DISTRIBUTION_HUB_DISTRICT_ID;
-	if (district_id < 0)
-		return;
-
 	int city_x = city->Body.X;
 	int city_y = city->Body.Y;
 	for (int n = 0; n < is->workable_tile_count; n++) {
@@ -4378,9 +4341,9 @@ refresh_distribution_hubs_for_city (City * city)
 		if ((tile == NULL) || (tile == p_null_tile))
 			continue;
 		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL || inst->district_type != district_id)
+		if (inst == NULL || inst->district_type != DISTRIBUTION_HUB_DISTRICT_ID)
 			continue;
-		on_distribution_hub_completed (tile, tx, ty, city);
+		on_distribution_hub_completed (tile, tx, ty);
 	}
 }
 
@@ -16768,7 +16731,6 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 
 		if (is->current_config.enable_distribution_hub_districts) {
 			refresh_distribution_hubs_for_city (city);
-			is->distribution_hub_totals_dirty = true;
 		}
 	}
 }
@@ -21113,7 +21075,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 								Tile * tile = tile_at (x, y);
 								if ((tile == NULL) || (tile == p_null_tile))
 									continue;
-								on_distribution_hub_completed (tile, x, y, NULL);
+								on_distribution_hub_completed (tile, x, y);
 								struct distribution_hub_record * rec = get_distribution_hub_record (tile);
 								if (rec != NULL)
 									rec->civ_id = civ_id;
@@ -22031,12 +21993,11 @@ draw_distribution_hub_yields (City_Form * city_form, Tile * tile, int tile_x, in
 {
 	// Get the distribution hub record for this tile
 	struct distribution_hub_record * rec = get_distribution_hub_record (tile);
-	if (rec == NULL || !rec->is_active)
+	if (rec == NULL)
 		return;
 
 	City * anchor_city = get_connected_city_for_distribution_hub (rec);
-	if (! distribution_hub_has_road_connection_to_anchor (tile, anchor_city, rec->civ_id) ||
-		! distribution_hub_accessible_to_city (rec, city_form->CurrentCity))
+	if (! distribution_hub_accessible_to_city (rec, city_form->CurrentCity))
 		return;
 
 	int food_yield   = rec->food_yield;

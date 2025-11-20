@@ -679,7 +679,6 @@ struct distribution_hub_record {
 	int shield_yield;
 	int raw_food_yield;
 	int raw_shield_yield;
-	bool is_active;
 };
 
 struct ai_best_feasible_order {
