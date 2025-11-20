@@ -15184,14 +15184,36 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 		}
 	}
 
-	struct minimum_city_separation min_sep = is->current_config.minimum_city_separation;
-	int min_sep_chebyshev = min_sep.any_chebyshev > min_sep.foreign_chebyshev ? min_sep.any_chebyshev : min_sep.foreign_chebyshev;
-	int min_sep_manhatten = min_sep.any_manhatten > min_sep.foreign_manhatten ? min_sep.any_manhatten : min_sep.foreign_manhatten;
-	int min_sep_box = min_sep_manhatten < min_sep_chebyshev ? min_sep_manhatten : min_sep_chebyshev;
 	CityLocValidity base_result = Map_check_city_location (this, __, tile_x, tile_y, civ_id, check_for_city_on_tile);
-
 	if (base_result != CLV_OK && base_result != CLV_CITY_TOO_CLOSE)
 		return base_result;
+	
+	struct map_target_separation_rule * city_separation_rules = is->minimum_city_separation_rules;
+	//init array of bools for requirements check
+
+	//init bounding box
+	int min_sep_chebyshev = 0;
+	int min_sep_manhatten = 0;
+	int min_sep_euclidean_percent = 0;
+	for (int i = 0; i < is->count_minimum_city_separation_rules; i++) {
+		struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(map_target_separation_rule);
+		if (current_rule->distance_metric_flags & 1 != 0 && current_rule->chebyshev > min_sep_chebyshev)
+			min_sep_chebyshev = current_rule->chebyshev;
+		if (current_rule->distance_metric_flags & 2 != 0 && current_rule->manhatten > min_sep_manhatten)
+			min_sep_manhatten = current_rule->manhatten;
+		if (current_rule->distance_metric_flags & 4 != 0 && current_rule->euclidean_percent > min_sep_euclidean_percent)
+			min_sep_euclidean_percent = current_rule->euclidean_percent;
+	}
+	int min_sep_box = min_sep_chebyshev;
+	if (min_sep_manhatten > min_sep_box)
+		min_sep_box = min_sep_manhatten;
+	if ((min_sep_euclidean_percent + 99) / 100 > min_sep_box)
+		min_sep_box = (min_sep_euclidean_percent + 99) / 100
+
+	/*struct minimum_city_separation min_sep = is->current_config.minimum_city_separation;
+	int min_sep_chebyshev = min_sep.any_chebyshev > min_sep.foreign_chebyshev ? min_sep.any_chebyshev : min_sep.foreign_chebyshev;
+	int min_sep_manhatten = min_sep.any_manhatten > min_sep.foreign_manhatten ? min_sep.any_manhatten : min_sep.foreign_manhatten;
+	int min_sep_box = min_sep_manhatten < min_sep_chebyshev ? min_sep_manhatten : min_sep_chebyshev;*/
 	
 	//Otherwise perform calculation ourselves
 	//start calcing dx/dy at 45 degrees / on a virtual grid
@@ -15201,13 +15223,36 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 			int absy = int_abs(dy);
 			int chebyshev = absx > absy ? absx : absy;
 			int manhatten = absx + absy;
-			//Shortcut in case the tile is not inside either the global rule or the foreign rule
-			if (chebyshev > min_sep_chebyshev || manhatten > min_sep_manhatten)
-				continue;
+			int euclidean_percent_squared = (dx*dx) + (dy*dy) * 10000;
 			//transform to map coords
 			int tx = tile_x + dx-dy;
 			int ty = tile_y + dy+dx;
 			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
+
+			//Now check each rule
+			for (int i = 0; i < is->count_minimum_city_separation_rules; i++) {
+				struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(map_target_separation_rule);
+				//Check tile is within rule's radius
+				if (current_rule->distance_metric_flags & 1 != 0 && current_rule->chebyshev <= chebyshev)
+					continue;
+				if (current_rule->distance_metric_flags & 2 != 0 && current_rule->manhatten <= manhatten)
+					continue;
+				if (current_rule->distance_metric_flags & 4 != 0 && (current_rule->euclidean_percent * current_rule->euclidean_percent) <= euclidean_percent_squared)
+					continue;
+				//Rule applies
+				bool matches = match_target(current_rule + offsetof (struct map_target_separation_rule, target))
+				if (current_rule->require) {
+					//not implemented: see array of bools for requirements check
+				} else {
+					return CLV_CITY_TOO_CLOSE; //Kinda abusing this name since we now check for other things
+				}
+			}
+
+			//Shortcut in case the tile is not inside either the global rule or the foreign rule
+			//if (chebyshev > min_sep_chebyshev || manhatten > min_sep_manhatten)
+			//	continue;
+
+			/*
 			City * city = city_at(tx, ty);
 			if (city != NULL) {
 				//Apply the global rule
@@ -15218,10 +15263,43 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 					if (chebyshev <= min_sep.foreign_chebyshev && manhatten <= min_sep.foreign_manhatten)
 						return CLV_CITY_TOO_CLOSE;
 				}
-			}
+			}*/
 		}
 	}
+	//Now check that all requirements are met - see array of bools requirements check
+
+
 	return CLV_OK;
+}
+
+bool
+match_target(map_target * target, int tile_x, int tile_y, int civ_id)
+{
+	if (target->type == CITY) {
+		City * city = city_at(tile_x, tile_y);
+		return match_target_city(target + offsetof (struct map_target, map_target_city), city, civ_id);
+	} else {
+		//Not implemented
+		return false;
+	}
+}
+match_target_city (map_target_city * target, City * city, int civ_id)
+{
+	if (city == NULL)
+		return false;
+	if (target->flags & 1 != 0 && city->Body.CivId == civ_id)
+		return false;
+	if (target->flags & 2 != 0)
+		return false; //war check not implemented
+	if (target->flags & 4 != 0 && city->Body.Population.Size < target->population_min)
+		return false;
+	if (target->flags & 8 != 0 && city->Body.Population.Size > target->population_max)
+		return false;
+	if (target->flags & 16 != 0)
+		return false; //culture check not implemented
+	if (target->flags & 32 != 0)
+		return false; //culture check not implemented
+	return true;
 }
 
 bool

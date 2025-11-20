@@ -137,6 +137,66 @@ enum perfume_kind {
 	COUNT_PERFUME_KINDS
 };
 
+enum map_target_type {
+	CITY,//flag foreign, flag population, flag culture
+	TERRAIN,//flag food_yield, flag shield_yield, flag commerce_yield
+	RESOURCE,//flag
+	UNIT,//flag foreign, flag hostile
+}
+
+struct map_target_city {
+	int flags;
+	bool foreign;//flag 0
+	bool hostile;//flag 1
+	int population_min;//flag 2
+	int population_max;//flag 3
+	int culture_min;//flag 4
+	int culture_max;//flag 5
+}
+
+struct map_target_terrain {
+	int flags;
+	int type;//flag 0
+	int food_yield_min;//flag 1
+	int food_yield_max;//flag 2
+	int shield_yield_min;//flag 3
+	int shield_yield_max;//flag 4
+	int commerce_yield_min;//flag 5
+	int commerce_yield_max;//flag 6
+}
+
+struct map_target_resource {
+	int flags;
+	int type;//flag 0
+	bool is_visible;//flag 1
+}
+
+struct map_target_unit {
+	int flags;
+	int type;//flag 0
+	bool foreign;//flag 1
+	bool hostile;//flag 2
+}
+
+struct map_target {
+	enum map_target_type type;
+	//Could use a union in theory, but size isn't too important here
+	struct map_target_city map_target_city;
+	struct map_target_terrain map_target_terrain;
+	struct map_target_resource map_target_resource;
+	struct map_target_unit map_target_unit;
+}
+
+struct map_target_separation_rule {
+	struct map_target target;
+	bool require;
+
+	int distance_metric_flags;
+	int chebyshev;//flag 1
+	int manhatten;//flag 2
+	int euclidean_percent;//flag 3
+}
+
 struct minimum_city_separation {
 	int any_chebyshev;
 	int any_manhatten;
@@ -158,6 +218,8 @@ struct c3x_config {
 	bool skip_repeated_tile_improv_replacement_asks;
 	bool autofill_best_gold_amount_when_trading;
 	struct minimum_city_separation minimum_city_separation;
+	struct map_target_separation_rule * minimum_city_separation_rules;
+	int count_minimum_city_separation_rules;
 	bool enable_trade_screen_scroll;
 	bool group_units_on_right_click_menu;
 	bool gray_out_units_on_menu_with_no_remaining_moves;
