@@ -3423,14 +3423,13 @@ process_pending_district_request (Leader * leader, struct pending_district_reque
 
 	int district_id = req->district_id;
 	int civ_id = req->civ_id;
-	if ((civ_id < 0) || (civ_id >= 32)) {
-		remove_pending_district_request (req);
-		return;
-	}
+
 	if (city->Body.CivID != civ_id) {
 		clear_city_district_request (city, district_id);
 		return;
 	}
+
+	if (district_id < 0 || district_id >= is->district_count) return;
 
 	// Check if city already has the district if not a neighborhood or distribution hub
 	if (district_id != NEIGHBORHOOD_DISTRICT_ID &&
@@ -7807,16 +7806,10 @@ ensure_neighborhood_request_for_city (City * city)
 	    (city == NULL))
 		return;
 
-	int district_id = NEIGHBORHOOD_DISTRICT_ID;
-	if (district_id < 0 || district_id >= is->district_count) return;
+	int prereq = is->district_infos[NEIGHBORHOOD_DISTRICT_ID].advance_prereq_id;
+	if ((prereq >= 0) && ! Leader_has_tech (&leaders[city->Body.CivID], __, prereq)) return;
 
-	int civ_id = city->Body.CivID;
-	if (civ_id < 0) return;
-
-	int prereq = is->district_infos[district_id].advance_prereq_id;
-	if ((prereq >= 0) && ! Leader_has_tech (&leaders[civ_id], __, prereq)) return;
-
-	mark_city_needs_district (city, district_id);
+	mark_city_needs_district (city, NEIGHBORHOOD_DISTRICT_ID);
 }
 
 void
@@ -8016,9 +8009,7 @@ district_instance_is_redundant (struct district_instance * inst, Tile * tile)
 	if (! district_is_complete (tile, district_id))
 		return false;
 
-	enum Unit_Command_Values command = is->district_configs[district_id].command;
-	if ((command == UCV_Build_Neighborhood) ||
-	    (command == UCV_Build_DistributionHub))
+	if (district_id == NEIGHBORHOOD_DISTRICT_ID || district_id == DISTRIBUTION_HUB_DISTRICT_ID)
 		return false;
 
 	int tile_x = inst->tile_x;
@@ -8027,8 +8018,6 @@ district_instance_is_redundant (struct district_instance * inst, Tile * tile)
 		return false;
 
 	int civ_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
-	if ((civ_id < 0) || (civ_id >= 32))
-		return false;
 
 	if (district_id == WONDER_DISTRICT_ID)
 		return inst->wonder_info.state == WDS_UNUSED;
@@ -8059,6 +8048,9 @@ bool
 any_nearby_city_would_lose_district_benefits (int district_id, int civ_id, int removed_x, int removed_y)
 {
 	if (! is->current_config.enable_districts)
+		return false;
+
+	if (district_id < 0 || district_id >= is->district_count)
 		return false;
 
 	struct district_infos * info = &is->district_infos[district_id];
@@ -8258,9 +8250,7 @@ city_requires_district_for_improvement (City * city, int improv_id, int * out_di
 	if (! itable_look_up (&is->district_building_prereqs, improv_id, &district_id))
 		return false;
 	if (is->current_config.enable_wonder_districts) {
-		int wonder_district_id = WONDER_DISTRICT_ID;
-		if ((wonder_district_id >= 0) &&
-		    (district_id == wonder_district_id)) {
+		if (district_id == WONDER_DISTRICT_ID) {
 			if (city_has_wonder_district_with_no_completed_wonder (city))
 				return false;
 			if (out_district_id != NULL)
@@ -12431,7 +12421,7 @@ handle_worker_command_that_may_replace_district (Unit * unit, int unit_command_v
 		would_lose_buildings = false;
 
 	bool remove_existing = redundant_district;
-	if (inst != NULL) {
+	if (inst != NULL && district_id >= 0 && district_id < is->district_count) {
 		PopupForm * popup = get_popup_form ();
 		set_popup_str_param (0, (char *)is->district_configs[district_id].name, -1, -1);
 		set_popup_str_param (1, (char *)is->district_configs[district_id].name, -1, -1);
@@ -12686,6 +12676,8 @@ issue_district_worker_command (Unit * unit, int command)
 	// Check tech prerequisite for the selected district, if any
 	int district_id;
 	if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
+		if (district_id < 0 || district_id >= is->district_count)
+			return;
 		int prereq_id = is->district_infos[district_id].advance_prereq_id;
 		// Only enforce if a prereq is configured
 		if (prereq_id >= 0 && !Leader_has_tech (&leaders[unit->Body.CivID], __, prereq_id)) {
@@ -13190,6 +13182,7 @@ patch_City_Form_draw (City_Form * this)
 		struct district_instance * inst = get_district_instance (tile);
 		if (inst == NULL) continue;
 		int district_id = inst->district_type;
+		if (district_id < 0 || district_id >= is->district_count) continue;
 		if (! district_is_complete (tile, district_id)) continue;
 
 		struct district_config const * cfg = &is->district_configs[district_id];
@@ -20297,7 +20290,7 @@ patch_Tile_set_flag_for_eruption_damage (Tile * this, int edx, int param_1, int 
 {
 	if (is->current_config.enable_districts) {
 		struct district_instance * inst = get_district_instance (this);
-		if (inst != NULL) {
+		if (inst != NULL && inst->district_type >= 0 && inst->district_type < is->district_count) {
 			// District found - handle removal
 			int district_id = inst->district_type;
 
@@ -21898,6 +21891,9 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	if (is->dc_icons_img_state != IS_OK)
 		return;
 
+	if (district_id < 0 || district_id >= is->district_count)
+		return;
+
 	// Get district configuration
 	struct district_config const * config = &is->district_configs[district_id];
 	struct district_instance * inst = get_district_instance (tile);
@@ -22142,7 +22138,7 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 			// For neighborhood districts, check if population is high enough to utilize them
 			if (!is_distribution_hub &&
 			    is->current_config.enable_neighborhood_districts &&
-			    is->district_configs[district_id].command == UCV_Build_Neighborhood) {
+			    district_id == NEIGHBORHOOD_DISTRICT_ID) {
 				// Only draw yields if this neighborhood is utilized
 				if (remaining_utilized_neighborhoods <= 0)
 					continue;
@@ -23172,6 +23168,8 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 
 	// Districts
     if (is->current_config.enable_districts) {
+		if (district_id < 0 || district_id >= is->district_count)
+			return;
         bool completed = district_is_complete (tile, district_id);
 
         if (! completed)
