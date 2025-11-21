@@ -189,7 +189,8 @@ struct map_target {
 
 struct map_target_separation_rule {
 	struct map_target target;
-	bool require;
+	int min_count;
+	int max_count;
 
 	int distance_metric_flags;
 	int chebyshev;//flag 1

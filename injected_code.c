@@ -15190,6 +15190,7 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 	
 	struct map_target_separation_rule * city_separation_rules = is->minimum_city_separation_rules;
 	//init array of bools for requirements check
+	int * rule_matches = malloc (sizeof(int) * is->count_minimum_city_separation_rules);
 
 	//init bounding box
 	int min_sep_chebyshev = 0;
@@ -15209,11 +15210,6 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 		min_sep_box = min_sep_manhatten;
 	if ((min_sep_euclidean_percent + 99) / 100 > min_sep_box)
 		min_sep_box = (min_sep_euclidean_percent + 99) / 100
-
-	/*struct minimum_city_separation min_sep = is->current_config.minimum_city_separation;
-	int min_sep_chebyshev = min_sep.any_chebyshev > min_sep.foreign_chebyshev ? min_sep.any_chebyshev : min_sep.foreign_chebyshev;
-	int min_sep_manhatten = min_sep.any_manhatten > min_sep.foreign_manhatten ? min_sep.any_manhatten : min_sep.foreign_manhatten;
-	int min_sep_box = min_sep_manhatten < min_sep_chebyshev ? min_sep_manhatten : min_sep_chebyshev;*/
 	
 	//Otherwise perform calculation ourselves
 	//start calcing dx/dy at 45 degrees / on a virtual grid
@@ -15229,7 +15225,7 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 			int ty = tile_y + dy+dx;
 			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
 
-			//Now check each rule
+			//Now check each rule (order things this way to not recalculate positions and distances... is this even sensible?)
 			for (int i = 0; i < is->count_minimum_city_separation_rules; i++) {
 				struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(map_target_separation_rule);
 				//Check tile is within rule's radius
@@ -15240,35 +15236,27 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 				if (current_rule->distance_metric_flags & 4 != 0 && (current_rule->euclidean_percent * current_rule->euclidean_percent) <= euclidean_percent_squared)
 					continue;
 				//Rule applies
-				bool matches = match_target(current_rule + offsetof (struct map_target_separation_rule, target))
-				if (current_rule->require) {
-					//not implemented: see array of bools for requirements check
-				} else {
+				if(!match_target(current_rule + offsetof (struct map_target_separation_rule, target)))
+					continue;
+				//Increment rule counter
+				rule_matches[i] += 1;
+				//Check if rule max count is exceeded and exit early
+				if (current_rule->max_count < rule_matches[i]) {
+					free (rule_matches);
 					return CLV_CITY_TOO_CLOSE; //Kinda abusing this name since we now check for other things
 				}
 			}
-
-			//Shortcut in case the tile is not inside either the global rule or the foreign rule
-			//if (chebyshev > min_sep_chebyshev || manhatten > min_sep_manhatten)
-			//	continue;
-
-			/*
-			City * city = city_at(tx, ty);
-			if (city != NULL) {
-				//Apply the global rule
-				if (chebyshev <= min_sep.any_chebyshev && manhatten <= min_sep.any_manhatten)
-					return CLV_CITY_TOO_CLOSE;
-				//Apply the foreign rule
-				if (city->Body.CivID != civ_id) {
-					if (chebyshev <= min_sep.foreign_chebyshev && manhatten <= min_sep.foreign_manhatten)
-						return CLV_CITY_TOO_CLOSE;
-				}
-			}*/
 		}
 	}
-	//Now check that all requirements are met - see array of bools requirements check
-
-
+	//Check if each rule minimum count is met - no need to check max count, we do that when incrementing
+	for (int i = 0; i < is->count_minimum_city_separation_rules; i++) {
+		struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(map_target_separation_rule);
+		if (rule_matches[i] < current_rule->min_count) {
+			free (rule_matches);
+			return CLV_CITY_TOO_CLOSE; //Kinda abusing this name since we now check for other things
+		}
+	}
+	free (rule_matches);
 	return CLV_OK;
 }
 
