@@ -670,6 +670,18 @@ struct parsed_district_definition {
 	bool has_shield_bonus;
 };
 
+struct scenario_district_entry {
+	int tile_x;
+	int tile_y;
+	int has_coordinates;
+	char * district_name;
+	int has_district_name;
+	char * wonder_city_name;
+	int has_wonder_city;
+	char * wonder_name;
+	int has_wonder_name;
+};
+
 struct distribution_hub_record {
 	Tile * tile;
 	int tile_x;

@@ -6614,18 +6614,6 @@ find_city_by_name (char const * name)
 	return NULL;
 }
 
-struct scenario_district_entry {
-	int tile_x;
-	int tile_y;
-	int has_coordinates;
-	char * district_name;
-	int has_district_name;
-	char * wonder_city_name;
-	int has_wonder_city;
-	char * wonder_name;
-	int has_wonder_name;
-};
-
 void
 init_scenario_district_entry (struct scenario_district_entry * entry)
 {
