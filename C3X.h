@@ -146,36 +146,36 @@ enum map_target_type {
 
 struct map_target_city {
 	int flags;
-	bool foreign;//flag 0
-	bool hostile;//flag 1
-	int population_min;//flag 2
-	int population_max;//flag 3
-	int culture_min;//flag 4
-	int culture_max;//flag 5
+	bool foreign;//flag 1
+	bool hostile;//flag 2
+	int population_min;//flag 4
+	int population_max;//flag 8
+	int culture_min;//flag 16
+	int culture_max;//flag 32
 }
 
 struct map_target_terrain {
 	int flags;
-	int type;//flag 0
-	int food_yield_min;//flag 1
-	int food_yield_max;//flag 2
-	int shield_yield_min;//flag 3
-	int shield_yield_max;//flag 4
-	int commerce_yield_min;//flag 5
-	int commerce_yield_max;//flag 6
+	int type;//flag 1
+	int food_yield_min;//flag 2
+	int food_yield_max;//flag 4
+	int shield_yield_min;//flag 8
+	int shield_yield_max;//flag 16
+	int commerce_yield_min;//flag 32
+	int commerce_yield_max;//flag 64
 }
 
 struct map_target_resource {
 	int flags;
-	int type;//flag 0
-	bool is_visible;//flag 1
+	int type;//flag 1
+	bool is_visible;//flag 2
 }
 
 struct map_target_unit {
 	int flags;
-	int type;//flag 0
-	bool foreign;//flag 1
-	bool hostile;//flag 2
+	int type;//flag 1
+	bool foreign;//flag 2
+	bool hostile;//flag 4
 }
 
 struct map_target {
@@ -195,7 +195,7 @@ struct map_target_separation_rule {
 	int distance_metric_flags;
 	int chebyshev;//flag 1
 	int manhatten;//flag 2
-	int euclidean_percent;//flag 3
+	int euclidean_percent;//flag 4
 }
 
 struct minimum_city_separation {

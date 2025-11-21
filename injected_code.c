@@ -1359,6 +1359,127 @@ parse_work_area_improvement (char ** p_cursor, struct error_line ** p_unrecogniz
 		return RPR_PARSE_ERROR;
 }
 
+enum recognizable_parse_result
+parse_city_separation_rule (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_city_separation_rule)
+{
+	char * cur = *p_cursor;
+	struct map_target_separation_rule * out = out_parsed_city_separation_rule;
+
+	struct string_slice target_type;
+	if (skip_white_space (&cur) &&
+	    parse_map_target (&cur, out + offsetof (struct map_target_separation_rule, target)) &&
+	    skip_punctuation (&cur, ':')) {
+
+		string_slice and_separator;
+		do {
+			int num;
+			if (!skip_white_space (&cur) || !parse_int (&cur, &num))
+				return RPR_PARSE_ERROR;
+
+			out->flags = 0;
+
+			struct string_slice metric_type;
+			if (parse_string (&cur, &metric_type)) {
+				if (slice_matches_str (&metric_type, "chebychev")) {
+					out->chebychev = num;
+					out->flags |= 1;
+				} else if (slice_matches_str (&metric_type, "manhatten")) {
+					out->manhatten = num;
+					out->flags |= 2;
+				} else if (slice_matches_str (&metric_type, "euclidean_percent")) {
+					out->euclidean_percent = num;
+					out->flags |= 4;
+				} else
+					return RPR_PARSE_ERROR;
+			} else {//Default to chebychev if nothing stated.
+				out->chebychev = num;
+				out->flags |= 1;
+			}
+		} while (skip_white_space (&cur) && parse_string(&cur, &and_separator) && slice_matches_str(&and_separator, "and"))
+
+	} else
+		return RPR_PARSE_ERROR;
+}
+
+bool
+parse_map_target (char ** p_cursor, struct map_target * target)
+{
+	struct string_slice target_type;
+	if (!parse_string (&cur, &target_type))
+		return false;
+	if (slice_matches_str (&target_type, "city")) {
+		target->type = CITY;
+		return parse_map_target_city (char ** p_cursor, target + offsetof (struct map_target, map_target_city))
+	} else if (slice_matches_str (&target_type, "terrain")) {
+		target->type = TERRAIN;
+		//unimpl
+		return false;
+	} else if (slice_matches_str (&target_type, "resource")) {
+		target->type = RESOURCE;
+		//unimpl
+		return false;
+	} else if (slice_matches_str (&target_type, "unit")) {
+		target->type = UNIT;
+		//unimpl
+		return false;
+	} else {
+		return false;
+	}
+}
+
+bool
+parse_map_target_city (char ** p_cursor, struct map_target_city * target)
+{
+	if (!skip_white_space (&cur))
+		return false;
+	struct string_slice condition_name;
+	target->flags = 0;
+	while (parse_string (&cur, &condition_name)) {
+		if (slice_matches_str(&condition_name, "foreign")) {
+			target->flags |= 1;
+			target->foreign = true;
+		} else if (slice_matches_str(&condition_name, "hostile")) {
+			target->flags |= 2;
+			target->hostile = true;
+		} else if (slice_matches_str(&condition_name, "population")) {
+			if (!skip_white_space (&cur))
+				return false;
+			int num;
+			if (!skip_white_space (&cur) || !parse_int (&cur, &num))
+				return false;
+			target->flags |= 4;
+			target->population_min = num;
+			if (skip_white_space (&cur) && skip_punctuation(&cur, '-')) {
+				if (skip_white_space(&cur) && parse_int (&cur, &num)) {
+					target->flags |= 8;
+					target->population_max = num;
+				} else {
+					return false;
+				}
+			}
+		} else if (slice_matches_str(&condition_name, "culture")) {
+			if (!skip_white_space (&cur))
+				return false;
+			int num;
+			if (!skip_white_space (&cur) || !parse_int (&cur, &num))
+				return false;
+			target->flags |= 16;
+			target->culture_min = num;
+			if (skip_white_space (&cur) && skip_punctuation(&cur, '-')) {
+				if (skip_white_space(&cur) && parse_int (&cur, &num)) {
+					target->flags |= 32;
+					target->culture_max = num;
+				} else {
+					return false;
+				}
+			}
+		} else {
+			return false;
+		}
+	}
+
+}
+
 // Recognizable items are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
 // If an error occurs while reading, returns the location of the error inside the slice, specifically the number of characters before the unreadable
 // item. If no error occurs, returns -1.
@@ -15190,6 +15311,7 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 	
 	struct map_target_separation_rule * city_separation_rules = is->minimum_city_separation_rules;
 	//init array of bools for requirements check
+	//dislike reallocating each time, but injected_state is a pain and I also don't want to bleed state into the config structs.
 	int * rule_matches = malloc (sizeof(int) * is->count_minimum_city_separation_rules);
 
 	//init bounding box
@@ -15209,7 +15331,7 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 	if (min_sep_manhatten > min_sep_box)
 		min_sep_box = min_sep_manhatten;
 	if ((min_sep_euclidean_percent + 99) / 100 > min_sep_box)
-		min_sep_box = (min_sep_euclidean_percent + 99) / 100
+		min_sep_box = (min_sep_euclidean_percent + 99) / 100;
 	
 	//Otherwise perform calculation ourselves
 	//start calcing dx/dy at 45 degrees / on a virtual grid
