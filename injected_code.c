@@ -5336,7 +5336,7 @@ load_dynamic_district_config_file (char const * file_path,
 void
 load_dynamic_district_configs (bool is_scenario)
 {
-	load_dynamic_district_config_file ("default.districts_config.txt", 1, 1, 0);
+	load_dynamic_district_config_file ("default.districts_config.txt", 1, 1, 1);
 	load_dynamic_district_config_file ("user.districts_config.txt", 1, 0, 1);
 
 	if (is_scenario)
@@ -5706,7 +5706,7 @@ load_dynamic_wonder_config_file (char const * file_path,
 void
 load_dynamic_wonder_configs (bool is_scenario)
 {
-	load_dynamic_wonder_config_file ("default.districts_wonders_config.txt", 1, 1, 0);
+	load_dynamic_wonder_config_file ("default.districts_wonders_config.txt", 1, 1, 1);
 	load_dynamic_wonder_config_file ("user.districts_wonders_config.txt", 1, 0, 1);
 
 	if (is_scenario)
@@ -6161,7 +6161,7 @@ load_natural_wonder_config_file (char const * file_path,
 void
 load_natural_wonder_configs (bool is_scenario)
 {
-	load_natural_wonder_config_file ("default.districts_natural_wonders_config.txt", 1, 1, 0);
+	load_natural_wonder_config_file ("default.districts_natural_wonders_config.txt", 1, 1, 1);
 	load_natural_wonder_config_file ("user.districts_natural_wonders_config.txt", 1, 0, 1);
 	
 	if (is_scenario)
@@ -20362,6 +20362,63 @@ serialize_aligned_text (char const * text, struct buffer * b)
 	}
 }
 
+void
+serialize_string_with_len (char const * text, struct buffer * b)
+{
+	int len = (text != NULL) ? (int)strlen (text) : -1;
+	*(int *)buffer_allocate (b, sizeof(int)) = len;
+	if (len < 0)
+		return;
+
+	int padded_len = (len + 4) & ~3; // +1 for null terminator then +3 & ~3 for alignment
+	byte * dest = buffer_allocate (b, padded_len);
+	if (dest == NULL)
+		return;
+
+	if (len > 0)
+		memcpy (dest, text, len);
+	dest[len] = '\0';
+	for (int i = len + 1; i < padded_len; i++)
+		dest[i] = 0;
+}
+
+bool
+deserialize_string_with_len (byte ** cursor, byte * end, char ** out)
+{
+	if ((cursor == NULL) || (out == NULL) || (end == NULL) || (*cursor > end))
+		return false;
+
+	if ((end - *cursor) < (int)sizeof(int))
+		return false;
+
+	int len = *((int *)(*cursor));
+	byte * str_start = *cursor + sizeof(int);
+	if (len < 0) {
+		*cursor = str_start;
+		*out = NULL;
+		return true;
+	}
+
+	if (len > 0x3FFFFFFF)
+		return false;
+
+	int padded_len = (len + 4) & ~3; // +1 for null terminator then +3 & ~3 for alignment
+	if ((end - str_start) < padded_len)
+		return false;
+
+	char * copy = (char *)malloc (len + 1);
+	if (copy == NULL)
+		return false;
+
+	if (len > 0)
+		memcpy (copy, str_start, len);
+	copy[len] = '\0';
+
+	*cursor = str_start + padded_len;
+	*out = copy;
+	return true;
+}
+
 void * __fastcall
 patch_MappedFile_open_to_load_game (MappedFile * this, int edx, char * file_name, int sequential_access)
 {
@@ -20438,26 +20495,91 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 				}
 			}
 		}
-		if (any_current_settler_perfume) {
-			serialize_aligned_text ("turn_no_of_last_founding_for_settler_perfume", &mod_data);
-			void * area = buffer_allocate (&mod_data, sizeof is->turn_no_of_last_founding_for_settler_perfume);
-			memcpy (area, is->turn_no_of_last_founding_for_settler_perfume, sizeof is->turn_no_of_last_founding_for_settler_perfume);
-		}
+	if (any_current_settler_perfume) {
+		serialize_aligned_text ("turn_no_of_last_founding_for_settler_perfume", &mod_data);
+		void * area = buffer_allocate (&mod_data, sizeof is->turn_no_of_last_founding_for_settler_perfume);
+		memcpy (area, is->turn_no_of_last_founding_for_settler_perfume, sizeof is->turn_no_of_last_founding_for_settler_perfume);
+	}
 	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
 		serialize_aligned_text ("current_day_night_cycle", &mod_data);
 		int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_day_night_cycle), is->current_day_night_cycle);
 	}
 
-	if (is->current_config.enable_districts && (is->district_count > 0)) {
-		serialize_aligned_text ("district_config_names", &mod_data);
-		int * entry_count = (int *)buffer_allocate (&mod_data, sizeof(int));
-		*entry_count = is->district_count;
+	if ((is->current_config.enable_districts || is->current_config.enable_natural_wonders) &&
+	    (is->district_count > 0)) {
+		serialize_aligned_text ("district_config_data", &mod_data);
+		int * header = (int *)buffer_allocate (&mod_data, sizeof(int) * 6);
+		header[0] = is->district_count;
+		header[1] = is->special_district_count;
+		header[2] = is->dynamic_district_count;
+		header[3] = is->next_custom_dynamic_command_index;
+		header[4] = is->wonder_district_count;
+		header[5] = is->natural_wonder_count;
+
 		for (int district_id = 0; district_id < is->district_count; district_id++) {
-			*(int *)buffer_allocate (&mod_data, sizeof(int)) = district_id;
-			char const * name = is->district_configs[district_id].name;
-			if (name == NULL)
-				name = "";
-			serialize_aligned_text (name, &mod_data);
+			struct district_config * cfg = &is->district_configs[district_id];
+			int * ints = (int *)buffer_allocate (&mod_data, sizeof(int) * 17);
+			ints[0]  = district_id;
+			ints[1]  = cfg->command;
+			ints[2]  = cfg->allow_multiple;
+			ints[3]  = cfg->vary_img_by_era;
+			ints[4]  = cfg->vary_img_by_culture;
+			ints[5]  = cfg->is_dynamic;
+			ints[6]  = cfg->dependent_improvement_count;
+			ints[7]  = cfg->img_path_count;
+			ints[8]  = cfg->max_building_index;
+			ints[9]  = cfg->btn_tile_sheet_column;
+			ints[10] = cfg->btn_tile_sheet_row;
+			ints[11] = cfg->culture_bonus;
+			ints[12] = cfg->science_bonus;
+			ints[13] = cfg->food_bonus;
+			ints[14] = cfg->gold_bonus;
+			ints[15] = cfg->shield_bonus;
+			ints[16] = cfg->defense_bonus_percent;
+
+			serialize_string_with_len (cfg->name, &mod_data);
+			serialize_string_with_len (cfg->tooltip, &mod_data);
+			serialize_string_with_len (cfg->advance_prereq, &mod_data);
+
+			for (int n = 0; n < cfg->dependent_improvement_count; n++)
+				serialize_string_with_len (cfg->dependent_improvements[n], &mod_data);
+
+			for (int n = 0; n < cfg->img_path_count; n++)
+				serialize_string_with_len (cfg->img_paths[n], &mod_data);
+		}
+
+		for (int wi = 0; wi < is->wonder_district_count; wi++) {
+			struct wonder_district_config * cfg = &is->wonder_district_configs[wi];
+			int * ints = (int *)buffer_allocate (&mod_data, sizeof(int) * 6);
+			ints[0] = cfg->index;
+			ints[1] = cfg->img_row;
+			ints[2] = cfg->img_column;
+			ints[3] = cfg->img_construct_row;
+			ints[4] = cfg->img_construct_column;
+			ints[5] = cfg->is_dynamic;
+
+			serialize_string_with_len (cfg->wonder_name, &mod_data);
+			serialize_string_with_len (cfg->img_path, &mod_data);
+		}
+
+		for (int ni = 0; ni < is->natural_wonder_count; ni++) {
+			struct natural_wonder_district_config * cfg = &is->natural_wonder_configs[ni];
+			int * ints = (int *)buffer_allocate (&mod_data, sizeof(int) * 12);
+			ints[0] = cfg->index;
+			ints[1] = cfg->terrain_type;
+			ints[2] = cfg->adjacent_to;
+			ints[3] = cfg->adjacency_dir;
+			ints[4] = cfg->img_row;
+			ints[5] = cfg->img_column;
+			ints[6] = cfg->culture_bonus;
+			ints[7] = cfg->science_bonus;
+			ints[8] = cfg->food_bonus;
+			ints[9] = cfg->gold_bonus;
+			ints[10] = cfg->shield_bonus;
+			ints[11] = cfg->is_dynamic;
+
+			serialize_string_with_len (cfg->name, &mod_data);
+			serialize_string_with_len (cfg->img_path, &mod_data);
 		}
 	}
 
@@ -20733,6 +20855,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 
 		byte * cursor = seg;
 		char * error_chunk_name = NULL;
+		bool district_config_reset_done = false;
 		while (cursor < seg + seg_size) {
 			if (match_save_chunk_name (&cursor, "special save message")) {
 				char * msg = (char *)cursor;
@@ -20845,97 +20968,262 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				// Because we've restored current_day_night_cycle from the save, set that is is not the first turn so the cycle
 				// doesn't get restarted.
 				is->day_night_cycle_unstarted = false;
-			} else if (match_save_chunk_name (&cursor, "district_config_names")) {
+			} else if (match_save_chunk_name (&cursor, "district_config_data")) {
 				bool success = false;
-				bool mismatch_found = false;
-				bool count_mismatch = false;
-				char first_mismatch[200];
-				first_mismatch[0] = '\0';
-				int remaining_bytes = (seg + seg_size) - cursor;
-				if (remaining_bytes >= (int)sizeof(int)) {
+				if ((seg + seg_size - cursor) >= 6 * (int)sizeof(int)) {
 					int * ints = (int *)cursor;
-					int saved_count = *ints++;
+					int saved_district_count = *ints++;
+					int saved_special_count = *ints++;
+					int saved_dynamic_count = *ints++;
+					int saved_next_command_index = *ints++;
+					int saved_wonder_count = *ints++;
+					int saved_natural_count = *ints++;
 					cursor = (byte *)ints;
-					remaining_bytes -= (int)sizeof(int);
-					if (saved_count >= 0) {
+					(void)saved_dynamic_count;
+					if ((saved_district_count >= 0) && (saved_district_count <= COUNT_DISTRICT_TYPES) &&
+					    (saved_wonder_count >= 0) && (saved_wonder_count <= MAX_WONDER_DISTRICT_TYPES) &&
+					    (saved_natural_count >= 0) && (saved_natural_count <= MAX_NATURAL_WONDER_DISTRICT_TYPES)) {
+						if (! district_config_reset_done) {
+							reset_district_state (false);
+							district_config_reset_done = true;
+						}
 						success = true;
-						count_mismatch = (saved_count != is->district_count);
-						char * saved_names[saved_count];
-						for (int n = 0; n < saved_count; n++) {
-							if (remaining_bytes < (int)sizeof(int)) {
+
+						int special_count = saved_special_count;
+						if (special_count < 0)
+							special_count = 0;
+						if (special_count > saved_district_count)
+							special_count = saved_district_count;
+						if (special_count > USED_SPECIAL_DISTRICT_TYPES)
+							special_count = USED_SPECIAL_DISTRICT_TYPES;
+
+						is->special_district_count = special_count;
+						int max_dynamic = saved_district_count - is->special_district_count;
+						if (max_dynamic < 0)
+							max_dynamic = 0;
+						is->dynamic_district_count = max_dynamic;
+						is->district_count = saved_district_count;
+						is->next_custom_dynamic_command_index = (saved_next_command_index >= 0) ? saved_next_command_index : 0;
+						is->wonder_district_count = saved_wonder_count;
+						is->natural_wonder_count = saved_natural_count;
+
+						for (int di = 0; (di < saved_district_count) && success; di++) {
+							if ((seg + seg_size - cursor) < 17 * (int)sizeof(int)) {
 								success = false;
 								break;
 							}
-							ints = (int *)cursor;
-							int saved_id = *ints++;
-							cursor = (byte *)ints;
-							remaining_bytes -= (int)sizeof(int);
 
-							int name_len = -1;
-							for (int k = 0; k < remaining_bytes; k++) {
-								if (cursor[k] == '\0') {
-									name_len = k;
+							int * ints2 = (int *)cursor;
+							int dest_index = *ints2++;
+							int command = *ints2++;
+							int allow_multiple = *ints2++;
+							int vary_by_era = *ints2++;
+							int vary_by_culture = *ints2++;
+							int is_dynamic = *ints2++;
+							int dep_count = *ints2++;
+							int img_count = *ints2++;
+							int max_building_index = *ints2++;
+							int btn_col = *ints2++;
+							int btn_row = *ints2++;
+							int culture_bonus = *ints2++;
+							int science_bonus = *ints2++;
+							int food_bonus = *ints2++;
+							int gold_bonus = *ints2++;
+							int shield_bonus = *ints2++;
+							int defense_bonus_percent = *ints2++;
+							cursor = (byte *)ints2;
+
+							if ((dest_index < 0) || (dest_index >= saved_district_count)) {
+								success = false;
+								break;
+							}
+
+							struct district_config new_cfg;
+							memset (&new_cfg, 0, sizeof new_cfg);
+							new_cfg.command = (enum Unit_Command_Values)command;
+							new_cfg.allow_multiple = allow_multiple != 0;
+							new_cfg.vary_img_by_era = vary_by_era != 0;
+							new_cfg.vary_img_by_culture = vary_by_culture != 0;
+							new_cfg.is_dynamic = is_dynamic != 0;
+							new_cfg.max_building_index = max_building_index;
+							new_cfg.btn_tile_sheet_column = btn_col;
+							new_cfg.btn_tile_sheet_row = btn_row;
+							new_cfg.culture_bonus = culture_bonus;
+							new_cfg.science_bonus = science_bonus;
+							new_cfg.food_bonus = food_bonus;
+							new_cfg.gold_bonus = gold_bonus;
+							new_cfg.shield_bonus = shield_bonus;
+							new_cfg.defense_bonus_percent = defense_bonus_percent;
+
+							char * name = NULL;
+							char * tooltip = NULL;
+							char * advance_prereq = NULL;
+							if (! deserialize_string_with_len (&cursor, seg + seg_size, &name) ||
+							    ! deserialize_string_with_len (&cursor, seg + seg_size, &tooltip) ||
+							    ! deserialize_string_with_len (&cursor, seg + seg_size, &advance_prereq)) {
+								if (name != NULL) free (name);
+								if (tooltip != NULL) free (tooltip);
+								if (advance_prereq != NULL) free (advance_prereq);
+								success = false;
+								break;
+							}
+
+							new_cfg.name = name;
+							new_cfg.tooltip = tooltip;
+							new_cfg.advance_prereq = advance_prereq;
+
+							int dep_capacity = ARRAY_LEN (new_cfg.dependent_improvements);
+							for (int n = 0; n < dep_count; n++) {
+								char * dep = NULL;
+								if (! deserialize_string_with_len (&cursor, seg + seg_size, &dep)) {
+									if (dep != NULL)
+										free (dep);
+									success = false;
 									break;
 								}
-							}
-							if (name_len < 0) {
-								success = false;
-								break;
-							}
-							int padded_len = (name_len + 4) & ~3;
-							if (padded_len > remaining_bytes) {
-								success = false;
-								break;
-							}
 
-							char * saved_name = (char *)cursor;
-							saved_names[n] = saved_name;
-							if (! mismatch_found) {
-								if ((saved_id < 0) || (saved_id >= is->district_count)) {
-									snprintf (first_mismatch, sizeof first_mismatch, "The district %d (\"%s\") is in the save file but missing in the current configuration", saved_id, saved_name);
-									first_mismatch[(sizeof first_mismatch) - 1] = '\0';
-									mismatch_found = true;
-								} else {
-									char const * current_name = is->district_configs[saved_id].name;
-									if (current_name == NULL)
-										current_name = "";
-									if (strcmp (current_name, saved_name) != 0) {
-										snprintf (first_mismatch, sizeof first_mismatch, "District %d is \"%s\" in the save file but  \"%s\" in the current configuration", saved_id, saved_name, current_name);
-										first_mismatch[(sizeof first_mismatch) - 1] = '\0';
-										mismatch_found = true;
-									}
+								if (n < dep_capacity) {
+									new_cfg.dependent_improvements[n] = dep;
+									new_cfg.dependent_improvement_count += 1;
+								} else if (dep != NULL)
+									free (dep);
+							}
+							if (! success)
+								break;
+
+							int img_capacity = ARRAY_LEN (new_cfg.img_paths);
+							for (int n = 0; n < img_count; n++) {
+								char * path = NULL;
+								if (! deserialize_string_with_len (&cursor, seg + seg_size, &path)) {
+									if (path != NULL)
+										free (path);
+									success = false;
+									break;
 								}
+
+								if (n < img_capacity) {
+									new_cfg.img_paths[n] = path;
+									new_cfg.img_path_count += 1;
+								} else if (path != NULL)
+									free (path);
+							}
+							if (! success)
+								break;
+
+							is->district_configs[dest_index] = new_cfg;
+						}
+
+						for (int wi = 0; (wi < is->wonder_district_count) && success; wi++) {
+							if ((seg + seg_size - cursor) < 6 * (int)sizeof(int)) {
+								success = false;
+								break;
 							}
 
-							cursor += padded_len;
-							remaining_bytes -= padded_len;
-						}
-						if (success && count_mismatch && (first_mismatch[0] == '\0')) {
-							snprintf (first_mismatch, sizeof first_mismatch, "The save file had %d total district types but the current configuration has only %d", saved_count, is->district_count);
-							first_mismatch[(sizeof first_mismatch) - 1] = '\0';
-							mismatch_found = true;
-						}
-						if (success && mismatch_found) {
-							char msg[1000];
-							snprintf (msg, sizeof msg, "Warning! This save file was created with a different districts configuration: %s. The game may not function correctly", first_mismatch);
+							int * ints2 = (int *)cursor;
+							int index = *ints2++;
+							int img_row = *ints2++;
+							int img_col = *ints2++;
+							int construct_row = *ints2++;
+							int construct_col = *ints2++;
+							int is_dynamic = *ints2++;
+							cursor = (byte *)ints2;
 
-							snprintf (msg, sizeof msg, "%s. Saved configuration: ", msg);
-							for (int n = 0; n < saved_count; n++) {
-								snprintf (msg, sizeof msg, "%s (%d) [%s] ", msg, n, saved_names[n]);
+							if ((index < 0) || (index >= MAX_WONDER_DISTRICT_TYPES)) {
+								success = false;
+								break;
 							}
 
-							snprintf (msg, sizeof msg, "%s. Current configuration: ", msg);
-							for (int n = 0; n < is->district_count; n++) {
-								snprintf (msg, sizeof msg, "%s (%d) [%s] ", msg, n, is->district_configs[n].name);
+							char * name = NULL;
+							char * img_path = NULL;
+							if (! deserialize_string_with_len (&cursor, seg + seg_size, &name) ||
+							    ! deserialize_string_with_len (&cursor, seg + seg_size, &img_path)) {
+								if (name != NULL) free (name);
+								if (img_path != NULL) free (img_path);
+								success = false;
+								break;
 							}
 
-							msg[(sizeof msg) - 1] = '\0';
-							pop_up_in_game_error (msg);
+							struct wonder_district_config cfg;
+							memset (&cfg, 0, sizeof cfg);
+							cfg.index = index;
+							cfg.img_row = img_row;
+							cfg.img_column = img_col;
+							cfg.img_construct_row = construct_row;
+							cfg.img_construct_column = construct_col;
+							cfg.is_dynamic = is_dynamic != 0;
+							cfg.wonder_name = name;
+							if (img_path != NULL)
+								cfg.img_path = img_path;
+							else
+								cfg.img_path = strdup ("Wonders.pcx");
+
+							is->wonder_district_configs[index] = cfg;
 						}
+
+						for (int ni = 0; (ni < is->natural_wonder_count) && success; ni++) {
+							if ((seg + seg_size - cursor) < 12 * (int)sizeof(int)) {
+								success = false;
+								break;
+							}
+
+							int * ints2 = (int *)cursor;
+							int index = *ints2++;
+							int terrain_type = *ints2++;
+							int adjacent_to = *ints2++;
+							int adjacency_dir = *ints2++;
+							int img_row = *ints2++;
+							int img_col = *ints2++;
+							int culture_bonus = *ints2++;
+							int science_bonus = *ints2++;
+							int food_bonus = *ints2++;
+							int gold_bonus = *ints2++;
+							int shield_bonus = *ints2++;
+							int is_dynamic = *ints2++;
+							cursor = (byte *)ints2;
+
+							if ((index < 0) || (index >= MAX_NATURAL_WONDER_DISTRICT_TYPES)) {
+								success = false;
+								break;
+							}
+
+							char * name = NULL;
+							char * img_path = NULL;
+							if (! deserialize_string_with_len (&cursor, seg + seg_size, &name) ||
+							    ! deserialize_string_with_len (&cursor, seg + seg_size, &img_path)) {
+								if (name != NULL) free (name);
+								if (img_path != NULL) free (img_path);
+								success = false;
+								break;
+							}
+
+							struct natural_wonder_district_config cfg;
+							memset (&cfg, 0, sizeof cfg);
+							cfg.index = index;
+							cfg.terrain_type = (enum SquareTypes)terrain_type;
+							cfg.adjacent_to = (enum SquareTypes)adjacent_to;
+							cfg.adjacency_dir = (enum direction)adjacency_dir;
+							cfg.img_row = img_row;
+							cfg.img_column = img_col;
+							cfg.culture_bonus = culture_bonus;
+							cfg.science_bonus = science_bonus;
+							cfg.food_bonus = food_bonus;
+							cfg.gold_bonus = gold_bonus;
+							cfg.shield_bonus = shield_bonus;
+							cfg.is_dynamic = is_dynamic != 0;
+							cfg.name = name;
+							cfg.img_path = img_path;
+							is->natural_wonder_configs[index] = cfg;
+							if (cfg.name != NULL)
+								stable_insert (&is->natural_wonder_name_to_id, cfg.name, index);
+						}
+					}
+					if (success) {
+						set_wonders_dependent_on_wonder_district ();
+						parse_building_and_tech_ids ();
 					}
 				}
 				if (! success) {
-					error_chunk_name = "district_config_names";
+					error_chunk_name = "district_config_data";
 					break;
 				}
 			} else if (match_save_chunk_name (&cursor, "district_pending_requests")) {
