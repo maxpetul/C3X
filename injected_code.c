@@ -6295,8 +6295,19 @@ load_districts_config (bool is_scenario)
 
 	set_wonders_dependent_on_wonder_district ();
 	parse_building_and_tech_ids ();
-}
 
+	// Print each district type
+	for (int i = 0; i < is->district_count; i++) {
+		char ss[512];
+		snprintf (ss, sizeof ss, "[C3X] District ID %d: name=\"%s\", command=0x%X, advance_prereq_id=%d, dependent_improvement_count=%d\n",
+			  i,
+			  (is->district_configs[i].name != NULL) ? is->district_configs[i].name : "Unnamed District",
+			  is->district_configs[i].command,
+			  is->district_infos[i].advance_prereq_id,
+			  is->district_configs[i].dependent_improvement_count);
+		pop_up_in_game_error (ss);
+	}
+}
 
 void
 place_natural_wonders_on_map (void)
@@ -13794,8 +13805,12 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	apply_machine_code_edits (&is->current_config, false);
 
 	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
-		bool is_scenario = 0 != strcmp ("conquests.biq", scenario_path);
+		// "conquests.biq"   = new game
+		// "biq__in_.tmp"    = loading saved game
+		// "Scenarios/*.biq" = scenario
+		bool is_scenario = strcmp ("conquests.biq", scenario_path) != 0 && strcmp ("biq__in_.tmp", scenario_path) != 0;
 		reset_district_state (true);
+		pop_up_in_game_error (scenario_path);
 		load_districts_config (is_scenario);
 		if (is_scenario) {
 			load_scenario_districts_from_file (scenario_path);
@@ -20921,7 +20936,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							remaining_bytes -= padded_len;
 						}
 						if (success && count_mismatch && (first_mismatch[0] == '\0')) {
-							snprintf (first_mismatch, sizeof first_mismatch, "The save file had %d total district types but current configuration has only %d", saved_count, is->district_count);
+							snprintf (first_mismatch, sizeof first_mismatch, "The save file had %d total district types but the current configuration has only %d", saved_count, is->district_count);
 							first_mismatch[(sizeof first_mismatch) - 1] = '\0';
 							mismatch_found = true;
 						}
@@ -20934,7 +20949,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 								snprintf (msg, sizeof msg, "%s (%d) [%s] ", msg, n, saved_names[n]);
 							}
 
-							snprintf (msg, sizeof msg, "%s. \r\n\r\n\r\n\r\nCurrent configuration: ", msg);
+							snprintf (msg, sizeof msg, "%s. Current configuration: ", msg);
 							for (int n = 0; n < is->district_count; n++) {
 								snprintf (msg, sizeof msg, "%s (%d) [%s] ", msg, n, is->district_configs[n].name);
 							}
