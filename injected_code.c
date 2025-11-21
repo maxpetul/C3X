@@ -8090,6 +8090,17 @@ patch_Sprite_draw_on_map (Sprite * this, int edx, Map_Renderer * map_renderer, i
 	return Sprite_draw_on_map(to_draw ? to_draw : this, __, map_renderer, pixel_x, pixel_y, param_4, param_5, param_6, param_7);
 }
 
+bool
+is_or_could_become_grassland (Tile * tile)
+{
+	enum SquareTypes sq_type         = tile->vtable->m50_Get_Square_BaseType (tile),
+		         underlying_type = tile->vtable->m49_Get_Square_RealType (tile);
+	int worker_job_id = p_bic_data->TileTypes[sq_type].WorkerJobID;
+	return sq_type == SQ_Grassland ||
+		(underlying_type == SQ_Grassland && (worker_job_id == WJ_Clean_Forest || worker_job_id == WJ_Clear_Swamp)) ||
+		tile->vtable->m72_Get_Pollution_Effect (tile) == SQ_Grassland;
+}
+
 void __fastcall
 patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, int param_1, int pixel_x, int pixel_y, Map_Renderer * map_renderer, int param_5, int tile_x, int tile_y, int param_8)
 {
