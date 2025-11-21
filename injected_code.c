@@ -6295,18 +6295,6 @@ load_districts_config (bool is_scenario)
 
 	set_wonders_dependent_on_wonder_district ();
 	parse_building_and_tech_ids ();
-
-	// Print each district type
-	for (int i = 0; i < is->district_count; i++) {
-		char ss[512];
-		snprintf (ss, sizeof ss, "[C3X] District ID %d: name=\"%s\", command=0x%X, advance_prereq_id=%d, dependent_improvement_count=%d\n",
-			  i,
-			  (is->district_configs[i].name != NULL) ? is->district_configs[i].name : "Unnamed District",
-			  is->district_configs[i].command,
-			  is->district_infos[i].advance_prereq_id,
-			  is->district_configs[i].dependent_improvement_count);
-		pop_up_in_game_error (ss);
-	}
 }
 
 void
@@ -13810,7 +13798,6 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 		// "Scenarios/*.biq" = scenario
 		bool is_scenario = strcmp ("conquests.biq", scenario_path) != 0 && strcmp ("biq__in_.tmp", scenario_path) != 0;
 		reset_district_state (true);
-		pop_up_in_game_error (scenario_path);
 		load_districts_config (is_scenario);
 		if (is_scenario) {
 			load_scenario_districts_from_file (scenario_path);
