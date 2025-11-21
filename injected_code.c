@@ -3993,9 +3993,6 @@ tile_has_enemy_unit (Tile * tile, int civ_id)
 	return false;
 }
 
-int __fastcall patch_Map_calc_food_yield_at (Map * this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city);
-int __fastcall patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int civ_id, City * city, int param_5, int param_6);
-
 void
 recompute_distribution_hub_yields (struct distribution_hub_record * rec)
 {
@@ -7240,7 +7237,7 @@ compute_city_tile_yield_sum (City * city, int tile_x, int tile_y)
 }
 
 Tile *
-find_tile_for_neighborhood_district (City * city, int district_id, int * out_x, int * out_y)
+find_tile_for_neighborhood_district (City * city, int * out_x, int * out_y)
 {
 	if (city == NULL)
 		return NULL;
@@ -7272,7 +7269,7 @@ find_tile_for_neighborhood_district (City * city, int district_id, int * out_x, 
 			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
 			Tile * tile = tile_at (tx, ty);
 
-			if (! tile_suitable_for_district (tile, district_id, city, NULL))
+			if (! tile_suitable_for_district (tile, NEIGHBORHOOD_DISTRICT_ID, city, NULL))
 				continue;
 			if (get_district_instance (tile) != NULL)
 				continue;
@@ -7294,7 +7291,7 @@ find_tile_for_neighborhood_district (City * city, int district_id, int * out_x, 
 }
 
 Tile *
-find_tile_for_distribution_hub_district (City * city, int district_id, int * out_x, int * out_y)
+find_tile_for_distribution_hub_district (City * city, int * out_x, int * out_y)
 {
 	if (city == NULL)
 		return NULL;
@@ -7305,7 +7302,7 @@ find_tile_for_distribution_hub_district (City * city, int district_id, int * out
 	const int capital_distance_weight = 45;
 	const int desired_min_capital_distance = 8;
 	const int proximity_penalty_scale = 300;
-	const int different_continent_bonus = 5000;
+	const int different_continent_bonus = 500;
 
 	Tile * best_tile = NULL;
 	int best_score = INT_MIN;
@@ -7321,16 +7318,15 @@ find_tile_for_distribution_hub_district (City * city, int district_id, int * out
 	int capital_x = 0;
 	int capital_y = 0;
 	int capital_continent_id = -1;
-	if ((civ_id >= 0) && (civ_id < 32)) {
-		City * capital = get_city_ptr (leaders[civ_id].CapitalID);
-		if (capital != NULL) {
-			has_capital = true;
-			capital_x = capital->Body.X;
-			capital_y = capital->Body.Y;
-			Tile * capital_tile = tile_at (capital_x, capital_y);
-			if ((capital_tile != NULL) && (capital_tile != p_null_tile))
-				capital_continent_id = capital_tile->vtable->m46_Get_ContinentID (capital_tile);
-		}
+	
+	City * capital = get_city_ptr (leaders[civ_id].CapitalID);
+	if (capital != NULL) {
+		has_capital = true;
+		capital_x = capital->Body.X;
+		capital_y = capital->Body.Y;
+		Tile * capital_tile = tile_at (capital_x, capital_y);
+		if ((capital_tile != NULL) && (capital_tile != p_null_tile))
+			capital_continent_id = capital_tile->vtable->m46_Get_ContinentID (capital_tile);
 	}
 
 	for (int n = 0; n < is->workable_tile_count; n++) {
@@ -7340,14 +7336,14 @@ find_tile_for_distribution_hub_district (City * city, int district_id, int * out
 		wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
 		Tile * tile = tile_at (tx, ty);
 		bool has_resource;
-		if (! tile_suitable_for_district (tile, district_id, city, &has_resource))
+		if (! tile_suitable_for_district (tile, DISTRIBUTION_HUB_DISTRICT_ID, city, &has_resource))
 			continue;
 
 		int chebyshev = compute_wrapped_chebyshev_distance (tx, ty, city_x, city_y);
 		if (chebyshev <= 1)
 			continue;
 
-		bool too_close_to_existing_hub = false;
+		bool too_close_to_existing_hub_or_city = false;
 		for (int m = 0; m < workable_tile_counts[2]; m++) {
 			int ndx, ndy;
 			patch_ni_to_diff_for_work_area (m, &ndx, &ndy);
@@ -7357,14 +7353,18 @@ find_tile_for_distribution_hub_district (City * city, int district_id, int * out
 			if ((nearby_tile != NULL) && (nearby_tile != p_null_tile)) {
 				struct district_instance * nearby_inst = get_district_instance (nearby_tile);
 				if ((nearby_inst != NULL) &&
-				    (nearby_inst->district_type == district_id) &&
-				    district_is_complete (nearby_tile, district_id)) {
-					too_close_to_existing_hub = true;
+				    (nearby_inst->district_type == DISTRIBUTION_HUB_DISTRICT_ID) &&
+				    district_is_complete (nearby_tile, DISTRIBUTION_HUB_DISTRICT_ID)) {
+					too_close_to_existing_hub_or_city = true;
+					break;
+				}
+				else if (nearby_tile->CityID >= 0) {
+					too_close_to_existing_hub_or_city = true;
 					break;
 				}
 			}
 		}
-		if (too_close_to_existing_hub)
+		if (too_close_to_existing_hub_or_city)
 			continue;
 
 		int raw_yield = compute_city_tile_yield_sum (city, tx, ty);
@@ -7440,11 +7440,10 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 	if ((district_id < 0) || (district_id >= is->district_count))
 		return NULL;
 
-	enum Unit_Command_Values command = is->district_configs[district_id].command;
-	if (command == UCV_Build_Neighborhood)
-		return find_tile_for_neighborhood_district (city, district_id, out_x, out_y);
-	if (command == UCV_Build_DistributionHub)
-		return find_tile_for_distribution_hub_district (city, district_id, out_x, out_y);
+	if (district_id == NEIGHBORHOOD_DISTRICT_ID)
+		return find_tile_for_neighborhood_district (city, out_x, out_y);
+	if (district_id == DISTRIBUTION_HUB_DISTRICT_ID)
+		return find_tile_for_distribution_hub_district (city, out_x, out_y);
 
 	int city_x = city->Body.X;
 	int city_y = city->Body.Y;
@@ -8155,9 +8154,7 @@ remove_wonder_improvement_for_destroyed_district (int wonder_improv_id)
 		patch_City_add_or_remove_improvement (city, __, wonder_improv_id, 0, false);
 
 		if ((*p_human_player_bits & (1 << city->Body.CivID)) == 0) {
-			int wonder_district_id = WONDER_DISTRICT_ID;
-			if (wonder_district_id >= 0)
-				mark_city_needs_district (city, wonder_district_id);
+			mark_city_needs_district (city, WONDER_DISTRICT_ID);
 		}
 
 		removed_any = true;
@@ -18306,10 +18303,6 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 	if (ideal_per_100 <= 0)
 		return;
 
-	int district_id = DISTRIBUTION_HUB_DISTRICT_ID;
-	if (district_id < 0)
-		return;
-
 	int city_count = leader->Cities_Count;
 	if (city_count <= 0)
 		return;
@@ -18330,8 +18323,8 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 		Tile * tile = (Tile *)(long)tei.key;
 		int mapped_district_id = tei.value;
 		if ((tile != NULL) &&
-		    (mapped_district_id == district_id) &&
-		    ! district_is_complete (tile, district_id)) {
+		    (mapped_district_id == DISTRIBUTION_HUB_DISTRICT_ID) &&
+		    ! district_is_complete (tile, DISTRIBUTION_HUB_DISTRICT_ID)) {
 			int owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
 			if (owner == civ_id)
 				in_progress++;
@@ -18339,12 +18332,10 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 	}
 
 	int pending = 0;
-	if ((civ_id >= 0) && (civ_id < 32)) {
-		FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-			struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
-			if ((req != NULL) && (req->district_id == district_id))
-				pending++;
-		}
+	FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
+		struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+		if ((req != NULL) && (req->district_id == DISTRIBUTION_HUB_DISTRICT_ID))
+			pending++;
 	}
 
 	int planned = current + in_progress + pending;
@@ -18371,14 +18362,14 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 			City * city = coi.city;
 			if (city == NULL)
 				continue;
-			if (city_has_required_district (city, district_id))
+			if (city_has_required_district (city, DISTRIBUTION_HUB_DISTRICT_ID))
 				continue;
 
-			if (find_pending_district_request (city, district_id) != NULL)
+			if (find_pending_district_request (city, DISTRIBUTION_HUB_DISTRICT_ID) != NULL)
 				continue;
 
 			int tile_x, tile_y;
-			Tile * candidate = find_tile_for_distribution_hub_district (city, district_id, &tile_x, &tile_y);
+			Tile * candidate = find_tile_for_distribution_hub_district (city, &tile_x, &tile_y);
 			if (candidate == NULL)
 				continue;
 
@@ -18406,7 +18397,7 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 		if (best_city == NULL)
 			break;
 
-		mark_city_needs_district (best_city, district_id);
+		mark_city_needs_district (best_city, DISTRIBUTION_HUB_DISTRICT_ID);
 		planned++;
 	}
 }
@@ -20211,7 +20202,7 @@ patch_MenuUnitItem_write_text_to_temp_str (MenuUnitItem * this)
 	MenuUnitItem_write_text_to_temp_str (this);
 
 	Unit * unit = this->unit;
-	char repl_verb[30];
+	char repl_verb[32];
 	if (is->current_config.describe_states_of_units_on_menu &&
 	    (unit->Body.CivID == p_main_screen_form->Player_CivID) &&
 	    (Unit_get_containing_army (unit) == NULL) &&
