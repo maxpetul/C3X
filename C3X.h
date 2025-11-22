@@ -142,7 +142,7 @@ enum map_target_type {
 	TERRAIN,//flag food_yield, flag shield_yield, flag commerce_yield
 	RESOURCE,//flag
 	UNIT,//flag foreign, flag hostile
-}
+};
 
 struct map_target_city {
 	int flags;
@@ -152,7 +152,7 @@ struct map_target_city {
 	int population_max;//flag 8
 	int culture_min;//flag 16
 	int culture_max;//flag 32
-}
+};
 
 struct map_target_terrain {
 	int flags;
@@ -163,20 +163,20 @@ struct map_target_terrain {
 	int shield_yield_max;//flag 16
 	int commerce_yield_min;//flag 32
 	int commerce_yield_max;//flag 64
-}
+};
 
 struct map_target_resource {
 	int flags;
 	int type;//flag 1
 	bool is_visible;//flag 2
-}
+};
 
 struct map_target_unit {
 	int flags;
 	int type;//flag 1
 	bool foreign;//flag 2
 	bool hostile;//flag 4
-}
+};
 
 struct map_target {
 	enum map_target_type type;
@@ -185,7 +185,7 @@ struct map_target {
 	struct map_target_terrain map_target_terrain;
 	struct map_target_resource map_target_resource;
 	struct map_target_unit map_target_unit;
-}
+};
 
 struct map_target_separation_rule {
 	struct map_target target;
@@ -196,7 +196,7 @@ struct map_target_separation_rule {
 	int chebyshev;//flag 1
 	int manhatten;//flag 2
 	int euclidean_percent;//flag 4
-}
+};
 
 struct minimum_city_separation {
 	int any_chebyshev;

@@ -1359,77 +1359,10 @@ parse_work_area_improvement (char ** p_cursor, struct error_line ** p_unrecogniz
 		return RPR_PARSE_ERROR;
 }
 
-enum recognizable_parse_result
-parse_city_separation_rule (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_city_separation_rule)
-{
-	char * cur = *p_cursor;
-	struct map_target_separation_rule * out = out_parsed_city_separation_rule;
-
-	struct string_slice target_type;
-	if (skip_white_space (&cur) &&
-	    parse_map_target (&cur, out + offsetof (struct map_target_separation_rule, target)) &&
-	    skip_punctuation (&cur, ':')) {
-
-		string_slice and_separator;
-		do {
-			int num;
-			if (!skip_white_space (&cur) || !parse_int (&cur, &num))
-				return RPR_PARSE_ERROR;
-
-			out->flags = 0;
-
-			struct string_slice metric_type;
-			if (parse_string (&cur, &metric_type)) {
-				if (slice_matches_str (&metric_type, "chebychev")) {
-					out->chebychev = num;
-					out->flags |= 1;
-				} else if (slice_matches_str (&metric_type, "manhatten")) {
-					out->manhatten = num;
-					out->flags |= 2;
-				} else if (slice_matches_str (&metric_type, "euclidean_percent")) {
-					out->euclidean_percent = num;
-					out->flags |= 4;
-				} else
-					return RPR_PARSE_ERROR;
-			} else {//Default to chebychev if nothing stated.
-				out->chebychev = num;
-				out->flags |= 1;
-			}
-		} while (skip_white_space (&cur) && parse_string(&cur, &and_separator) && slice_matches_str(&and_separator, "and"))
-
-	} else
-		return RPR_PARSE_ERROR;
-}
-
-bool
-parse_map_target (char ** p_cursor, struct map_target * target)
-{
-	struct string_slice target_type;
-	if (!parse_string (&cur, &target_type))
-		return false;
-	if (slice_matches_str (&target_type, "city")) {
-		target->type = CITY;
-		return parse_map_target_city (char ** p_cursor, target + offsetof (struct map_target, map_target_city))
-	} else if (slice_matches_str (&target_type, "terrain")) {
-		target->type = TERRAIN;
-		//unimpl
-		return false;
-	} else if (slice_matches_str (&target_type, "resource")) {
-		target->type = RESOURCE;
-		//unimpl
-		return false;
-	} else if (slice_matches_str (&target_type, "unit")) {
-		target->type = UNIT;
-		//unimpl
-		return false;
-	} else {
-		return false;
-	}
-}
-
 bool
 parse_map_target_city (char ** p_cursor, struct map_target_city * target)
 {
+	char * cur = *p_cursor;
 	if (!skip_white_space (&cur))
 		return false;
 	struct string_slice condition_name;
@@ -1477,7 +1410,77 @@ parse_map_target_city (char ** p_cursor, struct map_target_city * target)
 			return false;
 		}
 	}
+	return true;
 
+}
+
+bool
+parse_map_target (char ** p_cursor, struct map_target * target)
+{
+	char * cur = *p_cursor;
+	struct string_slice target_type;
+	if (!parse_string (&cur, &target_type))
+		return false;
+	if (slice_matches_str (&target_type, "city")) {
+		target->type = CITY;
+		return parse_map_target_city (p_cursor, (struct map_target_city *) (target + offsetof (struct map_target, map_target_city)));
+	} else if (slice_matches_str (&target_type, "terrain")) {
+		target->type = TERRAIN;
+		//unimpl
+		return false;
+	} else if (slice_matches_str (&target_type, "resource")) {
+		target->type = RESOURCE;
+		//unimpl
+		return false;
+	} else if (slice_matches_str (&target_type, "unit")) {
+		target->type = UNIT;
+		//unimpl
+		return false;
+	} else {
+		return false;
+	}
+}
+
+enum recognizable_parse_result
+parse_city_separation_rule (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_city_separation_rule)
+{
+	char * cur = *p_cursor;
+	struct map_target_separation_rule * out = out_parsed_city_separation_rule;
+
+	struct string_slice target_type;
+	if (skip_white_space (&cur) &&
+	    parse_map_target (&cur, (struct map_target *) (out + offsetof (struct map_target_separation_rule, target))) &&
+	    skip_punctuation (&cur, ':')) {
+
+		struct string_slice and_separator;
+		do {
+			int num;
+			if (!skip_white_space (&cur) || !parse_int (&cur, &num))
+				return RPR_PARSE_ERROR;
+
+			out->distance_metric_flags = 0;
+
+			struct string_slice metric_type;
+			if (parse_string (&cur, &metric_type)) {
+				if (slice_matches_str (&metric_type, "chebychev")) {
+					out->chebyshev = num;
+					out->distance_metric_flags |= 1;
+				} else if (slice_matches_str (&metric_type, "manhatten")) {
+					out->manhatten = num;
+					out->distance_metric_flags |= 2;
+				} else if (slice_matches_str (&metric_type, "euclidean_percent")) {
+					out->euclidean_percent = num;
+					out->distance_metric_flags |= 4;
+				} else
+					return RPR_PARSE_ERROR;
+			} else {//Default to chebyshev if nothing stated.
+				out->chebyshev = num;
+				out->distance_metric_flags |= 1;
+			}
+		} while (skip_white_space (&cur) && parse_string(&cur, &and_separator) && slice_matches_str(&and_separator, "and"));
+		return RPR_OK;
+	} else
+		return RPR_PARSE_ERROR;
 }
 
 // Recognizable items are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
@@ -15291,6 +15294,37 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 		PopupForm_set_text_key_and_flags (this, __, script_path, text_key, param_3, param_4, param_5, param_6);
 }
 
+bool
+match_target_city (struct map_target_city * target, City * city, int civ_id)
+{
+	if (city == NULL)
+		return false;
+	if (target->flags & 1 != 0 && city->Body.CivID == civ_id)
+		return false;
+	if (target->flags & 2 != 0)
+		return false; //war check not implemented
+	if (target->flags & 4 != 0 && city->Body.Population.Size < target->population_min)
+		return false;
+	if (target->flags & 8 != 0 && city->Body.Population.Size > target->population_max)
+		return false;
+	if (target->flags & 16 != 0)
+		return false; //culture check not implemented
+	if (target->flags & 32 != 0)
+		return false; //culture check not implemented
+	return true;
+}
+bool
+match_target(struct map_target * target, int tile_x, int tile_y, int civ_id)
+{
+	if (target->type == CITY) {
+		City * city = city_at(tile_x, tile_y);
+		return match_target_city((struct map_target_city *)(target + offsetof (struct map_target, map_target_city)), city, civ_id);
+	} else {
+		//Not implemented
+		return false;
+	}
+}
+
 CityLocValidity __fastcall
 patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int civ_id, bool check_for_city_on_tile)
 {
@@ -15309,17 +15343,17 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 	if (base_result != CLV_OK && base_result != CLV_CITY_TOO_CLOSE)
 		return base_result;
 	
-	struct map_target_separation_rule * city_separation_rules = is->minimum_city_separation_rules;
+	struct map_target_separation_rule * city_separation_rules = is->current_config.minimum_city_separation_rules;
 	//init array of bools for requirements check
 	//dislike reallocating each time, but injected_state is a pain and I also don't want to bleed state into the config structs.
-	int * rule_matches = malloc (sizeof(int) * is->count_minimum_city_separation_rules);
+	int * rule_matches = malloc (sizeof(int) * is->current_config.count_minimum_city_separation_rules);
 
 	//init bounding box
 	int min_sep_chebyshev = 0;
 	int min_sep_manhatten = 0;
 	int min_sep_euclidean_percent = 0;
-	for (int i = 0; i < is->count_minimum_city_separation_rules; i++) {
-		struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(map_target_separation_rule);
+	for (int i = 0; i < is->current_config.count_minimum_city_separation_rules; i++) {
+		struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(struct map_target_separation_rule);
 		if (current_rule->distance_metric_flags & 1 != 0 && current_rule->chebyshev > min_sep_chebyshev)
 			min_sep_chebyshev = current_rule->chebyshev;
 		if (current_rule->distance_metric_flags & 2 != 0 && current_rule->manhatten > min_sep_manhatten)
@@ -15348,8 +15382,8 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
 
 			//Now check each rule (order things this way to not recalculate positions and distances... is this even sensible?)
-			for (int i = 0; i < is->count_minimum_city_separation_rules; i++) {
-				struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(map_target_separation_rule);
+			for (int i = 0; i < is->current_config.count_minimum_city_separation_rules; i++) {
+				struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(struct map_target_separation_rule);
 				//Check tile is within rule's radius
 				if (current_rule->distance_metric_flags & 1 != 0 && current_rule->chebyshev <= chebyshev)
 					continue;
@@ -15358,7 +15392,7 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 				if (current_rule->distance_metric_flags & 4 != 0 && (current_rule->euclidean_percent * current_rule->euclidean_percent) <= euclidean_percent_squared)
 					continue;
 				//Rule applies
-				if(!match_target(current_rule + offsetof (struct map_target_separation_rule, target)))
+				if(!match_target((struct map_target *)(current_rule + offsetof (struct map_target_separation_rule, target)), tx, ty, civ_id))
 					continue;
 				//Increment rule counter
 				rule_matches[i] += 1;
@@ -15371,8 +15405,8 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 		}
 	}
 	//Check if each rule minimum count is met - no need to check max count, we do that when incrementing
-	for (int i = 0; i < is->count_minimum_city_separation_rules; i++) {
-		struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(map_target_separation_rule);
+	for (int i = 0; i < is->current_config.count_minimum_city_separation_rules; i++) {
+		struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(struct map_target_separation_rule);
 		if (rule_matches[i] < current_rule->min_count) {
 			free (rule_matches);
 			return CLV_CITY_TOO_CLOSE; //Kinda abusing this name since we now check for other things
@@ -15380,36 +15414,6 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 	}
 	free (rule_matches);
 	return CLV_OK;
-}
-
-bool
-match_target(map_target * target, int tile_x, int tile_y, int civ_id)
-{
-	if (target->type == CITY) {
-		City * city = city_at(tile_x, tile_y);
-		return match_target_city(target + offsetof (struct map_target, map_target_city), city, civ_id);
-	} else {
-		//Not implemented
-		return false;
-	}
-}
-match_target_city (map_target_city * target, City * city, int civ_id)
-{
-	if (city == NULL)
-		return false;
-	if (target->flags & 1 != 0 && city->Body.CivId == civ_id)
-		return false;
-	if (target->flags & 2 != 0)
-		return false; //war check not implemented
-	if (target->flags & 4 != 0 && city->Body.Population.Size < target->population_min)
-		return false;
-	if (target->flags & 8 != 0 && city->Body.Population.Size > target->population_max)
-		return false;
-	if (target->flags & 16 != 0)
-		return false; //culture check not implemented
-	if (target->flags & 32 != 0)
-		return false; //culture check not implemented
-	return true;
 }
 
 bool
