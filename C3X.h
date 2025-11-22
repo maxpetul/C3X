@@ -670,6 +670,48 @@ struct parsed_district_definition {
 	bool has_shield_bonus;
 };
 
+struct parsed_wonder_definition {
+	char * name;
+	char * img_path;
+	int img_row;
+	int img_column;
+	int img_construct_row;
+	int img_construct_column;
+	bool has_name;
+	bool has_img_path;
+	bool has_img_row;
+	bool has_img_column;
+	bool has_img_construct_row;
+	bool has_img_construct_column;
+};
+
+struct parsed_natural_wonder_definition {
+	char * name;
+	char * img_path;
+	enum SquareTypes terrain_type;
+	enum SquareTypes adjacent_to;
+	enum direction adjacency_dir;
+	int img_row;
+	int img_column;
+	int culture_bonus;
+	int science_bonus;
+	int food_bonus;
+	int gold_bonus;
+	int shield_bonus;
+	bool has_name;
+	bool has_img_path;
+	bool has_img_row;
+	bool has_img_column;
+	bool has_terrain_type;
+	bool has_adjacent_to;
+	bool has_adjacency_dir;
+	bool has_culture_bonus;
+	bool has_science_bonus;
+	bool has_food_bonus;
+	bool has_gold_bonus;
+	bool has_shield_bonus;
+};
+
 struct scenario_district_entry {
 	int tile_x;
 	int tile_y;
