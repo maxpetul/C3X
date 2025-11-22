@@ -5310,6 +5310,17 @@ load_dynamic_district_config_file (char const * file_path,
 	free_parsed_district_definition (&def);
 	free (text);
 
+	// Append to loaded config names list
+	struct loaded_config_name * top_lcn = is->loaded_config_names;
+	while (top_lcn->next != NULL)
+		top_lcn = top_lcn->next;
+
+	struct loaded_config_name * new_lcn = malloc (sizeof *new_lcn);
+	new_lcn->name = strdup (path);
+	new_lcn->next = NULL;
+
+	top_lcn->next = new_lcn;
+
 	if (parse_errors != NULL || unrecognized_keys != NULL) {
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
@@ -5667,6 +5678,17 @@ load_dynamic_wonder_config_file (char const * file_path,
 
 	free_parsed_wonder_definition (&def);
 	free (text);
+
+	// Append to loaded config names list
+	struct loaded_config_name * top_lcn = is->loaded_config_names;
+	while (top_lcn->next != NULL)
+		top_lcn = top_lcn->next;
+
+	struct loaded_config_name * new_lcn = malloc (sizeof *new_lcn);
+	new_lcn->name = strdup (path);
+	new_lcn->next = NULL;
+
+	top_lcn->next = new_lcn;
 
 	if (parse_errors != NULL || unrecognized_keys != NULL) {
 		PopupForm * popup = get_popup_form ();
@@ -6099,6 +6121,17 @@ load_natural_wonder_config_file (char const * file_path,
 
 	free_parsed_natural_wonder_definition (&def);
 	free (text);
+
+	// Append to loaded config names list
+	struct loaded_config_name * top_lcn = is->loaded_config_names;
+	while (top_lcn->next != NULL)
+		top_lcn = top_lcn->next;
+
+	struct loaded_config_name * new_lcn = malloc (sizeof *new_lcn);
+	new_lcn->name = strdup (path);
+	new_lcn->next = NULL;
+
+	top_lcn->next = new_lcn;
 
 	if (parse_errors != NULL || unrecognized_keys != NULL) {
 		PopupForm * popup = get_popup_form ();
@@ -6939,6 +6972,17 @@ load_scenario_districts_from_file ()
 
 	free_scenario_district_entry (&entry);
 	free (text);
+
+	// Append to loaded config names list
+	struct loaded_config_name * top_lcn = is->loaded_config_names;
+	while (top_lcn->next != NULL)
+		top_lcn = top_lcn->next;
+
+	struct loaded_config_name * new_lcn = malloc (sizeof *new_lcn);
+	new_lcn->name = strdup (scenario_districts_path);
+	new_lcn->next = NULL;
+
+	top_lcn->next = new_lcn;
 
 	if ((parse_errors != NULL) || (unrecognized_keys != NULL)) {
 		PopupForm * popup = get_popup_form ();
@@ -20459,6 +20503,19 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_day_night_cycle), is->current_day_night_cycle);
 	}
 
+	if (is->current_config.enable_districts && (is->district_count > 0)) {
+		serialize_aligned_text ("district_config_names", &mod_data);
+		int * entry_count = (int *)buffer_allocate (&mod_data, sizeof(int));
+		*entry_count = is->district_count;
+		for (int district_id = 0; district_id < is->district_count; district_id++) {
+			*(int *)buffer_allocate (&mod_data, sizeof(int)) = district_id;
+			char const * name = is->district_configs[district_id].name;
+			if (name == NULL)
+				name = "";
+			serialize_aligned_text (name, &mod_data);
+		}
+	}
+
 	if (is->current_config.enable_districts) {
 		int entry_count = 0;
 		for (int civ_id = 0; civ_id < 32; civ_id++) {
@@ -20843,6 +20900,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				// Because we've restored current_day_night_cycle from the save, set that is is not the first turn so the cycle
 				// doesn't get restarted.
 				is->day_night_cycle_unstarted = false;
+			
 			} else if (match_save_chunk_name (&cursor, "district_pending_requests")) {
 				bool success = false;
 				int remaining_bytes = (seg + seg_size) - cursor;
@@ -20971,6 +21029,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 								if ((tile != NULL) && (tile != p_null_tile)) {
 									struct district_instance * inst = ensure_district_instance (tile, district_id, x, y);
 									if (inst != NULL) {
+										/*
 										enum district_state new_state;
 										switch (state_val) {
 										case DS_COMPLETED:
@@ -20984,6 +21043,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 											break;
 										}
 										inst->state = new_state;
+										
 										inst->wonder_info.state = (enum wonder_district_state)wonder_state;
 										inst->wonder_info.city_id = (wonder_city_id >= 0) ? wonder_city_id : -1;
 										City * info_city = (wonder_city_id >= 0) ? get_city_ptr (wonder_city_id) : NULL;
@@ -20991,6 +21051,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 										if (info_city == NULL)
 											inst->wonder_info.city_id = -1;
 										inst->wonder_info.wonder_index = wonder_index;
+										*/
 									}
 									if (tile->vtable->m18_Check_Mines (tile, __, 0))
 										set_tile_unworkable_for_all_cities (tile, x, y);
@@ -20998,7 +21059,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							}
 						}
 					}
-			}
+				}
 				if (! success) {
 					error_chunk_name = "district_tile_map";
 					break;
@@ -21114,6 +21175,121 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					break;
 				}
 
+			} else if (match_save_chunk_name (&cursor, "district_config_names")) {
+				bool success = false;
+				bool mismatch_found = false;
+				bool count_mismatch = false;
+				char first_mismatch[200];
+				first_mismatch[0] = '\0';
+				int remaining_bytes = (seg + seg_size) - cursor;
+				if (remaining_bytes >= (int)sizeof(int)) {
+					int * ints = (int *)cursor;
+					int saved_count = *ints++;
+					cursor = (byte *)ints;
+					remaining_bytes -= (int)sizeof(int);
+					if (saved_count >= 0) {
+						success = true;
+						count_mismatch = (saved_count != is->district_count);
+						char * saved_names[saved_count];
+						for (int n = 0; n < saved_count; n++) {
+							if (remaining_bytes < (int)sizeof(int)) {
+								success = false;
+								break;
+							}
+							ints = (int *)cursor;
+							int saved_id = *ints++;
+							cursor = (byte *)ints;
+							remaining_bytes -= (int)sizeof(int);
+
+							int name_len = -1;
+							for (int k = 0; k < remaining_bytes; k++) {
+								if (cursor[k] == '\0') {
+									name_len = k;
+									break;
+								}
+							}
+							if (name_len < 0) {
+								success = false;
+								break;
+							}
+							int padded_len = (name_len + 4) & ~3;
+							if (padded_len > remaining_bytes) {
+								success = false;
+								break;
+							}
+
+							char * saved_name = (char *)cursor;
+							saved_names[n] = saved_name;
+							if (! mismatch_found) {
+								if ((saved_id < 0) || (saved_id >= is->district_count)) {
+									snprintf (first_mismatch, sizeof first_mismatch, "The district %d (\"%s\") is in the save file but missing in the current configuration.", saved_id, saved_name);
+									first_mismatch[(sizeof first_mismatch) - 1] = '\0';
+									mismatch_found = true;
+								} else {
+									char const * current_name = is->district_configs[saved_id].name;
+									if (current_name == NULL)
+										current_name = "";
+									if (strcmp (current_name, saved_name) != 0) {
+										snprintf (first_mismatch, sizeof first_mismatch, "District %d is \"%s\" in the save file but  \"%s\" in the current configuration.", saved_id, saved_name, current_name);
+										first_mismatch[(sizeof first_mismatch) - 1] = '\0';
+										mismatch_found = true;
+									}
+								}
+							}
+
+							cursor += padded_len;
+							remaining_bytes -= padded_len;
+						}
+						if (success && count_mismatch && (first_mismatch[0] == '\0')) {
+							snprintf (first_mismatch, sizeof first_mismatch, "The save file had %d total district types but current configuration has only %d", saved_count, is->district_count);
+							first_mismatch[(sizeof first_mismatch) - 1] = '\0';
+							mismatch_found = true;
+						}
+						if (success && mismatch_found) {
+							PopupForm * popup = get_popup_form ();
+							popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
+
+							char s[1000];
+							snprintf (s, sizeof s, "Warning! This save file was created with a different districts configuration. The game may not function correctly. Error: %s", first_mismatch);
+							snprintf (s, sizeof s, "%s There may be other errors as well.", s);
+							s[(sizeof s) - 1] = '\0';
+							PopupForm_add_text (popup, __, s, 0);
+
+							snprintf (s, sizeof s, "^");
+							s[(sizeof s) - 1] = '\0';
+							PopupForm_add_text (popup, __, s, 0);
+
+							snprintf (s, sizeof s, "^Districts in save file:");
+							s[(sizeof s) - 1] = '\0';
+							PopupForm_add_text (popup, __, s, 0);
+							for (int n = 0; n < saved_count; n++) {
+								snprintf (s, sizeof s, "^   (%d) %s", n, saved_names[n]);
+								s[(sizeof s) - 1] = '\0';
+								PopupForm_add_text (popup, __, s, 0);
+							}
+
+							snprintf (s, sizeof s, "^");
+							s[(sizeof s) - 1] = '\0';
+							PopupForm_add_text (popup, __, s, 0);
+
+							snprintf (s, sizeof s, "^Currently configured districts:");
+							s[(sizeof s) - 1] = '\0';
+							PopupForm_add_text (popup, __, s, 0);
+							for (int n = 0; n < is->district_count; n++) {
+								snprintf (s, sizeof s, "^  (%d) %s", n, is->district_configs[n].name);
+								s[(sizeof s) - 1] = '\0';
+								PopupForm_add_text (popup, __, s, 0);
+							}
+
+							patch_show_popup (popup, __, 0, 0);
+						}
+					}
+				}
+				if (! success) {
+					error_chunk_name = "district_config_names";
+					break;
+				}
+			
 			} else {
 				error_chunk_name = "N/A";
 				break;
