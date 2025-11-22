@@ -4157,6 +4157,7 @@ patch_init_floating_point ()
 		{"pinned_hour_for_day_night_cycle"              ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
 		{"years_to_double_building_culture"             ,  1000, offsetof (struct c3x_config, years_to_double_building_culture)},
 		{"tourism_time_scale_percent"                   ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
+		{"luxury_randomized_appearance_rate_percent"    ,   100, offsetof (struct c3x_config, luxury_randomized_appearance_rate_percent)},
 		{"city_limit"                                   ,  2048, offsetof (struct c3x_config, city_limit)},
 	};
 
@@ -13510,6 +13511,45 @@ patch_Unit_despawn_after_capture (Unit * this, int edx, int civ_id_responsible, 
 		patch_Unit_despawn ((Unit *)is->memo[n], __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 
 	patch_Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
+}
+
+void __fastcall
+patch_Map_generate_resources (Map * this, int edx, int secondary_seed)
+{
+	int const bic_tag_good = 0x444f4f47; // = 'GOOD'
+	int resource_type_count = this->vtable->m35_Get_BIC_Sub_Data (this, __, bic_tag_good, -1, NULL);
+	bool * ratios_to_clear = NULL;
+	int lux_percent = is->current_config.luxury_randomized_appearance_rate_percent;
+	int seed = (this->Seed + 0x180E3) * secondary_seed;
+
+	// To change the randomized appearance rate for luxuries, fill in an appearance rate for any that would be randomized (rate set == 0) using
+	// the same process the game would to randomize the rate but with different limits. That process involves taking two random numbers from 0 to
+	// 25 then adding them together and to 50 to produce a random rate from 50 to 100 biased toward the middle of that range.
+	if (lux_percent != 100 &&
+	    (ratios_to_clear = calloc (1, resource_type_count)) != NULL) {
+		for (int n = 0; n < resource_type_count; n++) {
+			Resource_Type * res;
+			this->vtable->m35_Get_BIC_Sub_Data (this, __, bic_tag_good, n, (void **)&res);
+			if (res->Class == RC_Luxury && res->AppearanceRatio == 0) {
+				ratios_to_clear[n] = true;
+				int half_lux_percent    = (lux_percent * 50 + 50) / 100,
+				    quarter_lux_percent = (lux_percent * 25 + 50) / 100;
+				res->AppearanceRatio = not_below (1, half_lux_percent + rand_int (&seed, __, quarter_lux_percent) + rand_int (&seed, __, quarter_lux_percent));
+			}
+		}
+	}
+
+	Map_generate_resources (this, __, secondary_seed);
+
+	if (ratios_to_clear != NULL) {
+		for (int n = 0; n < resource_type_count; n++)
+			if (ratios_to_clear[n]) {
+				Resource_Type * res;
+				this->vtable->m35_Get_BIC_Sub_Data (this, __, bic_tag_good, n, (void **)&res);
+				res->AppearanceRatio = 0;
+			}
+		free (ratios_to_clear);
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.
