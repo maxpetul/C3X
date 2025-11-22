@@ -21029,7 +21029,6 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 								if ((tile != NULL) && (tile != p_null_tile)) {
 									struct district_instance * inst = ensure_district_instance (tile, district_id, x, y);
 									if (inst != NULL) {
-										/*
 										enum district_state new_state;
 										switch (state_val) {
 										case DS_COMPLETED:
@@ -21051,7 +21050,6 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 										if (info_city == NULL)
 											inst->wonder_info.city_id = -1;
 										inst->wonder_info.wonder_index = wonder_index;
-										*/
 									}
 									if (tile->vtable->m18_Check_Mines (tile, __, 0))
 										set_tile_unworkable_for_all_cities (tile, x, y);
