@@ -13721,6 +13721,8 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	if ((ret_addr == ADDR_LOAD_SCENARIO_PREVIEW_RETURN) || (ret_addr == ADDR_LOAD_SCENARIO_RESUME_SAVE_2_RETURN))
 		return tr;
 
+	pop_up_in_game_error (scenario_path);
+
 	reset_to_base_config ();
 	load_config ("default.c3x_config.ini", 1);
 	char * scenario_config_file_name = "scenario.c3x_config.ini";
@@ -13738,7 +13740,11 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 		reset_district_state (true);
 		load_districts_config (is_scenario);
-		if (is_scenario) {
+
+		// Only load the districts from the scenario file if not a save, as in that case the districts will already be in the save file itself.
+		// "bic__in_.tmp" is the temporary file name used when loading a save, as far as I can tell.
+		if (is_scenario && strcmp(scenario_path, "bic__in_.tmp") != 0) {
+			pop_up_in_game_error ("Loading scenario districts...");
 			load_scenario_districts_from_file ();
 		}
 	}
