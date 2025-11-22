@@ -71,7 +71,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define DISTRIBUTION_HUB_DISTRICT_ID 2
 #define AERODROME_DISTRICT_ID        3
 #define NATURAL_WONDER_DISTRICT_ID   4
-
+#define PORT_DISTRICT_ID             5
 
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
@@ -1637,6 +1637,40 @@ read_square_type_value (struct string_slice const * s, enum SquareTypes * out_ty
 	}
 
 	return false;
+}
+
+unsigned short
+square_type_mask_bit (enum SquareTypes type)
+{
+	if ((int)type < 0 || type > SQ_RIVER)
+		return 0;
+	return (unsigned short)(1u << type);
+}
+
+unsigned short
+all_square_types_mask (void)
+{
+	return (unsigned short)((1u << (SQ_RIVER + 1)) - 1);
+}
+
+unsigned short
+district_default_buildable_mask (void)
+{
+	return (unsigned short)DEFAULT_DISTRICT_BUILDABLE_MASK;
+}
+
+bool
+district_is_buildable_on_square_type (struct district_config const * cfg, enum SquareTypes base_type)
+{
+	if (cfg == NULL)
+		return false;
+
+	unsigned short mask = cfg->buildable_square_types_mask;
+	if (mask == 0)
+		mask = district_default_buildable_mask ();
+
+	unsigned short bit = square_type_mask_bit (base_type);
+	return (bit != 0) && ((mask & bit) != 0);
 }
 
 bool
@@ -4624,6 +4658,7 @@ init_parsed_district_definition (struct parsed_district_definition * def)
 	memset (def, 0, sizeof *def);
 	def->img_path_count = -1;
 	def->defense_bonus_percent = 100;
+	def->buildable_square_types_mask = district_default_buildable_mask ();
 }
 
 void
@@ -4801,6 +4836,70 @@ parse_config_string_list (char * value_text,
 }
 
 bool
+parse_buildable_square_type_mask (struct string_slice const * value,
+				  unsigned short * out_mask,
+				  struct error_line ** parse_errors,
+				  int line_number)
+{
+	char * value_text = trim_and_extract_slice (value, 0);
+	unsigned short mask = 0;
+	int entry_count = 0;
+
+	if (value_text != NULL) {
+		char * cursor = value_text;
+		while (1) {
+			while (is_space_char (*cursor))
+				cursor++;
+
+			char * item_start = cursor;
+			while ((*cursor != '\0') && (*cursor != ','))
+				cursor++;
+
+			char * item_end = cursor;
+			while ((item_end > item_start) && is_space_char (item_end[-1]))
+				item_end--;
+
+			struct string_slice item_slice = { .str = item_start, .len = (int)(item_end - item_start) };
+			if (item_slice.len > 0) {
+				enum SquareTypes parsed;
+				if (read_square_type_value (&item_slice, &parsed)) {
+					if (parsed == (enum SquareTypes)SQ_INVALID)
+						mask = all_square_types_mask ();
+					else
+						mask |= square_type_mask_bit (parsed);
+					entry_count += 1;
+				} else {
+					struct error_line * err = add_error_line (parse_errors);
+					snprintf (err->text, sizeof err->text, "^  Line %d: %.*s (invalid buildable_on entry)", line_number, item_slice.len, item_slice.str);
+					err->text[(sizeof err->text) - 1] = '\0';
+					free (value_text);
+					return false;
+				}
+			}
+
+			if (*cursor == ',') {
+				cursor++;
+				continue;
+			}
+			break;
+		}
+	}
+
+	if (value_text != NULL)
+		free (value_text);
+
+	if ((entry_count == 0) || (mask == 0)) {
+		struct error_line * err = add_error_line (parse_errors);
+		snprintf (err->text, sizeof err->text, "^  Line %d: buildable_on (expected at least one square type)", line_number);
+		err->text[(sizeof err->text) - 1] = '\0';
+		return false;
+	}
+
+	*out_mask = mask;
+	return true;
+}
+
+bool
 override_special_district_from_definition (struct parsed_district_definition * def, int section_start_line)
 {
 	if ((! def->has_name) || (def->name == NULL))
@@ -4853,6 +4952,8 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->gold_bonus = def->gold_bonus;
 	if (def->has_shield_bonus)
 		cfg->shield_bonus = def->shield_bonus;
+	if (def->has_buildable_on)
+		cfg->buildable_square_types_mask = def->buildable_square_types_mask;
 
 	if (def->has_dependent_improvements) {
 		for (int i = 0; i < ARRAY_LEN (cfg->dependent_improvements); i++) {
@@ -4964,6 +5065,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
 	new_cfg.gold_bonus = def->has_gold_bonus ? def->gold_bonus : 0;
 	new_cfg.shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
+	new_cfg.buildable_square_types_mask = def->has_buildable_on ? def->buildable_square_types_mask : district_default_buildable_mask ();
 
 	new_cfg.dependent_improvement_count = def->has_dependent_improvements ? def->dependent_improvement_count : 0;
 	const int max_dependent_entries = ARRAY_LEN (is->district_configs[0].dependent_improvements);
@@ -5091,7 +5193,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 					      &list_count,
 					      parse_errors,
 					      line_number,
-					      "dependent_improvs")) {
+					  "dependent_improvs")) {
 			def->dependent_improvement_count = list_count;
 			def->has_dependent_improvements = true;
 		} else {
@@ -5099,6 +5201,13 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->has_dependent_improvements = false;
 		}
 		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_on")) {
+		unsigned short mask;
+		if (parse_buildable_square_type_mask (value, &mask, parse_errors, line_number)) {
+			def->buildable_square_types_mask = mask;
+			def->has_buildable_on = true;
+		}
 
 	} else if (slice_matches_str (key, "allow_multiple")) {
 		struct string_slice val_slice = *value;
@@ -12015,8 +12124,7 @@ set_up_district_buttons (Main_GUI * this)
 	Tile * tile = tile_at (selected_unit->Body.X, selected_unit->Body.Y);
 	if ((tile == NULL) || (tile == p_null_tile) || (tile->CityID >= 0)) return;
 
-	int base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp) return;
+	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 	if (tile->vtable->m21_Check_Crates (tile, __, 0)) return;
 	if (tile->vtable->m20_Check_Pollution (tile, __, 0)) return;
 
@@ -12095,6 +12203,8 @@ set_up_district_buttons (Main_GUI * this)
 
 		int prereq_id = is->district_infos[dc].advance_prereq_id;
 		if ((prereq_id >= 0) && !Leader_has_tech(&leaders[selected_unit->Body.CivID], __, prereq_id)) continue;
+		if (! district_is_buildable_on_square_type (&is->district_configs[dc], base_type))
+			continue;
 
 		// This district should be shown
 		active_districts[active_count++] = dc;
@@ -12721,107 +12831,105 @@ issue_district_worker_command (Unit * unit, int command)
 	if (! is->current_config.enable_districts)
 		return;
 
+	if (unit == NULL)
+		return;
+
 	int tile_x = unit->Body.X;
 	int tile_y = unit->Body.Y;
 	Tile * tile = tile_at (tile_x, tile_y);
-	int unit_type_id = unit->Body.UnitTypeID;
-	int unit_id = unit->Body.ID;
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
 
 	if (! is_worker(unit))
 		return;
 
+	int district_id = -1;
+	if (! itable_look_up (&is->command_id_to_district_id, command, &district_id))
+		return;
+	if ((district_id < 0) || (district_id >= is->district_count))
+		return;
+
 	// Check tech prerequisite for the selected district, if any
-	int district_id;
-	if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
-		if (district_id < 0 || district_id >= is->district_count)
+	int prereq_id = is->district_infos[district_id].advance_prereq_id;
+	// Only enforce if a prereq is configured
+	if ((prereq_id >= 0) && !Leader_has_tech (&leaders[unit->Body.CivID], __, prereq_id)) {
+		return; // Civ lacks required tech; do not issue command
+	}
+
+	// Disallow placing districts on invalid terrain, pollution, or cratered tiles
+	if (tile->vtable->m21_Check_Crates (tile, __, 0))
+		return;
+	if (tile->vtable->m20_Check_Pollution (tile, __, 0))
+		return;
+
+	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+	if (! district_is_buildable_on_square_type (&is->district_configs[district_id], base_type))
+		return;
+
+	// If District will be replaced by another District
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst != NULL && district_is_complete(tile, inst->district_type)) {
+		int existing_district_id = inst->district_type;
+		int inst_x, inst_y;
+		if (! district_instance_get_coords (inst, tile, &inst_x, &inst_y))
 			return;
-		int prereq_id = is->district_infos[district_id].advance_prereq_id;
-		// Only enforce if a prereq is configured
-		if (prereq_id >= 0 && !Leader_has_tech (&leaders[unit->Body.CivID], __, prereq_id)) {
-			return; // Civ lacks required tech; do not issue command
+
+		int civ_id = unit->Body.CivID;
+		bool redundant_district = district_instance_is_redundant (inst, tile);
+		bool would_lose_buildings = any_nearby_city_would_lose_district_benefits (existing_district_id, civ_id, inst_x, inst_y);
+		if (redundant_district)
+			would_lose_buildings = false;
+
+		bool remove_existing = false;
+		
+		PopupForm * popup = get_popup_form ();
+		set_popup_str_param (0, (char*)is->district_configs[existing_district_id].name, -1, -1);
+		set_popup_str_param (1, (char*)is->district_configs[existing_district_id].name, -1, -1);
+		popup->vtable->set_text_key_and_flags (
+			popup, __, is->mod_script_path,
+			would_lose_buildings
+				? "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT"
+				: "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT_SAFE",
+			-1, 0, 0, 0
+		);
+
+		int sel = patch_show_popup (popup, __, 0, 0);
+		if (sel == 0)
+			remove_existing = true;
+		else
+			return;
+
+		if (remove_existing) {
+			remove_district_instance (tile);
+			tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+			tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, inst_x, inst_y);
+			handle_district_removed (tile, existing_district_id, inst_x, inst_y, false);
 		}
 	}
-    // Disallow placing districts on invalid terrain, pollution, or cratered tiles
-    if (tile != NULL && tile != p_null_tile) {
-        if (tile->vtable->m21_Check_Crates (tile, __, 0))
-            return;
-        if (tile->vtable->m20_Check_Pollution (tile, __, 0))
-            return;
-        enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType(tile);
-        if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp) {
-            return;
-        }
-    }
 
-	if (tile != NULL && tile != p_null_tile) {
+	// If District will replace an improvement
+	unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
+	unsigned int removable_flags = overlay_flags & 0xfc;
 
-		// If District will be replaced by another District
-		struct district_instance * inst = get_district_instance (tile);
-			if (inst != NULL && district_is_complete(tile, inst->district_type)) {
-				int district_id = inst->district_type;
-				int inst_x, inst_y;
-				if (! district_instance_get_coords (inst, tile, &inst_x, &inst_y))
-					return;
-
-				int civ_id = unit->Body.CivID;
-				bool redundant_district = district_instance_is_redundant (inst, tile);
-				bool would_lose_buildings = any_nearby_city_would_lose_district_benefits (district_id, civ_id, inst_x, inst_y);
-				if (redundant_district)
-					would_lose_buildings = false;
-
-				bool remove_existing = false;
-				
-				PopupForm * popup = get_popup_form ();
-				set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
-				set_popup_str_param (1, (char*)is->district_configs[district_id].name, -1, -1);
-				popup->vtable->set_text_key_and_flags (
-					popup, __, is->mod_script_path,
-					would_lose_buildings
-						? "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT"
-						: "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT_SAFE",
-					-1, 0, 0, 0
-				);
-
-				int sel = patch_show_popup (popup, __, 0, 0);
-				if (sel == 0)
-					remove_existing = true;
-				else
-					return;
-
-				if (remove_existing) {
-					remove_district_instance (tile);
-					tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
-					tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, inst_x, inst_y);
-					handle_district_removed (tile, district_id, inst_x, inst_y, false);
-				}
-			}
-
-		// If District will replace an improvement
-		if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
-			unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
-			unsigned int removable_flags = overlay_flags & 0xfc;
-
-			if (removable_flags != 0) {
-				PopupForm * popup = get_popup_form ();
-				set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
-				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_BUILD_DISTRICT_OVER_IMPROVEMENT", -1, 0, 0, 0);
-				int sel = patch_show_popup (popup, __, 0, 0);
-				if (sel != 0)
-					return;
-			}
-
-				if (removable_flags != 0)
-					tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, tile_x, tile_y);
-				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
-			}
-
-			inst = ensure_district_instance (tile, district_id, tile_x, tile_y);
-			if (inst != NULL)
-				inst->state = DS_UNDER_CONSTRUCTION;
-
-		Unit_set_state(unit, __, UnitState_Build_Mines);
-		unit->Body.Job_ID = WJ_Build_Mines;
+	if (removable_flags != 0) {
+		PopupForm * popup = get_popup_form ();
+		set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_BUILD_DISTRICT_OVER_IMPROVEMENT", -1, 0, 0, 0);
+		int sel = patch_show_popup (popup, __, 0, 0);
+		if (sel != 0)
+			return;
 	}
+
+	if (removable_flags != 0)
+		tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, tile_x, tile_y);
+	tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
+
+	inst = ensure_district_instance (tile, district_id, tile_x, tile_y);
+	if (inst != NULL)
+		inst->state = DS_UNDER_CONSTRUCTION;
+
+	Unit_set_state (unit, __, UnitState_Build_Mines);
+	unit->Body.Job_ID = WJ_Build_Mines;
 }
 
 void
@@ -23515,6 +23623,19 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
     return false;
 }
 
+int
+get_port_district_variant_for_tile (Tile * tile)
+{
+	int variant = 0;
+
+	int sheet_index = (tile->SquareParts >> 8) & 0xFF;   
+	int sprite_index = tile->SquareParts & 0xFF;          
+
+	// TODO
+
+	return variant;
+}
+
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
@@ -24628,6 +24749,22 @@ patch_Tile_m71_Check_Worker_Job (Tile * this)
 		}
 	}
 	return Tile_m71_Check_Worker_Job (this);
+}
+
+PassBetweenValidity __fastcall
+patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int to_x, int to_y, int param_5)
+{
+	PassBetweenValidity base = Unit_can_pass_between (this, __, from_x, from_y, to_x, to_y, param_5);
+
+	if (base != PBV_OK && is->current_config.enable_port_districts && is_worker(this)) {
+		Tile * dest = tile_at (to_x, to_y);
+		if ((dest != NULL) &&
+		    dest->vtable->m35_Check_Is_Water (dest) &&
+		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
+			return PBV_OK; // Let workers treat coast as passable when port districts are on
+	}
+
+	return base;
 }
 
 // TCC requires a main function be defined even though it's never used.

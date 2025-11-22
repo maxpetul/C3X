@@ -17,7 +17,7 @@ typedef unsigned char byte;
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
 #define COUNT_SPECIAL_DISTRICT_TYPES 10
-#define USED_SPECIAL_DISTRICT_TYPES 5
+#define USED_SPECIAL_DISTRICT_TYPES 6
 #define MAX_DYNAMIC_DISTRICT_TYPES 22
 #define COUNT_DISTRICT_TYPES (COUNT_SPECIAL_DISTRICT_TYPES + MAX_DYNAMIC_DISTRICT_TYPES)
 #define MAX_WONDER_DISTRICT_TYPES 32
@@ -323,11 +323,11 @@ struct c3x_config {
 	bool enable_wonder_districts;
 	bool enable_distribution_hub_districts;
 	bool enable_aerodrome_districts;
+	bool enable_port_districts;
 
 	bool cities_with_mutual_district_receive_buildings;
 	bool cities_with_mutual_district_receive_wonders;
 	bool air_units_use_aerodrome_districts_not_cities;
-
 
 	int maximum_pop_before_neighborhood_needed;
 	int per_neighborhood_pop_growth_enabled;
@@ -519,6 +519,10 @@ enum {
 	MAX_DISTRICT_DEPENDENTS = 64
 };
 
+enum {
+	DEFAULT_DISTRICT_BUILDABLE_MASK = (1 << SQ_Desert) | (1 << SQ_Plains) | (1 << SQ_Grassland) | (1 << SQ_Tundra) | (1 << SQ_FloodPlain) | (1 << SQ_Hills)
+};
+
 struct district_config {
 	enum Unit_Command_Values command;
 	char const * name;
@@ -526,10 +530,12 @@ struct district_config {
 	char const * advance_prereq;
 	char const * dependent_improvements[MAX_DISTRICT_DEPENDENTS];
 	char const * img_paths[10];
+	unsigned short buildable_square_types_mask;
 	bool allow_multiple;
 	bool vary_img_by_era;
 	bool vary_img_by_culture;
 	bool is_dynamic;
+	bool is_maritime;
 	int dependent_improvement_count;
 	int img_path_count;
 	int max_building_index;
@@ -597,6 +603,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.command = UCV_Build_Neighborhood, .name = "Neighborhood", .tooltip = "Build Neighborhood",
 		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = true, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx", "Neighborhood_Abandoned.pcx"},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 6, .max_building_index = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
 		.culture_bonus = 1, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .defense_bonus_percent = 25
 		
@@ -605,6 +612,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.command = UCV_Build_WonderDistrict, .name = "Wonder District", .tooltip = "Build Wonder District",
 		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"WonderDistrict.pcx"},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_percent = 0
 		
@@ -613,23 +621,34 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.command = UCV_Build_DistributionHub, .name = "Distribution Hub", .tooltip = "Build Distribution Hub",
 		.advance_prereq = "Construction", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"DistributionHub.pcx"},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_percent = 0
 		
 	},
 	{
 		.command = UCV_Build_Aerodrome, .name = "Aerodrome", .tooltip = "Build Aerodrome",
-		.advance_prereq = "Flight", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.advance_prereq = "Flight", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 1,
 		.img_paths = {"Aerodrome.pcx"}, .dependent_improvements = {"Airport"},
-		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
+		.img_path_count = 1, .max_building_index = 1, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_percent = 0	
 	},
 	{
-		.command = -1, 					.name = "Natural Wonder", .tooltip = NULL,
+		.command = -1, .name = "Natural Wonder", .tooltip = NULL,
 		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {0},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 0, .max_building_index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_percent = 0
+	},
+	{
+		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port",
+		.advance_prereq = "Map Making", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 2, .is_maritime = true,
+		.img_paths = {"Port_NW.pcx", "Port_N.pcx", "Port_NE.pcx", "Port_E.pcx", "Port_SE.pcx", "Port_S.pcx", "Port_SW.pcx", "Port_W.pcx"},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
+		.img_path_count = 8, .max_building_index = 2, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 2, .gold_bonus = 2, .shield_bonus = 0, .defense_bonus_percent = 0
 	}
 };
 
@@ -652,6 +671,7 @@ struct parsed_district_definition {
 	int food_bonus;
 	int gold_bonus;
 	int shield_bonus;
+	unsigned short buildable_square_types_mask;
 	bool has_name;
 	bool has_tooltip;
 	bool has_advance_prereq;
@@ -668,6 +688,7 @@ struct parsed_district_definition {
 	bool has_food_bonus;
 	bool has_gold_bonus;
 	bool has_shield_bonus;
+	bool has_buildable_on;
 };
 
 struct scenario_district_entry {
