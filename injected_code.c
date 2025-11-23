@@ -3928,8 +3928,6 @@ get_connected_city_for_distribution_hub (struct distribution_hub_record * rec)
 		return NULL;
 
 	City * city = get_city_ptr (city_id);
-	//if ((city == NULL) || (city->Body.CivID != rec->civ_id))
-	//	return NULL;
 
 	return city;
 }
