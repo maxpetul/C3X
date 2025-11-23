@@ -21220,7 +21220,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							saved_names[n] = saved_name;
 							if (! mismatch_found) {
 								if ((saved_id < 0) || (saved_id >= is->district_count)) {
-									snprintf (first_mismatch, sizeof first_mismatch, "The district %d (\"%s\") is in the save file but missing in the current configuration.", saved_id, saved_name);
+									snprintf (first_mismatch, sizeof first_mismatch, "%s %d (\"%s\") %s", is->c3x_labels[CL_DISTRICT_ID], saved_id, saved_name, is->c3x_labels[CL_DISTRICT_IN_SAVE_BUT_MISSING_NOW]);
 									first_mismatch[(sizeof first_mismatch) - 1] = '\0';
 									mismatch_found = true;
 								} else {
@@ -21228,7 +21228,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 									if (current_name == NULL)
 										current_name = "";
 									if (strcmp (current_name, saved_name) != 0) {
-										snprintf (first_mismatch, sizeof first_mismatch, "District %d is \"%s\" in the save file but  \"%s\" in the current configuration.", saved_id, saved_name, current_name);
+										snprintf (first_mismatch, sizeof first_mismatch, "%s %d \"%s\" %s \"%s\"", is->c3x_labels[CL_DISTRICT_ID], saved_id, saved_name, is->c3x_labels[CL_DISTRICT_NAME_MISMATCH], current_name);
 										first_mismatch[(sizeof first_mismatch) - 1] = '\0';
 										mismatch_found = true;
 									}
@@ -21239,7 +21239,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							remaining_bytes -= padded_len;
 						}
 						if (success && count_mismatch && (first_mismatch[0] == '\0')) {
-							snprintf (first_mismatch, sizeof first_mismatch, "The save file had %d total district types but current configuration has only %d", saved_count, is->district_count);
+							snprintf (first_mismatch, sizeof first_mismatch, "%s %d %s %d", is->c3x_labels[CL_SAVE_FILE_HAD], saved_count, is->c3x_labels[CL_CURRENT_CONFIG_HAS_ONLY], is->district_count);
 							first_mismatch[(sizeof first_mismatch) - 1] = '\0';
 							mismatch_found = true;
 						}
@@ -21248,8 +21248,8 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_ERROR", -1, 0, 0, 0);
 
 							char s[1000];
-							snprintf (s, sizeof s, "Warning! This save file was created with a different districts configuration. The game may not function correctly. Error: %s", first_mismatch);
-							snprintf (s, sizeof s, "%s There may be other errors as well.", s);
+							snprintf (s, sizeof s, "%s %s", is->c3x_labels[CL_WARNING_DISTRICTS_CONFIG_MISMATCH], first_mismatch);
+							snprintf (s, sizeof s, "%s %s", s, is->c3x_labels[CL_MAY_BE_OTHER_ERRORS_AS_WELL]);
 							s[(sizeof s) - 1] = '\0';
 							PopupForm_add_text (popup, __, s, 0);
 
@@ -21257,7 +21257,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							s[(sizeof s) - 1] = '\0';
 							PopupForm_add_text (popup, __, s, 0);
 
-							snprintf (s, sizeof s, "^Districts in save file:");
+							snprintf (s, sizeof s, "^%s", is->c3x_labels[CL_DISTRICTS_IN_SAVE_FILE]);
 							s[(sizeof s) - 1] = '\0';
 							PopupForm_add_text (popup, __, s, 0);
 							for (int n = 0; n < saved_count; n++) {
@@ -21270,7 +21270,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							s[(sizeof s) - 1] = '\0';
 							PopupForm_add_text (popup, __, s, 0);
 
-							snprintf (s, sizeof s, "^Currently configured districts:");
+							snprintf (s, sizeof s, "^%s", is->c3x_labels[CL_CURRENTLY_CONFIGURED_DISTRICTS]);
 							s[(sizeof s) - 1] = '\0';
 							PopupForm_add_text (popup, __, s, 0);
 							for (int n = 0; n < is->district_count; n++) {
