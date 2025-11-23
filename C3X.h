@@ -75,6 +75,12 @@ struct unit_type_limit {
 	int cities_per;
 };
 
+struct work_area_improvement {
+	short improv_id;
+	int work_area_radius_limit;
+	int work_area_radius_bonus;
+};
+
 enum retreat_rules {
 	RR_STANDARD = 0,
 	RR_NONE,
@@ -255,6 +261,8 @@ struct c3x_config {
 	bool no_cross_shore_detection;
 	int city_work_radius;
 	enum work_area_limit work_area_limit;
+	struct work_area_improvement * work_area_improvements;
+	int count_work_area_improvements;
 	int rebase_range_multiplier;
 	bool limit_unit_loading_to_one_transport_per_turn;
 	bool prevent_old_units_from_upgrading_past_ability_block;
