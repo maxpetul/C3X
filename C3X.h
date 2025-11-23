@@ -191,6 +191,8 @@ struct map_target_separation_rule {
 	struct map_target target;
 	int min_count;
 	int max_count;
+	int enable_tech;
+	int disable_tech;
 
 	int distance_metric_flags;
 	int chebyshev;//flag 1

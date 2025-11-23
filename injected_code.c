@@ -15325,6 +15325,18 @@ match_target(struct map_target * target, int tile_x, int tile_y, int civ_id)
 	}
 }
 
+bool
+map_target_separation_rule_active(struct map_target_separation_rule * rule, int civ_id)
+{
+	if (rule == NULL)
+		return false;
+	if (rule->enable_tech != 0 && !Leader_has_tech (&leaders[civ_id], __, rule->enable_tech)
+		return false;
+	if (rule->disable_tech != 0 && Leader_has_tech (&leaders[civ_id], __, rule->disable_tech))
+		return false;
+	return true;
+}
+
 CityLocValidity __fastcall
 patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int civ_id, bool check_for_city_on_tile)
 {
@@ -15354,6 +15366,8 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 	int min_sep_euclidean_percent = 0;
 	for (int i = 0; i < is->current_config.count_minimum_city_separation_rules; i++) {
 		struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(struct map_target_separation_rule);
+		if (!map_target_separation_rule_active(current_rule, civ_id))
+			continue;
 		if (current_rule->distance_metric_flags & 1 != 0 && current_rule->chebyshev > min_sep_chebyshev)
 			min_sep_chebyshev = current_rule->chebyshev;
 		if (current_rule->distance_metric_flags & 2 != 0 && current_rule->manhatten > min_sep_manhatten)
@@ -15384,6 +15398,8 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 			//Now check each rule (order things this way to not recalculate positions and distances... is this even sensible?)
 			for (int i = 0; i < is->current_config.count_minimum_city_separation_rules; i++) {
 				struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(struct map_target_separation_rule);
+				if (!map_target_separation_rule_active(current_rule, civ_id))
+					continue;
 				//Check tile is within rule's radius
 				if (current_rule->distance_metric_flags & 1 != 0 && current_rule->chebyshev <= chebyshev)
 					continue;
@@ -15407,6 +15423,8 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 	//Check if each rule minimum count is met - no need to check max count, we do that when incrementing
 	for (int i = 0; i < is->current_config.count_minimum_city_separation_rules; i++) {
 		struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(struct map_target_separation_rule);
+		if (!map_target_separation_rule_active(current_rule, civ_id))
+			continue;
 		if (rule_matches[i] < current_rule->min_count) {
 			free (rule_matches);
 			return CLV_CITY_TOO_CLOSE; //Kinda abusing this name since we now check for other things
