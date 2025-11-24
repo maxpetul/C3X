@@ -259,6 +259,7 @@ struct c3x_config {
 	enum land_transport_rules land_transport_rules;
 	bool allow_adjacent_resources_of_different_types;
 	int luxury_randomized_appearance_rate_percent;
+	int tiles_per_non_luxury_resource;
 	int years_to_double_building_culture;
 	int tourism_time_scale_percent;
 

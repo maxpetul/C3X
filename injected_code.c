@@ -2722,6 +2722,7 @@ do_capture_modified_gold_trade (TradeOffer * trade_offer, int edx, int val, char
 	return print_int (val, str, base);
 }
 
+// Here the order of the registers matches the order that they're pushed by the pusha instruction
 struct register_set {
 	int edi, esi, ebp, esp, ebx, edx, ecx, eax;
 };
@@ -3398,6 +3399,69 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	// replacing 0x7D (= jge) with 0xEB (= uncond. jump)
 	WITH_MEM_PROTECTION (ADDR_RES_CHECK_JUMP_TILE_INDEX_AT_LEAST_9, 1, PAGE_EXECUTE_READWRITE)
 		*(byte *)ADDR_RES_CHECK_JUMP_TILE_INDEX_AT_LEAST_9 = cfg->allow_adjacent_resources_of_different_types ? 0xEB : 0x7D;
+
+	WITH_MEM_PROTECTION (ADDR_RESOURCE_GEN_TILE_COUNT_DIV, 7, PAGE_EXECUTE_READWRITE) {
+		if (cfg->tiles_per_non_luxury_resource == 32)
+			restore_code_area (ADDR_RESOURCE_GEN_TILE_COUNT_DIV);
+		else {
+			save_code_area (ADDR_RESOURCE_GEN_TILE_COUNT_DIV, 7, true);
+
+			// Jump to replacement division logic, kept in an inlead because it doesn't fit in 7 bytes
+			emit_branch (BK_JUMP, ADDR_RESOURCE_GEN_TILE_COUNT_DIV, ADDR_RESOURCE_GEN_TILE_COUNT_DIV_REPL);
+
+			// Fill in the replacement division logic. Instead of computing tile_count>>5, compute tile_count/cfg->tiles_per_non_luxury_resource.
+			WITH_MEM_PROTECTION (ADDR_RESOURCE_GEN_TILE_COUNT_DIV_REPL, INLEAD_SIZE, PAGE_EXECUTE_READWRITE) {
+				int d = not_below (1, cfg->tiles_per_non_luxury_resource);
+				byte d0 =  d        & 0xFF,
+				     d1 = (d >>  8) & 0xFF,
+				     d2 = (d >> 16) & 0xFF,
+				     d3 =  d >> 24;
+
+				byte * cursor = ADDR_RESOURCE_GEN_TILE_COUNT_DIV_REPL;
+
+				// In the Steam EXE, the limit (tile_count/32 by default) must be left in ecx. For the other EXEs, edx.
+				if (exe_version_index == 1) {
+					byte new_div[] = {
+						0x50,                   // push   eax
+						0x52,                   // push   edx
+						0x66, 0x8B, 0x56, 0x40, // mov    dx, word ptr [esi+0x40]  # Loads tile count
+						0x0F, 0xB7, 0xD2,       // movzx  edx, dx
+						0x89, 0xD0,             // mov    eax, edx
+						0x31, 0xD2,             // xor    edx, edx
+						0xB9, d0, d1, d2, d3,   // mov    ecx, {{divisor}}
+						0xF7, 0xF1,             // div    ecx
+						0x89, 0xC1,             // mov    ecx, eax
+						0x5A,                   // pop    edx
+						0x58                    // pop    eax
+					};
+					for (int n = 0; n < ARRAY_LEN (new_div); n++)
+						*cursor++ = new_div[n];
+
+				} else {
+					byte new_div[] = {
+						0x50,                   // push   eax
+						0x51,                   // push   ecx
+						0x66, 0x8B, 0x56, 0x40, // mov    dx, word ptr [esi+0x40]  # Loads tile count
+						0x0F, 0xB7, 0xD2,       // movzx  edx, dx
+						0x89, 0xD0,             // mov    eax, edx
+						0x31, 0xD2,             // xor    edx, edx
+						0xB9, d0, d1, d2, d3,   // mov    ecx, {{divisor}}
+						0xF7, 0xF1,             // div    ecx
+						0x89, 0xC2,             // mov    edx, eax
+						0x59,                   // pop    ecx
+						0x58                    // pop    eax
+					};
+					for (int n = 0; n < ARRAY_LEN (new_div); n++)
+						*cursor++ = new_div[n];
+				}
+
+				cursor = emit_branch (BK_JUMP, cursor, ADDR_RESOURCE_GEN_TILE_COUNT_DIV + 7);
+
+				// osfniersfoisenono // continue here, adapt the above logic to the Steam EXE
+
+			}
+		}
+	}
 }
 
 Sprite* 
@@ -4158,6 +4222,7 @@ patch_init_floating_point ()
 		{"years_to_double_building_culture"             ,  1000, offsetof (struct c3x_config, years_to_double_building_culture)},
 		{"tourism_time_scale_percent"                   ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
 		{"luxury_randomized_appearance_rate_percent"    ,   100, offsetof (struct c3x_config, luxury_randomized_appearance_rate_percent)},
+		{"tiles_per_non_luxury_resource"                ,    32, offsetof (struct c3x_config, tiles_per_non_luxury_resource)},
 		{"city_limit"                                   ,  2048, offsetof (struct c3x_config, city_limit)},
 	};
 
