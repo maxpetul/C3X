@@ -9148,6 +9148,7 @@ do_capture_modified_gold_trade (TradeOffer * trade_offer, int edx, int val, char
 	return print_int (val, str, base);
 }
 
+// Here the order of the registers matches the order that they're pushed by the pusha instruction
 struct register_set {
 	int edi, esi, ebp, esp, ebx, edx, ecx, eax;
 };
@@ -9852,6 +9853,71 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		code[0] = 0x55; code[1] = 0x53; // write push ebp and push ebx, two overwritten instrs before the call
 		emit_branch (BK_CALL, &code[2], &patch_get_pixel_to_draw_city_dot); // call patch func
 		emit_branch (BK_JUMP, &code[7], ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT + 5); // jump back to original code
+	}
+
+	// Bypass adjacent resource of different type check
+	// replacing 0x7D (= jge) with 0xEB (= uncond. jump)
+	WITH_MEM_PROTECTION (ADDR_RES_CHECK_JUMP_TILE_INDEX_AT_LEAST_9, 1, PAGE_EXECUTE_READWRITE)
+		*(byte *)ADDR_RES_CHECK_JUMP_TILE_INDEX_AT_LEAST_9 = cfg->allow_adjacent_resources_of_different_types ? 0xEB : 0x7D;
+
+	WITH_MEM_PROTECTION (ADDR_RESOURCE_GEN_TILE_COUNT_DIV, 7, PAGE_EXECUTE_READWRITE) {
+		if (cfg->tiles_per_non_luxury_resource == 32)
+			restore_code_area (ADDR_RESOURCE_GEN_TILE_COUNT_DIV);
+		else {
+			save_code_area (ADDR_RESOURCE_GEN_TILE_COUNT_DIV, 7, true);
+
+			// Jump to replacement division logic, kept in an inlead because it doesn't fit in 7 bytes
+			emit_branch (BK_JUMP, ADDR_RESOURCE_GEN_TILE_COUNT_DIV, ADDR_RESOURCE_GEN_TILE_COUNT_DIV_REPL);
+
+			// Fill in the replacement division logic. Instead of computing tile_count>>5, compute tile_count/cfg->tiles_per_non_luxury_resource.
+			WITH_MEM_PROTECTION (ADDR_RESOURCE_GEN_TILE_COUNT_DIV_REPL, INLEAD_SIZE, PAGE_EXECUTE_READWRITE) {
+				int d = not_below (1, cfg->tiles_per_non_luxury_resource);
+				byte d0 =  d        & 0xFF,
+				     d1 = (d >>  8) & 0xFF,
+				     d2 = (d >> 16) & 0xFF,
+				     d3 =  d >> 24;
+
+				byte * cursor = ADDR_RESOURCE_GEN_TILE_COUNT_DIV_REPL;
+
+				// In the Steam EXE, the limit (tile_count/32 by default) must be left in ecx. For the other EXEs, edx.
+				if (exe_version_index == 1) {
+					byte new_div[] = {
+						0x50,                   // push   eax
+						0x52,                   // push   edx
+						0x66, 0x8B, 0x56, 0x40, // mov    dx, word ptr [esi+0x40]  # Loads tile count
+						0x0F, 0xB7, 0xD2,       // movzx  edx, dx
+						0x89, 0xD0,             // mov    eax, edx
+						0x31, 0xD2,             // xor    edx, edx
+						0xB9, d0, d1, d2, d3,   // mov    ecx, {{divisor}}
+						0xF7, 0xF1,             // div    ecx
+						0x89, 0xC1,             // mov    ecx, eax
+						0x5A,                   // pop    edx
+						0x58                    // pop    eax
+					};
+					for (int n = 0; n < ARRAY_LEN (new_div); n++)
+						*cursor++ = new_div[n];
+
+				} else {
+					byte new_div[] = {
+						0x50,                   // push   eax
+						0x51,                   // push   ecx
+						0x66, 0x8B, 0x56, 0x40, // mov    dx, word ptr [esi+0x40]  # Loads tile count
+						0x0F, 0xB7, 0xD2,       // movzx  edx, dx
+						0x89, 0xD0,             // mov    eax, edx
+						0x31, 0xD2,             // xor    edx, edx
+						0xB9, d0, d1, d2, d3,   // mov    ecx, {{divisor}}
+						0xF7, 0xF1,             // div    ecx
+						0x89, 0xC2,             // mov    edx, eax
+						0x59,                   // pop    ecx
+						0x58                    // pop    eax
+					};
+					for (int n = 0; n < ARRAY_LEN (new_div); n++)
+						*cursor++ = new_div[n];
+				}
+
+				cursor = emit_branch (BK_JUMP, cursor, ADDR_RESOURCE_GEN_TILE_COUNT_DIV + 7);
+			}
+		}
 	}
 }
 
@@ -10773,10 +10839,11 @@ patch_init_floating_point ()
 		{"cities_with_mutual_district_receive_buildings"       , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
 		{"cities_with_mutual_district_receive_wonders"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
 		{"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
-        {"show_natural_wonder_name_on_map"                     , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
-		{"ai_defends_districts"         		               , false, offsetof (struct c3x_config, ai_defends_districts)},
-		{"enable_city_work_radii_highlights" 				   , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
+		{"show_natural_wonder_name_on_map"                     , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
+		{"ai_defends_districts"                                , false, offsetof (struct c3x_config, ai_defends_districts)},
+		{"enable_city_work_radii_highlights"                   , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
+		{"allow_adjacent_resources_of_different_types"         , false, offsetof (struct c3x_config, allow_adjacent_resources_of_different_types)},
 	};
 
 	struct integer_config_option {
@@ -10804,6 +10871,8 @@ patch_init_floating_point ()
 		{"pinned_hour_for_day_night_cycle"               ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
 		{"years_to_double_building_culture"              ,  1000, offsetof (struct c3x_config, years_to_double_building_culture)},
 		{"tourism_time_scale_percent"                    ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
+		{"luxury_randomized_appearance_rate_percent"    ,   100, offsetof (struct c3x_config, luxury_randomized_appearance_rate_percent)},
+		{"tiles_per_non_luxury_resource"                ,    32, offsetof (struct c3x_config, tiles_per_non_luxury_resource)},
 		{"city_limit"                                    ,  2048, offsetof (struct c3x_config, city_limit)},
 		{"maximum_pop_before_neighborhood_needed"        ,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
 		{"per_neighborhood_pop_growth_enabled"			 ,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
@@ -15862,6 +15931,17 @@ patch_Sprite_draw_on_map (Sprite * this, int edx, Map_Renderer * map_renderer, i
 {
 	Sprite *to_draw = get_sprite_proxy_for_current_hour(this);
 	return Sprite_draw_on_map(to_draw ? to_draw : this, __, map_renderer, pixel_x, pixel_y, param_4, param_5, param_6, param_7);
+}
+
+bool
+is_or_could_become_grassland (Tile * tile)
+{
+	enum SquareTypes sq_type         = tile->vtable->m50_Get_Square_BaseType (tile),
+		         underlying_type = tile->vtable->m49_Get_Square_RealType (tile);
+	int worker_job_id = p_bic_data->TileTypes[sq_type].WorkerJobID;
+	return sq_type == SQ_Grassland ||
+		(underlying_type == SQ_Grassland && (worker_job_id == WJ_Clean_Forest || worker_job_id == WJ_Clear_Swamp)) ||
+		tile->vtable->m72_Get_Pollution_Effect (tile) == SQ_Grassland;
 }
 
 void __fastcall
@@ -24458,6 +24538,45 @@ patch_Unit_despawn_after_capture (Unit * this, int edx, int civ_id_responsible, 
 		patch_Unit_despawn ((Unit *)is->memo[n], __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 
 	patch_Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
+}
+
+void __fastcall
+patch_Map_generate_resources (Map * this, int edx, int secondary_seed)
+{
+	int const bic_tag_good = 0x444f4f47; // = 'GOOD'
+	int resource_type_count = this->vtable->m35_Get_BIC_Sub_Data (this, __, bic_tag_good, -1, NULL);
+	bool * ratios_to_clear = NULL;
+	int lux_percent = is->current_config.luxury_randomized_appearance_rate_percent;
+	int seed = (this->Seed + 0x180E3) * secondary_seed;
+
+	// To change the randomized appearance rate for luxuries, fill in an appearance rate for any that would be randomized (rate set == 0) using
+	// the same process the game would to randomize the rate but with different limits. That process involves taking two random numbers from 0 to
+	// 25 then adding them together and to 50 to produce a random rate from 50 to 100 biased toward the middle of that range.
+	if (lux_percent != 100 &&
+	    (ratios_to_clear = calloc (1, resource_type_count)) != NULL) {
+		for (int n = 0; n < resource_type_count; n++) {
+			Resource_Type * res;
+			this->vtable->m35_Get_BIC_Sub_Data (this, __, bic_tag_good, n, (void **)&res);
+			if (res->Class == RC_Luxury && res->AppearanceRatio == 0) {
+				ratios_to_clear[n] = true;
+				int half_lux_percent    = (lux_percent * 50 + 50) / 100,
+				    quarter_lux_percent = (lux_percent * 25 + 50) / 100;
+				res->AppearanceRatio = not_below (1, half_lux_percent + rand_int (&seed, __, quarter_lux_percent) + rand_int (&seed, __, quarter_lux_percent));
+			}
+		}
+	}
+
+	Map_generate_resources (this, __, secondary_seed);
+
+	if (ratios_to_clear != NULL) {
+		for (int n = 0; n < resource_type_count; n++)
+			if (ratios_to_clear[n]) {
+				Resource_Type * res;
+				this->vtable->m35_Get_BIC_Sub_Data (this, __, bic_tag_good, n, (void **)&res);
+				res->AppearanceRatio = 0;
+			}
+		free (ratios_to_clear);
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.
