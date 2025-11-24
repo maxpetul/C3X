@@ -2062,6 +2062,15 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_zone_of_control_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "land_transport_rules")) {
+					struct parsable_field_bit bits[] = {
+						{"load-onto-boat"        , LTR_LOAD_ONTO_BOAT},
+						{"join-army"             , LTR_JOIN_ARMY},
+						{"no-defense-from-inside", LTR_NO_DEFENSE_FROM_INSIDE},
+						{"no-escape"             , LTR_NO_ESCAPE},
+					};
+					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->land_transport_rules))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "work_area_limit")) {
 					if (! read_work_area_limit (&value, (int *)&cfg->work_area_limit))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -11066,6 +11075,7 @@ patch_init_floating_point ()
 	is->checking_visibility_for_unit = NULL;
 
 	is->do_not_bounce_invisible_units = false;
+	is->always_despawn_passengers = false;
 
 	is->saved_improv_counts = NULL;
 	is->saved_improv_counts_capacity = 0;
@@ -16535,6 +16545,8 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 void __fastcall
 patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
 {
+	int ret_addr = ((int *)&civ_id_responsible)[-1];
+
 	int owner_id = this->Body.CivID;
 	int type_id = this->Body.UnitTypeID;
 
@@ -16550,7 +16562,23 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	if (this == is->sb_next_up)
 		is->sb_next_up = NULL;
 
+	// Set always_despawn_passengers to true if the unit to be despawned is a land transport, the no-escape rule is in effect, and it's being
+	// despawned involuntarily, i.e. because of the actions of another player not the choice of its owner. Save the original to restore later.
+	bool prev_always_despawn_passengers = is->always_despawn_passengers;
+	if (is->current_config.land_transport_rules & LTR_NO_ESCAPE) {
+		if ((p_bic_data->UnitTypes[type_id].Unit_Class == UTC_Land) &&
+		    (p_bic_data->UnitTypes[type_id].Transport_Capacity > 0) &&
+		    ! Unit_has_ability (this, __, UTA_Army)) {
+			if ((ret_addr == DESPAWN_TO_FIGHT_1_RETURN) || (ret_addr == DESPAWN_TO_FIGHT_2_RETURN) ||
+			    (ret_addr == DESPAWN_TO_DO_BOMBARD_TILE_RETURN) || (ret_addr == DESPAWN_TO_CRUISE_MISSILE_DEFENDER_RETURN) ||
+			    (ret_addr == DESPAWN_TO_BOUNCE_TRESPASSING_UNITS_RETURN) || (ret_addr == DESPAWN_TO_NUKE_DAMAGE_RETURN))
+				is->always_despawn_passengers = true;
+		}
+	}
+
 	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
+
+	is->always_despawn_passengers = prev_always_despawn_passengers;
 
 	change_unit_type_count (&leaders[owner_id], type_id, -1);
 }
@@ -18959,9 +18987,21 @@ patch_Unit_teleport (Unit * this, int edx, int tile_x, int tile_y, Unit * unit_t
 }
 
 bool
+is_in_land_transport (Unit * unit)
+{
+	Unit * container;
+	return ((container = get_unit_ptr (unit->Body.Container_Unit)) != NULL) &&
+		(p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Land) &&
+		! Unit_has_ability (container, __, UTA_Army);
+}
+
+bool
 can_do_defensive_bombard (Unit * unit, UnitType * type)
 {
 	if ((type->Bombard_Strength > 0) && (! Unit_has_ability (unit, __, UTA_Cruise_Missile))) {
+		if ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) && is_in_land_transport (unit))
+			return false;
+
 		if ((unit->Body.Status & USF_USED_DEFENSIVE_BOMBARD) == 0) // has not already done DB this turn
 			return true;
 
@@ -18979,8 +19019,8 @@ can_do_defensive_bombard (Unit * unit, UnitType * type)
 Unit * __fastcall
 patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker, Unit * defender)
 {
-	int special_rules = is->current_config.special_defensive_bombard_rules;
-	if (special_rules == 0)
+	int special_db_rules = is->current_config.special_defensive_bombard_rules;
+	if ((special_db_rules == 0) && ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) == 0))
 		return Fighter_find_defensive_bombarder (this, __, attacker, defender);
 	else {
 		enum UnitTypeClasses attacker_class = p_bic_data->UnitTypes[attacker->Body.UnitTypeID].Unit_Class;
@@ -18989,8 +19029,8 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 		Tile * defender_tile = tile_at (defender->Body.X, defender->Body.Y);
 		if ((Unit_get_defense_strength (attacker) < 1) || // if attacker cannot defend OR
 		    (defender_tile == NULL) || (defender_tile == p_null_tile) || // defender tile is invalid OR
-		    (((special_rules & SDBR_LETHAL) == 0) && attacker_has_one_hp) || // (DB is non-lethal AND attacker has one HP remaining) OR
-		    ((special_rules & SDBR_NOT_INVISIBLE) && ! patch_Unit_is_visible_to_civ (attacker, __, defender->Body.CivID, 1))) // (invisible units are immune to DB AND attacker is invisible)
+		    (((special_db_rules & SDBR_LETHAL) == 0) && attacker_has_one_hp) || // (DB is non-lethal AND attacker has one HP remaining) OR
+		    ((special_db_rules & SDBR_NOT_INVISIBLE) && ! patch_Unit_is_visible_to_civ (attacker, __, defender->Body.CivID, 1))) // (invisible units are immune to DB AND attacker is invisible)
 			return NULL;
 
 		Unit * tr = NULL;
@@ -19004,10 +19044,10 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 			    (candidate != defender) &&
 			    (Unit_get_containing_army (candidate) != defender) &&
 			    ((attacker_class == candidate_type->Unit_Class) ||
-			     ((special_rules & SDBR_AERIAL) &&
+			     ((special_db_rules & SDBR_AERIAL) &&
 			      (candidate_type->Unit_Class == UTC_Air) &&
 			      (candidate_type->Air_Missions & UCV_Bombing)) ||
-			     ((special_rules & SDBR_DOCKED_VS_LAND) &&
+			     ((special_db_rules & SDBR_DOCKED_VS_LAND) &&
 			      (candidate_type->Unit_Class == UTC_Sea) &&
 			      (get_city_ptr (defender_tile->CityID) != NULL))) &&
 			    ((! attacker_has_one_hp) || UnitType_has_ability (candidate_type, __, lethal_bombard_req))) {
@@ -24312,6 +24352,112 @@ patch_City_set_production (City * this, int edx, int order_type, int order_id, b
 
 	if (release_reservation)
 		release_wonder_district_reservation (this);
+}
+
+bool __fastcall
+patch_Unit_has_ability_no_load_non_army_passengers (Unit * this, int edx, enum UnitTypeAbilities army_ability)
+{
+	// This call comes from Unit::can_load at the point where it's determined that the passenger (this) has transport capacity > 0 and is checking
+	// whether it's an army. If not, it can't be loaded. Add two exceptions here for land transports, if configured, one to allow LTs to load into
+	// naval units and another to allow empty LTs to load into armies.
+	if (is->current_config.land_transport_rules != 0) {
+		UnitType * transport_type = &p_bic_data->UnitTypes[is->can_load_transport->Body.UnitTypeID],
+			 * passenger_type = &p_bic_data->UnitTypes[this                  ->Body.UnitTypeID];
+		if ((passenger_type->Unit_Class == UTC_Land) && ! Unit_has_ability (this, __, army_ability)) { // if it's a land transport
+			if ((is->current_config.land_transport_rules & LTR_LOAD_ONTO_BOAT) && (transport_type->Unit_Class == UTC_Sea))
+				return true;
+			if ((is->current_config.land_transport_rules & LTR_JOIN_ARMY) &&
+			    Unit_has_ability (is->can_load_transport, __, army_ability) && (Unit_count_contained_units (this) == 0))
+				return true;
+		}
+	}
+
+	return Unit_has_ability (this, __, army_ability);
+}
+
+bool __fastcall
+patch_Unit_has_ability_no_load_transport_into_army (Unit * this, int edx, enum UnitTypeAbilities army_ability)
+{
+	// Similar to above, here it checks if the target unit is an army and rejects the load if it is (again, already determined that the passenger
+	// has transport capacity). Modify this rule to return false for land transports trying to join armies if configured. We don't have to check
+	// that the LT is empty since that is already disallowed by the modified check above.
+	bool is_army = Unit_has_ability (this, __, army_ability);
+	if ((is->current_config.land_transport_rules & LTR_JOIN_ARMY) && is_army &&
+	    (p_bic_data->UnitTypes[is->can_load_passenger->Body.UnitTypeID].Unit_Class == UTC_Land))
+		return false;
+
+	else
+		return is_army;
+}
+
+bool __fastcall
+patch_Fighter_unit_can_defend (Fighter * this, int edx, Unit * unit, int tile_x, int tile_y)
+{
+	if ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) && is_in_land_transport (unit))
+		return false;
+	else
+		return Fighter_unit_can_defend (this, __, unit, tile_x, tile_y);
+}
+
+bool __fastcall
+patch_Leader_is_enemy_unit_for_ground_aa (Leader * this, int edx, Unit * bomber)
+{
+	// When this function is called, the potential interceptor unit is stored in register ESI.
+	Unit * interceptor;
+	__asm__ __volatile__("mov %%esi, %0" : "=r" (interceptor));
+
+	if ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) && is_in_land_transport (interceptor))
+		return false; // Exclude this unit as candidate to intercept
+	else
+		return Leader_is_enemy_unit (this, __, bomber);
+}
+
+bool __fastcall
+patch_Unit_has_army_ability_for_passenger_despawn (Unit * this, int edx, enum UnitTypeAbilities army_ability)
+{
+	// If the unit has the army ability, the game will always despawn the passengers. Otherwise there are exceptions like land unit passengers
+	// won't be despawned if the transport is on a land tile.
+	return is->always_despawn_passengers || Unit_has_ability (this, __, army_ability);
+}
+
+int __cdecl
+patch_count_units_at_in_try_capturing (int x, int y, enum unit_filter filter, int arg_a, int arg_b, int arg_c)
+{
+	Tile * tile = tile_at (x, y);
+
+	// If the no-escape rule is in force for land transports, count units on the tile like the function normally would except skip units in land
+	// transports. Otherwise the units in LTs will prevent movement onto the tile.
+	if ((is->current_config.land_transport_rules & LTR_NO_ESCAPE) && tile->vtable->m35_Check_Is_Water (tile) == 0) {
+		int tr = 0;
+		FOR_UNITS_ON (tai, tile) {
+			if ((arg_b == -1 || p_bic_data->UnitTypes[tai.unit->Body.UnitTypeID].Unit_Class == arg_b) &&
+			    (arg_a == -1 || patch_Unit_is_visible_to_civ (tai.unit, __, arg_a, 1)) &&
+			    (Unit_get_defense_strength (tai.unit) > 0) &&
+			    ! is_in_land_transport (tai.unit))
+				tr++;
+		}
+		return tr;
+
+	} else
+		return count_units_at (x, y, filter, arg_a, arg_b, arg_c);
+}
+
+void __fastcall
+patch_Unit_despawn_after_capture (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
+{
+	// If despawning a land transport with no-escape enabled, despawn any passengers too.
+	clear_memo ();
+	if ((is->current_config.land_transport_rules & LTR_NO_ESCAPE) &&
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land) &&
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Transport_Capacity > 0) &&
+	    ! Unit_has_ability (this, __, UTA_Army))
+		FOR_UNITS_ON (tai, tile_at (this->Body.X, this->Body.Y))
+			if (tai.unit->Body.Container_Unit == this->Body.ID)
+				memoize ((int)tai.unit);
+	for (int n = 0; n < is->memo_len; n++)
+		patch_Unit_despawn ((Unit *)is->memo[n], __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
+
+	patch_Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 }
 
 // TCC requires a main function be defined even though it's never used.

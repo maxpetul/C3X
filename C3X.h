@@ -114,6 +114,13 @@ enum special_zone_of_control_rules {
 	SZOCR_AMPHIBIOUS = 4,
 };
 
+enum land_transport_rules {
+	LTR_LOAD_ONTO_BOAT         = 1,
+	LTR_JOIN_ARMY              = 2,
+	LTR_NO_DEFENSE_FROM_INSIDE = 4,
+	LTR_NO_ESCAPE              = 8,
+};
+
 enum work_area_limit {
 	WAL_NONE = 0,
 	WAL_CULTURAL,
@@ -267,6 +274,7 @@ struct c3x_config {
 	bool limit_unit_loading_to_one_transport_per_turn;
 	bool prevent_old_units_from_upgrading_past_ability_block;
 	bool introduce_all_human_players_at_start_of_hotseat_game;
+	enum land_transport_rules land_transport_rules;
 	int years_to_double_building_culture;
 	int tourism_time_scale_percent;
 
@@ -1283,6 +1291,9 @@ struct injected_state {
 
 	// Normally false. When true, calls to bounce_trespassing_units won't kick out invisible units even if they're revealed.
 	bool do_not_bounce_invisible_units;
+
+	// Normally false. When true, Unit::despawn also despawns any passenger units inside instead of making exceptions in some cases.
+	bool always_despawn_passengers;
 
 	// If limit_unit_loading_to_one_transport_per_turn is on, maps unit IDs to the ID of the transport unit they're tied to for the current turn.
 	struct table unit_transport_ties;
