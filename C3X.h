@@ -278,6 +278,7 @@ struct c3x_config {
 	bool allow_adjacent_resources_of_different_types;
 	int luxury_randomized_appearance_rate_percent;
 	int tiles_per_non_luxury_resource;
+	bool no_land_anti_air_from_inside_naval_transport;
 	int years_to_double_building_culture;
 	int tourism_time_scale_percent;
 

@@ -10843,6 +10843,7 @@ patch_init_floating_point ()
 		{"ai_defends_districts"                                , false, offsetof (struct c3x_config, ai_defends_districts)},
 		{"enable_city_work_radii_highlights"                   , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
+		{"no_land_anti_air_from_inside_naval_transport"        , false, offsetof (struct c3x_config, no_land_anti_air_from_inside_naval_transport)},
 		{"allow_adjacent_resources_of_different_types"         , false, offsetof (struct c3x_config, allow_adjacent_resources_of_different_types)},
 	};
 
@@ -24486,8 +24487,16 @@ patch_Leader_is_enemy_unit_for_ground_aa (Leader * this, int edx, Unit * bomber)
 	Unit * interceptor;
 	__asm__ __volatile__("mov %%esi, %0" : "=r" (interceptor));
 
-	if ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) && is_in_land_transport (interceptor))
-		return false; // Exclude this unit as candidate to intercept
+	Unit * container = get_unit_ptr (interceptor->Body.Container_Unit);
+	bool in_transport = (container != NULL) && ! Unit_has_ability (container, __, UTA_Army);
+	if (in_transport &&
+	    (is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) &&
+	    (p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Land))
+		return false;
+	else if (in_transport &&
+		 is->current_config.no_land_anti_air_from_inside_naval_transport &&
+		 (p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Sea))
+		return false;
 	else
 		return Leader_is_enemy_unit (this, __, bomber);
 }
