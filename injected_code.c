@@ -1276,6 +1276,7 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 
 	struct string_slice name;
 	struct unit_type_limit limit = {0};
+	struct string_slice resource_name;
 	if (skip_white_space (&cur) &&
 	    parse_string (&cur, &name) &&
 	    (name.len < (sizeof out->name)) &&
@@ -1292,7 +1293,15 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 					limit.per_city += num;
 				else if (slice_matches_str (&ss, "cities-per"))
 					limit.cities_per += num;
-				else
+				else if (slice_matches_str (&ss, "per-resource")) {
+					if (!parse_string (&cur, &resource_name))
+						return RPR_PARSE_ERROR;
+					limit.per_resource += num;
+				} else if (slice_matches_str (&ss, "resource-per")) {
+					if (!parse_string (&cur, &resource_name))
+						return RPR_PARSE_ERROR;
+					limit.resource_per += num;
+				} else
 					return RPR_PARSE_ERROR;
 			} else
 				limit.per_civ += num;
@@ -1300,18 +1309,25 @@ parse_unit_type_limit (char ** p_cursor, struct error_line ** p_unrecognized_lin
 		} while (skip_punctuation (&cur, '+'));
 
 		int unused;
-		if (find_unit_type_id_by_name (&name, 0, &unused)) {
-			memset (out->name, 0, sizeof out->name);
-			strncpy (out->name, name.str, name.len);
-			out->limit = limit;
-			*p_cursor = cur;
-			return RPR_OK;
-		} else {
+		if (!find_unit_type_id_by_name (&name, 0, &unused)) {
 			add_unrecognized_line (p_unrecognized_lines, &name);
 			*p_cursor = cur;
 			return RPR_UNRECOGNIZED;
 		}
-
+		if (limit.per_resource > 0 || limit.resource_per > 0) {
+			int resource_id;
+			if (!find_resource_id_by_name (&resource_name, &resource_id)) {
+				add_unrecognized_line (p_unrecognized_lines, &resource_name);
+				*p_cursor = cur;
+				return RPR_UNRECOGNIZED;
+			}
+			limit.resource_id = resource_id;
+		}
+		memset (out->name, 0, sizeof out->name);
+		strncpy (out->name, name.str, name.len);
+		out->limit = limit;
+		*p_cursor = cur;
+		return RPR_OK;
 	} else
 		return RPR_PARSE_ERROR;
 }
@@ -8693,9 +8709,16 @@ get_unit_limit (Leader * leader, int unit_type_id, int * out_limit)
 	if ((unit_type_id >= 0) && (unit_type_id < p_bic_data->UnitTypeCount) &&
 	    stable_look_up (&is->current_config.unit_limits, type->Name, (int *)&lim)) {
 		int city_count = leader->Cities_Count;
-		int tr = lim->per_civ + lim->per_city * city_count;
+		char res_count = leader->Available_Resources_Counts[lim->resource_id];//SUPER DUPER DODGY.
+		//Only picks up local resources, has a habit of being 1 short, unless only 1 resource exists.
+		//It's weird enough that this logic tracks for so many resources, but I wouldn't be surprised at excessively large coincidences in testing.
+		int tr = lim->per_civ;
+		tr += lim->per_city * city_count;
 		if (lim->cities_per != 0)
-			tr += city_count / lim->cities_per;
+			tr += res_count / lim->cities_per;
+		tr += lim->per_resource * res_count;
+		if (lim->resource_per != 0)
+			tr += res_count / lim->resource_per;
 		*out_limit = tr;
 		return true;
 	} else
