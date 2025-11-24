@@ -1,6 +1,7 @@
 - Allow city work areas to vary based on their buildings
 - Option to prevent land anti-air units from intercepting overflying aircraft while they're loaded in a naval transport
   - Named no_land_anti_air_from_inside_naval_transport
+- Option to prevent units from being enslaved after being destroyed by lethal bombard named prevent_enslaving_by_bombardment
 
 * RELEASE 26 PREVIEW 1
 - Enable districts, an elaborate change to the game's economy inspired by Civ 6.

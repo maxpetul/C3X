@@ -279,6 +279,7 @@ struct c3x_config {
 	int luxury_randomized_appearance_rate_percent;
 	int tiles_per_non_luxury_resource;
 	bool no_land_anti_air_from_inside_naval_transport;
+	bool prevent_enslaving_by_bombardment;
 	int years_to_double_building_culture;
 	int tourism_time_scale_percent;
 
@@ -1298,6 +1299,9 @@ struct injected_state {
 
 	// Normally false. When true, Unit::despawn also despawns any passenger units inside instead of making exceptions in some cases.
 	bool always_despawn_passengers;
+
+	// Normally false. When true, calls to Unit::score_kill will not enslave.
+	bool do_not_enslave_units;
 
 	// If limit_unit_loading_to_one_transport_per_turn is on, maps unit IDs to the ID of the transport unit they're tied to for the current turn.
 	struct table unit_transport_ties;

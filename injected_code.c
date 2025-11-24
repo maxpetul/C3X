@@ -10844,6 +10844,7 @@ patch_init_floating_point ()
 		{"enable_city_work_radii_highlights"                   , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
 		{"no_land_anti_air_from_inside_naval_transport"        , false, offsetof (struct c3x_config, no_land_anti_air_from_inside_naval_transport)},
+		{"prevent_enslaving_by_bombardment"                    , false, offsetof (struct c3x_config, prevent_enslaving_by_bombardment)},
 		{"allow_adjacent_resources_of_different_types"         , false, offsetof (struct c3x_config, allow_adjacent_resources_of_different_types)},
 	};
 
@@ -11146,6 +11147,7 @@ patch_init_floating_point ()
 
 	is->do_not_bounce_invisible_units = false;
 	is->always_despawn_passengers = false;
+	is->do_not_enslave_units = false;
 
 	is->saved_improv_counts = NULL;
 	is->saved_improv_counts_capacity = 0;
@@ -18236,6 +18238,10 @@ patch_deinitialize_map_music ()
 void __fastcall
 patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbor_index, int mp_tile_x, int mp_tile_y)
 {
+	// Unit::score_kill will be called if the bombarder destroys its target, and that is the only way score_kill can be called while this method
+	// is running. So if we're configured to stop enslaving from bombard, turn off enslaving while it's running.
+	is->do_not_enslave_units = is->current_config.prevent_enslaving_by_bombardment;
+
 	// Check if we're going to do PTW-like targeting, if not fall back on the base game's do_bombard_tile method. We'll also fall back on that
 	// method in the case where we're in an online game and the bombard can't happen b/c the tile is occupied by another battle. In that case, no
 	// bombard is possible but we'll call the base method anyway since it will show a little message saying as much.
@@ -18259,6 +18265,8 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 
 	} else
 		Fighter_do_bombard_tile (this, __, unit, neighbor_index, mp_tile_x, mp_tile_y);
+
+	is->do_not_enslave_units = false;
 }
 
 bool __fastcall
@@ -19034,7 +19042,17 @@ check_life_after_zoc (Unit * unit, Unit * interceptor)
 {
 	if ((is->current_config.special_zone_of_control_rules & SZOCR_LETHAL) && (interceptor != NULL) &&
 	    ((Unit_get_max_hp (unit) - unit->Body.Damage) <= 0)) {
+
+		// Call Unit::score_kill but turn off enslaving if we're configured to stop enslaving after bombardment and the ZoC was performed by
+		// bombardment, which is always the case for cross-domain ZoC or when bombard str > attack.
+		UnitType * interceptor_type = &p_bic_data->UnitTypes[interceptor->Body.UnitTypeID];
+		if (is->current_config.prevent_enslaving_by_bombardment &&
+		    ((p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class != interceptor_type->Unit_Class) ||
+		     (interceptor_type->Bombard_Strength >= Unit_get_attack_strength (interceptor))))
+			is->do_not_enslave_units = true;
 		Unit_score_kill (interceptor, __, unit, false);
+		is->do_not_enslave_units = false;
+
 		if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (&p_bic_data->fighter, __, interceptor, unit, true))
 			Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, unit, AT_DEATH, false);
 		patch_Unit_despawn (unit, __, interceptor->Body.CivID, 0, 0, 0, 0, 0, 0);
@@ -19206,7 +19224,9 @@ patch_Unit_score_kill_by_defender (Unit * this, int edx, Unit * victim, bool was
 	// This function is called when the defender wins in combat. If the attacker was actually killed by defensive bombardment, then award credit
 	// for that kill to the defensive bombarder not the defender in combat.
 	if (is->dbe.defender_was_destroyed) {
+		is->do_not_enslave_units = is->current_config.prevent_enslaving_by_bombardment;
 		Unit_score_kill (is->dbe.bombarder, __, victim, was_attacking);
+		is->do_not_enslave_units = false;
 		p_bic_data->fighter.play_animations = is->dbe.saved_animation_setting;
 
 	} else
@@ -24586,6 +24606,14 @@ patch_Map_generate_resources (Map * this, int edx, int secondary_seed)
 			}
 		free (ratios_to_clear);
 	}
+}
+
+int __fastcall
+patch_rand_int_to_enslave (void * this, int edx, int lim)
+{
+	// lim is 100, enslaving happens if the return value is < 33
+	int r = rand_int (this, __, lim);
+	return is->do_not_enslave_units ? 100 : r;
 }
 
 // TCC requires a main function be defined even though it's never used.
