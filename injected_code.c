@@ -2117,9 +2117,24 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->anarchy_length_percent = 100 - ival;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
-				} else if (slice_matches_str (&p.key, "adjust_minimum_city_separation")) {
+				} else if (slice_matches_str (&p.key, "minimum_city_separation_chebyshev") || slice_matches_str (&p.key, "adjust_minimum_city_separation")) {
 					if (read_int (&value, &ival))
-						cfg->minimum_city_separation = ival + 1;
+						cfg->minimum_city_separation.any_chebyshev = ival;
+					else
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
+				} else if (slice_matches_str (&p.key, "minimum_city_separation_manhatten")) {
+					if (read_int (&value, &ival))
+						cfg->minimum_city_separation.any_manhatten = ival;
+					else
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
+				} else if (slice_matches_str (&p.key, "minimum_foreign_city_separation_chebyshev")) {
+					if (read_int (&value, &ival))
+						cfg->minimum_city_separation.foreign_chebyshev = ival;
+					else
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
+				} else if (slice_matches_str (&p.key, "minimum_foreign_city_separation_manhatten")) {
+					if (read_int (&value, &ival))
+						cfg->minimum_city_separation.foreign_manhatten = ival;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
 				} else if (slice_matches_str (&p.key, "reduce_max_escorts_per_ai_transport")) {
@@ -10641,7 +10656,6 @@ patch_init_floating_point ()
 		{"enable_stack_unit_commands"                          , true , offsetof (struct c3x_config, enable_stack_unit_commands)},
 		{"skip_repeated_tile_improv_replacement_asks"          , true , offsetof (struct c3x_config, skip_repeated_tile_improv_replacement_asks)},
 		{"autofill_best_gold_amount_when_trading"              , true , offsetof (struct c3x_config, autofill_best_gold_amount_when_trading)},
-		{"disallow_founding_next_to_foreign_city"              , true , offsetof (struct c3x_config, disallow_founding_next_to_foreign_city)},
 		{"enable_trade_screen_scroll"                          , true , offsetof (struct c3x_config, enable_trade_screen_scroll)},
 		{"group_units_on_right_click_menu"                     , true , offsetof (struct c3x_config, group_units_on_right_click_menu)},
 		{"gray_out_units_on_menu_with_no_remaining_moves"      , true , offsetof (struct c3x_config, gray_out_units_on_menu_with_no_remaining_moves)},
@@ -10776,7 +10790,10 @@ patch_init_floating_point ()
 		int offset;
 	} integer_config_options[] = {
 		{"limit_railroad_movement"                       ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
-		{"minimum_city_separation"                       ,     1, offsetof (struct c3x_config, minimum_city_separation)},
+		{"minimum_city_separation_chebychev"             ,     1, offsetof (struct c3x_config, minimum_city_separation.any_chebyshev)},
+		{"minimum_city_separation_manhatten"             ,     2, offsetof (struct c3x_config, minimum_city_separation.any_manhatten)},
+		{"minimum_foreign_city_separation_chebychev"     ,     1, offsetof (struct c3x_config, minimum_city_separation.foreign_chebyshev)},
+		{"minimum_foreign_city_separation_manhatten"     ,     2, offsetof (struct c3x_config, minimum_city_separation.foreign_manhatten)},
 		{"anarchy_length_percent"                        ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
 		{"ai_multi_city_start"                           ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
 		{"max_tries_to_place_fp_city"                    , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
@@ -12226,7 +12243,7 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 	}
 
 	// If the minimum city separation is increased, then gray out the found city button if we're too close to another city.
-	if ((is->current_config.minimum_city_separation > 1) && (p_main_screen_form->Current_Unit != NULL) && (is->disabled_command_img_state == IS_OK)) {
+	if ((p_main_screen_form->Current_Unit != NULL) && (is->disabled_command_img_state == IS_OK)) {
 		Unit_Body * selected_unit = &p_main_screen_form->Current_Unit->Body;
 
 		// For each unit command button
@@ -12250,7 +12267,7 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 					     * to_replace = "$NUM0",
 					     * replace_location = strstr (label, to_replace);
 					if (replace_location != NULL)
-						snprintf (tooltip, sizeof tooltip, "%.*s%d%s", replace_location - label, label, is->current_config.minimum_city_separation, replace_location + strlen (to_replace));
+						snprintf (tooltip, sizeof tooltip, "%.*s%d%s", replace_location - label, label, is->current_config.minimum_city_separation.any_chebyshev, replace_location + strlen (to_replace));
 					else
 						snprintf (tooltip, sizeof tooltip, "%s", label);
 					tooltip[(sizeof tooltip) - 1] = '\0';
@@ -12660,7 +12677,7 @@ patch_Unit_can_do_worker_command_for_button_setup (Unit * this, int edx, int uni
 	// grayed out button image is initialized now so we don't activate the build city button then find out later we can't gray it out.
 	if ((! base) &&
 	    (unit_command_value == UCV_Build_City) &&
-	    (is->current_config.minimum_city_separation > 1) &&
+		//Shortcut removed here due to manhatten dist addition
 	    (patch_Map_check_city_location (&p_bic_data->Map, __, this->Body.X, this->Body.Y, this->Body.CivID, false) == CLV_CITY_TOO_CLOSE) &&
 	    (init_disabled_command_buttons (), is->disabled_command_img_state == IS_OK))
 		return true;
@@ -15167,67 +15184,44 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 		}
 	}
 
-	int min_sep = is->current_config.minimum_city_separation;
+	struct minimum_city_separation min_sep = is->current_config.minimum_city_separation;
+	int min_sep_chebyshev = min_sep.any_chebyshev > min_sep.foreign_chebyshev ? min_sep.any_chebyshev : min_sep.foreign_chebyshev;
+	int min_sep_manhatten = min_sep.any_manhatten > min_sep.foreign_manhatten ? min_sep.any_manhatten : min_sep.foreign_manhatten;
+	int min_sep_box = min_sep_manhatten < min_sep_chebyshev ? min_sep_manhatten : min_sep_chebyshev;
 	CityLocValidity base_result = Map_check_city_location (this, __, tile_x, tile_y, civ_id, check_for_city_on_tile);
 
-	// If minimum separation is one, make no change
-	if (min_sep == 1)
+	if (base_result != CLV_OK && base_result != CLV_CITY_TOO_CLOSE)
 		return base_result;
-
-	// If minimum separation is <= 0, ignore the CITY_TOO_CLOSE objection to city placement unless the location is next to a city belonging to
-	// another civ and the settings forbid founding there.
-	else if ((min_sep <= 0) && (base_result == CLV_CITY_TOO_CLOSE)) {
-		if (is->current_config.disallow_founding_next_to_foreign_city)
-			for (int n = 1; n <= 8; n++) {
-				int x, y;
-				get_neighbor_coords (&p_bic_data->Map, tile_x, tile_y, n, &x, &y);
-				City * city = city_at (x, y);
-				if ((city != NULL) && (city->Body.CivID != civ_id))
+	
+	//Otherwise perform calculation ourselves
+	//start calcing dx/dy at 45 degrees / on a virtual grid
+	for (int dx = -min_sep_box; dx <= min_sep_box; dx++) {
+		for (int dy = -min_sep_box; dy <= min_sep_box; dy++) {
+			int absx = int_abs(dx);
+			int absy = int_abs(dy);
+			int chebyshev = absx > absy ? absx : absy;
+			int manhatten = absx + absy;
+			//Shortcut in case the tile is not inside either the global rule or the foreign rule
+			if (chebyshev > min_sep_chebyshev || manhatten > min_sep_manhatten)
+				continue;
+			//transform to map coords
+			int tx = tile_x + dx-dy;
+			int ty = tile_y + dy+dx;
+			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
+			City * city = city_at(tx, ty);
+			if (city != NULL) {
+				//Apply the global rule
+				if (chebyshev <= min_sep.any_chebyshev && manhatten <= min_sep.any_manhatten)
 					return CLV_CITY_TOO_CLOSE;
-			}
-		return CLV_OK;
-
-	// If we have an increased separation we might have to exclude some locations the base code allows.
-	} else if ((min_sep > 1) && (base_result == CLV_OK)) {
-		// Check tiles around (x, y) for a city. Because the base result is CLV_OK, we don't have to check neighboring tiles, just those at
-		// distance 2, 3, ... up to (an including) the minimum separation
-		for (int dist = 2; dist <= min_sep; dist++) {
-
-			// vertices stores the unwrapped coords of the tiles at the vertices of the square of tiles at distance "dist" around
-			// (tile_x, tile_y). The order of the vertices is north, east, south, west.
-			struct vertex {
-				int x, y;
-			} vertices[4] = {
-				{tile_x         , tile_y - 2*dist},
-				{tile_x + 2*dist, tile_y         },
-				{tile_x         , tile_y + 2*dist},
-				{tile_x - 2*dist, tile_y         }
-			};
-
-			// neighbor index for direction of tiles along edge starting from each vertex
-			// values correspond to directions: southeast, southwest, northwest, northeast
-			int edge_dirs[4] = {3, 5, 7, 1};
-
-			// Loop over verts and check tiles along their associated edges. The N vert is associated with the NE edge, the E vert with
-			// the SE edge, etc.
-			for (int vert = 0; vert < 4; vert++) {
-				wrap_tile_coords (&p_bic_data->Map, &vertices[vert].x, &vertices[vert].y);
-				int  dx, dy;
-				neighbor_index_to_diff (edge_dirs[vert], &dx, &dy);
-				for (int j = 0; j < 2*dist; j++) { // loop over tiles along this edge
-					int cx = vertices[vert].x + j * dx,
-					    cy = vertices[vert].y + j * dy;
-					wrap_tile_coords (&p_bic_data->Map, &cx, &cy);
-					if (city_at (cx, cy))
+				//Apply the foreign rule
+				if (city->Body.CivID != civ_id) {
+					if (chebyshev <= min_sep.foreign_chebyshev && manhatten <= min_sep.foreign_manhatten)
 						return CLV_CITY_TOO_CLOSE;
 				}
 			}
-
 		}
-		return base_result;
-
-	} else
-		return base_result;
+	}
+	return CLV_OK;
 }
 
 bool
