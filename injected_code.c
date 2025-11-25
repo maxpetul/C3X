@@ -8283,7 +8283,6 @@ remove_wonder_improvement_for_destroyed_district (int wonder_improv_id)
 	if ((p_cities == NULL) || (p_cities->Cities == NULL))
 		return;
 
-	bool removed_any = false;
 	for (int idx = 0; idx <= p_cities->LastIndex; idx++) {
 		City * city = get_city_ptr (idx);
 		if (city == NULL)
@@ -8292,12 +8291,6 @@ remove_wonder_improvement_for_destroyed_district (int wonder_improv_id)
 			continue;
 
 		patch_City_add_or_remove_improvement (city, __, wonder_improv_id, 0, false);
-
-		if ((*p_human_player_bits & (1 << city->Body.CivID)) == 0) {
-			mark_city_needs_district (city, WONDER_DISTRICT_ID);
-		}
-
-		removed_any = true;
 	}
 }
 
@@ -8329,7 +8322,7 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	    (wonder_windex >= 0))
 		wonder_improv_id = get_wonder_improvement_id_from_index (wonder_windex);
 
-	if (wonder_improv_id >= 0)
+	if (wonder_improv_id >= 0 && is->current_config.completed_wonder_districts_can_be_destroyed)
 		remove_wonder_improvement_for_destroyed_district (wonder_improv_id);
 
 	if (is->current_config.enable_distribution_hub_districts &&
@@ -16374,7 +16367,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	} else
 		City_add_or_remove_improvement (this, __, improv_id, add, param_3);
 
-	if (is_wonder_removal && ((improv->Characteristics & ITC_Wonder) != 0)) {
+	if (is->current_config.enable_districts && is_wonder_removal && ((improv->Characteristics & ITC_Wonder) != 0)) {
 		if (is->current_config.destroyed_wonders_can_be_built_again)
 			set_wonder_built_flag (improv_id, false);
 
