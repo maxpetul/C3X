@@ -23706,12 +23706,6 @@ patch_Unit_ai_move_terraformer (Unit * this)
 	if (is->current_config.enable_districts && ! is_human) {
 		update_tracked_worker_for_unit (this);
 
-		struct district_worker_record * rec = get_tracked_worker_record (this);
-		if (rec->pending_req != NULL) {
-			if (ai_move_district_worker (this, rec))
-				return;
-		}
-
 		if (get_district_instance (tile) != NULL) {
 			// Roads should be made after district builds. The district is complete but 
 			// worker is still likely on the tile, so check here and build road if needed
@@ -23730,6 +23724,12 @@ patch_Unit_ai_move_terraformer (Unit * this)
 				this->Body.Job_ID = 4; 
 				return;
 			}
+		}
+
+		struct district_worker_record * rec = get_tracked_worker_record (this);
+		if (rec->pending_req != NULL) {
+			if (ai_move_district_worker (this, rec))
+				return;
 		}
 	}
 
