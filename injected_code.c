@@ -18561,8 +18561,12 @@ patch_Leader_do_production_phase (Leader * this)
 	if (is->current_config.enable_districts) {
 		assign_workers_for_pending_districts (this);
 
-		if (is->current_config.enable_distribution_hub_districts)
-			ai_update_distribution_hub_goal_for_leader (this);
+		if (is->current_config.enable_distribution_hub_districts) {
+			// Check if AI has the tech prereq for distribution hubs before updating goals
+			int prereq_id = is->district_infos[DISTRIBUTION_HUB_DISTRICT_ID].advance_prereq_id;
+			if ((prereq_id < 0) || Leader_has_tech (this, __, prereq_id))
+				ai_update_distribution_hub_goal_for_leader (this);
+		}
 
 		FOR_CITIES_OF (coi, this->ID) {
 			City * city = coi.city;
