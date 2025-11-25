@@ -940,6 +940,8 @@ struct injected_state {
 		struct loaded_config_name * next;
 	} * loaded_config_names;
 
+	char current_districts_config_path[MAX_PATH];
+
 	char mod_script_path[MAX_PATH];
 
 	char * c3x_labels[COUNT_C3X_LABELS];

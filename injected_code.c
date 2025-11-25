@@ -5409,6 +5409,7 @@ load_dynamic_district_config_file (char const * file_path,
 	new_lcn->next = NULL;
 
 	top_lcn->next = new_lcn;
+	snprintf (is->current_districts_config_path, sizeof is->current_districts_config_path, path);
 
 	if (parse_errors != NULL || unrecognized_keys != NULL) {
 		PopupForm * popup = get_popup_form ();
@@ -13864,12 +13865,6 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 		reset_district_state (true);
 		load_districts_config (is_scenario);
-
-		// Only load the districts from the scenario file if not a save, as in that case the districts will already be in the save file itself.
-		// "bic__in_.tmp" is the temporary file name used when loading a save, as far as I can tell.
-		if (is_scenario && strcmp(scenario_path, "bic__in_.tmp") != 0) {
-			load_scenario_districts_from_file ();
-		}
 	}
 
 	// Initialize Trade Net X
@@ -20322,6 +20317,9 @@ patch_Map_place_scenario_things (Map * this)
 				patch_City_recompute_yields_and_happiness (city);
 		}
 
+	if (is->current_config.enable_districts)
+		load_scenario_districts_from_file ();
+
 	is->is_placing_scenario_things = false;
 }
 
@@ -20451,63 +20449,6 @@ serialize_aligned_text (char const * text, struct buffer * b)
 		for (int n = 0; n < padded_len - len; n++)
 			p[len + n] = (byte)0;
 	}
-}
-
-void
-serialize_string_with_len (char const * text, struct buffer * b)
-{
-	int len = (text != NULL) ? (int)strlen (text) : -1;
-	*(int *)buffer_allocate (b, sizeof(int)) = len;
-	if (len < 0)
-		return;
-
-	int padded_len = (len + 4) & ~3; // +1 for null terminator then +3 & ~3 for alignment
-	byte * dest = buffer_allocate (b, padded_len);
-	if (dest == NULL)
-		return;
-
-	if (len > 0)
-		memcpy (dest, text, len);
-	dest[len] = '\0';
-	for (int i = len + 1; i < padded_len; i++)
-		dest[i] = 0;
-}
-
-bool
-deserialize_string_with_len (byte ** cursor, byte * end, char ** out)
-{
-	if ((cursor == NULL) || (out == NULL) || (end == NULL) || (*cursor > end))
-		return false;
-
-	if ((end - *cursor) < (int)sizeof(int))
-		return false;
-
-	int len = *((int *)(*cursor));
-	byte * str_start = *cursor + sizeof(int);
-	if (len < 0) {
-		*cursor = str_start;
-		*out = NULL;
-		return true;
-	}
-
-	if (len > 0x3FFFFFFF)
-		return false;
-
-	int padded_len = (len + 4) & ~3; // +1 for null terminator then +3 & ~3 for alignment
-	if ((end - str_start) < padded_len)
-		return false;
-
-	char * copy = (char *)malloc (len + 1);
-	if (copy == NULL)
-		return false;
-
-	if (len > 0)
-		memcpy (copy, str_start, len);
-	copy[len] = '\0';
-
-	*cursor = str_start + padded_len;
-	*out = copy;
-	return true;
 }
 
 void * __fastcall
@@ -21350,7 +21291,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							s[(sizeof s) - 1] = '\0';
 							PopupForm_add_text (popup, __, s, 0);
 
-							snprintf (s, sizeof s, "^%s", is->c3x_labels[CL_DISTRICTS_IN_SAVE_FILE]);
+							snprintf (s, sizeof s, "^%s:", is->c3x_labels[CL_DISTRICTS_IN_SAVE_FILE]);
 							s[(sizeof s) - 1] = '\0';
 							PopupForm_add_text (popup, __, s, 0);
 							for (int n = 0; n < saved_count; n++) {
@@ -21363,7 +21304,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							s[(sizeof s) - 1] = '\0';
 							PopupForm_add_text (popup, __, s, 0);
 
-							snprintf (s, sizeof s, "^%s", is->c3x_labels[CL_CURRENTLY_CONFIGURED_DISTRICTS]);
+							snprintf (s, sizeof s, "^%s \"%s\":", is->c3x_labels[CL_CURRENTLY_CONFIGURED_DISTRICTS], is->current_districts_config_path);
 							s[(sizeof s) - 1] = '\0';
 							PopupForm_add_text (popup, __, s, 0);
 							for (int n = 0; n < is->district_count; n++) {
