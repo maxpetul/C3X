@@ -5435,17 +5435,16 @@ load_dynamic_district_config_file (char const * file_path,
 }
 
 void
-load_dynamic_district_configs (bool is_scenario)
+load_dynamic_district_configs ()
 {
 	load_dynamic_district_config_file ("default.districts_config.txt", 1, 1, 1);
 	load_dynamic_district_config_file ("user.districts_config.txt", 1, 0, 1);
 
-	if (is_scenario) {
-		char * scenario_filename = "scenario.districts_config.txt";
-		char * scenario_district_config_path = BIC_get_asset_path (p_bic_data, __, scenario_filename, false);
-		if ((scenario_district_config_path != NULL) && (0 != strcmp (scenario_filename, scenario_district_config_path)))
-			load_dynamic_district_config_file (scenario_district_config_path, 0, 0, 1);
-	}
+	
+	char * scenario_filename = "scenario.districts_config.txt";
+	char * scenario_district_config_path = BIC_get_asset_path (p_bic_data, __, scenario_filename, false);
+	if ((scenario_district_config_path != NULL) && (0 != strcmp (scenario_filename, scenario_district_config_path)))
+		load_dynamic_district_config_file (scenario_district_config_path, 0, 0, 1);
 }
 
 void
@@ -5804,17 +5803,15 @@ load_dynamic_wonder_config_file (char const * file_path,
 }
 
 void
-load_dynamic_wonder_configs (bool is_scenario)
+load_dynamic_wonder_configs ()
 {
 	load_dynamic_wonder_config_file ("default.districts_wonders_config.txt", 1, 1, 1);
 	load_dynamic_wonder_config_file ("user.districts_wonders_config.txt", 1, 0, 1);
 
-	if (is_scenario) {
-		char * scenario_filename = "scenario.districts_wonders_config.txt";
-		char * scenario_wonder_config_path = BIC_get_asset_path (p_bic_data, __, scenario_filename, false);
-		if ((scenario_wonder_config_path != NULL) && (0 != strcmp (scenario_filename, scenario_wonder_config_path)))
-			load_dynamic_wonder_config_file (scenario_wonder_config_path, 0, 0, 1);
-	}
+	char * scenario_filename = "scenario.districts_wonders_config.txt";
+	char * scenario_wonder_config_path = BIC_get_asset_path (p_bic_data, __, scenario_filename, false);
+	if ((scenario_wonder_config_path != NULL) && (0 != strcmp (scenario_filename, scenario_wonder_config_path)))
+		load_dynamic_wonder_config_file (scenario_wonder_config_path, 0, 0, 1);
 }
 
 void
@@ -6247,17 +6244,15 @@ load_natural_wonder_config_file (char const * file_path,
 }
 
 void
-load_natural_wonder_configs (bool is_scenario)
+load_natural_wonder_configs ()
 {
 	load_natural_wonder_config_file ("default.districts_natural_wonders_config.txt", 1, 1, 1);
 	load_natural_wonder_config_file ("user.districts_natural_wonders_config.txt", 1, 0, 1);
 	
-	if (is_scenario) {
-		char * scenario_filename = "scenario.districts_natural_wonders_config.txt";
-		char * scenario_natural_wonder_config_path = BIC_get_asset_path (p_bic_data, __, scenario_filename, false);
-		if ((scenario_natural_wonder_config_path != NULL) && (0 != strcmp (scenario_filename, scenario_natural_wonder_config_path)))
-			load_natural_wonder_config_file (scenario_natural_wonder_config_path, 0, 0, 1);
-	}
+	char * scenario_filename = "scenario.districts_natural_wonders_config.txt";
+	char * scenario_natural_wonder_config_path = BIC_get_asset_path (p_bic_data, __, scenario_filename, false);
+	if ((scenario_natural_wonder_config_path != NULL) && (0 != strcmp (scenario_filename, scenario_natural_wonder_config_path)))
+		load_natural_wonder_config_file (scenario_natural_wonder_config_path, 0, 0, 1);
 }
 
 bool
@@ -6377,12 +6372,12 @@ void parse_building_and_tech_ids ()
 }
 
 void
-load_districts_config (bool is_scenario)
+load_districts_config ()
 {
 	clear_dynamic_district_definitions ();
-	load_dynamic_district_configs (is_scenario);
-	load_dynamic_wonder_configs (is_scenario);
-	load_natural_wonder_configs (is_scenario);
+	load_dynamic_district_configs ();
+	load_dynamic_wonder_configs ();
+	load_natural_wonder_configs ();
 	is->district_count = is->special_district_count + is->dynamic_district_count;
 
 	set_wonders_dependent_on_wonder_district ();
@@ -13852,11 +13847,9 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	load_config ("default.c3x_config.ini", 1);
 	char * scenario_config_file_name = "scenario.c3x_config.ini";
 	char * scenario_config_path = BIC_get_asset_path (p_bic_data, __, scenario_config_file_name, false);
-	bool is_scenario = false;
 	
 	// BIC_get_asset_path returns the file name when it can't find the file
 	if (0 != strcmp (scenario_config_file_name, scenario_config_path)) {
-		is_scenario = true;
 		load_config (scenario_config_path, 0);
 	}
 	load_config ("custom.c3x_config.ini", 1);
@@ -13864,7 +13857,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 
 	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 		reset_district_state (true);
-		load_districts_config (is_scenario);
+		load_districts_config ();
 	}
 
 	// Initialize Trade Net X
