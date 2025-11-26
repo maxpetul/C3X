@@ -12988,51 +12988,6 @@ issue_district_worker_command (Unit * unit, int command)
 	unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
 	unsigned int removable_flags = overlay_flags & 0xfc;
 
-	// If District will be replaced by another District
-	struct district_instance * inst = get_district_instance (tile);
-	if (inst != NULL && district_is_complete(tile, inst->district_type)) {
-		int existing_district_id = inst->district_type;
-		int inst_x, inst_y;
-		if (! district_instance_get_coords (inst, tile, &inst_x, &inst_y))
-			return;
-
-		int civ_id = unit->Body.CivID;
-		bool redundant_district = district_instance_is_redundant (inst, tile);
-		bool would_lose_buildings = any_nearby_city_would_lose_district_benefits (existing_district_id, civ_id, inst_x, inst_y);
-		if (redundant_district)
-			would_lose_buildings = false;
-
-		bool remove_existing = false;
-		
-		PopupForm * popup = get_popup_form ();
-		set_popup_str_param (0, (char*)is->district_configs[existing_district_id].name, -1, -1);
-		set_popup_str_param (1, (char*)is->district_configs[existing_district_id].name, -1, -1);
-		popup->vtable->set_text_key_and_flags (
-			popup, __, is->mod_script_path,
-			would_lose_buildings
-				? "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT"
-				: "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT_SAFE",
-			-1, 0, 0, 0
-		);
-
-		int sel = patch_show_popup (popup, __, 0, 0);
-		if (sel == 0)
-			remove_existing = true;
-		else
-			return;
-
-		if (remove_existing) {
-			remove_district_instance (tile);
-			tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
-			tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, inst_x, inst_y);
-			handle_district_removed (tile, existing_district_id, inst_x, inst_y, false);
-		}
-	}
-
-	// If District will replace an improvement
-	unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
-	unsigned int removable_flags = overlay_flags & 0xfc;
-
 	if (removable_flags != 0) {
 		PopupForm * popup = get_popup_form ();
 		set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
@@ -24629,6 +24584,18 @@ patch_Tile_m71_Check_Worker_Job (Tile * this)
 		}
 	}
 	return Tile_m71_Check_Worker_Job (this);
+}
+
+int __fastcall
+patch_Tile_get_road_bonus (Tile * this)
+{
+	if (is->current_config.enable_natural_wonders) {
+		struct district_instance * inst = get_district_instance (this);
+		if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
+			return 0;
+		}
+	}
+	return Tile_get_road_bonus (this);
 }
 
 PassBetweenValidity __fastcall
