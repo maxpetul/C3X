@@ -12202,8 +12202,6 @@ set_up_district_buttons (Main_GUI * this)
 	if ((tile == NULL) || (tile == p_null_tile) || (tile->CityID >= 0)) return;
 
 	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	if (! district_is_buildable_on_square_type (&is->district_configs[dc], base_type))
-		continue;
 	if (tile->vtable->m21_Check_Crates (tile, __, 0)) return;
 	if (tile->vtable->m20_Check_Pollution (tile, __, 0)) return;
 
