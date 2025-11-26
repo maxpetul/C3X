@@ -197,6 +197,8 @@ get_city_ptr (int id)
 // Declare various functions needed for districts and hard to untangle and reorder here
 void __fastcall patch_City_recompute_yields_and_happiness (City * this);
 void __fastcall patch_Map_build_trade_network (Map * this);
+bool __fastcall patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value);
+bool __fastcall patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y);
 Tile * find_tile_for_district (City * city, int district_id, int * out_x, int * out_y);
 struct district_instance * get_district_instance (Tile * tile);
 bool city_has_required_district (City * city, int district_id);
@@ -10957,6 +10959,7 @@ patch_init_floating_point ()
 		{"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
         {"show_natural_wonder_name_on_map"                     , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
 		{"ai_defends_districts"         		               , false, offsetof (struct c3x_config, ai_defends_districts)},
+		{"allow_workers_to_enter_coast"         		       , false, offsetof (struct c3x_config, allow_workers_to_enter_coast)},
 		{"enable_city_work_radii_highlights" 				   , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
 	};
@@ -12035,9 +12038,6 @@ set_up_stack_bombard_buttons (Main_GUI * this)
 	free_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&free_button->Button, __, 0);
 }
 
-bool __fastcall patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value);
-bool __fastcall patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y);
-
 void
 init_district_command_buttons ()
 {
@@ -12188,6 +12188,56 @@ compute_highlighted_worker_tiles_for_districts ()
 	}
 }
 
+bool
+can_build_district_on_tile (Unit * unit, Tile * tile, int district_id, enum SquareTypes base_type)
+{
+	if ((! is->current_config.enable_districts) ||
+	    (unit == NULL) ||
+	    (tile == NULL) || (tile == p_null_tile) ||
+	    (! is_worker (unit)) ||
+	    (tile->CityID >= 0) ||
+	    tile->vtable->m21_Check_Crates (tile, __, 0) ||
+	    tile->vtable->m20_Check_Pollution (tile, __, 0) ||
+	    (district_id < 0) || (district_id >= is->district_count))
+		return false;
+
+	struct district_config const * cfg = &is->district_configs[district_id];
+	if (cfg->command == -1)
+		return false;
+
+	if ((cfg->command == UCV_Build_Neighborhood)    && !is->current_config.enable_neighborhood_districts)     return false;
+	if ((cfg->command == UCV_Build_WonderDistrict)  && !is->current_config.enable_wonder_districts)           return false;
+	if ((cfg->command == UCV_Build_DistributionHub) && !is->current_config.enable_distribution_hub_districts) return false;
+	if ((cfg->command == UCV_Build_Aerodrome)       && !is->current_config.enable_aerodrome_districts)        return false;
+	if ((cfg->command == UCV_Build_Port)            && !is->current_config.enable_port_districts)             return false;
+
+	if (! district_is_buildable_on_square_type (cfg, base_type))
+		return false;
+
+	int prereq_id = is->district_infos[district_id].advance_prereq_id;
+	if ((prereq_id >= 0) && !Leader_has_tech (&leaders[unit->Body.CivID], __, prereq_id))
+		return false;
+
+	struct district_instance * existing_inst = get_district_instance (tile);
+	int existing_district_id = (existing_inst != NULL) ? existing_inst->district_type : -1;
+	bool district_completed = district_is_complete (tile, existing_district_id);
+
+	if ((existing_district_id == district_id) && district_completed)
+		return false;
+	if ((existing_district_id >= 0) && (existing_district_id != district_id) && (! district_completed))
+		return false;
+
+	if (! cfg->allow_multiple) {
+		FOR_TILES_AROUND(tai, is->workable_tile_count, unit->Body.X, unit->Body.Y) {
+			struct district_instance * nearby_inst = get_district_instance (tai.tile);
+			if ((nearby_inst != NULL) && (nearby_inst->district_type == district_id))
+				return false;
+		}
+	}
+
+	return true;
+}
+
 void
 set_up_district_buttons (Main_GUI * this)
 {
@@ -12232,16 +12282,19 @@ set_up_district_buttons (Main_GUI * this)
 	struct district_instance * existing_inst = get_district_instance (tile);
 	if (existing_inst != NULL) {
 		existing_district_id = existing_inst->district_type;
-		if (patch_Unit_can_perform_command(selected_unit, __, UCV_Build_Mine)) {
-			for (int n = 0; n < 42; n++) {
-				if (this->Unit_Command_Buttons[n].Command == UCV_Build_Mine) {
-					Command_Button * mine_button = &this->Unit_Command_Buttons[n];
-					if ((mine_button->Button.Base_Data.Status2 & 1) == 0) {
-						mine_button->Button.field_5FC[13] = 0;
-						mine_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&mine_button->Button, __, 0);
-					}
+		
+		for (int n = 0; n < 42; n++) {
+			if (this->Unit_Command_Buttons[n].Command == UCV_Build_Mine) {
+				Command_Button * mine_button = &this->Unit_Command_Buttons[n];
+				if (base_type == SQ_Coast) {
+					mine_button->Button.vtable->m02_Show_Disabled ((Base_Form *)&mine_button->Button);
 					break;
 				}
+				if ((mine_button->Button.Base_Data.Status2 & 1) == 0) {
+					mine_button->Button.field_5FC[13] = 0;
+					mine_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&mine_button->Button, __, 0);
+				}
+				break;
 			}
 		}
 	}
@@ -12257,30 +12310,10 @@ set_up_district_buttons (Main_GUI * this)
 		if (is->district_configs[dc].command == -1)
 			continue;
 
-		if ((is->district_configs[dc].command == UCV_Build_Neighborhood)    && !is->current_config.enable_neighborhood_districts)     continue;
-		if ((is->district_configs[dc].command == UCV_Build_WonderDistrict)  && !is->current_config.enable_wonder_districts)           continue;
-		if ((is->district_configs[dc].command == UCV_Build_DistributionHub) && !is->current_config.enable_distribution_hub_districts) continue;
-		if ((is->district_configs[dc].command == UCV_Build_Aerodrome)       && !is->current_config.enable_aerodrome_districts)        continue;
-
 		if (existing_district_id == dc && district_completed) continue;
 		if ((existing_district_id >= 0) && (existing_district_id != dc) && (! district_completed)) continue;
 
-		if (!is->district_configs[dc].allow_multiple) {
-			bool found_same_district_nearby = false;
-			FOR_TILES_AROUND(tai, is->workable_tile_count, selected_unit->Body.X, selected_unit->Body.Y) {
-				struct district_instance * nearby_inst = get_district_instance (tai.tile);
-				if (nearby_inst != NULL && nearby_inst->district_type == dc) {
-					found_same_district_nearby = true;
-					break;
-				}
-			}
-			if (found_same_district_nearby)
-				continue;
-		}
-
-		int prereq_id = is->district_infos[dc].advance_prereq_id;
-		if ((prereq_id >= 0) && !Leader_has_tech(&leaders[selected_unit->Body.CivID], __, prereq_id)) continue;
-		if (! district_is_buildable_on_square_type (&is->district_configs[dc], base_type))
+		if (! can_build_district_on_tile (selected_unit, tile, dc, base_type))
 			continue;
 
 		// This district should be shown
@@ -12720,6 +12753,8 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 {
 	if (is->current_config.enable_districts) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
+		enum SquareTypes base_type = (tile != NULL && tile != p_null_tile) ? tile->vtable->m50_Get_Square_BaseType (tile) : SQ_INVALID;
+
 		if ((tile != NULL) && (tile != p_null_tile) && is->current_config.enable_natural_wonders) {
 			struct district_instance * inst = get_district_instance (tile);
 			if ((inst != NULL) &&
@@ -12729,13 +12764,16 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 					return false;
 			}
 		}
-		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 
 		if (is_district_command (unit_command_value)) {
-			return (base_type != SQ_Mountains && base_type != SQ_Forest && base_type != SQ_Jungle && base_type != SQ_Swamp);
+			int district_id;
+			if (! itable_look_up (&is->command_id_to_district_id, unit_command_value, &district_id))
+				return false;
+
+			return can_build_district_on_tile (this, tile, district_id, base_type);
 		}
 		else if (unit_command_value == UCV_Build_Mine) {
-			bool has_district = (get_district_instance (tile) != NULL);
+			bool has_district = (tile != NULL) && (tile != p_null_tile) && (get_district_instance (tile) != NULL);
 
 			if (has_district) {
 				return (base_type != SQ_FloodPlain && base_type != SQ_Forest && base_type != SQ_Jungle);
@@ -13615,6 +13653,19 @@ AdjacentMoveValidity __fastcall
 patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, int param_2)
 {
 	AdjacentMoveValidity base_validity = Unit_can_move_to_adjacent_tile (this, __, neighbor_index, param_2);
+
+	// Let workers step onto coast tiles when the config flag is enabled (base logic treats this as an invalid sea move)
+	if (is->current_config.enable_districts && is->current_config.allow_workers_to_enter_coast &&
+	    is_worker (this) &&
+	    ((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
+		int nx, ny;
+		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
+		Tile * dest = tile_at (nx, ny);
+		if ((dest != NULL) &&
+		    dest->vtable->m35_Check_Is_Water (dest) &&
+		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
+			base_validity = AMV_OK;
+	}
 
 	// Apply unit count per tile limit
 	enum UnitTypeClasses class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
@@ -19007,6 +19058,7 @@ patch_Trade_Net_get_move_cost_after_zoc (Trade_Net * this, int edx, int from_x, 
 		patch_Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, param_7, neighbor_index, dist_info) :
 		-1;
 }
+
 AdjacentMoveValidity __fastcall
 patch_Unit_can_move_after_zoc (Unit * this, int edx, int neighbor_index, int param_2)
 {
@@ -19036,10 +19088,40 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 {
 	is->moving_unit_to_adjacent_tile = true;
 
+	bool const allow_worker_coast = is->current_config.enable_districts && is->current_config.allow_workers_to_enter_coast && is_worker (this);
+	bool coast_override_active = false;
+	enum UnitStateType prev_state = this->Body.UnitState;
+	int prev_container = this->Body.Container_Unit;
+
+	if (allow_worker_coast) {
+		int nx, ny;
+		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
+		Tile * dest = tile_at (nx, ny);
+		if ((dest != NULL) &&
+		    dest->vtable->m35_Check_Is_Water (dest) &&
+		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast)) {
+			coast_override_active = true;
+			is->coast_walk_unit = this;
+			is->coast_walk_transport_override = false;
+			is->coast_walk_prev_state = prev_state;
+			is->coast_walk_prev_container = prev_container;
+		}
+	}
+
 	is->zoc_interceptor = is->zoc_defender = NULL;
 	int tr = Unit_move_to_adjacent_tile (this, __, neighbor_index, param_2, param_3, param_4);
 	if ((this == is->zoc_defender) && check_life_after_zoc (this, is->zoc_interceptor))
 		tr = ! is_online_game (); // This is what the original method returns when the unit was destroyed in combat
+
+	if (coast_override_active) {
+		is->coast_walk_unit = NULL;
+		is->coast_walk_transport_override = false;
+
+		if (this->Body.Container_Unit == this->Body.ID) {
+			this->Body.Container_Unit = is->coast_walk_prev_container;
+			Unit_set_state (this, __, is->coast_walk_prev_state);
+		}
+	}
 
 	is->temporarily_disallow_lethal_zoc = false;
 	is->moving_unit_to_adjacent_tile = false;
@@ -23463,6 +23545,7 @@ get_port_district_variant_for_tile (Tile * tile)
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
+	*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -24603,15 +24686,35 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 {
 	PassBetweenValidity base = Unit_can_pass_between (this, __, from_x, from_y, to_x, to_y, param_5);
 
-	if (base != PBV_OK && is->current_config.enable_port_districts && is_worker(this)) {
+	if (is->current_config.enable_districts && is->current_config.allow_workers_to_enter_coast &&
+		base != PBV_OK && is_worker(this)) {
 		Tile * dest = tile_at (to_x, to_y);
 		if ((dest != NULL) &&
 		    dest->vtable->m35_Check_Is_Water (dest) &&
 		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
-			return PBV_OK; // Let workers treat coast as passable when port districts are on
+			return PBV_OK; // Let workers treat coast as passable when allow_workers_to_enter_coast is on
 	}
 
 	return base;
+}
+
+Unit * __fastcall
+patch_Unit_select_transport (Unit * this, int edx, int tile_x, int tile_y, bool do_show_popup)
+{
+	Unit * transport = Unit_select_transport (this, __, tile_x, tile_y, do_show_popup);
+
+	if (is->current_config.enable_districts && is->current_config.allow_workers_to_enter_coast &&
+	    (transport == NULL) && (this == is->coast_walk_unit) && is_worker (this)) {
+		Tile * dest = tile_at (tile_x, tile_y);
+		if ((dest != NULL) &&
+		    dest->vtable->m35_Check_Is_Water (dest) &&
+		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast)) {
+			is->coast_walk_transport_override = true;
+			return this; // Fake a transport so the move logic proceeds
+		}
+	}
+
+	return transport;
 }
 
 // TCC requires a main function be defined even though it's never used.

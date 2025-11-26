@@ -347,6 +347,8 @@ struct c3x_config {
 	int distribution_hub_shield_yield_divisor;
 	int ai_ideal_distribution_hub_count_per_100_cities;
 
+	bool allow_workers_to_enter_coast;
+
 	bool ai_defends_districts;
 
 	bool enable_city_work_radii_highlights;
@@ -663,10 +665,10 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port",
-		.advance_prereq = "Map Making", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 2, .is_maritime = true,
-		.img_paths = {0},// {"Port_NW.pcx", "Port_N.pcx", "Port_NE.pcx", "Port_E.pcx", "Port_SE.pcx", "Port_S.pcx", "Port_SW.pcx", "Port_W.pcx"},
-		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
-		.img_path_count = 8, .max_building_index = 2, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
+		.advance_prereq = "", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 2, .is_maritime = true,
+		.img_paths = {"Port_NW.pcx"},// {"Port_NW.pcx", "Port_N.pcx", "Port_NE.pcx", "Port_E.pcx", "Port_SE.pcx", "Port_S.pcx", "Port_SW.pcx", "Port_W.pcx"},
+		.buildable_square_types_mask =  (1 << SQ_Coast),
+		.img_path_count = 8, .max_building_index = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 2, .gold_bonus = 2, .shield_bonus = 0, .defense_bonus_percent = 0
 	}
 };
@@ -1300,6 +1302,12 @@ struct injected_state {
 	//  4. Both flags are cleared when Unit::move_to_adjacent_tile returns.
 	bool temporarily_disallow_lethal_zoc;
 	bool moving_unit_to_adjacent_tile;
+
+	// Tracks temporary transport bypass when letting workers step onto coast tiles without a boat
+	Unit * coast_walk_unit;
+	bool coast_walk_transport_override;
+	enum UnitStateType coast_walk_prev_state;
+	int coast_walk_prev_container;
 
 	// Used to record info about a defensive bomardment event during Fighter::fight. Gets set by Fighter::damage_by_defensive_bombardment and
 	// cleared when Fighter::fight returns.
