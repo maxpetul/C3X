@@ -23473,7 +23473,7 @@ bool __fastcall
 patch_Tile_has_city_or_district (Tile * this)
 {
 	bool has_city = Tile_has_city (this);
-	if (is->current_config.enable_districts) {
+	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 		return has_city || (get_district_instance (this) != NULL);
 	}
 	return has_city;
