@@ -12092,7 +12092,7 @@ set_up_district_buttons (Main_GUI * this)
 	if ((tile == NULL) || (tile == p_null_tile) || (tile->CityID >= 0)) return;
 
 	int base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp) return;
+	if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp || base_type == SQ_Volcano) return;
 	if (tile->vtable->m21_Check_Crates (tile, __, 0)) return;
 	if (tile->vtable->m20_Check_Pollution (tile, __, 0)) return;
 
@@ -12824,7 +12824,7 @@ issue_district_worker_command (Unit * unit, int command)
         if (tile->vtable->m20_Check_Pollution (tile, __, 0))
             return;
         enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType(tile);
-        if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp) {
+        if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp || base_type == SQ_Volcano) {
             return;
         }
     }
