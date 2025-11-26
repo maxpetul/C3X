@@ -8060,6 +8060,7 @@ maybe_show_neighborhood_growth_warning (City * city)
 	if ((city == NULL) || ! (is->current_config.enable_districts && is->current_config.enable_neighborhood_districts)) return;
 	int requirement = patch_City_requires_improvement_to_grow (city);
 	if (requirement != 0) return; // Neighborhood sentinel not present
+	if (city->Body.FoodIncome <= 0) return; // Not growing
 	if (is_online_game ()) return;
 	int civ_id = city->Body.CivID;
 	if (civ_id != p_main_screen_form->Player_CivID) return;
@@ -14124,12 +14125,12 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 		(p_main_screen_form->Player_CivID == this->ID) && is->current_config.skip_repeated_tile_improv_replacement_asks;
 
 	// Check if AI is trying to change a district tile (before calling vanilla logic)
-	if (is->current_config.enable_districts && ((*p_human_player_bits & (1 << this->ID)) == 0)) {
+	if ((is->current_config.enable_districts || is->current_config.enable_natural_wonders) && 
+		((*p_human_player_bits & (1 << this->ID)) == 0)) {
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
 			struct district_instance * inst = get_district_instance (tile);
-			if (inst != NULL &&
-			    inst->district_type >= 0 && inst->district_type < is->district_count) {
+			if (inst != NULL && inst->district_type >= 0 && inst->district_type < is->district_count) {
 				int district_id = inst->district_type;
 
 				// For Wonder Districts: check if unused (can be replaced)
@@ -23621,6 +23622,16 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 			}
 		}
 
+		// Need to make sure distro hubs get roads. If this will be one, build the road first to be sure
+		if (req->district_id == DISTRIBUTION_HUB_DISTRICT_ID) {
+			bool has_road = (*tile->vtable->m25_Check_Roads)(tile, __, 0);
+			if (! has_road) {
+				Unit_set_state(worker, __, UnitState_Build_Road);
+				worker->Body.Job_ID = WJ_Build_Road;
+				return true;
+			}
+		}
+
 		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 		unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
 		unsigned int removable_flags = overlay_flags & 0xfc;
@@ -23709,14 +23720,15 @@ patch_Unit_ai_move_terraformer (Unit * this)
 	
 	if (is->current_config.enable_districts && ! is_human) {
 		update_tracked_worker_for_unit (this);
+		struct district_instance * inst = get_district_instance (tile);
 
-		if (get_district_instance (tile) != NULL) {
+		if (inst != NULL && inst->district_type != NATURAL_WONDER_DISTRICT_ID) {
 			// Roads should be made after district builds. The district is complete but 
 			// worker is still likely on the tile, so check here and build road if needed
 			bool has_road = (*tile->vtable->m25_Check_Roads)(tile, __, 0);
 			if (! has_road) {
 				Unit_set_state(this, __, UnitState_Build_Road);
-				this->Body.Job_ID = 3;
+				this->Body.Job_ID = WJ_Build_Road;
 				return;
 			}
 
@@ -23725,7 +23737,7 @@ patch_Unit_ai_move_terraformer (Unit * this)
 			bool has_railroad = (*tile->vtable->m23_Check_Railroads)(tile, __, 0);
 			if (can_build_railroad && !has_railroad) {
 				Unit_set_state(this, __, UnitState_Build_Railroad);
-				this->Body.Job_ID = 4; 
+				this->Body.Job_ID = WJ_Build_Railroad; 
 				return;
 			}
 		}
@@ -24450,6 +24462,18 @@ patch_Tile_m71_Check_Worker_Job (Tile * this)
 		}
 	}
 	return Tile_m71_Check_Worker_Job (this);
+}
+
+int __fastcall
+patch_Tile_get_road_bonus (Tile * this)
+{
+	if (is->current_config.enable_natural_wonders) {
+		struct district_instance * inst = get_district_instance (this);
+		if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
+			return 0;
+		}
+	}
+	return Tile_get_road_bonus (this);
 }
 
 // TCC requires a main function be defined even though it's never used.
