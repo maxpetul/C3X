@@ -349,7 +349,7 @@ struct c3x_config {
 	int distribution_hub_shield_yield_divisor;
 	int ai_ideal_distribution_hub_count_per_100_cities;
 
-	bool allow_workers_to_enter_coast;
+	bool workers_can_enter_coast;
 
 	bool ai_defends_districts;
 
