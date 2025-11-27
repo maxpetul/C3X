@@ -666,10 +666,10 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	{
 		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port",
 		.advance_prereq = "", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 2, .is_maritime = true,
-		.img_paths = {"Port_NW.pcx"},// {"Port_NW.pcx", "Port_N.pcx", "Port_NE.pcx", "Port_E.pcx", "Port_SE.pcx", "Port_S.pcx", "Port_SW.pcx", "Port_W.pcx"},
+		.img_paths = {"Port_NW.pcx", "Port_NE.pcx", "Port_SE.pcx", "Port_SW.pcx"},
 		.buildable_square_types_mask =  (1 << SQ_Coast),
-		.img_path_count = 8, .max_building_index = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 2, .gold_bonus = 2, .shield_bonus = 0, .defense_bonus_percent = 0
+		.img_path_count = 4, .max_building_index = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_percent = 0
 	}
 };
 

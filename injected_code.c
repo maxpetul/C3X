@@ -13701,7 +13701,17 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 	    (unit == NULL) && ((flags == 0x1009) || (flags == 0x9))) // this call can be accelerated by TNX
 	    return is->get_move_cost_for_sea_trade (this, is->tnx_cache, from_x, from_y, to_x, to_y, civ_id, flags, neighbor_index, dist_info);
 
-	int const base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, neighbor_index, dist_info);
+	int base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, neighbor_index, dist_info);
+
+	// Let the pathfinder consider coastal tiles reachable for workers when the config flag is on
+	if (is->current_config.enable_districts && is->current_config.allow_workers_to_enter_coast &&
+	    (base_cost < 0) && (unit != NULL) && is_worker (unit)) {
+		Tile * dest = tile_at (to_x, to_y);
+		if ((dest != NULL) &&
+		    dest->vtable->m35_Check_Is_Water (dest) &&
+		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
+			base_cost = Unit_get_max_move_points (unit);
+	}
 
 	// Apply unit count per tile limit
 	if ((unit != NULL) && ! is_below_stack_limit (tile_at (to_x, to_y), unit->Body.CivID, p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class))
@@ -23529,23 +23539,146 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
     return false;
 }
 
-int
-get_port_district_variant_for_tile (Tile * tile)
+void
+get_port_district_variant_for_tile (Tile * tile, int * out_variant, int * out_pixel_x, int * out_pixel_y)
 {
-	int variant = 0;
+	int NW = 0;
+	int NE = 1;
+	int SE = 2;
+	int SW = 3;
 
 	int sheet_index = (tile->SquareParts >> 8) & 0xFF;   
-	int sprite_index = tile->SquareParts & 0xFF;          
+	int sprite_index = tile->SquareParts & 0xFF;
 
-	// TODO
+	char ss[200];
+	snprintf (ss, sizeof ss, "Port district has sheet index %d, sprite index %d\n", sheet_index, sprite_index);
+	(*p_OutputDebugStringA) (ss);
 
-	return variant;
+	if ((tile == NULL) || (tile == p_null_tile) || (out_variant == NULL))
+		return;
+
+	int owner_id = tile->Territory_OwnerID;
+	if (owner_id <= 0)
+		return;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL)
+		return;
+
+	int tile_x = inst->tile_x;
+	int tile_y = inst->tile_y;
+	Map * map = &p_bic_data->Map;
+
+	City * closest_city = NULL;
+	int closest_dx = 0, closest_dy = 0;
+	int city_work_radius = is->current_config.city_work_radius;
+
+	for (int ring = 1; (ring <= city_work_radius) && (closest_city == NULL); ring++) {
+		int start_ni = workable_tile_counts[ring - 1];
+		int end_ni = workable_tile_counts[ring];
+
+		for (int ni = start_ni; ni < end_ni; ni++) {
+			int dx, dy;
+			patch_ni_to_diff_for_work_area (ni, &dx, &dy);
+			int tx = tile_x + dx;
+			int ty = tile_y + dy;
+			wrap_tile_coords (map, &tx, &ty);
+
+			Tile * t = tile_at (tx, ty);
+			if ((t == NULL) || (t == p_null_tile))
+				continue;
+
+			int city_id = t->vtable->m45_Get_City_ID (t);
+			City * city = get_city_ptr (city_id);
+			if ((city != NULL) && (city->Body.CivID == owner_id)) {
+				int ndx = city->Body.X - tile_x;
+				int ndy = city->Body.Y - tile_y;
+
+				if (map->Flags & 1) {
+					int half_width = map->Width / 2;
+					if (ndx > half_width)
+						ndx -= map->Width;
+					else if (ndx < -half_width)
+						ndx += map->Width;
+				}
+				if (map->Flags & 2) {
+					int half_height = map->Height / 2;
+					if (ndy > half_height)
+						ndy -= map->Height;
+					else if (ndy < -half_height)
+						ndy += map->Height;
+				}
+
+				closest_city = city;
+				closest_dx = ndx;
+				closest_dy = ndy;
+				break;
+			}
+		}
+	}
+
+	if (closest_city == NULL)
+		return;
+
+	// Check the four diagonal neighbors explicitly
+	if ((closest_dx == 1) && (closest_dy == -1)) {
+		*out_variant = SW; 
+		return;
+	} else if ((closest_dx == -1) && (closest_dy == -1)) {
+		*out_variant = SE;
+		return;
+	} else if ((closest_dx == 1) && (closest_dy == 1)) {
+		*out_variant = NW; 
+		return;
+	} else if ((closest_dx == -1) && (closest_dy == 1)) {
+		*out_variant = NE;
+		return;
+	}
+
+	// Otherwise, face roughly away from the city based on its relative position
+	int face_dx = -closest_dx;
+	int face_dy = -closest_dy;
+	int abs_face_dx = int_abs (face_dx);
+	int abs_face_dy = int_abs (face_dy);
+
+	if ((abs_face_dx == 0) && (abs_face_dy == 0))
+		return;
+
+	if (abs_face_dx > abs_face_dy) {
+		if (face_dx > 0)
+			*out_variant = (face_dy >= 0) ? 2 : 1; // city is west; face east (toward +x), bias south if city is south, else bias north
+		else
+			*out_variant = (face_dy >= 0) ? 3 : 0; // city is east; face west (toward -x), bias south if city is south, else bias north
+	} else if (abs_face_dy > abs_face_dx) {
+		if (face_dy > 0)
+			*out_variant = (face_dx >= 0) ? 2 : 3; // city is north; face south (toward +y), bias east if city is east, else bias west
+		else
+			*out_variant = (face_dx >= 0) ? 1 : 0; // city is south; face north (toward -y), bias east if city is east, else bias west
+	} else {
+		if (face_dx >= 0)
+			*out_variant = (face_dy >= 0) ? 2 : 1; // city northwest/southwest-ish; pick the closer diagonal
+		else
+			*out_variant = (face_dy >= 0) ? 3 : 0; // city northeast/southeast-ish; pick the closer diagonal
+	}
+
+finalize:
+
+	if (out_pixel_y != NULL) {
+		if ((*out_variant == 0) || (*out_variant == 1)) {
+			*out_pixel_y += 16; // Facing north-ish, nudge up
+		} else if ((*out_variant == 2) || (*out_variant == 3)) {
+			*out_pixel_y -= 16; // Facing south-ish, nudge down
+			if (*out_variant == 2)
+				*out_pixel_x += 8; // Facing southeast, nudge right
+			else
+				*out_pixel_x -= 8; // Facing southwest, nudge left
+		}
+	}
 }
 
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -23651,6 +23784,14 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                 }
 				break;
 			}
+			case PORT_DISTRICT_ID:
+			{
+				get_port_district_variant_for_tile (tile, &variant, &pixel_x, &pixel_y);
+				char ss[200];
+				snprintf (ss, sizeof ss, "Port district at tile (%d,%d) using variant %d\n", tile_x, tile_y, variant);
+				(*p_OutputDebugStringA) (ss);
+				break;
+			}
             default:
             {
                 struct district_infos * info = &is->district_infos[district_id];
@@ -23678,7 +23819,7 @@ bool __fastcall
 patch_Tile_has_city_or_district (Tile * this)
 {
 	bool has_city = Tile_has_city (this);
-	if (is->current_config.enable_districts) {
+	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 		return has_city || (get_district_instance (this) != NULL);
 	}
 	return has_city;
