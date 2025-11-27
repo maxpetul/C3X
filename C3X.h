@@ -464,6 +464,17 @@ enum c3x_label {
 	CL_DISTRICT_DESTROYED_BY_VOLCANO,
 	CL_CONSTRUCTION_HALTED_DUE_TO_MISSING_DISTRICT,
 
+	// Districts config mismatch checked on game load
+	CL_DISTRICT_ID,
+	CL_DISTRICT_IN_SAVE_BUT_MISSING_NOW,
+	CL_DISTRICT_NAME_MISMATCH,
+	CL_SAVE_FILE_HAD,
+	CL_CURRENT_CONFIG_HAS_ONLY,
+	CL_WARNING_DISTRICTS_CONFIG_MISMATCH,
+	CL_MAY_BE_OTHER_ERRORS_AS_WELL,
+	CL_DISTRICTS_IN_SAVE_FILE,
+	CL_CURRENTLY_CONFIGURED_DISTRICTS,
+
 	// "Action" for passenger units
 	CL_TRANSPORTED,
 
@@ -678,6 +689,60 @@ struct parsed_district_definition {
 	bool has_shield_bonus;
 };
 
+struct parsed_wonder_definition {
+	char * name;
+	char * img_path;
+	int img_row;
+	int img_column;
+	int img_construct_row;
+	int img_construct_column;
+	bool has_name;
+	bool has_img_path;
+	bool has_img_row;
+	bool has_img_column;
+	bool has_img_construct_row;
+	bool has_img_construct_column;
+};
+
+struct parsed_natural_wonder_definition {
+	char * name;
+	char * img_path;
+	enum SquareTypes terrain_type;
+	enum SquareTypes adjacent_to;
+	enum direction adjacency_dir;
+	int img_row;
+	int img_column;
+	int culture_bonus;
+	int science_bonus;
+	int food_bonus;
+	int gold_bonus;
+	int shield_bonus;
+	bool has_name;
+	bool has_img_path;
+	bool has_img_row;
+	bool has_img_column;
+	bool has_terrain_type;
+	bool has_adjacent_to;
+	bool has_adjacency_dir;
+	bool has_culture_bonus;
+	bool has_science_bonus;
+	bool has_food_bonus;
+	bool has_gold_bonus;
+	bool has_shield_bonus;
+};
+
+struct scenario_district_entry {
+	int tile_x;
+	int tile_y;
+	int has_coordinates;
+	char * district_name;
+	int has_district_name;
+	char * wonder_city_name;
+	int has_wonder_city;
+	char * wonder_name;
+	int has_wonder_name;
+};
+
 struct distribution_hub_record {
 	Tile * tile;
 	int tile_x;
@@ -687,7 +752,6 @@ struct distribution_hub_record {
 	int shield_yield;
 	int raw_food_yield;
 	int raw_shield_yield;
-	bool is_active;
 };
 
 struct ai_best_feasible_order {
@@ -875,6 +939,8 @@ struct injected_state {
 		char * name;
 		struct loaded_config_name * next;
 	} * loaded_config_names;
+
+	char current_districts_config_path[MAX_PATH];
 
 	char mod_script_path[MAX_PATH];
 
