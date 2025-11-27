@@ -1,4 +1,21 @@
+* RELEASE 26 PREVIEW 2
 - Allow city work areas to vary based on their buildings
+- Polish districts
+  - Ensure user & scenario district settings override the base settings
+  - Pre-placed district coordinates file renamed to scenario.districts.txt for consistency
+  - Add districts config name check on game load to show warning if IDs or names are different
+  - Show buildings grayed out in production selection when their tech prereq is met but district prereq is not
+  - Fix worker automate button crashing the game
+  - Ensure AI can't build on natural wonders
+  - Ensure natural wonders can't be placed on starting positions
+  - Add support for natural wonder placement in swamp, hills
+  - Ensure natural wonders can be used while districts are disabled
+  - Simplify distro hub logic and ensure surrounding tiles are always unworkable, even after conquest
+  - Prevent AI placing distro hubs next to cities
+  - Lengthen right-click menu item string for longer district names
+  - Ensure scenario config files must be in scenario folder
+  - Prevent districts from being built on volcanos
+  - Ensure neighborhood needed message only shown if population is growing
 
 * RELEASE 26 PREVIEW 1
 - Enable districts, an elaborate change to the game's economy inspired by Civ 6.
