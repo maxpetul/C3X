@@ -23656,6 +23656,15 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
     return false;
 }
 
+bool
+tile_offset_is_land (int adj_x, int adj_y)
+{
+	Map * map = &p_bic_data->Map;
+	wrap_tile_coords (map, &adj_x, &adj_y);
+	Tile * adj_tile = tile_at (adj_x, adj_y);
+	return (adj_tile != NULL) && (adj_tile != p_null_tile) && (! adj_tile->vtable->m35_Check_Is_Water (adj_tile));
+}
+
 void
 get_port_district_variant_for_tile (Tile * tile, int * out_variant, int * out_pixel_x, int * out_pixel_y)
 {
@@ -23666,10 +23675,6 @@ get_port_district_variant_for_tile (Tile * tile, int * out_variant, int * out_pi
 
 	int sheet_index = (tile->SquareParts >> 8) & 0xFF;   
 	int sprite_index = tile->SquareParts & 0xFF;
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "Port district has sheet index %d, sprite index %d\n", sheet_index, sprite_index);
-	(*p_OutputDebugStringA) (ss);
 
 	if ((tile == NULL) || (tile == p_null_tile) || (out_variant == NULL))
 		return;
@@ -23751,6 +23756,19 @@ get_port_district_variant_for_tile (Tile * tile, int * out_variant, int * out_pi
 		*out_variant = NE;
 		return;
 	}
+
+	bool city_is_west_of_port        = (closest_dx < 0);
+	bool city_is_north_of_port       = (closest_dy < 0);
+	bool city_is_directly_above_port = (closest_dx == 0) && (closest_dy < 0);
+	bool city_is_directly_below_port = (closest_dx == 0) && (closest_dy > 0);
+	bool northwest_tile_is_land      = tile_offset_is_land (tile_x - 1, tile_y - 1);
+	bool north_tile_is_land          = tile_offset_is_land (tile_x, tile_y - 1);
+	bool northeast_tile_is_land      = tile_offset_is_land (tile_x + 1, tile_y - 1);
+	bool east_tile_is_land           = tile_offset_is_land (tile_x + 1, tile_y);
+	bool southeast_tile_is_land      = tile_offset_is_land (tile_x + 1, tile_y + 1);
+	bool south_tile_is_land          = tile_offset_is_land (tile_x, tile_y + 1);
+	bool southwest_tile_is_land      = tile_offset_is_land (tile_x - 1, tile_y + 1);
+	bool west_tile_is_land           = tile_offset_is_land (tile_x - 1, tile_y);
 
 	// Otherwise, face roughly away from the city based on its relative position
 	int face_dx = -closest_dx;
