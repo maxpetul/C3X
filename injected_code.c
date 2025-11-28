@@ -23802,11 +23802,12 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
 }
 
 bool
-tile_offset_is_land (int adj_x, int adj_y)
+tile_offset_is_owner_land (int civ_id, int adj_x, int adj_y)
 {
 	wrap_tile_coords (&p_bic_data->Map, &adj_x, &adj_y);
 	Tile * adj_tile = tile_at (adj_x, adj_y);
-	return (adj_tile != NULL) && (adj_tile != p_null_tile) && (! adj_tile->vtable->m35_Check_Is_Water (adj_tile));
+	return (adj_tile != NULL) && (adj_tile != p_null_tile) && 
+		(adj_tile->Territory_OwnerID == civ_id) && (! adj_tile->vtable->m35_Check_Is_Water (adj_tile));
 }
 
 void
@@ -23907,16 +23908,16 @@ get_port_district_variant_for_tile (Tile * tile, int * out_variant, int * out_pi
 	bool city_is_east_of_port               = (closest_dx > 0);
 	bool city_is_north_of_port              = (closest_dy < 0);
 	bool city_is_south_of_port              = (closest_dy > 0);
-	bool northwest_tile_is_land             = tile_offset_is_land (tile_x - 1, tile_y - 1);
-	bool north_tile_is_land                 = tile_offset_is_land (tile_x, tile_y - 1);
-	bool northeast_tile_is_land             = tile_offset_is_land (tile_x + 1, tile_y - 1);
-	bool east_tile_is_land                  = tile_offset_is_land (tile_x + 1, tile_y);
-	bool southeast_tile_is_land             = tile_offset_is_land (tile_x + 1, tile_y + 1);
-	bool south_tile_is_land                 = tile_offset_is_land (tile_x, tile_y + 1);
-	bool southwest_tile_is_land             = tile_offset_is_land (tile_x - 1, tile_y + 1);
-	bool west_tile_is_land                  = tile_offset_is_land (tile_x - 1, tile_y);
+	bool northwest_tile_is_land             = tile_offset_is_owner_land (owner_id, tile_x - 1, tile_y - 1);
+	bool north_tile_is_land                 = tile_offset_is_owner_land (owner_id, tile_x, tile_y - 1);
+	bool northeast_tile_is_land             = tile_offset_is_owner_land (owner_id, tile_x + 1, tile_y - 1);
+	bool east_tile_is_land                  = tile_offset_is_owner_land (owner_id, tile_x + 1, tile_y);
+	bool southeast_tile_is_land             = tile_offset_is_owner_land (owner_id, tile_x + 1, tile_y + 1);
+	bool south_tile_is_land                 = tile_offset_is_owner_land (owner_id, tile_x, tile_y + 1);
+	bool southwest_tile_is_land             = tile_offset_is_owner_land (owner_id, tile_x - 1, tile_y + 1);
+	bool west_tile_is_land                  = tile_offset_is_owner_land (owner_id, tile_x - 1, tile_y);
 
-	// Variant indices
+	// Variant indices; can't use direction enum as values are slightly different
 	int NONE = -1;
 	int NW = 0;
 	int NE = 1;
@@ -23924,55 +23925,56 @@ get_port_district_variant_for_tile (Tile * tile, int * out_variant, int * out_pi
 	int SW = 3;
 	*out_variant = NONE;
 
-	// Additional anchor indices
-	int W = 0;
-	int N = 1;
-	int E = 2;
-	int S = 3;
-	int anchor = NONE;
+	enum direction anchor = NONE;
 
 	// Direct diagonals
-	if      (city_is_directly_northeast_of_port) { *out_variant = SW; anchor = NE; }
-	else if (city_is_directly_southeast_of_port) { *out_variant = NW; anchor = SE; }
-	else if (city_is_directly_southwest_of_port) { *out_variant = NE; anchor = SW; }
-	else if (city_is_directly_northwest_of_port) { *out_variant = SE; anchor = NW; }
+	if      (city_is_directly_northeast_of_port) { *out_variant = SW; anchor = DIR_NE; }
+	else if (city_is_directly_southeast_of_port) { *out_variant = NW; anchor = DIR_SE; }
+	else if (city_is_directly_southwest_of_port) { *out_variant = NE; anchor = DIR_SW; }
+	else if (city_is_directly_northwest_of_port) { *out_variant = SE; anchor = DIR_NW; }
 
 	// Direct cardinals
-	else if (city_is_directly_above_port)   { *out_variant = SW; anchor = NW; }
-	else if (city_is_directly_below_port)   { *out_variant = NE; anchor = SE; }
-	else if (city_is_directly_west_of_port) { *out_variant = SE; anchor = SW; }
-	else if (city_is_directly_east_of_port) { *out_variant = SW; anchor = SE; }
+	else if (city_is_directly_above_port)   { *out_variant = SW; anchor = DIR_NW; }
+	else if (city_is_directly_below_port)   { *out_variant = NE; anchor = DIR_SE; }
+	else if (city_is_directly_west_of_port) { *out_variant = SE; anchor = DIR_SW; }
+	else if (city_is_directly_east_of_port) { *out_variant = SW; anchor = DIR_SE; }
 
 	// City is not adjacent, check relative directions
 	else if (city_is_north_of_port && city_is_west_of_port) {
-		if      (northwest_tile_is_land) { *out_variant = SE; anchor = NW; }
-		else if (southwest_tile_is_land) { *out_variant = NE; anchor = SW; }
-		else if (west_tile_is_land)      { *out_variant = NE; anchor = W;  }
+		if      (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
+		else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
+		else if (west_tile_is_land)      { *out_variant = SE; anchor = DIR_W;  }
 	} else if (city_is_north_of_port && city_is_east_of_port) {
-		if 	    (northeast_tile_is_land) { *out_variant = SW; anchor = NE; }
-		else if (southeast_tile_is_land) { *out_variant = NW; anchor = SE; }
-		else if (east_tile_is_land)      { *out_variant = SW; anchor = E;  }
+		if 	    (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
+		else if (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
+		else if (east_tile_is_land)      { *out_variant = SW; anchor = DIR_E;  }
 	} else if (city_is_south_of_port && city_is_east_of_port) {
-		if 	    (southeast_tile_is_land) { *out_variant = NW; anchor = SE; }
-		else if (northeast_tile_is_land) { *out_variant = SW; anchor = NE; }
-		else if (east_tile_is_land)      { *out_variant = SW; anchor = E;  }
+		if 	    (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
+		else if (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
+		else if (east_tile_is_land)      { *out_variant = SW; anchor = DIR_E;  }
 	} else if (city_is_south_of_port && city_is_west_of_port) {
-		if      (southwest_tile_is_land) { *out_variant = NE; anchor = SW; }
-		else if (northwest_tile_is_land) { *out_variant = SE; anchor = NW; }
-		else if (west_tile_is_land)      { *out_variant = NE; anchor = W;  }
+		if      (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
+		else if (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
+		else if (west_tile_is_land)      { *out_variant = NE; anchor = DIR_W;  }
 	}
 
 	// No ideal direction, pick based on any land tiles around port
 	if (*out_variant == NONE) {
-		if      (north_tile_is_land)     *out_variant = SW;
-		else if (east_tile_is_land)      *out_variant = SW;
-		else if (south_tile_is_land)     *out_variant = NE;
-		else if (west_tile_is_land)      *out_variant = NE;
-		else if (northeast_tile_is_land) *out_variant = SW;
-		else if (southeast_tile_is_land) *out_variant = NW;
-		else if (southwest_tile_is_land) *out_variant = NE;
-		else if (northwest_tile_is_land) *out_variant = SE;
+		if      (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
+		else if (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
+		else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
+		else if (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
+		else if (north_tile_is_land)     { *out_variant = SW; anchor = DIR_N;  }
+		else if (east_tile_is_land)      { *out_variant = SW; anchor = DIR_E;  }
+		else if (south_tile_is_land)     { *out_variant = NE; anchor = DIR_S;  }
+		else if (west_tile_is_land)      { *out_variant = NE; anchor = DIR_W;  }
+		else    					     { *out_variant = SW; anchor = DIR_NW; } // Shouldn't happen but just in case
 	}
+
+	// Determine pixel offsets based on direction & anchor
+	if      (*out_variant == SW && anchor == DIR_NE) { *out_pixel_x -= 0;  *out_pixel_y += 6;  }
+	else if (*out_variant == SE && anchor == DIR_NW) { *out_pixel_x -= 2;  *out_pixel_y += 6;  }
+	else if (*out_variant == SE && anchor == DIR_W)  { *out_pixel_x -= 30; *out_pixel_y += 8; }
 }
 
 void __fastcall
@@ -24086,10 +24088,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 			case PORT_DISTRICT_ID:
 			{
 				get_port_district_variant_for_tile (tile, &variant, &pixel_x, &pixel_y);
-				char ss[200];
-				snprintf (ss, sizeof ss, "Port district at tile (%d,%d) using variant %d\n", tile_x, tile_y, variant);
-				(*p_OutputDebugStringA) (ss);
-				break;
+				// Don't break, let fall through to default to count buildings
 			}
             default:
             {
