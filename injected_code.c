@@ -23660,12 +23660,15 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
 }
 
 bool
-tile_offset_is_owner_land (int civ_id, int adj_x, int adj_y)
+tile_offset_is_land (int civ_id, int tile_x, int tile_y, bool must_be_same_owner)
 {
-	wrap_tile_coords (&p_bic_data->Map, &adj_x, &adj_y);
-	Tile * adj_tile = tile_at (adj_x, adj_y);
-	return (adj_tile != NULL) && (adj_tile != p_null_tile) && 
-		(adj_tile->Territory_OwnerID == civ_id) && (! adj_tile->vtable->m35_Check_Is_Water (adj_tile));
+	if (must_be_same_owner && (civ_id <= 0))
+		return false;
+
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	return (tile != NULL) && (tile != p_null_tile) && (! tile->vtable->m35_Check_Is_Water (tile)) &&
+		((! must_be_same_owner) || (tile->Territory_OwnerID == civ_id));
 }
 
 void
@@ -23674,7 +23677,7 @@ get_tile_sprite_indices (int tile_x, int tile_y, int * out_sheet_index, int * ou
 	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 	Tile * tile = tile_at (tile_x, tile_y);
 
-	if (tile != NULL & tile != p_null_tile) {
+	if (tile != NULL && tile != p_null_tile) {
 		*out_sheet_index = (tile->SquareParts >> 8) & 0xFF;
 		*out_sprite_index = tile->SquareParts & 0xFF;
 	} else {
@@ -23789,14 +23792,14 @@ set_port_variant_and_pixel_offsets (Tile * tile, int * out_variant, int * out_pi
 		bool city_is_east_of_port   = (closest_dx > 0);
 		bool city_is_north_of_port  = (closest_dy < 0);
 		bool city_is_south_of_port  = (closest_dy > 0);
-		bool northwest_tile_is_land = tile_offset_is_owner_land (owner_id, tile_x - 1, tile_y - 1);
-		bool north_tile_is_land     = tile_offset_is_owner_land (owner_id, tile_x, tile_y - 2);
-		bool northeast_tile_is_land = tile_offset_is_owner_land (owner_id, tile_x + 1, tile_y - 1);
-		bool east_tile_is_land      = tile_offset_is_owner_land (owner_id, tile_x + 2, tile_y);
-		bool southeast_tile_is_land = tile_offset_is_owner_land (owner_id, tile_x + 1, tile_y + 1);
-		bool south_tile_is_land     = tile_offset_is_owner_land (owner_id, tile_x, tile_y + 2);
-		bool southwest_tile_is_land = tile_offset_is_owner_land (owner_id, tile_x - 1, tile_y + 1);
-		bool west_tile_is_land      = tile_offset_is_owner_land (owner_id, tile_x - 2, tile_y);
+		bool northwest_tile_is_land = tile_offset_is_land (owner_id, tile_x - 1, tile_y - 1, true);
+		bool north_tile_is_land     = tile_offset_is_land (owner_id, tile_x, tile_y - 2, true);
+		bool northeast_tile_is_land = tile_offset_is_land (owner_id, tile_x + 1, tile_y - 1, true);
+		bool east_tile_is_land      = tile_offset_is_land (owner_id, tile_x + 2, tile_y, true);
+		bool southeast_tile_is_land = tile_offset_is_land (owner_id, tile_x + 1, tile_y + 1, true);
+		bool south_tile_is_land     = tile_offset_is_land (owner_id, tile_x, tile_y + 2, true);
+		bool southwest_tile_is_land = tile_offset_is_land (owner_id, tile_x - 1, tile_y + 1, true);
+		bool west_tile_is_land      = tile_offset_is_land (owner_id, tile_x - 2, tile_y, true);
 
 		if (city_is_north_of_port && city_is_west_of_port) {
 			if      (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
@@ -23827,14 +23830,55 @@ set_port_variant_and_pixel_offsets (Tile * tile, int * out_variant, int * out_pi
 			else if (east_tile_is_land)      { *out_variant = SW; anchor = DIR_E;  }
 			else if (south_tile_is_land)     { *out_variant = NE; anchor = DIR_S;  }
 			else if (west_tile_is_land)      { *out_variant = NE; anchor = DIR_W;  }
-			else    					     { *out_variant = SW; anchor = DIR_NW; } // Shouldn't happen but just in case
+		}
+
+		// Same civ doesn't own any adjacent land tiles, pick based on *any* land tiles
+		if (*out_variant == NONE) {
+			bool northwest_tile_is_land = tile_offset_is_land (owner_id, tile_x - 1, tile_y - 1, false);
+			bool north_tile_is_land     = tile_offset_is_land (owner_id, tile_x, tile_y - 2, false);
+			bool northeast_tile_is_land = tile_offset_is_land (owner_id, tile_x + 1, tile_y - 1, false);
+			bool east_tile_is_land      = tile_offset_is_land (owner_id, tile_x + 2, tile_y, false);
+			bool southeast_tile_is_land = tile_offset_is_land (owner_id, tile_x + 1, tile_y + 1, false);
+			bool south_tile_is_land     = tile_offset_is_land (owner_id, tile_x, tile_y + 2, false);
+			bool southwest_tile_is_land = tile_offset_is_land (owner_id, tile_x - 1, tile_y + 1, false);
+			bool west_tile_is_land      = tile_offset_is_land (owner_id, tile_x - 2, tile_y, false);
+			if      (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
+			else if (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
+			else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
+			else if (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
+			else if (north_tile_is_land)     { *out_variant = SW; anchor = DIR_N;  }
+			else if (east_tile_is_land)      { *out_variant = SW; anchor = DIR_E;  }
+			else if (south_tile_is_land)     { *out_variant = NE; anchor = DIR_S;  }
+			else if (west_tile_is_land)      { *out_variant = NE; anchor = DIR_W;  }
+			else							 { *out_variant = SW; anchor = DIR_NE; } // Somehow no land tiles at all? Default to NE
 		}
 	}
+
+	int anchor_sheet_index, anchor_sprite_index;
+	switch (anchor) {
+		case DIR_N:  get_tile_sprite_indices (tile_x, tile_y - 2, &anchor_sheet_index, &anchor_sprite_index);     break;
+		case DIR_NE: get_tile_sprite_indices (tile_x + 1, tile_y - 1, &anchor_sheet_index, &anchor_sprite_index); break;
+		case DIR_E:  get_tile_sprite_indices (tile_x + 2, tile_y, &anchor_sheet_index, &anchor_sprite_index);     break;
+		case DIR_SE: get_tile_sprite_indices (tile_x + 1, tile_y + 1, &anchor_sheet_index, &anchor_sprite_index); break;
+		case DIR_S:  get_tile_sprite_indices (tile_x, tile_y + 2, &anchor_sheet_index, &anchor_sprite_index);     break;
+		case DIR_SW: get_tile_sprite_indices (tile_x - 1, tile_y + 1, &anchor_sheet_index, &anchor_sprite_index); break;
+		case DIR_W:  get_tile_sprite_indices (tile_x - 2, tile_y, &anchor_sheet_index, &anchor_sprite_index);     break;
+		case DIR_NW: get_tile_sprite_indices (tile_x - 1, tile_y - 1, &anchor_sheet_index, &anchor_sprite_index); break;
+		default:     anchor_sheet_index = -1; anchor_sprite_index = -1; break;
+	}
+
+	bool anchor_is_hill = anchor_sprite_index >= 50;
 
 	// Determine pixel offsets based on direction & anchor
 	if      (*out_variant == SW && anchor == DIR_NE) { *out_pixel_x -= 0;  *out_pixel_y += 6;  }
 	else if (*out_variant == SE && anchor == DIR_NW) { *out_pixel_x -= 2;  *out_pixel_y += 6;  }
 	else if (*out_variant == SE && anchor == DIR_W)  { *out_pixel_x -= 30; *out_pixel_y += 12; }
+
+	// 0 & 5 tend to be recessed compared to other sheets
+	if (! anchor_is_hill & (anchor_sheet_index == 0 || anchor_sheet_index == 5)) {
+		if      (anchor == DIR_W || anchor == DIR_NW || anchor == DIR_SW) *out_pixel_x -= 6;
+		else if (anchor == DIR_E || anchor == DIR_NE || anchor == DIR_SE) *out_pixel_x += 6;
+	}
 }
 
 void __fastcall
