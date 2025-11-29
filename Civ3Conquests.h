@@ -5003,7 +5003,11 @@ struct Unit_Body
   int path_len;
   int escortee;
   int Auto_CityID;
-  int field_1B0[5];
+  int field_1B0;
+  int army_top_defender_id;
+  int army_member_count;
+  int field_1BC;
+  int field_1C0;
   int auto_bombard_target_x;
   int auto_bombard_target_y;
   int field_1CC;
