@@ -16014,7 +16014,7 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 		// Show sprites indexes for port position debugging
 		int sheet_index = (tile->SquareParts >> 8) & 0xFF;   
 		int sprite_index = tile->SquareParts & 0xFF;
-		snprintf (s, sizeof s, "(%d, %d)", sheet_index, sprite_index);
+		snprintf (s, sizeof s, "%d, %d", sheet_index, sprite_index);
 		PCX_Image_draw_text (this, __, s, x, y - 18, strlen (s));
 
 		// Draw tile coords on line below terrain name
@@ -23671,7 +23671,7 @@ tile_offset_is_land (int civ_id, int tile_x, int tile_y, bool must_be_same_owner
 		((! must_be_same_owner) || (tile->Territory_OwnerID == civ_id));
 }
 
-void
+Tile *
 get_tile_sprite_indices (int tile_x, int tile_y, int * out_sheet_index, int * out_sprite_index)
 {
 	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
@@ -23684,6 +23684,8 @@ get_tile_sprite_indices (int tile_x, int tile_y, int * out_sheet_index, int * ou
 		*out_sheet_index = -1;
 		*out_sprite_index = -1;
 	}
+
+	return tile;
 }
 
 void
@@ -23755,8 +23757,8 @@ set_port_variant_and_pixel_offsets (Tile * tile, int * out_variant, int * out_pi
 	if (closest_city == NULL)
 		return;
 
-	bool city_is_directly_above_port        = (closest_dx == 0)  && (closest_dy < 0);
-	bool city_is_directly_below_port        = (closest_dx == 0)  && (closest_dy > 0);
+	bool city_is_directly_above_port        = (closest_dx == 0)  && (closest_dy == -1);
+	bool city_is_directly_below_port        = (closest_dx == 0)  && (closest_dy == 1);
 	bool city_is_directly_west_of_port      = (closest_dx < 0)   && (closest_dy == 0);
 	bool city_is_directly_east_of_port      = (closest_dx > 0)   && (closest_dy == 0);
 	bool city_is_directly_northeast_of_port = (closest_dx == 1)  && (closest_dy == -1);
@@ -23780,13 +23782,7 @@ set_port_variant_and_pixel_offsets (Tile * tile, int * out_variant, int * out_pi
 	else if (city_is_directly_southwest_of_port) { *out_variant = NE; anchor = DIR_SW; }
 	else if (city_is_directly_northwest_of_port) { *out_variant = SE; anchor = DIR_NW; }
 
-	// Direct cardinals
-	else if (city_is_directly_above_port)   { *out_variant = SW; anchor = DIR_N; }
-	else if (city_is_directly_below_port)   { *out_variant = NE; anchor = DIR_S; }
-	else if (city_is_directly_west_of_port) { *out_variant = NE; anchor = DIR_W; }
-	else if (city_is_directly_east_of_port) { *out_variant = SW; anchor = DIR_E; }
-
-	// City not adjacent, check relative directions
+	// City either in a direct cardinal direction or not adjacent, check relative directions
 	else {
 		bool city_is_west_of_port   = (closest_dx < 0);
 		bool city_is_east_of_port   = (closest_dx > 0);
@@ -23801,7 +23797,23 @@ set_port_variant_and_pixel_offsets (Tile * tile, int * out_variant, int * out_pi
 		bool southwest_tile_is_land = tile_offset_is_land (owner_id, tile_x - 1, tile_y + 1, true);
 		bool west_tile_is_land      = tile_offset_is_land (owner_id, tile_x - 2, tile_y, true);
 
-		if (city_is_north_of_port && city_is_west_of_port) {
+		if          (city_is_directly_above_port) {
+			if      (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
+			else if (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
+			else                             { *out_variant = SW; anchor = DIR_N;  }
+		} else if (city_is_directly_below_port) {
+			if      (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
+			else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
+			else                             { *out_variant = NE; anchor = DIR_S;  }
+		} else if (city_is_directly_west_of_port) {
+			if      (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
+			else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
+			else                             { *out_variant = SE; anchor = DIR_W;  }
+		} else if (city_is_directly_east_of_port) {
+			if      (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
+			else if (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
+			else                             { *out_variant = SW; anchor = DIR_E;  }
+		} else if (city_is_north_of_port && city_is_west_of_port) {
 			if      (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
 			else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
 			else if (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
@@ -23817,6 +23829,7 @@ set_port_variant_and_pixel_offsets (Tile * tile, int * out_variant, int * out_pi
 		} else if (city_is_south_of_port && city_is_west_of_port) {
 			if      (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
 			else if (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
+			else if (west_tile_is_land && ! north_tile_is_land) { *out_variant = NE; anchor = DIR_W;  }
 			else if (west_tile_is_land)      { *out_variant = NE; anchor = DIR_W;  }
 		}
 
@@ -23829,7 +23842,7 @@ set_port_variant_and_pixel_offsets (Tile * tile, int * out_variant, int * out_pi
 			else if (north_tile_is_land)     { *out_variant = SW; anchor = DIR_N;  }
 			else if (east_tile_is_land)      { *out_variant = SW; anchor = DIR_E;  }
 			else if (south_tile_is_land)     { *out_variant = NE; anchor = DIR_S;  }
-			else if (west_tile_is_land)      { *out_variant = NE; anchor = DIR_W;  }
+			else if (west_tile_is_land)      { *out_variant = SE; anchor = DIR_W;  }
 		}
 
 		// Same civ doesn't own any adjacent land tiles, pick based on *any* land tiles
@@ -23849,35 +23862,43 @@ set_port_variant_and_pixel_offsets (Tile * tile, int * out_variant, int * out_pi
 			else if (north_tile_is_land)     { *out_variant = SW; anchor = DIR_N;  }
 			else if (east_tile_is_land)      { *out_variant = SW; anchor = DIR_E;  }
 			else if (south_tile_is_land)     { *out_variant = NE; anchor = DIR_S;  }
-			else if (west_tile_is_land)      { *out_variant = NE; anchor = DIR_W;  }
+			else if (west_tile_is_land)      { *out_variant = SE; anchor = DIR_W;  }
 			else							 { *out_variant = SW; anchor = DIR_NE; } // Somehow no land tiles at all? Default to NE
 		}
 	}
 
+	Tile * anchor_tile;
 	int anchor_sheet_index, anchor_sprite_index;
 	switch (anchor) {
-		case DIR_N:  get_tile_sprite_indices (tile_x, tile_y - 2, &anchor_sheet_index, &anchor_sprite_index);     break;
-		case DIR_NE: get_tile_sprite_indices (tile_x + 1, tile_y - 1, &anchor_sheet_index, &anchor_sprite_index); break;
-		case DIR_E:  get_tile_sprite_indices (tile_x + 2, tile_y, &anchor_sheet_index, &anchor_sprite_index);     break;
-		case DIR_SE: get_tile_sprite_indices (tile_x + 1, tile_y + 1, &anchor_sheet_index, &anchor_sprite_index); break;
-		case DIR_S:  get_tile_sprite_indices (tile_x, tile_y + 2, &anchor_sheet_index, &anchor_sprite_index);     break;
-		case DIR_SW: get_tile_sprite_indices (tile_x - 1, tile_y + 1, &anchor_sheet_index, &anchor_sprite_index); break;
-		case DIR_W:  get_tile_sprite_indices (tile_x - 2, tile_y, &anchor_sheet_index, &anchor_sprite_index);     break;
-		case DIR_NW: get_tile_sprite_indices (tile_x - 1, tile_y - 1, &anchor_sheet_index, &anchor_sprite_index); break;
+		case DIR_N:  anchor_tile = get_tile_sprite_indices (tile_x, tile_y - 2, &anchor_sheet_index, &anchor_sprite_index);     break;
+		case DIR_NE: anchor_tile = get_tile_sprite_indices (tile_x + 1, tile_y - 1, &anchor_sheet_index, &anchor_sprite_index); break;
+		case DIR_E:  anchor_tile = get_tile_sprite_indices (tile_x + 2, tile_y, &anchor_sheet_index, &anchor_sprite_index);     break;
+		case DIR_SE: anchor_tile = get_tile_sprite_indices (tile_x + 1, tile_y + 1, &anchor_sheet_index, &anchor_sprite_index); break;
+		case DIR_S:  anchor_tile = get_tile_sprite_indices (tile_x, tile_y + 2, &anchor_sheet_index, &anchor_sprite_index);     break;
+		case DIR_SW: anchor_tile = get_tile_sprite_indices (tile_x - 1, tile_y + 1, &anchor_sheet_index, &anchor_sprite_index); break;
+		case DIR_W:  anchor_tile = get_tile_sprite_indices (tile_x - 2, tile_y, &anchor_sheet_index, &anchor_sprite_index);     break;
+		case DIR_NW: anchor_tile = get_tile_sprite_indices (tile_x - 1, tile_y - 1, &anchor_sheet_index, &anchor_sprite_index); break;
 		default:     anchor_sheet_index = -1; anchor_sprite_index = -1; break;
 	}
 
-	bool anchor_is_hill = anchor_sprite_index >= 50;
-
-	// Determine pixel offsets based on direction & anchor
+	// Determine general pixel offsets based on direction & anchor
 	if      (*out_variant == SW && anchor == DIR_NE) { *out_pixel_x -= 0;  *out_pixel_y += 6;  }
 	else if (*out_variant == SE && anchor == DIR_NW) { *out_pixel_x -= 2;  *out_pixel_y += 6;  }
-	else if (*out_variant == SE && anchor == DIR_W)  { *out_pixel_x -= 30; *out_pixel_y += 12; }
+	else if (*out_variant == NW && anchor == DIR_SE) { *out_pixel_x -= 0;  *out_pixel_y -= 2;  }
+	else if (*out_variant == SW && anchor == DIR_N)  { *out_pixel_x -= 6;  *out_pixel_y -= 10; }
+	else if (*out_variant == SW && anchor == DIR_E)  { *out_pixel_x += 36; *out_pixel_y += 18; }
+	else if (*out_variant == NE && anchor == DIR_S)  { *out_pixel_x += 20; *out_pixel_y += 20; }
 
-	// 0 & 5 tend to be recessed compared to other sheets
-	if (! anchor_is_hill & (anchor_sheet_index == 0 || anchor_sheet_index == 5)) {
-		if      (anchor == DIR_W || anchor == DIR_NW || anchor == DIR_SW) *out_pixel_x -= 6;
-		else if (anchor == DIR_E || anchor == DIR_NE || anchor == DIR_SE) *out_pixel_x += 6;
+	bool anchor_is_hill     = anchor_tile != NULL && anchor_tile->vtable->m50_Get_Square_BaseType (anchor_tile) == SQ_Hills;
+	bool anchor_is_mountain = anchor_tile != NULL && anchor_tile->vtable->m50_Get_Square_BaseType (anchor_tile) == SQ_Mountains;
+
+	// Handle edge cases. Annoying, but looks quite a bit better so worth it
+	if (! (anchor_is_hill | anchor_is_mountain)) {
+		if      ((*out_variant == SW || *out_variant == NW) && anchor_sheet_index == 0) { *out_pixel_x += 24; }
+		else if ((*out_variant == SE || *out_variant == NE) && anchor_sheet_index == 0) { *out_pixel_x -= 24; }
+
+		if      (*out_variant == SW && anchor == DIR_NE && anchor_sheet_index == 0 && anchor_sprite_index == 26) { *out_pixel_x -= 4; *out_pixel_y -= 6; }
+		else if (*out_variant == NE && anchor == DIR_SW && anchor_sheet_index == 0 && anchor_sprite_index == 20) { *out_pixel_x -= 2; *out_pixel_y += 4; }
 	}
 }
 
