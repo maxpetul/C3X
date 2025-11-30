@@ -2402,8 +2402,6 @@ is_tile_earmarked_for_district (int tile_x, int tile_y)
 		return false;
 
 	int civ_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
-	if ((civ_id < 0) || (civ_id >= 32))
-		return false;
 
 	FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
 		struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
@@ -24127,7 +24125,7 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 			if      (*out_variant == SW || *out_variant == NW) { *out_pixel_x += 32; }
 			else if (*out_variant == SE || *out_variant == NE) { *out_pixel_x -= 32; }
 
-			if      (*out_variant == SW && anchor == DIR_NE && anchor_sprite_index == 26) { *out_pixel_x -= 4; *out_pixel_y -= 6; }
+			if      ((*out_variant == NE || *out_variant == NW) && anchor == DIR_S && anchor_sprite_index == 26) { *out_pixel_x -= 4; *out_pixel_y += 30; }
 			else if (*out_variant == NE && anchor == DIR_SW && anchor_sprite_index == 20) { *out_pixel_x -= 2; *out_pixel_y += 4; }
 
 			if      (*out_variant == SW && (anchor_sprite_index == 0 || anchor_sprite_index == 4 || anchor_sprite_index == 10 || anchor_sprite_index == 1)) { *out_pixel_x +=2; *out_pixel_y -= 8; }
@@ -24139,7 +24137,7 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 			if      (*out_variant == SW || *out_variant == NW) { *out_pixel_x += 10; }
 			else if (*out_variant == SE || *out_variant == NE) { *out_pixel_x -= 10; }
 
-			if (*out_variant == SW && (anchor_sprite_index == 7 || anchor_sprite_index == 17)) { *out_pixel_x +=2; *out_pixel_y -= 8; }
+			if (*out_variant == SW && (anchor_sprite_index == 7 || anchor_sprite_index == 17)) { *out_pixel_x +=10; *out_pixel_y -= 8; }
 		}
 		// Sheet 3
 		else if (anchor_sheet_index == 2) {
@@ -24165,10 +24163,12 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 			if      ((*out_variant == SW || *out_variant == SE) && anchor_sprite_index == 18) { *out_pixel_y -= 10; }
 			else if (*out_variant == SW && anchor_sprite_index == 73)                         { *out_pixel_x -=4; *out_pixel_y -= 10; }
 			else if (*out_variant == NW && anchor == DIR_SE && anchor_sprite_index == 42)     { *out_pixel_y -= 8; }
-			else if ((*out_variant == NW || *out_variant == SW) && anchor_sprite_index == 6)  { *out_pixel_x += 8; }
+			else if ((*out_variant == NW || *out_variant == SW) && anchor_sprite_index == 6)  { *out_pixel_x += 12; *out_pixel_y -= 6; }
 			else if ((*out_variant == SW) && anchor_sprite_index == 16)  					  { *out_pixel_x -=8; *out_pixel_y -= 10; }
 		}
-	} else if (direct_diagonal && *out_variant == SW && anchor == DIR_NE) { *out_pixel_x -=8; *out_pixel_y -= 8; }
+	} 
+	else if (direct_diagonal && *out_variant == SW && anchor == DIR_NE) { *out_pixel_x -=8; *out_pixel_y -= 8; }
+	else if (direct_diagonal && *out_variant == NW && anchor == DIR_SE) { *out_pixel_x +=6; *out_pixel_y += 6; }
 }
 
 void __fastcall
