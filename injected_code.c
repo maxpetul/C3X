@@ -23689,7 +23689,7 @@ get_tile_sprite_indices (int tile_x, int tile_y, int * out_sheet_index, int * ou
 }
 
 void
-set_port_variant_and_pixel_offsets (Tile * tile, int * out_variant, int * out_pixel_x, int * out_pixel_y)
+align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, int * out_pixel_x, int * out_pixel_y)
 {
 	if ((tile == NULL) || (tile == p_null_tile) || (out_variant == NULL))
 		return;
@@ -23775,12 +23775,13 @@ set_port_variant_and_pixel_offsets (Tile * tile, int * out_variant, int * out_pi
 	*out_variant = NONE;
 
 	enum direction anchor = NONE;
+	bool direct_diagonal = false;
 
 	// Direct diagonals
-	if      (city_is_directly_northeast_of_port) { *out_variant = SW; anchor = DIR_NE; }
-	else if (city_is_directly_southeast_of_port) { *out_variant = NW; anchor = DIR_SE; }
-	else if (city_is_directly_southwest_of_port) { *out_variant = NE; anchor = DIR_SW; }
-	else if (city_is_directly_northwest_of_port) { *out_variant = SE; anchor = DIR_NW; }
+	if      (city_is_directly_northeast_of_port) { *out_variant = SW; anchor = DIR_NE; direct_diagonal = true; }
+	else if (city_is_directly_southeast_of_port) { *out_variant = NW; anchor = DIR_SE; direct_diagonal = true; }
+	else if (city_is_directly_southwest_of_port) { *out_variant = NE; anchor = DIR_SW; direct_diagonal = true; }
+	else if (city_is_directly_northwest_of_port) { *out_variant = SE; anchor = DIR_NW; direct_diagonal = true; }
 
 	// City either in a direct cardinal direction or not adjacent, check relative directions
 	else {
@@ -23797,40 +23798,46 @@ set_port_variant_and_pixel_offsets (Tile * tile, int * out_variant, int * out_pi
 		bool southwest_tile_is_land = tile_offset_is_land (owner_id, tile_x - 1, tile_y + 1, true);
 		bool west_tile_is_land      = tile_offset_is_land (owner_id, tile_x - 2, tile_y, true);
 
-		if          (city_is_directly_above_port) {
+		if (city_is_directly_above_port) {
 			if      (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
 			else if (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
-			else                             { *out_variant = SW; anchor = DIR_N;  }
+			else { 
+				*out_variant = SW; anchor = DIR_NE;
+				*out_pixel_x -= 4; *out_pixel_y -= 4;
+			}
 		} else if (city_is_directly_below_port) {
 			if      (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
 			else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
-			else                             { *out_variant = NE; anchor = DIR_S;  }
+			else { 
+				*out_variant = NE; anchor = DIR_SW; 
+				*out_pixel_x += 4; *out_pixel_y += 4;
+			}
 		} else if (city_is_directly_west_of_port) {
 			if      (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
 			else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
-			else                             { *out_variant = SE; anchor = DIR_W;  }
+			else { 
+				*out_variant = SE; anchor = DIR_NW; 
+				*out_pixel_x -= 50; *out_pixel_y += 14;
+			}
 		} else if (city_is_directly_east_of_port) {
 			if      (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
 			else if (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
-			else                             { *out_variant = SW; anchor = DIR_E;  }
+			else { 
+				*out_variant = SW; anchor = DIR_NE; 
+				*out_pixel_x += 50; *out_pixel_y -= 14;
+			}
 		} else if (city_is_north_of_port && city_is_west_of_port) {
 			if      (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
 			else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
-			else if (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
-			else if (west_tile_is_land)      { *out_variant = SE; anchor = DIR_W;  }
 		} else if (city_is_north_of_port && city_is_east_of_port) {
 			if 	    (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
 			else if (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
-			else if (east_tile_is_land)      { *out_variant = SW; anchor = DIR_E;  }
 		} else if (city_is_south_of_port && city_is_east_of_port) {
 			if 	    (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
 			else if (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
-			else if (east_tile_is_land)      { *out_variant = SW; anchor = DIR_E;  }
 		} else if (city_is_south_of_port && city_is_west_of_port) {
 			if      (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
 			else if (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
-			else if (west_tile_is_land && ! north_tile_is_land) { *out_variant = NE; anchor = DIR_W;  }
-			else if (west_tile_is_land)      { *out_variant = NE; anchor = DIR_W;  }
 		}
 
 		// No ideal direction, pick based on any owner land tiles around port
@@ -23881,25 +23888,69 @@ set_port_variant_and_pixel_offsets (Tile * tile, int * out_variant, int * out_pi
 		default:     anchor_sheet_index = -1; anchor_sprite_index = -1; break;
 	}
 
+	bool anchor_is_hill     = anchor_tile != NULL && anchor_tile->vtable->m50_Get_Square_BaseType (anchor_tile) == SQ_Hills;
+	bool anchor_is_mountain = anchor_tile != NULL && anchor_tile->vtable->m50_Get_Square_BaseType (anchor_tile) == SQ_Mountains;
+
 	// Determine general pixel offsets based on direction & anchor
 	if      (*out_variant == SW && anchor == DIR_NE) { *out_pixel_x -= 0;  *out_pixel_y += 6;  }
 	else if (*out_variant == SE && anchor == DIR_NW) { *out_pixel_x -= 2;  *out_pixel_y += 6;  }
 	else if (*out_variant == NW && anchor == DIR_SE) { *out_pixel_x -= 0;  *out_pixel_y -= 2;  }
-	else if (*out_variant == SW && anchor == DIR_N)  { *out_pixel_x -= 6;  *out_pixel_y -= 10; }
+	else if (*out_variant == SW && anchor == DIR_N)  { *out_pixel_x -= 56; *out_pixel_y -= 26; }
 	else if (*out_variant == SW && anchor == DIR_E)  { *out_pixel_x += 36; *out_pixel_y += 18; }
-	else if (*out_variant == NE && anchor == DIR_S)  { *out_pixel_x += 20; *out_pixel_y += 20; }
+	else if (*out_variant == NE && anchor == DIR_S)  { *out_pixel_x += 70; *out_pixel_y += 30; }
+	else if (*out_variant == SE && anchor == DIR_W)  { *out_pixel_x -= 20; *out_pixel_y += 14; }
 
-	bool anchor_is_hill     = anchor_tile != NULL && anchor_tile->vtable->m50_Get_Square_BaseType (anchor_tile) == SQ_Hills;
-	bool anchor_is_mountain = anchor_tile != NULL && anchor_tile->vtable->m50_Get_Square_BaseType (anchor_tile) == SQ_Mountains;
+	// Handle edge cases. Tedious, but looks quite a bit better so worth it
+	if (! (anchor_is_hill || anchor_is_mountain) && ! direct_diagonal) {
+		if (*out_variant == SE && anchor == DIR_W)  { *out_pixel_x -= 20; *out_pixel_y += 20; }
 
-	// Handle edge cases. Annoying, but looks quite a bit better so worth it
-	if (! (anchor_is_hill | anchor_is_mountain)) {
-		if      ((*out_variant == SW || *out_variant == NW) && anchor_sheet_index == 0) { *out_pixel_x += 24; }
-		else if ((*out_variant == SE || *out_variant == NE) && anchor_sheet_index == 0) { *out_pixel_x -= 24; }
+		// Sheet 0
+		if (anchor_sheet_index == 0) {
+			if      (*out_variant == SW || *out_variant == NW) { *out_pixel_x += 32; }
+			else if (*out_variant == SE || *out_variant == NE) { *out_pixel_x -= 32; }
 
-		if      (*out_variant == SW && anchor == DIR_NE && anchor_sheet_index == 0 && anchor_sprite_index == 26) { *out_pixel_x -= 4; *out_pixel_y -= 6; }
-		else if (*out_variant == NE && anchor == DIR_SW && anchor_sheet_index == 0 && anchor_sprite_index == 20) { *out_pixel_x -= 2; *out_pixel_y += 4; }
-	}
+			if      (*out_variant == SW && anchor == DIR_NE && anchor_sprite_index == 26) { *out_pixel_x -= 4; *out_pixel_y -= 6; }
+			else if (*out_variant == NE && anchor == DIR_SW && anchor_sprite_index == 20) { *out_pixel_x -= 2; *out_pixel_y += 4; }
+
+			if      (*out_variant == SW && (anchor_sprite_index == 0 || anchor_sprite_index == 4 || anchor_sprite_index == 10 || anchor_sprite_index == 1)) { *out_pixel_x +=2; *out_pixel_y -= 8; }
+			else if (*out_variant == SW && anchor == DIR_N && (anchor_sprite_index == 6))  { *out_pixel_x -= 6; *out_pixel_y -= 8; }
+			else if (*out_variant == SE && anchor == DIR_W && (anchor_sprite_index == 18)) { *out_pixel_x += 6; *out_pixel_y += 4; }
+		}
+		// Sheet 1
+		else if (anchor_sheet_index == 1) {
+			if      (*out_variant == SW || *out_variant == NW) { *out_pixel_x += 10; }
+			else if (*out_variant == SE || *out_variant == NE) { *out_pixel_x -= 10; }
+
+			if (*out_variant == SW && (anchor_sprite_index == 7 || anchor_sprite_index == 17)) { *out_pixel_x +=2; *out_pixel_y -= 8; }
+		}
+		// Sheet 3
+		else if (anchor_sheet_index == 2) {
+			if (*out_variant == SW && (anchor_sprite_index == 6)) { *out_pixel_x +=2; *out_pixel_y -= 8; }
+		}
+		// Sheet 3
+		else if (anchor_sheet_index == 3) {
+			if      (*out_variant == SW || *out_variant == NW) { *out_pixel_x += 16; }
+			else if (*out_variant == SE || *out_variant == NE) { *out_pixel_x -= 16; }
+
+			if (*out_variant == SW && (anchor_sprite_index == 43 || anchor_sprite_index == 40)) { *out_pixel_x +=6; *out_pixel_y -= 12; }
+			if (*out_variant == SW && (anchor_sprite_index == 35 || anchor_sprite_index == 39)) { *out_pixel_x +=6; *out_pixel_y -= 12; }
+		}
+		// Sheet 4
+		else if (anchor_sheet_index == 4) {
+			if (*out_variant == SW && (anchor_sprite_index == 71)) { *out_pixel_x +=2; *out_pixel_y -= 8; }
+		}
+		// Sheet 5
+		else if (anchor_sheet_index == 5) {
+			if      (*out_variant == SW || *out_variant == NW) { *out_pixel_x += 18; }
+			else if (*out_variant == SE || *out_variant == NE) { *out_pixel_x -= 18; }
+
+			if      ((*out_variant == SW || *out_variant == SE) && anchor_sprite_index == 18) { *out_pixel_y -= 10; }
+			else if (*out_variant == SW && anchor_sprite_index == 73)                         { *out_pixel_x -=4; *out_pixel_y -= 10; }
+			else if (*out_variant == NW && anchor == DIR_SE && anchor_sprite_index == 42)     { *out_pixel_y -= 8; }
+			else if ((*out_variant == NW || *out_variant == SW) && anchor_sprite_index == 6)  { *out_pixel_x += 8; }
+			else if ((*out_variant == SW) && anchor_sprite_index == 16)  					  { *out_pixel_x -=8; *out_pixel_y -= 10; }
+		}
+	} else if (direct_diagonal && *out_variant == SW && anchor == DIR_NE) { *out_pixel_x -=8; *out_pixel_y -= 8; }
 }
 
 void __fastcall
@@ -24018,7 +24069,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 			}
 			case PORT_DISTRICT_ID:
 			{
-				set_port_variant_and_pixel_offsets (tile, &variant, &pixel_x, &pixel_y);
+				align_variant_and_pixel_offsets_with_coastline (tile, &variant, &pixel_x, &pixel_y);
 				// Don't break, let fall through to default to count buildings
 			}
             default:
