@@ -7585,6 +7585,77 @@ find_tile_for_neighborhood_district (City * city, int * out_x, int * out_y)
 }
 
 Tile *
+find_tile_for_port_district (City * city, int * out_x, int * out_y)
+{
+	if (city == NULL)
+		return NULL;
+
+	int city_x = city->Body.X;
+	int city_y = city->Body.Y;
+	int city_work_radius = is->current_config.city_work_radius;
+	int threshold_for_body_of_water = 21; // Mimic vanilla behavior so AI doesn't build ports in small lakes
+
+	// Search in order: ring 1, then rings 2..N
+	int ring_order[8];
+	int ring_count = 0;
+	for (int r = 1; r <= city_work_radius; r++)
+		ring_order[ring_count++] = r;
+
+	for (int r_idx = 0; r_idx < ring_count; r_idx++) {
+		int ring = ring_order[r_idx];
+		int start_ni = workable_tile_counts[ring - 1];
+		int end_ni = workable_tile_counts[ring];
+
+		Tile * best_tile = NULL;
+		int best_yield = INT_MAX;
+
+		for (int ni = start_ni; ni < end_ni; ni++) {
+			int dx, dy;
+			patch_ni_to_diff_for_work_area (ni, &dx, &dy);
+			int tx = city_x + dx;
+			int ty = city_y + dy;
+			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
+			Tile * tile = tile_at (tx, ty);
+
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+			if (is->current_config.enable_distribution_hub_districts) {
+				int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
+				if (covered > 0)
+					continue;
+			}
+
+			if (! tile_suitable_for_district (tile, PORT_DISTRICT_ID, city, NULL))
+				continue;
+			if (get_district_instance (tile) != NULL)
+				continue;
+			if (! tile->vtable->m35_Check_Is_Water (tile))
+				continue;
+
+			int continent_id = tile->vtable->m46_Get_ContinentID (tile);
+			if ((continent_id < 0) || (continent_id >= p_bic_data->Map.Continent_Count))
+				continue;
+			Continent * continent = &p_bic_data->Map.Continents[continent_id];
+			if (continent->Body.TileCount < threshold_for_body_of_water)
+				continue;
+
+			int yield = compute_city_tile_yield_sum (city, tx, ty);
+			if (yield < best_yield) {
+				best_yield = yield;
+				best_tile = tile;
+				*out_x = tx;
+				*out_y = ty;
+			}
+		}
+
+		if (best_tile != NULL)
+			return best_tile;
+	}
+
+	return NULL;
+}
+
+Tile *
 find_tile_for_distribution_hub_district (City * city, int * out_x, int * out_y)
 {
 	if (city == NULL)
@@ -7738,6 +7809,8 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 		return find_tile_for_neighborhood_district (city, out_x, out_y);
 	if (district_id == DISTRIBUTION_HUB_DISTRICT_ID)
 		return find_tile_for_distribution_hub_district (city, out_x, out_y);
+	if (district_id == PORT_DISTRICT_ID)
+		return find_tile_for_port_district (city, out_x, out_y);
 
 	int city_x = city->Body.X;
 	int city_y = city->Body.Y;
