@@ -16800,6 +16800,11 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 			City_add_or_remove_improvement (city, __, free_extra_palace, 1, false);
 	}
 
+	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
+		patch_City_recompute_yields_and_happiness (city);
+		patch_City_update_culture (city);
+	}
+
 	if (is->current_config.enable_districts) {
 
 		// Remove any district previously on the tile, if city just founded
