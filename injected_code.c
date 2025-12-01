@@ -2530,7 +2530,7 @@ get_effective_district_yields (struct district_instance * inst,
 {
 	int food = 0, shields = 0, gold = 0, science = 0, culture = 0;
 
-	if (cfg != NULL) {
+	if (cfg != NULL && is->current_config.enable_districts) {
 		food = cfg->food_bonus;
 		shields = cfg->shield_bonus;
 		gold = cfg->gold_bonus;
@@ -2538,7 +2538,7 @@ get_effective_district_yields (struct district_instance * inst,
 		culture = cfg->culture_bonus;
 	}
 
-	if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
+	if ((inst != NULL) && is->current_config.enable_natural_wonders && (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
 		struct natural_wonder_district_config const * nwcfg =
 			get_natural_wonder_config_by_id (inst->natural_wonder_info.natural_wonder_id);
 		if (nwcfg != NULL) {
@@ -2655,19 +2655,42 @@ natural_wonder_exists_within_distance (int tile_x, int tile_y, int min_distance)
 	if (min_distance <= 0)
 		return false;
 
-	FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-		struct district_instance * inst = (struct district_instance *)(long)tei.value;
-		if ((inst == NULL) || (inst->district_type != NATURAL_WONDER_DISTRICT_ID))
-			continue;
-
-		Tile * entry_tile = (Tile *)tei.key;
-		int existing_x, existing_y;
-		if (! district_instance_get_coords (inst, entry_tile, &existing_x, &existing_y))
-			continue;
-
-		int dist = compute_wrapped_chebyshev_distance (tile_x, tile_y, existing_x, existing_y);
-		if (dist <= min_distance)
+	Tile * here = tile_at (tile_x, tile_y);
+	if ((here != NULL) && (here != p_null_tile)) {
+		struct district_instance * inst = get_district_instance (here);
+		if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID))
 			return true;
+	}
+
+	for (int dist = 1; dist <= min_distance; dist++) {
+		struct vertex {
+			int x, y;
+		} vertices[4] = {
+			{tile_x         , tile_y - 2*dist},
+			{tile_x + 2*dist, tile_y         },
+			{tile_x         , tile_y + 2*dist},
+			{tile_x - 2*dist, tile_y         }
+		};
+
+		int edge_dirs[4] = {3, 5, 7, 1};
+
+		for (int vert = 0; vert < 4; vert++) {
+			wrap_tile_coords (&p_bic_data->Map, &vertices[vert].x, &vertices[vert].y);
+			int dx, dy;
+			neighbor_index_to_diff (edge_dirs[vert], &dx, &dy);
+			for (int j = 0; j < 2*dist; j++) {
+				int cx = vertices[vert].x + j * dx,
+				    cy = vertices[vert].y + j * dy;
+				wrap_tile_coords (&p_bic_data->Map, &cx, &cy);
+
+				Tile * tile = tile_at (cx, cy);
+				if ((tile == NULL) || (tile == p_null_tile))
+					continue;
+				struct district_instance * inst = get_district_instance (tile);
+				if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID))
+					return true;
+			}
+		}
 	}
 
 	return false;
@@ -3735,9 +3758,15 @@ is_wonder_or_small_wonder_already_being_built (City * city, int improv_id)
 bool
 district_is_complete(Tile * tile, int district_id)
 {
-	if (! is->current_config.enable_districts ||
-	    (tile == NULL) || (tile == p_null_tile) ||
+	if ((tile == NULL) || (tile == p_null_tile) ||
 	    (district_id < 0) || (district_id >= is->district_count))
+		return false;
+
+	bool is_natural_wonder = (district_id == NATURAL_WONDER_DISTRICT_ID);
+	bool districts_disabled = ! is->current_config.enable_districts;
+	bool natural_wonders_disabled = ! is->current_config.enable_natural_wonders;
+
+	if (districts_disabled && (!is_natural_wonder || natural_wonders_disabled))
 		return false;
 
 	struct district_instance * inst = get_district_instance (tile);
@@ -7251,7 +7280,7 @@ calculate_city_center_district_bonus (City * city, int * out_food, int * out_shi
 	if (out_gold != NULL)
 		*out_gold = 0;
 
-	if (! is->current_config.enable_districts || (city == NULL))
+	if (! (is->current_config.enable_districts || is->current_config.enable_natural_wonders) || (city == NULL))
 		return;
 
 	int bonus_food = 0;
@@ -7306,7 +7335,7 @@ calculate_city_center_district_bonus (City * city, int * out_food, int * out_shi
 		bonus_gold += gold_bonus;
 	}
 
-	if (is->current_config.enable_distribution_hub_districts) {
+	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
 		int hub_food = 0;
 		int hub_shields = 0;
 		get_distribution_hub_yields_for_city (city, &hub_food, &hub_shields);
@@ -7326,7 +7355,7 @@ int __fastcall
 patch_Map_calc_food_yield_at (Map * this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city)
 {
 	if (! is->current_config.enable_districts)
-		Map_calc_food_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
+		return Map_calc_food_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
 
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile != NULL) && (tile != p_null_tile)) {
@@ -7964,7 +7993,7 @@ calculate_district_culture_science_bonuses (City * city, int * culture_bonus, in
 	if (science_bonus != NULL)
 		*science_bonus = 0;
 
-	if (! is->current_config.enable_districts || (city == NULL))
+	if (! (is->current_config.enable_districts || is->current_config.enable_natural_wonders) || (city == NULL))
 		return;
 
 	int total_culture = 0;
@@ -9019,7 +9048,7 @@ patch_City_recompute_commerce (City * this)
 {
 	City_recompute_commerce (this);
 
-	if (! is->current_config.enable_districts)
+	if (! (is->current_config.enable_districts || is->current_config.enable_natural_wonders))
 		return;
 
 	int science_bonus = 0;
@@ -9049,7 +9078,7 @@ patch_City_update_culture (City * this)
 {
 	City_update_culture (this);
 
-	if ((this == NULL) || ! is->current_config.enable_districts)
+	if ((this == NULL) || ! (is->current_config.enable_districts || is->current_config.enable_natural_wonders))
 		return;
 
 	int culture_bonus = 0;
@@ -9077,7 +9106,7 @@ patch_City_recompute_culture_income (City * this)
 {
 	City_recompute_culture_income (this);
 
-	if (! is->current_config.enable_districts)
+	if (! (is->current_config.enable_districts || is->current_config.enable_natural_wonders))
 		return;
 
 	int culture_bonus = 0;
@@ -22297,7 +22326,7 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 	}
 
 	// Draw district bonuses on district tiles
-	if (is->current_config.enable_districts) {
+	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 		City * city = this->CurrentCity;
 		if (city == NULL)
 			goto skip_district_yields;
@@ -22320,7 +22349,7 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 			center_screen_y += p_bic_data->Map.Height * tile_half_height;
 
 		int remaining_utilized_neighborhoods = 0;
-		if (is->current_config.enable_neighborhood_districts)
+		if (is->current_config.enable_districts && is->current_config.enable_neighborhood_districts)
 			remaining_utilized_neighborhoods = count_utilized_neighborhoods_in_city_radius (city);
 
 		// Iterate through all neighbor tiles 
@@ -22341,14 +22370,23 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 			if (tile_has_enemy_unit (tile, civ_id)) continue;
 			if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
 
-			int is_distribution_hub = (district_id == DISTRIBUTION_HUB_DISTRICT_ID);
+			bool is_distribution_hub = district_id == DISTRIBUTION_HUB_DISTRICT_ID;
+			bool is_natural_wonder   = district_id == NATURAL_WONDER_DISTRICT_ID;
 
 			// Skip distribution hubs if the feature is not enabled
-			if (is_distribution_hub && !is->current_config.enable_distribution_hub_districts)
+			if (is_distribution_hub && (!is->current_config.enable_districts || !is->current_config.enable_distribution_hub_districts))
+				continue;
+
+			if (is_natural_wonder && (!is->current_config.enable_natural_wonders))
+				continue;
+
+			if (!is_distribution_hub && !is_natural_wonder &&
+			    (!is->current_config.enable_districts))
 				continue;
 
 			// For neighborhood districts, check if population is high enough to utilize them
 			if (!is_distribution_hub &&
+				is->current_config.enable_districts &&
 			    is->current_config.enable_neighborhood_districts &&
 			    district_id == NEIGHBORHOOD_DISTRICT_ID) {
 				// Only draw yields if this neighborhood is utilized
