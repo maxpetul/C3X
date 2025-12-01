@@ -8,6 +8,7 @@ vary_img_by_era       = 1
 vary_img_by_culture   = 0
 advance_prereq        = Warrior Code
 dependent_improvs     = Barracks,"SAM Missile Battery"
+buildable_on          = desert,plains,grassland,tundra,floodplain,hills
 defense_bonus_percent = 50
 allow_multiple        = 1
 culture_bonus         = 0
@@ -26,6 +27,7 @@ vary_img_by_era       = 0
 vary_img_by_culture   = 1
 advance_prereq        = "Ceremonial Burial"
 dependent_improvs     = Temple,Cathedral
+buildable_on          = desert,plains,grassland,tundra,floodplain,hills
 defense_bonus_percent = 0
 allow_multiple        = 1
 culture_bonus         = 2
@@ -44,6 +46,7 @@ vary_img_by_era       = 1
 vary_img_by_culture   = 0
 advance_prereq        = Literature
 dependent_improvs     = Library, University, "Research Lab"
+buildable_on          = desert,plains,grassland,tundra,floodplain,hills
 defense_bonus_percent = 0
 allow_multiple        = 1
 culture_bonus         = 1
@@ -62,6 +65,7 @@ vary_img_by_era       = 1
 vary_img_by_culture   = 1
 advance_prereq        = Construction
 dependent_improvs     = Colosseum
+buildable_on          = desert,plains,grassland,tundra,floodplain,hills
 defense_bonus_percent = 0
 allow_multiple        = 1
 culture_bonus         = 1
@@ -80,6 +84,7 @@ vary_img_by_era       = 1
 vary_img_by_culture   = 1
 advance_prereq        = Currency
 dependent_improvs     = Marketplace, Bank, "Stock Exchange"
+buildable_on          = desert,plains,grassland,tundra,floodplain,hills
 defense_bonus_percent = 0
 allow_multiple        = 1
 culture_bonus         = 0
@@ -98,6 +103,7 @@ vary_img_by_era       = 1
 vary_img_by_culture   = 0
 advance_prereq        = Industrialization
 dependent_improvs     = Factory, "Manufacturing Plant"
+buildable_on          = desert,plains,grassland,tundra,floodplain,hills
 defense_bonus_percent = 0
 allow_multiple        = 1
 culture_bonus         = 0
@@ -108,6 +114,8 @@ shield_bonus          = 4
 
 #District
 name                  = Neighborhood
+tooltip               = Build Neighborhood
+buildable_on          = desert,plains,grassland,tundra,floodplain,hills
 advance_prereq        = 
 defense_bonus_percent = 25
 allow_multiple        = 1
@@ -119,6 +127,8 @@ shield_bonus          = 0
 
 #District
 name                  = Wonder District
+tooltip               = Build Wonder District
+buildable_on          = desert,plains,grassland,tundra,floodplain,hills
 advance_prereq        = 
 defense_bonus_percent = 0
 allow_multiple        = 1
@@ -130,6 +140,8 @@ shield_bonus          = 0
 
 #District
 name                  = Distribution Hub
+tooltip               = Build Distribution Hub
+buildable_on          = desert,plains,grassland,tundra,floodplain,hills
 advance_prereq        = Construction
 defense_bonus_percent = 0
 allow_multiple        = 1
@@ -141,6 +153,8 @@ shield_bonus          = 0
 
 #District
 name                  = Aerodrome
+tooltip               = Build Aerodrome
+buildable_on          = desert,plains,grassland,tundra,floodplain,hills
 advance_prereq        = Flight
 dependent_improvs     = Airport
 defense_bonus_percent = 0
@@ -153,6 +167,8 @@ shield_bonus          = 0
 
 #District
 name                  = Port
+tooltip               = Build Port
+buildable_on          = coast
 advance_prereq        = Map Making
 dependent_improvs     = Harbor, "Commercial Dock"
 defense_bonus_percent = 0
