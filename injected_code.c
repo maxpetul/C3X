@@ -1359,6 +1359,130 @@ parse_work_area_improvement (char ** p_cursor, struct error_line ** p_unrecogniz
 		return RPR_PARSE_ERROR;
 }
 
+bool
+parse_map_target_city (char ** p_cursor, struct map_target_city * target)
+{
+	char * cur = *p_cursor;
+	if (!skip_white_space (&cur))
+		return false;
+	struct string_slice condition_name;
+	target->flags = 0;
+	while (parse_string (&cur, &condition_name)) {
+		if (slice_matches_str(&condition_name, "foreign")) {
+			target->flags |= 1;
+			target->foreign = true;
+		} else if (slice_matches_str(&condition_name, "hostile")) {
+			target->flags |= 2;
+			target->hostile = true;
+		} else if (slice_matches_str(&condition_name, "population")) {
+			if (!skip_white_space (&cur))
+				return false;
+			int num;
+			if (!skip_white_space (&cur) || !parse_int (&cur, &num))
+				return false;
+			target->flags |= 4;
+			target->population_min = num;
+			if (skip_white_space (&cur) && skip_punctuation(&cur, '-')) {
+				if (skip_white_space(&cur) && parse_int (&cur, &num)) {
+					target->flags |= 8;
+					target->population_max = num;
+				} else {
+					return false;
+				}
+			}
+		} else if (slice_matches_str(&condition_name, "culture")) {
+			if (!skip_white_space (&cur))
+				return false;
+			int num;
+			if (!skip_white_space (&cur) || !parse_int (&cur, &num))
+				return false;
+			target->flags |= 16;
+			target->culture_min = num;
+			if (skip_white_space (&cur) && skip_punctuation(&cur, '-')) {
+				if (skip_white_space(&cur) && parse_int (&cur, &num)) {
+					target->flags |= 32;
+					target->culture_max = num;
+				} else {
+					return false;
+				}
+			}
+		} else {
+			return false;
+		}
+	}
+	return true;
+
+}
+
+bool
+parse_map_target (char ** p_cursor, struct map_target * target)
+{
+	char * cur = *p_cursor;
+	struct string_slice target_type;
+	if (!parse_string (&cur, &target_type))
+		return false;
+	if (slice_matches_str (&target_type, "city")) {
+		target->type = CITY;
+		return parse_map_target_city (p_cursor, (struct map_target_city *) (target + offsetof (struct map_target, map_target_city)));
+	} else if (slice_matches_str (&target_type, "terrain")) {
+		target->type = TERRAIN;
+		//unimpl
+		return false;
+	} else if (slice_matches_str (&target_type, "resource")) {
+		target->type = RESOURCE;
+		//unimpl
+		return false;
+	} else if (slice_matches_str (&target_type, "unit")) {
+		target->type = UNIT;
+		//unimpl
+		return false;
+	} else {
+		return false;
+	}
+}
+
+enum recognizable_parse_result
+parse_city_separation_rule (char ** p_cursor, struct error_line ** p_unrecognized_lines, void * out_parsed_city_separation_rule)
+{
+	char * cur = *p_cursor;
+	struct map_target_separation_rule * out = out_parsed_city_separation_rule;
+
+	struct string_slice target_type;
+	if (skip_white_space (&cur) &&
+	    parse_map_target (&cur, (struct map_target *) (out + offsetof (struct map_target_separation_rule, target))) &&
+	    skip_punctuation (&cur, ':')) {
+
+		struct string_slice and_separator;
+		do {
+			int num;
+			if (!skip_white_space (&cur) || !parse_int (&cur, &num))
+				return RPR_PARSE_ERROR;
+
+			out->distance_metric_flags = 0;
+
+			struct string_slice metric_type;
+			if (parse_string (&cur, &metric_type)) {
+				if (slice_matches_str (&metric_type, "chebychev")) {
+					out->chebyshev = num;
+					out->distance_metric_flags |= 1;
+				} else if (slice_matches_str (&metric_type, "manhatten")) {
+					out->manhatten = num;
+					out->distance_metric_flags |= 2;
+				} else if (slice_matches_str (&metric_type, "euclidean_percent")) {
+					out->euclidean_percent = num;
+					out->distance_metric_flags |= 4;
+				} else
+					return RPR_PARSE_ERROR;
+			} else {//Default to chebyshev if nothing stated.
+				out->chebyshev = num;
+				out->distance_metric_flags |= 1;
+			}
+		} while (skip_white_space (&cur) && parse_string(&cur, &and_separator) && slice_matches_str(&and_separator, "and"));
+		return RPR_OK;
+	} else
+		return RPR_PARSE_ERROR;
+}
+
 // Recognizable items are appended to out_list/count, which must have been previously initialized (NULL/0 is valid for an empty list).
 // If an error occurs while reading, returns the location of the error inside the slice, specifically the number of characters before the unreadable
 // item. If no error occurs, returns -1.
@@ -2128,9 +2252,24 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->anarchy_length_percent = 100 - ival;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
-				} else if (slice_matches_str (&p.key, "adjust_minimum_city_separation")) {
+				} else if (slice_matches_str (&p.key, "minimum_city_separation_chebyshev") || slice_matches_str (&p.key, "adjust_minimum_city_separation")) {
 					if (read_int (&value, &ival))
-						cfg->minimum_city_separation = ival + 1;
+						cfg->minimum_city_separation.any_chebyshev = ival;
+					else
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
+				} else if (slice_matches_str (&p.key, "minimum_city_separation_manhatten")) {
+					if (read_int (&value, &ival))
+						cfg->minimum_city_separation.any_manhatten = ival;
+					else
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
+				} else if (slice_matches_str (&p.key, "minimum_foreign_city_separation_chebyshev")) {
+					if (read_int (&value, &ival))
+						cfg->minimum_city_separation.foreign_chebyshev = ival;
+					else
+						handle_config_error (&p, CPE_BAD_INT_VALUE);
+				} else if (slice_matches_str (&p.key, "minimum_foreign_city_separation_manhatten")) {
+					if (read_int (&value, &ival))
+						cfg->minimum_city_separation.foreign_manhatten = ival;
 					else
 						handle_config_error (&p, CPE_BAD_INT_VALUE);
 				} else if (slice_matches_str (&p.key, "reduce_max_escorts_per_ai_transport")) {
@@ -10797,7 +10936,6 @@ patch_init_floating_point ()
 		{"enable_stack_unit_commands"                          , true , offsetof (struct c3x_config, enable_stack_unit_commands)},
 		{"skip_repeated_tile_improv_replacement_asks"          , true , offsetof (struct c3x_config, skip_repeated_tile_improv_replacement_asks)},
 		{"autofill_best_gold_amount_when_trading"              , true , offsetof (struct c3x_config, autofill_best_gold_amount_when_trading)},
-		{"disallow_founding_next_to_foreign_city"              , true , offsetof (struct c3x_config, disallow_founding_next_to_foreign_city)},
 		{"enable_trade_screen_scroll"                          , true , offsetof (struct c3x_config, enable_trade_screen_scroll)},
 		{"group_units_on_right_click_menu"                     , true , offsetof (struct c3x_config, group_units_on_right_click_menu)},
 		{"gray_out_units_on_menu_with_no_remaining_moves"      , true , offsetof (struct c3x_config, gray_out_units_on_menu_with_no_remaining_moves)},
@@ -10936,7 +11074,10 @@ patch_init_floating_point ()
 		int offset;
 	} integer_config_options[] = {
 		{"limit_railroad_movement"                       ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
-		{"minimum_city_separation"                       ,     1, offsetof (struct c3x_config, minimum_city_separation)},
+		{"minimum_city_separation_chebychev"             ,     1, offsetof (struct c3x_config, minimum_city_separation.any_chebyshev)},
+		{"minimum_city_separation_manhatten"             ,     2, offsetof (struct c3x_config, minimum_city_separation.any_manhatten)},
+		{"minimum_foreign_city_separation_chebychev"     ,     1, offsetof (struct c3x_config, minimum_city_separation.foreign_chebyshev)},
+		{"minimum_foreign_city_separation_manhatten"     ,     2, offsetof (struct c3x_config, minimum_city_separation.foreign_manhatten)},
 		{"anarchy_length_percent"                        ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
 		{"ai_multi_city_start"                           ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
 		{"max_tries_to_place_fp_city"                    , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
@@ -12367,7 +12508,7 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 	}
 
 	// If the minimum city separation is increased, then gray out the found city button if we're too close to another city.
-	if ((is->current_config.minimum_city_separation > 1) && (p_main_screen_form->Current_Unit != NULL) && (is->disabled_command_img_state == IS_OK)) {
+	if ((p_main_screen_form->Current_Unit != NULL) && (is->disabled_command_img_state == IS_OK)) {
 		Unit_Body * selected_unit = &p_main_screen_form->Current_Unit->Body;
 
 		// For each unit command button
@@ -12391,7 +12532,7 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 					     * to_replace = "$NUM0",
 					     * replace_location = strstr (label, to_replace);
 					if (replace_location != NULL)
-						snprintf (tooltip, sizeof tooltip, "%.*s%d%s", replace_location - label, label, is->current_config.minimum_city_separation, replace_location + strlen (to_replace));
+						snprintf (tooltip, sizeof tooltip, "%.*s%d%s", replace_location - label, label, is->current_config.minimum_city_separation.any_chebyshev, replace_location + strlen (to_replace));
 					else
 						snprintf (tooltip, sizeof tooltip, "%s", label);
 					tooltip[(sizeof tooltip) - 1] = '\0';
@@ -12800,7 +12941,7 @@ patch_Unit_can_do_worker_command_for_button_setup (Unit * this, int edx, int uni
 	// grayed out button image is initialized now so we don't activate the build city button then find out later we can't gray it out.
 	if ((! base) &&
 	    (unit_command_value == UCV_Build_City) &&
-	    (is->current_config.minimum_city_separation > 1) &&
+		//Shortcut removed here due to manhatten dist addition
 	    (patch_Map_check_city_location (&p_bic_data->Map, __, this->Body.X, this->Body.Y, this->Body.CivID, false) == CLV_CITY_TOO_CLOSE) &&
 	    (init_disabled_command_buttons (), is->disabled_command_img_state == IS_OK))
 		return true;
@@ -15228,6 +15369,49 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 		PopupForm_set_text_key_and_flags (this, __, script_path, text_key, param_3, param_4, param_5, param_6);
 }
 
+bool
+match_target_city (struct map_target_city * target, City * city, int civ_id)
+{
+	if (city == NULL)
+		return false;
+	if (target->flags & 1 != 0 && city->Body.CivID == civ_id)
+		return false;
+	if (target->flags & 2 != 0)
+		return false; //war check not implemented
+	if (target->flags & 4 != 0 && city->Body.Population.Size < target->population_min)
+		return false;
+	if (target->flags & 8 != 0 && city->Body.Population.Size > target->population_max)
+		return false;
+	if (target->flags & 16 != 0)
+		return false; //culture check not implemented
+	if (target->flags & 32 != 0)
+		return false; //culture check not implemented
+	return true;
+}
+bool
+match_target(struct map_target * target, int tile_x, int tile_y, int civ_id)
+{
+	if (target->type == CITY) {
+		City * city = city_at(tile_x, tile_y);
+		return match_target_city((struct map_target_city *)(target + offsetof (struct map_target, map_target_city)), city, civ_id);
+	} else {
+		//Not implemented
+		return false;
+	}
+}
+
+bool
+map_target_separation_rule_active(struct map_target_separation_rule * rule, int civ_id)
+{
+	if (rule == NULL)
+		return false;
+	if (rule->enable_tech != 0 && !Leader_has_tech (&leaders[civ_id], __, rule->enable_tech)
+		return false;
+	if (rule->disable_tech != 0 && Leader_has_tech (&leaders[civ_id], __, rule->disable_tech))
+		return false;
+	return true;
+}
+
 CityLocValidity __fastcall
 patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int civ_id, bool check_for_city_on_tile)
 {
@@ -15242,67 +15426,87 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 		}
 	}
 
-	int min_sep = is->current_config.minimum_city_separation;
 	CityLocValidity base_result = Map_check_city_location (this, __, tile_x, tile_y, civ_id, check_for_city_on_tile);
-
-	// If minimum separation is one, make no change
-	if (min_sep == 1)
+	if (base_result != CLV_OK && base_result != CLV_CITY_TOO_CLOSE)
 		return base_result;
+	
+	struct map_target_separation_rule * city_separation_rules = is->current_config.minimum_city_separation_rules;
+	//init array of bools for requirements check
+	//dislike reallocating each time, but injected_state is a pain and I also don't want to bleed state into the config structs.
+	int * rule_matches = malloc (sizeof(int) * is->current_config.count_minimum_city_separation_rules);
 
-	// If minimum separation is <= 0, ignore the CITY_TOO_CLOSE objection to city placement unless the location is next to a city belonging to
-	// another civ and the settings forbid founding there.
-	else if ((min_sep <= 0) && (base_result == CLV_CITY_TOO_CLOSE)) {
-		if (is->current_config.disallow_founding_next_to_foreign_city)
-			for (int n = 1; n <= 8; n++) {
-				int x, y;
-				get_neighbor_coords (&p_bic_data->Map, tile_x, tile_y, n, &x, &y);
-				City * city = city_at (x, y);
-				if ((city != NULL) && (city->Body.CivID != civ_id))
-					return CLV_CITY_TOO_CLOSE;
-			}
-		return CLV_OK;
+	//init bounding box
+	int min_sep_chebyshev = 0;
+	int min_sep_manhatten = 0;
+	int min_sep_euclidean_percent = 0;
+	for (int i = 0; i < is->current_config.count_minimum_city_separation_rules; i++) {
+		struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(struct map_target_separation_rule);
+		if (!map_target_separation_rule_active(current_rule, civ_id))
+			continue;
+		if (current_rule->distance_metric_flags & 1 != 0 && current_rule->chebyshev > min_sep_chebyshev)
+			min_sep_chebyshev = current_rule->chebyshev;
+		if (current_rule->distance_metric_flags & 2 != 0 && current_rule->manhatten > min_sep_manhatten)
+			min_sep_manhatten = current_rule->manhatten;
+		if (current_rule->distance_metric_flags & 4 != 0 && current_rule->euclidean_percent > min_sep_euclidean_percent)
+			min_sep_euclidean_percent = current_rule->euclidean_percent;
+	}
+	int min_sep_box = min_sep_chebyshev;
+	if (min_sep_manhatten > min_sep_box)
+		min_sep_box = min_sep_manhatten;
+	if ((min_sep_euclidean_percent + 99) / 100 > min_sep_box)
+		min_sep_box = (min_sep_euclidean_percent + 99) / 100;
+	
+	//Otherwise perform calculation ourselves
+	//start calcing dx/dy at 45 degrees / on a virtual grid
+	for (int dx = -min_sep_box; dx <= min_sep_box; dx++) {
+		for (int dy = -min_sep_box; dy <= min_sep_box; dy++) {
+			int absx = int_abs(dx);
+			int absy = int_abs(dy);
+			int chebyshev = absx > absy ? absx : absy;
+			int manhatten = absx + absy;
+			int euclidean_percent_squared = (dx*dx) + (dy*dy) * 10000;
+			//transform to map coords
+			int tx = tile_x + dx-dy;
+			int ty = tile_y + dy+dx;
+			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
 
-	// If we have an increased separation we might have to exclude some locations the base code allows.
-	} else if ((min_sep > 1) && (base_result == CLV_OK)) {
-		// Check tiles around (x, y) for a city. Because the base result is CLV_OK, we don't have to check neighboring tiles, just those at
-		// distance 2, 3, ... up to (an including) the minimum separation
-		for (int dist = 2; dist <= min_sep; dist++) {
-
-			// vertices stores the unwrapped coords of the tiles at the vertices of the square of tiles at distance "dist" around
-			// (tile_x, tile_y). The order of the vertices is north, east, south, west.
-			struct vertex {
-				int x, y;
-			} vertices[4] = {
-				{tile_x         , tile_y - 2*dist},
-				{tile_x + 2*dist, tile_y         },
-				{tile_x         , tile_y + 2*dist},
-				{tile_x - 2*dist, tile_y         }
-			};
-
-			// neighbor index for direction of tiles along edge starting from each vertex
-			// values correspond to directions: southeast, southwest, northwest, northeast
-			int edge_dirs[4] = {3, 5, 7, 1};
-
-			// Loop over verts and check tiles along their associated edges. The N vert is associated with the NE edge, the E vert with
-			// the SE edge, etc.
-			for (int vert = 0; vert < 4; vert++) {
-				wrap_tile_coords (&p_bic_data->Map, &vertices[vert].x, &vertices[vert].y);
-				int  dx, dy;
-				neighbor_index_to_diff (edge_dirs[vert], &dx, &dy);
-				for (int j = 0; j < 2*dist; j++) { // loop over tiles along this edge
-					int cx = vertices[vert].x + j * dx,
-					    cy = vertices[vert].y + j * dy;
-					wrap_tile_coords (&p_bic_data->Map, &cx, &cy);
-					if (city_at (cx, cy))
-						return CLV_CITY_TOO_CLOSE;
+			//Now check each rule (order things this way to not recalculate positions and distances... is this even sensible?)
+			for (int i = 0; i < is->current_config.count_minimum_city_separation_rules; i++) {
+				struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(struct map_target_separation_rule);
+				if (!map_target_separation_rule_active(current_rule, civ_id))
+					continue;
+				//Check tile is within rule's radius
+				if (current_rule->distance_metric_flags & 1 != 0 && current_rule->chebyshev <= chebyshev)
+					continue;
+				if (current_rule->distance_metric_flags & 2 != 0 && current_rule->manhatten <= manhatten)
+					continue;
+				if (current_rule->distance_metric_flags & 4 != 0 && (current_rule->euclidean_percent * current_rule->euclidean_percent) <= euclidean_percent_squared)
+					continue;
+				//Rule applies
+				if(!match_target((struct map_target *)(current_rule + offsetof (struct map_target_separation_rule, target)), tx, ty, civ_id))
+					continue;
+				//Increment rule counter
+				rule_matches[i] += 1;
+				//Check if rule max count is exceeded and exit early
+				if (current_rule->max_count < rule_matches[i]) {
+					free (rule_matches);
+					return CLV_CITY_TOO_CLOSE; //Kinda abusing this name since we now check for other things
 				}
 			}
-
 		}
-		return base_result;
-
-	} else
-		return base_result;
+	}
+	//Check if each rule minimum count is met - no need to check max count, we do that when incrementing
+	for (int i = 0; i < is->current_config.count_minimum_city_separation_rules; i++) {
+		struct map_target_separation_rule * current_rule = city_separation_rules + i * sizeof(struct map_target_separation_rule);
+		if (!map_target_separation_rule_active(current_rule, civ_id))
+			continue;
+		if (rule_matches[i] < current_rule->min_count) {
+			free (rule_matches);
+			return CLV_CITY_TOO_CLOSE; //Kinda abusing this name since we now check for other things
+		}
+	}
+	free (rule_matches);
+	return CLV_OK;
 }
 
 bool
