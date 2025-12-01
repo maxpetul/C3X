@@ -1,3 +1,5 @@
+- Add option allow_unload_from_army
+
 * RELEASE 26 PREVIEW 2
 - Allow city work areas to vary based on their buildings
 - Polish districts

@@ -825,6 +825,9 @@ repl vptr, 0x66A5D0,	0x6876DC,	0x66A5D0,	"Map_Renderer_m52_Draw_Railroads",		"vo
 inlead,	   0x5EB580,	0x5FADD0,	0x5EB4B0,	"Map_impl_generate",				"void (__fastcall *) (Map * this, int edx, int seed, bool is_multiplayer_game, int num_seafaring_civs)"
 inlead,	   0x4E5580,	0x4EDEB0,	0x4E5640,	"Main_Screen_Form_draw_city_hud",		"void (__fastcall *) (Main_Screen_Form * this, int edx, PCX_Image * canvas)"
 inlead,	   0x4BFF80,	0x4C7580,	0x4C0010,	"City_can_build_improvement",			"bool (__fastcall *) (City * this, int edx, int i_improv, bool apply_strict_rules)"
+repl call, 0x5C1C53,	0x5D07F6,	0x5C1963,	"Unit_has_army_ability_to_perform_unload",	""
+inlead,	   0x5C59B0,	0x5D4740,	0x5C56C0,	"Unit_disembark",				"void (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)"
+define,	   0x4A12D0,	0x4A7E80,	0x4A1360,	"Fighter_prefer_first_defender_1",		"bool (__fastcall *) (Fighter * this, int edx, Unit * first, int first_strength, Unit * second, int second_strength, bool param_5)"
 
 ignore,	   0x5FC710,	0x0,		0x0,		"PCX_Image_create_and_init_jgl_image",		"int (__fastcall *) (PCX_Image * this, int edx, int width, int height, int bit_depth, int param_4, int param_5, int param_6)"
 ignore,	   0x5FCC50,	0x0,		0x0,		"PCX_Image_draw_region_to_location",		"void (__fastcall *) (PCX_Image * this, int edx, PCX_Image * canvas, int src_x, int src_y, int dest_x, int dest_y, int width, int height)"

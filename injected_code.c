@@ -10874,10 +10874,11 @@ patch_init_floating_point ()
 		{"cities_with_mutual_district_receive_buildings"       , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
 		{"cities_with_mutual_district_receive_wonders"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
 		{"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
-        {"show_natural_wonder_name_on_map"                     , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
-		{"ai_defends_districts"         		               , false, offsetof (struct c3x_config, ai_defends_districts)},
-		{"enable_city_work_radii_highlights" 				   , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
+		{"show_natural_wonder_name_on_map"                     , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
+		{"ai_defends_districts"                                , false, offsetof (struct c3x_config, ai_defends_districts)},
+		{"enable_city_work_radii_highlights"                   , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
+		{"allow_unload_from_army"                              , false, offsetof (struct c3x_config, allow_unload_from_army)},
 	};
 
 	struct integer_config_option {
@@ -24512,6 +24513,46 @@ patch_Tile_get_road_bonus (Tile * this)
 		}
 	}
 	return Tile_get_road_bonus (this);
+}
+
+bool __fastcall
+patch_Unit_has_army_ability_to_perform_unload (Unit * this, int edx, enum UnitTypeAbilities a)
+{
+	return is->current_config.allow_unload_from_army ? false : Unit_has_ability (this, __, a);
+}
+
+void __fastcall
+patch_Unit_disembark (Unit * this, int edx, int tile_x, int tile_y)
+{
+	Unit * container = get_unit_ptr (this->Body.Container_Unit);
+	bool unloading_from_army = is->current_config.allow_unload_from_army && container != NULL && Unit_has_ability (container, __, UTA_Army);
+
+	// If removing a unit from an army, transfer a proportional amount of damage to the unit removed
+	int damage_transferred = 0;
+	if (unloading_from_army) {
+		int army_damage_percent = container->Body.Damage * 100 / Unit_get_max_hp (container),
+		    max_damage = Unit_get_max_hp (this) - 1 - this->Body.Damage;
+		damage_transferred = clamp (0, max_damage, (army_damage_percent * Unit_get_max_hp (this) + 50) / 100);
+	}
+
+	Unit_disembark (this, __, tile_x, tile_y);
+
+	if (unloading_from_army) {
+		this->Body.Damage = not_above (Unit_get_max_hp (this) - 1, this->Body.Damage + damage_transferred);
+		container->Body.Damage  = not_below (0, container->Body.Damage - damage_transferred);
+
+		if (this->Body.ID == container->Body.army_top_defender_id) {
+			Unit * new_top_defender = NULL;
+			FOR_UNITS_ON (uti, tile_at (container->Body.X, container->Body.Y))
+				if (uti.unit->Body.Container_Unit == container->Body.ID) {
+					if (new_top_defender == NULL)
+						new_top_defender = uti.unit;
+					else if (Fighter_prefer_first_defender_1 (&p_bic_data->fighter, __, uti.unit, Unit_get_defense_strength (uti.unit), new_top_defender, Unit_get_defense_strength (new_top_defender), true))
+						new_top_defender = uti.unit;
+				}
+			container->Body.army_top_defender_id = (new_top_defender != NULL) ? new_top_defender->Body.ID : -1;
+		}
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.
