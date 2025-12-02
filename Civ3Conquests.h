@@ -766,6 +766,12 @@ enum Unit_Command_Values
   UCV_Rename		      = 0x40010000,
 
   UCV_Stack_Bombard = 0x80000001,
+
+  // District Actions
+  UCV_Build_Neighborhood = -10000001,
+  UCV_Build_WonderDistrict = -10000002,
+  UCV_Build_DistributionHub = -10000003,
+  UCV_Build_Aerodrome = -10000004,
 };
 
 enum Unit_Mode_Actions
@@ -1664,11 +1670,11 @@ struct UnitType
   int field_C4;
   int field_C8;
   int field_CC;
-  int b_Not_King;
+  int requires_support;
   int field_D4;
   int field_D8;
   IntList unit_telepads;
-  int field_F4;
+  int enslave_results_in;
   IntList stealth_attack_targets;
   IntList building_telepads;
   int Create_Craters;
@@ -1712,7 +1718,7 @@ struct Tile_vtable
   unsigned char (__fastcall *m24_Check_River)(Tile *);
   int (__fastcall *m25_Check_Roads)(Tile *this, __, int);
   char (__fastcall *m26_Check_Tile_Building)(Tile *);
-  int (__fastcall *m27_Check_Special_Resource)(Tile *);
+  bool (__fastcall *m27_Check_Shield_Bonus)(Tile *); // Whether the tile would be bonus grassland if it were grassland (it may or may not be)
   bool (__fastcall *m28_is_revealed_by_scenario_setting)(Tile *);
   int (__fastcall *m29_Check_Mountain_Snowcap)(Tile *);
   int (__fastcall *m30_Check_is_LM)(Tile *);
@@ -2069,7 +2075,7 @@ struct Map_vtable
   int m14;
   int m15_null;
   int m16;
-  int m17;
+  bool (__fastcall * can_spawn_resource_at) (Map * this, __, int x, int y, int res_type_id, bool double_min_cont_size);
   bool (__fastcall * check_goody_hut_location) (Map *, __, int, int);
   byte (__fastcall * m19_Create_Tiles)(Map * this, __, Tile ** out_array);
   int m20;
@@ -4646,7 +4652,7 @@ struct Tile_Type
 {
   int V0;
   int field_4;
-  int Ptr1;
+  unsigned char * resource_bits; // One bit per resource, tracks possibility of appearance
   String32 Name;
   String32 Civilopedia_Entry;
   int IrrigationBonus;
@@ -4654,7 +4660,7 @@ struct Tile_Type
   int RoadsBonus;
   int DefenceBonus;
   int MoveCost;
-  int field_60;
+  int resource_bit_count; // Length of resource_bits array, in number of bits
   int FoodBase;
   int ProductionBase;
   int TradeBase;
@@ -4997,7 +5003,11 @@ struct Unit_Body
   int path_len;
   int escortee;
   int Auto_CityID;
-  int field_1B0[5];
+  int field_1B0;
+  int army_top_defender_id;
+  int army_member_count;
+  int field_1BC;
+  int field_1C0;
   int auto_bombard_target_x;
   int auto_bombard_target_y;
   int field_1CC;
@@ -5545,7 +5555,14 @@ struct Espionage_Form
   Scroll_Bar Scroll_Bar;
   int field_294C[1311];
   int field_3DC8[174];
-  int field_4080[8];
+  int mouse_over_control;
+  int selected_civ_list_index;
+  int selected_city_id;
+  EspionageMission selected_mission;
+  int selected_operational_cost; // 0 = imm., 1 = carefully, 2 = safely
+  int selected_spy_else_diplo;
+  int field_4098;
+  int selected_civ_id;
   int field_40A0;
   int Last;
 };

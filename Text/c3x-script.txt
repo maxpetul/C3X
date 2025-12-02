@@ -105,6 +105,11 @@ Our treasury is depleted! Some of our cities can no longer afford production, an
 #text
 Razing cities is prohibited by the rules of this scenario.
 
+#C3X_CANT_PILLAGE
+#caption Can't do that, chief!
+#text
+Pillaging Districts is prohibited by the rules of this scenario.
+
 #C3X_LIMITED_UNIT_CHANGE
 #map_center 0
 #advisor Military
@@ -129,11 +134,63 @@ $CITY0 can no longer work on $IMPROVEMENT1 because we are already receiving its 
 Zoom to City.
 Sounds Good.
 
+#C3X_DISTRICT_WONDER_DESTROYED
+#advisor Domestic Surprised
+#text
+It seems $IMPROVEMENT0 has been destroyed and is gone forever! What a terrible loss.
+
+#C3X_DISTRICT_WONDER_DESTROYED_REBUILD
+#advisor Domestic
+#text
+It seems $IMPROVEMENT0 has been destroyed! Maybe we should rebuild it...
+
 #C3X_CONFIRM_DEBUG_ACTIVATION
 Activate debug mode?
 #itemlist
 Yes
 No
 #active 1
+
+#C3X_CONFIRM_CANCEL_BUILD_DISTRICT
+#advisor Domestic
+This worker has been ordered to build a $DISTRICT0 and will be done in $NUM1 turns. Do you want them to stop?
+#itemlist
+Yes. There is more important work to do.
+No. Carry on.
+
+#C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT
+#advisor Domestic Angry
+A $DISTRICT0 already exists here. Removing it will destroy buildings dependent on it. Are you sure you want to proceed?
+#itemlist
+Yes. There are better uses for this area.
+No, nevermind.
+
+#C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT_SAFE
+#advisor Domestic
+A $DISTRICT0 exists here, but either it has no dependent buildings or another $DISTRICT1 is nearby, so no buildings will be lost. Do you want to proceed?
+#itemlist
+Yes. There are better uses for this area.
+No, nevermind.
+
+#C3X_CONFIRM_BUILD_DISTRICT_OVER_IMPROVEMENT
+#advisor Domestic
+An improvement already exists here. Are you sure you want to remove it and build a $DISTRICT0?
+#itemlist
+Yes. There are better uses for this area.
+No, nevermind.
+
+#C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT
+#advisor Domestic Angry
+A $DISTRICT0 exists here with dependent buildings. Are you sure you want to proceed? Doing so will remove any dependent buildings.
+#itemlist
+Yes. There are better uses for this area.
+No, nevermind.
+
+#C3X_CONFIRM_BUILD_IMPROVEMENT_OVER_DISTRICT_SAFE
+#advisor Domestic
+A $DISTRICT0 exists here, but either it has no dependent buildings or another $DISTRICT1 is nearby, so no buildings will be lost. Do you want to proceed?
+#itemlist
+Yes. There are better uses for this area.
+No, nevermind.
 
 # ; This line must remain at end of file

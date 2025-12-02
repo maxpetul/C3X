@@ -1,15 +1,20 @@
+#!/usr/bin/env bash
+
 set -euo pipefail
 
 ### === CONFIG ===
 # Assumed to be run from DayNight/ directory
 
+DAYNIGHT_ANNOTATION_DIR="../Art/DayNight/Annotations"
+DAYNIGHT_DATA_DIR="../Art/DayNight"
+DISTRICT_ANNOTATION_DIR="../Art/Districts/Annotations"
+DISTRICT_DATA_DIR="../Art/Districts"
+
 ANNOTATION_DIR="../Art/DayNight/Annotations"
 DATA_DIR="../Art/DayNight"
-NOON_SUBFOLDER="1200"
-ONLY_HOUR=""       # set empty "" to process all hours
 
-# Copy and overwrite all light annotation files to 1200
-cp "$ANNOTATION_DIR"/* "$DATA_DIR/$NOON_SUBFOLDER"
+NOON_SUBFOLDER="1200"
+ONLY_HOUR="2400"       # set empty "" to process all hours
 
 # ---- Day/Night settings ----
 WARMTH=1.7            # Scale for sunrise/sunset warmth (1.0 = base)
@@ -107,45 +112,96 @@ for c in "${LIGHT_KEYS[@]}"; do LK_ARGS+=( --light-key "$c" ); done
 STYLE_ARGS=()
 for s in "${LIGHT_STYLES[@]}"; do STYLE_ARGS+=( --light-style "$s" ); done
 
-DN_ARGS=(
-  --data "$DATA_DIR"
-  --noon "$NOON_SUBFOLDER"
-  --warmth "$WARMTH"
-  --blue "$BLUE"
-  --darkness "$DARKNESS"
-  --desat "$DESAT"
-  --sat "$SAT"
-  --contrast "$CONTRAST"
-  --sunrise-center "$SUNRISE_CENTER"
-  --sunset-center "$SUNSET_CENTER"
-  --twilight-width "$TWILIGHT_WIDTH"
-  --noon-blend "$NOON_BLEND"
-  --noon-sigma "$NOON_SIGMA"
-  "${LK_ARGS[@]}"
-)
+process_art_set() {
+  local data_dir="$1"
+  local annotation_dir="$2"
 
-CL_ARGS=(
-  --data "$DATA_DIR" --noon "$NOON_SUBFOLDER"
-  "${LK_ARGS[@]}" "${STYLE_ARGS[@]}"
-  --core-color "$CORE_COLOR" --glow-color "$GLOW_COLOR"
-  --core-radius "$CORE_RADIUS" --halo-radius "$HALO_RADIUS"
-  --core-gain "$CORE_GAIN" --halo-gain "$HALO_GAIN"
-  --highlight-gain "$HIGHLIGHT_GAIN"
-  --size-boost "$SIZE_BOOST" --size-radius "$SIZE_RADIUS" --size-gamma "$SIZE_GAMMA"
-  --clip-interior "$CLIP_INTERIOR" --clip-erode "$CLIP_ERODE"
-  --halo-sep "$HALO_SEP" --halo-gamma "$HALO_GAMMA"
-  --blend-mode "$BLEND_MODE"
-)
+  if [[ ! -d "$data_dir" ]]; then
+    echo "Skipping missing data directory: $data_dir" >&2
+    return
+  fi
+  if [[ ! -d "$annotation_dir" ]]; then
+    echo "Skipping missing annotation directory: $annotation_dir" >&2
+    return
+  fi
 
-PP_ARGS=(
-  --data "$DATA_DIR"
-  --noon "$NOON_SUBFOLDER"
-  --verbose
-)
+  echo "Processing art set in $data_dir"
 
-if [[ -n "${ONLY_HOUR}" ]]; then DN_ARGS+=( --only-hour "$ONLY_HOUR" ); CL_ARGS+=( --only-hour "$ONLY_HOUR" ); PP_ARGS+=( --only-hour "$ONLY_HOUR" ); fi
+  mkdir -p "$data_dir/$NOON_SUBFOLDER"
+  shopt -s nullglob
+  local -a annotation_files=("$annotation_dir"/*)
+  shopt -u nullglob
+  if (( ${#annotation_files[@]} == 0 )); then
+    echo "No annotation files found in $annotation_dir" >&2
+  else
+    cp "${annotation_files[@]}" "$data_dir/$NOON_SUBFOLDER"
+  fi
 
+  local -a dn_args=(
+    --data "$data_dir"
+    --noon "$NOON_SUBFOLDER"
+    --warmth "$WARMTH"
+    --blue "$BLUE"
+    --darkness "$DARKNESS"
+    --desat "$DESAT"
+    --sat "$SAT"
+    --contrast "$CONTRAST"
+    --sunrise-center "$SUNRISE_CENTER"
+    --sunset-center "$SUNSET_CENTER"
+    --twilight-width "$TWILIGHT_WIDTH"
+    --noon-blend "$NOON_BLEND"
+    --noon-sigma "$NOON_SIGMA"
+    "${LK_ARGS[@]}"
+  )
 
-python civ3_day_night.py "${DN_ARGS[@]}"
-python civ3_city_lights.py "${CL_ARGS[@]}"
-python civ3_postprocess_pixels.py "${PP_ARGS[@]}"
+  local -a cl_args=(
+    --data "$data_dir" --noon "$NOON_SUBFOLDER"
+    "${LK_ARGS[@]}" "${STYLE_ARGS[@]}"
+    --core-color "$CORE_COLOR" --glow-color "$GLOW_COLOR"
+    --core-radius "$CORE_RADIUS" --halo-radius "$HALO_RADIUS"
+    --core-gain "$CORE_GAIN" --halo-gain "$HALO_GAIN"
+    --highlight-gain "$HIGHLIGHT_GAIN"
+    --size-boost "$SIZE_BOOST" --size-radius "$SIZE_RADIUS" --size-gamma "$SIZE_GAMMA"
+    --clip-interior "$CLIP_INTERIOR" --clip-erode "$CLIP_ERODE"
+    --halo-sep "$HALO_SEP" --halo-gamma "$HALO_GAMMA"
+    --blend-mode "$BLEND_MODE"
+  )
+
+  local -a pp_args=(
+    --data "$data_dir"
+    --noon "$NOON_SUBFOLDER"
+    --verbose
+  )
+
+  if [[ -n "${ONLY_HOUR}" ]]; then
+    dn_args+=( --only-hour "$ONLY_HOUR" )
+    cl_args+=( --only-hour "$ONLY_HOUR" )
+    pp_args+=( --only-hour "$ONLY_HOUR" )
+  fi
+
+  python civ3_day_night.py "${dn_args[@]}"
+  python civ3_city_lights.py "${cl_args[@]}"
+  python civ3_postprocess_pixels.py "${pp_args[@]}"
+
+  ### === CLEANUP: remove *_lights.pcx from hour subfolders (excluding annotation dir) ===
+  # If ONLY_HOUR is set, restrict cleanup to that single folder & noon folder; otherwise clean all 4-digit hour folders.
+  if [[ -n "${ONLY_HOUR}" ]]; then
+    # Only the specified hour
+    if [[ -d "$data_dir/$ONLY_HOUR" ]]; then
+      rm -f "$data_dir/$ONLY_HOUR"/*_lights.pcx || true
+    fi
+    # Also clean the noon folder
+    if [[ -d "$data_dir/$NOON_SUBFOLDER" ]]; then
+      rm -f "$data_dir/$NOON_SUBFOLDER"/*_lights.pcx || true
+    fi
+  else
+    # All hour-named subfolders under data_dir (e.g., 0000, 0100, ..., 2400)
+    # Do not touch the external $annotation_dir.
+    while IFS= read -r -d '' hour_dir; do
+      rm -f "${hour_dir}"/*_lights.pcx || true
+    done < <(find "$data_dir" -mindepth 1 -maxdepth 1 -type d -regex '.*/[0-9]{4}$' -print0)
+  fi
+}
+
+process_art_set "$DAYNIGHT_DATA_DIR" "$DAYNIGHT_ANNOTATION_DIR"
+process_art_set "$DISTRICT_DATA_DIR" "$DISTRICT_ANNOTATION_DIR"

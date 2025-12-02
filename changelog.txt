@@ -1,8 +1,46 @@
-* RELEASE 25 PREVIEW 1
-- Increase city limit to 2048
-  - Setting named lift_city_limit, included in new "Limits Removed" section with other limit increases/removals
+- Add some options to make land transports viable, controlled by land_transport_rules setting
+  - LTs may be loaded into naval transports
+  - Empty LTs may join armies
+  - Units inside an LT may be prevented from defending their tile, performing defensive bombard, or intercepting air units
+  - Units inside an LT can be destroyed when the LT itself is destroyed or captured
+- Add resource generation settings
+  - allow_adjacent_resources_of_different_types relaxes a rule preventing resources from appearing next to others of a different type
+  - luxury_randomized_appearance_rate_percent controls the overall appearance rate for luxuries that do not have a fixed rate set
+  - tiles_per_non_luxury_resource controls tne overall appearance rate of bonus resources
+- Add option allow_unload_from_army
+- Option to prevent land anti-air units from intercepting overflying aircraft while they're loaded in a naval transport
+  - Named no_land_anti_air_from_inside_naval_transport
+- Option to prevent units from being enslaved after being destroyed by lethal bombard named prevent_enslaving_by_bombardment
+
+* RELEASE 26 PREVIEW 2
+- Allow city work areas to vary based on their buildings
+- Polish districts
+  - Ensure user & scenario district settings override the base settings
+  - Pre-placed district coordinates file renamed to scenario.districts.txt for consistency
+  - Add districts config name check on game load to show warning if IDs or names are different
+  - Show buildings grayed out in production selection when their tech prereq is met but district prereq is not
+  - Fix worker automate button crashing the game
+  - Ensure AI can't build on natural wonders
+  - Ensure natural wonders can't be placed on starting positions
+  - Add support for natural wonder placement in swamp, hills
+  - Ensure natural wonders can be used while districts are disabled
+  - Simplify distro hub logic and ensure surrounding tiles are always unworkable, even after conquest
+  - Prevent AI placing distro hubs next to cities
+  - Lengthen right-click menu item string for longer district names
+  - Ensure scenario config files must be in scenario folder
+  - Prevent districts from being built on volcanos
+  - Ensure neighborhood needed message only shown if population is growing
+
+* RELEASE 26 PREVIEW 1
+- Enable districts, an elaborate change to the game's economy inspired by Civ 6.
+  - For details, see the default config or this thread: https://forums.civfanatics.com/threads/c3x-districts.700590/
+
+* RELEASE 25
+- Lift city limit and allow it to be configured up to 2048
+  - Setting named city_limit, included in new "Limits Removed" section with other limit increases/removals
 - Enable tile graphics to cycle over day and night, see "Day/Night Cycle" section of default config for details
 - Allow Civilopedia descriptions for units, civilizations, and game concepts to span multiple pages
+  - Controlled by config option allow_multipage_civilopedia_descriptions
 - Can adjust time to double building culture, setting named years_to_double_building_culture
 - Option to prevent units from upgrading past an intermediate type that does not have the upgrade ability
   - Setting named prevent_old_units_from_upgrading_past_ability_block
@@ -15,11 +53,17 @@
 - Option to switch debug mode on or off for games in progress
   - Setting named enable_debug_mode_switch, off by default, see config for how to use in-game
 - Fix AI players being able to sacrifice units that don't have the sacrifice special ability set on their type
+- Fix AI players being able to build armies with leader units that don't have the "build army" special ability set on their type
 - Option to tint coast and sea tiles on minimap based on cultural borders
   - Setting named show_territory_colors_on_water_tiles_in_minimap, off by default
 - Do not charge maintenance for buildings provided for free by shared wonder effects
+- Extend promote_forbidden_palace_decorruption to cover great wonders as well and rename it to promote_wonder_decorruption_effect
 - Option to draw small shadows underneath city dots on the minimap to make them more visible
   - Setting named accentuate_cities_on_minimap, off by default because it doesn't quite work properly
+- Fix inability to trade units beyond the first 8192
+- Fix support-free units being disbanded on bankruptcy while aggressively_penalize_bankruptcy is set
+- Fix possible crash in base game leader unit AI
+- Group non-combat artillery and flak units of different experience levels together on right-click menu
 
 * RELEASE 24
 - Option to share wonders among human players in hotseat mode, setting named share_wonders_in_hotseat
