@@ -251,6 +251,8 @@ typedef struct Tile_Info_Form Tile_Info_Form;
 typedef struct Main_GUI Main_GUI;
 typedef struct Advisor_Culture_Form Advisor_Culture_Form;
 typedef struct Advisor_Foreign_Form Advisor_Foreign_Form;
+typedef struct UnitIDItem UnitIDItem;
+typedef struct UnitIDList UnitIDList;
 typedef struct Main_Screen_Form Main_Screen_Form;
 typedef struct Governor_Form Governor_Form;
 typedef struct File_Dialog_Form File_Dialog_Form;
@@ -1461,10 +1463,12 @@ typedef enum map_rcm_item {
 
 typedef enum unit_status_flags
 {
-	USF_USED_ATTACK = 0x4, // the unit has attacked at least once this turn
-	USF_USED_DEFENSIVE_BOMBARD = 0x40, // the unit has performed def. bombard already this turn
-	USF_SENTRY = 0x80,
-	USF_SENTRY_ENEMY_ONLY = 0x100,
+	USF_SKIPPED_FULL_TURN_WITH_DAMAGE = 0x1,
+	USF_USED_ATTACK                   = 0x4, // the unit has attacked at least once this turn
+	USF_PERFORMED_AIR_RECON           = 0x8,
+	USF_USED_DEFENSIVE_BOMBARD        = 0x40, // the unit has performed def. bombard already this turn
+	USF_SENTRY                        = 0x80,
+	USF_SENTRY_ENEMY_ONLY             = 0x100,
 } UnitStatusFlags;
 
 typedef enum advisor_kind
@@ -1481,17 +1485,48 @@ typedef enum advisor_kind
 
 typedef enum leader_status_flags
 {
-	LSF_HAS_VICTORIOUS_ARMY  = 0x1,
-	LSF_0x2                  = 0x2,   // \ 
-	LSF_0x4                  = 0x4,   // |
-	LSF_0x8                  = 0x8,   // |
-	LSF_0x10                 = 0x10,  // |-- Mostly (all?) about what popups have been shown
-	LSF_0x20                 = 0x20,  // |
-	LSF_0x40                 = 0x40,  // |
-	LSF_0x80                 = 0x80,  // /
-	LSF_HAS_ELITE_NAVAL_UNIT = 0x100,
-	LSF_SHOWN_PLAGUE_POPUP   = 0x200
+	LSF_HAS_VICTORIOUS_ARMY   = 0x1,
+	LSF_0x2                   = 0x2,
+	LSF_CAN_FOUND_MORE_CITIES = 0x4,
+	LSF_0x8                   = 0x8,   // \ 
+	LSF_0x10                  = 0x10,  // |
+	LSF_0x20                  = 0x20,  // |-- Mostly (all?) about what popups have been shown
+	LSF_0x40                  = 0x40,  // |
+	LSF_0x80                  = 0x80,  // /
+	LSF_HAS_ELITE_NAVAL_UNIT  = 0x100,
+	LSF_SHOWN_PLAGUE_POPUP    = 0x200
 } LeaderStatusFlags;
+
+typedef enum civilopedia_article_kind
+{
+	CAK_GAME_CONCEPT            = 0x0,
+	CAK_0x1                     = 0x1,
+	CAK_0x2                     = 0x2,
+	CAK_RESOURCE                = 0x3,
+	CAK_GOVERNMENT              = 0x4,
+	CAK_CITY_IMPROVEMENT        = 0x5,
+	CAK_CIVILIZATION_ADVANCE    = 0x6,
+	CAK_WORKER_ACTION           = 0x7,
+	CAK_TERRAIN                 = 0x8,
+	CAK_UNIT                    = 0x9,
+	CAK_GREAT_WONDER            = 0xA,
+	CAK_SMALL_WONDER            = 0xB,
+	CAK_TRIBE                   = 0xC,
+	CAK_LIST_WITHIN_CATEGORY    = 0xD,
+	CAK_LIST_WITHIN_SUBCATEGORY = 0xE,
+	CAK_MAIN_LIST               = 0xF,
+} CivilopediaArticleKind;
+
+typedef enum civilopedia_control_id
+{
+	CCID_CLOSE_BTN       = 0,
+	CCID_RIGHT_BTN       = 1,
+	CCID_LEFT_BTN        = 2,
+	CCID_UP_BTN          = 3,
+	CCID_NEXT_BTN        = 4,
+	CCID_PREV_BTN        = 5,
+	CCID_DESCRIPTION_BTN = 6
+} CivilopediaControlID;
 
 struct IntList
 {
@@ -2018,7 +2053,7 @@ struct Map_vtable
   void *m00_Create_Tiles;
 //  int (__thiscall *m01_Create_WH_Tiles)(Map *);
   void *m01_Create_WH_Tiles;
-  int m02;
+  int (__fastcall * m02_eval_city_location) (Map * this, __, int x, int y);
   void (__fastcall * push_loading_bar) (Map * this);
 //  void (__thiscall *m04_Clear_Tiles)(Map *);
   void *m04_Clear_Tiles;
@@ -2560,14 +2595,15 @@ struct Civilopedia_Article
   String64 Civilopedia_Entry;
   String64 PCX_Small;
   String64 PCX_Large;
-  int b_Show_Description;
+  bool show_description; // Also used to show "more" on articles with no descriptions
+  byte field_105[3];
   int field_108;
-  int Article_Type;
+  CivilopediaArticleKind article_kind;
   int IconID;
-  int field_114;
-  int field_118;
-  int field_11C;
-  int field_120;
+  char ** more_text_lines;
+  int more_text_line_count;
+  char ** text_lines;
+  int text_line_count;
   int field_124;
   int field_128;
   UnitType * unit_type;
@@ -3660,8 +3696,7 @@ struct JGL_Image_vtable
 //  char *(__thiscall *m05_m07_Get_Pixel)(JGL_Image *this, int X, int Y);
   void *m05_m07_Get_Pixel;
   int m06;
-//  char *(__thiscall *m07_m05_Get_Pixel)(JGL_Image *this, int X, int Y);
-  void *m07_m05_Get_Pixel;
+  unsigned short * (__fastcall * m07_m05_Get_Pixel) (JGL_Image * this, int edx, int x, int y);
   int m08_Get_Bits_Data;
   int m09;
   HDC (__fastcall * acquire_dc) (JGL_Image * this);
@@ -4204,7 +4239,7 @@ struct Leader
   int RaceID;
   int field_24[2];
   int CapitalID;
-  int field_30;
+  int player_difficulty;
   int field_34;
   int field_38;
   int Golden_Age_End;
@@ -4639,7 +4674,7 @@ struct Tile_Type
   String32 LM_Name;
   String32 LM_Entry;
   int field_E8;
-  int field_EC;
+  int disease_strength;
 };
 
 struct PCX_Image
@@ -5447,9 +5482,9 @@ struct Civilopedia_Form
   Button Up_Btn;
   Button Right_Btn;
   Button Left_Btn;
-  Button Next_Btn;
-  Button Prev_Btn;
-  Button Description_Btn;
+  Button Next_Btn; // Arrow pointing right at top of form
+  Button Prev_Btn; // Arrow pointing left at top of form
+  Button Description_Btn; // Also the more/prev button for articles that don't have descriptions like for RACE
   int History;
   char gap_662C[696];
   int field_68E4;
@@ -6072,6 +6107,22 @@ struct Advisor_Foreign_Form
   int Selected_Details_Civ;
 };
 
+struct UnitIDItem
+{
+  void * vtable; // = 0x666B34
+  int id;
+  UnitIDItem * next;
+  UnitIDItem * prev;
+};
+
+struct UnitIDList
+{
+  void * vtable; // = 0x666B2C
+  int length;
+  UnitIDItem * first;
+  UnitIDItem * last;
+};
+
 struct Main_Screen_Form
 {
   Base_Form_vtable *vtable;
@@ -6085,7 +6136,7 @@ struct Main_Screen_Form
   int field_4D80;
   int field_4D84;
   Timer timer_1;
-  int field_4DB8;
+  int scroll_speed;
   int Player_CivID;
   int field_4DC0[25];
   Timer timer_2;
@@ -6112,7 +6163,9 @@ struct Main_Screen_Form
   Base_Form Units_Control;
   int field_544C;
   Main_GUI GUI;
-  int field_2E14C[6];
+  int field_2E14C;
+  UnitIDList selectable_units;
+  int field_2E160;
   Timer ambient_sound_timer;
   int field_2E194;
   char turn_end_flag;
@@ -6222,7 +6275,9 @@ struct PopupFormVTable
 	PopupForm * (__fastcall * destruct) (PopupForm *, __, byte);
 	void * unk0[91];
 	void (__fastcall * set_text_key_and_flags) (PopupForm *, __, char *, char *, int, int, int, int);
-	void * unk1[14];
+	void * unk1[10];
+	int (__fastcall * begin_showing_popup) (PopupForm *);
+	void * unk2[3];
 };
 
 // Note: This is the type of the statically allocated global Popup thing that you get if you call get_popup_form. I don't think
@@ -6230,14 +6285,25 @@ struct PopupFormVTable
 // GUI_Form_1. Also, PopupForm inherits from GUI_Form_1, that's why the first fields are the same.
 struct PopupForm
 {
-	PopupFormVTable * vtable;
+	PopupFormVTable * vtable; // = 0x666408
 	Base_Form_Data base_data;
-	int unk0[26];
+	int field_574;
+	int field_578;
+	char * script_path;
+	char * text_key;
+	int field_584;
+	int field_588;
+	int field_58C;
+	int field_590;
+	int field_594[11];
+	int field_5C0[7];
 	Button ok_button;
 	Button cancel_button;
-	int unk1[57];
+	int field_1384[9];
+	Sprite field_13A8;
+	int field_13D4[37];
 	PopupSelection selection;
-	int unk2[338];
+	int field_1BF0[338];
 };
 
 struct TradableItem

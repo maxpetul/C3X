@@ -16,8 +16,8 @@ typedef unsigned char byte;
 #define __fastcall __attribute__((fastcall))
 #include "Civ3Conquests.h"
 
-#define MOD_VERSION 2400
-#define MOD_PREVIEW_VERSION 0
+#define MOD_VERSION 2500
+#define MOD_PREVIEW_VERSION 1
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -86,6 +86,12 @@ enum line_drawing_override {
 	LDO_ALWAYS
 };
 
+enum minimap_doubling_mode {
+	MDM_NEVER = 0,
+	MDM_HIGH_DEF,
+	MDM_ALWAYS
+};
+
 enum special_defensive_bombard_rules {
 	SDBR_LETHAL         =  1,
 	SDBR_NOT_INVISIBLE  =  2,
@@ -105,6 +111,14 @@ enum work_area_limit {
 	WAL_CULTURAL,
 	WAL_CULTURAL_MIN_2,
 	WAL_CULTURAL_OR_ADJACENT
+};
+
+enum day_night_cycle_mode {
+	DNCM_OFF = 0,
+	DNCM_TIMER,
+	DNCM_USER_TIME,
+	DNCM_EVERY_TURN,
+	DNCM_SPECIFIED
 };
 
 enum perfume_kind {
@@ -204,6 +218,11 @@ struct c3x_config {
 	bool warn_when_chosen_building_would_replace_another;
 	bool do_not_unassign_workers_from_polluted_tiles;
 	bool do_not_make_capital_cities_appear_larger;
+	bool show_territory_colors_on_water_tiles_in_minimap;
+	bool convert_some_popups_into_online_mp_messages;
+	bool enable_debug_mode_switch;
+	bool accentuate_cities_on_minimap;
+	enum minimap_doubling_mode double_minimap_size;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
@@ -234,6 +253,10 @@ struct c3x_config {
 	enum work_area_limit work_area_limit;
 	int rebase_range_multiplier;
 	bool limit_unit_loading_to_one_transport_per_turn;
+	bool prevent_old_units_from_upgrading_past_ability_block;
+	bool introduce_all_human_players_at_start_of_hotseat_game;
+	int years_to_double_building_culture;
+	int tourism_time_scale_percent;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
@@ -253,9 +276,9 @@ struct c3x_config {
 
 	bool remove_unit_limit;
 	bool remove_city_improvement_limit;
-	bool remove_era_limit;
+	bool lift_city_limit;
 	bool remove_cap_on_turn_limit;
-	bool move_trade_net_object;
+	bool remove_era_limit;
 
 	bool patch_submarine_bug;
 	bool patch_science_age_bug;
@@ -273,9 +296,15 @@ struct c3x_config {
 	bool fix_overlapping_specialist_yield_icons;
 	bool patch_premature_truncation_of_found_paths;
 	bool patch_zero_production_crash;
+	bool patch_ai_can_sacrifice_without_special_ability;
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
+
+	int day_night_cycle_mode;
+	int elapsed_minutes_per_day_night_hour_transition;
+	int fixed_hours_per_turn_for_day_night_cycle;
+	int pinned_hour_for_day_night_cycle;
 };
 
 enum stackable_command {
@@ -458,6 +487,8 @@ struct injected_state {
 	enum init_state unit_rcm_icon_state;
 	enum init_state red_food_icon_state;
 	enum init_state tile_already_worked_zoomed_out_sprite_init_state;
+	enum init_state day_night_cycle_img_state;
+	enum init_state large_minimap_frame_img_state;
 
 	// ==========
 	// } These fields are valid at any time after patch_init_floating_point runs (which is at the program launch). {
@@ -547,9 +578,10 @@ struct injected_state {
 	Unit * sb_next_up; // The unit currently doing a stack bombard or NULL otherwise. Gets set to NULL if the unit is despawned.
 
 	Trade_Net * trade_net; // Pointer to the trade net object. If it hasn't been moved by the mod, this equals p_original_trade_net.
+	int city_limit;
 
-	enum init_state trade_net_refs_load_state;
-	int * trade_net_refs;
+	enum init_state trade_net_addrs_load_state;
+	int * trade_net_addrs;
 
 	HMODULE trade_net_x;
 	void (__stdcall * set_exe_version) (int);
@@ -604,7 +636,7 @@ struct injected_state {
 	int have_job_and_loc_to_skip; // 0 or 1 if the variable below has anything actionable in it. Gets cleared to 0 after every turn.
 	struct worker_job_and_location to_skip;
 
-	struct table nopified_areas;
+	struct table saved_code_areas;
 
 	int * unit_menu_duplicates; // NULL initialized, allocated to an array of 0x100 ints when needed
 
@@ -746,6 +778,12 @@ struct injected_state {
 	// ==========
 
 	Sprite red_food_icon;
+
+	// ==========
+	// } These are valid only if init_large_minimap_frame has been called and large_minimap_frame_img_state equals IS_OK {
+	// ==========
+
+	Sprite double_size_box_left_color_pcx, double_size_box_left_alpha_pcx;
 
 	// ==========
 	// } These fields are temporary/situational {
@@ -1005,6 +1043,98 @@ struct injected_state {
 
 	// Used to de-overlap specialist yield icons (option name fix_overlapping_specialist_yield_icons)
 	int specialist_icon_drawing_running_x;
+
+	// Initialized to 0, used to draw multipage descriptions in the Civilopedia
+	struct civilopedia_multipage_description {
+		bool drawing_lines;
+		int line_count;
+		int shown_page; // zero-based
+		int last_page; // also zero-based
+		Civilopedia_Article * article;
+		Button * effects_btn;
+		Button * previous_btn;
+	} cmpd;
+
+	// Day-Night cycle data
+	int current_day_night_cycle;
+	bool day_night_cycle_unstarted; // If current_day_night_cycle has not been set, f.e. because it's the first turn of a new game.
+	bool day_night_cycle_img_proxies_indexed;
+	LARGE_INTEGER last_day_night_cycle_update_time;
+
+	struct table day_night_sprite_proxy_by_hour[24];
+
+	struct day_night_cycle_img_set
+	{
+		SpriteList Std_Terrain_Images[9];
+		SpriteList LM_Terrain_Images[9];
+		Sprite City_Images[80];
+		Sprite Destroyed_City_Images[3];
+		Sprite Resources[36];
+		Sprite ResourcesShadows[36];
+		Sprite Terrain_Buldings_Barbarian_Camp;
+		Sprite Terrain_Buldings_Mines;
+		Sprite Victory_Image;
+		Sprite Flood_Plains_Images[16];
+		Sprite Fog_Of_War_Images[81];
+		Sprite Polar_Icecaps_Images[32];
+		Sprite Railroads_Images[272];
+		Sprite Roads_Images[256];
+		Sprite Terrain_Buldings_Airfields[2];
+		Sprite Terrain_Buldings_Airfields_Shadow[2];
+		Sprite Terrain_Buldings_Camp[4];
+		Sprite Terrain_Buldings_Fortress[4];
+		Sprite Terrain_Buldings_Barricade[4];
+		Sprite Goody_Huts_Images[8];
+		Sprite Terrain_Buldings_Outposts[3];
+		Sprite Terrain_Buldings_Outposts_Shadow[3];
+		Sprite Pollution[25];
+		Sprite Craters[25];
+		Sprite Terrain_Buldings_Radar;
+		Sprite Terrain_Buldings_Radar_Shadow;
+		Sprite Tnt_Images[18];
+		Sprite Waterfalls_Images[4];
+		Sprite LM_Terrain[7];
+		Sprite Marsh_Large[8];
+		Sprite Marsh_Small[10];
+		Sprite Volcanos_Images[16];
+		Sprite Volcanos_Forests_Images[16];
+		Sprite Volcanos_Jungles_Images[16];
+		Sprite Volcanos_Snow_Images[16];
+		Sprite Grassland_Forests_Large[8];
+		Sprite Plains_Forests_Large[8];
+		Sprite Tundra_Forests_Large[8];
+		Sprite Grassland_Forests_Small[10];
+		Sprite Plains_Forests_Small[10];
+		Sprite Tundra_Forests_Small[10];
+		Sprite Grassland_Forests_Pines[12];
+		Sprite Plains_Forests_Pines[12];
+		Sprite Tundra_Forests_Pines[12];
+		Sprite Irrigation_Desert_Images[16];
+		Sprite Irrigation_Plains_Images[16];
+		Sprite Irrigation_Images[16];
+		Sprite Irrigation_Tundra_Images[16];
+		Sprite Grassland_Jungles_Large[8];
+		Sprite Grassland_Jungles_Small[12];
+		Sprite Mountains_Images[16];
+		Sprite Mountains_Forests_Images[16];
+		Sprite Mountains_Jungles_Images[16];
+		Sprite Mountains_Snow_Images[16];
+		Sprite Hills_Images[16];
+		Sprite Hills_Forests_Images[16];
+		Sprite Hills_Jungle_Images[16];
+		Sprite Delta_Rivers_Images[16];
+		Sprite Mountain_Rivers_Images[16];
+		Sprite Territory_Images[8];
+		Sprite LM_Mountains_Images[16];
+		Sprite LM_Forests_Large_Images[8];
+		Sprite LM_Forests_Small_Images[10];
+		Sprite LM_Forests_Pines_Images[12];
+		Sprite LM_Hills_Images[16];
+	} day_night_cycle_imgs[24];
+  
+	// Initialized to 0. Every time Main_Screen_Form::m82_handle_key_event receives an event with is_down == 0, the virtual key code is prepended
+	// to this list.
+	int last_main_screen_key_up_events[5];
 
 	// ==========
 	// }

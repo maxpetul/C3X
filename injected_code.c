@@ -75,6 +75,9 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 
 #define MOD_INFO_BUTTON_ID 0x222003
 
+#define PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID 0x222004
+#define PEDIA_MULTIPAGE_PREV_BUTTON_ID 0x222005
+
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
 
@@ -1558,6 +1561,17 @@ read_line_drawing_override (struct string_slice const * s, int * out_val)
 }
 
 bool
+read_minimap_doubling_mode (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "never"   )) { *out_val = MDM_NEVER;    return true; }
+	else if (slice_matches_str (&trimmed, "high-def")) { *out_val = MDM_HIGH_DEF; return true; }
+	else if (slice_matches_str (&trimmed, "always"  )) { *out_val = MDM_ALWAYS;   return true; }
+	else
+		return false;
+}
+
+bool
 read_work_area_limit (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
@@ -1565,6 +1579,19 @@ read_work_area_limit (struct string_slice const * s, int * out_val)
 	else if (slice_matches_str (&trimmed, "cultural"            )) { *out_val = WAL_CULTURAL;             return true; }
 	else if (slice_matches_str (&trimmed, "cultural-min-2"      )) { *out_val = WAL_CULTURAL_MIN_2;       return true; }
 	else if (slice_matches_str (&trimmed, "cultural-or-adjacent")) { *out_val = WAL_CULTURAL_OR_ADJACENT; return true; }
+	else
+		return false;
+}
+
+bool
+read_day_night_cycle_mode (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "off"       )) { *out_val = DNCM_OFF;        return true; }
+	else if (slice_matches_str (&trimmed, "timer"     )) { *out_val = DNCM_TIMER;      return true; }
+	else if (slice_matches_str (&trimmed, "user-time" )) { *out_val = DNCM_USER_TIME;  return true; }
+	else if (slice_matches_str (&trimmed, "every-turn")) { *out_val = DNCM_EVERY_TURN; return true; }
+	else if (slice_matches_str (&trimmed, "specified" )) { *out_val = DNCM_SPECIFIED;  return true; }
 	else
 		return false;
 }
@@ -1841,6 +1868,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				} else if (slice_matches_str (&p.key, "draw_lines_using_gdi_plus")) {
 					if (! read_line_drawing_override (&value, (int *)&cfg->draw_lines_using_gdi_plus))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "double_minimap_size")) {
+					if (! read_minimap_doubling_mode (&value, (int *)&cfg->double_minimap_size))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_defensive_bombard_rules")) {
 					struct parsable_field_bit bits[] = {
 						{"lethal"        , SDBR_LETHAL},
@@ -1861,6 +1891,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "work_area_limit")) {
 					if (! read_work_area_limit (&value, (int *)&cfg->work_area_limit))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "day_night_cycle_mode")) {
+					if (! read_day_night_cycle_mode (&value, (int *)&cfg->day_night_cycle_mode))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_ptw_arty_types (&value,
@@ -1936,6 +1969,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						cfg->polish_precision_striking = ival != 0;
 					else
 						handle_config_error (&p, CPE_BAD_BOOL_VALUE);
+				} else if (slice_matches_str (&p.key, "move_trade_net_object")) {
+					; // No nothing. This setting no longer serves any purpose.
 
 				// if key was previously misspelled
 				} else if (slice_matches_str (&p.key, "share_visibility_in_hoseat")) {
@@ -2850,26 +2885,30 @@ filter_zoc_candidate (struct register_set * reg)
 }
 
 #define TRADE_NET_REF_COUNT 315
+#define TRADE_NET_INSTR_COUNT_GOG   22
+#define TRADE_NET_INSTR_COUNT_STEAM 23
+#define TRADE_NET_INSTR_COUNT_PCG   22
+#define TRADE_NET_ADDR_TOTAL_COUNT ((TRADE_NET_REF_COUNT * 3) + TRADE_NET_INSTR_COUNT_GOG + TRADE_NET_INSTR_COUNT_STEAM + TRADE_NET_INSTR_COUNT_PCG)
 
 int *
-load_trade_net_refs ()
+load_trade_net_addrs ()
 {
-	if (is->trade_net_refs_load_state == IS_OK)
-		return is->trade_net_refs;
-	else if (is->trade_net_refs_load_state == IS_INIT_FAILED)
+	if (is->trade_net_addrs_load_state == IS_OK)
+		return is->trade_net_addrs;
+	else if (is->trade_net_addrs_load_state == IS_INIT_FAILED)
 		return NULL;
 
 	bool success = false;
 	char err_msg[300] = {0};
 
-	is->trade_net_refs = calloc (3 * TRADE_NET_REF_COUNT, sizeof is->trade_net_refs[0]);
-	if (! is->trade_net_refs) {
+	is->trade_net_addrs = calloc (3 * TRADE_NET_ADDR_TOTAL_COUNT, sizeof is->trade_net_addrs[0]);
+	if (! is->trade_net_addrs) {
 		snprintf (err_msg, (sizeof err_msg) - 1, "Bad alloc");
 		goto done;
 	}
 
 	char file_path[MAX_PATH] = {0};
-	snprintf (file_path, (sizeof file_path) - 1, "%s\\trade_net_refs.txt", is->mod_rel_dir);
+	snprintf (file_path, (sizeof file_path) - 1, "%s\\trade_net_addresses.txt", is->mod_rel_dir);
 	char * refs_file = file_to_string (file_path);
 	if (! refs_file) {
 		snprintf (err_msg, (sizeof err_msg) - 1, "Couldn't load %s", file_path);
@@ -2895,11 +2934,11 @@ load_trade_net_refs ()
 		int ref;
 		bool got_any_addresses = false;
 		while (parse_int (&cursor, &ref)) {
-			if (loaded_count >= 3 * TRADE_NET_REF_COUNT) {
-				snprintf (err_msg, (sizeof err_msg) - 1, "Too many values in file (expected %d exactly)", 3 * TRADE_NET_REF_COUNT);
+			if (loaded_count >= TRADE_NET_ADDR_TOTAL_COUNT) {
+				snprintf (err_msg, (sizeof err_msg) - 1, "Too many values in file (expected %d exactly)", TRADE_NET_ADDR_TOTAL_COUNT);
 				goto done;
 			}
-			is->trade_net_refs[loaded_count] = ref;
+			is->trade_net_addrs[loaded_count] = ref;
 			loaded_count++;
 			got_any_addresses = true;
 		}
@@ -2910,8 +2949,8 @@ load_trade_net_refs ()
 		}
 	}
 
-	if (loaded_count < 3 * TRADE_NET_REF_COUNT) {
-		snprintf (err_msg, (sizeof err_msg) - 1, "Too few values in file (expected %d exactly)", 3 * TRADE_NET_REF_COUNT);
+	if (loaded_count < TRADE_NET_ADDR_TOTAL_COUNT) {
+		snprintf (err_msg, (sizeof err_msg) - 1, "Too few values in file (expected %d exactly)", TRADE_NET_ADDR_TOTAL_COUNT);
 		goto done;
 	}
 
@@ -2923,12 +2962,26 @@ done:
 		char full_err_msg[300] = {0};
 		snprintf (full_err_msg, (sizeof full_err_msg) - 1, "Failed to load trade net refs: %s", err_msg);
 		MessageBox (NULL, full_err_msg, NULL, MB_ICONERROR);
-		is->trade_net_refs_load_state = IS_INIT_FAILED;
+		is->trade_net_addrs_load_state = IS_INIT_FAILED;
 		return NULL;
 	} else {
-		is->trade_net_refs_load_state = IS_OK;
-		return is->trade_net_refs;
+		is->trade_net_addrs_load_state = IS_OK;
+		return is->trade_net_addrs;
 	}
+}
+
+unsigned short * __fastcall
+patch_get_pixel_to_draw_city_dot (JGL_Image * this, int edx, int x, int y)
+{
+	unsigned short * tr = this->vtable->m07_m05_Get_Pixel (this, __, x, y);
+
+	if ((x + 1 < p_main_screen_form->GUI.Navigator_Data.Mini_Map_Width2) && (y + 1 < p_main_screen_form->GUI.Navigator_Data.Mini_Map_Height2)) {
+		unsigned short * below = this->vtable->m07_m05_Get_Pixel (this, __, x + 1, y + 1);
+		if (below != NULL)
+			*below = 0;
+	}
+
+	return tr;
 }
 
 enum branch_kind { BK_CALL, BK_JUMP };
@@ -2963,54 +3016,55 @@ check_virtual_protect (LPVOID addr, SIZE_T size, DWORD flags, PDWORD old_protect
 
 void __fastcall adjust_sliders_preproduction (Leader * this);
 
-struct nopified_area {
+struct saved_code_area {
 	int size;
 	byte original_contents[];
 };
 
-// Replaces an area of code with no-ops. The original contents of the area are saved and can be restored with restore_area. This method assumes that
+// Saves an area of base game code and optionally replaces it with no-ops. The area can be restored with restore_code_area. This method assumes that
 // the necessary memory protection has already been set on the area, specifically that it can be written to. The method will do nothing if the area
-// has already been nopified with the same size. It's an error to re-nopify an address with a different size or overlap two nopified areas.
+// has already been saved with the same size. It's an error to re-save an address with a different size or overlap two saved areas.
 void
-nopify_area (byte * addr, int size)
+save_code_area (byte * addr, int size, bool nopify)
 {
-	struct nopified_area * na;
-	if (itable_look_up (&is->nopified_areas, (int)addr, (int *)&na)) {
-		if (na->size != 0) {
-			if (na->size != size) {
+	struct saved_code_area * sca;
+	if (itable_look_up (&is->saved_code_areas, (int)addr, (int *)&sca)) {
+		if (sca->size != 0) {
+			if (sca->size != size) {
 				char s[200];
-				snprintf (s, sizeof s, "Nopification conflict: address %p was already nopified with size %d, conflicting with new size %d.", addr, na->size, size);
+				snprintf (s, sizeof s, "Save code area conflict: address %p was already saved with size %d, conflicting with new size %d.", addr, sca->size, size);
 				s[(sizeof s) - 1] = '\0';
 				pop_up_in_game_error (s);
 			}
 			return;
 		}
 	} else {
-		na = malloc (size + sizeof *na);
-		itable_insert (&is->nopified_areas, (int)addr, (int)na);
+		sca = malloc (size + sizeof *sca);
+		itable_insert (&is->saved_code_areas, (int)addr, (int)sca);
 	}
-	na->size = size;
-	memcpy (&na->original_contents, addr, size);
-	memset (addr, 0x90, size);
+	sca->size = size;
+	memcpy (&sca->original_contents, addr, size);
+	if (nopify)
+		memset (addr, 0x90, size);
 }
 
-// De-nopifies an area, restoring the original contents. Does nothing if the area hasn't been nopified. Assumes the appropriate memory protection has
+// Restores a saved chunk of code to its original contents. Does nothing if the area hasn't been saved. Assumes the appropriate memory protection has
 // already been set.
 void
-restore_area (byte * addr)
+restore_code_area (byte * addr)
 {
-	struct nopified_area * na;
-	if (itable_look_up (&is->nopified_areas, (int)addr, (int *)&na)) {
-		memcpy (addr, &na->original_contents, na->size);
-		na->size = 0;
+	struct saved_code_area * sca;
+	if (itable_look_up (&is->saved_code_areas, (int)addr, (int *)&sca)) {
+		memcpy (addr, &sca->original_contents, sca->size);
+		sca->size = 0;
 	}
 }
 
 bool
-is_area_nopified (byte * addr)
+is_code_area_saved (byte * addr)
 {
-	struct nopified_area * na;
-	return itable_look_up (&is->nopified_areas, (int)addr, (int *)&na) && (na->size > 0);
+	struct saved_code_area * sca;
+	return itable_look_up (&is->saved_code_areas, (int)addr, (int *)&sca) && (sca->size > 0);
 }
 
 // Nopifies or restores an area depending on if yes_or_no is 1 or 0. Sets the necessary memory protections.
@@ -3019,9 +3073,9 @@ set_nopification (int yes_or_no, byte * addr, int size)
 {
 	WITH_MEM_PROTECTION (addr, size, PAGE_EXECUTE_READWRITE) {
 		if (yes_or_no)
-			nopify_area (addr, size);
+			save_code_area (addr, size, true);
 		else
-			restore_area (addr);
+			restore_code_area (addr);
 	}
 }
 
@@ -3076,14 +3130,14 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	// https://forums.civfanatics.com/threads/sub-bug-fix-and-other-adventures-in-exe-modding.666881/page-10#post-16085242
 	WITH_MEM_PROTECTION (ADDR_HOUSEBOAT_BUG_PATCH, ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH, PAGE_EXECUTE_READWRITE) {
 		if (cfg->patch_houseboat_bug) {
-			nopify_area (ADDR_HOUSEBOAT_BUG_PATCH, ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH);
+			save_code_area (ADDR_HOUSEBOAT_BUG_PATCH, ADDR_HOUSEBOAT_BUG_PATCH_END - ADDR_HOUSEBOAT_BUG_PATCH, true);
 			byte * cursor = ADDR_HOUSEBOAT_BUG_PATCH;
 			*cursor++ = 0x50; // push eax
 			int call_offset = (int)&tile_at_city_or_null - ((int)cursor + 5);
 			*cursor++ = 0xE8; // call
 			cursor = int_to_bytes (cursor, call_offset);
 		} else
-			restore_area (ADDR_HOUSEBOAT_BUG_PATCH);
+			restore_code_area (ADDR_HOUSEBOAT_BUG_PATCH);
 	}
 
 	// NoRaze
@@ -3201,12 +3255,12 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	// those jumps lets us run the civ production code for the barbs as well.
 	WITH_MEM_PROTECTION (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP, 6, PAGE_EXECUTE_READWRITE) {
 		if (cfg->enable_city_capture_by_barbarians) {
-			nopify_area (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP, 6);
+			save_code_area (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP, 6, true);
 			byte jump_to_civ[6] = {0x0F, 0x8D, 0x0C, 0x00, 0x00, 0x00}; // jge +0x12
 			for (int n = 0; n < 6; n++)
 				ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP[n] = jump_to_civ[n];
 		} else
-			restore_area (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP);
+			restore_code_area (ADDR_PROD_PHASE_BARB_DONE_NO_SPAWN_JUMP);
 	}
 	set_nopification (cfg->enable_city_capture_by_barbarians, ADDR_PROD_PHASE_BARB_DONE_JUMP, 5);
 
@@ -3215,9 +3269,9 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		     * addr_airlock = (domain == 0) ? ADDR_SEA_ZOC_FILTER_AIRLOCK      : ADDR_LAND_ZOC_FILTER_AIRLOCK;
 
 		WITH_MEM_PROTECTION (addr_skip, 6, PAGE_EXECUTE_READWRITE) {
-			if ((cfg->special_zone_of_control_rules != 0) && ! is_area_nopified (addr_skip)) {
+			if ((cfg->special_zone_of_control_rules != 0) && ! is_code_area_saved (addr_skip)) {
 				byte * original_target = addr_skip + 6 + int_from_bytes (addr_skip + 2); // target addr of jump instr we're replacing
-				nopify_area (addr_skip, 6);
+				save_code_area (addr_skip, 6, true);
 
 				// Initialize airlock. The airlock preserves all registers and calls filter_zoc_candidate then either follows or skips the
 				// original jump depending on what it returns. If zero is returned, follows the jump, skipping a bunch of code and filtering
@@ -3238,7 +3292,7 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 				// Write jump to airlock
 				emit_branch (BK_JUMP, addr_skip, addr_airlock);
 			} else if (cfg->special_zone_of_control_rules == 0)
-				restore_area (addr_skip);
+				restore_code_area (addr_skip);
 		}
 	}
 
@@ -3281,23 +3335,27 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		int_to_bytes (ADDR_PATHFINDER_RECONSTRUCTION_MAX_LEN, cfg->patch_premature_truncation_of_found_paths ? 2560 : 256);
 	}
 
-	int * trade_net_refs;
+	int * trade_net_addrs;
 	bool already_moved_trade_net = is->trade_net != p_original_trade_net,
-	     want_moved_trade_net = cfg->move_trade_net_object;
+	     want_moved_trade_net = cfg->lift_city_limit;
 	if ((! at_program_start) &&
-	    ((trade_net_refs = load_trade_net_refs ()) != NULL) &&
+	    ((trade_net_addrs = load_trade_net_addrs ()) != NULL) &&
 	    ((already_moved_trade_net && ! want_moved_trade_net) || (want_moved_trade_net && ! already_moved_trade_net))) {
 		// Allocate a new trade net object if necessary. To construct it, all we have to do is zero a few fields and set the vptr. Otherwise,
 		// set the allocated object aside for deletion later. Also set new & old addresses to the locations we're moving to & from.
 		Trade_Net * to_free = NULL;
 		int p_old, p_new;
+		int lifted_city_limit_exp = 11;
+		int lifted_city_limit = 1 << lifted_city_limit_exp;
 		if (want_moved_trade_net) {
-			is->trade_net = calloc (1, sizeof *is->trade_net);
+			is->trade_net = calloc (1, (sizeof (Trade_Net)) - (4 * 512 * 512) + (4 * lifted_city_limit * lifted_city_limit));
+			is->city_limit = lifted_city_limit;
 			is->trade_net->vtable = p_original_trade_net->vtable;
 			p_old = (int)p_original_trade_net;
 			p_new = (int)is->trade_net;
 		} else {
 			to_free = is->trade_net;
+			is->city_limit = 512;
 			p_old = (int)is->trade_net;
 			p_new = (int)p_original_trade_net;
 			is->trade_net = p_original_trade_net;
@@ -3306,8 +3364,17 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		// Patch all references from the "old" object to the "new" one
 		int offset;
 		bool popped_up_error = false;
+		char err_msg[200] = {0};
+		int * refs; {
+			if (exe_version_index == 0)
+				refs = trade_net_addrs;
+			else if (exe_version_index == 1) // Steam version, skip refs and instructions for GOG
+				refs = &trade_net_addrs[TRADE_NET_REF_COUNT + TRADE_NET_INSTR_COUNT_GOG];
+			else // PCGames.de version, skip two sets of refs and instrs for GOG & Steam
+				refs = &trade_net_addrs[2 * TRADE_NET_REF_COUNT + TRADE_NET_INSTR_COUNT_GOG + TRADE_NET_INSTR_COUNT_STEAM];
+		}
 		for (int n_ref = 0; n_ref < TRADE_NET_REF_COUNT; n_ref++) {
-			int addr = trade_net_refs[TRADE_NET_REF_COUNT * exe_version_index + n_ref];
+			int addr = refs[n_ref];
 			WITH_MEM_PROTECTION ((void *)(addr - 10), 20, PAGE_EXECUTE_READWRITE) {
 				byte * instr = (byte *)addr;
 				if ((instr[0] == 0xB9) && (int_from_bytes (&instr[1]) == p_old)) // move trade net ptr to ecx
@@ -3330,7 +3397,6 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 					 (offset = int_from_bytes (&instr[2]) - p_old, (offset >= 0) && (offset < 100)))
 					int_to_bytes (&instr[2], p_new + offset);
 				else if (! popped_up_error) {
-					char err_msg[200] = {0};
 					snprintf (err_msg, (sizeof err_msg) - 1, "Can't move trade net object from address 0x%x. Pattern doesn't match.", addr);
 					MessageBox (NULL, err_msg, NULL, MB_ICONERROR);
 					popped_up_error = true;
@@ -3338,9 +3404,690 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 			}
 		}
 
+		// Patch all instructions that involve the stride of Trade_Net.Matrix
+		int * addrs, addr_count; {
+			if (exe_version_index == 0) {
+				addrs = &trade_net_addrs[TRADE_NET_REF_COUNT];
+				addr_count = TRADE_NET_INSTR_COUNT_GOG;
+			} else if (exe_version_index == 1) {
+				addrs = &trade_net_addrs[2 * TRADE_NET_REF_COUNT + TRADE_NET_INSTR_COUNT_GOG];
+				addr_count = TRADE_NET_INSTR_COUNT_STEAM;
+			} else {
+				addrs = &trade_net_addrs[3 * TRADE_NET_REF_COUNT + TRADE_NET_INSTR_COUNT_GOG + TRADE_NET_INSTR_COUNT_STEAM];
+				addr_count = TRADE_NET_INSTR_COUNT_GOG;
+			}
+			for (int n = 0; n < addr_count; n++) {
+				byte * instr = (byte *)addrs[n];
+				WITH_MEM_PROTECTION (instr, 10, PAGE_EXECUTE_READWRITE) {
+					if (is->city_limit == 512)
+						restore_code_area (instr);
+
+					else {
+						if ((instr[0] == 0xC1) && (instr[1] >= 0xE0) && (instr[1] <= 0xE7)) { // shl
+							save_code_area (instr, 3, false);
+							// shift amount is either 9 (1<<9 == 512) or 11 (1<<11 == 4*512, stride in bytes)
+							// in the second case, replace with lifted_exp + 2 to convert to bytes
+							instr[2] = lifted_city_limit_exp + ((instr[2] == 11) ? 2 : 0);
+
+						} else if ((instr[0] == 0x81) && (instr[1] >= 0xC0) && (instr[1] <= 0xC7)) { // add
+							save_code_area (instr, 6, false);
+							int amount = int_from_bytes (&instr[2]);
+							// amount is either 512 or 4*512, replace with lifted_lim or 4*lifted_lim
+							int_to_bytes (&instr[2], (amount == 512) ? lifted_city_limit : 4*lifted_city_limit);
+
+						} else if ((instr[0] == 0x8D) && (instr[1] == 0x9C) && (instr[2] == 0x90)) { // lea
+							save_code_area (instr, 7, false);
+							int offset = 4 * lifted_city_limit + 0x38; // stride in bytes plus 0x38 offset to Matrix in Trade_Net object
+							int_to_bytes (&instr[3], offset);
+
+						} else if (instr[0] == 0xB9) { // mov
+							save_code_area (instr, 5, false);
+							int_to_bytes (&instr[1], lifted_city_limit * lifted_city_limit);
+
+						} else if (! popped_up_error) {
+							snprintf (err_msg, (sizeof err_msg) - 1, "Can't patch matrix stride at address 0x%x. Pattern doesn't match.", (int)instr);
+							MessageBox (NULL, err_msg, NULL, MB_ICONERROR);
+							popped_up_error = true;
+						}
+					}
+				}
+			}
+		}
+
+		// Patch two other instructions that contain the city limit
+		WITH_MEM_PROTECTION (ADDR_CITY_LIM_CMP_IN_CONT_BEGIN_TURN, 6, PAGE_EXECUTE_READWRITE) {
+			int_to_bytes (&ADDR_CITY_LIM_CMP_IN_CONT_BEGIN_TURN[2], is->city_limit);
+		}
+		WITH_MEM_PROTECTION (ADDR_CITY_LIM_CMP_IN_CREATE_CITY, 5, PAGE_EXECUTE_READWRITE) {
+			int_to_bytes (&ADDR_CITY_LIM_CMP_IN_CREATE_CITY[1], is->city_limit);
+		}
+
 		if (to_free) {
 			to_free->vtable->destruct (to_free, __, 0);
 			free (to_free);
+		}
+	}
+
+	WITH_MEM_PROTECTION (ADDR_CULTURE_DOUBLING_TIME_CMP_INSTR, 6, PAGE_EXECUTE_READWRITE) {
+		byte * instr = ADDR_CULTURE_DOUBLING_TIME_CMP_INSTR;
+		if (cfg->years_to_double_building_culture == 1000)
+			restore_code_area (instr);
+		else {
+			if (instr[0] == 0x3D) { // in GOG and PCG EXEs, instr is cmp eax, 0x3E8
+				save_code_area (instr, 5, false);
+				int_to_bytes (&instr[1], cfg->years_to_double_building_culture);
+			} else if (instr[0] == 0x3B) { // in Steam EXE, instr is cmp eax, dword ptr 0x688C9C
+				save_code_area (instr, 6, true);
+				instr[0] = 0x3D;
+				int_to_bytes (&instr[1], cfg->years_to_double_building_culture);
+			}
+		}
+	}
+
+	WITH_MEM_PROTECTION (ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT, 5, PAGE_EXECUTE_READWRITE) {
+		if (cfg->accentuate_cities_on_minimap) {
+			save_code_area (ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT, 5, false);
+			emit_branch (BK_JUMP, ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT, ADDR_INLEAD_FOR_CITY_DOT_DRAW_PIXEL_REPL);
+		} else
+			restore_code_area (ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT);
+	}
+	WITH_MEM_PROTECTION (ADDR_INLEAD_FOR_CITY_DOT_DRAW_PIXEL_REPL, INLEAD_SIZE, PAGE_EXECUTE_READWRITE) {
+		byte * code = ADDR_INLEAD_FOR_CITY_DOT_DRAW_PIXEL_REPL;
+		code[0] = 0x55; code[1] = 0x53; // write push ebp and push ebx, two overwritten instrs before the call
+		emit_branch (BK_CALL, &code[2], &patch_get_pixel_to_draw_city_dot); // call patch func
+		emit_branch (BK_JUMP, &code[7], ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT + 5); // jump back to original code
+	}
+}
+
+Sprite* 
+SpriteList_at(SpriteList *list, int i) {
+    return &list->field_0[i];
+}
+
+void 
+set_path(String260 *dst, const char *p) {
+    snprintf(dst->S, sizeof(dst->S), "%s", p);
+}
+
+void 
+slice_grid(Sprite *out, PCX_Image *img,
+            int tile_w, int tile_h, int full_w, int full_h)
+{
+    for (int y = 0; y < full_h; y += tile_h)
+        for (int x = 0; x < full_w; x += tile_w)
+            Sprite_slice_pcx(out++, __, img, x, y, tile_w, tile_h, 1, 1);
+}
+
+void 
+slice_grid_into_list(SpriteList *bucket, PCX_Image *img,
+                                 int tile_w, int tile_h, int full_w, int full_h)
+{
+    int k = 0;
+    for (int y = 0; y < full_h; y += tile_h)
+        for (int x = 0; x < full_w; x += tile_w)
+            Sprite_slice_pcx(SpriteList_at(bucket, k++), __, img, x, y, tile_w, tile_h, 1, 1);
+}
+
+void 
+join_path(char *out, size_t out_sz, const char *dir, const char *file)
+{
+    size_t n = strlen(dir);
+    int need_sep = (n > 0 && dir[n-1] != '/' && dir[n-1] != '\\');
+    snprintf(out, out_sz, "%s%s%s", dir, need_sep ? "\\" : "", file);
+}
+
+void 
+read_in_dir(PCX_Image *img,
+            const char *art_dir,
+            const char *filename,
+            String260 *store) {
+    char pbuf[512];
+    join_path(pbuf, sizeof pbuf, art_dir, filename);
+    if (store) {
+        // assumes: typedef struct { char S[260]; } String260;
+        snprintf(store->S, sizeof store->S, "%s", pbuf);
+    }
+
+	char temp_path[2*MAX_PATH];
+
+	snprintf(temp_path, sizeof temp_path, "%s\\%s", art_dir, filename);
+    PCX_Image_read_file(img, __, temp_path, NULL, 0, 0x100, 2);
+}
+
+bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char *art_dir)
+{
+	char ss[200];
+    PCX_Image img; 
+	PCX_Image_construct(&img);
+
+    // Std terrain (9 sheets): 6x9 of 128x64 over 0x480x0x240
+    const char *STD_SHEETS[9] = {
+		"xtgc.pcx", "xpgc.pcx", "xdgc.pcx", "xdpc.pcx", "xdgp.pcx", "xggc.pcx",
+		"wCSO.pcx", "wSSS.pcx", "wOOO.pcx"
+	};
+    for (int i = 0; i < 9; ++i) {
+    	read_in_dir(&img, art_dir, STD_SHEETS[i], NULL);
+		if (img.JGL.Image == NULL) return false;
+        slice_grid_into_list(&this->Std_Terrain_Images[i], &img, 0x80, 0x40, 0x480, 0x240);
+    }
+	
+    // LM terrain (9): same slicing
+	const char *LMT_SHEETS[9] = {
+		"lxtgc.pcx", "lxpgc.pcx", "lxdgc.pcx", "lxdpc.pcx", "lxdgp.pcx", "lxggc.pcx",
+		"lwCSO.pcx", "lwSSS.pcx", "lwOOO.pcx"
+	};
+    for (int i = 0; i < 9; ++i) {
+		read_in_dir(&img, art_dir, LMT_SHEETS[i], NULL);
+		if (img.JGL.Image == NULL) return false;
+        slice_grid_into_list(&this->LM_Terrain_Images[i], &img, 0x80, 0x40, 0x480, 0x240);
+    }
+
+    // Polar icecaps: 8x4 of 128x64
+	read_in_dir(&img, art_dir, "polarICEcaps-final.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Polar_Icecaps_Images, &img, 0x80, 0x40, 0x400, 0x100);
+
+    // Hills / LM Hills: 4x3 of 128x72
+	read_in_dir(&img, art_dir, "xhills.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Hills_Images, &img, 0x80, 0x48, 0x200, 0x120);
+    read_in_dir(&img, art_dir, "hill forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Hills_Forests_Images, &img, 0x80, 0x48, 0x200, 0x120);
+    read_in_dir(&img, art_dir, "hill jungle.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Hills_Jungle_Images, &img, 0x80, 0x48, 0x200, 0x120);
+    read_in_dir(&img, art_dir, "LMHills.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->LM_Hills_Images, &img, 0x80, 0x48, 0x200, 0x120);
+
+    // Flood plains: 4x4 of 128x64
+	read_in_dir(&img, art_dir, "floodplains.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Flood_Plains_Images, &img, 0x80, 0x40, 0x200, 0x100);
+
+    // Delta + Mountain rivers: 4x4 each, interleaved across one contiguous block
+    {
+        const char *RIV_SHEETS[2] = { "deltaRivers.pcx", "mtnRivers.pcx" };
+        Sprite *contig = this->Delta_Rivers_Images; // Mountain_Rivers_Images follows
+        for (int s = 0; s < 2; ++s) {
+			read_in_dir(&img, art_dir, RIV_SHEETS[s], NULL);
+			if (img.JGL.Image == NULL) return false;
+            Sprite *p = contig + s; // even=delta, odd=mountain
+            for (int y = 0; y < 0x100; y += 0x40)
+                for (int x = 0; x < 0x200; x += 0x80) {
+                    Sprite_slice_pcx(p, __, &img, x, y, 0x80, 0x40, 1, 1);
+                    p += 2;
+                }
+        }
+    }
+
+    // Waterfalls: 4x1 of 128x64
+	read_in_dir(&img, art_dir, "waterfalls.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Waterfalls_Images, &img, 0x80, 0x40, 0x200, 0x40);
+
+    // Irrigation (desert/plains/normal/tundra): each 4x4 of 128x64
+    read_in_dir(&img, art_dir, "irrigation DESETT.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Irrigation_Desert_Images, &img, 0x80, 0x40, 0x200, 0x100);
+    read_in_dir(&img, art_dir, "irrigation PLAINS.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Irrigation_Plains_Images, &img, 0x80, 0x40, 0x200, 0x100);
+    read_in_dir(&img, art_dir, "irrigation.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Irrigation_Images, &img, 0x80, 0x40, 0x200, 0x100);
+    read_in_dir(&img, art_dir, "irrigation TUNDRA.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Irrigation_Tundra_Images, &img, 0x80, 0x40, 0x200, 0x100);
+
+    // Volcanos (plain/forests/jungles/snow): 4x4 of 128x88
+	read_in_dir(&img, art_dir, "Volcanos.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Volcanos_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "Volcanos forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Volcanos_Forests_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "Volcanos jungles.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Volcanos_Jungles_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "Volcanos-snow.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Volcanos_Snow_Images, &img, 0x80, 0x58, 0x200, 0x160);
+
+    // Marsh: Large band then Small band (tiles 128x88)
+    read_in_dir(&img, art_dir, "marsh.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    // Large (2 rows, 4 cols)
+    { int k=0; for (int y=0; y<0xb0; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->Marsh_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    // Small (2 rows, 5 cols)
+    { int k=0; for (int y=0xb0; y<0x160; y+=0x58) for (int x=0; x<0x280; x+=0x80)
+        Sprite_slice_pcx(&this->Marsh_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+
+    // LM mountains + standard mountains (plain/forests/jungles/snow): 4x4 of 128x88
+    read_in_dir(&img, art_dir, "LMMountains.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->LM_Mountains_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "Mountains.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Mountains_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "mountain forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Mountains_Forests_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "mountain jungles.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Mountains_Jungles_Images, &img, 0x80, 0x58, 0x200, 0x160);
+    read_in_dir(&img, art_dir, "Mountains-snow.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Mountains_Snow_Images, &img, 0x80, 0x58, 0x200, 0x160);
+
+    // Roads (16x16) and Railroads (16x17), tiles 128x64
+    read_in_dir(&img, art_dir, "roads.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Roads_Images, &img, 0x80, 0x40, 0x800, 0x400);
+    read_in_dir(&img, art_dir, "railroads.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Railroads_Images, &img, 0x80, 0x40, 0x800, 0x440);
+
+    // LM Forests (Large 2x4, Small 2x6, Pines 2x6), tiles 128x88
+	read_in_dir(&img, art_dir, "LMForests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    { int k=0; for (int y=0; y<0xb0; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->LM_Forests_Large_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0xb0; y<0x160; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->LM_Forests_Small_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->LM_Forests_Pines_Images[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+
+    // Grassland/Plains/Tundra forests & jungles (bands; tiles 128x88) — order is important
+	read_in_dir(&img, art_dir, "grassland forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    // Jungles Large, Small
+    { int k=0; for (int y=0; y<0xb0; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->Grassland_Jungles_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0xb0; y<0x160; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->Grassland_Jungles_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    // Forests Large, Small, Pines
+    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->Grassland_Forests_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x210; y<0x2c0; y+=0x58) for (int x=0; x<0x280; x+=0x80)
+        Sprite_slice_pcx(&this->Grassland_Forests_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x2c0; y<0x370; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->Grassland_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+
+	read_in_dir(&img, art_dir, "plains forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->Plains_Forests_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x210; y<0x2c0; y+=0x58) for (int x=0; x<0x280; x+=0x80)
+        Sprite_slice_pcx(&this->Plains_Forests_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x2c0; y<0x370; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->Plains_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+
+	read_in_dir(&img, art_dir, "tundra forests.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    { int k=0; for (int y=0x160; y<0x210; y+=0x58) for (int x=0; x<0x200; x+=0x80)
+        Sprite_slice_pcx(&this->Tundra_Forests_Large[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x210; y<0x2c0; y+=0x58) for (int x=0; x<0x280; x+=0x80)
+        Sprite_slice_pcx(&this->Tundra_Forests_Small[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+    { int k=0; for (int y=0x2c0; y<0x370; y+=0x58) for (int x=0; x<0x300; x+=0x80)
+        Sprite_slice_pcx(&this->Tundra_Forests_Pines[k++], __, &img, x, y, 0x80, 0x58, 1, 1); }
+
+    // LM Terrain (7 single 128x64, vertical strip)
+	read_in_dir(&img, art_dir, "landmark_terrain.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    for (int i = 0, y = 0; i < 7; ++i, y += 0x40)
+        Sprite_slice_pcx(&this->LM_Terrain[i], __, &img, 0, y, 0x80, 0x40, 1, 1);
+
+    // 1TNT (same odd ordering as original)
+	read_in_dir(&img, art_dir, "tnt.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[6+i],  __, &img, x, 0x00, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[9+i],  __, &img, x, 0x40, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[12+i], __, &img, x, 0x80, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[0+i],  __, &img, x, 0xC0, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[15+i], __, &img, x, 0x100, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Tnt_Images[3+i],  __, &img, x, 0x140, 0x80, 0x40, 1, 1);
+
+    // Goody huts: 8 tiles, x=(i%3)*0x80, y=(i/3)*0x40
+	read_in_dir(&img, art_dir, "goodyhuts.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    for (int i = 0; i < 8; ++i) {
+        int x = (i % 3) << 7;
+        int y = (i / 3) << 6;
+        Sprite_slice_pcx(&this->Goody_Huts_Images[i], __, &img, x, y, 0x80, 0x40, 1, 1);
+    }
+
+    // Terrain buildings (fortress/camp/barbarian camp/mines/barricade)
+	read_in_dir(&img, art_dir, "TerrainBuildings.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Fortress[i], __, &img, 0x00, y, 0x80, 0x40, 1, 1);
+    for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Camp[i],     __, &img, 0x80, y, 0x80, 0x40, 1, 1);
+    Sprite_slice_pcx(&this->Terrain_Buldings_Barbarian_Camp, __, &img, 0x100, 0x00, 0x80, 0x40, 1, 1);
+    Sprite_slice_pcx(&this->Terrain_Buldings_Mines,          __, &img, 0x100, 0x40, 0x80, 0x40, 1, 1);
+    for (int i=0, y=0; i<4; ++i, y+=0x40) Sprite_slice_pcx(&this->Terrain_Buldings_Barricade[i], __, &img, 0x180, y, 0x80, 0x40, 1, 1);
+
+    // Pollution & Craters (5x5 of 128x64)
+	read_in_dir(&img, art_dir, "pollution.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Pollution, &img, 0x80, 0x40, 0x280, 0x140);
+	read_in_dir(&img, art_dir, "craters.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    slice_grid(this->Craters, &img, 0x80, 0x40, 0x280, 0x140);
+
+    // Airfields / Outposts / Radar
+	read_in_dir(&img, art_dir, "x_airfields_and_detect.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    for (int i=0, x=0; i<2; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Airfields[i], __, &img, x, 0x00, 0x80, 0x40, 1, 1);
+    for (int i=0, x=0; i<3; ++i, x+=0x80) Sprite_slice_pcx(&this->Terrain_Buldings_Outposts[i],  __, &img, x, 0x40, 0x80, 0x80, 1, 1);
+    Sprite_slice_pcx(&this->Terrain_Buldings_Radar, __, &img, 0x00, 0xC0, 0x80, 0x80, 1, 1);
+
+    // Victory (single 128x64)
+	read_in_dir(&img, art_dir, "x_victory.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    Sprite_slice_pcx(&this->Victory_Image, __, &img, 0, 0, 0x80, 0x40, 1, 1);
+
+    // Resources
+    read_in_dir(&img, art_dir, "resources.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    size_t k = 0;
+    for (int r = 0, y = 1; r < 6; ++r, y += 50) {
+        for (int c = 0, x = 1; c < 6; ++c, x += 50) {
+            Sprite_slice_pcx(&this->Resources[k++], __, &img, x, y, 49, 49, 1, 1);
+        }
+    }
+
+	// Base cities
+	static const char *CITY_BASE[5] = {
+        "rAMER.pcx", "rEURO.pcx", "rROMAN.pcx", "rMIDEAST.pcx", "rASIAN.pcx"
+    };
+	for (int culture = 0; culture < 5; culture++) {
+		read_in_dir(&img, art_dir, CITY_BASE[culture], NULL);
+		if (img.JGL.Image == NULL) return false;
+		int y = 0;
+		for (int era = 0; era < 4; ++era, y += 95) {
+			int x = 0;
+			for (int size = 0; size < 3; ++size, x += 167) {
+				const int idx = culture + 5*era + 20*size;
+				Sprite_slice_pcx(&this->City_Images[idx], __, &img, x, y, 167, 95, 1, 1);
+			}
+		}
+	}
+
+	// Walled cities
+    static const char *CITY_WALL[5] = {
+        "AMERWALL.pcx", "EUROWALL.pcx", "ROMANWALL.pcx", "MIDEASTWALL.pcx", "ASIANWALL.pcx"
+    };
+	for (int culture = 0; culture < 5; ++culture) {
+		read_in_dir(&img, art_dir, CITY_WALL[culture], NULL);
+		if (img.JGL.Image == NULL) return false;
+		int y = 0;
+		for (int era = 0; era < 4; ++era, y += 95) {
+			const int size = 3; // walled towns are a special category
+        	const int idx = culture + 5*era + 20*size;
+        	Sprite_slice_pcx(&this->City_Images[idx], __, &img, 0, y, 167, 95, 1, 1);
+		}
+	}
+
+	// Destroyed cities
+	read_in_dir(&img, art_dir, "DESTROY.pcx", NULL);
+	if (img.JGL.Image == NULL) return false;
+    int x = 0;
+    for (int i = 0; i < 3; ++i, x += 167) {
+        Sprite_slice_pcx(&this->Destroyed_City_Images[i], __, &img, x, 0, 167, 95, 1, 1);
+    }
+
+	img.vtable->destruct (&img, __, 0);
+
+	return true;
+}
+
+Sprite *
+get_sprite_proxy_for_current_hour(Sprite *s) {
+    int v;
+    int hour = is->current_day_night_cycle;  // 0..23
+    if (itable_look_up(&is->day_night_sprite_proxy_by_hour[hour], (int)s, &v))
+        return (Sprite *)v;
+    return NULL;  // not proxied, fall back to s
+}
+
+void
+insert_spritelist_proxies(SpriteList *ss, SpriteList *ps, int hour, int len1, int len2) {
+	for (int i = 0; i < len1; i++) {
+		for (int j = 0; j < len2; j++) {
+			Sprite *s = &ss[i].field_0[j];
+			Sprite *p = &ps[i].field_0[j];
+			if (s && p) {
+				itable_insert(&is->day_night_sprite_proxy_by_hour[hour], (int)s, (int)p);
+			}
+		}
+	}
+}
+
+void
+insert_sprite_proxies(Sprite *ss, Sprite *ps, int hour, int len) {
+	for (int i = 0; i < len; i++) {
+		Sprite *s = &ss[i];
+		Sprite *p = &ps[i];
+		if (s && p) {
+			itable_insert(&is->day_night_sprite_proxy_by_hour[hour], (int)s, (int)p);
+		}
+	}
+}
+
+void
+insert_sprite_proxy(Sprite *s, Sprite *p, int hour) {
+	if (s && p) {
+		itable_insert(&is->day_night_sprite_proxy_by_hour[hour], (int)s, (int)p);
+	}
+}
+
+void 
+build_sprite_proxies_24(Map_Renderer *mr) {
+	for (int h = 0; h < 24; ++h) {
+		insert_sprite_proxies(city_sprites, is->day_night_cycle_imgs[h].City_Images, h, 80);
+		insert_sprite_proxies(destroyed_city_sprites, is->day_night_cycle_imgs[h].Destroyed_City_Images, h, 3);
+		insert_sprite_proxies(mr->Resources, is->day_night_cycle_imgs[h].Resources, h, 36);
+		insert_spritelist_proxies(mr->Std_Terrain_Images, is->day_night_cycle_imgs[h].Std_Terrain_Images, h, 9, 81);
+		insert_spritelist_proxies(mr->LM_Terrain_Images, is->day_night_cycle_imgs[h].LM_Terrain_Images, h, 9, 81);
+		insert_sprite_proxy(&mr->Terrain_Buldings_Barbarian_Camp, &is->day_night_cycle_imgs[h].Terrain_Buldings_Barbarian_Camp, h);
+		insert_sprite_proxy(&mr->Terrain_Buldings_Mines, &is->day_night_cycle_imgs[h].Terrain_Buldings_Mines, h);
+		insert_sprite_proxy(&mr->Victory_Image, &is->day_night_cycle_imgs[h].Victory_Image, h);
+		insert_sprite_proxy(&mr->Terrain_Buldings_Radar, &is->day_night_cycle_imgs[h].Terrain_Buldings_Radar, h);
+		insert_sprite_proxies(mr->Flood_Plains_Images, is->day_night_cycle_imgs[h].Flood_Plains_Images, h, 16);
+		insert_sprite_proxies(mr->Polar_Icecaps_Images, is->day_night_cycle_imgs[h].Polar_Icecaps_Images, h, 32);
+		insert_sprite_proxies(mr->Roads_Images, is->day_night_cycle_imgs[h].Roads_Images, h, 256);
+		insert_sprite_proxies(mr->Railroads_Images, is->day_night_cycle_imgs[h].Railroads_Images, h, 272);
+		insert_sprite_proxies(mr->Terrain_Buldings_Airfields, is->day_night_cycle_imgs[h].Terrain_Buldings_Airfields, h, 2);
+		insert_sprite_proxies(mr->Terrain_Buldings_Camp, is->day_night_cycle_imgs[h].Terrain_Buldings_Camp, h, 4);
+		insert_sprite_proxies(mr->Terrain_Buldings_Fortress, is->day_night_cycle_imgs[h].Terrain_Buldings_Fortress, h, 4);
+		insert_sprite_proxies(mr->Terrain_Buldings_Barricade, is->day_night_cycle_imgs[h].Terrain_Buldings_Barricade, h, 4);
+		insert_sprite_proxies(mr->Goody_Huts_Images, is->day_night_cycle_imgs[h].Goody_Huts_Images, h, 8);
+		insert_sprite_proxies(mr->Terrain_Buldings_Outposts, is->day_night_cycle_imgs[h].Terrain_Buldings_Outposts, h, 3);
+		insert_sprite_proxies(mr->Pollution, is->day_night_cycle_imgs[h].Pollution, h, 25);
+		insert_sprite_proxies(mr->Craters, is->day_night_cycle_imgs[h].Craters, h, 25);
+		insert_sprite_proxies(mr->Tnt_Images, is->day_night_cycle_imgs[h].Tnt_Images, h, 18);
+		insert_sprite_proxies(mr->Waterfalls_Images, is->day_night_cycle_imgs[h].Waterfalls_Images, h, 4);
+		insert_sprite_proxies(mr->LM_Terrain, is->day_night_cycle_imgs[h].LM_Terrain, h, 7);
+		insert_sprite_proxies(mr->Marsh_Large, is->day_night_cycle_imgs[h].Marsh_Large, h, 8);
+		insert_sprite_proxies(mr->Marsh_Small, is->day_night_cycle_imgs[h].Marsh_Small, h, 10);
+		insert_sprite_proxies(mr->Volcanos_Images, is->day_night_cycle_imgs[h].Volcanos_Images, h, 16);
+		insert_sprite_proxies(mr->Volcanos_Forests_Images, is->day_night_cycle_imgs[h].Volcanos_Forests_Images, h, 16);
+		insert_sprite_proxies(mr->Volcanos_Jungles_Images, is->day_night_cycle_imgs[h].Volcanos_Jungles_Images, h, 16);
+		insert_sprite_proxies(mr->Volcanos_Snow_Images, is->day_night_cycle_imgs[h].Volcanos_Snow_Images, h, 16);
+		insert_sprite_proxies(mr->Grassland_Forests_Large, is->day_night_cycle_imgs[h].Grassland_Forests_Large, h, 8);
+		insert_sprite_proxies(mr->Plains_Forests_Large, is->day_night_cycle_imgs[h].Plains_Forests_Large, h, 8);
+		insert_sprite_proxies(mr->Tundra_Forests_Large, is->day_night_cycle_imgs[h].Tundra_Forests_Large, h, 8);
+		insert_sprite_proxies(mr->Grassland_Forests_Small, is->day_night_cycle_imgs[h].Grassland_Forests_Small, h, 10);
+		insert_sprite_proxies(mr->Plains_Forests_Small, is->day_night_cycle_imgs[h].Plains_Forests_Small, h, 10);
+		insert_sprite_proxies(mr->Tundra_Forests_Small, is->day_night_cycle_imgs[h].Tundra_Forests_Small, h, 10);
+		insert_sprite_proxies(mr->Grassland_Forests_Pines, is->day_night_cycle_imgs[h].Grassland_Forests_Pines, h, 12);
+		insert_sprite_proxies(mr->Plains_Forests_Pines, is->day_night_cycle_imgs[h].Plains_Forests_Pines, h, 12);
+		insert_sprite_proxies(mr->Tundra_Forests_Pines, is->day_night_cycle_imgs[h].Tundra_Forests_Pines, h, 12);
+		insert_sprite_proxies(mr->Irrigation_Desert_Images, is->day_night_cycle_imgs[h].Irrigation_Desert_Images, h, 16);
+		insert_sprite_proxies(mr->Irrigation_Plains_Images, is->day_night_cycle_imgs[h].Irrigation_Plains_Images, h, 16);
+		insert_sprite_proxies(mr->Irrigation_Images, is->day_night_cycle_imgs[h].Irrigation_Images, h, 16);
+		insert_sprite_proxies(mr->Irrigation_Tundra_Images, is->day_night_cycle_imgs[h].Irrigation_Tundra_Images, h, 16);
+		insert_sprite_proxies(mr->Grassland_Jungles_Large, is->day_night_cycle_imgs[h].Grassland_Jungles_Large, h, 8);
+		insert_sprite_proxies(mr->Grassland_Jungles_Small, is->day_night_cycle_imgs[h].Grassland_Jungles_Small, h, 12);
+		insert_sprite_proxies(mr->Mountains_Images, is->day_night_cycle_imgs[h].Mountains_Images, h, 16);
+		insert_sprite_proxies(mr->Mountains_Forests_Images, is->day_night_cycle_imgs[h].Mountains_Forests_Images, h, 16);
+		insert_sprite_proxies(mr->Mountains_Jungles_Images, is->day_night_cycle_imgs[h].Mountains_Jungles_Images, h, 16);
+		insert_sprite_proxies(mr->Mountains_Snow_Images, is->day_night_cycle_imgs[h].Mountains_Snow_Images, h, 16);
+		insert_sprite_proxies(mr->Hills_Images, is->day_night_cycle_imgs[h].Hills_Images, h, 16);
+		insert_sprite_proxies(mr->Hills_Forests_Images, is->day_night_cycle_imgs[h].Hills_Forests_Images, h, 16);
+		insert_sprite_proxies(mr->Hills_Jungle_Images, is->day_night_cycle_imgs[h].Hills_Jungle_Images, h, 16);
+		insert_sprite_proxies(mr->Delta_Rivers_Images, is->day_night_cycle_imgs[h].Delta_Rivers_Images, h, 16);
+		insert_sprite_proxies(mr->Mountain_Rivers_Images, is->day_night_cycle_imgs[h].Mountain_Rivers_Images, h, 16);
+		insert_sprite_proxies(mr->LM_Mountains_Images, is->day_night_cycle_imgs[h].LM_Mountains_Images, h, 16);
+		insert_sprite_proxies(mr->LM_Forests_Large_Images, is->day_night_cycle_imgs[h].LM_Forests_Large_Images, h, 8);
+		insert_sprite_proxies(mr->LM_Forests_Small_Images, is->day_night_cycle_imgs[h].LM_Forests_Small_Images, h, 10);
+		insert_sprite_proxies(mr->LM_Forests_Pines_Images, is->day_night_cycle_imgs[h].LM_Forests_Pines_Images, h, 12);
+		insert_sprite_proxies(mr->LM_Hills_Images, is->day_night_cycle_imgs[h].LM_Hills_Images, h, 16);
+	}
+	is->day_night_cycle_img_proxies_indexed = true;
+}
+
+void
+init_day_night_images()
+{
+	if (is->day_night_cycle_img_state != IS_UNINITED)
+		return;
+
+	const char *hour_strs[24] = {
+		"2400", "0100", "0200", "0300", "0400", "0500", "0600", "0700",
+		"0800", "0900", "1000", "1100", "1200", "1300", "1400", "1500", 
+		"1600", "1700", "1800", "1900", "2000", "2100", "2200", "2300"
+	};
+
+	for (int i = 0; i < 24; i++) {
+
+		char art_dir[200];
+		snprintf(art_dir, sizeof art_dir, "%s\\Art\\DayNight\\%s", is->mod_rel_dir, hour_strs[i]);
+		bool success = load_day_night_hour_images(&is->day_night_cycle_imgs[i], art_dir);
+
+		if (!success) {
+			char ss[200];
+			snprintf(ss, sizeof ss, "Failed to load day/night cycle images for hour %s, reverting to base game art.", hour_strs[i]);
+			pop_up_in_game_error (ss);
+
+			is->day_night_cycle_img_state = IS_INIT_FAILED;
+			return;
+		}
+	}
+
+	Map_Renderer * mr = &p_bic_data->Map.Renderer;
+	build_sprite_proxies_24(mr);
+
+	is->day_night_cycle_img_state = IS_OK;
+}
+
+void
+deindex_day_night_image_proxies()
+{
+	if (!is->day_night_cycle_img_proxies_indexed)
+		return;
+
+	for (int i = 0; i < 24; i++) {
+		table_deinit (&is->day_night_sprite_proxy_by_hour[i]);
+	}
+	is->day_night_cycle_img_proxies_indexed = false;
+}
+
+int
+calculate_current_day_night_cycle_hour ()
+{
+	int output = 12; // Default to noon
+	int increment = is->current_config.fixed_hours_per_turn_for_day_night_cycle;
+
+	switch (is->current_config.day_night_cycle_mode) {
+
+		// Disabled. This shouldn't be possible, but default to noon to be safe
+		case DNCM_OFF: 
+			return output;
+
+		// Time elapsed since last update
+		case DNCM_TIMER: {
+			LARGE_INTEGER perf_freq;
+			QueryPerformanceFrequency(&perf_freq);
+
+			if (is->day_night_cycle_unstarted) {
+				is->current_day_night_cycle = output;
+				QueryPerformanceCounter(&is->last_day_night_cycle_update_time);
+			}
+
+			LARGE_INTEGER time_now;
+			QueryPerformanceCounter(&time_now);
+
+			double elapsed_seconds =
+				(double)(time_now.QuadPart - is->last_day_night_cycle_update_time.QuadPart) /
+				(double)perf_freq.QuadPart;
+
+			if (elapsed_seconds > (double)is->current_config.elapsed_minutes_per_day_night_hour_transition * 60.0) {
+				output = is->current_day_night_cycle + increment;
+				is->last_day_night_cycle_update_time = time_now;
+			} else {
+				output = is->current_day_night_cycle;
+			}
+			break;
+		}
+
+		// Match user's current time
+		case DNCM_USER_TIME: { 
+			LPSYSTEMTIME lpSystemTime = (LPSYSTEMTIME)malloc(sizeof(SYSTEMTIME));
+			GetLocalTime (lpSystemTime);
+			output = lpSystemTime->wHour;
+			free (lpSystemTime);
+			break;
+		}
+
+		// Increment fixed amount each interturn
+		case DNCM_EVERY_TURN: {
+			if (is->day_night_cycle_unstarted) {
+				increment = 0;
+				is->current_day_night_cycle = output;
+			}
+			output = is->current_day_night_cycle + increment;
+			break;
+		}
+
+		// Pin the hour to a specific value
+		case DNCM_SPECIFIED: {
+			output = is->current_config.pinned_hour_for_day_night_cycle;
+			break;
+		}
+	}
+
+	// If midnight or over, restart at 0 or later
+	if (output > 23) output = output - 24; 
+
+	// Clamp to valid range of 0-23 in case of weird config values
+	output = clamp (0, 23, output);
+	is->day_night_cycle_unstarted = false;
+
+	return output;
+}
+
+void __fastcall
+patch_Map_Renderer_load_images (Map_Renderer *this, int edx)
+{
+	Map_Renderer_load_images(this, __);
+
+	// Initialize day/night cycle and re-calculate hour, if applicable
+	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
+		is->current_day_night_cycle = calculate_current_day_night_cycle_hour ();
+
+		if (is->day_night_cycle_img_state == IS_UNINITED) {
+			init_day_night_images ();
+		}
+
+		if (is->day_night_cycle_img_state == IS_OK) {
+			
+			// Sprite proxies are deindexed during each load event as sprite instances (really only Resources, which are reloaded) may change.
+			if (!is->day_night_cycle_img_proxies_indexed) {
+				build_sprite_proxies_24(this);
+			}
 		}
 	}
 }
@@ -3435,9 +4182,9 @@ patch_init_floating_point ()
 		{"enable_caravan_unit_ai"                              , true , offsetof (struct c3x_config, enable_caravan_unit_ai)},
 		{"remove_unit_limit"                                   , true , offsetof (struct c3x_config, remove_unit_limit)},
 		{"remove_city_improvement_limit"                       , true , offsetof (struct c3x_config, remove_city_improvement_limit)},
-		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
+		{"lift_city_limit"                                     , true , offsetof (struct c3x_config, lift_city_limit)},
 		{"remove_cap_on_turn_limit"                            , true , offsetof (struct c3x_config, remove_cap_on_turn_limit)},
-		{"move_trade_net_object"                               , false, offsetof (struct c3x_config, move_trade_net_object)},
+		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
 		{"patch_submarine_bug"                                 , true , offsetof (struct c3x_config, patch_submarine_bug)},
 		{"patch_science_age_bug"                               , true , offsetof (struct c3x_config, patch_science_age_bug)},
 		{"patch_pedia_texture_bug"                             , true , offsetof (struct c3x_config, patch_pedia_texture_bug)},
@@ -3452,6 +4199,7 @@ patch_init_floating_point ()
 		{"patch_empty_army_movement"                           , true , offsetof (struct c3x_config, patch_empty_army_movement)},
 		{"patch_premature_truncation_of_found_paths"           , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
 		{"patch_zero_production_crash"                         , true , offsetof (struct c3x_config, patch_zero_production_crash)},
+		{"patch_ai_can_sacrifice_without_special_ability"      , true , offsetof (struct c3x_config, patch_ai_can_sacrifice_without_special_ability)},
 		{"delete_off_map_ai_units"                             , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
 		{"fix_overlapping_specialist_yield_icons"              , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
 		{"prevent_autorazing"                                  , false, offsetof (struct c3x_config, prevent_autorazing)},
@@ -3478,6 +4226,10 @@ patch_init_floating_point ()
 		{"warn_when_chosen_building_would_replace_another"     , false, offsetof (struct c3x_config, warn_when_chosen_building_would_replace_another)},
 		{"do_not_unassign_workers_from_polluted_tiles"         , false, offsetof (struct c3x_config, do_not_unassign_workers_from_polluted_tiles)},
 		{"do_not_make_capital_cities_appear_larger"            , false, offsetof (struct c3x_config, do_not_make_capital_cities_appear_larger)},
+		{"show_territory_colors_on_water_tiles_in_minimap"     , false, offsetof (struct c3x_config, show_territory_colors_on_water_tiles_in_minimap)},
+		{"convert_some_popups_into_online_mp_messages"         , false, offsetof (struct c3x_config, convert_some_popups_into_online_mp_messages)},
+		{"enable_debug_mode_switch"                            , false, offsetof (struct c3x_config, enable_debug_mode_switch)},
+		{"accentuate_cities_on_minimap"                        , false, offsetof (struct c3x_config, accentuate_cities_on_minimap)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -3499,6 +4251,8 @@ patch_init_floating_point ()
 		{"allow_sale_of_aqueducts_and_hospitals"               , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
 		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
 		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
+		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
+		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
 	};
 
 	struct integer_config_option {
@@ -3506,21 +4260,26 @@ patch_init_floating_point ()
 		int base_val;
 		int offset;
 	} integer_config_options[] = {
-		{"limit_railroad_movement"                     ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
-		{"minimum_city_separation"                     ,     1, offsetof (struct c3x_config, minimum_city_separation)},
-		{"anarchy_length_percent"                      ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
-		{"ai_multi_city_start"                         ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
-		{"max_tries_to_place_fp_city"                  , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
-		{"ai_research_multiplier"                      ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
-		{"ai_settler_perfume_on_founding_duration"     ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
-		{"extra_unit_maintenance_per_shields"          ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
-		{"ai_build_artillery_ratio"                    ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
-		{"ai_artillery_value_damage_percent"           ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
-		{"ai_build_bomber_ratio"                       ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
-		{"max_ai_naval_escorts"                        ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
-		{"ai_worker_requirement_percent"               ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
-		{"chance_for_nukes_to_destroy_max_one_hp_units",   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
-		{"rebase_range_multiplier"                     ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
+		{"limit_railroad_movement"                      ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
+		{"minimum_city_separation"                      ,     1, offsetof (struct c3x_config, minimum_city_separation)},
+		{"anarchy_length_percent"                       ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
+		{"ai_multi_city_start"                          ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
+		{"max_tries_to_place_fp_city"                   , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
+		{"ai_research_multiplier"                       ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
+		{"ai_settler_perfume_on_founding_duration"      ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
+		{"extra_unit_maintenance_per_shields"           ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
+		{"ai_build_artillery_ratio"                     ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
+		{"ai_artillery_value_damage_percent"            ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
+		{"ai_build_bomber_ratio"                        ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
+		{"max_ai_naval_escorts"                         ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
+		{"ai_worker_requirement_percent"                ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
+		{"chance_for_nukes_to_destroy_max_one_hp_units" ,   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
+		{"rebase_range_multiplier"                      ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
+		{"elapsed_minutes_per_day_night_hour_transition",     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
+		{"fixed_hours_per_turn_for_day_night_cycle"     ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
+		{"pinned_hour_for_day_night_cycle"              ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
+		{"years_to_double_building_culture"             ,  1000, offsetof (struct c3x_config, years_to_double_building_culture)},
+		{"tourism_time_scale_percent"                   ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -3667,7 +4426,9 @@ patch_init_floating_point ()
 	base_config.ai_settler_perfume_on_founding = 0;
 	base_config.work_area_limit = WAL_NONE;
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
+	base_config.double_minimap_size = MDM_HIGH_DEF;
 	base_config.city_work_radius = 2;
+	base_config.day_night_cycle_mode = DNCM_OFF;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)
@@ -3719,8 +4480,9 @@ patch_init_floating_point ()
 
 	is->sb_next_up = NULL;
 	is->trade_net = p_original_trade_net;
-	is->trade_net_refs_load_state = IS_UNINITED;
-	is->trade_net_refs = NULL;
+	is->city_limit = 512;
+	is->trade_net_addrs_load_state = IS_UNINITED;
+	is->trade_net_addrs = NULL;
 	is->tnx_cache = NULL;
 	is->is_computing_city_connections = false;
 	is->keep_tnx_cache = false;
@@ -3741,7 +4503,7 @@ patch_init_floating_point ()
 	is->trade_scroll_button_state = IS_UNINITED;
 	is->eligible_for_trade_scroll = 0;
 
-	memset (&is->nopified_areas, 0, sizeof is->nopified_areas);
+	memset (&is->saved_code_areas, 0, sizeof is->saved_code_areas);
 
 	is->unit_menu_duplicates = NULL;
 
@@ -3876,6 +4638,8 @@ patch_init_floating_point ()
 
 	is->saved_improv_counts = NULL;
 	is->saved_improv_counts_capacity = 0;
+
+	memset (is->last_main_screen_key_up_events, 0, sizeof is->last_main_screen_key_up_events);
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -4126,6 +4890,56 @@ deinit_red_food_icon ()
 	if (is->red_food_icon_state == IS_OK)
 		is->red_food_icon.vtable->destruct (&is->red_food_icon, __, 0);
 	is->red_food_icon_state = IS_UNINITED;
+}
+
+enum init_state
+init_large_minimap_frame ()
+{
+	if (is->large_minimap_frame_img_state != IS_UNINITED)
+		return is->large_minimap_frame_img_state;
+
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
+
+	char temp_path[2*MAX_PATH];
+
+	get_mod_art_path ("interface\\DoubleSizeBoxLeftColor.pcx", temp_path, sizeof temp_path);
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if (pcx.JGL.Image != NULL) {
+		Sprite_construct (&is->double_size_box_left_color_pcx);
+		int width  = pcx.JGL.Image->vtable->m54_Get_Width  (pcx.JGL.Image),
+		    height = pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image);
+		Sprite_slice_pcx (&is->double_size_box_left_color_pcx, __, &pcx, 0, 0, width, height, 1, 1);
+	} else {
+		pcx.vtable->destruct (&pcx, __, 0);
+		return is->large_minimap_frame_img_state = IS_INIT_FAILED;
+	}
+
+	get_mod_art_path ("interface\\DoubleSizeBoxLeftAlpha.pcx", temp_path, sizeof temp_path);
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if (pcx.JGL.Image != NULL) {
+		Sprite_construct (&is->double_size_box_left_alpha_pcx);
+		int width  = pcx.JGL.Image->vtable->m54_Get_Width  (pcx.JGL.Image),
+		    height = pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image);
+		Sprite_slice_pcx (&is->double_size_box_left_alpha_pcx, __, &pcx, 0, 0, width, height, 1, 1);
+	} else {
+		is->double_size_box_left_color_pcx.vtable->destruct (&is->double_size_box_left_color_pcx, __, 0);
+		pcx.vtable->destruct (&pcx, __, 0);
+		return is->large_minimap_frame_img_state = IS_INIT_FAILED;;
+	}
+
+	pcx.vtable->destruct (&pcx, __, 0);
+	return is->large_minimap_frame_img_state = IS_OK;
+}
+
+void
+deinit_large_minimap_frame ()
+{
+	if (is->large_minimap_frame_img_state == IS_OK) {
+		is->double_size_box_left_color_pcx.vtable->destruct (&is->double_size_box_left_color_pcx, __, 0);
+		is->double_size_box_left_alpha_pcx.vtable->destruct (&is->double_size_box_left_alpha_pcx, __, 0);
+	}
+	is->large_minimap_frame_img_state = IS_UNINITED;
 }
 
 int __cdecl
@@ -5804,6 +6618,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	deinit_trade_scroll_buttons ();
 	deinit_unit_rcm_icons ();
 	deinit_red_food_icon ();
+	deinit_large_minimap_frame ();
 	if (is->tile_already_worked_zoomed_out_sprite_init_state != IS_UNINITED) {
 		enum init_state * state = &is->tile_already_worked_zoomed_out_sprite_init_state;
 		if (*state == IS_OK) {
@@ -5963,6 +6778,15 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 
 	// Clear old alias bits
 	is->aliased_civ_noun_bits = is->aliased_civ_adjective_bits = is->aliased_civ_formal_name_bits = is->aliased_leader_name_bits = is->aliased_leader_title_bits = 0;
+
+	// Clear day/night cycle vars and deindex sprite proxies, if necessary.
+	if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
+		is->day_night_cycle_unstarted = true;
+		is->current_day_night_cycle = 12;
+		if (is->day_night_cycle_img_proxies_indexed) {
+			deindex_day_night_image_proxies ();
+		}
+	}
 
 	return tr;
 }
@@ -7456,6 +8280,14 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, bool 
 	return tr;
 }
 
+int __fastcall
+patch_Sprite_draw_on_map (Sprite * this, int edx, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7)
+{
+	Sprite *to_draw = get_sprite_proxy_for_current_hour(this);
+
+	return Sprite_draw_on_map(to_draw ? to_draw : this, __, map_renderer, pixel_x, pixel_y, param_4, param_5, param_6, param_7);
+}
+
 void __fastcall
 patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, int param_1, int pixel_x, int pixel_y, Map_Renderer * map_renderer, int param_5, int tile_x, int tile_y, int param_8)
 {
@@ -7485,11 +8317,20 @@ void __fastcall
 patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, int virtual_key_code, int is_down)
 {
 	char s[200];
+	int * last_events = is->last_main_screen_key_up_events;
+	bool in_game = *p_player_bits != 0; // Player bits all zero indicates we aren't currently in a game. Need to check for this because UI events
+					    // on the main menu also pass through this function.
+
+	if (! is_down) {
+		for (int n = ARRAY_LEN (is->last_main_screen_key_up_events) - 1; n > 0; n--)
+			last_events[n] = last_events[n - 1];
+		last_events[0] = virtual_key_code;
+	}
+
 	if (is->current_config.enable_ai_city_location_desirability_display &&
 	    (virtual_key_code == VK_L) && is_down &&
 	    (! (is_command_button_active (&this->GUI, UCV_Load) || is_command_button_active (&this->GUI, UCV_Unload))) &&
-	    (*p_player_bits != 0)) { // Player bits all zero indicates we aren't currently in a game. Need to check for this because UI events on the
-		                     // main menu also pass through this function.
+	    in_game) {
 		int is_debug_mode = (*p_debug_mode_bits & 4) != 0; // This is how the check is done in open_tile_info. Actually there are two debug
 		                                                   // mode bits (4 and 8) and I don't know what the difference is.
 		PopupForm * popup = get_popup_form ();
@@ -7510,7 +8351,27 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 			is->city_loc_display_perspective = (sel >= 1) ? sel : -1;
 			this->vtable->m73_call_m22_Draw ((Base_Form *)this); // Trigger map redraw
 		}
+
+	} else if (is->current_config.enable_debug_mode_switch &&
+		   (in_game && ! is_down) &&
+		   (last_events[4] == VK_D) && (last_events[3] == VK_E) && (last_events[2] == VK_B) && (last_events[1] == VK_U) && (last_events[0] == VK_G)) {
+		PopupForm * popup = get_popup_form ();
+		if ((*p_debug_mode_bits & 0xC) != 0) { // Consider debug mode on if either bit is set
+			*p_debug_mode_bits &= ~0xC;
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_INFO", -1, 0, 0, 0);
+			PopupForm_add_text (popup, __, "Debug mode deactivated.", 0);
+			patch_show_popup (popup, __, 0, 0);
+		} else {
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_DEBUG_ACTIVATION", -1, 0, 0, 0);
+			int sel = patch_show_popup (popup, __, 0, 0);
+			if (sel == 0) {
+				*p_debug_mode_bits |= 0xC;
+				*(bool *)((int)p_human_player_bits + 37) = true; // Set MegaTrainerXL flag indicating edited save
+			}
+		}
+		this->vtable->m73_call_m22_Draw ((Base_Form *)this); // Trigger map redraw
 	}
+
 	Main_Screen_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
 }
 
@@ -7734,6 +8595,22 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	    add && (improv->ImprovementFlags & ITF_Center_of_Empire) &&
 	    ((*p_human_player_bits & (1 << this->Body.CivID)) == 0))
 		remove_extra_palaces (this, is->currently_capturing_city);
+
+	// If sharing wonders in hotseat mode, we must recompute improvement maintenance for all human players when any one of them gains or loses a
+	// wonder that grants free improvements.
+	if ((! is->is_placing_scenario_things) &&
+	    is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << this->Body.CivID) & *p_human_player_bits)) { // is this city owned by a human player
+		unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+		int n_player = 1;
+		while (player_bits != 0) {
+			if ((player_bits & 1) && (n_player != this->Body.CivID))
+				Leader_recompute_buildings_maintenance (&leaders[n_player]);
+			player_bits >>= 1;
+			n_player++;
+		}
+	}
 }
 
 void __fastcall
@@ -8197,6 +9074,41 @@ adjust_sliders_preproduction (Leader * this)
 }
 
 int __fastcall
+patch_City_get_improvement_maintenance (City * this, int edx, int improv_id)
+{
+	// Check if this improvment is provided for free by another player via shared wonder effects
+	int civ_id = this->Body.CivID;
+	bool free_from_sharing = false;
+	if (is->current_config.share_wonders_in_hotseat &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((1 << civ_id) & *p_human_player_bits)) { // is this city owned by a human player
+
+		// Check if any other human player in the game has this improv in their auto improvs table, including for this city's continent
+		bool has_free_improv = false;
+		Tile * city_tile = tile_at (this->Body.X, this->Body.Y);
+		int continent_id = city_tile->vtable->m46_Get_ContinentID (city_tile);
+		int cont_coded_key = (continent_id + 1) * p_bic_data->ImprovementsCount + improv_id;;
+		unsigned player_bits = *(unsigned *)p_human_player_bits >> 1;
+		int n_player = 1;
+		while (player_bits != 0) {
+			if ((player_bits & 1) && (n_player != civ_id))
+				if (Hash_Table_look_up (&leaders[n_player].Auto_Improvements, __, improv_id     , NULL) ||
+				    Hash_Table_look_up (&leaders[n_player].Auto_Improvements, __, cont_coded_key, NULL)) {
+					free_from_sharing = true;
+					break;
+				}
+			player_bits >>= 1;
+			n_player++;
+		}
+	}
+
+	if (! free_from_sharing)
+		return City_get_improvement_maintenance (this, __, improv_id);
+	else
+		return 0;
+}
+
+int __fastcall
 patch_Leader_count_maintenance_free_units (Leader * this)
 {
 	if ((is->current_config.extra_unit_maintenance_per_shields <= 0) && (this->ID != 0))
@@ -8335,7 +9247,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 					(improv->Production <= 0);
 
 				if (sellable && patch_City_has_improvement (coi.city, __, n, 0)) {
-					int maint = City_get_improvement_maintenance (coi.city, __, n);
+					int maint = patch_City_get_improvement_maintenance (coi.city, __, n);
 					if (maint > 0)
 						memoize ((not_above (31, maint) << 26) | (n << 13) | coi.city_id);
 				}
@@ -8350,7 +9262,7 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 			int improv_id = ((1<<13) - 1) & (is->memo[count_sold] >> 13),
 			    city_id   = ((1<<13) - 1) &  is->memo[count_sold];
 			City * city = get_city_ptr (city_id);
-			improv_cost -= City_get_improvement_maintenance (city, __, improv_id);
+			improv_cost -= patch_City_get_improvement_maintenance (city, __, improv_id);
 			City_sell_improvement (city, __, improv_id, false);
 			treasury = leader->Gold_Encoded + leader->Gold_Decrement;
 			count_sold++;
@@ -8679,6 +9591,14 @@ patch_Leader_begin_turn (Leader * this)
 			    ((this->Relation_Treaties[n] & 2) == 0)) // Check right of passage
 				Leader_bounce_trespassing_units (&leaders[n], __, this->ID);
 	is->do_not_bounce_invisible_units = false;
+
+	if (is->current_config.introduce_all_human_players_at_start_of_hotseat_game &&
+	    (*p_current_turn_no == 0) &&
+	    (*p_is_offline_mp_game && ! *p_is_pbem_game) && // is hotseat game
+	    ((*p_human_player_bits & (1 << this->ID)) != 0))
+		for (int n = 0; n < 32; n++)
+			if (*p_human_player_bits & (1 << n))
+				Leader_make_contact (this, __, n, false);
 
 	Leader_begin_turn (this);
 }
@@ -9033,6 +9953,16 @@ patch_perform_interturn_in_main_loop ()
 
 	perform_interturn ();
 
+	if (is->current_config.day_night_cycle_mode) {
+		if (is->day_night_cycle_img_state == IS_OK) {
+			int new_hour = calculate_current_day_night_cycle_hour ();
+			if (new_hour != is->current_day_night_cycle) {
+				is->current_day_night_cycle = new_hour;
+				p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+			}
+		}
+	}
+
 	if (is->current_config.measure_turn_times) {
 		long long ts_after;
 		QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
@@ -9329,7 +10259,7 @@ patch_City_get_improv_maintenance_for_ui (City * this, int edx, int improv_id)
 	    (improv->ObsoleteID >= 0) && Leader_has_tech (&leaders[this->Body.CivID], __, improv->ObsoleteID))
 		return 0;
 	else
-		return City_get_improvement_maintenance (this, __, improv_id);
+		return patch_City_get_improvement_maintenance (this, __, improv_id);
 }
 
 // Patch for barbarian diagonal bug. This bug is a small mistake in the original code, maybe a copy+paste error. The original code tries to loop over
@@ -10026,7 +10956,7 @@ patch_Demographics_Form_m22_draw (Demographics_Form * this)
 
 		// Draw text on top of the backdrop
 		char s[100];
-		snprintf (s, sizeof s, "%s %d / 512", is->c3x_labels[CL_TOTAL_CITIES], city_count);
+		snprintf (s, sizeof s, "%s %d / %d", is->c3x_labels[CL_TOTAL_CITIES], city_count, is->city_limit);
 		s[(sizeof s) - 1] = '\0';
 		PCX_Image_set_text_effects (canvas, __, 0x80000000, -1, 2, 2); // Set text color to black
 		PCX_Image_draw_centered_text (canvas, __, get_font (14, FSF_NONE), s, 1024/2 - 100, 730, 200, strlen (s));
@@ -10041,7 +10971,7 @@ patch_Leader_get_optimal_city_number (Leader * this)
 	else {
 		int num_sans_fp = Leader_get_optimal_city_number (this), // OCN w/o contrib from num of FPs
 		    fp_count = patch_Leader_count_wonders_with_small_flag (this, __, ITSW_Reduces_Corruption, NULL),
-		    s_diff = p_bic_data->DifficultyLevels[this->field_30].Optimal_Cities, // Difficulty scaling, called "percentage of optimal cities" in the editor
+		    s_diff = p_bic_data->DifficultyLevels[this->player_difficulty].Optimal_Cities, // Difficulty scaling, called "percentage of optimal cities" in the editor
 		    base_ocn = p_bic_data->WorldSizes[p_bic_data->Map.World.World_Size].OptimalCityCount;
 		return num_sans_fp + (s_diff * fp_count * base_ocn + 50) / 100; // Add 50 to round off
 	}
@@ -11113,6 +12043,10 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			void * area = buffer_allocate (&mod_data, sizeof is->turn_no_of_last_founding_for_settler_perfume);
 			memcpy (area, is->turn_no_of_last_founding_for_settler_perfume, sizeof is->turn_no_of_last_founding_for_settler_perfume);
 		}
+		if (is->current_config.day_night_cycle_mode != DNCM_OFF) {
+			serialize_aligned_text ("current_day_night_cycle", &mod_data);
+			int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_day_night_cycle), is->current_day_night_cycle);
+		}
 	}
 
 	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
@@ -11276,6 +12210,18 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 			} else if (match_save_chunk_name (&cursor, "turn_no_of_last_founding_for_settler_perfume")) {
 				for (int n = 0; n < 32; n++)
 					is->turn_no_of_last_founding_for_settler_perfume[n] = *((int *)cursor)++;
+
+			} else if (match_save_chunk_name (&cursor, "current_day_night_cycle")) {
+				is->current_day_night_cycle = *((int *)cursor)++;
+				is->day_night_cycle_unstarted = false;
+
+				// The day/night cycle sprite proxies will have been cleared in patch_load_scenario. They will not necessarily be set
+				// up again in the usual way because Map_Renderer::load_images is not necessarily called when loading a save. The game
+				// skips reloading all graphics when loading a save while in-game with another that uses the same graphics (possibly
+				// only the standard graphics; I didn't test). If day/night cycle mode is active, restore the proxies now if they
+				// haven't already been.
+				if ((is->day_night_cycle_img_state == IS_OK) && ! is->day_night_cycle_img_proxies_indexed)
+					build_sprite_proxies_24 (&p_bic_data->Map.Renderer);
 
 			} else {
 				error_chunk_name = "N/A";
@@ -12290,6 +13236,363 @@ patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 	}
 
 	return GetProcAddress (hModule, lpProcName);
+}
+
+bool __fastcall
+patch_City_can_build_upgrade_type (City * this, int edx, int unit_type_id, bool exclude_upgradable, int param_3, bool allow_kings)
+{
+	UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
+	if (is->current_config.prevent_old_units_from_upgrading_past_ability_block &&
+	    ((type->Special_Actions & UCV_Upgrade_Unit) == 0) &&
+	    (type->Available_To & (1 << leaders[this->Body.CivID].RaceID)))
+		exclude_upgradable = false;
+
+	return patch_City_can_build_unit (this, __, unit_type_id, exclude_upgradable, param_3, allow_kings);
+}
+
+void __fastcall
+patch_Main_GUI_position_elements (Main_GUI * this)
+{
+	Main_GUI_position_elements (this);
+
+	// Double size of minimap if configured
+	bool want_larger_minimap = (is->current_config.double_minimap_size == MDM_ALWAYS) ||
+		((is->current_config.double_minimap_size == MDM_HIGH_DEF) && (p_bic_data->ScreenWidth >= 1920));
+	if (want_larger_minimap && (init_large_minimap_frame () == IS_OK)) {
+		this->Mini_Map_Click_Rect.top -= 105;
+		this->Mini_Map_Click_Rect.right += 229;
+	}
+}
+
+#define PEDIA_DESC_LINES_PER_PAGE 38
+
+// Returns whether or not the line should be drawn
+bool
+do_next_line_for_pedia_desc (PCX_Image * canvas, int * inout_y)
+{
+	if (is->cmpd.drawing_lines) {
+		int first_line_on_shown_page = is->cmpd.shown_page * PEDIA_DESC_LINES_PER_PAGE;
+		int page = is->cmpd.line_count / PEDIA_DESC_LINES_PER_PAGE;
+		is->cmpd.line_count += 1;
+		is->cmpd.last_page = (page > is->cmpd.last_page) ? page : is->cmpd.last_page;
+
+		if (page == is->cmpd.shown_page) {
+			*inout_y -= is->cmpd.shown_page * PEDIA_DESC_LINES_PER_PAGE * PCX_Image_get_text_line_height (canvas);
+			return true;
+		} else
+			return false;
+	}
+	return true;
+}
+
+int __fastcall
+patch_PCX_Image_do_draw_centered_text_in_wrap_func (PCX_Image * this, int edx, char * str, int x, int y, int width, unsigned str_len)
+{
+	if (do_next_line_for_pedia_desc (this, &y))
+		return PCX_Image_do_draw_centered_text (this, __, str, x, y, width, str_len);
+	else
+		return 0; // Caller does not use return value
+}
+
+int __fastcall
+patch_PCX_Image_draw_text_in_wrap_func (PCX_Image * this, int edx, char * str, int x, int y, int str_len)
+{
+	if (do_next_line_for_pedia_desc (this, &y))
+		return PCX_Image_draw_text (this, __, str, x, y, str_len);
+	else
+		return PCX_Image_draw_text (this, __, " ", x, y, 1); // Caller uses the return value here so draw an empty string isntead of doing nothing
+}
+
+// Steam code is slightly different; this no-len version of draw_text gets called sometimes. It's the same as draw_text instead it computes the string
+// length itself instead of taking it in as a parameter.
+int __fastcall
+patch_PCX_Image_draw_text_no_len_in_wrap_func (PCX_Image * this, int edx, char * str, int x, int y)
+{
+	return patch_PCX_Image_draw_text_in_wrap_func (this, __, str, x, y, strlen (str));
+}
+
+void
+draw_civilopedia_article (void (__fastcall * base) (Civilopedia_Article *), Civilopedia_Article * article)
+{
+	// If the article changed then clear things from the old one
+	if (is->cmpd.article != article) {
+		is->cmpd.last_page = 0;
+		is->cmpd.shown_page = 0;
+		is->cmpd.article = article;
+	}
+
+	is->cmpd.line_count = 0;
+	is->cmpd.drawing_lines = article->show_description;
+
+	base (article);
+
+	is->cmpd.drawing_lines = false;
+}
+
+void __fastcall
+patch_Civilopedia_Article_m01_Draw_GCON_or_RACE (Civilopedia_Article * this)
+{
+	draw_civilopedia_article (Civilopedia_Article_m01_Draw_GCON_or_RACE, this);
+}
+
+void __fastcall
+patch_Civilopedia_Article_m01_Draw_UNIT (Civilopedia_Article * this)
+{
+	draw_civilopedia_article (Civilopedia_Article_m01_Draw_UNIT, this);
+}
+
+void __fastcall
+patch_Civilopedia_Form_m53_On_Control_Click (Civilopedia_Form * this, int edx, CivilopediaControlID control_id)
+{
+	Civilopedia_Article * current_article = (p_civilopedia_form->Current_Article_ID >= 0) ? p_civilopedia_form->Articles[p_civilopedia_form->Current_Article_ID] : NULL;
+
+	// "Effects" button leaves description mode, returns to showing effects
+	if ((control_id == PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID) && (current_article != NULL)) {
+		current_article->show_description = false;
+		is->cmpd.shown_page = 0;
+		play_sound_effect (26); // 26 = SE_SELECT
+		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
+
+	// "Previous" button shows the previous page of a multi-page description or switches to effects mode if on the first page
+	} else if (control_id == PEDIA_MULTIPAGE_PREV_BUTTON_ID) {
+		if (is->cmpd.shown_page > 0)
+			is->cmpd.shown_page -= 1;
+		else
+			current_article->show_description = false;
+		play_sound_effect (26);
+		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
+
+	} else if ((control_id == CCID_DESCRIPTION_BTN) && // if description/more/prev button was clicked AND
+		   (current_article != NULL) && current_article->show_description && // currently showing a description of an article AND
+		   (is->cmpd.last_page > 0)) { // this is a multi-page description
+
+		// Show the next page of the multi-page description unless it's a two-page description and we're on the second page, in which case go
+		// back to the first.
+		if ((is->cmpd.last_page == 1) && (is->cmpd.shown_page == 1))
+			is->cmpd.shown_page = 0;
+		else
+			is->cmpd.shown_page = not_above (is->cmpd.last_page, is->cmpd.shown_page + 1);
+		play_sound_effect (26);
+		p_civilopedia_form->Base.vtable->m73_call_m22_Draw ((Base_Form *)p_civilopedia_form);
+
+	} else
+		Civilopedia_Form_m53_On_Control_Click (this, __, control_id);
+}
+
+void __fastcall
+patch_Civilopedia_Form_m22_Draw (Civilopedia_Form * this)
+{
+	// Make sure the new buttons are not visible and the multipage variables are cleared when we exit description mode
+	if ((this->Current_Article_ID < 0) || ! this->Articles[this->Current_Article_ID]->show_description) {
+		is->cmpd.shown_page = is->cmpd.last_page = 0;
+		if (is->cmpd.effects_btn != NULL)
+			is->cmpd.effects_btn->vtable->m02_Show_Disabled ((Base_Form *)is->cmpd.effects_btn);
+		if (is->cmpd.previous_btn != NULL)
+			is->cmpd.previous_btn->vtable->m02_Show_Disabled ((Base_Form *)is->cmpd.previous_btn);
+	}
+
+	Civilopedia_Form_m22_Draw (this);
+}
+
+int __fastcall
+patch_Button_initialize_civilopedia_description (Button * this, int edx, char * text, int control_id, int x, int y, int width, int height, Base_Form * parent, int param_8)
+{
+	Civilopedia_Article * current_article = (p_civilopedia_form->Current_Article_ID >= 0) ? p_civilopedia_form->Articles[p_civilopedia_form->Current_Article_ID] : NULL;
+	if (current_article == NULL)
+		return Button_initialize (this, __, text, control_id, x, y, width, height, parent, param_8);
+
+	// Set button visibility for multi-page descriptions if we're showing such a thing right now
+	bool show_desc_btn = true, show_effects_btn = false, show_previous_btn = false;
+	char * desc_btn_text = text;
+	if (current_article->show_description && (is->cmpd.last_page > 0)) {
+
+		// Tribe articles act like one long descripton.
+		if ((current_article->article_kind == CAK_TRIBE) || (current_article->article_kind == CAK_GAME_CONCEPT)) {
+
+			// Show the more button as long as we're not on the last page. Show the previous always since we're in description mode.
+			show_previous_btn = true;
+			desc_btn_text = (*p_labels)[LBL_MORE];
+			if (is->cmpd.shown_page >= is->cmpd.last_page)
+				show_desc_btn = false;
+
+		// Unit articles have separate description/effects modes.
+		} else if (current_article->article_kind == CAK_UNIT) {
+
+			// For a two-page description, show the effects button and the description button which will act as a next/previous button
+			if (is->cmpd.last_page == 1) {
+				show_effects_btn = true;
+				desc_btn_text = is->cmpd.shown_page == 0 ? (*p_labels)[LBL_MORE] : (*p_labels)[LBL_PREVIOUS];
+
+			// For a three or more page description, show the effects button, and show the description button only if we're not on the
+			// last page (b/c it's the next button), and show the previous button only if we're not on the first page. If the desc button
+			// is visible, make it say "More".
+			} else {
+				show_effects_btn = true;
+				if (is->cmpd.shown_page >= is->cmpd.last_page)
+					show_desc_btn = false;
+				else
+					desc_btn_text = (*p_labels)[LBL_MORE];
+				show_previous_btn = is->cmpd.shown_page > 0;
+			}
+		}
+	}
+
+	int tr = Button_initialize (this, __, desc_btn_text, control_id, x, y, width, height, parent, param_8);
+
+	if (! show_desc_btn)
+		this->vtable->m02_Show_Disabled ((Base_Form *)this);
+
+	if (is->cmpd.effects_btn != NULL) {
+		if (show_effects_btn)
+			is->cmpd.effects_btn->vtable->m01_Show_Enabled ((Base_Form *)is->cmpd.effects_btn, __, 0);
+		else
+			is->cmpd.effects_btn->vtable->m02_Show_Disabled ((Base_Form *)is->cmpd.effects_btn);
+	}
+
+	if (is->cmpd.previous_btn != NULL) {
+		if (show_previous_btn)
+			is->cmpd.previous_btn->vtable->m01_Show_Enabled ((Base_Form *)is->cmpd.previous_btn, __, 0);
+		else
+			is->cmpd.previous_btn->vtable->m02_Show_Disabled ((Base_Form *)is->cmpd.previous_btn);
+	}
+
+	return tr;
+}
+
+int __fastcall
+patch_Civilopedia_Form_m68_Show_Dialog (Civilopedia_Form * this, int edx, int param_1, void * param_2, void * param_3)
+{
+	memset (&is->cmpd, 0, sizeof is->cmpd);
+
+	Button * bs[] = {malloc (sizeof Button), malloc (sizeof Button)};
+	for (int n = 0; n < ARRAY_LEN (bs); n++) {
+		if (bs[n] == NULL)
+			continue;
+		Button_construct (bs[n]);
+
+		int desc_btn_x = 535, desc_btn_y = 222, desc_btn_height = 17;
+
+		Button_initialize (bs[n], __,
+				   n == 0 ? (*p_labels)[LBL_EFFECTS] : (*p_labels)[LBL_PREVIOUS],
+				   n == 0 ? PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID : PEDIA_MULTIPAGE_PREV_BUTTON_ID, // control ID
+				   desc_btn_x, // location x
+				   desc_btn_y + (n == 0 ? -2 : 2) * desc_btn_height, // location y
+				   MOD_INFO_BUTTON_WIDTH, MOD_INFO_BUTTON_HEIGHT, // width, height
+				   (Base_Form *)this, // parent
+				   0); // ?
+
+		for (int k = 0; k < 3; k++)
+			bs[n]->Images[k] = &this->Description_Btn_Images[k];
+
+		// Do now draw the button until needed
+		bs[n]->vtable->m02_Show_Disabled ((Base_Form *)bs[n]);
+	}
+	is->cmpd.effects_btn  = bs[0];
+	is->cmpd.previous_btn = bs[1];
+
+	int tr = Civilopedia_Form_m68_Show_Dialog (this, __, param_1, param_2, param_3);
+
+	for (int n = 0; n < ARRAY_LEN (bs); n++)
+		if (bs[n] != NULL) {
+			bs[n]->vtable->destruct ((Base_Form *)bs[n], __, 0);
+			free (bs[n]);
+		}
+	is->cmpd.effects_btn = is->cmpd.previous_btn = NULL;
+
+	return tr;
+}
+
+int __fastcall
+patch_Tile_check_water_for_navigator_cell_coloring (Tile * this)
+{
+	if (! is->current_config.show_territory_colors_on_water_tiles_in_minimap)
+		return this->vtable->m35_Check_Is_Water (this);
+	else
+		return 0;
+}
+
+bool
+is_skippable_popup (char * text_key)
+{
+	char * skippable_keys[] = {"SUMMARY_END_GOLDEN_AGE", "SUMMARY_END_SCIENCE_AGE", "SUMMARY_NEW_SMALL_WONDER", // unimportant domestic things
+				   "WONDERPRODUCE", // another civ completed a wonder
+				   "MAKEPEACE", "MUTUALPROTECTIONPACT", "MILITARYALLIANCE", "SUMMARY_DECLARE_WAR", // diplo events not involving the player
+				   "TRADEEMBARGOENDS", // embargo vs player ends
+				   "SUMMARY_CIV_DESTROYED_BY_CIV", "SUMMARY_CIV_DESTROYED", // foreign civs destroyed not by player
+				   "LOSTGOOD", // 'We lost our supply of ...!'
+				   "TRADEEMBARGO", "MILITARYALLIANCEWARONUS", "MILITARYALLIANCEAGAINSTUS", // trade embargo or alliance vs player
+				   "SUMMARY_TRAVELERS_REPORT"}; // another civs starts a wonder
+
+	for (int n = 0; n < ARRAY_LEN (skippable_keys); n++)
+		if (strcmp (text_key, skippable_keys[n]) == 0)
+			return true;
+	return false;
+}
+
+int __fastcall
+patch_PopupForm_impl_begin_showing_popup (PopupForm * this)
+{
+	if (is_online_game () ||
+	    (! is->current_config.convert_some_popups_into_online_mp_messages) ||
+	    (! is_skippable_popup (this->text_key)))
+		return PopupForm_impl_begin_showing_popup (this);
+
+	else {
+		unsigned saved_prefs = *p_preferences;
+		int saved_flags = this->field_1BF0[0xE4];
+
+		*p_preferences |= P_SHOW_FEWER_MP_POPUPS;
+		this->field_1BF0[0xE4] |= 0x4000;
+		int tr = PopupForm_impl_begin_showing_popup (this);
+
+		*(bool *)(p_main_screen_form->animator.field_18E4 + 10) = true; // Set what must be a dirty flag
+		Animator_update (&p_main_screen_form->animator); // Make sure message appears
+
+		this->field_1BF0[0xE4] = saved_flags;
+		*p_preferences = saved_prefs;
+
+		return tr;
+	}
+}
+
+bool __stdcall
+patch_is_online_game_for_show_popup ()
+{
+	return is->current_config.convert_some_popups_into_online_mp_messages ? true : is_online_game ();
+}
+
+bool __fastcall
+patch_Unit_ai_can_sacrifice (Unit * this, int edx, bool requires_city)
+{
+	int sacrifice_action = UCV_Sacrifice & 0x0FFFFFFF; // Mask out top four category bits
+	UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+	if (is->current_config.patch_ai_can_sacrifice_without_special_ability && ((type->Special_Actions & sacrifice_action) == 0))
+		return false;
+	else
+		return Unit_ai_can_sacrifice (this, __, requires_city);
+}
+
+int __fastcall
+patch_Buildings_Info_get_age_in_years_for_tourism (Buildings_Info * this, int edx, int building_index)
+{
+	int base = Buildings_Info_get_age_in_years (this, __, building_index);
+	if (is->current_config.tourism_time_scale_percent == 100)
+		return base;
+	else if (is->current_config.tourism_time_scale_percent <= 0)
+		return INT_MAX;
+	else
+		return (base * 100 + 50) / is->current_config.tourism_time_scale_percent;
+}
+
+int __fastcall
+patch_Sprite_draw_minimap_frame (Sprite * this, int edx, Sprite * alpha, int param_2, PCX_Image * canvas, int x, int y, int param_6)
+{
+	bool want_larger_minimap = (is->current_config.double_minimap_size == MDM_ALWAYS) ||
+		((is->current_config.double_minimap_size == MDM_HIGH_DEF) && (p_bic_data->ScreenWidth >= 1920));
+	if (want_larger_minimap && (init_large_minimap_frame () == IS_OK))
+		return Sprite_draw_for_hud (&is->double_size_box_left_color_pcx, __, &is->double_size_box_left_alpha_pcx, param_2, canvas, x, y, param_6);
+	else
+		return Sprite_draw_for_hud (this, __, alpha, param_2, canvas, x, y, param_6);
 }
 
 // TCC requires a main function be defined even though it's never used.
