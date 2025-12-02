@@ -12637,14 +12637,14 @@ is_district_command (int unit_command_value)
 bool __fastcall
 patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 {
-	if (is->current_config.enable_districts) {
+	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
 		if ((tile != NULL) && (tile != p_null_tile) && is->current_config.enable_natural_wonders) {
 			struct district_instance * inst = get_district_instance (tile);
 			if ((inst != NULL) &&
 			    (inst->district_type == NATURAL_WONDER_DISTRICT_ID) &&
 			    (inst->natural_wonder_info.natural_wonder_id >= 0)) {
-				if (is_worker_or_settler_command (unit_command_value))
+				if (is_worker (this))
 					return false;
 			}
 		}
