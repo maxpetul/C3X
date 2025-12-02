@@ -233,6 +233,7 @@ opaque_win_structs = {
     "HRGN": 4,
     "HBITMAP": 4,
     "HDC": 4,
+    "HANDLE": 4,
 }
 
 def generate_prog_objects_for_lua():

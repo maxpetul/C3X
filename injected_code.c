@@ -23267,50 +23267,6 @@ patch_City_add_building_if_done (City * this)
 	City_add_building_if_done (this);
 }
 
-// This function needs to know the addresses of many patch functions. The easiest way is to define it last.
-FARPROC __stdcall
-patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
-{
-	struct proc {
-		char const * name;
-		FARPROC address;
-	} procs[] = {
-		// Auto-generated list based on civ_prog_objects.csv
-		#include "lua/prog_objects_for_lua.c"
-
-		// Additional functions especially for Lua
-		{ "pop_up_in_game_error"            , (FARPROC)pop_up_in_game_error },
-		{ "get_p_cities"                    , (FARPROC)get_p_cities },
-		{ "get_p_units"                     , (FARPROC)get_p_units },
-		{ "get_p_tile_units"                , (FARPROC)get_p_tile_units },
-		{ "get_city_ptr"                    , (FARPROC)get_city_ptr },
-		{ "get_unit_ptr"                    , (FARPROC)get_unit_ptr },
-		{ "get_ui_controller"               , (FARPROC)get_ui_controller },
-		{ "get_c3x_script_path"             , (FARPROC)get_c3x_script_path },
-		{ "get_main_screen_form"            , (FARPROC)get_main_screen_form },
-	};
-
-	if ((int)lpProcName > 1000) {
-		char const * prefix = "Tile_m";
-		if (0 == strncmp (lpProcName, prefix, strlen (prefix))) {
-
-			// Read index of vtable function from digits following 'm' in its name
-			int index = 0; {
-				for (char const * c = &lpProcName[strlen (prefix)]; (*c >= '0') && (*c <= '9'); c++)
-					index = 10*index + (*c - '0');
-			}
-
-			return ((FARPROC *)tile_vtable)[index];
-		}
-
-		for (int n = 0; n < (sizeof procs) / (sizeof procs[0]); n++)
-			if (strncmp (lpProcName, procs[n].name, 100) == 0)
-				return procs[n].address;
-	}
-
-	return GetProcAddress (hModule, lpProcName);
-}
-
 bool __fastcall
 patch_City_can_build_upgrade_type (City * this, int edx, int unit_type_id, bool exclude_upgradable, int param_3, bool allow_kings)
 {
@@ -25113,6 +25069,50 @@ patch_rand_int_to_enslave (void * this, int edx, int lim)
 	// lim is 100, enslaving happens if the return value is < 33
 	int r = rand_int (this, __, lim);
 	return is->do_not_enslave_units ? 100 : r;
+}
+
+// This function needs to know the addresses of many patch functions. The easiest way is to define it last.
+FARPROC __stdcall
+patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
+{
+	struct proc {
+		char const * name;
+		FARPROC address;
+	} procs[] = {
+		// Auto-generated list based on civ_prog_objects.csv
+		#include "lua/prog_objects_for_lua.c"
+
+		// Additional functions especially for Lua
+		{ "pop_up_in_game_error"            , (FARPROC)pop_up_in_game_error },
+		{ "get_p_cities"                    , (FARPROC)get_p_cities },
+		{ "get_p_units"                     , (FARPROC)get_p_units },
+		{ "get_p_tile_units"                , (FARPROC)get_p_tile_units },
+		{ "get_city_ptr"                    , (FARPROC)get_city_ptr },
+		{ "get_unit_ptr"                    , (FARPROC)get_unit_ptr },
+		{ "get_ui_controller"               , (FARPROC)get_ui_controller },
+		{ "get_c3x_script_path"             , (FARPROC)get_c3x_script_path },
+		{ "get_main_screen_form"            , (FARPROC)get_main_screen_form },
+	};
+
+	if ((int)lpProcName > 1000) {
+		char const * prefix = "Tile_m";
+		if (0 == strncmp (lpProcName, prefix, strlen (prefix))) {
+
+			// Read index of vtable function from digits following 'm' in its name
+			int index = 0; {
+				for (char const * c = &lpProcName[strlen (prefix)]; (*c >= '0') && (*c <= '9'); c++)
+					index = 10*index + (*c - '0');
+			}
+
+			return ((FARPROC *)tile_vtable)[index];
+		}
+
+		for (int n = 0; n < (sizeof procs) / (sizeof procs[0]); n++)
+			if (strncmp (lpProcName, procs[n].name, 100) == 0)
+				return procs[n].address;
+	}
+
+	return GetProcAddress (hModule, lpProcName);
 }
 
 // TCC requires a main function be defined even though it's never used.
