@@ -195,6 +195,8 @@ get_city_ptr (int id)
 }
 
 // Declare various functions needed for districts and hard to untangle and reorder here
+bool __fastcall patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value);
+bool __fastcall patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y);
 void __fastcall patch_City_recompute_yields_and_happiness (City * this);
 void __fastcall patch_Map_build_trade_network (Map * this);
 Tile * find_tile_for_district (City * city, int district_id, int * out_x, int * out_y);
@@ -11955,9 +11957,6 @@ set_up_stack_bombard_buttons (Main_GUI * this)
 	free_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&free_button->Button, __, 0);
 }
 
-bool __fastcall patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value);
-bool __fastcall patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y);
-
 void
 init_district_command_buttons ()
 {
@@ -12651,13 +12650,13 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 
 		if (is_district_command (unit_command_value)) {
-			return (base_type != SQ_Mountains && base_type != SQ_Forest && base_type != SQ_Jungle && base_type != SQ_Swamp);
+			return (base_type != SQ_Mountains && base_type != SQ_Forest && base_type != SQ_Jungle && base_type != SQ_Swamp && base_type != SQ_Volcano);
 		}
 		else if (unit_command_value == UCV_Build_Mine) {
 			bool has_district = (get_district_instance (tile) != NULL);
 
 			if (has_district) {
-				return (base_type != SQ_FloodPlain && base_type != SQ_Forest && base_type != SQ_Jungle);
+				return (base_type != SQ_FloodPlain && base_type != SQ_Forest && base_type != SQ_Jungle && base_type != SQ_Volcano);
 			}
 		}
 		else if (unit_command_value == UCV_Join_City) {
@@ -12667,11 +12666,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 				if ((type_id >= 0) && (type_id < p_bic_data->UnitTypeCount)) {
 					int worker_actions = p_bic_data->UnitTypes[type_id].Worker_Actions;
 					if (worker_actions != 0 && (worker_actions & (UCV_Automate))) {
-						int civ_id = this->Body.CivID;
-						if (civ_id >= 0 && civ_id < 32) {
-							return is->city_pending_district_requests[civ_id].len == 0;
-						}
-						return true;
+						return is->city_pending_district_requests[this->Body.CivID].len == 0;
 					}
 				}
 			}
@@ -13312,7 +13307,7 @@ patch_City_Form_draw (City_Form * this)
 	}
 
 	// Draw district commerce bonuses (gold and science)
-	if (! is->current_config.enable_districts)
+	if (! (is->current_config.enable_districts || is->current_config.enable_natural_wonders))
 		return;
 
 	// Lazy load district icons
@@ -19749,7 +19744,7 @@ patch_City_calc_tile_yield_while_gathering (City * this, int edx, YieldKind kind
 		else if (kind == YK_SHIELDS)  tr += mill_shields;
 		else if (kind == YK_COMMERCE) tr += mill_commerce;
 
-		if (is->current_config.enable_districts) {
+		if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 			int bonus_food = 0, bonus_shields = 0, bonus_gold = 0;
 			calculate_city_center_district_bonus (this, &bonus_food, &bonus_shields, &bonus_gold);
 			if      (kind == YK_FOOD)     tr += bonus_food;
