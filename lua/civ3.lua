@@ -8,12 +8,6 @@ local civ3_def_file = assert(io.open(c3x_rel_dir .. "/lua/civ3_defs_for_lua.h", 
 ffi.cdef(civ3_def_file:read("all"))
 civ3_def_file:close()
 
--- **************************** --
--- BEGIN AUTO-GENERATED SECTION --
--- **************************** --
-
--- Do not edit. This section was generated automatically by generator.py.
-
 ---@class Tile
 ---@field IsWater fun(this: Tile): boolean Whether this is a coast, sea, or ocean tile
 ---@field GetTileUnitID fun(this: Tile): integer
@@ -39,12 +33,6 @@ local Unit_metatable = {
   }
 }
 Unit = ffi.metatype("Unit", Unit_metatable)
-
-
-
--- ************************** --
--- END AUTO-GENERATED SECTION --
--- ************************** --
 
 civ3.CitizenMood = {
   Happy = 0,

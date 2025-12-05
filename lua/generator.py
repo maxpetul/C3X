@@ -381,6 +381,10 @@ def insert_generated_section(file_name, generated_text):
         f.write(new_contents)
 
 def generate_civ3_dot_lua(pss):
+    ######################
+    # NOT CALLED ANYMORE #
+    ######################
+
     classes = [
         ("Tile",
          #fields
@@ -444,7 +448,7 @@ if __name__ == "__main__":
 
     generate_prog_objects_for_lua()
 
-    insert_generated_section("civ3.lua", generate_civ3_dot_lua(pss))
+    # insert_generated_section("civ3.lua", generate_civ3_dot_lua(pss))
 
 # Generates C code that can be added to injected_code.c to check that all the sizes we've computed match the real sizes
 # for name in ss.keys():
