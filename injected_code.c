@@ -2538,9 +2538,8 @@ get_effective_district_yields (struct district_instance * inst,
 		culture = cfg->culture_bonus;
 	}
 
-	if ((inst != NULL) && is->current_config.enable_natural_wonders && (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
-		struct natural_wonder_district_config const * nwcfg =
-			get_natural_wonder_config_by_id (inst->natural_wonder_info.natural_wonder_id);
+	if (inst != NULL && is->current_config.enable_natural_wonders && inst->district_type == NATURAL_WONDER_DISTRICT_ID) {
+		struct natural_wonder_district_config const * nwcfg = get_natural_wonder_config_by_id (inst->natural_wonder_info.natural_wonder_id);
 		if (nwcfg != NULL) {
 			food += nwcfg->food_bonus;
 			shields += nwcfg->shield_bonus;
@@ -7280,7 +7279,7 @@ calculate_city_center_district_bonus (City * city, int * out_food, int * out_shi
 	if (out_gold != NULL)
 		*out_gold = 0;
 
-	if (! (is->current_config.enable_districts || is->current_config.enable_natural_wonders) || (city == NULL))
+	if ((! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) || (city == NULL))
 		return;
 
 	int bonus_food = 0;
@@ -12153,6 +12152,9 @@ set_up_district_buttons (Main_GUI * this)
 	struct district_instance * existing_inst = get_district_instance (tile);
 	if (existing_inst != NULL) {
 		existing_district_id = existing_inst->district_type;
+		if (is->current_config.enable_natural_wonders && existing_inst->district_type == NATURAL_WONDER_DISTRICT_ID) {
+			return;
+		}
 		if (patch_Unit_can_perform_command(selected_unit, __, UCV_Build_Mine)) {
 			for (int n = 0; n < 42; n++) {
 				if (this->Unit_Command_Buttons[n].Command == UCV_Build_Mine) {
@@ -12644,7 +12646,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 			if ((inst != NULL) &&
 			    (inst->district_type == NATURAL_WONDER_DISTRICT_ID) &&
 			    (inst->natural_wonder_info.natural_wonder_id >= 0)) {
-				if (is_worker (this))
+				if (is_worker (this) && (is_worker_or_settler_command (unit_command_value) || is_district_command (unit_command_value)))
 					return false;
 			}
 		}
@@ -15178,7 +15180,7 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 CityLocValidity __fastcall
 patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int civ_id, bool check_for_city_on_tile)
 {
-	if (is->current_config.enable_natural_wonders || is->current_config.enable_districts &&
+	if (is->current_config.enable_natural_wonders &&
 	    (*p_human_player_bits & (1 << civ_id)) == 0) {
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
@@ -23914,7 +23916,7 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 	// Call original function first
 	City_Form_draw_food_income_icons (this);
 
-	if (! is->current_config.enable_districts)
+	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders)
 		return;
 
 	// Get current city
@@ -23945,7 +23947,7 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 
 	// Get distribution hub food bonus
 	int distribution_hub_food = 0;
-	if (is->current_config.enable_distribution_hub_districts)
+	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts)
 		get_distribution_hub_yields_for_city (city, &distribution_hub_food, NULL);
 
 	// Total district food
@@ -23954,7 +23956,7 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 		return;
 
 	// Lazy load icons
-	if (is->current_config.enable_distribution_hub_districts) {
+	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
 		if (is->distribution_hub_icons_img_state == IS_UNINITED)
 			init_distribution_hub_icons ();
 		if (is->distribution_hub_icons_img_state != IS_OK)
@@ -24075,7 +24077,7 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 void
 recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 {
-	if ((! is->current_config.enable_districts) || (city == NULL))
+	if ((! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) || (city == NULL))
 		return;
 
 	int city_id = city->Body.ID;
@@ -24166,7 +24168,7 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 void __fastcall
 patch_City_draw_production_income_icons (City * this, int edx, int canvas, int * rect_ptr)
 {
-	if (! is->current_config.enable_districts) {
+	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		City_draw_production_income_icons (this, __, canvas, rect_ptr);
 		return;
 	}
@@ -24191,8 +24193,7 @@ patch_Sprite_draw_production_income_icon (Sprite * this, int edx, PCX_Image * ca
 	if (is->dc_icons_img_state == IS_UNINITED)
 		init_district_icons ();
 
-	if (is->current_config.enable_districts && 
-		is->dc_icons_img_state == IS_OK && is->distribution_hub_icons_img_state == IS_OK) {
+	if ((is->current_config.enable_districts || is->current_config.enable_natural_wonders) && is->dc_icons_img_state == IS_OK) {
 		Sprite to_draw = *this;
 		if (is->corruption_shield_icons_remaining > 0 || 
 			is->district_corruption_icons_remaining > 0 || 
@@ -24203,7 +24204,7 @@ patch_Sprite_draw_production_income_icon (Sprite * this, int edx, PCX_Image * ca
 			} else if (is->district_corruption_icons_remaining > 0) {
 				to_draw = is->district_corruption_icon;
 				is->district_corruption_icons_remaining--;
-			} else {
+			} else if (is->distribution_hub_icons_img_state == IS_OK) {
 				to_draw = is->distribution_hub_corruption_icon;
 				is->distribution_hub_corruption_icons_remaining--;
 			}
@@ -24217,7 +24218,7 @@ patch_Sprite_draw_production_income_icon (Sprite * this, int edx, PCX_Image * ca
 			} else if (is->district_shield_icons_remaining > 0) {
 				to_draw = is->district_shield_icon;
 				is->district_shield_icons_remaining--;
-			} else {
+			} else if (is->distribution_hub_icons_img_state == IS_OK) {
 				to_draw = is->distribution_hub_shield_icon;
 				is->distribution_hub_shield_icons_remaining--;
 			}
