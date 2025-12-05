@@ -15472,17 +15472,6 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 CityLocValidity __fastcall
 patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int civ_id, bool check_for_city_on_tile)
 {
-	if (is->current_config.enable_natural_wonders || is->current_config.enable_districts &&
-	    (*p_human_player_bits & (1 << civ_id)) == 0) {
-		Tile * tile = tile_at (tile_x, tile_y);
-		if ((tile != NULL) && (tile != p_null_tile)) {
-			struct district_instance * inst = get_district_instance (tile);
-			if (inst != NULL && (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
-				return CLV_BLOCKED;
-			}
-		}
-	}
-
 	int min_sep = is->current_config.minimum_city_separation;
 	CityLocValidity base_result = Map_check_city_location (this, __, tile_x, tile_y, civ_id, check_for_city_on_tile);
 
@@ -16031,6 +16020,16 @@ patch_Match_ai_eval_city_location (void * this, int edx, int x, int y, int civ_i
 	is->ai_evaling_city_loc_x = x;
 	is->ai_evaling_city_loc_y = y;
 	is->ai_evaling_city_field_30_get_counter = 0;
+
+	if (is->current_config.enable_natural_wonders || is->current_config.enable_districts) {
+		Tile * tile = tile_at (x, y);
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (tile);
+			if (inst != NULL && (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
+				return 0;
+			}
+		}
+	}
 
 	return Match_ai_eval_city_location (this, __, x, y, civ_id, param_4, out_breakdown);
 }
