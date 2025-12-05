@@ -443,7 +443,8 @@ if __name__ == "__main__":
             "Tile": ["Territory_OwnerID", "ResourceType", "TileUnitID", "CityID", "Tile_BuildingID", "ContinentID", "Overlays", "SquareType", "CityAreaID"],
             "Unit": ["ID", "X", "Y", "CivID", "UnitTypeID"],
             "Base_List_Item": ["V", "Object"],
-            "TileUnits": ["Items", "V2", "LastIndex", "Capacity"]}
+            "TileUnits": ["Items", "V2", "LastIndex", "Capacity"],
+            "BIC": ["Map"]}
     insert_generated_section("civ3_defs_for_lua.h", generate_civ3_defs_for_lua(ss, pss, es, defs))
 
     generate_prog_objects_for_lua()

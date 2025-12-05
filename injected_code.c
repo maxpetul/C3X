@@ -10887,6 +10887,7 @@ patch_Map_Renderer_load_images (Map_Renderer *this, int edx)
 	}
 }
 
+BIC *       get_bic_data     () { return p_bic_data;   }
 Cities *    get_p_cities     () { return p_cities;     }
 Units *     get_p_units      () { return p_units;      }
 TileUnits * get_p_tile_units () { return p_tile_units; }
@@ -25083,6 +25084,7 @@ patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 
 		// Additional functions especially for Lua
 		{ "pop_up_in_game_error"            , (FARPROC)pop_up_in_game_error },
+		{ "get_bic_data"                    , (FARPROC)get_bic_data },
 		{ "get_p_cities"                    , (FARPROC)get_p_cities },
 		{ "get_p_units"                     , (FARPROC)get_p_units },
 		{ "get_p_tile_units"                , (FARPROC)get_p_tile_units },
@@ -25091,6 +25093,7 @@ patch_lua_GetProcAddress (HMODULE hModule, char const * lpProcName)
 		{ "get_ui_controller"               , (FARPROC)get_ui_controller },
 		{ "get_c3x_script_path"             , (FARPROC)get_c3x_script_path },
 		{ "get_main_screen_form"            , (FARPROC)get_main_screen_form },
+		{ "get_neighbor_coords"             , (FARPROC)get_neighbor_coords },
 	};
 
 	if ((int)lpProcName > 1000) {

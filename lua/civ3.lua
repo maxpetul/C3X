@@ -8,6 +8,24 @@ local civ3_def_file = assert(io.open(c3x_rel_dir .. "/lua/civ3_defs_for_lua.h", 
 ffi.cdef(civ3_def_file:read("all"))
 civ3_def_file:close()
 
+local function NextNeighborOf(neighborsOfListing, neighbor)
+  local nOL = neighborsOfListing
+  if nOL.index < 8 then
+    nOL.index = nOL.index + 1
+    local nX = ffi.new("int[1]", -1)
+    local nY = ffi.new("int[1]", -1)
+    ffi.C.get_neighbor_coords(nOL.map, nOL.centerX, nOL.centerY, nOL.index, nX, nY)
+    return ffi.C.tile_at(nX[0], nY[0])
+  end
+  return nil
+end
+
+local function NeighborsOf(tileX, tileY)
+  local bic = ffi.C.get_bic_data()
+  local neighborsOfListing = { map = bic.map, index = 0, centerX = tileX, centerY = tileY }
+  return NextNeighborOf, neighborsOfListing, nil
+end
+
 ---@class Tile
 ---@field IsWater fun(this: Tile): boolean Whether this is a coast, sea, or ocean tile
 ---@field GetTileUnitID fun(this: Tile): integer

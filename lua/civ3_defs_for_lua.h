@@ -138,6 +138,17 @@ typedef struct s_TileUnits
 	byte _opaque_2[4];
 } TileUnits;
 
+typedef struct s_Map
+{
+	byte _opaque_0[135460];
+} Map;
+
+typedef struct s_BIC
+{
+	byte _opaque_0[15972];
+	Map map;
+} BIC;
+
 
 
 // ************************** //
@@ -150,6 +161,7 @@ int __thiscall Tile_m40_get_TileUnit_ID (Tile * this);
 void __thiscall Tile_m74_SetTerrainType (Tile * this, int terrain_type, int tile_x, int tile_y);
 
 void pop_up_in_game_error(char const * msg);
+BIC * get_bic_data();
 CityList * get_p_cities();
 UnitList * get_p_units();
 TileUnits * get_p_tile_units();
@@ -167,3 +179,4 @@ int __cdecl set_popup_int_param(int param_index, int value);
 int __thiscall show_popup(void * this, int param_1, int param_2);
 void __thiscall PopupForm_set_text_key_and_flags(void * this, char const * script_path, char const * text_key, int param_3, int param_4, int param_5, int param_6);
 Tile * __cdecl tile_at (int x, int y);
+void get_neighbor_coords(Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y);
