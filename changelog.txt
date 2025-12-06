@@ -1,3 +1,5 @@
+- Fix units in LTs escaping destruction when the LT itself is destroyed as a passenger in another transport
+
 - Add some options to make land transports viable, controlled by land_transport_rules setting
   - LTs may be loaded into naval transports
   - Empty LTs may join armies

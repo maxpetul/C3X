@@ -16644,9 +16644,10 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 		if ((p_bic_data->UnitTypes[type_id].Unit_Class == UTC_Land) &&
 		    (p_bic_data->UnitTypes[type_id].Transport_Capacity > 0) &&
 		    ! Unit_has_ability (this, __, UTA_Army)) {
-			if ((ret_addr == DESPAWN_TO_FIGHT_1_RETURN) || (ret_addr == DESPAWN_TO_FIGHT_2_RETURN) ||
-			    (ret_addr == DESPAWN_TO_DO_BOMBARD_TILE_RETURN) || (ret_addr == DESPAWN_TO_CRUISE_MISSILE_DEFENDER_RETURN) ||
-			    (ret_addr == DESPAWN_TO_BOUNCE_TRESPASSING_UNITS_RETURN) || (ret_addr == DESPAWN_TO_NUKE_DAMAGE_RETURN))
+			if (   ret_addr == DESPAWN_TO_FIGHT_1_RETURN                  || ret_addr == DESPAWN_TO_FIGHT_2_RETURN
+			    || ret_addr == DESPAWN_TO_DO_BOMBARD_TILE_RETURN          || ret_addr == DESPAWN_TO_CRUISE_MISSILE_DEFENDER_RETURN
+			    || ret_addr == DESPAWN_TO_BOUNCE_TRESPASSING_UNITS_RETURN || ret_addr == DESPAWN_TO_NUKE_DAMAGE_RETURN
+			    || ret_addr == DESPAWN_RECURSIVE_RETURN)
 				is->always_despawn_passengers = true;
 		}
 	}
@@ -19372,7 +19373,7 @@ patch_Unit_do_precision_strike (Unit * this, int edx, int x, int y)
 
 	if (is->current_config.polish_precision_striking &&
 	    UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Cruise_Missile))
-		Unit_despawn (this, __, 0, false, false, 0, 0, 0, 0);
+		patch_Unit_despawn (this, __, 0, false, false, 0, 0, 0, 0);
 }
 
 int __fastcall
