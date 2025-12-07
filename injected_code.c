@@ -16647,7 +16647,7 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 			if (   ret_addr == DESPAWN_TO_FIGHT_1_RETURN                  || ret_addr == DESPAWN_TO_FIGHT_2_RETURN
 			    || ret_addr == DESPAWN_TO_DO_BOMBARD_TILE_RETURN          || ret_addr == DESPAWN_TO_CRUISE_MISSILE_DEFENDER_RETURN
 			    || ret_addr == DESPAWN_TO_BOUNCE_TRESPASSING_UNITS_RETURN || ret_addr == DESPAWN_TO_NUKE_DAMAGE_RETURN
-			    || ret_addr == DESPAWN_RECURSIVE_RETURN)
+			    || ret_addr == DESPAWN_RECURSIVE_RETURN                   || ret_addr == DESPAWN_TO_DO_CAPTURE_UNITS_RETURN)
 				is->always_despawn_passengers = true;
 		}
 	}
@@ -24752,24 +24752,6 @@ patch_count_units_at_in_try_capturing (int x, int y, enum unit_filter filter, in
 
 	} else
 		return count_units_at (x, y, filter, arg_a, arg_b, arg_c);
-}
-
-void __fastcall
-patch_Unit_despawn_after_capture (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
-{
-	// If despawning a land transport with no-escape enabled, despawn any passengers too.
-	clear_memo ();
-	if ((is->current_config.land_transport_rules & LTR_NO_ESCAPE) &&
-	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land) &&
-	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Transport_Capacity > 0) &&
-	    ! Unit_has_ability (this, __, UTA_Army))
-		FOR_UNITS_ON (tai, tile_at (this->Body.X, this->Body.Y))
-			if (tai.unit->Body.Container_Unit == this->Body.ID)
-				memoize ((int)tai.unit);
-	for (int n = 0; n < is->memo_len; n++)
-		patch_Unit_despawn ((Unit *)is->memo[n], __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
-
-	patch_Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 }
 
 void __fastcall
