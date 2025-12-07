@@ -16274,6 +16274,19 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 
 				if (! patch_City_has_improvement (city, __, improv_id, false)) {
 					City_add_or_remove_improvement (city, __, improv_id, 1, false);
+					if (is->current_config.show_message_when_building_received) {
+						char msg[200];
+						snprintf (msg, sizeof msg, "%s %s %s %s %s %s",
+							city->Body.CityName,
+							is->c3x_labels[CL_RECEIVED],
+							p_bic_data->Improvements[improv_id].Name.S,
+							is->c3x_labels[CL_FROM_SHARED],
+							is->district_configs[required_district_id].name,
+							is->c3x_labels[CL_WITH],
+							source->Body.CityName);
+						msg[(sizeof msg) - 1] = '\0';
+						show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
+					}
 				}
 			}
 		}
@@ -16360,13 +16373,13 @@ grant_existing_district_buildings_to_city (City * city)
 				if (is->current_config.show_message_when_building_received) {
 					char msg[200];
 					snprintf (msg, sizeof msg, "%s %s %s %s %s %s",
-						  other->Body.CityName,
+						  city->Body.CityName,
 						  is->c3x_labels[CL_RECEIVED],
 						  p_bic_data->Improvements[building_id].Name.S,
 						  is->c3x_labels[CL_FROM_SHARED],
 						  is->district_configs[district_id].name,
 						  is->c3x_labels[CL_WITH],
-						  city->Body.CityName);
+						  other->Body.CityName);
 					msg[(sizeof msg) - 1] = '\0';
 					show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
 				}
