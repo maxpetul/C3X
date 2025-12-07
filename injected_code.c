@@ -2944,6 +2944,20 @@ get_unit_ptr (int id)
 	return NULL;
 }
 
+bool
+is_land_transport (Unit * unit)
+{
+	UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
+	return type->Unit_Class == UTC_Land && type->Transport_Capacity > 0 && ! Unit_has_ability (unit, __, UTA_Army);
+}
+
+bool
+is_in_land_transport (Unit * unit)
+{
+	Unit * container = get_unit_ptr (unit->Body.Container_Unit);
+	return container != NULL && is_land_transport (container);
+}
+
 struct unit_tile_iter {
 	int id;
 	int item_index;
@@ -16640,16 +16654,12 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	// Set always_despawn_passengers to true if the unit to be despawned is a land transport, the no-escape rule is in effect, and it's being
 	// despawned involuntarily, i.e. because of the actions of another player not the choice of its owner. Save the original to restore later.
 	bool prev_always_despawn_passengers = is->always_despawn_passengers;
-	if (is->current_config.land_transport_rules & LTR_NO_ESCAPE) {
-		if ((p_bic_data->UnitTypes[type_id].Unit_Class == UTC_Land) &&
-		    (p_bic_data->UnitTypes[type_id].Transport_Capacity > 0) &&
-		    ! Unit_has_ability (this, __, UTA_Army)) {
-			if (   ret_addr == DESPAWN_TO_FIGHT_1_RETURN                  || ret_addr == DESPAWN_TO_FIGHT_2_RETURN
-			    || ret_addr == DESPAWN_TO_DO_BOMBARD_TILE_RETURN          || ret_addr == DESPAWN_TO_CRUISE_MISSILE_DEFENDER_RETURN
-			    || ret_addr == DESPAWN_TO_BOUNCE_TRESPASSING_UNITS_RETURN || ret_addr == DESPAWN_TO_NUKE_DAMAGE_RETURN
-			    || ret_addr == DESPAWN_RECURSIVE_RETURN                   || ret_addr == DESPAWN_TO_DO_CAPTURE_UNITS_RETURN)
-				is->always_despawn_passengers = true;
-		}
+	if ((is->current_config.land_transport_rules & LTR_NO_ESCAPE) && is_land_transport (this)) {
+		if (   ret_addr == DESPAWN_TO_FIGHT_1_RETURN                  || ret_addr == DESPAWN_TO_FIGHT_2_RETURN
+		    || ret_addr == DESPAWN_TO_DO_BOMBARD_TILE_RETURN          || ret_addr == DESPAWN_TO_CRUISE_MISSILE_DEFENDER_RETURN
+		    || ret_addr == DESPAWN_TO_BOUNCE_TRESPASSING_UNITS_RETURN || ret_addr == DESPAWN_TO_NUKE_DAMAGE_RETURN
+		    || ret_addr == DESPAWN_RECURSIVE_RETURN                   || ret_addr == DESPAWN_TO_DO_CAPTURE_UNITS_RETURN)
+			is->always_despawn_passengers = true;
 	}
 
 	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
@@ -19072,15 +19082,6 @@ patch_Unit_teleport (Unit * this, int edx, int tile_x, int tile_y, Unit * unit_t
 	int tr = Unit_teleport (this, __, tile_x, tile_y, unit_telepad);
 	check_life_after_zoc (this, is->zoc_interceptor);
 	return tr;
-}
-
-bool
-is_in_land_transport (Unit * unit)
-{
-	Unit * container;
-	return ((container = get_unit_ptr (unit->Body.Container_Unit)) != NULL) &&
-		(p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Land) &&
-		! Unit_has_ability (container, __, UTA_Army);
 }
 
 bool
