@@ -19054,7 +19054,12 @@ check_life_after_zoc (Unit * unit, Unit * interceptor)
 
 		if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (&p_bic_data->fighter, __, interceptor, unit, true))
 			Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, unit, AT_DEATH, false);
+
+		bool prev_always_despawn_passengers = is->always_despawn_passengers;
+		is->always_despawn_passengers = is_land_transport (unit) && (is->current_config.land_transport_rules & LTR_NO_ESCAPE);
 		patch_Unit_despawn (unit, __, interceptor->Body.CivID, 0, 0, 0, 0, 0, 0);
+		is->always_despawn_passengers = prev_always_despawn_passengers;
+
 		return true;
 	} else
 		return false;
@@ -21692,8 +21697,12 @@ patch_Unit_despawn_after_killed_by_nuke (Unit * this, int edx, int civ_id_respon
 {
 	if (roll_to_spare_unit_from_nuke (this))
 		this->Body.Damage = Unit_get_max_hp (this) - 1;
-	else
+	else {
+		bool prev_always_despawn_passengers = is->always_despawn_passengers;
+		is->always_despawn_passengers = is_land_transport (this) && (is->current_config.land_transport_rules & LTR_NO_ESCAPE);
 		patch_Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
+		is->always_despawn_passengers = prev_always_despawn_passengers;
+	}
 }
 
 void __fastcall

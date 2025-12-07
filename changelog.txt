@@ -1,4 +1,4 @@
-- Fix units in LTs escaping destruction when the LT itself is destroyed as a passenger in another transport
+- Fix no-escape LT rule not applying when an LT is destroyed by lethal ZoC, by a nuclear explosion, or by the destruction of a larger transport carrying it
 
 - Add some options to make land transports viable, controlled by land_transport_rules setting
   - LTs may be loaded into naval transports
