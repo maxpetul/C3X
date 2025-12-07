@@ -335,6 +335,8 @@ struct c3x_config {
 
 	bool cities_with_mutual_district_receive_buildings;
 	bool cities_with_mutual_district_receive_wonders;
+	bool show_message_when_building_received;
+
 	bool air_units_use_aerodrome_districts_not_cities;
 
 	int maximum_pop_before_neighborhood_needed;
@@ -464,6 +466,9 @@ enum c3x_label {
 	CL_REQUIRES_NEIGHBORHOOD_TO_GROW,
 	CL_DISTRICT_DESTROYED_BY_VOLCANO,
 	CL_CONSTRUCTION_HALTED_DUE_TO_MISSING_DISTRICT,
+	CL_RECEIVED,
+	CL_FROM_SHARED,
+	CL_WITH,
 
 	// Districts config mismatch checked on game load
 	CL_DISTRICT_ID,

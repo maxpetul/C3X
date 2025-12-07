@@ -10873,6 +10873,7 @@ patch_init_floating_point ()
 		{"destroyed_wonders_can_be_built_again"                , false, offsetof (struct c3x_config, destroyed_wonders_can_be_built_again)},
 		{"cities_with_mutual_district_receive_buildings"       , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
 		{"cities_with_mutual_district_receive_wonders"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
+		{"show_message_when_building_received"                 , false, offsetof (struct c3x_config, show_message_when_building_received)},
 		{"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
 		{"show_natural_wonder_name_on_map"                     , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
 		{"ai_defends_districts"                                , false, offsetof (struct c3x_config, ai_defends_districts)},
@@ -16356,6 +16357,19 @@ grant_existing_district_buildings_to_city (City * city)
 					continue;
 
 				City_add_or_remove_improvement (city, __, building_id, 1, false);
+				if (is->current_config.show_message_when_building_received) {
+					char msg[200];
+					snprintf (msg, sizeof msg, "%s %s %s %s %s %s",
+						  other->Body.CityName,
+						  is->c3x_labels[CL_RECEIVED],
+						  p_bic_data->Improvements[building_id].Name.S,
+						  is->c3x_labels[CL_FROM_SHARED],
+						  is->district_configs[district_id].name,
+						  is->c3x_labels[CL_WITH],
+						  city->Body.CityName);
+					msg[(sizeof msg) - 1] = '\0';
+					show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
+				}
 			}
 		}
 	}

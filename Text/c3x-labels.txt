@@ -115,6 +115,9 @@ Building
 requires a Neighborhood to grow
 destroyed by volcanic eruption!
 construction halted due to missing
+received
+from shared
+with
 
 ; Districts config mismatch checked on game load
 District ID
