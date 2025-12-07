@@ -8096,7 +8096,8 @@ maybe_show_neighborhood_growth_warning (City * city)
 
 	unsigned int turn_no = (unsigned int)*p_current_turn_no;
 	unsigned int throttle = ((unsigned int)city->Body.X << 5) ^ (unsigned int)city->Body.Y;
-	if (((turn_no + throttle) % 4) != 0)
+	int frequency = is->current_config.neighborhood_needed_message_frequency;
+	if ((frequency <= 0) || (((turn_no + throttle) % frequency) != 0))
 		return;
 
 	char msg[160];
@@ -10908,10 +10909,11 @@ patch_init_floating_point ()
 		{"city_limit"                                    ,  2048, offsetof (struct c3x_config, city_limit)},
 		{"maximum_pop_before_neighborhood_needed"        ,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
 		{"per_neighborhood_pop_growth_enabled"			 ,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
+		{"minimum_natural_wonder_separation"             ,     10, offsetof (struct c3x_config, minimum_natural_wonder_separation)},
 		{"distribution_hub_food_yield_divisor"			 ,     1, offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
 		{"distribution_hub_shield_yield_divisor"		 ,     1, offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
 		{"ai_ideal_distribution_hub_count_per_100_cities",     1, offsetof (struct c3x_config, ai_ideal_distribution_hub_count_per_100_cities)},
-		{"minimum_natural_wonder_separation"             ,     10, offsetof (struct c3x_config, minimum_natural_wonder_separation)},
+		{"neighborhood_needed_message_frequency"         ,     4, offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
