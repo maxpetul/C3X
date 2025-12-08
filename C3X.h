@@ -625,9 +625,9 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	{
 		.command = UCV_Build_Neighborhood, .name = "Neighborhood", .tooltip = "Build Neighborhood",
 		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = true, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
-		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx", "Neighborhood_Abandoned.pcx"},
+		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
-		.img_path_count = 6, .max_building_index = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
+		.img_path_count = 5, .max_building_index = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
 		.culture_bonus = 1, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .defense_bonus_percent = 25
 		
 	},
@@ -1495,6 +1495,8 @@ struct injected_state {
 		Sprite LM_Forests_Pines_Images[12];
 		Sprite LM_Hills_Images[16];
 		Sprite District_Images[COUNT_DISTRICT_TYPES][10][4][6]; // [district][variant][era][building_stage]
+		Sprite Abandoned_District_Image;
+		Sprite Abandoned_Maritime_District_Image;
 		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
 		struct natural_wonder_district_image_set Natural_Wonder_Images[MAX_NATURAL_WONDER_DISTRICT_TYPES];
 	} day_night_cycle_imgs[24];
@@ -1508,13 +1510,15 @@ struct injected_state {
 	struct wonder_district_config wonder_district_configs[MAX_WONDER_DISTRICT_TYPES];
 	struct natural_wonder_district_config natural_wonder_configs[MAX_NATURAL_WONDER_DISTRICT_TYPES];
 
-	struct district_image_set {
-		Sprite imgs[10][4][6]; // [variant][era][building_stage]
-	} district_img_sets[COUNT_DISTRICT_TYPES];
+struct district_image_set {
+	Sprite imgs[10][4][6]; // [variant][era][building_stage]
+} district_img_sets[COUNT_DISTRICT_TYPES];
+	Sprite abandoned_district_img;
+	Sprite abandoned_maritime_district_img;
 
-	struct district_button_image_set {
-		Sprite imgs[4];
-	} district_btn_img_sets[COUNT_DISTRICT_TYPES];
+struct district_button_image_set {
+	Sprite imgs[4];
+} district_btn_img_sets[COUNT_DISTRICT_TYPES];
 
 	// Tech ID keys -> district ID. If a tech (aka advance) ID is present in the
 	// table that means that tech enables a district. This also means one tech can enable at most one district.
