@@ -7256,6 +7256,11 @@ deinit_district_images (void)
 			if (sprite->vtable != NULL)
 				sprite->vtable->destruct (sprite, __, 0);
 		}
+
+		if (is->abandoned_district_img.vtable != NULL)
+			is->abandoned_district_img.vtable->destruct (&is->abandoned_district_img, __, 0);
+		if (is->abandoned_maritime_district_img.vtable != NULL)
+			is->abandoned_maritime_district_img.vtable->destruct (&is->abandoned_maritime_district_img, __, 0);
 	}
 
 	is->dc_img_state = IS_UNINITED;
@@ -10571,6 +10576,13 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 			}
 		}
 
+		// Abandoned district art (land + maritime) for this hour
+		read_in_dir (&img, districts_hour_dir, "Abandoned.pcx", NULL);
+		if (img.JGL.Image == NULL)
+			return false;
+		Sprite_slice_pcx (&this->Abandoned_District_Image, __, &img, 0, 0, 128, 64, 1, 1);
+		Sprite_slice_pcx (&this->Abandoned_Maritime_District_Image, __, &img, 128, 0, 128, 64, 1, 1);
+
 		// Load wonder district images (dynamically per wonder) for this hour
 		if (is->current_config.enable_wonder_districts) {
 			char const * last_img_path = NULL;
@@ -10797,6 +10809,9 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 					}
 				}
 			}
+
+			insert_sprite_proxy (&is->abandoned_district_img, &is->day_night_cycle_imgs[h].Abandoned_District_Image, h);
+			insert_sprite_proxy (&is->abandoned_maritime_district_img, &is->day_night_cycle_imgs[h].Abandoned_Maritime_District_Image, h);
 
 			// Wonder districts
 			if (is->current_config.enable_wonder_districts) {
@@ -23742,6 +23757,33 @@ init_district_images ()
 			pcx.vtable->clear_JGL (&pcx);
 		}
 	}
+	// Load abandoned district images (land + maritime)
+	snprintf (art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\Abandoned.pcx", is->mod_rel_dir);
+	PCX_Image_read_file (&pcx, __, art_dir, NULL, 0, 0x100, 2);
+
+	if (pcx.JGL.Image == NULL) {
+		char ss[200];
+		snprintf (ss, sizeof ss, "init_district_images: failed to load abandoned district images from %s", art_dir);
+		pop_up_in_game_error (ss);
+		for (int dc2 = 0; dc2 < COUNT_DISTRICT_TYPES; dc2++)
+			for (int variant_i2 = 0; variant_i2 < ARRAY_LEN (is->district_img_sets[dc2].imgs); variant_i2++)
+				for (int era_i = 0; era_i < 4; era_i++) {
+					for (int col = 0; col < ARRAY_LEN (is->district_img_sets[dc2].imgs[variant_i2][era_i]); col++) {
+						Sprite * sprite = &is->district_img_sets[dc2].imgs[variant_i2][era_i][col];
+						if (sprite->vtable != NULL)
+							sprite->vtable->destruct (sprite, __, 0);
+					}
+				}
+		pcx.vtable->destruct (&pcx, __, 0);
+		return;
+	}
+
+	Sprite_construct (&is->abandoned_district_img);
+	Sprite_slice_pcx (&is->abandoned_district_img, __, &pcx, 0, 0, 128, 64, 1, 1);
+
+	Sprite_construct (&is->abandoned_maritime_district_img);
+	Sprite_slice_pcx (&is->abandoned_maritime_district_img, __, &pcx, 128, 0, 128, 64, 1, 1);
+	pcx.vtable->clear_JGL (&pcx);
 	// Load wonder district images (dynamically per wonder)
 	if (is->current_config.enable_wonder_districts) {
 		char const * last_img_path = NULL;
@@ -24242,10 +24284,11 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
             if (cfg->vary_img_by_era)
                 era = leader->Era;
         } else if (district_id != WONDER_DISTRICT_ID && district_id != NATURAL_WONDER_DISTRICT_ID) {
-			// Render abandoned district, special index 5
-			variant = 5;
-			district_sprite = &is->district_img_sets[0].imgs[variant][era][buildings];
-			patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+			Sprite * abandoned_sprite = &is->abandoned_district_img;
+			if (tile->vtable->m35_Check_Is_Water (tile) && is->abandoned_maritime_district_img.vtable != NULL)
+				abandoned_sprite = &is->abandoned_maritime_district_img;
+			if (abandoned_sprite->vtable != NULL)
+				patch_Sprite_draw_on_map (abandoned_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
 			return;
 		}
 
