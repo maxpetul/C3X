@@ -14221,14 +14221,6 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 				}
 			}
 		}
-	} else if (is->current_config.enable_natural_wonders) {
-		Tile * tile = tile_at (tile_x, tile_y);
-		if ((tile != NULL) && (tile != p_null_tile)) {
-			struct district_instance * inst = get_district_instance (tile);
-			if (inst != NULL && inst->district_type == NATURAL_WONDER_DISTRICT_ID) {
-				return 0;
-			}
-		}
 	}
 
 	return tr;
@@ -16821,7 +16813,6 @@ grant_nearby_wonders_to_city (City * city)
 		if (patch_City_has_improvement (city, __, improv_id, false)) continue;
 
 		// Add the Wonder to the city
-		pop_up_in_game_error (improv->Name.S);
 		patch_City_add_or_remove_improvement (city, __, improv_id, 1, false);
 	}
 }
@@ -23441,6 +23432,7 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
+	*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
