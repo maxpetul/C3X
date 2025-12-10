@@ -516,15 +516,15 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &tile_x, &tile_y);
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
-			if (is->current_config.enable_districts) {
-				// Check if the tile itself is a completed district
+			if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
+				// Check if the tile itself is a completed district (includes natural wonders)
 				struct district_instance * inst = get_district_instance (tile);
-				if (inst != NULL && district_is_complete (tile, inst->district_type)) {
+				if (inst != NULL && district_is_complete (tile, inst->district_type))
 					return false;
-				}
 
 				// Check if the tile is covered by a distribution hub
-				if (is->current_config.enable_distribution_hub_districts) {
+				if (is->current_config.enable_districts &&
+				    is->current_config.enable_distribution_hub_districts) {
 					int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
 					if (covered > 0)
 						return false;
@@ -21162,9 +21162,8 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 										if (info_city == NULL)
 											inst->wonder_info.city_id = -1;
 										inst->wonder_info.wonder_index = wonder_index;
-									}
-									if (tile->vtable->m18_Check_Mines (tile, __, 0))
 										set_tile_unworkable_for_all_cities (tile, x, y);
+									}
 								}
 							}
 						}
@@ -21205,6 +21204,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							inst->district_type = NATURAL_WONDER_DISTRICT_ID;
 							inst->state = DS_COMPLETED;
 							inst->natural_wonder_info.natural_wonder_id = natural_id;
+							set_tile_unworkable_for_all_cities (tile, x, y);
 						}
 					}
 				}
