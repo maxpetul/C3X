@@ -12649,7 +12649,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 			if ((inst != NULL) &&
 			    (inst->district_type == NATURAL_WONDER_DISTRICT_ID) &&
 			    (inst->natural_wonder_info.natural_wonder_id >= 0)) {
-				if (is_worker (this) && (is_worker_or_settler_command (unit_command_value) || is_district_command (unit_command_value)))
+				if (is_worker_or_settler_command (unit_command_value) || is_district_command (unit_command_value))
 					return false;
 			}
 		}
@@ -14178,6 +14178,9 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 
 					// Wonder district is unused - fall through to normal tech checks
 				}
+				else if (is->current_config.enable_natural_wonders && (district_id == NATURAL_WONDER_DISTRICT_ID)) {
+					return 0;
+				}
 				else {
 					// For all other district types: AI should not change them
 					return 0;
@@ -14216,6 +14219,14 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 					if (prereq_id < 0 || Leader_has_tech (this, __, prereq_id))
 						tr = 1;
 				}
+			}
+		}
+	} else if (is->current_config.enable_natural_wonders) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (tile);
+			if (inst != NULL && inst->district_type == NATURAL_WONDER_DISTRICT_ID) {
+				return 0;
 			}
 		}
 	}
