@@ -16306,15 +16306,8 @@ grant_existing_district_buildings_to_city (City * city)
 	bool prev_flag = is->sharing_buildings_by_districts_in_progress;
 	is->sharing_buildings_by_districts_in_progress = true;
 
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
-
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
+	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
+		Tile * tile = tai.tile;
 		if (tile == p_null_tile)
 			continue;
 		if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id)
@@ -16333,18 +16326,16 @@ grant_existing_district_buildings_to_city (City * city)
 		if (info->dependent_building_count <= 0)
 			continue;
 
-			int tx, ty;
-			if (! district_instance_get_coords (inst, tile, &tx, &ty))
-				continue;
+		int tx, ty;
+		if (! district_instance_get_coords (inst, tile, &tx, &ty))
+			continue;
 
 		FOR_CITIES_OF (coi, civ_id) {
 			City * other = coi.city;
 			if ((other == NULL) || (other == city))
 				continue;
 
-			int ni = Map_compute_neighbor_index (&p_bic_data->Map, __, other->Body.X, other->Body.Y, tx, ty, 1000);
-			int wr = ((ni >= 0) && (ni < ARRAY_LEN (is->ni_to_work_radius))) ? is->ni_to_work_radius[ni] : -1;
-			if ((wr < 0) || (wr > is->current_config.city_work_radius))
+			if (! city_radius_contains_tile (other, tx, ty))
 				continue;
 
 			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != other->Body.CivID)
@@ -16358,9 +16349,7 @@ grant_existing_district_buildings_to_city (City * city)
 				Improvement * building = &p_bic_data->Improvements[building_id];
 				bool is_wonder = (building->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0;
 
-				if (is_wonder && ! is->current_config.cities_with_mutual_district_receive_wonders)
-					continue;
-				if (! is_wonder && ! is->current_config.cities_with_mutual_district_receive_buildings)
+				if (is_wonder)
 					continue;
 
 				if (! patch_City_has_improvement (other, __, building_id, false))
@@ -16797,26 +16786,31 @@ grant_nearby_wonders_to_city (City * city)
 
 		// Prevent duplicate small wonders: if another city of this civ already has it, destroy this district and remove it from this city
 		Improvement * improv = &p_bic_data->Improvements[improv_id];
-		if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
-			Leader * leader = &leaders[city->Body.CivID];
-			int owning_city_id = (leader->Small_Wonders != NULL) ? leader->Small_Wonders[improv_id] : -1;
-			City * owning_city = get_city_ptr (owning_city_id);
-			bool owning_city_had_wonder = (owning_city != NULL) && patch_City_has_improvement (owning_city, __, improv_id, false);
-			if ((owning_city != NULL) &&
-			    (owning_city != city) &&
-			    owning_city_had_wonder) {
 
+		if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
+			City * owning_city = NULL;
+
+			// Loop through all cities of this civ to find if any already has this Small Wonder.
+			// We can't use leader->Small_Wonders, as that city pointer will have been overridden by the new city.
+			FOR_CITIES_OF (coi, city->Body.CivID) {
+				City * other_city = coi.city;
+				if ((other_city != city) && patch_City_has_improvement (other_city, __, improv_id, false)) {
+					owning_city = other_city;
+					break;
+				}
+			}
+
+			if (owning_city != NULL) {
+				// Another city has this small wonder, destroy the district and remove the new, duplicative Small Wonder
 				patch_City_add_or_remove_improvement (city, __, improv_id, 0, false);
 				handle_district_removed (tile, WONDER_DISTRICT_ID, x, y, true);
-
-				if (! patch_City_has_improvement (owning_city, __, improv_id, false) && owning_city_had_wonder)
-					patch_City_add_or_remove_improvement (owning_city, __, improv_id, 1, false);
 				continue;
 			}
 		}
 		if (patch_City_has_improvement (city, __, improv_id, false)) continue;
 
 		// Add the Wonder to the city
+		pop_up_in_game_error (improv->Name.S);
 		patch_City_add_or_remove_improvement (city, __, improv_id, 1, false);
 	}
 }
@@ -16872,7 +16866,7 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 		bool receive_wonders   = is->current_config.cities_with_mutual_district_receive_wonders;
 
 		// Grant buildings and wonders from nearby completed districts owned by other cities of same civ, if enabled
-		if (receive_buildings || receive_wonders) {
+		if (receive_buildings) {
 			grant_existing_district_buildings_to_city (city);
 		}
 
