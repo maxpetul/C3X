@@ -5010,7 +5010,9 @@ struct Unit_Body
   int field_1C0;
   int auto_bombard_target_x;
   int auto_bombard_target_y;
-  int field_1CC;
+  bool do_not_autoselect;
+  byte field_1CD;
+  short field_1CE;
   char carrying_princess_of_race;
   byte charmed;
   byte field_1D2;
@@ -5019,7 +5021,7 @@ struct Unit_Body
   LeaderKind leader_kind;
   IDLS IDLS;
   int field_210[8];
-  byte field_230;
+  bool in_selectable_units_list;
   byte field_231;
   byte always_on_top;
   byte field_233;
@@ -6126,7 +6128,9 @@ struct Advisor_Foreign_Form
 
 struct UnitIDItem
 {
-  void * vtable; // = 0x666B34
+  struct UnitIDItemVTable {
+    UnitIDItem * (__fastcall * destruct) (UnitIDItem * this, __, byte deallocate);
+  } * vtable; // = 0x666B34
   int id;
   UnitIDItem * next;
   UnitIDItem * prev;
@@ -6171,7 +6175,11 @@ struct Main_Screen_Form
   int field_4E80[6];
   int camera_x;
   int camera_y;
-  int field_4EA0[9];
+  int field_4EA0[8];
+  bool field_4EC0;
+  byte field_4EC1;
+  byte field_4EC2;
+  byte field_4EC3;
   int ambient_sound_index;
   int field_4EC8;
   int Mode_Action;
@@ -6182,7 +6190,7 @@ struct Main_Screen_Form
   Main_GUI GUI;
   int field_2E14C;
   UnitIDList selectable_units;
-  int field_2E160;
+  UnitIDItem * unit_cycle_cursor; // Tracks a location in selectable_units. When searching for next unit to cycle to, continues from here.
   Timer ambient_sound_timer;
   int field_2E194;
   char turn_end_flag;
