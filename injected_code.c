@@ -15186,8 +15186,7 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 CityLocValidity __fastcall
 patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int civ_id, bool check_for_city_on_tile)
 {
-	if (is->current_config.enable_natural_wonders &&
-	    (*p_human_player_bits & (1 << civ_id)) == 0) {
+	if (is->current_config.enable_natural_wonders) {
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
 			struct district_instance * inst = get_district_instance (tile);
