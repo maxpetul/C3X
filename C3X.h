@@ -1619,6 +1619,9 @@ struct injected_state {
 	// Stores the location of the last selected unit. Gets updated when that unit moves. Persists if the unit is deselected.
 	int last_selected_unit_x, last_selected_unit_y;
 
+	// Persists if the unit is deselected but not if it's despawned.
+	Unit * last_selected_unit;
+
 	// ==========
 	// }
 	// ==========
