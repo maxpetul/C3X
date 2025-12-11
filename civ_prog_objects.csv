@@ -847,6 +847,10 @@ define,	   0x5F35C2,	0x603442,	0x5F34F2,	"ADDR_RES_CHECK_JUMP_TILE_INDEX_AT_LEAS
 inlead,	   0x5F22A0,	0x6020D0,	0x5F21D0,	"Map_generate_resources",			"void (__fastcall *) (Map * this, int edx, int secondary_seed)"
 define,	   0x5F2C25,	0x602AF6,	0x5F2B55,	"ADDR_RESOURCE_GEN_TILE_COUNT_DIV",		"byte *"
 repl call, 0x5BFA0C,	0x5CE59E,	0x5BF71C,	"rand_int_to_enslave",				""
+inlead,	   0x4DBFC0,	0x0,		0x0,		"Main_Screen_Form_assemble_selectable_units",	"void (__fastcall *) (Main_Screen_Form * this)"
+inlead,	   0x4DBA70,	0x0,		0x0,		"Main_Screen_Form_set_selected_unit",		"void (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit, bool param_2)"
+inlead,	   0x4DBD70,	0x0,		0x0,		"Main_Screen_Form_find_next_unit_for_cycling",	"Unit * (__fastcall *) (Main_Screen_Form * this)"
+define,	   0x4EDD40,	0x0,		0x0,		"UnitIDList_insert_before",			"void (__fastcall *) (UnitIDList * this, int edx, int id, UnitIDItem * item)"
 
 ignore,	   0x5FC710,	0x0,		0x0,		"PCX_Image_create_and_init_jgl_image",		"int (__fastcall *) (PCX_Image * this, int edx, int width, int height, int bit_depth, int param_4, int param_5, int param_6)"
 ignore,	   0x5FCC50,	0x0,		0x0,		"PCX_Image_draw_region_to_location",		"void (__fastcall *) (PCX_Image * this, int edx, PCX_Image * canvas, int src_x, int src_y, int dest_x, int dest_y, int width, int height)"

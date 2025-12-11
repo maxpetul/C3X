@@ -10900,6 +10900,7 @@ patch_init_floating_point ()
 		{"enable_debug_mode_switch"                            , false, offsetof (struct c3x_config, enable_debug_mode_switch)},
 		{"accentuate_cities_on_minimap"                        , false, offsetof (struct c3x_config, accentuate_cities_on_minimap)},
 		{"allow_multipage_civilopedia_descriptions"            , true , offsetof (struct c3x_config, allow_multipage_civilopedia_descriptions)},
+		{"always_autoselect_nearby_units"                      , true , offsetof (struct c3x_config, always_autoselect_nearby_units)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -11256,6 +11257,7 @@ patch_init_floating_point ()
 
 	is->sharing_buildings_by_districts_in_progress = false;
 	is->can_load_transport = is->can_load_passenger = NULL;
+	is->last_selected_unit_x = is->last_selected_unit_y = -1;
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -11724,7 +11726,13 @@ void __fastcall
 patch_Unit_move (Unit * this, int edx, int tile_x, int tile_y)
 {
 	record_ai_unit_seen (this, tile_x, tile_y);
+
 	Unit_move (this, __, tile_x, tile_y);
+
+	if (this == p_main_screen_form->Current_Unit) {
+		is->last_selected_unit_x = this->Body.X;
+		is->last_selected_unit_y = this->Body.Y;
+	}
 }
 
 // Returns true if the unit has attacked & does not have blitz or if it's run out of movement points for the turn
@@ -14028,6 +14036,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	table_deinit (&is->extra_defensive_bombards);
 	table_deinit (&is->airdrops_this_turn);
 	table_deinit (&is->unit_transport_ties);
+	is->last_selected_unit_x = is->last_selected_unit_y = -1;
 
 	// Clear extra city improvement bits
 	FOR_TABLE_ENTRIES (tei, &is->extra_city_improvs)
@@ -24809,6 +24818,61 @@ patch_rand_int_to_enslave (void * this, int edx, int lim)
 	// lim is 100, enslaving happens if the return value is < 33
 	int r = rand_int (this, __, lim);
 	return is->do_not_enslave_units ? 100 : r;
+}
+
+void
+clear_selectable_units_list (Main_Screen_Form * main_screen_form)
+{
+	// This is what the game does to clear things at the start of assemble_selectable_units
+	if (p_units->Units != NULL)
+		for (int n = 0; n <= p_units->LastIndex; n++) {
+			Unit * unit = get_unit_ptr (n);
+			if (unit != NULL)
+				unit->Body.in_selectable_units_list = false;
+		}
+	UnitIDItem * item = main_screen_form->selectable_units.first;
+	while (item != NULL) {
+		UnitIDItem * next = item->next;
+		item->vtable->destruct (item, __, 1);
+		item = next;
+	}
+	main_screen_form->selectable_units.first = main_screen_form->selectable_units.last = NULL;
+	main_screen_form->selectable_units.length = 0;
+}
+
+void __fastcall
+patch_Main_Screen_Form_assemble_selectable_units (Main_Screen_Form * this)
+{
+	if (! is->current_config.always_autoselect_nearby_units)
+		Main_Screen_Form_assemble_selectable_units (this);
+	else
+		clear_selectable_units_list (this);
+}
+
+void __fastcall
+patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit * unit, bool param_2)
+{
+	if (unit != NULL) {
+		is->last_selected_unit_x = unit->Body.X;
+		is->last_selected_unit_y = unit->Body.Y;
+	}
+
+	if (is->current_config.always_autoselect_nearby_units)
+		clear_selectable_units_list (this);
+
+	Main_Screen_Form_set_selected_unit (this, __, unit, param_2);
+
+	// If selecting a new unit, must insert it into the list to ensure it's actually selected.
+	if (is->current_config.always_autoselect_nearby_units && unit != NULL) {
+		UnitIDList_insert_before (&this->selectable_units, __, unit->Body.ID, NULL);
+		this->unit_cycle_cursor = this->selectable_units.first;
+	}
+}
+
+Unit * __fastcall
+patch_Main_Screen_Form_find_next_unit_for_cycling (Main_Screen_Form * this)
+{
+	return Main_Screen_Form_find_next_unit_for_cycling (this);
 }
 
 // TCC requires a main function be defined even though it's never used.

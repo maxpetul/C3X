@@ -240,6 +240,7 @@ struct c3x_config {
 	bool accentuate_cities_on_minimap;
 	enum minimap_doubling_mode double_minimap_size;
 	bool allow_multipage_civilopedia_descriptions;
+	bool always_autoselect_nearby_units;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
@@ -1614,6 +1615,9 @@ struct injected_state {
 
 	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp. Tracks the current tile coordinates being rendered, then for drawing forests over roads/railroad
 	int current_tile_x, current_tile_y;
+
+	// Stores the location of the last selected unit. Gets updated when that unit moves. Persists if the unit is deselected.
+	int last_selected_unit_x, last_selected_unit_y;
 
 	// ==========
 	// }
