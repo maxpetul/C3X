@@ -24821,10 +24821,10 @@ patch_rand_int_to_enslave (void * this, int edx, int lim)
 }
 
 void
-clear_selectable_units_list (Main_Screen_Form * main_screen_form)
+clear_selectable_units_list (Main_Screen_Form * main_screen_form, bool include_unit_objects)
 {
-	// This is what the game does to clear things at the start of assemble_selectable_units
-	if (p_units->Units != NULL)
+	// This is what the base game does to clear things at the start of assemble_selectable_units
+	if (include_unit_objects && p_units->Units != NULL)
 		for (int n = 0; n <= p_units->LastIndex; n++) {
 			Unit * unit = get_unit_ptr (n);
 			if (unit != NULL)
@@ -24846,7 +24846,7 @@ patch_Main_Screen_Form_assemble_selectable_units (Main_Screen_Form * this)
 	if (! is->current_config.always_autoselect_nearby_units)
 		Main_Screen_Form_assemble_selectable_units (this);
 	else
-		clear_selectable_units_list (this);
+		clear_selectable_units_list (this, true);
 }
 
 void __fastcall
@@ -24858,7 +24858,7 @@ patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit
 	}
 
 	if (is->current_config.always_autoselect_nearby_units)
-		clear_selectable_units_list (this);
+		clear_selectable_units_list (this, false);
 
 	Main_Screen_Form_set_selected_unit (this, __, unit, param_2);
 
@@ -24872,7 +24872,30 @@ patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit
 Unit * __fastcall
 patch_Main_Screen_Form_find_next_unit_for_cycling (Main_Screen_Form * this)
 {
-	return Main_Screen_Form_find_next_unit_for_cycling (this);
+	if (! is->current_config.always_autoselect_nearby_units)
+		return Main_Screen_Form_find_next_unit_for_cycling (this);
+
+	else {
+		int least_difference = INT_MAX;
+		Unit * least_different_unit = NULL;
+		for (int n = 0; n <= p_units->LastIndex; n++) {
+			Unit * unit = get_unit_ptr (n);
+			if (unit != NULL && unit->Body.CivID == this->Player_CivID && Unit_can_cycle_to (unit)) {
+				int distance; {
+					// TODO: last selected x/y might be -1. Can we do something smarter in that case?
+					int dx = unit->Body.X - is->last_selected_unit_x,
+					    dy = unit->Body.Y - is->last_selected_unit_y;
+					distance = (dx != 0 || dy != 0) ? int_abs (dx) + int_abs (dy) : 0;
+				}
+				int difference = (distance << 1);
+				if (difference < least_difference) {
+					least_difference = difference;
+					least_different_unit = unit;
+				}
+			}
+		}
+		return least_different_unit;
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.
