@@ -16326,7 +16326,8 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 					}
 
 					// Show message to user
-					if (is->current_config.show_message_when_building_received_by_mutual_district) {
+					if (is->current_config.show_message_when_building_received_by_mutual_district &&
+					    ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)) {
 						char msg[300];
 						snprintf (msg, sizeof msg, "%s %s %s %s %s %s %s",
 							city->Body.CityName,
@@ -16426,7 +16427,8 @@ grant_existing_district_buildings_to_city (City * city)
 					}
 				}
 
-				if (is->current_config.show_message_when_building_received_by_mutual_district) {
+				if (is->current_config.show_message_when_building_received_by_mutual_district &&
+				    ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)) {
 					char msg[300];
 					snprintf (msg, sizeof msg, "%s %s %s %s %s %s %s",
 						  city->Body.CityName,
