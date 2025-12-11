@@ -115,6 +115,8 @@ Building
 requires a Neighborhood to grow
 destroyed by volcanic eruption!
 construction halted due to missing
+
+; Shown if City A receives a building from City B via shared district, as in "<City A> recieved <Building> from shared <District> with <City B>".
 received
 from shared
 with
