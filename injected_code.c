@@ -16847,17 +16847,7 @@ handle_possible_duplicate_small_wonders(City * city, Leader * leader)
 
 		// Only check Small Wonders, which shouldn't be duplicated in a civ
 		if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
-			City * owning_city = NULL;
-
-			// Loop through all cities of the conquering civ to find if any already has this Small Wonder
-			FOR_CITIES_OF (coi, leader->ID) {
-				City * other_city = coi.city;
-				if ((other_city != city) && patch_City_has_improvement (other_city, __, improv_id, false)) {
-					owning_city = other_city;
-					break;
-				}
-			}
-
+			City * owning_city = get_city_ptr (leader->Small_Wonders[improv_id]);
 			if (owning_city != NULL) {
 				// Another city of the conquering civ has this Small Wonder, so remove it from captured city and destroy the district.
 				// Run the district removal manually here rather than through "handle_district_removed()", as that function removes Wonders
