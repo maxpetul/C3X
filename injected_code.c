@@ -8389,6 +8389,7 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	}
 
 	if (leave_ruins && (tile->vtable->m60_Set_Ruins != NULL)) {
+		tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, center_x, center_y);
 		tile->vtable->m60_Set_Ruins (tile, __, 1);
 		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 	}
