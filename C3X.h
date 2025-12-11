@@ -579,8 +579,15 @@ struct wonder_district_config {
 		img_row,
 		img_column,
 		img_construct_row,
-		img_construct_column;
+		img_construct_column,
+
+		// Maritime wonders have a set of alternative images for facing east 
+		maritime_alt_img_row,
+		maritime_alt_img_column,
+		maritime_alt_img_construct_row,
+		maritime_alt_img_construct_column;
 	bool is_dynamic;
+	bool is_maritime;
 };
 
 enum square_type_extras {
