@@ -335,7 +335,7 @@ struct c3x_config {
 
 	bool cities_with_mutual_district_receive_buildings;
 	bool cities_with_mutual_district_receive_wonders;
-	bool show_message_when_building_received;
+	bool show_message_when_building_received_by_mutual_district;
 
 	bool air_units_use_aerodrome_districts_not_cities;
 
