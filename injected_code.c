@@ -16850,9 +16850,9 @@ handle_possible_duplicate_small_wonders(City * city, Leader * leader)
 			City * owning_city = get_city_ptr (leader->Small_Wonders[improv_id]);
 			if (owning_city != NULL) {
 				// Another city of the conquering civ has this Small Wonder, so remove it from captured city and destroy the district.
-				// Run the district removal manually here rather than through "handle_district_removed()", as that function removes Wonders
-				// using leader->Small_Wonders, which would unset the Small Wonder from the original owning city, which we don't want. 
-				// It additionally will only remove the Wonder if completed_wonder_districts_can_be_destroyed is true, which may not be the case 
+				// We run the district removal manually here rather than through "handle_district_removed", as that function removes Wonders
+				// using leader->Small_Wonders, which would unset the Small Wonder from the original owning city, which we don't want, 
+				// and would only remove the Wonder if completed_wonder_districts_can_be_destroyed is true, which may not be the case 
 				patch_City_add_or_remove_improvement (city, __, improv_id, 0, false);
 				remove_district_instance (tile);
 				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
