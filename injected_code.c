@@ -16819,6 +16819,60 @@ remove_extra_palaces (City * city, City * excluded_destination)
 }
 
 void
+handle_possible_duplicate_small_wonders(City * city, Leader * leader)
+{
+	if ((city == NULL) || (leader == NULL))
+		return;
+
+	for (int n = 0; n < is->workable_tile_count; n++) {
+		int dx, dy;
+		patch_ni_to_diff_for_work_area (n, &dx, &dy);
+		int x = city->Body.X + dx, y = city->Body.Y + dy;
+		wrap_tile_coords (&p_bic_data->Map, &x, &y);
+		Tile * tile = tile_at (x, y);
+
+		if ((tile == NULL) || (tile == p_null_tile)) continue;
+
+		// Make sure it's a completed wonder district
+		struct district_instance * inst = get_district_instance (tile);
+		if ((inst == NULL) || (inst->district_type != WONDER_DISTRICT_ID)) continue;
+		if (! district_is_complete (tile, WONDER_DISTRICT_ID)) continue;
+		struct wonder_district_info * info = &inst->wonder_info;
+		if ((info == NULL) || (info->state != WDS_COMPLETED)) continue;
+
+		int improv_id = get_wonder_improvement_id_from_index (info->wonder_index);
+		if (improv_id < 0) continue;
+
+		Improvement * improv = &p_bic_data->Improvements[improv_id];
+
+		// Only check Small Wonders, which shouldn't be duplicated in a civ
+		if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
+			City * owning_city = NULL;
+
+			// Loop through all cities of the conquering civ to find if any already has this Small Wonder
+			FOR_CITIES_OF (coi, leader->ID) {
+				City * other_city = coi.city;
+				if ((other_city != city) && patch_City_has_improvement (other_city, __, improv_id, false)) {
+					owning_city = other_city;
+					break;
+				}
+			}
+
+			if (owning_city != NULL) {
+				// Another city of the conquering civ has this Small Wonder, so remove it from captured city and destroy the district.
+				// Run the district removal manually here rather than through "handle_district_removed()", as that function removes Wonders
+				// using leader->Small_Wonders, which would unset the Small Wonder from the original owning city, which we don't want. 
+				// It additionally will only remove the Wonder if completed_wonder_districts_can_be_destroyed is true, which may not be the case 
+				patch_City_add_or_remove_improvement (city, __, improv_id, 0, false);
+				remove_district_instance (tile);
+				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
+				tile->vtable->m60_Set_Ruins (tile, __, 1);
+			}
+		}
+	}
+}
+
+void
 grant_nearby_wonders_to_city (City * city)
 {
 	// Give a city any completed wonder districts in work radius, if cities_with_mutual_district_receive_wonders is true.
@@ -16852,29 +16906,6 @@ grant_nearby_wonders_to_city (City * city)
 		int improv_id = get_wonder_improvement_id_from_index (info->wonder_index);
 		if (improv_id < 0) continue;
 
-		// Prevent duplicate small wonders: if another city of this civ already has it, destroy this district and remove it from this city
-		Improvement * improv = &p_bic_data->Improvements[improv_id];
-
-		if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
-			City * owning_city = NULL;
-
-			// Loop through all cities of this civ to find if any already has this Small Wonder.
-			// We can't use leader->Small_Wonders, as that city pointer will have been overridden by the new city.
-			FOR_CITIES_OF (coi, city->Body.CivID) {
-				City * other_city = coi.city;
-				if ((other_city != city) && patch_City_has_improvement (other_city, __, improv_id, false)) {
-					owning_city = other_city;
-					break;
-				}
-			}
-
-			if (owning_city != NULL) {
-				// Another city has this small wonder, destroy the district and remove the new, duplicative Small Wonder
-				patch_City_add_or_remove_improvement (city, __, improv_id, 0, false);
-				handle_district_removed (tile, WONDER_DISTRICT_ID, x, y, true);
-				continue;
-			}
-		}
 		if (patch_City_has_improvement (city, __, improv_id, false)) continue;
 
 		// Add the Wonder to the city
@@ -20232,6 +20263,11 @@ patch_Leader_do_capture_city (Leader * this, int edx, City * city, bool involunt
 {
 	is->currently_capturing_city = city;
 	on_lose_city (&leaders[city->Body.CivID], city, converted ? CLR_CONVERTED : (involuntary ? CLR_CONQUERED : CLR_TRADED));
+
+	if (is->current_config.enable_districts && is->current_config.enable_wonder_districts) {
+		handle_possible_duplicate_small_wonders (city, this);
+	}
+
 	bool tr = Leader_do_capture_city (this, __, city, involuntary, converted);
 	on_gain_city (this, city, converted ? CGR_CONVERTED : (involuntary ? CGR_CONQUERED : CGR_TRADED));
 	is->currently_capturing_city = NULL;
