@@ -16209,6 +16209,45 @@ set_wonder_built_flag (int improv_id, bool is_built)
 	built_flags[improv_id] = is_built;
 }
 
+bool
+choose_defensive_unit_order (City * city, City_Order * out_order)
+{
+	if ((city == NULL) || (out_order == NULL))
+		return false;
+
+	for (int pass = 0; pass < 3; pass++) {
+		int best_unit_id = -1;
+		int best_defence = -1;
+
+		for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
+			UnitType * type = &p_bic_data->UnitTypes[n];
+			if (! patch_City_can_build_unit (city, __, n, 1, 0, 0))
+				continue;
+
+			int defence = type->Defence;
+			if ((pass < 2) && (defence <= 0))
+				continue;
+			if ((pass <= 1) && (type->Unit_Class != UTC_Land))
+				continue;
+			if ((pass == 0) && ((type->AI_Strategy & UTAI_Defence) == 0))
+				continue;
+
+			if (defence > best_defence) {
+				best_defence = defence;
+				best_unit_id = n;
+			}
+		}
+
+		if (best_unit_id >= 0) {
+			out_order->OrderType = COT_Unit;
+			out_order->OrderID = best_unit_id;
+			return true;
+		}
+	}
+
+	return false;
+}
+
 // When a city adds a building that depends on a district, optionally mirror that
 // building to all other same-civ cities that can also work the district tile.
 void
@@ -16277,6 +16316,17 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 
 				if (! patch_City_has_improvement (city, __, improv_id, false)) {
 					City_add_or_remove_improvement (city, __, improv_id, 1, false);
+
+					// If city already building it, switch to a defensive unit instead
+					int current_improv_id = city->Body.Order_ID;
+					if (current_improv_id == improv_id) {
+						City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
+						if (choose_defensive_unit_order (city, &defensive_order)) {
+							City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
+						}
+					}
+
+					// Show message to user
 					if (is->current_config.show_message_when_building_received_by_mutual_district) {
 						char msg[300];
 						snprintf (msg, sizeof msg, "%s %s %s %s %s %s %s",
@@ -16306,6 +16356,7 @@ grant_existing_district_buildings_to_city (City * city)
 		return;
 
 	int civ_id = city->Body.CivID;
+	int current_improv_id = city->Body.Order_ID;
 	bool prev_flag = is->sharing_buildings_by_districts_in_progress;
 	is->sharing_buildings_by_districts_in_progress = true;
 
@@ -16367,6 +16418,15 @@ grant_existing_district_buildings_to_city (City * city)
 					continue;
 
 				City_add_or_remove_improvement (city, __, building_id, 1, false);
+
+				// If city already building it, switch to a defensive unit instead
+				if (current_improv_id == building_id) {
+					City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
+					if (choose_defensive_unit_order (city, &defensive_order)) {
+						City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
+					}
+				}
+
 				if (is->current_config.show_message_when_building_received_by_mutual_district) {
 					char msg[300];
 					snprintf (msg, sizeof msg, "%s %s %s %s %s %s %s",
@@ -18556,45 +18616,6 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 		mark_city_needs_district (best_city, DISTRIBUTION_HUB_DISTRICT_ID);
 		planned++;
 	}
-}
-
-bool
-choose_defensive_unit_order (City * city, City_Order * out_order)
-{
-	if ((city == NULL) || (out_order == NULL))
-		return false;
-
-	for (int pass = 0; pass < 3; pass++) {
-		int best_unit_id = -1;
-		int best_defence = -1;
-
-		for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
-			UnitType * type = &p_bic_data->UnitTypes[n];
-			if (! patch_City_can_build_unit (city, __, n, 1, 0, 0))
-				continue;
-
-			int defence = type->Defence;
-			if ((pass < 2) && (defence <= 0))
-				continue;
-			if ((pass <= 1) && (type->Unit_Class != UTC_Land))
-				continue;
-			if ((pass == 0) && ((type->AI_Strategy & UTAI_Defence) == 0))
-				continue;
-
-			if (defence > best_defence) {
-				best_defence = defence;
-				best_unit_id = n;
-			}
-		}
-
-		if (best_unit_id >= 0) {
-			out_order->OrderType = COT_Unit;
-			out_order->OrderID = best_unit_id;
-			return true;
-		}
-	}
-
-	return false;
 }
 
 bool
