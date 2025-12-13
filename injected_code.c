@@ -10942,6 +10942,7 @@ patch_init_floating_point ()
 		{"no_land_anti_air_from_inside_naval_transport"        , false, offsetof (struct c3x_config, no_land_anti_air_from_inside_naval_transport)},
 		{"prevent_enslaving_by_bombardment"                    , false, offsetof (struct c3x_config, prevent_enslaving_by_bombardment)},
 		{"allow_adjacent_resources_of_different_types"         , false, offsetof (struct c3x_config, allow_adjacent_resources_of_different_types)},
+		{"allow_sale_of_small_wonders"                         , false, offsetof (struct c3x_config, allow_sale_of_small_wonders)},
 	};
 
 	struct integer_config_option {
@@ -21718,20 +21719,32 @@ patch_mp_despawn_after_killed_by_nuke (void * this, int edx, int unit_id, int ci
 bool __fastcall
 patch_City_has_unprotected_improv_to_sell (City * this, int edx, int id)
 {
-	if (! is->current_config.allow_sale_of_aqueducts_and_hospitals)
+	// Fall back to original logic only if the config doesn't alter the behavior.
+	if (! is->current_config.allow_sale_of_aqueducts_and_hospitals && !is->current_config.allow_sale_of_small_wonders)
 		return City_has_unprotected_improv (this, __, id);
 
-	// Replicate the logic from the original method but check that the city is below the pop cap instead of that the improv removes the cap
 	else if (patch_City_has_improvement (this, __, id, false)) {
 		Improvement * improv = &p_bic_data->Improvements[id];
-		int max_pop_to_sell = INT_MAX; {
-			if (improv->ImprovementFlags & ITF_Allows_City_Level_2)
-				max_pop_to_sell = p_bic_data->General.MaximumSize_Town;
-			else if (improv->ImprovementFlags & ITF_Allows_City_Level_3)
-				max_pop_to_sell = p_bic_data->General.MaximumSize_City;
+		int max_pop_to_sell = INT_MAX; // By default, population-based sell isn't restricted
+		if (improv->ImprovementFlags & (ITF_Allows_City_Level_2 | ITF_Allows_City_Level_3)) { // Aqueduct/Hospital?
+			if (is->current_config.allow_sale_of_aqueducts_and_hospitals) {
+				if (improv->ImprovementFlags & ITF_Allows_City_Level_2)
+					max_pop_to_sell = p_bic_data->General.MaximumSize_Town;
+				else if (improv->ImprovementFlags & ITF_Allows_City_Level_3)
+					max_pop_to_sell = p_bic_data->General.MaximumSize_City;
+			} else {
+				// Do not allow selling these.
+				max_pop_to_sell = 0;
+			}
 		}
+
+		// Can't sell:
+		// - Great Wonders
+		// - Small Wonders, unless the config allows it
+		// - Capital
+		// - Aqueduct/Hospital if the city is too big for that population
 		return ((improv->Characteristics & ITC_Wonder) == 0) &&
-			((improv->Characteristics & ITC_Small_Wonder) == 0) &&
+			(is->current_config.allow_sale_of_small_wonders || ((improv->Characteristics & ITC_Small_Wonder) == 0)) &&
 			((improv->ImprovementFlags & ITF_Center_of_Empire) == 0) &&
 			(this->Body.Population.Size <= max_pop_to_sell);
 

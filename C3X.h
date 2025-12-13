@@ -283,6 +283,7 @@ struct c3x_config {
 	bool prevent_enslaving_by_bombardment;
 	int years_to_double_building_culture;
 	int tourism_time_scale_percent;
+	bool allow_sale_of_small_wonders;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
