@@ -338,8 +338,11 @@ struct c3x_config {
 	bool cities_with_mutual_district_receive_wonders;
 	bool show_message_when_building_received_by_mutual_district;
 
+<<<<<<< HEAD
 	bool air_units_use_aerodrome_districts_not_cities;
 
+=======
+>>>>>>> 8e39ccd (Enable workers to walk on coast; Add granular settings for districts & buildable square types)
 	int maximum_pop_before_neighborhood_needed;
 	int per_neighborhood_pop_growth_enabled;
 	int neighborhood_needed_message_frequency;
@@ -671,7 +674,11 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	{
 		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port",
 		.advance_prereq = "Map Making", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 2, .is_maritime = true,
+<<<<<<< HEAD
 		.img_paths = {0},// {"Port_NW.pcx", "Port_N.pcx", "Port_NE.pcx", "Port_E.pcx", "Port_SE.pcx", "Port_S.pcx", "Port_SW.pcx", "Port_W.pcx"},
+=======
+		.img_paths = {"Port_NW.pcx", "Port_N.pcx", "Port_NE.pcx", "Port_E.pcx", "Port_SE.pcx", "Port_S.pcx", "Port_SW.pcx", "Port_W.pcx"},
+>>>>>>> 8e39ccd (Enable workers to walk on coast; Add granular settings for districts & buildable square types)
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 8, .max_building_index = 2, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 2, .gold_bonus = 2, .shield_bonus = 0, .defense_bonus_percent = 0
@@ -715,6 +722,7 @@ struct parsed_district_definition {
 	bool has_gold_bonus;
 	bool has_shield_bonus;
 	bool has_buildable_on;
+<<<<<<< HEAD
 };
 
 struct parsed_wonder_definition {
@@ -757,6 +765,8 @@ struct parsed_natural_wonder_definition {
 	bool has_food_bonus;
 	bool has_gold_bonus;
 	bool has_shield_bonus;
+=======
+>>>>>>> 8e39ccd (Enable workers to walk on coast; Add granular settings for districts & buildable square types)
 };
 
 struct scenario_district_entry {

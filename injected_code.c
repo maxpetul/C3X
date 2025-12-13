@@ -12955,30 +12955,69 @@ issue_district_worker_command (Unit * unit, int command)
 	if (! is_worker(unit))
 		return;
 
+	int district_id = -1;
+	if (! itable_look_up (&is->command_id_to_district_id, command, &district_id))
+		return;
+	if ((district_id < 0) || (district_id >= is->district_count))
+		return;
+
 	// Check tech prerequisite for the selected district, if any
-	int district_id;
-	if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
-		if (district_id < 0 || district_id >= is->district_count)
+	int prereq_id = is->district_infos[district_id].advance_prereq_id;
+	// Only enforce if a prereq is configured
+	if ((prereq_id >= 0) && !Leader_has_tech (&leaders[unit->Body.CivID], __, prereq_id)) {
+		return; // Civ lacks required tech; do not issue command
+	}
+
+	// Disallow placing districts on invalid terrain, pollution, or cratered tiles
+	if (tile->vtable->m21_Check_Crates (tile, __, 0))
+		return;
+	if (tile->vtable->m20_Check_Pollution (tile, __, 0))
+		return;
+
+	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+	if (! district_is_buildable_on_square_type (&is->district_configs[district_id], base_type))
+		return;
+
+	// If District will be replaced by another District
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst != NULL && district_is_complete(tile, inst->district_type)) {
+		int existing_district_id = inst->district_type;
+		int inst_x, inst_y;
+		if (! district_instance_get_coords (inst, tile, &inst_x, &inst_y))
 			return;
-		int prereq_id = is->district_infos[district_id].advance_prereq_id;
-		// Only enforce if a prereq is configured
-		if (prereq_id >= 0 && !Leader_has_tech (&leaders[unit->Body.CivID], __, prereq_id)) {
-			return; // Civ lacks required tech; do not issue command
+
+		int civ_id = unit->Body.CivID;
+		bool redundant_district = district_instance_is_redundant (inst, tile);
+		bool would_lose_buildings = any_nearby_city_would_lose_district_benefits (existing_district_id, civ_id, inst_x, inst_y);
+		if (redundant_district)
+			would_lose_buildings = false;
+
+		bool remove_existing = false;
+		
+		PopupForm * popup = get_popup_form ();
+		set_popup_str_param (0, (char*)is->district_configs[existing_district_id].name, -1, -1);
+		set_popup_str_param (1, (char*)is->district_configs[existing_district_id].name, -1, -1);
+		popup->vtable->set_text_key_and_flags (
+			popup, __, is->mod_script_path,
+			would_lose_buildings
+				? "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT"
+				: "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT_SAFE",
+			-1, 0, 0, 0
+		);
+
+		int sel = patch_show_popup (popup, __, 0, 0);
+		if (sel == 0)
+			remove_existing = true;
+		else
+			return;
+
+		if (remove_existing) {
+			remove_district_instance (tile);
+			tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+			tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, inst_x, inst_y);
+			handle_district_removed (tile, existing_district_id, inst_x, inst_y, false);
 		}
 	}
-    // Disallow placing districts on invalid terrain, pollution, or cratered tiles
-    if (tile != NULL && tile != p_null_tile) {
-        if (tile->vtable->m21_Check_Crates (tile, __, 0))
-            return;
-        if (tile->vtable->m20_Check_Pollution (tile, __, 0))
-            return;
-        enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType(tile);
-        if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp) {
-            return;
-        }
-    }
-
-	if (tile != NULL && tile != p_null_tile) {
 
 	// If District will be replaced by another District
 	struct district_instance * inst = get_district_instance (tile);
@@ -24781,6 +24820,22 @@ patch_Unit_disembark (Unit * this, int edx, int tile_x, int tile_y)
 			container->Body.army_top_defender_id = (new_top_defender != NULL) ? new_top_defender->Body.ID : -1;
 		}
 	}
+}
+
+PassBetweenValidity __fastcall
+patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int to_x, int to_y, int param_5)
+{
+	PassBetweenValidity base = Unit_can_pass_between (this, __, from_x, from_y, to_x, to_y, param_5);
+
+	if (base != PBV_OK && is->current_config.enable_port_districts && is_worker(this)) {
+		Tile * dest = tile_at (to_x, to_y);
+		if ((dest != NULL) &&
+		    dest->vtable->m35_Check_Is_Water (dest) &&
+		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
+			return PBV_OK; // Let workers treat coast as passable when port districts are on
+	}
+
+	return base;
 }
 
 // TCC requires a main function be defined even though it's never used.
