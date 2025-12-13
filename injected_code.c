@@ -5183,10 +5183,10 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->gold_bonus = def->gold_bonus;
 	if (def->has_shield_bonus)
 		cfg->shield_bonus = def->shield_bonus;
-	if (def->has_happy_bonus)
-		cfg->happy_bonus = def->happy_bonus;
-	if (def->has_unhappy_bonus)
-		cfg->unhappy_bonus = def->unhappy_bonus;
+	if (def->has_happiness_bonus)
+		cfg->happiness_bonus = def->happiness_bonus;
+	if (def->has_unhappiness_bonus)
+		cfg->unhappiness_bonus = def->unhappiness_bonus;
 	if (def->has_buildable_on)
 		cfg->buildable_square_types_mask = def->buildable_square_types_mask;
 
@@ -5300,10 +5300,10 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
 	new_cfg.gold_bonus = def->has_gold_bonus ? def->gold_bonus : 0;
 	new_cfg.shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
-	new_cfg.happy_bonus = def->has_happy_bonus ? def->happy_bonus : 0;
-	new_cfg.unhappy_bonus = def->has_unhappy_bonus ? def->unhappy_bonus : 0;
-	new_cfg.happy_bonus = def->has_happy_bonus ? def->happy_bonus : 0;
-	new_cfg.unhappy_bonus = def->has_unhappy_bonus ? def->unhappy_bonus : 0;
+	new_cfg.happiness_bonus = def->has_happiness_bonus ? def->happiness_bonus : 0;
+	new_cfg.unhappiness_bonus = def->has_unhappiness_bonus ? def->unhappiness_bonus : 0;
+	new_cfg.happiness_bonus = def->has_happiness_bonus ? def->happiness_bonus : 0;
+	new_cfg.unhappiness_bonus = def->has_unhappiness_bonus ? def->unhappiness_bonus : 0;
 	new_cfg.buildable_square_types_mask = def->has_buildable_on ? def->buildable_square_types_mask : district_default_buildable_mask ();
 
 	new_cfg.dependent_improvement_count = def->has_dependent_improvements ? def->dependent_improvement_count : 0;
@@ -5547,21 +5547,21 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		} else
 			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
 
-	} else if (slice_matches_str (key, "happy_bonus")) {
+	} else if (slice_matches_str (key, "happiness_bonus")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->happy_bonus = ival;
-			def->has_happy_bonus = true;
+			def->happiness_bonus = ival;
+			def->has_happiness_bonus = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
 
-	} else if (slice_matches_str (key, "unhappy_bonus")) {
+	} else if (slice_matches_str (key, "unhappiness_bonus")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->unhappy_bonus = ival;
-			def->has_unhappy_bonus = true;
+			def->unhappiness_bonus = ival;
+			def->has_unhappiness_bonus = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
 
@@ -6375,25 +6375,25 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
 		}
 
-	} else if (slice_matches_str (key, "happy_bonus")) {
+	} else if (slice_matches_str (key, "happiness_bonus")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->happy_bonus = ival;
-			def->has_happy_bonus = true;
+			def->happiness_bonus = ival;
+			def->has_happiness_bonus = true;
 		} else {
-			def->has_happy_bonus = false;
+			def->has_happiness_bonus = false;
 			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
 		}
 
-	} else if (slice_matches_str (key, "unhappy_bonus")) {
+	} else if (slice_matches_str (key, "unhappiness_bonus")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->unhappy_bonus = ival;
-			def->has_unhappy_bonus = true;
+			def->unhappiness_bonus = ival;
+			def->has_unhappiness_bonus = true;
 		} else {
-			def->has_unhappy_bonus = false;
+			def->has_unhappiness_bonus = false;
 			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
 		}
 
@@ -8040,48 +8040,36 @@ get_completed_district_tile_for_city (City * city, int district_id, int * out_x,
 	if ((city == NULL) || (district_id < 0) || (district_id >= is->district_count))
 		return NULL;
 
-	int civ_id = city->Body.CivID;
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * candidate = tile_at (x, y);
-		if ((candidate == NULL) || (candidate == p_null_tile))
-			continue;
-		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id)
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		int x = wai.tile_x, y = wai.tile_y;
+		Tile * candidate = wai.tile;
+		struct district_instance * inst = wai.district_inst;
+
+		if (inst->district_type != district_id)
 			continue;
 
-		struct district_instance * inst = get_district_instance (candidate);
-		if (inst != NULL &&
-		    inst->district_type == district_id &&
-		    district_is_complete (candidate, district_id)) {
-
-			// For wonder districts, filter based on wonder_district_state
-			if (district_id == WONDER_DISTRICT_ID) {
-				struct wonder_district_info * info = &inst->wonder_info;
-				// Must be either unused or under construction by this city
-				if (info->state == WDS_COMPLETED)
-					continue;
-				if (info->state == WDS_UNDER_CONSTRUCTION && info->city_id != city->Body.ID)
-					continue;
-				if (info->state == WDS_UNDER_CONSTRUCTION) {
-					info->city = city;
-					info->city_id = city->Body.ID;
-				}
-			}
-
-				if (out_x != NULL)
-					*out_x = x;
-				if (out_y != NULL)
-					*out_y = y;
-				return candidate;
+		// For wonder districts, filter based on wonder_district_state
+		if (district_id == WONDER_DISTRICT_ID) {
+			struct wonder_district_info * info = &inst->wonder_info;
+			// Must be either unused or under construction by this city
+			if (info->state == WDS_COMPLETED)
+				continue;
+			if (info->state == WDS_UNDER_CONSTRUCTION && info->city_id != city->Body.ID)
+				continue;
+			if (info->state == WDS_UNDER_CONSTRUCTION) {
+				info->city = city;
+				info->city_id = city->Body.ID;
 			}
 		}
 
-		return NULL;
+		if (out_x != NULL)
+			*out_x = x;
+		if (out_y != NULL)
+			*out_y = y;
+		return candidate;
+	}
+
+	return NULL;
 }
 
 bool
@@ -8248,24 +8236,11 @@ count_neighborhoods_in_city_radius (City * city)
 		return 0;
 
 	int count = 0;
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
-		if ((tile == NULL) || (tile == p_null_tile))
-			continue;
-		if (! (tile->vtable->m38_Get_Territory_OwnerID (tile) == city->Body.CivID))
-			continue;
-
-		struct district_instance * inst = get_district_instance (tile);
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		struct district_instance * inst = wai.district_inst;
 		if (inst != NULL &&
 		    inst->district_type >= 0 && inst->district_type < is->district_count &&
-		    inst->district_type == NEIGHBORHOOD_DISTRICT_ID &&
-		    district_is_complete (tile, inst->district_type))
+		    inst->district_type == NEIGHBORHOOD_DISTRICT_ID)
 			count++;
 	}
 	return count;
@@ -8401,12 +8376,12 @@ calculate_district_culture_science_bonuses (City * city, int * culture_bonus, in
 }
 
 void
-calculate_district_happiness_bonus (City * city, int * happy_bonus, int * unhappy_bonus)
+calculate_district_happiness_bonus (City * city, int * happiness_bonus, int * unhappiness_bonus)
 {
-	if (happy_bonus != NULL)
-		*happy_bonus = 0;
-	if (unhappy_bonus != NULL)
-		*unhappy_bonus = 0;
+	if (happiness_bonus != NULL)
+		*happiness_bonus = 0;
+	if (unhappiness_bonus != NULL)
+		*unhappiness_bonus = 0;
 
 	if (! is->current_config.enable_districts || (city == NULL))
 		return;
@@ -8430,27 +8405,27 @@ calculate_district_happiness_bonus (City * city, int * happy_bonus, int * unhapp
 		if (is_neighborhood)
 			utilized_neighborhoods--;
 
-		if (cfg->happy_bonus != 0)
-			total_happy += cfg->happy_bonus;
-		if (cfg->unhappy_bonus != 0)
-			total_unhappy += cfg->unhappy_bonus;
+		if (cfg->happiness_bonus != 0)
+			total_happy += cfg->happiness_bonus;
+		if (cfg->unhappiness_bonus != 0)
+			total_unhappy += cfg->unhappiness_bonus;
 
 		if (is->current_config.enable_natural_wonders && district_id == NATURAL_WONDER_DISTRICT_ID) {
 			struct natural_wonder_district_config const * nwcfg =
 				get_natural_wonder_config_by_id (inst->natural_wonder_info.natural_wonder_id);
 			if (nwcfg != NULL) {
-				if (nwcfg->happy_bonus != 0)
-					total_happy += nwcfg->happy_bonus;
-				if (nwcfg->unhappy_bonus != 0)
-					total_unhappy += nwcfg->unhappy_bonus;
+				if (nwcfg->happiness_bonus != 0)
+					total_happy += nwcfg->happiness_bonus;
+				if (nwcfg->unhappiness_bonus != 0)
+					total_unhappy += nwcfg->unhappiness_bonus;
 			}
 		}
 	}
 
-	if (happy_bonus != NULL)
-		*happy_bonus = total_happy;
-	if (unhappy_bonus != NULL)
-		*unhappy_bonus = total_unhappy;
+	if (happiness_bonus != NULL)
+		*happiness_bonus = total_happy;
+	if (unhappiness_bonus != NULL)
+		*unhappiness_bonus = total_unhappy;
 }
 
 int __fastcall
@@ -16898,33 +16873,25 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	// as completed (which switches the art over and prevents the tile from being used again)
 	int x, y;
 	if (add && is->current_config.enable_districts && is->current_config.enable_wonder_districts) {
-		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
-			int matched_windex = find_wonder_config_index_by_improvement_id (improv_id);
+			if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
+				int matched_windex = find_wonder_config_index_by_improvement_id (improv_id);
 
-			if (matched_windex >= 0) {
-				int city_x = this->Body.X;
-				int city_y = this->Body.Y;
-				for (int n = 0; n < is->workable_tile_count; n++) {
-					int dx, dy;
-					patch_ni_to_diff_for_work_area (n, &dx, &dy);
-					x = city_x + dx, y = city_y + dy;
-					wrap_tile_coords (&p_bic_data->Map, &x, &y);
-					Tile * t = tile_at (x, y);
-					if (t == p_null_tile) continue;
-					if (t->vtable->m38_Get_Territory_OwnerID (t) != this->Body.CivID) continue;
+				if (matched_windex >= 0) {
+					FOR_DISTRICTS_AROUND (wai, this->Body.X, this->Body.Y, true) {
+						x = wai.tile_x;
+						y = wai.tile_y;
+						Tile * t = wai.tile;
+						struct district_instance * inst = wai.district_inst;
+						if (inst->district_type != WONDER_DISTRICT_ID) continue;
 
-					struct district_instance * inst = get_district_instance (t);
-					if (inst == NULL || inst->district_type != WONDER_DISTRICT_ID) continue;
-					if (! district_is_complete (t, inst->district_type)) continue;
+						struct wonder_district_info * info = &inst->wonder_info;
+						if (info->state != WDS_UNDER_CONSTRUCTION) continue;
+						if (info->city_id != this->Body.ID) continue;
 
-					struct wonder_district_info * info = &inst->wonder_info;
-					if (info->state != WDS_UNDER_CONSTRUCTION) continue;
-					if (info->city_id != this->Body.ID) continue;
-
-					// Mark this wonder district as completed with the wonder
-					info->city = this;
-					info->city_id = this->Body.ID;
-					info->state = WDS_COMPLETED;
+						// Mark this wonder district as completed with the wonder
+						info->city = this;
+						info->city_id = this->Body.ID;
+						info->state = WDS_COMPLETED;
 					info->wonder_index = matched_windex;
 					break;
 				}
