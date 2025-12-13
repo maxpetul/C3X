@@ -1,4 +1,18 @@
+- Fix no-escape LT rule not applying when an LT is destroyed by lethal ZoC, by a nuclear explosion, or by the destruction of a larger transport carrying it
+
+- Add some options to make land transports viable, controlled by land_transport_rules setting
+  - LTs may be loaded into naval transports
+  - Empty LTs may join armies
+  - Units inside an LT may be prevented from defending their tile, performing defensive bombard, or intercepting air units
+  - Units inside an LT can be destroyed when the LT itself is destroyed or captured
+- Add resource generation settings
+  - allow_adjacent_resources_of_different_types relaxes a rule preventing resources from appearing next to others of a different type
+  - luxury_randomized_appearance_rate_percent controls the overall appearance rate for luxuries that do not have a fixed rate set
+  - tiles_per_non_luxury_resource controls tne overall appearance rate of bonus resources
 - Add option allow_unload_from_army
+- Option to prevent land anti-air units from intercepting overflying aircraft while they're loaded in a naval transport
+  - Named no_land_anti_air_from_inside_naval_transport
+- Option to prevent units from being enslaved after being destroyed by lethal bombard named prevent_enslaving_by_bombardment
 
 * RELEASE 26 PREVIEW 2
 - Allow city work areas to vary based on their buildings

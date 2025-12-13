@@ -702,24 +702,24 @@ enum Unit_Command_Values
   UCV_Sentry	= 0x40,
 
   // Special Actions
-  UCV_Load		  = 0x10000001,
-  UCV_Unload		  = 0x10000002,
-  UCV_Airlift		  = 0x10000004,
-  UCV_Pillage		  = 0x10000008,
-  UCV_Bombard		  = 0x10000010,
-  UCV_Airdrop		  = 0x10000020,
+  UCV_Load                = 0x10000001,
+  UCV_Unload              = 0x10000002,
+  UCV_Airlift             = 0x10000004,
+  UCV_Pillage             = 0x10000008,
+  UCV_Bombard             = 0x10000010,
+  UCV_Airdrop             = 0x10000020,
   UCV_Build_Army	  = 0x10000040,
   UCV_Finish_Improvements = 0x10000080,
-  UCV_Upgrade_Unit	  = 0x10000100,
-  UCV_Rescue_Princess	  = 0x10000200,
+  UCV_Upgrade_Unit        = 0x10000100,
+  UCV_Rescue_Princess     = 0x10000200,
   UCV_Telepad             = 0x10004000,
   UCV_Teleport            = 0x10008000,
-  UCV_Stealth_Attack	  = 0x10010000,
+  UCV_Stealth_Attack      = 0x10010000,
   UCV_Charm_Bombard       = 0x10020000,
-  UCV_Enslave		  = 0x10040000,
-  UCV_0x10080000          = 0x10080000, // Appears in Leader::capture_city doubling capture gold
-  UCV_Sacrifice		  = 0x10100000,
-  UCV_Science_Age	  = 0x10200000,
+  UCV_Enslave             = 0x10040000,
+  UCV_Collateral_Damage   = 0x10080000, // Also doubles gold from city captures
+  UCV_Sacrifice           = 0x10100000,
+  UCV_Science_Age         = 0x10200000,
 
   // Worker/Engineer Actions
   UCV_Build_Colony	= 0x20000001,
@@ -1674,7 +1674,7 @@ struct UnitType
   int field_D4;
   int field_D8;
   IntList unit_telepads;
-  int field_F4;
+  int enslave_results_in;
   IntList stealth_attack_targets;
   IntList building_telepads;
   int Create_Craters;
