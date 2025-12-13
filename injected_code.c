@@ -11048,6 +11048,7 @@ patch_init_floating_point ()
 		{"naval_units_use_port_districts_not_cities"             , false, offsetof (struct c3x_config, naval_units_use_port_districts_not_cities)},
 		{"show_natural_wonder_name_on_map"                       , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
 		{"ai_defends_districts"                                  , false, offsetof (struct c3x_config, ai_defends_districts)},
+		{"workers_can_enter_coast"         		                 , false, offsetof (struct c3x_config, workers_can_enter_coast)},
 		{"enable_city_work_radii_highlights"                     , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game"  , false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
 		{"allow_unload_from_army"                                , false, offsetof (struct c3x_config, allow_unload_from_army)},
@@ -13699,7 +13700,7 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 	AdjacentMoveValidity base_validity = Unit_can_move_to_adjacent_tile (this, __, neighbor_index, param_2);
 
 	// Let workers step onto coast tiles when the config flag is enabled (base logic treats this as an invalid sea move)
-	if (is->current_config.enable_districts && is->current_config.allow_workers_to_enter_coast &&
+	if (is->current_config.enable_districts && is->current_config.workers_can_enter_coast &&
 	    is_worker (this) &&
 	    ((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
 		int nx, ny;
@@ -13760,7 +13761,7 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 	int base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, neighbor_index, dist_info);
 
 	// Let the pathfinder consider coastal tiles reachable for workers when the config flag is on
-	if (is->current_config.enable_districts && is->current_config.allow_workers_to_enter_coast &&
+	if (is->current_config.enable_districts && is->current_config.workers_can_enter_coast &&
 	    (base_cost < 0) && (unit != NULL) && is_worker (unit)) {
 		Tile * dest = tile_at (to_x, to_y);
 		if ((dest != NULL) &&
@@ -19290,7 +19291,7 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 {
 	is->moving_unit_to_adjacent_tile = true;
 
-	bool const allow_worker_coast = is->current_config.enable_districts && is->current_config.allow_workers_to_enter_coast && is_worker (this);
+	bool const allow_worker_coast = is->current_config.enable_districts && is->current_config.workers_can_enter_coast && is_worker (this);
 	bool coast_override_active = false;
 	enum UnitStateType prev_state = this->Body.UnitState;
 	int prev_container = this->Body.Container_Unit;
@@ -25145,13 +25146,13 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 {
 	PassBetweenValidity base = Unit_can_pass_between (this, __, from_x, from_y, to_x, to_y, param_5);
 
-	if (is->current_config.enable_districts && is->current_config.allow_workers_to_enter_coast &&
+	if (is->current_config.enable_districts && is->current_config.workers_can_enter_coast &&
 		base != PBV_OK && is_worker(this)) {
 		Tile * dest = tile_at (to_x, to_y);
 		if ((dest != NULL) &&
 		    dest->vtable->m35_Check_Is_Water (dest) &&
 		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
-			return PBV_OK; // Let workers treat coast as passable when allow_workers_to_enter_coast is on
+			return PBV_OK; // Let workers treat coast as passable when workers_can_enter_coast is on
 	}
 
 	return base;
@@ -25162,7 +25163,7 @@ patch_Unit_select_transport (Unit * this, int edx, int tile_x, int tile_y, bool 
 {
 	Unit * transport = Unit_select_transport (this, __, tile_x, tile_y, do_show_popup);
 
-	if (is->current_config.enable_districts && is->current_config.allow_workers_to_enter_coast &&
+	if (is->current_config.enable_districts && is->current_config.workers_can_enter_coast &&
 	    (transport == NULL) && (this == is->coast_walk_unit) && is_worker (this)) {
 		Tile * dest = tile_at (tile_x, tile_y);
 		if ((dest != NULL) &&
