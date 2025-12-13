@@ -5183,6 +5183,10 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->gold_bonus = def->gold_bonus;
 	if (def->has_shield_bonus)
 		cfg->shield_bonus = def->shield_bonus;
+	if (def->has_happy_bonus)
+		cfg->happy_bonus = def->happy_bonus;
+	if (def->has_unhappy_bonus)
+		cfg->unhappy_bonus = def->unhappy_bonus;
 	if (def->has_buildable_on)
 		cfg->buildable_square_types_mask = def->buildable_square_types_mask;
 
@@ -5296,6 +5300,10 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
 	new_cfg.gold_bonus = def->has_gold_bonus ? def->gold_bonus : 0;
 	new_cfg.shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
+	new_cfg.happy_bonus = def->has_happy_bonus ? def->happy_bonus : 0;
+	new_cfg.unhappy_bonus = def->has_unhappy_bonus ? def->unhappy_bonus : 0;
+	new_cfg.happy_bonus = def->has_happy_bonus ? def->happy_bonus : 0;
+	new_cfg.unhappy_bonus = def->has_unhappy_bonus ? def->unhappy_bonus : 0;
 	new_cfg.buildable_square_types_mask = def->has_buildable_on ? def->buildable_square_types_mask : district_default_buildable_mask ();
 
 	new_cfg.dependent_improvement_count = def->has_dependent_improvements ? def->dependent_improvement_count : 0;
@@ -5536,6 +5544,24 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		if (read_int (&val_slice, &ival)) {
 			def->shield_bonus = ival;
 			def->has_shield_bonus = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else if (slice_matches_str (key, "happy_bonus")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->happy_bonus = ival;
+			def->has_happy_bonus = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else if (slice_matches_str (key, "unhappy_bonus")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->unhappy_bonus = ival;
+			def->has_unhappy_bonus = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
 
@@ -6346,6 +6372,28 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_shield_bonus = true;
 		} else {
 			def->has_shield_bonus = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "happy_bonus")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->happy_bonus = ival;
+			def->has_happy_bonus = true;
+		} else {
+			def->has_happy_bonus = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "unhappy_bonus")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->unhappy_bonus = ival;
+			def->has_unhappy_bonus = true;
+		} else {
+			def->has_unhappy_bonus = false;
 			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
 		}
 
@@ -8350,6 +8398,59 @@ calculate_district_culture_science_bonuses (City * city, int * culture_bonus, in
 		*culture_bonus = total_culture;
 	if (science_bonus != NULL)
 		*science_bonus = total_science;
+}
+
+void
+calculate_district_happiness_bonus (City * city, int * happy_bonus, int * unhappy_bonus)
+{
+	if (happy_bonus != NULL)
+		*happy_bonus = 0;
+	if (unhappy_bonus != NULL)
+		*unhappy_bonus = 0;
+
+	if (! is->current_config.enable_districts || (city == NULL))
+		return;
+
+	int total_happy = 0;
+	int total_unhappy = 0;
+	int utilized_neighborhoods = count_utilized_neighborhoods_in_city_radius (city);
+
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		if ((wai.dx == 0) && (wai.dy == 0))
+			continue;
+
+		struct district_instance * inst = wai.district_inst;
+		int district_id = inst->district_type;
+		struct district_config const * cfg = &is->district_configs[district_id];
+
+		bool is_neighborhood = (cfg->command == UCV_Build_Neighborhood);
+		if (is_neighborhood && (utilized_neighborhoods <= 0))
+			continue;
+
+		if (is_neighborhood)
+			utilized_neighborhoods--;
+
+		if (cfg->happy_bonus != 0)
+			total_happy += cfg->happy_bonus;
+		if (cfg->unhappy_bonus != 0)
+			total_unhappy += cfg->unhappy_bonus;
+
+		if (is->current_config.enable_natural_wonders && district_id == NATURAL_WONDER_DISTRICT_ID) {
+			struct natural_wonder_district_config const * nwcfg =
+				get_natural_wonder_config_by_id (inst->natural_wonder_info.natural_wonder_id);
+			if (nwcfg != NULL) {
+				if (nwcfg->happy_bonus != 0)
+					total_happy += nwcfg->happy_bonus;
+				if (nwcfg->unhappy_bonus != 0)
+					total_unhappy += nwcfg->unhappy_bonus;
+			}
+		}
+	}
+
+	if (happy_bonus != NULL)
+		*happy_bonus = total_happy;
+	if (unhappy_bonus != NULL)
+		*unhappy_bonus = total_unhappy;
 }
 
 int __fastcall
@@ -23199,6 +23300,19 @@ patch_City_add_happiness_from_buildings (City * this, int edx, int * inout_happi
 	}
 
 	City_add_happiness_from_buildings (this, __, inout_happiness, inout_unhappiness);
+
+	if (is->current_config.enable_districts) {
+		int district_happy = 0, district_unhappy = 0;
+		calculate_district_happiness_bonus (this, &district_happy, &district_unhappy);
+
+		if (district_happy != 0)
+			*inout_happiness += district_happy;
+
+		if (district_unhappy != 0) {
+			*inout_happiness -= district_unhappy;
+			this->Body.UnhappyThisCityImprovementsPercent += (char)district_unhappy;
+		}
+	}
 
 	if (restore_improv_counts) {
 		for (int n = 0; n < p_bic_data->ImprovementsCount; n++)

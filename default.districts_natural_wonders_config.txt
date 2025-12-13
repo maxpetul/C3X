@@ -11,6 +11,7 @@ science_bonus = 1
 food_bonus    = 0
 gold_bonus    = 0
 shield_bonus  = 0
+happy_bonus   = 0
 
 #Wonder
 name          = Yosemite
@@ -24,6 +25,7 @@ science_bonus = 1
 food_bonus    = 0
 gold_bonus    = 0
 shield_bonus  = 0
+happy_bonus   = 0
 
 #Wonder
 name          = Mount Fuji
@@ -36,6 +38,7 @@ science_bonus = 1
 food_bonus    = 0
 gold_bonus    = 0
 shield_bonus  = 0
+happy_bonus   = 0
 
 #Wonder
 name          = Yellowstone
@@ -49,6 +52,7 @@ science_bonus = 1
 food_bonus    = 0
 gold_bonus    = 0
 shield_bonus  = 0
+happy_bonus   = 0
 
 #Wonder
 name          = Mount Everest
@@ -62,6 +66,7 @@ science_bonus = 1
 food_bonus    = 0
 gold_bonus    = 0
 shield_bonus  = 0
+happy_bonus   = 0
 
 #Wonder
 name          = Zhangjiajie Mountains
@@ -75,6 +80,7 @@ science_bonus = 1
 food_bonus    = 0
 gold_bonus    = 0
 shield_bonus  = 0
+happy_bonus   = 0
 
 #Wonder
 name          = Mount Kilimanjaro
@@ -87,6 +93,7 @@ science_bonus = 1
 food_bonus    = 0
 gold_bonus    = 0
 shield_bonus  = 0
+happy_bonus   = 0
 
 #Wonder
 name          = Great Barrier Reef
@@ -100,6 +107,7 @@ science_bonus = 1
 food_bonus    = 0
 gold_bonus    = 0
 shield_bonus  = 0
+happy_bonus   = 0
 
 #Wonder
 name          = Matterhorn
@@ -113,6 +121,7 @@ science_bonus = 1
 food_bonus    = 0
 gold_bonus    = 0
 shield_bonus  = 0
+happy_bonus   = 0
 
 #Wonder
 name          = Moraine Lake
@@ -126,6 +135,7 @@ science_bonus = 1
 food_bonus    = 0
 gold_bonus    = 0
 shield_bonus  = 0
+happy_bonus   = 0
 
 #Wonder
 name          = Tropical Rainforest
@@ -139,3 +149,4 @@ science_bonus = 1
 food_bonus    = 0
 gold_bonus    = 0
 shield_bonus  = 0
+happy_bonus   = 0

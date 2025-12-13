@@ -16,6 +16,7 @@ science_bonus         = 0
 food_bonus            = 0
 gold_bonus            = 0
 shield_bonus          = 0
+happy_bonus           = 0
 
 #District
 name                  = Holy Site
@@ -35,6 +36,7 @@ science_bonus         = 0
 food_bonus            = 0
 gold_bonus            = 0
 shield_bonus          = 0
+happy_bonus           = 0
 
 #District
 name                  = Campus
@@ -54,6 +56,7 @@ science_bonus         = 2
 food_bonus            = 0
 gold_bonus            = 0
 shield_bonus          = 0
+happy_bonus           = 0
 
 #District
 name                  = Entertainment Complex
@@ -73,6 +76,7 @@ science_bonus         = 0
 food_bonus            = 0
 gold_bonus            = 2
 shield_bonus          = 0
+happy_bonus           = 0
 
 #District
 name                  = Commercial Hub
@@ -92,6 +96,7 @@ science_bonus         = 0
 food_bonus            = 0
 gold_bonus            = 2
 shield_bonus          = 0
+happy_bonus           = 0
 
 #District
 name                  = Industrial Zone
@@ -111,6 +116,7 @@ science_bonus         = 0
 food_bonus            = 0
 gold_bonus            = 0
 shield_bonus          = 4
+happy_bonus           = 0
 
 #District
 name                  = Neighborhood
@@ -124,6 +130,7 @@ science_bonus         = 1
 food_bonus            = 0
 gold_bonus            = 1
 shield_bonus          = 0
+happy_bonus           = 0
 
 #District
 name                  = Wonder District
@@ -137,6 +144,7 @@ science_bonus         = 0
 food_bonus            = 0
 gold_bonus            = 0
 shield_bonus          = 0
+happy_bonus           = 0
 
 #District
 name                  = Distribution Hub
@@ -150,6 +158,7 @@ science_bonus         = 0
 food_bonus            = 0
 gold_bonus            = 0
 shield_bonus          = 0
+happy_bonus           = 0
 
 #District
 name                  = Aerodrome
@@ -164,6 +173,7 @@ science_bonus         = 0
 food_bonus            = 0
 gold_bonus            = 0
 shield_bonus          = 0
+happy_bonus           = 0
 
 #District
 name                  = Port
@@ -178,3 +188,4 @@ science_bonus         = 0
 food_bonus            = 2
 gold_bonus            = 2
 shield_bonus          = 0
+happy_bonus           = 0
