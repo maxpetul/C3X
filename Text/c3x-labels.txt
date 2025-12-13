@@ -116,6 +116,11 @@ requires a Neighborhood to grow
 destroyed by volcanic eruption!
 construction halted due to missing
 
+; Shown if City A receives a building from City B via shared district, as in "<City A> recieved <Building> from shared <District> with <City B>".
+received
+from shared
+with
+
 ; Districts config mismatch checked on game load
 District ID
 is in the save file but missing in the current configuration.
