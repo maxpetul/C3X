@@ -22848,13 +22848,14 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 			if (is_natural_wonder && (!is->current_config.enable_natural_wonders))
 				continue;
 
-			if (!is_distribution_hub && !is_natural_wonder &&
-			    (!is->current_config.enable_districts))
+			if (is_distribution_hub)
+				continue;
+
+			if (!is_natural_wonder && (!is->current_config.enable_districts))
 				continue;
 
 			// For neighborhood districts, check if population is high enough to utilize them
-			if (!is_distribution_hub &&
-				is->current_config.enable_districts &&
+			if (is->current_config.enable_districts &&
 			    is->current_config.enable_neighborhood_districts &&
 			    district_id == NEIGHBORHOOD_DISTRICT_ID) {
 				// Only draw yields if this neighborhood is utilized
@@ -22868,10 +22869,32 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 			int screen_y = center_screen_y + (wai.dy * tile_half_height);
 
 			// Call the appropriate drawing function
-			if (is_distribution_hub) {
-				draw_distribution_hub_yields (this, wai.tile, wai.tile_x, wai.tile_y, screen_x, screen_y);
-			} else {
-				draw_district_yields (this, wai.tile, district_id, screen_x, screen_y);
+			draw_district_yields (this, wai.tile, district_id, screen_x, screen_y);
+		}
+
+		// Draw distribution hub yields around a larger radius so connected hubs outside the work area are shown
+		if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
+			int const max_tiles = workable_tile_counts[7];
+
+			for (int ni = 0; ni < max_tiles; ni++) {
+				int dx, dy;
+				patch_ni_to_diff_for_work_area (ni, &dx, &dy);
+
+				int tile_x = city_x + dx;
+				int tile_y = city_y + dy;
+				wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+
+				Tile * tile = tile_at (tile_x, tile_y);
+				if ((tile == NULL) || (tile == p_null_tile))
+					continue;
+
+				struct district_instance * inst = get_district_instance (tile);
+				if ((inst == NULL) || (inst->district_type != DISTRIBUTION_HUB_DISTRICT_ID))
+					continue;
+
+				int screen_x = center_screen_x + (dx * tile_half_width);
+				int screen_y = center_screen_y + (dy * tile_half_height);
+				draw_distribution_hub_yields (this, tile, tile_x, tile_y, screen_x, screen_y);
 			}
 		}
 	}
