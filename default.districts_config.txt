@@ -150,3 +150,15 @@ science_bonus         = 0
 food_bonus            = 0
 gold_bonus            = 0
 shield_bonus          = 0
+
+#District
+name                  = Port
+advance_prereq        = Map Making
+dependent_improvs     = Harbor, "Commercial Dock"
+defense_bonus_percent = 0
+allow_multiple        = 1
+culture_bonus         = 0
+science_bonus         = 0
+food_bonus            = 2
+gold_bonus            = 2
+shield_bonus          = 0
