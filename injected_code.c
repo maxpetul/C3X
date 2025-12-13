@@ -1683,6 +1683,16 @@ read_day_night_cycle_mode (struct string_slice const * s, int * out_val)
 }
 
 bool
+read_distribution_hub_yield_division_mode (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "flat"                )) { *out_val = DHYDM_FLAT;               return true; }
+	else if (slice_matches_str (&trimmed, "scale-by-city-count" )) { *out_val = DHYDM_SCALE_BY_CITY_COUNT; return true; }
+	else
+		return false;
+}
+
+bool
 read_square_type_value (struct string_slice const * s, enum SquareTypes * out_type)
 {
 	if (s == NULL || out_type == NULL)
@@ -2113,6 +2123,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "day_night_cycle_mode")) {
 					if (! read_day_night_cycle_mode (&value, (int *)&cfg->day_night_cycle_mode))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "distribution_hub_yield_division_mode")) {
+					if (! read_distribution_hub_yield_division_mode (&value, (int *)&cfg->distribution_hub_yield_division_mode))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_ptw_arty_types (&value,
@@ -4339,8 +4352,24 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec)
 	if (shield_div <= 0)
 		shield_div = 1;
 
-	rec->food_yield = food_sum / food_div;
-	rec->shield_yield = shield_sum / shield_div;
+	int connected_city_count = 0;
+	if (anchor_city != NULL) {
+		FOR_CITIES_OF (coi, rec->civ_id) {
+			City * other_city = coi.city;
+			if ((other_city != NULL) && distribution_hub_accessible_to_city (rec, other_city))
+				connected_city_count++;
+		}
+	}
+	if (connected_city_count <= 0)
+		connected_city_count = 1;
+
+	if (is->current_config.distribution_hub_yield_division_mode == DHYDM_SCALE_BY_CITY_COUNT) {
+		rec->food_yield   = food_sum   / (connected_city_count / food_div);
+		rec->shield_yield = shield_sum / (connected_city_count / shield_div);
+	} else {
+		rec->food_yield = food_sum / food_div;
+		rec->shield_yield = shield_sum / shield_div;
+	}
 }
 
 void
@@ -11216,6 +11245,7 @@ patch_init_floating_point ()
 	base_config.double_minimap_size = MDM_HIGH_DEF;
 	base_config.city_work_radius = 2;
 	base_config.day_night_cycle_mode = DNCM_OFF;
+	base_config.distribution_hub_yield_division_mode = DHYDM_FLAT;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)

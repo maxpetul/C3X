@@ -129,6 +129,11 @@ enum day_night_cycle_mode {
 	DNCM_SPECIFIED
 };
 
+enum distribution_hub_yield_division_mode {
+	DHYDM_FLAT = 0,
+	DHYDM_SCALE_BY_CITY_COUNT
+};
+
 enum perfume_kind {
 	PK_PRODUCTION = 0,
 	PK_TECHNOLOGY,
@@ -348,6 +353,7 @@ struct c3x_config {
 	bool completed_wonder_districts_can_be_destroyed;
 	bool destroyed_wonders_can_be_built_again;
 
+	int distribution_hub_yield_division_mode;
 	int distribution_hub_food_yield_divisor;
 	int distribution_hub_shield_yield_divisor;
 	int ai_ideal_distribution_hub_count_per_100_cities;
