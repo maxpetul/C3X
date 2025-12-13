@@ -3156,12 +3156,16 @@ struct work_area_iter {
 	int dx, dy;
 	int tile_x, tile_y;
 	Tile * tile;
+	struct district_instance * district_inst;
+	bool districts_only;
+	bool completed_only;
 };
 
 void
 wai_next (struct work_area_iter * wai)
 {
 	wai->tile = p_null_tile;
+	wai->district_inst = NULL;
 	while ((wai->n + 1) < wai->num_tiles) {
 		wai->n += 1;
 		patch_ni_to_diff_for_work_area (wai->n, &wai->dx, &wai->dy);
@@ -3179,6 +3183,17 @@ wai_next (struct work_area_iter * wai)
 			continue;
 		if (candidate->vtable->m20_Check_Pollution (candidate, __, 0))
 			continue;
+		struct district_instance * inst = get_district_instance (candidate);
+		if (wai->districts_only) {
+			if (inst == NULL)
+				continue;
+			int district_id = inst->district_type;
+			if ((district_id < 0) || (district_id >= is->district_count))
+				continue;
+			if (wai->completed_only && (! district_is_complete (candidate, district_id)))
+				continue;
+		}
+		wai->district_inst = inst;
 		wai->tile = candidate;
 		break;
 	}
@@ -3187,7 +3202,7 @@ wai_next (struct work_area_iter * wai)
 }
 
 struct work_area_iter
-wai_init (int x, int y)
+wai_init_common (int x, int y, bool districts_only, bool completed_only)
 {
 	struct work_area_iter tr;
 	tr.center_x = x;
@@ -3200,15 +3215,31 @@ wai_init (int x, int y)
 	else
 		tr.civ_id = center_tile->vtable->m38_Get_Territory_OwnerID (center_tile);
 	tr.tile = p_null_tile;
+	tr.district_inst = NULL;
 	tr.dx = 0;
 	tr.dy = 0;
 	tr.tile_x = 0;
 	tr.tile_y = 0;
+	tr.districts_only = districts_only;
+	tr.completed_only = completed_only;
 	wai_next (&tr);
 	return tr;
 }
 
+struct work_area_iter
+wai_init (int x, int y)
+{
+	return wai_init_common (x, y, false, false);
+}
+
+struct work_area_iter
+wai_init_districts (int x, int y, bool completed_only)
+{
+	return wai_init_common (x, y, true, completed_only);
+}
+
 #define FOR_WORK_AREA_AROUND(wai_name, _x, _y) for (struct work_area_iter wai_name = wai_init (_x, _y); (wai_name.n < wai_name.num_tiles); wai_next (&wai_name))
+#define FOR_DISTRICTS_AROUND(wai_name, _x, _y, _completed_only) for (struct work_area_iter wai_name = wai_init_districts (_x, _y, _completed_only); (wai_name.n < wai_name.num_tiles); wai_next (&wai_name))
 
 void
 tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
@@ -4538,11 +4569,11 @@ refresh_distribution_hubs_for_city (City * city)
 	    (city == NULL))
 		return;
 
-	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		int tx = wai.tile_x, ty = wai.tile_y;
 		Tile * tile = wai.tile;
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL || inst->district_type != DISTRIBUTION_HUB_DISTRICT_ID)
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_type != DISTRIBUTION_HUB_DISTRICT_ID)
 			continue;
 		on_distribution_hub_completed (tile, tx, ty);
 	}
@@ -7442,9 +7473,8 @@ can_build_district_on_tile (Tile * tile, int district_id)
 	if (! cfg->allow_multiple) {
 		int x, y;
 		tile_coords_from_ptr (&p_bic_data->Map, tile, &x, &y);
-		FOR_TILES_AROUND(tai, is->workable_tile_count, x, y) {
-			struct district_instance * nearby_inst = get_district_instance (tai.tile);
-			if ((nearby_inst != NULL) && (nearby_inst->district_type == district_id))
+		FOR_DISTRICTS_AROUND (wai, x, y, false) {
+			if (wai.district_inst->district_type == district_id)
 				return false;
 		}
 	}
@@ -7501,19 +7531,13 @@ calculate_city_center_district_bonus (City * city, int * out_food, int * out_shi
 	int utilized_neighborhoods = count_utilized_neighborhoods_in_city_radius (city);
 	int neighborhoods_counted = 0;
 
-	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		if ((wai.dx == 0) && (wai.dy == 0))
 			continue;
 		Tile * tile = wai.tile;
 
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL)
-			continue;
+		struct district_instance * inst = wai.district_inst;
 		int district_id = inst->district_type;
-		if ((district_id < 0) || (district_id >= is->district_count))
-			continue;
-		if (! district_is_complete (tile, district_id))
-			continue;
 
 		if (is->current_config.enable_neighborhood_districts &&
 		    (district_id == NEIGHBORHOOD_DISTRICT_ID)) {
@@ -8051,12 +8075,11 @@ city_has_wonder_district_with_no_completed_wonder (City * city)
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
 		return false;
 
-	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		int x = wai.tile_x, y = wai.tile_y;
 		Tile * candidate = wai.tile;
-		struct district_instance * inst = get_district_instance (candidate);
-		if (inst == NULL || inst->district_type != WONDER_DISTRICT_ID) continue;
-		if (! district_is_complete (candidate, WONDER_DISTRICT_ID)) continue;
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_type != WONDER_DISTRICT_ID) continue;
 
 		// Get wonder district info
 		struct wonder_district_info * info = get_wonder_district_info (candidate);
@@ -8269,15 +8292,12 @@ calculate_district_culture_science_bonuses (City * city, int * culture_bonus, in
 	int total_science = 0;
 	int utilized_neighborhoods = count_utilized_neighborhoods_in_city_radius (city);
 
-	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		if ((wai.dx == 0) && (wai.dy == 0))
 			continue;
 		Tile * tile = wai.tile;
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL) continue;
+		struct district_instance * inst = wai.district_inst;
 		int district_id = inst->district_type;
-		if ((district_id < 0) || (district_id >= is->district_count)) continue;
-		if (! district_is_complete (tile, district_id)) continue;
 
 		struct district_config const * cfg = &is->district_configs[district_id];
 		int district_culture_bonus = 0;
@@ -8396,17 +8416,14 @@ city_has_other_completed_district (City * city, int district_id, int removed_x, 
 	    (city == NULL) || (district_id < 0) || (district_id >= is->district_count))
 		return false;
 
-	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		int x = wai.tile_x, y = wai.tile_y;
 		Tile * candidate = wai.tile;
 		if ((x == removed_x) && (y == removed_y))
 			continue;
 
-		struct district_instance * inst = get_district_instance (candidate);
-		if (inst == NULL || inst->district_type != district_id)
-			continue;
-
-		if (! district_is_complete (candidate, district_id))
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_type != district_id)
 			continue;
 
 		return true;
@@ -8800,14 +8817,14 @@ city_has_assigned_wonder_district (City * city, Tile * ignore_tile)
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
 		return false;
 
-	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, false) {
 		int x = wai.tile_x, y = wai.tile_y;
 		Tile * candidate = wai.tile;
 		if (candidate == ignore_tile)
 			continue;
 
-		struct district_instance * inst = get_district_instance (candidate);
-		if ((inst == NULL) || (inst->district_type != WONDER_DISTRICT_ID))
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_type != WONDER_DISTRICT_ID)
 			continue;
 
 		struct wonder_district_info * info = inst ? &inst->wonder_info : NULL;
@@ -8832,11 +8849,11 @@ free_wonder_district_for_city (City * city)
 	if (city_needs_wonder_district (city))
 		return false;
 
-	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, false) {
 		int x = wai.tile_x, y = wai.tile_y;
 		Tile * tile = wai.tile;
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL || inst->district_type != WONDER_DISTRICT_ID)
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_type != WONDER_DISTRICT_ID)
 			continue;
 
 		struct wonder_district_info * info = get_wonder_district_info (tile);
@@ -8864,12 +8881,11 @@ reserve_wonder_district_for_city (City * city)
 	if (city_has_assigned_wonder_district (city, NULL))
 		return true;
 
-	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		int x = wai.tile_x, y = wai.tile_y;
 		Tile * candidate = wai.tile;
-		struct district_instance * inst = get_district_instance (candidate);
-		if (inst == NULL || inst->district_type != WONDER_DISTRICT_ID) continue;
-		if (! district_is_complete (candidate, WONDER_DISTRICT_ID)) continue;
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_type != WONDER_DISTRICT_ID) continue;
 
 		struct wonder_district_info * info = &inst->wonder_info;
 		if (info->state == WDS_COMPLETED) continue;
@@ -8902,9 +8918,12 @@ release_wonder_district_reservation (City * city)
 		return;
 
 	// Find and remove any reservations for this city
-	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
-		Tile * candidate = wai.tile;
-		struct wonder_district_info * info = get_wonder_district_info (candidate);
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, false) {
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_type != WONDER_DISTRICT_ID)
+			continue;
+
+		struct wonder_district_info * info = &inst->wonder_info;
 		if ((info != NULL) &&
 		    (info->state == WDS_UNDER_CONSTRUCTION) &&
 		    (info->city_id == city->Body.ID)) {
@@ -13543,14 +13562,11 @@ patch_City_Form_draw (City_Form * this)
 	int district_gold = 0;
 	int city_civ_id = city->Body.CivID;
 
-	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		if ((wai.dx == 0) && (wai.dy == 0)) continue;
 		Tile * tile = wai.tile;
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL) continue;
+		struct district_instance * inst = wai.district_inst;
 		int district_id = inst->district_type;
-		if (district_id < 0 || district_id >= is->district_count) continue;
-		if (! district_is_complete (tile, district_id)) continue;
 
 		struct district_config const * cfg = &is->district_configs[district_id];
 		int gold_bonus = 0;
@@ -16567,15 +16583,14 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 				City_add_or_remove_improvement (city, __, improv_id, 1, false);
 			}
     	}
-	} 
+	}
 	// Else there may be multiple district instances of this type, so check each tile around the city
 	else {
-		FOR_WORK_AREA_AROUND (wai, source->Body.X, source->Body.Y) {
+		FOR_DISTRICTS_AROUND (wai, source->Body.X, source->Body.Y, true) {
 			int x = wai.tile_x, y = wai.tile_y;
 			Tile * tile = wai.tile;
-			struct district_instance * inst = get_district_instance (tile);
-			if (inst == NULL || inst->district_type != required_district_id) continue;
-			if (! district_is_complete (tile, required_district_id)) continue;
+			struct district_instance * inst = wai.district_inst;
+			if (inst->district_type != required_district_id) continue;
 
 			FOR_CITIES_OF (coi, source->Body.CivID) {
 				City * city = coi.city;
@@ -16632,19 +16647,13 @@ grant_existing_district_buildings_to_city (City * city)
 	bool prev_flag = is->sharing_buildings_by_districts_in_progress;
 	is->sharing_buildings_by_districts_in_progress = true;
 
-	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		int tile_x = wai.tile_x;
 		int tile_y = wai.tile_y;
 		Tile * tile = wai.tile;
 
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL)
-			continue;
+		struct district_instance * inst = wai.district_inst;
 		int district_id = inst->district_type;
-		if ((district_id < 0) || (district_id >= is->district_count))
-			continue;
-		if (! district_is_complete (tile, district_id))
-			continue;
 
 		struct district_infos * info = &is->district_infos[district_id];
 		if (info->dependent_building_count <= 0)
@@ -17090,14 +17099,13 @@ handle_possible_duplicate_small_wonders(City * city, Leader * leader)
 	if ((city == NULL) || (leader == NULL))
 		return;
 
-	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		int x = wai.tile_x, y = wai.tile_y;
 		Tile * tile = wai.tile;
 
 		// Make sure it's a completed wonder district
-		struct district_instance * inst = get_district_instance (tile);
-		if ((inst == NULL) || (inst->district_type != WONDER_DISTRICT_ID)) continue;
-		if (! district_is_complete (tile, WONDER_DISTRICT_ID)) continue;
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_type != WONDER_DISTRICT_ID) continue;
 		struct wonder_district_info * info = &inst->wonder_info;
 		if ((info == NULL) || (info->state != WDS_COMPLETED)) continue;
 
@@ -17135,14 +17143,13 @@ grant_nearby_wonders_to_city (City * city)
 	    (city == NULL))
 		return;
 
-	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		int x = wai.tile_x, y = wai.tile_y;
 		Tile * tile = wai.tile;
 
 		// Make sure Wonder is completed
-		struct district_instance * inst = get_district_instance (tile);
-		if ((inst == NULL) || (inst->district_type != WONDER_DISTRICT_ID)) continue;
-		if (! district_is_complete (tile, WONDER_DISTRICT_ID)) continue;
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_type != WONDER_DISTRICT_ID) continue;
 		struct wonder_district_info * info = &inst->wonder_info;
 		if ((info == NULL) || (info->state != WDS_COMPLETED)) continue;
 
@@ -22797,11 +22804,9 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 		if (is->current_config.enable_districts && is->current_config.enable_neighborhood_districts)
 			remaining_utilized_neighborhoods = count_utilized_neighborhoods_in_city_radius (city);
 
-		FOR_WORK_AREA_AROUND (wai, city_x, city_y) {
-			struct district_instance * inst = get_district_instance (wai.tile);
-			if (inst == NULL) continue;
+		FOR_DISTRICTS_AROUND (wai, city_x, city_y, true) {
+			struct district_instance * inst = wai.district_inst;
 			int district_id = inst->district_type;
-			if (!district_is_complete (wai.tile, district_id)) continue;
 
 			bool is_distribution_hub = district_id == DISTRIBUTION_HUB_DISTRICT_ID;
 			bool is_natural_wonder   = district_id == NATURAL_WONDER_DISTRICT_ID;
@@ -24412,14 +24417,11 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 
 		// One final check: do we still need the district? Check for any dupes nearby
 		if (req->district_id != DISTRIBUTION_HUB_DISTRICT_ID && req->district_id != NEIGHBORHOOD_DISTRICT_ID) {
-			int civ_id = worker->Body.CivID;
-			FOR_TILES_AROUND (tai, is->workable_tile_count, request_city->Body.X, request_city->Body.Y) {
-				Tile * nearby = tai.tile;
-				if (nearby == p_null_tile || nearby == tile) continue;
-				if (nearby->vtable->m38_Get_Territory_OwnerID (nearby) != civ_id) continue;
+			FOR_DISTRICTS_AROUND (wai, request_city->Body.X, request_city->Body.Y, false) {
+				if (wai.tile == tile)
+					continue;
 
-				struct district_instance * nearby_inst = get_district_instance (nearby);
-				if (nearby_inst != NULL && nearby_inst->district_type == req->district_id) {
+				if (wai.district_inst->district_type == req->district_id) {
 					snprintf (ss, sizeof ss, "ai_move_district_worker: Found duplicate district ID %d near city at (%d,%d), cancelling request\n", req->district_id, request_city->Body.X, request_city->Body.Y);
 					(*p_OutputDebugStringA) (ss);
 					clear_city_district_request (request_city, req->district_id);
@@ -24664,24 +24666,12 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 	if (city == NULL)
 		return;
 
-	int city_id = city->Body.ID;
-	int civ_id = city->Body.CivID;
-
 	// Calculate standard district food bonus
 	int standard_district_food = 0;
-	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
-		if (tai.tile == NULL || tai.tile == p_null_tile) continue;
-		if (tai.tile->Territory_OwnerID != civ_id) continue;
-		if (tile_has_enemy_unit (tai.tile, civ_id)) continue;
-		if (tai.tile->vtable->m20_Check_Pollution (tai.tile, __, 0)) continue;
-		struct district_instance * inst = get_district_instance (tai.tile);
-		if (inst == NULL) continue;
-		int district_id = inst->district_type;
-		if ((district_id < 0) || (district_id >= is->district_count)) continue;
-		if (! district_is_complete (tai.tile, district_id)) continue;
-
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		int district_id = wai.district_inst->district_type;
 		int food_bonus = 0;
-		get_effective_district_yields (inst, &is->district_configs[district_id], &food_bonus, NULL, NULL, NULL, NULL);
+		get_effective_district_yields (wai.district_inst, &is->district_configs[district_id], &food_bonus, NULL, NULL, NULL, NULL);
 		standard_district_food += food_bonus;
 	}
 
