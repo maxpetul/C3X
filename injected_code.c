@@ -14949,6 +14949,8 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 				return false;
 
 			// Else proceed with standard improvement checks
+		} else {
+			return base;
 		}
 	}
 
@@ -16017,6 +16019,7 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 		if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 			// Draw district name to the right of terrain name if tile has one
 			struct district_instance * dist = get_district_instance (tile);
+
 			if (dist != NULL) {
 				show_district_name = true;
 				char const * display_name = is->district_configs[dist->district_type].name;
@@ -16040,7 +16043,11 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 					}
 				}
 
-				snprintf (s, sizeof s, "%s", display_name);
+				// Show sprites indexes for debugging
+				int sheet_index = (tile->SquareParts >> 8) & 0xFF;   
+				int sprite_index = tile->SquareParts & 0xFF;
+
+				snprintf (s, sizeof s, "%s, (%d, %d)", display_name, sheet_index, sprite_index);
 				PCX_Image_draw_text (this, __, s, x + 68, y, strlen (s));
 			}
 		}
@@ -23933,7 +23940,7 @@ finalize:
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
