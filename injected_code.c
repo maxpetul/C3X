@@ -7344,6 +7344,56 @@ clear_city_district_request (City * city, int district_id)
 	}
 }
 
+bool
+can_build_district_on_tile (Tile * tile, int district_id)
+{
+	if ((! is->current_config.enable_districts) ||
+	    (tile == NULL) || (tile == p_null_tile) ||
+	    (tile->CityID >= 0) ||
+	    tile->vtable->m21_Check_Crates (tile, __, 0) ||
+	    tile->vtable->m20_Check_Pollution (tile, __, 0) ||
+	    (district_id < 0) || (district_id >= is->district_count))
+		return false;
+
+	struct district_config const * cfg = &is->district_configs[district_id];
+	if (cfg->command == -1)
+		return false;
+
+	if ((cfg->command == UCV_Build_Neighborhood)    && !is->current_config.enable_neighborhood_districts)     return false;
+	if ((cfg->command == UCV_Build_WonderDistrict)  && !is->current_config.enable_wonder_districts)           return false;
+	if ((cfg->command == UCV_Build_DistributionHub) && !is->current_config.enable_distribution_hub_districts) return false;
+	if ((cfg->command == UCV_Build_Aerodrome)       && !is->current_config.enable_aerodrome_districts)        return false;
+	if ((cfg->command == UCV_Build_Port)            && !is->current_config.enable_port_districts)             return false;
+
+	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+	if (! district_is_buildable_on_square_type (cfg, base_type))
+		return false;
+
+	int prereq_id = is->district_infos[district_id].advance_prereq_id;
+	if ((prereq_id >= 0) && !Leader_has_tech (&leaders[tile->Territory_OwnerID], __, prereq_id))
+		return false;
+
+	struct district_instance * existing_inst = get_district_instance (tile);
+	int existing_district_id = (existing_inst != NULL) ? existing_inst->district_type : -1;
+	bool district_completed = district_is_complete (tile, existing_district_id);
+
+	if ((existing_district_id == district_id) && district_completed)
+		return false;
+	if ((existing_district_id >= 0) && (existing_district_id != district_id) && (! district_completed))
+		return false;
+
+	if (! cfg->allow_multiple) {
+		int x, y;
+		tile_coords_from_ptr (&p_bic_data->Map, tile, &x, &y);
+		FOR_TILES_AROUND(tai, is->workable_tile_count, x, y) {
+			struct district_instance * nearby_inst = get_district_instance (tai.tile);
+			if ((nearby_inst != NULL) && (nearby_inst->district_type == district_id))
+				return false;
+		}
+	}
+
+	return true;
+}
 
 bool
 tile_suitable_for_district (Tile * tile, int district_id, City * city, bool * out_has_resource)
@@ -7354,17 +7404,11 @@ tile_suitable_for_district (Tile * tile, int district_id, City * city, bool * ou
 	if (out_has_resource != NULL)
 		*out_has_resource = has_resource;
 
-	if ((tile == NULL) || (tile == p_null_tile))
-		return false;
-	if (tile->CityID >= 0)
-		return false;
-	if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID)
-		return false;
-	if (tile->vtable->m35_Check_Is_Water (tile))
-		return false;
-	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	if ((base_type == SQ_Mountains) || (base_type == SQ_Volcano))
-		return false;
+	if ((tile == NULL) || (tile == p_null_tile)) return false;
+	if (tile->CityID >= 0) return false;
+	if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID) return false;
+	if (! can_build_district_on_tile (tile, district_id)) return false;
+
 	struct district_instance * inst = get_district_instance (tile);
 	if (inst != NULL) {
 		if (inst->district_type != district_id)
@@ -7836,19 +7880,14 @@ tile_has_friendly_aerodrome_district (Tile * tile, int civ_id, bool require_avai
 	if (! is->current_config.enable_districts ||
 	    ! is->current_config.enable_aerodrome_districts ||
 	    (tile == NULL) ||
-	    (tile == p_null_tile) ||
-	    (civ_id < 0) || (civ_id >= 32))
-		return false;
-
-	int aerodrome_id = AERODROME_DISTRICT_ID;
-	if (aerodrome_id < 0)
+	    (tile == p_null_tile))
 		return false;
 
 	struct district_instance * inst = get_district_instance (tile);
-	if (inst == NULL || inst->district_type != aerodrome_id)
+	if (inst == NULL || inst->district_type != AERODROME_DISTRICT_ID)
 		return false;
 
-	if (! district_is_complete (tile, aerodrome_id))
+	if (! district_is_complete (tile, AERODROME_DISTRICT_ID))
 		return false;
 
 	int territory_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
@@ -7863,6 +7902,25 @@ tile_has_friendly_aerodrome_district (Tile * tile, int civ_id, bool require_avai
 	}
 
 	return true;
+}
+
+bool
+tile_has_friendly_port_district (Tile * tile, int civ_id)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_port_districts ||
+	    ! is->current_config.naval_units_use_port_districts_not_cities ||
+	    (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if ((inst == NULL) || (inst->district_type != PORT_DISTRICT_ID))
+		return false;
+
+	if (! district_is_complete (tile, PORT_DISTRICT_ID))
+		return false;
+
+	return tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id;
 }
 
 bool
@@ -10987,6 +11045,7 @@ patch_init_floating_point ()
 		{"cities_with_mutual_district_receive_wonders"           , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
 		{"show_message_when_building_received_by_mutual_district", false, offsetof (struct c3x_config, show_message_when_building_received_by_mutual_district)},
 		{"air_units_use_aerodrome_districts_not_cities"          , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
+		{"naval_units_use_port_districts_not_cities"             , false, offsetof (struct c3x_config, naval_units_use_port_districts_not_cities)},
 		{"show_natural_wonder_name_on_map"                       , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
 		{"ai_defends_districts"                                  , false, offsetof (struct c3x_config, ai_defends_districts)},
 		{"enable_city_work_radii_highlights"                     , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
@@ -12219,56 +12278,6 @@ compute_highlighted_worker_tiles_for_districts ()
 	}
 }
 
-bool
-can_build_district_on_tile (Unit * unit, Tile * tile, int district_id, enum SquareTypes base_type)
-{
-	if ((! is->current_config.enable_districts) ||
-	    (unit == NULL) ||
-	    (tile == NULL) || (tile == p_null_tile) ||
-	    (! is_worker (unit)) ||
-	    (tile->CityID >= 0) ||
-	    tile->vtable->m21_Check_Crates (tile, __, 0) ||
-	    tile->vtable->m20_Check_Pollution (tile, __, 0) ||
-	    (district_id < 0) || (district_id >= is->district_count))
-		return false;
-
-	struct district_config const * cfg = &is->district_configs[district_id];
-	if (cfg->command == -1)
-		return false;
-
-	if ((cfg->command == UCV_Build_Neighborhood)    && !is->current_config.enable_neighborhood_districts)     return false;
-	if ((cfg->command == UCV_Build_WonderDistrict)  && !is->current_config.enable_wonder_districts)           return false;
-	if ((cfg->command == UCV_Build_DistributionHub) && !is->current_config.enable_distribution_hub_districts) return false;
-	if ((cfg->command == UCV_Build_Aerodrome)       && !is->current_config.enable_aerodrome_districts)        return false;
-	if ((cfg->command == UCV_Build_Port)            && !is->current_config.enable_port_districts)             return false;
-
-	if (! district_is_buildable_on_square_type (cfg, base_type))
-		return false;
-
-	int prereq_id = is->district_infos[district_id].advance_prereq_id;
-	if ((prereq_id >= 0) && !Leader_has_tech (&leaders[unit->Body.CivID], __, prereq_id))
-		return false;
-
-	struct district_instance * existing_inst = get_district_instance (tile);
-	int existing_district_id = (existing_inst != NULL) ? existing_inst->district_type : -1;
-	bool district_completed = district_is_complete (tile, existing_district_id);
-
-	if ((existing_district_id == district_id) && district_completed)
-		return false;
-	if ((existing_district_id >= 0) && (existing_district_id != district_id) && (! district_completed))
-		return false;
-
-	if (! cfg->allow_multiple) {
-		FOR_TILES_AROUND(tai, is->workable_tile_count, unit->Body.X, unit->Body.Y) {
-			struct district_instance * nearby_inst = get_district_instance (tai.tile);
-			if ((nearby_inst != NULL) && (nearby_inst->district_type == district_id))
-				return false;
-		}
-	}
-
-	return true;
-}
-
 void
 set_up_district_buttons (Main_GUI * this)
 {
@@ -12348,7 +12357,7 @@ set_up_district_buttons (Main_GUI * this)
 		if (existing_district_id == dc && district_completed) continue;
 		if ((existing_district_id >= 0) && (existing_district_id != dc) && (! district_completed)) continue;
 
-		if (! can_build_district_on_tile (selected_unit, tile, dc, base_type))
+		if (! can_build_district_on_tile (tile, dc))
 			continue;
 
 		// This district should be shown
@@ -12805,7 +12814,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 			if (! itable_look_up (&is->command_id_to_district_id, unit_command_value, &district_id))
 				return false;
 
-			return can_build_district_on_tile (this, tile, district_id, base_type);
+			return is_worker (this) && can_build_district_on_tile (tile, district_id);
 		}
 		else if (unit_command_value == UCV_Build_Mine) {
 			bool has_district = (tile != NULL) && (tile != p_null_tile) && (get_district_instance (tile) != NULL);
@@ -13702,6 +13711,18 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 			base_validity = AMV_OK;
 	}
 
+	if ((base_validity == AMV_OK) &&
+	    is->current_config.enable_districts &&
+	    is->current_config.enable_port_districts &&
+	    is->current_config.naval_units_use_port_districts_not_cities &&
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
+		int nx, ny;
+		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
+		Tile * dest = tile_at (nx, ny);
+		if ((dest != NULL) && (dest != p_null_tile) && Tile_has_city (dest))
+			return AMV_INVALID_SEA_MOVE;
+	}
+
 	// Apply unit count per tile limit
 	enum UnitTypeClasses class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
 	if ((base_validity == AMV_OK) && (is->current_config.limit_units_per_tile[class] > 0)) {
@@ -13746,6 +13767,17 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 		    dest->vtable->m35_Check_Is_Water (dest) &&
 		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
 			base_cost = Unit_get_max_move_points (unit);
+	}
+
+	if ((unit != NULL) &&
+	    (base_cost >= 0) &&
+	    is->current_config.enable_districts &&
+	    is->current_config.enable_port_districts &&
+	    is->current_config.naval_units_use_port_districts_not_cities &&
+	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
+		Tile * dest = tile_at (to_x, to_y);
+		if ((dest != NULL) && (dest != p_null_tile) && Tile_has_city (dest))
+			return -1;
 	}
 
 	// Apply unit count per tile limit
@@ -14879,9 +14911,15 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 			is->current_config.enable_aerodrome_districts &&
 		    is->current_config.air_units_use_aerodrome_districts_not_cities) {
 			UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
-			int aerodrome_id = AERODROME_DISTRICT_ID;
-			if ((type->Unit_Class == UTC_Air) && (aerodrome_id >= 0) &&
-			    ! city_has_required_district (this, aerodrome_id))
+			if (type->Unit_Class == UTC_Air && ! city_has_required_district (this, AERODROME_DISTRICT_ID))
+				return false;
+		}
+
+		if (is->current_config.enable_districts &&
+		    is->current_config.enable_port_districts &&
+		    is->current_config.naval_units_use_port_districts_not_cities) {
+			UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
+			if (type->Unit_Class == UTC_Sea && ! city_has_required_district (this, PORT_DISTRICT_ID))
 				return false;
 		}
 	}
@@ -14894,8 +14932,25 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 {
 	// First defer to the base game's logic
 	bool base = City_can_build_improvement (this, __, i_improv, apply_strict_rules);
-	if (! base) return false;
-	if (! is->current_config.enable_districts) return base;
+
+	if (! is->current_config.enable_districts) 
+		return base;
+
+	if (! base) {
+		// Allow harbor-like improvements when port districts replace coastal adjacency
+		Improvement * improv = &p_bic_data->Improvements[i_improv];
+		if (improv->ImprovementFlags & ITF_Allows_Water_Trade &&
+		    is->current_config.enable_port_districts &&
+		    is->current_config.naval_units_use_port_districts_not_cities) {
+			int tx, ty;
+
+			// If the city has no coastal tiles within its workable area, disallow
+			if (find_tile_for_district (this, PORT_DISTRICT_ID, &tx, &ty) == NULL)
+				return false;
+
+			// Else proceed with standard improvement checks
+		}
+	}
 
 	// Different logic for human vs AI players
 	bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
@@ -20182,15 +20237,31 @@ patch_Leader_spawn_unit (Leader * this, int edx, int type_id, int tile_x, int ti
 	int spawn_x = tile_x,
 	    spawn_y = tile_y;
 
-	if (is->current_config.enable_districts &&
-	    is->current_config.air_units_use_aerodrome_districts_not_cities) {
+	if (is->current_config.enable_districts) {
 		UnitType * type = &p_bic_data->UnitTypes[type_id];
-		int aerodrome_id = AERODROME_DISTRICT_ID;
-		if ((type->Unit_Class == UTC_Air) && (aerodrome_id >= 0)) {
+		if (is->current_config.air_units_use_aerodrome_districts_not_cities) {
+			if (type->Unit_Class == UTC_Air) {
+				City * spawn_city = city_at (tile_x, tile_y);
+				if ((spawn_city != NULL) && (spawn_city->Body.CivID == this->ID)) {
+					int district_x, district_y;
+					Tile * district_tile = get_completed_district_tile_for_city (spawn_city, AERODROME_DISTRICT_ID, &district_x, &district_y);
+					if ((district_tile != NULL) && (district_tile != p_null_tile) &&
+					    (district_tile->Territory_OwnerID == this->ID) &&
+					    is_below_stack_limit (district_tile, this->ID, type->Unit_Class)) {
+						spawn_x = district_x;
+						spawn_y = district_y;
+					}
+				}
+			}
+		}
+
+		if ((type->Unit_Class == UTC_Sea) &&
+		    is->current_config.enable_port_districts &&
+		    is->current_config.naval_units_use_port_districts_not_cities) {
 			City * spawn_city = city_at (tile_x, tile_y);
 			if ((spawn_city != NULL) && (spawn_city->Body.CivID == this->ID)) {
 				int district_x, district_y;
-				Tile * district_tile = get_completed_district_tile_for_city (spawn_city, aerodrome_id, &district_x, &district_y);
+				Tile * district_tile = get_completed_district_tile_for_city (spawn_city, PORT_DISTRICT_ID, &district_x, &district_y);
 				if ((district_tile != NULL) && (district_tile != p_null_tile) &&
 				    (district_tile->Territory_OwnerID == this->ID) &&
 				    is_below_stack_limit (district_tile, this->ID, type->Unit_Class)) {
@@ -21699,6 +21770,46 @@ patch_Tile_m7_Check_Barbarian_Camp (Tile * this, int edx, int visible_to_civ)
 }
 
 bool __fastcall
+patch_Unit_can_heal_at (Unit * this, int edx, int tile_x, int tile_y)
+{
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_port_districts &&
+	    is->current_config.naval_units_use_port_districts_not_cities &&
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if (tile_has_friendly_port_district (tile, this->Body.CivID)) {
+			int occupier_id = get_tile_occupier_id (tile_x, tile_y, -1, true);
+			return (occupier_id == -1) || (occupier_id == this->Body.CivID);
+		}
+	}
+
+	return Unit_can_heal_at (this, __, tile_x, tile_y);
+}
+
+void __fastcall
+patch_Unit_heal_at_start_of_turn (Unit * this)
+{
+	bool healed_in_port = false;
+
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_port_districts &&
+	    is->current_config.naval_units_use_port_districts_not_cities &&
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
+		Tile * tile = tile_at (this->Body.X, this->Body.Y);
+		if (tile_has_friendly_port_district (tile, this->Body.CivID))
+			healed_in_port = true;
+	}
+
+	Unit_heal_at_start_of_turn (this);
+
+	if (healed_in_port && (this->Body.Damage > 0)) {
+		int heal_amt = Unit_get_max_hp (this) - 1;
+		int new_damage = this->Body.Damage - heal_amt;
+		this->Body.Damage = (new_damage < 0) ? 0 : new_damage;
+	}
+}
+
+bool __fastcall
 patch_Unit_can_airdrop (Unit * this)
 {
 	bool allowed = Unit_can_airdrop (this);
@@ -22141,9 +22252,8 @@ patch_Unit_check_rebase_target (Unit * this, int edx, int tile_x, int tile_y)
 			struct district_instance * inst = get_district_instance (tile);
 			if (inst != NULL) {
 				int district_id = inst->district_type;
-				int aerodrome_id = AERODROME_DISTRICT_ID;
 				// Check if this is an aerodrome district owned by this unit's civ
-				if ((aerodrome_id >= 0) && (district_id == aerodrome_id) && (tile->Territory_OwnerID == this->Body.CivID)) {
+				if ((district_id == AERODROME_DISTRICT_ID) && (tile->Territory_OwnerID == this->Body.CivID)) {
 					// Check if aerodrome is complete
 					if (district_is_complete (tile, district_id)) {
 						// Perform range check
@@ -23823,6 +23933,7 @@ finalize:
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
+	*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -23862,8 +23973,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 
 	// Districts
     if (is->current_config.enable_districts) {
-		if (district_id < 0 || district_id >= is->district_count)
-			return;
+		if (district_id < 0 || district_id >= is->district_count) return;
         bool completed = district_is_complete (tile, district_id);
 
         if (! completed)

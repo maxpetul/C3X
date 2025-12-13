@@ -339,6 +339,7 @@ struct c3x_config {
 	bool show_message_when_building_received_by_mutual_district;
 
 	bool air_units_use_aerodrome_districts_not_cities;
+	bool naval_units_use_port_districts_not_cities;
 
 	int maximum_pop_before_neighborhood_needed;
 	int per_neighborhood_pop_growth_enabled;
