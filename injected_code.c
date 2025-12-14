@@ -516,15 +516,15 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &tile_x, &tile_y);
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
-			if (is->current_config.enable_districts) {
-				// Check if the tile itself is a completed district
+			if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
+				// Check if the tile itself is a completed district (includes natural wonders)
 				struct district_instance * inst = get_district_instance (tile);
-				if (inst != NULL && district_is_complete (tile, inst->district_type)) {
+				if (inst != NULL && district_is_complete (tile, inst->district_type))
 					return false;
-				}
 
 				// Check if the tile is covered by a distribution hub
-				if (is->current_config.enable_distribution_hub_districts) {
+				if (is->current_config.enable_districts &&
+				    is->current_config.enable_distribution_hub_districts) {
 					int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
 					if (covered > 0)
 						return false;
@@ -2539,7 +2539,7 @@ get_effective_district_yields (struct district_instance * inst,
 {
 	int food = 0, shields = 0, gold = 0, science = 0, culture = 0;
 
-	if (cfg != NULL) {
+	if (cfg != NULL && is->current_config.enable_districts) {
 		food = cfg->food_bonus;
 		shields = cfg->shield_bonus;
 		gold = cfg->gold_bonus;
@@ -2547,9 +2547,8 @@ get_effective_district_yields (struct district_instance * inst,
 		culture = cfg->culture_bonus;
 	}
 
-	if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
-		struct natural_wonder_district_config const * nwcfg =
-			get_natural_wonder_config_by_id (inst->natural_wonder_info.natural_wonder_id);
+	if (inst != NULL && is->current_config.enable_natural_wonders && inst->district_type == NATURAL_WONDER_DISTRICT_ID) {
+		struct natural_wonder_district_config const * nwcfg = get_natural_wonder_config_by_id (inst->natural_wonder_info.natural_wonder_id);
 		if (nwcfg != NULL) {
 			food += nwcfg->food_bonus;
 			shields += nwcfg->shield_bonus;
@@ -2664,19 +2663,42 @@ natural_wonder_exists_within_distance (int tile_x, int tile_y, int min_distance)
 	if (min_distance <= 0)
 		return false;
 
-	FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-		struct district_instance * inst = (struct district_instance *)(long)tei.value;
-		if ((inst == NULL) || (inst->district_type != NATURAL_WONDER_DISTRICT_ID))
-			continue;
-
-		Tile * entry_tile = (Tile *)tei.key;
-		int existing_x, existing_y;
-		if (! district_instance_get_coords (inst, entry_tile, &existing_x, &existing_y))
-			continue;
-
-		int dist = compute_wrapped_chebyshev_distance (tile_x, tile_y, existing_x, existing_y);
-		if (dist <= min_distance)
+	Tile * here = tile_at (tile_x, tile_y);
+	if ((here != NULL) && (here != p_null_tile)) {
+		struct district_instance * inst = get_district_instance (here);
+		if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID))
 			return true;
+	}
+
+	for (int dist = 1; dist <= min_distance; dist++) {
+		struct vertex {
+			int x, y;
+		} vertices[4] = {
+			{tile_x         , tile_y - 2*dist},
+			{tile_x + 2*dist, tile_y         },
+			{tile_x         , tile_y + 2*dist},
+			{tile_x - 2*dist, tile_y         }
+		};
+
+		int edge_dirs[4] = {3, 5, 7, 1};
+
+		for (int vert = 0; vert < 4; vert++) {
+			wrap_tile_coords (&p_bic_data->Map, &vertices[vert].x, &vertices[vert].y);
+			int dx, dy;
+			neighbor_index_to_diff (edge_dirs[vert], &dx, &dy);
+			for (int j = 0; j < 2*dist; j++) {
+				int cx = vertices[vert].x + j * dx,
+				    cy = vertices[vert].y + j * dy;
+				wrap_tile_coords (&p_bic_data->Map, &cx, &cy);
+
+				Tile * tile = tile_at (cx, cy);
+				if ((tile == NULL) || (tile == p_null_tile))
+					continue;
+				struct district_instance * inst = get_district_instance (tile);
+				if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID))
+					return true;
+			}
+		}
 	}
 
 	return false;
@@ -3758,9 +3780,15 @@ is_wonder_or_small_wonder_already_being_built (City * city, int improv_id)
 bool
 district_is_complete(Tile * tile, int district_id)
 {
-	if (! is->current_config.enable_districts ||
-	    (tile == NULL) || (tile == p_null_tile) ||
+	if ((tile == NULL) || (tile == p_null_tile) ||
 	    (district_id < 0) || (district_id >= is->district_count))
+		return false;
+
+	bool is_natural_wonder = (district_id == NATURAL_WONDER_DISTRICT_ID);
+	bool districts_disabled = ! is->current_config.enable_districts;
+	bool natural_wonders_disabled = ! is->current_config.enable_natural_wonders;
+
+	if (districts_disabled && (!is_natural_wonder || natural_wonders_disabled))
 		return false;
 
 	struct district_instance * inst = get_district_instance (tile);
@@ -7274,7 +7302,7 @@ calculate_city_center_district_bonus (City * city, int * out_food, int * out_shi
 	if (out_gold != NULL)
 		*out_gold = 0;
 
-	if (! is->current_config.enable_districts || (city == NULL))
+	if ((! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) || (city == NULL))
 		return;
 
 	int bonus_food = 0;
@@ -7329,7 +7357,7 @@ calculate_city_center_district_bonus (City * city, int * out_food, int * out_shi
 		bonus_gold += gold_bonus;
 	}
 
-	if (is->current_config.enable_distribution_hub_districts) {
+	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
 		int hub_food = 0;
 		int hub_shields = 0;
 		get_distribution_hub_yields_for_city (city, &hub_food, &hub_shields);
@@ -7349,7 +7377,7 @@ int __fastcall
 patch_Map_calc_food_yield_at (Map * this, int edx, int tile_x, int tile_y, int tile_base_type, int civ_id, int imagine_fully_improved, City * city)
 {
 	if (! is->current_config.enable_districts)
-		Map_calc_food_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
+		return Map_calc_food_yield_at (this, __, tile_x, tile_y, tile_base_type, civ_id, imagine_fully_improved, city);
 
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile != NULL) && (tile != p_null_tile)) {
@@ -7987,7 +8015,7 @@ calculate_district_culture_science_bonuses (City * city, int * culture_bonus, in
 	if (science_bonus != NULL)
 		*science_bonus = 0;
 
-	if (! is->current_config.enable_districts || (city == NULL))
+	if (! (is->current_config.enable_districts || is->current_config.enable_natural_wonders) || (city == NULL))
 		return;
 
 	int total_culture = 0;
@@ -8091,7 +8119,8 @@ maybe_show_neighborhood_growth_warning (City * city)
 
 	unsigned int turn_no = (unsigned int)*p_current_turn_no;
 	unsigned int throttle = ((unsigned int)city->Body.X << 5) ^ (unsigned int)city->Body.Y;
-	if (((turn_no + throttle) % 4) != 0)
+	int frequency = is->current_config.neighborhood_needed_message_frequency;
+	if ((frequency <= 0) || (((turn_no + throttle) % frequency) != 0))
 		return;
 
 	char msg[160];
@@ -8383,6 +8412,7 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	}
 
 	if (leave_ruins && (tile->vtable->m60_Set_Ruins != NULL)) {
+		tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, center_x, center_y);
 		tile->vtable->m60_Set_Ruins (tile, __, 1);
 		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 	}
@@ -9042,7 +9072,7 @@ patch_City_recompute_commerce (City * this)
 {
 	City_recompute_commerce (this);
 
-	if (! is->current_config.enable_districts)
+	if (! (is->current_config.enable_districts || is->current_config.enable_natural_wonders))
 		return;
 
 	int science_bonus = 0;
@@ -9072,7 +9102,7 @@ patch_City_update_culture (City * this)
 {
 	City_update_culture (this);
 
-	if ((this == NULL) || ! is->current_config.enable_districts)
+	if ((this == NULL) || ! (is->current_config.enable_districts || is->current_config.enable_natural_wonders))
 		return;
 
 	int culture_bonus = 0;
@@ -9100,7 +9130,7 @@ patch_City_recompute_culture_income (City * this)
 {
 	City_recompute_culture_income (this);
 
-	if (! is->current_config.enable_districts)
+	if (! (is->current_config.enable_districts || is->current_config.enable_natural_wonders))
 		return;
 
 	int culture_bonus = 0;
@@ -10801,148 +10831,149 @@ patch_init_floating_point ()
 		bool base_val;
 		int offset;
 	} boolean_config_options[] = {
-		{"enable_stack_bombard"                                , true , offsetof (struct c3x_config, enable_stack_bombard)},
-		{"enable_disorder_warning"                             , true , offsetof (struct c3x_config, enable_disorder_warning)},
-		{"allow_stealth_attack_against_single_unit"            , false, offsetof (struct c3x_config, allow_stealth_attack_against_single_unit)},
-		{"show_detailed_city_production_info"                  , true , offsetof (struct c3x_config, show_detailed_city_production_info)},
-		{"limited_railroads_work_like_fast_roads"              , false, offsetof (struct c3x_config, limited_railroads_work_like_fast_roads)},
-		{"exclude_cities_from_units_per_tile_limit"            , false, offsetof (struct c3x_config, exclude_cities_from_units_per_tile_limit)},
-		{"enable_free_buildings_from_small_wonders"            , true , offsetof (struct c3x_config, enable_free_buildings_from_small_wonders)},
-		{"enable_stack_unit_commands"                          , true , offsetof (struct c3x_config, enable_stack_unit_commands)},
-		{"skip_repeated_tile_improv_replacement_asks"          , true , offsetof (struct c3x_config, skip_repeated_tile_improv_replacement_asks)},
-		{"autofill_best_gold_amount_when_trading"              , true , offsetof (struct c3x_config, autofill_best_gold_amount_when_trading)},
-		{"disallow_founding_next_to_foreign_city"              , true , offsetof (struct c3x_config, disallow_founding_next_to_foreign_city)},
-		{"enable_trade_screen_scroll"                          , true , offsetof (struct c3x_config, enable_trade_screen_scroll)},
-		{"group_units_on_right_click_menu"                     , true , offsetof (struct c3x_config, group_units_on_right_click_menu)},
-		{"gray_out_units_on_menu_with_no_remaining_moves"      , true , offsetof (struct c3x_config, gray_out_units_on_menu_with_no_remaining_moves)},
-		{"put_movement_icons_on_units_on_menu"                 , true , offsetof (struct c3x_config, put_movement_icons_on_units_on_menu)},
-		{"describe_states_of_units_on_menu"                    , true , offsetof (struct c3x_config, describe_states_of_units_on_menu)},
-		{"show_golden_age_turns_remaining"                     , true , offsetof (struct c3x_config, show_golden_age_turns_remaining)},
-		{"show_zoc_attacks_from_mid_stack"                     , true , offsetof (struct c3x_config, show_zoc_attacks_from_mid_stack)},
-		{"cut_research_spending_to_avoid_bankruptcy"           , true , offsetof (struct c3x_config, cut_research_spending_to_avoid_bankruptcy)},
-		{"dont_pause_for_love_the_king_messages"               , true , offsetof (struct c3x_config, dont_pause_for_love_the_king_messages)},
-		{"reverse_specialist_order_with_shift"                 , true , offsetof (struct c3x_config, reverse_specialist_order_with_shift)},
-		{"toggle_zoom_with_z_on_city_screen"                   , true , offsetof (struct c3x_config, toggle_zoom_with_z_on_city_screen)},
-		{"dont_give_king_names_in_non_regicide_games"          , true , offsetof (struct c3x_config, dont_give_king_names_in_non_regicide_games)},
-		{"no_elvis_easter_egg"                                 , false, offsetof (struct c3x_config, no_elvis_easter_egg)},
-		{"disable_worker_automation"                           , false, offsetof (struct c3x_config, disable_worker_automation)},
-		{"enable_land_sea_intersections"                       , false, offsetof (struct c3x_config, enable_land_sea_intersections)},
-		{"disallow_trespassing"                                , false, offsetof (struct c3x_config, disallow_trespassing)},
-		{"show_detailed_tile_info"                             , true , offsetof (struct c3x_config, show_detailed_tile_info)},
-		{"warn_about_unrecognized_names"                       , true , offsetof (struct c3x_config, warn_about_unrecognized_names)},
-		{"enable_ai_production_ranking"                        , true , offsetof (struct c3x_config, enable_ai_production_ranking)},
-		{"enable_ai_city_location_desirability_display"        , true , offsetof (struct c3x_config, enable_ai_city_location_desirability_display)},
-		{"zero_corruption_when_off"                            , true , offsetof (struct c3x_config, zero_corruption_when_off)},
-		{"disallow_land_units_from_affecting_water_tiles"      , true , offsetof (struct c3x_config, disallow_land_units_from_affecting_water_tiles)},
-		{"dont_end_units_turn_after_airdrop"                   , false, offsetof (struct c3x_config, dont_end_units_turn_after_airdrop)},
-		{"allow_airdrop_without_airport"                       , false, offsetof (struct c3x_config, allow_airdrop_without_airport)},
-		{"enable_negative_pop_pollution"                       , true , offsetof (struct c3x_config, enable_negative_pop_pollution)},
-		{"allow_defensive_retreat_on_water"                    , false, offsetof (struct c3x_config, allow_defensive_retreat_on_water)},
-		{"promote_wonder_decorruption_effect"                  , false, offsetof (struct c3x_config, promote_wonder_decorruption_effect)},
-		{"allow_military_leaders_to_hurry_wonders"             , false, offsetof (struct c3x_config, allow_military_leaders_to_hurry_wonders)},
-		{"aggressively_penalize_bankruptcy"                    , false, offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
-		{"no_penalty_exception_for_agri_fresh_water_city_tiles", false, offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
-		{"use_offensive_artillery_ai"                          , true , offsetof (struct c3x_config, use_offensive_artillery_ai)},
-		{"dont_escort_unflagged_units"                         , false, offsetof (struct c3x_config, dont_escort_unflagged_units)},
-		{"replace_leader_unit_ai"                              , true , offsetof (struct c3x_config, replace_leader_unit_ai)},
-		{"fix_ai_army_composition"                             , true , offsetof (struct c3x_config, fix_ai_army_composition)},
-		{"enable_pop_unit_ai"                                  , true , offsetof (struct c3x_config, enable_pop_unit_ai)},
-		{"enable_caravan_unit_ai"                              , true , offsetof (struct c3x_config, enable_caravan_unit_ai)},
-		{"remove_unit_limit"                                   , true , offsetof (struct c3x_config, remove_unit_limit)},
-		{"remove_city_improvement_limit"                       , true , offsetof (struct c3x_config, remove_city_improvement_limit)},
-		{"remove_cap_on_turn_limit"                            , true , offsetof (struct c3x_config, remove_cap_on_turn_limit)},
-		{"remove_era_limit"                                    , false, offsetof (struct c3x_config, remove_era_limit)},
-		{"patch_submarine_bug"                                 , true , offsetof (struct c3x_config, patch_submarine_bug)},
-		{"patch_science_age_bug"                               , true , offsetof (struct c3x_config, patch_science_age_bug)},
-		{"patch_pedia_texture_bug"                             , true , offsetof (struct c3x_config, patch_pedia_texture_bug)},
-		{"patch_blocked_disembark_freeze"                      , true , offsetof (struct c3x_config, patch_blocked_disembark_freeze)},
-		{"patch_houseboat_bug"                                 , true , offsetof (struct c3x_config, patch_houseboat_bug)},
-		{"patch_intercept_lost_turn_bug"                       , true , offsetof (struct c3x_config, patch_intercept_lost_turn_bug)},
-		{"patch_phantom_resource_bug"                          , true , offsetof (struct c3x_config, patch_phantom_resource_bug)},
-		{"patch_maintenance_persisting_for_obsolete_buildings" , true , offsetof (struct c3x_config, patch_maintenance_persisting_for_obsolete_buildings)},
-		{"patch_barbarian_diagonal_bug"                        , true , offsetof (struct c3x_config, patch_barbarian_diagonal_bug)},
-		{"patch_disease_stopping_tech_flag_bug"                , false, offsetof (struct c3x_config, patch_disease_stopping_tech_flag_bug)},
-		{"patch_division_by_zero_in_ai_alliance_eval"          , true , offsetof (struct c3x_config, patch_division_by_zero_in_ai_alliance_eval)},
-		{"patch_empty_army_movement"                           , true , offsetof (struct c3x_config, patch_empty_army_movement)},
-		{"patch_premature_truncation_of_found_paths"           , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
-		{"patch_zero_production_crash"                         , true , offsetof (struct c3x_config, patch_zero_production_crash)},
-		{"patch_ai_can_form_army_without_special_ability"      , true , offsetof (struct c3x_config, patch_ai_can_form_army_without_special_ability)},
-		{"patch_ai_can_sacrifice_without_special_ability"      , true , offsetof (struct c3x_config, patch_ai_can_sacrifice_without_special_ability)},
-		{"patch_crash_in_leader_unit_ai"                       , true , offsetof (struct c3x_config, patch_crash_in_leader_unit_ai)},
-		{"delete_off_map_ai_units"                             , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
-		{"fix_overlapping_specialist_yield_icons"              , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
-		{"prevent_autorazing"                                  , false, offsetof (struct c3x_config, prevent_autorazing)},
-		{"prevent_razing_by_players"                           , false, offsetof (struct c3x_config, prevent_razing_by_players)},
-		{"suppress_hypertext_links_exceeded_popup"             , true , offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
-		{"indicate_non_upgradability_in_pedia"                 , true , offsetof (struct c3x_config, indicate_non_upgradability_in_pedia)},
-		{"show_message_after_dodging_sam"                      , true , offsetof (struct c3x_config, show_message_after_dodging_sam)},
-		{"include_stealth_attack_cancel_option"                , false, offsetof (struct c3x_config, include_stealth_attack_cancel_option)},
-		{"intercept_recon_missions"                            , false, offsetof (struct c3x_config, intercept_recon_missions)},
-		{"charge_one_move_for_recon_and_interception"          , false, offsetof (struct c3x_config, charge_one_move_for_recon_and_interception)},
-		{"polish_precision_striking"                           , true , offsetof (struct c3x_config, polish_precision_striking)},
-		{"enable_stealth_attack_via_bombardment"               , false, offsetof (struct c3x_config, enable_stealth_attack_via_bombardment)},
-		{"immunize_aircraft_against_bombardment"               , false, offsetof (struct c3x_config, immunize_aircraft_against_bombardment)},
-		{"replay_ai_moves_in_hotseat_games"                    , false, offsetof (struct c3x_config, replay_ai_moves_in_hotseat_games)},
-		{"restore_unit_directions_on_game_load"                , true , offsetof (struct c3x_config, restore_unit_directions_on_game_load)},
-		{"apply_grid_ini_setting_on_game_load"                 , true , offsetof (struct c3x_config, apply_grid_ini_setting_on_game_load)},
-		{"charm_flag_triggers_ptw_like_targeting"              , false, offsetof (struct c3x_config, charm_flag_triggers_ptw_like_targeting)},
-		{"city_icons_show_unit_effects_not_trade"              , true , offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
-		{"ignore_king_ability_for_defense_priority"            , false, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
-		{"show_untradable_techs_on_trade_screen"               , false, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
-		{"disallow_useless_bombard_vs_airfields"               , true , offsetof (struct c3x_config, disallow_useless_bombard_vs_airfields)},
-		{"compact_luxury_display_on_city_screen"               , false, offsetof (struct c3x_config, compact_luxury_display_on_city_screen)},
-		{"compact_strategic_resource_display_on_city_screen"   , false, offsetof (struct c3x_config, compact_strategic_resource_display_on_city_screen)},
-		{"warn_when_chosen_building_would_replace_another"     , false, offsetof (struct c3x_config, warn_when_chosen_building_would_replace_another)},
-		{"do_not_unassign_workers_from_polluted_tiles"         , false, offsetof (struct c3x_config, do_not_unassign_workers_from_polluted_tiles)},
-		{"do_not_make_capital_cities_appear_larger"            , false, offsetof (struct c3x_config, do_not_make_capital_cities_appear_larger)},
-		{"show_territory_colors_on_water_tiles_in_minimap"     , false, offsetof (struct c3x_config, show_territory_colors_on_water_tiles_in_minimap)},
-		{"convert_some_popups_into_online_mp_messages"         , false, offsetof (struct c3x_config, convert_some_popups_into_online_mp_messages)},
-		{"enable_debug_mode_switch"                            , false, offsetof (struct c3x_config, enable_debug_mode_switch)},
-		{"accentuate_cities_on_minimap"                        , false, offsetof (struct c3x_config, accentuate_cities_on_minimap)},
-		{"allow_multipage_civilopedia_descriptions"            , true , offsetof (struct c3x_config, allow_multipage_civilopedia_descriptions)},
-		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
-		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
-		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
-		{"enable_city_capture_by_barbarians"                   , false, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
-		{"share_visibility_in_hotseat"                         , false, offsetof (struct c3x_config, share_visibility_in_hotseat)},
-		{"share_wonders_in_hotseat"                            , false, offsetof (struct c3x_config, share_wonders_in_hotseat)},
-		{"allow_precision_strikes_against_tile_improvements"   , false, offsetof (struct c3x_config, allow_precision_strikes_against_tile_improvements)},
-		{"dont_end_units_turn_after_bombarding_barricade"      , false, offsetof (struct c3x_config, dont_end_units_turn_after_bombarding_barricade)},
-		{"remove_land_artillery_target_restrictions"           , false, offsetof (struct c3x_config, remove_land_artillery_target_restrictions)},
-		{"allow_bombard_of_other_improvs_on_occupied_airfield" , false, offsetof (struct c3x_config, allow_bombard_of_other_improvs_on_occupied_airfield)},
-		{"show_total_city_count"                               , false, offsetof (struct c3x_config, show_total_city_count)},
-		{"strengthen_forbidden_palace_ocn_effect"              , false, offsetof (struct c3x_config, strengthen_forbidden_palace_ocn_effect)},
-		{"allow_upgrades_in_any_city"                          , false, offsetof (struct c3x_config, allow_upgrades_in_any_city)},
-		{"do_not_generate_volcanos"                            , false, offsetof (struct c3x_config, do_not_generate_volcanos)},
-		{"do_not_pollute_impassable_tiles"                     , false, offsetof (struct c3x_config, do_not_pollute_impassable_tiles)},
-		{"show_hp_of_stealth_attack_options"                   , false, offsetof (struct c3x_config, show_hp_of_stealth_attack_options)},
-		{"exclude_invisible_units_from_stealth_attack"         , false, offsetof (struct c3x_config, exclude_invisible_units_from_stealth_attack)},
-		{"convert_to_landmark_after_planting_forest"           , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
-		{"allow_sale_of_aqueducts_and_hospitals"               , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
-		{"no_cross_shore_detection"                            , false, offsetof (struct c3x_config, no_cross_shore_detection)},
-		{"limit_unit_loading_to_one_transport_per_turn"        , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
-		{"prevent_old_units_from_upgrading_past_ability_block" , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
-		{"draw_forests_over_roads_and_railroads"               , false, offsetof (struct c3x_config, draw_forests_over_roads_and_railroads)},
-		{"enable_districts"                                    , false, offsetof (struct c3x_config, enable_districts)},
-		{"enable_neighborhood_districts"                       , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
-		{"enable_wonder_districts"                             , false, offsetof (struct c3x_config, enable_wonder_districts)},
-		{"enable_natural_wonders"                              , false, offsetof (struct c3x_config, enable_natural_wonders)},
-		{"enable_distribution_hub_districts"                   , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
-		{"enable_aerodrome_districts"                          , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
-		{"completed_wonder_districts_can_be_destroyed"         , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
-		{"destroyed_wonders_can_be_built_again"                , false, offsetof (struct c3x_config, destroyed_wonders_can_be_built_again)},
-		{"cities_with_mutual_district_receive_buildings"       , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
-		{"cities_with_mutual_district_receive_wonders"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
-		{"air_units_use_aerodrome_districts_not_cities"        , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
-		{"show_natural_wonder_name_on_map"                     , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
-		{"ai_defends_districts"                                , false, offsetof (struct c3x_config, ai_defends_districts)},
-		{"enable_city_work_radii_highlights"                   , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
-		{"introduce_all_human_players_at_start_of_hotseat_game", false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
-		{"allow_unload_from_army"                              , false, offsetof (struct c3x_config, allow_unload_from_army)},
-		{"no_land_anti_air_from_inside_naval_transport"        , false, offsetof (struct c3x_config, no_land_anti_air_from_inside_naval_transport)},
-		{"prevent_enslaving_by_bombardment"                    , false, offsetof (struct c3x_config, prevent_enslaving_by_bombardment)},
-		{"allow_adjacent_resources_of_different_types"         , false, offsetof (struct c3x_config, allow_adjacent_resources_of_different_types)},
-		{"allow_sale_of_small_wonders"                         , false, offsetof (struct c3x_config, allow_sale_of_small_wonders)},
+		{"enable_stack_bombard"                                  , true , offsetof (struct c3x_config, enable_stack_bombard)},
+		{"enable_disorder_warning"                               , true , offsetof (struct c3x_config, enable_disorder_warning)},
+		{"allow_stealth_attack_against_single_unit"              , false, offsetof (struct c3x_config, allow_stealth_attack_against_single_unit)},
+		{"show_detailed_city_production_info"                    , true , offsetof (struct c3x_config, show_detailed_city_production_info)},
+		{"limited_railroads_work_like_fast_roads"                , false, offsetof (struct c3x_config, limited_railroads_work_like_fast_roads)},
+		{"exclude_cities_from_units_per_tile_limit"              , false, offsetof (struct c3x_config, exclude_cities_from_units_per_tile_limit)},
+		{"enable_free_buildings_from_small_wonders"              , true , offsetof (struct c3x_config, enable_free_buildings_from_small_wonders)},
+		{"enable_stack_unit_commands"                            , true , offsetof (struct c3x_config, enable_stack_unit_commands)},
+		{"skip_repeated_tile_improv_replacement_asks"            , true , offsetof (struct c3x_config, skip_repeated_tile_improv_replacement_asks)},
+		{"autofill_best_gold_amount_when_trading"                , true , offsetof (struct c3x_config, autofill_best_gold_amount_when_trading)},
+		{"disallow_founding_next_to_foreign_city"                , true , offsetof (struct c3x_config, disallow_founding_next_to_foreign_city)},
+		{"enable_trade_screen_scroll"                            , true , offsetof (struct c3x_config, enable_trade_screen_scroll)},
+		{"group_units_on_right_click_menu"                       , true , offsetof (struct c3x_config, group_units_on_right_click_menu)},
+		{"gray_out_units_on_menu_with_no_remaining_moves"        , true , offsetof (struct c3x_config, gray_out_units_on_menu_with_no_remaining_moves)},
+		{"put_movement_icons_on_units_on_menu"                   , true , offsetof (struct c3x_config, put_movement_icons_on_units_on_menu)},
+		{"describe_states_of_units_on_menu"                      , true , offsetof (struct c3x_config, describe_states_of_units_on_menu)},
+		{"show_golden_age_turns_remaining"                       , true , offsetof (struct c3x_config, show_golden_age_turns_remaining)},
+		{"show_zoc_attacks_from_mid_stack"                       , true , offsetof (struct c3x_config, show_zoc_attacks_from_mid_stack)},
+		{"cut_research_spending_to_avoid_bankruptcy"             , true , offsetof (struct c3x_config, cut_research_spending_to_avoid_bankruptcy)},
+		{"dont_pause_for_love_the_king_messages"                 , true , offsetof (struct c3x_config, dont_pause_for_love_the_king_messages)},
+		{"reverse_specialist_order_with_shift"                   , true , offsetof (struct c3x_config, reverse_specialist_order_with_shift)},
+		{"toggle_zoom_with_z_on_city_screen"                     , true , offsetof (struct c3x_config, toggle_zoom_with_z_on_city_screen)},
+		{"dont_give_king_names_in_non_regicide_games"            , true , offsetof (struct c3x_config, dont_give_king_names_in_non_regicide_games)},
+		{"no_elvis_easter_egg"                                   , false, offsetof (struct c3x_config, no_elvis_easter_egg)},
+		{"disable_worker_automation"                             , false, offsetof (struct c3x_config, disable_worker_automation)},
+		{"enable_land_sea_intersections"                         , false, offsetof (struct c3x_config, enable_land_sea_intersections)},
+		{"disallow_trespassing"                                  , false, offsetof (struct c3x_config, disallow_trespassing)},
+		{"show_detailed_tile_info"                               , true , offsetof (struct c3x_config, show_detailed_tile_info)},
+		{"warn_about_unrecognized_names"                         , true , offsetof (struct c3x_config, warn_about_unrecognized_names)},
+		{"enable_ai_production_ranking"                          , true , offsetof (struct c3x_config, enable_ai_production_ranking)},
+		{"enable_ai_city_location_desirability_display"          , true , offsetof (struct c3x_config, enable_ai_city_location_desirability_display)},
+		{"zero_corruption_when_off"                              , true , offsetof (struct c3x_config, zero_corruption_when_off)},
+		{"disallow_land_units_from_affecting_water_tiles"        , true , offsetof (struct c3x_config, disallow_land_units_from_affecting_water_tiles)},
+		{"dont_end_units_turn_after_airdrop"                     , false, offsetof (struct c3x_config, dont_end_units_turn_after_airdrop)},
+		{"allow_airdrop_without_airport"                         , false, offsetof (struct c3x_config, allow_airdrop_without_airport)},
+		{"enable_negative_pop_pollution"                         , true , offsetof (struct c3x_config, enable_negative_pop_pollution)},
+		{"allow_defensive_retreat_on_water"                      , false, offsetof (struct c3x_config, allow_defensive_retreat_on_water)},
+		{"promote_wonder_decorruption_effect"                    , false, offsetof (struct c3x_config, promote_wonder_decorruption_effect)},
+		{"allow_military_leaders_to_hurry_wonders"               , false, offsetof (struct c3x_config, allow_military_leaders_to_hurry_wonders)},
+		{"aggressively_penalize_bankruptcy"                      , false, offsetof (struct c3x_config, aggressively_penalize_bankruptcy)},
+		{"no_penalty_exception_for_agri_fresh_water_city_tiles"  , false, offsetof (struct c3x_config, no_penalty_exception_for_agri_fresh_water_city_tiles)},
+		{"use_offensive_artillery_ai"                            , true , offsetof (struct c3x_config, use_offensive_artillery_ai)},
+		{"dont_escort_unflagged_units"                           , false, offsetof (struct c3x_config, dont_escort_unflagged_units)},
+		{"replace_leader_unit_ai"                                , true , offsetof (struct c3x_config, replace_leader_unit_ai)},
+		{"fix_ai_army_composition"                               , true , offsetof (struct c3x_config, fix_ai_army_composition)},
+		{"enable_pop_unit_ai"                                    , true , offsetof (struct c3x_config, enable_pop_unit_ai)},
+		{"enable_caravan_unit_ai"                                , true , offsetof (struct c3x_config, enable_caravan_unit_ai)},
+		{"remove_unit_limit"                                     , true , offsetof (struct c3x_config, remove_unit_limit)},
+		{"remove_city_improvement_limit"                         , true , offsetof (struct c3x_config, remove_city_improvement_limit)},
+		{"remove_cap_on_turn_limit"                              , true , offsetof (struct c3x_config, remove_cap_on_turn_limit)},
+		{"remove_era_limit"                                      , false, offsetof (struct c3x_config, remove_era_limit)},
+		{"patch_submarine_bug"                                   , true , offsetof (struct c3x_config, patch_submarine_bug)},
+		{"patch_science_age_bug"                                 , true , offsetof (struct c3x_config, patch_science_age_bug)},
+		{"patch_pedia_texture_bug"                               , true , offsetof (struct c3x_config, patch_pedia_texture_bug)},
+		{"patch_blocked_disembark_freeze"                        , true , offsetof (struct c3x_config, patch_blocked_disembark_freeze)},
+		{"patch_houseboat_bug"                                   , true , offsetof (struct c3x_config, patch_houseboat_bug)},
+		{"patch_intercept_lost_turn_bug"                         , true , offsetof (struct c3x_config, patch_intercept_lost_turn_bug)},
+		{"patch_phantom_resource_bug"                            , true , offsetof (struct c3x_config, patch_phantom_resource_bug)},
+		{"patch_maintenance_persisting_for_obsolete_buildings"   , true , offsetof (struct c3x_config, patch_maintenance_persisting_for_obsolete_buildings)},
+		{"patch_barbarian_diagonal_bug"                          , true , offsetof (struct c3x_config, patch_barbarian_diagonal_bug)},
+		{"patch_disease_stopping_tech_flag_bug"                  , false, offsetof (struct c3x_config, patch_disease_stopping_tech_flag_bug)},
+		{"patch_division_by_zero_in_ai_alliance_eval"            , true , offsetof (struct c3x_config, patch_division_by_zero_in_ai_alliance_eval)},
+		{"patch_empty_army_movement"                             , true , offsetof (struct c3x_config, patch_empty_army_movement)},
+		{"patch_premature_truncation_of_found_paths"             , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
+		{"patch_zero_production_crash"                           , true , offsetof (struct c3x_config, patch_zero_production_crash)},
+		{"patch_ai_can_form_army_without_special_ability"        , true , offsetof (struct c3x_config, patch_ai_can_form_army_without_special_ability)},
+		{"patch_ai_can_sacrifice_without_special_ability"        , true , offsetof (struct c3x_config, patch_ai_can_sacrifice_without_special_ability)},
+		{"patch_crash_in_leader_unit_ai"                         , true , offsetof (struct c3x_config, patch_crash_in_leader_unit_ai)},
+		{"delete_off_map_ai_units"                               , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
+		{"fix_overlapping_specialist_yield_icons"                , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
+		{"prevent_autorazing"                                    , false, offsetof (struct c3x_config, prevent_autorazing)},
+		{"prevent_razing_by_players"                             , false, offsetof (struct c3x_config, prevent_razing_by_players)},
+		{"suppress_hypertext_links_exceeded_popup"               , true , offsetof (struct c3x_config, suppress_hypertext_links_exceeded_popup)},
+		{"indicate_non_upgradability_in_pedia"                   , true , offsetof (struct c3x_config, indicate_non_upgradability_in_pedia)},
+		{"show_message_after_dodging_sam"                        , true , offsetof (struct c3x_config, show_message_after_dodging_sam)},
+		{"include_stealth_attack_cancel_option"                  , false, offsetof (struct c3x_config, include_stealth_attack_cancel_option)},
+		{"intercept_recon_missions"                              , false, offsetof (struct c3x_config, intercept_recon_missions)},
+		{"charge_one_move_for_recon_and_interception"            , false, offsetof (struct c3x_config, charge_one_move_for_recon_and_interception)},
+		{"polish_precision_striking"                             , true , offsetof (struct c3x_config, polish_precision_striking)},
+		{"enable_stealth_attack_via_bombardment"                 , false, offsetof (struct c3x_config, enable_stealth_attack_via_bombardment)},
+		{"immunize_aircraft_against_bombardment"                 , false, offsetof (struct c3x_config, immunize_aircraft_against_bombardment)},
+		{"replay_ai_moves_in_hotseat_games"                      , false, offsetof (struct c3x_config, replay_ai_moves_in_hotseat_games)},
+		{"restore_unit_directions_on_game_load"                  , true , offsetof (struct c3x_config, restore_unit_directions_on_game_load)},
+		{"apply_grid_ini_setting_on_game_load"                   , true , offsetof (struct c3x_config, apply_grid_ini_setting_on_game_load)},
+		{"charm_flag_triggers_ptw_like_targeting"                , false, offsetof (struct c3x_config, charm_flag_triggers_ptw_like_targeting)},
+		{"city_icons_show_unit_effects_not_trade"                , true , offsetof (struct c3x_config, city_icons_show_unit_effects_not_trade)},
+		{"ignore_king_ability_for_defense_priority"              , false, offsetof (struct c3x_config, ignore_king_ability_for_defense_priority)},
+		{"show_untradable_techs_on_trade_screen"                 , false, offsetof (struct c3x_config, show_untradable_techs_on_trade_screen)},
+		{"disallow_useless_bombard_vs_airfields"                 , true , offsetof (struct c3x_config, disallow_useless_bombard_vs_airfields)},
+		{"compact_luxury_display_on_city_screen"                 , false, offsetof (struct c3x_config, compact_luxury_display_on_city_screen)},
+		{"compact_strategic_resource_display_on_city_screen"     , false, offsetof (struct c3x_config, compact_strategic_resource_display_on_city_screen)},
+		{"warn_when_chosen_building_would_replace_another"       , false, offsetof (struct c3x_config, warn_when_chosen_building_would_replace_another)},
+		{"do_not_unassign_workers_from_polluted_tiles"           , false, offsetof (struct c3x_config, do_not_unassign_workers_from_polluted_tiles)},
+		{"do_not_make_capital_cities_appear_larger"              , false, offsetof (struct c3x_config, do_not_make_capital_cities_appear_larger)},
+		{"show_territory_colors_on_water_tiles_in_minimap"       , false, offsetof (struct c3x_config, show_territory_colors_on_water_tiles_in_minimap)},
+		{"convert_some_popups_into_online_mp_messages"           , false, offsetof (struct c3x_config, convert_some_popups_into_online_mp_messages)},
+		{"enable_debug_mode_switch"                              , false, offsetof (struct c3x_config, enable_debug_mode_switch)},
+		{"accentuate_cities_on_minimap"                          , false, offsetof (struct c3x_config, accentuate_cities_on_minimap)},
+		{"allow_multipage_civilopedia_descriptions"              , true , offsetof (struct c3x_config, allow_multipage_civilopedia_descriptions)},
+		{"enable_trade_net_x"                                    , true , offsetof (struct c3x_config, enable_trade_net_x)},
+		{"optimize_improvement_loops"                            , true , offsetof (struct c3x_config, optimize_improvement_loops)},
+		{"measure_turn_times"                                    , false, offsetof (struct c3x_config, measure_turn_times)},
+		{"enable_city_capture_by_barbarians"                     , false, offsetof (struct c3x_config, enable_city_capture_by_barbarians)},
+		{"share_visibility_in_hotseat"                           , false, offsetof (struct c3x_config, share_visibility_in_hotseat)},
+		{"share_wonders_in_hotseat"                              , false, offsetof (struct c3x_config, share_wonders_in_hotseat)},
+		{"allow_precision_strikes_against_tile_improvements"     , false, offsetof (struct c3x_config, allow_precision_strikes_against_tile_improvements)},
+		{"dont_end_units_turn_after_bombarding_barricade"        , false, offsetof (struct c3x_config, dont_end_units_turn_after_bombarding_barricade)},
+		{"remove_land_artillery_target_restrictions"             , false, offsetof (struct c3x_config, remove_land_artillery_target_restrictions)},
+		{"allow_bombard_of_other_improvs_on_occupied_airfield"   , false, offsetof (struct c3x_config, allow_bombard_of_other_improvs_on_occupied_airfield)},
+		{"show_total_city_count"                                 , false, offsetof (struct c3x_config, show_total_city_count)},
+		{"strengthen_forbidden_palace_ocn_effect"                , false, offsetof (struct c3x_config, strengthen_forbidden_palace_ocn_effect)},
+		{"allow_upgrades_in_any_city"                            , false, offsetof (struct c3x_config, allow_upgrades_in_any_city)},
+		{"do_not_generate_volcanos"                              , false, offsetof (struct c3x_config, do_not_generate_volcanos)},
+		{"do_not_pollute_impassable_tiles"                       , false, offsetof (struct c3x_config, do_not_pollute_impassable_tiles)},
+		{"show_hp_of_stealth_attack_options"                     , false, offsetof (struct c3x_config, show_hp_of_stealth_attack_options)},
+		{"exclude_invisible_units_from_stealth_attack"           , false, offsetof (struct c3x_config, exclude_invisible_units_from_stealth_attack)},
+		{"convert_to_landmark_after_planting_forest"             , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
+		{"allow_sale_of_aqueducts_and_hospitals"                 , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
+		{"no_cross_shore_detection"                              , false, offsetof (struct c3x_config, no_cross_shore_detection)},
+		{"limit_unit_loading_to_one_transport_per_turn"          , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
+		{"prevent_old_units_from_upgrading_past_ability_block"   , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
+		{"draw_forests_over_roads_and_railroads"                 , false, offsetof (struct c3x_config, draw_forests_over_roads_and_railroads)},
+		{"enable_districts"                                      , false, offsetof (struct c3x_config, enable_districts)},
+		{"enable_neighborhood_districts"                         , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
+		{"enable_wonder_districts"                               , false, offsetof (struct c3x_config, enable_wonder_districts)},
+		{"enable_natural_wonders"                                , false, offsetof (struct c3x_config, enable_natural_wonders)},
+		{"enable_distribution_hub_districts"                     , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
+		{"enable_aerodrome_districts"                            , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
+		{"completed_wonder_districts_can_be_destroyed"           , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
+		{"destroyed_wonders_can_be_built_again"                  , false, offsetof (struct c3x_config, destroyed_wonders_can_be_built_again)},
+		{"cities_with_mutual_district_receive_buildings"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
+		{"cities_with_mutual_district_receive_wonders"           , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
+		{"show_message_when_building_received_by_mutual_district", false, offsetof (struct c3x_config, show_message_when_building_received_by_mutual_district)},
+		{"air_units_use_aerodrome_districts_not_cities"          , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
+		{"show_natural_wonder_name_on_map"                       , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
+		{"ai_defends_districts"                                  , false, offsetof (struct c3x_config, ai_defends_districts)},
+		{"enable_city_work_radii_highlights"                     , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
+		{"introduce_all_human_players_at_start_of_hotseat_game"  , false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
+		{"allow_unload_from_army"                                , false, offsetof (struct c3x_config, allow_unload_from_army)},
+		{"no_land_anti_air_from_inside_naval_transport"          , false, offsetof (struct c3x_config, no_land_anti_air_from_inside_naval_transport)},
+		{"prevent_enslaving_by_bombardment"                      , false, offsetof (struct c3x_config, prevent_enslaving_by_bombardment)},
+		{"allow_adjacent_resources_of_different_types"           , false, offsetof (struct c3x_config, allow_adjacent_resources_of_different_types)},
+		{"allow_sale_of_small_wonders"                           , false, offsetof (struct c3x_config, allow_sale_of_small_wonders)},
 	};
 
 	struct integer_config_option {
@@ -10975,10 +11006,11 @@ patch_init_floating_point ()
 		{"city_limit"                                    ,  2048, offsetof (struct c3x_config, city_limit)},
 		{"maximum_pop_before_neighborhood_needed"        ,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
 		{"per_neighborhood_pop_growth_enabled"			 ,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
+		{"minimum_natural_wonder_separation"             ,     10, offsetof (struct c3x_config, minimum_natural_wonder_separation)},
 		{"distribution_hub_food_yield_divisor"			 ,     1, offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
 		{"distribution_hub_shield_yield_divisor"		 ,     1, offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
 		{"ai_ideal_distribution_hub_count_per_100_cities",     1, offsetof (struct c3x_config, ai_ideal_distribution_hub_count_per_100_cities)},
-		{"minimum_natural_wonder_separation"             ,     10, offsetof (struct c3x_config, minimum_natural_wonder_separation)},
+		{"neighborhood_needed_message_frequency"         ,     4, offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -12221,6 +12253,9 @@ set_up_district_buttons (Main_GUI * this)
 	struct district_instance * existing_inst = get_district_instance (tile);
 	if (existing_inst != NULL) {
 		existing_district_id = existing_inst->district_type;
+		if (is->current_config.enable_natural_wonders && existing_inst->district_type == NATURAL_WONDER_DISTRICT_ID) {
+			return;
+		}
 		if (patch_Unit_can_perform_command(selected_unit, __, UCV_Build_Mine)) {
 			for (int n = 0; n < 42; n++) {
 				if (this->Unit_Command_Buttons[n].Command == UCV_Build_Mine) {
@@ -12705,27 +12740,27 @@ is_district_command (int unit_command_value)
 bool __fastcall
 patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 {
-	if (is->current_config.enable_districts) {
+	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
 		if ((tile != NULL) && (tile != p_null_tile) && is->current_config.enable_natural_wonders) {
 			struct district_instance * inst = get_district_instance (tile);
 			if ((inst != NULL) &&
 			    (inst->district_type == NATURAL_WONDER_DISTRICT_ID) &&
 			    (inst->natural_wonder_info.natural_wonder_id >= 0)) {
-				if (is_worker_or_settler_command (unit_command_value))
+				if (is_worker_or_settler_command (unit_command_value) || is_district_command (unit_command_value))
 					return false;
 			}
 		}
 		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 
 		if (is_district_command (unit_command_value)) {
-			return (base_type != SQ_Mountains && base_type != SQ_Forest && base_type != SQ_Jungle && base_type != SQ_Swamp);
+			return (base_type != SQ_Mountains && base_type != SQ_Forest && base_type != SQ_Jungle && base_type != SQ_Swamp && base_type != SQ_Volcano);
 		}
 		else if (unit_command_value == UCV_Build_Mine) {
 			bool has_district = (get_district_instance (tile) != NULL);
 
 			if (has_district) {
-				return (base_type != SQ_FloodPlain && base_type != SQ_Forest && base_type != SQ_Jungle);
+				return (base_type != SQ_FloodPlain && base_type != SQ_Forest && base_type != SQ_Jungle && base_type != SQ_Volcano);
 			}
 		}
 		else if (unit_command_value == UCV_Join_City) {
@@ -13380,7 +13415,7 @@ patch_City_Form_draw (City_Form * this)
 	}
 
 	// Draw district commerce bonuses (gold and science)
-	if (! is->current_config.enable_districts)
+	if (! (is->current_config.enable_districts || is->current_config.enable_natural_wonders))
 		return;
 
 	// Lazy load district icons
@@ -14240,6 +14275,9 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 						return 0;
 
 					// Wonder district is unused - fall through to normal tech checks
+				}
+				else if (is->current_config.enable_natural_wonders && (district_id == NATURAL_WONDER_DISTRICT_ID)) {
+					return 0;
 				}
 				else {
 					// For all other district types: AI should not change them
@@ -15246,6 +15284,16 @@ patch_PopupForm_set_text_key_and_flags (PopupForm * this, int edx, char * script
 CityLocValidity __fastcall
 patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int civ_id, bool check_for_city_on_tile)
 {
+	if (is->current_config.enable_natural_wonders) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (tile);
+			if (inst != NULL && (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
+				return CLV_BLOCKED;
+			}
+		}
+	}
+
 	int min_sep = is->current_config.minimum_city_separation;
 	CityLocValidity base_result = Map_check_city_location (this, __, tile_x, tile_y, civ_id, check_for_city_on_tile);
 
@@ -15795,16 +15843,6 @@ patch_Match_ai_eval_city_location (void * this, int edx, int x, int y, int civ_i
 	is->ai_evaling_city_loc_y = y;
 	is->ai_evaling_city_field_30_get_counter = 0;
 
-	if (is->current_config.enable_natural_wonders || is->current_config.enable_districts) {
-		Tile * tile = tile_at (x, y);
-		if ((tile != NULL) && (tile != p_null_tile)) {
-			struct district_instance * inst = get_district_instance (tile);
-			if (inst != NULL && (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
-				return 0;
-			}
-		}
-	}
-
 	return Match_ai_eval_city_location (this, __, x, y, civ_id, param_4, out_breakdown);
 }
 
@@ -16279,6 +16317,45 @@ set_wonder_built_flag (int improv_id, bool is_built)
 	built_flags[improv_id] = is_built;
 }
 
+bool
+choose_defensive_unit_order (City * city, City_Order * out_order)
+{
+	if ((city == NULL) || (out_order == NULL))
+		return false;
+
+	for (int pass = 0; pass < 3; pass++) {
+		int best_unit_id = -1;
+		int best_defence = -1;
+
+		for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
+			UnitType * type = &p_bic_data->UnitTypes[n];
+			if (! patch_City_can_build_unit (city, __, n, 1, 0, 0))
+				continue;
+
+			int defence = type->Defence;
+			if ((pass < 2) && (defence <= 0))
+				continue;
+			if ((pass <= 1) && (type->Unit_Class != UTC_Land))
+				continue;
+			if ((pass == 0) && ((type->AI_Strategy & UTAI_Defence) == 0))
+				continue;
+
+			if (defence > best_defence) {
+				best_defence = defence;
+				best_unit_id = n;
+			}
+		}
+
+		if (best_unit_id >= 0) {
+			out_order->OrderType = COT_Unit;
+			out_order->OrderID = best_unit_id;
+			return true;
+		}
+	}
+
+	return false;
+}
+
 // When a city adds a building that depends on a district, optionally mirror that
 // building to all other same-civ cities that can also work the district tile.
 void
@@ -16347,6 +16424,31 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 
 				if (! patch_City_has_improvement (city, __, improv_id, false)) {
 					City_add_or_remove_improvement (city, __, improv_id, 1, false);
+
+					// If city already building it, switch to a defensive unit instead
+					int current_improv_id = city->Body.Order_ID;
+					if (current_improv_id == improv_id) {
+						City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
+						if (choose_defensive_unit_order (city, &defensive_order)) {
+							City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
+						}
+					}
+
+					// Show message to user
+					if (is->current_config.show_message_when_building_received_by_mutual_district &&
+						city->Body.CivID == p_main_screen_form->Player_CivID) {
+						char msg[300];
+						snprintf (msg, sizeof msg, "%s %s %s %s %s %s %s",
+							city->Body.CityName,
+							is->c3x_labels[CL_RECEIVED],
+							p_bic_data->Improvements[improv_id].Name.S,
+							is->c3x_labels[CL_FROM_SHARED],
+							is->district_configs[required_district_id].name,
+							is->c3x_labels[CL_WITH],
+							source->Body.CityName);
+						msg[(sizeof msg) - 1] = '\0';
+						show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
+					}
 				}
 			}
 		}
@@ -16363,18 +16465,17 @@ grant_existing_district_buildings_to_city (City * city)
 		return;
 
 	int civ_id = city->Body.CivID;
+	int current_improv_id = city->Body.Order_ID;
 	bool prev_flag = is->sharing_buildings_by_districts_in_progress;
 	is->sharing_buildings_by_districts_in_progress = true;
-
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
 
 	for (int n = 0; n < is->workable_tile_count; n++) {
 		int dx, dy;
 		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
+		int tile_x = city->Body.X + dx;
+		int tile_y = city->Body.Y + dy;
+		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+		Tile * tile = tile_at (tile_x, tile_y);
 		if (tile == p_null_tile)
 			continue;
 		if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id)
@@ -16393,18 +16494,16 @@ grant_existing_district_buildings_to_city (City * city)
 		if (info->dependent_building_count <= 0)
 			continue;
 
-			int tx, ty;
-			if (! district_instance_get_coords (inst, tile, &tx, &ty))
-				continue;
+		int tx, ty;
+		if (! district_instance_get_coords (inst, tile, &tx, &ty))
+			continue;
 
 		FOR_CITIES_OF (coi, civ_id) {
 			City * other = coi.city;
 			if ((other == NULL) || (other == city))
 				continue;
 
-			int ni = Map_compute_neighbor_index (&p_bic_data->Map, __, other->Body.X, other->Body.Y, tx, ty, 1000);
-			int wr = ((ni >= 0) && (ni < ARRAY_LEN (is->ni_to_work_radius))) ? is->ni_to_work_radius[ni] : -1;
-			if ((wr < 0) || (wr > is->current_config.city_work_radius))
+			if (! city_radius_contains_tile (other, tx, ty))
 				continue;
 
 			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != other->Body.CivID)
@@ -16418,9 +16517,7 @@ grant_existing_district_buildings_to_city (City * city)
 				Improvement * building = &p_bic_data->Improvements[building_id];
 				bool is_wonder = (building->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0;
 
-				if (is_wonder && ! is->current_config.cities_with_mutual_district_receive_wonders)
-					continue;
-				if (! is_wonder && ! is->current_config.cities_with_mutual_district_receive_buildings)
+				if (is_wonder)
 					continue;
 
 				if (! patch_City_has_improvement (other, __, building_id, false))
@@ -16430,6 +16527,29 @@ grant_existing_district_buildings_to_city (City * city)
 					continue;
 
 				City_add_or_remove_improvement (city, __, building_id, 1, false);
+
+				// If city already building it, switch to a defensive unit instead
+				if (current_improv_id == building_id) {
+					City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
+					if (choose_defensive_unit_order (city, &defensive_order)) {
+						City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
+					}
+				}
+
+				if (is->current_config.show_message_when_building_received_by_mutual_district &&
+				    city->Body.CivID == p_main_screen_form->Player_CivID) {
+					char msg[300];
+					snprintf (msg, sizeof msg, "%s %s %s %s %s %s %s",
+						  city->Body.CityName,
+						  is->c3x_labels[CL_RECEIVED],
+						  p_bic_data->Improvements[building_id].Name.S,
+						  is->c3x_labels[CL_FROM_SHARED],
+						  is->district_configs[district_id].name,
+						  is->c3x_labels[CL_WITH],
+						  other->Body.CityName);
+					msg[(sizeof msg) - 1] = '\0';
+					show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
+				}
 			}
 		}
 	}
@@ -16824,6 +16944,50 @@ remove_extra_palaces (City * city, City * excluded_destination)
 }
 
 void
+handle_possible_duplicate_small_wonders(City * city, Leader * leader)
+{
+	if ((city == NULL) || (leader == NULL))
+		return;
+
+	for (int n = 0; n < is->workable_tile_count; n++) {
+		int dx, dy;
+		patch_ni_to_diff_for_work_area (n, &dx, &dy);
+		int x = city->Body.X + dx, y = city->Body.Y + dy;
+		wrap_tile_coords (&p_bic_data->Map, &x, &y);
+		Tile * tile = tile_at (x, y);
+
+		if ((tile == NULL) || (tile == p_null_tile)) continue;
+
+		// Make sure it's a completed wonder district
+		struct district_instance * inst = get_district_instance (tile);
+		if ((inst == NULL) || (inst->district_type != WONDER_DISTRICT_ID)) continue;
+		if (! district_is_complete (tile, WONDER_DISTRICT_ID)) continue;
+		struct wonder_district_info * info = &inst->wonder_info;
+		if ((info == NULL) || (info->state != WDS_COMPLETED)) continue;
+
+		int improv_id = get_wonder_improvement_id_from_index (info->wonder_index);
+		if (improv_id < 0) continue;
+
+		Improvement * improv = &p_bic_data->Improvements[improv_id];
+
+		// Only check Small Wonders, which shouldn't be duplicated in a civ
+		if ((improv->Characteristics & ITC_Small_Wonder) != 0) {
+			City * owning_city = get_city_ptr (leader->Small_Wonders[improv_id]);
+			if (owning_city != NULL) {
+				// Another city of the conquering civ has this Small Wonder, so remove it from captured city and destroy the district.
+				// We run the district removal manually here rather than through "handle_district_removed", as that function removes Wonders
+				// using leader->Small_Wonders, which would unset the Small Wonder from the original owning city, which we don't want, 
+				// and would only remove the Wonder if completed_wonder_districts_can_be_destroyed is true, which may not be the case 
+				patch_City_add_or_remove_improvement (city, __, improv_id, 0, false);
+				remove_district_instance (tile);
+				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
+				tile->vtable->m60_Set_Ruins (tile, __, 1);
+			}
+		}
+	}
+}
+
+void
 grant_nearby_wonders_to_city (City * city)
 {
 	// Give a city any completed wonder districts in work radius, if cities_with_mutual_district_receive_wonders is true.
@@ -16856,6 +17020,7 @@ grant_nearby_wonders_to_city (City * city)
 		// Check that city doesn't already have the Wonder
 		int improv_id = get_wonder_improvement_id_from_index (info->wonder_index);
 		if (improv_id < 0) continue;
+
 		if (patch_City_has_improvement (city, __, improv_id, false)) continue;
 
 		// Add the Wonder to the city
@@ -16893,6 +17058,11 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 			City_add_or_remove_improvement (city, __, free_extra_palace, 1, false);
 	}
 
+	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
+		patch_City_recompute_yields_and_happiness (city);
+		patch_City_recompute_culture_income (city);
+	}
+
 	if (is->current_config.enable_districts) {
 
 		// Remove any district previously on the tile, if city just founded
@@ -16909,7 +17079,7 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 		bool receive_wonders   = is->current_config.cities_with_mutual_district_receive_wonders;
 
 		// Grant buildings and wonders from nearby completed districts owned by other cities of same civ, if enabled
-		if (receive_buildings || receive_wonders) {
+		if (receive_buildings) {
 			grant_existing_district_buildings_to_city (city);
 		}
 
@@ -18601,45 +18771,6 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 }
 
 bool
-choose_defensive_unit_order (City * city, City_Order * out_order)
-{
-	if ((city == NULL) || (out_order == NULL))
-		return false;
-
-	for (int pass = 0; pass < 3; pass++) {
-		int best_unit_id = -1;
-		int best_defence = -1;
-
-		for (int n = 0; n < p_bic_data->UnitTypeCount; n++) {
-			UnitType * type = &p_bic_data->UnitTypes[n];
-			if (! patch_City_can_build_unit (city, __, n, 1, 0, 0))
-				continue;
-
-			int defence = type->Defence;
-			if ((pass < 2) && (defence <= 0))
-				continue;
-			if ((pass <= 1) && (type->Unit_Class != UTC_Land))
-				continue;
-			if ((pass == 0) && ((type->AI_Strategy & UTAI_Defence) == 0))
-				continue;
-
-			if (defence > best_defence) {
-				best_defence = defence;
-				best_unit_id = n;
-			}
-		}
-
-		if (best_unit_id >= 0) {
-			out_order->OrderType = COT_Unit;
-			out_order->OrderID = best_unit_id;
-			return true;
-		}
-	}
-
-	return false;
-}
-
-bool
 assign_ai_fallback_production (City * city, int disallowed_improvement_id)
 {
 	if (city == NULL)
@@ -19863,7 +19994,7 @@ patch_City_calc_tile_yield_while_gathering (City * this, int edx, YieldKind kind
 		else if (kind == YK_SHIELDS)  tr += mill_shields;
 		else if (kind == YK_COMMERCE) tr += mill_commerce;
 
-		if (is->current_config.enable_districts) {
+		if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 			int bonus_food = 0, bonus_shields = 0, bonus_gold = 0;
 			calculate_city_center_district_bonus (this, &bonus_food, &bonus_shields, &bonus_gold);
 			if      (kind == YK_FOOD)     tr += bonus_food;
@@ -20273,6 +20404,11 @@ patch_Leader_do_capture_city (Leader * this, int edx, City * city, bool involunt
 {
 	is->currently_capturing_city = city;
 	on_lose_city (&leaders[city->Body.CivID], city, converted ? CLR_CONVERTED : (involuntary ? CLR_CONQUERED : CLR_TRADED));
+
+	if (is->current_config.enable_districts && is->current_config.enable_wonder_districts) {
+		handle_possible_duplicate_small_wonders (city, this);
+	}
+
 	bool tr = Leader_do_capture_city (this, __, city, involuntary, converted);
 	on_gain_city (this, city, converted ? CGR_CONVERTED : (involuntary ? CGR_CONQUERED : CGR_TRADED));
 	is->currently_capturing_city = NULL;
@@ -21231,9 +21367,8 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 										if (info_city == NULL)
 											inst->wonder_info.city_id = -1;
 										inst->wonder_info.wonder_index = wonder_index;
-									}
-									if (tile->vtable->m18_Check_Mines (tile, __, 0))
 										set_tile_unworkable_for_all_cities (tile, x, y);
+									}
 								}
 							}
 						}
@@ -21274,6 +21409,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							inst->district_type = NATURAL_WONDER_DISTRICT_ID;
 							inst->state = DS_COMPLETED;
 							inst->natural_wonder_info.natural_wonder_id = natural_id;
+							set_tile_unworkable_for_all_cities (tile, x, y);
 						}
 					}
 				}
@@ -22462,7 +22598,7 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 	}
 
 	// Draw district bonuses on district tiles
-	if (is->current_config.enable_districts) {
+	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 		City * city = this->CurrentCity;
 		if (city == NULL)
 			goto skip_district_yields;
@@ -22485,7 +22621,7 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 			center_screen_y += p_bic_data->Map.Height * tile_half_height;
 
 		int remaining_utilized_neighborhoods = 0;
-		if (is->current_config.enable_neighborhood_districts)
+		if (is->current_config.enable_districts && is->current_config.enable_neighborhood_districts)
 			remaining_utilized_neighborhoods = count_utilized_neighborhoods_in_city_radius (city);
 
 		// Iterate through all neighbor tiles 
@@ -22506,14 +22642,23 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 			if (tile_has_enemy_unit (tile, civ_id)) continue;
 			if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
 
-			int is_distribution_hub = (district_id == DISTRIBUTION_HUB_DISTRICT_ID);
+			bool is_distribution_hub = district_id == DISTRIBUTION_HUB_DISTRICT_ID;
+			bool is_natural_wonder   = district_id == NATURAL_WONDER_DISTRICT_ID;
 
 			// Skip distribution hubs if the feature is not enabled
-			if (is_distribution_hub && !is->current_config.enable_distribution_hub_districts)
+			if (is_distribution_hub && (!is->current_config.enable_districts || !is->current_config.enable_distribution_hub_districts))
+				continue;
+
+			if (is_natural_wonder && (!is->current_config.enable_natural_wonders))
+				continue;
+
+			if (!is_distribution_hub && !is_natural_wonder &&
+			    (!is->current_config.enable_districts))
 				continue;
 
 			// For neighborhood districts, check if population is high enough to utilize them
 			if (!is_distribution_hub &&
+				is->current_config.enable_districts &&
 			    is->current_config.enable_neighborhood_districts &&
 			    district_id == NEIGHBORHOOD_DISTRICT_ID) {
 				// Only draw yields if this neighborhood is utilized
@@ -24015,7 +24160,7 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 	// Call original function first
 	City_Form_draw_food_income_icons (this);
 
-	if (! is->current_config.enable_districts)
+	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders)
 		return;
 
 	// Get current city
@@ -24046,7 +24191,7 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 
 	// Get distribution hub food bonus
 	int distribution_hub_food = 0;
-	if (is->current_config.enable_distribution_hub_districts)
+	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts)
 		get_distribution_hub_yields_for_city (city, &distribution_hub_food, NULL);
 
 	// Total district food
@@ -24055,7 +24200,7 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 		return;
 
 	// Lazy load icons
-	if (is->current_config.enable_distribution_hub_districts) {
+	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
 		if (is->distribution_hub_icons_img_state == IS_UNINITED)
 			init_distribution_hub_icons ();
 		if (is->distribution_hub_icons_img_state != IS_OK)
@@ -24176,7 +24321,7 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 void
 recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 {
-	if ((! is->current_config.enable_districts) || (city == NULL))
+	if ((! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) || (city == NULL))
 		return;
 
 	int city_id = city->Body.ID;
@@ -24267,7 +24412,7 @@ recompute_district_and_distribution_hub_shields_for_city_view (City * city)
 void __fastcall
 patch_City_draw_production_income_icons (City * this, int edx, int canvas, int * rect_ptr)
 {
-	if (! is->current_config.enable_districts) {
+	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		City_draw_production_income_icons (this, __, canvas, rect_ptr);
 		return;
 	}
@@ -24292,8 +24437,7 @@ patch_Sprite_draw_production_income_icon (Sprite * this, int edx, PCX_Image * ca
 	if (is->dc_icons_img_state == IS_UNINITED)
 		init_district_icons ();
 
-	if (is->current_config.enable_districts && 
-		is->dc_icons_img_state == IS_OK && is->distribution_hub_icons_img_state == IS_OK) {
+	if ((is->current_config.enable_districts || is->current_config.enable_natural_wonders) && is->dc_icons_img_state == IS_OK) {
 		Sprite to_draw = *this;
 		if (is->corruption_shield_icons_remaining > 0 || 
 			is->district_corruption_icons_remaining > 0 || 
@@ -24304,7 +24448,7 @@ patch_Sprite_draw_production_income_icon (Sprite * this, int edx, PCX_Image * ca
 			} else if (is->district_corruption_icons_remaining > 0) {
 				to_draw = is->district_corruption_icon;
 				is->district_corruption_icons_remaining--;
-			} else {
+			} else if (is->distribution_hub_icons_img_state == IS_OK) {
 				to_draw = is->distribution_hub_corruption_icon;
 				is->distribution_hub_corruption_icons_remaining--;
 			}
@@ -24318,7 +24462,7 @@ patch_Sprite_draw_production_income_icon (Sprite * this, int edx, PCX_Image * ca
 			} else if (is->district_shield_icons_remaining > 0) {
 				to_draw = is->district_shield_icon;
 				is->district_shield_icons_remaining--;
-			} else {
+			} else if (is->distribution_hub_icons_img_state == IS_OK) {
 				to_draw = is->distribution_hub_shield_icon;
 				is->distribution_hub_shield_icons_remaining--;
 			}
