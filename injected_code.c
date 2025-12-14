@@ -1708,25 +1708,25 @@ read_square_type_value (struct string_slice const * s, enum SquareTypes * out_ty
 		char const * name;
 		int value;
 	} const entries[] = {
-		{"desert",        SQ_Desert},
-		{"plains",        SQ_Plains},
-		{"grassland",     SQ_Grassland},
-		{"tundra",        SQ_Tundra},
-		{"floodplain",    SQ_FloodPlain},
-		{"hills",         SQ_Hills},
-		{"mountains",     SQ_Mountains},
-		{"forest",        SQ_Forest},
-		{"jungle",        SQ_Jungle},
-		{"swamp",         SQ_Swamp},
-		{"volcano",       SQ_Volcano},
-		{"coast",         SQ_Coast},
-		{"sea",           SQ_Sea},
-		{"ocean",         SQ_Ocean},
-		{"river",         SQ_RIVER},
-		{"snow-volcano",  SQ_SNOW_VOLCANO},
-		{"snow-forest",   SQ_SNOW_FOREST},
-		{"snow-mountain", SQ_SNOW_MOUNTAIN},
-		{"any",           SQ_INVALID}
+		{"desert",         SQ_Desert},
+		{"plains",         SQ_Plains},
+		{"grassland",      SQ_Grassland},
+		{"tundra",         SQ_Tundra},
+		{"floodplain",     SQ_FloodPlain},
+		{"hills",          SQ_Hills},
+		{"mountains",      SQ_Mountains},
+		{"forest",         SQ_Forest},
+		{"jungle",         SQ_Jungle},
+		{"swamp",          SQ_Swamp},
+		{"volcano",        SQ_Volcano},
+		{"coast",          SQ_Coast},
+		{"sea",            SQ_Sea},
+		{"ocean",          SQ_Ocean},
+		{"river",          SQ_RIVER},
+		{"snow-volcano",   SQ_SNOW_VOLCANO},
+		{"snow-forest",    SQ_SNOW_FOREST},
+		{"snow-mountains", SQ_SNOW_MOUNTAIN},
+		{"any",            SQ_INVALID}
 	};
 
 	for (int i = 0; i < (int)ARRAY_LEN (entries); i++) {
