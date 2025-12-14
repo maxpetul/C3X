@@ -1624,7 +1624,7 @@ struct district_button_image_set {
 	int district_corruption_icons_remaining;
 	int distribution_hub_corruption_icons_remaining;
 
-	// District UI sprites loaded from PCX files for rendering yield icons (science, commerce, shield, food, culture)
+	// District UI sprites loaded from PCX files for rendering yield icons (science, commerce, shield, food, culture, happiness)
 	// Available in both regular and small sizes for different UI contexts in city interface
 	Sprite district_science_icon;
 	Sprite district_commerce_icon;
@@ -1632,6 +1632,7 @@ struct district_button_image_set {
 	Sprite district_corruption_icon;
 	Sprite district_food_icon;
 	Sprite district_food_eaten_icon;
+	Sprite district_happiness_icon;
 	Sprite district_shield_icon_small;
 	Sprite district_commerce_icon_small;
 	Sprite district_food_icon_small;
