@@ -15842,16 +15842,6 @@ patch_Match_ai_eval_city_location (void * this, int edx, int x, int y, int civ_i
 	is->ai_evaling_city_loc_y = y;
 	is->ai_evaling_city_field_30_get_counter = 0;
 
-	if (is->current_config.enable_natural_wonders || is->current_config.enable_districts) {
-		Tile * tile = tile_at (x, y);
-		if ((tile != NULL) && (tile != p_null_tile)) {
-			struct district_instance * inst = get_district_instance (tile);
-			if (inst != NULL && (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
-				return 0;
-			}
-		}
-	}
-
 	return Match_ai_eval_city_location (this, __, x, y, civ_id, param_4, out_breakdown);
 }
 
@@ -16445,7 +16435,7 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 
 					// Show message to user
 					if (is->current_config.show_message_when_building_received_by_mutual_district &&
-					    ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)) {
+						city->Body.CivID == p_main_screen_form->Player_CivID) {
 						char msg[300];
 						snprintf (msg, sizeof msg, "%s %s %s %s %s %s %s",
 							city->Body.CityName,
@@ -16546,7 +16536,7 @@ grant_existing_district_buildings_to_city (City * city)
 				}
 
 				if (is->current_config.show_message_when_building_received_by_mutual_district &&
-				    ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)) {
+				    city->Body.CivID == p_main_screen_form->Player_CivID) {
 					char msg[300];
 					snprintf (msg, sizeof msg, "%s %s %s %s %s %s %s",
 						  city->Body.CityName,
@@ -17069,7 +17059,7 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 
 	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 		patch_City_recompute_yields_and_happiness (city);
-		patch_City_update_culture (city);
+		patch_City_recompute_culture_income (city);
 	}
 
 	if (is->current_config.enable_districts) {
