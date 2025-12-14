@@ -602,6 +602,7 @@ struct wonder_district_config {
 		maritime_alt_img_column,
 		maritime_alt_img_construct_row,
 		maritime_alt_img_construct_column;
+	unsigned short buildable_square_types_mask;
 	bool is_dynamic;
 	bool is_maritime;
 };
@@ -660,7 +661,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.command = UCV_Build_WonderDistrict, .name = "Wonder District", .tooltip = "Build Wonder District",
 		.advance_prereq = NULL, .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"WonderDistrict.pcx"},
-		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
+		.buildable_square_types_mask = (unsigned short)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Coast)),
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .unhappiness_bonus = 0, .defense_bonus_percent = 0
 		
@@ -754,12 +755,14 @@ struct parsed_wonder_definition {
 	int img_column;
 	int img_construct_row;
 	int img_construct_column;
+	unsigned short buildable_square_types_mask;
 	bool has_name;
 	bool has_img_path;
 	bool has_img_row;
 	bool has_img_column;
 	bool has_img_construct_row;
 	bool has_img_construct_column;
+	bool has_buildable_on;
 };
 
 struct parsed_natural_wonder_definition {

@@ -3866,6 +3866,46 @@ find_wonder_config_index_by_improvement_id (int improv_id)
 
 void set_wonder_built_flag (int improv_id, bool is_built);
 
+unsigned short
+wonder_buildable_square_type_mask (struct wonder_district_config const * cfg)
+{
+	if (cfg == NULL)
+		return district_default_buildable_mask ();
+
+	unsigned short mask = cfg->buildable_square_types_mask;
+	if (mask == 0)
+		mask = district_default_buildable_mask ();
+	return mask;
+}
+
+unsigned short
+wonder_buildable_mask_for_improvement (int improv_id)
+{
+	int windex = find_wonder_config_index_by_improvement_id (improv_id);
+	if (windex < 0)
+		return district_default_buildable_mask ();
+	return wonder_buildable_square_type_mask (&is->wonder_district_configs[windex]);
+}
+
+bool
+wonder_is_buildable_on_square_type (struct wonder_district_config const * cfg, enum SquareTypes base_type)
+{
+	unsigned short mask = wonder_buildable_square_type_mask (cfg);
+	unsigned short bit = square_type_mask_bit (base_type);
+	return (bit != 0) && ((mask & bit) != 0);
+}
+
+bool
+wonder_is_buildable_on_tile (Tile * tile, int wonder_improv_id)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	unsigned short mask = wonder_buildable_mask_for_improvement (wonder_improv_id);
+	unsigned short bit = square_type_mask_bit (tile->vtable->m50_Get_Square_BaseType (tile));
+	return (bit != 0) && ((mask & bit) != 0);
+}
+
 int
 get_wonder_improvement_id_from_index (int windex)
 {
@@ -5803,6 +5843,7 @@ void
 init_parsed_wonder_definition (struct parsed_wonder_definition * def)
 {
 	memset (def, 0, sizeof *def);
+	def->buildable_square_types_mask = district_default_buildable_mask ();
 }
 
 void
@@ -5847,6 +5888,7 @@ add_dynamic_wonder_from_definition (struct parsed_wonder_definition * def, int s
 	new_cfg.img_column = def->img_column;
 	new_cfg.img_construct_row = def->img_construct_row;
 	new_cfg.img_construct_column = def->img_construct_column;
+	new_cfg.buildable_square_types_mask = def->has_buildable_on ? def->buildable_square_types_mask : district_default_buildable_mask ();
 
 	if (existing_index >= 0) {
 		struct wonder_district_config * cfg = &is->wonder_district_configs[existing_index];
@@ -6007,6 +6049,15 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 		} else {
 			def->has_img_construct_column = false;
 			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "buildable_on")) {
+		unsigned short mask;
+		if (parse_buildable_square_type_mask (value, &mask, parse_errors, line_number)) {
+			def->buildable_square_types_mask = mask;
+			def->has_buildable_on = true;
+		} else {
+			def->has_buildable_on = false;
 		}
 
 	} else
@@ -7962,6 +8013,81 @@ find_tile_for_port_district (City * city, int * out_x, int * out_y)
 }
 
 Tile *
+find_tile_for_wonder_district (City * city, int * out_x, int * out_y)
+{
+	if (city == NULL)
+		return NULL;
+
+	int target_improv_id = -1;
+	if (lookup_pending_building_order (city, &target_improv_id)) {
+		if ((target_improv_id < 0) ||
+		    (target_improv_id >= p_bic_data->ImprovementsCount) ||
+		    ((p_bic_data->Improvements[target_improv_id].Characteristics & (ITC_Wonder | ITC_Small_Wonder)) == 0))
+			target_improv_id = -1;
+	}
+	if (target_improv_id < 0) {
+		int order_id = city->Body.Order_ID;
+		if ((city->Body.Order_Type == COT_Improvement) &&
+		    (order_id >= 0) &&
+		    (order_id < p_bic_data->ImprovementsCount)) {
+			Improvement * order = &p_bic_data->Improvements[order_id];
+			if (order->Characteristics & (ITC_Wonder | ITC_Small_Wonder))
+				target_improv_id = order_id;
+		}
+	}
+
+	int city_x = city->Body.X;
+	int city_y = city->Body.Y;
+	int city_work_radius = is->current_config.city_work_radius;
+
+	// Search in order: ring 2, then rings 3..N, then ring 1 as last resort
+	int ring_order[8];
+	int ring_count = 0;
+	ring_order[ring_count++] = 2;
+	for (int r = 3; r <= city_work_radius; r++)
+		ring_order[ring_count++] = r;
+	ring_order[ring_count++] = 1;
+
+	for (int r_idx = 0; r_idx < ring_count; r_idx++) {
+		int ring = ring_order[r_idx];
+		int start_ni = workable_tile_counts[ring - 1];
+		int end_ni = workable_tile_counts[ring];
+
+		Tile * best_tile = NULL;
+		int best_yield = INT_MAX;
+
+		for (int ni = start_ni; ni < end_ni; ni++) {
+			int dx, dy;
+			patch_ni_to_diff_for_work_area (ni, &dx, &dy);
+			int tx = (city_x + dx) & 0xFF;
+			int ty = (city_y + dy) & 0xFF;
+			Tile * tile = tile_at (tx, ty);
+
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+
+			if (! tile_suitable_for_district (tile, WONDER_DISTRICT_ID, city, NULL))
+				continue;
+			if (! wonder_is_buildable_on_tile (tile, target_improv_id))
+				continue;
+
+			int yield = compute_city_tile_yield_sum (city, tx, ty);
+			if (yield < best_yield && ! is_tile_earmarked_for_district (tx, ty)) {
+				best_yield = yield;
+				best_tile = tile;
+				*out_x = tx;
+				*out_y = ty;
+			}
+		}
+
+		if (best_tile != NULL)
+			return best_tile;
+	}
+
+	return NULL;
+}
+
+Tile *
 find_tile_for_distribution_hub_district (City * city, int * out_x, int * out_y)
 {
 	if (city == NULL)
@@ -8091,6 +8217,8 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 		return find_tile_for_distribution_hub_district (city, out_x, out_y);
 	if (district_id == PORT_DISTRICT_ID)
 		return find_tile_for_port_district (city, out_x, out_y);
+	if (district_id == WONDER_DISTRICT_ID)
+		return find_tile_for_wonder_district (city, out_x, out_y);
 
 	int city_x = city->Body.X;
 	int city_y = city->Body.Y;
@@ -8250,7 +8378,7 @@ city_has_required_district (City * city, int district_id)
 }
 
 bool
-city_has_wonder_district_with_no_completed_wonder (City * city)
+city_has_wonder_district_with_no_completed_wonder (City * city, int wonder_improv_id)
 {
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
 		return false;
@@ -8261,8 +8389,19 @@ city_has_wonder_district_with_no_completed_wonder (City * city)
 		struct district_instance * inst = wai.district_inst;
 		if (inst->district_type != WONDER_DISTRICT_ID) continue;
 
-		// Get wonder district info
 		struct wonder_district_info * info = get_wonder_district_info (candidate);
+		if ((wonder_improv_id >= 0) && ! wonder_is_buildable_on_tile (candidate, wonder_improv_id)) {
+			if ((info != NULL) &&
+			    (info->state == WDS_UNDER_CONSTRUCTION) &&
+			    (info->city_id == city->Body.ID)) {
+				info->state = WDS_UNUSED;
+				info->city = NULL;
+				info->city_id = -1;
+				info->wonder_index = -1;
+			}
+			continue;
+		}
+		// Get wonder district info
 		if (info == NULL) return true;
 		if (info->state == WDS_COMPLETED) continue; 
 		if (info->state == WDS_UNUSED) return true; // Unreserved and available
@@ -8836,7 +8975,7 @@ city_requires_district_for_improvement (City * city, int improv_id, int * out_di
 		return false;
 	if (is->current_config.enable_wonder_districts) {
 		if (district_id == WONDER_DISTRICT_ID) {
-			if (city_has_wonder_district_with_no_completed_wonder (city))
+			if (city_has_wonder_district_with_no_completed_wonder (city, improv_id))
 				return false;
 			if (out_district_id != NULL)
 				*out_district_id = district_id;
@@ -8969,7 +9108,7 @@ city_needs_wonder_district (City * city)
 }
 
 bool
-city_has_assigned_wonder_district (City * city, Tile * ignore_tile)
+city_has_assigned_wonder_district (City * city, Tile * ignore_tile, int wonder_improv_id)
 {
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
 		return false;
@@ -8989,6 +9128,13 @@ city_has_assigned_wonder_district (City * city, Tile * ignore_tile)
 		    (info->state == WDS_UNDER_CONSTRUCTION) &&
 		    (info->city_id == city->Body.ID)) {
 			info->city = city;
+			if ((wonder_improv_id >= 0) && (! wonder_is_buildable_on_tile (candidate, wonder_improv_id))) {
+				info->state = WDS_UNUSED;
+				info->city = NULL;
+				info->city_id = -1;
+				info->wonder_index = -1;
+				continue;
+			}
 			return true;
 		}
 	}
@@ -9030,12 +9176,12 @@ free_wonder_district_for_city (City * city)
 }
 
 bool
-reserve_wonder_district_for_city (City * city)
+reserve_wonder_district_for_city (City * city, int wonder_improv_id)
 {
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
 		return false;
 
-	if (city_has_assigned_wonder_district (city, NULL))
+	if (city_has_assigned_wonder_district (city, NULL, wonder_improv_id))
 		return true;
 
 	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
@@ -9043,6 +9189,8 @@ reserve_wonder_district_for_city (City * city)
 		Tile * candidate = wai.tile;
 		struct district_instance * inst = wai.district_inst;
 		if (inst->district_type != WONDER_DISTRICT_ID) continue;
+		if ((wonder_improv_id >= 0) && (! wonder_is_buildable_on_tile (candidate, wonder_improv_id)))
+			continue;
 
 		struct wonder_district_info * info = &inst->wonder_info;
 		if (info->state == WDS_COMPLETED) continue;
@@ -9054,7 +9202,7 @@ reserve_wonder_district_for_city (City * city)
 			}
 			continue;
 		}
-		if (city_has_assigned_wonder_district (city, candidate))
+		if (city_has_assigned_wonder_district (city, candidate, wonder_improv_id))
 			return true;
 
 		// Reserve this Wonder district for this city
@@ -15188,7 +15336,7 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 
 			// Can only build wonders that need districts if an incomplete wonder district exists
 			if (wonder_requires_district &&
-				! city_has_wonder_district_with_no_completed_wonder (this))
+				! city_has_wonder_district_with_no_completed_wonder (this, i_improv))
 				return !apply_strict_rules;
 		}
 	}
@@ -15241,7 +15389,7 @@ ai_handle_district_production_requirements (City * city, City_Order * out)
 		if (is->current_config.enable_wonder_districts) {
 			Improvement * improv = &p_bic_data->Improvements[out->OrderID];
 			if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) &&
-			    (! city_has_wonder_district_with_no_completed_wonder (city))) {
+			    (! city_has_wonder_district_with_no_completed_wonder (city, out->OrderID))) {
 				needs_wonder_district = true;
 				if (required_district_id < 0) {
 					required_district_id = WONDER_DISTRICT_ID;
@@ -15274,7 +15422,7 @@ ai_handle_district_production_requirements (City * city, City_Order * out)
 					if (fallback_is_feasible && is->current_config.enable_wonder_districts) {
 						Improvement * fallback_improv = &p_bic_data->Improvements[stored->order.OrderID];
 						if ((fallback_improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) &&
-						    (! city_has_wonder_district_with_no_completed_wonder (city)))
+						    (! city_has_wonder_district_with_no_completed_wonder (city, stored->order.OrderID)))
 							fallback_is_feasible = false;
 					}
 				} else if (stored->order.OrderType == COT_Unit) {
@@ -16937,6 +17085,8 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 						Tile * t = wai.tile;
 						struct district_instance * inst = wai.district_inst;
 						if (inst->district_type != WONDER_DISTRICT_ID) continue;
+						if (! wonder_is_buildable_on_tile (t, improv_id))
+							continue;
 
 						struct wonder_district_info * info = &inst->wonder_info;
 						if (info->state != WDS_UNDER_CONSTRUCTION) continue;
@@ -19153,7 +19303,7 @@ patch_Leader_do_production_phase (Leader * this)
 					}
 
 					if (wonder_requires_district) {
-						bool has_wonder_district = reserve_wonder_district_for_city (city);
+						bool has_wonder_district = reserve_wonder_district_for_city (city, i_improv);
 						if (! has_wonder_district) {
 							needs_halt = true;
 							req_district_id = WONDER_DISTRICT_ID;
@@ -25413,7 +25563,7 @@ patch_City_set_production (City * this, int edx, int order_type, int order_id, b
 	if (order_type == COT_Improvement) {
 		Improvement * improv = &p_bic_data->Improvements[order_id];
 		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
-			if (reserve_wonder_district_for_city (this))
+			if (reserve_wonder_district_for_city (this, order_id))
 				release_reservation = false;
 		}
 	}
