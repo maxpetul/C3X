@@ -11162,6 +11162,7 @@ patch_init_floating_point ()
 		{"enable_natural_wonders"                                , false, offsetof (struct c3x_config, enable_natural_wonders)},
 		{"enable_distribution_hub_districts"                     , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"enable_aerodrome_districts"                            , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
+		{"enable_port_districts"                                 , false, offsetof (struct c3x_config, enable_port_districts)},
 		{"completed_wonder_districts_can_be_destroyed"           , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
 		{"destroyed_wonders_can_be_built_again"                  , false, offsetof (struct c3x_config, destroyed_wonders_can_be_built_again)},
 		{"cities_with_mutual_district_receive_buildings"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
