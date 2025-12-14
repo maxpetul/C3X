@@ -567,7 +567,7 @@ struct district_config {
 	char const * resource_prereq_on_tile;
 	char const * dependent_improvements[MAX_DISTRICT_DEPENDENTS];
 	char const * img_paths[10];
-	unsigned short buildable_square_types_mask;
+	unsigned int buildable_square_types_mask;
 	bool allow_multiple;
 	bool vary_img_by_era;
 	bool vary_img_by_culture;
@@ -602,14 +602,17 @@ struct wonder_district_config {
 		maritime_alt_img_column,
 		maritime_alt_img_construct_row,
 		maritime_alt_img_construct_column;
-	unsigned short buildable_square_types_mask;
+	unsigned int buildable_square_types_mask;
 	bool is_dynamic;
 	bool is_maritime;
 };
 
 enum square_type_extras {
 	SQ_INVALID = -1,
-	SQ_RIVER = SQ_Ocean + 1
+	SQ_RIVER = SQ_Ocean + 1,
+	SQ_SNOW_VOLCANO,
+	SQ_SNOW_FOREST,
+	SQ_SNOW_MOUNTAIN
 };
 
 struct natural_wonder_district_config {
@@ -661,7 +664,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.command = UCV_Build_WonderDistrict, .name = "Wonder District", .tooltip = "Build Wonder District",
 		.advance_prereq = NULL, .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"WonderDistrict.pcx"},
-		.buildable_square_types_mask = (unsigned short)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Coast)),
+		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Coast)),
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .unhappiness_bonus = 0, .defense_bonus_percent = 0
 		
@@ -724,7 +727,7 @@ struct parsed_district_definition {
 	int shield_bonus;
 	int happiness_bonus;
 	int unhappiness_bonus;
-	unsigned short buildable_square_types_mask;
+	unsigned int buildable_square_types_mask;
 	bool has_name;
 	bool has_tooltip;
 	bool has_advance_prereq;
@@ -755,7 +758,7 @@ struct parsed_wonder_definition {
 	int img_column;
 	int img_construct_row;
 	int img_construct_column;
-	unsigned short buildable_square_types_mask;
+	unsigned int buildable_square_types_mask;
 	bool has_name;
 	bool has_img_path;
 	bool has_img_row;

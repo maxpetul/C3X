@@ -1708,22 +1708,25 @@ read_square_type_value (struct string_slice const * s, enum SquareTypes * out_ty
 		char const * name;
 		int value;
 	} const entries[] = {
-		{"desert",     SQ_Desert},
-		{"plains",     SQ_Plains},
-		{"grassland",  SQ_Grassland},
-		{"tundra",     SQ_Tundra},
-		{"floodplain", SQ_FloodPlain},
-		{"hills",      SQ_Hills},
-		{"mountains",  SQ_Mountains},
-		{"forest",     SQ_Forest},
-		{"jungle",     SQ_Jungle},
-		{"swamp",      SQ_Swamp},
-		{"volcano",    SQ_Volcano},
-		{"coast",      SQ_Coast},
-		{"sea",        SQ_Sea},
-		{"ocean",      SQ_Ocean},
-		{"river",      SQ_RIVER},
-		{"any",        SQ_INVALID}
+		{"desert",        SQ_Desert},
+		{"plains",        SQ_Plains},
+		{"grassland",     SQ_Grassland},
+		{"tundra",        SQ_Tundra},
+		{"floodplain",    SQ_FloodPlain},
+		{"hills",         SQ_Hills},
+		{"mountains",     SQ_Mountains},
+		{"forest",        SQ_Forest},
+		{"jungle",        SQ_Jungle},
+		{"swamp",         SQ_Swamp},
+		{"volcano",       SQ_Volcano},
+		{"coast",         SQ_Coast},
+		{"sea",           SQ_Sea},
+		{"ocean",         SQ_Ocean},
+		{"river",         SQ_RIVER},
+		{"snow-volcano",  SQ_SNOW_VOLCANO},
+		{"snow-forest",   SQ_SNOW_FOREST},
+		{"snow-mountain", SQ_SNOW_MOUNTAIN},
+		{"any",           SQ_INVALID}
 	};
 
 	for (int i = 0; i < (int)ARRAY_LEN (entries); i++) {
@@ -1736,38 +1739,110 @@ read_square_type_value (struct string_slice const * s, enum SquareTypes * out_ty
 	return false;
 }
 
-unsigned short
+unsigned int
 square_type_mask_bit (enum SquareTypes type)
 {
-	if ((int)type < 0 || type > SQ_RIVER)
+	if ((int)type < 0 || type > SQ_SNOW_MOUNTAIN)
 		return 0;
-	return (unsigned short)(1u << type);
+	return (unsigned int)(1u << type);
 }
 
-unsigned short
+unsigned int
 all_square_types_mask (void)
 {
-	return (unsigned short)((1u << (SQ_RIVER + 1)) - 1);
+	return (unsigned int)((1u << (SQ_SNOW_MOUNTAIN + 1)) - 1);
 }
 
-unsigned short
+unsigned int
 district_default_buildable_mask (void)
 {
-	return (unsigned short)DEFAULT_DISTRICT_BUILDABLE_MASK;
+	return (unsigned int)DEFAULT_DISTRICT_BUILDABLE_MASK;
 }
 
 bool
-district_is_buildable_on_square_type (struct district_config const * cfg, enum SquareTypes base_type)
+tile_has_snow_mountain (Tile * tile)
 {
-	if (cfg == NULL)
+	return (tile != NULL) && (tile != p_null_tile) && tile->vtable->m29_Check_Mountain_Snowcap (tile);
+}
+
+bool
+tile_has_snow_volcano (Tile * tile)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
 		return false;
 
-	unsigned short mask = cfg->buildable_square_types_mask;
+	if (tile->vtable->m50_Get_Square_BaseType (tile) != SQ_Volcano)
+		return false;
+
+	int overlays = tile->vtable->m43_Get_field_30 (tile);
+	return (overlays & 0x100000) != 0;
+}
+
+bool
+tile_has_snow_forest (Tile * tile)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (tile->vtable->m50_Get_Square_BaseType (tile) != SQ_Forest)
+		return false;
+
+	return tile->vtable->m12_Check_Forest_Pines (tile) != 0;
+}
+
+bool
+tile_matches_square_type (Tile * tile, enum SquareTypes type)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	switch (type) {
+		case SQ_SNOW_MOUNTAIN:
+			return tile_has_snow_mountain (tile);
+		case SQ_SNOW_VOLCANO:
+			return tile_has_snow_volcano (tile);
+		case SQ_SNOW_FOREST:
+			return tile_has_snow_forest (tile);
+		case SQ_RIVER:
+			return tile->vtable->m37_Get_River_Code (tile) != 0;
+		default:
+			return tile->vtable->m50_Get_Square_BaseType (tile) == type;
+	}
+}
+
+bool
+tile_matches_square_type_mask (Tile * tile, unsigned int mask)
+{
+	if ((tile == NULL) || (tile == p_null_tile) || (mask == 0))
+		return false;
+
+	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+	unsigned int base_bit = square_type_mask_bit (base_type);
+	if ((base_bit != 0) && ((mask & base_bit) != 0))
+		return true;
+
+	enum SquareTypes const special_types[] = {SQ_RIVER, SQ_SNOW_MOUNTAIN, SQ_SNOW_VOLCANO, SQ_SNOW_FOREST};
+	for (int i = 0; i < (int)ARRAY_LEN (special_types); i++) {
+		enum SquareTypes stype = special_types[i];
+		unsigned int bit = square_type_mask_bit (stype);
+		if ((mask & bit) && tile_matches_square_type (tile, stype))
+			return true;
+	}
+
+	return false;
+}
+
+bool
+district_is_buildable_on_square_type (struct district_config const * cfg, Tile * tile)
+{
+	if ((cfg == NULL) || (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	unsigned int mask = cfg->buildable_square_types_mask;
 	if (mask == 0)
 		mask = district_default_buildable_mask ();
 
-	unsigned short bit = square_type_mask_bit (base_type);
-	return (bit != 0) && ((mask & bit) != 0);
+	return tile_matches_square_type_mask (tile, mask);
 }
 
 bool
@@ -1786,6 +1861,12 @@ read_natural_wonder_terrain_type (struct string_slice const * s, enum SquareType
 		case SQ_FloodPlain:
 		case SQ_Swamp:
 		case SQ_Hills:
+		case SQ_Mountains:
+		case SQ_Forest:
+		case SQ_Volcano:
+		case SQ_SNOW_MOUNTAIN:
+		case SQ_SNOW_FOREST:
+		case SQ_SNOW_VOLCANO:
 		case SQ_Coast:
 		case SQ_Sea:
 		case SQ_Ocean:
@@ -3297,9 +3378,7 @@ tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
 bool
 tile_square_type_is (Tile * tile, enum SquareTypes type)
 {
-	if ((tile == NULL) || (tile == p_null_tile))
-		return false;
-	return tile->vtable->m50_Get_Square_BaseType (tile) == type;
+	return tile_matches_square_type (tile, type);
 }
 
 bool
@@ -3417,8 +3496,7 @@ natural_wonder_terrain_matches (struct natural_wonder_district_config const * cf
 	if ((cfg == NULL) || (tile == NULL) || (tile == p_null_tile))
 		return false;
 
-	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	if (base_type != cfg->terrain_type)
+	if (! tile_matches_square_type (tile, cfg->terrain_type))
 		return false;
 
 	if (natural_wonder_is_coastal_island (tile, tile_x, tile_y))
@@ -3866,19 +3944,19 @@ find_wonder_config_index_by_improvement_id (int improv_id)
 
 void set_wonder_built_flag (int improv_id, bool is_built);
 
-unsigned short
+unsigned int
 wonder_buildable_square_type_mask (struct wonder_district_config const * cfg)
 {
 	if (cfg == NULL)
 		return district_default_buildable_mask ();
 
-	unsigned short mask = cfg->buildable_square_types_mask;
+	unsigned int mask = cfg->buildable_square_types_mask;
 	if (mask == 0)
 		mask = district_default_buildable_mask ();
 	return mask;
 }
 
-unsigned short
+unsigned int
 wonder_buildable_mask_for_improvement (int improv_id)
 {
 	int windex = find_wonder_config_index_by_improvement_id (improv_id);
@@ -3888,11 +3966,12 @@ wonder_buildable_mask_for_improvement (int improv_id)
 }
 
 bool
-wonder_is_buildable_on_square_type (struct wonder_district_config const * cfg, enum SquareTypes base_type)
+wonder_is_buildable_on_square_type (struct wonder_district_config const * cfg, Tile * tile)
 {
-	unsigned short mask = wonder_buildable_square_type_mask (cfg);
-	unsigned short bit = square_type_mask_bit (base_type);
-	return (bit != 0) && ((mask & bit) != 0);
+	if ((cfg == NULL) || (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	return tile_matches_square_type_mask (tile, wonder_buildable_square_type_mask (cfg));
 }
 
 bool
@@ -3901,9 +3980,8 @@ wonder_is_buildable_on_tile (Tile * tile, int wonder_improv_id)
 	if ((tile == NULL) || (tile == p_null_tile))
 		return false;
 
-	unsigned short mask = wonder_buildable_mask_for_improvement (wonder_improv_id);
-	unsigned short bit = square_type_mask_bit (tile->vtable->m50_Get_Square_BaseType (tile));
-	return (bit != 0) && ((mask & bit) != 0);
+	unsigned int mask = wonder_buildable_mask_for_improvement (wonder_improv_id);
+	return tile_matches_square_type_mask (tile, mask);
 }
 
 int
@@ -5161,12 +5239,12 @@ parse_config_string_list (char * value_text,
 
 bool
 parse_buildable_square_type_mask (struct string_slice const * value,
-				  unsigned short * out_mask,
+				  unsigned int * out_mask,
 				  struct error_line ** parse_errors,
 				  int line_number)
 {
 	char * value_text = trim_and_extract_slice (value, 0);
-	unsigned short mask = 0;
+	unsigned int mask = 0;
 	int entry_count = 0;
 
 	if (value_text != NULL) {
@@ -5566,7 +5644,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		free (value_text);
 
 	} else if (slice_matches_str (key, "buildable_on")) {
-		unsigned short mask;
+		unsigned int mask;
 		if (parse_buildable_square_type_mask (value, &mask, parse_errors, line_number)) {
 			def->buildable_square_types_mask = mask;
 			def->has_buildable_on = true;
@@ -6052,7 +6130,7 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 		}
 
 	} else if (slice_matches_str (key, "buildable_on")) {
-		unsigned short mask;
+		unsigned int mask;
 		if (parse_buildable_square_type_mask (value, &mask, parse_errors, line_number)) {
 			def->buildable_square_types_mask = mask;
 			def->has_buildable_on = true;
@@ -7708,8 +7786,7 @@ can_build_district_on_tile (Tile * tile, int district_id)
 	if ((cfg->command == UCV_Build_Aerodrome)       && !is->current_config.enable_aerodrome_districts)        return false;
 	if ((cfg->command == UCV_Build_Port)            && !is->current_config.enable_port_districts)             return false;
 
-	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	if (! district_is_buildable_on_square_type (cfg, base_type))
+	if (! district_is_buildable_on_square_type (cfg, tile))
 		return false;
 
 	int tile_x = 0, tile_y = 0;
@@ -13199,7 +13276,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 			bool has_district = (tile != NULL) && (tile != p_null_tile) && (get_district_instance (tile) != NULL);
 
 			if (has_district) {
-				return (base_type != SQ_FloodPlain && base_type != SQ_Forest && base_type != SQ_Jungle && base_type != SQ_Volcano);
+				return Unit_can_perform_command (this, __, unit_command_value);
 			}
 		}
 		else if (unit_command_value == UCV_Join_City) {
@@ -13400,8 +13477,7 @@ issue_district_worker_command (Unit * unit, int command)
 	if (tile->vtable->m20_Check_Pollution (tile, __, 0))
 		return;
 
-	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	if (! district_is_buildable_on_square_type (&is->district_configs[district_id], base_type))
+	if (! district_is_buildable_on_square_type (&is->district_configs[district_id], tile))
 		return;
 
 	// If District will be replaced by another District
