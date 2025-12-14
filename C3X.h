@@ -563,6 +563,8 @@ struct district_config {
 	char const * name;
 	char const * tooltip;
 	char const * advance_prereq;
+	char const * resource_prereq;
+	char const * resource_prereq_on_tile;
 	char const * dependent_improvements[MAX_DISTRICT_DEPENDENTS];
 	char const * img_paths[10];
 	unsigned short buildable_square_types_mask;
@@ -647,7 +649,7 @@ struct wonder_location {
 const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYPES] = {
 	{
 		.command = UCV_Build_Neighborhood, .name = "Neighborhood", .tooltip = "Build Neighborhood",
-		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = true, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.advance_prereq = NULL, .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = true, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 5, .max_building_index = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
@@ -656,7 +658,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_WonderDistrict, .name = "Wonder District", .tooltip = "Build Wonder District",
-		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.advance_prereq = NULL, .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"WonderDistrict.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0,
@@ -665,7 +667,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_DistributionHub, .name = "Distribution Hub", .tooltip = "Build Distribution Hub",
-		.advance_prereq = "Construction", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.advance_prereq = "Construction", .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"DistributionHub.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0,
@@ -674,7 +676,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_Aerodrome, .name = "Aerodrome", .tooltip = "Build Aerodrome",
-		.advance_prereq = "Flight", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 1,
+		.advance_prereq = "Flight", .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 1,
 		.img_paths = {"Aerodrome.pcx"}, .dependent_improvements = {"Airport"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 1, .max_building_index = 1, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
@@ -682,7 +684,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = -1, .name = "Natural Wonder", .tooltip = NULL,
-		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.advance_prereq = NULL, .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {0},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 0, .max_building_index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
@@ -690,7 +692,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port",
-		.advance_prereq = "Map Making", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 2, .is_maritime = true,
+		.advance_prereq = "Map Making", .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 2, .is_maritime = true,
 		.img_paths = {"Port_NW.pcx", "Port_NE.pcx", "Port_SE.pcx", "Port_SW.pcx"}, .dependent_improvements = {"Harbor", "Commercial Dock"},
 		.buildable_square_types_mask =  (1 << SQ_Coast),
 		.img_path_count = 4, .max_building_index = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
@@ -702,6 +704,8 @@ struct parsed_district_definition {
 	char * name;
 	char * tooltip;
 	char * advance_prereq;
+	char * resource_prereq;
+	char * resource_prereq_on_tile;
 	char * dependent_improvements[5];
 	char * img_paths[5];
 	int dependent_improvement_count;
@@ -739,6 +743,8 @@ struct parsed_district_definition {
 	bool has_happiness_bonus;
 	bool has_unhappiness_bonus;
 	bool has_buildable_on;
+	bool has_resource_prereq;
+	bool has_resource_prereq_on_tile;
 };
 
 struct parsed_wonder_definition {
@@ -1589,6 +1595,8 @@ struct district_button_image_set {
 
 	struct district_infos {
 		int advance_prereq_id; // Tech ID that enables the district
+		int resource_prereq_id;
+		int resource_prereq_on_tile_id;
 		int dependent_building_count;
 		int dependent_building_ids[MAX_DISTRICT_DEPENDENTS]; // Building types the district enables
 	} district_infos[COUNT_DISTRICT_TYPES];
