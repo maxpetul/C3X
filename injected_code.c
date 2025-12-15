@@ -5848,7 +5848,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 bool
 line_is_empty_or_comment (struct string_slice const * trimmed)
 {
-	return ((trimmed == NULL) || (trimmed->len == 0) || (trimmed->str[0] == ';') || (trimmed->str[0] == '['));
+	return ((trimmed == NULL) || (trimmed->len == 0) || (trimmed->str[0] == ';'));
 }
 
 void
@@ -26058,6 +26058,134 @@ patch_Unit_select_transport (Unit * this, int edx, int tile_x, int tile_y, bool 
 
 	return transport;
 }
+
+/*
+// Returns true if the given tile is a water district owned by an enemy of the unit
+bool
+is_enemy_maritime_district_tile (Unit * unit, Tile * tile)
+{
+	if ((unit == NULL) || (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (! is->current_config.enable_districts)
+		return false;
+
+	if (! tile->vtable->m35_Check_Is_Water (tile))
+		return false;
+
+	if (! tile->vtable->m18_Check_Mines (tile, __, 0))
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL)
+		return false;
+
+	int owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	if ((owner <= 0) || (owner == unit->Body.CivID))
+		return false;
+
+	return unit->vtable->is_enemy_of_civ (unit, owner, false);
+}
+
+// Boost pillage desirability for maritime districts
+int __fastcall
+patch_Unit_ai_eval_pillage_target (Unit * this, int edx, unsigned short tile_x, int tile_y)
+{
+	int base = Unit_ai_eval_pillage_target (this, __, tile_x, tile_y);
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((base > 0) && is_enemy_maritime_district_tile (this, tile)) {
+		// Double the base score and add a flat kicker so districts outrank generic coast targets
+		base += base + 0x300;
+	}
+
+	return base;
+}
+
+// Light-weight hunt for nearby maritime districts; returns true if a path/command was issued
+bool
+try_path_to_maritime_district (Unit * unit)
+{
+	if ((unit == NULL) || (! is->current_config.enable_districts))
+		return false;
+
+	if (unit->Body.Container_Unit >= 0) // Don't redirect cargo
+		return false;
+
+	if (unit->Body.Moves <= 0) // No moves left, let base AI handle healing/other states
+		return false;
+
+	int sea_id = unit->vtable->get_sea_id (unit);
+	if (sea_id < 0)
+		return false;
+
+	int best_score = 0, best_x = -1, best_y = -1, best_path_len = 0;
+	const int search_radius = 8;
+	for (int dy = -search_radius; dy <= search_radius; dy++) {
+		for (int dx = -search_radius; dx <= search_radius; dx++) {
+			int tx = unit->Body.X + dx, ty = unit->Body.Y + dy;
+			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
+
+			Tile * tile = tile_at (tx, ty);
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+
+			if ((short)tile->vtable->m46_Get_ContinentID (tile) != sea_id)
+				continue;
+
+			if (! is_enemy_maritime_district_tile (unit, tile))
+				continue;
+
+			int score = patch_Unit_ai_eval_pillage_target (unit, __, (unsigned short)tx, ty);
+			if (score <= 0)
+				continue;
+
+			int path_len = 0;
+			int path_result = patch_Trade_Net_set_unit_path (is->trade_net, __, unit->Body.X, unit->Body.Y, tx, ty, unit, unit->Body.CivID, 0x81, &path_len);
+			if (path_result <= 0)
+				continue;
+
+			if ((score > best_score) || ((score == best_score) && ((best_path_len == 0) || (path_len < best_path_len)))) {
+				best_score = score;
+				best_path_len = path_len;
+				best_x = tx;
+				best_y = ty;
+			}
+		}
+	}
+
+	if (best_x >= 0) {
+		patch_Trade_Net_set_unit_path (is->trade_net, __, unit->Body.X, unit->Body.Y, best_x, best_y, unit, unit->Body.CivID, 0x81, NULL);
+		Unit_set_escortee (unit, __, -1);
+		Unit_set_state (unit, __, UnitState_Go_To);
+		unit->Body.path_dest_x = best_x;
+		unit->Body.path_dest_y = best_y;
+		return true;
+	}
+
+	return false;
+}
+
+void __fastcall
+patch_Unit_ai_move_naval_power_unit (Unit * this)
+{
+	// If we're already sitting on an enemy maritime district, pillage it immediately
+	if (this->Body.Container_Unit < 0) {
+		Tile * here = tile_at (this->Body.X, this->Body.Y);
+		if (is_enemy_maritime_district_tile (this, here) &&
+		    can_pillage (this, (unsigned short)this->Body.X, this->Body.Y) &&
+		    (patch_Unit_ai_eval_pillage_target (this, __, (unsigned short)this->Body.X, this->Body.Y) > 0)) {
+			attack_tile (this, this->Body.X, this->Body.Y, 0);
+			return;
+		}
+	}
+
+	if (try_path_to_maritime_district (this))
+		return;
+
+	Unit_ai_move_naval_power_unit (this);
+}
+*/
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
