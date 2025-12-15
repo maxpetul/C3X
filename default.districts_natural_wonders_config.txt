@@ -189,8 +189,8 @@ happiness_bonus = 1
 
 #Wonder
 name            = Ha Long Bay
-terrain_type    = sea
-adjacent_to     = coast
+terrain_type    = coast
+adjacent_to     = sea
 img_path        = NaturalWonders.pcx
 img_row         = 3
 img_column      = 1
