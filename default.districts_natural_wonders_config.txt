@@ -172,3 +172,17 @@ food_bonus      = 0
 gold_bonus      = 0
 shield_bonus    = 0
 happiness_bonus = 1
+
+#Wonder
+name            = Eyjafjallajökull
+terrain_type    = tundra
+adjacent_to     = tundra
+img_path        = NaturalWonders.pcx
+img_row         = 3
+img_column      = 0
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
