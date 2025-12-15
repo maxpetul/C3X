@@ -25068,6 +25068,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 		unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
 		unsigned int removable_flags = overlay_flags & 0xfc;
+		bool district_buildable_here = district_is_buildable_on_square_type (&is->district_configs[req->district_id], tile);
 
 		// Remove any existing improvements
 		tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
@@ -25092,11 +25093,11 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		(*p_OutputDebugStringA) (ss);
 
 		// Clear any forest/wetlands
-		if (base_type == SQ_Forest) {
+		if (! district_buildable_here && base_type == SQ_Forest) {
 			Unit_set_state(worker, __, UnitState_Clear_Forest);
 			worker->Body.Job_ID = WJ_Clean_Forest;
 			return true;
-		} else if ((base_type == SQ_Jungle) || (base_type == SQ_Swamp)) {
+		} else if (! district_buildable_here && ((base_type == SQ_Jungle) || (base_type == SQ_Swamp))) {
 			Unit_set_state(worker, __, UnitState_Clear_Wetlands);
 			worker->Body.Job_ID = WJ_Clear_Swamp;
 			return true;
