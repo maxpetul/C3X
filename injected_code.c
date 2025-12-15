@@ -5845,6 +5845,12 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		add_unrecognized_key_error (unrecognized_keys, line_number, key);
 }
 
+bool
+line_is_empty_or_comment (struct string_slice const * trimmed)
+{
+	return ((trimmed == NULL) || (trimmed->len == 0) || (trimmed->str[0] == ';') || (trimmed->str[0] == '['));
+}
+
 void
 load_dynamic_district_config_file (char const * file_path,
 				   int path_is_relative_to_mod_dir,
@@ -5898,7 +5904,7 @@ load_dynamic_district_config_file (char const * file_path,
 
 		struct string_slice line_slice = { .str = line_start, .len = line_len };
 		struct string_slice trimmed = trim_string_slice (&line_slice, 0);
-		if ((trimmed.len == 0) || (trimmed.str[0] == ';')) {
+		if (line_is_empty_or_comment (&trimmed)) {
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
 		}
@@ -6372,7 +6378,7 @@ load_dynamic_wonder_config_file (char const * file_path,
 
 		struct string_slice line_slice = { .str = line_start, .len = line_len };
 		struct string_slice trimmed = trim_string_slice (&line_slice, 0);
-		if ((trimmed.len == 0) || (trimmed.str[0] == ';')) {
+		if (line_is_empty_or_comment (&trimmed)) {
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
 		}
@@ -6824,7 +6830,7 @@ load_natural_wonder_config_file (char const * file_path,
 
 		struct string_slice line_slice = { .str = line_start, .len = line_len };
 		struct string_slice trimmed = trim_string_slice (&line_slice, 0);
-		if ((trimmed.len == 0) || (trimmed.str[0] == ';')) {
+		if (line_is_empty_or_comment (&trimmed)) {
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
 		}
@@ -7689,7 +7695,7 @@ load_scenario_districts_from_file ()
 
 		struct string_slice line_slice = { .str = line_start, .len = line_len };
 		struct string_slice trimmed = trim_string_slice (&line_slice, 0);
-		if ((trimmed.len == 0) || (trimmed.str[0] == ';')) {
+		if (line_is_empty_or_comment (&trimmed)) {
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
 		}
