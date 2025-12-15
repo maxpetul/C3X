@@ -24761,7 +24761,7 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 }
 
 bool
-wonder_should_use_alt_dir_image (int tile_x, int tile_y, int owner_id)
+wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner_id)
 {
 	if (owner_id <= 0)
 		return false;
@@ -24815,6 +24815,17 @@ wonder_should_use_alt_dir_image (int tile_x, int tile_y, int owner_id)
 	return best_dx < 0;
 }
 
+void
+draw_district_on_map_or_canvas(Sprite * sprite, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
+{
+	if (is->current_config.show_detailed_tile_info) {
+		PCX_Image * canvas = (PCX_Image *)map_renderer;
+		Sprite_draw (sprite, __, canvas, pixel_x, pixel_y, NULL);
+	} else {
+		patch_Sprite_draw_on_map (sprite, __, map_renderer, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+	}
+}
+
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
@@ -24834,7 +24845,6 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 		return;
 	}
 
-	PCX_Image * canvas = (PCX_Image *)map_renderer;
 	int district_id = inst->district_type;
 	if (is->dc_img_state == IS_UNINITED)
         init_district_images ();
@@ -24853,11 +24863,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 			int y_offset = 88 - 64; // Height of wonder img minus height of tile
 			int draw_y = pixel_y - y_offset;
 
-			if (is->current_config.show_detailed_tile_info) {
-				Sprite_draw (nsprite, __, canvas, pixel_x, draw_y, NULL);
-			} else {
-				patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-			}
+			draw_district_on_map_or_canvas(nsprite, map_renderer, pixel_x, draw_y);
 		}
 		return;
 	}
@@ -24892,11 +24898,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 			if (tile->vtable->m35_Check_Is_Water (tile) && is->abandoned_maritime_district_img.vtable != NULL)
 				abandoned_sprite = &is->abandoned_maritime_district_img;
 			if (abandoned_sprite->vtable != NULL) {
-				if (is->current_config.show_detailed_tile_info) {
-					Sprite_draw (abandoned_sprite, __, canvas, pixel_x, pixel_y, NULL);
-				} else {
-					patch_Sprite_draw_on_map (abandoned_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-				}
+				draw_district_on_map_or_canvas(abandoned_sprite, map_renderer, pixel_x, pixel_y);
 			}
 			return;
 		}
@@ -24935,14 +24937,10 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 
 					struct wonder_district_config * wcfg   = &is->wonder_district_configs[windex];
 					struct wonder_district_image_set * set = &is->wonder_district_img_sets[windex];
-					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alt_dir_image (tile_x, tile_y, territory_owner_id);
+					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id);
 					Sprite * wsprite = (use_alt_dir && (set->alt_dir_img.vtable != NULL)) ? &set->alt_dir_img : &set->img;
 
-					if (is->current_config.show_detailed_tile_info) {
-						Sprite_draw (wsprite, __, canvas, pixel_x, pixel_y, NULL);
-					} else {
-						patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-					}
+					draw_district_on_map_or_canvas(wsprite, map_renderer, pixel_x, pixel_y);
 					return;
 
 				// Under construction
@@ -24952,14 +24950,10 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 
 					struct wonder_district_config * wcfg = &is->wonder_district_configs[construct_windex];
 					struct wonder_district_image_set * set = &is->wonder_district_img_sets[construct_windex];
-					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alt_dir_image (tile_x, tile_y, territory_owner_id);
+					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id);
                     Sprite * csprite = (use_alt_dir && (set->alt_dir_construct_img.vtable != NULL)) ? &set->alt_dir_construct_img : &set->construct_img;
 
-					if (is->current_config.show_detailed_tile_info) {
-						Sprite_draw (csprite, __, canvas, pixel_x, pixel_y, NULL);
-					} else {
-						patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-					}
+					draw_district_on_map_or_canvas(csprite, map_renderer, pixel_x, pixel_y);
 					return;
                 }
                 break;
@@ -24979,12 +24973,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 		}
 
 		district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
-
-		if (is->current_config.show_detailed_tile_info) {
-			Sprite_draw (district_sprite, __, canvas, pixel_x, pixel_y, NULL);
-		} else {
-			patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-		}
+		draw_district_on_map_or_canvas(district_sprite, map_renderer, pixel_x, pixel_y);
 		return;
 	}
 
