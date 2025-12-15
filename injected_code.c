@@ -3364,6 +3364,77 @@ wai_init_cities (int x, int y)
 #define FOR_DISTRICTS_AROUND(wai_name, _x, _y, _completed_only) for (struct work_area_iter wai_name = wai_init_districts (_x, _y, _completed_only); (wai_name.n < wai_name.num_tiles); wai_next (&wai_name))
 #define FOR_CITIES_AROUND(wai_name, _x, _y) for (struct work_area_iter wai_name = wai_init_cities (_x, _y); (wai_name.n < wai_name.num_tiles); wai_next (&wai_name))
 
+struct tile_rings_iter {
+	int center_x, center_y;
+	int const * rings;
+	int ring_count;
+	int r_idx;
+	int ni;
+	int tile_x, tile_y;
+	int current_ring;
+	Tile * tile;
+};
+
+void
+tri_next (struct tile_rings_iter * tri)
+{
+	tri->tile = p_null_tile;
+	while (tri->r_idx < tri->ring_count) {
+		int ring_no = tri->rings[tri->r_idx];
+		if ((ring_no <= 0) || (ring_no >= 8)) {
+			tri->r_idx += 1;
+			tri->ni = -1;
+			continue;
+		}
+		int start_ni = workable_tile_counts[ring_no - 1];
+		int end_ni = workable_tile_counts[ring_no];
+		if ((tri->ni + 1) < end_ni)
+			tri->ni += 1;
+		else {
+			tri->r_idx += 1;
+			tri->ni = -1;
+			continue;
+		}
+		tri->current_ring = ring_no;
+		int dx, dy;
+		patch_ni_to_diff_for_work_area (tri->ni, &dx, &dy);
+		int tx = tri->center_x + dx;
+		int ty = tri->center_y + dy;
+		wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
+		tri->tile_x = tx;
+		tri->tile_y = ty;
+		Tile * candidate = tile_at (tx, ty);
+		if ((candidate == NULL) || (candidate == p_null_tile))
+			continue;
+		tri->tile = candidate;
+		break;
+	}
+	if (tri->tile == p_null_tile) {
+		tri->r_idx = tri->ring_count;
+		tri->ni = -1;
+	}
+}
+
+struct tile_rings_iter
+tri_init (int x, int y, int const * rings, int ring_count)
+{
+	struct tile_rings_iter tr;
+	tr.center_x = x;
+	tr.center_y = y;
+	tr.rings = rings;
+	tr.ring_count = ring_count;
+	tr.r_idx = 0;
+	tr.ni = -1;
+	tr.tile_x = 0;
+	tr.tile_y = 0;
+	tr.current_ring = 0;
+	tr.tile = p_null_tile;
+	tri_next (&tr);
+	return tr;
+}
+
+#define FOR_TILE_RINGS_AROUND(tri_name, _x, _y, _rings, _ring_count) for (struct tile_rings_iter tri_name = tri_init (_x, _y, _rings, _ring_count); (tri_name.r_idx < tri_name.ring_count); tri_next (&tri_name))
+
 void
 tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
 {
@@ -8083,46 +8154,48 @@ find_tile_for_neighborhood_district (City * city, int * out_x, int * out_y)
 	for (int r = 1; r <= city_work_radius; r++)
 		ring_order[ring_count++] = r;
 
-	for (int r_idx = 0; r_idx < ring_count; r_idx++) {
-		int ring = ring_order[r_idx];
-		int start_ni = workable_tile_counts[ring - 1];
-		int end_ni = workable_tile_counts[ring];
+	Tile * best_tile = NULL;
+	int best_yield = INT_MAX;
+	int best_x = -1, best_y = -1;
+	int current_ring = -1;
 
-		Tile * best_tile = NULL;
-		int best_yield = INT_MAX;
-
-		for (int ni = start_ni; ni < end_ni; ni++) {
-			int dx, dy;
-			patch_ni_to_diff_for_work_area (ni, &dx, &dy);
-			int tx = city_x + dx;
-			int ty = city_y + dy;
-			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
-			Tile * tile = tile_at (tx, ty);
-
-			if ((tile == NULL) || (tile == p_null_tile))
-				continue;
-			if (is->current_config.enable_distribution_hub_districts) {
-				int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
-				if (covered > 0)
-					continue;
+	FOR_TILE_RINGS_AROUND (tri, city_x, city_y, ring_order, ring_count) {
+		if (tri.current_ring != current_ring) {
+			if (best_tile != NULL) {
+				*out_x = best_x;
+				*out_y = best_y;
+				return best_tile;
 			}
-
-			if (! tile_suitable_for_district (tile, NEIGHBORHOOD_DISTRICT_ID, city, NULL))
-				continue;
-			if (get_district_instance (tile) != NULL)
-				continue;
-
-			int yield = compute_city_tile_yield_sum (city, tx, ty);
-			if (yield < best_yield) {
-				best_yield = yield;
-				best_tile = tile;
-				*out_x = tx;
-				*out_y = ty;
-			}
+			current_ring = tri.current_ring;
+			best_tile = NULL;
+			best_yield = INT_MAX;
 		}
 
-		if (best_tile != NULL)
-			return best_tile;
+		Tile * tile = tri.tile;
+		if (is->current_config.enable_distribution_hub_districts) {
+			int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
+			if (covered > 0)
+				continue;
+		}
+
+		if (! tile_suitable_for_district (tile, NEIGHBORHOOD_DISTRICT_ID, city, NULL))
+			continue;
+		if (get_district_instance (tile) != NULL)
+			continue;
+
+		int yield = compute_city_tile_yield_sum (city, tri.tile_x, tri.tile_y);
+		if (yield < best_yield) {
+			best_yield = yield;
+			best_tile = tile;
+			best_x = tri.tile_x;
+			best_y = tri.tile_y;
+		}
+	}
+
+	if (best_tile != NULL) {
+		*out_x = best_x;
+		*out_y = best_y;
+		return best_tile;
 	}
 
 	return NULL;
@@ -8145,55 +8218,57 @@ find_tile_for_port_district (City * city, int * out_x, int * out_y)
 	for (int r = 1; r <= city_work_radius; r++)
 		ring_order[ring_count++] = r;
 
-	for (int r_idx = 0; r_idx < ring_count; r_idx++) {
-		int ring = ring_order[r_idx];
-		int start_ni = workable_tile_counts[ring - 1];
-		int end_ni = workable_tile_counts[ring];
+	Tile * best_tile = NULL;
+	int best_yield = INT_MAX;
+	int best_x = -1, best_y = -1;
+	int current_ring = -1;
 
-		Tile * best_tile = NULL;
-		int best_yield = INT_MAX;
-
-		for (int ni = start_ni; ni < end_ni; ni++) {
-			int dx, dy;
-			patch_ni_to_diff_for_work_area (ni, &dx, &dy);
-			int tx = city_x + dx;
-			int ty = city_y + dy;
-			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
-			Tile * tile = tile_at (tx, ty);
-
-			if ((tile == NULL) || (tile == p_null_tile))
-				continue;
-			if (is->current_config.enable_distribution_hub_districts) {
-				int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
-				if (covered > 0)
-					continue;
+	FOR_TILE_RINGS_AROUND (tri, city_x, city_y, ring_order, ring_count) {
+		if (tri.current_ring != current_ring) {
+			if (best_tile != NULL) {
+				*out_x = best_x;
+				*out_y = best_y;
+				return best_tile;
 			}
-
-			if (! tile_suitable_for_district (tile, PORT_DISTRICT_ID, city, NULL))
-				continue;
-			if (get_district_instance (tile) != NULL)
-				continue;
-			if (! tile->vtable->m35_Check_Is_Water (tile))
-				continue;
-
-			int continent_id = tile->vtable->m46_Get_ContinentID (tile);
-			if ((continent_id < 0) || (continent_id >= p_bic_data->Map.Continent_Count))
-				continue;
-			Continent * continent = &p_bic_data->Map.Continents[continent_id];
-			if (continent->Body.TileCount < threshold_for_body_of_water)
-				continue;
-
-			int yield = compute_city_tile_yield_sum (city, tx, ty);
-			if (yield < best_yield) {
-				best_yield = yield;
-				best_tile = tile;
-				*out_x = tx;
-				*out_y = ty;
-			}
+			current_ring = tri.current_ring;
+			best_tile = NULL;
+			best_yield = INT_MAX;
 		}
 
-		if (best_tile != NULL)
-			return best_tile;
+		Tile * tile = tri.tile;
+		if (is->current_config.enable_distribution_hub_districts) {
+			int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
+			if (covered > 0)
+				continue;
+		}
+
+		if (! tile_suitable_for_district (tile, PORT_DISTRICT_ID, city, NULL))
+			continue;
+		if (get_district_instance (tile) != NULL)
+			continue;
+		if (! tile->vtable->m35_Check_Is_Water (tile))
+			continue;
+
+		int continent_id = tile->vtable->m46_Get_ContinentID (tile);
+		if ((continent_id < 0) || (continent_id >= p_bic_data->Map.Continent_Count))
+			continue;
+		Continent * continent = &p_bic_data->Map.Continents[continent_id];
+		if (continent->Body.TileCount < threshold_for_body_of_water)
+			continue;
+
+		int yield = compute_city_tile_yield_sum (city, tri.tile_x, tri.tile_y);
+		if (yield < best_yield) {
+			best_yield = yield;
+			best_tile = tile;
+			best_x = tri.tile_x;
+			best_y = tri.tile_y;
+		}
+	}
+
+	if (best_tile != NULL) {
+		*out_x = best_x;
+		*out_y = best_y;
+		return best_tile;
 	}
 
 	return NULL;
@@ -8235,40 +8310,42 @@ find_tile_for_wonder_district (City * city, int * out_x, int * out_y)
 		ring_order[ring_count++] = r;
 	ring_order[ring_count++] = 1;
 
-	for (int r_idx = 0; r_idx < ring_count; r_idx++) {
-		int ring = ring_order[r_idx];
-		int start_ni = workable_tile_counts[ring - 1];
-		int end_ni = workable_tile_counts[ring];
+	Tile * best_tile = NULL;
+	int best_yield = INT_MAX;
+	int best_x = -1, best_y = -1;
+	int current_ring = -1;
 
-		Tile * best_tile = NULL;
-		int best_yield = INT_MAX;
-
-		for (int ni = start_ni; ni < end_ni; ni++) {
-			int dx, dy;
-			patch_ni_to_diff_for_work_area (ni, &dx, &dy);
-			int tx = (city_x + dx) & 0xFF;
-			int ty = (city_y + dy) & 0xFF;
-			Tile * tile = tile_at (tx, ty);
-
-			if ((tile == NULL) || (tile == p_null_tile))
-				continue;
-
-			if (! tile_suitable_for_district (tile, WONDER_DISTRICT_ID, city, NULL))
-				continue;
-			if (! wonder_is_buildable_on_tile (tile, target_improv_id))
-				continue;
-
-			int yield = compute_city_tile_yield_sum (city, tx, ty);
-			if (yield < best_yield && ! is_tile_earmarked_for_district (tx, ty)) {
-				best_yield = yield;
-				best_tile = tile;
-				*out_x = tx;
-				*out_y = ty;
+	FOR_TILE_RINGS_AROUND (tri, city_x, city_y, ring_order, ring_count) {
+		if (tri.current_ring != current_ring) {
+			if (best_tile != NULL) {
+				*out_x = best_x;
+				*out_y = best_y;
+				return best_tile;
 			}
+			current_ring = tri.current_ring;
+			best_tile = NULL;
+			best_yield = INT_MAX;
 		}
 
-		if (best_tile != NULL)
-			return best_tile;
+		Tile * tile = tri.tile;
+		if (! tile_suitable_for_district (tile, WONDER_DISTRICT_ID, city, NULL))
+			continue;
+		if (! wonder_is_buildable_on_tile (tile, target_improv_id))
+			continue;
+
+		int yield = compute_city_tile_yield_sum (city, tri.tile_x, tri.tile_y);
+		if (yield < best_yield && (! is_tile_earmarked_for_district (tri.tile_x, tri.tile_y))) {
+			best_yield = yield;
+			best_tile = tile;
+			best_x = tri.tile_x;
+			best_y = tri.tile_y;
+		}
+	}
+
+	if (best_tile != NULL) {
+		*out_x = best_x;
+		*out_y = best_y;
+		return best_tile;
 	}
 
 	return NULL;
@@ -8420,45 +8497,48 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 		ring_order[ring_count++] = r;
 	ring_order[ring_count++] = 1;
 
-	for (int r_idx = 0; r_idx < ring_count; r_idx++) {
-		int ring = ring_order[r_idx];
-		int start_ni = workable_tile_counts[ring - 1];
-		int end_ni = workable_tile_counts[ring];
+	Tile * best_tile = NULL;
+	int best_yield = INT_MAX;
+	int best_x = -1, best_y = -1;
+	int current_ring = -1;
 
-		Tile * best_tile = NULL;
-		int best_yield = INT_MAX;
-
-		for (int ni = start_ni; ni < end_ni; ni++) {
-			int dx, dy;
-			patch_ni_to_diff_for_work_area (ni, &dx, &dy);
-			int tx = (city_x + dx) & 0xFF;
-			int ty = (city_y + dy) & 0xFF;
-			Tile * tile = tile_at (tx, ty);
-
-			if ((tile == NULL) || (tile == p_null_tile))
-				continue;
-			if (is->current_config.enable_distribution_hub_districts) {
-				int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
-				if (covered > 0)
-					continue;
+	FOR_TILE_RINGS_AROUND (tri, city_x, city_y, ring_order, ring_count) {
+		if (tri.current_ring != current_ring) {
+			if (best_tile != NULL) {
+				*out_x = best_x;
+				*out_y = best_y;
+				return best_tile;
 			}
-
-			if (! tile_suitable_for_district (tile, district_id, city, NULL))
-				continue;
-			if (get_district_instance (tile) != NULL)
-				continue;
-
-			int yield = compute_city_tile_yield_sum (city, tx, ty);
-			if (yield < best_yield && ! is_tile_earmarked_for_district (tx, ty)) {
-				best_yield = yield;
-				best_tile = tile;
-				*out_x = tx;
-				*out_y = ty;
-			}
+			current_ring = tri.current_ring;
+			best_tile = NULL;
+			best_yield = INT_MAX;
 		}
 
-		if (best_tile != NULL)
-			return best_tile;
+		Tile * tile = tri.tile;
+		if (is->current_config.enable_distribution_hub_districts) {
+			int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
+			if (covered > 0)
+				continue;
+		}
+
+		if (! tile_suitable_for_district (tile, district_id, city, NULL))
+			continue;
+		if (get_district_instance (tile) != NULL)
+			continue;
+
+		int yield = compute_city_tile_yield_sum (city, tri.tile_x, tri.tile_y);
+		if (yield < best_yield && (! is_tile_earmarked_for_district (tri.tile_x, tri.tile_y))) {
+			best_yield = yield;
+			best_tile = tile;
+			best_x = tri.tile_x;
+			best_y = tri.tile_y;
+		}
+	}
+
+	if (best_tile != NULL) {
+		*out_x = best_x;
+		*out_y = best_y;
+		return best_tile;
 	}
 
 	return NULL;
@@ -24446,50 +24526,31 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 
 	City * closest_city = NULL;
 	int closest_dx = 0, closest_dy = 0;
-	int city_work_radius = is->current_config.city_work_radius;
 
-	for (int ring = 1; (ring <= city_work_radius) && (closest_city == NULL); ring++) {
-		int start_ni = workable_tile_counts[ring - 1];
-		int end_ni = workable_tile_counts[ring];
+	FOR_CITIES_AROUND (wai, tile_x, tile_y) {
+		City * city = wai.city;
+		int ndx = city->Body.X - tile_x;
+		int ndy = city->Body.Y - tile_y;
 
-		for (int ni = start_ni; ni < end_ni; ni++) {
-			int dx, dy;
-			patch_ni_to_diff_for_work_area (ni, &dx, &dy);
-			int tx = tile_x + dx;
-			int ty = tile_y + dy;
-			wrap_tile_coords (map, &tx, &ty);
-
-			Tile * t = tile_at (tx, ty);
-			if ((t == NULL) || (t == p_null_tile))
-				continue;
-
-			int city_id = t->vtable->m45_Get_City_ID (t);
-			City * city = get_city_ptr (city_id);
-			if ((city != NULL) && (city->Body.CivID == owner_id)) {
-				int ndx = city->Body.X - tile_x;
-				int ndy = city->Body.Y - tile_y;
-
-				if (map->Flags & 1) {
-					int half_width = map->Width / 2;
-					if (ndx > half_width)
-						ndx -= map->Width;
-					else if (ndx < -half_width)
-						ndx += map->Width;
-				}
-				if (map->Flags & 2) {
-					int half_height = map->Height / 2;
-					if (ndy > half_height)
-						ndy -= map->Height;
-					else if (ndy < -half_height)
-						ndy += map->Height;
-				}
-
-				closest_city = city;
-				closest_dx = ndx;
-				closest_dy = ndy;
-				break;
-			}
+		if (map->Flags & 1) {
+			int half_width = map->Width / 2;
+			if (ndx > half_width)
+				ndx -= map->Width;
+			else if (ndx < -half_width)
+				ndx += map->Width;
 		}
+		if (map->Flags & 2) {
+			int half_height = map->Height / 2;
+			if (ndy > half_height)
+				ndy -= map->Height;
+			else if (ndy < -half_height)
+				ndy += map->Height;
+		}
+
+		closest_city = city;
+		closest_dx = ndx;
+		closest_dy = ndy;
+		break;
 	}
 
 	if (closest_city == NULL)
