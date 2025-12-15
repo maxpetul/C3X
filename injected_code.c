@@ -3570,6 +3570,15 @@ natural_wonder_terrain_matches (struct natural_wonder_district_config const * cf
 	if (! tile_matches_square_type (tile, cfg->terrain_type))
 		return false;
 
+	if (cfg->terrain_type == SQ_Coast) {
+		int continent_id = tile->vtable->m46_Get_ContinentID (tile);
+		if ((continent_id < 0) || (continent_id >= p_bic_data->Map.Continent_Count))
+			return false;
+		Continent * continent = &p_bic_data->Map.Continents[continent_id];
+		if ((continent == NULL) || (continent->Body.TileCount <= 5))
+			return false;
+	}
+
 	if (natural_wonder_is_coastal_island (tile, tile_x, tile_y))
 		return false;
 
@@ -7245,8 +7254,8 @@ place_natural_wonders_on_map (void)
 				(is->natural_wonder_configs[ni].adjacency_dir == DIR_ZERO);
 			int adjacency_count = -1;
 			if (adjacency_bonus_active)
-				adjacency_count = count_diagonal_adjacent_tiles_of_type (cand->x, cand->y,
-											  is->natural_wonder_configs[ni].adjacent_to);
+				adjacency_count = count_adjacent_tiles_of_type (cand->x, cand->y,
+										is->natural_wonder_configs[ni].adjacent_to);
 
 			int same_type_count = count_adjacent_tiles_of_type (cand->x, cand->y,
 									      is->natural_wonder_configs[ni].terrain_type);
