@@ -1,4 +1,3 @@
-- Fix no-escape LT rule not applying when an LT is destroyed by lethal ZoC, by a nuclear explosion, or by the destruction of a larger transport carrying it
 
 - Add some options to make land transports viable, controlled by land_transport_rules setting
   - LTs may be loaded into naval transports
@@ -8,11 +7,23 @@
 - Add resource generation settings
   - allow_adjacent_resources_of_different_types relaxes a rule preventing resources from appearing next to others of a different type
   - luxury_randomized_appearance_rate_percent controls the overall appearance rate for luxuries that do not have a fixed rate set
-  - tiles_per_non_luxury_resource controls tne overall appearance rate of bonus resources
+  - tiles_per_non_luxury_resource controls the overall appearance rate of bonus resources
+- Add option allow_sale_of_small_wonders
 - Add option allow_unload_from_army
 - Option to prevent land anti-air units from intercepting overflying aircraft while they're loaded in a naval transport
   - Named no_land_anti_air_from_inside_naval_transport
 - Option to prevent units from being enslaved after being destroyed by lethal bombard named prevent_enslaving_by_bombardment
+- Polish districts
+  - Prevent districts from being built on natural wonders (regression bug)
+  - Fix minimum tile count distance between natural wonders
+  - Ensure cities receive natural wonder yields even if districts are disabled
+  - Ensure district/natural wonder yields are shown immediately upon founding a city
+  - Prevent founding of cities on natural wonders
+  - Destroy small wonders in conquered cities if the conqueror already possesses the small wonder
+  - Add config option for 'neighborhood needed' message shown (neighborhood_needed_message_frequency)
+  - Show message when a city receives a building from other city by mutual district (configurable by show_message_when_building_received_by_mutual_district)
+  - Cities that receive a building they are already currently building change production to defensive unit (to avoid wasting shields)
+  - Hide settlers' gray "city too close to found" button if on a natural wonder
 
 * RELEASE 26 PREVIEW 2
 - Allow city work areas to vary based on their buildings
