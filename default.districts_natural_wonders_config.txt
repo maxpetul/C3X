@@ -174,12 +174,26 @@ shield_bonus    = 0
 happiness_bonus = 1
 
 #Wonder
-name            = Eyjafjallajökull
+name            = Eyjafjallajokull
 terrain_type    = tundra
 adjacent_to     = tundra
 img_path        = NaturalWonders.pcx
 img_row         = 3
 img_column      = 0
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
+
+#Wonder
+name            = Ha Long Bay
+terrain_type    = sea
+adjacent_to     = coast
+img_path        = NaturalWonders.pcx
+img_row         = 3
+img_column      = 1
 culture_bonus   = 2
 science_bonus   = 1
 food_bonus      = 0
