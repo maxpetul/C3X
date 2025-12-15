@@ -214,3 +214,17 @@ food_bonus      = 0
 gold_bonus      = 0
 shield_bonus    = 0
 happiness_bonus = 1
+
+#Wonder
+name            = Kalaallit Nunaat Cliffs
+terrain_type    = tundra
+adjacent_to     = coast
+img_path        = NaturalWonders.pcx
+img_row         = 3
+img_column      = 3
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1

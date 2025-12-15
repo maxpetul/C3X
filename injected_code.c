@@ -3582,8 +3582,10 @@ natural_wonder_terrain_matches (struct natural_wonder_district_config const * cf
 	if (natural_wonder_is_coastal_island (tile, tile_x, tile_y))
 		return false;
 
-	if ((cfg->adjacent_to != SQ_Coast) &&
-	    (count_adjacent_tiles_of_type (tile_x, tile_y, SQ_Coast) > 0))
+	if ((cfg->adjacent_to != SQ_Coast) && (count_adjacent_tiles_of_type (tile_x, tile_y, SQ_Coast) > 0))
+		return false;
+
+	if ((cfg->adjacent_to == SQ_Coast) && (count_adjacent_tiles_of_type (tile_x, tile_y, SQ_Coast) > 4))
 		return false;
 
 	if (! natural_wonder_adjacent_requirement_met (cfg, tile, tile_x, tile_y))
