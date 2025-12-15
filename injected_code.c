@@ -24828,18 +24828,13 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 		return;
 	}
 
+	PCX_Image * canvas = (PCX_Image *)map_renderer;
 	int district_id = inst->district_type;
 	if (is->dc_img_state == IS_UNINITED)
         init_district_images ();
 
 	if (is->dc_img_state != IS_OK)
 		return;
-
-	/*
-	if (is->current_config.show_detailed_tile_info) {
-		tile = tile_at (is->viewing_tile_info_x, is->viewing_tile_info_y);
-	}
-	*/
 
 	// Natural Wonder
 	if (district_id == NATURAL_WONDER_DISTRICT_ID) {
@@ -24851,7 +24846,12 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 			Sprite * nsprite = &is->natural_wonder_img_sets[natural_id].img;
 			int y_offset = 88 - 64; // Height of wonder img minus height of tile
 			int draw_y = pixel_y - y_offset;
-			patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+
+			if (is->current_config.show_detailed_tile_info) {
+				Sprite_draw (nsprite, __, canvas, pixel_x, draw_y, NULL);
+			} else {
+				patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+			}
 		}
 		return;
 	}
@@ -24885,8 +24885,13 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 			Sprite * abandoned_sprite = &is->abandoned_district_img;
 			if (tile->vtable->m35_Check_Is_Water (tile) && is->abandoned_maritime_district_img.vtable != NULL)
 				abandoned_sprite = &is->abandoned_maritime_district_img;
-			if (abandoned_sprite->vtable != NULL)
-				patch_Sprite_draw_on_map (abandoned_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+			if (abandoned_sprite->vtable != NULL) {
+				if (is->current_config.show_detailed_tile_info) {
+					Sprite_draw (abandoned_sprite, __, canvas, pixel_x, pixel_y, NULL);
+				} else {
+					patch_Sprite_draw_on_map (abandoned_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+				}
+			}
 			return;
 		}
 
@@ -24927,7 +24932,11 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alt_dir_image (tile_x, tile_y, territory_owner_id);
 					Sprite * wsprite = (use_alt_dir && (set->alt_dir_img.vtable != NULL)) ? &set->alt_dir_img : &set->img;
 
-					patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+					if (is->current_config.show_detailed_tile_info) {
+						Sprite_draw (wsprite, __, canvas, pixel_x, pixel_y, NULL);
+					} else {
+						patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+					}
 					return;
 
 				// Under construction
@@ -24939,7 +24948,12 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 					struct wonder_district_image_set * set = &is->wonder_district_img_sets[construct_windex];
 					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alt_dir_image (tile_x, tile_y, territory_owner_id);
                     Sprite * csprite = (use_alt_dir && (set->alt_dir_construct_img.vtable != NULL)) ? &set->alt_dir_construct_img : &set->construct_img;
-                    patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+
+					if (is->current_config.show_detailed_tile_info) {
+						Sprite_draw (csprite, __, canvas, pixel_x, pixel_y, NULL);
+					} else {
+						patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+					}
 					return;
                 }
                 break;
@@ -24959,7 +24973,12 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 		}
 
 		district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
-		patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+
+		if (is->current_config.show_detailed_tile_info) {
+			Sprite_draw (district_sprite, __, canvas, pixel_x, pixel_y, NULL);
+		} else {
+			patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+		}
 		return;
 	}
 
