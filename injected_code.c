@@ -6552,6 +6552,7 @@ add_natural_wonder_from_definition (struct parsed_natural_wonder_definition * de
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
 	new_cfg.gold_bonus = def->has_gold_bonus ? def->gold_bonus : 0;
 	new_cfg.shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
+	new_cfg.happiness_bonus = def->has_happiness_bonus ? def->happiness_bonus : 0;
 
 	if (has_existing) {
 		struct natural_wonder_district_config * cfg = &is->natural_wonder_configs[existing_index];
@@ -23160,9 +23161,9 @@ init_district_icons ()
 	Sprite_construct (&is->district_food_eaten_icon);
 	Sprite_slice_pcx (&is->district_food_eaten_icon, __, &pcx, 1 + 7*31, 1, 30, 30, 1, 1);
 
-	// Extract happiness icon (index 13: x = 1 + 13*31 = 404, width 30)
+	// Extract happiness icon (index 12: x = 1 + 12*31 = 373, width 30)
 	Sprite_construct (&is->district_happiness_icon);
-	Sprite_slice_pcx (&is->district_happiness_icon, __, &pcx, 1 + 13*31, 1, 30, 30, 1, 1);
+	Sprite_slice_pcx (&is->district_happiness_icon, __, &pcx, 1 + 12*31, 1, 30, 30, 1, 1);
 
 	// Extract small shield icon (index 13: x = 1 + 13*31 = 404, width 30)
 	Sprite_construct (&is->district_shield_icon_small);
