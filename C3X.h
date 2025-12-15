@@ -572,7 +572,6 @@ struct district_config {
 	bool vary_img_by_era;
 	bool vary_img_by_culture;
 	bool is_dynamic;
-	bool is_maritime;
 	bool align_to_coast;
 	int dependent_improvement_count;
 	int img_path_count;
@@ -585,7 +584,6 @@ struct district_config {
 	int gold_bonus;
 	int shield_bonus;
 	int happiness_bonus;
-	int unhappiness_bonus;
 	int defense_bonus_percent;
 };
 
@@ -597,15 +595,13 @@ struct wonder_district_config {
 		img_column,
 		img_construct_row,
 		img_construct_column,
-
-		// Maritime wonders have a set of alternative images for facing east 
-		maritime_alt_img_row,
-		maritime_alt_img_column,
-		maritime_alt_img_construct_row,
-		maritime_alt_img_construct_column;
+		img_alt_dir_construct_row,
+		img_alt_dir_construct_column,
+		img_alt_dir_row,
+		img_alt_dir_column;
 	unsigned int buildable_square_types_mask;
+	bool enable_img_alt_dir;
 	bool is_dynamic;
-	bool is_maritime;
 };
 
 enum square_type_extras {
@@ -631,7 +627,6 @@ struct natural_wonder_district_config {
 	int gold_bonus;
 	int shield_bonus;
 	int happiness_bonus;
-	int unhappiness_bonus;
 	bool is_dynamic;
 };
 
@@ -658,7 +653,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 5, .max_building_index = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
-		.culture_bonus = 1, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .happiness_bonus = 0, .unhappiness_bonus = 0, .defense_bonus_percent = 25
+		.culture_bonus = 1, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 25
 		
 	},
 	{
@@ -667,7 +662,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.img_paths = {"WonderDistrict.pcx"},
 		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Coast)),
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .unhappiness_bonus = 0, .defense_bonus_percent = 0
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0
 		
 	},
 	{
@@ -676,7 +671,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.img_paths = {"DistributionHub.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .unhappiness_bonus = 0, .defense_bonus_percent = 0
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0
 		
 	},
 	{
@@ -685,7 +680,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.img_paths = {"Aerodrome.pcx"}, .dependent_improvements = {"Airport"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 1, .max_building_index = 1, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .unhappiness_bonus = 0, .defense_bonus_percent = 0	
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0	
 	},
 	{
 		.command = -1, .name = "Natural Wonder", .tooltip = NULL,
@@ -693,15 +688,15 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.img_paths = {0},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 0, .max_building_index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .unhappiness_bonus = 0, .defense_bonus_percent = 0
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0
 	},
 	{
 		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port",
-		.advance_prereq = "Map Making", .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 2, .is_maritime = true,
+		.advance_prereq = "Map Making", .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 2, .align_to_coast = true,
 		.img_paths = {"Port_NW.pcx", "Port_NE.pcx", "Port_SE.pcx", "Port_SW.pcx"}, .dependent_improvements = {"Harbor", "Commercial Dock"},
 		.buildable_square_types_mask =  (1 << SQ_Coast),
 		.img_path_count = 4, .max_building_index = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .align_to_coast = true,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .unhappiness_bonus = 0, .defense_bonus_percent = 0
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0
 	}
 };
 
@@ -728,7 +723,6 @@ struct parsed_district_definition {
 	int gold_bonus;
 	int shield_bonus;
 	int happiness_bonus;
-	int unhappiness_bonus;
 	unsigned int buildable_square_types_mask;
 	bool has_name;
 	bool has_tooltip;
@@ -748,7 +742,6 @@ struct parsed_district_definition {
 	bool has_gold_bonus;
 	bool has_shield_bonus;
 	bool has_happiness_bonus;
-	bool has_unhappiness_bonus;
 	bool has_buildable_on;
 	bool has_resource_prereq;
 	bool has_resource_prereq_on_tile;
@@ -761,6 +754,11 @@ struct parsed_wonder_definition {
 	int img_column;
 	int img_construct_row;
 	int img_construct_column;
+	int img_alt_dir_construct_row;
+	int img_alt_dir_construct_column;
+	int img_alt_dir_row;
+	int img_alt_dir_column;
+	bool enable_img_alt_dir;
 	unsigned int buildable_square_types_mask;
 	bool has_name;
 	bool has_img_path;
@@ -768,6 +766,11 @@ struct parsed_wonder_definition {
 	bool has_img_column;
 	bool has_img_construct_row;
 	bool has_img_construct_column;
+	bool has_img_alt_dir_construct_row;
+	bool has_img_alt_dir_construct_column;
+	bool has_img_alt_dir_row;
+	bool has_img_alt_dir_column;
+	bool has_enable_img_alt_dir;
 	bool has_buildable_on;
 };
 
@@ -785,7 +788,6 @@ struct parsed_natural_wonder_definition {
 	int gold_bonus;
 	int shield_bonus;
 	int happiness_bonus;
-	int unhappiness_bonus;
 	bool has_name;
 	bool has_img_path;
 	bool has_img_row;
@@ -799,7 +801,6 @@ struct parsed_natural_wonder_definition {
 	bool has_gold_bonus;
 	bool has_shield_bonus;
 	bool has_happiness_bonus;
-	bool has_unhappiness_bonus;
 };
 
 struct scenario_district_entry {
@@ -1459,6 +1460,8 @@ struct injected_state {
 	struct wonder_district_image_set {
 		Sprite img;
 		Sprite construct_img;
+		Sprite alt_dir_img;
+		Sprite alt_dir_construct_img;
 	} wonder_district_img_sets[MAX_WONDER_DISTRICT_TYPES];
 
 	struct natural_wonder_district_image_set {

@@ -5978,6 +5978,11 @@ add_dynamic_wonder_from_definition (struct parsed_wonder_definition * def, int s
 	new_cfg.img_column = def->img_column;
 	new_cfg.img_construct_row = def->img_construct_row;
 	new_cfg.img_construct_column = def->img_construct_column;
+	new_cfg.img_alt_dir_construct_row = def->img_alt_dir_construct_row;
+	new_cfg.img_alt_dir_construct_column = def->img_alt_dir_construct_column;
+	new_cfg.img_alt_dir_row = def->img_alt_dir_row;
+	new_cfg.img_alt_dir_column = def->img_alt_dir_column;
+	new_cfg.enable_img_alt_dir = def->enable_img_alt_dir;
 	new_cfg.buildable_square_types_mask = def->has_buildable_on ? def->buildable_square_types_mask : district_default_buildable_mask ();
 
 	if (existing_index >= 0) {
@@ -6040,6 +6045,40 @@ finalize_parsed_wonder_definition (struct parsed_wonder_definition * def,
 			struct error_line * err = add_error_line (parse_errors);
 			snprintf (err->text, sizeof err->text, "^  Line %d: img_construct_column (value is required)", section_start_line);
 			err->text[(sizeof err->text) - 1] = '\0';
+		}
+	}
+	if (def->enable_img_alt_dir) {
+		if (! def->has_img_alt_dir_row) {
+			ok = false;
+			if (parse_errors != NULL) {
+				struct error_line * err = add_error_line (parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: img_alt_dir_row (value is required when enable_img_alt_dir is set)", section_start_line);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+		if (! def->has_img_alt_dir_column) {
+			ok = false;
+			if (parse_errors != NULL) {
+				struct error_line * err = add_error_line (parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: img_alt_dir_column (value is required when enable_img_alt_dir is set)", section_start_line);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+		if (! def->has_img_alt_dir_construct_row) {
+			ok = false;
+			if (parse_errors != NULL) {
+				struct error_line * err = add_error_line (parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: img_alt_dir_construct_row (value is required when enable_img_alt_dir is set)", section_start_line);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+		if (! def->has_img_alt_dir_construct_column) {
+			ok = false;
+			if (parse_errors != NULL) {
+				struct error_line * err = add_error_line (parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: img_alt_dir_construct_column (value is required when enable_img_alt_dir is set)", section_start_line);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
 		}
 	}
 
@@ -6138,6 +6177,61 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_img_construct_column = true;
 		} else {
 			def->has_img_construct_column = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "img_alt_dir_construct_row")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->img_alt_dir_construct_row = ival;
+			def->has_img_alt_dir_construct_row = true;
+		} else {
+			def->has_img_alt_dir_construct_row = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "img_alt_dir_construct_column")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->img_alt_dir_construct_column = ival;
+			def->has_img_alt_dir_construct_column = true;
+		} else {
+			def->has_img_alt_dir_construct_column = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "img_alt_dir_row")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->img_alt_dir_row = ival;
+			def->has_img_alt_dir_row = true;
+		} else {
+			def->has_img_alt_dir_row = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "img_alt_dir_column")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->img_alt_dir_column = ival;
+			def->has_img_alt_dir_column = true;
+		} else {
+			def->has_img_alt_dir_column = false;
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "enable_img_alt_dir")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->enable_img_alt_dir = (ival != 0);
+			def->has_enable_img_alt_dir = true;
+		} else {
+			def->has_enable_img_alt_dir = false;
 			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
 		}
 
@@ -7640,6 +7734,10 @@ deinit_district_images (void)
 				set->img.vtable->destruct (&set->img, __, 0);
 			if (set->construct_img.vtable != NULL)
 				set->construct_img.vtable->destruct (&set->construct_img, __, 0);
+			if (set->alt_dir_img.vtable != NULL)
+				set->alt_dir_img.vtable->destruct (&set->alt_dir_img, __, 0);
+			if (set->alt_dir_construct_img.vtable != NULL)
+				set->alt_dir_construct_img.vtable->destruct (&set->alt_dir_construct_img, __, 0);
 		}
 
 		for (int ni = 0; ni < MAX_NATURAL_WONDER_DISTRICT_TYPES; ni++) {
@@ -10970,7 +11068,8 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 			bool pcx_loaded = false;
 
 			for (int wi = 0; wi < is->wonder_district_count; wi++) {
-				char const * img_path = is->wonder_district_configs[wi].img_path;
+				struct wonder_district_config * cfg = &is->wonder_district_configs[wi];
+				char const * img_path = cfg->img_path;
 				if (img_path == NULL)
 					img_path = "Wonders.pcx";
 
@@ -10993,15 +11092,29 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 				if (! pcx_loaded)
 					continue;
 
-				Sprite_construct (&this->Wonder_District_Images[wi].img);
-				int x = 128 * is->wonder_district_configs[wi].img_column;
-				int y =  64 * is->wonder_district_configs[wi].img_row;
-				Sprite_slice_pcx (&this->Wonder_District_Images[wi].img, __, &wpcx, x, y, 128, 64, 1, 1);
+				struct wonder_district_image_set * set = &this->Wonder_District_Images[wi];
 
-				Sprite_construct (&this->Wonder_District_Images[wi].construct_img);
-				int cx = 128 * is->wonder_district_configs[wi].img_construct_column;
-				int cy =  64 * is->wonder_district_configs[wi].img_construct_row;
-				Sprite_slice_pcx (&this->Wonder_District_Images[wi].construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
+				Sprite_construct (&set->img);
+				int x = 128 * cfg->img_column;
+				int y =  64 * cfg->img_row;
+				Sprite_slice_pcx (&set->img, __, &wpcx, x, y, 128, 64, 1, 1);
+
+				Sprite_construct (&set->construct_img);
+				int cx = 128 * cfg->img_construct_column;
+				int cy =  64 * cfg->img_construct_row;
+				Sprite_slice_pcx (&set->construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
+
+				if (cfg->enable_img_alt_dir) {
+					Sprite_construct (&set->alt_dir_img);
+					int ax = 128 * cfg->img_alt_dir_column;
+					int ay =  64 * cfg->img_alt_dir_row;
+					Sprite_slice_pcx (&set->alt_dir_img, __, &wpcx, ax, ay, 128, 64, 1, 1);
+
+					Sprite_construct (&set->alt_dir_construct_img);
+					int acx = 128 * cfg->img_alt_dir_construct_column;
+					int acy =  64 * cfg->img_alt_dir_construct_row;
+					Sprite_slice_pcx (&set->alt_dir_construct_img, __, &wpcx, acx, acy, 128, 64, 1, 1);
+				}
 			}
 
 			if (pcx_loaded)
@@ -11202,6 +11315,18 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 					Sprite * base_construct = &is->wonder_district_img_sets[wi].construct_img;
 					Sprite * proxy_construct = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].construct_img;
 					insert_sprite_proxy (base_construct, proxy_construct, h);
+
+					if (is->wonder_district_img_sets[wi].alt_dir_img.vtable != NULL) {
+						Sprite * base_alt = &is->wonder_district_img_sets[wi].alt_dir_img;
+						Sprite * proxy_alt = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].alt_dir_img;
+						insert_sprite_proxy (base_alt, proxy_alt, h);
+					}
+
+					if (is->wonder_district_img_sets[wi].alt_dir_construct_img.vtable != NULL) {
+						Sprite * base_alt_construct = &is->wonder_district_img_sets[wi].alt_dir_construct_img;
+						Sprite * proxy_alt_construct = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].alt_dir_construct_img;
+						insert_sprite_proxy (base_alt_construct, proxy_alt_construct, h);
+					}
 				}
 			}
 		}
@@ -24148,7 +24273,8 @@ init_district_images ()
 		bool pcx_loaded = false;
 
 		for (int wi = 0; wi < is->wonder_district_count; wi++) {
-			char const * img_path = is->wonder_district_configs[wi].img_path;
+			struct wonder_district_config * cfg = &is->wonder_district_configs[wi];
+			char const * img_path = cfg->img_path;
 			if (img_path == NULL)
 				img_path = "Wonders.pcx";
 
@@ -24175,15 +24301,29 @@ init_district_images ()
 			if (! pcx_loaded)
 				continue;
 
-			Sprite_construct (&is->wonder_district_img_sets[wi].img);
-			int x = 128 * is->wonder_district_configs[wi].img_column;
-			int y =  64 * is->wonder_district_configs[wi].img_row;
-			Sprite_slice_pcx (&is->wonder_district_img_sets[wi].img, __, &wpcx, x, y, 128, 64, 1, 1);
+			struct wonder_district_image_set * set = &is->wonder_district_img_sets[wi];
 
-			Sprite_construct (&is->wonder_district_img_sets[wi].construct_img);
-			int cx = 128 * is->wonder_district_configs[wi].img_construct_column;
-			int cy =  64 * is->wonder_district_configs[wi].img_construct_row;
-			Sprite_slice_pcx (&is->wonder_district_img_sets[wi].construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
+			Sprite_construct (&set->img);
+			int x = 128 * cfg->img_column;
+			int y =  64 * cfg->img_row;
+			Sprite_slice_pcx (&set->img, __, &wpcx, x, y, 128, 64, 1, 1);
+
+			Sprite_construct (&set->construct_img);
+			int cx = 128 * cfg->img_construct_column;
+			int cy =  64 * cfg->img_construct_row;
+			Sprite_slice_pcx (&set->construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
+
+			if (cfg->enable_img_alt_dir) {
+				Sprite_construct (&set->alt_dir_img);
+				int ax = 128 * cfg->img_alt_dir_column;
+				int ay =  64 * cfg->img_alt_dir_row;
+				Sprite_slice_pcx (&set->alt_dir_img, __, &wpcx, ax, ay, 128, 64, 1, 1);
+
+				Sprite_construct (&set->alt_dir_construct_img);
+				int acx = 128 * cfg->img_alt_dir_construct_column;
+				int acy =  64 * cfg->img_alt_dir_construct_row;
+				Sprite_slice_pcx (&set->alt_dir_construct_img, __, &wpcx, acx, acy, 128, 64, 1, 1);
+			}
 		}
 
 		if (pcx_loaded)
@@ -24553,6 +24693,61 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 	else if (direct_diagonal && *out_variant == NW && anchor == DIR_SE) { *out_pixel_x +=6; *out_pixel_y += 6; }
 }
 
+bool
+wonder_should_use_alt_dir_image (int tile_x, int tile_y, int owner_id)
+{
+	if (owner_id <= 0)
+		return false;
+
+	// We only care about the nearest same-civ city in the work area around the tile.
+	// Assumes the base wonder art (img_row/column) faces west and the alt art faces east.
+	// To "face away" from the nearest city, we pick the alt art when that city lies to the west.
+	Tile * center = tile_at (tile_x, tile_y);
+	if ((center == NULL) || (center == p_null_tile))
+		return false;
+
+	Map * map = &p_bic_data->Map;
+	int best_dist = INT_MAX;
+	int best_dx = 0;
+
+	FOR_CITIES_AROUND (wai, tile_x, tile_y) {
+		City * city = wai.city;
+		if ((city == NULL) || (city->Body.CivID != owner_id))
+			continue;
+
+		int dx = city->Body.X - tile_x;
+		int dy = city->Body.Y - tile_y;
+
+		if (map->Flags & 1) {
+			int half_width = map->Width >> 1;
+			if (dx > half_width)
+				dx -= map->Width;
+			else if (dx < -half_width)
+				dx += map->Width;
+		}
+		if (map->Flags & 2) {
+			int half_height = map->Height >> 1;
+			if (dy > half_height)
+				dy -= map->Height;
+			else if (dy < -half_height)
+				dy += map->Height;
+		}
+
+		int dist = int_abs (dx) + int_abs (dy);
+		// Pick the closest city; if tied, favor the one with a clearer east/west offset so we know which way to face.
+		if ((dist < best_dist) ||
+		    ((dist == best_dist) && ((int_abs (dx) < int_abs (best_dx)) || (best_dx == 0)))) {
+			best_dist = dist;
+			best_dx = dx;
+		}
+	}
+
+	if ((best_dist == INT_MAX) || (best_dx == 0))
+		return false;
+
+	return best_dx < 0;
+}
+
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
@@ -24659,12 +24854,30 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 					return;
 
 				int construct_windex = -1;
+
+				// Completed wonder
                 if (info->state == WDS_COMPLETED) {
-                    Sprite * wsprite = &is->wonder_district_img_sets[info->wonder_index].img;
-                    patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-                    return;
+					int windex = info->wonder_index;
+					if ((windex < 0) || (windex >= is->wonder_district_count))
+						return;
+
+					struct wonder_district_config * wcfg   = &is->wonder_district_configs[windex];
+					struct wonder_district_image_set * set = &is->wonder_district_img_sets[windex];
+					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alt_dir_image (tile_x, tile_y, territory_owner_id);
+					Sprite * wsprite = (use_alt_dir && (set->alt_dir_img.vtable != NULL)) ? &set->alt_dir_img : &set->img;
+
+					patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+					return;
+
+				// Under construction
                 } else if (wonder_district_tile_under_construction (tile, tile_x, tile_y, &construct_windex) && (construct_windex >= 0)) {
-                    Sprite * csprite = &is->wonder_district_img_sets[construct_windex].construct_img;
+					if (construct_windex >= is->wonder_district_count)
+						return;
+
+					struct wonder_district_config * wcfg = &is->wonder_district_configs[construct_windex];
+					struct wonder_district_image_set * set = &is->wonder_district_img_sets[construct_windex];
+					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alt_dir_image (tile_x, tile_y, territory_owner_id);
+                    Sprite * csprite = (use_alt_dir && (set->alt_dir_construct_img.vtable != NULL)) ? &set->alt_dir_construct_img : &set->construct_img;
                     patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
 					return;
                 }
