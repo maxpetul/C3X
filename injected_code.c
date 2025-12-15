@@ -5350,6 +5350,8 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->vary_img_by_era = def->vary_img_by_era;
 	if (def->has_vary_img_by_culture)
 		cfg->vary_img_by_culture = def->vary_img_by_culture;
+	if (def->has_align_to_coast)
+		cfg->align_to_coast = def->align_to_coast;
 	if (def->has_btn_tile_sheet_column)
 		cfg->btn_tile_sheet_column = def->btn_tile_sheet_column;
 	if (def->has_btn_tile_sheet_row)
@@ -5481,6 +5483,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.allow_multiple = def->has_allow_multiple ? def->allow_multiple : false;
 	new_cfg.vary_img_by_era = def->has_vary_img_by_era ? def->vary_img_by_era : false;
 	new_cfg.vary_img_by_culture = def->has_vary_img_by_culture ? def->vary_img_by_culture : false;
+	new_cfg.align_to_coast = def->has_align_to_coast ? def->align_to_coast : false;
 	new_cfg.btn_tile_sheet_column = def->has_btn_tile_sheet_column ? def->btn_tile_sheet_column : 0;
 	new_cfg.btn_tile_sheet_row = def->has_btn_tile_sheet_row ? def->btn_tile_sheet_row : 0;
 	new_cfg.defense_bonus_percent = def->has_defense_bonus_percent ? def->defense_bonus_percent : 100;
@@ -5674,6 +5677,15 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		if (read_int (&val_slice, &ival)) {
 			def->vary_img_by_culture = (ival != 0);
 			def->has_vary_img_by_culture = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else if (slice_matches_str (key, "align_to_coast")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->align_to_coast = (ival != 0);
+			def->has_align_to_coast = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
 
@@ -24611,6 +24623,8 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                 variant = culture;
             if (cfg->vary_img_by_era)
                 era = leader->Era;
+			if (cfg->align_to_coast)
+				align_variant_and_pixel_offsets_with_coastline (tile, &variant, &pixel_x, &pixel_y);
         } else if (district_id != WONDER_DISTRICT_ID && district_id != NATURAL_WONDER_DISTRICT_ID) {
 			Sprite * abandoned_sprite = &is->abandoned_district_img;
 			if (tile->vtable->m35_Check_Is_Water (tile) && is->abandoned_maritime_district_img.vtable != NULL)
@@ -24654,13 +24668,8 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                     patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
 					return;
                 }
-				break;
-			}
-			case PORT_DISTRICT_ID:
-			{
-				align_variant_and_pixel_offsets_with_coastline (tile, &variant, &pixel_x, &pixel_y);
-				// Don't break, let fall through to default to count buildings
-			}
+                break;
+            }
             default:
             {
                 struct district_infos * info = &is->district_infos[district_id];

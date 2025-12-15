@@ -573,6 +573,7 @@ struct district_config {
 	bool vary_img_by_culture;
 	bool is_dynamic;
 	bool is_maritime;
+	bool align_to_coast;
 	int dependent_improvement_count;
 	int img_path_count;
 	int max_building_index;
@@ -699,7 +700,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereq = "Map Making", .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 2, .is_maritime = true,
 		.img_paths = {"Port_NW.pcx", "Port_NE.pcx", "Port_SE.pcx", "Port_SW.pcx"}, .dependent_improvements = {"Harbor", "Commercial Dock"},
 		.buildable_square_types_mask =  (1 << SQ_Coast),
-		.img_path_count = 4, .max_building_index = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
+		.img_path_count = 4, .max_building_index = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .align_to_coast = true,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .unhappiness_bonus = 0, .defense_bonus_percent = 0
 	}
 };
@@ -717,6 +718,7 @@ struct parsed_district_definition {
 	bool allow_multiple;
 	bool vary_img_by_era;
 	bool vary_img_by_culture;
+	bool align_to_coast;
 	int btn_tile_sheet_column;
 	int btn_tile_sheet_row;
 	int defense_bonus_percent;
@@ -736,6 +738,7 @@ struct parsed_district_definition {
 	bool has_allow_multiple;
 	bool has_vary_img_by_era;
 	bool has_vary_img_by_culture;
+	bool has_align_to_coast;
 	bool has_btn_tile_sheet_column;
 	bool has_btn_tile_sheet_row;
 	bool has_defense_bonus_percent;
