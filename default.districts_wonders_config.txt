@@ -1,3 +1,11 @@
+[======================================================================= NOTE =======================================================================]
+[Instead of editing this file, changes to the settings should be placed in either the scenario or user config files. The scenario config file must   ]
+[be named scenario.districts_wonders_config.txt and must be located in your scenario search folder. Of course it only applies if you are using a     ]
+[scenario. The user config file must be named user.districts_wonders_config.txt and located in the C3X folder, which is the folder where this file   ]
+[is. When creating scenario or user configs, note that all wonders defined here will be removed and only your scenario or user-defined districts will]
+[be used.                                                                                                                                            ]
+[====================================================================================================================================================]
+
 #Wonder
 name                 = The Pyramids
 img_path             = Wonders.pcx
