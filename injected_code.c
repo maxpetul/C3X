@@ -3035,6 +3035,29 @@ direction_to_neighbor_bit (enum direction dir)
 	}
 }
 
+bool
+get_primary_river_direction (Tile * tile, enum direction * out_dir)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	char river_bits = tile->vtable->m37_Get_River_Code (tile);
+	if (river_bits == 0)
+		return false;
+
+	enum direction dirs[] = {DIR_E, DIR_W, DIR_SE, DIR_NE, DIR_SW, DIR_NW, DIR_S, DIR_N};
+	for (int i = 0; i < (int)ARRAY_LEN (dirs); i++) {
+		int bit = direction_to_neighbor_bit (dirs[i]);
+		if ((bit >= 0) && ((river_bits & (1 << bit)) != 0)) {
+			if (out_dir != NULL)
+				*out_dir = dirs[i];
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void
 wrap_tile_coords (Map * map, int * x, int * y)
 {
@@ -25031,6 +25054,37 @@ get_tile_sprite_indices (int tile_x, int tile_y, int * out_sheet_index, int * ou
 }
 
 void
+align_district_with_river (Tile * tile, int * out_pixel_x, int * out_pixel_y, enum direction * out_dir)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
+
+	enum direction dir = DIR_ZERO;
+	if (! get_primary_river_direction (tile, &dir))
+		return;
+
+	int dx = 0, dy = 0;
+	switch (dir) {
+		case DIR_N:  dx =   0; dy = -32; break;
+		case DIR_NE: dx =  32; dy = -16; break;
+		case DIR_E:  dx =  64; dy =   0; break;
+		case DIR_SE: dx =  32; dy =  16; break;
+		case DIR_S:  dx =   0; dy =  32; break;
+		case DIR_SW: dx = -32; dy =  16; break;
+		case DIR_W:  dx = -64; dy =   0; break;
+		case DIR_NW: dx = -32; dy = -16; break;
+		default: break;
+	}
+
+	if (out_pixel_x != NULL)
+		*out_pixel_x += dx;
+	if (out_pixel_y != NULL)
+		*out_pixel_y += dy;
+	if (out_dir != NULL)
+		*out_dir = dir;
+}
+
+void
 align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, int * out_pixel_x, int * out_pixel_y)
 {
 	if ((tile == NULL) || (tile == p_null_tile) || (out_variant == NULL))
@@ -25279,7 +25333,7 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 }
 
 bool
-wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner_id)
+wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner_id, struct wonder_district_config const * cfg)
 {
 	if (owner_id <= 0)
 		return false;
@@ -25291,6 +25345,19 @@ wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner
 	if ((center == NULL) || (center == p_null_tile))
 		return false;
 
+	// If on a river and the wonder allows river alignment, make sure we face the river instead
+	unsigned int mask = wonder_buildable_square_type_mask (cfg);
+	bool allow_river = (mask & square_type_mask_bit (SQ_RIVER)) != 0;
+	if (allow_river) {
+		enum direction river_dir = DIR_ZERO;
+		if (get_primary_river_direction (center, &river_dir)) {
+			int dx, dy;
+			if (direction_to_offset (river_dir, &dx, &dy))
+				return dx > 0;
+		}
+	}
+
+	// Else face away from the nearest same-civ city
 	Map * map = &p_bic_data->Map;
 	int best_dist = INT_MAX;
 	int best_dx = 0;
@@ -25402,6 +25469,15 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 		int buildings = 0;
 		Sprite * district_sprite;
 
+		// Handle river alignment, if district allows it
+		enum direction river_dir = DIR_ZERO;
+		unsigned int build_mask = cfg->buildable_square_types_mask;
+		if (build_mask == 0)
+			build_mask = district_default_buildable_mask ();
+		bool river_allowed = (build_mask & square_type_mask_bit (SQ_RIVER)) != 0;
+		if (river_allowed)
+			align_district_with_river (tile, &pixel_x, &pixel_y, &river_dir);
+
         if (territory_owner_id > 0) {
             Leader * leader = &leaders[territory_owner_id];
             culture = p_bic_data->Races[leader->RaceID].CultureGroupID;
@@ -25455,7 +25531,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 
 					struct wonder_district_config * wcfg   = &is->wonder_district_configs[windex];
 					struct wonder_district_image_set * set = &is->wonder_district_img_sets[windex];
-					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id);
+					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id, wcfg);
 					Sprite * wsprite = (use_alt_dir && (set->alt_dir_img.vtable != NULL)) ? &set->alt_dir_img : &set->img;
 
 					draw_district_on_map_or_canvas(wsprite, map_renderer, pixel_x, pixel_y);
@@ -25468,7 +25544,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 
 					struct wonder_district_config * wcfg = &is->wonder_district_configs[construct_windex];
 					struct wonder_district_image_set * set = &is->wonder_district_img_sets[construct_windex];
-					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id);
+					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id, wcfg);
                     Sprite * csprite = (use_alt_dir && (set->alt_dir_construct_img.vtable != NULL)) ? &set->alt_dir_construct_img : &set->construct_img;
 
 					draw_district_on_map_or_canvas(csprite, map_renderer, pixel_x, pixel_y);
