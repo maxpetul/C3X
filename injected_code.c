@@ -200,6 +200,7 @@ void __fastcall patch_Map_build_trade_network (Map * this);
 bool __fastcall patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value);
 bool __fastcall patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y);
 bool __fastcall patch_City_has_resource (City * this, int edx, int resource_id);
+bool city_can_build_district (City * city, int district_id);
 Tile * find_tile_for_district (City * city, int district_id, int * out_x, int * out_y);
 struct district_instance * get_district_instance (Tile * tile);
 bool city_has_required_district (City * city, int district_id);
@@ -4962,10 +4963,14 @@ free_dynamic_district_config (struct district_config * cfg)
 		free ((void *)cfg->advance_prereq);
 		cfg->advance_prereq = NULL;
 	}
-	if (cfg->resource_prereq != NULL) {
-		free ((void *)cfg->resource_prereq);
-		cfg->resource_prereq = NULL;
+
+	for (int i = 0; i < 5; i++) {
+		if (cfg->resource_prereqs[i] != NULL) {
+			free ((void *)cfg->resource_prereqs[i]);
+			cfg->resource_prereqs[i] = NULL;
+		}
 	}
+
 	if (cfg->resource_prereq_on_tile != NULL) {
 		free ((void *)cfg->resource_prereq_on_tile);
 		cfg->resource_prereq_on_tile = NULL;
@@ -5063,10 +5068,16 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 		free ((void *)cfg->advance_prereq);
 		cfg->advance_prereq = NULL;
 	}
-	if ((cfg->resource_prereq != NULL) && (cfg->resource_prereq != defaults->resource_prereq)) {
-		free ((void *)cfg->resource_prereq);
-		cfg->resource_prereq = NULL;
+
+	for (int i = 0; i < ARRAY_LEN (cfg->resource_prereqs); i++) {
+		char const * default_value = (i < defaults->resource_prereq_count) ? defaults->resource_prereqs[i] : NULL;
+		if ((cfg->resource_prereqs[i] != NULL) &&
+		    (cfg->resource_prereqs[i] != default_value))
+			free ((void *)cfg->resource_prereqs[i]);
+		cfg->resource_prereqs[i] = NULL;
 	}
+	cfg->resource_prereq_count = defaults->resource_prereq_count;
+
 	if ((cfg->resource_prereq_on_tile != NULL) && (cfg->resource_prereq_on_tile != defaults->resource_prereq_on_tile)) {
 		free ((void *)cfg->resource_prereq_on_tile);
 		cfg->resource_prereq_on_tile = NULL;
@@ -5184,10 +5195,15 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 		free (def->advance_prereq);
 		def->advance_prereq = NULL;
 	}
-	if (def->resource_prereq != NULL) {
-		free (def->resource_prereq);
-		def->resource_prereq = NULL;
+
+	for (int i = 0; i < def->resource_prereq_count; i++) {
+		if (def->resource_prereqs[i] != NULL) {
+			free (def->resource_prereqs[i]);
+			def->resource_prereqs[i] = NULL;
+		}
 	}
+	def->resource_prereq_count = 0;
+
 	if (def->resource_prereq_on_tile != NULL) {
 		free (def->resource_prereq_on_tile);
 		def->resource_prereq_on_tile = NULL;
@@ -5451,12 +5467,26 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->advance_prereq = def->advance_prereq;
 		def->advance_prereq = NULL;
 	}
-	if (def->has_resource_prereq) {
-		if ((cfg->resource_prereq != NULL) && (cfg->resource_prereq != defaults->resource_prereq))
-			free ((void *)cfg->resource_prereq);
-		cfg->resource_prereq = def->resource_prereq;
-		def->resource_prereq = NULL;
+
+	if (def->has_resource_prereqs) {
+		for (int i = 0; i < ARRAY_LEN (cfg->resource_prereqs); i++) {
+			char const * default_value = (i < defaults->resource_prereq_count) ? defaults->resource_prereqs[i] : NULL;
+			if ((cfg->resource_prereqs[i] != NULL) &&
+			    (cfg->resource_prereqs[i] != default_value))
+				free ((void *)cfg->resource_prereqs[i]);
+			cfg->resource_prereqs[i] = NULL;
+		}
+
+		cfg->resource_prereq_count = def->resource_prereq_count;
+		const int max_entries = ARRAY_LEN (cfg->resource_prereqs);
+		if (cfg->resource_prereq_count > max_entries)
+			cfg->resource_prereq_count = max_entries;
+		for (int i = 0; i < cfg->resource_prereq_count; i++) {
+			cfg->resource_prereqs[i] = def->resource_prereqs[i];
+			def->resource_prereqs[i] = NULL;
+		}
 	}
+
 	if (def->has_resource_prereq_on_tile) {
 		if ((cfg->resource_prereq_on_tile != NULL) && (cfg->resource_prereq_on_tile != defaults->resource_prereq_on_tile))
 			free ((void *)cfg->resource_prereq_on_tile);
@@ -5599,10 +5629,16 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		new_cfg.advance_prereq = def->advance_prereq;
 		def->advance_prereq = NULL;
 	}
-	if (def->has_resource_prereq) {
-		new_cfg.resource_prereq = def->resource_prereq;
-		def->resource_prereq = NULL;
+
+	new_cfg.resource_prereq_count = def->has_resource_prereqs ? def->resource_prereq_count : 0;
+	const int max_resource_entries = ARRAY_LEN (new_cfg.resource_prereqs);
+	if (new_cfg.resource_prereq_count > max_resource_entries)
+		new_cfg.resource_prereq_count = max_resource_entries;
+	for (int i = 0; i < new_cfg.resource_prereq_count; i++) {
+		new_cfg.resource_prereqs[i] = def->resource_prereqs[i];
+		def->resource_prereqs[i] = NULL;
 	}
+
 	if (def->has_resource_prereq_on_tile) {
 		new_cfg.resource_prereq_on_tile = def->resource_prereq_on_tile;
 		def->resource_prereq_on_tile = NULL;
@@ -5730,13 +5766,23 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		def->advance_prereq = copy_trimmed_string_or_null (value, 1);
 		def->has_advance_prereq = true;
 
-	} else if (slice_matches_str (key, "resource_prereq")) {
-		if (def->resource_prereq != NULL) {
-			free (def->resource_prereq);
-			def->resource_prereq = NULL;
+	} else if (slice_matches_str (key, "resource_prereqs")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->resource_prereqs,
+					      ARRAY_LEN (def->resource_prereqs),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "resource_prereqs")) {
+			def->resource_prereq_count = list_count;
+			def->has_resource_prereqs = true;
+		} else {
+			def->resource_prereq_count = 0;
+			def->has_resource_prereqs = false;
 		}
-		def->resource_prereq = copy_trimmed_string_or_null (value, 1);
-		def->has_resource_prereq = true;
+		free (value_text);
 
 	} else if (slice_matches_str (key, "resource_prereq_on_tile")) {
 		if (def->resource_prereq_on_tile != NULL) {
@@ -7051,7 +7097,9 @@ void parse_building_and_tech_ids ()
 		if (is->district_configs[i].command != 0)
 			itable_insert (&is->command_id_to_district_id, is->district_configs[i].command, i);
 		is->district_infos[i].advance_prereq_id = -1;
-		is->district_infos[i].resource_prereq_id = -1;
+		is->district_infos[i].resource_prereq_count = 0;
+		for (int j = 0; j < MAX_DISTRICT_DEPENDENTS; j++)
+			is->district_infos[i].resource_prereq_ids[j] = -1;
 		is->district_infos[i].resource_prereq_on_tile_id = -1;
 
 		// Map advance prereqs to districts
@@ -7067,17 +7115,24 @@ void parse_building_and_tech_ids ()
 				is->district_infos[i].advance_prereq_id = -1;
 			}
 		}
-		if (is->district_configs[i].resource_prereq != NULL && is->district_configs[i].resource_prereq != "") {
+
+		// Map resource prereqs to districts (multiple resources now supported)
+		int stored_res_count = 0;
+		for (int j = 0; j < is->district_configs[i].resource_prereq_count; j++) {
+			if (is->district_configs[i].resource_prereqs[j] == "" || is->district_configs[i].resource_prereqs[j] == NULL)
+				continue;
 			int res_id;
-			struct string_slice res_name = { .str = (char *)is->district_configs[i].resource_prereq, .len = (int)strlen (is->district_configs[i].resource_prereq) };
+			struct string_slice res_name = { .str = (char *)is->district_configs[i].resource_prereqs[j], .len = (int)strlen (is->district_configs[i].resource_prereqs[j]) };
 			if (find_game_object_id_by_name (GOK_RESOURCE, &res_name, 0, &res_id)) {
-				snprintf (ss, sizeof ss, "Found resource prereq \"%.*s\" for district \"%s\", ID %d\n", res_name.len, res_name.str, is->district_configs[i].resource_prereq, res_id);
+				snprintf (ss, sizeof ss, "Found resource prereq \"%.*s\" for district \"%s\", ID %d\n", res_name.len, res_name.str, is->district_configs[i].resource_prereqs[j], res_id);
 				(*p_OutputDebugStringA) (ss);
-				is->district_infos[i].resource_prereq_id = res_id;
-			} else {
-				is->district_infos[i].resource_prereq_id = -1;
+				if (stored_res_count < ARRAY_LEN (is->district_infos[i].resource_prereq_ids)) {
+					is->district_infos[i].resource_prereq_ids[stored_res_count] = res_id;
+					stored_res_count++;
+				}
 			}
 		}
+		is->district_infos[i].resource_prereq_count = stored_res_count;
 		if (is->district_configs[i].resource_prereq_on_tile != NULL && is->district_configs[i].resource_prereq_on_tile != "") {
 			int res_id;
 			struct string_slice res_name = { .str = (char *)is->district_configs[i].resource_prereq_on_tile, .len = (int)strlen (is->district_configs[i].resource_prereq_on_tile) };
@@ -7939,7 +7994,9 @@ reset_district_state (bool reset_tile_map)
 
 	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++) {
 		is->district_infos[i].advance_prereq_id = -1;
-		is->district_infos[i].resource_prereq_id = -1;
+		is->district_infos[i].resource_prereq_count = 0;
+		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].resource_prereq_ids); j++)
+			is->district_infos[i].resource_prereq_ids[j] = -1;
 		is->district_infos[i].resource_prereq_on_tile_id = -1;
 		is->district_infos[i].dependent_building_count = 0;
 		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].dependent_building_ids); j++)
@@ -7996,26 +8053,46 @@ district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district
 			return false;
 	}
 
-	int resource_req = info->resource_prereq_id;
-	if (resource_req < 0)
+	// If no resource prereqs, then the check passes
+	if (info->resource_prereq_count <= 0)
 		return true;
 
 	int owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
 	if (owner < 0)
 		return false;
 
-	if ((city != NULL) &&
-	    (city->Body.CivID == owner) &&
-	    city_radius_contains_tile (city, tile_x, tile_y) &&
-	    patch_City_has_resource (city, __, resource_req))
-		return true;
+	// Check all resource prereqs - ALL must be present (AND logic)
+	for (int i = 0; i < info->resource_prereq_count; i++) {
+		int resource_req = info->resource_prereq_ids[i];
+		if (resource_req < 0)
+			continue;
 
-	FOR_CITIES_AROUND (wai, tile_x, tile_y) {
-		if (patch_City_has_resource (wai.city, __, resource_req))
-			return true;
+		bool has_resource = false;
+
+		// Check if the specified city has this resource
+		if ((city != NULL) &&
+		    (city->Body.CivID == owner) &&
+		    city_radius_contains_tile (city, tile_x, tile_y) &&
+		    patch_City_has_resource (city, __, resource_req)) {
+			has_resource = true;
+		}
+
+		// Check cities around this tile for the resource
+		if (!has_resource) {
+			FOR_CITIES_AROUND (wai, tile_x, tile_y) {
+				if (patch_City_has_resource (wai.city, __, resource_req)) {
+					has_resource = true;
+					break;
+				}
+			}
+		}
+
+		// If this required resource is not available, the check fails
+		if (!has_resource)
+			return false;
 	}
 
-	return false;
+	return true;
 }
 
 bool
@@ -8539,12 +8616,44 @@ find_tile_for_distribution_hub_district (City * city, int * out_x, int * out_y)
 	return best_tile;
 }
 
+bool
+city_can_build_district (City * city, int district_id)
+{
+	if ((city == NULL) || (district_id < 0) || (district_id >= is->district_count))
+		return false;
+
+	struct district_config const * cfg = &is->district_configs[district_id];
+	struct district_infos const * info = &is->district_infos[district_id];
+
+	// Check tech prerequisite
+	int prereq_id = info->advance_prereq_id;
+	if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[city->Body.CivID], __, prereq_id))
+		return false;
+
+	// Check resource prerequisites (city connection) - ALL must be present
+	for (int i = 0; i < info->resource_prereq_count; i++) {
+		int resource_req = info->resource_prereq_ids[i];
+		if ((resource_req >= 0) && ! patch_City_has_resource (city, __, resource_req))
+			return false;
+	}
+
+	// Check if district does not allow multiple and city already has one
+	if (! cfg->allow_multiple && city_has_required_district (city, district_id))
+		return false;
+
+	return true;
+}
+
 Tile *
 find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 {
 	if ((city == NULL) || (out_x == NULL) || (out_y == NULL))
 		return NULL;
 	if ((district_id < 0) || (district_id >= is->district_count))
+		return NULL;
+
+	// Check if city can build this district at all
+	if (! city_can_build_district (city, district_id))
 		return NULL;
 
 	if (district_id == NEIGHBORHOOD_DISTRICT_ID)
@@ -19757,7 +19866,6 @@ patch_Leader_do_production_phase (Leader * this)
 				struct district_config * cfg = &is->district_configs[district_id];
 				struct district_infos * info = &is->district_infos[district_id];
 
-				if (! cfg->is_dynamic) continue;
 				if (info->dependent_building_count > 0) continue;
 				if (cfg->command == -1) continue;
 
@@ -19788,13 +19896,9 @@ patch_Leader_do_production_phase (Leader * this)
 			if (ai_player && (auto_dynamic_district_count > 0)) {
 				for (int i = 0; i < auto_dynamic_district_count; i++) {
 					int district_id = auto_dynamic_district_ids[i];
-					struct district_infos * info = &is->district_infos[district_id];
 
-					if (city_has_required_district (city, district_id)) continue;
+					if (! city_can_build_district (city, district_id)) continue;
 					if (find_pending_district_request (city, district_id) != NULL) continue;
-
-					if ((info->resource_prereq_id >= 0) && (! patch_City_has_resource (city, __, info->resource_prereq_id)))
-						continue;
 
 					int target_x = 0, target_y = 0;
 					if (find_tile_for_district (city, district_id, &target_x, &target_y) == NULL)
