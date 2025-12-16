@@ -24969,5 +24969,33 @@ patch_rand_int_to_enslave (void * this, int edx, int lim)
 	return is->do_not_enslave_units ? 100 : r;
 }
 
+int __fastcall
+patch_Sprite_draw_espionage_screen_target_civ_bkg (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	// Figure out which of the potential target civs we're drawing by working backwards from the Y location
+	int top = (p_bic_data->ScreenHeight - p_espionage_form->Image.Height) / 2;
+	is->espionage_form_drawing_target_index = (pixel_y - top - 0x5C) / 0x3a + p_espionage_form->field_1584;
+
+	return Sprite_draw (this, __, canvas, pixel_x, pixel_y, color_table);
+}
+
+char * __fastcall
+patch_Civilopedia_Article_get_name_for_esp_screen (Civilopedia_Article * this)
+{
+	// Ensure that we have captured a valid civ ID being drawn then, if that civ has an era-specific formal name, return that so that the
+	// era-specific names apply on the espionage screen.
+	int target_civ_id;
+	if (is->espionage_form_drawing_target_index >= 0 &&
+	    is->espionage_form_drawing_target_index < p_espionage_form->target_civ_id_count &&
+	    (target_civ_id = p_espionage_form->target_civ_ids[is->espionage_form_drawing_target_index]) >= 0 &&
+	    target_civ_id < 32 &&
+	    is->aliased_civ_formal_name_bits & 1<<target_civ_id)
+		return Leader_get_civ_formal_name (&leaders[target_civ_id]);
+
+	else
+		return this->Name.S;
+}
+
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

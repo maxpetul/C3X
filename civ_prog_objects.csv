@@ -847,6 +847,9 @@ define,	   0x5F35C2,	0x603442,	0x5F34F2,	"ADDR_RES_CHECK_JUMP_TILE_INDEX_AT_LEAS
 inlead,	   0x5F22A0,	0x6020D0,	0x5F21D0,	"Map_generate_resources",			"void (__fastcall *) (Map * this, int edx, int secondary_seed)"
 define,	   0x5F2C25,	0x602AF6,	0x5F2B55,	"ADDR_RESOURCE_GEN_TILE_COUNT_DIV",		"byte *"
 repl call, 0x5BFA0C,	0x5CE59E,	0x5BF71C,	"rand_int_to_enslave",				""
+repl call, 0x52A165,	0x53452B,	0x52A205,	"Sprite_draw_espionage_screen_target_civ_bkg",	""
+repl call, 0x52A1C1,	0x534587,	0x52A261,	"Civilopedia_Article_get_name_for_esp_screen",	""
+define,	   0xA422F8,	0xA64AF8,	0xA422B8,	"p_espionage_form",				"Espionage_Form *"
 
 ignore,	   0x5FC710,	0x0,		0x0,		"PCX_Image_create_and_init_jgl_image",		"int (__fastcall *) (PCX_Image * this, int edx, int width, int height, int bit_depth, int param_4, int param_5, int param_6)"
 ignore,	   0x5FCC50,	0x0,		0x0,		"PCX_Image_draw_region_to_location",		"void (__fastcall *) (PCX_Image * this, int edx, PCX_Image * canvas, int src_x, int src_y, int dest_x, int dest_y, int width, int height)"

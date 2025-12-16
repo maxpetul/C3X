@@ -1619,6 +1619,9 @@ struct injected_state {
 	// Stores the parameters to Unit::can_load while it's running, NULL otherwise.
 	Unit * can_load_transport, * can_load_passenger;
 
+	// Stores the index in the list of target civs currently being drawn on the espionage form. Used to replace the civ name with its era-specific alias.
+	int espionage_form_drawing_target_index;
+
 	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp. Tracks the current tile coordinates being rendered, then for drawing forests over roads/railroad
 	int current_tile_x, current_tile_y;
 

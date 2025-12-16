@@ -13,6 +13,7 @@
 - Option to prevent land anti-air units from intercepting overflying aircraft while they're loaded in a naval transport
   - Named no_land_anti_air_from_inside_naval_transport
 - Option to prevent units from being enslaved after being destroyed by lethal bombard named prevent_enslaving_by_bombardment
+- Fix era-specific civ formal names not appearing on espionage screen
 - Put rule stopping land units inside transports from exerting zone of control behind special ZoC setting "not-from-inside"
   - Previously this rule change could not be turned off by the config
 - Polish districts
