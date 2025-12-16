@@ -602,7 +602,7 @@ patch_Main_Screen_Form_bring_cnter_view_city_focus (Main_Screen_Form * this, int
 	int effective_radius = not_above (get_work_ring_limit_total (p_city_form->CurrentCity), is->current_config.city_work_radius);
 	if (is->current_config.work_area_limit == WAL_CULTURAL_OR_ADJACENT)
 		effective_radius = not_above (is->current_config.city_work_radius, effective_radius + 1);
-	if (effective_radius >= 4)
+	if (effective_radius >= 4 && is->current_config.auto_zoom_city_screen_for_large_work_areas)
 		p_bic_data->is_zoomed_out = true;
 
 	Main_Screen_Form_bring_tile_into_view (this, __, x, get_city_screen_center_y (p_city_form->CurrentCity), param_3, always_update_tile_bounds, param_5);
@@ -11809,6 +11809,7 @@ patch_init_floating_point ()
 		{"convert_to_landmark_after_planting_forest"             , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
 		{"allow_sale_of_aqueducts_and_hospitals"                 , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
 		{"no_cross_shore_detection"                              , false, offsetof (struct c3x_config, no_cross_shore_detection)},
+		{"auto_zoom_city_screen_for_large_work_areas"            , true,  offsetof (struct c3x_config, auto_zoom_city_screen_for_large_work_areas)},
 		{"limit_unit_loading_to_one_transport_per_turn"          , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block"   , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
 		{"draw_forests_over_roads_and_railroads"                 , false, offsetof (struct c3x_config, draw_forests_over_roads_and_railroads)},

@@ -270,6 +270,7 @@ struct c3x_config {
 	bool allow_sale_of_aqueducts_and_hospitals;
 	bool no_cross_shore_detection;
 	int city_work_radius;
+	bool auto_zoom_city_screen_for_large_work_areas;
 	enum work_area_limit work_area_limit;
 	struct work_area_improvement * work_area_improvements;
 	int count_work_area_improvements;
