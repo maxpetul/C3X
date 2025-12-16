@@ -17,7 +17,7 @@ typedef unsigned char byte;
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
 #define COUNT_SPECIAL_DISTRICT_TYPES 10
-#define USED_SPECIAL_DISTRICT_TYPES 6
+#define USED_SPECIAL_DISTRICT_TYPES 7
 #define MAX_DYNAMIC_DISTRICT_TYPES 22
 #define COUNT_DISTRICT_TYPES (COUNT_SPECIAL_DISTRICT_TYPES + MAX_DYNAMIC_DISTRICT_TYPES)
 #define MAX_WONDER_DISTRICT_TYPES 32
@@ -344,6 +344,7 @@ struct c3x_config {
 	bool enable_distribution_hub_districts;
 	bool enable_aerodrome_districts;
 	bool enable_port_districts;
+	bool enable_central_rail_hub_districts;
 
 	bool cities_with_mutual_district_receive_buildings;
 	bool cities_with_mutual_district_receive_wonders;
@@ -365,6 +366,8 @@ struct c3x_config {
 	int distribution_hub_shield_yield_divisor;
 	int ai_distribution_hub_build_strategy;
 	int ai_ideal_distribution_hub_count_per_100_cities;
+	int central_rail_hub_distribution_food_bonus_percent;
+	int central_rail_hub_distribution_shield_bonus_percent;
 
 	bool workers_can_enter_coast;
 
@@ -715,8 +718,17 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.display_name = "Port",
 		.advance_prereq = "Map Making", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 2, .align_to_coast = true,
 		.img_paths = {"Port_NW.pcx", "Port_NE.pcx", "Port_SE.pcx", "Port_SW.pcx"}, .dependent_improvements = {"Harbor", "Commercial Dock"},
-		.buildable_square_types_mask =  (1 << SQ_Coast),
+		.buildable_square_types_mask = (1 << SQ_Coast),
 		.img_path_count = 4, .max_building_index = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .align_to_coast = true,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0
+	},
+	{
+		.command = UCV_Build_CentralRailHub, .name = "Central Rail Hub", .tooltip = "Build Central Rail Hub",
+		.display_name = "Central Rail Hub",
+		.advance_prereq = "Steam Power", .resource_prereqs = {"Coal", "Iron"}, .resource_prereq_on_tile = NULL, .allow_multiple = false, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 2, .dependent_improvement_count = 0,
+		.img_paths = {"CentralRailHub_AMER.pcx", "CentralRailHub_EURO.pcx", "CentralRailHub_ROMAN.pcx", "CentralRailHub_MIDEAST.pcx", "CentralRailHub_ASIAN.pcx"},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
+		.img_path_count = 5, .max_building_index = 0, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0
 	}
 };

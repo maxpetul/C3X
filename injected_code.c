@@ -72,6 +72,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define AERODROME_DISTRICT_ID        3
 #define NATURAL_WONDER_DISTRICT_ID   4
 #define PORT_DISTRICT_ID             5
+#define CENTRAL_RAIL_HUB_DISTRICT_ID 6
 
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
@@ -4402,6 +4403,11 @@ get_distribution_hub_yields_for_city (City * city, int * out_food, int * out_shi
 				shields += rec->shield_yield;
 			}
 		}
+	}
+
+	if (city_has_required_district (city, CENTRAL_RAIL_HUB_DISTRICT_ID)) {
+		food    += (food * is->current_config.central_rail_hub_distribution_food_bonus_percent) / 100;
+		shields += (shields * is->current_config.central_rail_hub_distribution_shield_bonus_percent) / 100;
 	}
 
 	if (out_food != NULL)
