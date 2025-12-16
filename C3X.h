@@ -603,6 +603,9 @@ struct district_config {
 	int shield_bonus;
 	int happiness_bonus;
 	int defense_bonus_percent;
+	char const * generated_resource;
+	int generated_resource_id;
+	short generated_resource_flags;
 };
 
 struct wonder_district_config {
@@ -781,6 +784,11 @@ struct parsed_district_definition {
 	bool has_happiness_bonus;
 	bool has_buildable_on;
 	bool has_resource_prereq_on_tile;
+	char * generated_resource;
+	char * generated_resource_settings[5];
+	int generated_resource_settings_count;
+	bool has_generated_resource;
+	bool has_generated_resource_settings;
 };
 
 struct parsed_wonder_definition {

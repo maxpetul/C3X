@@ -5231,6 +5231,19 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 	}
 	def->img_path_count = 0;
 
+	if (def->generated_resource != NULL) {
+		free (def->generated_resource);
+		def->generated_resource = NULL;
+	}
+
+	for (int i = 0; i < def->generated_resource_settings_count; i++) {
+		if (def->generated_resource_settings[i] != NULL) {
+			free (def->generated_resource_settings[i]);
+			def->generated_resource_settings[i] = NULL;
+		}
+	}
+	def->generated_resource_settings_count = 0;
+
 	init_parsed_district_definition (def);
 }
 
@@ -5529,6 +5542,28 @@ override_special_district_from_definition (struct parsed_district_definition * d
 	if (def->has_buildable_on)
 		cfg->buildable_square_types_mask = def->buildable_square_types_mask;
 
+	if (def->has_generated_resource) {
+		if ((cfg->generated_resource != NULL) && (cfg->generated_resource != defaults->generated_resource))
+			free ((void *)cfg->generated_resource);
+		cfg->generated_resource = def->generated_resource;
+		def->generated_resource = NULL;
+		cfg->generated_resource_flags = 0;
+		if (def->has_generated_resource_settings) {
+			for (int i = 0; i < def->generated_resource_settings_count; i++) {
+				char * setting = def->generated_resource_settings[i];
+				if (strcmp (setting, "local") == 0)
+					cfg->generated_resource_flags |= MF_LOCAL;
+				else if (strcmp (setting, "no-tech-req") == 0)
+					cfg->generated_resource_flags |= MF_NO_TECH_REQ;
+				else if (strcmp (setting, "show-bonus") == 0)
+					cfg->generated_resource_flags |= MF_SHOW_BONUS;
+				else if (strcmp (setting, "hide-non-bonus") == 0)
+					cfg->generated_resource_flags |= MF_HIDE_NON_BONUS;
+			}
+		}
+		cfg->generated_resource_id = -1;
+	}
+
 	if (def->has_dependent_improvements) {
 		for (int i = 0; i < ARRAY_LEN (cfg->dependent_improvements); i++) {
 			char const * default_value = (i < defaults->dependent_improvement_count) ? defaults->dependent_improvements[i] : NULL;
@@ -5664,6 +5699,30 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
 	new_cfg.happiness_bonus = def->has_happiness_bonus ? def->happiness_bonus : 0;
 	new_cfg.buildable_square_types_mask = def->has_buildable_on ? def->buildable_square_types_mask : district_default_buildable_mask ();
+
+	if (def->has_generated_resource) {
+		new_cfg.generated_resource = def->generated_resource;
+		def->generated_resource = NULL;
+		new_cfg.generated_resource_flags = 0;
+		if (def->has_generated_resource_settings) {
+			for (int i = 0; i < def->generated_resource_settings_count; i++) {
+				char * setting = def->generated_resource_settings[i];
+				if (strcmp (setting, "local") == 0)
+					new_cfg.generated_resource_flags |= MF_LOCAL;
+				else if (strcmp (setting, "no-tech-req") == 0)
+					new_cfg.generated_resource_flags |= MF_NO_TECH_REQ;
+				else if (strcmp (setting, "show-bonus") == 0)
+					new_cfg.generated_resource_flags |= MF_SHOW_BONUS;
+				else if (strcmp (setting, "hide-non-bonus") == 0)
+					new_cfg.generated_resource_flags |= MF_HIDE_NON_BONUS;
+			}
+		}
+		new_cfg.generated_resource_id = -1;
+	} else {
+		new_cfg.generated_resource = NULL;
+		new_cfg.generated_resource_id = -1;
+		new_cfg.generated_resource_flags = 0;
+	}
 
 	new_cfg.dependent_improvement_count = def->has_dependent_improvements ? def->dependent_improvement_count : 0;
 	const int max_dependent_entries = ARRAY_LEN (is->district_configs[0].dependent_improvements);
@@ -5957,6 +6016,32 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->has_happiness_bonus = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else if (slice_matches_str (key, "generated_resource")) {
+		if (def->generated_resource != NULL) {
+			free (def->generated_resource);
+			def->generated_resource = NULL;
+		}
+		def->generated_resource = copy_trimmed_string_or_null (value, 1);
+		def->has_generated_resource = true;
+
+	} else if (slice_matches_str (key, "generated_resource_settings")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->generated_resource_settings,
+					      ARRAY_LEN (def->generated_resource_settings),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					      "generated_resource_settings")) {
+			def->generated_resource_settings_count = list_count;
+			def->has_generated_resource_settings = true;
+		} else {
+			def->generated_resource_settings_count = 0;
+			def->has_generated_resource_settings = false;
+		}
+		free (value_text);
 
 	} else
 		add_unrecognized_key_error (unrecognized_keys, line_number, key);
@@ -7148,6 +7233,19 @@ void parse_building_and_tech_ids ()
 				is->district_infos[i].resource_prereq_on_tile_id = res_id;
 			} else {
 				is->district_infos[i].resource_prereq_on_tile_id = -1;
+			}
+		}
+
+		// Resolve generated resource name to ID
+		if (is->district_configs[i].generated_resource != NULL && is->district_configs[i].generated_resource != "") {
+			int res_id;
+			struct string_slice res_name = { .str = (char *)is->district_configs[i].generated_resource, .len = (int)strlen (is->district_configs[i].generated_resource) };
+			if (find_game_object_id_by_name (GOK_RESOURCE, &res_name, 0, &res_id)) {
+				snprintf (ss, sizeof ss, "Found generated resource \"%.*s\" for district \"%s\", ID %d\n", res_name.len, res_name.str, is->district_configs[i].generated_resource, res_id);
+				(*p_OutputDebugStringA) (ss);
+				is->district_configs[i].generated_resource_id = res_id;
+			} else {
+				is->district_configs[i].generated_resource_id = -1;
 			}
 		}
 
@@ -9775,6 +9873,24 @@ can_generate_resource (int for_civ_id, struct mill * mill)
 	return (req_tech_id < 0) || Leader_has_tech (&leaders[for_civ_id], __, req_tech_id);
 }
 
+bool
+district_can_generate_resource (int for_civ_id, struct district_config * dc)
+{
+	if (dc->generated_resource_id < 0)
+		return false;
+	int req_tech_id = (dc->generated_resource_flags & MF_NO_TECH_REQ) ? -1 : p_bic_data->ResourceTypes[dc->generated_resource_id].RequireID;
+	return (req_tech_id < 0) || Leader_has_tech (&leaders[for_civ_id], __, req_tech_id);
+}
+
+bool
+district_is_complete_and_owned_by_civ (struct district_instance * di, Tile * tile, int civ_id)
+{
+	if (di == NULL || di->state != DS_COMPLETED)
+		return false;
+	int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	return owner_id == civ_id;
+}
+
 void
 init_unit_type_count (Leader * leader)
 {
@@ -10018,6 +10134,24 @@ patch_City_has_resource (City * this, int edx, int resource_id)
 			}
 		}
 
+	// Check if access to this resource is provided by a district in the city's work radius
+	if ((! tr) && is->current_config.enable_districts) {
+		FOR_DISTRICTS_AROUND (wai, this->Body.X, this->Body.Y, true) {
+			struct district_instance * di = wai.district_inst;
+			int district_id = di->district_type;
+			if ((district_id < 0) || (district_id >= is->district_count))
+				continue;
+
+			struct district_config * dc = &is->district_configs[district_id];
+			if ((dc->generated_resource_id == resource_id) &&
+			    (dc->generated_resource_flags & MF_LOCAL) &&
+			    district_can_generate_resource (this->Body.CivID, dc)) {
+				tr = true;
+				break;
+			}
+		}
+	}
+
 	return tr;
 }
 
@@ -10247,9 +10381,7 @@ Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_5 (Map * map, in
 int __fastcall
 patch_Tile_get_visible_resource_when_recomputing (Tile * tile, int edx, int civ_id)
 {
-	if (is->got_mill_tile == NULL)
-		return Tile_get_resource_visible_to (tile, __, civ_id);
-	else {
+	if (is->got_mill_tile != NULL) {
 		struct mill_tile * mt = is->got_mill_tile;
 		is->got_mill_tile = NULL;
 		if (has_resources_required_by_building (mt->city, mt->mill->improv_id))
@@ -10257,6 +10389,23 @@ patch_Tile_get_visible_resource_when_recomputing (Tile * tile, int edx, int civ_
 		else
 			return -1;
 	}
+
+	int base_resource = Tile_get_resource_visible_to (tile, __, civ_id);
+
+	if ((base_resource < 0) && is->current_config.enable_districts) {
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst != NULL && inst->state == DS_COMPLETED) {
+			int district_id = inst->district_type;
+			struct district_config * cfg = &is->district_configs[district_id];
+			if ((cfg->generated_resource_id >= 0) && ((cfg->generated_resource_flags & MF_LOCAL) == 0)) {
+				int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
+				if ((owner_id == civ_id) && district_can_generate_resource (civ_id, cfg))
+					return cfg->generated_resource_id;
+			}
+		}
+	}
+
+	return base_resource;
 }
 
 int WINAPI
@@ -11935,6 +12084,7 @@ patch_init_floating_point ()
 		{"enable_distribution_hub_districts"                     , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"enable_aerodrome_districts"                            , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
 		{"enable_port_districts"                                 , false, offsetof (struct c3x_config, enable_port_districts)},
+		{"enable_central_rail_hub_districts"                     , false, offsetof (struct c3x_config, enable_central_rail_hub_districts)},
 		{"completed_wonder_districts_can_be_destroyed"           , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
 		{"destroyed_wonders_can_be_built_again"                  , false, offsetof (struct c3x_config, destroyed_wonders_can_be_built_again)},
 		{"cities_with_mutual_district_receive_buildings"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
@@ -11956,34 +12106,36 @@ patch_init_floating_point ()
 		int base_val;
 		int offset;
 	} integer_config_options[] = {
-		{"limit_railroad_movement"                       ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
-		{"minimum_city_separation"                       ,     1, offsetof (struct c3x_config, minimum_city_separation)},
-		{"anarchy_length_percent"                        ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
-		{"ai_multi_city_start"                           ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
-		{"max_tries_to_place_fp_city"                    , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
-		{"ai_research_multiplier"                        ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
-		{"ai_settler_perfume_on_founding_duration"       ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
-		{"extra_unit_maintenance_per_shields"            ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
-		{"ai_build_artillery_ratio"                      ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
-		{"ai_artillery_value_damage_percent"             ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
-		{"ai_build_bomber_ratio"                         ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
-		{"max_ai_naval_escorts"                          ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
-		{"ai_worker_requirement_percent"                 ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
-		{"chance_for_nukes_to_destroy_max_one_hp_units"  ,   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
-		{"rebase_range_multiplier"                       ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
-		{"elapsed_minutes_per_day_night_hour_transition" ,     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
-		{"fixed_hours_per_turn_for_day_night_cycle"      ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
-		{"pinned_hour_for_day_night_cycle"               ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
-		{"years_to_double_building_culture"              ,  1000, offsetof (struct c3x_config, years_to_double_building_culture)},
-		{"tourism_time_scale_percent"                    ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
-		{"city_limit"                                    ,  2048, offsetof (struct c3x_config, city_limit)},
-		{"maximum_pop_before_neighborhood_needed"        ,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
-		{"per_neighborhood_pop_growth_enabled"			 ,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
-		{"minimum_natural_wonder_separation"             ,     10, offsetof (struct c3x_config, minimum_natural_wonder_separation)},
-		{"distribution_hub_food_yield_divisor"			 ,     1, offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
-		{"distribution_hub_shield_yield_divisor"		 ,     1, offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
-		{"ai_ideal_distribution_hub_count_per_100_cities",     1, offsetof (struct c3x_config, ai_ideal_distribution_hub_count_per_100_cities)},
-		{"neighborhood_needed_message_frequency"         ,     4, offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
+		{"limit_railroad_movement"                           ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
+		{"minimum_city_separation"                           ,     1, offsetof (struct c3x_config, minimum_city_separation)},
+		{"anarchy_length_percent"                            ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
+		{"ai_multi_city_start"                               ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
+		{"max_tries_to_place_fp_city"                        , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
+		{"ai_research_multiplier"                            ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
+		{"ai_settler_perfume_on_founding_duration"           ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
+		{"extra_unit_maintenance_per_shields"                ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
+		{"ai_build_artillery_ratio"                          ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
+		{"ai_artillery_value_damage_percent"                 ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
+		{"ai_build_bomber_ratio"                             ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
+		{"max_ai_naval_escorts"                              ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
+		{"ai_worker_requirement_percent"                     ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
+		{"chance_for_nukes_to_destroy_max_one_hp_units"      ,   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
+		{"rebase_range_multiplier"                           ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
+		{"elapsed_minutes_per_day_night_hour_transition"     ,     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
+		{"fixed_hours_per_turn_for_day_night_cycle"          ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
+		{"pinned_hour_for_day_night_cycle"                   ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
+		{"years_to_double_building_culture"                  ,  1000, offsetof (struct c3x_config, years_to_double_building_culture)},
+		{"tourism_time_scale_percent"                        ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
+		{"city_limit"                                        ,  2048, offsetof (struct c3x_config, city_limit)},
+		{"maximum_pop_before_neighborhood_needed"            ,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
+		{"per_neighborhood_pop_growth_enabled"			     ,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
+		{"minimum_natural_wonder_separation"                 ,     10, offsetof (struct c3x_config, minimum_natural_wonder_separation)},
+		{"distribution_hub_food_yield_divisor"			     ,     1, offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
+		{"distribution_hub_shield_yield_divisor"		     ,     1, offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
+		{"ai_ideal_distribution_hub_count_per_100_cities"    ,     1, offsetof (struct c3x_config, ai_ideal_distribution_hub_count_per_100_cities)},
+		{"central_rail_hub_distribution_food_bonus_percent"  ,    25, offsetof (struct c3x_config, central_rail_hub_distribution_food_bonus_percent)},
+		{"central_rail_hub_distribution_shield_bonus_percent",    25, offsetof (struct c3x_config, central_rail_hub_distribution_shield_bonus_percent)},
+		{"neighborhood_needed_message_frequency"             ,     4, offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -21131,6 +21283,25 @@ patch_Sprite_draw_improv_img_on_city_form (Sprite * this, int edx, PCX_Image * c
 		    has_active_building (p_city_form->CurrentCity, mill->improv_id) &&
 		    has_resources_required_by_building (p_city_form->CurrentCity, mill->improv_id))
 			generated_resources[generated_resource_count++] = mill->resource_id;
+	}
+
+	if (is->current_config.enable_districts && (generated_resource_count < ARRAY_LEN (generated_resources))) {
+		FOR_DISTRICTS_AROUND (wai, p_city_form->CurrentCity->Body.X, p_city_form->CurrentCity->Body.Y, true) {
+			struct district_instance * di = wai.district_inst;
+			int district_id = di->district_type;
+			if ((district_id < 0) || (district_id >= is->district_count))
+				continue;
+
+			struct district_config * dc = &is->district_configs[district_id];
+			if ((dc->generated_resource_id >= 0) &&
+			    ((dc->generated_resource_flags & MF_SHOW_BONUS) || (p_bic_data->ResourceTypes[dc->generated_resource_id].Class != RC_Bonus)) &&
+			    (! ((dc->generated_resource_flags & MF_HIDE_NON_BONUS) && (p_bic_data->ResourceTypes[dc->generated_resource_id].Class != RC_Bonus))) &&
+			    district_can_generate_resource (p_city_form->CurrentCity->Body.CivID, dc)) {
+				generated_resources[generated_resource_count++] = dc->generated_resource_id;
+				if (generated_resource_count >= ARRAY_LEN (generated_resources))
+					break;
+			}
+		}
 	}
 
 	if ((generated_resource_count > 0) && (is->resources_sheet != NULL) && (is->resources_sheet->JGL.Image != NULL) && (TransparentBlt != NULL)) {
