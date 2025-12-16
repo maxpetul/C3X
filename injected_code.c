@@ -19565,6 +19565,30 @@ patch_Leader_do_production_phase (Leader * this)
 	if (is->current_config.enable_districts) {
 		assign_workers_for_pending_districts (this);
 
+		bool ai_player = ((*p_human_player_bits & (1 << this->ID)) == 0);
+		int auto_dynamic_district_ids[COUNT_DISTRICT_TYPES];
+		int auto_dynamic_district_count = 0;
+
+		// For dynamic districts, the AI will never be triggered to build them if they have no dependent buildings.
+		// Determine which dynamic districts the AI could build. In the city loop after, mark which cities need them
+		if (ai_player) {
+			for (int district_id = is->special_district_count; district_id < is->district_count; district_id++) {
+				struct district_config * cfg = &is->district_configs[district_id];
+				struct district_infos * info = &is->district_infos[district_id];
+
+				if (! cfg->is_dynamic) continue;
+				if (info->dependent_building_count > 0) continue;
+				if (cfg->command == -1) continue;
+
+				int prereq_id = info->advance_prereq_id;
+				if ((prereq_id >= 0) && ! Leader_has_tech (this, __, prereq_id))
+					continue;
+
+				if (auto_dynamic_district_count < ARRAY_LEN (auto_dynamic_district_ids))
+					auto_dynamic_district_ids[auto_dynamic_district_count++] = district_id;
+			}
+		}
+
 		if (is->current_config.enable_distribution_hub_districts) {
 			// Check if AI has the tech prereq for distribution hubs before updating goals
 			int prereq_id = is->district_infos[DISTRIBUTION_HUB_DISTRICT_ID].advance_prereq_id;
@@ -19576,11 +19600,31 @@ patch_Leader_do_production_phase (Leader * this)
 			City * city = coi.city;
 			if (city == NULL) continue;
 
-			bool is_human = (*p_human_player_bits & (1 << city->Body.CivID)) != 0;
 			bool at_neighborhood_cap = is->current_config.enable_neighborhood_districts && city_is_at_neighborhood_cap (city);
 
+			// Mark any needed dynamic districts for AI players. This isn't the most intelligent approach (we're not weighing district benefits),
+			// but it's simple and works reasonably well
+			if (ai_player && (auto_dynamic_district_count > 0)) {
+				for (int i = 0; i < auto_dynamic_district_count; i++) {
+					int district_id = auto_dynamic_district_ids[i];
+					struct district_infos * info = &is->district_infos[district_id];
+
+					if (city_has_required_district (city, district_id)) continue;
+					if (find_pending_district_request (city, district_id) != NULL) continue;
+
+					if ((info->resource_prereq_id >= 0) && (! patch_City_has_resource (city, __, info->resource_prereq_id)))
+						continue;
+
+					int target_x = 0, target_y = 0;
+					if (find_tile_for_district (city, district_id, &target_x, &target_y) == NULL)
+						continue;
+
+					mark_city_needs_district (city, district_id);
+				}
+			}
+
 			if (at_neighborhood_cap) {
-				if (is_human)
+				if (! ai_player)
 					maybe_show_neighborhood_growth_warning (city);
 				else
 					ensure_neighborhood_request_for_city (city);
@@ -19631,7 +19675,7 @@ patch_Leader_do_production_phase (Leader * this)
 			// If production needs to be halted, handle the reassignment and messaging
 			if (needs_halt) {
 				// Switch production to another option
-				if (! is_human) {
+				if (ai_player) {
 					mark_city_needs_district (city, req_district_id);
 					assign_ai_fallback_production (city, i_improv);
 				} else {
@@ -19642,7 +19686,7 @@ patch_Leader_do_production_phase (Leader * this)
 				}
 
 				// Show message to human player
-				if (is_human && (city->Body.CivID == p_main_screen_form->Player_CivID)) {
+				if (! ai_player && (city->Body.CivID == p_main_screen_form->Player_CivID)) {
 					char msg[160];
 					char const * bname = p_bic_data->Improvements[i_improv].Name.S;
 					snprintf (msg, sizeof msg, "%s %s %s", bname, is->c3x_labels[CL_CONSTRUCTION_HALTED_DUE_TO_MISSING_DISTRICT], district_description);
