@@ -573,6 +573,7 @@ enum {
 struct district_config {
 	enum Unit_Command_Values command;
 	char const * name;
+	char const * display_name;
 	char const * tooltip;
 	char const * advance_prereq;
 	char const * resource_prereq;
@@ -661,6 +662,7 @@ struct wonder_location {
 const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYPES] = {
 	{
 		.command = UCV_Build_Neighborhood, .name = "Neighborhood", .tooltip = "Build Neighborhood",
+		.display_name = "Neighborhood",
 		.advance_prereq = NULL, .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = true, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
@@ -670,6 +672,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_WonderDistrict, .name = "Wonder District", .tooltip = "Build Wonder District",
+		.display_name = "Wonder District",
 		.advance_prereq = NULL, .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"WonderDistrict.pcx"},
 		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Coast)),
@@ -679,6 +682,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_DistributionHub, .name = "Distribution Hub", .tooltip = "Build Distribution Hub",
+		.display_name = "Distribution Hub",
 		.advance_prereq = "Construction", .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"DistributionHub.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
@@ -688,6 +692,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_Aerodrome, .name = "Aerodrome", .tooltip = "Build Aerodrome",
+		.display_name = "Aerodrome",
 		.advance_prereq = "Flight", .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 1,
 		.img_paths = {"Aerodrome.pcx"}, .dependent_improvements = {"Airport"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
@@ -696,6 +701,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = -1, .name = "Natural Wonder", .tooltip = NULL,
+		.display_name = "Natural Wonder",
 		.advance_prereq = NULL, .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {0},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
@@ -704,6 +710,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port",
+		.display_name = "Port",
 		.advance_prereq = "Map Making", .resource_prereq = NULL, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 2, .align_to_coast = true,
 		.img_paths = {"Port_NW.pcx", "Port_NE.pcx", "Port_SE.pcx", "Port_SW.pcx"}, .dependent_improvements = {"Harbor", "Commercial Dock"},
 		.buildable_square_types_mask =  (1 << SQ_Coast),
@@ -714,6 +721,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 
 struct parsed_district_definition {
 	char * name;
+	char * display_name;
 	char * tooltip;
 	char * advance_prereq;
 	char * resource_prereq;
@@ -740,6 +748,7 @@ struct parsed_district_definition {
 	bool has_tooltip;
 	bool has_advance_prereq;
 	bool has_dependent_improvements;
+	bool has_display_name;
 	bool has_img_paths;
 	bool has_allow_multiple;
 	bool has_vary_img_by_era;

@@ -4944,9 +4944,15 @@ free_dynamic_district_config (struct district_config * cfg)
 	if (! cfg->is_dynamic)
 		return;
 
+	char const * name_ptr = cfg->name;
 	if (cfg->name != NULL) {
 		free ((void *)cfg->name);
 		cfg->name = NULL;
+	}
+	if ((cfg->display_name != NULL) &&
+	    (cfg->display_name != name_ptr)) {
+		free ((void *)cfg->display_name);
+		cfg->display_name = NULL;
 	}
 	if (cfg->tooltip != NULL) {
 		free ((void *)cfg->tooltip);
@@ -5043,6 +5049,12 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 	if (cfg == NULL || defaults == NULL)
 		return;
 
+	if ((cfg->display_name != NULL) &&
+	    (cfg->display_name != cfg->name) &&
+	    (cfg->display_name != defaults->display_name)) {
+		free ((void *)cfg->display_name);
+		cfg->display_name = NULL;
+	}
 	if ((cfg->tooltip != NULL) && (cfg->tooltip != defaults->tooltip)) {
 		free ((void *)cfg->tooltip);
 		cfg->tooltip = NULL;
@@ -5156,6 +5168,10 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 	if (def == NULL)
 		return;
 
+	if (def->display_name != NULL) {
+		free (def->display_name);
+		def->display_name = NULL;
+	}
 	if (def->name != NULL) {
 		free (def->name);
 		def->name = NULL;
@@ -5413,6 +5429,15 @@ override_special_district_from_definition (struct parsed_district_definition * d
 	def->name = NULL;
 	def->has_name = false;
 
+	if (def->has_display_name) {
+		if ((cfg->display_name != NULL) &&
+		    (cfg->display_name != cfg->name) &&
+		    (cfg->display_name != defaults->display_name))
+			free ((void *)cfg->display_name);
+		cfg->display_name = def->display_name;
+		def->display_name = NULL;
+	}
+
 	if (def->has_tooltip) {
 		if ((cfg->tooltip != NULL) && (cfg->tooltip != defaults->tooltip))
 			free ((void *)cfg->tooltip);
@@ -5552,6 +5577,14 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 
 	new_cfg.name = def->name;
 	def->name = NULL;
+	if (def->has_display_name) {
+		new_cfg.display_name = def->display_name;
+		if (new_cfg.display_name == NULL)
+			new_cfg.display_name = new_cfg.name;
+		def->display_name = NULL;
+	} else {
+		new_cfg.display_name = new_cfg.name;
+	}
 
 	if (def->has_tooltip) {
 		new_cfg.tooltip = def->tooltip;
@@ -5672,6 +5705,14 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->name = name_copy;
 			def->has_name = true;
 		}
+
+	} else if (slice_matches_str (key, "display_name")) {
+		if (def->display_name != NULL) {
+			free (def->display_name);
+			def->display_name = NULL;
+		}
+		def->display_name = copy_trimmed_string_or_null (value, 1);
+		def->has_display_name = true;
 
 	} else if (slice_matches_str (key, "tooltip")) {
 		if (def->tooltip != NULL) {
@@ -16752,7 +16793,9 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 
 			if (dist != NULL) {
 				show_district_name = true;
-				char const * display_name = is->district_configs[dist->district_type].name;
+				char const * display_name = is->district_configs[dist->district_type].display_name;
+				if ((display_name == NULL) || (display_name[0] == '\0'))
+					display_name = is->district_configs[dist->district_type].name;
 
 				// If it's a wonder district with a completed wonder, show the wonder name instead
 				if ((dist->district_type == WONDER_DISTRICT_ID) &&
