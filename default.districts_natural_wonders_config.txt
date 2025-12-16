@@ -218,7 +218,7 @@ happiness_bonus = 1
 #Wonder
 name            = Kalaallit Nunaat Cliffs
 terrain_type    = tundra
-adjacent_to     = tundra
+adjacent_to     = coast
 img_path        = NaturalWonders.pcx
 img_row         = 3
 img_column      = 3
