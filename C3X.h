@@ -109,9 +109,10 @@ enum special_defensive_bombard_rules {
 };
 
 enum special_zone_of_control_rules {
-	SZOCR_LETHAL     = 1,
-	SZOCR_AERIAL     = 2,
-	SZOCR_AMPHIBIOUS = 4,
+	SZOCR_LETHAL          = 1,
+	SZOCR_AERIAL          = 2,
+	SZOCR_AMPHIBIOUS      = 4,
+	SZOCR_NOT_FROM_INSIDE = 8,
 };
 
 enum land_transport_rules {

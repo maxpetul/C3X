@@ -2058,9 +2058,10 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_zone_of_control_rules")) {
 					struct parsable_field_bit bits[] = {
-						{"lethal"    , SZOCR_LETHAL},
-						{"aerial"    , SZOCR_AERIAL},
-						{"amphibious", SZOCR_AMPHIBIOUS},
+						{"lethal"         , SZOCR_LETHAL},
+						{"aerial"         , SZOCR_AERIAL},
+						{"amphibious"     , SZOCR_AMPHIBIOUS},
+						{"not-from-inside", SZOCR_NOT_FROM_INSIDE},
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_zone_of_control_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -9320,8 +9321,8 @@ filter_zoc_candidate (struct register_set * reg)
 	if ((candidate_class == UTC_Air) && ! (candidate_type->Air_Missions & UCV_Bombing))
 		return 0;
 
-	// Exclude land units in transports
-	if (candidate_class == UTC_Land) {
+	// Exclude land units in transports if configured
+	if ((is->current_config.special_zone_of_control_rules & SZOCR_NOT_FROM_INSIDE) && candidate_class == UTC_Land) {
 		Unit * container = get_unit_ptr (candidate->Body.Container_Unit);
 		if ((container != NULL) && ! UnitType_has_ability (&p_bic_data->UnitTypes[container->Body.UnitTypeID], __, UTA_Army))
 			return 0;
