@@ -19419,8 +19419,18 @@ count_workable_tiles_for_city (City * city)
 
 	int workable = 0;
 	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
-		if ((wai.tile != NULL) && (wai.tile != p_null_tile))
-			workable++;
+		Tile * tile = wai.tile;
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+
+		if (tile->Body.CityAreaID != city->Body.ID)
+			continue;
+
+		struct district_instance * inst = get_district_instance (tile);
+		if ((inst != NULL) && district_is_complete (tile, inst->district_type))
+			continue;
+
+		workable++;
 	}
 	return workable;
 }
