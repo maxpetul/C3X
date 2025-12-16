@@ -134,6 +134,11 @@ enum distribution_hub_yield_division_mode {
 	DHYDM_SCALE_BY_CITY_COUNT
 };
 
+enum ai_distribution_hub_build_strategy {
+	ADHBS_AUTO = 0,
+	ADHBS_BY_CITY_COUNT
+};
+
 enum perfume_kind {
 	PK_PRODUCTION = 0,
 	PK_TECHNOLOGY,
@@ -356,6 +361,7 @@ struct c3x_config {
 	int distribution_hub_yield_division_mode;
 	int distribution_hub_food_yield_divisor;
 	int distribution_hub_shield_yield_divisor;
+	int ai_distribution_hub_build_strategy;
 	int ai_ideal_distribution_hub_count_per_100_cities;
 
 	bool workers_can_enter_coast;

@@ -1695,6 +1695,16 @@ read_distribution_hub_yield_division_mode (struct string_slice const * s, int * 
 }
 
 bool
+read_ai_distribution_hub_build_strategy (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "auto"          )) { *out_val = ADHBS_AUTO;           return true; }
+	else if (slice_matches_str (&trimmed, "by-city-count" )) { *out_val = ADHBS_BY_CITY_COUNT;   return true; }
+	else
+		return false;
+}
+
+bool
 read_square_type_value (struct string_slice const * s, enum SquareTypes * out_type)
 {
 	if (s == NULL || out_type == NULL)
@@ -2209,6 +2219,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "distribution_hub_yield_division_mode")) {
 					if (! read_distribution_hub_yield_division_mode (&value, (int *)&cfg->distribution_hub_yield_division_mode))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "ai_distribution_hub_build_strategy")) {
+					if (! read_ai_distribution_hub_build_strategy (&value, (int *)&cfg->ai_distribution_hub_build_strategy))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_ptw_arty_types (&value,
@@ -11835,6 +11848,7 @@ patch_init_floating_point ()
 	base_config.city_work_radius = 2;
 	base_config.day_night_cycle_mode = DNCM_OFF;
 	base_config.distribution_hub_yield_division_mode = DHYDM_FLAT;
+	base_config.ai_distribution_hub_build_strategy = ADHBS_BY_CITY_COUNT;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)
@@ -19397,6 +19411,77 @@ patch_Map_wrap_vert_for_barb_ai (Map * this, int edx, int y)
 	return Map_wrap_vert (this, __, is->current_config.patch_barbarian_diagonal_bug ? (y + is->barb_diag_patch_dy_fix) : y);
 }
 
+int
+count_workable_tiles_for_city (City * city)
+{
+	if (city == NULL)
+		return 0;
+
+	int workable = 0;
+	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+		if ((wai.tile != NULL) && (wai.tile != p_null_tile))
+			workable++;
+	}
+	return workable;
+}
+
+int
+compute_auto_distribution_hub_goal (Leader * leader, int city_count)
+{
+	int total_unused_tiles = 0;
+	int stagnating_cities = 0;
+	int slow_growth_cities = 0;
+	int very_low_production_cities = 0;
+	int low_production_cities = 0;
+
+	FOR_CITIES_OF (coi, leader->ID) {
+		City * city = coi.city;
+		if (city == NULL)
+			continue;
+
+		int pop_size = city->Body.Population.Size;
+		int workable_tiles = count_workable_tiles_for_city (city);
+		if ((workable_tiles > 0) && (pop_size < workable_tiles))
+			total_unused_tiles += workable_tiles - pop_size;
+
+		int net_food = city->Body.FoodIncome;
+		if (net_food <= 0)
+			stagnating_cities++;
+		else if (net_food <= 2)
+			slow_growth_cities++;
+
+		int net_shields = city->Body.ProductionIncome + city->Body.ProductionLoss;
+		if (net_shields < 0)
+			net_shields = 0;
+		if (net_shields <= 3)
+			very_low_production_cities++;
+		else if (net_shields <= 6)
+			low_production_cities++;
+	}
+
+	int base_desired = (city_count + 3) / 4;
+
+	int tiles_per_chunk = is->workable_tile_count;
+	if (tiles_per_chunk <= 0)
+		tiles_per_chunk = 1;
+	int unused_bonus = (total_unused_tiles + tiles_per_chunk * 3 - 1) / (tiles_per_chunk * 3);
+
+	int food_pressure = stagnating_cities * 2 + slow_growth_cities;
+	int food_bonus = (food_pressure + 2) / 3;
+
+	int production_pressure = very_low_production_cities * 2 + low_production_cities;
+	int production_bonus = (production_pressure + 2) / 3;
+
+	int desired = base_desired + unused_bonus + food_bonus + production_bonus;
+	int max_reasonable = (city_count + 1) / 2;
+	if (desired > max_reasonable)
+		desired = max_reasonable;
+	if (desired < 1)
+		desired = 1;
+
+	return desired;
+}
+
 void
 ai_update_distribution_hub_goal_for_leader (Leader * leader)
 {
@@ -19410,15 +19495,19 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 	if ((1 << civ_id) & *p_human_player_bits)
 		return;
 
-	int ideal_per_100 = is->current_config.ai_ideal_distribution_hub_count_per_100_cities;
-	if (ideal_per_100 <= 0)
-		return;
-
 	int city_count = leader->Cities_Count;
 	if (city_count <= 0)
 		return;
 
-	int desired = (city_count * ideal_per_100) / 100;
+	int desired = 0;
+	if (is->current_config.ai_distribution_hub_build_strategy == ADHBS_AUTO)
+		desired = compute_auto_distribution_hub_goal (leader, city_count);
+	else {
+		int ideal_per_100 = is->current_config.ai_ideal_distribution_hub_count_per_100_cities;
+		if (ideal_per_100 <= 0)
+			return;
+		desired = (city_count * ideal_per_100) / 100;
+	}
 	if (desired <= 0)
 		return;
 
@@ -19480,7 +19569,7 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 				continue;
 
 			int tile_x, tile_y;
-			Tile * candidate = find_tile_for_distribution_hub_district (city, &tile_x, &tile_y);
+			Tile * candidate = find_tile_for_district (city, DISTRIBUTION_HUB_DISTRICT_ID, &tile_x, &tile_y);
 			if (candidate == NULL)
 				continue;
 
