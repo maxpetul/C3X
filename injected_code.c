@@ -9047,14 +9047,15 @@ patch_is_not_pop_capped_or_starving (City * city)
 	return true;
 }
 
-void
+bool
 remove_building_if_no_district (City * city, int district_id, int building_id)
 {
-	if ((city == NULL) || (building_id < 0)) return;
-	if (! patch_City_has_improvement (city, __, building_id, false)) return;
-	if (city_has_required_district (city, district_id)) return;
+	if ((city == NULL) || (building_id < 0)) return false;
+	if (! patch_City_has_improvement (city, __, building_id, false)) return false;
+	if (city_has_required_district (city, district_id)) return false;
 
 	patch_City_add_or_remove_improvement (city, __, building_id, 0, false);
+	return true;
 }
 
 bool
@@ -9168,13 +9169,49 @@ remove_dependent_buildings_for_district (int district_id, int center_x, int cent
 		if (city_has_other_completed_district (city, district_id, center_x, center_y))
 			continue;
 
+		int removed_count = 0;
+		int first_building_id = -1;
+
 		for (int i = 0; i < info->dependent_building_count; i++) {
 			int building_id = info->dependent_building_ids[i];
 			if (building_id >= 0) {
 				// This also loops through tiles around the city but is not redundant, as the city
 				// may have multiple districts of the same type in its radius (eg outside radius of this particular district)
-				remove_building_if_no_district (city, district_id, building_id);
+				if (remove_building_if_no_district (city, district_id, building_id)) {
+					if (removed_count == 0)
+						first_building_id = building_id;
+					removed_count++;
+				}
 			}
+		}
+
+		if ((removed_count > 0) &&
+		    is->current_config.show_message_when_building_lost_to_destroyed_district &&
+		    ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)) {
+			char msg[200];
+			char const * district_name = is->district_configs[district_id].name;
+			char const * building_name = (first_building_id >= 0) ? p_bic_data->Improvements[first_building_id].Name.S : "";
+
+			if (removed_count == 1)
+				snprintf (msg, sizeof msg, "%s%s %s %s %s",
+					  city->Body.CityName,
+					  is->c3x_labels[CL_APOSTROPHE_S],
+					  building_name,
+					  is->c3x_labels[CL_LOST_DUE_TO_DESTROYED],
+					  district_name);
+			else
+				snprintf (msg, sizeof msg, "%s%s %s %s %d %s %s %s",
+					  city->Body.CityName,
+					  is->c3x_labels[CL_APOSTROPHE_S],
+					  building_name,
+					  is->c3x_labels[CL_AND],
+					  removed_count - 1,
+					  is->c3x_labels[CL_OTHER_BUILDINGS_HAVE_BEEN],
+					  is->c3x_labels[CL_LOST_DUE_TO_DESTROYED],
+					  district_name);
+
+			msg[(sizeof msg) - 1] = '\0';
+			show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
 		}
 	}
 }
@@ -11746,6 +11783,7 @@ patch_init_floating_point ()
 		{"cities_with_mutual_district_receive_buildings"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
 		{"cities_with_mutual_district_receive_wonders"           , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
 		{"show_message_when_building_received_by_mutual_district", false, offsetof (struct c3x_config, show_message_when_building_received_by_mutual_district)},
+		{"show_message_when_building_lost_to_destroyed_district" , false, offsetof (struct c3x_config, show_message_when_building_lost_to_destroyed_district)},
 		{"air_units_use_aerodrome_districts_not_cities"          , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
 		{"naval_units_use_port_districts_not_cities"             , false, offsetof (struct c3x_config, naval_units_use_port_districts_not_cities)},
 		{"show_natural_wonder_name_on_map"                       , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},

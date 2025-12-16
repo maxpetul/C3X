@@ -116,10 +116,16 @@ requires a Neighborhood to grow
 destroyed by volcanic eruption!
 construction halted due to missing
 
-; Shown if City A receives a building from City B via shared district, as in "<City A> recieved <Building> from shared <District> with <City B>".
+; Shown if City A receives a building from City B via shared district, as in "<City A> received <Building> from shared <District> with <City B>".
 received
 from shared
 with
+
+; Shown if a city loses one or more buildings due to destroyed district, as in "<City>'s <Building> and <Number> other buildings have been lost due to destroyed <District>"
+'s
+and
+other buildings have been 
+lost due to destroyed
 
 ; Districts config mismatch checked on game load
 District ID

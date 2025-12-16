@@ -347,6 +347,7 @@ struct c3x_config {
 	bool cities_with_mutual_district_receive_buildings;
 	bool cities_with_mutual_district_receive_wonders;
 	bool show_message_when_building_received_by_mutual_district;
+	bool show_message_when_building_lost_to_destroyed_district;
 
 	bool air_units_use_aerodrome_districts_not_cities;
 	bool naval_units_use_port_districts_not_cities;
@@ -485,6 +486,11 @@ enum c3x_label {
 	CL_RECEIVED,
 	CL_FROM_SHARED,
 	CL_WITH,
+
+	CL_APOSTROPHE_S,
+	CL_AND,
+	CL_OTHER_BUILDINGS_HAVE_BEEN,
+	CL_LOST_DUE_TO_DESTROYED,
 
 	// Districts config mismatch checked on game load
 	CL_DISTRICT_ID,
