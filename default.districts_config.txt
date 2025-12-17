@@ -136,6 +136,7 @@ vary_img_by_culture   = 0
 advance_prereq        = Electricity
 dependent_improvs     = 
 buildable_on          = snow-mountains
+extended_height       = 1
 defense_bonus_percent = 0
 allow_multiple        = 1
 culture_bonus         = 2
