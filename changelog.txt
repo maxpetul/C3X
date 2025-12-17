@@ -1,10 +1,10 @@
-
+* RELEASE 26
 - Add some options to make land transports viable, controlled by land_transport_rules setting
   - LTs may be loaded into naval transports
   - Empty LTs may join armies
   - Units inside an LT may be prevented from defending their tile, performing defensive bombard, or intercepting air units
   - Units inside an LT can be destroyed when the LT itself is destroyed or captured
-- Add resource generation settings
+- Add resource placement settings
   - allow_adjacent_resources_of_different_types relaxes a rule preventing resources from appearing next to others of a different type
   - luxury_randomized_appearance_rate_percent controls the overall appearance rate for luxuries that do not have a fixed rate set
   - tiles_per_non_luxury_resource controls the overall appearance rate of bonus resources
