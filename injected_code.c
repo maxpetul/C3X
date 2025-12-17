@@ -4636,8 +4636,14 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec)
 		connected_city_count = 1;
 
 	if (is->current_config.distribution_hub_yield_division_mode == DHYDM_SCALE_BY_CITY_COUNT) {
-		rec->food_yield   = food_sum   / (connected_city_count / food_div);
-		rec->shield_yield = shield_sum / (connected_city_count / shield_div);
+		int city_food_divisor = connected_city_count / food_div;
+		int city_shield_divisor = connected_city_count / shield_div;
+		if (city_food_divisor < 1)
+			city_food_divisor = 1;
+		if (city_shield_divisor < 1)
+			city_shield_divisor = 1;
+		rec->food_yield   = food_sum   / city_food_divisor;
+		rec->shield_yield = shield_sum / city_shield_divisor;
 	} else {
 		rec->food_yield = food_sum / food_div;
 		rec->shield_yield = shield_sum / shield_div;
@@ -4935,12 +4941,19 @@ void
 add_key_parse_error (struct error_line ** parse_errors,
 		     int line_number,
 		     struct string_slice const * key,
+		     struct string_slice const * value,
 		     char const * message_suffix)
 {
 	struct error_line * err = add_error_line (parse_errors);
 	char * key_str = extract_slice (key);
-	snprintf (err->text, sizeof err->text, "^  Line %d: %s %s", line_number, key_str, message_suffix);
+	char * value_str = (value != NULL) ? extract_slice (value) : NULL;
+	if (value_str != NULL)
+		snprintf (err->text, sizeof err->text, "^  Line %d: %s \"%s\" %s", line_number, key_str, value_str, message_suffix);
+	else
+		snprintf (err->text, sizeof err->text, "^  Line %d: %s %s", line_number, key_str, message_suffix);
 	err->text[(sizeof err->text) - 1] = '\0';
+	if (value_str != NULL)
+		free (value_str);
 	free (key_str);
 }
 
@@ -5544,8 +5557,10 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->vary_img_by_culture = def->vary_img_by_culture;
 	if (def->has_align_to_coast)
 		cfg->align_to_coast = def->align_to_coast;
-	if (def->has_extended_height)
-		cfg->extended_height = def->extended_height;
+	if (def->has_custom_width)
+		cfg->custom_width = def->custom_width;
+	if (def->has_custom_height)
+		cfg->custom_height = def->custom_height;
 	if (def->has_btn_tile_sheet_column)
 		cfg->btn_tile_sheet_column = def->btn_tile_sheet_column;
 	if (def->has_btn_tile_sheet_row)
@@ -5714,7 +5729,8 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.vary_img_by_era = def->has_vary_img_by_era ? def->vary_img_by_era : false;
 	new_cfg.vary_img_by_culture = def->has_vary_img_by_culture ? def->vary_img_by_culture : false;
 	new_cfg.align_to_coast = def->has_align_to_coast ? def->align_to_coast : false;
-	new_cfg.extended_height = def->has_extended_height ? def->extended_height : false;
+	new_cfg.custom_width = def->has_custom_width ? def->custom_width : 0;
+	new_cfg.custom_height = def->has_custom_height ? def->custom_height : 0;
 	new_cfg.btn_tile_sheet_column = def->has_btn_tile_sheet_column ? def->btn_tile_sheet_column : 0;
 	new_cfg.btn_tile_sheet_row = def->has_btn_tile_sheet_row ? def->btn_tile_sheet_row : 0;
 	new_cfg.defense_bonus_percent = def->has_defense_bonus_percent ? def->defense_bonus_percent : 100;
@@ -5827,7 +5843,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		char * name_copy = copy_trimmed_string_or_null (value, 1);
 		if (name_copy == NULL) {
 			def->has_name = false;
-			add_key_parse_error (parse_errors, line_number, key, "(value is required)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
 		} else {
 			def->name = name_copy;
 			def->has_name = true;
@@ -5933,7 +5949,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->allow_multiple = (ival != 0);
 			def->has_allow_multiple = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "vary_img_by_era")) {
 		struct string_slice val_slice = *value;
@@ -5942,7 +5958,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->vary_img_by_era = (ival != 0);
 			def->has_vary_img_by_era = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "vary_img_by_culture")) {
 		struct string_slice val_slice = *value;
@@ -5951,7 +5967,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->vary_img_by_culture = (ival != 0);
 			def->has_vary_img_by_culture = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "align_to_coast")) {
 		struct string_slice val_slice = *value;
@@ -5960,16 +5976,25 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->align_to_coast = (ival != 0);
 			def->has_align_to_coast = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
-	} else if (slice_matches_str (key, "extended_height")) {
+	} else if (slice_matches_str (key, "custom_width")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->extended_height = (ival != 0);
-			def->has_extended_height = true;
+			def->custom_width = ival;
+			def->has_custom_width = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "custom_height")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->custom_height = ival;
+			def->has_custom_height = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "btn_tile_sheet_column")) {
 		struct string_slice val_slice = *value;
@@ -5978,7 +6003,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->btn_tile_sheet_column = ival;
 			def->has_btn_tile_sheet_column = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "btn_tile_sheet_row")) {
 		struct string_slice val_slice = *value;
@@ -5987,7 +6012,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->btn_tile_sheet_row = ival;
 			def->has_btn_tile_sheet_row = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "defense_bonus_percent")) {
 		struct string_slice val_slice = *value;
@@ -5996,7 +6021,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->defense_bonus_percent = ival;
 			def->has_defense_bonus_percent = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "culture_bonus")) {
 		struct string_slice val_slice = *value;
@@ -6005,7 +6030,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->culture_bonus = ival;
 			def->has_culture_bonus = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "science_bonus")) {
 		struct string_slice val_slice = *value;
@@ -6014,7 +6039,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->science_bonus = ival;
 			def->has_science_bonus = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "food_bonus")) {
 		struct string_slice val_slice = *value;
@@ -6023,7 +6048,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->food_bonus = ival;
 			def->has_food_bonus = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "gold_bonus")) {
 		struct string_slice val_slice = *value;
@@ -6032,7 +6057,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->gold_bonus = ival;
 			def->has_gold_bonus = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "shield_bonus")) {
 		struct string_slice val_slice = *value;
@@ -6041,7 +6066,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->shield_bonus = ival;
 			def->has_shield_bonus = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "happiness_bonus")) {
 		struct string_slice val_slice = *value;
@@ -6050,7 +6075,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->happiness_bonus = ival;
 			def->has_happiness_bonus = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "generated_resource")) {
 		if (def->generated_resource != NULL) {
@@ -6070,8 +6095,34 @@ handle_district_definition_key (struct parsed_district_definition * def,
 					      parse_errors,
 					      line_number,
 					      "generated_resource_settings")) {
-			def->generated_resource_settings_count = list_count;
-			def->has_generated_resource_settings = true;
+			bool valid = true;
+			for (int i = 0; i < list_count; i++) {
+				char * setting = def->generated_resource_settings[i];
+				if ((setting == NULL) ||
+				    ((strcmp (setting, "local") != 0) &&
+				     (strcmp (setting, "no-tech-req") != 0) &&
+				     (strcmp (setting, "show-bonus") != 0) &&
+				     (strcmp (setting, "hide-non-bonus") != 0))) {
+					struct error_line * err = add_error_line (parse_errors);
+					snprintf (err->text, sizeof err->text, "^  Line %d: generated_resource_settings (unrecognized value \"%s\")", line_number, (setting != NULL) ? setting : "");
+					err->text[(sizeof err->text) - 1] = '\0';
+					valid = false;
+				}
+			}
+
+			if (valid) {
+				def->generated_resource_settings_count = list_count;
+				def->has_generated_resource_settings = true;
+			} else {
+				for (int i = 0; i < ARRAY_LEN (def->generated_resource_settings); i++) {
+					if (def->generated_resource_settings[i] != NULL) {
+						free (def->generated_resource_settings[i]);
+						def->generated_resource_settings[i] = NULL;
+					}
+				}
+				def->generated_resource_settings_count = 0;
+				def->has_generated_resource_settings = false;
+			}
 		} else {
 			def->generated_resource_settings_count = 0;
 			def->has_generated_resource_settings = false;
@@ -6419,12 +6470,12 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 		struct string_slice unquoted = trim_string_slice (value, 1);
 		if (unquoted.len == 0) {
 			def->has_name = false;
-			add_key_parse_error (parse_errors, line_number, key, "(value is required)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
 		} else {
 			char * name_copy = extract_slice (&unquoted);
 			if (name_copy == NULL) {
 				def->has_name = false;
-				add_key_parse_error (parse_errors, line_number, key, "(out of memory)");
+				add_key_parse_error (parse_errors, line_number, key, value, "(out of memory)");
 			} else {
 				def->name = name_copy;
 				def->has_name = true;
@@ -6458,7 +6509,7 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_img_row = true;
 		} else {
 			def->has_img_row = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "img_column")) {
@@ -6469,7 +6520,7 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_img_column = true;
 		} else {
 			def->has_img_column = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "img_construct_row")) {
@@ -6480,7 +6531,7 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_img_construct_row = true;
 		} else {
 			def->has_img_construct_row = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "img_construct_column")) {
@@ -6491,7 +6542,7 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_img_construct_column = true;
 		} else {
 			def->has_img_construct_column = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "img_alt_dir_construct_row")) {
@@ -6502,7 +6553,7 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_img_alt_dir_construct_row = true;
 		} else {
 			def->has_img_alt_dir_construct_row = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "img_alt_dir_construct_column")) {
@@ -6513,7 +6564,7 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_img_alt_dir_construct_column = true;
 		} else {
 			def->has_img_alt_dir_construct_column = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "img_alt_dir_row")) {
@@ -6524,7 +6575,7 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_img_alt_dir_row = true;
 		} else {
 			def->has_img_alt_dir_row = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "img_alt_dir_column")) {
@@ -6535,7 +6586,7 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_img_alt_dir_column = true;
 		} else {
 			def->has_img_alt_dir_column = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "enable_img_alt_dir")) {
@@ -6546,7 +6597,7 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_enable_img_alt_dir = true;
 		} else {
 			def->has_enable_img_alt_dir = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "buildable_on")) {
@@ -6860,12 +6911,12 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 		struct string_slice unquoted = trim_string_slice (value, 1);
 		if (unquoted.len == 0) {
 			def->has_name = false;
-			add_key_parse_error (parse_errors, line_number, key, "(value is required)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
 		} else {
 			char * name_copy = extract_slice (&unquoted);
 			if (name_copy == NULL) {
 				def->has_name = false;
-				add_key_parse_error (parse_errors, line_number, key, "(out of memory)");
+				add_key_parse_error (parse_errors, line_number, key, value, "(out of memory)");
 			} else {
 				def->name = name_copy;
 				def->has_name = true;
@@ -6879,7 +6930,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_terrain_type = true;
 		} else {
 			def->has_terrain_type = false;
-			add_key_parse_error (parse_errors, line_number, key, "(unrecognized terrain type)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized terrain type)");
 		}
 
 	} else if (slice_matches_str (key, "adjacent_to")) {
@@ -6890,7 +6941,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 		} else {
 			def->adjacent_to = (enum SquareTypes)SQ_INVALID;
 			def->has_adjacent_to = false;
-			add_key_parse_error (parse_errors, line_number, key, "(unrecognized square type)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized square type)");
 		}
 
 	} else if (slice_matches_str (key, "adjacency_dir")) {
@@ -6901,7 +6952,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 		} else {
 			def->adjacency_dir = DIR_ZERO;
 			def->has_adjacency_dir = false;
-			add_key_parse_error (parse_errors, line_number, key, "(unrecognized direction)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized direction)");
 		}
 
 	} else if (slice_matches_str (key, "img_path")) {
@@ -6931,7 +6982,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_img_row = true;
 		} else {
 			def->has_img_row = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "img_column")) {
@@ -6942,7 +6993,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_img_column = true;
 		} else {
 			def->has_img_column = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "culture_bonus")) {
@@ -6953,7 +7004,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_culture_bonus = true;
 		} else {
 			def->has_culture_bonus = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "science_bonus")) {
@@ -6964,7 +7015,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_science_bonus = true;
 		} else {
 			def->has_science_bonus = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "food_bonus")) {
@@ -6975,7 +7026,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_food_bonus = true;
 		} else {
 			def->has_food_bonus = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "gold_bonus")) {
@@ -6986,7 +7037,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_gold_bonus = true;
 		} else {
 			def->has_gold_bonus = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "shield_bonus")) {
@@ -6997,7 +7048,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_shield_bonus = true;
 		} else {
 			def->has_shield_bonus = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "happiness_bonus")) {
@@ -7008,7 +7059,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_happiness_bonus = true;
 		} else {
 			def->has_happiness_bonus = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else
@@ -7219,7 +7270,10 @@ void parse_building_and_tech_ids ()
 {
 	struct c3x_config * cfg = &is->current_config;
 	char ss[200];
+	struct error_line * district_parse_errors = NULL;
+	struct error_line * wonder_parse_errors = NULL;
 	for (int i = 0; i < is->district_count; i++) {
+		char const * district_name = (is->district_configs[i].name != NULL) ? is->district_configs[i].name : "District";
 		if (is->district_configs[i].command != 0)
 			itable_insert (&is->command_id_to_district_id, is->district_configs[i].command, i);
 		is->district_infos[i].advance_prereq_id = -1;
@@ -7239,6 +7293,9 @@ void parse_building_and_tech_ids ()
 				itable_insert (&is->district_tech_prereqs, tech_id, i);
 			} else {
 				is->district_infos[i].advance_prereq_id = -1;
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": advance_prereq \"%.*s\" not found", district_name, tech_name.len, tech_name.str);
+				err->text[(sizeof err->text) - 1] = '\0';
 			}
 		}
 
@@ -7256,6 +7313,10 @@ void parse_building_and_tech_ids ()
 					is->district_infos[i].resource_prereq_ids[stored_res_count] = res_id;
 					stored_res_count++;
 				}
+			} else {
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": resource_prereq \"%.*s\" not found", district_name, res_name.len, res_name.str);
+				err->text[(sizeof err->text) - 1] = '\0';
 			}
 		}
 		is->district_infos[i].resource_prereq_count = stored_res_count;
@@ -7268,6 +7329,9 @@ void parse_building_and_tech_ids ()
 				is->district_infos[i].resource_prereq_on_tile_id = res_id;
 			} else {
 				is->district_infos[i].resource_prereq_on_tile_id = -1;
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": resource_prereq_on_tile \"%.*s\" not found", district_name, res_name.len, res_name.str);
+				err->text[(sizeof err->text) - 1] = '\0';
 			}
 		}
 
@@ -7281,6 +7345,9 @@ void parse_building_and_tech_ids ()
 				is->district_configs[i].generated_resource_id = res_id;
 			} else {
 				is->district_configs[i].generated_resource_id = -1;
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": generated_resource \"%.*s\" not found", district_name, res_name.len, res_name.str);
+				err->text[(sizeof err->text) - 1] = '\0';
 			}
 		}
 
@@ -7307,6 +7374,9 @@ void parse_building_and_tech_ids ()
 				stable_insert (&is->building_name_to_id, improv_name.str, improv_id);
 			} else {
 				is->district_infos[i].dependent_building_ids[j] = -1;
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": dependent_improvs entry \"%.*s\" not found", district_name, improv_name.len, improv_name.str);
+				err->text[(sizeof err->text) - 1] = '\0';
 			}
 			is->district_infos[i].dependent_building_count = stored_count;
 		}
@@ -7326,7 +7396,43 @@ void parse_building_and_tech_ids ()
 		} else {
 			snprintf (ss, sizeof ss, "Could not find improvement prereq \"%.*s\" for wonder district \"%s\"\n", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name);
 			(*p_OutputDebugStringA) (ss);
+			struct error_line * err = add_error_line (&wonder_parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Wonder district \"%s\": improvement \"%.*s\" not found", (is->wonder_district_configs[wi].wonder_name != NULL) ? is->wonder_district_configs[wi].wonder_name : "Wonder District", wonder_name.len, wonder_name.str);
+			err->text[(sizeof err->text) - 1] = '\0';
 		}
+	}
+
+	if ((district_parse_errors != NULL) || (wonder_parse_errors != NULL)) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+
+		if (district_parse_errors != NULL) {
+			char header[256];
+			if (is->current_districts_config_path[0] != '\0')
+				snprintf (header, sizeof header, "District Config errors in %s:", is->current_districts_config_path);
+			else
+				snprintf (header, sizeof header, "District Config lookup errors:");
+			header[(sizeof header) - 1] = '\0';
+			PopupForm_add_text (popup, __, header, false);
+			for (struct error_line * line = district_parse_errors; line != NULL; line = line->next)
+				PopupForm_add_text (popup, __, line->text, false);
+		}
+
+		if ((district_parse_errors != NULL) && (wonder_parse_errors != NULL))
+			PopupForm_add_text (popup, __, "", false);
+
+		if (wonder_parse_errors != NULL) {
+			char header[256];
+			snprintf (header, sizeof header, "Wonder District Config lookup errors:");
+			header[(sizeof header) - 1] = '\0';
+			PopupForm_add_text (popup, __, header, false);
+			for (struct error_line * line = wonder_parse_errors; line != NULL; line = line->next)
+				PopupForm_add_text (popup, __, line->text, false);
+		}
+
+		patch_show_popup (popup, __, 0, 0);
+		free_error_lines (district_parse_errors);
+		free_error_lines (wonder_parse_errors);
 	}
 }
 
@@ -23746,8 +23852,16 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 		return;
 
 	// Get district configuration
-	struct district_config const * config = &is->district_configs[district_id];
+	struct district_config * config = &is->district_configs[district_id];
 	struct district_instance * inst = get_district_instance (tile);
+
+	int generated_resource_id = -1;
+	if ((config->generated_resource_id >= 0) &&
+	    (city_form != NULL) && (city_form->CurrentCity != NULL) &&
+	    ((config->generated_resource_flags & MF_SHOW_BONUS) || (p_bic_data->ResourceTypes[config->generated_resource_id].Class != RC_Bonus)) &&
+	    (! ((config->generated_resource_flags & MF_HIDE_NON_BONUS) && (p_bic_data->ResourceTypes[config->generated_resource_id].Class != RC_Bonus))) &&
+	    district_can_generate_resource (city_form->CurrentCity->Body.CivID, config))
+		generated_resource_id = config->generated_resource_id;
 
 	// Count total yields from bonuses
 	int food_bonus = 0, shield_bonus = 0, gold_bonus = 0, science_bonus = 0, culture_bonus = 0, happiness_bonus = 0;
@@ -23761,7 +23875,12 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	if (culture_bonus > 0)   total_yield += culture_bonus;
 	if (happiness_bonus > 0) total_yield += happiness_bonus;
 
-	if (total_yield <= 0)
+	JGL_Image * canvas_img = city_form->Base.Data.Canvas.JGL.Image;
+	JGL_Image * resource_sheet_img = (is->resources_sheet != NULL) ? is->resources_sheet->JGL.Image : NULL;
+	int resource_icon_count = (generated_resource_id >= 0 && canvas_img != NULL && resource_sheet_img != NULL && TransparentBlt != NULL) ? 1 : 0;
+
+	int total_icons = total_yield + resource_icon_count;
+	if (total_icons <= 0)
 		return;
 
 	// Get sprites
@@ -23777,7 +23896,7 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	int sprite_height = food_sprite->Height;
 
 	// Calculate total width of all icons
-	int total_width = total_yield * sprite_width;
+	int total_width = total_icons * sprite_width;
 
 	// Center the icons horizontally
 	int half_width = total_width >> 1;
@@ -23792,8 +23911,8 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	// Adjust spacing if icons would exceed tile width
 	int spacing = sprite_width;
 	if (total_width > tile_width - 10) {
-		if (total_yield > 1) {
-			spacing = (tile_width - 10 - sprite_width) / (total_yield - 1);
+		if (total_icons > 1) {
+			spacing = (tile_width - 10 - sprite_width) / (total_icons - 1);
 			if (spacing < 1)
 				spacing = 1;
 			else if (spacing > sprite_width)
@@ -23829,6 +23948,34 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 
 	for (int i = 0; i < happiness_bonus; i++) {
 		Sprite_draw (happiness_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
+
+	if (resource_icon_count > 0) {
+		int icon_id = p_bic_data->ResourceTypes[generated_resource_id].IconID,
+		    sheet_row = icon_id / 6,
+		    sheet_col = icon_id % 6;
+
+		int resource_height = 24,
+		    resource_width = 24,
+		    resource_pixel_y = pixel_y;
+		if (sprite_height > resource_height)
+			resource_pixel_y += (sprite_height - resource_height) >> 1;
+
+		HDC canvas_dc = canvas_img->vtable->acquire_dc (canvas_img);
+		if (canvas_dc != NULL) {
+			HDC sheet_dc = resource_sheet_img->vtable->acquire_dc (resource_sheet_img);
+			if (sheet_dc != NULL) {
+				TransparentBlt (canvas_dc,
+						pixel_x, resource_pixel_y, resource_width, resource_height,
+						sheet_dc,
+						9 + 50*sheet_col, 9 + 50*sheet_row, 33, 33,
+						0xFF00FF);
+				resource_sheet_img->vtable->release_dc (resource_sheet_img, __, 1);
+			}
+			canvas_img->vtable->release_dc (canvas_img, __, 1);
+		}
+
 		pixel_x += spacing;
 	}
 }
@@ -24831,7 +24978,8 @@ init_district_images ()
 
 		int era_count = cfg->vary_img_by_era ? 4 : 1;
 		int column_count = cfg->max_building_index + 1;
-		int sprite_height = cfg->extended_height ? 88 : 64;
+		int sprite_width = (cfg->custom_width > 0) ? cfg->custom_width : 128;
+		int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
 
 		// For each cultural variant
 		for (int variant_i = 0; variant_i < variant_count; variant_i++) {
@@ -24863,15 +25011,15 @@ init_district_images ()
 			}
 
 			// For each era
-			for (int era_i = 0; era_i < era_count; era_i++) {
+				for (int era_i = 0; era_i < era_count; era_i++) {
 
 				// For each column in the image (variations on the district image for that era)
 				for (int col_i = 0; col_i < column_count; col_i++) {
 					Sprite_construct (&is->district_img_sets[dc].imgs[variant_i][era_i][col_i]);
 
-					int x = 128 * col_i,
+					int x = sprite_width * col_i,
 						y = sprite_height * era_i;
-					Sprite_slice_pcx (&is->district_img_sets[dc].imgs[variant_i][era_i][col_i], __, &pcx, x, y, 128, sprite_height, 1, 1);
+					Sprite_slice_pcx (&is->district_img_sets[dc].imgs[variant_i][era_i][col_i], __, &pcx, x, y, sprite_width, sprite_height, 1, 1);
 				}
 			}
 
@@ -25408,9 +25556,9 @@ wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner
 	}
 
 	if ((best_dist == INT_MAX) || (best_dx == 0))
-		return false;
+		return true;
 
-	return best_dx < 0;
+	return best_dx > 0;
 }
 
 void
@@ -25422,6 +25570,24 @@ draw_district_on_map_or_canvas(Sprite * sprite, Map_Renderer * map_renderer, int
 	} else {
 		patch_Sprite_draw_on_map (sprite, __, map_renderer, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
 	}
+}
+
+bool 
+district_allows_river (struct district_config const * cfg)
+{
+	unsigned int build_mask = cfg->buildable_square_types_mask;
+	if (build_mask == 0)
+		build_mask = district_default_buildable_mask ();
+	return (build_mask & square_type_mask_bit (SQ_RIVER)) != 0;
+}
+
+bool 
+wonder_allows_river (struct wonder_district_config const * cfg)
+{
+	unsigned int build_mask = wonder_buildable_square_type_mask (cfg);
+	if (build_mask == 0)
+		build_mask = district_default_buildable_mask ();
+	return (build_mask & square_type_mask_bit (SQ_RIVER)) != 0;
 }
 
 void __fastcall
@@ -25484,11 +25650,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 
 		// Handle river alignment, if district allows it
 		enum direction river_dir = DIR_ZERO;
-		unsigned int build_mask = cfg->buildable_square_types_mask;
-		if (build_mask == 0)
-			build_mask = district_default_buildable_mask ();
-		bool river_allowed = (build_mask & square_type_mask_bit (SQ_RIVER)) != 0;
-		if (river_allowed)
+		if (district_allows_river(cfg))
 			align_district_with_river (tile, &pixel_x, &pixel_y, &river_dir);
 
         if (territory_owner_id > 0) {
@@ -25544,6 +25706,10 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 
 					struct wonder_district_config * wcfg   = &is->wonder_district_configs[windex];
 					struct wonder_district_image_set * set = &is->wonder_district_img_sets[windex];
+
+					if (wonder_allows_river(wcfg))
+						align_district_with_river (tile, &pixel_x, &pixel_y, &river_dir);
+						
 					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id, wcfg);
 					Sprite * wsprite = (use_alt_dir && (set->alt_dir_img.vtable != NULL)) ? &set->alt_dir_img : &set->img;
 
@@ -25580,9 +25746,11 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 		}
 
 		district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
-		int sprite_height = cfg->extended_height ? 88 : 64;
+		int sprite_width = (cfg->custom_width > 0) ? cfg->custom_width : 128;
+		int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
+		int draw_x = pixel_x - ((sprite_width - 128) / 2);
 		int draw_y = pixel_y - (sprite_height - 64);
-		draw_district_on_map_or_canvas(district_sprite, map_renderer, pixel_x, draw_y);
+		draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
 		return;
 	}
 
@@ -25840,7 +26008,8 @@ patch_Unit_ai_move_terraformer (Unit * this)
 		update_tracked_worker_for_unit (this);
 		struct district_instance * inst = get_district_instance (tile);
 
-		if (inst != NULL && inst->district_type != NATURAL_WONDER_DISTRICT_ID) {
+		if (inst != NULL && inst->district_type != NATURAL_WONDER_DISTRICT_ID && 
+			tile->vtable->m50_Get_Square_BaseType (tile) != SQ_Coast) {
 			// Roads should be made after district builds. The district is complete but 
 			// worker is still likely on the tile, so check here and build road if needed
 			bool has_road = (*tile->vtable->m25_Check_Roads)(tile, __, 0);

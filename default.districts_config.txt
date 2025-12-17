@@ -136,7 +136,7 @@ vary_img_by_culture   = 0
 advance_prereq        = Electricity
 dependent_improvs     = 
 buildable_on          = snow-mountains
-extended_height       = 1
+custom_height         = 84
 defense_bonus_percent = 0
 allow_multiple        = 1
 culture_bonus         = 2
@@ -163,7 +163,7 @@ happiness_bonus       = 0
 #District
 name                  = Wonder District
 tooltip               = Build Wonder District
-buildable_on          = desert,plains,grassland,tundra,floodplain,hills
+buildable_on          = desert,plains,grassland,tundra,floodplain,hills,coast
 advance_prereq        = 
 defense_bonus_percent = 0
 allow_multiple        = 1

@@ -8,6 +8,7 @@
 
 #Wonder
 name                 = The Pyramids
+buildable_on         = desert
 img_path             = Wonders.pcx
 img_construct_row    = 0
 img_construct_column = 0
@@ -24,6 +25,7 @@ img_column           = 3
 
 #Wonder
 name                 = The Oracle
+buildable_on         = hills
 img_path             = Wonders.pcx
 img_construct_row    = 1
 img_construct_column = 0

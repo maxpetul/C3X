@@ -590,7 +590,8 @@ struct district_config {
 	bool vary_img_by_culture;
 	bool is_dynamic;
 	bool align_to_coast;
-	bool extended_height;
+	int custom_width;
+	int custom_height;
 	int resource_prereq_count;
 	int dependent_improvement_count;
 	int img_path_count;
@@ -753,7 +754,8 @@ struct parsed_district_definition {
 	bool vary_img_by_era;
 	bool vary_img_by_culture;
 	bool align_to_coast;
-	bool extended_height;
+	int custom_width;
+	int custom_height;
 	int btn_tile_sheet_column;
 	int btn_tile_sheet_row;
 	int defense_bonus_percent;
@@ -775,7 +777,8 @@ struct parsed_district_definition {
 	bool has_vary_img_by_era;
 	bool has_vary_img_by_culture;
 	bool has_align_to_coast;
-	bool has_extended_height;
+	bool has_custom_width;
+	bool has_custom_height;
 	bool has_btn_tile_sheet_column;
 	bool has_btn_tile_sheet_row;
 	bool has_defense_bonus_percent;
