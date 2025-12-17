@@ -126,6 +126,26 @@ shield_bonus          = 4
 happiness_bonus       = 0
 
 #District
+name                  = Ski Resort
+tooltip               = Build Ski Resort
+img_paths             = SkiResort.pcx
+btn_tile_sheet_row    = 1
+btn_tile_sheet_column = 7
+vary_img_by_era       = 0
+vary_img_by_culture   = 0
+advance_prereq        = Electricity
+dependent_improvs     = 
+buildable_on          = snow-mountains
+defense_bonus_percent = 0
+allow_multiple        = 1
+culture_bonus         = 2
+science_bonus         = 0
+food_bonus            = 0
+gold_bonus            = 4
+shield_bonus          = 0
+happiness_bonus       = 0
+
+#District
 name                  = Neighborhood
 tooltip               = Build Neighborhood
 buildable_on          = desert,plains,grassland,tundra,floodplain,hills
