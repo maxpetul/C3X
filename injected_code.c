@@ -16029,7 +16029,7 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 				int stored_ptr;
 				if (itable_look_up (&is->highlighted_city_radius_tile_pointers, (int)tile, &stored_ptr)) {
 					struct highlighted_city_radius_tile_info * info = (struct highlighted_city_radius_tile_info *)stored_ptr;
-					Sprite_draw_on_map (&is->tile_highlights[clamp(0, 10, info->highlight_level)], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+					Sprite_draw_on_map (&is->tile_highlights[clamp(0, COUNT_TILE_HIGHLIGHTS - 1, info->highlight_level)], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 				}
 			}
 		}

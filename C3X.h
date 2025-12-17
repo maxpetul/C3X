@@ -990,9 +990,6 @@ struct injected_state {
 	// city_work_radius config value gets changed.
 	int workable_tile_count;
 
-	// Multi-level zoom system (0-5, where 3 is default zoom level)
-	int current_zoom_level;
-
 	// The civ ID of the player from whose perspective we're currently showing city loc desirability, or -1 if none. Initialized to -1.
 	int city_loc_display_perspective;
 
