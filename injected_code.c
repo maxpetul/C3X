@@ -16132,6 +16132,16 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 				return false;
 
 			// Else proceed with standard improvement checks
+		} else if (improv->ImprovementFlags & ITF_Must_Be_Near_River) {
+			bool has_river_in_radius = false;
+			FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
+				if (wai.tile->vtable->m37_Get_River_Code (wai.tile)) {
+					has_river_in_radius = true;
+					break;
+				}
+			}
+			if (! has_river_in_radius)
+				return false;
 		} else {
 			return base;
 		}
@@ -16139,6 +16149,31 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 
 	// Different logic for human vs AI players
 	bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
+
+	// For AI, only allow wonders if there's a valid tile in the city's work radius
+	if ((! is_human) &&
+	    is->current_config.enable_wonder_districts &&
+	    (i_improv >= 0) && (i_improv < p_bic_data->ImprovementsCount)) {
+		Improvement * improv = &p_bic_data->Improvements[i_improv];
+		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
+			bool has_buildable_tile = false;
+			FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
+				Tile * tile = wai.tile;
+				if (! tile_suitable_for_district (tile, WONDER_DISTRICT_ID, this, NULL))
+					continue;
+				if (! wonder_is_buildable_on_tile (tile, i_improv))
+					continue;
+				if (is_tile_earmarked_for_district (wai.tile_x, wai.tile_y))
+					continue;
+
+				has_buildable_tile = true;
+				break;
+			}
+
+			if (! has_buildable_tile)
+				return false;
+		}
+	}
 
 	// Check if this is a wonder and if wonder districts are enabled
 	if (is_human && is->current_config.enable_wonder_districts &&
