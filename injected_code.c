@@ -4636,8 +4636,11 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec)
 		connected_city_count = 1;
 
 	if (is->current_config.distribution_hub_yield_division_mode == DHYDM_SCALE_BY_CITY_COUNT) {
-		int city_food_divisor = connected_city_count / food_div;
-		int city_shield_divisor = connected_city_count / shield_div;
+		int city_root = 1;
+		while ((city_root + 1) * (city_root + 1) <= connected_city_count)
+			city_root++;
+		int city_food_divisor = city_root * food_div;
+		int city_shield_divisor = city_root * shield_div;
 		if (city_food_divisor < 1)
 			city_food_divisor = 1;
 		if (city_shield_divisor < 1)
@@ -25501,7 +25504,7 @@ wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner
 
 	// We only care about the nearest same-civ city in the work area around the tile.
 	// Assumes the base wonder art (img_row/column) faces west and the alt art faces east.
-	// To "face away" from the nearest city, we pick the alt art when that city lies to the west.
+	// To "face away" from the nearest city, we pick the alt art when that city lies to the east.
 	Tile * center = tile_at (tile_x, tile_y);
 	if ((center == NULL) || (center == p_null_tile))
 		return false;
@@ -25556,7 +25559,7 @@ wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner
 	}
 
 	if ((best_dist == INT_MAX) || (best_dx == 0))
-		return true;
+		return false;
 
 	return best_dx > 0;
 }
