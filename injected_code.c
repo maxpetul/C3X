@@ -5544,6 +5544,8 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->vary_img_by_culture = def->vary_img_by_culture;
 	if (def->has_align_to_coast)
 		cfg->align_to_coast = def->align_to_coast;
+	if (def->has_extended_height)
+		cfg->extended_height = def->extended_height;
 	if (def->has_btn_tile_sheet_column)
 		cfg->btn_tile_sheet_column = def->btn_tile_sheet_column;
 	if (def->has_btn_tile_sheet_row)
@@ -5712,6 +5714,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.vary_img_by_era = def->has_vary_img_by_era ? def->vary_img_by_era : false;
 	new_cfg.vary_img_by_culture = def->has_vary_img_by_culture ? def->vary_img_by_culture : false;
 	new_cfg.align_to_coast = def->has_align_to_coast ? def->align_to_coast : false;
+	new_cfg.extended_height = def->has_extended_height ? def->extended_height : false;
 	new_cfg.btn_tile_sheet_column = def->has_btn_tile_sheet_column ? def->btn_tile_sheet_column : 0;
 	new_cfg.btn_tile_sheet_row = def->has_btn_tile_sheet_row ? def->btn_tile_sheet_row : 0;
 	new_cfg.defense_bonus_percent = def->has_defense_bonus_percent ? def->defense_bonus_percent : 100;
@@ -5956,6 +5959,15 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		if (read_int (&val_slice, &ival)) {
 			def->align_to_coast = (ival != 0);
 			def->has_align_to_coast = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+
+	} else if (slice_matches_str (key, "extended_height")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->extended_height = (ival != 0);
+			def->has_extended_height = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
 
@@ -24819,6 +24831,7 @@ init_district_images ()
 
 		int era_count = cfg->vary_img_by_era ? 4 : 1;
 		int column_count = cfg->max_building_index + 1;
+		int sprite_height = cfg->extended_height ? 88 : 64;
 
 		// For each cultural variant
 		for (int variant_i = 0; variant_i < variant_count; variant_i++) {
@@ -24857,8 +24870,8 @@ init_district_images ()
 					Sprite_construct (&is->district_img_sets[dc].imgs[variant_i][era_i][col_i]);
 
 					int x = 128 * col_i,
-						y = 64 * era_i;
-					Sprite_slice_pcx (&is->district_img_sets[dc].imgs[variant_i][era_i][col_i], __, &pcx, x, y, 128, 64, 1, 1);
+						y = sprite_height * era_i;
+					Sprite_slice_pcx (&is->district_img_sets[dc].imgs[variant_i][era_i][col_i], __, &pcx, x, y, 128, sprite_height, 1, 1);
 				}
 			}
 
@@ -25567,7 +25580,9 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 		}
 
 		district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
-		draw_district_on_map_or_canvas(district_sprite, map_renderer, pixel_x, pixel_y);
+		int sprite_height = cfg->extended_height ? 88 : 64;
+		int draw_y = pixel_y - (sprite_height - 64);
+		draw_district_on_map_or_canvas(district_sprite, map_renderer, pixel_x, draw_y);
 		return;
 	}
 
