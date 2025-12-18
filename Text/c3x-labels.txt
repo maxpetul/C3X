@@ -112,9 +112,11 @@ Bombarding
 Building
 
 ; Districts-related texts
-requires a Neighborhood to grow
+requires a
+to grow
 destroyed by volcanic eruption!
 construction halted due to missing
+lost population due to destroyed
 
 ; Shown if City A receives a building from City B via shared district, as in "<City A> received <Building> from shared <District> with <City B>".
 received

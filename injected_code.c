@@ -9426,7 +9426,12 @@ maybe_show_neighborhood_growth_warning (City * city)
 
 	char msg[160];
 	char const * city_name = city->Body.CityName;
-	snprintf (msg, sizeof msg, "%s %s", city_name, is->c3x_labels[CL_REQUIRES_NEIGHBORHOOD_TO_GROW]);
+	snprintf (msg, sizeof msg, "%s %s %s", 
+		city_name, 
+		is->c3x_labels[CL_REQUIRES],
+		is->district_configs[NEIGHBORHOOD_DISTRICT_ID].display_name, 
+		is->c3x_labels[CL_TO_GROW]
+	);
 	msg[(sizeof msg) - 1] = '\0';
 	show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
 }
@@ -9454,6 +9459,50 @@ remove_building_if_no_district (City * city, int district_id, int building_id)
 
 	patch_City_add_or_remove_improvement (city, __, building_id, 0, false);
 	return true;
+}
+
+void
+reduce_city_population_due_to_lost_neighborhood (City * city)
+{
+	if (city == NULL)
+		return;
+
+	if (! (is->current_config.enable_districts &&
+	       is->current_config.enable_neighborhood_districts &&
+	       is->current_config.destroying_neighborhood_reduces_pop))
+		return;
+
+	int base_cap = is->current_config.maximum_pop_before_neighborhood_needed;
+	int per_neighborhood = is->current_config.per_neighborhood_pop_growth_enabled;
+	if ((base_cap <= 0) || (per_neighborhood <= 0))
+		return;
+
+	int neighborhoods = count_neighborhoods_in_city_radius (city);
+	int cap = base_cap + (per_neighborhood * neighborhoods);
+	if (cap < base_cap)
+		cap = base_cap;
+
+	int pop = city->Body.Population.Size;
+	if (pop <= cap)
+		return;
+
+	int to_remove = pop - cap;
+	int removed = 0;
+	while (to_remove-- > 0) {
+		City_remove_population (city, __, 1, -1, '\0');
+		removed++;
+	}
+
+	if ((removed > 0) && ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)) {
+		char msg[160];
+		snprintf (msg, sizeof msg, "%s %s %s", 
+			city->Body.CityName, 
+			is->c3x_labels[CL_LOST_POPULATION_DUE_TO_DESTROYED_NEIGHBORHOOD], 
+			is->district_configs[NEIGHBORHOOD_DISTRICT_ID].display_name
+		);
+		msg[(sizeof msg) - 1] = '\0';
+		show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
+	}
 }
 
 bool
@@ -9657,6 +9706,8 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 
 	remove_district_instance (tile);
 
+	bool removed_neighborhood = actual_district_id == NEIGHBORHOOD_DISTRICT_ID;
+
 	if (is->current_config.enable_wonder_districts &&
 	    (actual_district_id == WONDER_DISTRICT_ID) &&
 	    (wonder_windex >= 0))
@@ -9678,6 +9729,8 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	int tile_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
 
 	FOR_CITIES_AROUND (wai, center_x, center_y) {
+		if (removed_neighborhood)
+			reduce_city_population_due_to_lost_neighborhood (wai.city);
 		recompute_city_yields_with_districts (wai.city);
 	}
 
@@ -12235,6 +12288,7 @@ patch_init_floating_point ()
 		{"cities_with_mutual_district_receive_wonders"           , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
 		{"show_message_when_building_received_by_mutual_district", false, offsetof (struct c3x_config, show_message_when_building_received_by_mutual_district)},
 		{"show_message_when_building_lost_to_destroyed_district" , false, offsetof (struct c3x_config, show_message_when_building_lost_to_destroyed_district)},
+		{"destroying_neighborhood_reduces_pop"                   , false, offsetof (struct c3x_config, destroying_neighborhood_reduces_pop)},
 		{"air_units_use_aerodrome_districts_not_cities"          , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
 		{"naval_units_use_port_districts_not_cities"             , false, offsetof (struct c3x_config, naval_units_use_port_districts_not_cities)},
 		{"show_natural_wonder_name_on_map"                       , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
@@ -16089,21 +16143,26 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 		int available;
 		if (get_available_unit_count (&leaders[this->Body.CivID], unit_type_id, &available) && (available <= 0))
 			return false;
+	}
 
-		if (is->current_config.enable_districts &&
-			is->current_config.enable_aerodrome_districts &&
-		    is->current_config.air_units_use_aerodrome_districts_not_cities) {
-			UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
-			if (type->Unit_Class == UTC_Air && ! city_has_required_district (this, AERODROME_DISTRICT_ID))
-				return false;
-		}
+	if (is->current_config.enable_districts) {
+		UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
 
-		if (is->current_config.enable_districts &&
-		    is->current_config.enable_port_districts &&
-		    is->current_config.naval_units_use_port_districts_not_cities) {
-			UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
-			if (type->Unit_Class == UTC_Sea && ! city_has_required_district (this, PORT_DISTRICT_ID))
-				return false;
+		// Bail if tech reqs are not met
+		int prereq_id = type->AdvReq;
+		if (prereq_id >= 0 && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id))
+			return false;
+
+		// Air units
+		if (type->Unit_Class == UTC_Air) {
+			if (is->current_config.enable_aerodrome_districts && is->current_config.air_units_use_aerodrome_districts_not_cities) {
+				return city_has_required_district (this, AERODROME_DISTRICT_ID);
+			}
+		// Naval units
+		} else if (type->Unit_Class == UTC_Sea) {
+			if (is->current_config.enable_port_districts && is->current_config.naval_units_use_port_districts_not_cities) {
+				return city_has_required_district (this, PORT_DISTRICT_ID);
+			}
 		}
 	}
 
@@ -24688,7 +24747,25 @@ patch_City_add_building_if_done (City * this)
 
 		// As in the base logic, if production gets switched, the game doesn't check if it might still complete on the same turn.
 		return;
+	} 
+
+	// If production ended up on a wonder, make sure the city can actually build it; otherwise fall back to a defensive unit.
+	/*
+	int order_type = this->Body.Order_Type;
+	int order_id = this->Body.Order_ID;
+	if (is->current_config.enable_districts && order_type == COT_Improvement) {
+		Improvement * new_improv = &p_bic_data->Improvements[order_id]; // Improvement might have changed
+		if (new_improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
+			if (! patch_City_can_build_improvement (this, __, order_id, true)) {
+				City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
+				if (choose_defensive_unit_order (this, &defensive_order)) {
+					City_set_production (this, __, defensive_order.OrderType, defensive_order.OrderID, false);
+					return;
+				}
+			}
+		}
 	}
+	*/
 
 	City_add_building_if_done (this);
 }
@@ -26704,6 +26781,12 @@ patch_City_set_production (City * this, int edx, int order_type, int order_id, b
 	if (! is->current_config.enable_districts || ! is->current_config.enable_wonder_districts)
 		return;
 
+	// If production is set to a wonder, make sure the city can legally build it; otherwise pick a defensive unit.
+	
+	int current_order_type = this->Body.Order_Type;
+	int current_order_id = this->Body.Order_ID;
+	bool wonder_is_valid = true;
+
 	// If the human player, we need to set/unset a wonder district for this city, depending
 	// on what is being built. The human player wouldn't be able to choose a wonder if a wonder
 	// district wasn't available, so we don't need to worry about feasibility here.
@@ -26713,16 +26796,34 @@ patch_City_set_production (City * this, int edx, int order_type, int order_id, b
 		return;
 
 	bool release_reservation = true;
-	if (order_type == COT_Improvement) {
-		Improvement * improv = &p_bic_data->Improvements[order_id];
+	if (wonder_is_valid && (current_order_type == COT_Improvement)) {
+		Improvement * improv = &p_bic_data->Improvements[current_order_id];
 		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
-			if (reserve_wonder_district_for_city (this, order_id))
+			if (reserve_wonder_district_for_city (this, current_order_id))
 				release_reservation = false;
 		}
 	}
 
 	if (release_reservation)
 		release_wonder_district_reservation (this);
+/*
+	if ((current_order_type == COT_Improvement) &&
+	    (current_order_id >= 0) && (current_order_id < p_bic_data->ImprovementsCount)) {
+		Improvement * current_improv = &p_bic_data->Improvements[current_order_id];
+		if (current_improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
+			wonder_is_valid = patch_City_can_build_improvement (this, __, current_order_id, true);
+			if (! wonder_is_valid) {
+				City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
+				if (choose_defensive_unit_order (this, &defensive_order)) {
+					City_set_production (this, __, defensive_order.OrderType, defensive_order.OrderID, false);
+					current_order_type = this->Body.Order_Type;
+					current_order_id = this->Body.Order_ID;
+					wonder_is_valid = true;
+				}
+			}
+		}
+	}
+	*/
 }
 
 int __fastcall

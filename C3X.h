@@ -357,6 +357,7 @@ struct c3x_config {
 	int maximum_pop_before_neighborhood_needed;
 	int per_neighborhood_pop_growth_enabled;
 	int neighborhood_needed_message_frequency;
+	bool destroying_neighborhood_reduces_pop;
 	
 	bool completed_wonder_districts_can_be_destroyed;
 	bool destroyed_wonders_can_be_built_again;
@@ -484,9 +485,12 @@ enum c3x_label {
 	CL_BUILDING,
 
 	// Districts-related texts
-	CL_REQUIRES_NEIGHBORHOOD_TO_GROW,
+	CL_REQUIRES,
+	CL_TO_GROW,
 	CL_DISTRICT_DESTROYED_BY_VOLCANO,
 	CL_CONSTRUCTION_HALTED_DUE_TO_MISSING_DISTRICT,
+	CL_LOST_POPULATION_DUE_TO_DESTROYED_NEIGHBORHOOD,
+
 	CL_RECEIVED,
 	CL_FROM_SHARED,
 	CL_WITH,
@@ -677,7 +681,8 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 5, .max_building_index = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
-		.culture_bonus = 1, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 25
+		.culture_bonus = 1, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 25,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 
 	},
 	{
@@ -687,7 +692,8 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.img_paths = {"WonderDistrict.pcx"},
 		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Coast)),
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 
 	},
 	{
@@ -697,7 +703,8 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.img_paths = {"DistributionHub.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 
 	},
 	{
@@ -707,7 +714,8 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.img_paths = {"Aerodrome.pcx"}, .dependent_improvements = {"Airport"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 1, .max_building_index = 1, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
 	{
 		.command = -1, .name = "Natural Wonder", .tooltip = NULL,
@@ -716,7 +724,8 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.img_paths = {0},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 0, .max_building_index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
 	{
 		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port",
@@ -725,7 +734,8 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.img_paths = {"Port_NW.pcx", "Port_NE.pcx", "Port_SE.pcx", "Port_SW.pcx"}, .dependent_improvements = {"Harbor", "Commercial Dock"},
 		.buildable_square_types_mask = (1 << SQ_Coast),
 		.img_path_count = 4, .max_building_index = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .align_to_coast = true,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
 	{
 		.command = UCV_Build_CentralRailHub, .name = "Central Rail Hub", .tooltip = "Build Central Rail Hub",
@@ -734,7 +744,8 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.img_paths = {"CentralRailHub_AMER.pcx", "CentralRailHub_EURO.pcx", "CentralRailHub_ROMAN.pcx", "CentralRailHub_MIDEAST.pcx", "CentralRailHub_ASIAN.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 5, .max_building_index = 0, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	}
 };
 
@@ -1261,6 +1272,7 @@ struct injected_state {
 	// first inside the loop over improvements then again inside a loop over unit types. The var is used by the intercept consideration functions
 	// which run at the end of each loop iteration.
 	City_Order ai_considering_order;
+	int handling_ai_district_fallback;
 
 	// Used in the code that adds additional info to the tile info box
 	int viewing_tile_info_x, viewing_tile_info_y;
