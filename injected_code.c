@@ -16120,6 +16120,9 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 		return base;
 
 	if (! base) {
+		if (patch_City_has_improvement (this, __, i_improv, false))
+			return false;
+
 		// Allow harbor-like improvements when port districts replace coastal adjacency
 		Improvement * improv = &p_bic_data->Improvements[i_improv];
 		if (improv->ImprovementFlags & ITF_Allows_Water_Trade &&
@@ -16132,7 +16135,8 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 				return false;
 
 			// Else proceed with standard improvement checks
-		} else if (improv->ImprovementFlags & ITF_Must_Be_Near_River) {
+		} /* TODO: Uncomment this when Power Stations are added
+		    else if (improv->ImprovementFlags & ITF_Must_Be_Near_River) {
 			bool has_river_in_radius = false;
 			FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
 				if (wai.tile->vtable->m37_Get_River_Code (wai.tile)) {
@@ -16142,7 +16146,7 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 			}
 			if (! has_river_in_radius)
 				return false;
-		} else {
+		} */ else {
 			return base;
 		}
 	}
@@ -23890,16 +23894,8 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 		return;
 
 	// Get district configuration
-	struct district_config * config = &is->district_configs[district_id];
+	struct district_config const * config = &is->district_configs[district_id];
 	struct district_instance * inst = get_district_instance (tile);
-
-	int generated_resource_id = -1;
-	if ((config->generated_resource_id >= 0) &&
-	    (city_form != NULL) && (city_form->CurrentCity != NULL) &&
-	    ((config->generated_resource_flags & MF_SHOW_BONUS) || (p_bic_data->ResourceTypes[config->generated_resource_id].Class != RC_Bonus)) &&
-	    (! ((config->generated_resource_flags & MF_HIDE_NON_BONUS) && (p_bic_data->ResourceTypes[config->generated_resource_id].Class != RC_Bonus))) &&
-	    district_can_generate_resource (city_form->CurrentCity->Body.CivID, config))
-		generated_resource_id = config->generated_resource_id;
 
 	// Count total yields from bonuses
 	int food_bonus = 0, shield_bonus = 0, gold_bonus = 0, science_bonus = 0, culture_bonus = 0, happiness_bonus = 0;
@@ -23913,12 +23909,7 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	if (culture_bonus > 0)   total_yield += culture_bonus;
 	if (happiness_bonus > 0) total_yield += happiness_bonus;
 
-	JGL_Image * canvas_img = city_form->Base.Data.Canvas.JGL.Image;
-	JGL_Image * resource_sheet_img = (is->resources_sheet != NULL) ? is->resources_sheet->JGL.Image : NULL;
-	int resource_icon_count = (generated_resource_id >= 0 && canvas_img != NULL && resource_sheet_img != NULL && TransparentBlt != NULL) ? 1 : 0;
-
-	int total_icons = total_yield + resource_icon_count;
-	if (total_icons <= 0)
+	if (total_yield <= 0)
 		return;
 
 	// Get sprites
@@ -23934,7 +23925,7 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	int sprite_height = food_sprite->Height;
 
 	// Calculate total width of all icons
-	int total_width = total_icons * sprite_width;
+	int total_width = total_yield * sprite_width;
 
 	// Center the icons horizontally
 	int half_width = total_width >> 1;
@@ -23949,8 +23940,8 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	// Adjust spacing if icons would exceed tile width
 	int spacing = sprite_width;
 	if (total_width > tile_width - 10) {
-		if (total_icons > 1) {
-			spacing = (tile_width - 10 - sprite_width) / (total_icons - 1);
+		if (total_yield > 1) {
+			spacing = (tile_width - 10 - sprite_width) / (total_yield - 1);
 			if (spacing < 1)
 				spacing = 1;
 			else if (spacing > sprite_width)
@@ -23986,34 +23977,6 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 
 	for (int i = 0; i < happiness_bonus; i++) {
 		Sprite_draw (happiness_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
-		pixel_x += spacing;
-	}
-
-	if (resource_icon_count > 0) {
-		int icon_id = p_bic_data->ResourceTypes[generated_resource_id].IconID,
-		    sheet_row = icon_id / 6,
-		    sheet_col = icon_id % 6;
-
-		int resource_height = 24,
-		    resource_width = 24,
-		    resource_pixel_y = pixel_y;
-		if (sprite_height > resource_height)
-			resource_pixel_y += (sprite_height - resource_height) >> 1;
-
-		HDC canvas_dc = canvas_img->vtable->acquire_dc (canvas_img);
-		if (canvas_dc != NULL) {
-			HDC sheet_dc = resource_sheet_img->vtable->acquire_dc (resource_sheet_img);
-			if (sheet_dc != NULL) {
-				TransparentBlt (canvas_dc,
-						pixel_x, resource_pixel_y, resource_width, resource_height,
-						sheet_dc,
-						9 + 50*sheet_col, 9 + 50*sheet_row, 33, 33,
-						0xFF00FF);
-				resource_sheet_img->vtable->release_dc (resource_sheet_img, __, 1);
-			}
-			canvas_img->vtable->release_dc (canvas_img, __, 1);
-		}
-
 		pixel_x += spacing;
 	}
 }
@@ -26838,8 +26801,22 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 		Tile * dest = tile_at (to_x, to_y);
 		if ((dest != NULL) &&
 		    dest->vtable->m35_Check_Is_Water (dest) &&
-		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
-			return PBV_OK; // Let workers treat coast as passable when workers_can_enter_coast is on
+		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast)) {
+			bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
+
+			// If human, okay to enter coast tile
+			if (is_human)
+				return PBV_OK;
+
+			// If AI, only okay if moving to a wonder district. If not, they AI will 
+			// sometimes not create roads to connect cities
+			struct district_worker_record * rec = get_tracked_worker_record (this);
+			struct pending_district_request * req = (rec != NULL) ? rec->pending_req : NULL;
+			if ((req != NULL) &&
+			    (req->district_id == WONDER_DISTRICT_ID) &&
+			    (req->target_x == to_x) && (req->target_y == to_y))
+				return PBV_OK;
+		}
 	}
 
 	return base;
