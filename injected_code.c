@@ -9080,26 +9080,16 @@ city_has_wonder_district_with_no_completed_wonder (City * city, int wonder_impro
 		return false;
 
 	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
-		int x = wai.tile_x, y = wai.tile_y;
 		Tile * candidate = wai.tile;
 		struct district_instance * inst = wai.district_inst;
 		if (inst->district_type != WONDER_DISTRICT_ID) continue;
 
 		struct wonder_district_info * info = get_wonder_district_info (candidate);
-		if ((wonder_improv_id >= 0) && ! wonder_is_buildable_on_tile (candidate, wonder_improv_id)) {
-			if (info != NULL && info->state == WDS_UNDER_CONSTRUCTION && info->city_id == city->Body.ID) {
-				info->state = WDS_UNUSED;
-				info->city = NULL;
-				info->city_id = -1;
-				info->wonder_index = -1;
-			}
-			continue;
-		}
-		// Get wonder district info
+		bool buildable = wonder_is_buildable_on_tile (candidate, wonder_improv_id);
 		if (info == NULL) return true;
 		if (info->state == WDS_COMPLETED) continue; 
-		if (info->state == WDS_UNUSED) return true; // Unreserved and available
-		if ((info->state == WDS_UNDER_CONSTRUCTION) && (info->city_id == city->Body.ID)) {
+		if (info->state == WDS_UNUSED && buildable) return true;
+		if (info->state == WDS_UNDER_CONSTRUCTION && buildable && info->city_id == city->Body.ID) {
 			info->city = city;
 			info->city_id = city->Body.ID;
 			return true; // Reserved by this city
@@ -13992,8 +13982,8 @@ handle_worker_command_that_may_replace_district (Unit * unit, int unit_command_v
 	bool remove_existing = redundant_district;
 	if (inst != NULL && district_id >= 0 && district_id < is->district_count) {
 		PopupForm * popup = get_popup_form ();
-		set_popup_str_param (0, (char *)is->district_configs[district_id].name, -1, -1);
-		set_popup_str_param (1, (char *)is->district_configs[district_id].name, -1, -1);
+		set_popup_str_param (0, (char *)is->district_configs[district_id].display_name, -1, -1);
+		set_popup_str_param (1, (char *)is->district_configs[district_id].display_name, -1, -1);
 		popup->vtable->set_text_key_and_flags (
 			popup, __, is->mod_script_path,
 			would_lose_buildings
@@ -14289,8 +14279,8 @@ issue_district_worker_command (Unit * unit, int command)
 		bool remove_existing = false;
 		
 		PopupForm * popup = get_popup_form ();
-		set_popup_str_param (0, (char*)is->district_configs[existing_district_id].name, -1, -1);
-		set_popup_str_param (1, (char*)is->district_configs[existing_district_id].name, -1, -1);
+		set_popup_str_param (0, (char*)is->district_configs[existing_district_id].display_name, -1, -1);
+		set_popup_str_param (1, (char*)is->district_configs[existing_district_id].display_name, -1, -1);
 		popup->vtable->set_text_key_and_flags (
 			popup, __, is->mod_script_path,
 			would_lose_buildings
@@ -14319,7 +14309,7 @@ issue_district_worker_command (Unit * unit, int command)
 
 	if (removable_flags != 0) {
 		PopupForm * popup = get_popup_form ();
-		set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
+		set_popup_str_param (0, (char*)is->district_configs[district_id].display_name, -1, -1);
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_BUILD_DISTRICT_OVER_IMPROVEMENT", -1, 0, 0, 0);
 		int sel = patch_show_popup (popup, __, 0, 0);
 		if (sel != 0)
@@ -16176,33 +16166,53 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 	if (! is->current_config.enable_districts) 
 		return base;
 
-	// Ensure a district is actually needed
+	// Check if district is actually needed or city already has the improvement
 	int required_district_id;
-	bool needs_district = city_requires_district_for_improvement (this, i_improv, &required_district_id);
-	if (! needs_district)
+	bool district_required = itable_look_up (&is->district_building_prereqs, i_improv, &required_district_id);
+	if (! district_required || patch_City_has_improvement (this, __, i_improv, false)) {
 		return base;
+	}
 
 	Improvement * improv = &p_bic_data->Improvements[i_improv];
-	bool is_wonder = improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder);
+	bool is_wonder = is->current_config.enable_wonder_districts && improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder);
+	bool wonder_requires_district = is_wonder && required_district_id == WONDER_DISTRICT_ID;
+
+	// Make sure wonder is not already built
+	if (is_wonder) {
+		if ((improv->Characteristics & ITC_Wonder) != 0) {
+			if (Game_get_wonder_city_id (p_game, __, i_improv) != -1)
+				return false;
+		} else {
+			Leader * leader = &leaders[this->Body.CivID];
+			if ((leader->Small_Wonders != NULL) && (leader->Small_Wonders[i_improv] != -1))
+				return false;
+		}
+	}
 
 	// Ensure prereq tech for the improvement
 	if (improv->RequiredTechID >= 0 && ! Leader_has_tech (&leaders[this->Body.CivID], __, improv->RequiredTechID))
 		return false;
+
+	// Ensure prereq tech for the district
+	int prereq_id = is->district_infos[required_district_id].advance_prereq_id;
+	if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id)) {
+		return false;
+	}
+
+	if (is_wonder && ! wonder_requires_district) {
+		return true;
+	}
 
 	// Different logic for human vs AI players
 	bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
 
 	// If disallowed by the base game, check if it was due to not being next to water, which can be 
 	// circumvented with certain districts
-	bool checked_terrain = false;
 	if (! base) {
-		if (patch_City_has_improvement (this, __, i_improv, false))
-			return false;
 
 		// Allow harbor-like improvements when port districts replace coastal adjacency
 		if (improv->ImprovementFlags & ITF_Allows_Water_Trade &&
-		    is->current_config.enable_port_districts &&
-		    is->current_config.naval_units_use_port_districts_not_cities) {
+		    is->current_config.enable_port_districts) {
 			int tx, ty;
 
 			// Different checks for human vs AI. For human, look for any water. For AI, look for a tile suitable for a port district.
@@ -16222,8 +16232,11 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 			}
 
 		// Allow improvements that must be near water if water in work radius.
-		// ITF_Must_Be_Near_Water is Nuclear Power Plant, etc. Characteristics & 1 is Coastal Fortress, coastal Wonders, etc.
-		} else if (improv->ImprovementFlags & ITF_Must_Be_Near_Water || improv->Characteristics & 1) { 
+		// ITF_*_Water is Nuclear Power Plant, Commercial Dock, etc. Characteristics & 1 is Coastal Fortress, coastal Wonders, etc.
+		} else if (improv->ImprovementFlags & ITF_Must_Be_Near_Water || 
+			improv->ImprovementFlags & ITF_Increases_Trade_In_Water ||
+			improv->ImprovementFlags & ITF_Increases_Shields_In_Water ||
+			improv->Characteristics & 1) { 
 			bool has_water_in_radius = false;
 			FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
 				if (wai.tile->vtable->m35_Check_Is_Water (wai.tile)) {
@@ -16249,35 +16262,43 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 		} */ else {
 			return base;
 		}
-		checked_terrain = true;
-	}
-
-	// Ensure prereq tech for the district
-	int prereq_id = is->district_infos[required_district_id].advance_prereq_id;
-	if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id)) {
-		return false;
 	}
 
 	// Check that we have the necessary terrain
-	if (! checked_terrain) {
-		bool has_suitable_tile = false;
-		FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
-			Tile * tile = wai.tile;
-			if (! tile_suitable_for_district (tile, required_district_id, this, NULL)) continue;
-			if (is_wonder && ! wonder_is_buildable_on_tile (tile, i_improv)) continue;
+	bool has_terrain_for_district = false;
+	bool has_terrain_for_wonder = false;
+	FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
+		Tile * tile = wai.tile;
+		if (! tile_suitable_for_district (tile, required_district_id, this, NULL)) 
+			continue;
+		has_terrain_for_district = true;
 
-			has_suitable_tile = true;
+		if (! is_wonder)
 			break;
-		}
 
-		if (! has_suitable_tile) {
-			return false;
-		}
+		if (is_wonder && wonder_is_buildable_on_tile (tile, i_improv)) {
+			has_terrain_for_wonder = true;
+			break;
+		} 
 	}
 
-	// If human has everything needed except a built district, allow relaxed checks so UI can gray entry out
+	if (! has_terrain_for_district || (is_wonder && ! has_terrain_for_wonder)) {
+		return false;
+	}
+
+	// If human has everything needed except a built district (which is buildable), allow relaxed checks so UI can gray entry out
 	if (is_human) {
-		return ! apply_strict_rules;
+		if (is_wonder) {
+			if (city_has_wonder_district_with_no_completed_wonder (this, i_improv))
+				return true;
+			else
+				return ! apply_strict_rules;
+		} else {
+			if (city_has_required_district (this, required_district_id))
+				return true;
+			else
+				return ! apply_strict_rules;
+		}
 	}
 
 	// If AI already has a pending district request for this required district, return false
@@ -17881,8 +17902,6 @@ grant_existing_district_buildings_to_city (City * city)
 	is->sharing_buildings_by_districts_in_progress = true;
 
 	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
-		int tile_x = wai.tile_x;
-		int tile_y = wai.tile_y;
 		Tile * tile = wai.tile;
 
 		struct district_instance * inst = wai.district_inst;
@@ -17892,16 +17911,12 @@ grant_existing_district_buildings_to_city (City * city)
 		if (info->dependent_building_count <= 0)
 			continue;
 
-		int tx, ty;
-		if (! district_instance_get_coords (inst, tile, &tx, &ty))
-			continue;
-
 		FOR_CITIES_OF (coi, civ_id) {
 			City * other = coi.city;
 			if ((other == NULL) || (other == city))
 				continue;
 
-			if (! city_radius_contains_tile (other, tx, ty))
+			if (! city_radius_contains_tile (other, wai.tile_x, wai.tile_y))
 				continue;
 
 			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != other->Body.CivID)
@@ -26179,7 +26194,7 @@ patch_Unit_select (Unit * this)
 			int district_id = inst->district_type;
 			PopupForm * popup = get_popup_form ();
 			int remaining_turns = get_worker_remaining_turns_to_complete (this, __, 0);
-			set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
+			set_popup_str_param (0, (char*)is->district_configs[district_id].display_name, -1, -1);
 			set_popup_int_param (1, remaining_turns);
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_CANCEL_BUILD_DISTRICT", -1, 0, 0, 0);
 			
