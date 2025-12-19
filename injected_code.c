@@ -9087,9 +9087,7 @@ city_has_wonder_district_with_no_completed_wonder (City * city, int wonder_impro
 
 		struct wonder_district_info * info = get_wonder_district_info (candidate);
 		if ((wonder_improv_id >= 0) && ! wonder_is_buildable_on_tile (candidate, wonder_improv_id)) {
-			if ((info != NULL) &&
-			    (info->state == WDS_UNDER_CONSTRUCTION) &&
-			    (info->city_id == city->Body.ID)) {
+			if (info != NULL && info->state == WDS_UNDER_CONSTRUCTION && info->city_id == city->Body.ID) {
 				info->state = WDS_UNUSED;
 				info->city = NULL;
 				info->city_id = -1;
@@ -16178,13 +16176,27 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 	if (! is->current_config.enable_districts) 
 		return base;
 
+	// Ensure a district is actually needed
+	int required_district_id;
+	bool needs_district = city_requires_district_for_improvement (this, i_improv, &required_district_id);
+	if (! needs_district)
+		return base;
+
 	Improvement * improv = &p_bic_data->Improvements[i_improv];
+	bool is_wonder = improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder);
+
+	// Ensure prereq tech for the improvement
+	if (improv->RequiredTechID >= 0 && ! Leader_has_tech (&leaders[this->Body.CivID], __, improv->RequiredTechID))
+		return false;
+
+	// Different logic for human vs AI players
+	bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
+
+	// If disallowed by the base game, check if it was due to not being next to water, which can be 
+	// circumvented with certain districts
+	bool checked_terrain = false;
 	if (! base) {
 		if (patch_City_has_improvement (this, __, i_improv, false))
-			return false;
-
-		// Ensure prereq tech for the improvement
-		if (improv->RequiredTechID >= 0 && ! Leader_has_tech (&leaders[this->Body.CivID], __, improv->RequiredTechID))
 			return false;
 
 		// Allow harbor-like improvements when port districts replace coastal adjacency
@@ -16193,13 +16205,25 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 		    is->current_config.naval_units_use_port_districts_not_cities) {
 			int tx, ty;
 
-			// If the city has no coastal tiles within its workable area, disallow
-			if (find_tile_for_district (this, PORT_DISTRICT_ID, &tx, &ty) == NULL)
+			// Different checks for human vs AI. For human, look for any water. For AI, look for a tile suitable for a port district.
+			// The port district check is stricter and prevents the AI from trying to build harbors in small lakes, etc.
+			if (! is_human && find_tile_for_district (this, PORT_DISTRICT_ID, &tx, &ty) == NULL)
 				return false;
+			else if (is_human) {
+				bool has_coastal_tile = false;
+				FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
+					if (wai.tile->vtable->m35_Check_Is_Water (wai.tile)) {
+						has_coastal_tile = true;
+						break;
+					}
+				}
+				if (! has_coastal_tile)
+					return false;
+			}
 
-		// Allow improvements that must be near water
-		} else if (improv->ImprovementFlags & ITF_Must_Be_Near_Water || // For things like nuclear power plant
-			improv->Characteristics & 1) { // For coastal wonders - go figure
+		// Allow improvements that must be near water if water in work radius.
+		// ITF_Must_Be_Near_Water is Nuclear Power Plant, etc. Characteristics & 1 is Coastal Fortress, coastal Wonders, etc.
+		} else if (improv->ImprovementFlags & ITF_Must_Be_Near_Water || improv->Characteristics & 1) { 
 			bool has_water_in_radius = false;
 			FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
 				if (wai.tile->vtable->m35_Check_Is_Water (wai.tile)) {
@@ -16210,8 +16234,8 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 			if (! has_water_in_radius)
 				return false;
 		}
-		
 		/* TODO: Uncomment this when Power Stations are added
+		// Allow improvements that must be near river if river in work radius
 		    else if (improv->ImprovementFlags & ITF_Must_Be_Near_River) {
 			bool has_river_in_radius = false;
 			FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
@@ -16225,58 +16249,35 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 		} */ else {
 			return base;
 		}
+		checked_terrain = true;
 	}
-
-	// Different logic for human vs AI players
-	bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
-
-	// For AI, only allow wonders if there's a valid tile in the city's work radius
-	if ((! is_human) && is->current_config.enable_wonder_districts) {
-		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
-			bool has_buildable_tile = false;
-			FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
-				Tile * tile = wai.tile;
-				if (! tile_suitable_for_district (tile, WONDER_DISTRICT_ID, this, NULL)) continue;
-				if (! wonder_is_buildable_on_tile (tile, i_improv)) continue;
-				if (is_tile_earmarked_for_district (wai.tile_x, wai.tile_y)) continue;
-
-				has_buildable_tile = true;
-				break;
-			}
-
-			if (! has_buildable_tile)
-				return false;
-		}
-	}
-
-	// Check if this is a wonder and if wonder districts are enabled
-	if (is_human && is->current_config.enable_wonder_districts) {
-		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
-			bool wonder_requires_district = false;
-			int required_id;
-			if (itable_look_up (&is->district_building_prereqs, i_improv, &required_id) && (required_id == WONDER_DISTRICT_ID))
-				wonder_requires_district = true;
-
-			// Can only build wonders that need districts if an incomplete wonder district exists
-			if (wonder_requires_district && ! city_has_wonder_district_with_no_completed_wonder (this, i_improv))
-				return !apply_strict_rules;
-		}
-	}
-
-	// Check if the improvement requires a district and output the required district id when it does
-	int required_district_id;
-	bool needs_district = city_requires_district_for_improvement (this, i_improv, &required_district_id);
-	if (! needs_district)
-		return true;
 
 	// Ensure prereq tech for the district
 	int prereq_id = is->district_infos[required_district_id].advance_prereq_id;
-	if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id))
+	if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id)) {
 		return false;
+	}
 
-	// Human doesn't have appropriate district but needs one; allow relaxed checks so UI can gray entry out
-	if (needs_district && is_human) {
-		return !apply_strict_rules;
+	// Check that we have the necessary terrain
+	if (! checked_terrain) {
+		bool has_suitable_tile = false;
+		FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
+			Tile * tile = wai.tile;
+			if (! tile_suitable_for_district (tile, required_district_id, this, NULL)) continue;
+			if (is_wonder && ! wonder_is_buildable_on_tile (tile, i_improv)) continue;
+
+			has_suitable_tile = true;
+			break;
+		}
+
+		if (! has_suitable_tile) {
+			return false;
+		}
+	}
+
+	// If human has everything needed except a built district, allow relaxed checks so UI can gray entry out
+	if (is_human) {
+		return ! apply_strict_rules;
 	}
 
 	// If AI already has a pending district request for this required district, return false
