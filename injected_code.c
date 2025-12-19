@@ -16178,12 +16178,16 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 	if (! is->current_config.enable_districts) 
 		return base;
 
+	Improvement * improv = &p_bic_data->Improvements[i_improv];
 	if (! base) {
 		if (patch_City_has_improvement (this, __, i_improv, false))
 			return false;
 
+		// Ensure prereq tech for the improvement
+		if (improv->RequiredTechID >= 0 && ! Leader_has_tech (&leaders[this->Body.CivID], __, improv->RequiredTechID))
+			return false;
+
 		// Allow harbor-like improvements when port districts replace coastal adjacency
-		Improvement * improv = &p_bic_data->Improvements[i_improv];
 		if (improv->ImprovementFlags & ITF_Allows_Water_Trade &&
 		    is->current_config.enable_port_districts &&
 		    is->current_config.naval_units_use_port_districts_not_cities) {
@@ -16193,8 +16197,21 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 			if (find_tile_for_district (this, PORT_DISTRICT_ID, &tx, &ty) == NULL)
 				return false;
 
-			// Else proceed with standard improvement checks
-		} /* TODO: Uncomment this when Power Stations are added
+		// Allow improvements that must be near water
+		} else if (improv->ImprovementFlags & ITF_Must_Be_Near_Water || // For things like nuclear power plant
+			improv->Characteristics & 1) { // For coastal wonders - go figure
+			bool has_water_in_radius = false;
+			FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
+				if (wai.tile->vtable->m35_Check_Is_Water (wai.tile)) {
+					has_water_in_radius = true;
+					break;
+				}
+			}
+			if (! has_water_in_radius)
+				return false;
+		}
+		
+		/* TODO: Uncomment this when Power Stations are added
 		    else if (improv->ImprovementFlags & ITF_Must_Be_Near_River) {
 			bool has_river_in_radius = false;
 			FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
@@ -16214,20 +16231,14 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 	bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
 
 	// For AI, only allow wonders if there's a valid tile in the city's work radius
-	if ((! is_human) &&
-	    is->current_config.enable_wonder_districts &&
-	    (i_improv >= 0) && (i_improv < p_bic_data->ImprovementsCount)) {
-		Improvement * improv = &p_bic_data->Improvements[i_improv];
+	if ((! is_human) && is->current_config.enable_wonder_districts) {
 		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
 			bool has_buildable_tile = false;
 			FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
 				Tile * tile = wai.tile;
-				if (! tile_suitable_for_district (tile, WONDER_DISTRICT_ID, this, NULL))
-					continue;
-				if (! wonder_is_buildable_on_tile (tile, i_improv))
-					continue;
-				if (is_tile_earmarked_for_district (wai.tile_x, wai.tile_y))
-					continue;
+				if (! tile_suitable_for_district (tile, WONDER_DISTRICT_ID, this, NULL)) continue;
+				if (! wonder_is_buildable_on_tile (tile, i_improv)) continue;
+				if (is_tile_earmarked_for_district (wai.tile_x, wai.tile_y)) continue;
 
 				has_buildable_tile = true;
 				break;
@@ -16239,9 +16250,7 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 	}
 
 	// Check if this is a wonder and if wonder districts are enabled
-	if (is_human && is->current_config.enable_wonder_districts &&
-	    (i_improv >= 0) && (i_improv < p_bic_data->ImprovementsCount)) {
-		Improvement * improv = &p_bic_data->Improvements[i_improv];
+	if (is_human && is->current_config.enable_wonder_districts) {
 		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
 			bool wonder_requires_district = false;
 			int required_id;
@@ -16249,8 +16258,7 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 				wonder_requires_district = true;
 
 			// Can only build wonders that need districts if an incomplete wonder district exists
-			if (wonder_requires_district &&
-				! city_has_wonder_district_with_no_completed_wonder (this, i_improv))
+			if (wonder_requires_district && ! city_has_wonder_district_with_no_completed_wonder (this, i_improv))
 				return !apply_strict_rules;
 		}
 	}
@@ -24750,7 +24758,6 @@ patch_City_add_building_if_done (City * this)
 	} 
 
 	// If production ended up on a wonder, make sure the city can actually build it; otherwise fall back to a defensive unit.
-	/*
 	int order_type = this->Body.Order_Type;
 	int order_id = this->Body.Order_ID;
 	if (is->current_config.enable_districts && order_type == COT_Improvement) {
@@ -24765,7 +24772,6 @@ patch_City_add_building_if_done (City * this)
 			}
 		}
 	}
-	*/
 
 	City_add_building_if_done (this);
 }
@@ -26781,12 +26787,6 @@ patch_City_set_production (City * this, int edx, int order_type, int order_id, b
 	if (! is->current_config.enable_districts || ! is->current_config.enable_wonder_districts)
 		return;
 
-	// If production is set to a wonder, make sure the city can legally build it; otherwise pick a defensive unit.
-	
-	int current_order_type = this->Body.Order_Type;
-	int current_order_id = this->Body.Order_ID;
-	bool wonder_is_valid = true;
-
 	// If the human player, we need to set/unset a wonder district for this city, depending
 	// on what is being built. The human player wouldn't be able to choose a wonder if a wonder
 	// district wasn't available, so we don't need to worry about feasibility here.
@@ -26796,34 +26796,16 @@ patch_City_set_production (City * this, int edx, int order_type, int order_id, b
 		return;
 
 	bool release_reservation = true;
-	if (wonder_is_valid && (current_order_type == COT_Improvement)) {
-		Improvement * improv = &p_bic_data->Improvements[current_order_id];
+	if (this->Body.Order_Type == COT_Improvement) {
+		Improvement * improv = &p_bic_data->Improvements[this->Body.Order_ID];
 		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
-			if (reserve_wonder_district_for_city (this, current_order_id))
+			if (reserve_wonder_district_for_city (this, this->Body.Order_ID))
 				release_reservation = false;
 		}
 	}
 
 	if (release_reservation)
 		release_wonder_district_reservation (this);
-/*
-	if ((current_order_type == COT_Improvement) &&
-	    (current_order_id >= 0) && (current_order_id < p_bic_data->ImprovementsCount)) {
-		Improvement * current_improv = &p_bic_data->Improvements[current_order_id];
-		if (current_improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
-			wonder_is_valid = patch_City_can_build_improvement (this, __, current_order_id, true);
-			if (! wonder_is_valid) {
-				City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
-				if (choose_defensive_unit_order (this, &defensive_order)) {
-					City_set_production (this, __, defensive_order.OrderType, defensive_order.OrderID, false);
-					current_order_type = this->Body.Order_Type;
-					current_order_id = this->Body.Order_ID;
-					wonder_is_valid = true;
-				}
-			}
-		}
-	}
-	*/
 }
 
 int __fastcall
