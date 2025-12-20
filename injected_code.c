@@ -11259,6 +11259,7 @@ patch_init_floating_point ()
 	is->can_load_transport = is->can_load_passenger = NULL;
 	is->last_selected_unit_x = is->last_selected_unit_y = -1;
 	is->last_selected_unit = NULL;
+	is->waiting_units = (struct table) {0};
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -14039,6 +14040,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	table_deinit (&is->unit_transport_ties);
 	is->last_selected_unit_x = is->last_selected_unit_y = -1;
 	is->last_selected_unit = NULL;
+	table_deinit (&is->waiting_units);
 
 	// Clear extra city improvement bits
 	FOR_TABLE_ENTRIES (tei, &is->extra_city_improvs)
@@ -16650,9 +16652,10 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	int owner_id = this->Body.CivID;
 	int type_id = this->Body.UnitTypeID;
 
-	// Clear extra DBs, airdrops, and transport ties used by this unit
+	// Clear extra DBs, airdrops, wait records, and transport ties used by this unit
 	itable_remove (&is->extra_defensive_bombards, this->Body.ID);
 	itable_remove (&is->airdrops_this_turn, this->Body.ID);
+	itable_remove (&is->waiting_units, this->Body.ID);
 	itable_remove (&is->unit_transport_ties, this->Body.ID);
 
 	// If we're despawning the stored ZoC defender, clear that variable so we don't despawn it again in check_life_after_zoc
@@ -24848,6 +24851,7 @@ clear_selectable_units_list (Main_Screen_Form * main_screen_form, bool include_u
 void __fastcall
 patch_Main_Screen_Form_assemble_selectable_units (Main_Screen_Form * this)
 {
+	table_deinit (&is->waiting_units);
 	if (! is->current_config.always_autoselect_nearby_units)
 		Main_Screen_Form_assemble_selectable_units (this);
 	else
@@ -24857,10 +24861,18 @@ patch_Main_Screen_Form_assemble_selectable_units (Main_Screen_Form * this)
 void __fastcall
 patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit * unit, bool param_2)
 {
+	// To set a unit to wait, Main_Screen_Form::issue_command calls this method with unit == NULL and param_2 == false. Detect when that's
+	// happened and record that the unit's been set to wait so we can reimplement the wait command when replacing the base unit cycling logic.
+	int * p_stack = (int *)&unit;
+	int ret_addr = p_stack[-1];
+	if (ret_addr == SET_SELECTED_UNIT_TO_ISSUE_WAIT_COMMAND_RET && unit == NULL && this->Current_Unit != NULL)
+		itable_insert (&is->waiting_units, this->Current_Unit->Body.ID, 1);
+
 	if (unit != NULL) {
 		is->last_selected_unit_x = unit->Body.X;
 		is->last_selected_unit_y = unit->Body.Y;
 		is->last_selected_unit = unit;
+		itable_remove (&is->waiting_units, unit->Body.ID); // Clear waiting record when waiting unit is selected
 	}
 
 	if (is->current_config.always_autoselect_nearby_units)
@@ -24891,7 +24903,7 @@ patch_Main_Screen_Form_find_next_unit_for_cycling (Main_Screen_Form * this)
 					// TODO: last selected x/y might be -1. Can we do something smarter in that case?
 					int dx = unit->Body.X - is->last_selected_unit_x,
 					    dy = unit->Body.Y - is->last_selected_unit_y;
-					distance = (dx != 0 || dy != 0) ? int_abs (dx) + int_abs (dy) : 0;
+					distance = not_above (1<<15, int_abs (dx) + int_abs (dy));
 				}
 
 				bool other_type, not_duplicate; {
@@ -24905,7 +24917,9 @@ patch_Main_Screen_Form_find_next_unit_for_cycling (Main_Screen_Form * this)
 					}
 				}
 
-				int difference = (distance << 2) + ((int)other_type << 1) + (int)not_duplicate;
+				bool waiting = itable_look_up_or (&is->waiting_units, unit->Body.ID, 0) != 0;
+
+				int difference = ((int)waiting << 20) + (distance << 2) + ((int)other_type << 1) + (int)not_duplicate;
 				if (difference < least_difference) {
 					least_difference = difference;
 					least_different_unit = unit;
