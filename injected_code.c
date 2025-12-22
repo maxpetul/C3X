@@ -24865,8 +24865,21 @@ patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit
 	// happened and record that the unit's been set to wait so we can reimplement the wait command when replacing the base unit cycling logic.
 	int * p_stack = (int *)&unit;
 	int ret_addr = p_stack[-1];
-	if (ret_addr == SET_SELECTED_UNIT_TO_ISSUE_WAIT_COMMAND_RET && unit == NULL && this->Current_Unit != NULL)
-		itable_insert (&is->waiting_units, this->Current_Unit->Body.ID, 1);
+	if (ret_addr == SET_SELECTED_UNIT_TO_ISSUE_WAIT_COMMAND_RET && unit == NULL && this->Current_Unit != NULL) {
+		// Give the unit a waiting level higher than the minimum among all units already set to wait. This ensures that this unit does not get
+		// immediately picked up again by the cycling logic unless it's the only selectable unit left. This also means that the first unit set
+		// to wait will be the first cycled to once all the non-waiting units have been moved (it's the only one at level 1). I consider that
+		// an advantage.
+		int min_others_waiting_level = INT_MAX;
+		bool any_others_waiting = false;
+		FOR_TABLE_ENTRIES (tei, &is->waiting_units)
+			if (tei.key != this->Current_Unit->Body.ID) {
+				any_others_waiting = true;
+				if (tei.value < min_others_waiting_level)
+					min_others_waiting_level = tei.value;
+			}
+		itable_insert (&is->waiting_units, this->Current_Unit->Body.ID, any_others_waiting ? min_others_waiting_level + 1 : 1);
+	}
 
 	if (unit != NULL) {
 		is->last_selected_unit_x = unit->Body.X;
@@ -24917,9 +24930,9 @@ patch_Main_Screen_Form_find_next_unit_for_cycling (Main_Screen_Form * this)
 					}
 				}
 
-				bool waiting = itable_look_up_or (&is->waiting_units, unit->Body.ID, 0) != 0;
+				int wait_level = itable_look_up_or (&is->waiting_units, unit->Body.ID, 0);
 
-				int difference = ((int)waiting << 20) + (distance << 2) + ((int)other_type << 1) + (int)not_duplicate;
+				int difference = ((int)wait_level << 20) + (distance << 2) + ((int)other_type << 1) + (int)not_duplicate;
 				if (difference < least_difference) {
 					least_difference = difference;
 					least_different_unit = unit;

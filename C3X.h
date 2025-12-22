@@ -1622,7 +1622,7 @@ struct injected_state {
 	// Persists if the unit is deselected but not if it's despawned.
 	Unit * last_selected_unit;
 
-	// If a unit ID is in the table with a value != 0 then it's been set to wait.
+	// Maps unit IDs to the level at which they are waiting. Units with lower levels move first. Units that have not been set to wait are not in the table.
 	struct table waiting_units;
 
 	// ==========
