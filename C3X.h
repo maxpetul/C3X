@@ -1625,6 +1625,10 @@ struct injected_state {
 	// Maps unit IDs to the level at which they are waiting. Units with lower levels move first. Units that have not been set to wait are not in the table.
 	struct table waiting_units;
 
+	// Set to true when waiting_units has been initialized by loading from the save. Causes the game to skip clearing the table when setting up
+	// unit cycling for the turn.
+	bool have_loaded_waiting_units;
+
 	// ==========
 	// }
 	// ==========

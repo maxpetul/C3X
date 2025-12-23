@@ -11260,6 +11260,7 @@ patch_init_floating_point ()
 	is->last_selected_unit_x = is->last_selected_unit_y = -1;
 	is->last_selected_unit = NULL;
 	is->waiting_units = (struct table) {0};
+	is->have_loaded_waiting_units = false;
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -14041,6 +14042,7 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	is->last_selected_unit_x = is->last_selected_unit_y = -1;
 	is->last_selected_unit = NULL;
 	table_deinit (&is->waiting_units);
+	is->have_loaded_waiting_units = false;
 
 	// Clear extra city improvement bits
 	FOR_TABLE_ENTRIES (tei, &is->extra_city_improvs)
@@ -20651,6 +20653,10 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			serialize_aligned_text ("unit_transport_ties", &mod_data);
 			itable_serialize (&is->unit_transport_ties, &mod_data);
 		}
+		if (is->current_config.always_autoselect_nearby_units && is->waiting_units.len > 0) {
+			serialize_aligned_text ("waiting_units", &mod_data);
+			itable_serialize (&is->waiting_units, &mod_data);
+		}
 		if ((p_bic_data->ImprovementsCount > 256) && (p_cities->Cities != NULL) && (is->extra_city_improvs.len > 0)) {
 			serialize_aligned_text ("extra_city_improvs", &mod_data);
 			int extra_improv_count = p_bic_data->ImprovementsCount - 256;
@@ -21020,6 +21026,16 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					cursor += bytes_read;
 				else {
 					error_chunk_name = "unit_transport_ties";
+					break;
+				}
+
+			} else if (match_save_chunk_name (&cursor, "waiting_units")) {
+				int bytes_read = itable_deserialize (cursor, seg + seg_size, &is->waiting_units);
+				if (bytes_read > 0) {
+					cursor += bytes_read;
+					is->have_loaded_waiting_units = true;
+				} else {
+					error_chunk_name = "waiting_units";
 					break;
 				}
 
@@ -24851,7 +24867,11 @@ clear_selectable_units_list (Main_Screen_Form * main_screen_form, bool include_u
 void __fastcall
 patch_Main_Screen_Form_assemble_selectable_units (Main_Screen_Form * this)
 {
-	table_deinit (&is->waiting_units);
+	if (is->have_loaded_waiting_units)
+		is->have_loaded_waiting_units = false;
+	else
+		table_deinit (&is->waiting_units);
+
 	if (! is->current_config.always_autoselect_nearby_units)
 		Main_Screen_Form_assemble_selectable_units (this);
 	else
