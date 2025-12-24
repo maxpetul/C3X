@@ -73,6 +73,9 @@ struct unit_type_limit {
 	int per_civ;
 	int per_city;
 	int cities_per;
+	int resource_id;
+	int per_resource;
+	int resource_per;
 };
 
 struct work_area_improvement {
