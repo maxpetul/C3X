@@ -1,3 +1,5 @@
+- Can specify a victory animation for air units in aircraft_victory_animation option
+
 * RELEASE 26
 - Add some options to make land transports viable, controlled by land_transport_rules setting
   - LTs may be loaded into naval transports
