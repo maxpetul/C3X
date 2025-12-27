@@ -332,6 +332,7 @@ struct c3x_config {
 	bool prevent_razing_by_players;
 
 	bool draw_forests_over_roads_and_railroads;
+	char * aircraft_victory_animation; // NULL if set to "none" in config
 
 	int day_night_cycle_mode;
 	int elapsed_minutes_per_day_night_hour_transition;
@@ -906,6 +907,7 @@ struct injected_state {
 	void (* qsort) (void *, size_t, size_t, int (*) (void const *, void const *));
 	int (* memcmp) (void const *, void const *, size_t);
 	void * (* memcpy) (void *, void const *, size_t);
+	int (* tolower) (int);
 
 	Unit * sb_next_up; // The unit currently doing a stack bombard or NULL otherwise. Gets set to NULL if the unit is despawned.
 

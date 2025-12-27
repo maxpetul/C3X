@@ -1430,6 +1430,8 @@ typedef enum animation_type {
 	AT_JUNGLE   = 0x10,
 	AT_FOREST   = 0x11,
 	AT_PLANT    = 0x12,
+
+	COUNT_ANIMATION_TYPES = 0x13
 } AnimationType;
 
 typedef enum espionage_mission {

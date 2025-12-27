@@ -49,6 +49,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define qsort is->qsort
 #define memcmp is->memcmp
 #define memcpy is->memcpy
+#define tolower is->tolower
 
 #include "common.c"
 
@@ -703,6 +704,12 @@ reset_to_base_config ()
 		free (cc->work_area_improvements);
 		cc->work_area_improvements = NULL;
 		cc->count_work_area_improvements = 0;
+	}
+
+	// Free aircraft victory animation string
+	if (cc->aircraft_victory_animation != NULL) {
+		free (cc->aircraft_victory_animation);
+		cc->aircraft_victory_animation = NULL;
 	}
 
 	// Free unit limits table
@@ -2117,6 +2124,40 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 (void **)&parsed_unit_type_limits,
 											 &parsed_unit_type_limit_count)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "aircraft_victory_animation")) {
+					struct string_slice trimmed = trim_string_slice (&value, 1);
+					bool value_ok = false;
+					if (slice_matches_str (&trimmed, "none")) {
+						if (cfg->aircraft_victory_animation != NULL) {
+							free (cfg->aircraft_victory_animation);
+							cfg->aircraft_victory_animation = NULL;
+						}
+						value_ok = true;
+					} else if (trimmed.len > 0) {
+						bool matches_any = false;
+						for (int n_anim = 0; n_anim < COUNT_ANIMATION_TYPES; n_anim++) {
+							if (strlen (animation_names[n_anim]) == trimmed.len) {
+								bool all_chars_match = true;
+								for (int k = 0; k < trimmed.len; k++) {
+									if (tolower (animation_names[n_anim][k]) != trimmed.str[k]) {
+										all_chars_match = false;
+										break;
+									}
+								}
+								if (all_chars_match) {
+									if (cfg->aircraft_victory_animation != NULL)
+										free (cfg->aircraft_victory_animation);
+									cfg->aircraft_victory_animation = extract_slice (&trimmed);
+									matches_any = true;
+									break;
+								}
+							}
+						}
+						if (matches_any)
+							value_ok = true;
+					}
+					if (! value_ok)
+						handle_config_error (&p, CPE_BAD_VALUE);
 
 				// if key is for an obsolete option
 				} else if (slice_matches_str (&p.key, "patch_disembark_immobile_bug")) {
@@ -11051,6 +11092,7 @@ patch_init_floating_point ()
 	qsort    = (void *)(*p_GetProcAddress) (is->msvcrt, "qsort");
 	memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
 	memcpy   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcpy");
+	tolower  = (void *)(*p_GetProcAddress) (is->msvcrt, "tolower");
 
 	// Intercept the game's calls to MessageBoxA. We can't do this through the patcher since that would interfere with the runtime loader.
 	WITH_MEM_PROTECTION (p_MessageBoxA, 4, PAGE_READWRITE)
