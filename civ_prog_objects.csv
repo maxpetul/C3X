@@ -851,6 +851,8 @@ repl call, 0x52A165,	0x53452B,	0x52A205,	"Sprite_draw_espionage_screen_target_ci
 repl call, 0x52A1C1,	0x534587,	0x52A261,	"Civilopedia_Article_get_name_for_esp_screen",	""
 define,	   0xA422F8,	0xA64AF8,	0xA422B8,	"p_espionage_form",				"Espionage_Form *"
 define,	   0x680758,	0x0,		0x0,		"animation_names",				"char **"
+define,	   0x5BF2FB,	0x0,		0x0,		"ADDR_SKIP_VICTORY_ANIM_IF_AIR",		"byte *"
+repl call, 0x5BF4D5,	0x0,		0x0,		"Animator_play_one_shot_victory_animation",	""
 
 ignore,	   0x5FC710,	0x0,		0x0,		"PCX_Image_create_and_init_jgl_image",		"int (__fastcall *) (PCX_Image * this, int edx, int width, int height, int bit_depth, int param_4, int param_5, int param_6)"
 ignore,	   0x5FCC50,	0x0,		0x0,		"PCX_Image_draw_region_to_location",		"void (__fastcall *) (PCX_Image * this, int edx, PCX_Image * canvas, int src_x, int src_y, int dest_x, int dest_y, int width, int height)"

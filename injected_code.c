@@ -937,6 +937,29 @@ find_resource_id_by_name (struct string_slice const * name, int * out)
 	return false;
 }
 
+bool
+find_animation_type_by_name (struct string_slice const * name, bool lower_case, AnimationType * out)
+{
+	for (int n_anim = 0; n_anim < COUNT_ANIMATION_TYPES; n_anim++)
+		if (strlen (animation_names[n_anim]) == name->len) {
+			bool all_chars_match = true;
+			for (int k = 0; k < name->len; k++) {
+				int c = animation_names[n_anim][k];
+				if (lower_case)
+					c = tolower (c);
+				if (c != name->str[k]) {
+					all_chars_match = false;
+					break;
+				}
+			}
+			if (all_chars_match) {
+				*out = n_anim;
+				return true;
+			}
+		}
+	return false;
+}
+
 enum game_object_kind {
 	GOK_UNIT_TYPE = 0,
 	GOK_BUILDING,
@@ -2134,27 +2157,13 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						}
 						value_ok = true;
 					} else if (trimmed.len > 0) {
-						bool matches_any = false;
-						for (int n_anim = 0; n_anim < COUNT_ANIMATION_TYPES; n_anim++) {
-							if (strlen (animation_names[n_anim]) == trimmed.len) {
-								bool all_chars_match = true;
-								for (int k = 0; k < trimmed.len; k++) {
-									if (tolower (animation_names[n_anim][k]) != trimmed.str[k]) {
-										all_chars_match = false;
-										break;
-									}
-								}
-								if (all_chars_match) {
-									if (cfg->aircraft_victory_animation != NULL)
-										free (cfg->aircraft_victory_animation);
-									cfg->aircraft_victory_animation = extract_slice (&trimmed);
-									matches_any = true;
-									break;
-								}
-							}
-						}
-						if (matches_any)
+						AnimationType unused;
+						if (find_animation_type_by_name (&trimmed, true, &unused)) {
+							if (cfg->aircraft_victory_animation != NULL)
+								free (cfg->aircraft_victory_animation);
+							cfg->aircraft_victory_animation = extract_slice (&trimmed);
 							value_ok = true;
+						}
 					}
 					if (! value_ok)
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -10086,6 +10095,9 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 			}
 		}
 	}
+
+	// Disable a jump that skips playing victory animations for air units if they've been configured to have a victory anim
+	set_nopification (cfg->aircraft_victory_animation != NULL, ADDR_SKIP_VICTORY_ANIM_IF_AIR, 6);
 }
 
 Sprite* 
@@ -25036,6 +25048,17 @@ patch_Civilopedia_Article_get_name_for_esp_screen (Civilopedia_Article * this)
 
 	else
 		return this->Name.S;
+}
+
+void __fastcall
+patch_Animator_play_one_shot_victory_animation (Animator * this, int edx, Unit * unit, AnimationType anim_type, bool param_3)
+{
+	if (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Air && is->current_config.aircraft_victory_animation != NULL) {
+		struct string_slice slice = {.str = is->current_config.aircraft_victory_animation, .len = strlen (is->current_config.aircraft_victory_animation)};
+		find_animation_type_by_name (&slice, true, &anim_type);
+	}
+
+	Animator_play_one_shot_unit_animation (this, __, unit, anim_type, param_3);
 }
 
 
