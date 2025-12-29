@@ -1616,11 +1616,13 @@ struct injected_state {
 	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp. Tracks the current tile coordinates being rendered, then for drawing forests over roads/railroad
 	int current_tile_x, current_tile_y;
 
-	// Stores the location of the last selected unit. Gets updated when that unit moves. Persists if the unit is deselected.
-	int last_selected_unit_x, last_selected_unit_y;
-
-	// Persists if the unit is deselected but not if it's despawned.
-	Unit * last_selected_unit;
+	// Tracks information about the last unit that was selected. These fields are updated when a new unit is selected or when the selected unit
+	// moves or is destroyed.
+	struct {
+		int initial_x, initial_y; // Stores the unit's location when it was selected
+		int last_x, last_y, type_id; // Stores the unit's current or last available location and type id
+		Unit * ptr; // A pointer to the unit, may be NULL if the unit was destroyed
+	} last_selected_unit;
 
 	// Maps unit IDs to the level at which they are waiting. Units with lower levels move first. Units that have not been set to wait are not in the table.
 	struct table waiting_units;

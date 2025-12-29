@@ -11257,8 +11257,11 @@ patch_init_floating_point ()
 
 	is->sharing_buildings_by_districts_in_progress = false;
 	is->can_load_transport = is->can_load_passenger = NULL;
-	is->last_selected_unit_x = is->last_selected_unit_y = -1;
-	is->last_selected_unit = NULL;
+
+	is->last_selected_unit.initial_x = is->last_selected_unit.initial_y = -1;
+	is->last_selected_unit.last_x = is->last_selected_unit.last_y = is->last_selected_unit.type_id = -1;
+	is->last_selected_unit.ptr = NULL;
+
 	is->waiting_units = (struct table) {0};
 	is->have_loaded_waiting_units = false;
 
@@ -11732,9 +11735,9 @@ patch_Unit_move (Unit * this, int edx, int tile_x, int tile_y)
 
 	Unit_move (this, __, tile_x, tile_y);
 
-	if (this == p_main_screen_form->Current_Unit) {
-		is->last_selected_unit_x = this->Body.X;
-		is->last_selected_unit_y = this->Body.Y;
+	if (this == is->last_selected_unit.ptr) {
+		is->last_selected_unit.last_x = this->Body.X;
+		is->last_selected_unit.last_y = this->Body.Y;
 	}
 }
 
@@ -14039,8 +14042,9 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	table_deinit (&is->extra_defensive_bombards);
 	table_deinit (&is->airdrops_this_turn);
 	table_deinit (&is->unit_transport_ties);
-	is->last_selected_unit_x = is->last_selected_unit_y = -1;
-	is->last_selected_unit = NULL;
+	is->last_selected_unit.initial_x = is->last_selected_unit.initial_y = -1;
+	is->last_selected_unit.last_x = is->last_selected_unit.last_y = is->last_selected_unit.type_id = -1;
+	is->last_selected_unit.ptr = NULL;
 	table_deinit (&is->waiting_units);
 	is->have_loaded_waiting_units = false;
 
@@ -16667,8 +16671,8 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	if (this == is->sb_next_up)
 		is->sb_next_up = NULL;
 
-	if (this == is->last_selected_unit)
-		is->last_selected_unit = NULL;
+	if (this == is->last_selected_unit.ptr)
+		is->last_selected_unit.ptr = NULL;
 
 	// Set always_despawn_passengers to true if the unit to be despawned is a land transport, the no-escape rule is in effect, and it's being
 	// despawned involuntarily, i.e. because of the actions of another player not the choice of its owner. Save the original to restore later.
@@ -24902,9 +24906,10 @@ patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit
 	}
 
 	if (unit != NULL) {
-		is->last_selected_unit_x = unit->Body.X;
-		is->last_selected_unit_y = unit->Body.Y;
-		is->last_selected_unit = unit;
+		is->last_selected_unit.initial_x = is->last_selected_unit.last_x = unit->Body.X;
+		is->last_selected_unit.initial_y = is->last_selected_unit.last_y = unit->Body.Y;
+		is->last_selected_unit.type_id = unit->Body.UnitTypeID;
+		is->last_selected_unit.ptr = unit;
 		itable_remove (&is->waiting_units, unit->Body.ID); // Clear waiting record when waiting unit is selected
 	}
 
@@ -24934,20 +24939,20 @@ patch_Main_Screen_Form_find_next_unit_for_cycling (Main_Screen_Form * this)
 			if (unit != NULL && unit->Body.CivID == this->Player_CivID && Unit_can_cycle_to (unit)) {
 				int distance; {
 					// TODO: last selected x/y might be -1. Can we do something smarter in that case?
-					int dx = unit->Body.X - is->last_selected_unit_x,
-					    dy = unit->Body.Y - is->last_selected_unit_y;
+					int dx = unit->Body.X - is->last_selected_unit.initial_x,
+					    dy = unit->Body.Y - is->last_selected_unit.initial_y;
 					distance = not_above (1<<15, int_abs (dx) + int_abs (dy));
 				}
 
 				bool other_type, not_duplicate; {
-					if (is->last_selected_unit == NULL)
-						other_type = not_duplicate = true;
-					else if (is->last_selected_unit->Body.UnitTypeID != unit->Body.UnitTypeID)
-						other_type = not_duplicate = true;
-					else {
+					if (is->last_selected_unit.type_id == unit->Body.UnitTypeID) {
 						other_type = false;
-						not_duplicate = ! are_units_duplicate (&is->last_selected_unit->Body, &unit->Body, false);
-					}
+						if (is->last_selected_unit.ptr != NULL)
+							not_duplicate = ! are_units_duplicate (&is->last_selected_unit.ptr->Body, &unit->Body, false);
+						else
+							not_duplicate = true;
+					} else
+						other_type = not_duplicate = true;
 				}
 
 				int wait_level = itable_look_up_or (&is->waiting_units, unit->Body.ID, 0);
