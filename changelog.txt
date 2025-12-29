@@ -1,3 +1,6 @@
+- Can select a different method for unit autoselection that searches for similar units near where the last selected unit started or ended up
+  - Option named unit_cycle_search_criteria
+
 - Fix no-escape LT rule not applying when an LT is destroyed by lethal ZoC, by a nuclear explosion, or by the destruction of a larger transport carrying it
 
 - Add some options to make land transports viable, controlled by land_transport_rules setting

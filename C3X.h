@@ -100,6 +100,12 @@ enum minimap_doubling_mode {
 	MDM_ALWAYS
 };
 
+enum unit_cycle_search_criteria {
+	UCSC_STANDARD = 0,
+	UCSC_SIMILAR_NEAR_START,
+	UCSC_SIMILAR_NEAR_DESTINATION
+};
+
 enum special_defensive_bombard_rules {
 	SDBR_LETHAL         =  1,
 	SDBR_NOT_INVISIBLE  =  2,
@@ -240,7 +246,7 @@ struct c3x_config {
 	bool accentuate_cities_on_minimap;
 	enum minimap_doubling_mode double_minimap_size;
 	bool allow_multipage_civilopedia_descriptions;
-	bool always_autoselect_nearby_units;
+	enum unit_cycle_search_criteria unit_cycle_search_criteria;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;

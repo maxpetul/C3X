@@ -1656,6 +1656,17 @@ read_minimap_doubling_mode (struct string_slice const * s, int * out_val)
 }
 
 bool
+read_unit_cycle_search_criteria (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "standard"                )) { *out_val = UCSC_STANDARD;                 return true; }
+	else if (slice_matches_str (&trimmed, "similar-near-start"      )) { *out_val = UCSC_SIMILAR_NEAR_START;       return true; }
+	else if (slice_matches_str (&trimmed, "similar-near-destination")) { *out_val = UCSC_SIMILAR_NEAR_DESTINATION; return true; }
+	else
+		return false;
+}
+
+bool
 read_work_area_limit (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
@@ -2045,6 +2056,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "double_minimap_size")) {
 					if (! read_minimap_doubling_mode (&value, (int *)&cfg->double_minimap_size))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "unit_cycle_search_criteria")) {
+					if (! read_unit_cycle_search_criteria (&value, (int *)&cfg->unit_cycle_search_criteria))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_defensive_bombard_rules")) {
 					struct parsable_field_bit bits[] = {
@@ -10900,7 +10914,6 @@ patch_init_floating_point ()
 		{"enable_debug_mode_switch"                            , false, offsetof (struct c3x_config, enable_debug_mode_switch)},
 		{"accentuate_cities_on_minimap"                        , false, offsetof (struct c3x_config, accentuate_cities_on_minimap)},
 		{"allow_multipage_civilopedia_descriptions"            , true , offsetof (struct c3x_config, allow_multipage_civilopedia_descriptions)},
-		{"always_autoselect_nearby_units"                      , true , offsetof (struct c3x_config, always_autoselect_nearby_units)},
 		{"enable_trade_net_x"                                  , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                          , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                  , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -11035,6 +11048,7 @@ patch_init_floating_point ()
 	base_config.work_area_limit = WAL_NONE;
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
 	base_config.double_minimap_size = MDM_HIGH_DEF;
+	base_config.unit_cycle_search_criteria = UCSC_STANDARD;
 	base_config.city_work_radius = 2;
 	base_config.day_night_cycle_mode = DNCM_OFF;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
@@ -20657,7 +20671,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			serialize_aligned_text ("unit_transport_ties", &mod_data);
 			itable_serialize (&is->unit_transport_ties, &mod_data);
 		}
-		if (is->current_config.always_autoselect_nearby_units && is->waiting_units.len > 0) {
+		if (is->current_config.unit_cycle_search_criteria != UCSC_STANDARD && is->waiting_units.len > 0) {
 			serialize_aligned_text ("waiting_units", &mod_data);
 			itable_serialize (&is->waiting_units, &mod_data);
 		}
@@ -24876,7 +24890,7 @@ patch_Main_Screen_Form_assemble_selectable_units (Main_Screen_Form * this)
 	else
 		table_deinit (&is->waiting_units);
 
-	if (! is->current_config.always_autoselect_nearby_units)
+	if (is->current_config.unit_cycle_search_criteria == UCSC_STANDARD)
 		Main_Screen_Form_assemble_selectable_units (this);
 	else
 		clear_selectable_units_list (this, true);
@@ -24913,13 +24927,13 @@ patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit
 		itable_remove (&is->waiting_units, unit->Body.ID); // Clear waiting record when waiting unit is selected
 	}
 
-	if (is->current_config.always_autoselect_nearby_units)
+	if (is->current_config.unit_cycle_search_criteria != UCSC_STANDARD)
 		clear_selectable_units_list (this, false);
 
 	Main_Screen_Form_set_selected_unit (this, __, unit, param_2);
 
 	// If selecting a new unit, must insert it into the list to ensure it's actually selected.
-	if (is->current_config.always_autoselect_nearby_units && unit != NULL) {
+	if (is->current_config.unit_cycle_search_criteria != UCSC_STANDARD && unit != NULL) {
 		UnitIDList_insert_before (&this->selectable_units, __, unit->Body.ID, NULL);
 		this->unit_cycle_cursor = this->selectable_units.first;
 	}
@@ -24928,21 +24942,18 @@ patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit
 Unit * __fastcall
 patch_Main_Screen_Form_find_next_unit_for_cycling (Main_Screen_Form * this)
 {
-	if (! is->current_config.always_autoselect_nearby_units)
+	if (is->current_config.unit_cycle_search_criteria == UCSC_STANDARD)
 		return Main_Screen_Form_find_next_unit_for_cycling (this);
 
 	else {
 		int least_difference = INT_MAX;
 		Unit * least_different_unit = NULL;
+		int sx = is->current_config.unit_cycle_search_criteria == UCSC_SIMILAR_NEAR_START ? is->last_selected_unit.initial_x : is->last_selected_unit.last_x,
+		    sy = is->current_config.unit_cycle_search_criteria == UCSC_SIMILAR_NEAR_START ? is->last_selected_unit.initial_y : is->last_selected_unit.last_y;
 		for (int n = 0; n <= p_units->LastIndex; n++) {
 			Unit * unit = get_unit_ptr (n);
 			if (unit != NULL && unit->Body.CivID == this->Player_CivID && Unit_can_cycle_to (unit)) {
-				int distance; {
-					// TODO: last selected x/y might be -1. Can we do something smarter in that case?
-					int dx = unit->Body.X - is->last_selected_unit.initial_x,
-					    dy = unit->Body.Y - is->last_selected_unit.initial_y;
-					distance = not_above (1<<15, int_abs (dx) + int_abs (dy));
-				}
+				int distance = not_above (1<<15, int_abs (unit->Body.X - sx) + int_abs (unit->Body.Y - sy));
 
 				bool other_type, not_duplicate; {
 					if (is->last_selected_unit.type_id == unit->Body.UnitTypeID) {
