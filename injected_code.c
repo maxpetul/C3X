@@ -1686,6 +1686,17 @@ read_minimap_doubling_mode (struct string_slice const * s, int * out_val)
 }
 
 bool
+read_unit_cycle_search_criteria (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "standard"                )) { *out_val = UCSC_STANDARD;                 return true; }
+	else if (slice_matches_str (&trimmed, "similar-near-start"      )) { *out_val = UCSC_SIMILAR_NEAR_START;       return true; }
+	else if (slice_matches_str (&trimmed, "similar-near-destination")) { *out_val = UCSC_SIMILAR_NEAR_DESTINATION; return true; }
+	else
+		return false;
+}
+
+bool
 read_work_area_limit (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
@@ -2075,6 +2086,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "double_minimap_size")) {
 					if (! read_minimap_doubling_mode (&value, (int *)&cfg->double_minimap_size))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "unit_cycle_search_criteria")) {
+					if (! read_unit_cycle_search_criteria (&value, (int *)&cfg->unit_cycle_search_criteria))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_defensive_bombard_rules")) {
 					struct parsable_field_bit bits[] = {
@@ -10903,6 +10917,7 @@ patch_init_floating_point ()
 		{"describe_states_of_units_on_menu"                      , true , offsetof (struct c3x_config, describe_states_of_units_on_menu)},
 		{"show_golden_age_turns_remaining"                       , true , offsetof (struct c3x_config, show_golden_age_turns_remaining)},
 		{"show_zoc_attacks_from_mid_stack"                       , true , offsetof (struct c3x_config, show_zoc_attacks_from_mid_stack)},
+		{"show_armies_performing_defensive_bombard"              , true , offsetof (struct c3x_config, show_armies_performing_defensive_bombard)},
 		{"cut_research_spending_to_avoid_bankruptcy"             , true , offsetof (struct c3x_config, cut_research_spending_to_avoid_bankruptcy)},
 		{"dont_pause_for_love_the_king_messages"                 , true , offsetof (struct c3x_config, dont_pause_for_love_the_king_messages)},
 		{"reverse_specialist_order_with_shift"                   , true , offsetof (struct c3x_config, reverse_specialist_order_with_shift)},
@@ -11122,6 +11137,7 @@ patch_init_floating_point ()
 	base_config.work_area_limit = WAL_NONE;
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
 	base_config.double_minimap_size = MDM_HIGH_DEF;
+	base_config.unit_cycle_search_criteria = UCSC_STANDARD;
 	base_config.city_work_radius = 2;
 	base_config.day_night_cycle_mode = DNCM_OFF;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
@@ -11344,6 +11360,13 @@ patch_init_floating_point ()
 
 	is->sharing_buildings_by_districts_in_progress = false;
 	is->can_load_transport = is->can_load_passenger = NULL;
+
+	is->last_selected_unit.initial_x = is->last_selected_unit.initial_y = -1;
+	is->last_selected_unit.last_x = is->last_selected_unit.last_y = is->last_selected_unit.type_id = -1;
+	is->last_selected_unit.ptr = NULL;
+
+	is->waiting_units = (struct table) {0};
+	is->have_loaded_waiting_units = false;
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -11812,7 +11835,13 @@ void __fastcall
 patch_Unit_move (Unit * this, int edx, int tile_x, int tile_y)
 {
 	record_ai_unit_seen (this, tile_x, tile_y);
+
 	Unit_move (this, __, tile_x, tile_y);
+
+	if (this == is->last_selected_unit.ptr) {
+		is->last_selected_unit.last_x = this->Body.X;
+		is->last_selected_unit.last_y = this->Body.Y;
+	}
 }
 
 // Returns true if the unit has attacked & does not have blitz or if it's run out of movement points for the turn
@@ -14119,6 +14148,11 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	table_deinit (&is->extra_defensive_bombards);
 	table_deinit (&is->airdrops_this_turn);
 	table_deinit (&is->unit_transport_ties);
+	is->last_selected_unit.initial_x = is->last_selected_unit.initial_y = -1;
+	is->last_selected_unit.last_x = is->last_selected_unit.last_y = is->last_selected_unit.type_id = -1;
+	is->last_selected_unit.ptr = NULL;
+	table_deinit (&is->waiting_units);
+	is->have_loaded_waiting_units = false;
 
 	// Clear extra city improvement bits
 	FOR_TABLE_ENTRIES (tei, &is->extra_city_improvs)
@@ -16815,9 +16849,10 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	int owner_id = this->Body.CivID;
 	int type_id = this->Body.UnitTypeID;
 
-	// Clear extra DBs, airdrops, and transport ties used by this unit
+	// Clear extra DBs, airdrops, wait records, and transport ties used by this unit
 	itable_remove (&is->extra_defensive_bombards, this->Body.ID);
 	itable_remove (&is->airdrops_this_turn, this->Body.ID);
+	itable_remove (&is->waiting_units, this->Body.ID);
 	itable_remove (&is->unit_transport_ties, this->Body.ID);
 
 	// If we're despawning the stored ZoC defender, clear that variable so we don't despawn it again in check_life_after_zoc
@@ -16826,6 +16861,9 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 
 	if (this == is->sb_next_up)
 		is->sb_next_up = NULL;
+
+	if (this == is->last_selected_unit.ptr)
+		is->last_selected_unit.ptr = NULL;
 
 	// Set always_despawn_passengers to true if the unit to be despawned is a land transport, the no-escape rule is in effect, and it's being
 	// despawned involuntarily, i.e. because of the actions of another player not the choice of its owner. Save the original to restore later.
@@ -19419,8 +19457,20 @@ void __fastcall
 patch_Unit_play_attack_anim_for_def_bombard (Unit * this, int edx, int direction)
 {
 	// Don't play any animation for air units, the animations are instead handled in the patch for damage_by_defensive_bombard
-	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air)
+	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air) {
+
+		// Make sure the unit is displayed if it's in an army and we're configured for that
+		struct unit_display_override saved_udo = is->unit_display_override;
+		Unit * container;
+		if (is->current_config.show_armies_performing_defensive_bombard &&
+		    (container = get_unit_ptr (this->Body.Container_Unit)) != NULL &&
+		    Unit_has_ability (container, __, UTA_Army))
+			is->unit_display_override = (struct unit_display_override) { this->Body.ID, this->Body.X, this->Body.Y };
+
 		Unit_play_attack_animation (this, __, direction);
+
+		is->unit_display_override = saved_udo;
+	}
 }
 
 bool
@@ -20826,6 +20876,10 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			serialize_aligned_text ("unit_transport_ties", &mod_data);
 			itable_serialize (&is->unit_transport_ties, &mod_data);
 		}
+		if (is->current_config.unit_cycle_search_criteria != UCSC_STANDARD && is->waiting_units.len > 0) {
+			serialize_aligned_text ("waiting_units", &mod_data);
+			itable_serialize (&is->waiting_units, &mod_data);
+		}
 		if ((p_bic_data->ImprovementsCount > 256) && (p_cities->Cities != NULL) && (is->extra_city_improvs.len > 0)) {
 			serialize_aligned_text ("extra_city_improvs", &mod_data);
 			int extra_improv_count = p_bic_data->ImprovementsCount - 256;
@@ -21195,6 +21249,16 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					cursor += bytes_read;
 				else {
 					error_chunk_name = "unit_transport_ties";
+					break;
+				}
+
+			} else if (match_save_chunk_name (&cursor, "waiting_units")) {
+				int bytes_read = itable_deserialize (cursor, seg + seg_size, &is->waiting_units);
+				if (bytes_read > 0) {
+					cursor += bytes_read;
+					is->have_loaded_waiting_units = true;
+				} else {
+					error_chunk_name = "waiting_units";
 					break;
 				}
 
@@ -25059,6 +25123,123 @@ patch_Animator_play_one_shot_victory_animation (Animator * this, int edx, Unit *
 	}
 
 	Animator_play_one_shot_unit_animation (this, __, unit, anim_type, param_3);
+}
+
+void
+clear_selectable_units_list (Main_Screen_Form * main_screen_form, bool include_unit_objects)
+{
+	// This is what the base game does to clear things at the start of assemble_selectable_units
+	if (include_unit_objects && p_units->Units != NULL)
+		for (int n = 0; n <= p_units->LastIndex; n++) {
+			Unit * unit = get_unit_ptr (n);
+			if (unit != NULL)
+				unit->Body.in_selectable_units_list = false;
+		}
+	UnitIDItem * item = main_screen_form->selectable_units.first;
+	while (item != NULL) {
+		UnitIDItem * next = item->next;
+		item->vtable->destruct (item, __, 1);
+		item = next;
+	}
+	main_screen_form->selectable_units.first = main_screen_form->selectable_units.last = NULL;
+	main_screen_form->selectable_units.length = 0;
+}
+
+void __fastcall
+patch_Main_Screen_Form_assemble_selectable_units (Main_Screen_Form * this)
+{
+	if (is->have_loaded_waiting_units)
+		is->have_loaded_waiting_units = false;
+	else
+		table_deinit (&is->waiting_units);
+
+	if (is->current_config.unit_cycle_search_criteria == UCSC_STANDARD)
+		Main_Screen_Form_assemble_selectable_units (this);
+	else
+		clear_selectable_units_list (this, true);
+}
+
+void __fastcall
+patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit * unit, bool param_2)
+{
+	// To set a unit to wait, Main_Screen_Form::issue_command calls this method with unit == NULL and param_2 == false. Detect when that's
+	// happened and record that the unit's been set to wait so we can reimplement the wait command when replacing the base unit cycling logic.
+	int * p_stack = (int *)&unit;
+	int ret_addr = p_stack[-1];
+	if (ret_addr == SET_SELECTED_UNIT_TO_ISSUE_WAIT_COMMAND_RET && unit == NULL && this->Current_Unit != NULL) {
+		// Give the unit a waiting level higher than the minimum among all units already set to wait. This ensures that this unit does not get
+		// immediately picked up again by the cycling logic unless it's the only selectable unit left. This also means that the first unit set
+		// to wait will be the first cycled to once all the non-waiting units have been moved (it's the only one at level 1). I consider that
+		// an advantage.
+		int min_others_waiting_level = INT_MAX;
+		bool any_others_waiting = false;
+		FOR_TABLE_ENTRIES (tei, &is->waiting_units)
+			if (tei.key != this->Current_Unit->Body.ID) {
+				any_others_waiting = true;
+				if (tei.value < min_others_waiting_level)
+					min_others_waiting_level = tei.value;
+			}
+		itable_insert (&is->waiting_units, this->Current_Unit->Body.ID, any_others_waiting ? min_others_waiting_level + 1 : 1);
+	}
+
+	if (unit != NULL) {
+		is->last_selected_unit.initial_x = is->last_selected_unit.last_x = unit->Body.X;
+		is->last_selected_unit.initial_y = is->last_selected_unit.last_y = unit->Body.Y;
+		is->last_selected_unit.type_id = unit->Body.UnitTypeID;
+		is->last_selected_unit.ptr = unit;
+		itable_remove (&is->waiting_units, unit->Body.ID); // Clear waiting record when waiting unit is selected
+	}
+
+	if (is->current_config.unit_cycle_search_criteria != UCSC_STANDARD)
+		clear_selectable_units_list (this, false);
+
+	Main_Screen_Form_set_selected_unit (this, __, unit, param_2);
+
+	// If selecting a new unit, must insert it into the list to ensure it's actually selected.
+	if (is->current_config.unit_cycle_search_criteria != UCSC_STANDARD && unit != NULL) {
+		UnitIDList_insert_before (&this->selectable_units, __, unit->Body.ID, NULL);
+		this->unit_cycle_cursor = this->selectable_units.first;
+	}
+}
+
+Unit * __fastcall
+patch_Main_Screen_Form_find_next_unit_for_cycling (Main_Screen_Form * this)
+{
+	if (is->current_config.unit_cycle_search_criteria == UCSC_STANDARD)
+		return Main_Screen_Form_find_next_unit_for_cycling (this);
+
+	else {
+		int least_difference = INT_MAX;
+		Unit * least_different_unit = NULL;
+		int sx = is->current_config.unit_cycle_search_criteria == UCSC_SIMILAR_NEAR_START ? is->last_selected_unit.initial_x : is->last_selected_unit.last_x,
+		    sy = is->current_config.unit_cycle_search_criteria == UCSC_SIMILAR_NEAR_START ? is->last_selected_unit.initial_y : is->last_selected_unit.last_y;
+		for (int n = 0; n <= p_units->LastIndex; n++) {
+			Unit * unit = get_unit_ptr (n);
+			if (unit != NULL && unit->Body.CivID == this->Player_CivID && Unit_can_cycle_to (unit)) {
+				int distance = not_above (1<<15, int_abs (unit->Body.X - sx) + int_abs (unit->Body.Y - sy));
+
+				bool other_type, not_duplicate; {
+					if (is->last_selected_unit.type_id == unit->Body.UnitTypeID) {
+						other_type = false;
+						if (is->last_selected_unit.ptr != NULL)
+							not_duplicate = ! are_units_duplicate (&is->last_selected_unit.ptr->Body, &unit->Body, false);
+						else
+							not_duplicate = true;
+					} else
+						other_type = not_duplicate = true;
+				}
+
+				int wait_level = itable_look_up_or (&is->waiting_units, unit->Body.ID, 0);
+
+				int difference = ((int)wait_level << 20) + (distance << 2) + ((int)other_type << 1) + (int)not_duplicate;
+				if (difference < least_difference) {
+					least_difference = difference;
+					least_different_unit = unit;
+				}
+			}
+		}
+		return least_different_unit;
+	}
 }
 
 

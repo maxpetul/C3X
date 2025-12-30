@@ -100,6 +100,12 @@ enum minimap_doubling_mode {
 	MDM_ALWAYS
 };
 
+enum unit_cycle_search_criteria {
+	UCSC_STANDARD = 0,
+	UCSC_SIMILAR_NEAR_START,
+	UCSC_SIMILAR_NEAR_DESTINATION
+};
+
 enum special_defensive_bombard_rules {
 	SDBR_LETHAL         =  1,
 	SDBR_NOT_INVISIBLE  =  2,
@@ -168,6 +174,7 @@ struct c3x_config {
 	int anarchy_length_percent;
 	bool show_golden_age_turns_remaining;
 	bool show_zoc_attacks_from_mid_stack;
+	bool show_armies_performing_defensive_bombard;
 	bool cut_research_spending_to_avoid_bankruptcy;
 	bool dont_pause_for_love_the_king_messages;
 	bool reverse_specialist_order_with_shift;
@@ -241,6 +248,7 @@ struct c3x_config {
 	bool accentuate_cities_on_minimap;
 	enum minimap_doubling_mode double_minimap_size;
 	bool allow_multipage_civilopedia_descriptions;
+	enum unit_cycle_search_criteria unit_cycle_search_criteria;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
@@ -1623,6 +1631,21 @@ struct injected_state {
 
 	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp. Tracks the current tile coordinates being rendered, then for drawing forests over roads/railroad
 	int current_tile_x, current_tile_y;
+
+	// Tracks information about the last unit that was selected. These fields are updated when a new unit is selected or when the selected unit
+	// moves or is destroyed.
+	struct {
+		int initial_x, initial_y; // Stores the unit's location when it was selected
+		int last_x, last_y, type_id; // Stores the unit's current or last available location and type id
+		Unit * ptr; // A pointer to the unit, may be NULL if the unit was destroyed
+	} last_selected_unit;
+
+	// Maps unit IDs to the level at which they are waiting. Units with lower levels move first. Units that have not been set to wait are not in the table.
+	struct table waiting_units;
+
+	// Set to true when waiting_units has been initialized by loading from the save. Causes the game to skip clearing the table when setting up
+	// unit cycling for the turn.
+	bool have_loaded_waiting_units;
 
 	// ==========
 	// }
