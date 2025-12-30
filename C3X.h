@@ -173,6 +173,7 @@ struct c3x_config {
 	int anarchy_length_percent;
 	bool show_golden_age_turns_remaining;
 	bool show_zoc_attacks_from_mid_stack;
+	bool show_armies_performing_defensive_bombard;
 	bool cut_research_spending_to_avoid_bankruptcy;
 	bool dont_pause_for_love_the_king_messages;
 	bool reverse_specialist_order_with_shift;

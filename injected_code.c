@@ -10833,6 +10833,7 @@ patch_init_floating_point ()
 		{"describe_states_of_units_on_menu"                    , true , offsetof (struct c3x_config, describe_states_of_units_on_menu)},
 		{"show_golden_age_turns_remaining"                     , true , offsetof (struct c3x_config, show_golden_age_turns_remaining)},
 		{"show_zoc_attacks_from_mid_stack"                     , true , offsetof (struct c3x_config, show_zoc_attacks_from_mid_stack)},
+		{"show_armies_performing_defensive_bombard"            , true , offsetof (struct c3x_config, show_armies_performing_defensive_bombard)},
 		{"cut_research_spending_to_avoid_bankruptcy"           , true , offsetof (struct c3x_config, cut_research_spending_to_avoid_bankruptcy)},
 		{"dont_pause_for_love_the_king_messages"               , true , offsetof (struct c3x_config, dont_pause_for_love_the_king_messages)},
 		{"reverse_specialist_order_with_shift"                 , true , offsetof (struct c3x_config, reverse_specialist_order_with_shift)},
@@ -19269,8 +19270,20 @@ void __fastcall
 patch_Unit_play_attack_anim_for_def_bombard (Unit * this, int edx, int direction)
 {
 	// Don't play any animation for air units, the animations are instead handled in the patch for damage_by_defensive_bombard
-	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air)
+	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air) {
+
+		// Make sure the unit is displayed if it's in an army and we're configured for that
+		struct unit_display_override saved_udo = is->unit_display_override;
+		Unit * container;
+		if (is->current_config.show_armies_performing_defensive_bombard &&
+		    (container = get_unit_ptr (this->Body.Container_Unit)) != NULL &&
+		    Unit_has_ability (container, __, UTA_Army))
+			is->unit_display_override = (struct unit_display_override) { this->Body.ID, this->Body.X, this->Body.Y };
+
 		Unit_play_attack_animation (this, __, direction);
+
+		is->unit_display_override = saved_udo;
+	}
 }
 
 bool

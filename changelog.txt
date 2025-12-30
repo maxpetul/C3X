@@ -1,5 +1,6 @@
 - Can select a different method for unit autoselection that searches for similar units near where the last selected unit started or ended up
   - Option named unit_cycle_search_criteria
+- Option show_armies_performing_defensive_bombard that fixes defensive bombard animations being skipped when the bombarding unit is in an army
 
 - Fix no-escape LT rule not applying when an LT is destroyed by lethal ZoC, by a nuclear explosion, or by the destruction of a larger transport carrying it
 
