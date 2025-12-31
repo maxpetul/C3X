@@ -25155,8 +25155,11 @@ patch_Main_Screen_Form_assemble_selectable_units (Main_Screen_Form * this)
 
 	if (is->current_config.unit_cycle_search_criteria == UCSC_STANDARD)
 		Main_Screen_Form_assemble_selectable_units (this);
-	else
+	else {
 		clear_selectable_units_list (this, true);
+		this->unit_cycle_cursor = NULL;
+		this->completed_unit_cycle = false;
+	}
 }
 
 void __fastcall
@@ -25238,6 +25241,7 @@ patch_Main_Screen_Form_find_next_unit_for_cycling (Main_Screen_Form * this)
 				}
 			}
 		}
+		this->completed_unit_cycle = least_different_unit == NULL;
 		return least_different_unit;
 	}
 }

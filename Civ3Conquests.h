@@ -6181,7 +6181,7 @@ struct Main_Screen_Form
   int camera_x;
   int camera_y;
   int field_4EA0[8];
-  bool field_4EC0;
+  bool completed_unit_cycle;
   byte field_4EC1;
   byte field_4EC2;
   byte field_4EC3;
