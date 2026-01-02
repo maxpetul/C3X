@@ -4235,6 +4235,14 @@ district_is_complete(Tile * tile, int district_id)
 			on_distribution_hub_completed (tile, tile_x, tile_y);
 		}
 
+		// Remove forest/swamp if applicable
+		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+		if ((base_type == SQ_Forest) || (base_type == SQ_Swamp)) {
+			int new_terrain_type = tile->vtable->m71_Check_Worker_Job (tile);
+			if (new_terrain_type >= 0)
+				Map_change_tile_terrain (&p_bic_data->Map, __, (enum SquareTypes)new_terrain_type, tile_x, tile_y);
+		}
+
 		char ss[200];
 		snprintf (ss, sizeof ss, "District %d completed at tile (%d,%d)\n", district_id, tile_x, tile_y);
 		(*p_OutputDebugStringA) (ss);
