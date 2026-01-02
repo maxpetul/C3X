@@ -126,6 +126,26 @@ shield_bonus          = 4
 happiness_bonus       = 0
 
 #District
+name                  = Central Rail Hub
+tooltip               = Build Central Rail Hub
+img_paths             = CentralRailHub_AMER.pcx, CentralRailHub_EURO.pcx, CentralRailHub_ROMAN.pcx, CentralRailHub_MIDEAST.pcx, CentralRailHub_ASIAN.pcx
+btn_tile_sheet_row    = 1
+btn_tile_sheet_column = 7
+vary_img_by_era       = 1
+vary_img_by_culture   = 1
+advance_prereq        = Steam Power
+dependent_improvs     = Mass Transit System
+buildable_on          = desert,plains,grassland,tundra,floodplain,hills
+defense_bonus_percent = 0
+allow_multiple        = 1
+culture_bonus         = 0
+science_bonus         = 0
+food_bonus            = 0
+gold_bonus            = 0
+shield_bonus          = 4
+happiness_bonus       = 0
+
+#District
 name                  = Ski Resort
 tooltip               = Build Ski Resort
 img_paths             = SkiResort.pcx

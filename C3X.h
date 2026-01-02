@@ -193,6 +193,7 @@ struct c3x_config {
 	bool warn_about_unrecognized_names;
 	bool enable_ai_production_ranking;
 	bool enable_ai_city_location_desirability_display;
+	bool show_ai_city_location_desirability_if_settler;
 	bool zero_corruption_when_off;
 	bool disallow_land_units_from_affecting_water_tiles;
 	bool dont_end_units_turn_after_airdrop;

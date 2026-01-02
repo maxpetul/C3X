@@ -12169,7 +12169,9 @@ patch_init_floating_point ()
 		{"show_detailed_tile_info"                               , true , offsetof (struct c3x_config, show_detailed_tile_info)},
 		{"warn_about_unrecognized_names"                         , true , offsetof (struct c3x_config, warn_about_unrecognized_names)},
 		{"enable_ai_production_ranking"                          , true , offsetof (struct c3x_config, enable_ai_production_ranking)},
-		{"enable_ai_city_location_desirability_display"          , true , offsetof (struct c3x_config, enable_ai_city_location_desirability_display)},
+		{"enable_ai_city_location_desirability_display"          , true,  offsetof (struct c3x_config, enable_ai_city_location_desirability_display)},
+		{"show_ai_city_location_desirability_if_settler"         , false, offsetof (struct c3x_config, show_ai_city_location_desirability_if_settler)},
+		{"auto_zoom_city_screen_for_large_work_areas"            , true,  offsetof (struct c3x_config, auto_zoom_city_screen_for_large_work_areas)},
 		{"zero_corruption_when_off"                              , true , offsetof (struct c3x_config, zero_corruption_when_off)},
 		{"disallow_land_units_from_affecting_water_tiles"        , true , offsetof (struct c3x_config, disallow_land_units_from_affecting_water_tiles)},
 		{"dont_end_units_turn_after_airdrop"                     , false, offsetof (struct c3x_config, dont_end_units_turn_after_airdrop)},
@@ -13923,6 +13925,11 @@ intercept_end_of_turn ()
 		clear_highlighted_worker_tiles_and_redraw ();
 	}
 
+	if (is->current_config.show_ai_city_location_desirability_if_settler && is->city_loc_display_perspective >= 0) {
+		is->city_loc_display_perspective = -1;
+		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form); // Trigger map redraw
+	}
+
 	// Clear things that don't apply across turns
 	is->have_job_and_loc_to_skip = 0;
 }
@@ -14439,6 +14446,11 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 	if (is->current_config.enable_city_work_radii_highlights && is->highlight_city_radii) {
 		is->highlight_city_radii = false;
 		clear_highlighted_worker_tiles_and_redraw ();
+	}
+
+	if (is->current_config.show_ai_city_location_desirability_if_settler && is->city_loc_display_perspective >= 0) {
+		is->city_loc_display_perspective = -1;
+		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form); // Trigger map redraw
 	}
 
 	// If a district, run district build logic
@@ -19709,6 +19721,11 @@ patch_perform_interturn_in_main_loop ()
 		is->highlight_city_radii = false;
 		clear_highlighted_worker_tiles_for_districts ();
 		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+	}
+
+	if (is->current_config.show_ai_city_location_desirability_if_settler && is->city_loc_display_perspective >= 0) {
+		is->city_loc_display_perspective = -1;
+		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form); // Trigger map redraw
 	}
 
 	if (is->current_config.measure_turn_times) {
@@ -25693,7 +25710,7 @@ wonder_allows_river (struct wonder_district_config const * cfg)
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -26222,6 +26239,17 @@ patch_Unit_select (Unit * this)
 		}
 	}
 
+	if (is->current_config.show_ai_city_location_desirability_if_settler) {
+		int unit_type_id = this->Body.UnitTypeID;
+		int worker_actions = p_bic_data->UnitTypes[unit_type_id].Worker_Actions;
+		int new_perspective = (worker_actions >= 1 && (worker_actions & (UCV_Build_City)) && !is_worker(this)) ? p_main_screen_form->Player_CivID : -1;
+
+		if (new_perspective != is->city_loc_display_perspective) {
+			is->city_loc_display_perspective = new_perspective;
+			p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form); // Trigger map redraw
+		}
+	}
+
 	// Sometimes clearing of highlighted tiles doesn't trigger when CTRL lifted, so double-check here
 	if (is->current_config.enable_city_work_radii_highlights && is->highlight_city_radii) {
 		is->highlight_city_radii = false;
@@ -26229,6 +26257,30 @@ patch_Unit_select (Unit * this)
 	}
 
 	Unit_select (this);
+}
+
+void __fastcall
+patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit * unit, bool param_2)
+{
+	bool redraw = false;
+	if (is->current_config.show_ai_city_location_desirability_if_settler) {
+		int new_perspective = -1;
+		if (unit != NULL) {
+			int unit_type_id = unit->Body.UnitTypeID;
+			int worker_actions = p_bic_data->UnitTypes[unit_type_id].Worker_Actions;
+			new_perspective = (worker_actions >= 1 && (worker_actions & (UCV_Build_City)) && !is_worker(unit)) ? p_main_screen_form->Player_CivID : -1;
+		}
+
+		if (new_perspective != is->city_loc_display_perspective) {
+			is->city_loc_display_perspective = new_perspective;
+			redraw = true;
+		}
+	}
+
+	Main_Screen_Form_set_selected_unit (this, __, unit, param_2);
+
+	if (redraw && ! this->is_now_loading_game)
+		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 }
 
 void __fastcall
