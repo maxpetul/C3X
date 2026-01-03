@@ -146,6 +146,26 @@ shield_bonus          = 4
 happiness_bonus       = 0
 
 #District
+name                  = Offshore Extraction Zone
+tooltip               = Build Offshore Extraction Zone
+img_paths             = OffshoreExtractionZone.pcx
+btn_tile_sheet_row    = 1
+btn_tile_sheet_column = 7
+vary_img_by_era       = 0
+vary_img_by_culture   = 0
+advance_prereq        = Miniaturization
+dependent_improvs     = Offshore Platform
+buildable_on          = coast
+defense_bonus_percent = 0
+allow_multiple        = 1
+culture_bonus         = 0
+science_bonus         = 0
+food_bonus            = 0
+gold_bonus            = 0
+shield_bonus          = 2
+happiness_bonus       = 0
+
+#District
 name                  = Park
 tooltip               = Build Park
 img_paths             = Park.pcx
