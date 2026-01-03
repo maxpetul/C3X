@@ -216,9 +216,10 @@ shield_bonus    = 0
 happiness_bonus = 1
 
 #Wonder
-name            = Kalaallit Nunaat Cliffs
+name            = Geirangerfjord
 terrain_type    = tundra
 adjacent_to     = coast
+adjacency_dir   = south
 img_path        = NaturalWonders.pcx
 img_row         = 3
 img_column      = 3
