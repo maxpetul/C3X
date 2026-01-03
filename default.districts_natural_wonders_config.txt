@@ -242,3 +242,17 @@ food_bonus      = 0
 gold_bonus      = 0
 shield_bonus    = 0
 happiness_bonus = 1
+
+#Wonder
+name            = Savanna
+terrain_type    = plains
+adjacent_to     = plains
+img_path        = NaturalWonders.pcx
+img_row         = 4
+img_column      = 1
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
