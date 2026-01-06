@@ -2415,9 +2415,6 @@ find_pending_district_request (City * city, int district_id)
 		return NULL;
 
 	int civ_id = city->Body.CivID;
-	if ((civ_id < 0) || (civ_id >= 32))
-		return NULL;
-
 	int city_id = city->Body.ID;
 	int key = get_pending_district_request_key (city_id, district_id);
 	if (key < 0)
@@ -25735,14 +25732,9 @@ wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner
 	bool city_is_directly_below_port = city_dx == tile_x && city_dy == tile_y + 2;
 
 	if (city_is_directly_above_port || city_is_directly_below_port) {
-		bool northwest_tile_is_land = tile_offset_is_land (owner_id, tile_x - 1, tile_y - 1, true);
-		bool north_tile_is_land     = tile_offset_is_land (owner_id, tile_x, tile_y - 2, true);
 		bool northeast_tile_is_land = tile_offset_is_land (owner_id, tile_x + 1, tile_y - 1, true);
 		bool east_tile_is_land      = tile_offset_is_land (owner_id, tile_x + 2, tile_y, true);
 		bool southeast_tile_is_land = tile_offset_is_land (owner_id, tile_x + 1, tile_y + 1, true);
-		bool south_tile_is_land     = tile_offset_is_land (owner_id, tile_x, tile_y + 2, true);
-		bool southwest_tile_is_land = tile_offset_is_land (owner_id, tile_x - 1, tile_y + 1, true);
-		bool west_tile_is_land      = tile_offset_is_land (owner_id, tile_x - 2, tile_y, true);
 
 		if (northeast_tile_is_land || east_tile_is_land || southeast_tile_is_land)
 			return true;
