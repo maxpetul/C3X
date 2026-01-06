@@ -734,7 +734,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_CentralRailHub, .name = "Central Rail Hub", .tooltip = "Build Central Rail Hub", .display_name = "Central Rail Hub",
-		.advance_prereq = "Steam Power", .resource_prereqs = {"Coal", "Iron"}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 2, .dependent_improvement_count = 0,
+		.advance_prereq = "Steam Power", .resource_prereqs = {"Iron", "Coal"}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 2, .dependent_improvement_count = 0,
 		.img_paths = {"CentralRailHub_AMER.pcx", "CentralRailHub_EURO.pcx", "CentralRailHub_ROMAN.pcx", "CentralRailHub_MIDEAST.pcx", "CentralRailHub_ASIAN.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 5, .max_building_index = 0, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
@@ -745,7 +745,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.command = UCV_Build_PowerStation, .name = "Power Station", .tooltip = "Build Power Station", .display_name = "Power Station",
 		.advance_prereq = "Industrialization", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 4,
 		.img_paths = {"PowerStation.pcx"}, .dependent_improvements = {"Coal Plant", "Hydro Plant", "Solar Plant", "Nuclear Plant"},
-		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK, .custom_height = 84,
+		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_RIVER)), .custom_height = 84,
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 2, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
@@ -914,10 +914,10 @@ struct district_worker_record {
 };
 
 enum wonder_district_state {
-	WDS_UNUSED = 0,      // Wonder district built, no wonder assigned
-	WDS_UNDER_CONSTRUCTION,        // Reserved by a city for wonder construction
-	WDS_COMPLETED,       // Wonder completed on this district
-	WDS_RUINED           // (Future) Wonder was destroyed
+	WDS_UNUSED = 0,         // Wonder district built, no wonder assigned
+	WDS_UNDER_CONSTRUCTION, // Reserved by a city for wonder construction
+	WDS_COMPLETED,          // Wonder completed on this district
+	WDS_RUINED              // (Future) Wonder was destroyed
 };
 
 struct wonder_district_info {

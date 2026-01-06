@@ -9100,7 +9100,6 @@ city_has_wonder_district_with_no_completed_wonder (City * city, int wonder_impro
 		if (info->state == WDS_UNUSED && buildable) return true;
 		if (info->state == WDS_UNDER_CONSTRUCTION && buildable && info->city_id == city->Body.ID) {
 			info->city = city;
-			info->city_id = city->Body.ID;
 			return true; // Reserved by this city
 		}
 	}
@@ -16162,6 +16161,9 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 		if (prereq_id >= 0 && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id))
 			return false;
 
+		if (! Leader_can_build_unit (&leaders[this->Body.CivID], __, unit_type_id, 1, false))
+			return false;
+
 		// Air units
 		if (type->Unit_Class == UTC_Air) {
 			if (is->current_config.enable_aerodrome_districts && is->current_config.air_units_use_aerodrome_districts_not_cities) {
@@ -16187,13 +16189,8 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 	if (! is->current_config.enable_districts) 
 		return base;
 
-	// Check if district is actually needed or city already has the improvement
 	int required_district_id;
 	bool district_required = itable_look_up (&is->district_building_prereqs, i_improv, &required_district_id);
-	if (! district_required || patch_City_has_improvement (this, __, i_improv, false)) {
-		return base;
-	}
-
 	Improvement * improv = &p_bic_data->Improvements[i_improv];
 	bool is_wonder = is->current_config.enable_wonder_districts && improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder);
 	bool wonder_requires_district = is_wonder && required_district_id == WONDER_DISTRICT_ID;
@@ -16208,6 +16205,16 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 			if ((leader->Small_Wonders != NULL) && (leader->Small_Wonders[i_improv] != -1))
 				return false;
 		}
+	}
+
+	// Check if district is actually needed or city already has the improvement
+	if (! district_required || patch_City_has_improvement (this, __, i_improv, false)) {
+		if (! is_wonder)
+			return base;
+
+		// If a Wonder and doesn't need a district, do non-strict check only to avoid inadvertently 
+		// blocking Wonders that are buildable but grayed out in UI because already being built
+		return City_can_build_improvement (this, __, i_improv, false);
 	}
 
 	// Ensure prereq tech for the improvement
@@ -16267,10 +16274,9 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 			}
 			if (! has_water_in_radius)
 				return false;
-		}
-		/* TODO: Uncomment this when Power Stations are added
+
 		// Allow improvements that must be near river if river in work radius
-		    else if (improv->ImprovementFlags & ITF_Must_Be_Near_River) {
+		} else if (improv->ImprovementFlags & ITF_Must_Be_Near_River) {
 			bool has_river_in_radius = false;
 			FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
 				if (wai.tile->vtable->m37_Get_River_Code (wai.tile)) {
@@ -16280,7 +16286,10 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 			}
 			if (! has_river_in_radius)
 				return false;
-		} */ else {
+		} else if (is_wonder && City_can_build_improvement (this, __, i_improv, false)) {
+			// Do nothing, game is only disallowing because the city is already building the Wonder
+			// (i.e., in UI, the Wonder is grayed out because it's already being built)
+		} else {
 			return base;
 		}
 	}
@@ -16310,15 +16319,13 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 	// If human has everything needed except a built district (which is buildable), allow relaxed checks so UI can gray entry out
 	if (is_human) {
 		if (is_wonder) {
-			if (city_has_wonder_district_with_no_completed_wonder (this, i_improv))
-				return true;
-			else
-				return ! apply_strict_rules;
+			return city_has_wonder_district_with_no_completed_wonder (this, i_improv)
+				? true
+				: ! apply_strict_rules;
 		} else {
-			if (city_has_required_district (this, required_district_id))
-				return true;
-			else
-				return ! apply_strict_rules;
+			return city_has_required_district (this, required_district_id)
+				? true
+				: ! apply_strict_rules;
 		}
 	}
 
@@ -16355,6 +16362,9 @@ ai_handle_district_production_requirements (City * city, City_Order * out)
 			Improvement * improv = &p_bic_data->Improvements[out->OrderID];
 			if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) &&
 			    (! city_has_wonder_district_with_no_completed_wonder (city, out->OrderID))) {
+				snprintf (ss, sizeof ss, "ai_handle_district_production_requirements: City %d (%s) needs wonder district to build wonder improvement %d\n",
+					city->Body.ID, city->Body.CityName, out->OrderID);
+				(*p_OutputDebugStringA) (ss);
 				needs_wonder_district = true;
 				if (required_district_id < 0) {
 					required_district_id = WONDER_DISTRICT_ID;
@@ -16425,6 +16435,11 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 {
 	is->ai_considering_production_for_city = this;
 	City_ai_choose_production (this, __, out);
+
+	char ss[200];
+	snprintf (ss, sizeof ss, "patch_City_ai_choose_production: City %d (%s) chose order type %d id %d\n",
+		this->Body.ID, this->Body.CityName, out->OrderType, out->OrderID);
+	(*p_OutputDebugStringA) (ss);
 
 	if (is->current_config.enable_districts) {
 		if (ai_handle_district_production_requirements (this, out)) {
@@ -18036,27 +18051,27 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	// as completed (which switches the art over and prevents the tile from being used again)
 	int x, y;
 	if (add && is->current_config.enable_districts && is->current_config.enable_wonder_districts) {
-			if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
-				int matched_windex = find_wonder_config_index_by_improvement_id (improv_id);
+		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
+			int matched_windex = find_wonder_config_index_by_improvement_id (improv_id);
 
-				if (matched_windex >= 0) {
-					FOR_DISTRICTS_AROUND (wai, this->Body.X, this->Body.Y, true) {
-						x = wai.tile_x;
-						y = wai.tile_y;
-						Tile * t = wai.tile;
-						struct district_instance * inst = wai.district_inst;
-						if (inst->district_type != WONDER_DISTRICT_ID) continue;
-						if (! wonder_is_buildable_on_tile (t, improv_id))
-							continue;
+			if (matched_windex >= 0) {
+				FOR_DISTRICTS_AROUND (wai, this->Body.X, this->Body.Y, true) {
+					x = wai.tile_x;
+					y = wai.tile_y;
+					Tile * t = wai.tile;
+					struct district_instance * inst = wai.district_inst;
+					if (inst->district_type != WONDER_DISTRICT_ID) continue;
+					if (! wonder_is_buildable_on_tile (t, improv_id))
+						continue;
 
-						struct wonder_district_info * info = &inst->wonder_info;
-						if (info->state != WDS_UNDER_CONSTRUCTION) continue;
-						if (info->city_id != this->Body.ID) continue;
+					struct wonder_district_info * info = &inst->wonder_info;
+					if (info->state != WDS_UNDER_CONSTRUCTION) continue;
+					if (info->city_id != this->Body.ID) continue;
 
-						// Mark this wonder district as completed with the wonder
-						info->city = this;
-						info->city_id = this->Body.ID;
-						info->state = WDS_COMPLETED;
+					// Mark this wonder district as completed with the wonder
+					info->city = this;
+					info->city_id = this->Body.ID;
+					info->state = WDS_COMPLETED;
 					info->wonder_index = matched_windex;
 					break;
 				}
@@ -20382,8 +20397,15 @@ patch_Leader_do_production_phase (Leader * this)
 			}
 
 			// Wonders
+			char ss[200];
 			if (is->current_config.enable_wonder_districts) {
+				snprintf (ss, sizeof ss, "patch_Leader_do_production_phase: Checking wonder improv %d for city %d (%s)\n",
+					i_improv, city->Body.ID, city->Body.CityName);
+				(*p_OutputDebugStringA) (ss);
 				if (city_is_currently_building_wonder (city)) {
+					snprintf (ss, sizeof ss, "patch_Leader_do_production_phase: City %d (%s) is building wonder improv %d\n",
+						city->Body.ID, city->Body.CityName, i_improv);
+					(*p_OutputDebugStringA) (ss);
 					bool wonder_requires_district = false;
 					if (i_improv >= 0) {
 						int required_id;
@@ -20395,12 +20417,18 @@ patch_Leader_do_production_phase (Leader * this)
 					if (wonder_requires_district) {
 						bool has_wonder_district = reserve_wonder_district_for_city (city, i_improv);
 						if (! has_wonder_district) {
+							snprintf (ss, sizeof ss, "patch_Leader_do_production_phase: City %d (%s) lacks Wonder District for wonder improv %d\n",
+								city->Body.ID, city->Body.CityName, i_improv);
+							(*p_OutputDebugStringA) (ss);
 							needs_halt = true;
 							req_district_id = WONDER_DISTRICT_ID;
 							district_description = "Wonder District";
 						}
 					} else {
 						release_wonder_district_reservation (city);
+						snprintf (ss, sizeof ss, "patch_Leader_do_production_phase: City %d (%s) wonder improv %d does not require Wonder District\n",
+							city->Body.ID, city->Body.CityName, i_improv);
+						(*p_OutputDebugStringA) (ss);
 					}
 				} else {
 					release_wonder_district_reservation (city);
@@ -20409,6 +20437,9 @@ patch_Leader_do_production_phase (Leader * this)
 
 			// If production needs to be halted, handle the reassignment and messaging
 			if (needs_halt) {
+				snprintf (ss, sizeof ss, "patch_Leader_do_production_phase: City %d (%s) halting improv %d due to missing district %d\n",
+					city->Body.ID, city->Body.CityName, i_improv, req_district_id);
+				(*p_OutputDebugStringA) (ss);
 				// Switch production to another option
 				if (ai_player) {
 					mark_city_needs_district (city, req_district_id);
@@ -20430,6 +20461,9 @@ patch_Leader_do_production_phase (Leader * this)
 				}
 				continue;
 			}
+			snprintf (ss, sizeof ss, "patch_Leader_do_production_phase: City %d (%s) improv %d passed missing district check\n",
+				city->Body.ID, city->Body.CityName, i_improv);
+			(*p_OutputDebugStringA) (ss);
 		}
 	}
 
@@ -24806,6 +24840,11 @@ patch_City_add_building_if_done (City * this)
 		Improvement * new_improv = &p_bic_data->Improvements[order_id]; // Improvement might have changed
 		if (new_improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
 			if (! patch_City_can_build_improvement (this, __, order_id, true)) {
+				char ss[256];
+				snprintf (ss, sizeof ss, "patch_City_add_building_if_done: City '%s' cannot complete building of wonder '%s'; switching to defensive unit.\n",
+				          this->Body.CityName,
+				          new_improv->Name.S);
+				(*p_OutputDebugStringA) (ss);
 				City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
 				if (choose_defensive_unit_order (this, &defensive_order)) {
 					City_set_production (this, __, defensive_order.OrderType, defensive_order.OrderID, false);
@@ -25754,7 +25793,7 @@ get_power_station_img_index (int tile_x, int tile_y)
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	//*p_debug_mode_bits |= 0xC;
+	*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -25811,7 +25850,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 
 		// Handle river alignment, if district allows it
 		enum direction river_dir = DIR_ZERO;
-		if (district_allows_river(cfg))
+		if (district_allows_river(cfg)) 
 			align_district_with_river (tile, &pixel_x, &pixel_y, &river_dir);
 
         if (territory_owner_id > 0) {
@@ -26914,17 +26953,26 @@ patch_City_set_production (City * this, int edx, int order_type, int order_id, b
 	if (! is_human)
 		return;
 
+	char ss[256];
 	bool release_reservation = true;
 	if (this->Body.Order_Type == COT_Improvement) {
 		Improvement * improv = &p_bic_data->Improvements[this->Body.Order_ID];
 		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
-			if (reserve_wonder_district_for_city (this, this->Body.Order_ID))
+			if (reserve_wonder_district_for_city (this, this->Body.Order_ID)) {
 				release_reservation = false;
+				snprintf (ss, sizeof(ss), "patch_City_set_production: City %s has reserved a wonder district for building wonder %s.\n",
+				    this->Body.CityName, improv->Name);
+				(*p_OutputDebugStringA) (ss);
+			}
 		}
 	}
 
-	if (release_reservation)
+	if (release_reservation) {
 		release_wonder_district_reservation (this);
+		snprintf (ss, sizeof(ss), "patch_City_set_production: City %s has released its wonder district reservation.\n",
+		    this->Body.CityName);
+		(*p_OutputDebugStringA) (ss);
+	}
 }
 
 int __fastcall

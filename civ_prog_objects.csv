@@ -76,6 +76,7 @@ define,    0x4DAA70,	0x4E3430,	0x4DAB30,	"Main_Screen_Form_issue_command",		"cha
 define,    0x609D60,	0x6233C0,	0x609C80,	"clear_something_1",				"void (__stdcall *) ()"
 define,    0x6207B0,	0x644F10,	0x6206E0,	"Timer_clear",					"void (__fastcall *) (Timer * this)"
 inlead,    0x55EFA0,	0x56B030,	0x55EF50,	"Leader_can_do_worker_job",			"char (__fastcall *) (Leader * this, int edx, enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing)"
+define,    0x56A7C0,    0x0,        0x0,        "Leader_can_build_unit",            "bool (__fastcall *) (Leader * this, int edx, int unit_type_id, int param_2, bool allow_kings)"
 define,    0x455288,	0x457458,	0x455308,	"ADDR_CHECK_ARTILLERY_IN_CITY",			"void *"
 inlead,    0x455140,	0x457310,	0x4551C0,	"Unit_ai_move_artillery",			"void (__fastcall *) (Unit * this)"
 define,    0x5E6E50,	0x5F66A0,	0x5E6D80,	"neighbor_index_to_diff",			"void (__cdecl *) (int neighbor_index, int * out_x, int * out_y)"
