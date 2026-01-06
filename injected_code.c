@@ -16195,11 +16195,28 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 	bool is_wonder = is->current_config.enable_wonder_districts && improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder);
 	bool wonder_requires_district = is_wonder && required_district_id == WONDER_DISTRICT_ID;
 
+	// Ensure prereq tech for the improvement
+	if (improv->RequiredTechID >= 0 && ! Leader_has_tech (&leaders[this->Body.CivID], __, improv->RequiredTechID))
+		return false;
+
+	// Ensure prereq tech for the district
+	if (district_required) {
+		int prereq_id = is->district_infos[required_district_id].advance_prereq_id;
+		if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id)) {
+			return false;
+		}
+	}
+
 	// Make sure wonder is not already built
 	if (is_wonder) {
 		if ((improv->Characteristics & ITC_Wonder) != 0) {
 			if (Game_get_wonder_city_id (p_game, __, i_improv) != -1)
 				return false;
+			FOR_CITIES_OF (coi, this->Body.CivID) {
+				City * other_city = coi.city;
+				if (other_city != this && other_city->Body.Order_Type == COT_Improvement && other_city->Body.Order_ID == i_improv)
+					return ! apply_strict_rules;
+			}
 		} else {
 			Leader * leader = &leaders[this->Body.CivID];
 			if ((leader->Small_Wonders != NULL) && (leader->Small_Wonders[i_improv] != -1))
@@ -16215,16 +16232,6 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 		// If a Wonder and doesn't need a district, do non-strict check only to avoid inadvertently 
 		// blocking Wonders that are buildable but grayed out in UI because already being built
 		return City_can_build_improvement (this, __, i_improv, false);
-	}
-
-	// Ensure prereq tech for the improvement
-	if (improv->RequiredTechID >= 0 && ! Leader_has_tech (&leaders[this->Body.CivID], __, improv->RequiredTechID))
-		return false;
-
-	// Ensure prereq tech for the district
-	int prereq_id = is->district_infos[required_district_id].advance_prereq_id;
-	if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id)) {
-		return false;
 	}
 
 	if (is_wonder && ! wonder_requires_district) {
@@ -25687,6 +25694,8 @@ wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner
 	Map * map = &p_bic_data->Map;
 	int best_dist = INT_MAX;
 	int best_dx = 0;
+	int city_dx = 0;
+	int city_dy = 0;
 
 	FOR_CITIES_AROUND (wai, tile_x, tile_y) {
 		City * city = wai.city;
@@ -25717,7 +25726,26 @@ wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner
 		    ((dist == best_dist) && ((int_abs (dx) < int_abs (best_dx)) || (best_dx == 0)))) {
 			best_dist = dist;
 			best_dx = dx;
+			city_dx = city->Body.X;
+			city_dy = city->Body.Y;
 		}
+	}
+
+	bool city_is_directly_above_port = city_dx == tile_x && city_dy == tile_y - 2;
+	bool city_is_directly_below_port = city_dx == tile_x && city_dy == tile_y + 2;
+
+	if (city_is_directly_above_port || city_is_directly_below_port) {
+		bool northwest_tile_is_land = tile_offset_is_land (owner_id, tile_x - 1, tile_y - 1, true);
+		bool north_tile_is_land     = tile_offset_is_land (owner_id, tile_x, tile_y - 2, true);
+		bool northeast_tile_is_land = tile_offset_is_land (owner_id, tile_x + 1, tile_y - 1, true);
+		bool east_tile_is_land      = tile_offset_is_land (owner_id, tile_x + 2, tile_y, true);
+		bool southeast_tile_is_land = tile_offset_is_land (owner_id, tile_x + 1, tile_y + 1, true);
+		bool south_tile_is_land     = tile_offset_is_land (owner_id, tile_x, tile_y + 2, true);
+		bool southwest_tile_is_land = tile_offset_is_land (owner_id, tile_x - 1, tile_y + 1, true);
+		bool west_tile_is_land      = tile_offset_is_land (owner_id, tile_x - 2, tile_y, true);
+
+		if (northeast_tile_is_land || east_tile_is_land || southeast_tile_is_land)
+			return true;
 	}
 
 	if ((best_dist == INT_MAX) || (best_dx == 0))
