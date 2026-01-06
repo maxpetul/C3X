@@ -17,7 +17,7 @@ typedef unsigned char byte;
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
 #define COUNT_SPECIAL_DISTRICT_TYPES 10
-#define USED_SPECIAL_DISTRICT_TYPES 7
+#define USED_SPECIAL_DISTRICT_TYPES 8
 #define MAX_DYNAMIC_DISTRICT_TYPES 22
 #define COUNT_DISTRICT_TYPES (COUNT_SPECIAL_DISTRICT_TYPES + MAX_DYNAMIC_DISTRICT_TYPES)
 #define MAX_WONDER_DISTRICT_TYPES 32
@@ -676,8 +676,7 @@ struct wonder_location {
 
 const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYPES] = {
 	{
-		.command = UCV_Build_Neighborhood, .name = "Neighborhood", .tooltip = "Build Neighborhood",
-		.display_name = "Neighborhood",
+		.command = UCV_Build_Neighborhood, .name = "Neighborhood", .tooltip = "Build Neighborhood", .display_name = "Neighborhood",
 		.advance_prereq = NULL, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = true, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
@@ -687,8 +686,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 
 	},
 	{
-		.command = UCV_Build_WonderDistrict, .name = "Wonder District", .tooltip = "Build Wonder District",
-		.display_name = "Wonder District",
+		.command = UCV_Build_WonderDistrict, .name = "Wonder District", .tooltip = "Build Wonder District", .display_name = "Wonder District",
 		.advance_prereq = NULL, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"WonderDistrict.pcx"},
 		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Coast)),
@@ -698,8 +696,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 
 	},
 	{
-		.command = UCV_Build_DistributionHub, .name = "Distribution Hub", .tooltip = "Build Distribution Hub",
-		.display_name = "Distribution Hub",
+		.command = UCV_Build_DistributionHub, .name = "Distribution Hub", .tooltip = "Build Distribution Hub", .display_name = "Distribution Hub",
 		.advance_prereq = "Construction", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"DistributionHub.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
@@ -709,8 +706,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 
 	},
 	{
-		.command = UCV_Build_Aerodrome, .name = "Aerodrome", .tooltip = "Build Aerodrome",
-		.display_name = "Aerodrome",
+		.command = UCV_Build_Aerodrome, .name = "Aerodrome", .tooltip = "Build Aerodrome", .display_name = "Aerodrome",
 		.advance_prereq = "Flight", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 1,
 		.img_paths = {"Aerodrome.pcx"}, .dependent_improvements = {"Airport"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
@@ -719,8 +715,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
 	{
-		.command = -1, .name = "Natural Wonder", .tooltip = NULL,
-		.display_name = "Natural Wonder",
+		.command = -1, .name = "Natural Wonder", .tooltip = NULL, .display_name = "Natural Wonder",
 		.advance_prereq = NULL, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {0},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
@@ -729,8 +724,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
 	{
-		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port",
-		.display_name = "Port",
+		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port", .display_name = "Port",
 		.advance_prereq = "Map Making", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 2, .align_to_coast = true,
 		.img_paths = {"Port_NW.pcx", "Port_NE.pcx", "Port_SE.pcx", "Port_SW.pcx"}, .dependent_improvements = {"Harbor", "Commercial Dock"},
 		.buildable_square_types_mask = (1 << SQ_Coast),
@@ -739,13 +733,21 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
 	{
-		.command = UCV_Build_CentralRailHub, .name = "Central Rail Hub", .tooltip = "Build Central Rail Hub",
-		.display_name = "Central Rail Hub",
-		.advance_prereq = "Steam Power", .resource_prereqs = {"Coal", "Iron"}, .resource_prereq_on_tile = NULL, .allow_multiple = false, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 2, .dependent_improvement_count = 0,
+		.command = UCV_Build_CentralRailHub, .name = "Central Rail Hub", .tooltip = "Build Central Rail Hub", .display_name = "Central Rail Hub",
+		.advance_prereq = "Steam Power", .resource_prereqs = {"Coal", "Iron"}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 2, .dependent_improvement_count = 0,
 		.img_paths = {"CentralRailHub_AMER.pcx", "CentralRailHub_EURO.pcx", "CentralRailHub_ROMAN.pcx", "CentralRailHub_MIDEAST.pcx", "CentralRailHub_ASIAN.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 5, .max_building_index = 0, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	},
+	{
+		.command = UCV_Build_PowerStation, .name = "Power Station", .tooltip = "Build Power Station", .display_name = "Power Station",
+		.advance_prereq = "Industrialization", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 4,
+		.img_paths = {"PowerStation.pcx"}, .dependent_improvements = {"Coal Plant", "Hydro Plant", "Solar Plant", "Nuclear Plant"},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK, .custom_height = 84,
+		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 2, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	}
 };

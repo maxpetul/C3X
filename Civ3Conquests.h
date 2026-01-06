@@ -774,6 +774,7 @@ enum Unit_Command_Values
   UCV_Build_Aerodrome = -10000004,
   UCV_Build_Port = -10000005,
   UCV_Build_CentralRailHub = -10000006,
+  UCV_Build_PowerStation = -10000007,
 };
 
 enum Unit_Mode_Actions

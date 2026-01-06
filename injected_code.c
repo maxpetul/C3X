@@ -73,6 +73,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define NATURAL_WONDER_DISTRICT_ID   4
 #define PORT_DISTRICT_ID             5
 #define CENTRAL_RAIL_HUB_DISTRICT_ID 6
+#define POWER_STATION_DISTRICT_ID    7
 
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
@@ -25715,6 +25716,41 @@ wonder_allows_river (struct wonder_district_config const * cfg)
 	return (build_mask & square_type_mask_bit (SQ_RIVER)) != 0;
 }
 
+int
+get_power_station_img_index (int tile_x, int tile_y)
+{
+	struct district_infos * info = &is->district_infos[POWER_STATION_DISTRICT_ID];
+	int coal_plant_id    = info->dependent_building_ids[0];
+	int hydro_plant_id   = info->dependent_building_ids[1];
+	int solar_plant_id   = info->dependent_building_ids[2];
+	int nuclear_plant_id = info->dependent_building_ids[3];
+	bool coal            = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, POWER_STATION_DISTRICT_ID, coal_plant_id);
+	bool hydro           = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, POWER_STATION_DISTRICT_ID, hydro_plant_id);
+	bool solar           = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, POWER_STATION_DISTRICT_ID, solar_plant_id);
+	bool nuclear         = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, POWER_STATION_DISTRICT_ID, nuclear_plant_id);
+
+    int index = 0;
+
+	if (! coal && ! hydro && ! solar && ! nuclear)    index = 0;  // None
+	else if (coal && ! hydro && ! solar && ! nuclear) index = 1;  // Coal
+	else if (! coal && hydro && ! solar && ! nuclear) index = 2;  // Hydro
+	else if (coal && hydro && ! solar && ! nuclear)   index = 3;  // Coal, Hydro
+	else if (! coal && ! hydro && ! solar && nuclear) index = 4;  // Nuclear
+	else if (! coal && ! hydro && solar && ! nuclear) index = 5;  // Solar
+	else if (coal && hydro && solar && nuclear)       index = 6;  // All
+	else if (coal && hydro && ! solar && nuclear)     index = 7;  // Coal, Hydro, Nuclear
+	else if (! coal && hydro && solar && nuclear)     index = 8;  // Hydro, Solar, Nuclear
+	else if (! coal && hydro && ! solar && nuclear)   index = 9;  // Hydro, Nuclear
+	else if (! coal && hydro && solar && ! nuclear)   index = 10; // Hydro, Solar
+	else if (! coal && ! hydro && solar && nuclear)   index = 11; // Solar, Nuclear
+	else if (coal && ! hydro && ! solar && nuclear)   index = 12; // Coal, Nuclear
+	else if (coal && ! hydro && solar && nuclear)     index = 13; // Coal, Solar, Nuclear
+	else if (coal && ! hydro && solar && ! nuclear)   index = 14; // Coal, Solar
+	else 											  index = 0;
+
+    return index;
+}
+
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
@@ -25856,6 +25892,13 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                 }
                 break;
             }
+			case POWER_STATION_DISTRICT_ID:
+			{
+				// Power stations can have multiple buildings that - unlike most district buildings - don't have each other as prereq buildings,
+				// and thus have a combinatorial number of images based on which power plants are built in their radius. This returns the correct image index
+				buildings = get_power_station_img_index (tile_x, tile_y);
+				break;
+			}
             default:
             {
                 struct district_infos * info = &is->district_infos[district_id];
