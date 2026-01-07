@@ -25464,8 +25464,8 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 	if (closest_city == NULL)
 		return;
 
-	bool city_is_directly_above_port        = (closest_dx == 0)  && (closest_dy == -1);
-	bool city_is_directly_below_port        = (closest_dx == 0)  && (closest_dy == 1);
+	bool city_is_directly_above_port        = (closest_dx == 0)  && (closest_dy == -2);
+	bool city_is_directly_below_port        = (closest_dx == 0)  && (closest_dy == 2);
 	bool city_is_directly_west_of_port      = (closest_dx < 0)   && (closest_dy == 0);
 	bool city_is_directly_east_of_port      = (closest_dx > 0)   && (closest_dy == 0);
 	bool city_is_directly_northeast_of_port = (closest_dx == 1)  && (closest_dy == -1);
@@ -25524,14 +25524,14 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 			else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
 			else { 
 				*out_variant = SE; anchor = DIR_NW; 
-				*out_pixel_x -= 50; *out_pixel_y += 14;
+				*out_pixel_x -= 30; *out_pixel_y += 24;
 			}
 		} else if (city_is_directly_east_of_port) {
 			if      (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
 			else if (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
 			else { 
 				*out_variant = SW; anchor = DIR_NE; 
-				*out_pixel_x += 50; *out_pixel_y -= 14;
+				*out_pixel_x += 30; *out_pixel_y -= 24;
 			}
 		} else if (city_is_north_of_port && city_is_west_of_port) {
 			if      (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
@@ -25640,7 +25640,9 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 			else if (*out_variant == SE || *out_variant == NE) { *out_pixel_x -= 16; }
 
 			if (*out_variant == SW && (anchor_sprite_index == 43 || anchor_sprite_index == 40)) { *out_pixel_x +=6; *out_pixel_y -= 12; }
-			if (*out_variant == SW && (anchor_sprite_index == 35 || anchor_sprite_index == 39)) { *out_pixel_x +=6; *out_pixel_y -= 12; }
+			else if (*out_variant == SW && (anchor_sprite_index == 35 || anchor_sprite_index == 39)) { *out_pixel_x +=6; *out_pixel_y -= 12; }
+			else if (*out_variant == SE && (anchor_sprite_index == 50)) { *out_pixel_x -=6; *out_pixel_y -= 12; }
+			else if (*out_variant == SE && (anchor_sprite_index == 26)) { *out_pixel_x += 50; *out_pixel_y -= 2; }
 		}
 		// Sheet 4
 		else if (anchor_sheet_index == 4) {
@@ -26707,6 +26709,7 @@ district_tile_needs_defense (Tile * tile, int tile_x, int tile_y, struct distric
 	if (inst == NULL) return false;
 
 	int district_id = inst->district_type;
+	struct district_config const * cfg = &is->district_configs[district_id]; 
 	if (! district_is_complete (tile, district_id)) return false;
 	if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id) return false;
 
@@ -26714,6 +26717,7 @@ district_tile_needs_defense (Tile * tile, int tile_x, int tile_y, struct distric
 	int defender_count = count_units_at (tile_x, tile_y, UF_DEFENDER_VIS_TO_A_OF_CLASS_B, civ_id, 0, -1);
 	int max_defenders = 
 		(district_id == AERODROME_DISTRICT_ID || district_id == DISTRIBUTION_HUB_DISTRICT_ID ||
+		(cfg->defense_bonus_percent > 0 && district_id != NEIGHBORHOOD_DISTRICT_ID) ||
 		(district_id == WONDER_DISTRICT_ID && is->current_config.completed_wonder_districts_can_be_destroyed)) 
 			? 2 : 1;
 	if (defender_count >= max_defenders)
@@ -27078,12 +27082,9 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 			if (is_human)
 				return PBV_OK;
 
-			// If AI, only okay if moving to a wonder district. If not, they AI will 
-			// sometimes not create roads to connect cities
 			struct district_worker_record * rec = get_tracked_worker_record (this);
 			struct pending_district_request * req = (rec != NULL) ? rec->pending_req : NULL;
 			if ((req != NULL) &&
-			    (req->district_id == WONDER_DISTRICT_ID) &&
 			    (req->target_x == to_x) && (req->target_y == to_y))
 				return PBV_OK;
 		}
