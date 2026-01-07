@@ -335,6 +335,7 @@ struct c3x_config {
 	bool patch_ai_can_form_army_without_special_ability;
 	bool patch_ai_can_sacrifice_without_special_ability;
 	bool patch_crash_in_leader_unit_ai;
+	bool patch_failure_to_find_new_city_build;
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;

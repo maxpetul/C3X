@@ -10968,6 +10968,7 @@ patch_init_floating_point ()
 		{"patch_ai_can_form_army_without_special_ability"        , true , offsetof (struct c3x_config, patch_ai_can_form_army_without_special_ability)},
 		{"patch_ai_can_sacrifice_without_special_ability"        , true , offsetof (struct c3x_config, patch_ai_can_sacrifice_without_special_ability)},
 		{"patch_crash_in_leader_unit_ai"                         , true , offsetof (struct c3x_config, patch_crash_in_leader_unit_ai)},
+		{"patch_failure_to_find_new_city_build"                  , true , offsetof (struct c3x_config, patch_failure_to_find_new_city_build)},
 		{"delete_off_map_ai_units"                               , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
 		{"fix_overlapping_specialist_yield_icons"                , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
 		{"prevent_autorazing"                                    , false, offsetof (struct c3x_config, prevent_autorazing)},
@@ -25243,6 +25244,48 @@ patch_Main_Screen_Form_find_next_unit_for_cycling (Main_Screen_Form * this)
 		}
 		this->completed_unit_cycle = least_different_unit == NULL;
 		return least_different_unit;
+	}
+}
+
+void __fastcall
+patch_City_m22 (City * this, int edx, bool param_1)
+{
+	int * p_stack = (int *)&param_1;
+	int ret_addr = p_stack[-1];
+
+	City_m22 (this, __, param_1);
+
+	// If the base game method failed to find a new thing for city to build, we've been called by the methods that complete a previous build, and
+	// the city is owned by the UI controller, the game will crash because there will be no default option for the build selector popup. If we're
+	// configured to fix that, suggest Wealth for the new build or, failing that, any buildable unit or improvement.
+	if (   this->Body.Order_Type == 0
+	    && is->current_config.patch_failure_to_find_new_city_build
+	    && this->Body.CivID == p_main_screen_form->Player_CivID
+	    && (   ret_addr == CITY_M22_TO_ADD_BUILDING_IF_DONE_RETURN_1
+		|| ret_addr == CITY_M22_TO_ADD_BUILDING_IF_DONE_RETURN_2
+		|| ret_addr == CITY_M22_TO_SPAWN_UNIT_IF_DONE_RETURN)) {
+
+		// Search for an improvement-type order we can build. Choose Wealth if possible, otherwise just pick the first thing that can be built
+		for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
+			if (patch_City_can_build_improvement (this, __, n, true)) {
+				if (p_bic_data->Improvements[n].ImprovementFlags & ITF_Capitalization) {
+					this->Body.Order_Type = COT_Improvement;
+					this->Body.Order_ID = n;
+					break;
+				} else if (this->Body.Order_Type == 0) {
+					this->Body.Order_Type = COT_Improvement;
+					this->Body.Order_ID = n;
+				}
+			}
+
+		// If we still don't have a build, pick the first buildable unit
+		if (this->Body.Order_Type == 0)
+			for (int n = 0; n < p_bic_data->UnitTypeCount; n++)
+				if (patch_City_can_build_unit (this, __, n, true, 0, false)) {
+					this->Body.Order_Type = COT_Unit;
+					this->Body.Order_ID = n;
+					break;
+				}
 	}
 }
 
