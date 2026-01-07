@@ -9976,7 +9976,6 @@ reserve_wonder_district_for_city (City * city, int wonder_improv_id)
 		if (info->state == WDS_UNDER_CONSTRUCTION) {
 			if (info->city_id == city->Body.ID) {
 				info->city = city;
-				info->city_id = city->Body.ID;
 				return true;
 			}
 			continue;
@@ -25817,7 +25816,7 @@ get_power_station_img_index (int tile_x, int tile_y)
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -26986,18 +26985,12 @@ patch_City_set_production (City * this, int edx, int order_type, int order_id, b
 		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
 			if (reserve_wonder_district_for_city (this, this->Body.Order_ID)) {
 				release_reservation = false;
-				snprintf (ss, sizeof(ss), "patch_City_set_production: City %s has reserved a wonder district for building wonder %s.\n",
-				    this->Body.CityName, improv->Name);
-				(*p_OutputDebugStringA) (ss);
 			}
 		}
 	}
 
 	if (release_reservation) {
 		release_wonder_district_reservation (this);
-		snprintf (ss, sizeof(ss), "patch_City_set_production: City %s has released its wonder district reservation.\n",
-		    this->Body.CityName);
-		(*p_OutputDebugStringA) (ss);
 	}
 }
 
