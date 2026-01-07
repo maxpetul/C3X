@@ -202,6 +202,7 @@ void __fastcall patch_Map_build_trade_network (Map * this);
 bool __fastcall patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value);
 bool __fastcall patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y);
 bool __fastcall patch_City_has_resource (City * this, int edx, int resource_id);
+bool __fastcall patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, bool param_2);
 bool city_can_build_district (City * city, int district_id);
 Tile * find_tile_for_district (City * city, int district_id, int * out_x, int * out_y);
 struct district_instance * get_district_instance (Tile * tile);
@@ -2423,10 +2424,9 @@ find_pending_district_request (City * city, int district_id)
 	int stored;
 	if (itable_look_up (&is->city_pending_district_requests[civ_id], key, &stored)) {
 		struct pending_district_request * req = (struct pending_district_request *)(long)stored;
-		if ((req != NULL) && (req->city_id == city_id) && (req->district_id == district_id)) {
+		if ((req != NULL) && (req->civ_id == civ_id) && (req->city_id == city_id) && (req->district_id == district_id)) {
 			if (req->city != city)
 				req->city = city;
-			req->civ_id = civ_id;
 			return req;
 		}
 	}
@@ -2566,7 +2566,7 @@ district_instance_set_coords (struct district_instance * inst, int tile_x, int t
 	if (inst == NULL)
 		return;
 
-	// Normalize coordinates to map bounds for consistency.
+	// Normalize coordinates to map bounds for consistency
 	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 	inst->tile_x = tile_x;
 	inst->tile_y = tile_y;
@@ -20335,7 +20335,9 @@ patch_Leader_do_production_phase (Leader * this)
 				struct district_config * cfg = &is->district_configs[district_id];
 				struct district_infos * info = &is->district_infos[district_id];
 
-				if (info->dependent_building_count > 0) continue;
+				// Carve out an exception for AI to build Central Rail Hub, which is available in Industrial era but Mass Transit, 
+				// the only building dependent on it, is in the Modern era.
+				if (info->dependent_building_count > 0 && district_id != CENTRAL_RAIL_HUB_DISTRICT_ID) continue;
 				if (cfg->command == -1) continue;
 
 				int prereq_id = info->advance_prereq_id;
