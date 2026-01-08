@@ -16281,6 +16281,8 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 	// Check if the improvement requires a district and output the required district id when it does
 	int required_district_id;
 	bool needs_district = city_requires_district_for_improvement (this, i_improv, &required_district_id);
+
+	// District is either not needed or already built
 	if (! needs_district)
 		return true;
 
