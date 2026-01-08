@@ -300,9 +300,9 @@ shield_bonus          = 4
 happiness_bonus       = 0
 
 #District
-name                  = Power Station
-tooltip               = Build Power Station
-img_paths             = PowerStation.pcx
+name                  = Energy Grid
+tooltip               = Build Energy Grid
+img_paths             = EnergyGrid.pcx
 btn_tile_sheet_row    = 1
 btn_tile_sheet_column = 7
 vary_img_by_era       = 1

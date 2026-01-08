@@ -73,7 +73,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define NATURAL_WONDER_DISTRICT_ID   4
 #define PORT_DISTRICT_ID             5
 #define CENTRAL_RAIL_HUB_DISTRICT_ID 6
-#define POWER_STATION_DISTRICT_ID    7
+#define ENERGY_GRID_DISTRICT_ID    7
 
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
@@ -12287,6 +12287,7 @@ patch_init_floating_point ()
 		{"naval_units_use_port_districts_not_cities"             , false, offsetof (struct c3x_config, naval_units_use_port_districts_not_cities)},
 		{"show_natural_wonder_name_on_map"                       , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
 		{"ai_defends_districts"                                  , false, offsetof (struct c3x_config, ai_defends_districts)},
+		{"expand_water_tile_checks_to_city_work_area"         	 , false, offsetof (struct c3x_config, expand_water_tile_checks_to_city_work_area)},
 		{"workers_can_enter_coast"         		                 , false, offsetof (struct c3x_config, workers_can_enter_coast)},
 		{"enable_city_work_radii_highlights"                     , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game"  , false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
@@ -14079,6 +14080,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 				       base_type == SQ_Mountains ||
 					   base_type == SQ_Desert ||
 					   base_type == SQ_Plains ||
+					   base_type == SQ_Grassland ||
 					   base_type == SQ_Tundra;
 			}
 		}
@@ -16188,126 +16190,107 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 	return base;
 }
 
+int __fastcall
+patch_City_get_largest_adjacent_sea_within_work_area (City * this)
+{
+	if (is->current_config.enable_districts && is->current_config.expand_water_tile_checks_to_city_work_area) {
+		int lake_size_threshold = 21;
+		int largest_size = 0;
+		int largest_continent_id = -1;
+		FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
+			if (wai.tile->vtable->m35_Check_Is_Water (wai.tile)) {
+				int continent_id = wai.tile->vtable->m46_Get_ContinentID (wai.tile);
+				if ((continent_id < 0) || (continent_id >= p_bic_data->Map.Continent_Count))
+					continue;
+				Continent * continent = &p_bic_data->Map.Continents[continent_id];
+				if (continent->Body.TileCount <= lake_size_threshold)
+					continue;
+				if (p_bic_data->Map.Continents[continent_id].Body.TileCount > largest_size) {
+					largest_size = p_bic_data->Map.Continents[continent_id].Body.TileCount;
+					largest_continent_id = continent_id;
+				}
+			}
+		}
+		return largest_continent_id;
+	}
+	return City_get_largest_adjacent_sea (this);
+}
+
+bool __fastcall
+patch_Map_impl_is_near_river_within_work_area (Map * this, int edx, int x, int y, int num_tiles)
+{
+	if (is->current_config.enable_districts && is->current_config.expand_water_tile_checks_to_city_work_area) {
+		FOR_WORK_AREA_AROUND (wai, x, y) {
+			if (wai.tile->vtable->m37_Get_River_Code (wai.tile) != 0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	return Map_impl_is_near_river (this, __, x, y, num_tiles);
+}
+
+bool __fastcall
+patch_Map_impl_is_near_lake_within_work_area (Map * this, int edx, int x, int y, int num_tiles)
+{
+	if (is->current_config.enable_districts && is->current_config.expand_water_tile_checks_to_city_work_area) {
+		int lake_size_threshold = 21;
+		FOR_WORK_AREA_AROUND (wai, x, y) {
+			if (wai.tile->vtable->m35_Check_Is_Water (wai.tile)) {
+				int continent_id = wai.tile->vtable->m46_Get_ContinentID (wai.tile);
+				if ((continent_id < 0) || (continent_id >= p_bic_data->Map.Continent_Count))
+					continue;
+				Continent * continent = &p_bic_data->Map.Continents[continent_id];
+				if (continent->Body.TileCount <= lake_size_threshold)
+					return true;
+			}
+		}
+		return false;
+	}
+
+	return Map_impl_is_near_lake (this, __, x, y, num_tiles);
+}
+
+bool __fastcall
+patch_Map_impl_has_fresh_water_within_work_area (Map * this, int edx, int tile_x, int tile_y)
+{
+	if (is->current_config.enable_districts && is->current_config.expand_water_tile_checks_to_city_work_area) {
+		if (patch_Map_impl_is_near_river_within_work_area (this, __, tile_x, tile_y, 1))
+			return true;
+		if (patch_Map_impl_is_near_lake_within_work_area (this, __, tile_x, tile_y, 1))
+			return true;
+		return false;
+	}
+
+	return Map_impl_has_fresh_water (this, __, tile_x, tile_y);
+}
+
+
 bool __fastcall
 patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply_strict_rules)
 {
 	// First defer to the base game's logic
 	bool base = City_can_build_improvement (this, __, i_improv, apply_strict_rules);
-
-	if (! is->current_config.enable_districts) 
-		return base;
-
-	int required_district_id;
-	bool district_required = itable_look_up (&is->district_building_prereqs, i_improv, &required_district_id);
-	Improvement * improv = &p_bic_data->Improvements[i_improv];
-	bool is_wonder = is->current_config.enable_wonder_districts && improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder);
-	bool wonder_requires_district = is_wonder && required_district_id == WONDER_DISTRICT_ID;
-
-	// Ensure prereq tech for the improvement
-	if (improv->RequiredTechID >= 0 && ! Leader_has_tech (&leaders[this->Body.CivID], __, improv->RequiredTechID))
-		return false;
-
-	// Ensure prereq tech for the district
-	if (district_required) {
-		int prereq_id = is->district_infos[required_district_id].advance_prereq_id;
-		if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id)) {
-			return false;
-		}
-	}
-
-	// Make sure wonder is not already built
-	if (is_wonder) {
-		if ((improv->Characteristics & ITC_Wonder) != 0) {
-			if (Game_get_wonder_city_id (p_game, __, i_improv) != -1)
-				return false;
-			FOR_CITIES_OF (coi, this->Body.CivID) {
-				City * other_city = coi.city;
-				if (other_city != this && other_city->Body.Order_Type == COT_Improvement && other_city->Body.Order_ID == i_improv)
-					return ! apply_strict_rules;
-			}
-		} else {
-			Leader * leader = &leaders[this->Body.CivID];
-			if ((leader->Small_Wonders != NULL) && (leader->Small_Wonders[i_improv] != -1))
-				return false;
-		}
-	}
-
-	// Check if district is actually needed or city already has the improvement
-	if (! district_required || patch_City_has_improvement (this, __, i_improv, false)) {
-		if (! is_wonder)
-			return base;
-
-		// If a Wonder and doesn't need a district, do non-strict check only to avoid inadvertently 
-		// blocking Wonders that are buildable but grayed out in UI because already being built
-		return City_can_build_improvement (this, __, i_improv, false);
-	}
-
-	if (is_wonder && ! wonder_requires_district) {
-		return true;
-	}
+	if (! base) return false;
+	if (! is->current_config.enable_districts) return base;
 
 	// Different logic for human vs AI players
 	bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
 
-	// If disallowed by the base game, check if it was due to not being next to water, which can be 
-	// circumvented with certain districts
-	if (! base) {
+	// Check if the improvement requires a district and output the required district id when it does
+	int required_district_id;
+	bool needs_district = city_requires_district_for_improvement (this, i_improv, &required_district_id);
+	if (! needs_district)
+		return true;
 
-		// Allow harbor-like improvements when port districts replace coastal adjacency
-		if (improv->ImprovementFlags & ITF_Allows_Water_Trade &&
-		    is->current_config.enable_port_districts) {
-			int tx, ty;
+	// Ensure prereq tech for the district
+	int prereq_id = is->district_infos[required_district_id].advance_prereq_id;
+	if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id))
+		return false;
 
-			// Different checks for human vs AI. For human, look for any water. For AI, look for a tile suitable for a port district.
-			// The port district check is stricter and prevents the AI from trying to build harbors in small lakes, etc.
-			if (! is_human && find_tile_for_district (this, PORT_DISTRICT_ID, &tx, &ty) == NULL)
-				return false;
-			else if (is_human) {
-				bool has_coastal_tile = false;
-				FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
-					if (wai.tile->vtable->m35_Check_Is_Water (wai.tile)) {
-						has_coastal_tile = true;
-						break;
-					}
-				}
-				if (! has_coastal_tile)
-					return false;
-			}
-
-		// Allow improvements that must be near water if water in work radius.
-		// ITF_*_Water is Nuclear Power Plant, Commercial Dock, etc. Characteristics & 1 is Coastal Fortress, coastal Wonders, etc.
-		} else if (improv->ImprovementFlags & ITF_Must_Be_Near_Water || 
-			improv->ImprovementFlags & ITF_Increases_Trade_In_Water ||
-			improv->ImprovementFlags & ITF_Increases_Shields_In_Water ||
-			improv->Characteristics & 1) { 
-			bool has_water_in_radius = false;
-			FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
-				if (wai.tile->vtable->m35_Check_Is_Water (wai.tile)) {
-					has_water_in_radius = true;
-					break;
-				}
-			}
-			if (! has_water_in_radius)
-				return false;
-
-		// Allow improvements that must be near river if river in work radius
-		} else if (improv->ImprovementFlags & ITF_Must_Be_Near_River) {
-			bool has_river_in_radius = false;
-			FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
-				if (wai.tile->vtable->m37_Get_River_Code (wai.tile)) {
-					has_river_in_radius = true;
-					break;
-				}
-			}
-			if (! has_river_in_radius)
-				return false;
-		} else if (is_wonder && City_can_build_improvement (this, __, i_improv, false)) {
-			// Do nothing, game is only disallowing because the city is already building the Wonder
-			// (i.e., in UI, the Wonder is grayed out because it's already being built)
-		} else {
-			return base;
-		}
-	}
+	Improvement * improv = &p_bic_data->Improvements[i_improv];
+	bool is_wonder = is->current_config.enable_wonder_districts && improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder);
 
 	// Check that we have the necessary terrain
 	bool has_terrain_for_district = false;
@@ -16333,15 +16316,7 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 
 	// If human has everything needed except a built district (which is buildable), allow relaxed checks so UI can gray entry out
 	if (is_human) {
-		if (is_wonder) {
-			return city_has_wonder_district_with_no_completed_wonder (this, i_improv)
-				? true
-				: ! apply_strict_rules;
-		} else {
-			return city_has_required_district (this, required_district_id)
-				? true
-				: ! apply_strict_rules;
-		}
+		return ! apply_strict_rules;
 	}
 
 	// If AI already has a pending district request for this required district, return false
@@ -25791,17 +25766,17 @@ wonder_allows_river (struct wonder_district_config const * cfg)
 }
 
 int
-get_power_station_img_index (int tile_x, int tile_y)
+get_energy_grid_img_index (int tile_x, int tile_y)
 {
-	struct district_infos * info = &is->district_infos[POWER_STATION_DISTRICT_ID];
+	struct district_infos * info = &is->district_infos[ENERGY_GRID_DISTRICT_ID];
 	int coal_plant_id    = info->dependent_building_ids[0];
 	int hydro_plant_id   = info->dependent_building_ids[1];
 	int solar_plant_id   = info->dependent_building_ids[2];
 	int nuclear_plant_id = info->dependent_building_ids[3];
-	bool coal            = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, POWER_STATION_DISTRICT_ID, coal_plant_id);
-	bool hydro           = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, POWER_STATION_DISTRICT_ID, hydro_plant_id);
-	bool solar           = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, POWER_STATION_DISTRICT_ID, solar_plant_id);
-	bool nuclear         = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, POWER_STATION_DISTRICT_ID, nuclear_plant_id);
+	bool coal            = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, ENERGY_GRID_DISTRICT_ID, coal_plant_id);
+	bool hydro           = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, ENERGY_GRID_DISTRICT_ID, hydro_plant_id);
+	bool solar           = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, ENERGY_GRID_DISTRICT_ID, solar_plant_id);
+	bool nuclear         = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, ENERGY_GRID_DISTRICT_ID, nuclear_plant_id);
 
     int index = 0;
 
@@ -25966,11 +25941,11 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                 }
                 break;
             }
-			case POWER_STATION_DISTRICT_ID:
+			case ENERGY_GRID_DISTRICT_ID:
 			{
-				// Power stations can have multiple buildings that - unlike most district buildings - don't have each other as prereq buildings,
+				// Energy grids can have multiple buildings that - unlike most district buildings - don't have each other as prereq buildings,
 				// and thus have a combinatorial number of images based on which power plants are built in their radius. This returns the correct image index
-				buildings = get_power_station_img_index (tile_x, tile_y);
+				buildings = get_energy_grid_img_index (tile_x, tile_y);
 				break;
 			}
             default:

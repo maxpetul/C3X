@@ -371,6 +371,7 @@ struct c3x_config {
 	int central_rail_hub_distribution_food_bonus_percent;
 	int central_rail_hub_distribution_shield_bonus_percent;
 
+	bool expand_water_tile_checks_to_city_work_area;
 	bool workers_can_enter_coast;
 
 	bool ai_defends_districts;
@@ -742,10 +743,10 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
 	{
-		.command = UCV_Build_PowerStation, .name = "Power Station", .tooltip = "Build Power Station", .display_name = "Power Station",
+		.command = UCV_Build_EnergyGrid, .name = "Energy Grid", .tooltip = "Build Energy Grid", .display_name = "Energy Grid",
 		.advance_prereq = "Industrialization", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 4,
-		.img_paths = {"PowerStation.pcx"}, .dependent_improvements = {"Coal Plant", "Hydro Plant", "Solar Plant", "Nuclear Plant"},
-		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_RIVER)), .custom_height = 84,
+		.img_paths = {"EnergyGrid.pcx"}, .dependent_improvements = {"Coal Plant", "Hydro Plant", "Solar Plant", "Nuclear Plant"},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK, .custom_height = 84,
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 2, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
