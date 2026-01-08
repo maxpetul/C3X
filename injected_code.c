@@ -13714,6 +13714,32 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 
 	if (is->current_config.enable_districts) {
 		set_up_district_buttons (this);
+
+		if (p_main_screen_form->Current_Unit != NULL) {
+			Unit_Body * selected_unit = &p_main_screen_form->Current_Unit->Body;
+
+			enum UnitTypeClasses class = p_bic_data->UnitTypes[selected_unit->UnitTypeID].Unit_Class;
+			Tile * tile = tile_at (selected_unit->X, selected_unit->Y);
+			struct district_instance * existing_inst = get_district_instance (tile);
+			if (class == UTC_Sea && tile->vtable->m35_Check_Is_Water (tile) && existing_inst != NULL) {
+
+				// Really hate this but can't figure out a cleaner way to do it.
+				// If looping through command buttons, the command ID is always zero if disallowed
+				Command_Button * pillage_button = &this->Unit_Command_Buttons[3];
+				// Special actions sprites: UCV_Pillage is index 3 (0x10000008).
+				Sprite * base_img = &this->Images[0x80 + 3];
+				pillage_button->Command = UCV_Pillage;
+				pillage_button->field_6D8 = 0x10;
+				pillage_button->Button.vtable->m02_Show_Disabled ((Base_Form *)&pillage_button->Button);
+				pillage_button->Button.Images[0] = base_img - 0x3b;
+				pillage_button->Button.Images[1] = base_img;
+				pillage_button->Button.Images[2] = base_img + 0x3b;
+				pillage_button->Button.Images[3] = &this->Images[2];
+				pillage_button->Button.field_664 = 0;
+				pillage_button->Button.field_5FC[13] = 0;
+				pillage_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&pillage_button->Button, __, 0);
+			}
+		}
 	}
 
 	// If the minimum city separation is increased, then gray out the found city button if we're too close to another city.
@@ -14083,8 +14109,9 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 					   base_type == SQ_Grassland ||
 					   base_type == SQ_Tundra;
 			}
-		}
-		else if (unit_command_value == UCV_Join_City) {
+		} else if (unit_command_value == UCV_Pillage) {
+			return patch_Unit_can_pillage (this, __, this->Body.X, this->Body.Y);
+		} else if (unit_command_value == UCV_Join_City) {
 			bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
 			if (!is_human) {
 				int type_id = this->Body.UnitTypeID;
@@ -14112,11 +14139,6 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 		return ((class != UTC_Land) || (! tile->vtable->m35_Check_Is_Water (tile))) &&
 			Unit_can_perform_command (this, __, unit_command_value);
 	}
-
-	if ((unit_command_value == UCV_Pillage) &&
-	    ! patch_Unit_can_pillage (this, __, this->Body.X, this->Body.Y)) {
-		return false;
-	}
 	
 	return Unit_can_perform_command (this, __, unit_command_value);
 }
@@ -14125,40 +14147,37 @@ bool __fastcall
 patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y)
 {
 	bool base = Unit_can_pillage (this, __, tile_x, tile_y);
-	if (! base)
-		return false;
 
 	if (! is->current_config.enable_districts ||
 	    ! is->current_config.enable_wonder_districts ||
 	    is->current_config.completed_wonder_districts_can_be_destroyed)
-		return true;
+		return base;
 
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile == NULL) || (tile == p_null_tile))
-		return true;
+		return base;
 
 	struct district_instance * inst = get_district_instance (tile);
 	if (inst == NULL)
-		return true;
-
-	if (is->current_config.enable_natural_wonders &&
-	    (inst->district_type == NATURAL_WONDER_DISTRICT_ID) &&
-	    (inst->natural_wonder_info.natural_wonder_id >= 0))
-		return false;
+		return base;
 
 	int district_id = inst->district_type;
-	if (district_id != WONDER_DISTRICT_ID)
-		return true;
+	if (is->current_config.enable_natural_wonders &&
+	    (district_id == NATURAL_WONDER_DISTRICT_ID) &&
+	    (inst->natural_wonder_info.natural_wonder_id >= 0))
+		return false;
 
 	if (! district_is_complete (tile, district_id))
 		return true;
 
-	// Check if this wonder district has a completed wonder on it
-	struct wonder_district_info * info = get_wonder_district_info (tile);
-	if (info == NULL || info->state != WDS_COMPLETED)
+	if (district_id == WONDER_DISTRICT_ID) {
+		struct wonder_district_info * info = get_wonder_district_info (tile);
+		if (info == NULL || info->state != WDS_COMPLETED)
+			return true;
+		return is->current_config.completed_wonder_districts_can_be_destroyed;
+	} else {
 		return true;
-
-	return false;
+	}
 }
 
 bool __fastcall
@@ -21054,7 +21073,8 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 
 		// If the district existed before but not after, or the tile no longer has a mine, the district was destroyed
 		if (!has_district_after || !(target_tile->vtable->m42_Get_Overlays (target_tile, __, 0) & TILE_FLAG_MINE)) {
-			handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, true);
+			bool is_water_tile = target_tile != NULL && target_tile->vtable->m35_Check_Is_Water (target_tile);
+			handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, ! is_water_tile);
 		}
 	}
 
