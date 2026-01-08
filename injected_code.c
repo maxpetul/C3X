@@ -14037,8 +14037,14 @@ bool __fastcall
 bool
 is_district_command (int unit_command_value)
 {
-	int dummy;
-	return itable_look_up (&is->command_id_to_district_id, unit_command_value, &dummy);
+	int district_id;
+	bool maybe_district_command = itable_look_up (&is->command_id_to_district_id, unit_command_value, &district_id);
+
+	// Natural wonder command IDs are -1 (unbuildable), which can be a false positive
+	if (district_id == NATURAL_WONDER_DISTRICT_ID)
+		return false;
+	
+	return maybe_district_command;
 }
 
 bool __fastcall
@@ -14069,7 +14075,11 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 			bool has_district = (tile != NULL) && (tile != p_null_tile) && (get_district_instance (tile) != NULL);
 
 			if (has_district) {
-				return Unit_can_perform_command (this, __, unit_command_value);
+				return base_type == SQ_Hills || 
+				       base_type == SQ_Mountains ||
+					   base_type == SQ_Desert ||
+					   base_type == SQ_Plains ||
+					   base_type == SQ_Tundra;
 			}
 		}
 		else if (unit_command_value == UCV_Join_City) {
@@ -14467,6 +14477,7 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 
 	// Check if command is a worker build command (not a district) and a district exists on the tile
 	if (is->current_config.enable_districts && p_main_screen_form->Current_Unit != NULL) {
+		
 		bool removed_existing = false;
 		if (! handle_worker_command_that_may_replace_district (p_main_screen_form->Current_Unit, command, &removed_existing))
 			return;
@@ -14517,6 +14528,7 @@ patch_Main_Screen_Form_issue_command (Main_Screen_Form * this, int edx, int comm
 	Unit * target_unit = unit;
 	if (target_unit == NULL)
 		target_unit = this->Current_Unit;
+	pop_up_in_game_error("patch_Main_Screen_Form_issue_command");
 
 	if (is->current_config.enable_districts) {
 		bool removed_existing = false;
@@ -25629,7 +25641,7 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 			if      (*out_variant == SW || *out_variant == NW) { *out_pixel_x += 10; }
 			else if (*out_variant == SE || *out_variant == NE) { *out_pixel_x -= 10; }
 
-			if (*out_variant == SW && (anchor_sprite_index == 7 || anchor_sprite_index == 17)) { *out_pixel_x +=10; *out_pixel_y -= 8; }
+			if (*out_variant == SW && (anchor_sprite_index == 7 || anchor_sprite_index == 17 || anchor_sprite_index == 16)) { *out_pixel_x +=10; *out_pixel_y -= 8; }
 		}
 		// Sheet 3
 		else if (anchor_sheet_index == 2) {
@@ -26319,7 +26331,7 @@ patch_Unit_select (Unit * this)
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
 
 		struct district_instance * inst = get_district_instance (tile);
-		if (inst != NULL && inst->district_type >= 0 && inst->district_type <= is->district_count && 
+		if (inst != NULL && is_worker(this) && inst->district_type >= 0 && inst->district_type <= is->district_count && 
 			! district_is_complete (tile, inst->district_type)) {
 			int district_id = inst->district_type;
 			PopupForm * popup = get_popup_form ();
