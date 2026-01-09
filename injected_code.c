@@ -9730,8 +9730,8 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	if (leave_ruins && (tile->vtable->m60_Set_Ruins != NULL)) {
 		tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, center_x, center_y);
 		tile->vtable->m60_Set_Ruins (tile, __, 1);
-		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 	}
+	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 }
 
 bool
@@ -14549,7 +14549,6 @@ patch_Main_Screen_Form_issue_command (Main_Screen_Form * this, int edx, int comm
 	Unit * target_unit = unit;
 	if (target_unit == NULL)
 		target_unit = this->Current_Unit;
-	pop_up_in_game_error("patch_Main_Screen_Form_issue_command");
 
 	if (is->current_config.enable_districts) {
 		bool removed_existing = false;
@@ -17629,6 +17628,22 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 			}
 		}
 		this->vtable->m73_call_m22_Draw ((Base_Form *)this); // Trigger map redraw
+
+	// Worker keyboard shortcuts that would normally go to patch_Main_Screen_Form_issue_command 
+	// unfortunately get short-circuited if a district is on a tile and the default popup to replace a "mine" is shown.
+	// The only way to catch these beforehand I've found it is to intercept the key event here.
+	} else if (is->current_config.enable_districts && 
+		p_main_screen_form->Current_Unit != NULL && 
+		is_worker (p_main_screen_form->Current_Unit)) {
+		int command = -1;
+		bool removed_existing = false;
+		if      (virtual_key_code == VK_M && is_command_button_active (&this->GUI, UCV_Build_Mine))   command = UCV_Build_Mine;
+		else if (virtual_key_code == VK_I && is_command_button_active (&this->GUI, UCV_Irrigate))     command = UCV_Irrigate;
+		else if (virtual_key_code == VK_N && is_command_button_active (&this->GUI, UCV_Plant_Forest)) command = UCV_Plant_Forest;
+
+		if (handle_worker_command_that_may_replace_district (p_main_screen_form->Current_Unit, command, &removed_existing)) {
+			Main_Screen_Form_issue_command (this, __, command, p_main_screen_form->Current_Unit);
+		}
 	}
 
 	Main_Screen_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
