@@ -4623,7 +4623,7 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec)
 	rec->raw_food_yield = food_sum;
 	rec->raw_shield_yield = shield_sum;
 
-	int food_div = is->current_config.distribution_hub_food_yield_divisor;
+	int food_div   = is->current_config.distribution_hub_food_yield_divisor;
 	int shield_div = is->current_config.distribution_hub_shield_yield_divisor;
 	if (food_div <= 0)
 		food_div = 1;
@@ -4645,16 +4645,14 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec)
 		int city_root = 1;
 		while ((city_root + 1) * (city_root + 1) <= connected_city_count)
 			city_root++;
-		int city_food_divisor = city_root * food_div;
+		int city_food_divisor   = city_root * food_div;
 		int city_shield_divisor = city_root * shield_div;
-		if (city_food_divisor < 1)
-			city_food_divisor = 1;
-		if (city_shield_divisor < 1)
-			city_shield_divisor = 1;
+		if (city_food_divisor < 1) city_food_divisor = 1;
+		if (city_shield_divisor < 1) city_shield_divisor = 1;
 		rec->food_yield   = food_sum   / city_food_divisor;
 		rec->shield_yield = shield_sum / city_shield_divisor;
 	} else {
-		rec->food_yield = food_sum / food_div;
+		rec->food_yield   = food_sum / food_div;
 		rec->shield_yield = shield_sum / shield_div;
 	}
 }
@@ -13721,7 +13719,8 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 			enum UnitTypeClasses class = p_bic_data->UnitTypes[selected_unit->UnitTypeID].Unit_Class;
 			Tile * tile = tile_at (selected_unit->X, selected_unit->Y);
 			struct district_instance * existing_inst = get_district_instance (tile);
-			if (class == UTC_Sea && tile->vtable->m35_Check_Is_Water (tile) && existing_inst != NULL) {
+			if (class == UTC_Sea && tile->vtable->m35_Check_Is_Water (tile) && existing_inst != NULL && 
+			patch_Unit_can_perform_command (p_main_screen_form->Current_Unit, __, UCV_Pillage)) {
 
 				// Really hate this but can't figure out a cleaner way to do it.
 				// If looping through command buttons, the command ID is always zero if disallowed
