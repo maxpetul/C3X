@@ -17469,6 +17469,29 @@ patch_City_get_net_commerce (City * this, int edx, int kind, bool include_scienc
 		return base;
 }
 
+// Cuts research spending while total expenditures > treasury. Returns whether spending has been cut.
+bool
+cut_unaffordable_research_spending (Leader * leader, bool skip_popup)
+{
+	int treasury = leader->Gold_Encoded + leader->Gold_Decrement,
+	    rate_cap = p_bic_data->Governments[leader->GovernmentType].RateCap;
+	bool reduced_spending = false;
+	while (this->science_slider > 0 &&
+	       this->gold_slider < rate_cap &&
+	       treasury + Leader_compute_income (leader) < 0) {
+		this->science_slider -= 1;
+		this->gold_slider += 1;
+		Leader_recompute_economy (leader);
+		reduced_spending = true;
+	}
+	if (reduced_spending && ! skip_popup && this->ID == p_main_screen_form->Player_CivID) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_CUT_RESEARCH_SPENDING", -1, 0, 0, 0);
+		patch_show_popup (popup, __, 0, 0);
+	}
+	return reduced_spending;
+}
+
 void __fastcall
 adjust_sliders_preproduction (Leader * this)
 {
@@ -17478,21 +17501,8 @@ adjust_sliders_preproduction (Leader * this)
 		this->vtable->ai_adjust_sliders (this);
 
 	// If human player would go bankrupt, try reducing their research spending to avoid that
-	else if (is->current_config.cut_research_spending_to_avoid_bankruptcy) {
-		int treasury = this->Gold_Encoded + this->Gold_Decrement,
-		    reduced_spending = 0;
-		while ((this->science_slider > 0) && (treasury + Leader_compute_income (this) < 0)) {
-			this->science_slider -= 1;
-			this->gold_slider += 1;
-			Leader_recompute_economy (this);
-			reduced_spending = 1;
-		}
-		if (reduced_spending && (this->ID == p_main_screen_form->Player_CivID)) {
-			PopupForm * popup = get_popup_form ();
-			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_CUT_RESEARCH_SPENDING", -1, 0, 0, 0);
-			patch_show_popup (popup, __, 0, 0);
-		}
-	}
+	else if (is->current_config.cut_research_spending_to_avoid_bankruptcy)
+		cut_unaffordable_research_spending (this, false);
 }
 
 int __fastcall
