@@ -17476,15 +17476,15 @@ cut_unaffordable_research_spending (Leader * leader, bool skip_popup)
 	int treasury = leader->Gold_Encoded + leader->Gold_Decrement,
 	    rate_cap = p_bic_data->Governments[leader->GovernmentType].RateCap;
 	bool reduced_spending = false;
-	while (this->science_slider > 0 &&
-	       this->gold_slider < rate_cap &&
+	while (leader->science_slider > 0 &&
+	       leader->gold_slider < rate_cap &&
 	       treasury + Leader_compute_income (leader) < 0) {
-		this->science_slider -= 1;
-		this->gold_slider += 1;
+		leader->science_slider -= 1;
+		leader->gold_slider += 1;
 		Leader_recompute_economy (leader);
 		reduced_spending = true;
 	}
-	if (reduced_spending && ! skip_popup && this->ID == p_main_screen_form->Player_CivID) {
+	if (reduced_spending && ! skip_popup && leader->ID == p_main_screen_form->Player_CivID) {
 		PopupForm * popup = get_popup_form ();
 		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_CUT_RESEARCH_SPENDING", -1, 0, 0, 0);
 		patch_show_popup (popup, __, 0, 0);
