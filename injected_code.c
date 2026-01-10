@@ -16283,21 +16283,15 @@ patch_Map_impl_has_fresh_water_within_work_area (Map * this, int edx, int tile_x
 	return Map_impl_has_fresh_water (this, __, tile_x, tile_y);
 }
 
-
-bool __fastcall
-patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply_strict_rules)
+bool 
+city_meets_district_prereqs_to_build_improvement (City * city, int i_improv, bool apply_strict_rules)
 {
-	// First defer to the base game's logic
-	bool base = City_can_build_improvement (this, __, i_improv, apply_strict_rules);
-	if (! base) return false;
-	if (! is->current_config.enable_districts) return base;
-
 	// Different logic for human vs AI players
-	bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
+	bool is_human = (*p_human_player_bits & (1 << city->Body.CivID)) != 0;
 
 	// Check if the improvement requires a district and output the required district id when it does
 	int required_district_id;
-	bool needs_district = city_requires_district_for_improvement (this, i_improv, &required_district_id);
+	bool needs_district = city_requires_district_for_improvement (city, i_improv, &required_district_id);
 
 	// District is either not needed or already built
 	if (! needs_district)
@@ -16305,7 +16299,7 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 
 	// Ensure prereq tech for the district
 	int prereq_id = is->district_infos[required_district_id].advance_prereq_id;
-	if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id))
+	if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[city->Body.CivID], __, prereq_id))
 		return false;
 
 	Improvement * improv = &p_bic_data->Improvements[i_improv];
@@ -16314,9 +16308,9 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 	// Check that we have the necessary terrain
 	bool has_terrain_for_district = false;
 	bool has_terrain_for_wonder = false;
-	FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
+	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
 		Tile * tile = wai.tile;
-		if (! tile_suitable_for_district (tile, required_district_id, this, NULL)) 
+		if (! tile_suitable_for_district (tile, required_district_id, city, NULL)) 
 			continue;
 		has_terrain_for_district = true;
 
@@ -16340,7 +16334,7 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 
 	// If AI already has a pending district request for this required district, return false
 	// to prevent wasting a turn trying to choose this improvement
-	if (find_pending_district_request (this, required_district_id) != NULL) {
+	if (find_pending_district_request (city, required_district_id) != NULL) {
 		return false;
 	}
 
@@ -16348,6 +16342,18 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 	// If a disallowed improvement is chosen in ai_choose_production, we'll swap it out for a feasible fallback later
 	// after prioritizing the district to be built
 	return true;
+}
+
+
+bool __fastcall
+patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply_strict_rules)
+{
+	// First defer to the base game's logic
+	bool base = City_can_build_improvement (this, __, i_improv, apply_strict_rules);
+	if (! base) return false;
+	if (! is->current_config.enable_districts) return base;
+
+	return city_meets_district_prereqs_to_build_improvement (this, i_improv, apply_strict_rules);
 }
 
 bool
@@ -24867,7 +24873,7 @@ patch_City_add_building_if_done (City * this)
 	if (is->current_config.enable_districts && order_type == COT_Improvement) {
 		Improvement * new_improv = &p_bic_data->Improvements[order_id]; // Improvement might have changed
 		if (new_improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
-			if (! patch_City_can_build_improvement (this, __, order_id, true)) {
+			if (! (City_can_build_improvement (this, __, order_id, false) && city_meets_district_prereqs_to_build_improvement (this, order_id, true))) {
 				char ss[256];
 				snprintf (ss, sizeof ss, "patch_City_add_building_if_done: City '%s' cannot complete building of wonder '%s'; switching to defensive unit.\n",
 				          this->Body.CityName,
@@ -25802,7 +25808,7 @@ wonder_allows_river (struct wonder_district_config const * cfg)
 }
 
 int
-get_energy_grid_img_index (int tile_x, int tile_y)
+get_energy_grid_image_index (int tile_x, int tile_y)
 {
 	struct district_infos * info = &is->district_infos[ENERGY_GRID_DISTRICT_ID];
 	int coal_plant_id    = info->dependent_building_ids[0];
@@ -25831,7 +25837,6 @@ get_energy_grid_img_index (int tile_x, int tile_y)
 	else if (coal && ! hydro && ! solar && nuclear)   index = 12; // Coal, Nuclear
 	else if (coal && ! hydro && solar && nuclear)     index = 13; // Coal, Solar, Nuclear
 	else if (coal && ! hydro && solar && ! nuclear)   index = 14; // Coal, Solar
-	else 											  index = 0;
 
     return index;
 }
@@ -25896,8 +25901,8 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 
 		// Handle river alignment, if district allows it
 		enum direction river_dir = DIR_ZERO;
-		if (district_allows_river(cfg)) 
-			align_district_with_river (tile, &pixel_x, &pixel_y, &river_dir);
+		//if (district_allows_river(cfg)) 
+			//align_district_with_river (tile, &pixel_x, &pixel_y, &river_dir);
 
         if (territory_owner_id > 0) {
             Leader * leader = &leaders[territory_owner_id];
@@ -25979,9 +25984,9 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
             }
 			case ENERGY_GRID_DISTRICT_ID:
 			{
-				// Energy grids can have multiple buildings that - unlike most district buildings - don't have each other as prereq buildings,
+				// Energy grids can have multiple buildings that - unlike most district buildings - don't have each other as prereqs (e.g., Coal Plant & Nuclear Plant),
 				// and thus have a combinatorial number of images based on which power plants are built in their radius. This returns the correct image index
-				buildings = get_energy_grid_img_index (tile_x, tile_y);
+				buildings = get_energy_grid_image_index (tile_x, tile_y);
 				break;
 			}
             default:
