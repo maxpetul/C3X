@@ -23,9 +23,9 @@ function CheckHappinessAtEndOfTurn()
   if firstUnhappyCity ~= nil then
     local response
     if numUnhappyCities > 1 then
-      response = civ3.ShowPopup(civ3.GetC3XScriptPath(), "C3X_DISORDER_WARNING_MULTIPLE", firstUnhappyCity:GetName(), numUnhappyCities)
+      response = civ3.ShowPopup(civ3.GetC3XScriptPath(), "C3X_DISORDER_WARNING_MULTIPLE", firstUnhappyCity.name, numUnhappyCities)
     else
-      response = civ3.ShowPopup(civ3.GetC3XScriptPath(), "C3X_DISORDER_WARNING_ONE", firstUnhappyCity:GetName())
+      response = civ3.ShowPopup(civ3.GetC3XScriptPath(), "C3X_DISORDER_WARNING_ONE", firstUnhappyCity.name)
     end
 
     if response == 2 then -- zoom to city

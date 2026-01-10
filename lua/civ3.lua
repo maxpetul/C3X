@@ -199,12 +199,17 @@ Leader = ffi.metatype("Leader", Leader_metatable)
 --- @field Citizens any
 local City
 local City_metatable = {
-  __index = {
-    RecomputeHappiness = function(this) ffi.C.City_recompute_happiness(this) end,
-    ZoomTo = function(this) ffi.C.City_zoom_to(this) end,
-    Citizens = function(this) return CitizensIn(this) end,
-    GetName = function(this) return ffi.string(this.cityName, 20) end
-  }
+  __index = function(this, key)
+    if key == "name" then
+      return ffi.string(this.cityName, 20)
+    elseif key == "Citizens" then
+      return function(self) return CitizensIn(self) end
+    elseif key == "RecomputeHappiness" then
+      return function(self) ffi.C.City_recompute_happiness(self) end
+    elseif key == "ZoomTo" then
+      return function(self) ffi.C.City_zoom_to(self) end
+    end
+  end
 }
 City = ffi.metatype("City", City_metatable)
 
