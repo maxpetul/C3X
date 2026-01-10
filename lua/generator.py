@@ -248,14 +248,18 @@ def generate_prog_objects_for_lua():
     prog_objects_for_lua.write(header_comment)
 
     reader = csv.reader(civ_prog_objects, delimiter=",", quotechar="\"")
-    for row in list(reader)[1:100]:
+    for row in list(reader)[1:]:
+        if not row:
+            continue
+
         job    = row[0].strip(" \"\t")
         name   = row[4].strip(" \"\t")
         c_type = (",".join(row[5:])).strip(" \"\t")
 
         if (job == "define" or job == "inlead" or job == "repl vptr") and any([x in c_type for x in ["__fastcall", "__thiscall", "__stdcall", "__cdecl"]]):
             lua_name = name
-            injected_code_name = "patch_" + name if job == "inlead" else name
+            patched = job == "inlead" or job == "repl vptr"
+            injected_code_name = "patch_" + name if patched else name
             prog_objects_for_lua.write(f"{{ \"{lua_name}\", (FARPROC){injected_code_name} }},\n")
 
     prog_objects_for_lua.close()

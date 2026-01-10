@@ -4,7 +4,7 @@ local civ3 = {}
 local io = require("io")
 
 local ffi = require("ffi")
-local civ3_def_file = assert(io.open(c3x_rel_dir .. "/lua/civ3_defs_for_lua.h", "rb"))
+local civ3_def_file = assert(io.open(_G["c3x_rel_dir"] .. "/lua/civ3_defs_for_lua.h", "rb")) -- c3x_rel_dir set by mod C code
 ffi.cdef(civ3_def_file:read("all"))
 civ3_def_file:close()
 
@@ -108,7 +108,7 @@ end
 local function NextUnitOn(unit, index)
   local tileUnits = ffi.C.get_p_tile_units()
   if (index >= 0) and (index < tileUnits.lastIndex) then
-    local baseListItem item = tileUnits.items[index]
+    local item = tileUnits.items[index]
     return item.v, ffi.C.get_unit_ptr(item.object)
   end
 end
