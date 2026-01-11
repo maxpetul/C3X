@@ -204,6 +204,9 @@ bool __fastcall patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int ti
 bool __fastcall patch_City_has_resource (City * this, int edx, int resource_id);
 bool __fastcall patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, bool param_2);
 bool city_can_build_district (City * city, int district_id);
+bool leader_can_build_district (Leader * leader, int district_id);
+bool find_civ_trait_id_by_name (struct string_slice const * name, int * out_id);
+bool find_civ_culture_id_by_name (struct string_slice const * name, int * out_id);
 Tile * find_tile_for_district (City * city, int district_id, int * out_x, int * out_y);
 struct district_instance * get_district_instance (Tile * tile);
 bool city_has_required_district (City * city, int district_id);
@@ -5025,6 +5028,27 @@ free_dynamic_district_config (struct district_config * cfg)
 		cfg->resource_prereq_on_tile = NULL;
 	}
 
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
+		if (cfg->buildable_by_civs[i] != NULL) {
+			free ((void *)cfg->buildable_by_civs[i]);
+			cfg->buildable_by_civs[i] = NULL;
+		}
+	}
+	cfg->buildable_by_civ_count = 0;
+	cfg->has_buildable_by_civs = false;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_traits_ids); i++)
+		cfg->buildable_by_civ_traits_ids[i] = -1;
+	cfg->buildable_by_civ_traits_id_count = 0;
+	cfg->has_buildable_by_civ_traits = false;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_govs_ids); i++)
+		cfg->buildable_by_civ_govs_ids[i] = -1;
+	cfg->buildable_by_civ_govs_id_count = 0;
+	cfg->has_buildable_by_civ_govs = false;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_cultures_ids); i++)
+		cfg->buildable_by_civ_cultures_ids[i] = -1;
+	cfg->buildable_by_civ_cultures_id_count = 0;
+	cfg->has_buildable_by_civ_cultures = false;
+
 	for (int i = 0; i < 5; i++) {
 		if (cfg->dependent_improvements[i] != NULL) {
 			free ((void *)cfg->dependent_improvements[i]);
@@ -5131,6 +5155,29 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 		free ((void *)cfg->resource_prereq_on_tile);
 		cfg->resource_prereq_on_tile = NULL;
 	}
+
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
+		char const * default_value = (i < defaults->buildable_by_civ_count) ? defaults->buildable_by_civs[i] : NULL;
+		if ((cfg->buildable_by_civs[i] != NULL) &&
+		    (cfg->buildable_by_civs[i] != default_value)) {
+			free ((void *)cfg->buildable_by_civs[i]);
+		}
+		cfg->buildable_by_civs[i] = NULL;
+	}
+	cfg->buildable_by_civ_count = defaults->buildable_by_civ_count;
+	cfg->has_buildable_by_civs = defaults->has_buildable_by_civs;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_traits_ids); i++)
+		cfg->buildable_by_civ_traits_ids[i] = -1;
+	cfg->buildable_by_civ_traits_id_count = defaults->buildable_by_civ_traits_id_count;
+	cfg->has_buildable_by_civ_traits = defaults->has_buildable_by_civ_traits;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_govs_ids); i++)
+		cfg->buildable_by_civ_govs_ids[i] = -1;
+	cfg->buildable_by_civ_govs_id_count = defaults->buildable_by_civ_govs_id_count;
+	cfg->has_buildable_by_civ_govs = defaults->has_buildable_by_civ_govs;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_cultures_ids); i++)
+		cfg->buildable_by_civ_cultures_ids[i] = -1;
+	cfg->buildable_by_civ_cultures_id_count = defaults->buildable_by_civ_cultures_id_count;
+	cfg->has_buildable_by_civ_cultures = defaults->has_buildable_by_civ_cultures;
 
 	for (int i = 0; i < ARRAY_LEN (cfg->dependent_improvements); i++) {
 		char const * default_value = (i < defaults->dependent_improvement_count) ? defaults->dependent_improvements[i] : NULL;
@@ -5257,6 +5304,38 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 		free (def->resource_prereq_on_tile);
 		def->resource_prereq_on_tile = NULL;
 	}
+
+	for (int i = 0; i < def->buildable_by_civ_count; i++) {
+		if (def->buildable_by_civs[i] != NULL) {
+			free (def->buildable_by_civs[i]);
+			def->buildable_by_civs[i] = NULL;
+		}
+	}
+	def->buildable_by_civ_count = 0;
+	for (int i = 0; i < def->buildable_by_civ_traits_count; i++) {
+		if (def->buildable_by_civ_traits[i] != NULL) {
+			free (def->buildable_by_civ_traits[i]);
+			def->buildable_by_civ_traits[i] = NULL;
+		}
+	}
+	def->buildable_by_civ_traits_count = 0;
+	def->buildable_by_civ_traits_id_count = 0;
+	for (int i = 0; i < def->buildable_by_civ_govs_count; i++) {
+		if (def->buildable_by_civ_govs[i] != NULL) {
+			free (def->buildable_by_civ_govs[i]);
+			def->buildable_by_civ_govs[i] = NULL;
+		}
+	}
+	def->buildable_by_civ_govs_count = 0;
+	def->buildable_by_civ_govs_id_count = 0;
+	for (int i = 0; i < def->buildable_by_civ_cultures_count; i++) {
+		if (def->buildable_by_civ_cultures[i] != NULL) {
+			free (def->buildable_by_civ_cultures[i]);
+			def->buildable_by_civ_cultures[i] = NULL;
+		}
+	}
+	def->buildable_by_civ_cultures_count = 0;
+	def->buildable_by_civ_cultures_id_count = 0;
 
 	for (int i = 0; i < def->dependent_improvement_count; i++) {
 		if (def->dependent_improvements[i] != NULL) {
@@ -5556,6 +5635,55 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		def->resource_prereq_on_tile = NULL;
 	}
 
+	if (def->has_buildable_by_civs) {
+		for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
+			char const * default_value = (i < defaults->buildable_by_civ_count) ? defaults->buildable_by_civs[i] : NULL;
+			if ((cfg->buildable_by_civs[i] != NULL) &&
+			    (cfg->buildable_by_civs[i] != default_value))
+				free ((void *)cfg->buildable_by_civs[i]);
+			cfg->buildable_by_civs[i] = NULL;
+		}
+		cfg->buildable_by_civ_count = def->buildable_by_civ_count;
+		const int max_civ_names = ARRAY_LEN (cfg->buildable_by_civs);
+		if (cfg->buildable_by_civ_count > max_civ_names)
+			cfg->buildable_by_civ_count = max_civ_names;
+		for (int i = 0; i < cfg->buildable_by_civ_count; i++) {
+			cfg->buildable_by_civs[i] = def->buildable_by_civs[i];
+			def->buildable_by_civs[i] = NULL;
+		}
+		cfg->has_buildable_by_civs = true;
+	}
+
+	if (def->has_buildable_by_civ_traits) {
+		cfg->buildable_by_civ_traits_id_count = def->buildable_by_civ_traits_id_count;
+		const int max_entries = ARRAY_LEN (cfg->buildable_by_civ_traits_ids);
+		if (cfg->buildable_by_civ_traits_id_count > max_entries)
+			cfg->buildable_by_civ_traits_id_count = max_entries;
+		for (int i = 0; i < cfg->buildable_by_civ_traits_id_count; i++)
+			cfg->buildable_by_civ_traits_ids[i] = def->buildable_by_civ_traits_ids[i];
+		cfg->has_buildable_by_civ_traits = true;
+	}
+
+	if (def->has_buildable_by_civ_govs) {
+		cfg->buildable_by_civ_govs_id_count = def->buildable_by_civ_govs_id_count;
+		const int max_entries = ARRAY_LEN (cfg->buildable_by_civ_govs_ids);
+		if (cfg->buildable_by_civ_govs_id_count > max_entries)
+			cfg->buildable_by_civ_govs_id_count = max_entries;
+		for (int i = 0; i < cfg->buildable_by_civ_govs_id_count; i++)
+			cfg->buildable_by_civ_govs_ids[i] = def->buildable_by_civ_govs_ids[i];
+		cfg->has_buildable_by_civ_govs = true;
+	}
+
+	if (def->has_buildable_by_civ_cultures) {
+		cfg->buildable_by_civ_cultures_id_count = def->buildable_by_civ_cultures_id_count;
+		const int max_entries = ARRAY_LEN (cfg->buildable_by_civ_cultures_ids);
+		if (cfg->buildable_by_civ_cultures_id_count > max_entries)
+			cfg->buildable_by_civ_cultures_id_count = max_entries;
+		for (int i = 0; i < cfg->buildable_by_civ_cultures_id_count; i++)
+			cfg->buildable_by_civ_cultures_ids[i] = def->buildable_by_civ_cultures_ids[i];
+		cfg->has_buildable_by_civ_cultures = true;
+	}
+
 	if (def->has_allow_multiple)
 		cfg->allow_multiple = def->allow_multiple;
 	if (def->has_vary_img_by_era)
@@ -5732,6 +5860,41 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		def->resource_prereq_on_tile = NULL;
 	}
 
+	new_cfg.buildable_by_civ_count = def->has_buildable_by_civs ? def->buildable_by_civ_count : 0;
+	const int max_civ_names = ARRAY_LEN (new_cfg.buildable_by_civs);
+	if (new_cfg.buildable_by_civ_count > max_civ_names)
+		new_cfg.buildable_by_civ_count = max_civ_names;
+	for (int i = 0; i < new_cfg.buildable_by_civ_count; i++) {
+		new_cfg.buildable_by_civs[i] = def->buildable_by_civs[i];
+		def->buildable_by_civs[i] = NULL;
+	}
+
+	new_cfg.has_buildable_by_civs = def->has_buildable_by_civs;
+
+	new_cfg.buildable_by_civ_traits_id_count = def->has_buildable_by_civ_traits ? def->buildable_by_civ_traits_id_count : 0;
+	const int max_buildable_traits = ARRAY_LEN (new_cfg.buildable_by_civ_traits_ids);
+	if (new_cfg.buildable_by_civ_traits_id_count > max_buildable_traits)
+		new_cfg.buildable_by_civ_traits_id_count = max_buildable_traits;
+	for (int i = 0; i < new_cfg.buildable_by_civ_traits_id_count; i++)
+		new_cfg.buildable_by_civ_traits_ids[i] = def->buildable_by_civ_traits_ids[i];
+	new_cfg.has_buildable_by_civ_traits = def->has_buildable_by_civ_traits;
+
+	new_cfg.buildable_by_civ_govs_id_count = def->has_buildable_by_civ_govs ? def->buildable_by_civ_govs_id_count : 0;
+	const int max_buildable_govs = ARRAY_LEN (new_cfg.buildable_by_civ_govs_ids);
+	if (new_cfg.buildable_by_civ_govs_id_count > max_buildable_govs)
+		new_cfg.buildable_by_civ_govs_id_count = max_buildable_govs;
+	for (int i = 0; i < new_cfg.buildable_by_civ_govs_id_count; i++)
+		new_cfg.buildable_by_civ_govs_ids[i] = def->buildable_by_civ_govs_ids[i];
+	new_cfg.has_buildable_by_civ_govs = def->has_buildable_by_civ_govs;
+
+	new_cfg.buildable_by_civ_cultures_id_count = def->has_buildable_by_civ_cultures ? def->buildable_by_civ_cultures_id_count : 0;
+	const int max_buildable_cultures = ARRAY_LEN (new_cfg.buildable_by_civ_cultures_ids);
+	if (new_cfg.buildable_by_civ_cultures_id_count > max_buildable_cultures)
+		new_cfg.buildable_by_civ_cultures_id_count = max_buildable_cultures;
+	for (int i = 0; i < new_cfg.buildable_by_civ_cultures_id_count; i++)
+		new_cfg.buildable_by_civ_cultures_ids[i] = def->buildable_by_civ_cultures_ids[i];
+	new_cfg.has_buildable_by_civ_cultures = def->has_buildable_by_civ_cultures;
+
 	new_cfg.allow_multiple = def->has_allow_multiple ? def->allow_multiple : false;
 	new_cfg.vary_img_by_era = def->has_vary_img_by_era ? def->vary_img_by_era : false;
 	new_cfg.vary_img_by_culture = def->has_vary_img_by_culture ? def->vary_img_by_culture : false;
@@ -5905,6 +6068,174 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		}
 		def->resource_prereq_on_tile = copy_trimmed_string_or_null (value, 1);
 		def->has_resource_prereq_on_tile = true;
+
+	} else if (slice_matches_str (key, "buildable_by_civs")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_by_civs,
+					      ARRAY_LEN (def->buildable_by_civs),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "buildable_by_civs")) {
+			def->buildable_by_civ_count = list_count;
+			def->has_buildable_by_civs = true;
+		} else {
+			def->buildable_by_civ_count = 0;
+			def->has_buildable_by_civs = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_by_civ_traits")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_by_civ_traits,
+					      ARRAY_LEN (def->buildable_by_civ_traits),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "buildable_by_civ_traits")) {
+			def->buildable_by_civ_traits_count = list_count;
+			def->buildable_by_civ_traits_id_count = 0;
+			for (int i = 0; i < def->buildable_by_civ_traits_count; i++) {
+				char const * trait_name = def->buildable_by_civ_traits[i];
+				if ((trait_name == NULL) || (trait_name[0] == '\0'))
+					continue;
+				int trait_id = -1;
+				struct string_slice trait_slice = { .str = (char *)trait_name, .len = (int)strlen (trait_name) };
+				if (find_civ_trait_id_by_name (&trait_slice, &trait_id)) {
+					bool already_listed = false;
+					for (int k = 0; k < def->buildable_by_civ_traits_id_count; k++) {
+						if (def->buildable_by_civ_traits_ids[k] == trait_id) {
+							already_listed = true;
+							break;
+						}
+					}
+					if ((! already_listed) && (def->buildable_by_civ_traits_id_count < ARRAY_LEN (def->buildable_by_civ_traits_ids)))
+						def->buildable_by_civ_traits_ids[def->buildable_by_civ_traits_id_count++] = trait_id;
+				} else {
+					struct error_line * err = add_error_line (parse_errors);
+					snprintf (err->text, sizeof err->text, "^  Line %d: buildable_by_civ_traits entry \"%.*s\" not found", line_number, trait_slice.len, trait_slice.str);
+					err->text[(sizeof err->text) - 1] = '\0';
+				}
+			}
+
+			for (int i = 0; i < def->buildable_by_civ_traits_count; i++) {
+				if (def->buildable_by_civ_traits[i] != NULL) {
+					free (def->buildable_by_civ_traits[i]);
+					def->buildable_by_civ_traits[i] = NULL;
+				}
+			}
+			def->buildable_by_civ_traits_count = 0;
+			def->has_buildable_by_civ_traits = true;
+		} else {
+			def->buildable_by_civ_traits_count = 0;
+			def->buildable_by_civ_traits_id_count = 0;
+			def->has_buildable_by_civ_traits = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_by_civ_govs")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_by_civ_govs,
+					      ARRAY_LEN (def->buildable_by_civ_govs),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "buildable_by_civ_govs")) {
+			def->buildable_by_civ_govs_count = list_count;
+			def->buildable_by_civ_govs_id_count = 0;
+			for (int i = 0; i < def->buildable_by_civ_govs_count; i++) {
+				char const * gov_name = def->buildable_by_civ_govs[i];
+				if ((gov_name == NULL) || (gov_name[0] == '\0'))
+					continue;
+				int gov_id = -1;
+				struct string_slice gov_slice = { .str = (char *)gov_name, .len = (int)strlen (gov_name) };
+				if (find_game_object_id_by_name (GOK_GOVERNMENT, &gov_slice, 0, &gov_id)) {
+					bool already_listed = false;
+					for (int k = 0; k < def->buildable_by_civ_govs_id_count; k++) {
+						if (def->buildable_by_civ_govs_ids[k] == gov_id) {
+							already_listed = true;
+							break;
+						}
+					}
+					if ((! already_listed) && (def->buildable_by_civ_govs_id_count < ARRAY_LEN (def->buildable_by_civ_govs_ids)))
+						def->buildable_by_civ_govs_ids[def->buildable_by_civ_govs_id_count++] = gov_id;
+				} else {
+					struct error_line * err = add_error_line (parse_errors);
+					snprintf (err->text, sizeof err->text, "^  Line %d: buildable_by_civ_govs entry \"%.*s\" not found", line_number, gov_slice.len, gov_slice.str);
+					err->text[(sizeof err->text) - 1] = '\0';
+				}
+			}
+
+			for (int i = 0; i < def->buildable_by_civ_govs_count; i++) {
+				if (def->buildable_by_civ_govs[i] != NULL) {
+					free (def->buildable_by_civ_govs[i]);
+					def->buildable_by_civ_govs[i] = NULL;
+				}
+			}
+			def->buildable_by_civ_govs_count = 0;
+			def->has_buildable_by_civ_govs = true;
+		} else {
+			def->buildable_by_civ_govs_count = 0;
+			def->buildable_by_civ_govs_id_count = 0;
+			def->has_buildable_by_civ_govs = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_by_civ_cultures")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_by_civ_cultures,
+					      ARRAY_LEN (def->buildable_by_civ_cultures),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "buildable_by_civ_cultures")) {
+			def->buildable_by_civ_cultures_count = list_count;
+			def->buildable_by_civ_cultures_id_count = 0;
+			for (int i = 0; i < def->buildable_by_civ_cultures_count; i++) {
+				char const * culture_name = def->buildable_by_civ_cultures[i];
+				if ((culture_name == NULL) || (culture_name[0] == '\0'))
+					continue;
+				int culture_id = -1;
+				struct string_slice culture_slice = { .str = (char *)culture_name, .len = (int)strlen (culture_name) };
+				if (find_civ_culture_id_by_name (&culture_slice, &culture_id)) {
+					bool already_listed = false;
+					for (int k = 0; k < def->buildable_by_civ_cultures_id_count; k++) {
+						if (def->buildable_by_civ_cultures_ids[k] == culture_id) {
+							already_listed = true;
+							break;
+						}
+					}
+					if ((! already_listed) && (def->buildable_by_civ_cultures_id_count < ARRAY_LEN (def->buildable_by_civ_cultures_ids)))
+						def->buildable_by_civ_cultures_ids[def->buildable_by_civ_cultures_id_count++] = culture_id;
+				} else {
+					struct error_line * err = add_error_line (parse_errors);
+					snprintf (err->text, sizeof err->text, "^  Line %d: buildable_by_civ_cultures entry \"%.*s\" not found", line_number, culture_slice.len, culture_slice.str);
+					err->text[(sizeof err->text) - 1] = '\0';
+				}
+			}
+
+			for (int i = 0; i < def->buildable_by_civ_cultures_count; i++) {
+				if (def->buildable_by_civ_cultures[i] != NULL) {
+					free (def->buildable_by_civ_cultures[i]);
+					def->buildable_by_civ_cultures[i] = NULL;
+				}
+			}
+			def->buildable_by_civ_cultures_count = 0;
+			def->has_buildable_by_civ_cultures = true;
+		} else {
+			def->buildable_by_civ_cultures_count = 0;
+			def->buildable_by_civ_cultures_id_count = 0;
+			def->has_buildable_by_civ_cultures = false;
+		}
+		free (value_text);
 
 	} else if (slice_matches_str (key, "img_paths")) {
 		char * value_text = trim_and_extract_slice (value, 0);
@@ -7240,6 +7571,60 @@ district_config_has_dependent_improvement (struct district_config * cfg, char co
 	return false;
 }
 
+bool
+find_civ_trait_id_by_name (struct string_slice const * name, int * out_id)
+{
+	if ((name == NULL) || (name->len <= 0) || (out_id == NULL))
+		return false;
+
+	struct trait_entry { char const * name; int id; } traits[] = {
+		{"Agricultural", 6},
+		{"Commercial", 1},
+		{"Expansionist", 2},
+		{"Industrious", 5},
+		{"Militaristic", 0},
+		{"Religious", 4},
+		{"Scientific", 3},
+		{"Seafaring", 7}
+	};
+
+	for (int i = 0; i < ARRAY_LEN (traits); i++) {
+		if (slice_matches_str (name, traits[i].name)) {
+			*out_id = traits[i].id;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool
+find_civ_culture_id_by_name (struct string_slice const * name, int * out_id)
+{
+	if ((name == NULL) || (name->len <= 0) || (out_id == NULL))
+		return false;
+
+	struct culture_entry { char const * name; int id; } cultures[] = {
+		{"American", 0},
+		{"European", 1},
+		{"Roman", 2},
+		{"Mid East", 3},
+		{"Mideast", 3},
+		{"Middle Eastern", 3},
+		{"MiddleEastern", 3},
+		{"Asian", 4}
+	};
+
+	for (int i = 0; i < ARRAY_LEN (cultures); i++) {
+		if (slice_matches_str (name, cultures[i].name)) {
+			*out_id = cultures[i].id;
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void
 set_wonders_dependent_on_wonder_district (void)
 {
@@ -8374,8 +8759,10 @@ can_build_district_on_tile (Tile * tile, int district_id)
 	int tile_x = 0, tile_y = 0;
 	tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y);
 
-	int prereq_id = is->district_infos[district_id].advance_prereq_id;
-	if ((prereq_id >= 0) && !Leader_has_tech (&leaders[tile->Territory_OwnerID], __, prereq_id))
+	int owner_id = tile->Territory_OwnerID;
+	if ((owner_id < 0) || (owner_id >= 32))
+		return false;
+	if (! leader_can_build_district (&leaders[owner_id], district_id))
 		return false;
 
 	if (! district_resource_prereqs_met (tile, tile_x, tile_y, district_id, NULL))
@@ -8877,9 +9264,7 @@ city_can_build_district (City * city, int district_id)
 	struct district_config const * cfg = &is->district_configs[district_id];
 	struct district_infos const * info = &is->district_infos[district_id];
 
-	// Check tech prerequisite
-	int prereq_id = info->advance_prereq_id;
-	if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[city->Body.CivID], __, prereq_id))
+	if (! leader_can_build_district (&leaders[city->Body.CivID], district_id))
 		return false;
 
 	// Check resource prerequisites (city connection) - ALL must be present
@@ -8892,6 +9277,98 @@ city_can_build_district (City * city, int district_id)
 	// Check if district does not allow multiple and city already has one
 	if (! cfg->allow_multiple && city_has_required_district (city, district_id))
 		return false;
+
+	return true;
+}
+
+bool
+leader_can_build_district (Leader * leader, int district_id)
+{
+	if ((leader == NULL) || (district_id < 0) || (district_id >= is->district_count))
+		return false;
+
+	struct district_config const * cfg = &is->district_configs[district_id];
+	struct district_infos const * info = &is->district_infos[district_id];
+
+	int prereq_id = info->advance_prereq_id;
+	if ((prereq_id >= 0) && ! Leader_has_tech (leader, __, prereq_id))
+		return false;
+
+	if (cfg->has_buildable_by_civs) {
+		bool civ_match = false;
+		if (cfg->buildable_by_civ_count > 0) {
+			Race * race = (leader->RaceID >= 0 && leader->RaceID < p_bic_data->RacesCount)
+				? &p_bic_data->Races[leader->RaceID]
+				: NULL;
+			if (race == NULL)
+				return false;
+			for (int i = 0; i < cfg->buildable_by_civ_count; i++) {
+				char const * civ_name = cfg->buildable_by_civs[i];
+				if ((civ_name == NULL) || (civ_name[0] == '\0')) continue;
+				if ((race->CountryName != NULL) && (strcmp (civ_name, race->CountryName) == 0))     civ_match = true; break;
+				if ((race->SingularName != NULL) && (strcmp (civ_name, race->SingularName) == 0))   civ_match = true; break;
+				if ((race->AdjectiveName != NULL) && (strcmp (civ_name, race->AdjectiveName) == 0)) civ_match = true; break;
+				if ((race->LeaderName != NULL) && (strcmp (civ_name, race->LeaderName) == 0))       civ_match = true; break;
+			}
+		}
+		if (! civ_match)
+			return false;
+	}
+
+	if (cfg->has_buildable_by_civ_traits) {
+		if (cfg->buildable_by_civ_traits_id_count <= 0)
+			return false;
+		Race * race = (leader->RaceID >= 0 && leader->RaceID < p_bic_data->RacesCount)
+			? &p_bic_data->Races[leader->RaceID]
+			: NULL;
+		if (race == NULL || race->vtable == NULL)
+			return false;
+		bool trait_match = false;
+		for (int i = 0; i < cfg->buildable_by_civ_traits_id_count; i++) {
+			int trait_id = cfg->buildable_by_civ_traits_ids[i];
+			if (trait_id >= 0 && race->vtable->CheckBonus (race, __, trait_id)) {
+				trait_match = true;
+				break;
+			}
+		}
+		if (! trait_match)
+			return false;
+	}
+
+	if (cfg->has_buildable_by_civ_govs) {
+		if (cfg->buildable_by_civ_govs_id_count <= 0)
+			return false;
+		int gov_id = leader->GovernmentType;
+		bool gov_match = false;
+		for (int i = 0; i < cfg->buildable_by_civ_govs_id_count; i++) {
+			if (cfg->buildable_by_civ_govs_ids[i] == gov_id) {
+				gov_match = true;
+				break;
+			}
+		}
+		if (! gov_match)
+			return false;
+	}
+
+	if (cfg->has_buildable_by_civ_cultures) {
+		if (cfg->buildable_by_civ_cultures_id_count <= 0)
+			return false;
+		Race * race = (leader->RaceID >= 0 && leader->RaceID < p_bic_data->RacesCount)
+			? &p_bic_data->Races[leader->RaceID]
+			: NULL;
+		if (race == NULL)
+			return false;
+		int culture_id = race->CultureGroupID;
+		bool culture_match = false;
+		for (int i = 0; i < cfg->buildable_by_civ_cultures_id_count; i++) {
+			if (cfg->buildable_by_civ_cultures_ids[i] == culture_id) {
+				culture_match = true;
+				break;
+			}
+		}
+		if (! culture_match)
+			return false;
+	}
 
 	return true;
 }
@@ -9264,8 +9741,8 @@ ensure_neighborhood_request_for_city (City * city)
 	    (city == NULL))
 		return;
 
-	int prereq = is->district_infos[NEIGHBORHOOD_DISTRICT_ID].advance_prereq_id;
-	if ((prereq >= 0) && ! Leader_has_tech (&leaders[city->Body.CivID], __, prereq)) return;
+	if (! leader_can_build_district (&leaders[city->Body.CivID], NEIGHBORHOOD_DISTRICT_ID))
+		return;
 
 	mark_city_needs_district (city, NEIGHBORHOOD_DISTRICT_ID);
 }
@@ -14341,12 +14818,8 @@ issue_district_worker_command (Unit * unit, int command)
 	if ((district_id < 0) || (district_id >= is->district_count))
 		return;
 
-	// Check tech prerequisite for the selected district, if any
-	int prereq_id = is->district_infos[district_id].advance_prereq_id;
-	// Only enforce if a prereq is configured
-	if ((prereq_id >= 0) && !Leader_has_tech (&leaders[unit->Body.CivID], __, prereq_id)) {
-		return; // Civ lacks required tech; do not issue command
-	}
+	if (! leader_can_build_district (&leaders[unit->Body.CivID], district_id))
+		return;
 
 	// Disallow placing districts on invalid terrain, pollution, or cratered tiles
 	if (tile->vtable->m21_Check_Crates (tile, __, 0))
@@ -15741,9 +16214,7 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 				tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y);
 				int owner_civ = tile->vtable->m38_Get_Territory_OwnerID (tile);
 				if ((owner_civ == this->ID) || (owner_civ == 0)) {
-					// Check if the leader has the tech prereq for this district
-					int prereq_id = is->district_infos[inst->district_type].advance_prereq_id;
-					if ((prereq_id < 0 || Leader_has_tech (this, __, prereq_id)) &&
+					if (leader_can_build_district (this, inst->district_type) &&
 					    district_resource_prereqs_met (tile, tile_x, tile_y, inst->district_type, NULL))
 						tr = 1;
 				}
@@ -16365,9 +16836,7 @@ city_meets_district_prereqs_to_build_improvement (City * city, int i_improv, boo
 	if (! needs_district)
 		return true;
 
-	// Ensure prereq tech for the district
-	int prereq_id = is->district_infos[required_district_id].advance_prereq_id;
-	if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[city->Body.CivID], __, prereq_id))
+	if (! leader_can_build_district (&leaders[city->Body.CivID], required_district_id))
 		return false;
 
 	Improvement * improv = &p_bic_data->Improvements[i_improv];
@@ -20473,8 +20942,7 @@ patch_Leader_do_production_phase (Leader * this)
 				if (info->dependent_building_count > 0) continue;
 				if (cfg->command == -1) continue;
 
-				int prereq_id = info->advance_prereq_id;
-				if ((prereq_id >= 0) && ! Leader_has_tech (this, __, prereq_id))
+				if (! leader_can_build_district (this, district_id))
 					continue;
 
 				if (auto_dynamic_district_count < ARRAY_LEN (auto_dynamic_district_ids))
@@ -20485,14 +20953,12 @@ patch_Leader_do_production_phase (Leader * this)
 		// Special exception for AI to build Central Rail Hub, which is available in Industrial era but Mass Transit, 
 		// the only building dependent on it, is in the Modern era. Without this the AI wouldn't build in Industrial era.
 		if (is->current_config.enable_central_rail_hub_districts) {
-			int prereq_id = is->district_infos[CENTRAL_RAIL_HUB_DISTRICT_ID].advance_prereq_id;
-			if ((prereq_id < 0) || Leader_has_tech (this, __, prereq_id))
+			if (leader_can_build_district (this, CENTRAL_RAIL_HUB_DISTRICT_ID))
 				auto_dynamic_district_ids[auto_dynamic_district_count++] = CENTRAL_RAIL_HUB_DISTRICT_ID;
 		}
 
 		if (is->current_config.enable_distribution_hub_districts) {
-			int prereq_id = is->district_infos[DISTRIBUTION_HUB_DISTRICT_ID].advance_prereq_id;
-			if ((prereq_id < 0) || Leader_has_tech (this, __, prereq_id))
+			if (leader_can_build_district (this, DISTRIBUTION_HUB_DISTRICT_ID))
 				ai_update_distribution_hub_goal_for_leader (this);
 		}
 

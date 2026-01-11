@@ -615,6 +615,18 @@ struct district_config {
 	char const * generated_resource;
 	int generated_resource_id;
 	short generated_resource_flags;
+	char const * buildable_by_civs[32];
+	int buildable_by_civ_count;
+	bool has_buildable_by_civs;
+	int buildable_by_civ_traits_ids[8];
+	int buildable_by_civ_traits_id_count;
+	bool has_buildable_by_civ_traits;
+	int buildable_by_civ_govs_ids[5];
+	int buildable_by_civ_govs_id_count;
+	bool has_buildable_by_civ_govs;
+	int buildable_by_civ_cultures_ids[5];
+	int buildable_by_civ_cultures_id_count;
+	bool has_buildable_by_civ_cultures;
 };
 
 struct wonder_district_config {
@@ -782,6 +794,8 @@ struct parsed_district_definition {
 	int shield_bonus;
 	int happiness_bonus;
 	unsigned int buildable_square_types_mask;
+	char * buildable_by_civs[32];
+	int buildable_by_civ_count;
 	bool has_name;
 	bool has_tooltip;
 	bool has_advance_prereq;
@@ -806,11 +820,27 @@ struct parsed_district_definition {
 	bool has_happiness_bonus;
 	bool has_buildable_on;
 	bool has_resource_prereq_on_tile;
+	bool has_buildable_by_civs;
 	char * generated_resource;
 	char * generated_resource_settings[5];
 	int generated_resource_settings_count;
 	bool has_generated_resource;
 	bool has_generated_resource_settings;
+	char * buildable_by_civ_traits[32];
+	int buildable_by_civ_traits_count;
+	int buildable_by_civ_traits_ids[32];
+	int buildable_by_civ_traits_id_count;
+	bool has_buildable_by_civ_traits;
+	char * buildable_by_civ_govs[32];
+	int buildable_by_civ_govs_count;
+	int buildable_by_civ_govs_ids[32];
+	int buildable_by_civ_govs_id_count;
+	bool has_buildable_by_civ_govs;
+	char * buildable_by_civ_cultures[32];
+	int buildable_by_civ_cultures_count;
+	int buildable_by_civ_cultures_ids[32];
+	int buildable_by_civ_cultures_id_count;
+	bool has_buildable_by_civ_cultures;
 };
 
 struct parsed_wonder_definition {
