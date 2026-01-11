@@ -866,3 +866,5 @@ repl call, 0x4C010F,    0x0,        0x0,        "Map_impl_has_fresh_water_within
 repl call, 0x4C0173,    0x0,        0x0,        "Map_impl_is_near_river_within_work_area",	        ""
 repl call, 0x4C01AF,    0x0,        0x0,        "Map_impl_is_near_river_within_work_area",	        ""
 repl call, 0x4C01CF,    0x0,        0x0,        "Map_impl_is_near_lake_within_work_area",	        ""
+inlead,    0x458120,    0x0,        0x0,        "Unit_ai_move_naval_power_unit",			"void (__fastcall *) (Unit * this)"
+inlead,    0x44C130,    0x0,       0x0,         "Unit_ai_eval_pillage_target",		"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)"

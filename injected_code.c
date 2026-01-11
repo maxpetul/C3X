@@ -12270,6 +12270,7 @@ patch_init_floating_point ()
 		{"enable_neighborhood_districts"                         , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
 		{"enable_wonder_districts"                               , false, offsetof (struct c3x_config, enable_wonder_districts)},
 		{"enable_natural_wonders"                                , false, offsetof (struct c3x_config, enable_natural_wonders)},
+		{"add_natural_wonders_to_scenarios_if_none"              , false, offsetof (struct c3x_config, add_natural_wonders_to_scenarios_if_none)},
 		{"enable_distribution_hub_districts"                     , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"enable_aerodrome_districts"                            , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
 		{"enable_port_districts"                                 , false, offsetof (struct c3x_config, enable_port_districts)},
@@ -20453,6 +20454,7 @@ patch_Leader_do_production_phase (Leader * this)
 				for (int i = 0; i < auto_dynamic_district_count; i++) {
 					int district_id = auto_dynamic_district_ids[i];
 
+					if (city_has_required_district (city, district_id)) continue;
 					if (! city_can_build_district (city, district_id)) continue;
 					if (find_pending_district_request (city, district_id) != NULL) continue;
 
@@ -22296,6 +22298,22 @@ patch_Map_place_scenario_things (Map * this)
 
 	if (is->current_config.enable_districts)
 		load_scenario_districts_from_file ();
+
+	if (is->current_config.add_natural_wonders_to_scenarios_if_none &&
+	    is->current_config.enable_natural_wonders) {
+		bool any_natural_wonders = false;
+		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+			struct district_instance * inst = (struct district_instance *)(long)tei.value;
+			if ((inst != NULL) &&
+			    (inst->district_type == NATURAL_WONDER_DISTRICT_ID) &&
+			    (inst->natural_wonder_info.natural_wonder_id >= 0)) {
+				any_natural_wonders = true;
+				break;
+			}
+		}
+		if (! any_natural_wonders)
+			place_natural_wonders_on_map ();
+	}
 
 	is->is_placing_scenario_things = false;
 }
@@ -25749,7 +25767,9 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 		}
 	} 
 	else if (direct_diagonal && *out_variant == SW && anchor == DIR_NE) { *out_pixel_x -=8; *out_pixel_y -= 8; }
+	else if (direct_diagonal && *out_variant == SE && anchor == DIR_NW) { *out_pixel_x -=8; *out_pixel_y -= 8; }
 	else if (direct_diagonal && *out_variant == NW && anchor == DIR_SE) { *out_pixel_x +=6; *out_pixel_y += 6; }
+	else if (direct_diagonal && *out_variant == NE && anchor == DIR_SW) { *out_pixel_x +=6; *out_pixel_y += 6; }
 }
 
 bool
@@ -27193,7 +27213,6 @@ patch_Unit_select_transport (Unit * this, int edx, int tile_x, int tile_y, bool 
 	return transport;
 }
 
-/*
 // Returns true if the given tile is a water district owned by an enemy of the unit
 bool
 is_enemy_maritime_district_tile (Unit * unit, Tile * tile)
@@ -27218,14 +27237,18 @@ is_enemy_maritime_district_tile (Unit * unit, Tile * tile)
 	if ((owner <= 0) || (owner == unit->Body.CivID))
 		return false;
 
-	return unit->vtable->is_enemy_of_civ (unit, owner, false);
+	Leader * leader = &leaders[unit->Body.CivID];
+	return leader->At_War[owner];
 }
 
 // Boost pillage desirability for maritime districts
 int __fastcall
-patch_Unit_ai_eval_pillage_target (Unit * this, int edx, unsigned short tile_x, int tile_y)
+patch_Unit_ai_eval_pillage_target (Unit * this, int edx, int tile_x, int tile_y)
 {
 	int base = Unit_ai_eval_pillage_target (this, __, tile_x, tile_y);
+
+	if (! is->current_config.enable_districts || ! is->current_config.enable_port_districts)
+		return base;
 
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((base > 0) && is_enemy_maritime_district_tile (this, tile)) {
@@ -27304,12 +27327,12 @@ void __fastcall
 patch_Unit_ai_move_naval_power_unit (Unit * this)
 {
 	// If we're already sitting on an enemy maritime district, pillage it immediately
-	if (this->Body.Container_Unit < 0) {
+	if (is->current_config.enable_districts && is->current_config.enable_port_districts && this->Body.Container_Unit < 0) {
 		Tile * here = tile_at (this->Body.X, this->Body.Y);
 		if (is_enemy_maritime_district_tile (this, here) &&
-		    can_pillage (this, (unsigned short)this->Body.X, this->Body.Y) &&
-		    (patch_Unit_ai_eval_pillage_target (this, __, (unsigned short)this->Body.X, this->Body.Y) > 0)) {
-			attack_tile (this, this->Body.X, this->Body.Y, 0);
+		    patch_Unit_can_pillage (this, __, this->Body.X, this->Body.Y) &&
+		    (patch_Unit_ai_eval_pillage_target (this, __, this->Body.X, this->Body.Y) > 0)) {
+			Unit_attack_tile (this, __, this->Body.X, this->Body.Y, false);
 			return;
 		}
 	}
@@ -27319,7 +27342,6 @@ patch_Unit_ai_move_naval_power_unit (Unit * this)
 
 	Unit_ai_move_naval_power_unit (this);
 }
-*/
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

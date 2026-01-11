@@ -336,6 +336,7 @@ struct c3x_config {
 	int pinned_hour_for_day_night_cycle;
 
 	bool enable_natural_wonders;
+	bool add_natural_wonders_to_scenarios_if_none;
 	bool show_natural_wonder_name_on_map;
 	int minimum_natural_wonder_separation;
 
@@ -371,8 +372,8 @@ struct c3x_config {
 	int central_rail_hub_distribution_food_bonus_percent;
 	int central_rail_hub_distribution_shield_bonus_percent;
 
-	bool expand_water_tile_checks_to_city_work_area;
 	bool workers_can_enter_coast;
+	bool expand_water_tile_checks_to_city_work_area;
 
 	bool ai_defends_districts;
 
