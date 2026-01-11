@@ -8734,6 +8734,39 @@ district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district
 }
 
 bool
+tile_has_bridge_district_at (int tile_x, int tile_y)
+{
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	return (inst != NULL) && (inst->district_type == BRIDGE_DISTRICT_ID);
+}
+
+int
+count_contiguous_bridge_districts (int tile_x, int tile_y, int dx, int dy)
+{
+	Map * map = &p_bic_data->Map;
+	int nx = tile_x + dx;
+	int ny = tile_y + dy;
+	int count = 0;
+	int max_steps = map->Width + map->Height;
+
+	for (int step = 0; step < max_steps; step++) {
+		wrap_tile_coords (map, &nx, &ny);
+		if (! tile_has_bridge_district_at (nx, ny))
+			break;
+		count++;
+		nx += dx;
+		ny += dy;
+	}
+
+	return count;
+}
+
+bool
 can_build_district_on_tile (Tile * tile, int district_id)
 {
 	if ((! is->current_config.enable_districts) ||
@@ -8753,6 +8786,7 @@ can_build_district_on_tile (Tile * tile, int district_id)
 	if ((cfg->command == UCV_Build_DistributionHub) && !is->current_config.enable_distribution_hub_districts) return false;
 	if ((cfg->command == UCV_Build_Aerodrome)       && !is->current_config.enable_aerodrome_districts)        return false;
 	if ((cfg->command == UCV_Build_Port)            && !is->current_config.enable_port_districts)             return false;
+	if ((cfg->command == UCV_Build_Bridge)          && !is->current_config.enable_bridge_districts)           return false;
 
 	if (! district_is_buildable_on_square_type (cfg, tile))
 		return false;
@@ -8768,6 +8802,30 @@ can_build_district_on_tile (Tile * tile, int district_id)
 
 	if (! district_resource_prereqs_met (tile, tile_x, tile_y, district_id, NULL))
 		return false;
+
+	if (district_id == BRIDGE_DISTRICT_ID && is->current_config.max_contiguous_bridge_districts > 0) {
+		int max_bridges = is->current_config.max_contiguous_bridge_districts;
+
+		int ns_count = count_contiguous_bridge_districts (tile_x, tile_y, 0, -2) +
+			       count_contiguous_bridge_districts (tile_x, tile_y, 0, 2);
+		if (ns_count > max_bridges)
+			return false;
+
+		int we_count = count_contiguous_bridge_districts (tile_x, tile_y, -2, 0) +
+			       count_contiguous_bridge_districts (tile_x, tile_y, 2, 0);
+		if (we_count > max_bridges)
+			return false;
+
+		int swne_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, 1) +
+				 count_contiguous_bridge_districts (tile_x, tile_y, 1, -1);
+		if (swne_count > max_bridges)
+			return false;
+
+		int nwse_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, -1) +
+				 count_contiguous_bridge_districts (tile_x, tile_y, 1, 1);
+		if (nwse_count > max_bridges)
+			return false;
+	}
 
 	struct district_instance * existing_inst = get_district_instance (tile);
 	int existing_district_id = (existing_inst != NULL) ? existing_inst->district_type : -1;
@@ -12752,6 +12810,7 @@ patch_init_floating_point ()
 		{"enable_distribution_hub_districts"                     , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"enable_aerodrome_districts"                            , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
 		{"enable_port_districts"                                 , false, offsetof (struct c3x_config, enable_port_districts)},
+		{"enable_bridge_districts"                               , false, offsetof (struct c3x_config, enable_bridge_districts)},
 		{"enable_central_rail_hub_districts"                     , false, offsetof (struct c3x_config, enable_central_rail_hub_districts)},
 		{"completed_wonder_districts_can_be_destroyed"           , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
 		{"destroyed_wonders_can_be_built_again"                  , false, offsetof (struct c3x_config, destroyed_wonders_can_be_built_again)},
@@ -12806,6 +12865,7 @@ patch_init_floating_point ()
 		{"central_rail_hub_distribution_food_bonus_percent"  ,    25, offsetof (struct c3x_config, central_rail_hub_distribution_food_bonus_percent)},
 		{"central_rail_hub_distribution_shield_bonus_percent",    25, offsetof (struct c3x_config, central_rail_hub_distribution_shield_bonus_percent)},
 		{"neighborhood_needed_message_frequency"             ,     4, offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
+		{"max_contiguous_bridge_districts"                   ,     0, offsetof (struct c3x_config, max_contiguous_bridge_districts)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -14074,6 +14134,8 @@ set_up_district_buttons (Main_GUI * this)
 	for (int dc = 0; dc < is->district_count; dc++) {
 
 		if (is->district_configs[dc].command == -1)
+			continue;
+		if ((dc == BRIDGE_DISTRICT_ID) && ! is->current_config.enable_bridge_districts)
 			continue;
 
 		if (existing_district_id == dc && district_completed) continue;
@@ -15508,6 +15570,23 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 			base_validity = AMV_OK;
 	}
 
+	// Allow land units to enter bridge tiles
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_bridge_districts &&
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land) &&
+	    ((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
+		int nx, ny;
+		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
+		Tile * dest = tile_at (nx, ny);
+		if ((dest != NULL) && (dest != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (dest);
+			if ((inst != NULL) &&
+			    (inst->district_type == BRIDGE_DISTRICT_ID) &&
+			    district_is_complete (dest, inst->district_type))
+				base_validity = AMV_OK;
+		}
+	}
+
 	if ((base_validity == AMV_OK) &&
 	    is->current_config.enable_districts &&
 	    is->current_config.enable_port_districts &&
@@ -15564,6 +15643,21 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 		    dest->vtable->m35_Check_Is_Water (dest) &&
 		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
 			base_cost = Unit_get_max_move_points (unit);
+	}
+
+	// Let the pathfinder consider bridge tiles reachable for land units
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_bridge_districts &&
+	    (base_cost < 0) && (unit != NULL) &&
+	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Land)) {
+		Tile * dest = tile_at (to_x, to_y);
+		if ((dest != NULL) && (dest != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (dest);
+			if ((inst != NULL) &&
+			    (inst->district_type == BRIDGE_DISTRICT_ID) &&
+			    district_is_complete (dest, inst->district_type))
+				base_cost = Unit_get_max_move_points (unit);
+		}
 	}
 
 	if ((unit != NULL) &&
@@ -21359,22 +21453,39 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 	is->moving_unit_to_adjacent_tile = true;
 
 	bool const allow_worker_coast = is->current_config.enable_districts && is->current_config.workers_can_enter_coast && is_worker (this);
+	bool const allow_bridge_walk = is->current_config.enable_districts &&
+		is->current_config.enable_bridge_districts &&
+		(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land);
 	bool coast_override_active = false;
 	enum UnitStateType prev_state = this->Body.UnitState;
 	int prev_container = this->Body.Container_Unit;
 
-	if (allow_worker_coast) {
+	if (allow_worker_coast || allow_bridge_walk) {
 		int nx, ny;
 		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
 		Tile * dest = tile_at (nx, ny);
-		if ((dest != NULL) &&
-		    dest->vtable->m35_Check_Is_Water (dest) &&
-		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast)) {
+		if (dest != NULL) {
+			bool should_override = false;
+			if (allow_worker_coast &&
+			    dest->vtable->m35_Check_Is_Water (dest) &&
+			    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
+				should_override = true;
+
+			if (! should_override && allow_bridge_walk) {
+				struct district_instance * inst = get_district_instance (dest);
+				if ((inst != NULL) &&
+				    (inst->district_type == BRIDGE_DISTRICT_ID) &&
+				    district_is_complete (dest, inst->district_type))
+					should_override = true;
+			}
+
+			if (should_override) {
 			coast_override_active = true;
 			is->coast_walk_unit = this;
 			is->coast_walk_transport_override = false;
 			is->coast_walk_prev_state = prev_state;
 			is->coast_walk_prev_container = prev_container;
+			}
 		}
 	}
 
@@ -26440,6 +26551,66 @@ get_energy_grid_image_index (int tile_x, int tile_y)
     return index;
 }
 
+int
+get_bridge_image_index (Tile * tile)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return 0;
+
+	int tile_x = 0;
+	int tile_y = 0;
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst != NULL) {
+		tile_x = inst->tile_x;
+		tile_y = inst->tile_y;
+	} else {
+		tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y);
+	}
+
+	bool bridge_n  = tile_has_bridge_district_at (tile_x, tile_y - 2);
+	bool bridge_s  = tile_has_bridge_district_at (tile_x, tile_y + 2);
+	bool bridge_w  = tile_has_bridge_district_at (tile_x - 2, tile_y);
+	bool bridge_e  = tile_has_bridge_district_at (tile_x + 2, tile_y);
+	bool bridge_ne = tile_has_bridge_district_at (tile_x + 1, tile_y - 1);
+	bool bridge_nw = tile_has_bridge_district_at (tile_x - 1, tile_y - 1);
+	bool bridge_se = tile_has_bridge_district_at (tile_x + 1, tile_y + 1);
+	bool bridge_sw = tile_has_bridge_district_at (tile_x - 1, tile_y + 1);
+
+	if (bridge_n || bridge_s || bridge_w || bridge_e || bridge_ne || bridge_nw || bridge_se || bridge_sw) {
+		int ns_count = (bridge_n ? 1 : 0) + (bridge_s ? 1 : 0);
+		int we_count = (bridge_w ? 1 : 0) + (bridge_e ? 1 : 0);
+		int swne_count = (bridge_sw ? 1 : 0) + (bridge_ne ? 1 : 0);
+		int nwse_count = (bridge_nw ? 1 : 0) + (bridge_se ? 1 : 0);
+
+		if (ns_count == 2) return 2;
+		if (we_count == 2) return 3;
+		if (swne_count == 2) return 0;
+		if (nwse_count == 2) return 1;
+
+		if (ns_count == 1) return 2;
+		if (we_count == 1) return 3;
+		if (swne_count == 1) return 0;
+		if (nwse_count == 1) return 1;
+	}
+
+	int owner_id = tile->Territory_OwnerID;
+	bool north_land = tile_offset_is_land (owner_id, tile_x, tile_y - 2, false);
+	bool south_land = tile_offset_is_land (owner_id, tile_x, tile_y + 2, false);
+	bool west_land  = tile_offset_is_land (owner_id, tile_x - 2, tile_y, false);
+	bool east_land  = tile_offset_is_land (owner_id, tile_x + 2, tile_y, false);
+	bool ne_land    = tile_offset_is_land (owner_id, tile_x + 1, tile_y - 1, false);
+	bool nw_land    = tile_offset_is_land (owner_id, tile_x - 1, tile_y - 1, false);
+	bool se_land    = tile_offset_is_land (owner_id, tile_x + 1, tile_y + 1, false);
+	bool sw_land    = tile_offset_is_land (owner_id, tile_x - 1, tile_y + 1, false);
+
+	if (north_land || south_land) return 2;
+	if (west_land || east_land) return 3;
+	if (ne_land || sw_land) return 0;
+	if (nw_land || se_land) return 1;
+
+	return 0;
+}
+
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
@@ -26512,7 +26683,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                 era = leader->Era;
 			if (cfg->align_to_coast)
 				align_variant_and_pixel_offsets_with_coastline (tile, &variant, &pixel_x, &pixel_y);
-        } else if (district_id != WONDER_DISTRICT_ID && district_id != NATURAL_WONDER_DISTRICT_ID) {
+        } else if (district_id != WONDER_DISTRICT_ID && district_id != NATURAL_WONDER_DISTRICT_ID && district_id != BRIDGE_DISTRICT_ID) {
 			Sprite * abandoned_sprite = &is->abandoned_district_img;
 			if (tile->vtable->m35_Check_Is_Water (tile) && is->abandoned_maritime_district_img.vtable != NULL)
 				abandoned_sprite = &is->abandoned_maritime_district_img;
@@ -26590,7 +26761,8 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 			}
 			case BRIDGE_DISTRICT_ID:
 			{
-				buildings = get_bridge_orientation (tile);
+				buildings = get_bridge_image_index (tile);
+				break;
 			}
             default:
             {
@@ -27716,6 +27888,20 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 		}
 	}
 
+	if (is->current_config.enable_districts &&
+		is->current_config.enable_bridge_districts &&
+		base != PBV_OK &&
+		(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land)) {
+		Tile * dest = tile_at (to_x, to_y);
+		if ((dest != NULL) && (dest != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (dest);
+			if ((inst != NULL) &&
+			    (inst->district_type == BRIDGE_DISTRICT_ID) &&
+			    district_is_complete (dest, inst->district_type))
+				return PBV_OK;
+		}
+	}
+
 	return base;
 }
 
@@ -27724,14 +27910,30 @@ patch_Unit_select_transport (Unit * this, int edx, int tile_x, int tile_y, bool 
 {
 	Unit * transport = Unit_select_transport (this, __, tile_x, tile_y, do_show_popup);
 
-	if (is->current_config.enable_districts && is->current_config.workers_can_enter_coast &&
-	    (transport == NULL) && (this == is->coast_walk_unit) && is_worker (this)) {
+	if (is->current_config.enable_districts &&
+	    (transport == NULL) && (this == is->coast_walk_unit)) {
 		Tile * dest = tile_at (tile_x, tile_y);
-		if ((dest != NULL) &&
-		    dest->vtable->m35_Check_Is_Water (dest) &&
-		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast)) {
-			is->coast_walk_transport_override = true;
-			return this; // Fake a transport so the move logic proceeds
+		if (dest != NULL) {
+			bool allow_move = false;
+			if (is->current_config.workers_can_enter_coast && is_worker (this) &&
+			    dest->vtable->m35_Check_Is_Water (dest) &&
+			    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
+				allow_move = true;
+
+			if (! allow_move &&
+			    is->current_config.enable_bridge_districts &&
+			    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land)) {
+				struct district_instance * inst = get_district_instance (dest);
+				if ((inst != NULL) &&
+				    (inst->district_type == BRIDGE_DISTRICT_ID) &&
+				    district_is_complete (dest, inst->district_type))
+					allow_move = true;
+			}
+
+			if (allow_move) {
+				is->coast_walk_transport_override = true;
+				return this; // Fake a transport so the move logic proceeds
+			}
 		}
 	}
 

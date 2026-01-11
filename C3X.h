@@ -346,6 +346,7 @@ struct c3x_config {
 	bool enable_distribution_hub_districts;
 	bool enable_aerodrome_districts;
 	bool enable_port_districts;
+	bool enable_bridge_districts;
 	bool enable_central_rail_hub_districts;
 
 	bool cities_with_mutual_district_receive_buildings;
@@ -374,6 +375,7 @@ struct c3x_config {
 
 	bool workers_can_enter_coast;
 	bool expand_water_tile_checks_to_city_work_area;
+	int max_contiguous_bridge_districts;
 
 	bool ai_defends_districts;
 
