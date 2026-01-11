@@ -14110,21 +14110,6 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 			}
 		} else if (unit_command_value == UCV_Pillage) {
 			return patch_Unit_can_pillage (this, __, this->Body.X, this->Body.Y);
-		} else if (unit_command_value == UCV_Join_City) {
-			bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
-			if (!is_human) {
-				int type_id = this->Body.UnitTypeID;
-				if ((type_id >= 0) && (type_id < p_bic_data->UnitTypeCount)) {
-					int worker_actions = p_bic_data->UnitTypes[type_id].Worker_Actions;
-					if (worker_actions != 0 && (worker_actions & (UCV_Automate))) {
-						int civ_id = this->Body.CivID;
-						if (civ_id >= 0 && civ_id < 32) {
-							return is->city_pending_district_requests[civ_id].len == 0;
-						}
-						return true;
-					}
-				}
-			}
 		}
 	} 
 	if (is->current_config.disable_worker_automation &&
@@ -14140,6 +14125,74 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 	}
 	
 	return Unit_can_perform_command (this, __, unit_command_value);
+}
+
+void __fastcall
+patch_Unit_join_city (Unit * this, int edx, City * city)
+{
+	if (is->current_config.enable_districts && is_worker (this)) {
+		int civ_id = this->Body.CivID;
+		bool is_human = (*p_human_player_bits & (1 << civ_id)) != 0;
+		if (! is_human) {
+			struct district_worker_record * rec = get_tracked_worker_record (this);
+			if ((rec != NULL) && (rec->pending_req != NULL)) {
+				ai_move_district_worker (this, rec);
+				return;
+			}
+
+			Tile * worker_tile = tile_at (this->Body.X, this->Body.Y);
+			if ((worker_tile != NULL) && (worker_tile != p_null_tile)) {
+				int worker_continent_id = worker_tile->vtable->m46_Get_ContinentID (worker_tile);
+
+				if ((civ_id >= 0) && (civ_id < 32)) {
+					struct pending_district_request * same_city_req = NULL;
+					struct pending_district_request * same_continent_req = NULL;
+
+					FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
+						struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+						if ((req == NULL) || (req->assigned_worker_id >= 0))
+							continue;
+						if ((req->civ_id != civ_id) || (req->city_id < 0))
+							continue;
+
+						City * req_city = get_city_ptr (req->city_id);
+						if (req_city == NULL)
+							continue;
+
+						if (city != NULL && req_city->Body.ID == city->Body.ID) {
+							same_city_req = req;
+							break;
+						}
+
+						Tile * req_city_tile = tile_at (req_city->Body.X, req_city->Body.Y);
+						if ((req_city_tile != NULL) && (req_city_tile != p_null_tile)) {
+							int req_continent_id = req_city_tile->vtable->m46_Get_ContinentID (req_city_tile);
+							if (req_continent_id == worker_continent_id) {
+								same_continent_req = req;
+							}
+						}
+					}
+
+					struct pending_district_request * chosen_req = (same_city_req != NULL) ? same_city_req : same_continent_req;
+					if (chosen_req != NULL) {
+						City * req_city = get_city_ptr (chosen_req->city_id);
+						if (req_city != NULL) {
+							int target_x = 0;
+							int target_y = 0;
+							Tile * target_tile = find_tile_for_district (req_city, chosen_req->district_id, &target_x, &target_y);
+							if ((target_tile != NULL) && (target_tile != p_null_tile)) {
+								wrap_tile_coords (&p_bic_data->Map, &target_x, &target_y);
+								assign_worker_to_district (chosen_req, this, req_city, chosen_req->district_id, target_x, target_y);
+								return;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	Unit_join_city (this, __, city);
 }
 
 bool __fastcall
@@ -20362,9 +20415,7 @@ patch_Leader_do_production_phase (Leader * this)
 				struct district_config * cfg = &is->district_configs[district_id];
 				struct district_infos * info = &is->district_infos[district_id];
 
-				// Carve out an exception for AI to build Central Rail Hub, which is available in Industrial era but Mass Transit, 
-				// the only building dependent on it, is in the Modern era.
-				if (info->dependent_building_count > 0 && district_id != CENTRAL_RAIL_HUB_DISTRICT_ID) continue;
+				if (info->dependent_building_count > 0) continue;
 				if (cfg->command == -1) continue;
 
 				int prereq_id = info->advance_prereq_id;
@@ -20376,8 +20427,15 @@ patch_Leader_do_production_phase (Leader * this)
 			}
 		}
 
+		// Special exception for AI to build Central Rail Hub, which is available in Industrial era but Mass Transit, 
+		// the only building dependent on it, is in the Modern era. Without this the AI wouldn't build in Industrial era.
+		if (is->current_config.enable_central_rail_hub_districts) {
+			int prereq_id = is->district_infos[CENTRAL_RAIL_HUB_DISTRICT_ID].advance_prereq_id;
+			if ((prereq_id < 0) || Leader_has_tech (this, __, prereq_id))
+				auto_dynamic_district_ids[auto_dynamic_district_count++] = CENTRAL_RAIL_HUB_DISTRICT_ID;
+		}
+
 		if (is->current_config.enable_distribution_hub_districts) {
-			// Check if AI has the tech prereq for distribution hubs before updating goals
 			int prereq_id = is->district_infos[DISTRIBUTION_HUB_DISTRICT_ID].advance_prereq_id;
 			if ((prereq_id < 0) || Leader_has_tech (this, __, prereq_id))
 				ai_update_distribution_hub_goal_for_leader (this);
@@ -25844,7 +25902,7 @@ get_energy_grid_image_index (int tile_x, int tile_y)
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	//*p_debug_mode_bits |= 0xC;
+	*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
