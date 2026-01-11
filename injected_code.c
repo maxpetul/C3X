@@ -73,7 +73,8 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define NATURAL_WONDER_DISTRICT_ID   4
 #define PORT_DISTRICT_ID             5
 #define CENTRAL_RAIL_HUB_DISTRICT_ID 6
-#define ENERGY_GRID_DISTRICT_ID    7
+#define ENERGY_GRID_DISTRICT_ID      7
+#define BRIDGE_DISTRICT_ID           8
 
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
@@ -26586,6 +26587,10 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 				// and thus have a combinatorial number of images based on which power plants are built in their radius. This returns the correct image index
 				buildings = get_energy_grid_image_index (tile_x, tile_y);
 				break;
+			}
+			case BRIDGE_DISTRICT_ID:
+			{
+				buildings = get_bridge_orientation (tile);
 			}
             default:
             {

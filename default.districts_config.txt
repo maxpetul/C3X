@@ -319,3 +319,23 @@ food_bonus            = 0
 gold_bonus            = 0
 shield_bonus          = 2
 happiness_bonus       = 0
+
+#District
+name                  = Bridge
+tooltip               = Build Bridge
+img_paths             = Bridge.pcx
+btn_tile_sheet_row    = 1
+btn_tile_sheet_column = 7
+vary_img_by_era       = 1
+vary_img_by_culture   = 0
+advance_prereq        = Industrialization
+dependent_improvs     = 
+buildable_on          = coast
+defense_bonus_percent = 0
+allow_multiple        = 1
+culture_bonus         = 0
+science_bonus         = 0
+food_bonus            = 0
+gold_bonus            = 0
+shield_bonus          = 0
+happiness_bonus       = 0
