@@ -16234,25 +16234,28 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 			return false;
 	}
 
-	if (is->current_config.enable_districts) {
+	if (is->current_config.enable_districts && base) {
+		bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
 		UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
 
-		// Bail if tech reqs are not met
-		int prereq_id = type->AdvReq;
-		if (prereq_id >= 0 && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id))
-			return false;
-
-		if (! Leader_can_build_unit (&leaders[this->Body.CivID], __, unit_type_id, 1, false))
-			return false;
+		// Superficially allow the AI to choose the unit for scoring and production.
+		// If a disallowed air/naval unit is chosen in ai_choose_production, we'll swap it out for a feasible fallback later
+		// after prioritizing the aerodrome/port to be built
+		if (! is_human && (type->Unit_Class == UTC_Air || type->Unit_Class == UTC_Sea))
+			return base;
 
 		// Air units
 		if (type->Unit_Class == UTC_Air) {
 			if (is->current_config.enable_aerodrome_districts && is->current_config.air_units_use_aerodrome_districts_not_cities) {
+				if (! city_can_build_district (this, AERODROME_DISTRICT_ID))
+					return false;
 				return city_has_required_district (this, AERODROME_DISTRICT_ID);
 			}
 		// Naval units
 		} else if (type->Unit_Class == UTC_Sea) {
 			if (is->current_config.enable_port_districts && is->current_config.naval_units_use_port_districts_not_cities) {
+				if (! city_can_build_district (this, PORT_DISTRICT_ID))
+					return false;
 				return city_has_required_district (this, PORT_DISTRICT_ID);
 			}
 		}
@@ -16417,31 +16420,55 @@ ai_handle_district_production_requirements (City * city, City_Order * out)
 	bool swapped_to_fallback = false;
 	City_Order fallback_order = {0};
 	int required_district_id = -1;
+	bool should_mark_district = false;
 
 	char ss[200];
 
 	if (is->current_config.enable_districts &&
-	    (out->OrderType == COT_Improvement) &&
-	    (out->OrderID >= 0) && (out->OrderID < p_bic_data->ImprovementsCount)) {
-
-		// Check if AI is trying to build a wonder without an incomplete wonder district
+	    (out->OrderID >= 0)) {
 		bool needs_wonder_district = false;
-		bool requires_district = city_requires_district_for_improvement (city, out->OrderID, &required_district_id);
-		if (is->current_config.enable_wonder_districts) {
-			Improvement * improv = &p_bic_data->Improvements[out->OrderID];
-			if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) &&
-			    (! city_has_wonder_district_with_no_completed_wonder (city, out->OrderID))) {
-				snprintf (ss, sizeof ss, "ai_handle_district_production_requirements: City %d (%s) needs wonder district to build wonder improvement %d\n",
-					city->Body.ID, city->Body.CityName, out->OrderID);
-				(*p_OutputDebugStringA) (ss);
-				needs_wonder_district = true;
-				if (required_district_id < 0) {
-					required_district_id = WONDER_DISTRICT_ID;
+		bool requires_district = false;
+		bool needs_district = false;
+
+		if ((out->OrderType == COT_Unit) &&
+		    (out->OrderID < p_bic_data->UnitTypeCount)) {
+			UnitType * type = &p_bic_data->UnitTypes[out->OrderID];
+			if ((type->Unit_Class == UTC_Air) &&
+			    is->current_config.enable_aerodrome_districts &&
+			    is->current_config.air_units_use_aerodrome_districts_not_cities &&
+			    (! city_has_required_district (city, AERODROME_DISTRICT_ID))) {
+				required_district_id = AERODROME_DISTRICT_ID;
+				needs_district = true;
+				should_mark_district = true;
+			} else if ((type->Unit_Class == UTC_Sea) &&
+				   is->current_config.enable_port_districts &&
+				   is->current_config.naval_units_use_port_districts_not_cities &&
+				   (! city_has_required_district (city, PORT_DISTRICT_ID))) {
+				required_district_id = PORT_DISTRICT_ID;
+				needs_district = true;
+				should_mark_district = true;
+			}
+		} else if ((out->OrderType == COT_Improvement) &&
+			   (out->OrderID < p_bic_data->ImprovementsCount)) {
+			// Check if AI is trying to build a wonder without an incomplete wonder district
+			requires_district = city_requires_district_for_improvement (city, out->OrderID, &required_district_id);
+			if (is->current_config.enable_wonder_districts) {
+				Improvement * improv = &p_bic_data->Improvements[out->OrderID];
+				if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) &&
+				    (! city_has_wonder_district_with_no_completed_wonder (city, out->OrderID))) {
+					snprintf (ss, sizeof ss, "ai_handle_district_production_requirements: City %d (%s) needs wonder district to build wonder improvement %d\n",
+						city->Body.ID, city->Body.CityName, out->OrderID);
+					(*p_OutputDebugStringA) (ss);
+					needs_wonder_district = true;
+					if (required_district_id < 0) {
+						required_district_id = WONDER_DISTRICT_ID;
+					}
 				}
 			}
+			needs_district = needs_wonder_district || requires_district;
 		}
 
-		if (needs_wonder_district || requires_district) {
+		if (needs_district) {
 			struct ai_best_feasible_order * stored = get_best_feasible_order (city);
 			if (stored != NULL) {
 				bool fallback_is_feasible = true;
@@ -16473,15 +16500,30 @@ ai_handle_district_production_requirements (City * city, City_Order * out)
 					if ((stored->order.OrderID < 0) ||
 					    (stored->order.OrderID >= p_bic_data->UnitTypeCount))
 						fallback_is_feasible = false;
+					if (fallback_is_feasible) {
+						UnitType * type = &p_bic_data->UnitTypes[stored->order.OrderID];
+						if ((type->Unit_Class == UTC_Air) &&
+						    is->current_config.enable_aerodrome_districts &&
+						    is->current_config.air_units_use_aerodrome_districts_not_cities &&
+						    (! city_has_required_district (city, AERODROME_DISTRICT_ID)))
+							fallback_is_feasible = false;
+						if ((type->Unit_Class == UTC_Sea) &&
+						    is->current_config.enable_port_districts &&
+						    is->current_config.naval_units_use_port_districts_not_cities &&
+						    (! city_has_required_district (city, PORT_DISTRICT_ID)))
+							fallback_is_feasible = false;
+					}
 				} else
 					fallback_is_feasible = false;
 
 				if (fallback_is_feasible) {
-					// Remember pending building order for any improvement that requires a district
-					snprintf (ss, sizeof ss, "ai_handle_district_production_requirements: Remembering fallback pending building order for city %d (%s): order type %d id %d\n",
-						city->Body.ID, city->Body.CityName, out->OrderType, out->OrderID);
-					(*p_OutputDebugStringA) (ss);
-					remember_pending_building_order (city, out->OrderID);
+					if (out->OrderType == COT_Improvement) {
+						// Remember pending building order for any improvement that requires a district
+						snprintf (ss, sizeof ss, "ai_handle_district_production_requirements: Remembering fallback pending building order for city %d (%s): order type %d id %d\n",
+							city->Body.ID, city->Body.CityName, out->OrderType, out->OrderID);
+						(*p_OutputDebugStringA) (ss);
+						remember_pending_building_order (city, out->OrderID);
+					}
 
 					fallback_order = stored->order;
 					swapped_to_fallback = true;
@@ -16492,8 +16534,9 @@ ai_handle_district_production_requirements (City * city, City_Order * out)
 
 	if (swapped_to_fallback) {
 		*out = fallback_order;
-		mark_city_needs_district (city, required_district_id);
 	}
+	if ((swapped_to_fallback || should_mark_district) && (required_district_id >= 0))
+		mark_city_needs_district (city, required_district_id);
 
 	clear_best_feasible_order (city);
 	return swapped_to_fallback;
