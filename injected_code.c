@@ -17473,11 +17473,14 @@ patch_City_get_net_commerce (City * this, int edx, int kind, bool include_scienc
 bool
 cut_unaffordable_research_spending (Leader * leader, bool skip_popup)
 {
-	int treasury = leader->Gold_Encoded + leader->Gold_Decrement,
-	    rate_cap = p_bic_data->Governments[leader->GovernmentType].RateCap;
+	// The rate cap limits AI players' spending on the gold slider (in Leader::ai_adjust_sliders) however it does not apply to human players when
+	// adjusting sliders manually on the domestic advisor screen.
+	int gold_rate_cap = ((*p_human_player_bits & 1<<leader->ID) != 0) ? 10 : p_bic_data->Governments[leader->GovernmentType].RateCap;
+
+	int treasury = leader->Gold_Encoded + leader->Gold_Decrement;
 	bool reduced_spending = false;
 	while (leader->science_slider > 0 &&
-	       leader->gold_slider < rate_cap &&
+	       leader->gold_slider < gold_rate_cap &&
 	       treasury + Leader_compute_income (leader) < 0) {
 		leader->science_slider -= 1;
 		leader->gold_slider += 1;
