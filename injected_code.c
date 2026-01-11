@@ -16234,14 +16234,25 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 			return false;
 	}
 
-	if (is->current_config.enable_districts && base) {
+	if (is->current_config.enable_districts) {
 		bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
 		UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
+
+		// Bail if tech reqs are not met
+		int prereq_id = type->AdvReq;
+		if (prereq_id >= 0 && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id))
+			return false;
+
+		if (! Leader_can_build_unit (&leaders[this->Body.CivID], __, unit_type_id, 1, false))
+			return false;
 
 		// Superficially allow the AI to choose the unit for scoring and production.
 		// If a disallowed air/naval unit is chosen in ai_choose_production, we'll swap it out for a feasible fallback later
 		// after prioritizing the aerodrome/port to be built
-		if (! is_human && (type->Unit_Class == UTC_Air || type->Unit_Class == UTC_Sea))
+		if (! is_human && (
+			(city_can_build_district (this, AERODROME_DISTRICT_ID) && type->Unit_Class == UTC_Air) || 
+			(city_can_build_district (this, PORT_DISTRICT_ID) && type->Unit_Class == UTC_Sea))
+		)
 			return base;
 
 		// Air units
@@ -27384,6 +27395,228 @@ patch_Unit_ai_move_naval_power_unit (Unit * this)
 		return;
 
 	Unit_ai_move_naval_power_unit (this);
+}
+
+void __fastcall
+patch_Unit_ai_move_air_bombard_unit (Unit * this)
+{
+	if (! (is->current_config.enable_districts &&
+	       is->current_config.enable_aerodrome_districts &&
+	       is->current_config.air_units_use_aerodrome_districts_not_cities)) {
+		Unit_ai_move_air_bombard_unit (this);
+		return;
+	}
+
+	if (this->Body.Damage > 0) {
+		Unit_set_escortee (this, __, -1);
+		Unit_set_state (this, __, UnitState_Fortifying);
+		return;
+	}
+
+	int best_target = 0;
+	int target_x = -1, target_y = -1;
+	int op_range = p_bic_data->UnitTypes[this->Body.UnitTypeID].OperationalRange;
+	int grid = op_range * 2 + 1;
+	if (1 < grid * grid) {
+		for (int n = 1; n < grid * grid; n++) {
+			int dx, dy;
+			neighbor_index_to_diff (n, &dx, &dy);
+			int x = Map_wrap_horiz (&p_bic_data->Map, __, this->Body.X + dx);
+			int y = Map_wrap_vert (&p_bic_data->Map, __, this->Body.Y + dy);
+			if (Map_in_range (&p_bic_data->Map, __, x, y)) {
+				int score = Unit_ai_eval_bombard_target (this, __, x, y, 1);
+				if (score > best_target) {
+					best_target = score;
+					target_x = x;
+					target_y = y;
+				}
+			}
+		}
+	}
+
+	int best_base_score = 0x7fffffff;
+	int base_x = -1, base_y = -1;
+	for (int y = 0; y < p_bic_data->Map.Height; y++) {
+		for (int x = 0; x < p_bic_data->Map.Width; x++) {
+			Tile * tile = tile_at (x, y);
+			if (! tile_has_friendly_aerodrome_district (tile, this->Body.CivID, false))
+				continue;
+			if (! patch_Unit_is_in_rebase_range (this, __, x, y))
+				continue;
+			if (! is_below_stack_limit (tile, this->Body.CivID,
+				p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+				continue;
+
+			int count = count_units_at (x, y, UF_AI_STRAT_A_VIS_TO_B, 6, -1, -1);
+			int x_dist = Map_get_x_dist (&p_bic_data->Map, __, x, this->Body.X);
+			int y_dist = Map_get_y_dist (&p_bic_data->Map, __, y, this->Body.Y);
+			int score = (count * 10) + ((x_dist + y_dist) >> 1);
+			if ((this->Body.X == x) && (this->Body.Y == y))
+				score -= 20;
+
+			if (score < best_base_score) {
+				best_base_score = score;
+				base_x = x;
+				base_y = y;
+			}
+		}
+	}
+
+	if ((base_x >= 0) && ((this->Body.X != base_x) || (this->Body.Y != base_y))) {
+		Unit_set_escortee (this, __, -1);
+		patch_Unit_move (this, __, base_x, base_y);
+		return;
+	}
+
+	if ((target_x >= 0) && (target_y >= 0)) {
+		Unit_set_escortee (this, __, -1);
+		patch_Unit_bombard_tile (this, __, target_x, target_y);
+		return;
+	}
+
+	Unit_set_escortee (this, __, -1);
+	Unit_set_state (this, __, UnitState_Fortifying);
+}
+
+void __fastcall
+patch_Unit_ai_move_air_defense_unit (Unit * this)
+{
+	if (! (is->current_config.enable_districts &&
+	       is->current_config.enable_aerodrome_districts &&
+	       is->current_config.air_units_use_aerodrome_districts_not_cities)) {
+		Unit_ai_move_air_defense_unit (this);
+		return;
+	}
+
+	Unit_set_state (this, __, 0);
+	if (this->Body.Damage > 0) {
+		Unit_set_escortee (this, __, -1);
+		Unit_set_state (this, __, UnitState_Fortifying);
+		return;
+	}
+
+	int best_base_score = 0x7fffffff;
+	int base_x = -1, base_y = -1;
+	for (int y = 0; y < p_bic_data->Map.Height; y++) {
+		for (int x = 0; x < p_bic_data->Map.Width; x++) {
+			Tile * tile = tile_at (x, y);
+			if (! tile_has_friendly_aerodrome_district (tile, this->Body.CivID, false))
+				continue;
+			if (! patch_Unit_is_in_rebase_range (this, __, x, y))
+				continue;
+			if (! is_below_stack_limit (tile, this->Body.CivID,
+				p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+				continue;
+
+			int count = count_units_at (x, y, UF_AI_STRAT_A_VIS_TO_B, 7, -1, -1);
+			int x_dist = Map_get_x_dist (&p_bic_data->Map, __, x, this->Body.X);
+			int y_dist = Map_get_y_dist (&p_bic_data->Map, __, y, this->Body.Y);
+			int score = (count * 10) + ((x_dist + y_dist) >> 1);
+			if ((this->Body.X == x) && (this->Body.Y == y))
+				score -= 20;
+
+			if (score < best_base_score) {
+				best_base_score = score;
+				base_x = x;
+				base_y = y;
+			}
+		}
+	}
+
+	if ((base_x >= 0) && ((this->Body.X != base_x) || (this->Body.Y != base_y))) {
+		Unit_set_escortee (this, __, -1);
+		patch_Unit_move (this, __, base_x, base_y);
+		return;
+	}
+
+	Unit_set_escortee (this, __, -1);
+	Unit_set_state (this, __, UnitState_Intercept);
+}
+
+void __fastcall
+patch_Unit_ai_move_air_transport (Unit * this)
+{
+	if (! (is->current_config.enable_districts &&
+	       is->current_config.enable_aerodrome_districts &&
+	       is->current_config.air_units_use_aerodrome_districts_not_cities)) {
+		Unit_ai_move_air_transport (this);
+		return;
+	}
+
+	if (this->Body.Damage < 1) {
+		if (Unit_can_airdrop (this)) {
+			int best_score = 0;
+			int best_x = -1, best_y = -1;
+			int op_range = p_bic_data->UnitTypes[this->Body.UnitTypeID].OperationalRange;
+			int grid = op_range * 2 + 1;
+			if (1 < grid * grid) {
+				for (int n = 1; n < grid * grid; n++) {
+					int dx, dy;
+					neighbor_index_to_diff (n, &dx, &dy);
+					int x = Map_wrap_horiz (&p_bic_data->Map, __, this->Body.X + dx);
+					int y = Map_wrap_vert (&p_bic_data->Map, __, this->Body.Y + dy);
+					if (Map_in_range (&p_bic_data->Map, __, x, y)) {
+						int score = Unit_ai_eval_airdrop_target (this, __, x, y);
+						if (score > best_score) {
+							best_score = score;
+							best_x = x;
+							best_y = y;
+						}
+					}
+				}
+				if ((best_x >= 0) && (best_y >= 0)) {
+					Unit_set_escortee (this, __, -1);
+					Unit_airdrop (this, __, best_x, best_y);
+					return;
+				}
+			}
+		}
+
+		int best_score = -1;
+		int base_x = -1, base_y = -1;
+		for (int y = 0; y < p_bic_data->Map.Height; y++) {
+			for (int x = 0; x < p_bic_data->Map.Width; x++) {
+				Tile * tile = tile_at (x, y);
+				if (! tile_has_friendly_aerodrome_district (tile, this->Body.CivID, false))
+					continue;
+				if (! patch_Unit_is_in_rebase_range (this, __, x, y))
+					continue;
+				if (! is_below_stack_limit (tile, this->Body.CivID,
+					p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+					continue;
+
+				int score = count_units_at (x, y, UF_AI_STRAT_A_VIS_TO_B, 0, -1, -1) +
+				            count_units_at (x, y, UF_AI_STRAT_A_VIS_TO_B, 1, -1, -1) + 1;
+				if (count_units_at (x, y, UF_AI_STRAT_A_VIS_TO_B, 9, -1, -1) == 0)
+					score *= 2;
+				int cont_id = tile->vtable->m46_Get_ContinentID (tile);
+				if ((cont_id >= 0) && (cont_id < p_bic_data->Map.Continent_Count) &&
+				    (p_bic_data->Map.Continents[cont_id].Body.TileCount > 0x15))
+					score *= 2;
+
+				if (score > best_score) {
+					best_score = score;
+					base_x = x;
+					base_y = y;
+				}
+			}
+		}
+
+		if ((base_x >= 0) && ((this->Body.X != base_x) || (this->Body.Y != base_y))) {
+			Unit_set_escortee (this, __, -1);
+			patch_Unit_move (this, __, base_x, base_y);
+			if (Unit_count_contained_units (this) > 0) {
+				patch_Unit_disembark_passengers (this, __, this->Body.X, this->Body.Y);
+			}
+			return;
+		}
+	}
+
+	if (Unit_count_contained_units (this) > 0)
+		patch_Unit_disembark_passengers (this, __, this->Body.X, this->Body.Y);
+
+	Unit_set_escortee (this, __, -1);
+	Unit_set_state (this, __, UnitState_Fortifying);
 }
 
 // TCC requires a main function be defined even though it's never used.

@@ -868,3 +868,8 @@ repl call, 0x4C01AF,    0x0,        0x0,        "Map_impl_is_near_river_within_w
 repl call, 0x4C01CF,    0x0,        0x0,        "Map_impl_is_near_lake_within_work_area",	        ""
 inlead,    0x458120,    0x0,        0x0,        "Unit_ai_move_naval_power_unit",			"void (__fastcall *) (Unit * this)"
 inlead,    0x44C130,    0x0,       0x0,         "Unit_ai_eval_pillage_target",		"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y)"
+inlead,    0x456840,    0x0,       0x0,         "Unit_ai_move_air_bombard_unit",		"void (__fastcall *) (Unit * this)"
+inlead,    0x4579E0,    0x0,       0x0,         "Unit_ai_move_air_defense_unit",		"void (__fastcall *) (Unit * this)"
+inlead,    0x459CE0,    0x0,       0x0,         "Unit_ai_move_air_transport",		    "void (__fastcall *) (Unit * this)"
+define,    0x44C340,    0x0,        0x0,        "Unit_ai_eval_bombard_target",			"int (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int param_3)"
+define,    0x5C1920,    0x0,        0x0,        "Unit_airdrop",	                         "void (__fastcall *) (Unit * this, int edx, int x, int y)"
