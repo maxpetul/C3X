@@ -1766,6 +1766,18 @@ square_type_mask_bit (enum SquareTypes type)
 }
 
 unsigned int
+district_buildable_mine_mask_bit (void)
+{
+	return (unsigned int)(1u << (SQ_SNOW_MOUNTAIN + 1));
+}
+
+unsigned int
+district_buildable_irrigation_mask_bit (void)
+{
+	return (unsigned int)(1u << (SQ_SNOW_MOUNTAIN + 2));
+}
+
+unsigned int
 all_square_types_mask (void)
 {
 	return (unsigned int)((1u << (SQ_SNOW_MOUNTAIN + 1)) - 1);
@@ -1846,6 +1858,14 @@ tile_matches_square_type_mask (Tile * tile, unsigned int mask)
 		if ((mask & bit) && tile_matches_square_type (tile, stype))
 			return true;
 	}
+
+	unsigned int mine_bit = district_buildable_mine_mask_bit ();
+	if ((mask & mine_bit) && tile->vtable->m18_Check_Mines (tile, __, 0))
+		return true;
+
+	unsigned int irrigation_bit = district_buildable_irrigation_mask_bit ();
+	if ((mask & irrigation_bit) && tile->vtable->m17_Check_Irrigation (tile, __, 0))
+		return true;
 
 	return false;
 }
@@ -5532,6 +5552,13 @@ parse_buildable_square_type_mask (struct string_slice const * value,
 
 			struct string_slice item_slice = { .str = item_start, .len = (int)(item_end - item_start) };
 			if (item_slice.len > 0) {
+				if (slice_matches_str (&item_slice, "mine")) {
+					mask |= district_buildable_mine_mask_bit ();
+					entry_count += 1;
+				} else if (slice_matches_str (&item_slice, "irrigation")) {
+					mask |= district_buildable_irrigation_mask_bit ();
+					entry_count += 1;
+				} else {
 				enum SquareTypes parsed;
 				if (read_square_type_value (&item_slice, &parsed)) {
 					if (parsed == (enum SquareTypes)SQ_INVALID)
@@ -5545,6 +5572,7 @@ parse_buildable_square_type_mask (struct string_slice const * value,
 					err->text[(sizeof err->text) - 1] = '\0';
 					free (value_text);
 					return false;
+				}
 				}
 			}
 
