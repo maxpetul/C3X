@@ -8795,6 +8795,65 @@ count_contiguous_bridge_districts (int tile_x, int tile_y, int dx, int dy)
 }
 
 bool
+bridge_district_tile_is_valid (int tile_x, int tile_y)
+{
+	if (is->current_config.max_contiguous_bridge_districts > 0) {
+		int max_bridges = is->current_config.max_contiguous_bridge_districts;
+
+		int ns_count = count_contiguous_bridge_districts (tile_x, tile_y, 0, -2) +
+			       count_contiguous_bridge_districts (tile_x, tile_y, 0, 2);
+		if (ns_count > max_bridges)
+			return false;
+
+		int we_count = count_contiguous_bridge_districts (tile_x, tile_y, -2, 0) +
+			       count_contiguous_bridge_districts (tile_x, tile_y, 2, 0);
+		if (we_count > max_bridges)
+			return false;
+
+		int swne_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, 1) +
+				 count_contiguous_bridge_districts (tile_x, tile_y, 1, -1);
+		if (swne_count > max_bridges)
+			return false;
+
+		int nwse_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, -1) +
+				 count_contiguous_bridge_districts (tile_x, tile_y, 1, 1);
+		if (nwse_count > max_bridges)
+			return false;
+	}
+
+	Map * map = &p_bic_data->Map;
+	int const adj_dx[8] = { 0, 0, -2, 2, -1, 1, -1, 1 };
+	int const adj_dy[8] = { -2, 2, 0, 0, 1, -1, -1, 1 };
+
+	for (int i = 0; i < 8; i++) {
+		int nx = tile_x + adj_dx[i];
+		int ny = tile_y + adj_dy[i];
+		wrap_tile_coords (map, &nx, &ny);
+		if (! tile_has_bridge_district_at (nx, ny))
+			continue;
+
+		int cand_dx = -adj_dx[i];
+		int cand_dy = -adj_dy[i];
+
+		for (int j = 0; j < 8; j++) {
+			int ox = nx + adj_dx[j];
+			int oy = ny + adj_dy[j];
+			wrap_tile_coords (map, &ox, &oy);
+			if ((ox == tile_x) && (oy == tile_y))
+				continue;
+			if (! tile_has_bridge_district_at (ox, oy))
+				continue;
+
+			if (! ((adj_dx[j] == cand_dx) && (adj_dy[j] == cand_dy)) &&
+			    ! ((adj_dx[j] == -cand_dx) && (adj_dy[j] == -cand_dy)))
+				return false;
+		}
+	}
+
+	return true;
+}
+
+bool
 can_build_district_on_tile (Tile * tile, int district_id)
 {
 	if ((! is->current_config.enable_districts) ||
@@ -8832,29 +8891,8 @@ can_build_district_on_tile (Tile * tile, int district_id)
 	if (! district_resource_prereqs_met (tile, tile_x, tile_y, district_id, NULL))
 		return false;
 
-	if (district_id == BRIDGE_DISTRICT_ID && is->current_config.max_contiguous_bridge_districts > 0) {
-		int max_bridges = is->current_config.max_contiguous_bridge_districts;
-
-		int ns_count = count_contiguous_bridge_districts (tile_x, tile_y, 0, -2) +
-			       count_contiguous_bridge_districts (tile_x, tile_y, 0, 2);
-		if (ns_count > max_bridges)
-			return false;
-
-		int we_count = count_contiguous_bridge_districts (tile_x, tile_y, -2, 0) +
-			       count_contiguous_bridge_districts (tile_x, tile_y, 2, 0);
-		if (we_count > max_bridges)
-			return false;
-
-		int swne_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, 1) +
-				 count_contiguous_bridge_districts (tile_x, tile_y, 1, -1);
-		if (swne_count > max_bridges)
-			return false;
-
-		int nwse_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, -1) +
-				 count_contiguous_bridge_districts (tile_x, tile_y, 1, 1);
-		if (nwse_count > max_bridges)
-			return false;
-	}
+	if ((district_id == BRIDGE_DISTRICT_ID) && (! bridge_district_tile_is_valid (tile_x, tile_y)))
+		return false;
 
 	struct district_instance * existing_inst = get_district_instance (tile);
 	int existing_district_id = (existing_inst != NULL) ? existing_inst->district_type : -1;
