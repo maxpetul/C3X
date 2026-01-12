@@ -8787,6 +8787,7 @@ can_build_district_on_tile (Tile * tile, int district_id)
 	if ((cfg->command == UCV_Build_Aerodrome)       && !is->current_config.enable_aerodrome_districts)        return false;
 	if ((cfg->command == UCV_Build_Port)            && !is->current_config.enable_port_districts)             return false;
 	if ((cfg->command == UCV_Build_Bridge)          && !is->current_config.enable_bridge_districts)           return false;
+	if ((cfg->command == UCV_Build_CentralRailHub)  && !is->current_config.enable_central_rail_hub_districts) return false;
 
 	if (! district_is_buildable_on_square_type (cfg, tile))
 		return false;
@@ -26778,8 +26779,8 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
             }
 		}
 
-		district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
-		int sprite_width = (cfg->custom_width > 0) ? cfg->custom_width : 128;
+		district_sprite   = &is->district_img_sets[district_id].imgs[variant][era][buildings];
+		int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
 		int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
 		int draw_x = pixel_x - ((sprite_width - 128) / 2);
 		int draw_y = pixel_y - (sprite_height - 64);

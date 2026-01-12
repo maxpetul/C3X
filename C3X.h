@@ -753,7 +753,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereq = "Steam Power", .resource_prereqs = {"Iron", "Coal"}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 2, .dependent_improvement_count = 0,
 		.img_paths = {"CentralRailHub_AMER.pcx", "CentralRailHub_EURO.pcx", "CentralRailHub_ROMAN.pcx", "CentralRailHub_MIDEAST.pcx", "CentralRailHub_ASIAN.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
-		.img_path_count = 5, .max_building_index = 0, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
+		.img_path_count = 5, .max_building_index = 1, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
@@ -762,7 +762,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereq = "Industrialization", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 4,
 		.img_paths = {"EnergyGrid.pcx"}, .dependent_improvements = {"Coal Plant", "Hydro Plant", "Solar Plant", "Nuclear Plant"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK, .custom_height = 84,
-		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .max_building_index = 14, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 2, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
@@ -771,7 +771,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereq = "Industrialization", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
 		.img_paths = {"Bridge.pcx"}, .dependent_improvements = {0},
 		.buildable_square_types_mask = (1 << SQ_Coast), 
-		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .max_building_index = 3, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	}

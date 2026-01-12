@@ -281,7 +281,6 @@ happiness_bonus       = 0
 #District
 name                  = Central Rail Hub
 tooltip               = Build Central Rail Hub
-img_paths             = CentralRailHub_AMER.pcx, CentralRailHub_EURO.pcx, CentralRailHub_ROMAN.pcx, CentralRailHub_MIDEAST.pcx, CentralRailHub_ASIAN.pcx
 btn_tile_sheet_row    = 1
 btn_tile_sheet_column = 7
 vary_img_by_era       = 1
@@ -302,7 +301,6 @@ happiness_bonus       = 0
 #District
 name                  = Energy Grid
 tooltip               = Build Energy Grid
-img_paths             = EnergyGrid.pcx
 btn_tile_sheet_row    = 1
 btn_tile_sheet_column = 7
 vary_img_by_era       = 1
@@ -323,7 +321,6 @@ happiness_bonus       = 0
 #District
 name                  = Bridge
 tooltip               = Build Bridge
-img_paths             = Bridge.pcx
 btn_tile_sheet_row    = 1
 btn_tile_sheet_column = 7
 vary_img_by_era       = 1
