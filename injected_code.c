@@ -11041,6 +11041,7 @@ patch_init_floating_point ()
 		{"introduce_all_human_players_at_start_of_hotseat_game"  , false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
 		{"allow_unload_from_army"                                , false, offsetof (struct c3x_config, allow_unload_from_army)},
 		{"no_land_anti_air_from_inside_naval_transport"          , false, offsetof (struct c3x_config, no_land_anti_air_from_inside_naval_transport)},
+		{"allow_helicopters_on_carriers"                         , false, offsetof (struct c3x_config, allow_helicopters_on_carriers)},
 		{"prevent_enslaving_by_bombardment"                      , false, offsetof (struct c3x_config, prevent_enslaving_by_bombardment)},
 		{"allow_adjacent_resources_of_different_types"           , false, offsetof (struct c3x_config, allow_adjacent_resources_of_different_types)},
 		{"allow_sale_of_small_wonders"                           , false, offsetof (struct c3x_config, allow_sale_of_small_wonders)},
@@ -24961,12 +24962,13 @@ patch_Unit_disembark (Unit * this, int edx, int tile_x, int tile_y)
 bool __fastcall
 patch_Unit_has_ability_no_load_non_army_passengers (Unit * this, int edx, enum UnitTypeAbilities army_ability)
 {
+	UnitType * transport_type = &p_bic_data->UnitTypes[is->can_load_transport->Body.UnitTypeID],
+		 * passenger_type = &p_bic_data->UnitTypes[this                  ->Body.UnitTypeID];
+
 	// This call comes from Unit::can_load at the point where it's determined that the passenger (this) has transport capacity > 0 and is checking
 	// whether it's an army. If not, it can't be loaded. Add two exceptions here for land transports, if configured, one to allow LTs to load into
 	// naval units and another to allow empty LTs to load into armies.
-	if (is->current_config.land_transport_rules != 0) {
-		UnitType * transport_type = &p_bic_data->UnitTypes[is->can_load_transport->Body.UnitTypeID],
-			 * passenger_type = &p_bic_data->UnitTypes[this                  ->Body.UnitTypeID];
+	if (is->current_config.land_transport_rules != 0)
 		if ((passenger_type->Unit_Class == UTC_Land) && ! Unit_has_ability (this, __, army_ability)) { // if it's a land transport
 			if ((is->current_config.land_transport_rules & LTR_LOAD_ONTO_BOAT) && (transport_type->Unit_Class == UTC_Sea))
 				return true;
@@ -24974,7 +24976,13 @@ patch_Unit_has_ability_no_load_non_army_passengers (Unit * this, int edx, enum U
 			    Unit_has_ability (is->can_load_transport, __, army_ability) && (Unit_count_contained_units (this) == 0))
 				return true;
 		}
-	}
+
+	// Similarly, allow helicopters to be loaded onto carriers if so configured
+	if (is->current_config.allow_helicopters_on_carriers &&
+	    passenger_type->Unit_Class == UTC_Air &&
+	    transport_type->Unit_Class == UTC_Sea &&
+	    Unit_has_ability (is->can_load_transport, __, UTA_Transports_Only_Aircraft))
+		return true;
 
 	return Unit_has_ability (this, __, army_ability);
 }

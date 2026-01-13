@@ -289,6 +289,7 @@ struct c3x_config {
 	int luxury_randomized_appearance_rate_percent;
 	int tiles_per_non_luxury_resource;
 	bool no_land_anti_air_from_inside_naval_transport;
+	bool allow_helicopters_on_carriers;
 	bool prevent_enslaving_by_bombardment;
 	int years_to_double_building_culture;
 	int tourism_time_scale_percent;
