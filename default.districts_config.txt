@@ -326,7 +326,6 @@ btn_tile_sheet_column = 7
 vary_img_by_era       = 1
 vary_img_by_culture   = 0
 advance_prereq        = Industrialization
-dependent_improvs     = 
 buildable_on          = coast
 defense_bonus_percent = 0
 allow_multiple        = 1

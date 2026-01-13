@@ -583,6 +583,28 @@ enum {
 	DEFAULT_DISTRICT_BUILDABLE_MASK = (1 << SQ_Desert) | (1 << SQ_Plains) | (1 << SQ_Grassland) | (1 << SQ_Tundra) | (1 << SQ_FloodPlain) | (1 << SQ_Hills)
 };
 
+enum {
+	MAX_DISTRICT_BONUS_ENTRIES = 16
+};
+
+enum district_bonus_entry_type {
+	DBET_TILE = 0,
+	DBET_BUILDING = 1
+};
+
+struct district_bonus_entry {
+	enum district_bonus_entry_type type;
+	int bonus;
+	enum SquareTypes tile_type;
+	int building_id;
+	char const * building_name;
+};
+
+struct district_bonus_list {
+	int count;
+	struct district_bonus_entry entries[MAX_DISTRICT_BONUS_ENTRIES];
+};
+
 struct district_config {
 	enum Unit_Command_Values command;
 	char const * name;
@@ -613,6 +635,12 @@ struct district_config {
 	int gold_bonus;
 	int shield_bonus;
 	int happiness_bonus;
+	struct district_bonus_list culture_bonus_extras;
+	struct district_bonus_list science_bonus_extras;
+	struct district_bonus_list food_bonus_extras;
+	struct district_bonus_list gold_bonus_extras;
+	struct district_bonus_list shield_bonus_extras;
+	struct district_bonus_list happiness_bonus_extras;
 	int defense_bonus_percent;
 	char const * generated_resource;
 	int generated_resource_id;
@@ -804,6 +832,12 @@ struct parsed_district_definition {
 	int gold_bonus;
 	int shield_bonus;
 	int happiness_bonus;
+	struct district_bonus_list culture_bonus_extras;
+	struct district_bonus_list science_bonus_extras;
+	struct district_bonus_list food_bonus_extras;
+	struct district_bonus_list gold_bonus_extras;
+	struct district_bonus_list shield_bonus_extras;
+	struct district_bonus_list happiness_bonus_extras;
 	unsigned int buildable_square_types_mask;
 	char * buildable_by_civs[32];
 	int buildable_by_civ_count;
@@ -837,19 +871,19 @@ struct parsed_district_definition {
 	int generated_resource_settings_count;
 	bool has_generated_resource;
 	bool has_generated_resource_settings;
-	char * buildable_by_civ_traits[32];
+	char * buildable_by_civ_traits[10];
 	int buildable_by_civ_traits_count;
-	int buildable_by_civ_traits_ids[32];
+	int buildable_by_civ_traits_ids[10];
 	int buildable_by_civ_traits_id_count;
 	bool has_buildable_by_civ_traits;
-	char * buildable_by_civ_govs[32];
+	char * buildable_by_civ_govs[10];
 	int buildable_by_civ_govs_count;
 	int buildable_by_civ_govs_ids[32];
 	int buildable_by_civ_govs_id_count;
 	bool has_buildable_by_civ_govs;
-	char * buildable_by_civ_cultures[32];
+	char * buildable_by_civ_cultures[5];
 	int buildable_by_civ_cultures_count;
-	int buildable_by_civ_cultures_ids[32];
+	int buildable_by_civ_cultures_ids[5];
 	int buildable_by_civ_cultures_id_count;
 	bool has_buildable_by_civ_cultures;
 };

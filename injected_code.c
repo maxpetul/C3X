@@ -219,6 +219,7 @@ bool city_radius_contains_tile (City * city, int tile_x, int tile_y);
 void on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y);
 bool ai_move_district_worker (Unit * worker, struct district_worker_record * rec);
 bool has_active_building (City * city, int improv_id);
+bool tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, int district_id, int i_improv);
 void recompute_distribution_hub_totals ();
 void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y);
 void wrap_tile_coords (Map * map, int * x, int * y);
@@ -2686,6 +2687,36 @@ assign_natural_wonder_to_tile (Tile * tile, int tile_x, int tile_y, int natural_
 	set_tile_unworkable_for_all_cities (tile, tile_x, tile_y);
 }
 
+int
+apply_district_bonus_entries (struct district_instance * inst,
+			      struct district_bonus_list const * extras,
+			      int district_id)
+{
+	if ((inst == NULL) || (extras == NULL) || (extras->count <= 0))
+		return 0;
+
+	int tile_x = inst->tile_x;
+	int tile_y = inst->tile_y;
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return 0;
+
+	int bonus = 0;
+	for (int i = 0; i < extras->count; i++) {
+		struct district_bonus_entry const * entry = &extras->entries[i];
+		if (entry->type == DBET_TILE) {
+			if (tile_matches_square_type (tile, entry->tile_type))
+				bonus += entry->bonus;
+		} else if (entry->type == DBET_BUILDING) {
+			if (entry->building_id >= 0 &&
+			    tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, entry->building_id))
+				bonus += entry->bonus;
+		}
+	}
+
+	return bonus;
+}
+
 void
 get_effective_district_yields (struct district_instance * inst,
 			       struct district_config const * cfg,
@@ -2699,22 +2730,30 @@ get_effective_district_yields (struct district_instance * inst,
 	int food = 0, shields = 0, gold = 0, science = 0, culture = 0, happiness = 0;
 
 	if (cfg != NULL && is->current_config.enable_districts) {
-		food = cfg->food_bonus;
-		shields = cfg->shield_bonus;
-		gold = cfg->gold_bonus;
-		science = cfg->science_bonus;
-		culture = cfg->culture_bonus;
+		food      = cfg->food_bonus;
+		shields   = cfg->shield_bonus;
+		gold      = cfg->gold_bonus;
+		science   = cfg->science_bonus;
+		culture   = cfg->culture_bonus;
 		happiness = cfg->happiness_bonus;
+
+		int district_id = (inst != NULL) ? inst->district_type : -1;
+		food      += apply_district_bonus_entries (inst, &cfg->food_bonus_extras, district_id);
+		shields   += apply_district_bonus_entries (inst, &cfg->shield_bonus_extras, district_id);
+		gold      += apply_district_bonus_entries (inst, &cfg->gold_bonus_extras, district_id);
+		science   += apply_district_bonus_entries (inst, &cfg->science_bonus_extras, district_id);
+		culture   += apply_district_bonus_entries (inst, &cfg->culture_bonus_extras, district_id);
+		happiness += apply_district_bonus_entries (inst, &cfg->happiness_bonus_extras, district_id);
 	}
 
 	if (inst != NULL && is->current_config.enable_natural_wonders && inst->district_type == NATURAL_WONDER_DISTRICT_ID) {
 		struct natural_wonder_district_config const * nwcfg = get_natural_wonder_config_by_id (inst->natural_wonder_info.natural_wonder_id);
 		if (nwcfg != NULL) {
-			food += nwcfg->food_bonus;
-			shields += nwcfg->shield_bonus;
-			gold += nwcfg->gold_bonus;
-			science += nwcfg->science_bonus;
-			culture += nwcfg->culture_bonus;
+			food      += nwcfg->food_bonus;
+			shields   += nwcfg->shield_bonus;
+			gold      += nwcfg->gold_bonus;
+			science   += nwcfg->science_bonus;
+			culture   += nwcfg->culture_bonus;
 			happiness += nwcfg->happiness_bonus;
 		}
 	}
@@ -5010,6 +5049,58 @@ copy_trimmed_string_or_null (struct string_slice const * slice, int remove_quote
 }
 
 void
+free_bonus_entry_list (struct district_bonus_list * list)
+{
+	if (list == NULL)
+		return;
+
+	for (int i = 0; i < list->count; i++) {
+		if (list->entries[i].type == DBET_BUILDING &&
+		    list->entries[i].building_name != NULL) {
+			free ((void *)list->entries[i].building_name);
+			list->entries[i].building_name = NULL;
+		}
+	}
+	list->count = 0;
+}
+
+void
+free_bonus_entry_list_override (struct district_bonus_list * list,
+				struct district_bonus_list const * defaults)
+{
+	if (list == NULL)
+		return;
+
+	for (int i = 0; i < list->count; i++) {
+		if (list->entries[i].type == DBET_BUILDING &&
+		    list->entries[i].building_name != NULL) {
+			char const * default_name = NULL;
+			if ((defaults != NULL) && (i < defaults->count))
+				default_name = defaults->entries[i].building_name;
+			if (list->entries[i].building_name != default_name)
+				free ((void *)list->entries[i].building_name);
+			list->entries[i].building_name = NULL;
+		}
+	}
+	list->count = (defaults != NULL) ? defaults->count : 0;
+}
+
+void
+move_bonus_entry_list (struct district_bonus_list * dest,
+		       struct district_bonus_list * src)
+{
+	if ((dest == NULL) || (src == NULL))
+		return;
+
+	dest->count = src->count;
+	for (int i = 0; i < src->count; i++) {
+		dest->entries[i] = src->entries[i];
+		src->entries[i].building_name = NULL;
+	}
+	src->count = 0;
+}
+
+void
 free_dynamic_district_config (struct district_config * cfg)
 {
 	if (cfg == NULL)
@@ -5083,6 +5174,13 @@ free_dynamic_district_config (struct district_config * cfg)
 			cfg->img_paths[i] = NULL;
 		}
 	}
+
+	free_bonus_entry_list (&cfg->culture_bonus_extras);
+	free_bonus_entry_list (&cfg->science_bonus_extras);
+	free_bonus_entry_list (&cfg->food_bonus_extras);
+	free_bonus_entry_list (&cfg->gold_bonus_extras);
+	free_bonus_entry_list (&cfg->shield_bonus_extras);
+	free_bonus_entry_list (&cfg->happiness_bonus_extras);
 
 	memset (cfg, 0, sizeof *cfg);
 }
@@ -5219,6 +5317,13 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 		cfg->img_paths[i] = NULL;
 	}
 	cfg->img_path_count = defaults->img_path_count;
+
+	free_bonus_entry_list_override (&cfg->culture_bonus_extras, &defaults->culture_bonus_extras);
+	free_bonus_entry_list_override (&cfg->science_bonus_extras, &defaults->science_bonus_extras);
+	free_bonus_entry_list_override (&cfg->food_bonus_extras, &defaults->food_bonus_extras);
+	free_bonus_entry_list_override (&cfg->gold_bonus_extras, &defaults->gold_bonus_extras);
+	free_bonus_entry_list_override (&cfg->shield_bonus_extras, &defaults->shield_bonus_extras);
+	free_bonus_entry_list_override (&cfg->happiness_bonus_extras, &defaults->happiness_bonus_extras);
 }
 
 void
@@ -5386,6 +5491,13 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 		}
 	}
 	def->generated_resource_settings_count = 0;
+
+	free_bonus_entry_list (&def->culture_bonus_extras);
+	free_bonus_entry_list (&def->science_bonus_extras);
+	free_bonus_entry_list (&def->food_bonus_extras);
+	free_bonus_entry_list (&def->gold_bonus_extras);
+	free_bonus_entry_list (&def->shield_bonus_extras);
+	free_bonus_entry_list (&def->happiness_bonus_extras);
 
 	init_parsed_district_definition (def);
 }
@@ -5599,6 +5711,151 @@ parse_buildable_square_type_mask (struct string_slice const * value,
 }
 
 bool
+parse_district_bonus_entries (struct string_slice const * value,
+			      int * out_base_bonus,
+			      struct district_bonus_list * out_extras,
+			      struct error_line ** parse_errors,
+			      int line_number,
+			      struct string_slice const * key)
+{
+	if ((out_base_bonus == NULL) || (out_extras == NULL)) {
+		add_key_parse_error (parse_errors, line_number, key, value, "(invalid bonus target)");
+		return false;
+	}
+
+	char * value_text = trim_and_extract_slice (value, 0);
+	free_bonus_entry_list (out_extras);
+	*out_base_bonus = 0;
+
+	if ((value_text == NULL) || (*value_text == '\0')) {
+		add_key_parse_error (parse_errors, line_number, key, value, "(expected base bonus)");
+		free (value_text);
+		return false;
+	}
+
+	bool got_base = false;
+	int base_bonus = 0;
+
+	char * cursor = value_text;
+	while (1) {
+		while (is_space_char (*cursor))
+			cursor++;
+
+		if (*cursor == '\0')
+			break;
+
+		char * item_start = cursor;
+		bool in_quotes = false;
+		while (*cursor != '\0') {
+			if (*cursor == '"')
+				in_quotes = ! in_quotes;
+			if ((! in_quotes) && (*cursor == ','))
+				break;
+			cursor++;
+		}
+
+		char * item_end = cursor;
+		while ((item_end > item_start) && is_space_char (item_end[-1]))
+			item_end--;
+		while ((item_start < item_end) && is_space_char (*item_start))
+			item_start++;
+
+		if (item_end > item_start) {
+			struct string_slice item = { .str = item_start, .len = (int)(item_end - item_start) };
+
+			if (! got_base) {
+				struct string_slice base_slice = trim_string_slice (&item, 0);
+				if (! read_int (&base_slice, &base_bonus)) {
+					add_key_parse_error (parse_errors, line_number, key, value, "(expected base bonus)");
+					free_bonus_entry_list (out_extras);
+					free (value_text);
+					return false;
+				}
+				got_base = true;
+			} else {
+				char * colon = NULL;
+				in_quotes = false;
+				for (char * p = item_start; p < item_end; p++) {
+					if (*p == '"')
+						in_quotes = ! in_quotes;
+					if ((! in_quotes) && (*p == ':')) {
+						colon = p;
+						break;
+					}
+				}
+
+				if (colon == NULL) {
+					add_key_parse_error (parse_errors, line_number, key, value, "(expected \"name: bonus\" entry)");
+					free_bonus_entry_list (out_extras);
+					free (value_text);
+					return false;
+				}
+
+				struct string_slice name_slice = { .str = item_start, .len = (int)(colon - item_start) };
+				struct string_slice bonus_slice = { .str = colon + 1, .len = (int)(item_end - (colon + 1)) };
+				struct string_slice trimmed_name = trim_string_slice (&name_slice, 1);
+				struct string_slice trimmed_bonus = trim_string_slice (&bonus_slice, 0);
+
+				if (trimmed_name.len <= 0) {
+					add_key_parse_error (parse_errors, line_number, key, value, "(expected bonus name)");
+					free_bonus_entry_list (out_extras);
+					free (value_text);
+					return false;
+				}
+
+				int bonus_value = 0;
+				if (! read_int (&trimmed_bonus, &bonus_value)) {
+					add_key_parse_error (parse_errors, line_number, key, value, "(expected bonus value)");
+					free_bonus_entry_list (out_extras);
+					free (value_text);
+					return false;
+				}
+
+				if (out_extras->count >= MAX_DISTRICT_BONUS_ENTRIES) {
+					add_key_parse_error (parse_errors, line_number, key, value, "(too many bonus entries)");
+					free_bonus_entry_list (out_extras);
+					free (value_text);
+					return false;
+				}
+
+				struct district_bonus_entry * entry = &out_extras->entries[out_extras->count++];
+				entry->bonus = bonus_value;
+				entry->building_id = -1;
+				entry->building_name = NULL;
+
+				enum SquareTypes parsed_type;
+				if (read_square_type_value (&trimmed_name, &parsed_type)) {
+					entry->type = DBET_TILE;
+					entry->tile_type = parsed_type;
+				} else {
+					entry->type = DBET_BUILDING;
+					entry->tile_type = (enum SquareTypes)SQ_INVALID;
+					entry->building_name = extract_slice (&trimmed_name);
+				}
+			}
+		}
+
+		if (*cursor == ',') {
+			cursor++;
+			continue;
+		}
+		if (*cursor == '\0')
+			break;
+	}
+
+	free (value_text);
+
+	if (! got_base) {
+		add_key_parse_error (parse_errors, line_number, key, value, "(expected base bonus)");
+		free_bonus_entry_list (out_extras);
+		return false;
+	}
+
+	*out_base_bonus = base_bonus;
+	return true;
+}
+
+bool
 override_special_district_from_definition (struct parsed_district_definition * def, int section_start_line)
 {
 	if ((! def->has_name) || (def->name == NULL))
@@ -5731,18 +5988,36 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->btn_tile_sheet_row = def->btn_tile_sheet_row;
 	if (def->has_defense_bonus_percent)
 		cfg->defense_bonus_percent = def->defense_bonus_percent;
-	if (def->has_culture_bonus)
+	if (def->has_culture_bonus) {
 		cfg->culture_bonus = def->culture_bonus;
-	if (def->has_science_bonus)
+		free_bonus_entry_list_override (&cfg->culture_bonus_extras, &defaults->culture_bonus_extras);
+		move_bonus_entry_list (&cfg->culture_bonus_extras, &def->culture_bonus_extras);
+	}
+	if (def->has_science_bonus) {
 		cfg->science_bonus = def->science_bonus;
-	if (def->has_food_bonus)
+		free_bonus_entry_list_override (&cfg->science_bonus_extras, &defaults->science_bonus_extras);
+		move_bonus_entry_list (&cfg->science_bonus_extras, &def->science_bonus_extras);
+	}
+	if (def->has_food_bonus) {
 		cfg->food_bonus = def->food_bonus;
-	if (def->has_gold_bonus)
+		free_bonus_entry_list_override (&cfg->food_bonus_extras, &defaults->food_bonus_extras);
+		move_bonus_entry_list (&cfg->food_bonus_extras, &def->food_bonus_extras);
+	}
+	if (def->has_gold_bonus) {
 		cfg->gold_bonus = def->gold_bonus;
-	if (def->has_shield_bonus)
+		free_bonus_entry_list_override (&cfg->gold_bonus_extras, &defaults->gold_bonus_extras);
+		move_bonus_entry_list (&cfg->gold_bonus_extras, &def->gold_bonus_extras);
+	}
+	if (def->has_shield_bonus) {
 		cfg->shield_bonus = def->shield_bonus;
-	if (def->has_happiness_bonus)
+		free_bonus_entry_list_override (&cfg->shield_bonus_extras, &defaults->shield_bonus_extras);
+		move_bonus_entry_list (&cfg->shield_bonus_extras, &def->shield_bonus_extras);
+	}
+	if (def->has_happiness_bonus) {
 		cfg->happiness_bonus = def->happiness_bonus;
+		free_bonus_entry_list_override (&cfg->happiness_bonus_extras, &defaults->happiness_bonus_extras);
+		move_bonus_entry_list (&cfg->happiness_bonus_extras, &def->happiness_bonus_extras);
+	}
 	if (def->has_buildable_on)
 		cfg->buildable_square_types_mask = def->buildable_square_types_mask;
 
@@ -5940,6 +6215,19 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
 	new_cfg.happiness_bonus = def->has_happiness_bonus ? def->happiness_bonus : 0;
 	new_cfg.buildable_square_types_mask = def->has_buildable_on ? def->buildable_square_types_mask : district_default_buildable_mask ();
+
+	if (def->has_culture_bonus)
+		move_bonus_entry_list (&new_cfg.culture_bonus_extras, &def->culture_bonus_extras);
+	if (def->has_science_bonus)
+		move_bonus_entry_list (&new_cfg.science_bonus_extras, &def->science_bonus_extras);
+	if (def->has_food_bonus)
+		move_bonus_entry_list (&new_cfg.food_bonus_extras, &def->food_bonus_extras);
+	if (def->has_gold_bonus)
+		move_bonus_entry_list (&new_cfg.gold_bonus_extras, &def->gold_bonus_extras);
+	if (def->has_shield_bonus)
+		move_bonus_entry_list (&new_cfg.shield_bonus_extras, &def->shield_bonus_extras);
+	if (def->has_happiness_bonus)
+		move_bonus_entry_list (&new_cfg.happiness_bonus_extras, &def->happiness_bonus_extras);
 
 	if (def->has_generated_resource) {
 		new_cfg.generated_resource = def->generated_resource;
@@ -6391,58 +6679,46 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "culture_bonus")) {
-		struct string_slice val_slice = *value;
-		int ival;
-		if (read_int (&val_slice, &ival)) {
-			def->culture_bonus = ival;
+		if (parse_district_bonus_entries (value, &def->culture_bonus, &def->culture_bonus_extras, parse_errors, line_number, key)) {
 			def->has_culture_bonus = true;
-		} else
-			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		} else {
+			def->has_culture_bonus = false;
+		}
 
 	} else if (slice_matches_str (key, "science_bonus")) {
-		struct string_slice val_slice = *value;
-		int ival;
-		if (read_int (&val_slice, &ival)) {
-			def->science_bonus = ival;
+		if (parse_district_bonus_entries (value, &def->science_bonus, &def->science_bonus_extras, parse_errors, line_number, key)) {
 			def->has_science_bonus = true;
-		} else
-			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		} else {
+			def->has_science_bonus = false;
+		}
 
 	} else if (slice_matches_str (key, "food_bonus")) {
-		struct string_slice val_slice = *value;
-		int ival;
-		if (read_int (&val_slice, &ival)) {
-			def->food_bonus = ival;
+		if (parse_district_bonus_entries (value, &def->food_bonus, &def->food_bonus_extras, parse_errors, line_number, key)) {
 			def->has_food_bonus = true;
-		} else
-			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		} else {
+			def->has_food_bonus = false;
+		}
 
 	} else if (slice_matches_str (key, "gold_bonus")) {
-		struct string_slice val_slice = *value;
-		int ival;
-		if (read_int (&val_slice, &ival)) {
-			def->gold_bonus = ival;
+		if (parse_district_bonus_entries (value, &def->gold_bonus, &def->gold_bonus_extras, parse_errors, line_number, key)) {
 			def->has_gold_bonus = true;
-		} else
-			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		} else {
+			def->has_gold_bonus = false;
+		}
 
 	} else if (slice_matches_str (key, "shield_bonus")) {
-		struct string_slice val_slice = *value;
-		int ival;
-		if (read_int (&val_slice, &ival)) {
-			def->shield_bonus = ival;
+		if (parse_district_bonus_entries (value, &def->shield_bonus, &def->shield_bonus_extras, parse_errors, line_number, key)) {
 			def->has_shield_bonus = true;
-		} else
-			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		} else {
+			def->has_shield_bonus = false;
+		}
 
 	} else if (slice_matches_str (key, "happiness_bonus")) {
-		struct string_slice val_slice = *value;
-		int ival;
-		if (read_int (&val_slice, &ival)) {
-			def->happiness_bonus = ival;
+		if (parse_district_bonus_entries (value, &def->happiness_bonus, &def->happiness_bonus_extras, parse_errors, line_number, key)) {
 			def->has_happiness_bonus = true;
-		} else
-			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		} else {
+			def->has_happiness_bonus = false;
+		}
 
 	} else if (slice_matches_str (key, "generated_resource")) {
 		if (def->generated_resource != NULL) {
@@ -7687,6 +7963,39 @@ set_wonders_dependent_on_wonder_district (void)
 		cfg->max_building_index = cfg->dependent_improvement_count;
 }
 
+void
+resolve_district_bonus_building_entries (struct district_bonus_list * list,
+					 char const * district_name,
+					 char const * bonus_name,
+					 struct error_line ** parse_errors)
+{
+	if (list == NULL)
+		return;
+
+	for (int i = 0; i < list->count; i++) {
+		struct district_bonus_entry * entry = &list->entries[i];
+		if (entry->type != DBET_BUILDING)
+			continue;
+		if ((entry->building_name == NULL) || (entry->building_name[0] == '\0')) {
+			entry->building_id = -1;
+			continue;
+		}
+
+		int improv_id;
+		struct string_slice improv_name = { .str = (char *)entry->building_name, .len = (int)strlen (entry->building_name) };
+		if (find_game_object_id_by_name (GOK_BUILDING, &improv_name, 0, &improv_id)) {
+			entry->building_id = improv_id;
+			stable_insert (&is->building_name_to_id, improv_name.str, improv_id);
+		} else {
+			entry->building_id = -1;
+			struct error_line * err = add_error_line (parse_errors);
+			snprintf (err->text, sizeof err->text, "^  District \"%s\": %s entry \"%.*s\" not found",
+				district_name, bonus_name, improv_name.len, improv_name.str);
+			err->text[(sizeof err->text) - 1] = '\0';
+		}
+	}
+}
+
 void parse_building_and_tech_ids ()
 {
 	struct c3x_config * cfg = &is->current_config;
@@ -7801,6 +8110,13 @@ void parse_building_and_tech_ids ()
 			}
 			is->district_infos[i].dependent_building_count = stored_count;
 		}
+
+		resolve_district_bonus_building_entries (&is->district_configs[i].culture_bonus_extras, district_name, "culture_bonus", &district_parse_errors);
+		resolve_district_bonus_building_entries (&is->district_configs[i].science_bonus_extras, district_name, "science_bonus", &district_parse_errors);
+		resolve_district_bonus_building_entries (&is->district_configs[i].food_bonus_extras, district_name, "food_bonus", &district_parse_errors);
+		resolve_district_bonus_building_entries (&is->district_configs[i].gold_bonus_extras, district_name, "gold_bonus", &district_parse_errors);
+		resolve_district_bonus_building_entries (&is->district_configs[i].shield_bonus_extras, district_name, "shield_bonus", &district_parse_errors);
+		resolve_district_bonus_building_entries (&is->district_configs[i].happiness_bonus_extras, district_name, "happiness_bonus", &district_parse_errors);
 	}
 
 	// Map wonder names to their improvement IDs for rendering under-construction wonders
@@ -8854,7 +9170,7 @@ bridge_district_tile_is_valid (int tile_x, int tile_y)
 }
 
 bool
-can_build_district_on_tile (Tile * tile, int district_id)
+can_build_district_on_tile (Tile * tile, int district_id, int civ_id)
 {
 	if ((! is->current_config.enable_districts) ||
 	    (tile == NULL) || (tile == p_null_tile) ||
@@ -8882,10 +9198,7 @@ can_build_district_on_tile (Tile * tile, int district_id)
 	int tile_x = 0, tile_y = 0;
 	tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y);
 
-	int owner_id = tile->Territory_OwnerID;
-	if ((owner_id < 0) || (owner_id >= 32))
-		return false;
-	if (! leader_can_build_district (&leaders[owner_id], district_id))
+	if (! leader_can_build_district (&leaders[civ_id], district_id))
 		return false;
 
 	if (! district_resource_prereqs_met (tile, tile_x, tile_y, district_id, NULL))
@@ -8925,7 +9238,7 @@ tile_suitable_for_district (Tile * tile, int district_id, City * city, bool * ou
 	if ((tile == NULL) || (tile == p_null_tile)) return false;
 	if (tile->CityID >= 0) return false;
 	if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID) return false;
-	if (! can_build_district_on_tile (tile, district_id)) return false;
+	if (! can_build_district_on_tile (tile, district_id, city->Body.CivID)) return false;
 
 	int tile_x = 0, tile_y = 0;
 	tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y);
@@ -9946,17 +10259,10 @@ calculate_district_happiness_bonus (City * city, int * happiness_bonus)
 		if (is_neighborhood)
 			utilized_neighborhoods--;
 
-		if (cfg->happiness_bonus != 0)
-			total_happy += cfg->happiness_bonus;
-
-		if (is->current_config.enable_natural_wonders && district_id == NATURAL_WONDER_DISTRICT_ID) {
-			struct natural_wonder_district_config const * nwcfg =
-				get_natural_wonder_config_by_id (inst->natural_wonder_info.natural_wonder_id);
-			if (nwcfg != NULL) {
-				if (nwcfg->happiness_bonus != 0)
-					total_happy += nwcfg->happiness_bonus;
-			}
-		}
+		int district_happy = 0;
+		get_effective_district_yields (inst, cfg, NULL, NULL, NULL, NULL, NULL, &district_happy);
+		if (district_happy != 0)
+			total_happy += district_happy;
 	}
 
 	if (happiness_bonus != NULL)
@@ -14208,7 +14514,7 @@ set_up_district_buttons (Main_GUI * this)
 		if (existing_district_id == dc && district_completed) continue;
 		if ((existing_district_id >= 0) && (existing_district_id != dc) && (! district_completed)) continue;
 
-		if (! can_build_district_on_tile (tile, dc))
+		if (! can_build_district_on_tile (tile, dc, selected_unit->Body.CivID))
 			continue;
 
 		// This district should be shown
@@ -14703,7 +15009,7 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 			if (! itable_look_up (&is->command_id_to_district_id, unit_command_value, &district_id))
 				return false;
 
-			return is_worker (this) && can_build_district_on_tile (tile, district_id);
+			return is_worker (this) && can_build_district_on_tile (tile, district_id, this->Body.CivID);
 		}
 		else if (unit_command_value == UCV_Build_Mine) {
 			bool has_district = (tile != NULL) && (tile != p_null_tile) && (get_district_instance (tile) != NULL);
@@ -26681,7 +26987,7 @@ get_bridge_image_index (Tile * tile)
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
