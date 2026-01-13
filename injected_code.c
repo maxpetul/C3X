@@ -26985,11 +26985,11 @@ get_bridge_image_index (Tile * tile)
 }
 
 void __fastcall
-patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
+patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
 	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
-		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
 	}
 
@@ -26999,7 +26999,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 
 	struct district_instance * inst = get_district_instance (tile);
 	if (inst == NULL) {
-		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
 	}
 
@@ -27160,7 +27160,79 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 		return;
 	}
 
-    Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+    Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+}
+
+void __fastcall
+patch_Map_Renderer_m09_Draw_Tile_Resources(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
+{
+	if (! is->current_config.enable_districts) {
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+	}
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile)) {
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+	}
+
+	int base_resource = Tile_get_resource_visible_to (tile, __, visible_to_civ_id);
+	int district_resource = -1;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if ((inst != NULL) && (inst->state == DS_COMPLETED)) {
+		int district_id = inst->district_type;
+		if ((district_id >= 0) && (district_id < is->district_count)) {
+			struct district_config * cfg = &is->district_configs[district_id];
+			if (cfg->generated_resource_id >= 0) {
+				int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
+				if ((owner_id >= 0) && district_can_generate_resource (owner_id, cfg) &&
+				    ((visible_to_civ_id < 0) || (owner_id == visible_to_civ_id))) {
+					int res_id = cfg->generated_resource_id;
+					bool show = true;
+					if (show) {
+						if (visible_to_civ_id >= 0) {
+							int req_tech_id = (cfg->generated_resource_flags & MF_NO_TECH_REQ) ? -1 : p_bic_data->ResourceTypes[res_id].RequireID;
+							if ((req_tech_id < 0) || Leader_has_tech (&leaders[visible_to_civ_id], __, req_tech_id))
+								district_resource = res_id;
+						} else
+							district_resource = res_id;
+					}
+				}
+			}
+		}
+	}
+
+	if (district_resource < 0) {
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+	}
+
+	int tile_width = p_bic_data->is_zoomed_out ? 64 : 128;
+	int offset  = tile_width >> 2;
+	int left_x  = pixel_x - (offset >> 1);
+	int right_x = pixel_x + (offset >> 1);
+
+	if (base_resource >= 0)
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, left_x, pixel_y);
+
+	int icon_id = p_bic_data->ResourceTypes[district_resource].IconID;
+	if (icon_id >= 0 && icon_id < 36 && map_renderer != NULL && map_renderer->Resources != NULL) {
+		Sprite * sprite   = &map_renderer->Resources[icon_id];
+		int tile_height   = tile_width >> 1;
+		int sprite_width  = sprite->Width;
+		int sprite_height = sprite->Height;
+		if (sprite_width <= 0)  sprite_width = sprite->Width3;
+		if (sprite_height <= 0) sprite_height = sprite->Height3;
+		int center_x = (tile_width - sprite_width) >> 1;
+		int center_y = (tile_height - sprite_height) >> 1;
+		int draw_x   = (base_resource >= 0) ? right_x : pixel_x;
+		draw_x += center_x;
+		int draw_y     = pixel_y + center_y;
+		int draw_scale = (p_bic_data->is_zoomed_out != false) + 1;
+		patch_Sprite_draw_on_map (sprite, __, map_renderer, draw_x, draw_y, 1, 1, draw_scale, 0);
+	}
 }
 
 bool __fastcall
