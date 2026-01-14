@@ -13209,6 +13209,7 @@ patch_init_floating_point ()
 		{"enable_aerodrome_districts"                            , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
 		{"enable_port_districts"                                 , false, offsetof (struct c3x_config, enable_port_districts)},
 		{"enable_bridge_districts"                               , false, offsetof (struct c3x_config, enable_bridge_districts)},
+		{"enable_canal_districts"                                , false, offsetof (struct c3x_config, enable_canal_districts)},
 		{"enable_central_rail_hub_districts"                     , false, offsetof (struct c3x_config, enable_central_rail_hub_districts)},
 		{"completed_wonder_districts_can_be_destroyed"           , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
 		{"destroyed_wonders_can_be_built_again"                  , false, offsetof (struct c3x_config, destroyed_wonders_can_be_built_again)},
@@ -15955,46 +15956,62 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 {
 	AdjacentMoveValidity base_validity = Unit_can_move_to_adjacent_tile (this, __, neighbor_index, param_2);
 
-	// Let workers step onto coast tiles when the config flag is enabled (base logic treats this as an invalid sea move)
-	if (is->current_config.enable_districts && is->current_config.workers_can_enter_coast &&
-	    is_worker (this) &&
-	    ((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
-		int nx, ny;
-		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
-		Tile * dest = tile_at (nx, ny);
-		if ((dest != NULL) &&
-		    dest->vtable->m35_Check_Is_Water (dest) &&
-		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
-			base_validity = AMV_OK;
-	}
+	if (is->current_config.enable_districts) {
 
-	// Allow land units to enter bridge tiles
-	if (is->current_config.enable_districts &&
-	    is->current_config.enable_bridge_districts &&
-	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land) &&
-	    ((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
-		int nx, ny;
-		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
-		Tile * dest = tile_at (nx, ny);
-		if ((dest != NULL) && (dest != p_null_tile)) {
-			struct district_instance * inst = get_district_instance (dest);
-			if ((inst != NULL) &&
-			    (inst->district_type == BRIDGE_DISTRICT_ID) &&
-			    district_is_complete (dest, inst->district_type))
+		// Let workers step onto coast tiles when the config flag is enabled (base logic treats this as an invalid sea move)
+		if (is->current_config.workers_can_enter_coast && is_worker (this) &&
+			((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
+			int nx, ny;
+			get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
+			Tile * dest = tile_at (nx, ny);
+			if ((dest != NULL) &&
+				dest->vtable->m35_Check_Is_Water (dest) &&
+				(dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
 				base_validity = AMV_OK;
 		}
-	}
 
-	if ((base_validity == AMV_OK) &&
-	    is->current_config.enable_districts &&
-	    is->current_config.enable_port_districts &&
-	    is->current_config.naval_units_use_port_districts_not_cities &&
-	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
-		int nx, ny;
-		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
-		Tile * dest = tile_at (nx, ny);
-		if ((dest != NULL) && (dest != p_null_tile) && Tile_has_city (dest))
-			return AMV_INVALID_SEA_MOVE;
+		// Allow land units to enter bridge tiles
+		if (is->current_config.enable_bridge_districts &&
+			(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land) &&
+			((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
+			int nx, ny;
+			get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
+			Tile * dest = tile_at (nx, ny);
+			if ((dest != NULL) && (dest != p_null_tile)) {
+				struct district_instance * inst = get_district_instance (dest);
+				if ((inst != NULL) &&
+					(inst->district_type == BRIDGE_DISTRICT_ID) &&
+					district_is_complete (dest, inst->district_type))
+					base_validity = AMV_OK;
+			}
+		}
+
+		// Allow naval units to enter completed canal tiles
+		if (is->current_config.enable_canal_districts &&
+			(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea) &&
+			((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
+			int nx, ny;
+			get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
+			Tile * dest = tile_at (nx, ny);
+			if ((dest != NULL) && (dest != p_null_tile)) {
+				struct district_instance * inst = get_district_instance (dest);
+				if ((inst != NULL) &&
+					(inst->district_type == CANAL_DISTRICT_ID) &&
+					district_is_complete (dest, inst->district_type))
+					base_validity = AMV_OK;
+			}
+		}
+
+		if ((base_validity == AMV_OK) &&
+			is->current_config.enable_port_districts &&
+			is->current_config.naval_units_use_port_districts_not_cities &&
+			(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
+			int nx, ny;
+			get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
+			Tile * dest = tile_at (nx, ny);
+			if ((dest != NULL) && (dest != p_null_tile) && Tile_has_city (dest))
+				return AMV_INVALID_SEA_MOVE;
+		}
 	}
 
 	// Apply unit count per tile limit
@@ -16053,6 +16070,21 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 			struct district_instance * inst = get_district_instance (dest);
 			if ((inst != NULL) &&
 			    (inst->district_type == BRIDGE_DISTRICT_ID) &&
+			    district_is_complete (dest, inst->district_type))
+				base_cost = Unit_get_max_move_points (unit);
+		}
+	}
+
+	// Let the pathfinder consider canal tiles reachable for naval units
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_canal_districts &&
+	    (base_cost < 0) && (unit != NULL) &&
+	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
+		Tile * dest = tile_at (to_x, to_y);
+		if ((dest != NULL) && (dest != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (dest);
+			if ((inst != NULL) &&
+			    (inst->district_type == CANAL_DISTRICT_ID) &&
 			    district_is_complete (dest, inst->district_type))
 				base_cost = Unit_get_max_move_points (unit);
 		}
@@ -27089,7 +27121,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
                 era = leader->Era;
 			if (cfg->align_to_coast)
 				align_variant_and_pixel_offsets_with_coastline (tile, &variant, &draw_pixel_x, &draw_pixel_y);
-        } else if (district_id != WONDER_DISTRICT_ID && district_id != NATURAL_WONDER_DISTRICT_ID && district_id != BRIDGE_DISTRICT_ID) {
+        } else if (district_id != WONDER_DISTRICT_ID && district_id != NATURAL_WONDER_DISTRICT_ID && district_id != BRIDGE_DISTRICT_ID && district_id != CANAL_DISTRICT_ID) {
 			Sprite * abandoned_sprite = &is->abandoned_district_img;
 			if (tile->vtable->m35_Check_Is_Water (tile) && is->abandoned_maritime_district_img.vtable != NULL)
 				abandoned_sprite = &is->abandoned_maritime_district_img;
@@ -28387,6 +28419,20 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 			struct district_instance * inst = get_district_instance (dest);
 			if ((inst != NULL) &&
 			    (inst->district_type == BRIDGE_DISTRICT_ID) &&
+			    district_is_complete (dest, inst->district_type))
+				return PBV_OK;
+		}
+	}
+
+	if (is->current_config.enable_districts &&
+		is->current_config.enable_canal_districts &&
+		base != PBV_OK &&
+		(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
+		Tile * dest = tile_at (to_x, to_y);
+		if ((dest != NULL) && (dest != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (dest);
+			if ((inst != NULL) &&
+			    (inst->district_type == CANAL_DISTRICT_ID) &&
 			    district_is_complete (dest, inst->district_type))
 				return PBV_OK;
 		}

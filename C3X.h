@@ -347,6 +347,7 @@ struct c3x_config {
 	bool enable_aerodrome_districts;
 	bool enable_port_districts;
 	bool enable_bridge_districts;
+	bool enable_canal_districts;
 	bool enable_central_rail_hub_districts;
 
 	bool cities_with_mutual_district_receive_buildings;
