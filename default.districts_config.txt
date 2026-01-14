@@ -339,3 +339,25 @@ food_bonus            = 0
 gold_bonus            = 0
 shield_bonus          = 0
 happiness_bonus       = 0
+
+#District
+name                  = Canal
+tooltip               = Build Canal
+custom_height         = 176
+custom_width          = 112
+y_offset              = 24
+x_offset              = 0
+btn_tile_sheet_row    = 1
+btn_tile_sheet_column = 7
+vary_img_by_era       = 1
+vary_img_by_culture   = 0
+advance_prereq        = Industrialization
+buildable_on          = desert,plains,grassland,tundra,floodplain
+defense_bonus_percent = 0
+allow_multiple        = 1
+culture_bonus         = 0
+science_bonus         = 0
+food_bonus            = 0
+gold_bonus            = 0
+shield_bonus          = 0
+happiness_bonus       = 0

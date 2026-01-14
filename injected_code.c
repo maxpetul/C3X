@@ -75,6 +75,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define CENTRAL_RAIL_HUB_DISTRICT_ID 6
 #define ENERGY_GRID_DISTRICT_ID      7
 #define BRIDGE_DISTRICT_ID           8
+#define CANAL_DISTRICT_ID			 9
 
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
@@ -27008,6 +27009,12 @@ get_bridge_image_index (Tile * tile)
 	return 0;
 }
 
+void 
+draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int era)
+{
+	// TODO
+}
+
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
@@ -27165,8 +27172,13 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 			case BRIDGE_DISTRICT_ID:
 			{
 				buildings = get_bridge_image_index (tile);
-				era = 2;
+				era = 2; // DEBUG
 				break;
+			}
+			case CANAL_DISTRICT_ID:
+			{
+				draw_canal_district (tile, tile_x, tile_y, map_renderer, pixel_x, pixel_y, era);
+				return;
 			}
             default:
             {
