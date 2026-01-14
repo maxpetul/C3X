@@ -27044,15 +27044,15 @@ get_bridge_image_index (Tile * tile, int tile_x, int tile_y)
 		int swne_count = (bridge_sw ? 1 : 0) + (bridge_ne ? 1 : 0);
 		int nwse_count = (bridge_nw ? 1 : 0) + (bridge_se ? 1 : 0);
 
-		if (ns_count == 2)   return N_S;
-		if (we_count == 2)   return W_E;
 		if (swne_count == 2) return SW_NE;
 		if (nwse_count == 2) return NW_SE;
+		if (ns_count == 2)   return N_S;
+		if (we_count == 2)   return W_E;
 
-		if (ns_count == 1)   return N_S;
-		if (we_count == 1)   return W_E;
-		if (swne_count == 1) return SW_NE;
-		if (nwse_count == 1) return NW_SE;
+		if (bridge_ne || bridge_sw) return SW_NE;
+		if (bridge_nw || bridge_se) return NW_SE;
+		if (bridge_n  || bridge_s)  return N_S;
+		if (bridge_w  || bridge_e)  return W_E;
 	}
 
 	int owner_id    = tile->Territory_OwnerID;
@@ -27065,12 +27065,45 @@ get_bridge_image_index (Tile * tile, int tile_x, int tile_y)
 	bool se_land    = tile_is_land (owner_id, tile_x + 1, tile_y + 1, false);
 	bool sw_land    = tile_is_land (owner_id, tile_x - 1, tile_y + 1, false);
 
-	if (north_land || south_land) return N_S;
-	if (west_land  || east_land)  return W_E;
-	if (ne_land    || sw_land)    return SW_NE;
-	if (nw_land    || se_land)    return NW_SE;
+	bool north_link = north_land || bridge_n;
+	bool south_link = south_land || bridge_s;
+	bool west_link  = west_land  || bridge_w;
+	bool east_link  = east_land  || bridge_e;
+	bool ne_link    = ne_land    || bridge_ne;
+	bool nw_link    = nw_land    || bridge_nw;
+	bool se_link    = se_land    || bridge_se;
+	bool sw_link    = sw_land    || bridge_sw;
+
+	if (sw_link && ne_link) return SW_NE;
+	if (nw_link && se_link) return NW_SE;
+	if (north_link && south_link) return N_S;
+	if (west_link  && east_link)  return W_E;
+
+	if (ne_link    || sw_link)    return SW_NE;
+	if (nw_link    || se_link)    return NW_SE;
+	if (north_link || south_link) return N_S;
+	if (west_link  || east_link)  return W_E;
 
 	return 0;
+}
+
+void 
+get_bridge_directions (Tile * tile, int tile_x, int tile_y, int * out_dir1, int * out_dir2)
+{
+	int dir1 = -1;
+	int dir2 = -1;
+	int index = get_bridge_image_index (tile, tile_x, tile_y);
+
+	switch (index) {
+		case 0: dir1 = DIR_SW; dir2 = DIR_NE; break;
+		case 1: dir1 = DIR_NW; dir2 = DIR_SE; break;
+		case 2: dir1 = DIR_N;  dir2 = DIR_S;  break;
+		case 3: dir1 = DIR_W;  dir2 = DIR_E;  break;
+		default: break;
+	}
+
+	*out_dir1 = dir1;
+	*out_dir2 = dir2;
 }
 
 void 
@@ -27093,7 +27126,7 @@ draw_canal_on_map_or_canvas(Sprite * sprite, int tile_x, int tile_y, int dir, bo
 }
 
 void 
-get_canal_directions (int tile_x, int tile_y, bool * out_water_dirs[9], int * out_dir1, int * out_dir2)
+get_canal_directions (Tile * tile, int tile_x, int tile_y, bool * out_water_dirs[9], int * out_dir1, int * out_dir2)
 {
 	bool canal_at_n        = tile_has_district_at (tile_x, tile_y - 2, CANAL_DISTRICT_ID);
 	bool canal_at_s        = tile_has_district_at (tile_x, tile_y + 2, CANAL_DISTRICT_ID);
@@ -27256,7 +27289,7 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 	int draw_dir1 = -1;
 	int draw_dir2 = -1;
 	bool water_dirs[9] = { false, false, false, false, false, false, false, false, false };
-	get_canal_directions (tile_x, tile_y, &water_dirs, &draw_dir1, &draw_dir2);
+	get_canal_directions (tile, tile_x, tile_y, &water_dirs, &draw_dir1, &draw_dir2);
 
 	if (draw_dir1 >= 0)
 		draw_canal_on_map_or_canvas(dir_sprites[draw_dir1], tile_x, tile_y, draw_dir1, water_dirs, map_renderer, draw_x, draw_y);
