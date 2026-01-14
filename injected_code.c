@@ -16846,10 +16846,19 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 void __fastcall
 patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
 {
+	// Determine whether this despawn happened involuntarily, i.e. whether it's because of the actions of a player other than its owner. This
+	// includes cases where the unit was destroyed in combat, captured, kicked from territory with nowhere to go, etc.
 	int ret_addr = ((int *)&civ_id_responsible)[-1];
+	bool involuntary =
+		   ret_addr == DESPAWN_TO_FIGHT_1_RETURN                  || ret_addr == DESPAWN_TO_FIGHT_2_RETURN
+		|| ret_addr == DESPAWN_TO_DO_BOMBARD_TILE_RETURN          || ret_addr == DESPAWN_TO_CRUISE_MISSILE_DEFENDER_RETURN
+		|| ret_addr == DESPAWN_TO_BOUNCE_TRESPASSING_UNITS_RETURN || ret_addr == DESPAWN_TO_NUKE_DAMAGE_RETURN
+		|| ret_addr == DESPAWN_RECURSIVE_RETURN                   || ret_addr == DESPAWN_TO_DO_CAPTURE_UNITS_RETURN;
 
 	int owner_id = this->Body.CivID;
 	int type_id = this->Body.UnitTypeID;
+	UnitType * type = &p_bic_data->UnitTypes[type_id];
+	Tile * tile = tile_at (this->Body.X, this->Body.Y);
 
 	// Clear extra DBs, airdrops, wait records, and transport ties used by this unit
 	itable_remove (&is->extra_defensive_bombards, this->Body.ID);
@@ -16867,16 +16876,18 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	if (this == is->last_selected_unit.ptr)
 		is->last_selected_unit.ptr = NULL;
 
-	// Set always_despawn_passengers to true if the unit to be despawned is a land transport, the no-escape rule is in effect, and it's being
-	// despawned involuntarily, i.e. because of the actions of another player not the choice of its owner. Save the original to restore later.
+	// Save this to restore later if we change it
 	bool prev_always_despawn_passengers = is->always_despawn_passengers;
-	if ((is->current_config.land_transport_rules & LTR_NO_ESCAPE) && is_land_transport (this)) {
-		if (   ret_addr == DESPAWN_TO_FIGHT_1_RETURN                  || ret_addr == DESPAWN_TO_FIGHT_2_RETURN
-		    || ret_addr == DESPAWN_TO_DO_BOMBARD_TILE_RETURN          || ret_addr == DESPAWN_TO_CRUISE_MISSILE_DEFENDER_RETURN
-		    || ret_addr == DESPAWN_TO_BOUNCE_TRESPASSING_UNITS_RETURN || ret_addr == DESPAWN_TO_NUKE_DAMAGE_RETURN
-		    || ret_addr == DESPAWN_RECURSIVE_RETURN                   || ret_addr == DESPAWN_TO_DO_CAPTURE_UNITS_RETURN)
-			is->always_despawn_passengers = true;
-	}
+
+	// Make sure to despawn the unit's passengers if it's a land transport, the no escape rule is in effect, and it's an involuntary despawn.
+	if (involuntary && (is->current_config.land_transport_rules & LTR_NO_ESCAPE) && is_land_transport (this))
+		is->always_despawn_passengers = true;
+
+	// Make sure to despawn the passengers if helicopters are allowed on carriers and the unit is a heli on a water tile
+	if (is->current_config.allow_helicopters_on_carriers &&
+	    type->Unit_Class == UTC_Air && type->Transport_Capacity > 0 && // is helicopter-like unit
+	    tile->vtable->m35_Check_Is_Water (tile))
+		is->always_despawn_passengers = true;
 
 	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 
