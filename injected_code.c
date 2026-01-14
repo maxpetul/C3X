@@ -27086,14 +27086,30 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 	int W        = 7;
 	int NW       = 8;
 
-	bool canal_or_water_n  = tile_has_district_at (tile_x, tile_y - 2, CANAL_DISTRICT_ID)     || tile_is_water (tile_x, tile_y - 2);
-	bool canal_or_water_s  = tile_has_district_at (tile_x, tile_y + 2, CANAL_DISTRICT_ID)     || tile_is_water (tile_x, tile_y + 2);
-	bool canal_or_water_w  = tile_has_district_at (tile_x - 2, tile_y, CANAL_DISTRICT_ID)     || tile_is_water (tile_x - 2, tile_y);
-	bool canal_or_water_e  = tile_has_district_at (tile_x + 2, tile_y, CANAL_DISTRICT_ID)     || tile_is_water (tile_x + 2, tile_y);
-	bool canal_or_water_ne = tile_has_district_at (tile_x + 1, tile_y - 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x + 1, tile_y - 1);
-	bool canal_or_water_nw = tile_has_district_at (tile_x - 1, tile_y - 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x - 1, tile_y - 1);
-	bool canal_or_water_se = tile_has_district_at (tile_x + 1, tile_y + 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x + 1, tile_y + 1);
-	bool canal_or_water_sw = tile_has_district_at (tile_x - 1, tile_y + 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x - 1, tile_y + 1);
+	bool canal_at_n  = tile_has_district_at (tile_x, tile_y - 2, CANAL_DISTRICT_ID);
+	bool canal_at_s  = tile_has_district_at (tile_x, tile_y + 2, CANAL_DISTRICT_ID);
+	bool canal_at_w  = tile_has_district_at (tile_x - 2, tile_y, CANAL_DISTRICT_ID);
+	bool canal_at_e  = tile_has_district_at (tile_x + 2, tile_y, CANAL_DISTRICT_ID);
+	bool canal_at_ne = tile_has_district_at (tile_x + 1, tile_y - 1, CANAL_DISTRICT_ID);
+	bool canal_at_nw = tile_has_district_at (tile_x - 1, tile_y - 1, CANAL_DISTRICT_ID);
+	bool canal_at_se = tile_has_district_at (tile_x + 1, tile_y + 1, CANAL_DISTRICT_ID);
+	bool canal_at_sw = tile_has_district_at (tile_x - 1, tile_y + 1, CANAL_DISTRICT_ID);
+	bool water_n  = tile_is_water (tile_x, tile_y - 2);
+	bool water_s  = tile_is_water (tile_x, tile_y + 2);
+	bool water_w  = tile_is_water (tile_x - 2, tile_y);
+	bool water_e  = tile_is_water (tile_x + 2, tile_y);
+	bool water_ne = tile_is_water (tile_x + 1, tile_y - 1);
+	bool water_nw = tile_is_water (tile_x - 1, tile_y - 1);
+	bool water_se = tile_is_water (tile_x + 1, tile_y + 1);
+	bool water_sw = tile_is_water (tile_x - 1, tile_y + 1);
+	bool canal_or_water_n  = canal_at_n  || water_n;
+	bool canal_or_water_s  = canal_at_s  || water_s;
+	bool canal_or_water_w  = canal_at_w  || water_w;
+	bool canal_or_water_e  = canal_at_e  || water_e;
+	bool canal_or_water_ne = canal_at_ne || water_ne;
+	bool canal_or_water_nw = canal_at_nw || water_nw;
+	bool canal_or_water_se = canal_at_se || water_se;
+	bool canal_or_water_sw = canal_at_sw || water_sw;
 
 	char ss[200];
 	snprintf (ss, sizeof(ss), "Canal at (%d,%d) dirs N:%d NE:%d E:%d SE:%d S:%d SW:%d W:%d NW:%d\n",
@@ -27112,7 +27128,11 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 	Sprite * canal_w        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][W];
 	Sprite * canal_nw       = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][NW];
 
-	bool available_dirs[9] = { 
+	bool canal_dirs[9] = {
+		false, canal_at_n, canal_at_ne, canal_at_e, canal_at_se,
+		canal_at_s, canal_at_sw, canal_at_w, canal_at_nw
+	};
+	bool available_dirs[9] = {
 		false, canal_or_water_n, canal_or_water_ne, canal_or_water_e, canal_or_water_se,
 		canal_or_water_s, canal_or_water_sw, canal_or_water_w, canal_or_water_nw
 	};
@@ -27125,32 +27145,135 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 	int dir1 = -1;
 	int dir2 = -1;
 
-	// Prefer straight lines.
-	if      (available_dirs[N]  && available_dirs[S])  { dir1 = N;  dir2 = S; }
-	else if (available_dirs[E]  && available_dirs[W])  { dir1 = E;  dir2 = W; }
-	else if (available_dirs[NE] && available_dirs[SW]) { dir1 = NE; dir2 = SW; }
-	else if (available_dirs[NW] && available_dirs[SE]) { dir1 = NW; dir2 = SE; }
-	else {
-		for (int i = N; i <= NW && dir1 == -1; i++) {
-			if (! available_dirs[i])
-				continue;
-			int i_prev = (i == N) ? NW : (i - 1);
-			int i_next = (i == NW) ? N : (i + 1);
-			for (int j = N; j <= NW; j++) {
-				if (! available_dirs[j] || j == i)
+	bool has_canal_dir = canal_dirs[N] || canal_dirs[NE] || canal_dirs[E] || canal_dirs[SE] ||
+		canal_dirs[S] || canal_dirs[SW] || canal_dirs[W] || canal_dirs[NW];
+	if (has_canal_dir) {
+		// Prefer diagonals using only canal neighbors first.
+		if      (canal_dirs[NE] && canal_dirs[SW]) { dir1 = NE; dir2 = SW; }
+		else if (canal_dirs[NW] && canal_dirs[SE]) { dir1 = NW; dir2 = SE; }
+		else if (canal_dirs[N]  && canal_dirs[S])  { dir1 = N;  dir2 = S; }
+		else if (canal_dirs[E]  && canal_dirs[W])  { dir1 = E;  dir2 = W; }
+		else {
+			for (int i = N; i <= NW && dir1 == -1; i++) {
+				if (! canal_dirs[i])
 					continue;
-				if (j == i_next || j == i_prev)
-					continue;
-				dir1 = i;
-				dir2 = j;
-				break;
+				int i_prev = (i == N) ? NW : (i - 1);
+				int i_next = (i == NW) ? N : (i + 1);
+				for (int j = N; j <= NW; j++) {
+					if (! canal_dirs[j] || j == i)
+						continue;
+					if (j == i_next || j == i_prev)
+						continue;
+					dir1 = i;
+					dir2 = j;
+					break;
+				}
+			}
+			if (dir1 == -1) {
+				for (int i = N; i <= NW; i++) {
+					if (canal_dirs[i]) {
+						dir1 = i;
+						break;
+					}
+				}
 			}
 		}
 		if (dir1 == -1) {
-			for (int i = N; i <= NW; i++) {
-				if (available_dirs[i]) {
+			// No canal direction found; fall back to water/land adjacency.
+			if      (available_dirs[NE] && available_dirs[SW]) { dir1 = NE; dir2 = SW; }
+			else if (available_dirs[NW] && available_dirs[SE]) { dir1 = NW; dir2 = SE; }
+			else if (available_dirs[N]  && available_dirs[S])  { dir1 = N;  dir2 = S; }
+			else if (available_dirs[E]  && available_dirs[W])  { dir1 = E;  dir2 = W; }
+			else {
+				for (int i = N; i <= NW && dir1 == -1; i++) {
+					if (! available_dirs[i])
+						continue;
+					int i_prev = (i == N) ? NW : (i - 1);
+					int i_next = (i == NW) ? N : (i + 1);
+					for (int j = N; j <= NW; j++) {
+						if (! available_dirs[j] || j == i)
+							continue;
+						if (j == i_next || j == i_prev)
+							continue;
+						dir1 = i;
+						dir2 = j;
+						break;
+					}
+				}
+				if (dir1 == -1) {
+					for (int i = N; i <= NW; i++) {
+						if (available_dirs[i]) {
+							dir1 = i;
+							break;
+						}
+					}
+				}
+			}
+		} else if (dir2 == -1) {
+			int canal_dir = dir1;
+			int a1 = -1;
+			int a2 = -1;
+			if      (available_dirs[NE] && available_dirs[SW]) { a1 = NE; a2 = SW; }
+			else if (available_dirs[NW] && available_dirs[SE]) { a1 = NW; a2 = SE; }
+			else if (available_dirs[N]  && available_dirs[S])  { a1 = N;  a2 = S; }
+			else if (available_dirs[E]  && available_dirs[W])  { a1 = E;  a2 = W; }
+			else {
+				for (int i = N; i <= NW && a1 == -1; i++) {
+					if (! available_dirs[i])
+						continue;
+					int i_prev = (i == N) ? NW : (i - 1);
+					int i_next = (i == NW) ? N : (i + 1);
+					for (int j = N; j <= NW; j++) {
+						if (! available_dirs[j] || j == i)
+							continue;
+						if (j == i_next || j == i_prev)
+							continue;
+						a1 = i;
+						a2 = j;
+						break;
+					}
+				}
+				if (a1 == -1) {
+					for (int i = N; i <= NW; i++) {
+						if (available_dirs[i]) {
+							a1 = i;
+							break;
+						}
+					}
+				}
+			}
+			if (a1 == canal_dir) { dir1 = a1; dir2 = a2; }
+			else if (a2 == canal_dir) { dir1 = a2; dir2 = a1; }
+			else { dir1 = canal_dir; dir2 = a1; }
+		}
+	} else {
+		// Prefer diagonals.
+		if      (available_dirs[NE] && available_dirs[SW]) { dir1 = NE; dir2 = SW; }
+		else if (available_dirs[NW] && available_dirs[SE]) { dir1 = NW; dir2 = SE; }
+		else if (available_dirs[N]  && available_dirs[S])  { dir1 = N;  dir2 = S; }
+		else if (available_dirs[E]  && available_dirs[W])  { dir1 = E;  dir2 = W; }
+		else {
+			for (int i = N; i <= NW && dir1 == -1; i++) {
+				if (! available_dirs[i])
+					continue;
+				int i_prev = (i == N) ? NW : (i - 1);
+				int i_next = (i == NW) ? N : (i + 1);
+				for (int j = N; j <= NW; j++) {
+					if (! available_dirs[j] || j == i)
+						continue;
+					if (j == i_next || j == i_prev)
+						continue;
 					dir1 = i;
+					dir2 = j;
 					break;
+				}
+			}
+			if (dir1 == -1) {
+				for (int i = N; i <= NW; i++) {
+					if (available_dirs[i]) {
+						dir1 = i;
+						break;
+					}
 				}
 			}
 		}
@@ -27173,13 +27296,26 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 	snprintf (ss, sizeof(ss), "Drawing canal at (%d,%d) dirs:%d,%d centroid:%d\n", tile_x, tile_y, dir1, dir2, draw_centroid);
 	(*p_OutputDebugStringA)(ss);
 
+	int draw_dir1 = dir1;
+	int draw_dir2 = dir2;
+	if ((draw_dir1 >= 0) && (draw_dir2 >= 0)) {
+		bool dir1_diagonal = (draw_dir1 == NE) || (draw_dir1 == SE) || (draw_dir1 == SW) || (draw_dir1 == NW);
+		bool dir2_diagonal = (draw_dir2 == NE) || (draw_dir2 == SE) || (draw_dir2 == SW) || (draw_dir2 == NW);
+		if (dir1_diagonal != dir2_diagonal) {
+			if (dir1_diagonal) {
+				int tmp = draw_dir1;
+				draw_dir1 = draw_dir2;
+				draw_dir2 = tmp;
+			}
+		}
+	}
+
+	if (draw_dir1 >= 0)
+		draw_district_on_map_or_canvas(dir_sprites[draw_dir1], map_renderer, draw_x, draw_y);
+	if (draw_dir2 >= 0)
+		draw_district_on_map_or_canvas(dir_sprites[draw_dir2], map_renderer, draw_x, draw_y);
 	if (draw_centroid)
 		draw_district_on_map_or_canvas(canal_centroid, map_renderer, draw_x, draw_y);
-
-	if (dir1 >= 0)
-		draw_district_on_map_or_canvas(dir_sprites[dir1], map_renderer, draw_x, draw_y);
-	if (dir2 >= 0)
-		draw_district_on_map_or_canvas(dir_sprites[dir2], map_renderer, draw_x, draw_y);
 }
 
 void __fastcall
