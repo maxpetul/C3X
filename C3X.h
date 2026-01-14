@@ -1718,7 +1718,7 @@ struct injected_state {
 	struct natural_wonder_district_config natural_wonder_configs[MAX_NATURAL_WONDER_DISTRICT_TYPES];
 
 struct district_image_set {
-	Sprite imgs[10][4][6]; // [variant][era][building_stage]
+	Sprite imgs[10][4][20]; // [variant][era][building_stage]
 } district_img_sets[COUNT_DISTRICT_TYPES];
 	Sprite abandoned_district_img;
 	Sprite abandoned_maritime_district_img;

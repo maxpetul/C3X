@@ -6066,8 +6066,8 @@ override_special_district_from_definition (struct parsed_district_definition * d
 			def->dependent_improvements[i] = NULL;
 		}
 		cfg->max_building_index = cfg->dependent_improvement_count;
-		if (cfg->max_building_index > 5)
-			cfg->max_building_index = 5;
+		if (cfg->max_building_index > 20)
+			cfg->max_building_index = 20;
 	}
 
 	if (def->has_img_paths) {
@@ -6284,8 +6284,8 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	}
 
 	new_cfg.max_building_index = new_cfg.dependent_improvement_count;
-	if (new_cfg.max_building_index > 5)
-		new_cfg.max_building_index = 5;
+	if (new_cfg.max_building_index > 20)
+		new_cfg.max_building_index = 20;
 
 	if (reusing_existing)
 		new_cfg.command = preserved_command;
@@ -26345,8 +26345,8 @@ init_district_images ()
 			continue;
 
 		int era_count = cfg->vary_img_by_era ? 4 : 1;
-		int column_count = cfg->max_building_index + 1;
-		int sprite_width = (cfg->custom_width > 0) ? cfg->custom_width : 128;
+		int column_count  = cfg->max_building_index + 1;
+		int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
 		int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
 
 		// For each cultural variant
@@ -26421,6 +26421,7 @@ init_district_images ()
 	Sprite_construct (&is->abandoned_maritime_district_img);
 	Sprite_slice_pcx (&is->abandoned_maritime_district_img, __, &pcx, 128, 0, 128, 64, 1, 1);
 	pcx.vtable->clear_JGL (&pcx);
+
 	// Load wonder district images (dynamically per wonder)
 	if (is->current_config.enable_wonder_districts) {
 		char const * last_img_path = NULL;
@@ -27094,6 +27095,13 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 	bool canal_or_water_se = tile_has_district_at (tile_x + 1, tile_y + 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x + 1, tile_y + 1);
 	bool canal_or_water_sw = tile_has_district_at (tile_x - 1, tile_y + 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x - 1, tile_y + 1);
 
+	char ss[200];
+	snprintf (ss, sizeof(ss), "Canal at (%d,%d) dirs N:%d NE:%d E:%d SE:%d S:%d SW:%d W:%d NW:%d\n",
+		tile_x, tile_y,
+		canal_or_water_n, canal_or_water_ne, canal_or_water_e, canal_or_water_se,
+		canal_or_water_s, canal_or_water_sw, canal_or_water_w, canal_or_water_nw);
+	(*p_OutputDebugStringA)(ss);
+
 	Sprite * canal_centroid = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][CENTROID];
 	Sprite * canal_n        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][N];
 	Sprite * canal_ne       = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][NE];
@@ -27161,6 +27169,9 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 	int offset_y      = pixel_y + cfg->y_offset;
 	int draw_x        = offset_x - ((sprite_width - 128) / 2);
 	int draw_y        = offset_y - (sprite_height - 64);
+
+	snprintf (ss, sizeof(ss), "Drawing canal at (%d,%d) dirs:%d,%d centroid:%d\n", tile_x, tile_y, dir1, dir2, draw_centroid);
+	(*p_OutputDebugStringA)(ss);
 
 	if (draw_centroid)
 		draw_district_on_map_or_canvas(canal_centroid, map_renderer, draw_x, draw_y);
