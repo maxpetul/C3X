@@ -27093,15 +27093,8 @@ draw_canal_on_map_or_canvas(Sprite * sprite, int tile_x, int tile_y, int dir, bo
 }
 
 void 
-draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int era)
+get_canal_directions (int tile_x, int tile_y, bool * out_water_dirs[9], int * out_dir1, int * out_dir2)
 {
-	// Avoid acute angles (adjacent directions) that look cramped.
-	int disallowed_pairs[][2] = {
-		{ DIR_N, DIR_NE }, { DIR_NE, DIR_E }, { DIR_E, DIR_SE }, { DIR_SE, DIR_S },
-		{ DIR_S, DIR_SW }, { DIR_SW, DIR_W }, { DIR_W, DIR_NW }, { DIR_NW, DIR_N }
-	};
-	int disallowed_pair_count = sizeof(disallowed_pairs) / sizeof(disallowed_pairs[0]);
-
 	bool canal_at_n        = tile_has_district_at (tile_x, tile_y - 2, CANAL_DISTRICT_ID);
 	bool canal_at_s        = tile_has_district_at (tile_x, tile_y + 2, CANAL_DISTRICT_ID);
 	bool canal_at_w        = tile_has_district_at (tile_x - 2, tile_y, CANAL_DISTRICT_ID);
@@ -27126,8 +27119,6 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 	bool canal_or_water_nw = canal_at_nw || water_nw;
 	bool canal_or_water_se = canal_at_se || water_se;
 	bool canal_or_water_sw = canal_at_sw || water_sw;
-	bool no_other_canals   = !canal_at_n && !canal_at_s && !canal_at_w && !canal_at_e &&
-		!canal_at_ne && !canal_at_nw && !canal_at_se && !canal_at_sw;
 
 	char ss[200];
 	snprintf (ss, sizeof(ss), "Canal at (%d,%d), canal tiles: N:%d NE:%d E:%d SE:%d S:%d SW:%d W:%d NW:%d; water tiles: N:%d NE:%d E:%d SE:%d S:%d SW:%d W:%d NW:%d\n",
@@ -27137,15 +27128,6 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 		water_n, water_ne, water_e, water_se,
 		water_s, water_sw, water_w, water_nw);
 	(*p_OutputDebugStringA)(ss);
-
-	Sprite * canal_n  = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_N];
-	Sprite * canal_ne = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_NE];
-	Sprite * canal_e  = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_E];
-	Sprite * canal_se = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_SE];
-	Sprite * canal_s  = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_S];
-	Sprite * canal_sw = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_SW];
-	Sprite * canal_w  = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_W];
-	Sprite * canal_nw = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_NW];
 
 	bool canal_dirs[9] = {
 		false, canal_at_ne, canal_at_e, canal_at_se,
@@ -27159,17 +27141,20 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 		false, canal_or_water_ne, canal_or_water_e, canal_or_water_se,
 		canal_or_water_s, canal_or_water_sw, canal_or_water_w, canal_or_water_nw, canal_or_water_n
 	};
-	Sprite * dir_sprites[9] = { 
-		NULL, canal_ne, canal_e, canal_se,
-		canal_s, canal_sw, canal_w, canal_nw, canal_n
+
+	// Avoid acute angles (adjacent directions) that look cramped.
+	int disallowed_pairs[][2] = {
+		{ DIR_N, DIR_NE }, { DIR_NE, DIR_E }, { DIR_E, DIR_SE }, { DIR_SE, DIR_S },
+		{ DIR_S, DIR_SW }, { DIR_SW, DIR_W }, { DIR_W, DIR_NW }, { DIR_NW, DIR_N }
 	};
+	int disallowed_pair_count = sizeof(disallowed_pairs) / sizeof(disallowed_pairs[0]);
+	int pref_dirs[8] = { DIR_NE, DIR_NW, DIR_SE, DIR_SW, DIR_N, DIR_E, DIR_S, DIR_W };
 
 	int dir1 = -1;
 	int dir2 = -1;
 
 	bool has_canal_dir = canal_dirs[DIR_N] || canal_dirs[DIR_NE] || canal_dirs[DIR_E] || canal_dirs[DIR_SE] ||
 		canal_dirs[DIR_S] || canal_dirs[DIR_SW] || canal_dirs[DIR_W] || canal_dirs[DIR_NW];
-	int pref_dirs[8] = { DIR_NE, DIR_NW, DIR_SE, DIR_SW, DIR_N, DIR_E, DIR_S, DIR_W };
 
 	if (has_canal_dir) {
 		for (int i = 0; i < 8 && dir1 == -1; i++) {
@@ -27208,14 +27193,6 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 		}
 	}
 
-	struct district_config const * cfg = &is->district_configs[CANAL_DISTRICT_ID];
-	int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
-	int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
-	int offset_x      = pixel_x + cfg->x_offset;
-	int offset_y      = pixel_y + cfg->y_offset;
-	int draw_x        = offset_x - ((sprite_width - 128) / 2);
-	int draw_y        = offset_y - (sprite_height - 64);
-
 	int draw_dir1 = dir1;
 	int draw_dir2 = dir2;
 	if ((draw_dir1 >= 0) && (draw_dir2 >= 0)) {
@@ -27238,12 +27215,48 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 	}
 
 	// Manual overrides - overall algorithm works pretty well, but handle corner cases
-	if      (no_other_canals && water_ne && water_sw) { draw_dir1 = DIR_NE; draw_dir2 = DIR_SW; }
-	else if (draw_dir1 == DIR_NE && draw_dir2 == DIR_S && water_n && water_ne)   { draw_dir1 = DIR_N; draw_dir2 = DIR_S; }
-	else if (draw_dir1 == DIR_NE && draw_dir2 == DIR_SE && water_se && water_sw) { draw_dir2 = DIR_SW; }
+	if      (!has_canal_dir && water_dirs[DIR_NE] && water_dirs[DIR_SW]) { draw_dir1 = DIR_NE; draw_dir2 = DIR_SW; }
+	else if (draw_dir1 == DIR_NE && draw_dir2 == DIR_S && water_dirs[DIR_N] && water_dirs[DIR_NE])   { draw_dir1 = DIR_N; draw_dir2 = DIR_S; }
+	else if (draw_dir1 == DIR_NE && draw_dir2 == DIR_SE && water_dirs[DIR_SE] && water_dirs[DIR_SW]) { draw_dir2 = DIR_SW; }
+	else if (draw_dir1 == DIR_NE && draw_dir2 == DIR_SE && water_dirs[DIR_NE] && water_dirs[DIR_N])  { draw_dir1 = DIR_N; }
 
 	snprintf (ss, sizeof(ss), "Drawing canal at (%d,%d) dirs:%d,%d\n", tile_x, tile_y, draw_dir1, draw_dir2);
 	(*p_OutputDebugStringA)(ss);
+
+	*out_dir1 = draw_dir1;
+	*out_dir2 = draw_dir2;
+	*out_water_dirs = water_dirs;
+}
+
+void 
+draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int era)
+{
+	Sprite * canal_n  = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_N];
+	Sprite * canal_ne = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_NE];
+	Sprite * canal_e  = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_E];
+	Sprite * canal_se = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_SE];
+	Sprite * canal_s  = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_S];
+	Sprite * canal_sw = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_SW];
+	Sprite * canal_w  = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_W];
+	Sprite * canal_nw = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_NW];
+
+	Sprite * dir_sprites[9] = { 
+		NULL, canal_ne, canal_e, canal_se,
+		canal_s, canal_sw, canal_w, canal_nw, canal_n
+	};
+
+	struct district_config const * cfg = &is->district_configs[CANAL_DISTRICT_ID];
+	int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
+	int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
+	int offset_x      = pixel_x + cfg->x_offset;
+	int offset_y      = pixel_y + cfg->y_offset;
+	int draw_x        = offset_x - ((sprite_width - 128) / 2);
+	int draw_y        = offset_y - (sprite_height - 64);
+
+	int draw_dir1 = -1;
+	int draw_dir2 = -1;
+	bool water_dirs[9] = { false, false, false, false, false, false, false, false, false };
+	get_canal_directions (tile_x, tile_y, &water_dirs, &draw_dir1, &draw_dir2);
 
 	if (draw_dir1 >= 0)
 		draw_canal_on_map_or_canvas(dir_sprites[draw_dir1], tile_x, tile_y, draw_dir1, water_dirs, map_renderer, draw_x, draw_y);
