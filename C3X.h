@@ -623,6 +623,8 @@ struct district_config {
 	bool align_to_coast;
 	int custom_width;
 	int custom_height;
+	int x_offset;
+	int y_offset;
 	int resource_prereq_count;
 	int dependent_improvement_count;
 	int img_path_count;
@@ -797,7 +799,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	{
 		.command = UCV_Build_Bridge, .name = "Bridge", .tooltip = "Build Bridge", .display_name = "Bridge",
 		.advance_prereq = "Industrialization", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
-		.img_paths = {"Bridge.pcx"}, .dependent_improvements = {0},
+		.img_paths = {"Bridge.pcx"}, .dependent_improvements = {0}, .custom_width = 176, .custom_height = 112, .y_offset = 24, .x_offset = 0,
 		.buildable_square_types_mask = (1 << SQ_Coast), 
 		.img_path_count = 1, .max_building_index = 3, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
@@ -823,6 +825,8 @@ struct parsed_district_definition {
 	bool align_to_coast;
 	int custom_width;
 	int custom_height;
+	int x_offset;
+	int y_offset;
 	int btn_tile_sheet_column;
 	int btn_tile_sheet_row;
 	int defense_bonus_percent;
@@ -854,6 +858,8 @@ struct parsed_district_definition {
 	bool has_align_to_coast;
 	bool has_custom_width;
 	bool has_custom_height;
+	bool has_x_offset;
+	bool has_y_offset;
 	bool has_btn_tile_sheet_column;
 	bool has_btn_tile_sheet_row;
 	bool has_defense_bonus_percent;
