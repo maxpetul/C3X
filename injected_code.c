@@ -27155,8 +27155,12 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 	}
 
 	struct district_config const * cfg = &is->district_configs[CANAL_DISTRICT_ID];
-	int draw_x = pixel_x + cfg->x_offset;
-	int draw_y = pixel_y + cfg->y_offset;
+	int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
+	int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
+	int offset_x      = pixel_x + cfg->x_offset;
+	int offset_y      = pixel_y + cfg->y_offset;
+	int draw_x        = offset_x - ((sprite_width - 128) / 2);
+	int draw_y        = offset_y - (sprite_height - 64);
 
 	if (draw_centroid)
 		draw_district_on_map_or_canvas(canal_centroid, map_renderer, draw_x, draw_y);
@@ -27170,7 +27174,7 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	//*p_debug_mode_bits |= 0xC;
+	*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -27329,8 +27333,8 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 			}
 			case CANAL_DISTRICT_ID:
 			{
+				era = 0; // DEBUG
 				draw_canal_district (tile, tile_x, tile_y, map_renderer, pixel_x, pixel_y, era);
-				era = clamp(3, 3, era); // DEBUG
 				return;
 			}
             default:
