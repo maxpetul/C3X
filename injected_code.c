@@ -9195,6 +9195,34 @@ bridge_district_tile_is_valid (int tile_x, int tile_y)
 }
 
 bool
+canal_district_tile_is_valid (int tile_x, int tile_y)
+{
+	Map * map = &p_bic_data->Map;
+	int const adj_dx[8] = { 0, 0, -2, 2, 1, 1, -1, -1 };
+	int const adj_dy[8] = { -2, 2, 0, 0, -1, 1, -1, 1 };
+
+	for (int i = 0; i < 8; i++) {
+		int nx = tile_x + adj_dx[i];
+		int ny = tile_y + adj_dy[i];
+		wrap_tile_coords (map, &nx, &ny);
+		Tile * tile = tile_at (nx, ny);
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+		if (tile->vtable->m35_Check_Is_Water (tile))
+			return true;
+
+		if (tile_has_district_at (nx, ny, CANAL_DISTRICT_ID)) {
+			struct district_instance * inst = get_district_instance (tile);
+			if ((inst != NULL) && (inst->district_type == CANAL_DISTRICT_ID) &&
+			    district_is_complete (tile, CANAL_DISTRICT_ID))
+				return true;
+		}
+	}
+
+	return false;
+}
+
+bool
 can_build_district_on_tile (Tile * tile, int district_id, int civ_id)
 {
 	if ((! is->current_config.enable_districts) ||
@@ -9227,6 +9255,9 @@ can_build_district_on_tile (Tile * tile, int district_id, int civ_id)
 		return false;
 
 	if (! district_resource_prereqs_met (tile, tile_x, tile_y, district_id, NULL))
+		return false;
+
+	if ((district_id == CANAL_DISTRICT_ID) && (! canal_district_tile_is_valid (tile_x, tile_y)))
 		return false;
 
 	if ((district_id == BRIDGE_DISTRICT_ID) && (! bridge_district_tile_is_valid (tile_x, tile_y)))
@@ -26992,6 +27023,11 @@ get_energy_grid_image_index (int tile_x, int tile_y)
 int
 get_bridge_image_index (Tile * tile, int tile_x, int tile_y)
 {
+	int SW_NE = 0;
+	int NW_SE = 1;
+	int N_S   = 2;
+	int W_E   = 3;
+
 	bool bridge_n  = tile_has_district_at (tile_x, tile_y - 2, BRIDGE_DISTRICT_ID);
 	bool bridge_s  = tile_has_district_at (tile_x, tile_y + 2, BRIDGE_DISTRICT_ID);
 	bool bridge_w  = tile_has_district_at (tile_x - 2, tile_y, BRIDGE_DISTRICT_ID);
@@ -27002,23 +27038,23 @@ get_bridge_image_index (Tile * tile, int tile_x, int tile_y)
 	bool bridge_sw = tile_has_district_at (tile_x - 1, tile_y + 1, BRIDGE_DISTRICT_ID);
 
 	if (bridge_n || bridge_s || bridge_w || bridge_e || bridge_ne || bridge_nw || bridge_se || bridge_sw) {
-		int ns_count = (bridge_n ? 1 : 0) + (bridge_s ? 1 : 0);
-		int we_count = (bridge_w ? 1 : 0) + (bridge_e ? 1 : 0);
+		int ns_count   = (bridge_n ? 1 : 0) + (bridge_s ? 1 : 0);
+		int we_count   = (bridge_w ? 1 : 0) + (bridge_e ? 1 : 0);
 		int swne_count = (bridge_sw ? 1 : 0) + (bridge_ne ? 1 : 0);
 		int nwse_count = (bridge_nw ? 1 : 0) + (bridge_se ? 1 : 0);
 
-		if (ns_count == 2) return 2;
-		if (we_count == 2) return 3;
-		if (swne_count == 2) return 0;
-		if (nwse_count == 2) return 1;
+		if (ns_count == 2)   return N_S;
+		if (we_count == 2)   return W_E;
+		if (swne_count == 2) return SW_NE;
+		if (nwse_count == 2) return NW_SE;
 
-		if (ns_count == 1) return 2;
-		if (we_count == 1) return 3;
-		if (swne_count == 1) return 0;
-		if (nwse_count == 1) return 1;
+		if (ns_count == 1)   return N_S;
+		if (we_count == 1)   return W_E;
+		if (swne_count == 1) return SW_NE;
+		if (nwse_count == 1) return NW_SE;
 	}
 
-	int owner_id = tile->Territory_OwnerID;
+	int owner_id    = tile->Territory_OwnerID;
 	bool north_land = tile_is_land (owner_id, tile_x, tile_y - 2, false);
 	bool south_land = tile_is_land (owner_id, tile_x, tile_y + 2, false);
 	bool west_land  = tile_is_land (owner_id, tile_x - 2, tile_y, false);
@@ -27028,10 +27064,10 @@ get_bridge_image_index (Tile * tile, int tile_x, int tile_y)
 	bool se_land    = tile_is_land (owner_id, tile_x + 1, tile_y + 1, false);
 	bool sw_land    = tile_is_land (owner_id, tile_x - 1, tile_y + 1, false);
 
-	if (north_land || south_land) return 2;
-	if (west_land || east_land) return 3;
-	if (ne_land || sw_land) return 0;
-	if (nw_land || se_land) return 1;
+	if (north_land || south_land) return N_S;
+	if (west_land  || east_land)  return W_E;
+	if (ne_land    || sw_land)    return SW_NE;
+	if (nw_land    || se_land)    return NW_SE;
 
 	return 0;
 }
@@ -27039,26 +27075,96 @@ get_bridge_image_index (Tile * tile, int tile_x, int tile_y)
 void 
 draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int era)
 {
-	bool canal_or_water_n  = tile_has_district_at (tile_x, tile_y - 2, CANAL_DISTRICT_ID      || tile_is_water (tile_x, tile_y - 2, false));
-	bool canal_or_water_s  = tile_has_district_at (tile_x, tile_y + 2, CANAL_DISTRICT_ID)     || tile_is_water (tile_x, tile_y + 2, false);
-	bool canal_or_water_w  = tile_has_district_at (tile_x - 2, tile_y, CANAL_DISTRICT_ID)     || tile_is_water (tile_x - 2, tile_y, false);
-	bool canal_or_water_e  = tile_has_district_at (tile_x + 2, tile_y, CANAL_DISTRICT_ID)     || tile_is_water (tile_x + 2, tile_y, false);
-	bool canal_or_water_ne = tile_has_district_at (tile_x + 1, tile_y - 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x + 1, tile_y - 1, false);
-	bool canal_or_water_nw = tile_has_district_at (tile_x - 1, tile_y - 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x - 1, tile_y - 1, false);
-	bool canal_or_water_se = tile_has_district_at (tile_x + 1, tile_y + 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x + 1, tile_y + 1, false);
-	bool canal_or_water_sw = tile_has_district_at (tile_x - 1, tile_y + 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x - 1, tile_y + 1, false);
+	int CENTROID = 0;
+	int N        = 1;
+	int NE       = 2;
+	int E        = 3;
+	int SE       = 4;
+	int S        = 5;
+	int SW       = 6;
+	int W        = 7;
+	int NW       = 8;
 
-	Sprite * canal_centroid = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][0];
-	Sprite * canal_n        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][1];
-	Sprite * canal_ne       = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][2];
-	Sprite * canal_e        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][3];
-	Sprite * canal_se       = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][4];
-	Sprite * canal_s        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][5];
-	Sprite * canal_sw       = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][6];
-	Sprite * canal_w        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][7];
-	Sprite * canal_nw       = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][8];
+	bool canal_or_water_n  = tile_has_district_at (tile_x, tile_y - 2, CANAL_DISTRICT_ID)     || tile_is_water (tile_x, tile_y - 2);
+	bool canal_or_water_s  = tile_has_district_at (tile_x, tile_y + 2, CANAL_DISTRICT_ID)     || tile_is_water (tile_x, tile_y + 2);
+	bool canal_or_water_w  = tile_has_district_at (tile_x - 2, tile_y, CANAL_DISTRICT_ID)     || tile_is_water (tile_x - 2, tile_y);
+	bool canal_or_water_e  = tile_has_district_at (tile_x + 2, tile_y, CANAL_DISTRICT_ID)     || tile_is_water (tile_x + 2, tile_y);
+	bool canal_or_water_ne = tile_has_district_at (tile_x + 1, tile_y - 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x + 1, tile_y - 1);
+	bool canal_or_water_nw = tile_has_district_at (tile_x - 1, tile_y - 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x - 1, tile_y - 1);
+	bool canal_or_water_se = tile_has_district_at (tile_x + 1, tile_y + 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x + 1, tile_y + 1);
+	bool canal_or_water_sw = tile_has_district_at (tile_x - 1, tile_y + 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x - 1, tile_y + 1);
 
-	
+	Sprite * canal_centroid = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][CENTROID];
+	Sprite * canal_n        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][N];
+	Sprite * canal_ne       = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][NE];
+	Sprite * canal_e        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][E];
+	Sprite * canal_se       = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][SE];
+	Sprite * canal_s        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][S];
+	Sprite * canal_sw       = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][SW];
+	Sprite * canal_w        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][W];
+	Sprite * canal_nw       = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][NW];
+
+	bool available_dirs[9] = { 
+		false, canal_or_water_n, canal_or_water_ne, canal_or_water_e, canal_or_water_se,
+		canal_or_water_s, canal_or_water_sw, canal_or_water_w, canal_or_water_nw
+	};
+
+	Sprite * dir_sprites[9] = { 
+		NULL, canal_n, canal_ne, canal_e, canal_se,
+		canal_s, canal_sw, canal_w, canal_nw
+	};
+
+	int dir1 = -1;
+	int dir2 = -1;
+
+	// Prefer straight lines.
+	if      (available_dirs[N]  && available_dirs[S])  { dir1 = N;  dir2 = S; }
+	else if (available_dirs[E]  && available_dirs[W])  { dir1 = E;  dir2 = W; }
+	else if (available_dirs[NE] && available_dirs[SW]) { dir1 = NE; dir2 = SW; }
+	else if (available_dirs[NW] && available_dirs[SE]) { dir1 = NW; dir2 = SE; }
+	else {
+		for (int i = N; i <= NW && dir1 == -1; i++) {
+			if (! available_dirs[i])
+				continue;
+			int i_prev = (i == N) ? NW : (i - 1);
+			int i_next = (i == NW) ? N : (i + 1);
+			for (int j = N; j <= NW; j++) {
+				if (! available_dirs[j] || j == i)
+					continue;
+				if (j == i_next || j == i_prev)
+					continue;
+				dir1 = i;
+				dir2 = j;
+				break;
+			}
+		}
+		if (dir1 == -1) {
+			for (int i = N; i <= NW; i++) {
+				if (available_dirs[i]) {
+					dir1 = i;
+					break;
+				}
+			}
+		}
+	}
+
+	bool draw_centroid = true;
+	if ((dir1 >= 0) && (dir2 >= 0)) {
+		int opposite_dir1 = ((dir1 + 3) > NW) ? (dir1 - 5) : (dir1 + 4);
+		draw_centroid = (dir2 != opposite_dir1);
+	}
+
+	struct district_config const * cfg = &is->district_configs[CANAL_DISTRICT_ID];
+	int draw_x = pixel_x + cfg->x_offset;
+	int draw_y = pixel_y + cfg->y_offset;
+
+	if (draw_centroid)
+		draw_district_on_map_or_canvas(canal_centroid, map_renderer, draw_x, draw_y);
+
+	if (dir1 >= 0)
+		draw_district_on_map_or_canvas(dir_sprites[dir1], map_renderer, draw_x, draw_y);
+	if (dir2 >= 0)
+		draw_district_on_map_or_canvas(dir_sprites[dir2], map_renderer, draw_x, draw_y);
 }
 
 void __fastcall
@@ -27218,12 +27324,13 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 			case BRIDGE_DISTRICT_ID:
 			{
 				buildings = get_bridge_image_index (tile, tile_x, tile_y);
-				era = 2; // DEBUG
+				era = clamp(2, 3, era); // DEBUG
 				break;
 			}
 			case CANAL_DISTRICT_ID:
 			{
 				draw_canal_district (tile, tile_x, tile_y, map_renderer, pixel_x, pixel_y, era);
+				era = clamp(3, 3, era); // DEBUG
 				return;
 			}
             default:
