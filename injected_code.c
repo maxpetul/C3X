@@ -27293,29 +27293,36 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 	int draw_x        = offset_x - ((sprite_width - 128) / 2);
 	int draw_y        = offset_y - (sprite_height - 64);
 
-	snprintf (ss, sizeof(ss), "Drawing canal at (%d,%d) dirs:%d,%d centroid:%d\n", tile_x, tile_y, dir1, dir2, draw_centroid);
-	(*p_OutputDebugStringA)(ss);
-
 	int draw_dir1 = dir1;
 	int draw_dir2 = dir2;
 	if ((draw_dir1 >= 0) && (draw_dir2 >= 0)) {
-		bool dir1_diagonal = (draw_dir1 == NE) || (draw_dir1 == SE) || (draw_dir1 == SW) || (draw_dir1 == NW);
-		bool dir2_diagonal = (draw_dir2 == NE) || (draw_dir2 == SE) || (draw_dir2 == SW) || (draw_dir2 == NW);
-		if (dir1_diagonal != dir2_diagonal) {
-			if (dir1_diagonal) {
-				int tmp = draw_dir1;
-				draw_dir1 = draw_dir2;
-				draw_dir2 = tmp;
-			}
+		int weight1 = 0;
+		int weight2 = 0;
+
+		if (draw_dir1 == S) weight1 = 2;
+		else if ((draw_dir1 == SE) || (draw_dir1 == SW)) weight1 = 1;
+		else if ((draw_dir1 == NE) || (draw_dir1 == NW) || (draw_dir1 == N)) weight1 = -1;
+
+		if (draw_dir2 == S) weight2 = 2;
+		else if ((draw_dir2 == SE) || (draw_dir2 == SW)) weight2 = 1;
+		else if ((draw_dir2 == NE) || (draw_dir2 == NW) || (draw_dir2 == N)) weight2 = -1;
+
+		if (weight1 > weight2) {
+			int tmp = draw_dir1;
+			draw_dir1 = draw_dir2;
+			draw_dir2 = tmp;
 		}
 	}
+
+	snprintf (ss, sizeof(ss), "Drawing canal at (%d,%d) dirs:%d,%d centroid:%d\n", tile_x, tile_y, draw_dir1, draw_dir2, draw_centroid);
+	(*p_OutputDebugStringA)(ss);
 
 	if (draw_dir1 >= 0)
 		draw_district_on_map_or_canvas(dir_sprites[draw_dir1], map_renderer, draw_x, draw_y);
 	if (draw_dir2 >= 0)
 		draw_district_on_map_or_canvas(dir_sprites[draw_dir2], map_renderer, draw_x, draw_y);
-	if (draw_centroid)
-		draw_district_on_map_or_canvas(canal_centroid, map_renderer, draw_x, draw_y);
+	//if (draw_centroid)
+	//	draw_district_on_map_or_canvas(canal_centroid, map_renderer, draw_x, draw_y);
 }
 
 void __fastcall
