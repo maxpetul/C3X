@@ -9103,7 +9103,7 @@ district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district
 }
 
 bool
-tile_has_bridge_district_at (int tile_x, int tile_y)
+tile_has_district_at (int tile_x, int tile_y, int district_id)
 {
 	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 	Tile * tile = tile_at (tile_x, tile_y);
@@ -9111,7 +9111,7 @@ tile_has_bridge_district_at (int tile_x, int tile_y)
 		return false;
 
 	struct district_instance * inst = get_district_instance (tile);
-	return (inst != NULL) && (inst->district_type == BRIDGE_DISTRICT_ID);
+	return (inst != NULL) && (inst->district_type == district_id);
 }
 
 int
@@ -9125,7 +9125,7 @@ count_contiguous_bridge_districts (int tile_x, int tile_y, int dx, int dy)
 
 	for (int step = 0; step < max_steps; step++) {
 		wrap_tile_coords (map, &nx, &ny);
-		if (! tile_has_bridge_district_at (nx, ny))
+		if (! tile_has_district_at (nx, ny, BRIDGE_DISTRICT_ID))
 			break;
 		count++;
 		nx += dx;
@@ -9170,7 +9170,7 @@ bridge_district_tile_is_valid (int tile_x, int tile_y)
 		int nx = tile_x + adj_dx[i];
 		int ny = tile_y + adj_dy[i];
 		wrap_tile_coords (map, &nx, &ny);
-		if (! tile_has_bridge_district_at (nx, ny))
+		if (! tile_has_district_at (nx, ny, BRIDGE_DISTRICT_ID))
 			continue;
 
 		int cand_dx = -adj_dx[i];
@@ -9182,7 +9182,7 @@ bridge_district_tile_is_valid (int tile_x, int tile_y)
 			wrap_tile_coords (map, &ox, &oy);
 			if ((ox == tile_x) && (oy == tile_y))
 				continue;
-			if (! tile_has_bridge_district_at (ox, oy))
+			if (! tile_has_district_at (ox, oy, BRIDGE_DISTRICT_ID))
 				continue;
 
 			if (! ((adj_dx[j] == cand_dx) && (adj_dy[j] == cand_dy)) &&
@@ -26523,7 +26523,7 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
 }
 
 bool
-tile_offset_is_land (int civ_id, int tile_x, int tile_y, bool must_be_same_owner)
+tile_is_land (int civ_id, int tile_x, int tile_y, bool must_be_same_owner)
 {
 	if (must_be_same_owner && (civ_id <= 0))
 		return false;
@@ -26532,6 +26532,14 @@ tile_offset_is_land (int civ_id, int tile_x, int tile_y, bool must_be_same_owner
 	Tile * tile = tile_at (tile_x, tile_y);
 	return (tile != NULL) && (tile != p_null_tile) && (! tile->vtable->m35_Check_Is_Water (tile)) &&
 		((! must_be_same_owner) || (tile->Territory_OwnerID == civ_id));
+}
+
+bool
+tile_is_water (int tile_x, int tile_y)
+{
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	return (tile != NULL) && (tile != p_null_tile) && (tile->vtable->m35_Check_Is_Water (tile));
 }
 
 Tile *
@@ -26664,14 +26672,14 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 		bool city_is_east_of_port   = (closest_dx > 0);
 		bool city_is_north_of_port  = (closest_dy < 0);
 		bool city_is_south_of_port  = (closest_dy > 0);
-		bool northwest_tile_is_land = tile_offset_is_land (owner_id, tile_x - 1, tile_y - 1, true);
-		bool north_tile_is_land     = tile_offset_is_land (owner_id, tile_x, tile_y - 2, true);
-		bool northeast_tile_is_land = tile_offset_is_land (owner_id, tile_x + 1, tile_y - 1, true);
-		bool east_tile_is_land      = tile_offset_is_land (owner_id, tile_x + 2, tile_y, true);
-		bool southeast_tile_is_land = tile_offset_is_land (owner_id, tile_x + 1, tile_y + 1, true);
-		bool south_tile_is_land     = tile_offset_is_land (owner_id, tile_x, tile_y + 2, true);
-		bool southwest_tile_is_land = tile_offset_is_land (owner_id, tile_x - 1, tile_y + 1, true);
-		bool west_tile_is_land      = tile_offset_is_land (owner_id, tile_x - 2, tile_y, true);
+		bool northwest_tile_is_land = tile_is_land (owner_id, tile_x - 1, tile_y - 1, true);
+		bool north_tile_is_land     = tile_is_land (owner_id, tile_x, tile_y - 2, true);
+		bool northeast_tile_is_land = tile_is_land (owner_id, tile_x + 1, tile_y - 1, true);
+		bool east_tile_is_land      = tile_is_land (owner_id, tile_x + 2, tile_y, true);
+		bool southeast_tile_is_land = tile_is_land (owner_id, tile_x + 1, tile_y + 1, true);
+		bool south_tile_is_land     = tile_is_land (owner_id, tile_x, tile_y + 2, true);
+		bool southwest_tile_is_land = tile_is_land (owner_id, tile_x - 1, tile_y + 1, true);
+		bool west_tile_is_land      = tile_is_land (owner_id, tile_x - 2, tile_y, true);
 
 		if (city_is_directly_above_port) {
 			if      (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
@@ -26729,14 +26737,14 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 
 		// Same civ doesn't own any adjacent land tiles, pick based on *any* land tiles
 		if (*out_variant == NONE) {
-			bool northwest_tile_is_land = tile_offset_is_land (owner_id, tile_x - 1, tile_y - 1, false);
-			bool north_tile_is_land     = tile_offset_is_land (owner_id, tile_x, tile_y - 2, false);
-			bool northeast_tile_is_land = tile_offset_is_land (owner_id, tile_x + 1, tile_y - 1, false);
-			bool east_tile_is_land      = tile_offset_is_land (owner_id, tile_x + 2, tile_y, false);
-			bool southeast_tile_is_land = tile_offset_is_land (owner_id, tile_x + 1, tile_y + 1, false);
-			bool south_tile_is_land     = tile_offset_is_land (owner_id, tile_x, tile_y + 2, false);
-			bool southwest_tile_is_land = tile_offset_is_land (owner_id, tile_x - 1, tile_y + 1, false);
-			bool west_tile_is_land      = tile_offset_is_land (owner_id, tile_x - 2, tile_y, false);
+			bool northwest_tile_is_land = tile_is_land (owner_id, tile_x - 1, tile_y - 1, false);
+			bool north_tile_is_land     = tile_is_land (owner_id, tile_x, tile_y - 2, false);
+			bool northeast_tile_is_land = tile_is_land (owner_id, tile_x + 1, tile_y - 1, false);
+			bool east_tile_is_land      = tile_is_land (owner_id, tile_x + 2, tile_y, false);
+			bool southeast_tile_is_land = tile_is_land (owner_id, tile_x + 1, tile_y + 1, false);
+			bool south_tile_is_land     = tile_is_land (owner_id, tile_x, tile_y + 2, false);
+			bool southwest_tile_is_land = tile_is_land (owner_id, tile_x - 1, tile_y + 1, false);
+			bool west_tile_is_land      = tile_is_land (owner_id, tile_x - 2, tile_y, false);
 			if      (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
 			else if (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
 			else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
@@ -26904,9 +26912,9 @@ wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner
 	bool city_is_directly_below_port = city_dx == tile_x && city_dy == tile_y + 2;
 
 	if (city_is_directly_above_port || city_is_directly_below_port) {
-		bool northeast_tile_is_land = tile_offset_is_land (owner_id, tile_x + 1, tile_y - 1, true);
-		bool east_tile_is_land      = tile_offset_is_land (owner_id, tile_x + 2, tile_y, true);
-		bool southeast_tile_is_land = tile_offset_is_land (owner_id, tile_x + 1, tile_y + 1, true);
+		bool northeast_tile_is_land = tile_is_land (owner_id, tile_x + 1, tile_y - 1, true);
+		bool east_tile_is_land      = tile_is_land (owner_id, tile_x + 2, tile_y, true);
+		bool southeast_tile_is_land = tile_is_land (owner_id, tile_x + 1, tile_y + 1, true);
 
 		if (northeast_tile_is_land || east_tile_is_land || southeast_tile_is_land)
 			return true;
@@ -26982,29 +26990,16 @@ get_energy_grid_image_index (int tile_x, int tile_y)
 }
 
 int
-get_bridge_image_index (Tile * tile)
+get_bridge_image_index (Tile * tile, int tile_x, int tile_y)
 {
-	if ((tile == NULL) || (tile == p_null_tile))
-		return 0;
-
-	int tile_x = 0;
-	int tile_y = 0;
-	struct district_instance * inst = get_district_instance (tile);
-	if (inst != NULL) {
-		tile_x = inst->tile_x;
-		tile_y = inst->tile_y;
-	} else {
-		tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y);
-	}
-
-	bool bridge_n  = tile_has_bridge_district_at (tile_x, tile_y - 2);
-	bool bridge_s  = tile_has_bridge_district_at (tile_x, tile_y + 2);
-	bool bridge_w  = tile_has_bridge_district_at (tile_x - 2, tile_y);
-	bool bridge_e  = tile_has_bridge_district_at (tile_x + 2, tile_y);
-	bool bridge_ne = tile_has_bridge_district_at (tile_x + 1, tile_y - 1);
-	bool bridge_nw = tile_has_bridge_district_at (tile_x - 1, tile_y - 1);
-	bool bridge_se = tile_has_bridge_district_at (tile_x + 1, tile_y + 1);
-	bool bridge_sw = tile_has_bridge_district_at (tile_x - 1, tile_y + 1);
+	bool bridge_n  = tile_has_district_at (tile_x, tile_y - 2, BRIDGE_DISTRICT_ID);
+	bool bridge_s  = tile_has_district_at (tile_x, tile_y + 2, BRIDGE_DISTRICT_ID);
+	bool bridge_w  = tile_has_district_at (tile_x - 2, tile_y, BRIDGE_DISTRICT_ID);
+	bool bridge_e  = tile_has_district_at (tile_x + 2, tile_y, BRIDGE_DISTRICT_ID);
+	bool bridge_ne = tile_has_district_at (tile_x + 1, tile_y - 1, BRIDGE_DISTRICT_ID);
+	bool bridge_nw = tile_has_district_at (tile_x - 1, tile_y - 1, BRIDGE_DISTRICT_ID);
+	bool bridge_se = tile_has_district_at (tile_x + 1, tile_y + 1, BRIDGE_DISTRICT_ID);
+	bool bridge_sw = tile_has_district_at (tile_x - 1, tile_y + 1, BRIDGE_DISTRICT_ID);
 
 	if (bridge_n || bridge_s || bridge_w || bridge_e || bridge_ne || bridge_nw || bridge_se || bridge_sw) {
 		int ns_count = (bridge_n ? 1 : 0) + (bridge_s ? 1 : 0);
@@ -27024,14 +27019,14 @@ get_bridge_image_index (Tile * tile)
 	}
 
 	int owner_id = tile->Territory_OwnerID;
-	bool north_land = tile_offset_is_land (owner_id, tile_x, tile_y - 2, false);
-	bool south_land = tile_offset_is_land (owner_id, tile_x, tile_y + 2, false);
-	bool west_land  = tile_offset_is_land (owner_id, tile_x - 2, tile_y, false);
-	bool east_land  = tile_offset_is_land (owner_id, tile_x + 2, tile_y, false);
-	bool ne_land    = tile_offset_is_land (owner_id, tile_x + 1, tile_y - 1, false);
-	bool nw_land    = tile_offset_is_land (owner_id, tile_x - 1, tile_y - 1, false);
-	bool se_land    = tile_offset_is_land (owner_id, tile_x + 1, tile_y + 1, false);
-	bool sw_land    = tile_offset_is_land (owner_id, tile_x - 1, tile_y + 1, false);
+	bool north_land = tile_is_land (owner_id, tile_x, tile_y - 2, false);
+	bool south_land = tile_is_land (owner_id, tile_x, tile_y + 2, false);
+	bool west_land  = tile_is_land (owner_id, tile_x - 2, tile_y, false);
+	bool east_land  = tile_is_land (owner_id, tile_x + 2, tile_y, false);
+	bool ne_land    = tile_is_land (owner_id, tile_x + 1, tile_y - 1, false);
+	bool nw_land    = tile_is_land (owner_id, tile_x - 1, tile_y - 1, false);
+	bool se_land    = tile_is_land (owner_id, tile_x + 1, tile_y + 1, false);
+	bool sw_land    = tile_is_land (owner_id, tile_x - 1, tile_y + 1, false);
 
 	if (north_land || south_land) return 2;
 	if (west_land || east_land) return 3;
@@ -27044,13 +27039,32 @@ get_bridge_image_index (Tile * tile)
 void 
 draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int era)
 {
-	// TODO
+	bool canal_or_water_n  = tile_has_district_at (tile_x, tile_y - 2, CANAL_DISTRICT_ID      || tile_is_water (tile_x, tile_y - 2, false));
+	bool canal_or_water_s  = tile_has_district_at (tile_x, tile_y + 2, CANAL_DISTRICT_ID)     || tile_is_water (tile_x, tile_y + 2, false);
+	bool canal_or_water_w  = tile_has_district_at (tile_x - 2, tile_y, CANAL_DISTRICT_ID)     || tile_is_water (tile_x - 2, tile_y, false);
+	bool canal_or_water_e  = tile_has_district_at (tile_x + 2, tile_y, CANAL_DISTRICT_ID)     || tile_is_water (tile_x + 2, tile_y, false);
+	bool canal_or_water_ne = tile_has_district_at (tile_x + 1, tile_y - 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x + 1, tile_y - 1, false);
+	bool canal_or_water_nw = tile_has_district_at (tile_x - 1, tile_y - 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x - 1, tile_y - 1, false);
+	bool canal_or_water_se = tile_has_district_at (tile_x + 1, tile_y + 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x + 1, tile_y + 1, false);
+	bool canal_or_water_sw = tile_has_district_at (tile_x - 1, tile_y + 1, CANAL_DISTRICT_ID) || tile_is_water (tile_x - 1, tile_y + 1, false);
+
+	Sprite * canal_centroid = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][0];
+	Sprite * canal_n        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][1];
+	Sprite * canal_ne       = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][2];
+	Sprite * canal_e        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][3];
+	Sprite * canal_se       = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][4];
+	Sprite * canal_s        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][5];
+	Sprite * canal_sw       = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][6];
+	Sprite * canal_w        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][7];
+	Sprite * canal_nw       = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][8];
+
+	
 }
 
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -27203,7 +27217,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 			}
 			case BRIDGE_DISTRICT_ID:
 			{
-				buildings = get_bridge_image_index (tile);
+				buildings = get_bridge_image_index (tile, tile_x, tile_y);
 				era = 2; // DEBUG
 				break;
 			}
