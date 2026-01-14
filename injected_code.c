@@ -27074,9 +27074,36 @@ get_bridge_image_index (Tile * tile, int tile_x, int tile_y)
 }
 
 void 
+draw_canal_on_map_or_canvas(Sprite * sprite, int dir, bool water_dirs[9], Map_Renderer * map_renderer, int draw_x, int draw_y)
+{
+	int N  = 1;
+	int NE = 2;
+	int E  = 3;
+	int SE = 4;
+	int S  = 5;
+	int SW = 6;
+	int W  = 7;
+	int NW = 8;
+
+	int y_offset = 9;
+	int x_offset = y_offset * 2;
+
+	draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y);
+
+	// Add an additional draw if adjacent to water
+	if      (dir == N  && water_dirs[N])  draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y - y_offset);
+	else if (dir == NE && water_dirs[NE]) draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y - y_offset);
+	else if (dir == E  && water_dirs[E])  draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y);
+	else if (dir == SE && water_dirs[SE]) draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y + y_offset);
+	else if (dir == S  && water_dirs[S])  draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y + y_offset);
+	else if (dir == SW && water_dirs[SW]) draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y + y_offset);
+	else if (dir == W  && water_dirs[W])  draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y);
+	else if (dir == NW && water_dirs[NW]) draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y - y_offset);
+}
+
+void 
 draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int era)
 {
-	int CENTROID = 0;
 	int N        = 1;
 	int NE       = 2;
 	int E        = 3;
@@ -27085,6 +27112,12 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 	int SW       = 6;
 	int W        = 7;
 	int NW       = 8;
+	// Avoid narrow angles that look cramped; fall back to straight lines instead.
+	int disallowed_pairs[][2] = {
+		{ N, NE }, { N, E }, { N, NW }, { N, W },
+		{ S, NE }, { S, NW }
+	};
+	int disallowed_pair_count = sizeof(disallowed_pairs) / sizeof(disallowed_pairs[0]);
 
 	bool canal_at_n  = tile_has_district_at (tile_x, tile_y - 2, CANAL_DISTRICT_ID);
 	bool canal_at_s  = tile_has_district_at (tile_x, tile_y + 2, CANAL_DISTRICT_ID);
@@ -27118,7 +27151,6 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 		canal_or_water_s, canal_or_water_sw, canal_or_water_w, canal_or_water_nw);
 	(*p_OutputDebugStringA)(ss);
 
-	Sprite * canal_centroid = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][CENTROID];
 	Sprite * canal_n        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][N];
 	Sprite * canal_ne       = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][NE];
 	Sprite * canal_e        = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][E];
@@ -27132,10 +27164,16 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 		false, canal_at_n, canal_at_ne, canal_at_e, canal_at_se,
 		canal_at_s, canal_at_sw, canal_at_w, canal_at_nw
 	};
+	bool water_dirs[9] = {
+		false, water_n, water_ne, water_e, water_se,
+		water_s, water_sw, water_w, water_nw
+	};
 	bool available_dirs[9] = {
 		false, canal_or_water_n, canal_or_water_ne, canal_or_water_e, canal_or_water_se,
 		canal_or_water_s, canal_or_water_sw, canal_or_water_w, canal_or_water_nw
 	};
+	bool any_canal_diagonal = canal_dirs[NE] || canal_dirs[NW] || canal_dirs[SE] || canal_dirs[SW];
+	bool any_available_diagonal = available_dirs[NE] || available_dirs[NW] || available_dirs[SE] || available_dirs[SW];
 
 	Sprite * dir_sprites[9] = { 
 		NULL, canal_n, canal_ne, canal_e, canal_se,
@@ -27151,8 +27189,6 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 		// Prefer diagonals using only canal neighbors first.
 		if      (canal_dirs[NE] && canal_dirs[SW]) { dir1 = NE; dir2 = SW; }
 		else if (canal_dirs[NW] && canal_dirs[SE]) { dir1 = NW; dir2 = SE; }
-		else if (canal_dirs[N]  && canal_dirs[S])  { dir1 = N;  dir2 = S; }
-		else if (canal_dirs[E]  && canal_dirs[W])  { dir1 = E;  dir2 = W; }
 		else {
 			for (int i = N; i <= NW && dir1 == -1; i++) {
 				if (! canal_dirs[i])
@@ -27164,10 +27200,31 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 						continue;
 					if (j == i_next || j == i_prev)
 						continue;
+					// If a diagonal is available, skip straight lines to favor angled segments.
+					if (any_canal_diagonal) {
+						if ((i == N && j == S) || (i == S && j == N) ||
+							(i == E && j == W) || (i == W && j == E))
+							continue;
+					}
+					bool pair_is_too_close = false;
+					for (int k = 0; k < disallowed_pair_count; k++) {
+						if ((i == disallowed_pairs[k][0] && j == disallowed_pairs[k][1]) ||
+							(i == disallowed_pairs[k][1] && j == disallowed_pairs[k][0])) {
+							pair_is_too_close = true;
+							break;
+						}
+					}
+					if (pair_is_too_close)
+						continue;
 					dir1 = i;
 					dir2 = j;
 					break;
 				}
+			}
+			if (dir1 == -1) {
+				// Fall back to straight lines only if no diagonal/mixed pair is viable.
+				if      (canal_dirs[N]  && canal_dirs[S])  { dir1 = N;  dir2 = S; }
+				else if (canal_dirs[E]  && canal_dirs[W])  { dir1 = E;  dir2 = W; }
 			}
 			if (dir1 == -1) {
 				for (int i = N; i <= NW; i++) {
@@ -27182,8 +27239,6 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 			// No canal direction found; fall back to water/land adjacency.
 			if      (available_dirs[NE] && available_dirs[SW]) { dir1 = NE; dir2 = SW; }
 			else if (available_dirs[NW] && available_dirs[SE]) { dir1 = NW; dir2 = SE; }
-			else if (available_dirs[N]  && available_dirs[S])  { dir1 = N;  dir2 = S; }
-			else if (available_dirs[E]  && available_dirs[W])  { dir1 = E;  dir2 = W; }
 			else {
 				for (int i = N; i <= NW && dir1 == -1; i++) {
 					if (! available_dirs[i])
@@ -27195,10 +27250,31 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 							continue;
 						if (j == i_next || j == i_prev)
 							continue;
+						// If a diagonal is available, skip straight lines to favor angled segments.
+						if (any_available_diagonal) {
+							if ((i == N && j == S) || (i == S && j == N) ||
+								(i == E && j == W) || (i == W && j == E))
+								continue;
+						}
+						bool pair_is_too_close = false;
+						for (int k = 0; k < disallowed_pair_count; k++) {
+							if ((i == disallowed_pairs[k][0] && j == disallowed_pairs[k][1]) ||
+								(i == disallowed_pairs[k][1] && j == disallowed_pairs[k][0])) {
+								pair_is_too_close = true;
+								break;
+							}
+						}
+						if (pair_is_too_close)
+							continue;
 						dir1 = i;
 						dir2 = j;
 						break;
 					}
+				}
+				if (dir1 == -1) {
+					// Fall back to straight lines only if no diagonal/mixed pair is viable.
+					if      (available_dirs[N]  && available_dirs[S])  { dir1 = N;  dir2 = S; }
+					else if (available_dirs[E]  && available_dirs[W])  { dir1 = E;  dir2 = W; }
 				}
 				if (dir1 == -1) {
 					for (int i = N; i <= NW; i++) {
@@ -27215,8 +27291,6 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 			int a2 = -1;
 			if      (available_dirs[NE] && available_dirs[SW]) { a1 = NE; a2 = SW; }
 			else if (available_dirs[NW] && available_dirs[SE]) { a1 = NW; a2 = SE; }
-			else if (available_dirs[N]  && available_dirs[S])  { a1 = N;  a2 = S; }
-			else if (available_dirs[E]  && available_dirs[W])  { a1 = E;  a2 = W; }
 			else {
 				for (int i = N; i <= NW && a1 == -1; i++) {
 					if (! available_dirs[i])
@@ -27228,10 +27302,31 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 							continue;
 						if (j == i_next || j == i_prev)
 							continue;
+						// If a diagonal is available, skip straight lines to favor angled segments.
+						if (any_available_diagonal) {
+							if ((i == N && j == S) || (i == S && j == N) ||
+								(i == E && j == W) || (i == W && j == E))
+								continue;
+						}
+						bool pair_is_too_close = false;
+						for (int k = 0; k < disallowed_pair_count; k++) {
+							if ((i == disallowed_pairs[k][0] && j == disallowed_pairs[k][1]) ||
+								(i == disallowed_pairs[k][1] && j == disallowed_pairs[k][0])) {
+								pair_is_too_close = true;
+								break;
+							}
+						}
+						if (pair_is_too_close)
+							continue;
 						a1 = i;
 						a2 = j;
 						break;
 					}
+				}
+				if (a1 == -1) {
+					// Fall back to straight lines only if no diagonal/mixed pair is viable.
+					if      (available_dirs[N]  && available_dirs[S])  { a1 = N;  a2 = S; }
+					else if (available_dirs[E]  && available_dirs[W])  { a1 = E;  a2 = W; }
 				}
 				if (a1 == -1) {
 					for (int i = N; i <= NW; i++) {
@@ -27250,8 +27345,6 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 		// Prefer diagonals.
 		if      (available_dirs[NE] && available_dirs[SW]) { dir1 = NE; dir2 = SW; }
 		else if (available_dirs[NW] && available_dirs[SE]) { dir1 = NW; dir2 = SE; }
-		else if (available_dirs[N]  && available_dirs[S])  { dir1 = N;  dir2 = S; }
-		else if (available_dirs[E]  && available_dirs[W])  { dir1 = E;  dir2 = W; }
 		else {
 			for (int i = N; i <= NW && dir1 == -1; i++) {
 				if (! available_dirs[i])
@@ -27263,10 +27356,31 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 						continue;
 					if (j == i_next || j == i_prev)
 						continue;
+					// If a diagonal is available, skip straight lines to favor angled segments.
+					if (any_available_diagonal) {
+						if ((i == N && j == S) || (i == S && j == N) ||
+							(i == E && j == W) || (i == W && j == E))
+							continue;
+					}
+					bool pair_is_too_close = false;
+					for (int k = 0; k < disallowed_pair_count; k++) {
+						if ((i == disallowed_pairs[k][0] && j == disallowed_pairs[k][1]) ||
+							(i == disallowed_pairs[k][1] && j == disallowed_pairs[k][0])) {
+							pair_is_too_close = true;
+							break;
+						}
+					}
+					if (pair_is_too_close)
+						continue;
 					dir1 = i;
 					dir2 = j;
 					break;
 				}
+			}
+			if (dir1 == -1) {
+				// Fall back to straight lines only if no diagonal/mixed pair is viable.
+				if      (available_dirs[N]  && available_dirs[S])  { dir1 = N;  dir2 = S; }
+				else if (available_dirs[E]  && available_dirs[W])  { dir1 = E;  dir2 = W; }
 			}
 			if (dir1 == -1) {
 				for (int i = N; i <= NW; i++) {
@@ -27278,11 +27392,26 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 			}
 		}
 	}
-
-	bool draw_centroid = true;
 	if ((dir1 >= 0) && (dir2 >= 0)) {
-		int opposite_dir1 = ((dir1 + 3) > NW) ? (dir1 - 5) : (dir1 + 4);
-		draw_centroid = (dir2 != opposite_dir1);
+		bool pair_is_too_close = false;
+		for (int k = 0; k < disallowed_pair_count; k++) {
+			if ((dir1 == disallowed_pairs[k][0] && dir2 == disallowed_pairs[k][1]) ||
+				(dir1 == disallowed_pairs[k][1] && dir2 == disallowed_pairs[k][0])) {
+				pair_is_too_close = true;
+				break;
+			}
+		}
+		if (pair_is_too_close) {
+			if      (available_dirs[N] && available_dirs[S]) { dir1 = N; dir2 = S; }
+			else if (available_dirs[E] && available_dirs[W]) { dir1 = E; dir2 = W; }
+			else {
+				if      (available_dirs[N]) { dir1 = N; }
+				else if (available_dirs[S]) { dir1 = S; }
+				else if (available_dirs[E]) { dir1 = E; }
+				else if (available_dirs[W]) { dir1 = W; }
+				dir2 = -1;
+			}
+		}
 	}
 
 	struct district_config const * cfg = &is->district_configs[CANAL_DISTRICT_ID];
@@ -27314,15 +27443,13 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 		}
 	}
 
-	snprintf (ss, sizeof(ss), "Drawing canal at (%d,%d) dirs:%d,%d centroid:%d\n", tile_x, tile_y, draw_dir1, draw_dir2, draw_centroid);
+	snprintf (ss, sizeof(ss), "Drawing canal at (%d,%d) dirs:%d,%d\n", tile_x, tile_y, draw_dir1, draw_dir2);
 	(*p_OutputDebugStringA)(ss);
 
 	if (draw_dir1 >= 0)
-		draw_district_on_map_or_canvas(dir_sprites[draw_dir1], map_renderer, draw_x, draw_y);
+		draw_canal_on_map_or_canvas(dir_sprites[draw_dir1], draw_dir1, water_dirs, map_renderer, draw_x, draw_y);
 	if (draw_dir2 >= 0)
-		draw_district_on_map_or_canvas(dir_sprites[draw_dir2], map_renderer, draw_x, draw_y);
-	//if (draw_centroid)
-	//	draw_district_on_map_or_canvas(canal_centroid, map_renderer, draw_x, draw_y);
+		draw_canal_on_map_or_canvas(dir_sprites[draw_dir2], draw_dir2, water_dirs, map_renderer, draw_x, draw_y);
 }
 
 void __fastcall
