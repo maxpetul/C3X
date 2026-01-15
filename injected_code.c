@@ -3467,6 +3467,23 @@ wai_init_cities (int x, int y)
 #define FOR_WORK_AREA_AROUND(wai_name, _x, _y) for (struct work_area_iter wai_name = wai_init (_x, _y); (wai_name.n < wai_name.num_tiles); wai_next (&wai_name))
 #define FOR_DISTRICTS_AROUND(wai_name, _x, _y, _completed_only) for (struct work_area_iter wai_name = wai_init_districts (_x, _y, _completed_only); (wai_name.n < wai_name.num_tiles); wai_next (&wai_name))
 #define FOR_CITIES_AROUND(wai_name, _x, _y) for (struct work_area_iter wai_name = wai_init_cities (_x, _y); (wai_name.n < wai_name.num_tiles); wai_next (&wai_name))
+#define FOR_AERODROMES_AROUND(unit_ptr) \
+	for (struct table_entry_iter _tei = tei_init (&is->district_tile_map); \
+	     _tei.index < _tei.capacity; \
+	     tei_next (&_tei)) \
+		for (Tile * aerodrome_tile = (Tile *)_tei.key; \
+		     (aerodrome_tile != NULL) && (aerodrome_tile != p_null_tile); \
+		     aerodrome_tile = NULL) \
+			for (struct district_instance * aerodrome_inst = (struct district_instance *)(long)_tei.value; \
+			     (aerodrome_inst != NULL) && \
+			     (aerodrome_inst->district_type == AERODROME_DISTRICT_ID) && \
+			     district_is_complete (aerodrome_tile, AERODROME_DISTRICT_ID); \
+			     aerodrome_inst = NULL) \
+				for (int aerodrome_x = 0, aerodrome_y = 0; \
+				     district_instance_get_coords (aerodrome_inst, aerodrome_tile, &aerodrome_x, &aerodrome_y) && \
+				     (aerodrome_tile->vtable->m38_Get_Territory_OwnerID (aerodrome_tile) == (unit_ptr)->Body.CivID) && \
+				     patch_Unit_is_in_rebase_range ((unit_ptr), __, aerodrome_x, aerodrome_y); \
+				     aerodrome_x = 0, aerodrome_y = 0)
 
 struct tile_rings_iter {
 	int center_x, center_y;
@@ -9621,7 +9638,7 @@ find_tile_for_port_district (City * city, int * out_x, int * out_y)
 		if ((continent_id < 0) || (continent_id >= p_bic_data->Map.Continent_Count))
 			continue;
 		Continent * continent = &p_bic_data->Map.Continents[continent_id];
-		if (continent->Body.TileCount < threshold_for_body_of_water)
+		if (continent->Body.TileCount < threshold_for_body_of_water && ! is->current_config.enable_canal_districts)
 			continue;
 
 		int yield = compute_city_tile_yield_sum (city, tri.tile_x, tri.tile_y);
@@ -10107,7 +10124,6 @@ tile_has_friendly_port_district (Tile * tile, int civ_id)
 {
 	if (! is->current_config.enable_districts ||
 	    ! is->current_config.enable_port_districts ||
-	    ! is->current_config.naval_units_use_port_districts_not_cities ||
 	    (tile == NULL) || (tile == p_null_tile))
 		return false;
 
@@ -13375,15 +13391,15 @@ patch_init_floating_point ()
 		{"city_limit"                                        ,  2048, offsetof (struct c3x_config, city_limit)},
 		{"maximum_pop_before_neighborhood_needed"            ,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
 		{"per_neighborhood_pop_growth_enabled"			     ,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
-		{"minimum_natural_wonder_separation"                 ,     10, offsetof (struct c3x_config, minimum_natural_wonder_separation)},
+		{"minimum_natural_wonder_separation"                 ,    10, offsetof (struct c3x_config, minimum_natural_wonder_separation)},
 		{"distribution_hub_food_yield_divisor"			     ,     1, offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
 		{"distribution_hub_shield_yield_divisor"		     ,     1, offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
 		{"ai_ideal_distribution_hub_count_per_100_cities"    ,     1, offsetof (struct c3x_config, ai_ideal_distribution_hub_count_per_100_cities)},
 		{"central_rail_hub_distribution_food_bonus_percent"  ,    25, offsetof (struct c3x_config, central_rail_hub_distribution_food_bonus_percent)},
 		{"central_rail_hub_distribution_shield_bonus_percent",    25, offsetof (struct c3x_config, central_rail_hub_distribution_shield_bonus_percent)},
 		{"neighborhood_needed_message_frequency"             ,     4, offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
-		{"max_contiguous_bridge_districts"                   ,     0, offsetof (struct c3x_config, max_contiguous_bridge_districts)},
-		{"max_contiguous_canal_districts"                    ,     0, offsetof (struct c3x_config, max_contiguous_canal_districts)},
+		{"max_contiguous_bridge_districts"                   ,     3, offsetof (struct c3x_config, max_contiguous_bridge_districts)},
+		{"max_contiguous_canal_districts"                    ,     5, offsetof (struct c3x_config, max_contiguous_canal_districts)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -17406,8 +17422,8 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 		// If a disallowed air/naval unit is chosen in ai_choose_production, we'll swap it out for a feasible fallback later
 		// after prioritizing the aerodrome/port to be built
 		if (! is_human && (
-			(city_can_build_district (this, AERODROME_DISTRICT_ID) && type->Unit_Class == UTC_Air) || 
-			(city_can_build_district (this, PORT_DISTRICT_ID) && type->Unit_Class == UTC_Sea))
+			(type->Unit_Class == UTC_Air || city_can_build_district (this, AERODROME_DISTRICT_ID)) || 
+			(type->Unit_Class == UTC_Sea || city_can_build_district (this, PORT_DISTRICT_ID)))
 		)
 			return base;
 
@@ -17444,7 +17460,7 @@ patch_City_get_largest_adjacent_sea_within_work_area (City * this)
 				if ((continent_id < 0) || (continent_id >= p_bic_data->Map.Continent_Count))
 					continue;
 				Continent * continent = &p_bic_data->Map.Continents[continent_id];
-				if (continent->Body.TileCount <= lake_size_threshold)
+				if (continent->Body.TileCount <= lake_size_threshold && ! is->current_config.enable_canal_districts)
 					continue;
 				if (p_bic_data->Map.Continents[continent_id].Body.TileCount > largest_size) {
 					largest_size = p_bic_data->Map.Continents[continent_id].Body.TileCount;
@@ -17667,6 +17683,8 @@ ai_handle_district_production_requirements (City * city, City_Order * out)
 						fallback_is_feasible = false;
 					if (fallback_is_feasible) {
 						UnitType * type = &p_bic_data->UnitTypes[stored->order.OrderID];
+						if (type->Unit_Class != UTC_Land)
+							fallback_is_feasible = false;
 						if ((type->Unit_Class == UTC_Air) &&
 						    is->current_config.enable_aerodrome_districts &&
 						    is->current_config.air_units_use_aerodrome_districts_not_cities &&
@@ -19191,7 +19209,9 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 					if (current_improv_id == improv_id) {
 						City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
 						if (choose_defensive_unit_order (city, &defensive_order)) {
-							City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
+							UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
+							if (def_type->Unit_Class == UTC_Land)
+								City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
 						}
 					}
 
@@ -19274,7 +19294,9 @@ grant_existing_district_buildings_to_city (City * city)
 				if (current_improv_id == building_id) {
 					City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
 					if (choose_defensive_unit_order (city, &defensive_order)) {
-						City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
+						UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
+						if (def_type->Unit_Class == UTC_Land)
+							City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
 					}
 				}
 
@@ -21581,6 +21603,7 @@ assign_ai_fallback_production (City * city, int disallowed_improvement_id)
 	} else if (new_order.OrderType == COT_Unit) {
 		if ((new_order.OrderID >= 0) &&
 		    (new_order.OrderID < p_bic_data->UnitTypeCount) &&
+		    (p_bic_data->UnitTypes[new_order.OrderID].Unit_Class == UTC_Land) &&
 		    patch_City_can_build_unit (city, __, new_order.OrderID, 1, 0, 0))
 			order_ok = true;
 	}
@@ -21598,8 +21621,11 @@ assign_ai_fallback_production (City * city, int disallowed_improvement_id)
 
 	City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
 	if (choose_defensive_unit_order (city, &defensive_order)) {
-		City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
-		return true;
+		UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
+		if (def_type->Unit_Class == UTC_Land) {
+			City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
+			return true;
+		}
 	}
 
 	return false;
@@ -21678,6 +21704,48 @@ patch_Leader_do_production_phase (Leader * this)
 					ensure_neighborhood_request_for_city (city);
 			}
 
+			if (city->Body.Order_Type == COT_Unit) {
+				int unit_id = city->Body.Order_ID;
+				int req_district_id = -1;
+				bool needs_halt = false;
+
+				if ((unit_id >= 0) && (unit_id < p_bic_data->UnitTypeCount)) {
+					UnitType * type = &p_bic_data->UnitTypes[unit_id];
+					if ((type->Unit_Class == UTC_Air) &&
+					    is->current_config.enable_aerodrome_districts &&
+					    is->current_config.air_units_use_aerodrome_districts_not_cities &&
+					    (! city_has_required_district (city, AERODROME_DISTRICT_ID))) {
+						req_district_id = AERODROME_DISTRICT_ID;
+						needs_halt = true;
+					} else if ((type->Unit_Class == UTC_Sea) &&
+						   is->current_config.enable_port_districts &&
+						   is->current_config.naval_units_use_port_districts_not_cities &&
+						   (! city_has_required_district (city, PORT_DISTRICT_ID))) {
+						req_district_id = PORT_DISTRICT_ID;
+						needs_halt = true;
+					}
+				}
+
+				if (needs_halt) {
+					char ss[200];
+					snprintf (ss, sizeof ss, "patch_Leader_do_production_phase: City %d (%s) halting unit %d due to missing district %d\n",
+						city->Body.ID, city->Body.CityName, unit_id, req_district_id);
+					(*p_OutputDebugStringA) (ss);
+
+					if (ai_player)
+						mark_city_needs_district (city, req_district_id);
+
+					City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
+					if (choose_defensive_unit_order (city, &defensive_order)) {
+						UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
+						if (def_type->Unit_Class == UTC_Land)
+							City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
+					}
+
+					continue;
+				}
+			}
+
 			if (city->Body.Order_Type != COT_Improvement) continue;
 			int i_improv = city->Body.Order_ID;
 
@@ -21745,7 +21813,9 @@ patch_Leader_do_production_phase (Leader * this)
 				} else {
 					City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
 					if (choose_defensive_unit_order (city, &defensive_order)) {
-						City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
+						UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
+						if (def_type->Unit_Class == UTC_Land)
+							City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
 					}
 				}
 
@@ -24586,7 +24656,6 @@ patch_Unit_can_heal_at (Unit * this, int edx, int tile_x, int tile_y)
 {
 	if (is->current_config.enable_districts &&
 	    is->current_config.enable_port_districts &&
-	    is->current_config.naval_units_use_port_districts_not_cities &&
 	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
 		Tile * tile = tile_at (tile_x, tile_y);
 		if (tile_has_friendly_port_district (tile, this->Body.CivID)) {
@@ -24605,7 +24674,6 @@ patch_Unit_heal_at_start_of_turn (Unit * this)
 
 	if (is->current_config.enable_districts &&
 	    is->current_config.enable_port_districts &&
-	    is->current_config.naval_units_use_port_districts_not_cities &&
 	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
 		if (tile_has_friendly_port_district (tile, this->Body.CivID))
@@ -26179,8 +26247,11 @@ patch_City_add_building_if_done (City * this)
 				(*p_OutputDebugStringA) (ss);
 				City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
 				if (choose_defensive_unit_order (this, &defensive_order)) {
-					City_set_production (this, __, defensive_order.OrderType, defensive_order.OrderID, false);
-					return;
+					UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
+					if (def_type->Unit_Class == UTC_Land) {
+						City_set_production (this, __, defensive_order.OrderType, defensive_order.OrderID, false);
+						return;
+					}
 				}
 			}
 		}
@@ -27243,15 +27314,23 @@ draw_canal_on_map_or_canvas(Sprite * sprite, int tile_x, int tile_y, int dir, bo
 
 	draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y);
 
-	// Add an additional draw if adjacent to water
-	if      (dir == DIR_N  && water_dirs[DIR_N])                                            draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y - y_offset);
-	else if (dir == DIR_NE && water_dirs[DIR_NE])                                           draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y - y_offset);
-	else if (dir == DIR_E  && water_dirs[DIR_E])                                            draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y);
-	else if (dir == DIR_SE && water_dirs[DIR_SE] && ! (tile_is_water (tile_x - 2, tile_y))) draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y + y_offset);
-	else if (dir == DIR_S  && water_dirs[DIR_S])                                            draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y + y_offset);
-	else if (dir == DIR_SW && water_dirs[DIR_SW] && ! (tile_is_water (tile_x + 2, tile_y))) draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y + y_offset);
-	else if (dir == DIR_W  && water_dirs[DIR_W])                                            draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y);
-	else if (dir == DIR_NW && water_dirs[DIR_NW])                                           draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y - y_offset);
+	// in certain cases, add an additional draw if adjacent to water so that the canal appears to extend far enough
+	if      (dir == DIR_N  && water_dirs[DIR_N])
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y - y_offset);
+	else if (dir == DIR_NE && water_dirs[DIR_NE])
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y - y_offset);
+	else if (dir == DIR_E  && water_dirs[DIR_E])
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y);
+	else if (dir == DIR_SE && water_dirs[DIR_SE] && ! (tile_is_water (tile_x - 2, tile_y))) 
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y + y_offset);
+	else if (dir == DIR_S  && water_dirs[DIR_S])                                            
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y + y_offset);
+	else if (dir == DIR_SW && water_dirs[DIR_SW] && ! (tile_is_water (tile_x + 2, tile_y))) 
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y + y_offset);
+	else if (dir == DIR_W  && water_dirs[DIR_W])                                            
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y);
+	else if (dir == DIR_NW && water_dirs[DIR_NW])                                           
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y - y_offset);
 }
 
 void 
@@ -29025,6 +29104,82 @@ try_path_to_maritime_district (Unit * unit)
 	return false;
 }
 
+// Light-weight hunt for nearby friendly ports; returns true if a path/command was issued
+bool
+try_path_to_friendly_port_district (Unit * unit)
+{
+	if ((unit == NULL) ||
+	    ! is->current_config.enable_districts ||
+	    ! is->current_config.enable_port_districts)
+		return false;
+
+	if (unit->Body.Container_Unit >= 0) // Don't redirect cargo
+		return false;
+
+	if (unit->Body.Moves <= 0)
+		return false;
+
+	if (unit->Body.Damage <= 0)
+		return false;
+
+	if (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class != UTC_Sea)
+		return false;
+
+	int sea_id = unit->vtable->get_sea_id (unit);
+	if (sea_id < 0)
+		return false;
+
+	int best_x = -1, best_y = -1, best_path_len = INT_MAX;
+	const int search_radius = 10;
+	for (int dy = -search_radius; dy <= search_radius; dy++) {
+		for (int dx = -search_radius; dx <= search_radius; dx++) {
+			int tx = unit->Body.X + dx, ty = unit->Body.Y + dy;
+			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
+
+			Tile * tile = tile_at (tx, ty);
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+
+			if ((short)tile->vtable->m46_Get_ContinentID (tile) != sea_id)
+				continue;
+
+			if (! tile_has_friendly_port_district (tile, unit->Body.CivID))
+				continue;
+
+			int occupier_id = get_tile_occupier_id (tx, ty, -1, true);
+			if ((occupier_id != -1) && (occupier_id != unit->Body.CivID))
+				continue;
+
+			if (! is_below_stack_limit (tile, unit->Body.CivID, UTC_Sea))
+				continue;
+
+			int path_len = 0;
+			int path_result = patch_Trade_Net_set_unit_path (is->trade_net, __, unit->Body.X, unit->Body.Y,
+			                                                 tx, ty, unit, unit->Body.CivID, 0x81, &path_len);
+			if (path_result <= 0)
+				continue;
+
+			if (path_len < best_path_len) {
+				best_path_len = path_len;
+				best_x = tx;
+				best_y = ty;
+			}
+		}
+	}
+
+	if (best_x >= 0) {
+		patch_Trade_Net_set_unit_path (is->trade_net, __, unit->Body.X, unit->Body.Y, best_x, best_y,
+		                               unit, unit->Body.CivID, 0x81, NULL);
+		Unit_set_escortee (unit, __, -1);
+		Unit_set_state (unit, __, UnitState_Go_To);
+		unit->Body.path_dest_x = best_x;
+		unit->Body.path_dest_y = best_y;
+		return true;
+	}
+
+	return false;
+}
+
 void __fastcall
 patch_Unit_ai_move_naval_power_unit (Unit * this)
 {
@@ -29039,10 +29194,37 @@ patch_Unit_ai_move_naval_power_unit (Unit * this)
 		}
 	}
 
+	if ((this->Body.Damage > 0) &&
+	    ! patch_Unit_can_heal_at (this, __, this->Body.X, this->Body.Y) &&
+	    try_path_to_friendly_port_district (this))
+		return;
+
 	if (try_path_to_maritime_district (this))
 		return;
 
 	Unit_ai_move_naval_power_unit (this);
+}
+
+void __fastcall
+patch_Unit_ai_move_naval_transport (Unit * this)
+{
+	if ((this->Body.Damage > 0) &&
+	    ! patch_Unit_can_heal_at (this, __, this->Body.X, this->Body.Y) &&
+	    try_path_to_friendly_port_district (this))
+		return;
+
+	Unit_ai_move_naval_transport (this);
+}
+
+void __fastcall
+patch_Unit_ai_move_naval_missile_transport (Unit * this)
+{
+	if ((this->Body.Damage > 0) &&
+	    ! patch_Unit_can_heal_at (this, __, this->Body.X, this->Body.Y) &&
+	    try_path_to_friendly_port_district (this))
+		return;
+
+	Unit_ai_move_naval_missile_transport (this);
 }
 
 void __fastcall
@@ -29051,9 +29233,10 @@ patch_Unit_ai_move_air_bombard_unit (Unit * this)
 	if (! (is->current_config.enable_districts &&
 	       is->current_config.enable_aerodrome_districts &&
 	       is->current_config.air_units_use_aerodrome_districts_not_cities)) {
-		Unit_ai_move_air_bombard_unit (this);
-		return;
 	}
+
+	Unit_ai_move_air_bombard_unit (this);
+	return;
 
 	if (this->Body.Damage > 0) {
 		Unit_set_escortee (this, __, -1);
@@ -29084,29 +29267,22 @@ patch_Unit_ai_move_air_bombard_unit (Unit * this)
 
 	int best_base_score = 0x7fffffff;
 	int base_x = -1, base_y = -1;
-	for (int y = 0; y < p_bic_data->Map.Height; y++) {
-		for (int x = 0; x < p_bic_data->Map.Width; x++) {
-			Tile * tile = tile_at (x, y);
-			if (! tile_has_friendly_aerodrome_district (tile, this->Body.CivID, false))
-				continue;
-			if (! patch_Unit_is_in_rebase_range (this, __, x, y))
-				continue;
-			if (! is_below_stack_limit (tile, this->Body.CivID,
-				p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
-				continue;
+	FOR_AERODROMES_AROUND (this) {
+		if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID,
+			p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+			continue;
 
-			int count = count_units_at (x, y, UF_AI_STRAT_A_VIS_TO_B, 6, -1, -1);
-			int x_dist = Map_get_x_dist (&p_bic_data->Map, __, x, this->Body.X);
-			int y_dist = Map_get_y_dist (&p_bic_data->Map, __, y, this->Body.Y);
-			int score = (count * 10) + ((x_dist + y_dist) >> 1);
-			if ((this->Body.X == x) && (this->Body.Y == y))
-				score -= 20;
+		int count = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 6, -1, -1);
+		int x_dist = Map_get_x_dist (&p_bic_data->Map, __, aerodrome_x, this->Body.X);
+		int y_dist = Map_get_y_dist (&p_bic_data->Map, __, aerodrome_y, this->Body.Y);
+		int score = (count * 10) + ((x_dist + y_dist) >> 1);
+		if ((this->Body.X == aerodrome_x) && (this->Body.Y == aerodrome_y))
+			score -= 20;
 
-			if (score < best_base_score) {
-				best_base_score = score;
-				base_x = x;
-				base_y = y;
-			}
+		if (score < best_base_score) {
+			best_base_score = score;
+			base_x = aerodrome_x;
+			base_y = aerodrome_y;
 		}
 	}
 
@@ -29136,6 +29312,9 @@ patch_Unit_ai_move_air_defense_unit (Unit * this)
 		return;
 	}
 
+	Unit_ai_move_air_defense_unit (this);
+	return;
+
 	Unit_set_state (this, __, 0);
 	if (this->Body.Damage > 0) {
 		Unit_set_escortee (this, __, -1);
@@ -29145,29 +29324,22 @@ patch_Unit_ai_move_air_defense_unit (Unit * this)
 
 	int best_base_score = 0x7fffffff;
 	int base_x = -1, base_y = -1;
-	for (int y = 0; y < p_bic_data->Map.Height; y++) {
-		for (int x = 0; x < p_bic_data->Map.Width; x++) {
-			Tile * tile = tile_at (x, y);
-			if (! tile_has_friendly_aerodrome_district (tile, this->Body.CivID, false))
-				continue;
-			if (! patch_Unit_is_in_rebase_range (this, __, x, y))
-				continue;
-			if (! is_below_stack_limit (tile, this->Body.CivID,
-				p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
-				continue;
+	FOR_AERODROMES_AROUND (this) {
+		if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID,
+			p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+			continue;
 
-			int count = count_units_at (x, y, UF_AI_STRAT_A_VIS_TO_B, 7, -1, -1);
-			int x_dist = Map_get_x_dist (&p_bic_data->Map, __, x, this->Body.X);
-			int y_dist = Map_get_y_dist (&p_bic_data->Map, __, y, this->Body.Y);
-			int score = (count * 10) + ((x_dist + y_dist) >> 1);
-			if ((this->Body.X == x) && (this->Body.Y == y))
-				score -= 20;
+		int count = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 7, -1, -1);
+		int x_dist = Map_get_x_dist (&p_bic_data->Map, __, aerodrome_x, this->Body.X);
+		int y_dist = Map_get_y_dist (&p_bic_data->Map, __, aerodrome_y, this->Body.Y);
+		int score = (count * 10) + ((x_dist + y_dist) >> 1);
+		if ((this->Body.X == aerodrome_x) && (this->Body.Y == aerodrome_y))
+			score -= 20;
 
-			if (score < best_base_score) {
-				best_base_score = score;
-				base_x = x;
-				base_y = y;
-			}
+		if (score < best_base_score) {
+			best_base_score = score;
+			base_x = aerodrome_x;
+			base_y = aerodrome_y;
 		}
 	}
 
@@ -29190,6 +29362,9 @@ patch_Unit_ai_move_air_transport (Unit * this)
 		Unit_ai_move_air_transport (this);
 		return;
 	}
+
+	Unit_ai_move_air_transport (this);
+	return;
 
 	if (this->Body.Damage < 1) {
 		if (Unit_can_airdrop (this)) {
@@ -29222,31 +29397,24 @@ patch_Unit_ai_move_air_transport (Unit * this)
 
 		int best_score = -1;
 		int base_x = -1, base_y = -1;
-		for (int y = 0; y < p_bic_data->Map.Height; y++) {
-			for (int x = 0; x < p_bic_data->Map.Width; x++) {
-				Tile * tile = tile_at (x, y);
-				if (! tile_has_friendly_aerodrome_district (tile, this->Body.CivID, false))
-					continue;
-				if (! patch_Unit_is_in_rebase_range (this, __, x, y))
-					continue;
-				if (! is_below_stack_limit (tile, this->Body.CivID,
-					p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
-					continue;
+		FOR_AERODROMES_AROUND (this) {
+			if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID,
+				p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+				continue;
 
-				int score = count_units_at (x, y, UF_AI_STRAT_A_VIS_TO_B, 0, -1, -1) +
-				            count_units_at (x, y, UF_AI_STRAT_A_VIS_TO_B, 1, -1, -1) + 1;
-				if (count_units_at (x, y, UF_AI_STRAT_A_VIS_TO_B, 9, -1, -1) == 0)
-					score *= 2;
-				int cont_id = tile->vtable->m46_Get_ContinentID (tile);
-				if ((cont_id >= 0) && (cont_id < p_bic_data->Map.Continent_Count) &&
-				    (p_bic_data->Map.Continents[cont_id].Body.TileCount > 0x15))
-					score *= 2;
+			int score = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 0, -1, -1) +
+			            count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 1, -1, -1) + 1;
+			if (count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 9, -1, -1) == 0)
+				score *= 2;
+			int cont_id = aerodrome_tile->vtable->m46_Get_ContinentID (aerodrome_tile);
+			if ((cont_id >= 0) && (cont_id < p_bic_data->Map.Continent_Count) &&
+			    (p_bic_data->Map.Continents[cont_id].Body.TileCount > 0x15))
+				score *= 2;
 
-				if (score > best_score) {
-					best_score = score;
-					base_x = x;
-					base_y = y;
-				}
+			if (score > best_score) {
+				best_score = score;
+				base_x = aerodrome_x;
+				base_y = aerodrome_y;
 			}
 		}
 
