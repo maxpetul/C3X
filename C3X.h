@@ -377,6 +377,7 @@ struct c3x_config {
 	bool workers_can_enter_coast;
 	bool expand_water_tile_checks_to_city_work_area;
 	int max_contiguous_bridge_districts;
+	int max_contiguous_canal_districts;
 	bool allow_enter_bridge_from_any_direction;
 	bool allow_enter_canal_from_any_direction;
 

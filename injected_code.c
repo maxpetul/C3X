@@ -230,6 +230,7 @@ void init_district_icons ();
 int count_neighborhoods_in_city_radius (City * city);
 int count_utilized_neighborhoods_in_city_radius (City * city);
 bool move_matches_directions (int move_dx, int move_dy, int dir1, int dir2);
+int count_contiguous_canal_districts (int tile_x, int tile_y, int max_count);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -9138,6 +9139,81 @@ count_contiguous_bridge_districts (int tile_x, int tile_y, int dx, int dy)
 	return count;
 }
 
+int
+count_contiguous_canal_districts (int tile_x, int tile_y, int max_count)
+{
+	if (max_count <= 0)
+		return 0;
+
+	Map * map = &p_bic_data->Map;
+	int limit = max_count + 1;
+	int capacity = limit;
+	if (capacity < 1)
+		capacity = 1;
+
+	int * xs = malloc (sizeof (*xs) * capacity);
+	int * ys = malloc (sizeof (*ys) * capacity);
+	if ((xs == NULL) || (ys == NULL)) {
+		if (xs != NULL)
+			free (xs);
+		if (ys != NULL)
+			free (ys);
+		return limit;
+	}
+
+	int const adj_dx[8] = { 0, 0, -2, 2, 1, 1, -1, -1 };
+	int const adj_dy[8] = { -2, 2, 0, 0, -1, 1, -1, 1 };
+	int head = 0;
+	int tail = 0;
+	int count = 0;
+
+	xs[tail] = tile_x;
+	ys[tail] = tile_y;
+	tail++;
+
+	while (head < tail) {
+		int cx = xs[head];
+		int cy = ys[head];
+		head++;
+		count++;
+		if (count >= limit)
+			break;
+
+		for (int i = 0; i < 8; i++) {
+			int nx = cx + adj_dx[i];
+			int ny = cy + adj_dy[i];
+			wrap_tile_coords (map, &nx, &ny);
+			if (! tile_has_district_at (nx, ny, CANAL_DISTRICT_ID))
+				continue;
+
+			bool seen = false;
+			for (int j = 0; j < tail; j++) {
+				if ((xs[j] == nx) && (ys[j] == ny)) {
+					seen = true;
+					break;
+				}
+			}
+			if (seen)
+				continue;
+
+			if (tail < capacity) {
+				xs[tail] = nx;
+				ys[tail] = ny;
+				tail++;
+			} else {
+				count = limit;
+				head = tail;
+				break;
+			}
+		}
+	}
+
+	free (xs);
+	free (ys);
+
+	return count;
+}
+
 bool
 bridge_district_tile_is_valid (int tile_x, int tile_y)
 {
@@ -9200,6 +9276,12 @@ bridge_district_tile_is_valid (int tile_x, int tile_y)
 bool
 canal_district_tile_is_valid (int tile_x, int tile_y)
 {
+	if (is->current_config.max_contiguous_canal_districts > 0) {
+		int count = count_contiguous_canal_districts (tile_x, tile_y, is->current_config.max_contiguous_canal_districts);
+		if (count > is->current_config.max_contiguous_canal_districts)
+			return false;
+	}
+
 	Map * map = &p_bic_data->Map;
 	int const adj_dx[8] = { 0, 0, -2, 2, 1, 1, -1, -1 };
 	int const adj_dy[8] = { -2, 2, 0, 0, -1, 1, -1, 1 };
@@ -13301,6 +13383,7 @@ patch_init_floating_point ()
 		{"central_rail_hub_distribution_shield_bonus_percent",    25, offsetof (struct c3x_config, central_rail_hub_distribution_shield_bonus_percent)},
 		{"neighborhood_needed_message_frequency"             ,     4, offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
 		{"max_contiguous_bridge_districts"                   ,     0, offsetof (struct c3x_config, max_contiguous_bridge_districts)},
+		{"max_contiguous_canal_districts"                    ,     0, offsetof (struct c3x_config, max_contiguous_canal_districts)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
