@@ -209,6 +209,8 @@ bool city_can_build_district (City * city, int district_id);
 bool leader_can_build_district (Leader * leader, int district_id);
 bool find_civ_trait_id_by_name (struct string_slice const * name, int * out_id);
 bool find_civ_culture_id_by_name (struct string_slice const * name, int * out_id);
+void get_bridge_directions (Tile * tile, int tile_x, int tile_y, int * out_dir1, int * out_dir2);
+void get_canal_directions (Tile * tile, int tile_x, int tile_y, bool * out_water_dirs[9], int * out_dir1, int * out_dir2);
 Tile * find_tile_for_district (City * city, int district_id, int * out_x, int * out_y);
 struct district_instance * get_district_instance (Tile * tile);
 bool city_has_required_district (City * city, int district_id);
@@ -227,6 +229,7 @@ void wrap_tile_coords (Map * map, int * x, int * y);
 void init_district_icons ();
 int count_neighborhoods_in_city_radius (City * city);
 int count_utilized_neighborhoods_in_city_radius (City * city);
+bool move_matches_directions (int move_dx, int move_dy, int dir1, int dir2);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -13255,6 +13258,8 @@ patch_init_floating_point ()
 		{"ai_defends_districts"                                  , false, offsetof (struct c3x_config, ai_defends_districts)},
 		{"expand_water_tile_checks_to_city_work_area"         	 , false, offsetof (struct c3x_config, expand_water_tile_checks_to_city_work_area)},
 		{"workers_can_enter_coast"         		                 , false, offsetof (struct c3x_config, workers_can_enter_coast)},
+		{"allow_enter_bridge_from_any_direction"                 , false, offsetof (struct c3x_config, allow_enter_bridge_from_any_direction)},
+		{"allow_enter_canal_from_any_direction"                  , false, offsetof (struct c3x_config, allow_enter_canal_from_any_direction)},
 		{"enable_city_work_radii_highlights"                     , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game"  , false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
 		{"allow_unload_from_army"                                , false, offsetof (struct c3x_config, allow_unload_from_army)},
@@ -16012,8 +16017,18 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 				struct district_instance * inst = get_district_instance (dest);
 				if ((inst != NULL) &&
 					(inst->district_type == BRIDGE_DISTRICT_ID) &&
-					district_is_complete (dest, inst->district_type))
-					base_validity = AMV_OK;
+					district_is_complete (dest, inst->district_type)) {
+					bool allow_move = true;
+					if (! is->current_config.allow_enter_bridge_from_any_direction) {
+						int move_dx = 0, move_dy = 0;
+						int dir1 = -1, dir2 = -1;
+						neighbor_index_to_diff (neighbor_index, &move_dx, &move_dy);
+						get_bridge_directions (dest, nx, ny, &dir1, &dir2);
+						allow_move = move_matches_directions (move_dx, move_dy, dir1, dir2);
+					}
+					if (allow_move)
+						base_validity = AMV_OK;
+				}
 			}
 		}
 
@@ -16028,8 +16043,18 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 				struct district_instance * inst = get_district_instance (dest);
 				if ((inst != NULL) &&
 					(inst->district_type == CANAL_DISTRICT_ID) &&
-					district_is_complete (dest, inst->district_type))
-					base_validity = AMV_OK;
+					district_is_complete (dest, inst->district_type)) {
+					bool allow_move = true;
+					if (! is->current_config.allow_enter_canal_from_any_direction) {
+						int move_dx = 0, move_dy = 0;
+						int dir1 = -1, dir2 = -1;
+						neighbor_index_to_diff (neighbor_index, &move_dx, &move_dy);
+						get_canal_directions (dest, nx, ny, NULL, &dir1, &dir2);
+						allow_move = move_matches_directions (move_dx, move_dy, dir1, dir2);
+					}
+					if (allow_move)
+						base_validity = AMV_OK;
+				}
 			}
 		}
 
@@ -16101,8 +16126,18 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 			struct district_instance * inst = get_district_instance (dest);
 			if ((inst != NULL) &&
 			    (inst->district_type == BRIDGE_DISTRICT_ID) &&
-			    district_is_complete (dest, inst->district_type))
-				base_cost = Unit_get_max_move_points (unit);
+			    district_is_complete (dest, inst->district_type)) {
+				bool allow_move = true;
+				if (! is->current_config.allow_enter_bridge_from_any_direction) {
+					int move_dx = 0, move_dy = 0;
+					int dir1 = -1, dir2 = -1;
+					neighbor_index_to_diff (neighbor_index, &move_dx, &move_dy);
+					get_bridge_directions (dest, to_x, to_y, &dir1, &dir2);
+					allow_move = move_matches_directions (move_dx, move_dy, dir1, dir2);
+				}
+				if (allow_move)
+					base_cost = Unit_get_max_move_points (unit);
+			}
 		}
 	}
 
@@ -16116,8 +16151,19 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 			struct district_instance * inst = get_district_instance (dest);
 			if ((inst != NULL) &&
 			    (inst->district_type == CANAL_DISTRICT_ID) &&
-			    district_is_complete (dest, inst->district_type))
-				base_cost = Unit_get_max_move_points (unit);
+			    district_is_complete (dest, inst->district_type)) {
+				bool allow_move = true;
+				if (! is->current_config.allow_enter_canal_from_any_direction) {
+					int move_dx = 0, move_dy = 0;
+					int dir1 = -1, dir2 = -1;
+					bool water_dirs[9] = { false, false, false, false, false, false, false, false, false };
+					neighbor_index_to_diff (neighbor_index, &move_dx, &move_dy);
+					get_canal_directions (dest, to_x, to_y, &water_dirs, &dir1, &dir2);
+					allow_move = move_matches_directions (move_dx, move_dy, dir1, dir2);
+				}
+				if (allow_move)
+					base_cost = Unit_get_max_move_points (unit);
+			}
 		}
 	}
 
@@ -27258,7 +27304,9 @@ get_canal_directions (Tile * tile, int tile_x, int tile_y, bool * out_water_dirs
 
 	*out_dir1 = draw_dir1;
 	*out_dir2 = draw_dir2;
-	*out_water_dirs = water_dirs;
+
+	if (out_water_dirs != NULL)
+		*out_water_dirs = water_dirs;
 }
 
 void 
@@ -28670,8 +28718,22 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 			struct district_instance * inst = get_district_instance (dest);
 			if ((inst != NULL) &&
 			    (inst->district_type == BRIDGE_DISTRICT_ID) &&
-			    district_is_complete (dest, inst->district_type))
-				return PBV_OK;
+			    district_is_complete (dest, inst->district_type)) {
+				bool allow_move = true;
+				if (! is->current_config.allow_enter_bridge_from_any_direction) {
+					int move_dx = 0, move_dy = 0;
+					int dir1 = -1, dir2 = -1;
+					int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __, from_x, from_y, to_x, to_y, 1000);
+					if (neighbor_index >= 0) {
+						neighbor_index_to_diff (neighbor_index, &move_dx, &move_dy);
+						get_bridge_directions (dest, to_x, to_y, &dir1, &dir2);
+						allow_move = move_matches_directions (move_dx, move_dy, dir1, dir2);
+					} else
+						allow_move = false;
+				}
+				if (allow_move)
+					return PBV_OK;
+			}
 		}
 	}
 
@@ -28684,8 +28746,23 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 			struct district_instance * inst = get_district_instance (dest);
 			if ((inst != NULL) &&
 			    (inst->district_type == CANAL_DISTRICT_ID) &&
-			    district_is_complete (dest, inst->district_type))
-				return PBV_OK;
+			    district_is_complete (dest, inst->district_type)) {
+				bool allow_move = true;
+				if (!is->current_config.allow_enter_canal_from_any_direction) {
+					int move_dx = 0, move_dy = 0;
+					int dir1 = -1, dir2 = -1;
+					bool water_dirs[9] = { false, false, false, false, false, false, false, false, false };
+					int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __, from_x, from_y, to_x, to_y, 1000);
+					if (neighbor_index >= 0) {
+						neighbor_index_to_diff (neighbor_index, &move_dx, &move_dy);
+						get_canal_directions (dest, to_x, to_y, &water_dirs, &dir1, &dir2);
+						allow_move = move_matches_directions (move_dx, move_dy, dir1, dir2);
+					} else
+						allow_move = false;
+				}
+				if (allow_move)
+					return PBV_OK;
+			}
 		}
 	}
 
@@ -28713,8 +28790,21 @@ patch_Unit_select_transport (Unit * this, int edx, int tile_x, int tile_y, bool 
 				struct district_instance * inst = get_district_instance (dest);
 				if ((inst != NULL) &&
 				    (inst->district_type == BRIDGE_DISTRICT_ID) &&
-				    district_is_complete (dest, inst->district_type))
+				    district_is_complete (dest, inst->district_type)) {
 					allow_move = true;
+					if (! is->current_config.allow_enter_bridge_from_any_direction) {
+						int move_dx = 0, move_dy = 0;
+						int dir1 = -1, dir2 = -1;
+						int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __,
+							this->Body.X, this->Body.Y, tile_x, tile_y, 1000);
+						if (neighbor_index >= 0) {
+							neighbor_index_to_diff (neighbor_index, &move_dx, &move_dy);
+							get_bridge_directions (dest, tile_x, tile_y, &dir1, &dir2);
+							allow_move = move_matches_directions (move_dx, move_dy, dir1, dir2);
+						} else
+							allow_move = false;
+					}
+				}
 			}
 
 			if (allow_move) {
@@ -28725,6 +28815,21 @@ patch_Unit_select_transport (Unit * this, int edx, int tile_x, int tile_y, bool 
 	}
 
 	return transport;
+}
+
+bool
+move_matches_directions (int move_dx, int move_dy, int dir1, int dir2)
+{
+	int dx = 0, dy = 0;
+	if ((dir1 >= 0) &&
+	    direction_to_offset ((enum direction)dir1, &dx, &dy) &&
+	    (dx == move_dx) && (dy == move_dy))
+		return true;
+	if ((dir2 >= 0) &&
+	    direction_to_offset ((enum direction)dir2, &dx, &dy) &&
+	    (dx == move_dx) && (dy == move_dy))
+		return true;
+	return false;
 }
 
 // Returns true if the given tile is a water district owned by an enemy of the unit
