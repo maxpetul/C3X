@@ -386,6 +386,7 @@ struct c3x_config {
 
 	bool disable_great_wall_city_defense_bonus;
 	bool great_wall_districts_impassible_by_others;
+	bool auto_build_great_wall_around_territory;
 
 	bool enable_city_work_radii_highlights;
 };
@@ -1874,6 +1875,9 @@ struct district_button_image_set {
 
 	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp. Tracks the current tile coordinates being rendered, then for drawing forests over roads/railroad
 	int current_tile_x, current_tile_y;
+
+	// Set to true once the auto-build process for the Great Wall is complete to avoid running it again
+	bool great_wall_auto_build_is_done;
 
 	// ==========
 	// }

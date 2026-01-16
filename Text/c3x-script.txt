@@ -189,4 +189,25 @@ A $DISTRICT0 exists here, but either it has no dependent buildings or another $D
 Yes. There are better uses for this area.
 No, nevermind.
 
+#C3X_CONFIRM_BUILD_GREAT_WALL_OVER_IMPROVEMENT
+#advisor Military
+As we expand our $DISTRICT0 to protect our cities, we've found an already exists here. Should we replace the $IMPROVEMENT0 with a $DISTRICT0?
+#itemlist
+Yes. We must protect our cities.
+No, leave it alone.
+
+#C3X_CONFIRM_BUILD_GREAT_WALL_OVER_DISTRICT
+#advisor Military
+As we expand our $DISTRICT0 to protect our cities, we've found a $DISTRICT1 already exists here with dependent buildings. Should we replace the $DISTRICT1 with a $DISTRICT0? Doing so will remove any dependent buildings.
+#itemlist
+Yes. We must protect our cities.
+No, leave it alone.
+
+#C3X_CONFIRM_BUILD_GREAT_WALL_OVER_DISTRICT_SAFE
+#advisor Military
+As we expand our $DISTRICT0 to protect our cities, we've found a $DISTRICT1 already exists here but has no dependent buildings. Should we replace the $DISTRICT1 with a $DISTRICT0?
+#itemlist
+Yes. We must protect our cities.
+No, leave it alone.
+
 # ; This line must remain at end of file

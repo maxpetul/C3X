@@ -9285,6 +9285,8 @@ reset_district_state (bool reset_tile_map)
 		table_deinit (&is->city_pending_district_requests[civ_id]);
 	}
 	table_deinit (&is->city_pending_building_orders);
+
+	is->great_wall_auto_build_is_done = false;
 }
 
 void
@@ -13669,6 +13671,7 @@ patch_init_floating_point ()
 		{"show_natural_wonder_name_on_map"                       , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
 		{"ai_defends_districts"                                  , false, offsetof (struct c3x_config, ai_defends_districts)},
 		{"great_wall_districts_impassible_by_others"             , false, offsetof (struct c3x_config, great_wall_districts_impassible_by_others)},
+		{"auto_build_great_wall_around_territory"                , false, offsetof (struct c3x_config, auto_build_great_wall_around_territory)},
 		{"disable_great_wall_city_defense_bonus"                 , false, offsetof (struct c3x_config, disable_great_wall_city_defense_bonus)},
 		{"expand_water_tile_checks_to_city_work_area"         	 , false, offsetof (struct c3x_config, expand_water_tile_checks_to_city_work_area)},
 		{"workers_can_enter_coast"         		                 , false, offsetof (struct c3x_config, workers_can_enter_coast)},
@@ -19640,6 +19643,153 @@ grant_existing_district_buildings_to_city (City * city)
 	is->sharing_buildings_by_districts_in_progress = prev_flag;
 }
 
+void
+auto_build_great_wall_districts_for_civ (City * city)
+{
+	if ((! is->current_config.enable_districts) ||
+	    (! is->current_config.enable_great_wall_districts) ||
+	    (! is->current_config.auto_build_great_wall_around_territory) ||
+	    is->great_wall_auto_build_is_done ||
+	    (city == NULL) ||
+	    is->is_placing_scenario_things)
+		return;
+
+	int civ_id = city->Body.CivID;
+	bool is_human = (*p_human_player_bits & (1 << civ_id)) != 0;
+
+	if ((GREAT_WALL_DISTRICT_ID < 0) || (GREAT_WALL_DISTRICT_ID >= is->district_count)) {
+		is->great_wall_auto_build_is_done = true;
+		return;
+	}
+
+	struct district_config const * cfg = &is->district_configs[GREAT_WALL_DISTRICT_ID];
+	if ((cfg->command == -1) || (! leader_can_build_district (&leaders[civ_id], GREAT_WALL_DISTRICT_ID))) {
+		is->great_wall_auto_build_is_done = true;
+		return;
+	}
+
+	unsigned int const irrigation_flag = 0x8;
+	unsigned int const replaceable_flags = TILE_FLAG_MINE | irrigation_flag;
+
+	for (int y = 0; y < p_bic_data->Map.Height; y++) {
+		for (int x = 0; x < p_bic_data->Map.Width; x++) {
+			Tile * tile = tile_at (x, y);
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+			if (tile->CityID >= 0)
+				continue;
+			if (tile->vtable->m35_Check_Is_Water (tile))
+				continue;
+			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id)
+				continue;
+
+			bool has_border = false;
+			for (int ni = 1; ni < 9; ni++) {
+				int nx, ny;
+				get_neighbor_coords (&p_bic_data->Map, x, y, ni, &nx, &ny);
+				wrap_tile_coords (&p_bic_data->Map, &nx, &ny);
+				Tile * neighbor = tile_at (nx, ny);
+				if ((neighbor == NULL) || (neighbor == p_null_tile))
+					continue;
+				if (neighbor->vtable->m35_Check_Is_Water (neighbor))
+					continue;
+				if (neighbor->vtable->m38_Get_Territory_OwnerID (neighbor) != civ_id) {
+					has_border = true;
+					break;
+				}
+			}
+			if (! has_border)
+				continue;
+
+			if (! district_is_buildable_on_square_type (cfg, tile))
+				continue;
+			if (! district_resource_prereqs_met (tile, x, y, GREAT_WALL_DISTRICT_ID, NULL))
+				continue;
+
+			struct district_instance * inst = get_district_instance (tile);
+			if ((inst != NULL) && (inst->district_type == GREAT_WALL_DISTRICT_ID)) {
+				if (! district_is_complete (tile, GREAT_WALL_DISTRICT_ID)) {
+					inst->state = DS_COMPLETED;
+					if (! tile->vtable->m18_Check_Mines (tile, __, 0))
+						tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
+					set_tile_unworkable_for_all_cities (tile, x, y);
+				}
+				continue;
+			}
+
+			unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
+			unsigned int replace_flags = overlay_flags & replaceable_flags;
+			bool has_district = (inst != NULL);
+			if (has_district || (replace_flags != 0)) {
+				if (is_human) {
+					Main_Screen_Form_bring_tile_into_view (p_main_screen_form, __, x, y, 0, true, false);
+
+					PopupForm * popup = get_popup_form ();
+					set_popup_str_param (0, (char *)is->district_configs[GREAT_WALL_DISTRICT_ID].display_name, -1, -1);
+
+					if (has_district) {
+						int existing_district_id = inst->district_type;
+						bool redundant_district = district_instance_is_redundant (inst, tile);
+						bool would_lose_buildings = any_nearby_city_would_lose_district_benefits (existing_district_id, civ_id, x, y);
+						if (redundant_district)
+							would_lose_buildings = false;
+						set_popup_str_param (0, (char *)is->district_configs[GREAT_WALL_DISTRICT_ID].display_name, -1, -1);
+						if ((existing_district_id >= 0) && (existing_district_id < is->district_count)) {
+							set_popup_str_param (1, (char *)is->district_configs[existing_district_id].display_name, -1, -1);
+						}
+
+						popup->vtable->set_text_key_and_flags (
+							popup, __, is->mod_script_path,
+							would_lose_buildings
+								? "C3X_CONFIRM_BUILD_GREAT_WALL_OVER_DISTRICT"
+								: "C3X_CONFIRM_BUILD_GREAT_WALL_OVER_DISTRICT_SAFE",
+							-1, 0, 0, 0);
+					} else {
+						popup->vtable->set_text_key_and_flags (
+							popup, __, is->mod_script_path,
+							"C3X_CONFIRM_BUILD_GREAT_WALL_OVER_IMPROVEMENT",
+							-1, 0, 0, 0);
+					}
+
+					int sel = patch_show_popup (popup, __, 0, 0);
+					if (sel != 0)
+						continue;
+				}
+
+				if (has_district) {
+					int existing_district_id = inst->district_type;
+					int inst_x = x, inst_y = y;
+					if (! district_instance_get_coords (inst, tile, &inst_x, &inst_y))
+						continue;
+					remove_district_instance (tile);
+					tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+					tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, inst_x, inst_y);
+					handle_district_removed (tile, existing_district_id, inst_x, inst_y, false);
+				}
+
+				if (replace_flags != 0)
+					tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, replace_flags, x, y);
+			}
+
+			if (get_district_instance (tile) != NULL)
+				continue;
+
+			inst = ensure_district_instance (tile, GREAT_WALL_DISTRICT_ID, x, y);
+			if (inst == NULL)
+				continue;
+
+			inst->district_type = GREAT_WALL_DISTRICT_ID;
+			district_instance_set_coords (inst, x, y);
+			inst->state = DS_COMPLETED;
+			if (! tile->vtable->m18_Check_Mines (tile, __, 0))
+				tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
+			set_tile_unworkable_for_all_cities (tile, x, y);
+		}
+	}
+
+	is->great_wall_auto_build_is_done = true;
+}
+
 //We need to forwards-declare this
 void __fastcall
 patch_City_manage_by_governor (City * this, int edx, bool manage_professions);
@@ -19712,6 +19862,9 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 			}
 		}
 	}
+
+	if (add && is->current_config.enable_districts && (improv->WonderFlags & ITW_Doubles_City_Defenses))
+		auto_build_great_wall_districts_for_civ (this);
 	
 	//Calculate if work_area has shrunk, and if so, redistribute citizens.
 	int post_work_area_radius = get_work_ring_limit_total(this);
@@ -24142,6 +24295,10 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		serialize_aligned_text ("current_day_night_cycle", &mod_data);
 		int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_day_night_cycle), is->current_day_night_cycle);
 	}
+	if (is->great_wall_auto_build_is_done) {
+		serialize_aligned_text ("great_wall_auto_build_is_done", &mod_data);
+		*(int *)buffer_allocate (&mod_data, sizeof(int)) = 1;
+	}
 
 	if (is->current_config.enable_districts && (is->district_count > 0)) {
 		serialize_aligned_text ("district_config_names", &mod_data);
@@ -24541,6 +24698,9 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				// doesn't get restarted.
 				is->day_night_cycle_unstarted = false;
 			
+			} else if (match_save_chunk_name (&cursor, "great_wall_auto_build_is_done")) {
+				is->great_wall_auto_build_is_done = (*((int *)cursor)++ != 0);
+
 			} else if (match_save_chunk_name (&cursor, "district_pending_requests")) {
 				bool success = false;
 				int remaining_bytes = (seg + seg_size) - cursor;
@@ -26194,7 +26354,8 @@ int __fastcall
 patch_Leader_count_wonders_with_flag_ignore_great_wall (Leader * this, int edx, enum ImprovementTypeWonderFeatures flag, City * only_in_city)
 {
 	if (is->current_config.enable_districts &&
-	    is->current_config.disable_great_wall_city_defense_bonus)
+	    is->current_config.disable_great_wall_city_defense_bonus &&
+		flag == ITW_Doubles_City_Defenses)
 		return 0;
 
 	return patch_Leader_count_any_shared_wonders_with_flag (this, __, flag, only_in_city);
@@ -27839,9 +28000,19 @@ draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * ma
 	bool wall_s  = tile_has_district_at (tile_x, tile_y + 2,     GREAT_WALL_DISTRICT_ID);
 	bool wall_sw = tile_has_district_at (tile_x - 1, tile_y + 1, GREAT_WALL_DISTRICT_ID);
 	bool wall_w  = tile_has_district_at (tile_x - 2, tile_y,     GREAT_WALL_DISTRICT_ID);
+
+	bool none = !wall_nw && !wall_n && !wall_ne && !wall_e && !wall_se && !wall_s && !wall_sw && !wall_w;
 	
 	Sprite * sprites = is->district_img_sets[GREAT_WALL_DISTRICT_ID].imgs[0][0];
 	Sprite * base    = &sprites[0];
+
+	// If no surrounding walls, draw NE, base, SW so tile doesn't look empty
+	if (none) {
+		draw_district_on_map_or_canvas(&sprites[DIR_NE], map_renderer, pixel_x, pixel_y);
+		draw_district_on_map_or_canvas(base, map_renderer, pixel_x, pixel_y);
+		draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
+		return;
+	}
 
 	// Rotate around clockwise NW -> W to get the perspective right
 	if (wall_nw) draw_district_on_map_or_canvas(&sprites[DIR_NW], map_renderer, pixel_x, pixel_y);
