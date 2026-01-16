@@ -128,6 +128,10 @@ enum land_transport_rules {
 	LTR_NO_ESCAPE              = 8,
 };
 
+enum special_helicopter_rules {
+	SHR_ALLOW_ON_CARRIERS = 1,
+};
+
 enum work_area_limit {
 	WAL_NONE = 0,
 	WAL_CULTURAL,
@@ -289,7 +293,7 @@ struct c3x_config {
 	int luxury_randomized_appearance_rate_percent;
 	int tiles_per_non_luxury_resource;
 	bool no_land_anti_air_from_inside_naval_transport;
-	bool allow_helicopters_on_carriers;
+	enum special_helicopter_rules special_helicopter_rules;
 	bool prevent_enslaving_by_bombardment;
 	int years_to_double_building_culture;
 	int tourism_time_scale_percent;

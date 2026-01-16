@@ -2118,6 +2118,12 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->land_transport_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "special_helicopter_rules")) {
+					struct parsable_field_bit bits[] = {
+						{"allow-onto-carriers", SHR_ALLOW_ON_CARRIERS},
+					};
+					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_helicopter_rules))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "work_area_limit")) {
 					if (! read_work_area_limit (&value, (int *)&cfg->work_area_limit))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -11041,7 +11047,6 @@ patch_init_floating_point ()
 		{"introduce_all_human_players_at_start_of_hotseat_game"  , false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
 		{"allow_unload_from_army"                                , false, offsetof (struct c3x_config, allow_unload_from_army)},
 		{"no_land_anti_air_from_inside_naval_transport"          , false, offsetof (struct c3x_config, no_land_anti_air_from_inside_naval_transport)},
-		{"allow_helicopters_on_carriers"                         , false, offsetof (struct c3x_config, allow_helicopters_on_carriers)},
 		{"prevent_enslaving_by_bombardment"                      , false, offsetof (struct c3x_config, prevent_enslaving_by_bombardment)},
 		{"allow_adjacent_resources_of_different_types"           , false, offsetof (struct c3x_config, allow_adjacent_resources_of_different_types)},
 		{"allow_sale_of_small_wonders"                           , false, offsetof (struct c3x_config, allow_sale_of_small_wonders)},
@@ -16896,7 +16901,7 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 		if (involuntary && (is->current_config.land_transport_rules & LTR_NO_ESCAPE) && is_land_transport (this))
 			must_despawn_passengers = true;
 
-		if (is->current_config.allow_helicopters_on_carriers) {
+		if (is->current_config.special_helicopter_rules & SHR_ALLOW_ON_CARRIERS) {
 			bool is_carrier    = type->Unit_Class == UTC_Sea && type->Transport_Capacity > 0 && Unit_has_ability (this, __, UTA_Transports_Only_Aircraft),
 			     is_helicopter = type->Unit_Class == UTC_Air && type->Transport_Capacity > 0,
 			     passengers_could_survive = Tile_has_city (tile) || ! tile->vtable->m35_Check_Is_Water (tile);
@@ -25040,7 +25045,7 @@ patch_Unit_has_ability_no_load_non_army_passengers (Unit * this, int edx, enum U
 		}
 
 	// Similarly, allow helicopters to be loaded onto carriers if so configured
-	if (is->current_config.allow_helicopters_on_carriers &&
+	if ((is->current_config.special_helicopter_rules & SHR_ALLOW_ON_CARRIERS) &&
 	    passenger_type->Unit_Class == UTC_Air &&
 	    transport_type->Unit_Class == UTC_Sea &&
 	    Unit_has_ability (is->can_load_transport, __, UTA_Transports_Only_Aircraft))
