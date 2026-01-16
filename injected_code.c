@@ -5162,6 +5162,22 @@ free_dynamic_district_config (struct district_config * cfg)
 		cfg->resource_prereq_on_tile = NULL;
 	}
 
+	for (int i = 0; i < ARRAY_LEN (cfg->wonder_prereqs); i++) {
+		if (cfg->wonder_prereqs[i] != NULL) {
+			free ((void *)cfg->wonder_prereqs[i]);
+			cfg->wonder_prereqs[i] = NULL;
+		}
+	}
+	cfg->wonder_prereq_count = 0;
+
+	for (int i = 0; i < ARRAY_LEN (cfg->natural_wonder_prereqs); i++) {
+		if (cfg->natural_wonder_prereqs[i] != NULL) {
+			free ((void *)cfg->natural_wonder_prereqs[i]);
+			cfg->natural_wonder_prereqs[i] = NULL;
+		}
+	}
+	cfg->natural_wonder_prereq_count = 0;
+
 	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
 		if (cfg->buildable_by_civs[i] != NULL) {
 			free ((void *)cfg->buildable_by_civs[i]);
@@ -5296,6 +5312,24 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 		free ((void *)cfg->resource_prereq_on_tile);
 		cfg->resource_prereq_on_tile = NULL;
 	}
+
+	for (int i = 0; i < ARRAY_LEN (cfg->wonder_prereqs); i++) {
+		char const * default_value = (i < defaults->wonder_prereq_count) ? defaults->wonder_prereqs[i] : NULL;
+		if ((cfg->wonder_prereqs[i] != NULL) &&
+		    (cfg->wonder_prereqs[i] != default_value))
+			free ((void *)cfg->wonder_prereqs[i]);
+		cfg->wonder_prereqs[i] = NULL;
+	}
+	cfg->wonder_prereq_count = defaults->wonder_prereq_count;
+
+	for (int i = 0; i < ARRAY_LEN (cfg->natural_wonder_prereqs); i++) {
+		char const * default_value = (i < defaults->natural_wonder_prereq_count) ? defaults->natural_wonder_prereqs[i] : NULL;
+		if ((cfg->natural_wonder_prereqs[i] != NULL) &&
+		    (cfg->natural_wonder_prereqs[i] != default_value))
+			free ((void *)cfg->natural_wonder_prereqs[i]);
+		cfg->natural_wonder_prereqs[i] = NULL;
+	}
+	cfg->natural_wonder_prereq_count = defaults->natural_wonder_prereq_count;
 
 	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
 		char const * default_value = (i < defaults->buildable_by_civ_count) ? defaults->buildable_by_civs[i] : NULL;
@@ -5452,6 +5486,22 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 		free (def->resource_prereq_on_tile);
 		def->resource_prereq_on_tile = NULL;
 	}
+
+	for (int i = 0; i < def->wonder_prereq_count; i++) {
+		if (def->wonder_prereqs[i] != NULL) {
+			free (def->wonder_prereqs[i]);
+			def->wonder_prereqs[i] = NULL;
+		}
+	}
+	def->wonder_prereq_count = 0;
+
+	for (int i = 0; i < def->natural_wonder_prereq_count; i++) {
+		if (def->natural_wonder_prereqs[i] != NULL) {
+			free (def->natural_wonder_prereqs[i]);
+			def->natural_wonder_prereqs[i] = NULL;
+		}
+	}
+	def->natural_wonder_prereq_count = 0;
 
 	for (int i = 0; i < def->buildable_by_civ_count; i++) {
 		if (def->buildable_by_civs[i] != NULL) {
@@ -5943,6 +5993,44 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		def->resource_prereq_on_tile = NULL;
 	}
 
+	if (def->has_wonder_prereqs) {
+		for (int i = 0; i < ARRAY_LEN (cfg->wonder_prereqs); i++) {
+			char const * default_value = (i < defaults->wonder_prereq_count) ? defaults->wonder_prereqs[i] : NULL;
+			if ((cfg->wonder_prereqs[i] != NULL) &&
+			    (cfg->wonder_prereqs[i] != default_value))
+				free ((void *)cfg->wonder_prereqs[i]);
+			cfg->wonder_prereqs[i] = NULL;
+		}
+
+		cfg->wonder_prereq_count = def->wonder_prereq_count;
+		const int max_entries = ARRAY_LEN (cfg->wonder_prereqs);
+		if (cfg->wonder_prereq_count > max_entries)
+			cfg->wonder_prereq_count = max_entries;
+		for (int i = 0; i < cfg->wonder_prereq_count; i++) {
+			cfg->wonder_prereqs[i] = def->wonder_prereqs[i];
+			def->wonder_prereqs[i] = NULL;
+		}
+	}
+
+	if (def->has_natural_wonder_prereqs) {
+		for (int i = 0; i < ARRAY_LEN (cfg->natural_wonder_prereqs); i++) {
+			char const * default_value = (i < defaults->natural_wonder_prereq_count) ? defaults->natural_wonder_prereqs[i] : NULL;
+			if ((cfg->natural_wonder_prereqs[i] != NULL) &&
+			    (cfg->natural_wonder_prereqs[i] != default_value))
+				free ((void *)cfg->natural_wonder_prereqs[i]);
+			cfg->natural_wonder_prereqs[i] = NULL;
+		}
+
+		cfg->natural_wonder_prereq_count = def->natural_wonder_prereq_count;
+		const int max_entries = ARRAY_LEN (cfg->natural_wonder_prereqs);
+		if (cfg->natural_wonder_prereq_count > max_entries)
+			cfg->natural_wonder_prereq_count = max_entries;
+		for (int i = 0; i < cfg->natural_wonder_prereq_count; i++) {
+			cfg->natural_wonder_prereqs[i] = def->natural_wonder_prereqs[i];
+			def->natural_wonder_prereqs[i] = NULL;
+		}
+	}
+
 	if (def->has_buildable_by_civs) {
 		for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
 			char const * default_value = (i < defaults->buildable_by_civ_count) ? defaults->buildable_by_civs[i] : NULL;
@@ -6190,6 +6278,24 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		def->resource_prereq_on_tile = NULL;
 	}
 
+	new_cfg.wonder_prereq_count = def->has_wonder_prereqs ? def->wonder_prereq_count : 0;
+	const int max_required_wonders = ARRAY_LEN (new_cfg.wonder_prereqs);
+	if (new_cfg.wonder_prereq_count > max_required_wonders)
+		new_cfg.wonder_prereq_count = max_required_wonders;
+	for (int i = 0; i < new_cfg.wonder_prereq_count; i++) {
+		new_cfg.wonder_prereqs[i] = def->wonder_prereqs[i];
+		def->wonder_prereqs[i] = NULL;
+	}
+
+	new_cfg.natural_wonder_prereq_count = def->has_natural_wonder_prereqs ? def->natural_wonder_prereq_count : 0;
+	const int max_required_natural_wonders = ARRAY_LEN (new_cfg.natural_wonder_prereqs);
+	if (new_cfg.natural_wonder_prereq_count > max_required_natural_wonders)
+		new_cfg.natural_wonder_prereq_count = max_required_natural_wonders;
+	for (int i = 0; i < new_cfg.natural_wonder_prereq_count; i++) {
+		new_cfg.natural_wonder_prereqs[i] = def->natural_wonder_prereqs[i];
+		def->natural_wonder_prereqs[i] = NULL;
+	}
+
 	new_cfg.buildable_by_civ_count = def->has_buildable_by_civs ? def->buildable_by_civ_count : 0;
 	const int max_civ_names = ARRAY_LEN (new_cfg.buildable_by_civs);
 	if (new_cfg.buildable_by_civ_count > max_civ_names)
@@ -6413,6 +6519,42 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		}
 		def->resource_prereq_on_tile = copy_trimmed_string_or_null (value, 1);
 		def->has_resource_prereq_on_tile = true;
+
+	} else if (slice_matches_str (key, "wonder_prereqs")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->wonder_prereqs,
+					      ARRAY_LEN (def->wonder_prereqs),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "wonder_prereqs")) {
+			def->wonder_prereq_count = list_count;
+			def->has_wonder_prereqs = true;
+		} else {
+			def->wonder_prereq_count = 0;
+			def->has_wonder_prereqs = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "natural_wonder_prereqs")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->natural_wonder_prereqs,
+					      ARRAY_LEN (def->natural_wonder_prereqs),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "natural_wonder_prereqs")) {
+			def->natural_wonder_prereq_count = list_count;
+			def->has_natural_wonder_prereqs = true;
+		} else {
+			def->natural_wonder_prereq_count = 0;
+			def->has_natural_wonder_prereqs = false;
+		}
+		free (value_text);
 
 	} else if (slice_matches_str (key, "buildable_by_civs")) {
 		char * value_text = trim_and_extract_slice (value, 0);
@@ -8057,6 +8199,12 @@ void parse_building_and_tech_ids ()
 		for (int j = 0; j < MAX_DISTRICT_DEPENDENTS; j++)
 			is->district_infos[i].resource_prereq_ids[j] = -1;
 		is->district_infos[i].resource_prereq_on_tile_id = -1;
+		is->district_infos[i].wonder_prereq_count = 0;
+		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].wonder_prereq_ids); j++)
+			is->district_infos[i].wonder_prereq_ids[j] = -1;
+		is->district_infos[i].natural_wonder_prereq_count = 0;
+		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].natural_wonder_prereq_ids); j++)
+			is->district_infos[i].natural_wonder_prereq_ids[j] = -1;
 
 		// Map advance prereqs to districts
 		if (is->district_configs[i].advance_prereq != NULL && is->district_configs[i].advance_prereq != "") {
@@ -8110,6 +8258,45 @@ void parse_building_and_tech_ids ()
 				err->text[(sizeof err->text) - 1] = '\0';
 			}
 		}
+
+		int stored_wonder_count = 0;
+		for (int j = 0; j < is->district_configs[i].wonder_prereq_count; j++) {
+			if (is->district_configs[i].wonder_prereqs[j] == "" || is->district_configs[i].wonder_prereqs[j] == NULL)
+				continue;
+			int improv_id;
+			struct string_slice wonder_name = { .str = (char *)is->district_configs[i].wonder_prereqs[j], .len = (int)strlen (is->district_configs[i].wonder_prereqs[j]) };
+			if (find_game_object_id_by_name (GOK_BUILDING, &wonder_name, 0, &improv_id)) {
+				if (stored_wonder_count < ARRAY_LEN (is->district_infos[i].wonder_prereq_ids)) {
+					is->district_infos[i].wonder_prereq_ids[stored_wonder_count] = improv_id;
+					stored_wonder_count += 1;
+				}
+				stable_insert (&is->building_name_to_id, wonder_name.str, improv_id);
+			} else {
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": wonder_prereqs entry \"%.*s\" not found", district_name, wonder_name.len, wonder_name.str);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+		is->district_infos[i].wonder_prereq_count = stored_wonder_count;
+
+		int stored_natural_wonder_count = 0;
+		for (int j = 0; j < is->district_configs[i].natural_wonder_prereq_count; j++) {
+			if (is->district_configs[i].natural_wonder_prereqs[j] == "" || is->district_configs[i].natural_wonder_prereqs[j] == NULL)
+				continue;
+			int natural_wonder_id = -1;
+			char const * name = is->district_configs[i].natural_wonder_prereqs[j];
+			if (stable_look_up (&is->natural_wonder_name_to_id, (char *)name, &natural_wonder_id)) {
+				if (stored_natural_wonder_count < ARRAY_LEN (is->district_infos[i].natural_wonder_prereq_ids)) {
+					is->district_infos[i].natural_wonder_prereq_ids[stored_natural_wonder_count] = natural_wonder_id;
+					stored_natural_wonder_count += 1;
+				}
+			} else {
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": natural_wonder_prereqs entry \"%s\" not found", district_name, name);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+		is->district_infos[i].natural_wonder_prereq_count = stored_natural_wonder_count;
 
 		// Resolve generated resource name to ID
 		if (is->district_configs[i].generated_resource != NULL && is->district_configs[i].generated_resource != "") {
@@ -9026,6 +9213,12 @@ reset_district_state (bool reset_tile_map)
 		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].resource_prereq_ids); j++)
 			is->district_infos[i].resource_prereq_ids[j] = -1;
 		is->district_infos[i].resource_prereq_on_tile_id = -1;
+		is->district_infos[i].wonder_prereq_count = 0;
+		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].wonder_prereq_ids); j++)
+			is->district_infos[i].wonder_prereq_ids[j] = -1;
+		is->district_infos[i].natural_wonder_prereq_count = 0;
+		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].natural_wonder_prereq_ids); j++)
+			is->district_infos[i].natural_wonder_prereq_ids[j] = -1;
 		is->district_infos[i].dependent_building_count = 0;
 		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].dependent_building_ids); j++)
 			is->district_infos[i].dependent_building_ids[j] = -1;
@@ -9879,6 +10072,64 @@ city_can_build_district (City * city, int district_id)
 }
 
 bool
+leader_has_wonder_prereq (Leader * leader, struct district_infos const * info)
+{
+	if (info == NULL)
+		return false;
+	if (info->wonder_prereq_count <= 0)
+		return true;
+	if ((leader == NULL) || (leader->Improvement_Counts == NULL))
+		return false;
+
+	for (int i = 0; i < info->wonder_prereq_count; i++) {
+		int improv_id = info->wonder_prereq_ids[i];
+		if (improv_id >= 0 && leader->Improvement_Counts[improv_id] > 0)
+			return true;
+	}
+
+	return false;
+}
+
+bool
+leader_has_natural_wonder_prereq_in_territory (int civ_id, struct district_infos const * info)
+{
+	if (info == NULL)
+		return false;
+	if (info->natural_wonder_prereq_count <= 0)
+		return true;
+	if (! is->current_config.enable_natural_wonders)
+		return false;
+
+	FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+		struct district_instance * inst = (struct district_instance *)(long)tei.value;
+		if ((inst == NULL) || (inst->district_type != NATURAL_WONDER_DISTRICT_ID))
+			continue;
+
+		int wonder_id = inst->natural_wonder_info.natural_wonder_id;
+		if (wonder_id < 0)
+			continue;
+
+		bool matches = false;
+		for (int i = 0; i < info->natural_wonder_prereq_count; i++) {
+			if (info->natural_wonder_prereq_ids[i] == wonder_id) {
+				matches = true;
+				break;
+			}
+		}
+		if (! matches)
+			continue;
+
+		Tile * tile = (Tile *)tei.key;
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+
+		return tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id;
+	}
+
+	return false;
+}
+
+bool
 leader_can_build_district (Leader * leader, int district_id)
 {
 	if ((leader == NULL) || (district_id < 0) || (district_id >= is->district_count))
@@ -9889,6 +10140,12 @@ leader_can_build_district (Leader * leader, int district_id)
 
 	int prereq_id = info->advance_prereq_id;
 	if ((prereq_id >= 0) && ! Leader_has_tech (leader, __, prereq_id))
+		return false;
+
+	if (! leader_has_wonder_prereq (leader, info))
+		return false;
+
+	if (! leader_has_natural_wonder_prereq_in_territory (leader->ID, info))
 		return false;
 
 	if (cfg->has_buildable_by_civs) {

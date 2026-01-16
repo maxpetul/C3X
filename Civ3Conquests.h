@@ -777,6 +777,7 @@ enum Unit_Command_Values
   UCV_Build_EnergyGrid = -10000007,
   UCV_Build_Bridge = -10000008,
   UCV_Build_Canal = -10000009,
+  UCV_Build_GreatWall = -10000010,
 };
 
 enum Unit_Mode_Actions

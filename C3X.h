@@ -17,7 +17,7 @@ typedef unsigned char byte;
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
 #define COUNT_SPECIAL_DISTRICT_TYPES 10
-#define USED_SPECIAL_DISTRICT_TYPES 10
+#define USED_SPECIAL_DISTRICT_TYPES 11
 #define MAX_DYNAMIC_DISTRICT_TYPES 22
 #define COUNT_DISTRICT_TYPES (COUNT_SPECIAL_DISTRICT_TYPES + MAX_DYNAMIC_DISTRICT_TYPES)
 #define MAX_WONDER_DISTRICT_TYPES 32
@@ -618,6 +618,8 @@ struct district_config {
 	char const * resource_prereqs[MAX_DISTRICT_DEPENDENTS];
 	char const * resource_prereq_on_tile;
 	char const * dependent_improvements[MAX_DISTRICT_DEPENDENTS];
+	char const * wonder_prereqs[MAX_DISTRICT_DEPENDENTS];
+	char const * natural_wonder_prereqs[MAX_DISTRICT_DEPENDENTS];
 	char const * img_paths[10];
 	unsigned int buildable_square_types_mask;
 	bool allow_multiple;
@@ -631,6 +633,8 @@ struct district_config {
 	int y_offset;
 	int resource_prereq_count;
 	int dependent_improvement_count;
+	int wonder_prereq_count;
+	int natural_wonder_prereq_count;
 	int img_path_count;
 	int max_building_index;
 	int btn_tile_sheet_column;
@@ -817,6 +821,15 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.img_path_count = 1, .max_building_index = 8, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	},
+	{
+		.command = UCV_Build_GreatWall, .name = "Great Wall", .tooltip = "Build Great Wall", .display_name = "Great Wall",
+		.advance_prereq = NULL, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
+		.img_paths = {"GreatWall.pcx"}, .dependent_improvements = {0}, .custom_height = 112, .wonder_prereqs = {"The Great Wall"}, .wonder_prereq_count = 1,
+		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Mountains)), 
+		.img_path_count = 1, .max_building_index = 10, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
+		.culture_bonus = 2, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 2, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 50,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	}
 };
 
@@ -828,9 +841,13 @@ struct parsed_district_definition {
 	char * resource_prereqs[5];
 	char * resource_prereq_on_tile;
 	char * dependent_improvements[5];
+	char * wonder_prereqs[5];
+	char * natural_wonder_prereqs[5];
 	char * img_paths[5];
 	int resource_prereq_count;
 	int dependent_improvement_count;
+	int wonder_prereq_count;
+	int natural_wonder_prereq_count;
 	int img_path_count;
 	bool allow_multiple;
 	bool vary_img_by_era;
@@ -863,6 +880,8 @@ struct parsed_district_definition {
 	bool has_advance_prereq;
 	bool has_resource_prereqs;
 	bool has_dependent_improvements;
+	bool has_wonder_prereqs;
+	bool has_natural_wonder_prereqs;
 	bool has_display_name;
 	bool has_img_paths;
 	bool has_allow_multiple;
@@ -1771,6 +1790,10 @@ struct district_button_image_set {
 		int resource_prereq_ids[MAX_DISTRICT_DEPENDENTS];
 		int resource_prereq_count;
 		int resource_prereq_on_tile_id;
+		int wonder_prereq_ids[MAX_DISTRICT_DEPENDENTS];
+		int wonder_prereq_count;
+		int natural_wonder_prereq_ids[MAX_DISTRICT_DEPENDENTS];
+		int natural_wonder_prereq_count;
 		int dependent_building_count;
 		int dependent_building_ids[MAX_DISTRICT_DEPENDENTS]; // Building types the district enables
 	} district_infos[COUNT_DISTRICT_TYPES];

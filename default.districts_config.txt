@@ -345,3 +345,16 @@ food_bonus            = 0
 gold_bonus            = 0
 shield_bonus          = 0
 happiness_bonus       = 0
+
+#District
+name                  = Great Wall
+tooltip               = Build Great Wall
+buildable_on          = desert,plains,grassland,tundra,floodplain,mountains
+defense_bonus_percent = 50
+allow_multiple        = 1
+culture_bonus         = 2
+science_bonus         = 0
+food_bonus            = 0
+gold_bonus            = 2
+shield_bonus          = 0
+happiness_bonus       = 0
