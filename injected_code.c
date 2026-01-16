@@ -5149,6 +5149,10 @@ free_dynamic_district_config (struct district_config * cfg)
 		free ((void *)cfg->advance_prereq);
 		cfg->advance_prereq = NULL;
 	}
+	if (cfg->obsoleted_by != NULL) {
+		free ((void *)cfg->obsoleted_by);
+		cfg->obsoleted_by = NULL;
+	}
 
 	for (int i = 0; i < 5; i++) {
 		if (cfg->resource_prereqs[i] != NULL) {
@@ -5297,6 +5301,10 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 	if ((cfg->advance_prereq != NULL) && (cfg->advance_prereq != defaults->advance_prereq)) {
 		free ((void *)cfg->advance_prereq);
 		cfg->advance_prereq = NULL;
+	}
+	if ((cfg->obsoleted_by != NULL) && (cfg->obsoleted_by != defaults->obsoleted_by)) {
+		free ((void *)cfg->obsoleted_by);
+		cfg->obsoleted_by = NULL;
 	}
 
 	for (int i = 0; i < ARRAY_LEN (cfg->resource_prereqs); i++) {
@@ -5472,6 +5480,10 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 	if (def->advance_prereq != NULL) {
 		free (def->advance_prereq);
 		def->advance_prereq = NULL;
+	}
+	if (def->obsoleted_by != NULL) {
+		free (def->obsoleted_by);
+		def->obsoleted_by = NULL;
 	}
 
 	for (int i = 0; i < def->resource_prereq_count; i++) {
@@ -5967,6 +5979,13 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		def->advance_prereq = NULL;
 	}
 
+	if (def->has_obsoleted_by) {
+		if ((cfg->obsoleted_by != NULL) && (cfg->obsoleted_by != defaults->obsoleted_by))
+			free ((void *)cfg->obsoleted_by);
+		cfg->obsoleted_by = def->obsoleted_by;
+		def->obsoleted_by = NULL;
+	}
+
 	if (def->has_resource_prereqs) {
 		for (int i = 0; i < ARRAY_LEN (cfg->resource_prereqs); i++) {
 			char const * default_value = (i < defaults->resource_prereq_count) ? defaults->resource_prereqs[i] : NULL;
@@ -6264,6 +6283,11 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		def->advance_prereq = NULL;
 	}
 
+	if (def->has_obsoleted_by) {
+		new_cfg.obsoleted_by = def->obsoleted_by;
+		def->obsoleted_by = NULL;
+	}
+
 	new_cfg.resource_prereq_count = def->has_resource_prereqs ? def->resource_prereq_count : 0;
 	const int max_resource_entries = ARRAY_LEN (new_cfg.resource_prereqs);
 	if (new_cfg.resource_prereq_count > max_resource_entries)
@@ -6493,6 +6517,14 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		}
 		def->advance_prereq = copy_trimmed_string_or_null (value, 1);
 		def->has_advance_prereq = true;
+
+	} else if (slice_matches_str (key, "obsoleted_by")) {
+		if (def->obsoleted_by != NULL) {
+			free (def->obsoleted_by);
+			def->obsoleted_by = NULL;
+		}
+		def->obsoleted_by = copy_trimmed_string_or_null (value, 1);
+		def->has_obsoleted_by = true;
 
 	} else if (slice_matches_str (key, "resource_prereqs")) {
 		char * value_text = trim_and_extract_slice (value, 0);
@@ -8195,6 +8227,7 @@ void parse_building_and_tech_ids ()
 		if (is->district_configs[i].command != 0)
 			itable_insert (&is->command_id_to_district_id, is->district_configs[i].command, i);
 		is->district_infos[i].advance_prereq_id = -1;
+		is->district_infos[i].obsoleted_by_id = -1;
 		is->district_infos[i].resource_prereq_count = 0;
 		for (int j = 0; j < MAX_DISTRICT_DEPENDENTS; j++)
 			is->district_infos[i].resource_prereq_ids[j] = -1;
@@ -8219,6 +8252,22 @@ void parse_building_and_tech_ids ()
 				is->district_infos[i].advance_prereq_id = -1;
 				struct error_line * err = add_error_line (&district_parse_errors);
 				snprintf (err->text, sizeof err->text, "^  District \"%s\": advance_prereq \"%.*s\" not found", district_name, tech_name.len, tech_name.str);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+
+		// Map obsoleted_by to tech ID
+		if (is->district_configs[i].obsoleted_by != NULL && is->district_configs[i].obsoleted_by != "") {
+			int tech_id;
+			struct string_slice tech_name = { .str = (char *)is->district_configs[i].obsoleted_by, .len = (int)strlen (is->district_configs[i].obsoleted_by) };
+			if (find_game_object_id_by_name (GOK_TECHNOLOGY, &tech_name, 0, &tech_id)) {
+				snprintf (ss, sizeof ss, "Found tech obsoleted_by \"%.*s\" for district \"%s\", ID %d\n", tech_name.len, tech_name.str, is->district_configs[i].obsoleted_by, tech_id);
+				(*p_OutputDebugStringA) (ss);
+				is->district_infos[i].obsoleted_by_id = tech_id;
+			} else {
+				is->district_infos[i].obsoleted_by_id = -1;
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": obsoleted_by \"%.*s\" not found", district_name, tech_name.len, tech_name.str);
 				err->text[(sizeof err->text) - 1] = '\0';
 			}
 		}
@@ -9209,6 +9258,7 @@ reset_district_state (bool reset_tile_map)
 
 	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++) {
 		is->district_infos[i].advance_prereq_id = -1;
+		is->district_infos[i].obsoleted_by_id = -1;
 		is->district_infos[i].resource_prereq_count = 0;
 		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].resource_prereq_ids); j++)
 			is->district_infos[i].resource_prereq_ids[j] = -1;
@@ -10140,6 +10190,9 @@ leader_can_build_district (Leader * leader, int district_id)
 
 	int prereq_id = info->advance_prereq_id;
 	if ((prereq_id >= 0) && ! Leader_has_tech (leader, __, prereq_id))
+		return false;
+	int obsolete_id = info->obsoleted_by_id;
+	if ((obsolete_id >= 0) && Leader_has_tech (leader, __, obsolete_id))
 		return false;
 
 	if (! leader_has_wonder_prereq (leader, info))

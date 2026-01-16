@@ -615,6 +615,7 @@ struct district_config {
 	char const * display_name;
 	char const * tooltip;
 	char const * advance_prereq;
+	char const * obsoleted_by;
 	char const * resource_prereqs[MAX_DISTRICT_DEPENDENTS];
 	char const * resource_prereq_on_tile;
 	char const * dependent_improvements[MAX_DISTRICT_DEPENDENTS];
@@ -824,7 +825,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_GreatWall, .name = "Great Wall", .tooltip = "Build Great Wall", .display_name = "Great Wall",
-		.advance_prereq = NULL, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
+		.advance_prereq = NULL, .obsoleted_by = "Metallurgy", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
 		.img_paths = {"GreatWall.pcx"}, .dependent_improvements = {0}, .custom_height = 112, .wonder_prereqs = {"The Great Wall"}, .wonder_prereq_count = 1,
 		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Mountains)), 
 		.img_path_count = 1, .max_building_index = 10, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
@@ -838,6 +839,7 @@ struct parsed_district_definition {
 	char * display_name;
 	char * tooltip;
 	char * advance_prereq;
+	char * obsoleted_by;
 	char * resource_prereqs[5];
 	char * resource_prereq_on_tile;
 	char * dependent_improvements[5];
@@ -878,6 +880,7 @@ struct parsed_district_definition {
 	bool has_name;
 	bool has_tooltip;
 	bool has_advance_prereq;
+	bool has_obsoleted_by;
 	bool has_resource_prereqs;
 	bool has_dependent_improvements;
 	bool has_wonder_prereqs;
@@ -1787,6 +1790,7 @@ struct district_button_image_set {
 
 	struct district_infos {
 		int advance_prereq_id; // Tech ID that enables the district
+		int obsoleted_by_id;
 		int resource_prereq_ids[MAX_DISTRICT_DEPENDENTS];
 		int resource_prereq_count;
 		int resource_prereq_on_tile_id;

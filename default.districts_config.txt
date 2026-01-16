@@ -349,6 +349,7 @@ happiness_bonus       = 0
 #District
 name                  = Great Wall
 tooltip               = Build Great Wall
+obsoleted_by          = Metallurgy
 buildable_on          = desert,plains,grassland,tundra,floodplain,mountains
 defense_bonus_percent = 50
 allow_multiple        = 1
