@@ -601,6 +601,12 @@ enum district_bonus_entry_type {
 	DBET_BUILDING = 1
 };
 
+enum great_wall_auto_build_state {
+	GWABS_NOT_STARTED = 0,
+	GWABS_RUNNING,
+	GWABS_DONE
+};
+
 struct district_bonus_entry {
 	enum district_bonus_entry_type type;
 	int bonus;
@@ -1877,7 +1883,8 @@ struct district_button_image_set {
 	int current_tile_x, current_tile_y;
 
 	// Set to true once the auto-build process for the Great Wall is complete to avoid running it again
-	bool great_wall_auto_build_is_done;
+	enum great_wall_auto_build_state great_wall_auto_build;
+	Tile * great_wall_focus_tile;
 
 	// ==========
 	// }

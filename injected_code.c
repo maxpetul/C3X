@@ -9286,7 +9286,7 @@ reset_district_state (bool reset_tile_map)
 	}
 	table_deinit (&is->city_pending_building_orders);
 
-	is->great_wall_auto_build_is_done = false;
+	is->great_wall_auto_build = GWABS_NOT_STARTED;
 }
 
 void
@@ -19090,6 +19090,7 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 	Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (this, __, param_1, pixel_x, pixel_y, map_renderer, param_5, tile_x, tile_y, param_8);
 
 	Map * map = &p_bic_data->Map;
+	Tile * tile = tile_at (tile_x, tile_y);
 	if ((is->city_loc_display_perspective >= 0) &&
 	    (! map->vtable->m10_Get_Map_Zoom (map)) && // Turn off display when zoomed out. Need another set of highlight images for that.
 	    ((1 << is->city_loc_display_perspective) & *p_player_bits) &&
@@ -19108,14 +19109,15 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 		}
 	}
 
-	// Draw city work radius highlights for selected worker
-	if (is->current_config.enable_districts &&
-	    is->current_config.enable_city_work_radii_highlights &&
-	    is->highlight_city_radii &&
-	    (((tile_x + tile_y) % 2) == 0)) { // Replicate a check from the base game code. Without this we'd be drawing additional tiles half-way off the grid.
+	// Districts-related highlights
+	if (is->current_config.enable_districts && is->tile_highlight_state == IS_OK && 
+		(((tile_x + tile_y) % 2) == 0)) {
+		init_tile_highlights ();
 
-		if (is->tile_highlight_state == IS_OK) {
-			Tile * tile = tile_at (tile_x, tile_y);
+		// Draw city work radius highlights for selected worker
+		if (is->current_config.enable_city_work_radii_highlights &&
+			is->highlight_city_radii) { // Replicate a check from the base game code. Without this we'd be drawing additional tiles half-way off the grid.
+
 			if ((tile != NULL) && (tile != p_null_tile)) {
 				int stored_ptr;
 				if (itable_look_up (&is->highlighted_city_radius_tile_pointers, (int)tile, &stored_ptr)) {
@@ -19123,6 +19125,13 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 					Sprite_draw_on_map (&is->tile_highlights[clamp(0, 10, info->highlight_level)], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 				}
 			}
+		}
+
+		// If focusing on a tile after Great Wall completed, highlight the tile while getting user confirmation
+		if (is->current_config.auto_build_great_wall_around_territory &&
+			is->great_wall_auto_build == GWABS_RUNNING &&
+			is->great_wall_focus_tile == tile) { 
+				Sprite_draw_on_map (&is->tile_highlights[10], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 		}
 	}
 }
@@ -19644,29 +19653,37 @@ grant_existing_district_buildings_to_city (City * city)
 }
 
 void
-auto_build_great_wall_districts_for_civ (City * city)
+auto_build_great_wall_districts_for_civ (int civ_id)
 {
 	if ((! is->current_config.enable_districts) ||
 	    (! is->current_config.enable_great_wall_districts) ||
 	    (! is->current_config.auto_build_great_wall_around_territory) ||
-	    is->great_wall_auto_build_is_done ||
-	    (city == NULL) ||
+	    (is->great_wall_auto_build == GWABS_DONE) ||
+	    (civ_id < 0) ||
 	    is->is_placing_scenario_things)
 		return;
 
-	int civ_id = city->Body.CivID;
 	bool is_human = (*p_human_player_bits & (1 << civ_id)) != 0;
 
 	if ((GREAT_WALL_DISTRICT_ID < 0) || (GREAT_WALL_DISTRICT_ID >= is->district_count)) {
-		is->great_wall_auto_build_is_done = true;
+		is->great_wall_auto_build = GWABS_DONE;
 		return;
 	}
 
+	init_tile_highlights ();
+
 	struct district_config const * cfg = &is->district_configs[GREAT_WALL_DISTRICT_ID];
 	if ((cfg->command == -1) || (! leader_can_build_district (&leaders[civ_id], GREAT_WALL_DISTRICT_ID))) {
-		is->great_wall_auto_build_is_done = true;
+		is->great_wall_auto_build = GWABS_DONE;
 		return;
 	}
+
+	PopupForm * popup = get_popup_form ();
+	set_popup_str_param (0, (char *)is->district_configs[GREAT_WALL_DISTRICT_ID].display_name, -1, -1);
+	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_BEGIN_GREAT_WALL_AUTO_BUILD", -1, 0, 0, 0);
+	patch_show_popup (popup, __, 0, 0);
+
+	is->great_wall_auto_build = GWABS_RUNNING;
 
 	unsigned int const irrigation_flag = 0x8;
 	unsigned int const replaceable_flags = TILE_FLAG_MINE | irrigation_flag;
@@ -19720,44 +19737,46 @@ auto_build_great_wall_districts_for_civ (City * city)
 			unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
 			unsigned int replace_flags = overlay_flags & replaceable_flags;
 			bool has_district = (inst != NULL);
-			if (has_district || (replace_flags != 0)) {
-				if (is_human) {
-					Main_Screen_Form_bring_tile_into_view (p_main_screen_form, __, x, y, 0, true, false);
+			int existing_district_id = -1;
+			if (has_district)
+				existing_district_id = inst->district_type;
 
-					PopupForm * popup = get_popup_form ();
-					set_popup_str_param (0, (char *)is->district_configs[GREAT_WALL_DISTRICT_ID].display_name, -1, -1);
+			if (is_human) {
+				is->great_wall_focus_tile = tile;
+				Main_Screen_Form_bring_tile_into_view (p_main_screen_form, __, x, y, 0, true, false);
 
-					if (has_district) {
-						int existing_district_id = inst->district_type;
-						bool redundant_district = district_instance_is_redundant (inst, tile);
-						bool would_lose_buildings = any_nearby_city_would_lose_district_benefits (existing_district_id, civ_id, x, y);
-						if (redundant_district)
-							would_lose_buildings = false;
-						set_popup_str_param (0, (char *)is->district_configs[GREAT_WALL_DISTRICT_ID].display_name, -1, -1);
-						if ((existing_district_id >= 0) && (existing_district_id < is->district_count)) {
-							set_popup_str_param (1, (char *)is->district_configs[existing_district_id].display_name, -1, -1);
-						}
-
-						popup->vtable->set_text_key_and_flags (
-							popup, __, is->mod_script_path,
-							would_lose_buildings
-								? "C3X_CONFIRM_BUILD_GREAT_WALL_OVER_DISTRICT"
-								: "C3X_CONFIRM_BUILD_GREAT_WALL_OVER_DISTRICT_SAFE",
-							-1, 0, 0, 0);
-					} else {
-						popup->vtable->set_text_key_and_flags (
-							popup, __, is->mod_script_path,
-							"C3X_CONFIRM_BUILD_GREAT_WALL_OVER_IMPROVEMENT",
-							-1, 0, 0, 0);
-					}
-
-					int sel = patch_show_popup (popup, __, 0, 0);
-					if (sel != 0)
-						continue;
-				}
+				char * popup_key = "C3X_CONFIRM_BUILD_GREAT_WALL";
+				set_popup_str_param (0, (char *)is->district_configs[GREAT_WALL_DISTRICT_ID].display_name, -1, -1);
 
 				if (has_district) {
-					int existing_district_id = inst->district_type;
+					bool redundant_district = district_instance_is_redundant (inst, tile);
+					bool would_lose_buildings;
+					would_lose_buildings = any_nearby_city_would_lose_district_benefits (existing_district_id, civ_id, x, y);
+					if (redundant_district)
+						would_lose_buildings = false;
+					if ((existing_district_id >= 0) && (existing_district_id < is->district_count)) {
+						set_popup_str_param (1, (char *)is->district_configs[existing_district_id].display_name, -1, -1);
+					}
+					popup_key = would_lose_buildings
+						? "C3X_CONFIRM_BUILD_GREAT_WALL_OVER_DISTRICT"
+						: "C3X_CONFIRM_BUILD_GREAT_WALL_OVER_DISTRICT_SAFE";
+				} else if (replace_flags != 0) {
+					popup_key = "C3X_CONFIRM_BUILD_GREAT_WALL_OVER_IMPROVEMENT";
+				}
+
+				popup->vtable->set_text_key_and_flags (
+					popup, __, is->mod_script_path,
+					popup_key,
+					-1, 0, 0, 0);
+
+				int sel = patch_show_popup (popup, __, 0, 0);
+				p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form); // Trigger map redraw
+				if (sel != 0)
+					continue;
+			}
+
+			if (has_district || (replace_flags != 0)) {
+				if (has_district) {
 					int inst_x = x, inst_y = y;
 					if (! district_instance_get_coords (inst, tile, &inst_x, &inst_y))
 						continue;
@@ -19787,7 +19806,8 @@ auto_build_great_wall_districts_for_civ (City * city)
 		}
 	}
 
-	is->great_wall_auto_build_is_done = true;
+	is->great_wall_auto_build = GWABS_DONE;
+	is->great_wall_focus_tile = NULL;
 }
 
 //We need to forwards-declare this
@@ -19867,7 +19887,7 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	if (add && is->current_config.enable_districts &&
 		is->current_config.auto_build_great_wall_around_territory &&
 		Improvement_has_wonder_flag(improv, __, ITW_Double_Combat_Strength_vs_Barbarians))
-		auto_build_great_wall_districts_for_civ (this);
+		auto_build_great_wall_districts_for_civ (this->Body.CivID);
 	
 	//Calculate if work_area has shrunk, and if so, redistribute citizens.
 	int post_work_area_radius = get_work_ring_limit_total(this);
@@ -24301,9 +24321,9 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		serialize_aligned_text ("current_day_night_cycle", &mod_data);
 		int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_day_night_cycle), is->current_day_night_cycle);
 	}
-	if (is->great_wall_auto_build_is_done) {
-		serialize_aligned_text ("great_wall_auto_build_is_done", &mod_data);
-		*(int *)buffer_allocate (&mod_data, sizeof(int)) = 1;
+	if (is->great_wall_auto_build != GWABS_NOT_STARTED) {
+		serialize_aligned_text ("great_wall_auto_build_state", &mod_data);
+		*(int *)buffer_allocate (&mod_data, sizeof(int)) = (int)is->great_wall_auto_build;
 	}
 
 	if (is->current_config.enable_districts && (is->district_count > 0)) {
@@ -24704,8 +24724,16 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				// doesn't get restarted.
 				is->day_night_cycle_unstarted = false;
 			
+			} else if (match_save_chunk_name (&cursor, "great_wall_auto_build_state")) {
+				int state = *((int *)cursor)++;
+				if ((state >= GWABS_NOT_STARTED) && (state <= GWABS_DONE))
+					is->great_wall_auto_build = (enum great_wall_auto_build_state)state;
+				else
+					is->great_wall_auto_build = GWABS_NOT_STARTED;
+
 			} else if (match_save_chunk_name (&cursor, "great_wall_auto_build_is_done")) {
-				is->great_wall_auto_build_is_done = (*((int *)cursor)++ != 0);
+				bool was_done = (*((int *)cursor)++ != 0);
+				is->great_wall_auto_build = was_done ? GWABS_DONE : GWABS_NOT_STARTED;
 
 			} else if (match_save_chunk_name (&cursor, "district_pending_requests")) {
 				bool success = false;
