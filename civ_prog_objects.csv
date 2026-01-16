@@ -863,6 +863,7 @@ repl vptr, 0x66DCD0,	0x68ADB4,	0x66DCD0,	"City_m22",					"void (__fastcall *) (C
 define,	   0x4B95D7,	0x4C0C43,	0x4B9667,	"CITY_M22_TO_ADD_BUILDING_IF_DONE_RETURN_1",	"int"
 define,	   0x4B96C9,	0x4C0D35,	0x4B9759,	"CITY_M22_TO_ADD_BUILDING_IF_DONE_RETURN_2",	"int"
 define,	   0x4B90D6,	0x4C0743,	0x4B9166,	"CITY_M22_TO_SPAWN_UNIT_IF_DONE_RETURN",	"int"
+inlead,	   0x5B6CE0,	0x5C5670,	0x5B69F0,	"Unit_do_capture_units",			"bool (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int owner_civ_id)"
 
 ignore,	   0x5FC710,	0x0,		0x0,		"PCX_Image_create_and_init_jgl_image",		"int (__fastcall *) (PCX_Image * this, int edx, int width, int height, int bit_depth, int param_4, int param_5, int param_6)"
 ignore,	   0x5FCC50,	0x0,		0x0,		"PCX_Image_draw_region_to_location",		"void (__fastcall *) (PCX_Image * this, int edx, PCX_Image * canvas, int src_x, int src_y, int dest_x, int dest_y, int width, int height)"
@@ -882,7 +883,6 @@ ignore,	   0x605010,	0x61C6A0,	0x604F00,	"Base_Form_impl_m01_Show_Enabled",		"vo
 ignore,	   0x74AF60,	0x0,		0x0,		"p_sync_object",				"void *"
 ignore,    0x5C0E20,	0x5CF9C0,	0x5C0B30,	"Unit_begin_bombarding_tile",			"bool (__fastcall *) (Unit * this, int edx, int x, int y)"
 ignore,    0x57F623,	0x58C352,	0x57F383,	"ADDR_SUB_BUG_PATCH",				"void *"
-ignore,	   0x5B6CE0,	0x5C5670,	0x5B69F0,	"Unit_do_capture_units",			"bool (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int owner_civ_id)"
 define,	   0xCC2BB0,	0xCE54BC,	0xCC2B70,	"p_got_leader_gender",				"int *"
 ignore,	   0x49D070,	0x4A3AF0,	0x49D100,	"Advisor_GUI_open",				"void (__fastcall *) (Advisor_GUI * this, int edx, AdvisorKind kind)"
 ignore,	   0x4BF660,	0x4C6C10,	0x4BF6F0,	"City_draw_citizens",				"void (__fastcall *) (City * this, int edx, PCX_Image * canvas, RECT * rect, char param_3)"

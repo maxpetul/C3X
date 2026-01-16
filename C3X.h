@@ -1649,6 +1649,11 @@ struct injected_state {
 	// unit cycling for the turn.
 	bool have_loaded_waiting_units;
 
+	// Used in patch_Unit_do_capture_units and patch_Unit_despawn
+	Unit ** extra_capture_despawns;
+	int count_extra_capture_despawns;
+	int extra_capture_despawns_capacity;
+
 	// ==========
 	// }
 	// ==========

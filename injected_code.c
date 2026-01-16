@@ -11370,6 +11370,10 @@ patch_init_floating_point ()
 	is->waiting_units = (struct table) {0};
 	is->have_loaded_waiting_units = false;
 
+	is->extra_capture_despawns = NULL;
+	is->count_extra_capture_despawns = 0;
+	is->extra_capture_despawns_capacity = 0;
+
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config, true);
@@ -16876,24 +16880,71 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	if (this == is->last_selected_unit.ptr)
 		is->last_selected_unit.ptr = NULL;
 
-	// Save this to restore later if we change it
+	// Remove this unit from the list of extra units to despawn after capturing
+	int original_count = is->count_extra_capture_despawns;
+	for (int n_src = 0, n_dest = 0; n_src < original_count; n_src++) {
+		if (is->extra_capture_despawns[n_src] != this) {
+			is->extra_capture_despawns[n_dest] = is->extra_capture_despawns[n_src];
+			n_dest++;
+		} else
+			is->count_extra_capture_despawns -= 1;
+	}
+
+	// If the unit being despawned is a land transport or helicopter on a carrier, we must make sure to despawn its passengers too because the
+	// base game won't.
+	bool must_despawn_passengers = false; {
+		if (involuntary && (is->current_config.land_transport_rules & LTR_NO_ESCAPE) && is_land_transport (this))
+			must_despawn_passengers = true;
+
+		if (is->current_config.allow_helicopters_on_carriers) {
+			bool is_carrier    = type->Unit_Class == UTC_Sea && type->Transport_Capacity > 0 && Unit_has_ability (this, __, UTA_Transports_Only_Aircraft),
+			     is_helicopter = type->Unit_Class == UTC_Air && type->Transport_Capacity > 0,
+			     passengers_could_survive = Tile_has_city (tile) || ! tile->vtable->m35_Check_Is_Water (tile);
+			if ((is_carrier || is_helicopter) && (involuntary || ! passengers_could_survive))
+				must_despawn_passengers = true;
+		}
+	}
+
 	bool prev_always_despawn_passengers = is->always_despawn_passengers;
 
-	// Make sure to despawn the unit's passengers if it's a land transport, the no escape rule is in effect, and it's an involuntary despawn.
-	if (involuntary && (is->current_config.land_transport_rules & LTR_NO_ESCAPE) && is_land_transport (this))
-		is->always_despawn_passengers = true;
+	if (must_despawn_passengers) {
+		// If we've been called from do_capture_units, record the passengers in the list of units to be despawned after do_capture_units
+		// returns. We can't simply despawn the units now even by setting always_despawn_passengers because the despawning messes up an
+		// iterator over tile units inside do_capture_units.
+		if (ret_addr == DESPAWN_TO_DO_CAPTURE_UNITS_RETURN) {
+			FOR_UNITS_ON (uti, tile)
+				if (uti.unit->Body.Container_Unit == this->Body.ID) {
+					reserve (sizeof is->extra_capture_despawns[0], // item size
+						 (void **)&is->extra_capture_despawns, // ptr to items
+						 &is->extra_capture_despawns_capacity, // ptr to capacity
+						 is->count_extra_capture_despawns); // count
+					is->extra_capture_despawns[is->count_extra_capture_despawns] = uti.unit;
+					is->count_extra_capture_despawns += 1;
+				}
 
-	// Make sure to despawn the passengers if helicopters are allowed on carriers and the unit is a heli on a water tile
-	if (is->current_config.allow_helicopters_on_carriers &&
-	    type->Unit_Class == UTC_Air && type->Transport_Capacity > 0 && // is helicopter-like unit
-	    tile->vtable->m35_Check_Is_Water (tile))
-		is->always_despawn_passengers = true;
+		} else
+			is->always_despawn_passengers = true;
+	}
 
 	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 
 	is->always_despawn_passengers = prev_always_despawn_passengers;
 
 	change_unit_type_count (&leaders[owner_id], type_id, -1);
+}
+
+bool __fastcall
+patch_Unit_do_capture_units (Unit * this, int edx, int tile_x, int tile_y, int owner_civ_id)
+{
+	is->count_extra_capture_despawns = 0;
+
+	bool tr = Unit_do_capture_units (this, __, tile_x, tile_y, owner_civ_id);
+
+	// Here we rely on patch_Unit_despawn to remove despawned units from the list
+	while (is->count_extra_capture_despawns > 0)
+		patch_Unit_despawn (is->extra_capture_despawns[0], __, this->Body.ID, 0, 0, 0, 0, 0, 0);
+
+	return tr;
 }
 
 void __fastcall
