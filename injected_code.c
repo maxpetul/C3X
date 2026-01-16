@@ -27805,20 +27805,6 @@ get_canal_directions (Tile * tile, int tile_x, int tile_y, bool * out_water_dirs
 void 
 draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int era)
 {
-	Sprite * canal_n  = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_N];
-	Sprite * canal_ne = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_NE];
-	Sprite * canal_e  = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_E];
-	Sprite * canal_se = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_SE];
-	Sprite * canal_s  = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_S];
-	Sprite * canal_sw = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_SW];
-	Sprite * canal_w  = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_W];
-	Sprite * canal_nw = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][DIR_NW];
-
-	Sprite * dir_sprites[9] = { 
-		NULL, canal_ne, canal_e, canal_se,
-		canal_s, canal_sw, canal_w, canal_nw, canal_n
-	};
-
 	struct district_config const * cfg = &is->district_configs[CANAL_DISTRICT_ID];
 	int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
 	int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
@@ -27832,16 +27818,41 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 	bool water_dirs[9] = { false, false, false, false, false, false, false, false, false };
 	get_canal_directions (tile, tile_x, tile_y, &water_dirs, &draw_dir1, &draw_dir2);
 
-	if (draw_dir1 >= 0)
-		draw_canal_on_map_or_canvas(dir_sprites[draw_dir1], tile_x, tile_y, draw_dir1, water_dirs, map_renderer, draw_x, draw_y);
-	if (draw_dir2 >= 0)
-		draw_canal_on_map_or_canvas(dir_sprites[draw_dir2], tile_x, tile_y, draw_dir2, water_dirs, map_renderer, draw_x, draw_y);
+	if (draw_dir1 >= 0) {
+		Sprite * sprite1 = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][draw_dir1];
+		draw_canal_on_map_or_canvas(sprite1, tile_x, tile_y, draw_dir1, water_dirs, map_renderer, draw_x, draw_y);
+	}
+	if (draw_dir2 >= 0) {
+		Sprite * sprite2 = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][draw_dir2];
+		draw_canal_on_map_or_canvas(sprite2, tile_x, tile_y, draw_dir2, water_dirs, map_renderer, draw_x, draw_y);
+	}
 }
 
 void
 draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	// TODO	
+	bool wall_nw = tile_has_district_at (tile_x - 1, tile_y - 1, GREAT_WALL_DISTRICT_ID);
+	bool wall_n  = tile_has_district_at (tile_x, tile_y - 2,     GREAT_WALL_DISTRICT_ID);
+	bool wall_ne = tile_has_district_at (tile_x + 1, tile_y - 1, GREAT_WALL_DISTRICT_ID);
+	bool wall_e  = tile_has_district_at (tile_x + 2, tile_y,     GREAT_WALL_DISTRICT_ID);
+	bool wall_se = tile_has_district_at (tile_x + 1, tile_y + 1, GREAT_WALL_DISTRICT_ID);
+	bool wall_s  = tile_has_district_at (tile_x, tile_y + 2,     GREAT_WALL_DISTRICT_ID);
+	bool wall_sw = tile_has_district_at (tile_x - 1, tile_y + 1, GREAT_WALL_DISTRICT_ID);
+	bool wall_w  = tile_has_district_at (tile_x - 2, tile_y,     GREAT_WALL_DISTRICT_ID);
+	
+	Sprite * sprites = is->district_img_sets[GREAT_WALL_DISTRICT_ID].imgs[0][0];
+	Sprite * base    = &sprites[0];
+
+	// Rotate around clockwise NW -> W to get the perspective right
+	if (wall_nw) draw_district_on_map_or_canvas(&sprites[DIR_NW], map_renderer, pixel_x, pixel_y);
+	if (wall_n)  draw_district_on_map_or_canvas(&sprites[DIR_N],  map_renderer, pixel_x, pixel_y);
+	if (wall_ne) draw_district_on_map_or_canvas(&sprites[DIR_NE], map_renderer, pixel_x, pixel_y);
+	if (wall_e)  draw_district_on_map_or_canvas(&sprites[DIR_E],  map_renderer, pixel_x, pixel_y);
+	draw_district_on_map_or_canvas(base, map_renderer, pixel_x, pixel_y);
+	if (wall_se) draw_district_on_map_or_canvas(&sprites[DIR_SE], map_renderer, pixel_x, pixel_y);
+	if (wall_s)  draw_district_on_map_or_canvas(&sprites[DIR_S],  map_renderer, pixel_x, pixel_y);
+	if (wall_sw) draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
+	if (wall_w)  draw_district_on_map_or_canvas(&sprites[DIR_W],  map_renderer, pixel_x, pixel_y);
 }
 
 void __fastcall
