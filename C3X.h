@@ -383,6 +383,8 @@ struct c3x_config {
 	bool allow_enter_canal_from_any_direction;
 
 	bool ai_defends_districts;
+
+	bool disable_great_wall_city_defense_bonus;
 	bool great_wall_districts_impassible_by_others;
 
 	bool enable_city_work_radii_highlights;

@@ -13668,6 +13668,7 @@ patch_init_floating_point ()
 		{"show_natural_wonder_name_on_map"                       , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
 		{"ai_defends_districts"                                  , false, offsetof (struct c3x_config, ai_defends_districts)},
 		{"great_wall_districts_impassible_by_others"             , false, offsetof (struct c3x_config, great_wall_districts_impassible_by_others)},
+		{"disable_great_wall_city_defense_bonus"                 , false, offsetof (struct c3x_config, disable_great_wall_city_defense_bonus)},
 		{"expand_water_tile_checks_to_city_work_area"         	 , false, offsetof (struct c3x_config, expand_water_tile_checks_to_city_work_area)},
 		{"workers_can_enter_coast"         		                 , false, offsetof (struct c3x_config, workers_can_enter_coast)},
 		{"allow_enter_bridge_from_any_direction"                 , false, offsetof (struct c3x_config, allow_enter_bridge_from_any_direction)},
@@ -26183,6 +26184,16 @@ patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum Im
 	}
 
 	return tr;
+}
+
+int __fastcall
+patch_Leader_count_wonders_with_flag_ignore_great_wall (Leader * this, int edx, enum ImprovementTypeWonderFeatures flag, City * only_in_city)
+{
+	if (is->current_config.enable_districts &&
+	    is->current_config.disable_great_wall_city_defense_bonus)
+		return 0;
+
+	return patch_Leader_count_any_shared_wonders_with_flag (this, __, flag, only_in_city);
 }
 
 int const shared_small_wonder_flags =
