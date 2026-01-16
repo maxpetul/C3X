@@ -26914,9 +26914,11 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 		bool west_tile_is_land      = tile_is_land (owner_id, tile_x - 2, tile_y, true);
 
 		if (city_is_directly_above_port) {
-			if      (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
-			else if (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
-			else { 
+			if (northwest_tile_is_land && ! tile_is_land (owner_id, tile_x + 1, tile_y + 1, true)) { 
+				*out_variant = SE; anchor = DIR_NW; 
+			} else if (northeast_tile_is_land && ! tile_is_land (owner_id, tile_x - 1, tile_y + 1, true)) { 
+				*out_variant = SW; anchor = DIR_NE; 
+			} else { 
 				*out_variant = SW; anchor = DIR_NE;
 				*out_pixel_x -= 4; *out_pixel_y -= 4;
 			}
