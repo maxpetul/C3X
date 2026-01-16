@@ -349,6 +349,7 @@ struct c3x_config {
 	bool enable_bridge_districts;
 	bool enable_canal_districts;
 	bool enable_central_rail_hub_districts;
+	bool enable_great_wall_districts;
 
 	bool cities_with_mutual_district_receive_buildings;
 	bool cities_with_mutual_district_receive_wonders;
@@ -382,6 +383,7 @@ struct c3x_config {
 	bool allow_enter_canal_from_any_direction;
 
 	bool ai_defends_districts;
+	bool great_wall_districts_impassible_by_others;
 
 	bool enable_city_work_radii_highlights;
 };

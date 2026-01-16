@@ -76,6 +76,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define ENERGY_GRID_DISTRICT_ID      7
 #define BRIDGE_DISTRICT_ID           8
 #define CANAL_DISTRICT_ID			 9
+#define GREAT_WALL_DISTRICT_ID       10
 
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
@@ -9589,6 +9590,7 @@ can_build_district_on_tile (Tile * tile, int district_id, int civ_id)
 	if ((cfg->command == UCV_Build_Port)            && !is->current_config.enable_port_districts)             return false;
 	if ((cfg->command == UCV_Build_Bridge)          && !is->current_config.enable_bridge_districts)           return false;
 	if ((cfg->command == UCV_Build_CentralRailHub)  && !is->current_config.enable_central_rail_hub_districts) return false;
+	if ((cfg->command == UCV_Build_GreatWall)       && !is->current_config.enable_great_wall_districts)       return false;
 
 	if (! district_is_buildable_on_square_type (cfg, tile))
 		return false;
@@ -13653,6 +13655,7 @@ patch_init_floating_point ()
 		{"enable_bridge_districts"                               , false, offsetof (struct c3x_config, enable_bridge_districts)},
 		{"enable_canal_districts"                                , false, offsetof (struct c3x_config, enable_canal_districts)},
 		{"enable_central_rail_hub_districts"                     , false, offsetof (struct c3x_config, enable_central_rail_hub_districts)},
+		{"enable_great_wall_districts"                           , false, offsetof (struct c3x_config, enable_great_wall_districts)},
 		{"completed_wonder_districts_can_be_destroyed"           , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
 		{"destroyed_wonders_can_be_built_again"                  , false, offsetof (struct c3x_config, destroyed_wonders_can_be_built_again)},
 		{"cities_with_mutual_district_receive_buildings"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
@@ -13664,6 +13667,7 @@ patch_init_floating_point ()
 		{"naval_units_use_port_districts_not_cities"             , false, offsetof (struct c3x_config, naval_units_use_port_districts_not_cities)},
 		{"show_natural_wonder_name_on_map"                       , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
 		{"ai_defends_districts"                                  , false, offsetof (struct c3x_config, ai_defends_districts)},
+		{"great_wall_districts_impassible_by_others"             , false, offsetof (struct c3x_config, great_wall_districts_impassible_by_others)},
 		{"expand_water_tile_checks_to_city_work_area"         	 , false, offsetof (struct c3x_config, expand_water_tile_checks_to_city_work_area)},
 		{"workers_can_enter_coast"         		                 , false, offsetof (struct c3x_config, workers_can_enter_coast)},
 		{"allow_enter_bridge_from_any_direction"                 , false, offsetof (struct c3x_config, allow_enter_bridge_from_any_direction)},
@@ -27819,6 +27823,12 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 		draw_canal_on_map_or_canvas(dir_sprites[draw_dir2], tile_x, tile_y, draw_dir2, water_dirs, map_renderer, draw_x, draw_y);
 }
 
+void
+draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
+{
+	// TODO	
+}
+
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
@@ -27983,6 +27993,11 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 			{
 				era = 0; // DEBUG
 				draw_canal_district (tile, tile_x, tile_y, map_renderer, pixel_x, pixel_y, era);
+				return;
+			}
+			case GREAT_WALL_DISTRICT_ID:
+			{
+				draw_great_wall_district (tile, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 				return;
 			}
             default:
