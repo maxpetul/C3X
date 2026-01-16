@@ -19863,7 +19863,10 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 		}
 	}
 
-	if (add && is->current_config.enable_districts && (improv->WonderFlags & ITW_Doubles_City_Defenses))
+	// Doesn't seem to actually be true for Great Wall?? Check ITW_Double_Combat_Strength_vs_Barbarians instead 
+	if (add && is->current_config.enable_districts &&
+		is->current_config.auto_build_great_wall_around_territory &&
+		Improvement_has_wonder_flag(improv, __, ITW_Double_Combat_Strength_vs_Barbarians))
 		auto_build_great_wall_districts_for_civ (this);
 	
 	//Calculate if work_area has shrunk, and if so, redistribute citizens.
@@ -21715,6 +21718,8 @@ patch_City_can_trade_via_air (City * this)
 int __fastcall
 patch_City_get_building_defense_bonus (City * this)
 {
+	bool cancel_great_wall_boost = is->current_config.enable_districts && is->current_config.disable_great_wall_city_defense_bonus;
+
 	if (is->current_config.optimize_improvement_loops) {
 		int tr = 0;
 		int is_size_level_1 = (this->Body.Population.Size <= p_bic_data->General.MaximumSize_City) &&
@@ -21725,6 +21730,7 @@ patch_City_get_building_defense_bonus (City * this)
 			if ((is_size_level_1 || (improv->Combat_Bombard == 0)) && has_active_building (this, improv_id)) {
 				int multiplier;
 				if ((improv->Combat_Bombard > 0) &&
+					(! cancel_great_wall_boost) &&
 				    (patch_Leader_count_any_shared_wonders_with_flag (&leaders[(this->Body).CivID], __, ITW_Doubles_City_Defenses, NULL) > 0))
 					multiplier = 2;
 				else
@@ -26353,6 +26359,8 @@ patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum Im
 int __fastcall
 patch_Leader_count_wonders_with_flag_ignore_great_wall (Leader * this, int edx, enum ImprovementTypeWonderFeatures flag, City * only_in_city)
 {
+	return patch_Leader_count_any_shared_wonders_with_flag (this, __, flag, only_in_city);
+
 	if (is->current_config.enable_districts &&
 	    is->current_config.disable_great_wall_city_defense_bonus &&
 		flag == ITW_Doubles_City_Defenses)
@@ -27043,6 +27051,7 @@ init_district_images ()
 		for (int variant_i = 0; variant_i < variant_count; variant_i++) {
 			if (cfg->img_paths[variant_i] == NULL)
 				continue;
+
 			// Read PCX file
 			snprintf (art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, cfg->img_paths[variant_i]);
 
@@ -27993,18 +28002,16 @@ void
 draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
 	bool wall_nw = tile_has_district_at (tile_x - 1, tile_y - 1, GREAT_WALL_DISTRICT_ID);
-	bool wall_n  = tile_has_district_at (tile_x, tile_y - 2,     GREAT_WALL_DISTRICT_ID);
 	bool wall_ne = tile_has_district_at (tile_x + 1, tile_y - 1, GREAT_WALL_DISTRICT_ID);
-	bool wall_e  = tile_has_district_at (tile_x + 2, tile_y,     GREAT_WALL_DISTRICT_ID);
 	bool wall_se = tile_has_district_at (tile_x + 1, tile_y + 1, GREAT_WALL_DISTRICT_ID);
-	bool wall_s  = tile_has_district_at (tile_x, tile_y + 2,     GREAT_WALL_DISTRICT_ID);
 	bool wall_sw = tile_has_district_at (tile_x - 1, tile_y + 1, GREAT_WALL_DISTRICT_ID);
-	bool wall_w  = tile_has_district_at (tile_x - 2, tile_y,     GREAT_WALL_DISTRICT_ID);
 
-	bool none = !wall_nw && !wall_n && !wall_ne && !wall_e && !wall_se && !wall_s && !wall_sw && !wall_w;
+	bool none = !wall_nw && !wall_ne && !wall_se && !wall_sw;
 	
 	Sprite * sprites = is->district_img_sets[GREAT_WALL_DISTRICT_ID].imgs[0][0];
 	Sprite * base    = &sprites[0];
+	int base_pixel_x = pixel_x;
+	int base_pixel_y = pixel_y;
 
 	// If no surrounding walls, draw NE, base, SW so tile doesn't look empty
 	if (none) {
@@ -28013,17 +28020,15 @@ draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * ma
 		draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
 		return;
 	}
-
 	// Rotate around clockwise NW -> W to get the perspective right
 	if (wall_nw) draw_district_on_map_or_canvas(&sprites[DIR_NW], map_renderer, pixel_x, pixel_y);
-	if (wall_n)  draw_district_on_map_or_canvas(&sprites[DIR_N],  map_renderer, pixel_x, pixel_y);
 	if (wall_ne) draw_district_on_map_or_canvas(&sprites[DIR_NE], map_renderer, pixel_x, pixel_y);
-	if (wall_e)  draw_district_on_map_or_canvas(&sprites[DIR_E],  map_renderer, pixel_x, pixel_y);
-	draw_district_on_map_or_canvas(base, map_renderer, pixel_x, pixel_y);
-	if (wall_se) draw_district_on_map_or_canvas(&sprites[DIR_SE], map_renderer, pixel_x, pixel_y);
-	if (wall_s)  draw_district_on_map_or_canvas(&sprites[DIR_S],  map_renderer, pixel_x, pixel_y);
+
+	// Base pillar
+	draw_district_on_map_or_canvas(base, map_renderer, base_pixel_x, base_pixel_y);
+
 	if (wall_sw) draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
-	if (wall_w)  draw_district_on_map_or_canvas(&sprites[DIR_W],  map_renderer, pixel_x, pixel_y);
+	if (wall_se) draw_district_on_map_or_canvas(&sprites[DIR_SE], map_renderer, pixel_x, pixel_y);
 }
 
 void __fastcall
@@ -28226,7 +28231,7 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 }
 
 void __fastcall
-patch_Map_Renderer_m09_Draw_Tile_Resources(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
+patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
 	if (! is->current_config.enable_districts) {
 		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);

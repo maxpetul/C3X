@@ -191,7 +191,7 @@ No, nevermind.
 
 #C3X_CONFIRM_BUILD_GREAT_WALL_OVER_IMPROVEMENT
 #advisor Military
-As we expand our $DISTRICT0 to protect our cities, we've found an already exists here. Should we replace the $IMPROVEMENT0 with a $DISTRICT0?
+As we expand our $DISTRICT0 to protect our cities, we've found an improvement already exists here. Should we replace the $IMPROVEMENT0 with a $DISTRICT0?
 #itemlist
 Yes. We must protect our cities.
 No, leave it alone.
