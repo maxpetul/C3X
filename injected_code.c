@@ -232,6 +232,7 @@ int count_neighborhoods_in_city_radius (City * city);
 int count_utilized_neighborhoods_in_city_radius (City * city);
 bool move_matches_directions (int move_dx, int move_dy, int dir1, int dir2);
 int count_contiguous_canal_districts (int tile_x, int tile_y, int max_count);
+bool great_wall_blocks_civ (Tile * tile, int civ_id);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -16520,6 +16521,9 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 
 	int base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, neighbor_index, dist_info);
 
+	if ((unit != NULL) && great_wall_blocks_civ (tile_at (to_x, to_y), unit->Body.CivID))
+		return -1;
+
 	// Let the pathfinder consider coastal tiles reachable for workers when the config flag is on
 	if (is->current_config.enable_districts && is->current_config.workers_can_enter_coast &&
 	    (base_cost < 0) && (unit != NULL) && is_worker (unit)) {
@@ -29189,6 +29193,9 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 {
 	PassBetweenValidity base = Unit_can_pass_between (this, __, from_x, from_y, to_x, to_y, param_5);
 
+	if (great_wall_blocks_civ (tile_at (to_x, to_y), this->Body.CivID))
+		return PBV_GENERIC_INVALID_MOVE;
+
 	if (is->current_config.enable_districts && is->current_config.workers_can_enter_coast &&
 		base != PBV_OK && is_worker(this)) {
 		Tile * dest = tile_at (to_x, to_y);
@@ -29315,6 +29322,37 @@ patch_Unit_select_transport (Unit * this, int edx, int tile_x, int tile_y, bool 
 	}
 
 	return transport;
+}
+
+bool
+great_wall_blocks_civ (Tile * tile, int civ_id)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_great_wall_districts ||
+	    ! is->current_config.great_wall_districts_impassible_by_others)
+		return false;
+
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	if (owner_id <= 0)
+		return false;
+	if (owner_id == civ_id)
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if ((inst == NULL) || (inst->district_type != GREAT_WALL_DISTRICT_ID))
+		return false;
+
+	if (! district_is_complete (tile, GREAT_WALL_DISTRICT_ID))
+		return false;
+
+	int obsolete_id = is->district_infos[GREAT_WALL_DISTRICT_ID].obsoleted_by_id;
+	if ((obsolete_id >= 0) && Leader_has_tech (&leaders[civ_id], __, obsolete_id))
+		return false;
+
+	return true;
 }
 
 bool
