@@ -1888,7 +1888,30 @@ district_is_buildable_on_square_type (struct district_config const * cfg, Tile *
 	if (mask == 0)
 		mask = district_default_buildable_mask ();
 
-	return tile_matches_square_type_mask (tile, mask);
+	if (! tile_matches_square_type_mask (tile, mask))
+		return false;
+
+	if (cfg->has_buildable_on_districts) {
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst == NULL)
+			return false;
+
+		int existing_district_id = inst->district_type;
+		if (! district_is_complete (tile, existing_district_id))
+			return false;
+
+		bool matches = false;
+		for (int i = 0; i < cfg->buildable_on_district_id_count; i++) {
+			if (cfg->buildable_on_district_ids[i] == existing_district_id) {
+				matches = true;
+				break;
+			}
+		}
+		if (! matches)
+			return false;
+	}
+
+	return true;
 }
 
 bool
@@ -5184,6 +5207,16 @@ free_dynamic_district_config (struct district_config * cfg)
 	}
 	cfg->natural_wonder_prereq_count = 0;
 
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_on_districts); i++) {
+		if (cfg->buildable_on_districts[i] != NULL) {
+			free ((void *)cfg->buildable_on_districts[i]);
+			cfg->buildable_on_districts[i] = NULL;
+		}
+	}
+	cfg->buildable_on_district_count = 0;
+	cfg->buildable_on_district_id_count = 0;
+	cfg->has_buildable_on_districts = false;
+
 	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
 		if (cfg->buildable_by_civs[i] != NULL) {
 			free ((void *)cfg->buildable_by_civs[i]);
@@ -5341,6 +5374,18 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 	}
 	cfg->natural_wonder_prereq_count = defaults->natural_wonder_prereq_count;
 
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_on_districts); i++) {
+		char const * default_value = (i < defaults->buildable_on_district_count) ? defaults->buildable_on_districts[i] : NULL;
+		if ((cfg->buildable_on_districts[i] != NULL) &&
+		    (cfg->buildable_on_districts[i] != default_value)) {
+			free ((void *)cfg->buildable_on_districts[i]);
+		}
+		cfg->buildable_on_districts[i] = NULL;
+	}
+	cfg->buildable_on_district_count = defaults->buildable_on_district_count;
+	cfg->buildable_on_district_id_count = defaults->buildable_on_district_id_count;
+	cfg->has_buildable_on_districts = defaults->has_buildable_on_districts;
+
 	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
 		char const * default_value = (i < defaults->buildable_by_civ_count) ? defaults->buildable_by_civs[i] : NULL;
 		if ((cfg->buildable_by_civs[i] != NULL) &&
@@ -5482,6 +5527,12 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 	if (def->advance_prereq != NULL) {
 		free (def->advance_prereq);
 		def->advance_prereq = NULL;
+	}
+	for (int i = 0; i < ARRAY_LEN (def->buildable_on_districts); i++) {
+		if (def->buildable_on_districts[i] != NULL) {
+			free (def->buildable_on_districts[i]);
+			def->buildable_on_districts[i] = NULL;
+		}
 	}
 	if (def->obsoleted_by != NULL) {
 		free (def->obsoleted_by);
@@ -6052,6 +6103,27 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		}
 	}
 
+	if (def->has_buildable_on_districts) {
+		for (int i = 0; i < ARRAY_LEN (cfg->buildable_on_districts); i++) {
+			char const * default_value = (i < defaults->buildable_on_district_count) ? defaults->buildable_on_districts[i] : NULL;
+			if ((cfg->buildable_on_districts[i] != NULL) &&
+			    (cfg->buildable_on_districts[i] != default_value))
+				free ((void *)cfg->buildable_on_districts[i]);
+			cfg->buildable_on_districts[i] = NULL;
+		}
+
+		cfg->buildable_on_district_count = def->buildable_on_district_count;
+		const int max_entries = ARRAY_LEN (cfg->buildable_on_districts);
+		if (cfg->buildable_on_district_count > max_entries)
+			cfg->buildable_on_district_count = max_entries;
+		for (int i = 0; i < cfg->buildable_on_district_count; i++) {
+			cfg->buildable_on_districts[i] = def->buildable_on_districts[i];
+			def->buildable_on_districts[i] = NULL;
+		}
+		cfg->buildable_on_district_id_count = 0;
+		cfg->has_buildable_on_districts = true;
+	}
+
 	if (def->has_buildable_by_civs) {
 		for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
 			char const * default_value = (i < defaults->buildable_by_civ_count) ? defaults->buildable_by_civs[i] : NULL;
@@ -6322,6 +6394,17 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		def->natural_wonder_prereqs[i] = NULL;
 	}
 
+	new_cfg.buildable_on_district_count = def->has_buildable_on_districts ? def->buildable_on_district_count : 0;
+	const int max_buildable_on_districts = ARRAY_LEN (new_cfg.buildable_on_districts);
+	if (new_cfg.buildable_on_district_count > max_buildable_on_districts)
+		new_cfg.buildable_on_district_count = max_buildable_on_districts;
+	for (int i = 0; i < new_cfg.buildable_on_district_count; i++) {
+		new_cfg.buildable_on_districts[i] = def->buildable_on_districts[i];
+		def->buildable_on_districts[i] = NULL;
+	}
+	new_cfg.buildable_on_district_id_count = 0;
+	new_cfg.has_buildable_on_districts = def->has_buildable_on_districts;
+
 	new_cfg.buildable_by_civ_count = def->has_buildable_by_civs ? def->buildable_by_civ_count : 0;
 	const int max_civ_names = ARRAY_LEN (new_cfg.buildable_by_civs);
 	if (new_cfg.buildable_by_civ_count > max_civ_names)
@@ -6587,6 +6670,24 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		} else {
 			def->natural_wonder_prereq_count = 0;
 			def->has_natural_wonder_prereqs = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_on_districts")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_on_districts,
+					      ARRAY_LEN (def->buildable_on_districts),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "buildable_on_districts")) {
+			def->buildable_on_district_count = list_count;
+			def->has_buildable_on_districts = true;
+		} else {
+			def->buildable_on_district_count = 0;
+			def->has_buildable_on_districts = false;
 		}
 		free (value_text);
 
@@ -8152,6 +8253,66 @@ find_civ_culture_id_by_name (struct string_slice const * name, int * out_id)
 	return false;
 }
 
+int
+find_district_index_by_name (char const * name)
+{
+	if ((name == NULL) || (name[0] == '\0'))
+		return -1;
+
+	for (int i = 0; i < is->district_count; i++) {
+		char const * existing = is->district_configs[i].name;
+		if ((existing != NULL) && (strcmp (existing, name) == 0))
+			return i;
+	}
+
+	return -1;
+}
+
+int
+find_wonder_district_index_by_name (char const * name)
+{
+	if ((name == NULL) || (name[0] == '\0'))
+		return -1;
+
+	int improv_id;
+	if (! stable_look_up (&is->building_name_to_id, (char *)name, &improv_id))
+		return -1;
+
+	return find_wonder_config_index_by_improvement_id (improv_id);
+}
+
+int
+find_natural_wonder_index_by_name (char const * name)
+{
+	if ((name == NULL) || (name[0] == '\0') || (is == NULL))
+		return -1;
+
+	for (int i = 0; i < is->natural_wonder_count; i++) {
+		char const * existing = is->natural_wonder_configs[i].name;
+		if ((existing != NULL) && (strcmp (existing, name) == 0))
+			return i;
+	}
+	return -1;
+}
+
+City *
+find_city_by_name (char const * name)
+{
+	if ((name == NULL) || (name[0] == '\0') || (p_cities == NULL) || (p_cities->Cities == NULL))
+		return NULL;
+
+	for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+		City * city = get_city_ptr (city_index);
+		if ((city != NULL) && (city->Body.CityName != NULL)) {
+			(*p_OutputDebugStringA) (city->Body.CityName);
+		}
+		if ((city != NULL) && (city->Body.CityName != NULL) && (strcmp (city->Body.CityName, name) == 0))
+			return city;
+	}
+
+	return NULL;
+}
+
 void
 set_wonders_dependent_on_wonder_district (void)
 {
@@ -8348,6 +8509,31 @@ void parse_building_and_tech_ids ()
 			}
 		}
 		is->district_infos[i].natural_wonder_prereq_count = stored_natural_wonder_count;
+
+		for (int j = 0; j < ARRAY_LEN (is->district_configs[i].buildable_on_district_ids); j++)
+			is->district_configs[i].buildable_on_district_ids[j] = -1;
+		is->district_configs[i].buildable_on_district_id_count = 0;
+
+		if (is->district_configs[i].has_buildable_on_districts) {
+			int stored_buildable_on_count = 0;
+			for (int j = 0; j < is->district_configs[i].buildable_on_district_count; j++) {
+				char const * name = is->district_configs[i].buildable_on_districts[j];
+				if (name == NULL || name[0] == '\0')
+					continue;
+				int other_district_id = find_district_index_by_name (name);
+				if (other_district_id >= 0) {
+					if (stored_buildable_on_count < ARRAY_LEN (is->district_configs[i].buildable_on_district_ids)) {
+						is->district_configs[i].buildable_on_district_ids[stored_buildable_on_count] = other_district_id;
+						stored_buildable_on_count += 1;
+					}
+				} else {
+					struct error_line * err = add_error_line (&district_parse_errors);
+					snprintf (err->text, sizeof err->text, "^  District \"%s\": buildable_on_districts entry \"%s\" not found", district_name, name);
+					err->text[(sizeof err->text) - 1] = '\0';
+				}
+			}
+			is->district_configs[i].buildable_on_district_id_count = stored_buildable_on_count;
+		}
 
 		// Resolve generated resource name to ID
 		if (is->district_configs[i].generated_resource != NULL && is->district_configs[i].generated_resource != "") {
@@ -8725,66 +8911,6 @@ place_natural_wonders_on_map (void)
 	free (candidate_lists);
 	free (already_placed);
 	free (placements);
-}
-
-int
-find_district_index_by_name (char const * name)
-{
-	if ((name == NULL) || (name[0] == '\0'))
-		return -1;
-
-	for (int i = 0; i < is->district_count; i++) {
-		char const * existing = is->district_configs[i].name;
-		if ((existing != NULL) && (strcmp (existing, name) == 0))
-			return i;
-	}
-
-	return -1;
-}
-
-int
-find_wonder_district_index_by_name (char const * name)
-{
-	if ((name == NULL) || (name[0] == '\0'))
-		return -1;
-
-	int improv_id;
-	if (! stable_look_up (&is->building_name_to_id, (char *)name, &improv_id))
-		return -1;
-
-	return find_wonder_config_index_by_improvement_id (improv_id);
-}
-
-int
-find_natural_wonder_index_by_name (char const * name)
-{
-	if ((name == NULL) || (name[0] == '\0') || (is == NULL))
-		return -1;
-
-	for (int i = 0; i < is->natural_wonder_count; i++) {
-		char const * existing = is->natural_wonder_configs[i].name;
-		if ((existing != NULL) && (strcmp (existing, name) == 0))
-			return i;
-	}
-	return -1;
-}
-
-City *
-find_city_by_name (char const * name)
-{
-	if ((name == NULL) || (name[0] == '\0') || (p_cities == NULL) || (p_cities->Cities == NULL))
-		return NULL;
-
-	for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
-		City * city = get_city_ptr (city_index);
-		if ((city != NULL) && (city->Body.CityName != NULL)) {
-			(*p_OutputDebugStringA) (city->Body.CityName);
-		}
-		if ((city != NULL) && (city->Body.CityName != NULL) && (strcmp (city->Body.CityName, name) == 0))
-			return city;
-	}
-
-	return NULL;
 }
 
 void
@@ -19701,13 +19827,10 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 				continue;
 
 			bool has_border = false;
-			for (int ni = 1; ni < 9; ni++) {
-				int nx, ny;
-				get_neighbor_coords (&p_bic_data->Map, x, y, ni, &nx, &ny);
-				wrap_tile_coords (&p_bic_data->Map, &nx, &ny);
-				Tile * neighbor = tile_at (nx, ny);
-				if ((neighbor == NULL) || (neighbor == p_null_tile))
+			FOR_TILES_AROUND (tai, 9, x, y) {
+				if (tai.n == 0)
 					continue;
+				Tile * neighbor = tai.tile;
 				if (neighbor->vtable->m35_Check_Is_Water (neighbor))
 					continue;
 				if (neighbor->vtable->m38_Get_Territory_OwnerID (neighbor) != civ_id) {

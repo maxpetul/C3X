@@ -632,6 +632,7 @@ struct district_config {
 	char const * dependent_improvements[MAX_DISTRICT_DEPENDENTS];
 	char const * wonder_prereqs[MAX_DISTRICT_DEPENDENTS];
 	char const * natural_wonder_prereqs[MAX_DISTRICT_DEPENDENTS];
+	char const * buildable_on_districts[MAX_DISTRICT_DEPENDENTS];
 	char const * img_paths[10];
 	unsigned int buildable_square_types_mask;
 	bool allow_multiple;
@@ -647,6 +648,7 @@ struct district_config {
 	int dependent_improvement_count;
 	int wonder_prereq_count;
 	int natural_wonder_prereq_count;
+	int buildable_on_district_count;
 	int img_path_count;
 	int max_building_index;
 	int btn_tile_sheet_column;
@@ -667,6 +669,9 @@ struct district_config {
 	char const * generated_resource;
 	int generated_resource_id;
 	short generated_resource_flags;
+	int buildable_on_district_ids[MAX_DISTRICT_DEPENDENTS];
+	int buildable_on_district_id_count;
+	bool has_buildable_on_districts;
 	char const * buildable_by_civs[32];
 	int buildable_by_civ_count;
 	bool has_buildable_by_civs;
@@ -856,11 +861,13 @@ struct parsed_district_definition {
 	char * dependent_improvements[5];
 	char * wonder_prereqs[5];
 	char * natural_wonder_prereqs[5];
+	char * buildable_on_districts[5];
 	char * img_paths[5];
 	int resource_prereq_count;
 	int dependent_improvement_count;
 	int wonder_prereq_count;
 	int natural_wonder_prereq_count;
+	int buildable_on_district_count;
 	int img_path_count;
 	bool allow_multiple;
 	bool vary_img_by_era;
@@ -938,6 +945,7 @@ struct parsed_district_definition {
 	int buildable_by_civ_cultures_ids[5];
 	int buildable_by_civ_cultures_id_count;
 	bool has_buildable_by_civ_cultures;
+	bool has_buildable_on_districts;
 };
 
 struct parsed_wonder_definition {

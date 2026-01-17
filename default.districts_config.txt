@@ -350,6 +350,7 @@ happiness_bonus       = 0
 name                  = Great Wall
 tooltip               = Build Great Wall
 obsoleted_by          = Metallurgy
+wonder_prereqs        = "The Great Wall"
 buildable_on          = desert,plains,grassland,tundra,floodplain,mountains,forest,swamp,jungle
 defense_bonus_percent = 50
 allow_multiple        = 1
