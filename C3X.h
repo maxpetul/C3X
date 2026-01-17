@@ -129,7 +129,8 @@ enum land_transport_rules {
 };
 
 enum special_helicopter_rules {
-	SHR_ALLOW_ON_CARRIERS = 1,
+	SHR_ALLOW_ON_CARRIERS      = 1,
+	SHR_NO_DEFENSE_FROM_INSIDE = 2,
 };
 
 enum work_area_limit {

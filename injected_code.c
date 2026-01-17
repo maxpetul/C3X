@@ -2120,7 +2120,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_helicopter_rules")) {
 					struct parsable_field_bit bits[] = {
-						{"allow-onto-carriers", SHR_ALLOW_ON_CARRIERS},
+						{"allow-onto-carriers"   , SHR_ALLOW_ON_CARRIERS},
+						{"no-defense-from-inside", SHR_NO_DEFENSE_FROM_INSIDE},
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_helicopter_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -3049,6 +3050,22 @@ is_in_land_transport (Unit * unit)
 {
 	Unit * container = get_unit_ptr (unit->Body.Container_Unit);
 	return container != NULL && is_land_transport (container);
+}
+
+// Checks if the unit is inside a transport (either helicopter or land transport) from which it is not allowed to defend according to the mod config.
+bool
+cannot_defend_inside_transport (Unit * unit)
+{
+	Unit * container = get_unit_ptr (unit->Body.Container_Unit);
+	if (container != NULL) {
+		if ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) && is_land_transport (container))
+			return true;
+
+		if ((is->current_config.special_helicopter_rules & SHR_NO_DEFENSE_FROM_INSIDE) &&
+		    p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Air)
+			return true;
+	}
+	return false;
 }
 
 struct unit_tile_iter {
@@ -19400,7 +19417,7 @@ bool
 can_do_defensive_bombard (Unit * unit, UnitType * type)
 {
 	if ((type->Bombard_Strength > 0) && (! Unit_has_ability (unit, __, UTA_Cruise_Missile))) {
-		if ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) && is_in_land_transport (unit))
+		if (cannot_defend_inside_transport (unit))
 			return false;
 
 		if ((unit->Body.Status & USF_USED_DEFENSIVE_BOMBARD) == 0) // has not already done DB this turn
@@ -19421,7 +19438,9 @@ Unit * __fastcall
 patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker, Unit * defender)
 {
 	int special_db_rules = is->current_config.special_defensive_bombard_rules;
-	if ((special_db_rules == 0) && ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) == 0))
+	if ((special_db_rules == 0) &&
+	    ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) == 0) &&
+	    ((is->current_config.special_helicopter_rules & SHR_NO_DEFENSE_FROM_INSIDE) == 0))
 		return Fighter_find_defensive_bombarder (this, __, attacker, defender);
 	else {
 		enum UnitTypeClasses attacker_class = p_bic_data->UnitTypes[attacker->Body.UnitTypeID].Unit_Class;
@@ -25072,7 +25091,7 @@ patch_Unit_has_ability_no_load_transport_into_army (Unit * this, int edx, enum U
 bool __fastcall
 patch_Fighter_unit_can_defend (Fighter * this, int edx, Unit * unit, int tile_x, int tile_y)
 {
-	if ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) && is_in_land_transport (unit))
+	if (cannot_defend_inside_transport (unit))
 		return false;
 	else
 		return Fighter_unit_can_defend (this, __, unit, tile_x, tile_y);
@@ -25089,7 +25108,11 @@ patch_Leader_is_enemy_unit_for_ground_aa (Leader * this, int edx, Unit * bomber)
 	bool in_transport = (container != NULL) && ! Unit_has_ability (container, __, UTA_Army);
 	if (in_transport &&
 	    (is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) &&
-	    (p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Land))
+	    p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Land)
+		return false;
+	else if (in_transport &&
+		 (is->current_config.special_helicopter_rules & SHR_NO_DEFENSE_FROM_INSIDE) &&
+		 p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Air)
 		return false;
 	else if (in_transport &&
 		 is->current_config.no_land_anti_air_from_inside_naval_transport &&
@@ -25112,15 +25135,17 @@ patch_count_units_at_in_try_capturing (int x, int y, enum unit_filter filter, in
 {
 	Tile * tile = tile_at (x, y);
 
-	// If the no-escape rule is in force for land transports, count units on the tile like the function normally would except skip units in land
-	// transports. Otherwise the units in LTs will prevent movement onto the tile.
-	if ((is->current_config.land_transport_rules & LTR_NO_ESCAPE) && tile->vtable->m35_Check_Is_Water (tile) == 0) {
+	// If one of the no-defense-from-inside rules is in force, count units like the function normally would except skip units that are inside
+	// transports from which they can't defend. Otherwise, if those transports have 0 defense, the passengers will prevent them from being
+	// captured but not fight themselves, making movement onto their tile impossible.
+	if (tile->vtable->m35_Check_Is_Water (tile) == 0 &&
+	    ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) || (is->current_config.special_helicopter_rules & SHR_NO_DEFENSE_FROM_INSIDE))) {
 		int tr = 0;
 		FOR_UNITS_ON (tai, tile) {
 			if ((arg_b == -1 || p_bic_data->UnitTypes[tai.unit->Body.UnitTypeID].Unit_Class == arg_b) &&
 			    (arg_a == -1 || patch_Unit_is_visible_to_civ (tai.unit, __, arg_a, 1)) &&
 			    (Unit_get_defense_strength (tai.unit) > 0) &&
-			    ! is_in_land_transport (tai.unit))
+			    ! cannot_defend_inside_transport (tai.unit))
 				tr++;
 		}
 		return tr;
