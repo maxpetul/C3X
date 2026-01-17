@@ -28057,6 +28057,12 @@ draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * ma
 
 	if (wall_sw) draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
 	if (wall_se) draw_district_on_map_or_canvas(&sprites[DIR_SE], map_renderer, pixel_x, pixel_y);
+
+	// Extras for tiles near water
+	if (!wall_se && tile_is_water (tile_x + 1, tile_y - 1)) 
+		draw_district_on_map_or_canvas(&sprites[DIR_NE], map_renderer, pixel_x, pixel_y);
+	else if (!wall_sw && !wall_nw && tile_is_water (tile_x - 2, tile_y))     
+		draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
 }
 
 void __fastcall

@@ -192,7 +192,7 @@ No, nevermind.
 #C3X_BEGIN_GREAT_WALL_AUTO_BUILD
 #advisor Military Happy
 #text
-Our $DISTRICT0 is now ready to protect our cities! Let's review each area to determine where to place it.
+Our $DISTRICT0 is now ready to protect our cities! Let's review each area near our borders to determine where to place it.
 
 #C3X_CONFIRM_BUILD_GREAT_WALL
 #advisor Military
