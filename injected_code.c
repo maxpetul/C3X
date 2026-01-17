@@ -28178,7 +28178,7 @@ draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * ma
 	if (wall_nw) draw_district_on_map_or_canvas(&sprites[DIR_NW], map_renderer, pixel_x, pixel_y);
 	if (wall_ne) draw_district_on_map_or_canvas(&sprites[DIR_NE], map_renderer, pixel_x, pixel_y);
 
-	if (!wall_nw && !wall_ne && wall_n)     
+	if (!wall_nw && !wall_ne && wall_n && tile_is_water (tile_x - 1, tile_y - 1))     
 		draw_district_on_map_or_canvas(&sprites[DIR_N], map_renderer, pixel_x, pixel_y);
 
 	// Base pillar
@@ -28193,7 +28193,7 @@ draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * ma
 	else if (!wall_sw && !wall_nw && !wall_s && tile_is_water (tile_x - 2, tile_y) && !tile_is_water (tile_x, tile_y + 2))     
 		draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
 
-	if (!wall_sw && !wall_se && wall_s)     
+	if (!wall_sw && !wall_se && wall_s && tile_is_water (tile_x - 1, tile_y + 1))     
 		draw_district_on_map_or_canvas(&sprites[DIR_S], map_renderer, pixel_x, pixel_y);
 }
 
