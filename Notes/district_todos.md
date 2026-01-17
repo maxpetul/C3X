@@ -4,6 +4,7 @@
   - Keep irrigation/mine on tile if specified
   - Firm up logic for river district rendering
   - Bump great wall bombard eval scores
+  - Prevent AI building districts on resources
   - Make sure AI workers remove great walls after they have metallury
 
   - Hoover Dam (use alt dir, special positioning b/c on river)

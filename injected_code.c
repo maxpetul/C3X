@@ -3350,6 +3350,7 @@ struct tiles_around_iter {
 	int center_x, center_y;
 	int n, num_tiles;
 	Tile * tile;
+	int tile_x, tile_y;
 };
 
 void
@@ -3360,8 +3361,11 @@ tai_next (struct tiles_around_iter * tai)
 		tai->n += 1;
 		int tx, ty;
 		get_neighbor_coords (&p_bic_data->Map, tai->center_x, tai->center_y, tai->n, &tx, &ty);
-		if ((tx >= 0) && (tx < p_bic_data->Map.Width) && (ty >= 0) && (ty < p_bic_data->Map.Height))
+		if ((tx >= 0) && (tx < p_bic_data->Map.Width) && (ty >= 0) && (ty < p_bic_data->Map.Height)) {
 			tai->tile = tile_at (tx, ty);
+			tai->tile_x = tx;
+			tai->tile_y = ty;
+		}
 	}
 }
 
@@ -9779,14 +9783,23 @@ tile_suitable_for_district (Tile * tile, int district_id, City * city, bool * ou
 
 	struct district_instance * inst = get_district_instance (tile);
 	if (inst != NULL) {
-		if (inst->district_type != district_id)
-			return false;
+		struct district_infos const * info = &is->district_infos[district_id];
 
+		// Unused wonder districts can be repurposed, completed cannot
 		if (district_id == WONDER_DISTRICT_ID && inst->state == DS_COMPLETED) {
-			struct wonder_district_info * info = &inst->wonder_info;
-			if (info->state == WDS_COMPLETED)
+			struct wonder_district_info * winfo = &inst->wonder_info;
+			if (winfo->state == WDS_COMPLETED)
 				return false;
 		}
+
+		// Great Wall districts can be replaced if obsolete
+		if (district_id == GREAT_WALL_DISTRICT_ID) {
+			int obsolete_id = info->obsoleted_by_id;
+			if (obsolete_id >= 0 && Leader_has_tech (&leaders[city->Body.CivID], __, obsolete_id))
+				return true;
+		}
+
+		return false;
 	}
 
 	return true;
@@ -19814,11 +19827,12 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 	unsigned int const irrigation_flag = 0x8;
 	unsigned int const replaceable_flags = TILE_FLAG_MINE | irrigation_flag;
 
-	for (int y = 0; y < p_bic_data->Map.Height; y++) {
-		for (int x = 0; x < p_bic_data->Map.Width; x++) {
-			Tile * tile = tile_at (x, y);
-			if ((tile == NULL) || (tile == p_null_tile))
-				continue;
+	for (int index = 0; index < p_bic_data->Map.TileCount; index++) {
+		int x, y;
+		tile_index_to_coords (&p_bic_data->Map, index, &x, &y);
+		Tile * tile = tile_at (x, y);
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
 			if (tile->CityID >= 0)
 				continue;
 			if (tile->vtable->m35_Check_Is_Water (tile))
@@ -19893,7 +19907,6 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 					-1, 0, 0, 0);
 
 				int sel = patch_show_popup (popup, __, 0, 0);
-				p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form); // Trigger map redraw
 				if (sel != 0)
 					continue;
 			}
@@ -19926,7 +19939,6 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 			if (! tile->vtable->m18_Check_Mines (tile, __, 0))
 				tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
 			set_tile_unworkable_for_all_cities (tile, x, y);
-		}
 	}
 
 	is->great_wall_auto_build = GWABS_DONE;
@@ -28156,36 +28168,33 @@ draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * ma
 	bool wall_ne = tile_has_district_at (tile_x + 1, tile_y - 1, GREAT_WALL_DISTRICT_ID);
 	bool wall_se = tile_has_district_at (tile_x + 1, tile_y + 1, GREAT_WALL_DISTRICT_ID);
 	bool wall_sw = tile_has_district_at (tile_x - 1, tile_y + 1, GREAT_WALL_DISTRICT_ID);
-
-	bool none = !wall_nw && !wall_ne && !wall_se && !wall_sw;
+	bool wall_s  = tile_has_district_at (tile_x,     tile_y + 2, GREAT_WALL_DISTRICT_ID);
+	bool wall_n  = tile_has_district_at (tile_x,     tile_y - 2, GREAT_WALL_DISTRICT_ID);
 	
 	Sprite * sprites = is->district_img_sets[GREAT_WALL_DISTRICT_ID].imgs[0][0];
 	Sprite * base    = &sprites[0];
-	int base_pixel_x = pixel_x;
-	int base_pixel_y = pixel_y;
 
-	// If no surrounding walls, draw NE, base, SW so tile doesn't look empty
-	if (none) {
-		draw_district_on_map_or_canvas(&sprites[DIR_NE], map_renderer, pixel_x, pixel_y);
-		draw_district_on_map_or_canvas(base, map_renderer, pixel_x, pixel_y);
-		draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
-		return;
-	}
-	// Rotate around clockwise NW -> W to get the perspective right
+	// Rotate around clockwise NW -> SW to get the perspective right
 	if (wall_nw) draw_district_on_map_or_canvas(&sprites[DIR_NW], map_renderer, pixel_x, pixel_y);
 	if (wall_ne) draw_district_on_map_or_canvas(&sprites[DIR_NE], map_renderer, pixel_x, pixel_y);
 
+	if (!wall_nw && !wall_ne && wall_n)     
+		draw_district_on_map_or_canvas(&sprites[DIR_N], map_renderer, pixel_x, pixel_y);
+
 	// Base pillar
-	draw_district_on_map_or_canvas(base, map_renderer, base_pixel_x, base_pixel_y);
+	draw_district_on_map_or_canvas(base, map_renderer, pixel_x, pixel_y);
 
 	if (wall_sw) draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
 	if (wall_se) draw_district_on_map_or_canvas(&sprites[DIR_SE], map_renderer, pixel_x, pixel_y);
 
 	// Extras for tiles near water
-	if (!wall_se && tile_is_water (tile_x + 1, tile_y - 1)) 
+	if (!wall_se && !wall_s && tile_is_water (tile_x + 1, tile_y - 1)) 
 		draw_district_on_map_or_canvas(&sprites[DIR_NE], map_renderer, pixel_x, pixel_y);
-	else if (!wall_sw && !wall_nw && tile_is_water (tile_x - 2, tile_y))     
+	else if (!wall_sw && !wall_nw && !wall_s && tile_is_water (tile_x - 2, tile_y) && !tile_is_water (tile_x, tile_y + 2))     
 		draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
+
+	if (!wall_sw && !wall_se && wall_s)     
+		draw_district_on_map_or_canvas(&sprites[DIR_S], map_renderer, pixel_x, pixel_y);
 }
 
 void __fastcall
