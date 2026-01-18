@@ -880,3 +880,4 @@ define,    0x44C340,    0x0,        0x0,        "Unit_ai_eval_bombard_target",		
 define,    0x5C1920,    0x0,        0x0,        "Unit_airdrop",	                         "void (__fastcall *) (Unit * this, int edx, int x, int y)"
 repl call, 0x4C0D87,    0x0,        0x0,        "Leader_count_wonders_with_flag_ignore_great_wall",		""
 repl call, 0x5D3D67,    0x0,        0x0,        "Tile_has_colony_ignore_extraterritorial",     ""
+inlead,    0x440100,    0x0,        0x0,        "Leader_get_attitude_toward",				"int (__fastcall *) (Leader * this, int edx, int civ_id, int param_2)"

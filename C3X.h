@@ -329,6 +329,7 @@ struct c3x_config {
 	bool prevent_razing_by_players;
 
 	bool allow_extraterritorial_colonies;
+	int per_extraterritorial_colony_relation_penalty;
 
 	bool draw_forests_over_roads_and_railroads;
 

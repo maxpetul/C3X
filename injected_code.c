@@ -13859,6 +13859,7 @@ patch_init_floating_point ()
 		{"neighborhood_needed_message_frequency"             ,     4, offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
 		{"max_contiguous_bridge_districts"                   ,     3, offsetof (struct c3x_config, max_contiguous_bridge_districts)},
 		{"max_contiguous_canal_districts"                    ,     5, offsetof (struct c3x_config, max_contiguous_canal_districts)},
+		{"per_extraterritorial_colony_relation_penalty"      ,     0, offsetof (struct c3x_config, per_extraterritorial_colony_relation_penalty)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -28199,7 +28200,7 @@ draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * ma
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	//*p_debug_mode_bits |= 0xC;
+	*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -30167,6 +30168,35 @@ patch_Tile_has_colony_ignore_extraterritorial (Tile * tile)
 		return false;
 
 	return Tile_has_colony (tile);
+}
+
+int __fastcall
+patch_Leader_get_attitude_toward (Leader * this, int edx, int civ_id, int param_2)
+{
+	int score = Leader_get_attitude_toward (this, __, civ_id, param_2);
+	if (!is->current_config.allow_extraterritorial_colonies)
+		return score;
+
+	int penalty = is->current_config.per_extraterritorial_colony_relation_penalty;
+	if (penalty != 0) {
+		int this_civ_id = this->ID;
+		Map * map = &p_bic_data->Map;
+		for (int index = 0; index < map->TileCount; index++) {
+			int x, y;
+			tile_index_to_coords (map, index, &x, &y);
+			Tile * tile = tile_at (x, y);
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != this_civ_id)
+				continue;
+			if (! Tile_has_colony (tile))
+				continue;
+			if (tile->vtable->m70_Get_Tile_Building_OwnerID (tile) != civ_id)
+				continue;
+			score -= penalty;
+		}
+	}
+	return score;
 }
 
 // TCC requires a main function be defined even though it's never used.
