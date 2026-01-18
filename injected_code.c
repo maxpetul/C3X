@@ -28393,7 +28393,17 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 			}
             default:
             {
-				// No-op
+				if (cfg->render_strategy == DRS_BY_BUILDING)
+					break;
+					
+                int completed_count = 0;
+                for (int i = 0; i < district_info->dependent_building_count; i++) {
+                    int building_id = district_info->dependent_building_ids[i];
+                    if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id))
+                        completed_count++;
+                }
+                buildings = completed_count;
+                break;
             }
 		}
 
@@ -28404,7 +28414,6 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 		int draw_x        = offset_x - ((sprite_width - 128) / 2);
 		int draw_y        = offset_y - (sprite_height - 64);
 
-		// Render building by building, assuming one image per building stage
 		if (cfg->render_strategy == DRS_BY_BUILDING) {
 			int max_stage     = cfg->max_building_index;
 			int stage_limit   = ARRAY_LEN (is->district_img_sets[0].imgs[0][0]) - 1;
@@ -28412,7 +28421,6 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 			if (max_stage > stage_limit)
 				max_stage = stage_limit;
 
-			// Render base district sprite, index zero
 			district_sprite = &is->district_img_sets[district_id].imgs[variant][era][0];
 			draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
 
@@ -28427,20 +28435,11 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 				}
 			}
 			return;
-
-		// Render by count of completed buildings, assuming one images contains all buildings up to that count
-		} else if (cfg->render_strategy == DRS_BY_COUNT) {
-			int completed_count = 0;
-            for (int i = 0; i < district_info->dependent_building_count; i++) {
-                int building_id = district_info->dependent_building_ids[i];
-                if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id))
-                    completed_count++;
-            }
-            buildings = completed_count;
-			district_sprite   = &is->district_img_sets[district_id].imgs[variant][era][buildings];
-			draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
-			return;
 		}
+
+		district_sprite   = &is->district_img_sets[district_id].imgs[variant][era][buildings];
+		draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
+		return;
 	}
 
     Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
