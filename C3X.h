@@ -623,6 +623,11 @@ struct district_bonus_list {
 	struct district_bonus_entry entries[MAX_DISTRICT_BONUS_ENTRIES];
 };
 
+enum district_render_strategy {
+	DRS_BY_COUNT = 0,
+	DRS_BY_BUILDING = 1
+};
+
 struct district_config {
 	enum Unit_Command_Values command;
 	char const * name;
@@ -641,6 +646,7 @@ struct district_config {
 	bool allow_multiple;
 	bool vary_img_by_era;
 	bool vary_img_by_culture;
+	enum district_render_strategy render_strategy;
 	bool is_dynamic;
 	bool align_to_coast;
 	int custom_width;
@@ -875,6 +881,7 @@ struct parsed_district_definition {
 	bool allow_multiple;
 	bool vary_img_by_era;
 	bool vary_img_by_culture;
+	enum district_render_strategy render_strategy;
 	bool align_to_coast;
 	int custom_width;
 	int custom_height;
@@ -911,6 +918,7 @@ struct parsed_district_definition {
 	bool has_allow_multiple;
 	bool has_vary_img_by_era;
 	bool has_vary_img_by_culture;
+	bool has_render_strategy;
 	bool has_align_to_coast;
 	bool has_custom_width;
 	bool has_custom_height;

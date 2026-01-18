@@ -5507,6 +5507,7 @@ init_parsed_district_definition (struct parsed_district_definition * def)
 	memset (def, 0, sizeof *def);
 	def->img_path_count = -1;
 	def->defense_bonus_percent = 100;
+	def->render_strategy = DRS_BY_COUNT;
 	def->buildable_square_types_mask = district_default_buildable_mask ();
 }
 
@@ -6183,6 +6184,8 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->vary_img_by_era = def->vary_img_by_era;
 	if (def->has_vary_img_by_culture)
 		cfg->vary_img_by_culture = def->vary_img_by_culture;
+	if (def->has_render_strategy)
+		cfg->render_strategy = def->render_strategy;
 	if (def->has_align_to_coast)
 		cfg->align_to_coast = def->align_to_coast;
 	if (def->has_custom_width)
@@ -6447,6 +6450,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.allow_multiple = def->has_allow_multiple ? def->allow_multiple : false;
 	new_cfg.vary_img_by_era = def->has_vary_img_by_era ? def->vary_img_by_era : false;
 	new_cfg.vary_img_by_culture = def->has_vary_img_by_culture ? def->vary_img_by_culture : false;
+	new_cfg.render_strategy = def->has_render_strategy ? def->render_strategy : DRS_BY_COUNT;
 	new_cfg.align_to_coast = def->has_align_to_coast ? def->align_to_coast : false;
 	new_cfg.custom_width = def->has_custom_width ? def->custom_width : 0;
 	new_cfg.custom_height = def->has_custom_height ? def->custom_height : 0;
@@ -6932,6 +6936,24 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->has_vary_img_by_culture = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "render_strategy")) {
+		char * strategy = copy_trimmed_string_or_null (value, 1);
+		if (strategy == NULL) {
+			def->has_render_strategy = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
+		} else if (strcmp (strategy, "by-count") == 0) {
+			def->render_strategy = DRS_BY_COUNT;
+			def->has_render_strategy = true;
+		} else if (strcmp (strategy, "by-building") == 0) {
+			def->render_strategy = DRS_BY_BUILDING;
+			def->has_render_strategy = true;
+		} else {
+			def->has_render_strategy = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected \"by-count\" or \"by-building\")");
+		}
+		if (strategy != NULL)
+			free (strategy);
 
 	} else if (slice_matches_str (key, "align_to_coast")) {
 		struct string_slice val_slice = *value;
@@ -28247,10 +28269,11 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
         if (! completed)
             return;
 
-	struct district_config const * cfg = &is->district_configs[district_id];
+		struct district_config const * cfg = &is->district_configs[district_id];
+		struct district_infos * district_info = &is->district_infos[district_id];
         int territory_owner_id = tile->Territory_OwnerID;
         int variant = 0;
-        int era = 0;
+		int era = 0;
         int culture = 0;
 		int buildings = 0;
 		int draw_pixel_x = pixel_x;
@@ -28370,27 +28393,54 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 			}
             default:
             {
-                struct district_infos * info = &is->district_infos[district_id];
-                int completed_count = 0;
-                for (int i = 0; i < info->dependent_building_count; i++) {
-                    int building_id = info->dependent_building_ids[i];
-                    if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id))
-                        completed_count++;
-                }
-                buildings = completed_count;
-                break;
+				// No-op
             }
 		}
 
-		district_sprite   = &is->district_img_sets[district_id].imgs[variant][era][buildings];
 		int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
 		int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
 		int offset_x      = draw_pixel_x + cfg->x_offset;
 		int offset_y      = draw_pixel_y + cfg->y_offset;
 		int draw_x        = offset_x - ((sprite_width - 128) / 2);
 		int draw_y        = offset_y - (sprite_height - 64);
-		draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
-		return;
+
+		// Render building by building, assuming one image per building stage
+		if (cfg->render_strategy == DRS_BY_BUILDING) {
+			int max_stage     = cfg->max_building_index;
+			int stage_limit   = ARRAY_LEN (is->district_img_sets[0].imgs[0][0]) - 1;
+
+			if (max_stage > stage_limit)
+				max_stage = stage_limit;
+
+			// Render base district sprite, index zero
+			district_sprite = &is->district_img_sets[district_id].imgs[variant][era][0];
+			draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
+
+			for (int i = 0; i < district_info->dependent_building_count; i++) {
+				int building_id = district_info->dependent_building_ids[i];
+				int stage = i + 1;
+				if (stage > max_stage)
+					break;
+				if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id)) {
+					district_sprite = &is->district_img_sets[district_id].imgs[variant][era][stage];
+					draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
+				}
+			}
+			return;
+
+		// Render by count of completed buildings, assuming one images contains all buildings up to that count
+		} else if (cfg->render_strategy == DRS_BY_COUNT) {
+			int completed_count = 0;
+            for (int i = 0; i < district_info->dependent_building_count; i++) {
+                int building_id = district_info->dependent_building_ids[i];
+                if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id))
+                    completed_count++;
+            }
+            buildings = completed_count;
+			district_sprite   = &is->district_img_sets[district_id].imgs[variant][era][buildings];
+			draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
+			return;
+		}
 	}
 
     Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
