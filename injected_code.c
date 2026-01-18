@@ -16912,13 +16912,17 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 			is->count_extra_capture_despawns -= 1;
 	}
 
-	// If the unit being despawned is a land transport or helicopter on a carrier, we must make sure to despawn its passengers too because the
-	// base game won't.
+	// If the unit being despawned is a land transport or helicopter, we may have to make sure to despawn its passengers as well because the base
+	// game won't. In general, the passengers are lost if the transport was despawned involuntarily, i.e. because of another player's attack or
+	// something like that, or if the passengers couldn't survive outside the transport, specifically because it's a helicopter at sea.
 	bool must_despawn_passengers = false; {
 		if (involuntary && (is->current_config.land_transport_rules & LTR_NO_ESCAPE) && is_land_transport (this))
 			must_despawn_passengers = true;
 
-		if (is->current_config.special_helicopter_rules & SHR_ALLOW_ON_CARRIERS) {
+		// If no-defense-from-inside is off, passengers in helicopters will fight to defend their tile, so they wouldn't be left inside the
+		// helicopter when their tile is taken. If it's on, an occupied heli can be destroyed or captured by a land unit, and we must make
+		// sure to despawn the passengers in that case because they can't remain on the tile.
+		if (is->current_config.special_helicopter_rules & (SHR_ALLOW_ON_CARRIERS | SHR_NO_DEFENSE_FROM_INSIDE)) {
 			bool is_carrier    = type->Unit_Class == UTC_Sea && type->Transport_Capacity > 0 && Unit_has_ability (this, __, UTA_Transports_Only_Aircraft),
 			     is_helicopter = type->Unit_Class == UTC_Air && type->Transport_Capacity > 0,
 			     passengers_could_survive = Tile_has_city (tile) || ! tile->vtable->m35_Check_Is_Water (tile);
