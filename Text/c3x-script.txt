@@ -198,28 +198,28 @@ Our $DISTRICT0 is ready! Let's review our borders to determine where to place it
 #advisor Military
 Shall we extend our $DISTRICT0 here?
 #itemlist
-Yes, we must protect our cities.
+Yes, we must protect our people.
 No, don't build it here.
 
 #C3X_CONFIRM_BUILD_GREAT_WALL_OVER_IMPROVEMENT
 #advisor Military
 We've found an improvement already exists here. Should we replace it with a $DISTRICT0?
 #itemlist
-Yes, we must protect our cities.
+Yes, we must protect our people.
 No, leave it alone.
 
 #C3X_CONFIRM_BUILD_GREAT_WALL_OVER_DISTRICT
 #advisor Military
 We've found a $DISTRICT1 already exists here with dependent buildings. Should we replace the $DISTRICT1 with a $DISTRICT0? Doing so will remove any dependent buildings.
 #itemlist
-Yes, we must protect our cities.
+Yes, we must protect our people.
 No, leave it alone.
 
 #C3X_CONFIRM_BUILD_GREAT_WALL_OVER_DISTRICT_SAFE
 #advisor Military
 We've found a $DISTRICT1 already exists here but has no dependent buildings. Should we replace the $DISTRICT1 with a $DISTRICT0?
 #itemlist
-Yes, we must protect our cities.
+Yes, we must protect our people.
 No, leave it alone.
 
 # ; This line must remain at end of file

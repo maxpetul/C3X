@@ -13785,6 +13785,7 @@ patch_init_floating_point ()
 		{"auto_zoom_city_screen_for_large_work_areas"            , true,  offsetof (struct c3x_config, auto_zoom_city_screen_for_large_work_areas)},
 		{"limit_unit_loading_to_one_transport_per_turn"          , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block"   , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
+		{"allow_extraterritorial_colonies"                       , false, offsetof (struct c3x_config, allow_extraterritorial_colonies)},
 		{"draw_forests_over_roads_and_railroads"                 , false, offsetof (struct c3x_config, draw_forests_over_roads_and_railroads)},
 		{"enable_districts"                                      , false, offsetof (struct c3x_config, enable_districts)},
 		{"enable_neighborhood_districts"                         , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
@@ -28180,6 +28181,8 @@ draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * ma
 
 	if (!wall_nw && !wall_ne && wall_n && tile_is_water (tile_x - 1, tile_y - 1))     
 		draw_district_on_map_or_canvas(&sprites[DIR_N], map_renderer, pixel_x, pixel_y);
+	if (!wall_se && !wall_s && tile_is_water (tile_x + 1, tile_y - 1)) 
+		draw_district_on_map_or_canvas(&sprites[DIR_NE], map_renderer, pixel_x, pixel_y);
 
 	// Base pillar
 	draw_district_on_map_or_canvas(base, map_renderer, pixel_x, pixel_y);
@@ -28187,12 +28190,8 @@ draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * ma
 	if (wall_sw) draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
 	if (wall_se) draw_district_on_map_or_canvas(&sprites[DIR_SE], map_renderer, pixel_x, pixel_y);
 
-	// Extras for tiles near water
-	if (!wall_se && !wall_s && tile_is_water (tile_x + 1, tile_y - 1)) 
-		draw_district_on_map_or_canvas(&sprites[DIR_NE], map_renderer, pixel_x, pixel_y);
-	else if (!wall_sw && !wall_nw && !wall_s && tile_is_water (tile_x - 2, tile_y) && !tile_is_water (tile_x, tile_y + 2))     
+	if (!wall_sw && !wall_nw && !wall_s && tile_is_water (tile_x - 2, tile_y) && !tile_is_water (tile_x, tile_y + 2))     
 		draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
-
 	if (!wall_sw && !wall_se && wall_s && tile_is_water (tile_x - 1, tile_y + 1))     
 		draw_district_on_map_or_canvas(&sprites[DIR_S], map_renderer, pixel_x, pixel_y);
 }
@@ -28423,15 +28422,12 @@ patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int vi
 				if ((owner_id >= 0) && district_can_generate_resource (owner_id, cfg) &&
 				    ((visible_to_civ_id < 0) || (owner_id == visible_to_civ_id))) {
 					int res_id = cfg->generated_resource_id;
-					bool show = true;
-					if (show) {
-						if (visible_to_civ_id >= 0) {
-							int req_tech_id = (cfg->generated_resource_flags & MF_NO_TECH_REQ) ? -1 : p_bic_data->ResourceTypes[res_id].RequireID;
-							if ((req_tech_id < 0) || Leader_has_tech (&leaders[visible_to_civ_id], __, req_tech_id))
-								district_resource = res_id;
-						} else
+					if (visible_to_civ_id >= 0) {
+						int req_tech_id = (cfg->generated_resource_flags & MF_NO_TECH_REQ) ? -1 : p_bic_data->ResourceTypes[res_id].RequireID;
+						if ((req_tech_id < 0) || Leader_has_tech (&leaders[visible_to_civ_id], __, req_tech_id))
 							district_resource = res_id;
-					}
+					} else
+						district_resource = res_id;
 				}
 			}
 		}
@@ -30162,6 +30158,15 @@ patch_Unit_ai_move_air_transport (Unit * this)
 
 	Unit_set_escortee (this, __, -1);
 	Unit_set_state (this, __, UnitState_Fortifying);
+}
+
+bool __fastcall
+patch_Tile_has_colony_ignore_extraterritorial (Tile * tile)
+{
+	if (is->current_config.allow_extraterritorial_colonies)
+		return false;
+
+	return Tile_has_colony (tile);
 }
 
 // TCC requires a main function be defined even though it's never used.

@@ -328,6 +328,8 @@ struct c3x_config {
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
 
+	bool allow_extraterritorial_colonies;
+
 	bool draw_forests_over_roads_and_railroads;
 
 	int day_night_cycle_mode;
