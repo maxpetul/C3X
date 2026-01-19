@@ -9965,6 +9965,175 @@ compute_city_tile_yield_sum (City * city, int tile_x, int tile_y)
 	return food + shields + commerce;
 }
 
+int *
+get_water_continent_ids_connected_via_canal (Tile * tile, int * out_count)
+{
+	if (out_count != NULL)
+		*out_count = 0;
+	if (! is->current_config.enable_canal_districts)
+		return NULL;
+	if ((tile == NULL) || (tile == p_null_tile))
+		return NULL;
+	if (! tile->vtable->m35_Check_Is_Water (tile))
+		return NULL;
+
+	int origin_continent_id = tile->vtable->m46_Get_ContinentID (tile);
+	int continent_count = p_bic_data->Map.Continent_Count;
+	if ((origin_continent_id < 0) || (origin_continent_id >= continent_count))
+		return NULL;
+
+	Map * map = &p_bic_data->Map;
+	int tile_count = map->TileCount;
+	if (tile_count <= 0)
+		return NULL;
+
+	// Use a BFS over completed canal tiles, starting from those touching the origin water body.
+	int * queue_xs = malloc (sizeof (*queue_xs) * tile_count);
+	int * queue_ys = malloc (sizeof (*queue_ys) * tile_count);
+	int * ids = malloc (sizeof (*ids) * continent_count);
+	bool * seen = calloc (continent_count, sizeof (*seen));
+	if ((queue_xs == NULL) || (queue_ys == NULL) || (ids == NULL) || (seen == NULL)) {
+		if (queue_xs != NULL)
+			free (queue_xs);
+		if (queue_ys != NULL)
+			free (queue_ys);
+		if (ids != NULL)
+			free (ids);
+		if (seen != NULL)
+			free (seen);
+		return NULL;
+	}
+
+	seen[origin_continent_id] = true;
+
+	int const adj_dx[8] = { 0, 0, -2, 2, 1, 1, -1, -1 };
+	int const adj_dy[8] = { -2, 2, 0, 0, -1, 1, -1, 1 };
+	int head = 0;
+	int tail = 0;
+
+	// Seed queue with completed canal districts adjacent to the origin water body.
+	for (int index = 0; index < tile_count; index++) {
+		Tile * cand = Map_get_tile (map, __, index);
+		if ((cand == NULL) || (cand == p_null_tile))
+			continue;
+
+		int cx = 0, cy = 0;
+		tile_index_to_coords (map, index, &cx, &cy);
+		if (! tile_has_district_at (cx, cy, CANAL_DISTRICT_ID))
+			continue;
+
+		struct district_instance * inst = get_district_instance (cand);
+		if ((inst == NULL) || (inst->district_type != CANAL_DISTRICT_ID) ||
+		    (! district_is_complete (cand, CANAL_DISTRICT_ID)))
+			continue;
+
+		bool adjacent_to_origin = false;
+		for (int i = 0; i < 8; i++) {
+			int nx = cx + adj_dx[i];
+			int ny = cy + adj_dy[i];
+			wrap_tile_coords (map, &nx, &ny);
+			Tile * adj = tile_at (nx, ny);
+			if ((adj == NULL) || (adj == p_null_tile))
+				continue;
+			if (! adj->vtable->m35_Check_Is_Water (adj))
+				continue;
+			int adj_continent_id = adj->vtable->m46_Get_ContinentID (adj);
+			if (adj_continent_id == origin_continent_id) {
+				adjacent_to_origin = true;
+				break;
+			}
+		}
+		if (! adjacent_to_origin)
+			continue;
+
+		bool seen_canal = false;
+		for (int j = 0; j < tail; j++) {
+			if ((queue_xs[j] == cx) && (queue_ys[j] == cy)) {
+				seen_canal = true;
+				break;
+			}
+		}
+		if (! seen_canal && (tail < tile_count)) {
+			queue_xs[tail] = cx;
+			queue_ys[tail] = cy;
+			tail++;
+		}
+	}
+
+	int id_count = 0;
+
+	while (head < tail) {
+		int cx = queue_xs[head];
+		int cy = queue_ys[head];
+		head++;
+
+		// Record all water bodies adjacent to this canal tile.
+		for (int i = 0; i < 8; i++) {
+			int nx = cx + adj_dx[i];
+			int ny = cy + adj_dy[i];
+			wrap_tile_coords (map, &nx, &ny);
+			Tile * adj = tile_at (nx, ny);
+			if ((adj == NULL) || (adj == p_null_tile))
+				continue;
+			if (! adj->vtable->m35_Check_Is_Water (adj))
+				continue;
+
+			int adj_continent_id = adj->vtable->m46_Get_ContinentID (adj);
+			if ((adj_continent_id < 0) || (adj_continent_id >= continent_count))
+				continue;
+			if (! seen[adj_continent_id]) {
+				seen[adj_continent_id] = true;
+				ids[id_count] = adj_continent_id;
+				id_count++;
+			}
+		}
+
+		// Traverse to neighboring completed canal districts.
+		for (int i = 0; i < 8; i++) {
+			int nx = cx + adj_dx[i];
+			int ny = cy + adj_dy[i];
+			wrap_tile_coords (map, &nx, &ny);
+			if (! tile_has_district_at (nx, ny, CANAL_DISTRICT_ID))
+				continue;
+
+			Tile * adj = tile_at (nx, ny);
+			if ((adj == NULL) || (adj == p_null_tile))
+				continue;
+
+			struct district_instance * inst = get_district_instance (adj);
+			if ((inst == NULL) || (inst->district_type != CANAL_DISTRICT_ID) ||
+			    (! district_is_complete (adj, CANAL_DISTRICT_ID)))
+				continue;
+
+			bool seen_canal = false;
+			for (int j = 0; j < tail; j++) {
+				if ((queue_xs[j] == nx) && (queue_ys[j] == ny)) {
+					seen_canal = true;
+					break;
+				}
+			}
+			if (! seen_canal && (tail < tile_count)) {
+				queue_xs[tail] = nx;
+				queue_ys[tail] = ny;
+				tail++;
+			}
+		}
+	}
+
+	free (queue_xs);
+	free (queue_ys);
+	free (seen);
+
+	if (out_count != NULL)
+		*out_count = id_count;
+	if (id_count <= 0) {
+		free (ids);
+		return NULL;
+	}
+
+	return ids;
+}
+
 Tile *
 find_tile_for_neighborhood_district (City * city, int * out_x, int * out_y)
 {
@@ -10007,6 +10176,8 @@ find_tile_for_neighborhood_district (City * city, int * out_x, int * out_y)
 		}
 
 		if (! tile_suitable_for_district (tile, NEIGHBORHOOD_DISTRICT_ID, city, NULL))
+			continue;
+		if (tile_has_resource (tile))
 			continue;
 		if (get_district_instance (tile) != NULL)
 			continue;
@@ -10072,6 +10243,8 @@ find_tile_for_port_district (City * city, int * out_x, int * out_y)
 
 		if (! tile_suitable_for_district (tile, PORT_DISTRICT_ID, city, NULL))
 			continue;
+		if (tile_has_resource (tile))
+			continue;
 		if (get_district_instance (tile) != NULL)
 			continue;
 		if (! tile->vtable->m35_Check_Is_Water (tile))
@@ -10081,7 +10254,24 @@ find_tile_for_port_district (City * city, int * out_x, int * out_y)
 		if ((continent_id < 0) || (continent_id >= p_bic_data->Map.Continent_Count))
 			continue;
 		Continent * continent = &p_bic_data->Map.Continents[continent_id];
-		if (continent->Body.TileCount < threshold_for_body_of_water && ! is->current_config.enable_canal_districts)
+		bool large_enough_body = (continent->Body.TileCount >= threshold_for_body_of_water);
+		if (! large_enough_body) {
+			int connected_count = 0;
+			int * connected_ids = get_water_continent_ids_connected_via_canal (tile, &connected_count);
+			for (int i = 0; i < connected_count; i++) {
+				int connected_id = connected_ids[i];
+				if ((connected_id < 0) || (connected_id >= p_bic_data->Map.Continent_Count))
+					continue;
+				Continent * connected_continent = &p_bic_data->Map.Continents[connected_id];
+				if (connected_continent->Body.TileCount >= threshold_for_body_of_water) {
+					large_enough_body = true;
+					break;
+				}
+			}
+			if (connected_ids != NULL)
+				free (connected_ids);
+		}
+		if (! large_enough_body)
 			continue;
 
 		int yield = compute_city_tile_yield_sum (city, tri.tile_x, tri.tile_y);
@@ -10158,6 +10348,8 @@ find_tile_for_wonder_district (City * city, int * out_x, int * out_y)
 		Tile * tile = tri.tile;
 		if (! tile_suitable_for_district (tile, WONDER_DISTRICT_ID, city, NULL))
 			continue;
+		if (tile_has_resource (tile))
+			continue;
 		if (! wonder_is_buildable_on_tile (tile, target_improv_id))
 			continue;
 
@@ -10221,6 +10413,8 @@ find_tile_for_distribution_hub_district (City * city, int * out_x, int * out_y)
 		Tile * tile = wai.tile;
 		bool has_resource;
 		if (! tile_suitable_for_district (tile, DISTRIBUTION_HUB_DISTRICT_ID, city, &has_resource))
+			continue;
+		if (has_resource)
 			continue;
 
 		int chebyshev = compute_wrapped_chebyshev_distance (tx, ty, city->Body.X, city->Body.Y);

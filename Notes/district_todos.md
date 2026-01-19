@@ -1,12 +1,12 @@
   - [x] Allow workers over water only if in radius of city that can build water district/wonder
-  - Add ai_build_strategy option and AI worker handling
-  - Add logic for determining if canal connects bodies of water for AI port-building
+  - [x] Add ai_build_strategy option and AI worker handling
+  - [x] Add logic for determining if canal connects bodies of water for AI port-building
   - Add cap on count of distribution hubs, destroy extra if conquered
   - AI navies target maritime districts
   - Keep irrigation/mine on tile if specified
   - Firm up logic for river district rendering
   - Bump great wall bombard eval scores
-  - Prevent AI building districts on resources
+  - [x] Prevent AI building districts on resources
   - Make sure AI workers remove great walls after they have metallury
 
   - Hoover Dam (use alt dir, special positioning b/c on river)
