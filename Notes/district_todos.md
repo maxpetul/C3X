@@ -3,6 +3,7 @@
   - [x] Add logic for determining if canal connects bodies of water for AI port-building
   - [x] Add cap on count of distribution hubs, destroy extra if conquered
   - [x] AI navies target maritime districts
+  - [x] Named tiles (still need to allow for scenarios)
   - Keep irrigation/mine on tile if specified
   - Firm up logic for river district rendering
   - Bump great wall bombard eval scores

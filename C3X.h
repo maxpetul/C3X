@@ -531,6 +531,10 @@ enum c3x_label {
 	CL_DISTRICTS_IN_SAVE_FILE,
 	CL_CURRENTLY_CONFIGURED_DISTRICTS,
 
+	// Tile naming
+	CL_NAME_TILE,
+	CL_RENAME_TILE,
+
 	// "Action" for passenger units
 	CL_TRANSPORTED,
 

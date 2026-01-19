@@ -14079,7 +14079,7 @@ patch_init_floating_point ()
 		{"enable_wonder_districts"                               , false, offsetof (struct c3x_config, enable_wonder_districts)},
 		{"enable_natural_wonders"                                , false, offsetof (struct c3x_config, enable_natural_wonders)},
 		{"add_natural_wonders_to_scenarios_if_none"              , false, offsetof (struct c3x_config, add_natural_wonders_to_scenarios_if_none)},
-		{"enable_named_tiles"                                   , false, offsetof (struct c3x_config, enable_named_tiles)},
+		{"enable_named_tiles"                                    , false, offsetof (struct c3x_config, enable_named_tiles)},
 		{"enable_distribution_hub_districts"                     , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"enable_aerodrome_districts"                            , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
 		{"enable_port_districts"                                 , false, offsetof (struct c3x_config, enable_port_districts)},
@@ -19101,9 +19101,9 @@ patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3
 			struct named_tile_entry * entry = get_named_tile_entry (tile);
 			char menu_text[64];
 			if ((entry != NULL) && (entry->name[0] != '\0'))
-				snprintf (menu_text, sizeof menu_text, "Rename %s", entry->name);
+				snprintf (menu_text, sizeof menu_text, "%s %s", is->c3x_labels[CL_RENAME_TILE], entry->name);
 			else
-				strcpy (menu_text, "Name Tile");
+				strcpy (menu_text,is->c3x_labels[CL_NAME_TILE]);
 			Context_Menu_add_item (this, __, NAMED_TILE_MENU_ID, menu_text, false, (Sprite *)0x0);
 		}
 	}
@@ -20589,6 +20589,8 @@ prompt_for_named_tile (char const * seed_name, char * out_name, int out_len)
 		seed_name = "";
 	strncpy (seed_buf, seed_name, sizeof seed_buf);
 	seed_buf[(sizeof seed_buf) - 1] = '\0';
+	if (seed_buf[0] == '\0')
+		strncpy (seed_buf, "Tile", sizeof seed_buf);
 
 	set_popup_str_param (0, seed_buf, -1, -1);
 	popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "RENAME_CITY", 0x17, (int)seed_buf, 0x44, 0);
@@ -20754,13 +20756,13 @@ patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Imag
 			int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
 			int scale = is_zoomed_out ? 2 : 1;
 			int screen_width = 128 / scale;
-			int screen_height = 88 / scale;
+			int screen_height = 64 / scale;
 			int text_width = screen_width - (is_zoomed_out ? 4 : 8);
 			if (text_width < 12)
 				text_width = screen_width;
 
 			int text_left = screen_x + (screen_width - text_width) / 2;
-			int y_offset = 88 - 64;
+			int y_offset = 32;
 			int draw_y = screen_y - y_offset;
 			int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
 

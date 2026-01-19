@@ -140,6 +140,10 @@ There may be other errors as well.
 Districts in save file
 Currently configured districts from
 
+; For naming tiles
+Name Tile
+Rename
+
 ; This appears instead of the above actions on units that have been loaded into another (except an army).
 Transported
 
