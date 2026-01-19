@@ -2120,7 +2120,8 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_helicopter_rules")) {
 					struct parsable_field_bit bits[] = {
-						{"allow-onto-carriers"   , SHR_ALLOW_ON_CARRIERS},
+						{"allow-on-carriers"     , SHR_ALLOW_ON_CARRIERS},
+						{"passenger-airdrop"     , SHR_PASSENGER_AIRDROP},
 						{"no-defense-from-inside", SHR_NO_DEFENSE_FROM_INSIDE},
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_helicopter_rules))
@@ -21874,6 +21875,8 @@ patch_Tile_m7_Check_Barbarian_Camp (Tile * this, int edx, int visible_to_civ)
 bool __fastcall
 patch_Unit_can_airdrop (Unit * this)
 {
+	UnitType * this_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+
 	bool allowed = Unit_can_airdrop (this);
 
 	bool require_aerodrome = (is->current_config.enable_districts &&
@@ -21890,11 +21893,24 @@ patch_Unit_can_airdrop (Unit * this)
 		if (! has_aerodrome)
 			allowed = false;
 		else if (! allowed) {
-			UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
-			if ((type->Unit_Class != UTC_Air) &&
-			    (type->Air_Missions & UCV_Airdrop) &&
+			if ((this_type->Unit_Class != UTC_Air) &&
+			    (this_type->Air_Missions & UCV_Airdrop) &&
 			    (this->Body.Moves == 0))
 				allowed = true;
+		}
+	}
+
+	// Possibly rule in this airdrop as allowed if it's by a paratrooper in a helicopter on a carrier and we're configured to allow airdrops under
+	// those circumstances.
+	if ((! allowed) && (is->current_config.special_helicopter_rules & SHR_PASSENGER_AIRDROP)) {
+		Unit * container = get_unit_ptr (this->Body.Container_Unit);
+		if (container != NULL && p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Air) { // if in helicopter
+			Unit * metacontainer = get_unit_ptr (container->Body.Container_Unit);
+			if (metacontainer != NULL && p_bic_data->UnitTypes[metacontainer->Body.UnitTypeID].Unit_Class == UTC_Sea &&
+			    Unit_has_ability (metacontainer, __, UTA_Transports_Only_Aircraft)) { // if that helicopter is on a carrier
+				// Allow the airdrop under the same restrictions as from an airfield
+				allowed = this_type->Unit_Class != UTC_Air && this->Body.Moves == 0;
+			}
 		}
 	}
 
