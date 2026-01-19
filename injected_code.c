@@ -20661,6 +20661,28 @@ patch_Main_Screen_Form_open_right_click_menu (Main_Screen_Form * this, int edx, 
 		is->named_tile_menu_active = false;
 }
 
+void
+draw_map_tile_text (Main_Screen_Form * this, PCX_Image * canvas, char * text, int screen_x, int screen_y, int base_screen_height, int y_offset)
+{
+	int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
+	int scale = is_zoomed_out ? 2 : 1;
+	int screen_width = 128 / scale;
+	int screen_height = base_screen_height / scale;
+	int text_width = screen_width - (is_zoomed_out ? 4 : 8);
+	if (text_width < 12)
+		text_width = screen_width;
+
+	int text_left = screen_x + (screen_width - text_width) / 2;
+	int draw_y = screen_y - y_offset;
+	int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
+
+	Object_66C3FC * font = get_font (10, FSF_NONE);
+	if (font != NULL) {
+		PCX_Image_set_text_effects (canvas, __, 0x80FFFFFF, 0x80000000, 1, 1);
+		PCX_Image_draw_centered_text (canvas, __, font, text, text_left, text_top - 10, text_width, strlen (text));
+	}
+}
+
 void __fastcall
 patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Image * canvas)
 {
@@ -20703,24 +20725,7 @@ patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Imag
 			int screen_x, screen_y;
 			Main_Screen_Form_tile_to_screen_coords (this, __, tile_x, tile_y, &screen_x, &screen_y);
 
-			int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
-			int scale = is_zoomed_out ? 2 : 1;
-			int screen_width = 128 / scale;
-			int screen_height = 88 / scale;
-			int text_width = screen_width - (is_zoomed_out ? 4 : 8);
-			if (text_width < 12)
-				text_width = screen_width;
-
-			int text_left = screen_x + (screen_width - text_width) / 2;
-			int y_offset = 88 - 64;
-			int draw_y = screen_y - y_offset;
-			int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
-
-			Object_66C3FC * font = get_font (10, FSF_NONE);
-			if (font != NULL) {
-				PCX_Image_set_text_effects (canvas, __, 0x80FFFFFF, 0x80000000, 1, 1);
-				PCX_Image_draw_centered_text (canvas, __, font, (char *)nw_cfg->name, text_left, text_top - 10, text_width, strlen (nw_cfg->name));
-			}
+			draw_map_tile_text (this, canvas, (char *)nw_cfg->name, screen_x, screen_y, 88, 88 - 64);
 		}
 	}
 
@@ -20753,24 +20758,7 @@ patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Imag
 			int screen_x, screen_y;
 			Main_Screen_Form_tile_to_screen_coords (this, __, tile_x, tile_y, &screen_x, &screen_y);
 
-			int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
-			int scale = is_zoomed_out ? 2 : 1;
-			int screen_width = 128 / scale;
-			int screen_height = 64 / scale;
-			int text_width = screen_width - (is_zoomed_out ? 4 : 8);
-			if (text_width < 12)
-				text_width = screen_width;
-
-			int text_left = screen_x + (screen_width - text_width) / 2;
-			int y_offset = 32;
-			int draw_y = screen_y - y_offset;
-			int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
-
-			Object_66C3FC * font = get_font (10, FSF_NONE);
-			if (font != NULL) {
-				PCX_Image_set_text_effects (canvas, __, 0x80FFFFFF, 0x80000000, 1, 1);
-				PCX_Image_draw_centered_text (canvas, __, font, entry->name, text_left, text_top - 10, text_width, strlen (entry->name));
-			}
+			draw_map_tile_text (this, canvas, entry->name, screen_x, screen_y, 64, 32);
 		}
 	}
 }
