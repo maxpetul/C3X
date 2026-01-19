@@ -375,6 +375,7 @@ struct c3x_config {
 	int distribution_hub_shield_yield_divisor;
 	int ai_distribution_hub_build_strategy;
 	int ai_ideal_distribution_hub_count_per_100_cities;
+	int max_distribution_hub_count_per_100_cities;
 	int central_rail_hub_distribution_food_bonus_percent;
 	int central_rail_hub_distribution_shield_bonus_percent;
 

@@ -10573,6 +10573,18 @@ leader_has_natural_wonder_prereq_in_territory (int civ_id, struct district_infos
 	return false;
 }
 
+int
+count_distribution_hubs_for_civ (int civ_id)
+{
+	int current = 0;
+	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
+		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
+		if ((rec != NULL) && (rec->civ_id == civ_id))
+			current++;
+	}
+	return current;
+}
+
 bool
 leader_can_build_district (Leader * leader, int district_id)
 {
@@ -10594,6 +10606,20 @@ leader_can_build_district (Leader * leader, int district_id)
 
 	if (! leader_has_natural_wonder_prereq_in_territory (leader->ID, info))
 		return false;
+
+	if (district_id == DISTRIBUTION_HUB_DISTRICT_ID) {
+		int max_per_100 = is->current_config.max_distribution_hub_count_per_100_cities;
+		if (max_per_100 > 0) {
+			int city_count = leader->Cities_Count;
+			int max_allowed = (city_count * max_per_100 + 99) / 100;
+			if (max_allowed <= 0)
+				return false;
+
+			int current = count_distribution_hubs_for_civ (leader->ID);
+			if (current >= max_allowed)
+				return false;
+		}
+	}
 
 	if (cfg->has_buildable_by_civs) {
 		bool civ_match = false;
@@ -14104,6 +14130,7 @@ patch_init_floating_point ()
 		{"distribution_hub_food_yield_divisor"			     ,     1, offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
 		{"distribution_hub_shield_yield_divisor"		     ,     1, offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
 		{"ai_ideal_distribution_hub_count_per_100_cities"    ,     1, offsetof (struct c3x_config, ai_ideal_distribution_hub_count_per_100_cities)},
+		{"max_distribution_hub_count_per_100_cities"         ,    50, offsetof (struct c3x_config, max_distribution_hub_count_per_100_cities)},
 		{"central_rail_hub_distribution_food_bonus_percent"  ,    25, offsetof (struct c3x_config, central_rail_hub_distribution_food_bonus_percent)},
 		{"central_rail_hub_distribution_shield_bonus_percent",    25, offsetof (struct c3x_config, central_rail_hub_distribution_shield_bonus_percent)},
 		{"neighborhood_needed_message_frequency"             ,     4, offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
@@ -22374,6 +22401,12 @@ compute_auto_distribution_hub_goal (Leader * leader, int city_count)
 
 	int desired = base_desired + unused_bonus + food_bonus + production_bonus;
 	int max_reasonable = (city_count + 1) / 2;
+	int max_per_100 = is->current_config.max_distribution_hub_count_per_100_cities;
+	if (max_per_100 > 0) {
+		int capped = (city_count * max_per_100 + 99) / 100;
+		if (capped >= 0)
+			max_reasonable = capped;
+	}
 	if (desired > max_reasonable)
 		desired = max_reasonable;
 	if (desired < 1)
