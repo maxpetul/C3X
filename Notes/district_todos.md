@@ -27,6 +27,7 @@
 
 ## Maritime Districts
   - ~~Choose terrain type~~
+  - ~~Add districts flag for drawing resources under districts~~
   - ~~Add support for alternative render strategy (Municipal District use case)~~
   - ~~Add support for buildable_on_districts~~
   - ~~Show generated resource icon over districts~~

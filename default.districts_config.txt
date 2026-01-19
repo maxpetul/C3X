@@ -352,6 +352,7 @@ tooltip               = Build Great Wall
 obsoleted_by          = Metallurgy
 wonder_prereqs        = "The Great Wall"
 buildable_on          = desert,plains,grassland,tundra,floodplain,mountains,forest,swamp,jungle
+draw_over_resources   = 1
 defense_bonus_percent = 50
 allow_multiple        = 1
 culture_bonus         = 2

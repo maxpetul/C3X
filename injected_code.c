@@ -6188,6 +6188,8 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->render_strategy = def->render_strategy;
 	if (def->has_align_to_coast)
 		cfg->align_to_coast = def->align_to_coast;
+	if (def->has_draw_over_resources)
+		cfg->draw_over_resources = def->draw_over_resources;
 	if (def->has_custom_width)
 		cfg->custom_width = def->custom_width;
 	if (def->has_custom_height)
@@ -6452,6 +6454,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.vary_img_by_culture = def->has_vary_img_by_culture ? def->vary_img_by_culture : false;
 	new_cfg.render_strategy = def->has_render_strategy ? def->render_strategy : DRS_BY_COUNT;
 	new_cfg.align_to_coast = def->has_align_to_coast ? def->align_to_coast : false;
+	new_cfg.draw_over_resources = def->has_draw_over_resources ? def->draw_over_resources : false;
 	new_cfg.custom_width = def->has_custom_width ? def->custom_width : 0;
 	new_cfg.custom_height = def->has_custom_height ? def->custom_height : 0;
 	new_cfg.x_offset = def->has_x_offset ? def->x_offset : 0;
@@ -6961,6 +6964,15 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		if (read_int (&val_slice, &ival)) {
 			def->align_to_coast = (ival != 0);
 			def->has_align_to_coast = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "draw_over_resources")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->draw_over_resources = (ival != 0);
+			def->has_draw_over_resources = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
@@ -15647,10 +15659,10 @@ patch_Map_check_colony_location (Map * this, int edx, int tile_x, int tile_y, in
 
 	int resource_type = Tile_get_resource_visible_to (tile, __, civ_id);
 	if ((resource_type < 0) || (resource_type >= p_bic_data->ResourceTypeCount)) return base;
-	
+
 	int req_tech = p_bic_data->ResourceTypes[resource_type].RequireID;
 	if ((req_tech >= 0) && (! Leader_has_tech (&leaders[civ_id], __, req_tech))) return base;
-	
+
 	int res_class = p_bic_data->ResourceTypes[resource_type].Class;
 	if ((res_class != RC_Strategic) && (res_class != RC_Luxury)) return base;
 	if (tile->vtable->m26_Check_Tile_Building (tile))
@@ -28253,25 +28265,67 @@ draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * ma
 		draw_district_on_map_or_canvas(&sprites[DIR_S], map_renderer, pixel_x, pixel_y);
 }
 
-void __fastcall
-patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
+void
+draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, struct district_instance * inst, 
+	int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int visible_to_civ_id)
 {
-	//*p_debug_mode_bits |= 0xC;
-	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
-		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+	int base_resource = Tile_get_resource_visible_to (tile, __, visible_to_civ_id);
+	int district_resource = -1;
+
+	if (inst->state == DS_COMPLETED) {
+		int district_id = inst->district_type;
+		if ((district_id >= 0) && (district_id < is->district_count)) {
+			struct district_config * cfg = &is->district_configs[district_id];
+			if (cfg->generated_resource_id >= 0) {
+				int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
+				if ((owner_id >= 0) && district_can_generate_resource (owner_id, cfg) &&
+				    ((visible_to_civ_id < 0) || (owner_id == visible_to_civ_id))) {
+					int res_id = cfg->generated_resource_id;
+					if (visible_to_civ_id >= 0) {
+						int req_tech_id = (cfg->generated_resource_flags & MF_NO_TECH_REQ) ? -1 : p_bic_data->ResourceTypes[res_id].RequireID;
+						if ((req_tech_id < 0) || Leader_has_tech (&leaders[visible_to_civ_id], __, req_tech_id))
+							district_resource = res_id;
+					} else
+						district_resource = res_id;
+				}
+			}
+		}
+	}
+
+	if (district_resource < 0) {
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
 	}
 
-	Tile * tile = tile_at (tile_x, tile_y);
-	if ((tile == NULL) || (tile == p_null_tile))
-		return;
+	int tile_width = p_bic_data->is_zoomed_out ? 64 : 128;
+	int offset  = tile_width >> 2;
+	int left_x  = pixel_x - (offset >> 1);
+	int right_x = pixel_x + (offset >> 1);
 
-	struct district_instance * inst = get_district_instance (tile);
-	if (inst == NULL) {
-		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
-		return;
+	if (base_resource >= 0)
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, left_x, pixel_y);
+
+	int icon_id = p_bic_data->ResourceTypes[district_resource].IconID;
+	if (icon_id >= 0 && icon_id < 36 && map_renderer != NULL && map_renderer->Resources != NULL) {
+		Sprite * sprite   = &map_renderer->Resources[icon_id];
+		int tile_height   = tile_width >> 1;
+		int sprite_width  = sprite->Width;
+		int sprite_height = sprite->Height;
+		if (sprite_width <= 0)  sprite_width = sprite->Width3;
+		if (sprite_height <= 0) sprite_height = sprite->Height3;
+		int center_x = (tile_width - sprite_width) >> 1;
+		int center_y = (tile_height - sprite_height) >> 1;
+		int draw_x   = (base_resource >= 0) ? right_x : pixel_x;
+		draw_x += center_x;
+		int draw_y     = pixel_y + center_y;
+		int draw_scale = (p_bic_data->is_zoomed_out != false) + 1;
+		patch_Sprite_draw_on_map (sprite, __, map_renderer, draw_x, draw_y, 1, 1, draw_scale, 0);
 	}
+}
 
+void 
+draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instance * inst, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int visible_to_civ_id)
+{
 	int district_id = inst->district_type;
 	if (is->dc_img_state == IS_UNINITED)
         init_district_images ();
@@ -28480,6 +28534,32 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 }
 
 void __fastcall
+patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
+{
+	//*p_debug_mode_bits |= 0xC;
+	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
+		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+	}
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL) {
+		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+	}
+
+	// Draw resources first if needed
+	if (is->district_configs[inst->district_type].draw_over_resources) 
+		draw_district_generated_resource_on_tile (this, tile, inst, tile_x, tile_y, map_renderer, pixel_x, pixel_y, visible_to_civ_id);
+
+	draw_district_on_tile (this, tile, inst, tile_x, tile_y, map_renderer, pixel_x, pixel_y, visible_to_civ_id);
+}
+
+void __fastcall
 patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
 	if (! is->current_config.enable_districts) {
@@ -28493,59 +28573,17 @@ patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int vi
 		return;
 	}
 
-	int base_resource = Tile_get_resource_visible_to (tile, __, visible_to_civ_id);
-	int district_resource = -1;
-
 	struct district_instance * inst = get_district_instance (tile);
-	if ((inst != NULL) && (inst->state == DS_COMPLETED)) {
-		int district_id = inst->district_type;
-		if ((district_id >= 0) && (district_id < is->district_count)) {
-			struct district_config * cfg = &is->district_configs[district_id];
-			if (cfg->generated_resource_id >= 0) {
-				int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
-				if ((owner_id >= 0) && district_can_generate_resource (owner_id, cfg) &&
-				    ((visible_to_civ_id < 0) || (owner_id == visible_to_civ_id))) {
-					int res_id = cfg->generated_resource_id;
-					if (visible_to_civ_id >= 0) {
-						int req_tech_id = (cfg->generated_resource_flags & MF_NO_TECH_REQ) ? -1 : p_bic_data->ResourceTypes[res_id].RequireID;
-						if ((req_tech_id < 0) || Leader_has_tech (&leaders[visible_to_civ_id], __, req_tech_id))
-							district_resource = res_id;
-					} else
-						district_resource = res_id;
-				}
-			}
-		}
-	}
-
-	if (district_resource < 0) {
+	if (inst == NULL) {
 		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
 	}
 
-	int tile_width = p_bic_data->is_zoomed_out ? 64 : 128;
-	int offset  = tile_width >> 2;
-	int left_x  = pixel_x - (offset >> 1);
-	int right_x = pixel_x + (offset >> 1);
+	// Resources that should be drawn below district are already drawn, skip in that case
+	if (is->district_configs[inst->district_type].draw_over_resources) 
+		return;
 
-	if (base_resource >= 0)
-		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, left_x, pixel_y);
-
-	int icon_id = p_bic_data->ResourceTypes[district_resource].IconID;
-	if (icon_id >= 0 && icon_id < 36 && map_renderer != NULL && map_renderer->Resources != NULL) {
-		Sprite * sprite   = &map_renderer->Resources[icon_id];
-		int tile_height   = tile_width >> 1;
-		int sprite_width  = sprite->Width;
-		int sprite_height = sprite->Height;
-		if (sprite_width <= 0)  sprite_width = sprite->Width3;
-		if (sprite_height <= 0) sprite_height = sprite->Height3;
-		int center_x = (tile_width - sprite_width) >> 1;
-		int center_y = (tile_height - sprite_height) >> 1;
-		int draw_x   = (base_resource >= 0) ? right_x : pixel_x;
-		draw_x += center_x;
-		int draw_y     = pixel_y + center_y;
-		int draw_scale = (p_bic_data->is_zoomed_out != false) + 1;
-		patch_Sprite_draw_on_map (sprite, __, map_renderer, draw_x, draw_y, 1, 1, draw_scale, 0);
-	}
+	draw_district_generated_resource_on_tile (this, tile, inst, tile_x, tile_y, map_renderer, pixel_x, pixel_y, visible_to_civ_id);
 }
 
 bool __fastcall
