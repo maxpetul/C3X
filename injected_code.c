@@ -22831,8 +22831,27 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 			bool should_override = false;
 			if (allow_worker_coast &&
 			    dest->vtable->m35_Check_Is_Water (dest) &&
-			    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
-				should_override = true;
+			    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast)) {
+				bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
+				if (is_human) {
+					should_override = true;
+				} else {
+					struct district_worker_record * rec = get_tracked_worker_record (this);
+					struct pending_district_request * req = (rec != NULL) ? rec->pending_req : NULL;
+					if (req != NULL) {
+						City * req_city = (req->city != NULL) ? req->city : get_city_ptr (req->city_id);
+						if ((req->district_id >= 0) &&
+						    (req->district_id < is->district_count) &&
+						    (req_city != NULL) &&
+						    city_radius_contains_tile (req_city, nx, ny) &&
+						    (req->target_x == nx) && (req->target_y == ny)) {
+							struct district_config const * cfg = &is->district_configs[req->district_id];
+							if ((cfg->buildable_square_types_mask & (1 << SQ_Coast)) != 0)
+								should_override = true;
+						}
+					}
+				}
+			}
 
 			if (! should_override && allow_bridge_walk) {
 				struct district_instance * inst = get_district_instance (dest);
@@ -22843,11 +22862,11 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 			}
 
 			if (should_override) {
-			coast_override_active = true;
-			is->coast_walk_unit = this;
-			is->coast_walk_transport_override = false;
-			is->coast_walk_prev_state = prev_state;
-			is->coast_walk_prev_container = prev_container;
+				coast_override_active = true;
+				is->coast_walk_unit = this;
+				is->coast_walk_transport_override = false;
+				is->coast_walk_prev_state = prev_state;
+				is->coast_walk_prev_container = prev_container;
 			}
 		}
 	}
@@ -29681,9 +29700,18 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 
 			struct district_worker_record * rec = get_tracked_worker_record (this);
 			struct pending_district_request * req = (rec != NULL) ? rec->pending_req : NULL;
-			if ((req != NULL) &&
-			    (req->target_x == to_x) && (req->target_y == to_y))
-				return PBV_OK;
+			if (req != NULL) {
+				City * req_city = (req->city != NULL) ? req->city : get_city_ptr (req->city_id);
+				if ((req->district_id >= 0) &&
+				    (req->district_id < is->district_count) &&
+				    (req_city != NULL) &&
+				    city_radius_contains_tile (req_city, to_x, to_y) &&
+				    (req->target_x == to_x) && (req->target_y == to_y)) {
+					struct district_config const * cfg = &is->district_configs[req->district_id];
+					if ((cfg->buildable_square_types_mask & (1 << SQ_Coast)) != 0)
+						return PBV_OK;
+				}
+			}
 		}
 	}
 
@@ -29762,19 +29790,16 @@ patch_Unit_select_transport (Unit * this, int edx, int tile_x, int tile_y, bool 
 			    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
 				allow_move = true;
 
-			if (! allow_move &&
-			    is->current_config.enable_bridge_districts &&
+			if (! allow_move && is->current_config.enable_bridge_districts &&
 			    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land)) {
 				struct district_instance * inst = get_district_instance (dest);
-				if ((inst != NULL) &&
-				    (inst->district_type == BRIDGE_DISTRICT_ID) &&
+				if (inst != NULL && inst->district_type == BRIDGE_DISTRICT_ID &&
 				    district_is_complete (dest, inst->district_type)) {
 					allow_move = true;
 					if (! is->current_config.allow_enter_bridge_from_any_direction) {
 						int move_dx = 0, move_dy = 0;
 						int dir1 = -1, dir2 = -1;
-						int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __,
-							this->Body.X, this->Body.Y, tile_x, tile_y, 1000);
+						int neighbor_index = Map_compute_neighbor_index (&p_bic_data->Map, __, this->Body.X, this->Body.Y, tile_x, tile_y, 1000);
 						if (neighbor_index >= 0) {
 							neighbor_index_to_diff (neighbor_index, &move_dx, &move_dy);
 							get_bridge_directions (dest, tile_x, tile_y, &dir1, &dir2);
