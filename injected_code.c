@@ -15630,6 +15630,35 @@ is_district_command (int unit_command_value)
 	return maybe_district_command;
 }
 
+int __fastcall
+patch_Map_check_colony_location (Map * this, int edx, int tile_x, int tile_y, int civ_id)
+{
+	int base = Map_check_colony_location (this, __, tile_x, tile_y, civ_id);
+	Tile * tile = tile_at (tile_x, tile_y);
+
+	if ((tile == NULL) || (tile == p_null_tile) || ! is->current_config.allow_extraterritorial_colonies) 
+		return base;
+
+	if (tile->vtable->m35_Check_Is_Water (tile)) return base;
+	if (Tile_has_city (tile) || Tile_has_colony (tile)) return base;
+
+	int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	if ((owner_id < 0) || (owner_id == civ_id)) return base;
+
+	int resource_type = Tile_get_resource_visible_to (tile, __, civ_id);
+	if ((resource_type < 0) || (resource_type >= p_bic_data->ResourceTypeCount)) return base;
+	
+	int req_tech = p_bic_data->ResourceTypes[resource_type].RequireID;
+	if ((req_tech >= 0) && (! Leader_has_tech (&leaders[civ_id], __, req_tech))) return base;
+	
+	int res_class = p_bic_data->ResourceTypes[resource_type].Class;
+	if ((res_class != RC_Strategic) && (res_class != RC_Luxury)) return base;
+	if (tile->vtable->m26_Check_Tile_Building (tile))
+		return 6;
+
+	return 0;
+}
+
 bool __fastcall
 patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 {
@@ -15653,6 +15682,11 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 				return false;
 
 			return is_worker (this) && can_build_district_on_tile (tile, district_id, this->Body.CivID);
+		}
+		else if (unit_command_value == UCV_Build_Colony || unit_command_value == UCV_Build_Remote_Colony) {
+			if (is->current_config.allow_extraterritorial_colonies && is_worker (this)) {
+			    return patch_Map_check_colony_location (&p_bic_data->Map, __, this->Body.X, this->Body.Y, this->Body.CivID) == 0;
+			}
 		}
 		else if (unit_command_value == UCV_Build_Mine) {
 			bool has_district = (tile != NULL) && (tile != p_null_tile) && (get_district_instance (tile) != NULL);
@@ -28222,7 +28256,7 @@ draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * ma
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -30225,6 +30259,9 @@ patch_Leader_get_attitude_toward (Leader * this, int edx, int civ_id, int param_
 	int score = Leader_get_attitude_toward (this, __, civ_id, param_2);
 	if (!is->current_config.allow_extraterritorial_colonies)
 		return score;
+
+	// Note, ideally we'd loop over p_colonies like in vanilla, but it's not clear what the 
+	// structure is of it, so for now just loop over all tiles
 
 	int penalty = is->current_config.per_extraterritorial_colony_relation_penalty;
 	if (penalty != 0) {
