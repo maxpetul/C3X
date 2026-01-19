@@ -11894,6 +11894,12 @@ is_offensive_combat_type (UnitType * unit_type)
 bool
 can_damage_bombarding (UnitType * attacker_type, Unit * defender, Tile * defender_tile)
 {
+	Unit * container;
+	if ((is->current_config.special_helicopter_rules & SHR_NO_DEFENSE_FROM_INSIDE) &&
+	    (container = get_unit_ptr (defender->Body.Container_Unit)) != NULL &&
+	    p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Air)
+		return false;
+
 	UnitType * defender_type = &p_bic_data->UnitTypes[defender->Body.UnitTypeID];
 	if (defender_type->Unit_Class == UTC_Land) {
 		int has_lethal_land_bombard = UnitType_has_ability (attacker_type, __, UTA_Lethal_Land_Bombardment);
@@ -12083,7 +12089,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 
 		// Check if the last unit sent into battle actually did anything. If it didn't we should at least skip over
 		// it to avoid an infinite loop, but actually the only time this should happen is if the player is not at
-		// war with the targetted civ and chose not to declare when prompted. In this case it's better to just stop
+		// war with the targeted civ and chose not to declare when prompted. In this case it's better to just stop
 		// trying to attack so as to not spam the player with prompts.
 		last_attack_didnt_happen = (is->sb_next_up == NULL) || (is->sb_next_up->Body.Moves == moves_before_bombard);
 
@@ -18332,9 +18338,20 @@ patch_Unit_get_defense_to_dodge_city_aa (Unit * this)
 int __fastcall
 patch_Unit_get_defense_to_find_bombard_defender (Unit * this)
 {
+	// The caller is filtering out candidates with zero defense strength as possible targets to receive damage from bombardment. We can return 0
+	// here to make sure "this" unit is not targeted.
+
+	Unit * container;
+
 	if (is->current_config.immunize_aircraft_against_bombardment &&
 	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air))
-		return 0; // The caller is filtering out candidates with zero defense strength
+		return 0;
+
+	else if ((is->current_config.special_helicopter_rules & SHR_NO_DEFENSE_FROM_INSIDE) &&
+		 (container = get_unit_ptr (this->Body.Container_Unit)) != NULL &&
+		 p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Air)
+		return 0;
+
 	else
 		return Unit_get_defense_strength (this);
 }
