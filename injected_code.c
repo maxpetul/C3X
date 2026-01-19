@@ -78,6 +78,8 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define CANAL_DISTRICT_ID			 9
 #define GREAT_WALL_DISTRICT_ID       10
 
+enum { NAMED_TILE_MENU_ID = 0x90 };
+
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
 
@@ -214,6 +216,9 @@ void get_bridge_directions (Tile * tile, int tile_x, int tile_y, int * out_dir1,
 void get_canal_directions (Tile * tile, int tile_x, int tile_y, bool * out_water_dirs[9], int * out_dir1, int * out_dir2);
 Tile * find_tile_for_district (City * city, int district_id, int * out_x, int * out_y);
 struct district_instance * get_district_instance (Tile * tile);
+bool tile_can_be_named (Tile * tile, int tile_x, int tile_y);
+struct named_tile_entry * get_named_tile_entry (Tile * tile);
+void handle_named_tile_menu_selection (void);
 bool city_has_required_district (City * city, int district_id);
 bool district_is_complete (Tile * tile, int district_id);
 bool city_requires_district_for_improvement (City * city, int improv_id, int * out_district_id);
@@ -9435,6 +9440,12 @@ reset_district_state (bool reset_tile_map)
 				free (inst);
 		}
 		table_deinit (&is->district_tile_map);
+		FOR_TABLE_ENTRIES (tei, &is->named_tile_map) {
+			struct named_tile_entry * entry = (struct named_tile_entry *)(long)tei.value;
+			if (entry != NULL)
+				free (entry);
+		}
+		table_deinit (&is->named_tile_map);
 	}
 
 	clear_distribution_hub_tables ();
@@ -14068,6 +14079,7 @@ patch_init_floating_point ()
 		{"enable_wonder_districts"                               , false, offsetof (struct c3x_config, enable_wonder_districts)},
 		{"enable_natural_wonders"                                , false, offsetof (struct c3x_config, enable_natural_wonders)},
 		{"add_natural_wonders_to_scenarios_if_none"              , false, offsetof (struct c3x_config, add_natural_wonders_to_scenarios_if_none)},
+		{"enable_named_tiles"                                   , false, offsetof (struct c3x_config, enable_named_tiles)},
 		{"enable_distribution_hub_districts"                     , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"enable_aerodrome_districts"                            , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
 		{"enable_port_districts"                                 , false, offsetof (struct c3x_config, enable_port_districts)},
@@ -19080,6 +19092,22 @@ patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3
 	int * p_stack = (int *)&x;
 	int ret_addr = p_stack[-1];
 
+	if (is->current_config.enable_named_tiles &&
+	    is->named_tile_menu_active) {
+		int tile_x = is->named_tile_menu_tile_x;
+		int tile_y = is->named_tile_menu_tile_y;
+		Tile * tile = tile_at (tile_x, tile_y);
+		if (tile_can_be_named (tile, tile_x, tile_y)) {
+			struct named_tile_entry * entry = get_named_tile_entry (tile);
+			char menu_text[64];
+			if ((entry != NULL) && (entry->name[0] != '\0'))
+				snprintf (menu_text, sizeof menu_text, "Rename %s", entry->name);
+			else
+				strcpy (menu_text, "Name Tile");
+			Context_Menu_add_item (this, __, NAMED_TILE_MENU_ID, menu_text, false, (Sprite *)0x0);
+		}
+	}
+
 	if (is->current_config.group_units_on_right_click_menu &&
 	    (ret_addr == ADDR_OPEN_UNIT_MENU_RETURN) &&
 	    (is->unit_menu_duplicates != NULL)) {
@@ -20488,16 +20516,147 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
 }
 
+bool
+tile_can_be_named (Tile * tile, int tile_x, int tile_y)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	if (city_at (tile_x, tile_y) != NULL)
+		return false;
+	struct district_instance * inst = get_district_instance (tile);
+	if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID))
+		return false;
+	return true;
+}
+
+struct named_tile_entry *
+get_named_tile_entry (Tile * tile)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return NULL;
+	int stored_ptr = 0;
+	if (! itable_look_up (&is->named_tile_map, (int)tile, &stored_ptr))
+		return NULL;
+	return (struct named_tile_entry *)(long)stored_ptr;
+}
+
+void
+remove_named_tile_entry (Tile * tile)
+{
+	struct named_tile_entry * entry = get_named_tile_entry (tile);
+	if (entry == NULL)
+		return;
+	itable_remove (&is->named_tile_map, (int)tile);
+	free (entry);
+}
+
+void
+set_named_tile_entry (Tile * tile, int tile_x, int tile_y, char const * name)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
+	if ((name == NULL) || (name[0] == '\0')) {
+		remove_named_tile_entry (tile);
+		return;
+	}
+
+	struct named_tile_entry * entry = get_named_tile_entry (tile);
+	if (entry == NULL) {
+		entry = calloc (1, sizeof *entry);
+		if (entry == NULL)
+			return;
+		itable_insert (&is->named_tile_map, (int)tile, (int)(long)entry);
+	}
+	entry->tile_x = tile_x;
+	entry->tile_y = tile_y;
+	strncpy (entry->name, name, sizeof entry->name);
+	entry->name[(sizeof entry->name) - 1] = '\0';
+}
+
+bool
+prompt_for_named_tile (char const * seed_name, char * out_name, int out_len)
+{
+	if ((out_name == NULL) || (out_len <= 0))
+		return false;
+	out_name[0] = '\0';
+
+	PopupForm * popup = get_popup_form ();
+	if (popup == NULL)
+		return false;
+
+	char seed_buf[24];
+	if (seed_name == NULL)
+		seed_name = "";
+	strncpy (seed_buf, seed_name, sizeof seed_buf);
+	seed_buf[(sizeof seed_buf) - 1] = '\0';
+
+	set_popup_str_param (0, seed_buf, -1, -1);
+	popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "RENAME_CITY", 0x17, (int)seed_buf, 0x44, 0);
+	int sel = patch_show_popup (popup, __, 0, 0);
+	if (sel != 0)
+		return false;
+
+	if (temp_ui_strs[0][0] == '\0')
+		return true;
+
+	strncpy (out_name, temp_ui_strs[0], out_len);
+	out_name[out_len - 1] = '\0';
+	return true;
+}
+
+void
+handle_named_tile_menu_selection (void)
+{
+	int tile_x = is->named_tile_menu_tile_x;
+	int tile_y = is->named_tile_menu_tile_y;
+	Tile * tile = tile_at (tile_x, tile_y);
+	if (! tile_can_be_named (tile, tile_x, tile_y))
+		return;
+
+	struct named_tile_entry * entry = get_named_tile_entry (tile);
+	char const * current_name = (entry != NULL) ? entry->name : "";
+	char new_name[24];
+	if (! prompt_for_named_tile (current_name, new_name, sizeof new_name))
+		return;
+
+	set_named_tile_entry (tile, tile_x, tile_y, new_name);
+	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+}
+
 void __fastcall
 patch_Main_Screen_Form_handle_right_click_on_tile (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)
 {
+	if (is->current_config.enable_named_tiles) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if (tile_can_be_named (tile, tile_x, tile_y)) {
+			is->named_tile_menu_active = true;
+			is->named_tile_menu_tile_x = tile_x;
+			is->named_tile_menu_tile_y = tile_y;
+			Main_Screen_Form_open_right_click_menu (this, __, tile_x, tile_y, mouse_x, mouse_y);
+			is->named_tile_menu_active = false;
+			return;
+		}
+	}
+
 	Main_Screen_Form_handle_right_click_on_tile (this, __, tile_x, tile_y, mouse_x, mouse_y);
 }
 
 void __fastcall
 patch_Main_Screen_Form_open_right_click_menu (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)
 {
+	bool set_active = false;
+	if (!is->named_tile_menu_active && is->current_config.enable_named_tiles) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if (tile_can_be_named (tile, tile_x, tile_y)) {
+			is->named_tile_menu_active = true;
+			is->named_tile_menu_tile_x = tile_x;
+			is->named_tile_menu_tile_y = tile_y;
+			set_active = true;
+		}
+	}
 	Main_Screen_Form_open_right_click_menu (this, __, tile_x, tile_y, mouse_x, mouse_y);
+	if (set_active)
+		is->named_tile_menu_active = false;
 }
 
 void __fastcall
@@ -20505,8 +20664,10 @@ patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Imag
 {
 	Main_Screen_Form_draw_city_hud (this, __, canvas);
 
-	if (!is->current_config.enable_natural_wonders ||
-	    !is->current_config.show_natural_wonder_name_on_map)
+	bool draw_natural_wonders = is->current_config.enable_natural_wonders &&
+	                            is->current_config.show_natural_wonder_name_on_map;
+	bool draw_named_tiles = is->current_config.enable_named_tiles;
+	if (!draw_natural_wonders && !draw_named_tiles)
 		return;
 
 	if (canvas == NULL)
@@ -20515,47 +20676,99 @@ patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Imag
 	if ((canvas == NULL) || (canvas->JGL.Image == NULL))
 		return;
 
-	FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-		struct district_instance * inst = (struct district_instance *)(long)tei.value;
-		if ((inst == NULL) || (inst->district_type != NATURAL_WONDER_DISTRICT_ID))
-			continue;
+	if (draw_natural_wonders) {
+		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+			struct district_instance * inst = (struct district_instance *)(long)tei.value;
+			if ((inst == NULL) || (inst->district_type != NATURAL_WONDER_DISTRICT_ID))
+				continue;
 
-		int natural_id = inst->natural_wonder_info.natural_wonder_id;
-		if ((natural_id < 0) || (natural_id >= is->natural_wonder_count))
-			continue;
+			int natural_id = inst->natural_wonder_info.natural_wonder_id;
+			if ((natural_id < 0) || (natural_id >= is->natural_wonder_count))
+				continue;
 
-		struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
-		if ((nw_cfg == NULL) || (nw_cfg->name == NULL) || (nw_cfg->name[0] == '\0'))
-			continue;
+			struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
+			if ((nw_cfg == NULL) || (nw_cfg->name == NULL) || (nw_cfg->name[0] == '\0'))
+				continue;
 
-		Tile * tile = (Tile *)(long)tei.key;
-		if ((tile == NULL) || (tile == p_null_tile))
-			continue;
+			Tile * tile = (Tile *)(long)tei.key;
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
 
-		int tile_x, tile_y;
-		if (!tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
-			continue;
+			int tile_x, tile_y;
+			if (!tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
+				continue;
 
-		int screen_x, screen_y;
-		Main_Screen_Form_tile_to_screen_coords (this, __, tile_x, tile_y, &screen_x, &screen_y);
+			int screen_x, screen_y;
+			Main_Screen_Form_tile_to_screen_coords (this, __, tile_x, tile_y, &screen_x, &screen_y);
 
-		int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
-		int scale = is_zoomed_out ? 2 : 1;
-		int screen_width = 128 / scale;
-		int screen_height = 88 / scale;
-		int text_width = screen_width - (is_zoomed_out ? 4 : 8);
-		if (text_width < 12)
-			text_width = screen_width;
+			int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
+			int scale = is_zoomed_out ? 2 : 1;
+			int screen_width = 128 / scale;
+			int screen_height = 88 / scale;
+			int text_width = screen_width - (is_zoomed_out ? 4 : 8);
+			if (text_width < 12)
+				text_width = screen_width;
 
-		int text_left = screen_x + (screen_width - text_width) / 2;
-		int y_offset = 88 - 64;
-		int draw_y = screen_y - y_offset;
-		int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
+			int text_left = screen_x + (screen_width - text_width) / 2;
+			int y_offset = 88 - 64;
+			int draw_y = screen_y - y_offset;
+			int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
 
-		Object_66C3FC * font = get_font (10, FSF_NONE);
-		if (font != NULL) {
-			PCX_Image_set_text_effects (canvas, __, 0x80FFFFFF, 0x80000000, 1, 1);
-			PCX_Image_draw_centered_text (canvas, __, font, (char *)nw_cfg->name, text_left, text_top - 10, text_width, strlen (nw_cfg->name));
+			Object_66C3FC * font = get_font (10, FSF_NONE);
+			if (font != NULL) {
+				PCX_Image_set_text_effects (canvas, __, 0x80FFFFFF, 0x80000000, 1, 1);
+				PCX_Image_draw_centered_text (canvas, __, font, (char *)nw_cfg->name, text_left, text_top - 10, text_width, strlen (nw_cfg->name));
+			}
+		}
+	}
+
+	if (draw_named_tiles) {
+		FOR_TABLE_ENTRIES (tei, &is->named_tile_map) {
+			struct named_tile_entry * entry = (struct named_tile_entry *)(long)tei.value;
+			if ((entry == NULL) || (entry->name[0] == '\0'))
+				continue;
+
+			Tile * tile = (Tile *)(long)tei.key;
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+
+			int tile_x, tile_y;
+			if (!tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y)) {
+				tile_x = entry->tile_x;
+				tile_y = entry->tile_y;
+				tile = tile_at (tile_x, tile_y);
+				if ((tile == NULL) || (tile == p_null_tile))
+					continue;
+			}
+
+			if (city_at (tile_x, tile_y) != NULL)
+				continue;
+
+			struct district_instance * inst = get_district_instance (tile);
+			if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID))
+				continue;
+
+			int screen_x, screen_y;
+			Main_Screen_Form_tile_to_screen_coords (this, __, tile_x, tile_y, &screen_x, &screen_y);
+
+			int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
+			int scale = is_zoomed_out ? 2 : 1;
+			int screen_width = 128 / scale;
+			int screen_height = 88 / scale;
+			int text_width = screen_width - (is_zoomed_out ? 4 : 8);
+			if (text_width < 12)
+				text_width = screen_width;
+
+			int text_left = screen_x + (screen_width - text_width) / 2;
+			int y_offset = 88 - 64;
+			int draw_y = screen_y - y_offset;
+			int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
+
+			Object_66C3FC * font = get_font (10, FSF_NONE);
+			if (font != NULL) {
+				PCX_Image_set_text_effects (canvas, __, 0x80FFFFFF, 0x80000000, 1, 1);
+				PCX_Image_draw_centered_text (canvas, __, font, entry->name, text_left, text_top - 10, text_width, strlen (entry->name));
+			}
 		}
 	}
 }
@@ -24620,6 +24833,13 @@ patch_Context_Menu_get_selected_item_on_unit_rcm (Context_Menu * this)
 	// click unit items which have been disabled by the mod so they can interrupt the queued actions of units that have no moves left.
 	int index = this->Selected_Item;
 	if (index >= 0) {
+		if (is->current_config.enable_named_tiles && is->named_tile_menu_active) {
+			Context_Menu_Item * item = &this->Items[index];
+			if (item->Menu_Item_ID == NAMED_TILE_MENU_ID) {
+				handle_named_tile_menu_selection ();
+				return -1;
+			}
+		}
 		bool is_enabled = (this->Items[index].Status & 2) == 0;
 		bool is_unit_item = (this->Items[index].Menu_Item_ID - (0x13 + p_bic_data->UnitTypeCount)) >= 0;
 		return (is_enabled || is_unit_item) ? index : -1;
@@ -25018,6 +25238,38 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 				mod_data.length -= trimmed_bytes;
 			}
 		}
+
+	if (is->current_config.enable_named_tiles && (is->named_tile_map.len > 0)) {
+		serialize_aligned_text ("named_tiles", &mod_data);
+		int entry_capacity = is->named_tile_map.len;
+		int bytes_per_entry = (int)sizeof(int) * 2 + (int)sizeof(((struct named_tile_entry *)0)->name);
+		byte * chunk = (byte *)buffer_allocate (&mod_data, (int)sizeof(int) + bytes_per_entry * entry_capacity);
+		int * count = (int *)chunk;
+		byte * out = (byte *)(count + 1);
+		int written = 0;
+		FOR_TABLE_ENTRIES (tei, &is->named_tile_map) {
+			struct named_tile_entry * entry = (struct named_tile_entry *)(long)tei.value;
+			if ((entry == NULL) || (entry->name[0] == '\0'))
+				continue;
+			Tile * tile = (Tile *)(long)tei.key;
+			int tile_x = entry->tile_x;
+			int tile_y = entry->tile_y;
+			if ((tile != NULL) && (tile != p_null_tile))
+				tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y);
+			((int *)out)[0] = tile_x;
+			((int *)out)[1] = tile_y;
+			out += sizeof(int) * 2;
+			memcpy (out, entry->name, sizeof entry->name);
+			out += sizeof entry->name;
+			written++;
+		}
+		*count = written;
+		int unused_entries = entry_capacity - written;
+		if (unused_entries > 0) {
+			int trimmed_bytes = unused_entries * bytes_per_entry;
+			mod_data.length -= trimmed_bytes;
+		}
+	}
 	}
 
 	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
@@ -25077,6 +25329,12 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				free (inst);
 		}
 		table_deinit (&is->district_tile_map);
+		FOR_TABLE_ENTRIES (tei, &is->named_tile_map) {
+			struct named_tile_entry * entry = (struct named_tile_entry *)(long)tei.value;
+			if (entry != NULL)
+				free (entry);
+		}
+		table_deinit (&is->named_tile_map);
 		clear_all_tracked_workers ();
 	}
 
@@ -25489,6 +25747,67 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				}
 				if (! success) {
 					error_chunk_name = "aerodrome_airlift_usage";
+					break;
+				}
+
+			} else if (match_save_chunk_name (&cursor, "named_tiles")) {
+				bool success = false;
+				int remaining_bytes = (seg + seg_size) - cursor;
+				if (remaining_bytes >= (int)sizeof(int)) {
+					int * ints = (int *)cursor;
+					int entry_count = *ints++;
+					cursor = (byte *)ints;
+					remaining_bytes -= (int)sizeof(int);
+					int bytes_per_entry = (int)sizeof(int) * 2 + (int)sizeof(((struct named_tile_entry *)0)->name);
+					if ((entry_count >= 0) && (remaining_bytes >= entry_count * bytes_per_entry)) {
+						table_deinit (&is->named_tile_map);
+						success = true;
+						for (int n = 0; n < entry_count; n++) {
+							if (remaining_bytes < bytes_per_entry) {
+								success = false;
+								break;
+							}
+							int tile_x = *ints++;
+							int tile_y = *ints++;
+							cursor = (byte *)ints;
+							remaining_bytes -= (int)sizeof(int) * 2;
+
+							char name_buf[24];
+							memcpy (name_buf, cursor, sizeof name_buf);
+							name_buf[(sizeof name_buf) - 1] = '\0';
+							cursor += sizeof name_buf;
+							remaining_bytes -= sizeof name_buf;
+							ints = (int *)cursor;
+
+							if (name_buf[0] == '\0')
+								continue;
+							Tile * tile = tile_at (tile_x, tile_y);
+							if ((tile == NULL) || (tile == p_null_tile))
+								continue;
+
+							struct named_tile_entry * entry = calloc (1, sizeof *entry);
+							if (entry == NULL) {
+								success = false;
+								break;
+							}
+							entry->tile_x = tile_x;
+							entry->tile_y = tile_y;
+							strncpy (entry->name, name_buf, sizeof entry->name);
+							entry->name[(sizeof entry->name) - 1] = '\0';
+							itable_insert (&is->named_tile_map, (int)tile, (int)(long)entry);
+						}
+						if (! success) {
+							FOR_TABLE_ENTRIES (tei, &is->named_tile_map) {
+								struct named_tile_entry * entry = (struct named_tile_entry *)(long)tei.value;
+								if (entry != NULL)
+									free (entry);
+							}
+							table_deinit (&is->named_tile_map);
+						}
+					}
+				}
+				if (! success) {
+					error_chunk_name = "named_tiles";
 					break;
 				}
 

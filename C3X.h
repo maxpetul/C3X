@@ -332,6 +332,8 @@ struct c3x_config {
 	int per_extraterritorial_colony_relation_penalty;
 
 	bool draw_forests_over_roads_and_railroads;
+	
+	bool enable_named_tiles;
 
 	int day_night_cycle_mode;
 	int elapsed_minutes_per_day_night_hour_transition;
@@ -825,7 +827,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereq = "Steam Power", .resource_prereqs = {"Iron", "Coal"}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 2, .dependent_improvement_count = 0,
 		.img_paths = {"CentralRailHub_AMER.pcx", "CentralRailHub_EURO.pcx", "CentralRailHub_ROMAN.pcx", "CentralRailHub_MIDEAST.pcx", "CentralRailHub_ASIAN.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
-		.img_path_count = 5, .max_building_index = 1, .btn_tile_sheet_column = 5, .btn_tile_sheet_row = 0,
+		.img_path_count = 5, .max_building_index = 1, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
@@ -1105,6 +1107,12 @@ struct district_instance {
 	struct natural_wonder_district_info natural_wonder_info; // Only used if district_type is a natural wonder district
 };
 
+struct named_tile_entry {
+	int tile_x;
+	int tile_y;
+	char name[24];
+};
+
 struct highlighted_city_radius_tile_info {
 	int highlight_level;
 };
@@ -1248,6 +1256,9 @@ struct injected_state {
 	struct table saved_code_areas;
 
 	int * unit_menu_duplicates; // NULL initialized, allocated to an array of 0x100 ints when needed
+	bool named_tile_menu_active;
+	int named_tile_menu_tile_x;
+	int named_tile_menu_tile_y;
 
 	// List of temporary ints. Initializes to NULL/0/0, used with functions "memoize" and "clear_memo"
 	int * memo;
@@ -1807,6 +1818,7 @@ struct district_button_image_set {
 	// For wonder districts, the wonder_info field tracks wonder-specific state (unused, reserved, completed, ruined),
 	// which city reserved/completed the wonder, and which wonder index is on this district.
 	struct table district_tile_map;
+	struct table named_tile_map;
 
 	// Tracks per-turn airlift usage for aerodrome districts (tile pointer -> civ bitmask).
 	struct table aerodrome_airlift_usage;
