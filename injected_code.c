@@ -20489,6 +20489,18 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 }
 
 void __fastcall
+patch_Main_Screen_Form_handle_right_click_on_tile (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)
+{
+	Main_Screen_Form_handle_right_click_on_tile (this, __, tile_x, tile_y, mouse_x, mouse_y);
+}
+
+void __fastcall
+patch_Main_Screen_Form_open_right_click_menu (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)
+{
+	Main_Screen_Form_open_right_click_menu (this, __, tile_x, tile_y, mouse_x, mouse_y);
+}
+
+void __fastcall
 patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Image * canvas)
 {
 	Main_Screen_Form_draw_city_hud (this, __, canvas);

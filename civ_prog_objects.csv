@@ -24,6 +24,8 @@ define,    0x4CD0B1,	0x4D5151,	0x4CD171,	"ADDR_PEDIA_TEXTURE_BUG_PATCH",			"void
 define,    0x5640AC,	0x570385,	0x56405C,	"ADDR_AUTORAZE_BYPASS",				"void *"
 repl vptr, 0x66CB50,	0x689C3C,	0x66CB50,	"Leader_impl_would_raze_city",			"bool (__fastcall *) (Leader * this, int edx, City * city)"
 repl vptr, 0x66B44C,	0x68854C,	0x66B44C,	"Main_Screen_Form_handle_left_click_on_map_1",	"void (__fastcall *) (Main_Screen_Form * this, int edx, int param_1, int param_2)"
+inlead,    0x4EA210,    0x0,        0x0,        "Main_Screen_Form_handle_right_click_on_tile",	"void (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)"
+inlead,    0x4E8850,    0x0,        0x0,        "Main_Screen_Form_open_right_click_menu",		"void (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)"
 define,    0x499FE0,	0x49F9F0,	0x49A070,	"is_online_game",				"char (__stdcall *) (void)"
 define,    0x437A70,	0x439620,	0x437AF0,	"tile_at",					"Tile * (__cdecl *) (int x, int y)"
 define,    0x426C80,	0x4283C0,	0x426D00,	"TileUnits_TileUnitID_to_UnitID",		"int (__fastcall *) (TileUnits * this, int edx, int tile_unit_id, int * out_UnitItem_field_0)"
