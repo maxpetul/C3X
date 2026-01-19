@@ -628,6 +628,11 @@ enum district_render_strategy {
 	DRS_BY_BUILDING = 1
 };
 
+enum district_ai_build_strategy {
+	DABS_DISTRICT = 0,
+	DABS_TILE_IMPROVEMENT = 1
+};
+
 struct district_config {
 	enum Unit_Command_Values command;
 	char const * name;
@@ -647,6 +652,7 @@ struct district_config {
 	bool vary_img_by_era;
 	bool vary_img_by_culture;
 	enum district_render_strategy render_strategy;
+	enum district_ai_build_strategy ai_build_strategy;
 	bool is_dynamic;
 	bool align_to_coast;
 	bool draw_over_resources;
@@ -883,6 +889,7 @@ struct parsed_district_definition {
 	bool vary_img_by_era;
 	bool vary_img_by_culture;
 	enum district_render_strategy render_strategy;
+	enum district_ai_build_strategy ai_build_strategy;
 	bool align_to_coast;
 	bool draw_over_resources;
 	int custom_width;
@@ -921,6 +928,7 @@ struct parsed_district_definition {
 	bool has_vary_img_by_era;
 	bool has_vary_img_by_culture;
 	bool has_render_strategy;
+	bool has_ai_build_strategy;
 	bool has_align_to_coast;
 	bool has_draw_over_resources;
 	bool has_custom_width;

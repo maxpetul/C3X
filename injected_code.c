@@ -5508,6 +5508,7 @@ init_parsed_district_definition (struct parsed_district_definition * def)
 	def->img_path_count = -1;
 	def->defense_bonus_percent = 100;
 	def->render_strategy = DRS_BY_COUNT;
+	def->ai_build_strategy = DABS_DISTRICT;
 	def->buildable_square_types_mask = district_default_buildable_mask ();
 }
 
@@ -6186,6 +6187,8 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->vary_img_by_culture = def->vary_img_by_culture;
 	if (def->has_render_strategy)
 		cfg->render_strategy = def->render_strategy;
+	if (def->has_ai_build_strategy)
+		cfg->ai_build_strategy = def->ai_build_strategy;
 	if (def->has_align_to_coast)
 		cfg->align_to_coast = def->align_to_coast;
 	if (def->has_draw_over_resources)
@@ -6453,6 +6456,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.vary_img_by_era = def->has_vary_img_by_era ? def->vary_img_by_era : false;
 	new_cfg.vary_img_by_culture = def->has_vary_img_by_culture ? def->vary_img_by_culture : false;
 	new_cfg.render_strategy = def->has_render_strategy ? def->render_strategy : DRS_BY_COUNT;
+	new_cfg.ai_build_strategy = def->has_ai_build_strategy ? def->ai_build_strategy : DABS_DISTRICT;
 	new_cfg.align_to_coast = def->has_align_to_coast ? def->align_to_coast : false;
 	new_cfg.draw_over_resources = def->has_draw_over_resources ? def->draw_over_resources : false;
 	new_cfg.custom_width = def->has_custom_width ? def->custom_width : 0;
@@ -6954,6 +6958,24 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		} else {
 			def->has_render_strategy = false;
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected \"by-count\" or \"by-building\")");
+		}
+		if (strategy != NULL)
+			free (strategy);
+
+	} else if (slice_matches_str (key, "ai_build_strategy")) {
+		char * strategy = copy_trimmed_string_or_null (value, 1);
+		if (strategy == NULL) {
+			def->has_ai_build_strategy = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
+		} else if (strcmp (strategy, "district") == 0) {
+			def->ai_build_strategy = DABS_DISTRICT;
+			def->has_ai_build_strategy = true;
+		} else if (strcmp (strategy, "tile-improvement") == 0) {
+			def->ai_build_strategy = DABS_TILE_IMPROVEMENT;
+			def->has_ai_build_strategy = true;
+		} else {
+			def->has_ai_build_strategy = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected \"district\" or \"tile-improvement\")");
 		}
 		if (strategy != NULL)
 			free (strategy);
@@ -28842,6 +28864,228 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 	return false;
 }
 
+bool
+ai_worker_try_tile_improvement_district (Unit * worker)
+{
+	if (! is->current_config.enable_districts || worker == NULL) return false;
+	if (! is_worker (worker)) return false;
+	if (worker->Body.Auto_CityID < 0) return false;
+
+	City * city = get_city_ptr (worker->Body.Auto_CityID);
+	if (city == NULL) return false;
+	if (city->Body.CivID != worker->Body.CivID) return false;
+
+	int civ_id = worker->Body.CivID;
+	int tile_x = worker->Body.X;
+	int tile_y = worker->Body.Y;
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile)) return false;
+	if (tile->CityID >= 0) return false;
+	if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id) return false;
+	if (! city_radius_contains_tile (city, tile_x, tile_y)) return false;
+	if (get_district_instance (tile) != NULL) return false;
+
+	// Check if a canal district could be built here, making sure there isn't already one nearby and
+	// that there are at least two different adjacent water bodies owned by the civ
+	if (is->current_config.enable_canal_districts &&
+	    can_build_district_on_tile (tile, CANAL_DISTRICT_ID, civ_id)) {
+		bool has_adjacent_canal = false;
+		FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+			if (tai.n == 0)
+				continue;
+			Tile * adj = tai.tile;
+			if ((adj == NULL) || (adj == p_null_tile))
+				continue;
+			struct district_instance * adj_inst = get_district_instance (adj);
+			if ((adj_inst != NULL) && (adj_inst->district_type == CANAL_DISTRICT_ID)) {
+				has_adjacent_canal = true;
+				break;
+			}
+		}
+
+		if (! has_adjacent_canal) {
+			int water_ids[2] = { -1, -1 };
+			int water_count = 0;
+			FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+				if (tai.n == 0)
+					continue;
+				if (water_count >= 2)
+					break;
+				Tile * adj = tai.tile;
+				if ((adj == NULL) || (adj == p_null_tile))
+					continue;
+				if (! adj->vtable->m35_Check_Is_Water (adj))
+					continue;
+				if (adj->vtable->m38_Get_Territory_OwnerID (adj) != civ_id)
+					continue;
+
+				int sea_id = adj->vtable->m46_Get_ContinentID (adj);
+				if (water_count == 0 || sea_id != water_ids[0]) {
+					water_ids[water_count] = sea_id;
+					water_count += 1;
+				}
+			}
+
+			if (water_count >= 2) {
+				unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
+				unsigned int removable_flags = overlay_flags & 0xfc;
+				tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+				if (removable_flags != 0)
+					tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, tile_x, tile_y);
+				ensure_district_instance (tile, CANAL_DISTRICT_ID, tile_x, tile_y);
+				Unit_set_state (worker, __, UnitState_Build_Mines);
+				worker->Body.Job_ID = WJ_Build_Mines;
+				return true;
+			}
+		}
+	}
+
+	// Check if a bridge district could be built here, making sure there isn't already one nearby and
+	// that there are at least two different adjacent land tiles owned by the civ
+	if (is->current_config.enable_bridge_districts &&
+	    can_build_district_on_tile (tile, BRIDGE_DISTRICT_ID, civ_id)) {
+		bool has_adjacent_bridge = false;
+		FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+			if (tai.n == 0)
+				continue;
+			Tile * adj = tai.tile;
+			if ((adj == NULL) || (adj == p_null_tile))
+				continue;
+			struct district_instance * adj_inst = get_district_instance (adj);
+			if ((adj_inst != NULL) && (adj_inst->district_type == BRIDGE_DISTRICT_ID)) {
+				has_adjacent_bridge = true;
+				break;
+			}
+		}
+
+		if (! has_adjacent_bridge) {
+			bool north_land = false;
+			bool south_land = false;
+			bool west_land  = false;
+			bool east_land  = false;
+			bool ne_land    = false;
+			bool nw_land    = false;
+			bool se_land    = false;
+			bool sw_land    = false;
+
+			FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+				if (tai.n == 0)
+					continue;
+				int dx = 0, dy = 0;
+				neighbor_index_to_diff (tai.n, &dx, &dy);
+				bool is_land = tile_is_land (civ_id, tile_x + dx, tile_y + dy, false);
+				if (dx == 0 && dy == -2)       north_land = is_land;
+				else if (dx == 0 && dy == 2)   south_land = is_land;
+				else if (dx == -2 && dy == 0)  west_land = is_land;
+				else if (dx == 2 && dy == 0)   east_land = is_land;
+				else if (dx == 1 && dy == -1)  ne_land = is_land;
+				else if (dx == -1 && dy == -1) nw_land = is_land;
+				else if (dx == 1 && dy == 1)   se_land = is_land;
+				else if (dx == -1 && dy == 1)  sw_land = is_land;
+			}
+
+			bool has_land_pair = (north_land && south_land) ||
+					     (west_land && east_land) ||
+					     (ne_land && sw_land) ||
+					     (nw_land && se_land);
+			if (has_land_pair) {
+				unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
+				unsigned int removable_flags = overlay_flags & 0xfc;
+				tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+				if (removable_flags != 0)
+					tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, tile_x, tile_y);
+				ensure_district_instance (tile, BRIDGE_DISTRICT_ID, tile_x, tile_y);
+				Unit_set_state (worker, __, UnitState_Build_Mines);
+				worker->Body.Job_ID = WJ_Build_Mines;
+				return true;
+			}
+		}
+	}
+
+	// Evaluate whether the best improvement here is irrigation, mines, or a district, using heuristics based on city needs
+	int food_weight    = (city->Body.FoodIncome < city->Body.FoodRequired) ? 3 : 1;
+	int shield_weight  = (city->Body.ProductionIncome < city->Body.Population.Size) ? 2 : 1;
+	int unhappy_percent =
+		city->Body.UnhappyNoReasonPercent +
+		city->Body.UnhappyCrowdedPercent +
+		city->Body.UnhappyWarWearinessPercent +
+		city->Body.UnhappyAgresssionPercent +
+		city->Body.UnhappyPropagandaPercent +
+		city->Body.UnhappyDraftPercent +
+		city->Body.UnhappyOppressionPercent +
+		city->Body.UnhappyThisCityImprovementsPercent +
+		city->Body.UnhappyOtherCityImprovementsPercent;
+	int happiness_weight = (unhappy_percent > 0) ? 2 : 1;
+	int gold_weight    = 1;
+	int resource_boost = 5 * (food_weight + shield_weight + gold_weight + happiness_weight);
+
+	int irrigation_score = INT_MIN;
+	if (Leader_can_do_worker_job (&leaders[civ_id], __, WJ_Irrigate, tile_x, tile_y, 0) &&
+	    ! tile->vtable->m17_Check_Irrigation (tile, __, 0)) {
+		int base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+		int bonus = p_bic_data->TileTypes[base_type].IrrigationBonus;
+		if (bonus < 0)
+			bonus = 0;
+		irrigation_score = bonus * food_weight;
+	}
+
+	int mine_score = INT_MIN;
+	if (Leader_can_do_worker_job (&leaders[civ_id], __, WJ_Build_Mines, tile_x, tile_y, 0) &&
+	    ! tile->vtable->m18_Check_Mines (tile, __, 0)) {
+		int base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+		int bonus = p_bic_data->TileTypes[base_type].MiningBonus;
+		if (bonus < 0)
+			bonus = 0;
+		mine_score = bonus * shield_weight;
+	}
+
+	int best_score = INT_MIN;
+	int best_district_id = -1;
+	for (int i = 0; i < is->district_count; i++) {
+		struct district_config const * cfg = &is->district_configs[i];
+		if (cfg->ai_build_strategy != DABS_TILE_IMPROVEMENT)
+			continue;
+		if (! can_build_district_on_tile (tile, i, civ_id))
+			continue;
+
+		struct district_instance temp = {0};
+		temp.district_type = i;
+		temp.tile_x = (short)tile_x;
+		temp.tile_y = (short)tile_y;
+
+		int food = 0, shields = 0, gold = 0, science = 0, culture = 0, happiness = 0;
+		get_effective_district_yields (&temp, cfg, &food, &shields, &gold, &science, &culture, &happiness);
+
+		int score = food * food_weight + shields * shield_weight + gold * gold_weight;
+		score += (science + culture) / 2;
+		score += happiness * happiness_weight;
+		if ((cfg->generated_resource_id >= 0) &&
+		    ! patch_City_has_resource (city, __, cfg->generated_resource_id))
+			score += resource_boost;
+
+		if (score > best_score) {
+			best_score = score;
+			best_district_id = i;
+		}
+	}
+
+	if ((best_district_id >= 0) &&
+	    (best_score >= irrigation_score) &&
+	    (best_score >= mine_score)) {
+		unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
+		unsigned int removable_flags = overlay_flags & 0xfc;
+		tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+		if (removable_flags != 0)
+			tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, tile_x, tile_y);
+		ensure_district_instance (tile, best_district_id, tile_x, tile_y);
+		Unit_set_state (worker, __, UnitState_Build_Mines);
+		worker->Body.Job_ID = WJ_Build_Mines;
+		return true;
+	}
+
+	return false;
+}
+
 void __fastcall
 patch_Unit_ai_move_terraformer (Unit * this)
 {
@@ -28882,6 +29126,11 @@ patch_Unit_ai_move_terraformer (Unit * this)
 			if (ai_move_district_worker (this, rec))
 				return;
 		}
+
+		if ((this->Body.Auto_CityID >= 0) &&
+		    ai_worker_try_tile_improvement_district (this))
+			return;
+		
 	}
 
 	bool pop_else_caravan;
