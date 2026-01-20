@@ -301,8 +301,8 @@ happiness_bonus       = 0
 #District
 name                  = Energy Grid
 tooltip               = Build Energy Grid
-btn_tile_sheet_row    = 1
-btn_tile_sheet_column = 7
+btn_tile_sheet_row    = 0
+btn_tile_sheet_column = 6
 vary_img_by_era       = 1
 vary_img_by_culture   = 1
 custom_height         = 84
