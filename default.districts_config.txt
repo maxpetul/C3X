@@ -321,6 +321,8 @@ happiness_bonus       = 0
 #District
 name                  = Bridge
 tooltip               = Build Bridge
+btn_tile_sheet_row    = 0
+btn_tile_sheet_column = 7
 advance_prereq        = Industrialization
 buildable_on          = coast
 defense_bonus_percent = 0
