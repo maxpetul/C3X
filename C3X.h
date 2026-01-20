@@ -1045,6 +1045,14 @@ struct scenario_district_entry {
 	int has_wonder_name;
 };
 
+struct scenario_named_tile_entry {
+	int tile_x;
+	int tile_y;
+	int has_coordinates;
+	char * name;
+	int has_name;
+};
+
 struct distribution_hub_record {
 	Tile * tile;
 	int tile_x;

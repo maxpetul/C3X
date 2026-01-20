@@ -218,7 +218,6 @@ Tile * find_tile_for_district (City * city, int district_id, int * out_x, int * 
 struct district_instance * get_district_instance (Tile * tile);
 bool tile_can_be_named (Tile * tile, int tile_x, int tile_y);
 struct named_tile_entry * get_named_tile_entry (Tile * tile);
-void handle_named_tile_menu_selection (void);
 bool city_has_required_district (City * city, int district_id);
 bool district_is_complete (Tile * tile, int district_id);
 bool city_requires_district_for_improvement (City * city, int improv_id, int * out_district_id);
@@ -236,8 +235,8 @@ void init_district_icons ();
 int count_neighborhoods_in_city_radius (City * city);
 int count_utilized_neighborhoods_in_city_radius (City * city);
 bool move_matches_directions (int move_dx, int move_dy, int dir1, int dir2);
-int count_contiguous_canal_districts (int tile_x, int tile_y, int max_count);
 bool great_wall_blocks_civ (Tile * tile, int civ_id);
+void set_named_tile_entry (Tile * tile, int tile_x, int tile_y, char const * name);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -8988,6 +8987,15 @@ init_scenario_district_entry (struct scenario_district_entry * entry)
 }
 
 void
+init_scenario_named_tile_entry (struct scenario_named_tile_entry * entry)
+{
+	if (entry == NULL)
+		return;
+
+	memset (entry, 0, sizeof *entry);
+}
+
+void
 free_scenario_district_entry (struct scenario_district_entry * entry)
 {
 	if (entry == NULL)
@@ -9009,6 +9017,20 @@ free_scenario_district_entry (struct scenario_district_entry * entry)
 	entry->has_district_name = 0;
 	entry->has_wonder_city = 0;
 	entry->has_wonder_name = 0;
+}
+
+void
+free_scenario_named_tile_entry (struct scenario_named_tile_entry * entry)
+{
+	if (entry == NULL)
+		return;
+
+	if (entry->name != NULL) {
+		free (entry->name);
+		entry->name = NULL;
+	}
+	entry->has_coordinates = 0;
+	entry->has_name = 0;
 }
 
 void
@@ -9061,6 +9083,12 @@ finalize_scenario_district_entry (struct scenario_district_entry * entry,
 	if ((entry == NULL) || (parse_errors == NULL))
 		return 0;
 
+	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
+		free_scenario_district_entry (entry);
+		init_scenario_district_entry (entry);
+		return 1;
+	}
+
 	if (! entry->has_coordinates)
 		add_scenario_district_error (parse_errors, section_start_line, "coordinates (value is required)");
 	if ((! entry->has_district_name) || (entry->district_name == NULL) || (entry->district_name[0] == '\0'))
@@ -9086,6 +9114,16 @@ finalize_scenario_district_entry (struct scenario_district_entry * entry,
 				add_scenario_district_error (parse_errors, section_start_line, msg);
 				success = 0;
 			} else {
+				if ((district_id == NATURAL_WONDER_DISTRICT_ID) && ! is->current_config.enable_natural_wonders) {
+					free_scenario_district_entry (entry);
+					init_scenario_district_entry (entry);
+					return 1;
+				}
+				if ((district_id != NATURAL_WONDER_DISTRICT_ID) && ! is->current_config.enable_districts) {
+					free_scenario_district_entry (entry);
+					init_scenario_district_entry (entry);
+					return 1;
+				}
 				struct district_instance * inst = ensure_district_instance (tile, district_id, map_x, map_y);
 				if (inst == NULL) {
 					add_scenario_district_error (parse_errors, section_start_line, "Failed to create district instance");
@@ -9159,6 +9197,51 @@ finalize_scenario_district_entry (struct scenario_district_entry * entry,
 	return success;
 }
 
+int
+finalize_scenario_named_tile_entry (struct scenario_named_tile_entry * entry,
+				    int section_start_line,
+				    struct error_line ** parse_errors)
+{
+	int success = 1;
+	if ((entry == NULL) || (parse_errors == NULL))
+		return 0;
+
+	if (! is->current_config.enable_named_tiles) {
+		free_scenario_named_tile_entry (entry);
+		init_scenario_named_tile_entry (entry);
+		return 1;
+	}
+
+	if (! entry->has_coordinates)
+		add_scenario_district_error (parse_errors, section_start_line, "coordinates (value is required)");
+	if ((! entry->has_name) || (entry->name == NULL) || (entry->name[0] == '\0'))
+		add_scenario_district_error (parse_errors, section_start_line, "name (value is required)");
+
+	if ((! entry->has_coordinates) || (! entry->has_name) ||
+	    (entry->name == NULL) || (entry->name[0] == '\0'))
+		success = 0;
+
+	int map_x = entry->tile_x;
+	int map_y = entry->tile_y;
+	if (success) {
+		wrap_tile_coords (&p_bic_data->Map, &map_x, &map_y);
+		Tile * tile = tile_at (map_x, map_y);
+		if ((tile == NULL) || (tile == p_null_tile)) {
+			add_scenario_district_error (parse_errors, section_start_line, "Invalid coordinates (tile not found)");
+			success = 0;
+		} else if (! tile_can_be_named (tile, map_x, map_y)) {
+			add_scenario_district_error (parse_errors, section_start_line, "Invalid coordinates (tile cannot be named)");
+			success = 0;
+		} else {
+			set_named_tile_entry (tile, map_x, map_y, entry->name);
+		}
+	}
+
+	free_scenario_named_tile_entry (entry);
+	init_scenario_named_tile_entry (entry);
+	return success;
+}
+
 void
 handle_scenario_district_key (struct scenario_district_entry * entry,
 			     struct string_slice const * key,
@@ -9209,6 +9292,40 @@ handle_scenario_district_key (struct scenario_district_entry * entry,
 		add_unrecognized_key_error (unrecognized_keys, line_number, key);
 }
 
+void
+handle_scenario_named_tile_key (struct scenario_named_tile_entry * entry,
+				struct string_slice const * key,
+				struct string_slice const * value,
+				int line_number,
+				struct error_line ** parse_errors,
+				struct error_line ** unrecognized_keys)
+{
+	if ((entry == NULL) || (key == NULL) || (value == NULL))
+		return;
+
+	if (slice_matches_str (key, "coordinates")) {
+		int x, y;
+		if (parse_scenario_district_coordinates (value, &x, &y)) {
+			entry->tile_x = x;
+			entry->tile_y = y;
+			entry->has_coordinates = 1;
+		} else
+			add_scenario_district_error (parse_errors, line_number, "coordinates (expected format: x,y)");
+
+	} else if (slice_matches_str (key, "name")) {
+		if (entry->name != NULL) {
+			free (entry->name);
+			entry->name = NULL;
+		}
+		entry->name = copy_trimmed_string_or_null (value, 1);
+		entry->has_name = (entry->name != NULL);
+		if (! entry->has_name)
+			add_scenario_district_error (parse_errors, line_number, "name (value is required)");
+
+	} else
+		add_unrecognized_key_error (unrecognized_keys, line_number, key);
+}
+
 // Parses a .c3x.txt file corresponding to the given scenario file path, loading district instances as specified.
 // Attempts the scenario_path first, then scenario_config_path; if neither yields a readable file, no action is taken.
 //
@@ -9231,6 +9348,10 @@ handle_scenario_district_key (struct scenario_district_entry * entry,
 // coordinates  = 10,30
 // district     = Natural Wonder
 // wonder_name  = Mount Everest
+//
+// #NamedTile
+// coordinates  = 41,23
+// name         = Tiber River
 // ```
 //
 // Details at https://github.com/instafluff0/Civ3_Editor_Fork_for_C3X_Districts
@@ -9249,9 +9370,12 @@ load_scenario_districts_from_file ()
 		return;
 
 	struct scenario_district_entry entry;
+	struct scenario_named_tile_entry named_entry;
 	init_scenario_district_entry (&entry);
+	init_scenario_named_tile_entry (&named_entry);
 	int in_section = 0;
 	int section_start_line = 0;
+	int section_type = 0;
 	int line_number = 0;
 	int header_seen = 0;
 	struct error_line * unrecognized_keys = NULL;
@@ -9278,15 +9402,12 @@ load_scenario_districts_from_file ()
 			continue;
 		}
 
+		// Keep support for legacy header, technically not needed
 		if (! header_seen) {
 			if (slice_matches_str (&trimmed, "DISTRICTS")) {
 				header_seen = 1;
 				cursor = has_newline ? line_end + 1 : line_end;
 				continue;
-			} else {
-				add_scenario_district_error (&parse_errors, line_number, "Expected \"DISTRICTS\" header");
-				header_seen = 1;
-				// Fall through to allow parsing of entries even if header missing.
 			}
 		}
 
@@ -9296,12 +9417,29 @@ load_scenario_districts_from_file ()
 			directive.len -= 1;
 			directive = trim_string_slice (&directive, 0);
 			if (slice_matches_str (&directive, "District")) {
-				if (in_section)
-					finalize_scenario_district_entry (&entry, section_start_line, &parse_errors);
+				if (in_section) {
+					if (section_type == 1)
+						finalize_scenario_district_entry (&entry, section_start_line, &parse_errors);
+					else if (section_type == 2)
+						finalize_scenario_named_tile_entry (&named_entry, section_start_line, &parse_errors);
+				}
 				in_section = 1;
+				section_type = 1;
 				section_start_line = line_number;
 				free_scenario_district_entry (&entry);
 				init_scenario_district_entry (&entry);
+			} else if (slice_matches_str (&directive, "NamedTile")) {
+				if (in_section) {
+					if (section_type == 1)
+						finalize_scenario_district_entry (&entry, section_start_line, &parse_errors);
+					else if (section_type == 2)
+						finalize_scenario_named_tile_entry (&named_entry, section_start_line, &parse_errors);
+				}
+				in_section = 1;
+				section_type = 2;
+				section_start_line = line_number;
+				free_scenario_named_tile_entry (&named_entry);
+				init_scenario_named_tile_entry (&named_entry);
 			}
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
@@ -9322,17 +9460,25 @@ load_scenario_districts_from_file ()
 			add_scenario_district_error (&parse_errors, line_number, "(missing key)");
 			break;
 		case KVP_SUCCESS:
-			handle_scenario_district_key (&entry, &key_slice, &value_slice, line_number, &parse_errors, &unrecognized_keys);
+			if (section_type == 1)
+				handle_scenario_district_key (&entry, &key_slice, &value_slice, line_number, &parse_errors, &unrecognized_keys);
+			else if (section_type == 2)
+				handle_scenario_named_tile_key (&named_entry, &key_slice, &value_slice, line_number, &parse_errors, &unrecognized_keys);
 			break;
 		}
 
 		cursor = has_newline ? line_end + 1 : line_end;
 	}
 
-	if (in_section)
-		finalize_scenario_district_entry (&entry, section_start_line, &parse_errors);
+	if (in_section) {
+		if (section_type == 1)
+			finalize_scenario_district_entry (&entry, section_start_line, &parse_errors);
+		else if (section_type == 2)
+			finalize_scenario_named_tile_entry (&named_entry, section_start_line, &parse_errors);
+	}
 
 	free_scenario_district_entry (&entry);
+	free_scenario_named_tile_entry (&named_entry);
 	free (text);
 
 	// Append to loaded config names list
@@ -24777,7 +24923,9 @@ patch_Map_place_scenario_things (Map * this)
 				patch_City_recompute_yields_and_happiness (city);
 		}
 
-	if (is->current_config.enable_districts)
+	if (is->current_config.enable_districts ||
+	    is->current_config.enable_natural_wonders ||
+	    is->current_config.enable_named_tiles)
 		load_scenario_districts_from_file ();
 
 	if (is->current_config.add_natural_wonders_to_scenarios_if_none &&
