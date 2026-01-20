@@ -352,6 +352,8 @@ happiness_bonus       = 0
 
 #District
 name                  = Great Wall
+btn_tile_sheet_row    = 0
+btn_tile_sheet_column = 9
 tooltip               = Build Great Wall
 obsoleted_by          = Metallurgy
 wonder_prereqs        = "The Great Wall"
