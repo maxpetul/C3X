@@ -1,13 +1,8 @@
   - [x] Allow workers over water only if in radius of city that can build water district/wonder
   - [x] Add ai_build_strategy option and AI worker handling
-  - [x] Add logic for determining if canal connects bodies of water for AI port-building
-  - [x] Add cap on count of distribution hubs, destroy extra if conquered
   - [x] AI navies target maritime districts
-  - [x] Named tiles (still need to allow for scenarios)
-  - Keep irrigation/mine on tile if specified
   - Firm up logic for river district rendering
   - Bump great wall bombard eval scores
-  - [x] Prevent AI building districts on resources
   - Make sure AI workers remove great walls after they have metallury
 
   - Hoover Dam (use alt dir, special positioning b/c on river)
@@ -29,6 +24,11 @@
 
 ## Maritime Districts
   - ~~Choose terrain type~~
+  - ~~Named tiles~~
+  - ~~Prevent AI building districts on resources~~
+  - ~~Add allow_irrigation_from flag~~
+  - ~~Add logic for determining if canal connects bodies of water for AI port-building~~
+  - ~~Add cap on count of distribution hubs, destroy extra if conquered~~
   - ~~Add districts flag for drawing resources under districts~~
   - ~~Add support for alternative render strategy (Municipal District use case)~~
   - ~~Add support for buildable_on_districts~~

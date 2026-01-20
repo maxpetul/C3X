@@ -6197,6 +6197,8 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->align_to_coast = def->align_to_coast;
 	if (def->has_draw_over_resources)
 		cfg->draw_over_resources = def->draw_over_resources;
+	if (def->has_allow_irrigation_from)
+		cfg->allow_irrigation_from = def->allow_irrigation_from;
 	if (def->has_custom_width)
 		cfg->custom_width = def->custom_width;
 	if (def->has_custom_height)
@@ -6463,6 +6465,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.ai_build_strategy = def->has_ai_build_strategy ? def->ai_build_strategy : DABS_DISTRICT;
 	new_cfg.align_to_coast = def->has_align_to_coast ? def->align_to_coast : false;
 	new_cfg.draw_over_resources = def->has_draw_over_resources ? def->draw_over_resources : false;
+	new_cfg.allow_irrigation_from = def->has_allow_irrigation_from ? def->allow_irrigation_from : false;
 	new_cfg.custom_width = def->has_custom_width ? def->custom_width : 0;
 	new_cfg.custom_height = def->has_custom_height ? def->custom_height : 0;
 	new_cfg.x_offset = def->has_x_offset ? def->x_offset : 0;
@@ -6999,6 +7002,15 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		if (read_int (&val_slice, &ival)) {
 			def->draw_over_resources = (ival != 0);
 			def->has_draw_over_resources = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "allow_irrigation_from")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->allow_irrigation_from = (ival != 0);
+			def->has_allow_irrigation_from = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
@@ -19715,10 +19727,18 @@ patch_Sprite_draw_on_map (Sprite * this, int edx, Map_Renderer * map_renderer, i
 void __fastcall
 patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, int param_1, int pixel_x, int pixel_y, Map_Renderer * map_renderer, int param_5, int tile_x, int tile_y, int param_8)
 {
-	Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (this, __, param_1, pixel_x, pixel_y, map_renderer, param_5, tile_x, tile_y, param_8);
-
 	Map * map = &p_bic_data->Map;
 	Tile * tile = tile_at (tile_x, tile_y);
+	is->current_render_tile = tile;
+	is->current_render_tile_x = tile_x;
+	is->current_render_tile_y = tile_y;
+
+	Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (this, __, param_1, pixel_x, pixel_y, map_renderer, param_5, tile_x, tile_y, param_8);
+
+	is->current_render_tile = NULL;
+	is->current_render_tile_x = -1;
+	is->current_render_tile_y = -1;
+
 	if ((is->city_loc_display_perspective >= 0) &&
 	    (! map->vtable->m10_Get_Map_Zoom (map)) && // Turn off display when zoomed out. Need another set of highlight images for that.
 	    ((1 << is->city_loc_display_perspective) & *p_player_bits) &&
@@ -19774,12 +19794,9 @@ patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (Map_Renderer * this, int 
 	if ((tile == NULL) || (tile == p_null_tile))
 		return;
 
-	is->current_tile_x = -1;
-	is->current_tile_y = -1;
 	if ((tile->vtable->m50_Get_Square_BaseType (tile) == SQ_Forest) &&
 		(*tile->vtable->m25_Check_Roads)(tile, __, 0)) {
-		is->current_tile_x = tile_x;
-		is->current_tile_y = tile_y;
+		is->draw_forests_over_roads_on_tile = true;
 		return;
 	}
 
@@ -19791,13 +19808,10 @@ patch_Map_Renderer_m52_Draw_Roads (Map_Renderer * this, int edx, int image_index
 {
 	Map_Renderer_m52_Draw_Roads (this, __, image_index, map_renderer, pixel_x, pixel_y);
 
-	if (! is->current_config.draw_forests_over_roads_and_railroads || 
-		is->current_tile_x == -1 || is->current_tile_y == -1)
+	if (! is->current_config.draw_forests_over_roads_and_railroads || ! is->draw_forests_over_roads_on_tile)
 		return;
 
-	// Current tile x & y will only have coordinates if we have a forest (per check in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp),
-	// so go ahead and render the forest on top of the road here.
-	Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (this, __, is->current_tile_x, is->current_tile_y, map_renderer, pixel_x, pixel_y);
+	Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (this, __, is->current_render_tile_x, is->current_render_tile_y, map_renderer, pixel_x, pixel_y);
 }
 
 void __fastcall
@@ -19805,12 +19819,10 @@ patch_Map_Renderer_m52_Draw_Railroads (Map_Renderer * this, int edx, int image_i
 {
 	Map_Renderer_m52_Draw_Railroads (this, __, image_index, map_renderer, pixel_x, pixel_y);
 
-	if (! is->current_config.draw_forests_over_roads_and_railroads 
-		|| is->current_tile_x == -1 || is->current_tile_y == -1)
+	if (! is->current_config.draw_forests_over_roads_and_railroads || ! is->draw_forests_over_roads_on_tile)
 		return;
 
-	// patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp sets x & y only if we have a forest, so render on top of railroad
-	Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (this, __, is->current_tile_x, is->current_tile_y, map_renderer, pixel_x, pixel_y);
+	Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (this, __, is->current_render_tile_x, is->current_render_tile_y, map_renderer, pixel_x, pixel_y);
 }
 
 void __fastcall
@@ -29326,6 +29338,28 @@ patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int vi
 	draw_district_generated_resource_on_tile (this, tile, inst, tile_x, tile_y, map_renderer, pixel_x, pixel_y, visible_to_civ_id);
 }
 
+void __fastcall
+patch_Map_Renderer_m11_Draw_Tile_Irrigation (Map_Renderer *this, int edx, int visible_to_civ, int tile_x, int tile_y, int param_4, int param_5, int param_6)
+{
+	if (! is->current_config.enable_districts) {
+		Map_Renderer_m11_Draw_Tile_Irrigation (this, __, visible_to_civ, tile_x, tile_y, param_4, param_5, param_6);
+		return;
+	}
+
+	struct district_instance * inst = get_district_instance (is->current_render_tile);
+	if (inst == NULL || inst->district_type < 0 || inst->district_type >= is->district_count) {		
+		Map_Renderer_m11_Draw_Tile_Irrigation (this, __, visible_to_civ, tile_x, tile_y, param_4, param_5, param_6);
+		return;
+	}
+
+	// If it has a completed district that serves as pseudo-irrigation source, suppress drawing irrigation
+	if (is->district_configs[inst->district_type].allow_irrigation_from 
+		&& district_is_complete (is->current_render_tile, inst->district_type))
+		return;
+
+	Map_Renderer_m11_Draw_Tile_Irrigation (this, __, visible_to_civ, tile_x, tile_y, param_4, param_5, param_6);
+}
+
 bool __fastcall
 patch_Tile_has_city_or_district (Tile * this)
 {
@@ -31294,6 +31328,27 @@ patch_Leader_get_attitude_toward (Leader * this, int edx, int civ_id, int param_
 		}
 	}
 	return score;
+}
+
+bool __fastcall
+patch_Tile_m17_Check_Irrigation (Tile * this, int edx, int visible_to_civ_id)
+{
+	bool base = Tile_m17_Check_Irrigation (this, __, visible_to_civ_id);
+	if (base)
+		return true;
+
+	if (! is->current_config.enable_districts)
+		return base;
+
+	struct district_instance * inst = get_district_instance (this);
+	if (inst == NULL || inst->district_type < 0 || inst->district_type >= is->district_count)
+		return base;
+
+	if (is->district_configs[inst->district_type].allow_irrigation_from && 
+		district_is_complete (this, inst->district_type))
+		return true;
+
+	return base;
 }
 
 // TCC requires a main function be defined even though it's never used.

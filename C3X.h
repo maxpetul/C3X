@@ -663,6 +663,7 @@ struct district_config {
 	bool is_dynamic;
 	bool align_to_coast;
 	bool draw_over_resources;
+	bool allow_irrigation_from;
 	int custom_width;
 	int custom_height;
 	int x_offset;
@@ -899,6 +900,7 @@ struct parsed_district_definition {
 	enum district_ai_build_strategy ai_build_strategy;
 	bool align_to_coast;
 	bool draw_over_resources;
+	bool allow_irrigation_from;
 	int custom_width;
 	int custom_height;
 	int x_offset;
@@ -975,6 +977,7 @@ struct parsed_district_definition {
 	int buildable_by_civ_cultures_id_count;
 	bool has_buildable_by_civ_cultures;
 	bool has_buildable_on_districts;
+	bool has_allow_irrigation_from;
 };
 
 struct parsed_wonder_definition {
@@ -1934,8 +1937,12 @@ struct district_button_image_set {
 	// Stores the parameters to Unit::can_load while it's running, NULL otherwise.
 	Unit * can_load_transport, * can_load_passenger;
 
-	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp. Tracks the current tile coordinates being rendered, then for drawing forests over roads/railroad
-	int current_tile_x, current_tile_y;
+	// Current tile being rendered in Map_Renderer_m19_Draw_Tile_by_XY_and_Flags. For use within various Map_Renderer::impl_m*_Draw_* functions. Nulled out after the render function is complete
+	Tile * current_render_tile;
+	int current_render_tile_x, current_render_tile_y;
+
+	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp and so on for flagging whether to draw forests over roads on the tile being rendered
+	bool draw_forests_over_roads_on_tile;
 
 	// Set to true once the auto-build process for the Great Wall is complete to avoid running it again
 	enum great_wall_auto_build_state great_wall_auto_build;
