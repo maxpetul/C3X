@@ -17,13 +17,13 @@
     - Canal (2 opposite sides have coast "isthmus")
     - Bridge (2 opposite sides have land "strait" or bridges)
   - Light annotations
-  - Buttons
   - Add commented instructions on fields in config files
   - Double check PCX third column alignment
 
 
 ## Maritime Districts
   - ~~Choose terrain type~~
+  - ~~Buttons~~
   - ~~Named tiles~~
   - ~~Prevent AI building districts on resources~~
   - ~~Add allow_irrigation_from flag~~
