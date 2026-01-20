@@ -1114,7 +1114,7 @@ struct district_instance {
 struct named_tile_entry {
 	int tile_x;
 	int tile_y;
-	char name[24];
+	char name[100];
 };
 
 struct highlighted_city_radius_tile_info {
@@ -1931,7 +1931,7 @@ struct district_button_image_set {
 
 	// Set to true once the auto-build process for the Great Wall is complete to avoid running it again
 	enum great_wall_auto_build_state great_wall_auto_build;
-	Tile * great_wall_focus_tile;
+	Tile * focused_tile;
 
 	// ==========
 	// }

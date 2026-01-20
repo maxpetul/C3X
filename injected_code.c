@@ -19610,7 +19610,7 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 		// If focusing on a tile after Great Wall completed, highlight the tile while getting user confirmation
 		if (is->current_config.auto_build_great_wall_around_territory &&
 			is->great_wall_auto_build == GWABS_RUNNING &&
-			is->great_wall_focus_tile == tile) { 
+			is->focused_tile == tile) { 
 				Sprite_draw_on_map (&is->tile_highlights[10], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 		}
 	}
@@ -20220,7 +20220,7 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 				existing_district_id = inst->district_type;
 
 			if (is_human) {
-				is->great_wall_focus_tile = tile;
+				is->focused_tile = tile;
 				Main_Screen_Form_bring_tile_into_view (p_main_screen_form, __, x, y, 0, true, false);
 
 				char * popup_key = "C3X_CONFIRM_BUILD_GREAT_WALL";
@@ -20283,7 +20283,7 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 	}
 
 	is->great_wall_auto_build = GWABS_DONE;
-	is->great_wall_focus_tile = NULL;
+	is->focused_tile = NULL;
 }
 
 //We need to forwards-declare this
@@ -20521,8 +20521,6 @@ tile_can_be_named (Tile * tile, int tile_x, int tile_y)
 {
 	if ((tile == NULL) || (tile == p_null_tile))
 		return false;
-	if (city_at (tile_x, tile_y) != NULL)
-		return false;
 	struct district_instance * inst = get_district_instance (tile);
 	if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID))
 		return false;
@@ -20584,7 +20582,7 @@ prompt_for_named_tile (char const * seed_name, char * out_name, int out_len)
 	if (popup == NULL)
 		return false;
 
-	char seed_buf[24];
+	char seed_buf[101];
 	if (seed_name == NULL)
 		seed_name = "";
 	strncpy (seed_buf, seed_name, sizeof seed_buf);
@@ -20593,7 +20591,7 @@ prompt_for_named_tile (char const * seed_name, char * out_name, int out_len)
 		strncpy (seed_buf, "Tile", sizeof seed_buf);
 
 	set_popup_str_param (0, seed_buf, -1, -1);
-	popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "RENAME_CITY", 0x17, (int)seed_buf, 0x44, 0);
+	popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "RENAME_CITY", 0x64, (int)seed_buf, 0x44, 0);
 	int sel = patch_show_popup (popup, __, 0, 0);
 	if (sel != 0)
 		return false;
@@ -20617,8 +20615,12 @@ handle_named_tile_menu_selection (void)
 
 	struct named_tile_entry * entry = get_named_tile_entry (tile);
 	char const * current_name = (entry != NULL) ? entry->name : "";
-	char new_name[24];
-	if (! prompt_for_named_tile (current_name, new_name, sizeof new_name))
+	char new_name[100];
+	is->focused_tile = tile;
+	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+	bool got_name = prompt_for_named_tile (current_name, new_name, sizeof new_name);
+	is->focused_tile = NULL;
+	if (! got_name)
 		return;
 
 	set_named_tile_entry (tile, tile_x, tile_y, new_name);
@@ -20748,9 +20750,6 @@ patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Imag
 					continue;
 			}
 
-			if (city_at (tile_x, tile_y) != NULL)
-				continue;
-
 			struct district_instance * inst = get_district_instance (tile);
 			if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID))
 				continue;
@@ -20758,7 +20757,7 @@ patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Imag
 			int screen_x, screen_y;
 			Main_Screen_Form_tile_to_screen_coords (this, __, tile_x, tile_y, &screen_x, &screen_y);
 
-			draw_map_tile_text (this, canvas, entry->name, screen_x, screen_y, 64, 32);
+			draw_map_tile_text (this, canvas, entry->name, screen_x, screen_y, 64, 4);
 		}
 	}
 }
@@ -25762,7 +25761,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							cursor = (byte *)ints;
 							remaining_bytes -= (int)sizeof(int) * 2;
 
-							char name_buf[24];
+							char name_buf[101];
 							memcpy (name_buf, cursor, sizeof name_buf);
 							name_buf[(sizeof name_buf) - 1] = '\0';
 							cursor += sizeof name_buf;
