@@ -281,8 +281,8 @@ happiness_bonus       = 0
 #District
 name                  = Central Rail Hub
 tooltip               = Build Central Rail Hub
-btn_tile_sheet_row    = 1
-btn_tile_sheet_column = 7
+btn_tile_sheet_row    = 0
+btn_tile_sheet_column = 5
 vary_img_by_era       = 1
 vary_img_by_culture   = 1
 advance_prereq        = Steam Power
