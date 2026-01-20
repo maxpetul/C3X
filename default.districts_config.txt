@@ -337,6 +337,8 @@ happiness_bonus       = 0
 #District
 name                  = Canal
 tooltip               = Build Canal
+btn_tile_sheet_row    = 0
+btn_tile_sheet_column = 8
 advance_prereq        = Industrialization
 buildable_on          = desert,plains,grassland,tundra,floodplain
 defense_bonus_percent = 0
