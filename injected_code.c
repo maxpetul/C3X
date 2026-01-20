@@ -19104,6 +19104,8 @@ patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3
 				snprintf (menu_text, sizeof menu_text, "%s %s", is->c3x_labels[CL_RENAME_TILE], entry->name);
 			else
 				strcpy (menu_text,is->c3x_labels[CL_NAME_TILE]);
+			if (this->Item_Count > 0)
+				Context_Menu_add_separator (this, __, 0);
 			Context_Menu_add_item (this, __, NAMED_TILE_MENU_ID, menu_text, false, (Sprite *)0x0);
 		}
 	}
@@ -19608,10 +19610,8 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 		}
 
 		// If focusing on a tile after Great Wall completed, highlight the tile while getting user confirmation
-		if (is->current_config.auto_build_great_wall_around_territory &&
-			is->great_wall_auto_build == GWABS_RUNNING &&
-			is->focused_tile == tile) { 
-				Sprite_draw_on_map (&is->tile_highlights[10], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+		if (is->focused_tile != NULL && is->focused_tile == tile) { 
+			Sprite_draw_on_map (&is->tile_highlights[10], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 		}
 	}
 }
@@ -20535,7 +20535,7 @@ get_named_tile_entry (Tile * tile)
 	int stored_ptr = 0;
 	if (! itable_look_up (&is->named_tile_map, (int)tile, &stored_ptr))
 		return NULL;
-	return (struct named_tile_entry *)(long)stored_ptr;
+	return (struct named_tile_entry *)stored_ptr;
 }
 
 void
@@ -20593,6 +20593,7 @@ prompt_for_named_tile (char const * seed_name, char * out_name, int out_len)
 	set_popup_str_param (0, seed_buf, -1, -1);
 	popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "RENAME_CITY", 0x64, (int)seed_buf, 0x44, 0);
 	int sel = patch_show_popup (popup, __, 0, 0);
+	is->focused_tile = NULL;
 	if (sel != 0)
 		return false;
 
@@ -20613,6 +20614,8 @@ handle_named_tile_menu_selection (void)
 	if (! tile_can_be_named (tile, tile_x, tile_y))
 		return;
 
+	init_tile_highlights ();
+
 	struct named_tile_entry * entry = get_named_tile_entry (tile);
 	char const * current_name = (entry != NULL) ? entry->name : "";
 	char new_name[100];
@@ -20620,6 +20623,7 @@ handle_named_tile_menu_selection (void)
 	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 	bool got_name = prompt_for_named_tile (current_name, new_name, sizeof new_name);
 	is->focused_tile = NULL;
+	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 	if (! got_name)
 		return;
 
@@ -20757,7 +20761,7 @@ patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Imag
 			int screen_x, screen_y;
 			Main_Screen_Form_tile_to_screen_coords (this, __, tile_x, tile_y, &screen_x, &screen_y);
 
-			draw_map_tile_text (this, canvas, entry->name, screen_x, screen_y, 64, 4);
+			draw_map_tile_text (this, canvas, entry->name, screen_x, screen_y, 64, 3);
 		}
 	}
 }

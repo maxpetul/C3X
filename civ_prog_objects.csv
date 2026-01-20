@@ -143,6 +143,7 @@ inlead,	   0x61A480,	0x63B9F0,	0x61A3B0,	"Context_Menu_open",				"int (__fastcal
 define,	   0x4E993C,	0x4F273A,	0x4E99FC,	"ADDR_OPEN_UNIT_MENU_RETURN",			"int"
 define,	   0x61B0C0,	0x63C940,	0x61AFF0,	"Context_Menu_widen_for_text",			"void (__fastcall *) (Context_Menu * this, int edx, char * text)"
 inlead,	   0x61A110,	0x63B420,	0x61A040,	"Context_Menu_add_item_and_set_color",		"int (__fastcall *)  (Context_Menu * this, int edx, int item_id, char * text, int red)"
+define,    0x61A160,    0x0,        0x0,        "Context_Menu_add_separator",             "int (__fastcall *) (Context_Menu * this, int edx, int item_id)"
 inlead,	   0x45C750,	0x45EA70,	0x45C7D0,	"Unit_ai_move_terraformer",			"void (__fastcall *) (Unit * this)"
 inlead,	   0x4B1DC0,	0x4B8D50,	0x4B1E50,	"City_requires_improvement_to_grow",		"int (__fastcall *) (City * this)"
 inlead,	   0x4DD530,	0x4E5F00,	0x4DD5F0,	"maybe_show_improvement_needed_for_growth_dialog",   "void (__fastcall *) (void * this, int edx, City * city, int * param_2)"
