@@ -31351,5 +31351,59 @@ patch_Tile_m17_Check_Irrigation (Tile * this, int edx, int visible_to_civ_id)
 	return base;
 }
 
+int __fastcall
+patch_Unit_ai_eval_bombard_target (Unit * this, int edx, int tile_x, int tile_y, int param_3)
+{
+	int score = Unit_ai_eval_bombard_target (this, __, tile_x, tile_y, param_3);
+
+	if (! (is->current_config.enable_districts &&
+	       is->current_config.enable_great_wall_districts))
+		return score;
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return score;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if ((inst == NULL) || (inst->district_type != GREAT_WALL_DISTRICT_ID) || (! district_is_complete (tile, GREAT_WALL_DISTRICT_ID)))
+		return score;
+
+	int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	if ((owner_id <= 0) || (owner_id == this->Body.CivID))
+		return score;
+	if (! this->vtable->is_enemy_of_civ (this, __, owner_id, false))
+		return score;
+
+	bool has_unit_on_tile = false;
+	bool has_enemy_on_tile = false;
+	Leader * me = &leaders[this->Body.CivID];
+	FOR_UNITS_ON (uti, tile) {
+		UnitType const * unit_type = &p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID];
+		if (patch_Unit_is_visible_to_civ (uti.unit, __, me->ID, 0)) {
+			has_unit_on_tile = true;
+			if (me->At_War[uti.unit->Body.CivID]) {
+				if ((unit_type->Defence > 0) || (unit_type->Attack > 0)) {
+					has_enemy_on_tile = true;
+					break;
+				}
+			} else
+				break;
+		}
+	}
+
+	if (has_unit_on_tile && ! has_enemy_on_tile)
+		return score;
+
+	// Boost score to prioritize Great Wall targets
+	if (score < 0x6000)
+		score = 0x6000;
+
+	// Additional boost if there is no unit on it, more likely to destroy it
+	if (! has_enemy_on_tile)
+		score += 0x200;
+
+	return score;
+}
+
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
