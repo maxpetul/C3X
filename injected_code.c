@@ -9734,7 +9734,7 @@ tile_has_district_at (int tile_x, int tile_y, int district_id)
 		return false;
 
 	struct district_instance * inst = get_district_instance (tile);
-	return (inst != NULL) && (inst->district_type == district_id);
+	return (inst != NULL) && (inst->district_type == district_id) && (district_is_complete (tile, district_id));
 }
 
 int
