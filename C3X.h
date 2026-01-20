@@ -132,6 +132,7 @@ enum special_helicopter_rules {
 	SHR_ALLOW_ON_CARRIERS      = 1,
 	SHR_PASSENGER_AIRDROP      = 2,
 	SHR_NO_DEFENSE_FROM_INSIDE = 4,
+	SHR_NO_ESCAPE              = 8,
 };
 
 enum work_area_limit {

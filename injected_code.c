@@ -2123,6 +2123,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						{"allow-on-carriers"     , SHR_ALLOW_ON_CARRIERS},
 						{"passenger-airdrop"     , SHR_PASSENGER_AIRDROP},
 						{"no-defense-from-inside", SHR_NO_DEFENSE_FROM_INSIDE},
+						{"no-escape"             , SHR_NO_ESCAPE},
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_helicopter_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -16923,18 +16924,22 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	// game won't. In general, the passengers are lost if the transport was despawned involuntarily, i.e. because of another player's attack or
 	// something like that, or if the passengers couldn't survive outside the transport, specifically because it's a helicopter at sea.
 	bool must_despawn_passengers = false; {
-		if (involuntary && (is->current_config.land_transport_rules & LTR_NO_ESCAPE) && is_land_transport (this))
-			must_despawn_passengers = true;
+		if (is_land_transport (this))
+			must_despawn_passengers = involuntary && (is->current_config.land_transport_rules & LTR_NO_ESCAPE);
 
-		// If no-defense-from-inside is off, passengers in helicopters will fight to defend their tile, so they wouldn't be left inside the
-		// helicopter when their tile is taken. If it's on, an occupied heli can be destroyed or captured by a land unit, and we must make
-		// sure to despawn the passengers in that case because they can't remain on the tile.
-		if (is->current_config.special_helicopter_rules & (SHR_ALLOW_ON_CARRIERS | SHR_NO_DEFENSE_FROM_INSIDE)) {
-			bool is_carrier    = type->Unit_Class == UTC_Sea && type->Transport_Capacity > 0 && Unit_has_ability (this, __, UTA_Transports_Only_Aircraft),
-			     is_helicopter = type->Unit_Class == UTC_Air && type->Transport_Capacity > 0,
-			     passengers_could_survive = Tile_has_city (tile) || ! tile->vtable->m35_Check_Is_Water (tile);
-			if ((is_carrier || is_helicopter) && (involuntary || ! passengers_could_survive))
-				must_despawn_passengers = true;
+		else if (type->Unit_Class == UTC_Air && type->Transport_Capacity > 0) { // if "this" is a helicopter
+			Unit * container = get_unit_ptr (this->Body.Container_Unit);
+			bool on_carrier = container != NULL && p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Sea &&
+				Unit_has_ability (container, __, UTA_Transports_Only_Aircraft);
+			bool passengers_could_survive = Tile_has_city (tile) || ! tile->vtable->m35_Check_Is_Water (tile);
+
+			// If no-defense-from-inside is off, passengers in helicopters will fight to defend their tile, so they wouldn't be left
+			// inside the helicopter when their tile is taken. If it's on, an occupied heli can be destroyed or captured by a land unit,
+			// and we must make sure to despawn the passengers in that case because they can't remain on the tile. Hence,
+			// no-defense-from-inside implies no-escape in almost all circumstances (nukes are the exception).
+			enum special_helicopter_rules special_rules = is->current_config.special_helicopter_rules;
+			if (((special_rules & SHR_ALLOW_ON_CARRIERS) && on_carrier) || (special_rules & (SHR_NO_DEFENSE_FROM_INSIDE | SHR_NO_ESCAPE)))
+				must_despawn_passengers = involuntary || ! passengers_could_survive;
 		}
 	}
 
@@ -22093,7 +22098,11 @@ patch_Unit_despawn_after_killed_by_nuke (Unit * this, int edx, int civ_id_respon
 		this->Body.Damage = Unit_get_max_hp (this) - 1;
 	else {
 		bool prev_always_despawn_passengers = is->always_despawn_passengers;
-		is->always_despawn_passengers = is_land_transport (this) && (is->current_config.land_transport_rules & LTR_NO_ESCAPE);
+		if ((is->current_config.land_transport_rules & LTR_NO_ESCAPE) && is_land_transport (this))
+			is->always_despawn_passengers = true;
+		else if ((is->current_config.special_helicopter_rules & SHR_NO_ESCAPE) && p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air &&
+		    p_bic_data->UnitTypes[this->Body.UnitTypeID].Transport_Capacity > 0)
+			is->always_despawn_passengers = true;
 		patch_Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 		is->always_despawn_passengers = prev_always_despawn_passengers;
 	}
