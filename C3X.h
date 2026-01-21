@@ -389,6 +389,7 @@ struct c3x_config {
 	bool allow_enter_canal_from_any_direction;
 
 	bool ai_defends_districts;
+	int ai_city_district_max_build_wait_turns;
 
 	bool disable_great_wall_city_defense_bonus;
 	bool great_wall_districts_impassible_by_others;

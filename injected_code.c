@@ -4062,9 +4062,9 @@ process_pending_district_request (Leader * leader, struct pending_district_reque
 	if (req->assigned_worker_id >= 0) {
 		Unit * assigned = get_unit_ptr (req->assigned_worker_id);
 		if (assigned != NULL) {
-			// Check if more than 5 turns have elapsed since assignment and worker is not at target tile
+			// Check if more than allowed turns have elapsed since assignment and worker is not at target tile
 			bool worker_at_target = (assigned->Body.X == req->target_x) && (assigned->Body.Y == req->target_y);
-			if ((*p_current_turn_no - req->worker_assigned_turn) > 5 && !worker_at_target) {
+			if ((*p_current_turn_no - req->worker_assigned_turn) > is->current_config.ai_city_district_max_build_wait_turns && !worker_at_target) {
 				clear_tracked_worker_assignment_by_id (civ_id, req->assigned_worker_id);
 				req->assigned_worker_id = -1;
 				req->worker_assigned_turn = *p_current_turn_no;
@@ -14345,6 +14345,7 @@ patch_init_floating_point ()
 		{"neighborhood_needed_message_frequency"             ,     4, offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
 		{"max_contiguous_bridge_districts"                   ,     3, offsetof (struct c3x_config, max_contiguous_bridge_districts)},
 		{"max_contiguous_canal_districts"                    ,     5, offsetof (struct c3x_config, max_contiguous_canal_districts)},
+		{"ai_city_district_max_build_wait_turns"             ,    20, offsetof (struct c3x_config, ai_city_district_max_build_wait_turns)},
 		{"per_extraterritorial_colony_relation_penalty"      ,     0, offsetof (struct c3x_config, per_extraterritorial_colony_relation_penalty)},
 	};
 
