@@ -11715,16 +11715,55 @@ city_requires_district_for_improvement (City * city, int improv_id, int * out_di
 	int district_id;
 	if (! itable_look_up (&is->district_building_prereqs, improv_id, &district_id))
 		return false;
+	Improvement * improv = &p_bic_data->Improvements[improv_id];
+
+	// Special logic for handling rivers
+	bool requires_river = (improv->ImprovementFlags & ITF_Must_Be_Near_River) != 0;
 	if (is->current_config.enable_wonder_districts) {
 		if (district_id == WONDER_DISTRICT_ID) {
-			if (city_has_wonder_district_with_no_completed_wonder (city, improv_id))
+			if (requires_river) {
+				bool has_river_wonder_district = false;
+				FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+					if (wai.district_inst->district_type != WONDER_DISTRICT_ID)
+						continue;
+					if (wai.tile->vtable->m37_Get_River_Code (wai.tile) == 0)
+						continue;
+					if (! wonder_is_buildable_on_tile (wai.tile, improv_id))
+						continue;
+					struct wonder_district_info * info = get_wonder_district_info (wai.tile);
+					if (info == NULL) {
+						has_river_wonder_district = true;
+						break;
+					}
+					if (info->state == WDS_COMPLETED)
+						continue;
+					if (info->state == WDS_UNDER_CONSTRUCTION && info->city_id != city->Body.ID)
+						continue;
+					has_river_wonder_district = true;
+					break;
+				}
+				if (has_river_wonder_district)
+					return false;
+			} else if (city_has_wonder_district_with_no_completed_wonder (city, improv_id))
 				return false;
 			if (out_district_id != NULL)
 				*out_district_id = district_id;
 			return true;
 		}
 	}
-	if (city_has_required_district (city, district_id))
+	if (requires_river) {
+		bool has_river_district = false;
+		FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+			if (wai.district_inst->district_type != district_id)
+				continue;
+			if (wai.tile->vtable->m37_Get_River_Code (wai.tile) != 0) {
+				has_river_district = true;
+				break;
+			}
+		}
+		if (has_river_district)
+			return false;
+	} else if (city_has_required_district (city, district_id))
 		return false;
 	if (out_district_id != NULL)
 		*out_district_id = district_id;
@@ -18473,8 +18512,11 @@ city_meets_district_prereqs_to_build_improvement (City * city, int i_improv, boo
 	// Different logic for human vs AI players
 	bool is_human = (*p_human_player_bits & (1 << city->Body.CivID)) != 0;
 
+	Improvement * improv = &p_bic_data->Improvements[i_improv];
+	bool requires_river = (improv->ImprovementFlags & ITF_Must_Be_Near_River) != 0;
+
 	// Check if the improvement requires a district and output the required district id when it does
-	int required_district_id;
+	int required_district_id = -1;
 	bool needs_district = city_requires_district_for_improvement (city, i_improv, &required_district_id);
 
 	// District is either not needed or already built
@@ -18484,28 +18526,33 @@ city_meets_district_prereqs_to_build_improvement (City * city, int i_improv, boo
 	if (! leader_can_build_district (&leaders[city->Body.CivID], required_district_id))
 		return false;
 
-	Improvement * improv = &p_bic_data->Improvements[i_improv];
 	bool is_wonder = is->current_config.enable_wonder_districts && improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder);
 
 	// Check that we have the necessary terrain
 	bool has_terrain_for_district = false;
 	bool has_terrain_for_wonder = false;
+	bool has_river_terrain_for_district = false;
 	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
 		Tile * tile = wai.tile;
 		if (! tile_suitable_for_district (tile, required_district_id, city, NULL)) 
 			continue;
 		has_terrain_for_district = true;
+		if (requires_river && tile->vtable->m37_Get_River_Code (tile) != 0)
+			has_river_terrain_for_district = true;
 
 		if (! is_wonder)
-			break;
+			continue;
 
-		if (is_wonder && wonder_is_buildable_on_tile (tile, i_improv)) {
-			has_terrain_for_wonder = true;
-			break;
+		if (wonder_is_buildable_on_tile (tile, i_improv)) {
+			if (! requires_river || tile->vtable->m37_Get_River_Code (tile) != 0) {
+				has_terrain_for_wonder = true;
+				break;
+			}
 		} 
 	}
 
-	if (! has_terrain_for_district || (is_wonder && ! has_terrain_for_wonder)) {
+	if (! has_terrain_for_district || (requires_river && ! has_river_terrain_for_district) ||
+	    (is_wonder && ! has_terrain_for_wonder)) {
 		return false;
 	}
 
@@ -18525,7 +18572,6 @@ city_meets_district_prereqs_to_build_improvement (City * city, int i_improv, boo
 	// after prioritizing the district to be built
 	return true;
 }
-
 
 bool __fastcall
 patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply_strict_rules)
@@ -20319,7 +20365,8 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 	PopupForm * popup = get_popup_form ();
 	set_popup_str_param (0, (char *)is->district_configs[GREAT_WALL_DISTRICT_ID].display_name, -1, -1);
 	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_BEGIN_GREAT_WALL_AUTO_BUILD", -1, 0, 0, 0);
-	patch_show_popup (popup, __, 0, 0);
+	if (civ_id == p_main_screen_form->Player_CivID)
+		patch_show_popup (popup, __, 0, 0);
 
 	is->great_wall_auto_build = GWABS_RUNNING;
 
@@ -20377,7 +20424,7 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 			if (has_district)
 				existing_district_id = inst->district_type;
 
-			if (is_human) {
+			if (is_human && civ_id == p_main_screen_form->Player_CivID) {
 				is->focused_tile = tile;
 				Main_Screen_Form_bring_tile_into_view (p_main_screen_form, __, x, y, 0, true, false);
 
@@ -29277,7 +29324,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 			return;
 		}
 
-		district_sprite   = &is->district_img_sets[district_id].imgs[variant][era][buildings];
+		district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
 		draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
 		return;
 	}
@@ -29288,7 +29335,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	//*p_debug_mode_bits |= 0xC;
+	*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -30682,18 +30729,8 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 
 			struct district_worker_record * rec = get_tracked_worker_record (this);
 			struct pending_district_request * req = (rec != NULL) ? rec->pending_req : NULL;
-			if (req != NULL) {
-				City * req_city = (req->city != NULL) ? req->city : get_city_ptr (req->city_id);
-				if ((req->district_id >= 0) &&
-				    (req->district_id < is->district_count) &&
-				    (req_city != NULL) &&
-				    city_radius_contains_tile (req_city, to_x, to_y) &&
-				    (req->target_x == to_x) && (req->target_y == to_y)) {
-					struct district_config const * cfg = &is->district_configs[req->district_id];
-					if ((cfg->buildable_square_types_mask & (1 << SQ_Coast)) != 0)
-						return PBV_OK;
-				}
-			}
+			if (req != NULL)
+				return PBV_OK;
 		}
 	}
 

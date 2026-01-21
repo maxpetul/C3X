@@ -1,7 +1,6 @@
   - [x] Allow workers over water only if in radius of city that can build water district/wonder
   - [x] Add ai_build_strategy option and AI worker handling
   - [x] AI navies target maritime districts
-  - Bump great wall bombard eval scores
   - Firm up logic for river district rendering
 
   - Hoover Dam (use alt dir, special positioning b/c on river)
@@ -24,6 +23,7 @@
   - ~~Choose terrain type~~
   - ~~Buttons~~
   - ~~Named tiles~~
+  - ~~Bump great wall bombard eval scores~~
   - ~~- Make sure AI workers remove great walls after they have metallury~~
   - ~~Prevent AI building districts on resources~~
   - ~~Add allow_irrigation_from flag~~
