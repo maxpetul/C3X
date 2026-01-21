@@ -10270,8 +10270,7 @@ get_water_continent_ids_connected_via_canal (Tile * tile, int * out_count)
 				continue;
 
 			struct district_instance * inst = get_district_instance (adj);
-			if ((inst == NULL) || (inst->district_type != CANAL_DISTRICT_ID) ||
-			    (! district_is_complete (adj, CANAL_DISTRICT_ID)))
+			if ((inst == NULL) || (inst->district_type != CANAL_DISTRICT_ID) || (! district_is_complete (adj, CANAL_DISTRICT_ID)))
 				continue;
 
 			bool seen_canal = false;
@@ -12583,12 +12582,11 @@ patch_Tile_get_visible_resource_when_recomputing (Tile * tile, int edx, int civ_
 
 	int base_resource = Tile_get_resource_visible_to (tile, __, civ_id);
 
-	if ((base_resource < 0) && is->current_config.enable_districts) {
+	if (is->current_config.enable_districts) {
 		struct district_instance * inst = get_district_instance (tile);
 		if (inst != NULL && inst->state == DS_COMPLETED) {
-			int district_id = inst->district_type;
-			struct district_config * cfg = &is->district_configs[district_id];
-			if ((cfg->generated_resource_id >= 0) && ((cfg->generated_resource_flags & MF_LOCAL) == 0)) {
+			struct district_config * cfg = &is->district_configs[inst->district_type];
+			if (cfg->generated_resource_id >= 0) {
 				int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
 				if ((owner_id == civ_id) && district_can_generate_resource (civ_id, cfg))
 					return cfg->generated_resource_id;
@@ -18414,6 +18412,8 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 		// Air units
 		if (type->Unit_Class == UTC_Air) {
 			if (is->current_config.enable_aerodrome_districts && is->current_config.air_units_use_aerodrome_districts_not_cities) {
+				if (find_pending_district_request (this, AERODROME_DISTRICT_ID) != NULL)
+					return false;
 				if (! city_can_build_district (this, AERODROME_DISTRICT_ID))
 					return false;
 				return city_has_required_district (this, AERODROME_DISTRICT_ID);
@@ -18421,6 +18421,8 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 		// Naval units
 		} else if (type->Unit_Class == UTC_Sea) {
 			if (is->current_config.enable_port_districts && is->current_config.naval_units_use_port_districts_not_cities) {
+				if (find_pending_district_request (this, PORT_DISTRICT_ID) != NULL)
+					return false;
 				if (! city_can_build_district (this, PORT_DISTRICT_ID))
 					return false;
 				return city_has_required_district (this, PORT_DISTRICT_ID);
@@ -26185,28 +26187,6 @@ patch_Unit_can_heal_at (Unit * this, int edx, int tile_x, int tile_y)
 	return Unit_can_heal_at (this, __, tile_x, tile_y);
 }
 
-void __fastcall
-patch_Unit_heal_at_start_of_turn (Unit * this)
-{
-	bool healed_in_port = false;
-
-	if (is->current_config.enable_districts &&
-	    is->current_config.enable_port_districts &&
-	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
-		Tile * tile = tile_at (this->Body.X, this->Body.Y);
-		if (tile_has_friendly_port_district (tile, this->Body.CivID))
-			healed_in_port = true;
-	}
-
-	Unit_heal_at_start_of_turn (this);
-
-	if (healed_in_port && (this->Body.Damage > 0)) {
-		int heal_amt = Unit_get_max_hp (this) - 1;
-		int new_damage = this->Body.Damage - heal_amt;
-		this->Body.Damage = (new_damage < 0) ? 0 : new_damage;
-	}
-}
-
 bool __fastcall
 patch_Unit_can_airdrop (Unit * this)
 {
@@ -28990,10 +28970,11 @@ get_canal_directions (Tile * tile, int tile_x, int tile_y, bool * out_water_dirs
 	}
 
 	// Manual overrides - overall algorithm works pretty well, but handle corner cases
-	if      (!has_canal_dir && water_dirs[DIR_NE] && water_dirs[DIR_SW]) { draw_dir1 = DIR_NE; draw_dir2 = DIR_SW; }
+	if      (!has_canal_dir && water_dirs[DIR_NE] && water_dirs[DIR_SW]) 							 { draw_dir1 = DIR_NE; draw_dir2 = DIR_SW; }
 	else if (draw_dir1 == DIR_NE && draw_dir2 == DIR_S && water_dirs[DIR_N] && water_dirs[DIR_NE])   { draw_dir1 = DIR_N; draw_dir2 = DIR_S; }
 	else if (draw_dir1 == DIR_NE && draw_dir2 == DIR_SE && water_dirs[DIR_SE] && water_dirs[DIR_SW]) { draw_dir2 = DIR_SW; }
 	else if (draw_dir1 == DIR_NE && draw_dir2 == DIR_SE && water_dirs[DIR_NE] && water_dirs[DIR_N])  { draw_dir1 = DIR_N; }
+	else if (draw_dir1 == DIR_NE && draw_dir2 == DIR_NW && water_dirs[DIR_S])  						 { draw_dir2 = DIR_S; }
 
 	snprintf (ss, sizeof(ss), "Drawing canal at (%d,%d) dirs:%d,%d\n", tile_x, tile_y, draw_dir1, draw_dir2);
 	(*p_OutputDebugStringA)(ss);
@@ -30925,7 +30906,7 @@ patch_Unit_ai_eval_pillage_target (Unit * this, int edx, int tile_x, int tile_y)
 
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((base > 0) && is_enemy_maritime_district_tile (this, tile)) {
-		// Double the base score and add a flat kicker so districts outrank generic coast targets
+		// Double the base score so districts outrank generic coast targets
 		base += base + 0x300;
 	}
 
@@ -31059,7 +31040,12 @@ try_path_to_friendly_port_district (Unit * unit)
 		}
 	}
 
-	if (best_x >= 0) {
+	if (unit->Body.X == best_x && unit->Body.Y == best_y) {
+		Unit_set_escortee (unit, __, -1);
+		Unit_set_state (unit, __, UnitState_Fortifying);
+		return true;
+	}
+	else if (best_x >= 0) {
 		patch_Trade_Net_set_unit_path (is->trade_net, __, unit->Body.X, unit->Body.Y, best_x, best_y,
 		                               unit, unit->Body.CivID, 0x81, NULL);
 		Unit_set_escortee (unit, __, -1);
@@ -31081,13 +31067,20 @@ patch_Unit_ai_move_naval_power_unit (Unit * this)
 		if (is_enemy_maritime_district_tile (this, here) &&
 		    patch_Unit_can_pillage (this, __, this->Body.X, this->Body.Y) &&
 		    (patch_Unit_ai_eval_pillage_target (this, __, this->Body.X, this->Body.Y) > 0)) {
-			Unit_attack_tile (this, __, this->Body.X, this->Body.Y, false);
+			patch_Unit_attack_tile (this, __, this->Body.X, this->Body.Y, false);
 			return;
 		}
 	}
 
+	// If damaged and CAN heal at current location (e.g. port district), fortify to heal
+	if (this->Body.Damage > 0 && patch_Unit_can_heal_at (this, __, this->Body.X, this->Body.Y)) {
+		Unit_set_escortee (this, __, -1);
+		Unit_set_state (this, __, UnitState_Fortifying);
+		return;
+	}
+
+	// If damaged and cannot heal here, try to path to a friendly port district
 	if ((this->Body.Damage > 0) &&
-	    ! patch_Unit_can_heal_at (this, __, this->Body.X, this->Body.Y) &&
 	    try_path_to_friendly_port_district (this))
 		return;
 
@@ -31100,8 +31093,16 @@ patch_Unit_ai_move_naval_power_unit (Unit * this)
 void __fastcall
 patch_Unit_ai_move_naval_transport (Unit * this)
 {
+	// If damaged and CAN heal at current location (e.g. port district), fortify to heal
 	if ((this->Body.Damage > 0) &&
-	    ! patch_Unit_can_heal_at (this, __, this->Body.X, this->Body.Y) &&
+	    patch_Unit_can_heal_at (this, __, this->Body.X, this->Body.Y)) {
+		Unit_set_escortee (this, __, -1);
+		Unit_set_state (this, __, UnitState_Fortifying);
+		return;
+	}
+
+	// If damaged and cannot heal here, try to path to a friendly port district
+	if ((this->Body.Damage > 0) &&
 	    try_path_to_friendly_port_district (this))
 		return;
 
@@ -31111,8 +31112,16 @@ patch_Unit_ai_move_naval_transport (Unit * this)
 void __fastcall
 patch_Unit_ai_move_naval_missile_transport (Unit * this)
 {
+	// If damaged and CAN heal at current location (e.g. port district), fortify to heal
 	if ((this->Body.Damage > 0) &&
-	    ! patch_Unit_can_heal_at (this, __, this->Body.X, this->Body.Y) &&
+	    patch_Unit_can_heal_at (this, __, this->Body.X, this->Body.Y)) {
+		Unit_set_escortee (this, __, -1);
+		Unit_set_state (this, __, UnitState_Fortifying);
+		return;
+	}
+
+	// If damaged and cannot heal here, try to path to a friendly port district
+	if ((this->Body.Damage > 0) &&
 	    try_path_to_friendly_port_district (this))
 		return;
 
@@ -31382,8 +31391,7 @@ patch_Tile_m17_Check_Irrigation (Tile * this, int edx, int visible_to_civ_id)
 	if (inst == NULL || inst->district_type < 0 || inst->district_type >= is->district_count)
 		return base;
 
-	if (is->district_configs[inst->district_type].allow_irrigation_from && 
-		district_is_complete (this, inst->district_type))
+	if (is->district_configs[inst->district_type].allow_irrigation_from && district_is_complete (this, inst->district_type))
 		return true;
 
 	return base;
@@ -31404,6 +31412,10 @@ patch_Unit_ai_eval_bombard_target (Unit * this, int edx, int tile_x, int tile_y,
 
 	struct district_instance * inst = get_district_instance (tile);
 	if ((inst == NULL) || (inst->district_type != GREAT_WALL_DISTRICT_ID) || (! district_is_complete (tile, GREAT_WALL_DISTRICT_ID)))
+		return score;
+
+	int obsolete_id = is->district_infos[GREAT_WALL_DISTRICT_ID].obsoleted_by_id;
+	if ((obsolete_id >= 0) && Leader_has_tech (&leaders[this->Body.CivID], __, obsolete_id))
 		return score;
 
 	int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
@@ -31442,6 +31454,7 @@ patch_Unit_ai_eval_bombard_target (Unit * this, int edx, int tile_x, int tile_y,
 
 	return score;
 }
+
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
