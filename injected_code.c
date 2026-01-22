@@ -29695,6 +29695,160 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 }
 
 bool
+canal_has_different_adjacent_seas (int tile_x, int tile_y, int civ_id)
+{
+	int water_ids[2] = { -1, -1 };
+	int water_count = 0;
+	FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+		if (tai.n == 0)
+			continue;
+		if (water_count >= 2)
+			break;
+		Tile * adj = tai.tile;
+		if ((adj == NULL) || (adj == p_null_tile))
+			continue;
+		if (! adj->vtable->m35_Check_Is_Water (adj))
+			continue;
+		if (adj->vtable->m38_Get_Territory_OwnerID (adj) != civ_id)
+			continue;
+		int sea_id = adj->vtable->m46_Get_ContinentID (adj);
+		if (water_count == 0 || sea_id != water_ids[0]) {
+			water_ids[water_count] = sea_id;
+			water_count += 1;
+		}
+	}
+	return water_count >= 2;
+}
+
+// Check if two water tiles can reach each other via water within a radius, excluding a blocked tile
+bool
+water_tiles_connected_within_radius (int start_x, int start_y, int target_x, int target_y, int block_x, int block_y, int radius)
+{
+	// Simple BFS using a fixed-size visited array for tiles within radius
+	// workable_tile_counts[6] = 137 tiles for radius 6
+	int max_tiles = 137;
+	int visited_x[137];
+	int visited_y[137];
+	int visited_count = 0;
+	int queue_x[137];
+	int queue_y[137];
+	int queue_head = 0;
+	int queue_tail = 0;
+
+	queue_x[queue_tail] = start_x;
+	queue_y[queue_tail] = start_y;
+	queue_tail++;
+	visited_x[visited_count] = start_x;
+	visited_y[visited_count] = start_y;
+	visited_count++;
+
+	while (queue_head < queue_tail) {
+		int cx = queue_x[queue_head];
+		int cy = queue_y[queue_head];
+		queue_head++;
+
+		// Check 8 adjacent tiles
+		FOR_TILES_AROUND (tai, 9, cx, cy) {
+			if (tai.n == 0)
+				continue;
+			int nx = tai.tile_x;
+			int ny = tai.tile_y;
+
+			// Found target
+			if (nx == target_x && ny == target_y)
+				return true;
+
+			// Skip blocked tile (the isthmus)
+			if (nx == block_x && ny == block_y)
+				continue;
+
+			// Check if within radius of original start
+			int dx = nx - start_x;
+			int dy = ny - start_y;
+			if (dx < 0) dx = -dx;
+			if (dy < 0) dy = -dy;
+			// Use Chebyshev distance approximation for hex grid
+			int dist = (dx + dy + ((dx > dy) ? dx : dy)) / 2;
+			if (dist > radius)
+				continue;
+
+			Tile * adj = tai.tile;
+			if ((adj == NULL) || (adj == p_null_tile))
+				continue;
+			if (! adj->vtable->m35_Check_Is_Water (adj))
+				continue;
+
+			// Check if already visited
+			bool already_visited = false;
+			for (int i = 0; i < visited_count; i++) {
+				if (visited_x[i] == nx && visited_y[i] == ny) {
+					already_visited = true;
+					break;
+				}
+			}
+			if (already_visited)
+				continue;
+
+			// Add to queue and visited
+			if (visited_count < max_tiles && queue_tail < max_tiles) {
+				visited_x[visited_count] = nx;
+				visited_y[visited_count] = ny;
+				visited_count++;
+				queue_x[queue_tail] = nx;
+				queue_y[queue_tail] = ny;
+				queue_tail++;
+			}
+		}
+	}
+	return false;
+}
+
+// Helper: Check if tile has two adjacent water tiles of the same sea that are not connected within radius
+bool
+canal_has_same_sea_isthmus (int tile_x, int tile_y, int civ_id, int check_radius)
+{
+	// Collect all adjacent water tiles owned by civ, grouped by sea ID
+	int adj_water_x[8];
+	int adj_water_y[8];
+	int adj_water_sea[8];
+	int adj_water_count = 0;
+
+	FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+		if (tai.n == 0)
+			continue;
+		if (adj_water_count >= 8)
+			break;
+		Tile * adj = tai.tile;
+		if ((adj == NULL) || (adj == p_null_tile))
+			continue;
+		if (! adj->vtable->m35_Check_Is_Water (adj))
+			continue;
+		if (adj->vtable->m38_Get_Territory_OwnerID (adj) != civ_id)
+			continue;
+		adj_water_x[adj_water_count] = tai.tile_x;
+		adj_water_y[adj_water_count] = tai.tile_y;
+		adj_water_sea[adj_water_count] = adj->vtable->m46_Get_ContinentID (adj);
+		adj_water_count++;
+	}
+
+	// Check pairs of water tiles with the same sea ID
+	for (int i = 0; i < adj_water_count; i++) {
+		for (int j = i + 1; j < adj_water_count; j++) {
+			if (adj_water_sea[i] != adj_water_sea[j])
+				continue;
+			// Same sea - check if they can reach each other without crossing the isthmus
+			if (! water_tiles_connected_within_radius (
+					adj_water_x[i], adj_water_y[i],
+					adj_water_x[j], adj_water_y[j],
+					tile_x, tile_y, check_radius)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+bool
 ai_worker_try_tile_improvement_district (Unit * worker)
 {
 	if (! is->current_config.enable_districts || worker == NULL) return false;
@@ -29716,7 +29870,7 @@ ai_worker_try_tile_improvement_district (Unit * worker)
 	if (get_district_instance (tile) != NULL) return false;
 
 	// Check if a canal district could be built here, making sure there isn't already one nearby and
-	// that there are at least two different adjacent water bodies owned by the civ
+	// that either: (1) two different seas are adjacent, or (2) same sea tiles separated by isthmus
 	if (is->current_config.enable_canal_districts &&
 	    can_build_district_on_tile (tile, CANAL_DISTRICT_ID, civ_id)) {
 		bool has_adjacent_canal = false;
@@ -29734,29 +29888,9 @@ ai_worker_try_tile_improvement_district (Unit * worker)
 		}
 
 		if (! has_adjacent_canal) {
-			int water_ids[2] = { -1, -1 };
-			int water_count = 0;
-			FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
-				if (tai.n == 0)
-					continue;
-				if (water_count >= 2)
-					break;
-				Tile * adj = tai.tile;
-				if ((adj == NULL) || (adj == p_null_tile))
-					continue;
-				if (! adj->vtable->m35_Check_Is_Water (adj))
-					continue;
-				if (adj->vtable->m38_Get_Territory_OwnerID (adj) != civ_id)
-					continue;
-
-				int sea_id = adj->vtable->m46_Get_ContinentID (adj);
-				if (water_count == 0 || sea_id != water_ids[0]) {
-					water_ids[water_count] = sea_id;
-					water_count += 1;
-				}
-			}
-
-			if (water_count >= 2) {
+			bool should_build = canal_has_different_adjacent_seas (tile_x, tile_y, civ_id) ||
+			                    canal_has_same_sea_isthmus (tile_x, tile_y, civ_id, 6);
+			if (should_build) {
 				unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
 				unsigned int removable_flags = overlay_flags & 0xfc;
 				tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
@@ -30978,70 +31112,6 @@ patch_Unit_ai_eval_pillage_target (Unit * this, int edx, int tile_x, int tile_y)
 	return base;
 }
 
-// Light-weight hunt for nearby maritime districts; returns true if a path/command was issued
-bool
-try_path_to_maritime_district (Unit * unit)
-{
-	if ((unit == NULL) || (! is->current_config.enable_districts))
-		return false;
-
-	if (unit->Body.Container_Unit >= 0) // Don't redirect cargo
-		return false;
-
-	if (unit->Body.Moves <= 0) // No moves left, let base AI handle healing/other states
-		return false;
-
-	int sea_id = unit->vtable->get_sea_id (unit);
-	if (sea_id < 0)
-		return false;
-
-	int best_score = 0, best_x = -1, best_y = -1, best_path_len = 0;
-	const int search_radius = 8;
-	for (int dy = -search_radius; dy <= search_radius; dy++) {
-		for (int dx = -search_radius; dx <= search_radius; dx++) {
-			int tx = unit->Body.X + dx, ty = unit->Body.Y + dy;
-			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
-
-			Tile * tile = tile_at (tx, ty);
-			if ((tile == NULL) || (tile == p_null_tile))
-				continue;
-
-			if ((short)tile->vtable->m46_Get_ContinentID (tile) != sea_id)
-				continue;
-
-			if (! is_enemy_maritime_district_tile (unit, tile))
-				continue;
-
-			int score = patch_Unit_ai_eval_pillage_target (unit, __, (unsigned short)tx, ty);
-			if (score <= 0)
-				continue;
-
-			int path_len = 0;
-			int path_result = patch_Trade_Net_set_unit_path (is->trade_net, __, unit->Body.X, unit->Body.Y, tx, ty, unit, unit->Body.CivID, 0x81, &path_len);
-			if (path_result <= 0)
-				continue;
-
-			if ((score > best_score) || ((score == best_score) && ((best_path_len == 0) || (path_len < best_path_len)))) {
-				best_score = score;
-				best_path_len = path_len;
-				best_x = tx;
-				best_y = ty;
-			}
-		}
-	}
-
-	if (best_x >= 0) {
-		patch_Trade_Net_set_unit_path (is->trade_net, __, unit->Body.X, unit->Body.Y, best_x, best_y, unit, unit->Body.CivID, 0x81, NULL);
-		Unit_set_escortee (unit, __, -1);
-		Unit_set_state (unit, __, UnitState_Go_To);
-		unit->Body.path_dest_x = best_x;
-		unit->Body.path_dest_y = best_y;
-		return true;
-	}
-
-	return false;
-}
-
 // Light-weight hunt for nearby friendly ports; returns true if a path/command was issued
 bool
 try_path_to_friendly_port_district (Unit * unit)
@@ -31156,13 +31226,6 @@ patch_Unit_ai_move_naval_power_unit (Unit * this)
 
 	Unit_ai_move_naval_power_unit (this);
 	return;
-
-	/*
-	if (try_path_to_maritime_district (this))
-		return;
-
-	Unit_ai_move_naval_power_unit (this);
-	*/
 }
 
 void __fastcall
@@ -31590,10 +31653,7 @@ patch_get_tile_occupier_id_in_Unit_ai_move_naval_power_unit (int x, int y, int p
 		return -1;
 
 	struct district_instance * inst = get_district_instance (tile);
-	if (inst == NULL || inst->district_type != PORT_DISTRICT_ID)
-		return -1;
-
-	if (! district_is_complete (tile, PORT_DISTRICT_ID))
+	if (inst == NULL)
 		return -1;
 
 	return (*tile->vtable->m38_Get_Territory_OwnerID) (tile);

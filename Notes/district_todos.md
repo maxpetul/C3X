@@ -1,4 +1,4 @@
-
+  - Better patch for heal units in one turn
   - Firm up logic for river district rendering
 
   - Hoover Dam (use alt dir, special positioning b/c on river)
