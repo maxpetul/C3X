@@ -16887,7 +16887,8 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 		   ret_addr == DESPAWN_TO_FIGHT_1_RETURN                  || ret_addr == DESPAWN_TO_FIGHT_2_RETURN
 		|| ret_addr == DESPAWN_TO_DO_BOMBARD_TILE_RETURN          || ret_addr == DESPAWN_TO_CRUISE_MISSILE_DEFENDER_RETURN
 		|| ret_addr == DESPAWN_TO_BOUNCE_TRESPASSING_UNITS_RETURN || ret_addr == DESPAWN_TO_NUKE_DAMAGE_RETURN
-		|| ret_addr == DESPAWN_RECURSIVE_RETURN                   || ret_addr == DESPAWN_TO_DO_CAPTURE_UNITS_RETURN;
+		|| ret_addr == DESPAWN_RECURSIVE_RETURN                   || ret_addr == DESPAWN_TO_DO_CAPTURE_UNITS_RETURN
+		|| ret_addr == DESPAWN_TO_TRY_FLYING_OVER_TILE_RETURN;
 
 	int owner_id = this->Body.CivID;
 	int type_id = this->Body.UnitTypeID;
