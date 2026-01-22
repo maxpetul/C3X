@@ -385,8 +385,6 @@ struct c3x_config {
 	bool expand_water_tile_checks_to_city_work_area;
 	int max_contiguous_bridge_districts;
 	int max_contiguous_canal_districts;
-	bool allow_enter_bridge_from_any_direction;
-	bool allow_enter_canal_from_any_direction;
 
 	bool ai_defends_districts;
 	int ai_city_district_max_build_wait_turns;
