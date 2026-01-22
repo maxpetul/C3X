@@ -31045,7 +31045,7 @@ patch_Unit_ai_eval_pillage_target (Unit * this, int edx, int tile_x, int tile_y)
 
 // Light-weight hunt for nearby friendly ports; returns true if a path/command was issued
 bool
-try_path_to_friendly_port_district (Unit * unit)
+try_path_to_friendly_port_district (Unit * unit, bool require_damaged, bool require_undefended)
 {
 	if ((unit == NULL) ||
 	    ! is->current_config.enable_districts ||
@@ -31058,7 +31058,7 @@ try_path_to_friendly_port_district (Unit * unit)
 	if (unit->Body.Moves <= 0)
 		return false;
 
-	if (unit->Body.Damage <= 0)
+	if (require_damaged && (unit->Body.Damage <= 0))
 		return false;
 
 	if (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class != UTC_Sea)
@@ -31088,6 +31088,25 @@ try_path_to_friendly_port_district (Unit * unit)
 			int occupier_id = get_tile_occupier_id (tx, ty, -1, true);
 			if ((occupier_id != -1) && (occupier_id != unit->Body.CivID))
 				continue;
+
+			if (require_undefended) {
+				bool has_friendly_sea_unit = false;
+				FOR_UNITS_ON (uti, tile) {
+					Unit * on_tile = uti.unit;
+					if ((on_tile == NULL) || (on_tile->Body.Container_Unit >= 0))
+						continue;
+					if (on_tile->Body.CivID != unit->Body.CivID)
+						continue;
+					if (p_bic_data->UnitTypes[on_tile->Body.UnitTypeID].Unit_Class != UTC_Sea)
+						continue;
+					if (on_tile->Body.ID == unit->Body.ID)
+						continue;
+					has_friendly_sea_unit = true;
+					break;
+				}
+				if (has_friendly_sea_unit)
+					continue;
+			}
 
 			if (! is_below_stack_limit (tile, unit->Body.CivID, UTC_Sea))
 				continue;
@@ -31130,7 +31149,8 @@ patch_Unit_ai_move_naval_power_unit (Unit * this)
 	if (! is->current_config.enable_districts || 
 		! is->current_config.enable_port_districts ||
 		! is->current_config.naval_units_use_port_districts_not_cities) {
-			return;
+		Unit_ai_move_naval_power_unit (this);
+		return;
 	}
 
 	// If we're already sitting on an enemy maritime district, pillage it immediately
@@ -31152,7 +31172,11 @@ patch_Unit_ai_move_naval_power_unit (Unit * this)
 	}
 
 	// If damaged and cannot heal here, try to path to a friendly port district
-	if ((this->Body.Damage > 0) && try_path_to_friendly_port_district (this))
+	if ((this->Body.Damage > 0) && try_path_to_friendly_port_district (this, true, false))
+		return;
+
+	// If configured, try to keep at least one ship defending each friendly port district
+	if (is->current_config.ai_defends_districts && try_path_to_friendly_port_district (this, false, true))
 		return;
 
 	Unit_ai_move_naval_power_unit (this);
@@ -31162,6 +31186,13 @@ patch_Unit_ai_move_naval_power_unit (Unit * this)
 void __fastcall
 patch_Unit_ai_move_naval_transport (Unit * this)
 {
+	if (! is->current_config.enable_districts || 
+		! is->current_config.enable_port_districts ||
+		! is->current_config.naval_units_use_port_districts_not_cities) {
+		Unit_ai_move_naval_transport (this);
+		return;
+	}
+
 	// If damaged and CAN heal at current location (e.g. port district), fortify to heal
 	if ((this->Body.Damage > 0) &&
 	    patch_Unit_can_heal_at (this, __, this->Body.X, this->Body.Y)) {
@@ -31171,8 +31202,7 @@ patch_Unit_ai_move_naval_transport (Unit * this)
 	}
 
 	// If damaged and cannot heal here, try to path to a friendly port district
-	if ((this->Body.Damage > 0) &&
-	    try_path_to_friendly_port_district (this))
+	if ((this->Body.Damage > 0) && try_path_to_friendly_port_district (this, true, false))
 		return;
 
 	Unit_ai_move_naval_transport (this);
@@ -31181,6 +31211,13 @@ patch_Unit_ai_move_naval_transport (Unit * this)
 void __fastcall
 patch_Unit_ai_move_naval_missile_transport (Unit * this)
 {
+	if (! is->current_config.enable_districts || 
+		! is->current_config.enable_port_districts ||
+		! is->current_config.naval_units_use_port_districts_not_cities) {
+		patch_Unit_ai_move_naval_missile_transport (this);
+		return;
+	}
+
 	// If damaged and CAN heal at current location (e.g. port district), fortify to heal
 	if ((this->Body.Damage > 0) &&
 	    patch_Unit_can_heal_at (this, __, this->Body.X, this->Body.Y)) {
@@ -31190,8 +31227,7 @@ patch_Unit_ai_move_naval_missile_transport (Unit * this)
 	}
 
 	// If damaged and cannot heal here, try to path to a friendly port district
-	if ((this->Body.Damage > 0) &&
-	    try_path_to_friendly_port_district (this))
+	if ((this->Body.Damage > 0) && try_path_to_friendly_port_district (this, true, false))
 		return;
 
 	Unit_ai_move_naval_missile_transport (this);
@@ -31203,10 +31239,9 @@ patch_Unit_ai_move_air_bombard_unit (Unit * this)
 	if (! (is->current_config.enable_districts &&
 	       is->current_config.enable_aerodrome_districts &&
 	       is->current_config.air_units_use_aerodrome_districts_not_cities)) {
+		Unit_ai_move_air_bombard_unit (this);
+		return;
 	}
-
-	Unit_ai_move_air_bombard_unit (this);
-	return;
 
 	if (this->Body.Damage > 0) {
 		Unit_set_escortee (this, __, -1);
