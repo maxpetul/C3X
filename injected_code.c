@@ -16269,9 +16269,7 @@ patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y)
 {
 	bool base = Unit_can_pillage (this, __, tile_x, tile_y);
 
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_wonder_districts ||
-	    is->current_config.completed_wonder_districts_can_be_destroyed)
+	if (! is->current_config.enable_districts || ! is->current_config.enable_wonder_districts)
 		return base;
 
 	Tile * tile = tile_at (tile_x, tile_y);
@@ -16296,9 +16294,9 @@ patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y)
 		if (info == NULL || info->state != WDS_COMPLETED)
 			return true;
 		return is->current_config.completed_wonder_districts_can_be_destroyed;
-	} else {
-		return true;
 	}
+
+	return true;
 }
 
 bool __fastcall
@@ -24662,6 +24660,59 @@ patch_City_spawn_unit_if_done (City * this)
 			skip_spawn = true;
 	}
 
+	// Check district requirements for air and naval units
+	if ((! skip_spawn) && (this->Body.Order_Type == COT_Unit) && is->current_config.enable_districts) {
+		int unit_id = this->Body.Order_ID;
+		UnitType * type = &p_bic_data->UnitTypes[unit_id];
+		bool needs_district = false;
+		int required_district_id = -1;
+
+		// Air units require aerodrome
+		if ((type->Unit_Class == UTC_Air) &&
+		    is->current_config.enable_aerodrome_districts &&
+		    is->current_config.air_units_use_aerodrome_districts_not_cities &&
+		    (! city_has_required_district (this, AERODROME_DISTRICT_ID))) {
+			needs_district = true;
+			required_district_id = AERODROME_DISTRICT_ID;
+		}
+		// Naval units require port
+		else if ((type->Unit_Class == UTC_Sea) &&
+		         is->current_config.enable_port_districts &&
+		         is->current_config.naval_units_use_port_districts_not_cities &&
+		         (! city_has_required_district (this, PORT_DISTRICT_ID))) {
+			needs_district = true;
+			required_district_id = PORT_DISTRICT_ID;
+		}
+
+		if (needs_district) {
+			bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
+
+			// Mark district needed for AI
+			if (! is_human)
+				mark_city_needs_district (this, required_district_id);
+
+			// Find fallback land unit
+			City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
+			if (choose_defensive_unit_order (this, &defensive_order)) {
+				UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
+				if (def_type->Unit_Class == UTC_Land)
+					City_set_production (this, __, defensive_order.OrderType, defensive_order.OrderID, false);
+			}
+
+			// Show message to human player
+			if (is_human && (this->Body.CivID == p_main_screen_form->Player_CivID)) {
+				char msg[160];
+				char const * unit_name = type->Name;
+				char const * district_name = is->district_configs[required_district_id].name;
+				snprintf (msg, sizeof msg, "%s %s %s", unit_name, is->c3x_labels[CL_CONSTRUCTION_HALTED_DUE_TO_MISSING_DISTRICT], district_name);
+				msg[(sizeof msg) - 1] = '\0';
+				show_map_specific_text (this->Body.X, this->Body.Y, msg, true);
+			}
+
+			skip_spawn = true;
+		}
+	}
+
 	if (! skip_spawn)
 		City_spawn_unit_if_done (this);
 }
@@ -28557,8 +28608,10 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 			else if (*out_variant == NE && anchor == DIR_SW && anchor_sprite_index == 20) { *out_pixel_x -= 2; *out_pixel_y += 4; }
 
 			if      (*out_variant == SW && (anchor_sprite_index == 0 || anchor_sprite_index == 4 || anchor_sprite_index == 10 || anchor_sprite_index == 1)) { *out_pixel_x +=2; *out_pixel_y -= 8; }
-			else if (*out_variant == SW && anchor == DIR_N && (anchor_sprite_index == 6))  { *out_pixel_x -= 6; *out_pixel_y -= 8; }
-			else if (*out_variant == SE && anchor == DIR_W && (anchor_sprite_index == 18)) { *out_pixel_x += 6; *out_pixel_y += 4; }
+			else if (*out_variant == SW && anchor == DIR_N && (anchor_sprite_index == 6))   { *out_pixel_x -= 6;  *out_pixel_y -= 8; }
+			else if (*out_variant == SE && anchor == DIR_W && (anchor_sprite_index == 18))  { *out_pixel_x += 6;  *out_pixel_y += 4; }
+			else if (*out_variant == NE && anchor == DIR_SW && (anchor_sprite_index == 51)) { *out_pixel_x += 20; *out_pixel_y -= 20; }
+			else if (*out_variant == SW && anchor == DIR_NE && (anchor_sprite_index == 0))  { *out_pixel_x -= 4;  *out_pixel_y += 4; }
 		}
 		// Sheet 1
 		else if (anchor_sheet_index == 1) {
@@ -30895,9 +30948,6 @@ is_enemy_maritime_district_tile (Unit * unit, Tile * tile)
 	if (! tile->vtable->m35_Check_Is_Water (tile))
 		return false;
 
-	if (! tile->vtable->m18_Check_Mines (tile, __, 0))
-		return false;
-
 	struct district_instance * inst = get_district_instance (tile);
 	if (inst == NULL)
 		return false;
@@ -30920,7 +30970,7 @@ patch_Unit_ai_eval_pillage_target (Unit * this, int edx, int tile_x, int tile_y)
 		return base;
 
 	Tile * tile = tile_at (tile_x, tile_y);
-	if ((base > 0) && is_enemy_maritime_district_tile (this, tile)) {
+	if (is_enemy_maritime_district_tile (this, tile)) {
 		// Double the base score so districts outrank generic coast targets
 		base += base + 0x300;
 	}
@@ -31524,6 +31574,90 @@ patch_City_count_improvements_with_flag_in_Unit_heal_at_start_of_turn (City * th
 	return 0;
 }
 
+// Makes naval AI treat enemy port districts as valid targets to path toward.
+int __cdecl
+patch_get_tile_occupier_id_in_Unit_ai_move_naval_power_unit (int x, int y, int pov_civ_id, bool respect_unit_invisibility)
+{
+	int base = get_tile_occupier_id (x, y, pov_civ_id, respect_unit_invisibility);
+	if (base != -1)
+		return base;
+
+	if (! is->current_config.enable_districts || ! is->current_config.enable_port_districts)
+		return -1;
+
+	Tile * tile = tile_at (x, y);
+	if (tile == NULL || tile == p_null_tile)
+		return -1;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL || inst->district_type != PORT_DISTRICT_ID)
+		return -1;
+
+	if (! district_is_complete (tile, PORT_DISTRICT_ID))
+		return -1;
+
+	return (*tile->vtable->m38_Get_Territory_OwnerID) (tile);
+}
+
+// Returns a non-zero score for enemy port district tiles so they pass the threshold check.
+int __fastcall
+patch_Fighter_eval_tile_vulnerability_in_Unit_ai_move_naval_power_unit (Fighter * this, int edx, Unit * unit, int tile_x, int tile_y)
+{
+	int base = Fighter_eval_tile_vulnerability (this, __, unit, tile_x, tile_y);
+	if (base > 0)
+		return base;
+
+	if (! is->current_config.enable_districts || ! is->current_config.enable_port_districts)
+		return base;
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if (tile == NULL || tile == p_null_tile)
+		return base;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL)
+		return base;
+
+	int owner = (*tile->vtable->m38_Get_Territory_OwnerID) (tile);
+	if (owner <= 0 || owner == unit->Body.CivID)
+		return base;
+
+	if (! leaders[unit->Body.CivID].At_War[owner])
+		return base;
+
+	// Return a score high enough to pass threshold (iVar13 * 8 + 0x100)
+	// 0x300 should be sufficient for most cases
+	return 0x300;
+}
+
+// Returns the territory owner for enemy port districts so the score isn't reduced.
+int __cdecl
+patch_get_combat_occupier_in_Unit_ai_move_naval_power_unit (int tile_x, int tile_y, int civ_id, byte ignore_visibility)
+{
+	int base = get_combat_occupier (tile_x, tile_y, civ_id, ignore_visibility);
+	if (base != -1)
+		return base;
+
+	if (! is->current_config.enable_districts || ! is->current_config.enable_port_districts)
+		return base;
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if (tile == NULL || tile == p_null_tile)
+		return -1;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL)
+		return -1;
+
+	int owner = (*tile->vtable->m38_Get_Territory_OwnerID) (tile);
+	if (owner <= 0 || owner == civ_id)
+		return -1;
+
+	if (! leaders[civ_id].At_War[owner])
+		return -1;
+
+	return owner;
+}
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }

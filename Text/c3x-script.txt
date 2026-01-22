@@ -104,7 +104,7 @@ Razing cities is prohibited by the rules of this scenario.
 #C3X_CANT_PILLAGE
 #caption Can't do that, chief!
 #text
-Pillaging Districts is prohibited by the rules of this scenario.
+Pillaging Wonder Districts is prohibited by the rules of this scenario.
 
 #C3X_LIMITED_UNIT_CHANGE
 #map_center 0
