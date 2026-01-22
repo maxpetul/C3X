@@ -2590,7 +2590,12 @@ get_district_instance (Tile * tile)
 	if (! itable_look_up (&is->district_tile_map, (int)tile, &stored_ptr))
 		return NULL;
 
-	return (struct district_instance *)(long)stored_ptr;
+	struct district_instance * inst = (struct district_instance *)(long)stored_ptr;
+
+	if ((inst == NULL) || (inst->district_type < 0) || (inst->district_type >= is->district_count))
+		return NULL;
+
+	return inst;
 }
 
 struct wonder_district_info *
@@ -3439,8 +3444,6 @@ wai_next (struct work_area_iter * wai)
 			if (inst == NULL)
 				continue;
 			int district_id = inst->district_type;
-			if ((district_id < 0) || (district_id >= is->district_count))
-				continue;
 			if (wai->completed_districts_only && (! district_is_complete (candidate, district_id)))
 				continue;
 		}
@@ -6213,6 +6216,8 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->btn_tile_sheet_row = def->btn_tile_sheet_row;
 	if (def->has_defense_bonus_percent)
 		cfg->defense_bonus_percent = def->defense_bonus_percent;
+	if (def->has_heal_units_in_one_turn)
+		cfg->heal_units_in_one_turn = def->heal_units_in_one_turn;
 	if (def->has_culture_bonus) {
 		cfg->culture_bonus = def->culture_bonus;
 		free_bonus_entry_list_override (&cfg->culture_bonus_extras, &defaults->culture_bonus_extras);
@@ -6473,6 +6478,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.btn_tile_sheet_column = def->has_btn_tile_sheet_column ? def->btn_tile_sheet_column : 0;
 	new_cfg.btn_tile_sheet_row = def->has_btn_tile_sheet_row ? def->btn_tile_sheet_row : 0;
 	new_cfg.defense_bonus_percent = def->has_defense_bonus_percent ? def->defense_bonus_percent : 100;
+	new_cfg.heal_units_in_one_turn = def->has_heal_units_in_one_turn ? def->heal_units_in_one_turn : false;
 	new_cfg.culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
 	new_cfg.science_bonus = def->has_science_bonus ? def->science_bonus : 0;
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
@@ -7074,6 +7080,15 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		if (read_int (&val_slice, &ival)) {
 			def->defense_bonus_percent = ival;
 			def->has_defense_bonus_percent = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "heal_units_in_one_turn")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->heal_units_in_one_turn = (ival != 0);
+			def->has_heal_units_in_one_turn = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
@@ -29376,7 +29391,7 @@ patch_Map_Renderer_m11_Draw_Tile_Irrigation (Map_Renderer *this, int edx, int vi
 	}
 
 	struct district_instance * inst = get_district_instance (is->current_render_tile);
-	if (inst == NULL || inst->district_type < 0 || inst->district_type >= is->district_count) {		
+	if (inst == NULL) {		
 		Map_Renderer_m11_Draw_Tile_Irrigation (this, __, visible_to_civ, tile_x, tile_y, param_4, param_5, param_6);
 		return;
 	}
@@ -31398,7 +31413,7 @@ patch_Tile_m17_Check_Irrigation (Tile * this, int edx, int visible_to_civ_id)
 		return base;
 
 	struct district_instance * inst = get_district_instance (this);
-	if (inst == NULL || inst->district_type < 0 || inst->district_type >= is->district_count)
+	if (inst == NULL)
 		return base;
 
 	if (is->district_configs[inst->district_type].allow_irrigation_from && district_is_complete (this, inst->district_type))
@@ -31463,6 +31478,50 @@ patch_Unit_ai_eval_bombard_target (Unit * this, int edx, int tile_x, int tile_y,
 		score += 0x200;
 
 	return score;
+}
+
+// Called to determine if unit is in a city (which if has a barracks, would heal in one turn). 
+// We add a districts check as well
+City * __cdecl
+patch_city_at_in_Unit_heal_at_start_of_turn (int tile_x, int tile_y)
+{
+	City * city = city_at (tile_x, tile_y);
+	if (! is->current_config.enable_districts)
+		return city;
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((city == NULL) || (tile == NULL) || (tile == p_null_tile))
+		return NULL;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if ((inst == NULL) || (inst->district_type < 0) || (inst->district_type >= is->district_count))
+		return NULL;
+
+	if (! district_is_complete (tile, inst->district_type))
+		return NULL;
+
+	if (! is->district_configs[inst->district_type].heal_units_in_one_turn)
+		return NULL;
+
+	int territory_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	if (territory_owner <= 0)
+		return NULL;
+
+	return (City *)0x1; // City sentinel value
+}
+
+// If a district that heals in one turn is present, and the city pointer is the sentinel value, return true
+int __fastcall
+patch_City_count_improvements_with_flag_in_Unit_heal_at_start_of_turn (City * this, int edx, int flag)
+{
+	if (! is->current_config.enable_districts)
+		return City_count_improvements_with_flag (this, __, flag);
+
+	// If sentinel value for fully healing district, this will return true to heal in one turn
+	if (this == (City *)0x1)
+		return 1;
+
+	return 0;
 }
 
 

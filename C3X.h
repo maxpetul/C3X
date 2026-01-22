@@ -691,6 +691,7 @@ struct district_config {
 	struct district_bonus_list shield_bonus_extras;
 	struct district_bonus_list happiness_bonus_extras;
 	int defense_bonus_percent;
+	bool heal_units_in_one_turn;
 	char const * generated_resource;
 	int generated_resource_id;
 	short generated_resource_flags;
@@ -909,6 +910,7 @@ struct parsed_district_definition {
 	int btn_tile_sheet_column;
 	int btn_tile_sheet_row;
 	int defense_bonus_percent;
+	bool heal_units_in_one_turn;
 	int culture_bonus;
 	int science_bonus;
 	int food_bonus;
@@ -948,6 +950,7 @@ struct parsed_district_definition {
 	bool has_btn_tile_sheet_column;
 	bool has_btn_tile_sheet_row;
 	bool has_defense_bonus_percent;
+	bool has_heal_units_in_one_turn;
 	bool has_culture_bonus;
 	bool has_science_bonus;
 	bool has_food_bonus;
