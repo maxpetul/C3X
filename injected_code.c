@@ -19781,6 +19781,7 @@ patch_Unit_check_bombard_target (Unit * this, int edx, int tile_x, int tile_y)
 	int overlays;
 	if (base &&
 	    is->current_config.disallow_useless_bombard_vs_airfields &&
+	    ! Unit_has_ability (this, __, UTA_Nuclear_Weapon) &&
 	    ((tile = tile_at (tile_x, tile_y)) != p_null_tile) &&
 	    ((overlays = tile->vtable->m42_Get_Overlays (tile, __, 0)) & 0x20000000) && // if tile has an airfield AND
 	    (overlays == 0x20000000)) { // tile only has an airfield

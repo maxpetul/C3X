@@ -3,6 +3,7 @@
 - Can specify a victory animation for air units in aircraft_victory_animation option
 - Option show_armies_performing_defensive_bombard that fixes defensive bombard animations being skipped when the bombarding unit is in an army
 - Fix crash caused by failure to find default option for popup asking player to select new build in city that completed its previous one
+- Except nuclear weapons from disallow_useless_bombard_vs_airfields
 
 * RELEASE 26
 - Add some options to make land transports viable, controlled by land_transport_rules setting
