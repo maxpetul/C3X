@@ -31061,8 +31061,14 @@ try_path_to_friendly_port_district (Unit * unit)
 void __fastcall
 patch_Unit_ai_move_naval_power_unit (Unit * this)
 {
+	if (! is->current_config.enable_districts || 
+		! is->current_config.enable_port_districts ||
+		! is->current_config.naval_units_use_port_districts_not_cities) {
+			return;
+	}
+
 	// If we're already sitting on an enemy maritime district, pillage it immediately
-	if (is->current_config.enable_districts && is->current_config.enable_port_districts && this->Body.Container_Unit < 0) {
+	if (this->Body.Container_Unit < 0) {
 		Tile * here = tile_at (this->Body.X, this->Body.Y);
 		if (is_enemy_maritime_district_tile (this, here) &&
 		    patch_Unit_can_pillage (this, __, this->Body.X, this->Body.Y) &&
@@ -31080,14 +31086,18 @@ patch_Unit_ai_move_naval_power_unit (Unit * this)
 	}
 
 	// If damaged and cannot heal here, try to path to a friendly port district
-	if ((this->Body.Damage > 0) &&
-	    try_path_to_friendly_port_district (this))
+	if ((this->Body.Damage > 0) && try_path_to_friendly_port_district (this))
 		return;
 
+	Unit_ai_move_naval_power_unit (this);
+	return;
+
+	/*
 	if (try_path_to_maritime_district (this))
 		return;
 
 	Unit_ai_move_naval_power_unit (this);
+	*/
 }
 
 void __fastcall
