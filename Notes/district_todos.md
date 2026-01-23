@@ -1,3 +1,5 @@
+  - Figure out multi-resource single-tile generation problem
+  - Validate resource generation
   - Firm up logic for river district rendering
 
   - Hoover Dam (use alt dir, special positioning b/c on river)

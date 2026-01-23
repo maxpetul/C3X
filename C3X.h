@@ -1126,6 +1126,26 @@ struct district_instance {
 	struct natural_wonder_district_info natural_wonder_info; // Only used if district_type is a natural wonder district
 };
 
+enum extra_resource_tile_type {
+	ERT_MILL_RESOURCE = 0,
+	ERT_DISTRICT_RESOURCE
+};
+
+struct extra_resource_tile {
+	Tile * tile;
+	enum extra_resource_tile_type type;
+	union {
+		struct {
+			City * city;
+			struct mill * mill;
+		} mill_info;
+		struct {
+			struct district_instance * inst;
+			struct district_config * cfg;
+		} district_info;
+	};
+};
+
 struct named_tile_entry {
 	int tile_x;
 	int tile_y;
@@ -1481,15 +1501,11 @@ struct injected_state {
 	int count_ai_prod_valuations;
 	int ai_prod_valuations_capacity;
 
-	// Used for generating resources from buildings
-	struct mill_tile {
-		Tile * tile;
-		City * city;
-		struct mill * mill;
-	} * mill_tiles;
-	int count_mill_tiles;
-	int mill_tiles_capacity;
-	struct mill_tile * got_mill_tile;
+	// Used for generating resources from buildings and districts
+	struct extra_resource_tile * resource_tiles;
+	int count_resource_tiles;
+	int resource_tiles_capacity;
+	struct extra_resource_tile * got_resource_tile;
 	int saved_tile_count; // Stores the actual tile count in case p_bic_data->Map.TileCount was temporarily overwritten. Set to -1 when empty.
 	byte * mill_input_resource_bits; // Array of bits, one for each resource. Stores whether or not each one is an input to any mill.
 

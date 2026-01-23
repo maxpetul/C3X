@@ -12521,10 +12521,23 @@ recompute_mill_yields_after_resource_change (Leader * leader_or_null)
 
 
 int
-compare_mill_tiles (void const * vp_a, void const * vp_b)
+resource_tile_resource_id (struct extra_resource_tile const * rt)
 {
-	struct mill_tile const * a = vp_a, * b = vp_b;
-	return a->mill->resource_id - b->mill->resource_id;
+	if (rt == NULL)
+		return -1;
+	if (rt->type == ERT_MILL_RESOURCE) {
+		return (rt->mill_info.mill != NULL) ? rt->mill_info.mill->resource_id : -1;
+	} else if (rt->district_info.cfg != NULL) {
+		return rt->district_info.cfg->generated_resource_id;
+	}
+	return -1;
+}
+
+int
+compare_resource_tiles (void const * vp_a, void const * vp_b)
+{
+	struct extra_resource_tile const * a = vp_a, * b = vp_b;
+	return resource_tile_resource_id (a) - resource_tile_resource_id (b);
 }
 
 void __fastcall
@@ -12535,7 +12548,7 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups
 	memset (is->extra_available_resources, 0, is->extra_available_resources_capacity * ints_per_city * sizeof (unsigned));
 
 	// Assemble list of mill tiles
-	is->count_mill_tiles = 0;
+	is->count_resource_tiles = 0;
 	if (p_cities->Cities != NULL)
 		for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
 			City * city = get_city_ptr (city_index);
@@ -12545,23 +12558,64 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups
 					if (((mill->flags & MF_LOCAL) == 0) &&
 					    has_active_building (city, mill->improv_id) &&
 					    can_generate_resource (city->Body.CivID, mill)) {
-						reserve (sizeof is->mill_tiles[0],
-							 (void **)&is->mill_tiles,
-							 &is->mill_tiles_capacity,
-							 is->count_mill_tiles);
-						is->mill_tiles[is->count_mill_tiles++] = (struct mill_tile) {
-							.tile = tile_at (city->Body.X, city->Body.Y),
-							.city = city,
-							.mill = mill
+						Tile * resource_tile = tile_at (city->Body.X, city->Body.Y);
+						if ((resource_tile == NULL) || (resource_tile == p_null_tile))
+							continue;
+						reserve (sizeof is->resource_tiles[0],
+							 (void **)&is->resource_tiles,
+							 &is->resource_tiles_capacity,
+							 is->count_resource_tiles);
+						is->resource_tiles[is->count_resource_tiles++] = (struct extra_resource_tile) {
+							.tile = resource_tile,
+							.type = ERT_MILL_RESOURCE,
+							.mill_info = {
+								.city = city,
+								.mill = mill
+							}
 						};
 					}
 				}
 		}
-	qsort (is->mill_tiles, is->count_mill_tiles, sizeof is->mill_tiles[0], compare_mill_tiles);
+	if (is->current_config.enable_districts) {
+		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+			Tile * district_tile = (Tile *)(long)tei.key;
+			struct district_instance * inst = (struct district_instance *)(long)tei.value;
+			if ((district_tile == NULL) || (district_tile == p_null_tile) || (inst == NULL) || (inst->state != DS_COMPLETED))
+				continue;
 
-	is->got_mill_tile = NULL;
+			int district_id = inst->district_type;
+			if ((district_id < 0) || (district_id >= is->district_count))
+				continue;
+
+			struct district_config * cfg = &is->district_configs[district_id];
+			if ((cfg == NULL) || (cfg->generated_resource_id < 0))
+				continue;
+
+			int owner_id = district_tile->vtable->m38_Get_Territory_OwnerID (district_tile);
+			if ((owner_id < 0) || (owner_id >= 32))
+				continue;
+			if (! district_can_generate_resource (owner_id, cfg))
+				continue;
+
+			reserve (sizeof is->resource_tiles[0],
+				 (void **)&is->resource_tiles,
+				 &is->resource_tiles_capacity,
+				 is->count_resource_tiles);
+			is->resource_tiles[is->count_resource_tiles++] = (struct extra_resource_tile) {
+				.tile = district_tile,
+				.type = ERT_DISTRICT_RESOURCE,
+				.district_info = {
+					.inst = inst,
+					.cfg = cfg
+				}
+			};
+		}
+	}
+	qsort (is->resource_tiles, is->count_resource_tiles, sizeof is->resource_tiles[0], compare_resource_tiles);
+
+	is->got_resource_tile = NULL;
 	is->saved_tile_count = p_bic_data->Map.TileCount;
-	p_bic_data->Map.TileCount += is->count_mill_tiles;
+	p_bic_data->Map.TileCount += is->count_resource_tiles;
 	Trade_Net_recompute_resources (this, __, skip_popups);
 
 	// Restore the tile count if necessary. It may have already been restored by patch_Map_Renderer_m71_Draw_Tiles. This happens when the call to
@@ -12577,45 +12631,46 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups
 }
 
 Tile *
-get_mill_tile (int index)
+get_resource_tile (int index)
 {
-	struct mill_tile * mt = &is->mill_tiles[index];
-	is->got_mill_tile = mt;
-	return mt->tile;
+	struct extra_resource_tile * rt = &is->resource_tiles[index];
+	is->got_resource_tile = rt;
+	return rt->tile;
 }
 
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_1 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_mill_tile (index - is->saved_tile_count); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_2 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_mill_tile (index - is->saved_tile_count); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_3 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_mill_tile (index - is->saved_tile_count); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_4 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_mill_tile (index - is->saved_tile_count); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_5 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_mill_tile (index - is->saved_tile_count); }
+Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_1 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_resource_tile (index - is->saved_tile_count); }
+Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_2 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_resource_tile (index - is->saved_tile_count); }
+Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_3 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_resource_tile (index - is->saved_tile_count); }
+Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_4 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_resource_tile (index - is->saved_tile_count); }
+Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_5 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_resource_tile (index - is->saved_tile_count); }
 
 int __fastcall
 patch_Tile_get_visible_resource_when_recomputing (Tile * tile, int edx, int civ_id)
 {
-	if (is->got_mill_tile != NULL) {
-		struct mill_tile * mt = is->got_mill_tile;
-		is->got_mill_tile = NULL;
-		if (has_resources_required_by_building (mt->city, mt->mill->improv_id))
-			return mt->mill->resource_id;
-		else
-			return -1;
-	}
-
-	int base_resource = Tile_get_resource_visible_to (tile, __, civ_id);
-
-	if (is->current_config.enable_districts) {
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst != NULL && inst->state == DS_COMPLETED) {
-			struct district_config * cfg = &is->district_configs[inst->district_type];
-			if (cfg->generated_resource_id >= 0) {
-				int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
-				if ((owner_id == civ_id) && district_can_generate_resource (civ_id, cfg))
+	if (is->got_resource_tile != NULL) {
+		struct extra_resource_tile * rt = is->got_resource_tile;
+		is->got_resource_tile = NULL;
+		if (rt->type == ERT_MILL_RESOURCE) {
+			if ((rt->mill_info.city != NULL) && (rt->mill_info.mill != NULL) &&
+			    has_resources_required_by_building (rt->mill_info.city, rt->mill_info.mill->improv_id))
+				return rt->mill_info.mill->resource_id;
+			else
+				return -1;
+		} else {
+			Tile * district_tile = rt->tile;
+			struct district_instance * inst = rt->district_info.inst;
+			struct district_config * cfg = rt->district_info.cfg;
+			if ((district_tile != NULL) && (district_tile != p_null_tile) && (inst != NULL) &&
+			    (cfg != NULL) && (inst->state == DS_COMPLETED)) {
+				int owner_id = district_tile->vtable->m38_Get_Territory_OwnerID (district_tile);
+				if ((owner_id == civ_id) && district_can_generate_resource (owner_id, cfg))
 					return cfg->generated_resource_id;
 			}
+			return -1;
 		}
 	}
 
+	int base_resource = Tile_get_resource_visible_to (tile, __, civ_id);
 	return base_resource;
 }
 
@@ -14546,9 +14601,10 @@ patch_init_floating_point ()
 	is->count_ai_prod_valuations = 0;
 	is->ai_prod_valuations_capacity = 0;
 
-	is->mill_tiles = NULL;
-	is->count_mill_tiles = 0;
-	is->mill_tiles_capacity = 0;
+	is->resource_tiles = NULL;
+	is->count_resource_tiles = 0;
+	is->resource_tiles_capacity = 0;
+	is->got_resource_tile = NULL;
 	is->saved_tile_count = -1;
 	is->mill_input_resource_bits = NULL;
 
