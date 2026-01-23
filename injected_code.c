@@ -9915,6 +9915,50 @@ bridge_district_tile_is_valid (int tile_x, int tile_y)
 }
 
 bool
+bridge_tile_connects_two_continents (int tile_x, int tile_y, int civ_id)
+{
+	struct bridge_pair {
+		int dx1, dy1;
+		int dx2, dy2;
+	};
+
+	Map * map = &p_bic_data->Map;
+	const struct bridge_pair pairs[] = {
+		{0, -2, 0, 2},
+		{-2, 0, 2, 0},
+		{-1, -1, 1, 1},
+		{-1, 1, 1, -1},
+	};
+
+	for (int i = 0; i < (int)(sizeof (pairs) / sizeof (pairs[0])); i++) {
+		int ax = tile_x + pairs[i].dx1;
+		int ay = tile_y + pairs[i].dy1;
+		wrap_tile_coords (map, &ax, &ay);
+		if (! tile_is_land (civ_id, ax, ay, true))
+			continue;
+		Tile * first = tile_at (ax, ay);
+		if ((first == NULL) || (first == p_null_tile))
+			continue;
+
+		int bx = tile_x + pairs[i].dx2;
+		int by = tile_y + pairs[i].dy2;
+		wrap_tile_coords (map, &bx, &by);
+		if (! tile_is_land (civ_id, bx, by, true))
+			continue;
+		Tile * second = tile_at (bx, by);
+		if ((second == NULL) || (second == p_null_tile))
+			continue;
+
+		int cont_a = first->vtable->m46_Get_ContinentID (first);
+		int cont_b = second->vtable->m46_Get_ContinentID (second);
+		if ((cont_a >= 0) && (cont_b >= 0) && (cont_a != cont_b))
+			return true;
+	}
+
+	return false;
+}
+
+bool
 canal_district_tile_is_valid (int tile_x, int tile_y)
 {
 	if (is->current_config.max_contiguous_canal_districts > 0) {
@@ -29941,37 +29985,9 @@ ai_worker_try_tile_improvement_district (Unit * worker)
 			}
 		}
 
-		if (! has_adjacent_bridge) {
-			bool north_land = false;
-			bool south_land = false;
-			bool west_land  = false;
-			bool east_land  = false;
-			bool ne_land    = false;
-			bool nw_land    = false;
-			bool se_land    = false;
-			bool sw_land    = false;
-
-			FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
-				if (tai.n == 0)
-					continue;
-				int dx = 0, dy = 0;
-				neighbor_index_to_diff (tai.n, &dx, &dy);
-				bool is_land = tile_is_land (civ_id, tile_x + dx, tile_y + dy, false);
-				if (dx == 0 && dy == -2)       north_land = is_land;
-				else if (dx == 0 && dy == 2)   south_land = is_land;
-				else if (dx == -2 && dy == 0)  west_land = is_land;
-				else if (dx == 2 && dy == 0)   east_land = is_land;
-				else if (dx == 1 && dy == -1)  ne_land = is_land;
-				else if (dx == -1 && dy == -1) nw_land = is_land;
-				else if (dx == 1 && dy == 1)   se_land = is_land;
-				else if (dx == -1 && dy == 1)  sw_land = is_land;
-			}
-
-			bool has_land_pair = (north_land && south_land) ||
-					     (west_land && east_land) ||
-					     (ne_land && sw_land) ||
-					     (nw_land && se_land);
-			if (has_land_pair) {
+		// Only build if no bridges are within the immediate 9-tile radius and this tile links two civ-owned continents spotted inside the 21 tiles (radius 2) neighborhood.
+		if (! has_adjacent_bridge &&
+		    bridge_tile_connects_two_continents (tile_x, tile_y, civ_id)) {
 				unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
 				unsigned int removable_flags = overlay_flags & 0xfc;
 				tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
@@ -31709,18 +31725,18 @@ patch_get_combat_occupier_in_Unit_ai_move_naval_power_unit (int tile_x, int tile
 
 	Tile * tile = tile_at (tile_x, tile_y);
 	if (tile == NULL || tile == p_null_tile)
-		return -1;
+		return base;
 
 	struct district_instance * inst = get_district_instance (tile);
 	if (inst == NULL)
-		return -1;
+		return base;
 
 	int owner = (*tile->vtable->m38_Get_Territory_OwnerID) (tile);
 	if (owner <= 0 || owner == civ_id)
-		return -1;
+		return base;
 
 	if (! leaders[civ_id].At_War[owner])
-		return -1;
+		return base;
 
 	return owner;
 }
