@@ -31163,9 +31163,23 @@ patch_Unit_ai_move_naval_power_unit (Unit * this)
 		return;
 	}
 
+	Tile * here = tile_at (this->Body.X, this->Body.Y);
+	if (here == NULL) {
+		Unit_ai_move_naval_power_unit (this);
+		return;
+	}
+
+	// If we're on a port and the sole unit, fortify 
+	if (is->current_config.ai_defends_districts && 
+		tile_has_friendly_port_district (here, this->Body.CivID) && 
+		count_units_at (this->Body.X, this->Body.Y, UF_0, this->Body.CivID, 0, -1) == 1) {
+		Unit_set_escortee (this, __, -1);
+		Unit_set_state (this, __, UnitState_Fortifying);
+		return;
+	}
+
 	// If we're already sitting on an enemy maritime district, pillage it immediately
 	if (this->Body.Container_Unit < 0) {
-		Tile * here = tile_at (this->Body.X, this->Body.Y);
 		if (is_enemy_maritime_district_tile (this, here) &&
 		    patch_Unit_can_pillage (this, __, this->Body.X, this->Body.Y) &&
 		    (patch_Unit_ai_eval_pillage_target (this, __, this->Body.X, this->Body.Y) > 0)) {
@@ -31183,10 +31197,6 @@ patch_Unit_ai_move_naval_power_unit (Unit * this)
 
 	// If damaged and cannot heal here, try to path to a friendly port district
 	if ((this->Body.Damage > 0) && try_path_to_friendly_port_district (this, true, false))
-		return;
-
-	// If configured, try to keep at least one ship defending each friendly port district
-	if (is->current_config.ai_defends_districts && try_path_to_friendly_port_district (this, false, true))
 		return;
 
 	Unit_ai_move_naval_power_unit (this);
