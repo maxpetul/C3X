@@ -5269,6 +5269,7 @@ free_dynamic_district_config (struct district_config * cfg)
 	free_bonus_entry_list (&cfg->gold_bonus_extras);
 	free_bonus_entry_list (&cfg->shield_bonus_extras);
 	free_bonus_entry_list (&cfg->happiness_bonus_extras);
+	free_bonus_entry_list (&cfg->defense_bonus_extras);
 
 	memset (cfg, 0, sizeof *cfg);
 }
@@ -5446,6 +5447,7 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 	free_bonus_entry_list_override (&cfg->gold_bonus_extras, &defaults->gold_bonus_extras);
 	free_bonus_entry_list_override (&cfg->shield_bonus_extras, &defaults->shield_bonus_extras);
 	free_bonus_entry_list_override (&cfg->happiness_bonus_extras, &defaults->happiness_bonus_extras);
+	free_bonus_entry_list_override (&cfg->defense_bonus_extras, &defaults->defense_bonus_extras);
 }
 
 void
@@ -5513,7 +5515,7 @@ init_parsed_district_definition (struct parsed_district_definition * def)
 {
 	memset (def, 0, sizeof *def);
 	def->img_path_count = -1;
-	def->defense_bonus_percent = 100;
+	def->defense_bonus_percent = 0;
 	def->render_strategy = DRS_BY_COUNT;
 	def->ai_build_strategy = DABS_DISTRICT;
 	def->buildable_square_types_mask = district_default_buildable_mask ();
@@ -5648,6 +5650,7 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 	free_bonus_entry_list (&def->gold_bonus_extras);
 	free_bonus_entry_list (&def->shield_bonus_extras);
 	free_bonus_entry_list (&def->happiness_bonus_extras);
+	free_bonus_entry_list (&def->defense_bonus_extras);
 
 	init_parsed_district_definition (def);
 }
@@ -6214,8 +6217,11 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->btn_tile_sheet_column = def->btn_tile_sheet_column;
 	if (def->has_btn_tile_sheet_row)
 		cfg->btn_tile_sheet_row = def->btn_tile_sheet_row;
-	if (def->has_defense_bonus_percent)
+	if (def->has_defense_bonus_percent) {
 		cfg->defense_bonus_percent = def->defense_bonus_percent;
+		free_bonus_entry_list_override (&cfg->defense_bonus_extras, &defaults->defense_bonus_extras);
+		move_bonus_entry_list (&cfg->defense_bonus_extras, &def->defense_bonus_extras);
+	}
 	if (def->has_heal_units_in_one_turn)
 		cfg->heal_units_in_one_turn = def->heal_units_in_one_turn;
 	if (def->has_culture_bonus) {
@@ -6477,7 +6483,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.y_offset = def->has_y_offset ? def->y_offset : 0;
 	new_cfg.btn_tile_sheet_column = def->has_btn_tile_sheet_column ? def->btn_tile_sheet_column : 0;
 	new_cfg.btn_tile_sheet_row = def->has_btn_tile_sheet_row ? def->btn_tile_sheet_row : 0;
-	new_cfg.defense_bonus_percent = def->has_defense_bonus_percent ? def->defense_bonus_percent : 100;
+	new_cfg.defense_bonus_percent = def->has_defense_bonus_percent ? def->defense_bonus_percent : 0;
 	new_cfg.heal_units_in_one_turn = def->has_heal_units_in_one_turn ? def->heal_units_in_one_turn : false;
 	new_cfg.culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
 	new_cfg.science_bonus = def->has_science_bonus ? def->science_bonus : 0;
@@ -6499,6 +6505,8 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		move_bonus_entry_list (&new_cfg.shield_bonus_extras, &def->shield_bonus_extras);
 	if (def->has_happiness_bonus)
 		move_bonus_entry_list (&new_cfg.happiness_bonus_extras, &def->happiness_bonus_extras);
+	if (def->has_defense_bonus_percent)
+		move_bonus_entry_list (&new_cfg.defense_bonus_extras, &def->defense_bonus_extras);
 
 	if (def->has_generated_resource) {
 		new_cfg.generated_resource = def->generated_resource;
@@ -7075,13 +7083,11 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "defense_bonus_percent")) {
-		struct string_slice val_slice = *value;
-		int ival;
-		if (read_int (&val_slice, &ival)) {
-			def->defense_bonus_percent = ival;
+		if (parse_district_bonus_entries (value, &def->defense_bonus_percent, &def->defense_bonus_extras, parse_errors, line_number, key)) {
 			def->has_defense_bonus_percent = true;
-		} else
-			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		} else {
+			def->has_defense_bonus_percent = false;
+		}
 
 	} else if (slice_matches_str (key, "heal_units_in_one_turn")) {
 		struct string_slice val_slice = *value;
@@ -8678,6 +8684,7 @@ void parse_building_and_tech_ids ()
 		resolve_district_bonus_building_entries (&is->district_configs[i].gold_bonus_extras, district_name, "gold_bonus", &district_parse_errors);
 		resolve_district_bonus_building_entries (&is->district_configs[i].shield_bonus_extras, district_name, "shield_bonus", &district_parse_errors);
 		resolve_district_bonus_building_entries (&is->district_configs[i].happiness_bonus_extras, district_name, "happiness_bonus", &district_parse_errors);
+		resolve_district_bonus_building_entries (&is->district_configs[i].defense_bonus_extras, district_name, "defense_bonus_percent", &district_parse_errors);
 	}
 
 	// Map wonder names to their improvement IDs for rendering under-construction wonders
@@ -30104,9 +30111,12 @@ patch_get_building_defense_bonus_at (int x, int y, int param_3)
     if ((tile == NULL) || (tile == p_null_tile))
         return base;
 
-    struct district_instance * inst = get_district_instance (tile);
+	struct district_instance * inst = get_district_instance (tile);
     if (inst != NULL) {
-		return is->district_configs[inst->district_type].defense_bonus_percent;
+		struct district_config const * cfg = &is->district_configs[inst->district_type];
+		int bonus = cfg->defense_bonus_percent;
+		bonus += apply_district_bonus_entries (inst, &cfg->defense_bonus_extras, inst->district_type);
+		return bonus;
     }
 
     return base;

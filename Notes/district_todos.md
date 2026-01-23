@@ -1,4 +1,3 @@
-  - Better patch for heal units in one turn
   - Firm up logic for river district rendering
 
   - Hoover Dam (use alt dir, special positioning b/c on river)
@@ -14,7 +13,7 @@
     - Bridge (2 opposite sides have land "strait" or bridges)
   - Light annotations
   - Add commented instructions on fields in config files
-  - Double check PCX third column alignment, clean up ground in industrial zone
+  - Double check PCX third column alignment, clean up ground in industrial zone, Newton's University, Grand Cathedral?
 
 
 ## Maritime Districts

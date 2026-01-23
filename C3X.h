@@ -688,6 +688,7 @@ struct district_config {
 	struct district_bonus_list gold_bonus_extras;
 	struct district_bonus_list shield_bonus_extras;
 	struct district_bonus_list happiness_bonus_extras;
+	struct district_bonus_list defense_bonus_extras;
 	int defense_bonus_percent;
 	bool heal_units_in_one_turn;
 	char const * generated_resource;
@@ -921,6 +922,7 @@ struct parsed_district_definition {
 	struct district_bonus_list gold_bonus_extras;
 	struct district_bonus_list shield_bonus_extras;
 	struct district_bonus_list happiness_bonus_extras;
+	struct district_bonus_list defense_bonus_extras;
 	unsigned int buildable_square_types_mask;
 	char * buildable_by_civs[32];
 	int buildable_by_civ_count;
