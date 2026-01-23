@@ -17089,13 +17089,13 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 	AdjacentMoveValidity base_validity = Unit_can_move_to_adjacent_tile (this, __, neighbor_index, param_2);
 
 	if (is->current_config.enable_districts) {
+		int nx, ny;
+		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
+		Tile * dest = tile_at (nx, ny);
 
 		// Let workers step onto coast tiles when the config flag is enabled (base logic treats this as an invalid sea move)
 		if (is->current_config.workers_can_enter_coast && is_worker (this) &&
 			((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
-			int nx, ny;
-			get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
-			Tile * dest = tile_at (nx, ny);
 			if ((dest != NULL) &&
 				dest->vtable->m35_Check_Is_Water (dest) &&
 				(dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
@@ -17106,14 +17106,9 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 		if (is->current_config.enable_bridge_districts &&
 			(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land) &&
 			((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
-			int nx, ny;
-			get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
-			Tile * dest = tile_at (nx, ny);
 			if ((dest != NULL) && (dest != p_null_tile)) {
 				struct district_instance * inst = get_district_instance (dest);
-				if ((inst != NULL) &&
-					(inst->district_type == BRIDGE_DISTRICT_ID) &&
-					district_is_complete (dest, inst->district_type)) {
+				if ((inst != NULL) && (inst->district_type == BRIDGE_DISTRICT_ID) && district_is_complete (dest, inst->district_type)) {
 					base_validity = AMV_OK;
 				}
 			}
@@ -17123,14 +17118,9 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 		if (is->current_config.enable_canal_districts &&
 			(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea) &&
 			((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
-			int nx, ny;
-			get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
-			Tile * dest = tile_at (nx, ny);
 			if ((dest != NULL) && (dest != p_null_tile)) {
 				struct district_instance * inst = get_district_instance (dest);
-				if ((inst != NULL) &&
-					(inst->district_type == CANAL_DISTRICT_ID) &&
-					district_is_complete (dest, inst->district_type)) {
+				if ((inst != NULL) && (inst->district_type == CANAL_DISTRICT_ID) && district_is_complete (dest, inst->district_type)) {
 					base_validity = AMV_OK;
 				}
 			}
@@ -17140,9 +17130,6 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 			is->current_config.enable_port_districts &&
 			is->current_config.naval_units_use_port_districts_not_cities &&
 			(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
-			int nx, ny;
-			get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
-			Tile * dest = tile_at (nx, ny);
 			if ((dest != NULL) && (dest != p_null_tile) && Tile_has_city (dest))
 				return AMV_INVALID_SEA_MOVE;
 		}
