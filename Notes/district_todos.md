@@ -1,4 +1,3 @@
-  - Auto add road/railrood
   - Upfront bridge/canal algorithm
   - AI great wall build strategy setting
   - Validate resource generation
@@ -23,6 +22,7 @@
 ## Maritime Districts
   - ~~Choose terrain type~~
   - ~~Buttons~~
+  - ~~Auto add road/railrood~~
   - ~~Named tiles~~
   - ~~Allow workers over water only if in radius of city that can build water district/wonder~~
   - ~~Add ai_build_strategy option and AI worker handling~~

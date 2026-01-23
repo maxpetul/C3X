@@ -29652,6 +29652,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		return false;
 	}
 	req->city = request_city;
+	struct district_config * cfg = &is->district_configs[district_id];
 
 	// If the worker has arrived
 	if ((worker->Body.X == req->target_x) && (worker->Body.Y == req->target_y)) {
@@ -29708,7 +29709,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		// Need to make sure distro hubs get roads. If this will be one, build the road first to be sure
 		if (req->district_id == DISTRIBUTION_HUB_DISTRICT_ID) {
 			bool has_road = (*tile->vtable->m25_Check_Roads)(tile, __, 0);
-			if (! has_road) {
+			if (! has_road && ! cfg->auto_add_road) {
 				Unit_set_state(worker, __, UnitState_Build_Road);
 				worker->Body.Job_ID = WJ_Build_Road;
 				return true;
@@ -30144,8 +30145,9 @@ patch_Unit_ai_move_terraformer (Unit * this)
 			tile->vtable->m50_Get_Square_BaseType (tile) != SQ_Coast) {
 			// Roads should be made after district builds. The district is complete but 
 			// worker is still likely on the tile, so check here and build road if needed
+			struct district_config * cfg = &is->district_configs[inst->district_type];
 			bool has_road = (*tile->vtable->m25_Check_Roads)(tile, __, 0);
-			if (! has_road) {
+			if (! has_road && ! cfg->auto_add_road) {
 				Unit_set_state(this, __, UnitState_Build_Road);
 				this->Body.Job_ID = WJ_Build_Road;
 				return;
@@ -30154,7 +30156,7 @@ patch_Unit_ai_move_terraformer (Unit * this)
 			// Same check for railroads
 			bool can_build_railroad = Leader_can_do_worker_job (&leaders[this->Body.CivID], __, WJ_Build_Railroad, this->Body.X, this->Body.Y, 0);
 			bool has_railroad = (*tile->vtable->m23_Check_Railroads)(tile, __, 0);
-			if (can_build_railroad && !has_railroad) {
+			if (can_build_railroad && !has_railroad && ! cfg->auto_add_railroad) {
 				Unit_set_state(this, __, UnitState_Build_Railroad);
 				this->Body.Job_ID = WJ_Build_Railroad; 
 				return;
