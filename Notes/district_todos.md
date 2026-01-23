@@ -1,4 +1,6 @@
-  - Figure out multi-resource single-tile generation problem
+  - Auto add road/railrood
+  - Upfront bridge/canal algorithm
+  - AI great wall build strategy setting
   - Validate resource generation
   - Firm up logic for river district rendering
 

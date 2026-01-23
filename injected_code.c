@@ -64,6 +64,8 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID 0x222004
 #define PEDIA_MULTIPAGE_PREV_BUTTON_ID 0x222005
 
+#define TILE_FLAG_ROAD 0x1
+#define TILE_FLAG_RAILROAD 0x2
 #define TILE_FLAG_MINE 0x4
 
 #define NEIGHBORHOOD_DISTRICT_ID     0
@@ -4310,6 +4312,7 @@ district_is_complete(Tile * tile, int district_id)
 	bool is_natural_wonder = (district_id == NATURAL_WONDER_DISTRICT_ID);
 	bool districts_disabled = ! is->current_config.enable_districts;
 	bool natural_wonders_disabled = ! is->current_config.enable_natural_wonders;
+	struct district_config const * cfg = &is->district_configs[district_id];
 
 	if (districts_disabled && (!is_natural_wonder || natural_wonders_disabled))
 		return false;
@@ -4347,6 +4350,22 @@ district_is_complete(Tile * tile, int district_id)
 	int tile_x, tile_y;
 	if (district_instance_get_coords (inst, tile, &tile_x, &tile_y)) {
 		set_tile_unworkable_for_all_cities (tile, tile_x, tile_y);
+
+		if (cfg->auto_add_road) {
+			bool has_road = tile->vtable->m25_Check_Roads (tile, __, 0) != 0;
+			if (! has_road)
+				tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_ROAD, tile_x, tile_y); 
+		}
+
+		if (cfg->auto_add_railroad) {
+			bool has_railroad = tile->vtable->m23_Check_Railroads (tile, __, 0) != 0;
+			if (! has_railroad) {
+				int territory_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+				if ((territory_owner >= 0) && Leader_can_do_worker_job (&leaders[territory_owner], __, WJ_Build_Railroad, tile_x, tile_y, 0)) {
+					tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_RAILROAD, tile_x, tile_y); 
+				}
+			}
+		}
 
 		// Activate distribution hub if applicable
 		if (is->current_config.enable_distribution_hub_districts &&
@@ -6205,6 +6224,10 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->draw_over_resources = def->draw_over_resources;
 	if (def->has_allow_irrigation_from)
 		cfg->allow_irrigation_from = def->allow_irrigation_from;
+	if (def->has_auto_add_road)
+		cfg->auto_add_road = def->auto_add_road;
+	if (def->has_auto_add_railroad)
+		cfg->auto_add_railroad = def->auto_add_railroad;
 	if (def->has_custom_width)
 		cfg->custom_width = def->custom_width;
 	if (def->has_custom_height)
@@ -6477,6 +6500,8 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.align_to_coast = def->has_align_to_coast ? def->align_to_coast : false;
 	new_cfg.draw_over_resources = def->has_draw_over_resources ? def->draw_over_resources : false;
 	new_cfg.allow_irrigation_from = def->has_allow_irrigation_from ? def->allow_irrigation_from : false;
+	new_cfg.auto_add_road = def->has_auto_add_road ? def->auto_add_road : false;
+	new_cfg.auto_add_railroad = def->has_auto_add_railroad ? def->auto_add_railroad : false;
 	new_cfg.custom_width = def->has_custom_width ? def->custom_width : 0;
 	new_cfg.custom_height = def->has_custom_height ? def->custom_height : 0;
 	new_cfg.x_offset = def->has_x_offset ? def->x_offset : 0;
@@ -7025,6 +7050,24 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		if (read_int (&val_slice, &ival)) {
 			def->allow_irrigation_from = (ival != 0);
 			def->has_allow_irrigation_from = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "auto_add_road")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->auto_add_road = (ival != 0);
+			def->has_auto_add_road = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "auto_add_railroad")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->auto_add_railroad = (ival != 0);
+			def->has_auto_add_railroad = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
@@ -9757,6 +9800,26 @@ tile_has_district_at (int tile_x, int tile_y, int district_id)
 
 	struct district_instance * inst = get_district_instance (tile);
 	return (inst != NULL) && (inst->district_type == district_id) && (district_is_complete (tile, district_id));
+}
+
+bool
+tile_is_land (int civ_id, int tile_x, int tile_y, bool must_be_same_owner)
+{
+	if (must_be_same_owner && (civ_id <= 0))
+		return false;
+
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	return (tile != NULL) && (tile != p_null_tile) && (! tile->vtable->m35_Check_Is_Water (tile)) &&
+		((! must_be_same_owner) || (tile->Territory_OwnerID == civ_id));
+}
+
+bool
+tile_is_water (int tile_x, int tile_y)
+{
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	return (tile != NULL) && (tile != p_null_tile) && (tile->vtable->m35_Check_Is_Water (tile));
 }
 
 int
@@ -28387,26 +28450,6 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
     return false;
 }
 
-bool
-tile_is_land (int civ_id, int tile_x, int tile_y, bool must_be_same_owner)
-{
-	if (must_be_same_owner && (civ_id <= 0))
-		return false;
-
-	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
-	Tile * tile = tile_at (tile_x, tile_y);
-	return (tile != NULL) && (tile != p_null_tile) && (! tile->vtable->m35_Check_Is_Water (tile)) &&
-		((! must_be_same_owner) || (tile->Territory_OwnerID == civ_id));
-}
-
-bool
-tile_is_water (int tile_x, int tile_y)
-{
-	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
-	Tile * tile = tile_at (tile_x, tile_y);
-	return (tile != NULL) && (tile != p_null_tile) && (tile->vtable->m35_Check_Is_Water (tile));
-}
-
 Tile *
 get_tile_sprite_indices (int tile_x, int tile_y, int * out_sheet_index, int * out_sprite_index)
 {
@@ -29440,7 +29483,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -29986,18 +30029,16 @@ ai_worker_try_tile_improvement_district (Unit * worker)
 		}
 
 		// Only build if no bridges are within the immediate 9-tile radius and this tile links two civ-owned continents spotted inside the 21 tiles (radius 2) neighborhood.
-		if (! has_adjacent_bridge &&
-		    bridge_tile_connects_two_continents (tile_x, tile_y, civ_id)) {
-				unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
-				unsigned int removable_flags = overlay_flags & 0xfc;
-				tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
-				if (removable_flags != 0)
-					tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, tile_x, tile_y);
-				ensure_district_instance (tile, BRIDGE_DISTRICT_ID, tile_x, tile_y);
-				Unit_set_state (worker, __, UnitState_Build_Mines);
-				worker->Body.Job_ID = WJ_Build_Mines;
-				return true;
-			}
+		if (! has_adjacent_bridge && bridge_tile_connects_two_continents (tile_x, tile_y, civ_id)) {
+			unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
+			unsigned int removable_flags = overlay_flags & 0xfc;
+			tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+			if (removable_flags != 0)
+				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, tile_x, tile_y);
+			ensure_district_instance (tile, BRIDGE_DISTRICT_ID, tile_x, tile_y);
+			Unit_set_state (worker, __, UnitState_Build_Mines);
+			worker->Body.Job_ID = WJ_Build_Mines;
+			return true;
 		}
 	}
 

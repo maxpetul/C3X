@@ -663,6 +663,8 @@ struct district_config {
 	bool align_to_coast;
 	bool draw_over_resources;
 	bool allow_irrigation_from;
+	bool auto_add_road;
+	bool auto_add_railroad;
 	int custom_width;
 	int custom_height;
 	int x_offset;
@@ -902,6 +904,8 @@ struct parsed_district_definition {
 	bool align_to_coast;
 	bool draw_over_resources;
 	bool allow_irrigation_from;
+	bool auto_add_road;
+	bool auto_add_railroad;
 	int custom_width;
 	int custom_height;
 	int x_offset;
@@ -982,6 +986,8 @@ struct parsed_district_definition {
 	bool has_buildable_by_civ_cultures;
 	bool has_buildable_on_districts;
 	bool has_allow_irrigation_from;
+	bool has_auto_add_road;
+	bool has_auto_add_railroad;
 };
 
 struct parsed_wonder_definition {
