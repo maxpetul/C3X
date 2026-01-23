@@ -17725,6 +17725,140 @@ compare_buildings_to_sell (void const * a, void const * b)
 	return maint_b - maint_a;
 }
 
+// Returns the final improv cost after buildings were sold
+int
+sell_unaffordable_buildings (Leader * leader, int improv_cost, int unit_cost)
+{
+	int treasury = leader->Gold_Encoded + leader->Gold_Decrement;
+
+	clear_memo ();
+
+	// Memoize all buildings this player owns that we might potentially sell. B/c the memo can only contain ints, we must pack the maintenance
+	// cost, improv ID, and city ID all into one int. The city ID is stored in the lowest 13 bits, then the improv ID in the next 13, and finally
+	// the maintenance amount in the 5 above those.
+	FOR_CITIES_OF (coi, leader->ID)
+		for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+			Improvement * improv = &p_bic_data->Improvements[n];
+
+			int unsellable_flags =
+				ITF_Center_of_Empire |
+				ITF_50_Luxury_Output |
+				ITF_50_Tax_Output |
+				ITF_Reduces_Corruption |
+				ITF_Increases_Luxury_Trade |
+				ITF_Allows_City_Level_2 |
+				ITF_Allows_City_Level_3 |
+				ITF_Capitalization |
+				ITF_Allows_Water_Trade |
+				ITF_Allows_Air_Trade |
+				ITF_Increases_Shields_In_Water |
+				ITF_Increases_Food_In_Water |
+				ITF_Increases_Trade_In_Water;
+
+			// Only sell improvements that aren't contributing gold, even indirectly through e.g. happiness or boosting shield production
+			// for Wealth
+			bool sellable =
+				((improv->Characteristics & (ITC_Small_Wonder | ITC_Wonder)) == 0) &&
+				((improv->ImprovementFlags & unsellable_flags) == 0) &&
+				(improv->Happy_Faces_All <= 0) && (improv->Happy_Faces <= 0) &&
+				(improv->Production <= 0);
+
+			if (sellable && patch_City_has_improvement (coi.city, __, n, 0)) {
+				int maint = patch_City_get_improvement_maintenance (coi.city, __, n);
+				if (maint > 0)
+					memoize ((not_above (31, maint) << 26) | (n << 13) | coi.city_id);
+			}
+		}
+
+	// Sort the list of buildings so the highest maintenance ones come first
+	qsort (is->memo, is->memo_len, sizeof is->memo[0], compare_buildings_to_sell);
+
+	// Sell buildings until we can cover maintenance costs or until we run out of ones to sell
+	int count_sold = 0;
+	while ((improv_cost + unit_cost > treasury) && (count_sold < is->memo_len)) {
+		int improv_id = ((1<<13) - 1) & (is->memo[count_sold] >> 13),
+		    city_id   = ((1<<13) - 1) &  is->memo[count_sold];
+		City * city = get_city_ptr (city_id);
+		improv_cost -= patch_City_get_improvement_maintenance (city, __, improv_id);
+		City_sell_improvement (city, __, improv_id, false);
+		treasury = leader->Gold_Encoded + leader->Gold_Decrement;
+		count_sold++;
+	}
+
+	// Show popup informing the player that their buildings were force sold
+	if ((leader->ID == p_main_screen_form->Player_CivID) && ! is_online_game ()) {
+		PopupForm * popup = get_popup_form ();
+		if (count_sold == 1) {
+			int improv_id = ((1<<13) - 1) & (is->memo[0] >> 13),
+			    city_id   = ((1<<13) - 1) &  is->memo[0];
+			set_popup_str_param (0, get_city_ptr (city_id)->Body.CityName     , -1, -1);
+			set_popup_str_param (1, p_bic_data->Improvements[improv_id].Name.S, -1, -1);
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_SINGLE_IMPROV", -1, 0, 0, 0);
+			patch_show_popup (popup, __, 0, 0);
+		} else if (count_sold > 1) {
+			set_popup_int_param (0, count_sold);
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_MULTIPLE_IMPROVS", -1, 0, 0, 0);
+
+			// Add list of sold improvements to popup
+			for (int n = 0; n < count_sold; n++) {
+				int improv_id = ((1<<13) - 1) & (is->memo[n] >> 13),
+				    city_id   = ((1<<13) - 1) &  is->memo[n];
+				char s[200];
+				snprintf (s, sizeof s, "^  %s in %s",
+					  p_bic_data->Improvements[improv_id].Name.S,
+					  get_city_ptr (city_id)->Body.CityName);
+				s[(sizeof s) - 1] = '\0';
+				PopupForm_add_text (popup, __, s, 0);
+			}
+
+			patch_show_popup (popup, __, 0, 0);
+		}
+	}
+
+	return improv_cost;
+}
+
+// Returns the final unit cost after disbanding
+int
+disband_unaffordable_units (Leader * leader, int improv_cost, int unit_cost, int cost_per_unit)
+{
+	int treasury = leader->Gold_Encoded + leader->Gold_Decrement;
+	int count_disbanded = 0;
+	Unit * to_disband;
+	char first_disbanded_name[32];
+	while ((improv_cost + unit_cost > treasury) &&
+	       (unit_cost > 0) &&
+	       (NULL != (to_disband = leader->vtable->find_unsupported_unit (leader)))) {
+		if (count_disbanded == 0) {
+			char const * name_src = (to_disband->Body.Custom_Name.S[0] == '\0')
+				? p_bic_data->UnitTypes[to_disband->Body.UnitTypeID].Name
+				: to_disband->Body.Custom_Name.S;
+			strncpy (first_disbanded_name, name_src, sizeof first_disbanded_name);
+			first_disbanded_name[(sizeof first_disbanded_name) - 1] = '\0';
+		}
+		Unit_disband (to_disband);
+		count_disbanded++;
+		unit_cost -= cost_per_unit;
+	}
+
+	// Show popup informing the player that their units were disbanded
+	if (leader->ID == p_main_screen_form->Player_CivID) {
+		PopupForm * popup = get_popup_form ();
+		if (count_disbanded == 1) {
+			set_popup_str_param (0, first_disbanded_name, -1, -1);
+			int online_flag = is_online_game () ? 0x4000 : 0;
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_SINGLE_UNIT", -1, 0, online_flag, 0);
+			patch_show_popup (popup, __, 0, 0);
+		} else if ((count_disbanded > 1) && ! is_online_game ()) {
+			set_popup_int_param (0, count_disbanded);
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_MULTIPLE_UNITS", -1, 0, 0, 0);
+			patch_show_popup (popup, __, 0, 0);
+		}
+	}
+
+	return unit_cost;
+}
+
 int
 compare_cities_by_production (void const * vp_id_a, void const * vp_id_b)
 {
@@ -17751,123 +17885,10 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 
 	int treasury = leader->Gold_Encoded + leader->Gold_Decrement;
 	if (improv_cost + unit_cost > treasury) {
-		clear_memo ();
 
-		// Memoize all buildings this player owns that we might potentially sell. B/c the memo can only contain ints, we must pack the
-		// maintenance cost, improv ID, and city ID all into one int. The city ID is stored in the lowest 13 bits, then the improv ID in the
-		// next 13, and finally the maintenance amount in the 5 above those.
-		FOR_CITIES_OF (coi, leader->ID)
-			for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
-				Improvement * improv = &p_bic_data->Improvements[n];
-
-				int unsellable_flags =
-					ITF_Center_of_Empire |
-					ITF_50_Luxury_Output |
-					ITF_50_Tax_Output |
-					ITF_Reduces_Corruption |
-					ITF_Increases_Luxury_Trade |
-					ITF_Allows_City_Level_2 |
-					ITF_Allows_City_Level_3 |
-					ITF_Capitalization |
-					ITF_Allows_Water_Trade |
-					ITF_Allows_Air_Trade |
-					ITF_Increases_Shields_In_Water |
-					ITF_Increases_Food_In_Water |
-					ITF_Increases_Trade_In_Water;
-
-				// Only sell improvements that aren't contributing gold, even indirectly through e.g. happiness or boosting shield
-				// production for Wealth
-				int sellable =
-					((improv->Characteristics & (ITC_Small_Wonder | ITC_Wonder)) == 0) &&
-					((improv->ImprovementFlags & unsellable_flags) == 0) &&
-					(improv->Happy_Faces_All <= 0) && (improv->Happy_Faces <= 0) &&
-					(improv->Production <= 0);
-
-				if (sellable && patch_City_has_improvement (coi.city, __, n, 0)) {
-					int maint = patch_City_get_improvement_maintenance (coi.city, __, n);
-					if (maint > 0)
-						memoize ((not_above (31, maint) << 26) | (n << 13) | coi.city_id);
-				}
-			}
-
-		// Sort the list of buildings so the highest maintenance ones come first
-		qsort (is->memo, is->memo_len, sizeof is->memo[0], compare_buildings_to_sell);
-
-		// Sell buildings until we can cover maintenance costs or until we run out of ones to sell
-		int count_sold = 0;
-		while ((improv_cost + unit_cost > treasury) && (count_sold < is->memo_len)) {
-			int improv_id = ((1<<13) - 1) & (is->memo[count_sold] >> 13),
-			    city_id   = ((1<<13) - 1) &  is->memo[count_sold];
-			City * city = get_city_ptr (city_id);
-			improv_cost -= patch_City_get_improvement_maintenance (city, __, improv_id);
-			City_sell_improvement (city, __, improv_id, false);
-			treasury = leader->Gold_Encoded + leader->Gold_Decrement;
-			count_sold++;
-		}
-
-		// Show popup informing the player that their buildings were force sold
-		if ((leader->ID == p_main_screen_form->Player_CivID) && ! is_online_game ()) {
-			PopupForm * popup = get_popup_form ();
-			if (count_sold == 1) {
-				int improv_id = ((1<<13) - 1) & (is->memo[0] >> 13),
-				    city_id   = ((1<<13) - 1) &  is->memo[0];
-				set_popup_str_param (0, get_city_ptr (city_id)->Body.CityName     , -1, -1);
-				set_popup_str_param (1, p_bic_data->Improvements[improv_id].Name.S, -1, -1);
-				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_SINGLE_IMPROV", -1, 0, 0, 0);
-				patch_show_popup (popup, __, 0, 0);
-			} else if (count_sold > 1) {
-				set_popup_int_param (0, count_sold);
-				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_MULTIPLE_IMPROVS", -1, 0, 0, 0);
-
-				// Add list of sold improvements to popup
-				for (int n = 0; n < count_sold; n++) {
-					int improv_id = ((1<<13) - 1) & (is->memo[n] >> 13),
-					    city_id   = ((1<<13) - 1) &  is->memo[n];
-					char s[200];
-					snprintf (s, sizeof s, "^  %s in %s",
-						  p_bic_data->Improvements[improv_id].Name.S,
-						  get_city_ptr (city_id)->Body.CityName);
-					s[(sizeof s) - 1] = '\0';
-					PopupForm_add_text (popup, __, s, 0);
-				}
-
-				patch_show_popup (popup, __, 0, 0);
-			}
-		}
-
-		// If the player still can't afford maintenance, disband all the units they can't afford
-		int count_disbanded = 0;
-		Unit * to_disband;
-		char first_disbanded_name[32];
-		while ((improv_cost + unit_cost > treasury) &&
-		       (unit_cost > 0) &&
-		       (NULL != (to_disband = leader->vtable->find_unsupported_unit (leader)))) {
-			if (count_disbanded == 0) {
-				char const * name_src = (to_disband->Body.Custom_Name.S[0] == '\0')
-					? p_bic_data->UnitTypes[to_disband->Body.UnitTypeID].Name
-					: to_disband->Body.Custom_Name.S;
-				strncpy (first_disbanded_name, name_src, sizeof first_disbanded_name);
-				first_disbanded_name[(sizeof first_disbanded_name) - 1] = '\0';
-			}
-			Unit_disband (to_disband);
-			count_disbanded++;
-			unit_cost -= cost_per_unit;
-		}
-
-		// Show popup informing the player that their units were disbanded
-		if (leader->ID == p_main_screen_form->Player_CivID) {
-			PopupForm * popup = get_popup_form ();
-			if (count_disbanded == 1) {
-				set_popup_str_param (0, first_disbanded_name, -1, -1);
-				int online_flag = is_online_game () ? 0x4000 : 0;
-				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_SINGLE_UNIT", -1, 0, online_flag, 0);
-				patch_show_popup (popup, __, 0, 0);
-			} else if ((count_disbanded > 1) && ! is_online_game ()) {
-				set_popup_int_param (0, count_disbanded);
-				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_MULTIPLE_UNITS", -1, 0, 0, 0);
-				patch_show_popup (popup, __, 0, 0);
-			}
-		}
+		improv_cost = sell_unaffordable_buildings (leader, improv_cost, unit_cost);
+		unit_cost = disband_unaffordable_units (leader, improv_cost, unit_cost, cost_per_unit);
+		treasury = leader->Gold_Encoded + leader->Gold_Decrement; // Update b/c selling buildings recovers some gold
 
 		// If the player still can't afford maintenance, even after all that, start switching their cities to Wealth
 		int wealth_income = 0;
