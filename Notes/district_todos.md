@@ -1,6 +1,7 @@
   - Upfront bridge/canal algorithm
   - AI great wall build strategy setting
   - Validate resource generation
+  - Fix scenario district art mod folder check
   - Firm up logic for river district rendering
 
   - Hoover Dam (use alt dir, special positioning b/c on river)

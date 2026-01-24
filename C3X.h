@@ -385,6 +385,9 @@ struct c3x_config {
 	bool expand_water_tile_checks_to_city_work_area;
 	int max_contiguous_bridge_districts;
 	int max_contiguous_canal_districts;
+	int min_canal_bisected_land_tiles;
+	int ai_bridge_canal_subset_size;
+	int ai_bridge_lake_tile_threshold;
 
 	bool ai_defends_districts;
 	int ai_city_district_max_build_wait_turns;
@@ -1091,6 +1094,19 @@ struct pending_district_request {
 	int target_x;
 	int target_y;
 	int worker_assigned_turn;
+};
+
+struct ai_candidate_bridge_or_canal_entry {
+	int district_id;
+	short owner_civ_id;
+	short * tile_x;
+	short * tile_y;
+	short tile_count;
+	short assigned_tile_index;
+	int assigned_worker_id;
+	bool completed;
+	struct pending_district_request pending_req;
+	int tile_capacity;
 };
 
 struct district_worker_record {
@@ -1951,6 +1967,11 @@ struct district_button_image_set {
 
 	// Natural Wonder labels: table mapping natural wonder name strings to their IDs, count of defined natural wonders,
 	struct table natural_wonder_name_to_id;
+
+	struct ai_candidate_bridge_or_canal_entry * ai_candidate_bridge_or_canals;
+	int ai_candidate_bridge_or_canals_count;
+	int ai_candidate_bridge_or_canals_capacity;
+	bool ai_candidate_bridge_or_canals_initialized;
 
 	// City work radius highlighting: flag to enable/disable, table mapping tile pointers to highlight_level for visual feedback
 	bool highlight_city_radii;
