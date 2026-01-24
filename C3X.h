@@ -139,6 +139,11 @@ enum ai_distribution_hub_build_strategy {
 	ADHBS_BY_CITY_COUNT
 };
 
+enum ai_auto_build_great_wall_strategy {
+	AAGWS_ALL_BORDERS = 0,
+	AAGWS_OTHER_CIV_BORDERED_ONLY
+};
+
 enum perfume_kind {
 	PK_PRODUCTION = 0,
 	PK_TECHNOLOGY,
@@ -385,9 +390,9 @@ struct c3x_config {
 	bool expand_water_tile_checks_to_city_work_area;
 	int max_contiguous_bridge_districts;
 	int max_contiguous_canal_districts;
-	int min_canal_bisected_land_tiles;
-	int ai_bridge_canal_subset_size;
-	int ai_bridge_lake_tile_threshold;
+	int ai_min_canal_bisected_land_tiles;
+	int ai_bridge_canal_eval_subset_size;
+	int ai_bridge_eval_lake_tile_threshold;
 
 	bool ai_defends_districts;
 	int ai_city_district_max_build_wait_turns;
@@ -395,6 +400,7 @@ struct c3x_config {
 	bool disable_great_wall_city_defense_bonus;
 	bool great_wall_districts_impassible_by_others;
 	bool auto_build_great_wall_around_territory;
+	int ai_auto_build_great_wall_strategy;
 
 	bool enable_city_work_radii_highlights;
 };

@@ -1729,6 +1729,16 @@ read_ai_distribution_hub_build_strategy (struct string_slice const * s, int * ou
 }
 
 bool
+read_ai_auto_build_great_wall_strategy (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "all-borders"            )) { *out_val = AAGWS_ALL_BORDERS;            return true; }
+	else if (slice_matches_str (&trimmed, "other-civ-bordered-only")) { *out_val = AAGWS_OTHER_CIV_BORDERED_ONLY; return true; }
+	else
+		return false;
+}
+
+bool
 read_square_type_value (struct string_slice const * s, enum SquareTypes * out_type)
 {
 	if (s == NULL || out_type == NULL)
@@ -2289,6 +2299,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ai_distribution_hub_build_strategy")) {
 					if (! read_ai_distribution_hub_build_strategy (&value, (int *)&cfg->ai_distribution_hub_build_strategy))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "ai_auto_build_great_wall_strategy")) {
+					if (! read_ai_auto_build_great_wall_strategy (&value, (int *)&cfg->ai_auto_build_great_wall_strategy))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_ptw_arty_types (&value,
@@ -10948,7 +10961,7 @@ find_canal_candidate_in_block (Map * map, int block_x0, int block_y0, int block_
 							if (adj_count >= 2) {
 								int best1 = 0;
 								int best2 = 0;
-								int min_land = is->current_config.min_canal_bisected_land_tiles;
+								int min_land = is->current_config.ai_min_canal_bisected_land_tiles;
 								if (min_land < 1)
 									min_land = 1;
 								visit_mark++;
@@ -11249,7 +11262,7 @@ plan_canal_and_bridge_targets (void)
 	if ((width <= 0) || (height <= 0))
 		return;
 
-	int subset_size = is->current_config.ai_bridge_canal_subset_size;
+	int subset_size = is->current_config.ai_bridge_canal_eval_subset_size;
 	if (subset_size <= 0)
 		subset_size = 10;
 
@@ -15945,9 +15958,9 @@ patch_init_floating_point ()
 		{"neighborhood_needed_message_frequency"             ,     4, offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
 		{"max_contiguous_bridge_districts"                   ,     3, offsetof (struct c3x_config, max_contiguous_bridge_districts)},
 		{"max_contiguous_canal_districts"                    ,     5, offsetof (struct c3x_config, max_contiguous_canal_districts)},
-		{"min_canal_bisected_land_tiles"                     ,    10, offsetof (struct c3x_config, min_canal_bisected_land_tiles)},
-		{"ai_bridge_canal_subset_size"                       ,    20, offsetof (struct c3x_config, ai_bridge_canal_subset_size)},
-		{"ai_bridge_lake_tile_threshold"                     ,     6, offsetof (struct c3x_config, ai_bridge_lake_tile_threshold)},
+		{"ai_min_canal_bisected_land_tiles"                     ,    10, offsetof (struct c3x_config, ai_min_canal_bisected_land_tiles)},
+		{"ai_bridge_canal_eval_subset_size"                       ,    20, offsetof (struct c3x_config, ai_bridge_canal_eval_subset_size)},
+		{"ai_bridge_eval_lake_tile_threshold"                     ,     6, offsetof (struct c3x_config, ai_bridge_eval_lake_tile_threshold)},
 		{"ai_city_district_max_build_wait_turns"             ,    20, offsetof (struct c3x_config, ai_city_district_max_build_wait_turns)},
 		{"per_extraterritorial_colony_relation_penalty"      ,     0, offsetof (struct c3x_config, per_extraterritorial_colony_relation_penalty)},
 	};
@@ -16010,6 +16023,7 @@ patch_init_floating_point ()
 	base_config.day_night_cycle_mode = DNCM_OFF;
 	base_config.distribution_hub_yield_division_mode = DHYDM_FLAT;
 	base_config.ai_distribution_hub_build_strategy = ADHBS_BY_CITY_COUNT;
+	base_config.ai_auto_build_great_wall_strategy = AAGWS_ALL_BORDERS;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)
@@ -21985,6 +21999,7 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 
 	unsigned int const irrigation_flag = 0x8;
 	unsigned int const replaceable_flags = TILE_FLAG_MINE | irrigation_flag;
+	bool require_other_civ_border = (! is_human) && is->current_config.ai_auto_build_great_wall_strategy == AAGWS_OTHER_CIV_BORDERED_ONLY;
 
 	for (int index = 0; index < p_bic_data->Map.TileCount; index++) {
 		int x, y;
@@ -22000,18 +22015,25 @@ auto_build_great_wall_districts_for_civ (int civ_id)
 				continue;
 
 			bool has_border = false;
+			bool has_other_civ_border = false;
 			FOR_TILES_AROUND (tai, 9, x, y) {
 				if (tai.n == 0)
 					continue;
 				Tile * neighbor = tai.tile;
 				if (neighbor->vtable->m35_Check_Is_Water (neighbor))
 					continue;
-				if (neighbor->vtable->m38_Get_Territory_OwnerID (neighbor) != civ_id) {
+				int owner_id = neighbor->vtable->m38_Get_Territory_OwnerID (neighbor);
+				if (owner_id != civ_id) {
 					has_border = true;
-					break;
+					if (owner_id >= 0) {
+						has_other_civ_border = true;
+						break;
+					}
 				}
 			}
 			if (! has_border)
+				continue;
+			if (require_other_civ_border && (! has_other_civ_border))
 				continue;
 
 			if (! district_is_buildable_on_square_type (cfg, tile))

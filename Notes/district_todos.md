@@ -1,5 +1,4 @@
-  - Upfront bridge/canal algorithm
-  - AI great wall build strategy setting
+  - Validate and review upfront bridge/canal algorithm
   - Validate resource generation
   - Fix scenario district art mod folder check
   - Firm up logic for river district rendering
@@ -25,6 +24,7 @@
   - ~~Buttons~~
   - ~~Auto add road/railrood~~
   - ~~Named tiles~~
+  - ~~AI great wall build strategy setting~~
   - ~~Allow workers over water only if in radius of city that can build water district/wonder~~
   - ~~Add ai_build_strategy option and AI worker handling~~
   - ~~AI navies target maritime districts~~
