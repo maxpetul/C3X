@@ -82,7 +82,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 
 // Max grid of tiles that an AI will evaluate a candidate bridge or canal for, 
 // used to limit computational complexity
-#define AI_CANDIDATE_MAX_TILES 10
+#define AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES 10
 
 enum { NAMED_TILE_MENU_ID = 0x90 };
 
@@ -10545,21 +10545,17 @@ gather_bridge_line (int start_x, int start_y, int dx, int dy, int limit,
 		    int block_x0, int block_y0, int block_x1, int block_y1,
 		    short * out_x, short * out_y)
 {
-	int effective_limit = limit;
-	if (effective_limit <= 0)
-		effective_limit = 1;
-	if (effective_limit > AI_CANDIDATE_MAX_TILES)
-		effective_limit = AI_CANDIDATE_MAX_TILES;
+	int effective_limit = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, limit);
 
 	if (! tile_is_coastal_water (start_x, start_y))
 		return 0;
 	if (! bridge_tile_has_land_on_both_sides (start_x, start_y))
 		return 0;
 
-	short back_x[AI_CANDIDATE_MAX_TILES];
-	short back_y[AI_CANDIDATE_MAX_TILES];
-	short forward_x[AI_CANDIDATE_MAX_TILES];
-	short forward_y[AI_CANDIDATE_MAX_TILES];
+	short back_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short back_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short forward_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short forward_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
 	int back_count = 0;
 	int forward_count = 0;
 	int remaining = effective_limit - 1;
@@ -10646,11 +10642,7 @@ find_bridge_candidate_in_block (Map * map, int block_x0, int block_y0, int block
 		{ 0, -2 }, { -2, 0 }, { -1, -1 }, { -1, 1 }
 	};
 
-	int max_len = contiguous_limit;
-	if (max_len <= 0)
-		max_len = 1;
-	if (max_len > AI_CANDIDATE_MAX_TILES)
-		max_len = AI_CANDIDATE_MAX_TILES;
+	int max_len = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
 	if (candidate_capacity > 0 && max_len > candidate_capacity)
 		max_len = candidate_capacity;
 
@@ -10774,21 +10766,17 @@ gather_canal_line (int start_x, int start_y, int dx, int dy, int limit,
 		   int block_x0, int block_y0, int block_x1, int block_y1,
 		   short * out_x, short * out_y)
 {
-	int effective_limit = limit;
-	if (effective_limit <= 0)
-		effective_limit = 1;
-	if (effective_limit > AI_CANDIDATE_MAX_TILES)
-		effective_limit = AI_CANDIDATE_MAX_TILES;
+	int effective_limit = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, limit);
 
 	if (! tile_is_land (-1, start_x, start_y, false))
 		return 0;
 	if (tile_part_of_existing_candidate (start_x, start_y))
 		return 0;
 
-	short back_x[AI_CANDIDATE_MAX_TILES];
-	short back_y[AI_CANDIDATE_MAX_TILES];
-	short forward_x[AI_CANDIDATE_MAX_TILES];
-	short forward_y[AI_CANDIDATE_MAX_TILES];
+	short back_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short back_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short forward_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short forward_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
 	int back_count = 0;
 	int forward_count = 0;
 	int remaining = effective_limit - 1;
@@ -10872,11 +10860,7 @@ find_canal_candidate_in_block (Map * map, int block_x0, int block_y0, int block_
 	const int dir_dx[8] = { 0, 1, 2, 1, 0, -1, -2, -1 };
 	const int dir_dy[8] = { -2, -1, 0, 1, 2, 1, 0, -1 };
 
-	int max_len = contiguous_limit;
-	if (max_len <= 0)
-		max_len = 1;
-	if (max_len > AI_CANDIDATE_MAX_TILES)
-		max_len = AI_CANDIDATE_MAX_TILES;
+	int max_len = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
 	if (candidate_capacity > 0 && max_len > candidate_capacity)
 		max_len = candidate_capacity;
 
@@ -10924,8 +10908,8 @@ find_canal_candidate_in_block (Map * map, int block_x0, int block_y0, int block_
 			short owner = start_tile->vtable->m38_Get_Territory_OwnerID (start_tile);
 
 				int stack_len = 1;
-				int dir_stack[AI_CANDIDATE_MAX_TILES];
-				int path_dir[AI_CANDIDATE_MAX_TILES];
+				int dir_stack[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+				int path_dir[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
 				out_x[0] = (short)start_x;
 				out_y[0] = (short)start_y;
 				dir_stack[0] = -1;
@@ -10981,8 +10965,8 @@ find_canal_candidate_in_block (Map * map, int block_x0, int block_y0, int block_
 
 						if (buildable) {
 							// Collect adjacent land tiles for component checks
-							int adj_x[AI_CANDIDATE_MAX_TILES * 8];
-							int adj_y[AI_CANDIDATE_MAX_TILES * 8];
+							int adj_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES * 8];
+							int adj_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES * 8];
 							int adj_count = 0;
 							for (int pi = 0; pi < length; pi++) {
 								int px = out_x[pi];
@@ -11210,11 +11194,7 @@ generate_ai_bridge_candidates_by_block (Map * map, int block_size, int contiguou
 	if (block_size < 1)
 		block_size = 1;
 
-	int candidate_capacity = contiguous_limit;
-	if (candidate_capacity <= 0)
-		candidate_capacity = 1;
-	if (candidate_capacity > AI_CANDIDATE_MAX_TILES)
-		candidate_capacity = AI_CANDIDATE_MAX_TILES;
+	int candidate_capacity = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
 
 	short * candidate_x = (short *)malloc (sizeof *candidate_x * candidate_capacity);
 	short * candidate_y = (short *)malloc (sizeof *candidate_y * candidate_capacity);
@@ -11267,11 +11247,7 @@ generate_ai_canal_candidates_by_block (Map * map, int block_size, int contiguous
 	if (block_size < 1)
 		block_size = 1;
 
-	int candidate_capacity = contiguous_limit;
-	if (candidate_capacity <= 0)
-		candidate_capacity = 1;
-	if (candidate_capacity > AI_CANDIDATE_MAX_TILES)
-		candidate_capacity = AI_CANDIDATE_MAX_TILES;
+	int candidate_capacity = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
 
 	short * candidate_x = (short *)malloc (sizeof *candidate_x * candidate_capacity);
 	short * candidate_y = (short *)malloc (sizeof *candidate_y * candidate_capacity);
@@ -11521,9 +11497,6 @@ canal_district_tile_is_valid (int tile_x, int tile_y)
 		if (count > is->current_config.max_contiguous_canal_districts)
 			return false;
 	}
-
-	if (! district_line_is_straight (tile_x, tile_y, CANAL_DISTRICT_ID))
-		return false;
 
 	Map * map = &p_bic_data->Map;
 	int const adj_dx[8] = { 0, 0, -2, 2, 1, 1, -1, -1 };
