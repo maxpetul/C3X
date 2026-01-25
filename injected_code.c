@@ -16048,6 +16048,7 @@ patch_init_floating_point ()
 		{"great_wall_districts_impassible_by_others"             , false, offsetof (struct c3x_config, great_wall_districts_impassible_by_others)},
 		{"auto_build_great_wall_around_territory"                , false, offsetof (struct c3x_config, auto_build_great_wall_around_territory)},
 		{"disable_great_wall_city_defense_bonus"                 , false, offsetof (struct c3x_config, disable_great_wall_city_defense_bonus)},
+		{"expand_water_tile_checks_to_city_work_area"            , false, offsetof (struct c3x_config, expand_water_tile_checks_to_city_work_area)},
 		{"ai_can_replace_existing_districts_with_canals"         , false, offsetof (struct c3x_config, ai_can_replace_existing_districts_with_canals)},
 		{"workers_can_enter_coast"         		                 , false, offsetof (struct c3x_config, workers_can_enter_coast)},
 		{"workers_can_enter_coast"         		                 , false, offsetof (struct c3x_config, workers_can_enter_coast)},
@@ -21630,6 +21631,12 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 	}
 }
 
+// We determine at the start of the game where *any* AI player might want to build canals and bridges.
+// This is done up front in a single pass, as re-assessing every single turn per AI is wasteful and the
+// geography of the map doesn't change. This function adds all the candidates as districts, effectively
+// drawing them directly on the map. We don't use it in a normal game, but this is extremely useful for
+// debugging so good to keep it around. For debugging, just call it immediately after
+// generate_ai_canal_and_bridge_targets ()
 void
 insert_ai_candidate_bridge_or_canals_into_district_tile_map ()
 {
@@ -23279,7 +23286,6 @@ patch_Map_impl_generate (Map * this, int edx, int seed, bool is_multiplayer_game
 		(is->current_config.enable_bridge_districts || is->current_config.enable_canal_districts)) {
 		reset_ai_candidate_bridge_or_canals ();
 		generate_ai_canal_and_bridge_targets ();
-		insert_ai_candidate_bridge_or_canals_into_district_tile_map ();
 	}
 
 	if (is->current_config.enable_natural_wonders)
@@ -26892,7 +26898,6 @@ patch_Map_place_scenario_things (Map * this)
 		(is->current_config.enable_bridge_districts || is->current_config.enable_canal_districts)) {
 		reset_ai_candidate_bridge_or_canals ();
 		generate_ai_canal_and_bridge_targets ();
-		//insert_ai_candidate_bridge_or_canals_into_district_tile_map ();
 	}
 
 	is->is_placing_scenario_things = false;
