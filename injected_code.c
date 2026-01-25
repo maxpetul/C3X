@@ -80,6 +80,10 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define CANAL_DISTRICT_ID			 9
 #define GREAT_WALL_DISTRICT_ID       10
 
+// Max grid of tiles that an AI will evaluate a candidate bridge or canal for, 
+// used to limit computational complexity
+#define AI_CANDIDATE_MAX_TILES 10
+
 enum { NAMED_TILE_MENU_ID = 0x90 };
 
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
@@ -215,11 +219,8 @@ bool city_can_build_district (City * city, int district_id);
 bool leader_can_build_district (Leader * leader, int district_id);
 bool find_civ_trait_id_by_name (struct string_slice const * name, int * out_id);
 bool find_civ_culture_id_by_name (struct string_slice const * name, int * out_id);
-void get_bridge_directions (Tile * tile, int tile_x, int tile_y, int * out_dir1, int * out_dir2);
-void get_canal_directions (Tile * tile, int tile_x, int tile_y, bool * out_water_dirs[9], int * out_dir1, int * out_dir2);
 Tile * find_tile_for_district (City * city, int district_id, int * out_x, int * out_y);
 struct district_instance * get_district_instance (Tile * tile);
-bool tile_can_be_named (Tile * tile, int tile_x, int tile_y);
 struct named_tile_entry * get_named_tile_entry (Tile * tile);
 bool city_has_required_district (City * city, int district_id);
 bool district_is_complete (Tile * tile, int district_id);
@@ -234,12 +235,9 @@ bool tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile
 void recompute_distribution_hub_totals ();
 void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y);
 void wrap_tile_coords (Map * map, int * x, int * y);
-void init_district_icons ();
 int count_neighborhoods_in_city_radius (City * city);
 int count_utilized_neighborhoods_in_city_radius (City * city);
-bool move_matches_directions (int move_dx, int move_dy, int dir1, int dir2);
-bool great_wall_blocks_civ (Tile * tile, int civ_id);
-void set_named_tile_entry (Tile * tile, int tile_x, int tile_y, char const * name);
+void assign_workers_for_ai_candidate_bridge_or_canals (Leader * leader);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -4138,8 +4136,6 @@ process_pending_district_request (Leader * leader, struct pending_district_reque
 	assign_worker_to_district (req, worker, city, district_id, target_x, target_y);
 }
 
-void assign_workers_for_ai_candidate_bridge_or_canals (Leader * leader);
-
 void
 assign_workers_for_pending_districts (Leader * leader)
 {
@@ -5639,6 +5635,7 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 		cfg->buildable_by_civ_cultures_ids[i] = -1;
 	cfg->buildable_by_civ_cultures_id_count = defaults->buildable_by_civ_cultures_id_count;
 	cfg->has_buildable_by_civ_cultures = defaults->has_buildable_by_civ_cultures;
+	cfg->buildable_by_war_allies = defaults->buildable_by_war_allies;
 
 	for (int i = 0; i < ARRAY_LEN (cfg->dependent_improvements); i++) {
 		char const * default_value = (i < defaults->dependent_improvement_count) ? defaults->dependent_improvements[i] : NULL;
@@ -6428,6 +6425,9 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->has_buildable_by_civ_cultures = true;
 	}
 
+	if (def->has_buildable_by_war_allies)
+		cfg->buildable_by_war_allies = def->buildable_by_war_allies;
+
 	if (def->has_allow_multiple)
 		cfg->allow_multiple = def->allow_multiple;
 	if (def->has_vary_img_by_era)
@@ -6711,6 +6711,8 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	for (int i = 0; i < new_cfg.buildable_by_civ_cultures_id_count; i++)
 		new_cfg.buildable_by_civ_cultures_ids[i] = def->buildable_by_civ_cultures_ids[i];
 	new_cfg.has_buildable_by_civ_cultures = def->has_buildable_by_civ_cultures;
+
+	new_cfg.buildable_by_war_allies = def->has_buildable_by_war_allies ? def->buildable_by_war_allies : false;
 
 	new_cfg.allow_multiple = def->has_allow_multiple ? def->allow_multiple : false;
 	new_cfg.vary_img_by_era = def->has_vary_img_by_era ? def->vary_img_by_era : false;
@@ -7139,6 +7141,15 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->has_buildable_by_civ_cultures = false;
 		}
 		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_by_war_allies")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->buildable_by_war_allies = (ival != 0);
+			def->has_buildable_by_war_allies = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "img_paths")) {
 		char * value_text = trim_and_extract_slice (value, 0);
@@ -9494,6 +9505,50 @@ finalize_scenario_district_entry (struct scenario_district_entry * entry,
 	return success;
 }
 
+bool
+tile_can_be_named (Tile * tile, int tile_x, int tile_y)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	struct district_instance * inst = get_district_instance (tile);
+	if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID))
+		return false;
+	return true;
+}
+
+void
+remove_named_tile_entry (Tile * tile)
+{
+	struct named_tile_entry * entry = get_named_tile_entry (tile);
+	if (entry == NULL)
+		return;
+	itable_remove (&is->named_tile_map, (int)tile);
+	free (entry);
+}
+
+void
+set_named_tile_entry (Tile * tile, int tile_x, int tile_y, char const * name)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
+	if ((name == NULL) || (name[0] == '\0')) {
+		remove_named_tile_entry (tile);
+		return;
+	}
+
+	struct named_tile_entry * entry = get_named_tile_entry (tile);
+	if (entry == NULL) {
+		entry = calloc (1, sizeof *entry);
+		if (entry == NULL)
+			return;
+		itable_insert (&is->named_tile_map, (int)tile, (int)(long)entry);
+	}
+	entry->tile_x = tile_x;
+	entry->tile_y = tile_y;
+	strncpy (entry->name, name, sizeof entry->name);
+	entry->name[(sizeof entry->name) - 1] = '\0';
+}
+
 int
 finalize_scenario_named_tile_entry (struct scenario_named_tile_entry * entry,
 				    int section_start_line,
@@ -10318,10 +10373,6 @@ bridge_tile_connects_two_continents (int tile_x, int tile_y, int civ_id)
 	return false;
 }
 
-enum {
-	AI_CANDIDATE_MAX_TILES = 5 // hard limit on how many tiles a candidate can contain
-};
-
 bool
 tile_point_in_block (int tile_x, int tile_y, int block_x0, int block_y0, int block_x1, int block_y1)
 {
@@ -10961,7 +11012,7 @@ find_canal_candidate_in_block (Map * map, int block_x0, int block_y0, int block_
 							if (adj_count >= 2) {
 								int best1 = 0;
 								int best2 = 0;
-								int min_land = is->current_config.ai_min_canal_bisected_land_tiles;
+								int min_land = is->current_config.ai_canal_eval_min_bisected_land_tiles;
 								if (min_land < 1)
 									min_land = 1;
 								visit_mark++;
@@ -11133,9 +11184,9 @@ find_canal_candidate_in_block (Map * map, int block_x0, int block_y0, int block_
 }
 
 void
-plan_bridge_candidates_in_subsets (Map * map, int subset_size, int contiguous_limit)
+generate_ai_bridge_candidates_by_block (Map * map, int block_size, int contiguous_limit)
 {
-	if ((map == NULL) || (subset_size <= 0))
+	if ((map == NULL) || (block_size <= 0))
 		return;
 
 	int width = map->Width;
@@ -11143,7 +11194,6 @@ plan_bridge_candidates_in_subsets (Map * map, int subset_size, int contiguous_li
 	if ((width <= 0) || (height <= 0))
 		return;
 
-	int block_size = subset_size;
 	if (block_size < 1)
 		block_size = 1;
 
@@ -11191,9 +11241,9 @@ plan_bridge_candidates_in_subsets (Map * map, int subset_size, int contiguous_li
 }
 
 void
-plan_canal_candidates_in_subsets (Map * map, int subset_size, int contiguous_limit)
+generate_ai_canal_candidates_by_block (Map * map, int block_size, int contiguous_limit)
 {
-	if ((map == NULL) || (subset_size <= 0))
+	if ((map == NULL) || (block_size <= 0))
 		return;
 
 	int width = map->Width;
@@ -11201,7 +11251,6 @@ plan_canal_candidates_in_subsets (Map * map, int subset_size, int contiguous_lim
 	if ((width <= 0) || (height <= 0))
 		return;
 
-	int block_size = subset_size;
 	if (block_size < 1)
 		block_size = 1;
 
@@ -11249,7 +11298,7 @@ plan_canal_candidates_in_subsets (Map * map, int subset_size, int contiguous_lim
 }
 
 void
-plan_canal_and_bridge_targets (void)
+generate_ai_canal_and_bridge_targets ()
 {
 	if (is->ai_candidate_bridge_or_canals_initialized)
 		return;
@@ -11262,21 +11311,21 @@ plan_canal_and_bridge_targets (void)
 	if ((width <= 0) || (height <= 0))
 		return;
 
-	int subset_size = is->current_config.ai_bridge_canal_eval_subset_size;
-	if (subset_size <= 0)
-		subset_size = 10;
+	int block_size = is->current_config.ai_bridge_canal_eval_block_size;
+	if (block_size <= 0)
+		block_size = 10;
 
 	if (is->current_config.enable_canal_districts) {
-		plan_canal_candidates_in_subsets (
+		generate_ai_canal_candidates_by_block (
 			map,
-			subset_size,
+			block_size,
 			is->current_config.max_contiguous_canal_districts);
 	}
 
 	if (is->current_config.enable_bridge_districts) {
-		plan_bridge_candidates_in_subsets (
+		generate_ai_bridge_candidates_by_block (
 			map,
-			subset_size,
+			block_size,
 			is->current_config.max_contiguous_bridge_districts);
 	}
 
@@ -11531,6 +11580,7 @@ can_build_district_on_tile (Tile * tile, int district_id, int civ_id)
 		return false;
 
 	struct district_instance * existing_inst = get_district_instance (tile);
+	struct district_infos const * info = &is->district_infos[district_id];
 	int existing_district_id = (existing_inst != NULL) ? existing_inst->district_type : -1;
 	bool district_completed = district_is_complete (tile, existing_district_id);
 
@@ -11538,7 +11588,7 @@ can_build_district_on_tile (Tile * tile, int district_id, int civ_id)
 		return false;
 	if ((existing_district_id >= 0) && (existing_district_id != district_id) && (! district_completed))
 		return false;
-
+	
 	if (! cfg->allow_multiple) {
 		FOR_DISTRICTS_AROUND (wai, tile_x, tile_y, false) {
 			if (wai.district_inst->district_type == district_id)
@@ -12316,7 +12366,7 @@ count_distribution_hubs_for_civ (int civ_id)
 }
 
 bool
-leader_can_build_district (Leader * leader, int district_id)
+leader_can_natively_build_district (Leader * leader, int district_id)
 {
 	if ((leader == NULL) || (district_id < 0) || (district_id >= is->district_count))
 		return false;
@@ -12428,6 +12478,39 @@ leader_can_build_district (Leader * leader, int district_id)
 	}
 
 	return true;
+}
+
+bool
+leader_has_war_ally_district_access (Leader * leader, int district_id)
+{
+	if (leader == NULL)
+		return false;
+
+	int self_id = leader->ID;
+	for (int civ_id = 0; civ_id < 32; civ_id++) {
+		if (civ_id == self_id)
+			continue;
+		Leader * other = &leaders[civ_id];
+		if (other->Military_Allies[self_id] != 0 && leader_can_natively_build_district (other, district_id))
+			return true;
+	}
+
+	return false;
+}
+
+bool 
+leader_can_build_district (Leader * leader, int district_id)
+{
+	bool can_natively_build = leader_can_natively_build_district (leader, district_id);
+
+	if (can_natively_build)
+		return true;
+
+	struct district_config const * cfg = &is->district_configs[district_id];
+	if (cfg->buildable_by_war_allies && leader_has_war_ally_district_access (leader, district_id))
+		return true;
+
+	return false;
 }
 
 Tile *
@@ -15958,9 +16041,9 @@ patch_init_floating_point ()
 		{"neighborhood_needed_message_frequency"             ,     4, offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
 		{"max_contiguous_bridge_districts"                   ,     3, offsetof (struct c3x_config, max_contiguous_bridge_districts)},
 		{"max_contiguous_canal_districts"                    ,     5, offsetof (struct c3x_config, max_contiguous_canal_districts)},
-		{"ai_min_canal_bisected_land_tiles"                     ,    10, offsetof (struct c3x_config, ai_min_canal_bisected_land_tiles)},
-		{"ai_bridge_canal_eval_subset_size"                       ,    20, offsetof (struct c3x_config, ai_bridge_canal_eval_subset_size)},
-		{"ai_bridge_eval_lake_tile_threshold"                     ,     6, offsetof (struct c3x_config, ai_bridge_eval_lake_tile_threshold)},
+		{"ai_canal_eval_min_bisected_land_tiles"             ,    10, offsetof (struct c3x_config, ai_canal_eval_min_bisected_land_tiles)},
+		{"ai_bridge_canal_eval_block_size"                  ,    20, offsetof (struct c3x_config, ai_bridge_canal_eval_block_size)},
+		{"ai_bridge_eval_lake_tile_threshold"                ,     6, offsetof (struct c3x_config, ai_bridge_eval_lake_tile_threshold)},
 		{"ai_city_district_max_build_wait_turns"             ,    20, offsetof (struct c3x_config, ai_city_district_max_build_wait_turns)},
 		{"per_extraterritorial_colony_relation_penalty"      ,     0, offsetof (struct c3x_config, per_extraterritorial_colony_relation_penalty)},
 	};
@@ -18386,6 +18469,84 @@ patch_City_Form_open (City_Form * this, int edx, City * city, int param_2)
 	}
 }
 
+void
+init_district_icons ()
+{
+	if (is->dc_icons_img_state != IS_UNINITED)
+		return;
+
+	char ss[200];
+	snprintf (ss, sizeof ss, "[C3X] init_district_icons: state=%d\n", is->dc_icons_img_state);
+	(*p_OutputDebugStringA) (ss);
+
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
+
+	char temp_path[2*MAX_PATH];
+	get_mod_art_path ("Districts/DistrictIncomeIcons.pcx", temp_path, sizeof temp_path);
+
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if ((pcx.JGL.Image == NULL) ||
+	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) < 776) ||
+	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) < 32)) {
+		(*p_OutputDebugStringA) ("[C3X] PCX file for district icons failed to load or is too small.\n");
+		is->dc_icons_img_state = IS_INIT_FAILED;
+		goto cleanup;
+	}
+
+	// Extract science icon (index 1: x = 1 + 1*31 = 32, width 30)
+	Sprite_construct (&is->district_science_icon);
+	Sprite_slice_pcx (&is->district_science_icon, __, &pcx, 1 + 1*31, 1, 30, 30, 1, 1);
+
+	// Extract commerce icon (index 2: x = 1 + 2*31 = 63, width 30)
+	Sprite_construct (&is->district_commerce_icon);
+	Sprite_slice_pcx (&is->district_commerce_icon, __, &pcx, 1 + 2*31, 1, 30, 30, 1, 1);
+
+	// Extract shield icon (index 4: x = 1 + 4*31 = 125, width 30)
+	Sprite_construct (&is->district_shield_icon);
+	Sprite_slice_pcx (&is->district_shield_icon, __, &pcx, 1 + 4*31, 1, 30, 30, 1, 1);
+
+	// Extract corruption icon (index 5: x = 1 + 5*31 = 156, width 30)
+	Sprite_construct (&is->district_corruption_icon);
+	Sprite_slice_pcx (&is->district_corruption_icon, __, &pcx, 1 + 5*31, 1, 30, 30, 1, 1);
+
+	// Extract food icon (index 6: x = 1 + 6*31 = 187, width 30)
+	Sprite_construct (&is->district_food_icon);
+	Sprite_slice_pcx (&is->district_food_icon, __, &pcx, 1 + 6*31, 1, 30, 30, 1, 1);
+
+	// Extract food eaten icon (index 7: x = 1 + 7*31 = 218, width 30)
+	Sprite_construct (&is->district_food_eaten_icon);
+	Sprite_slice_pcx (&is->district_food_eaten_icon, __, &pcx, 1 + 7*31, 1, 30, 30, 1, 1);
+
+	// Extract happiness icon (index 12: x = 1 + 12*31 = 373, width 30)
+	Sprite_construct (&is->district_happiness_icon);
+	Sprite_slice_pcx (&is->district_happiness_icon, __, &pcx, 1 + 12*31, 1, 30, 30, 1, 1);
+
+	// Extract small shield icon (index 13: x = 1 + 13*31 = 404, width 30)
+	Sprite_construct (&is->district_shield_icon_small);
+	Sprite_slice_pcx (&is->district_shield_icon_small, __, &pcx, 1 + 13*31, 1, 30, 30, 1, 1);
+
+	// Extract small commerce icon (index 14: x = 1 + 14*31 = 435, width 30)
+	Sprite_construct (&is->district_commerce_icon_small);
+	Sprite_slice_pcx (&is->district_commerce_icon_small, __, &pcx, 1 + 14*31, 1, 30, 30, 1, 1);
+
+	// Extract small food icon (index 15: x = 1 + 15*31 = 466, width 30)
+	Sprite_construct (&is->district_food_icon_small);
+	Sprite_slice_pcx (&is->district_food_icon_small, __, &pcx, 1 + 15*31, 1, 30, 30, 1, 1);
+
+	// Extract small science icon (index 16: x = 1 + 16*31 = 497, width 30)
+	Sprite_construct (&is->district_science_icon_small);
+	Sprite_slice_pcx (&is->district_science_icon_small, __, &pcx, 1 + 16*31, 1, 30, 30, 1, 1);
+
+	// Extract small culture icon (index 18: x = 1 + 18*31 = 559, width 30)
+	Sprite_construct (&is->district_culture_icon_small);
+	Sprite_slice_pcx (&is->district_culture_icon_small, __, &pcx, 1 + 18*31, 1, 30, 30, 1, 1);
+
+	is->dc_icons_img_state = IS_OK;
+cleanup:
+	pcx.vtable->destruct (&pcx, __, 0);
+}
+
 void __fastcall
 patch_City_Form_draw (City_Form * this)
 {
@@ -18759,6 +18920,37 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 	}
 
 	return base_validity;
+}
+
+bool
+great_wall_blocks_civ (Tile * tile, int civ_id)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_great_wall_districts ||
+	    ! is->current_config.great_wall_districts_impassible_by_others)
+		return false;
+
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	if (owner_id <= 0)
+		return false;
+	if (owner_id == civ_id)
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if ((inst == NULL) || (inst->district_type != GREAT_WALL_DISTRICT_ID))
+		return false;
+
+	if (! district_is_complete (tile, GREAT_WALL_DISTRICT_ID))
+		return false;
+
+	int obsolete_id = is->district_infos[GREAT_WALL_DISTRICT_ID].obsoleted_by_id;
+	if ((obsolete_id >= 0) && Leader_has_tech (&leaders[civ_id], __, obsolete_id))
+		return false;
+
+	return true;
 }
 
 int __fastcall
@@ -22356,17 +22548,6 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
 }
 
-bool
-tile_can_be_named (Tile * tile, int tile_x, int tile_y)
-{
-	if ((tile == NULL) || (tile == p_null_tile))
-		return false;
-	struct district_instance * inst = get_district_instance (tile);
-	if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID))
-		return false;
-	return true;
-}
-
 struct named_tile_entry *
 get_named_tile_entry (Tile * tile)
 {
@@ -22376,39 +22557,6 @@ get_named_tile_entry (Tile * tile)
 	if (! itable_look_up (&is->named_tile_map, (int)tile, &stored_ptr))
 		return NULL;
 	return (struct named_tile_entry *)stored_ptr;
-}
-
-void
-remove_named_tile_entry (Tile * tile)
-{
-	struct named_tile_entry * entry = get_named_tile_entry (tile);
-	if (entry == NULL)
-		return;
-	itable_remove (&is->named_tile_map, (int)tile);
-	free (entry);
-}
-
-void
-set_named_tile_entry (Tile * tile, int tile_x, int tile_y, char const * name)
-{
-	if ((tile == NULL) || (tile == p_null_tile))
-		return;
-	if ((name == NULL) || (name[0] == '\0')) {
-		remove_named_tile_entry (tile);
-		return;
-	}
-
-	struct named_tile_entry * entry = get_named_tile_entry (tile);
-	if (entry == NULL) {
-		entry = calloc (1, sizeof *entry);
-		if (entry == NULL)
-			return;
-		itable_insert (&is->named_tile_map, (int)tile, (int)(long)entry);
-	}
-	entry->tile_x = tile_x;
-	entry->tile_y = tile_y;
-	strncpy (entry->name, name, sizeof entry->name);
-	entry->name[(sizeof entry->name) - 1] = '\0';
 }
 
 bool
@@ -23088,9 +23236,12 @@ patch_Map_impl_generate (Map * this, int edx, int seed, bool is_multiplayer_game
 {
 	Map_impl_generate (this, __, seed, is_multiplayer_game, num_seafaring_civs);
 
-	reset_ai_candidate_bridge_or_canals ();
-	plan_canal_and_bridge_targets ();
-	insert_ai_candidate_bridge_or_canals_into_district_tile_map ();
+	if (is->current_config.enable_districts && 
+		(is->current_config.enable_bridge_districts || is->current_config.enable_canal_districts)) {
+		reset_ai_candidate_bridge_or_canals ();
+		generate_ai_canal_and_bridge_targets ();
+		insert_ai_candidate_bridge_or_canals_into_district_tile_map ();
+	}
 
 	if (is->current_config.enable_natural_wonders)
 		place_natural_wonders_on_map ();
@@ -26679,8 +26830,8 @@ patch_Map_place_scenario_things (Map * this)
 	    is->current_config.enable_named_tiles)
 		load_scenario_districts_from_file ();
 
-	if (is->current_config.add_natural_wonders_to_scenarios_if_none &&
-	    is->current_config.enable_natural_wonders) {
+	if (is->current_config.enable_natural_wonders &&
+		is->current_config.add_natural_wonders_to_scenarios_if_none) {
 		bool any_natural_wonders = false;
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
 			struct district_instance * inst = (struct district_instance *)(long)tei.value;
@@ -26693,6 +26844,13 @@ patch_Map_place_scenario_things (Map * this)
 		}
 		if (! any_natural_wonders)
 			place_natural_wonders_on_map ();
+	}
+
+	if (is->current_config.enable_districts && 
+		(is->current_config.enable_bridge_districts || is->current_config.enable_canal_districts)) {
+		reset_ai_candidate_bridge_or_canals ();
+		generate_ai_canal_and_bridge_targets ();
+		//insert_ai_candidate_bridge_or_canals_into_district_tile_map ();
 	}
 
 	is->is_placing_scenario_things = false;
@@ -28529,84 +28687,6 @@ init_distribution_hub_icons ()
 	Sprite_slice_pcx (&is->distribution_hub_eaten_food_icon, __, &pcx, 1 + 7*31, 1, 30, 30, 1, 1);
 
 	is->distribution_hub_icons_img_state = IS_OK;
-cleanup:
-	pcx.vtable->destruct (&pcx, __, 0);
-}
-
-void
-init_district_icons ()
-{
-	if (is->dc_icons_img_state != IS_UNINITED)
-		return;
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] init_district_icons: state=%d\n", is->dc_icons_img_state);
-	(*p_OutputDebugStringA) (ss);
-
-	PCX_Image pcx;
-	PCX_Image_construct (&pcx);
-
-	char temp_path[2*MAX_PATH];
-	get_mod_art_path ("Districts/DistrictIncomeIcons.pcx", temp_path, sizeof temp_path);
-
-	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
-	if ((pcx.JGL.Image == NULL) ||
-	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) < 776) ||
-	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) < 32)) {
-		(*p_OutputDebugStringA) ("[C3X] PCX file for district icons failed to load or is too small.\n");
-		is->dc_icons_img_state = IS_INIT_FAILED;
-		goto cleanup;
-	}
-
-	// Extract science icon (index 1: x = 1 + 1*31 = 32, width 30)
-	Sprite_construct (&is->district_science_icon);
-	Sprite_slice_pcx (&is->district_science_icon, __, &pcx, 1 + 1*31, 1, 30, 30, 1, 1);
-
-	// Extract commerce icon (index 2: x = 1 + 2*31 = 63, width 30)
-	Sprite_construct (&is->district_commerce_icon);
-	Sprite_slice_pcx (&is->district_commerce_icon, __, &pcx, 1 + 2*31, 1, 30, 30, 1, 1);
-
-	// Extract shield icon (index 4: x = 1 + 4*31 = 125, width 30)
-	Sprite_construct (&is->district_shield_icon);
-	Sprite_slice_pcx (&is->district_shield_icon, __, &pcx, 1 + 4*31, 1, 30, 30, 1, 1);
-
-	// Extract corruption icon (index 5: x = 1 + 5*31 = 156, width 30)
-	Sprite_construct (&is->district_corruption_icon);
-	Sprite_slice_pcx (&is->district_corruption_icon, __, &pcx, 1 + 5*31, 1, 30, 30, 1, 1);
-
-	// Extract food icon (index 6: x = 1 + 6*31 = 187, width 30)
-	Sprite_construct (&is->district_food_icon);
-	Sprite_slice_pcx (&is->district_food_icon, __, &pcx, 1 + 6*31, 1, 30, 30, 1, 1);
-
-	// Extract food eaten icon (index 7: x = 1 + 7*31 = 218, width 30)
-	Sprite_construct (&is->district_food_eaten_icon);
-	Sprite_slice_pcx (&is->district_food_eaten_icon, __, &pcx, 1 + 7*31, 1, 30, 30, 1, 1);
-
-	// Extract happiness icon (index 12: x = 1 + 12*31 = 373, width 30)
-	Sprite_construct (&is->district_happiness_icon);
-	Sprite_slice_pcx (&is->district_happiness_icon, __, &pcx, 1 + 12*31, 1, 30, 30, 1, 1);
-
-	// Extract small shield icon (index 13: x = 1 + 13*31 = 404, width 30)
-	Sprite_construct (&is->district_shield_icon_small);
-	Sprite_slice_pcx (&is->district_shield_icon_small, __, &pcx, 1 + 13*31, 1, 30, 30, 1, 1);
-
-	// Extract small commerce icon (index 14: x = 1 + 14*31 = 435, width 30)
-	Sprite_construct (&is->district_commerce_icon_small);
-	Sprite_slice_pcx (&is->district_commerce_icon_small, __, &pcx, 1 + 14*31, 1, 30, 30, 1, 1);
-
-	// Extract small food icon (index 15: x = 1 + 15*31 = 466, width 30)
-	Sprite_construct (&is->district_food_icon_small);
-	Sprite_slice_pcx (&is->district_food_icon_small, __, &pcx, 1 + 15*31, 1, 30, 30, 1, 1);
-
-	// Extract small science icon (index 16: x = 1 + 16*31 = 497, width 30)
-	Sprite_construct (&is->district_science_icon_small);
-	Sprite_slice_pcx (&is->district_science_icon_small, __, &pcx, 1 + 16*31, 1, 30, 30, 1, 1);
-
-	// Extract small culture icon (index 18: x = 1 + 18*31 = 559, width 30)
-	Sprite_construct (&is->district_culture_icon_small);
-	Sprite_slice_pcx (&is->district_culture_icon_small, __, &pcx, 1 + 18*31, 1, 30, 30, 1, 1);
-
-	is->dc_icons_img_state = IS_OK;
 cleanup:
 	pcx.vtable->destruct (&pcx, __, 0);
 }
@@ -31182,10 +31262,19 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 				return false;
 			}
 
+			// Allow replacement of unused wonder districts
 			if (existing_district_id == WONDER_DISTRICT_ID) {
 				struct wonder_district_info * info = &inst->wonder_info;
 				if (info->state == WDS_UNUSED)
 					do_replacement = true;
+			// Allow replace of Great Wall if the civ has the tech to make it obsolete
+			} else if (existing_district_id == GREAT_WALL_DISTRICT_ID) {
+				
+			} else {
+				snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d cannot replace existing district ID %d at (%d,%d), cancelling request\n", worker->Body.ID, existing_district_id, worker->Body.X, worker->Body.Y);
+				(*p_OutputDebugStringA) (ss);
+				clear_city_district_request (request_city, req->district_id);
+				return false;
 			}
 
 			if (!do_replacement) {
@@ -32338,52 +32427,6 @@ patch_Unit_select_transport (Unit * this, int edx, int tile_x, int tile_y, bool 
 	}
 
 	return transport;
-}
-
-bool
-great_wall_blocks_civ (Tile * tile, int civ_id)
-{
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_great_wall_districts ||
-	    ! is->current_config.great_wall_districts_impassible_by_others)
-		return false;
-
-	if ((tile == NULL) || (tile == p_null_tile))
-		return false;
-
-	int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
-	if (owner_id <= 0)
-		return false;
-	if (owner_id == civ_id)
-		return false;
-
-	struct district_instance * inst = get_district_instance (tile);
-	if ((inst == NULL) || (inst->district_type != GREAT_WALL_DISTRICT_ID))
-		return false;
-
-	if (! district_is_complete (tile, GREAT_WALL_DISTRICT_ID))
-		return false;
-
-	int obsolete_id = is->district_infos[GREAT_WALL_DISTRICT_ID].obsoleted_by_id;
-	if ((obsolete_id >= 0) && Leader_has_tech (&leaders[civ_id], __, obsolete_id))
-		return false;
-
-	return true;
-}
-
-bool
-move_matches_directions (int move_dx, int move_dy, int dir1, int dir2)
-{
-	int dx = 0, dy = 0;
-	if ((dir1 >= 0) &&
-	    direction_to_offset ((enum direction)dir1, &dx, &dy) &&
-	    (dx == move_dx) && (dy == move_dy))
-		return true;
-	if ((dir2 >= 0) &&
-	    direction_to_offset ((enum direction)dir2, &dx, &dy) &&
-	    (dx == move_dx) && (dy == move_dy))
-		return true;
-	return false;
 }
 
 // Returns true if the given tile is a water district owned by an enemy of the unit

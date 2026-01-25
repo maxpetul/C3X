@@ -390,8 +390,8 @@ struct c3x_config {
 	bool expand_water_tile_checks_to_city_work_area;
 	int max_contiguous_bridge_districts;
 	int max_contiguous_canal_districts;
-	int ai_min_canal_bisected_land_tiles;
-	int ai_bridge_canal_eval_subset_size;
+	int ai_canal_eval_min_bisected_land_tiles;
+	int ai_bridge_canal_eval_block_size;
 	int ai_bridge_eval_lake_tile_threshold;
 
 	bool ai_defends_districts;
@@ -720,6 +720,7 @@ struct district_config {
 	int buildable_by_civ_cultures_ids[5];
 	int buildable_by_civ_cultures_id_count;
 	bool has_buildable_by_civ_cultures;
+	bool buildable_by_war_allies;
 };
 
 struct wonder_district_config {
@@ -939,6 +940,7 @@ struct parsed_district_definition {
 	unsigned int buildable_square_types_mask;
 	char * buildable_by_civs[32];
 	int buildable_by_civ_count;
+	bool buildable_by_war_allies;
 	bool has_name;
 	bool has_tooltip;
 	bool has_advance_prereq;
@@ -973,6 +975,7 @@ struct parsed_district_definition {
 	bool has_buildable_on;
 	bool has_resource_prereq_on_tile;
 	bool has_buildable_by_civs;
+	bool has_buildable_by_war_allies;
 	char * generated_resource;
 	char * generated_resource_settings[5];
 	int generated_resource_settings_count;
