@@ -1153,11 +1153,13 @@ enum district_state {
 
 struct district_instance {
 	enum district_state state;
-	int district_type;    // Index into district_configs array
+	int district_id;    // Index into district_configs array
 	int tile_x;
 	int tile_y;
-	struct wonder_district_info wonder_info; // Only used if district_type is a wonder district
-	struct natural_wonder_district_info natural_wonder_info; // Only used if district_type is a natural wonder district
+	int built_by_civ_id;
+	int completed_turn;
+	struct wonder_district_info wonder_info; // Only used if district_id is a wonder district
+	struct natural_wonder_district_info natural_wonder_info; // Only used if district_id is a natural wonder district
 };
 
 enum extra_resource_tile_type {
