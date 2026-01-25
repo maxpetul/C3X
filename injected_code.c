@@ -5636,6 +5636,7 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 	cfg->buildable_by_civ_cultures_id_count = defaults->buildable_by_civ_cultures_id_count;
 	cfg->has_buildable_by_civ_cultures = defaults->has_buildable_by_civ_cultures;
 	cfg->buildable_by_war_allies = defaults->buildable_by_war_allies;
+	cfg->buildable_by_pact_allies = defaults->buildable_by_pact_allies;
 
 	for (int i = 0; i < ARRAY_LEN (cfg->dependent_improvements); i++) {
 		char const * default_value = (i < defaults->dependent_improvement_count) ? defaults->dependent_improvements[i] : NULL;
@@ -6427,6 +6428,8 @@ override_special_district_from_definition (struct parsed_district_definition * d
 
 	if (def->has_buildable_by_war_allies)
 		cfg->buildable_by_war_allies = def->buildable_by_war_allies;
+	if (def->has_buildable_by_pact_allies)
+		cfg->buildable_by_pact_allies = def->buildable_by_pact_allies;
 
 	if (def->has_allow_multiple)
 		cfg->allow_multiple = def->allow_multiple;
@@ -6713,6 +6716,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.has_buildable_by_civ_cultures = def->has_buildable_by_civ_cultures;
 
 	new_cfg.buildable_by_war_allies = def->has_buildable_by_war_allies ? def->buildable_by_war_allies : false;
+	new_cfg.buildable_by_pact_allies = def->has_buildable_by_pact_allies ? def->buildable_by_pact_allies : false;
 
 	new_cfg.allow_multiple = def->has_allow_multiple ? def->allow_multiple : false;
 	new_cfg.vary_img_by_era = def->has_vary_img_by_era ? def->vary_img_by_era : false;
@@ -7148,6 +7152,15 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		if (read_int (&val_slice, &ival)) {
 			def->buildable_by_war_allies = (ival != 0);
 			def->has_buildable_by_war_allies = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "buildable_by_pact_allies")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->buildable_by_pact_allies = (ival != 0);
+			def->has_buildable_by_pact_allies = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
@@ -12498,6 +12511,27 @@ leader_has_war_ally_district_access (Leader * leader, int district_id)
 	return false;
 }
 
+bool
+leader_has_pact_ally_district_access (Leader * leader, int district_id)
+{
+	if (leader == NULL)
+		return false;
+
+	int self_id = leader->ID;
+	for (int civ_id = 0; civ_id < 32; civ_id++) {
+		if (civ_id == self_id)
+			continue;
+		Leader * other = &leaders[civ_id];
+		if (((leader->Relation_Treaties[civ_id] & 1) != 0 ||
+		     (leader->Relation_Treaties[civ_id] & 4) != 0) &&
+		    leader_can_natively_build_district (other, district_id)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 bool 
 leader_can_build_district (Leader * leader, int district_id)
 {
@@ -12508,6 +12542,8 @@ leader_can_build_district (Leader * leader, int district_id)
 
 	struct district_config const * cfg = &is->district_configs[district_id];
 	if (cfg->buildable_by_war_allies && leader_has_war_ally_district_access (leader, district_id))
+		return true;
+	if (cfg->buildable_by_pact_allies && leader_has_pact_ally_district_access (leader, district_id))
 		return true;
 
 	return false;

@@ -721,6 +721,7 @@ struct district_config {
 	int buildable_by_civ_cultures_id_count;
 	bool has_buildable_by_civ_cultures;
 	bool buildable_by_war_allies;
+	bool buildable_by_pact_allies;
 };
 
 struct wonder_district_config {
@@ -941,6 +942,7 @@ struct parsed_district_definition {
 	char * buildable_by_civs[32];
 	int buildable_by_civ_count;
 	bool buildable_by_war_allies;
+	bool buildable_by_pact_allies;
 	bool has_name;
 	bool has_tooltip;
 	bool has_advance_prereq;
@@ -976,6 +978,7 @@ struct parsed_district_definition {
 	bool has_resource_prereq_on_tile;
 	bool has_buildable_by_civs;
 	bool has_buildable_by_war_allies;
+	bool has_buildable_by_pact_allies;
 	char * generated_resource;
 	char * generated_resource_settings[5];
 	int generated_resource_settings_count;
