@@ -1,5 +1,5 @@
   - Validate and review upfront bridge/canal algorithm
-  - Validate resource generation
+  - Validate resource generation (add yield?)
   - Fix scenario district art mod folder check
   - Firm up logic for river district rendering
 
@@ -20,8 +20,10 @@
 
 
 ## Maritime Districts
+  - ~~Fix scenario art not loading bug~~
   - ~~Choose terrain type~~
   - ~~Buttons~~
+  - ~~Add buildable_by_war_allies, buildable_by_pact_allies~~
   - ~~Auto add road/railrood~~
   - ~~Named tiles~~
   - ~~AI great wall build strategy setting~~

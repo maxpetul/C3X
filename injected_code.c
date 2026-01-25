@@ -15057,6 +15057,22 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	}
 }
 
+void
+get_mod_art_path (char const * file_name, char * out_path, int  path_buf_size)
+{
+	char s[1000];
+	snprintf (s, sizeof s, "Art\\%s", file_name);
+	s[(sizeof s) - 1] = '\0';
+
+	char * scenario_path = BIC_get_asset_path (p_bic_data, __, s, false);
+	if (0 != strcmp (scenario_path, s)) // get_asset_path returns its input when the file is not found
+		snprintf (out_path, path_buf_size, "%s", scenario_path);
+	else
+		snprintf (out_path, path_buf_size, "%s\\Art\\%s", is->mod_rel_dir, file_name);
+	out_path[path_buf_size - 1] = '\0';
+}
+
+
 Sprite* 
 SpriteList_at(SpriteList *list, int i) {
     return &list->field_0[i];
@@ -15736,8 +15752,10 @@ init_day_night_images()
 	for (int i = 0; i < 24; i++) {
 
 		char art_dir[200];
-		snprintf(art_dir, sizeof art_dir, "%s\\Art\\DayNight\\%s", is->mod_rel_dir, hour_strs[i]);
-		bool success = load_day_night_hour_images(&is->day_night_cycle_imgs[i], art_dir, hour_strs[i]);
+		char temp_path[2*MAX_PATH];
+		snprintf (art_dir, sizeof art_dir, "DayNight/%s", hour_strs[i]);
+		get_mod_art_path (art_dir, temp_path, sizeof temp_path);
+		bool success = load_day_night_hour_images (&is->day_night_cycle_imgs[i], temp_path, hour_strs[i]);
 
 		if (!success) {
 			char ss[200];
@@ -16366,21 +16384,6 @@ patch_init_floating_point ()
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config, true);
-}
-
-void
-get_mod_art_path (char const * file_name, char * out_path, int  path_buf_size)
-{
-	char s[1000];
-	snprintf (s, sizeof s, "Art\\%s", file_name);
-	s[(sizeof s) - 1] = '\0';
-
-	char * scenario_path = BIC_get_asset_path (p_bic_data, __, s, false);
-	if (0 != strcmp (scenario_path, s)) // get_asset_path returns its input when the file is not found
-		snprintf (out_path, path_buf_size, "%s", scenario_path);
-	else
-		snprintf (out_path, path_buf_size, "%s\\Art\\%s", is->mod_rel_dir, file_name);
-	out_path[path_buf_size - 1] = '\0';
 }
 
 void
@@ -29847,6 +29850,7 @@ init_district_images ()
 		return;
 
 	char art_dir[200];
+	char temp_path[2*MAX_PATH];
 
 	is->dc_img_state = IS_INIT_FAILED;
 
@@ -29871,14 +29875,15 @@ init_district_images ()
 				continue;
 
 			// Read PCX file
-			snprintf (art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, cfg->img_paths[variant_i]);
+			snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", cfg->img_paths[variant_i]);
+			get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 
-			PCX_Image_read_file (&pcx, __, art_dir, NULL, 0, 0x100, 2);
+			PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 
 			if (pcx.JGL.Image == NULL) {
 
 				char ss[200];
-				snprintf (ss, sizeof ss, "init_district_images: failed to load district images from %s", art_dir);
+				snprintf (ss, sizeof ss, "init_district_images: failed to load district images from %s", temp_path);
 				pop_up_in_game_error (ss);
 
 				(*p_OutputDebugStringA) ("[C3X] Failed to load districts sprite sheet.\n");
@@ -29912,12 +29917,12 @@ init_district_images ()
 		}
 	}
 	// Load abandoned district images (land + maritime)
-	snprintf (art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\Abandoned.pcx", is->mod_rel_dir);
-	PCX_Image_read_file (&pcx, __, art_dir, NULL, 0, 0x100, 2);
+	get_mod_art_path ("Districts/1200/Abandoned.pcx", temp_path, sizeof temp_path);
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 
 	if (pcx.JGL.Image == NULL) {
 		char ss[200];
-		snprintf (ss, sizeof ss, "init_district_images: failed to load abandoned district images from %s", art_dir);
+		snprintf (ss, sizeof ss, "init_district_images: failed to load abandoned district images from %s", temp_path);
 		pop_up_in_game_error (ss);
 		for (int dc2 = 0; dc2 < COUNT_DISTRICT_TYPES; dc2++)
 			for (int variant_i2 = 0; variant_i2 < ARRAY_LEN (is->district_img_sets[dc2].imgs); variant_i2++)
@@ -29957,12 +29962,13 @@ init_district_images ()
 				if (pcx_loaded)
 					wpcx.vtable->clear_JGL (&wpcx);
 
-				snprintf(art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, img_path);
-				PCX_Image_read_file (&wpcx, __, art_dir, NULL, 0, 0x100, 2);
+				snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", img_path);
+				get_mod_art_path (art_dir, temp_path, sizeof temp_path);
+				PCX_Image_read_file (&wpcx, __, temp_path, NULL, 0, 0x100, 2);
 
 				if (wpcx.JGL.Image == NULL) {
 					char ss[200];
-					snprintf (ss, sizeof ss, "init_district_images: failed to load wonder district images from %s", art_dir);
+					snprintf (ss, sizeof ss, "init_district_images: failed to load wonder district images from %s", temp_path);
 					pop_up_in_game_error (ss);
 					pcx_loaded = false;
 					continue;
@@ -30021,12 +30027,13 @@ init_district_images ()
 				if (pcx_loaded)
 					nwpcx.vtable->clear_JGL (&nwpcx);
 
-				snprintf (art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, img_path);
-				PCX_Image_read_file (&nwpcx, __, art_dir, NULL, 0, 0x100, 2);
+				snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", img_path);
+				get_mod_art_path (art_dir, temp_path, sizeof temp_path);
+				PCX_Image_read_file (&nwpcx, __, temp_path, NULL, 0, 0x100, 2);
 
 				if (nwpcx.JGL.Image == NULL) {
 					char ss[200];
-					snprintf (ss, sizeof ss, "init_district_images: failed to load natural wonder images from %s", art_dir);
+					snprintf (ss, sizeof ss, "init_district_images: failed to load natural wonder images from %s", temp_path);
 					pop_up_in_game_error (ss);
 					pcx_loaded = false;
 					continue;
