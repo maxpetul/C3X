@@ -1,6 +1,5 @@
   - Validate and review upfront bridge/canal algorithm
   - Validate resource generation (add yield?)
-  - Fix scenario district art mod folder check
   - Firm up logic for river district rendering
 
   - Hoover Dam (use alt dir, special positioning b/c on river)
@@ -23,6 +22,7 @@
   - ~~Fix scenario art not loading bug~~
   - ~~Choose terrain type~~
   - ~~Buttons~~
+  - ~~Fix scenario district art mod folder check~~
   - ~~Add buildable_by_war_allies, buildable_by_pact_allies~~
   - ~~Auto add road/railrood~~
   - ~~Named tiles~~

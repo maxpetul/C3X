@@ -237,7 +237,6 @@ void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out
 void wrap_tile_coords (Map * map, int * x, int * y);
 int count_neighborhoods_in_city_radius (City * city);
 int count_utilized_neighborhoods_in_city_radius (City * city);
-void assign_workers_for_ai_candidate_bridge_or_canals (Leader * leader);
 
 struct pause_for_popup {
 	bool done; // Set to true to exit for loop
@@ -4219,14 +4218,13 @@ ai_candidate_bridge_or_canal_is_buildable_for_civ (struct ai_candidate_bridge_or
 
 		struct district_instance * inst = get_district_instance (tile);
 		if (inst != NULL) {
-			if (inst->district_id == entry->district_id && district_is_complete (tile, entry->district_id))
+			if (inst->district_id == entry->district_id)
 				continue;
-			if (inst->district_id != entry->district_id && district_is_complete (tile, inst->district_id)) {
-				entry->completed = true;
+			if (inst->district_id == WONDER_DISTRICT_ID)
+				return false;
+			if (! is->current_config.ai_can_replace_existing_districts_with_canals) {
 				return false;
 			}
-			if (inst->district_id != entry->district_id && ! district_is_complete (tile, inst->district_id))
-				return false;
 		}
 
 		if (pending_index < 0)
@@ -10490,6 +10488,25 @@ tile_part_of_existing_candidate (int tile_x, int tile_y)
 }
 
 bool
+tile_has_bridge_or_canal_nearby (int tile_x, int tile_y)
+{
+	FOR_TILES_AROUND (tai, workable_tile_counts[1], tile_x, tile_y) {
+		Tile * adj = tai.tile;
+		if ((adj == NULL) || (adj == p_null_tile))
+			continue;
+		struct district_instance * inst = get_district_instance (adj);
+		if ((inst != NULL) &&
+		    ((inst->district_id == BRIDGE_DISTRICT_ID) || (inst->district_id == CANAL_DISTRICT_ID)))
+			return true;
+		int nx = (tai.n == 0) ? tile_x : tai.tile_x;
+		int ny = (tai.n == 0) ? tile_y : tai.tile_y;
+		if (tile_part_of_existing_candidate (nx, ny))
+			return true;
+	}
+	return false;
+}
+
+bool
 add_ai_candidate_entry (int district_id, short owner_civ_id, short * xs, short * ys, int count)
 {
 	if (count <= 0)
@@ -10697,6 +10714,10 @@ find_bridge_candidate_in_block (Map * map, int block_x0, int block_y0, int block
 						ok = false;
 						break;
 					}
+					if (tile_has_bridge_or_canal_nearby (cx, cy)) {
+						ok = false;
+						break;
+					}
 					if (tile_is_reserved_in_district_tile_map (cx, cy)) {
 						ok = false;
 						break;
@@ -10887,6 +10908,8 @@ find_canal_candidate_in_block (Map * map, int block_x0, int block_y0, int block_
 				continue;
 			if (tile_part_of_existing_candidate (start_x, start_y))
 				continue;
+			if (tile_has_bridge_or_canal_nearby (start_x, start_y))
+				continue;
 			if (tile_is_reserved_in_district_tile_map (start_x, start_y))
 				continue;
 			Tile * start_tile = tile_at (start_x, start_y);
@@ -10949,6 +10972,10 @@ find_canal_candidate_in_block (Map * map, int block_x0, int block_y0, int block_
 								    tile_has_resource (path_tile) ||
 								    (! district_is_buildable_on_square_type (&is->district_configs[CANAL_DISTRICT_ID], path_tile)) ||
 								    tile_is_reserved_in_district_tile_map (out_x[pi], out_y[pi])) {
+									buildable = false;
+									break;
+								}
+								if (tile_has_bridge_or_canal_nearby (out_x[pi], out_y[pi])) {
 									buildable = false;
 									break;
 								}
@@ -11119,6 +11146,10 @@ find_canal_candidate_in_block (Map * map, int block_x0, int block_y0, int block_
 							continue;
 						}
 						if (! district_is_buildable_on_square_type (&is->district_configs[CANAL_DISTRICT_ID], next_tile)) {
+							next_dir++;
+							continue;
+						}
+						if (tile_has_bridge_or_canal_nearby (nx, ny)) {
 							next_dir++;
 							continue;
 						}
@@ -16017,7 +16048,8 @@ patch_init_floating_point ()
 		{"great_wall_districts_impassible_by_others"             , false, offsetof (struct c3x_config, great_wall_districts_impassible_by_others)},
 		{"auto_build_great_wall_around_territory"                , false, offsetof (struct c3x_config, auto_build_great_wall_around_territory)},
 		{"disable_great_wall_city_defense_bonus"                 , false, offsetof (struct c3x_config, disable_great_wall_city_defense_bonus)},
-		{"expand_water_tile_checks_to_city_work_area"         	 , false, offsetof (struct c3x_config, expand_water_tile_checks_to_city_work_area)},
+		{"ai_can_replace_existing_districts_with_canals"         , false, offsetof (struct c3x_config, ai_can_replace_existing_districts_with_canals)},
+		{"workers_can_enter_coast"         		                 , false, offsetof (struct c3x_config, workers_can_enter_coast)},
 		{"workers_can_enter_coast"         		                 , false, offsetof (struct c3x_config, workers_can_enter_coast)},
 		{"enable_city_work_radii_highlights"                     , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game"  , false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
@@ -30792,11 +30824,11 @@ draw_canal_on_map_or_canvas(Sprite * sprite, int tile_x, int tile_y, int dir, bo
 		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y - y_offset);
 	else if (dir == DIR_E  && water_dirs[DIR_E])
 		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y);
-	else if (dir == DIR_SE && water_dirs[DIR_SE] && (! (tile_is_water (tile_x - 2, tile_y)))) 
+	else if (dir == DIR_SE && water_dirs[DIR_SE]) 
 		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y + y_offset);
 	else if (dir == DIR_S  && water_dirs[DIR_S])                                            
 		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y + y_offset);
-	else if (dir == DIR_SW && water_dirs[DIR_SW] && (! (tile_is_water (tile_x + 2, tile_y))))
+	else if (dir == DIR_SW && water_dirs[DIR_SW])
 		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y + y_offset);
 	else if (dir == DIR_W  && water_dirs[DIR_W])                                            
 		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y);
