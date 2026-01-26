@@ -13567,6 +13567,7 @@ city_requires_district_for_improvement (City * city, int improv_id, int * out_di
 	if ((prereq_list == NULL) || (prereq_list->count <= 0))
 		return false;
 	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	bool is_wonder = false;
 
 	// Special logic for handling rivers
 	bool requires_river = (improv->ImprovementFlags & ITF_Must_Be_Near_River) != 0;
@@ -13574,6 +13575,7 @@ city_requires_district_for_improvement (City * city, int improv_id, int * out_di
 
 	if (is->current_config.enable_wonder_districts &&
 	    district_building_prereq_list_contains (prereq_list, WONDER_DISTRICT_ID)) {
+		is_wonder = true;
 		if (requires_river) {
 			bool has_river_wonder_district = false;
 			FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
@@ -18699,39 +18701,39 @@ init_district_icons ()
 		goto cleanup;
 	}
 
-	// Extract science icon (index 1: x = 1 + 1*31 = 32, width 30)
+	// Extract science icon (index 1)
 	Sprite_construct (&is->district_science_icon);
 	Sprite_slice_pcx (&is->district_science_icon, __, &pcx, 1 + 1*31, 1, 30, 30, 1, 1);
 
-	// Extract commerce icon (index 2: x = 1 + 2*31 = 63, width 30)
+	// Extract commerce icon (index 2)
 	Sprite_construct (&is->district_commerce_icon);
 	Sprite_slice_pcx (&is->district_commerce_icon, __, &pcx, 1 + 2*31, 1, 30, 30, 1, 1);
 
-	// Extract shield icon (index 4: x = 1 + 4*31 = 125, width 30)
+	// Extract shield icon (index 4)
 	Sprite_construct (&is->district_shield_icon);
 	Sprite_slice_pcx (&is->district_shield_icon, __, &pcx, 1 + 4*31, 1, 30, 30, 1, 1);
 
-	// Extract corruption icon (index 5: x = 1 + 5*31 = 156, width 30)
+	// Extract corruption icon (index 5)
 	Sprite_construct (&is->district_corruption_icon);
 	Sprite_slice_pcx (&is->district_corruption_icon, __, &pcx, 1 + 5*31, 1, 30, 30, 1, 1);
 
-	// Extract food icon (index 6: x = 1 + 6*31 = 187, width 30)
+	// Extract food icon (index 6)
 	Sprite_construct (&is->district_food_icon);
 	Sprite_slice_pcx (&is->district_food_icon, __, &pcx, 1 + 6*31, 1, 30, 30, 1, 1);
 
-	// Extract food eaten icon (index 7: x = 1 + 7*31 = 218, width 30)
+	// Extract food eaten icon (index 7)
 	Sprite_construct (&is->district_food_eaten_icon);
 	Sprite_slice_pcx (&is->district_food_eaten_icon, __, &pcx, 1 + 7*31, 1, 30, 30, 1, 1);
 
-	// Extract happiness icon (index 12: x = 1 + 12*31 = 373, width 30)
-	Sprite_construct (&is->district_happiness_icon);
-	Sprite_slice_pcx (&is->district_happiness_icon, __, &pcx, 1 + 12*31, 1, 30, 30, 1, 1);
+	// Extract small happiness icon (index 12)
+	Sprite_construct (&is->district_happiness_icon_small);
+	Sprite_slice_pcx (&is->district_happiness_icon_small, __, &pcx, 1 + 12*31, 1, 30, 30, 1, 1);
 
-	// Extract small shield icon (index 13: x = 1 + 13*31 = 404, width 30)
+	// Extract small shield icon (index 13)
 	Sprite_construct (&is->district_shield_icon_small);
 	Sprite_slice_pcx (&is->district_shield_icon_small, __, &pcx, 1 + 13*31, 1, 30, 30, 1, 1);
 
-	// Extract small commerce icon (index 14: x = 1 + 14*31 = 435, width 30)
+	// Extract small commerce icon (index 14)
 	Sprite_construct (&is->district_commerce_icon_small);
 	Sprite_slice_pcx (&is->district_commerce_icon_small, __, &pcx, 1 + 14*31, 1, 30, 30, 1, 1);
 
@@ -18739,13 +18741,39 @@ init_district_icons ()
 	Sprite_construct (&is->district_food_icon_small);
 	Sprite_slice_pcx (&is->district_food_icon_small, __, &pcx, 1 + 15*31, 1, 30, 30, 1, 1);
 
-	// Extract small science icon (index 16: x = 1 + 16*31 = 497, width 30)
+	// Extract small science icon (index 16)
 	Sprite_construct (&is->district_science_icon_small);
 	Sprite_slice_pcx (&is->district_science_icon_small, __, &pcx, 1 + 16*31, 1, 30, 30, 1, 1);
 
-	// Extract small culture icon (index 18: x = 1 + 18*31 = 559, width 30)
+	// Extract small culture icon (index 18)
 	Sprite_construct (&is->district_culture_icon_small);
 	Sprite_slice_pcx (&is->district_culture_icon_small, __, &pcx, 1 + 18*31, 1, 30, 30, 1, 1);
+
+	// Load Negatives (mostly red) from here
+
+	// Extract negative small commerce icon (index 17)
+	Sprite_construct (&is->district_negative_commerce_icon_small);
+	Sprite_slice_pcx (&is->district_negative_commerce_icon_small, __, &pcx, 1 + 17*31, 1, 30, 30, 1, 1);
+
+	// Extract small unhappiness icon (index 19)
+	Sprite_construct (&is->district_unhappiness_icon_small);
+	Sprite_slice_pcx (&is->district_unhappiness_icon_small, __, &pcx, 1 + 19*31, 1, 30, 30, 1, 1);
+
+	// Extract negative small shield icon (index 20)
+	Sprite_construct (&is->district_shield_icon_small);
+	Sprite_slice_pcx (&is->district_shield_icon_small, __, &pcx, 1 + 20*31, 1, 30, 30, 1, 1);
+
+	// Extract negative small culture icon (index 21)
+	Sprite_construct (&is->district_negative_culture_icon_small);
+	Sprite_slice_pcx (&is->district_negative_culture_icon_small, __, &pcx, 1 + 21*31, 1, 30, 30, 1, 1);
+
+	// Extract negative small culture icon (index 22)
+	Sprite_construct (&is->district_negative_food_icon_small);
+	Sprite_slice_pcx (&is->district_negative_food_icon_small, __, &pcx, 1 + 22*31, 1, 30, 30, 1, 1);
+
+	// Extract negative small science icon (index 23)
+	Sprite_construct (&is->district_negative_science_icon_small);
+	Sprite_slice_pcx (&is->district_negative_science_icon_small, __, &pcx, 1 + 23*31, 1, 30, 30, 1, 1);
 
 	is->dc_icons_img_state = IS_OK;
 cleanup:
@@ -29165,7 +29193,7 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	Sprite * commerce_sprite  = &is->district_commerce_icon_small;
 	Sprite * science_sprite   = &is->district_science_icon_small;
 	Sprite * culture_sprite   = &is->district_culture_icon_small;
-	Sprite * happiness_sprite = &is->district_happiness_icon;
+	Sprite * happiness_sprite = &is->district_happiness_icon_small;
 
 	// Determine sprite dimensions
 	int sprite_width  = food_sprite->Width3;

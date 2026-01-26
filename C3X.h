@@ -1975,12 +1975,19 @@ struct district_button_image_set {
 	Sprite district_corruption_icon;
 	Sprite district_food_icon;
 	Sprite district_food_eaten_icon;
-	Sprite district_happiness_icon;
+	Sprite district_happiness_icon_small;
 	Sprite district_shield_icon_small;
 	Sprite district_commerce_icon_small;
 	Sprite district_food_icon_small;
 	Sprite district_science_icon_small;
 	Sprite district_culture_icon_small;
+
+	Sprite district_unhappiness_icon_small;
+	Sprite district_negative_shield_icon_small;
+	Sprite district_negative_commerce_icon_small;
+	Sprite district_negative_food_icon_small;
+	Sprite district_negative_science_icon_small;
+	Sprite district_negative_culture_icon_small;
 
 	// Guard to prevent recursive sharing when auto-adding buildings across cities
 	bool sharing_buildings_by_districts_in_progress;
