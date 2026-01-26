@@ -5983,14 +5983,6 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 		def->generated_resource = NULL;
 	}
 
-	for (int i = 0; i < def->generated_resource_settings_count; i++) {
-		if (def->generated_resource_settings[i] != NULL) {
-			free (def->generated_resource_settings[i]);
-			def->generated_resource_settings[i] = NULL;
-		}
-	}
-	def->generated_resource_settings_count = 0;
-
 	free_bonus_entry_list (&def->culture_bonus_extras);
 	free_bonus_entry_list (&def->science_bonus_extras);
 	free_bonus_entry_list (&def->food_bonus_extras);
@@ -6631,20 +6623,7 @@ override_special_district_from_definition (struct parsed_district_definition * d
 			free ((void *)cfg->generated_resource);
 		cfg->generated_resource = def->generated_resource;
 		def->generated_resource = NULL;
-		cfg->generated_resource_flags = 0;
-		if (def->has_generated_resource_settings) {
-			for (int i = 0; i < def->generated_resource_settings_count; i++) {
-				char * setting = def->generated_resource_settings[i];
-				if (strcmp (setting, "local") == 0)
-					cfg->generated_resource_flags |= MF_LOCAL;
-				else if (strcmp (setting, "no-tech-req") == 0)
-					cfg->generated_resource_flags |= MF_NO_TECH_REQ;
-				else if (strcmp (setting, "show-bonus") == 0)
-					cfg->generated_resource_flags |= MF_SHOW_BONUS;
-				else if (strcmp (setting, "hide-non-bonus") == 0)
-					cfg->generated_resource_flags |= MF_HIDE_NON_BONUS;
-			}
-		}
+		cfg->generated_resource_flags = def->generated_resource_flags;
 		cfg->generated_resource_id = -1;
 	}
 
@@ -6892,20 +6871,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	if (def->has_generated_resource) {
 		new_cfg.generated_resource = def->generated_resource;
 		def->generated_resource = NULL;
-		new_cfg.generated_resource_flags = 0;
-		if (def->has_generated_resource_settings) {
-			for (int i = 0; i < def->generated_resource_settings_count; i++) {
-				char * setting = def->generated_resource_settings[i];
-				if (strcmp (setting, "local") == 0)
-					new_cfg.generated_resource_flags |= MF_LOCAL;
-				else if (strcmp (setting, "no-tech-req") == 0)
-					new_cfg.generated_resource_flags |= MF_NO_TECH_REQ;
-				else if (strcmp (setting, "show-bonus") == 0)
-					new_cfg.generated_resource_flags |= MF_SHOW_BONUS;
-				else if (strcmp (setting, "hide-non-bonus") == 0)
-					new_cfg.generated_resource_flags |= MF_HIDE_NON_BONUS;
-			}
-		}
+		new_cfg.generated_resource_flags = def->generated_resource_flags;
 		new_cfg.generated_resource_id = -1;
 	} else {
 		new_cfg.generated_resource = NULL;
@@ -7579,50 +7545,42 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			free (def->generated_resource);
 			def->generated_resource = NULL;
 		}
-		def->generated_resource = copy_trimmed_string_or_null (value, 1);
-		def->has_generated_resource = true;
+		def->generated_resource_flags = 0;
 
-	} else if (slice_matches_str (key, "generated_resource_settings")) {
 		char * value_text = trim_and_extract_slice (value, 0);
-		int list_count = 0;
-		if (parse_config_string_list (value_text,
-					      def->generated_resource_settings,
-					      ARRAY_LEN (def->generated_resource_settings),
-					      &list_count,
-					      parse_errors,
-					      line_number,
-					      "generated_resource_settings")) {
-			bool valid = true;
-			for (int i = 0; i < list_count; i++) {
-				char * setting = def->generated_resource_settings[i];
-				if ((setting == NULL) ||
-				    ((strcmp (setting, "local") != 0) &&
-				     (strcmp (setting, "no-tech-req") != 0) &&
-				     (strcmp (setting, "show-bonus") != 0) &&
-				     (strcmp (setting, "hide-non-bonus") != 0))) {
-					struct error_line * err = add_error_line (parse_errors);
-					snprintf (err->text, sizeof err->text, "^  Line %d: generated_resource_settings (unrecognized value \"%s\")", line_number, (setting != NULL) ? setting : "");
-					err->text[(sizeof err->text) - 1] = '\0';
-					valid = false;
+		if ((value_text == NULL) || (*value_text == '\0')) {
+			def->generated_resource = NULL;
+			def->has_generated_resource = true;
+		} else {
+			char * cursor = value_text;
+			struct string_slice resource_name = {0};
+			struct string_slice token;
+			bool ok = true;
+			while (skip_white_space (&cursor) && parse_string (&cursor, &token)) {
+				if (slice_matches_str (&token, "local"))
+					def->generated_resource_flags |= MF_LOCAL;
+				else if (slice_matches_str (&token, "no-tech-req"))
+					def->generated_resource_flags |= MF_NO_TECH_REQ;
+				else if (slice_matches_str (&token, "yields"))
+					def->generated_resource_flags |= MF_YIELDS;
+				else if (resource_name.str == NULL)
+					resource_name = token;
+				else {
+					ok = false;
+					break;
 				}
 			}
 
-			if (valid) {
-				def->generated_resource_settings_count = list_count;
-				def->has_generated_resource_settings = true;
+			if (! ok || (resource_name.str == NULL)) {
+				def->generated_resource = NULL;
+				def->has_generated_resource = false;
+				def->generated_resource_flags = 0;
+				add_key_parse_error (parse_errors, line_number, key, value,
+						     "(expected resource name plus optional flags: local, yields, no-tech-req)");
 			} else {
-				for (int i = 0; i < ARRAY_LEN (def->generated_resource_settings); i++) {
-					if (def->generated_resource_settings[i] != NULL) {
-						free (def->generated_resource_settings[i]);
-						def->generated_resource_settings[i] = NULL;
-					}
-				}
-				def->generated_resource_settings_count = 0;
-				def->has_generated_resource_settings = false;
+				def->generated_resource = extract_slice (&resource_name);
+				def->has_generated_resource = true;
 			}
-		} else {
-			def->generated_resource_settings_count = 0;
-			def->has_generated_resource_settings = false;
 		}
 		free (value_text);
 
@@ -8964,7 +8922,7 @@ void parse_building_and_tech_ids ()
 			int tech_id;
 			struct string_slice tech_name = { .str = (char *)is->district_configs[i].obsoleted_by, .len = (int)strlen (is->district_configs[i].obsoleted_by) };
 			if (find_game_object_id_by_name (GOK_TECHNOLOGY, &tech_name, 0, &tech_id)) {
-				snprintf (ss, sizeof ss, "Found tech obsoleted_by \"%.*s\" for district \"%s\", ID %d\n", tech_name.len, tech_name.str, is->district_configs[i].obsoleted_by, tech_id);
+				snprintf (ss, sizeof ss, "Found tech obsoleted_by \"%.*s\" for district \"%s\", ID %d\n", tech_name.len, tech_name.str, district_name, tech_id);
 				(*p_OutputDebugStringA) (ss);
 				is->district_infos[i].obsoleted_by_id = tech_id;
 			} else {
@@ -8983,7 +8941,7 @@ void parse_building_and_tech_ids ()
 			int res_id;
 			struct string_slice res_name = { .str = (char *)is->district_configs[i].resource_prereqs[j], .len = (int)strlen (is->district_configs[i].resource_prereqs[j]) };
 			if (find_game_object_id_by_name (GOK_RESOURCE, &res_name, 0, &res_id)) {
-				snprintf (ss, sizeof ss, "Found resource prereq \"%.*s\" for district \"%s\", ID %d\n", res_name.len, res_name.str, is->district_configs[i].resource_prereqs[j], res_id);
+				snprintf (ss, sizeof ss, "Found resource prereq \"%.*s\" for district \"%s\", ID %d\n", res_name.len, res_name.str, district_name, res_id);
 				(*p_OutputDebugStringA) (ss);
 				if (stored_res_count < ARRAY_LEN (is->district_infos[i].resource_prereq_ids)) {
 					is->district_infos[i].resource_prereq_ids[stored_res_count] = res_id;
@@ -9000,7 +8958,7 @@ void parse_building_and_tech_ids ()
 			int res_id;
 			struct string_slice res_name = { .str = (char *)is->district_configs[i].resource_prereq_on_tile, .len = (int)strlen (is->district_configs[i].resource_prereq_on_tile) };
 			if (find_game_object_id_by_name (GOK_RESOURCE, &res_name, 0, &res_id)) {
-				snprintf (ss, sizeof ss, "Found on-tile resource prereq \"%.*s\" for district \"%s\", ID %d\n", res_name.len, res_name.str, is->district_configs[i].resource_prereq_on_tile, res_id);
+				snprintf (ss, sizeof ss, "Found on-tile resource prereq \"%.*s\" for district \"%s\", ID %d\n", res_name.len, res_name.str, district_name, res_id);
 				(*p_OutputDebugStringA) (ss);
 				is->district_infos[i].resource_prereq_on_tile_id = res_id;
 			} else {
@@ -9080,7 +9038,7 @@ void parse_building_and_tech_ids ()
 			int res_id;
 			struct string_slice res_name = { .str = (char *)is->district_configs[i].generated_resource, .len = (int)strlen (is->district_configs[i].generated_resource) };
 			if (find_game_object_id_by_name (GOK_RESOURCE, &res_name, 0, &res_id)) {
-				snprintf (ss, sizeof ss, "Found generated resource \"%.*s\" for district \"%s\", ID %d\n", res_name.len, res_name.str, is->district_configs[i].generated_resource, res_id);
+				snprintf (ss, sizeof ss, "Found generated resource \"%.*s\" for district \"%s\", ID %d\n", res_name.len, res_name.str, district_name, res_id);
 				(*p_OutputDebugStringA) (ss);
 				is->district_configs[i].generated_resource_id = res_id;
 			} else {
@@ -9104,7 +9062,7 @@ void parse_building_and_tech_ids ()
 
 			struct string_slice improv_name = { .str = (char *)is->district_configs[i].dependent_improvements[j], .len = (int)strlen (is->district_configs[i].dependent_improvements[j]) };
 			if (find_game_object_id_by_name (GOK_BUILDING, &improv_name, 0, &improv_id)) {
-				snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d\n", improv_name.len, improv_name.str, is->district_configs[i].dependent_improvements[j], improv_id);
+				snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d\n", improv_name.len, improv_name.str, district_name, improv_id);
 				(*p_OutputDebugStringA) (ss);
 				if (stored_count < ARRAY_LEN (is->district_infos[i].dependent_building_ids)) {
 					is->district_infos[i].dependent_building_ids[stored_count] = improv_id;
@@ -10207,7 +10165,7 @@ district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district
 	if (owner < 0)
 		return false;
 
-	// Check all resource prereqs - ALL must be present (AND logic)
+	// Check all resource prereqs - ALL must be present
 	for (int i = 0; i < info->resource_prereq_count; i++) {
 		int resource_req = info->resource_prereq_ids[i];
 		if (resource_req < 0)
@@ -11865,6 +11823,18 @@ calculate_city_center_district_bonus (City * city, int * out_food, int * out_shi
 		bonus_food += food_bonus;
 		bonus_shields += shield_bonus;
 		bonus_gold += gold_bonus;
+
+		if ((cfg->generated_resource_id >= 0) &&
+		    (cfg->generated_resource_flags & MF_YIELDS)) {
+			int res_id = cfg->generated_resource_id;
+			int req_tech_id = (cfg->generated_resource_flags & MF_NO_TECH_REQ) ? -1 : p_bic_data->ResourceTypes[res_id].RequireID;
+			if ((req_tech_id < 0) || Leader_has_tech (&leaders[city->Body.CivID], __, req_tech_id)) {
+				Resource_Type * res = &p_bic_data->ResourceTypes[res_id];
+				bonus_food += res->Food;
+				bonus_shields += res->Shield;
+				bonus_gold += res->Commerce;
+			}
+		}
 	}
 
 	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
@@ -14191,7 +14161,7 @@ patch_City_has_resource (City * this, int edx, int resource_id)
 		// check if one is in the work radius
 		if (! tr) {
 			int res_class = p_bic_data->ResourceTypes[resource_id].Class;
-			if ((res_class != RC_Strategic) && (res_class != RC_Luxury)) {
+			if (res_class == RC_Bonus) {
 				int civ_id = this->Body.CivID;
 				FOR_TILES_AROUND (tai, is->workable_tile_count, this->Body.X, this->Body.Y) {
 					Tile * tile = tai.tile;
@@ -14439,6 +14409,8 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups
 			if ((owner_id < 0) || (owner_id >= 32))
 				continue;
 			if (! district_can_generate_resource (owner_id, cfg))
+				continue;
+			if ((cfg->generated_resource_flags & MF_LOCAL) != 0)
 				continue;
 
 			reserve (sizeof is->resource_tiles[0],
@@ -26477,25 +26449,6 @@ patch_Sprite_draw_improv_img_on_city_form (Sprite * this, int edx, PCX_Image * c
 		    has_active_building (p_city_form->CurrentCity, mill->improv_id) &&
 		    has_resources_required_by_building (p_city_form->CurrentCity, mill->improv_id))
 			generated_resources[generated_resource_count++] = mill->resource_id;
-	}
-
-	if (is->current_config.enable_districts && (generated_resource_count < ARRAY_LEN (generated_resources))) {
-		FOR_DISTRICTS_AROUND (wai, p_city_form->CurrentCity->Body.X, p_city_form->CurrentCity->Body.Y, true) {
-			struct district_instance * di = wai.district_inst;
-			int district_id = di->district_id;
-			if ((district_id < 0) || (district_id >= is->district_count))
-				continue;
-
-			struct district_config * dc = &is->district_configs[district_id];
-			if ((dc->generated_resource_id >= 0) &&
-			    ((dc->generated_resource_flags & MF_SHOW_BONUS) || (p_bic_data->ResourceTypes[dc->generated_resource_id].Class != RC_Bonus)) &&
-			    (! ((dc->generated_resource_flags & MF_HIDE_NON_BONUS) && (p_bic_data->ResourceTypes[dc->generated_resource_id].Class != RC_Bonus))) &&
-			    district_can_generate_resource (p_city_form->CurrentCity->Body.CivID, dc)) {
-				generated_resources[generated_resource_count++] = dc->generated_resource_id;
-				if (generated_resource_count >= ARRAY_LEN (generated_resources))
-					break;
-			}
-		}
 	}
 
 	if ((generated_resource_count > 0) && (is->resources_sheet != NULL) && (is->resources_sheet->JGL.Image != NULL) && (TransparentBlt != NULL)) {

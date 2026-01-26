@@ -983,10 +983,8 @@ struct parsed_district_definition {
 	bool has_buildable_by_war_allies;
 	bool has_buildable_by_pact_allies;
 	char * generated_resource;
-	char * generated_resource_settings[5];
-	int generated_resource_settings_count;
+	short generated_resource_flags;
 	bool has_generated_resource;
-	bool has_generated_resource_settings;
 	char * buildable_by_civ_traits[10];
 	int buildable_by_civ_traits_count;
 	int buildable_by_civ_traits_ids[10];
