@@ -18760,8 +18760,8 @@ init_district_icons ()
 	Sprite_slice_pcx (&is->district_unhappiness_icon_small, __, &pcx, 1 + 19*31, 1, 30, 30, 1, 1);
 
 	// Extract negative small shield icon (index 20)
-	Sprite_construct (&is->district_shield_icon_small);
-	Sprite_slice_pcx (&is->district_shield_icon_small, __, &pcx, 1 + 20*31, 1, 30, 30, 1, 1);
+	Sprite_construct (&is->district_negative_shield_icon_small);
+	Sprite_slice_pcx (&is->district_negative_shield_icon_small, __, &pcx, 1 + 20*31, 1, 30, 30, 1, 1);
 
 	// Extract negative small culture icon (index 21)
 	Sprite_construct (&is->district_negative_culture_icon_small);
@@ -29176,24 +29176,43 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	int food_bonus = 0, shield_bonus = 0, gold_bonus = 0, science_bonus = 0, culture_bonus = 0, happiness_bonus = 0;
 	get_effective_district_yields (inst, config, &food_bonus, &shield_bonus, &gold_bonus, &science_bonus, &culture_bonus, &happiness_bonus);
 
+	int food_pos      = food_bonus      > 0 ? food_bonus : 0;
+	int food_neg      = food_bonus      < 0 ? -food_bonus : 0;
+	int shield_pos    = shield_bonus    > 0 ? shield_bonus : 0;
+	int shield_neg    = shield_bonus    < 0 ? -shield_bonus : 0;
+	int gold_pos      = gold_bonus      > 0 ? gold_bonus : 0;
+	int gold_neg      = gold_bonus      < 0 ? -gold_bonus : 0;
+	int science_pos   = science_bonus   > 0 ? science_bonus : 0;
+	int science_neg   = science_bonus   < 0 ? -science_bonus : 0;
+	int culture_pos   = culture_bonus   > 0 ? culture_bonus : 0;
+	int culture_neg   = culture_bonus   < 0 ? -culture_bonus : 0;
+	int happiness_pos = happiness_bonus > 0 ? happiness_bonus : 0;
+	int happiness_neg = happiness_bonus < 0 ? -happiness_bonus : 0;
+
 	int total_yield = 0;
-	if (food_bonus > 0)      total_yield += food_bonus;
-	if (shield_bonus > 0)    total_yield += shield_bonus;
-	if (gold_bonus > 0)      total_yield += gold_bonus;
-	if (science_bonus > 0)   total_yield += science_bonus;
-	if (culture_bonus > 0)   total_yield += culture_bonus;
-	if (happiness_bonus > 0) total_yield += happiness_bonus;
+	total_yield += food_pos + food_neg;
+	total_yield += shield_pos + shield_neg;
+	total_yield += gold_pos + gold_neg;
+	total_yield += science_pos + science_neg;
+	total_yield += culture_pos + culture_neg;
+	total_yield += happiness_pos + happiness_neg;
 
 	if (total_yield <= 0)
 		return;
 
 	// Get sprites
-	Sprite * food_sprite      = &is->district_food_icon_small;
-	Sprite * shield_sprite    = &is->district_shield_icon_small;
-	Sprite * commerce_sprite  = &is->district_commerce_icon_small;
-	Sprite * science_sprite   = &is->district_science_icon_small;
-	Sprite * culture_sprite   = &is->district_culture_icon_small;
-	Sprite * happiness_sprite = &is->district_happiness_icon_small;
+	Sprite * food_sprite               = &is->district_food_icon_small;
+	Sprite * shield_sprite             = &is->district_shield_icon_small;
+	Sprite * commerce_sprite           = &is->district_commerce_icon_small;
+	Sprite * science_sprite            = &is->district_science_icon_small;
+	Sprite * culture_sprite            = &is->district_culture_icon_small;
+	Sprite * happiness_sprite          = &is->district_happiness_icon_small;
+	Sprite * food_negative_sprite      = &is->district_negative_food_icon_small;
+	Sprite * shield_negative_sprite    = &is->district_negative_shield_icon_small;
+	Sprite * commerce_negative_sprite  = &is->district_negative_commerce_icon_small;
+	Sprite * science_negative_sprite   = &is->district_negative_science_icon_small;
+	Sprite * culture_negative_sprite   = &is->district_negative_culture_icon_small;
+	Sprite * happiness_negative_sprite = &is->district_unhappiness_icon_small;
 
 	// Determine sprite dimensions
 	int sprite_width  = food_sprite->Width3;
@@ -29225,33 +29244,57 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	}
 
 	// Draw icons in order: shields, food, science, commerce, culture
-	for (int i = 0; i < shield_bonus; i++) {
+	for (int i = 0; i < shield_pos; i++) {
 		Sprite_draw (shield_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
+	for (int i = 0; i < shield_neg; i++) {
+		Sprite_draw (shield_negative_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
 
-	for (int i = 0; i < food_bonus; i++) {
+	for (int i = 0; i < food_pos; i++) {
 		Sprite_draw (food_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
+	for (int i = 0; i < food_neg; i++) {
+		Sprite_draw (food_negative_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
 
-	for (int i = 0; i < science_bonus; i++) {
+	for (int i = 0; i < science_pos; i++) {
 		Sprite_draw (science_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
+	for (int i = 0; i < science_neg; i++) {
+		Sprite_draw (science_negative_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
 
-	for (int i = 0; i < gold_bonus; i++) {
+	for (int i = 0; i < gold_pos; i++) {
 		Sprite_draw (commerce_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
-
-	for (int i = 0; i < culture_bonus; i++) {
-		Sprite_draw (culture_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+	for (int i = 0; i < gold_neg; i++) {
+		Sprite_draw (commerce_negative_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
 
-	for (int i = 0; i < happiness_bonus; i++) {
+	for (int i = 0; i < culture_pos; i++) {
+		Sprite_draw (culture_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
+	for (int i = 0; i < culture_neg; i++) {
+		Sprite_draw (culture_negative_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
+
+	for (int i = 0; i < happiness_pos; i++) {
 		Sprite_draw (happiness_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
+	for (int i = 0; i < happiness_neg; i++) {
+		Sprite_draw (happiness_negative_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
 }
