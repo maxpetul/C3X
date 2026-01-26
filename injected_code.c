@@ -17600,13 +17600,19 @@ cut_unaffordable_research_spending (Leader * leader, bool skip_popup)
 void __fastcall
 adjust_sliders_preproduction (Leader * this)
 {
-	// Replicate the behavior of the original code for AI players. (apply_machine_code_edits overwrites an equivalent branch & call in the
-	// original code with a call to this method.)
-	if ((*p_human_player_bits & 1<<this->ID) == 0)
+	if ((*p_human_player_bits & 1<<this->ID) == 0) {
+		// Replicate the behavior of the original code for AI players. (apply_machine_code_edits overwrites an equivalent branch & call in the
+		// original code with a call to this method.)
 		this->vtable->ai_adjust_sliders (this);
 
+		// If aggressively penalize bankruptcy is on, cut the AI's research spending if it can't afford it. This may be redundant as
+		// ai_adjust_sliders will already cut AI spending but maybe not all the way to zero. Do this only every third turn so the AI is not
+		// completely prevented from researching.
+		if (is->current_config.aggressively_penalize_bankruptcy && (*p_current_turn_no + this->ID) % 3 == 0)
+			cut_unaffordable_research_spending (this, true);
+
 	// If human player would go bankrupt, try reducing their research spending to avoid that
-	else if (is->current_config.cut_research_spending_to_avoid_bankruptcy)
+	} else if (is->current_config.cut_research_spending_to_avoid_bankruptcy)
 		cut_unaffordable_research_spending (this, false);
 }
 
@@ -17886,8 +17892,15 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 	int treasury = leader->Gold_Encoded + leader->Gold_Decrement;
 	if (improv_cost + unit_cost > treasury) {
 
-		improv_cost = sell_unaffordable_buildings (leader, improv_cost, unit_cost);
-		unit_cost = disband_unaffordable_units (leader, improv_cost, unit_cost, cost_per_unit);
+		// For AIs, alternate between selling buildings and disbanding units when maintenance can't be paid
+		if (((1<<leader->ID & *p_human_player_bits) != 0) || ((leader->ID + *p_current_turn_no) % 2 == 0)) {
+			improv_cost = sell_unaffordable_buildings (leader, improv_cost, unit_cost);
+			unit_cost = disband_unaffordable_units (leader, improv_cost, unit_cost, cost_per_unit);
+		} else {
+			unit_cost = disband_unaffordable_units (leader, improv_cost, unit_cost, cost_per_unit);
+			improv_cost = sell_unaffordable_buildings (leader, improv_cost, unit_cost);
+		}
+
 		treasury = leader->Gold_Encoded + leader->Gold_Decrement; // Update b/c selling buildings recovers some gold
 
 		// If the player still can't afford maintenance, even after all that, start switching their cities to Wealth
