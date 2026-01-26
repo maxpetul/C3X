@@ -1981,7 +1981,6 @@ struct district_button_image_set {
 	Sprite district_food_icon_small;
 	Sprite district_science_icon_small;
 	Sprite district_culture_icon_small;
-
 	Sprite district_unhappiness_icon_small;
 	Sprite district_negative_shield_icon_small;
 	Sprite district_negative_commerce_icon_small;

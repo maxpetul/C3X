@@ -14186,6 +14186,26 @@ patch_City_has_resource (City * this, int edx, int resource_id)
 				break;
 			}
 		}
+
+		// A district may require a bonus resource as well. If that's the case,
+		// check if one is in the work radius
+		if (! tr) {
+			int res_class = p_bic_data->ResourceTypes[resource_id].Class;
+			if ((res_class != RC_Strategic) && (res_class != RC_Luxury)) {
+				int civ_id = this->Body.CivID;
+				FOR_TILES_AROUND (tai, is->workable_tile_count, this->Body.X, this->Body.Y) {
+					Tile * tile = tai.tile;
+					if ((tile == NULL) || (tile == p_null_tile))
+						continue;
+					if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id)
+						continue;
+					if (Tile_get_resource_visible_to (tile, __, civ_id) == resource_id) {
+						tr = true;
+						break;
+					}
+				}
+			}
+		}
 	}
 
 	return tr;

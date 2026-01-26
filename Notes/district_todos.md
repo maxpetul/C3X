@@ -1,6 +1,5 @@
   - Validate and upfront bridge/canal algorithm
   - Validate resource generation (add yield?)
-  - Negative bonuses
   - Firm up logic for river district rendering
 
   - Hoover Dam (use alt dir, special positioning b/c on river)
@@ -20,6 +19,7 @@
 
 
 ## Maritime Districts
+  - ~~Negative bonuses~~
   - ~~Fix scenario art not loading bug~~
   - ~~Add advance_prereqs~~
   - ~~Allow district OR logic for buildings~~
