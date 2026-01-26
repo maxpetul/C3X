@@ -2496,7 +2496,7 @@ find_pending_district_request (City * city, int district_id)
 
 	int stored;
 	if (itable_look_up (&is->city_pending_district_requests[civ_id], key, &stored)) {
-		struct pending_district_request * req = (struct pending_district_request *)(long)stored;
+		struct pending_district_request * req = (struct pending_district_request *)stored;
 		if ((req != NULL) && (req->civ_id == civ_id) && (req->city_id == city_id) && (req->district_id == district_id)) {
 			if (req->city != city)
 				req->city = city;
@@ -2544,7 +2544,7 @@ create_pending_district_request (City * city, int district_id)
 		city->Body.CityName, city->Body.ID, district_id, key);
 	(*p_OutputDebugStringA) (ss);
 
-	itable_insert (&is->city_pending_district_requests[civ_id], key, (int)(long)req);
+	itable_insert (&is->city_pending_district_requests[civ_id], key, (int)req);
 	return req;
 }
 
@@ -2560,7 +2560,7 @@ find_pending_district_request_by_coords (City * city_or_null, int tile_x, int ti
 		return NULL;
 
 	FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-		struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+		struct pending_district_request * req = (struct pending_district_request *)tei.value;
 		if (req == NULL) continue;
 		if (req->district_id != district_id) continue;
 		if (city_or_null != NULL) {
@@ -2586,7 +2586,7 @@ is_tile_earmarked_for_district (int tile_x, int tile_y)
 	int civ_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
 
 	FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-		struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+		struct pending_district_request * req = (struct pending_district_request *)tei.value;
 		if (req == NULL) continue;
 		if ((req->target_x == tile_x) && (req->target_y == tile_y))
 			return true;
@@ -2604,7 +2604,7 @@ get_district_instance (Tile * tile)
 	if (! itable_look_up (&is->district_tile_map, (int)tile, &stored_ptr))
 		return NULL;
 
-	struct district_instance * inst = (struct district_instance *)(long)stored_ptr;
+	struct district_instance * inst = (struct district_instance *)stored_ptr;
 
 	if ((inst == NULL) || (inst->district_id < 0) || (inst->district_id >= is->district_count))
 		return NULL;
@@ -2678,7 +2678,7 @@ ensure_district_instance (Tile * tile, int district_id, int tile_x, int tile_y)
 	inst->natural_wonder_info.natural_wonder_id = -1;
 
 	district_instance_set_coords (inst, tile_x, tile_y);
-	itable_insert (&is->district_tile_map, (int)tile, (int)(long)inst);
+	itable_insert (&is->district_tile_map, (int)tile, (int)inst);
 	return inst;
 }
 
@@ -2971,7 +2971,7 @@ detach_workers_from_request (struct pending_district_request * req)
 	if ((civ_id < 0) || (civ_id >= 32)) {
 		for (int civ = 0; civ < 32; civ++) {
 			FOR_TABLE_ENTRIES (tei, &is->district_worker_tables[civ]) {
-				struct district_worker_record * rec = (struct district_worker_record *)(long)tei.value;
+				struct district_worker_record * rec = (struct district_worker_record *)tei.value;
 				if ((rec != NULL) && (rec->pending_req == req))
 					rec->pending_req = NULL;
 			}
@@ -2980,7 +2980,7 @@ detach_workers_from_request (struct pending_district_request * req)
 	}
 
 	FOR_TABLE_ENTRIES (tei, &is->district_worker_tables[civ_id]) {
-		struct district_worker_record * rec = (struct district_worker_record *)(long)tei.value;
+		struct district_worker_record * rec = (struct district_worker_record *)tei.value;
 		if ((rec != NULL) && (rec->pending_req == req))
 			rec->pending_req = NULL;
 	}
@@ -3541,7 +3541,7 @@ wai_init_cities (int x, int y)
 		for (Tile * aerodrome_tile = (Tile *)_tei.key; \
 		     (aerodrome_tile != NULL) && (aerodrome_tile != p_null_tile); \
 		     aerodrome_tile = NULL) \
-			for (struct district_instance * aerodrome_inst = (struct district_instance *)(long)_tei.value; \
+			for (struct district_instance * aerodrome_inst = (struct district_instance *)_tei.value; \
 			     (aerodrome_inst != NULL) && \
 			     (aerodrome_inst->district_id == AERODROME_DISTRICT_ID) && \
 			     district_is_complete (aerodrome_tile, AERODROME_DISTRICT_ID); \
@@ -3791,7 +3791,7 @@ get_tracked_worker_record (Unit * worker)
 
 	int value;
 	if (itable_look_up (&is->district_worker_tables[civ_id], worker->Body.ID, &value))
-		return (struct district_worker_record *)(long)value;
+		return (struct district_worker_record *)value;
 	return NULL;
 }
 
@@ -3814,7 +3814,7 @@ ensure_tracked_worker_record (Unit * worker)
 	rec->continent_id = ((tile != NULL) && (tile != p_null_tile)) ? tile->vtable->m46_Get_ContinentID (tile) : -1;
 	rec->pending_req = NULL;
 
-	itable_insert (&is->district_worker_tables[civ_id], worker->Body.ID, (int)(long)rec);
+	itable_insert (&is->district_worker_tables[civ_id], worker->Body.ID, (int)rec);
 	return rec;
 }
 
@@ -3828,7 +3828,7 @@ remove_tracked_worker_record (int civ_id, int unit_id)
 	if (! itable_look_up (&is->district_worker_tables[civ_id], unit_id, &value))
 		return;
 
-	struct district_worker_record * rec = (struct district_worker_record *)(long)value;
+	struct district_worker_record * rec = (struct district_worker_record *)value;
 	if (rec->pending_req != NULL) {
 		rec->pending_req->assigned_worker_id = -1;
 		rec->pending_req = NULL;
@@ -3861,7 +3861,7 @@ clear_tracked_worker_assignment_by_id (int civ_id, int unit_id)
 	if (! itable_look_up (&is->district_worker_tables[civ_id], unit_id, &value))
 		return;
 
-	struct district_worker_record * rec = (struct district_worker_record *)(long)value;
+	struct district_worker_record * rec = (struct district_worker_record *)value;
 	if ((rec->pending_req != NULL) && (rec->pending_req->assigned_worker_id == unit_id))
 		rec->pending_req->assigned_worker_id = -1;
 	rec->pending_req = NULL;
@@ -3874,7 +3874,7 @@ clear_all_tracked_workers (void)
 {
 	for (int civ = 0; civ < 32; civ++) {
 		FOR_TABLE_ENTRIES (tei, &is->district_worker_tables[civ]) {
-			struct district_worker_record * rec = (struct district_worker_record *)(long)tei.value;
+			struct district_worker_record * rec = (struct district_worker_record *)tei.value;
 			if (rec == NULL)
 				continue;
 			if ((rec->pending_req != NULL) && (rec->pending_req->assigned_worker_id == rec->unit_id))
@@ -4018,7 +4018,7 @@ find_best_worker_for_district (Leader * leader, City * city, int district_id, in
 	(*p_OutputDebugStringA) (ss);
 
 	FOR_TABLE_ENTRIES (tei, &is->district_worker_tables[civ_id]) {
-		struct district_worker_record * rec = (struct district_worker_record *)(long)tei.value;
+		struct district_worker_record * rec = (struct district_worker_record *)tei.value;
 
 		if (rec == NULL) {
 			continue;
@@ -4155,7 +4155,7 @@ assign_workers_for_pending_districts (Leader * leader)
 		return;
 
 	FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-		struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+		struct pending_district_request * req = (struct pending_district_request *)tei.value;
 		if (req == NULL)
 			continue;
 
@@ -4439,7 +4439,7 @@ remember_pending_building_order (City * city, int improvement_id)
 	if ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)
 		return;
 
-	itable_insert (&is->city_pending_building_orders, (int)(long)city, improvement_id);
+	itable_insert (&is->city_pending_building_orders, (int)city, improvement_id);
 }
 
 bool
@@ -4450,7 +4450,7 @@ lookup_pending_building_order (City * city, int * out_improv_id)
 	    (out_improv_id == NULL))
 		return false;
 
-	return itable_look_up (&is->city_pending_building_orders, (int)(long)city, out_improv_id);
+	return itable_look_up (&is->city_pending_building_orders, (int)city, out_improv_id);
 }
 
 void
@@ -4460,7 +4460,7 @@ forget_pending_building_order (City * city)
 	    (city == NULL))
 		return;
 
-	itable_remove (&is->city_pending_building_orders, (int)(long)city);
+	itable_remove (&is->city_pending_building_orders, (int)city);
 }
 
 bool
@@ -4497,7 +4497,7 @@ get_district_building_prereq_list (int improv_id)
 	int stored = 0;
 	if (! itable_look_up (&is->district_building_prereqs, improv_id, &stored))
 		return NULL;
-	return (struct district_building_prereq_list *)(long)stored;
+	return (struct district_building_prereq_list *)stored;
 }
 
 bool
@@ -4524,7 +4524,7 @@ add_district_building_prereq (int improv_id, int district_id)
 		if (list == NULL)
 			return;
 		list->count = 0;
-		itable_insert (&is->district_building_prereqs, improv_id, (int)(long)list);
+		itable_insert (&is->district_building_prereqs, improv_id, (int)list);
 	}
 
 	if (district_building_prereq_list_contains (list, district_id))
@@ -4800,7 +4800,7 @@ get_distribution_hub_record (Tile * tile)
 
 	int stored;
 	if (itable_look_up (&is->distribution_hub_records, (int)tile, &stored))
-		return (struct distribution_hub_record *)(long)stored;
+		return (struct distribution_hub_record *)stored;
 	else
 		return NULL;
 }
@@ -4859,7 +4859,7 @@ get_distribution_hub_yields_for_city (City * city, int * out_food, int * out_shi
 			recompute_distribution_hub_totals ();
 
 		FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
-			struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
+			struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
 			if (distribution_hub_accessible_to_city (rec, city)) {
 				food += rec->food_yield;
 				shields += rec->shield_yield;
@@ -4941,7 +4941,7 @@ void
 clear_distribution_hub_tables (void)
 {
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
-		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
+		struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
 		free (rec);
 	}
 	table_deinit (&is->distribution_hub_records);
@@ -5022,7 +5022,7 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec)
 		bool tile_belongs_to_me = true;
 
 		FOR_TABLE_ENTRIES (other_tei, &is->distribution_hub_records) {
-			struct distribution_hub_record * other_rec = (struct distribution_hub_record *)(long)other_tei.value;
+			struct distribution_hub_record * other_rec = (struct distribution_hub_record *)other_tei.value;
 			if ((other_rec == NULL) || (other_rec == rec))
 				continue;
 			if (other_rec->civ_id != rec->civ_id)
@@ -5131,7 +5131,7 @@ recompute_distribution_hub_totals ()
 
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
 		Tile * tile = (Tile *)tei.key;
-		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
+		struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
 		if (rec == NULL)
 			continue;
 
@@ -5202,7 +5202,7 @@ recompute_distribution_hub_totals ()
 	clear_memo ();
 
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
-		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
+		struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
 		if (rec == NULL)
 			continue;
 
@@ -5223,7 +5223,7 @@ recompute_distribution_hub_totals ()
 	memset (&new_coverage_counts, 0, sizeof new_coverage_counts);
 
 	FOR_TABLE_ENTRIES (tei, &newly_covered_tiles) {
-		Tile * covered_tile = (Tile *)(long)tei.key;
+		Tile * covered_tile = (Tile *)tei.key;
 		if ((covered_tile == NULL) || (covered_tile == p_null_tile))
 			continue;
 		int tx, ty;
@@ -5291,7 +5291,7 @@ on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y)
 	rec->shield_yield = 0;
 	rec->raw_food_yield = 0;
 	rec->raw_shield_yield = 0;
-	itable_insert (&is->distribution_hub_records, (int)tile, (int)(long)rec);
+	itable_insert (&is->distribution_hub_records, (int)tile, (int)rec);
 	adjust_distribution_hub_coverage (rec);
 
 	is->distribution_hub_totals_dirty = true;
@@ -9181,7 +9181,7 @@ place_natural_wonders_on_map (void)
 
 	// Record existing natural wonders
 	FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-		struct district_instance * inst = (struct district_instance *)(long)tei.value;
+		struct district_instance * inst = (struct district_instance *)tei.value;
 		if ((inst == NULL) || (inst->district_id != NATURAL_WONDER_DISTRICT_ID))
 			continue;
 
@@ -9668,7 +9668,7 @@ set_named_tile_entry (Tile * tile, int tile_x, int tile_y, char const * name)
 		entry = calloc (1, sizeof *entry);
 		if (entry == NULL)
 			return;
-		itable_insert (&is->named_tile_map, (int)tile, (int)(long)entry);
+		itable_insert (&is->named_tile_map, (int)tile, (int)entry);
 	}
 	entry->tile_x = tile_x;
 	entry->tile_y = tile_y;
@@ -10039,7 +10039,7 @@ void
 clear_highlighted_worker_tiles_for_districts ()
 {
 	FOR_TABLE_ENTRIES (tei, &is->highlighted_city_radius_tile_pointers) {
-		struct highlighted_city_radius_tile_info * info = (struct highlighted_city_radius_tile_info *)(long)tei.value;
+		struct highlighted_city_radius_tile_info * info = (struct highlighted_city_radius_tile_info *)tei.value;
 		if (info != NULL)
 			free (info);
 	}
@@ -10056,7 +10056,7 @@ reset_district_state (bool reset_tile_map)
 
 	table_deinit (&is->district_tech_prereqs);
 	FOR_TABLE_ENTRIES (tei, &is->district_building_prereqs) {
-		struct district_building_prereq_list * list = (struct district_building_prereq_list *)(long)tei.value;
+		struct district_building_prereq_list * list = (struct district_building_prereq_list *)tei.value;
 		if (list != NULL)
 			free (list);
 	}
@@ -10065,13 +10065,13 @@ reset_district_state (bool reset_tile_map)
 	stable_deinit (&is->building_name_to_id);
 	if (reset_tile_map) {
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-			struct district_instance * inst = (struct district_instance *)(long)tei.value;
+			struct district_instance * inst = (struct district_instance *)tei.value;
 			if (inst != NULL)
 				free (inst);
 		}
 		table_deinit (&is->district_tile_map);
 		FOR_TABLE_ENTRIES (tei, &is->named_tile_map) {
-			struct named_tile_entry * entry = (struct named_tile_entry *)(long)tei.value;
+			struct named_tile_entry * entry = (struct named_tile_entry *)tei.value;
 			if (entry != NULL)
 				free (entry);
 		}
@@ -10107,7 +10107,7 @@ reset_district_state (bool reset_tile_map)
 
 	for (int civ_id = 0; civ_id < 32; civ_id++) {
 		FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-			struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+			struct pending_district_request * req = (struct pending_district_request *)tei.value;
 			if (req != NULL)
 				free (req);
 		}
@@ -12491,7 +12491,7 @@ leader_has_natural_wonder_prereq_in_territory (int civ_id, struct district_infos
 		return false;
 
 	FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-		struct district_instance * inst = (struct district_instance *)(long)tei.value;
+		struct district_instance * inst = (struct district_instance *)tei.value;
 		if ((inst == NULL) || (inst->district_id != NATURAL_WONDER_DISTRICT_ID))
 			continue;
 
@@ -12524,7 +12524,7 @@ count_distribution_hubs_for_civ (int civ_id)
 {
 	int current = 0;
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
-		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
+		struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
 		if ((rec != NULL) && (rec->civ_id == civ_id))
 			current++;
 	}
@@ -13602,10 +13602,10 @@ city_requires_district_for_improvement (City * city, int improv_id, int * out_di
 void
 clear_best_feasible_order (City * city)
 {
-	int key = (int)(long)city;
+	int key = (int)city;
 	int stored_int;
 	if (itable_look_up (&is->ai_best_feasible_orders, key, &stored_int)) {
-		struct ai_best_feasible_order * stored = (struct ai_best_feasible_order *)(long)stored_int;
+		struct ai_best_feasible_order * stored = (struct ai_best_feasible_order *)stored_int;
 		free (stored);
 		itable_remove (&is->ai_best_feasible_orders, key);
 	}
@@ -13614,18 +13614,18 @@ clear_best_feasible_order (City * city)
 void
 record_best_feasible_order (City * city, City_Order const * order, int value)
 {
-	int key = (int)(long)city;
+	int key = (int)city;
 	int stored_int;
 	struct ai_best_feasible_order * stored;
 	if (itable_look_up (&is->ai_best_feasible_orders, key, &stored_int))
-		stored = (struct ai_best_feasible_order *)(long)stored_int;
+		stored = (struct ai_best_feasible_order *)stored_int;
 	else {
 		stored = malloc (sizeof *stored);
 		if (stored == NULL)
 			return;
 		stored->order = *order;
 		stored->value = value;
-		itable_insert (&is->ai_best_feasible_orders, key, (int)(long)stored);
+		itable_insert (&is->ai_best_feasible_orders, key, (int)stored);
 		return;
 	}
 
@@ -13639,8 +13639,8 @@ struct ai_best_feasible_order *
 get_best_feasible_order (City * city)
 {
 	int stored_int;
-	if (itable_look_up (&is->ai_best_feasible_orders, (int)(long)city, &stored_int))
-		return (struct ai_best_feasible_order *)(long)stored_int;
+	if (itable_look_up (&is->ai_best_feasible_orders, (int)city, &stored_int))
+		return (struct ai_best_feasible_order *)stored_int;
 	else
 		return NULL;
 }
@@ -18093,7 +18093,7 @@ patch_Unit_join_city (Unit * this, int edx, City * city)
 					struct pending_district_request * same_continent_req = NULL;
 
 					FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-						struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+						struct pending_district_request * req = (struct pending_district_request *)tei.value;
 						if ((req == NULL) || (req->assigned_worker_id >= 0))
 							continue;
 						if ((req->civ_id != civ_id) || (req->city_id < 0))
@@ -21895,7 +21895,7 @@ insert_ai_candidate_bridge_or_canals_into_district_tile_map ()
 			inst->tile_x = tx;
 			inst->tile_y = ty;
 
-			itable_insert (&is->district_tile_map, key, (int)(long)inst);
+			itable_insert (&is->district_tile_map, key, (int)inst);
 		}
 	}
 }
@@ -22954,7 +22954,7 @@ patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Imag
 
 	if (draw_natural_wonders) {
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-			struct district_instance * inst = (struct district_instance *)(long)tei.value;
+			struct district_instance * inst = (struct district_instance *)tei.value;
 			if ((inst == NULL) || (inst->district_id != NATURAL_WONDER_DISTRICT_ID))
 				continue;
 
@@ -22966,7 +22966,7 @@ patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Imag
 			if ((nw_cfg == NULL) || (nw_cfg->name == NULL) || (nw_cfg->name[0] == '\0'))
 				continue;
 
-			Tile * tile = (Tile *)(long)tei.key;
+			Tile * tile = (Tile *)tei.key;
 			if ((tile == NULL) || (tile == p_null_tile))
 				continue;
 
@@ -22983,11 +22983,11 @@ patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Imag
 
 	if (draw_named_tiles) {
 		FOR_TABLE_ENTRIES (tei, &is->named_tile_map) {
-			struct named_tile_entry * entry = (struct named_tile_entry *)(long)tei.value;
+			struct named_tile_entry * entry = (struct named_tile_entry *)tei.value;
 			if ((entry == NULL) || (entry->name[0] == '\0'))
 				continue;
 
-			Tile * tile = (Tile *)(long)tei.key;
+			Tile * tile = (Tile *)tei.key;
 			if ((tile == NULL) || (tile == p_null_tile))
 				continue;
 
@@ -24916,14 +24916,14 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 
 	int current = 0;
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
-		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
+		struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
 		if ((rec != NULL) && (rec->civ_id == civ_id))
 			current++;
 	}
 
 	int in_progress = 0;
 	FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-		Tile * tile = (Tile *)(long)tei.key;
+		Tile * tile = (Tile *)tei.key;
 		int mapped_district_id = tei.value;
 		if ((tile != NULL) &&
 		    (mapped_district_id == DISTRIBUTION_HUB_DISTRICT_ID) &&
@@ -24936,7 +24936,7 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 
 	int pending = 0;
 	FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-		struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+		struct pending_district_request * req = (struct pending_district_request *)tei.value;
 		if ((req != NULL) && (req->district_id == DISTRIBUTION_HUB_DISTRICT_ID))
 			pending++;
 	}
@@ -27074,7 +27074,7 @@ patch_Map_place_scenario_things (Map * this)
 		is->current_config.add_natural_wonders_to_scenarios_if_none) {
 		bool any_natural_wonders = false;
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-			struct district_instance * inst = (struct district_instance *)(long)tei.value;
+			struct district_instance * inst = (struct district_instance *)tei.value;
 			if ((inst != NULL) &&
 			    (inst->district_id == NATURAL_WONDER_DISTRICT_ID) &&
 			    (inst->natural_wonder_info.natural_wonder_id >= 0)) {
@@ -27332,7 +27332,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		int entry_count = 0;
 		for (int civ_id = 0; civ_id < 32; civ_id++) {
 			FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-				struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+				struct pending_district_request * req = (struct pending_district_request *)tei.value;
 				if ((req != NULL) && (req->city_id >= 0))
 					entry_count++;
 			}
@@ -27344,7 +27344,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			chunk[0] = entry_count;
 			for (int civ_id = 0; civ_id < 32; civ_id++) {
 				FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-					struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+					struct pending_district_request * req = (struct pending_district_request *)tei.value;
 					if ((req == NULL) || (req->city_id < 0))
 						continue;
 					out[0] = req->city_id;
@@ -27362,7 +27362,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 	    (is->city_pending_building_orders.len > 0)) {
 		int entry_count = 0;
 		FOR_TABLE_ENTRIES (tei, &is->city_pending_building_orders) {
-			City * city = (City *)(long)tei.key;
+			City * city = (City *)tei.key;
 			int improv_id = tei.value;
 			if ((city != NULL) && (improv_id >= 0))
 				entry_count++;
@@ -27373,7 +27373,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			int * out = chunk + 1;
 			chunk[0] = entry_count;
 			FOR_TABLE_ENTRIES (tei, &is->city_pending_building_orders) {
-				City * city = (City *)(long)tei.key;
+				City * city = (City *)tei.key;
 				int improv_id = tei.value;
 				if ((city == NULL) || (improv_id < 0))
 					continue;
@@ -27392,7 +27392,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		int written = 0;
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
 			Tile * tile = (Tile *)tei.key;
-			struct district_instance * inst = (struct district_instance *)(long)tei.value;
+			struct district_instance * inst = (struct district_instance *)tei.value;
 			if (inst == NULL)
 				continue;
 			int x, y;
@@ -27429,7 +27429,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 	if (is->current_config.enable_natural_wonders && (is->district_tile_map.len > 0)) {
 		int entry_capacity = 0;
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-			struct district_instance * inst = (struct district_instance *)(long)tei.value;
+			struct district_instance * inst = (struct district_instance *)tei.value;
 			if ((inst == NULL) || (inst->district_id != NATURAL_WONDER_DISTRICT_ID))
 				continue;
 			if (inst->natural_wonder_info.natural_wonder_id < 0)
@@ -27443,7 +27443,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			int written = 0;
 			FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
 				Tile * tile = (Tile *)tei.key;
-				struct district_instance * inst = (struct district_instance *)(long)tei.value;
+				struct district_instance * inst = (struct district_instance *)tei.value;
 				if ((inst == NULL) ||
 				    (inst->district_id != NATURAL_WONDER_DISTRICT_ID) ||
 				    (inst->natural_wonder_info.natural_wonder_id < 0))
@@ -27475,7 +27475,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 				int * out = chunk + 1;
 				int written = 0;
 				FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
-					struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
+					struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
 					if (rec == NULL)
 						continue;
 					out[0] = rec->tile_x;
@@ -27534,10 +27534,10 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		byte * out = (byte *)(count + 1);
 		int written = 0;
 		FOR_TABLE_ENTRIES (tei, &is->named_tile_map) {
-			struct named_tile_entry * entry = (struct named_tile_entry *)(long)tei.value;
+			struct named_tile_entry * entry = (struct named_tile_entry *)tei.value;
 			if ((entry == NULL) || (entry->name[0] == '\0'))
 				continue;
-			Tile * tile = (Tile *)(long)tei.key;
+			Tile * tile = (Tile *)tei.key;
 			int tile_x = entry->tile_x;
 			int tile_y = entry->tile_y;
 			if ((tile != NULL) && (tile != p_null_tile))
@@ -27657,13 +27657,13 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 	if (! save_else_load) {
 		// Free all district_instance structs first
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-			struct district_instance * inst = (struct district_instance *)(long)tei.value;
+			struct district_instance * inst = (struct district_instance *)tei.value;
 			if (inst != NULL)
 				free (inst);
 		}
 		table_deinit (&is->district_tile_map);
 		FOR_TABLE_ENTRIES (tei, &is->named_tile_map) {
-			struct named_tile_entry * entry = (struct named_tile_entry *)(long)tei.value;
+			struct named_tile_entry * entry = (struct named_tile_entry *)tei.value;
 			if (entry != NULL)
 				free (entry);
 		}
@@ -27824,7 +27824,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					    (remaining_bytes >= entry_count * 5 * (int)sizeof(int))) {
 						for (int civ_id = 0; civ_id < 32; civ_id++) {
 							FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-								struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+								struct pending_district_request * req = (struct pending_district_request *)tei.value;
 								if (req != NULL)
 									free (req);
 							}
@@ -27891,7 +27891,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							City * city = get_city_ptr (city_id);
 							if (city == NULL)
 								continue;
-							itable_insert (&is->city_pending_building_orders, (int)(long)city, improv_id);
+							itable_insert (&is->city_pending_building_orders, (int)city, improv_id);
 						}
 						if (! success)
 							table_deinit (&is->city_pending_building_orders);
@@ -27915,7 +27915,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 						int required_bytes = entry_count * ints_per_entry * (int)sizeof(int);
 						if (success && remaining_bytes >= required_bytes) {
 							FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-								struct district_instance * inst = (struct district_instance *)(long)tei.value;
+								struct district_instance * inst = (struct district_instance *)tei.value;
 								if (inst != NULL)
 									free (inst);
 							}
@@ -28135,11 +28135,11 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							entry->tile_y = tile_y;
 							strncpy (entry->name, name_buf, sizeof entry->name);
 							entry->name[(sizeof entry->name) - 1] = '\0';
-							itable_insert (&is->named_tile_map, (int)tile, (int)(long)entry);
+							itable_insert (&is->named_tile_map, (int)tile, (int)entry);
 						}
 						if (! success) {
 							FOR_TABLE_ENTRIES (tei, &is->named_tile_map) {
-								struct named_tile_entry * entry = (struct named_tile_entry *)(long)tei.value;
+								struct named_tile_entry * entry = (struct named_tile_entry *)tei.value;
 								if (entry != NULL)
 									free (entry);
 							}
