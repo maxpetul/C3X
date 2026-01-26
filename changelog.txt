@@ -1,7 +1,13 @@
+- Add some optional rule changes for helicopters (or any air units with transport capacity) controlled by special_helicopter_rules
+  - Helicopters may be rebased or loaded onto carriers
+  - Paratroopers inside a helicopter on a carrier may perform airdrops
+  - Units inside a helicopter can be prevented from defending their tile, performing defensive bombard, or intercepting air units
+  - Units inside a helicopter can be guaranteed to be destroyed when the helicopter is destroyed or captured
 - Can select a different method for unit autoselection that searches for similar units near where the last selected unit started or ended up
   - Option named unit_cycle_search_criteria
 - Can specify a victory animation for air units in aircraft_victory_animation option
 - Option show_armies_performing_defensive_bombard that fixes defensive bombard animations being skipped when the bombarding unit is in an army
+- aggressively_penalize_bankruptcy now alternates between selling buildings or disbanding units first for bankrupt AI players and every third turn cuts their research spending
 - Fix crash caused by failure to find default option for popup asking player to select new build in city that completed its previous one
 - Except nuclear weapons from disallow_useless_bombard_vs_airfields
 
