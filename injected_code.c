@@ -4470,6 +4470,7 @@ is_wonder_or_small_wonder_already_being_built (City * city, int improv_id)
 		return false;
 
 	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	bool is_wonder = (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0;
 	if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) == 0)
 		return false;
 
@@ -4485,6 +4486,112 @@ is_wonder_or_small_wonder_already_being_built (City * city, int improv_id)
 	}
 
 	return false;
+}
+
+struct district_building_prereq_list *
+get_district_building_prereq_list (int improv_id)
+{
+	if (improv_id < 0)
+		return NULL;
+
+	int stored = 0;
+	if (! itable_look_up (&is->district_building_prereqs, improv_id, &stored))
+		return NULL;
+	return (struct district_building_prereq_list *)(long)stored;
+}
+
+bool
+district_building_prereq_list_contains (struct district_building_prereq_list * list, int district_id)
+{
+	if ((list == NULL) || (district_id < 0))
+		return false;
+	for (int i = 0; i < list->count; i++) {
+		if (list->district_ids[i] == district_id)
+			return true;
+	}
+	return false;
+}
+
+void
+add_district_building_prereq (int improv_id, int district_id)
+{
+	if ((improv_id < 0) || (district_id < 0))
+		return;
+
+	struct district_building_prereq_list * list = get_district_building_prereq_list (improv_id);
+	if (list == NULL) {
+		list = calloc (1, sizeof *list);
+		if (list == NULL)
+			return;
+		list->count = 0;
+		itable_insert (&is->district_building_prereqs, improv_id, (int)(long)list);
+	}
+
+	if (district_building_prereq_list_contains (list, district_id))
+		return;
+
+	if (list->count >= ARRAY_LEN (list->district_ids))
+		return;
+
+	list->district_ids[list->count++] = district_id;
+}
+
+bool
+city_has_river_district (City * city, int district_id)
+{
+	if (city == NULL)
+		return false;
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		if (wai.district_inst->district_id != district_id)
+			continue;
+		if (wai.tile->vtable->m37_Get_River_Code (wai.tile) != 0)
+			return true;
+	}
+	return false;
+}
+
+bool
+city_has_any_prereq_district_for_improvement (City * city,
+					      struct district_building_prereq_list * list,
+					      bool requires_river,
+					      bool allow_wonder_district)
+{
+	if ((city == NULL) || (list == NULL))
+		return false;
+
+	for (int i = 0; i < list->count; i++) {
+		int district_id = list->district_ids[i];
+		if (district_id < 0)
+			continue;
+		if (! allow_wonder_district && district_id == WONDER_DISTRICT_ID)
+			continue;
+		if (requires_river) {
+			if (city_has_river_district (city, district_id))
+				return true;
+		} else if (city_has_required_district (city, district_id)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+int
+pick_missing_district_for_improvement (City * city, struct district_building_prereq_list * list)
+{
+	if ((list == NULL) || (list->count <= 0))
+		return -1;
+
+	int fallback = -1;
+	for (int i = 0; i < list->count; i++) {
+		int district_id = list->district_ids[i];
+		if (district_id < 0)
+			continue;
+		if (fallback < 0)
+			fallback = district_id;
+		if ((city != NULL) && leader_can_build_district (&leaders[city->Body.CivID], district_id))
+			return district_id;
+	}
+	return fallback;
 }
 
 
@@ -4586,9 +4693,8 @@ district_is_complete(Tile * tile, int district_id)
 				// Check if city has pending building order that depends on this district
 				int pending_improv_id;
 				if (lookup_pending_building_order (requesting_city, &pending_improv_id)) {
-					int prereq_district_id;
-					if (itable_look_up (&is->district_building_prereqs, pending_improv_id, &prereq_district_id)) {
-						if (prereq_district_id == district_id) {
+					struct district_building_prereq_list * prereq_list = get_district_building_prereq_list (pending_improv_id);
+					if (district_building_prereq_list_contains (prereq_list, district_id)) {
 							snprintf (ss, sizeof ss, "City %s setting production to improvement %d\n",
 								  requesting_city->Body.CityName, pending_improv_id);
 							(*p_OutputDebugStringA) (ss);
@@ -4612,7 +4718,6 @@ district_is_complete(Tile * tile, int district_id)
 
 							// Clear the pending building order
 							forget_pending_building_order (requesting_city);
-						}
 					}
 				}
 
@@ -5388,10 +5493,13 @@ free_dynamic_district_config (struct district_config * cfg)
 		free ((void *)cfg->tooltip);
 		cfg->tooltip = NULL;
 	}
-	if (cfg->advance_prereq != NULL) {
-		free ((void *)cfg->advance_prereq);
-		cfg->advance_prereq = NULL;
+	for (int i = 0; i < ARRAY_LEN (cfg->advance_prereqs); i++) {
+		if (cfg->advance_prereqs[i] != NULL) {
+			free ((void *)cfg->advance_prereqs[i]);
+			cfg->advance_prereqs[i] = NULL;
+		}
 	}
+	cfg->advance_prereq_count = 0;
 	if (cfg->obsoleted_by != NULL) {
 		free ((void *)cfg->obsoleted_by);
 		cfg->obsoleted_by = NULL;
@@ -5552,10 +5660,17 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 		free ((void *)cfg->tooltip);
 		cfg->tooltip = NULL;
 	}
-	if ((cfg->advance_prereq != NULL) && (cfg->advance_prereq != defaults->advance_prereq)) {
-		free ((void *)cfg->advance_prereq);
-		cfg->advance_prereq = NULL;
+	for (int i = 0; i < ARRAY_LEN (cfg->advance_prereqs); i++) {
+		char const * default_value = (defaults != NULL && i < defaults->advance_prereq_count)
+			? defaults->advance_prereqs[i]
+			: NULL;
+		if ((cfg->advance_prereqs[i] != NULL) &&
+		    (cfg->advance_prereqs[i] != default_value)) {
+			free ((void *)cfg->advance_prereqs[i]);
+		}
+		cfg->advance_prereqs[i] = NULL;
 	}
+	cfg->advance_prereq_count = 0;
 	if ((cfg->obsoleted_by != NULL) && (cfg->obsoleted_by != defaults->obsoleted_by)) {
 		free ((void *)cfg->obsoleted_by);
 		cfg->obsoleted_by = NULL;
@@ -5768,10 +5883,13 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 		free (def->tooltip);
 		def->tooltip = NULL;
 	}
-	if (def->advance_prereq != NULL) {
-		free (def->advance_prereq);
-		def->advance_prereq = NULL;
+	for (int i = 0; i < def->advance_prereq_count; i++) {
+		if (def->advance_prereqs[i] != NULL) {
+			free (def->advance_prereqs[i]);
+			def->advance_prereqs[i] = NULL;
+		}
 	}
+	def->advance_prereq_count = 0;
 	for (int i = 0; i < ARRAY_LEN (def->buildable_on_districts); i++) {
 		if (def->buildable_on_districts[i] != NULL) {
 			free (def->buildable_on_districts[i]);
@@ -6270,11 +6388,24 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		def->tooltip = NULL;
 	}
 
-	if (def->has_advance_prereq) {
-		if ((cfg->advance_prereq != NULL) && (cfg->advance_prereq != defaults->advance_prereq))
-			free ((void *)cfg->advance_prereq);
-		cfg->advance_prereq = def->advance_prereq;
-		def->advance_prereq = NULL;
+	if (def->has_advance_prereqs) {
+		for (int i = 0; i < ARRAY_LEN (cfg->advance_prereqs); i++) {
+			char const * default_value = (i < defaults->advance_prereq_count) ? defaults->advance_prereqs[i] : NULL;
+			if ((cfg->advance_prereqs[i] != NULL) &&
+			    (cfg->advance_prereqs[i] != default_value))
+				free ((void *)cfg->advance_prereqs[i]);
+			cfg->advance_prereqs[i] = NULL;
+		}
+
+		cfg->advance_prereq_count = def->advance_prereq_count;
+		const int max_entries = ARRAY_LEN (cfg->advance_prereqs);
+		if (cfg->advance_prereq_count > max_entries)
+			cfg->advance_prereq_count = max_entries;
+		for (int i = 0; i < cfg->advance_prereq_count; i++) {
+			cfg->advance_prereqs[i] = def->advance_prereqs[i];
+			def->advance_prereqs[i] = NULL;
+		}
+		def->advance_prereq_count = 0;
 	}
 
 	if (def->has_obsoleted_by) {
@@ -6619,9 +6750,16 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		new_cfg.tooltip = strdup (buffer);
 	}
 
-	if (def->has_advance_prereq) {
-		new_cfg.advance_prereq = def->advance_prereq;
-		def->advance_prereq = NULL;
+	if (def->has_advance_prereqs) {
+		new_cfg.advance_prereq_count = def->advance_prereq_count;
+		const int max_entries = ARRAY_LEN (new_cfg.advance_prereqs);
+		if (new_cfg.advance_prereq_count > max_entries)
+			new_cfg.advance_prereq_count = max_entries;
+		for (int i = 0; i < new_cfg.advance_prereq_count; i++) {
+			new_cfg.advance_prereqs[i] = def->advance_prereqs[i];
+			def->advance_prereqs[i] = NULL;
+		}
+		def->advance_prereq_count = 0;
 	}
 
 	if (def->has_obsoleted_by) {
@@ -6874,13 +7012,30 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		def->tooltip = copy_trimmed_string_or_null (value, 1);
 		def->has_tooltip = true;
 
-	} else if (slice_matches_str (key, "advance_prereq")) {
-		if (def->advance_prereq != NULL) {
-			free (def->advance_prereq);
-			def->advance_prereq = NULL;
+	} else if (slice_matches_str (key, "advance_prereqs") || slice_matches_str (key, "advance_prereq")) {
+		for (int i = 0; i < def->advance_prereq_count; i++) {
+			if (def->advance_prereqs[i] != NULL) {
+				free (def->advance_prereqs[i]);
+				def->advance_prereqs[i] = NULL;
+			}
 		}
-		def->advance_prereq = copy_trimmed_string_or_null (value, 1);
-		def->has_advance_prereq = true;
+		def->advance_prereq_count = 0;
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->advance_prereqs,
+					      ARRAY_LEN (def->advance_prereqs),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					      "advance_prereqs")) {
+			def->advance_prereq_count = list_count;
+			def->has_advance_prereqs = true;
+		} else {
+			def->advance_prereq_count = 0;
+			def->has_advance_prereqs = false;
+		}
+		free (value_text);
 
 	} else if (slice_matches_str (key, "obsoleted_by")) {
 		if (def->obsoleted_by != NULL) {
@@ -8765,7 +8920,9 @@ void parse_building_and_tech_ids ()
 		char const * district_name = (is->district_configs[i].name != NULL) ? is->district_configs[i].name : "District";
 		if (is->district_configs[i].command != 0)
 			itable_insert (&is->command_id_to_district_id, is->district_configs[i].command, i);
-		is->district_infos[i].advance_prereq_id = -1;
+		is->district_infos[i].advance_prereq_count = 0;
+		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].advance_prereq_ids); j++)
+			is->district_infos[i].advance_prereq_ids[j] = -1;
 		is->district_infos[i].obsoleted_by_id = -1;
 		is->district_infos[i].resource_prereq_count = 0;
 		for (int j = 0; j < MAX_DISTRICT_DEPENDENTS; j++)
@@ -8779,21 +8936,28 @@ void parse_building_and_tech_ids ()
 			is->district_infos[i].natural_wonder_prereq_ids[j] = -1;
 
 		// Map advance prereqs to districts
-		if (is->district_configs[i].advance_prereq != NULL && is->district_configs[i].advance_prereq != "") {
+		int stored_tech_count = 0;
+		for (int j = 0; j < is->district_configs[i].advance_prereq_count; j++) {
+			char const * prereq = is->district_configs[i].advance_prereqs[j];
+			if (prereq == NULL || prereq[0] == '\0')
+				continue;
 			int tech_id;
-			struct string_slice tech_name = { .str = (char *)is->district_configs[i].advance_prereq, .len = (int)strlen (is->district_configs[i].advance_prereq) };
+			struct string_slice tech_name = { .str = (char *)prereq, .len = (int)strlen (prereq) };
 			if (find_game_object_id_by_name (GOK_TECHNOLOGY, &tech_name, 0, &tech_id)) {
-				snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d\n", tech_name.len, tech_name.str, is->district_configs[i].advance_prereq, tech_id);
+				snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d\n", tech_name.len, tech_name.str, district_name, tech_id);
 				(*p_OutputDebugStringA) (ss);
-				is->district_infos[i].advance_prereq_id = tech_id;
+				if (stored_tech_count < ARRAY_LEN (is->district_infos[i].advance_prereq_ids)) {
+					is->district_infos[i].advance_prereq_ids[stored_tech_count] = tech_id;
+					stored_tech_count++;
+				}
 				itable_insert (&is->district_tech_prereqs, tech_id, i);
 			} else {
-				is->district_infos[i].advance_prereq_id = -1;
 				struct error_line * err = add_error_line (&district_parse_errors);
-				snprintf (err->text, sizeof err->text, "^  District \"%s\": advance_prereq \"%.*s\" not found", district_name, tech_name.len, tech_name.str);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": advance_prereqs entry \"%.*s\" not found", district_name, tech_name.len, tech_name.str);
 				err->text[(sizeof err->text) - 1] = '\0';
 			}
 		}
+		is->district_infos[i].advance_prereq_count = stored_tech_count;
 
 		// Map obsoleted_by to tech ID
 		if (is->district_configs[i].obsoleted_by != NULL && is->district_configs[i].obsoleted_by != "") {
@@ -8946,7 +9110,7 @@ void parse_building_and_tech_ids ()
 					is->district_infos[i].dependent_building_ids[stored_count] = improv_id;
 					stored_count += 1;
 				}
-				itable_insert (&is->district_building_prereqs, improv_id, i);
+				add_district_building_prereq (improv_id, i);
 				stable_insert (&is->building_name_to_id, improv_name.str, improv_id);
 			} else {
 				is->district_infos[i].dependent_building_ids[j] = -1;
@@ -9933,6 +10097,11 @@ reset_district_state (bool reset_tile_map)
 	clear_highlighted_worker_tiles_for_districts ();
 
 	table_deinit (&is->district_tech_prereqs);
+	FOR_TABLE_ENTRIES (tei, &is->district_building_prereqs) {
+		struct district_building_prereq_list * list = (struct district_building_prereq_list *)(long)tei.value;
+		if (list != NULL)
+			free (list);
+	}
 	table_deinit (&is->district_building_prereqs);
 	table_deinit (&is->command_id_to_district_id);
 	stable_deinit (&is->building_name_to_id);
@@ -9959,7 +10128,9 @@ reset_district_state (bool reset_tile_map)
 	is->district_count = is->special_district_count;
 
 	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++) {
-		is->district_infos[i].advance_prereq_id = -1;
+		is->district_infos[i].advance_prereq_count = 0;
+		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].advance_prereq_ids); j++)
+			is->district_infos[i].advance_prereq_ids[j] = -1;
 		is->district_infos[i].obsoleted_by_id = -1;
 		is->district_infos[i].resource_prereq_count = 0;
 		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].resource_prereq_ids); j++)
@@ -12385,9 +12556,11 @@ leader_can_natively_build_district (Leader * leader, int district_id)
 	struct district_config const * cfg = &is->district_configs[district_id];
 	struct district_infos const * info = &is->district_infos[district_id];
 
-	int prereq_id = info->advance_prereq_id;
-	if ((prereq_id >= 0) && ! Leader_has_tech (leader, __, prereq_id))
-		return false;
+	for (int i = 0; i < info->advance_prereq_count; i++) {
+		int prereq_id = info->advance_prereq_ids[i];
+		if ((prereq_id >= 0) && ! Leader_has_tech (leader, __, prereq_id))
+			return false;
+	}
 	int obsolete_id = info->obsoleted_by_id;
 	if ((obsolete_id >= 0) && Leader_has_tech (leader, __, obsolete_id))
 		return false;
@@ -12544,7 +12717,7 @@ leader_can_build_district (Leader * leader, int district_id)
 	if (cfg->buildable_by_pact_allies && leader_has_pact_ally_district_access (leader, district_id))
 		return true;
 
-	return false;
+	return can_natively_build;
 }
 
 Tile *
@@ -13390,61 +13563,53 @@ city_has_active_wonder_for_district (City * city)
 bool
 city_requires_district_for_improvement (City * city, int improv_id, int * out_district_id)
 {
-	int district_id;
-	if (! itable_look_up (&is->district_building_prereqs, improv_id, &district_id))
+	struct district_building_prereq_list * prereq_list = get_district_building_prereq_list (improv_id);
+	if ((prereq_list == NULL) || (prereq_list->count <= 0))
 		return false;
 	Improvement * improv = &p_bic_data->Improvements[improv_id];
 
 	// Special logic for handling rivers
 	bool requires_river = (improv->ImprovementFlags & ITF_Must_Be_Near_River) != 0;
-	if (is->current_config.enable_wonder_districts) {
-		if (district_id == WONDER_DISTRICT_ID) {
-			if (requires_river) {
-				bool has_river_wonder_district = false;
-				FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
-					if (wai.district_inst->district_id != WONDER_DISTRICT_ID)
-						continue;
-					if (wai.tile->vtable->m37_Get_River_Code (wai.tile) == 0)
-						continue;
-					if (! wonder_is_buildable_on_tile (wai.tile, improv_id))
-						continue;
-					struct wonder_district_info * info = get_wonder_district_info (wai.tile);
-					if (info == NULL) {
-						has_river_wonder_district = true;
-						break;
-					}
-					if (info->state == WDS_COMPLETED)
-						continue;
-					if (info->state == WDS_UNDER_CONSTRUCTION && info->city_id != city->Body.ID)
-						continue;
+	bool has_prereq = false;
+
+	if (is->current_config.enable_wonder_districts &&
+	    district_building_prereq_list_contains (prereq_list, WONDER_DISTRICT_ID)) {
+		if (requires_river) {
+			bool has_river_wonder_district = false;
+			FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+				if (wai.district_inst->district_id != WONDER_DISTRICT_ID)
+					continue;
+				if (wai.tile->vtable->m37_Get_River_Code (wai.tile) == 0)
+					continue;
+				if (! wonder_is_buildable_on_tile (wai.tile, improv_id))
+					continue;
+				struct wonder_district_info * info = get_wonder_district_info (wai.tile);
+				if (info == NULL) {
 					has_river_wonder_district = true;
 					break;
 				}
-				if (has_river_wonder_district)
-					return false;
-			} else if (city_has_wonder_district_with_no_completed_wonder (city, improv_id))
-				return false;
-			if (out_district_id != NULL)
-				*out_district_id = district_id;
-			return true;
-		}
-	}
-	if (requires_river) {
-		bool has_river_district = false;
-		FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
-			if (wai.district_inst->district_id != district_id)
-				continue;
-			if (wai.tile->vtable->m37_Get_River_Code (wai.tile) != 0) {
-				has_river_district = true;
+				if (info->state == WDS_COMPLETED)
+					continue;
+				if (info->state == WDS_UNDER_CONSTRUCTION && info->city_id != city->Body.ID)
+					continue;
+				has_river_wonder_district = true;
 				break;
 			}
+			if (has_river_wonder_district)
+				has_prereq = true;
+		} else if (city_has_wonder_district_with_no_completed_wonder (city, improv_id)) {
+			has_prereq = true;
 		}
-		if (has_river_district)
-			return false;
-	} else if (city_has_required_district (city, district_id))
+	}
+
+	if (! has_prereq && city_has_any_prereq_district_for_improvement (city, prereq_list, requires_river, !is_wonder))
+		has_prereq = true;
+
+	if (has_prereq)
 		return false;
+
 	if (out_district_id != NULL)
-		*out_district_id = district_id;
+		*out_district_id = pick_missing_district_for_improvement (city, prereq_list);
 	return true;
 }
 
@@ -20318,15 +20483,33 @@ city_meets_district_prereqs_to_build_improvement (City * city, int i_improv, boo
 	Improvement * improv = &p_bic_data->Improvements[i_improv];
 	bool requires_river = (improv->ImprovementFlags & ITF_Must_Be_Near_River) != 0;
 
-	// Check if the improvement requires a district and output the required district id when it does
-	int required_district_id = -1;
-	bool needs_district = city_requires_district_for_improvement (city, i_improv, &required_district_id);
+	// Check if the improvement requires a district
+	bool needs_district = city_requires_district_for_improvement (city, i_improv, NULL);
+	struct district_building_prereq_list * prereq_list = get_district_building_prereq_list (i_improv);
 
 	// District is either not needed or already built
 	if (! needs_district)
 		return true;
 
-	if (! leader_can_build_district (&leaders[city->Body.CivID], required_district_id))
+	if (prereq_list == NULL)
+		return false;
+
+	bool has_buildable_candidate = false;
+	bool has_wonder_candidate = false;
+	bool has_non_wonder_candidate = false;
+	for (int i = 0; i < prereq_list->count; i++) {
+		int district_id = prereq_list->district_ids[i];
+		if (district_id < 0)
+			continue;
+		if (! leader_can_build_district (&leaders[city->Body.CivID], district_id))
+			continue;
+		has_buildable_candidate = true;
+		if (district_id == WONDER_DISTRICT_ID)
+			has_wonder_candidate = true;
+		else
+			has_non_wonder_candidate = true;
+	}
+	if (! has_buildable_candidate)
 		return false;
 
 	bool is_wonder = is->current_config.enable_wonder_districts && improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder);
@@ -20337,25 +20520,36 @@ city_meets_district_prereqs_to_build_improvement (City * city, int i_improv, boo
 	bool has_river_terrain_for_district = false;
 	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
 		Tile * tile = wai.tile;
-		if (! tile_suitable_for_district (tile, required_district_id, city, NULL)) 
-			continue;
-		has_terrain_for_district = true;
-		if (requires_river && tile->vtable->m37_Get_River_Code (tile) != 0)
-			has_river_terrain_for_district = true;
+		for (int i = 0; i < prereq_list->count; i++) {
+			int district_id = prereq_list->district_ids[i];
+			if (district_id < 0)
+				continue;
+			if (! leader_can_build_district (&leaders[city->Body.CivID], district_id))
+				continue;
+			if (! tile_suitable_for_district (tile, district_id, city, NULL))
+				continue;
 
-		if (! is_wonder)
-			continue;
-
-		if (wonder_is_buildable_on_tile (tile, i_improv)) {
-			if (! requires_river || tile->vtable->m37_Get_River_Code (tile) != 0) {
-				has_terrain_for_wonder = true;
-				break;
+			if (is_wonder && district_id == WONDER_DISTRICT_ID) {
+				if (! wonder_is_buildable_on_tile (tile, i_improv))
+					continue;
 			}
-		} 
+
+			has_terrain_for_district = true;
+			if (requires_river && tile->vtable->m37_Get_River_Code (tile) != 0)
+				has_river_terrain_for_district = true;
+
+			if (is_wonder && district_id == WONDER_DISTRICT_ID) {
+				if (! requires_river || tile->vtable->m37_Get_River_Code (tile) != 0) {
+					has_terrain_for_wonder = true;
+				}
+			}
+		}
 	}
 
-	if (! has_terrain_for_district || (requires_river && ! has_river_terrain_for_district) ||
-	    (is_wonder && ! has_terrain_for_wonder)) {
+	bool requires_wonder_terrain = is_wonder && has_wonder_candidate && ! has_non_wonder_candidate;
+	if (! has_terrain_for_district ||
+	    (requires_river && ! has_river_terrain_for_district) ||
+	    (requires_wonder_terrain && ! has_terrain_for_wonder)) {
 		return false;
 	}
 
@@ -20366,8 +20560,12 @@ city_meets_district_prereqs_to_build_improvement (City * city, int i_improv, boo
 
 	// If AI already has a pending district request for this required district, return false
 	// to prevent wasting a turn trying to choose this improvement
-	if (find_pending_district_request (city, required_district_id) != NULL) {
-		return false;
+	for (int i = 0; i < prereq_list->count; i++) {
+		int district_id = prereq_list->district_ids[i];
+		if (district_id < 0)
+			continue;
+		if (find_pending_district_request (city, district_id) != NULL)
+			return false;
 	}
 
 	// Superficially allow the AI to choose the improvement for scoring and production.
@@ -22518,12 +22716,17 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	if ((! is->is_placing_scenario_things) && add &&
 	    is->current_config.enable_districts && (allow_building_sharing || allow_wonder_sharing) &&
 	    (! is->sharing_buildings_by_districts_in_progress)) {
-		int required_district_id;
-		if (itable_look_up (&is->district_building_prereqs, improv_id, &required_district_id)) {
+		struct district_building_prereq_list * prereq_list = get_district_building_prereq_list (improv_id);
+		if (prereq_list != NULL) {
 			bool is_wonder = (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0;
 			if ((! is_wonder && allow_building_sharing) || (is_wonder && allow_wonder_sharing)) {
 				is->sharing_buildings_by_districts_in_progress = true;
-				copy_building_with_cities_in_radius (this, improv_id, required_district_id, x, y);
+				for (int i = 0; i < prereq_list->count; i++) {
+					int district_id = prereq_list->district_ids[i];
+					if (district_id < 0)
+						continue;
+					copy_building_with_cities_in_radius (this, improv_id, district_id, x, y);
+				}
 				is->sharing_buildings_by_districts_in_progress = false;
 			}
 		}
@@ -24968,8 +25171,8 @@ patch_Leader_do_production_phase (Leader * this)
 			bool needs_halt = false;
 
 			// Check buildings & wonders dependent on districts
-			if (itable_look_up (&is->district_building_prereqs, i_improv, &req_district_id)) {
-				if (! city_has_required_district (city, req_district_id)) {
+			if (city_requires_district_for_improvement (city, i_improv, &req_district_id)) {
+				if (req_district_id >= 0) {
 					needs_halt = true;
 					district_description = is->district_configs[req_district_id].name;
 				}
@@ -24987,9 +25190,8 @@ patch_Leader_do_production_phase (Leader * this)
 					(*p_OutputDebugStringA) (ss);
 					bool wonder_requires_district = false;
 					if (i_improv >= 0) {
-						int required_id;
-						if (itable_look_up (&is->district_building_prereqs, i_improv, &required_id) &&
-						    (required_id == WONDER_DISTRICT_ID))
+						struct district_building_prereq_list * prereq_list = get_district_building_prereq_list (i_improv);
+						if (district_building_prereq_list_contains (prereq_list, WONDER_DISTRICT_ID))
 							wonder_requires_district = true;
 					}
 
@@ -30073,7 +30275,6 @@ init_district_images ()
 			// Read PCX file
 			snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", cfg->img_paths[variant_i]);
 			get_mod_art_path (art_dir, temp_path, sizeof temp_path);
-
 			PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 
 			if (pcx.JGL.Image == NULL) {
@@ -31314,7 +31515,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -31776,7 +31977,7 @@ patch_Unit_ai_move_terraformer (Unit * this)
 		}
 
 		struct district_worker_record * rec = get_tracked_worker_record (this);
-		if (rec->pending_req != NULL) {
+		if (rec != NULL && rec->pending_req != NULL) {
 			if (ai_move_district_worker (this, rec))
 				return;
 		}
