@@ -4446,7 +4446,8 @@ struct City_Body
   int Improvements_Pollution;
   int Order_ID;
   int Order_Type;
-  int field_38[2];
+  int field_38;
+  int turns_of_flip_immunity;
   int cultural_level;
   int field_44[3];
   int DraftCount;
