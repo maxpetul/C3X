@@ -102,7 +102,7 @@ allow_multiple         = 1
 culture_bonus          = 0, Marketplace: 1
 science_bonus          = 0
 food_bonus             = 0
-gold_bonus             = 2, Marketplace: 1, Bank: 1, "Stock Exchange": 1
+gold_bonus             = 2, Marketplace: 1, Bank: 1, "Stock Exchange": 1, river: 2
 shield_bonus           = 0
 happiness_bonus        = 0
 
@@ -123,7 +123,7 @@ culture_bonus          = 0
 science_bonus          = 0
 food_bonus             = 0
 gold_bonus             = 0
-shield_bonus           = 2, Factory: 2, "Manufacturing Plant": 2
+shield_bonus           = 2, Factory: 2, "Manufacturing Plant": 2, river: 2
 happiness_bonus        = 0
 
 #District
@@ -144,7 +144,7 @@ science_bonus          = 4, "Research Lab": 4
 food_bonus             = 0
 gold_bonus             = 0
 shield_bonus           = 0
-happiness_bonus        = 0
+happiness_bonus        = -2
 
 #District
 name                   = Offshore Extraction Zone
@@ -205,7 +205,7 @@ science_bonus          = 0
 food_bonus             = 0
 gold_bonus             = 4
 shield_bonus           = 0
-happiness_bonus        = 0
+happiness_bonus        = 2
 
 #District
 name                   = Neighborhood
@@ -361,7 +361,7 @@ btn_tile_sheet_column  = 9
 tooltip                = Build Great Wall
 obsoleted_by           = Metallurgy
 wonder_prereqs         = "The Great Wall"
-buildable_on           = desert,plains,grassland,tundra,floodplain,mountains,forest,swamp,jungle
+buildable_on           = desert,plains,grassland,tundra,floodplain,mountains,forest,swamp,jungle,hills
 draw_over_resources    = 1
 defense_bonus_percent  = 50
 allow_multiple         = 1
