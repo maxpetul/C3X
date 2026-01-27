@@ -401,6 +401,7 @@ struct c3x_config {
 	bool disable_great_wall_city_defense_bonus;
 	bool great_wall_districts_impassible_by_others;
 	bool auto_build_great_wall_around_territory;
+	int great_wall_auto_build_wonder_improv_id;
 	int ai_auto_build_great_wall_strategy;
 
 	bool enable_city_work_radii_highlights;
