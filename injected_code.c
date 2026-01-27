@@ -11740,6 +11740,39 @@ can_build_district_on_tile (Tile * tile, int district_id, int civ_id)
 }
 
 bool
+district_is_obsolete_for_civ (int district_id, int civ_id)
+{
+	if ((district_id < 0) || (district_id >= is->district_count))
+		return false;
+
+	int obsolete_id = is->district_infos[district_id].obsoleted_by_id;
+	if (obsolete_id < 0)
+		return false;
+
+	return Leader_has_tech (&leaders[civ_id], __, obsolete_id);
+}
+
+bool
+tile_has_obsolete_district_for_civ (Tile * tile, int civ_id)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL)
+		return false;
+
+	int district_id = inst->district_id;
+	if ((district_id < 0) || (district_id >= is->district_count))
+		return false;
+
+	if (! district_is_complete (tile, district_id))
+		return false;
+
+	return district_is_obsolete_for_civ (district_id, civ_id);
+}
+
+bool
 tile_suitable_for_district (Tile * tile, int district_id, City * city, bool * out_has_resource)
 {
 	bool has_resource = false;
@@ -11760,20 +11793,14 @@ tile_suitable_for_district (Tile * tile, int district_id, City * city, bool * ou
 
 	struct district_instance * inst = get_district_instance (tile);
 	if (inst != NULL) {
-		struct district_infos const * info = &is->district_infos[district_id];
+		if (tile_has_obsolete_district_for_civ (tile, city->Body.CivID))
+			return true;
 
 		// Unused wonder districts can be repurposed, completed cannot
 		if (district_id == WONDER_DISTRICT_ID && inst->state == DS_COMPLETED) {
 			struct wonder_district_info * winfo = &inst->wonder_info;
 			if (winfo->state == WDS_COMPLETED)
 				return false;
-		}
-
-		// Great Wall districts can be replaced if obsolete
-		if (district_id == GREAT_WALL_DISTRICT_ID) {
-			int obsolete_id = info->obsoleted_by_id;
-			if (obsolete_id >= 0 && Leader_has_tech (&leaders[city->Body.CivID], __, obsolete_id))
-				return true;
 		}
 
 		return false;
@@ -12125,7 +12152,8 @@ find_tile_for_neighborhood_district (City * city, int * out_x, int * out_y)
 			continue;
 		if (tile_has_resource (tile))
 			continue;
-		if (get_district_instance (tile) != NULL)
+		if (get_district_instance (tile) != NULL &&
+		    ! tile_has_obsolete_district_for_civ (tile, city->Body.CivID))
 			continue;
 
 		int yield = compute_city_tile_yield_sum (city, tri.tile_x, tri.tile_y);
@@ -12191,7 +12219,8 @@ find_tile_for_port_district (City * city, int * out_x, int * out_y)
 			continue;
 		if (tile_has_resource (tile))
 			continue;
-		if (get_district_instance (tile) != NULL)
+		if (get_district_instance (tile) != NULL &&
+		    ! tile_has_obsolete_district_for_civ (tile, city->Body.CivID))
 			continue;
 		if (! tile->vtable->m35_Check_Is_Water (tile))
 			continue;
@@ -12677,8 +12706,8 @@ leader_has_pact_ally_district_access (Leader * leader, int district_id)
 		if (civ_id == self_id)
 			continue;
 		Leader * other = &leaders[civ_id];
-		if (((leader->Relation_Treaties[civ_id] & 1) != 0 ||
-		     (leader->Relation_Treaties[civ_id] & 4) != 0) &&
+		if (((leader->Relation_Treaties[civ_id] & 1) != 0 ||  // 1 = peace treaty
+		     (leader->Relation_Treaties[civ_id] & 4) != 0) && // 4 = mutual protection pact
 		    leader_can_natively_build_district (other, district_id)) {
 			return true;
 		}
@@ -12764,7 +12793,8 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 
 		if (! tile_suitable_for_district (tile, district_id, city, NULL))
 			continue;
-		if (get_district_instance (tile) != NULL)
+		if (get_district_instance (tile) != NULL &&
+		    ! tile_has_obsolete_district_for_civ (tile, city->Body.CivID))
 			continue;
 
 		int yield = compute_city_tile_yield_sum (city, tri.tile_x, tri.tile_y);
@@ -19160,8 +19190,7 @@ great_wall_blocks_civ (Tile * tile, int civ_id)
 	if (! district_is_complete (tile, GREAT_WALL_DISTRICT_ID))
 		return false;
 
-	int obsolete_id = is->district_infos[GREAT_WALL_DISTRICT_ID].obsoleted_by_id;
-	if ((obsolete_id >= 0) && Leader_has_tech (&leaders[civ_id], __, obsolete_id))
+	if (district_is_obsolete_for_civ (GREAT_WALL_DISTRICT_ID, civ_id))
 		return false;
 
 	return true;
