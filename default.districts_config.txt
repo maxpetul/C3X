@@ -5,6 +5,62 @@
 [scenario or user configs, note that all districts defined here will be removed and only your scenario or user-defined districts will be used        ]
 [====================================================================================================================================================]
 
+[
+  ;  District config fields (each District block begins with "#District")
+  ;  - name                            : Text (required). Internal district name; must be unique.
+  ;  - display_name                    : Text. Name shown to user; defaults to name.
+  ;  - tooltip                         : Text. Shown when hovering over build action button.
+  ;  - img_paths                       : Comma-separated PCX filenames under Art/Districts/1200/. 
+                                         1 for single image, 5 for culture variants (AMER, EURO, ROMAN, MIDEAST, ASIAN). Order matters.
+  ;  - render_strategy                 : "by-count" | "by-building". Whether the PCX files show all buildings together, or one building per column. (default: "by-count")
+  ;  - vary_img_by_era                 : 0 or 1. If 1, each PCX image must have 4 rows, 1 for each era.
+  ;  - vary_img_by_culture             : 0 or 1. If 1, img_paths should list 5 files (AMER, EURO, ROMAN, MIDEAST, ASIAN).
+  ;  - btn_tile_sheet_row              : Number. Row index in the district button tile sheet (0-based).
+  ;  - btn_tile_sheet_column           : Number. Column index in the district button tile sheet (0-based).
+  ;  - dependent_improvs               : Comma-separated city improvement names. Cities can't build these improvements until they have this district.
+  ;  - generated_resource              : Resource name plus optional flags: local, yields, no-tech-req. District generates resource if tile connected by road.
+  ;  - advance_prereqs                 : Comma-separated tech names. District cannot be built unless all techs are discovered.
+  ;  - obsoleted_by                    : Tech name that obsoletes this district. District cannot built after discovery.
+  ;  - resource_prereqs                : Comma-separated resource names. District cannot be built unless a nearby city has all required resources.
+  ;  - resource_prereq_on_tile         : Resource name required on the district tile. District cannot be built unless resource is on same tile.
+  ;  - wonder_prereqs                  : Comma-separated wonder names. District cannot be built unless all Wonders are built by same civ.
+  ;  - natural_wonder_prereqs          : Comma-separated natural wonder names. District cannot be built unless all Natural Wonders are within civ's territory.
+  ;  - buildable_on                    : Comma-separated square types: desert, plains, grassland, tundra, floodplain, hills, mountains, forest, jungle, swamp, volcano, 
+                                                                       coast, sea, ocean, river, snow-forest, snow-mountains, snow-volcano, mine, irrigation.
+  ;  - buildable_adjacent_to           : Same as buildable_on, plus "city".
+  ;  - buildable_on_districts          : Comma-separated district names (tile must already have a completed district of any of these types, which it would replace).
+  ;  - buildable_adjacent_to_districts : Comma-separated district names (adjacent tile must have a completed district of any of these types).
+  ;  - buildable_by_civs               : Comma-separated civ names (e.g., Romans, Egyptians).
+  ;  - buildable_by_civ_traits         : Comma-separated trait names (e.g., Commercial, Militaristic).
+  ;  - buildable_by_civ_govs           : Comma-separated government names (e.g., Republic, Monarchy).
+  ;  - buildable_by_civ_cultures       : Comma-separated culture names (e.g., EURO, ASIAN).
+  ;  - buildable_by_war_allies         : 0 or 1. Can build if war allied with a civ that can build it.
+  ;  - buildable_by_pact_allies        : 0 or 1. Can build if mutual defense pact allied with a civ that can build it.
+  ;  - ai_build_strategy               : "district" | "tile-improvement". If "tile_improvement", the AI may build many. (default: "district")
+  ;  - defense_bonus_percent           : Number, with optional "Name: bonus" entries (Name = building or tile type, each added to base bonus if true. Negative values allowed).
+  ;  - culture_bonus                   : Number, with optional "Name: bonus" entries (same pattern as defense_bonus_percent).
+  ;  - science_bonus                   : Number, with optional "Name: bonus" entries.
+  ;  - food_bonus                      : Number, with optional "Name: bonus" entries.
+  ;  - gold_bonus                      : Number, with optional "Name: bonus" entries.
+  ;  - shield_bonus                    : Number, with optional "Name: bonus" entries.
+  ;  - happiness_bonus                 : Number, with optional "Name: bonus" entries.
+  ;  - custom_width                    : Number (pixels). Override sprite width. (default: 128)
+  ;  - custom_height                   : Number (pixels). Override sprite height. (default: 64)
+  ;  - x_offset                        : Number (pixels). Push the sprite farther to the right (or left, if negative). (default: 0)
+  ;  - y_offset                        : Number (pixels). Push the sprite farther down (or up, if negative). (default: 0)
+  ;  - align_to_coast                  : 0 or 1. Aligns art to coastline, slightly adjusting x & y pixels. (default: 0)
+  ;  - draw_over_resources             : 0 or 1. If a resource is also on the tile, draw the district on top. (default: 0)
+  ;  - auto_add_road                   : 0 or 1. Auto-add road on completion. (default: 0)
+  ;  - auto_add_railroad               : 0 or 1. Auto-add railroad on completion. (default: 0)
+  ;  - allow_irrigation_from           : 0 or 1. District can act as an irrigation source. (default: 0)
+  ;  - allow_multiple                  : 0 or 1. If 1, multiple copies can exist per city. (default: 0)
+  ;  - heal_units_in_one_turn          : 0 or 1. Friendly units fully heal when ending turn here. (default: 0)
+]
+
+[=========================================================================]
+[=========================STANDARD DISTRICTS==============================]
+[=========================================================================]
+
 #District
 name                   = Encampment
 tooltip                = Build Encampment
@@ -206,6 +262,10 @@ food_bonus             = 0
 gold_bonus             = 4
 shield_bonus           = 0
 happiness_bonus        = 2
+
+[========================================================================]
+[=========================SPECIAL DISTRICTS==============================]
+[========================================================================]
 
 #District
 name                   = Neighborhood

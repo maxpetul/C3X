@@ -9057,7 +9057,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 bool
 line_is_empty_or_comment (struct string_slice const * trimmed)
 {
-	return ((trimmed == NULL) || (trimmed->len == 0) || (trimmed->str[0] == ';'));
+	return ((trimmed == NULL) || (trimmed->len == 0) || (trimmed->str[0] == ';') || (trimmed->str[0] == '['));
 }
 
 void
@@ -10189,13 +10189,18 @@ find_civ_culture_id_by_name (struct string_slice const * name, int * out_id)
 
 	struct culture_entry { char const * name; int id; } cultures[] = {
 		{"American", 0},
+		{"AMERICAN", 0},
+		{"AMER", 0},
 		{"European", 1},
+		{"EUROPEAN", 1},
+		{"EURO", 1},
 		{"Roman", 2},
+		{"ROMAN", 2},
 		{"Mid East", 3},
 		{"Mideast", 3},
-		{"Middle Eastern", 3},
-		{"MiddleEastern", 3},
-		{"Asian", 4}
+		{"MIDEAST", 3},
+		{"Asian", 4},
+		{"ASIAN", 4}
 	};
 
 	for (int i = 0; i < ARRAY_LEN (cultures); i++) {
