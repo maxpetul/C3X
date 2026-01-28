@@ -394,6 +394,8 @@ struct c3x_config {
 	int ai_bridge_canal_eval_block_size;
 	int ai_bridge_eval_lake_tile_threshold;
 	bool ai_can_replace_existing_districts_with_canals;
+	bool ai_builds_bridges;
+	bool ai_builds_canals;
 
 	bool ai_defends_districts;
 	int ai_city_district_max_build_wait_turns;

@@ -92,23 +92,5 @@
 
 
 
-
-
-
-
-
-
-
 ## Seasons
  - Splice nice terrain onto 1-2 pcx tiles, use for prompt for remainder
-
-## Great Wall
- - Also Civilopedia? At least district buttons in tech tree
- - Water Park (2 happiness, 2 gold)
- - Special district, special rendering (return early, don't do usually render flow, loop directionally and render multiple times, once per direction if connected)
- - Building automatically covers borders, allows workers to build until metallurgy
- - Maybe do one-time tile-by-tile modal confirmation if would destroy district/improvement?
- - Add wonder_prereq, natural_wonder_prereq, made_obsolete_by to districts config
- - Enemy units can't pass over, but can destroy (recommend using PTW targeting?)
- - Need to figure out how AI will manage
- - +1 culture & +1 gold per wall

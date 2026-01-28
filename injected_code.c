@@ -5605,18 +5605,18 @@ generate_ai_canal_and_bridge_targets ()
 	if (block_size <= 0)
 		block_size = 10;
 
-	if (is->current_config.enable_canal_districts) {
-		generate_ai_canal_candidates_by_block (
-			map,
-			block_size,
-			is->current_config.max_contiguous_canal_districts);
-	}
-
-	if (is->current_config.enable_bridge_districts) {
+	if (is->current_config.enable_bridge_districts && is->current_config.ai_builds_bridges) {
 		generate_ai_bridge_candidates_by_block (
 			map,
 			block_size,
 			is->current_config.max_contiguous_bridge_districts);
+	}
+
+	if (is->current_config.enable_canal_districts && is->current_config.ai_builds_canals) {
+		generate_ai_canal_candidates_by_block (
+			map,
+			block_size,
+			is->current_config.max_contiguous_canal_districts);
 	}
 
 	is->ai_candidate_bridge_or_canals_initialized = true;
@@ -16449,6 +16449,8 @@ patch_init_floating_point ()
 		{"disable_great_wall_city_defense_bonus"                 , false, offsetof (struct c3x_config, disable_great_wall_city_defense_bonus)},
 		{"expand_water_tile_checks_to_city_work_area"            , false, offsetof (struct c3x_config, expand_water_tile_checks_to_city_work_area)},
 		{"ai_can_replace_existing_districts_with_canals"         , false, offsetof (struct c3x_config, ai_can_replace_existing_districts_with_canals)},
+		{"ai_builds_bridges"                                     , false, offsetof (struct c3x_config, ai_builds_bridges)},
+		{"ai_builds_canals"                                      , false, offsetof (struct c3x_config, ai_builds_canals)},
 		{"workers_can_enter_coast"         		                 , false, offsetof (struct c3x_config, workers_can_enter_coast)},
 		{"enable_city_work_radii_highlights"                     , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game"  , false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
@@ -25305,7 +25307,8 @@ patch_Leader_do_production_phase (Leader * this)
 	if (is->current_config.enable_districts) {
 		assign_workers_for_pending_districts (this);
 
-		if (is->current_config.enable_canal_districts || is->current_config.enable_bridge_districts)
+		if ((is->current_config.enable_canal_districts || is->current_config.enable_bridge_districts) &&
+			(is->current_config.ai_builds_bridges || is->current_config.ai_builds_canals))
 			assign_workers_for_ai_candidate_bridge_or_canals (this);
 
 		bool ai_player = ((*p_human_player_bits & (1 << this->ID)) == 0);
@@ -31533,11 +31536,6 @@ draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * ma
 
 	if (wall_sw) draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
 	if (wall_se) draw_district_on_map_or_canvas(&sprites[DIR_SE], map_renderer, pixel_x, pixel_y);
-
-	if (!wall_sw && !wall_se && wall_s && water_sw)     
-		draw_district_on_map_or_canvas(&sprites[DIR_S], map_renderer, pixel_x, pixel_y);
-	if (!wall_se && wall_s && water_se)
-		draw_district_on_map_or_canvas(&sprites[DIR_S], map_renderer, pixel_x, pixel_y);
 }
 
 void
@@ -31809,7 +31807,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	//*p_debug_mode_bits |= 0xC;
+	*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -33087,6 +33085,12 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 
 	if (is->current_config.enable_districts && is->current_config.workers_can_enter_coast &&
 		base != PBV_OK && is_worker(this)) {
+		Tile * source = tile_at (from_x, from_y);
+		if (source != NULL &&
+		    source->vtable->m35_Check_Is_Water (source) &&
+		    (source->vtable->m50_Get_Square_BaseType (source) == SQ_Coast))
+			return true;
+
 		Tile * dest = tile_at (to_x, to_y);
 		if ((dest != NULL) &&
 		    dest->vtable->m35_Check_Is_Water (dest) &&
