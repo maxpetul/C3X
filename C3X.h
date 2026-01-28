@@ -2030,6 +2030,7 @@ struct district_button_image_set {
 
 	// Current tile being rendered in Map_Renderer_m19_Draw_Tile_by_XY_and_Flags. For use within various Map_Renderer::impl_m*_Draw_* functions. Nulled out after the render function is complete
 	Tile * current_render_tile;
+	struct district_instance * current_render_tile_district;
 	int current_render_tile_x, current_render_tile_y;
 
 	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp and so on for flagging whether to draw forests over roads on the tile being rendered

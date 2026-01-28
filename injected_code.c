@@ -22040,12 +22040,14 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 	is->current_render_tile = tile;
 	is->current_render_tile_x = tile_x;
 	is->current_render_tile_y = tile_y;
+	is->current_render_tile_district = get_district_instance (tile);
 
 	Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (this, __, param_1, pixel_x, pixel_y, map_renderer, param_5, tile_x, tile_y, param_8);
 
 	is->current_render_tile = NULL;
 	is->current_render_tile_x = -1;
 	is->current_render_tile_y = -1;
+	is->current_render_tile_district = NULL;
 
 	if ((is->city_loc_display_perspective >= 0) &&
 	    (! map->vtable->m10_Get_Map_Zoom (map)) && // Turn off display when zoomed out. Need another set of highlight images for that.
@@ -22160,7 +22162,7 @@ patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (Map_Renderer * this, int 
 		return;
     }
 
-	Tile * tile = tile_at (tile_x, tile_y);
+	Tile * tile = is->current_render_tile;
 	if ((tile == NULL) || (tile == p_null_tile))
 		return;
 
@@ -22176,6 +22178,17 @@ patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (Map_Renderer * this, int 
 void __fastcall
 patch_Map_Renderer_m52_Draw_Roads (Map_Renderer * this, int edx, int image_index, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
+	// Don't draw roads if a bridge is here
+	if (is->current_config.enable_districts && is->current_config.enable_bridge_districts) {
+		Tile * tile = is->current_render_tile;
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			struct district_instance * dist = get_district_instance (tile);
+			if ((dist != NULL) && (dist->district_id == BRIDGE_DISTRICT_ID)) {
+				return;
+			}
+		}
+	}
+
 	Map_Renderer_m52_Draw_Roads (this, __, image_index, map_renderer, pixel_x, pixel_y);
 
 	if (! is->current_config.draw_forests_over_roads_and_railroads || ! is->draw_forests_over_roads_on_tile)
@@ -22187,6 +22200,17 @@ patch_Map_Renderer_m52_Draw_Roads (Map_Renderer * this, int edx, int image_index
 void __fastcall
 patch_Map_Renderer_m52_Draw_Railroads (Map_Renderer * this, int edx, int image_index, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
+	// Don't draw railroads if a bridge is here
+	if (is->current_config.enable_districts && is->current_config.enable_bridge_districts) {
+		Tile * tile = is->current_render_tile;
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			struct district_instance * dist = get_district_instance (tile);
+			if ((dist != NULL) && (dist->district_id == BRIDGE_DISTRICT_ID)) {
+				return;
+			}
+		}
+	}
+
 	Map_Renderer_m52_Draw_Railroads (this, __, image_index, map_renderer, pixel_x, pixel_y);
 
 	if (! is->current_config.draw_forests_over_roads_and_railroads || ! is->draw_forests_over_roads_on_tile)
@@ -31300,37 +31324,6 @@ get_bridge_directions (Tile * tile, int tile_x, int tile_y, int * out_dir1, int 
 }
 
 void 
-draw_canal_on_map_or_canvas(Sprite * sprite, int tile_x, int tile_y, int dir, bool water_dirs[9], Map_Renderer * map_renderer, int draw_x, int draw_y)
-{
-	int y_offset = 9;
-	int x_offset = y_offset * 2;
-
-	draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y);
-
-	char ss[200];
-	snprintf (ss, sizeof(ss), "Drawing canal dir = %d, DIR_SE = %d, water dirs[SE] = %d\n", dir, DIR_SE, water_dirs[DIR_SE]);
-	(*p_OutputDebugStringA)(ss);
-
-	// In certain cases, add an additional draw if adjacent to water so that the canal appears to extend far enough
-	if      (dir == DIR_N  && water_dirs[DIR_N])
-		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y - y_offset);
-	else if (dir == DIR_NE && water_dirs[DIR_NE])
-		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y - y_offset);
-	else if (dir == DIR_E  && water_dirs[DIR_E])
-		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y);
-	else if (dir == DIR_SE && water_dirs[DIR_SE]) 
-		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y + y_offset);
-	else if (dir == DIR_S  && water_dirs[DIR_S])                                            
-		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y + y_offset);
-	else if (dir == DIR_SW && water_dirs[DIR_SW])
-		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y + y_offset);
-	else if (dir == DIR_W  && water_dirs[DIR_W])                                            
-		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y);
-	else if (dir == DIR_NW && water_dirs[DIR_NW])                                           
-		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y - y_offset);
-}
-
-void 
 get_canal_directions (Tile * tile, int tile_x, int tile_y, bool out_water_dirs[9], int * out_dir1, int * out_dir2)
 {
 	bool canal_at_n        = tile_has_district_at (tile_x, tile_y - 2, CANAL_DISTRICT_ID);
@@ -31473,6 +31466,37 @@ get_canal_directions (Tile * tile, int tile_x, int tile_y, bool out_water_dirs[9
 }
 
 void 
+draw_canal_on_map_or_canvas(Sprite * sprite, int tile_x, int tile_y, int dir, bool water_dirs[9], Map_Renderer * map_renderer, int draw_x, int draw_y)
+{
+	int y_offset = 9;
+	int x_offset = y_offset * 2;
+
+	draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y);
+
+	char ss[200];
+	snprintf (ss, sizeof(ss), "Drawing canal dir = %d, DIR_SE = %d, water dirs[SE] = %d\n", dir, DIR_SE, water_dirs[DIR_SE]);
+	(*p_OutputDebugStringA)(ss);
+
+	// In certain cases, add an additional draw if adjacent to water so that the canal appears to extend far enough
+	if      (dir == DIR_N  && water_dirs[DIR_N])
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y - y_offset);
+	else if (dir == DIR_NE && water_dirs[DIR_NE])
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y - y_offset);
+	else if (dir == DIR_E  && water_dirs[DIR_E])
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y);
+	else if (dir == DIR_SE && water_dirs[DIR_SE]) 
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y + y_offset);
+	else if (dir == DIR_S  && water_dirs[DIR_S])                                            
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y + y_offset);
+	else if (dir == DIR_SW && water_dirs[DIR_SW])
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y + y_offset);
+	else if (dir == DIR_W  && water_dirs[DIR_W])                                            
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y);
+	else if (dir == DIR_NW && water_dirs[DIR_NW])                                           
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y - y_offset);
+}
+
+void 
 draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int era)
 {
 	struct district_config const * cfg = &is->district_configs[CANAL_DISTRICT_ID];
@@ -31480,21 +31504,29 @@ draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_ren
 	int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
 	int offset_x      = pixel_x + cfg->x_offset;
 	int offset_y      = pixel_y + cfg->y_offset;
-	int draw_x        = offset_x - ((sprite_width - 128) / 2);
-	int draw_y        = offset_y - (sprite_height - 64);
+	int dir1_draw_x   = offset_x - ((sprite_width - 128) / 2);
+	int dir1_draw_y   = offset_y - (sprite_height - 64);
+	int dir2_draw_x   = dir1_draw_x;
+	int dir2_draw_y   = dir1_draw_y;
 
 	int draw_dir1 = -1;
 	int draw_dir2 = -1;
 	bool water_dirs[9] = { false, false, false, false, false, false, false, false, false };
 	get_canal_directions (tile, tile_x, tile_y, water_dirs, &draw_dir1, &draw_dir2);
 
+	// Set offsets based on directions for (literal) edge cases
+	if      (draw_dir1 == DIR_NE && draw_dir2 == DIR_S)  { dir1_draw_x += 7; dir1_draw_y -= 2; }
+	else if (draw_dir1 == DIR_N  && draw_dir2 == DIR_W)  { dir2_draw_x -= 12; }	
+	else if (draw_dir1 == DIR_N  && draw_dir2 == DIR_SE) { dir2_draw_x += 4; }	
+
 	if (draw_dir1 >= 0) {
 		Sprite * sprite1 = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][draw_dir1];
-		draw_canal_on_map_or_canvas(sprite1, tile_x, tile_y, draw_dir1, water_dirs, map_renderer, draw_x, draw_y);
+		draw_canal_on_map_or_canvas(sprite1, tile_x, tile_y, draw_dir1, water_dirs, map_renderer, dir1_draw_x, dir1_draw_y);
 	}
+
 	if (draw_dir2 >= 0) {
 		Sprite * sprite2 = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][draw_dir2];
-		draw_canal_on_map_or_canvas(sprite2, tile_x, tile_y, draw_dir2, water_dirs, map_renderer, draw_x, draw_y);
+		draw_canal_on_map_or_canvas(sprite2, tile_x, tile_y, draw_dir2, water_dirs, map_renderer, dir2_draw_x, dir2_draw_y);
 	}
 }
 
@@ -31736,12 +31768,12 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 			case BRIDGE_DISTRICT_ID:
 			{
 				buildings = get_bridge_image_index (tile, tile_x, tile_y);
-				era = clamp(2, 3, era); // DEBUG
+				era = 3; // DEBUG
 				break;
 			}
 			case CANAL_DISTRICT_ID:
 			{
-				era = clamp(2, 3, era); // DEBUG
+				era = 3; // DEBUG
 				draw_canal_district (tile, tile_x, tile_y, map_renderer, pixel_x, pixel_y, era);
 				return;
 			}
@@ -31813,11 +31845,11 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int vis
 		return;
 	}
 
-	Tile * tile = tile_at (tile_x, tile_y);
+	Tile * tile = is->current_render_tile;
 	if ((tile == NULL) || (tile == p_null_tile))
 		return;
 
-	struct district_instance * inst = get_district_instance (tile);
+	struct district_instance * inst = is->current_render_tile_district;
 	if (inst == NULL) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -31838,13 +31870,13 @@ patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int vi
 		return;
 	}
 
-	Tile * tile = tile_at (tile_x, tile_y);
+	Tile * tile = is->current_render_tile;
 	if ((tile == NULL) || (tile == p_null_tile)) {
 		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
 	}
 
-	struct district_instance * inst = get_district_instance (tile);
+	struct district_instance * inst = is->current_render_tile_district;
 	if (inst == NULL) {
 		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -31865,7 +31897,7 @@ patch_Map_Renderer_m11_Draw_Tile_Irrigation (Map_Renderer *this, int edx, int vi
 		return;
 	}
 
-	struct district_instance * inst = get_district_instance (is->current_render_tile);
+	struct district_instance * inst = is->current_render_tile_district;
 	if (inst == NULL) {		
 		Map_Renderer_m11_Draw_Tile_Irrigation (this, __, visible_to_civ, tile_x, tile_y, param_4, param_5, param_6);
 		return;

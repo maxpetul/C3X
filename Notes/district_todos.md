@@ -1,10 +1,8 @@
   - Districts: 
-    - Central Rail Hub (+25% distro hub yields)
-     - Mass Transit System
+    - Municipal District (ZergMazter doing art)
+    - Central Rail Hub  (ZergMazter doing art)
     - Canal (2 opposite sides have coast "isthmus")
-    - Bridge (2 opposite sides have land "strait" or bridges)
   - Light annotations
-  - Double check PCX third column alignment
 
 ## To ask Flintlock
   - Enabling pillage button for naval units
@@ -86,6 +84,7 @@
    - ~~Offshore Extraction Zone~~
    - ~~Data Center~~
    - ~~Energy Grid~~
+   - ~~Bridge (2 opposite sides have land "strait" or bridges)~~
 
 
 
