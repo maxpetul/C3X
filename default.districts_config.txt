@@ -263,6 +263,27 @@ gold_bonus             = 4
 shield_bonus           = 0
 happiness_bonus        = 2
 
+#District
+name                   = Water Park
+tooltip                = Build Water Park
+img_paths              = WaterPark.pcx
+btn_tile_sheet_row     = 1
+btn_tile_sheet_column  = 9
+vary_img_by_era        = 0
+vary_img_by_culture    = 0
+advance_prereqs        = Miniaturization
+dependent_improvs      = 
+buildable_on           = coast
+custom_height          = 88
+defense_bonus_percent  = 0
+allow_multiple         = 0
+culture_bonus          = 2
+science_bonus          = 0
+food_bonus             = 0
+gold_bonus             = 4
+shield_bonus           = -2
+happiness_bonus        = 2
+
 [========================================================================]
 [=========================SPECIAL DISTRICTS==============================]
 [========================================================================]
