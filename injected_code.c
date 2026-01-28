@@ -1580,9 +1580,7 @@ read_building_unit_prereqs (struct string_slice const * s,
 }
 
 bool
-read_ptw_arty_types (struct string_slice const * s,
-		     struct error_line ** p_unrecognized_lines,
-		     struct table * ptw_arty_types)
+read_unit_type_list (struct string_slice const * s, struct error_line ** p_unrecognized_lines, struct table * unit_types)
 {
 	if (s->len <= 0)
 		return true;
@@ -1597,7 +1595,7 @@ read_ptw_arty_types (struct string_slice const * s,
 			int id = -1;
 			bool matched_any = false;
 			while (find_unit_type_id_by_name (&name, id + 1, &id)) {
-				itable_insert (ptw_arty_types, id, 1);
+				itable_insert (unit_types, id, 1);
 				matched_any = true;
 			}
 
@@ -2142,9 +2140,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 					if (! read_day_night_cycle_mode (&value, (int *)&cfg->day_night_cycle_mode))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
-					if (! read_ptw_arty_types (&value,
-								   &unrecognized_lines,
-								   &cfg->ptw_arty_types))
+					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->ptw_arty_types))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "civ_aliases_by_era")) {
 					if (0 <= (recog_err_offset = read_recognizables (&value,
