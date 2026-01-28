@@ -6,6 +6,7 @@
 - Can select a different method for unit autoselection that searches for similar units near where the last selected unit started or ended up
   - Option named unit_cycle_search_criteria
 - Can specify a victory animation for air units in aircraft_victory_animation option
+- If any unit types are listed in limit_defensive_retreat_on_water_to_types option, only those will be allowed to defensively retreat on water
 - Option show_armies_performing_defensive_bombard that fixes defensive bombard animations being skipped when the bombarding unit is in an army
 - aggressively_penalize_bankruptcy now alternates between selling buildings or disbanding units first for bankrupt AI players and every third turn cuts their research spending
 - Fix crash caused by failure to find default option for popup asking player to select new build in city that completed its previous one

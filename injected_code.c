@@ -664,6 +664,8 @@ reset_to_base_config ()
 		cc->ai_multi_start_extra_palaces_capacity = 0;
 	}
 
+	table_deinit (&cc->limit_defensive_retreat_on_water_to_types);
+
 	// Free set of PTW artillery types and list of converted types
 	table_deinit (&cc->ptw_arty_types);
 	if (is->charmed_types_converted_to_ptw_arty != NULL) {
@@ -1579,6 +1581,9 @@ read_building_unit_prereqs (struct string_slice const * s,
 	return success ? -1 : cursor - extracted_slice;
 }
 
+// Reads a space-separated list of unit types like:
+//   Worker Galley "Gallic Swordsman"
+// Looks up the type ID(s) for each name and inserts them into the unit_types table associated with a value of 1.
 bool
 read_unit_type_list (struct string_slice const * s, struct error_line ** p_unrecognized_lines, struct table * unit_types)
 {
@@ -2138,6 +2143,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "day_night_cycle_mode")) {
 					if (! read_day_night_cycle_mode (&value, (int *)&cfg->day_night_cycle_mode))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "limit_defensive_retreat_on_water_to_types")) {
+					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->limit_defensive_retreat_on_water_to_types))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->ptw_arty_types))
@@ -20175,9 +20183,11 @@ patch_Tile_check_water_for_retreat_on_defense (Tile * this)
 	// tile and we're not configured to allow retreating onto water tiles.
 	bool retreat_blocked; {
 		if (this->vtable->m35_Check_Is_Water (this)) {
-			if (is->current_config.allow_defensive_retreat_on_water &&
-			    (defender != NULL) &&
-			    (p_bic_data->UnitTypes[defender->Body.UnitTypeID].Unit_Class == UTC_Sea))
+			if (   is->current_config.allow_defensive_retreat_on_water
+			    && defender != NULL
+			    && p_bic_data->UnitTypes[defender->Body.UnitTypeID].Unit_Class == UTC_Sea
+			    && (   is->current_config.limit_defensive_retreat_on_water_to_types.len == 0
+				|| (bool)itable_look_up_or (&is->current_config.limit_defensive_retreat_on_water_to_types, defender->Body.UnitTypeID, 0)))
 				retreat_blocked = false;
 			else
 				retreat_blocked = true;
