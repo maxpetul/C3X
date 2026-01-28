@@ -4,7 +4,7 @@
     - Canal (2 opposite sides have coast "isthmus")
     - Bridge (2 opposite sides have land "strait" or bridges)
   - Light annotations
-  - Double check PCX third column alignment, clean up ground in industrial zone, Newton's University, Grand Cathedral?
+  - Double check PCX third column alignment, Newton's University, Grand Cathedral?
 
 ## To ask Flintlock
   - Enabling pillage button for naval units
