@@ -1,6 +1,3 @@
-  - Validate and upfront bridge/canal algorithm
-  - Firm up logic for river district rendering
-
   - Districts: 
     - Central Rail Hub (+25% distro hub yields)
      - Mass Transit System
@@ -18,6 +15,8 @@
 
 ## Maritime Districts
   - ~~Negative bonuses~~
+  - ~~Firm up logic for river district rendering~~
+  - ~~Validate and upfront bridge/canal algorithm~~
   - ~~Validate resource generation~~
   - ~~Fix scenario art not loading bug~~
   - ~~Add advance_prereqs~~
