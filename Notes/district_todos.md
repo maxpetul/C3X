@@ -1,16 +1,16 @@
   - Districts: 
     - Central Rail Hub (+25% distro hub yields)
      - Mass Transit System
-    - Energy Grid
-     - Coal Plant
-     - Solar Plant
-     - Hydro Plant
-     - Nuclear Plant
     - Canal (2 opposite sides have coast "isthmus")
     - Bridge (2 opposite sides have land "strait" or bridges)
   - Light annotations
   - Add commented instructions on fields in Wonder, Natural Wonder config files
   - Double check PCX third column alignment, clean up ground in industrial zone, Newton's University, Grand Cathedral?
+
+  - To ask Flintlock
+    - Enabling pillage button for naval units
+    - Worker on coast wake up issue
+    - Colony structure and loop for relation penalty
 
 
 ## Maritime Districts
@@ -85,6 +85,7 @@
    - ~~Park~~
    - ~~Offshore Extraction Zone~~
    - ~~Data Center~~
+   - ~~Energy Grid~~
 
 
 
