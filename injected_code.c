@@ -4276,6 +4276,1301 @@ release_ai_candidate_bridge_or_canal_worker (struct ai_candidate_bridge_or_canal
 }
 
 void
+reset_ai_candidate_bridge_or_canals (void)
+{
+	if (is->ai_candidate_bridge_or_canals != NULL) {
+		for (int i = 0; i < is->ai_candidate_bridge_or_canals_capacity; i++) {
+			struct ai_candidate_bridge_or_canal_entry * entry = &is->ai_candidate_bridge_or_canals[i];
+			if (entry->tile_x != NULL)
+				free (entry->tile_x);
+			if (entry->tile_y != NULL)
+				free (entry->tile_y);
+		}
+		free (is->ai_candidate_bridge_or_canals);
+		is->ai_candidate_bridge_or_canals = NULL;
+	}
+	is->ai_candidate_bridge_or_canals_capacity = 0;
+	is->ai_candidate_bridge_or_canals_count = 0;
+	is->ai_candidate_bridge_or_canals_initialized = false;
+}
+
+bool
+tile_has_district_at (int tile_x, int tile_y, int district_id)
+{
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	return (inst != NULL) && (inst->district_id == district_id) && (district_is_complete (tile, district_id));
+}
+
+bool
+tile_is_land (int civ_id, int tile_x, int tile_y, bool must_be_same_owner)
+{
+	if (must_be_same_owner && (civ_id <= 0))
+		return false;
+
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	return (tile != NULL) && (tile != p_null_tile) && (! tile->vtable->m35_Check_Is_Water (tile)) &&
+		((! must_be_same_owner) || (tile->Territory_OwnerID == civ_id));
+}
+
+bool
+tile_is_water (int tile_x, int tile_y)
+{
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	return (tile != NULL) && (tile != p_null_tile) && (tile->vtable->m35_Check_Is_Water (tile));
+}
+
+bool
+ensure_ai_candidate_bridge_or_canals_capacity (int required)
+{
+	if (required <= 0)
+		return true;
+	if (required <= is->ai_candidate_bridge_or_canals_capacity)
+		return true;
+	int new_capacity = (is->ai_candidate_bridge_or_canals_capacity > 0) ? is->ai_candidate_bridge_or_canals_capacity * 2 : 4;
+	if (new_capacity < required)
+		new_capacity = required;
+	struct ai_candidate_bridge_or_canal_entry * larger = (struct ai_candidate_bridge_or_canal_entry *)realloc (
+		is->ai_candidate_bridge_or_canals, new_capacity * sizeof *larger);
+	if (larger == NULL)
+		return false;
+	for (int i = is->ai_candidate_bridge_or_canals_capacity; i < new_capacity; i++) {
+		struct ai_candidate_bridge_or_canal_entry * entry = &larger[i];
+		entry->tile_x = NULL;
+		entry->tile_y = NULL;
+		entry->tile_capacity = 0;
+		entry->district_id = -1;
+		entry->owner_civ_id = -1;
+		entry->tile_count = 0;
+		entry->assigned_tile_index = -1;
+		entry->assigned_worker_id = -1;
+		entry->completed = false;
+		struct pending_district_request * req = &entry->pending_req;
+		req->city = NULL;
+		req->city_id = -1;
+		req->civ_id = -1;
+		req->district_id = -1;
+		req->assigned_worker_id = -1;
+		req->target_x = -1;
+		req->target_y = -1;
+		req->worker_assigned_turn = 0;
+	}
+	is->ai_candidate_bridge_or_canals = larger;
+	is->ai_candidate_bridge_or_canals_capacity = new_capacity;
+	return true;
+}
+
+bool
+canal_has_different_adjacent_seas (int tile_x, int tile_y, int civ_id)
+{
+	struct water_pair {
+		int dx1, dy1;
+		int dx2, dy2;
+	};
+
+	const struct water_pair pairs[] = {
+		{ 1, -1, -1, 1 }, // NE + SW
+		{ 1, 1, -1, -1 }, // SE + NW
+	};
+
+	Map * map = &p_bic_data->Map;
+	bool require_owner = (civ_id >= 0);
+
+	for (int i = 0; i < (int)(sizeof (pairs) / sizeof (pairs[0])); i++) {
+		int ax = tile_x + pairs[i].dx1;
+		int ay = tile_y + pairs[i].dy1;
+		wrap_tile_coords (map, &ax, &ay);
+		Tile * first = tile_at (ax, ay);
+		if ((first == NULL) || (first == p_null_tile))
+			continue;
+		if (! first->vtable->m35_Check_Is_Water (first))
+			continue;
+		if (require_owner && (first->vtable->m38_Get_Territory_OwnerID (first) != civ_id))
+			continue;
+
+		int bx = tile_x + pairs[i].dx2;
+		int by = tile_y + pairs[i].dy2;
+		wrap_tile_coords (map, &bx, &by);
+		Tile * second = tile_at (bx, by);
+		if ((second == NULL) || (second == p_null_tile))
+			continue;
+		if (! second->vtable->m35_Check_Is_Water (second))
+			continue;
+		if (require_owner && (second->vtable->m38_Get_Territory_OwnerID (second) != civ_id))
+			continue;
+
+		int sea_a = first->vtable->m46_Get_ContinentID (first);
+		int sea_b = second->vtable->m46_Get_ContinentID (second);
+		if ((sea_a >= 0) && (sea_b >= 0) && (sea_a != sea_b))
+			return true;
+	}
+
+	return false;
+}
+
+// Check if two water tiles can reach each other via water within a radius, excluding a blocked tile
+bool
+water_tiles_connected_within_radius (int start_x, int start_y, int target_x, int target_y, int block_x, int block_y, int radius)
+{
+	// Simple BFS using a fixed-size visited array for tiles within radius
+	// workable_tile_counts[6] = 137 tiles for radius 6
+	int max_tiles = 137;
+	int visited_x[137];
+	int visited_y[137];
+	int visited_count = 0;
+	int queue_x[137];
+	int queue_y[137];
+	int queue_head = 0;
+	int queue_tail = 0;
+
+	queue_x[queue_tail] = start_x;
+	queue_y[queue_tail] = start_y;
+	queue_tail++;
+	visited_x[visited_count] = start_x;
+	visited_y[visited_count] = start_y;
+	visited_count++;
+
+	while (queue_head < queue_tail) {
+		int cx = queue_x[queue_head];
+		int cy = queue_y[queue_head];
+		queue_head++;
+
+		// Check 8 adjacent tiles
+		FOR_TILES_AROUND (tai, 9, cx, cy) {
+			if (tai.n == 0)
+				continue;
+			int nx = tai.tile_x;
+			int ny = tai.tile_y;
+
+			// Found target
+			if (nx == target_x && ny == target_y)
+				return true;
+
+			// Skip blocked tile (the isthmus)
+			if (nx == block_x && ny == block_y)
+				continue;
+
+			// Check if within radius of original start
+			int dx = nx - start_x;
+			int dy = ny - start_y;
+			if (dx < 0) dx = -dx;
+			if (dy < 0) dy = -dy;
+			// Use Chebyshev distance approximation for hex grid
+			int dist = (dx + dy + ((dx > dy) ? dx : dy)) / 2;
+			if (dist > radius)
+				continue;
+
+			Tile * adj = tai.tile;
+			if ((adj == NULL) || (adj == p_null_tile))
+				continue;
+			if (! adj->vtable->m35_Check_Is_Water (adj))
+				continue;
+
+			// Check if already visited
+			bool already_visited = false;
+			for (int i = 0; i < visited_count; i++) {
+				if (visited_x[i] == nx && visited_y[i] == ny) {
+					already_visited = true;
+					break;
+				}
+			}
+			if (already_visited)
+				continue;
+
+			// Add to queue and visited
+			if (visited_count < max_tiles && queue_tail < max_tiles) {
+				visited_x[visited_count] = nx;
+				visited_y[visited_count] = ny;
+				visited_count++;
+				queue_x[queue_tail] = nx;
+				queue_y[queue_tail] = ny;
+				queue_tail++;
+			}
+		}
+	}
+	return false;
+}
+
+// Check if tile separates adjacent water tiles that are not connected within a small radius
+bool
+canal_has_same_sea_isthmus (int tile_x, int tile_y, int civ_id, int check_radius)
+{
+	(void) civ_id;
+	(void) check_radius;
+
+	// If another canal exists nearby, this isn't a unique isthmus target.
+	FOR_TILES_AROUND (tai, workable_tile_counts[2], tile_x, tile_y) {
+		if (tai.n == 0)
+			continue;
+		Tile * adj = tai.tile;
+		if ((adj == NULL) || (adj == p_null_tile))
+			continue;
+		struct district_instance * adj_inst = get_district_instance (adj);
+		if ((adj_inst != NULL) && (adj_inst->district_id == CANAL_DISTRICT_ID))
+			return false;
+	}
+
+	// Check opposite diagonal water tiles that are not connected within radius 2
+	struct water_pair {
+		int dx1, dy1;
+		int dx2, dy2;
+	};
+
+	const struct water_pair pairs[] = {
+		{ 1, -1, -1, 1 }, // NE + SW
+		{ 1, 1, -1, -1 }, // SE + NW
+	};
+
+	for (int i = 0; i < (int)(sizeof (pairs) / sizeof (pairs[0])); i++) {
+		int ax = tile_x + pairs[i].dx1;
+		int ay = tile_y + pairs[i].dy1;
+		wrap_tile_coords (&p_bic_data->Map, &ax, &ay);
+		Tile * first = tile_at (ax, ay);
+		if ((first == NULL) || (first == p_null_tile))
+			continue;
+		if (! first->vtable->m35_Check_Is_Water (first))
+			continue;
+
+		int bx = tile_x + pairs[i].dx2;
+		int by = tile_y + pairs[i].dy2;
+		wrap_tile_coords (&p_bic_data->Map, &bx, &by);
+		Tile * second = tile_at (bx, by);
+		if ((second == NULL) || (second == p_null_tile))
+			continue;
+		if (! second->vtable->m35_Check_Is_Water (second))
+			continue;
+
+		if (! water_tiles_connected_within_radius (
+				ax, ay,
+				bx, by,
+				tile_x, tile_y, 2)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool
+bridge_tile_connects_two_continents (int tile_x, int tile_y, int civ_id)
+{
+	struct bridge_pair {
+		int dx1, dy1;
+		int dx2, dy2;
+	};
+
+	Map * map = &p_bic_data->Map;
+	const struct bridge_pair pairs[] = {
+		{0, -2, 0, 2},
+		{-2, 0, 2, 0},
+		{-1, -1, 1, 1},
+		{-1, 1, 1, -1},
+	};
+
+	bool require_owner = (civ_id >= 0);
+
+	for (int i = 0; i < (int)(sizeof (pairs) / sizeof (pairs[0])); i++) {
+		int ax = tile_x + pairs[i].dx1;
+		int ay = tile_y + pairs[i].dy1;
+		wrap_tile_coords (map, &ax, &ay);
+		if (! tile_is_land (civ_id, ax, ay, require_owner))
+			continue;
+		Tile * first = tile_at (ax, ay);
+		if ((first == NULL) || (first == p_null_tile))
+			continue;
+
+		int bx = tile_x + pairs[i].dx2;
+		int by = tile_y + pairs[i].dy2;
+		wrap_tile_coords (map, &bx, &by);
+		if (! tile_is_land (civ_id, bx, by, require_owner))
+			continue;
+		Tile * second = tile_at (bx, by);
+		if ((second == NULL) || (second == p_null_tile))
+			continue;
+
+		int cont_a = first->vtable->m46_Get_ContinentID (first);
+		int cont_b = second->vtable->m46_Get_ContinentID (second);
+		if ((cont_a >= 0) && (cont_b >= 0) && (cont_a != cont_b))
+			return true;
+	}
+
+	return false;
+}
+
+bool
+tile_point_in_block (int tile_x, int tile_y, int block_x0, int block_y0, int block_x1, int block_y1)
+{
+	return (tile_x >= block_x0) && (tile_x < block_x1) && (tile_y >= block_y0) && (tile_y < block_y1);
+}
+
+bool
+tile_is_coastal_water (int tile_x, int tile_y)
+{
+	Map * map = &p_bic_data->Map;
+	wrap_tile_coords (map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	if (! tile->vtable->m35_Check_Is_Water (tile))
+		return false;
+	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+	return base_type == SQ_Coast;
+}
+
+bool
+tile_exists_at (int tile_x, int tile_y)
+{
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	return (tile != NULL) && (tile != p_null_tile);
+}
+
+bool
+tile_is_reserved_in_district_tile_map (int tile_x, int tile_y)
+{
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	int existing = 0;
+	return itable_look_up (&is->district_tile_map, (int)tile, &existing);
+}
+
+bool
+tile_has_diagonal_water (int tile_x, int tile_y)
+{
+	Map * map = &p_bic_data->Map;
+	int const adj_dx[4] = { 1, 1, -1, -1 };
+	int const adj_dy[4] = { -1, 1, -1, 1 };
+
+	for (int i = 0; i < 4; i++) {
+		int nx = tile_x + adj_dx[i];
+		int ny = tile_y + adj_dy[i];
+		wrap_tile_coords (map, &nx, &ny);
+		Tile * tile = tile_at (nx, ny);
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+		if (tile->vtable->m35_Check_Is_Water (tile))
+			return true;
+	}
+	return false;
+}
+
+bool
+bridge_tile_has_land_on_both_sides (int tile_x, int tile_y)
+{
+	struct bridge_pair {
+		int dx1, dy1;
+		int dx2, dy2;
+	};
+
+	const struct bridge_pair pairs[] = {
+		{ 0, -2,  0, 2 },
+		{ -2, 0,  2, 0 },
+		{ -1, -1, 1, 1 },
+		{ -1, 1,  1, -1 },
+	};
+
+	for (int i = 0; i < (int)(sizeof (pairs) / sizeof (pairs[0])); i++) {
+		int ax = tile_x + pairs[i].dx1;
+		int ay = tile_y + pairs[i].dy1;
+		if (! tile_exists_at (ax, ay))
+			continue;
+		if (! tile_is_land (-1, ax, ay, false))
+			continue;
+		int bx = tile_x + pairs[i].dx2;
+		int by = tile_y + pairs[i].dy2;
+		if (! tile_exists_at (bx, by))
+			continue;
+		if (! tile_is_land (-1, bx, by, false))
+			continue;
+		return true;
+	}
+
+	return false;
+}
+
+bool
+tile_part_of_existing_candidate (int tile_x, int tile_y)
+{
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	for (int ei = 0; ei < is->ai_candidate_bridge_or_canals_count; ei++) {
+		struct ai_candidate_bridge_or_canal_entry * entry = &is->ai_candidate_bridge_or_canals[ei];
+		if (entry->tile_count <= 0)
+			continue;
+		for (int ti = 0; ti < entry->tile_count; ti++) {
+			if ((entry->tile_x[ti] == tile_x) && (entry->tile_y[ti] == tile_y))
+				return true;
+		}
+	}
+	return false;
+}
+
+bool
+tile_has_bridge_or_canal_nearby (int tile_x, int tile_y)
+{
+	FOR_TILES_AROUND (tai, workable_tile_counts[1], tile_x, tile_y) {
+		Tile * adj = tai.tile;
+		if ((adj == NULL) || (adj == p_null_tile))
+			continue;
+		struct district_instance * inst = get_district_instance (adj);
+		if ((inst != NULL) &&
+		    ((inst->district_id == BRIDGE_DISTRICT_ID) || (inst->district_id == CANAL_DISTRICT_ID)))
+			return true;
+		int nx = (tai.n == 0) ? tile_x : tai.tile_x;
+		int ny = (tai.n == 0) ? tile_y : tai.tile_y;
+		if (tile_part_of_existing_candidate (nx, ny))
+			return true;
+	}
+	return false;
+}
+
+bool
+add_ai_candidate_entry (int district_id, short owner_civ_id, short * xs, short * ys, int count)
+{
+	if (count <= 0)
+		return false;
+	if (! ensure_ai_candidate_bridge_or_canals_capacity (is->ai_candidate_bridge_or_canals_count + 1))
+		return false;
+
+	struct ai_candidate_bridge_or_canal_entry * entry = &is->ai_candidate_bridge_or_canals[is->ai_candidate_bridge_or_canals_count];
+	entry->tile_x = (short *)malloc (sizeof *entry->tile_x * count);
+	entry->tile_y = (short *)malloc (sizeof *entry->tile_y * count);
+	if ((entry->tile_x == NULL) || (entry->tile_y == NULL)) {
+		if (entry->tile_x != NULL)
+			free (entry->tile_x);
+		if (entry->tile_y != NULL)
+			free (entry->tile_y);
+		return false;
+	}
+
+	entry->district_id = district_id;
+	entry->owner_civ_id = owner_civ_id;
+	entry->tile_count = (short)count;
+	entry->tile_capacity = count;
+	entry->assigned_tile_index = -1;
+	entry->assigned_worker_id = -1;
+	entry->completed = false;
+	for (int ti = 0; ti < count; ti++) {
+		entry->tile_x[ti] = xs[ti];
+		entry->tile_y[ti] = ys[ti];
+	}
+
+	struct pending_district_request * req = &entry->pending_req;
+	req->city = NULL;
+	req->city_id = -1;
+	req->civ_id = owner_civ_id;
+	req->district_id = district_id;
+	req->assigned_worker_id = -1;
+	req->target_x = -1;
+	req->target_y = -1;
+	req->worker_assigned_turn = 0;
+
+	is->ai_candidate_bridge_or_canals_count++;
+	return true;
+}
+
+int
+gather_bridge_line (int start_x, int start_y, int dx, int dy, int limit,
+		    int block_x0, int block_y0, int block_x1, int block_y1,
+		    short * out_x, short * out_y)
+{
+	int effective_limit = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, limit);
+
+	if (! tile_is_coastal_water (start_x, start_y))
+		return 0;
+	if (! bridge_tile_has_land_on_both_sides (start_x, start_y))
+		return 0;
+
+	short back_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short back_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short forward_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short forward_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	int back_count = 0;
+	int forward_count = 0;
+	int remaining = effective_limit - 1;
+	Map * map = &p_bic_data->Map;
+
+	int cx = start_x;
+	int cy = start_y;
+	while ((remaining > 0) && (back_count < effective_limit)) {
+		int nx = cx - dx;
+		int ny = cy - dy;
+		wrap_tile_coords (map, &nx, &ny);
+		if (! tile_point_in_block (nx, ny, block_x0, block_y0, block_x1, block_y1))
+			break;
+		if (! tile_is_coastal_water (nx, ny))
+			break;
+		if (! bridge_tile_has_land_on_both_sides (nx, ny))
+			break;
+		if (tile_part_of_existing_candidate (nx, ny))
+			break;
+		back_x[back_count] = (short)nx;
+		back_y[back_count] = (short)ny;
+		back_count++;
+		remaining--;
+		cx = nx;
+		cy = ny;
+	}
+
+	cx = start_x;
+	cy = start_y;
+	while ((remaining > 0) && (forward_count < effective_limit)) {
+		int nx = cx + dx;
+		int ny = cy + dy;
+		wrap_tile_coords (map, &nx, &ny);
+		if (! tile_point_in_block (nx, ny, block_x0, block_y0, block_x1, block_y1))
+			break;
+		if (! tile_is_coastal_water (nx, ny))
+			break;
+		if (! bridge_tile_has_land_on_both_sides (nx, ny))
+			break;
+		if (tile_part_of_existing_candidate (nx, ny))
+			break;
+		forward_x[forward_count] = (short)nx;
+		forward_y[forward_count] = (short)ny;
+		forward_count++;
+		remaining--;
+		cx = nx;
+		cy = ny;
+	}
+
+	int write = 0;
+	for (int bi = back_count - 1; bi >= 0; bi--) {
+		out_x[write] = back_x[bi];
+		out_y[write] = back_y[bi];
+		write++;
+	}
+	out_x[write] = (short)start_x;
+	out_y[write] = (short)start_y;
+	write++;
+	for (int fi = 0; fi < forward_count; fi++) {
+		out_x[write] = forward_x[fi];
+		out_y[write] = forward_y[fi];
+		write++;
+	}
+
+	return write;
+}
+
+bool
+bridge_line_connects_two_continents (short * xs, short * ys, int count)
+{
+	for (int i = 0; i < count; i++) {
+		if (bridge_tile_connects_two_continents (xs[i], ys[i], -1))
+			return true;
+	}
+	return false;
+}
+
+int
+find_bridge_candidate_in_block (Map * map, int block_x0, int block_y0, int block_x1, int block_y1,
+				int contiguous_limit, int candidate_capacity,
+				short * out_x, short * out_y, short * out_owner)
+{
+	const int dirs[4][2] = {
+		{ 0, -2 }, { -2, 0 }, { -1, -1 }, { -1, 1 }
+	};
+
+	int max_len = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
+	if (candidate_capacity > 0 && max_len > candidate_capacity)
+		max_len = candidate_capacity;
+
+	for (int length = 1; length <= max_len; length++) {
+		for (int ti = 0; ti < map->TileCount; ti++) {
+			int tx = -1;
+			int ty = -1;
+			tile_index_to_coords (map, ti, &tx, &ty);
+			if (! tile_point_in_block (tx, ty, block_x0, block_y0, block_x1, block_y1))
+				continue;
+			Tile * tile = tile_at (tx, ty);
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+			if (tile_has_resource (tile))
+				continue;
+			if (! district_is_buildable_on_square_type (&is->district_configs[BRIDGE_DISTRICT_ID], tile))
+				continue;
+			if (tile_is_reserved_in_district_tile_map (tx, ty))
+				continue;
+			short owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+
+			for (int di = 0; di < (int)(sizeof (dirs) / sizeof (dirs[0])); di++) {
+				int dx = dirs[di][0];
+				int dy = dirs[di][1];
+				int end_x = tx + dx * (length - 1);
+				int end_y = ty + dy * (length - 1);
+				wrap_tile_coords (map, &end_x, &end_y);
+				if (! tile_point_in_block (end_x, end_y, block_x0, block_y0, block_x1, block_y1))
+					continue;
+
+				bool ok = true;
+				for (int step = 0; step < length; step++) {
+					int cx = tx + dx * step;
+					int cy = ty + dy * step;
+					wrap_tile_coords (map, &cx, &cy);
+					if (! tile_point_in_block (cx, cy, block_x0, block_y0, block_x1, block_y1)) {
+						ok = false;
+						break;
+					}
+					if (! tile_exists_at (cx, cy)) {
+						ok = false;
+						break;
+					}
+					if (! tile_is_coastal_water (cx, cy)) {
+						ok = false;
+						break;
+					}
+					Tile * bridge_tile = tile_at (cx, cy);
+					if ((bridge_tile == NULL) || (bridge_tile == p_null_tile)) {
+						ok = false;
+						break;
+					}
+					if (tile_has_resource (bridge_tile)) {
+						ok = false;
+						break;
+					}
+					if (! district_is_buildable_on_square_type (&is->district_configs[BRIDGE_DISTRICT_ID], bridge_tile)) {
+						ok = false;
+						break;
+					}
+					if (tile_has_bridge_or_canal_nearby (cx, cy)) {
+						ok = false;
+						break;
+					}
+					if (tile_is_reserved_in_district_tile_map (cx, cy)) {
+						ok = false;
+						break;
+					}
+					if (tile_part_of_existing_candidate (cx, cy)) {
+						ok = false;
+						break;
+					}
+				}
+				if (! ok)
+					continue;
+
+				int land_ax = tx - dx;
+				int land_ay = ty - dy;
+				wrap_tile_coords (map, &land_ax, &land_ay);
+				if (! tile_point_in_block (land_ax, land_ay, block_x0, block_y0, block_x1, block_y1))
+					continue;
+				if (! tile_exists_at (land_ax, land_ay))
+					continue;
+				if (! tile_is_land (-1, land_ax, land_ay, false))
+					continue;
+				Tile * land_a = tile_at (land_ax, land_ay);
+				if ((land_a == NULL) || (land_a == p_null_tile))
+					continue;
+
+				int land_bx = tx + dx * length;
+				int land_by = ty + dy * length;
+				wrap_tile_coords (map, &land_bx, &land_by);
+				if (! tile_point_in_block (land_bx, land_by, block_x0, block_y0, block_x1, block_y1))
+					continue;
+				if (! tile_exists_at (land_bx, land_by))
+					continue;
+				if (! tile_is_land (-1, land_bx, land_by, false))
+					continue;
+				Tile * land_b = tile_at (land_bx, land_by);
+				if ((land_b == NULL) || (land_b == p_null_tile))
+					continue;
+
+				int cont_a = land_a->vtable->m46_Get_ContinentID (land_a);
+				int cont_b = land_b->vtable->m46_Get_ContinentID (land_b);
+				if ((cont_a < 0) || (cont_b < 0) || (cont_a == cont_b))
+					continue;
+
+				for (int step = 0; step < length; step++) {
+					int cx = tx + dx * step;
+					int cy = ty + dy * step;
+					wrap_tile_coords (map, &cx, &cy);
+					out_x[step] = (short)cx;
+					out_y[step] = (short)cy;
+				}
+				*out_owner = owner;
+				return length;
+			}
+		}
+	}
+	return 0;
+}
+
+int
+gather_canal_line (int start_x, int start_y, int dx, int dy, int limit,
+		   int block_x0, int block_y0, int block_x1, int block_y1,
+		   short * out_x, short * out_y)
+{
+	int effective_limit = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, limit);
+
+	if (! tile_is_land (-1, start_x, start_y, false))
+		return 0;
+	if (tile_part_of_existing_candidate (start_x, start_y))
+		return 0;
+
+	short back_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short back_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short forward_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short forward_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	int back_count = 0;
+	int forward_count = 0;
+	int remaining = effective_limit - 1;
+	Map * map = &p_bic_data->Map;
+
+	int cx = start_x;
+	int cy = start_y;
+	while ((remaining > 0) && (back_count < effective_limit)) {
+		int nx = cx - dx;
+		int ny = cy - dy;
+		wrap_tile_coords (map, &nx, &ny);
+		if (! tile_point_in_block (nx, ny, block_x0, block_y0, block_x1, block_y1))
+			break;
+		if (! tile_is_land (-1, nx, ny, false))
+			break;
+		if (tile_part_of_existing_candidate (nx, ny))
+			break;
+		back_x[back_count] = (short)nx;
+		back_y[back_count] = (short)ny;
+		back_count++;
+		remaining--;
+		cx = nx;
+		cy = ny;
+	}
+
+	cx = start_x;
+	cy = start_y;
+	while ((remaining > 0) && (forward_count < effective_limit)) {
+		int nx = cx + dx;
+		int ny = cy + dy;
+		wrap_tile_coords (map, &nx, &ny);
+		if (! tile_point_in_block (nx, ny, block_x0, block_y0, block_x1, block_y1))
+			break;
+		if (! tile_is_land (-1, nx, ny, false))
+			break;
+		if (tile_part_of_existing_candidate (nx, ny))
+			break;
+		forward_x[forward_count] = (short)nx;
+		forward_y[forward_count] = (short)ny;
+		forward_count++;
+		remaining--;
+		cx = nx;
+		cy = ny;
+	}
+
+	int write = 0;
+	for (int bi = back_count - 1; bi >= 0; bi--) {
+		out_x[write] = back_x[bi];
+		out_y[write] = back_y[bi];
+		write++;
+	}
+	out_x[write] = (short)start_x;
+	out_y[write] = (short)start_y;
+	write++;
+	for (int fi = 0; fi < forward_count; fi++) {
+		out_x[write] = forward_x[fi];
+		out_y[write] = forward_y[fi];
+		write++;
+	}
+
+	return write;
+}
+
+bool
+cluster_connects_two_seas_or_isthmus (short * xs, short * ys, int count)
+{
+	for (int i = 0; i < count; i++) {
+		if (canal_has_different_adjacent_seas (xs[i], ys[i], -1))
+			return true;
+		if (canal_has_same_sea_isthmus (xs[i], ys[i], -1, 2))
+			return true;
+	}
+	return false;
+}
+
+int
+find_canal_candidate_in_block (Map * map, int block_x0, int block_y0, int block_x1, int block_y1,
+			       int contiguous_limit, int candidate_capacity,
+			       short * out_x, short * out_y, short * out_owner)
+{
+	const int dir_dx[8] = { 0, 1, 2, 1, 0, -1, -2, -1 };
+	const int dir_dy[8] = { -2, -1, 0, 1, 2, 1, 0, -1 };
+
+	int max_len = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
+	if (candidate_capacity > 0 && max_len > candidate_capacity)
+		max_len = candidate_capacity;
+
+	int tile_count = map->TileCount;
+	int * visit = (int *)malloc (sizeof (*visit) * tile_count);
+	int * queue_x = (int *)malloc (sizeof (*queue_x) * tile_count);
+	int * queue_y = (int *)malloc (sizeof (*queue_y) * tile_count);
+	if ((visit == NULL) || (queue_x == NULL) || (queue_y == NULL)) {
+		if (visit != NULL)
+			free (visit);
+		if (queue_x != NULL)
+			free (queue_x);
+		if (queue_y != NULL)
+			free (queue_y);
+		return 0;
+	}
+	for (int i = 0; i < tile_count; i++)
+		visit[i] = 0;
+
+	int visit_mark = 1;
+
+	for (int length = 1; length <= max_len; length++) {
+		for (int ti = 0; ti < map->TileCount; ti++) {
+			int start_x = -1;
+			int start_y = -1;
+			tile_index_to_coords (map, ti, &start_x, &start_y);
+			if (! tile_point_in_block (start_x, start_y, block_x0, block_y0, block_x1, block_y1))
+				continue;
+			if (! tile_is_land (-1, start_x, start_y, false))
+				continue;
+			if (tile_part_of_existing_candidate (start_x, start_y))
+				continue;
+			if (tile_has_bridge_or_canal_nearby (start_x, start_y))
+				continue;
+			if (tile_is_reserved_in_district_tile_map (start_x, start_y))
+				continue;
+			Tile * start_tile = tile_at (start_x, start_y);
+			if ((start_tile == NULL) || (start_tile == p_null_tile))
+				continue;
+			if (tile_has_resource (start_tile))
+				continue;
+			if (! district_is_buildable_on_square_type (&is->district_configs[CANAL_DISTRICT_ID], start_tile))
+				continue;
+			int continent_id = start_tile->vtable->m46_Get_ContinentID (start_tile);
+			if (continent_id < 0)
+				continue;
+			short owner = start_tile->vtable->m38_Get_Territory_OwnerID (start_tile);
+
+				int stack_len = 1;
+				int dir_stack[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+				int path_dir[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+				out_x[0] = (short)start_x;
+				out_y[0] = (short)start_y;
+				dir_stack[0] = -1;
+				path_dir[0] = -1;
+
+				while (stack_len > 0) {
+					int depth = stack_len - 1;
+					int cx = out_x[depth];
+					int cy = out_y[depth];
+
+					if (depth + 1 == length) {
+						bool endpoints_ok = false;
+						if (length == 1) {
+							int ex = out_x[0];
+							int ey = out_y[0];
+							bool pair_ok = false;
+							if (tile_is_water (ex, ey - 2) && tile_is_water (ex, ey + 2)) pair_ok = true;
+							if (tile_is_water (ex - 2, ey) && tile_is_water (ex + 2, ey)) pair_ok = true;
+							if (tile_is_water (ex - 1, ey - 1) && tile_is_water (ex + 1, ey + 1)) pair_ok = true;
+							if (tile_is_water (ex - 1, ey + 1) && tile_is_water (ex + 1, ey - 1)) pair_ok = true;
+							if (pair_ok && tile_has_diagonal_water (ex, ey))
+								endpoints_ok = true;
+						} else {
+							int first_dir = path_dir[1];
+							int last_dir = path_dir[length - 1];
+							int sx = out_x[0];
+							int sy = out_y[0];
+							int ex = out_x[length - 1];
+							int ey = out_y[length - 1];
+							bool start_water = tile_is_water (sx - dir_dx[first_dir], sy - dir_dy[first_dir]);
+							bool end_water = tile_is_water (ex + dir_dx[last_dir], ey + dir_dy[last_dir]);
+							if (start_water && end_water &&
+							    tile_has_diagonal_water (sx, sy) &&
+							    tile_has_diagonal_water (ex, ey))
+								endpoints_ok = true;
+						}
+
+						bool buildable = true;
+						if (endpoints_ok) {
+							for (int pi = 0; pi < length; pi++) {
+								Tile * path_tile = tile_at (out_x[pi], out_y[pi]);
+								if ((path_tile == NULL) || (path_tile == p_null_tile) ||
+								    tile_has_resource (path_tile) ||
+								    (! district_is_buildable_on_square_type (&is->district_configs[CANAL_DISTRICT_ID], path_tile)) ||
+								    tile_is_reserved_in_district_tile_map (out_x[pi], out_y[pi])) {
+									buildable = false;
+									break;
+								}
+								if (tile_has_bridge_or_canal_nearby (out_x[pi], out_y[pi])) {
+									buildable = false;
+									break;
+								}
+							}
+						} else {
+							buildable = false;
+						}
+
+						if (buildable) {
+							// Collect adjacent land tiles for component checks
+							int adj_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES * 8];
+							int adj_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES * 8];
+							int adj_count = 0;
+							for (int pi = 0; pi < length; pi++) {
+								int px = out_x[pi];
+								int py = out_y[pi];
+								for (int di = 0; di < 8; di++) {
+									int nx = px + dir_dx[di];
+									int ny = py + dir_dy[di];
+									wrap_tile_coords (map, &nx, &ny);
+									if (! tile_is_land (-1, nx, ny, false))
+										continue;
+									Tile * adj = tile_at (nx, ny);
+									if ((adj == NULL) || (adj == p_null_tile))
+										continue;
+									if (adj->vtable->m46_Get_ContinentID (adj) != continent_id)
+										continue;
+									bool in_path = false;
+									for (int pj = 0; pj < length; pj++) {
+										if ((out_x[pj] == nx) && (out_y[pj] == ny)) {
+											in_path = true;
+											break;
+										}
+									}
+									if (in_path)
+										continue;
+									bool seen = false;
+									for (int aj = 0; aj < adj_count; aj++) {
+										if ((adj_x[aj] == nx) && (adj_y[aj] == ny)) {
+											seen = true;
+											break;
+										}
+									}
+									if (! seen && (adj_count < (int)(sizeof (adj_x) / sizeof (adj_x[0])))) {
+										adj_x[adj_count] = nx;
+										adj_y[adj_count] = ny;
+										adj_count++;
+									}
+								}
+							}
+
+							if (adj_count >= 2) {
+								int best1 = 0;
+								int best2 = 0;
+								int min_land = is->current_config.ai_canal_eval_min_bisected_land_tiles;
+								if (min_land < 1)
+									min_land = 1;
+								visit_mark++;
+								if (visit_mark == 0) {
+									visit_mark = 1;
+									for (int i = 0; i < tile_count; i++)
+										visit[i] = 0;
+								}
+
+								for (int ai = 0; ai < adj_count; ai++) {
+									int aidx = tile_coords_to_index (map, adj_x[ai], adj_y[ai]);
+									if ((aidx < 0) || (visit[aidx] == visit_mark))
+										continue;
+
+									int comp_size = 0;
+									int head = 0;
+									int tail = 0;
+									visit[aidx] = visit_mark;
+									queue_x[tail] = adj_x[ai];
+									queue_y[tail] = adj_y[ai];
+									tail++;
+
+									while (head < tail) {
+										int qx = queue_x[head];
+										int qy = queue_y[head];
+										head++;
+										comp_size++;
+										for (int di = 0; di < 8; di++) {
+											int nx = qx + dir_dx[di];
+											int ny = qy + dir_dy[di];
+											wrap_tile_coords (map, &nx, &ny);
+											if (! tile_is_land (-1, nx, ny, false))
+												continue;
+											Tile * adj = tile_at (nx, ny);
+											if ((adj == NULL) || (adj == p_null_tile))
+												continue;
+											if (adj->vtable->m46_Get_ContinentID (adj) != continent_id)
+												continue;
+											bool blocked = false;
+											for (int pj = 0; pj < length; pj++) {
+												if ((out_x[pj] == nx) && (out_y[pj] == ny)) {
+													blocked = true;
+													break;
+												}
+											}
+											if (blocked)
+												continue;
+											int nidx = tile_coords_to_index (map, nx, ny);
+											if ((nidx < 0) || (visit[nidx] == visit_mark))
+												continue;
+											visit[nidx] = visit_mark;
+											queue_x[tail] = nx;
+											queue_y[tail] = ny;
+											tail++;
+										}
+									}
+
+									if (comp_size > best1) {
+										best2 = best1;
+										best1 = comp_size;
+									} else if (comp_size > best2) {
+										best2 = comp_size;
+									}
+								}
+
+								if ((best1 >= min_land) && (best2 >= min_land)) {
+									*out_owner = owner;
+									free (visit);
+									free (queue_x);
+									free (queue_y);
+									return length;
+								}
+							}
+						}
+						dir_stack[depth] = -1;
+						stack_len--;
+						continue;
+					}
+
+					int next_dir = dir_stack[depth] + 1;
+					bool advanced = false;
+					while (next_dir < 8) {
+						int ndx = dir_dx[next_dir];
+						int ndy = dir_dy[next_dir];
+						int nx = cx + ndx;
+						int ny = cy + ndy;
+						wrap_tile_coords (map, &nx, &ny);
+						dir_stack[depth] = next_dir;
+
+						if (! tile_point_in_block (nx, ny, block_x0, block_y0, block_x1, block_y1)) {
+							next_dir++;
+							continue;
+						}
+						if (! tile_is_land (-1, nx, ny, false)) {
+							next_dir++;
+							continue;
+						}
+						if (tile_part_of_existing_candidate (nx, ny)) {
+							next_dir++;
+							continue;
+						}
+						if (tile_is_reserved_in_district_tile_map (nx, ny)) {
+							next_dir++;
+							continue;
+						}
+						Tile * next_tile = tile_at (nx, ny);
+						if ((next_tile == NULL) || (next_tile == p_null_tile)) {
+							next_dir++;
+							continue;
+						}
+						if (tile_has_resource (next_tile)) {
+							next_dir++;
+							continue;
+						}
+						if (! district_is_buildable_on_square_type (&is->district_configs[CANAL_DISTRICT_ID], next_tile)) {
+							next_dir++;
+							continue;
+						}
+						if (tile_has_bridge_or_canal_nearby (nx, ny)) {
+							next_dir++;
+							continue;
+						}
+						if (next_tile->vtable->m46_Get_ContinentID (next_tile) != continent_id) {
+							next_dir++;
+							continue;
+						}
+						bool dup = false;
+						for (int pi = 0; pi < depth + 1; pi++) {
+							if ((out_x[pi] == nx) && (out_y[pi] == ny)) {
+								dup = true;
+								break;
+							}
+						}
+						if (dup) {
+							next_dir++;
+							continue;
+						}
+
+						if (depth >= 1) {
+							int prev_dir = dir_stack[depth - 1];
+							int diff = next_dir - prev_dir;
+							if (diff < 0)
+								diff += 8;
+							if (diff > 4)
+								diff = 8 - diff;
+							if (diff > 1) {
+								next_dir++;
+								continue;
+							}
+						}
+
+						out_x[depth + 1] = (short)nx;
+						out_y[depth + 1] = (short)ny;
+						dir_stack[depth + 1] = -1;
+						path_dir[depth + 1] = next_dir;
+						stack_len++;
+						advanced = true;
+						break;
+					}
+
+					if (! advanced) {
+						dir_stack[depth] = -1;
+						stack_len--;
+					}
+				}
+			}
+	}
+
+	free (visit);
+	free (queue_x);
+	free (queue_y);
+	return 0;
+}
+
+void
+generate_ai_bridge_candidates_by_block (Map * map, int block_size, int contiguous_limit)
+{
+	if ((map == NULL) || (block_size <= 0))
+		return;
+
+	int width = map->Width;
+	int height = map->Height;
+	if ((width <= 0) || (height <= 0))
+		return;
+
+	if (block_size < 1)
+		block_size = 1;
+
+	int candidate_capacity = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
+
+	short * candidate_x = (short *)malloc (sizeof *candidate_x * candidate_capacity);
+	short * candidate_y = (short *)malloc (sizeof *candidate_y * candidate_capacity);
+	if ((candidate_x == NULL) || (candidate_y == NULL)) {
+		if (candidate_x != NULL)
+			free (candidate_x);
+		if (candidate_y != NULL)
+			free (candidate_y);
+		return;
+	}
+
+	for (int base_y = 0; base_y < height; base_y += block_size) {
+		int block_y1 = base_y + block_size;
+		if (block_y1 > height)
+			block_y1 = height;
+		for (int base_x = 0; base_x < width; base_x += block_size) {
+			int block_x1 = base_x + block_size;
+			if (block_x1 > width)
+				block_x1 = width;
+			short owner = -1;
+			int count = find_bridge_candidate_in_block (
+				map, base_x, base_y, block_x1, block_y1,
+				contiguous_limit, candidate_capacity,
+				candidate_x, candidate_y, &owner);
+			if (count <= 0)
+				continue;
+			if (! add_ai_candidate_entry (BRIDGE_DISTRICT_ID, owner, candidate_x, candidate_y, count)) {
+				free (candidate_x);
+				free (candidate_y);
+				return;
+			}
+		}
+	}
+
+	free (candidate_x);
+	free (candidate_y);
+}
+
+void
+generate_ai_canal_candidates_by_block (Map * map, int block_size, int contiguous_limit)
+{
+	if ((map == NULL) || (block_size <= 0))
+		return;
+
+	int width = map->Width;
+	int height = map->Height;
+	if ((width <= 0) || (height <= 0))
+		return;
+
+	if (block_size < 1)
+		block_size = 1;
+
+	int candidate_capacity = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
+
+	short * candidate_x = (short *)malloc (sizeof *candidate_x * candidate_capacity);
+	short * candidate_y = (short *)malloc (sizeof *candidate_y * candidate_capacity);
+	if ((candidate_x == NULL) || (candidate_y == NULL)) {
+		if (candidate_x != NULL)
+			free (candidate_x);
+		if (candidate_y != NULL)
+			free (candidate_y);
+		return;
+	}
+
+	for (int base_y = 0; base_y < height; base_y += block_size) {
+		int block_y1 = base_y + block_size;
+		if (block_y1 > height)
+			block_y1 = height;
+		for (int base_x = 0; base_x < width; base_x += block_size) {
+			int block_x1 = base_x + block_size;
+			if (block_x1 > width)
+				block_x1 = width;
+			short owner = -1;
+			int count = find_canal_candidate_in_block (
+				map, base_x, base_y, block_x1, block_y1,
+				contiguous_limit, candidate_capacity,
+				candidate_x, candidate_y, &owner);
+			if (count <= 0)
+				continue;
+			if (! add_ai_candidate_entry (CANAL_DISTRICT_ID, owner, candidate_x, candidate_y, count)) {
+				free (candidate_x);
+				free (candidate_y);
+				return;
+			}
+		}
+	}
+
+	free (candidate_x);
+	free (candidate_y);
+}
+
+void
+generate_ai_canal_and_bridge_targets ()
+{
+	if (is->ai_candidate_bridge_or_canals_initialized)
+		return;
+	if ((! is->current_config.enable_canal_districts) && (! is->current_config.enable_bridge_districts))
+		return;
+
+	Map * map = &p_bic_data->Map;
+	int width = map->Width;
+	int height = map->Height;
+	if ((width <= 0) || (height <= 0))
+		return;
+
+	int block_size = is->current_config.ai_bridge_canal_eval_block_size;
+	if (block_size <= 0)
+		block_size = 10;
+
+	if (is->current_config.enable_canal_districts) {
+		generate_ai_canal_candidates_by_block (
+			map,
+			block_size,
+			is->current_config.max_contiguous_canal_districts);
+	}
+
+	if (is->current_config.enable_bridge_districts) {
+		generate_ai_bridge_candidates_by_block (
+			map,
+			block_size,
+			is->current_config.max_contiguous_bridge_districts);
+	}
+
+	is->ai_candidate_bridge_or_canals_initialized = true;
+}
+
+void
 assign_workers_for_ai_candidate_bridge_or_canals (Leader * leader)
 {
 	if ((leader == NULL) || (is->ai_candidate_bridge_or_canals_count <= 0))
@@ -4284,6 +5579,14 @@ assign_workers_for_ai_candidate_bridge_or_canals (Leader * leader)
 	int civ_id = leader->ID;
 	if ((*p_human_player_bits & (1 << civ_id)) != 0)
 		return;
+
+	if (! leader_can_build_district (leader, CANAL_DISTRICT_ID) && ! leader_can_build_district (leader, BRIDGE_DISTRICT_ID))
+		return;
+
+	if (! is->ai_candidate_bridge_or_canals_initialized) {
+		reset_ai_candidate_bridge_or_canals ();
+		generate_ai_canal_and_bridge_targets ();
+	}
 
 	for (int ei = 0; ei < is->ai_candidate_bridge_or_canals_count; ei++) {
 		struct ai_candidate_bridge_or_canal_entry * entry = &is->ai_candidate_bridge_or_canals[ei];
@@ -5835,25 +7138,6 @@ reset_natural_wonder_configs (void)
 		is->natural_wonder_img_sets[i].img.vtable = NULL;
 	stable_deinit (&is->natural_wonder_name_to_id);
 	is->natural_wonder_count = 0;
-}
-
-void
-reset_ai_candidate_bridge_or_canals (void)
-{
-	if (is->ai_candidate_bridge_or_canals != NULL) {
-		for (int i = 0; i < is->ai_candidate_bridge_or_canals_capacity; i++) {
-			struct ai_candidate_bridge_or_canal_entry * entry = &is->ai_candidate_bridge_or_canals[i];
-			if (entry->tile_x != NULL)
-				free (entry->tile_x);
-			if (entry->tile_y != NULL)
-				free (entry->tile_y);
-		}
-		free (is->ai_candidate_bridge_or_canals);
-		is->ai_candidate_bridge_or_canals = NULL;
-	}
-	is->ai_candidate_bridge_or_canals_capacity = 0;
-	is->ai_candidate_bridge_or_canals_count = 0;
-	is->ai_candidate_bridge_or_canals_initialized = false;
 }
 
 void
@@ -10210,1281 +11494,6 @@ district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district
 	return true;
 }
 
-bool
-tile_has_district_at (int tile_x, int tile_y, int district_id)
-{
-	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
-	Tile * tile = tile_at (tile_x, tile_y);
-	if ((tile == NULL) || (tile == p_null_tile))
-		return false;
-
-	struct district_instance * inst = get_district_instance (tile);
-	return (inst != NULL) && (inst->district_id == district_id) && (district_is_complete (tile, district_id));
-}
-
-bool
-tile_is_land (int civ_id, int tile_x, int tile_y, bool must_be_same_owner)
-{
-	if (must_be_same_owner && (civ_id <= 0))
-		return false;
-
-	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
-	Tile * tile = tile_at (tile_x, tile_y);
-	return (tile != NULL) && (tile != p_null_tile) && (! tile->vtable->m35_Check_Is_Water (tile)) &&
-		((! must_be_same_owner) || (tile->Territory_OwnerID == civ_id));
-}
-
-bool
-tile_is_water (int tile_x, int tile_y)
-{
-	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
-	Tile * tile = tile_at (tile_x, tile_y);
-	return (tile != NULL) && (tile != p_null_tile) && (tile->vtable->m35_Check_Is_Water (tile));
-}
-
-bool
-ensure_ai_candidate_bridge_or_canals_capacity (int required)
-{
-	if (required <= 0)
-		return true;
-	if (required <= is->ai_candidate_bridge_or_canals_capacity)
-		return true;
-	int new_capacity = (is->ai_candidate_bridge_or_canals_capacity > 0) ? is->ai_candidate_bridge_or_canals_capacity * 2 : 4;
-	if (new_capacity < required)
-		new_capacity = required;
-	struct ai_candidate_bridge_or_canal_entry * larger = (struct ai_candidate_bridge_or_canal_entry *)realloc (
-		is->ai_candidate_bridge_or_canals, new_capacity * sizeof *larger);
-	if (larger == NULL)
-		return false;
-	for (int i = is->ai_candidate_bridge_or_canals_capacity; i < new_capacity; i++) {
-		struct ai_candidate_bridge_or_canal_entry * entry = &larger[i];
-		entry->tile_x = NULL;
-		entry->tile_y = NULL;
-		entry->tile_capacity = 0;
-		entry->district_id = -1;
-		entry->owner_civ_id = -1;
-		entry->tile_count = 0;
-		entry->assigned_tile_index = -1;
-		entry->assigned_worker_id = -1;
-		entry->completed = false;
-		struct pending_district_request * req = &entry->pending_req;
-		req->city = NULL;
-		req->city_id = -1;
-		req->civ_id = -1;
-		req->district_id = -1;
-		req->assigned_worker_id = -1;
-		req->target_x = -1;
-		req->target_y = -1;
-		req->worker_assigned_turn = 0;
-	}
-	is->ai_candidate_bridge_or_canals = larger;
-	is->ai_candidate_bridge_or_canals_capacity = new_capacity;
-	return true;
-}
-
-bool
-canal_has_different_adjacent_seas (int tile_x, int tile_y, int civ_id)
-{
-	struct water_pair {
-		int dx1, dy1;
-		int dx2, dy2;
-	};
-
-	const struct water_pair pairs[] = {
-		{ 1, -1, -1, 1 }, // NE + SW
-		{ 1, 1, -1, -1 }, // SE + NW
-	};
-
-	Map * map = &p_bic_data->Map;
-	bool require_owner = (civ_id >= 0);
-
-	for (int i = 0; i < (int)(sizeof (pairs) / sizeof (pairs[0])); i++) {
-		int ax = tile_x + pairs[i].dx1;
-		int ay = tile_y + pairs[i].dy1;
-		wrap_tile_coords (map, &ax, &ay);
-		Tile * first = tile_at (ax, ay);
-		if ((first == NULL) || (first == p_null_tile))
-			continue;
-		if (! first->vtable->m35_Check_Is_Water (first))
-			continue;
-		if (require_owner && (first->vtable->m38_Get_Territory_OwnerID (first) != civ_id))
-			continue;
-
-		int bx = tile_x + pairs[i].dx2;
-		int by = tile_y + pairs[i].dy2;
-		wrap_tile_coords (map, &bx, &by);
-		Tile * second = tile_at (bx, by);
-		if ((second == NULL) || (second == p_null_tile))
-			continue;
-		if (! second->vtable->m35_Check_Is_Water (second))
-			continue;
-		if (require_owner && (second->vtable->m38_Get_Territory_OwnerID (second) != civ_id))
-			continue;
-
-		int sea_a = first->vtable->m46_Get_ContinentID (first);
-		int sea_b = second->vtable->m46_Get_ContinentID (second);
-		if ((sea_a >= 0) && (sea_b >= 0) && (sea_a != sea_b))
-			return true;
-	}
-
-	return false;
-}
-
-// Check if two water tiles can reach each other via water within a radius, excluding a blocked tile
-bool
-water_tiles_connected_within_radius (int start_x, int start_y, int target_x, int target_y, int block_x, int block_y, int radius)
-{
-	// Simple BFS using a fixed-size visited array for tiles within radius
-	// workable_tile_counts[6] = 137 tiles for radius 6
-	int max_tiles = 137;
-	int visited_x[137];
-	int visited_y[137];
-	int visited_count = 0;
-	int queue_x[137];
-	int queue_y[137];
-	int queue_head = 0;
-	int queue_tail = 0;
-
-	queue_x[queue_tail] = start_x;
-	queue_y[queue_tail] = start_y;
-	queue_tail++;
-	visited_x[visited_count] = start_x;
-	visited_y[visited_count] = start_y;
-	visited_count++;
-
-	while (queue_head < queue_tail) {
-		int cx = queue_x[queue_head];
-		int cy = queue_y[queue_head];
-		queue_head++;
-
-		// Check 8 adjacent tiles
-		FOR_TILES_AROUND (tai, 9, cx, cy) {
-			if (tai.n == 0)
-				continue;
-			int nx = tai.tile_x;
-			int ny = tai.tile_y;
-
-			// Found target
-			if (nx == target_x && ny == target_y)
-				return true;
-
-			// Skip blocked tile (the isthmus)
-			if (nx == block_x && ny == block_y)
-				continue;
-
-			// Check if within radius of original start
-			int dx = nx - start_x;
-			int dy = ny - start_y;
-			if (dx < 0) dx = -dx;
-			if (dy < 0) dy = -dy;
-			// Use Chebyshev distance approximation for hex grid
-			int dist = (dx + dy + ((dx > dy) ? dx : dy)) / 2;
-			if (dist > radius)
-				continue;
-
-			Tile * adj = tai.tile;
-			if ((adj == NULL) || (adj == p_null_tile))
-				continue;
-			if (! adj->vtable->m35_Check_Is_Water (adj))
-				continue;
-
-			// Check if already visited
-			bool already_visited = false;
-			for (int i = 0; i < visited_count; i++) {
-				if (visited_x[i] == nx && visited_y[i] == ny) {
-					already_visited = true;
-					break;
-				}
-			}
-			if (already_visited)
-				continue;
-
-			// Add to queue and visited
-			if (visited_count < max_tiles && queue_tail < max_tiles) {
-				visited_x[visited_count] = nx;
-				visited_y[visited_count] = ny;
-				visited_count++;
-				queue_x[queue_tail] = nx;
-				queue_y[queue_tail] = ny;
-				queue_tail++;
-			}
-		}
-	}
-	return false;
-}
-
-// Check if tile separates adjacent water tiles that are not connected within a small radius
-bool
-canal_has_same_sea_isthmus (int tile_x, int tile_y, int civ_id, int check_radius)
-{
-	(void) civ_id;
-	(void) check_radius;
-
-	// If another canal exists nearby, this isn't a unique isthmus target.
-	FOR_TILES_AROUND (tai, workable_tile_counts[2], tile_x, tile_y) {
-		if (tai.n == 0)
-			continue;
-		Tile * adj = tai.tile;
-		if ((adj == NULL) || (adj == p_null_tile))
-			continue;
-		struct district_instance * adj_inst = get_district_instance (adj);
-		if ((adj_inst != NULL) && (adj_inst->district_id == CANAL_DISTRICT_ID))
-			return false;
-	}
-
-	// Check opposite diagonal water tiles that are not connected within radius 2
-	struct water_pair {
-		int dx1, dy1;
-		int dx2, dy2;
-	};
-
-	const struct water_pair pairs[] = {
-		{ 1, -1, -1, 1 }, // NE + SW
-		{ 1, 1, -1, -1 }, // SE + NW
-	};
-
-	for (int i = 0; i < (int)(sizeof (pairs) / sizeof (pairs[0])); i++) {
-		int ax = tile_x + pairs[i].dx1;
-		int ay = tile_y + pairs[i].dy1;
-		wrap_tile_coords (&p_bic_data->Map, &ax, &ay);
-		Tile * first = tile_at (ax, ay);
-		if ((first == NULL) || (first == p_null_tile))
-			continue;
-		if (! first->vtable->m35_Check_Is_Water (first))
-			continue;
-
-		int bx = tile_x + pairs[i].dx2;
-		int by = tile_y + pairs[i].dy2;
-		wrap_tile_coords (&p_bic_data->Map, &bx, &by);
-		Tile * second = tile_at (bx, by);
-		if ((second == NULL) || (second == p_null_tile))
-			continue;
-		if (! second->vtable->m35_Check_Is_Water (second))
-			continue;
-
-		if (! water_tiles_connected_within_radius (
-				ax, ay,
-				bx, by,
-				tile_x, tile_y, 2)) {
-			return true;
-		}
-	}
-	return false;
-}
-
-bool
-bridge_tile_connects_two_continents (int tile_x, int tile_y, int civ_id)
-{
-	struct bridge_pair {
-		int dx1, dy1;
-		int dx2, dy2;
-	};
-
-	Map * map = &p_bic_data->Map;
-	const struct bridge_pair pairs[] = {
-		{0, -2, 0, 2},
-		{-2, 0, 2, 0},
-		{-1, -1, 1, 1},
-		{-1, 1, 1, -1},
-	};
-
-	bool require_owner = (civ_id >= 0);
-
-	for (int i = 0; i < (int)(sizeof (pairs) / sizeof (pairs[0])); i++) {
-		int ax = tile_x + pairs[i].dx1;
-		int ay = tile_y + pairs[i].dy1;
-		wrap_tile_coords (map, &ax, &ay);
-		if (! tile_is_land (civ_id, ax, ay, require_owner))
-			continue;
-		Tile * first = tile_at (ax, ay);
-		if ((first == NULL) || (first == p_null_tile))
-			continue;
-
-		int bx = tile_x + pairs[i].dx2;
-		int by = tile_y + pairs[i].dy2;
-		wrap_tile_coords (map, &bx, &by);
-		if (! tile_is_land (civ_id, bx, by, require_owner))
-			continue;
-		Tile * second = tile_at (bx, by);
-		if ((second == NULL) || (second == p_null_tile))
-			continue;
-
-		int cont_a = first->vtable->m46_Get_ContinentID (first);
-		int cont_b = second->vtable->m46_Get_ContinentID (second);
-		if ((cont_a >= 0) && (cont_b >= 0) && (cont_a != cont_b))
-			return true;
-	}
-
-	return false;
-}
-
-bool
-tile_point_in_block (int tile_x, int tile_y, int block_x0, int block_y0, int block_x1, int block_y1)
-{
-	return (tile_x >= block_x0) && (tile_x < block_x1) && (tile_y >= block_y0) && (tile_y < block_y1);
-}
-
-bool
-tile_is_coastal_water (int tile_x, int tile_y)
-{
-	Map * map = &p_bic_data->Map;
-	wrap_tile_coords (map, &tile_x, &tile_y);
-	Tile * tile = tile_at (tile_x, tile_y);
-	if ((tile == NULL) || (tile == p_null_tile))
-		return false;
-	if (! tile->vtable->m35_Check_Is_Water (tile))
-		return false;
-	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	return base_type == SQ_Coast;
-}
-
-bool
-tile_exists_at (int tile_x, int tile_y)
-{
-	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
-	Tile * tile = tile_at (tile_x, tile_y);
-	return (tile != NULL) && (tile != p_null_tile);
-}
-
-bool
-tile_is_reserved_in_district_tile_map (int tile_x, int tile_y)
-{
-	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
-	Tile * tile = tile_at (tile_x, tile_y);
-	if ((tile == NULL) || (tile == p_null_tile))
-		return false;
-	int existing = 0;
-	return itable_look_up (&is->district_tile_map, (int)tile, &existing);
-}
-
-bool
-tile_has_diagonal_water (int tile_x, int tile_y)
-{
-	Map * map = &p_bic_data->Map;
-	int const adj_dx[4] = { 1, 1, -1, -1 };
-	int const adj_dy[4] = { -1, 1, -1, 1 };
-
-	for (int i = 0; i < 4; i++) {
-		int nx = tile_x + adj_dx[i];
-		int ny = tile_y + adj_dy[i];
-		wrap_tile_coords (map, &nx, &ny);
-		Tile * tile = tile_at (nx, ny);
-		if ((tile == NULL) || (tile == p_null_tile))
-			continue;
-		if (tile->vtable->m35_Check_Is_Water (tile))
-			return true;
-	}
-	return false;
-}
-
-bool
-bridge_tile_has_land_on_both_sides (int tile_x, int tile_y)
-{
-	struct bridge_pair {
-		int dx1, dy1;
-		int dx2, dy2;
-	};
-
-	const struct bridge_pair pairs[] = {
-		{ 0, -2,  0, 2 },
-		{ -2, 0,  2, 0 },
-		{ -1, -1, 1, 1 },
-		{ -1, 1,  1, -1 },
-	};
-
-	for (int i = 0; i < (int)(sizeof (pairs) / sizeof (pairs[0])); i++) {
-		int ax = tile_x + pairs[i].dx1;
-		int ay = tile_y + pairs[i].dy1;
-		if (! tile_exists_at (ax, ay))
-			continue;
-		if (! tile_is_land (-1, ax, ay, false))
-			continue;
-		int bx = tile_x + pairs[i].dx2;
-		int by = tile_y + pairs[i].dy2;
-		if (! tile_exists_at (bx, by))
-			continue;
-		if (! tile_is_land (-1, bx, by, false))
-			continue;
-		return true;
-	}
-
-	return false;
-}
-
-bool
-tile_part_of_existing_candidate (int tile_x, int tile_y)
-{
-	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
-	for (int ei = 0; ei < is->ai_candidate_bridge_or_canals_count; ei++) {
-		struct ai_candidate_bridge_or_canal_entry * entry = &is->ai_candidate_bridge_or_canals[ei];
-		if (entry->tile_count <= 0)
-			continue;
-		for (int ti = 0; ti < entry->tile_count; ti++) {
-			if ((entry->tile_x[ti] == tile_x) && (entry->tile_y[ti] == tile_y))
-				return true;
-		}
-	}
-	return false;
-}
-
-bool
-tile_has_bridge_or_canal_nearby (int tile_x, int tile_y)
-{
-	FOR_TILES_AROUND (tai, workable_tile_counts[1], tile_x, tile_y) {
-		Tile * adj = tai.tile;
-		if ((adj == NULL) || (adj == p_null_tile))
-			continue;
-		struct district_instance * inst = get_district_instance (adj);
-		if ((inst != NULL) &&
-		    ((inst->district_id == BRIDGE_DISTRICT_ID) || (inst->district_id == CANAL_DISTRICT_ID)))
-			return true;
-		int nx = (tai.n == 0) ? tile_x : tai.tile_x;
-		int ny = (tai.n == 0) ? tile_y : tai.tile_y;
-		if (tile_part_of_existing_candidate (nx, ny))
-			return true;
-	}
-	return false;
-}
-
-bool
-add_ai_candidate_entry (int district_id, short owner_civ_id, short * xs, short * ys, int count)
-{
-	if (count <= 0)
-		return false;
-	if (! ensure_ai_candidate_bridge_or_canals_capacity (is->ai_candidate_bridge_or_canals_count + 1))
-		return false;
-
-	struct ai_candidate_bridge_or_canal_entry * entry = &is->ai_candidate_bridge_or_canals[is->ai_candidate_bridge_or_canals_count];
-	entry->tile_x = (short *)malloc (sizeof *entry->tile_x * count);
-	entry->tile_y = (short *)malloc (sizeof *entry->tile_y * count);
-	if ((entry->tile_x == NULL) || (entry->tile_y == NULL)) {
-		if (entry->tile_x != NULL)
-			free (entry->tile_x);
-		if (entry->tile_y != NULL)
-			free (entry->tile_y);
-		return false;
-	}
-
-	entry->district_id = district_id;
-	entry->owner_civ_id = owner_civ_id;
-	entry->tile_count = (short)count;
-	entry->tile_capacity = count;
-	entry->assigned_tile_index = -1;
-	entry->assigned_worker_id = -1;
-	entry->completed = false;
-	for (int ti = 0; ti < count; ti++) {
-		entry->tile_x[ti] = xs[ti];
-		entry->tile_y[ti] = ys[ti];
-	}
-
-	struct pending_district_request * req = &entry->pending_req;
-	req->city = NULL;
-	req->city_id = -1;
-	req->civ_id = owner_civ_id;
-	req->district_id = district_id;
-	req->assigned_worker_id = -1;
-	req->target_x = -1;
-	req->target_y = -1;
-	req->worker_assigned_turn = 0;
-
-	is->ai_candidate_bridge_or_canals_count++;
-	return true;
-}
-
-int
-gather_bridge_line (int start_x, int start_y, int dx, int dy, int limit,
-		    int block_x0, int block_y0, int block_x1, int block_y1,
-		    short * out_x, short * out_y)
-{
-	int effective_limit = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, limit);
-
-	if (! tile_is_coastal_water (start_x, start_y))
-		return 0;
-	if (! bridge_tile_has_land_on_both_sides (start_x, start_y))
-		return 0;
-
-	short back_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
-	short back_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
-	short forward_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
-	short forward_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
-	int back_count = 0;
-	int forward_count = 0;
-	int remaining = effective_limit - 1;
-	Map * map = &p_bic_data->Map;
-
-	int cx = start_x;
-	int cy = start_y;
-	while ((remaining > 0) && (back_count < effective_limit)) {
-		int nx = cx - dx;
-		int ny = cy - dy;
-		wrap_tile_coords (map, &nx, &ny);
-		if (! tile_point_in_block (nx, ny, block_x0, block_y0, block_x1, block_y1))
-			break;
-		if (! tile_is_coastal_water (nx, ny))
-			break;
-		if (! bridge_tile_has_land_on_both_sides (nx, ny))
-			break;
-		if (tile_part_of_existing_candidate (nx, ny))
-			break;
-		back_x[back_count] = (short)nx;
-		back_y[back_count] = (short)ny;
-		back_count++;
-		remaining--;
-		cx = nx;
-		cy = ny;
-	}
-
-	cx = start_x;
-	cy = start_y;
-	while ((remaining > 0) && (forward_count < effective_limit)) {
-		int nx = cx + dx;
-		int ny = cy + dy;
-		wrap_tile_coords (map, &nx, &ny);
-		if (! tile_point_in_block (nx, ny, block_x0, block_y0, block_x1, block_y1))
-			break;
-		if (! tile_is_coastal_water (nx, ny))
-			break;
-		if (! bridge_tile_has_land_on_both_sides (nx, ny))
-			break;
-		if (tile_part_of_existing_candidate (nx, ny))
-			break;
-		forward_x[forward_count] = (short)nx;
-		forward_y[forward_count] = (short)ny;
-		forward_count++;
-		remaining--;
-		cx = nx;
-		cy = ny;
-	}
-
-	int write = 0;
-	for (int bi = back_count - 1; bi >= 0; bi--) {
-		out_x[write] = back_x[bi];
-		out_y[write] = back_y[bi];
-		write++;
-	}
-	out_x[write] = (short)start_x;
-	out_y[write] = (short)start_y;
-	write++;
-	for (int fi = 0; fi < forward_count; fi++) {
-		out_x[write] = forward_x[fi];
-		out_y[write] = forward_y[fi];
-		write++;
-	}
-
-	return write;
-}
-
-bool
-bridge_line_connects_two_continents (short * xs, short * ys, int count)
-{
-	for (int i = 0; i < count; i++) {
-		if (bridge_tile_connects_two_continents (xs[i], ys[i], -1))
-			return true;
-	}
-	return false;
-}
-
-int
-find_bridge_candidate_in_block (Map * map, int block_x0, int block_y0, int block_x1, int block_y1,
-				int contiguous_limit, int candidate_capacity,
-				short * out_x, short * out_y, short * out_owner)
-{
-	const int dirs[4][2] = {
-		{ 0, -2 }, { -2, 0 }, { -1, -1 }, { -1, 1 }
-	};
-
-	int max_len = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
-	if (candidate_capacity > 0 && max_len > candidate_capacity)
-		max_len = candidate_capacity;
-
-	for (int length = 1; length <= max_len; length++) {
-		for (int ti = 0; ti < map->TileCount; ti++) {
-			int tx = -1;
-			int ty = -1;
-			tile_index_to_coords (map, ti, &tx, &ty);
-			if (! tile_point_in_block (tx, ty, block_x0, block_y0, block_x1, block_y1))
-				continue;
-			Tile * tile = tile_at (tx, ty);
-			if ((tile == NULL) || (tile == p_null_tile))
-				continue;
-			if (tile_has_resource (tile))
-				continue;
-			if (! district_is_buildable_on_square_type (&is->district_configs[BRIDGE_DISTRICT_ID], tile))
-				continue;
-			if (tile_is_reserved_in_district_tile_map (tx, ty))
-				continue;
-			short owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
-
-			for (int di = 0; di < (int)(sizeof (dirs) / sizeof (dirs[0])); di++) {
-				int dx = dirs[di][0];
-				int dy = dirs[di][1];
-				int end_x = tx + dx * (length - 1);
-				int end_y = ty + dy * (length - 1);
-				wrap_tile_coords (map, &end_x, &end_y);
-				if (! tile_point_in_block (end_x, end_y, block_x0, block_y0, block_x1, block_y1))
-					continue;
-
-				bool ok = true;
-				for (int step = 0; step < length; step++) {
-					int cx = tx + dx * step;
-					int cy = ty + dy * step;
-					wrap_tile_coords (map, &cx, &cy);
-					if (! tile_point_in_block (cx, cy, block_x0, block_y0, block_x1, block_y1)) {
-						ok = false;
-						break;
-					}
-					if (! tile_exists_at (cx, cy)) {
-						ok = false;
-						break;
-					}
-					if (! tile_is_coastal_water (cx, cy)) {
-						ok = false;
-						break;
-					}
-					Tile * bridge_tile = tile_at (cx, cy);
-					if ((bridge_tile == NULL) || (bridge_tile == p_null_tile)) {
-						ok = false;
-						break;
-					}
-					if (tile_has_resource (bridge_tile)) {
-						ok = false;
-						break;
-					}
-					if (! district_is_buildable_on_square_type (&is->district_configs[BRIDGE_DISTRICT_ID], bridge_tile)) {
-						ok = false;
-						break;
-					}
-					if (tile_has_bridge_or_canal_nearby (cx, cy)) {
-						ok = false;
-						break;
-					}
-					if (tile_is_reserved_in_district_tile_map (cx, cy)) {
-						ok = false;
-						break;
-					}
-					if (tile_part_of_existing_candidate (cx, cy)) {
-						ok = false;
-						break;
-					}
-				}
-				if (! ok)
-					continue;
-
-				int land_ax = tx - dx;
-				int land_ay = ty - dy;
-				wrap_tile_coords (map, &land_ax, &land_ay);
-				if (! tile_point_in_block (land_ax, land_ay, block_x0, block_y0, block_x1, block_y1))
-					continue;
-				if (! tile_exists_at (land_ax, land_ay))
-					continue;
-				if (! tile_is_land (-1, land_ax, land_ay, false))
-					continue;
-				Tile * land_a = tile_at (land_ax, land_ay);
-				if ((land_a == NULL) || (land_a == p_null_tile))
-					continue;
-
-				int land_bx = tx + dx * length;
-				int land_by = ty + dy * length;
-				wrap_tile_coords (map, &land_bx, &land_by);
-				if (! tile_point_in_block (land_bx, land_by, block_x0, block_y0, block_x1, block_y1))
-					continue;
-				if (! tile_exists_at (land_bx, land_by))
-					continue;
-				if (! tile_is_land (-1, land_bx, land_by, false))
-					continue;
-				Tile * land_b = tile_at (land_bx, land_by);
-				if ((land_b == NULL) || (land_b == p_null_tile))
-					continue;
-
-				int cont_a = land_a->vtable->m46_Get_ContinentID (land_a);
-				int cont_b = land_b->vtable->m46_Get_ContinentID (land_b);
-				if ((cont_a < 0) || (cont_b < 0) || (cont_a == cont_b))
-					continue;
-
-				for (int step = 0; step < length; step++) {
-					int cx = tx + dx * step;
-					int cy = ty + dy * step;
-					wrap_tile_coords (map, &cx, &cy);
-					out_x[step] = (short)cx;
-					out_y[step] = (short)cy;
-				}
-				*out_owner = owner;
-				return length;
-			}
-		}
-	}
-	return 0;
-}
-
-int
-gather_canal_line (int start_x, int start_y, int dx, int dy, int limit,
-		   int block_x0, int block_y0, int block_x1, int block_y1,
-		   short * out_x, short * out_y)
-{
-	int effective_limit = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, limit);
-
-	if (! tile_is_land (-1, start_x, start_y, false))
-		return 0;
-	if (tile_part_of_existing_candidate (start_x, start_y))
-		return 0;
-
-	short back_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
-	short back_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
-	short forward_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
-	short forward_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
-	int back_count = 0;
-	int forward_count = 0;
-	int remaining = effective_limit - 1;
-	Map * map = &p_bic_data->Map;
-
-	int cx = start_x;
-	int cy = start_y;
-	while ((remaining > 0) && (back_count < effective_limit)) {
-		int nx = cx - dx;
-		int ny = cy - dy;
-		wrap_tile_coords (map, &nx, &ny);
-		if (! tile_point_in_block (nx, ny, block_x0, block_y0, block_x1, block_y1))
-			break;
-		if (! tile_is_land (-1, nx, ny, false))
-			break;
-		if (tile_part_of_existing_candidate (nx, ny))
-			break;
-		back_x[back_count] = (short)nx;
-		back_y[back_count] = (short)ny;
-		back_count++;
-		remaining--;
-		cx = nx;
-		cy = ny;
-	}
-
-	cx = start_x;
-	cy = start_y;
-	while ((remaining > 0) && (forward_count < effective_limit)) {
-		int nx = cx + dx;
-		int ny = cy + dy;
-		wrap_tile_coords (map, &nx, &ny);
-		if (! tile_point_in_block (nx, ny, block_x0, block_y0, block_x1, block_y1))
-			break;
-		if (! tile_is_land (-1, nx, ny, false))
-			break;
-		if (tile_part_of_existing_candidate (nx, ny))
-			break;
-		forward_x[forward_count] = (short)nx;
-		forward_y[forward_count] = (short)ny;
-		forward_count++;
-		remaining--;
-		cx = nx;
-		cy = ny;
-	}
-
-	int write = 0;
-	for (int bi = back_count - 1; bi >= 0; bi--) {
-		out_x[write] = back_x[bi];
-		out_y[write] = back_y[bi];
-		write++;
-	}
-	out_x[write] = (short)start_x;
-	out_y[write] = (short)start_y;
-	write++;
-	for (int fi = 0; fi < forward_count; fi++) {
-		out_x[write] = forward_x[fi];
-		out_y[write] = forward_y[fi];
-		write++;
-	}
-
-	return write;
-}
-
-bool
-cluster_connects_two_seas_or_isthmus (short * xs, short * ys, int count)
-{
-	for (int i = 0; i < count; i++) {
-		if (canal_has_different_adjacent_seas (xs[i], ys[i], -1))
-			return true;
-		if (canal_has_same_sea_isthmus (xs[i], ys[i], -1, 2))
-			return true;
-	}
-	return false;
-}
-
-int
-find_canal_candidate_in_block (Map * map, int block_x0, int block_y0, int block_x1, int block_y1,
-			       int contiguous_limit, int candidate_capacity,
-			       short * out_x, short * out_y, short * out_owner)
-{
-	const int dir_dx[8] = { 0, 1, 2, 1, 0, -1, -2, -1 };
-	const int dir_dy[8] = { -2, -1, 0, 1, 2, 1, 0, -1 };
-
-	int max_len = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
-	if (candidate_capacity > 0 && max_len > candidate_capacity)
-		max_len = candidate_capacity;
-
-	int tile_count = map->TileCount;
-	int * visit = (int *)malloc (sizeof (*visit) * tile_count);
-	int * queue_x = (int *)malloc (sizeof (*queue_x) * tile_count);
-	int * queue_y = (int *)malloc (sizeof (*queue_y) * tile_count);
-	if ((visit == NULL) || (queue_x == NULL) || (queue_y == NULL)) {
-		if (visit != NULL)
-			free (visit);
-		if (queue_x != NULL)
-			free (queue_x);
-		if (queue_y != NULL)
-			free (queue_y);
-		return 0;
-	}
-	for (int i = 0; i < tile_count; i++)
-		visit[i] = 0;
-
-	int visit_mark = 1;
-
-	for (int length = 1; length <= max_len; length++) {
-		for (int ti = 0; ti < map->TileCount; ti++) {
-			int start_x = -1;
-			int start_y = -1;
-			tile_index_to_coords (map, ti, &start_x, &start_y);
-			if (! tile_point_in_block (start_x, start_y, block_x0, block_y0, block_x1, block_y1))
-				continue;
-			if (! tile_is_land (-1, start_x, start_y, false))
-				continue;
-			if (tile_part_of_existing_candidate (start_x, start_y))
-				continue;
-			if (tile_has_bridge_or_canal_nearby (start_x, start_y))
-				continue;
-			if (tile_is_reserved_in_district_tile_map (start_x, start_y))
-				continue;
-			Tile * start_tile = tile_at (start_x, start_y);
-			if ((start_tile == NULL) || (start_tile == p_null_tile))
-				continue;
-			if (tile_has_resource (start_tile))
-				continue;
-			if (! district_is_buildable_on_square_type (&is->district_configs[CANAL_DISTRICT_ID], start_tile))
-				continue;
-			int continent_id = start_tile->vtable->m46_Get_ContinentID (start_tile);
-			if (continent_id < 0)
-				continue;
-			short owner = start_tile->vtable->m38_Get_Territory_OwnerID (start_tile);
-
-				int stack_len = 1;
-				int dir_stack[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
-				int path_dir[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
-				out_x[0] = (short)start_x;
-				out_y[0] = (short)start_y;
-				dir_stack[0] = -1;
-				path_dir[0] = -1;
-
-				while (stack_len > 0) {
-					int depth = stack_len - 1;
-					int cx = out_x[depth];
-					int cy = out_y[depth];
-
-					if (depth + 1 == length) {
-						bool endpoints_ok = false;
-						if (length == 1) {
-							int ex = out_x[0];
-							int ey = out_y[0];
-							bool pair_ok = false;
-							if (tile_is_water (ex, ey - 2) && tile_is_water (ex, ey + 2)) pair_ok = true;
-							if (tile_is_water (ex - 2, ey) && tile_is_water (ex + 2, ey)) pair_ok = true;
-							if (tile_is_water (ex - 1, ey - 1) && tile_is_water (ex + 1, ey + 1)) pair_ok = true;
-							if (tile_is_water (ex - 1, ey + 1) && tile_is_water (ex + 1, ey - 1)) pair_ok = true;
-							if (pair_ok && tile_has_diagonal_water (ex, ey))
-								endpoints_ok = true;
-						} else {
-							int first_dir = path_dir[1];
-							int last_dir = path_dir[length - 1];
-							int sx = out_x[0];
-							int sy = out_y[0];
-							int ex = out_x[length - 1];
-							int ey = out_y[length - 1];
-							bool start_water = tile_is_water (sx - dir_dx[first_dir], sy - dir_dy[first_dir]);
-							bool end_water = tile_is_water (ex + dir_dx[last_dir], ey + dir_dy[last_dir]);
-							if (start_water && end_water &&
-							    tile_has_diagonal_water (sx, sy) &&
-							    tile_has_diagonal_water (ex, ey))
-								endpoints_ok = true;
-						}
-
-						bool buildable = true;
-						if (endpoints_ok) {
-							for (int pi = 0; pi < length; pi++) {
-								Tile * path_tile = tile_at (out_x[pi], out_y[pi]);
-								if ((path_tile == NULL) || (path_tile == p_null_tile) ||
-								    tile_has_resource (path_tile) ||
-								    (! district_is_buildable_on_square_type (&is->district_configs[CANAL_DISTRICT_ID], path_tile)) ||
-								    tile_is_reserved_in_district_tile_map (out_x[pi], out_y[pi])) {
-									buildable = false;
-									break;
-								}
-								if (tile_has_bridge_or_canal_nearby (out_x[pi], out_y[pi])) {
-									buildable = false;
-									break;
-								}
-							}
-						} else {
-							buildable = false;
-						}
-
-						if (buildable) {
-							// Collect adjacent land tiles for component checks
-							int adj_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES * 8];
-							int adj_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES * 8];
-							int adj_count = 0;
-							for (int pi = 0; pi < length; pi++) {
-								int px = out_x[pi];
-								int py = out_y[pi];
-								for (int di = 0; di < 8; di++) {
-									int nx = px + dir_dx[di];
-									int ny = py + dir_dy[di];
-									wrap_tile_coords (map, &nx, &ny);
-									if (! tile_is_land (-1, nx, ny, false))
-										continue;
-									Tile * adj = tile_at (nx, ny);
-									if ((adj == NULL) || (adj == p_null_tile))
-										continue;
-									if (adj->vtable->m46_Get_ContinentID (adj) != continent_id)
-										continue;
-									bool in_path = false;
-									for (int pj = 0; pj < length; pj++) {
-										if ((out_x[pj] == nx) && (out_y[pj] == ny)) {
-											in_path = true;
-											break;
-										}
-									}
-									if (in_path)
-										continue;
-									bool seen = false;
-									for (int aj = 0; aj < adj_count; aj++) {
-										if ((adj_x[aj] == nx) && (adj_y[aj] == ny)) {
-											seen = true;
-											break;
-										}
-									}
-									if (! seen && (adj_count < (int)(sizeof (adj_x) / sizeof (adj_x[0])))) {
-										adj_x[adj_count] = nx;
-										adj_y[adj_count] = ny;
-										adj_count++;
-									}
-								}
-							}
-
-							if (adj_count >= 2) {
-								int best1 = 0;
-								int best2 = 0;
-								int min_land = is->current_config.ai_canal_eval_min_bisected_land_tiles;
-								if (min_land < 1)
-									min_land = 1;
-								visit_mark++;
-								if (visit_mark == 0) {
-									visit_mark = 1;
-									for (int i = 0; i < tile_count; i++)
-										visit[i] = 0;
-								}
-
-								for (int ai = 0; ai < adj_count; ai++) {
-									int aidx = tile_coords_to_index (map, adj_x[ai], adj_y[ai]);
-									if ((aidx < 0) || (visit[aidx] == visit_mark))
-										continue;
-
-									int comp_size = 0;
-									int head = 0;
-									int tail = 0;
-									visit[aidx] = visit_mark;
-									queue_x[tail] = adj_x[ai];
-									queue_y[tail] = adj_y[ai];
-									tail++;
-
-									while (head < tail) {
-										int qx = queue_x[head];
-										int qy = queue_y[head];
-										head++;
-										comp_size++;
-										for (int di = 0; di < 8; di++) {
-											int nx = qx + dir_dx[di];
-											int ny = qy + dir_dy[di];
-											wrap_tile_coords (map, &nx, &ny);
-											if (! tile_is_land (-1, nx, ny, false))
-												continue;
-											Tile * adj = tile_at (nx, ny);
-											if ((adj == NULL) || (adj == p_null_tile))
-												continue;
-											if (adj->vtable->m46_Get_ContinentID (adj) != continent_id)
-												continue;
-											bool blocked = false;
-											for (int pj = 0; pj < length; pj++) {
-												if ((out_x[pj] == nx) && (out_y[pj] == ny)) {
-													blocked = true;
-													break;
-												}
-											}
-											if (blocked)
-												continue;
-											int nidx = tile_coords_to_index (map, nx, ny);
-											if ((nidx < 0) || (visit[nidx] == visit_mark))
-												continue;
-											visit[nidx] = visit_mark;
-											queue_x[tail] = nx;
-											queue_y[tail] = ny;
-											tail++;
-										}
-									}
-
-									if (comp_size > best1) {
-										best2 = best1;
-										best1 = comp_size;
-									} else if (comp_size > best2) {
-										best2 = comp_size;
-									}
-								}
-
-								if ((best1 >= min_land) && (best2 >= min_land)) {
-									*out_owner = owner;
-									free (visit);
-									free (queue_x);
-									free (queue_y);
-									return length;
-								}
-							}
-						}
-						dir_stack[depth] = -1;
-						stack_len--;
-						continue;
-					}
-
-					int next_dir = dir_stack[depth] + 1;
-					bool advanced = false;
-					while (next_dir < 8) {
-						int ndx = dir_dx[next_dir];
-						int ndy = dir_dy[next_dir];
-						int nx = cx + ndx;
-						int ny = cy + ndy;
-						wrap_tile_coords (map, &nx, &ny);
-						dir_stack[depth] = next_dir;
-
-						if (! tile_point_in_block (nx, ny, block_x0, block_y0, block_x1, block_y1)) {
-							next_dir++;
-							continue;
-						}
-						if (! tile_is_land (-1, nx, ny, false)) {
-							next_dir++;
-							continue;
-						}
-						if (tile_part_of_existing_candidate (nx, ny)) {
-							next_dir++;
-							continue;
-						}
-						if (tile_is_reserved_in_district_tile_map (nx, ny)) {
-							next_dir++;
-							continue;
-						}
-						Tile * next_tile = tile_at (nx, ny);
-						if ((next_tile == NULL) || (next_tile == p_null_tile)) {
-							next_dir++;
-							continue;
-						}
-						if (tile_has_resource (next_tile)) {
-							next_dir++;
-							continue;
-						}
-						if (! district_is_buildable_on_square_type (&is->district_configs[CANAL_DISTRICT_ID], next_tile)) {
-							next_dir++;
-							continue;
-						}
-						if (tile_has_bridge_or_canal_nearby (nx, ny)) {
-							next_dir++;
-							continue;
-						}
-						if (next_tile->vtable->m46_Get_ContinentID (next_tile) != continent_id) {
-							next_dir++;
-							continue;
-						}
-						bool dup = false;
-						for (int pi = 0; pi < depth + 1; pi++) {
-							if ((out_x[pi] == nx) && (out_y[pi] == ny)) {
-								dup = true;
-								break;
-							}
-						}
-						if (dup) {
-							next_dir++;
-							continue;
-						}
-
-						if (depth >= 1) {
-							int prev_dir = dir_stack[depth - 1];
-							int diff = next_dir - prev_dir;
-							if (diff < 0)
-								diff += 8;
-							if (diff > 4)
-								diff = 8 - diff;
-							if (diff > 1) {
-								next_dir++;
-								continue;
-							}
-						}
-
-						out_x[depth + 1] = (short)nx;
-						out_y[depth + 1] = (short)ny;
-						dir_stack[depth + 1] = -1;
-						path_dir[depth + 1] = next_dir;
-						stack_len++;
-						advanced = true;
-						break;
-					}
-
-					if (! advanced) {
-						dir_stack[depth] = -1;
-						stack_len--;
-					}
-				}
-			}
-	}
-
-	free (visit);
-	free (queue_x);
-	free (queue_y);
-	return 0;
-}
-
-void
-generate_ai_bridge_candidates_by_block (Map * map, int block_size, int contiguous_limit)
-{
-	if ((map == NULL) || (block_size <= 0))
-		return;
-
-	int width = map->Width;
-	int height = map->Height;
-	if ((width <= 0) || (height <= 0))
-		return;
-
-	if (block_size < 1)
-		block_size = 1;
-
-	int candidate_capacity = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
-
-	short * candidate_x = (short *)malloc (sizeof *candidate_x * candidate_capacity);
-	short * candidate_y = (short *)malloc (sizeof *candidate_y * candidate_capacity);
-	if ((candidate_x == NULL) || (candidate_y == NULL)) {
-		if (candidate_x != NULL)
-			free (candidate_x);
-		if (candidate_y != NULL)
-			free (candidate_y);
-		return;
-	}
-
-	for (int base_y = 0; base_y < height; base_y += block_size) {
-		int block_y1 = base_y + block_size;
-		if (block_y1 > height)
-			block_y1 = height;
-		for (int base_x = 0; base_x < width; base_x += block_size) {
-			int block_x1 = base_x + block_size;
-			if (block_x1 > width)
-				block_x1 = width;
-			short owner = -1;
-			int count = find_bridge_candidate_in_block (
-				map, base_x, base_y, block_x1, block_y1,
-				contiguous_limit, candidate_capacity,
-				candidate_x, candidate_y, &owner);
-			if (count <= 0)
-				continue;
-			if (! add_ai_candidate_entry (BRIDGE_DISTRICT_ID, owner, candidate_x, candidate_y, count)) {
-				free (candidate_x);
-				free (candidate_y);
-				return;
-			}
-		}
-	}
-
-	free (candidate_x);
-	free (candidate_y);
-}
-
-void
-generate_ai_canal_candidates_by_block (Map * map, int block_size, int contiguous_limit)
-{
-	if ((map == NULL) || (block_size <= 0))
-		return;
-
-	int width = map->Width;
-	int height = map->Height;
-	if ((width <= 0) || (height <= 0))
-		return;
-
-	if (block_size < 1)
-		block_size = 1;
-
-	int candidate_capacity = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
-
-	short * candidate_x = (short *)malloc (sizeof *candidate_x * candidate_capacity);
-	short * candidate_y = (short *)malloc (sizeof *candidate_y * candidate_capacity);
-	if ((candidate_x == NULL) || (candidate_y == NULL)) {
-		if (candidate_x != NULL)
-			free (candidate_x);
-		if (candidate_y != NULL)
-			free (candidate_y);
-		return;
-	}
-
-	for (int base_y = 0; base_y < height; base_y += block_size) {
-		int block_y1 = base_y + block_size;
-		if (block_y1 > height)
-			block_y1 = height;
-		for (int base_x = 0; base_x < width; base_x += block_size) {
-			int block_x1 = base_x + block_size;
-			if (block_x1 > width)
-				block_x1 = width;
-			short owner = -1;
-			int count = find_canal_candidate_in_block (
-				map, base_x, base_y, block_x1, block_y1,
-				contiguous_limit, candidate_capacity,
-				candidate_x, candidate_y, &owner);
-			if (count <= 0)
-				continue;
-			if (! add_ai_candidate_entry (CANAL_DISTRICT_ID, owner, candidate_x, candidate_y, count)) {
-				free (candidate_x);
-				free (candidate_y);
-				return;
-			}
-		}
-	}
-
-	free (candidate_x);
-	free (candidate_y);
-}
-
-void
-generate_ai_canal_and_bridge_targets ()
-{
-	if (is->ai_candidate_bridge_or_canals_initialized)
-		return;
-	if ((! is->current_config.enable_canal_districts) && (! is->current_config.enable_bridge_districts))
-		return;
-
-	Map * map = &p_bic_data->Map;
-	int width = map->Width;
-	int height = map->Height;
-	if ((width <= 0) || (height <= 0))
-		return;
-
-	int block_size = is->current_config.ai_bridge_canal_eval_block_size;
-	if (block_size <= 0)
-		block_size = 10;
-
-	if (is->current_config.enable_canal_districts) {
-		generate_ai_canal_candidates_by_block (
-			map,
-			block_size,
-			is->current_config.max_contiguous_canal_districts);
-	}
-
-	if (is->current_config.enable_bridge_districts) {
-		generate_ai_bridge_candidates_by_block (
-			map,
-			block_size,
-			is->current_config.max_contiguous_bridge_districts);
-	}
-
-	is->ai_candidate_bridge_or_canals_initialized = true;
-}
 int
 count_contiguous_bridge_districts (int tile_x, int tile_y, int dx, int dy)
 {
@@ -23535,12 +23544,6 @@ patch_Map_impl_generate (Map * this, int edx, int seed, bool is_multiplayer_game
 {
 	Map_impl_generate (this, __, seed, is_multiplayer_game, num_seafaring_civs);
 
-	if (is->current_config.enable_districts && 
-		(is->current_config.enable_bridge_districts || is->current_config.enable_canal_districts)) {
-		reset_ai_candidate_bridge_or_canals ();
-		generate_ai_canal_and_bridge_targets ();
-	}
-
 	if (is->current_config.enable_natural_wonders)
 		place_natural_wonders_on_map ();
 }
@@ -27126,13 +27129,6 @@ patch_Map_place_scenario_things (Map * this)
 		if (! any_natural_wonders)
 			place_natural_wonders_on_map ();
 	}
-
-	if (is->current_config.enable_districts && 
-		(is->current_config.enable_bridge_districts || is->current_config.enable_canal_districts)) {
-		reset_ai_candidate_bridge_or_canals ();
-		generate_ai_canal_and_bridge_targets ();
-	}
-
 	is->is_placing_scenario_things = false;
 }
 
@@ -30576,16 +30572,24 @@ align_district_with_river (Tile * tile, int * out_pixel_x, int * out_pixel_y, en
 	if (! get_primary_river_direction (tile, &dir))
 		return;
 
-	int dx = 0, dy = 0;
+	int dx, dy;
+	bool under = false;
+	direction_to_offset (dir, &dx, &dy);
+	if (dy < 0)
+		under = true;
+
+	int offset = 16*2;
+
+	dx = 0, dy = 0;
 	switch (dir) {
-		case DIR_N:  dx =   0; dy = -32; break;
-		case DIR_NE: dx =  32; dy = -16; break;
-		case DIR_E:  dx =  64; dy =   0; break;
-		case DIR_SE: dx =  32; dy =  16; break;
-		case DIR_S:  dx =   0; dy =  32; break;
-		case DIR_SW: dx = -32; dy =  16; break;
-		case DIR_W:  dx = -64; dy =   0; break;
-		case DIR_NW: dx = -32; dy = -16; break;
+		case DIR_N:  /* dx =   0;       */ dy = -offset;   break;
+		case DIR_NE: /* dx =  offset;   */ dy = -offset/2; break;
+		case DIR_E:  /* dx =  offset*2; */ dy =   0;       break;
+		case DIR_SE: /* dx =  offset;   */ dy =  offset/2; break;
+		case DIR_S:  /* dx =   0;       */ dy =  offset;   break;
+		case DIR_SW: /* dx = -offset;   */ dy =  offset/2; break;
+		case DIR_W:  /* dx = -offset*2; */ dy =   0;       break;
+		case DIR_NW: /* dx = -offset;   */ dy = -offset/2; break;
 		default: break;
 	}
 
@@ -30873,8 +30877,15 @@ wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner
 		enum direction river_dir = DIR_ZERO;
 		if (get_primary_river_direction (center, &river_dir)) {
 			int dx, dy;
-			if (direction_to_offset (river_dir, &dx, &dy))
+
+			if (direction_to_offset (river_dir, &dx, &dy)) {
+				// I'm not completely sure of the logic here, but this seems to match the vanilla behavior
+				// in terms of having the wonder face the general direction of the river flow
+				if (dx == 2)
+					return false;
+
 				return dx > 0;
+			}
 		}
 	}
 
@@ -31310,8 +31321,6 @@ draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * ma
 
 	if (!wall_nw && !wall_ne && wall_n && water_ne)     
 		draw_district_on_map_or_canvas(&sprites[DIR_N], map_renderer, pixel_x, pixel_y);
-	if (!wall_se && !wall_s && water_nw) 
-		draw_district_on_map_or_canvas(&sprites[DIR_NE], map_renderer, pixel_x, pixel_y);
 	if (!wall_ne && wall_n && water_nw)
 		draw_district_on_map_or_canvas(&sprites[DIR_N], map_renderer, pixel_x, pixel_y);
 	if (water_sw && water_nw && !water_w)
@@ -31325,8 +31334,6 @@ draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * ma
 	if (wall_sw) draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
 	if (wall_se) draw_district_on_map_or_canvas(&sprites[DIR_SE], map_renderer, pixel_x, pixel_y);
 
-	if (!wall_sw && !wall_nw && !wall_s && water_w && !water_n)     
-		draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
 	if (!wall_sw && !wall_se && wall_s && water_sw)     
 		draw_district_on_map_or_canvas(&sprites[DIR_S], map_renderer, pixel_x, pixel_y);
 	if (!wall_se && wall_s && water_se)
