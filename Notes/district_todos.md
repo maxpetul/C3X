@@ -4,17 +4,17 @@
     - Canal (2 opposite sides have coast "isthmus")
     - Bridge (2 opposite sides have land "strait" or bridges)
   - Light annotations
-  - Add commented instructions on fields in Wonder, Natural Wonder config files
   - Double check PCX third column alignment, clean up ground in industrial zone, Newton's University, Grand Cathedral?
 
-  - To ask Flintlock
-    - Enabling pillage button for naval units
-    - Worker on coast wake up issue
-    - Colony structure and loop for relation penalty
+## To ask Flintlock
+  - Enabling pillage button for naval units
+  - Worker on coast wake up issue
+  - Colony structure and loop for relation penalty
 
 
 ## Maritime Districts
   - ~~Negative bonuses~~
+  - ~~Add commented instructions on fields in Wonder, Natural Wonder config files~~
   - ~~Firm up logic for river district rendering~~
   - ~~Validate and upfront bridge/canal algorithm~~
   - ~~Validate resource generation~~

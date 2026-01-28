@@ -6,6 +6,23 @@
 [be used.                                                                                                                                            ]
 [====================================================================================================================================================]
 
+[
+  ;  Wonder config fields (each Wonder block begins with "#Wonder")
+  ;  - name                         : Text (required). Must match the in-game Wonder improvement name.
+  ;  - buildable_on                 : Comma-separated square types: desert, plains, grassland, tundra, floodplain, hills, mountains, forest, jungle, swamp, volcano,
+                                                                    coast, sea, ocean, river, snow-forest, snow-mountains, snow-volcano, mine, irrigation, any.
+  ;  - img_path                     : Text. PCX filename (under Art/Districts/1200/). Defaults to Wonders.pcx if omitted.
+  ;  - img_construct_row            : Number (required). Row index in the PCX for the "under construction" wonder art (0-based).
+  ;  - img_construct_column         : Number (required). Column index in the PCX for the "under construction" wonder art (0-based).
+  ;  - img_row                      : Number (required). Row index in the PCX for the completed wonder art (0-based).
+  ;  - img_column                   : Number (required). Column index in the PCX for the completed wonder art (0-based).
+  ;  - enable_img_alt_dir           : 0 or 1. If 1, use alternate art when river/city direction implies a flip (see img_alt_dir_* fields).
+  ;  - img_alt_dir_construct_row    : Number. Row index for alternate "under construction" art (0-based).
+  ;  - img_alt_dir_construct_column : Number. Column index for alternate "under construction" art (0-based).
+  ;  - img_alt_dir_row              : Number. Row index for alternate completed art (0-based).
+  ;  - img_alt_dir_column           : Number. Column index for alternate completed art (0-based).
+]
+
 #Wonder
 name                 = The Pyramids
 buildable_on         = desert
