@@ -30578,7 +30578,7 @@ align_district_with_river (Tile * tile, int * out_pixel_x, int * out_pixel_y, en
 	if (dy < 0)
 		under = true;
 
-	int offset = 16*2;
+	int offset = 36;
 
 	dx = 0, dy = 0;
 	switch (dir) {

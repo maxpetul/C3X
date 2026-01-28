@@ -1,7 +1,6 @@
   - Validate and upfront bridge/canal algorithm
   - Firm up logic for river district rendering
 
-  - Hoover Dam (use alt dir, special positioning b/c on river)
   - Districts: 
     - Central Rail Hub (+25% distro hub yields)
      - Mass Transit System
@@ -81,6 +80,7 @@
   - ~~Refine logic for air units using aerodrome~~
   - ~~Add buildable_by_civs, buildable_by_civ_traits, buildable_by_civ_govs, buildable_by_civ_cultures~~
   - ~~Support for buildable_on "irrigation", "mine"~~
+  - ~~Hoover Dam (use alt dir, special positioning b/c on river)~~
   - ~~Other districts:~~
    - ~~Ski Resort~~
    - ~~Park~~
