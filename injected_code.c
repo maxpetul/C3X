@@ -31246,6 +31246,13 @@ get_bridge_image_index (Tile * tile, int tile_x, int tile_y)
 	int N_S   = 2;
 	int W_E   = 3;
 
+	if ((tile->vtable->m42_Get_Overlays (tile, __, 0) & TILE_FLAG_RAILROAD) != 0) {
+		SW_NE += 4;
+		NW_SE += 4;
+		N_S   += 4;
+		W_E   += 4;
+	}
+
 	bool bridge_n  = tile_has_district_at (tile_x, tile_y - 2, BRIDGE_DISTRICT_ID);
 	bool bridge_s  = tile_has_district_at (tile_x, tile_y + 2, BRIDGE_DISTRICT_ID);
 	bool bridge_w  = tile_has_district_at (tile_x - 2, tile_y, BRIDGE_DISTRICT_ID);

@@ -1,7 +1,6 @@
   - Districts: 
     - Municipal District (ZergMazter doing art)
     - Central Rail Hub  (ZergMazter doing art)
-    - Canal (2 opposite sides have coast "isthmus")
   - Light annotations
 
 ## To ask Flintlock
