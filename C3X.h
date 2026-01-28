@@ -664,8 +664,11 @@ struct district_config {
 	char const * wonder_prereqs[MAX_DISTRICT_DEPENDENTS];
 	char const * natural_wonder_prereqs[MAX_DISTRICT_DEPENDENTS];
 	char const * buildable_on_districts[MAX_DISTRICT_DEPENDENTS];
+	char const * buildable_adjacent_to_districts[MAX_DISTRICT_DEPENDENTS];
 	char const * img_paths[10];
 	unsigned int buildable_square_types_mask;
+	unsigned int buildable_adjacent_to_square_types_mask;
+	bool buildable_adjacent_to_allows_city;
 	bool allow_multiple;
 	bool vary_img_by_era;
 	bool vary_img_by_culture;
@@ -686,6 +689,7 @@ struct district_config {
 	int wonder_prereq_count;
 	int natural_wonder_prereq_count;
 	int buildable_on_district_count;
+	int buildable_adjacent_to_district_count;
 	int img_path_count;
 	int max_building_index;
 	int btn_tile_sheet_column;
@@ -711,6 +715,10 @@ struct district_config {
 	int buildable_on_district_ids[MAX_DISTRICT_DEPENDENTS];
 	int buildable_on_district_id_count;
 	bool has_buildable_on_districts;
+	int buildable_adjacent_to_district_ids[MAX_DISTRICT_DEPENDENTS];
+	int buildable_adjacent_to_district_id_count;
+	bool has_buildable_adjacent_to;
+	bool has_buildable_adjacent_to_districts;
 	char const * buildable_by_civs[32];
 	int buildable_by_civ_count;
 	bool has_buildable_by_civs;
@@ -904,12 +912,14 @@ struct parsed_district_definition {
 	char * wonder_prereqs[5];
 	char * natural_wonder_prereqs[5];
 	char * buildable_on_districts[5];
+	char * buildable_adjacent_to_districts[5];
 	char * img_paths[5];
 	int resource_prereq_count;
 	int dependent_improvement_count;
 	int wonder_prereq_count;
 	int natural_wonder_prereq_count;
 	int buildable_on_district_count;
+	int buildable_adjacent_to_district_count;
 	int img_path_count;
 	bool allow_multiple;
 	bool vary_img_by_era;
@@ -943,6 +953,8 @@ struct parsed_district_definition {
 	struct district_bonus_list happiness_bonus_extras;
 	struct district_bonus_list defense_bonus_extras;
 	unsigned int buildable_square_types_mask;
+	unsigned int buildable_adjacent_to_square_types_mask;
+	bool buildable_adjacent_to_allows_city;
 	char * buildable_by_civs[32];
 	int buildable_by_civ_count;
 	bool buildable_by_war_allies;
@@ -979,6 +991,7 @@ struct parsed_district_definition {
 	bool has_shield_bonus;
 	bool has_happiness_bonus;
 	bool has_buildable_on;
+	bool has_buildable_adjacent_to;
 	bool has_resource_prereq_on_tile;
 	bool has_buildable_by_civs;
 	bool has_buildable_by_war_allies;
@@ -1002,6 +1015,7 @@ struct parsed_district_definition {
 	int buildable_by_civ_cultures_id_count;
 	bool has_buildable_by_civ_cultures;
 	bool has_buildable_on_districts;
+	bool has_buildable_adjacent_to_districts;
 	bool has_allow_irrigation_from;
 	bool has_auto_add_road;
 	bool has_auto_add_railroad;

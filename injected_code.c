@@ -1894,42 +1894,6 @@ tile_matches_square_type_mask (Tile * tile, unsigned int mask)
 }
 
 bool
-district_is_buildable_on_square_type (struct district_config const * cfg, Tile * tile)
-{
-	if ((cfg == NULL) || (tile == NULL) || (tile == p_null_tile))
-		return false;
-
-	unsigned int mask = cfg->buildable_square_types_mask;
-	if (mask == 0)
-		mask = district_default_buildable_mask ();
-
-	if (! tile_matches_square_type_mask (tile, mask))
-		return false;
-
-	if (cfg->has_buildable_on_districts) {
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL)
-			return false;
-
-		int existing_district_id = inst->district_id;
-		if (! district_is_complete (tile, existing_district_id))
-			return false;
-
-		bool matches = false;
-		for (int i = 0; i < cfg->buildable_on_district_id_count; i++) {
-			if (cfg->buildable_on_district_ids[i] == existing_district_id) {
-				matches = true;
-				break;
-			}
-		}
-		if (! matches)
-			return false;
-	}
-
-	return true;
-}
-
-bool
 read_natural_wonder_terrain_type (struct string_slice const * s, enum SquareTypes * out_type)
 {
 	enum SquareTypes parsed;
@@ -3649,6 +3613,94 @@ bool
 tile_square_type_is (Tile * tile, enum SquareTypes type)
 {
 	return tile_matches_square_type (tile, type);
+}
+
+bool
+district_is_buildable_on_square_type (struct district_config const * cfg, Tile * tile)
+{
+	if ((cfg == NULL) || (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	unsigned int mask = cfg->buildable_square_types_mask;
+	if (mask == 0)
+		mask = district_default_buildable_mask ();
+
+	if (! tile_matches_square_type_mask (tile, mask))
+		return false;
+
+	if (cfg->has_buildable_on_districts) {
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst == NULL)
+			return false;
+
+		int existing_district_id = inst->district_id;
+		if (! district_is_complete (tile, existing_district_id))
+			return false;
+
+		bool matches = false;
+		for (int i = 0; i < cfg->buildable_on_district_id_count; i++) {
+			if (cfg->buildable_on_district_ids[i] == existing_district_id) {
+				matches = true;
+				break;
+			}
+		}
+		if (! matches)
+			return false;
+	}
+
+	if (cfg->has_buildable_adjacent_to || cfg->has_buildable_adjacent_to_districts) {
+		int tile_x, tile_y;
+		if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
+			return false;
+
+		if (cfg->has_buildable_adjacent_to) {
+			bool matches = false;
+			bool city_adjacent = false;
+			FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+				if (tai.n == 0)
+					continue;
+				if (Tile_has_city (tai.tile)) {
+					city_adjacent = true;
+					if (cfg->buildable_adjacent_to_allows_city)
+						matches = true;
+				}
+				if (tile_matches_square_type_mask (tai.tile, cfg->buildable_adjacent_to_square_types_mask))
+					matches = true;
+				if (matches && (cfg->buildable_adjacent_to_allows_city || ! city_adjacent))
+					break;
+			}
+			if (city_adjacent && ! cfg->buildable_adjacent_to_allows_city)
+				return false;
+			if (! matches)
+				return false;
+		}
+
+		if (cfg->has_buildable_adjacent_to_districts) {
+			bool matches = false;
+			FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+				if (tai.n == 0)
+					continue;
+				struct district_instance * adj_inst = get_district_instance (tai.tile);
+				if (adj_inst == NULL)
+					continue;
+				int adj_district_id = adj_inst->district_id;
+				if (! district_is_complete (tai.tile, adj_district_id))
+					continue;
+				for (int i = 0; i < cfg->buildable_adjacent_to_district_id_count; i++) {
+					if (cfg->buildable_adjacent_to_district_ids[i] == adj_district_id) {
+						matches = true;
+						break;
+					}
+				}
+				if (matches)
+					break;
+			}
+			if (! matches)
+				return false;
+		}
+	}
+
+	return true;
 }
 
 bool
@@ -6856,6 +6908,16 @@ free_dynamic_district_config (struct district_config * cfg)
 	cfg->buildable_on_district_count = 0;
 	cfg->buildable_on_district_id_count = 0;
 	cfg->has_buildable_on_districts = false;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_adjacent_to_districts); i++) {
+		if (cfg->buildable_adjacent_to_districts[i] != NULL) {
+			free ((void *)cfg->buildable_adjacent_to_districts[i]);
+			cfg->buildable_adjacent_to_districts[i] = NULL;
+		}
+	}
+	cfg->buildable_adjacent_to_district_count = 0;
+	cfg->buildable_adjacent_to_district_id_count = 0;
+	cfg->has_buildable_adjacent_to = false;
+	cfg->has_buildable_adjacent_to_districts = false;
 
 	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
 		if (cfg->buildable_by_civs[i] != NULL) {
@@ -7033,6 +7095,20 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 	cfg->buildable_on_district_count = defaults->buildable_on_district_count;
 	cfg->buildable_on_district_id_count = defaults->buildable_on_district_id_count;
 	cfg->has_buildable_on_districts = defaults->has_buildable_on_districts;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_adjacent_to_districts); i++) {
+		char const * default_value = (i < defaults->buildable_adjacent_to_district_count)
+			? defaults->buildable_adjacent_to_districts[i]
+			: NULL;
+		if ((cfg->buildable_adjacent_to_districts[i] != NULL) &&
+		    (cfg->buildable_adjacent_to_districts[i] != default_value)) {
+			free ((void *)cfg->buildable_adjacent_to_districts[i]);
+		}
+		cfg->buildable_adjacent_to_districts[i] = NULL;
+	}
+	cfg->buildable_adjacent_to_district_count = defaults->buildable_adjacent_to_district_count;
+	cfg->buildable_adjacent_to_district_id_count = defaults->buildable_adjacent_to_district_id_count;
+	cfg->has_buildable_adjacent_to = defaults->has_buildable_adjacent_to;
+	cfg->has_buildable_adjacent_to_districts = defaults->has_buildable_adjacent_to_districts;
 
 	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
 		char const * default_value = (i < defaults->buildable_by_civ_count) ? defaults->buildable_by_civs[i] : NULL;
@@ -7158,6 +7234,8 @@ init_parsed_district_definition (struct parsed_district_definition * def)
 	def->render_strategy = DRS_BY_COUNT;
 	def->ai_build_strategy = DABS_DISTRICT;
 	def->buildable_square_types_mask = district_default_buildable_mask ();
+	def->buildable_adjacent_to_square_types_mask = 0;
+	def->buildable_adjacent_to_allows_city = false;
 }
 
 void
@@ -7189,6 +7267,12 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 		if (def->buildable_on_districts[i] != NULL) {
 			free (def->buildable_on_districts[i]);
 			def->buildable_on_districts[i] = NULL;
+		}
+	}
+	for (int i = 0; i < ARRAY_LEN (def->buildable_adjacent_to_districts); i++) {
+		if (def->buildable_adjacent_to_districts[i] != NULL) {
+			free (def->buildable_adjacent_to_districts[i]);
+			def->buildable_adjacent_to_districts[i] = NULL;
 		}
 	}
 	if (def->obsoleted_by != NULL) {
@@ -7224,6 +7308,7 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 		}
 	}
 	def->natural_wonder_prereq_count = 0;
+	def->buildable_adjacent_to_district_count = 0;
 
 	for (int i = 0; i < def->buildable_by_civ_count; i++) {
 		if (def->buildable_by_civs[i] != NULL) {
@@ -7429,11 +7514,17 @@ bool
 parse_buildable_square_type_mask (struct string_slice const * value,
 				  unsigned int * out_mask,
 				  struct error_line ** parse_errors,
-				  int line_number)
+				  int line_number,
+				  char const * key_name,
+				  bool * out_allow_city)
 {
 	char * value_text = trim_and_extract_slice (value, 0);
 	unsigned int mask = 0;
 	int entry_count = 0;
+	bool allow_city = false;
+	bool allow_city_token = (key_name != NULL) && (strcmp (key_name, "buildable_adjacent_to") == 0);
+	if (key_name == NULL)
+		key_name = "buildable_on";
 
 	if (value_text != NULL) {
 		char * cursor = value_text;
@@ -7451,7 +7542,17 @@ parse_buildable_square_type_mask (struct string_slice const * value,
 
 			struct string_slice item_slice = { .str = item_start, .len = (int)(item_end - item_start) };
 			if (item_slice.len > 0) {
-				if (slice_matches_str (&item_slice, "mine")) {
+				if (slice_matches_str (&item_slice, "city")) {
+					if (! allow_city_token) {
+						struct error_line * err = add_error_line (parse_errors);
+						snprintf (err->text, sizeof err->text, "^  Line %d: %.*s (invalid %s entry)", line_number, item_slice.len, item_slice.str, key_name);
+						err->text[(sizeof err->text) - 1] = '\0';
+						free (value_text);
+						return false;
+					}
+					allow_city = true;
+					entry_count += 1;
+				} else if (slice_matches_str (&item_slice, "mine")) {
 					mask |= district_buildable_mine_mask_bit ();
 					entry_count += 1;
 				} else if (slice_matches_str (&item_slice, "irrigation")) {
@@ -7467,7 +7568,7 @@ parse_buildable_square_type_mask (struct string_slice const * value,
 					entry_count += 1;
 				} else {
 					struct error_line * err = add_error_line (parse_errors);
-					snprintf (err->text, sizeof err->text, "^  Line %d: %.*s (invalid buildable_on entry)", line_number, item_slice.len, item_slice.str);
+					snprintf (err->text, sizeof err->text, "^  Line %d: %.*s (invalid %s entry)", line_number, item_slice.len, item_slice.str, key_name);
 					err->text[(sizeof err->text) - 1] = '\0';
 					free (value_text);
 					return false;
@@ -7486,14 +7587,16 @@ parse_buildable_square_type_mask (struct string_slice const * value,
 	if (value_text != NULL)
 		free (value_text);
 
-	if ((entry_count == 0) || (mask == 0)) {
+	if ((entry_count == 0) || ((mask == 0) && ! allow_city)) {
 		struct error_line * err = add_error_line (parse_errors);
-		snprintf (err->text, sizeof err->text, "^  Line %d: buildable_on (expected at least one square type)", line_number);
+		snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected at least one square type)", line_number, key_name);
 		err->text[(sizeof err->text) - 1] = '\0';
 		return false;
 	}
 
 	*out_mask = mask;
+	if (out_allow_city != NULL)
+		*out_allow_city = allow_city;
 	return true;
 }
 
@@ -7787,6 +7890,29 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->has_buildable_on_districts = true;
 	}
 
+	if (def->has_buildable_adjacent_to_districts) {
+		for (int i = 0; i < ARRAY_LEN (cfg->buildable_adjacent_to_districts); i++) {
+			char const * default_value = (i < defaults->buildable_adjacent_to_district_count)
+				? defaults->buildable_adjacent_to_districts[i]
+				: NULL;
+			if ((cfg->buildable_adjacent_to_districts[i] != NULL) &&
+			    (cfg->buildable_adjacent_to_districts[i] != default_value))
+				free ((void *)cfg->buildable_adjacent_to_districts[i]);
+			cfg->buildable_adjacent_to_districts[i] = NULL;
+		}
+
+		cfg->buildable_adjacent_to_district_count = def->buildable_adjacent_to_district_count;
+		const int max_entries = ARRAY_LEN (cfg->buildable_adjacent_to_districts);
+		if (cfg->buildable_adjacent_to_district_count > max_entries)
+			cfg->buildable_adjacent_to_district_count = max_entries;
+		for (int i = 0; i < cfg->buildable_adjacent_to_district_count; i++) {
+			cfg->buildable_adjacent_to_districts[i] = def->buildable_adjacent_to_districts[i];
+			def->buildable_adjacent_to_districts[i] = NULL;
+		}
+		cfg->buildable_adjacent_to_district_id_count = 0;
+		cfg->has_buildable_adjacent_to_districts = true;
+	}
+
 	if (def->has_buildable_by_civs) {
 		for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
 			char const * default_value = (i < defaults->buildable_by_civ_count) ? defaults->buildable_by_civs[i] : NULL;
@@ -7912,6 +8038,11 @@ override_special_district_from_definition (struct parsed_district_definition * d
 	}
 	if (def->has_buildable_on)
 		cfg->buildable_square_types_mask = def->buildable_square_types_mask;
+	if (def->has_buildable_adjacent_to) {
+		cfg->buildable_adjacent_to_square_types_mask = def->buildable_adjacent_to_square_types_mask;
+		cfg->has_buildable_adjacent_to = true;
+		cfg->buildable_adjacent_to_allows_city = def->buildable_adjacent_to_allows_city;
+	}
 
 	if (def->has_generated_resource) {
 		if ((cfg->generated_resource != NULL) && (cfg->generated_resource != defaults->generated_resource))
@@ -8084,6 +8215,17 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.buildable_on_district_id_count = 0;
 	new_cfg.has_buildable_on_districts = def->has_buildable_on_districts;
 
+	new_cfg.buildable_adjacent_to_district_count = def->has_buildable_adjacent_to_districts ? def->buildable_adjacent_to_district_count : 0;
+	const int max_adjacent_to_districts = ARRAY_LEN (new_cfg.buildable_adjacent_to_districts);
+	if (new_cfg.buildable_adjacent_to_district_count > max_adjacent_to_districts)
+		new_cfg.buildable_adjacent_to_district_count = max_adjacent_to_districts;
+	for (int i = 0; i < new_cfg.buildable_adjacent_to_district_count; i++) {
+		new_cfg.buildable_adjacent_to_districts[i] = def->buildable_adjacent_to_districts[i];
+		def->buildable_adjacent_to_districts[i] = NULL;
+	}
+	new_cfg.buildable_adjacent_to_district_id_count = 0;
+	new_cfg.has_buildable_adjacent_to_districts = def->has_buildable_adjacent_to_districts;
+
 	new_cfg.buildable_by_civ_count = def->has_buildable_by_civs ? def->buildable_by_civ_count : 0;
 	const int max_civ_names = ARRAY_LEN (new_cfg.buildable_by_civs);
 	if (new_cfg.buildable_by_civ_count > max_civ_names)
@@ -8147,6 +8289,9 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
 	new_cfg.happiness_bonus = def->has_happiness_bonus ? def->happiness_bonus : 0;
 	new_cfg.buildable_square_types_mask = def->has_buildable_on ? def->buildable_square_types_mask : district_default_buildable_mask ();
+	new_cfg.buildable_adjacent_to_square_types_mask = def->has_buildable_adjacent_to ? def->buildable_adjacent_to_square_types_mask : 0;
+	new_cfg.has_buildable_adjacent_to = def->has_buildable_adjacent_to;
+	new_cfg.buildable_adjacent_to_allows_city = def->has_buildable_adjacent_to ? def->buildable_adjacent_to_allows_city : false;
 
 	if (def->has_culture_bonus)
 		move_bonus_entry_list (&new_cfg.culture_bonus_extras, &def->culture_bonus_extras);
@@ -8386,6 +8531,24 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		}
 		free (value_text);
 
+	} else if (slice_matches_str (key, "buildable_adjacent_to_districts")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_adjacent_to_districts,
+					      ARRAY_LEN (def->buildable_adjacent_to_districts),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "buildable_adjacent_to_districts")) {
+			def->buildable_adjacent_to_district_count = list_count;
+			def->has_buildable_adjacent_to_districts = true;
+		} else {
+			def->buildable_adjacent_to_district_count = 0;
+			def->has_buildable_adjacent_to_districts = false;
+		}
+		free (value_text);
+
 	} else if (slice_matches_str (key, "buildable_by_civs")) {
 		char * value_text = trim_and_extract_slice (value, 0);
 		int list_count = 0;
@@ -8610,9 +8773,17 @@ handle_district_definition_key (struct parsed_district_definition * def,
 
 	} else if (slice_matches_str (key, "buildable_on")) {
 		unsigned int mask;
-		if (parse_buildable_square_type_mask (value, &mask, parse_errors, line_number)) {
+		if (parse_buildable_square_type_mask (value, &mask, parse_errors, line_number, "buildable_on", NULL)) {
 			def->buildable_square_types_mask = mask;
 			def->has_buildable_on = true;
+		}
+
+	} else if (slice_matches_str (key, "buildable_adjacent_to")) {
+		unsigned int mask;
+		def->buildable_adjacent_to_allows_city = false;
+		if (parse_buildable_square_type_mask (value, &mask, parse_errors, line_number, "buildable_adjacent_to", &def->buildable_adjacent_to_allows_city)) {
+			def->buildable_adjacent_to_square_types_mask = mask;
+			def->has_buildable_adjacent_to = true;
 		}
 
 	} else if (slice_matches_str (key, "allow_multiple")) {
@@ -9352,7 +9523,7 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 
 	} else if (slice_matches_str (key, "buildable_on")) {
 		unsigned int mask;
-		if (parse_buildable_square_type_mask (value, &mask, parse_errors, line_number)) {
+		if (parse_buildable_square_type_mask (value, &mask, parse_errors, line_number, "buildable_on", NULL)) {
 			def->buildable_square_types_mask = mask;
 			def->has_buildable_on = true;
 		} else {
@@ -10326,6 +10497,31 @@ void parse_building_and_tech_ids ()
 				}
 			}
 			is->district_configs[i].buildable_on_district_id_count = stored_buildable_on_count;
+		}
+
+		for (int j = 0; j < ARRAY_LEN (is->district_configs[i].buildable_adjacent_to_district_ids); j++)
+			is->district_configs[i].buildable_adjacent_to_district_ids[j] = -1;
+		is->district_configs[i].buildable_adjacent_to_district_id_count = 0;
+
+		if (is->district_configs[i].has_buildable_adjacent_to_districts) {
+			int stored_adjacent_count = 0;
+			for (int j = 0; j < is->district_configs[i].buildable_adjacent_to_district_count; j++) {
+				char const * name = is->district_configs[i].buildable_adjacent_to_districts[j];
+				if (name == NULL || name[0] == '\0')
+					continue;
+				int other_district_id = find_district_index_by_name (name);
+				if (other_district_id >= 0) {
+					if (stored_adjacent_count < ARRAY_LEN (is->district_configs[i].buildable_adjacent_to_district_ids)) {
+						is->district_configs[i].buildable_adjacent_to_district_ids[stored_adjacent_count] = other_district_id;
+						stored_adjacent_count += 1;
+					}
+				} else {
+					struct error_line * err = add_error_line (&district_parse_errors);
+					snprintf (err->text, sizeof err->text, "^  District \"%s\": buildable_adjacent_to_districts entry \"%s\" not found", district_name, name);
+					err->text[(sizeof err->text) - 1] = '\0';
+				}
+			}
+			is->district_configs[i].buildable_adjacent_to_district_id_count = stored_adjacent_count;
 		}
 
 		// Resolve generated resource name to ID
@@ -16248,7 +16444,6 @@ patch_init_floating_point ()
 		{"disable_great_wall_city_defense_bonus"                 , false, offsetof (struct c3x_config, disable_great_wall_city_defense_bonus)},
 		{"expand_water_tile_checks_to_city_work_area"            , false, offsetof (struct c3x_config, expand_water_tile_checks_to_city_work_area)},
 		{"ai_can_replace_existing_districts_with_canals"         , false, offsetof (struct c3x_config, ai_can_replace_existing_districts_with_canals)},
-		{"workers_can_enter_coast"         		                 , false, offsetof (struct c3x_config, workers_can_enter_coast)},
 		{"workers_can_enter_coast"         		                 , false, offsetof (struct c3x_config, workers_can_enter_coast)},
 		{"enable_city_work_radii_highlights"                     , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game"  , false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
@@ -31609,7 +31804,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
@@ -33583,7 +33778,7 @@ patch_get_tile_occupier_id_in_Unit_ai_move_naval_power_unit (int x, int y, int p
 	return (*tile->vtable->m38_Get_Territory_OwnerID) (tile);
 }
 
-// Returns a non-zero score for enemy port district tiles so they pass the threshold check.
+// Returns a non-zero score for enemy port district tiles so they pass the threshold check and are bombard targets
 int __fastcall
 patch_Fighter_eval_tile_vulnerability_in_Unit_ai_move_naval_power_unit (Fighter * this, int edx, Unit * unit, int tile_x, int tile_y)
 {
@@ -33614,7 +33809,8 @@ patch_Fighter_eval_tile_vulnerability_in_Unit_ai_move_naval_power_unit (Fighter 
 	return 0x300;
 }
 
-// Returns the territory owner for enemy port districts so the score isn't reduced.
+// Returns the territory owner for enemy port districts so the score isn't reduced and naval units move to enemy ports
+// (to subsequently pillage them)
 int __cdecl
 patch_get_combat_occupier_in_Unit_ai_move_naval_power_unit (int tile_x, int tile_y, int civ_id, byte ignore_visibility)
 {
