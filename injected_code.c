@@ -11949,8 +11949,8 @@ bridge_district_tile_is_valid (int tile_x, int tile_y)
 {
 	if (! tile_is_coastal_water (tile_x, tile_y))
 		return false;
-	if (! bridge_tile_has_land_on_both_sides (tile_x, tile_y))
-		return false;
+	//if (! bridge_tile_has_land_on_both_sides (tile_x, tile_y))
+	//	return false;
 
 	if (is->current_config.max_contiguous_bridge_districts > 0) {
 		int max_bridges = is->current_config.max_contiguous_bridge_districts;
@@ -20954,6 +20954,13 @@ bool __fastcall
 patch_Map_impl_has_fresh_water_within_work_area (Map * this, int edx, int tile_x, int tile_y)
 {
 	if (is->current_config.enable_districts && is->current_config.expand_water_tile_checks_to_city_work_area) {
+		int improv_id = is->current_evaluating_improve_id;
+		if ((improv_id >= 0) && (improv_id < p_bic_data->ImprovementsCount)) {
+			
+			// If an Aqueduct, default to original logic
+			if ((p_bic_data->Improvements[improv_id].ImprovementFlags & ITF_Allows_City_Level_2) != 0)
+				return Map_impl_has_fresh_water (this, __, tile_x, tile_y);
+		}
 		if (patch_Map_impl_is_near_river_within_work_area (this, __, tile_x, tile_y, 1))
 			return true;
 		if (patch_Map_impl_is_near_lake_within_work_area (this, __, tile_x, tile_y, 1))
@@ -21066,13 +21073,18 @@ city_meets_district_prereqs_to_build_improvement (City * city, int i_improv, boo
 
 bool __fastcall
 patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply_strict_rules)
-{
+{	
+	is->current_evaluating_improve_id = i_improv;
+
 	// First defer to the base game's logic
 	bool base = City_can_build_improvement (this, __, i_improv, apply_strict_rules);
 	if (! base) return false;
 	if (! is->current_config.enable_districts) return base;
 
-	return city_meets_district_prereqs_to_build_improvement (this, i_improv, apply_strict_rules);
+	bool can_build = city_meets_district_prereqs_to_build_improvement (this, i_improv, apply_strict_rules);
+	is->current_evaluating_improve_id = -1;
+
+	return can_build;
 }
 
 bool
@@ -26219,11 +26231,14 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 	bool const allow_bridge_walk = is->current_config.enable_districts &&
 		is->current_config.enable_bridge_districts &&
 		(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land);
+	bool const allow_canal_sail = is->current_config.enable_districts &&
+		is->current_config.enable_canal_districts &&
+		(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea);
 	bool coast_override_active = false;
 	enum UnitStateType prev_state = this->Body.UnitState;
 	int prev_container = this->Body.Container_Unit;
 
-	if (allow_worker_coast || allow_bridge_walk) {
+	if (allow_worker_coast || allow_bridge_walk || allow_canal_sail) {
 		int nx, ny;
 		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
 		Tile * dest = tile_at (nx, ny);
@@ -26257,6 +26272,14 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 				struct district_instance * inst = get_district_instance (dest);
 				if ((inst != NULL) &&
 				    (inst->district_id == BRIDGE_DISTRICT_ID) &&
+				    district_is_complete (dest, inst->district_id))
+					should_override = true;
+			}
+
+			if (! should_override && allow_canal_sail) {
+				struct district_instance * inst = get_district_instance (dest);
+				if ((inst != NULL) &&
+				    (inst->district_id == CANAL_DISTRICT_ID) &&
 				    district_is_complete (dest, inst->district_id))
 					should_override = true;
 			}
@@ -33764,7 +33787,7 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 		if (source != NULL &&
 		    source->vtable->m35_Check_Is_Water (source) &&
 		    (source->vtable->m50_Get_Square_BaseType (source) == SQ_Coast))
-			return true;
+			return PBV_OK;
 
 		Tile * dest = tile_at (to_x, to_y);
 		if ((dest != NULL) &&

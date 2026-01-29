@@ -2080,6 +2080,9 @@ struct district_button_image_set {
 	enum great_wall_auto_build_state great_wall_auto_build;
 	Tile * focused_tile;
 
+	// Stores the improve ID currently being evaluated inside patch_City_can_build_improvement.
+	int current_evaluating_improve_id;
+
 	// Stores the index in the list of target civs currently being drawn on the espionage form. Used to replace the civ name with its era-specific alias.
 	int espionage_form_drawing_target_index;
 
