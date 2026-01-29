@@ -1884,7 +1884,8 @@ tile_has_snow_forest (Tile * tile)
 	if (tile->vtable->m50_Get_Square_BaseType (tile) != SQ_Forest)
 		return false;
 
-	return tile->vtable->m12_Check_Forest_Pines (tile) != 0;
+	int overlays = tile->vtable->m43_Get_field_30 (tile);
+	return (overlays & 0x100000) != 0;
 }
 
 bool
