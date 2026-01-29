@@ -31633,6 +31633,45 @@ draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, stru
 	}
 }
 
+int 
+count_completed_buildings_in_district_radius (int tile_x, int tile_y, int district_id)
+{
+	struct district_config const * cfg = &is->district_configs[district_id];
+	struct district_infos * district_info = &is->district_infos[district_id];
+	int completed_count = 0;
+	for (int i = 0; i < district_info->dependent_building_count; i++) {
+		int building_id = district_info->dependent_building_ids[i];
+		if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id))
+			completed_count++;
+	}
+	return completed_count;
+}
+
+void 
+draw_district_on_map_or_canvas_by_buildings (Sprite * base_sprite, Map_Renderer * map_renderer, int district_id, int variant, int era, int tile_x, int tile_y, int draw_x, int draw_y)
+{
+	struct district_config const * cfg = &is->district_configs[district_id];
+	struct district_infos * district_info = &is->district_infos[district_id];
+	int max_stage = cfg->max_building_index;
+	int stage_limit = ARRAY_LEN (is->district_img_sets[0].imgs[0][0]) - 1;
+
+	if (max_stage > stage_limit)
+		max_stage = stage_limit;
+
+	draw_district_on_map_or_canvas(base_sprite, map_renderer, draw_x, draw_y);
+
+	for (int i = 0; i < district_info->dependent_building_count; i++) {
+		int building_id = district_info->dependent_building_ids[i];
+		int stage = i + 1;
+		if (stage > max_stage)
+			break;
+		if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id)) {
+			Sprite * district_sprite = &is->district_img_sets[district_id].imgs[variant][era][stage];
+			draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
+		}
+	}
+}
+
 void 
 draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instance * inst, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int visible_to_civ_id)
 {
@@ -31677,11 +31716,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 		int draw_pixel_x = pixel_x;
 		int draw_pixel_y = pixel_y;
 		Sprite * district_sprite;
-
-		// Handle river alignment, if district allows it
 		enum direction river_dir = DIR_ZERO;
-		//if (district_allows_river(cfg)) 
-			//align_district_with_river (tile, &pixel_x, &pixel_y, &river_dir);
 
         if (territory_owner_id > 0) {
             Leader * leader = &leaders[territory_owner_id];
@@ -31702,21 +31737,22 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 			return;
 		}
 
+		// If out of a territory but builder is known, use builder's era
+		if (territory_owner_id < 0 && inst->built_by_civ_id >= 0) {
+			Leader * builder = &leaders[inst->built_by_civ_id];
+			culture = p_bic_data->Races[builder->RaceID].CultureGroupID;
+			if (cfg->vary_img_by_era)
+				era = builder->Era;
+		}
+
+		int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
+		int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
+		int offset_x      = draw_pixel_x + cfg->x_offset;
+		int offset_y      = draw_pixel_y + cfg->y_offset;
+		int draw_x        = offset_x - ((sprite_width - 128) / 2);
+		int draw_y        = offset_y - (sprite_height - 64);
+
         switch (district_id) {
-            case NEIGHBORHOOD_DISTRICT_ID:
-            {
-                unsigned v = (unsigned)tile_x * 0x9E3779B1u + (unsigned)tile_y * 0x85EBCA6Bu;
-                v ^= v >> 16;
-                v *= 0x7FEB352Du;
-                v ^= v >> 15;
-                v *= 0x846CA68Bu;
-                v ^= v >> 16;
-                buildings = clamp(0, 3, (int)(v & 3u));  /* final 0..3 */
-                variant = culture;
-                break;
-            }
-            case DISTRIBUTION_HUB_DISTRICT_ID:
-                break;
 			case WONDER_DISTRICT_ID:
 			{
 				if (! is->current_config.enable_wonder_districts)
@@ -31765,22 +31801,39 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
                 }
                 break;
             }
+            case NEIGHBORHOOD_DISTRICT_ID:
+            {
+                unsigned v = (unsigned)tile_x * 0x9E3779B1u + (unsigned)tile_y * 0x85EBCA6Bu;
+                v ^= v >> 16;
+                v *= 0x7FEB352Du;
+                v ^= v >> 15;
+                v *= 0x846CA68Bu;
+                v ^= v >> 16;
+                buildings = clamp(0, 3, (int)(v & 3u));  /* final 0..3 */
+                variant = culture;
+				district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
+				draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
+                return;
+            }
+            case DISTRIBUTION_HUB_DISTRICT_ID:
+                draw_district_on_map_or_canvas(&is->district_img_sets[district_id].imgs[variant][era][buildings], map_renderer, draw_x, draw_y);
+                return;
 			case ENERGY_GRID_DISTRICT_ID:
 			{
 				// Energy grids can have multiple buildings that - unlike most district buildings - don't have each other as prereqs (e.g., Coal Plant & Nuclear Plant),
 				// and thus have a combinatorial number of images based on which power plants are built in their radius.
 				buildings = get_energy_grid_image_index (tile_x, tile_y);
-				break;
+				draw_district_on_map_or_canvas(&is->district_img_sets[district_id].imgs[variant][era][buildings], map_renderer, draw_x, draw_y);
+                return;
 			}
 			case BRIDGE_DISTRICT_ID:
 			{
 				buildings = get_bridge_image_index (tile, tile_x, tile_y);
-				era = 3; // DEBUG
-				break;
+				draw_district_on_map_or_canvas(&is->district_img_sets[district_id].imgs[variant][era][buildings], map_renderer, draw_x, draw_y);
+                return;
 			}
 			case CANAL_DISTRICT_ID:
 			{
-				era = 3; // DEBUG
 				draw_canal_district (tile, tile_x, tile_y, map_renderer, pixel_x, pixel_y, era);
 				return;
 			}
@@ -31791,53 +31844,21 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 			}
             default:
             {
-				if (cfg->render_strategy == DRS_BY_BUILDING)
-					break;
-					
-                int completed_count = 0;
-                for (int i = 0; i < district_info->dependent_building_count; i++) {
-                    int building_id = district_info->dependent_building_ids[i];
-                    if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id))
-                        completed_count++;
-                }
-                buildings = completed_count;
-                break;
+				// Draw by counting number of completed buildings in radius
+				if (cfg->render_strategy == DRS_BY_COUNT) {
+					buildings = count_completed_buildings_in_district_radius (tile_x, tile_y, district_id);
+					district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
+					draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
+					return;
+				}
+				// Draw by checking each building individually and layering images
+				else if (cfg->render_strategy == DRS_BY_BUILDING) {
+					Sprite * base_sprite = &is->district_img_sets[district_id].imgs[variant][era][0];
+					draw_district_on_map_or_canvas_by_buildings(base_sprite, map_renderer, district_id, variant, era, tile_x, tile_y, draw_x, draw_y);
+					return;
+				}
             }
 		}
-
-		int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
-		int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
-		int offset_x      = draw_pixel_x + cfg->x_offset;
-		int offset_y      = draw_pixel_y + cfg->y_offset;
-		int draw_x        = offset_x - ((sprite_width - 128) / 2);
-		int draw_y        = offset_y - (sprite_height - 64);
-
-		if (cfg->render_strategy == DRS_BY_BUILDING) {
-			int max_stage     = cfg->max_building_index;
-			int stage_limit   = ARRAY_LEN (is->district_img_sets[0].imgs[0][0]) - 1;
-
-			if (max_stage > stage_limit)
-				max_stage = stage_limit;
-
-			district_sprite = &is->district_img_sets[district_id].imgs[variant][era][0];
-			draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
-
-			for (int i = 0; i < district_info->dependent_building_count; i++) {
-				int building_id = district_info->dependent_building_ids[i];
-				int stage = i + 1;
-				if (stage > max_stage)
-					break;
-				if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id)) {
-					district_sprite = &is->district_img_sets[district_id].imgs[variant][era][stage];
-					draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
-				}
-			}
-			return;
-		}
-
-		district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
-		draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
-		return;
 	}
 
     Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
