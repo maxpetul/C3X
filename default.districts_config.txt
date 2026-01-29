@@ -268,7 +268,7 @@ name                   = Water Park
 tooltip                = Build Water Park
 img_paths              = WaterPark.pcx
 btn_tile_sheet_row     = 1
-btn_tile_sheet_column  = 9
+btn_tile_sheet_column  = 10
 vary_img_by_era        = 0
 vary_img_by_culture    = 0
 advance_prereqs        = Miniaturization
@@ -283,6 +283,27 @@ food_bonus             = 0
 gold_bonus             = 4
 shield_bonus           = -2
 happiness_bonus        = 2
+
+#District
+name                   = Municipal District
+tooltip                = Build Municipal District
+img_paths              = MunicipalDistrict.pcx
+render_strategy        = by-building
+btn_tile_sheet_row     = 1
+btn_tile_sheet_column  = 11
+vary_img_by_era        = 0
+vary_img_by_culture    = 0
+advance_prereqs        = Code of Laws
+dependent_improvs      = Courthouse, Police Station, Hospital
+buildable_on           = desert,plains,grassland,tundra,floodplain,hills
+defense_bonus_percent  = 0
+allow_multiple         = 1
+culture_bonus          = 2
+science_bonus          = 0
+food_bonus             = 0
+gold_bonus             = 0
+shield_bonus           = 0
+happiness_bonus        = 0
 
 [========================================================================]
 [=========================SPECIAL DISTRICTS==============================]
