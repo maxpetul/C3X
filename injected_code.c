@@ -32921,30 +32921,6 @@ patch_Unit_select (Unit * this)
 }
 
 void __fastcall
-patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit * unit, bool param_2)
-{
-	bool redraw = false;
-	if (is->current_config.show_ai_city_location_desirability_if_settler) {
-		int new_perspective = -1;
-		if (unit != NULL) {
-			int unit_type_id = unit->Body.UnitTypeID;
-			int worker_actions = p_bic_data->UnitTypes[unit_type_id].Worker_Actions;
-			new_perspective = (worker_actions >= 1 && (worker_actions & (UCV_Build_City)) && !is_worker(unit)) ? p_main_screen_form->Player_CivID : -1;
-		}
-
-		if (new_perspective != is->city_loc_display_perspective) {
-			is->city_loc_display_perspective = new_perspective;
-			redraw = true;
-		}
-	}
-
-	Main_Screen_Form_set_selected_unit (this, __, unit, param_2);
-
-	if (redraw && ! this->is_now_loading_game)
-		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
-}
-
-void __fastcall
 patch_City_Form_draw_food_income_icons (City_Form * this)
 {
 	// Call original function first
@@ -33802,6 +33778,8 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 				return PBV_OK;
 			}
 		}
+	}
+
 	if (is->current_config.enable_districts &&
 		is->current_config.enable_canal_districts &&
 		base != PBV_OK &&
@@ -34644,6 +34622,21 @@ patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit
 	if (is->current_config.unit_cycle_search_criteria != UCSC_STANDARD)
 		clear_selectable_units_list (this, false);
 
+	bool redraw = false;
+	if (is->current_config.show_ai_city_location_desirability_if_settler) {
+		int new_perspective = -1;
+		if (unit != NULL) {
+			int unit_type_id = unit->Body.UnitTypeID;
+			int worker_actions = p_bic_data->UnitTypes[unit_type_id].Worker_Actions;
+			new_perspective = (worker_actions >= 1 && (worker_actions & (UCV_Build_City)) && !is_worker(unit)) ? p_main_screen_form->Player_CivID : -1;
+		}
+
+		if (new_perspective != is->city_loc_display_perspective) {
+			is->city_loc_display_perspective = new_perspective;
+			redraw = true;
+		}
+	}
+
 	Main_Screen_Form_set_selected_unit (this, __, unit, param_2);
 
 	// If selecting a new unit, must insert it into the list to ensure it's actually selected.
@@ -34651,6 +34644,9 @@ patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit
 		UnitIDList_insert_before (&this->selectable_units, __, unit->Body.ID, NULL);
 		this->unit_cycle_cursor = this->selectable_units.first;
 	}
+
+	if (redraw && ! this->is_now_loading_game)
+		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 }
 
 Unit * __fastcall

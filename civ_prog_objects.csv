@@ -895,7 +895,6 @@ ignore,    0x558F70,	0x0,		0x0,		"Leader_is_enemy_unit",				"char (__fastcall *)
 ignore,	   0x4BFD40,	0x0,		0x0,		"City_get_turns_to_build",			"int (__fastcall *) (City * this, int edx, int order_type, int order_id, char param_3)"
 ignore,	   0x4E3D90,	0x0,		0x0,		"Main_Screen_Form_is_unit_hidden_from_player",	"bool (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit)"
 ignore,	   0x4E8850,	0x4F14E0,	0x4E8910,	"Main_Screen_Form_open_right_click_unit_menu",	"void (__fastcall *) (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)"
-inlead,	   0x4DBA70,	0x0,		0x0,		"Main_Screen_Form_set_selected_unit",		"void (__fastcall *) (Main_Screen_Form * this, int edx, Unit * unit, bool param_2)"
 ignore,	   0x5CCBB0,	0x0,		0x0,		"Unit_can_pass_between",			"PassBetweenValidity (__fastcall *) (Unit * this, int edx, int from_x, int from_y, int to_x, int to_y, byte param_5)"
 ignore,	   0x452510,	0x454600,	0x452590,	"ai_move_defensive_unit",			"void (__fastcall *) (Unit * this)"
 ignore,    0x5E78E0,	0x5F7130,	0x0,		"General_load",					"void (__fastcall *) (General * this, int edx, byte ** buffer)"
