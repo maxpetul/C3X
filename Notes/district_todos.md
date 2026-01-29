@@ -4,6 +4,7 @@
   - Light annotations
 
 ## To ask Flintlock
+  - naval units can't enter canals
   - Enabling pillage button for naval units
   - Worker on coast wake up issue
   - Colony structure and loop for relation penalty
