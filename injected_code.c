@@ -49,6 +49,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define qsort is->qsort
 #define memcmp is->memcmp
 #define memcpy is->memcpy
+#define tolower is->tolower
 
 #include "common.c"
 
@@ -688,6 +689,8 @@ reset_to_base_config ()
 		cc->ai_multi_start_extra_palaces_capacity = 0;
 	}
 
+	table_deinit (&cc->limit_defensive_retreat_on_water_to_types);
+
 	// Free set of PTW artillery types and list of converted types
 	table_deinit (&cc->ptw_arty_types);
 	if (is->charmed_types_converted_to_ptw_arty != NULL) {
@@ -728,6 +731,12 @@ reset_to_base_config ()
 		free (cc->work_area_improvements);
 		cc->work_area_improvements = NULL;
 		cc->count_work_area_improvements = 0;
+	}
+
+	// Free aircraft victory animation string
+	if (cc->aircraft_victory_animation != NULL) {
+		free (cc->aircraft_victory_animation);
+		cc->aircraft_victory_animation = NULL;
 	}
 
 	// Free unit limits table
@@ -952,6 +961,29 @@ find_resource_id_by_name (struct string_slice const * name, int * out)
 				*out = n;
 				return true;
 			}
+	return false;
+}
+
+bool
+find_animation_type_by_name (struct string_slice const * name, bool lower_case, AnimationType * out)
+{
+	for (int n_anim = 0; n_anim < COUNT_ANIMATION_TYPES; n_anim++)
+		if (strlen (animation_names[n_anim]) == name->len) {
+			bool all_chars_match = true;
+			for (int k = 0; k < name->len; k++) {
+				int c = animation_names[n_anim][k];
+				if (lower_case)
+					c = tolower (c);
+				if (c != name->str[k]) {
+					all_chars_match = false;
+					break;
+				}
+			}
+			if (all_chars_match) {
+				*out = n_anim;
+				return true;
+			}
+		}
 	return false;
 }
 
@@ -1574,10 +1606,11 @@ read_building_unit_prereqs (struct string_slice const * s,
 	return success ? -1 : cursor - extracted_slice;
 }
 
+// Reads a space-separated list of unit types like:
+//   Worker Galley "Gallic Swordsman"
+// Looks up the type ID(s) for each name and inserts them into the unit_types table associated with a value of 1.
 bool
-read_ptw_arty_types (struct string_slice const * s,
-		     struct error_line ** p_unrecognized_lines,
-		     struct table * ptw_arty_types)
+read_unit_type_list (struct string_slice const * s, struct error_line ** p_unrecognized_lines, struct table * unit_types)
 {
 	if (s->len <= 0)
 		return true;
@@ -1592,7 +1625,7 @@ read_ptw_arty_types (struct string_slice const * s,
 			int id = -1;
 			bool matched_any = false;
 			while (find_unit_type_id_by_name (&name, id + 1, &id)) {
-				itable_insert (ptw_arty_types, id, 1);
+				itable_insert (unit_types, id, 1);
 				matched_any = true;
 			}
 
@@ -1676,6 +1709,17 @@ read_minimap_doubling_mode (struct string_slice const * s, int * out_val)
 	if      (slice_matches_str (&trimmed, "never"   )) { *out_val = MDM_NEVER;    return true; }
 	else if (slice_matches_str (&trimmed, "high-def")) { *out_val = MDM_HIGH_DEF; return true; }
 	else if (slice_matches_str (&trimmed, "always"  )) { *out_val = MDM_ALWAYS;   return true; }
+	else
+		return false;
+}
+
+bool
+read_unit_cycle_search_criteria (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "standard"                )) { *out_val = UCSC_STANDARD;                 return true; }
+	else if (slice_matches_str (&trimmed, "similar-near-start"      )) { *out_val = UCSC_SIMILAR_NEAR_START;       return true; }
+	else if (slice_matches_str (&trimmed, "similar-near-destination")) { *out_val = UCSC_SIMILAR_NEAR_DESTINATION; return true; }
 	else
 		return false;
 }
@@ -2223,6 +2267,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				} else if (slice_matches_str (&p.key, "double_minimap_size")) {
 					if (! read_minimap_doubling_mode (&value, (int *)&cfg->double_minimap_size))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "unit_cycle_search_criteria")) {
+					if (! read_unit_cycle_search_criteria (&value, (int *)&cfg->unit_cycle_search_criteria))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_defensive_bombard_rules")) {
 					struct parsable_field_bit bits[] = {
 						{"lethal"        , SDBR_LETHAL},
@@ -2235,11 +2282,30 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "special_zone_of_control_rules")) {
 					struct parsable_field_bit bits[] = {
-						{"lethal"    , SZOCR_LETHAL},
-						{"aerial"    , SZOCR_AERIAL},
-						{"amphibious", SZOCR_AMPHIBIOUS},
+						{"lethal"         , SZOCR_LETHAL},
+						{"aerial"         , SZOCR_AERIAL},
+						{"amphibious"     , SZOCR_AMPHIBIOUS},
+						{"not-from-inside", SZOCR_NOT_FROM_INSIDE},
 					};
 					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_zone_of_control_rules))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "land_transport_rules")) {
+					struct parsable_field_bit bits[] = {
+						{"load-onto-boat"        , LTR_LOAD_ONTO_BOAT},
+						{"join-army"             , LTR_JOIN_ARMY},
+						{"no-defense-from-inside", LTR_NO_DEFENSE_FROM_INSIDE},
+						{"no-escape"             , LTR_NO_ESCAPE},
+					};
+					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->land_transport_rules))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "special_helicopter_rules")) {
+					struct parsable_field_bit bits[] = {
+						{"allow-on-carriers"     , SHR_ALLOW_ON_CARRIERS},
+						{"passenger-airdrop"     , SHR_PASSENGER_AIRDROP},
+						{"no-defense-from-inside", SHR_NO_DEFENSE_FROM_INSIDE},
+						{"no-escape"             , SHR_NO_ESCAPE},
+					};
+					if (! read_bit_field (&value, bits, ARRAY_LEN (bits), (int *)&cfg->special_helicopter_rules))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "work_area_limit")) {
 					if (! read_work_area_limit (&value, (int *)&cfg->work_area_limit))
@@ -2275,10 +2341,11 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						else
 							handle_config_error (&p, CPE_BAD_VALUE);
 					}
+				} else if (slice_matches_str (&p.key, "limit_defensive_retreat_on_water_to_types")) {
+					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->limit_defensive_retreat_on_water_to_types))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
-					if (! read_ptw_arty_types (&value,
-								   &unrecognized_lines,
-								   &cfg->ptw_arty_types))
+					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->ptw_arty_types))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "civ_aliases_by_era")) {
 					if (0 <= (recog_err_offset = read_recognizables (&value,
@@ -2304,6 +2371,26 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 											 (void **)&parsed_unit_type_limits,
 											 &parsed_unit_type_limit_count)))
 						handle_config_error_at (&p, value.str + recog_err_offset, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "aircraft_victory_animation")) {
+					struct string_slice trimmed = trim_string_slice (&value, 1);
+					bool value_ok = false;
+					if (slice_matches_str (&trimmed, "none")) {
+						if (cfg->aircraft_victory_animation != NULL) {
+							free (cfg->aircraft_victory_animation);
+							cfg->aircraft_victory_animation = NULL;
+						}
+						value_ok = true;
+					} else if (trimmed.len > 0) {
+						AnimationType unused;
+						if (find_animation_type_by_name (&trimmed, true, &unused)) {
+							if (cfg->aircraft_victory_animation != NULL)
+								free (cfg->aircraft_victory_animation);
+							cfg->aircraft_victory_animation = extract_slice (&trimmed);
+							value_ok = true;
+						}
+					}
+					if (! value_ok)
+						handle_config_error (&p, CPE_BAD_VALUE);
 
 				// if key is for an obsolete option
 				} else if (slice_matches_str (&p.key, "patch_disembark_immobile_bug")) {
@@ -3234,6 +3321,36 @@ get_unit_ptr (int id)
 		}
 	}
 	return NULL;
+}
+
+bool
+is_land_transport (Unit * unit)
+{
+	UnitType * type = &p_bic_data->UnitTypes[unit->Body.UnitTypeID];
+	return type->Unit_Class == UTC_Land && type->Transport_Capacity > 0 && ! Unit_has_ability (unit, __, UTA_Army);
+}
+
+bool
+is_in_land_transport (Unit * unit)
+{
+	Unit * container = get_unit_ptr (unit->Body.Container_Unit);
+	return container != NULL && is_land_transport (container);
+}
+
+// Checks if the unit is inside a transport (either helicopter or land transport) from which it is not allowed to defend according to the mod config.
+bool
+cannot_defend_inside_transport (Unit * unit)
+{
+	Unit * container = get_unit_ptr (unit->Body.Container_Unit);
+	if (container != NULL) {
+		if ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) && is_land_transport (container))
+			return true;
+
+		if ((is->current_config.special_helicopter_rules & SHR_NO_DEFENSE_FROM_INSIDE) &&
+		    p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Air)
+			return true;
+	}
+	return false;
 }
 
 struct unit_tile_iter {
@@ -14747,6 +14864,7 @@ do_capture_modified_gold_trade (TradeOffer * trade_offer, int edx, int val, char
 	return print_int (val, str, base);
 }
 
+// Here the order of the registers matches the order that they're pushed by the pusha instruction
 struct register_set {
 	int edi, esi, ebp, esp, ebx, edx, ecx, eax;
 };
@@ -14793,8 +14911,8 @@ filter_zoc_candidate (struct register_set * reg)
 	if ((candidate_class == UTC_Air) && ! (candidate_type->Air_Missions & UCV_Bombing))
 		return 0;
 
-	// Exclude land units in transports
-	if (candidate_class == UTC_Land) {
+	// Exclude land units in transports if configured
+	if ((is->current_config.special_zone_of_control_rules & SZOCR_NOT_FROM_INSIDE) && candidate_class == UTC_Land) {
 		Unit * container = get_unit_ptr (candidate->Body.Container_Unit);
 		if ((container != NULL) && ! UnitType_has_ability (&p_bic_data->UnitTypes[container->Body.UnitTypeID], __, UTA_Army))
 			return 0;
@@ -15452,6 +15570,74 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 		emit_branch (BK_CALL, &code[2], &patch_get_pixel_to_draw_city_dot); // call patch func
 		emit_branch (BK_JUMP, &code[7], ADDR_GET_PIXEL_FOR_DRAW_CITY_DOT + 5); // jump back to original code
 	}
+
+	// Bypass adjacent resource of different type check
+	// replacing 0x7D (= jge) with 0xEB (= uncond. jump)
+	WITH_MEM_PROTECTION (ADDR_RES_CHECK_JUMP_TILE_INDEX_AT_LEAST_9, 1, PAGE_EXECUTE_READWRITE)
+		*(byte *)ADDR_RES_CHECK_JUMP_TILE_INDEX_AT_LEAST_9 = cfg->allow_adjacent_resources_of_different_types ? 0xEB : 0x7D;
+
+	WITH_MEM_PROTECTION (ADDR_RESOURCE_GEN_TILE_COUNT_DIV, 7, PAGE_EXECUTE_READWRITE) {
+		if (cfg->tiles_per_non_luxury_resource == 32)
+			restore_code_area (ADDR_RESOURCE_GEN_TILE_COUNT_DIV);
+		else {
+			save_code_area (ADDR_RESOURCE_GEN_TILE_COUNT_DIV, 7, true);
+
+			// Jump to replacement division logic, kept in an inlead because it doesn't fit in 7 bytes
+			emit_branch (BK_JUMP, ADDR_RESOURCE_GEN_TILE_COUNT_DIV, ADDR_RESOURCE_GEN_TILE_COUNT_DIV_REPL);
+
+			// Fill in the replacement division logic. Instead of computing tile_count>>5, compute tile_count/cfg->tiles_per_non_luxury_resource.
+			WITH_MEM_PROTECTION (ADDR_RESOURCE_GEN_TILE_COUNT_DIV_REPL, INLEAD_SIZE, PAGE_EXECUTE_READWRITE) {
+				int d = not_below (1, cfg->tiles_per_non_luxury_resource);
+				byte d0 =  d        & 0xFF,
+				     d1 = (d >>  8) & 0xFF,
+				     d2 = (d >> 16) & 0xFF,
+				     d3 =  d >> 24;
+
+				byte * cursor = ADDR_RESOURCE_GEN_TILE_COUNT_DIV_REPL;
+
+				// In the Steam EXE, the limit (tile_count/32 by default) must be left in ecx. For the other EXEs, edx.
+				if (exe_version_index == 1) {
+					byte new_div[] = {
+						0x50,                   // push   eax
+						0x52,                   // push   edx
+						0x66, 0x8B, 0x56, 0x40, // mov    dx, word ptr [esi+0x40]  # Loads tile count
+						0x0F, 0xB7, 0xD2,       // movzx  edx, dx
+						0x89, 0xD0,             // mov    eax, edx
+						0x31, 0xD2,             // xor    edx, edx
+						0xB9, d0, d1, d2, d3,   // mov    ecx, {{divisor}}
+						0xF7, 0xF1,             // div    ecx
+						0x89, 0xC1,             // mov    ecx, eax
+						0x5A,                   // pop    edx
+						0x58                    // pop    eax
+					};
+					for (int n = 0; n < ARRAY_LEN (new_div); n++)
+						*cursor++ = new_div[n];
+
+				} else {
+					byte new_div[] = {
+						0x50,                   // push   eax
+						0x51,                   // push   ecx
+						0x66, 0x8B, 0x56, 0x40, // mov    dx, word ptr [esi+0x40]  # Loads tile count
+						0x0F, 0xB7, 0xD2,       // movzx  edx, dx
+						0x89, 0xD0,             // mov    eax, edx
+						0x31, 0xD2,             // xor    edx, edx
+						0xB9, d0, d1, d2, d3,   // mov    ecx, {{divisor}}
+						0xF7, 0xF1,             // div    ecx
+						0x89, 0xC2,             // mov    edx, eax
+						0x59,                   // pop    ecx
+						0x58                    // pop    eax
+					};
+					for (int n = 0; n < ARRAY_LEN (new_div); n++)
+						*cursor++ = new_div[n];
+				}
+
+				cursor = emit_branch (BK_JUMP, cursor, ADDR_RESOURCE_GEN_TILE_COUNT_DIV + 7);
+			}
+		}
+	}
+
+	// Disable a jump that skips playing victory animations for air units if they've been configured to have a victory anim
+	set_nopification (cfg->aircraft_victory_animation != NULL, ADDR_SKIP_VICTORY_ANIM_IF_AIR, 6);
 }
 
 void
@@ -16312,6 +16498,7 @@ patch_init_floating_point ()
 		{"describe_states_of_units_on_menu"                      , true , offsetof (struct c3x_config, describe_states_of_units_on_menu)},
 		{"show_golden_age_turns_remaining"                       , true , offsetof (struct c3x_config, show_golden_age_turns_remaining)},
 		{"show_zoc_attacks_from_mid_stack"                       , true , offsetof (struct c3x_config, show_zoc_attacks_from_mid_stack)},
+		{"show_armies_performing_defensive_bombard"              , true , offsetof (struct c3x_config, show_armies_performing_defensive_bombard)},
 		{"cut_research_spending_to_avoid_bankruptcy"             , true , offsetof (struct c3x_config, cut_research_spending_to_avoid_bankruptcy)},
 		{"dont_pause_for_love_the_king_messages"                 , true , offsetof (struct c3x_config, dont_pause_for_love_the_king_messages)},
 		{"reverse_specialist_order_with_shift"                   , true , offsetof (struct c3x_config, reverse_specialist_order_with_shift)},
@@ -16364,6 +16551,7 @@ patch_init_floating_point ()
 		{"patch_ai_can_form_army_without_special_ability"        , true , offsetof (struct c3x_config, patch_ai_can_form_army_without_special_ability)},
 		{"patch_ai_can_sacrifice_without_special_ability"        , true , offsetof (struct c3x_config, patch_ai_can_sacrifice_without_special_ability)},
 		{"patch_crash_in_leader_unit_ai"                         , true , offsetof (struct c3x_config, patch_crash_in_leader_unit_ai)},
+		{"patch_failure_to_find_new_city_build"                  , true , offsetof (struct c3x_config, patch_failure_to_find_new_city_build)},
 		{"delete_off_map_ai_units"                               , true , offsetof (struct c3x_config, delete_off_map_ai_units)},
 		{"fix_overlapping_specialist_yield_icons"                , true , offsetof (struct c3x_config, fix_overlapping_specialist_yield_icons)},
 		{"prevent_autorazing"                                    , false, offsetof (struct c3x_config, prevent_autorazing)},
@@ -16455,6 +16643,10 @@ patch_init_floating_point ()
 		{"enable_city_work_radii_highlights"                     , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game"  , false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
 		{"allow_unload_from_army"                                , false, offsetof (struct c3x_config, allow_unload_from_army)},
+		{"no_land_anti_air_from_inside_naval_transport"          , false, offsetof (struct c3x_config, no_land_anti_air_from_inside_naval_transport)},
+		{"prevent_enslaving_by_bombardment"                      , false, offsetof (struct c3x_config, prevent_enslaving_by_bombardment)},
+		{"allow_adjacent_resources_of_different_types"           , false, offsetof (struct c3x_config, allow_adjacent_resources_of_different_types)},
+		{"allow_sale_of_small_wonders"                           , false, offsetof (struct c3x_config, allow_sale_of_small_wonders)},
 	};
 
 	struct integer_config_option {
@@ -16482,6 +16674,8 @@ patch_init_floating_point ()
 		{"pinned_hour_for_day_night_cycle"                   ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
 		{"years_to_double_building_culture"                  ,  1000, offsetof (struct c3x_config, years_to_double_building_culture)},
 		{"tourism_time_scale_percent"                        ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
+		{"luxury_randomized_appearance_rate_percent"         ,   100, offsetof (struct c3x_config, luxury_randomized_appearance_rate_percent)},
+		{"tiles_per_non_luxury_resource"                     ,    32, offsetof (struct c3x_config, tiles_per_non_luxury_resource)},
 		{"city_limit"                                        ,  2048, offsetof (struct c3x_config, city_limit)},
 		{"maximum_pop_before_neighborhood_needed"            ,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
 		{"per_neighborhood_pop_growth_enabled"			     ,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
@@ -16496,7 +16690,7 @@ patch_init_floating_point ()
 		{"max_contiguous_bridge_districts"                   ,     3, offsetof (struct c3x_config, max_contiguous_bridge_districts)},
 		{"max_contiguous_canal_districts"                    ,     5, offsetof (struct c3x_config, max_contiguous_canal_districts)},
 		{"ai_canal_eval_min_bisected_land_tiles"             ,    10, offsetof (struct c3x_config, ai_canal_eval_min_bisected_land_tiles)},
-		{"ai_bridge_canal_eval_block_size"                  ,    20, offsetof (struct c3x_config, ai_bridge_canal_eval_block_size)},
+		{"ai_bridge_canal_eval_block_size"                   ,    20, offsetof (struct c3x_config, ai_bridge_canal_eval_block_size)},
 		{"ai_bridge_eval_lake_tile_threshold"                ,     6, offsetof (struct c3x_config, ai_bridge_eval_lake_tile_threshold)},
 		{"ai_city_district_max_build_wait_turns"             ,    20, offsetof (struct c3x_config, ai_city_district_max_build_wait_turns)},
 		{"per_extraterritorial_colony_relation_penalty"      ,     0, offsetof (struct c3x_config, per_extraterritorial_colony_relation_penalty)},
@@ -16539,6 +16733,7 @@ patch_init_floating_point ()
 	qsort    = (void *)(*p_GetProcAddress) (is->msvcrt, "qsort");
 	memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
 	memcpy   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcpy");
+	tolower  = (void *)(*p_GetProcAddress) (is->msvcrt, "tolower");
 
 	// Intercept the game's calls to MessageBoxA. We can't do this through the patcher since that would interfere with the runtime loader.
 	WITH_MEM_PROTECTION (p_MessageBoxA, 4, PAGE_READWRITE)
@@ -16556,6 +16751,7 @@ patch_init_floating_point ()
 	base_config.work_area_limit = WAL_NONE;
 	base_config.draw_lines_using_gdi_plus = LDO_WINE;
 	base_config.double_minimap_size = MDM_HIGH_DEF;
+	base_config.unit_cycle_search_criteria = UCSC_STANDARD;
 	base_config.city_work_radius = 2;
 	base_config.day_night_cycle_mode = DNCM_OFF;
 	base_config.distribution_hub_yield_division_mode = DHYDM_FLAT;
@@ -16769,6 +16965,8 @@ patch_init_floating_point ()
 	is->checking_visibility_for_unit = NULL;
 
 	is->do_not_bounce_invisible_units = false;
+	is->always_despawn_passengers = false;
+	is->do_not_enslave_units = false;
 
 	is->saved_improv_counts = NULL;
 	is->saved_improv_counts_capacity = 0;
@@ -16781,6 +16979,17 @@ patch_init_floating_point ()
 
 	is->sharing_buildings_by_districts_in_progress = false;
 	is->can_load_transport = is->can_load_passenger = NULL;
+
+	is->last_selected_unit.initial_x = is->last_selected_unit.initial_y = -1;
+	is->last_selected_unit.last_x = is->last_selected_unit.last_y = is->last_selected_unit.type_id = -1;
+	is->last_selected_unit.ptr = NULL;
+
+	is->waiting_units = (struct table) {0};
+	is->have_loaded_waiting_units = false;
+
+	is->extra_capture_despawns = NULL;
+	is->count_extra_capture_despawns = 0;
+	is->extra_capture_despawns_capacity = 0;
 
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
@@ -17234,7 +17443,13 @@ void __fastcall
 patch_Unit_move (Unit * this, int edx, int tile_x, int tile_y)
 {
 	record_ai_unit_seen (this, tile_x, tile_y);
+
 	Unit_move (this, __, tile_x, tile_y);
+
+	if (this == is->last_selected_unit.ptr) {
+		is->last_selected_unit.last_x = this->Body.X;
+		is->last_selected_unit.last_y = this->Body.Y;
+	}
 }
 
 // Returns true if the unit has attacked & does not have blitz or if it's run out of movement points for the turn
@@ -17258,6 +17473,12 @@ is_offensive_combat_type (UnitType * unit_type)
 bool
 can_damage_bombarding (UnitType * attacker_type, Unit * defender, Tile * defender_tile)
 {
+	Unit * container;
+	if ((is->current_config.special_helicopter_rules & SHR_NO_DEFENSE_FROM_INSIDE) &&
+	    (container = get_unit_ptr (defender->Body.Container_Unit)) != NULL &&
+	    p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Air)
+		return false;
+
 	UnitType * defender_type = &p_bic_data->UnitTypes[defender->Body.UnitTypeID];
 	if (defender_type->Unit_Class == UTC_Land) {
 		int has_lethal_land_bombard = UnitType_has_ability (attacker_type, __, UTA_Lethal_Land_Bombardment);
@@ -17447,7 +17668,7 @@ patch_Main_Screen_Form_perform_action_on_tile (Main_Screen_Form * this, int edx,
 
 		// Check if the last unit sent into battle actually did anything. If it didn't we should at least skip over
 		// it to avoid an infinite loop, but actually the only time this should happen is if the player is not at
-		// war with the targetted civ and chose not to declare when prompted. In this case it's better to just stop
+		// war with the targeted civ and chose not to declare when prompted. In this case it's better to just stop
 		// trying to attack so as to not spam the player with prompts.
 		last_attack_didnt_happen = (is->sb_next_up == NULL) || (is->sb_next_up->Body.Moves == moves_before_bombard);
 
@@ -19873,6 +20094,11 @@ patch_load_scenario (void * this, int edx, char * param_1, unsigned * param_2)
 	table_deinit (&is->extra_defensive_bombards);
 	table_deinit (&is->airdrops_this_turn);
 	table_deinit (&is->unit_transport_ties);
+	is->last_selected_unit.initial_x = is->last_selected_unit.initial_y = -1;
+	is->last_selected_unit.last_x = is->last_selected_unit.last_y = is->last_selected_unit.type_id = -1;
+	is->last_selected_unit.ptr = NULL;
+	table_deinit (&is->waiting_units);
+	is->have_loaded_waiting_units = false;
 
 	// Clear extra city improvement bits
 	FOR_TABLE_ENTRIES (tei, &is->extra_city_improvs)
@@ -22032,6 +22258,17 @@ patch_Sprite_draw_on_map (Sprite * this, int edx, Map_Renderer * map_renderer, i
 	return Sprite_draw_on_map(to_draw ? to_draw : this, __, map_renderer, pixel_x, pixel_y, param_4, param_5, param_6, param_7);
 }
 
+bool
+is_or_could_become_grassland (Tile * tile)
+{
+	enum SquareTypes sq_type         = tile->vtable->m50_Get_Square_BaseType (tile),
+		         underlying_type = tile->vtable->m49_Get_Square_RealType (tile);
+	int worker_job_id = p_bic_data->TileTypes[sq_type].WorkerJobID;
+	return sq_type == SQ_Grassland ||
+		(underlying_type == SQ_Grassland && (worker_job_id == WJ_Clean_Forest || worker_job_id == WJ_Clear_Swamp)) ||
+		tile->vtable->m72_Get_Pollution_Effect (tile) == SQ_Grassland;
+}
+
 void __fastcall
 patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, int param_1, int pixel_x, int pixel_y, Map_Renderer * map_renderer, int param_5, int tile_x, int tile_y, int param_8)
 {
@@ -22080,7 +22317,7 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 				int stored_ptr;
 				if (itable_look_up (&is->highlighted_city_radius_tile_pointers, (int)tile, &stored_ptr)) {
 					struct highlighted_city_radius_tile_info * info = (struct highlighted_city_radius_tile_info *)stored_ptr;
-					Sprite_draw_on_map (&is->tile_highlights[clamp(0, 10, info->highlight_level)], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+					Sprite_draw_on_map (&is->tile_highlights[clamp(0, COUNT_TILE_HIGHLIGHTS - 1, info->highlight_level)], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 				}
 			}
 		}
@@ -22580,7 +22817,7 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 
 					// Show message to user
 					if (is->current_config.show_message_when_building_received_by_mutual_district &&
-					    ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)) {
+						city->Body.CivID == p_main_screen_form->Player_CivID) {
 						char msg[300];
 						snprintf (msg, sizeof msg, "%s %s %s %s %s %s %s",
 							city->Body.CityName,
@@ -22664,7 +22901,7 @@ grant_existing_district_buildings_to_city (City * city)
 				}
 
 				if (is->current_config.show_message_when_building_received_by_mutual_district &&
-				    ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)) {
+				    city->Body.CivID == p_main_screen_form->Player_CivID) {
 					char msg[300];
 					snprintf (msg, sizeof msg, "%s %s %s %s %s %s %s",
 						  city->Body.CityName,
@@ -23050,12 +23287,25 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 void __fastcall
 patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7)
 {
+	// Determine whether this despawn happened involuntarily, i.e. whether it's because of the actions of a player other than its owner. This
+	// includes cases where the unit was destroyed in combat, captured, kicked from territory with nowhere to go, etc.
+	int ret_addr = ((int *)&civ_id_responsible)[-1];
+	bool involuntary =
+		   ret_addr == DESPAWN_TO_FIGHT_1_RETURN                  || ret_addr == DESPAWN_TO_FIGHT_2_RETURN
+		|| ret_addr == DESPAWN_TO_DO_BOMBARD_TILE_RETURN          || ret_addr == DESPAWN_TO_CRUISE_MISSILE_DEFENDER_RETURN
+		|| ret_addr == DESPAWN_TO_BOUNCE_TRESPASSING_UNITS_RETURN || ret_addr == DESPAWN_TO_NUKE_DAMAGE_RETURN
+		|| ret_addr == DESPAWN_RECURSIVE_RETURN                   || ret_addr == DESPAWN_TO_DO_CAPTURE_UNITS_RETURN
+		|| ret_addr == DESPAWN_TO_TRY_FLYING_OVER_TILE_RETURN;
+
 	int owner_id = this->Body.CivID;
 	int type_id = this->Body.UnitTypeID;
+	UnitType * type = &p_bic_data->UnitTypes[type_id];
+	Tile * tile = tile_at (this->Body.X, this->Body.Y);
 
-	// Clear extra DBs, airdrops, and transport ties used by this unit
+	// Clear extra DBs, airdrops, wait records, and transport ties used by this unit
 	itable_remove (&is->extra_defensive_bombards, this->Body.ID);
 	itable_remove (&is->airdrops_this_turn, this->Body.ID);
+	itable_remove (&is->waiting_units, this->Body.ID);
 	itable_remove (&is->unit_transport_ties, this->Body.ID);
 
 	// If we're despawning the stored ZoC defender, clear that variable so we don't despawn it again in check_life_after_zoc
@@ -23065,9 +23315,82 @@ patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, 
 	if (this == is->sb_next_up)
 		is->sb_next_up = NULL;
 
+	if (this == is->last_selected_unit.ptr)
+		is->last_selected_unit.ptr = NULL;
+
+	// Remove this unit from the list of extra units to despawn after capturing
+	int original_count = is->count_extra_capture_despawns;
+	for (int n_src = 0, n_dest = 0; n_src < original_count; n_src++) {
+		if (is->extra_capture_despawns[n_src] != this) {
+			is->extra_capture_despawns[n_dest] = is->extra_capture_despawns[n_src];
+			n_dest++;
+		} else
+			is->count_extra_capture_despawns -= 1;
+	}
+
+	// If the unit being despawned is a land transport or helicopter, we may have to make sure to despawn its passengers as well because the base
+	// game won't. In general, the passengers are lost if the transport was despawned involuntarily, i.e. because of another player's attack or
+	// something like that, or if the passengers couldn't survive outside the transport, specifically because it's a helicopter at sea.
+	bool must_despawn_passengers = false; {
+		if (is_land_transport (this))
+			must_despawn_passengers = involuntary && (is->current_config.land_transport_rules & LTR_NO_ESCAPE);
+
+		else if (type->Unit_Class == UTC_Air && type->Transport_Capacity > 0) { // if "this" is a helicopter
+			Unit * container = get_unit_ptr (this->Body.Container_Unit);
+			bool on_carrier = container != NULL && p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Sea &&
+				Unit_has_ability (container, __, UTA_Transports_Only_Aircraft);
+			bool passengers_could_survive = Tile_has_city (tile) || ! tile->vtable->m35_Check_Is_Water (tile);
+
+			// If no-defense-from-inside is off, passengers in helicopters will fight to defend their tile, so they wouldn't be left
+			// inside the helicopter when their tile is taken. If it's on, an occupied heli can be destroyed or captured by a land unit,
+			// and we must make sure to despawn the passengers in that case because they can't remain on the tile. Hence,
+			// no-defense-from-inside implies no-escape in almost all circumstances (nukes are the exception).
+			enum special_helicopter_rules special_rules = is->current_config.special_helicopter_rules;
+			if (((special_rules & SHR_ALLOW_ON_CARRIERS) && on_carrier) || (special_rules & (SHR_NO_DEFENSE_FROM_INSIDE | SHR_NO_ESCAPE)))
+				must_despawn_passengers = involuntary || ! passengers_could_survive;
+		}
+	}
+
+	bool prev_always_despawn_passengers = is->always_despawn_passengers;
+
+	if (must_despawn_passengers) {
+		// If we've been called from do_capture_units, record the passengers in the list of units to be despawned after do_capture_units
+		// returns. We can't simply despawn the units now even by setting always_despawn_passengers because the despawning messes up an
+		// iterator over tile units inside do_capture_units.
+		if (ret_addr == DESPAWN_TO_DO_CAPTURE_UNITS_RETURN) {
+			FOR_UNITS_ON (uti, tile)
+				if (uti.unit->Body.Container_Unit == this->Body.ID) {
+					reserve (sizeof is->extra_capture_despawns[0], // item size
+						 (void **)&is->extra_capture_despawns, // ptr to items
+						 &is->extra_capture_despawns_capacity, // ptr to capacity
+						 is->count_extra_capture_despawns); // count
+					is->extra_capture_despawns[is->count_extra_capture_despawns] = uti.unit;
+					is->count_extra_capture_despawns += 1;
+				}
+
+		} else
+			is->always_despawn_passengers = true;
+	}
+
 	Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
 
+	is->always_despawn_passengers = prev_always_despawn_passengers;
+
 	change_unit_type_count (&leaders[owner_id], type_id, -1);
+}
+
+bool __fastcall
+patch_Unit_do_capture_units (Unit * this, int edx, int tile_x, int tile_y, int owner_civ_id)
+{
+	is->count_extra_capture_despawns = 0;
+
+	bool tr = Unit_do_capture_units (this, __, tile_x, tile_y, owner_civ_id);
+
+	// Here we rely on patch_Unit_despawn to remove despawned units from the list
+	while (is->count_extra_capture_despawns > 0)
+		patch_Unit_despawn (is->extra_capture_despawns[0], __, this->Body.ID, 0, 0, 0, 0, 0, 0);
+
+	return tr;
 }
 
 void __fastcall
@@ -23472,7 +23795,7 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 
 	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 		patch_City_recompute_yields_and_happiness (city);
-		patch_City_update_culture (city);
+		patch_City_recompute_culture_income (city);
 	}
 
 	if (is->current_config.enable_districts) {
@@ -23787,30 +24110,49 @@ patch_City_get_net_commerce (City * this, int edx, int kind, bool include_scienc
 		return base;
 }
 
+// Cuts research spending while total expenditures > treasury. Returns whether spending has been cut.
+bool
+cut_unaffordable_research_spending (Leader * leader, bool skip_popup)
+{
+	// The rate cap limits AI players' spending on the gold slider (in Leader::ai_adjust_sliders) however it does not apply to human players when
+	// adjusting sliders manually on the domestic advisor screen.
+	int gold_rate_cap = ((*p_human_player_bits & 1<<leader->ID) != 0) ? 10 : p_bic_data->Governments[leader->GovernmentType].RateCap;
+
+	int treasury = leader->Gold_Encoded + leader->Gold_Decrement;
+	bool reduced_spending = false;
+	while (leader->science_slider > 0 &&
+	       leader->gold_slider < gold_rate_cap &&
+	       treasury + Leader_compute_income (leader) < 0) {
+		leader->science_slider -= 1;
+		leader->gold_slider += 1;
+		Leader_recompute_economy (leader);
+		reduced_spending = true;
+	}
+	if (reduced_spending && ! skip_popup && leader->ID == p_main_screen_form->Player_CivID) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_CUT_RESEARCH_SPENDING", -1, 0, 0, 0);
+		patch_show_popup (popup, __, 0, 0);
+	}
+	return reduced_spending;
+}
+
 void __fastcall
 adjust_sliders_preproduction (Leader * this)
 {
-	// Replicate the behavior of the original code for AI players. (apply_machine_code_edits overwrites an equivalent branch & call in the
-	// original code with a call to this method.)
-	if ((*p_human_player_bits & 1<<this->ID) == 0)
+	if ((*p_human_player_bits & 1<<this->ID) == 0) {
+		// Replicate the behavior of the original code for AI players. (apply_machine_code_edits overwrites an equivalent branch & call in the
+		// original code with a call to this method.)
 		this->vtable->ai_adjust_sliders (this);
 
+		// If aggressively penalize bankruptcy is on, cut the AI's research spending if it can't afford it. This may be redundant as
+		// ai_adjust_sliders will already cut AI spending but maybe not all the way to zero. Do this only every third turn so the AI is not
+		// completely prevented from researching.
+		if (is->current_config.aggressively_penalize_bankruptcy && (*p_current_turn_no + this->ID) % 3 == 0)
+			cut_unaffordable_research_spending (this, true);
+
 	// If human player would go bankrupt, try reducing their research spending to avoid that
-	else if (is->current_config.cut_research_spending_to_avoid_bankruptcy) {
-		int treasury = this->Gold_Encoded + this->Gold_Decrement,
-		    reduced_spending = 0;
-		while ((this->science_slider > 0) && (treasury + Leader_compute_income (this) < 0)) {
-			this->science_slider -= 1;
-			this->gold_slider += 1;
-			Leader_recompute_economy (this);
-			reduced_spending = 1;
-		}
-		if (reduced_spending && (this->ID == p_main_screen_form->Player_CivID)) {
-			PopupForm * popup = get_popup_form ();
-			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_CUT_RESEARCH_SPENDING", -1, 0, 0, 0);
-			patch_show_popup (popup, __, 0, 0);
-		}
-	}
+	} else if (is->current_config.cut_research_spending_to_avoid_bankruptcy)
+		cut_unaffordable_research_spending (this, false);
 }
 
 int __fastcall
@@ -23928,6 +24270,140 @@ compare_buildings_to_sell (void const * a, void const * b)
 	return maint_b - maint_a;
 }
 
+// Returns the final improv cost after buildings were sold
+int
+sell_unaffordable_buildings (Leader * leader, int improv_cost, int unit_cost)
+{
+	int treasury = leader->Gold_Encoded + leader->Gold_Decrement;
+
+	clear_memo ();
+
+	// Memoize all buildings this player owns that we might potentially sell. B/c the memo can only contain ints, we must pack the maintenance
+	// cost, improv ID, and city ID all into one int. The city ID is stored in the lowest 13 bits, then the improv ID in the next 13, and finally
+	// the maintenance amount in the 5 above those.
+	FOR_CITIES_OF (coi, leader->ID)
+		for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
+			Improvement * improv = &p_bic_data->Improvements[n];
+
+			int unsellable_flags =
+				ITF_Center_of_Empire |
+				ITF_50_Luxury_Output |
+				ITF_50_Tax_Output |
+				ITF_Reduces_Corruption |
+				ITF_Increases_Luxury_Trade |
+				ITF_Allows_City_Level_2 |
+				ITF_Allows_City_Level_3 |
+				ITF_Capitalization |
+				ITF_Allows_Water_Trade |
+				ITF_Allows_Air_Trade |
+				ITF_Increases_Shields_In_Water |
+				ITF_Increases_Food_In_Water |
+				ITF_Increases_Trade_In_Water;
+
+			// Only sell improvements that aren't contributing gold, even indirectly through e.g. happiness or boosting shield production
+			// for Wealth
+			bool sellable =
+				((improv->Characteristics & (ITC_Small_Wonder | ITC_Wonder)) == 0) &&
+				((improv->ImprovementFlags & unsellable_flags) == 0) &&
+				(improv->Happy_Faces_All <= 0) && (improv->Happy_Faces <= 0) &&
+				(improv->Production <= 0);
+
+			if (sellable && patch_City_has_improvement (coi.city, __, n, 0)) {
+				int maint = patch_City_get_improvement_maintenance (coi.city, __, n);
+				if (maint > 0)
+					memoize ((not_above (31, maint) << 26) | (n << 13) | coi.city_id);
+			}
+		}
+
+	// Sort the list of buildings so the highest maintenance ones come first
+	qsort (is->memo, is->memo_len, sizeof is->memo[0], compare_buildings_to_sell);
+
+	// Sell buildings until we can cover maintenance costs or until we run out of ones to sell
+	int count_sold = 0;
+	while ((improv_cost + unit_cost > treasury) && (count_sold < is->memo_len)) {
+		int improv_id = ((1<<13) - 1) & (is->memo[count_sold] >> 13),
+		    city_id   = ((1<<13) - 1) &  is->memo[count_sold];
+		City * city = get_city_ptr (city_id);
+		improv_cost -= patch_City_get_improvement_maintenance (city, __, improv_id);
+		City_sell_improvement (city, __, improv_id, false);
+		treasury = leader->Gold_Encoded + leader->Gold_Decrement;
+		count_sold++;
+	}
+
+	// Show popup informing the player that their buildings were force sold
+	if ((leader->ID == p_main_screen_form->Player_CivID) && ! is_online_game ()) {
+		PopupForm * popup = get_popup_form ();
+		if (count_sold == 1) {
+			int improv_id = ((1<<13) - 1) & (is->memo[0] >> 13),
+			    city_id   = ((1<<13) - 1) &  is->memo[0];
+			set_popup_str_param (0, get_city_ptr (city_id)->Body.CityName     , -1, -1);
+			set_popup_str_param (1, p_bic_data->Improvements[improv_id].Name.S, -1, -1);
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_SINGLE_IMPROV", -1, 0, 0, 0);
+			patch_show_popup (popup, __, 0, 0);
+		} else if (count_sold > 1) {
+			set_popup_int_param (0, count_sold);
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_MULTIPLE_IMPROVS", -1, 0, 0, 0);
+
+			// Add list of sold improvements to popup
+			for (int n = 0; n < count_sold; n++) {
+				int improv_id = ((1<<13) - 1) & (is->memo[n] >> 13),
+				    city_id   = ((1<<13) - 1) &  is->memo[n];
+				char s[200];
+				snprintf (s, sizeof s, "^  %s in %s",
+					  p_bic_data->Improvements[improv_id].Name.S,
+					  get_city_ptr (city_id)->Body.CityName);
+				s[(sizeof s) - 1] = '\0';
+				PopupForm_add_text (popup, __, s, 0);
+			}
+
+			patch_show_popup (popup, __, 0, 0);
+		}
+	}
+
+	return improv_cost;
+}
+
+// Returns the final unit cost after disbanding
+int
+disband_unaffordable_units (Leader * leader, int improv_cost, int unit_cost, int cost_per_unit)
+{
+	int treasury = leader->Gold_Encoded + leader->Gold_Decrement;
+	int count_disbanded = 0;
+	Unit * to_disband;
+	char first_disbanded_name[32];
+	while ((improv_cost + unit_cost > treasury) &&
+	       (unit_cost > 0) &&
+	       (NULL != (to_disband = leader->vtable->find_unsupported_unit (leader)))) {
+		if (count_disbanded == 0) {
+			char const * name_src = (to_disband->Body.Custom_Name.S[0] == '\0')
+				? p_bic_data->UnitTypes[to_disband->Body.UnitTypeID].Name
+				: to_disband->Body.Custom_Name.S;
+			strncpy (first_disbanded_name, name_src, sizeof first_disbanded_name);
+			first_disbanded_name[(sizeof first_disbanded_name) - 1] = '\0';
+		}
+		Unit_disband (to_disband);
+		count_disbanded++;
+		unit_cost -= cost_per_unit;
+	}
+
+	// Show popup informing the player that their units were disbanded
+	if (leader->ID == p_main_screen_form->Player_CivID) {
+		PopupForm * popup = get_popup_form ();
+		if (count_disbanded == 1) {
+			set_popup_str_param (0, first_disbanded_name, -1, -1);
+			int online_flag = is_online_game () ? 0x4000 : 0;
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_SINGLE_UNIT", -1, 0, online_flag, 0);
+			patch_show_popup (popup, __, 0, 0);
+		} else if ((count_disbanded > 1) && ! is_online_game ()) {
+			set_popup_int_param (0, count_disbanded);
+			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_MULTIPLE_UNITS", -1, 0, 0, 0);
+			patch_show_popup (popup, __, 0, 0);
+		}
+	}
+
+	return unit_cost;
+}
+
 int
 compare_cities_by_production (void const * vp_id_a, void const * vp_id_b)
 {
@@ -23954,123 +24430,17 @@ charge_maintenance_with_aggressive_penalties (Leader * leader)
 
 	int treasury = leader->Gold_Encoded + leader->Gold_Decrement;
 	if (improv_cost + unit_cost > treasury) {
-		clear_memo ();
 
-		// Memoize all buildings this player owns that we might potentially sell. B/c the memo can only contain ints, we must pack the
-		// maintenance cost, improv ID, and city ID all into one int. The city ID is stored in the lowest 13 bits, then the improv ID in the
-		// next 13, and finally the maintenance amount in the 5 above those.
-		FOR_CITIES_OF (coi, leader->ID)
-			for (int n = 0; n < p_bic_data->ImprovementsCount; n++) {
-				Improvement * improv = &p_bic_data->Improvements[n];
-
-				int unsellable_flags =
-					ITF_Center_of_Empire |
-					ITF_50_Luxury_Output |
-					ITF_50_Tax_Output |
-					ITF_Reduces_Corruption |
-					ITF_Increases_Luxury_Trade |
-					ITF_Allows_City_Level_2 |
-					ITF_Allows_City_Level_3 |
-					ITF_Capitalization |
-					ITF_Allows_Water_Trade |
-					ITF_Allows_Air_Trade |
-					ITF_Increases_Shields_In_Water |
-					ITF_Increases_Food_In_Water |
-					ITF_Increases_Trade_In_Water;
-
-				// Only sell improvements that aren't contributing gold, even indirectly through e.g. happiness or boosting shield
-				// production for Wealth
-				int sellable =
-					((improv->Characteristics & (ITC_Small_Wonder | ITC_Wonder)) == 0) &&
-					((improv->ImprovementFlags & unsellable_flags) == 0) &&
-					(improv->Happy_Faces_All <= 0) && (improv->Happy_Faces <= 0) &&
-					(improv->Production <= 0);
-
-				if (sellable && patch_City_has_improvement (coi.city, __, n, 0)) {
-					int maint = patch_City_get_improvement_maintenance (coi.city, __, n);
-					if (maint > 0)
-						memoize ((not_above (31, maint) << 26) | (n << 13) | coi.city_id);
-				}
-			}
-
-		// Sort the list of buildings so the highest maintenance ones come first
-		qsort (is->memo, is->memo_len, sizeof is->memo[0], compare_buildings_to_sell);
-
-		// Sell buildings until we can cover maintenance costs or until we run out of ones to sell
-		int count_sold = 0;
-		while ((improv_cost + unit_cost > treasury) && (count_sold < is->memo_len)) {
-			int improv_id = ((1<<13) - 1) & (is->memo[count_sold] >> 13),
-			    city_id   = ((1<<13) - 1) &  is->memo[count_sold];
-			City * city = get_city_ptr (city_id);
-			improv_cost -= patch_City_get_improvement_maintenance (city, __, improv_id);
-			City_sell_improvement (city, __, improv_id, false);
-			treasury = leader->Gold_Encoded + leader->Gold_Decrement;
-			count_sold++;
+		// For AIs, alternate between selling buildings and disbanding units when maintenance can't be paid
+		if (((1<<leader->ID & *p_human_player_bits) != 0) || ((leader->ID + *p_current_turn_no) % 2 == 0)) {
+			improv_cost = sell_unaffordable_buildings (leader, improv_cost, unit_cost);
+			unit_cost = disband_unaffordable_units (leader, improv_cost, unit_cost, cost_per_unit);
+		} else {
+			unit_cost = disband_unaffordable_units (leader, improv_cost, unit_cost, cost_per_unit);
+			improv_cost = sell_unaffordable_buildings (leader, improv_cost, unit_cost);
 		}
 
-		// Show popup informing the player that their buildings were force sold
-		if ((leader->ID == p_main_screen_form->Player_CivID) && ! is_online_game ()) {
-			PopupForm * popup = get_popup_form ();
-			if (count_sold == 1) {
-				int improv_id = ((1<<13) - 1) & (is->memo[0] >> 13),
-				    city_id   = ((1<<13) - 1) &  is->memo[0];
-				set_popup_str_param (0, get_city_ptr (city_id)->Body.CityName     , -1, -1);
-				set_popup_str_param (1, p_bic_data->Improvements[improv_id].Name.S, -1, -1);
-				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_SINGLE_IMPROV", -1, 0, 0, 0);
-				patch_show_popup (popup, __, 0, 0);
-			} else if (count_sold > 1) {
-				set_popup_int_param (0, count_sold);
-				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_SOLD_MULTIPLE_IMPROVS", -1, 0, 0, 0);
-
-				// Add list of sold improvements to popup
-				for (int n = 0; n < count_sold; n++) {
-					int improv_id = ((1<<13) - 1) & (is->memo[n] >> 13),
-					    city_id   = ((1<<13) - 1) &  is->memo[n];
-					char s[200];
-					snprintf (s, sizeof s, "^  %s in %s",
-						  p_bic_data->Improvements[improv_id].Name.S,
-						  get_city_ptr (city_id)->Body.CityName);
-					s[(sizeof s) - 1] = '\0';
-					PopupForm_add_text (popup, __, s, 0);
-				}
-
-				patch_show_popup (popup, __, 0, 0);
-			}
-		}
-
-		// If the player still can't afford maintenance, disband all the units they can't afford
-		int count_disbanded = 0;
-		Unit * to_disband;
-		char first_disbanded_name[32];
-		while ((improv_cost + unit_cost > treasury) &&
-		       (unit_cost > 0) &&
-		       (NULL != (to_disband = leader->vtable->find_unsupported_unit (leader)))) {
-			if (count_disbanded == 0) {
-				char const * name_src = (to_disband->Body.Custom_Name.S[0] == '\0')
-					? p_bic_data->UnitTypes[to_disband->Body.UnitTypeID].Name
-					: to_disband->Body.Custom_Name.S;
-				strncpy (first_disbanded_name, name_src, sizeof first_disbanded_name);
-				first_disbanded_name[(sizeof first_disbanded_name) - 1] = '\0';
-			}
-			Unit_disband (to_disband);
-			count_disbanded++;
-			unit_cost -= cost_per_unit;
-		}
-
-		// Show popup informing the player that their units were disbanded
-		if (leader->ID == p_main_screen_form->Player_CivID) {
-			PopupForm * popup = get_popup_form ();
-			if (count_disbanded == 1) {
-				set_popup_str_param (0, first_disbanded_name, -1, -1);
-				int online_flag = is_online_game () ? 0x4000 : 0;
-				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_SINGLE_UNIT", -1, 0, online_flag, 0);
-				patch_show_popup (popup, __, 0, 0);
-			} else if ((count_disbanded > 1) && ! is_online_game ()) {
-				set_popup_int_param (0, count_disbanded);
-				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_FORCE_DISBANDED_MULTIPLE_UNITS", -1, 0, 0, 0);
-				patch_show_popup (popup, __, 0, 0);
-			}
-		}
+		treasury = leader->Gold_Encoded + leader->Gold_Decrement; // Update b/c selling buildings recovers some gold
 
 		// If the player still can't afford maintenance, even after all that, start switching their cities to Wealth
 		int wealth_income = 0;
@@ -24547,9 +24917,20 @@ patch_Unit_get_defense_to_dodge_city_aa (Unit * this)
 int __fastcall
 patch_Unit_get_defense_to_find_bombard_defender (Unit * this)
 {
+	// The caller is filtering out candidates with zero defense strength as possible targets to receive damage from bombardment. We can return 0
+	// here to make sure "this" unit is not targeted.
+
+	Unit * container;
+
 	if (is->current_config.immunize_aircraft_against_bombardment &&
 	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air))
-		return 0; // The caller is filtering out candidates with zero defense strength
+		return 0;
+
+	else if ((is->current_config.special_helicopter_rules & SHR_NO_DEFENSE_FROM_INSIDE) &&
+		 (container = get_unit_ptr (this->Body.Container_Unit)) != NULL &&
+		 p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Air)
+		return 0;
+
 	else
 		return Unit_get_defense_strength (this);
 }
@@ -24828,6 +25209,10 @@ patch_deinitialize_map_music ()
 void __fastcall
 patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbor_index, int mp_tile_x, int mp_tile_y)
 {
+	// Unit::score_kill will be called if the bombarder destroys its target, and that is the only way score_kill can be called while this method
+	// is running. So if we're configured to stop enslaving from bombard, turn off enslaving while it's running.
+	is->do_not_enslave_units = is->current_config.prevent_enslaving_by_bombardment;
+
 	// Check if we're going to do PTW-like targeting, if not fall back on the base game's do_bombard_tile method. We'll also fall back on that
 	// method in the case where we're in an online game and the bombard can't happen b/c the tile is occupied by another battle. In that case, no
 	// bombard is possible but we'll call the base method anyway since it will show a little message saying as much.
@@ -24851,6 +25236,8 @@ patch_Fighter_do_bombard_tile (Fighter * this, int edx, Unit * unit, int neighbo
 
 	} else
 		Fighter_do_bombard_tile (this, __, unit, neighbor_index, mp_tile_x, mp_tile_y);
+
+	is->do_not_enslave_units = false;
 }
 
 bool __fastcall
@@ -25793,10 +26180,25 @@ check_life_after_zoc (Unit * unit, Unit * interceptor)
 {
 	if ((is->current_config.special_zone_of_control_rules & SZOCR_LETHAL) && (interceptor != NULL) &&
 	    ((Unit_get_max_hp (unit) - unit->Body.Damage) <= 0)) {
+
+		// Call Unit::score_kill but turn off enslaving if we're configured to stop enslaving after bombardment and the ZoC was performed by
+		// bombardment, which is always the case for cross-domain ZoC or when bombard str > attack.
+		UnitType * interceptor_type = &p_bic_data->UnitTypes[interceptor->Body.UnitTypeID];
+		if (is->current_config.prevent_enslaving_by_bombardment &&
+		    ((p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class != interceptor_type->Unit_Class) ||
+		     (interceptor_type->Bombard_Strength >= Unit_get_attack_strength (interceptor))))
+			is->do_not_enslave_units = true;
 		Unit_score_kill (interceptor, __, unit, false);
+		is->do_not_enslave_units = false;
+
 		if ((! is_online_game ()) && Fighter_check_combat_anim_visibility (&p_bic_data->fighter, __, interceptor, unit, true))
 			Animator_play_one_shot_unit_animation (&p_main_screen_form->animator, __, unit, AT_DEATH, false);
+
+		bool prev_always_despawn_passengers = is->always_despawn_passengers;
+		is->always_despawn_passengers = is_land_transport (unit) && (is->current_config.land_transport_rules & LTR_NO_ESCAPE);
 		patch_Unit_despawn (unit, __, interceptor->Body.CivID, 0, 0, 0, 0, 0, 0);
+		is->always_despawn_passengers = prev_always_despawn_passengers;
+
 		return true;
 	} else
 		return false;
@@ -25896,6 +26298,9 @@ bool
 can_do_defensive_bombard (Unit * unit, UnitType * type)
 {
 	if ((type->Bombard_Strength > 0) && (! Unit_has_ability (unit, __, UTA_Cruise_Missile))) {
+		if (cannot_defend_inside_transport (unit))
+			return false;
+
 		if ((unit->Body.Status & USF_USED_DEFENSIVE_BOMBARD) == 0) // has not already done DB this turn
 			return true;
 
@@ -25913,8 +26318,10 @@ can_do_defensive_bombard (Unit * unit, UnitType * type)
 Unit * __fastcall
 patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker, Unit * defender)
 {
-	int special_rules = is->current_config.special_defensive_bombard_rules;
-	if (special_rules == 0)
+	int special_db_rules = is->current_config.special_defensive_bombard_rules;
+	if ((special_db_rules == 0) &&
+	    ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) == 0) &&
+	    ((is->current_config.special_helicopter_rules & SHR_NO_DEFENSE_FROM_INSIDE) == 0))
 		return Fighter_find_defensive_bombarder (this, __, attacker, defender);
 	else {
 		enum UnitTypeClasses attacker_class = p_bic_data->UnitTypes[attacker->Body.UnitTypeID].Unit_Class;
@@ -25923,8 +26330,8 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 		Tile * defender_tile = tile_at (defender->Body.X, defender->Body.Y);
 		if ((Unit_get_defense_strength (attacker) < 1) || // if attacker cannot defend OR
 		    (defender_tile == NULL) || (defender_tile == p_null_tile) || // defender tile is invalid OR
-		    (((special_rules & SDBR_LETHAL) == 0) && attacker_has_one_hp) || // (DB is non-lethal AND attacker has one HP remaining) OR
-		    ((special_rules & SDBR_NOT_INVISIBLE) && ! patch_Unit_is_visible_to_civ (attacker, __, defender->Body.CivID, 1))) // (invisible units are immune to DB AND attacker is invisible)
+		    (((special_db_rules & SDBR_LETHAL) == 0) && attacker_has_one_hp) || // (DB is non-lethal AND attacker has one HP remaining) OR
+		    ((special_db_rules & SDBR_NOT_INVISIBLE) && ! patch_Unit_is_visible_to_civ (attacker, __, defender->Body.CivID, 1))) // (invisible units are immune to DB AND attacker is invisible)
 			return NULL;
 
 		Unit * tr = NULL;
@@ -25938,10 +26345,10 @@ patch_Fighter_find_defensive_bombarder (Fighter * this, int edx, Unit * attacker
 			    (candidate != defender) &&
 			    (Unit_get_containing_army (candidate) != defender) &&
 			    ((attacker_class == candidate_type->Unit_Class) ||
-			     ((special_rules & SDBR_AERIAL) &&
+			     ((special_db_rules & SDBR_AERIAL) &&
 			      (candidate_type->Unit_Class == UTC_Air) &&
 			      (candidate_type->Air_Missions & UCV_Bombing)) ||
-			     ((special_rules & SDBR_DOCKED_VS_LAND) &&
+			     ((special_db_rules & SDBR_DOCKED_VS_LAND) &&
 			      (candidate_type->Unit_Class == UTC_Sea) &&
 			      (get_city_ptr (defender_tile->CityID) != NULL))) &&
 			    ((! attacker_has_one_hp) || UnitType_has_ability (candidate_type, __, lethal_bombard_req))) {
@@ -26019,7 +26426,9 @@ patch_Unit_score_kill_by_defender (Unit * this, int edx, Unit * victim, bool was
 	// This function is called when the defender wins in combat. If the attacker was actually killed by defensive bombardment, then award credit
 	// for that kill to the defensive bombarder not the defender in combat.
 	if (is->dbe.defender_was_destroyed) {
+		is->do_not_enslave_units = is->current_config.prevent_enslaving_by_bombardment;
 		Unit_score_kill (is->dbe.bombarder, __, victim, was_attacking);
+		is->do_not_enslave_units = false;
 		p_bic_data->fighter.play_animations = is->dbe.saved_animation_setting;
 
 	} else
@@ -26030,8 +26439,20 @@ void __fastcall
 patch_Unit_play_attack_anim_for_def_bombard (Unit * this, int edx, int direction)
 {
 	// Don't play any animation for air units, the animations are instead handled in the patch for damage_by_defensive_bombard
-	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air)
+	if (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class != UTC_Air) {
+
+		// Make sure the unit is displayed if it's in an army and we're configured for that
+		struct unit_display_override saved_udo = is->unit_display_override;
+		Unit * container;
+		if (is->current_config.show_armies_performing_defensive_bombard &&
+		    (container = get_unit_ptr (this->Body.Container_Unit)) != NULL &&
+		    Unit_has_ability (container, __, UTA_Army))
+			is->unit_display_override = (struct unit_display_override) { this->Body.ID, this->Body.X, this->Body.Y };
+
 		Unit_play_attack_animation (this, __, direction);
+
+		is->unit_display_override = saved_udo;
+	}
 }
 
 bool
@@ -26178,7 +26599,7 @@ patch_Unit_do_precision_strike (Unit * this, int edx, int x, int y)
 
 	if (is->current_config.polish_precision_striking &&
 	    UnitType_has_ability (&p_bic_data->UnitTypes[this->Body.UnitTypeID], __, UTA_Cruise_Missile))
-		Unit_despawn (this, __, 0, false, false, 0, 0, 0, 0);
+		patch_Unit_despawn (this, __, 0, false, false, 0, 0, 0, 0);
 }
 
 int __fastcall
@@ -26214,6 +26635,7 @@ patch_Unit_check_bombard_target (Unit * this, int edx, int tile_x, int tile_y)
 	int overlays;
 	if (base &&
 	    is->current_config.disallow_useless_bombard_vs_airfields &&
+	    ! Unit_has_ability (this, __, UTA_Nuclear_Weapon) &&
 	    ((tile = tile_at (tile_x, tile_y)) != p_null_tile) &&
 	    ((overlays = tile->vtable->m42_Get_Overlays (tile, __, 0)) & 0x20000000) && // if tile has an airfield AND
 	    (overlays == 0x20000000)) { // tile only has an airfield
@@ -26577,9 +26999,11 @@ patch_Tile_check_water_for_retreat_on_defense (Tile * this)
 	// tile and we're not configured to allow retreating onto water tiles.
 	bool retreat_blocked; {
 		if (this->vtable->m35_Check_Is_Water (this)) {
-			if (is->current_config.allow_defensive_retreat_on_water &&
-			    (defender != NULL) &&
-			    (p_bic_data->UnitTypes[defender->Body.UnitTypeID].Unit_Class == UTC_Sea))
+			if (   is->current_config.allow_defensive_retreat_on_water
+			    && defender != NULL
+			    && p_bic_data->UnitTypes[defender->Body.UnitTypeID].Unit_Class == UTC_Sea
+			    && (   is->current_config.limit_defensive_retreat_on_water_to_types.len == 0
+				|| (bool)itable_look_up_or (&is->current_config.limit_defensive_retreat_on_water_to_types, defender->Body.UnitTypeID, 0)))
 				retreat_blocked = false;
 			else
 				retreat_blocked = true;
@@ -27531,6 +27955,10 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			serialize_aligned_text ("unit_transport_ties", &mod_data);
 			itable_serialize (&is->unit_transport_ties, &mod_data);
 		}
+		if (is->current_config.unit_cycle_search_criteria != UCSC_STANDARD && is->waiting_units.len > 0) {
+			serialize_aligned_text ("waiting_units", &mod_data);
+			itable_serialize (&is->waiting_units, &mod_data);
+		}
 		if ((p_bic_data->ImprovementsCount > 256) && (p_cities->Cities != NULL) && (is->extra_city_improvs.len > 0)) {
 			serialize_aligned_text ("extra_city_improvs", &mod_data);
 			int extra_improv_count = p_bic_data->ImprovementsCount - 256;
@@ -27987,6 +28415,16 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					cursor += bytes_read;
 				else {
 					error_chunk_name = "unit_transport_ties";
+					break;
+				}
+
+			} else if (match_save_chunk_name (&cursor, "waiting_units")) {
+				int bytes_read = itable_deserialize (cursor, seg + seg_size, &is->waiting_units);
+				if (bytes_read > 0) {
+					cursor += bytes_read;
+					is->have_loaded_waiting_units = true;
+				} else {
+					error_chunk_name = "waiting_units";
 					break;
 				}
 
@@ -28728,6 +29166,8 @@ patch_Unit_can_heal_at (Unit * this, int edx, int tile_x, int tile_y)
 bool __fastcall
 patch_Unit_can_airdrop (Unit * this)
 {
+	UnitType * this_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
+
 	bool allowed = Unit_can_airdrop (this);
 
 	bool require_aerodrome = (is->current_config.enable_districts &&
@@ -28744,11 +29184,24 @@ patch_Unit_can_airdrop (Unit * this)
 		if (! has_aerodrome)
 			allowed = false;
 		else if (! allowed) {
-			UnitType * type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];
-			if ((type->Unit_Class != UTC_Air) &&
-			    (type->Air_Missions & UCV_Airdrop) &&
+			if ((this_type->Unit_Class != UTC_Air) &&
+			    (this_type->Air_Missions & UCV_Airdrop) &&
 			    (this->Body.Moves == 0))
 				allowed = true;
+		}
+	}
+
+	// Possibly rule in this airdrop as allowed if it's by a paratrooper in a helicopter on a carrier and we're configured to allow airdrops under
+	// those circumstances.
+	if ((! allowed) && (is->current_config.special_helicopter_rules & SHR_PASSENGER_AIRDROP)) {
+		Unit * container = get_unit_ptr (this->Body.Container_Unit);
+		if (container != NULL && p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Air) { // if in helicopter
+			Unit * metacontainer = get_unit_ptr (container->Body.Container_Unit);
+			if (metacontainer != NULL && p_bic_data->UnitTypes[metacontainer->Body.UnitTypeID].Unit_Class == UTC_Sea &&
+			    Unit_has_ability (metacontainer, __, UTA_Transports_Only_Aircraft)) { // if that helicopter is on a carrier
+				// Allow the airdrop under the same restrictions as from an airfield
+				allowed = this_type->Unit_Class != UTC_Air && this->Body.Moves == 0;
+			}
 		}
 	}
 
@@ -28912,8 +29365,16 @@ patch_Unit_despawn_after_killed_by_nuke (Unit * this, int edx, int civ_id_respon
 {
 	if (roll_to_spare_unit_from_nuke (this))
 		this->Body.Damage = Unit_get_max_hp (this) - 1;
-	else
+	else {
+		bool prev_always_despawn_passengers = is->always_despawn_passengers;
+		if ((is->current_config.land_transport_rules & LTR_NO_ESCAPE) && is_land_transport (this))
+			is->always_despawn_passengers = true;
+		else if ((is->current_config.special_helicopter_rules & SHR_NO_ESCAPE) && p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Air &&
+		    p_bic_data->UnitTypes[this->Body.UnitTypeID].Transport_Capacity > 0)
+			is->always_despawn_passengers = true;
 		patch_Unit_despawn (this, __, civ_id_responsible, param_2, param_3, param_4, param_5, param_6, param_7);
+		is->always_despawn_passengers = prev_always_despawn_passengers;
+	}
 }
 
 void __fastcall
@@ -28929,20 +29390,32 @@ patch_mp_despawn_after_killed_by_nuke (void * this, int edx, int unit_id, int ci
 bool __fastcall
 patch_City_has_unprotected_improv_to_sell (City * this, int edx, int id)
 {
-	if (! is->current_config.allow_sale_of_aqueducts_and_hospitals)
+	// Fall back to original logic only if the config doesn't alter the behavior.
+	if (! is->current_config.allow_sale_of_aqueducts_and_hospitals && !is->current_config.allow_sale_of_small_wonders)
 		return City_has_unprotected_improv (this, __, id);
 
-	// Replicate the logic from the original method but check that the city is below the pop cap instead of that the improv removes the cap
 	else if (patch_City_has_improvement (this, __, id, false)) {
 		Improvement * improv = &p_bic_data->Improvements[id];
-		int max_pop_to_sell = INT_MAX; {
-			if (improv->ImprovementFlags & ITF_Allows_City_Level_2)
-				max_pop_to_sell = p_bic_data->General.MaximumSize_Town;
-			else if (improv->ImprovementFlags & ITF_Allows_City_Level_3)
-				max_pop_to_sell = p_bic_data->General.MaximumSize_City;
+		int max_pop_to_sell = INT_MAX; // By default, population-based sell isn't restricted
+		if (improv->ImprovementFlags & (ITF_Allows_City_Level_2 | ITF_Allows_City_Level_3)) { // Aqueduct/Hospital?
+			if (is->current_config.allow_sale_of_aqueducts_and_hospitals) {
+				if (improv->ImprovementFlags & ITF_Allows_City_Level_2)
+					max_pop_to_sell = p_bic_data->General.MaximumSize_Town;
+				else if (improv->ImprovementFlags & ITF_Allows_City_Level_3)
+					max_pop_to_sell = p_bic_data->General.MaximumSize_City;
+			} else {
+				// Do not allow selling these.
+				max_pop_to_sell = 0;
+			}
 		}
+
+		// Can't sell:
+		// - Great Wonders
+		// - Small Wonders, unless the config allows it
+		// - Capital
+		// - Aqueduct/Hospital if the city is too big for that population
 		return ((improv->Characteristics & ITC_Wonder) == 0) &&
-			((improv->Characteristics & ITC_Small_Wonder) == 0) &&
+			(is->current_config.allow_sale_of_small_wonders || ((improv->Characteristics & ITC_Small_Wonder) == 0)) &&
 			((improv->ImprovementFlags & ITF_Center_of_Empire) == 0) &&
 			(this->Body.Population.Size <= max_pop_to_sell);
 
@@ -33135,6 +33608,154 @@ patch_Unit_disembark (Unit * this, int edx, int tile_x, int tile_y)
 	}
 }
 
+bool __fastcall
+patch_Unit_has_ability_no_load_non_army_passengers (Unit * this, int edx, enum UnitTypeAbilities army_ability)
+{
+	UnitType * transport_type = &p_bic_data->UnitTypes[is->can_load_transport->Body.UnitTypeID],
+		 * passenger_type = &p_bic_data->UnitTypes[this                  ->Body.UnitTypeID];
+
+	// This call comes from Unit::can_load at the point where it's determined that the passenger (this) has transport capacity > 0 and is checking
+	// whether it's an army. If not, it can't be loaded. Add two exceptions here for land transports, if configured, one to allow LTs to load into
+	// naval units and another to allow empty LTs to load into armies.
+	if (is->current_config.land_transport_rules != 0)
+		if ((passenger_type->Unit_Class == UTC_Land) && ! Unit_has_ability (this, __, army_ability)) { // if it's a land transport
+			if ((is->current_config.land_transport_rules & LTR_LOAD_ONTO_BOAT) && (transport_type->Unit_Class == UTC_Sea))
+				return true;
+			if ((is->current_config.land_transport_rules & LTR_JOIN_ARMY) &&
+			    Unit_has_ability (is->can_load_transport, __, army_ability) && (Unit_count_contained_units (this) == 0))
+				return true;
+		}
+
+	// Similarly, allow helicopters to be loaded onto carriers if so configured
+	if ((is->current_config.special_helicopter_rules & SHR_ALLOW_ON_CARRIERS) &&
+	    passenger_type->Unit_Class == UTC_Air &&
+	    transport_type->Unit_Class == UTC_Sea &&
+	    Unit_has_ability (is->can_load_transport, __, UTA_Transports_Only_Aircraft))
+		return true;
+
+	return Unit_has_ability (this, __, army_ability);
+}
+
+bool __fastcall
+patch_Unit_has_ability_no_load_transport_into_army (Unit * this, int edx, enum UnitTypeAbilities army_ability)
+{
+	// Similar to above, here it checks if the target unit is an army and rejects the load if it is (again, already determined that the passenger
+	// has transport capacity). Modify this rule to return false for land transports trying to join armies if configured. We don't have to check
+	// that the LT is empty since that is already disallowed by the modified check above.
+	bool is_army = Unit_has_ability (this, __, army_ability);
+	if ((is->current_config.land_transport_rules & LTR_JOIN_ARMY) && is_army &&
+	    (p_bic_data->UnitTypes[is->can_load_passenger->Body.UnitTypeID].Unit_Class == UTC_Land))
+		return false;
+
+	else
+		return is_army;
+}
+
+bool __fastcall
+patch_Fighter_unit_can_defend (Fighter * this, int edx, Unit * unit, int tile_x, int tile_y)
+{
+	if (cannot_defend_inside_transport (unit))
+		return false;
+	else
+		return Fighter_unit_can_defend (this, __, unit, tile_x, tile_y);
+}
+
+bool __fastcall
+patch_Leader_is_enemy_unit_for_ground_aa (Leader * this, int edx, Unit * bomber)
+{
+	// When this function is called, the potential interceptor unit is stored in register ESI.
+	Unit * interceptor;
+	__asm__ __volatile__("mov %%esi, %0" : "=r" (interceptor));
+
+	Unit * container = get_unit_ptr (interceptor->Body.Container_Unit);
+	bool in_transport = (container != NULL) && ! Unit_has_ability (container, __, UTA_Army);
+	if (in_transport &&
+	    (is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) &&
+	    p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Land)
+		return false;
+	else if (in_transport &&
+		 (is->current_config.special_helicopter_rules & SHR_NO_DEFENSE_FROM_INSIDE) &&
+		 p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Air)
+		return false;
+	else if (in_transport &&
+		 is->current_config.no_land_anti_air_from_inside_naval_transport &&
+		 (p_bic_data->UnitTypes[container->Body.UnitTypeID].Unit_Class == UTC_Sea))
+		return false;
+	else
+		return Leader_is_enemy_unit (this, __, bomber);
+}
+
+bool __fastcall
+patch_Unit_has_army_ability_for_passenger_despawn (Unit * this, int edx, enum UnitTypeAbilities army_ability)
+{
+	// If the unit has the army ability, the game will always despawn the passengers. Otherwise there are exceptions like land unit passengers
+	// won't be despawned if the transport is on a land tile.
+	return is->always_despawn_passengers || Unit_has_ability (this, __, army_ability);
+}
+
+int __cdecl
+patch_count_units_at_in_try_capturing (int x, int y, enum unit_filter filter, int arg_a, int arg_b, int arg_c)
+{
+	Tile * tile = tile_at (x, y);
+
+	// If one of the no-defense-from-inside rules is in force, count units like the function normally would except skip units that are inside
+	// transports from which they can't defend. Otherwise, if those transports have 0 defense, the passengers will prevent them from being
+	// captured but not fight themselves, making movement onto their tile impossible.
+	if (tile->vtable->m35_Check_Is_Water (tile) == 0 &&
+	    ((is->current_config.land_transport_rules & LTR_NO_DEFENSE_FROM_INSIDE) || (is->current_config.special_helicopter_rules & SHR_NO_DEFENSE_FROM_INSIDE))) {
+		int tr = 0;
+		FOR_UNITS_ON (tai, tile) {
+			if ((arg_b == -1 || p_bic_data->UnitTypes[tai.unit->Body.UnitTypeID].Unit_Class == arg_b) &&
+			    (arg_a == -1 || patch_Unit_is_visible_to_civ (tai.unit, __, arg_a, 1)) &&
+			    (Unit_get_defense_strength (tai.unit) > 0) &&
+			    ! cannot_defend_inside_transport (tai.unit))
+				tr++;
+		}
+		return tr;
+
+	} else
+		return count_units_at (x, y, filter, arg_a, arg_b, arg_c);
+}
+
+void __fastcall
+patch_Map_generate_resources (Map * this, int edx, int secondary_seed)
+{
+	int const bic_tag_good = 0x444f4f47; // = 'GOOD'
+	int resource_type_count = this->vtable->m35_Get_BIC_Sub_Data (this, __, bic_tag_good, -1, NULL);
+	bool * ratios_to_clear = NULL;
+	int lux_percent = is->current_config.luxury_randomized_appearance_rate_percent;
+	int seed = (this->Seed + 0x180E3) * secondary_seed;
+
+	// To change the randomized appearance rate for luxuries, fill in an appearance rate for any that would be randomized (rate set == 0) using
+	// the same process the game would to randomize the rate but with different limits. That process involves taking two random numbers from 0 to
+	// 25 then adding them together and to 50 to produce a random rate from 50 to 100 biased toward the middle of that range.
+	if (lux_percent != 100 &&
+	    (ratios_to_clear = calloc (1, resource_type_count)) != NULL) {
+		for (int n = 0; n < resource_type_count; n++) {
+			Resource_Type * res;
+			this->vtable->m35_Get_BIC_Sub_Data (this, __, bic_tag_good, n, (void **)&res);
+			if (res->Class == RC_Luxury && res->AppearanceRatio == 0) {
+				ratios_to_clear[n] = true;
+				int half_lux_percent    = (lux_percent * 50 + 50) / 100,
+				    quarter_lux_percent = (lux_percent * 25 + 50) / 100;
+				res->AppearanceRatio = not_below (1, half_lux_percent + rand_int (&seed, __, quarter_lux_percent) + rand_int (&seed, __, quarter_lux_percent));
+			}
+		}
+	}
+
+	Map_generate_resources (this, __, secondary_seed);
+
+	if (ratios_to_clear != NULL) {
+		for (int n = 0; n < resource_type_count; n++)
+			if (ratios_to_clear[n]) {
+				Resource_Type * res;
+				this->vtable->m35_Get_BIC_Sub_Data (this, __, bic_tag_good, n, (void **)&res);
+				res->AppearanceRatio = 0;
+			}
+		free (ratios_to_clear);
+	}
+}
+
 PassBetweenValidity __fastcall
 patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int to_x, int to_y, int param_5)
 {
@@ -33181,8 +33802,6 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 				return PBV_OK;
 			}
 		}
-	}
-
 	if (is->current_config.enable_districts &&
 		is->current_config.enable_canal_districts &&
 		base != PBV_OK &&
@@ -33906,6 +34525,215 @@ patch_get_combat_occupier_in_Unit_ai_move_naval_power_unit (int tile_x, int tile
 		return base;
 
 	return owner;
+}
+
+int __fastcall
+patch_rand_int_to_enslave (void * this, int edx, int lim)
+{
+	// lim is 100, enslaving happens if the return value is < 33
+	int r = rand_int (this, __, lim);
+	return is->do_not_enslave_units ? 100 : r;
+}
+
+int __fastcall
+patch_Sprite_draw_espionage_screen_target_civ_bkg (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	// Figure out which of the potential target civs we're drawing by working backwards from the Y location
+	int top = (p_bic_data->ScreenHeight - p_espionage_form->Image.Height) / 2;
+	is->espionage_form_drawing_target_index = (pixel_y - top - 0x5C) / 0x3a + p_espionage_form->field_1584;
+
+	return Sprite_draw (this, __, canvas, pixel_x, pixel_y, color_table);
+}
+
+char * __fastcall
+patch_Civilopedia_Article_get_name_for_esp_screen (Civilopedia_Article * this)
+{
+	// Ensure that we have captured a valid civ ID being drawn then, if that civ has an era-specific formal name, return that so that the
+	// era-specific names apply on the espionage screen.
+	int target_civ_id;
+	if (is->espionage_form_drawing_target_index >= 0 &&
+	    is->espionage_form_drawing_target_index < p_espionage_form->target_civ_id_count &&
+	    (target_civ_id = p_espionage_form->target_civ_ids[is->espionage_form_drawing_target_index]) >= 0 &&
+	    target_civ_id < 32 &&
+	    is->aliased_civ_formal_name_bits & 1<<target_civ_id)
+		return Leader_get_civ_formal_name (&leaders[target_civ_id]);
+
+	else
+		return this->Name.S;
+}
+
+void __fastcall
+patch_Animator_play_one_shot_victory_animation (Animator * this, int edx, Unit * unit, AnimationType anim_type, bool param_3)
+{
+	if (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Air && is->current_config.aircraft_victory_animation != NULL) {
+		struct string_slice slice = {.str = is->current_config.aircraft_victory_animation, .len = strlen (is->current_config.aircraft_victory_animation)};
+		find_animation_type_by_name (&slice, true, &anim_type);
+	}
+
+	Animator_play_one_shot_unit_animation (this, __, unit, anim_type, param_3);
+}
+
+void
+clear_selectable_units_list (Main_Screen_Form * main_screen_form, bool include_unit_objects)
+{
+	// This is what the base game does to clear things at the start of assemble_selectable_units
+	if (include_unit_objects && p_units->Units != NULL)
+		for (int n = 0; n <= p_units->LastIndex; n++) {
+			Unit * unit = get_unit_ptr (n);
+			if (unit != NULL)
+				unit->Body.in_selectable_units_list = false;
+		}
+	UnitIDItem * item = main_screen_form->selectable_units.first;
+	while (item != NULL) {
+		UnitIDItem * next = item->next;
+		item->vtable->destruct (item, __, 1);
+		item = next;
+	}
+	main_screen_form->selectable_units.first = main_screen_form->selectable_units.last = NULL;
+	main_screen_form->selectable_units.length = 0;
+}
+
+void __fastcall
+patch_Main_Screen_Form_assemble_selectable_units (Main_Screen_Form * this)
+{
+	if (is->have_loaded_waiting_units)
+		is->have_loaded_waiting_units = false;
+	else
+		table_deinit (&is->waiting_units);
+
+	if (is->current_config.unit_cycle_search_criteria == UCSC_STANDARD)
+		Main_Screen_Form_assemble_selectable_units (this);
+	else {
+		clear_selectable_units_list (this, true);
+		this->unit_cycle_cursor = NULL;
+		this->completed_unit_cycle = false;
+	}
+}
+
+void __fastcall
+patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit * unit, bool param_2)
+{
+	// To set a unit to wait, Main_Screen_Form::issue_command calls this method with unit == NULL and param_2 == false. Detect when that's
+	// happened and record that the unit's been set to wait so we can reimplement the wait command when replacing the base unit cycling logic.
+	int * p_stack = (int *)&unit;
+	int ret_addr = p_stack[-1];
+	if (ret_addr == SET_SELECTED_UNIT_TO_ISSUE_WAIT_COMMAND_RET && unit == NULL && this->Current_Unit != NULL) {
+		// Give the unit a waiting level higher than the minimum among all units already set to wait. This ensures that this unit does not get
+		// immediately picked up again by the cycling logic unless it's the only selectable unit left. This also means that the first unit set
+		// to wait will be the first cycled to once all the non-waiting units have been moved (it's the only one at level 1). I consider that
+		// an advantage.
+		int min_others_waiting_level = INT_MAX;
+		bool any_others_waiting = false;
+		FOR_TABLE_ENTRIES (tei, &is->waiting_units)
+			if (tei.key != this->Current_Unit->Body.ID) {
+				any_others_waiting = true;
+				if (tei.value < min_others_waiting_level)
+					min_others_waiting_level = tei.value;
+			}
+		itable_insert (&is->waiting_units, this->Current_Unit->Body.ID, any_others_waiting ? min_others_waiting_level + 1 : 1);
+	}
+
+	if (unit != NULL) {
+		is->last_selected_unit.initial_x = is->last_selected_unit.last_x = unit->Body.X;
+		is->last_selected_unit.initial_y = is->last_selected_unit.last_y = unit->Body.Y;
+		is->last_selected_unit.type_id = unit->Body.UnitTypeID;
+		is->last_selected_unit.ptr = unit;
+		itable_remove (&is->waiting_units, unit->Body.ID); // Clear waiting record when waiting unit is selected
+	}
+
+	if (is->current_config.unit_cycle_search_criteria != UCSC_STANDARD)
+		clear_selectable_units_list (this, false);
+
+	Main_Screen_Form_set_selected_unit (this, __, unit, param_2);
+
+	// If selecting a new unit, must insert it into the list to ensure it's actually selected.
+	if (is->current_config.unit_cycle_search_criteria != UCSC_STANDARD && unit != NULL) {
+		UnitIDList_insert_before (&this->selectable_units, __, unit->Body.ID, NULL);
+		this->unit_cycle_cursor = this->selectable_units.first;
+	}
+}
+
+Unit * __fastcall
+patch_Main_Screen_Form_find_next_unit_for_cycling (Main_Screen_Form * this)
+{
+	if (is->current_config.unit_cycle_search_criteria == UCSC_STANDARD)
+		return Main_Screen_Form_find_next_unit_for_cycling (this);
+
+	else {
+		int least_difference = INT_MAX;
+		Unit * least_different_unit = NULL;
+		int sx = is->current_config.unit_cycle_search_criteria == UCSC_SIMILAR_NEAR_START ? is->last_selected_unit.initial_x : is->last_selected_unit.last_x,
+		    sy = is->current_config.unit_cycle_search_criteria == UCSC_SIMILAR_NEAR_START ? is->last_selected_unit.initial_y : is->last_selected_unit.last_y;
+		for (int n = 0; n <= p_units->LastIndex; n++) {
+			Unit * unit = get_unit_ptr (n);
+			if (unit != NULL && unit->Body.CivID == this->Player_CivID && Unit_can_cycle_to (unit)) {
+				int distance = not_above (1<<15, int_abs (unit->Body.X - sx) + int_abs (unit->Body.Y - sy));
+
+				bool other_type, not_duplicate; {
+					if (is->last_selected_unit.type_id == unit->Body.UnitTypeID) {
+						other_type = false;
+						if (is->last_selected_unit.ptr != NULL)
+							not_duplicate = ! are_units_duplicate (&is->last_selected_unit.ptr->Body, &unit->Body, false);
+						else
+							not_duplicate = true;
+					} else
+						other_type = not_duplicate = true;
+				}
+
+				int wait_level = itable_look_up_or (&is->waiting_units, unit->Body.ID, 0);
+
+				int difference = ((int)wait_level << 20) + (distance << 2) + ((int)other_type << 1) + (int)not_duplicate;
+				if (difference < least_difference) {
+					least_difference = difference;
+					least_different_unit = unit;
+				}
+			}
+		}
+		this->completed_unit_cycle = least_different_unit == NULL;
+		return least_different_unit;
+	}
+}
+
+void __fastcall
+patch_City_m22 (City * this, int edx, bool param_1)
+{
+	int * p_stack = (int *)&param_1;
+	int ret_addr = p_stack[-1];
+
+	City_m22 (this, __, param_1);
+
+	// If the base game method failed to find a new thing for city to build, we've been called by the methods that complete a previous build, and
+	// the city is owned by the UI controller, the game will crash because there will be no default option for the build selector popup. If we're
+	// configured to fix that, suggest Wealth for the new build or, failing that, any buildable unit or improvement.
+	if (   this->Body.Order_Type == 0
+	    && is->current_config.patch_failure_to_find_new_city_build
+	    && this->Body.CivID == p_main_screen_form->Player_CivID
+	    && (   ret_addr == CITY_M22_TO_ADD_BUILDING_IF_DONE_RETURN_1
+		|| ret_addr == CITY_M22_TO_ADD_BUILDING_IF_DONE_RETURN_2
+		|| ret_addr == CITY_M22_TO_SPAWN_UNIT_IF_DONE_RETURN)) {
+
+		// Search for an improvement-type order we can build. Choose Wealth if possible, otherwise just pick the first thing that can be built
+		for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
+			if (patch_City_can_build_improvement (this, __, n, true)) {
+				if (p_bic_data->Improvements[n].ImprovementFlags & ITF_Capitalization) {
+					this->Body.Order_Type = COT_Improvement;
+					this->Body.Order_ID = n;
+					break;
+				} else if (this->Body.Order_Type == 0) {
+					this->Body.Order_Type = COT_Improvement;
+					this->Body.Order_ID = n;
+				}
+			}
+
+		// If we still don't have a build, pick the first buildable unit
+		if (this->Body.Order_Type == 0)
+			for (int n = 0; n < p_bic_data->UnitTypeCount; n++)
+				if (patch_City_can_build_unit (this, __, n, true, 0, false)) {
+					this->Body.Order_Type = COT_Unit;
+					this->Body.Order_ID = n;
+					break;
+				}
+	}
 }
 
 // TCC requires a main function be defined even though it's never used.

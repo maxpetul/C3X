@@ -702,24 +702,24 @@ enum Unit_Command_Values
   UCV_Sentry	= 0x40,
 
   // Special Actions
-  UCV_Load		  = 0x10000001,
-  UCV_Unload		  = 0x10000002,
-  UCV_Airlift		  = 0x10000004,
-  UCV_Pillage		  = 0x10000008,
-  UCV_Bombard		  = 0x10000010,
-  UCV_Airdrop		  = 0x10000020,
+  UCV_Load                = 0x10000001,
+  UCV_Unload              = 0x10000002,
+  UCV_Airlift             = 0x10000004,
+  UCV_Pillage             = 0x10000008,
+  UCV_Bombard             = 0x10000010,
+  UCV_Airdrop             = 0x10000020,
   UCV_Build_Army	  = 0x10000040,
   UCV_Finish_Improvements = 0x10000080,
-  UCV_Upgrade_Unit	  = 0x10000100,
-  UCV_Rescue_Princess	  = 0x10000200,
+  UCV_Upgrade_Unit        = 0x10000100,
+  UCV_Rescue_Princess     = 0x10000200,
   UCV_Telepad             = 0x10004000,
   UCV_Teleport            = 0x10008000,
-  UCV_Stealth_Attack	  = 0x10010000,
+  UCV_Stealth_Attack      = 0x10010000,
   UCV_Charm_Bombard       = 0x10020000,
-  UCV_Enslave		  = 0x10040000,
-  UCV_0x10080000          = 0x10080000, // Appears in Leader::capture_city doubling capture gold
-  UCV_Sacrifice		  = 0x10100000,
-  UCV_Science_Age	  = 0x10200000,
+  UCV_Enslave             = 0x10040000,
+  UCV_Collateral_Damage   = 0x10080000, // Also doubles gold from city captures
+  UCV_Sacrifice           = 0x10100000,
+  UCV_Science_Age         = 0x10200000,
 
   // Worker/Engineer Actions
   UCV_Build_Colony	= 0x20000001,
@@ -1436,6 +1436,8 @@ typedef enum animation_type {
 	AT_JUNGLE   = 0x10,
 	AT_FOREST   = 0x11,
 	AT_PLANT    = 0x12,
+
+	COUNT_ANIMATION_TYPES = 0x13
 } AnimationType;
 
 typedef enum espionage_mission {
@@ -1680,7 +1682,7 @@ struct UnitType
   int field_D4;
   int field_D8;
   IntList unit_telepads;
-  int field_F4;
+  int enslave_results_in;
   IntList stealth_attack_targets;
   IntList building_telepads;
   int Create_Craters;
@@ -4450,7 +4452,8 @@ struct City_Body
   int Improvements_Pollution;
   int Order_ID;
   int Order_Type;
-  int field_38[2];
+  int field_38;
+  int turns_of_flip_immunity;
   int cultural_level;
   int field_44[3];
   int DraftCount;
@@ -5016,7 +5019,9 @@ struct Unit_Body
   int field_1C0;
   int auto_bombard_target_x;
   int auto_bombard_target_y;
-  int field_1CC;
+  bool do_not_autoselect;
+  byte field_1CD;
+  short field_1CE;
   char carrying_princess_of_race;
   byte charmed;
   byte field_1D2;
@@ -5025,7 +5030,7 @@ struct Unit_Body
   LeaderKind leader_kind;
   IDLS IDLS;
   int field_210[8];
-  byte field_230;
+  bool in_selectable_units_list;
   byte field_231;
   byte always_on_top;
   byte field_233;
@@ -5559,7 +5564,10 @@ struct Espionage_Form
   int field_1584;
   int field_1588;
   Scroll_Bar Scroll_Bar;
-  int field_294C[1311];
+  int field_294C[1264];
+  int target_civ_id_count;
+  int target_civ_ids[32];
+  int field_3D90[14];
   int field_3DC8[174];
   int mouse_over_control;
   int selected_civ_list_index;
@@ -6132,7 +6140,9 @@ struct Advisor_Foreign_Form
 
 struct UnitIDItem
 {
-  void * vtable; // = 0x666B34
+  struct UnitIDItemVTable {
+    UnitIDItem * (__fastcall * destruct) (UnitIDItem * this, __, byte deallocate);
+  } * vtable; // = 0x666B34
   int id;
   UnitIDItem * next;
   UnitIDItem * prev;
@@ -6177,7 +6187,11 @@ struct Main_Screen_Form
   int field_4E80[6];
   int camera_x;
   int camera_y;
-  int field_4EA0[9];
+  int field_4EA0[8];
+  bool completed_unit_cycle;
+  byte field_4EC1;
+  byte field_4EC2;
+  byte field_4EC3;
   int ambient_sound_index;
   int field_4EC8;
   int Mode_Action;
@@ -6188,7 +6202,7 @@ struct Main_Screen_Form
   Main_GUI GUI;
   int field_2E14C;
   UnitIDList selectable_units;
-  int field_2E160;
+  UnitIDItem * unit_cycle_cursor; // Tracks a location in selectable_units. When searching for next unit to cycle to, continues from here.
   Timer ambient_sound_timer;
   int field_2E194;
   char turn_end_flag;

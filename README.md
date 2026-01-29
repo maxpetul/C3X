@@ -236,7 +236,7 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Option stopping non-sea detector units from revealing invisible sea units and vice-versa
    - Adjustable city work area size
       - Radius of area can be set from 1 to 7 tiles (2 is the standard)
-      - Area can also be limited by a city's cultural level
+      - Area can also be limited by a city's cultural level or buildings
    - Option to throttle AI's expansion by temporarily applying perfume to settlers each time it founds a city
    - Option to block the galley chaining exploit by preventing units from loading into two different transports on the same turn
    - Adjustable rebase range as multiple of operational range
@@ -246,6 +246,21 @@ All C3X features are listed below. See the default config (default.c3x\_config.i
    - Option to prevent units from upgrading past an intermediate type that does not have the upgrade ability
    - Can adjust times to generate tourism gold
    - Option to put all human players in contact with each other at the start of a hotseat game
+   - Enable districts, an elaborate change to the game's economy inspired by Civ 6
+      - The districts feature is a large mod on its own. See its thread: https://forums.civfanatics.com/threads/c3x-districts.700590/
+   - Land transport changes
+      - Land transports may be loaded into naval transports
+      - Empty LTs may join armies
+      - Units inside an LT may be prevented from defending their tile, performing defensive bombard, or intercepting air units
+      - Units inside an LT can be destroyed when the LT itself is destroyed or captured
+   - Resource placement changes
+      - Can relax the rule preventing resources from appearing next to others of a different type
+      - Adjust the overall appearance rate for luxuries that do not have a fixed rate set
+      - Control the overall appearance rate of bonus resources
+   - Option to allow sale of small wonders
+   - Option to allow units to be unloaded from armies
+   - Option to prevent land anti-air units from intercepting overflying aircraft while they're loaded in a naval transport
+   - Option to prevent units from being enslaved after being destroyed by lethal bombard named prevent_enslaving_by_bombardment
 </details>
 
 ## How It Works
@@ -255,7 +270,8 @@ C3X is open source. The C code that gets injected into the game's EXE is located
 
 ## Special Thanks
 1. Antal1987 for his work reverse engineering Civ3
-2. Rï¿½mulo Prado for his help testing the mod
+2. Rômulo Prado for his help testing the mod
 3. Civinator for the German translation. See: https://www.civforum.de/showthread.php?113285-Der-Flintlock-Deutsch-Patch
 4. Vaughn Parker for generously commissioning the port to the PCGames.de EXE and many other features
-5. instafluff0 for contributing the day/night cycle feature
+5. instafluff0 for contributing the districts and day/night cycle features
+6. Philiquaz and dobragab for their contributions

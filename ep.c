@@ -585,6 +585,7 @@ find_patch_function (TCCState * tcc, char const * obj_name, int prepend_patch)
 	return mss.matching_val;
 }
 
+// Registers must be defined in this exact order to match how they're encoded inside an instruction
 enum reg { REG_EAX = 0, REG_ECX, REG_EDX, REG_EBX, REG_ESP, REG_EBP, REG_ESI, REG_EDI };
 
 // This writes a call to intercept_consideration at the cursor. intercept_consideration takes a single parameter, the point value of the thing being
@@ -990,6 +991,11 @@ ENTRY_POINT ()
 	// Again to replace the call to get_pixel in draw_city_dot b/c the instruction is too small to edit with repl_call
 	ASSERT (i_next_free_inlead + 1 < inleads_capacity);
 	tcc__define_symbol (tcc, "ADDR_INLEAD_FOR_CITY_DOT_DRAW_PIXEL_REPL", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead]));
+	i_next_free_inlead++;
+
+	// Again to replace the division op in the limit when looping to generate bonus resources b/c the original div is a left shift
+	ASSERT (i_next_free_inlead + 1 < inleads_capacity);
+	tcc__define_symbol (tcc, "ADDR_RESOURCE_GEN_TILE_COUNT_DIV_REPL", temp_format ("((void *)0x%x)", (int)&inleads[i_next_free_inlead]));
 	i_next_free_inlead++;
 
 	tcc__define_symbol (tcc, "INLEAD_SIZE", temp_format ("%u", sizeof (struct inlead)));

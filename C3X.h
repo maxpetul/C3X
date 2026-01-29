@@ -11,7 +11,7 @@ typedef unsigned char byte;
 #include "Civ3Conquests.h"
 
 #define MOD_VERSION 2600
-#define MOD_PREVIEW_VERSION 2
+#define MOD_PREVIEW_VERSION 0
 
 #define COUNT_TILE_HIGHLIGHTS 11
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
@@ -100,6 +100,12 @@ enum minimap_doubling_mode {
 	MDM_ALWAYS
 };
 
+enum unit_cycle_search_criteria {
+	UCSC_STANDARD = 0,
+	UCSC_SIMILAR_NEAR_START,
+	UCSC_SIMILAR_NEAR_DESTINATION
+};
+
 enum special_defensive_bombard_rules {
 	SDBR_LETHAL         =  1,
 	SDBR_NOT_INVISIBLE  =  2,
@@ -109,9 +115,24 @@ enum special_defensive_bombard_rules {
 };
 
 enum special_zone_of_control_rules {
-	SZOCR_LETHAL     = 1,
-	SZOCR_AERIAL     = 2,
-	SZOCR_AMPHIBIOUS = 4,
+	SZOCR_LETHAL          = 1,
+	SZOCR_AERIAL          = 2,
+	SZOCR_AMPHIBIOUS      = 4,
+	SZOCR_NOT_FROM_INSIDE = 8,
+};
+
+enum land_transport_rules {
+	LTR_LOAD_ONTO_BOAT         = 1,
+	LTR_JOIN_ARMY              = 2,
+	LTR_NO_DEFENSE_FROM_INSIDE = 4,
+	LTR_NO_ESCAPE              = 8,
+};
+
+enum special_helicopter_rules {
+	SHR_ALLOW_ON_CARRIERS      = 1,
+	SHR_PASSENGER_AIRDROP      = 2,
+	SHR_NO_DEFENSE_FROM_INSIDE = 4,
+	SHR_NO_ESCAPE              = 8,
 };
 
 enum work_area_limit {
@@ -175,6 +196,7 @@ struct c3x_config {
 	int anarchy_length_percent;
 	bool show_golden_age_turns_remaining;
 	bool show_zoc_attacks_from_mid_stack;
+	bool show_armies_performing_defensive_bombard;
 	bool cut_research_spending_to_avoid_bankruptcy;
 	bool dont_pause_for_love_the_king_messages;
 	bool reverse_specialist_order_with_shift;
@@ -207,6 +229,7 @@ struct c3x_config {
 	enum retreat_rules land_retreat_rules;
 	enum retreat_rules sea_retreat_rules;
 	bool allow_defensive_retreat_on_water;
+	struct table limit_defensive_retreat_on_water_to_types;
 	int ai_multi_city_start;
 	int max_tries_to_place_fp_city;
 	int * ai_multi_start_extra_palaces;
@@ -249,6 +272,7 @@ struct c3x_config {
 	bool accentuate_cities_on_minimap;
 	enum minimap_doubling_mode double_minimap_size;
 	bool allow_multipage_civilopedia_descriptions;
+	enum unit_cycle_search_criteria unit_cycle_search_criteria;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
@@ -285,8 +309,16 @@ struct c3x_config {
 	bool prevent_old_units_from_upgrading_past_ability_block;
 	bool introduce_all_human_players_at_start_of_hotseat_game;
 	bool allow_unload_from_army;
+	enum land_transport_rules land_transport_rules;
+	bool allow_adjacent_resources_of_different_types;
+	int luxury_randomized_appearance_rate_percent;
+	int tiles_per_non_luxury_resource;
+	bool no_land_anti_air_from_inside_naval_transport;
+	enum special_helicopter_rules special_helicopter_rules;
+	bool prevent_enslaving_by_bombardment;
 	int years_to_double_building_culture;
 	int tourism_time_scale_percent;
+	bool allow_sale_of_small_wonders;
 
 	bool enable_trade_net_x;
 	bool optimize_improvement_loops;
@@ -329,6 +361,7 @@ struct c3x_config {
 	bool patch_ai_can_form_army_without_special_ability;
 	bool patch_ai_can_sacrifice_without_special_ability;
 	bool patch_crash_in_leader_unit_ai;
+	bool patch_failure_to_find_new_city_build;
 
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
@@ -337,8 +370,10 @@ struct c3x_config {
 	int per_extraterritorial_colony_relation_penalty;
 
 	bool draw_forests_over_roads_and_railroads;
-	
+
 	bool enable_named_tiles;
+
+	char * aircraft_victory_animation; // NULL if set to "none" in config
 
 	int day_night_cycle_mode;
 	int elapsed_minutes_per_day_night_hour_transition;
@@ -1287,6 +1322,7 @@ struct injected_state {
 	void (* qsort) (void *, size_t, size_t, int (*) (void const *, void const *));
 	int (* memcmp) (void const *, void const *, size_t);
 	void * (* memcpy) (void *, void const *, size_t);
+	int (* tolower) (int);
 
 	Unit * sb_next_up; // The unit currently doing a stack bombard or NULL otherwise. Gets set to NULL if the unit is despawned.
 
@@ -1373,9 +1409,6 @@ struct injected_state {
 	// The maximum number of tiles workable by cities including the city tile itself (21 under standard game rules). Updated whenever the
 	// city_work_radius config value gets changed.
 	int workable_tile_count;
-
-	// Multi-level zoom system (0-5, where 3 is default zoom level)
-	int current_zoom_level;
 
 	// The civ ID of the player from whose perspective we're currently showing city loc desirability, or -1 if none. Initialized to -1.
 	int city_loc_display_perspective;
@@ -1758,6 +1791,12 @@ struct injected_state {
 	// Normally false. When true, calls to bounce_trespassing_units won't kick out invisible units even if they're revealed.
 	bool do_not_bounce_invisible_units;
 
+	// Normally false. When true, Unit::despawn also despawns any passenger units inside instead of making exceptions in some cases.
+	bool always_despawn_passengers;
+
+	// Normally false. When true, calls to Unit::score_kill will not enslave.
+	bool do_not_enslave_units;
+
 	// If limit_unit_loading_to_one_transport_per_turn is on, maps unit IDs to the ID of the transport unit they're tied to for the current turn.
 	struct table unit_transport_ties;
 
@@ -2039,6 +2078,29 @@ struct district_button_image_set {
 	// Set to true once the auto-build process for the Great Wall is complete to avoid running it again
 	enum great_wall_auto_build_state great_wall_auto_build;
 	Tile * focused_tile;
+
+	// Stores the index in the list of target civs currently being drawn on the espionage form. Used to replace the civ name with its era-specific alias.
+	int espionage_form_drawing_target_index;
+
+	// Tracks information about the last unit that was selected. These fields are updated when a new unit is selected or when the selected unit
+	// moves or is destroyed.
+	struct {
+		int initial_x, initial_y; // Stores the unit's location when it was selected
+		int last_x, last_y, type_id; // Stores the unit's current or last available location and type id
+		Unit * ptr; // A pointer to the unit, may be NULL if the unit was destroyed
+	} last_selected_unit;
+
+	// Maps unit IDs to the level at which they are waiting. Units with lower levels move first. Units that have not been set to wait are not in the table.
+	struct table waiting_units;
+
+	// Set to true when waiting_units has been initialized by loading from the save. Causes the game to skip clearing the table when setting up
+	// unit cycling for the turn.
+	bool have_loaded_waiting_units;
+
+	// Used in patch_Unit_do_capture_units and patch_Unit_despawn
+	Unit ** extra_capture_despawns;
+	int count_extra_capture_despawns;
+	int extra_capture_despawns_capacity;
 
 	// ==========
 	// }
