@@ -32268,7 +32268,12 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 
 					draw_district_on_map_or_canvas(wsprite, map_renderer, offset_x, offset_y);
 					return;
-                }
+
+				// Unused
+                } else {
+					draw_district_on_map_or_canvas(&sprites[variant][era][buildings], map_renderer, draw_x, draw_y);
+					return;
+				}
                 break;
             }
             case NEIGHBORHOOD_DISTRICT_ID:
