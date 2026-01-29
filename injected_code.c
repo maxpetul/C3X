@@ -22191,11 +22191,14 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 			}
 		}
 
-		// Show sprites indexes for port position debugging
-		int sheet_index = (tile->SquareParts >> 8) & 0xFF;   
-		int sprite_index = tile->SquareParts & 0xFF;
-		snprintf (s, sizeof s, "%d, %d", sheet_index, sprite_index);
-		PCX_Image_draw_text (this, __, s, x, y - 18, strlen (s));
+		// Show sprites & sheet indexes if in debug mode
+		int is_debug_mode = (*p_debug_mode_bits & 4) != 0;
+		if (is_debug_mode) {
+			int sheet_index = (tile->SquareParts >> 8) & 0xFF;   
+			int sprite_index = tile->SquareParts & 0xFF;
+			snprintf (s, sizeof s, "%d, %d", sheet_index, sprite_index);
+			PCX_Image_draw_text (this, __, s, x, y - 18, strlen (s));
+		}
 
 		// Draw tile coords on line below terrain name
 		snprintf (s, sizeof s, "(%d, %d)", is->viewing_tile_info_x, is->viewing_tile_info_y);
@@ -31529,10 +31532,10 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 			if      (*out_variant == SW || *out_variant == NW) { *out_pixel_x += 16; }
 			else if (*out_variant == SE || *out_variant == NE) { *out_pixel_x -= 16; }
 
-			if (*out_variant == SW && (anchor_sprite_index == 43 || anchor_sprite_index == 40)) { *out_pixel_x +=6; *out_pixel_y -= 12; }
-			else if (*out_variant == SW && (anchor_sprite_index == 35 || anchor_sprite_index == 39)) { *out_pixel_x +=6; *out_pixel_y -= 12; }
-			else if (*out_variant == SE && (anchor_sprite_index == 50)) { *out_pixel_x -=6; *out_pixel_y -= 12; }
-			else if (*out_variant == SE && (anchor_sprite_index == 26)) { *out_pixel_x += 50; *out_pixel_y -= 2; }
+			if (*out_variant == SW && (anchor_sprite_index == 43 || anchor_sprite_index == 40))      { *out_pixel_x +=6;   *out_pixel_y -= 12; }
+			else if (*out_variant == SW && (anchor_sprite_index == 35 || anchor_sprite_index == 39)) { *out_pixel_x +=6;   *out_pixel_y -= 12; }
+			else if (*out_variant == SE && (anchor_sprite_index == 50))                              { *out_pixel_x -=6;   *out_pixel_y -= 12; }
+			else if (*out_variant == SE && (anchor_sprite_index == 26))                              { *out_pixel_x += 50; *out_pixel_y -= 2; }
 		}
 		// Sheet 4
 		else if (anchor_sheet_index == 4) {
@@ -31544,10 +31547,10 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 			else if (*out_variant == SE || *out_variant == NE) { *out_pixel_x -= 18; }
 
 			if      ((*out_variant == SW || *out_variant == SE) && anchor_sprite_index == 18) { *out_pixel_y -= 10; }
-			else if (*out_variant == SW && anchor_sprite_index == 73)                         { *out_pixel_x -=4; *out_pixel_y -= 10; }
+			else if (*out_variant == SW && anchor_sprite_index == 73)                         { *out_pixel_x -=4;   *out_pixel_y -= 10; }
 			else if (*out_variant == NW && anchor == DIR_SE && anchor_sprite_index == 42)     { *out_pixel_y -= 8; }
 			else if ((*out_variant == NW || *out_variant == SW) && anchor_sprite_index == 6)  { *out_pixel_x += 12; *out_pixel_y -= 6; }
-			else if ((*out_variant == SW) && anchor_sprite_index == 16)  					  { *out_pixel_x -=8; *out_pixel_y -= 10; }
+			else if ((*out_variant == SW) && anchor_sprite_index == 16)  					  { *out_pixel_x -=8;   *out_pixel_y -= 10; }
 		}
 	} 
 	else if (direct_diagonal && *out_variant == SW && anchor == DIR_NE) { *out_pixel_x -=8; *out_pixel_y -= 8; }
@@ -32175,9 +32178,9 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 		int buildings = 0;
 		int draw_pixel_x = pixel_x;
 		int draw_pixel_y = pixel_y;
-		Sprite * district_sprite;
 		enum direction river_dir = DIR_ZERO;
 
+		// If in a territory, use owner's culture/era
         if (territory_owner_id > 0) {
             Leader * leader = &leaders[territory_owner_id];
             culture = p_bic_data->Races[leader->RaceID].CultureGroupID;
@@ -32187,6 +32190,8 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
                 era = leader->Era;
 			if (cfg->align_to_coast)
 				align_variant_and_pixel_offsets_with_coastline (tile, &variant, &draw_pixel_x, &draw_pixel_y);
+
+		// Else render abandoned if not a Wonder, Natural Wonder, Bridge, or Canal
         } else if (district_id != WONDER_DISTRICT_ID && district_id != NATURAL_WONDER_DISTRICT_ID && district_id != BRIDGE_DISTRICT_ID && district_id != CANAL_DISTRICT_ID) {
 			Sprite * abandoned_sprite = &is->abandoned_district_img;
 			if (tile->vtable->m35_Check_Is_Water (tile) && is->abandoned_maritime_district_img.vtable != NULL)
@@ -32197,10 +32202,12 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 			return;
 		}
 
-		// If out of a territory but builder is known, use builder's era
+		// If out of a territory (and not abandoned) but builder is known, use builder's era & culture
 		if (territory_owner_id < 0 && inst->built_by_civ_id >= 0) {
 			Leader * builder = &leaders[inst->built_by_civ_id];
 			culture = p_bic_data->Races[builder->RaceID].CultureGroupID;
+			if (cfg->vary_img_by_culture)
+                variant = culture;
 			if (cfg->vary_img_by_era)
 				era = builder->Era;
 		}
@@ -32211,7 +32218,9 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 		int offset_y      = draw_pixel_y + cfg->y_offset;
 		int draw_x        = offset_x - ((sprite_width - 128) / 2);
 		int draw_y        = offset_y - (sprite_height - 64);
+		Sprite (*sprites)[4][20] = is->district_img_sets[district_id].imgs;
 
+		// Render
         switch (district_id) {
 			case WONDER_DISTRICT_ID:
 			{
@@ -32223,6 +32232,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 					return;
 
 				int construct_windex = -1;
+				Sprite * wsprite = NULL;
 
 				// Completed wonder
                 if (info->state == WDS_COMPLETED) {
@@ -32237,9 +32247,9 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 						align_district_with_river (tile, &draw_pixel_x, &draw_pixel_y, &river_dir);
 						
 					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id, wcfg);
-					Sprite * wsprite = (use_alt_dir && (set->alt_dir_img.vtable != NULL)) ? &set->alt_dir_img : &set->img;
 					int offset_x = draw_pixel_x + cfg->x_offset;
 					int offset_y = draw_pixel_y + cfg->y_offset;
+					wsprite = (use_alt_dir && (set->alt_dir_img.vtable != NULL)) ? &set->alt_dir_img : &set->img;
 
 					draw_district_on_map_or_canvas(wsprite, map_renderer, offset_x, offset_y);
 					return;
@@ -32249,14 +32259,14 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 					if (construct_windex >= is->wonder_district_count)
 						return;
 
-					struct wonder_district_config * wcfg = &is->wonder_district_configs[construct_windex];
+					struct wonder_district_config * wcfg   = &is->wonder_district_configs[construct_windex];
 					struct wonder_district_image_set * set = &is->wonder_district_img_sets[construct_windex];
-					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id, wcfg);
-                    Sprite * csprite = (use_alt_dir && (set->alt_dir_construct_img.vtable != NULL)) ? &set->alt_dir_construct_img : &set->construct_img;
 					int offset_x = draw_pixel_x + cfg->x_offset;
 					int offset_y = draw_pixel_y + cfg->y_offset;
+					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id, wcfg);
+                    wsprite = (use_alt_dir && (set->alt_dir_construct_img.vtable != NULL)) ? &set->alt_dir_construct_img : &set->construct_img;
 
-					draw_district_on_map_or_canvas(csprite, map_renderer, offset_x, offset_y);
+					draw_district_on_map_or_canvas(wsprite, map_renderer, offset_x, offset_y);
 					return;
                 }
                 break;
@@ -32274,14 +32284,14 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
                 v ^= v >> 16;
                 buildings = clamp(0, 3, (int)(v & 3u));  /* final 0..3 */
                 variant = culture;
-				draw_district_on_map_or_canvas(&is->district_img_sets[district_id].imgs[variant][era][buildings], map_renderer, draw_x, draw_y);
+				draw_district_on_map_or_canvas(&sprites[variant][era][buildings], map_renderer, draw_x, draw_y);
                 return;
             }
             case DISTRIBUTION_HUB_DISTRICT_ID:
 				if (! is->current_config.enable_distribution_hub_districts)
 					return;
 
-                draw_district_on_map_or_canvas(&is->district_img_sets[district_id].imgs[variant][era][buildings], map_renderer, draw_x, draw_y);
+                draw_district_on_map_or_canvas(&sprites[variant][era][buildings], map_renderer, draw_x, draw_y);
                 return;
 			case ENERGY_GRID_DISTRICT_ID:
 			{
@@ -32291,7 +32301,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 				// Energy grids can have multiple buildings that - unlike most district buildings - don't have each other as prereqs (e.g., Coal Plant & Nuclear Plant),
 				// and thus have a combinatorial number of images based on which power plants are built in their radius.
 				buildings = get_energy_grid_image_index (tile_x, tile_y);
-				draw_district_on_map_or_canvas(&is->district_img_sets[district_id].imgs[variant][era][buildings], map_renderer, draw_x, draw_y);
+				draw_district_on_map_or_canvas(&sprites[variant][era][buildings], map_renderer, draw_x, draw_y);
                 return;
 			}
 			case BRIDGE_DISTRICT_ID:
@@ -32300,7 +32310,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 					return;
 
 				buildings = get_bridge_image_index (tile, tile_x, tile_y);
-				draw_district_on_map_or_canvas(&is->district_img_sets[district_id].imgs[variant][era][buildings], map_renderer, draw_x, draw_y);
+				draw_district_on_map_or_canvas(&sprites[variant][era][buildings], map_renderer, draw_x, draw_y);
                 return;
 			}
 			case CANAL_DISTRICT_ID:
@@ -32324,8 +32334,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 				// Draw by counting number of completed buildings in radius
 				if (cfg->render_strategy == DRS_BY_COUNT) {
 					buildings = count_completed_buildings_in_district_radius (tile_x, tile_y, district_id);
-					district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
-					draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
+					draw_district_on_map_or_canvas(&sprites[variant][era][buildings], map_renderer, draw_x, draw_y);
 					return;
 				}
 				// Draw by checking each building individually and layering images
@@ -32344,7 +32353,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 void __fastcall
 patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	*p_debug_mode_bits |= 0xC;
+	//*p_debug_mode_bits |= 0xC;
 	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
 		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
