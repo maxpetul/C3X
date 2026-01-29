@@ -12037,6 +12037,7 @@ can_build_district_on_tile (Tile * tile, int district_id, int civ_id)
 	if ((cfg->command == UCV_Build_Port)            && !is->current_config.enable_port_districts)             return false;
 	if ((cfg->command == UCV_Build_Bridge)          && !is->current_config.enable_bridge_districts)           return false;
 	if ((cfg->command == UCV_Build_CentralRailHub)  && !is->current_config.enable_central_rail_hub_districts) return false;
+	if ((cfg->command == UCV_Build_EnergyGrid)      && !is->current_config.enable_energy_grid_districts)      return false;
 	if ((cfg->command == UCV_Build_GreatWall)       && !is->current_config.enable_great_wall_districts)       return false;
 
 	if (! district_is_buildable_on_square_type (cfg, tile))
@@ -16620,6 +16621,7 @@ patch_init_floating_point ()
 		{"enable_bridge_districts"                               , false, offsetof (struct c3x_config, enable_bridge_districts)},
 		{"enable_canal_districts"                                , false, offsetof (struct c3x_config, enable_canal_districts)},
 		{"enable_central_rail_hub_districts"                     , false, offsetof (struct c3x_config, enable_central_rail_hub_districts)},
+		{"enable_energy_grid_districts"                          , false, offsetof (struct c3x_config, enable_energy_grid_districts)},
 		{"enable_great_wall_districts"                           , false, offsetof (struct c3x_config, enable_great_wall_districts)},
 		{"completed_wonder_districts_can_be_destroyed"           , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
 		{"destroyed_wonders_can_be_built_again"                  , false, offsetof (struct c3x_config, destroyed_wonders_can_be_built_again)},
@@ -31273,23 +31275,19 @@ align_district_with_river (Tile * tile, int * out_pixel_x, int * out_pixel_y, en
 		return;
 
 	int dx, dy;
-	bool under = false;
-	direction_to_offset (dir, &dx, &dy);
-	if (dy < 0)
-		under = true;
-
 	int offset = 36;
+	direction_to_offset (dir, &dx, &dy);
 
-	dx = 0, dy = 0;
+	dy = 0;
 	switch (dir) {
-		case DIR_N:  /* dx =   0;       */ dy = -offset;   break;
-		case DIR_NE: /* dx =  offset;   */ dy = -offset/2; break;
-		case DIR_E:  /* dx =  offset*2; */ dy =   0;       break;
-		case DIR_SE: /* dx =  offset;   */ dy =  offset/2; break;
-		case DIR_S:  /* dx =   0;       */ dy =  offset;   break;
-		case DIR_SW: /* dx = -offset;   */ dy =  offset/2; break;
-		case DIR_W:  /* dx = -offset*2; */ dy =   0;       break;
-		case DIR_NW: /* dx = -offset;   */ dy = -offset/2; break;
+		case DIR_N:  dy = -offset;   break;
+		case DIR_NE: dy = -offset/2; break;
+		case DIR_E:  dy = 0;         break;
+		case DIR_SE: dy =  offset/2; break;
+		case DIR_S:  dy =  offset;   break;
+		case DIR_SW: dy =  offset/2; break;
+		case DIR_W:  dy = 0;         break;
+		case DIR_NW: dy = -offset/2; break;
 		default: break;
 	}
 
@@ -31566,7 +31564,7 @@ wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner
 	// We only care about the nearest same-civ city in the work area around the tile.
 	// Assumes the base wonder art (img_row/column) faces west and the alt art faces east.
 	// To "face away" from the nearest city, we pick the alt art when that city lies to the east.
-	Tile * center = tile_at (tile_x, tile_y);
+	Tile * center = is->current_render_tile;
 	if ((center == NULL) || (center == p_null_tile))
 		return false;
 
@@ -31771,8 +31769,8 @@ get_bridge_image_index (Tile * tile, int tile_x, int tile_y)
 	bool se_link    = se_land    || bridge_se;
 	bool sw_link    = sw_land    || bridge_sw;
 
-	if (sw_link && ne_link) return SW_NE;
-	if (nw_link && se_link) return NW_SE;
+	if (sw_link && ne_link)       return SW_NE;
+	if (nw_link && se_link)       return NW_SE;
 	if (north_link && south_link) return N_S;
 	if (west_link  && east_link)  return W_E;
 
@@ -31781,7 +31779,7 @@ get_bridge_image_index (Tile * tile, int tile_x, int tile_y)
 	if (north_link || south_link) return N_S;
 	if (west_link  || east_link)  return W_E;
 
-	return 0;
+	return SW_NE;
 }
 
 void 
@@ -31806,10 +31804,10 @@ get_bridge_directions (Tile * tile, int tile_x, int tile_y, int * out_dir1, int 
 void 
 get_canal_directions (Tile * tile, int tile_x, int tile_y, bool out_water_dirs[9], int * out_dir1, int * out_dir2)
 {
-	bool canal_at_n        = tile_has_district_at (tile_x, tile_y - 2, CANAL_DISTRICT_ID);
-	bool canal_at_s        = tile_has_district_at (tile_x, tile_y + 2, CANAL_DISTRICT_ID);
-	bool canal_at_w        = tile_has_district_at (tile_x - 2, tile_y, CANAL_DISTRICT_ID);
-	bool canal_at_e        = tile_has_district_at (tile_x + 2, tile_y, CANAL_DISTRICT_ID);
+	bool canal_at_n        = tile_has_district_at (tile_x, tile_y - 2,     CANAL_DISTRICT_ID);
+	bool canal_at_s        = tile_has_district_at (tile_x, tile_y + 2,     CANAL_DISTRICT_ID);
+	bool canal_at_w        = tile_has_district_at (tile_x - 2, tile_y,     CANAL_DISTRICT_ID);
+	bool canal_at_e        = tile_has_district_at (tile_x + 2, tile_y,     CANAL_DISTRICT_ID);
 	bool canal_at_ne       = tile_has_district_at (tile_x + 1, tile_y - 1, CANAL_DISTRICT_ID);
 	bool canal_at_nw       = tile_has_district_at (tile_x - 1, tile_y - 1, CANAL_DISTRICT_ID);
 	bool canal_at_se       = tile_has_district_at (tile_x + 1, tile_y + 1, CANAL_DISTRICT_ID);
@@ -31830,15 +31828,6 @@ get_canal_directions (Tile * tile, int tile_x, int tile_y, bool out_water_dirs[9
 	bool canal_or_water_nw = canal_at_nw || water_nw;
 	bool canal_or_water_se = canal_at_se || water_se;
 	bool canal_or_water_sw = canal_at_sw || water_sw;
-
-	char ss[200];
-	snprintf (ss, sizeof(ss), "Canal at (%d,%d), canal tiles: N:%d NE:%d E:%d SE:%d S:%d SW:%d W:%d NW:%d; water tiles: N:%d NE:%d E:%d SE:%d S:%d SW:%d W:%d NW:%d\n",
-		tile_x, tile_y,
-		canal_at_n, canal_at_ne, canal_at_e, canal_at_se,
-		canal_at_s, canal_at_sw, canal_at_w, canal_at_nw,
-		water_n, water_ne, water_e, water_se,
-		water_s, water_sw, water_w, water_nw);
-	(*p_OutputDebugStringA)(ss);
 
 	bool canal_dirs[9] = {
 		false, canal_at_ne, canal_at_e, canal_at_se,
@@ -31935,9 +31924,6 @@ get_canal_directions (Tile * tile, int tile_x, int tile_y, bool out_water_dirs[9
 	if (draw_dir1 == DIR_NE && draw_dir2 == DIR_S  && canal_dirs[DIR_NE] && water_dirs[DIR_S])  { draw_dir2 = DIR_SW; }
 	if (draw_dir1 == DIR_NW && draw_dir2 == DIR_NE && canal_dirs[DIR_NW] && water_dirs[DIR_SE]) { draw_dir2 = DIR_SE; }
 	if (draw_dir1 == DIR_NW && draw_dir2 == DIR_S  && canal_dirs[DIR_NW] && water_dirs[DIR_S])  { draw_dir2 = DIR_SE; }
-
-	snprintf (ss, sizeof(ss), "Drawing canal at (%d,%d) dirs:%d,%d\n", tile_x, tile_y, draw_dir1, draw_dir2);
-	(*p_OutputDebugStringA)(ss);
 
 	*out_dir1 = draw_dir1;
 	*out_dir2 = draw_dir2;
@@ -32276,6 +32262,9 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
             }
             case NEIGHBORHOOD_DISTRICT_ID:
             {
+				if (! is->current_config.enable_neighborhood_districts)
+                    return;
+
                 unsigned v = (unsigned)tile_x * 0x9E3779B1u + (unsigned)tile_y * 0x85EBCA6Bu;
                 v ^= v >> 16;
                 v *= 0x7FEB352Du;
@@ -32284,15 +32273,20 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
                 v ^= v >> 16;
                 buildings = clamp(0, 3, (int)(v & 3u));  /* final 0..3 */
                 variant = culture;
-				district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
-				draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
+				draw_district_on_map_or_canvas(&is->district_img_sets[district_id].imgs[variant][era][buildings], map_renderer, draw_x, draw_y);
                 return;
             }
             case DISTRIBUTION_HUB_DISTRICT_ID:
+				if (! is->current_config.enable_distribution_hub_districts)
+					return;
+
                 draw_district_on_map_or_canvas(&is->district_img_sets[district_id].imgs[variant][era][buildings], map_renderer, draw_x, draw_y);
                 return;
 			case ENERGY_GRID_DISTRICT_ID:
 			{
+				if (! is->current_config.enable_energy_grid_districts)
+					return;
+
 				// Energy grids can have multiple buildings that - unlike most district buildings - don't have each other as prereqs (e.g., Coal Plant & Nuclear Plant),
 				// and thus have a combinatorial number of images based on which power plants are built in their radius.
 				buildings = get_energy_grid_image_index (tile_x, tile_y);
@@ -32301,17 +32295,26 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 			}
 			case BRIDGE_DISTRICT_ID:
 			{
+				if (! is->current_config.enable_bridge_districts)
+					return;
+
 				buildings = get_bridge_image_index (tile, tile_x, tile_y);
 				draw_district_on_map_or_canvas(&is->district_img_sets[district_id].imgs[variant][era][buildings], map_renderer, draw_x, draw_y);
                 return;
 			}
 			case CANAL_DISTRICT_ID:
 			{
+				if (! is->current_config.enable_canal_districts)
+					return;
+
 				draw_canal_district (tile, tile_x, tile_y, map_renderer, pixel_x, pixel_y, era);
 				return;
 			}
 			case GREAT_WALL_DISTRICT_ID:
 			{
+				if (! is->current_config.enable_great_wall_districts)
+					return;
+
 				draw_great_wall_district (tile, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 				return;
 			}

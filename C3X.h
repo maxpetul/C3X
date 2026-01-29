@@ -394,6 +394,7 @@ struct c3x_config {
 	bool enable_bridge_districts;
 	bool enable_canal_districts;
 	bool enable_central_rail_hub_districts;
+	bool enable_energy_grid_districts;
 	bool enable_great_wall_districts;
 
 	bool cities_with_mutual_district_receive_buildings;
