@@ -28628,7 +28628,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 
 							char s[1000];
 							snprintf (s, sizeof s, "%s %s", is->c3x_labels[CL_WARNING_DISTRICTS_CONFIG_MISMATCH], first_mismatch);
-							snprintf (s, sizeof s, "%s %s", s, is->c3x_labels[CL_MAY_BE_OTHER_ERRORS_AS_WELL]);
+							snprintf (s, sizeof s, "%s. %s", s, is->c3x_labels[CL_MAY_BE_OTHER_ERRORS_AS_WELL]);
 							s[(sizeof s) - 1] = '\0';
 							PopupForm_add_text (popup, __, s, 0);
 
