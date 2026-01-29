@@ -65,6 +65,8 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define PEDIA_MULTIPAGE_EFFECTS_BUTTON_ID 0x222004
 #define PEDIA_MULTIPAGE_PREV_BUTTON_ID 0x222005
 
+#define TILE_FLAG_ROAD 0x1
+#define TILE_FLAG_RAILROAD 0x2
 #define TILE_FLAG_MINE 0x4
 
 #define NEIGHBORHOOD_DISTRICT_ID     0
@@ -72,7 +74,18 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define DISTRIBUTION_HUB_DISTRICT_ID 2
 #define AERODROME_DISTRICT_ID        3
 #define NATURAL_WONDER_DISTRICT_ID   4
+#define PORT_DISTRICT_ID             5
+#define CENTRAL_RAIL_HUB_DISTRICT_ID 6
+#define ENERGY_GRID_DISTRICT_ID      7
+#define BRIDGE_DISTRICT_ID           8
+#define CANAL_DISTRICT_ID			 9
+#define GREAT_WALL_DISTRICT_ID       10
 
+// Max grid of tiles that an AI will evaluate a candidate bridge or canal for, 
+// used to limit computational complexity
+#define AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES 10
+
+enum { NAMED_TILE_MENU_ID = 0x90 };
 
 char const * const hotseat_replay_save_path = "Saves\\Auto\\ai-move-replay-before-interturn.SAV";
 char const * const hotseat_resume_save_path = "Saves\\Auto\\ai-move-replay-resume.SAV";
@@ -198,8 +211,18 @@ get_city_ptr (int id)
 // Declare various functions needed for districts and hard to untangle and reorder here
 void __fastcall patch_City_recompute_yields_and_happiness (City * this);
 void __fastcall patch_Map_build_trade_network (Map * this);
+bool __fastcall patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value);
+bool __fastcall patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y);
+bool __fastcall patch_City_has_resource (City * this, int edx, int resource_id);
+bool __fastcall patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, bool param_2);
+bool can_build_district_on_tile (Tile * tile, int district_id, int civ_id);
+bool city_can_build_district (City * city, int district_id);
+bool leader_can_build_district (Leader * leader, int district_id);
+bool find_civ_trait_id_by_name (struct string_slice const * name, int * out_id);
+bool find_civ_culture_id_by_name (struct string_slice const * name, int * out_id);
 Tile * find_tile_for_district (City * city, int district_id, int * out_x, int * out_y);
 struct district_instance * get_district_instance (Tile * tile);
+struct named_tile_entry * get_named_tile_entry (Tile * tile);
 bool city_has_required_district (City * city, int district_id);
 bool district_is_complete (Tile * tile, int district_id);
 bool city_requires_district_for_improvement (City * city, int improv_id, int * out_district_id);
@@ -209,6 +232,7 @@ bool city_radius_contains_tile (City * city, int tile_x, int tile_y);
 void on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y);
 bool ai_move_district_worker (Unit * worker, struct district_worker_record * rec);
 bool has_active_building (City * city, int improv_id);
+bool tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, int district_id, int i_improv);
 void recompute_distribution_hub_totals ();
 void get_neighbor_coords (Map * map, int x, int y, int neighbor_index, int * out_x, int * out_y);
 void wrap_tile_coords (Map * map, int * x, int * y);
@@ -285,6 +309,7 @@ memoize (int val)
 			is->memo[is->memo_len++] = val;
 		}
 	}
+
 }
 
 void
@@ -520,7 +545,7 @@ patch_City_controls_tile (City * this, int edx, int neighbor_index, bool conside
 			if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 				// Check if the tile itself is a completed district (includes natural wonders)
 				struct district_instance * inst = get_district_instance (tile);
-				if (inst != NULL && district_is_complete (tile, inst->district_type))
+				if (inst != NULL && district_is_complete (tile, inst->district_id))
 					return false;
 
 				// Check if the tile is covered by a distribution hub
@@ -599,7 +624,7 @@ patch_Main_Screen_Form_bring_cnter_view_city_focus (Main_Screen_Form * this, int
 	int effective_radius = not_above (get_work_ring_limit_total (p_city_form->CurrentCity), is->current_config.city_work_radius);
 	if (is->current_config.work_area_limit == WAL_CULTURAL_OR_ADJACENT)
 		effective_radius = not_above (is->current_config.city_work_radius, effective_radius + 1);
-	if (effective_radius >= 4)
+	if (effective_radius >= 4 && is->current_config.auto_zoom_city_screen_for_large_work_areas)
 		p_bic_data->is_zoomed_out = true;
 
 	Main_Screen_Form_bring_tile_into_view (this, __, x, get_city_screen_center_y (p_city_form->CurrentCity), param_3, always_update_tile_bounds, param_5);
@@ -1725,6 +1750,36 @@ read_day_night_cycle_mode (struct string_slice const * s, int * out_val)
 }
 
 bool
+read_distribution_hub_yield_division_mode (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "flat"                )) { *out_val = DHYDM_FLAT;               return true; }
+	else if (slice_matches_str (&trimmed, "scale-by-city-count" )) { *out_val = DHYDM_SCALE_BY_CITY_COUNT; return true; }
+	else
+		return false;
+}
+
+bool
+read_ai_distribution_hub_build_strategy (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "auto"          )) { *out_val = ADHBS_AUTO;           return true; }
+	else if (slice_matches_str (&trimmed, "by-city-count" )) { *out_val = ADHBS_BY_CITY_COUNT;   return true; }
+	else
+		return false;
+}
+
+bool
+read_ai_auto_build_great_wall_strategy (struct string_slice const * s, int * out_val)
+{
+	struct string_slice trimmed = trim_string_slice (s, 1);
+	if      (slice_matches_str (&trimmed, "all-borders"            )) { *out_val = AAGWS_ALL_BORDERS;            return true; }
+	else if (slice_matches_str (&trimmed, "other-civ-bordered-only")) { *out_val = AAGWS_OTHER_CIV_BORDERED_ONLY; return true; }
+	else
+		return false;
+}
+
+bool
 read_square_type_value (struct string_slice const * s, enum SquareTypes * out_type)
 {
 	if (s == NULL || out_type == NULL)
@@ -1738,22 +1793,25 @@ read_square_type_value (struct string_slice const * s, enum SquareTypes * out_ty
 		char const * name;
 		int value;
 	} const entries[] = {
-		{"desert",     SQ_Desert},
-		{"plains",     SQ_Plains},
-		{"grassland",  SQ_Grassland},
-		{"tundra",     SQ_Tundra},
-		{"floodplain", SQ_FloodPlain},
-		{"hills",      SQ_Hills},
-		{"mountains",  SQ_Mountains},
-		{"forest",     SQ_Forest},
-		{"jungle",     SQ_Jungle},
-		{"swamp",      SQ_Swamp},
-		{"volcano",    SQ_Volcano},
-		{"coast",      SQ_Coast},
-		{"sea",        SQ_Sea},
-		{"ocean",      SQ_Ocean},
-		{"river",      SQ_RIVER},
-		{"any",        SQ_INVALID}
+		{"desert",         SQ_Desert},
+		{"plains",         SQ_Plains},
+		{"grassland",      SQ_Grassland},
+		{"tundra",         SQ_Tundra},
+		{"floodplain",     SQ_FloodPlain},
+		{"hills",          SQ_Hills},
+		{"mountains",      SQ_Mountains},
+		{"forest",         SQ_Forest},
+		{"jungle",         SQ_Jungle},
+		{"swamp",          SQ_Swamp},
+		{"volcano",        SQ_Volcano},
+		{"coast",          SQ_Coast},
+		{"sea",            SQ_Sea},
+		{"ocean",          SQ_Ocean},
+		{"river",          SQ_RIVER},
+		{"snow-volcano",   SQ_SNOW_VOLCANO},
+		{"snow-forest",    SQ_SNOW_FOREST},
+		{"snow-mountains", SQ_SNOW_MOUNTAIN},
+		{"any",            SQ_INVALID}
 	};
 
 	for (int i = 0; i < (int)ARRAY_LEN (entries); i++) {
@@ -1762,6 +1820,119 @@ read_square_type_value (struct string_slice const * s, enum SquareTypes * out_ty
 			return true;
 		}
 	}
+
+	return false;
+}
+
+unsigned int
+square_type_mask_bit (enum SquareTypes type)
+{
+	if ((int)type < 0 || type > SQ_SNOW_MOUNTAIN)
+		return 0;
+	return (unsigned int)(1u << type);
+}
+
+unsigned int
+district_buildable_mine_mask_bit (void)
+{
+	return (unsigned int)(1u << (SQ_SNOW_MOUNTAIN + 1));
+}
+
+unsigned int
+district_buildable_irrigation_mask_bit (void)
+{
+	return (unsigned int)(1u << (SQ_SNOW_MOUNTAIN + 2));
+}
+
+unsigned int
+all_square_types_mask (void)
+{
+	return (unsigned int)((1u << (SQ_SNOW_MOUNTAIN + 1)) - 1);
+}
+
+unsigned int
+district_default_buildable_mask (void)
+{
+	return (unsigned int)DEFAULT_DISTRICT_BUILDABLE_MASK;
+}
+
+bool
+tile_has_snow_mountain (Tile * tile)
+{
+	return (tile != NULL) && (tile != p_null_tile) && tile->vtable->m29_Check_Mountain_Snowcap (tile);
+}
+
+bool
+tile_has_snow_volcano (Tile * tile)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (tile->vtable->m50_Get_Square_BaseType (tile) != SQ_Volcano)
+		return false;
+
+	int overlays = tile->vtable->m43_Get_field_30 (tile);
+	return (overlays & 0x100000) != 0;
+}
+
+bool
+tile_has_snow_forest (Tile * tile)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (tile->vtable->m50_Get_Square_BaseType (tile) != SQ_Forest)
+		return false;
+
+	return tile->vtable->m12_Check_Forest_Pines (tile) != 0;
+}
+
+bool
+tile_matches_square_type (Tile * tile, enum SquareTypes type)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	switch (type) {
+		case SQ_SNOW_MOUNTAIN:
+			return tile_has_snow_mountain (tile);
+		case SQ_SNOW_VOLCANO:
+			return tile_has_snow_volcano (tile);
+		case SQ_SNOW_FOREST:
+			return tile_has_snow_forest (tile);
+		case SQ_RIVER:
+			return tile->vtable->m37_Get_River_Code (tile) != 0;
+		default:
+			return tile->vtable->m50_Get_Square_BaseType (tile) == type;
+	}
+}
+
+bool
+tile_matches_square_type_mask (Tile * tile, unsigned int mask)
+{
+	if ((tile == NULL) || (tile == p_null_tile) || (mask == 0))
+		return false;
+
+	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+	unsigned int base_bit = square_type_mask_bit (base_type);
+	if ((base_bit != 0) && ((mask & base_bit) != 0))
+		return true;
+
+	enum SquareTypes const special_types[] = {SQ_RIVER, SQ_SNOW_MOUNTAIN, SQ_SNOW_VOLCANO, SQ_SNOW_FOREST};
+	for (int i = 0; i < (int)ARRAY_LEN (special_types); i++) {
+		enum SquareTypes stype = special_types[i];
+		unsigned int bit = square_type_mask_bit (stype);
+		if ((mask & bit) && tile_matches_square_type (tile, stype))
+			return true;
+	}
+
+	unsigned int mine_bit = district_buildable_mine_mask_bit ();
+	if ((mask & mine_bit) && tile->vtable->m18_Check_Mines (tile, __, 0))
+		return true;
+
+	unsigned int irrigation_bit = district_buildable_irrigation_mask_bit ();
+	if ((mask & irrigation_bit) && tile->vtable->m17_Check_Irrigation (tile, __, 0))
+		return true;
 
 	return false;
 }
@@ -1782,6 +1953,12 @@ read_natural_wonder_terrain_type (struct string_slice const * s, enum SquareType
 		case SQ_FloodPlain:
 		case SQ_Swamp:
 		case SQ_Hills:
+		case SQ_Mountains:
+		case SQ_Forest:
+		case SQ_Volcano:
+		case SQ_SNOW_MOUNTAIN:
+		case SQ_SNOW_FOREST:
+		case SQ_SNOW_VOLCANO:
 		case SQ_Coast:
 		case SQ_Sea:
 		case SQ_Ocean:
@@ -2144,6 +2321,26 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 				} else if (slice_matches_str (&p.key, "day_night_cycle_mode")) {
 					if (! read_day_night_cycle_mode (&value, (int *)&cfg->day_night_cycle_mode))
 						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "distribution_hub_yield_division_mode")) {
+					if (! read_distribution_hub_yield_division_mode (&value, (int *)&cfg->distribution_hub_yield_division_mode))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "ai_distribution_hub_build_strategy")) {
+					if (! read_ai_distribution_hub_build_strategy (&value, (int *)&cfg->ai_distribution_hub_build_strategy))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "ai_auto_build_great_wall_strategy")) {
+					if (! read_ai_auto_build_great_wall_strategy (&value, (int *)&cfg->ai_auto_build_great_wall_strategy))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "great_wall_auto_build_wonder_name")) {
+					struct string_slice trimmed = trim_string_slice (&value, 1);
+					if (trimmed.len <= 0) {
+						cfg->great_wall_auto_build_wonder_improv_id = -1;
+					} else {
+						int improv_id;
+						if (find_improv_id_by_name (&trimmed, &improv_id))
+							cfg->great_wall_auto_build_wonder_improv_id = improv_id;
+						else
+							handle_config_error (&p, CPE_BAD_VALUE);
+					}
 				} else if (slice_matches_str (&p.key, "limit_defensive_retreat_on_water_to_types")) {
 					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->limit_defensive_retreat_on_water_to_types))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -2354,9 +2551,6 @@ find_pending_district_request (City * city, int district_id)
 		return NULL;
 
 	int civ_id = city->Body.CivID;
-	if ((civ_id < 0) || (civ_id >= 32))
-		return NULL;
-
 	int city_id = city->Body.ID;
 	int key = get_pending_district_request_key (city_id, district_id);
 	if (key < 0)
@@ -2364,11 +2558,10 @@ find_pending_district_request (City * city, int district_id)
 
 	int stored;
 	if (itable_look_up (&is->city_pending_district_requests[civ_id], key, &stored)) {
-		struct pending_district_request * req = (struct pending_district_request *)(long)stored;
-		if ((req != NULL) && (req->city_id == city_id) && (req->district_id == district_id)) {
+		struct pending_district_request * req = (struct pending_district_request *)stored;
+		if ((req != NULL) && (req->civ_id == civ_id) && (req->city_id == city_id) && (req->district_id == district_id)) {
 			if (req->city != city)
 				req->city = city;
-			req->civ_id = civ_id;
 			return req;
 		}
 	}
@@ -2413,7 +2606,7 @@ create_pending_district_request (City * city, int district_id)
 		city->Body.CityName, city->Body.ID, district_id, key);
 	(*p_OutputDebugStringA) (ss);
 
-	itable_insert (&is->city_pending_district_requests[civ_id], key, (int)(long)req);
+	itable_insert (&is->city_pending_district_requests[civ_id], key, (int)req);
 	return req;
 }
 
@@ -2429,7 +2622,7 @@ find_pending_district_request_by_coords (City * city_or_null, int tile_x, int ti
 		return NULL;
 
 	FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-		struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+		struct pending_district_request * req = (struct pending_district_request *)tei.value;
 		if (req == NULL) continue;
 		if (req->district_id != district_id) continue;
 		if (city_or_null != NULL) {
@@ -2453,11 +2646,9 @@ is_tile_earmarked_for_district (int tile_x, int tile_y)
 		return false;
 
 	int civ_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
-	if ((civ_id < 0) || (civ_id >= 32))
-		return false;
 
 	FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-		struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+		struct pending_district_request * req = (struct pending_district_request *)tei.value;
 		if (req == NULL) continue;
 		if ((req->target_x == tile_x) && (req->target_y == tile_y))
 			return true;
@@ -2475,7 +2666,12 @@ get_district_instance (Tile * tile)
 	if (! itable_look_up (&is->district_tile_map, (int)tile, &stored_ptr))
 		return NULL;
 
-	return (struct district_instance *)(long)stored_ptr;
+	struct district_instance * inst = (struct district_instance *)stored_ptr;
+
+	if ((inst == NULL) || (inst->district_id < 0) || (inst->district_id >= is->district_count))
+		return NULL;
+
+	return inst;
 }
 
 struct wonder_district_info *
@@ -2510,14 +2706,14 @@ district_instance_set_coords (struct district_instance * inst, int tile_x, int t
 	if (inst == NULL)
 		return;
 
-	// Normalize coordinates to map bounds for consistency.
+	// Normalize coordinates to map bounds for consistency
 	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
 	inst->tile_x = tile_x;
 	inst->tile_y = tile_y;
 }
 
 struct district_instance *
-ensure_district_instance (Tile * tile, int district_type, int tile_x, int tile_y)
+ensure_district_instance (Tile * tile, int district_id, int tile_x, int tile_y)
 {
 	if (tile == NULL || tile == p_null_tile)
 		return NULL;
@@ -2532,7 +2728,9 @@ ensure_district_instance (Tile * tile, int district_type, int tile_x, int tile_y
 		return NULL;
 
 	inst->state = DS_UNDER_CONSTRUCTION;
-	inst->district_type = district_type;
+	inst->district_id = district_id;
+	inst->built_by_civ_id = -1;
+	inst->completed_turn = -1;
 
 	// Initialize wonder_info (only relevant for wonder districts)
 	inst->wonder_info.state = WDS_UNUSED;
@@ -2542,7 +2740,7 @@ ensure_district_instance (Tile * tile, int district_type, int tile_x, int tile_y
 	inst->natural_wonder_info.natural_wonder_id = -1;
 
 	district_instance_set_coords (inst, tile_x, tile_y);
-	itable_insert (&is->district_tile_map, (int)tile, (int)(long)inst);
+	itable_insert (&is->district_tile_map, (int)tile, (int)inst);
 	return inst;
 }
 
@@ -2600,10 +2798,40 @@ assign_natural_wonder_to_tile (Tile * tile, int tile_x, int tile_y, int natural_
 	if (inst == NULL)
 		return;
 
-	inst->district_type = NATURAL_WONDER_DISTRICT_ID;
+	inst->district_id = NATURAL_WONDER_DISTRICT_ID;
 	inst->state = DS_COMPLETED;
 	inst->natural_wonder_info.natural_wonder_id = natural_wonder_id;
 	set_tile_unworkable_for_all_cities (tile, tile_x, tile_y);
+}
+
+int
+apply_district_bonus_entries (struct district_instance * inst,
+			      struct district_bonus_list const * extras,
+			      int district_id)
+{
+	if ((inst == NULL) || (extras == NULL) || (extras->count <= 0))
+		return 0;
+
+	int tile_x = inst->tile_x;
+	int tile_y = inst->tile_y;
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return 0;
+
+	int bonus = 0;
+	for (int i = 0; i < extras->count; i++) {
+		struct district_bonus_entry const * entry = &extras->entries[i];
+		if (entry->type == DBET_TILE) {
+			if (tile_matches_square_type (tile, entry->tile_type))
+				bonus += entry->bonus;
+		} else if (entry->type == DBET_BUILDING) {
+			if (entry->building_id >= 0 &&
+			    tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, entry->building_id))
+				bonus += entry->bonus;
+		}
+	}
+
+	return bonus;
 }
 
 void
@@ -2613,26 +2841,37 @@ get_effective_district_yields (struct district_instance * inst,
 			       int * out_shields,
 			       int * out_gold,
 			       int * out_science,
-			       int * out_culture)
+			       int * out_culture,
+			       int * out_happiness)
 {
-	int food = 0, shields = 0, gold = 0, science = 0, culture = 0;
+	int food = 0, shields = 0, gold = 0, science = 0, culture = 0, happiness = 0;
 
 	if (cfg != NULL && is->current_config.enable_districts) {
-		food = cfg->food_bonus;
-		shields = cfg->shield_bonus;
-		gold = cfg->gold_bonus;
-		science = cfg->science_bonus;
-		culture = cfg->culture_bonus;
+		food      = cfg->food_bonus;
+		shields   = cfg->shield_bonus;
+		gold      = cfg->gold_bonus;
+		science   = cfg->science_bonus;
+		culture   = cfg->culture_bonus;
+		happiness = cfg->happiness_bonus;
+
+		int district_id = (inst != NULL) ? inst->district_id : -1;
+		food      += apply_district_bonus_entries (inst, &cfg->food_bonus_extras, district_id);
+		shields   += apply_district_bonus_entries (inst, &cfg->shield_bonus_extras, district_id);
+		gold      += apply_district_bonus_entries (inst, &cfg->gold_bonus_extras, district_id);
+		science   += apply_district_bonus_entries (inst, &cfg->science_bonus_extras, district_id);
+		culture   += apply_district_bonus_entries (inst, &cfg->culture_bonus_extras, district_id);
+		happiness += apply_district_bonus_entries (inst, &cfg->happiness_bonus_extras, district_id);
 	}
 
-	if (inst != NULL && is->current_config.enable_natural_wonders && inst->district_type == NATURAL_WONDER_DISTRICT_ID) {
+	if (inst != NULL && is->current_config.enable_natural_wonders && inst->district_id == NATURAL_WONDER_DISTRICT_ID) {
 		struct natural_wonder_district_config const * nwcfg = get_natural_wonder_config_by_id (inst->natural_wonder_info.natural_wonder_id);
 		if (nwcfg != NULL) {
-			food += nwcfg->food_bonus;
-			shields += nwcfg->shield_bonus;
-			gold += nwcfg->gold_bonus;
-			science += nwcfg->science_bonus;
-			culture += nwcfg->culture_bonus;
+			food      += nwcfg->food_bonus;
+			shields   += nwcfg->shield_bonus;
+			gold      += nwcfg->gold_bonus;
+			science   += nwcfg->science_bonus;
+			culture   += nwcfg->culture_bonus;
+			happiness += nwcfg->happiness_bonus;
 		}
 	}
 
@@ -2646,6 +2885,8 @@ get_effective_district_yields (struct district_instance * inst,
 		*out_science = science;
 	if (out_culture != NULL)
 		*out_culture = culture;
+	if (out_happiness != NULL)
+		*out_happiness = happiness;
 }
 
 int
@@ -2744,7 +2985,7 @@ natural_wonder_exists_within_distance (int tile_x, int tile_y, int min_distance)
 	Tile * here = tile_at (tile_x, tile_y);
 	if ((here != NULL) && (here != p_null_tile)) {
 		struct district_instance * inst = get_district_instance (here);
-		if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID))
+		if ((inst != NULL) && (inst->district_id == NATURAL_WONDER_DISTRICT_ID))
 			return true;
 	}
 
@@ -2773,7 +3014,7 @@ natural_wonder_exists_within_distance (int tile_x, int tile_y, int min_distance)
 				if ((tile == NULL) || (tile == p_null_tile))
 					continue;
 				struct district_instance * inst = get_district_instance (tile);
-				if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID))
+				if ((inst != NULL) && (inst->district_id == NATURAL_WONDER_DISTRICT_ID))
 					return true;
 			}
 		}
@@ -2792,7 +3033,7 @@ detach_workers_from_request (struct pending_district_request * req)
 	if ((civ_id < 0) || (civ_id >= 32)) {
 		for (int civ = 0; civ < 32; civ++) {
 			FOR_TABLE_ENTRIES (tei, &is->district_worker_tables[civ]) {
-				struct district_worker_record * rec = (struct district_worker_record *)(long)tei.value;
+				struct district_worker_record * rec = (struct district_worker_record *)tei.value;
 				if ((rec != NULL) && (rec->pending_req == req))
 					rec->pending_req = NULL;
 			}
@@ -2801,7 +3042,7 @@ detach_workers_from_request (struct pending_district_request * req)
 	}
 
 	FOR_TABLE_ENTRIES (tei, &is->district_worker_tables[civ_id]) {
-		struct district_worker_record * rec = (struct district_worker_record *)(long)tei.value;
+		struct district_worker_record * rec = (struct district_worker_record *)tei.value;
 		if ((rec != NULL) && (rec->pending_req == req))
 			rec->pending_req = NULL;
 	}
@@ -2826,7 +3067,7 @@ remove_pending_district_request (struct pending_district_request * req)
 		if ((tile != NULL) && (tile != p_null_tile)) {
 			struct district_instance * inst = get_district_instance (tile);
 			if ((inst != NULL) &&
-			    (inst->district_type == req->district_id) &&
+			    (inst->district_id == req->district_id) &&
 			    (inst->state != DS_COMPLETED))
 				remove_district_instance (tile);
 		}
@@ -2972,6 +3213,29 @@ direction_to_neighbor_bit (enum direction dir)
 	}
 }
 
+bool
+get_primary_river_direction (Tile * tile, enum direction * out_dir)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	char river_bits = tile->vtable->m37_Get_River_Code (tile);
+	if (river_bits == 0)
+		return false;
+
+	enum direction dirs[] = {DIR_E, DIR_W, DIR_SE, DIR_NE, DIR_SW, DIR_NW, DIR_S, DIR_N};
+	for (int i = 0; i < (int)ARRAY_LEN (dirs); i++) {
+		int bit = direction_to_neighbor_bit (dirs[i]);
+		if ((bit >= 0) && ((river_bits & (1 << bit)) != 0)) {
+			if (out_dir != NULL)
+				*out_dir = dirs[i];
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void
 wrap_tile_coords (Map * map, int * x, int * y)
 {
@@ -3000,6 +3264,21 @@ tile_index_to_coords (Map * map, int index, int * out_x, int * out_y)
 		}
 	} else
 		*out_x = *out_y = -1;
+}
+
+int
+tile_coords_to_index (Map * map, int x, int y)
+{
+	if ((map == NULL) || (x < 0) || (y < 0) || (x >= map->Width) || (y >= map->Height))
+		return -1;
+
+	int width = map->Width;
+	int row = y / 2;
+	if ((y & 1) == 0) {
+		return row * width + (x / 2);
+	} else {
+		return row * width + (width / 2) + (x / 2);
+	}
 }
 
 Tile *
@@ -3107,6 +3386,27 @@ uti_init (Tile * tile)
 
 #define FOR_UNITS_ON(uti_name, tile) for (struct unit_tile_iter uti_name = uti_init (tile); uti_name.id != -1; uti_next (&uti_name))
 
+bool
+tile_has_enemy_unit (Tile * tile, int civ_id)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	if ((civ_id < 0) || (civ_id >= 32))
+		return false;
+
+	FOR_UNITS_ON (uti, tile) {
+		Unit * unit = uti.unit;
+		if ((unit == NULL) || (unit->Body.Container_Unit >= 0))
+			continue;
+		if (unit->Body.CivID == civ_id)
+			continue;
+		if (unit->vtable->is_enemy_of_civ (unit, __, civ_id, 0))
+			return true;
+	}
+
+	return false;
+}
+
 struct citizen_iter {
 	int index;
 	Citizens * list;
@@ -3182,6 +3482,7 @@ struct tiles_around_iter {
 	int center_x, center_y;
 	int n, num_tiles;
 	Tile * tile;
+	int tile_x, tile_y;
 };
 
 void
@@ -3192,8 +3493,11 @@ tai_next (struct tiles_around_iter * tai)
 		tai->n += 1;
 		int tx, ty;
 		get_neighbor_coords (&p_bic_data->Map, tai->center_x, tai->center_y, tai->n, &tx, &ty);
-		if ((tx >= 0) && (tx < p_bic_data->Map.Width) && (ty >= 0) && (ty < p_bic_data->Map.Height))
+		if ((tx >= 0) && (tx < p_bic_data->Map.Width) && (ty >= 0) && (ty < p_bic_data->Map.Height)) {
 			tai->tile = tile_at (tx, ty);
+			tai->tile_x = tx;
+			tai->tile_y = ty;
+		}
 	}
 }
 
@@ -3211,6 +3515,206 @@ tai_init (int num_tiles, int x, int y)
 
 #define FOR_TILES_AROUND(tai_name, _num_tiles, _x, _y) for (struct tiles_around_iter tai_name = tai_init (_num_tiles, _x, _y); (tai_name.n < tai_name.num_tiles); tai_next (&tai_name))
 
+enum work_area_iter_output_type {
+	WAIO_ANY,
+	WAIO_DISTRICTS,
+	WAIO_CITIES,
+};
+
+struct work_area_iter {
+	int center_x, center_y;
+	int n, num_tiles;
+	int civ_id;
+	int dx, dy;
+	int tile_x, tile_y;
+	Tile * tile;
+	City * city;
+	struct district_instance * district_inst;
+	enum work_area_iter_output_type output_type;
+	bool completed_districts_only;
+};
+
+void
+wai_next (struct work_area_iter * wai)
+{
+	wai->tile = p_null_tile;
+	wai->district_inst = NULL;
+	while ((wai->n + 1) < wai->num_tiles) {
+		wai->n += 1;
+		patch_ni_to_diff_for_work_area (wai->n, &wai->dx, &wai->dy);
+		wai->tile_x = wai->center_x + wai->dx;
+		wai->tile_y = wai->center_y + wai->dy;
+		wrap_tile_coords (&p_bic_data->Map, &wai->tile_x, &wai->tile_y);
+		Tile * candidate = tile_at (wai->tile_x, wai->tile_y);
+		if ((candidate == NULL) || (candidate == p_null_tile))
+			continue;
+		if ((wai->civ_id < 0) || (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != wai->civ_id))
+			continue;
+		if (tile_has_enemy_unit (candidate, wai->civ_id))
+			continue;
+		if (candidate->vtable->m20_Check_Pollution (candidate, __, 0))
+			continue;
+		City * city;
+		if (wai->output_type == WAIO_CITIES) {
+			if (candidate->CityID < 0)
+				continue;
+			city = get_city_ptr (candidate->vtable->m45_Get_City_ID (candidate));
+			if (city == NULL || city->Body.CivID != wai->civ_id)
+				continue;
+		}
+		struct district_instance * inst = get_district_instance (candidate);
+		if (wai->output_type == WAIO_DISTRICTS) {
+			if (inst == NULL)
+				continue;
+			int district_id = inst->district_id;
+			if (wai->completed_districts_only && (! district_is_complete (candidate, district_id)))
+				continue;
+		}
+		wai->city = city;
+		wai->district_inst = inst;
+		wai->tile = candidate;
+		break;
+	}
+	if (wai->tile == p_null_tile)
+		wai->n = wai->num_tiles;
+}
+
+struct work_area_iter
+wai_init_common (int x, int y, enum work_area_iter_output_type output, bool completed_districts_only)
+{
+	struct work_area_iter tr;
+	tr.center_x = x;
+	tr.center_y = y;
+	tr.n = -1;
+	tr.num_tiles = is->workable_tile_count;
+	Tile * center_tile = tile_at (x, y);
+	if ((center_tile == NULL) || (center_tile == p_null_tile))
+		tr.civ_id = -1;
+	else
+		tr.civ_id = center_tile->vtable->m38_Get_Territory_OwnerID (center_tile);
+	tr.tile = p_null_tile;
+	tr.district_inst = NULL;
+	tr.dx = 0;
+	tr.dy = 0;
+	tr.tile_x = 0;
+	tr.tile_y = 0;
+	tr.output_type = output;
+	tr.completed_districts_only = completed_districts_only;
+	wai_next (&tr);
+	return tr;
+}
+
+struct work_area_iter
+wai_init (int x, int y)
+{
+	return wai_init_common (x, y, false, false);
+}
+
+struct work_area_iter
+wai_init_districts (int x, int y, bool completed_only)
+{
+	return wai_init_common (x, y, WAIO_DISTRICTS, completed_only);
+}
+
+struct work_area_iter
+wai_init_cities (int x, int y)
+{
+	struct work_area_iter tr = wai_init_common (x, y, WAIO_CITIES, false);
+	return tr;
+}
+
+#define FOR_WORK_AREA_AROUND(wai_name, _x, _y) for (struct work_area_iter wai_name = wai_init (_x, _y); (wai_name.n < wai_name.num_tiles); wai_next (&wai_name))
+#define FOR_DISTRICTS_AROUND(wai_name, _x, _y, _completed_only) for (struct work_area_iter wai_name = wai_init_districts (_x, _y, _completed_only); (wai_name.n < wai_name.num_tiles); wai_next (&wai_name))
+#define FOR_CITIES_AROUND(wai_name, _x, _y) for (struct work_area_iter wai_name = wai_init_cities (_x, _y); (wai_name.n < wai_name.num_tiles); wai_next (&wai_name))
+#define FOR_AERODROMES_AROUND(unit_ptr) \
+	for (struct table_entry_iter _tei = tei_init (&is->district_tile_map); \
+	     _tei.index < _tei.capacity; \
+	     tei_next (&_tei)) \
+		for (Tile * aerodrome_tile = (Tile *)_tei.key; \
+		     (aerodrome_tile != NULL) && (aerodrome_tile != p_null_tile); \
+		     aerodrome_tile = NULL) \
+			for (struct district_instance * aerodrome_inst = (struct district_instance *)_tei.value; \
+			     (aerodrome_inst != NULL) && \
+			     (aerodrome_inst->district_id == AERODROME_DISTRICT_ID) && \
+			     district_is_complete (aerodrome_tile, AERODROME_DISTRICT_ID); \
+			     aerodrome_inst = NULL) \
+				for (int aerodrome_x = 0, aerodrome_y = 0; \
+				     district_instance_get_coords (aerodrome_inst, aerodrome_tile, &aerodrome_x, &aerodrome_y) && \
+				     (aerodrome_tile->vtable->m38_Get_Territory_OwnerID (aerodrome_tile) == (unit_ptr)->Body.CivID) && \
+				     patch_Unit_is_in_rebase_range ((unit_ptr), __, aerodrome_x, aerodrome_y); \
+				     aerodrome_x = 0, aerodrome_y = 0)
+
+struct tile_rings_iter {
+	int center_x, center_y;
+	int const * rings;
+	int ring_count;
+	int r_idx;
+	int ni;
+	int tile_x, tile_y;
+	int current_ring;
+	Tile * tile;
+};
+
+void
+tri_next (struct tile_rings_iter * tri)
+{
+	tri->tile = p_null_tile;
+	while (tri->r_idx < tri->ring_count) {
+		int ring_no = tri->rings[tri->r_idx];
+		if ((ring_no <= 0) || (ring_no >= 8)) {
+			tri->r_idx += 1;
+			tri->ni = -1;
+			continue;
+		}
+		int start_ni = workable_tile_counts[ring_no - 1];
+		int end_ni = workable_tile_counts[ring_no];
+		if ((tri->ni + 1) < end_ni)
+			tri->ni += 1;
+		else {
+			tri->r_idx += 1;
+			tri->ni = -1;
+			continue;
+		}
+		tri->current_ring = ring_no;
+		int dx, dy;
+		patch_ni_to_diff_for_work_area (tri->ni, &dx, &dy);
+		int tx = tri->center_x + dx;
+		int ty = tri->center_y + dy;
+		wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
+		tri->tile_x = tx;
+		tri->tile_y = ty;
+		Tile * candidate = tile_at (tx, ty);
+		if ((candidate == NULL) || (candidate == p_null_tile))
+			continue;
+		tri->tile = candidate;
+		break;
+	}
+	if (tri->tile == p_null_tile) {
+		tri->r_idx = tri->ring_count;
+		tri->ni = -1;
+	}
+}
+
+struct tile_rings_iter
+tri_init (int x, int y, int const * rings, int ring_count)
+{
+	struct tile_rings_iter tr;
+	tr.center_x = x;
+	tr.center_y = y;
+	tr.rings = rings;
+	tr.ring_count = ring_count;
+	tr.r_idx = 0;
+	tr.ni = -1;
+	tr.tile_x = 0;
+	tr.tile_y = 0;
+	tr.current_ring = 0;
+	tr.tile = p_null_tile;
+	tri_next (&tr);
+	return tr;
+}
+
+#define FOR_TILE_RINGS_AROUND(tri_name, _x, _y, _rings, _ring_count) for (struct tile_rings_iter tri_name = tri_init (_x, _y, _rings, _ring_count); (tri_name.r_idx < tri_name.ring_count); tri_next (&tri_name))
+
 void
 tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
 {
@@ -3225,9 +3729,95 @@ tai_get_coords (struct tiles_around_iter * tai, int * out_x, int * out_y)
 bool
 tile_square_type_is (Tile * tile, enum SquareTypes type)
 {
-	if ((tile == NULL) || (tile == p_null_tile))
+	return tile_matches_square_type (tile, type);
+}
+
+bool
+district_is_buildable_on_square_type (struct district_config const * cfg, Tile * tile)
+{
+	if ((cfg == NULL) || (tile == NULL) || (tile == p_null_tile))
 		return false;
-	return tile->vtable->m50_Get_Square_BaseType (tile) == type;
+
+	unsigned int mask = cfg->buildable_square_types_mask;
+	if (mask == 0)
+		mask = district_default_buildable_mask ();
+
+	if (! tile_matches_square_type_mask (tile, mask))
+		return false;
+
+	if (cfg->has_buildable_on_districts) {
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst == NULL)
+			return false;
+
+		int existing_district_id = inst->district_id;
+		if (! district_is_complete (tile, existing_district_id))
+			return false;
+
+		bool matches = false;
+		for (int i = 0; i < cfg->buildable_on_district_id_count; i++) {
+			if (cfg->buildable_on_district_ids[i] == existing_district_id) {
+				matches = true;
+				break;
+			}
+		}
+		if (! matches)
+			return false;
+	}
+
+	if (cfg->has_buildable_adjacent_to || cfg->has_buildable_adjacent_to_districts) {
+		int tile_x, tile_y;
+		if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
+			return false;
+
+		if (cfg->has_buildable_adjacent_to) {
+			bool matches = false;
+			bool city_adjacent = false;
+			FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+				if (tai.n == 0)
+					continue;
+				if (Tile_has_city (tai.tile)) {
+					city_adjacent = true;
+					if (cfg->buildable_adjacent_to_allows_city)
+						matches = true;
+				}
+				if (tile_matches_square_type_mask (tai.tile, cfg->buildable_adjacent_to_square_types_mask))
+					matches = true;
+				if (matches && (cfg->buildable_adjacent_to_allows_city || ! city_adjacent))
+					break;
+			}
+			if (city_adjacent && ! cfg->buildable_adjacent_to_allows_city)
+				return false;
+			if (! matches)
+				return false;
+		}
+
+		if (cfg->has_buildable_adjacent_to_districts) {
+			bool matches = false;
+			FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+				if (tai.n == 0)
+					continue;
+				struct district_instance * adj_inst = get_district_instance (tai.tile);
+				if (adj_inst == NULL)
+					continue;
+				int adj_district_id = adj_inst->district_id;
+				if (! district_is_complete (tai.tile, adj_district_id))
+					continue;
+				for (int i = 0; i < cfg->buildable_adjacent_to_district_id_count; i++) {
+					if (cfg->buildable_adjacent_to_district_ids[i] == adj_district_id) {
+						matches = true;
+						break;
+					}
+				}
+				if (matches)
+					break;
+			}
+			if (! matches)
+				return false;
+		}
+	}
+
+	return true;
 }
 
 bool
@@ -3345,15 +3935,25 @@ natural_wonder_terrain_matches (struct natural_wonder_district_config const * cf
 	if ((cfg == NULL) || (tile == NULL) || (tile == p_null_tile))
 		return false;
 
-	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	if (base_type != cfg->terrain_type)
+	if (! tile_matches_square_type (tile, cfg->terrain_type))
 		return false;
+
+	if (cfg->terrain_type == SQ_Coast) {
+		int continent_id = tile->vtable->m46_Get_ContinentID (tile);
+		if ((continent_id < 0) || (continent_id >= p_bic_data->Map.Continent_Count))
+			return false;
+		Continent * continent = &p_bic_data->Map.Continents[continent_id];
+		if ((continent == NULL) || (continent->Body.TileCount <= 5))
+			return false;
+	}
 
 	if (natural_wonder_is_coastal_island (tile, tile_x, tile_y))
 		return false;
 
-	if ((cfg->adjacent_to != SQ_Coast) &&
-	    (count_adjacent_tiles_of_type (tile_x, tile_y, SQ_Coast) > 0))
+	if ((cfg->adjacent_to != SQ_Coast) && (count_adjacent_tiles_of_type (tile_x, tile_y, SQ_Coast) > 0))
+		return false;
+
+	if ((cfg->adjacent_to == SQ_Coast) && (count_adjacent_tiles_of_type (tile_x, tile_y, SQ_Coast) > 4))
 		return false;
 
 	if (! natural_wonder_adjacent_requirement_met (cfg, tile, tile_x, tile_y))
@@ -3371,7 +3971,7 @@ get_tracked_worker_record (Unit * worker)
 
 	int value;
 	if (itable_look_up (&is->district_worker_tables[civ_id], worker->Body.ID, &value))
-		return (struct district_worker_record *)(long)value;
+		return (struct district_worker_record *)value;
 	return NULL;
 }
 
@@ -3394,7 +3994,7 @@ ensure_tracked_worker_record (Unit * worker)
 	rec->continent_id = ((tile != NULL) && (tile != p_null_tile)) ? tile->vtable->m46_Get_ContinentID (tile) : -1;
 	rec->pending_req = NULL;
 
-	itable_insert (&is->district_worker_tables[civ_id], worker->Body.ID, (int)(long)rec);
+	itable_insert (&is->district_worker_tables[civ_id], worker->Body.ID, (int)rec);
 	return rec;
 }
 
@@ -3408,7 +4008,7 @@ remove_tracked_worker_record (int civ_id, int unit_id)
 	if (! itable_look_up (&is->district_worker_tables[civ_id], unit_id, &value))
 		return;
 
-	struct district_worker_record * rec = (struct district_worker_record *)(long)value;
+	struct district_worker_record * rec = (struct district_worker_record *)value;
 	if (rec->pending_req != NULL) {
 		rec->pending_req->assigned_worker_id = -1;
 		rec->pending_req = NULL;
@@ -3441,7 +4041,7 @@ clear_tracked_worker_assignment_by_id (int civ_id, int unit_id)
 	if (! itable_look_up (&is->district_worker_tables[civ_id], unit_id, &value))
 		return;
 
-	struct district_worker_record * rec = (struct district_worker_record *)(long)value;
+	struct district_worker_record * rec = (struct district_worker_record *)value;
 	if ((rec->pending_req != NULL) && (rec->pending_req->assigned_worker_id == unit_id))
 		rec->pending_req->assigned_worker_id = -1;
 	rec->pending_req = NULL;
@@ -3454,7 +4054,7 @@ clear_all_tracked_workers (void)
 {
 	for (int civ = 0; civ < 32; civ++) {
 		FOR_TABLE_ENTRIES (tei, &is->district_worker_tables[civ]) {
-			struct district_worker_record * rec = (struct district_worker_record *)(long)tei.value;
+			struct district_worker_record * rec = (struct district_worker_record *)tei.value;
 			if (rec == NULL)
 				continue;
 			if ((rec->pending_req != NULL) && (rec->pending_req->assigned_worker_id == rec->unit_id))
@@ -3598,7 +4198,7 @@ find_best_worker_for_district (Leader * leader, City * city, int district_id, in
 	(*p_OutputDebugStringA) (ss);
 
 	FOR_TABLE_ENTRIES (tei, &is->district_worker_tables[civ_id]) {
-		struct district_worker_record * rec = (struct district_worker_record *)(long)tei.value;
+		struct district_worker_record * rec = (struct district_worker_record *)tei.value;
 
 		if (rec == NULL) {
 			continue;
@@ -3676,9 +4276,9 @@ process_pending_district_request (Leader * leader, struct pending_district_reque
 	if (req->assigned_worker_id >= 0) {
 		Unit * assigned = get_unit_ptr (req->assigned_worker_id);
 		if (assigned != NULL) {
-			// Check if more than 5 turns have elapsed since assignment and worker is not at target tile
+			// Check if more than allowed turns have elapsed since assignment and worker is not at target tile
 			bool worker_at_target = (assigned->Body.X == req->target_x) && (assigned->Body.Y == req->target_y);
-			if ((*p_current_turn_no - req->worker_assigned_turn) > 5 && !worker_at_target) {
+			if ((*p_current_turn_no - req->worker_assigned_turn) > is->current_config.ai_city_district_max_build_wait_turns && !worker_at_target) {
 				clear_tracked_worker_assignment_by_id (civ_id, req->assigned_worker_id);
 				req->assigned_worker_id = -1;
 				req->worker_assigned_turn = *p_current_turn_no;
@@ -3735,7 +4335,7 @@ assign_workers_for_pending_districts (Leader * leader)
 		return;
 
 	FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-		struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+		struct pending_district_request * req = (struct pending_district_request *)tei.value;
 		if (req == NULL)
 			continue;
 
@@ -3752,6 +4352,1466 @@ assign_workers_for_pending_districts (Leader * leader)
 		}
 
 		process_pending_district_request (leader, req);
+	}
+}
+
+City *
+find_city_for_tile (int civ_id, int tile_x, int tile_y)
+{
+	City * best_city = NULL;
+	int best_dist = INT_MAX;
+
+	FOR_CITIES_OF (coi, civ_id) {
+		City * city = coi.city;
+		if (city == NULL)
+			continue;
+
+		int dist = compute_wrapped_chebyshev_distance (city->Body.X, city->Body.Y, tile_x, tile_y);
+		if (dist < best_dist) {
+			best_dist = dist;
+			best_city = city;
+		}
+	}
+
+	return best_city;
+}
+
+bool
+ai_candidate_bridge_or_canal_is_buildable_for_civ (struct ai_candidate_bridge_or_canal_entry * entry, int civ_id, int * out_tile_index)
+{
+	if ((entry == NULL) || (entry->tile_count <= 0))
+		return false;
+
+	int pending_index = -1;
+	for (int ti = 0; ti < entry->tile_count; ti++) {
+		int tx = entry->tile_x[ti];
+		int ty = entry->tile_y[ti];
+		wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
+		Tile * tile = tile_at (tx, ty);
+		if ((tile == NULL) || (tile == p_null_tile))
+			return false;
+		int owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+		if (owner != civ_id)
+			return false;
+		if (tile->CityID >= 0)
+			return false;
+
+		struct district_instance * inst = get_district_instance (tile);
+		if (inst != NULL) {
+			if (inst->district_id == entry->district_id)
+				continue;
+			if (inst->district_id == WONDER_DISTRICT_ID)
+				return false;
+			if (! is->current_config.ai_can_replace_existing_districts_with_canals) {
+				return false;
+			}
+		}
+
+		if (pending_index < 0)
+			pending_index = ti;
+	}
+
+	if (pending_index < 0) {
+		entry->completed = true;
+		return false;
+	}
+
+	if (out_tile_index != NULL)
+		*out_tile_index = pending_index;
+
+	return true;
+}
+
+void
+release_ai_candidate_bridge_or_canal_worker (struct ai_candidate_bridge_or_canal_entry * entry)
+{
+	if ((entry == NULL) || (entry->assigned_worker_id < 0))
+		return;
+
+	int civ_id = entry->pending_req.civ_id;
+	if ((civ_id >= 0) && (civ_id < 32))
+		clear_tracked_worker_assignment_by_id (civ_id, entry->assigned_worker_id);
+
+	entry->assigned_worker_id = -1;
+	entry->assigned_tile_index = -1;
+	entry->pending_req.city = NULL;
+	entry->pending_req.city_id = -1;
+	entry->pending_req.civ_id = -1;
+	entry->pending_req.district_id = -1;
+	entry->pending_req.assigned_worker_id = -1;
+	entry->pending_req.target_x = -1;
+	entry->pending_req.target_y = -1;
+	entry->pending_req.worker_assigned_turn = 0;
+}
+
+void
+reset_ai_candidate_bridge_or_canals (void)
+{
+	if (is->ai_candidate_bridge_or_canals != NULL) {
+		for (int i = 0; i < is->ai_candidate_bridge_or_canals_capacity; i++) {
+			struct ai_candidate_bridge_or_canal_entry * entry = &is->ai_candidate_bridge_or_canals[i];
+			if (entry->tile_x != NULL)
+				free (entry->tile_x);
+			if (entry->tile_y != NULL)
+				free (entry->tile_y);
+		}
+		free (is->ai_candidate_bridge_or_canals);
+		is->ai_candidate_bridge_or_canals = NULL;
+	}
+	is->ai_candidate_bridge_or_canals_capacity = 0;
+	is->ai_candidate_bridge_or_canals_count = 0;
+	is->ai_candidate_bridge_or_canals_initialized = false;
+}
+
+bool
+tile_has_district_at (int tile_x, int tile_y, int district_id)
+{
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	return (inst != NULL) && (inst->district_id == district_id) && (district_is_complete (tile, district_id));
+}
+
+bool
+tile_is_land (int civ_id, int tile_x, int tile_y, bool must_be_same_owner)
+{
+	if (must_be_same_owner && (civ_id <= 0))
+		return false;
+
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	return (tile != NULL) && (tile != p_null_tile) && (! tile->vtable->m35_Check_Is_Water (tile)) &&
+		((! must_be_same_owner) || (tile->Territory_OwnerID == civ_id));
+}
+
+bool
+tile_is_water (int tile_x, int tile_y)
+{
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	return (tile != NULL) && (tile != p_null_tile) && (tile->vtable->m35_Check_Is_Water (tile));
+}
+
+bool
+ensure_ai_candidate_bridge_or_canals_capacity (int required)
+{
+	if (required <= 0)
+		return true;
+	if (required <= is->ai_candidate_bridge_or_canals_capacity)
+		return true;
+	int new_capacity = (is->ai_candidate_bridge_or_canals_capacity > 0) ? is->ai_candidate_bridge_or_canals_capacity * 2 : 4;
+	if (new_capacity < required)
+		new_capacity = required;
+	struct ai_candidate_bridge_or_canal_entry * larger = (struct ai_candidate_bridge_or_canal_entry *)realloc (
+		is->ai_candidate_bridge_or_canals, new_capacity * sizeof *larger);
+	if (larger == NULL)
+		return false;
+	for (int i = is->ai_candidate_bridge_or_canals_capacity; i < new_capacity; i++) {
+		struct ai_candidate_bridge_or_canal_entry * entry = &larger[i];
+		entry->tile_x = NULL;
+		entry->tile_y = NULL;
+		entry->tile_capacity = 0;
+		entry->district_id = -1;
+		entry->owner_civ_id = -1;
+		entry->tile_count = 0;
+		entry->assigned_tile_index = -1;
+		entry->assigned_worker_id = -1;
+		entry->completed = false;
+		struct pending_district_request * req = &entry->pending_req;
+		req->city = NULL;
+		req->city_id = -1;
+		req->civ_id = -1;
+		req->district_id = -1;
+		req->assigned_worker_id = -1;
+		req->target_x = -1;
+		req->target_y = -1;
+		req->worker_assigned_turn = 0;
+	}
+	is->ai_candidate_bridge_or_canals = larger;
+	is->ai_candidate_bridge_or_canals_capacity = new_capacity;
+	return true;
+}
+
+bool
+canal_has_different_adjacent_seas (int tile_x, int tile_y, int civ_id)
+{
+	struct water_pair {
+		int dx1, dy1;
+		int dx2, dy2;
+	};
+
+	const struct water_pair pairs[] = {
+		{ 1, -1, -1, 1 }, // NE + SW
+		{ 1, 1, -1, -1 }, // SE + NW
+	};
+
+	Map * map = &p_bic_data->Map;
+	bool require_owner = (civ_id >= 0);
+
+	for (int i = 0; i < (int)(sizeof (pairs) / sizeof (pairs[0])); i++) {
+		int ax = tile_x + pairs[i].dx1;
+		int ay = tile_y + pairs[i].dy1;
+		wrap_tile_coords (map, &ax, &ay);
+		Tile * first = tile_at (ax, ay);
+		if ((first == NULL) || (first == p_null_tile))
+			continue;
+		if (! first->vtable->m35_Check_Is_Water (first))
+			continue;
+		if (require_owner && (first->vtable->m38_Get_Territory_OwnerID (first) != civ_id))
+			continue;
+
+		int bx = tile_x + pairs[i].dx2;
+		int by = tile_y + pairs[i].dy2;
+		wrap_tile_coords (map, &bx, &by);
+		Tile * second = tile_at (bx, by);
+		if ((second == NULL) || (second == p_null_tile))
+			continue;
+		if (! second->vtable->m35_Check_Is_Water (second))
+			continue;
+		if (require_owner && (second->vtable->m38_Get_Territory_OwnerID (second) != civ_id))
+			continue;
+
+		int sea_a = first->vtable->m46_Get_ContinentID (first);
+		int sea_b = second->vtable->m46_Get_ContinentID (second);
+		if ((sea_a >= 0) && (sea_b >= 0) && (sea_a != sea_b))
+			return true;
+	}
+
+	return false;
+}
+
+// Check if two water tiles can reach each other via water within a radius, excluding a blocked tile
+bool
+water_tiles_connected_within_radius (int start_x, int start_y, int target_x, int target_y, int block_x, int block_y, int radius)
+{
+	// Simple BFS using a fixed-size visited array for tiles within radius
+	// workable_tile_counts[6] = 137 tiles for radius 6
+	int max_tiles = 137;
+	int visited_x[137];
+	int visited_y[137];
+	int visited_count = 0;
+	int queue_x[137];
+	int queue_y[137];
+	int queue_head = 0;
+	int queue_tail = 0;
+
+	queue_x[queue_tail] = start_x;
+	queue_y[queue_tail] = start_y;
+	queue_tail++;
+	visited_x[visited_count] = start_x;
+	visited_y[visited_count] = start_y;
+	visited_count++;
+
+	while (queue_head < queue_tail) {
+		int cx = queue_x[queue_head];
+		int cy = queue_y[queue_head];
+		queue_head++;
+
+		// Check 8 adjacent tiles
+		FOR_TILES_AROUND (tai, 9, cx, cy) {
+			if (tai.n == 0)
+				continue;
+			int nx = tai.tile_x;
+			int ny = tai.tile_y;
+
+			// Found target
+			if (nx == target_x && ny == target_y)
+				return true;
+
+			// Skip blocked tile (the isthmus)
+			if (nx == block_x && ny == block_y)
+				continue;
+
+			// Check if within radius of original start
+			int dx = nx - start_x;
+			int dy = ny - start_y;
+			if (dx < 0) dx = -dx;
+			if (dy < 0) dy = -dy;
+			// Use Chebyshev distance approximation for hex grid
+			int dist = (dx + dy + ((dx > dy) ? dx : dy)) / 2;
+			if (dist > radius)
+				continue;
+
+			Tile * adj = tai.tile;
+			if ((adj == NULL) || (adj == p_null_tile))
+				continue;
+			if (! adj->vtable->m35_Check_Is_Water (adj))
+				continue;
+
+			// Check if already visited
+			bool already_visited = false;
+			for (int i = 0; i < visited_count; i++) {
+				if (visited_x[i] == nx && visited_y[i] == ny) {
+					already_visited = true;
+					break;
+				}
+			}
+			if (already_visited)
+				continue;
+
+			// Add to queue and visited
+			if (visited_count < max_tiles && queue_tail < max_tiles) {
+				visited_x[visited_count] = nx;
+				visited_y[visited_count] = ny;
+				visited_count++;
+				queue_x[queue_tail] = nx;
+				queue_y[queue_tail] = ny;
+				queue_tail++;
+			}
+		}
+	}
+	return false;
+}
+
+// Check if tile separates adjacent water tiles that are not connected within a small radius
+bool
+canal_has_same_sea_isthmus (int tile_x, int tile_y, int civ_id, int check_radius)
+{
+	(void) civ_id;
+	(void) check_radius;
+
+	// If another canal exists nearby, this isn't a unique isthmus target.
+	FOR_TILES_AROUND (tai, workable_tile_counts[2], tile_x, tile_y) {
+		if (tai.n == 0)
+			continue;
+		Tile * adj = tai.tile;
+		if ((adj == NULL) || (adj == p_null_tile))
+			continue;
+		struct district_instance * adj_inst = get_district_instance (adj);
+		if ((adj_inst != NULL) && (adj_inst->district_id == CANAL_DISTRICT_ID))
+			return false;
+	}
+
+	// Check opposite diagonal water tiles that are not connected within radius 2
+	struct water_pair {
+		int dx1, dy1;
+		int dx2, dy2;
+	};
+
+	const struct water_pair pairs[] = {
+		{ 1, -1, -1, 1 }, // NE + SW
+		{ 1, 1, -1, -1 }, // SE + NW
+	};
+
+	for (int i = 0; i < (int)(sizeof (pairs) / sizeof (pairs[0])); i++) {
+		int ax = tile_x + pairs[i].dx1;
+		int ay = tile_y + pairs[i].dy1;
+		wrap_tile_coords (&p_bic_data->Map, &ax, &ay);
+		Tile * first = tile_at (ax, ay);
+		if ((first == NULL) || (first == p_null_tile))
+			continue;
+		if (! first->vtable->m35_Check_Is_Water (first))
+			continue;
+
+		int bx = tile_x + pairs[i].dx2;
+		int by = tile_y + pairs[i].dy2;
+		wrap_tile_coords (&p_bic_data->Map, &bx, &by);
+		Tile * second = tile_at (bx, by);
+		if ((second == NULL) || (second == p_null_tile))
+			continue;
+		if (! second->vtable->m35_Check_Is_Water (second))
+			continue;
+
+		if (! water_tiles_connected_within_radius (
+				ax, ay,
+				bx, by,
+				tile_x, tile_y, 2)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool
+bridge_tile_connects_two_continents (int tile_x, int tile_y, int civ_id)
+{
+	struct bridge_pair {
+		int dx1, dy1;
+		int dx2, dy2;
+	};
+
+	Map * map = &p_bic_data->Map;
+	const struct bridge_pair pairs[] = {
+		{0, -2, 0, 2},
+		{-2, 0, 2, 0},
+		{-1, -1, 1, 1},
+		{-1, 1, 1, -1},
+	};
+
+	bool require_owner = (civ_id >= 0);
+
+	for (int i = 0; i < (int)(sizeof (pairs) / sizeof (pairs[0])); i++) {
+		int ax = tile_x + pairs[i].dx1;
+		int ay = tile_y + pairs[i].dy1;
+		wrap_tile_coords (map, &ax, &ay);
+		if (! tile_is_land (civ_id, ax, ay, require_owner))
+			continue;
+		Tile * first = tile_at (ax, ay);
+		if ((first == NULL) || (first == p_null_tile))
+			continue;
+
+		int bx = tile_x + pairs[i].dx2;
+		int by = tile_y + pairs[i].dy2;
+		wrap_tile_coords (map, &bx, &by);
+		if (! tile_is_land (civ_id, bx, by, require_owner))
+			continue;
+		Tile * second = tile_at (bx, by);
+		if ((second == NULL) || (second == p_null_tile))
+			continue;
+
+		int cont_a = first->vtable->m46_Get_ContinentID (first);
+		int cont_b = second->vtable->m46_Get_ContinentID (second);
+		if ((cont_a >= 0) && (cont_b >= 0) && (cont_a != cont_b))
+			return true;
+	}
+
+	return false;
+}
+
+bool
+tile_point_in_block (int tile_x, int tile_y, int block_x0, int block_y0, int block_x1, int block_y1)
+{
+	return (tile_x >= block_x0) && (tile_x < block_x1) && (tile_y >= block_y0) && (tile_y < block_y1);
+}
+
+bool
+tile_is_coastal_water (int tile_x, int tile_y)
+{
+	Map * map = &p_bic_data->Map;
+	wrap_tile_coords (map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	if (! tile->vtable->m35_Check_Is_Water (tile))
+		return false;
+	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+	return base_type == SQ_Coast;
+}
+
+bool
+tile_exists_at (int tile_x, int tile_y)
+{
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	return (tile != NULL) && (tile != p_null_tile);
+}
+
+bool
+tile_is_reserved_in_district_tile_map (int tile_x, int tile_y)
+{
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	int existing = 0;
+	return itable_look_up (&is->district_tile_map, (int)tile, &existing);
+}
+
+bool
+tile_has_diagonal_water (int tile_x, int tile_y)
+{
+	Map * map = &p_bic_data->Map;
+	int const adj_dx[4] = { 1, 1, -1, -1 };
+	int const adj_dy[4] = { -1, 1, -1, 1 };
+
+	for (int i = 0; i < 4; i++) {
+		int nx = tile_x + adj_dx[i];
+		int ny = tile_y + adj_dy[i];
+		wrap_tile_coords (map, &nx, &ny);
+		Tile * tile = tile_at (nx, ny);
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+		if (tile->vtable->m35_Check_Is_Water (tile))
+			return true;
+	}
+	return false;
+}
+
+bool
+bridge_tile_has_land_on_both_sides (int tile_x, int tile_y)
+{
+	struct bridge_pair {
+		int dx1, dy1;
+		int dx2, dy2;
+	};
+
+	const struct bridge_pair pairs[] = {
+		{ 0, -2,  0, 2 },
+		{ -2, 0,  2, 0 },
+		{ -1, -1, 1, 1 },
+		{ -1, 1,  1, -1 },
+	};
+
+	for (int i = 0; i < (int)(sizeof (pairs) / sizeof (pairs[0])); i++) {
+		int ax = tile_x + pairs[i].dx1;
+		int ay = tile_y + pairs[i].dy1;
+		if (! tile_exists_at (ax, ay))
+			continue;
+		if (! tile_is_land (-1, ax, ay, false))
+			continue;
+		int bx = tile_x + pairs[i].dx2;
+		int by = tile_y + pairs[i].dy2;
+		if (! tile_exists_at (bx, by))
+			continue;
+		if (! tile_is_land (-1, bx, by, false))
+			continue;
+		return true;
+	}
+
+	return false;
+}
+
+bool
+tile_part_of_existing_candidate (int tile_x, int tile_y)
+{
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	for (int ei = 0; ei < is->ai_candidate_bridge_or_canals_count; ei++) {
+		struct ai_candidate_bridge_or_canal_entry * entry = &is->ai_candidate_bridge_or_canals[ei];
+		if (entry->tile_count <= 0)
+			continue;
+		for (int ti = 0; ti < entry->tile_count; ti++) {
+			if ((entry->tile_x[ti] == tile_x) && (entry->tile_y[ti] == tile_y))
+				return true;
+		}
+	}
+	return false;
+}
+
+bool
+tile_has_bridge_or_canal_nearby (int tile_x, int tile_y)
+{
+	FOR_TILES_AROUND (tai, workable_tile_counts[1], tile_x, tile_y) {
+		Tile * adj = tai.tile;
+		if ((adj == NULL) || (adj == p_null_tile))
+			continue;
+		struct district_instance * inst = get_district_instance (adj);
+		if ((inst != NULL) &&
+		    ((inst->district_id == BRIDGE_DISTRICT_ID) || (inst->district_id == CANAL_DISTRICT_ID)))
+			return true;
+		int nx = (tai.n == 0) ? tile_x : tai.tile_x;
+		int ny = (tai.n == 0) ? tile_y : tai.tile_y;
+		if (tile_part_of_existing_candidate (nx, ny))
+			return true;
+	}
+	return false;
+}
+
+bool
+add_ai_candidate_entry (int district_id, short owner_civ_id, short * xs, short * ys, int count)
+{
+	if (count <= 0)
+		return false;
+	if (! ensure_ai_candidate_bridge_or_canals_capacity (is->ai_candidate_bridge_or_canals_count + 1))
+		return false;
+
+	struct ai_candidate_bridge_or_canal_entry * entry = &is->ai_candidate_bridge_or_canals[is->ai_candidate_bridge_or_canals_count];
+	entry->tile_x = (short *)malloc (sizeof *entry->tile_x * count);
+	entry->tile_y = (short *)malloc (sizeof *entry->tile_y * count);
+	if ((entry->tile_x == NULL) || (entry->tile_y == NULL)) {
+		if (entry->tile_x != NULL)
+			free (entry->tile_x);
+		if (entry->tile_y != NULL)
+			free (entry->tile_y);
+		return false;
+	}
+
+	entry->district_id = district_id;
+	entry->owner_civ_id = owner_civ_id;
+	entry->tile_count = (short)count;
+	entry->tile_capacity = count;
+	entry->assigned_tile_index = -1;
+	entry->assigned_worker_id = -1;
+	entry->completed = false;
+	for (int ti = 0; ti < count; ti++) {
+		entry->tile_x[ti] = xs[ti];
+		entry->tile_y[ti] = ys[ti];
+	}
+
+	struct pending_district_request * req = &entry->pending_req;
+	req->city = NULL;
+	req->city_id = -1;
+	req->civ_id = owner_civ_id;
+	req->district_id = district_id;
+	req->assigned_worker_id = -1;
+	req->target_x = -1;
+	req->target_y = -1;
+	req->worker_assigned_turn = 0;
+
+	is->ai_candidate_bridge_or_canals_count++;
+	return true;
+}
+
+int
+gather_bridge_line (int start_x, int start_y, int dx, int dy, int limit,
+		    int block_x0, int block_y0, int block_x1, int block_y1,
+		    short * out_x, short * out_y)
+{
+	int effective_limit = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, limit);
+
+	if (! tile_is_coastal_water (start_x, start_y))
+		return 0;
+	if (! bridge_tile_has_land_on_both_sides (start_x, start_y))
+		return 0;
+
+	short back_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short back_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short forward_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short forward_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	int back_count = 0;
+	int forward_count = 0;
+	int remaining = effective_limit - 1;
+	Map * map = &p_bic_data->Map;
+
+	int cx = start_x;
+	int cy = start_y;
+	while ((remaining > 0) && (back_count < effective_limit)) {
+		int nx = cx - dx;
+		int ny = cy - dy;
+		wrap_tile_coords (map, &nx, &ny);
+		if (! tile_point_in_block (nx, ny, block_x0, block_y0, block_x1, block_y1))
+			break;
+		if (! tile_is_coastal_water (nx, ny))
+			break;
+		if (! bridge_tile_has_land_on_both_sides (nx, ny))
+			break;
+		if (tile_part_of_existing_candidate (nx, ny))
+			break;
+		back_x[back_count] = (short)nx;
+		back_y[back_count] = (short)ny;
+		back_count++;
+		remaining--;
+		cx = nx;
+		cy = ny;
+	}
+
+	cx = start_x;
+	cy = start_y;
+	while ((remaining > 0) && (forward_count < effective_limit)) {
+		int nx = cx + dx;
+		int ny = cy + dy;
+		wrap_tile_coords (map, &nx, &ny);
+		if (! tile_point_in_block (nx, ny, block_x0, block_y0, block_x1, block_y1))
+			break;
+		if (! tile_is_coastal_water (nx, ny))
+			break;
+		if (! bridge_tile_has_land_on_both_sides (nx, ny))
+			break;
+		if (tile_part_of_existing_candidate (nx, ny))
+			break;
+		forward_x[forward_count] = (short)nx;
+		forward_y[forward_count] = (short)ny;
+		forward_count++;
+		remaining--;
+		cx = nx;
+		cy = ny;
+	}
+
+	int write = 0;
+	for (int bi = back_count - 1; bi >= 0; bi--) {
+		out_x[write] = back_x[bi];
+		out_y[write] = back_y[bi];
+		write++;
+	}
+	out_x[write] = (short)start_x;
+	out_y[write] = (short)start_y;
+	write++;
+	for (int fi = 0; fi < forward_count; fi++) {
+		out_x[write] = forward_x[fi];
+		out_y[write] = forward_y[fi];
+		write++;
+	}
+
+	return write;
+}
+
+bool
+bridge_line_connects_two_continents (short * xs, short * ys, int count)
+{
+	for (int i = 0; i < count; i++) {
+		if (bridge_tile_connects_two_continents (xs[i], ys[i], -1))
+			return true;
+	}
+	return false;
+}
+
+int
+find_bridge_candidate_in_block (Map * map, int block_x0, int block_y0, int block_x1, int block_y1,
+				int contiguous_limit, int candidate_capacity,
+				short * out_x, short * out_y, short * out_owner)
+{
+	const int dirs[4][2] = {
+		{ 0, -2 }, { -2, 0 }, { -1, -1 }, { -1, 1 }
+	};
+
+	int max_len = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
+	if (candidate_capacity > 0 && max_len > candidate_capacity)
+		max_len = candidate_capacity;
+
+	for (int length = 1; length <= max_len; length++) {
+		for (int ti = 0; ti < map->TileCount; ti++) {
+			int tx = -1;
+			int ty = -1;
+			tile_index_to_coords (map, ti, &tx, &ty);
+			if (! tile_point_in_block (tx, ty, block_x0, block_y0, block_x1, block_y1))
+				continue;
+			Tile * tile = tile_at (tx, ty);
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+			if (tile_has_resource (tile))
+				continue;
+			if (! district_is_buildable_on_square_type (&is->district_configs[BRIDGE_DISTRICT_ID], tile))
+				continue;
+			if (tile_is_reserved_in_district_tile_map (tx, ty))
+				continue;
+			short owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+
+			for (int di = 0; di < (int)(sizeof (dirs) / sizeof (dirs[0])); di++) {
+				int dx = dirs[di][0];
+				int dy = dirs[di][1];
+				int end_x = tx + dx * (length - 1);
+				int end_y = ty + dy * (length - 1);
+				wrap_tile_coords (map, &end_x, &end_y);
+				if (! tile_point_in_block (end_x, end_y, block_x0, block_y0, block_x1, block_y1))
+					continue;
+
+				bool ok = true;
+				for (int step = 0; step < length; step++) {
+					int cx = tx + dx * step;
+					int cy = ty + dy * step;
+					wrap_tile_coords (map, &cx, &cy);
+					if (! tile_point_in_block (cx, cy, block_x0, block_y0, block_x1, block_y1)) {
+						ok = false;
+						break;
+					}
+					if (! tile_exists_at (cx, cy)) {
+						ok = false;
+						break;
+					}
+					if (! tile_is_coastal_water (cx, cy)) {
+						ok = false;
+						break;
+					}
+					Tile * bridge_tile = tile_at (cx, cy);
+					if ((bridge_tile == NULL) || (bridge_tile == p_null_tile)) {
+						ok = false;
+						break;
+					}
+					if (tile_has_resource (bridge_tile)) {
+						ok = false;
+						break;
+					}
+					if (! district_is_buildable_on_square_type (&is->district_configs[BRIDGE_DISTRICT_ID], bridge_tile)) {
+						ok = false;
+						break;
+					}
+					if (tile_has_bridge_or_canal_nearby (cx, cy)) {
+						ok = false;
+						break;
+					}
+					if (tile_is_reserved_in_district_tile_map (cx, cy)) {
+						ok = false;
+						break;
+					}
+					if (tile_part_of_existing_candidate (cx, cy)) {
+						ok = false;
+						break;
+					}
+				}
+				if (! ok)
+					continue;
+
+				int land_ax = tx - dx;
+				int land_ay = ty - dy;
+				wrap_tile_coords (map, &land_ax, &land_ay);
+				if (! tile_point_in_block (land_ax, land_ay, block_x0, block_y0, block_x1, block_y1))
+					continue;
+				if (! tile_exists_at (land_ax, land_ay))
+					continue;
+				if (! tile_is_land (-1, land_ax, land_ay, false))
+					continue;
+				Tile * land_a = tile_at (land_ax, land_ay);
+				if ((land_a == NULL) || (land_a == p_null_tile))
+					continue;
+
+				int land_bx = tx + dx * length;
+				int land_by = ty + dy * length;
+				wrap_tile_coords (map, &land_bx, &land_by);
+				if (! tile_point_in_block (land_bx, land_by, block_x0, block_y0, block_x1, block_y1))
+					continue;
+				if (! tile_exists_at (land_bx, land_by))
+					continue;
+				if (! tile_is_land (-1, land_bx, land_by, false))
+					continue;
+				Tile * land_b = tile_at (land_bx, land_by);
+				if ((land_b == NULL) || (land_b == p_null_tile))
+					continue;
+
+				int cont_a = land_a->vtable->m46_Get_ContinentID (land_a);
+				int cont_b = land_b->vtable->m46_Get_ContinentID (land_b);
+				if ((cont_a < 0) || (cont_b < 0) || (cont_a == cont_b))
+					continue;
+
+				for (int step = 0; step < length; step++) {
+					int cx = tx + dx * step;
+					int cy = ty + dy * step;
+					wrap_tile_coords (map, &cx, &cy);
+					out_x[step] = (short)cx;
+					out_y[step] = (short)cy;
+				}
+				*out_owner = owner;
+				return length;
+			}
+		}
+	}
+	return 0;
+}
+
+int
+gather_canal_line (int start_x, int start_y, int dx, int dy, int limit,
+		   int block_x0, int block_y0, int block_x1, int block_y1,
+		   short * out_x, short * out_y)
+{
+	int effective_limit = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, limit);
+
+	if (! tile_is_land (-1, start_x, start_y, false))
+		return 0;
+	if (tile_part_of_existing_candidate (start_x, start_y))
+		return 0;
+
+	short back_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short back_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short forward_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	short forward_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+	int back_count = 0;
+	int forward_count = 0;
+	int remaining = effective_limit - 1;
+	Map * map = &p_bic_data->Map;
+
+	int cx = start_x;
+	int cy = start_y;
+	while ((remaining > 0) && (back_count < effective_limit)) {
+		int nx = cx - dx;
+		int ny = cy - dy;
+		wrap_tile_coords (map, &nx, &ny);
+		if (! tile_point_in_block (nx, ny, block_x0, block_y0, block_x1, block_y1))
+			break;
+		if (! tile_is_land (-1, nx, ny, false))
+			break;
+		if (tile_part_of_existing_candidate (nx, ny))
+			break;
+		back_x[back_count] = (short)nx;
+		back_y[back_count] = (short)ny;
+		back_count++;
+		remaining--;
+		cx = nx;
+		cy = ny;
+	}
+
+	cx = start_x;
+	cy = start_y;
+	while ((remaining > 0) && (forward_count < effective_limit)) {
+		int nx = cx + dx;
+		int ny = cy + dy;
+		wrap_tile_coords (map, &nx, &ny);
+		if (! tile_point_in_block (nx, ny, block_x0, block_y0, block_x1, block_y1))
+			break;
+		if (! tile_is_land (-1, nx, ny, false))
+			break;
+		if (tile_part_of_existing_candidate (nx, ny))
+			break;
+		forward_x[forward_count] = (short)nx;
+		forward_y[forward_count] = (short)ny;
+		forward_count++;
+		remaining--;
+		cx = nx;
+		cy = ny;
+	}
+
+	int write = 0;
+	for (int bi = back_count - 1; bi >= 0; bi--) {
+		out_x[write] = back_x[bi];
+		out_y[write] = back_y[bi];
+		write++;
+	}
+	out_x[write] = (short)start_x;
+	out_y[write] = (short)start_y;
+	write++;
+	for (int fi = 0; fi < forward_count; fi++) {
+		out_x[write] = forward_x[fi];
+		out_y[write] = forward_y[fi];
+		write++;
+	}
+
+	return write;
+}
+
+bool
+cluster_connects_two_seas_or_isthmus (short * xs, short * ys, int count)
+{
+	for (int i = 0; i < count; i++) {
+		if (canal_has_different_adjacent_seas (xs[i], ys[i], -1))
+			return true;
+		if (canal_has_same_sea_isthmus (xs[i], ys[i], -1, 2))
+			return true;
+	}
+	return false;
+}
+
+int
+find_canal_candidate_in_block (Map * map, int block_x0, int block_y0, int block_x1, int block_y1,
+			       int contiguous_limit, int candidate_capacity,
+			       short * out_x, short * out_y, short * out_owner)
+{
+	const int dir_dx[8] = { 0, 1, 2, 1, 0, -1, -2, -1 };
+	const int dir_dy[8] = { -2, -1, 0, 1, 2, 1, 0, -1 };
+
+	int max_len = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
+	if (candidate_capacity > 0 && max_len > candidate_capacity)
+		max_len = candidate_capacity;
+
+	int tile_count = map->TileCount;
+	int * visit = (int *)malloc (sizeof (*visit) * tile_count);
+	int * queue_x = (int *)malloc (sizeof (*queue_x) * tile_count);
+	int * queue_y = (int *)malloc (sizeof (*queue_y) * tile_count);
+	if ((visit == NULL) || (queue_x == NULL) || (queue_y == NULL)) {
+		if (visit != NULL)
+			free (visit);
+		if (queue_x != NULL)
+			free (queue_x);
+		if (queue_y != NULL)
+			free (queue_y);
+		return 0;
+	}
+	for (int i = 0; i < tile_count; i++)
+		visit[i] = 0;
+
+	int visit_mark = 1;
+
+	for (int length = 1; length <= max_len; length++) {
+		for (int ti = 0; ti < map->TileCount; ti++) {
+			int start_x = -1;
+			int start_y = -1;
+			tile_index_to_coords (map, ti, &start_x, &start_y);
+			if (! tile_point_in_block (start_x, start_y, block_x0, block_y0, block_x1, block_y1))
+				continue;
+			if (! tile_is_land (-1, start_x, start_y, false))
+				continue;
+			if (tile_part_of_existing_candidate (start_x, start_y))
+				continue;
+			if (tile_has_bridge_or_canal_nearby (start_x, start_y))
+				continue;
+			if (tile_is_reserved_in_district_tile_map (start_x, start_y))
+				continue;
+			Tile * start_tile = tile_at (start_x, start_y);
+			if ((start_tile == NULL) || (start_tile == p_null_tile))
+				continue;
+			if (tile_has_resource (start_tile))
+				continue;
+			if (! district_is_buildable_on_square_type (&is->district_configs[CANAL_DISTRICT_ID], start_tile))
+				continue;
+			int continent_id = start_tile->vtable->m46_Get_ContinentID (start_tile);
+			if (continent_id < 0)
+				continue;
+			short owner = start_tile->vtable->m38_Get_Territory_OwnerID (start_tile);
+
+				int stack_len = 1;
+				int dir_stack[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+				int path_dir[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES];
+				out_x[0] = (short)start_x;
+				out_y[0] = (short)start_y;
+				dir_stack[0] = -1;
+				path_dir[0] = -1;
+
+				while (stack_len > 0) {
+					int depth = stack_len - 1;
+					int cx = out_x[depth];
+					int cy = out_y[depth];
+
+					if (depth + 1 == length) {
+						bool endpoints_ok = false;
+						if (length == 1) {
+							int ex = out_x[0];
+							int ey = out_y[0];
+							bool pair_ok = false;
+							if (tile_is_water (ex, ey - 2) && tile_is_water (ex, ey + 2)) pair_ok = true;
+							if (tile_is_water (ex - 2, ey) && tile_is_water (ex + 2, ey)) pair_ok = true;
+							if (tile_is_water (ex - 1, ey - 1) && tile_is_water (ex + 1, ey + 1)) pair_ok = true;
+							if (tile_is_water (ex - 1, ey + 1) && tile_is_water (ex + 1, ey - 1)) pair_ok = true;
+							if (pair_ok && tile_has_diagonal_water (ex, ey))
+								endpoints_ok = true;
+						} else {
+							int first_dir = path_dir[1];
+							int last_dir = path_dir[length - 1];
+							int sx = out_x[0];
+							int sy = out_y[0];
+							int ex = out_x[length - 1];
+							int ey = out_y[length - 1];
+							bool start_water = tile_is_water (sx - dir_dx[first_dir], sy - dir_dy[first_dir]);
+							bool end_water = tile_is_water (ex + dir_dx[last_dir], ey + dir_dy[last_dir]);
+							if (start_water && end_water &&
+							    tile_has_diagonal_water (sx, sy) &&
+							    tile_has_diagonal_water (ex, ey))
+								endpoints_ok = true;
+						}
+
+						bool buildable = true;
+						if (endpoints_ok) {
+							for (int pi = 0; pi < length; pi++) {
+								Tile * path_tile = tile_at (out_x[pi], out_y[pi]);
+								if ((path_tile == NULL) || (path_tile == p_null_tile) ||
+								    tile_has_resource (path_tile) ||
+								    (! district_is_buildable_on_square_type (&is->district_configs[CANAL_DISTRICT_ID], path_tile)) ||
+								    tile_is_reserved_in_district_tile_map (out_x[pi], out_y[pi])) {
+									buildable = false;
+									break;
+								}
+								if (tile_has_bridge_or_canal_nearby (out_x[pi], out_y[pi])) {
+									buildable = false;
+									break;
+								}
+							}
+						} else {
+							buildable = false;
+						}
+
+						if (buildable) {
+							// Collect adjacent land tiles for component checks
+							int adj_x[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES * 8];
+							int adj_y[AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES * 8];
+							int adj_count = 0;
+							for (int pi = 0; pi < length; pi++) {
+								int px = out_x[pi];
+								int py = out_y[pi];
+								for (int di = 0; di < 8; di++) {
+									int nx = px + dir_dx[di];
+									int ny = py + dir_dy[di];
+									wrap_tile_coords (map, &nx, &ny);
+									if (! tile_is_land (-1, nx, ny, false))
+										continue;
+									Tile * adj = tile_at (nx, ny);
+									if ((adj == NULL) || (adj == p_null_tile))
+										continue;
+									if (adj->vtable->m46_Get_ContinentID (adj) != continent_id)
+										continue;
+									bool in_path = false;
+									for (int pj = 0; pj < length; pj++) {
+										if ((out_x[pj] == nx) && (out_y[pj] == ny)) {
+											in_path = true;
+											break;
+										}
+									}
+									if (in_path)
+										continue;
+									bool seen = false;
+									for (int aj = 0; aj < adj_count; aj++) {
+										if ((adj_x[aj] == nx) && (adj_y[aj] == ny)) {
+											seen = true;
+											break;
+										}
+									}
+									if (! seen && (adj_count < (int)(sizeof (adj_x) / sizeof (adj_x[0])))) {
+										adj_x[adj_count] = nx;
+										adj_y[adj_count] = ny;
+										adj_count++;
+									}
+								}
+							}
+
+							if (adj_count >= 2) {
+								int best1 = 0;
+								int best2 = 0;
+								int min_land = is->current_config.ai_canal_eval_min_bisected_land_tiles;
+								if (min_land < 1)
+									min_land = 1;
+								visit_mark++;
+								if (visit_mark == 0) {
+									visit_mark = 1;
+									for (int i = 0; i < tile_count; i++)
+										visit[i] = 0;
+								}
+
+								for (int ai = 0; ai < adj_count; ai++) {
+									int aidx = tile_coords_to_index (map, adj_x[ai], adj_y[ai]);
+									if ((aidx < 0) || (visit[aidx] == visit_mark))
+										continue;
+
+									int comp_size = 0;
+									int head = 0;
+									int tail = 0;
+									visit[aidx] = visit_mark;
+									queue_x[tail] = adj_x[ai];
+									queue_y[tail] = adj_y[ai];
+									tail++;
+
+									while (head < tail) {
+										int qx = queue_x[head];
+										int qy = queue_y[head];
+										head++;
+										comp_size++;
+										for (int di = 0; di < 8; di++) {
+											int nx = qx + dir_dx[di];
+											int ny = qy + dir_dy[di];
+											wrap_tile_coords (map, &nx, &ny);
+											if (! tile_is_land (-1, nx, ny, false))
+												continue;
+											Tile * adj = tile_at (nx, ny);
+											if ((adj == NULL) || (adj == p_null_tile))
+												continue;
+											if (adj->vtable->m46_Get_ContinentID (adj) != continent_id)
+												continue;
+											bool blocked = false;
+											for (int pj = 0; pj < length; pj++) {
+												if ((out_x[pj] == nx) && (out_y[pj] == ny)) {
+													blocked = true;
+													break;
+												}
+											}
+											if (blocked)
+												continue;
+											int nidx = tile_coords_to_index (map, nx, ny);
+											if ((nidx < 0) || (visit[nidx] == visit_mark))
+												continue;
+											visit[nidx] = visit_mark;
+											queue_x[tail] = nx;
+											queue_y[tail] = ny;
+											tail++;
+										}
+									}
+
+									if (comp_size > best1) {
+										best2 = best1;
+										best1 = comp_size;
+									} else if (comp_size > best2) {
+										best2 = comp_size;
+									}
+								}
+
+								if ((best1 >= min_land) && (best2 >= min_land)) {
+									*out_owner = owner;
+									free (visit);
+									free (queue_x);
+									free (queue_y);
+									return length;
+								}
+							}
+						}
+						dir_stack[depth] = -1;
+						stack_len--;
+						continue;
+					}
+
+					int next_dir = dir_stack[depth] + 1;
+					bool advanced = false;
+					while (next_dir < 8) {
+						int ndx = dir_dx[next_dir];
+						int ndy = dir_dy[next_dir];
+						int nx = cx + ndx;
+						int ny = cy + ndy;
+						wrap_tile_coords (map, &nx, &ny);
+						dir_stack[depth] = next_dir;
+
+						if (! tile_point_in_block (nx, ny, block_x0, block_y0, block_x1, block_y1)) {
+							next_dir++;
+							continue;
+						}
+						if (! tile_is_land (-1, nx, ny, false)) {
+							next_dir++;
+							continue;
+						}
+						if (tile_part_of_existing_candidate (nx, ny)) {
+							next_dir++;
+							continue;
+						}
+						if (tile_is_reserved_in_district_tile_map (nx, ny)) {
+							next_dir++;
+							continue;
+						}
+						Tile * next_tile = tile_at (nx, ny);
+						if ((next_tile == NULL) || (next_tile == p_null_tile)) {
+							next_dir++;
+							continue;
+						}
+						if (tile_has_resource (next_tile)) {
+							next_dir++;
+							continue;
+						}
+						if (! district_is_buildable_on_square_type (&is->district_configs[CANAL_DISTRICT_ID], next_tile)) {
+							next_dir++;
+							continue;
+						}
+						if (tile_has_bridge_or_canal_nearby (nx, ny)) {
+							next_dir++;
+							continue;
+						}
+						if (next_tile->vtable->m46_Get_ContinentID (next_tile) != continent_id) {
+							next_dir++;
+							continue;
+						}
+						bool dup = false;
+						for (int pi = 0; pi < depth + 1; pi++) {
+							if ((out_x[pi] == nx) && (out_y[pi] == ny)) {
+								dup = true;
+								break;
+							}
+						}
+						if (dup) {
+							next_dir++;
+							continue;
+						}
+
+						if (depth >= 1) {
+							int prev_dir = dir_stack[depth - 1];
+							int diff = next_dir - prev_dir;
+							if (diff < 0)
+								diff += 8;
+							if (diff > 4)
+								diff = 8 - diff;
+							if (diff > 1) {
+								next_dir++;
+								continue;
+							}
+						}
+
+						out_x[depth + 1] = (short)nx;
+						out_y[depth + 1] = (short)ny;
+						dir_stack[depth + 1] = -1;
+						path_dir[depth + 1] = next_dir;
+						stack_len++;
+						advanced = true;
+						break;
+					}
+
+					if (! advanced) {
+						dir_stack[depth] = -1;
+						stack_len--;
+					}
+				}
+			}
+	}
+
+	free (visit);
+	free (queue_x);
+	free (queue_y);
+	return 0;
+}
+
+void
+generate_ai_bridge_candidates_by_block (Map * map, int block_size, int contiguous_limit)
+{
+	if ((map == NULL) || (block_size <= 0))
+		return;
+
+	int width = map->Width;
+	int height = map->Height;
+	if ((width <= 0) || (height <= 0))
+		return;
+
+	if (block_size < 1)
+		block_size = 1;
+
+	int candidate_capacity = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
+
+	short * candidate_x = (short *)malloc (sizeof *candidate_x * candidate_capacity);
+	short * candidate_y = (short *)malloc (sizeof *candidate_y * candidate_capacity);
+	if ((candidate_x == NULL) || (candidate_y == NULL)) {
+		if (candidate_x != NULL)
+			free (candidate_x);
+		if (candidate_y != NULL)
+			free (candidate_y);
+		return;
+	}
+
+	for (int base_y = 0; base_y < height; base_y += block_size) {
+		int block_y1 = base_y + block_size;
+		if (block_y1 > height)
+			block_y1 = height;
+		for (int base_x = 0; base_x < width; base_x += block_size) {
+			int block_x1 = base_x + block_size;
+			if (block_x1 > width)
+				block_x1 = width;
+			short owner = -1;
+			int count = find_bridge_candidate_in_block (
+				map, base_x, base_y, block_x1, block_y1,
+				contiguous_limit, candidate_capacity,
+				candidate_x, candidate_y, &owner);
+			if (count <= 0)
+				continue;
+			if (! add_ai_candidate_entry (BRIDGE_DISTRICT_ID, owner, candidate_x, candidate_y, count)) {
+				free (candidate_x);
+				free (candidate_y);
+				return;
+			}
+		}
+	}
+
+	free (candidate_x);
+	free (candidate_y);
+}
+
+void
+generate_ai_canal_candidates_by_block (Map * map, int block_size, int contiguous_limit)
+{
+	if ((map == NULL) || (block_size <= 0))
+		return;
+
+	int width = map->Width;
+	int height = map->Height;
+	if ((width <= 0) || (height <= 0))
+		return;
+
+	if (block_size < 1)
+		block_size = 1;
+
+	int candidate_capacity = clamp (1, AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES, contiguous_limit);
+
+	short * candidate_x = (short *)malloc (sizeof *candidate_x * candidate_capacity);
+	short * candidate_y = (short *)malloc (sizeof *candidate_y * candidate_capacity);
+	if ((candidate_x == NULL) || (candidate_y == NULL)) {
+		if (candidate_x != NULL)
+			free (candidate_x);
+		if (candidate_y != NULL)
+			free (candidate_y);
+		return;
+	}
+
+	for (int base_y = 0; base_y < height; base_y += block_size) {
+		int block_y1 = base_y + block_size;
+		if (block_y1 > height)
+			block_y1 = height;
+		for (int base_x = 0; base_x < width; base_x += block_size) {
+			int block_x1 = base_x + block_size;
+			if (block_x1 > width)
+				block_x1 = width;
+			short owner = -1;
+			int count = find_canal_candidate_in_block (
+				map, base_x, base_y, block_x1, block_y1,
+				contiguous_limit, candidate_capacity,
+				candidate_x, candidate_y, &owner);
+			if (count <= 0)
+				continue;
+			if (! add_ai_candidate_entry (CANAL_DISTRICT_ID, owner, candidate_x, candidate_y, count)) {
+				free (candidate_x);
+				free (candidate_y);
+				return;
+			}
+		}
+	}
+
+	free (candidate_x);
+	free (candidate_y);
+}
+
+void
+generate_ai_canal_and_bridge_targets ()
+{
+	if (is->ai_candidate_bridge_or_canals_initialized)
+		return;
+	if ((! is->current_config.enable_canal_districts) && (! is->current_config.enable_bridge_districts))
+		return;
+
+	Map * map = &p_bic_data->Map;
+	int width = map->Width;
+	int height = map->Height;
+	if ((width <= 0) || (height <= 0))
+		return;
+
+	int block_size = is->current_config.ai_bridge_canal_eval_block_size;
+	if (block_size <= 0)
+		block_size = 10;
+
+	if (is->current_config.enable_bridge_districts && is->current_config.ai_builds_bridges) {
+		generate_ai_bridge_candidates_by_block (
+			map,
+			block_size,
+			is->current_config.max_contiguous_bridge_districts);
+	}
+
+	if (is->current_config.enable_canal_districts && is->current_config.ai_builds_canals) {
+		generate_ai_canal_candidates_by_block (
+			map,
+			block_size,
+			is->current_config.max_contiguous_canal_districts);
+	}
+
+	is->ai_candidate_bridge_or_canals_initialized = true;
+}
+
+void
+assign_workers_for_ai_candidate_bridge_or_canals (Leader * leader)
+{
+	if ((leader == NULL) || (is->ai_candidate_bridge_or_canals_count <= 0))
+		return;
+
+	int civ_id = leader->ID;
+	if ((*p_human_player_bits & (1 << civ_id)) != 0)
+		return;
+
+	if (! leader_can_build_district (leader, CANAL_DISTRICT_ID) && ! leader_can_build_district (leader, BRIDGE_DISTRICT_ID))
+		return;
+
+	if (! is->ai_candidate_bridge_or_canals_initialized) {
+		reset_ai_candidate_bridge_or_canals ();
+		generate_ai_canal_and_bridge_targets ();
+	}
+
+	for (int ei = 0; ei < is->ai_candidate_bridge_or_canals_count; ei++) {
+		struct ai_candidate_bridge_or_canal_entry * entry = &is->ai_candidate_bridge_or_canals[ei];
+		if (entry->completed)
+			continue;
+
+		int district_id = entry->district_id;
+		if ((district_id == CANAL_DISTRICT_ID) && (! is->current_config.enable_canal_districts)) continue;
+		if ((district_id == BRIDGE_DISTRICT_ID) && (! is->current_config.enable_bridge_districts)) continue;
+		if (! leader_can_build_district (leader, district_id)) continue;
+
+		if (entry->assigned_worker_id >= 0) {
+			Unit * worker = get_unit_ptr (entry->assigned_worker_id);
+			if (worker == NULL) {
+				release_ai_candidate_bridge_or_canal_worker (entry);
+			} else if ((entry->assigned_tile_index >= 0) && (entry->assigned_tile_index < entry->tile_count)) {
+				int tx = entry->tile_x[entry->assigned_tile_index];
+				int ty = entry->tile_y[entry->assigned_tile_index];
+				wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
+				Tile * tile = tile_at (tx, ty);
+				if ((tile != NULL) && (tile != p_null_tile)) {
+					struct district_instance * inst = get_district_instance (tile);
+					if (inst != NULL && inst->district_id == district_id && district_is_complete (tile, district_id)) {
+						release_ai_candidate_bridge_or_canal_worker (entry);
+					}
+				}
+			}
+			if (entry->assigned_worker_id >= 0)
+				continue;
+		}
+
+		int target_idx = -1;
+		if (! ai_candidate_bridge_or_canal_is_buildable_for_civ (entry, civ_id, &target_idx)) {
+			release_ai_candidate_bridge_or_canal_worker (entry);
+			continue;
+		}
+
+		if (target_idx < 0)
+			continue;
+
+		City * city = find_city_for_tile (civ_id, entry->tile_x[target_idx], entry->tile_y[target_idx]);
+		if (city == NULL)
+			continue;
+
+		Unit * worker = find_best_worker_for_district (leader, city, district_id, entry->tile_x[target_idx], entry->tile_y[target_idx]);
+		if (worker == NULL)
+			continue;
+
+		memset (&entry->pending_req, 0, sizeof entry->pending_req);
+		entry->pending_req.district_id = district_id;
+		entry->pending_req.civ_id = civ_id;
+		if (! assign_worker_to_district (&entry->pending_req, worker, city, district_id, entry->tile_x[target_idx], entry->tile_y[target_idx]))
+			continue;
+
+		entry->assigned_worker_id = worker->Body.ID;
+		entry->assigned_tile_index = target_idx;
 	}
 }
 
@@ -3794,6 +5854,46 @@ find_wonder_config_index_by_improvement_id (int improv_id)
 
 void set_wonder_built_flag (int improv_id, bool is_built);
 
+unsigned int
+wonder_buildable_square_type_mask (struct wonder_district_config const * cfg)
+{
+	if (cfg == NULL)
+		return district_default_buildable_mask ();
+
+	unsigned int mask = cfg->buildable_square_types_mask;
+	if (mask == 0)
+		mask = district_default_buildable_mask ();
+	return mask;
+}
+
+unsigned int
+wonder_buildable_mask_for_improvement (int improv_id)
+{
+	int windex = find_wonder_config_index_by_improvement_id (improv_id);
+	if (windex < 0)
+		return district_default_buildable_mask ();
+	return wonder_buildable_square_type_mask (&is->wonder_district_configs[windex]);
+}
+
+bool
+wonder_is_buildable_on_square_type (struct wonder_district_config const * cfg, Tile * tile)
+{
+	if ((cfg == NULL) || (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	return tile_matches_square_type_mask (tile, wonder_buildable_square_type_mask (cfg));
+}
+
+bool
+wonder_is_buildable_on_tile (Tile * tile, int wonder_improv_id)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	unsigned int mask = wonder_buildable_mask_for_improvement (wonder_improv_id);
+	return tile_matches_square_type_mask (tile, mask);
+}
+
 int
 get_wonder_improvement_id_from_index (int windex)
 {
@@ -3822,7 +5922,7 @@ remember_pending_building_order (City * city, int improvement_id)
 	if ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)
 		return;
 
-	itable_insert (&is->city_pending_building_orders, (int)(long)city, improvement_id);
+	itable_insert (&is->city_pending_building_orders, (int)city, improvement_id);
 }
 
 bool
@@ -3833,7 +5933,7 @@ lookup_pending_building_order (City * city, int * out_improv_id)
 	    (out_improv_id == NULL))
 		return false;
 
-	return itable_look_up (&is->city_pending_building_orders, (int)(long)city, out_improv_id);
+	return itable_look_up (&is->city_pending_building_orders, (int)city, out_improv_id);
 }
 
 void
@@ -3843,7 +5943,7 @@ forget_pending_building_order (City * city)
 	    (city == NULL))
 		return;
 
-	itable_remove (&is->city_pending_building_orders, (int)(long)city);
+	itable_remove (&is->city_pending_building_orders, (int)city);
 }
 
 bool
@@ -3853,6 +5953,7 @@ is_wonder_or_small_wonder_already_being_built (City * city, int improv_id)
 		return false;
 
 	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	bool is_wonder = (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0;
 	if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) == 0)
 		return false;
 
@@ -3870,6 +5971,112 @@ is_wonder_or_small_wonder_already_being_built (City * city, int improv_id)
 	return false;
 }
 
+struct district_building_prereq_list *
+get_district_building_prereq_list (int improv_id)
+{
+	if (improv_id < 0)
+		return NULL;
+
+	int stored = 0;
+	if (! itable_look_up (&is->district_building_prereqs, improv_id, &stored))
+		return NULL;
+	return (struct district_building_prereq_list *)stored;
+}
+
+bool
+district_building_prereq_list_contains (struct district_building_prereq_list * list, int district_id)
+{
+	if ((list == NULL) || (district_id < 0))
+		return false;
+	for (int i = 0; i < list->count; i++) {
+		if (list->district_ids[i] == district_id)
+			return true;
+	}
+	return false;
+}
+
+void
+add_district_building_prereq (int improv_id, int district_id)
+{
+	if ((improv_id < 0) || (district_id < 0))
+		return;
+
+	struct district_building_prereq_list * list = get_district_building_prereq_list (improv_id);
+	if (list == NULL) {
+		list = calloc (1, sizeof *list);
+		if (list == NULL)
+			return;
+		list->count = 0;
+		itable_insert (&is->district_building_prereqs, improv_id, (int)list);
+	}
+
+	if (district_building_prereq_list_contains (list, district_id))
+		return;
+
+	if (list->count >= ARRAY_LEN (list->district_ids))
+		return;
+
+	list->district_ids[list->count++] = district_id;
+}
+
+bool
+city_has_river_district (City * city, int district_id)
+{
+	if (city == NULL)
+		return false;
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		if (wai.district_inst->district_id != district_id)
+			continue;
+		if (wai.tile->vtable->m37_Get_River_Code (wai.tile) != 0)
+			return true;
+	}
+	return false;
+}
+
+bool
+city_has_any_prereq_district_for_improvement (City * city,
+					      struct district_building_prereq_list * list,
+					      bool requires_river,
+					      bool allow_wonder_district)
+{
+	if ((city == NULL) || (list == NULL))
+		return false;
+
+	for (int i = 0; i < list->count; i++) {
+		int district_id = list->district_ids[i];
+		if (district_id < 0)
+			continue;
+		if (! allow_wonder_district && district_id == WONDER_DISTRICT_ID)
+			continue;
+		if (requires_river) {
+			if (city_has_river_district (city, district_id))
+				return true;
+		} else if (city_has_required_district (city, district_id)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+int
+pick_missing_district_for_improvement (City * city, struct district_building_prereq_list * list)
+{
+	if ((list == NULL) || (list->count <= 0))
+		return -1;
+
+	int fallback = -1;
+	for (int i = 0; i < list->count; i++) {
+		int district_id = list->district_ids[i];
+		if (district_id < 0)
+			continue;
+		if (fallback < 0)
+			fallback = district_id;
+		if ((city != NULL) && leader_can_build_district (&leaders[city->Body.CivID], district_id))
+			return district_id;
+	}
+	return fallback;
+}
+
 
 bool
 district_is_complete(Tile * tile, int district_id)
@@ -3881,12 +6088,13 @@ district_is_complete(Tile * tile, int district_id)
 	bool is_natural_wonder = (district_id == NATURAL_WONDER_DISTRICT_ID);
 	bool districts_disabled = ! is->current_config.enable_districts;
 	bool natural_wonders_disabled = ! is->current_config.enable_natural_wonders;
+	struct district_config const * cfg = &is->district_configs[district_id];
 
 	if (districts_disabled && (!is_natural_wonder || natural_wonders_disabled))
 		return false;
 
 	struct district_instance * inst = get_district_instance (tile);
-	if (inst == NULL || inst->district_type != district_id)
+	if (inst == NULL || inst->district_id != district_id)
 		return false;
 
 	// If already marked COMPLETED, just return true
@@ -3915,14 +6123,40 @@ district_is_complete(Tile * tile, int district_id)
 
 	// Mark as completed and run one-time side effects
 	inst->state = DS_COMPLETED;
+	inst->completed_turn = *p_current_turn_no;
+
 	int tile_x, tile_y;
 	if (district_instance_get_coords (inst, tile, &tile_x, &tile_y)) {
 		set_tile_unworkable_for_all_cities (tile, tile_x, tile_y);
+		int territory_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+
+		if (cfg->auto_add_road) {
+			bool has_road = tile->vtable->m25_Check_Roads (tile, __, 0) != 0;
+			if (! has_road)
+				tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_ROAD, tile_x, tile_y); 
+		}
+
+		if (cfg->auto_add_railroad) {
+			bool has_railroad = tile->vtable->m23_Check_Railroads (tile, __, 0) != 0;
+			if (! has_railroad) {
+				if ((territory_owner >= 0) && Leader_can_do_worker_job (&leaders[territory_owner], __, WJ_Build_Railroad, tile_x, tile_y, 0)) {
+					tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_RAILROAD, tile_x, tile_y); 
+				}
+			}
+		}
 
 		// Activate distribution hub if applicable
 		if (is->current_config.enable_distribution_hub_districts &&
 		    (district_id == DISTRIBUTION_HUB_DISTRICT_ID)) {
 			on_distribution_hub_completed (tile, tile_x, tile_y);
+		}
+
+		// Remove forest/swamp if applicable
+		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+		if ((base_type == SQ_Forest) || (base_type == SQ_Swamp)) {
+			int new_terrain_type = tile->vtable->m71_Check_Worker_Job (tile);
+			if (new_terrain_type >= 0)
+				Map_change_tile_terrain (&p_bic_data->Map, __, (enum SquareTypes)new_terrain_type, tile_x, tile_y);
 		}
 
 		char ss[200];
@@ -3942,9 +6176,8 @@ district_is_complete(Tile * tile, int district_id)
 				// Check if city has pending building order that depends on this district
 				int pending_improv_id;
 				if (lookup_pending_building_order (requesting_city, &pending_improv_id)) {
-					int prereq_district_id;
-					if (itable_look_up (&is->district_building_prereqs, pending_improv_id, &prereq_district_id)) {
-						if (prereq_district_id == district_id) {
+					struct district_building_prereq_list * prereq_list = get_district_building_prereq_list (pending_improv_id);
+					if (district_building_prereq_list_contains (prereq_list, district_id)) {
 							snprintf (ss, sizeof ss, "City %s setting production to improvement %d\n",
 								  requesting_city->Body.CityName, pending_improv_id);
 							(*p_OutputDebugStringA) (ss);
@@ -3968,7 +6201,6 @@ district_is_complete(Tile * tile, int district_id)
 
 							// Clear the pending building order
 							forget_pending_building_order (requesting_city);
-						}
 					}
 				}
 
@@ -4051,7 +6283,7 @@ get_distribution_hub_record (Tile * tile)
 
 	int stored;
 	if (itable_look_up (&is->distribution_hub_records, (int)tile, &stored))
-		return (struct distribution_hub_record *)(long)stored;
+		return (struct distribution_hub_record *)stored;
 	else
 		return NULL;
 }
@@ -4110,12 +6342,17 @@ get_distribution_hub_yields_for_city (City * city, int * out_food, int * out_shi
 			recompute_distribution_hub_totals ();
 
 		FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
-			struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
+			struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
 			if (distribution_hub_accessible_to_city (rec, city)) {
 				food += rec->food_yield;
 				shields += rec->shield_yield;
 			}
 		}
+	}
+
+	if (city_has_required_district (city, CENTRAL_RAIL_HUB_DISTRICT_ID)) {
+		food    += (food * is->current_config.central_rail_hub_distribution_food_bonus_percent) / 100;
+		shields += (shields * is->current_config.central_rail_hub_distribution_shield_bonus_percent) / 100;
 	}
 
 	if (out_food != NULL)
@@ -4187,7 +6424,7 @@ void
 clear_distribution_hub_tables (void)
 {
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
-		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
+		struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
 		free (rec);
 	}
 	table_deinit (&is->distribution_hub_records);
@@ -4203,27 +6440,6 @@ city_radius_contains_tile (City * city, int tile_x, int tile_y)
 
 	int ni = patch_Map_compute_ni_for_work_area (&p_bic_data->Map, __, city->Body.X, city->Body.Y, tile_x, tile_y, is->workable_tile_count);
 	return ni >= 0;
-}
-
-bool
-tile_has_enemy_unit (Tile * tile, int civ_id)
-{
-	if ((tile == NULL) || (tile == p_null_tile))
-		return false;
-	if ((civ_id < 0) || (civ_id >= 32))
-		return false;
-
-	FOR_UNITS_ON (uti, tile) {
-		Unit * unit = uti.unit;
-		if ((unit == NULL) || (unit->Body.Container_Unit >= 0))
-			continue;
-		if (unit->Body.CivID == civ_id)
-			continue;
-		if (unit->vtable->is_enemy_of_civ (unit, __, civ_id, 0))
-			return true;
-	}
-
-	return false;
 }
 
 void
@@ -4289,7 +6505,7 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec)
 		bool tile_belongs_to_me = true;
 
 		FOR_TABLE_ENTRIES (other_tei, &is->distribution_hub_records) {
-			struct distribution_hub_record * other_rec = (struct distribution_hub_record *)(long)other_tei.value;
+			struct distribution_hub_record * other_rec = (struct distribution_hub_record *)other_tei.value;
 			if ((other_rec == NULL) || (other_rec == rec))
 				continue;
 			if (other_rec->civ_id != rec->civ_id)
@@ -4323,15 +6539,38 @@ recompute_distribution_hub_yields (struct distribution_hub_record * rec)
 	rec->raw_food_yield = food_sum;
 	rec->raw_shield_yield = shield_sum;
 
-	int food_div = is->current_config.distribution_hub_food_yield_divisor;
+	int food_div   = is->current_config.distribution_hub_food_yield_divisor;
 	int shield_div = is->current_config.distribution_hub_shield_yield_divisor;
 	if (food_div <= 0)
 		food_div = 1;
 	if (shield_div <= 0)
 		shield_div = 1;
 
-	rec->food_yield = food_sum / food_div;
-	rec->shield_yield = shield_sum / shield_div;
+	int connected_city_count = 0;
+	if (anchor_city != NULL) {
+		FOR_CITIES_OF (coi, rec->civ_id) {
+			City * other_city = coi.city;
+			if ((other_city != NULL) && distribution_hub_accessible_to_city (rec, other_city))
+				connected_city_count++;
+		}
+	}
+	if (connected_city_count <= 0)
+		connected_city_count = 1;
+
+	if (is->current_config.distribution_hub_yield_division_mode == DHYDM_SCALE_BY_CITY_COUNT) {
+		int city_root = 1;
+		while ((city_root + 1) * (city_root + 1) <= connected_city_count)
+			city_root++;
+		int city_food_divisor   = city_root * food_div;
+		int city_shield_divisor = city_root * shield_div;
+		if (city_food_divisor < 1) city_food_divisor = 1;
+		if (city_shield_divisor < 1) city_shield_divisor = 1;
+		rec->food_yield   = food_sum   / city_food_divisor;
+		rec->shield_yield = shield_sum / city_shield_divisor;
+	} else {
+		rec->food_yield   = food_sum / food_div;
+		rec->shield_yield = shield_sum / shield_div;
+	}
 }
 
 void
@@ -4375,7 +6614,7 @@ recompute_distribution_hub_totals ()
 
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
 		Tile * tile = (Tile *)tei.key;
-		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
+		struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
 		if (rec == NULL)
 			continue;
 
@@ -4446,7 +6685,7 @@ recompute_distribution_hub_totals ()
 	clear_memo ();
 
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
-		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
+		struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
 		if (rec == NULL)
 			continue;
 
@@ -4467,7 +6706,7 @@ recompute_distribution_hub_totals ()
 	memset (&new_coverage_counts, 0, sizeof new_coverage_counts);
 
 	FOR_TABLE_ENTRIES (tei, &newly_covered_tiles) {
-		Tile * covered_tile = (Tile *)(long)tei.key;
+		Tile * covered_tile = (Tile *)tei.key;
 		if ((covered_tile == NULL) || (covered_tile == p_null_tile))
 			continue;
 		int tx, ty;
@@ -4535,7 +6774,7 @@ on_distribution_hub_completed (Tile * tile, int tile_x, int tile_y)
 	rec->shield_yield = 0;
 	rec->raw_food_yield = 0;
 	rec->raw_shield_yield = 0;
-	itable_insert (&is->distribution_hub_records, (int)tile, (int)(long)rec);
+	itable_insert (&is->distribution_hub_records, (int)tile, (int)rec);
 	adjust_distribution_hub_coverage (rec);
 
 	is->distribution_hub_totals_dirty = true;
@@ -4560,18 +6799,11 @@ refresh_distribution_hubs_for_city (City * city)
 	    (city == NULL))
 		return;
 
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int tx = city_x + dx, ty = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
-		Tile * tile = tile_at (tx, ty);
-		if ((tile == NULL) || (tile == p_null_tile))
-			continue;
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL || inst->district_type != DISTRIBUTION_HUB_DISTRICT_ID)
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		int tx = wai.tile_x, ty = wai.tile_y;
+		Tile * tile = wai.tile;
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_id != DISTRIBUTION_HUB_DISTRICT_ID)
 			continue;
 		on_distribution_hub_completed (tile, tx, ty);
 	}
@@ -4632,12 +6864,19 @@ void
 add_key_parse_error (struct error_line ** parse_errors,
 		     int line_number,
 		     struct string_slice const * key,
+		     struct string_slice const * value,
 		     char const * message_suffix)
 {
 	struct error_line * err = add_error_line (parse_errors);
 	char * key_str = extract_slice (key);
-	snprintf (err->text, sizeof err->text, "^  Line %d: %s %s", line_number, key_str, message_suffix);
+	char * value_str = (value != NULL) ? extract_slice (value) : NULL;
+	if (value_str != NULL)
+		snprintf (err->text, sizeof err->text, "^  Line %d: %s \"%s\" %s", line_number, key_str, value_str, message_suffix);
+	else
+		snprintf (err->text, sizeof err->text, "^  Line %d: %s %s", line_number, key_str, message_suffix);
 	err->text[(sizeof err->text) - 1] = '\0';
+	if (value_str != NULL)
+		free (value_str);
 	free (key_str);
 }
 
@@ -4663,6 +6902,58 @@ copy_trimmed_string_or_null (struct string_slice const * slice, int remove_quote
 }
 
 void
+free_bonus_entry_list (struct district_bonus_list * list)
+{
+	if (list == NULL)
+		return;
+
+	for (int i = 0; i < list->count; i++) {
+		if (list->entries[i].type == DBET_BUILDING &&
+		    list->entries[i].building_name != NULL) {
+			free ((void *)list->entries[i].building_name);
+			list->entries[i].building_name = NULL;
+		}
+	}
+	list->count = 0;
+}
+
+void
+free_bonus_entry_list_override (struct district_bonus_list * list,
+				struct district_bonus_list const * defaults)
+{
+	if (list == NULL)
+		return;
+
+	for (int i = 0; i < list->count; i++) {
+		if (list->entries[i].type == DBET_BUILDING &&
+		    list->entries[i].building_name != NULL) {
+			char const * default_name = NULL;
+			if ((defaults != NULL) && (i < defaults->count))
+				default_name = defaults->entries[i].building_name;
+			if (list->entries[i].building_name != default_name)
+				free ((void *)list->entries[i].building_name);
+			list->entries[i].building_name = NULL;
+		}
+	}
+	list->count = (defaults != NULL) ? defaults->count : 0;
+}
+
+void
+move_bonus_entry_list (struct district_bonus_list * dest,
+		       struct district_bonus_list * src)
+{
+	if ((dest == NULL) || (src == NULL))
+		return;
+
+	dest->count = src->count;
+	for (int i = 0; i < src->count; i++) {
+		dest->entries[i] = src->entries[i];
+		src->entries[i].building_name = NULL;
+	}
+	src->count = 0;
+}
+
+void
 free_dynamic_district_config (struct district_config * cfg)
 {
 	if (cfg == NULL)
@@ -4671,18 +6962,100 @@ free_dynamic_district_config (struct district_config * cfg)
 	if (! cfg->is_dynamic)
 		return;
 
+	char const * name_ptr = cfg->name;
 	if (cfg->name != NULL) {
 		free ((void *)cfg->name);
 		cfg->name = NULL;
+	}
+	if ((cfg->display_name != NULL) &&
+	    (cfg->display_name != name_ptr)) {
+		free ((void *)cfg->display_name);
+		cfg->display_name = NULL;
 	}
 	if (cfg->tooltip != NULL) {
 		free ((void *)cfg->tooltip);
 		cfg->tooltip = NULL;
 	}
-	if (cfg->advance_prereq != NULL) {
-		free ((void *)cfg->advance_prereq);
-		cfg->advance_prereq = NULL;
+	for (int i = 0; i < ARRAY_LEN (cfg->advance_prereqs); i++) {
+		if (cfg->advance_prereqs[i] != NULL) {
+			free ((void *)cfg->advance_prereqs[i]);
+			cfg->advance_prereqs[i] = NULL;
+		}
 	}
+	cfg->advance_prereq_count = 0;
+	if (cfg->obsoleted_by != NULL) {
+		free ((void *)cfg->obsoleted_by);
+		cfg->obsoleted_by = NULL;
+	}
+
+	for (int i = 0; i < 5; i++) {
+		if (cfg->resource_prereqs[i] != NULL) {
+			free ((void *)cfg->resource_prereqs[i]);
+			cfg->resource_prereqs[i] = NULL;
+		}
+	}
+
+	if (cfg->resource_prereq_on_tile != NULL) {
+		free ((void *)cfg->resource_prereq_on_tile);
+		cfg->resource_prereq_on_tile = NULL;
+	}
+
+	for (int i = 0; i < ARRAY_LEN (cfg->wonder_prereqs); i++) {
+		if (cfg->wonder_prereqs[i] != NULL) {
+			free ((void *)cfg->wonder_prereqs[i]);
+			cfg->wonder_prereqs[i] = NULL;
+		}
+	}
+	cfg->wonder_prereq_count = 0;
+
+	for (int i = 0; i < ARRAY_LEN (cfg->natural_wonder_prereqs); i++) {
+		if (cfg->natural_wonder_prereqs[i] != NULL) {
+			free ((void *)cfg->natural_wonder_prereqs[i]);
+			cfg->natural_wonder_prereqs[i] = NULL;
+		}
+	}
+	cfg->natural_wonder_prereq_count = 0;
+
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_on_districts); i++) {
+		if (cfg->buildable_on_districts[i] != NULL) {
+			free ((void *)cfg->buildable_on_districts[i]);
+			cfg->buildable_on_districts[i] = NULL;
+		}
+	}
+	cfg->buildable_on_district_count = 0;
+	cfg->buildable_on_district_id_count = 0;
+	cfg->has_buildable_on_districts = false;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_adjacent_to_districts); i++) {
+		if (cfg->buildable_adjacent_to_districts[i] != NULL) {
+			free ((void *)cfg->buildable_adjacent_to_districts[i]);
+			cfg->buildable_adjacent_to_districts[i] = NULL;
+		}
+	}
+	cfg->buildable_adjacent_to_district_count = 0;
+	cfg->buildable_adjacent_to_district_id_count = 0;
+	cfg->has_buildable_adjacent_to = false;
+	cfg->has_buildable_adjacent_to_districts = false;
+
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
+		if (cfg->buildable_by_civs[i] != NULL) {
+			free ((void *)cfg->buildable_by_civs[i]);
+			cfg->buildable_by_civs[i] = NULL;
+		}
+	}
+	cfg->buildable_by_civ_count = 0;
+	cfg->has_buildable_by_civs = false;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_traits_ids); i++)
+		cfg->buildable_by_civ_traits_ids[i] = -1;
+	cfg->buildable_by_civ_traits_id_count = 0;
+	cfg->has_buildable_by_civ_traits = false;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_govs_ids); i++)
+		cfg->buildable_by_civ_govs_ids[i] = -1;
+	cfg->buildable_by_civ_govs_id_count = 0;
+	cfg->has_buildable_by_civ_govs = false;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_cultures_ids); i++)
+		cfg->buildable_by_civ_cultures_ids[i] = -1;
+	cfg->buildable_by_civ_cultures_id_count = 0;
+	cfg->has_buildable_by_civ_cultures = false;
 
 	for (int i = 0; i < 5; i++) {
 		if (cfg->dependent_improvements[i] != NULL) {
@@ -4697,6 +7070,14 @@ free_dynamic_district_config (struct district_config * cfg)
 			cfg->img_paths[i] = NULL;
 		}
 	}
+
+	free_bonus_entry_list (&cfg->culture_bonus_extras);
+	free_bonus_entry_list (&cfg->science_bonus_extras);
+	free_bonus_entry_list (&cfg->food_bonus_extras);
+	free_bonus_entry_list (&cfg->gold_bonus_extras);
+	free_bonus_entry_list (&cfg->shield_bonus_extras);
+	free_bonus_entry_list (&cfg->happiness_bonus_extras);
+	free_bonus_entry_list (&cfg->defense_bonus_extras);
 
 	memset (cfg, 0, sizeof *cfg);
 }
@@ -4762,14 +7143,114 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 	if (cfg == NULL || defaults == NULL)
 		return;
 
+	if ((cfg->display_name != NULL) &&
+	    (cfg->display_name != cfg->name) &&
+	    (cfg->display_name != defaults->display_name)) {
+		free ((void *)cfg->display_name);
+		cfg->display_name = NULL;
+	}
 	if ((cfg->tooltip != NULL) && (cfg->tooltip != defaults->tooltip)) {
 		free ((void *)cfg->tooltip);
 		cfg->tooltip = NULL;
 	}
-	if ((cfg->advance_prereq != NULL) && (cfg->advance_prereq != defaults->advance_prereq)) {
-		free ((void *)cfg->advance_prereq);
-		cfg->advance_prereq = NULL;
+	for (int i = 0; i < ARRAY_LEN (cfg->advance_prereqs); i++) {
+		char const * default_value = (defaults != NULL && i < defaults->advance_prereq_count)
+			? defaults->advance_prereqs[i]
+			: NULL;
+		if ((cfg->advance_prereqs[i] != NULL) &&
+		    (cfg->advance_prereqs[i] != default_value)) {
+			free ((void *)cfg->advance_prereqs[i]);
+		}
+		cfg->advance_prereqs[i] = NULL;
 	}
+	cfg->advance_prereq_count = 0;
+	if ((cfg->obsoleted_by != NULL) && (cfg->obsoleted_by != defaults->obsoleted_by)) {
+		free ((void *)cfg->obsoleted_by);
+		cfg->obsoleted_by = NULL;
+	}
+
+	for (int i = 0; i < ARRAY_LEN (cfg->resource_prereqs); i++) {
+		char const * default_value = (i < defaults->resource_prereq_count) ? defaults->resource_prereqs[i] : NULL;
+		if ((cfg->resource_prereqs[i] != NULL) &&
+		    (cfg->resource_prereqs[i] != default_value))
+			free ((void *)cfg->resource_prereqs[i]);
+		cfg->resource_prereqs[i] = NULL;
+	}
+	cfg->resource_prereq_count = defaults->resource_prereq_count;
+
+	if ((cfg->resource_prereq_on_tile != NULL) && (cfg->resource_prereq_on_tile != defaults->resource_prereq_on_tile)) {
+		free ((void *)cfg->resource_prereq_on_tile);
+		cfg->resource_prereq_on_tile = NULL;
+	}
+
+	for (int i = 0; i < ARRAY_LEN (cfg->wonder_prereqs); i++) {
+		char const * default_value = (i < defaults->wonder_prereq_count) ? defaults->wonder_prereqs[i] : NULL;
+		if ((cfg->wonder_prereqs[i] != NULL) &&
+		    (cfg->wonder_prereqs[i] != default_value))
+			free ((void *)cfg->wonder_prereqs[i]);
+		cfg->wonder_prereqs[i] = NULL;
+	}
+	cfg->wonder_prereq_count = defaults->wonder_prereq_count;
+
+	for (int i = 0; i < ARRAY_LEN (cfg->natural_wonder_prereqs); i++) {
+		char const * default_value = (i < defaults->natural_wonder_prereq_count) ? defaults->natural_wonder_prereqs[i] : NULL;
+		if ((cfg->natural_wonder_prereqs[i] != NULL) &&
+		    (cfg->natural_wonder_prereqs[i] != default_value))
+			free ((void *)cfg->natural_wonder_prereqs[i]);
+		cfg->natural_wonder_prereqs[i] = NULL;
+	}
+	cfg->natural_wonder_prereq_count = defaults->natural_wonder_prereq_count;
+
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_on_districts); i++) {
+		char const * default_value = (i < defaults->buildable_on_district_count) ? defaults->buildable_on_districts[i] : NULL;
+		if ((cfg->buildable_on_districts[i] != NULL) &&
+		    (cfg->buildable_on_districts[i] != default_value)) {
+			free ((void *)cfg->buildable_on_districts[i]);
+		}
+		cfg->buildable_on_districts[i] = NULL;
+	}
+	cfg->buildable_on_district_count = defaults->buildable_on_district_count;
+	cfg->buildable_on_district_id_count = defaults->buildable_on_district_id_count;
+	cfg->has_buildable_on_districts = defaults->has_buildable_on_districts;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_adjacent_to_districts); i++) {
+		char const * default_value = (i < defaults->buildable_adjacent_to_district_count)
+			? defaults->buildable_adjacent_to_districts[i]
+			: NULL;
+		if ((cfg->buildable_adjacent_to_districts[i] != NULL) &&
+		    (cfg->buildable_adjacent_to_districts[i] != default_value)) {
+			free ((void *)cfg->buildable_adjacent_to_districts[i]);
+		}
+		cfg->buildable_adjacent_to_districts[i] = NULL;
+	}
+	cfg->buildable_adjacent_to_district_count = defaults->buildable_adjacent_to_district_count;
+	cfg->buildable_adjacent_to_district_id_count = defaults->buildable_adjacent_to_district_id_count;
+	cfg->has_buildable_adjacent_to = defaults->has_buildable_adjacent_to;
+	cfg->has_buildable_adjacent_to_districts = defaults->has_buildable_adjacent_to_districts;
+
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
+		char const * default_value = (i < defaults->buildable_by_civ_count) ? defaults->buildable_by_civs[i] : NULL;
+		if ((cfg->buildable_by_civs[i] != NULL) &&
+		    (cfg->buildable_by_civs[i] != default_value)) {
+			free ((void *)cfg->buildable_by_civs[i]);
+		}
+		cfg->buildable_by_civs[i] = NULL;
+	}
+	cfg->buildable_by_civ_count = defaults->buildable_by_civ_count;
+	cfg->has_buildable_by_civs = defaults->has_buildable_by_civs;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_traits_ids); i++)
+		cfg->buildable_by_civ_traits_ids[i] = -1;
+	cfg->buildable_by_civ_traits_id_count = defaults->buildable_by_civ_traits_id_count;
+	cfg->has_buildable_by_civ_traits = defaults->has_buildable_by_civ_traits;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_govs_ids); i++)
+		cfg->buildable_by_civ_govs_ids[i] = -1;
+	cfg->buildable_by_civ_govs_id_count = defaults->buildable_by_civ_govs_id_count;
+	cfg->has_buildable_by_civ_govs = defaults->has_buildable_by_civ_govs;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_cultures_ids); i++)
+		cfg->buildable_by_civ_cultures_ids[i] = -1;
+	cfg->buildable_by_civ_cultures_id_count = defaults->buildable_by_civ_cultures_id_count;
+	cfg->has_buildable_by_civ_cultures = defaults->has_buildable_by_civ_cultures;
+	cfg->buildable_by_war_allies = defaults->buildable_by_war_allies;
+	cfg->buildable_by_pact_allies = defaults->buildable_by_pact_allies;
 
 	for (int i = 0; i < ARRAY_LEN (cfg->dependent_improvements); i++) {
 		char const * default_value = (i < defaults->dependent_improvement_count) ? defaults->dependent_improvements[i] : NULL;
@@ -4790,6 +7271,14 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 		cfg->img_paths[i] = NULL;
 	}
 	cfg->img_path_count = defaults->img_path_count;
+
+	free_bonus_entry_list_override (&cfg->culture_bonus_extras, &defaults->culture_bonus_extras);
+	free_bonus_entry_list_override (&cfg->science_bonus_extras, &defaults->science_bonus_extras);
+	free_bonus_entry_list_override (&cfg->food_bonus_extras, &defaults->food_bonus_extras);
+	free_bonus_entry_list_override (&cfg->gold_bonus_extras, &defaults->gold_bonus_extras);
+	free_bonus_entry_list_override (&cfg->shield_bonus_extras, &defaults->shield_bonus_extras);
+	free_bonus_entry_list_override (&cfg->happiness_bonus_extras, &defaults->happiness_bonus_extras);
+	free_bonus_entry_list_override (&cfg->defense_bonus_extras, &defaults->defense_bonus_extras);
 }
 
 void
@@ -4850,6 +7339,7 @@ clear_dynamic_district_definitions (void)
 	reset_regular_district_configs ();
 	reset_wonder_district_configs ();
 	reset_natural_wonder_configs ();
+	reset_ai_candidate_bridge_or_canals ();
 }
 
 void
@@ -4857,7 +7347,12 @@ init_parsed_district_definition (struct parsed_district_definition * def)
 {
 	memset (def, 0, sizeof *def);
 	def->img_path_count = -1;
-	def->defense_bonus_percent = 100;
+	def->defense_bonus_percent = 0;
+	def->render_strategy = DRS_BY_COUNT;
+	def->ai_build_strategy = DABS_DISTRICT;
+	def->buildable_square_types_mask = district_default_buildable_mask ();
+	def->buildable_adjacent_to_square_types_mask = 0;
+	def->buildable_adjacent_to_allows_city = false;
 }
 
 void
@@ -4866,6 +7361,10 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 	if (def == NULL)
 		return;
 
+	if (def->display_name != NULL) {
+		free (def->display_name);
+		def->display_name = NULL;
+	}
 	if (def->name != NULL) {
 		free (def->name);
 		def->name = NULL;
@@ -4874,10 +7373,91 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 		free (def->tooltip);
 		def->tooltip = NULL;
 	}
-	if (def->advance_prereq != NULL) {
-		free (def->advance_prereq);
-		def->advance_prereq = NULL;
+	for (int i = 0; i < def->advance_prereq_count; i++) {
+		if (def->advance_prereqs[i] != NULL) {
+			free (def->advance_prereqs[i]);
+			def->advance_prereqs[i] = NULL;
+		}
 	}
+	def->advance_prereq_count = 0;
+	for (int i = 0; i < ARRAY_LEN (def->buildable_on_districts); i++) {
+		if (def->buildable_on_districts[i] != NULL) {
+			free (def->buildable_on_districts[i]);
+			def->buildable_on_districts[i] = NULL;
+		}
+	}
+	for (int i = 0; i < ARRAY_LEN (def->buildable_adjacent_to_districts); i++) {
+		if (def->buildable_adjacent_to_districts[i] != NULL) {
+			free (def->buildable_adjacent_to_districts[i]);
+			def->buildable_adjacent_to_districts[i] = NULL;
+		}
+	}
+	if (def->obsoleted_by != NULL) {
+		free (def->obsoleted_by);
+		def->obsoleted_by = NULL;
+	}
+
+	for (int i = 0; i < def->resource_prereq_count; i++) {
+		if (def->resource_prereqs[i] != NULL) {
+			free (def->resource_prereqs[i]);
+			def->resource_prereqs[i] = NULL;
+		}
+	}
+	def->resource_prereq_count = 0;
+
+	if (def->resource_prereq_on_tile != NULL) {
+		free (def->resource_prereq_on_tile);
+		def->resource_prereq_on_tile = NULL;
+	}
+
+	for (int i = 0; i < def->wonder_prereq_count; i++) {
+		if (def->wonder_prereqs[i] != NULL) {
+			free (def->wonder_prereqs[i]);
+			def->wonder_prereqs[i] = NULL;
+		}
+	}
+	def->wonder_prereq_count = 0;
+
+	for (int i = 0; i < def->natural_wonder_prereq_count; i++) {
+		if (def->natural_wonder_prereqs[i] != NULL) {
+			free (def->natural_wonder_prereqs[i]);
+			def->natural_wonder_prereqs[i] = NULL;
+		}
+	}
+	def->natural_wonder_prereq_count = 0;
+	def->buildable_adjacent_to_district_count = 0;
+
+	for (int i = 0; i < def->buildable_by_civ_count; i++) {
+		if (def->buildable_by_civs[i] != NULL) {
+			free (def->buildable_by_civs[i]);
+			def->buildable_by_civs[i] = NULL;
+		}
+	}
+	def->buildable_by_civ_count = 0;
+	for (int i = 0; i < def->buildable_by_civ_traits_count; i++) {
+		if (def->buildable_by_civ_traits[i] != NULL) {
+			free (def->buildable_by_civ_traits[i]);
+			def->buildable_by_civ_traits[i] = NULL;
+		}
+	}
+	def->buildable_by_civ_traits_count = 0;
+	def->buildable_by_civ_traits_id_count = 0;
+	for (int i = 0; i < def->buildable_by_civ_govs_count; i++) {
+		if (def->buildable_by_civ_govs[i] != NULL) {
+			free (def->buildable_by_civ_govs[i]);
+			def->buildable_by_civ_govs[i] = NULL;
+		}
+	}
+	def->buildable_by_civ_govs_count = 0;
+	def->buildable_by_civ_govs_id_count = 0;
+	for (int i = 0; i < def->buildable_by_civ_cultures_count; i++) {
+		if (def->buildable_by_civ_cultures[i] != NULL) {
+			free (def->buildable_by_civ_cultures[i]);
+			def->buildable_by_civ_cultures[i] = NULL;
+		}
+	}
+	def->buildable_by_civ_cultures_count = 0;
+	def->buildable_by_civ_cultures_id_count = 0;
 
 	for (int i = 0; i < def->dependent_improvement_count; i++) {
 		if (def->dependent_improvements[i] != NULL) {
@@ -4894,6 +7474,19 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 		}
 	}
 	def->img_path_count = 0;
+
+	if (def->generated_resource != NULL) {
+		free (def->generated_resource);
+		def->generated_resource = NULL;
+	}
+
+	free_bonus_entry_list (&def->culture_bonus_extras);
+	free_bonus_entry_list (&def->science_bonus_extras);
+	free_bonus_entry_list (&def->food_bonus_extras);
+	free_bonus_entry_list (&def->gold_bonus_extras);
+	free_bonus_entry_list (&def->shield_bonus_extras);
+	free_bonus_entry_list (&def->happiness_bonus_extras);
+	free_bonus_entry_list (&def->defense_bonus_extras);
 
 	init_parsed_district_definition (def);
 }
@@ -5035,6 +7628,241 @@ parse_config_string_list (char * value_text,
 }
 
 bool
+parse_buildable_square_type_mask (struct string_slice const * value,
+				  unsigned int * out_mask,
+				  struct error_line ** parse_errors,
+				  int line_number,
+				  char const * key_name,
+				  bool * out_allow_city)
+{
+	char * value_text = trim_and_extract_slice (value, 0);
+	unsigned int mask = 0;
+	int entry_count = 0;
+	bool allow_city = false;
+	bool allow_city_token = (key_name != NULL) && (strcmp (key_name, "buildable_adjacent_to") == 0);
+	if (key_name == NULL)
+		key_name = "buildable_on";
+
+	if (value_text != NULL) {
+		char * cursor = value_text;
+		while (1) {
+			while (is_space_char (*cursor))
+				cursor++;
+
+			char * item_start = cursor;
+			while ((*cursor != '\0') && (*cursor != ','))
+				cursor++;
+
+			char * item_end = cursor;
+			while ((item_end > item_start) && is_space_char (item_end[-1]))
+				item_end--;
+
+			struct string_slice item_slice = { .str = item_start, .len = (int)(item_end - item_start) };
+			if (item_slice.len > 0) {
+				if (slice_matches_str (&item_slice, "city")) {
+					if (! allow_city_token) {
+						struct error_line * err = add_error_line (parse_errors);
+						snprintf (err->text, sizeof err->text, "^  Line %d: %.*s (invalid %s entry)", line_number, item_slice.len, item_slice.str, key_name);
+						err->text[(sizeof err->text) - 1] = '\0';
+						free (value_text);
+						return false;
+					}
+					allow_city = true;
+					entry_count += 1;
+				} else if (slice_matches_str (&item_slice, "mine")) {
+					mask |= district_buildable_mine_mask_bit ();
+					entry_count += 1;
+				} else if (slice_matches_str (&item_slice, "irrigation")) {
+					mask |= district_buildable_irrigation_mask_bit ();
+					entry_count += 1;
+				} else {
+				enum SquareTypes parsed;
+				if (read_square_type_value (&item_slice, &parsed)) {
+					if (parsed == (enum SquareTypes)SQ_INVALID)
+						mask = all_square_types_mask ();
+					else
+						mask |= square_type_mask_bit (parsed);
+					entry_count += 1;
+				} else {
+					struct error_line * err = add_error_line (parse_errors);
+					snprintf (err->text, sizeof err->text, "^  Line %d: %.*s (invalid %s entry)", line_number, item_slice.len, item_slice.str, key_name);
+					err->text[(sizeof err->text) - 1] = '\0';
+					free (value_text);
+					return false;
+				}
+				}
+			}
+
+			if (*cursor == ',') {
+				cursor++;
+				continue;
+			}
+			break;
+		}
+	}
+
+	if (value_text != NULL)
+		free (value_text);
+
+	if ((entry_count == 0) || ((mask == 0) && ! allow_city)) {
+		struct error_line * err = add_error_line (parse_errors);
+		snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected at least one square type)", line_number, key_name);
+		err->text[(sizeof err->text) - 1] = '\0';
+		return false;
+	}
+
+	*out_mask = mask;
+	if (out_allow_city != NULL)
+		*out_allow_city = allow_city;
+	return true;
+}
+
+bool
+parse_district_bonus_entries (struct string_slice const * value,
+			      int * out_base_bonus,
+			      struct district_bonus_list * out_extras,
+			      struct error_line ** parse_errors,
+			      int line_number,
+			      struct string_slice const * key)
+{
+	if ((out_base_bonus == NULL) || (out_extras == NULL)) {
+		add_key_parse_error (parse_errors, line_number, key, value, "(invalid bonus target)");
+		return false;
+	}
+
+	char * value_text = trim_and_extract_slice (value, 0);
+	free_bonus_entry_list (out_extras);
+	*out_base_bonus = 0;
+
+	if ((value_text == NULL) || (*value_text == '\0')) {
+		add_key_parse_error (parse_errors, line_number, key, value, "(expected base bonus)");
+		free (value_text);
+		return false;
+	}
+
+	bool got_base = false;
+	int base_bonus = 0;
+
+	char * cursor = value_text;
+	while (1) {
+		while (is_space_char (*cursor))
+			cursor++;
+
+		if (*cursor == '\0')
+			break;
+
+		char * item_start = cursor;
+		bool in_quotes = false;
+		while (*cursor != '\0') {
+			if (*cursor == '"')
+				in_quotes = ! in_quotes;
+			if ((! in_quotes) && (*cursor == ','))
+				break;
+			cursor++;
+		}
+
+		char * item_end = cursor;
+		while ((item_end > item_start) && is_space_char (item_end[-1]))
+			item_end--;
+		while ((item_start < item_end) && is_space_char (*item_start))
+			item_start++;
+
+		if (item_end > item_start) {
+			struct string_slice item = { .str = item_start, .len = (int)(item_end - item_start) };
+
+			if (! got_base) {
+				struct string_slice base_slice = trim_string_slice (&item, 0);
+				if (! read_int (&base_slice, &base_bonus)) {
+					add_key_parse_error (parse_errors, line_number, key, value, "(expected base bonus)");
+					free_bonus_entry_list (out_extras);
+					free (value_text);
+					return false;
+				}
+				got_base = true;
+			} else {
+				char * colon = NULL;
+				in_quotes = false;
+				for (char * p = item_start; p < item_end; p++) {
+					if (*p == '"')
+						in_quotes = ! in_quotes;
+					if ((! in_quotes) && (*p == ':')) {
+						colon = p;
+						break;
+					}
+				}
+
+				if (colon == NULL) {
+					add_key_parse_error (parse_errors, line_number, key, value, "(expected \"name: bonus\" entry)");
+					free_bonus_entry_list (out_extras);
+					free (value_text);
+					return false;
+				}
+
+				struct string_slice name_slice = { .str = item_start, .len = (int)(colon - item_start) };
+				struct string_slice bonus_slice = { .str = colon + 1, .len = (int)(item_end - (colon + 1)) };
+				struct string_slice trimmed_name = trim_string_slice (&name_slice, 1);
+				struct string_slice trimmed_bonus = trim_string_slice (&bonus_slice, 0);
+
+				if (trimmed_name.len <= 0) {
+					add_key_parse_error (parse_errors, line_number, key, value, "(expected bonus name)");
+					free_bonus_entry_list (out_extras);
+					free (value_text);
+					return false;
+				}
+
+				int bonus_value = 0;
+				if (! read_int (&trimmed_bonus, &bonus_value)) {
+					add_key_parse_error (parse_errors, line_number, key, value, "(expected bonus value)");
+					free_bonus_entry_list (out_extras);
+					free (value_text);
+					return false;
+				}
+
+				if (out_extras->count >= MAX_DISTRICT_BONUS_ENTRIES) {
+					add_key_parse_error (parse_errors, line_number, key, value, "(too many bonus entries)");
+					free_bonus_entry_list (out_extras);
+					free (value_text);
+					return false;
+				}
+
+				struct district_bonus_entry * entry = &out_extras->entries[out_extras->count++];
+				entry->bonus = bonus_value;
+				entry->building_id = -1;
+				entry->building_name = NULL;
+
+				enum SquareTypes parsed_type;
+				if (read_square_type_value (&trimmed_name, &parsed_type)) {
+					entry->type = DBET_TILE;
+					entry->tile_type = parsed_type;
+				} else {
+					entry->type = DBET_BUILDING;
+					entry->tile_type = (enum SquareTypes)SQ_INVALID;
+					entry->building_name = extract_slice (&trimmed_name);
+				}
+			}
+		}
+
+		if (*cursor == ',') {
+			cursor++;
+			continue;
+		}
+		if (*cursor == '\0')
+			break;
+	}
+
+	free (value_text);
+
+	if (! got_base) {
+		add_key_parse_error (parse_errors, line_number, key, value, "(expected base bonus)");
+		free_bonus_entry_list (out_extras);
+		return false;
+	}
+
+	*out_base_bonus = base_bonus;
+	return true;
+}
+
+bool
 override_special_district_from_definition (struct parsed_district_definition * def, int section_start_line)
 {
 	if ((! def->has_name) || (def->name == NULL))
@@ -5051,6 +7879,15 @@ override_special_district_from_definition (struct parsed_district_definition * d
 	def->name = NULL;
 	def->has_name = false;
 
+	if (def->has_display_name) {
+		if ((cfg->display_name != NULL) &&
+		    (cfg->display_name != cfg->name) &&
+		    (cfg->display_name != defaults->display_name))
+			free ((void *)cfg->display_name);
+		cfg->display_name = def->display_name;
+		def->display_name = NULL;
+	}
+
 	if (def->has_tooltip) {
 		if ((cfg->tooltip != NULL) && (cfg->tooltip != defaults->tooltip))
 			free ((void *)cfg->tooltip);
@@ -5058,12 +7895,194 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		def->tooltip = NULL;
 	}
 
-	if (def->has_advance_prereq) {
-		if ((cfg->advance_prereq != NULL) && (cfg->advance_prereq != defaults->advance_prereq))
-			free ((void *)cfg->advance_prereq);
-		cfg->advance_prereq = def->advance_prereq;
-		def->advance_prereq = NULL;
+	if (def->has_advance_prereqs) {
+		for (int i = 0; i < ARRAY_LEN (cfg->advance_prereqs); i++) {
+			char const * default_value = (i < defaults->advance_prereq_count) ? defaults->advance_prereqs[i] : NULL;
+			if ((cfg->advance_prereqs[i] != NULL) &&
+			    (cfg->advance_prereqs[i] != default_value))
+				free ((void *)cfg->advance_prereqs[i]);
+			cfg->advance_prereqs[i] = NULL;
+		}
+
+		cfg->advance_prereq_count = def->advance_prereq_count;
+		const int max_entries = ARRAY_LEN (cfg->advance_prereqs);
+		if (cfg->advance_prereq_count > max_entries)
+			cfg->advance_prereq_count = max_entries;
+		for (int i = 0; i < cfg->advance_prereq_count; i++) {
+			cfg->advance_prereqs[i] = def->advance_prereqs[i];
+			def->advance_prereqs[i] = NULL;
+		}
+		def->advance_prereq_count = 0;
 	}
+
+	if (def->has_obsoleted_by) {
+		if ((cfg->obsoleted_by != NULL) && (cfg->obsoleted_by != defaults->obsoleted_by))
+			free ((void *)cfg->obsoleted_by);
+		cfg->obsoleted_by = def->obsoleted_by;
+		def->obsoleted_by = NULL;
+	}
+
+	if (def->has_resource_prereqs) {
+		for (int i = 0; i < ARRAY_LEN (cfg->resource_prereqs); i++) {
+			char const * default_value = (i < defaults->resource_prereq_count) ? defaults->resource_prereqs[i] : NULL;
+			if ((cfg->resource_prereqs[i] != NULL) &&
+			    (cfg->resource_prereqs[i] != default_value))
+				free ((void *)cfg->resource_prereqs[i]);
+			cfg->resource_prereqs[i] = NULL;
+		}
+
+		cfg->resource_prereq_count = def->resource_prereq_count;
+		const int max_entries = ARRAY_LEN (cfg->resource_prereqs);
+		if (cfg->resource_prereq_count > max_entries)
+			cfg->resource_prereq_count = max_entries;
+		for (int i = 0; i < cfg->resource_prereq_count; i++) {
+			cfg->resource_prereqs[i] = def->resource_prereqs[i];
+			def->resource_prereqs[i] = NULL;
+		}
+	}
+
+	if (def->has_resource_prereq_on_tile) {
+		if ((cfg->resource_prereq_on_tile != NULL) && (cfg->resource_prereq_on_tile != defaults->resource_prereq_on_tile))
+			free ((void *)cfg->resource_prereq_on_tile);
+		cfg->resource_prereq_on_tile = def->resource_prereq_on_tile;
+		def->resource_prereq_on_tile = NULL;
+	}
+
+	if (def->has_wonder_prereqs) {
+		for (int i = 0; i < ARRAY_LEN (cfg->wonder_prereqs); i++) {
+			char const * default_value = (i < defaults->wonder_prereq_count) ? defaults->wonder_prereqs[i] : NULL;
+			if ((cfg->wonder_prereqs[i] != NULL) &&
+			    (cfg->wonder_prereqs[i] != default_value))
+				free ((void *)cfg->wonder_prereqs[i]);
+			cfg->wonder_prereqs[i] = NULL;
+		}
+
+		cfg->wonder_prereq_count = def->wonder_prereq_count;
+		const int max_entries = ARRAY_LEN (cfg->wonder_prereqs);
+		if (cfg->wonder_prereq_count > max_entries)
+			cfg->wonder_prereq_count = max_entries;
+		for (int i = 0; i < cfg->wonder_prereq_count; i++) {
+			cfg->wonder_prereqs[i] = def->wonder_prereqs[i];
+			def->wonder_prereqs[i] = NULL;
+		}
+	}
+
+	if (def->has_natural_wonder_prereqs) {
+		for (int i = 0; i < ARRAY_LEN (cfg->natural_wonder_prereqs); i++) {
+			char const * default_value = (i < defaults->natural_wonder_prereq_count) ? defaults->natural_wonder_prereqs[i] : NULL;
+			if ((cfg->natural_wonder_prereqs[i] != NULL) &&
+			    (cfg->natural_wonder_prereqs[i] != default_value))
+				free ((void *)cfg->natural_wonder_prereqs[i]);
+			cfg->natural_wonder_prereqs[i] = NULL;
+		}
+
+		cfg->natural_wonder_prereq_count = def->natural_wonder_prereq_count;
+		const int max_entries = ARRAY_LEN (cfg->natural_wonder_prereqs);
+		if (cfg->natural_wonder_prereq_count > max_entries)
+			cfg->natural_wonder_prereq_count = max_entries;
+		for (int i = 0; i < cfg->natural_wonder_prereq_count; i++) {
+			cfg->natural_wonder_prereqs[i] = def->natural_wonder_prereqs[i];
+			def->natural_wonder_prereqs[i] = NULL;
+		}
+	}
+
+	if (def->has_buildable_on_districts) {
+		for (int i = 0; i < ARRAY_LEN (cfg->buildable_on_districts); i++) {
+			char const * default_value = (i < defaults->buildable_on_district_count) ? defaults->buildable_on_districts[i] : NULL;
+			if ((cfg->buildable_on_districts[i] != NULL) &&
+			    (cfg->buildable_on_districts[i] != default_value))
+				free ((void *)cfg->buildable_on_districts[i]);
+			cfg->buildable_on_districts[i] = NULL;
+		}
+
+		cfg->buildable_on_district_count = def->buildable_on_district_count;
+		const int max_entries = ARRAY_LEN (cfg->buildable_on_districts);
+		if (cfg->buildable_on_district_count > max_entries)
+			cfg->buildable_on_district_count = max_entries;
+		for (int i = 0; i < cfg->buildable_on_district_count; i++) {
+			cfg->buildable_on_districts[i] = def->buildable_on_districts[i];
+			def->buildable_on_districts[i] = NULL;
+		}
+		cfg->buildable_on_district_id_count = 0;
+		cfg->has_buildable_on_districts = true;
+	}
+
+	if (def->has_buildable_adjacent_to_districts) {
+		for (int i = 0; i < ARRAY_LEN (cfg->buildable_adjacent_to_districts); i++) {
+			char const * default_value = (i < defaults->buildable_adjacent_to_district_count)
+				? defaults->buildable_adjacent_to_districts[i]
+				: NULL;
+			if ((cfg->buildable_adjacent_to_districts[i] != NULL) &&
+			    (cfg->buildable_adjacent_to_districts[i] != default_value))
+				free ((void *)cfg->buildable_adjacent_to_districts[i]);
+			cfg->buildable_adjacent_to_districts[i] = NULL;
+		}
+
+		cfg->buildable_adjacent_to_district_count = def->buildable_adjacent_to_district_count;
+		const int max_entries = ARRAY_LEN (cfg->buildable_adjacent_to_districts);
+		if (cfg->buildable_adjacent_to_district_count > max_entries)
+			cfg->buildable_adjacent_to_district_count = max_entries;
+		for (int i = 0; i < cfg->buildable_adjacent_to_district_count; i++) {
+			cfg->buildable_adjacent_to_districts[i] = def->buildable_adjacent_to_districts[i];
+			def->buildable_adjacent_to_districts[i] = NULL;
+		}
+		cfg->buildable_adjacent_to_district_id_count = 0;
+		cfg->has_buildable_adjacent_to_districts = true;
+	}
+
+	if (def->has_buildable_by_civs) {
+		for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
+			char const * default_value = (i < defaults->buildable_by_civ_count) ? defaults->buildable_by_civs[i] : NULL;
+			if ((cfg->buildable_by_civs[i] != NULL) &&
+			    (cfg->buildable_by_civs[i] != default_value))
+				free ((void *)cfg->buildable_by_civs[i]);
+			cfg->buildable_by_civs[i] = NULL;
+		}
+		cfg->buildable_by_civ_count = def->buildable_by_civ_count;
+		const int max_civ_names = ARRAY_LEN (cfg->buildable_by_civs);
+		if (cfg->buildable_by_civ_count > max_civ_names)
+			cfg->buildable_by_civ_count = max_civ_names;
+		for (int i = 0; i < cfg->buildable_by_civ_count; i++) {
+			cfg->buildable_by_civs[i] = def->buildable_by_civs[i];
+			def->buildable_by_civs[i] = NULL;
+		}
+		cfg->has_buildable_by_civs = true;
+	}
+
+	if (def->has_buildable_by_civ_traits) {
+		cfg->buildable_by_civ_traits_id_count = def->buildable_by_civ_traits_id_count;
+		const int max_entries = ARRAY_LEN (cfg->buildable_by_civ_traits_ids);
+		if (cfg->buildable_by_civ_traits_id_count > max_entries)
+			cfg->buildable_by_civ_traits_id_count = max_entries;
+		for (int i = 0; i < cfg->buildable_by_civ_traits_id_count; i++)
+			cfg->buildable_by_civ_traits_ids[i] = def->buildable_by_civ_traits_ids[i];
+		cfg->has_buildable_by_civ_traits = true;
+	}
+
+	if (def->has_buildable_by_civ_govs) {
+		cfg->buildable_by_civ_govs_id_count = def->buildable_by_civ_govs_id_count;
+		const int max_entries = ARRAY_LEN (cfg->buildable_by_civ_govs_ids);
+		if (cfg->buildable_by_civ_govs_id_count > max_entries)
+			cfg->buildable_by_civ_govs_id_count = max_entries;
+		for (int i = 0; i < cfg->buildable_by_civ_govs_id_count; i++)
+			cfg->buildable_by_civ_govs_ids[i] = def->buildable_by_civ_govs_ids[i];
+		cfg->has_buildable_by_civ_govs = true;
+	}
+
+	if (def->has_buildable_by_civ_cultures) {
+		cfg->buildable_by_civ_cultures_id_count = def->buildable_by_civ_cultures_id_count;
+		const int max_entries = ARRAY_LEN (cfg->buildable_by_civ_cultures_ids);
+		if (cfg->buildable_by_civ_cultures_id_count > max_entries)
+			cfg->buildable_by_civ_cultures_id_count = max_entries;
+		for (int i = 0; i < cfg->buildable_by_civ_cultures_id_count; i++)
+			cfg->buildable_by_civ_cultures_ids[i] = def->buildable_by_civ_cultures_ids[i];
+		cfg->has_buildable_by_civ_cultures = true;
+	}
+
+	if (def->has_buildable_by_war_allies)
+		cfg->buildable_by_war_allies = def->buildable_by_war_allies;
+	if (def->has_buildable_by_pact_allies)
+		cfg->buildable_by_pact_allies = def->buildable_by_pact_allies;
 
 	if (def->has_allow_multiple)
 		cfg->allow_multiple = def->allow_multiple;
@@ -5071,22 +8090,85 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->vary_img_by_era = def->vary_img_by_era;
 	if (def->has_vary_img_by_culture)
 		cfg->vary_img_by_culture = def->vary_img_by_culture;
+	if (def->has_render_strategy)
+		cfg->render_strategy = def->render_strategy;
+	if (def->has_ai_build_strategy)
+		cfg->ai_build_strategy = def->ai_build_strategy;
+	if (def->has_align_to_coast)
+		cfg->align_to_coast = def->align_to_coast;
+	if (def->has_draw_over_resources)
+		cfg->draw_over_resources = def->draw_over_resources;
+	if (def->has_allow_irrigation_from)
+		cfg->allow_irrigation_from = def->allow_irrigation_from;
+	if (def->has_auto_add_road)
+		cfg->auto_add_road = def->auto_add_road;
+	if (def->has_auto_add_railroad)
+		cfg->auto_add_railroad = def->auto_add_railroad;
+	if (def->has_custom_width)
+		cfg->custom_width = def->custom_width;
+	if (def->has_custom_height)
+		cfg->custom_height = def->custom_height;
+	if (def->has_x_offset)
+		cfg->x_offset = def->x_offset;
+	if (def->has_y_offset)
+		cfg->y_offset = def->y_offset;
 	if (def->has_btn_tile_sheet_column)
 		cfg->btn_tile_sheet_column = def->btn_tile_sheet_column;
 	if (def->has_btn_tile_sheet_row)
 		cfg->btn_tile_sheet_row = def->btn_tile_sheet_row;
-	if (def->has_defense_bonus_percent)
+	if (def->has_defense_bonus_percent) {
 		cfg->defense_bonus_percent = def->defense_bonus_percent;
-	if (def->has_culture_bonus)
+		free_bonus_entry_list_override (&cfg->defense_bonus_extras, &defaults->defense_bonus_extras);
+		move_bonus_entry_list (&cfg->defense_bonus_extras, &def->defense_bonus_extras);
+	}
+	if (def->has_heal_units_in_one_turn)
+		cfg->heal_units_in_one_turn = def->heal_units_in_one_turn;
+	if (def->has_culture_bonus) {
 		cfg->culture_bonus = def->culture_bonus;
-	if (def->has_science_bonus)
+		free_bonus_entry_list_override (&cfg->culture_bonus_extras, &defaults->culture_bonus_extras);
+		move_bonus_entry_list (&cfg->culture_bonus_extras, &def->culture_bonus_extras);
+	}
+	if (def->has_science_bonus) {
 		cfg->science_bonus = def->science_bonus;
-	if (def->has_food_bonus)
+		free_bonus_entry_list_override (&cfg->science_bonus_extras, &defaults->science_bonus_extras);
+		move_bonus_entry_list (&cfg->science_bonus_extras, &def->science_bonus_extras);
+	}
+	if (def->has_food_bonus) {
 		cfg->food_bonus = def->food_bonus;
-	if (def->has_gold_bonus)
+		free_bonus_entry_list_override (&cfg->food_bonus_extras, &defaults->food_bonus_extras);
+		move_bonus_entry_list (&cfg->food_bonus_extras, &def->food_bonus_extras);
+	}
+	if (def->has_gold_bonus) {
 		cfg->gold_bonus = def->gold_bonus;
-	if (def->has_shield_bonus)
+		free_bonus_entry_list_override (&cfg->gold_bonus_extras, &defaults->gold_bonus_extras);
+		move_bonus_entry_list (&cfg->gold_bonus_extras, &def->gold_bonus_extras);
+	}
+	if (def->has_shield_bonus) {
 		cfg->shield_bonus = def->shield_bonus;
+		free_bonus_entry_list_override (&cfg->shield_bonus_extras, &defaults->shield_bonus_extras);
+		move_bonus_entry_list (&cfg->shield_bonus_extras, &def->shield_bonus_extras);
+	}
+	if (def->has_happiness_bonus) {
+		cfg->happiness_bonus = def->happiness_bonus;
+		free_bonus_entry_list_override (&cfg->happiness_bonus_extras, &defaults->happiness_bonus_extras);
+		move_bonus_entry_list (&cfg->happiness_bonus_extras, &def->happiness_bonus_extras);
+	}
+	if (def->has_buildable_on)
+		cfg->buildable_square_types_mask = def->buildable_square_types_mask;
+	if (def->has_buildable_adjacent_to) {
+		cfg->buildable_adjacent_to_square_types_mask = def->buildable_adjacent_to_square_types_mask;
+		cfg->has_buildable_adjacent_to = true;
+		cfg->buildable_adjacent_to_allows_city = def->buildable_adjacent_to_allows_city;
+	}
+
+	if (def->has_generated_resource) {
+		if ((cfg->generated_resource != NULL) && (cfg->generated_resource != defaults->generated_resource))
+			free ((void *)cfg->generated_resource);
+		cfg->generated_resource = def->generated_resource;
+		def->generated_resource = NULL;
+		cfg->generated_resource_flags = def->generated_resource_flags;
+		cfg->generated_resource_id = -1;
+	}
 
 	if (def->has_dependent_improvements) {
 		for (int i = 0; i < ARRAY_LEN (cfg->dependent_improvements); i++) {
@@ -5106,8 +8188,8 @@ override_special_district_from_definition (struct parsed_district_definition * d
 			def->dependent_improvements[i] = NULL;
 		}
 		cfg->max_building_index = cfg->dependent_improvement_count;
-		if (cfg->max_building_index > 5)
-			cfg->max_building_index = 5;
+		if (cfg->max_building_index > 20)
+			cfg->max_building_index = 20;
 	}
 
 	if (def->has_img_paths) {
@@ -5172,6 +8254,14 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 
 	new_cfg.name = def->name;
 	def->name = NULL;
+	if (def->has_display_name) {
+		new_cfg.display_name = def->display_name;
+		if (new_cfg.display_name == NULL)
+			new_cfg.display_name = new_cfg.name;
+		def->display_name = NULL;
+	} else {
+		new_cfg.display_name = new_cfg.name;
+	}
 
 	if (def->has_tooltip) {
 		new_cfg.tooltip = def->tooltip;
@@ -5182,22 +8272,169 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		new_cfg.tooltip = strdup (buffer);
 	}
 
-	if (def->has_advance_prereq) {
-		new_cfg.advance_prereq = def->advance_prereq;
-		def->advance_prereq = NULL;
+	if (def->has_advance_prereqs) {
+		new_cfg.advance_prereq_count = def->advance_prereq_count;
+		const int max_entries = ARRAY_LEN (new_cfg.advance_prereqs);
+		if (new_cfg.advance_prereq_count > max_entries)
+			new_cfg.advance_prereq_count = max_entries;
+		for (int i = 0; i < new_cfg.advance_prereq_count; i++) {
+			new_cfg.advance_prereqs[i] = def->advance_prereqs[i];
+			def->advance_prereqs[i] = NULL;
+		}
+		def->advance_prereq_count = 0;
 	}
+
+	if (def->has_obsoleted_by) {
+		new_cfg.obsoleted_by = def->obsoleted_by;
+		def->obsoleted_by = NULL;
+	}
+
+	new_cfg.resource_prereq_count = def->has_resource_prereqs ? def->resource_prereq_count : 0;
+	const int max_resource_entries = ARRAY_LEN (new_cfg.resource_prereqs);
+	if (new_cfg.resource_prereq_count > max_resource_entries)
+		new_cfg.resource_prereq_count = max_resource_entries;
+	for (int i = 0; i < new_cfg.resource_prereq_count; i++) {
+		new_cfg.resource_prereqs[i] = def->resource_prereqs[i];
+		def->resource_prereqs[i] = NULL;
+	}
+
+	if (def->has_resource_prereq_on_tile) {
+		new_cfg.resource_prereq_on_tile = def->resource_prereq_on_tile;
+		def->resource_prereq_on_tile = NULL;
+	}
+
+	new_cfg.wonder_prereq_count = def->has_wonder_prereqs ? def->wonder_prereq_count : 0;
+	const int max_required_wonders = ARRAY_LEN (new_cfg.wonder_prereqs);
+	if (new_cfg.wonder_prereq_count > max_required_wonders)
+		new_cfg.wonder_prereq_count = max_required_wonders;
+	for (int i = 0; i < new_cfg.wonder_prereq_count; i++) {
+		new_cfg.wonder_prereqs[i] = def->wonder_prereqs[i];
+		def->wonder_prereqs[i] = NULL;
+	}
+
+	new_cfg.natural_wonder_prereq_count = def->has_natural_wonder_prereqs ? def->natural_wonder_prereq_count : 0;
+	const int max_required_natural_wonders = ARRAY_LEN (new_cfg.natural_wonder_prereqs);
+	if (new_cfg.natural_wonder_prereq_count > max_required_natural_wonders)
+		new_cfg.natural_wonder_prereq_count = max_required_natural_wonders;
+	for (int i = 0; i < new_cfg.natural_wonder_prereq_count; i++) {
+		new_cfg.natural_wonder_prereqs[i] = def->natural_wonder_prereqs[i];
+		def->natural_wonder_prereqs[i] = NULL;
+	}
+
+	new_cfg.buildable_on_district_count = def->has_buildable_on_districts ? def->buildable_on_district_count : 0;
+	const int max_buildable_on_districts = ARRAY_LEN (new_cfg.buildable_on_districts);
+	if (new_cfg.buildable_on_district_count > max_buildable_on_districts)
+		new_cfg.buildable_on_district_count = max_buildable_on_districts;
+	for (int i = 0; i < new_cfg.buildable_on_district_count; i++) {
+		new_cfg.buildable_on_districts[i] = def->buildable_on_districts[i];
+		def->buildable_on_districts[i] = NULL;
+	}
+	new_cfg.buildable_on_district_id_count = 0;
+	new_cfg.has_buildable_on_districts = def->has_buildable_on_districts;
+
+	new_cfg.buildable_adjacent_to_district_count = def->has_buildable_adjacent_to_districts ? def->buildable_adjacent_to_district_count : 0;
+	const int max_adjacent_to_districts = ARRAY_LEN (new_cfg.buildable_adjacent_to_districts);
+	if (new_cfg.buildable_adjacent_to_district_count > max_adjacent_to_districts)
+		new_cfg.buildable_adjacent_to_district_count = max_adjacent_to_districts;
+	for (int i = 0; i < new_cfg.buildable_adjacent_to_district_count; i++) {
+		new_cfg.buildable_adjacent_to_districts[i] = def->buildable_adjacent_to_districts[i];
+		def->buildable_adjacent_to_districts[i] = NULL;
+	}
+	new_cfg.buildable_adjacent_to_district_id_count = 0;
+	new_cfg.has_buildable_adjacent_to_districts = def->has_buildable_adjacent_to_districts;
+
+	new_cfg.buildable_by_civ_count = def->has_buildable_by_civs ? def->buildable_by_civ_count : 0;
+	const int max_civ_names = ARRAY_LEN (new_cfg.buildable_by_civs);
+	if (new_cfg.buildable_by_civ_count > max_civ_names)
+		new_cfg.buildable_by_civ_count = max_civ_names;
+	for (int i = 0; i < new_cfg.buildable_by_civ_count; i++) {
+		new_cfg.buildable_by_civs[i] = def->buildable_by_civs[i];
+		def->buildable_by_civs[i] = NULL;
+	}
+
+	new_cfg.has_buildable_by_civs = def->has_buildable_by_civs;
+
+	new_cfg.buildable_by_civ_traits_id_count = def->has_buildable_by_civ_traits ? def->buildable_by_civ_traits_id_count : 0;
+	const int max_buildable_traits = ARRAY_LEN (new_cfg.buildable_by_civ_traits_ids);
+	if (new_cfg.buildable_by_civ_traits_id_count > max_buildable_traits)
+		new_cfg.buildable_by_civ_traits_id_count = max_buildable_traits;
+	for (int i = 0; i < new_cfg.buildable_by_civ_traits_id_count; i++)
+		new_cfg.buildable_by_civ_traits_ids[i] = def->buildable_by_civ_traits_ids[i];
+	new_cfg.has_buildable_by_civ_traits = def->has_buildable_by_civ_traits;
+
+	new_cfg.buildable_by_civ_govs_id_count = def->has_buildable_by_civ_govs ? def->buildable_by_civ_govs_id_count : 0;
+	const int max_buildable_govs = ARRAY_LEN (new_cfg.buildable_by_civ_govs_ids);
+	if (new_cfg.buildable_by_civ_govs_id_count > max_buildable_govs)
+		new_cfg.buildable_by_civ_govs_id_count = max_buildable_govs;
+	for (int i = 0; i < new_cfg.buildable_by_civ_govs_id_count; i++)
+		new_cfg.buildable_by_civ_govs_ids[i] = def->buildable_by_civ_govs_ids[i];
+	new_cfg.has_buildable_by_civ_govs = def->has_buildable_by_civ_govs;
+
+	new_cfg.buildable_by_civ_cultures_id_count = def->has_buildable_by_civ_cultures ? def->buildable_by_civ_cultures_id_count : 0;
+	const int max_buildable_cultures = ARRAY_LEN (new_cfg.buildable_by_civ_cultures_ids);
+	if (new_cfg.buildable_by_civ_cultures_id_count > max_buildable_cultures)
+		new_cfg.buildable_by_civ_cultures_id_count = max_buildable_cultures;
+	for (int i = 0; i < new_cfg.buildable_by_civ_cultures_id_count; i++)
+		new_cfg.buildable_by_civ_cultures_ids[i] = def->buildable_by_civ_cultures_ids[i];
+	new_cfg.has_buildable_by_civ_cultures = def->has_buildable_by_civ_cultures;
+
+	new_cfg.buildable_by_war_allies = def->has_buildable_by_war_allies ? def->buildable_by_war_allies : false;
+	new_cfg.buildable_by_pact_allies = def->has_buildable_by_pact_allies ? def->buildable_by_pact_allies : false;
 
 	new_cfg.allow_multiple = def->has_allow_multiple ? def->allow_multiple : false;
 	new_cfg.vary_img_by_era = def->has_vary_img_by_era ? def->vary_img_by_era : false;
 	new_cfg.vary_img_by_culture = def->has_vary_img_by_culture ? def->vary_img_by_culture : false;
+	new_cfg.render_strategy = def->has_render_strategy ? def->render_strategy : DRS_BY_COUNT;
+	new_cfg.ai_build_strategy = def->has_ai_build_strategy ? def->ai_build_strategy : DABS_DISTRICT;
+	new_cfg.align_to_coast = def->has_align_to_coast ? def->align_to_coast : false;
+	new_cfg.draw_over_resources = def->has_draw_over_resources ? def->draw_over_resources : false;
+	new_cfg.allow_irrigation_from = def->has_allow_irrigation_from ? def->allow_irrigation_from : false;
+	new_cfg.auto_add_road = def->has_auto_add_road ? def->auto_add_road : false;
+	new_cfg.auto_add_railroad = def->has_auto_add_railroad ? def->auto_add_railroad : false;
+	new_cfg.custom_width = def->has_custom_width ? def->custom_width : 0;
+	new_cfg.custom_height = def->has_custom_height ? def->custom_height : 0;
+	new_cfg.x_offset = def->has_x_offset ? def->x_offset : 0;
+	new_cfg.y_offset = def->has_y_offset ? def->y_offset : 0;
 	new_cfg.btn_tile_sheet_column = def->has_btn_tile_sheet_column ? def->btn_tile_sheet_column : 0;
 	new_cfg.btn_tile_sheet_row = def->has_btn_tile_sheet_row ? def->btn_tile_sheet_row : 0;
-	new_cfg.defense_bonus_percent = def->has_defense_bonus_percent ? def->defense_bonus_percent : 100;
+	new_cfg.defense_bonus_percent = def->has_defense_bonus_percent ? def->defense_bonus_percent : 0;
+	new_cfg.heal_units_in_one_turn = def->has_heal_units_in_one_turn ? def->heal_units_in_one_turn : false;
 	new_cfg.culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
 	new_cfg.science_bonus = def->has_science_bonus ? def->science_bonus : 0;
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
 	new_cfg.gold_bonus = def->has_gold_bonus ? def->gold_bonus : 0;
 	new_cfg.shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
+	new_cfg.happiness_bonus = def->has_happiness_bonus ? def->happiness_bonus : 0;
+	new_cfg.buildable_square_types_mask = def->has_buildable_on ? def->buildable_square_types_mask : district_default_buildable_mask ();
+	new_cfg.buildable_adjacent_to_square_types_mask = def->has_buildable_adjacent_to ? def->buildable_adjacent_to_square_types_mask : 0;
+	new_cfg.has_buildable_adjacent_to = def->has_buildable_adjacent_to;
+	new_cfg.buildable_adjacent_to_allows_city = def->has_buildable_adjacent_to ? def->buildable_adjacent_to_allows_city : false;
+
+	if (def->has_culture_bonus)
+		move_bonus_entry_list (&new_cfg.culture_bonus_extras, &def->culture_bonus_extras);
+	if (def->has_science_bonus)
+		move_bonus_entry_list (&new_cfg.science_bonus_extras, &def->science_bonus_extras);
+	if (def->has_food_bonus)
+		move_bonus_entry_list (&new_cfg.food_bonus_extras, &def->food_bonus_extras);
+	if (def->has_gold_bonus)
+		move_bonus_entry_list (&new_cfg.gold_bonus_extras, &def->gold_bonus_extras);
+	if (def->has_shield_bonus)
+		move_bonus_entry_list (&new_cfg.shield_bonus_extras, &def->shield_bonus_extras);
+	if (def->has_happiness_bonus)
+		move_bonus_entry_list (&new_cfg.happiness_bonus_extras, &def->happiness_bonus_extras);
+	if (def->has_defense_bonus_percent)
+		move_bonus_entry_list (&new_cfg.defense_bonus_extras, &def->defense_bonus_extras);
+
+	if (def->has_generated_resource) {
+		new_cfg.generated_resource = def->generated_resource;
+		def->generated_resource = NULL;
+		new_cfg.generated_resource_flags = def->generated_resource_flags;
+		new_cfg.generated_resource_id = -1;
+	} else {
+		new_cfg.generated_resource = NULL;
+		new_cfg.generated_resource_id = -1;
+		new_cfg.generated_resource_flags = 0;
+	}
 
 	new_cfg.dependent_improvement_count = def->has_dependent_improvements ? def->dependent_improvement_count : 0;
 	const int max_dependent_entries = ARRAY_LEN (is->district_configs[0].dependent_improvements);
@@ -5223,8 +8460,8 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	}
 
 	new_cfg.max_building_index = new_cfg.dependent_improvement_count;
-	if (new_cfg.max_building_index > 5)
-		new_cfg.max_building_index = 5;
+	if (new_cfg.max_building_index > 20)
+		new_cfg.max_building_index = 20;
 
 	if (reusing_existing)
 		new_cfg.command = preserved_command;
@@ -5276,11 +8513,19 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		char * name_copy = copy_trimmed_string_or_null (value, 1);
 		if (name_copy == NULL) {
 			def->has_name = false;
-			add_key_parse_error (parse_errors, line_number, key, "(value is required)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
 		} else {
 			def->name = name_copy;
 			def->has_name = true;
 		}
+
+	} else if (slice_matches_str (key, "display_name")) {
+		if (def->display_name != NULL) {
+			free (def->display_name);
+			def->display_name = NULL;
+		}
+		def->display_name = copy_trimmed_string_or_null (value, 1);
+		def->has_display_name = true;
 
 	} else if (slice_matches_str (key, "tooltip")) {
 		if (def->tooltip != NULL) {
@@ -5290,13 +8535,322 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		def->tooltip = copy_trimmed_string_or_null (value, 1);
 		def->has_tooltip = true;
 
-	} else if (slice_matches_str (key, "advance_prereq")) {
-		if (def->advance_prereq != NULL) {
-			free (def->advance_prereq);
-			def->advance_prereq = NULL;
+	} else if (slice_matches_str (key, "advance_prereqs") || slice_matches_str (key, "advance_prereq")) {
+		for (int i = 0; i < def->advance_prereq_count; i++) {
+			if (def->advance_prereqs[i] != NULL) {
+				free (def->advance_prereqs[i]);
+				def->advance_prereqs[i] = NULL;
+			}
 		}
-		def->advance_prereq = copy_trimmed_string_or_null (value, 1);
-		def->has_advance_prereq = true;
+		def->advance_prereq_count = 0;
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->advance_prereqs,
+					      ARRAY_LEN (def->advance_prereqs),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					      "advance_prereqs")) {
+			def->advance_prereq_count = list_count;
+			def->has_advance_prereqs = true;
+		} else {
+			def->advance_prereq_count = 0;
+			def->has_advance_prereqs = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "obsoleted_by")) {
+		if (def->obsoleted_by != NULL) {
+			free (def->obsoleted_by);
+			def->obsoleted_by = NULL;
+		}
+		def->obsoleted_by = copy_trimmed_string_or_null (value, 1);
+		def->has_obsoleted_by = true;
+
+	} else if (slice_matches_str (key, "resource_prereqs")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->resource_prereqs,
+					      ARRAY_LEN (def->resource_prereqs),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "resource_prereqs")) {
+			def->resource_prereq_count = list_count;
+			def->has_resource_prereqs = true;
+		} else {
+			def->resource_prereq_count = 0;
+			def->has_resource_prereqs = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "resource_prereq_on_tile")) {
+		if (def->resource_prereq_on_tile != NULL) {
+			free (def->resource_prereq_on_tile);
+			def->resource_prereq_on_tile = NULL;
+		}
+		def->resource_prereq_on_tile = copy_trimmed_string_or_null (value, 1);
+		def->has_resource_prereq_on_tile = true;
+
+	} else if (slice_matches_str (key, "wonder_prereqs")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->wonder_prereqs,
+					      ARRAY_LEN (def->wonder_prereqs),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "wonder_prereqs")) {
+			def->wonder_prereq_count = list_count;
+			def->has_wonder_prereqs = true;
+		} else {
+			def->wonder_prereq_count = 0;
+			def->has_wonder_prereqs = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "natural_wonder_prereqs")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->natural_wonder_prereqs,
+					      ARRAY_LEN (def->natural_wonder_prereqs),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "natural_wonder_prereqs")) {
+			def->natural_wonder_prereq_count = list_count;
+			def->has_natural_wonder_prereqs = true;
+		} else {
+			def->natural_wonder_prereq_count = 0;
+			def->has_natural_wonder_prereqs = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_on_districts")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_on_districts,
+					      ARRAY_LEN (def->buildable_on_districts),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "buildable_on_districts")) {
+			def->buildable_on_district_count = list_count;
+			def->has_buildable_on_districts = true;
+		} else {
+			def->buildable_on_district_count = 0;
+			def->has_buildable_on_districts = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_adjacent_to_districts")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_adjacent_to_districts,
+					      ARRAY_LEN (def->buildable_adjacent_to_districts),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "buildable_adjacent_to_districts")) {
+			def->buildable_adjacent_to_district_count = list_count;
+			def->has_buildable_adjacent_to_districts = true;
+		} else {
+			def->buildable_adjacent_to_district_count = 0;
+			def->has_buildable_adjacent_to_districts = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_by_civs")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_by_civs,
+					      ARRAY_LEN (def->buildable_by_civs),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "buildable_by_civs")) {
+			def->buildable_by_civ_count = list_count;
+			def->has_buildable_by_civs = true;
+		} else {
+			def->buildable_by_civ_count = 0;
+			def->has_buildable_by_civs = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_by_civ_traits")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_by_civ_traits,
+					      ARRAY_LEN (def->buildable_by_civ_traits),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "buildable_by_civ_traits")) {
+			def->buildable_by_civ_traits_count = list_count;
+			def->buildable_by_civ_traits_id_count = 0;
+			for (int i = 0; i < def->buildable_by_civ_traits_count; i++) {
+				char const * trait_name = def->buildable_by_civ_traits[i];
+				if ((trait_name == NULL) || (trait_name[0] == '\0'))
+					continue;
+				int trait_id = -1;
+				struct string_slice trait_slice = { .str = (char *)trait_name, .len = (int)strlen (trait_name) };
+				if (find_civ_trait_id_by_name (&trait_slice, &trait_id)) {
+					bool already_listed = false;
+					for (int k = 0; k < def->buildable_by_civ_traits_id_count; k++) {
+						if (def->buildable_by_civ_traits_ids[k] == trait_id) {
+							already_listed = true;
+							break;
+						}
+					}
+					if ((! already_listed) && (def->buildable_by_civ_traits_id_count < ARRAY_LEN (def->buildable_by_civ_traits_ids)))
+						def->buildable_by_civ_traits_ids[def->buildable_by_civ_traits_id_count++] = trait_id;
+				} else {
+					struct error_line * err = add_error_line (parse_errors);
+					snprintf (err->text, sizeof err->text, "^  Line %d: buildable_by_civ_traits entry \"%.*s\" not found", line_number, trait_slice.len, trait_slice.str);
+					err->text[(sizeof err->text) - 1] = '\0';
+				}
+			}
+
+			for (int i = 0; i < def->buildable_by_civ_traits_count; i++) {
+				if (def->buildable_by_civ_traits[i] != NULL) {
+					free (def->buildable_by_civ_traits[i]);
+					def->buildable_by_civ_traits[i] = NULL;
+				}
+			}
+			def->buildable_by_civ_traits_count = 0;
+			def->has_buildable_by_civ_traits = true;
+		} else {
+			def->buildable_by_civ_traits_count = 0;
+			def->buildable_by_civ_traits_id_count = 0;
+			def->has_buildable_by_civ_traits = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_by_civ_govs")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_by_civ_govs,
+					      ARRAY_LEN (def->buildable_by_civ_govs),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "buildable_by_civ_govs")) {
+			def->buildable_by_civ_govs_count = list_count;
+			def->buildable_by_civ_govs_id_count = 0;
+			for (int i = 0; i < def->buildable_by_civ_govs_count; i++) {
+				char const * gov_name = def->buildable_by_civ_govs[i];
+				if ((gov_name == NULL) || (gov_name[0] == '\0'))
+					continue;
+				int gov_id = -1;
+				struct string_slice gov_slice = { .str = (char *)gov_name, .len = (int)strlen (gov_name) };
+				if (find_game_object_id_by_name (GOK_GOVERNMENT, &gov_slice, 0, &gov_id)) {
+					bool already_listed = false;
+					for (int k = 0; k < def->buildable_by_civ_govs_id_count; k++) {
+						if (def->buildable_by_civ_govs_ids[k] == gov_id) {
+							already_listed = true;
+							break;
+						}
+					}
+					if ((! already_listed) && (def->buildable_by_civ_govs_id_count < ARRAY_LEN (def->buildable_by_civ_govs_ids)))
+						def->buildable_by_civ_govs_ids[def->buildable_by_civ_govs_id_count++] = gov_id;
+				} else {
+					struct error_line * err = add_error_line (parse_errors);
+					snprintf (err->text, sizeof err->text, "^  Line %d: buildable_by_civ_govs entry \"%.*s\" not found", line_number, gov_slice.len, gov_slice.str);
+					err->text[(sizeof err->text) - 1] = '\0';
+				}
+			}
+
+			for (int i = 0; i < def->buildable_by_civ_govs_count; i++) {
+				if (def->buildable_by_civ_govs[i] != NULL) {
+					free (def->buildable_by_civ_govs[i]);
+					def->buildable_by_civ_govs[i] = NULL;
+				}
+			}
+			def->buildable_by_civ_govs_count = 0;
+			def->has_buildable_by_civ_govs = true;
+		} else {
+			def->buildable_by_civ_govs_count = 0;
+			def->buildable_by_civ_govs_id_count = 0;
+			def->has_buildable_by_civ_govs = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_by_civ_cultures")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_by_civ_cultures,
+					      ARRAY_LEN (def->buildable_by_civ_cultures),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					  "buildable_by_civ_cultures")) {
+			def->buildable_by_civ_cultures_count = list_count;
+			def->buildable_by_civ_cultures_id_count = 0;
+			for (int i = 0; i < def->buildable_by_civ_cultures_count; i++) {
+				char const * culture_name = def->buildable_by_civ_cultures[i];
+				if ((culture_name == NULL) || (culture_name[0] == '\0'))
+					continue;
+				int culture_id = -1;
+				struct string_slice culture_slice = { .str = (char *)culture_name, .len = (int)strlen (culture_name) };
+				if (find_civ_culture_id_by_name (&culture_slice, &culture_id)) {
+					bool already_listed = false;
+					for (int k = 0; k < def->buildable_by_civ_cultures_id_count; k++) {
+						if (def->buildable_by_civ_cultures_ids[k] == culture_id) {
+							already_listed = true;
+							break;
+						}
+					}
+					if ((! already_listed) && (def->buildable_by_civ_cultures_id_count < ARRAY_LEN (def->buildable_by_civ_cultures_ids)))
+						def->buildable_by_civ_cultures_ids[def->buildable_by_civ_cultures_id_count++] = culture_id;
+				} else {
+					struct error_line * err = add_error_line (parse_errors);
+					snprintf (err->text, sizeof err->text, "^  Line %d: buildable_by_civ_cultures entry \"%.*s\" not found", line_number, culture_slice.len, culture_slice.str);
+					err->text[(sizeof err->text) - 1] = '\0';
+				}
+			}
+
+			for (int i = 0; i < def->buildable_by_civ_cultures_count; i++) {
+				if (def->buildable_by_civ_cultures[i] != NULL) {
+					free (def->buildable_by_civ_cultures[i]);
+					def->buildable_by_civ_cultures[i] = NULL;
+				}
+			}
+			def->buildable_by_civ_cultures_count = 0;
+			def->has_buildable_by_civ_cultures = true;
+		} else {
+			def->buildable_by_civ_cultures_count = 0;
+			def->buildable_by_civ_cultures_id_count = 0;
+			def->has_buildable_by_civ_cultures = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_by_war_allies")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->buildable_by_war_allies = (ival != 0);
+			def->has_buildable_by_war_allies = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "buildable_by_pact_allies")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->buildable_by_pact_allies = (ival != 0);
+			def->has_buildable_by_pact_allies = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "img_paths")) {
 		char * value_text = trim_and_extract_slice (value, 0);
@@ -5325,7 +8879,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 					      &list_count,
 					      parse_errors,
 					      line_number,
-					      "dependent_improvs")) {
+					  "dependent_improvs")) {
 			def->dependent_improvement_count = list_count;
 			def->has_dependent_improvements = true;
 		} else {
@@ -5334,6 +8888,21 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		}
 		free (value_text);
 
+	} else if (slice_matches_str (key, "buildable_on")) {
+		unsigned int mask;
+		if (parse_buildable_square_type_mask (value, &mask, parse_errors, line_number, "buildable_on", NULL)) {
+			def->buildable_square_types_mask = mask;
+			def->has_buildable_on = true;
+		}
+
+	} else if (slice_matches_str (key, "buildable_adjacent_to")) {
+		unsigned int mask;
+		def->buildable_adjacent_to_allows_city = false;
+		if (parse_buildable_square_type_mask (value, &mask, parse_errors, line_number, "buildable_adjacent_to", &def->buildable_adjacent_to_allows_city)) {
+			def->buildable_adjacent_to_square_types_mask = mask;
+			def->has_buildable_adjacent_to = true;
+		}
+
 	} else if (slice_matches_str (key, "allow_multiple")) {
 		struct string_slice val_slice = *value;
 		int ival;
@@ -5341,7 +8910,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->allow_multiple = (ival != 0);
 			def->has_allow_multiple = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "vary_img_by_era")) {
 		struct string_slice val_slice = *value;
@@ -5350,7 +8919,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->vary_img_by_era = (ival != 0);
 			def->has_vary_img_by_era = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "vary_img_by_culture")) {
 		struct string_slice val_slice = *value;
@@ -5359,7 +8928,124 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->vary_img_by_culture = (ival != 0);
 			def->has_vary_img_by_culture = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "render_strategy")) {
+		char * strategy = copy_trimmed_string_or_null (value, 1);
+		if (strategy == NULL) {
+			def->has_render_strategy = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
+		} else if (strcmp (strategy, "by-count") == 0) {
+			def->render_strategy = DRS_BY_COUNT;
+			def->has_render_strategy = true;
+		} else if (strcmp (strategy, "by-building") == 0) {
+			def->render_strategy = DRS_BY_BUILDING;
+			def->has_render_strategy = true;
+		} else {
+			def->has_render_strategy = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected \"by-count\" or \"by-building\")");
+		}
+		if (strategy != NULL)
+			free (strategy);
+
+	} else if (slice_matches_str (key, "ai_build_strategy")) {
+		char * strategy = copy_trimmed_string_or_null (value, 1);
+		if (strategy == NULL) {
+			def->has_ai_build_strategy = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
+		} else if (strcmp (strategy, "district") == 0) {
+			def->ai_build_strategy = DABS_DISTRICT;
+			def->has_ai_build_strategy = true;
+		} else if (strcmp (strategy, "tile-improvement") == 0) {
+			def->ai_build_strategy = DABS_TILE_IMPROVEMENT;
+			def->has_ai_build_strategy = true;
+		} else {
+			def->has_ai_build_strategy = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected \"district\" or \"tile-improvement\")");
+		}
+		if (strategy != NULL)
+			free (strategy);
+
+	} else if (slice_matches_str (key, "align_to_coast")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->align_to_coast = (ival != 0);
+			def->has_align_to_coast = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "draw_over_resources")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->draw_over_resources = (ival != 0);
+			def->has_draw_over_resources = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "allow_irrigation_from")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->allow_irrigation_from = (ival != 0);
+			def->has_allow_irrigation_from = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "auto_add_road")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->auto_add_road = (ival != 0);
+			def->has_auto_add_road = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "auto_add_railroad")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->auto_add_railroad = (ival != 0);
+			def->has_auto_add_railroad = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "custom_width")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->custom_width = ival;
+			def->has_custom_width = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "custom_height")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->custom_height = ival;
+			def->has_custom_height = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "x_offset")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->x_offset = ival;
+			def->has_x_offset = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "y_offset")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->y_offset = ival;
+			def->has_y_offset = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "btn_tile_sheet_column")) {
 		struct string_slice val_slice = *value;
@@ -5368,7 +9054,7 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->btn_tile_sheet_column = ival;
 			def->has_btn_tile_sheet_column = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "btn_tile_sheet_row")) {
 		struct string_slice val_slice = *value;
@@ -5377,64 +9063,118 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->btn_tile_sheet_row = ival;
 			def->has_btn_tile_sheet_row = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "defense_bonus_percent")) {
+		if (parse_district_bonus_entries (value, &def->defense_bonus_percent, &def->defense_bonus_extras, parse_errors, line_number, key)) {
+			def->has_defense_bonus_percent = true;
+		} else {
+			def->has_defense_bonus_percent = false;
+		}
+
+	} else if (slice_matches_str (key, "heal_units_in_one_turn")) {
 		struct string_slice val_slice = *value;
 		int ival;
 		if (read_int (&val_slice, &ival)) {
-			def->defense_bonus_percent = ival;
-			def->has_defense_bonus_percent = true;
+			def->heal_units_in_one_turn = (ival != 0);
+			def->has_heal_units_in_one_turn = true;
 		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "culture_bonus")) {
-		struct string_slice val_slice = *value;
-		int ival;
-		if (read_int (&val_slice, &ival)) {
-			def->culture_bonus = ival;
+		if (parse_district_bonus_entries (value, &def->culture_bonus, &def->culture_bonus_extras, parse_errors, line_number, key)) {
 			def->has_culture_bonus = true;
-		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		} else {
+			def->has_culture_bonus = false;
+		}
 
 	} else if (slice_matches_str (key, "science_bonus")) {
-		struct string_slice val_slice = *value;
-		int ival;
-		if (read_int (&val_slice, &ival)) {
-			def->science_bonus = ival;
+		if (parse_district_bonus_entries (value, &def->science_bonus, &def->science_bonus_extras, parse_errors, line_number, key)) {
 			def->has_science_bonus = true;
-		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		} else {
+			def->has_science_bonus = false;
+		}
 
 	} else if (slice_matches_str (key, "food_bonus")) {
-		struct string_slice val_slice = *value;
-		int ival;
-		if (read_int (&val_slice, &ival)) {
-			def->food_bonus = ival;
+		if (parse_district_bonus_entries (value, &def->food_bonus, &def->food_bonus_extras, parse_errors, line_number, key)) {
 			def->has_food_bonus = true;
-		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		} else {
+			def->has_food_bonus = false;
+		}
 
 	} else if (slice_matches_str (key, "gold_bonus")) {
-		struct string_slice val_slice = *value;
-		int ival;
-		if (read_int (&val_slice, &ival)) {
-			def->gold_bonus = ival;
+		if (parse_district_bonus_entries (value, &def->gold_bonus, &def->gold_bonus_extras, parse_errors, line_number, key)) {
 			def->has_gold_bonus = true;
-		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		} else {
+			def->has_gold_bonus = false;
+		}
 
 	} else if (slice_matches_str (key, "shield_bonus")) {
-		struct string_slice val_slice = *value;
-		int ival;
-		if (read_int (&val_slice, &ival)) {
-			def->shield_bonus = ival;
+		if (parse_district_bonus_entries (value, &def->shield_bonus, &def->shield_bonus_extras, parse_errors, line_number, key)) {
 			def->has_shield_bonus = true;
-		} else
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+		} else {
+			def->has_shield_bonus = false;
+		}
+
+	} else if (slice_matches_str (key, "happiness_bonus")) {
+		if (parse_district_bonus_entries (value, &def->happiness_bonus, &def->happiness_bonus_extras, parse_errors, line_number, key)) {
+			def->has_happiness_bonus = true;
+		} else {
+			def->has_happiness_bonus = false;
+		}
+
+	} else if (slice_matches_str (key, "generated_resource")) {
+		if (def->generated_resource != NULL) {
+			free (def->generated_resource);
+			def->generated_resource = NULL;
+		}
+		def->generated_resource_flags = 0;
+
+		char * value_text = trim_and_extract_slice (value, 0);
+		if ((value_text == NULL) || (*value_text == '\0')) {
+			def->generated_resource = NULL;
+			def->has_generated_resource = true;
+		} else {
+			char * cursor = value_text;
+			struct string_slice resource_name = {0};
+			struct string_slice token;
+			bool ok = true;
+			while (skip_white_space (&cursor) && parse_string (&cursor, &token)) {
+				if (slice_matches_str (&token, "local"))
+					def->generated_resource_flags |= MF_LOCAL;
+				else if (slice_matches_str (&token, "no-tech-req"))
+					def->generated_resource_flags |= MF_NO_TECH_REQ;
+				else if (slice_matches_str (&token, "yields"))
+					def->generated_resource_flags |= MF_YIELDS;
+				else if (resource_name.str == NULL)
+					resource_name = token;
+				else {
+					ok = false;
+					break;
+				}
+			}
+
+			if (! ok || (resource_name.str == NULL)) {
+				def->generated_resource = NULL;
+				def->has_generated_resource = false;
+				def->generated_resource_flags = 0;
+				add_key_parse_error (parse_errors, line_number, key, value,
+						     "(expected resource name plus optional flags: local, yields, no-tech-req)");
+			} else {
+				def->generated_resource = extract_slice (&resource_name);
+				def->has_generated_resource = true;
+			}
+		}
+		free (value_text);
 
 	} else
 		add_unrecognized_key_error (unrecognized_keys, line_number, key);
+}
+
+bool
+line_is_empty_or_comment (struct string_slice const * trimmed)
+{
+	return ((trimmed == NULL) || (trimmed->len == 0) || (trimmed->str[0] == ';') || (trimmed->str[0] == '['));
 }
 
 void
@@ -5490,7 +9230,7 @@ load_dynamic_district_config_file (char const * file_path,
 
 		struct string_slice line_slice = { .str = line_start, .len = line_len };
 		struct string_slice trimmed = trim_string_slice (&line_slice, 0);
-		if ((trimmed.len == 0) || (trimmed.str[0] == ';')) {
+		if (line_is_empty_or_comment (&trimmed)) {
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
 		}
@@ -5596,6 +9336,7 @@ void
 init_parsed_wonder_definition (struct parsed_wonder_definition * def)
 {
 	memset (def, 0, sizeof *def);
+	def->buildable_square_types_mask = district_default_buildable_mask ();
 }
 
 void
@@ -5640,6 +9381,12 @@ add_dynamic_wonder_from_definition (struct parsed_wonder_definition * def, int s
 	new_cfg.img_column = def->img_column;
 	new_cfg.img_construct_row = def->img_construct_row;
 	new_cfg.img_construct_column = def->img_construct_column;
+	new_cfg.img_alt_dir_construct_row = def->img_alt_dir_construct_row;
+	new_cfg.img_alt_dir_construct_column = def->img_alt_dir_construct_column;
+	new_cfg.img_alt_dir_row = def->img_alt_dir_row;
+	new_cfg.img_alt_dir_column = def->img_alt_dir_column;
+	new_cfg.enable_img_alt_dir = def->enable_img_alt_dir;
+	new_cfg.buildable_square_types_mask = def->has_buildable_on ? def->buildable_square_types_mask : district_default_buildable_mask ();
 
 	if (existing_index >= 0) {
 		struct wonder_district_config * cfg = &is->wonder_district_configs[existing_index];
@@ -5703,6 +9450,40 @@ finalize_parsed_wonder_definition (struct parsed_wonder_definition * def,
 			err->text[(sizeof err->text) - 1] = '\0';
 		}
 	}
+	if (def->enable_img_alt_dir) {
+		if (! def->has_img_alt_dir_row) {
+			ok = false;
+			if (parse_errors != NULL) {
+				struct error_line * err = add_error_line (parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: img_alt_dir_row (value is required when enable_img_alt_dir is set)", section_start_line);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+		if (! def->has_img_alt_dir_column) {
+			ok = false;
+			if (parse_errors != NULL) {
+				struct error_line * err = add_error_line (parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: img_alt_dir_column (value is required when enable_img_alt_dir is set)", section_start_line);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+		if (! def->has_img_alt_dir_construct_row) {
+			ok = false;
+			if (parse_errors != NULL) {
+				struct error_line * err = add_error_line (parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: img_alt_dir_construct_row (value is required when enable_img_alt_dir is set)", section_start_line);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+		if (! def->has_img_alt_dir_construct_column) {
+			ok = false;
+			if (parse_errors != NULL) {
+				struct error_line * err = add_error_line (parse_errors);
+				snprintf (err->text, sizeof err->text, "^  Line %d: img_alt_dir_construct_column (value is required when enable_img_alt_dir is set)", section_start_line);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+	}
 
 	if (ok)
 		add_dynamic_wonder_from_definition (def, section_start_line);
@@ -5727,12 +9508,12 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 		struct string_slice unquoted = trim_string_slice (value, 1);
 		if (unquoted.len == 0) {
 			def->has_name = false;
-			add_key_parse_error (parse_errors, line_number, key, "(value is required)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
 		} else {
 			char * name_copy = extract_slice (&unquoted);
 			if (name_copy == NULL) {
 				def->has_name = false;
-				add_key_parse_error (parse_errors, line_number, key, "(out of memory)");
+				add_key_parse_error (parse_errors, line_number, key, value, "(out of memory)");
 			} else {
 				def->name = name_copy;
 				def->has_name = true;
@@ -5766,7 +9547,7 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_img_row = true;
 		} else {
 			def->has_img_row = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "img_column")) {
@@ -5777,7 +9558,7 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_img_column = true;
 		} else {
 			def->has_img_column = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "img_construct_row")) {
@@ -5788,7 +9569,7 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_img_construct_row = true;
 		} else {
 			def->has_img_construct_row = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "img_construct_column")) {
@@ -5799,7 +9580,71 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_img_construct_column = true;
 		} else {
 			def->has_img_construct_column = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "img_alt_dir_construct_row")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->img_alt_dir_construct_row = ival;
+			def->has_img_alt_dir_construct_row = true;
+		} else {
+			def->has_img_alt_dir_construct_row = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "img_alt_dir_construct_column")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->img_alt_dir_construct_column = ival;
+			def->has_img_alt_dir_construct_column = true;
+		} else {
+			def->has_img_alt_dir_construct_column = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "img_alt_dir_row")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->img_alt_dir_row = ival;
+			def->has_img_alt_dir_row = true;
+		} else {
+			def->has_img_alt_dir_row = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "img_alt_dir_column")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->img_alt_dir_column = ival;
+			def->has_img_alt_dir_column = true;
+		} else {
+			def->has_img_alt_dir_column = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "enable_img_alt_dir")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->enable_img_alt_dir = (ival != 0);
+			def->has_enable_img_alt_dir = true;
+		} else {
+			def->has_enable_img_alt_dir = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "buildable_on")) {
+		unsigned int mask;
+		if (parse_buildable_square_type_mask (value, &mask, parse_errors, line_number, "buildable_on", NULL)) {
+			def->buildable_square_types_mask = mask;
+			def->has_buildable_on = true;
+		} else {
+			def->has_buildable_on = false;
 		}
 
 	} else
@@ -5859,7 +9704,7 @@ load_dynamic_wonder_config_file (char const * file_path,
 
 		struct string_slice line_slice = { .str = line_start, .len = line_len };
 		struct string_slice trimmed = trim_string_slice (&line_slice, 0);
-		if ((trimmed.len == 0) || (trimmed.str[0] == ';')) {
+		if (line_is_empty_or_comment (&trimmed)) {
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
 		}
@@ -6024,6 +9869,7 @@ add_natural_wonder_from_definition (struct parsed_natural_wonder_definition * de
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
 	new_cfg.gold_bonus = def->has_gold_bonus ? def->gold_bonus : 0;
 	new_cfg.shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
+	new_cfg.happiness_bonus = def->has_happiness_bonus ? def->happiness_bonus : 0;
 
 	if (has_existing) {
 		struct natural_wonder_district_config * cfg = &is->natural_wonder_configs[existing_index];
@@ -6103,12 +9949,12 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 		struct string_slice unquoted = trim_string_slice (value, 1);
 		if (unquoted.len == 0) {
 			def->has_name = false;
-			add_key_parse_error (parse_errors, line_number, key, "(value is required)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(value is required)");
 		} else {
 			char * name_copy = extract_slice (&unquoted);
 			if (name_copy == NULL) {
 				def->has_name = false;
-				add_key_parse_error (parse_errors, line_number, key, "(out of memory)");
+				add_key_parse_error (parse_errors, line_number, key, value, "(out of memory)");
 			} else {
 				def->name = name_copy;
 				def->has_name = true;
@@ -6122,7 +9968,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_terrain_type = true;
 		} else {
 			def->has_terrain_type = false;
-			add_key_parse_error (parse_errors, line_number, key, "(unrecognized terrain type)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized terrain type)");
 		}
 
 	} else if (slice_matches_str (key, "adjacent_to")) {
@@ -6133,7 +9979,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 		} else {
 			def->adjacent_to = (enum SquareTypes)SQ_INVALID;
 			def->has_adjacent_to = false;
-			add_key_parse_error (parse_errors, line_number, key, "(unrecognized square type)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized square type)");
 		}
 
 	} else if (slice_matches_str (key, "adjacency_dir")) {
@@ -6144,7 +9990,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 		} else {
 			def->adjacency_dir = DIR_ZERO;
 			def->has_adjacency_dir = false;
-			add_key_parse_error (parse_errors, line_number, key, "(unrecognized direction)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(unrecognized direction)");
 		}
 
 	} else if (slice_matches_str (key, "img_path")) {
@@ -6174,7 +10020,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_img_row = true;
 		} else {
 			def->has_img_row = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "img_column")) {
@@ -6185,7 +10031,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_img_column = true;
 		} else {
 			def->has_img_column = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "culture_bonus")) {
@@ -6196,7 +10042,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_culture_bonus = true;
 		} else {
 			def->has_culture_bonus = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "science_bonus")) {
@@ -6207,7 +10053,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_science_bonus = true;
 		} else {
 			def->has_science_bonus = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "food_bonus")) {
@@ -6218,7 +10064,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_food_bonus = true;
 		} else {
 			def->has_food_bonus = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "gold_bonus")) {
@@ -6229,7 +10075,7 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_gold_bonus = true;
 		} else {
 			def->has_gold_bonus = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "shield_bonus")) {
@@ -6240,7 +10086,18 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_shield_bonus = true;
 		} else {
 			def->has_shield_bonus = false;
-			add_key_parse_error (parse_errors, line_number, key, "(expected integer)");
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "happiness_bonus")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->happiness_bonus = ival;
+			def->has_happiness_bonus = true;
+		} else {
+			def->has_happiness_bonus = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else
@@ -6300,7 +10157,7 @@ load_natural_wonder_config_file (char const * file_path,
 
 		struct string_slice line_slice = { .str = line_start, .len = line_len };
 		struct string_slice trimmed = trim_string_slice (&line_slice, 0);
-		if ((trimmed.len == 0) || (trimmed.str[0] == ';')) {
+		if (line_is_empty_or_comment (&trimmed)) {
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
 		}
@@ -6414,6 +10271,125 @@ district_config_has_dependent_improvement (struct district_config * cfg, char co
 	return false;
 }
 
+bool
+find_civ_trait_id_by_name (struct string_slice const * name, int * out_id)
+{
+	if ((name == NULL) || (name->len <= 0) || (out_id == NULL))
+		return false;
+
+	struct trait_entry { char const * name; int id; } traits[] = {
+		{"Agricultural", 6},
+		{"Commercial", 1},
+		{"Expansionist", 2},
+		{"Industrious", 5},
+		{"Militaristic", 0},
+		{"Religious", 4},
+		{"Scientific", 3},
+		{"Seafaring", 7}
+	};
+
+	for (int i = 0; i < ARRAY_LEN (traits); i++) {
+		if (slice_matches_str (name, traits[i].name)) {
+			*out_id = traits[i].id;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool
+find_civ_culture_id_by_name (struct string_slice const * name, int * out_id)
+{
+	if ((name == NULL) || (name->len <= 0) || (out_id == NULL))
+		return false;
+
+	struct culture_entry { char const * name; int id; } cultures[] = {
+		{"American", 0},
+		{"AMERICAN", 0},
+		{"AMER", 0},
+		{"European", 1},
+		{"EUROPEAN", 1},
+		{"EURO", 1},
+		{"Roman", 2},
+		{"ROMAN", 2},
+		{"Mid East", 3},
+		{"Mideast", 3},
+		{"MIDEAST", 3},
+		{"Asian", 4},
+		{"ASIAN", 4}
+	};
+
+	for (int i = 0; i < ARRAY_LEN (cultures); i++) {
+		if (slice_matches_str (name, cultures[i].name)) {
+			*out_id = cultures[i].id;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+int
+find_district_index_by_name (char const * name)
+{
+	if ((name == NULL) || (name[0] == '\0'))
+		return -1;
+
+	for (int i = 0; i < is->district_count; i++) {
+		char const * existing = is->district_configs[i].name;
+		if ((existing != NULL) && (strcmp (existing, name) == 0))
+			return i;
+	}
+
+	return -1;
+}
+
+int
+find_wonder_district_index_by_name (char const * name)
+{
+	if ((name == NULL) || (name[0] == '\0'))
+		return -1;
+
+	int improv_id;
+	if (! stable_look_up (&is->building_name_to_id, (char *)name, &improv_id))
+		return -1;
+
+	return find_wonder_config_index_by_improvement_id (improv_id);
+}
+
+int
+find_natural_wonder_index_by_name (char const * name)
+{
+	if ((name == NULL) || (name[0] == '\0') || (is == NULL))
+		return -1;
+
+	for (int i = 0; i < is->natural_wonder_count; i++) {
+		char const * existing = is->natural_wonder_configs[i].name;
+		if ((existing != NULL) && (strcmp (existing, name) == 0))
+			return i;
+	}
+	return -1;
+}
+
+City *
+find_city_by_name (char const * name)
+{
+	if ((name == NULL) || (name[0] == '\0') || (p_cities == NULL) || (p_cities->Cities == NULL))
+		return NULL;
+
+	for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
+		City * city = get_city_ptr (city_index);
+		if ((city != NULL) && (city->Body.CityName != NULL)) {
+			(*p_OutputDebugStringA) (city->Body.CityName);
+		}
+		if ((city != NULL) && (city->Body.CityName != NULL) && (strcmp (city->Body.CityName, name) == 0))
+			return city;
+	}
+
+	return NULL;
+}
+
 void
 set_wonders_dependent_on_wonder_district (void)
 {
@@ -6447,26 +10423,242 @@ set_wonders_dependent_on_wonder_district (void)
 		cfg->max_building_index = cfg->dependent_improvement_count;
 }
 
+void
+resolve_district_bonus_building_entries (struct district_bonus_list * list,
+					 char const * district_name,
+					 char const * bonus_name,
+					 struct error_line ** parse_errors)
+{
+	if (list == NULL)
+		return;
+
+	for (int i = 0; i < list->count; i++) {
+		struct district_bonus_entry * entry = &list->entries[i];
+		if (entry->type != DBET_BUILDING)
+			continue;
+		if ((entry->building_name == NULL) || (entry->building_name[0] == '\0')) {
+			entry->building_id = -1;
+			continue;
+		}
+
+		int improv_id;
+		struct string_slice improv_name = { .str = (char *)entry->building_name, .len = (int)strlen (entry->building_name) };
+		if (find_game_object_id_by_name (GOK_BUILDING, &improv_name, 0, &improv_id)) {
+			entry->building_id = improv_id;
+			stable_insert (&is->building_name_to_id, improv_name.str, improv_id);
+		} else {
+			entry->building_id = -1;
+			struct error_line * err = add_error_line (parse_errors);
+			snprintf (err->text, sizeof err->text, "^  District \"%s\": %s entry \"%.*s\" not found",
+				district_name, bonus_name, improv_name.len, improv_name.str);
+			err->text[(sizeof err->text) - 1] = '\0';
+		}
+	}
+}
+
 void parse_building_and_tech_ids ()
 {
 	struct c3x_config * cfg = &is->current_config;
 	char ss[200];
+	struct error_line * district_parse_errors = NULL;
+	struct error_line * wonder_parse_errors = NULL;
 	for (int i = 0; i < is->district_count; i++) {
+		char const * district_name = (is->district_configs[i].name != NULL) ? is->district_configs[i].name : "District";
 		if (is->district_configs[i].command != 0)
 			itable_insert (&is->command_id_to_district_id, is->district_configs[i].command, i);
-		is->district_infos[i].advance_prereq_id = -1;
+		is->district_infos[i].advance_prereq_count = 0;
+		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].advance_prereq_ids); j++)
+			is->district_infos[i].advance_prereq_ids[j] = -1;
+		is->district_infos[i].obsoleted_by_id = -1;
+		is->district_infos[i].resource_prereq_count = 0;
+		for (int j = 0; j < MAX_DISTRICT_DEPENDENTS; j++)
+			is->district_infos[i].resource_prereq_ids[j] = -1;
+		is->district_infos[i].resource_prereq_on_tile_id = -1;
+		is->district_infos[i].wonder_prereq_count = 0;
+		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].wonder_prereq_ids); j++)
+			is->district_infos[i].wonder_prereq_ids[j] = -1;
+		is->district_infos[i].natural_wonder_prereq_count = 0;
+		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].natural_wonder_prereq_ids); j++)
+			is->district_infos[i].natural_wonder_prereq_ids[j] = -1;
 
 		// Map advance prereqs to districts
-		if (is->district_configs[i].advance_prereq != NULL && is->district_configs[i].advance_prereq != "") {
+		int stored_tech_count = 0;
+		for (int j = 0; j < is->district_configs[i].advance_prereq_count; j++) {
+			char const * prereq = is->district_configs[i].advance_prereqs[j];
+			if (prereq == NULL || prereq[0] == '\0')
+				continue;
 			int tech_id;
-			struct string_slice tech_name = { .str = (char *)is->district_configs[i].advance_prereq, .len = (int)strlen (is->district_configs[i].advance_prereq) };
+			struct string_slice tech_name = { .str = (char *)prereq, .len = (int)strlen (prereq) };
 			if (find_game_object_id_by_name (GOK_TECHNOLOGY, &tech_name, 0, &tech_id)) {
-				snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d\n", tech_name.len, tech_name.str, is->district_configs[i].advance_prereq, tech_id);
+				snprintf (ss, sizeof ss, "Found tech prereq \"%.*s\" for district \"%s\", ID %d\n", tech_name.len, tech_name.str, district_name, tech_id);
 				(*p_OutputDebugStringA) (ss);
-				is->district_infos[i].advance_prereq_id = tech_id;
+				if (stored_tech_count < ARRAY_LEN (is->district_infos[i].advance_prereq_ids)) {
+					is->district_infos[i].advance_prereq_ids[stored_tech_count] = tech_id;
+					stored_tech_count++;
+				}
 				itable_insert (&is->district_tech_prereqs, tech_id, i);
 			} else {
-				is->district_infos[i].advance_prereq_id = -1;
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": advance_prereqs entry \"%.*s\" not found", district_name, tech_name.len, tech_name.str);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+		is->district_infos[i].advance_prereq_count = stored_tech_count;
+
+		// Map obsoleted_by to tech ID
+		if (is->district_configs[i].obsoleted_by != NULL && is->district_configs[i].obsoleted_by != "") {
+			int tech_id;
+			struct string_slice tech_name = { .str = (char *)is->district_configs[i].obsoleted_by, .len = (int)strlen (is->district_configs[i].obsoleted_by) };
+			if (find_game_object_id_by_name (GOK_TECHNOLOGY, &tech_name, 0, &tech_id)) {
+				snprintf (ss, sizeof ss, "Found tech obsoleted_by \"%.*s\" for district \"%s\", ID %d\n", tech_name.len, tech_name.str, district_name, tech_id);
+				(*p_OutputDebugStringA) (ss);
+				is->district_infos[i].obsoleted_by_id = tech_id;
+			} else {
+				is->district_infos[i].obsoleted_by_id = -1;
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": obsoleted_by \"%.*s\" not found", district_name, tech_name.len, tech_name.str);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+
+		// Map resource prereqs to districts (multiple resources now supported)
+		int stored_res_count = 0;
+		for (int j = 0; j < is->district_configs[i].resource_prereq_count; j++) {
+			if (is->district_configs[i].resource_prereqs[j] == "" || is->district_configs[i].resource_prereqs[j] == NULL)
+				continue;
+			int res_id;
+			struct string_slice res_name = { .str = (char *)is->district_configs[i].resource_prereqs[j], .len = (int)strlen (is->district_configs[i].resource_prereqs[j]) };
+			if (find_game_object_id_by_name (GOK_RESOURCE, &res_name, 0, &res_id)) {
+				snprintf (ss, sizeof ss, "Found resource prereq \"%.*s\" for district \"%s\", ID %d\n", res_name.len, res_name.str, district_name, res_id);
+				(*p_OutputDebugStringA) (ss);
+				if (stored_res_count < ARRAY_LEN (is->district_infos[i].resource_prereq_ids)) {
+					is->district_infos[i].resource_prereq_ids[stored_res_count] = res_id;
+					stored_res_count++;
+				}
+			} else {
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": resource_prereq \"%.*s\" not found", district_name, res_name.len, res_name.str);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+		is->district_infos[i].resource_prereq_count = stored_res_count;
+		if (is->district_configs[i].resource_prereq_on_tile != NULL && is->district_configs[i].resource_prereq_on_tile != "") {
+			int res_id;
+			struct string_slice res_name = { .str = (char *)is->district_configs[i].resource_prereq_on_tile, .len = (int)strlen (is->district_configs[i].resource_prereq_on_tile) };
+			if (find_game_object_id_by_name (GOK_RESOURCE, &res_name, 0, &res_id)) {
+				snprintf (ss, sizeof ss, "Found on-tile resource prereq \"%.*s\" for district \"%s\", ID %d\n", res_name.len, res_name.str, district_name, res_id);
+				(*p_OutputDebugStringA) (ss);
+				is->district_infos[i].resource_prereq_on_tile_id = res_id;
+			} else {
+				is->district_infos[i].resource_prereq_on_tile_id = -1;
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": resource_prereq_on_tile \"%.*s\" not found", district_name, res_name.len, res_name.str);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+
+		int stored_wonder_count = 0;
+		for (int j = 0; j < is->district_configs[i].wonder_prereq_count; j++) {
+			if (is->district_configs[i].wonder_prereqs[j] == "" || is->district_configs[i].wonder_prereqs[j] == NULL)
+				continue;
+			int improv_id;
+			struct string_slice wonder_name = { .str = (char *)is->district_configs[i].wonder_prereqs[j], .len = (int)strlen (is->district_configs[i].wonder_prereqs[j]) };
+			if (find_game_object_id_by_name (GOK_BUILDING, &wonder_name, 0, &improv_id)) {
+				if (stored_wonder_count < ARRAY_LEN (is->district_infos[i].wonder_prereq_ids)) {
+					is->district_infos[i].wonder_prereq_ids[stored_wonder_count] = improv_id;
+					stored_wonder_count += 1;
+				}
+				stable_insert (&is->building_name_to_id, wonder_name.str, improv_id);
+			} else {
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": wonder_prereqs entry \"%.*s\" not found", district_name, wonder_name.len, wonder_name.str);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+		is->district_infos[i].wonder_prereq_count = stored_wonder_count;
+
+		int stored_natural_wonder_count = 0;
+		for (int j = 0; j < is->district_configs[i].natural_wonder_prereq_count; j++) {
+			if (is->district_configs[i].natural_wonder_prereqs[j] == "" || is->district_configs[i].natural_wonder_prereqs[j] == NULL)
+				continue;
+			int natural_wonder_id = -1;
+			char const * name = is->district_configs[i].natural_wonder_prereqs[j];
+			if (stable_look_up (&is->natural_wonder_name_to_id, (char *)name, &natural_wonder_id)) {
+				if (stored_natural_wonder_count < ARRAY_LEN (is->district_infos[i].natural_wonder_prereq_ids)) {
+					is->district_infos[i].natural_wonder_prereq_ids[stored_natural_wonder_count] = natural_wonder_id;
+					stored_natural_wonder_count += 1;
+				}
+			} else {
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": natural_wonder_prereqs entry \"%s\" not found", district_name, name);
+				err->text[(sizeof err->text) - 1] = '\0';
+			}
+		}
+		is->district_infos[i].natural_wonder_prereq_count = stored_natural_wonder_count;
+
+		for (int j = 0; j < ARRAY_LEN (is->district_configs[i].buildable_on_district_ids); j++)
+			is->district_configs[i].buildable_on_district_ids[j] = -1;
+		is->district_configs[i].buildable_on_district_id_count = 0;
+
+		if (is->district_configs[i].has_buildable_on_districts) {
+			int stored_buildable_on_count = 0;
+			for (int j = 0; j < is->district_configs[i].buildable_on_district_count; j++) {
+				char const * name = is->district_configs[i].buildable_on_districts[j];
+				if (name == NULL || name[0] == '\0')
+					continue;
+				int other_district_id = find_district_index_by_name (name);
+				if (other_district_id >= 0) {
+					if (stored_buildable_on_count < ARRAY_LEN (is->district_configs[i].buildable_on_district_ids)) {
+						is->district_configs[i].buildable_on_district_ids[stored_buildable_on_count] = other_district_id;
+						stored_buildable_on_count += 1;
+					}
+				} else {
+					struct error_line * err = add_error_line (&district_parse_errors);
+					snprintf (err->text, sizeof err->text, "^  District \"%s\": buildable_on_districts entry \"%s\" not found", district_name, name);
+					err->text[(sizeof err->text) - 1] = '\0';
+				}
+			}
+			is->district_configs[i].buildable_on_district_id_count = stored_buildable_on_count;
+		}
+
+		for (int j = 0; j < ARRAY_LEN (is->district_configs[i].buildable_adjacent_to_district_ids); j++)
+			is->district_configs[i].buildable_adjacent_to_district_ids[j] = -1;
+		is->district_configs[i].buildable_adjacent_to_district_id_count = 0;
+
+		if (is->district_configs[i].has_buildable_adjacent_to_districts) {
+			int stored_adjacent_count = 0;
+			for (int j = 0; j < is->district_configs[i].buildable_adjacent_to_district_count; j++) {
+				char const * name = is->district_configs[i].buildable_adjacent_to_districts[j];
+				if (name == NULL || name[0] == '\0')
+					continue;
+				int other_district_id = find_district_index_by_name (name);
+				if (other_district_id >= 0) {
+					if (stored_adjacent_count < ARRAY_LEN (is->district_configs[i].buildable_adjacent_to_district_ids)) {
+						is->district_configs[i].buildable_adjacent_to_district_ids[stored_adjacent_count] = other_district_id;
+						stored_adjacent_count += 1;
+					}
+				} else {
+					struct error_line * err = add_error_line (&district_parse_errors);
+					snprintf (err->text, sizeof err->text, "^  District \"%s\": buildable_adjacent_to_districts entry \"%s\" not found", district_name, name);
+					err->text[(sizeof err->text) - 1] = '\0';
+				}
+			}
+			is->district_configs[i].buildable_adjacent_to_district_id_count = stored_adjacent_count;
+		}
+
+		// Resolve generated resource name to ID
+		if (is->district_configs[i].generated_resource != NULL && is->district_configs[i].generated_resource != "") {
+			int res_id;
+			struct string_slice res_name = { .str = (char *)is->district_configs[i].generated_resource, .len = (int)strlen (is->district_configs[i].generated_resource) };
+			if (find_game_object_id_by_name (GOK_RESOURCE, &res_name, 0, &res_id)) {
+				snprintf (ss, sizeof ss, "Found generated resource \"%.*s\" for district \"%s\", ID %d\n", res_name.len, res_name.str, district_name, res_id);
+				(*p_OutputDebugStringA) (ss);
+				is->district_configs[i].generated_resource_id = res_id;
+			} else {
+				is->district_configs[i].generated_resource_id = -1;
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": generated_resource \"%.*s\" not found", district_name, res_name.len, res_name.str);
+				err->text[(sizeof err->text) - 1] = '\0';
 			}
 		}
 
@@ -6483,19 +10675,30 @@ void parse_building_and_tech_ids ()
 
 			struct string_slice improv_name = { .str = (char *)is->district_configs[i].dependent_improvements[j], .len = (int)strlen (is->district_configs[i].dependent_improvements[j]) };
 			if (find_game_object_id_by_name (GOK_BUILDING, &improv_name, 0, &improv_id)) {
-				snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d\n", improv_name.len, improv_name.str, is->district_configs[i].dependent_improvements[j], improv_id);
+				snprintf (ss, sizeof ss, "Found improvement prereq \"%.*s\" for district \"%s\", ID %d\n", improv_name.len, improv_name.str, district_name, improv_id);
 				(*p_OutputDebugStringA) (ss);
 				if (stored_count < ARRAY_LEN (is->district_infos[i].dependent_building_ids)) {
 					is->district_infos[i].dependent_building_ids[stored_count] = improv_id;
 					stored_count += 1;
 				}
-				itable_insert (&is->district_building_prereqs, improv_id, i);
+				add_district_building_prereq (improv_id, i);
 				stable_insert (&is->building_name_to_id, improv_name.str, improv_id);
 			} else {
 				is->district_infos[i].dependent_building_ids[j] = -1;
+				struct error_line * err = add_error_line (&district_parse_errors);
+				snprintf (err->text, sizeof err->text, "^  District \"%s\": dependent_improvs entry \"%.*s\" not found", district_name, improv_name.len, improv_name.str);
+				err->text[(sizeof err->text) - 1] = '\0';
 			}
 			is->district_infos[i].dependent_building_count = stored_count;
 		}
+
+		resolve_district_bonus_building_entries (&is->district_configs[i].culture_bonus_extras, district_name, "culture_bonus", &district_parse_errors);
+		resolve_district_bonus_building_entries (&is->district_configs[i].science_bonus_extras, district_name, "science_bonus", &district_parse_errors);
+		resolve_district_bonus_building_entries (&is->district_configs[i].food_bonus_extras, district_name, "food_bonus", &district_parse_errors);
+		resolve_district_bonus_building_entries (&is->district_configs[i].gold_bonus_extras, district_name, "gold_bonus", &district_parse_errors);
+		resolve_district_bonus_building_entries (&is->district_configs[i].shield_bonus_extras, district_name, "shield_bonus", &district_parse_errors);
+		resolve_district_bonus_building_entries (&is->district_configs[i].happiness_bonus_extras, district_name, "happiness_bonus", &district_parse_errors);
+		resolve_district_bonus_building_entries (&is->district_configs[i].defense_bonus_extras, district_name, "defense_bonus_percent", &district_parse_errors);
 	}
 
 	// Map wonder names to their improvement IDs for rendering under-construction wonders
@@ -6512,7 +10715,43 @@ void parse_building_and_tech_ids ()
 		} else {
 			snprintf (ss, sizeof ss, "Could not find improvement prereq \"%.*s\" for wonder district \"%s\"\n", wonder_name.len, wonder_name.str, is->wonder_district_configs[wi].wonder_name);
 			(*p_OutputDebugStringA) (ss);
+			struct error_line * err = add_error_line (&wonder_parse_errors);
+			snprintf (err->text, sizeof err->text, "^  Wonder district \"%s\": improvement \"%.*s\" not found", (is->wonder_district_configs[wi].wonder_name != NULL) ? is->wonder_district_configs[wi].wonder_name : "Wonder District", wonder_name.len, wonder_name.str);
+			err->text[(sizeof err->text) - 1] = '\0';
 		}
+	}
+
+	if ((district_parse_errors != NULL) || (wonder_parse_errors != NULL)) {
+		PopupForm * popup = get_popup_form ();
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_WARNING", -1, 0, 0, 0);
+
+		if (district_parse_errors != NULL) {
+			char header[256];
+			if (is->current_districts_config_path[0] != '\0')
+				snprintf (header, sizeof header, "District Config errors in %s:", is->current_districts_config_path);
+			else
+				snprintf (header, sizeof header, "District Config lookup errors:");
+			header[(sizeof header) - 1] = '\0';
+			PopupForm_add_text (popup, __, header, false);
+			for (struct error_line * line = district_parse_errors; line != NULL; line = line->next)
+				PopupForm_add_text (popup, __, line->text, false);
+		}
+
+		if ((district_parse_errors != NULL) && (wonder_parse_errors != NULL))
+			PopupForm_add_text (popup, __, "", false);
+
+		if (wonder_parse_errors != NULL) {
+			char header[256];
+			snprintf (header, sizeof header, "Wonder District Config lookup errors:");
+			header[(sizeof header) - 1] = '\0';
+			PopupForm_add_text (popup, __, header, false);
+			for (struct error_line * line = wonder_parse_errors; line != NULL; line = line->next)
+				PopupForm_add_text (popup, __, line->text, false);
+		}
+
+		patch_show_popup (popup, __, 0, 0);
+		free_error_lines (district_parse_errors);
+		free_error_lines (wonder_parse_errors);
 	}
 }
 
@@ -6555,8 +10794,8 @@ place_natural_wonders_on_map (void)
 
 	// Record existing natural wonders
 	FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-		struct district_instance * inst = (struct district_instance *)(long)tei.value;
-		if ((inst == NULL) || (inst->district_type != NATURAL_WONDER_DISTRICT_ID))
+		struct district_instance * inst = (struct district_instance *)tei.value;
+		if ((inst == NULL) || (inst->district_id != NATURAL_WONDER_DISTRICT_ID))
 			continue;
 
 		int wonder_id = inst->natural_wonder_info.natural_wonder_id;
@@ -6691,8 +10930,8 @@ place_natural_wonders_on_map (void)
 				(is->natural_wonder_configs[ni].adjacency_dir == DIR_ZERO);
 			int adjacency_count = -1;
 			if (adjacency_bonus_active)
-				adjacency_count = count_diagonal_adjacent_tiles_of_type (cand->x, cand->y,
-											  is->natural_wonder_configs[ni].adjacent_to);
+				adjacency_count = count_adjacent_tiles_of_type (cand->x, cand->y,
+										is->natural_wonder_configs[ni].adjacent_to);
 
 			int same_type_count = count_adjacent_tiles_of_type (cand->x, cand->y,
 									      is->natural_wonder_configs[ni].terrain_type);
@@ -6786,68 +11025,17 @@ place_natural_wonders_on_map (void)
 	free (placements);
 }
 
-int
-find_district_index_by_name (char const * name)
+void
+init_scenario_district_entry (struct scenario_district_entry * entry)
 {
-	if ((name == NULL) || (name[0] == '\0'))
-		return -1;
+	if (entry == NULL)
+		return;
 
-	for (int i = 0; i < is->district_count; i++) {
-		char const * existing = is->district_configs[i].name;
-		if ((existing != NULL) && (strcmp (existing, name) == 0))
-			return i;
-	}
-
-	return -1;
-}
-
-int
-find_wonder_district_index_by_name (char const * name)
-{
-	if ((name == NULL) || (name[0] == '\0'))
-		return -1;
-
-	int improv_id;
-	if (! stable_look_up (&is->building_name_to_id, (char *)name, &improv_id))
-		return -1;
-
-	return find_wonder_config_index_by_improvement_id (improv_id);
-}
-
-int
-find_natural_wonder_index_by_name (char const * name)
-{
-	if ((name == NULL) || (name[0] == '\0') || (is == NULL))
-		return -1;
-
-	for (int i = 0; i < is->natural_wonder_count; i++) {
-		char const * existing = is->natural_wonder_configs[i].name;
-		if ((existing != NULL) && (strcmp (existing, name) == 0))
-			return i;
-	}
-	return -1;
-}
-
-City *
-find_city_by_name (char const * name)
-{
-	if ((name == NULL) || (name[0] == '\0') || (p_cities == NULL) || (p_cities->Cities == NULL))
-		return NULL;
-
-	for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
-		City * city = get_city_ptr (city_index);
-		if ((city != NULL) && (city->Body.CityName != NULL)) {
-			(*p_OutputDebugStringA) (city->Body.CityName);
-		}
-		if ((city != NULL) && (city->Body.CityName != NULL) && (strcmp (city->Body.CityName, name) == 0))
-			return city;
-	}
-
-	return NULL;
+	memset (entry, 0, sizeof *entry);
 }
 
 void
-init_scenario_district_entry (struct scenario_district_entry * entry)
+init_scenario_named_tile_entry (struct scenario_named_tile_entry * entry)
 {
 	if (entry == NULL)
 		return;
@@ -6877,6 +11065,20 @@ free_scenario_district_entry (struct scenario_district_entry * entry)
 	entry->has_district_name = 0;
 	entry->has_wonder_city = 0;
 	entry->has_wonder_name = 0;
+}
+
+void
+free_scenario_named_tile_entry (struct scenario_named_tile_entry * entry)
+{
+	if (entry == NULL)
+		return;
+
+	if (entry->name != NULL) {
+		free (entry->name);
+		entry->name = NULL;
+	}
+	entry->has_coordinates = 0;
+	entry->has_name = 0;
 }
 
 void
@@ -6929,6 +11131,12 @@ finalize_scenario_district_entry (struct scenario_district_entry * entry,
 	if ((entry == NULL) || (parse_errors == NULL))
 		return 0;
 
+	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
+		free_scenario_district_entry (entry);
+		init_scenario_district_entry (entry);
+		return 1;
+	}
+
 	if (! entry->has_coordinates)
 		add_scenario_district_error (parse_errors, section_start_line, "coordinates (value is required)");
 	if ((! entry->has_district_name) || (entry->district_name == NULL) || (entry->district_name[0] == '\0'))
@@ -6954,12 +11162,22 @@ finalize_scenario_district_entry (struct scenario_district_entry * entry,
 				add_scenario_district_error (parse_errors, section_start_line, msg);
 				success = 0;
 			} else {
+				if ((district_id == NATURAL_WONDER_DISTRICT_ID) && ! is->current_config.enable_natural_wonders) {
+					free_scenario_district_entry (entry);
+					init_scenario_district_entry (entry);
+					return 1;
+				}
+				if ((district_id != NATURAL_WONDER_DISTRICT_ID) && ! is->current_config.enable_districts) {
+					free_scenario_district_entry (entry);
+					init_scenario_district_entry (entry);
+					return 1;
+				}
 				struct district_instance * inst = ensure_district_instance (tile, district_id, map_x, map_y);
 				if (inst == NULL) {
 					add_scenario_district_error (parse_errors, section_start_line, "Failed to create district instance");
 					success = 0;
 				} else {
-					inst->district_type = district_id;
+					inst->district_id = district_id;
 					district_instance_set_coords (inst, map_x, map_y);
 					inst->state = DS_COMPLETED;
 					inst->wonder_info.state = WDS_UNUSED;
@@ -7027,6 +11245,95 @@ finalize_scenario_district_entry (struct scenario_district_entry * entry,
 	return success;
 }
 
+bool
+tile_can_be_named (Tile * tile, int tile_x, int tile_y)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+	struct district_instance * inst = get_district_instance (tile);
+	if ((inst != NULL) && (inst->district_id == NATURAL_WONDER_DISTRICT_ID))
+		return false;
+	return true;
+}
+
+void
+remove_named_tile_entry (Tile * tile)
+{
+	struct named_tile_entry * entry = get_named_tile_entry (tile);
+	if (entry == NULL)
+		return;
+	itable_remove (&is->named_tile_map, (int)tile);
+	free (entry);
+}
+
+void
+set_named_tile_entry (Tile * tile, int tile_x, int tile_y, char const * name)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
+	if ((name == NULL) || (name[0] == '\0')) {
+		remove_named_tile_entry (tile);
+		return;
+	}
+
+	struct named_tile_entry * entry = get_named_tile_entry (tile);
+	if (entry == NULL) {
+		entry = calloc (1, sizeof *entry);
+		if (entry == NULL)
+			return;
+		itable_insert (&is->named_tile_map, (int)tile, (int)entry);
+	}
+	entry->tile_x = tile_x;
+	entry->tile_y = tile_y;
+	strncpy (entry->name, name, sizeof entry->name);
+	entry->name[(sizeof entry->name) - 1] = '\0';
+}
+
+int
+finalize_scenario_named_tile_entry (struct scenario_named_tile_entry * entry,
+				    int section_start_line,
+				    struct error_line ** parse_errors)
+{
+	int success = 1;
+	if ((entry == NULL) || (parse_errors == NULL))
+		return 0;
+
+	if (! is->current_config.enable_named_tiles) {
+		free_scenario_named_tile_entry (entry);
+		init_scenario_named_tile_entry (entry);
+		return 1;
+	}
+
+	if (! entry->has_coordinates)
+		add_scenario_district_error (parse_errors, section_start_line, "coordinates (value is required)");
+	if ((! entry->has_name) || (entry->name == NULL) || (entry->name[0] == '\0'))
+		add_scenario_district_error (parse_errors, section_start_line, "name (value is required)");
+
+	if ((! entry->has_coordinates) || (! entry->has_name) ||
+	    (entry->name == NULL) || (entry->name[0] == '\0'))
+		success = 0;
+
+	int map_x = entry->tile_x;
+	int map_y = entry->tile_y;
+	if (success) {
+		wrap_tile_coords (&p_bic_data->Map, &map_x, &map_y);
+		Tile * tile = tile_at (map_x, map_y);
+		if ((tile == NULL) || (tile == p_null_tile)) {
+			add_scenario_district_error (parse_errors, section_start_line, "Invalid coordinates (tile not found)");
+			success = 0;
+		} else if (! tile_can_be_named (tile, map_x, map_y)) {
+			add_scenario_district_error (parse_errors, section_start_line, "Invalid coordinates (tile cannot be named)");
+			success = 0;
+		} else {
+			set_named_tile_entry (tile, map_x, map_y, entry->name);
+		}
+	}
+
+	free_scenario_named_tile_entry (entry);
+	init_scenario_named_tile_entry (entry);
+	return success;
+}
+
 void
 handle_scenario_district_key (struct scenario_district_entry * entry,
 			     struct string_slice const * key,
@@ -7077,6 +11384,40 @@ handle_scenario_district_key (struct scenario_district_entry * entry,
 		add_unrecognized_key_error (unrecognized_keys, line_number, key);
 }
 
+void
+handle_scenario_named_tile_key (struct scenario_named_tile_entry * entry,
+				struct string_slice const * key,
+				struct string_slice const * value,
+				int line_number,
+				struct error_line ** parse_errors,
+				struct error_line ** unrecognized_keys)
+{
+	if ((entry == NULL) || (key == NULL) || (value == NULL))
+		return;
+
+	if (slice_matches_str (key, "coordinates")) {
+		int x, y;
+		if (parse_scenario_district_coordinates (value, &x, &y)) {
+			entry->tile_x = x;
+			entry->tile_y = y;
+			entry->has_coordinates = 1;
+		} else
+			add_scenario_district_error (parse_errors, line_number, "coordinates (expected format: x,y)");
+
+	} else if (slice_matches_str (key, "name")) {
+		if (entry->name != NULL) {
+			free (entry->name);
+			entry->name = NULL;
+		}
+		entry->name = copy_trimmed_string_or_null (value, 1);
+		entry->has_name = (entry->name != NULL);
+		if (! entry->has_name)
+			add_scenario_district_error (parse_errors, line_number, "name (value is required)");
+
+	} else
+		add_unrecognized_key_error (unrecognized_keys, line_number, key);
+}
+
 // Parses a .c3x.txt file corresponding to the given scenario file path, loading district instances as specified.
 // Attempts the scenario_path first, then scenario_config_path; if neither yields a readable file, no action is taken.
 //
@@ -7099,6 +11440,10 @@ handle_scenario_district_key (struct scenario_district_entry * entry,
 // coordinates  = 10,30
 // district     = Natural Wonder
 // wonder_name  = Mount Everest
+//
+// #NamedTile
+// coordinates  = 41,23
+// name         = Tiber River
 // ```
 //
 // Details at https://github.com/instafluff0/Civ3_Editor_Fork_for_C3X_Districts
@@ -7117,9 +11462,12 @@ load_scenario_districts_from_file ()
 		return;
 
 	struct scenario_district_entry entry;
+	struct scenario_named_tile_entry named_entry;
 	init_scenario_district_entry (&entry);
+	init_scenario_named_tile_entry (&named_entry);
 	int in_section = 0;
 	int section_start_line = 0;
+	int section_type = 0;
 	int line_number = 0;
 	int header_seen = 0;
 	struct error_line * unrecognized_keys = NULL;
@@ -7141,20 +11489,17 @@ load_scenario_districts_from_file ()
 
 		struct string_slice line_slice = { .str = line_start, .len = line_len };
 		struct string_slice trimmed = trim_string_slice (&line_slice, 0);
-		if ((trimmed.len == 0) || (trimmed.str[0] == ';')) {
+		if (line_is_empty_or_comment (&trimmed)) {
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
 		}
 
+		// Keep support for legacy header, technically not needed
 		if (! header_seen) {
 			if (slice_matches_str (&trimmed, "DISTRICTS")) {
 				header_seen = 1;
 				cursor = has_newline ? line_end + 1 : line_end;
 				continue;
-			} else {
-				add_scenario_district_error (&parse_errors, line_number, "Expected \"DISTRICTS\" header");
-				header_seen = 1;
-				// Fall through to allow parsing of entries even if header missing.
 			}
 		}
 
@@ -7164,12 +11509,29 @@ load_scenario_districts_from_file ()
 			directive.len -= 1;
 			directive = trim_string_slice (&directive, 0);
 			if (slice_matches_str (&directive, "District")) {
-				if (in_section)
-					finalize_scenario_district_entry (&entry, section_start_line, &parse_errors);
+				if (in_section) {
+					if (section_type == 1)
+						finalize_scenario_district_entry (&entry, section_start_line, &parse_errors);
+					else if (section_type == 2)
+						finalize_scenario_named_tile_entry (&named_entry, section_start_line, &parse_errors);
+				}
 				in_section = 1;
+				section_type = 1;
 				section_start_line = line_number;
 				free_scenario_district_entry (&entry);
 				init_scenario_district_entry (&entry);
+			} else if (slice_matches_str (&directive, "NamedTile")) {
+				if (in_section) {
+					if (section_type == 1)
+						finalize_scenario_district_entry (&entry, section_start_line, &parse_errors);
+					else if (section_type == 2)
+						finalize_scenario_named_tile_entry (&named_entry, section_start_line, &parse_errors);
+				}
+				in_section = 1;
+				section_type = 2;
+				section_start_line = line_number;
+				free_scenario_named_tile_entry (&named_entry);
+				init_scenario_named_tile_entry (&named_entry);
 			}
 			cursor = has_newline ? line_end + 1 : line_end;
 			continue;
@@ -7190,17 +11552,25 @@ load_scenario_districts_from_file ()
 			add_scenario_district_error (&parse_errors, line_number, "(missing key)");
 			break;
 		case KVP_SUCCESS:
-			handle_scenario_district_key (&entry, &key_slice, &value_slice, line_number, &parse_errors, &unrecognized_keys);
+			if (section_type == 1)
+				handle_scenario_district_key (&entry, &key_slice, &value_slice, line_number, &parse_errors, &unrecognized_keys);
+			else if (section_type == 2)
+				handle_scenario_named_tile_key (&named_entry, &key_slice, &value_slice, line_number, &parse_errors, &unrecognized_keys);
 			break;
 		}
 
 		cursor = has_newline ? line_end + 1 : line_end;
 	}
 
-	if (in_section)
-		finalize_scenario_district_entry (&entry, section_start_line, &parse_errors);
+	if (in_section) {
+		if (section_type == 1)
+			finalize_scenario_district_entry (&entry, section_start_line, &parse_errors);
+		else if (section_type == 2)
+			finalize_scenario_named_tile_entry (&named_entry, section_start_line, &parse_errors);
+	}
 
 	free_scenario_district_entry (&entry);
+	free_scenario_named_tile_entry (&named_entry);
 	free (text);
 
 	// Append to loaded config names list
@@ -7257,6 +11627,10 @@ deinit_district_images (void)
 				set->img.vtable->destruct (&set->img, __, 0);
 			if (set->construct_img.vtable != NULL)
 				set->construct_img.vtable->destruct (&set->construct_img, __, 0);
+			if (set->alt_dir_img.vtable != NULL)
+				set->alt_dir_img.vtable->destruct (&set->alt_dir_img, __, 0);
+			if (set->alt_dir_construct_img.vtable != NULL)
+				set->alt_dir_construct_img.vtable->destruct (&set->alt_dir_construct_img, __, 0);
 		}
 
 		for (int ni = 0; ni < MAX_NATURAL_WONDER_DISTRICT_TYPES; ni++) {
@@ -7264,6 +11638,11 @@ deinit_district_images (void)
 			if (sprite->vtable != NULL)
 				sprite->vtable->destruct (sprite, __, 0);
 		}
+
+		if (is->abandoned_district_img.vtable != NULL)
+			is->abandoned_district_img.vtable->destruct (&is->abandoned_district_img, __, 0);
+		if (is->abandoned_maritime_district_img.vtable != NULL)
+			is->abandoned_maritime_district_img.vtable->destruct (&is->abandoned_maritime_district_img, __, 0);
 	}
 
 	is->dc_img_state = IS_UNINITED;
@@ -7273,7 +11652,7 @@ void
 clear_highlighted_worker_tiles_for_districts ()
 {
 	FOR_TABLE_ENTRIES (tei, &is->highlighted_city_radius_tile_pointers) {
-		struct highlighted_city_radius_tile_info * info = (struct highlighted_city_radius_tile_info *)(long)tei.value;
+		struct highlighted_city_radius_tile_info * info = (struct highlighted_city_radius_tile_info *)tei.value;
 		if (info != NULL)
 			free (info);
 	}
@@ -7289,16 +11668,27 @@ reset_district_state (bool reset_tile_map)
 	clear_highlighted_worker_tiles_for_districts ();
 
 	table_deinit (&is->district_tech_prereqs);
+	FOR_TABLE_ENTRIES (tei, &is->district_building_prereqs) {
+		struct district_building_prereq_list * list = (struct district_building_prereq_list *)tei.value;
+		if (list != NULL)
+			free (list);
+	}
 	table_deinit (&is->district_building_prereqs);
 	table_deinit (&is->command_id_to_district_id);
 	stable_deinit (&is->building_name_to_id);
 	if (reset_tile_map) {
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-			struct district_instance * inst = (struct district_instance *)(long)tei.value;
+			struct district_instance * inst = (struct district_instance *)tei.value;
 			if (inst != NULL)
 				free (inst);
 		}
 		table_deinit (&is->district_tile_map);
+		FOR_TABLE_ENTRIES (tei, &is->named_tile_map) {
+			struct named_tile_entry * entry = (struct named_tile_entry *)tei.value;
+			if (entry != NULL)
+				free (entry);
+		}
+		table_deinit (&is->named_tile_map);
 	}
 
 	clear_distribution_hub_tables ();
@@ -7309,7 +11699,20 @@ reset_district_state (bool reset_tile_map)
 	is->district_count = is->special_district_count;
 
 	for (int i = 0; i < COUNT_DISTRICT_TYPES; i++) {
-		is->district_infos[i].advance_prereq_id = -1;
+		is->district_infos[i].advance_prereq_count = 0;
+		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].advance_prereq_ids); j++)
+			is->district_infos[i].advance_prereq_ids[j] = -1;
+		is->district_infos[i].obsoleted_by_id = -1;
+		is->district_infos[i].resource_prereq_count = 0;
+		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].resource_prereq_ids); j++)
+			is->district_infos[i].resource_prereq_ids[j] = -1;
+		is->district_infos[i].resource_prereq_on_tile_id = -1;
+		is->district_infos[i].wonder_prereq_count = 0;
+		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].wonder_prereq_ids); j++)
+			is->district_infos[i].wonder_prereq_ids[j] = -1;
+		is->district_infos[i].natural_wonder_prereq_count = 0;
+		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].natural_wonder_prereq_ids); j++)
+			is->district_infos[i].natural_wonder_prereq_ids[j] = -1;
 		is->district_infos[i].dependent_building_count = 0;
 		for (int j = 0; j < ARRAY_LEN (is->district_infos[i].dependent_building_ids); j++)
 			is->district_infos[i].dependent_building_ids[j] = -1;
@@ -7317,13 +11720,15 @@ reset_district_state (bool reset_tile_map)
 
 	for (int civ_id = 0; civ_id < 32; civ_id++) {
 		FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-			struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+			struct pending_district_request * req = (struct pending_district_request *)tei.value;
 			if (req != NULL)
 				free (req);
 		}
 		table_deinit (&is->city_pending_district_requests[civ_id]);
 	}
 	table_deinit (&is->city_pending_building_orders);
+
+	is->great_wall_auto_build = GWABS_NOT_STARTED;
 }
 
 void
@@ -7350,6 +11755,360 @@ clear_city_district_request (City * city, int district_id)
 	}
 }
 
+bool
+district_resource_prereqs_met (Tile * tile, int tile_x, int tile_y, int district_id, City * city)
+{
+	if ((tile == NULL) || (tile == p_null_tile) ||
+	    (district_id < 0) || (district_id >= is->district_count))
+		return false;
+
+	struct district_infos * info = &is->district_infos[district_id];
+	int on_tile_req = info->resource_prereq_on_tile_id;
+	if (on_tile_req >= 0) {
+		int res_here = tile->vtable->m39_Get_Resource_Type (tile);
+		if (res_here != on_tile_req)
+			return false;
+	}
+
+	// If no resource prereqs, then the check passes
+	if (info->resource_prereq_count <= 0)
+		return true;
+
+	int owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	if (owner < 0)
+		return false;
+
+	// Check all resource prereqs - ALL must be present
+	for (int i = 0; i < info->resource_prereq_count; i++) {
+		int resource_req = info->resource_prereq_ids[i];
+		if (resource_req < 0)
+			continue;
+
+		bool has_resource = false;
+
+		// Check if the specified city has this resource
+		if ((city != NULL) &&
+		    (city->Body.CivID == owner) &&
+		    city_radius_contains_tile (city, tile_x, tile_y) &&
+		    patch_City_has_resource (city, __, resource_req)) {
+			has_resource = true;
+		}
+
+		// Check cities around this tile for the resource
+		if (!has_resource) {
+			FOR_CITIES_AROUND (wai, tile_x, tile_y) {
+				if (patch_City_has_resource (wai.city, __, resource_req)) {
+					has_resource = true;
+					break;
+				}
+			}
+		}
+
+		// If this required resource is not available, the check fails
+		if (!has_resource)
+			return false;
+	}
+
+	return true;
+}
+
+int
+count_contiguous_bridge_districts (int tile_x, int tile_y, int dx, int dy)
+{
+	Map * map = &p_bic_data->Map;
+	int nx = tile_x + dx;
+	int ny = tile_y + dy;
+	int count = 0;
+	int max_steps = map->Width + map->Height;
+
+	for (int step = 0; step < max_steps; step++) {
+		wrap_tile_coords (map, &nx, &ny);
+		if (! tile_has_district_at (nx, ny, BRIDGE_DISTRICT_ID))
+			break;
+		count++;
+		nx += dx;
+		ny += dy;
+	}
+
+	return count;
+}
+
+int
+count_contiguous_canal_districts (int tile_x, int tile_y, int max_count)
+{
+	if (max_count <= 0)
+		return 0;
+
+	Map * map = &p_bic_data->Map;
+	int limit = max_count + 1;
+	int capacity = limit;
+	if (capacity < 1)
+		capacity = 1;
+
+	int * xs = malloc (sizeof (*xs) * capacity);
+	int * ys = malloc (sizeof (*ys) * capacity);
+	if ((xs == NULL) || (ys == NULL)) {
+		if (xs != NULL)
+			free (xs);
+		if (ys != NULL)
+			free (ys);
+		return limit;
+	}
+
+	int const adj_dx[8] = { 0, 0, -2, 2, 1, 1, -1, -1 };
+	int const adj_dy[8] = { -2, 2, 0, 0, -1, 1, -1, 1 };
+	int head = 0;
+	int tail = 0;
+	int count = 0;
+
+	xs[tail] = tile_x;
+	ys[tail] = tile_y;
+	tail++;
+
+	while (head < tail) {
+		int cx = xs[head];
+		int cy = ys[head];
+		head++;
+		count++;
+		if (count >= limit)
+			break;
+
+		for (int i = 0; i < 8; i++) {
+			int nx = cx + adj_dx[i];
+			int ny = cy + adj_dy[i];
+			wrap_tile_coords (map, &nx, &ny);
+			if (! tile_has_district_at (nx, ny, CANAL_DISTRICT_ID))
+				continue;
+
+			bool seen = false;
+			for (int j = 0; j < tail; j++) {
+				if ((xs[j] == nx) && (ys[j] == ny)) {
+					seen = true;
+					break;
+				}
+			}
+			if (seen)
+				continue;
+
+			if (tail < capacity) {
+				xs[tail] = nx;
+				ys[tail] = ny;
+				tail++;
+			} else {
+				count = limit;
+				head = tail;
+				break;
+			}
+		}
+	}
+
+	free (xs);
+	free (ys);
+
+	return count;
+}
+
+bool
+district_line_is_straight (int tile_x, int tile_y, int district_id)
+{
+	Map * map = &p_bic_data->Map;
+	int const adj_dx[8] = { 0, 0, -2, 2, -1, 1, -1, 1 };
+	int const adj_dy[8] = { -2, 2, 0, 0, 1, -1, -1, 1 };
+
+	for (int i = 0; i < 8; i++) {
+		int nx = tile_x + adj_dx[i];
+		int ny = tile_y + adj_dy[i];
+		wrap_tile_coords (map, &nx, &ny);
+		if (! tile_has_district_at (nx, ny, district_id))
+			continue;
+
+		int cand_dx = -adj_dx[i];
+		int cand_dy = -adj_dy[i];
+
+		for (int j = 0; j < 8; j++) {
+			int ox = nx + adj_dx[j];
+			int oy = ny + adj_dy[j];
+			wrap_tile_coords (map, &ox, &oy);
+			if ((ox == tile_x) && (oy == tile_y))
+				continue;
+			if (! tile_has_district_at (ox, oy, district_id))
+				continue;
+
+			if (! ((adj_dx[j] == cand_dx) && (adj_dy[j] == cand_dy)) &&
+			    ! ((adj_dx[j] == -cand_dx) && (adj_dy[j] == -cand_dy)))
+				return false;
+		}
+	}
+
+	return true;
+}
+
+bool
+bridge_district_tile_is_valid (int tile_x, int tile_y)
+{
+	if (! tile_is_coastal_water (tile_x, tile_y))
+		return false;
+	if (! bridge_tile_has_land_on_both_sides (tile_x, tile_y))
+		return false;
+
+	if (is->current_config.max_contiguous_bridge_districts > 0) {
+		int max_bridges = is->current_config.max_contiguous_bridge_districts;
+
+		int ns_count = count_contiguous_bridge_districts (tile_x, tile_y, 0, -2) +
+			       count_contiguous_bridge_districts (tile_x, tile_y, 0, 2);
+		if (ns_count > max_bridges)
+			return false;
+
+		int we_count = count_contiguous_bridge_districts (tile_x, tile_y, -2, 0) +
+			       count_contiguous_bridge_districts (tile_x, tile_y, 2, 0);
+		if (we_count > max_bridges)
+			return false;
+
+		int swne_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, 1) +
+				 count_contiguous_bridge_districts (tile_x, tile_y, 1, -1);
+		if (swne_count > max_bridges)
+			return false;
+
+		int nwse_count = count_contiguous_bridge_districts (tile_x, tile_y, -1, -1) +
+				 count_contiguous_bridge_districts (tile_x, tile_y, 1, 1);
+		if (nwse_count > max_bridges)
+			return false;
+	}
+
+	return district_line_is_straight (tile_x, tile_y, BRIDGE_DISTRICT_ID);
+}
+
+bool
+canal_district_tile_is_valid (int tile_x, int tile_y)
+{
+	if (tile_is_water (tile_x, tile_y))
+		return false;
+
+	if (is->current_config.max_contiguous_canal_districts > 0) {
+		int count = count_contiguous_canal_districts (tile_x, tile_y, is->current_config.max_contiguous_canal_districts);
+		if (count > is->current_config.max_contiguous_canal_districts)
+			return false;
+	}
+
+	Map * map = &p_bic_data->Map;
+	int const adj_dx[8] = { 0, 0, -2, 2, 1, 1, -1, -1 };
+	int const adj_dy[8] = { -2, 2, 0, 0, -1, 1, -1, 1 };
+
+	for (int i = 0; i < 8; i++) {
+		int nx = tile_x + adj_dx[i];
+		int ny = tile_y + adj_dy[i];
+		wrap_tile_coords (map, &nx, &ny);
+		Tile * tile = tile_at (nx, ny);
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+		if (tile->vtable->m35_Check_Is_Water (tile))
+			return true;
+
+		if (tile_has_district_at (nx, ny, CANAL_DISTRICT_ID)) {
+			struct district_instance * inst = get_district_instance (tile);
+			if ((inst != NULL) && (inst->district_id == CANAL_DISTRICT_ID) &&
+			    district_is_complete (tile, CANAL_DISTRICT_ID))
+				return true;
+		}
+	}
+
+	return false;
+}
+
+bool
+can_build_district_on_tile (Tile * tile, int district_id, int civ_id)
+{
+	if ((! is->current_config.enable_districts) ||
+	    (tile == NULL) || (tile == p_null_tile) ||
+	    (tile->CityID >= 0) ||
+	    tile->vtable->m21_Check_Crates (tile, __, 0) ||
+	    tile->vtable->m20_Check_Pollution (tile, __, 0) ||
+	    (district_id < 0) || (district_id >= is->district_count))
+		return false;
+
+	struct district_config const * cfg = &is->district_configs[district_id];
+	if (cfg->command == -1)
+		return false;
+
+	if ((cfg->command == UCV_Build_Neighborhood)    && !is->current_config.enable_neighborhood_districts)     return false;
+	if ((cfg->command == UCV_Build_WonderDistrict)  && !is->current_config.enable_wonder_districts)           return false;
+	if ((cfg->command == UCV_Build_DistributionHub) && !is->current_config.enable_distribution_hub_districts) return false;
+	if ((cfg->command == UCV_Build_Aerodrome)       && !is->current_config.enable_aerodrome_districts)        return false;
+	if ((cfg->command == UCV_Build_Port)            && !is->current_config.enable_port_districts)             return false;
+	if ((cfg->command == UCV_Build_Bridge)          && !is->current_config.enable_bridge_districts)           return false;
+	if ((cfg->command == UCV_Build_CentralRailHub)  && !is->current_config.enable_central_rail_hub_districts) return false;
+	if ((cfg->command == UCV_Build_GreatWall)       && !is->current_config.enable_great_wall_districts)       return false;
+
+	if (! district_is_buildable_on_square_type (cfg, tile))
+		return false;
+
+	int tile_x = 0, tile_y = 0;
+	tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y);
+
+	if (! leader_can_build_district (&leaders[civ_id], district_id))
+		return false;
+
+	if (! district_resource_prereqs_met (tile, tile_x, tile_y, district_id, NULL))
+		return false;
+
+	if ((district_id == CANAL_DISTRICT_ID) && (! canal_district_tile_is_valid (tile_x, tile_y)))
+		return false;
+
+	if ((district_id == BRIDGE_DISTRICT_ID) && (! bridge_district_tile_is_valid (tile_x, tile_y)))
+		return false;
+
+	struct district_instance * existing_inst = get_district_instance (tile);
+	struct district_infos const * info = &is->district_infos[district_id];
+	int existing_district_id = (existing_inst != NULL) ? existing_inst->district_id : -1;
+	bool district_completed = district_is_complete (tile, existing_district_id);
+
+	if ((existing_district_id == district_id) && district_completed)
+		return false;
+	if ((existing_district_id >= 0) && (existing_district_id != district_id) && (! district_completed))
+		return false;
+	
+	if (! cfg->allow_multiple) {
+		FOR_DISTRICTS_AROUND (wai, tile_x, tile_y, false) {
+			if (wai.district_inst->district_id == district_id)
+				return false;
+		}
+	}
+
+	return true;
+}
+
+bool
+district_is_obsolete_for_civ (int district_id, int civ_id)
+{
+	if ((district_id < 0) || (district_id >= is->district_count))
+		return false;
+
+	int obsolete_id = is->district_infos[district_id].obsoleted_by_id;
+	if (obsolete_id < 0)
+		return false;
+
+	return Leader_has_tech (&leaders[civ_id], __, obsolete_id);
+}
+
+bool
+tile_has_obsolete_district_for_civ (Tile * tile, int civ_id)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL)
+		return false;
+
+	int district_id = inst->district_id;
+	if ((district_id < 0) || (district_id >= is->district_count))
+		return false;
+
+	if (! district_is_complete (tile, district_id))
+		return false;
+
+	return district_is_obsolete_for_civ (district_id, civ_id);
+}
 
 bool
 tile_suitable_for_district (Tile * tile, int district_id, City * city, bool * out_has_resource)
@@ -7360,30 +12119,48 @@ tile_suitable_for_district (Tile * tile, int district_id, City * city, bool * ou
 	if (out_has_resource != NULL)
 		*out_has_resource = has_resource;
 
-	if ((tile == NULL) || (tile == p_null_tile))
+	if ((tile == NULL) || (tile == p_null_tile)) return false;
+	if (tile->CityID >= 0) return false;
+	if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID) return false;
+	if (! can_build_district_on_tile (tile, district_id, city->Body.CivID)) return false;
+
+	int tile_x = 0, tile_y = 0;
+	tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y);
+	if (! district_resource_prereqs_met (tile, tile_x, tile_y, district_id, city))
 		return false;
-	if (tile->CityID >= 0)
-		return false;
-	if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID)
-		return false;
-	if (tile->vtable->m35_Check_Is_Water (tile))
-		return false;
-	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	if ((base_type == SQ_Mountains) || (base_type == SQ_Volcano))
-		return false;
+
 	struct district_instance * inst = get_district_instance (tile);
 	if (inst != NULL) {
-		if (inst->district_type != district_id)
-			return false;
+		if (tile_has_obsolete_district_for_civ (tile, city->Body.CivID))
+			return true;
 
+		// Unused wonder districts can be repurposed, completed cannot
 		if (district_id == WONDER_DISTRICT_ID && inst->state == DS_COMPLETED) {
-			struct wonder_district_info * info = &inst->wonder_info;
-			if (info->state == WDS_COMPLETED)
+			struct wonder_district_info * winfo = &inst->wonder_info;
+			if (winfo->state == WDS_COMPLETED)
 				return false;
 		}
+
+		return false;
 	}
 
 	return true;
+}
+
+bool
+can_generate_resource (int for_civ_id, struct mill * mill)
+{
+	int req_tech_id = (mill->flags & MF_NO_TECH_REQ) ? -1 : p_bic_data->ResourceTypes[mill->resource_id].RequireID;
+	return (req_tech_id < 0) || Leader_has_tech (&leaders[for_civ_id], __, req_tech_id);
+}
+
+bool
+district_can_generate_resource (int for_civ_id, struct district_config * dc)
+{
+	if (dc->generated_resource_id < 0)
+		return false;
+	int req_tech_id = (dc->generated_resource_flags & MF_NO_TECH_REQ) ? -1 : p_bic_data->ResourceTypes[dc->generated_resource_id].RequireID;
+	return (req_tech_id < 0) || Leader_has_tech (&leaders[for_civ_id], __, req_tech_id);
 }
 
 void
@@ -7403,38 +12180,16 @@ calculate_city_center_district_bonus (City * city, int * out_food, int * out_shi
 	int bonus_shields = 0;
 	int bonus_gold = 0;
 
-	int city_civ_id = city->Body.CivID;
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
 	int utilized_neighborhoods = count_utilized_neighborhoods_in_city_radius (city);
 	int neighborhoods_counted = 0;
 
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		if (n == 0)
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		if ((wai.dx == 0) && (wai.dy == 0))
 			continue;
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int tile_x = city_x + dx;
-		int tile_y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
-		Tile * tile = tile_at (tile_x, tile_y);
-		if ((tile == NULL) || (tile == p_null_tile))
-			continue;
-		if (tile_has_enemy_unit (tile, city_civ_id))
-			continue;
-		if (tile->vtable->m20_Check_Pollution (tile, __, 0))
-			continue;
-		if (tile->Territory_OwnerID != city_civ_id)
-			continue;
+		Tile * tile = wai.tile;
 
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL)
-			continue;
-		int district_id = inst->district_type;
-		if ((district_id < 0) || (district_id >= is->district_count))
-			continue;
-		if (! district_is_complete (tile, district_id))
-			continue;
+		struct district_instance * inst = wai.district_inst;
+		int district_id = inst->district_id;
 
 		if (is->current_config.enable_neighborhood_districts &&
 		    (district_id == NEIGHBORHOOD_DISTRICT_ID)) {
@@ -7443,12 +12198,22 @@ calculate_city_center_district_bonus (City * city, int * out_food, int * out_shi
 			neighborhoods_counted++;
 		}
 
-		struct district_config const * cfg = &is->district_configs[district_id];
+		struct district_config * cfg = &is->district_configs[district_id];
 		int food_bonus = 0, shield_bonus = 0, gold_bonus = 0;
-		get_effective_district_yields (inst, cfg, &food_bonus, &shield_bonus, &gold_bonus, NULL, NULL);
+		get_effective_district_yields (inst, cfg, &food_bonus, &shield_bonus, &gold_bonus, NULL, NULL, NULL);
 		bonus_food += food_bonus;
 		bonus_shields += shield_bonus;
 		bonus_gold += gold_bonus;
+
+		if ((cfg->generated_resource_id >= 0) && (cfg->generated_resource_flags & MF_YIELDS)) {
+			int res_id = cfg->generated_resource_id;
+			if (district_can_generate_resource (city->Body.CivID, cfg)) {
+				Resource_Type * res = &p_bic_data->ResourceTypes[res_id];
+				bonus_food += res->Food;
+				bonus_shields += res->Shield;
+				bonus_gold += res->Commerce;
+			}
+		}
 	}
 
 	if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
@@ -7476,7 +12241,7 @@ patch_Map_calc_food_yield_at (Map * this, int edx, int tile_x, int tile_y, int t
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile != NULL) && (tile != p_null_tile)) {
 		struct district_instance * inst = get_district_instance (tile);
-		if (inst != NULL && district_is_complete (tile, inst->district_type)) {
+		if (inst != NULL && district_is_complete (tile, inst->district_id)) {
 			return 0;
 		}
 	}
@@ -7493,7 +12258,7 @@ patch_Map_calc_shield_yield_at (Map * this, int edx, int tile_x, int tile_y, int
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile != NULL) && (tile != p_null_tile)) {
 		struct district_instance * inst = get_district_instance (tile);
-		if (inst != NULL && district_is_complete (tile, inst->district_type)) {
+		if (inst != NULL && district_is_complete (tile, inst->district_id)) {
 			return 0;
 		}
 	}
@@ -7510,6 +12275,174 @@ compute_city_tile_yield_sum (City * city, int tile_x, int tile_y)
 	int shields  = City_calc_tile_yield_at (city, __, YK_SHIELDS, tile_x, tile_y);
 	int commerce = City_calc_tile_yield_at (city, __, YK_COMMERCE, tile_x, tile_y);
 	return food + shields + commerce;
+}
+
+int *
+get_water_continent_ids_connected_via_canal (Tile * tile, int * out_count)
+{
+	if (out_count != NULL)
+		*out_count = 0;
+	if (! is->current_config.enable_canal_districts)
+		return NULL;
+	if ((tile == NULL) || (tile == p_null_tile))
+		return NULL;
+	if (! tile->vtable->m35_Check_Is_Water (tile))
+		return NULL;
+
+	int origin_continent_id = tile->vtable->m46_Get_ContinentID (tile);
+	int continent_count = p_bic_data->Map.Continent_Count;
+	if ((origin_continent_id < 0) || (origin_continent_id >= continent_count))
+		return NULL;
+
+	Map * map = &p_bic_data->Map;
+	int tile_count = map->TileCount;
+	if (tile_count <= 0)
+		return NULL;
+
+	// Use a BFS over completed canal tiles, starting from those touching the origin water body.
+	int * queue_xs = malloc (sizeof (*queue_xs) * tile_count);
+	int * queue_ys = malloc (sizeof (*queue_ys) * tile_count);
+	int * ids = malloc (sizeof (*ids) * continent_count);
+	bool * seen = calloc (continent_count, sizeof (*seen));
+	if ((queue_xs == NULL) || (queue_ys == NULL) || (ids == NULL) || (seen == NULL)) {
+		if (queue_xs != NULL)
+			free (queue_xs);
+		if (queue_ys != NULL)
+			free (queue_ys);
+		if (ids != NULL)
+			free (ids);
+		if (seen != NULL)
+			free (seen);
+		return NULL;
+	}
+
+	seen[origin_continent_id] = true;
+
+	int const adj_dx[8] = { 0, 0, -2, 2, 1, 1, -1, -1 };
+	int const adj_dy[8] = { -2, 2, 0, 0, -1, 1, -1, 1 };
+	int head = 0;
+	int tail = 0;
+
+	// Seed queue with completed canal districts adjacent to the origin water body.
+	for (int index = 0; index < tile_count; index++) {
+		Tile * cand = Map_get_tile (map, __, index);
+		if ((cand == NULL) || (cand == p_null_tile))
+			continue;
+
+		int cx = 0, cy = 0;
+		tile_index_to_coords (map, index, &cx, &cy);
+		if (! tile_has_district_at (cx, cy, CANAL_DISTRICT_ID))
+			continue;
+
+		struct district_instance * inst = get_district_instance (cand);
+		if ((inst == NULL) || (inst->district_id != CANAL_DISTRICT_ID) ||
+		    (! district_is_complete (cand, CANAL_DISTRICT_ID)))
+			continue;
+
+		bool adjacent_to_origin = false;
+		for (int i = 0; i < 8; i++) {
+			int nx = cx + adj_dx[i];
+			int ny = cy + adj_dy[i];
+			wrap_tile_coords (map, &nx, &ny);
+			Tile * adj = tile_at (nx, ny);
+			if ((adj == NULL) || (adj == p_null_tile))
+				continue;
+			if (! adj->vtable->m35_Check_Is_Water (adj))
+				continue;
+			int adj_continent_id = adj->vtable->m46_Get_ContinentID (adj);
+			if (adj_continent_id == origin_continent_id) {
+				adjacent_to_origin = true;
+				break;
+			}
+		}
+		if (! adjacent_to_origin)
+			continue;
+
+		bool seen_canal = false;
+		for (int j = 0; j < tail; j++) {
+			if ((queue_xs[j] == cx) && (queue_ys[j] == cy)) {
+				seen_canal = true;
+				break;
+			}
+		}
+		if (! seen_canal && (tail < tile_count)) {
+			queue_xs[tail] = cx;
+			queue_ys[tail] = cy;
+			tail++;
+		}
+	}
+
+	int id_count = 0;
+
+	while (head < tail) {
+		int cx = queue_xs[head];
+		int cy = queue_ys[head];
+		head++;
+
+		// Record all water bodies adjacent to this canal tile.
+		for (int i = 0; i < 8; i++) {
+			int nx = cx + adj_dx[i];
+			int ny = cy + adj_dy[i];
+			wrap_tile_coords (map, &nx, &ny);
+			Tile * adj = tile_at (nx, ny);
+			if ((adj == NULL) || (adj == p_null_tile))
+				continue;
+			if (! adj->vtable->m35_Check_Is_Water (adj))
+				continue;
+
+			int adj_continent_id = adj->vtable->m46_Get_ContinentID (adj);
+			if ((adj_continent_id < 0) || (adj_continent_id >= continent_count))
+				continue;
+			if (! seen[adj_continent_id]) {
+				seen[adj_continent_id] = true;
+				ids[id_count] = adj_continent_id;
+				id_count++;
+			}
+		}
+
+		// Traverse to neighboring completed canal districts.
+		for (int i = 0; i < 8; i++) {
+			int nx = cx + adj_dx[i];
+			int ny = cy + adj_dy[i];
+			wrap_tile_coords (map, &nx, &ny);
+			if (! tile_has_district_at (nx, ny, CANAL_DISTRICT_ID))
+				continue;
+
+			Tile * adj = tile_at (nx, ny);
+			if ((adj == NULL) || (adj == p_null_tile))
+				continue;
+
+			struct district_instance * inst = get_district_instance (adj);
+			if ((inst == NULL) || (inst->district_id != CANAL_DISTRICT_ID) || (! district_is_complete (adj, CANAL_DISTRICT_ID)))
+				continue;
+
+			bool seen_canal = false;
+			for (int j = 0; j < tail; j++) {
+				if ((queue_xs[j] == nx) && (queue_ys[j] == ny)) {
+					seen_canal = true;
+					break;
+				}
+			}
+			if (! seen_canal && (tail < tile_count)) {
+				queue_xs[tail] = nx;
+				queue_ys[tail] = ny;
+				tail++;
+			}
+		}
+	}
+
+	free (queue_xs);
+	free (queue_ys);
+	free (seen);
+
+	if (out_count != NULL)
+		*out_count = id_count;
+	if (id_count <= 0) {
+		free (ids);
+		return NULL;
+	}
+
+	return ids;
 }
 
 Tile *
@@ -7529,46 +12462,223 @@ find_tile_for_neighborhood_district (City * city, int * out_x, int * out_y)
 	for (int r = 1; r <= city_work_radius; r++)
 		ring_order[ring_count++] = r;
 
-	for (int r_idx = 0; r_idx < ring_count; r_idx++) {
-		int ring = ring_order[r_idx];
-		int start_ni = workable_tile_counts[ring - 1];
-		int end_ni = workable_tile_counts[ring];
+	Tile * best_tile = NULL;
+	int best_yield = INT_MAX;
+	int best_x = -1, best_y = -1;
+	int current_ring = -1;
 
-		Tile * best_tile = NULL;
-		int best_yield = INT_MAX;
-
-		for (int ni = start_ni; ni < end_ni; ni++) {
-			int dx, dy;
-			patch_ni_to_diff_for_work_area (ni, &dx, &dy);
-			int tx = city_x + dx;
-			int ty = city_y + dy;
-			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
-			Tile * tile = tile_at (tx, ty);
-
-			if ((tile == NULL) || (tile == p_null_tile))
-				continue;
-			if (is->current_config.enable_distribution_hub_districts) {
-				int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
-				if (covered > 0)
-					continue;
+	FOR_TILE_RINGS_AROUND (tri, city_x, city_y, ring_order, ring_count) {
+		if (tri.current_ring != current_ring) {
+			if (best_tile != NULL) {
+				*out_x = best_x;
+				*out_y = best_y;
+				return best_tile;
 			}
-
-			if (! tile_suitable_for_district (tile, NEIGHBORHOOD_DISTRICT_ID, city, NULL))
-				continue;
-			if (get_district_instance (tile) != NULL)
-				continue;
-
-			int yield = compute_city_tile_yield_sum (city, tx, ty);
-			if (yield < best_yield) {
-				best_yield = yield;
-				best_tile = tile;
-				*out_x = tx;
-				*out_y = ty;
-			}
+			current_ring = tri.current_ring;
+			best_tile = NULL;
+			best_yield = INT_MAX;
 		}
 
-		if (best_tile != NULL)
-			return best_tile;
+		Tile * tile = tri.tile;
+		if (is->current_config.enable_distribution_hub_districts) {
+			int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
+			if (covered > 0)
+				continue;
+		}
+
+		if (! tile_suitable_for_district (tile, NEIGHBORHOOD_DISTRICT_ID, city, NULL))
+			continue;
+		if (tile_has_resource (tile))
+			continue;
+		if (get_district_instance (tile) != NULL &&
+		    ! tile_has_obsolete_district_for_civ (tile, city->Body.CivID))
+			continue;
+
+		int yield = compute_city_tile_yield_sum (city, tri.tile_x, tri.tile_y);
+		if (yield < best_yield) {
+			best_yield = yield;
+			best_tile = tile;
+			best_x = tri.tile_x;
+			best_y = tri.tile_y;
+		}
+	}
+
+	if (best_tile != NULL) {
+		*out_x = best_x;
+		*out_y = best_y;
+		return best_tile;
+	}
+
+	return NULL;
+}
+
+Tile *
+find_tile_for_port_district (City * city, int * out_x, int * out_y)
+{
+	if (city == NULL)
+		return NULL;
+
+	int city_x = city->Body.X;
+	int city_y = city->Body.Y;
+	int city_work_radius = is->current_config.city_work_radius;
+	int threshold_for_body_of_water = 21; // Mimic vanilla behavior so AI doesn't build ports in small lakes
+
+	// Search in order: ring 1, then rings 2..N
+	int ring_order[8];
+	int ring_count = 0;
+	for (int r = 1; r <= city_work_radius; r++)
+		ring_order[ring_count++] = r;
+
+	Tile * best_tile = NULL;
+	int best_yield = INT_MAX;
+	int best_x = -1, best_y = -1;
+	int current_ring = -1;
+
+	FOR_TILE_RINGS_AROUND (tri, city_x, city_y, ring_order, ring_count) {
+		if (tri.current_ring != current_ring) {
+			if (best_tile != NULL) {
+				*out_x = best_x;
+				*out_y = best_y;
+				return best_tile;
+			}
+			current_ring = tri.current_ring;
+			best_tile = NULL;
+			best_yield = INT_MAX;
+		}
+
+		Tile * tile = tri.tile;
+		if (is->current_config.enable_distribution_hub_districts) {
+			int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
+			if (covered > 0)
+				continue;
+		}
+
+		if (! tile_suitable_for_district (tile, PORT_DISTRICT_ID, city, NULL))
+			continue;
+		if (tile_has_resource (tile))
+			continue;
+		if (get_district_instance (tile) != NULL &&
+		    ! tile_has_obsolete_district_for_civ (tile, city->Body.CivID))
+			continue;
+		if (! tile->vtable->m35_Check_Is_Water (tile))
+			continue;
+
+		int continent_id = tile->vtable->m46_Get_ContinentID (tile);
+		if ((continent_id < 0) || (continent_id >= p_bic_data->Map.Continent_Count))
+			continue;
+		Continent * continent = &p_bic_data->Map.Continents[continent_id];
+		bool large_enough_body = (continent->Body.TileCount >= threshold_for_body_of_water);
+		if (! large_enough_body) {
+			int connected_count = 0;
+			int * connected_ids = get_water_continent_ids_connected_via_canal (tile, &connected_count);
+			for (int i = 0; i < connected_count; i++) {
+				int connected_id = connected_ids[i];
+				if ((connected_id < 0) || (connected_id >= p_bic_data->Map.Continent_Count))
+					continue;
+				Continent * connected_continent = &p_bic_data->Map.Continents[connected_id];
+				if (connected_continent->Body.TileCount >= threshold_for_body_of_water) {
+					large_enough_body = true;
+					break;
+				}
+			}
+			if (connected_ids != NULL)
+				free (connected_ids);
+		}
+		if (! large_enough_body)
+			continue;
+
+		int yield = compute_city_tile_yield_sum (city, tri.tile_x, tri.tile_y);
+		if (yield < best_yield) {
+			best_yield = yield;
+			best_tile = tile;
+			best_x = tri.tile_x;
+			best_y = tri.tile_y;
+		}
+	}
+
+	if (best_tile != NULL) {
+		*out_x = best_x;
+		*out_y = best_y;
+		return best_tile;
+	}
+
+	return NULL;
+}
+
+Tile *
+find_tile_for_wonder_district (City * city, int * out_x, int * out_y)
+{
+	if (city == NULL)
+		return NULL;
+
+	int target_improv_id = -1;
+	if (lookup_pending_building_order (city, &target_improv_id)) {
+		if ((target_improv_id < 0) ||
+		    (target_improv_id >= p_bic_data->ImprovementsCount) ||
+		    ((p_bic_data->Improvements[target_improv_id].Characteristics & (ITC_Wonder | ITC_Small_Wonder)) == 0))
+			target_improv_id = -1;
+	}
+	if (target_improv_id < 0) {
+		int order_id = city->Body.Order_ID;
+		if ((city->Body.Order_Type == COT_Improvement) &&
+		    (order_id >= 0) &&
+		    (order_id < p_bic_data->ImprovementsCount)) {
+			Improvement * order = &p_bic_data->Improvements[order_id];
+			if (order->Characteristics & (ITC_Wonder | ITC_Small_Wonder))
+				target_improv_id = order_id;
+		}
+	}
+
+	int city_x = city->Body.X;
+	int city_y = city->Body.Y;
+	int city_work_radius = is->current_config.city_work_radius;
+
+	// Search in order: ring 2, then rings 3..N, then ring 1 as last resort
+	int ring_order[8];
+	int ring_count = 0;
+	ring_order[ring_count++] = 2;
+	for (int r = 3; r <= city_work_radius; r++)
+		ring_order[ring_count++] = r;
+	ring_order[ring_count++] = 1;
+
+	Tile * best_tile = NULL;
+	int best_yield = INT_MAX;
+	int best_x = -1, best_y = -1;
+	int current_ring = -1;
+
+	FOR_TILE_RINGS_AROUND (tri, city_x, city_y, ring_order, ring_count) {
+		if (tri.current_ring != current_ring) {
+			if (best_tile != NULL) {
+				*out_x = best_x;
+				*out_y = best_y;
+				return best_tile;
+			}
+			current_ring = tri.current_ring;
+			best_tile = NULL;
+			best_yield = INT_MAX;
+		}
+
+		Tile * tile = tri.tile;
+		if (! tile_suitable_for_district (tile, WONDER_DISTRICT_ID, city, NULL))
+			continue;
+		if (tile_has_resource (tile))
+			continue;
+		if (! wonder_is_buildable_on_tile (tile, target_improv_id))
+			continue;
+
+		int yield = compute_city_tile_yield_sum (city, tri.tile_x, tri.tile_y);
+		if (yield < best_yield && (! is_tile_earmarked_for_district (tri.tile_x, tri.tile_y))) {
+			best_yield = yield;
+			best_tile = tile;
+			best_x = tri.tile_x;
+			best_y = tri.tile_y;
+		}
+	}
+
+	if (best_tile != NULL) {
+		*out_x = best_x;
+		*out_y = best_y;
+		return best_tile;
 	}
 
 	return NULL;
@@ -7594,8 +12704,6 @@ find_tile_for_distribution_hub_district (City * city, int * out_x, int * out_y)
 	int best_distance = -1;
 	int best_distance_to_capital = -1;
 	bool best_has_resource = true;
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
 
 	int civ_id = city->Body.CivID;
 	bool has_capital = false;
@@ -7613,17 +12721,16 @@ find_tile_for_distribution_hub_district (City * city, int * out_x, int * out_y)
 			capital_continent_id = capital_tile->vtable->m46_Get_ContinentID (capital_tile);
 	}
 
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int tx = city_x + dx, ty = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
-		Tile * tile = tile_at (tx, ty);
+	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+		int tx = wai.tile_x, ty = wai.tile_y;
+		Tile * tile = wai.tile;
 		bool has_resource;
 		if (! tile_suitable_for_district (tile, DISTRIBUTION_HUB_DISTRICT_ID, city, &has_resource))
 			continue;
+		if (has_resource)
+			continue;
 
-		int chebyshev = compute_wrapped_chebyshev_distance (tx, ty, city_x, city_y);
+		int chebyshev = compute_wrapped_chebyshev_distance (tx, ty, city->Body.X, city->Body.Y);
 		if (chebyshev <= 1)
 			continue;
 
@@ -7637,7 +12744,7 @@ find_tile_for_distribution_hub_district (City * city, int * out_x, int * out_y)
 			if ((nearby_tile != NULL) && (nearby_tile != p_null_tile)) {
 				struct district_instance * nearby_inst = get_district_instance (nearby_tile);
 				if ((nearby_inst != NULL) &&
-				    (nearby_inst->district_type == DISTRIBUTION_HUB_DISTRICT_ID) &&
+				    (nearby_inst->district_id == DISTRIBUTION_HUB_DISTRICT_ID) &&
 				    district_is_complete (nearby_tile, DISTRIBUTION_HUB_DISTRICT_ID)) {
 					too_close_to_existing_hub_or_city = true;
 					break;
@@ -7653,7 +12760,7 @@ find_tile_for_distribution_hub_district (City * city, int * out_x, int * out_y)
 
 		int raw_yield = compute_city_tile_yield_sum (city, tx, ty);
 		int adjusted_yield = raw_yield - (has_resource ? resource_penalty : 0);
-		int distance = compute_wrapped_manhattan_distance (tx, ty, city_x, city_y);
+		int distance = compute_wrapped_manhattan_distance (tx, ty, city->Body.X, city->Body.Y);
 		int distance_to_capital = has_capital
 			? compute_wrapped_manhattan_distance (tx, ty, capital_x, capital_y)
 			: 0;
@@ -7695,25 +12802,273 @@ find_tile_for_distribution_hub_district (City * city, int * out_x, int * out_y)
 	return best_tile;
 }
 
-int
-count_cities_in_work_radius_of_tile (int tile_x, int tile_y, int civ_id)
+bool
+city_can_build_district (City * city, int district_id)
 {
-	int count = 0;
+	if ((city == NULL) || (district_id < 0) || (district_id >= is->district_count))
+		return false;
 
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = tile_x + dx, y = tile_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
-		if ((tile != NULL) && (tile != p_null_tile) && (tile->CityID >= 0)) {
-			City * city = get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
-			if ((city != NULL) && (city->Body.CivID == civ_id))
-				count += 1;
+	struct district_config const * cfg = &is->district_configs[district_id];
+	struct district_infos const * info = &is->district_infos[district_id];
+
+	if (! leader_can_build_district (&leaders[city->Body.CivID], district_id))
+		return false;
+
+	// Check resource prerequisites (city connection) - ALL must be present
+	for (int i = 0; i < info->resource_prereq_count; i++) {
+		int resource_req = info->resource_prereq_ids[i];
+		if ((resource_req >= 0) && ! patch_City_has_resource (city, __, resource_req))
+			return false;
+	}
+
+	// Check if district does not allow multiple and city already has one
+	if (! cfg->allow_multiple && city_has_required_district (city, district_id))
+		return false;
+
+	return true;
+}
+
+bool
+leader_has_wonder_prereq (Leader * leader, struct district_infos const * info)
+{
+	if (info == NULL)
+		return false;
+	if (info->wonder_prereq_count <= 0)
+		return true;
+	if ((leader == NULL) || (leader->Improvement_Counts == NULL))
+		return false;
+
+	for (int i = 0; i < info->wonder_prereq_count; i++) {
+		int improv_id = info->wonder_prereq_ids[i];
+		if (improv_id >= 0 && leader->Improvement_Counts[improv_id] > 0)
+			return true;
+	}
+
+	return false;
+}
+
+bool
+leader_has_natural_wonder_prereq_in_territory (int civ_id, struct district_infos const * info)
+{
+	if (info == NULL)
+		return false;
+	if (info->natural_wonder_prereq_count <= 0)
+		return true;
+	if (! is->current_config.enable_natural_wonders)
+		return false;
+
+	FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+		struct district_instance * inst = (struct district_instance *)tei.value;
+		if ((inst == NULL) || (inst->district_id != NATURAL_WONDER_DISTRICT_ID))
+			continue;
+
+		int wonder_id = inst->natural_wonder_info.natural_wonder_id;
+		if (wonder_id < 0)
+			continue;
+
+		bool matches = false;
+		for (int i = 0; i < info->natural_wonder_prereq_count; i++) {
+			if (info->natural_wonder_prereq_ids[i] == wonder_id) {
+				matches = true;
+				break;
+			}
+		}
+		if (! matches)
+			continue;
+
+		Tile * tile = (Tile *)tei.key;
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+
+		return tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id;
+	}
+
+	return false;
+}
+
+int
+count_distribution_hubs_for_civ (int civ_id)
+{
+	int current = 0;
+	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
+		struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
+		if ((rec != NULL) && (rec->civ_id == civ_id))
+			current++;
+	}
+	return current;
+}
+
+bool
+leader_can_natively_build_district (Leader * leader, int district_id)
+{
+	if ((leader == NULL) || (district_id < 0) || (district_id >= is->district_count))
+		return false;
+
+	struct district_config const * cfg = &is->district_configs[district_id];
+	struct district_infos const * info = &is->district_infos[district_id];
+
+	for (int i = 0; i < info->advance_prereq_count; i++) {
+		int prereq_id = info->advance_prereq_ids[i];
+		if ((prereq_id >= 0) && ! Leader_has_tech (leader, __, prereq_id))
+			return false;
+	}
+	int obsolete_id = info->obsoleted_by_id;
+	if ((obsolete_id >= 0) && Leader_has_tech (leader, __, obsolete_id))
+		return false;
+
+	if (! leader_has_wonder_prereq (leader, info))
+		return false;
+
+	if (! leader_has_natural_wonder_prereq_in_territory (leader->ID, info))
+		return false;
+
+	if (district_id == DISTRIBUTION_HUB_DISTRICT_ID) {
+		int max_per_100 = is->current_config.max_distribution_hub_count_per_100_cities;
+		if (max_per_100 > 0) {
+			int city_count = leader->Cities_Count;
+			int max_allowed = (city_count * max_per_100 + 99) / 100;
+			if (max_allowed <= 0)
+				return false;
+
+			int current = count_distribution_hubs_for_civ (leader->ID);
+			if (current >= max_allowed)
+				return false;
 		}
 	}
 
-	return count;
+	if (cfg->has_buildable_by_civs) {
+		bool civ_match = false;
+		if (cfg->buildable_by_civ_count > 0) {
+			Race * race = (leader->RaceID >= 0 && leader->RaceID < p_bic_data->RacesCount)
+				? &p_bic_data->Races[leader->RaceID]
+				: NULL;
+			if (race == NULL)
+				return false;
+			for (int i = 0; i < cfg->buildable_by_civ_count; i++) {
+				char const * civ_name = cfg->buildable_by_civs[i];
+				if ((civ_name == NULL) || (civ_name[0] == '\0')) continue;
+				if ((race->CountryName != NULL) && (strcmp (civ_name, race->CountryName) == 0))     civ_match = true; break;
+				if ((race->SingularName != NULL) && (strcmp (civ_name, race->SingularName) == 0))   civ_match = true; break;
+				if ((race->AdjectiveName != NULL) && (strcmp (civ_name, race->AdjectiveName) == 0)) civ_match = true; break;
+				if ((race->LeaderName != NULL) && (strcmp (civ_name, race->LeaderName) == 0))       civ_match = true; break;
+			}
+		}
+		if (! civ_match)
+			return false;
+	}
+
+	if (cfg->has_buildable_by_civ_traits) {
+		if (cfg->buildable_by_civ_traits_id_count <= 0)
+			return false;
+		Race * race = (leader->RaceID >= 0 && leader->RaceID < p_bic_data->RacesCount)
+			? &p_bic_data->Races[leader->RaceID]
+			: NULL;
+		if (race == NULL || race->vtable == NULL)
+			return false;
+		bool trait_match = false;
+		for (int i = 0; i < cfg->buildable_by_civ_traits_id_count; i++) {
+			int trait_id = cfg->buildable_by_civ_traits_ids[i];
+			if (trait_id >= 0 && race->vtable->CheckBonus (race, __, trait_id)) {
+				trait_match = true;
+				break;
+			}
+		}
+		if (! trait_match)
+			return false;
+	}
+
+	if (cfg->has_buildable_by_civ_govs) {
+		if (cfg->buildable_by_civ_govs_id_count <= 0)
+			return false;
+		int gov_id = leader->GovernmentType;
+		bool gov_match = false;
+		for (int i = 0; i < cfg->buildable_by_civ_govs_id_count; i++) {
+			if (cfg->buildable_by_civ_govs_ids[i] == gov_id) {
+				gov_match = true;
+				break;
+			}
+		}
+		if (! gov_match)
+			return false;
+	}
+
+	if (cfg->has_buildable_by_civ_cultures) {
+		if (cfg->buildable_by_civ_cultures_id_count <= 0)
+			return false;
+		Race * race = (leader->RaceID >= 0 && leader->RaceID < p_bic_data->RacesCount)
+			? &p_bic_data->Races[leader->RaceID]
+			: NULL;
+		if (race == NULL)
+			return false;
+		int culture_id = race->CultureGroupID;
+		bool culture_match = false;
+		for (int i = 0; i < cfg->buildable_by_civ_cultures_id_count; i++) {
+			if (cfg->buildable_by_civ_cultures_ids[i] == culture_id) {
+				culture_match = true;
+				break;
+			}
+		}
+		if (! culture_match)
+			return false;
+	}
+
+	return true;
+}
+
+bool
+leader_has_war_ally_district_access (Leader * leader, int district_id)
+{
+	if (leader == NULL)
+		return false;
+
+	int self_id = leader->ID;
+	for (int civ_id = 0; civ_id < 32; civ_id++) {
+		if (civ_id == self_id)
+			continue;
+		Leader * other = &leaders[civ_id];
+		if (other->Military_Allies[self_id] != 0 && leader_can_natively_build_district (other, district_id))
+			return true;
+	}
+
+	return false;
+}
+
+bool
+leader_has_pact_ally_district_access (Leader * leader, int district_id)
+{
+	if (leader == NULL)
+		return false;
+
+	int self_id = leader->ID;
+	for (int civ_id = 0; civ_id < 32; civ_id++) {
+		if (civ_id == self_id)
+			continue;
+		Leader * other = &leaders[civ_id];
+		if (((leader->Relation_Treaties[civ_id] & 1) != 0 ||  // 1 = peace treaty
+		     (leader->Relation_Treaties[civ_id] & 4) != 0) && // 4 = mutual protection pact
+		    leader_can_natively_build_district (other, district_id)) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool 
+leader_can_build_district (Leader * leader, int district_id)
+{
+	bool can_natively_build = leader_can_natively_build_district (leader, district_id);
+
+	if (can_natively_build)
+		return true;
+
+	struct district_config const * cfg = &is->district_configs[district_id];
+	if (cfg->buildable_by_war_allies && leader_has_war_ally_district_access (leader, district_id))
+		return true;
+	if (cfg->buildable_by_pact_allies && leader_has_pact_ally_district_access (leader, district_id))
+		return true;
+
+	return can_natively_build;
 }
 
 Tile *
@@ -7724,10 +13079,18 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 	if ((district_id < 0) || (district_id >= is->district_count))
 		return NULL;
 
+	// Check if city can build this district at all
+	if (! city_can_build_district (city, district_id))
+		return NULL;
+
 	if (district_id == NEIGHBORHOOD_DISTRICT_ID)
 		return find_tile_for_neighborhood_district (city, out_x, out_y);
 	if (district_id == DISTRIBUTION_HUB_DISTRICT_ID)
 		return find_tile_for_distribution_hub_district (city, out_x, out_y);
+	if (district_id == PORT_DISTRICT_ID)
+		return find_tile_for_port_district (city, out_x, out_y);
+	if (district_id == WONDER_DISTRICT_ID)
+		return find_tile_for_wonder_district (city, out_x, out_y);
 
 	int city_x = city->Body.X;
 	int city_y = city->Body.Y;
@@ -7742,45 +13105,49 @@ find_tile_for_district (City * city, int district_id, int * out_x, int * out_y)
 		ring_order[ring_count++] = r;
 	ring_order[ring_count++] = 1;
 
-	for (int r_idx = 0; r_idx < ring_count; r_idx++) {
-		int ring = ring_order[r_idx];
-		int start_ni = workable_tile_counts[ring - 1];
-		int end_ni = workable_tile_counts[ring];
+	Tile * best_tile = NULL;
+	int best_yield = INT_MAX;
+	int best_x = -1, best_y = -1;
+	int current_ring = -1;
 
-		Tile * best_tile = NULL;
-		int best_yield = INT_MAX;
-
-		for (int ni = start_ni; ni < end_ni; ni++) {
-			int dx, dy;
-			patch_ni_to_diff_for_work_area (ni, &dx, &dy);
-			int tx = (city_x + dx) & 0xFF;
-			int ty = (city_y + dy) & 0xFF;
-			Tile * tile = tile_at (tx, ty);
-
-			if ((tile == NULL) || (tile == p_null_tile))
-				continue;
-			if (is->current_config.enable_distribution_hub_districts) {
-				int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
-				if (covered > 0)
-					continue;
+	FOR_TILE_RINGS_AROUND (tri, city_x, city_y, ring_order, ring_count) {
+		if (tri.current_ring != current_ring) {
+			if (best_tile != NULL) {
+				*out_x = best_x;
+				*out_y = best_y;
+				return best_tile;
 			}
-
-			if (! tile_suitable_for_district (tile, district_id, city, NULL))
-				continue;
-			if (get_district_instance (tile) != NULL)
-				continue;
-
-			int yield = compute_city_tile_yield_sum (city, tx, ty);
-			if (yield < best_yield && ! is_tile_earmarked_for_district (tx, ty)) {
-				best_yield = yield;
-				best_tile = tile;
-				*out_x = tx;
-				*out_y = ty;
-			}
+			current_ring = tri.current_ring;
+			best_tile = NULL;
+			best_yield = INT_MAX;
 		}
 
-		if (best_tile != NULL)
-			return best_tile;
+		Tile * tile = tri.tile;
+		if (is->current_config.enable_distribution_hub_districts) {
+			int covered = itable_look_up_or (&is->distribution_hub_coverage_counts, (int)tile, 0);
+			if (covered > 0)
+				continue;
+		}
+
+		if (! tile_suitable_for_district (tile, district_id, city, NULL))
+			continue;
+		if (get_district_instance (tile) != NULL &&
+		    ! tile_has_obsolete_district_for_civ (tile, city->Body.CivID))
+			continue;
+
+		int yield = compute_city_tile_yield_sum (city, tri.tile_x, tri.tile_y);
+		if (yield < best_yield && (! is_tile_earmarked_for_district (tri.tile_x, tri.tile_y))) {
+			best_yield = yield;
+			best_tile = tile;
+			best_x = tri.tile_x;
+			best_y = tri.tile_y;
+		}
+	}
+
+	if (best_tile != NULL) {
+		*out_x = best_x;
+		*out_y = best_y;
+		return best_tile;
 	}
 
 	return NULL;
@@ -7792,48 +13159,36 @@ get_completed_district_tile_for_city (City * city, int district_id, int * out_x,
 	if ((city == NULL) || (district_id < 0) || (district_id >= is->district_count))
 		return NULL;
 
-	int civ_id = city->Body.CivID;
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * candidate = tile_at (x, y);
-		if ((candidate == NULL) || (candidate == p_null_tile))
-			continue;
-		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id)
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		int x = wai.tile_x, y = wai.tile_y;
+		Tile * candidate = wai.tile;
+		struct district_instance * inst = wai.district_inst;
+
+		if (inst->district_id != district_id)
 			continue;
 
-		struct district_instance * inst = get_district_instance (candidate);
-		if (inst != NULL &&
-		    inst->district_type == district_id &&
-		    district_is_complete (candidate, district_id)) {
-
-			// For wonder districts, filter based on wonder_district_state
-			if (district_id == WONDER_DISTRICT_ID) {
-				struct wonder_district_info * info = &inst->wonder_info;
-				// Must be either unused or under construction by this city
-				if (info->state == WDS_COMPLETED)
-					continue;
-				if (info->state == WDS_UNDER_CONSTRUCTION && info->city_id != city->Body.ID)
-					continue;
-				if (info->state == WDS_UNDER_CONSTRUCTION) {
-					info->city = city;
-					info->city_id = city->Body.ID;
-				}
-			}
-
-				if (out_x != NULL)
-					*out_x = x;
-				if (out_y != NULL)
-					*out_y = y;
-				return candidate;
+		// For wonder districts, filter based on wonder_district_state
+		if (district_id == WONDER_DISTRICT_ID) {
+			struct wonder_district_info * info = &inst->wonder_info;
+			// Must be either unused or under construction by this city
+			if (info->state == WDS_COMPLETED)
+				continue;
+			if (info->state == WDS_UNDER_CONSTRUCTION && info->city_id != city->Body.ID)
+				continue;
+			if (info->state == WDS_UNDER_CONSTRUCTION) {
+				info->city = city;
+				info->city_id = city->Body.ID;
 			}
 		}
 
-		return NULL;
+		if (out_x != NULL)
+			*out_x = x;
+		if (out_y != NULL)
+			*out_y = y;
+		return candidate;
+	}
+
+	return NULL;
 }
 
 bool
@@ -7842,19 +13197,14 @@ tile_has_friendly_aerodrome_district (Tile * tile, int civ_id, bool require_avai
 	if (! is->current_config.enable_districts ||
 	    ! is->current_config.enable_aerodrome_districts ||
 	    (tile == NULL) ||
-	    (tile == p_null_tile) ||
-	    (civ_id < 0) || (civ_id >= 32))
-		return false;
-
-	int aerodrome_id = AERODROME_DISTRICT_ID;
-	if (aerodrome_id < 0)
+	    (tile == p_null_tile))
 		return false;
 
 	struct district_instance * inst = get_district_instance (tile);
-	if (inst == NULL || inst->district_type != aerodrome_id)
+	if (inst == NULL || inst->district_id != AERODROME_DISTRICT_ID)
 		return false;
 
-	if (! district_is_complete (tile, aerodrome_id))
+	if (! district_is_complete (tile, AERODROME_DISTRICT_ID))
 		return false;
 
 	int territory_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
@@ -7872,6 +13222,24 @@ tile_has_friendly_aerodrome_district (Tile * tile, int civ_id, bool require_avai
 }
 
 bool
+tile_has_friendly_port_district (Tile * tile, int civ_id)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_port_districts ||
+	    (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if ((inst == NULL) || (inst->district_id != PORT_DISTRICT_ID))
+		return false;
+
+	if (! district_is_complete (tile, PORT_DISTRICT_ID))
+		return false;
+
+	return tile->vtable->m38_Get_Territory_OwnerID (tile) == civ_id;
+}
+
+bool
 city_has_required_district (City * city, int district_id)
 {
 	if ((city == NULL) || (district_id < 0) || (district_id >= is->district_count))
@@ -7885,34 +13253,23 @@ city_has_required_district (City * city, int district_id)
 }
 
 bool
-city_has_wonder_district_with_no_completed_wonder (City * city)
+city_has_wonder_district_with_no_completed_wonder (City * city, int wonder_improv_id)
 {
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
 		return false;
 
-	int civ_id = city->Body.CivID;
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * candidate = tile_at (x, y);
-		if (candidate == NULL || candidate == p_null_tile) continue;
-		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id) continue;
-		struct district_instance * inst = get_district_instance (candidate);
-		if (inst == NULL || inst->district_type != WONDER_DISTRICT_ID) continue;
-		if (! district_is_complete (candidate, WONDER_DISTRICT_ID)) continue;
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		Tile * candidate = wai.tile;
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_id != WONDER_DISTRICT_ID) continue;
 
-		// Get wonder district info
 		struct wonder_district_info * info = get_wonder_district_info (candidate);
+		bool buildable = wonder_is_buildable_on_tile (candidate, wonder_improv_id);
 		if (info == NULL) return true;
 		if (info->state == WDS_COMPLETED) continue; 
-		if (info->state == WDS_UNUSED) return true; // Unreserved and available
-		if ((info->state == WDS_UNDER_CONSTRUCTION) && (info->city_id == city->Body.ID)) {
+		if (info->state == WDS_UNUSED && buildable) return true;
+		if (info->state == WDS_UNDER_CONSTRUCTION && buildable && info->city_id == city->Body.ID) {
 			info->city = city;
-			info->city_id = city->Body.ID;
 			return true; // Reserved by this city
 		}
 	}
@@ -7995,24 +13352,11 @@ count_neighborhoods_in_city_radius (City * city)
 		return 0;
 
 	int count = 0;
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
-		if ((tile == NULL) || (tile == p_null_tile))
-			continue;
-		if (! (tile->vtable->m38_Get_Territory_OwnerID (tile) == city->Body.CivID))
-			continue;
-
-		struct district_instance * inst = get_district_instance (tile);
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		struct district_instance * inst = wai.district_inst;
 		if (inst != NULL &&
-		    inst->district_type >= 0 && inst->district_type < is->district_count &&
-		    inst->district_type == NEIGHBORHOOD_DISTRICT_ID &&
-		    district_is_complete (tile, inst->district_type))
+		    inst->district_id >= 0 && inst->district_id < is->district_count &&
+		    inst->district_id == NEIGHBORHOOD_DISTRICT_ID)
 			count++;
 	}
 	return count;
@@ -8095,8 +13439,8 @@ ensure_neighborhood_request_for_city (City * city)
 	    (city == NULL))
 		return;
 
-	int prereq = is->district_infos[NEIGHBORHOOD_DISTRICT_ID].advance_prereq_id;
-	if ((prereq >= 0) && ! Leader_has_tech (&leaders[city->Body.CivID], __, prereq)) return;
+	if (! leader_can_build_district (&leaders[city->Body.CivID], NEIGHBORHOOD_DISTRICT_ID))
+		return;
 
 	mark_city_needs_district (city, NEIGHBORHOOD_DISTRICT_ID);
 }
@@ -8114,34 +13458,19 @@ calculate_district_culture_science_bonuses (City * city, int * culture_bonus, in
 
 	int total_culture = 0;
 	int total_science = 0;
-	int city_civ_id = city->Body.CivID;
 	int utilized_neighborhoods = count_utilized_neighborhoods_in_city_radius (city);
 
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
-
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		if (n == 0)
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		if ((wai.dx == 0) && (wai.dy == 0))
 			continue;
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
-		if ((tile == NULL) || (tile == p_null_tile)) continue;
-		if (tile_has_enemy_unit (tile, city_civ_id)) continue;
-		if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
-		if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city_civ_id) continue;
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL) continue;
-		int district_id = inst->district_type;
-		if ((district_id < 0) || (district_id >= is->district_count)) continue;
-		if (! district_is_complete (tile, district_id)) continue;
+		Tile * tile = wai.tile;
+		struct district_instance * inst = wai.district_inst;
+		int district_id = inst->district_id;
 
 		struct district_config const * cfg = &is->district_configs[district_id];
 		int district_culture_bonus = 0;
 		int district_science_bonus = 0;
-		get_effective_district_yields (inst, cfg, NULL, NULL, NULL, &district_science_bonus, &district_culture_bonus);
+		get_effective_district_yields (inst, cfg, NULL, NULL, NULL, &district_science_bonus, &district_culture_bonus, NULL);
 
 		bool is_neighborhood = (cfg->command == UCV_Build_Neighborhood);
 		if (is_neighborhood) {
@@ -8160,6 +13489,43 @@ calculate_district_culture_science_bonuses (City * city, int * culture_bonus, in
 		*culture_bonus = total_culture;
 	if (science_bonus != NULL)
 		*science_bonus = total_science;
+}
+
+void
+calculate_district_happiness_bonus (City * city, int * happiness_bonus)
+{
+	if (happiness_bonus != NULL)
+		*happiness_bonus = 0;
+
+	if (! is->current_config.enable_districts || (city == NULL))
+		return;
+
+	int total_happy = 0;
+	int utilized_neighborhoods = count_utilized_neighborhoods_in_city_radius (city);
+
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		if ((wai.dx == 0) && (wai.dy == 0))
+			continue;
+
+		struct district_instance * inst = wai.district_inst;
+		int district_id = inst->district_id;
+		struct district_config const * cfg = &is->district_configs[district_id];
+
+		bool is_neighborhood = district_id == NEIGHBORHOOD_DISTRICT_ID;
+		if (is_neighborhood && (utilized_neighborhoods <= 0))
+			continue;
+
+		if (is_neighborhood)
+			utilized_neighborhoods--;
+
+		int district_happy = 0;
+		get_effective_district_yields (inst, cfg, NULL, NULL, NULL, NULL, NULL, &district_happy);
+		if (district_happy != 0)
+			total_happy += district_happy;
+	}
+
+	if (happiness_bonus != NULL)
+		*happiness_bonus = total_happy;
 }
 
 int __fastcall
@@ -8219,7 +13585,12 @@ maybe_show_neighborhood_growth_warning (City * city)
 
 	char msg[160];
 	char const * city_name = city->Body.CityName;
-	snprintf (msg, sizeof msg, "%s %s", city_name, is->c3x_labels[CL_REQUIRES_NEIGHBORHOOD_TO_GROW]);
+	snprintf (msg, sizeof msg, "%s %s %s", 
+		city_name, 
+		is->c3x_labels[CL_REQUIRES],
+		is->district_configs[NEIGHBORHOOD_DISTRICT_ID].display_name, 
+		is->c3x_labels[CL_TO_GROW]
+	);
 	msg[(sizeof msg) - 1] = '\0';
 	show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
 }
@@ -8238,14 +13609,59 @@ patch_is_not_pop_capped_or_starving (City * city)
 	return true;
 }
 
-void
+bool
 remove_building_if_no_district (City * city, int district_id, int building_id)
 {
-	if ((city == NULL) || (building_id < 0)) return;
-	if (! patch_City_has_improvement (city, __, building_id, false)) return;
-	if (city_has_required_district (city, district_id)) return;
+	if ((city == NULL) || (building_id < 0)) return false;
+	if (! patch_City_has_improvement (city, __, building_id, false)) return false;
+	if (city_has_required_district (city, district_id)) return false;
 
 	patch_City_add_or_remove_improvement (city, __, building_id, 0, false);
+	return true;
+}
+
+void
+reduce_city_population_due_to_lost_neighborhood (City * city)
+{
+	if (city == NULL)
+		return;
+
+	if (! (is->current_config.enable_districts &&
+	       is->current_config.enable_neighborhood_districts &&
+	       is->current_config.destroying_neighborhood_reduces_pop))
+		return;
+
+	int base_cap = is->current_config.maximum_pop_before_neighborhood_needed;
+	int per_neighborhood = is->current_config.per_neighborhood_pop_growth_enabled;
+	if ((base_cap <= 0) || (per_neighborhood <= 0))
+		return;
+
+	int neighborhoods = count_neighborhoods_in_city_radius (city);
+	int cap = base_cap + (per_neighborhood * neighborhoods);
+	if (cap < base_cap)
+		cap = base_cap;
+
+	int pop = city->Body.Population.Size;
+	if (pop <= cap)
+		return;
+
+	int to_remove = pop - cap;
+	int removed = 0;
+	while (to_remove-- > 0) {
+		City_remove_population (city, __, 1, -1, '\0');
+		removed++;
+	}
+
+	if ((removed > 0) && ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)) {
+		char msg[160];
+		snprintf (msg, sizeof msg, "%s %s %s", 
+			city->Body.CityName, 
+			is->c3x_labels[CL_LOST_POPULATION_DUE_TO_DESTROYED_NEIGHBORHOOD], 
+			is->district_configs[NEIGHBORHOOD_DISTRICT_ID].display_name
+		);
+		msg[(sizeof msg) - 1] = '\0';
+		show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
+	}
 }
 
 bool
@@ -8255,28 +13671,14 @@ city_has_other_completed_district (City * city, int district_id, int removed_x, 
 	    (city == NULL) || (district_id < 0) || (district_id >= is->district_count))
 		return false;
 
-	int civ_id = city->Body.CivID;
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * candidate = tile_at (x, y);
-		if ((candidate == NULL) || (candidate == p_null_tile))
-			continue;
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		int x = wai.tile_x, y = wai.tile_y;
+		Tile * candidate = wai.tile;
 		if ((x == removed_x) && (y == removed_y))
 			continue;
 
-		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id)
-			continue;
-
-		struct district_instance * inst = get_district_instance (candidate);
-		if (inst == NULL || inst->district_type != district_id)
-			continue;
-
-		if (! district_is_complete (candidate, district_id))
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_id != district_id)
 			continue;
 
 		return true;
@@ -8293,7 +13695,7 @@ district_instance_is_redundant (struct district_instance * inst, Tile * tile)
 	    (tile == NULL) || (tile == p_null_tile))
 		return false;
 
-	int district_id = inst->district_type;
+	int district_id = inst->district_id;
 	if ((district_id < 0) || (district_id >= is->district_count))
 		return false;
 
@@ -8313,22 +13715,8 @@ district_instance_is_redundant (struct district_instance * inst, Tile * tile)
 	if (district_id == WONDER_DISTRICT_ID)
 		return inst->wonder_info.state == WDS_UNUSED;
 
-	bool found_city = false;
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = tile_x + dx, y = tile_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * candidate = tile_at (x, y);
-		if ((candidate == NULL) || (candidate == p_null_tile))
-			continue;
-
-		City * city = get_city_ptr (candidate->vtable->m45_Get_City_ID (candidate));
-		if ((city == NULL) || (city->Body.CivID != civ_id))
-			continue;
-
-		found_city = true;
-		if (! city_has_other_completed_district (city, district_id, tile_x, tile_y))
+	FOR_CITIES_AROUND (wai, tile_x, tile_y) {
+		if (! city_has_other_completed_district (wai.city, district_id, tile_x, tile_y))
 			return false;
 	}
 
@@ -8351,18 +13739,8 @@ any_nearby_city_would_lose_district_benefits (int district_id, int civ_id, int r
 		return false;
 
 	// Check all cities within work radius of the removed district
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = removed_x + dx, y = removed_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
-		if ((tile == NULL) || (tile == p_null_tile))
-			continue;
-
-		City * city = get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
-		if (city == NULL || city->Body.CivID != civ_id)
-			continue;
+	FOR_CITIES_AROUND (wai, removed_x, removed_y) {
+		City * city = wai.city;
 
 		// Check if this city has another completed district of the same type nearby (excluding the one being removed)
 		if (city_has_other_completed_district (city, district_id, removed_x, removed_y))
@@ -8391,28 +13769,55 @@ remove_dependent_buildings_for_district (int district_id, int center_x, int cent
 	    (center_x >= p_bic_data->Map.Width) || (center_y >= p_bic_data->Map.Height))
 		return;
 
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = center_x + dx, y = center_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
-		if ((tile == NULL) || (tile == p_null_tile))
-			continue;
-		City * city = get_city_ptr (tile->vtable->m45_Get_City_ID (tile));
-		if (city == NULL)
-			continue;
+	FOR_CITIES_AROUND (wai, center_x, center_y) {
+		City * city = wai.city;
 
 		if (city_has_other_completed_district (city, district_id, center_x, center_y))
 			continue;
+
+		int removed_count = 0;
+		int first_building_id = -1;
 
 		for (int i = 0; i < info->dependent_building_count; i++) {
 			int building_id = info->dependent_building_ids[i];
 			if (building_id >= 0) {
 				// This also loops through tiles around the city but is not redundant, as the city
 				// may have multiple districts of the same type in its radius (eg outside radius of this particular district)
-				remove_building_if_no_district (city, district_id, building_id);
+				if (remove_building_if_no_district (city, district_id, building_id)) {
+					if (removed_count == 0)
+						first_building_id = building_id;
+					removed_count++;
+				}
 			}
+		}
+
+		if ((removed_count > 0) &&
+		    is->current_config.show_message_when_building_lost_to_destroyed_district &&
+		    ((*p_human_player_bits & (1 << city->Body.CivID)) != 0)) {
+			char msg[200];
+			char const * district_name = is->district_configs[district_id].name;
+			char const * building_name = (first_building_id >= 0) ? p_bic_data->Improvements[first_building_id].Name.S : "";
+
+			if (removed_count == 1)
+				snprintf (msg, sizeof msg, "%s%s %s %s %s",
+					  city->Body.CityName,
+					  is->c3x_labels[CL_APOSTROPHE_S],
+					  building_name,
+					  is->c3x_labels[CL_LOST_DUE_TO_DESTROYED],
+					  district_name);
+			else
+				snprintf (msg, sizeof msg, "%s%s %s %s %d %s %s %s",
+					  city->Body.CityName,
+					  is->c3x_labels[CL_APOSTROPHE_S],
+					  building_name,
+					  is->c3x_labels[CL_AND],
+					  removed_count - 1,
+					  is->c3x_labels[CL_OTHER_BUILDINGS_HAVE_BEEN],
+					  is->c3x_labels[CL_LOST_DUE_TO_DESTROYED],
+					  district_name);
+
+			msg[(sizeof msg) - 1] = '\0';
+			show_map_specific_text (city->Body.X, city->Body.Y, msg, true);
 		}
 	}
 }
@@ -8455,10 +13860,12 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 	if (actual_district_id < 0) {
 		struct district_instance * inst = get_district_instance (tile);
 		if (inst != NULL)
-			actual_district_id = inst->district_type;
+			actual_district_id = inst->district_id;
 	}
 
 	remove_district_instance (tile);
+
+	bool removed_neighborhood = actual_district_id == NEIGHBORHOOD_DISTRICT_ID;
 
 	if (is->current_config.enable_wonder_districts &&
 	    (actual_district_id == WONDER_DISTRICT_ID) &&
@@ -8480,36 +13887,17 @@ handle_district_removed (Tile * tile, int district_id, int center_x, int center_
 
 	int tile_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
 
-	// Check all tiles within city work radius to find cities that might now be able to work this tile
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = center_x + dx, y = center_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * nearby_tile = tile_at (x, y);
-		if ((nearby_tile == NULL) || (nearby_tile == p_null_tile))
-			continue;
-
-		int city_id = nearby_tile->vtable->m45_Get_City_ID (nearby_tile);
-		if (city_id < 0)
-			continue;
-
-		City * city = get_city_ptr (city_id);
-		if (city == NULL)
-			continue;
-
-		// Only recompute for cities of the same civ that owns this tile
-		if (city->Body.CivID != tile_owner)
-			continue;
-
-		recompute_city_yields_with_districts (city);
+	FOR_CITIES_AROUND (wai, center_x, center_y) {
+		if (removed_neighborhood)
+			reduce_city_population_due_to_lost_neighborhood (wai.city);
+		recompute_city_yields_with_districts (wai.city);
 	}
 
 	if (leave_ruins && (tile->vtable->m60_Set_Ruins != NULL)) {
 		tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, center_x, center_y);
 		tile->vtable->m60_Set_Ruins (tile, __, 1);
-		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 	}
+	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 }
 
 bool
@@ -8527,32 +13915,65 @@ city_has_active_wonder_for_district (City * city)
 bool
 city_requires_district_for_improvement (City * city, int improv_id, int * out_district_id)
 {
-	int district_id;
-	if (! itable_look_up (&is->district_building_prereqs, improv_id, &district_id))
+	struct district_building_prereq_list * prereq_list = get_district_building_prereq_list (improv_id);
+	if ((prereq_list == NULL) || (prereq_list->count <= 0))
 		return false;
-	if (is->current_config.enable_wonder_districts) {
-		if (district_id == WONDER_DISTRICT_ID) {
-			if (city_has_wonder_district_with_no_completed_wonder (city))
-				return false;
-			if (out_district_id != NULL)
-				*out_district_id = district_id;
-			return true;
+	Improvement * improv = &p_bic_data->Improvements[improv_id];
+	bool is_wonder = false;
+
+	// Special logic for handling rivers
+	bool requires_river = (improv->ImprovementFlags & ITF_Must_Be_Near_River) != 0;
+	bool has_prereq = false;
+
+	if (is->current_config.enable_wonder_districts &&
+	    district_building_prereq_list_contains (prereq_list, WONDER_DISTRICT_ID)) {
+		is_wonder = true;
+		if (requires_river) {
+			bool has_river_wonder_district = false;
+			FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+				if (wai.district_inst->district_id != WONDER_DISTRICT_ID)
+					continue;
+				if (wai.tile->vtable->m37_Get_River_Code (wai.tile) == 0)
+					continue;
+				if (! wonder_is_buildable_on_tile (wai.tile, improv_id))
+					continue;
+				struct wonder_district_info * info = get_wonder_district_info (wai.tile);
+				if (info == NULL) {
+					has_river_wonder_district = true;
+					break;
+				}
+				if (info->state == WDS_COMPLETED)
+					continue;
+				if (info->state == WDS_UNDER_CONSTRUCTION && info->city_id != city->Body.ID)
+					continue;
+				has_river_wonder_district = true;
+				break;
+			}
+			if (has_river_wonder_district)
+				has_prereq = true;
+		} else if (city_has_wonder_district_with_no_completed_wonder (city, improv_id)) {
+			has_prereq = true;
 		}
 	}
-	if (city_has_required_district (city, district_id))
+
+	if (! has_prereq && city_has_any_prereq_district_for_improvement (city, prereq_list, requires_river, !is_wonder))
+		has_prereq = true;
+
+	if (has_prereq)
 		return false;
+
 	if (out_district_id != NULL)
-		*out_district_id = district_id;
+		*out_district_id = pick_missing_district_for_improvement (city, prereq_list);
 	return true;
 }
 
 void
 clear_best_feasible_order (City * city)
 {
-	int key = (int)(long)city;
+	int key = (int)city;
 	int stored_int;
 	if (itable_look_up (&is->ai_best_feasible_orders, key, &stored_int)) {
-		struct ai_best_feasible_order * stored = (struct ai_best_feasible_order *)(long)stored_int;
+		struct ai_best_feasible_order * stored = (struct ai_best_feasible_order *)stored_int;
 		free (stored);
 		itable_remove (&is->ai_best_feasible_orders, key);
 	}
@@ -8561,18 +13982,18 @@ clear_best_feasible_order (City * city)
 void
 record_best_feasible_order (City * city, City_Order const * order, int value)
 {
-	int key = (int)(long)city;
+	int key = (int)city;
 	int stored_int;
 	struct ai_best_feasible_order * stored;
 	if (itable_look_up (&is->ai_best_feasible_orders, key, &stored_int))
-		stored = (struct ai_best_feasible_order *)(long)stored_int;
+		stored = (struct ai_best_feasible_order *)stored_int;
 	else {
 		stored = malloc (sizeof *stored);
 		if (stored == NULL)
 			return;
 		stored->order = *order;
 		stored->value = value;
-		itable_insert (&is->ai_best_feasible_orders, key, (int)(long)stored);
+		itable_insert (&is->ai_best_feasible_orders, key, (int)stored);
 		return;
 	}
 
@@ -8586,8 +14007,8 @@ struct ai_best_feasible_order *
 get_best_feasible_order (City * city)
 {
 	int stored_int;
-	if (itable_look_up (&is->ai_best_feasible_orders, (int)(long)city, &stored_int))
-		return (struct ai_best_feasible_order *)(long)stored_int;
+	if (itable_look_up (&is->ai_best_feasible_orders, (int)city, &stored_int))
+		return (struct ai_best_feasible_order *)stored_int;
 	else
 		return NULL;
 }
@@ -8611,7 +14032,7 @@ wonder_district_tile_under_construction (Tile * tile, int tile_x, int tile_y, in
 		return false;
 
 	struct district_instance * inst = get_district_instance (tile);
-	if (inst == NULL || inst->district_type != WONDER_DISTRICT_ID)
+	if (inst == NULL || inst->district_id != WONDER_DISTRICT_ID)
 		return false;
 
 	struct wonder_district_info * info = get_wonder_district_info (tile);
@@ -8665,27 +14086,19 @@ city_needs_wonder_district (City * city)
 }
 
 bool
-city_has_assigned_wonder_district (City * city, Tile * ignore_tile)
+city_has_assigned_wonder_district (City * city, Tile * ignore_tile, int wonder_improv_id)
 {
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
 		return false;
 
-	int civ_id = city->Body.CivID;
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * candidate = tile_at (x, y);
-		if ((candidate == NULL) || (candidate == p_null_tile) || (candidate == ignore_tile))
-			continue;
-		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id)
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, false) {
+		int x = wai.tile_x, y = wai.tile_y;
+		Tile * candidate = wai.tile;
+		if (candidate == ignore_tile)
 			continue;
 
-		struct district_instance * inst = get_district_instance (candidate);
-		if ((inst == NULL) || (inst->district_type != WONDER_DISTRICT_ID))
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_id != WONDER_DISTRICT_ID)
 			continue;
 
 		struct wonder_district_info * info = inst ? &inst->wonder_info : NULL;
@@ -8693,6 +14106,13 @@ city_has_assigned_wonder_district (City * city, Tile * ignore_tile)
 		    (info->state == WDS_UNDER_CONSTRUCTION) &&
 		    (info->city_id == city->Body.ID)) {
 			info->city = city;
+			if ((wonder_improv_id >= 0) && (! wonder_is_buildable_on_tile (candidate, wonder_improv_id))) {
+				info->state = WDS_UNUSED;
+				info->city = NULL;
+				info->city_id = -1;
+				info->wonder_index = -1;
+				continue;
+			}
 			return true;
 		}
 	}
@@ -8710,18 +14130,11 @@ free_wonder_district_for_city (City * city)
 	if (city_needs_wonder_district (city))
 		return false;
 
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
-		if (tile == p_null_tile)
-			continue;
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL || inst->district_type != WONDER_DISTRICT_ID)
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, false) {
+		int x = wai.tile_x, y = wai.tile_y;
+		Tile * tile = wai.tile;
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_id != WONDER_DISTRICT_ID)
 			continue;
 
 		struct wonder_district_info * info = get_wonder_district_info (tile);
@@ -8741,41 +14154,32 @@ free_wonder_district_for_city (City * city)
 }
 
 bool
-reserve_wonder_district_for_city (City * city)
+reserve_wonder_district_for_city (City * city, int wonder_improv_id)
 {
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
 		return false;
 
-	if (city_has_assigned_wonder_district (city, NULL))
+	if (city_has_assigned_wonder_district (city, NULL, wonder_improv_id))
 		return true;
 
-	int civ_id = city->Body.CivID;
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * candidate = tile_at (x, y);
-		if (candidate == NULL || candidate == p_null_tile) continue;
-		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id) continue;
-
-		struct district_instance * inst = get_district_instance (candidate);
-		if (inst == NULL || inst->district_type != WONDER_DISTRICT_ID) continue;
-		if (! district_is_complete (candidate, WONDER_DISTRICT_ID)) continue;
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		int x = wai.tile_x, y = wai.tile_y;
+		Tile * candidate = wai.tile;
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_id != WONDER_DISTRICT_ID) continue;
+		if ((wonder_improv_id >= 0) && (! wonder_is_buildable_on_tile (candidate, wonder_improv_id)))
+			continue;
 
 		struct wonder_district_info * info = &inst->wonder_info;
 		if (info->state == WDS_COMPLETED) continue;
 		if (info->state == WDS_UNDER_CONSTRUCTION) {
 			if (info->city_id == city->Body.ID) {
 				info->city = city;
-				info->city_id = city->Body.ID;
 				return true;
 			}
 			continue;
 		}
-		if (city_has_assigned_wonder_district (city, candidate))
+		if (city_has_assigned_wonder_district (city, candidate, wonder_improv_id))
 			return true;
 
 		// Reserve this Wonder district for this city
@@ -8796,21 +14200,12 @@ release_wonder_district_reservation (City * city)
 		return;
 
 	// Find and remove any reservations for this city
-	int civ_id = city->Body.CivID;
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * candidate = tile_at (x, y);
-		if (candidate == p_null_tile)
-			continue;
-		if (candidate->vtable->m38_Get_Territory_OwnerID (candidate) != civ_id)
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, false) {
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_id != WONDER_DISTRICT_ID)
 			continue;
 
-		struct wonder_district_info * info = get_wonder_district_info (candidate);
+		struct wonder_district_info * info = &inst->wonder_info;
 		if ((info != NULL) &&
 		    (info->state == WDS_UNDER_CONSTRUCTION) &&
 		    (info->city_id == city->Body.ID)) {
@@ -8831,7 +14226,7 @@ handle_district_destroyed_by_attack (Tile * tile, int tile_x, int tile_y, bool l
 
 	struct district_instance * inst = get_district_instance (tile);
 	if (inst != NULL) {
-		int district_id = inst->district_type;
+		int district_id = inst->district_id;
 
 		// If this is a Wonder District with a completed wonder and wonders can't be destroyed, restore overlay and keep district
 		if (is->current_config.enable_wonder_districts) {
@@ -8857,13 +14252,6 @@ has_active_building (City * city, int improv_id)
 	return patch_City_has_improvement (city, __, improv_id, 1) && // building is physically present in city AND
 		((improv->ObsoleteID < 0) || (! Leader_has_tech (owner, __, improv->ObsoleteID))) && // building is not obsolete AND
 		((improv->GovernmentID < 0) || (improv->GovernmentID == owner->GovernmentType)); // building is not restricted to a different govt
-}
-
-bool
-can_generate_resource (int for_civ_id, struct mill * mill)
-{
-	int req_tech_id = (mill->flags & MF_NO_TECH_REQ) ? -1 : p_bic_data->ResourceTypes[mill->resource_id].RequireID;
-	return (req_tech_id < 0) || Leader_has_tech (&leaders[for_civ_id], __, req_tech_id);
 }
 
 void
@@ -9109,6 +14497,44 @@ patch_City_has_resource (City * this, int edx, int resource_id)
 			}
 		}
 
+	// Check if access to this resource is provided by a district in the city's work radius
+	if ((! tr) && is->current_config.enable_districts) {
+		FOR_DISTRICTS_AROUND (wai, this->Body.X, this->Body.Y, true) {
+			struct district_instance * di = wai.district_inst;
+			int district_id = di->district_id;
+			if ((district_id < 0) || (district_id >= is->district_count))
+				continue;
+
+			struct district_config * dc = &is->district_configs[district_id];
+			if ((dc->generated_resource_id == resource_id) &&
+			    (dc->generated_resource_flags & MF_LOCAL) &&
+			    district_can_generate_resource (this->Body.CivID, dc)) {
+				tr = true;
+				break;
+			}
+		}
+
+		// A district may alternatively require a bonus resource, which would be missed in above checks. 
+		// If that's the case, check if one is in the work radius
+		if (! tr) {
+			int res_class = p_bic_data->ResourceTypes[resource_id].Class;
+			if (res_class == RC_Bonus) {
+				int civ_id = this->Body.CivID;
+				FOR_TILES_AROUND (tai, is->workable_tile_count, this->Body.X, this->Body.Y) {
+					Tile * tile = tai.tile;
+					if ((tile == NULL) || (tile == p_null_tile))
+						continue;
+					if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id)
+						continue;
+					if (Tile_get_resource_visible_to (tile, __, civ_id) == resource_id) {
+						tr = true;
+						break;
+					}
+				}
+			}
+		}
+	}
+
 	return tr;
 }
 
@@ -9266,10 +14692,23 @@ recompute_mill_yields_after_resource_change (Leader * leader_or_null)
 
 
 int
-compare_mill_tiles (void const * vp_a, void const * vp_b)
+resource_tile_resource_id (struct extra_resource_tile const * rt)
 {
-	struct mill_tile const * a = vp_a, * b = vp_b;
-	return a->mill->resource_id - b->mill->resource_id;
+	if (rt == NULL)
+		return -1;
+	if (rt->type == ERT_MILL_RESOURCE) {
+		return (rt->mill_info.mill != NULL) ? rt->mill_info.mill->resource_id : -1;
+	} else if (rt->district_info.cfg != NULL) {
+		return rt->district_info.cfg->generated_resource_id;
+	}
+	return -1;
+}
+
+int
+compare_resource_tiles (void const * vp_a, void const * vp_b)
+{
+	struct extra_resource_tile const * a = vp_a, * b = vp_b;
+	return resource_tile_resource_id (a) - resource_tile_resource_id (b);
 }
 
 void __fastcall
@@ -9280,7 +14719,7 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups
 	memset (is->extra_available_resources, 0, is->extra_available_resources_capacity * ints_per_city * sizeof (unsigned));
 
 	// Assemble list of mill tiles
-	is->count_mill_tiles = 0;
+	is->count_resource_tiles = 0;
 	if (p_cities->Cities != NULL)
 		for (int city_index = 0; city_index <= p_cities->LastIndex; city_index++) {
 			City * city = get_city_ptr (city_index);
@@ -9290,23 +14729,66 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups
 					if (((mill->flags & MF_LOCAL) == 0) &&
 					    has_active_building (city, mill->improv_id) &&
 					    can_generate_resource (city->Body.CivID, mill)) {
-						reserve (sizeof is->mill_tiles[0],
-							 (void **)&is->mill_tiles,
-							 &is->mill_tiles_capacity,
-							 is->count_mill_tiles);
-						is->mill_tiles[is->count_mill_tiles++] = (struct mill_tile) {
-							.tile = tile_at (city->Body.X, city->Body.Y),
-							.city = city,
-							.mill = mill
+						Tile * resource_tile = tile_at (city->Body.X, city->Body.Y);
+						if ((resource_tile == NULL) || (resource_tile == p_null_tile))
+							continue;
+						reserve (sizeof is->resource_tiles[0],
+							 (void **)&is->resource_tiles,
+							 &is->resource_tiles_capacity,
+							 is->count_resource_tiles);
+						is->resource_tiles[is->count_resource_tiles++] = (struct extra_resource_tile) {
+							.tile = resource_tile,
+							.type = ERT_MILL_RESOURCE,
+							.mill_info = {
+								.city = city,
+								.mill = mill
+							}
 						};
 					}
 				}
 		}
-	qsort (is->mill_tiles, is->count_mill_tiles, sizeof is->mill_tiles[0], compare_mill_tiles);
+	if (is->current_config.enable_districts) {
+		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+			Tile * district_tile = (Tile *)tei.key;
+			struct district_instance * inst = (struct district_instance *)tei.value;
+			if ((district_tile == NULL) || (district_tile == p_null_tile) || (inst == NULL) || (inst->state != DS_COMPLETED))
+				continue;
 
-	is->got_mill_tile = NULL;
+			int district_id = inst->district_id;
+			if ((district_id < 0) || (district_id >= is->district_count))
+				continue;
+
+			struct district_config * cfg = &is->district_configs[district_id];
+			if ((cfg == NULL) || (cfg->generated_resource_id < 0))
+				continue;
+
+			int owner_id = district_tile->vtable->m38_Get_Territory_OwnerID (district_tile);
+			if (owner_id < 0)
+				continue;
+			if (! district_can_generate_resource (owner_id, cfg))
+				continue;
+			if ((cfg->generated_resource_flags & MF_LOCAL) != 0)
+				continue;
+
+			reserve (sizeof is->resource_tiles[0],
+				 (void **)&is->resource_tiles,
+				 &is->resource_tiles_capacity,
+				 is->count_resource_tiles);
+			is->resource_tiles[is->count_resource_tiles++] = (struct extra_resource_tile) {
+				.tile = district_tile,
+				.type = ERT_DISTRICT_RESOURCE,
+				.district_info = {
+					.inst = inst,
+					.cfg = cfg
+				}
+			};
+		}
+	}
+	qsort (is->resource_tiles, is->count_resource_tiles, sizeof is->resource_tiles[0], compare_resource_tiles);
+
+	is->got_resource_tile = NULL;
 	is->saved_tile_count = p_bic_data->Map.TileCount;
-	p_bic_data->Map.TileCount += is->count_mill_tiles;
+	p_bic_data->Map.TileCount += is->count_resource_tiles;
 	Trade_Net_recompute_resources (this, __, skip_popups);
 
 	// Restore the tile count if necessary. It may have already been restored by patch_Map_Renderer_m71_Draw_Tiles. This happens when the call to
@@ -9322,32 +14804,47 @@ patch_Trade_Net_recompute_resources (Trade_Net * this, int edx, bool skip_popups
 }
 
 Tile *
-get_mill_tile (int index)
+get_resource_tile (int index)
 {
-	struct mill_tile * mt = &is->mill_tiles[index];
-	is->got_mill_tile = mt;
-	return mt->tile;
+	struct extra_resource_tile * rt = &is->resource_tiles[index];
+	is->got_resource_tile = rt;
+	return rt->tile;
 }
 
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_1 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_mill_tile (index - is->saved_tile_count); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_2 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_mill_tile (index - is->saved_tile_count); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_3 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_mill_tile (index - is->saved_tile_count); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_4 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_mill_tile (index - is->saved_tile_count); }
-Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_5 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_mill_tile (index - is->saved_tile_count); }
+Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_1 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_resource_tile (index - is->saved_tile_count); }
+Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_2 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_resource_tile (index - is->saved_tile_count); }
+Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_3 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_resource_tile (index - is->saved_tile_count); }
+Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_4 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_resource_tile (index - is->saved_tile_count); }
+Tile * __fastcall patch_Map_get_tile_when_recomputing_resources_5 (Map * map, int edx, int index) { return (index < is->saved_tile_count) ? Map_get_tile (map, __, index) : get_resource_tile (index - is->saved_tile_count); }
 
 int __fastcall
 patch_Tile_get_visible_resource_when_recomputing (Tile * tile, int edx, int civ_id)
 {
-	if (is->got_mill_tile == NULL)
-		return Tile_get_resource_visible_to (tile, __, civ_id);
-	else {
-		struct mill_tile * mt = is->got_mill_tile;
-		is->got_mill_tile = NULL;
-		if (has_resources_required_by_building (mt->city, mt->mill->improv_id))
-			return mt->mill->resource_id;
-		else
+	if (is->got_resource_tile != NULL) {
+		struct extra_resource_tile * rt = is->got_resource_tile;
+		is->got_resource_tile = NULL;
+		if (rt->type == ERT_MILL_RESOURCE) {
+			if ((rt->mill_info.city != NULL) && (rt->mill_info.mill != NULL) &&
+			    has_resources_required_by_building (rt->mill_info.city, rt->mill_info.mill->improv_id))
+				return rt->mill_info.mill->resource_id;
+			else
+				return -1;
+		} else {
+			Tile * district_tile = rt->tile;
+			struct district_instance * inst = rt->district_info.inst;
+			struct district_config * cfg = rt->district_info.cfg;
+			if ((district_tile != NULL) && (district_tile != p_null_tile) && (inst != NULL) &&
+			    (cfg != NULL) && (inst->state == DS_COMPLETED)) {
+				int owner_id = district_tile->vtable->m38_Get_Territory_OwnerID (district_tile);
+				if ((owner_id == civ_id) && district_can_generate_resource (owner_id, cfg))
+					return cfg->generated_resource_id;
+			}
 			return -1;
+		}
 	}
+
+	int base_resource = Tile_get_resource_visible_to (tile, __, civ_id);
+	return base_resource;
 }
 
 int WINAPI
@@ -10143,6 +15640,22 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 	set_nopification (cfg->aircraft_victory_animation != NULL, ADDR_SKIP_VICTORY_ANIM_IF_AIR, 6);
 }
 
+void
+get_mod_art_path (char const * file_name, char * out_path, int  path_buf_size)
+{
+	char s[1000];
+	snprintf (s, sizeof s, "Art\\%s", file_name);
+	s[(sizeof s) - 1] = '\0';
+
+	char * scenario_path = BIC_get_asset_path (p_bic_data, __, s, false);
+	if (0 != strcmp (scenario_path, s)) // get_asset_path returns its input when the file is not found
+		snprintf (out_path, path_buf_size, "%s", scenario_path);
+	else
+		snprintf (out_path, path_buf_size, "%s\\Art\\%s", is->mod_rel_dir, file_name);
+	out_path[path_buf_size - 1] = '\0';
+}
+
+
 Sprite* 
 SpriteList_at(SpriteList *list, int i) {
     return &list->field_0[i];
@@ -10517,6 +16030,13 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 			}
 		}
 
+		// Abandoned district art (land + maritime) for this hour
+		read_in_dir (&img, districts_hour_dir, "Abandoned.pcx", NULL);
+		if (img.JGL.Image == NULL)
+			return false;
+		Sprite_slice_pcx (&this->Abandoned_District_Image, __, &img, 0, 0, 128, 64, 1, 1);
+		Sprite_slice_pcx (&this->Abandoned_Maritime_District_Image, __, &img, 128, 0, 128, 64, 1, 1);
+
 		// Load wonder district images (dynamically per wonder) for this hour
 		if (is->current_config.enable_wonder_districts) {
 			char const * last_img_path = NULL;
@@ -10525,7 +16045,8 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 			bool pcx_loaded = false;
 
 			for (int wi = 0; wi < is->wonder_district_count; wi++) {
-				char const * img_path = is->wonder_district_configs[wi].img_path;
+				struct wonder_district_config * cfg = &is->wonder_district_configs[wi];
+				char const * img_path = cfg->img_path;
 				if (img_path == NULL)
 					img_path = "Wonders.pcx";
 
@@ -10548,15 +16069,29 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 				if (! pcx_loaded)
 					continue;
 
-				Sprite_construct (&this->Wonder_District_Images[wi].img);
-				int x = 128 * is->wonder_district_configs[wi].img_column;
-				int y =  64 * is->wonder_district_configs[wi].img_row;
-				Sprite_slice_pcx (&this->Wonder_District_Images[wi].img, __, &wpcx, x, y, 128, 64, 1, 1);
+				struct wonder_district_image_set * set = &this->Wonder_District_Images[wi];
 
-				Sprite_construct (&this->Wonder_District_Images[wi].construct_img);
-				int cx = 128 * is->wonder_district_configs[wi].img_construct_column;
-				int cy =  64 * is->wonder_district_configs[wi].img_construct_row;
-				Sprite_slice_pcx (&this->Wonder_District_Images[wi].construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
+				Sprite_construct (&set->img);
+				int x = 128 * cfg->img_column;
+				int y =  64 * cfg->img_row;
+				Sprite_slice_pcx (&set->img, __, &wpcx, x, y, 128, 64, 1, 1);
+
+				Sprite_construct (&set->construct_img);
+				int cx = 128 * cfg->img_construct_column;
+				int cy =  64 * cfg->img_construct_row;
+				Sprite_slice_pcx (&set->construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
+
+				if (cfg->enable_img_alt_dir) {
+					Sprite_construct (&set->alt_dir_img);
+					int ax = 128 * cfg->img_alt_dir_column;
+					int ay =  64 * cfg->img_alt_dir_row;
+					Sprite_slice_pcx (&set->alt_dir_img, __, &wpcx, ax, ay, 128, 64, 1, 1);
+
+					Sprite_construct (&set->alt_dir_construct_img);
+					int acx = 128 * cfg->img_alt_dir_construct_column;
+					int acy =  64 * cfg->img_alt_dir_construct_row;
+					Sprite_slice_pcx (&set->alt_dir_construct_img, __, &wpcx, acx, acy, 128, 64, 1, 1);
+				}
 			}
 
 			if (pcx_loaded)
@@ -10744,6 +16279,9 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 				}
 			}
 
+			insert_sprite_proxy (&is->abandoned_district_img, &is->day_night_cycle_imgs[h].Abandoned_District_Image, h);
+			insert_sprite_proxy (&is->abandoned_maritime_district_img, &is->day_night_cycle_imgs[h].Abandoned_Maritime_District_Image, h);
+
 			// Wonder districts
 			if (is->current_config.enable_wonder_districts) {
 				for (int wi = 0; wi < is->wonder_district_count; wi++) {
@@ -10754,6 +16292,18 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 					Sprite * base_construct = &is->wonder_district_img_sets[wi].construct_img;
 					Sprite * proxy_construct = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].construct_img;
 					insert_sprite_proxy (base_construct, proxy_construct, h);
+
+					if (is->wonder_district_img_sets[wi].alt_dir_img.vtable != NULL) {
+						Sprite * base_alt = &is->wonder_district_img_sets[wi].alt_dir_img;
+						Sprite * proxy_alt = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].alt_dir_img;
+						insert_sprite_proxy (base_alt, proxy_alt, h);
+					}
+
+					if (is->wonder_district_img_sets[wi].alt_dir_construct_img.vtable != NULL) {
+						Sprite * base_alt_construct = &is->wonder_district_img_sets[wi].alt_dir_construct_img;
+						Sprite * proxy_alt_construct = &is->day_night_cycle_imgs[h].Wonder_District_Images[wi].alt_dir_construct_img;
+						insert_sprite_proxy (base_alt_construct, proxy_alt_construct, h);
+					}
 				}
 			}
 		}
@@ -10785,8 +16335,10 @@ init_day_night_images()
 	for (int i = 0; i < 24; i++) {
 
 		char art_dir[200];
-		snprintf(art_dir, sizeof art_dir, "%s\\Art\\DayNight\\%s", is->mod_rel_dir, hour_strs[i]);
-		bool success = load_day_night_hour_images(&is->day_night_cycle_imgs[i], art_dir, hour_strs[i]);
+		char temp_path[2*MAX_PATH];
+		snprintf (art_dir, sizeof art_dir, "DayNight/%s", hour_strs[i]);
+		get_mod_art_path (art_dir, temp_path, sizeof temp_path);
+		bool success = load_day_night_hour_images (&is->day_night_cycle_imgs[i], temp_path, hour_strs[i]);
 
 		if (!success) {
 			char ss[200];
@@ -10959,7 +16511,9 @@ patch_init_floating_point ()
 		{"show_detailed_tile_info"                               , true , offsetof (struct c3x_config, show_detailed_tile_info)},
 		{"warn_about_unrecognized_names"                         , true , offsetof (struct c3x_config, warn_about_unrecognized_names)},
 		{"enable_ai_production_ranking"                          , true , offsetof (struct c3x_config, enable_ai_production_ranking)},
-		{"enable_ai_city_location_desirability_display"          , true , offsetof (struct c3x_config, enable_ai_city_location_desirability_display)},
+		{"enable_ai_city_location_desirability_display"          , true,  offsetof (struct c3x_config, enable_ai_city_location_desirability_display)},
+		{"show_ai_city_location_desirability_if_settler"         , false, offsetof (struct c3x_config, show_ai_city_location_desirability_if_settler)},
+		{"auto_zoom_city_screen_for_large_work_areas"            , true,  offsetof (struct c3x_config, auto_zoom_city_screen_for_large_work_areas)},
 		{"zero_corruption_when_off"                              , true , offsetof (struct c3x_config, zero_corruption_when_off)},
 		{"disallow_land_units_from_affecting_water_tiles"        , true , offsetof (struct c3x_config, disallow_land_units_from_affecting_water_tiles)},
 		{"dont_end_units_turn_after_airdrop"                     , false, offsetof (struct c3x_config, dont_end_units_turn_after_airdrop)},
@@ -11049,23 +16603,43 @@ patch_init_floating_point ()
 		{"convert_to_landmark_after_planting_forest"             , false, offsetof (struct c3x_config, convert_to_landmark_after_planting_forest)},
 		{"allow_sale_of_aqueducts_and_hospitals"                 , false, offsetof (struct c3x_config, allow_sale_of_aqueducts_and_hospitals)},
 		{"no_cross_shore_detection"                              , false, offsetof (struct c3x_config, no_cross_shore_detection)},
+		{"auto_zoom_city_screen_for_large_work_areas"            , true,  offsetof (struct c3x_config, auto_zoom_city_screen_for_large_work_areas)},
 		{"limit_unit_loading_to_one_transport_per_turn"          , false, offsetof (struct c3x_config, limit_unit_loading_to_one_transport_per_turn)},
 		{"prevent_old_units_from_upgrading_past_ability_block"   , false, offsetof (struct c3x_config, prevent_old_units_from_upgrading_past_ability_block)},
+		{"allow_extraterritorial_colonies"                       , false, offsetof (struct c3x_config, allow_extraterritorial_colonies)},
 		{"draw_forests_over_roads_and_railroads"                 , false, offsetof (struct c3x_config, draw_forests_over_roads_and_railroads)},
 		{"enable_districts"                                      , false, offsetof (struct c3x_config, enable_districts)},
 		{"enable_neighborhood_districts"                         , false, offsetof (struct c3x_config, enable_neighborhood_districts)},
 		{"enable_wonder_districts"                               , false, offsetof (struct c3x_config, enable_wonder_districts)},
 		{"enable_natural_wonders"                                , false, offsetof (struct c3x_config, enable_natural_wonders)},
+		{"add_natural_wonders_to_scenarios_if_none"              , false, offsetof (struct c3x_config, add_natural_wonders_to_scenarios_if_none)},
+		{"enable_named_tiles"                                    , false, offsetof (struct c3x_config, enable_named_tiles)},
 		{"enable_distribution_hub_districts"                     , false, offsetof (struct c3x_config, enable_distribution_hub_districts)},
 		{"enable_aerodrome_districts"                            , false, offsetof (struct c3x_config, enable_aerodrome_districts)},
+		{"enable_port_districts"                                 , false, offsetof (struct c3x_config, enable_port_districts)},
+		{"enable_bridge_districts"                               , false, offsetof (struct c3x_config, enable_bridge_districts)},
+		{"enable_canal_districts"                                , false, offsetof (struct c3x_config, enable_canal_districts)},
+		{"enable_central_rail_hub_districts"                     , false, offsetof (struct c3x_config, enable_central_rail_hub_districts)},
+		{"enable_great_wall_districts"                           , false, offsetof (struct c3x_config, enable_great_wall_districts)},
 		{"completed_wonder_districts_can_be_destroyed"           , false, offsetof (struct c3x_config, completed_wonder_districts_can_be_destroyed)},
 		{"destroyed_wonders_can_be_built_again"                  , false, offsetof (struct c3x_config, destroyed_wonders_can_be_built_again)},
 		{"cities_with_mutual_district_receive_buildings"         , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_buildings)},
 		{"cities_with_mutual_district_receive_wonders"           , false, offsetof (struct c3x_config, cities_with_mutual_district_receive_wonders)},
 		{"show_message_when_building_received_by_mutual_district", false, offsetof (struct c3x_config, show_message_when_building_received_by_mutual_district)},
+		{"show_message_when_building_lost_to_destroyed_district" , false, offsetof (struct c3x_config, show_message_when_building_lost_to_destroyed_district)},
+		{"destroying_neighborhood_reduces_pop"                   , false, offsetof (struct c3x_config, destroying_neighborhood_reduces_pop)},
 		{"air_units_use_aerodrome_districts_not_cities"          , false, offsetof (struct c3x_config, air_units_use_aerodrome_districts_not_cities)},
+		{"naval_units_use_port_districts_not_cities"             , false, offsetof (struct c3x_config, naval_units_use_port_districts_not_cities)},
 		{"show_natural_wonder_name_on_map"                       , false, offsetof (struct c3x_config, show_natural_wonder_name_on_map)},
 		{"ai_defends_districts"                                  , false, offsetof (struct c3x_config, ai_defends_districts)},
+		{"great_wall_districts_impassible_by_others"             , false, offsetof (struct c3x_config, great_wall_districts_impassible_by_others)},
+		{"auto_build_great_wall_around_territory"                , false, offsetof (struct c3x_config, auto_build_great_wall_around_territory)},
+		{"disable_great_wall_city_defense_bonus"                 , false, offsetof (struct c3x_config, disable_great_wall_city_defense_bonus)},
+		{"expand_water_tile_checks_to_city_work_area"            , false, offsetof (struct c3x_config, expand_water_tile_checks_to_city_work_area)},
+		{"ai_can_replace_existing_districts_with_canals"         , false, offsetof (struct c3x_config, ai_can_replace_existing_districts_with_canals)},
+		{"ai_builds_bridges"                                     , false, offsetof (struct c3x_config, ai_builds_bridges)},
+		{"ai_builds_canals"                                      , false, offsetof (struct c3x_config, ai_builds_canals)},
+		{"workers_can_enter_coast"         		                 , false, offsetof (struct c3x_config, workers_can_enter_coast)},
 		{"enable_city_work_radii_highlights"                     , false, offsetof (struct c3x_config, enable_city_work_radii_highlights)},
 		{"introduce_all_human_players_at_start_of_hotseat_game"  , false, offsetof (struct c3x_config, introduce_all_human_players_at_start_of_hotseat_game)},
 		{"allow_unload_from_army"                                , false, offsetof (struct c3x_config, allow_unload_from_army)},
@@ -11080,36 +16654,46 @@ patch_init_floating_point ()
 		int base_val;
 		int offset;
 	} integer_config_options[] = {
-		{"limit_railroad_movement"                       ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
-		{"minimum_city_separation"                       ,     1, offsetof (struct c3x_config, minimum_city_separation)},
-		{"anarchy_length_percent"                        ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
-		{"ai_multi_city_start"                           ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
-		{"max_tries_to_place_fp_city"                    , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
-		{"ai_research_multiplier"                        ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
-		{"ai_settler_perfume_on_founding_duration"       ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
-		{"extra_unit_maintenance_per_shields"            ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
-		{"ai_build_artillery_ratio"                      ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
-		{"ai_artillery_value_damage_percent"             ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
-		{"ai_build_bomber_ratio"                         ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
-		{"max_ai_naval_escorts"                          ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
-		{"ai_worker_requirement_percent"                 ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
-		{"chance_for_nukes_to_destroy_max_one_hp_units"  ,   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
-		{"rebase_range_multiplier"                       ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
-		{"elapsed_minutes_per_day_night_hour_transition" ,     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
-		{"fixed_hours_per_turn_for_day_night_cycle"      ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
-		{"pinned_hour_for_day_night_cycle"               ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
-		{"years_to_double_building_culture"              ,  1000, offsetof (struct c3x_config, years_to_double_building_culture)},
-		{"tourism_time_scale_percent"                    ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
-		{"luxury_randomized_appearance_rate_percent"    ,   100, offsetof (struct c3x_config, luxury_randomized_appearance_rate_percent)},
-		{"tiles_per_non_luxury_resource"                ,    32, offsetof (struct c3x_config, tiles_per_non_luxury_resource)},
-		{"city_limit"                                    ,  2048, offsetof (struct c3x_config, city_limit)},
-		{"maximum_pop_before_neighborhood_needed"        ,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
-		{"per_neighborhood_pop_growth_enabled"			 ,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
-		{"minimum_natural_wonder_separation"             ,     10, offsetof (struct c3x_config, minimum_natural_wonder_separation)},
-		{"distribution_hub_food_yield_divisor"			 ,     1, offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
-		{"distribution_hub_shield_yield_divisor"		 ,     1, offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
-		{"ai_ideal_distribution_hub_count_per_100_cities",     1, offsetof (struct c3x_config, ai_ideal_distribution_hub_count_per_100_cities)},
-		{"neighborhood_needed_message_frequency"         ,     4, offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
+		{"limit_railroad_movement"                           ,     0, offsetof (struct c3x_config, limit_railroad_movement)},
+		{"minimum_city_separation"                           ,     1, offsetof (struct c3x_config, minimum_city_separation)},
+		{"anarchy_length_percent"                            ,   100, offsetof (struct c3x_config, anarchy_length_percent)},
+		{"ai_multi_city_start"                               ,     0, offsetof (struct c3x_config, ai_multi_city_start)},
+		{"max_tries_to_place_fp_city"                        , 10000, offsetof (struct c3x_config, max_tries_to_place_fp_city)},
+		{"ai_research_multiplier"                            ,   100, offsetof (struct c3x_config, ai_research_multiplier)},
+		{"ai_settler_perfume_on_founding_duration"           ,     0, offsetof (struct c3x_config, ai_settler_perfume_on_founding_duration)},
+		{"extra_unit_maintenance_per_shields"                ,     0, offsetof (struct c3x_config, extra_unit_maintenance_per_shields)},
+		{"ai_build_artillery_ratio"                          ,    16, offsetof (struct c3x_config, ai_build_artillery_ratio)},
+		{"ai_artillery_value_damage_percent"                 ,    50, offsetof (struct c3x_config, ai_artillery_value_damage_percent)},
+		{"ai_build_bomber_ratio"                             ,    70, offsetof (struct c3x_config, ai_build_bomber_ratio)},
+		{"max_ai_naval_escorts"                              ,     3, offsetof (struct c3x_config, max_ai_naval_escorts)},
+		{"ai_worker_requirement_percent"                     ,   150, offsetof (struct c3x_config, ai_worker_requirement_percent)},
+		{"chance_for_nukes_to_destroy_max_one_hp_units"      ,   100, offsetof (struct c3x_config, chance_for_nukes_to_destroy_max_one_hp_units)},
+		{"rebase_range_multiplier"                           ,     6, offsetof (struct c3x_config, rebase_range_multiplier)},
+		{"elapsed_minutes_per_day_night_hour_transition"     ,     3, offsetof (struct c3x_config, elapsed_minutes_per_day_night_hour_transition)},
+		{"fixed_hours_per_turn_for_day_night_cycle"          ,     1, offsetof (struct c3x_config, fixed_hours_per_turn_for_day_night_cycle)},
+		{"pinned_hour_for_day_night_cycle"                   ,     0, offsetof (struct c3x_config, pinned_hour_for_day_night_cycle)},
+		{"years_to_double_building_culture"                  ,  1000, offsetof (struct c3x_config, years_to_double_building_culture)},
+		{"tourism_time_scale_percent"                        ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
+		{"luxury_randomized_appearance_rate_percent"         ,   100, offsetof (struct c3x_config, luxury_randomized_appearance_rate_percent)},
+		{"tiles_per_non_luxury_resource"                     ,    32, offsetof (struct c3x_config, tiles_per_non_luxury_resource)},
+		{"city_limit"                                        ,  2048, offsetof (struct c3x_config, city_limit)},
+		{"maximum_pop_before_neighborhood_needed"            ,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
+		{"per_neighborhood_pop_growth_enabled"			     ,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},
+		{"minimum_natural_wonder_separation"                 ,    10, offsetof (struct c3x_config, minimum_natural_wonder_separation)},
+		{"distribution_hub_food_yield_divisor"			     ,     1, offsetof (struct c3x_config, distribution_hub_food_yield_divisor)},
+		{"distribution_hub_shield_yield_divisor"		     ,     1, offsetof (struct c3x_config, distribution_hub_shield_yield_divisor)},
+		{"ai_ideal_distribution_hub_count_per_100_cities"    ,     1, offsetof (struct c3x_config, ai_ideal_distribution_hub_count_per_100_cities)},
+		{"max_distribution_hub_count_per_100_cities"         ,    50, offsetof (struct c3x_config, max_distribution_hub_count_per_100_cities)},
+		{"central_rail_hub_distribution_food_bonus_percent"  ,    25, offsetof (struct c3x_config, central_rail_hub_distribution_food_bonus_percent)},
+		{"central_rail_hub_distribution_shield_bonus_percent",    25, offsetof (struct c3x_config, central_rail_hub_distribution_shield_bonus_percent)},
+		{"neighborhood_needed_message_frequency"             ,     4, offsetof (struct c3x_config, neighborhood_needed_message_frequency)},
+		{"max_contiguous_bridge_districts"                   ,     3, offsetof (struct c3x_config, max_contiguous_bridge_districts)},
+		{"max_contiguous_canal_districts"                    ,     5, offsetof (struct c3x_config, max_contiguous_canal_districts)},
+		{"ai_canal_eval_min_bisected_land_tiles"             ,    10, offsetof (struct c3x_config, ai_canal_eval_min_bisected_land_tiles)},
+		{"ai_bridge_canal_eval_block_size"                   ,    20, offsetof (struct c3x_config, ai_bridge_canal_eval_block_size)},
+		{"ai_bridge_eval_lake_tile_threshold"                ,     6, offsetof (struct c3x_config, ai_bridge_eval_lake_tile_threshold)},
+		{"ai_city_district_max_build_wait_turns"             ,    20, offsetof (struct c3x_config, ai_city_district_max_build_wait_turns)},
+		{"per_extraterritorial_colony_relation_penalty"      ,     0, offsetof (struct c3x_config, per_extraterritorial_colony_relation_penalty)},
 	};
 
 	is->kernel32 = (*p_GetModuleHandleA) ("kernel32.dll");
@@ -11170,6 +16754,10 @@ patch_init_floating_point ()
 	base_config.unit_cycle_search_criteria = UCSC_STANDARD;
 	base_config.city_work_radius = 2;
 	base_config.day_night_cycle_mode = DNCM_OFF;
+	base_config.distribution_hub_yield_division_mode = DHYDM_FLAT;
+	base_config.ai_distribution_hub_build_strategy = ADHBS_BY_CITY_COUNT;
+	base_config.ai_auto_build_great_wall_strategy = AAGWS_ALL_BORDERS;
+	base_config.great_wall_auto_build_wonder_improv_id = -1;
 	for (int n = 0; n < ARRAY_LEN (boolean_config_options); n++)
 		*((char *)&base_config + boolean_config_options[n].offset) = boolean_config_options[n].base_val;
 	for (int n = 0; n < ARRAY_LEN (integer_config_options); n++)
@@ -11291,9 +16879,10 @@ patch_init_floating_point ()
 	is->count_ai_prod_valuations = 0;
 	is->ai_prod_valuations_capacity = 0;
 
-	is->mill_tiles = NULL;
-	is->count_mill_tiles = 0;
-	is->mill_tiles_capacity = 0;
+	is->resource_tiles = NULL;
+	is->count_resource_tiles = 0;
+	is->resource_tiles_capacity = 0;
+	is->got_resource_tile = NULL;
 	is->saved_tile_count = -1;
 	is->mill_input_resource_bits = NULL;
 
@@ -11405,21 +16994,6 @@ patch_init_floating_point ()
 	is->loaded_config_names = NULL;
 	reset_to_base_config ();
 	apply_machine_code_edits (&is->current_config, true);
-}
-
-void
-get_mod_art_path (char const * file_name, char * out_path, int  path_buf_size)
-{
-	char s[1000];
-	snprintf (s, sizeof s, "Art\\%s", file_name);
-	s[(sizeof s) - 1] = '\0';
-
-	char * scenario_path = BIC_get_asset_path (p_bic_data, __, s, false);
-	if (0 != strcmp (scenario_path, s)) // get_asset_path returns its input when the file is not found
-		snprintf (out_path, path_buf_size, "%s", scenario_path);
-	else
-		snprintf (out_path, path_buf_size, "%s\\Art\\%s", is->mod_rel_dir, file_name);
-	out_path[path_buf_size - 1] = '\0';
 }
 
 void
@@ -11858,7 +17432,7 @@ patch_Unit_bombard_tile (Unit * this, int edx, int x, int y)
 	is->bombard_stealth_target = NULL;
 	is->bombarding_unit = NULL;
 
-	if (had_district_before && target_tile != NULL && target_tile != p_null_tile && inst->district_type != NATURAL_WONDER_DISTRICT_ID) {
+	if (had_district_before && target_tile != NULL && target_tile != p_null_tile && inst->district_id != NATURAL_WONDER_DISTRICT_ID) {
 		unsigned int overlays = target_tile->vtable->m42_Get_Overlays (target_tile, __, 0);
 		if ((overlays & TILE_FLAG_MINE) == 0)
 			handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, false);
@@ -12179,9 +17753,6 @@ set_up_stack_bombard_buttons (Main_GUI * this)
 	free_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&free_button->Button, __, 0);
 }
 
-bool __fastcall patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value);
-bool __fastcall patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y);
-
 void
 init_district_command_buttons ()
 {
@@ -12345,8 +17916,7 @@ set_up_district_buttons (Main_GUI * this)
 	Tile * tile = tile_at (selected_unit->Body.X, selected_unit->Body.Y);
 	if ((tile == NULL) || (tile == p_null_tile) || (tile->CityID >= 0)) return;
 
-	int base_type = tile->vtable->m50_Get_Square_BaseType (tile);
-	if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp || base_type == SQ_Volcano) return;
+	enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 	if (tile->vtable->m21_Check_Crates (tile, __, 0)) return;
 	if (tile->vtable->m20_Check_Pollution (tile, __, 0)) return;
 
@@ -12376,20 +17946,24 @@ set_up_district_buttons (Main_GUI * this)
 	int existing_district_id = -1;
 	struct district_instance * existing_inst = get_district_instance (tile);
 	if (existing_inst != NULL) {
-		existing_district_id = existing_inst->district_type;
-		if (is->current_config.enable_natural_wonders && existing_inst->district_type == NATURAL_WONDER_DISTRICT_ID) {
+		existing_district_id = existing_inst->district_id;
+		if (is->current_config.enable_natural_wonders && existing_inst->district_id == NATURAL_WONDER_DISTRICT_ID) {
 			return;
 		}
 		if (patch_Unit_can_perform_command(selected_unit, __, UCV_Build_Mine)) {
 			for (int n = 0; n < 42; n++) {
 				if (this->Unit_Command_Buttons[n].Command == UCV_Build_Mine) {
 					Command_Button * mine_button = &this->Unit_Command_Buttons[n];
+					if (base_type == SQ_Coast) {
+						mine_button->Button.vtable->m02_Show_Disabled ((Base_Form *)&mine_button->Button);
+						break;
+					}
 					if ((mine_button->Button.Base_Data.Status2 & 1) == 0) {
 						mine_button->Button.field_5FC[13] = 0;
 						mine_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&mine_button->Button, __, 0);
 					}
 					break;
-				}
+				}	
 			}
 		}
 	}
@@ -12404,30 +17978,14 @@ set_up_district_buttons (Main_GUI * this)
 
 		if (is->district_configs[dc].command == -1)
 			continue;
-
-		if ((is->district_configs[dc].command == UCV_Build_Neighborhood)    && !is->current_config.enable_neighborhood_districts)     continue;
-		if ((is->district_configs[dc].command == UCV_Build_WonderDistrict)  && !is->current_config.enable_wonder_districts)           continue;
-		if ((is->district_configs[dc].command == UCV_Build_DistributionHub) && !is->current_config.enable_distribution_hub_districts) continue;
-		if ((is->district_configs[dc].command == UCV_Build_Aerodrome)       && !is->current_config.enable_aerodrome_districts)        continue;
+		if ((dc == BRIDGE_DISTRICT_ID) && ! is->current_config.enable_bridge_districts)
+			continue;
 
 		if (existing_district_id == dc && district_completed) continue;
 		if ((existing_district_id >= 0) && (existing_district_id != dc) && (! district_completed)) continue;
 
-		if (!is->district_configs[dc].allow_multiple) {
-			bool found_same_district_nearby = false;
-			FOR_TILES_AROUND(tai, is->workable_tile_count, selected_unit->Body.X, selected_unit->Body.Y) {
-				struct district_instance * nearby_inst = get_district_instance (tai.tile);
-				if (nearby_inst != NULL && nearby_inst->district_type == dc) {
-					found_same_district_nearby = true;
-					break;
-				}
-			}
-			if (found_same_district_nearby)
-				continue;
-		}
-
-		int prereq_id = is->district_infos[dc].advance_prereq_id;
-		if ((prereq_id >= 0) && !Leader_has_tech(&leaders[selected_unit->Body.CivID], __, prereq_id)) continue;
+		if (! can_build_district_on_tile (tile, dc, selected_unit->Body.CivID))
+			continue;
 
 		// This district should be shown
 		active_districts[active_count++] = dc;
@@ -12538,6 +18096,33 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 
 	if (is->current_config.enable_districts) {
 		set_up_district_buttons (this);
+
+		if (p_main_screen_form->Current_Unit != NULL) {
+			Unit_Body * selected_unit = &p_main_screen_form->Current_Unit->Body;
+
+			enum UnitTypeClasses class = p_bic_data->UnitTypes[selected_unit->UnitTypeID].Unit_Class;
+			Tile * tile = tile_at (selected_unit->X, selected_unit->Y);
+			struct district_instance * existing_inst = get_district_instance (tile);
+			if (class == UTC_Sea && tile->vtable->m35_Check_Is_Water (tile) && existing_inst != NULL && 
+			patch_Unit_can_perform_command (p_main_screen_form->Current_Unit, __, UCV_Pillage)) {
+
+				// Really hate this but can't figure out a cleaner way to do it.
+				// If looping through command buttons, the command ID is always zero if disallowed
+				Command_Button * pillage_button = &this->Unit_Command_Buttons[3];
+				// Special actions sprites: UCV_Pillage is index 3 (0x10000008).
+				Sprite * base_img = &this->Images[0x80 + 3];
+				pillage_button->Command = UCV_Pillage;
+				pillage_button->field_6D8 = 0x10;
+				pillage_button->Button.vtable->m02_Show_Disabled ((Base_Form *)&pillage_button->Button);
+				pillage_button->Button.Images[0] = base_img - 0x3b;
+				pillage_button->Button.Images[1] = base_img;
+				pillage_button->Button.Images[2] = base_img + 0x3b;
+				pillage_button->Button.Images[3] = &this->Images[2];
+				pillage_button->Button.field_664 = 0;
+				pillage_button->Button.field_5FC[13] = 0;
+				pillage_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&pillage_button->Button, __, 0);
+			}
+		}
 	}
 
 	// If the minimum city separation is increased, then gray out the found city button if we're too close to another city.
@@ -12754,6 +18339,11 @@ intercept_end_of_turn ()
 		clear_highlighted_worker_tiles_and_redraw ();
 	}
 
+	if (is->current_config.show_ai_city_location_desirability_if_settler && is->city_loc_display_perspective >= 0) {
+		is->city_loc_display_perspective = -1;
+		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form); // Trigger map redraw
+	}
+
 	// Clear things that don't apply across turns
 	is->have_job_and_loc_to_skip = 0;
 }
@@ -12796,14 +18386,14 @@ handle_worker_command_that_may_replace_district (Unit * unit, int unit_command_v
 		return true;
 
 	struct district_instance * inst = get_district_instance (tile);
-	if ((inst == NULL) || (! district_is_complete (tile, inst->district_type)))
+	if ((inst == NULL) || (! district_is_complete (tile, inst->district_id)))
 		return true;
 
 	int tile_x, tile_y;
 	if (! district_instance_get_coords (inst, tile, &tile_x, &tile_y))
 		return false;
 
-	int district_id = inst->district_type;
+	int district_id = inst->district_id;
 	int civ_id = unit->Body.CivID;
 	bool redundant_district = district_instance_is_redundant (inst, tile);
 	bool would_lose_buildings = any_nearby_city_would_lose_district_benefits (district_id, civ_id, tile_x, tile_y);
@@ -12813,8 +18403,8 @@ handle_worker_command_that_may_replace_district (Unit * unit, int unit_command_v
 	bool remove_existing = redundant_district;
 	if (inst != NULL && district_id >= 0 && district_id < is->district_count) {
 		PopupForm * popup = get_popup_form ();
-		set_popup_str_param (0, (char *)is->district_configs[district_id].name, -1, -1);
-		set_popup_str_param (1, (char *)is->district_configs[district_id].name, -1, -1);
+		set_popup_str_param (0, (char *)is->district_configs[district_id].display_name, -1, -1);
+		set_popup_str_param (1, (char *)is->district_configs[district_id].display_name, -1, -1);
 		popup->vtable->set_text_key_and_flags (
 			popup, __, is->mod_script_path,
 			would_lose_buildings
@@ -12857,8 +18447,43 @@ bool __fastcall
 bool
 is_district_command (int unit_command_value)
 {
-	int dummy;
-	return itable_look_up (&is->command_id_to_district_id, unit_command_value, &dummy);
+	int district_id;
+	bool maybe_district_command = itable_look_up (&is->command_id_to_district_id, unit_command_value, &district_id);
+
+	// Natural wonder command IDs are -1 (unbuildable), which can be a false positive
+	if (district_id == NATURAL_WONDER_DISTRICT_ID)
+		return false;
+	
+	return maybe_district_command;
+}
+
+int __fastcall
+patch_Map_check_colony_location (Map * this, int edx, int tile_x, int tile_y, int civ_id)
+{
+	int base = Map_check_colony_location (this, __, tile_x, tile_y, civ_id);
+	Tile * tile = tile_at (tile_x, tile_y);
+
+	if ((tile == NULL) || (tile == p_null_tile) || ! is->current_config.allow_extraterritorial_colonies) 
+		return base;
+
+	if (tile->vtable->m35_Check_Is_Water (tile)) return base;
+	if (Tile_has_city (tile) || Tile_has_colony (tile)) return base;
+
+	int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	if ((owner_id < 0) || (owner_id == civ_id)) return base;
+
+	int resource_type = Tile_get_resource_visible_to (tile, __, civ_id);
+	if ((resource_type < 0) || (resource_type >= p_bic_data->ResourceTypeCount)) return base;
+
+	int req_tech = p_bic_data->ResourceTypes[resource_type].RequireID;
+	if ((req_tech >= 0) && (! Leader_has_tech (&leaders[civ_id], __, req_tech))) return base;
+
+	int res_class = p_bic_data->ResourceTypes[resource_type].Class;
+	if ((res_class != RC_Strategic) && (res_class != RC_Luxury)) return base;
+	if (tile->vtable->m26_Check_Tile_Building (tile))
+		return 6;
+
+	return 0;
 }
 
 bool __fastcall
@@ -12866,42 +18491,43 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 {
 	if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
+		enum SquareTypes base_type = (tile != NULL && tile != p_null_tile) ? tile->vtable->m50_Get_Square_BaseType (tile) : SQ_INVALID;
+
 		if ((tile != NULL) && (tile != p_null_tile) && is->current_config.enable_natural_wonders) {
 			struct district_instance * inst = get_district_instance (tile);
 			if ((inst != NULL) &&
-			    (inst->district_type == NATURAL_WONDER_DISTRICT_ID) &&
+			    (inst->district_id == NATURAL_WONDER_DISTRICT_ID) &&
 			    (inst->natural_wonder_info.natural_wonder_id >= 0)) {
 				if (is_worker_or_settler_command (unit_command_value) || is_district_command (unit_command_value))
 					return false;
 			}
 		}
-		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 
 		if (is_district_command (unit_command_value)) {
-			return (base_type != SQ_Mountains && base_type != SQ_Forest && base_type != SQ_Jungle && base_type != SQ_Swamp && base_type != SQ_Volcano);
+			int district_id;
+			if (! itable_look_up (&is->command_id_to_district_id, unit_command_value, &district_id))
+				return false;
+
+			return is_worker (this) && can_build_district_on_tile (tile, district_id, this->Body.CivID);
+		}
+		else if (unit_command_value == UCV_Build_Colony || unit_command_value == UCV_Build_Remote_Colony) {
+			if (is->current_config.allow_extraterritorial_colonies && is_worker (this)) {
+			    return patch_Map_check_colony_location (&p_bic_data->Map, __, this->Body.X, this->Body.Y, this->Body.CivID) == 0;
+			}
 		}
 		else if (unit_command_value == UCV_Build_Mine) {
-			bool has_district = (get_district_instance (tile) != NULL);
+			bool has_district = (tile != NULL) && (tile != p_null_tile) && (get_district_instance (tile) != NULL);
 
 			if (has_district) {
-				return (base_type != SQ_FloodPlain && base_type != SQ_Forest && base_type != SQ_Jungle && base_type != SQ_Volcano);
+				return base_type == SQ_Hills || 
+				       base_type == SQ_Mountains ||
+					   base_type == SQ_Desert ||
+					   base_type == SQ_Plains ||
+					   base_type == SQ_Grassland ||
+					   base_type == SQ_Tundra;
 			}
-		}
-		else if (unit_command_value == UCV_Join_City) {
-			bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
-			if (!is_human) {
-				int type_id = this->Body.UnitTypeID;
-				if ((type_id >= 0) && (type_id < p_bic_data->UnitTypeCount)) {
-					int worker_actions = p_bic_data->UnitTypes[type_id].Worker_Actions;
-					if (worker_actions != 0 && (worker_actions & (UCV_Automate))) {
-						int civ_id = this->Body.CivID;
-						if (civ_id >= 0 && civ_id < 32) {
-							return is->city_pending_district_requests[civ_id].len == 0;
-						}
-						return true;
-					}
-				}
-			}
+		} else if (unit_command_value == UCV_Pillage) {
+			return patch_Unit_can_pillage (this, __, this->Body.X, this->Body.Y);
 		}
 	} 
 	if (is->current_config.disable_worker_automation &&
@@ -12915,53 +18541,111 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 		return ((class != UTC_Land) || (! tile->vtable->m35_Check_Is_Water (tile))) &&
 			Unit_can_perform_command (this, __, unit_command_value);
 	}
-
-	if ((unit_command_value == UCV_Pillage) &&
-	    ! patch_Unit_can_pillage (this, __, this->Body.X, this->Body.Y)) {
-		return false;
-	}
 	
 	return Unit_can_perform_command (this, __, unit_command_value);
+}
+
+void __fastcall
+patch_Unit_join_city (Unit * this, int edx, City * city)
+{
+	if (is->current_config.enable_districts && is_worker (this)) {
+		int civ_id = this->Body.CivID;
+		bool is_human = (*p_human_player_bits & (1 << civ_id)) != 0;
+		if (! is_human) {
+			struct district_worker_record * rec = get_tracked_worker_record (this);
+			if ((rec != NULL) && (rec->pending_req != NULL)) {
+				ai_move_district_worker (this, rec);
+				return;
+			}
+
+			Tile * worker_tile = tile_at (this->Body.X, this->Body.Y);
+			if ((worker_tile != NULL) && (worker_tile != p_null_tile)) {
+				int worker_continent_id = worker_tile->vtable->m46_Get_ContinentID (worker_tile);
+
+				if ((civ_id >= 0) && (civ_id < 32)) {
+					struct pending_district_request * same_city_req = NULL;
+					struct pending_district_request * same_continent_req = NULL;
+
+					FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
+						struct pending_district_request * req = (struct pending_district_request *)tei.value;
+						if ((req == NULL) || (req->assigned_worker_id >= 0))
+							continue;
+						if ((req->civ_id != civ_id) || (req->city_id < 0))
+							continue;
+
+						City * req_city = get_city_ptr (req->city_id);
+						if (req_city == NULL)
+							continue;
+
+						if (city != NULL && req_city->Body.ID == city->Body.ID) {
+							same_city_req = req;
+							break;
+						}
+
+						Tile * req_city_tile = tile_at (req_city->Body.X, req_city->Body.Y);
+						if ((req_city_tile != NULL) && (req_city_tile != p_null_tile)) {
+							int req_continent_id = req_city_tile->vtable->m46_Get_ContinentID (req_city_tile);
+							if (req_continent_id == worker_continent_id) {
+								same_continent_req = req;
+							}
+						}
+					}
+
+					struct pending_district_request * chosen_req = (same_city_req != NULL) ? same_city_req : same_continent_req;
+					if (chosen_req != NULL) {
+						City * req_city = get_city_ptr (chosen_req->city_id);
+						if (req_city != NULL) {
+							int target_x = 0;
+							int target_y = 0;
+							Tile * target_tile = find_tile_for_district (req_city, chosen_req->district_id, &target_x, &target_y);
+							if ((target_tile != NULL) && (target_tile != p_null_tile)) {
+								wrap_tile_coords (&p_bic_data->Map, &target_x, &target_y);
+								assign_worker_to_district (chosen_req, this, req_city, chosen_req->district_id, target_x, target_y);
+								return;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	Unit_join_city (this, __, city);
 }
 
 bool __fastcall
 patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y)
 {
 	bool base = Unit_can_pillage (this, __, tile_x, tile_y);
-	if (! base)
-		return false;
 
-	if (! is->current_config.enable_districts ||
-	    ! is->current_config.enable_wonder_districts ||
-	    is->current_config.completed_wonder_districts_can_be_destroyed)
-		return true;
+	if (! is->current_config.enable_districts || ! is->current_config.enable_wonder_districts)
+		return base;
 
 	Tile * tile = tile_at (tile_x, tile_y);
 	if ((tile == NULL) || (tile == p_null_tile))
-		return true;
+		return base;
 
 	struct district_instance * inst = get_district_instance (tile);
 	if (inst == NULL)
-		return true;
+		return base;
 
+	int district_id = inst->district_id;
 	if (is->current_config.enable_natural_wonders &&
-	    (inst->district_type == NATURAL_WONDER_DISTRICT_ID) &&
+	    (district_id == NATURAL_WONDER_DISTRICT_ID) &&
 	    (inst->natural_wonder_info.natural_wonder_id >= 0))
 		return false;
-
-	int district_id = inst->district_type;
-	if (district_id != WONDER_DISTRICT_ID)
-		return true;
 
 	if (! district_is_complete (tile, district_id))
 		return true;
 
-	// Check if this wonder district has a completed wonder on it
-	struct wonder_district_info * info = get_wonder_district_info (tile);
-	if (info == NULL || info->state != WDS_COMPLETED)
-		return true;
+	if (district_id == WONDER_DISTRICT_ID) {
+		struct wonder_district_info * info = get_wonder_district_info (tile);
+		if (info == NULL || info->state != WDS_COMPLETED)
+			return true;
+		return is->current_config.completed_wonder_districts_can_be_destroyed;
+	}
 
-	return false;
+	return true;
 }
 
 bool __fastcall
@@ -13054,107 +18738,101 @@ issue_district_worker_command (Unit * unit, int command)
 	if (! is->current_config.enable_districts)
 		return;
 
+	if (unit == NULL)
+		return;
+
 	int tile_x = unit->Body.X;
 	int tile_y = unit->Body.Y;
 	Tile * tile = tile_at (tile_x, tile_y);
-	int unit_type_id = unit->Body.UnitTypeID;
-	int unit_id = unit->Body.ID;
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
 
 	if (! is_worker(unit))
 		return;
 
-	// Check tech prerequisite for the selected district, if any
-	int district_id;
-	if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
-		if (district_id < 0 || district_id >= is->district_count)
+	int district_id = -1;
+	if (! itable_look_up (&is->command_id_to_district_id, command, &district_id))
+		return;
+	if ((district_id < 0) || (district_id >= is->district_count))
+		return;
+
+	if (! leader_can_build_district (&leaders[unit->Body.CivID], district_id))
+		return;
+
+	// Disallow placing districts on invalid terrain, pollution, or cratered tiles
+	if (tile->vtable->m21_Check_Crates (tile, __, 0))
+		return;
+	if (tile->vtable->m20_Check_Pollution (tile, __, 0))
+		return;
+
+	if (! district_is_buildable_on_square_type (&is->district_configs[district_id], tile))
+		return;
+
+	// If District will be replaced by another District
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst != NULL && district_is_complete(tile, inst->district_id)) {
+		int existing_district_id = inst->district_id;
+		int inst_x, inst_y;
+		if (! district_instance_get_coords (inst, tile, &inst_x, &inst_y))
 			return;
-		int prereq_id = is->district_infos[district_id].advance_prereq_id;
-		// Only enforce if a prereq is configured
-		if (prereq_id >= 0 && !Leader_has_tech (&leaders[unit->Body.CivID], __, prereq_id)) {
-			return; // Civ lacks required tech; do not issue command
+
+		int civ_id = unit->Body.CivID;
+		bool redundant_district = district_instance_is_redundant (inst, tile);
+		bool would_lose_buildings = any_nearby_city_would_lose_district_benefits (existing_district_id, civ_id, inst_x, inst_y);
+		if (redundant_district)
+			would_lose_buildings = false;
+
+		bool remove_existing = false;
+		
+		PopupForm * popup = get_popup_form ();
+		set_popup_str_param (0, (char*)is->district_configs[existing_district_id].display_name, -1, -1);
+		set_popup_str_param (1, (char*)is->district_configs[existing_district_id].display_name, -1, -1);
+		popup->vtable->set_text_key_and_flags (
+			popup, __, is->mod_script_path,
+			would_lose_buildings
+				? "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT"
+				: "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT_SAFE",
+			-1, 0, 0, 0
+		);
+
+		int sel = patch_show_popup (popup, __, 0, 0);
+		if (sel == 0)
+			remove_existing = true;
+		else
+			return;
+
+		if (remove_existing) {
+			remove_district_instance (tile);
+			tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+			tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, inst_x, inst_y);
+			handle_district_removed (tile, existing_district_id, inst_x, inst_y, false);
 		}
 	}
-    // Disallow placing districts on invalid terrain, pollution, or cratered tiles
-    if (tile != NULL && tile != p_null_tile) {
-        if (tile->vtable->m21_Check_Crates (tile, __, 0))
-            return;
-        if (tile->vtable->m20_Check_Pollution (tile, __, 0))
-            return;
-        enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType(tile);
-        if (base_type == SQ_Mountains || base_type == SQ_Forest || base_type == SQ_Jungle || base_type == SQ_Swamp || base_type == SQ_Volcano) {
-            return;
-        }
-    }
 
-	if (tile != NULL && tile != p_null_tile) {
+	// If District will replace an improvement
+	unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
+	unsigned int removable_flags = overlay_flags & 0xfc;
 
-		// If District will be replaced by another District
-		struct district_instance * inst = get_district_instance (tile);
-			if (inst != NULL && district_is_complete(tile, inst->district_type)) {
-				int district_id = inst->district_type;
-				int inst_x, inst_y;
-				if (! district_instance_get_coords (inst, tile, &inst_x, &inst_y))
-					return;
-
-				int civ_id = unit->Body.CivID;
-				bool redundant_district = district_instance_is_redundant (inst, tile);
-				bool would_lose_buildings = any_nearby_city_would_lose_district_benefits (district_id, civ_id, inst_x, inst_y);
-				if (redundant_district)
-					would_lose_buildings = false;
-
-				bool remove_existing = false;
-				
-				PopupForm * popup = get_popup_form ();
-				set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
-				set_popup_str_param (1, (char*)is->district_configs[district_id].name, -1, -1);
-				popup->vtable->set_text_key_and_flags (
-					popup, __, is->mod_script_path,
-					would_lose_buildings
-						? "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT"
-						: "C3X_CONFIRM_REPLACE_DISTRICT_WITH_DIFFERENT_DISTRICT_SAFE",
-					-1, 0, 0, 0
-				);
-
-				int sel = patch_show_popup (popup, __, 0, 0);
-				if (sel == 0)
-					remove_existing = true;
-				else
-					return;
-
-				if (remove_existing) {
-					remove_district_instance (tile);
-					tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
-					tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, inst_x, inst_y);
-					handle_district_removed (tile, district_id, inst_x, inst_y, false);
-				}
-			}
-
-		// If District will replace an improvement
-		if (itable_look_up (&is->command_id_to_district_id, command, &district_id)) {
-			unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
-			unsigned int removable_flags = overlay_flags & 0xfc;
-
-			if (removable_flags != 0) {
-				PopupForm * popup = get_popup_form ();
-				set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
-				popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_BUILD_DISTRICT_OVER_IMPROVEMENT", -1, 0, 0, 0);
-				int sel = patch_show_popup (popup, __, 0, 0);
-				if (sel != 0)
-					return;
-			}
-
-				if (removable_flags != 0)
-					tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, tile_x, tile_y);
-				tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
-			}
-
-			inst = ensure_district_instance (tile, district_id, tile_x, tile_y);
-			if (inst != NULL)
-				inst->state = DS_UNDER_CONSTRUCTION;
-
-		Unit_set_state(unit, __, UnitState_Build_Mines);
-		unit->Body.Job_ID = WJ_Build_Mines;
+	if (removable_flags != 0) {
+		PopupForm * popup = get_popup_form ();
+		set_popup_str_param (0, (char*)is->district_configs[district_id].display_name, -1, -1);
+		popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_BUILD_DISTRICT_OVER_IMPROVEMENT", -1, 0, 0, 0);
+		int sel = patch_show_popup (popup, __, 0, 0);
+		if (sel != 0)
+			return;
 	}
+
+	if (removable_flags != 0)
+		tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, tile_x, tile_y);
+	tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
+
+	inst = ensure_district_instance (tile, district_id, tile_x, tile_y);
+	inst->built_by_civ_id = unit->Body.CivID;
+	if (inst != NULL)
+		inst->state = DS_UNDER_CONSTRUCTION;
+
+	Unit_set_state (unit, __, UnitState_Build_Mines);
+	unit->Body.Job_ID = WJ_Build_Mines;
 }
 
 void
@@ -13270,6 +18948,11 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 		clear_highlighted_worker_tiles_and_redraw ();
 	}
 
+	if (is->current_config.show_ai_city_location_desirability_if_settler && is->city_loc_display_perspective >= 0) {
+		is->city_loc_display_perspective = -1;
+		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form); // Trigger map redraw
+	}
+
 	// If a district, run district build logic
 	if (is->current_config.enable_districts && is_district_command (command)) {
 		clear_something_1 ();
@@ -13280,6 +18963,7 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 
 	// Check if command is a worker build command (not a district) and a district exists on the tile
 	if (is->current_config.enable_districts && p_main_screen_form->Current_Unit != NULL) {
+		
 		bool removed_existing = false;
 		if (! handle_worker_command_that_may_replace_district (p_main_screen_form->Current_Unit, command, &removed_existing))
 			return;
@@ -13447,7 +19131,109 @@ patch_City_Form_open (City_Form * this, int edx, City * city, int param_2)
 	}
 }
 
-void init_district_icons ();
+void
+init_district_icons ()
+{
+	if (is->dc_icons_img_state != IS_UNINITED)
+		return;
+
+	char ss[200];
+	snprintf (ss, sizeof ss, "[C3X] init_district_icons: state=%d\n", is->dc_icons_img_state);
+	(*p_OutputDebugStringA) (ss);
+
+	PCX_Image pcx;
+	PCX_Image_construct (&pcx);
+
+	char temp_path[2*MAX_PATH];
+	get_mod_art_path ("Districts/DistrictIncomeIcons.pcx", temp_path, sizeof temp_path);
+
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+	if ((pcx.JGL.Image == NULL) ||
+	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) < 776) ||
+	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) < 32)) {
+		(*p_OutputDebugStringA) ("[C3X] PCX file for district icons failed to load or is too small.\n");
+		is->dc_icons_img_state = IS_INIT_FAILED;
+		goto cleanup;
+	}
+
+	// Extract science icon (index 1)
+	Sprite_construct (&is->district_science_icon);
+	Sprite_slice_pcx (&is->district_science_icon, __, &pcx, 1 + 1*31, 1, 30, 30, 1, 1);
+
+	// Extract commerce icon (index 2)
+	Sprite_construct (&is->district_commerce_icon);
+	Sprite_slice_pcx (&is->district_commerce_icon, __, &pcx, 1 + 2*31, 1, 30, 30, 1, 1);
+
+	// Extract shield icon (index 4)
+	Sprite_construct (&is->district_shield_icon);
+	Sprite_slice_pcx (&is->district_shield_icon, __, &pcx, 1 + 4*31, 1, 30, 30, 1, 1);
+
+	// Extract corruption icon (index 5)
+	Sprite_construct (&is->district_corruption_icon);
+	Sprite_slice_pcx (&is->district_corruption_icon, __, &pcx, 1 + 5*31, 1, 30, 30, 1, 1);
+
+	// Extract food icon (index 6)
+	Sprite_construct (&is->district_food_icon);
+	Sprite_slice_pcx (&is->district_food_icon, __, &pcx, 1 + 6*31, 1, 30, 30, 1, 1);
+
+	// Extract food eaten icon (index 7)
+	Sprite_construct (&is->district_food_eaten_icon);
+	Sprite_slice_pcx (&is->district_food_eaten_icon, __, &pcx, 1 + 7*31, 1, 30, 30, 1, 1);
+
+	// Extract small happiness icon (index 12)
+	Sprite_construct (&is->district_happiness_icon_small);
+	Sprite_slice_pcx (&is->district_happiness_icon_small, __, &pcx, 1 + 12*31, 1, 30, 30, 1, 1);
+
+	// Extract small shield icon (index 13)
+	Sprite_construct (&is->district_shield_icon_small);
+	Sprite_slice_pcx (&is->district_shield_icon_small, __, &pcx, 1 + 13*31, 1, 30, 30, 1, 1);
+
+	// Extract small commerce icon (index 14)
+	Sprite_construct (&is->district_commerce_icon_small);
+	Sprite_slice_pcx (&is->district_commerce_icon_small, __, &pcx, 1 + 14*31, 1, 30, 30, 1, 1);
+
+	// Extract small food icon (index 15: x = 1 + 15*31 = 466, width 30)
+	Sprite_construct (&is->district_food_icon_small);
+	Sprite_slice_pcx (&is->district_food_icon_small, __, &pcx, 1 + 15*31, 1, 30, 30, 1, 1);
+
+	// Extract small science icon (index 16)
+	Sprite_construct (&is->district_science_icon_small);
+	Sprite_slice_pcx (&is->district_science_icon_small, __, &pcx, 1 + 16*31, 1, 30, 30, 1, 1);
+
+	// Extract small culture icon (index 18)
+	Sprite_construct (&is->district_culture_icon_small);
+	Sprite_slice_pcx (&is->district_culture_icon_small, __, &pcx, 1 + 18*31, 1, 30, 30, 1, 1);
+
+	// Load Negatives (mostly red) from here
+
+	// Extract negative small commerce icon (index 17)
+	Sprite_construct (&is->district_negative_commerce_icon_small);
+	Sprite_slice_pcx (&is->district_negative_commerce_icon_small, __, &pcx, 1 + 17*31, 1, 30, 30, 1, 1);
+
+	// Extract small unhappiness icon (index 19)
+	Sprite_construct (&is->district_unhappiness_icon_small);
+	Sprite_slice_pcx (&is->district_unhappiness_icon_small, __, &pcx, 1 + 19*31, 1, 30, 30, 1, 1);
+
+	// Extract negative small shield icon (index 20)
+	Sprite_construct (&is->district_negative_shield_icon_small);
+	Sprite_slice_pcx (&is->district_negative_shield_icon_small, __, &pcx, 1 + 20*31, 1, 30, 30, 1, 1);
+
+	// Extract negative small culture icon (index 21)
+	Sprite_construct (&is->district_negative_culture_icon_small);
+	Sprite_slice_pcx (&is->district_negative_culture_icon_small, __, &pcx, 1 + 21*31, 1, 30, 30, 1, 1);
+
+	// Extract negative small culture icon (index 22)
+	Sprite_construct (&is->district_negative_food_icon_small);
+	Sprite_slice_pcx (&is->district_negative_food_icon_small, __, &pcx, 1 + 22*31, 1, 30, 30, 1, 1);
+
+	// Extract negative small science icon (index 23)
+	Sprite_construct (&is->district_negative_science_icon_small);
+	Sprite_slice_pcx (&is->district_negative_science_icon_small, __, &pcx, 1 + 23*31, 1, 30, 30, 1, 1);
+
+	is->dc_icons_img_state = IS_OK;
+cleanup:
+	pcx.vtable->destruct (&pcx, __, 0);
+}
 
 void __fastcall
 patch_City_Form_draw (City_Form * this)
@@ -13554,30 +19340,17 @@ patch_City_Form_draw (City_Form * this)
 
 	// Calculate district gold and science bonuses by iterating workable tiles
 	int district_gold = 0;
-	int city_x = city->Body.X;
-	int city_y = city->Body.Y;
 	int city_civ_id = city->Body.CivID;
 
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		if (n == 0) continue;
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city_x + dx, y = city_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
-		if ((tile == NULL) || (tile == p_null_tile)) continue;
-		if (tile->Territory_OwnerID != city_civ_id) continue;
-		if (tile_has_enemy_unit (tile, city_civ_id)) continue;
-		if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL) continue;
-		int district_id = inst->district_type;
-		if (district_id < 0 || district_id >= is->district_count) continue;
-		if (! district_is_complete (tile, district_id)) continue;
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		if ((wai.dx == 0) && (wai.dy == 0)) continue;
+		Tile * tile = wai.tile;
+		struct district_instance * inst = wai.district_inst;
+		int district_id = inst->district_id;
 
 		struct district_config const * cfg = &is->district_configs[district_id];
 		int gold_bonus = 0;
-		get_effective_district_yields (inst, cfg, NULL, NULL, &gold_bonus, NULL, NULL);
+		get_effective_district_yields (inst, cfg, NULL, NULL, &gold_bonus, NULL, NULL, NULL);
 		district_gold += gold_bonus;
 	}
 
@@ -13764,6 +19537,53 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 {
 	AdjacentMoveValidity base_validity = Unit_can_move_to_adjacent_tile (this, __, neighbor_index, param_2);
 
+	if (is->current_config.enable_districts) {
+		int nx, ny;
+		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
+		Tile * dest = tile_at (nx, ny);
+
+		// Let workers step onto coast tiles when the config flag is enabled (base logic treats this as an invalid sea move)
+		if (is->current_config.workers_can_enter_coast && is_worker (this) &&
+			((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
+			if ((dest != NULL) &&
+				dest->vtable->m35_Check_Is_Water (dest) &&
+				(dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
+				base_validity = AMV_OK;
+		}
+
+		// Allow land units to enter bridge tiles
+		if (is->current_config.enable_bridge_districts &&
+			(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land) &&
+			((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
+			if ((dest != NULL) && (dest != p_null_tile)) {
+				struct district_instance * inst = get_district_instance (dest);
+				if ((inst != NULL) && (inst->district_id == BRIDGE_DISTRICT_ID) && district_is_complete (dest, inst->district_id)) {
+					base_validity = AMV_OK;
+				}
+			}
+		}
+
+		// Allow naval units to enter completed canal tiles
+		if (is->current_config.enable_canal_districts &&
+			(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea) &&
+			((base_validity == AMV_INVALID_SEA_MOVE) || (base_validity == AMV_CANNOT_EMBARK))) {
+			if ((dest != NULL) && (dest != p_null_tile)) {
+				struct district_instance * inst = get_district_instance (dest);
+				if ((inst != NULL) && (inst->district_id == CANAL_DISTRICT_ID) && district_is_complete (dest, inst->district_id)) {
+					base_validity = AMV_OK;
+				}
+			}
+		}
+
+		if ((base_validity == AMV_OK) &&
+			is->current_config.enable_port_districts &&
+			is->current_config.naval_units_use_port_districts_not_cities &&
+			(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
+			if ((dest != NULL) && (dest != p_null_tile) && Tile_has_city (dest))
+				return AMV_INVALID_SEA_MOVE;
+		}
+	}
+
 	// Apply unit count per tile limit
 	enum UnitTypeClasses class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
 	if ((base_validity == AMV_OK) && (is->current_config.limit_units_per_tile[class] > 0)) {
@@ -13790,6 +19610,36 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 	return base_validity;
 }
 
+bool
+great_wall_blocks_civ (Tile * tile, int civ_id)
+{
+	if (! is->current_config.enable_districts ||
+	    ! is->current_config.enable_great_wall_districts ||
+	    ! is->current_config.great_wall_districts_impassible_by_others)
+		return false;
+
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	if (owner_id <= 0)
+		return false;
+	if (owner_id == civ_id)
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if ((inst == NULL) || (inst->district_id != GREAT_WALL_DISTRICT_ID))
+		return false;
+
+	if (! district_is_complete (tile, GREAT_WALL_DISTRICT_ID))
+		return false;
+
+	if (district_is_obsolete_for_civ (GREAT_WALL_DISTRICT_ID, civ_id))
+		return false;
+
+	return true;
+}
+
 int __fastcall
 patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int from_y, int to_x, int to_y, Unit * unit, int civ_id, unsigned flags, int neighbor_index, Trade_Net_Distance_Info * dist_info)
 {
@@ -13798,7 +19648,63 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 	    (unit == NULL) && ((flags == 0x1009) || (flags == 0x9))) // this call can be accelerated by TNX
 	    return is->get_move_cost_for_sea_trade (this, is->tnx_cache, from_x, from_y, to_x, to_y, civ_id, flags, neighbor_index, dist_info);
 
-	int const base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, neighbor_index, dist_info);
+	int base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, neighbor_index, dist_info);
+
+	if ((unit != NULL) && great_wall_blocks_civ (tile_at (to_x, to_y), unit->Body.CivID))
+		return -1;
+
+	// Let the pathfinder consider coastal tiles reachable for workers when the config flag is on
+	if (is->current_config.enable_districts && is->current_config.workers_can_enter_coast &&
+	    (base_cost < 0) && (unit != NULL) && is_worker (unit)) {
+		Tile * dest = tile_at (to_x, to_y);
+		if ((dest != NULL) &&
+		    dest->vtable->m35_Check_Is_Water (dest) &&
+		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
+			base_cost = Unit_get_max_move_points (unit);
+	}
+
+	// Let the pathfinder consider bridge tiles reachable for land units
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_bridge_districts &&
+	    (base_cost < 0) && (unit != NULL) &&
+	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Land)) {
+		Tile * dest = tile_at (to_x, to_y);
+		if ((dest != NULL) && (dest != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (dest);
+			if ((inst != NULL) &&
+			    (inst->district_id == BRIDGE_DISTRICT_ID) &&
+			    district_is_complete (dest, inst->district_id)) {
+				base_cost = Unit_get_max_move_points (unit);
+			}
+		}
+	}
+
+	// Let the pathfinder consider canal tiles reachable for naval units
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_canal_districts &&
+	    (base_cost < 0) && (unit != NULL) &&
+	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
+		Tile * dest = tile_at (to_x, to_y);
+		if ((dest != NULL) && (dest != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (dest);
+			if ((inst != NULL) &&
+			    (inst->district_id == CANAL_DISTRICT_ID) &&
+			    district_is_complete (dest, inst->district_id)) {
+				base_cost = Unit_get_max_move_points (unit);
+			}
+		}
+	}
+
+	if ((unit != NULL) &&
+	    (base_cost >= 0) &&
+	    is->current_config.enable_districts &&
+	    is->current_config.enable_port_districts &&
+	    is->current_config.naval_units_use_port_districts_not_cities &&
+	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
+		Tile * dest = tile_at (to_x, to_y);
+		if ((dest != NULL) && (dest != p_null_tile) && Tile_has_city (dest))
+			return -1;
+	}
 
 	// Apply unit count per tile limit
 	if ((unit != NULL) && ! is_below_stack_limit (tile_at (to_x, to_y), unit->Body.CivID, p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class))
@@ -14392,8 +20298,8 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
 			struct district_instance * inst = get_district_instance (tile);
-			if (inst != NULL && inst->district_type >= 0 && inst->district_type < is->district_count) {
-				int district_id = inst->district_type;
+			if (inst != NULL && inst->district_id >= 0 && inst->district_id < is->district_count) {
+				int district_id = inst->district_id;
 
 				// For Wonder Districts: check if unused (can be replaced)
 				if (is->current_config.enable_wonder_districts && (district_id == WONDER_DISTRICT_ID)) {
@@ -14435,15 +20341,16 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 		if ((tile != NULL) && (tile != p_null_tile)) {
 			struct district_instance * inst = get_district_instance (tile);
 			if (inst != NULL &&
-			    inst->district_type >= 0 && inst->district_type < is->district_count &&
+			    inst->district_id >= 0 && inst->district_id < is->district_count &&
 			    ! tile->vtable->m35_Check_Is_Water (tile) &&
 			    (tile->CityID < 0) &&
 			    ! tile->vtable->m18_Check_Mines (tile, __, 0)) {
+				int tile_x = 0, tile_y = 0;
+				tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y);
 				int owner_civ = tile->vtable->m38_Get_Territory_OwnerID (tile);
 				if ((owner_civ == this->ID) || (owner_civ == 0)) {
-					// Check if the leader has the tech prereq for this district
-					int prereq_id = is->district_infos[inst->district_type].advance_prereq_id;
-					if (prereq_id < 0 || Leader_has_tech (this, __, prereq_id))
+					if (leader_can_build_district (this, inst->district_id) &&
+					    district_resource_prereqs_met (tile, tile_x, tile_y, inst->district_id, NULL))
 						tr = 1;
 				}
 			}
@@ -14931,19 +20838,227 @@ patch_City_can_build_unit (City * this, int edx, int unit_type_id, bool exclude_
 		int available;
 		if (get_available_unit_count (&leaders[this->Body.CivID], unit_type_id, &available) && (available <= 0))
 			return false;
+	}
 
-		if (is->current_config.enable_districts &&
-			is->current_config.enable_aerodrome_districts &&
-		    is->current_config.air_units_use_aerodrome_districts_not_cities) {
-			UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
-			int aerodrome_id = AERODROME_DISTRICT_ID;
-			if ((type->Unit_Class == UTC_Air) && (aerodrome_id >= 0) &&
-			    ! city_has_required_district (this, aerodrome_id))
-				return false;
+	if (is->current_config.enable_districts) {
+		bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
+		UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
+
+		// Bail if tech reqs are not met
+		int prereq_id = type->AdvReq;
+		if (prereq_id >= 0 && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id))
+			return false;
+
+		if (! Leader_can_build_unit (&leaders[this->Body.CivID], __, unit_type_id, 1, false))
+			return false;
+
+		// Superficially allow the AI to choose the unit for scoring and production.
+		// If a disallowed air/naval unit is chosen in ai_choose_production, we'll swap it out for a feasible fallback later
+		// after prioritizing the aerodrome/port to be built
+		if (! is_human && (
+			(type->Unit_Class == UTC_Air || city_can_build_district (this, AERODROME_DISTRICT_ID)) || 
+			(type->Unit_Class == UTC_Sea || city_can_build_district (this, PORT_DISTRICT_ID)))
+		)
+			return base;
+
+		// Air units
+		if (type->Unit_Class == UTC_Air) {
+			if (is->current_config.enable_aerodrome_districts && is->current_config.air_units_use_aerodrome_districts_not_cities) {
+				if (find_pending_district_request (this, AERODROME_DISTRICT_ID) != NULL)
+					return false;
+				if (! city_can_build_district (this, AERODROME_DISTRICT_ID))
+					return false;
+				return city_has_required_district (this, AERODROME_DISTRICT_ID);
+			}
+		// Naval units
+		} else if (type->Unit_Class == UTC_Sea) {
+			if (is->current_config.enable_port_districts && is->current_config.naval_units_use_port_districts_not_cities) {
+				if (find_pending_district_request (this, PORT_DISTRICT_ID) != NULL)
+					return false;
+				if (! city_can_build_district (this, PORT_DISTRICT_ID))
+					return false;
+				return city_has_required_district (this, PORT_DISTRICT_ID);
+			}
 		}
 	}
 
 	return base;
+}
+
+int __fastcall
+patch_City_get_largest_adjacent_sea_within_work_area (City * this)
+{
+	if (is->current_config.enable_districts && is->current_config.expand_water_tile_checks_to_city_work_area) {
+		int lake_size_threshold = 21;
+		int largest_size = 0;
+		int largest_continent_id = -1;
+		FOR_WORK_AREA_AROUND (wai, this->Body.X, this->Body.Y) {
+			if (wai.tile->vtable->m35_Check_Is_Water (wai.tile)) {
+				int continent_id = wai.tile->vtable->m46_Get_ContinentID (wai.tile);
+				if ((continent_id < 0) || (continent_id >= p_bic_data->Map.Continent_Count))
+					continue;
+				Continent * continent = &p_bic_data->Map.Continents[continent_id];
+				if (continent->Body.TileCount <= lake_size_threshold && ! is->current_config.enable_canal_districts)
+					continue;
+				if (p_bic_data->Map.Continents[continent_id].Body.TileCount > largest_size) {
+					largest_size = p_bic_data->Map.Continents[continent_id].Body.TileCount;
+					largest_continent_id = continent_id;
+				}
+			}
+		}
+		return largest_continent_id;
+	}
+	return City_get_largest_adjacent_sea (this);
+}
+
+bool __fastcall
+patch_Map_impl_is_near_river_within_work_area (Map * this, int edx, int x, int y, int num_tiles)
+{
+	if (is->current_config.enable_districts && is->current_config.expand_water_tile_checks_to_city_work_area) {
+		FOR_WORK_AREA_AROUND (wai, x, y) {
+			if (wai.tile->vtable->m37_Get_River_Code (wai.tile) != 0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	return Map_impl_is_near_river (this, __, x, y, num_tiles);
+}
+
+bool __fastcall
+patch_Map_impl_is_near_lake_within_work_area (Map * this, int edx, int x, int y, int num_tiles)
+{
+	if (is->current_config.enable_districts && is->current_config.expand_water_tile_checks_to_city_work_area) {
+		int lake_size_threshold = 21;
+		FOR_WORK_AREA_AROUND (wai, x, y) {
+			if (wai.tile->vtable->m35_Check_Is_Water (wai.tile)) {
+				int continent_id = wai.tile->vtable->m46_Get_ContinentID (wai.tile);
+				if ((continent_id < 0) || (continent_id >= p_bic_data->Map.Continent_Count))
+					continue;
+				Continent * continent = &p_bic_data->Map.Continents[continent_id];
+				if (continent->Body.TileCount <= lake_size_threshold)
+					return true;
+			}
+		}
+		return false;
+	}
+
+	return Map_impl_is_near_lake (this, __, x, y, num_tiles);
+}
+
+bool __fastcall
+patch_Map_impl_has_fresh_water_within_work_area (Map * this, int edx, int tile_x, int tile_y)
+{
+	if (is->current_config.enable_districts && is->current_config.expand_water_tile_checks_to_city_work_area) {
+		if (patch_Map_impl_is_near_river_within_work_area (this, __, tile_x, tile_y, 1))
+			return true;
+		if (patch_Map_impl_is_near_lake_within_work_area (this, __, tile_x, tile_y, 1))
+			return true;
+		return false;
+	}
+
+	return Map_impl_has_fresh_water (this, __, tile_x, tile_y);
+}
+
+bool 
+city_meets_district_prereqs_to_build_improvement (City * city, int i_improv, bool apply_strict_rules)
+{
+	// Different logic for human vs AI players
+	bool is_human = (*p_human_player_bits & (1 << city->Body.CivID)) != 0;
+
+	Improvement * improv = &p_bic_data->Improvements[i_improv];
+	bool requires_river = (improv->ImprovementFlags & ITF_Must_Be_Near_River) != 0;
+
+	// Check if the improvement requires a district
+	bool needs_district = city_requires_district_for_improvement (city, i_improv, NULL);
+	struct district_building_prereq_list * prereq_list = get_district_building_prereq_list (i_improv);
+
+	// District is either not needed or already built
+	if (! needs_district)
+		return true;
+
+	if (prereq_list == NULL)
+		return false;
+
+	bool has_buildable_candidate = false;
+	bool has_wonder_candidate = false;
+	bool has_non_wonder_candidate = false;
+	for (int i = 0; i < prereq_list->count; i++) {
+		int district_id = prereq_list->district_ids[i];
+		if (district_id < 0)
+			continue;
+		if (! leader_can_build_district (&leaders[city->Body.CivID], district_id))
+			continue;
+		has_buildable_candidate = true;
+		if (district_id == WONDER_DISTRICT_ID)
+			has_wonder_candidate = true;
+		else
+			has_non_wonder_candidate = true;
+	}
+	if (! has_buildable_candidate)
+		return false;
+
+	bool is_wonder = is->current_config.enable_wonder_districts && improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder);
+
+	// Check that we have the necessary terrain
+	bool has_terrain_for_district = false;
+	bool has_terrain_for_wonder = false;
+	bool has_river_terrain_for_district = false;
+	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+		Tile * tile = wai.tile;
+		for (int i = 0; i < prereq_list->count; i++) {
+			int district_id = prereq_list->district_ids[i];
+			if (district_id < 0)
+				continue;
+			if (! leader_can_build_district (&leaders[city->Body.CivID], district_id))
+				continue;
+			if (! tile_suitable_for_district (tile, district_id, city, NULL))
+				continue;
+
+			if (is_wonder && district_id == WONDER_DISTRICT_ID) {
+				if (! wonder_is_buildable_on_tile (tile, i_improv))
+					continue;
+			}
+
+			has_terrain_for_district = true;
+			if (requires_river && tile->vtable->m37_Get_River_Code (tile) != 0)
+				has_river_terrain_for_district = true;
+
+			if (is_wonder && district_id == WONDER_DISTRICT_ID) {
+				if (! requires_river || tile->vtable->m37_Get_River_Code (tile) != 0) {
+					has_terrain_for_wonder = true;
+				}
+			}
+		}
+	}
+
+	bool requires_wonder_terrain = is_wonder && has_wonder_candidate && ! has_non_wonder_candidate;
+	if (! has_terrain_for_district ||
+	    (requires_river && ! has_river_terrain_for_district) ||
+	    (requires_wonder_terrain && ! has_terrain_for_wonder)) {
+		return false;
+	}
+
+	// If human has everything needed except a built district (which is buildable), allow relaxed checks so UI can gray entry out
+	if (is_human) {
+		return ! apply_strict_rules;
+	}
+
+	// If AI already has a pending district request for this required district, return false
+	// to prevent wasting a turn trying to choose this improvement
+	for (int i = 0; i < prereq_list->count; i++) {
+		int district_id = prereq_list->district_ids[i];
+		if (district_id < 0)
+			continue;
+		if (find_pending_district_request (city, district_id) != NULL)
+			return false;
+	}
+
+	// Superficially allow the AI to choose the improvement for scoring and production.
+	// If a disallowed improvement is chosen in ai_choose_production, we'll swap it out for a feasible fallback later
+	// after prioritizing the district to be built
+	return true;
 }
 
 bool __fastcall
@@ -14954,52 +21069,7 @@ patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply
 	if (! base) return false;
 	if (! is->current_config.enable_districts) return base;
 
-	// Different logic for human vs AI players
-	bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
-
-	// Check if this is a wonder and if wonder districts are enabled
-	if (is_human && is->current_config.enable_wonder_districts &&
-	    (i_improv >= 0) && (i_improv < p_bic_data->ImprovementsCount)) {
-		Improvement * improv = &p_bic_data->Improvements[i_improv];
-		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
-			bool wonder_requires_district = false;
-			int required_id;
-			if (itable_look_up (&is->district_building_prereqs, i_improv, &required_id) && (required_id == WONDER_DISTRICT_ID))
-				wonder_requires_district = true;
-
-			// Can only build wonders that need districts if an incomplete wonder district exists
-			if (wonder_requires_district &&
-				! city_has_wonder_district_with_no_completed_wonder (this))
-				return !apply_strict_rules;
-		}
-	}
-
-	// Check if the improvement requires a district and output the required district id when it does
-	int required_district_id;
-	bool needs_district = city_requires_district_for_improvement (this, i_improv, &required_district_id);
-	if (! needs_district)
-		return true;
-
-	// Ensure prereq tech for the district
-	int prereq_id = is->district_infos[required_district_id].advance_prereq_id;
-	if ((prereq_id >= 0) && ! Leader_has_tech (&leaders[this->Body.CivID], __, prereq_id))
-		return false;
-
-	// Human doesn't have appropriate district but needs one; allow relaxed checks so UI can gray entry out
-	if (needs_district && is_human) {
-		return !apply_strict_rules;
-	}
-
-	// If AI already has a pending district request for this required district, return false
-	// to prevent wasting a turn trying to choose this improvement
-	if (find_pending_district_request (this, required_district_id) != NULL) {
-		return false;
-	}
-
-	// Superficially allow the AI to choose the improvement for scoring and production.
-	// If a disallowed improvement is chosen in ai_choose_production, we'll swap it out for a feasible fallback later
-	// after prioritizing the district to be built
-	return true;
+	return city_meets_district_prereqs_to_build_improvement (this, i_improv, apply_strict_rules);
 }
 
 bool
@@ -15009,28 +21079,55 @@ ai_handle_district_production_requirements (City * city, City_Order * out)
 	bool swapped_to_fallback = false;
 	City_Order fallback_order = {0};
 	int required_district_id = -1;
+	bool should_mark_district = false;
 
 	char ss[200];
 
 	if (is->current_config.enable_districts &&
-	    (out->OrderType == COT_Improvement) &&
-	    (out->OrderID >= 0) && (out->OrderID < p_bic_data->ImprovementsCount)) {
-
-		// Check if AI is trying to build a wonder without an incomplete wonder district
+	    (out->OrderID >= 0)) {
 		bool needs_wonder_district = false;
-		bool requires_district = city_requires_district_for_improvement (city, out->OrderID, &required_district_id);
-		if (is->current_config.enable_wonder_districts) {
-			Improvement * improv = &p_bic_data->Improvements[out->OrderID];
-			if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) &&
-			    (! city_has_wonder_district_with_no_completed_wonder (city))) {
-				needs_wonder_district = true;
-				if (required_district_id < 0) {
-					required_district_id = WONDER_DISTRICT_ID;
+		bool requires_district = false;
+		bool needs_district = false;
+
+		if ((out->OrderType == COT_Unit) &&
+		    (out->OrderID < p_bic_data->UnitTypeCount)) {
+			UnitType * type = &p_bic_data->UnitTypes[out->OrderID];
+			if ((type->Unit_Class == UTC_Air) &&
+			    is->current_config.enable_aerodrome_districts &&
+			    is->current_config.air_units_use_aerodrome_districts_not_cities &&
+			    (! city_has_required_district (city, AERODROME_DISTRICT_ID))) {
+				required_district_id = AERODROME_DISTRICT_ID;
+				needs_district = true;
+				should_mark_district = true;
+			} else if ((type->Unit_Class == UTC_Sea) &&
+				   is->current_config.enable_port_districts &&
+				   is->current_config.naval_units_use_port_districts_not_cities &&
+				   (! city_has_required_district (city, PORT_DISTRICT_ID))) {
+				required_district_id = PORT_DISTRICT_ID;
+				needs_district = true;
+				should_mark_district = true;
+			}
+		} else if ((out->OrderType == COT_Improvement) &&
+			   (out->OrderID < p_bic_data->ImprovementsCount)) {
+			// Check if AI is trying to build a wonder without an incomplete wonder district
+			requires_district = city_requires_district_for_improvement (city, out->OrderID, &required_district_id);
+			if (is->current_config.enable_wonder_districts) {
+				Improvement * improv = &p_bic_data->Improvements[out->OrderID];
+				if ((improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) &&
+				    (! city_has_wonder_district_with_no_completed_wonder (city, out->OrderID))) {
+					snprintf (ss, sizeof ss, "ai_handle_district_production_requirements: City %d (%s) needs wonder district to build wonder improvement %d\n",
+						city->Body.ID, city->Body.CityName, out->OrderID);
+					(*p_OutputDebugStringA) (ss);
+					needs_wonder_district = true;
+					if (required_district_id < 0) {
+						required_district_id = WONDER_DISTRICT_ID;
+					}
 				}
 			}
+			needs_district = needs_wonder_district || requires_district;
 		}
 
-		if (needs_wonder_district || requires_district) {
+		if (needs_district) {
 			struct ai_best_feasible_order * stored = get_best_feasible_order (city);
 			if (stored != NULL) {
 				bool fallback_is_feasible = true;
@@ -15055,22 +21152,39 @@ ai_handle_district_production_requirements (City * city, City_Order * out)
 					if (fallback_is_feasible && is->current_config.enable_wonder_districts) {
 						Improvement * fallback_improv = &p_bic_data->Improvements[stored->order.OrderID];
 						if ((fallback_improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) &&
-						    (! city_has_wonder_district_with_no_completed_wonder (city)))
+						    (! city_has_wonder_district_with_no_completed_wonder (city, stored->order.OrderID)))
 							fallback_is_feasible = false;
 					}
 				} else if (stored->order.OrderType == COT_Unit) {
 					if ((stored->order.OrderID < 0) ||
 					    (stored->order.OrderID >= p_bic_data->UnitTypeCount))
 						fallback_is_feasible = false;
+					if (fallback_is_feasible) {
+						UnitType * type = &p_bic_data->UnitTypes[stored->order.OrderID];
+						if (type->Unit_Class != UTC_Land)
+							fallback_is_feasible = false;
+						if ((type->Unit_Class == UTC_Air) &&
+						    is->current_config.enable_aerodrome_districts &&
+						    is->current_config.air_units_use_aerodrome_districts_not_cities &&
+						    (! city_has_required_district (city, AERODROME_DISTRICT_ID)))
+							fallback_is_feasible = false;
+						if ((type->Unit_Class == UTC_Sea) &&
+						    is->current_config.enable_port_districts &&
+						    is->current_config.naval_units_use_port_districts_not_cities &&
+						    (! city_has_required_district (city, PORT_DISTRICT_ID)))
+							fallback_is_feasible = false;
+					}
 				} else
 					fallback_is_feasible = false;
 
 				if (fallback_is_feasible) {
-					// Remember pending building order for any improvement that requires a district
-					snprintf (ss, sizeof ss, "ai_handle_district_production_requirements: Remembering fallback pending building order for city %d (%s): order type %d id %d\n",
-						city->Body.ID, city->Body.CityName, out->OrderType, out->OrderID);
-					(*p_OutputDebugStringA) (ss);
-					remember_pending_building_order (city, out->OrderID);
+					if (out->OrderType == COT_Improvement) {
+						// Remember pending building order for any improvement that requires a district
+						snprintf (ss, sizeof ss, "ai_handle_district_production_requirements: Remembering fallback pending building order for city %d (%s): order type %d id %d\n",
+							city->Body.ID, city->Body.CityName, out->OrderType, out->OrderID);
+						(*p_OutputDebugStringA) (ss);
+						remember_pending_building_order (city, out->OrderID);
+					}
 
 					fallback_order = stored->order;
 					swapped_to_fallback = true;
@@ -15081,8 +21195,9 @@ ai_handle_district_production_requirements (City * city, City_Order * out)
 
 	if (swapped_to_fallback) {
 		*out = fallback_order;
-		mark_city_needs_district (city, required_district_id);
 	}
+	if ((swapped_to_fallback || should_mark_district) && (required_district_id >= 0))
+		mark_city_needs_district (city, required_district_id);
 
 	clear_best_feasible_order (city);
 	return swapped_to_fallback;
@@ -15093,6 +21208,11 @@ patch_City_ai_choose_production (City * this, int edx, City_Order * out)
 {
 	is->ai_considering_production_for_city = this;
 	City_ai_choose_production (this, __, out);
+
+	char ss[200];
+	snprintf (ss, sizeof ss, "patch_City_ai_choose_production: City %d (%s) chose order type %d id %d\n",
+		this->Body.ID, this->Body.CityName, out->OrderType, out->OrderID);
+	(*p_OutputDebugStringA) (ss);
 
 	if (is->current_config.enable_districts) {
 		if (ai_handle_district_production_requirements (this, out)) {
@@ -15417,7 +21537,7 @@ patch_Map_check_city_location (Map *this, int edx, int tile_x, int tile_y, int c
 		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
 			struct district_instance * inst = get_district_instance (tile);
-			if (inst != NULL && (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
+			if (inst != NULL && (inst->district_id == NATURAL_WONDER_DISTRICT_ID)) {
 				return CLV_BLOCKED;
 			}
 		}
@@ -15663,6 +21783,24 @@ patch_Context_Menu_open (Context_Menu * this, int edx, int x, int y, int param_3
 {
 	int * p_stack = (int *)&x;
 	int ret_addr = p_stack[-1];
+
+	if (is->current_config.enable_named_tiles &&
+	    is->named_tile_menu_active) {
+		int tile_x = is->named_tile_menu_tile_x;
+		int tile_y = is->named_tile_menu_tile_y;
+		Tile * tile = tile_at (tile_x, tile_y);
+		if (tile_can_be_named (tile, tile_x, tile_y)) {
+			struct named_tile_entry * entry = get_named_tile_entry (tile);
+			char menu_text[64];
+			if ((entry != NULL) && (entry->name[0] != '\0'))
+				snprintf (menu_text, sizeof menu_text, "%s %s", is->c3x_labels[CL_RENAME_TILE], entry->name);
+			else
+				strcpy (menu_text,is->c3x_labels[CL_NAME_TILE]);
+			if (this->Item_Count > 0)
+				Context_Menu_add_separator (this, __, 0);
+			Context_Menu_add_item (this, __, NAMED_TILE_MENU_ID, menu_text, false, (Sprite *)0x0);
+		}
+	}
 
 	if (is->current_config.group_units_on_right_click_menu &&
 	    (ret_addr == ADDR_OPEN_UNIT_MENU_RETURN) &&
@@ -16019,12 +22157,15 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 		if (is->current_config.enable_districts || is->current_config.enable_natural_wonders) {
 			// Draw district name to the right of terrain name if tile has one
 			struct district_instance * dist = get_district_instance (tile);
+
 			if (dist != NULL) {
 				show_district_name = true;
-				char const * display_name = is->district_configs[dist->district_type].name;
+				char const * display_name = is->district_configs[dist->district_id].display_name;
+				if ((display_name == NULL) || (display_name[0] == '\0'))
+					display_name = is->district_configs[dist->district_id].name;
 
 				// If it's a wonder district with a completed wonder, show the wonder name instead
-				if ((dist->district_type == WONDER_DISTRICT_ID) &&
+				if ((dist->district_id == WONDER_DISTRICT_ID) &&
 				    (dist->wonder_info.state == WDS_COMPLETED) &&
 				    (dist->wonder_info.wonder_index >= 0) &&
 				    (dist->wonder_info.wonder_index < is->wonder_district_count)) {
@@ -16032,7 +22173,7 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 					if ((wonder_name != NULL) && (wonder_name[0] != '\0')) {
 						display_name = wonder_name;
 					}
-				} else if ((dist->district_type == NATURAL_WONDER_DISTRICT_ID) &&
+				} else if ((dist->district_id == NATURAL_WONDER_DISTRICT_ID) &&
 				           (dist->natural_wonder_info.natural_wonder_id >= 0) &&
 				           (dist->natural_wonder_info.natural_wonder_id < is->natural_wonder_count)) {
 					int natural_id = dist->natural_wonder_info.natural_wonder_id;
@@ -16046,6 +22187,13 @@ patch_PCX_Image_draw_tile_info_terrain (PCX_Image * this, int edx, char * str, i
 				PCX_Image_draw_text (this, __, s, x + 68, y, strlen (s));
 			}
 		}
+
+		// Show sprites indexes for port position debugging
+		int sheet_index = (tile->SquareParts >> 8) & 0xFF;   
+		int sprite_index = tile->SquareParts & 0xFF;
+		snprintf (s, sizeof s, "%d, %d", sheet_index, sprite_index);
+		PCX_Image_draw_text (this, __, s, x, y - 18, strlen (s));
+
 		// Draw tile coords on line below terrain name
 		snprintf (s, sizeof s, "(%d, %d)", is->viewing_tile_info_x, is->viewing_tile_info_y);
 		PCX_Image_draw_text (this, __, s, x, y + 14, strlen (s));
@@ -16124,9 +22272,20 @@ is_or_could_become_grassland (Tile * tile)
 void __fastcall
 patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, int param_1, int pixel_x, int pixel_y, Map_Renderer * map_renderer, int param_5, int tile_x, int tile_y, int param_8)
 {
+	Map * map = &p_bic_data->Map;
+	Tile * tile = tile_at (tile_x, tile_y);
+	is->current_render_tile = tile;
+	is->current_render_tile_x = tile_x;
+	is->current_render_tile_y = tile_y;
+	is->current_render_tile_district = get_district_instance (tile);
+
 	Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (this, __, param_1, pixel_x, pixel_y, map_renderer, param_5, tile_x, tile_y, param_8);
 
-	Map * map = &p_bic_data->Map;
+	is->current_render_tile = NULL;
+	is->current_render_tile_x = -1;
+	is->current_render_tile_y = -1;
+	is->current_render_tile_district = NULL;
+
 	if ((is->city_loc_display_perspective >= 0) &&
 	    (! map->vtable->m10_Get_Map_Zoom (map)) && // Turn off display when zoomed out. Need another set of highlight images for that.
 	    ((1 << is->city_loc_display_perspective) & *p_player_bits) &&
@@ -16145,14 +22304,15 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 		}
 	}
 
-	// Draw city work radius highlights for selected worker
-	if (is->current_config.enable_districts &&
-	    is->current_config.enable_city_work_radii_highlights &&
-	    is->highlight_city_radii &&
-	    (((tile_x + tile_y) % 2) == 0)) { // Replicate a check from the base game code. Without this we'd be drawing additional tiles half-way off the grid.
+	// Districts-related highlights
+	if (is->current_config.enable_districts && is->tile_highlight_state == IS_OK && 
+		(((tile_x + tile_y) % 2) == 0)) {
+		init_tile_highlights ();
 
-		if (is->tile_highlight_state == IS_OK) {
-			Tile * tile = tile_at (tile_x, tile_y);
+		// Draw city work radius highlights for selected worker
+		if (is->current_config.enable_city_work_radii_highlights &&
+			is->highlight_city_radii) { // Replicate a check from the base game code. Without this we'd be drawing additional tiles half-way off the grid.
+
 			if ((tile != NULL) && (tile != p_null_tile)) {
 				int stored_ptr;
 				if (itable_look_up (&is->highlighted_city_radius_tile_pointers, (int)tile, &stored_ptr)) {
@@ -16160,6 +22320,73 @@ patch_Map_Renderer_m19_Draw_Tile_by_XY_and_Flags (Map_Renderer * this, int edx, 
 					Sprite_draw_on_map (&is->tile_highlights[clamp(0, COUNT_TILE_HIGHLIGHTS - 1, info->highlight_level)], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
 				}
 			}
+		}
+
+		// If focusing on a tile after Great Wall completed, highlight the tile while getting user confirmation
+		if (is->focused_tile != NULL && is->focused_tile == tile) { 
+			Sprite_draw_on_map (&is->tile_highlights[10], __, this, pixel_x, pixel_y, 1, 1, 1, 0);
+		}
+	}
+}
+
+// We determine at the start of the game where *any* AI player might want to build canals and bridges.
+// This is done up front in a single pass, as re-assessing every single turn per AI is wasteful and the
+// geography of the map doesn't change. This function adds all the candidates as districts, effectively
+// drawing them directly on the map. We don't use it in a normal game, but this is extremely useful for
+// debugging so good to keep it around. For debugging, just call it immediately after
+// generate_ai_canal_and_bridge_targets ()
+void
+insert_ai_candidate_bridge_or_canals_into_district_tile_map ()
+{
+	if ((is->ai_candidate_bridge_or_canals_count <= 0) || (! is->ai_candidate_bridge_or_canals_initialized))
+		return;
+
+	for (int ei = 0; ei < is->ai_candidate_bridge_or_canals_count; ei++) {
+		struct ai_candidate_bridge_or_canal_entry * entry = &is->ai_candidate_bridge_or_canals[ei];
+		if (entry == NULL)
+			continue;
+
+		char ss[256];
+		snprintf (ss, sizeof ss, "Entry %d: district %d owner %d tiles %d completed %d\n",
+			ei, entry->district_id, entry->owner_civ_id, entry->tile_count, entry->completed ? 1 : 0);
+		(*p_OutputDebugStringA)(ss);
+
+		for (int ti = 0; ti < entry->tile_count; ti++) {
+			int tx = entry->tile_x[ti];
+			int ty = entry->tile_y[ti];
+			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
+			snprintf (ss, sizeof ss, "  (%d,%d)%s\n", tx, ty, (ti == entry->assigned_tile_index) ? " [assigned]" : "");
+			(*p_OutputDebugStringA)(ss);
+		}
+	}
+
+	for (int ei = 0; ei < is->ai_candidate_bridge_or_canals_count; ei++) {
+		struct ai_candidate_bridge_or_canal_entry * entry = &is->ai_candidate_bridge_or_canals[ei];
+		if ((entry == NULL) || (entry->completed))
+			continue;
+
+		for (int ti = 0; ti < entry->tile_count; ti++) {
+			int tx = entry->tile_x[ti];
+			int ty = entry->tile_y[ti];
+			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
+			Tile * tile = tile_at (tx, ty);
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+
+			int key = (int)tile;
+			int existing;
+			if (itable_look_up (&is->district_tile_map, key, &existing))
+				continue;
+
+			struct district_instance * inst = (struct district_instance *)calloc (1, sizeof *inst);
+			if (inst == NULL)
+				continue;
+			inst->state = DS_COMPLETED;
+			inst->district_id = entry->district_id;
+			inst->tile_x = tx;
+			inst->tile_y = ty;
+
+			itable_insert (&is->district_tile_map, key, (int)inst);
 		}
 	}
 }
@@ -16172,16 +22399,13 @@ patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (Map_Renderer * this, int 
 		return;
     }
 
-	Tile * tile = tile_at (tile_x, tile_y);
+	Tile * tile = is->current_render_tile;
 	if ((tile == NULL) || (tile == p_null_tile))
 		return;
 
-	is->current_tile_x = -1;
-	is->current_tile_y = -1;
 	if ((tile->vtable->m50_Get_Square_BaseType (tile) == SQ_Forest) &&
 		(*tile->vtable->m25_Check_Roads)(tile, __, 0)) {
-		is->current_tile_x = tile_x;
-		is->current_tile_y = tile_y;
+		is->draw_forests_over_roads_on_tile = true;
 		return;
 	}
 
@@ -16191,28 +22415,45 @@ patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (Map_Renderer * this, int 
 void __fastcall
 patch_Map_Renderer_m52_Draw_Roads (Map_Renderer * this, int edx, int image_index, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
+	// Don't draw roads if a bridge is here
+	if (is->current_config.enable_districts && is->current_config.enable_bridge_districts) {
+		Tile * tile = is->current_render_tile;
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			struct district_instance * dist = get_district_instance (tile);
+			if ((dist != NULL) && (dist->district_id == BRIDGE_DISTRICT_ID)) {
+				return;
+			}
+		}
+	}
+
 	Map_Renderer_m52_Draw_Roads (this, __, image_index, map_renderer, pixel_x, pixel_y);
 
-	if (! is->current_config.draw_forests_over_roads_and_railroads || 
-		is->current_tile_x == -1 || is->current_tile_y == -1)
+	if (! is->current_config.draw_forests_over_roads_and_railroads || ! is->draw_forests_over_roads_on_tile)
 		return;
 
-	// Current tile x & y will only have coordinates if we have a forest (per check in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp),
-	// so go ahead and render the forest on top of the road here.
-	Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (this, __, is->current_tile_x, is->current_tile_y, map_renderer, pixel_x, pixel_y);
+	Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (this, __, is->current_render_tile_x, is->current_render_tile_y, map_renderer, pixel_x, pixel_y);
 }
 
 void __fastcall
 patch_Map_Renderer_m52_Draw_Railroads (Map_Renderer * this, int edx, int image_index, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
+	// Don't draw railroads if a bridge is here
+	if (is->current_config.enable_districts && is->current_config.enable_bridge_districts) {
+		Tile * tile = is->current_render_tile;
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			struct district_instance * dist = get_district_instance (tile);
+			if ((dist != NULL) && (dist->district_id == BRIDGE_DISTRICT_ID)) {
+				return;
+			}
+		}
+	}
+
 	Map_Renderer_m52_Draw_Railroads (this, __, image_index, map_renderer, pixel_x, pixel_y);
 
-	if (! is->current_config.draw_forests_over_roads_and_railroads 
-		|| is->current_tile_x == -1 || is->current_tile_y == -1)
+	if (! is->current_config.draw_forests_over_roads_and_railroads || ! is->draw_forests_over_roads_on_tile)
 		return;
 
-	// patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp sets x & y only if we have a forest, so render on top of railroad
-	Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (this, __, is->current_tile_x, is->current_tile_y, map_renderer, pixel_x, pixel_y);
+	Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp (this, __, is->current_render_tile_x, is->current_render_tile_y, map_renderer, pixel_x, pixel_y);
 }
 
 void __fastcall
@@ -16272,6 +22513,22 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 			}
 		}
 		this->vtable->m73_call_m22_Draw ((Base_Form *)this); // Trigger map redraw
+
+	// Worker keyboard shortcuts that would normally go to patch_Main_Screen_Form_issue_command 
+	// unfortunately get short-circuited if a district is on a tile and the default popup to replace a "mine" is shown.
+	// The only way to catch these beforehand I've found it is to intercept the key event here.
+	} else if (is->current_config.enable_districts && 
+		p_main_screen_form->Current_Unit != NULL && 
+		is_worker (p_main_screen_form->Current_Unit)) {
+		int command = -1;
+		bool removed_existing = false;
+		if      (virtual_key_code == VK_M && is_command_button_active (&this->GUI, UCV_Build_Mine))   command = UCV_Build_Mine;
+		else if (virtual_key_code == VK_I && is_command_button_active (&this->GUI, UCV_Irrigate))     command = UCV_Irrigate;
+		else if (virtual_key_code == VK_N && is_command_button_active (&this->GUI, UCV_Plant_Forest)) command = UCV_Plant_Forest;
+
+		if (handle_worker_command_that_may_replace_district (p_main_screen_form->Current_Unit, command, &removed_existing)) {
+			Main_Screen_Form_issue_command (this, __, command, p_main_screen_form->Current_Unit);
+		}
 	}
 
 	Main_Screen_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
@@ -16509,7 +22766,7 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 		if (tile->vtable->m38_Get_Territory_OwnerID (tile) != source->Body.CivID) return;
 
 		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL || inst->district_type != required_district_id) return;
+		if (inst == NULL || inst->district_id != required_district_id) return;
 		if (! district_is_complete (tile, required_district_id)) return;
 
 		FOR_CITIES_OF (coi, source->Body.CivID) {
@@ -16527,21 +22784,14 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 				City_add_or_remove_improvement (city, __, improv_id, 1, false);
 			}
     	}
-	} 
+	}
 	// Else there may be multiple district instances of this type, so check each tile around the city
 	else {
-		for (int n = 0; n < is->workable_tile_count; n++) {
-			int dx, dy;
-			patch_ni_to_diff_for_work_area (n, &dx, &dy);
-			int x = source->Body.X + dx, y = source->Body.Y + dy;
-			wrap_tile_coords (&p_bic_data->Map, &x, &y);
-			Tile * tile = tile_at (x, y);
-			if (tile == p_null_tile) continue;
-			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != source->Body.CivID) continue;
-
-			struct district_instance * inst = get_district_instance (tile);
-			if (inst == NULL || inst->district_type != required_district_id) continue;
-			if (! district_is_complete (tile, required_district_id)) continue;
+		FOR_DISTRICTS_AROUND (wai, source->Body.X, source->Body.Y, true) {
+			int x = wai.tile_x, y = wai.tile_y;
+			Tile * tile = wai.tile;
+			struct district_instance * inst = wai.district_inst;
+			if (inst->district_id != required_district_id) continue;
 
 			FOR_CITIES_OF (coi, source->Body.CivID) {
 				City * city = coi.city;
@@ -16559,7 +22809,9 @@ copy_building_with_cities_in_radius (City * source, int improv_id, int required_
 					if (current_improv_id == improv_id) {
 						City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
 						if (choose_defensive_unit_order (city, &defensive_order)) {
-							City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
+							UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
+							if (def_type->Unit_Class == UTC_Land)
+								City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
 						}
 					}
 
@@ -16598,33 +22850,14 @@ grant_existing_district_buildings_to_city (City * city)
 	bool prev_flag = is->sharing_buildings_by_districts_in_progress;
 	is->sharing_buildings_by_districts_in_progress = true;
 
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int tile_x = city->Body.X + dx;
-		int tile_y = city->Body.Y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
-		Tile * tile = tile_at (tile_x, tile_y);
-		if (tile == p_null_tile)
-			continue;
-		if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id)
-			continue;
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		Tile * tile = wai.tile;
 
-		struct district_instance * inst = get_district_instance (tile);
-		if (inst == NULL)
-			continue;
-		int district_id = inst->district_type;
-		if ((district_id < 0) || (district_id >= is->district_count))
-			continue;
-		if (! district_is_complete (tile, district_id))
-			continue;
+		struct district_instance * inst = wai.district_inst;
+		int district_id = inst->district_id;
 
 		struct district_infos * info = &is->district_infos[district_id];
 		if (info->dependent_building_count <= 0)
-			continue;
-
-		int tx, ty;
-		if (! district_instance_get_coords (inst, tile, &tx, &ty))
 			continue;
 
 		FOR_CITIES_OF (coi, civ_id) {
@@ -16632,7 +22865,7 @@ grant_existing_district_buildings_to_city (City * city)
 			if ((other == NULL) || (other == city))
 				continue;
 
-			if (! city_radius_contains_tile (other, tx, ty))
+			if (! city_radius_contains_tile (other, wai.tile_x, wai.tile_y))
 				continue;
 
 			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != other->Body.CivID)
@@ -16661,7 +22894,9 @@ grant_existing_district_buildings_to_city (City * city)
 				if (current_improv_id == building_id) {
 					City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
 					if (choose_defensive_unit_order (city, &defensive_order)) {
-						City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
+						UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
+						if (def_type->Unit_Class == UTC_Land)
+							City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
 					}
 				}
 
@@ -16684,6 +22919,169 @@ grant_existing_district_buildings_to_city (City * city)
 	}
 
 	is->sharing_buildings_by_districts_in_progress = prev_flag;
+}
+
+void
+auto_build_great_wall_districts_for_civ (int civ_id)
+{
+	if ((! is->current_config.enable_districts) ||
+	    (! is->current_config.enable_great_wall_districts) ||
+	    (! is->current_config.auto_build_great_wall_around_territory) ||
+	    (is->great_wall_auto_build == GWABS_DONE) ||
+	    (civ_id < 0) ||
+	    is->is_placing_scenario_things)
+		return;
+
+	bool is_human = (*p_human_player_bits & (1 << civ_id)) != 0;
+
+	if ((GREAT_WALL_DISTRICT_ID < 0) || (GREAT_WALL_DISTRICT_ID >= is->district_count)) {
+		is->great_wall_auto_build = GWABS_DONE;
+		return;
+	}
+
+	init_tile_highlights ();
+
+	struct district_config const * cfg = &is->district_configs[GREAT_WALL_DISTRICT_ID];
+	if ((cfg->command == -1) || (! leader_can_build_district (&leaders[civ_id], GREAT_WALL_DISTRICT_ID))) {
+		is->great_wall_auto_build = GWABS_DONE;
+		return;
+	}
+
+	PopupForm * popup = get_popup_form ();
+	set_popup_str_param (0, (char *)is->district_configs[GREAT_WALL_DISTRICT_ID].display_name, -1, -1);
+	popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_BEGIN_GREAT_WALL_AUTO_BUILD", -1, 0, 0, 0);
+	if (civ_id == p_main_screen_form->Player_CivID)
+		patch_show_popup (popup, __, 0, 0);
+
+	is->great_wall_auto_build = GWABS_RUNNING;
+
+	unsigned int const irrigation_flag = 0x8;
+	unsigned int const replaceable_flags = TILE_FLAG_MINE | irrigation_flag;
+	bool require_other_civ_border = (! is_human) && is->current_config.ai_auto_build_great_wall_strategy == AAGWS_OTHER_CIV_BORDERED_ONLY;
+
+	for (int index = 0; index < p_bic_data->Map.TileCount; index++) {
+		int x, y;
+		tile_index_to_coords (&p_bic_data->Map, index, &x, &y);
+		Tile * tile = tile_at (x, y);
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+			if (tile->CityID >= 0)
+				continue;
+			if (tile->vtable->m35_Check_Is_Water (tile))
+				continue;
+			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id)
+				continue;
+
+			bool has_border = false;
+			bool has_other_civ_border = false;
+			FOR_TILES_AROUND (tai, 9, x, y) {
+				if (tai.n == 0)
+					continue;
+				Tile * neighbor = tai.tile;
+				if (neighbor->vtable->m35_Check_Is_Water (neighbor))
+					continue;
+				int owner_id = neighbor->vtable->m38_Get_Territory_OwnerID (neighbor);
+				if (owner_id != civ_id) {
+					has_border = true;
+					if (owner_id >= 0) {
+						has_other_civ_border = true;
+						break;
+					}
+				}
+			}
+			if (! has_border)
+				continue;
+			if (require_other_civ_border && (! has_other_civ_border))
+				continue;
+
+			if (! district_is_buildable_on_square_type (cfg, tile))
+				continue;
+			if (! district_resource_prereqs_met (tile, x, y, GREAT_WALL_DISTRICT_ID, NULL))
+				continue;
+
+			struct district_instance * inst = get_district_instance (tile);
+			if ((inst != NULL) && (inst->district_id == GREAT_WALL_DISTRICT_ID)) {
+				if (! district_is_complete (tile, GREAT_WALL_DISTRICT_ID)) {
+					inst->state = DS_COMPLETED;
+					if (! tile->vtable->m18_Check_Mines (tile, __, 0))
+						tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
+					set_tile_unworkable_for_all_cities (tile, x, y);
+				}
+				continue;
+			}
+
+			unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
+			unsigned int replace_flags = overlay_flags & replaceable_flags;
+			bool has_district = (inst != NULL);
+			int existing_district_id = -1;
+			if (has_district)
+				existing_district_id = inst->district_id;
+
+			if (is_human && civ_id == p_main_screen_form->Player_CivID) {
+				is->focused_tile = tile;
+				Main_Screen_Form_bring_tile_into_view (p_main_screen_form, __, x, y, 0, true, false);
+
+				char * popup_key = "C3X_CONFIRM_BUILD_GREAT_WALL";
+				set_popup_str_param (0, (char *)is->district_configs[GREAT_WALL_DISTRICT_ID].display_name, -1, -1);
+
+				if (has_district) {
+					bool redundant_district = district_instance_is_redundant (inst, tile);
+					bool would_lose_buildings;
+					would_lose_buildings = any_nearby_city_would_lose_district_benefits (existing_district_id, civ_id, x, y);
+					if (redundant_district)
+						would_lose_buildings = false;
+					if ((existing_district_id >= 0) && (existing_district_id < is->district_count)) {
+						set_popup_str_param (1, (char *)is->district_configs[existing_district_id].display_name, -1, -1);
+					}
+					popup_key = would_lose_buildings
+						? "C3X_CONFIRM_BUILD_GREAT_WALL_OVER_DISTRICT"
+						: "C3X_CONFIRM_BUILD_GREAT_WALL_OVER_DISTRICT_SAFE";
+				} else if (replace_flags != 0) {
+					popup_key = "C3X_CONFIRM_BUILD_GREAT_WALL_OVER_IMPROVEMENT";
+				}
+
+				popup->vtable->set_text_key_and_flags (
+					popup, __, is->mod_script_path,
+					popup_key,
+					-1, 0, 0, 0);
+
+				int sel = patch_show_popup (popup, __, 0, 0);
+				if (sel != 0)
+					continue;
+			}
+
+			if (has_district || (replace_flags != 0)) {
+				if (has_district) {
+					int inst_x = x, inst_y = y;
+					if (! district_instance_get_coords (inst, tile, &inst_x, &inst_y))
+						continue;
+					remove_district_instance (tile);
+					tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+					tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, inst_x, inst_y);
+					handle_district_removed (tile, existing_district_id, inst_x, inst_y, false);
+				}
+
+				if (replace_flags != 0)
+					tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, replace_flags, x, y);
+			}
+
+			if (get_district_instance (tile) != NULL)
+				continue;
+
+			inst = ensure_district_instance (tile, GREAT_WALL_DISTRICT_ID, x, y);
+			if (inst == NULL)
+				continue;
+
+			inst->district_id = GREAT_WALL_DISTRICT_ID;
+			district_instance_set_coords (inst, x, y);
+			inst->state = DS_COMPLETED;
+			if (! tile->vtable->m18_Check_Mines (tile, __, 0))
+				tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, x, y);
+			set_tile_unworkable_for_all_cities (tile, x, y);
+	}
+
+	is->great_wall_auto_build = GWABS_DONE;
+	is->focused_tile = NULL;
 }
 
 //We need to forwards-declare this
@@ -16735,20 +23133,14 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 			int matched_windex = find_wonder_config_index_by_improvement_id (improv_id);
 
 			if (matched_windex >= 0) {
-				int city_x = this->Body.X;
-				int city_y = this->Body.Y;
-				for (int n = 0; n < is->workable_tile_count; n++) {
-					int dx, dy;
-					patch_ni_to_diff_for_work_area (n, &dx, &dy);
-					x = city_x + dx, y = city_y + dy;
-					wrap_tile_coords (&p_bic_data->Map, &x, &y);
-					Tile * t = tile_at (x, y);
-					if (t == p_null_tile) continue;
-					if (t->vtable->m38_Get_Territory_OwnerID (t) != this->Body.CivID) continue;
-
-					struct district_instance * inst = get_district_instance (t);
-					if (inst == NULL || inst->district_type != WONDER_DISTRICT_ID) continue;
-					if (! district_is_complete (t, inst->district_type)) continue;
+				FOR_DISTRICTS_AROUND (wai, this->Body.X, this->Body.Y, true) {
+					x = wai.tile_x;
+					y = wai.tile_y;
+					Tile * t = wai.tile;
+					struct district_instance * inst = wai.district_inst;
+					if (inst->district_id != WONDER_DISTRICT_ID) continue;
+					if (! wonder_is_buildable_on_tile (t, improv_id))
+						continue;
 
 					struct wonder_district_info * info = &inst->wonder_info;
 					if (info->state != WDS_UNDER_CONSTRUCTION) continue;
@@ -16764,6 +23156,12 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 			}
 		}
 	}
+
+	int gw_auto_build_improv_id = is->current_config.great_wall_auto_build_wonder_improv_id;
+	if (add && is->current_config.enable_districts &&
+		is->current_config.auto_build_great_wall_around_territory &&
+		(gw_auto_build_improv_id >= 0) && (improv_id == gw_auto_build_improv_id))
+		auto_build_great_wall_districts_for_civ (this->Body.CivID);
 	
 	//Calculate if work_area has shrunk, and if so, redistribute citizens.
 	int post_work_area_radius = get_work_ring_limit_total(this);
@@ -16840,12 +23238,17 @@ patch_City_add_or_remove_improvement (City * this, int edx, int improv_id, int a
 	if ((! is->is_placing_scenario_things) && add &&
 	    is->current_config.enable_districts && (allow_building_sharing || allow_wonder_sharing) &&
 	    (! is->sharing_buildings_by_districts_in_progress)) {
-		int required_district_id;
-		if (itable_look_up (&is->district_building_prereqs, improv_id, &required_district_id)) {
+		struct district_building_prereq_list * prereq_list = get_district_building_prereq_list (improv_id);
+		if (prereq_list != NULL) {
 			bool is_wonder = (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) != 0;
 			if ((! is_wonder && allow_building_sharing) || (is_wonder && allow_wonder_sharing)) {
 				is->sharing_buildings_by_districts_in_progress = true;
-				copy_building_with_cities_in_radius (this, improv_id, required_district_id, x, y);
+				for (int i = 0; i < prereq_list->count; i++) {
+					int district_id = prereq_list->district_ids[i];
+					if (district_id < 0)
+						continue;
+					copy_building_with_cities_in_radius (this, improv_id, district_id, x, y);
+				}
 				is->sharing_buildings_by_districts_in_progress = false;
 			}
 		}
@@ -17002,13 +23405,144 @@ patch_Map_Renderer_m71_Draw_Tiles (Map_Renderer * this, int edx, int param_1, in
 	Map_Renderer_m71_Draw_Tiles (this, __, param_1, param_2, param_3);
 }
 
+struct named_tile_entry *
+get_named_tile_entry (Tile * tile)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return NULL;
+	int stored_ptr = 0;
+	if (! itable_look_up (&is->named_tile_map, (int)tile, &stored_ptr))
+		return NULL;
+	return (struct named_tile_entry *)stored_ptr;
+}
+
+bool
+prompt_for_named_tile (char const * seed_name, char * out_name, int out_len)
+{
+	if ((out_name == NULL) || (out_len <= 0))
+		return false;
+	out_name[0] = '\0';
+
+	PopupForm * popup = get_popup_form ();
+	if (popup == NULL)
+		return false;
+
+	char seed_buf[101];
+	if (seed_name == NULL)
+		seed_name = "";
+	strncpy (seed_buf, seed_name, sizeof seed_buf);
+	seed_buf[(sizeof seed_buf) - 1] = '\0';
+	if (seed_buf[0] == '\0')
+		strncpy (seed_buf, "Tile", sizeof seed_buf);
+
+	set_popup_str_param (0, seed_buf, -1, -1);
+	popup->vtable->set_text_key_and_flags (popup, __, script_dot_txt_file_path, "RENAME_CITY", 0x64, (int)seed_buf, 0x44, 0);
+	int sel = patch_show_popup (popup, __, 0, 0);
+	is->focused_tile = NULL;
+	if (sel != 0)
+		return false;
+
+	if (temp_ui_strs[0][0] == '\0')
+		return true;
+
+	strncpy (out_name, temp_ui_strs[0], out_len);
+	out_name[out_len - 1] = '\0';
+	return true;
+}
+
+void
+handle_named_tile_menu_selection (void)
+{
+	int tile_x = is->named_tile_menu_tile_x;
+	int tile_y = is->named_tile_menu_tile_y;
+	Tile * tile = tile_at (tile_x, tile_y);
+	if (! tile_can_be_named (tile, tile_x, tile_y))
+		return;
+
+	init_tile_highlights ();
+
+	struct named_tile_entry * entry = get_named_tile_entry (tile);
+	char const * current_name = (entry != NULL) ? entry->name : "";
+	char new_name[100];
+	is->focused_tile = tile;
+	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+	bool got_name = prompt_for_named_tile (current_name, new_name, sizeof new_name);
+	is->focused_tile = NULL;
+	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+	if (! got_name)
+		return;
+
+	set_named_tile_entry (tile, tile_x, tile_y, new_name);
+	p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
+}
+
+void __fastcall
+patch_Main_Screen_Form_handle_right_click_on_tile (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)
+{
+	if (is->current_config.enable_named_tiles) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if (tile_can_be_named (tile, tile_x, tile_y)) {
+			is->named_tile_menu_active = true;
+			is->named_tile_menu_tile_x = tile_x;
+			is->named_tile_menu_tile_y = tile_y;
+			Main_Screen_Form_open_right_click_menu (this, __, tile_x, tile_y, mouse_x, mouse_y);
+			is->named_tile_menu_active = false;
+			return;
+		}
+	}
+
+	Main_Screen_Form_handle_right_click_on_tile (this, __, tile_x, tile_y, mouse_x, mouse_y);
+}
+
+void __fastcall
+patch_Main_Screen_Form_open_right_click_menu (Main_Screen_Form * this, int edx, int tile_x, int tile_y, int mouse_x, int mouse_y)
+{
+	bool set_active = false;
+	if (!is->named_tile_menu_active && is->current_config.enable_named_tiles) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if (tile_can_be_named (tile, tile_x, tile_y)) {
+			is->named_tile_menu_active = true;
+			is->named_tile_menu_tile_x = tile_x;
+			is->named_tile_menu_tile_y = tile_y;
+			set_active = true;
+		}
+	}
+	Main_Screen_Form_open_right_click_menu (this, __, tile_x, tile_y, mouse_x, mouse_y);
+	if (set_active)
+		is->named_tile_menu_active = false;
+}
+
+void
+draw_map_tile_text (Main_Screen_Form * this, PCX_Image * canvas, char * text, int screen_x, int screen_y, int base_screen_height, int y_offset)
+{
+	int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
+	int scale = is_zoomed_out ? 2 : 1;
+	int screen_width = 128 / scale;
+	int screen_height = base_screen_height / scale;
+	int text_width = screen_width - (is_zoomed_out ? 4 : 8);
+	if (text_width < 12)
+		text_width = screen_width;
+
+	int text_left = screen_x + (screen_width - text_width) / 2;
+	int draw_y = screen_y - y_offset;
+	int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
+
+	Object_66C3FC * font = get_font (10, FSF_NONE);
+	if (font != NULL) {
+		PCX_Image_set_text_effects (canvas, __, 0x80FFFFFF, 0x80000000, 1, 1);
+		PCX_Image_draw_centered_text (canvas, __, font, text, text_left, text_top - 10, text_width, strlen (text));
+	}
+}
+
 void __fastcall
 patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Image * canvas)
 {
 	Main_Screen_Form_draw_city_hud (this, __, canvas);
 
-	if (!is->current_config.enable_natural_wonders ||
-	    !is->current_config.show_natural_wonder_name_on_map)
+	bool draw_natural_wonders = is->current_config.enable_natural_wonders &&
+	                            is->current_config.show_natural_wonder_name_on_map;
+	bool draw_named_tiles = is->current_config.enable_named_tiles;
+	if (!draw_natural_wonders && !draw_named_tiles)
 		return;
 
 	if (canvas == NULL)
@@ -17017,47 +23551,62 @@ patch_Main_Screen_Form_draw_city_hud (Main_Screen_Form * this, int edx, PCX_Imag
 	if ((canvas == NULL) || (canvas->JGL.Image == NULL))
 		return;
 
-	FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-		struct district_instance * inst = (struct district_instance *)(long)tei.value;
-		if ((inst == NULL) || (inst->district_type != NATURAL_WONDER_DISTRICT_ID))
-			continue;
+	if (draw_natural_wonders) {
+		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+			struct district_instance * inst = (struct district_instance *)tei.value;
+			if ((inst == NULL) || (inst->district_id != NATURAL_WONDER_DISTRICT_ID))
+				continue;
 
-		int natural_id = inst->natural_wonder_info.natural_wonder_id;
-		if ((natural_id < 0) || (natural_id >= is->natural_wonder_count))
-			continue;
+			int natural_id = inst->natural_wonder_info.natural_wonder_id;
+			if ((natural_id < 0) || (natural_id >= is->natural_wonder_count))
+				continue;
 
-		struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
-		if ((nw_cfg == NULL) || (nw_cfg->name == NULL) || (nw_cfg->name[0] == '\0'))
-			continue;
+			struct natural_wonder_district_config const * nw_cfg = &is->natural_wonder_configs[natural_id];
+			if ((nw_cfg == NULL) || (nw_cfg->name == NULL) || (nw_cfg->name[0] == '\0'))
+				continue;
 
-		Tile * tile = (Tile *)(long)tei.key;
-		if ((tile == NULL) || (tile == p_null_tile))
-			continue;
+			Tile * tile = (Tile *)tei.key;
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
 
-		int tile_x, tile_y;
-		if (!tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
-			continue;
+			int tile_x, tile_y;
+			if (!tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
+				continue;
 
-		int screen_x, screen_y;
-		Main_Screen_Form_tile_to_screen_coords (this, __, tile_x, tile_y, &screen_x, &screen_y);
+			int screen_x, screen_y;
+			Main_Screen_Form_tile_to_screen_coords (this, __, tile_x, tile_y, &screen_x, &screen_y);
 
-		int is_zoomed_out = (p_bic_data->is_zoomed_out != false);
-		int scale = is_zoomed_out ? 2 : 1;
-		int screen_width = 128 / scale;
-		int screen_height = 88 / scale;
-		int text_width = screen_width - (is_zoomed_out ? 4 : 8);
-		if (text_width < 12)
-			text_width = screen_width;
+			draw_map_tile_text (this, canvas, (char *)nw_cfg->name, screen_x, screen_y, 88, 88 - 64);
+		}
+	}
 
-		int text_left = screen_x + (screen_width - text_width) / 2;
-		int y_offset = 88 - 64;
-		int draw_y = screen_y - y_offset;
-		int text_top = draw_y + screen_height + (is_zoomed_out ? 2 : 4);
+	if (draw_named_tiles) {
+		FOR_TABLE_ENTRIES (tei, &is->named_tile_map) {
+			struct named_tile_entry * entry = (struct named_tile_entry *)tei.value;
+			if ((entry == NULL) || (entry->name[0] == '\0'))
+				continue;
 
-		Object_66C3FC * font = get_font (10, FSF_NONE);
-		if (font != NULL) {
-			PCX_Image_set_text_effects (canvas, __, 0x80FFFFFF, 0x80000000, 1, 1);
-			PCX_Image_draw_centered_text (canvas, __, font, (char *)nw_cfg->name, text_left, text_top - 10, text_width, strlen (nw_cfg->name));
+			Tile * tile = (Tile *)tei.key;
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+
+			int tile_x, tile_y;
+			if (!tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y)) {
+				tile_x = entry->tile_x;
+				tile_y = entry->tile_y;
+				tile = tile_at (tile_x, tile_y);
+				if ((tile == NULL) || (tile == p_null_tile))
+					continue;
+			}
+
+			struct district_instance * inst = get_district_instance (tile);
+			if ((inst != NULL) && (inst->district_id == NATURAL_WONDER_DISTRICT_ID))
+				continue;
+
+			int screen_x, screen_y;
+			Main_Screen_Form_tile_to_screen_coords (this, __, tile_x, tile_y, &screen_x, &screen_y);
+
+			draw_map_tile_text (this, canvas, entry->name, screen_x, screen_y, 64, 3);
 		}
 	}
 }
@@ -17149,19 +23698,13 @@ handle_possible_duplicate_small_wonders(City * city, Leader * leader)
 	if ((city == NULL) || (leader == NULL))
 		return;
 
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city->Body.X + dx, y = city->Body.Y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
-
-		if ((tile == NULL) || (tile == p_null_tile)) continue;
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		int x = wai.tile_x, y = wai.tile_y;
+		Tile * tile = wai.tile;
 
 		// Make sure it's a completed wonder district
-		struct district_instance * inst = get_district_instance (tile);
-		if ((inst == NULL) || (inst->district_type != WONDER_DISTRICT_ID)) continue;
-		if (! district_is_complete (tile, WONDER_DISTRICT_ID)) continue;
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_id != WONDER_DISTRICT_ID) continue;
 		struct wonder_district_info * info = &inst->wonder_info;
 		if ((info == NULL) || (info->state != WDS_COMPLETED)) continue;
 
@@ -17199,21 +23742,13 @@ grant_nearby_wonders_to_city (City * city)
 	    (city == NULL))
 		return;
 
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = city->Body.X + dx, y = city->Body.Y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * tile = tile_at (x, y);
-
-		// Check if Wonder tile owned by same civ
-		if ((tile == NULL) || (tile == p_null_tile)) continue;
-		if (tile->vtable->m38_Get_Territory_OwnerID (tile) != city->Body.CivID) continue;
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		int x = wai.tile_x, y = wai.tile_y;
+		Tile * tile = wai.tile;
 
 		// Make sure Wonder is completed
-		struct district_instance * inst = get_district_instance (tile);
-		if ((inst == NULL) || (inst->district_type != WONDER_DISTRICT_ID)) continue;
-		if (! district_is_complete (tile, WONDER_DISTRICT_ID)) continue;
+		struct district_instance * inst = wai.district_inst;
+		if (inst->district_id != WONDER_DISTRICT_ID) continue;
 		struct wonder_district_info * info = &inst->wonder_info;
 		if ((info == NULL) || (info->state != WDS_COMPLETED)) continue;
 
@@ -17271,7 +23806,7 @@ on_gain_city (Leader * leader, City * city, enum city_gain_reason reason)
 			if ((city_tile != NULL) && (city_tile != p_null_tile)) {
 				struct district_instance * inst = get_district_instance (city_tile);
 				if (inst != NULL)
-					handle_district_removed (city_tile, inst->district_type, city->Body.X, city->Body.Y, false);
+					handle_district_removed (city_tile, inst->district_id, city->Body.X, city->Body.Y, false);
 			}
 		}
 
@@ -18591,6 +25126,11 @@ patch_perform_interturn_in_main_loop ()
 		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 	}
 
+	if (is->current_config.show_ai_city_location_desirability_if_settler && is->city_loc_display_perspective >= 0) {
+		is->city_loc_display_perspective = -1;
+		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form); // Trigger map redraw
+	}
+
 	if (is->current_config.measure_turn_times) {
 		long long ts_after;
 		QueryPerformanceCounter ((LARGE_INTEGER *)&ts_after);
@@ -18773,6 +25313,8 @@ patch_City_can_trade_via_air (City * this)
 int __fastcall
 patch_City_get_building_defense_bonus (City * this)
 {
+	bool cancel_great_wall_boost = is->current_config.enable_districts && is->current_config.disable_great_wall_city_defense_bonus;
+
 	if (is->current_config.optimize_improvement_loops) {
 		int tr = 0;
 		int is_size_level_1 = (this->Body.Population.Size <= p_bic_data->General.MaximumSize_City) &&
@@ -18783,6 +25325,7 @@ patch_City_get_building_defense_bonus (City * this)
 			if ((is_size_level_1 || (improv->Combat_Bombard == 0)) && has_active_building (this, improv_id)) {
 				int multiplier;
 				if ((improv->Combat_Bombard > 0) &&
+					(! cancel_great_wall_boost) &&
 				    (patch_Leader_count_any_shared_wonders_with_flag (&leaders[(this->Body).CivID], __, ITW_Doubles_City_Defenses, NULL) > 0))
 					multiplier = 2;
 				else
@@ -18912,6 +25455,93 @@ patch_Map_wrap_vert_for_barb_ai (Map * this, int edx, int y)
 	return Map_wrap_vert (this, __, is->current_config.patch_barbarian_diagonal_bug ? (y + is->barb_diag_patch_dy_fix) : y);
 }
 
+int
+count_workable_tiles_for_city (City * city)
+{
+	if (city == NULL)
+		return 0;
+
+	int workable = 0;
+	FOR_WORK_AREA_AROUND (wai, city->Body.X, city->Body.Y) {
+		Tile * tile = wai.tile;
+		if ((tile == NULL) || (tile == p_null_tile))
+			continue;
+
+		if (tile->Body.CityAreaID != city->Body.ID)
+			continue;
+
+		struct district_instance * inst = get_district_instance (tile);
+		if ((inst != NULL) && district_is_complete (tile, inst->district_id))
+			continue;
+
+		workable++;
+	}
+	return workable;
+}
+
+int
+compute_auto_distribution_hub_goal (Leader * leader, int city_count)
+{
+	int total_unused_tiles = 0;
+	int stagnating_cities = 0;
+	int slow_growth_cities = 0;
+	int very_low_production_cities = 0;
+	int low_production_cities = 0;
+
+	FOR_CITIES_OF (coi, leader->ID) {
+		City * city = coi.city;
+		if (city == NULL)
+			continue;
+
+		int pop_size = city->Body.Population.Size;
+		int workable_tiles = count_workable_tiles_for_city (city);
+		if ((workable_tiles > 0) && (pop_size < workable_tiles))
+			total_unused_tiles += workable_tiles - pop_size;
+
+		int net_food = city->Body.FoodIncome;
+		if (net_food <= 0)
+			stagnating_cities++;
+		else if (net_food <= 2)
+			slow_growth_cities++;
+
+		int net_shields = city->Body.ProductionIncome + city->Body.ProductionLoss;
+		if (net_shields < 0)
+			net_shields = 0;
+		if (net_shields <= 3)
+			very_low_production_cities++;
+		else if (net_shields <= 6)
+			low_production_cities++;
+	}
+
+	int base_desired = (city_count + 3) / 4;
+
+	int tiles_per_chunk = is->workable_tile_count;
+	if (tiles_per_chunk <= 0)
+		tiles_per_chunk = 1;
+	int unused_bonus = (total_unused_tiles + tiles_per_chunk * 3 - 1) / (tiles_per_chunk * 3);
+
+	int food_pressure = stagnating_cities * 2 + slow_growth_cities;
+	int food_bonus = (food_pressure + 2) / 3;
+
+	int production_pressure = very_low_production_cities * 2 + low_production_cities;
+	int production_bonus = (production_pressure + 2) / 3;
+
+	int desired = base_desired + unused_bonus + food_bonus + production_bonus;
+	int max_reasonable = (city_count + 1) / 2;
+	int max_per_100 = is->current_config.max_distribution_hub_count_per_100_cities;
+	if (max_per_100 > 0) {
+		int capped = (city_count * max_per_100 + 99) / 100;
+		if (capped >= 0)
+			max_reasonable = capped;
+	}
+	if (desired > max_reasonable)
+		desired = max_reasonable;
+	if (desired < 1)
+		desired = 1;
+
+	return desired;
+}
+
 void
 ai_update_distribution_hub_goal_for_leader (Leader * leader)
 {
@@ -18925,28 +25555,32 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 	if ((1 << civ_id) & *p_human_player_bits)
 		return;
 
-	int ideal_per_100 = is->current_config.ai_ideal_distribution_hub_count_per_100_cities;
-	if (ideal_per_100 <= 0)
-		return;
-
 	int city_count = leader->Cities_Count;
 	if (city_count <= 0)
 		return;
 
-	int desired = (city_count * ideal_per_100) / 100;
+	int desired = 0;
+	if (is->current_config.ai_distribution_hub_build_strategy == ADHBS_AUTO)
+		desired = compute_auto_distribution_hub_goal (leader, city_count);
+	else {
+		int ideal_per_100 = is->current_config.ai_ideal_distribution_hub_count_per_100_cities;
+		if (ideal_per_100 <= 0)
+			return;
+		desired = (city_count * ideal_per_100) / 100;
+	}
 	if (desired <= 0)
 		return;
 
 	int current = 0;
 	FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
-		struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
+		struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
 		if ((rec != NULL) && (rec->civ_id == civ_id))
 			current++;
 	}
 
 	int in_progress = 0;
 	FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-		Tile * tile = (Tile *)(long)tei.key;
+		Tile * tile = (Tile *)tei.key;
 		int mapped_district_id = tei.value;
 		if ((tile != NULL) &&
 		    (mapped_district_id == DISTRIBUTION_HUB_DISTRICT_ID) &&
@@ -18959,7 +25593,7 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 
 	int pending = 0;
 	FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-		struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+		struct pending_district_request * req = (struct pending_district_request *)tei.value;
 		if ((req != NULL) && (req->district_id == DISTRIBUTION_HUB_DISTRICT_ID))
 			pending++;
 	}
@@ -18995,7 +25629,7 @@ ai_update_distribution_hub_goal_for_leader (Leader * leader)
 				continue;
 
 			int tile_x, tile_y;
-			Tile * candidate = find_tile_for_distribution_hub_district (city, &tile_x, &tile_y);
+			Tile * candidate = find_tile_for_district (city, DISTRIBUTION_HUB_DISTRICT_ID, &tile_x, &tile_y);
 			if (candidate == NULL)
 				continue;
 
@@ -19048,6 +25682,7 @@ assign_ai_fallback_production (City * city, int disallowed_improvement_id)
 	} else if (new_order.OrderType == COT_Unit) {
 		if ((new_order.OrderID >= 0) &&
 		    (new_order.OrderID < p_bic_data->UnitTypeCount) &&
+		    (p_bic_data->UnitTypes[new_order.OrderID].Unit_Class == UTC_Land) &&
 		    patch_City_can_build_unit (city, __, new_order.OrderID, 1, 0, 0))
 			order_ok = true;
 	}
@@ -19065,8 +25700,11 @@ assign_ai_fallback_production (City * city, int disallowed_improvement_id)
 
 	City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
 	if (choose_defensive_unit_order (city, &defensive_order)) {
-		City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
-		return true;
+		UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
+		if (def_type->Unit_Class == UTC_Land) {
+			City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
+			return true;
+		}
 	}
 
 	return false;
@@ -19080,10 +25718,41 @@ patch_Leader_do_production_phase (Leader * this)
 	if (is->current_config.enable_districts) {
 		assign_workers_for_pending_districts (this);
 
+		if ((is->current_config.enable_canal_districts || is->current_config.enable_bridge_districts) &&
+			(is->current_config.ai_builds_bridges || is->current_config.ai_builds_canals))
+			assign_workers_for_ai_candidate_bridge_or_canals (this);
+
+		bool ai_player = ((*p_human_player_bits & (1 << this->ID)) == 0);
+		int auto_dynamic_district_ids[COUNT_DISTRICT_TYPES];
+		int auto_dynamic_district_count = 0;
+
+		// For dynamic districts, the AI will never be triggered to build them if they have no dependent buildings.
+		// Determine which dynamic districts the AI could build. In the city loop after, mark which cities need them
+		if (ai_player) {
+			for (int district_id = is->special_district_count; district_id < is->district_count; district_id++) {
+				struct district_config * cfg = &is->district_configs[district_id];
+				struct district_infos * info = &is->district_infos[district_id];
+
+				if (info->dependent_building_count > 0) continue;
+				if (cfg->command == -1) continue;
+
+				if (! leader_can_build_district (this, district_id))
+					continue;
+
+				if (auto_dynamic_district_count < ARRAY_LEN (auto_dynamic_district_ids))
+					auto_dynamic_district_ids[auto_dynamic_district_count++] = district_id;
+			}
+		}
+
+		// Special exception for AI to build Central Rail Hub, which is available in Industrial era but Mass Transit, 
+		// the only building dependent on it, is in the Modern era. Without this the AI wouldn't build in Industrial era.
+		if (is->current_config.enable_central_rail_hub_districts) {
+			if (leader_can_build_district (this, CENTRAL_RAIL_HUB_DISTRICT_ID))
+				auto_dynamic_district_ids[auto_dynamic_district_count++] = CENTRAL_RAIL_HUB_DISTRICT_ID;
+		}
+
 		if (is->current_config.enable_distribution_hub_districts) {
-			// Check if AI has the tech prereq for distribution hubs before updating goals
-			int prereq_id = is->district_infos[DISTRIBUTION_HUB_DISTRICT_ID].advance_prereq_id;
-			if ((prereq_id < 0) || Leader_has_tech (this, __, prereq_id))
+			if (leader_can_build_district (this, DISTRIBUTION_HUB_DISTRICT_ID))
 				ai_update_distribution_hub_goal_for_leader (this);
 		}
 
@@ -19091,14 +25760,73 @@ patch_Leader_do_production_phase (Leader * this)
 			City * city = coi.city;
 			if (city == NULL) continue;
 
-			bool is_human = (*p_human_player_bits & (1 << city->Body.CivID)) != 0;
 			bool at_neighborhood_cap = is->current_config.enable_neighborhood_districts && city_is_at_neighborhood_cap (city);
 
+			// Mark any needed dynamic districts for AI players. This isn't the most intelligent approach (we're not weighing district benefits),
+			// but it's simple and works reasonably well
+			if (ai_player && (auto_dynamic_district_count > 0)) {
+				for (int i = 0; i < auto_dynamic_district_count; i++) {
+					int district_id = auto_dynamic_district_ids[i];
+
+					if (city_has_required_district (city, district_id)) continue;
+					if (! city_can_build_district (city, district_id)) continue;
+					if (find_pending_district_request (city, district_id) != NULL) continue;
+
+					int target_x = 0, target_y = 0;
+					if (find_tile_for_district (city, district_id, &target_x, &target_y) == NULL)
+						continue;
+
+					mark_city_needs_district (city, district_id);
+				}
+			}
+
 			if (at_neighborhood_cap) {
-				if (is_human)
+				if (! ai_player)
 					maybe_show_neighborhood_growth_warning (city);
 				else
 					ensure_neighborhood_request_for_city (city);
+			}
+
+			if (city->Body.Order_Type == COT_Unit) {
+				int unit_id = city->Body.Order_ID;
+				int req_district_id = -1;
+				bool needs_halt = false;
+
+				if ((unit_id >= 0) && (unit_id < p_bic_data->UnitTypeCount)) {
+					UnitType * type = &p_bic_data->UnitTypes[unit_id];
+					if ((type->Unit_Class == UTC_Air) &&
+					    is->current_config.enable_aerodrome_districts &&
+					    is->current_config.air_units_use_aerodrome_districts_not_cities &&
+					    (! city_has_required_district (city, AERODROME_DISTRICT_ID))) {
+						req_district_id = AERODROME_DISTRICT_ID;
+						needs_halt = true;
+					} else if ((type->Unit_Class == UTC_Sea) &&
+						   is->current_config.enable_port_districts &&
+						   is->current_config.naval_units_use_port_districts_not_cities &&
+						   (! city_has_required_district (city, PORT_DISTRICT_ID))) {
+						req_district_id = PORT_DISTRICT_ID;
+						needs_halt = true;
+					}
+				}
+
+				if (needs_halt) {
+					char ss[200];
+					snprintf (ss, sizeof ss, "patch_Leader_do_production_phase: City %d (%s) halting unit %d due to missing district %d\n",
+						city->Body.ID, city->Body.CityName, unit_id, req_district_id);
+					(*p_OutputDebugStringA) (ss);
+
+					if (ai_player)
+						mark_city_needs_district (city, req_district_id);
+
+					City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
+					if (choose_defensive_unit_order (city, &defensive_order)) {
+						UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
+						if (def_type->Unit_Class == UTC_Land)
+							City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
+					}
+
+					continue;
+				}
 			}
 
 			if (city->Body.Order_Type != COT_Improvement) continue;
@@ -19110,33 +25838,45 @@ patch_Leader_do_production_phase (Leader * this)
 			bool needs_halt = false;
 
 			// Check buildings & wonders dependent on districts
-			if (itable_look_up (&is->district_building_prereqs, i_improv, &req_district_id)) {
-				if (! city_has_required_district (city, req_district_id)) {
+			if (city_requires_district_for_improvement (city, i_improv, &req_district_id)) {
+				if (req_district_id >= 0) {
 					needs_halt = true;
 					district_description = is->district_configs[req_district_id].name;
 				}
 			}
 
 			// Wonders
+			char ss[200];
 			if (is->current_config.enable_wonder_districts) {
+				snprintf (ss, sizeof ss, "patch_Leader_do_production_phase: Checking wonder improv %d for city %d (%s)\n",
+					i_improv, city->Body.ID, city->Body.CityName);
+				(*p_OutputDebugStringA) (ss);
 				if (city_is_currently_building_wonder (city)) {
+					snprintf (ss, sizeof ss, "patch_Leader_do_production_phase: City %d (%s) is building wonder improv %d\n",
+						city->Body.ID, city->Body.CityName, i_improv);
+					(*p_OutputDebugStringA) (ss);
 					bool wonder_requires_district = false;
 					if (i_improv >= 0) {
-						int required_id;
-						if (itable_look_up (&is->district_building_prereqs, i_improv, &required_id) &&
-						    (required_id == WONDER_DISTRICT_ID))
+						struct district_building_prereq_list * prereq_list = get_district_building_prereq_list (i_improv);
+						if (district_building_prereq_list_contains (prereq_list, WONDER_DISTRICT_ID))
 							wonder_requires_district = true;
 					}
 
 					if (wonder_requires_district) {
-						bool has_wonder_district = reserve_wonder_district_for_city (city);
+						bool has_wonder_district = reserve_wonder_district_for_city (city, i_improv);
 						if (! has_wonder_district) {
+							snprintf (ss, sizeof ss, "patch_Leader_do_production_phase: City %d (%s) lacks Wonder District for wonder improv %d\n",
+								city->Body.ID, city->Body.CityName, i_improv);
+							(*p_OutputDebugStringA) (ss);
 							needs_halt = true;
 							req_district_id = WONDER_DISTRICT_ID;
 							district_description = "Wonder District";
 						}
 					} else {
 						release_wonder_district_reservation (city);
+						snprintf (ss, sizeof ss, "patch_Leader_do_production_phase: City %d (%s) wonder improv %d does not require Wonder District\n",
+							city->Body.ID, city->Body.CityName, i_improv);
+						(*p_OutputDebugStringA) (ss);
 					}
 				} else {
 					release_wonder_district_reservation (city);
@@ -19145,19 +25885,24 @@ patch_Leader_do_production_phase (Leader * this)
 
 			// If production needs to be halted, handle the reassignment and messaging
 			if (needs_halt) {
+				snprintf (ss, sizeof ss, "patch_Leader_do_production_phase: City %d (%s) halting improv %d due to missing district %d\n",
+					city->Body.ID, city->Body.CityName, i_improv, req_district_id);
+				(*p_OutputDebugStringA) (ss);
 				// Switch production to another option
-				if (! is_human) {
+				if (ai_player) {
 					mark_city_needs_district (city, req_district_id);
 					assign_ai_fallback_production (city, i_improv);
 				} else {
 					City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
 					if (choose_defensive_unit_order (city, &defensive_order)) {
-						City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
+						UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
+						if (def_type->Unit_Class == UTC_Land)
+							City_set_production (city, __, defensive_order.OrderType, defensive_order.OrderID, false);
 					}
 				}
 
 				// Show message to human player
-				if (is_human && (city->Body.CivID == p_main_screen_form->Player_CivID)) {
+				if (! ai_player && (city->Body.CivID == p_main_screen_form->Player_CivID)) {
 					char msg[160];
 					char const * bname = p_bic_data->Improvements[i_improv].Name.S;
 					snprintf (msg, sizeof msg, "%s %s %s", bname, is->c3x_labels[CL_CONSTRUCTION_HALTED_DUE_TO_MISSING_DISTRICT], district_description);
@@ -19166,6 +25911,9 @@ patch_Leader_do_production_phase (Leader * this)
 				}
 				continue;
 			}
+			snprintf (ss, sizeof ss, "patch_Leader_do_production_phase: City %d (%s) improv %d passed missing district check\n",
+				city->Body.ID, city->Body.CityName, i_improv);
+			(*p_OutputDebugStringA) (ss);
 		}
 	}
 
@@ -19416,6 +26164,7 @@ patch_Trade_Net_get_move_cost_after_zoc (Trade_Net * this, int edx, int from_x, 
 		patch_Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, param_7, neighbor_index, dist_info) :
 		-1;
 }
+
 AdjacentMoveValidity __fastcall
 patch_Unit_can_move_after_zoc (Unit * this, int edx, int neighbor_index, int param_2)
 {
@@ -19460,10 +26209,76 @@ patch_Unit_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, bool
 {
 	is->moving_unit_to_adjacent_tile = true;
 
+	bool const allow_worker_coast = is->current_config.enable_districts && is->current_config.workers_can_enter_coast && is_worker (this);
+	bool const allow_bridge_walk = is->current_config.enable_districts &&
+		is->current_config.enable_bridge_districts &&
+		(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land);
+	bool coast_override_active = false;
+	enum UnitStateType prev_state = this->Body.UnitState;
+	int prev_container = this->Body.Container_Unit;
+
+	if (allow_worker_coast || allow_bridge_walk) {
+		int nx, ny;
+		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
+		Tile * dest = tile_at (nx, ny);
+		if (dest != NULL) {
+			bool should_override = false;
+			if (allow_worker_coast &&
+			    dest->vtable->m35_Check_Is_Water (dest) &&
+			    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast)) {
+				bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
+				if (is_human) {
+					should_override = true;
+				} else {
+					struct district_worker_record * rec = get_tracked_worker_record (this);
+					struct pending_district_request * req = (rec != NULL) ? rec->pending_req : NULL;
+					if (req != NULL) {
+						City * req_city = (req->city != NULL) ? req->city : get_city_ptr (req->city_id);
+						if ((req->district_id >= 0) &&
+						    (req->district_id < is->district_count) &&
+						    (req_city != NULL) &&
+						    city_radius_contains_tile (req_city, nx, ny) &&
+						    (req->target_x == nx) && (req->target_y == ny)) {
+							struct district_config const * cfg = &is->district_configs[req->district_id];
+							if ((cfg->buildable_square_types_mask & (1 << SQ_Coast)) != 0)
+								should_override = true;
+						}
+					}
+				}
+			}
+
+			if (! should_override && allow_bridge_walk) {
+				struct district_instance * inst = get_district_instance (dest);
+				if ((inst != NULL) &&
+				    (inst->district_id == BRIDGE_DISTRICT_ID) &&
+				    district_is_complete (dest, inst->district_id))
+					should_override = true;
+			}
+
+			if (should_override) {
+				coast_override_active = true;
+				is->coast_walk_unit = this;
+				is->coast_walk_transport_override = false;
+				is->coast_walk_prev_state = prev_state;
+				is->coast_walk_prev_container = prev_container;
+			}
+		}
+	}
+
 	is->zoc_interceptor = is->zoc_defender = NULL;
 	int tr = Unit_move_to_adjacent_tile (this, __, neighbor_index, param_2, param_3, param_4);
 	if ((this == is->zoc_defender) && check_life_after_zoc (this, is->zoc_interceptor))
 		tr = ! is_online_game (); // This is what the original method returns when the unit was destroyed in combat
+
+	if (coast_override_active) {
+		is->coast_walk_unit = NULL;
+		is->coast_walk_transport_override = false;
+
+		if (this->Body.Container_Unit == this->Body.ID) {
+			this->Body.Container_Unit = is->coast_walk_prev_container;
+			Unit_set_state (this, __, is->coast_walk_prev_state);
+		}
+	}
 
 	is->temporarily_disallow_lethal_zoc = false;
 	is->moving_unit_to_adjacent_tile = false;
@@ -19745,7 +26560,7 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 			struct district_instance * inst = get_district_instance (target_tile);
 			if (inst != NULL) {
 				had_district_before = true;
-				district_id_before = inst->district_type;
+				district_id_before = inst->district_id;
 			}
 		}
 	}
@@ -19761,11 +26576,12 @@ patch_Unit_attack_tile (Unit * this, int edx, int x, int y, int bombarding)
 	if (had_district_before && (target_tile != NULL) && (target_tile != p_null_tile) && district_id_before != NATURAL_WONDER_DISTRICT_ID) {
 		struct district_instance * inst_after = get_district_instance (target_tile);
 		bool has_district_after = (inst_after != NULL);
-		int district_id_after = (inst_after != NULL) ? inst_after->district_type : -1;
+		int district_id_after = (inst_after != NULL) ? inst_after->district_id : -1;
 
 		// If the district existed before but not after, or the tile no longer has a mine, the district was destroyed
 		if (!has_district_after || !(target_tile->vtable->m42_Get_Overlays (target_tile, __, 0) & TILE_FLAG_MINE)) {
-			handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, true);
+			bool is_water_tile = target_tile != NULL && target_tile->vtable->m35_Check_Is_Water (target_tile);
+			handle_district_destroyed_by_attack (target_tile, tile_x, tile_y, ! is_water_tile);
 		}
 	}
 
@@ -20406,15 +27222,31 @@ patch_Leader_spawn_unit (Leader * this, int edx, int type_id, int tile_x, int ti
 	int spawn_x = tile_x,
 	    spawn_y = tile_y;
 
-	if (is->current_config.enable_districts &&
-	    is->current_config.air_units_use_aerodrome_districts_not_cities) {
+	if (is->current_config.enable_districts) {
 		UnitType * type = &p_bic_data->UnitTypes[type_id];
-		int aerodrome_id = AERODROME_DISTRICT_ID;
-		if ((type->Unit_Class == UTC_Air) && (aerodrome_id >= 0)) {
+		if (is->current_config.air_units_use_aerodrome_districts_not_cities) {
+			if (type->Unit_Class == UTC_Air) {
+				City * spawn_city = city_at (tile_x, tile_y);
+				if ((spawn_city != NULL) && (spawn_city->Body.CivID == this->ID)) {
+					int district_x, district_y;
+					Tile * district_tile = get_completed_district_tile_for_city (spawn_city, AERODROME_DISTRICT_ID, &district_x, &district_y);
+					if ((district_tile != NULL) && (district_tile != p_null_tile) &&
+					    (district_tile->Territory_OwnerID == this->ID) &&
+					    is_below_stack_limit (district_tile, this->ID, type->Unit_Class)) {
+						spawn_x = district_x;
+						spawn_y = district_y;
+					}
+				}
+			}
+		}
+
+		if ((type->Unit_Class == UTC_Sea) &&
+		    is->current_config.enable_port_districts &&
+		    is->current_config.naval_units_use_port_districts_not_cities) {
 			City * spawn_city = city_at (tile_x, tile_y);
 			if ((spawn_city != NULL) && (spawn_city->Body.CivID == this->ID)) {
 				int district_x, district_y;
-				Tile * district_tile = get_completed_district_tile_for_city (spawn_city, aerodrome_id, &district_x, &district_y);
+				Tile * district_tile = get_completed_district_tile_for_city (spawn_city, PORT_DISTRICT_ID, &district_x, &district_y);
 				if ((district_tile != NULL) && (district_tile != p_null_tile) &&
 				    (district_tile->Territory_OwnerID == this->ID) &&
 				    is_below_stack_limit (district_tile, this->ID, type->Unit_Class)) {
@@ -20535,6 +27367,59 @@ patch_City_spawn_unit_if_done (City * this)
 		// doesn't get violated.
 		if ((this->Body.Order_Type == COT_Unit) && (this->Body.Order_ID == limited_unit_type_id))
 			skip_spawn = true;
+	}
+
+	// Check district requirements for air and naval units
+	if ((! skip_spawn) && (this->Body.Order_Type == COT_Unit) && is->current_config.enable_districts) {
+		int unit_id = this->Body.Order_ID;
+		UnitType * type = &p_bic_data->UnitTypes[unit_id];
+		bool needs_district = false;
+		int required_district_id = -1;
+
+		// Air units require aerodrome
+		if ((type->Unit_Class == UTC_Air) &&
+		    is->current_config.enable_aerodrome_districts &&
+		    is->current_config.air_units_use_aerodrome_districts_not_cities &&
+		    (! city_has_required_district (this, AERODROME_DISTRICT_ID))) {
+			needs_district = true;
+			required_district_id = AERODROME_DISTRICT_ID;
+		}
+		// Naval units require port
+		else if ((type->Unit_Class == UTC_Sea) &&
+		         is->current_config.enable_port_districts &&
+		         is->current_config.naval_units_use_port_districts_not_cities &&
+		         (! city_has_required_district (this, PORT_DISTRICT_ID))) {
+			needs_district = true;
+			required_district_id = PORT_DISTRICT_ID;
+		}
+
+		if (needs_district) {
+			bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
+
+			// Mark district needed for AI
+			if (! is_human)
+				mark_city_needs_district (this, required_district_id);
+
+			// Find fallback land unit
+			City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
+			if (choose_defensive_unit_order (this, &defensive_order)) {
+				UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
+				if (def_type->Unit_Class == UTC_Land)
+					City_set_production (this, __, defensive_order.OrderType, defensive_order.OrderID, false);
+			}
+
+			// Show message to human player
+			if (is_human && (this->Body.CivID == p_main_screen_form->Player_CivID)) {
+				char msg[160];
+				char const * unit_name = type->Name;
+				char const * district_name = is->district_configs[required_district_id].name;
+				snprintf (msg, sizeof msg, "%s %s %s", unit_name, is->c3x_labels[CL_CONSTRUCTION_HALTED_DUE_TO_MISSING_DISTRICT], district_name);
+				msg[(sizeof msg) - 1] = '\0';
+				show_map_specific_text (this->Body.X, this->Body.Y, msg, true);
+			}
+
+			skip_spawn = true;
+		}
 	}
 
 	if (! skip_spawn)
@@ -20814,7 +27699,7 @@ get_menu_verb_for_unit (Unit * unit, char * out_str, int str_capacity)
 			Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
 			struct district_instance * inst = get_district_instance (tile);
 			if ((tile != NULL) && (tile != p_null_tile) && inst != NULL) {
-				char const * district_name = is->district_configs[inst->district_type].name;
+				char const * district_name = is->district_configs[inst->district_id].name;
 				snprintf (out_str, str_capacity, "%s %s", is->c3x_labels[CL_BUILDING], district_name);
 				out_str[str_capacity - 1] = '\0';
 				return true;
@@ -20875,9 +27760,26 @@ patch_Map_place_scenario_things (Map * this)
 				patch_City_recompute_yields_and_happiness (city);
 		}
 
-	if (is->current_config.enable_districts)
+	if (is->current_config.enable_districts ||
+	    is->current_config.enable_natural_wonders ||
+	    is->current_config.enable_named_tiles)
 		load_scenario_districts_from_file ();
 
+	if (is->current_config.enable_natural_wonders &&
+		is->current_config.add_natural_wonders_to_scenarios_if_none) {
+		bool any_natural_wonders = false;
+		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
+			struct district_instance * inst = (struct district_instance *)tei.value;
+			if ((inst != NULL) &&
+			    (inst->district_id == NATURAL_WONDER_DISTRICT_ID) &&
+			    (inst->natural_wonder_info.natural_wonder_id >= 0)) {
+				any_natural_wonders = true;
+				break;
+			}
+		}
+		if (! any_natural_wonders)
+			place_natural_wonders_on_map ();
+	}
 	is->is_placing_scenario_things = false;
 }
 
@@ -20908,6 +27810,13 @@ patch_Context_Menu_get_selected_item_on_unit_rcm (Context_Menu * this)
 	// click unit items which have been disabled by the mod so they can interrupt the queued actions of units that have no moves left.
 	int index = this->Selected_Item;
 	if (index >= 0) {
+		if (is->current_config.enable_named_tiles && is->named_tile_menu_active) {
+			Context_Menu_Item * item = &this->Items[index];
+			if (item->Menu_Item_ID == NAMED_TILE_MENU_ID) {
+				handle_named_tile_menu_selection ();
+				return -1;
+			}
+		}
 		bool is_enabled = (this->Items[index].Status & 2) == 0;
 		bool is_unit_item = (this->Items[index].Menu_Item_ID - (0x13 + p_bic_data->UnitTypeCount)) >= 0;
 		return (is_enabled || is_unit_item) ? index : -1;
@@ -20932,9 +27841,9 @@ patch_Tile_set_flag_for_eruption_damage (Tile * this, int edx, int param_1, int 
 {
 	if (is->current_config.enable_districts) {
 		struct district_instance * inst = get_district_instance (this);
-		if (inst != NULL && inst->district_type >= 0 && inst->district_type < is->district_count) {
+		if (inst != NULL && inst->district_id >= 0 && inst->district_id < is->district_count) {
 			// District found - handle removal
-			int district_id = inst->district_type;
+			int district_id = inst->district_id;
 
 			// Notify human player if this tile is in their territory
 			int territory_owner = this->vtable->m38_Get_Territory_OwnerID (this);
@@ -21098,7 +28007,6 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		serialize_aligned_text ("current_day_night_cycle", &mod_data);
 		int_to_bytes (buffer_allocate (&mod_data, sizeof is->current_day_night_cycle), is->current_day_night_cycle);
 	}
-
 	if (is->current_config.enable_districts && (is->district_count > 0)) {
 		serialize_aligned_text ("district_config_names", &mod_data);
 		int * entry_count = (int *)buffer_allocate (&mod_data, sizeof(int));
@@ -21116,7 +28024,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 		int entry_count = 0;
 		for (int civ_id = 0; civ_id < 32; civ_id++) {
 			FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-				struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+				struct pending_district_request * req = (struct pending_district_request *)tei.value;
 				if ((req != NULL) && (req->city_id >= 0))
 					entry_count++;
 			}
@@ -21128,7 +28036,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			chunk[0] = entry_count;
 			for (int civ_id = 0; civ_id < 32; civ_id++) {
 				FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-					struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+					struct pending_district_request * req = (struct pending_district_request *)tei.value;
 					if ((req == NULL) || (req->city_id < 0))
 						continue;
 					out[0] = req->city_id;
@@ -21146,7 +28054,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 	    (is->city_pending_building_orders.len > 0)) {
 		int entry_count = 0;
 		FOR_TABLE_ENTRIES (tei, &is->city_pending_building_orders) {
-			City * city = (City *)(long)tei.key;
+			City * city = (City *)tei.key;
 			int improv_id = tei.value;
 			if ((city != NULL) && (improv_id >= 0))
 				entry_count++;
@@ -21157,7 +28065,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			int * out = chunk + 1;
 			chunk[0] = entry_count;
 			FOR_TABLE_ENTRIES (tei, &is->city_pending_building_orders) {
-				City * city = (City *)(long)tei.key;
+				City * city = (City *)tei.key;
 				int improv_id = tei.value;
 				if ((city == NULL) || (improv_id < 0))
 					continue;
@@ -21171,12 +28079,12 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 	if (is->current_config.enable_districts && (is->district_tile_map.len > 0)) {
 		serialize_aligned_text ("district_tile_map", &mod_data);
 		int entry_capacity = is->district_tile_map.len;
-		int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 7 * entry_capacity));
+		int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (1 + 9 * entry_capacity));
 		int * out = chunk + 1;
 		int written = 0;
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
 			Tile * tile = (Tile *)tei.key;
-			struct district_instance * inst = (struct district_instance *)(long)tei.value;
+			struct district_instance * inst = (struct district_instance *)tei.value;
 			if (inst == NULL)
 				continue;
 			int x, y;
@@ -21192,18 +28100,20 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 				inst->wonder_info.city = NULL;
 			out[0] = x;
 			out[1] = y;
-			out[2] = inst->district_type;
+			out[2] = inst->district_id;
 			out[3] = (int)inst->state;
-			out[4] = (int)inst->wonder_info.state;
-			out[5] = wonder_city_id;
-			out[6] = inst->wonder_info.wonder_index;
-			out += 7;
+			out[4] = inst->built_by_civ_id;
+			out[5] = inst->completed_turn;
+			out[6] = (int)inst->wonder_info.state;
+			out[7] = wonder_city_id;
+			out[8] = inst->wonder_info.wonder_index;
+			out += 9;
 			written++;
 		}
 		chunk[0] = written;
 		int unused_entries = entry_capacity - written;
 		if (unused_entries > 0) {
-			int trimmed_bytes = unused_entries * 7 * (int)sizeof(int);
+			int trimmed_bytes = unused_entries * 9 * (int)sizeof(int);
 			mod_data.length -= trimmed_bytes;
 		}
 	}
@@ -21211,8 +28121,8 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 	if (is->current_config.enable_natural_wonders && (is->district_tile_map.len > 0)) {
 		int entry_capacity = 0;
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-			struct district_instance * inst = (struct district_instance *)(long)tei.value;
-			if ((inst == NULL) || (inst->district_type != NATURAL_WONDER_DISTRICT_ID))
+			struct district_instance * inst = (struct district_instance *)tei.value;
+			if ((inst == NULL) || (inst->district_id != NATURAL_WONDER_DISTRICT_ID))
 				continue;
 			if (inst->natural_wonder_info.natural_wonder_id < 0)
 				continue;
@@ -21225,9 +28135,9 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 			int written = 0;
 			FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
 				Tile * tile = (Tile *)tei.key;
-				struct district_instance * inst = (struct district_instance *)(long)tei.value;
+				struct district_instance * inst = (struct district_instance *)tei.value;
 				if ((inst == NULL) ||
-				    (inst->district_type != NATURAL_WONDER_DISTRICT_ID) ||
+				    (inst->district_id != NATURAL_WONDER_DISTRICT_ID) ||
 				    (inst->natural_wonder_info.natural_wonder_id < 0))
 					continue;
 				int x, y;
@@ -21257,7 +28167,7 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 				int * out = chunk + 1;
 				int written = 0;
 				FOR_TABLE_ENTRIES (tei, &is->distribution_hub_records) {
-					struct distribution_hub_record * rec = (struct distribution_hub_record *)(long)tei.value;
+					struct distribution_hub_record * rec = (struct distribution_hub_record *)tei.value;
 					if (rec == NULL)
 						continue;
 					out[0] = rec->tile_x;
@@ -21306,6 +28216,85 @@ patch_MappedFile_create_file_to_save_game (MappedFile * this, int edx, LPCSTR fi
 				mod_data.length -= trimmed_bytes;
 			}
 		}
+
+	if (is->current_config.enable_named_tiles && (is->named_tile_map.len > 0)) {
+		serialize_aligned_text ("named_tiles", &mod_data);
+		int entry_capacity = is->named_tile_map.len;
+		int bytes_per_entry = (int)sizeof(int) * 2 + (int)sizeof(((struct named_tile_entry *)0)->name);
+		byte * chunk = (byte *)buffer_allocate (&mod_data, (int)sizeof(int) + bytes_per_entry * entry_capacity);
+		int * count = (int *)chunk;
+		byte * out = (byte *)(count + 1);
+		int written = 0;
+		FOR_TABLE_ENTRIES (tei, &is->named_tile_map) {
+			struct named_tile_entry * entry = (struct named_tile_entry *)tei.value;
+			if ((entry == NULL) || (entry->name[0] == '\0'))
+				continue;
+			Tile * tile = (Tile *)tei.key;
+			int tile_x = entry->tile_x;
+			int tile_y = entry->tile_y;
+			if ((tile != NULL) && (tile != p_null_tile))
+				tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y);
+			((int *)out)[0] = tile_x;
+			((int *)out)[1] = tile_y;
+			out += sizeof(int) * 2;
+			memcpy (out, entry->name, sizeof entry->name);
+			out += sizeof entry->name;
+			written++;
+		}
+		*count = written;
+		int unused_entries = entry_capacity - written;
+		if (unused_entries > 0) {
+			int trimmed_bytes = unused_entries * bytes_per_entry;
+			mod_data.length -= trimmed_bytes;
+		}
+	}
+
+	if (is->great_wall_auto_build != GWABS_NOT_STARTED) {
+		serialize_aligned_text ("great_wall_auto_build_state", &mod_data);
+		*(int *)buffer_allocate (&mod_data, sizeof(int)) = (int)is->great_wall_auto_build;
+	}
+
+	if (is->ai_candidate_bridge_or_canals_initialized || (is->ai_candidate_bridge_or_canals_count > 0)) {
+		serialize_aligned_text ("ai_candidate_bridge_or_canals", &mod_data);
+		int * header = (int *)buffer_allocate (&mod_data, sizeof(int) * 3);
+		header[0] = is->ai_candidate_bridge_or_canals_initialized ? 1 : 0;
+		header[1] = is->ai_candidate_bridge_or_canals_count;
+		header[2] = is->ai_candidate_bridge_or_canals_capacity;
+		for (int ei = 0; ei < is->ai_candidate_bridge_or_canals_count; ei++) {
+			struct ai_candidate_bridge_or_canal_entry * entry = &is->ai_candidate_bridge_or_canals[ei];
+			int tile_count = (int)entry->tile_count;
+			if ((tile_count <= 0) || (entry->tile_x == NULL) || (entry->tile_y == NULL))
+				tile_count = 0;
+
+			int field_count = 14;
+			int * chunk = (int *)buffer_allocate (&mod_data, sizeof(int) * (field_count + tile_count * 2));
+			int pending_city_id = entry->pending_req.city_id;
+			if ((pending_city_id < 0) && (entry->pending_req.city != NULL))
+				pending_city_id = entry->pending_req.city->Body.ID;
+
+			chunk[0] = entry->district_id;
+			chunk[1] = (int)entry->owner_civ_id;
+			chunk[2] = tile_count;
+			chunk[3] = (entry->tile_capacity > 0) ? entry->tile_capacity : tile_count;
+			chunk[4] = entry->assigned_tile_index;
+			chunk[5] = entry->assigned_worker_id;
+			chunk[6] = entry->completed ? 1 : 0;
+			chunk[7] = pending_city_id;
+			chunk[8] = entry->pending_req.civ_id;
+			chunk[9] = entry->pending_req.district_id;
+			chunk[10] = entry->pending_req.assigned_worker_id;
+			chunk[11] = entry->pending_req.target_x;
+			chunk[12] = entry->pending_req.target_y;
+			chunk[13] = entry->pending_req.worker_assigned_turn;
+
+			int * out = chunk + field_count;
+			for (int ti = 0; ti < tile_count; ti++) {
+				out[0] = entry->tile_x[ti];
+				out[1] = entry->tile_y[ti];
+				out += 2;
+			}
+		}
+	}
 	}
 
 	int metadata_size = (mod_data.length > 0) ? 12 : 0; // Two four-byte bookends plus one four-byte size, only written if there's any mod data
@@ -21360,12 +28349,19 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 	if (! save_else_load) {
 		// Free all district_instance structs first
 		FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-			struct district_instance * inst = (struct district_instance *)(long)tei.value;
+			struct district_instance * inst = (struct district_instance *)tei.value;
 			if (inst != NULL)
 				free (inst);
 		}
 		table_deinit (&is->district_tile_map);
+		FOR_TABLE_ENTRIES (tei, &is->named_tile_map) {
+			struct named_tile_entry * entry = (struct named_tile_entry *)tei.value;
+			if (entry != NULL)
+				free (entry);
+		}
+		table_deinit (&is->named_tile_map);
 		clear_all_tracked_workers ();
+		reset_ai_candidate_bridge_or_canals ();
 	}
 
 	// Check for a mod save data section and load it if present
@@ -21507,6 +28503,17 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 				// doesn't get restarted.
 				is->day_night_cycle_unstarted = false;
 			
+			} else if (match_save_chunk_name (&cursor, "great_wall_auto_build_state")) {
+				int state = *((int *)cursor)++;
+				if ((state >= GWABS_NOT_STARTED) && (state <= GWABS_DONE))
+					is->great_wall_auto_build = (enum great_wall_auto_build_state)state;
+				else
+					is->great_wall_auto_build = GWABS_NOT_STARTED;
+
+			} else if (match_save_chunk_name (&cursor, "great_wall_auto_build_is_done")) {
+				bool was_done = (*((int *)cursor)++ != 0);
+				is->great_wall_auto_build = was_done ? GWABS_DONE : GWABS_NOT_STARTED;
+
 			} else if (match_save_chunk_name (&cursor, "district_pending_requests")) {
 				bool success = false;
 				int remaining_bytes = (seg + seg_size) - cursor;
@@ -21519,7 +28526,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					    (remaining_bytes >= entry_count * 5 * (int)sizeof(int))) {
 						for (int civ_id = 0; civ_id < 32; civ_id++) {
 							FOR_TABLE_ENTRIES (tei, &is->city_pending_district_requests[civ_id]) {
-								struct pending_district_request * req = (struct pending_district_request *)(long)tei.value;
+								struct pending_district_request * req = (struct pending_district_request *)tei.value;
 								if (req != NULL)
 									free (req);
 							}
@@ -21586,7 +28593,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							City * city = get_city_ptr (city_id);
 							if (city == NULL)
 								continue;
-							itable_insert (&is->city_pending_building_orders, (int)(long)city, improv_id);
+							itable_insert (&is->city_pending_building_orders, (int)city, improv_id);
 						}
 						if (! success)
 							table_deinit (&is->city_pending_building_orders);
@@ -21605,11 +28612,12 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					cursor = (byte *)ints;
 					remaining_bytes -= (int)sizeof(int);
 					if (entry_count >= 0) {
-						int ints_per_entry = 7;
+						int ints_per_entry = 9;
+						success = true;
 						int required_bytes = entry_count * ints_per_entry * (int)sizeof(int);
-						if (remaining_bytes >= required_bytes) {
+						if (success && remaining_bytes >= required_bytes) {
 							FOR_TABLE_ENTRIES (tei, &is->district_tile_map) {
-								struct district_instance * inst = (struct district_instance *)(long)tei.value;
+								struct district_instance * inst = (struct district_instance *)tei.value;
 								if (inst != NULL)
 									free (inst);
 							}
@@ -21624,6 +28632,8 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 								int y = *ints++;
 								int district_id = *ints++;
 								int state_val = *ints++;
+								int built_by_civ_id = *ints++;
+								int completed_turn = *ints++;
 								int wonder_state = *ints++;
 								int wonder_city_id = *ints++;
 								int wonder_index = *ints++;
@@ -21648,6 +28658,8 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 											break;
 										}
 										inst->state = new_state;
+										inst->built_by_civ_id = built_by_civ_id;
+										inst->completed_turn = completed_turn;
 										
 										inst->wonder_info.state = (enum wonder_district_state)wonder_state;
 										inst->wonder_info.city_id = (wonder_city_id >= 0) ? wonder_city_id : -1;
@@ -21661,6 +28673,8 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 								}
 							}
 						}
+						else
+							success = false;
 					}
 				}
 				if (! success) {
@@ -21695,7 +28709,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 							struct district_instance * inst = ensure_district_instance (tile, NATURAL_WONDER_DISTRICT_ID, x, y);
 							if (inst == NULL)
 								continue;
-							inst->district_type = NATURAL_WONDER_DISTRICT_ID;
+							inst->district_id = NATURAL_WONDER_DISTRICT_ID;
 							inst->state = DS_COMPLETED;
 							inst->natural_wonder_info.natural_wonder_id = natural_id;
 							set_tile_unworkable_for_all_cities (tile, x, y);
@@ -21779,6 +28793,203 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 					break;
 				}
 
+			} else if (match_save_chunk_name (&cursor, "named_tiles")) {
+				bool success = false;
+				int remaining_bytes = (seg + seg_size) - cursor;
+				if (remaining_bytes >= (int)sizeof(int)) {
+					int * ints = (int *)cursor;
+					int entry_count = *ints++;
+					cursor = (byte *)ints;
+					remaining_bytes -= (int)sizeof(int);
+					int bytes_per_entry = (int)sizeof(int) * 2 + (int)sizeof(((struct named_tile_entry *)0)->name);
+					if ((entry_count >= 0) && (remaining_bytes >= entry_count * bytes_per_entry)) {
+						table_deinit (&is->named_tile_map);
+						success = true;
+						for (int n = 0; n < entry_count; n++) {
+							if (remaining_bytes < bytes_per_entry) {
+								success = false;
+								break;
+							}
+							int tile_x = *ints++;
+							int tile_y = *ints++;
+							cursor = (byte *)ints;
+							remaining_bytes -= (int)sizeof(int) * 2;
+
+							char name_buf[101];
+							memcpy (name_buf, cursor, sizeof name_buf);
+							name_buf[(sizeof name_buf) - 1] = '\0';
+							cursor += sizeof name_buf;
+							remaining_bytes -= sizeof name_buf;
+							ints = (int *)cursor;
+
+							if (name_buf[0] == '\0')
+								continue;
+							Tile * tile = tile_at (tile_x, tile_y);
+							if ((tile == NULL) || (tile == p_null_tile))
+								continue;
+
+							struct named_tile_entry * entry = calloc (1, sizeof *entry);
+							if (entry == NULL) {
+								success = false;
+								break;
+							}
+							entry->tile_x = tile_x;
+							entry->tile_y = tile_y;
+							strncpy (entry->name, name_buf, sizeof entry->name);
+							entry->name[(sizeof entry->name) - 1] = '\0';
+							itable_insert (&is->named_tile_map, (int)tile, (int)entry);
+						}
+						if (! success) {
+							FOR_TABLE_ENTRIES (tei, &is->named_tile_map) {
+								struct named_tile_entry * entry = (struct named_tile_entry *)tei.value;
+								if (entry != NULL)
+									free (entry);
+							}
+							table_deinit (&is->named_tile_map);
+						}
+					}
+				}
+				if (! success) {
+					error_chunk_name = "named_tiles";
+					break;
+				}
+
+			} else if (match_save_chunk_name (&cursor, "ai_candidate_bridge_or_canals")) {
+				bool success = false;
+				int remaining_bytes = (seg + seg_size) - cursor;
+				if (remaining_bytes >= (int)sizeof(int) * 3) {
+					int * ints = (int *)cursor;
+					int saved_initialized = *ints++;
+					int saved_count = *ints++;
+					int saved_capacity = *ints++;
+					cursor = (byte *)ints;
+					remaining_bytes -= (int)sizeof(int) * 3;
+
+					if ((saved_count >= 0) && (saved_capacity >= 0)) {
+						reset_ai_candidate_bridge_or_canals ();
+						success = true;
+
+						int alloc_capacity = saved_capacity;
+						if (alloc_capacity < saved_count)
+							alloc_capacity = saved_count;
+						if (alloc_capacity > 0) {
+							is->ai_candidate_bridge_or_canals = (struct ai_candidate_bridge_or_canal_entry *)calloc (alloc_capacity, sizeof *is->ai_candidate_bridge_or_canals);
+							if (is->ai_candidate_bridge_or_canals == NULL) {
+								success = false;
+								alloc_capacity = 0;
+							} else
+								is->ai_candidate_bridge_or_canals_capacity = alloc_capacity;
+						}
+
+						is->ai_candidate_bridge_or_canals_initialized = (saved_initialized != 0);
+						int loaded_count = 0;
+						for (int ei = 0; ei < saved_count; ei++) {
+							if (remaining_bytes < (int)sizeof(int) * 14) {
+								success = false;
+								break;
+							}
+							int district_id = *ints++;
+							int owner_civ_id = *ints++;
+							int tile_count = *ints++;
+							int tile_capacity = *ints++;
+							int assigned_tile_index = *ints++;
+							int assigned_worker_id = *ints++;
+							int completed = *ints++;
+							int pending_city_id = *ints++;
+							int pending_civ_id = *ints++;
+							int pending_district_id = *ints++;
+							int pending_assigned_worker_id = *ints++;
+							int pending_target_x = *ints++;
+							int pending_target_y = *ints++;
+							int pending_worker_assigned_turn = *ints++;
+							cursor = (byte *)ints;
+							remaining_bytes -= (int)sizeof(int) * 14;
+
+							if (tile_count < 0) {
+								success = false;
+								break;
+							}
+							if (remaining_bytes < tile_count * 2 * (int)sizeof(int)) {
+								success = false;
+								break;
+							}
+
+							int stored_tile_count = tile_count;
+							if (tile_count > AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES)
+								tile_count = AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES;
+							if (tile_capacity < tile_count)
+								tile_capacity = tile_count;
+
+							struct ai_candidate_bridge_or_canal_entry * entry = NULL;
+							if ((alloc_capacity > 0) && (loaded_count < alloc_capacity))
+								entry = &is->ai_candidate_bridge_or_canals[loaded_count];
+
+							if (entry != NULL) {
+								entry->district_id = district_id;
+								entry->owner_civ_id = (short)owner_civ_id;
+								entry->tile_count = (short)tile_count;
+								entry->tile_capacity = tile_capacity;
+								entry->assigned_tile_index = assigned_tile_index;
+								entry->assigned_worker_id = assigned_worker_id;
+								entry->completed = (completed != 0);
+
+								entry->tile_x = (short *)calloc (sizeof *entry->tile_x, tile_count);
+								entry->tile_y = (short *)calloc (sizeof *entry->tile_y, tile_count);
+								if ((tile_count > 0) && ((entry->tile_x == NULL) || (entry->tile_y == NULL))) {
+									if (entry->tile_x != NULL)
+										free (entry->tile_x);
+									if (entry->tile_y != NULL)
+										free (entry->tile_y);
+									entry->tile_x = NULL;
+									entry->tile_y = NULL;
+									entry->tile_count = 0;
+									entry->tile_capacity = 0;
+								}
+
+								for (int ti = 0; ti < stored_tile_count; ti++) {
+									int tx = *ints++;
+									int ty = *ints++;
+									if ((entry->tile_x != NULL) && (ti < tile_count)) {
+										entry->tile_x[ti] = (short)tx;
+										entry->tile_y[ti] = (short)ty;
+									}
+								}
+
+								entry->pending_req.city = (pending_city_id >= 0) ? get_city_ptr (pending_city_id) : NULL;
+								entry->pending_req.city_id = (entry->pending_req.city != NULL) ? pending_city_id : -1;
+								entry->pending_req.civ_id = pending_civ_id;
+								entry->pending_req.district_id = pending_district_id;
+								entry->pending_req.assigned_worker_id = pending_assigned_worker_id;
+								entry->pending_req.target_x = pending_target_x;
+								entry->pending_req.target_y = pending_target_y;
+								entry->pending_req.worker_assigned_turn = pending_worker_assigned_turn;
+
+								if ((entry->assigned_worker_id >= 0) && (get_unit_ptr (entry->assigned_worker_id) == NULL))
+									entry->assigned_worker_id = -1;
+								if ((entry->pending_req.assigned_worker_id >= 0) && (get_unit_ptr (entry->pending_req.assigned_worker_id) == NULL))
+									entry->pending_req.assigned_worker_id = -1;
+								if ((entry->assigned_tile_index < 0) || (entry->assigned_tile_index >= entry->tile_count))
+									entry->assigned_tile_index = -1;
+
+								loaded_count++;
+							} else {
+								for (int ti = 0; ti < stored_tile_count; ti++) {
+									ints += 2;
+								}
+							}
+
+							cursor = (byte *)ints;
+							remaining_bytes -= stored_tile_count * 2 * (int)sizeof(int);
+						}
+						if (success)
+							is->ai_candidate_bridge_or_canals_count = loaded_count;
+					}
+				}
+				if (! success) {
+					error_chunk_name = "ai_candidate_bridge_or_canals";
+					break;
+				}
+
 			} else if (match_save_chunk_name (&cursor, "district_config_names")) {
 				bool success = false;
 				bool mismatch_found = false;
@@ -21855,7 +29066,7 @@ patch_move_game_data (byte * buffer, bool save_else_load)
 
 							char s[1000];
 							snprintf (s, sizeof s, "%s %s", is->c3x_labels[CL_WARNING_DISTRICTS_CONFIG_MISMATCH], first_mismatch);
-							snprintf (s, sizeof s, "%s %s", s, is->c3x_labels[CL_MAY_BE_OTHER_ERRORS_AS_WELL]);
+							snprintf (s, sizeof s, "%s. %s", s, is->c3x_labels[CL_MAY_BE_OTHER_ERRORS_AS_WELL]);
 							s[(sizeof s) - 1] = '\0';
 							PopupForm_add_text (popup, __, s, 0);
 
@@ -21934,6 +29145,22 @@ patch_Tile_m7_Check_Barbarian_Camp (Tile * this, int edx, int visible_to_civ)
 		return true;
 	else
 		return Tile_m7_Check_Barbarian_Camp (this, __, visible_to_civ);
+}
+
+bool __fastcall
+patch_Unit_can_heal_at (Unit * this, int edx, int tile_x, int tile_y)
+{
+	if (is->current_config.enable_districts &&
+	    is->current_config.enable_port_districts &&
+	    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
+		Tile * tile = tile_at (tile_x, tile_y);
+		if (tile_has_friendly_port_district (tile, this->Body.CivID)) {
+			int occupier_id = get_tile_occupier_id (tile_x, tile_y, -1, true);
+			return (occupier_id == -1) || (occupier_id == this->Body.CivID);
+		}
+	}
+
+	return Unit_can_heal_at (this, __, tile_x, tile_y);
 }
 
 bool __fastcall
@@ -22044,7 +29271,7 @@ patch_set_worker_animation (void * this, int edx, Unit * unit, int job_id)
 	Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
 	struct district_instance * inst = get_district_instance (tile);
 	if (inst != NULL &&
-		! district_is_complete (tile, inst->district_type) && job_id == WJ_Build_Mines) {
+		! district_is_complete (tile, inst->district_id) && job_id == WJ_Build_Mines) {
 
 		// Override and ensure build animation is used
 		job_id = AT_BUILD; 
@@ -22067,8 +29294,8 @@ patch_Unit_work_simple_job (Unit * this, int edx, int job_id)
 		if (tile != NULL && tile != p_null_tile) {
 			// Check if there's a completed district on this tile
 			struct district_instance * inst = get_district_instance (tile);
-			if (inst != NULL && district_is_complete(tile, inst->district_type)) {
-				int district_id = inst->district_type;
+			if (inst != NULL && district_is_complete(tile, inst->district_id)) {
+				int district_id = inst->district_id;
 				bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
 
 				// AI players only (human removal is handled via issue_district_worker_command)
@@ -22413,10 +29640,9 @@ patch_Unit_check_rebase_target (Unit * this, int edx, int tile_x, int tile_y)
 			// Check if tile has a district
 			struct district_instance * inst = get_district_instance (tile);
 			if (inst != NULL) {
-				int district_id = inst->district_type;
-				int aerodrome_id = AERODROME_DISTRICT_ID;
+				int district_id = inst->district_id;
 				// Check if this is an aerodrome district owned by this unit's civ
-				if ((aerodrome_id >= 0) && (district_id == aerodrome_id) && (tile->Territory_OwnerID == this->Body.CivID)) {
+				if ((district_id == AERODROME_DISTRICT_ID) && (tile->Territory_OwnerID == this->Body.CivID)) {
 					// Check if aerodrome is complete
 					if (district_is_complete (tile, district_id)) {
 						// Perform range check
@@ -22630,80 +29856,6 @@ cleanup:
 }
 
 void
-init_district_icons ()
-{
-	if (is->dc_icons_img_state != IS_UNINITED)
-		return;
-
-	char ss[200];
-	snprintf (ss, sizeof ss, "[C3X] init_district_icons: state=%d\n", is->dc_icons_img_state);
-	(*p_OutputDebugStringA) (ss);
-
-	PCX_Image pcx;
-	PCX_Image_construct (&pcx);
-
-	char temp_path[2*MAX_PATH];
-	get_mod_art_path ("Districts/DistrictIncomeIcons.pcx", temp_path, sizeof temp_path);
-
-	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
-	if ((pcx.JGL.Image == NULL) ||
-	    (pcx.JGL.Image->vtable->m54_Get_Width (pcx.JGL.Image) < 776) ||
-	    (pcx.JGL.Image->vtable->m55_Get_Height (pcx.JGL.Image) < 32)) {
-		(*p_OutputDebugStringA) ("[C3X] PCX file for district icons failed to load or is too small.\n");
-		is->dc_icons_img_state = IS_INIT_FAILED;
-		goto cleanup;
-	}
-
-	// Extract science icon (index 1: x = 1 + 1*31 = 32, width 30)
-	Sprite_construct (&is->district_science_icon);
-	Sprite_slice_pcx (&is->district_science_icon, __, &pcx, 1 + 1*31, 1, 30, 30, 1, 1);
-
-	// Extract commerce icon (index 2: x = 1 + 2*31 = 63, width 30)
-	Sprite_construct (&is->district_commerce_icon);
-	Sprite_slice_pcx (&is->district_commerce_icon, __, &pcx, 1 + 2*31, 1, 30, 30, 1, 1);
-
-	// Extract shield icon (index 4: x = 1 + 4*31 = 125, width 30)
-	Sprite_construct (&is->district_shield_icon);
-	Sprite_slice_pcx (&is->district_shield_icon, __, &pcx, 1 + 4*31, 1, 30, 30, 1, 1);
-
-	// Extract corruption icon (index 5: x = 1 + 5*31 = 156, width 30)
-	Sprite_construct (&is->district_corruption_icon);
-	Sprite_slice_pcx (&is->district_corruption_icon, __, &pcx, 1 + 5*31, 1, 30, 30, 1, 1);
-
-	// Extract food icon (index 6: x = 1 + 6*31 = 187, width 30)
-	Sprite_construct (&is->district_food_icon);
-	Sprite_slice_pcx (&is->district_food_icon, __, &pcx, 1 + 6*31, 1, 30, 30, 1, 1);
-
-	// Extract food eaten icon (index 7: x = 1 + 7*31 = 218, width 30)
-	Sprite_construct (&is->district_food_eaten_icon);
-	Sprite_slice_pcx (&is->district_food_eaten_icon, __, &pcx, 1 + 7*31, 1, 30, 30, 1, 1);
-
-	// Extract small shield icon (index 13: x = 1 + 13*31 = 404, width 30)
-	Sprite_construct (&is->district_shield_icon_small);
-	Sprite_slice_pcx (&is->district_shield_icon_small, __, &pcx, 1 + 13*31, 1, 30, 30, 1, 1);
-
-	// Extract small commerce icon (index 14: x = 1 + 14*31 = 435, width 30)
-	Sprite_construct (&is->district_commerce_icon_small);
-	Sprite_slice_pcx (&is->district_commerce_icon_small, __, &pcx, 1 + 14*31, 1, 30, 30, 1, 1);
-
-	// Extract small food icon (index 15: x = 1 + 15*31 = 466, width 30)
-	Sprite_construct (&is->district_food_icon_small);
-	Sprite_slice_pcx (&is->district_food_icon_small, __, &pcx, 1 + 15*31, 1, 30, 30, 1, 1);
-
-	// Extract small science icon (index 16: x = 1 + 16*31 = 497, width 30)
-	Sprite_construct (&is->district_science_icon_small);
-	Sprite_slice_pcx (&is->district_science_icon_small, __, &pcx, 1 + 16*31, 1, 30, 30, 1, 1);
-
-	// Extract small culture icon (index 18: x = 1 + 18*31 = 559, width 30)
-	Sprite_construct (&is->district_culture_icon_small);
-	Sprite_slice_pcx (&is->district_culture_icon_small, __, &pcx, 1 + 18*31, 1, 30, 30, 1, 1);
-
-	is->dc_icons_img_state = IS_OK;
-cleanup:
-	pcx.vtable->destruct (&pcx, __, 0);
-}
-
-void
 draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int screen_x, int screen_y)
 {
 	// Lazy load district icons
@@ -22720,25 +29872,46 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	struct district_instance * inst = get_district_instance (tile);
 
 	// Count total yields from bonuses
-	int food_bonus = 0, shield_bonus = 0, gold_bonus = 0, science_bonus = 0, culture_bonus = 0;
-	get_effective_district_yields (inst, config, &food_bonus, &shield_bonus, &gold_bonus, &science_bonus, &culture_bonus);
+	int food_bonus = 0, shield_bonus = 0, gold_bonus = 0, science_bonus = 0, culture_bonus = 0, happiness_bonus = 0;
+	get_effective_district_yields (inst, config, &food_bonus, &shield_bonus, &gold_bonus, &science_bonus, &culture_bonus, &happiness_bonus);
+
+	int food_pos      = food_bonus      > 0 ? food_bonus : 0;
+	int food_neg      = food_bonus      < 0 ? -food_bonus : 0;
+	int shield_pos    = shield_bonus    > 0 ? shield_bonus : 0;
+	int shield_neg    = shield_bonus    < 0 ? -shield_bonus : 0;
+	int gold_pos      = gold_bonus      > 0 ? gold_bonus : 0;
+	int gold_neg      = gold_bonus      < 0 ? -gold_bonus : 0;
+	int science_pos   = science_bonus   > 0 ? science_bonus : 0;
+	int science_neg   = science_bonus   < 0 ? -science_bonus : 0;
+	int culture_pos   = culture_bonus   > 0 ? culture_bonus : 0;
+	int culture_neg   = culture_bonus   < 0 ? -culture_bonus : 0;
+	int happiness_pos = happiness_bonus > 0 ? happiness_bonus : 0;
+	int happiness_neg = happiness_bonus < 0 ? -happiness_bonus : 0;
 
 	int total_yield = 0;
-	if (food_bonus > 0)    total_yield += food_bonus;
-	if (shield_bonus > 0)  total_yield += shield_bonus;
-	if (gold_bonus > 0)    total_yield += gold_bonus;
-	if (science_bonus > 0) total_yield += science_bonus;
-	if (culture_bonus > 0) total_yield += culture_bonus;
+	total_yield += food_pos + food_neg;
+	total_yield += shield_pos + shield_neg;
+	total_yield += gold_pos + gold_neg;
+	total_yield += science_pos + science_neg;
+	total_yield += culture_pos + culture_neg;
+	total_yield += happiness_pos + happiness_neg;
 
 	if (total_yield <= 0)
 		return;
 
 	// Get sprites
-	Sprite * food_sprite     = &is->district_food_icon_small;
-	Sprite * shield_sprite   = &is->district_shield_icon_small;
-	Sprite * commerce_sprite = &is->district_commerce_icon_small;
-	Sprite * science_sprite  = &is->district_science_icon_small;
-	Sprite * culture_sprite  = &is->district_culture_icon_small;
+	Sprite * food_sprite               = &is->district_food_icon_small;
+	Sprite * shield_sprite             = &is->district_shield_icon_small;
+	Sprite * commerce_sprite           = &is->district_commerce_icon_small;
+	Sprite * science_sprite            = &is->district_science_icon_small;
+	Sprite * culture_sprite            = &is->district_culture_icon_small;
+	Sprite * happiness_sprite          = &is->district_happiness_icon_small;
+	Sprite * food_negative_sprite      = &is->district_negative_food_icon_small;
+	Sprite * shield_negative_sprite    = &is->district_negative_shield_icon_small;
+	Sprite * commerce_negative_sprite  = &is->district_negative_commerce_icon_small;
+	Sprite * science_negative_sprite   = &is->district_negative_science_icon_small;
+	Sprite * culture_negative_sprite   = &is->district_negative_culture_icon_small;
+	Sprite * happiness_negative_sprite = &is->district_unhappiness_icon_small;
 
 	// Determine sprite dimensions
 	int sprite_width  = food_sprite->Width3;
@@ -22770,28 +29943,57 @@ draw_district_yields (City_Form * city_form, Tile * tile, int district_id, int s
 	}
 
 	// Draw icons in order: shields, food, science, commerce, culture
-	for (int i = 0; i < shield_bonus; i++) {
+	for (int i = 0; i < shield_pos; i++) {
 		Sprite_draw (shield_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
+	for (int i = 0; i < shield_neg; i++) {
+		Sprite_draw (shield_negative_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
 
-	for (int i = 0; i < food_bonus; i++) {
+	for (int i = 0; i < food_pos; i++) {
 		Sprite_draw (food_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
+	for (int i = 0; i < food_neg; i++) {
+		Sprite_draw (food_negative_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
 
-	for (int i = 0; i < science_bonus; i++) {
+	for (int i = 0; i < science_pos; i++) {
 		Sprite_draw (science_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
-
-	for (int i = 0; i < gold_bonus; i++) {
-		Sprite_draw (commerce_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+	for (int i = 0; i < science_neg; i++) {
+		Sprite_draw (science_negative_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
 
-	for (int i = 0; i < culture_bonus; i++) {
+	for (int i = 0; i < gold_pos; i++) {
+		Sprite_draw (commerce_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
+	for (int i = 0; i < gold_neg; i++) {
+		Sprite_draw (commerce_negative_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
+
+	for (int i = 0; i < culture_pos; i++) {
 		Sprite_draw (culture_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
+	for (int i = 0; i < culture_neg; i++) {
+		Sprite_draw (culture_negative_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
+
+	for (int i = 0; i < happiness_pos; i++) {
+		Sprite_draw (happiness_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
+		pixel_x += spacing;
+	}
+	for (int i = 0; i < happiness_neg; i++) {
+		Sprite_draw (happiness_negative_sprite, __, &city_form->Base.Data.Canvas, pixel_x, pixel_y, NULL);
 		pixel_x += spacing;
 	}
 }
@@ -22932,23 +30134,9 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 		if (is->current_config.enable_districts && is->current_config.enable_neighborhood_districts)
 			remaining_utilized_neighborhoods = count_utilized_neighborhoods_in_city_radius (city);
 
-		// Iterate through all neighbor tiles 
-		for (int neighbor_index = 0; neighbor_index < is->workable_tile_count; neighbor_index++) {
-			int dx, dy;
-			patch_ni_to_diff_for_work_area (neighbor_index, &dx, &dy);
-			int tile_x = city_x + dx;
-			int tile_y = city_y + dy;
-			wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
-
-			Tile * tile = tile_at (tile_x, tile_y);
-			if (tile == NULL || tile == p_null_tile) continue;
-			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id) continue;
-			struct district_instance * inst = get_district_instance (tile);
-			if (inst == NULL) continue;
-			int district_id = inst->district_type;
-			if (!district_is_complete (tile, district_id)) continue;
-			if (tile_has_enemy_unit (tile, civ_id)) continue;
-			if (tile->vtable->m20_Check_Pollution (tile, __, 0)) continue;
+		FOR_DISTRICTS_AROUND (wai, city_x, city_y, true) {
+			struct district_instance * inst = wai.district_inst;
+			int district_id = inst->district_id;
 
 			bool is_distribution_hub = district_id == DISTRIBUTION_HUB_DISTRICT_ID;
 			bool is_natural_wonder   = district_id == NATURAL_WONDER_DISTRICT_ID;
@@ -22960,13 +30148,14 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 			if (is_natural_wonder && (!is->current_config.enable_natural_wonders))
 				continue;
 
-			if (!is_distribution_hub && !is_natural_wonder &&
-			    (!is->current_config.enable_districts))
+			if (is_distribution_hub)
+				continue;
+
+			if (!is_natural_wonder && (!is->current_config.enable_districts))
 				continue;
 
 			// For neighborhood districts, check if population is high enough to utilize them
-			if (!is_distribution_hub &&
-				is->current_config.enable_districts &&
+			if (is->current_config.enable_districts &&
 			    is->current_config.enable_neighborhood_districts &&
 			    district_id == NEIGHBORHOOD_DISTRICT_ID) {
 				// Only draw yields if this neighborhood is utilized
@@ -22976,14 +30165,36 @@ patch_City_Form_draw_yields_on_worked_tiles (City_Form * this)
 			}
 
 			// Calculate screen coordinates for this tile
-			int screen_x = center_screen_x + (dx * tile_half_width);
-			int screen_y = center_screen_y + (dy * tile_half_height);
+			int screen_x = center_screen_x + (wai.dx * tile_half_width);
+			int screen_y = center_screen_y + (wai.dy * tile_half_height);
 
 			// Call the appropriate drawing function
-			if (is_distribution_hub) {
+			draw_district_yields (this, wai.tile, district_id, screen_x, screen_y);
+		}
+
+		// Draw distribution hub yields around a larger radius so connected hubs outside the work area are shown
+		if (is->current_config.enable_districts && is->current_config.enable_distribution_hub_districts) {
+			int const max_tiles = workable_tile_counts[7];
+
+			for (int ni = 0; ni < max_tiles; ni++) {
+				int dx, dy;
+				patch_ni_to_diff_for_work_area (ni, &dx, &dy);
+
+				int tile_x = city_x + dx;
+				int tile_y = city_y + dy;
+				wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+
+				Tile * tile = tile_at (tile_x, tile_y);
+				if ((tile == NULL) || (tile == p_null_tile))
+					continue;
+
+				struct district_instance * inst = get_district_instance (tile);
+				if ((inst == NULL) || (inst->district_id != DISTRIBUTION_HUB_DISTRICT_ID))
+					continue;
+
+				int screen_x = center_screen_x + (dx * tile_half_width);
+				int screen_y = center_screen_y + (dy * tile_half_height);
 				draw_distribution_hub_yields (this, tile, tile_x, tile_y, screen_x, screen_y);
-			} else {
-				draw_district_yields (this, tile, district_id, screen_x, screen_y);
 			}
 		}
 	}
@@ -23132,6 +30343,19 @@ patch_Leader_count_any_shared_wonders_with_flag (Leader * this, int edx, enum Im
 	}
 
 	return tr;
+}
+
+int __fastcall
+patch_Leader_count_wonders_with_flag_ignore_great_wall (Leader * this, int edx, enum ImprovementTypeWonderFeatures flag, City * only_in_city)
+{
+	return patch_Leader_count_any_shared_wonders_with_flag (this, __, flag, only_in_city);
+
+	if (is->current_config.enable_districts &&
+	    is->current_config.disable_great_wall_city_defense_bonus &&
+		flag == ITW_Doubles_City_Defenses)
+		return 0;
+
+	return patch_Leader_count_any_shared_wonders_with_flag (this, __, flag, only_in_city);
 }
 
 int const shared_small_wonder_flags =
@@ -23288,6 +30512,14 @@ patch_City_add_happiness_from_buildings (City * this, int edx, int * inout_happi
 	}
 
 	City_add_happiness_from_buildings (this, __, inout_happiness, inout_unhappiness);
+
+	if (is->current_config.enable_districts) {
+		int district_happy = 0;
+		calculate_district_happiness_bonus (this, &district_happy);
+
+		if (district_happy != 0)
+			*inout_happiness += district_happy;
+	}
 
 	if (restore_improv_counts) {
 		for (int n = 0; n < p_bic_data->ImprovementsCount; n++)
@@ -23486,6 +30718,30 @@ patch_City_add_building_if_done (City * this)
 
 		// As in the base logic, if production gets switched, the game doesn't check if it might still complete on the same turn.
 		return;
+	} 
+
+	// If production ended up on a wonder, make sure the city can actually build it; otherwise fall back to a defensive unit.
+	int order_type = this->Body.Order_Type;
+	int order_id = this->Body.Order_ID;
+	if (is->current_config.enable_districts && order_type == COT_Improvement) {
+		Improvement * new_improv = &p_bic_data->Improvements[order_id]; // Improvement might have changed
+		if (new_improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
+			if (! (City_can_build_improvement (this, __, order_id, false) && city_meets_district_prereqs_to_build_improvement (this, order_id, true))) {
+				char ss[256];
+				snprintf (ss, sizeof ss, "patch_City_add_building_if_done: City '%s' cannot complete building of wonder '%s'; switching to defensive unit.\n",
+				          this->Body.CityName,
+				          new_improv->Name.S);
+				(*p_OutputDebugStringA) (ss);
+				City_Order defensive_order = { .OrderID = -1, .OrderType = 0 };
+				if (choose_defensive_unit_order (this, &defensive_order)) {
+					UnitType * def_type = &p_bic_data->UnitTypes[defensive_order.OrderID];
+					if (def_type->Unit_Class == UTC_Land) {
+						City_set_production (this, __, defensive_order.OrderType, defensive_order.OrderID, false);
+						return;
+					}
+				}
+			}
+		}
 	}
 
 	City_add_building_if_done (this);
@@ -23762,6 +31018,7 @@ init_district_images ()
 		return;
 
 	char art_dir[200];
+	char temp_path[2*MAX_PATH];
 
 	is->dc_img_state = IS_INIT_FAILED;
 
@@ -23776,21 +31033,24 @@ init_district_images ()
 			continue;
 
 		int era_count = cfg->vary_img_by_era ? 4 : 1;
-		int column_count = cfg->max_building_index + 1;
+		int column_count  = cfg->max_building_index + 1;
+		int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
+		int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
 
 		// For each cultural variant
 		for (int variant_i = 0; variant_i < variant_count; variant_i++) {
 			if (cfg->img_paths[variant_i] == NULL)
 				continue;
-			// Read PCX file
-			snprintf (art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, cfg->img_paths[variant_i]);
 
-			PCX_Image_read_file (&pcx, __, art_dir, NULL, 0, 0x100, 2);
+			// Read PCX file
+			snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", cfg->img_paths[variant_i]);
+			get_mod_art_path (art_dir, temp_path, sizeof temp_path);
+			PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
 
 			if (pcx.JGL.Image == NULL) {
 
 				char ss[200];
-				snprintf (ss, sizeof ss, "init_district_images: failed to load district images from %s", art_dir);
+				snprintf (ss, sizeof ss, "init_district_images: failed to load district images from %s", temp_path);
 				pop_up_in_game_error (ss);
 
 				(*p_OutputDebugStringA) ("[C3X] Failed to load districts sprite sheet.\n");
@@ -23808,21 +31068,49 @@ init_district_images ()
 			}
 
 			// For each era
-			for (int era_i = 0; era_i < era_count; era_i++) {
+				for (int era_i = 0; era_i < era_count; era_i++) {
 
 				// For each column in the image (variations on the district image for that era)
 				for (int col_i = 0; col_i < column_count; col_i++) {
 					Sprite_construct (&is->district_img_sets[dc].imgs[variant_i][era_i][col_i]);
 
-					int x = 128 * col_i,
-						y = 64 * era_i;
-					Sprite_slice_pcx (&is->district_img_sets[dc].imgs[variant_i][era_i][col_i], __, &pcx, x, y, 128, 64, 1, 1);
+					int x = sprite_width * col_i,
+						y = sprite_height * era_i;
+					Sprite_slice_pcx (&is->district_img_sets[dc].imgs[variant_i][era_i][col_i], __, &pcx, x, y, sprite_width, sprite_height, 1, 1);
 				}
 			}
 
 			pcx.vtable->clear_JGL (&pcx);
 		}
 	}
+	// Load abandoned district images (land + maritime)
+	get_mod_art_path ("Districts/1200/Abandoned.pcx", temp_path, sizeof temp_path);
+	PCX_Image_read_file (&pcx, __, temp_path, NULL, 0, 0x100, 2);
+
+	if (pcx.JGL.Image == NULL) {
+		char ss[200];
+		snprintf (ss, sizeof ss, "init_district_images: failed to load abandoned district images from %s", temp_path);
+		pop_up_in_game_error (ss);
+		for (int dc2 = 0; dc2 < COUNT_DISTRICT_TYPES; dc2++)
+			for (int variant_i2 = 0; variant_i2 < ARRAY_LEN (is->district_img_sets[dc2].imgs); variant_i2++)
+				for (int era_i = 0; era_i < 4; era_i++) {
+					for (int col = 0; col < ARRAY_LEN (is->district_img_sets[dc2].imgs[variant_i2][era_i]); col++) {
+						Sprite * sprite = &is->district_img_sets[dc2].imgs[variant_i2][era_i][col];
+						if (sprite->vtable != NULL)
+							sprite->vtable->destruct (sprite, __, 0);
+					}
+				}
+		pcx.vtable->destruct (&pcx, __, 0);
+		return;
+	}
+
+	Sprite_construct (&is->abandoned_district_img);
+	Sprite_slice_pcx (&is->abandoned_district_img, __, &pcx, 0, 0, 128, 64, 1, 1);
+
+	Sprite_construct (&is->abandoned_maritime_district_img);
+	Sprite_slice_pcx (&is->abandoned_maritime_district_img, __, &pcx, 128, 0, 128, 64, 1, 1);
+	pcx.vtable->clear_JGL (&pcx);
+
 	// Load wonder district images (dynamically per wonder)
 	if (is->current_config.enable_wonder_districts) {
 		char const * last_img_path = NULL;
@@ -23831,7 +31119,8 @@ init_district_images ()
 		bool pcx_loaded = false;
 
 		for (int wi = 0; wi < is->wonder_district_count; wi++) {
-			char const * img_path = is->wonder_district_configs[wi].img_path;
+			struct wonder_district_config * cfg = &is->wonder_district_configs[wi];
+			char const * img_path = cfg->img_path;
 			if (img_path == NULL)
 				img_path = "Wonders.pcx";
 
@@ -23840,12 +31129,13 @@ init_district_images ()
 				if (pcx_loaded)
 					wpcx.vtable->clear_JGL (&wpcx);
 
-				snprintf(art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, img_path);
-				PCX_Image_read_file (&wpcx, __, art_dir, NULL, 0, 0x100, 2);
+				snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", img_path);
+				get_mod_art_path (art_dir, temp_path, sizeof temp_path);
+				PCX_Image_read_file (&wpcx, __, temp_path, NULL, 0, 0x100, 2);
 
 				if (wpcx.JGL.Image == NULL) {
 					char ss[200];
-					snprintf (ss, sizeof ss, "init_district_images: failed to load wonder district images from %s", art_dir);
+					snprintf (ss, sizeof ss, "init_district_images: failed to load wonder district images from %s", temp_path);
 					pop_up_in_game_error (ss);
 					pcx_loaded = false;
 					continue;
@@ -23858,15 +31148,29 @@ init_district_images ()
 			if (! pcx_loaded)
 				continue;
 
-			Sprite_construct (&is->wonder_district_img_sets[wi].img);
-			int x = 128 * is->wonder_district_configs[wi].img_column;
-			int y =  64 * is->wonder_district_configs[wi].img_row;
-			Sprite_slice_pcx (&is->wonder_district_img_sets[wi].img, __, &wpcx, x, y, 128, 64, 1, 1);
+			struct wonder_district_image_set * set = &is->wonder_district_img_sets[wi];
 
-			Sprite_construct (&is->wonder_district_img_sets[wi].construct_img);
-			int cx = 128 * is->wonder_district_configs[wi].img_construct_column;
-			int cy =  64 * is->wonder_district_configs[wi].img_construct_row;
-			Sprite_slice_pcx (&is->wonder_district_img_sets[wi].construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
+			Sprite_construct (&set->img);
+			int x = 128 * cfg->img_column;
+			int y =  64 * cfg->img_row;
+			Sprite_slice_pcx (&set->img, __, &wpcx, x, y, 128, 64, 1, 1);
+
+			Sprite_construct (&set->construct_img);
+			int cx = 128 * cfg->img_construct_column;
+			int cy =  64 * cfg->img_construct_row;
+			Sprite_slice_pcx (&set->construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
+
+			if (cfg->enable_img_alt_dir) {
+				Sprite_construct (&set->alt_dir_img);
+				int ax = 128 * cfg->img_alt_dir_column;
+				int ay =  64 * cfg->img_alt_dir_row;
+				Sprite_slice_pcx (&set->alt_dir_img, __, &wpcx, ax, ay, 128, 64, 1, 1);
+
+				Sprite_construct (&set->alt_dir_construct_img);
+				int acx = 128 * cfg->img_alt_dir_construct_column;
+				int acy =  64 * cfg->img_alt_dir_construct_row;
+				Sprite_slice_pcx (&set->alt_dir_construct_img, __, &wpcx, acx, acy, 128, 64, 1, 1);
+			}
 		}
 
 		if (pcx_loaded)
@@ -23890,12 +31194,13 @@ init_district_images ()
 				if (pcx_loaded)
 					nwpcx.vtable->clear_JGL (&nwpcx);
 
-				snprintf (art_dir, sizeof art_dir, "%s\\Art\\Districts\\1200\\%s", is->mod_rel_dir, img_path);
-				PCX_Image_read_file (&nwpcx, __, art_dir, NULL, 0, 0x100, 2);
+				snprintf (art_dir, sizeof art_dir, "Districts/1200/%s", img_path);
+				get_mod_art_path (art_dir, temp_path, sizeof temp_path);
+				PCX_Image_read_file (&nwpcx, __, temp_path, NULL, 0, 0x100, 2);
 
 				if (nwpcx.JGL.Image == NULL) {
 					char ss[200];
-					snprintf (ss, sizeof ss, "init_district_images: failed to load natural wonder images from %s", art_dir);
+					snprintf (ss, sizeof ss, "init_district_images: failed to load natural wonder images from %s", temp_path);
 					pop_up_in_game_error (ss);
 					pcx_loaded = false;
 					continue;
@@ -23928,53 +31233,922 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
 {
 	Tile * center = tile_at (tile_x, tile_y);
 
-    if ((center == NULL) || (center == p_null_tile))
-        return false;
-
+    if ((center == NULL) || (center == p_null_tile)) return false;
     int owner_id = center->Territory_OwnerID;
-    if (owner_id <= 0)
-        return false;
+    if (owner_id <= 0) return false;
 
-	// Loop over tiles in work radius around the center tile
-	for (int n = 0; n < is->workable_tile_count; n++) {
-		int dx, dy;
-		patch_ni_to_diff_for_work_area (n, &dx, &dy);
-		int x = tile_x + dx, y = tile_y + dy;
-		wrap_tile_coords (&p_bic_data->Map, &x, &y);
-		Tile * t = tile_at (x, y);
-		if ((t == NULL) || (t == p_null_tile))
-			continue;
-
-		// Only consider cities belonging to the same civ as the territory owner
-		City * city = get_city_ptr (t->vtable->m45_Get_City_ID (t));
-		if ((city != NULL) && (city->Body.CivID == owner_id)) {
-			if (has_active_building (city, i_improv))
-				return true;
-		}
+	FOR_CITIES_AROUND (wai, tile_x, tile_y) {
+		if (has_active_building (wai.city, i_improv))
+			return true;
 	}
 
     return false;
 }
 
-void __fastcall
-patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int param_1, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
+Tile *
+get_tile_sprite_indices (int tile_x, int tile_y, int * out_sheet_index, int * out_sprite_index)
 {
-	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
-		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
-		return;
+	wrap_tile_coords (&p_bic_data->Map, &tile_x, &tile_y);
+	Tile * tile = tile_at (tile_x, tile_y);
+
+	if (tile != NULL && tile != p_null_tile) {
+		*out_sheet_index = (tile->SquareParts >> 8) & 0xFF;
+		*out_sprite_index = tile->SquareParts & 0xFF;
+	} else {
+		*out_sheet_index = -1;
+		*out_sprite_index = -1;
 	}
 
-	Tile * tile = tile_at (tile_x, tile_y);
+	return tile;
+}
+
+void
+align_district_with_river (Tile * tile, int * out_pixel_x, int * out_pixel_y, enum direction * out_dir)
+{
 	if ((tile == NULL) || (tile == p_null_tile))
 		return;
 
+	enum direction dir = DIR_ZERO;
+	if (! get_primary_river_direction (tile, &dir))
+		return;
+
+	int dx, dy;
+	bool under = false;
+	direction_to_offset (dir, &dx, &dy);
+	if (dy < 0)
+		under = true;
+
+	int offset = 36;
+
+	dx = 0, dy = 0;
+	switch (dir) {
+		case DIR_N:  /* dx =   0;       */ dy = -offset;   break;
+		case DIR_NE: /* dx =  offset;   */ dy = -offset/2; break;
+		case DIR_E:  /* dx =  offset*2; */ dy =   0;       break;
+		case DIR_SE: /* dx =  offset;   */ dy =  offset/2; break;
+		case DIR_S:  /* dx =   0;       */ dy =  offset;   break;
+		case DIR_SW: /* dx = -offset;   */ dy =  offset/2; break;
+		case DIR_W:  /* dx = -offset*2; */ dy =   0;       break;
+		case DIR_NW: /* dx = -offset;   */ dy = -offset/2; break;
+		default: break;
+	}
+
+	if (out_pixel_x != NULL)
+		*out_pixel_x += dx;
+	if (out_pixel_y != NULL)
+		*out_pixel_y += dy;
+	if (out_dir != NULL)
+		*out_dir = dir;
+}
+
+void
+align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, int * out_pixel_x, int * out_pixel_y)
+{
+	if ((tile == NULL) || (tile == p_null_tile) || (out_variant == NULL))
+		return;
+
+	int owner_id = tile->Territory_OwnerID;
+	if (owner_id <= 0)
+		return;
+
 	struct district_instance * inst = get_district_instance (tile);
-	if (inst == NULL) {
-		Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+	if (inst == NULL)
+		return;
+
+	int tile_x = inst->tile_x;
+	int tile_y = inst->tile_y;
+	Map * map = &p_bic_data->Map;
+
+	City * closest_city = NULL;
+	int closest_dx = 0, closest_dy = 0;
+
+	FOR_CITIES_AROUND (wai, tile_x, tile_y) {
+		City * city = wai.city;
+		int ndx = city->Body.X - tile_x;
+		int ndy = city->Body.Y - tile_y;
+
+		if (map->Flags & 1) {
+			int half_width = map->Width / 2;
+			if (ndx > half_width)
+				ndx -= map->Width;
+			else if (ndx < -half_width)
+				ndx += map->Width;
+		}
+		if (map->Flags & 2) {
+			int half_height = map->Height / 2;
+			if (ndy > half_height)
+				ndy -= map->Height;
+			else if (ndy < -half_height)
+				ndy += map->Height;
+		}
+
+		closest_city = city;
+		closest_dx = ndx;
+		closest_dy = ndy;
+		break;
+	}
+
+	if (closest_city == NULL)
+		return;
+
+	bool city_is_directly_above_port        = (closest_dx == 0)  && (closest_dy == -2);
+	bool city_is_directly_below_port        = (closest_dx == 0)  && (closest_dy == 2);
+	bool city_is_directly_west_of_port      = (closest_dx < 0)   && (closest_dy == 0);
+	bool city_is_directly_east_of_port      = (closest_dx > 0)   && (closest_dy == 0);
+	bool city_is_directly_northeast_of_port = (closest_dx == 1)  && (closest_dy == -1);
+	bool city_is_directly_southeast_of_port = (closest_dx == 1)  && (closest_dy == 1);
+	bool city_is_directly_southwest_of_port = (closest_dx == -1) && (closest_dy == 1);
+	bool city_is_directly_northwest_of_port = (closest_dx == -1) && (closest_dy == -1);
+
+	// Variant indices; can't use direction enum as values are slightly different
+	int NONE = -1;
+	int NW = 0;
+	int NE = 1;
+	int SE = 2;
+	int SW = 3;
+	*out_variant = NONE;
+
+	enum direction anchor = NONE;
+	bool direct_diagonal = false;
+
+	// Direct diagonals
+	if      (city_is_directly_northeast_of_port) { *out_variant = SW; anchor = DIR_NE; direct_diagonal = true; }
+	else if (city_is_directly_southeast_of_port) { *out_variant = NW; anchor = DIR_SE; direct_diagonal = true; }
+	else if (city_is_directly_southwest_of_port) { *out_variant = NE; anchor = DIR_SW; direct_diagonal = true; }
+	else if (city_is_directly_northwest_of_port) { *out_variant = SE; anchor = DIR_NW; direct_diagonal = true; }
+
+	// City either in a direct cardinal direction or not adjacent, check relative directions
+	else {
+		bool city_is_west_of_port   = (closest_dx < 0);
+		bool city_is_east_of_port   = (closest_dx > 0);
+		bool city_is_north_of_port  = (closest_dy < 0);
+		bool city_is_south_of_port  = (closest_dy > 0);
+		bool northwest_tile_is_land = tile_is_land (owner_id, tile_x - 1, tile_y - 1, true);
+		bool north_tile_is_land     = tile_is_land (owner_id, tile_x, tile_y - 2, true);
+		bool northeast_tile_is_land = tile_is_land (owner_id, tile_x + 1, tile_y - 1, true);
+		bool east_tile_is_land      = tile_is_land (owner_id, tile_x + 2, tile_y, true);
+		bool southeast_tile_is_land = tile_is_land (owner_id, tile_x + 1, tile_y + 1, true);
+		bool south_tile_is_land     = tile_is_land (owner_id, tile_x, tile_y + 2, true);
+		bool southwest_tile_is_land = tile_is_land (owner_id, tile_x - 1, tile_y + 1, true);
+		bool west_tile_is_land      = tile_is_land (owner_id, tile_x - 2, tile_y, true);
+
+		if (city_is_directly_above_port) {
+			if (northwest_tile_is_land && ! tile_is_land (owner_id, tile_x + 1, tile_y + 1, true)) { 
+				*out_variant = SE; anchor = DIR_NW; 
+			} else if (northeast_tile_is_land && ! tile_is_land (owner_id, tile_x - 1, tile_y + 1, true)) { 
+				*out_variant = SW; anchor = DIR_NE; 
+			} else { 
+				*out_variant = SW; anchor = DIR_NE;
+				*out_pixel_x -= 4; *out_pixel_y -= 4;
+			}
+		} else if (city_is_directly_below_port) {
+			if      (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
+			else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
+			else { 
+				*out_variant = NE; anchor = DIR_SW; 
+				*out_pixel_x += 4; *out_pixel_y += 4;
+			}
+		} else if (city_is_directly_west_of_port) {
+			if      (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
+			else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
+			else { 
+				*out_variant = SE; anchor = DIR_NW; 
+				*out_pixel_x -= 30; *out_pixel_y += 24;
+			}
+		} else if (city_is_directly_east_of_port) {
+			if      (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
+			else if (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
+			else { 
+				*out_variant = SW; anchor = DIR_NE; 
+				*out_pixel_x += 30; *out_pixel_y -= 24;
+			}
+		} else if (city_is_north_of_port && city_is_west_of_port) {
+			if      (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
+			else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
+		} else if (city_is_north_of_port && city_is_east_of_port) {
+			if 	    (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
+			else if (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
+		} else if (city_is_south_of_port && city_is_east_of_port) {
+			if 	    (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
+			else if (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
+		} else if (city_is_south_of_port && city_is_west_of_port) {
+			if      (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
+			else if (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
+		}
+
+		// No ideal direction, pick based on any owner land tiles around port
+		if (*out_variant == NONE) {
+			if      (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
+			else if (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
+			else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
+			else if (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
+			else if (north_tile_is_land)     { *out_variant = SW; anchor = DIR_N;  }
+			else if (east_tile_is_land)      { *out_variant = SW; anchor = DIR_E;  }
+			else if (south_tile_is_land)     { *out_variant = NE; anchor = DIR_S;  }
+			else if (west_tile_is_land)      { *out_variant = SE; anchor = DIR_W;  }
+		}
+
+		// Same civ doesn't own any adjacent land tiles, pick based on *any* land tiles
+		if (*out_variant == NONE) {
+			bool northwest_tile_is_land = tile_is_land (owner_id, tile_x - 1, tile_y - 1, false);
+			bool north_tile_is_land     = tile_is_land (owner_id, tile_x, tile_y - 2, false);
+			bool northeast_tile_is_land = tile_is_land (owner_id, tile_x + 1, tile_y - 1, false);
+			bool east_tile_is_land      = tile_is_land (owner_id, tile_x + 2, tile_y, false);
+			bool southeast_tile_is_land = tile_is_land (owner_id, tile_x + 1, tile_y + 1, false);
+			bool south_tile_is_land     = tile_is_land (owner_id, tile_x, tile_y + 2, false);
+			bool southwest_tile_is_land = tile_is_land (owner_id, tile_x - 1, tile_y + 1, false);
+			bool west_tile_is_land      = tile_is_land (owner_id, tile_x - 2, tile_y, false);
+			if      (northeast_tile_is_land) { *out_variant = SW; anchor = DIR_NE; }
+			else if (southeast_tile_is_land) { *out_variant = NW; anchor = DIR_SE; }
+			else if (southwest_tile_is_land) { *out_variant = NE; anchor = DIR_SW; }
+			else if (northwest_tile_is_land) { *out_variant = SE; anchor = DIR_NW; }
+			else if (north_tile_is_land)     { *out_variant = SW; anchor = DIR_N;  }
+			else if (east_tile_is_land)      { *out_variant = SW; anchor = DIR_E;  }
+			else if (south_tile_is_land)     { *out_variant = NE; anchor = DIR_S;  }
+			else if (west_tile_is_land)      { *out_variant = SE; anchor = DIR_W;  }
+			else							 { *out_variant = SW; anchor = DIR_NE; } // Somehow no land tiles at all? Default to NE
+		}
+	}
+
+	Tile * anchor_tile;
+	int anchor_sheet_index, anchor_sprite_index;
+	switch (anchor) {
+		case DIR_N:  anchor_tile = get_tile_sprite_indices (tile_x, tile_y - 2, &anchor_sheet_index, &anchor_sprite_index);     break;
+		case DIR_NE: anchor_tile = get_tile_sprite_indices (tile_x + 1, tile_y - 1, &anchor_sheet_index, &anchor_sprite_index); break;
+		case DIR_E:  anchor_tile = get_tile_sprite_indices (tile_x + 2, tile_y, &anchor_sheet_index, &anchor_sprite_index);     break;
+		case DIR_SE: anchor_tile = get_tile_sprite_indices (tile_x + 1, tile_y + 1, &anchor_sheet_index, &anchor_sprite_index); break;
+		case DIR_S:  anchor_tile = get_tile_sprite_indices (tile_x, tile_y + 2, &anchor_sheet_index, &anchor_sprite_index);     break;
+		case DIR_SW: anchor_tile = get_tile_sprite_indices (tile_x - 1, tile_y + 1, &anchor_sheet_index, &anchor_sprite_index); break;
+		case DIR_W:  anchor_tile = get_tile_sprite_indices (tile_x - 2, tile_y, &anchor_sheet_index, &anchor_sprite_index);     break;
+		case DIR_NW: anchor_tile = get_tile_sprite_indices (tile_x - 1, tile_y - 1, &anchor_sheet_index, &anchor_sprite_index); break;
+		default:     anchor_sheet_index = -1; anchor_sprite_index = -1; break;
+	}
+
+	bool anchor_is_hill     = anchor_tile != NULL && anchor_tile->vtable->m50_Get_Square_BaseType (anchor_tile) == SQ_Hills;
+	bool anchor_is_mountain = anchor_tile != NULL && anchor_tile->vtable->m50_Get_Square_BaseType (anchor_tile) == SQ_Mountains;
+
+	// Determine general pixel offsets based on direction & anchor
+	if      (*out_variant == SW && anchor == DIR_NE) { *out_pixel_x -= 0;  *out_pixel_y += 6;  }
+	else if (*out_variant == SE && anchor == DIR_NW) { *out_pixel_x -= 2;  *out_pixel_y += 6;  }
+	else if (*out_variant == NW && anchor == DIR_SE) { *out_pixel_x -= 0;  *out_pixel_y -= 2;  }
+	else if (*out_variant == SW && anchor == DIR_N)  { *out_pixel_x -= 56; *out_pixel_y -= 26; }
+	else if (*out_variant == SW && anchor == DIR_E)  { *out_pixel_x += 36; *out_pixel_y += 18; }
+	else if (*out_variant == NE && anchor == DIR_S)  { *out_pixel_x += 70; *out_pixel_y += 30; }
+	else if (*out_variant == SE && anchor == DIR_W)  { *out_pixel_x -= 20; *out_pixel_y += 14; }
+
+	// Handle edge cases. Tedious, but looks quite a bit better so worth it
+	if (! (anchor_is_hill || anchor_is_mountain) && ! direct_diagonal) {
+		if (*out_variant == SE && anchor == DIR_W)  { *out_pixel_x -= 20; *out_pixel_y += 20; }
+
+		// Sheet 0
+		if (anchor_sheet_index == 0) {
+			if      (*out_variant == SW || *out_variant == NW) { *out_pixel_x += 32; }
+			else if (*out_variant == SE || *out_variant == NE) { *out_pixel_x -= 32; }
+
+			if      ((*out_variant == NE || *out_variant == NW) && anchor == DIR_S && anchor_sprite_index == 26) { *out_pixel_x -= 4; *out_pixel_y += 30; }
+			else if (*out_variant == NE && anchor == DIR_SW && anchor_sprite_index == 20) { *out_pixel_x -= 2; *out_pixel_y += 4; }
+
+			if      (*out_variant == SW && (anchor_sprite_index == 0 || anchor_sprite_index == 4 || anchor_sprite_index == 10 || anchor_sprite_index == 1)) { *out_pixel_x +=2; *out_pixel_y -= 8; }
+			else if (*out_variant == SW && anchor == DIR_N && (anchor_sprite_index == 6))   { *out_pixel_x -= 6;  *out_pixel_y -= 8; }
+			else if (*out_variant == SE && anchor == DIR_W && (anchor_sprite_index == 18))  { *out_pixel_x += 6;  *out_pixel_y += 4; }
+			else if (*out_variant == NE && anchor == DIR_SW && (anchor_sprite_index == 51)) { *out_pixel_x += 20; *out_pixel_y -= 20; }
+			else if (*out_variant == SW && anchor == DIR_NE && (anchor_sprite_index == 0))  { *out_pixel_x -= 4;  *out_pixel_y += 4; }
+		}
+		// Sheet 1
+		else if (anchor_sheet_index == 1) {
+			if      (*out_variant == SW || *out_variant == NW) { *out_pixel_x += 10; }
+			else if (*out_variant == SE || *out_variant == NE) { *out_pixel_x -= 10; }
+
+			if (*out_variant == SW && (anchor_sprite_index == 7 || anchor_sprite_index == 17 || anchor_sprite_index == 16)) { *out_pixel_x +=10; *out_pixel_y -= 8; }
+		}
+		// Sheet 3
+		else if (anchor_sheet_index == 2) {
+			if (*out_variant == SW && (anchor_sprite_index == 6)) { *out_pixel_x +=2; *out_pixel_y -= 8; }
+		}
+		// Sheet 3
+		else if (anchor_sheet_index == 3) {
+			if      (*out_variant == SW || *out_variant == NW) { *out_pixel_x += 16; }
+			else if (*out_variant == SE || *out_variant == NE) { *out_pixel_x -= 16; }
+
+			if (*out_variant == SW && (anchor_sprite_index == 43 || anchor_sprite_index == 40)) { *out_pixel_x +=6; *out_pixel_y -= 12; }
+			else if (*out_variant == SW && (anchor_sprite_index == 35 || anchor_sprite_index == 39)) { *out_pixel_x +=6; *out_pixel_y -= 12; }
+			else if (*out_variant == SE && (anchor_sprite_index == 50)) { *out_pixel_x -=6; *out_pixel_y -= 12; }
+			else if (*out_variant == SE && (anchor_sprite_index == 26)) { *out_pixel_x += 50; *out_pixel_y -= 2; }
+		}
+		// Sheet 4
+		else if (anchor_sheet_index == 4) {
+			if (*out_variant == SW && (anchor_sprite_index == 71)) { *out_pixel_x +=2; *out_pixel_y -= 8; }
+		}
+		// Sheet 5
+		else if (anchor_sheet_index == 5) {
+			if      (*out_variant == SW || *out_variant == NW) { *out_pixel_x += 18; }
+			else if (*out_variant == SE || *out_variant == NE) { *out_pixel_x -= 18; }
+
+			if      ((*out_variant == SW || *out_variant == SE) && anchor_sprite_index == 18) { *out_pixel_y -= 10; }
+			else if (*out_variant == SW && anchor_sprite_index == 73)                         { *out_pixel_x -=4; *out_pixel_y -= 10; }
+			else if (*out_variant == NW && anchor == DIR_SE && anchor_sprite_index == 42)     { *out_pixel_y -= 8; }
+			else if ((*out_variant == NW || *out_variant == SW) && anchor_sprite_index == 6)  { *out_pixel_x += 12; *out_pixel_y -= 6; }
+			else if ((*out_variant == SW) && anchor_sprite_index == 16)  					  { *out_pixel_x -=8; *out_pixel_y -= 10; }
+		}
+	} 
+	else if (direct_diagonal && *out_variant == SW && anchor == DIR_NE) { *out_pixel_x -=8; *out_pixel_y -= 8; }
+	else if (direct_diagonal && *out_variant == SE && anchor == DIR_NW) { *out_pixel_x -=8; *out_pixel_y -= 8; }
+	else if (direct_diagonal && *out_variant == NW && anchor == DIR_SE) { *out_pixel_x +=6; *out_pixel_y += 6; }
+	else if (direct_diagonal && *out_variant == NE && anchor == DIR_SW) { *out_pixel_x +=6; *out_pixel_y += 6; }
+}
+
+bool
+wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner_id, struct wonder_district_config const * cfg)
+{
+	if (owner_id <= 0)
+		return false;
+
+	// We only care about the nearest same-civ city in the work area around the tile.
+	// Assumes the base wonder art (img_row/column) faces west and the alt art faces east.
+	// To "face away" from the nearest city, we pick the alt art when that city lies to the east.
+	Tile * center = tile_at (tile_x, tile_y);
+	if ((center == NULL) || (center == p_null_tile))
+		return false;
+
+	// If on a river and the wonder allows river alignment, make sure we face the river instead
+	unsigned int mask = wonder_buildable_square_type_mask (cfg);
+	bool allow_river = (mask & square_type_mask_bit (SQ_RIVER)) != 0;
+	if (allow_river) {
+		enum direction river_dir = DIR_ZERO;
+		if (get_primary_river_direction (center, &river_dir)) {
+			int dx, dy;
+
+			if (direction_to_offset (river_dir, &dx, &dy)) {
+				// I'm not completely sure of the logic here, but this seems to match the vanilla behavior
+				// in terms of having the wonder face the general direction of the river flow
+				if (dx == 2)
+					return false;
+
+				return dx > 0;
+			}
+		}
+	}
+
+	// Else face away from the nearest same-civ city
+	Map * map = &p_bic_data->Map;
+	int best_dist = INT_MAX;
+	int best_dx = 0;
+	int city_dx = 0;
+	int city_dy = 0;
+
+	FOR_CITIES_AROUND (wai, tile_x, tile_y) {
+		City * city = wai.city;
+		if ((city == NULL) || (city->Body.CivID != owner_id))
+			continue;
+
+		int dx = city->Body.X - tile_x;
+		int dy = city->Body.Y - tile_y;
+
+		if (map->Flags & 1) {
+			int half_width = map->Width >> 1;
+			if (dx > half_width)
+				dx -= map->Width;
+			else if (dx < -half_width)
+				dx += map->Width;
+		}
+		if (map->Flags & 2) {
+			int half_height = map->Height >> 1;
+			if (dy > half_height)
+				dy -= map->Height;
+			else if (dy < -half_height)
+				dy += map->Height;
+		}
+
+		int dist = int_abs (dx) + int_abs (dy);
+		// Pick the closest city; if tied, favor the one with a clearer east/west offset so we know which way to face.
+		if ((dist < best_dist) ||
+		    ((dist == best_dist) && ((int_abs (dx) < int_abs (best_dx)) || (best_dx == 0)))) {
+			best_dist = dist;
+			best_dx = dx;
+			city_dx = city->Body.X;
+			city_dy = city->Body.Y;
+		}
+	}
+
+	bool city_is_directly_above_port = city_dx == tile_x && city_dy == tile_y - 2;
+	bool city_is_directly_below_port = city_dx == tile_x && city_dy == tile_y + 2;
+
+	if (city_is_directly_above_port || city_is_directly_below_port) {
+		bool northeast_tile_is_land = tile_is_land (owner_id, tile_x + 1, tile_y - 1, true);
+		bool east_tile_is_land      = tile_is_land (owner_id, tile_x + 2, tile_y, true);
+		bool southeast_tile_is_land = tile_is_land (owner_id, tile_x + 1, tile_y + 1, true);
+
+		if (northeast_tile_is_land || east_tile_is_land || southeast_tile_is_land)
+			return true;
+	}
+
+	if ((best_dist == INT_MAX) || (best_dx == 0))
+		return false;
+
+	return best_dx > 0;
+}
+
+void
+draw_district_on_map_or_canvas(Sprite * sprite, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
+{
+	if (is->current_config.show_detailed_tile_info) {
+		PCX_Image * canvas = (PCX_Image *)map_renderer;
+		Sprite_draw (sprite, __, canvas, pixel_x, pixel_y, NULL);
+	} else {
+		patch_Sprite_draw_on_map (sprite, __, map_renderer, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+	}
+}
+
+bool 
+district_allows_river (struct district_config const * cfg)
+{
+	unsigned int build_mask = cfg->buildable_square_types_mask;
+	if (build_mask == 0)
+		build_mask = district_default_buildable_mask ();
+	return (build_mask & square_type_mask_bit (SQ_RIVER)) != 0;
+}
+
+bool 
+wonder_allows_river (struct wonder_district_config const * cfg)
+{
+	unsigned int build_mask = wonder_buildable_square_type_mask (cfg);
+	if (build_mask == 0)
+		build_mask = district_default_buildable_mask ();
+	return (build_mask & square_type_mask_bit (SQ_RIVER)) != 0;
+}
+
+int
+get_energy_grid_image_index (int tile_x, int tile_y)
+{
+	struct district_infos * info = &is->district_infos[ENERGY_GRID_DISTRICT_ID];
+	int coal_plant_id    = info->dependent_building_ids[0];
+	int hydro_plant_id   = info->dependent_building_ids[1];
+	int solar_plant_id   = info->dependent_building_ids[2];
+	int nuclear_plant_id = info->dependent_building_ids[3];
+	bool coal            = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, ENERGY_GRID_DISTRICT_ID, coal_plant_id);
+	bool hydro           = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, ENERGY_GRID_DISTRICT_ID, hydro_plant_id);
+	bool solar           = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, ENERGY_GRID_DISTRICT_ID, solar_plant_id);
+	bool nuclear         = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, ENERGY_GRID_DISTRICT_ID, nuclear_plant_id);
+
+    int index = 0;
+
+	if (! coal && ! hydro && ! solar && ! nuclear)    index = 0;  // None
+	else if (coal && ! hydro && ! solar && ! nuclear) index = 1;  // Coal
+	else if (! coal && hydro && ! solar && ! nuclear) index = 2;  // Hydro
+	else if (coal && hydro && ! solar && ! nuclear)   index = 3;  // Coal, Hydro
+	else if (! coal && ! hydro && ! solar && nuclear) index = 4;  // Nuclear
+	else if (! coal && ! hydro && solar && ! nuclear) index = 5;  // Solar
+	else if (coal && hydro && solar && nuclear)       index = 6;  // All
+	else if (coal && hydro && ! solar && nuclear)     index = 7;  // Coal, Hydro, Nuclear
+	else if (! coal && hydro && solar && nuclear)     index = 8;  // Hydro, Solar, Nuclear
+	else if (! coal && hydro && ! solar && nuclear)   index = 9;  // Hydro, Nuclear
+	else if (! coal && hydro && solar && ! nuclear)   index = 10; // Hydro, Solar
+	else if (! coal && ! hydro && solar && nuclear)   index = 11; // Solar, Nuclear
+	else if (coal && ! hydro && ! solar && nuclear)   index = 12; // Coal, Nuclear
+	else if (coal && ! hydro && solar && nuclear)     index = 13; // Coal, Solar, Nuclear
+	else if (coal && ! hydro && solar && ! nuclear)   index = 14; // Coal, Solar
+
+    return index;
+}
+
+int
+get_bridge_image_index (Tile * tile, int tile_x, int tile_y)
+{
+	int SW_NE = 0;
+	int NW_SE = 1;
+	int N_S   = 2;
+	int W_E   = 3;
+
+	if ((tile->vtable->m42_Get_Overlays (tile, __, 0) & TILE_FLAG_RAILROAD) != 0) {
+		SW_NE += 4;
+		NW_SE += 4;
+		N_S   += 4;
+		W_E   += 4;
+	}
+
+	bool bridge_n  = tile_has_district_at (tile_x, tile_y - 2, BRIDGE_DISTRICT_ID);
+	bool bridge_s  = tile_has_district_at (tile_x, tile_y + 2, BRIDGE_DISTRICT_ID);
+	bool bridge_w  = tile_has_district_at (tile_x - 2, tile_y, BRIDGE_DISTRICT_ID);
+	bool bridge_e  = tile_has_district_at (tile_x + 2, tile_y, BRIDGE_DISTRICT_ID);
+	bool bridge_ne = tile_has_district_at (tile_x + 1, tile_y - 1, BRIDGE_DISTRICT_ID);
+	bool bridge_nw = tile_has_district_at (tile_x - 1, tile_y - 1, BRIDGE_DISTRICT_ID);
+	bool bridge_se = tile_has_district_at (tile_x + 1, tile_y + 1, BRIDGE_DISTRICT_ID);
+	bool bridge_sw = tile_has_district_at (tile_x - 1, tile_y + 1, BRIDGE_DISTRICT_ID);
+
+	if (bridge_n || bridge_s || bridge_w || bridge_e || bridge_ne || bridge_nw || bridge_se || bridge_sw) {
+		int ns_count   = (bridge_n ? 1 : 0) + (bridge_s ? 1 : 0);
+		int we_count   = (bridge_w ? 1 : 0) + (bridge_e ? 1 : 0);
+		int swne_count = (bridge_sw ? 1 : 0) + (bridge_ne ? 1 : 0);
+		int nwse_count = (bridge_nw ? 1 : 0) + (bridge_se ? 1 : 0);
+
+		if (swne_count == 2) return SW_NE;
+		if (nwse_count == 2) return NW_SE;
+		if (ns_count == 2)   return N_S;
+		if (we_count == 2)   return W_E;
+
+		if (bridge_ne || bridge_sw) return SW_NE;
+		if (bridge_nw || bridge_se) return NW_SE;
+		if (bridge_n  || bridge_s)  return N_S;
+		if (bridge_w  || bridge_e)  return W_E;
+	}
+
+	int owner_id    = tile->Territory_OwnerID;
+	bool north_land = tile_is_land (owner_id, tile_x, tile_y - 2, false);
+	bool south_land = tile_is_land (owner_id, tile_x, tile_y + 2, false);
+	bool west_land  = tile_is_land (owner_id, tile_x - 2, tile_y, false);
+	bool east_land  = tile_is_land (owner_id, tile_x + 2, tile_y, false);
+	bool ne_land    = tile_is_land (owner_id, tile_x + 1, tile_y - 1, false);
+	bool nw_land    = tile_is_land (owner_id, tile_x - 1, tile_y - 1, false);
+	bool se_land    = tile_is_land (owner_id, tile_x + 1, tile_y + 1, false);
+	bool sw_land    = tile_is_land (owner_id, tile_x - 1, tile_y + 1, false);
+
+	bool north_link = north_land || bridge_n;
+	bool south_link = south_land || bridge_s;
+	bool west_link  = west_land  || bridge_w;
+	bool east_link  = east_land  || bridge_e;
+	bool ne_link    = ne_land    || bridge_ne;
+	bool nw_link    = nw_land    || bridge_nw;
+	bool se_link    = se_land    || bridge_se;
+	bool sw_link    = sw_land    || bridge_sw;
+
+	if (sw_link && ne_link) return SW_NE;
+	if (nw_link && se_link) return NW_SE;
+	if (north_link && south_link) return N_S;
+	if (west_link  && east_link)  return W_E;
+
+	if (ne_link    || sw_link)    return SW_NE;
+	if (nw_link    || se_link)    return NW_SE;
+	if (north_link || south_link) return N_S;
+	if (west_link  || east_link)  return W_E;
+
+	return 0;
+}
+
+void 
+get_bridge_directions (Tile * tile, int tile_x, int tile_y, int * out_dir1, int * out_dir2)
+{
+	int dir1 = -1;
+	int dir2 = -1;
+	int index = get_bridge_image_index (tile, tile_x, tile_y);
+
+	switch (index) {
+		case 0: dir1 = DIR_SW; dir2 = DIR_NE; break;
+		case 1: dir1 = DIR_NW; dir2 = DIR_SE; break;
+		case 2: dir1 = DIR_N;  dir2 = DIR_S;  break;
+		case 3: dir1 = DIR_W;  dir2 = DIR_E;  break;
+		default: break;
+	}
+
+	*out_dir1 = dir1;
+	*out_dir2 = dir2;
+}
+
+void 
+get_canal_directions (Tile * tile, int tile_x, int tile_y, bool out_water_dirs[9], int * out_dir1, int * out_dir2)
+{
+	bool canal_at_n        = tile_has_district_at (tile_x, tile_y - 2, CANAL_DISTRICT_ID);
+	bool canal_at_s        = tile_has_district_at (tile_x, tile_y + 2, CANAL_DISTRICT_ID);
+	bool canal_at_w        = tile_has_district_at (tile_x - 2, tile_y, CANAL_DISTRICT_ID);
+	bool canal_at_e        = tile_has_district_at (tile_x + 2, tile_y, CANAL_DISTRICT_ID);
+	bool canal_at_ne       = tile_has_district_at (tile_x + 1, tile_y - 1, CANAL_DISTRICT_ID);
+	bool canal_at_nw       = tile_has_district_at (tile_x - 1, tile_y - 1, CANAL_DISTRICT_ID);
+	bool canal_at_se       = tile_has_district_at (tile_x + 1, tile_y + 1, CANAL_DISTRICT_ID);
+	bool canal_at_sw       = tile_has_district_at (tile_x - 1, tile_y + 1, CANAL_DISTRICT_ID);
+	bool water_n           = tile_is_water (tile_x, tile_y - 2);
+	bool water_s           = tile_is_water (tile_x, tile_y + 2);
+	bool water_w           = tile_is_water (tile_x - 2, tile_y);
+	bool water_e           = tile_is_water (tile_x + 2, tile_y);
+	bool water_ne          = tile_is_water (tile_x + 1, tile_y - 1);
+	bool water_nw          = tile_is_water (tile_x - 1, tile_y - 1);
+	bool water_se          = tile_is_water (tile_x + 1, tile_y + 1);
+	bool water_sw          = tile_is_water (tile_x - 1, tile_y + 1);
+	bool canal_or_water_n  = canal_at_n  || water_n;
+	bool canal_or_water_s  = canal_at_s  || water_s;
+	bool canal_or_water_w  = canal_at_w  || water_w;
+	bool canal_or_water_e  = canal_at_e  || water_e;
+	bool canal_or_water_ne = canal_at_ne || water_ne;
+	bool canal_or_water_nw = canal_at_nw || water_nw;
+	bool canal_or_water_se = canal_at_se || water_se;
+	bool canal_or_water_sw = canal_at_sw || water_sw;
+
+	char ss[200];
+	snprintf (ss, sizeof(ss), "Canal at (%d,%d), canal tiles: N:%d NE:%d E:%d SE:%d S:%d SW:%d W:%d NW:%d; water tiles: N:%d NE:%d E:%d SE:%d S:%d SW:%d W:%d NW:%d\n",
+		tile_x, tile_y,
+		canal_at_n, canal_at_ne, canal_at_e, canal_at_se,
+		canal_at_s, canal_at_sw, canal_at_w, canal_at_nw,
+		water_n, water_ne, water_e, water_se,
+		water_s, water_sw, water_w, water_nw);
+	(*p_OutputDebugStringA)(ss);
+
+	bool canal_dirs[9] = {
+		false, canal_at_ne, canal_at_e, canal_at_se,
+		canal_at_s, canal_at_sw, canal_at_w, canal_at_nw, canal_at_n
+	};
+	bool water_dirs[9] = {
+		false, water_ne, water_e, water_se,
+		water_s, water_sw, water_w, water_nw, water_n
+	};
+	bool available_dirs[9] = {
+		false, canal_or_water_ne, canal_or_water_e, canal_or_water_se,
+		canal_or_water_s, canal_or_water_sw, canal_or_water_w, canal_or_water_nw, canal_or_water_n
+	};
+
+	// Avoid acute angles (adjacent directions) that look cramped.
+	int disallowed_pairs[][2] = {
+		{ DIR_N, DIR_NE }, { DIR_NE, DIR_E }, { DIR_E, DIR_SE }, { DIR_SE, DIR_S },
+		{ DIR_S, DIR_SW }, { DIR_SW, DIR_W }, { DIR_W, DIR_NW }, { DIR_NW, DIR_N }
+	};
+	int disallowed_pair_count = sizeof(disallowed_pairs) / sizeof(disallowed_pairs[0]);
+	int pref_dirs[8] = { DIR_NE, DIR_NW, DIR_SE, DIR_SW, DIR_N, DIR_E, DIR_S, DIR_W };
+
+	int dir1 = -1;
+	int dir2 = -1;
+
+	bool has_canal_dir = canal_dirs[DIR_N] || canal_dirs[DIR_NE] || canal_dirs[DIR_E] || canal_dirs[DIR_SE] ||
+		canal_dirs[DIR_S] || canal_dirs[DIR_SW] || canal_dirs[DIR_W] || canal_dirs[DIR_NW];
+
+	if (has_canal_dir) {
+		for (int i = 0; i < 8 && dir1 == -1; i++) {
+			int d = pref_dirs[i];
+			if (canal_dirs[d])
+				dir1 = d;
+		}
+	} else {
+		for (int i = 0; i < 8 && dir1 == -1; i++) {
+			int d = pref_dirs[i];
+			if (available_dirs[d])
+				dir1 = d;
+		}
+	}
+
+	if (dir1 >= 0) {
+		for (int pass = 0; pass < 2 && dir2 == -1; pass++) {
+			bool * dirs = (pass == 0) ? canal_dirs : available_dirs;
+			for (int i = 0; i < 8; i++) {
+				int d = pref_dirs[i];
+				if (d == dir1 || ! dirs[d])
+					continue;
+				bool pair_is_too_close = false;
+				for (int k = 0; k < disallowed_pair_count; k++) {
+					if ((dir1 == disallowed_pairs[k][0] && d == disallowed_pairs[k][1]) ||
+						(dir1 == disallowed_pairs[k][1] && d == disallowed_pairs[k][0])) {
+						pair_is_too_close = true;
+						break;
+					}
+				}
+				if (pair_is_too_close)
+					continue;
+				dir2 = d;
+				break;
+			}
+		}
+	}
+
+	int draw_dir1 = dir1;
+	int draw_dir2 = dir2;
+	if ((draw_dir1 >= 0) && (draw_dir2 >= 0)) {
+		int weight1 = 0;
+		int weight2 = 0;
+
+		if (draw_dir1 == DIR_S) weight1 = 2;
+		else if ((draw_dir1 == DIR_SE) || (draw_dir1 == DIR_SW)) weight1 = 1;
+		else if ((draw_dir1 == DIR_NE) || (draw_dir1 == DIR_NW) || (draw_dir1 == DIR_N)) weight1 = -1;
+
+		if (draw_dir2 == DIR_S) weight2 = 2;
+		else if ((draw_dir2 == DIR_SE) || (draw_dir2 == DIR_SW)) weight2 = 1;
+		else if ((draw_dir2 == DIR_NE) || (draw_dir2 == DIR_NW) || (draw_dir2 == DIR_N)) weight2 = -1;
+
+		if (weight1 > weight2) {
+			int tmp = draw_dir1;
+			draw_dir1 = draw_dir2;
+			draw_dir2 = tmp;
+		}
+	}
+
+	// Manual overrides - overall algorithm works pretty well, but handle corner cases
+	if      (!has_canal_dir && water_dirs[DIR_NE] && water_dirs[DIR_SW]) 						{ draw_dir1 = DIR_NE; draw_dir2 = DIR_SW; }
+	if (draw_dir1 == DIR_NE && draw_dir2 == DIR_S  && water_dirs[DIR_N]  && water_dirs[DIR_NE]) { draw_dir1 = DIR_N; draw_dir2 = DIR_S; }
+	if (draw_dir1 == DIR_NE && draw_dir2 == DIR_SE && water_dirs[DIR_SE] && water_dirs[DIR_SW]) { draw_dir2 = DIR_SW; }
+	if (draw_dir1 == DIR_NE && draw_dir2 == DIR_SE && water_dirs[DIR_NE] && water_dirs[DIR_N])  { draw_dir1 = DIR_N; }
+	if (draw_dir1 == DIR_NE && draw_dir2 == DIR_NW && water_dirs[DIR_S])  						{ draw_dir2 = DIR_S; }
+	if (draw_dir1 == DIR_NE && draw_dir2 == DIR_NW && canal_dirs[DIR_NE] && water_dirs[DIR_SW]) { draw_dir2 = DIR_SW; }
+	if (draw_dir1 == DIR_NE && draw_dir2 == DIR_S  && canal_dirs[DIR_NE] && water_dirs[DIR_S])  { draw_dir2 = DIR_SW; }
+	if (draw_dir1 == DIR_NW && draw_dir2 == DIR_NE && canal_dirs[DIR_NW] && water_dirs[DIR_SE]) { draw_dir2 = DIR_SE; }
+	if (draw_dir1 == DIR_NW && draw_dir2 == DIR_S  && canal_dirs[DIR_NW] && water_dirs[DIR_S])  { draw_dir2 = DIR_SE; }
+
+	snprintf (ss, sizeof(ss), "Drawing canal at (%d,%d) dirs:%d,%d\n", tile_x, tile_y, draw_dir1, draw_dir2);
+	(*p_OutputDebugStringA)(ss);
+
+	*out_dir1 = draw_dir1;
+	*out_dir2 = draw_dir2;
+	for (int i = 0; i < 9; i++)
+		out_water_dirs[i] = water_dirs[i];
+}
+
+void 
+draw_canal_on_map_or_canvas(Sprite * sprite, int tile_x, int tile_y, int dir, bool water_dirs[9], Map_Renderer * map_renderer, int draw_x, int draw_y)
+{
+	int y_offset = 9;
+	int x_offset = y_offset * 2;
+
+	draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y);
+
+	char ss[200];
+	snprintf (ss, sizeof(ss), "Drawing canal dir = %d, DIR_SE = %d, water dirs[SE] = %d\n", dir, DIR_SE, water_dirs[DIR_SE]);
+	(*p_OutputDebugStringA)(ss);
+
+	// In certain cases, add an additional draw if adjacent to water so that the canal appears to extend far enough
+	if      (dir == DIR_N  && water_dirs[DIR_N])
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y - y_offset);
+	else if (dir == DIR_NE && water_dirs[DIR_NE])
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y - y_offset);
+	else if (dir == DIR_E  && water_dirs[DIR_E])
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y);
+	else if (dir == DIR_SE && water_dirs[DIR_SE]) 
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x + x_offset, draw_y + y_offset);
+	else if (dir == DIR_S  && water_dirs[DIR_S])                                            
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y + y_offset);
+	else if (dir == DIR_SW && water_dirs[DIR_SW])
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y + y_offset);
+	else if (dir == DIR_W  && water_dirs[DIR_W])                                            
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y);
+	else if (dir == DIR_NW && water_dirs[DIR_NW])                                           
+		draw_district_on_map_or_canvas(sprite, map_renderer, draw_x - x_offset, draw_y - y_offset);
+}
+
+void 
+draw_canal_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int era)
+{
+	struct district_config const * cfg = &is->district_configs[CANAL_DISTRICT_ID];
+	int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
+	int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
+	int offset_x      = pixel_x + cfg->x_offset;
+	int offset_y      = pixel_y + cfg->y_offset;
+	int dir1_draw_x   = offset_x - ((sprite_width - 128) / 2);
+	int dir1_draw_y   = offset_y - (sprite_height - 64);
+	int dir2_draw_x   = dir1_draw_x;
+	int dir2_draw_y   = dir1_draw_y;
+
+	int draw_dir1 = -1;
+	int draw_dir2 = -1;
+	bool water_dirs[9] = { false, false, false, false, false, false, false, false, false };
+	get_canal_directions (tile, tile_x, tile_y, water_dirs, &draw_dir1, &draw_dir2);
+
+	// Set offsets based on directions for (literal) edge cases
+	if      (draw_dir1 == DIR_NE && draw_dir2 == DIR_S)  { dir1_draw_x += 7; dir1_draw_y -= 2; }
+	else if (draw_dir1 == DIR_N  && draw_dir2 == DIR_W)  { dir2_draw_x -= 12; }	
+	else if (draw_dir1 == DIR_N  && draw_dir2 == DIR_SE) { dir2_draw_x += 4; }	
+
+	if (draw_dir1 >= 0) {
+		Sprite * sprite1 = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][draw_dir1];
+		draw_canal_on_map_or_canvas(sprite1, tile_x, tile_y, draw_dir1, water_dirs, map_renderer, dir1_draw_x, dir1_draw_y);
+	}
+
+	if (draw_dir2 >= 0) {
+		Sprite * sprite2 = &is->district_img_sets[CANAL_DISTRICT_ID].imgs[0][era][draw_dir2];
+		draw_canal_on_map_or_canvas(sprite2, tile_x, tile_y, draw_dir2, water_dirs, map_renderer, dir2_draw_x, dir2_draw_y);
+	}
+}
+
+void
+draw_great_wall_district (Tile * tile, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
+{
+	bool wall_nw = tile_has_district_at (tile_x - 1, tile_y - 1, GREAT_WALL_DISTRICT_ID);
+	bool wall_ne = tile_has_district_at (tile_x + 1, tile_y - 1, GREAT_WALL_DISTRICT_ID);
+	bool wall_se = tile_has_district_at (tile_x + 1, tile_y + 1, GREAT_WALL_DISTRICT_ID);
+	bool wall_sw = tile_has_district_at (tile_x - 1, tile_y + 1, GREAT_WALL_DISTRICT_ID);
+	bool wall_s  = tile_has_district_at (tile_x,     tile_y + 2, GREAT_WALL_DISTRICT_ID);
+	bool wall_n  = tile_has_district_at (tile_x,     tile_y - 2, GREAT_WALL_DISTRICT_ID);
+
+	bool water_ne = tile_is_water (tile_x - 1, tile_y - 1);
+	bool water_nw = tile_is_water (tile_x + 1, tile_y - 1);
+	bool water_w  = tile_is_water (tile_x - 2, tile_y);
+	bool water_n  = tile_is_water (tile_x, tile_y + 2);
+	bool water_sw = tile_is_water (tile_x - 1, tile_y + 1);
+	bool water_se = tile_is_water (tile_x + 1, tile_y + 1);
+	
+	Sprite * sprites = is->district_img_sets[GREAT_WALL_DISTRICT_ID].imgs[0][0];
+	Sprite * base    = &sprites[0];
+
+	// Rotate around clockwise NW -> SW to get the perspective right
+	if (wall_nw) draw_district_on_map_or_canvas(&sprites[DIR_NW], map_renderer, pixel_x, pixel_y);
+	if (wall_ne) draw_district_on_map_or_canvas(&sprites[DIR_NE], map_renderer, pixel_x, pixel_y);
+
+	if (!wall_nw && !wall_ne && wall_n && water_ne)     
+		draw_district_on_map_or_canvas(&sprites[DIR_N], map_renderer, pixel_x, pixel_y);
+	if (!wall_ne && wall_n && water_nw)
+		draw_district_on_map_or_canvas(&sprites[DIR_N], map_renderer, pixel_x, pixel_y);
+	if (water_sw && water_nw && !water_w)
+		draw_district_on_map_or_canvas(&sprites[DIR_W], map_renderer, pixel_x, pixel_y);
+	if (water_n && !wall_nw && !wall_ne)
+		draw_district_on_map_or_canvas(&sprites[DIR_N], map_renderer, pixel_x, pixel_y);
+
+	// Base pillar
+	draw_district_on_map_or_canvas(base, map_renderer, pixel_x, pixel_y);
+
+	if (wall_sw) draw_district_on_map_or_canvas(&sprites[DIR_SW], map_renderer, pixel_x, pixel_y);
+	if (wall_se) draw_district_on_map_or_canvas(&sprites[DIR_SE], map_renderer, pixel_x, pixel_y);
+}
+
+void
+draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, struct district_instance * inst, 
+	int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int visible_to_civ_id)
+{
+	int base_resource = Tile_get_resource_visible_to (tile, __, visible_to_civ_id);
+	int district_resource = -1;
+
+	if (inst->state == DS_COMPLETED) {
+		int district_id = inst->district_id;
+		if ((district_id >= 0) && (district_id < is->district_count)) {
+			struct district_config * cfg = &is->district_configs[district_id];
+			if (cfg->generated_resource_id >= 0) {
+				int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
+				if ((owner_id >= 0) && ((visible_to_civ_id < 0) || (owner_id == visible_to_civ_id))) {
+					int res_id = cfg->generated_resource_id;
+					if (visible_to_civ_id >= 0) {
+						if (district_can_generate_resource (visible_to_civ_id, cfg))
+							district_resource = res_id;
+					} else
+						district_resource = res_id;
+				}
+			}
+		}
+	}
+
+	if (district_resource < 0) {
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
 	}
 
-	int district_id = inst->district_type;
+	int tile_width = p_bic_data->is_zoomed_out ? 64 : 128;
+	int offset  = tile_width >> 2;
+	int left_x  = pixel_x - (offset >> 1);
+	int right_x = pixel_x + (offset >> 1);
+
+	if (base_resource >= 0)
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, left_x, pixel_y);
+
+	int icon_id = p_bic_data->ResourceTypes[district_resource].IconID;
+	if (icon_id >= 0 && icon_id < 36 && map_renderer != NULL && map_renderer->Resources != NULL) {
+		Sprite * sprite   = &map_renderer->Resources[icon_id];
+		int tile_height   = tile_width >> 1;
+		int sprite_width  = sprite->Width;
+		int sprite_height = sprite->Height;
+		if (sprite_width <= 0)  sprite_width = sprite->Width3;
+		if (sprite_height <= 0) sprite_height = sprite->Height3;
+		int center_x = (tile_width - sprite_width) >> 1;
+		int center_y = (tile_height - sprite_height) >> 1;
+		int draw_x   = (base_resource >= 0) ? right_x : pixel_x;
+		draw_x += center_x;
+		int draw_y     = pixel_y + center_y;
+		int draw_scale = (p_bic_data->is_zoomed_out != false) + 1;
+		patch_Sprite_draw_on_map (sprite, __, map_renderer, draw_x, draw_y, 1, 1, draw_scale, 0);
+	}
+}
+
+int 
+count_completed_buildings_in_district_radius (int tile_x, int tile_y, int district_id)
+{
+	struct district_config const * cfg = &is->district_configs[district_id];
+	struct district_infos * district_info = &is->district_infos[district_id];
+	int completed_count = 0;
+	for (int i = 0; i < district_info->dependent_building_count; i++) {
+		int building_id = district_info->dependent_building_ids[i];
+		if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id))
+			completed_count++;
+	}
+	return completed_count;
+}
+
+void 
+draw_district_on_map_or_canvas_by_buildings (Sprite * base_sprite, Map_Renderer * map_renderer, int district_id, int variant, int era, int tile_x, int tile_y, int draw_x, int draw_y)
+{
+	struct district_config const * cfg = &is->district_configs[district_id];
+	struct district_infos * district_info = &is->district_infos[district_id];
+	int max_stage = cfg->max_building_index;
+	int stage_limit = ARRAY_LEN (is->district_img_sets[0].imgs[0][0]) - 1;
+
+	if (max_stage > stage_limit)
+		max_stage = stage_limit;
+
+	draw_district_on_map_or_canvas(base_sprite, map_renderer, draw_x, draw_y);
+
+	for (int i = 0; i < district_info->dependent_building_count; i++) {
+		int building_id = district_info->dependent_building_ids[i];
+		int stage = i + 1;
+		if (stage > max_stage)
+			break;
+		if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id)) {
+			Sprite * district_sprite = &is->district_img_sets[district_id].imgs[variant][era][stage];
+			draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
+		}
+	}
+}
+
+void 
+draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instance * inst, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int visible_to_civ_id)
+{
+	int district_id = inst->district_id;
 	if (is->dc_img_state == IS_UNINITED)
         init_district_images ();
 
@@ -23991,27 +32165,31 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 			Sprite * nsprite = &is->natural_wonder_img_sets[natural_id].img;
 			int y_offset = 88 - 64; // Height of wonder img minus height of tile
 			int draw_y = pixel_y - y_offset;
-			patch_Sprite_draw_on_map (nsprite, __, this, pixel_x, draw_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+
+			draw_district_on_map_or_canvas(nsprite, map_renderer, pixel_x, draw_y);
 		}
 		return;
 	}
 
 	// Districts
     if (is->current_config.enable_districts) {
-		if (district_id < 0 || district_id >= is->district_count)
-			return;
+		if (district_id < 0 || district_id >= is->district_count) return;
         bool completed = district_is_complete (tile, district_id);
 
         if (! completed)
             return;
 
 		struct district_config const * cfg = &is->district_configs[district_id];
+		struct district_infos * district_info = &is->district_infos[district_id];
         int territory_owner_id = tile->Territory_OwnerID;
         int variant = 0;
-        int era = 0;
+		int era = 0;
         int culture = 0;
 		int buildings = 0;
+		int draw_pixel_x = pixel_x;
+		int draw_pixel_y = pixel_y;
 		Sprite * district_sprite;
+		enum direction river_dir = DIR_ZERO;
 
         if (territory_owner_id > 0) {
             Leader * leader = &leaders[territory_owner_id];
@@ -24020,29 +32198,34 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
                 variant = culture;
             if (cfg->vary_img_by_era)
                 era = leader->Era;
-        } else if (district_id != WONDER_DISTRICT_ID && district_id != NATURAL_WONDER_DISTRICT_ID) {
-			// Render abandoned district, special index 5
-			variant = 5;
-			district_sprite = &is->district_img_sets[0].imgs[variant][era][buildings];
-			patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+			if (cfg->align_to_coast)
+				align_variant_and_pixel_offsets_with_coastline (tile, &variant, &draw_pixel_x, &draw_pixel_y);
+        } else if (district_id != WONDER_DISTRICT_ID && district_id != NATURAL_WONDER_DISTRICT_ID && district_id != BRIDGE_DISTRICT_ID && district_id != CANAL_DISTRICT_ID) {
+			Sprite * abandoned_sprite = &is->abandoned_district_img;
+			if (tile->vtable->m35_Check_Is_Water (tile) && is->abandoned_maritime_district_img.vtable != NULL)
+				abandoned_sprite = &is->abandoned_maritime_district_img;
+			if (abandoned_sprite->vtable != NULL) {
+				draw_district_on_map_or_canvas(abandoned_sprite, map_renderer, draw_pixel_x + cfg->x_offset, draw_pixel_y + cfg->y_offset);
+			}
 			return;
 		}
 
+		// If out of a territory but builder is known, use builder's era
+		if (territory_owner_id < 0 && inst->built_by_civ_id >= 0) {
+			Leader * builder = &leaders[inst->built_by_civ_id];
+			culture = p_bic_data->Races[builder->RaceID].CultureGroupID;
+			if (cfg->vary_img_by_era)
+				era = builder->Era;
+		}
+
+		int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
+		int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
+		int offset_x      = draw_pixel_x + cfg->x_offset;
+		int offset_y      = draw_pixel_y + cfg->y_offset;
+		int draw_x        = offset_x - ((sprite_width - 128) / 2);
+		int draw_y        = offset_y - (sprite_height - 64);
+
         switch (district_id) {
-            case NEIGHBORHOOD_DISTRICT_ID:
-            {
-                unsigned v = (unsigned)tile_x * 0x9E3779B1u + (unsigned)tile_y * 0x85EBCA6Bu;
-                v ^= v >> 16;
-                v *= 0x7FEB352Du;
-                v ^= v >> 15;
-                v *= 0x846CA68Bu;
-                v ^= v >> 16;
-                buildings = clamp(0, 3, (int)(v & 3u));  /* final 0..3 */
-                variant = culture;
-                break;
-            }
-            case DISTRIBUTION_HUB_DISTRICT_ID:
-                break;
 			case WONDER_DISTRICT_ID:
 			{
 				if (! is->current_config.enable_wonder_districts)
@@ -24053,38 +32236,180 @@ patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int par
 					return;
 
 				int construct_windex = -1;
+
+				// Completed wonder
                 if (info->state == WDS_COMPLETED) {
-                    Sprite * wsprite = &is->wonder_district_img_sets[info->wonder_index].img;
-                    patch_Sprite_draw_on_map (wsprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
-                    return;
+					int windex = info->wonder_index;
+					if ((windex < 0) || (windex >= is->wonder_district_count))
+						return;
+
+					struct wonder_district_config * wcfg   = &is->wonder_district_configs[windex];
+					struct wonder_district_image_set * set = &is->wonder_district_img_sets[windex];
+
+					if (wonder_allows_river(wcfg))
+						align_district_with_river (tile, &draw_pixel_x, &draw_pixel_y, &river_dir);
+						
+					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id, wcfg);
+					Sprite * wsprite = (use_alt_dir && (set->alt_dir_img.vtable != NULL)) ? &set->alt_dir_img : &set->img;
+					int offset_x = draw_pixel_x + cfg->x_offset;
+					int offset_y = draw_pixel_y + cfg->y_offset;
+
+					draw_district_on_map_or_canvas(wsprite, map_renderer, offset_x, offset_y);
+					return;
+
+				// Under construction
                 } else if (wonder_district_tile_under_construction (tile, tile_x, tile_y, &construct_windex) && (construct_windex >= 0)) {
-                    Sprite * csprite = &is->wonder_district_img_sets[construct_windex].construct_img;
-                    patch_Sprite_draw_on_map (csprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+					if (construct_windex >= is->wonder_district_count)
+						return;
+
+					struct wonder_district_config * wcfg = &is->wonder_district_configs[construct_windex];
+					struct wonder_district_image_set * set = &is->wonder_district_img_sets[construct_windex];
+					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id, wcfg);
+                    Sprite * csprite = (use_alt_dir && (set->alt_dir_construct_img.vtable != NULL)) ? &set->alt_dir_construct_img : &set->construct_img;
+					int offset_x = draw_pixel_x + cfg->x_offset;
+					int offset_y = draw_pixel_y + cfg->y_offset;
+
+					draw_district_on_map_or_canvas(csprite, map_renderer, offset_x, offset_y);
 					return;
                 }
-				break;
+                break;
+            }
+            case NEIGHBORHOOD_DISTRICT_ID:
+            {
+                unsigned v = (unsigned)tile_x * 0x9E3779B1u + (unsigned)tile_y * 0x85EBCA6Bu;
+                v ^= v >> 16;
+                v *= 0x7FEB352Du;
+                v ^= v >> 15;
+                v *= 0x846CA68Bu;
+                v ^= v >> 16;
+                buildings = clamp(0, 3, (int)(v & 3u));  /* final 0..3 */
+                variant = culture;
+				district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
+				draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
+                return;
+            }
+            case DISTRIBUTION_HUB_DISTRICT_ID:
+                draw_district_on_map_or_canvas(&is->district_img_sets[district_id].imgs[variant][era][buildings], map_renderer, draw_x, draw_y);
+                return;
+			case ENERGY_GRID_DISTRICT_ID:
+			{
+				// Energy grids can have multiple buildings that - unlike most district buildings - don't have each other as prereqs (e.g., Coal Plant & Nuclear Plant),
+				// and thus have a combinatorial number of images based on which power plants are built in their radius.
+				buildings = get_energy_grid_image_index (tile_x, tile_y);
+				draw_district_on_map_or_canvas(&is->district_img_sets[district_id].imgs[variant][era][buildings], map_renderer, draw_x, draw_y);
+                return;
+			}
+			case BRIDGE_DISTRICT_ID:
+			{
+				buildings = get_bridge_image_index (tile, tile_x, tile_y);
+				draw_district_on_map_or_canvas(&is->district_img_sets[district_id].imgs[variant][era][buildings], map_renderer, draw_x, draw_y);
+                return;
+			}
+			case CANAL_DISTRICT_ID:
+			{
+				draw_canal_district (tile, tile_x, tile_y, map_renderer, pixel_x, pixel_y, era);
+				return;
+			}
+			case GREAT_WALL_DISTRICT_ID:
+			{
+				draw_great_wall_district (tile, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+				return;
 			}
             default:
             {
-                struct district_infos * info = &is->district_infos[district_id];
-                int completed_count = 0;
-                for (int i = 0; i < info->dependent_building_count; i++) {
-                    int building_id = info->dependent_building_ids[i];
-                    if ((building_id >= 0) &&
-                        tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id))
-                        completed_count++;
-                }
-                buildings = completed_count;
-                break;
+				// Draw by counting number of completed buildings in radius
+				if (cfg->render_strategy == DRS_BY_COUNT) {
+					buildings = count_completed_buildings_in_district_radius (tile_x, tile_y, district_id);
+					district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
+					draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
+					return;
+				}
+				// Draw by checking each building individually and layering images
+				else if (cfg->render_strategy == DRS_BY_BUILDING) {
+					Sprite * base_sprite = &is->district_img_sets[district_id].imgs[variant][era][0];
+					draw_district_on_map_or_canvas_by_buildings(base_sprite, map_renderer, district_id, variant, era, tile_x, tile_y, draw_x, draw_y);
+					return;
+				}
             }
 		}
+	}
 
-		district_sprite = &is->district_img_sets[district_id].imgs[variant][era][buildings];
-		patch_Sprite_draw_on_map (district_sprite, __, this, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+    Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+}
+
+void __fastcall
+patch_Map_Renderer_m12_Draw_Tile_Buildings(Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
+{
+	*p_debug_mode_bits |= 0xC;
+	if (! is->current_config.enable_districts && ! is->current_config.enable_natural_wonders) {
+		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
 		return;
 	}
 
-    Map_Renderer_m12_Draw_Tile_Buildings(this, __, param_1, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+	Tile * tile = is->current_render_tile;
+	if ((tile == NULL) || (tile == p_null_tile))
+		return;
+
+	struct district_instance * inst = is->current_render_tile_district;
+	if (inst == NULL) {
+		Map_Renderer_m12_Draw_Tile_Buildings(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+	}
+
+	// Draw resources first if needed
+	if (is->district_configs[inst->district_id].draw_over_resources) 
+		draw_district_generated_resource_on_tile (this, tile, inst, tile_x, tile_y, map_renderer, pixel_x, pixel_y, visible_to_civ_id);
+
+	draw_district_on_tile (this, tile, inst, tile_x, tile_y, map_renderer, pixel_x, pixel_y, visible_to_civ_id);
+}
+
+void __fastcall
+patch_Map_Renderer_m09_Draw_Tile_Resources (Map_Renderer * this, int edx, int visible_to_civ_id, int tile_x, int tile_y, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
+{
+	if (! is->current_config.enable_districts) {
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+	}
+
+	Tile * tile = is->current_render_tile;
+	if ((tile == NULL) || (tile == p_null_tile)) {
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+	}
+
+	struct district_instance * inst = is->current_render_tile_district;
+	if (inst == NULL) {
+		Map_Renderer_m09_Draw_Tile_Resources(this, __, visible_to_civ_id, tile_x, tile_y, map_renderer, pixel_x, pixel_y);
+		return;
+	}
+
+	// Resources that should be drawn below district are already drawn, skip in that case
+	if (is->district_configs[inst->district_id].draw_over_resources) 
+		return;
+
+	draw_district_generated_resource_on_tile (this, tile, inst, tile_x, tile_y, map_renderer, pixel_x, pixel_y, visible_to_civ_id);
+}
+
+void __fastcall
+patch_Map_Renderer_m11_Draw_Tile_Irrigation (Map_Renderer *this, int edx, int visible_to_civ, int tile_x, int tile_y, int param_4, int param_5, int param_6)
+{
+	if (! is->current_config.enable_districts) {
+		Map_Renderer_m11_Draw_Tile_Irrigation (this, __, visible_to_civ, tile_x, tile_y, param_4, param_5, param_6);
+		return;
+	}
+
+	struct district_instance * inst = is->current_render_tile_district;
+	if (inst == NULL) {		
+		Map_Renderer_m11_Draw_Tile_Irrigation (this, __, visible_to_civ, tile_x, tile_y, param_4, param_5, param_6);
+		return;
+	}
+
+	// If it has a completed district that serves as pseudo-irrigation source, suppress drawing irrigation
+	if (is->district_configs[inst->district_id].allow_irrigation_from 
+		&& district_is_complete (is->current_render_tile, inst->district_id))
+		return;
+
+	Map_Renderer_m11_Draw_Tile_Irrigation (this, __, visible_to_civ, tile_x, tile_y, param_4, param_5, param_6);
 }
 
 bool __fastcall
@@ -24184,6 +32509,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		return false;
 	}
 	req->city = request_city;
+	struct district_config * cfg = &is->district_configs[district_id];
 
 	// If the worker has arrived
 	if ((worker->Body.X == req->target_x) && (worker->Body.Y == req->target_y)) {
@@ -24196,8 +32522,8 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		bool do_replacement = false;
 
 		// If there is a completed district here already
-		if ((inst != NULL) && district_is_complete (tile, inst->district_type)) {
-			int existing_district_id = inst->district_type;
+		if ((inst != NULL) && district_is_complete (tile, inst->district_id)) {
+			int existing_district_id = inst->district_id;
 
 			snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d found existing district ID %d at (%d,%d)\n", worker->Body.ID, existing_district_id, worker->Body.X, worker->Body.Y);
 			(*p_OutputDebugStringA) (ss);
@@ -24208,10 +32534,19 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 				return false;
 			}
 
+			// Allow replacement of unused wonder districts
 			if (existing_district_id == WONDER_DISTRICT_ID) {
 				struct wonder_district_info * info = &inst->wonder_info;
 				if (info->state == WDS_UNUSED)
 					do_replacement = true;
+			// Allow replace of Great Wall if the civ has the tech to make it obsolete
+			} else if (existing_district_id == GREAT_WALL_DISTRICT_ID) {
+				
+			} else {
+				snprintf (ss, sizeof ss, "ai_move_district_worker: Worker ID %d cannot replace existing district ID %d at (%d,%d), cancelling request\n", worker->Body.ID, existing_district_id, worker->Body.X, worker->Body.Y);
+				(*p_OutputDebugStringA) (ss);
+				clear_city_district_request (request_city, req->district_id);
+				return false;
 			}
 
 			if (!do_replacement) {
@@ -24224,14 +32559,11 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 
 		// One final check: do we still need the district? Check for any dupes nearby
 		if (req->district_id != DISTRIBUTION_HUB_DISTRICT_ID && req->district_id != NEIGHBORHOOD_DISTRICT_ID) {
-			int civ_id = worker->Body.CivID;
-			FOR_TILES_AROUND (tai, is->workable_tile_count, request_city->Body.X, request_city->Body.Y) {
-				Tile * nearby = tai.tile;
-				if (nearby == p_null_tile || nearby == tile) continue;
-				if (nearby->vtable->m38_Get_Territory_OwnerID (nearby) != civ_id) continue;
+			FOR_DISTRICTS_AROUND (wai, request_city->Body.X, request_city->Body.Y, false) {
+				if (wai.tile == tile)
+					continue;
 
-				struct district_instance * nearby_inst = get_district_instance (nearby);
-				if (nearby_inst != NULL && nearby_inst->district_type == req->district_id) {
+				if (wai.district_inst->district_id == req->district_id) {
 					snprintf (ss, sizeof ss, "ai_move_district_worker: Found duplicate district ID %d near city at (%d,%d), cancelling request\n", req->district_id, request_city->Body.X, request_city->Body.Y);
 					(*p_OutputDebugStringA) (ss);
 					clear_city_district_request (request_city, req->district_id);
@@ -24243,7 +32575,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		// Need to make sure distro hubs get roads. If this will be one, build the road first to be sure
 		if (req->district_id == DISTRIBUTION_HUB_DISTRICT_ID) {
 			bool has_road = (*tile->vtable->m25_Check_Roads)(tile, __, 0);
-			if (! has_road) {
+			if (! has_road && ! cfg->auto_add_road) {
 				Unit_set_state(worker, __, UnitState_Build_Road);
 				worker->Body.Job_ID = WJ_Build_Road;
 				return true;
@@ -24253,6 +32585,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 		unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
 		unsigned int removable_flags = overlay_flags & 0xfc;
+		bool district_buildable_here = district_is_buildable_on_square_type (&is->district_configs[req->district_id], tile);
 
 		// Remove any existing improvements
 		tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
@@ -24277,11 +32610,11 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 		(*p_OutputDebugStringA) (ss);
 
 		// Clear any forest/wetlands
-		if (base_type == SQ_Forest) {
+		if (! district_buildable_here && base_type == SQ_Forest) {
 			Unit_set_state(worker, __, UnitState_Clear_Forest);
 			worker->Body.Job_ID = WJ_Clean_Forest;
 			return true;
-		} else if ((base_type == SQ_Jungle) || (base_type == SQ_Swamp)) {
+		} else if (! district_buildable_here && ((base_type == SQ_Jungle) || (base_type == SQ_Swamp))) {
 			Unit_set_state(worker, __, UnitState_Clear_Wetlands);
 			worker->Body.Job_ID = WJ_Clear_Swamp;
 			return true;
@@ -24296,6 +32629,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 
 		// Start construction of district
 		inst = ensure_district_instance (tile, req->district_id, req->target_x, req->target_y);
+		inst->built_by_civ_id = worker->Body.CivID;
 		Unit_set_state(worker, __, UnitState_Build_Mines);
 		worker->Body.Job_ID = WJ_Build_Mines; // Build district
 		return true;
@@ -24326,6 +32660,111 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 	return false;
 }
 
+bool
+ai_worker_try_tile_improvement_district (Unit * worker)
+{
+	if (! is->current_config.enable_districts || worker == NULL) return false;
+	if (! is_worker (worker)) return false;
+	if (worker->Body.Auto_CityID < 0) return false;
+
+	City * city = get_city_ptr (worker->Body.Auto_CityID);
+	if (city == NULL) return false;
+	if (city->Body.CivID != worker->Body.CivID) return false;
+
+	int civ_id = worker->Body.CivID;
+	int tile_x = worker->Body.X;
+	int tile_y = worker->Body.Y;
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile)) return false;
+	if (tile->CityID >= 0) return false;
+	if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id) return false;
+	if (! city_radius_contains_tile (city, tile_x, tile_y)) return false;
+	if (get_district_instance (tile) != NULL) return false;
+
+	// Evaluate whether the best improvement here is irrigation, mines, or a district, using heuristics based on city needs
+	int food_weight    = (city->Body.FoodIncome < city->Body.FoodRequired) ? 3 : 1;
+	int shield_weight  = (city->Body.ProductionIncome < city->Body.Population.Size) ? 2 : 1;
+	int unhappy_percent =
+		city->Body.UnhappyNoReasonPercent +
+		city->Body.UnhappyCrowdedPercent +
+		city->Body.UnhappyWarWearinessPercent +
+		city->Body.UnhappyAgresssionPercent +
+		city->Body.UnhappyPropagandaPercent +
+		city->Body.UnhappyDraftPercent +
+		city->Body.UnhappyOppressionPercent +
+		city->Body.UnhappyThisCityImprovementsPercent +
+		city->Body.UnhappyOtherCityImprovementsPercent;
+	int happiness_weight = (unhappy_percent > 0) ? 2 : 1;
+	int gold_weight    = 1;
+	int resource_boost = 5 * (food_weight + shield_weight + gold_weight + happiness_weight);
+
+	int irrigation_score = INT_MIN;
+	if (Leader_can_do_worker_job (&leaders[civ_id], __, WJ_Irrigate, tile_x, tile_y, 0) &&
+	    ! tile->vtable->m17_Check_Irrigation (tile, __, 0)) {
+		int base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+		int bonus = p_bic_data->TileTypes[base_type].IrrigationBonus;
+		if (bonus < 0)
+			bonus = 0;
+		irrigation_score = bonus * food_weight;
+	}
+
+	int mine_score = INT_MIN;
+	if (Leader_can_do_worker_job (&leaders[civ_id], __, WJ_Build_Mines, tile_x, tile_y, 0) &&
+	    ! tile->vtable->m18_Check_Mines (tile, __, 0)) {
+		int base_type = tile->vtable->m50_Get_Square_BaseType (tile);
+		int bonus = p_bic_data->TileTypes[base_type].MiningBonus;
+		if (bonus < 0)
+			bonus = 0;
+		mine_score = bonus * shield_weight;
+	}
+
+	int best_score = INT_MIN;
+	int best_district_id = -1;
+	for (int i = 0; i < is->district_count; i++) {
+		struct district_config const * cfg = &is->district_configs[i];
+		if (cfg->ai_build_strategy != DABS_TILE_IMPROVEMENT)
+			continue;
+		if (! can_build_district_on_tile (tile, i, civ_id))
+			continue;
+
+		struct district_instance temp = {0};
+		temp.district_id = i;
+		temp.tile_x = (short)tile_x;
+		temp.tile_y = (short)tile_y;
+
+		int food = 0, shields = 0, gold = 0, science = 0, culture = 0, happiness = 0;
+		get_effective_district_yields (&temp, cfg, &food, &shields, &gold, &science, &culture, &happiness);
+
+		int score = food * food_weight + shields * shield_weight + gold * gold_weight;
+		score += (science + culture) / 2;
+		score += happiness * happiness_weight;
+		if ((cfg->generated_resource_id >= 0) &&
+		    ! patch_City_has_resource (city, __, cfg->generated_resource_id))
+			score += resource_boost;
+
+		if (score > best_score) {
+			best_score = score;
+			best_district_id = i;
+		}
+	}
+
+	if ((best_district_id >= 0) &&
+	    (best_score >= irrigation_score) &&
+	    (best_score >= mine_score)) {
+		unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
+		unsigned int removable_flags = overlay_flags & 0xfc;
+		tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
+		if (removable_flags != 0)
+			tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, tile_x, tile_y);
+		ensure_district_instance (tile, best_district_id, tile_x, tile_y);
+		Unit_set_state (worker, __, UnitState_Build_Mines);
+		worker->Body.Job_ID = WJ_Build_Mines;
+		return true;
+	}
+
+	return false;
+}
+
 void __fastcall
 patch_Unit_ai_move_terraformer (Unit * this)
 {
@@ -24340,11 +32779,13 @@ patch_Unit_ai_move_terraformer (Unit * this)
 		update_tracked_worker_for_unit (this);
 		struct district_instance * inst = get_district_instance (tile);
 
-		if (inst != NULL && inst->district_type != NATURAL_WONDER_DISTRICT_ID) {
+		if (inst != NULL && inst->district_id != NATURAL_WONDER_DISTRICT_ID && 
+			tile->vtable->m50_Get_Square_BaseType (tile) != SQ_Coast) {
 			// Roads should be made after district builds. The district is complete but 
 			// worker is still likely on the tile, so check here and build road if needed
+			struct district_config * cfg = &is->district_configs[inst->district_id];
 			bool has_road = (*tile->vtable->m25_Check_Roads)(tile, __, 0);
-			if (! has_road) {
+			if (! has_road && ! cfg->auto_add_road) {
 				Unit_set_state(this, __, UnitState_Build_Road);
 				this->Body.Job_ID = WJ_Build_Road;
 				return;
@@ -24353,7 +32794,7 @@ patch_Unit_ai_move_terraformer (Unit * this)
 			// Same check for railroads
 			bool can_build_railroad = Leader_can_do_worker_job (&leaders[this->Body.CivID], __, WJ_Build_Railroad, this->Body.X, this->Body.Y, 0);
 			bool has_railroad = (*tile->vtable->m23_Check_Railroads)(tile, __, 0);
-			if (can_build_railroad && !has_railroad) {
+			if (can_build_railroad && !has_railroad && ! cfg->auto_add_railroad) {
 				Unit_set_state(this, __, UnitState_Build_Railroad);
 				this->Body.Job_ID = WJ_Build_Railroad; 
 				return;
@@ -24361,10 +32802,13 @@ patch_Unit_ai_move_terraformer (Unit * this)
 		}
 
 		struct district_worker_record * rec = get_tracked_worker_record (this);
-		if (rec->pending_req != NULL) {
+		if (rec != NULL && rec->pending_req != NULL) {
 			if (ai_move_district_worker (this, rec))
 				return;
 		}
+
+		if ((this->Body.Auto_CityID >= 0) && ai_worker_try_tile_improvement_district (this))
+			return;
 	}
 
 	bool pop_else_caravan;
@@ -24405,9 +32849,12 @@ patch_get_building_defense_bonus_at (int x, int y, int param_3)
     if ((tile == NULL) || (tile == p_null_tile))
         return base;
 
-    struct district_instance * inst = get_district_instance (tile);
+	struct district_instance * inst = get_district_instance (tile);
     if (inst != NULL) {
-		return is->district_configs[inst->district_type].defense_bonus_percent;
+		struct district_config const * cfg = &is->district_configs[inst->district_id];
+		int bonus = cfg->defense_bonus_percent;
+		bonus += apply_district_bonus_entries (inst, &cfg->defense_bonus_extras, inst->district_id);
+		return bonus;
     }
 
     return base;
@@ -24420,12 +32867,12 @@ patch_Unit_select (Unit * this)
 		Tile * tile = tile_at (this->Body.X, this->Body.Y);
 
 		struct district_instance * inst = get_district_instance (tile);
-		if (inst != NULL && inst->district_type >= 0 && inst->district_type <= is->district_count && 
-			! district_is_complete (tile, inst->district_type)) {
-			int district_id = inst->district_type;
+		if (inst != NULL && is_worker(this) && inst->district_id >= 0 && inst->district_id <= is->district_count && 
+			! district_is_complete (tile, inst->district_id)) {
+			int district_id = inst->district_id;
 			PopupForm * popup = get_popup_form ();
 			int remaining_turns = get_worker_remaining_turns_to_complete (this, __, 0);
-			set_popup_str_param (0, (char*)is->district_configs[district_id].name, -1, -1);
+			set_popup_str_param (0, (char*)is->district_configs[district_id].display_name, -1, -1);
 			set_popup_int_param (1, remaining_turns);
 			popup->vtable->set_text_key_and_flags (popup, __, is->mod_script_path, "C3X_CONFIRM_CANCEL_BUILD_DISTRICT", -1, 0, 0, 0);
 			
@@ -24453,6 +32900,17 @@ patch_Unit_select (Unit * this)
 		}
 	}
 
+	if (is->current_config.show_ai_city_location_desirability_if_settler) {
+		int unit_type_id = this->Body.UnitTypeID;
+		int worker_actions = p_bic_data->UnitTypes[unit_type_id].Worker_Actions;
+		int new_perspective = (worker_actions >= 1 && (worker_actions & (UCV_Build_City)) && !is_worker(this)) ? p_main_screen_form->Player_CivID : -1;
+
+		if (new_perspective != is->city_loc_display_perspective) {
+			is->city_loc_display_perspective = new_perspective;
+			p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form); // Trigger map redraw
+		}
+	}
+
 	// Sometimes clearing of highlighted tiles doesn't trigger when CTRL lifted, so double-check here
 	if (is->current_config.enable_city_work_radii_highlights && is->highlight_city_radii) {
 		is->highlight_city_radii = false;
@@ -24460,6 +32918,30 @@ patch_Unit_select (Unit * this)
 	}
 
 	Unit_select (this);
+}
+
+void __fastcall
+patch_Main_Screen_Form_set_selected_unit (Main_Screen_Form * this, int edx, Unit * unit, bool param_2)
+{
+	bool redraw = false;
+	if (is->current_config.show_ai_city_location_desirability_if_settler) {
+		int new_perspective = -1;
+		if (unit != NULL) {
+			int unit_type_id = unit->Body.UnitTypeID;
+			int worker_actions = p_bic_data->UnitTypes[unit_type_id].Worker_Actions;
+			new_perspective = (worker_actions >= 1 && (worker_actions & (UCV_Build_City)) && !is_worker(unit)) ? p_main_screen_form->Player_CivID : -1;
+		}
+
+		if (new_perspective != is->city_loc_display_perspective) {
+			is->city_loc_display_perspective = new_perspective;
+			redraw = true;
+		}
+	}
+
+	Main_Screen_Form_set_selected_unit (this, __, unit, param_2);
+
+	if (redraw && ! this->is_now_loading_game)
+		p_main_screen_form->vtable->m73_call_m22_Draw ((Base_Form *)p_main_screen_form);
 }
 
 void __fastcall
@@ -24476,24 +32958,12 @@ patch_City_Form_draw_food_income_icons (City_Form * this)
 	if (city == NULL)
 		return;
 
-	int city_id = city->Body.ID;
-	int civ_id = city->Body.CivID;
-
 	// Calculate standard district food bonus
 	int standard_district_food = 0;
-	FOR_TILES_AROUND (tai, is->workable_tile_count, city->Body.X, city->Body.Y) {
-		if (tai.tile == NULL || tai.tile == p_null_tile) continue;
-		if (tai.tile->Territory_OwnerID != civ_id) continue;
-		if (tile_has_enemy_unit (tai.tile, civ_id)) continue;
-		if (tai.tile->vtable->m20_Check_Pollution (tai.tile, __, 0)) continue;
-		struct district_instance * inst = get_district_instance (tai.tile);
-		if (inst == NULL) continue;
-		int district_id = inst->district_type;
-		if ((district_id < 0) || (district_id >= is->district_count)) continue;
-		if (! district_is_complete (tai.tile, district_id)) continue;
-
+	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
+		int district_id = wai.district_inst->district_id;
 		int food_bonus = 0;
-		get_effective_district_yields (inst, &is->district_configs[district_id], &food_bonus, NULL, NULL, NULL, NULL);
+		get_effective_district_yields (wai.district_inst, &is->district_configs[district_id], &food_bonus, NULL, NULL, NULL, NULL, NULL);
 		standard_district_food += food_bonus;
 	}
 
@@ -24787,7 +33257,8 @@ district_tile_needs_defense (Tile * tile, int tile_x, int tile_y, struct distric
 	if ((tile == NULL) || (tile == p_null_tile)) return false;
 	if (inst == NULL) return false;
 
-	int district_id = inst->district_type;
+	int district_id = inst->district_id;
+	struct district_config const * cfg = &is->district_configs[district_id]; 
 	if (! district_is_complete (tile, district_id)) return false;
 	if (tile->vtable->m38_Get_Territory_OwnerID (tile) != civ_id) return false;
 
@@ -24795,6 +33266,7 @@ district_tile_needs_defense (Tile * tile, int tile_x, int tile_y, struct distric
 	int defender_count = count_units_at (tile_x, tile_y, UF_DEFENDER_VIS_TO_A_OF_CLASS_B, civ_id, 0, -1);
 	int max_defenders = 
 		(district_id == AERODROME_DISTRICT_ID || district_id == DISTRIBUTION_HUB_DISTRICT_ID ||
+		(cfg->defense_bonus_percent > 0 && district_id != NEIGHBORHOOD_DISTRICT_ID) ||
 		(district_id == WONDER_DISTRICT_ID && is->current_config.completed_wonder_districts_can_be_destroyed)) 
 			? 2 : 1;
 	if (defender_count >= max_defenders)
@@ -24960,7 +33432,7 @@ patch_Unit_seek_colony (Unit * this, int edx, bool for_own_defense, int max_dist
 					continue;
 
 				struct district_instance * inst = get_district_instance (district_tile);
-				if ((inst == NULL) || (inst->district_type == WONDER_DISTRICT_ID))
+				if ((inst == NULL) || (inst->district_id == WONDER_DISTRICT_ID))
 					continue;
 
 				int tile_x, tile_y;
@@ -24997,7 +33469,7 @@ patch_Tile_has_district_or_colony (Tile * this)
 	    is->current_config.ai_defends_districts) {
 
 		struct district_instance * inst = get_district_instance (this);
-		return (inst != NULL) && district_is_complete (this, inst->district_type);
+		return (inst != NULL) && district_is_complete (this, inst->district_id);
 	}
 
 	// Fallback to original has_colony logic
@@ -25054,17 +33526,20 @@ patch_City_set_production (City * this, int edx, int order_type, int order_id, b
 	if (! is_human)
 		return;
 
+	char ss[256];
 	bool release_reservation = true;
-	if (order_type == COT_Improvement) {
-		Improvement * improv = &p_bic_data->Improvements[order_id];
+	if (this->Body.Order_Type == COT_Improvement) {
+		Improvement * improv = &p_bic_data->Improvements[this->Body.Order_ID];
 		if (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder)) {
-			if (reserve_wonder_district_for_city (this))
+			if (reserve_wonder_district_for_city (this, this->Body.Order_ID)) {
 				release_reservation = false;
+			}
 		}
 	}
 
-	if (release_reservation)
+	if (release_reservation) {
 		release_wonder_district_reservation (this);
+	}
 }
 
 int __fastcall
@@ -25073,7 +33548,7 @@ patch_Tile_m71_Check_Worker_Job (Tile * this)
 	if (is->current_config.enable_natural_wonders) {
 		struct district_instance * inst = get_district_instance (this);
 		if ((inst != NULL) &&
-		    (inst->district_type == NATURAL_WONDER_DISTRICT_ID) &&
+		    (inst->district_id == NATURAL_WONDER_DISTRICT_ID) &&
 		    (inst->natural_wonder_info.natural_wonder_id >= 0)) {
 			return -1;  // No worker job allowed on natural wonders
 		}
@@ -25086,7 +33561,7 @@ patch_Tile_get_road_bonus (Tile * this)
 {
 	if (is->current_config.enable_natural_wonders) {
 		struct district_instance * inst = get_district_instance (this);
-		if ((inst != NULL) && (inst->district_type == NATURAL_WONDER_DISTRICT_ID)) {
+		if ((inst != NULL) && (inst->district_id == NATURAL_WONDER_DISTRICT_ID)) {
 			return 0;
 		}
 	}
@@ -25279,6 +33754,777 @@ patch_Map_generate_resources (Map * this, int edx, int secondary_seed)
 			}
 		free (ratios_to_clear);
 	}
+}
+
+PassBetweenValidity __fastcall
+patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int to_x, int to_y, int param_5)
+{
+	PassBetweenValidity base = Unit_can_pass_between (this, __, from_x, from_y, to_x, to_y, param_5);
+
+	if (great_wall_blocks_civ (tile_at (to_x, to_y), this->Body.CivID))
+		return PBV_GENERIC_INVALID_MOVE;
+
+	if (is->current_config.enable_districts && is->current_config.workers_can_enter_coast &&
+		base != PBV_OK && is_worker(this)) {
+		Tile * source = tile_at (from_x, from_y);
+		if (source != NULL &&
+		    source->vtable->m35_Check_Is_Water (source) &&
+		    (source->vtable->m50_Get_Square_BaseType (source) == SQ_Coast))
+			return true;
+
+		Tile * dest = tile_at (to_x, to_y);
+		if ((dest != NULL) &&
+		    dest->vtable->m35_Check_Is_Water (dest) &&
+		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast)) {
+			bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
+
+			// If human, okay to enter coast tile
+			if (is_human)
+				return PBV_OK;
+
+			struct district_worker_record * rec = get_tracked_worker_record (this);
+			struct pending_district_request * req = (rec != NULL) ? rec->pending_req : NULL;
+			if (req != NULL)
+				return PBV_OK;
+		}
+	}
+
+	if (is->current_config.enable_districts &&
+		is->current_config.enable_bridge_districts &&
+		base != PBV_OK &&
+		(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land)) {
+		Tile * dest = tile_at (to_x, to_y);
+		if ((dest != NULL) && (dest != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (dest);
+			if ((inst != NULL) &&
+			    (inst->district_id == BRIDGE_DISTRICT_ID) &&
+			    district_is_complete (dest, inst->district_id)) {
+				return PBV_OK;
+			}
+		}
+	if (is->current_config.enable_districts &&
+		is->current_config.enable_canal_districts &&
+		base != PBV_OK &&
+		(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
+		Tile * dest = tile_at (to_x, to_y);
+		if ((dest != NULL) && (dest != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (dest);
+			if ((inst != NULL) &&
+			    (inst->district_id == CANAL_DISTRICT_ID) &&
+			    district_is_complete (dest, inst->district_id)) {
+				return PBV_OK;
+			}
+		}
+	}
+
+	return base;
+}
+
+Unit * __fastcall
+patch_Unit_select_transport (Unit * this, int edx, int tile_x, int tile_y, bool do_show_popup)
+{
+	Unit * transport = Unit_select_transport (this, __, tile_x, tile_y, do_show_popup);
+
+	if (is->current_config.enable_districts &&
+	    (transport == NULL) && (this == is->coast_walk_unit)) {
+		Tile * dest = tile_at (tile_x, tile_y);
+		if (dest != NULL) {
+			bool allow_move = false;
+			if (is->current_config.workers_can_enter_coast && is_worker (this) &&
+			    dest->vtable->m35_Check_Is_Water (dest) &&
+			    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
+				allow_move = true;
+
+			if (! allow_move && is->current_config.enable_bridge_districts &&
+			    (p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land)) {
+				struct district_instance * inst = get_district_instance (dest);
+				if (inst != NULL && inst->district_id == BRIDGE_DISTRICT_ID &&
+				    district_is_complete (dest, inst->district_id)) {
+					allow_move = true;
+				}
+			}
+
+			if (allow_move) {
+				is->coast_walk_transport_override = true;
+				return this; // Fake a transport so the move logic proceeds
+			}
+		}
+	}
+
+	return transport;
+}
+
+// Returns true if the given tile is a water district owned by an enemy of the unit
+bool
+is_enemy_maritime_district_tile (Unit * unit, Tile * tile)
+{
+	if ((unit == NULL) || (tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (! is->current_config.enable_districts)
+		return false;
+
+	if (! tile->vtable->m35_Check_Is_Water (tile))
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL)
+		return false;
+
+	int owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	if ((owner <= 0) || (owner == unit->Body.CivID))
+		return false;
+
+	Leader * leader = &leaders[unit->Body.CivID];
+	return leader->At_War[owner];
+}
+
+// Boost pillage desirability for maritime districts
+int __fastcall
+patch_Unit_ai_eval_pillage_target (Unit * this, int edx, int tile_x, int tile_y)
+{
+	int base = Unit_ai_eval_pillage_target (this, __, tile_x, tile_y);
+
+	if (! is->current_config.enable_districts || ! is->current_config.enable_port_districts)
+		return base;
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if (is_enemy_maritime_district_tile (this, tile)) {
+		// Double the base score so districts outrank generic coast targets
+		base += base + 0x300;
+	}
+
+	return base;
+}
+
+// Light-weight hunt for nearby friendly ports; returns true if a path/command was issued
+bool
+try_path_to_friendly_port_district (Unit * unit, bool require_damaged, bool require_undefended)
+{
+	if ((unit == NULL) ||
+	    ! is->current_config.enable_districts ||
+	    ! is->current_config.enable_port_districts)
+		return false;
+
+	if (unit->Body.Container_Unit >= 0) // Don't redirect cargo
+		return false;
+
+	if (unit->Body.Moves <= 0)
+		return false;
+
+	if (require_damaged && (unit->Body.Damage <= 0))
+		return false;
+
+	if (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class != UTC_Sea)
+		return false;
+
+	int sea_id = unit->vtable->get_sea_id (unit);
+	if (sea_id < 0)
+		return false;
+
+	int best_x = -1, best_y = -1, best_path_len = INT_MAX;
+	const int search_radius = 10;
+	for (int dy = -search_radius; dy <= search_radius; dy++) {
+		for (int dx = -search_radius; dx <= search_radius; dx++) {
+			int tx = unit->Body.X + dx, ty = unit->Body.Y + dy;
+			wrap_tile_coords (&p_bic_data->Map, &tx, &ty);
+
+			Tile * tile = tile_at (tx, ty);
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+
+			if ((short)tile->vtable->m46_Get_ContinentID (tile) != sea_id)
+				continue;
+
+			if (! tile_has_friendly_port_district (tile, unit->Body.CivID))
+				continue;
+
+			int occupier_id = get_tile_occupier_id (tx, ty, -1, true);
+			if ((occupier_id != -1) && (occupier_id != unit->Body.CivID))
+				continue;
+
+			if (require_undefended) {
+				bool has_friendly_sea_unit = false;
+				FOR_UNITS_ON (uti, tile) {
+					Unit * on_tile = uti.unit;
+					if ((on_tile == NULL) || (on_tile->Body.Container_Unit >= 0))
+						continue;
+					if (on_tile->Body.CivID != unit->Body.CivID)
+						continue;
+					if (p_bic_data->UnitTypes[on_tile->Body.UnitTypeID].Unit_Class != UTC_Sea)
+						continue;
+					if (on_tile->Body.ID == unit->Body.ID)
+						continue;
+					has_friendly_sea_unit = true;
+					break;
+				}
+				if (has_friendly_sea_unit)
+					continue;
+			}
+
+			if (! is_below_stack_limit (tile, unit->Body.CivID, UTC_Sea))
+				continue;
+
+			int path_len = 0;
+			int path_result = patch_Trade_Net_set_unit_path (is->trade_net, __, unit->Body.X, unit->Body.Y,
+			                                                 tx, ty, unit, unit->Body.CivID, 0x81, &path_len);
+			if (path_result <= 0)
+				continue;
+
+			if (path_len < best_path_len) {
+				best_path_len = path_len;
+				best_x = tx;
+				best_y = ty;
+			}
+		}
+	}
+
+	if (unit->Body.X == best_x && unit->Body.Y == best_y) {
+		Unit_set_escortee (unit, __, -1);
+		Unit_set_state (unit, __, UnitState_Fortifying);
+		return true;
+	}
+	else if (best_x >= 0) {
+		patch_Trade_Net_set_unit_path (is->trade_net, __, unit->Body.X, unit->Body.Y, best_x, best_y,
+		                               unit, unit->Body.CivID, 0x81, NULL);
+		Unit_set_escortee (unit, __, -1);
+		Unit_set_state (unit, __, UnitState_Go_To);
+		unit->Body.path_dest_x = best_x;
+		unit->Body.path_dest_y = best_y;
+		return true;
+	}
+
+	return false;
+}
+
+void __fastcall
+patch_Unit_ai_move_naval_power_unit (Unit * this)
+{
+	if (! is->current_config.enable_districts || 
+		! is->current_config.enable_port_districts ||
+		! is->current_config.naval_units_use_port_districts_not_cities) {
+		Unit_ai_move_naval_power_unit (this);
+		return;
+	}
+
+	Tile * here = tile_at (this->Body.X, this->Body.Y);
+	if (here == NULL) {
+		Unit_ai_move_naval_power_unit (this);
+		return;
+	}
+
+	// If we're on a port and the sole unit, fortify 
+	if (is->current_config.ai_defends_districts && 
+		tile_has_friendly_port_district (here, this->Body.CivID) && 
+		count_units_at (this->Body.X, this->Body.Y, UF_0, this->Body.CivID, 0, -1) == 1) {
+		Unit_set_escortee (this, __, -1);
+		Unit_set_state (this, __, UnitState_Fortifying);
+		return;
+	}
+
+	// If we're already sitting on an enemy maritime district, pillage it immediately
+	if (this->Body.Container_Unit < 0) {
+		if (is_enemy_maritime_district_tile (this, here) &&
+		    patch_Unit_can_pillage (this, __, this->Body.X, this->Body.Y) &&
+		    (patch_Unit_ai_eval_pillage_target (this, __, this->Body.X, this->Body.Y) > 0)) {
+			patch_Unit_attack_tile (this, __, this->Body.X, this->Body.Y, false);
+			return;
+		}
+	}
+
+	// If damaged and CAN heal at current location (e.g. port district), fortify to heal
+	if (this->Body.Damage > 0 && patch_Unit_can_heal_at (this, __, this->Body.X, this->Body.Y)) {
+		Unit_set_escortee (this, __, -1);
+		Unit_set_state (this, __, UnitState_Fortifying);
+		return;
+	}
+
+	// If damaged and cannot heal here, try to path to a friendly port district
+	if ((this->Body.Damage > 0) && try_path_to_friendly_port_district (this, true, false))
+		return;
+
+	Unit_ai_move_naval_power_unit (this);
+	return;
+}
+
+void __fastcall
+patch_Unit_ai_move_naval_transport (Unit * this)
+{
+	if (! is->current_config.enable_districts || 
+		! is->current_config.enable_port_districts ||
+		! is->current_config.naval_units_use_port_districts_not_cities) {
+		Unit_ai_move_naval_transport (this);
+		return;
+	}
+
+	// If damaged and CAN heal at current location (e.g. port district), fortify to heal
+	if ((this->Body.Damage > 0) &&
+	    patch_Unit_can_heal_at (this, __, this->Body.X, this->Body.Y)) {
+		Unit_set_escortee (this, __, -1);
+		Unit_set_state (this, __, UnitState_Fortifying);
+		return;
+	}
+
+	// If damaged and cannot heal here, try to path to a friendly port district
+	if ((this->Body.Damage > 0) && try_path_to_friendly_port_district (this, true, false))
+		return;
+
+	Unit_ai_move_naval_transport (this);
+}
+
+void __fastcall
+patch_Unit_ai_move_naval_missile_transport (Unit * this)
+{
+	if (! is->current_config.enable_districts || 
+		! is->current_config.enable_port_districts ||
+		! is->current_config.naval_units_use_port_districts_not_cities) {
+		patch_Unit_ai_move_naval_missile_transport (this);
+		return;
+	}
+
+	// If damaged and CAN heal at current location (e.g. port district), fortify to heal
+	if ((this->Body.Damage > 0) &&
+	    patch_Unit_can_heal_at (this, __, this->Body.X, this->Body.Y)) {
+		Unit_set_escortee (this, __, -1);
+		Unit_set_state (this, __, UnitState_Fortifying);
+		return;
+	}
+
+	// If damaged and cannot heal here, try to path to a friendly port district
+	if ((this->Body.Damage > 0) && try_path_to_friendly_port_district (this, true, false))
+		return;
+
+	Unit_ai_move_naval_missile_transport (this);
+}
+
+void __fastcall
+patch_Unit_ai_move_air_bombard_unit (Unit * this)
+{
+	if (! (is->current_config.enable_districts &&
+	       is->current_config.enable_aerodrome_districts &&
+	       is->current_config.air_units_use_aerodrome_districts_not_cities)) {
+		Unit_ai_move_air_bombard_unit (this);
+		return;
+	}
+
+	if (this->Body.Damage > 0) {
+		Unit_set_escortee (this, __, -1);
+		Unit_set_state (this, __, UnitState_Fortifying);
+		return;
+	}
+
+	int best_target = 0;
+	int target_x = -1, target_y = -1;
+	int op_range = p_bic_data->UnitTypes[this->Body.UnitTypeID].OperationalRange;
+	int grid = op_range * 2 + 1;
+	if (1 < grid * grid) {
+		for (int n = 1; n < grid * grid; n++) {
+			int dx, dy;
+			neighbor_index_to_diff (n, &dx, &dy);
+			int x = Map_wrap_horiz (&p_bic_data->Map, __, this->Body.X + dx);
+			int y = Map_wrap_vert (&p_bic_data->Map, __, this->Body.Y + dy);
+			if (Map_in_range (&p_bic_data->Map, __, x, y)) {
+				int score = Unit_ai_eval_bombard_target (this, __, x, y, 1);
+				if (score > best_target) {
+					best_target = score;
+					target_x = x;
+					target_y = y;
+				}
+			}
+		}
+	}
+
+	int best_base_score = 0x7fffffff;
+	int base_x = -1, base_y = -1;
+	FOR_AERODROMES_AROUND (this) {
+		if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID,
+			p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+			continue;
+
+		int count = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 6, -1, -1);
+		int x_dist = Map_get_x_dist (&p_bic_data->Map, __, aerodrome_x, this->Body.X);
+		int y_dist = Map_get_y_dist (&p_bic_data->Map, __, aerodrome_y, this->Body.Y);
+		int score = (count * 10) + ((x_dist + y_dist) >> 1);
+		if ((this->Body.X == aerodrome_x) && (this->Body.Y == aerodrome_y))
+			score -= 20;
+
+		if (score < best_base_score) {
+			best_base_score = score;
+			base_x = aerodrome_x;
+			base_y = aerodrome_y;
+		}
+	}
+
+	if ((base_x >= 0) && ((this->Body.X != base_x) || (this->Body.Y != base_y))) {
+		Unit_set_escortee (this, __, -1);
+		patch_Unit_move (this, __, base_x, base_y);
+		return;
+	}
+
+	if ((target_x >= 0) && (target_y >= 0)) {
+		Unit_set_escortee (this, __, -1);
+		patch_Unit_bombard_tile (this, __, target_x, target_y);
+		return;
+	}
+
+	Unit_set_escortee (this, __, -1);
+	Unit_set_state (this, __, UnitState_Fortifying);
+}
+
+void __fastcall
+patch_Unit_ai_move_air_defense_unit (Unit * this)
+{
+	if (! (is->current_config.enable_districts &&
+	       is->current_config.enable_aerodrome_districts &&
+	       is->current_config.air_units_use_aerodrome_districts_not_cities)) {
+		Unit_ai_move_air_defense_unit (this);
+		return;
+	}
+
+	Unit_ai_move_air_defense_unit (this);
+	return;
+
+	Unit_set_state (this, __, 0);
+	if (this->Body.Damage > 0) {
+		Unit_set_escortee (this, __, -1);
+		Unit_set_state (this, __, UnitState_Fortifying);
+		return;
+	}
+
+	int best_base_score = 0x7fffffff;
+	int base_x = -1, base_y = -1;
+	FOR_AERODROMES_AROUND (this) {
+		if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID,
+			p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+			continue;
+
+		int count = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 7, -1, -1);
+		int x_dist = Map_get_x_dist (&p_bic_data->Map, __, aerodrome_x, this->Body.X);
+		int y_dist = Map_get_y_dist (&p_bic_data->Map, __, aerodrome_y, this->Body.Y);
+		int score = (count * 10) + ((x_dist + y_dist) >> 1);
+		if ((this->Body.X == aerodrome_x) && (this->Body.Y == aerodrome_y))
+			score -= 20;
+
+		if (score < best_base_score) {
+			best_base_score = score;
+			base_x = aerodrome_x;
+			base_y = aerodrome_y;
+		}
+	}
+
+	if ((base_x >= 0) && ((this->Body.X != base_x) || (this->Body.Y != base_y))) {
+		Unit_set_escortee (this, __, -1);
+		patch_Unit_move (this, __, base_x, base_y);
+		return;
+	}
+
+	Unit_set_escortee (this, __, -1);
+	Unit_set_state (this, __, UnitState_Intercept);
+}
+
+void __fastcall
+patch_Unit_ai_move_air_transport (Unit * this)
+{
+	if (! (is->current_config.enable_districts &&
+	       is->current_config.enable_aerodrome_districts &&
+	       is->current_config.air_units_use_aerodrome_districts_not_cities)) {
+		Unit_ai_move_air_transport (this);
+		return;
+	}
+
+	Unit_ai_move_air_transport (this);
+	return;
+
+	if (this->Body.Damage < 1) {
+		if (Unit_can_airdrop (this)) {
+			int best_score = 0;
+			int best_x = -1, best_y = -1;
+			int op_range = p_bic_data->UnitTypes[this->Body.UnitTypeID].OperationalRange;
+			int grid = op_range * 2 + 1;
+			if (1 < grid * grid) {
+				for (int n = 1; n < grid * grid; n++) {
+					int dx, dy;
+					neighbor_index_to_diff (n, &dx, &dy);
+					int x = Map_wrap_horiz (&p_bic_data->Map, __, this->Body.X + dx);
+					int y = Map_wrap_vert (&p_bic_data->Map, __, this->Body.Y + dy);
+					if (Map_in_range (&p_bic_data->Map, __, x, y)) {
+						int score = Unit_ai_eval_airdrop_target (this, __, x, y);
+						if (score > best_score) {
+							best_score = score;
+							best_x = x;
+							best_y = y;
+						}
+					}
+				}
+				if ((best_x >= 0) && (best_y >= 0)) {
+					Unit_set_escortee (this, __, -1);
+					Unit_airdrop (this, __, best_x, best_y);
+					return;
+				}
+			}
+		}
+
+		int best_score = -1;
+		int base_x = -1, base_y = -1;
+		FOR_AERODROMES_AROUND (this) {
+			if (! is_below_stack_limit (aerodrome_tile, this->Body.CivID,
+				p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+				continue;
+
+			int score = count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 0, -1, -1) +
+			            count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 1, -1, -1) + 1;
+			if (count_units_at (aerodrome_x, aerodrome_y, UF_AI_STRAT_A_VIS_TO_B, 9, -1, -1) == 0)
+				score *= 2;
+			int cont_id = aerodrome_tile->vtable->m46_Get_ContinentID (aerodrome_tile);
+			if ((cont_id >= 0) && (cont_id < p_bic_data->Map.Continent_Count) &&
+			    (p_bic_data->Map.Continents[cont_id].Body.TileCount > 0x15))
+				score *= 2;
+
+			if (score > best_score) {
+				best_score = score;
+				base_x = aerodrome_x;
+				base_y = aerodrome_y;
+			}
+		}
+
+		if ((base_x >= 0) && ((this->Body.X != base_x) || (this->Body.Y != base_y))) {
+			Unit_set_escortee (this, __, -1);
+			patch_Unit_move (this, __, base_x, base_y);
+			if (Unit_count_contained_units (this) > 0) {
+				patch_Unit_disembark_passengers (this, __, this->Body.X, this->Body.Y);
+			}
+			return;
+		}
+	}
+
+	if (Unit_count_contained_units (this) > 0)
+		patch_Unit_disembark_passengers (this, __, this->Body.X, this->Body.Y);
+
+	Unit_set_escortee (this, __, -1);
+	Unit_set_state (this, __, UnitState_Fortifying);
+}
+
+bool __fastcall
+patch_Tile_has_colony_ignore_extraterritorial (Tile * tile)
+{
+	if (is->current_config.allow_extraterritorial_colonies)
+		return false;
+
+	return Tile_has_colony (tile);
+}
+
+int __fastcall
+patch_Leader_get_attitude_toward (Leader * this, int edx, int civ_id, int param_2)
+{
+	int score = Leader_get_attitude_toward (this, __, civ_id, param_2);
+	if (!is->current_config.allow_extraterritorial_colonies)
+		return score;
+
+	// Note, ideally we'd loop over p_colonies like in vanilla, but it's not clear what the 
+	// structure is of it, so for now just loop over all tiles
+
+	int penalty = is->current_config.per_extraterritorial_colony_relation_penalty;
+	if (penalty != 0) {
+		int this_civ_id = this->ID;
+		Map * map = &p_bic_data->Map;
+		for (int index = 0; index < map->TileCount; index++) {
+			int x, y;
+			tile_index_to_coords (map, index, &x, &y);
+			Tile * tile = tile_at (x, y);
+			if ((tile == NULL) || (tile == p_null_tile))
+				continue;
+			if (tile->vtable->m38_Get_Territory_OwnerID (tile) != this_civ_id)
+				continue;
+			if (! Tile_has_colony (tile))
+				continue;
+			if (tile->vtable->m70_Get_Tile_Building_OwnerID (tile) != civ_id)
+				continue;
+			score -= penalty;
+		}
+	}
+	return score;
+}
+
+bool __fastcall
+patch_Tile_m17_Check_Irrigation (Tile * this, int edx, int visible_to_civ_id)
+{
+	bool base = Tile_m17_Check_Irrigation (this, __, visible_to_civ_id);
+	if (base)
+		return true;
+
+	if (! is->current_config.enable_districts)
+		return base;
+
+	struct district_instance * inst = get_district_instance (this);
+	if (inst == NULL)
+		return base;
+
+	if (is->district_configs[inst->district_id].allow_irrigation_from && district_is_complete (this, inst->district_id))
+		return true;
+
+	return base;
+}
+
+int __fastcall
+patch_Unit_ai_eval_bombard_target (Unit * this, int edx, int tile_x, int tile_y, int param_3)
+{
+	int score = Unit_ai_eval_bombard_target (this, __, tile_x, tile_y, param_3);
+
+	if (! (is->current_config.enable_districts &&
+	       is->current_config.enable_great_wall_districts))
+		return score;
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if ((tile == NULL) || (tile == p_null_tile))
+		return score;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if ((inst == NULL) || (inst->district_id != GREAT_WALL_DISTRICT_ID) || (! district_is_complete (tile, GREAT_WALL_DISTRICT_ID)))
+		return score;
+
+	int obsolete_id = is->district_infos[GREAT_WALL_DISTRICT_ID].obsoleted_by_id;
+	if ((obsolete_id >= 0) && Leader_has_tech (&leaders[this->Body.CivID], __, obsolete_id))
+		return score;
+
+	int owner_id = tile->vtable->m38_Get_Territory_OwnerID (tile);
+	if ((owner_id <= 0) || (owner_id == this->Body.CivID))
+		return score;
+	if (! this->vtable->is_enemy_of_civ (this, __, owner_id, false))
+		return score;
+
+	bool has_unit_on_tile = false;
+	bool has_enemy_on_tile = false;
+	Leader * me = &leaders[this->Body.CivID];
+	FOR_UNITS_ON (uti, tile) {
+		UnitType const * unit_type = &p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID];
+		if (patch_Unit_is_visible_to_civ (uti.unit, __, me->ID, 0)) {
+			has_unit_on_tile = true;
+			if (me->At_War[uti.unit->Body.CivID]) {
+				if ((unit_type->Defence > 0) || (unit_type->Attack > 0)) {
+					has_enemy_on_tile = true;
+					break;
+				}
+			} else
+				break;
+		}
+	}
+
+	if (has_unit_on_tile && ! has_enemy_on_tile)
+		return score;
+
+	// Boost score to prioritize Great Wall targets
+	if (score < 0x6000)
+		score = 0x6000;
+
+	// Additional boost if there is no unit on it, more likely to destroy it
+	if (! has_enemy_on_tile)
+		score += 0x200;
+
+	return score;
+}
+
+void __fastcall
+patch_Unit_heal_at_start_of_turn (Unit * this)
+{
+	if (is->current_config.enable_districts) {
+		Tile * tile = tile_at ((this->Body).X, (this->Body).Y);
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (tile);
+			if (inst != NULL && district_is_complete (tile, inst->district_id) &&
+			    is->district_configs[inst->district_id].heal_units_in_one_turn) {
+				int territory_owner = tile->vtable->m38_Get_Territory_OwnerID (tile);
+				if (territory_owner == this->Body.CivID) {
+					(this->Body).Damage = 0;
+					return;
+				}
+			}
+		}
+	}
+
+	Unit_heal_at_start_of_turn (this);
+}
+
+// Makes naval AI treat enemy port districts as valid targets to path toward.
+int __cdecl
+patch_get_tile_occupier_id_in_Unit_ai_move_naval_power_unit (int x, int y, int pov_civ_id, bool respect_unit_invisibility)
+{
+	int base = get_tile_occupier_id (x, y, pov_civ_id, respect_unit_invisibility);
+	if (base != -1)
+		return base;
+
+	if (! is->current_config.enable_districts || ! is->current_config.enable_port_districts)
+		return -1;
+
+	Tile * tile = tile_at (x, y);
+	if (tile == NULL || tile == p_null_tile)
+		return -1;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL)
+		return -1;
+
+	return (*tile->vtable->m38_Get_Territory_OwnerID) (tile);
+}
+
+// Returns a non-zero score for enemy port district tiles so they pass the threshold check and are bombard targets
+int __fastcall
+patch_Fighter_eval_tile_vulnerability_in_Unit_ai_move_naval_power_unit (Fighter * this, int edx, Unit * unit, int tile_x, int tile_y)
+{
+	int base = Fighter_eval_tile_vulnerability (this, __, unit, tile_x, tile_y);
+	if (base > 0)
+		return base;
+
+	if (! is->current_config.enable_districts || ! is->current_config.enable_port_districts)
+		return base;
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if (tile == NULL || tile == p_null_tile)
+		return base;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL)
+		return base;
+
+	int owner = (*tile->vtable->m38_Get_Territory_OwnerID) (tile);
+	if (owner <= 0 || owner == unit->Body.CivID)
+		return base;
+
+	if (! leaders[unit->Body.CivID].At_War[owner])
+		return base;
+
+	// Return a score high enough to pass threshold (iVar13 * 8 + 0x100)
+	// 0x300 should be sufficient for most cases
+	return 0x300;
+}
+
+// Returns the territory owner for enemy port districts so the score isn't reduced and naval units move to enemy ports
+// (to subsequently pillage them)
+int __cdecl
+patch_get_combat_occupier_in_Unit_ai_move_naval_power_unit (int tile_x, int tile_y, int civ_id, byte ignore_visibility)
+{
+	int base = get_combat_occupier (tile_x, tile_y, civ_id, ignore_visibility);
+	if (base != -1)
+		return base;
+
+	if (! is->current_config.enable_districts || ! is->current_config.enable_port_districts)
+		return base;
+
+	Tile * tile = tile_at (tile_x, tile_y);
+	if (tile == NULL || tile == p_null_tile)
+		return base;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL)
+		return base;
+
+	int owner = (*tile->vtable->m38_Get_Territory_OwnerID) (tile);
+	if (owner <= 0 || owner == civ_id)
+		return base;
+
+	if (! leaders[civ_id].At_War[owner])
+		return base;
+
+	return owner;
 }
 
 int __fastcall
@@ -25489,7 +34735,6 @@ patch_City_m22 (City * this, int edx, bool param_1)
 				}
 	}
 }
-
 
 // TCC requires a main function be defined even though it's never used.
 int main () { return 0; }
