@@ -19613,6 +19613,35 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 		}
 	}
 
+	// Treat roads/rails on bridge districts like land roads/rails for movement cost.
+	if ((unit != NULL) &&
+	    is->current_config.enable_districts &&
+	    is->current_config.enable_bridge_districts &&
+	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Land)) {
+		Tile * from = tile_at (from_x, from_y);
+		Tile * to = tile_at (to_x, to_y);
+		if ((from != NULL) && (from != p_null_tile) && (to != NULL) && (to != p_null_tile)) {
+			struct district_instance * from_inst = get_district_instance (from);
+			struct district_instance * to_inst = get_district_instance (to);
+			bool from_bridge = (from_inst != NULL) &&
+					   (from_inst->district_id == BRIDGE_DISTRICT_ID) &&
+					   district_is_complete (from, from_inst->district_id);
+			bool to_bridge = (to_inst != NULL) &&
+					 (to_inst->district_id == BRIDGE_DISTRICT_ID) &&
+					 district_is_complete (to, to_inst->district_id);
+			if (from_bridge || to_bridge) {
+				bool from_rail = from->vtable->m23_Check_Railroads (from, __, 0) != 0;
+				bool to_rail = to->vtable->m23_Check_Railroads (to, __, 0) != 0;
+				bool from_road = from->vtable->m25_Check_Roads (from, __, 0) != 0;
+				bool to_road = to->vtable->m25_Check_Roads (to, __, 0) != 0;
+				if (from_rail && to_rail)
+					base_cost = 0;
+				else if (from_road && to_road)
+					base_cost = 1;
+			}
+		}
+	}
+
 	if ((unit != NULL) &&
 	    (base_cost >= 0) &&
 	    is->current_config.enable_districts &&
