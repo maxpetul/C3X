@@ -1846,6 +1846,12 @@ district_buildable_irrigation_mask_bit (void)
 }
 
 unsigned int
+district_buildable_lake_mask_bit (void)
+{
+	return (unsigned int)(1u << (SQ_SNOW_MOUNTAIN + 3));
+}
+
+unsigned int
 all_square_types_mask (void)
 {
 	return (unsigned int)((1u << (SQ_SNOW_MOUNTAIN + 1)) - 1);
@@ -1861,6 +1867,24 @@ bool
 tile_has_snow_mountain (Tile * tile)
 {
 	return (tile != NULL) && (tile != p_null_tile) && tile->vtable->m29_Check_Mountain_Snowcap (tile);
+}
+
+bool
+tile_is_lake (Tile * tile)
+{
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	if (! tile->vtable->m35_Check_Is_Water (tile))
+		return false;
+
+	int continent_id = tile->vtable->m46_Get_ContinentID (tile);
+	if ((continent_id < 0) || (continent_id >= p_bic_data->Map.Continent_Count))
+		return false;
+
+	int lake_size_threshold = 21;
+	Continent * continent = &p_bic_data->Map.Continents[continent_id];
+	return continent->Body.TileCount <= lake_size_threshold;
 }
 
 bool
@@ -1934,6 +1958,10 @@ tile_matches_square_type_mask (Tile * tile, unsigned int mask)
 
 	unsigned int irrigation_bit = district_buildable_irrigation_mask_bit ();
 	if ((mask & irrigation_bit) && tile->vtable->m17_Check_Irrigation (tile, __, 0))
+		return true;
+
+	unsigned int lake_bit = district_buildable_lake_mask_bit ();
+	if ((mask & lake_bit) && tile_is_lake (tile))
 		return true;
 
 	return false;
@@ -7549,6 +7577,9 @@ parse_buildable_square_type_mask (struct string_slice const * value,
 					entry_count += 1;
 				} else if (slice_matches_str (&item_slice, "irrigation")) {
 					mask |= district_buildable_irrigation_mask_bit ();
+					entry_count += 1;
+				} else if (slice_matches_str (&item_slice, "lake")) {
+					mask |= district_buildable_lake_mask_bit ();
 					entry_count += 1;
 				} else {
 				enum SquareTypes parsed;

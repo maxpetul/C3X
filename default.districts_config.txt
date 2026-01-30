@@ -26,7 +26,7 @@
   ;  - wonder_prereqs                  : Comma-separated wonder names. District cannot be built unless all Wonders are built by same civ.
   ;  - natural_wonder_prereqs          : Comma-separated natural wonder names. District cannot be built unless all Natural Wonders are within civ's territory.
   ;  - buildable_on                    : Comma-separated square types: desert, plains, grassland, tundra, floodplain, hills, mountains, forest, jungle, swamp, volcano, 
-                                                                       coast, sea, ocean, river, snow-forest, snow-mountains, snow-volcano, mine, irrigation.
+                                                                       coast, sea, ocean, river, snow-forest, snow-mountains, snow-volcano, mine, irrigation, lake.
   ;  - buildable_adjacent_to           : Same as buildable_on, plus "city".
   ;  - buildable_on_districts          : Comma-separated district names (tile must already have a completed district of any of these types, which it would replace).
   ;  - buildable_adjacent_to_districts : Comma-separated district names (adjacent tile must have a completed district of any of these types).

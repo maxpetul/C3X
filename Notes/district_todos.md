@@ -5,9 +5,10 @@
   - Light annotations
 
 ## To ask Flintlock
-  - naval units can't enter canals
+  - Naval units can't enter canals
+  - Unit movement from bridge->land (even when both have roads) still takes 1 turn
   - Enabling pillage button for naval units
-  - Worker on coast wake up issue
+  - Worker on coast and land units on bridge movement wake up issue
   - Colony structure and loop for relation penalty
 
 
