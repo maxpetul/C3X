@@ -20898,6 +20898,13 @@ int __fastcall
 patch_City_get_largest_adjacent_sea_within_work_area (City * this)
 {
 	if (is->current_config.enable_districts && is->current_config.expand_water_tile_checks_to_city_work_area) {
+		int improv_id = is->current_evaluating_improve_id;
+		if ((improv_id >= 0) && (improv_id < p_bic_data->ImprovementsCount)) {
+
+			// If Coastal Fortress, default to original logic (city must be next to coast)
+			if (p_bic_data->Improvements[improv_id].Naval_Bombard_Defence > 0)
+				return City_get_largest_adjacent_sea (this);
+		}
 		int lake_size_threshold = 21;
 		int largest_size = 0;
 		int largest_continent_id = -1;
@@ -20963,9 +20970,9 @@ patch_Map_impl_has_fresh_water_within_work_area (Map * this, int edx, int tile_x
 		int improv_id = is->current_evaluating_improve_id;
 		if ((improv_id >= 0) && (improv_id < p_bic_data->ImprovementsCount)) {
 
-			// If an Aqueduct, default to original logic
+			// If an Aqueduct, default to original logic (city must be next to coast)
 			if ((p_bic_data->Improvements[improv_id].ImprovementFlags & ITF_Allows_City_Level_2) != 0)
-				return Map_impl_has_fresh_water (this, __, tile_x, tile_y);
+				return Map_impl_has_fresh_water(this, __, tile_x, tile_y);
 		}
 		if (patch_Map_impl_is_near_river_within_work_area (this, __, tile_x, tile_y, 1))
 			return true;
@@ -21081,6 +21088,11 @@ bool __fastcall
 patch_City_can_build_improvement (City * this, int edx, int i_improv, bool apply_strict_rules)
 {	
 	is->current_evaluating_improve_id = i_improv;
+
+	char ss[200];
+	snprintf (ss, sizeof ss, "patch_City_can_build_improvement:evaluating improvement %s (%d)\n",
+		p_bic_data->Improvements[i_improv].Name.S, i_improv);
+	(*p_OutputDebugStringA) (ss);
 
 	// First defer to the base game's logic
 	bool base = City_can_build_improvement (this, __, i_improv, apply_strict_rules);
