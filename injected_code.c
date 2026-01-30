@@ -665,6 +665,8 @@ reset_to_base_config ()
 	for (int n = 0; n < ARRAY_LEN (cc->limit_units_per_tile); n++)
 		cc->limit_units_per_tile[n] = 0;
 
+	table_deinit (&cc->exclude_types_from_units_per_tile_limit);
+
 	for (int n = 0; n < COUNT_PERFUME_KINDS; n++)
 		stable_deinit (&cc->perfume_specs[n]);
 
@@ -2371,6 +2373,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						else
 							handle_config_error (&p, CPE_BAD_VALUE);
 					}
+				} else if (slice_matches_str (&p.key, "exclude_types_from_units_per_tile_limit")) {
+					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->exclude_types_from_units_per_tile_limit))
+						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "limit_defensive_retreat_on_water_to_types")) {
 					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->limit_defensive_retreat_on_water_to_types))
 						handle_config_error (&p, CPE_BAD_VALUE);
@@ -19425,8 +19430,10 @@ patch_City_get_turns_to_build (City * this, int edx, enum City_Order_Types order
 }
 
 bool
-is_below_stack_limit (Tile * tile, int civ_id, enum UnitTypeClasses class)
+is_below_stack_limit (Tile * tile, int civ_id, int type_id)
 {
+	enum UnitTypeClasses class = p_bic_data->UnitTypes[type_id].Unit_Class;
+
 	int stack_limit = is->current_config.limit_units_per_tile[class];
 	if (stack_limit <= 0)
 		return true;
@@ -19435,14 +19442,19 @@ is_below_stack_limit (Tile * tile, int civ_id, enum UnitTypeClasses class)
 	    get_city_ptr (tile->CityID) != NULL)
 		return true;
 
+	if (itable_look_up_or (&is->current_config.exclude_types_from_units_per_tile_limit, type_id, 0))
+		return true;
+
 	FOR_UNITS_ON (uti, tile) {
 		// If there is a foreign unit on the tile then consider it as being below the stack limit. This ensures that the stack limit doesn't
 		// block combat between players.
 		if (uti.unit->Body.CivID != civ_id)
 			return true;
 
+		int uti_type_id = uti.unit->Body.UnitTypeID;
 		if ((uti.unit->Body.Container_Unit < 0) &&
-		    (class == p_bic_data->UnitTypes[uti.unit->Body.UnitTypeID].Unit_Class)) {
+		    (class == p_bic_data->UnitTypes[uti_type_id].Unit_Class) &&
+		    ! itable_look_up_or (&is->current_config.exclude_types_from_units_per_tile_limit, uti_type_id, 0)) {
 			stack_limit -= 1;
 			if (stack_limit <= 0)
 				return false;
@@ -19532,11 +19544,11 @@ patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, 
 	}
 
 	// Apply unit count per tile limit
-	enum UnitTypeClasses class = p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class;
-	if ((base_validity == AMV_OK) && (is->current_config.limit_units_per_tile[class] > 0)) {
+	int type_id = this->Body.UnitTypeID;
+	if ((base_validity == AMV_OK) && (is->current_config.limit_units_per_tile[p_bic_data->UnitTypes[type_id].Unit_Class] > 0)) {
 		int nx, ny;
 		get_neighbor_coords (&p_bic_data->Map, this->Body.X, this->Body.Y, neighbor_index, &nx, &ny);
-		if (! is_below_stack_limit (tile_at (nx, ny), this->Body.CivID, class))
+		if (! is_below_stack_limit (tile_at (nx, ny), this->Body.CivID, type_id))
 			return AMV_CANNOT_PASS_BETWEEN;
 	}
 
@@ -19683,7 +19695,7 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 	}
 
 	// Apply unit count per tile limit
-	if ((unit != NULL) && ! is_below_stack_limit (tile_at (to_x, to_y), unit->Body.CivID, p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class))
+	if ((unit != NULL) && ! is_below_stack_limit (tile_at (to_x, to_y), unit->Body.CivID, unit->Body.UnitTypeID))
 		return -1;
 
 	// Apply trespassing restriction
@@ -26715,18 +26727,27 @@ bool __fastcall
 patch_Unit_can_disembark_anything (Unit * this, int edx, int tile_x, int tile_y)
 {
 	Tile * this_tile = tile_at (this->Body.X, this->Body.Y);
+	Tile * target_tile = tile_at (tile_x, tile_y);
 	bool base = Unit_can_disembark_anything (this, __, tile_x, tile_y);
 
 	// Apply units per tile limit
-	if (base && ! is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, UTC_Land))
-		return false;
+	if (base) {
+		bool stack_limited_for_all = true;
+		FOR_UNITS_ON (uti, this_tile)
+			if ((uti.unit->Body.Container_Unit == this->Body.ID) && is_below_stack_limit (target_tile, this->Body.CivID, uti.unit->Body.UnitTypeID)) {
+				stack_limited_for_all = false;
+				break;
+			}
+		if (stack_limited_for_all)
+			return false;
+	}
 
 	// Apply trespassing restriction. First check if this civ may move into (tile_x, tile_y) without trespassing. If it would be trespassing, then
 	// we can only disembark anything if this transport has a passenger that can ignore the restriction. Without this check, the game can enter an
 	// infinite loop under rare circumstances.
-	else if (base &&
-		 is->current_config.disallow_trespassing &&
-		 check_trespassing (this->Body.CivID, this_tile, tile_at (tile_x, tile_y))) {
+	if (base &&
+	    is->current_config.disallow_trespassing &&
+	    check_trespassing (this->Body.CivID, this_tile, target_tile)) {
 		bool any_exempt_passengers = false;
 		FOR_UNITS_ON (uti, this_tile)
 			if ((uti.unit->Body.Container_Unit == this->Body.ID) && is_allowed_to_trespass (uti.unit)) {
@@ -27063,7 +27084,7 @@ patch_Tile_check_water_for_retreat_on_defense (Tile * this)
 	// Check stack limit
 	if ((! retreat_blocked) &&
 	    (defender != NULL) &&
-	    ! is_below_stack_limit (this, defender->Body.CivID, p_bic_data->UnitTypes[defender->Body.UnitTypeID].Unit_Class))
+	    ! is_below_stack_limit (this, defender->Body.CivID, defender->Body.UnitTypeID))
 		retreat_blocked = true;
 
 	// The return from this call is only used to filter the given tile as a possible retreat destination based on whether it's water or not
@@ -27281,7 +27302,7 @@ patch_Leader_spawn_unit (Leader * this, int edx, int type_id, int tile_x, int ti
 					Tile * district_tile = get_completed_district_tile_for_city (spawn_city, AERODROME_DISTRICT_ID, &district_x, &district_y);
 					if ((district_tile != NULL) && (district_tile != p_null_tile) &&
 					    (district_tile->Territory_OwnerID == this->ID) &&
-					    is_below_stack_limit (district_tile, this->ID, type->Unit_Class)) {
+					    is_below_stack_limit (district_tile, this->ID, type_id)) {
 						spawn_x = district_x;
 						spawn_y = district_y;
 					}
@@ -27298,7 +27319,7 @@ patch_Leader_spawn_unit (Leader * this, int edx, int type_id, int tile_x, int ti
 				Tile * district_tile = get_completed_district_tile_for_city (spawn_city, PORT_DISTRICT_ID, &district_x, &district_y);
 				if ((district_tile != NULL) && (district_tile != p_null_tile) &&
 				    (district_tile->Territory_OwnerID == this->ID) &&
-				    is_below_stack_limit (district_tile, this->ID, type->Unit_Class)) {
+				    is_below_stack_limit (district_tile, this->ID, type_id)) {
 					spawn_x = district_x;
 					spawn_y = district_y;
 				}
@@ -29514,7 +29535,7 @@ bool __fastcall
 patch_Unit_check_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
 {
 	return Unit_check_airdrop_target (this, __, tile_x, tile_y) &&
-		is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class) &&
+		is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, this->Body.UnitTypeID) &&
 		! is_airdrop_trespassing (this, tile_x, tile_y);
 }
 
@@ -29573,7 +29594,7 @@ patch_Unit_check_airlift_target (Unit * this, int edx, int tile_x, int tile_y)
 	if (! allowed)
 		return false;
 
-	return is_below_stack_limit (tile, this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+	return is_below_stack_limit (tile, this->Body.CivID, this->Body.UnitTypeID);
 }
 
 void __fastcall
@@ -29602,11 +29623,14 @@ patch_Unit_airlift (Unit * this, int edx, int tile_x, int tile_y)
 int __fastcall
 patch_City_count_airports_for_ai_airlift_target (City * this, int edx, enum ImprovementTypeFlags airport_flag)
 {
+	// When this function is called, the AI unit being moved is stored in register ESI.
+	Unit * unit;
+	__asm__ __volatile__("mov %%esi, %0" : "=r" (unit));
+
 	int tr = City_count_improvements_with_flag (this, __, airport_flag);
 
-	// Check the stack limit here. If the city's tile is at the limit, return that it has no airport so the AI can't airlift there. The two calls
-	// to this patch function come from the off. & def. unit AI, so only for land units.
-	if ((tr > 0) && ! is_below_stack_limit (tile_at (this->Body.X, this->Body.Y), this->Body.CivID, UTC_Land))
+	// Check the stack limit here. If the city's tile is at the limit, return that it has no airport so the AI can't airlift there.
+	if ((tr > 0) && ! is_below_stack_limit (tile_at (this->Body.X, this->Body.Y), this->Body.CivID, unit->Body.UnitTypeID))
 		return 0;
 
 	else
@@ -29620,7 +29644,7 @@ patch_Unit_ai_eval_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
 
 	// Prevent the AI from airdropping onto tiles in violation of the stack limit or trespassing restriction
 	if ((tr > 0) &&
-	    ((! is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class)) ||
+	    ((! is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, this->Body.UnitTypeID)) ||
 	     is_airdrop_trespassing (this, tile_x, tile_y)))
 		tr = 0;
 
@@ -29630,7 +29654,7 @@ patch_Unit_ai_eval_airdrop_target (Unit * this, int edx, int tile_x, int tile_y)
 bool __fastcall
 patch_Unit_find_telepad_on_tile (Unit * this, int edx, int x, int y, bool show_selection_popup, Unit ** out_unit_telepad)
 {
-	if (! is_below_stack_limit (tile_at (x, y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class)) {
+	if (! is_below_stack_limit (tile_at (x, y), this->Body.CivID, this->Body.UnitTypeID)) {
 		*out_unit_telepad = NULL;
 		return false;
 	} else
@@ -29645,7 +29669,7 @@ patch_Unit_ai_go_to_capital (Unit * this)
 	// Block going to capital if the capital's tile is at the stack limit. This stops the AI from airlifting there (would violate the limit) and
 	// saves it from trying to pathfind there.
 	if ((capital != NULL) &&
-	    ! is_below_stack_limit (tile_at (capital->Body.X, capital->Body.Y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class))
+	    ! is_below_stack_limit (tile_at (capital->Body.X, capital->Body.Y), this->Body.CivID, this->Body.UnitTypeID))
 		return false;
 
 	return Unit_ai_go_to_capital (this);
@@ -29671,7 +29695,7 @@ patch_Unit_is_in_rebase_range (Unit * this, int edx, int tile_x, int tile_y)
 		in_range = ((x_dist + y_dist) >> 1) <= (op_range * is->current_config.rebase_range_multiplier);
 	}
 
-	return in_range && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+	return in_range && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, this->Body.UnitTypeID);
 }
 
 bool __fastcall
@@ -29697,7 +29721,7 @@ patch_Unit_check_rebase_target (Unit * this, int edx, int tile_x, int tile_y)
 						// Perform range check
 						bool in_range = patch_Unit_is_in_rebase_range (this, __, tile_x, tile_y);
 						if (in_range) {
-							return is_below_stack_limit (tile, this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+							return is_below_stack_limit (tile, this->Body.CivID, this->Body.UnitTypeID);
 						}
 					}
 				}
@@ -29716,7 +29740,7 @@ patch_Unit_check_rebase_target (Unit * this, int edx, int tile_x, int tile_y)
 
 	// 6 is the game's standard value, so fall back on the base game logic in that case
 	if (is->current_config.rebase_range_multiplier == 6) {
-		return Unit_check_rebase_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class);
+		return Unit_check_rebase_target (this, __, tile_x, tile_y) && is_below_stack_limit (tile_at (tile_x, tile_y), this->Body.CivID, this->Body.UnitTypeID);
 
 	// Otherwise, we have to redo the range check. Unlike Unit::is_in_rebase_range, the base method here does more than just check the range so we
 	// want to make sure to call it even if we determine that the target is in range. In that case, set the range to unlimited temporarily so the
