@@ -215,6 +215,7 @@ bool __fastcall patch_Unit_can_perform_command (Unit * this, int edx, int unit_c
 bool __fastcall patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int tile_y);
 bool __fastcall patch_City_has_resource (City * this, int edx, int resource_id);
 bool __fastcall patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, bool param_2);
+char __fastcall patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing);
 bool can_build_district_on_tile (Tile * tile, int district_id, int civ_id);
 bool city_can_build_district (City * city, int district_id);
 bool leader_can_build_district (Leader * leader, int district_id);
@@ -6013,7 +6014,7 @@ district_is_complete(Tile * tile, int district_id)
 		if (cfg->auto_add_railroad) {
 			bool has_railroad = tile->vtable->m23_Check_Railroads (tile, __, 0) != 0;
 			if (! has_railroad) {
-				if ((territory_owner >= 0) && Leader_can_do_worker_job (&leaders[territory_owner], __, WJ_Build_Railroad, tile_x, tile_y, 0)) {
+				if ((territory_owner >= 0) && patch_Leader_can_do_worker_job (&leaders[territory_owner], __, WJ_Build_Railroad, tile_x, tile_y, 0)) {
 					tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_RAILROAD, tile_x, tile_y); 
 				}
 			}
@@ -18406,6 +18407,12 @@ patch_Unit_can_perform_command (Unit * this, int edx, int unit_command_value)
 			    return patch_Map_check_colony_location (&p_bic_data->Map, __, this->Body.X, this->Body.Y, this->Body.CivID) == 0;
 			}
 		}
+		else if (unit_command_value == UCV_Build_Road) {
+			struct district_instance * inst = get_district_instance (tile);
+			bool has_road = tile->vtable->m25_Check_Roads (tile, __, 0) != 0;
+			if (!has_road && (inst != NULL) && tile_has_district_at (this->Body.X, this->Body.Y, BRIDGE_DISTRICT_ID))
+				return true;
+		}
 		else if (unit_command_value == UCV_Build_Mine) {
 			bool has_district = (tile != NULL) && (tile != p_null_tile) && (get_district_instance (tile) != NULL);
 
@@ -18832,6 +18839,26 @@ patch_Main_GUI_handle_button_press (Main_GUI * this, int edx, int button_id)
 	}
 
 	int command = this->Unit_Command_Buttons[button_id].Command;
+
+	// Bypass normal command handling for bridge road/rail if the job is allowed
+	if (is->current_config.enable_districts && is->current_config.enable_bridge_districts &&
+	    (command == UCV_Build_Road || command == UCV_Build_Railroad) &&
+	    (p_main_screen_form->Current_Unit != NULL) &&
+	    is_worker (p_main_screen_form->Current_Unit)) {
+		Unit * unit = p_main_screen_form->Current_Unit;
+		Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (tile);
+			if ((inst != NULL) && (inst->district_id == BRIDGE_DISTRICT_ID)) {
+				enum Worker_Jobs job = (command == UCV_Build_Road) ? WJ_Build_Road : WJ_Build_Railroad;
+				if (patch_Leader_can_do_worker_job (&leaders[unit->Body.CivID], __, job, unit->Body.X, unit->Body.Y, 1)) {
+					Unit_set_state (unit, __, (job == WJ_Build_Road) ? UnitState_Build_Road : UnitState_Build_Railroad);
+					unit->Body.Job_ID = job;
+					return;
+				}
+			}
+		}
+	}
 
 	// Clear any highlighted tiles
 	if (is->current_config.enable_city_work_radii_highlights && is->highlight_city_radii) {
@@ -20183,17 +20210,28 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 	bool skip_replacement_logic =
 		(p_main_screen_form->Player_CivID == this->ID) && is->current_config.skip_repeated_tile_improv_replacement_asks;
 
+	Tile * tile = tile_at (tile_x, tile_y);
+
 	// Check if AI is trying to change a district tile (before calling vanilla logic)
 	if ((is->current_config.enable_districts || is->current_config.enable_natural_wonders) && 
 		((*p_human_player_bits & (1 << this->ID)) == 0)) {
-		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
 			struct district_instance * inst = get_district_instance (tile);
 			if (inst != NULL && inst->district_id >= 0 && inst->district_id < is->district_count) {
 				int district_id = inst->district_id;
+				bool allow_ai_change = false;
+
+				// Allow AI to modify obsolete districts
+				if (district_is_obsolete_for_civ (district_id, this->ID))
+					allow_ai_change = true;
+
+				// Allow AI to build roads/rails on bridge districts
+				if (! allow_ai_change && (district_id == BRIDGE_DISTRICT_ID) &&
+				    (job == WJ_Build_Road || job == WJ_Build_Railroad))
+					allow_ai_change = true;
 
 				// For Wonder Districts: check if unused (can be replaced)
-				if (is->current_config.enable_wonder_districts && (district_id == WONDER_DISTRICT_ID)) {
+				if (! allow_ai_change && is->current_config.enable_wonder_districts && (district_id == WONDER_DISTRICT_ID)) {
 					struct wonder_district_info * info = get_wonder_district_info (tile);
 
 					// If there's a reservation (wonder being built) or completed wonder, block replacement
@@ -20202,10 +20240,10 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 
 					// Wonder district is unused - fall through to normal tech checks
 				}
-				else if (is->current_config.enable_natural_wonders && (district_id == NATURAL_WONDER_DISTRICT_ID)) {
+				else if (! allow_ai_change && is->current_config.enable_natural_wonders && (district_id == NATURAL_WONDER_DISTRICT_ID)) {
 					return 0;
 				}
-				else {
+				else if (! allow_ai_change) {
 					// For all other district types: AI should not change them
 					return 0;
 				}
@@ -20228,7 +20266,6 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 	}
 
 	if (! tr && is->current_config.enable_districts && (job == WJ_Build_Mines)) {
-		Tile * tile = tile_at (tile_x, tile_y);
 		if ((tile != NULL) && (tile != p_null_tile)) {
 			struct district_instance * inst = get_district_instance (tile);
 			if (inst != NULL &&
@@ -20243,6 +20280,29 @@ patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, in
 					if (leader_can_build_district (this, inst->district_id) &&
 					    district_resource_prereqs_met (tile, tile_x, tile_y, inst->district_id, NULL))
 						tr = 1;
+				}
+			}
+		}
+	}
+
+	if (! tr && is->current_config.enable_districts && is->current_config.enable_bridge_districts &&
+	    (job == WJ_Build_Road || job == WJ_Build_Railroad)) {
+		if ((tile != NULL) && (tile != p_null_tile)) {
+			struct district_instance * inst = get_district_instance (tile);
+			if ((inst != NULL) && (inst->district_id == BRIDGE_DISTRICT_ID)) {
+				bool has_road = tile->vtable->m25_Check_Roads (tile, __, 0) != 0;
+				if (job == WJ_Build_Road) {
+					if (! has_road)
+						tr = 1;
+				} else {
+					bool has_rail = tile->vtable->m23_Check_Railroads (tile, __, 0) != 0;
+					if (has_road && ! has_rail) {
+						int req_tech = p_bic_data->WorkerJobs[job].RequireID;
+						if ((req_tech < 0) ||
+						    ((req_tech != p_bic_data->AdvanceCount) &&
+						     Leader_has_tech (&leaders[this->ID], __, req_tech)))
+							tr = 1;
+					}
 				}
 			}
 		}
@@ -22432,12 +22492,37 @@ patch_Main_Screen_Form_m82_handle_key_event (Main_Screen_Form * this, int edx, i
 		if      (virtual_key_code == VK_M && is_command_button_active (&this->GUI, UCV_Build_Mine))   command = UCV_Build_Mine;
 		else if (virtual_key_code == VK_I && is_command_button_active (&this->GUI, UCV_Irrigate))     command = UCV_Irrigate;
 		else if (virtual_key_code == VK_N && is_command_button_active (&this->GUI, UCV_Plant_Forest)) command = UCV_Plant_Forest;
+		else if (virtual_key_code == VK_R) {
+			int shift_down = (*p_GetAsyncKeyState) (VK_SHIFT) >> 8;
+			if (shift_down && is_command_button_active (&this->GUI, UCV_Build_Railroad))
+				command = UCV_Build_Railroad;
+			else if (is_command_button_active (&this->GUI, UCV_Build_Road))
+				command = UCV_Build_Road;
+		}
+
+		if ((command == UCV_Build_Road || command == UCV_Build_Railroad) &&
+		    is->current_config.enable_bridge_districts) {
+			Unit * unit = p_main_screen_form->Current_Unit;
+			Tile * tile = tile_at (unit->Body.X, unit->Body.Y);
+			if ((tile != NULL) && (tile != p_null_tile)) {
+				struct district_instance * inst = get_district_instance (tile);
+				if ((inst != NULL) && (inst->district_id == BRIDGE_DISTRICT_ID)) {
+					enum Worker_Jobs job = (command == UCV_Build_Road) ? WJ_Build_Road : WJ_Build_Railroad;
+					if (patch_Leader_can_do_worker_job (&leaders[unit->Body.CivID], __, job, unit->Body.X, unit->Body.Y, 1)) {
+						Unit_set_state (unit, __, (job == WJ_Build_Road) ? UnitState_Build_Road : UnitState_Build_Railroad);
+						unit->Body.Job_ID = job;
+						goto after_district_key_handling;
+					}
+				}
+			}
+		}
 
 		if (handle_worker_command_that_may_replace_district (p_main_screen_form->Current_Unit, command, &removed_existing)) {
 			Main_Screen_Form_issue_command (this, __, command, p_main_screen_form->Current_Unit);
 		}
 	}
 
+after_district_key_handling:
 	Main_Screen_Form_m82_handle_key_event (this, __, virtual_key_code, is_down);
 }
 
@@ -33469,6 +33554,12 @@ patch_Tile_get_road_bonus (Tile * this)
 		struct district_instance * inst = get_district_instance (this);
 		if ((inst != NULL) && (inst->district_id == NATURAL_WONDER_DISTRICT_ID)) {
 			return 0;
+		}
+	}
+	if (is->current_config.enable_districts && is->current_config.enable_bridge_districts) {
+		struct district_instance * inst = get_district_instance (this);
+		if ((inst != NULL) && (inst->district_id == BRIDGE_DISTRICT_ID)) {
+			return 1;
 		}
 	}
 	return Tile_get_road_bonus (this);

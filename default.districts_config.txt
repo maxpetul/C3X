@@ -431,6 +431,7 @@ btn_tile_sheet_row     = 0
 btn_tile_sheet_column  = 7
 advance_prereqs        = Industrialization
 buildable_on           = coast
+auto_add_road          = 1
 defense_bonus_percent  = 0
 allow_multiple         = 1
 culture_bonus          = 0
