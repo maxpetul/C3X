@@ -167,6 +167,7 @@ struct c3x_config {
 	bool limited_railroads_work_like_fast_roads;
 	int limit_units_per_tile[3]; // Limits for land, sea, and air units respectively
 	bool exclude_cities_from_units_per_tile_limit;
+	struct table exclude_types_from_units_per_tile_limit;
 	bool enable_free_buildings_from_small_wonders;
 	bool enable_stack_unit_commands;
 	bool skip_repeated_tile_improv_replacement_asks;
