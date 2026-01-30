@@ -13507,7 +13507,7 @@ maybe_show_neighborhood_growth_warning (City * city)
 
 	char msg[160];
 	char const * city_name = city->Body.CityName;
-	snprintf (msg, sizeof msg, "%s %s %s", 
+	snprintf (msg, sizeof msg, "%s %s %s %s", 
 		city_name, 
 		is->c3x_labels[CL_REQUIRES],
 		is->district_configs[NEIGHBORHOOD_DISTRICT_ID].display_name, 
