@@ -18044,6 +18044,7 @@ patch_Main_GUI_set_up_unit_command_buttons (Main_GUI * this)
 				pillage_button->Button.field_664 = 0;
 				pillage_button->Button.field_5FC[13] = 0;
 				pillage_button->Button.vtable->m01_Show_Enabled ((Base_Form *)&pillage_button->Button, __, 0);
+				Button_set_tooltip (&pillage_button->Button, __, is->c3x_labels[CL_PILLAGE]);
 			}
 		}
 	}

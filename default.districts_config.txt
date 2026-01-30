@@ -13,6 +13,7 @@
   ;  - img_paths                       : Comma-separated PCX filenames under Art/Districts/1200/. 
                                          1 for single image, 5 for culture variants (AMER, EURO, ROMAN, MIDEAST, ASIAN). Order matters.
   ;  - render_strategy                 : "by-count" | "by-building". Whether the PCX files show all buildings together, or one building per column. (default: "by-count")
+  ;  - draw_over_resources             : 0 or 1. If a resource is also on the tile, draw the district on top. (default: 0)
   ;  - vary_img_by_era                 : 0 or 1. If 1, each PCX image must have 4 rows, 1 for each era.
   ;  - vary_img_by_culture             : 0 or 1. If 1, img_paths should list 5 files (AMER, EURO, ROMAN, MIDEAST, ASIAN).
   ;  - btn_tile_sheet_row              : Number. Row index in the district button tile sheet (0-based).
@@ -49,7 +50,6 @@
   ;  - x_offset                        : Number (pixels). Push the sprite farther to the right (or left, if negative). (default: 0)
   ;  - y_offset                        : Number (pixels). Push the sprite farther down (or up, if negative). (default: 0)
   ;  - align_to_coast                  : 0 or 1. Aligns art to coastline, slightly adjusting x & y pixels. (default: 0)
-  ;  - draw_over_resources             : 0 or 1. If a resource is also on the tile, draw the district on top. (default: 0)
   ;  - auto_add_road                   : 0 or 1. Auto-add road on completion. (default: 0)
   ;  - auto_add_railroad               : 0 or 1. Auto-add railroad on completion. (default: 0)
   ;  - allow_irrigation_from           : 0 or 1. District can act as an irrigation source. (default: 0)
