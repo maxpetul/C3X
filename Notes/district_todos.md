@@ -1,4 +1,3 @@
-  - Add buildable_on_overlay
   - Districts: 
     - Municipal District (ZergMazter doing art)
     - Central Rail Hub   (ZergMazter doing art)
@@ -14,6 +13,7 @@
 
 ## Maritime Districts
   - ~~Negative bonuses~~
+  - ~~Add buildable_on_overlay~~
   - ~~Add commented instructions on fields in Wonder, Natural Wonder config files~~
   - ~~Firm up logic for river district rendering~~
   - ~~Validate and upfront bridge/canal algorithm~~
