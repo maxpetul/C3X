@@ -16733,6 +16733,7 @@ patch_init_floating_point ()
 		{"patch_disease_stopping_tech_flag_bug"                  , false, offsetof (struct c3x_config, patch_disease_stopping_tech_flag_bug)},
 		{"patch_division_by_zero_in_ai_alliance_eval"            , true , offsetof (struct c3x_config, patch_division_by_zero_in_ai_alliance_eval)},
 		{"patch_empty_army_movement"                             , true , offsetof (struct c3x_config, patch_empty_army_movement)},
+		{"patch_empty_army_combat"                        , true , offsetof (struct c3x_config, patch_empty_army_combat)},
 		{"patch_premature_truncation_of_found_paths"             , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
 		{"patch_zero_production_crash"                           , true , offsetof (struct c3x_config, patch_zero_production_crash)},
 		{"patch_ai_can_form_army_without_special_ability"        , true , offsetof (struct c3x_config, patch_ai_can_form_army_without_special_ability)},
@@ -35086,6 +35087,26 @@ patch_City_m22 (City * this, int edx, bool param_1)
 					break;
 				}
 	}
+}
+
+Unit * __fastcall
+patch_Unit_select_army_member_for_combat (Unit * this, int edx, int param_1, char param_2)
+{
+	if (is->current_config.patch_empty_army_combat) {
+		int unit_count = 0;
+		Tile * tile = tile_at (this->Body.X, this->Body.Y);
+		if (tile != NULL && tile != p_null_tile) {
+			FOR_UNITS_ON (uti, tile) {
+				Unit * unit = uti.unit;
+				if ((unit != NULL) && (unit->Body.Container_Unit == this->Body.ID))
+					unit_count += Unit_count_contained_units (unit) + 1;
+			}
+		}
+		if (unit_count == 0)
+			return this;
+	}
+
+	return Unit_select_army_member_for_combat (this, __, param_1, param_2);
 }
 
 // TCC requires a main function be defined even though it's never used.

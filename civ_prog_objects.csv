@@ -931,3 +931,4 @@ inlead,    0x440100,    0x0,        0x0,        "Leader_get_attitude_toward",			
 inlead,    0x5D7080,    0x0,        0x0,        "Map_check_colony_location",			"int (__fastcall *) (Map * this, int edx, int tile_x, int tile_y, int civ_id)"
 ignore,	   0x670234,	0x68D2E0,	0x670234,	"Tile_m27_Check_Shield_Bonus",			"bool (__fastcall *) (Tile * this)"
 ignore,	   0x5f3448,	0x6032DF,	0x5F3378,	"CHECK_SHIELD_BONUS_TO_CAN_SPAWN_RES_RETURN",	"int"
+inlead,	   0x5BCE60,	0x0,	    0x0,     	"Unit_select_army_member_for_combat",	"Unit * (__fastcall *) (Unit * this, int edx, int param_1, char param_2)"
