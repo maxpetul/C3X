@@ -27554,18 +27554,18 @@ patch_Leader_spawn_unit (Leader * this, int edx, int type_id, int tile_x, int ti
 
 	if (is->current_config.enable_districts) {
 		UnitType * type = &p_bic_data->UnitTypes[type_id];
-		if (is->current_config.air_units_use_aerodrome_districts_not_cities) {
-			if (type->Unit_Class == UTC_Air) {
-				City * spawn_city = city_at (tile_x, tile_y);
-				if ((spawn_city != NULL) && (spawn_city->Body.CivID == this->ID)) {
-					int district_x, district_y;
-					Tile * district_tile = get_completed_district_tile_for_city (spawn_city, AERODROME_DISTRICT_ID, &district_x, &district_y);
-					if ((district_tile != NULL) && (district_tile != p_null_tile) &&
-					    (district_tile->Territory_OwnerID == this->ID) &&
-					    is_below_stack_limit (district_tile, this->ID, type_id)) {
-						spawn_x = district_x;
-						spawn_y = district_y;
-					}
+		if ((type->Unit_Class == UTC_Air) &&
+			is->current_config.enable_aerodrome_districts &&
+			is->current_config.air_units_use_aerodrome_districts_not_cities) {
+			City * spawn_city = city_at (tile_x, tile_y);
+			if ((spawn_city != NULL) && (spawn_city->Body.CivID == this->ID)) {
+				int district_x, district_y;
+				Tile * district_tile = get_completed_district_tile_for_city (spawn_city, AERODROME_DISTRICT_ID, &district_x, &district_y);
+				if ((district_tile != NULL) && (district_tile != p_null_tile) &&
+				    (district_tile->Territory_OwnerID == this->ID) &&
+				    is_below_stack_limit (district_tile, this->ID, type_id)) {
+					spawn_x = district_x;
+					spawn_y = district_y;
 				}
 			}
 		}
