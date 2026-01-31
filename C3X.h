@@ -735,7 +735,8 @@ struct district_config {
 	int buildable_on_district_count;
 	int buildable_adjacent_to_district_count;
 	int img_path_count;
-	int max_building_index;
+	int img_column_count;
+	bool has_img_column_count_override;
 	int btn_tile_sheet_column;
 	int btn_tile_sheet_row;
 	int culture_bonus;
@@ -863,7 +864,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = true, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
-		.img_path_count = 5, .max_building_index = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
+		.img_path_count = 5, .img_column_count = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
 		.culture_bonus = 1, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 25,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 
@@ -873,7 +874,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"WonderDistrict.pcx"},
 		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Coast) | (1 << SQ_Mountains)),
-		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 0, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 
@@ -883,7 +884,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereqs = {"Construction"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"DistributionHub.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
-		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 0, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 
@@ -893,7 +894,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereqs = {"Flight"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 1,
 		.img_paths = {"Aerodrome.pcx"}, .dependent_improvements = {"Airport"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
-		.img_path_count = 1, .max_building_index = 1, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 1, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
@@ -902,7 +903,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {0},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
-		.img_path_count = 0, .max_building_index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
+		.img_path_count = 0, .img_column_count = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
@@ -911,7 +912,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereqs = {"Map Making"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 2, .align_to_coast = true,
 		.img_paths = {"Port_NW.pcx", "Port_NE.pcx", "Port_SE.pcx", "Port_SW.pcx"}, .dependent_improvements = {"Harbor", "Commercial Dock"},
 		.buildable_square_types_mask = (1 << SQ_Coast),
-		.img_path_count = 4, .max_building_index = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .align_to_coast = true,
+		.img_path_count = 4, .img_column_count = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .align_to_coast = true,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
@@ -920,7 +921,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereqs = {"Steam Power"}, .advance_prereq_count = 1, .resource_prereqs = {"Iron", "Coal"}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 2, .dependent_improvement_count = 0,
 		.img_paths = {"CentralRailHub_AMER.pcx", "CentralRailHub_EURO.pcx", "CentralRailHub_ROMAN.pcx", "CentralRailHub_MIDEAST.pcx", "CentralRailHub_ASIAN.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK, .auto_add_road = true, .auto_add_railroad = true,
-		.img_path_count = 5, .max_building_index = 1, .btn_tile_sheet_column = 5, .btn_tile_sheet_row = 0,
+		.img_path_count = 5, .img_column_count = 1, .btn_tile_sheet_column = 5, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
@@ -929,7 +930,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 4,
 		.img_paths = {"EnergyGrid.pcx"}, .dependent_improvements = {"Coal Plant", "Hydro Plant", "Solar Plant", "Nuclear Plant"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK, .custom_height = 84,
-		.img_path_count = 1, .max_building_index = 14, .btn_tile_sheet_column = 6, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 14, .btn_tile_sheet_column = 6, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 2, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
@@ -938,7 +939,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
 		.img_paths = {"Bridge.pcx"}, .dependent_improvements = {0}, .custom_width = 176, .custom_height = 112, .y_offset = 24, .x_offset = 0,
 		.buildable_square_types_mask = (1 << SQ_Coast), .auto_add_road = true,
-		.img_path_count = 1, .max_building_index = 7, .btn_tile_sheet_column = 7, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 7, .btn_tile_sheet_column = 7, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
@@ -947,7 +948,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
 		.img_paths = {"Canal.pcx"}, .dependent_improvements = {0}, .custom_width = 176, .custom_height = 112, .y_offset = 24, .x_offset = 0,
 		.buildable_square_types_mask = (1 << SQ_Desert) | (1 << SQ_Plains) | (1 << SQ_Grassland) | (1 << SQ_Tundra) | (1 << SQ_FloodPlain), 
-		.img_path_count = 1, .max_building_index = 8, .btn_tile_sheet_column = 8, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 8, .btn_tile_sheet_column = 8, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
@@ -956,7 +957,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereqs = {0}, .advance_prereq_count = 0, .obsoleted_by = "Metallurgy", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
 		.img_paths = {"GreatWall.pcx"}, .dependent_improvements = {0}, .custom_height = 88, .wonder_prereqs = {"The Great Wall"}, .wonder_prereq_count = 1,
 		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Mountains) | (1 << SQ_Forest) | (1 << SQ_Swamp) | (1 << SQ_Jungle)), .draw_over_resources = true,
-		.img_path_count = 1, .max_building_index = 10, .btn_tile_sheet_column = 9, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 10, .btn_tile_sheet_column = 9, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 50,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	}
@@ -984,6 +985,7 @@ struct parsed_district_definition {
 	int buildable_on_district_count;
 	int buildable_adjacent_to_district_count;
 	int img_path_count;
+	int img_column_count;
 	bool allow_multiple;
 	bool vary_img_by_era;
 	bool vary_img_by_culture;
@@ -1034,6 +1036,7 @@ struct parsed_district_definition {
 	bool has_natural_wonder_prereqs;
 	bool has_display_name;
 	bool has_img_paths;
+	bool has_img_column_count;
 	bool has_allow_multiple;
 	bool has_vary_img_by_era;
 	bool has_vary_img_by_culture;

@@ -8285,9 +8285,14 @@ override_special_district_from_definition (struct parsed_district_definition * d
 			cfg->dependent_improvements[i] = def->dependent_improvements[i];
 			def->dependent_improvements[i] = NULL;
 		}
-		cfg->max_building_index = cfg->dependent_improvement_count;
-		if (cfg->max_building_index > 20)
-			cfg->max_building_index = 20;
+		if (! def->has_img_column_count) {
+			cfg->img_column_count = cfg->dependent_improvement_count;
+			if (cfg->img_column_count > 20)
+				cfg->img_column_count = 20;
+			if (cfg->img_column_count < 0)
+				cfg->img_column_count = 0;
+			cfg->has_img_column_count_override = false;
+		}
 	}
 
 	if (def->has_img_paths) {
@@ -8307,6 +8312,15 @@ override_special_district_from_definition (struct parsed_district_definition * d
 			cfg->img_paths[i] = def->img_paths[i];
 			def->img_paths[i] = NULL;
 		}
+	}
+
+	if (def->has_img_column_count) {
+		cfg->img_column_count = def->img_column_count;
+		if (cfg->img_column_count > 20)
+			cfg->img_column_count = 20;
+		if (cfg->img_column_count < 0)
+			cfg->img_column_count = 0;
+		cfg->has_img_column_count_override = true;
 	}
 
 	if (! ensure_culture_variant_art (cfg, section_start_line)) {
@@ -8561,9 +8575,12 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		return false;
 	}
 
-	new_cfg.max_building_index = new_cfg.dependent_improvement_count;
-	if (new_cfg.max_building_index > 20)
-		new_cfg.max_building_index = 20;
+	new_cfg.img_column_count = def->has_img_column_count ? def->img_column_count : new_cfg.dependent_improvement_count;
+	if (new_cfg.img_column_count > 20)
+		new_cfg.img_column_count = 20;
+	if (new_cfg.img_column_count < 0)
+		new_cfg.img_column_count = 0;
+	new_cfg.has_img_column_count_override = def->has_img_column_count;
 
 	if (reusing_existing)
 		new_cfg.command = preserved_command;
@@ -8971,6 +8988,15 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->has_img_paths = false;
 		}
 		free (value_text);
+
+	} else if (slice_matches_str (key, "img_column_count")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->img_column_count = ival;
+			def->has_img_column_count = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
 	} else if (slice_matches_str (key, "dependent_improvs")) {
 		char * value_text = trim_and_extract_slice (value, 0);
@@ -10563,8 +10589,9 @@ set_wonders_dependent_on_wonder_district (void)
 		cfg->dependent_improvement_count = dest + 1;
 	}
 
-	if (cfg->max_building_index < cfg->dependent_improvement_count)
-		cfg->max_building_index = cfg->dependent_improvement_count;
+	if (! cfg->has_img_column_count_override &&
+	    (cfg->img_column_count < cfg->dependent_improvement_count))
+		cfg->img_column_count = cfg->dependent_improvement_count;
 }
 
 void
@@ -16169,7 +16196,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 				variant_count = variant_capacity;
 
 			int era_count = cfg->vary_img_by_era ? 4 : 1;
-			int column_count = cfg->max_building_index + 1;
+			int column_count = cfg->img_column_count + 1;
 
 			for (int variant_i = 0; variant_i < variant_count; variant_i++) {
 				const char * img_path = cfg->img_paths[variant_i];
@@ -16424,7 +16451,7 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 					variant_count = variant_capacity;
 
 				int era_count = cfg->vary_img_by_era ? 4 : 1;
-				int column_count = cfg->max_building_index + 1;
+				int column_count = cfg->img_column_count + 1;
 
 				for (int variant_i = 0; variant_i < variant_count; variant_i++) {
 					if ((cfg->img_paths[variant_i] == NULL) || (cfg->img_paths[variant_i][0] == '\0'))
@@ -31339,7 +31366,7 @@ init_district_images ()
 			continue;
 
 		int era_count = cfg->vary_img_by_era ? 4 : 1;
-		int column_count  = cfg->max_building_index + 1;
+		int column_count  = cfg->img_column_count + 1;
 		int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
 		int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
 
@@ -32425,7 +32452,7 @@ draw_district_on_map_or_canvas_by_buildings (Sprite * base_sprite, Map_Renderer 
 {
 	struct district_config const * cfg = &is->district_configs[district_id];
 	struct district_infos * district_info = &is->district_infos[district_id];
-	int max_stage = cfg->max_building_index;
+	int max_stage = cfg->img_column_count;
 	int stage_limit = ARRAY_LEN (is->district_img_sets[0].imgs[0][0]) - 1;
 
 	if (max_stage > stage_limit)
