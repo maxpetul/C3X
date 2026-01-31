@@ -1970,6 +1970,37 @@ tile_matches_square_type_mask (Tile * tile, unsigned int mask)
 }
 
 bool
+tile_matches_overlay_mask (Tile * tile, unsigned int mask)
+{
+	if ((tile == NULL) || (tile == p_null_tile) || (mask == 0))
+		return false;
+
+	unsigned int overlays = tile->vtable->m42_Get_Overlays (tile, __, 0);
+	if ((mask & DOM_MINE) && ((overlays & TILE_FLAG_MINE) != 0))
+		return true;
+	if ((mask & DOM_IRRIGATION) && ((overlays & 0x00000008) != 0))
+		return true;
+	if ((mask & DOM_FORTRESS) && ((overlays & 0x00000010) != 0))
+		return true;
+	if ((mask & DOM_BARRICADE) && ((overlays & 0x10000000) != 0))
+		return true;
+	if ((mask & DOM_OUTPOST) && ((overlays & 0x80000000) != 0))
+		return true;
+	if ((mask & DOM_RADAR_TOWER) && ((overlays & 0x40000000) != 0))
+		return true;
+	if ((mask & DOM_JUNGLE) && tile_matches_square_type (tile, SQ_Jungle))
+		return true;
+	if ((mask & DOM_FOREST) && tile_matches_square_type (tile, SQ_Forest))
+		return true;
+	if ((mask & DOM_SWAMP) && tile_matches_square_type (tile, SQ_Swamp))
+		return true;
+	if ((mask & DOM_RIVER) && tile_matches_square_type (tile, SQ_RIVER))
+		return true;
+
+	return false;
+}
+
+bool
 read_natural_wonder_terrain_type (struct string_slice const * s, enum SquareTypes * out_type)
 {
 	enum SquareTypes parsed;
@@ -3780,6 +3811,11 @@ district_is_buildable_on_square_type (struct district_config const * cfg, Tile *
 	if (! tile_matches_square_type_mask (tile, mask))
 		return false;
 
+	if (cfg->has_buildable_on_overlays) {
+		if (! tile_matches_overlay_mask (tile, cfg->buildable_on_overlays_mask))
+			return false;
+	}
+
 	if (cfg->has_buildable_on_districts) {
 		struct district_instance * inst = get_district_instance (tile);
 		if (inst == NULL)
@@ -3800,7 +3836,7 @@ district_is_buildable_on_square_type (struct district_config const * cfg, Tile *
 			return false;
 	}
 
-	if (cfg->has_buildable_adjacent_to || cfg->has_buildable_adjacent_to_districts) {
+	if (cfg->has_buildable_adjacent_to || cfg->has_buildable_adjacent_to_districts || cfg->has_buildable_adjacent_to_overlays) {
 		int tile_x, tile_y;
 		if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
 			return false;
@@ -3823,6 +3859,20 @@ district_is_buildable_on_square_type (struct district_config const * cfg, Tile *
 			}
 			if (city_adjacent && ! cfg->buildable_adjacent_to_allows_city)
 				return false;
+			if (! matches)
+				return false;
+		}
+
+		if (cfg->has_buildable_adjacent_to_overlays) {
+			bool matches = false;
+			FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+				if (tai.n == 0)
+					continue;
+				if (tile_matches_overlay_mask (tai.tile, cfg->buildable_adjacent_to_overlays_mask)) {
+					matches = true;
+					break;
+				}
+			}
 			if (! matches)
 				return false;
 		}
@@ -5789,7 +5839,33 @@ wonder_is_buildable_on_square_type (struct wonder_district_config const * cfg, T
 	if ((cfg == NULL) || (tile == NULL) || (tile == p_null_tile))
 		return false;
 
-	return tile_matches_square_type_mask (tile, wonder_buildable_square_type_mask (cfg));
+	if (! tile_matches_square_type_mask (tile, wonder_buildable_square_type_mask (cfg)))
+		return false;
+
+	if (cfg->has_buildable_on_overlays) {
+		if (! tile_matches_overlay_mask (tile, cfg->buildable_on_overlays_mask))
+			return false;
+	}
+
+	if (cfg->has_buildable_adjacent_to_overlays) {
+		int tile_x, tile_y;
+		if (! tile_coords_from_ptr (&p_bic_data->Map, tile, &tile_x, &tile_y))
+			return false;
+
+		bool matches = false;
+		FOR_TILES_AROUND (tai, 9, tile_x, tile_y) {
+			if (tai.n == 0)
+				continue;
+			if (tile_matches_overlay_mask (tai.tile, cfg->buildable_adjacent_to_overlays_mask)) {
+				matches = true;
+				break;
+			}
+		}
+		if (! matches)
+			return false;
+	}
+
+	return true;
 }
 
 bool
@@ -5798,8 +5874,11 @@ wonder_is_buildable_on_tile (Tile * tile, int wonder_improv_id)
 	if ((tile == NULL) || (tile == p_null_tile))
 		return false;
 
-	unsigned int mask = wonder_buildable_mask_for_improvement (wonder_improv_id);
-	return tile_matches_square_type_mask (tile, mask);
+	int windex = find_wonder_config_index_by_improvement_id (wonder_improv_id);
+	if (windex < 0)
+		return tile_matches_square_type_mask (tile, district_default_buildable_mask ());
+
+	return wonder_is_buildable_on_square_type (&is->wonder_district_configs[windex], tile);
 }
 
 int
@@ -7260,6 +7339,8 @@ init_parsed_district_definition (struct parsed_district_definition * def)
 	def->ai_build_strategy = DABS_DISTRICT;
 	def->buildable_square_types_mask = district_default_buildable_mask ();
 	def->buildable_adjacent_to_square_types_mask = 0;
+	def->buildable_on_overlays_mask = 0;
+	def->buildable_adjacent_to_overlays_mask = 0;
 	def->buildable_adjacent_to_allows_city = false;
 }
 
@@ -7577,21 +7658,28 @@ parse_buildable_square_type_mask (struct string_slice const * value,
 					}
 					allow_city = true;
 					entry_count += 1;
-				} else if (slice_matches_str (&item_slice, "mine")) {
-					mask |= district_buildable_mine_mask_bit ();
-					entry_count += 1;
-				} else if (slice_matches_str (&item_slice, "irrigation")) {
-					mask |= district_buildable_irrigation_mask_bit ();
-					entry_count += 1;
 				} else if (slice_matches_str (&item_slice, "lake")) {
 					mask |= district_buildable_lake_mask_bit ();
 					entry_count += 1;
 				} else {
 				enum SquareTypes parsed;
 				if (read_square_type_value (&item_slice, &parsed)) {
-					if (parsed == (enum SquareTypes)SQ_INVALID)
+					if ((parsed == SQ_RIVER) ||
+					    (parsed == SQ_Forest) ||
+					    (parsed == SQ_Jungle) ||
+					    (parsed == SQ_Swamp)) {
+						struct error_line * err = add_error_line (parse_errors);
+						snprintf (err->text, sizeof err->text, "^  Line %d: %.*s (invalid %s entry)", line_number, item_slice.len, item_slice.str, key_name);
+						err->text[(sizeof err->text) - 1] = '\0';
+						free (value_text);
+						return false;
+					}
+					if (parsed == (enum SquareTypes)SQ_INVALID) {
 						mask = all_square_types_mask ();
-					else
+						mask &= ~(square_type_mask_bit (SQ_Forest) |
+							  square_type_mask_bit (SQ_Jungle) |
+							  square_type_mask_bit (SQ_Swamp));
+					} else
 						mask |= square_type_mask_bit (parsed);
 					entry_count += 1;
 				} else {
@@ -7625,6 +7713,97 @@ parse_buildable_square_type_mask (struct string_slice const * value,
 	*out_mask = mask;
 	if (out_allow_city != NULL)
 		*out_allow_city = allow_city;
+	return true;
+}
+
+bool
+parse_buildable_overlay_mask (struct string_slice const * value,
+			      unsigned int * out_mask,
+			      struct error_line ** parse_errors,
+			      int line_number,
+			      char const * key_name)
+{
+	char * value_text = trim_and_extract_slice (value, 0);
+	unsigned int mask = 0;
+	int entry_count = 0;
+
+	if (key_name == NULL)
+		key_name = "buildable_on_overlays";
+
+	if (value_text != NULL) {
+		char * cursor = value_text;
+		while (1) {
+			while (is_space_char (*cursor))
+				cursor++;
+
+			char * item_start = cursor;
+			while ((*cursor != '\0') && (*cursor != ','))
+				cursor++;
+
+			char * item_end = cursor;
+			while ((item_end > item_start) && is_space_char (item_end[-1]))
+				item_end--;
+
+			struct string_slice item_slice = { .str = item_start, .len = (int)(item_end - item_start) };
+			if (item_slice.len > 0) {
+				if (slice_matches_str (&item_slice, "mine")) {
+					mask |= DOM_MINE;
+					entry_count += 1;
+				} else if (slice_matches_str (&item_slice, "irrigation")) {
+					mask |= DOM_IRRIGATION;
+					entry_count += 1;
+				} else if (slice_matches_str (&item_slice, "fortress")) {
+					mask |= DOM_FORTRESS;
+					entry_count += 1;
+				} else if (slice_matches_str (&item_slice, "barricade")) {
+					mask |= DOM_BARRICADE;
+					entry_count += 1;
+				} else if (slice_matches_str (&item_slice, "outpost")) {
+					mask |= DOM_OUTPOST;
+					entry_count += 1;
+				} else if (slice_matches_str (&item_slice, "radar-tower")) {
+					mask |= DOM_RADAR_TOWER;
+					entry_count += 1;
+				} else if (slice_matches_str (&item_slice, "jungle")) {
+					mask |= DOM_JUNGLE;
+					entry_count += 1;
+				} else if (slice_matches_str (&item_slice, "forest")) {
+					mask |= DOM_FOREST;
+					entry_count += 1;
+				} else if (slice_matches_str (&item_slice, "swamp")) {
+					mask |= DOM_SWAMP;
+					entry_count += 1;
+				} else if (slice_matches_str (&item_slice, "river")) {
+					mask |= DOM_RIVER;
+					entry_count += 1;
+				} else {
+					struct error_line * err = add_error_line (parse_errors);
+					snprintf (err->text, sizeof err->text, "^  Line %d: %.*s (invalid %s entry)", line_number, item_slice.len, item_slice.str, key_name);
+					err->text[(sizeof err->text) - 1] = '\0';
+					free (value_text);
+					return false;
+				}
+			}
+
+			if (*cursor == ',') {
+				cursor++;
+				continue;
+			}
+			break;
+		}
+	}
+
+	if (value_text != NULL)
+		free (value_text);
+
+	if ((entry_count == 0) || (mask == 0)) {
+		struct error_line * err = add_error_line (parse_errors);
+		snprintf (err->text, sizeof err->text, "^  Line %d: %s (expected at least one overlay)", line_number, key_name);
+		err->text[(sizeof err->text) - 1] = '\0';
+		return false;
+	}
+
+	*out_mask = mask;
 	return true;
 }
 
@@ -8071,6 +8250,14 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->has_buildable_adjacent_to = true;
 		cfg->buildable_adjacent_to_allows_city = def->buildable_adjacent_to_allows_city;
 	}
+	if (def->has_buildable_on_overlays) {
+		cfg->buildable_on_overlays_mask = def->buildable_on_overlays_mask;
+		cfg->has_buildable_on_overlays = true;
+	}
+	if (def->has_buildable_adjacent_to_overlays) {
+		cfg->buildable_adjacent_to_overlays_mask = def->buildable_adjacent_to_overlays_mask;
+		cfg->has_buildable_adjacent_to_overlays = true;
+	}
 
 	if (def->has_generated_resource) {
 		if ((cfg->generated_resource != NULL) && (cfg->generated_resource != defaults->generated_resource))
@@ -8320,6 +8507,10 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.buildable_adjacent_to_square_types_mask = def->has_buildable_adjacent_to ? def->buildable_adjacent_to_square_types_mask : 0;
 	new_cfg.has_buildable_adjacent_to = def->has_buildable_adjacent_to;
 	new_cfg.buildable_adjacent_to_allows_city = def->has_buildable_adjacent_to ? def->buildable_adjacent_to_allows_city : false;
+	new_cfg.buildable_on_overlays_mask = def->has_buildable_on_overlays ? def->buildable_on_overlays_mask : 0;
+	new_cfg.has_buildable_on_overlays = def->has_buildable_on_overlays;
+	new_cfg.buildable_adjacent_to_overlays_mask = def->has_buildable_adjacent_to_overlays ? def->buildable_adjacent_to_overlays_mask : 0;
+	new_cfg.has_buildable_adjacent_to_overlays = def->has_buildable_adjacent_to_overlays;
 
 	if (def->has_culture_bonus)
 		move_bonus_entry_list (&new_cfg.culture_bonus_extras, &def->culture_bonus_extras);
@@ -8806,12 +8997,30 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->has_buildable_on = true;
 		}
 
+	} else if (slice_matches_str (key, "buildable_on_overlays")) {
+		unsigned int mask;
+		if (parse_buildable_overlay_mask (value, &mask, parse_errors, line_number, "buildable_on_overlays")) {
+			def->buildable_on_overlays_mask = mask;
+			def->has_buildable_on_overlays = true;
+		} else {
+			def->has_buildable_on_overlays = false;
+		}
+
 	} else if (slice_matches_str (key, "buildable_adjacent_to")) {
 		unsigned int mask;
 		def->buildable_adjacent_to_allows_city = false;
 		if (parse_buildable_square_type_mask (value, &mask, parse_errors, line_number, "buildable_adjacent_to", &def->buildable_adjacent_to_allows_city)) {
 			def->buildable_adjacent_to_square_types_mask = mask;
 			def->has_buildable_adjacent_to = true;
+		}
+
+	} else if (slice_matches_str (key, "buildable_adjacent_to_overlays")) {
+		unsigned int mask;
+		if (parse_buildable_overlay_mask (value, &mask, parse_errors, line_number, "buildable_adjacent_to_overlays")) {
+			def->buildable_adjacent_to_overlays_mask = mask;
+			def->has_buildable_adjacent_to_overlays = true;
+		} else {
+			def->has_buildable_adjacent_to_overlays = false;
 		}
 
 	} else if (slice_matches_str (key, "allow_multiple")) {
@@ -9248,6 +9457,8 @@ init_parsed_wonder_definition (struct parsed_wonder_definition * def)
 {
 	memset (def, 0, sizeof *def);
 	def->buildable_square_types_mask = district_default_buildable_mask ();
+	def->buildable_on_overlays_mask = 0;
+	def->buildable_adjacent_to_overlays_mask = 0;
 }
 
 void
@@ -9298,6 +9509,10 @@ add_dynamic_wonder_from_definition (struct parsed_wonder_definition * def, int s
 	new_cfg.img_alt_dir_column = def->img_alt_dir_column;
 	new_cfg.enable_img_alt_dir = def->enable_img_alt_dir;
 	new_cfg.buildable_square_types_mask = def->has_buildable_on ? def->buildable_square_types_mask : district_default_buildable_mask ();
+	new_cfg.buildable_on_overlays_mask = def->has_buildable_on_overlays ? def->buildable_on_overlays_mask : 0;
+	new_cfg.buildable_adjacent_to_overlays_mask = def->has_buildable_adjacent_to_overlays ? def->buildable_adjacent_to_overlays_mask : 0;
+	new_cfg.has_buildable_on_overlays = def->has_buildable_on_overlays;
+	new_cfg.has_buildable_adjacent_to_overlays = def->has_buildable_adjacent_to_overlays;
 
 	if (existing_index >= 0) {
 		struct wonder_district_config * cfg = &is->wonder_district_configs[existing_index];
@@ -9556,6 +9771,24 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_buildable_on = true;
 		} else {
 			def->has_buildable_on = false;
+		}
+
+	} else if (slice_matches_str (key, "buildable_on_overlays")) {
+		unsigned int mask;
+		if (parse_buildable_overlay_mask (value, &mask, parse_errors, line_number, "buildable_on_overlays")) {
+			def->buildable_on_overlays_mask = mask;
+			def->has_buildable_on_overlays = true;
+		} else {
+			def->has_buildable_on_overlays = false;
+		}
+
+	} else if (slice_matches_str (key, "buildable_adjacent_to_overlays")) {
+		unsigned int mask;
+		if (parse_buildable_overlay_mask (value, &mask, parse_errors, line_number, "buildable_adjacent_to_overlays")) {
+			def->buildable_adjacent_to_overlays_mask = mask;
+			def->has_buildable_adjacent_to_overlays = true;
+		} else {
+			def->has_buildable_adjacent_to_overlays = false;
 		}
 
 	} else
@@ -31318,6 +31551,19 @@ tile_coords_has_city_with_building_in_district_radius (int tile_x, int tile_y, i
     return false;
 }
 
+bool 
+wonder_allows_river (struct wonder_district_config const * cfg)
+{
+	unsigned int build_mask = wonder_buildable_square_type_mask (cfg);
+	if (build_mask == 0)
+		build_mask = district_default_buildable_mask ();
+	if ((build_mask & square_type_mask_bit (SQ_RIVER)) != 0)
+		return true;
+	if (cfg->has_buildable_on_overlays && ((cfg->buildable_on_overlays_mask & DOM_RIVER) != 0))
+		return true;
+	return false;
+}
+
 Tile *
 get_tile_sprite_indices (int tile_x, int tile_y, int * out_sheet_index, int * out_sprite_index)
 {
@@ -31640,8 +31886,7 @@ wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner
 		return false;
 
 	// If on a river and the wonder allows river alignment, make sure we face the river instead
-	unsigned int mask = wonder_buildable_square_type_mask (cfg);
-	bool allow_river = (mask & square_type_mask_bit (SQ_RIVER)) != 0;
+	bool allow_river = wonder_allows_river (cfg);
 	if (allow_river) {
 		enum direction river_dir = DIR_ZERO;
 		if (get_primary_river_direction (center, &river_dir)) {
@@ -31734,16 +31979,11 @@ district_allows_river (struct district_config const * cfg)
 	unsigned int build_mask = cfg->buildable_square_types_mask;
 	if (build_mask == 0)
 		build_mask = district_default_buildable_mask ();
-	return (build_mask & square_type_mask_bit (SQ_RIVER)) != 0;
-}
-
-bool 
-wonder_allows_river (struct wonder_district_config const * cfg)
-{
-	unsigned int build_mask = wonder_buildable_square_type_mask (cfg);
-	if (build_mask == 0)
-		build_mask = district_default_buildable_mask ();
-	return (build_mask & square_type_mask_bit (SQ_RIVER)) != 0;
+	if ((build_mask & square_type_mask_bit (SQ_RIVER)) != 0)
+		return true;
+	if (cfg->has_buildable_on_overlays && ((cfg->buildable_on_overlays_mask & DOM_RIVER) != 0))
+		return true;
+	return false;
 }
 
 int

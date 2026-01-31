@@ -710,6 +710,8 @@ struct district_config {
 	char const * img_paths[10];
 	unsigned int buildable_square_types_mask;
 	unsigned int buildable_adjacent_to_square_types_mask;
+	unsigned int buildable_on_overlays_mask;
+	unsigned int buildable_adjacent_to_overlays_mask;
 	bool buildable_adjacent_to_allows_city;
 	bool allow_multiple;
 	bool vary_img_by_era;
@@ -761,6 +763,8 @@ struct district_config {
 	int buildable_adjacent_to_district_id_count;
 	bool has_buildable_adjacent_to;
 	bool has_buildable_adjacent_to_districts;
+	bool has_buildable_on_overlays;
+	bool has_buildable_adjacent_to_overlays;
 	char const * buildable_by_civs[32];
 	int buildable_by_civ_count;
 	bool has_buildable_by_civs;
@@ -790,8 +794,12 @@ struct wonder_district_config {
 		img_alt_dir_row,
 		img_alt_dir_column;
 	unsigned int buildable_square_types_mask;
+	unsigned int buildable_on_overlays_mask;
+	unsigned int buildable_adjacent_to_overlays_mask;
 	bool enable_img_alt_dir;
 	bool is_dynamic;
+	bool has_buildable_on_overlays;
+	bool has_buildable_adjacent_to_overlays;
 };
 
 enum square_type_extras {
@@ -800,6 +808,19 @@ enum square_type_extras {
 	SQ_SNOW_VOLCANO,
 	SQ_SNOW_FOREST,
 	SQ_SNOW_MOUNTAIN
+};
+
+enum district_overlay_mask_bits {
+	DOM_MINE        = 1u << 0,
+	DOM_IRRIGATION  = 1u << 1,
+	DOM_FORTRESS    = 1u << 2,
+	DOM_BARRICADE   = 1u << 3,
+	DOM_OUTPOST     = 1u << 4,
+	DOM_RADAR_TOWER = 1u << 5,
+	DOM_JUNGLE      = 1u << 6,
+	DOM_FOREST      = 1u << 7,
+	DOM_SWAMP       = 1u << 8,
+	DOM_RIVER       = 1u << 9
 };
 
 struct natural_wonder_district_config {
@@ -851,7 +872,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.command = UCV_Build_WonderDistrict, .name = "Wonder District", .tooltip = "Build Wonder District", .display_name = "Wonder District",
 		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"WonderDistrict.pcx"},
-		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Coast)),
+		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Coast) | (1 << SQ_Mountains)),
 		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
@@ -996,6 +1017,8 @@ struct parsed_district_definition {
 	struct district_bonus_list defense_bonus_extras;
 	unsigned int buildable_square_types_mask;
 	unsigned int buildable_adjacent_to_square_types_mask;
+	unsigned int buildable_on_overlays_mask;
+	unsigned int buildable_adjacent_to_overlays_mask;
 	bool buildable_adjacent_to_allows_city;
 	char * buildable_by_civs[32];
 	int buildable_by_civ_count;
@@ -1034,6 +1057,8 @@ struct parsed_district_definition {
 	bool has_happiness_bonus;
 	bool has_buildable_on;
 	bool has_buildable_adjacent_to;
+	bool has_buildable_on_overlays;
+	bool has_buildable_adjacent_to_overlays;
 	bool has_resource_prereq_on_tile;
 	bool has_buildable_by_civs;
 	bool has_buildable_by_war_allies;
@@ -1076,6 +1101,8 @@ struct parsed_wonder_definition {
 	int img_alt_dir_column;
 	bool enable_img_alt_dir;
 	unsigned int buildable_square_types_mask;
+	unsigned int buildable_on_overlays_mask;
+	unsigned int buildable_adjacent_to_overlays_mask;
 	bool has_name;
 	bool has_img_path;
 	bool has_img_row;
@@ -1088,6 +1115,8 @@ struct parsed_wonder_definition {
 	bool has_img_alt_dir_column;
 	bool has_enable_img_alt_dir;
 	bool has_buildable_on;
+	bool has_buildable_on_overlays;
+	bool has_buildable_adjacent_to_overlays;
 };
 
 struct parsed_natural_wonder_definition {
