@@ -19023,7 +19023,7 @@ issue_district_worker_command (Unit * unit, int command)
 
 	// If District will replace an improvement
 	unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
-	unsigned int removable_flags = overlay_flags & 0xfc;
+	unsigned int removable_flags = overlay_flags & (destructible_overlays & ~(TILE_FLAG_ROAD | TILE_FLAG_RAILROAD));
 
 	if (removable_flags != 0) {
 		PopupForm * popup = get_popup_form ();
@@ -32934,7 +32934,7 @@ ai_move_district_worker (Unit * worker, struct district_worker_record * rec)
 
 		enum SquareTypes base_type = tile->vtable->m50_Get_Square_BaseType (tile);
 		unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
-		unsigned int removable_flags = overlay_flags & 0xfc;
+		unsigned int removable_flags = overlay_flags & (destructible_overlays & ~(TILE_FLAG_ROAD | TILE_FLAG_RAILROAD));
 		bool district_buildable_here = district_is_buildable_on_square_type (&is->district_configs[req->district_id], tile);
 
 		// Remove any existing improvements
@@ -33102,7 +33102,7 @@ ai_worker_try_tile_improvement_district (Unit * worker)
 	    (best_score >= irrigation_score) &&
 	    (best_score >= mine_score)) {
 		unsigned int overlay_flags = tile->vtable->m42_Get_Overlays (tile, __, 0);
-		unsigned int removable_flags = overlay_flags & 0xfc;
+		unsigned int removable_flags = overlay_flags & (destructible_overlays & ~(TILE_FLAG_ROAD | TILE_FLAG_RAILROAD));
 		tile->vtable->m62_Set_Tile_BuildingID (tile, __, -1);
 		if (removable_flags != 0)
 			tile->vtable->m51_Unset_Tile_Flags (tile, __, 0, removable_flags, tile_x, tile_y);
