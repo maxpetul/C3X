@@ -772,6 +772,12 @@ enum Unit_Command_Values
   UCV_Build_WonderDistrict = -10000002,
   UCV_Build_DistributionHub = -10000003,
   UCV_Build_Aerodrome = -10000004,
+  UCV_Build_Port = -10000005,
+  UCV_Build_CentralRailHub = -10000006,
+  UCV_Build_EnergyGrid = -10000007,
+  UCV_Build_Bridge = -10000008,
+  UCV_Build_Canal = -10000009,
+  UCV_Build_GreatWall = -10000010,
 };
 
 enum Unit_Mode_Actions

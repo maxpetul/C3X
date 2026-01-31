@@ -1,141 +1,277 @@
-#Wonder
-name          = Angel Falls
-terrain_type  = grassland
-adjacent_to   = river
-adjacency_dir = southeast
-img_path      = NaturalWonders.pcx
-img_row       = 0
-img_column    = 0
-culture_bonus = 2
-science_bonus = 1
-food_bonus    = 0
-gold_bonus    = 0
-shield_bonus  = 0
+[======================================================================= NOTE =======================================================================]
+[Instead of editing this file, changes to the settings should be placed in either the scenario or user config files. The scenario config file must   ]
+[be named scenario.districts_natural_wonders_config.txt and must be located in your scenario search folder. Of course it only applies if you are     ]
+[using a scenario. The user config file must be named user.districts_natural_wonders_config.txt and located in the C3X folder, which is the folder   ]
+[where this file is. When creating scenario or user configs, note that all natural wonders defined here will be removed and only your scenario or    ]
+[user-defined districts will be used.                                                                                                                ]
+[====================================================================================================================================================]
+
+[
+  ;  Natural Wonder config fields (each Wonder block begins with "#Wonder")
+  ;  - name            : Text (required). Internal natural wonder name; must be unique.
+  ;  - terrain_type    : Text (required). Base terrain: desert, plains, grassland, jungle, tundra, floodplain, swamp, hills, mountains,
+                                                        forest, volcano, snow-forest, snow-mountains, snow-volcano, coast, sea, ocean.
+  ;  - adjacent_to     : Text. Optional adjacency requirement: same list as buildable square types plus river, any (no requirement).
+  ;  - adjacency_dir   : Text. Optional direction filter for adjacent_to (northeast, east, southeast, south, southwest, west, northwest, north).
+  ;  - img_path        : Text (required). PCX filename (under Art/Districts/1200/).
+  ;  - img_row         : Number (required). Row index in the PCX (0-based).
+  ;  - img_column      : Number (required). Column index in the PCX (0-based).
+  ;  - culture_bonus   : Number. Culture yield bonus when worked.
+  ;  - science_bonus   : Number. Science yield bonus when worked.
+  ;  - food_bonus      : Number. Food yield bonus when worked.
+  ;  - gold_bonus      : Number. Gold yield bonus when worked.
+  ;  - shield_bonus    : Number. Shield yield bonus when worked.
+  ;  - happiness_bonus : Number. Happiness bonus when worked.
+]
 
 #Wonder
-name          = Yosemite
-terrain_type  = grassland
-adjacent_to   = forest
-img_path      = NaturalWonders.pcx
-img_row       = 0
-img_column    = 1
-culture_bonus = 2
-science_bonus = 1
-food_bonus    = 0
-gold_bonus    = 0
-shield_bonus  = 0
+name            = Angel Falls
+terrain_type    = grassland
+adjacent_to     = river
+adjacency_dir   = southeast
+img_path        = NaturalWonders.pcx
+img_row         = 0
+img_column      = 0
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
 
 #Wonder
-name          = Mount Fuji
-terrain_type  = grassland
-img_path      = NaturalWonders.pcx
-img_row       = 0
-img_column    = 2
-culture_bonus = 2
-science_bonus = 1
-food_bonus    = 0
-gold_bonus    = 0
-shield_bonus  = 0
+name            = Yosemite
+terrain_type    = grassland
+adjacent_to     = forest
+img_path        = NaturalWonders.pcx
+img_row         = 0
+img_column      = 1
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
 
 #Wonder
-name          = Yellowstone
-terrain_type  = grassland
-adjacent_to   = forest
-img_path      = NaturalWonders.pcx
-img_row       = 0
-img_column    = 3
-culture_bonus = 2
-science_bonus = 1
-food_bonus    = 0
-gold_bonus    = 0
-shield_bonus  = 0
+name            = Mount Fuji
+terrain_type    = grassland
+img_path        = NaturalWonders.pcx
+img_row         = 0
+img_column      = 2
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
 
 #Wonder
-name          = Mount Everest
-terrain_type  = grassland
-adjacent_to   = mountains
-img_path      = NaturalWonders.pcx
-img_row       = 1
-img_column    = 0
-culture_bonus = 2
-science_bonus = 1
-food_bonus    = 0
-gold_bonus    = 0
-shield_bonus  = 0
+name            = Yellowstone
+terrain_type    = grassland
+adjacent_to     = forest
+img_path        = NaturalWonders.pcx
+img_row         = 0
+img_column      = 3
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
 
 #Wonder
-name          = Zhangjiajie Mountains
-terrain_type  = jungle
-adjacent_to   = jungle
-img_path      = NaturalWonders.pcx
-img_row       = 1
-img_column    = 1
-culture_bonus = 2
-science_bonus = 1
-food_bonus    = 0
-gold_bonus    = 0
-shield_bonus  = 0
+name            = Mount Everest
+terrain_type    = grassland
+adjacent_to     = snow-mountains
+img_path        = NaturalWonders.pcx
+img_row         = 1
+img_column      = 0
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
 
 #Wonder
-name          = Mount Kilimanjaro
-terrain_type  = grassland
-img_path      = NaturalWonders.pcx
-img_row       = 1
-img_column    = 2
-culture_bonus = 2
-science_bonus = 1
-food_bonus    = 0
-gold_bonus    = 0
-shield_bonus  = 0
+name            = Zhangjiajie Mountains
+terrain_type    = jungle
+adjacent_to     = jungle
+img_path        = NaturalWonders.pcx
+img_row         = 1
+img_column      = 1
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
 
 #Wonder
-name          = Great Barrier Reef
-terrain_type  = sea
-adjacent_to   = coast
-img_path      = NaturalWonders.pcx
-img_row       = 1
-img_column    = 3
-culture_bonus = 2
-science_bonus = 1
-food_bonus    = 0
-gold_bonus    = 0
-shield_bonus  = 0
+name            = Mount Kilimanjaro
+terrain_type    = grassland
+img_path        = NaturalWonders.pcx
+img_row         = 1
+img_column      = 2
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
 
 #Wonder
-name          = Matterhorn
-terrain_type  = grassland
-adjacent_to   = mountains
-img_path      = NaturalWonders.pcx
-img_row       = 2
-img_column    = 0
-culture_bonus = 2
-science_bonus = 1
-food_bonus    = 0
-gold_bonus    = 0
-shield_bonus  = 0
+name            = Great Barrier Reef
+terrain_type    = sea
+adjacent_to     = coast
+img_path        = NaturalWonders.pcx
+img_row         = 1
+img_column      = 3
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
 
 #Wonder
-name          = Moraine Lake
-terrain_type  = grassland
-adjacent_to   = mountains
-img_path      = NaturalWonders.pcx
-img_row       = 2
-img_column    = 1
-culture_bonus = 2
-science_bonus = 1
-food_bonus    = 0
-gold_bonus    = 0
-shield_bonus  = 0
+name            = Matterhorn
+terrain_type    = grassland
+adjacent_to     = snow-mountains
+img_path        = NaturalWonders.pcx
+img_row         = 2
+img_column      = 0
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
 
 #Wonder
-name          = Tropical Rainforest
-terrain_type  = jungle
-adjacent_to   = jungle
-img_path      = NaturalWonders.pcx
-img_row       = 2
-img_column    = 2
-culture_bonus = 2
-science_bonus = 1
-food_bonus    = 0
-gold_bonus    = 0
-shield_bonus  = 0
+name            = Moraine Lake
+terrain_type    = grassland
+adjacent_to     = mountains
+img_path        = NaturalWonders.pcx
+img_row         = 2
+img_column      = 1
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
+
+#Wonder
+name            = Tropical Rainforest
+terrain_type    = jungle
+adjacent_to     = jungle
+img_path        = NaturalWonders.pcx
+img_row         = 2
+img_column      = 2
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
+
+#Wonder
+name            = Wadi Rum
+terrain_type    = desert
+adjacent_to     = desert
+img_path        = NaturalWonders.pcx
+img_row         = 2
+img_column      = 3
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
+
+#Wonder
+name            = Eyjafjallajokull
+terrain_type    = tundra
+adjacent_to     = tundra
+img_path        = NaturalWonders.pcx
+img_row         = 3
+img_column      = 0
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
+
+#Wonder
+name            = Ha Long Bay
+terrain_type    = coast
+adjacent_to     = sea
+img_path        = NaturalWonders.pcx
+img_row         = 3
+img_column      = 1
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
+
+#Wonder
+name            = Lofoten Skerries
+terrain_type    = coast
+adjacent_to     = tundra
+img_path        = NaturalWonders.pcx
+img_row         = 3
+img_column      = 2
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
+
+#Wonder
+name            = Geirangerfjord
+terrain_type    = tundra
+adjacent_to     = coast
+adjacency_dir   = south
+img_path        = NaturalWonders.pcx
+img_row         = 3
+img_column      = 3
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
+
+#Wonder
+name            = Delicate Arch
+terrain_type    = desert
+adjacent_to     = desert
+img_path        = NaturalWonders.pcx
+img_row         = 4
+img_column      = 0
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1
+
+#Wonder
+name            = Savanna
+terrain_type    = plains
+adjacent_to     = plains
+img_path        = NaturalWonders.pcx
+img_row         = 4
+img_column      = 1
+culture_bonus   = 2
+science_bonus   = 1
+food_bonus      = 0
+gold_bonus      = 0
+shield_bonus    = 0
+happiness_bonus = 1

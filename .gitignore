@@ -3,6 +3,7 @@
 *.exp
 *.lib
 ref/
+agents.md
 __pycache__
 temp.exe
 Thumbs.db
