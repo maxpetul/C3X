@@ -32317,8 +32317,6 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 						align_district_with_river (tile, &draw_pixel_x, &draw_pixel_y, &river_dir);
 						
 					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id, wcfg);
-					int offset_x = draw_pixel_x + cfg->x_offset;
-					int offset_y = draw_pixel_y + cfg->y_offset;
 					wsprite = (use_alt_dir && (set->alt_dir_img.vtable != NULL)) ? &set->alt_dir_img : &set->img;
 
 					draw_district_on_map_or_canvas(wsprite, map_renderer, offset_x, offset_y);
@@ -32331,8 +32329,6 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 
 					struct wonder_district_config * wcfg   = &is->wonder_district_configs[construct_windex];
 					struct wonder_district_image_set * set = &is->wonder_district_img_sets[construct_windex];
-					int offset_x = draw_pixel_x + cfg->x_offset;
-					int offset_y = draw_pixel_y + cfg->y_offset;
 					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id, wcfg);
                     wsprite = (use_alt_dir && (set->alt_dir_construct_img.vtable != NULL)) ? &set->alt_dir_construct_img : &set->construct_img;
 
