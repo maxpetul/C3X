@@ -17,7 +17,7 @@ typedef unsigned char byte;
 #define MAX_BUILDING_PREREQS_FOR_UNIT 10
 
 #define COUNT_SPECIAL_DISTRICT_TYPES 10
-#define USED_SPECIAL_DISTRICT_TYPES 5
+#define USED_SPECIAL_DISTRICT_TYPES 11
 #define MAX_DYNAMIC_DISTRICT_TYPES 22
 #define COUNT_DISTRICT_TYPES (COUNT_SPECIAL_DISTRICT_TYPES + MAX_DYNAMIC_DISTRICT_TYPES)
 #define MAX_WONDER_DISTRICT_TYPES 32
@@ -150,6 +150,21 @@ enum day_night_cycle_mode {
 	DNCM_SPECIFIED
 };
 
+enum distribution_hub_yield_division_mode {
+	DHYDM_FLAT = 0,
+	DHYDM_SCALE_BY_CITY_COUNT
+};
+
+enum ai_distribution_hub_build_strategy {
+	ADHBS_AUTO = 0,
+	ADHBS_BY_CITY_COUNT
+};
+
+enum ai_auto_build_great_wall_strategy {
+	AAGWS_ALL_BORDERS = 0,
+	AAGWS_OTHER_CIV_BORDERED_ONLY
+};
+
 enum perfume_kind {
 	PK_PRODUCTION = 0,
 	PK_TECHNOLOGY,
@@ -206,6 +221,7 @@ struct c3x_config {
 	bool warn_about_unrecognized_names;
 	bool enable_ai_production_ranking;
 	bool enable_ai_city_location_desirability_display;
+	bool show_ai_city_location_desirability_if_settler;
 	bool zero_corruption_when_off;
 	bool disallow_land_units_from_affecting_water_tiles;
 	bool dont_end_units_turn_after_airdrop;
@@ -285,6 +301,7 @@ struct c3x_config {
 	bool allow_sale_of_aqueducts_and_hospitals;
 	bool no_cross_shore_detection;
 	int city_work_radius;
+	bool auto_zoom_city_screen_for_large_work_areas;
 	enum work_area_limit work_area_limit;
 	struct work_area_improvement * work_area_improvements;
 	int count_work_area_improvements;
@@ -338,6 +355,7 @@ struct c3x_config {
 	bool patch_disease_stopping_tech_flag_bug;
 	bool patch_division_by_zero_in_ai_alliance_eval;
 	bool patch_empty_army_movement;
+	bool patch_empty_army_combat_crash;
 	bool delete_off_map_ai_units;
 	bool fix_overlapping_specialist_yield_icons;
 	bool patch_premature_truncation_of_found_paths;
@@ -350,7 +368,13 @@ struct c3x_config {
 	bool prevent_autorazing;
 	bool prevent_razing_by_players;
 
+	bool allow_extraterritorial_colonies;
+	int per_extraterritorial_colony_relation_penalty;
+
 	bool draw_forests_over_roads_and_railroads;
+
+	bool enable_named_tiles;
+
 	char * aircraft_victory_animation; // NULL if set to "none" in config
 
 	int day_night_cycle_mode;
@@ -359,6 +383,7 @@ struct c3x_config {
 	int pinned_hour_for_day_night_cycle;
 
 	bool enable_natural_wonders;
+	bool add_natural_wonders_to_scenarios_if_none;
 	bool show_natural_wonder_name_on_map;
 	int minimum_natural_wonder_separation;
 
@@ -367,25 +392,57 @@ struct c3x_config {
 	bool enable_wonder_districts;
 	bool enable_distribution_hub_districts;
 	bool enable_aerodrome_districts;
+	bool enable_port_districts;
+	bool enable_bridge_districts;
+	bool enable_canal_districts;
+	bool enable_central_rail_hub_districts;
+	bool enable_energy_grid_districts;
+	bool enable_great_wall_districts;
 
 	bool cities_with_mutual_district_receive_buildings;
 	bool cities_with_mutual_district_receive_wonders;
 	bool show_message_when_building_received_by_mutual_district;
+	bool show_message_when_building_lost_to_destroyed_district;
 
 	bool air_units_use_aerodrome_districts_not_cities;
+	bool naval_units_use_port_districts_not_cities;
 
 	int maximum_pop_before_neighborhood_needed;
 	int per_neighborhood_pop_growth_enabled;
 	int neighborhood_needed_message_frequency;
+	bool destroying_neighborhood_reduces_pop;
 	
 	bool completed_wonder_districts_can_be_destroyed;
 	bool destroyed_wonders_can_be_built_again;
 
+	int distribution_hub_yield_division_mode;
 	int distribution_hub_food_yield_divisor;
 	int distribution_hub_shield_yield_divisor;
+	int ai_distribution_hub_build_strategy;
 	int ai_ideal_distribution_hub_count_per_100_cities;
+	int max_distribution_hub_count_per_100_cities;
+	int central_rail_hub_distribution_food_bonus_percent;
+	int central_rail_hub_distribution_shield_bonus_percent;
+
+	bool workers_can_enter_coast;
+	bool expand_water_tile_checks_to_city_work_area;
+	int max_contiguous_bridge_districts;
+	int max_contiguous_canal_districts;
+	int ai_canal_eval_min_bisected_land_tiles;
+	int ai_bridge_canal_eval_block_size;
+	int ai_bridge_eval_lake_tile_threshold;
+	bool ai_can_replace_existing_districts_with_canals;
+	bool ai_builds_bridges;
+	bool ai_builds_canals;
 
 	bool ai_defends_districts;
+	int ai_city_district_max_build_wait_turns;
+
+	bool disable_great_wall_city_defense_bonus;
+	bool great_wall_districts_impassible_by_others;
+	bool auto_build_great_wall_around_territory;
+	int great_wall_auto_build_wonder_improv_id;
+	int ai_auto_build_great_wall_strategy;
 
 	bool enable_city_work_radii_highlights;
 };
@@ -498,12 +555,20 @@ enum c3x_label {
 	CL_BUILDING,
 
 	// Districts-related texts
-	CL_REQUIRES_NEIGHBORHOOD_TO_GROW,
+	CL_REQUIRES,
+	CL_TO_GROW,
 	CL_DISTRICT_DESTROYED_BY_VOLCANO,
 	CL_CONSTRUCTION_HALTED_DUE_TO_MISSING_DISTRICT,
+	CL_LOST_POPULATION_DUE_TO_DESTROYED_NEIGHBORHOOD,
+
 	CL_RECEIVED,
 	CL_FROM_SHARED,
 	CL_WITH,
+
+	CL_APOSTROPHE_S,
+	CL_AND,
+	CL_OTHER_BUILDINGS_HAVE_BEEN,
+	CL_LOST_DUE_TO_DESTROYED,
 
 	// Districts config mismatch checked on game load
 	CL_DISTRICT_ID,
@@ -515,6 +580,13 @@ enum c3x_label {
 	CL_MAY_BE_OTHER_ERRORS_AS_WELL,
 	CL_DISTRICTS_IN_SAVE_FILE,
 	CL_CURRENTLY_CONFIGURED_DISTRICTS,
+
+	// Maritime district pillaging button tooltip
+	CL_PILLAGE,
+
+	// Tile naming
+	CL_NAME_TILE,
+	CL_RENAME_TILE,
 
 	// "Action" for passenger units
 	CL_TRANSPORTED,
@@ -579,20 +651,93 @@ enum {
 	MAX_DISTRICT_DEPENDENTS = 64
 };
 
+enum {
+	DEFAULT_DISTRICT_BUILDABLE_MASK = (1 << SQ_Desert) | (1 << SQ_Plains) | (1 << SQ_Grassland) | (1 << SQ_Tundra) | (1 << SQ_FloodPlain) | (1 << SQ_Hills)
+};
+
+enum {
+	MAX_DISTRICT_BONUS_ENTRIES = 16
+};
+
+enum district_bonus_entry_type {
+	DBET_TILE = 0,
+	DBET_BUILDING = 1
+};
+
+enum great_wall_auto_build_state {
+	GWABS_NOT_STARTED = 0,
+	GWABS_RUNNING,
+	GWABS_DONE
+};
+
+struct district_bonus_entry {
+	enum district_bonus_entry_type type;
+	int bonus;
+	enum SquareTypes tile_type;
+	int building_id;
+	char const * building_name;
+};
+
+struct district_bonus_list {
+	int count;
+	struct district_bonus_entry entries[MAX_DISTRICT_BONUS_ENTRIES];
+};
+
+enum district_render_strategy {
+	DRS_BY_COUNT = 0,
+	DRS_BY_BUILDING = 1
+};
+
+enum district_ai_build_strategy {
+	DABS_DISTRICT = 0,
+	DABS_TILE_IMPROVEMENT = 1
+};
+
 struct district_config {
 	enum Unit_Command_Values command;
 	char const * name;
+	char const * display_name;
 	char const * tooltip;
-	char const * advance_prereq;
+	char const * advance_prereqs[MAX_DISTRICT_DEPENDENTS];
+	int advance_prereq_count;
+	char const * obsoleted_by;
+	char const * resource_prereqs[MAX_DISTRICT_DEPENDENTS];
+	char const * resource_prereq_on_tile;
 	char const * dependent_improvements[MAX_DISTRICT_DEPENDENTS];
+	char const * wonder_prereqs[MAX_DISTRICT_DEPENDENTS];
+	char const * natural_wonder_prereqs[MAX_DISTRICT_DEPENDENTS];
+	char const * buildable_on_districts[MAX_DISTRICT_DEPENDENTS];
+	char const * buildable_adjacent_to_districts[MAX_DISTRICT_DEPENDENTS];
 	char const * img_paths[10];
+	unsigned int buildable_square_types_mask;
+	unsigned int buildable_adjacent_to_square_types_mask;
+	unsigned int buildable_on_overlays_mask;
+	unsigned int buildable_adjacent_to_overlays_mask;
+	bool buildable_adjacent_to_allows_city;
 	bool allow_multiple;
 	bool vary_img_by_era;
 	bool vary_img_by_culture;
+	enum district_render_strategy render_strategy;
+	enum district_ai_build_strategy ai_build_strategy;
 	bool is_dynamic;
+	bool align_to_coast;
+	bool draw_over_resources;
+	bool allow_irrigation_from;
+	bool auto_add_road;
+	bool auto_add_railroad;
+	int custom_width;
+	int custom_height;
+	int x_offset;
+	int y_offset;
+	int resource_prereq_count;
 	int dependent_improvement_count;
+	int wonder_prereq_count;
+	int natural_wonder_prereq_count;
+	int buildable_on_district_count;
+	int buildable_adjacent_to_district_count;
 	int img_path_count;
-	int max_building_index;
+	int img_column_count;
+	bool has_img_column_count_override;
 	int btn_tile_sheet_column;
 	int btn_tile_sheet_row;
 	int culture_bonus;
@@ -600,7 +745,42 @@ struct district_config {
 	int food_bonus;
 	int gold_bonus;
 	int shield_bonus;
+	int happiness_bonus;
+	struct district_bonus_list culture_bonus_extras;
+	struct district_bonus_list science_bonus_extras;
+	struct district_bonus_list food_bonus_extras;
+	struct district_bonus_list gold_bonus_extras;
+	struct district_bonus_list shield_bonus_extras;
+	struct district_bonus_list happiness_bonus_extras;
+	struct district_bonus_list defense_bonus_extras;
 	int defense_bonus_percent;
+	bool heal_units_in_one_turn;
+	char const * generated_resource;
+	int generated_resource_id;
+	short generated_resource_flags;
+	int buildable_on_district_ids[MAX_DISTRICT_DEPENDENTS];
+	int buildable_on_district_id_count;
+	bool has_buildable_on_districts;
+	int buildable_adjacent_to_district_ids[MAX_DISTRICT_DEPENDENTS];
+	int buildable_adjacent_to_district_id_count;
+	bool has_buildable_adjacent_to;
+	bool has_buildable_adjacent_to_districts;
+	bool has_buildable_on_overlays;
+	bool has_buildable_adjacent_to_overlays;
+	char const * buildable_by_civs[32];
+	int buildable_by_civ_count;
+	bool has_buildable_by_civs;
+	int buildable_by_civ_traits_ids[8];
+	int buildable_by_civ_traits_id_count;
+	bool has_buildable_by_civ_traits;
+	int buildable_by_civ_govs_ids[5];
+	int buildable_by_civ_govs_id_count;
+	bool has_buildable_by_civ_govs;
+	int buildable_by_civ_cultures_ids[5];
+	int buildable_by_civ_cultures_id_count;
+	bool has_buildable_by_civ_cultures;
+	bool buildable_by_war_allies;
+	bool buildable_by_pact_allies;
 };
 
 struct wonder_district_config {
@@ -610,13 +790,39 @@ struct wonder_district_config {
 		img_row,
 		img_column,
 		img_construct_row,
-		img_construct_column;
+		img_construct_column,
+		img_alt_dir_construct_row,
+		img_alt_dir_construct_column,
+		img_alt_dir_row,
+		img_alt_dir_column;
+	unsigned int buildable_square_types_mask;
+	unsigned int buildable_on_overlays_mask;
+	unsigned int buildable_adjacent_to_overlays_mask;
+	bool enable_img_alt_dir;
 	bool is_dynamic;
+	bool has_buildable_on_overlays;
+	bool has_buildable_adjacent_to_overlays;
 };
 
 enum square_type_extras {
 	SQ_INVALID = -1,
-	SQ_RIVER = SQ_Ocean + 1
+	SQ_RIVER = SQ_Ocean + 1,
+	SQ_SNOW_VOLCANO,
+	SQ_SNOW_FOREST,
+	SQ_SNOW_MOUNTAIN
+};
+
+enum district_overlay_mask_bits {
+	DOM_MINE        = 1u << 0,
+	DOM_IRRIGATION  = 1u << 1,
+	DOM_FORTRESS    = 1u << 2,
+	DOM_BARRICADE   = 1u << 3,
+	DOM_OUTPOST     = 1u << 4,
+	DOM_RADAR_TOWER = 1u << 5,
+	DOM_JUNGLE      = 1u << 6,
+	DOM_FOREST      = 1u << 7,
+	DOM_SWAMP       = 1u << 8,
+	DOM_RIVER       = 1u << 9
 };
 
 struct natural_wonder_district_config {
@@ -633,6 +839,7 @@ struct natural_wonder_district_config {
 	int food_bonus;
 	int gold_bonus;
 	int shield_bonus;
+	int happiness_bonus;
 	bool is_dynamic;
 };
 
@@ -654,80 +861,235 @@ struct wonder_location {
 
 const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYPES] = {
 	{
-		.command = UCV_Build_Neighborhood, .name = "Neighborhood", .tooltip = "Build Neighborhood",
-		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = true, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
-		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx", "Neighborhood_Abandoned.pcx"},
-		.img_path_count = 6, .max_building_index = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
-		.culture_bonus = 1, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .defense_bonus_percent = 25
-		
+		.command = UCV_Build_Neighborhood, .name = "Neighborhood", .tooltip = "Build Neighborhood", .display_name = "Neighborhood",
+		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = true, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
+		.img_path_count = 5, .img_column_count = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
+		.culture_bonus = 1, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 25,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+
 	},
 	{
-		.command = UCV_Build_WonderDistrict, .name = "Wonder District", .tooltip = "Build Wonder District",
-		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.command = UCV_Build_WonderDistrict, .name = "Wonder District", .tooltip = "Build Wonder District", .display_name = "Wonder District",
+		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"WonderDistrict.pcx"},
-		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_percent = 0
-		
+		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Coast) | (1 << SQ_Mountains)),
+		.img_path_count = 1, .img_column_count = 0, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+
 	},
 	{
-		.command = UCV_Build_DistributionHub, .name = "Distribution Hub", .tooltip = "Build Distribution Hub",
-		.advance_prereq = "Construction", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.command = UCV_Build_DistributionHub, .name = "Distribution Hub", .tooltip = "Build Distribution Hub", .display_name = "Distribution Hub",
+		.advance_prereqs = {"Construction"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {"DistributionHub.pcx"},
-		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_percent = 0
-		
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
+		.img_path_count = 1, .img_column_count = 0, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+
 	},
 	{
-		.command = UCV_Build_Aerodrome, .name = "Aerodrome", .tooltip = "Build Aerodrome",
-		.advance_prereq = "Flight", .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.command = UCV_Build_Aerodrome, .name = "Aerodrome", .tooltip = "Build Aerodrome", .display_name = "Aerodrome",
+		.advance_prereqs = {"Flight"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 1,
 		.img_paths = {"Aerodrome.pcx"}, .dependent_improvements = {"Airport"},
-		.img_path_count = 1, .max_building_index = 0, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_percent = 0	
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
+		.img_path_count = 1, .img_column_count = 1, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
 	{
-		.command = -1, 					.name = "Natural Wonder", .tooltip = NULL,
-		.advance_prereq = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.command = -1, .name = "Natural Wonder", .tooltip = NULL, .display_name = "Natural Wonder",
+		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
 		.img_paths = {0},
-		.img_path_count = 0, .max_building_index = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
-		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .defense_bonus_percent = 0
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
+		.img_path_count = 0, .img_column_count = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	},
+	{
+		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port", .display_name = "Port",
+		.advance_prereqs = {"Map Making"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 2, .align_to_coast = true,
+		.img_paths = {"Port_NW.pcx", "Port_NE.pcx", "Port_SE.pcx", "Port_SW.pcx"}, .dependent_improvements = {"Harbor", "Commercial Dock"},
+		.buildable_square_types_mask = (1 << SQ_Coast),
+		.img_path_count = 4, .img_column_count = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .align_to_coast = true,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	},
+	{
+		.command = UCV_Build_CentralRailHub, .name = "Central Rail Hub", .tooltip = "Build Central Rail Hub", .display_name = "Central Rail Hub",
+		.advance_prereqs = {"Steam Power"}, .advance_prereq_count = 1, .resource_prereqs = {"Iron", "Coal"}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 2, .dependent_improvement_count = 0,
+		.img_paths = {"CentralRailHub_AMER.pcx", "CentralRailHub_EURO.pcx", "CentralRailHub_ROMAN.pcx", "CentralRailHub_MIDEAST.pcx", "CentralRailHub_ASIAN.pcx"},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK, .auto_add_road = true, .auto_add_railroad = true,
+		.img_path_count = 5, .img_column_count = 1, .btn_tile_sheet_column = 5, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	},
+	{
+		.command = UCV_Build_EnergyGrid, .name = "Energy Grid", .tooltip = "Build Energy Grid", .display_name = "Energy Grid",
+		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 4,
+		.img_paths = {"EnergyGrid.pcx"}, .dependent_improvements = {"Coal Plant", "Hydro Plant", "Solar Plant", "Nuclear Plant"},
+		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK, .custom_height = 84,
+		.img_path_count = 1, .img_column_count = 14, .btn_tile_sheet_column = 6, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 2, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	},
+	{
+		.command = UCV_Build_Bridge, .name = "Bridge", .tooltip = "Build Bridge", .display_name = "Bridge",
+		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
+		.img_paths = {"Bridge.pcx"}, .dependent_improvements = {0}, .custom_width = 176, .custom_height = 112, .y_offset = 24, .x_offset = 0,
+		.buildable_square_types_mask = (1 << SQ_Coast), .auto_add_road = true,
+		.img_path_count = 1, .img_column_count = 7, .btn_tile_sheet_column = 7, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	},
+	{
+		.command = UCV_Build_Canal, .name = "Canal", .tooltip = "Build Canal", .display_name = "Canal",
+		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
+		.img_paths = {"Canal.pcx"}, .dependent_improvements = {0}, .custom_width = 176, .custom_height = 112, .y_offset = 24, .x_offset = 0,
+		.buildable_square_types_mask = (1 << SQ_Desert) | (1 << SQ_Plains) | (1 << SQ_Grassland) | (1 << SQ_Tundra) | (1 << SQ_FloodPlain), 
+		.img_path_count = 1, .img_column_count = 8, .btn_tile_sheet_column = 8, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
+	},
+	{
+		.command = UCV_Build_GreatWall, .name = "Great Wall", .tooltip = "Build Great Wall", .display_name = "Great Wall",
+		.advance_prereqs = {0}, .advance_prereq_count = 0, .obsoleted_by = "Metallurgy", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
+		.img_paths = {"GreatWall.pcx"}, .dependent_improvements = {0}, .custom_height = 88, .wonder_prereqs = {"The Great Wall"}, .wonder_prereq_count = 1,
+		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Mountains) | (1 << SQ_Forest) | (1 << SQ_Swamp) | (1 << SQ_Jungle)), .draw_over_resources = true,
+		.img_path_count = 1, .img_column_count = 10, .btn_tile_sheet_column = 9, .btn_tile_sheet_row = 0,
+		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 50,
+		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	}
 };
 
 struct parsed_district_definition {
 	char * name;
+	char * display_name;
 	char * tooltip;
-	char * advance_prereq;
+	char * advance_prereqs[5];
+	int advance_prereq_count;
+	char * obsoleted_by;
+	char * resource_prereqs[5];
+	char * resource_prereq_on_tile;
 	char * dependent_improvements[5];
+	char * wonder_prereqs[5];
+	char * natural_wonder_prereqs[5];
+	char * buildable_on_districts[5];
+	char * buildable_adjacent_to_districts[5];
 	char * img_paths[5];
+	int resource_prereq_count;
 	int dependent_improvement_count;
+	int wonder_prereq_count;
+	int natural_wonder_prereq_count;
+	int buildable_on_district_count;
+	int buildable_adjacent_to_district_count;
 	int img_path_count;
+	int img_column_count;
 	bool allow_multiple;
 	bool vary_img_by_era;
 	bool vary_img_by_culture;
+	enum district_render_strategy render_strategy;
+	enum district_ai_build_strategy ai_build_strategy;
+	bool align_to_coast;
+	bool draw_over_resources;
+	bool allow_irrigation_from;
+	bool auto_add_road;
+	bool auto_add_railroad;
+	int custom_width;
+	int custom_height;
+	int x_offset;
+	int y_offset;
 	int btn_tile_sheet_column;
 	int btn_tile_sheet_row;
 	int defense_bonus_percent;
+	bool heal_units_in_one_turn;
 	int culture_bonus;
 	int science_bonus;
 	int food_bonus;
 	int gold_bonus;
 	int shield_bonus;
+	int happiness_bonus;
+	struct district_bonus_list culture_bonus_extras;
+	struct district_bonus_list science_bonus_extras;
+	struct district_bonus_list food_bonus_extras;
+	struct district_bonus_list gold_bonus_extras;
+	struct district_bonus_list shield_bonus_extras;
+	struct district_bonus_list happiness_bonus_extras;
+	struct district_bonus_list defense_bonus_extras;
+	unsigned int buildable_square_types_mask;
+	unsigned int buildable_adjacent_to_square_types_mask;
+	unsigned int buildable_on_overlays_mask;
+	unsigned int buildable_adjacent_to_overlays_mask;
+	bool buildable_adjacent_to_allows_city;
+	char * buildable_by_civs[32];
+	int buildable_by_civ_count;
+	bool buildable_by_war_allies;
+	bool buildable_by_pact_allies;
 	bool has_name;
 	bool has_tooltip;
-	bool has_advance_prereq;
+	bool has_advance_prereqs;
+	bool has_obsoleted_by;
+	bool has_resource_prereqs;
 	bool has_dependent_improvements;
+	bool has_wonder_prereqs;
+	bool has_natural_wonder_prereqs;
+	bool has_display_name;
 	bool has_img_paths;
+	bool has_img_column_count;
 	bool has_allow_multiple;
 	bool has_vary_img_by_era;
 	bool has_vary_img_by_culture;
+	bool has_render_strategy;
+	bool has_ai_build_strategy;
+	bool has_align_to_coast;
+	bool has_draw_over_resources;
+	bool has_custom_width;
+	bool has_custom_height;
+	bool has_x_offset;
+	bool has_y_offset;
 	bool has_btn_tile_sheet_column;
 	bool has_btn_tile_sheet_row;
 	bool has_defense_bonus_percent;
+	bool has_heal_units_in_one_turn;
 	bool has_culture_bonus;
 	bool has_science_bonus;
 	bool has_food_bonus;
 	bool has_gold_bonus;
 	bool has_shield_bonus;
+	bool has_happiness_bonus;
+	bool has_buildable_on;
+	bool has_buildable_adjacent_to;
+	bool has_buildable_on_overlays;
+	bool has_buildable_adjacent_to_overlays;
+	bool has_resource_prereq_on_tile;
+	bool has_buildable_by_civs;
+	bool has_buildable_by_war_allies;
+	bool has_buildable_by_pact_allies;
+	char * generated_resource;
+	short generated_resource_flags;
+	bool has_generated_resource;
+	char * buildable_by_civ_traits[10];
+	int buildable_by_civ_traits_count;
+	int buildable_by_civ_traits_ids[10];
+	int buildable_by_civ_traits_id_count;
+	bool has_buildable_by_civ_traits;
+	char * buildable_by_civ_govs[10];
+	int buildable_by_civ_govs_count;
+	int buildable_by_civ_govs_ids[32];
+	int buildable_by_civ_govs_id_count;
+	bool has_buildable_by_civ_govs;
+	char * buildable_by_civ_cultures[5];
+	int buildable_by_civ_cultures_count;
+	int buildable_by_civ_cultures_ids[5];
+	int buildable_by_civ_cultures_id_count;
+	bool has_buildable_by_civ_cultures;
+	bool has_buildable_on_districts;
+	bool has_buildable_adjacent_to_districts;
+	bool has_allow_irrigation_from;
+	bool has_auto_add_road;
+	bool has_auto_add_railroad;
 };
 
 struct parsed_wonder_definition {
@@ -737,12 +1099,28 @@ struct parsed_wonder_definition {
 	int img_column;
 	int img_construct_row;
 	int img_construct_column;
+	int img_alt_dir_construct_row;
+	int img_alt_dir_construct_column;
+	int img_alt_dir_row;
+	int img_alt_dir_column;
+	bool enable_img_alt_dir;
+	unsigned int buildable_square_types_mask;
+	unsigned int buildable_on_overlays_mask;
+	unsigned int buildable_adjacent_to_overlays_mask;
 	bool has_name;
 	bool has_img_path;
 	bool has_img_row;
 	bool has_img_column;
 	bool has_img_construct_row;
 	bool has_img_construct_column;
+	bool has_img_alt_dir_construct_row;
+	bool has_img_alt_dir_construct_column;
+	bool has_img_alt_dir_row;
+	bool has_img_alt_dir_column;
+	bool has_enable_img_alt_dir;
+	bool has_buildable_on;
+	bool has_buildable_on_overlays;
+	bool has_buildable_adjacent_to_overlays;
 };
 
 struct parsed_natural_wonder_definition {
@@ -758,6 +1136,7 @@ struct parsed_natural_wonder_definition {
 	int food_bonus;
 	int gold_bonus;
 	int shield_bonus;
+	int happiness_bonus;
 	bool has_name;
 	bool has_img_path;
 	bool has_img_row;
@@ -770,6 +1149,7 @@ struct parsed_natural_wonder_definition {
 	bool has_food_bonus;
 	bool has_gold_bonus;
 	bool has_shield_bonus;
+	bool has_happiness_bonus;
 };
 
 struct scenario_district_entry {
@@ -782,6 +1162,14 @@ struct scenario_district_entry {
 	int has_wonder_city;
 	char * wonder_name;
 	int has_wonder_name;
+};
+
+struct scenario_named_tile_entry {
+	int tile_x;
+	int tile_y;
+	int has_coordinates;
+	char * name;
+	int has_name;
 };
 
 struct distribution_hub_record {
@@ -800,6 +1188,11 @@ struct ai_best_feasible_order {
 	int value;
 };
 
+struct district_building_prereq_list {
+	int count;
+	int district_ids[MAX_DISTRICT_DEPENDENTS];
+};
+
 struct pending_district_request {
 	City * city;
 	int city_id;
@@ -811,6 +1204,19 @@ struct pending_district_request {
 	int worker_assigned_turn;
 };
 
+struct ai_candidate_bridge_or_canal_entry {
+	int district_id;
+	short owner_civ_id;
+	short * tile_x;
+	short * tile_y;
+	short tile_count;
+	short assigned_tile_index;
+	int assigned_worker_id;
+	bool completed;
+	struct pending_district_request pending_req;
+	int tile_capacity;
+};
+
 struct district_worker_record {
 	Unit * worker;
 	int unit_id;
@@ -819,10 +1225,10 @@ struct district_worker_record {
 };
 
 enum wonder_district_state {
-	WDS_UNUSED = 0,      // Wonder district built, no wonder assigned
-	WDS_UNDER_CONSTRUCTION,        // Reserved by a city for wonder construction
-	WDS_COMPLETED,       // Wonder completed on this district
-	WDS_RUINED           // (Future) Wonder was destroyed
+	WDS_UNUSED = 0,         // Wonder district built, no wonder assigned
+	WDS_UNDER_CONSTRUCTION, // Reserved by a city for wonder construction
+	WDS_COMPLETED,          // Wonder completed on this district
+	WDS_RUINED              // (Future) Wonder was destroyed
 };
 
 struct wonder_district_info {
@@ -843,11 +1249,39 @@ enum district_state {
 
 struct district_instance {
 	enum district_state state;
-	int district_type;    // Index into district_configs array
+	int district_id;    // Index into district_configs array
 	int tile_x;
 	int tile_y;
-	struct wonder_district_info wonder_info; // Only used if district_type is a wonder district
-	struct natural_wonder_district_info natural_wonder_info; // Only used if district_type is a natural wonder district
+	int built_by_civ_id;
+	int completed_turn;
+	struct wonder_district_info wonder_info; // Only used if district_id is a wonder district
+	struct natural_wonder_district_info natural_wonder_info; // Only used if district_id is a natural wonder district
+};
+
+enum extra_resource_tile_type {
+	ERT_MILL_RESOURCE = 0,
+	ERT_DISTRICT_RESOURCE
+};
+
+struct extra_resource_tile {
+	Tile * tile;
+	enum extra_resource_tile_type type;
+	union {
+		struct {
+			City * city;
+			struct mill * mill;
+		} mill_info;
+		struct {
+			struct district_instance * inst;
+			struct district_config * cfg;
+		} district_info;
+	};
+};
+
+struct named_tile_entry {
+	int tile_x;
+	int tile_y;
+	char name[100];
 };
 
 struct highlighted_city_radius_tile_info {
@@ -994,6 +1428,9 @@ struct injected_state {
 	struct table saved_code_areas;
 
 	int * unit_menu_duplicates; // NULL initialized, allocated to an array of 0x100 ints when needed
+	bool named_tile_menu_active;
+	int named_tile_menu_tile_x;
+	int named_tile_menu_tile_y;
 
 	// List of temporary ints. Initializes to NULL/0/0, used with functions "memoize" and "clear_memo"
 	int * memo;
@@ -1178,6 +1615,7 @@ struct injected_state {
 	// first inside the loop over improvements then again inside a loop over unit types. The var is used by the intercept consideration functions
 	// which run at the end of each loop iteration.
 	City_Order ai_considering_order;
+	int handling_ai_district_fallback;
 
 	// Used in the code that adds additional info to the tile info box
 	int viewing_tile_info_x, viewing_tile_info_y;
@@ -1193,15 +1631,11 @@ struct injected_state {
 	int count_ai_prod_valuations;
 	int ai_prod_valuations_capacity;
 
-	// Used for generating resources from buildings
-	struct mill_tile {
-		Tile * tile;
-		City * city;
-		struct mill * mill;
-	} * mill_tiles;
-	int count_mill_tiles;
-	int mill_tiles_capacity;
-	struct mill_tile * got_mill_tile;
+	// Used for generating resources from buildings and districts
+	struct extra_resource_tile * resource_tiles;
+	int count_resource_tiles;
+	int resource_tiles_capacity;
+	struct extra_resource_tile * got_resource_tile;
 	int saved_tile_count; // Stores the actual tile count in case p_bic_data->Map.TileCount was temporarily overwritten. Set to -1 when empty.
 	byte * mill_input_resource_bits; // Array of bits, one for each resource. Stores whether or not each one is an input to any mill.
 
@@ -1319,6 +1753,12 @@ struct injected_state {
 	bool temporarily_disallow_lethal_zoc;
 	bool moving_unit_to_adjacent_tile;
 
+	// Tracks temporary transport bypass when letting workers step onto coast tiles without a boat
+	Unit * coast_walk_unit;
+	bool coast_walk_transport_override;
+	enum UnitStateType coast_walk_prev_state;
+	int coast_walk_prev_container;
+
 	// Used to record info about a defensive bomardment event during Fighter::fight. Gets set by Fighter::damage_by_defensive_bombardment and
 	// cleared when Fighter::fight returns.
 	struct defensive_bombard_event {
@@ -1427,6 +1867,8 @@ struct injected_state {
 	struct wonder_district_image_set {
 		Sprite img;
 		Sprite construct_img;
+		Sprite alt_dir_img;
+		Sprite alt_dir_construct_img;
 	} wonder_district_img_sets[MAX_WONDER_DISTRICT_TYPES];
 
 	struct natural_wonder_district_image_set {
@@ -1509,6 +1951,8 @@ struct injected_state {
 		Sprite LM_Forests_Pines_Images[12];
 		Sprite LM_Hills_Images[16];
 		Sprite District_Images[COUNT_DISTRICT_TYPES][10][4][6]; // [district][variant][era][building_stage]
+		Sprite Abandoned_District_Image;
+		Sprite Abandoned_Maritime_District_Image;
 		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
 		struct natural_wonder_district_image_set Natural_Wonder_Images[MAX_NATURAL_WONDER_DISTRICT_TYPES];
 	} day_night_cycle_imgs[24];
@@ -1522,13 +1966,15 @@ struct injected_state {
 	struct wonder_district_config wonder_district_configs[MAX_WONDER_DISTRICT_TYPES];
 	struct natural_wonder_district_config natural_wonder_configs[MAX_NATURAL_WONDER_DISTRICT_TYPES];
 
-	struct district_image_set {
-		Sprite imgs[10][4][6]; // [variant][era][building_stage]
-	} district_img_sets[COUNT_DISTRICT_TYPES];
+struct district_image_set {
+	Sprite imgs[10][4][20]; // [variant][era][building_stage]
+} district_img_sets[COUNT_DISTRICT_TYPES];
+	Sprite abandoned_district_img;
+	Sprite abandoned_maritime_district_img;
 
-	struct district_button_image_set {
-		Sprite imgs[4];
-	} district_btn_img_sets[COUNT_DISTRICT_TYPES];
+struct district_button_image_set {
+	Sprite imgs[4];
+} district_btn_img_sets[COUNT_DISTRICT_TYPES];
 
 	// Tech ID keys -> district ID. If a tech (aka advance) ID is present in the
 	// table that means that tech enables a district. This also means one tech can enable at most one district.
@@ -1543,6 +1989,7 @@ struct injected_state {
 	// For wonder districts, the wonder_info field tracks wonder-specific state (unused, reserved, completed, ruined),
 	// which city reserved/completed the wonder, and which wonder index is on this district.
 	struct table district_tile_map;
+	struct table named_tile_map;
 
 	// Tracks per-turn airlift usage for aerodrome districts (tile pointer -> civ bitmask).
 	struct table aerodrome_airlift_usage;
@@ -1567,7 +2014,16 @@ struct injected_state {
 	struct table building_name_to_id;
 
 	struct district_infos {
-		int advance_prereq_id; // Tech ID that enables the district
+		int advance_prereq_ids[MAX_DISTRICT_DEPENDENTS]; // Tech IDs that enable the district (all required)
+		int advance_prereq_count;
+		int obsoleted_by_id;
+		int resource_prereq_ids[MAX_DISTRICT_DEPENDENTS];
+		int resource_prereq_count;
+		int resource_prereq_on_tile_id;
+		int wonder_prereq_ids[MAX_DISTRICT_DEPENDENTS];
+		int wonder_prereq_count;
+		int natural_wonder_prereq_ids[MAX_DISTRICT_DEPENDENTS];
+		int natural_wonder_prereq_count;
 		int dependent_building_count;
 		int dependent_building_ids[MAX_DISTRICT_DEPENDENTS]; // Building types the district enables
 	} district_infos[COUNT_DISTRICT_TYPES];
@@ -1603,7 +2059,7 @@ struct injected_state {
 	int district_corruption_icons_remaining;
 	int distribution_hub_corruption_icons_remaining;
 
-	// District UI sprites loaded from PCX files for rendering yield icons (science, commerce, shield, food, culture)
+	// District UI sprites loaded from PCX files for rendering yield icons (science, commerce, shield, food, culture, happiness)
 	// Available in both regular and small sizes for different UI contexts in city interface
 	Sprite district_science_icon;
 	Sprite district_commerce_icon;
@@ -1611,11 +2067,18 @@ struct injected_state {
 	Sprite district_corruption_icon;
 	Sprite district_food_icon;
 	Sprite district_food_eaten_icon;
+	Sprite district_happiness_icon_small;
 	Sprite district_shield_icon_small;
 	Sprite district_commerce_icon_small;
 	Sprite district_food_icon_small;
 	Sprite district_science_icon_small;
 	Sprite district_culture_icon_small;
+	Sprite district_unhappiness_icon_small;
+	Sprite district_negative_shield_icon_small;
+	Sprite district_negative_commerce_icon_small;
+	Sprite district_negative_food_icon_small;
+	Sprite district_negative_science_icon_small;
+	Sprite district_negative_culture_icon_small;
 
 	// Guard to prevent recursive sharing when auto-adding buildings across cities
 	bool sharing_buildings_by_districts_in_progress;
@@ -1625,6 +2088,11 @@ struct injected_state {
 
 	// Natural Wonder labels: table mapping natural wonder name strings to their IDs, count of defined natural wonders,
 	struct table natural_wonder_name_to_id;
+
+	struct ai_candidate_bridge_or_canal_entry * ai_candidate_bridge_or_canals;
+	int ai_candidate_bridge_or_canals_count;
+	int ai_candidate_bridge_or_canals_capacity;
+	bool ai_candidate_bridge_or_canals_initialized;
 
 	// City work radius highlighting: flag to enable/disable, table mapping tile pointers to highlight_level for visual feedback
 	bool highlight_city_radii;
@@ -1637,11 +2105,23 @@ struct injected_state {
 	// Stores the parameters to Unit::can_load while it's running, NULL otherwise.
 	Unit * can_load_transport, * can_load_passenger;
 
+	// Current tile being rendered in Map_Renderer_m19_Draw_Tile_by_XY_and_Flags. For use within various Map_Renderer::impl_m*_Draw_* functions. Nulled out after the render function is complete
+	Tile * current_render_tile;
+	struct district_instance * current_render_tile_district;
+	int current_render_tile_x, current_render_tile_y;
+
+	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp and so on for flagging whether to draw forests over roads on the tile being rendered
+	bool draw_forests_over_roads_on_tile;
+
+	// Set to true once the auto-build process for the Great Wall is complete to avoid running it again
+	enum great_wall_auto_build_state great_wall_auto_build;
+	Tile * focused_tile;
+
+	// Stores the improve ID currently being evaluated inside patch_City_can_build_improvement.
+	int current_evaluating_improve_id;
+
 	// Stores the index in the list of target civs currently being drawn on the espionage form. Used to replace the civ name with its era-specific alias.
 	int espionage_form_drawing_target_index;
-
-	// Used in patch_Map_Renderer_m08_Draw_Tile_Forests_Jungle_Swamp. Tracks the current tile coordinates being rendered, then for drawing forests over roads/railroad
-	int current_tile_x, current_tile_y;
 
 	// Tracks information about the last unit that was selected. These fields are updated when a new unit is selected or when the selected unit
 	// moves or is destroyed.

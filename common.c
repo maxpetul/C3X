@@ -549,38 +549,47 @@ extract_slice (struct string_slice const * s)
 int
 read_int (struct string_slice const * s, int * out_val)
 {
-	struct string_slice trimmed = trim_string_slice (s, 1);
-	char * str = trimmed.str;
-	int len = trimmed.len;
+    struct string_slice trimmed = trim_string_slice (s, 1);
+    char *str = trimmed.str;
+    int len = trimmed.len;
 
-	if ((len > 0) && (*str == '-') || ((*str >= '0') && (*str <= '9'))) {
-		char * end;
-		int base = 10;
-		if ((str[0] == '0') && ((str[1] == 'x') || (str[1] == 'X'))) {
-			base = 16;
-			str += 2;
-			len -= 2;
-		}
-		int res = strtol (str, &end, base);
-		if (end == str + len) {
-			*out_val = res;
-			return 1;
-		} else
-			return 0;
-	} else if ((len == 4) &&
-		   ((0 == strncmp (str, "true", 4)) ||
-		    (0 == strncmp (str, "True", 4)) ||
-		    (0 == strncmp (str, "TRUE", 4)))) {
-		*out_val = 1;
-		return 1;
-	} else if ((len == 5) &&
-		   ((0 == strncmp (str, "false", 5)) ||
-		    (0 == strncmp (str, "False", 5)) ||
-		    (0 == strncmp (str, "FALSE", 5)))) {
-		*out_val = 0;
-		return 1;
-	} else
-		return 0;
+    if (len > 0 && (*str == '-' || (*str >= '0' && *str <= '9'))) {
+        char *end;
+        int base = 10;
+
+        char *p = str;
+        if (*p == '-') {
+            p++;
+        }
+
+        if (len >= 3 && p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) {
+            base = 16;
+        }
+
+        int res = strtol(str, &end, base);
+
+        if (end == str + len) {
+            *out_val = res;
+            return 1;
+        }
+        return 0;
+    }
+    else if (len == 4 &&
+             (!strncmp(str, "true", 4) ||
+              !strncmp(str, "True", 4) ||
+              !strncmp(str, "TRUE", 4))) {
+        *out_val = 1;
+        return 1;
+    }
+    else if (len == 5 &&
+             (!strncmp(str, "false", 5) ||
+              !strncmp(str, "False", 5) ||
+              !strncmp(str, "FALSE", 5))) {
+        *out_val = 0;
+        return 1;
+    }
+
+    return 0;
 }
 
 int

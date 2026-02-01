@@ -112,25 +112,40 @@ Bombarding
 Building
 
 ; Districts-related texts
-requires a Neighborhood to grow
+requires a
+to grow
 destroyed by volcanic eruption!
 construction halted due to missing
+lost population due to destroyed
 
-; Shown if City A receives a building from City B via shared district, as in "<City A> recieved <Building> from shared <District> with <City B>".
+; Shown if City A receives a building from City B via shared district, as in "<City A> received <Building> from shared <District> with <City B>".
 received
 from shared
 with
+
+; Shown if a city loses one or more buildings due to destroyed district, as in "<City>'s <Building> and <Number> other buildings have been lost due to destroyed <District>"
+'s
+and
+other buildings have been 
+lost due to destroyed
 
 ; Districts config mismatch checked on game load
 District ID
 is in the save file but missing in the current configuration.
 in the save file in the current configuration is called
 The save file had
-total district types but current configuration has only
+total district types but current configuration has
 Warning! This save file was created with a different districts configuration. The game may not function correctly. Error:
 There may be other errors as well.
 Districts in save file
 Currently configured districts from
+
+; Maritime district pillage button tooltip
+(P)illage Improvement (Shift+P)
+
+; For naming tiles
+Name Tile
+Rename
 
 ; This appears instead of the above actions on units that have been loaded into another (except an army).
 Transported
