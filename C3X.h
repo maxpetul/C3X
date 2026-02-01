@@ -258,6 +258,7 @@ struct c3x_config {
 	enum minimap_doubling_mode double_minimap_size;
 	bool allow_multipage_civilopedia_descriptions;
 	enum unit_cycle_search_criteria unit_cycle_search_criteria;
+	bool reformat_turns_remaining_on_domestic_advisor_screen;
 	bool enable_city_capture_by_barbarians;
 	bool share_visibility_in_hotseat;
 	bool share_wonders_in_hotseat;
@@ -927,6 +928,7 @@ struct injected_state {
 	int (* memcmp) (void const *, void const *, size_t);
 	void * (* memcpy) (void *, void const *, size_t);
 	int (* tolower) (int);
+	int (* toupper) (int);
 
 	Unit * sb_next_up; // The unit currently doing a stack bombard or NULL otherwise. Gets set to NULL if the unit is despawned.
 

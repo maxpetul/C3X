@@ -50,6 +50,7 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define memcmp is->memcmp
 #define memcpy is->memcpy
 #define tolower is->tolower
+#define toupper is->toupper
 
 #include "common.c"
 
@@ -11034,6 +11035,7 @@ patch_init_floating_point ()
 		{"enable_debug_mode_switch"                              , false, offsetof (struct c3x_config, enable_debug_mode_switch)},
 		{"accentuate_cities_on_minimap"                          , false, offsetof (struct c3x_config, accentuate_cities_on_minimap)},
 		{"allow_multipage_civilopedia_descriptions"              , true , offsetof (struct c3x_config, allow_multipage_civilopedia_descriptions)},
+		{"reformat_turns_remaining_on_domestic_advisor_screen"   , true , offsetof (struct c3x_config, reformat_turns_remaining_on_domestic_advisor_screen)},
 		{"enable_trade_net_x"                                    , true , offsetof (struct c3x_config, enable_trade_net_x)},
 		{"optimize_improvement_loops"                            , true , offsetof (struct c3x_config, optimize_improvement_loops)},
 		{"measure_turn_times"                                    , false, offsetof (struct c3x_config, measure_turn_times)},
@@ -11155,6 +11157,7 @@ patch_init_floating_point ()
 	memcmp   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcmp");
 	memcpy   = (void *)(*p_GetProcAddress) (is->msvcrt, "memcpy");
 	tolower  = (void *)(*p_GetProcAddress) (is->msvcrt, "tolower");
+	toupper  = (void *)(*p_GetProcAddress) (is->msvcrt, "toupper");
 
 	// Intercept the game's calls to MessageBoxA. We can't do this through the patcher since that would interfere with the runtime loader.
 	WITH_MEM_PROTECTION (p_MessageBoxA, 4, PAGE_READWRITE)
@@ -25511,6 +25514,27 @@ patch_City_m22 (City * this, int edx, bool param_1)
 					break;
 				}
 	}
+}
+
+int __fastcall
+patch_PCX_Image_process_dom_adv_turn_count_text (PCX_Image * this, int edx, char * str)
+{
+	if (is->current_config.reformat_turns_remaining_on_domestic_advisor_screen) {
+		char * start = strstr (str, p_advisor_internal_form->Labels[16].S); // Search for "turns"
+		if (start == NULL)
+			start = strstr (str, p_advisor_internal_form->Labels[17].S); // Search for "turn"
+
+		if (start != NULL) {
+			*start = toupper (*start); // Upcase first letter of "turn/s"
+
+			char s[64]; // Must be same size as "str" param, which is a 64-byte stack-allocated string
+			snprintf (s, sizeof s, "%.*s %s", start - str, str, start); // Reprint string with space before "Turn/s"
+			s[(sizeof s) - 1] = '\0';
+			memcpy (str, s, sizeof s);
+		}
+	}
+
+	return PCX_Image_process_text (this, __, str);
 }
 
 
