@@ -16733,7 +16733,7 @@ patch_init_floating_point ()
 		{"patch_disease_stopping_tech_flag_bug"                  , false, offsetof (struct c3x_config, patch_disease_stopping_tech_flag_bug)},
 		{"patch_division_by_zero_in_ai_alliance_eval"            , true , offsetof (struct c3x_config, patch_division_by_zero_in_ai_alliance_eval)},
 		{"patch_empty_army_movement"                             , true , offsetof (struct c3x_config, patch_empty_army_movement)},
-		{"patch_empty_army_combat_crash"                        , true , offsetof (struct c3x_config, patch_empty_army_combat_crash)},
+		{"patch_empty_army_combat_crash"                         , true , offsetof (struct c3x_config, patch_empty_army_combat_crash)},
 		{"patch_premature_truncation_of_found_paths"             , true , offsetof (struct c3x_config, patch_premature_truncation_of_found_paths)},
 		{"patch_zero_production_crash"                           , true , offsetof (struct c3x_config, patch_zero_production_crash)},
 		{"patch_ai_can_form_army_without_special_ability"        , true , offsetof (struct c3x_config, patch_ai_can_form_army_without_special_ability)},
