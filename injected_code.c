@@ -16176,8 +16176,10 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 
 	// Districts (if enabled)
 	if (is->current_config.enable_districts) {
-		char districts_hour_dir[200];
-		snprintf (districts_hour_dir, sizeof districts_hour_dir, "%s\\Art\\Districts\\%s", is->mod_rel_dir, hour);
+		char art_dir[200];
+		char temp_path[2*MAX_PATH];
+		snprintf (art_dir, sizeof art_dir, "Districts/%s", hour);
+		get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 		for (int dc = 0; dc < is->district_count; dc++) {
 			struct district_config const * cfg = &is->district_configs[dc];
 			int variant_capacity = ARRAY_LEN (this->District_Images[dc]);
@@ -16197,7 +16199,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 				if ((img_path == NULL) || (img_path[0] == '\0'))
 					continue;
 
-				read_in_dir (&img, districts_hour_dir, img_path, NULL);
+				read_in_dir (&img, temp_path, img_path, NULL);
 				if (img.JGL.Image == NULL)
 					return false;
 
@@ -16212,7 +16214,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 		}
 
 		// Abandoned district art (land + maritime) for this hour
-		read_in_dir (&img, districts_hour_dir, "Abandoned.pcx", NULL);
+		read_in_dir (&img, temp_path, "Abandoned.pcx", NULL);
 		if (img.JGL.Image == NULL)
 			return false;
 		Sprite_slice_pcx (&this->Abandoned_District_Image, __, &img, 0, 0, 128, 64, 1, 1);
@@ -16236,7 +16238,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 					if (pcx_loaded)
 						wpcx.vtable->clear_JGL (&wpcx);
 
-					read_in_dir (&wpcx, districts_hour_dir, img_path, NULL);
+					read_in_dir (&wpcx, temp_path, img_path, NULL);
 
 					if (wpcx.JGL.Image == NULL) {
 						pcx_loaded = false;
@@ -16283,8 +16285,10 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 	}
 
 	if (is->current_config.enable_natural_wonders && (is->natural_wonder_count > 0)) {
-		char natural_dir[200];
-		snprintf (natural_dir, sizeof natural_dir, "%s\\Art\\Districts\\%s", is->mod_rel_dir, hour);
+		char art_dir[200];
+		char temp_path[2*MAX_PATH];
+		snprintf (art_dir, sizeof art_dir, "Districts/%s", hour);
+		get_mod_art_path (art_dir, temp_path, sizeof temp_path);
 
 		char const * last_img_path = NULL;
 		PCX_Image nwpcx;
@@ -16301,7 +16305,7 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 				if (pcx_loaded)
 					nwpcx.vtable->clear_JGL (&nwpcx);
 
-				read_in_dir (&nwpcx, natural_dir, img_path, NULL);
+				read_in_dir (&nwpcx, temp_path, img_path, NULL);
 
 				if (nwpcx.JGL.Image == NULL) {
 					pcx_loaded = false;
