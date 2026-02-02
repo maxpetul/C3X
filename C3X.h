@@ -940,7 +940,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
 		.img_paths = {"Bridge.pcx"}, .dependent_improvements = {0}, .custom_width = 176, .custom_height = 112, .y_offset = 24, .x_offset = 0,
 		.buildable_square_types_mask = (1 << SQ_Coast), .auto_add_road = true,
-		.img_path_count = 1, .img_column_count = 7, .btn_tile_sheet_column = 7, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 10, .btn_tile_sheet_column = 7, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
@@ -949,7 +949,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
 		.img_paths = {"Canal.pcx"}, .dependent_improvements = {0}, .custom_width = 176, .custom_height = 112, .y_offset = 24, .x_offset = 0,
 		.buildable_square_types_mask = (1 << SQ_Desert) | (1 << SQ_Plains) | (1 << SQ_Grassland) | (1 << SQ_Tundra) | (1 << SQ_FloodPlain), 
-		.img_path_count = 1, .img_column_count = 8, .btn_tile_sheet_column = 8, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 10, .btn_tile_sheet_column = 8, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
@@ -1618,6 +1618,7 @@ struct injected_state {
 	int handling_ai_district_fallback;
 
 	// Used in the code that adds additional info to the tile info box
+	bool tile_info_open;
 	int viewing_tile_info_x, viewing_tile_info_y;
 
 	// Used in patch_Tile_m43_Get_field_30_for_city_loc_eval to change how the AI evaluates overlap between cities
@@ -1950,7 +1951,7 @@ struct injected_state {
 		Sprite LM_Forests_Small_Images[10];
 		Sprite LM_Forests_Pines_Images[12];
 		Sprite LM_Hills_Images[16];
-		Sprite District_Images[COUNT_DISTRICT_TYPES][10][4][6]; // [district][variant][era][building_stage]
+		Sprite District_Images[COUNT_DISTRICT_TYPES][10][4][10]; // [district][variant][era][building_stage]
 		Sprite Abandoned_District_Image;
 		Sprite Abandoned_Maritime_District_Image;
 		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];

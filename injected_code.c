@@ -16197,6 +16197,8 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 
 			int era_count = cfg->vary_img_by_era ? 4 : 1;
 			int column_count = cfg->img_column_count + 1;
+			int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
+			int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
 
 			for (int variant_i = 0; variant_i < variant_count; variant_i++) {
 				const char * img_path = cfg->img_paths[variant_i];
@@ -16209,9 +16211,9 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 
 				for (int era = 0; era < era_count; era++) {
 					for (int col = 0; col < column_count; col++) {
-						int tile_x = 128 * col;
-						int tile_y = 64 * era;
-						Sprite_slice_pcx (&this->District_Images[dc][variant_i][era][col], __, &img, tile_x, tile_y, 128, 64, 1, 1);
+						int tile_x = sprite_width * col;
+						int tile_y = sprite_height * era;
+						Sprite_slice_pcx (&this->District_Images[dc][variant_i][era][col], __, &img, tile_x, tile_y, sprite_width, sprite_height, 1, 1);
 					}
 				}
 			}
@@ -22403,10 +22405,13 @@ patch_open_tile_info (void * this, int edx, int mouse_x, int mouse_y, int civ_id
 	    (! Main_Screen_Form_get_tile_coords_under_mouse (p_main_screen_form, __, mouse_x, mouse_y, &tx, &ty))) {
 		is->viewing_tile_info_x = tx;
 		is->viewing_tile_info_y = ty;
+		is->tile_info_open = true;
 	} else
 		is->viewing_tile_info_x = is->viewing_tile_info_y = -1;
 
-	return open_tile_info (this, __, mouse_x, mouse_y, civ_id);
+	open_tile_info (this, __, mouse_x, mouse_y, civ_id);
+
+	is->tile_info_open = false;
 }
 
 int __fastcall
@@ -22561,9 +22566,16 @@ patch_City_compute_corrupted_yield (City * this, int edx, int gross_yield, bool 
 }
 
 int __fastcall
+patch_Sprite_draw (Sprite * this, int edx, PCX_Image * canvas, int pixel_x, int pixel_y, PCX_Color_Table * color_table)
+{
+	Sprite * to_draw = get_sprite_proxy_for_current_hour(this);
+	return Sprite_draw(to_draw ? to_draw : this, __, canvas, pixel_x, pixel_y, color_table);
+}
+
+int __fastcall
 patch_Sprite_draw_on_map (Sprite * this, int edx, Map_Renderer * map_renderer, int pixel_x, int pixel_y, int param_4, int param_5, int param_6, int param_7)
 {
-	Sprite *to_draw = get_sprite_proxy_for_current_hour(this);
+	Sprite * to_draw = get_sprite_proxy_for_current_hour(this);
 	return Sprite_draw_on_map(to_draw ? to_draw : this, __, map_renderer, pixel_x, pixel_y, param_4, param_5, param_6, param_7);
 }
 
@@ -31993,12 +32005,13 @@ wonder_should_use_alternative_direction_image (int tile_x, int tile_y, int owner
 void
 draw_district_on_map_or_canvas(Sprite * sprite, Map_Renderer * map_renderer, int pixel_x, int pixel_y)
 {
-	if (is->current_config.show_detailed_tile_info) {
+	if (is->tile_info_open) {
 		PCX_Image * canvas = (PCX_Image *)map_renderer;
-		Sprite_draw (sprite, __, canvas, pixel_x, pixel_y, NULL);
-	} else {
-		patch_Sprite_draw_on_map (sprite, __, map_renderer, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
+		patch_Sprite_draw (sprite, __, canvas, pixel_x, pixel_y, NULL);
+		return;
 	}
+
+	patch_Sprite_draw_on_map (sprite, __, map_renderer, pixel_x, pixel_y, 1, 1, (p_bic_data->is_zoomed_out != false) + 1, 0);
 }
 
 bool 
@@ -32277,10 +32290,6 @@ draw_canal_on_map_or_canvas(Sprite * sprite, int tile_x, int tile_y, int dir, bo
 	int x_offset = y_offset * 2;
 
 	draw_district_on_map_or_canvas(sprite, map_renderer, draw_x, draw_y);
-
-	char ss[200];
-	snprintf (ss, sizeof(ss), "Drawing canal dir = %d, DIR_SE = %d, water dirs[SE] = %d\n", dir, DIR_SE, water_dirs[DIR_SE]);
-	(*p_OutputDebugStringA)(ss);
 
 	// In certain cases, add an additional draw if adjacent to water so that the canal appears to extend far enough
 	if      (dir == DIR_N  && water_dirs[DIR_N])
@@ -32756,8 +32765,7 @@ patch_Map_Renderer_m11_Draw_Tile_Irrigation (Map_Renderer *this, int edx, int vi
 	}
 
 	// If it has a completed district that serves as pseudo-irrigation source, suppress drawing irrigation
-	if (is->district_configs[inst->district_id].allow_irrigation_from 
-		&& district_is_complete (is->current_render_tile, inst->district_id))
+	if (is->district_configs[inst->district_id].allow_irrigation_from  && district_is_complete (is->current_render_tile, inst->district_id))
 		return;
 
 	Map_Renderer_m11_Draw_Tile_Irrigation (this, __, visible_to_civ, tile_x, tile_y, param_4, param_5, param_6);
