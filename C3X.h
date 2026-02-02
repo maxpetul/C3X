@@ -22,6 +22,9 @@ typedef unsigned char byte;
 #define COUNT_DISTRICT_TYPES (COUNT_SPECIAL_DISTRICT_TYPES + MAX_DYNAMIC_DISTRICT_TYPES)
 #define MAX_WONDER_DISTRICT_TYPES 32
 #define MAX_NATURAL_WONDER_DISTRICT_TYPES 32
+#define MAX_DISTRICT_VARIANT_COUNT 5
+#define MAX_DISTRICT_ERA_COUNT 4
+#define MAX_DISTRICT_COLUMN_COUNT 10
 #define C3X_DISTRICT_COMMAND_BASE (-11000000)
 
 // Initialize to zero. Implementation is in common.c
@@ -931,7 +934,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 4,
 		.img_paths = {"EnergyGrid.pcx"}, .dependent_improvements = {"Coal Plant", "Hydro Plant", "Solar Plant", "Nuclear Plant"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK, .custom_height = 84,
-		.img_path_count = 1, .img_column_count = 14, .btn_tile_sheet_column = 6, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 4, .btn_tile_sheet_column = 6, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 2, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
@@ -1951,7 +1954,7 @@ struct injected_state {
 		Sprite LM_Forests_Small_Images[10];
 		Sprite LM_Forests_Pines_Images[12];
 		Sprite LM_Hills_Images[16];
-		Sprite District_Images[COUNT_DISTRICT_TYPES][10][4][10]; // [district][variant][era][building_stage]
+		Sprite District_Images[COUNT_DISTRICT_TYPES][MAX_DISTRICT_VARIANT_COUNT][4][MAX_DISTRICT_COLUMN_COUNT]; // [district][variant][era][column]
 		Sprite Abandoned_District_Image;
 		Sprite Abandoned_Maritime_District_Image;
 		struct wonder_district_image_set Wonder_District_Images[MAX_WONDER_DISTRICT_TYPES];
@@ -1968,7 +1971,7 @@ struct injected_state {
 	struct natural_wonder_district_config natural_wonder_configs[MAX_NATURAL_WONDER_DISTRICT_TYPES];
 
 struct district_image_set {
-	Sprite imgs[10][4][20]; // [variant][era][building_stage]
+	Sprite imgs[MAX_DISTRICT_VARIANT_COUNT][4][MAX_DISTRICT_COLUMN_COUNT]; // [variant][era][column]
 } district_img_sets[COUNT_DISTRICT_TYPES];
 	Sprite abandoned_district_img;
 	Sprite abandoned_maritime_district_img;

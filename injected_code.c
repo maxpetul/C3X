@@ -81,6 +81,10 @@ struct injected_state * is = ADDR_INJECTED_STATE;
 #define CANAL_DISTRICT_ID			 9
 #define GREAT_WALL_DISTRICT_ID       10
 
+#define MAX_DISTRICT_VARIANT_COUNT 5
+#define MAX_DISTRICT_ERA_COUNT     4
+#define MAX_DISTRICT_COLUMN_COUNT  10
+
 // Max grid of tiles that an AI will evaluate a candidate bridge or canal for, 
 // used to limit computational complexity
 #define AI_BRIDGE_CANAL_CANDIDATE_MAX_EVAL_TILES 10
@@ -8286,11 +8290,7 @@ override_special_district_from_definition (struct parsed_district_definition * d
 			def->dependent_improvements[i] = NULL;
 		}
 		if (! def->has_img_column_count) {
-			cfg->img_column_count = cfg->dependent_improvement_count;
-			if (cfg->img_column_count > 20)
-				cfg->img_column_count = 20;
-			if (cfg->img_column_count < 0)
-				cfg->img_column_count = 0;
+			cfg->img_column_count = clamp (0, MAX_DISTRICT_COLUMN_COUNT, cfg->dependent_improvement_count);
 			cfg->has_img_column_count_override = false;
 		}
 	}
@@ -8315,11 +8315,7 @@ override_special_district_from_definition (struct parsed_district_definition * d
 	}
 
 	if (def->has_img_column_count) {
-		cfg->img_column_count = def->img_column_count;
-		if (cfg->img_column_count > 20)
-			cfg->img_column_count = 20;
-		if (cfg->img_column_count < 0)
-			cfg->img_column_count = 0;
+		cfg->img_column_count = clamp (0, MAX_DISTRICT_COLUMN_COUNT, cfg->img_column_count);
 		cfg->has_img_column_count_override = true;
 	}
 
@@ -32030,6 +32026,7 @@ district_allows_river (struct district_config const * cfg)
 int
 get_energy_grid_image_index (int tile_x, int tile_y)
 {
+	return 0;
 	struct district_infos * info = &is->district_infos[ENERGY_GRID_DISTRICT_ID];
 	int coal_plant_id    = info->dependent_building_ids[0];
 	int hydro_plant_id   = info->dependent_building_ids[1];
@@ -32565,7 +32562,7 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 		int offset_y      = draw_pixel_y + cfg->y_offset;
 		int draw_x        = offset_x - ((sprite_width - 128) / 2);
 		int draw_y        = offset_y - (sprite_height - 64);
-		Sprite (*sprites)[4][20] = is->district_img_sets[district_id].imgs;
+		Sprite (*sprites)[MAX_DISTRICT_ERA_COUNT][MAX_DISTRICT_COLUMN_COUNT] = is->district_img_sets[district_id].imgs;
 
 		// Render
         switch (district_id) {
