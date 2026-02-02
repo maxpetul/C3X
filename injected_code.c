@@ -7244,14 +7244,14 @@ free_special_district_override_strings (struct district_config * cfg, struct dis
 	cfg->buildable_by_pact_allies = defaults->buildable_by_pact_allies;
 
 	for (int i = 0; i < ARRAY_LEN (cfg->dependent_improvements); i++) {
-		char const * default_value = (i < defaults->dependent_improvement_count) ? defaults->dependent_improvements[i] : NULL;
+		char const * default_value = (i < defaults->dependent_improvement_max_index) ? defaults->dependent_improvements[i] : NULL;
 		if ((cfg->dependent_improvements[i] != NULL) &&
 		    (cfg->dependent_improvements[i] != default_value)) {
 			free ((void *)cfg->dependent_improvements[i]);
 		}
 		cfg->dependent_improvements[i] = NULL;
 	}
-	cfg->dependent_improvement_count = defaults->dependent_improvement_count;
+	cfg->dependent_improvement_max_index = defaults->dependent_improvement_max_index;
 
 	for (int i = 0; i < ARRAY_LEN (cfg->img_paths); i++) {
 		char const * default_value = (i < defaults->img_path_count) ? defaults->img_paths[i] : NULL;
@@ -7452,13 +7452,13 @@ free_parsed_district_definition (struct parsed_district_definition * def)
 	def->buildable_by_civ_cultures_count = 0;
 	def->buildable_by_civ_cultures_id_count = 0;
 
-	for (int i = 0; i < def->dependent_improvement_count; i++) {
+	for (int i = 0; i < def->dependent_improvement_max_index; i++) {
 		if (def->dependent_improvements[i] != NULL) {
 			free (def->dependent_improvements[i]);
 			def->dependent_improvements[i] = NULL;
 		}
 	}
-	def->dependent_improvement_count = 0;
+	def->dependent_improvement_max_index = 0;
 
 	for (int i = 0; i < def->img_path_count; i++) {
 		if (def->img_paths[i] != NULL) {
@@ -8274,23 +8274,23 @@ override_special_district_from_definition (struct parsed_district_definition * d
 
 	if (def->has_dependent_improvements) {
 		for (int i = 0; i < ARRAY_LEN (cfg->dependent_improvements); i++) {
-			char const * default_value = (i < defaults->dependent_improvement_count) ? defaults->dependent_improvements[i] : NULL;
+			char const * default_value = (i < defaults->dependent_improvement_max_index) ? defaults->dependent_improvements[i] : NULL;
 			if ((cfg->dependent_improvements[i] != NULL) &&
 			    (cfg->dependent_improvements[i] != default_value))
 				free ((void *)cfg->dependent_improvements[i]);
 			cfg->dependent_improvements[i] = NULL;
 		}
 
-		cfg->dependent_improvement_count = def->dependent_improvement_count;
+		cfg->dependent_improvement_max_index = def->dependent_improvement_max_index;
 		const int max_entries = ARRAY_LEN (cfg->dependent_improvements);
-		if (cfg->dependent_improvement_count > max_entries)
-			cfg->dependent_improvement_count = max_entries;
-		for (int i = 0; i < cfg->dependent_improvement_count; i++) {
+		if (cfg->dependent_improvement_max_index > max_entries)
+			cfg->dependent_improvement_max_index = max_entries;
+		for (int i = 0; i < cfg->dependent_improvement_max_index; i++) {
 			cfg->dependent_improvements[i] = def->dependent_improvements[i];
 			def->dependent_improvements[i] = NULL;
 		}
 		if (! def->has_img_column_count) {
-			cfg->img_column_count = clamp (0, MAX_DISTRICT_COLUMN_COUNT, cfg->dependent_improvement_count);
+			cfg->img_column_count = clamp (1, MAX_DISTRICT_COLUMN_COUNT, cfg->dependent_improvement_max_index + 1);
 			cfg->has_img_column_count_override = false;
 		}
 	}
@@ -8315,7 +8315,7 @@ override_special_district_from_definition (struct parsed_district_definition * d
 	}
 
 	if (def->has_img_column_count) {
-		cfg->img_column_count = clamp (0, MAX_DISTRICT_COLUMN_COUNT, cfg->img_column_count);
+		cfg->img_column_count = clamp (1, MAX_DISTRICT_COLUMN_COUNT, cfg->img_column_count);
 		cfg->has_img_column_count_override = true;
 	}
 
@@ -8548,11 +8548,11 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		new_cfg.generated_resource_flags = 0;
 	}
 
-	new_cfg.dependent_improvement_count = def->has_dependent_improvements ? def->dependent_improvement_count : 0;
+	new_cfg.dependent_improvement_max_index = def->has_dependent_improvements ? def->dependent_improvement_max_index : 0;
 	const int max_dependent_entries = ARRAY_LEN (is->district_configs[0].dependent_improvements);
-	if (new_cfg.dependent_improvement_count > max_dependent_entries)
-		new_cfg.dependent_improvement_count = max_dependent_entries;
-	for (int i = 0; i < new_cfg.dependent_improvement_count; i++) {
+	if (new_cfg.dependent_improvement_max_index > max_dependent_entries)
+		new_cfg.dependent_improvement_max_index = max_dependent_entries;
+	for (int i = 0; i < new_cfg.dependent_improvement_max_index; i++) {
 		new_cfg.dependent_improvements[i] = def->dependent_improvements[i];
 		def->dependent_improvements[i] = NULL;
 	}
@@ -8571,11 +8571,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 		return false;
 	}
 
-	new_cfg.img_column_count = def->has_img_column_count ? def->img_column_count : new_cfg.dependent_improvement_count;
-	if (new_cfg.img_column_count > 20)
-		new_cfg.img_column_count = 20;
-	if (new_cfg.img_column_count < 0)
-		new_cfg.img_column_count = 0;
+	new_cfg.img_column_count = clamp (1, MAX_DISTRICT_COLUMN_COUNT, def->has_img_column_count ? def->img_column_count : new_cfg.dependent_improvement_max_index + 1);
 	new_cfg.has_img_column_count_override = def->has_img_column_count;
 
 	if (reusing_existing)
@@ -9004,10 +9000,10 @@ handle_district_definition_key (struct parsed_district_definition * def,
 					      parse_errors,
 					      line_number,
 					  "dependent_improvs")) {
-			def->dependent_improvement_count = list_count;
+			def->dependent_improvement_max_index = list_count;
 			def->has_dependent_improvements = true;
 		} else {
-			def->dependent_improvement_count = 0;
+			def->dependent_improvement_max_index = 0;
 			def->has_dependent_improvements = false;
 		}
 		free (value_text);
@@ -10429,7 +10425,7 @@ district_config_has_dependent_improvement (struct district_config * cfg, char co
 	if ((cfg == NULL) || (name == NULL) || (name[0] == '\0'))
 		return false;
 
-	for (int i = 0; i < cfg->dependent_improvement_count; i++) {
+	for (int i = 0; i < cfg->dependent_improvement_max_index; i++) {
 		char const * existing = cfg->dependent_improvements[i];
 		if ((existing != NULL) && (strcmp (existing, name) == 0))
 			return true;
@@ -10571,7 +10567,7 @@ set_wonders_dependent_on_wonder_district (void)
 		if (district_config_has_dependent_improvement (cfg, wonder_name))
 			continue;
 
-		int dest = cfg->dependent_improvement_count;
+		int dest = cfg->dependent_improvement_max_index;
 		if (dest >= ARRAY_LEN (cfg->dependent_improvements)) {
 			continue;
 		}
@@ -10582,12 +10578,12 @@ set_wonders_dependent_on_wonder_district (void)
 		}
 
 		cfg->dependent_improvements[dest] = copy;
-		cfg->dependent_improvement_count = dest + 1;
+		cfg->dependent_improvement_max_index = dest + 1;
 	}
 
 	if (! cfg->has_img_column_count_override &&
-	    (cfg->img_column_count < cfg->dependent_improvement_count))
-		cfg->img_column_count = cfg->dependent_improvement_count;
+	    (cfg->img_column_count < cfg->dependent_improvement_max_index + 1))
+		cfg->img_column_count = cfg->dependent_improvement_max_index + 1;
 }
 
 void
@@ -10831,7 +10827,7 @@ void parse_building_and_tech_ids ()
 
 		// Map improvement prereqs to districts
 		int stored_count = 0;
-		for (int j = 0; j < is->district_configs[i].dependent_improvement_count; j++) {
+		for (int j = 0; j < is->district_configs[i].dependent_improvement_max_index; j++) {
 			int improv_id;
 			if (is->district_configs[i].dependent_improvements[j] == "" || is->district_configs[i].dependent_improvements[j] == NULL)
 				continue;
@@ -16191,8 +16187,8 @@ bool load_day_night_hour_images(struct day_night_cycle_img_set *this, const char
 			if (variant_count > variant_capacity)
 				variant_count = variant_capacity;
 
-			int era_count = cfg->vary_img_by_era ? 4 : 1;
-			int column_count = cfg->img_column_count + 1;
+			int era_count     = cfg->vary_img_by_era ? 4 : 1;
+			int column_count  = cfg->img_column_count;
 			int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
 			int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
 
@@ -16448,8 +16444,8 @@ build_sprite_proxies_24(Map_Renderer *mr) {
 				if (variant_count > variant_capacity)
 					variant_count = variant_capacity;
 
-				int era_count = cfg->vary_img_by_era ? 4 : 1;
-				int column_count = cfg->img_column_count + 1;
+				int era_count    = cfg->vary_img_by_era ? 4 : 1;
+				int column_count = cfg->img_column_count;
 
 				for (int variant_i = 0; variant_i < variant_count; variant_i++) {
 					if ((cfg->img_paths[variant_i] == NULL) || (cfg->img_paths[variant_i][0] == '\0'))
@@ -31374,8 +31370,8 @@ init_district_images ()
 		if (variant_count <= 0)
 			continue;
 
-		int era_count = cfg->vary_img_by_era ? 4 : 1;
-		int column_count  = cfg->img_column_count + 1;
+		int era_count     = cfg->vary_img_by_era ? 4 : 1;
+		int column_count  = cfg->img_column_count;
 		int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
 		int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
 
@@ -32026,36 +32022,16 @@ district_allows_river (struct district_config const * cfg)
 int
 get_energy_grid_image_index (int tile_x, int tile_y)
 {
-	return 0;
 	struct district_infos * info = &is->district_infos[ENERGY_GRID_DISTRICT_ID];
-	int coal_plant_id    = info->dependent_building_ids[0];
-	int hydro_plant_id   = info->dependent_building_ids[1];
-	int solar_plant_id   = info->dependent_building_ids[2];
-	int nuclear_plant_id = info->dependent_building_ids[3];
-	bool coal            = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, ENERGY_GRID_DISTRICT_ID, coal_plant_id);
-	bool hydro           = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, ENERGY_GRID_DISTRICT_ID, hydro_plant_id);
-	bool solar           = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, ENERGY_GRID_DISTRICT_ID, solar_plant_id);
-	bool nuclear         = tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, ENERGY_GRID_DISTRICT_ID, nuclear_plant_id);
+	for (int i = 0; i < info->dependent_building_count; i++) {
+		// Zero is "no building"; Buildings start from index one
+		int column_index = i + 1;
+		int building_id = info->dependent_building_ids[i];
+		if (tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, ENERGY_GRID_DISTRICT_ID, building_id))
+			return column_index;
+	}
 
-    int index = 0;
-
-	if (! coal && ! hydro && ! solar && ! nuclear)    index = 0;  // None
-	else if (coal && ! hydro && ! solar && ! nuclear) index = 1;  // Coal
-	else if (! coal && hydro && ! solar && ! nuclear) index = 2;  // Hydro
-	else if (coal && hydro && ! solar && ! nuclear)   index = 3;  // Coal, Hydro
-	else if (! coal && ! hydro && ! solar && nuclear) index = 4;  // Nuclear
-	else if (! coal && ! hydro && solar && ! nuclear) index = 5;  // Solar
-	else if (coal && hydro && solar && nuclear)       index = 6;  // All
-	else if (coal && hydro && ! solar && nuclear)     index = 7;  // Coal, Hydro, Nuclear
-	else if (! coal && hydro && solar && nuclear)     index = 8;  // Hydro, Solar, Nuclear
-	else if (! coal && hydro && ! solar && nuclear)   index = 9;  // Hydro, Nuclear
-	else if (! coal && hydro && solar && ! nuclear)   index = 10; // Hydro, Solar
-	else if (! coal && ! hydro && solar && nuclear)   index = 11; // Solar, Nuclear
-	else if (coal && ! hydro && ! solar && nuclear)   index = 12; // Coal, Nuclear
-	else if (coal && ! hydro && solar && nuclear)     index = 13; // Coal, Solar, Nuclear
-	else if (coal && ! hydro && solar && ! nuclear)   index = 14; // Coal, Solar
-
-    return index;
+	return 0;
 }
 
 int
@@ -32443,7 +32419,7 @@ draw_district_generated_resource_on_tile (Map_Renderer * this, Tile * tile, stru
 int 
 count_completed_buildings_in_district_radius (int tile_x, int tile_y, int district_id)
 {
-	struct district_config const * cfg = &is->district_configs[district_id];
+	struct district_config const * cfg    = &is->district_configs[district_id];
 	struct district_infos * district_info = &is->district_infos[district_id];
 	int completed_count = 0;
 	for (int i = 0; i < district_info->dependent_building_count; i++) {
@@ -32457,23 +32433,16 @@ count_completed_buildings_in_district_radius (int tile_x, int tile_y, int distri
 void 
 draw_district_on_map_or_canvas_by_buildings (Sprite * base_sprite, Map_Renderer * map_renderer, int district_id, int variant, int era, int tile_x, int tile_y, int draw_x, int draw_y)
 {
-	struct district_config const * cfg = &is->district_configs[district_id];
+	struct district_config const * cfg    = &is->district_configs[district_id];
 	struct district_infos * district_info = &is->district_infos[district_id];
-	int max_stage = cfg->img_column_count;
-	int stage_limit = ARRAY_LEN (is->district_img_sets[0].imgs[0][0]) - 1;
-
-	if (max_stage > stage_limit)
-		max_stage = stage_limit;
+	int max_column_index = cfg->img_column_count - 1;
 
 	draw_district_on_map_or_canvas(base_sprite, map_renderer, draw_x, draw_y);
 
 	for (int i = 0; i < district_info->dependent_building_count; i++) {
 		int building_id = district_info->dependent_building_ids[i];
-		int stage = i + 1;
-		if (stage > max_stage)
-			break;
 		if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id)) {
-			Sprite * district_sprite = &is->district_img_sets[district_id].imgs[variant][era][stage];
+			Sprite * district_sprite = &is->district_img_sets[district_id].imgs[variant][era][i];
 			draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
 		}
 	}
@@ -32643,8 +32612,6 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 				if (! is->current_config.enable_energy_grid_districts)
 					return;
 
-				// Energy grids can have multiple buildings that - unlike most district buildings - don't have each other as prereqs (e.g., Coal Plant & Nuclear Plant),
-				// and thus have a combinatorial number of images based on which power plants are built in their radius.
 				buildings = get_energy_grid_image_index (tile_x, tile_y);
 				draw_district_on_map_or_canvas(&sprites[variant][era][buildings], map_renderer, draw_x, draw_y);
                 return;

@@ -733,7 +733,7 @@ struct district_config {
 	int x_offset;
 	int y_offset;
 	int resource_prereq_count;
-	int dependent_improvement_count;
+	int dependent_improvement_max_index;
 	int wonder_prereq_count;
 	int natural_wonder_prereq_count;
 	int buildable_on_district_count;
@@ -865,46 +865,46 @@ struct wonder_location {
 const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYPES] = {
 	{
 		.command = UCV_Build_Neighborhood, .name = "Neighborhood", .tooltip = "Build Neighborhood", .display_name = "Neighborhood",
-		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = true, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = true, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 0, .dependent_improvements = {0},
 		.img_paths = {"Neighborhood_AMER.pcx", "Neighborhood_EURO.pcx", "Neighborhood_ROMAN.pcx", "Neighborhood_MIDEAST.pcx", "Neighborhood_ASIAN.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
-		.img_path_count = 5, .img_column_count = 3, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
+		.img_path_count = 5, .img_column_count = 4, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
 		.culture_bonus = 1, .science_bonus = 1, .food_bonus = 0, .gold_bonus = 1, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 25,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 
 	},
 	{
 		.command = UCV_Build_WonderDistrict, .name = "Wonder District", .tooltip = "Build Wonder District", .display_name = "Wonder District",
-		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 0, .dependent_improvements = {0},
 		.img_paths = {"WonderDistrict.pcx"},
 		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Coast) | (1 << SQ_Mountains)),
-		.img_path_count = 1, .img_column_count = 0, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 1, .btn_tile_sheet_column = 1, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 
 	},
 	{
 		.command = UCV_Build_DistributionHub, .name = "Distribution Hub", .tooltip = "Build Distribution Hub", .display_name = "Distribution Hub",
-		.advance_prereqs = {"Construction"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.advance_prereqs = {"Construction"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 0, .dependent_improvements = {0},
 		.img_paths = {"DistributionHub.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
-		.img_path_count = 1, .img_column_count = 0, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 1, .btn_tile_sheet_column = 2, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 
 	},
 	{
 		.command = UCV_Build_Aerodrome, .name = "Aerodrome", .tooltip = "Build Aerodrome", .display_name = "Aerodrome",
-		.advance_prereqs = {"Flight"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 1,
+		.advance_prereqs = {"Flight"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 1,
 		.img_paths = {"Aerodrome.pcx"}, .dependent_improvements = {"Airport"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
-		.img_path_count = 1, .img_column_count = 1, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 2, .btn_tile_sheet_column = 3, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
 	{
 		.command = -1, .name = "Natural Wonder", .tooltip = NULL, .display_name = "Natural Wonder",
-		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0, .dependent_improvements = {0},
+		.advance_prereqs = {0}, .advance_prereq_count = 0, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 0, .dependent_improvements = {0},
 		.img_paths = {0},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK,
 		.img_path_count = 0, .img_column_count = 0, .btn_tile_sheet_column = 0, .btn_tile_sheet_row = 0,
@@ -913,26 +913,26 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_Port, .name = "Port", .tooltip = "Build Port", .display_name = "Port",
-		.advance_prereqs = {"Map Making"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 2, .align_to_coast = true,
+		.advance_prereqs = {"Map Making"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 2, .align_to_coast = true,
 		.img_paths = {"Port_NW.pcx", "Port_NE.pcx", "Port_SE.pcx", "Port_SW.pcx"}, .dependent_improvements = {"Harbor", "Commercial Dock"},
 		.buildable_square_types_mask = (1 << SQ_Coast),
-		.img_path_count = 4, .img_column_count = 2, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .align_to_coast = true,
+		.img_path_count = 4, .img_column_count = 4, .btn_tile_sheet_column = 4, .btn_tile_sheet_row = 0, .align_to_coast = true,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
 	{
 		.command = UCV_Build_CentralRailHub, .name = "Central Rail Hub", .tooltip = "Build Central Rail Hub", .display_name = "Central Rail Hub",
-		.advance_prereqs = {"Steam Power"}, .advance_prereq_count = 1, .resource_prereqs = {"Iron", "Coal"}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 2, .dependent_improvement_count = 0,
+		.advance_prereqs = {"Steam Power"}, .advance_prereq_count = 1, .resource_prereqs = {"Iron", "Coal"}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 2, .dependent_improvement_max_index = 0,
 		.img_paths = {"CentralRailHub_AMER.pcx", "CentralRailHub_EURO.pcx", "CentralRailHub_ROMAN.pcx", "CentralRailHub_MIDEAST.pcx", "CentralRailHub_ASIAN.pcx"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK, .auto_add_road = true, .auto_add_railroad = true,
-		.img_path_count = 5, .img_column_count = 1, .btn_tile_sheet_column = 5, .btn_tile_sheet_row = 0,
+		.img_path_count = 5, .img_column_count = 2, .btn_tile_sheet_column = 5, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
 	{
 		.command = UCV_Build_EnergyGrid, .name = "Energy Grid", .tooltip = "Build Energy Grid", .display_name = "Energy Grid",
-		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 4,
-		.img_paths = {"EnergyGrid.pcx"}, .dependent_improvements = {"Coal Plant", "Hydro Plant", "Solar Plant", "Nuclear Plant"},
+		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 4,
+		.img_paths = {"EnergyGrid.pcx"}, .dependent_improvements = {"Coal Plant", "Hydro Plant", "Nuclear Plant", "Solar Plant"},
 		.buildable_square_types_mask = DEFAULT_DISTRICT_BUILDABLE_MASK, .custom_height = 84,
 		.img_path_count = 1, .img_column_count = 4, .btn_tile_sheet_column = 6, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 2, .happiness_bonus = 0, .defense_bonus_percent = 0,
@@ -940,28 +940,28 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 	},
 	{
 		.command = UCV_Build_Bridge, .name = "Bridge", .tooltip = "Build Bridge", .display_name = "Bridge",
-		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
+		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 0,
 		.img_paths = {"Bridge.pcx"}, .dependent_improvements = {0}, .custom_width = 176, .custom_height = 112, .y_offset = 24, .x_offset = 0,
 		.buildable_square_types_mask = (1 << SQ_Coast), .auto_add_road = true,
-		.img_path_count = 1, .img_column_count = 10, .btn_tile_sheet_column = 7, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 9, .btn_tile_sheet_column = 7, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
 	{
 		.command = UCV_Build_Canal, .name = "Canal", .tooltip = "Build Canal", .display_name = "Canal",
-		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
+		.advance_prereqs = {"Industrialization"}, .advance_prereq_count = 1, .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = true, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 0,
 		.img_paths = {"Canal.pcx"}, .dependent_improvements = {0}, .custom_width = 176, .custom_height = 112, .y_offset = 24, .x_offset = 0,
 		.buildable_square_types_mask = (1 << SQ_Desert) | (1 << SQ_Plains) | (1 << SQ_Grassland) | (1 << SQ_Tundra) | (1 << SQ_FloodPlain), 
-		.img_path_count = 1, .img_column_count = 10, .btn_tile_sheet_column = 8, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 9, .btn_tile_sheet_column = 8, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 0,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	},
 	{
 		.command = UCV_Build_GreatWall, .name = "Great Wall", .tooltip = "Build Great Wall", .display_name = "Great Wall",
-		.advance_prereqs = {0}, .advance_prereq_count = 0, .obsoleted_by = "Metallurgy", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_count = 0,
+		.advance_prereqs = {0}, .advance_prereq_count = 0, .obsoleted_by = "Metallurgy", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 0,
 		.img_paths = {"GreatWall.pcx"}, .dependent_improvements = {0}, .custom_height = 88, .wonder_prereqs = {"The Great Wall"}, .wonder_prereq_count = 1,
 		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Mountains) | (1 << SQ_Forest) | (1 << SQ_Swamp) | (1 << SQ_Jungle)), .draw_over_resources = true,
-		.img_path_count = 1, .img_column_count = 10, .btn_tile_sheet_column = 9, .btn_tile_sheet_row = 0,
+		.img_path_count = 1, .img_column_count = 9, .btn_tile_sheet_column = 9, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 50,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
 	}
@@ -983,7 +983,7 @@ struct parsed_district_definition {
 	char * buildable_adjacent_to_districts[5];
 	char * img_paths[5];
 	int resource_prereq_count;
-	int dependent_improvement_count;
+	int dependent_improvement_max_index;
 	int wonder_prereq_count;
 	int natural_wonder_prereq_count;
 	int buildable_on_district_count;
