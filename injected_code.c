@@ -32439,14 +32439,15 @@ draw_district_on_map_or_canvas_by_buildings (Sprite * base_sprite, Map_Renderer 
 {
 	struct district_config const * cfg    = &is->district_configs[district_id];
 	struct district_infos * district_info = &is->district_infos[district_id];
-	int max_column_index = cfg->img_column_count - 1;
 
 	draw_district_on_map_or_canvas(base_sprite, map_renderer, draw_x, draw_y);
 
 	for (int i = 0; i < district_info->dependent_building_count; i++) {
+		// Zero is "base texture"; Actual building column art starts from index one
+		int column_index = i + 1;
 		int building_id = district_info->dependent_building_ids[i];
 		if ((building_id >= 0) && tile_coords_has_city_with_building_in_district_radius (tile_x, tile_y, district_id, building_id)) {
-			Sprite * district_sprite = &is->district_img_sets[district_id].imgs[variant][era][i];
+			Sprite * district_sprite = &is->district_img_sets[district_id].imgs[variant][era][column_index];
 			draw_district_on_map_or_canvas(district_sprite, map_renderer, draw_x, draw_y);
 		}
 	}
