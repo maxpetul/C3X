@@ -668,6 +668,7 @@ reset_to_base_config ()
 	}
 
 	table_deinit (&cc->limit_defensive_retreat_on_water_to_types);
+	table_deinit (&cc->can_bombard_only_sea_tiles);
 
 	// Free set of PTW artillery types and list of converted types
 	table_deinit (&cc->ptw_arty_types);
@@ -2155,6 +2156,9 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "ptw_like_artillery_targeting")) {
 					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->ptw_arty_types))
+						handle_config_error (&p, CPE_BAD_VALUE);
+				} else if (slice_matches_str (&p.key, "can_bombard_only_sea_tiles")) {
+					if (! read_unit_type_list (&value, &unrecognized_lines, &cfg->can_bombard_only_sea_tiles))
 						handle_config_error (&p, CPE_BAD_VALUE);
 				} else if (slice_matches_str (&p.key, "civ_aliases_by_era")) {
 					if (0 <= (recog_err_offset = read_recognizables (&value,
@@ -19830,12 +19834,17 @@ bool __fastcall
 patch_Unit_check_bombard_target (Unit * this, int edx, int tile_x, int tile_y)
 {
 	bool base = Unit_check_bombard_target (this, __, tile_x, tile_y);
-	Tile * tile;
+	Tile * tile = tile_at (tile_x, tile_y);
 	int overlays;
+
 	if (base &&
+	    itable_look_up_or (&is->current_config.can_bombard_only_sea_tiles, this->Body.UnitTypeID, 0) &&
+	    ! tile->vtable->m35_Check_Is_Water (tile))
+		return false;
+
+	else if (base &&
 	    is->current_config.disallow_useless_bombard_vs_airfields &&
 	    ! Unit_has_ability (this, __, UTA_Nuclear_Weapon) &&
-	    ((tile = tile_at (tile_x, tile_y)) != p_null_tile) &&
 	    ((overlays = tile->vtable->m42_Get_Overlays (tile, __, 0)) & 0x20000000) && // if tile has an airfield AND
 	    (overlays == 0x20000000)) { // tile only has an airfield
 		UnitType * this_type = &p_bic_data->UnitTypes[this->Body.UnitTypeID];

@@ -214,7 +214,7 @@ struct c3x_config {
 	enum retreat_rules land_retreat_rules;
 	enum retreat_rules sea_retreat_rules;
 	bool allow_defensive_retreat_on_water;
-	struct table limit_defensive_retreat_on_water_to_types;
+	struct table limit_defensive_retreat_on_water_to_types; // Table mapping unit type IDs to 1's; used as a hash set
 	int ai_multi_city_start;
 	int max_tries_to_place_fp_city;
 	int * ai_multi_start_extra_palaces;
@@ -238,6 +238,7 @@ struct c3x_config {
 	bool immunize_aircraft_against_bombardment;
 	bool replay_ai_moves_in_hotseat_games;
 	struct table ptw_arty_types; // Table mapping unit type IDs to 1's; used as a hash set
+	struct table can_bombard_only_sea_tiles; // Table mapping unit type IDs to 1's; used as a hash set
 	bool restore_unit_directions_on_game_load;
 	bool apply_grid_ini_setting_on_game_load;
 	bool charm_flag_triggers_ptw_like_targeting;
