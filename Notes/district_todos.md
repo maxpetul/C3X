@@ -2,8 +2,6 @@
     - Municipal District (ZergMazter doing art)
     - Central Rail Hub   (ZergMazter doing art)
   - Light annotations
-    - Data Center
-    - Great Wall
     - Water Park
     - Holy Site (mideast)
     - Commercial Hub (modern, left)
