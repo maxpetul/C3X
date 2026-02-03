@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
-civ3_daynight_pcx.py — v4.3 (stronger nighttime blue + stable noon-neutral zone)
+civ3_daynight_pcx.py — v4.4 (remove #00FF00 from palette entirely)
 
 Highlights:
 - Half-hour (or any divisor of an hour) time slices via --step-minutes.
-- Green→Magenta index remap (on by default).
+- Green→Magenta pixel remap (on by default).
+- NEW: After pixel remap, ANY palette entries exactly #00FF00 are replaced with black (#000000),
+       so #00FF00 no longer exists anywhere in the palette.
 - Palette-only tinting; indices preserved (except the optional index remap).
 - Noon-neutral zone keeps ~10:00–14:00 close to base 1200.
-- NEW: Stronger nighttime blue response using the existing --blue knob,
-       with an additional night-only hue shift (blue up, red/green down).
+- Stronger nighttime blue response using the existing --blue knob,
+  with an additional night-only hue shift (blue up, red/green down).
 
 Tested knobs (your current favorites work unchanged):
   --warmth 1.05  --blue 2.0 --darkness 1.1 --desat 0.85 --sat 1.2 --contrast 1.08
@@ -19,7 +21,7 @@ Tested knobs (your current favorites work unchanged):
 import argparse
 import shutil
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple, Set
+from typing import Iterable, List, Sequence, Tuple, Set, Dict
 
 from PIL import Image
 from civ3_city_lights import is_night_hour
@@ -29,8 +31,11 @@ from protected_pixels import PROTECTED_RANGES_ENT_COMPLEX
 PROTECTED_FALLBACK_NEIGHBOR_RADIUS = 1  # 1 => 3x3 window, 2 => 5x5, etc.
 PROTECTED_GAP_BRIDGE = 1
 
-from collections import defaultdict
-from typing import List, Tuple, Sequence
+from collections import defaultdict, Counter
+from math import sqrt
+
+
+# --------------------------- Helpers for protected ranges ---------------------------
 
 def _bridge_small_gaps(
     ranges: Sequence[Tuple[Tuple[int, int], Tuple[int, int]]],
@@ -50,7 +55,6 @@ def _bridge_small_gaps(
             # Not horizontal; keep separate
             by_y[(y1, y2, 'nonh')].append((min(x1, x2), max(x1, x2), y1, y2))
             continue
-        # horizontal
         by_y[y1].append((min(x1, x2), max(x1, x2)))
 
     out: List[Tuple[Tuple[int, int], Tuple[int, int]]] = []
@@ -64,12 +68,11 @@ def _bridge_small_gaps(
 
     # Bridge gaps on horizontal scanlines
     for y, spans in by_y.items():
-        spans.sort()  # sort by x1 then x2
+        spans.sort()
         cur_x1, cur_x2 = spans[0]
         for nx1, nx2 in spans[1:]:
             gap = nx1 - cur_x2 - 1  # inclusive ranges
             if gap <= max_gap:
-                # Extend current span to cover the gap and next span
                 cur_x2 = max(cur_x2, nx2)
             else:
                 out.append(((cur_x1, y), (cur_x2, y)))
@@ -79,29 +82,36 @@ def _bridge_small_gaps(
     return out
 
 
-from math import sqrt
-from collections import Counter
-from typing import Set, Dict, Iterable, Tuple, List
+def clamp_byte(x: float) -> int:
+    return int(max(0, min(255, round(x))))
+
 
 def _nudge_if_reserved(nrgb, reserved_set, orig_rgb):
     if nrgb in reserved_set:
         # Nudge 1 toward original to avoid exact collision
-        r0,g0,b0 = orig_rgb; r,g,b = nrgb
-        def nudge(c, c0): 
+        r0, g0, b0 = orig_rgb
+        r, g, b = nrgb
+
+        def nudge(c, c0):
             return clamp_byte(c - 1 if c > c0 else c + 1 if c < c0 else c)
+
         return (nudge(r, r0), nudge(g, g0), nudge(b, b0))
     return nrgb
 
-def _rgb_of_index(pal: List[int], idx: int) -> Tuple[int, int, int]:
-    return pal[3*idx], pal[3*idx+1], pal[3*idx+2]
 
-def _color_dist2(a: Tuple[int,int,int], b: Tuple[int,int,int]) -> float:
-    dr, dg, db = a[0]-b[0], a[1]-b[1], a[2]-b[2]
-    return dr*dr + dg*dg + db*db
+def _rgb_of_index(pal: List[int], idx: int) -> Tuple[int, int, int]:
+    return pal[3 * idx], pal[3 * idx + 1], pal[3 * idx + 2]
+
+
+def _color_dist2(a: Tuple[int, int, int], b: Tuple[int, int, int]) -> float:
+    dr, dg, db = a[0] - b[0], a[1] - b[1], a[2] - b[2]
+    return dr * dr + dg * dg + db * db
+
 
 def _index_pixel_counts(im: Image.Image) -> Dict[int, int]:
-    colors = im.getcolors(maxcolors=256*256) or []
+    colors = im.getcolors(maxcolors=256 * 256) or []
     return {int(idx): int(cnt) for (cnt, idx) in colors}
+
 
 def _indices_used_in_coords(
     im: Image.Image,
@@ -110,13 +120,14 @@ def _indices_used_in_coords(
     w, h = im.size
     px = im.load()
     s: Set[int] = set()
-    for (x1,y1), (x2,y2) in ranges:
+    for (x1, y1), (x2, y2) in ranges:
         x_start, x_end = (x1, x2) if x1 <= x2 else (x2, x1)
         y_start, y_end = (y1, y2) if y1 <= y2 else (y2, y1)
-        for y in range(max(0,y_start), min(h, y_end+1)):
-            for x in range(max(0,x_start), min(w, x_end+1)):
-                s.add(int(px[x,y]))
+        for y in range(max(0, y_start), min(h, y_end + 1)):
+            for x in range(max(0, x_start), min(w, x_end + 1)):
+                s.add(int(px[x, y]))
     return s
+
 
 def _find_nearest_index(
     pal: List[int],
@@ -135,13 +146,25 @@ def _find_nearest_index(
             best = int(j)
     return best
 
+
+def _used_palette_indices(im: Image.Image) -> Set[int]:
+    """
+    Return the set of palette indices actually used by the image.
+    """
+    colors = im.getcolors(maxcolors=256 * 256) or []
+    used: Set[int] = set()
+    for _, idx in colors:
+        used.add(int(idx))
+    return used
+
+
 def _free_palette_slots(
     im: Image.Image,
     pal: List[int],
     needed: int,
     *,
-    protected_source_indices: Set[int],      # indices that appear inside protected coords
-    reserved_by_color_rgbs: Set[Tuple[int,int,int]],  # magenta/green/light-keys as RGB
+    protected_source_indices: Set[int],  # indices that appear inside protected coords
+    reserved_by_color_rgbs: Set[Tuple[int, int, int]],  # magenta/green/light-keys as RGB
 ) -> int:
     """
     Try to free up to `needed` palette slots by remapping the *least-used* indices
@@ -160,7 +183,7 @@ def _free_palette_slots(
     reserved_by_color_indices: Set[int] = set()
     for i in range(256):
         if i in used_indices:
-            rgb = (pal[3*i], pal[3*i+1], pal[3*i+2])
+            rgb = (pal[3 * i], pal[3 * i + 1], pal[3 * i + 2])
             if rgb in reserved_by_color_rgbs:
                 reserved_by_color_indices.add(i)
 
@@ -169,7 +192,6 @@ def _free_palette_slots(
     # Candidates we are allowed to merge away
     candidates = [i for i in used_indices if i not in forbidden]
 
-    # If nothing to do, bail
     if not candidates:
         return 0
 
@@ -177,16 +199,14 @@ def _free_palette_slots(
     candidates.sort(key=lambda i: counts.get(i, 0))
 
     freed = 0
-    # Allowed targets for merging: any used index that is not the candidate itself
-    # and not forbidden. Build once and update as we go.
     allowed_targets = set(used_indices) - forbidden
 
     for src_idx in candidates:
         if freed >= needed:
             break
         if src_idx not in used_indices:
-            continue  # may have been merged already
-        # Targets exclude this src
+            continue
+
         options = allowed_targets - {src_idx}
         if not options:
             continue
@@ -198,20 +218,15 @@ def _free_palette_slots(
         # Remap all pixels from src_idx -> tgt
         for y in range(h):
             for x in range(w):
-                if px[x,y] == src_idx:
-                    px[x,y] = tgt
+                if px[x, y] == src_idx:
+                    px[x, y] = tgt
 
-        # Update usage bookkeeping
         used_indices.discard(src_idx)
         allowed_targets.discard(src_idx)
         freed += 1
 
     return freed
 
-
-# --------------------------- Helpers for protected coords ---------------------------
-from typing import Set, Dict
-from collections import Counter
 
 def _sample_neighbor_index(px, x: int, y: int, w: int, h: int, r: int) -> int | None:
     """
@@ -227,48 +242,15 @@ def _sample_neighbor_index(px, x: int, y: int, w: int, h: int, r: int) -> int | 
         for xx in xs:
             if xx == x and yy == y:
                 continue
-            counts[ int(px[xx, yy]) ] += 1
+            counts[int(px[xx, yy])] += 1
     return counts.most_common(1)[0][0] if counts else None
 
-
-def _try_allocate_duplicate_index(pal: List[int], used: set[int]) -> int | None:
-    """
-    Return an unused index if available, else None.
-    (Non-raising version to enable graceful fallback.)
-    """
-    for i in range(256):
-        if i not in used:
-            used.add(i)
-            return i
-    return None
-
-
-def _used_palette_indices(im: Image.Image) -> Set[int]:
-    """
-    Return the set of palette indices actually used by the image.
-    """
-    # getcolors may return None if there are too many colors; use a large maxcolors
-    colors = im.getcolors(maxcolors=256*256) or []
-    used: Set[int] = set()
-    for count, idx in colors:
-        used.add(int(idx))
-    return used
-
-def _allocate_duplicate_index(pal: List[int], used: Set[int]) -> int:
-    """
-    Find an unused palette index (0..255). Raises RuntimeError if none available.
-    """
-    for i in range(256):
-        if i not in used:
-            used.add(i)
-            return i
-    raise RuntimeError("No free palette indices available to duplicate protected pixels.")
 
 def _protect_exact_pixels_by_index(
     im: Image.Image,
     pal: List[int],
     ranges: Sequence[Tuple[Tuple[int, int], Tuple[int, int]]],
-    reserved_by_color_rgbs: Set[Tuple[int,int,int]] = set(),
+    reserved_by_color_rgbs: Set[Tuple[int, int, int]] = set(),
 ) -> Set[int]:
     """
     Ensure protected coords keep their original (noon) colors by duplicating indices.
@@ -280,18 +262,17 @@ def _protect_exact_pixels_by_index(
     w, h = im.size
     px = im.load()
 
-    # 1) Determine which *source* indices appear inside protected coords
     protected_src_indices = _indices_used_in_coords(im, ranges)
 
-    # 2) See how many free slots we need (one per distinct source index)
     used_now = _used_palette_indices(im)
     free_now = [i for i in range(256) if i not in used_now]
     need = max(0, len(protected_src_indices) - len(free_now))
 
     if need > 0:
-        # Try to free `need` slots by merging least-used, non-protected, non-reserved indices
         _ = _free_palette_slots(
-            im, pal, need,
+            im,
+            pal,
+            need,
             protected_source_indices=protected_src_indices,
             reserved_by_color_rgbs=reserved_by_color_rgbs,
         )
@@ -305,31 +286,31 @@ def _protect_exact_pixels_by_index(
 
     radius = int(PROTECTED_FALLBACK_NEIGHBOR_RADIUS)
 
-    # 3) Walk through protected coords; duplicate on first encounter of a src index
+    # Duplicate on first encounter of a src index
     for (x1, y1), (x2, y2) in ranges:
         x_start, x_end = (x1, x2) if x1 <= x2 else (x2, x1)
         y_start, y_end = (y1, y2) if y1 <= y2 else (y2, y1)
 
         for y in range(y_start, y_end + 1):
-            if not (0 <= y < h): continue
+            if not (0 <= y < h):
+                continue
             for x in range(x_start, x_end + 1):
-                if not (0 <= x < w): continue
+                if not (0 <= x < w):
+                    continue
 
                 orig_idx = int(px[x, y])
 
-                # Reuse existing duplicate if we made one for this orig_idx
                 dup = index_map.get(orig_idx)
                 if dup is not None:
                     px[x, y] = dup
                     continue
 
-                # Allocate a fresh duplicate slot if available
                 if free_pool:
                     dup_idx = free_pool.pop(0)
-                    r, g, b = pal[3*orig_idx:3*orig_idx+3]
-                    pal[3*dup_idx+0] = r
-                    pal[3*dup_idx+1] = g
-                    pal[3*dup_idx+2] = b
+                    r, g, b = pal[3 * orig_idx: 3 * orig_idx + 3]
+                    pal[3 * dup_idx + 0] = r
+                    pal[3 * dup_idx + 1] = g
+                    pal[3 * dup_idx + 2] = b
                     index_map[orig_idx] = dup_idx
                     reserved_indices.add(dup_idx)
                     px[x, y] = dup_idx
@@ -345,8 +326,6 @@ def _protect_exact_pixels_by_index(
     return reserved_indices
 
 
-
-
 # --------------------------- CLI & helpers ---------------------------
 
 def parse_rgb(s: str) -> Tuple[int, int, int]:
@@ -355,7 +334,7 @@ def parse_rgb(s: str) -> Tuple[int, int, int]:
         s = s[1:]
         if len(s) != 6:
             raise ValueError(f"Bad hex color: #{s}")
-        return tuple(int(s[i:i+2], 16) for i in (0, 2, 4))  # type: ignore
+        return tuple(int(s[i:i + 2], 16) for i in (0, 2, 4))  # type: ignore
     if "," in s:
         parts = [p.strip() for p in s.split(",")]
         if len(parts) != 3:
@@ -382,10 +361,6 @@ def time_labels(step_minutes: int) -> List[str]:
         m += step_minutes
     labels.append("2400")
     return labels
-
-
-def clamp_byte(x: float) -> int:
-    return int(max(0, min(255, round(x))))
 
 
 # --------------------------- TONEMAP MODEL ---------------------------
@@ -441,8 +416,6 @@ def hour_adjustments(
     gray_blend = min(max(gray_blend, 0.0), 0.85)
 
     # Night-only blue push factor (extra hue shift at night)
-    #  - grows with (blue_scale - 1) and with 'night'
-    #  - kept separate from b_mul so daytime remains unchanged
     blue_push = max(0.0, blue_scale - 1.0) * night  # 0 at day, up to (blue-1) at night
 
     # Clamp gentle bounds
@@ -487,13 +460,11 @@ def _apply_night_blue_push(
       - Slightly reduces R and G
       - Increases B
     'blue_push' is ~ (blue_scale - 1) * night, so this is zero in daytime.
-    Coefficients tuned to be visible but not cartoonish; adjust if needed.
     """
     if blue_push <= 0.0:
         return rgb
     r, g, b = rgb
-    c = blue_push  # c in [0..(blue-1)] scaled by night
-    # Gentle but noticeable: at c=1 (e.g., --blue 2.0 at full night)
+    c = blue_push
     r *= (1.0 - 0.15 * c)
     g *= (1.0 - 0.10 * c)
     b *= (1.0 + 0.35 * c)
@@ -549,22 +520,18 @@ def _interval_membership(x: float, a: float, b: float, soft: float) -> float:
     soft = max(0.0, soft)
 
     def segment_membership(x: float, s: float, e: float, soft: float) -> float:
-        # Non-wrapped segment s <= e in [0,24]
         if soft <= 0.0:
             return 1.0 if (s <= x <= e) else 0.0
 
-        # Left ramp [s-soft, s]
         if s - soft <= x < s:
-            t = (x - (s - soft)) / soft  # 0..1
+            t = (x - (s - soft)) / soft
             return _smoothstep01(t)
 
-        # Core [s, e]
         if s <= x <= e:
             return 1.0
 
-        # Right ramp [e, e+soft]
         if e < x <= e + soft:
-            t = (x - e) / soft  # 0..1
+            t = (x - e) / soft
             return 1.0 - _smoothstep01(t)
 
         return 0.0
@@ -572,7 +539,6 @@ def _interval_membership(x: float, a: float, b: float, soft: float) -> float:
     if a <= b:
         return segment_membership(x, a, b, soft)
     else:
-        # Wrapped interval: union of [a,24) and [0,b]
         m1 = segment_membership(x, a, 24.0, soft)
         m2 = segment_membership(x, 0.0, b, soft)
         return max(m1, m2)
@@ -585,7 +551,6 @@ def _noon_weight(hour_value: float, blend: float, sigma: float,
       - Gaussian around 12:00 with width 'sigma' (hours), scaled by 'blend'.
       - Smooth interval window [w_start, w_end] with soft edges 'w_soft',
         also scaled by 'blend'.
-      - The final weight is max of both components, clamped 0..1.
     """
     try:
         h = hour_value % 24.0
@@ -600,14 +565,12 @@ def _noon_weight(hour_value: float, blend: float, sigma: float,
     if blend <= 0.0:
         return 0.0
 
-    # Gaussian around noon
     from math import exp
     d = abs(h - 12.0)
     d = min(d, 24.0 - d)
     g = exp(-0.5 * (d / sigma) ** 2) if sigma > 0.0 else 0.0
     g *= blend
 
-    # Smooth window
     window_m = _interval_membership(h, w_start, w_end, w_soft) * blend
 
     w = max(g, window_m)
@@ -638,10 +601,53 @@ def set_palette(img: Image.Image, pal: Sequence[int]) -> None:
 def find_color_index(pal: Sequence[int], color: Tuple[int, int, int]) -> int:
     cr, cg, cb = color
     for i in range(256):
-        r, g, b = pal[3*i:3*i+3]
+        r, g, b = pal[3 * i: 3 * i + 3]
         if r == cr and g == cg and b == cb:
             return i
     return -1
+
+
+# --------------------------- Green removal (NEW) ---------------------------
+
+def remap_all_green_to_magenta_and_blacken_palette(
+    im: Image.Image,
+    pal: List[int],
+    *,
+    green: Tuple[int, int, int] = (0, 255, 0),
+    magenta: Tuple[int, int, int] = (255, 0, 255),
+    black: Tuple[int, int, int] = (0, 0, 0),
+) -> Image.Image:
+    """
+    1) Remap pixels from ANY palette index that is exactly green -> magenta index.
+    2) Replace ANY palette entry that is exactly green with black.
+    This removes #00FF00 from the palette entirely.
+    """
+    magenta_idx = find_color_index(pal, magenta)
+    if magenta_idx < 0:
+        return im  # can't remap without magenta entry
+
+    green_indices: List[int] = []
+    for i in range(256):
+        r, g, b = pal[3 * i: 3 * i + 3]
+        if (r, g, b) == green:
+            green_indices.append(i)
+
+    if not green_indices:
+        return im
+
+    # Remap pixels: any green index -> magenta index
+    lut = list(range(256))
+    for gi in green_indices:
+        lut[gi] = magenta_idx
+    im = im.point(lut, mode="P")
+
+    # Replace those palette entries with black
+    for gi in green_indices:
+        pal[3 * gi + 0] = black[0]
+        pal[3 * gi + 1] = black[1]
+        pal[3 * gi + 2] = black[2]
+
+    return im
 
 
 # --------------------------- Core operations ---------------------------
@@ -682,34 +688,31 @@ def adjust_palette_for_time(
     reserved_color_set = set(reserved_colors)
     reserved_index_set = set(int(i) for i in reserved_indices)
 
-    # Noon weight (0..1): stronger near 10:00–14:00, peak at 12:00
     noon_w = _noon_weight(
         hour_value, noon_blend, noon_sigma,
         noon_window_start, noon_window_end, noon_window_soft
     )
 
-    # Damp sat/contrast near noon to avoid “pop”
     sat_eff = 1.0 + (sat_boost - 1.0) * (1.0 - noon_w)
     contrast_eff = 1.0 + (contrast - 1.0) * (1.0 - noon_w)
 
     out = pal[:]  # copy
     for i in range(256):
-        r, g, b = pal[3 * i:3 * i + 3]
+        r, g, b = pal[3 * i: 3 * i + 3]
 
         # Skip EXACT indices first (highest priority)
         if i in reserved_index_set:
-            out[3*i+0], out[3*i+1], out[3*i+2] = r, g, b
+            out[3 * i + 0], out[3 * i + 1], out[3 * i + 2] = r, g, b
             continue
 
-        # Then skip by color (magenta/green/light-keys)
+        # Then skip by color (magenta + user light-keys)
         if (r, g, b) in reserved_color_set:
-            out[3*i+0], out[3*i+1], out[3*i+2] = r, g, b
+            out[3 * i + 0], out[3 * i + 1], out[3 * i + 2] = r, g, b
             continue
 
         nr, ng, nb = tint_rgb((r, g, b), params, sat_boost=sat_eff, contrast=contrast_eff)
 
         if noon_w > 0.0:
-            # Blend back toward the original (noon) palette color at the SAME index
             nr = int(round((1.0 - noon_w) * nr + noon_w * r))
             ng = int(round((1.0 - noon_w) * ng + noon_w * g))
             nb = int(round((1.0 - noon_w) * nb + noon_w * b))
@@ -721,15 +724,6 @@ def adjust_palette_for_time(
         out[3 * i + 2] = nb
 
     return out
-
-
-def remap_green_to_magenta_indices(img: Image.Image, pal: Sequence[int]) -> Image.Image:
-    green_idx = find_color_index(pal, (0, 255, 0))
-    magenta_idx = find_color_index(pal, (255, 0, 255))
-    if green_idx < 0 or magenta_idx < 0 or green_idx == magenta_idx:
-        return img
-    lut = [magenta_idx if i == green_idx else i for i in range(256)]
-    return img.point(lut, mode="P")
 
 
 # --------------------------- File ops ---------------------------
@@ -789,9 +783,9 @@ def process_time_label(
                 im = im.convert("P")
             pal = get_palette(im)
 
-            # Optional green→magenta index remap first
+            # Optional green→magenta pixel remap AND remove green from palette (set to black)
             if do_index_remap:
-                im = remap_green_to_magenta_indices(im, pal)
+                im = remap_all_green_to_magenta_and_blacken_palette(im, pal)
 
             effective_reserved_colors: List[Tuple[int, int, int]] = list(reserved_colors)
             reserved_by_color_rgbs = set(effective_reserved_colors)
@@ -809,7 +803,7 @@ def process_time_label(
 
             new_pal = adjust_palette_for_time(
                 pal, hour_value, effective_reserved_colors,
-                reserved_indices=reserved_idx,  # <-- NEW
+                reserved_indices=reserved_idx,
                 warmth_scale=warmth_scale,
                 blue_scale=blue_scale,
                 darkness_scale=darkness_scale,
@@ -828,7 +822,6 @@ def process_time_label(
 
             set_palette(im, new_pal)
             im.save(pcx_path, format="PCX")
-
 
 
 # --------------------------- Main ---------------------------
@@ -869,7 +862,7 @@ def main():
     p.add_argument("--twilight-width", type=float, default=1.8,
                    help="Sigma for sunrise/sunset warmth spread (higher = broader).")
 
-    # Noon-neutral zone controls (defaults keep ~10:00–14:00 close to noon)
+    # Noon-neutral zone controls
     p.add_argument("--noon-blend", type=float, default=0.85,
                    help="0..1 strength to blend toward base palette near 12:00 (0=off).")
     p.add_argument("--noon-sigma", type=float, default=1.1,
@@ -884,9 +877,9 @@ def main():
     # Index remap control
     g = p.add_mutually_exclusive_group()
     g.add_argument("--keep-green-index", action="store_true",
-                   help="Do NOT remap green index to magenta; leave pixel indices unchanged.")
+                   help="Do NOT remap green pixels to magenta; also do NOT remove #00FF00 from the palette.")
     g.add_argument("--map-green-index", dest="map_green_index", action="store_true",
-                   help="Force remap green index to magenta (default behavior).")
+                   help="Force remap green pixels to magenta and replace any #00FF00 palette entries with black (default behavior).")
 
     args = p.parse_args()
 
@@ -895,15 +888,16 @@ def main():
     if not noon_dir.is_dir():
         raise SystemExit(f"Noon folder not found: {noon_dir}")
 
-    # Reserved colors (Magenta + Green + user light-keys)
-    reserved: List[Tuple[int, int, int]] = [(255, 0, 255), (0, 255, 0)]
+    # Reserved colors:
+    # - Magenta is kept stable
+    # - Green is NOT reserved anymore because we remove it from the palette when remapping is enabled
+    reserved: List[Tuple[int, int, int]] = [(255, 0, 255)]
     for s in args.light_key:
         reserved.append(parse_rgb(s))
 
     # Determine remap behavior (default ON)
     do_index_remap = not args.keep_green_index or args.map_green_index
 
-    # Build time labels for the given step, then exclude noon folder itself
     labels = [lbl for lbl in time_labels(args.step_minutes) if lbl != args.noon]
 
     # only-hour (accept 0000 -> 2400)
@@ -919,7 +913,7 @@ def main():
     print(f"Base: {base_dir}")
     print(f"Noon source: {noon_dir}")
     print(f"Time step: {args.step_minutes} minutes")
-    print(f"Index remap green→magenta: {'ON' if do_index_remap else 'OFF'}")
+    print(f"Green pixels→magenta + remove #00FF00 from palette: {'ON' if do_index_remap else 'OFF'}")
     print(f"Generating labels: {', '.join(labels)}")
 
     for lbl in labels:

@@ -2,7 +2,6 @@
     - Municipal District (ZergMazter doing art)
     - Central Rail Hub   (ZergMazter doing art)
   - Light annotations
-    - Offshore Extraction Zone
     - Data Center
     - Great Wall
     - Water Park
