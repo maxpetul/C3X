@@ -7,7 +7,7 @@ Civ 3 city lights compositor for *_lights.pcx
 - Multiple --light-key values (union mask)
 - **Per-light-key styles** via --light-style: per-key core/glow colors and optional overrides
 - Night (19..24,1..6): also replaces non-lights file
-- Pins magenta #ff00ff to palette index 255; preserves #00ff00
+- Pins magenta #ff00ff to palette index 255; removes #00ff00 from palette
 """
 
 import argparse, os, math, shutil
@@ -98,7 +98,7 @@ def ensure_palette_has_colors(image: Image.Image, colors: List[Tuple[int,int,int
     hist = image.histogram() if image.mode=='P' else None
     candidates = sorted(range(256), key=(lambda i: hist[i])) if (hist and len(hist)==256) else list(range(255,-1,-1))
     protected=set()
-    for rgb in colors+[MAGENTA,GREEN]:
+    for rgb in colors+[MAGENTA]:
         idx = find_color_index(pal, rgb)
         if idx!=-1: protected.add(idx)
     replace=[]
@@ -283,16 +283,24 @@ def build_composite_with_styles(base_bg_rgba: Image.Image,
 
 def save_with_palette_and_magic(comp_rgba: Image.Image, out_path: str, base_for_magic_rgb: Image.Image) -> None:
     imP = quantize_to_p_256(comp_rgba)
-    pal_after = ensure_palette_has_colors(imP, [MAGENTA, GREEN]); put_palette(imP, pal_after)
+    pal_after = ensure_palette_has_colors(imP, [MAGENTA]); put_palette(imP, pal_after)
     replacement_idx = force_magenta_at_255(imP)
-    pal_after = get_palette(imP); idx_grn = find_color_index(pal_after, GREEN)
     dst_px = imP.load(); src_px = base_for_magic_rgb.load(); w,h = imP.size
     for y in range(h):
         for x in range(w):
             r,g,b = src_px[x,y]; cur = dst_px[x,y]
-            if (r,g,b)==MAGENTA: dst_px[x,y]=255
-            elif (r,g,b)==GREEN and idx_grn!=-1: dst_px[x,y]=idx_grn
-            elif cur==255 and replacement_idx!=255: dst_px[x,y]=replacement_idx
+            if (r,g,b)==MAGENTA:
+                dst_px[x,y]=255
+            elif (r,g,b)==GREEN:
+                dst_px[x,y]=255
+            elif cur==255 and replacement_idx!=255:
+                dst_px[x,y]=replacement_idx
+    # Remove #00ff00 from palette entirely if present.
+    pal_after = get_palette(imP)
+    for i in range(256):
+        if (pal_after[3*i], pal_after[3*i+1], pal_after[3*i+2]) == GREEN:
+            pal_after[3*i:3*i+3] = [0, 0, 0]
+    put_palette(imP, pal_after)
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     imP.save(out_path, format='PCX')
 
@@ -396,7 +404,7 @@ def main():
             "Render glowing city lights from *_lights.pcx files.\n"
             "• Multiple light-keys supported (+ per-key styles)\n"
             "• Night hours (19..24,1..6) also overwrite the paired non-lights file\n"
-            "• MAGENTA pinned to index 255; GREEN written out as MAGENTA"
+            "• MAGENTA pinned to index 255; GREEN removed from palette if present"
         ),
         formatter_class=RawTextHelpFormatter,
         epilog=(

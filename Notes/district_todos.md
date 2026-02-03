@@ -2,7 +2,6 @@
     - Municipal District (ZergMazter doing art)
     - Central Rail Hub   (ZergMazter doing art)
   - Light annotations
-    - Commercial Hub (modern, left)
     - Municipal District
     - Central Rail Hub
 

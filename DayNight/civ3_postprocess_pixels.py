@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Civ3 post-process: remove *isolated* GREEN (#00ff00) pixels from PCX outputs.
+Civ3 post-process: remove GREEN (#00ff00) pixels from PCX outputs.
 
 Rules
 -----
@@ -10,8 +10,9 @@ Rules
 • Only touch files that have a corresponding "*_lights.pcx" in the same directory:
     - For "NAME.pcx" → process only if "NAME_lights.pcx" exists.
     - For "NAME_lights.pcx" → always process (it is the corresponding lights file).
-• Only replace *isolated* green pixels: a green pixel whose neighbors within
+• By default, only replace *isolated* green pixels: a green pixel whose neighbors within
   --isolation-radius (default 1, i.e. the 8-connected ring) contain no other green pixels.
+• With --remove-all-green, replace *all* green pixels.
 • Replacement uses *neighbor palette indices* so the palette stays unchanged.
   If no non-green neighbors exist, fall back to nearest palette color to local RGB average.
 
@@ -22,6 +23,7 @@ Usage
   #   --isolation-radius 1   (1 = 8-neighborhood)
   #   --search-radius 3
   #   --max-radius 5
+  #   --remove-all-green
 """
 
 import argparse, os, collections
@@ -116,7 +118,8 @@ def local_average_rgb(rgb_img: Image.Image, x: int, y: int, radius: int,
 
 # ---------- core fixer ----------
 
-def fix_green_in_image(path: str, isolation_radius: int, search_radius: int, max_radius: int, verbose: bool=False) -> int:
+def fix_green_in_image(path: str, isolation_radius: int, search_radius: int, max_radius: int,
+                       remove_all_green: bool, verbose: bool=False) -> int:
     """
     Returns number of pixels changed (only isolated greens are touched).
     """
@@ -135,14 +138,20 @@ def fix_green_in_image(path: str, isolation_radius: int, search_radius: int, max
     px = imRGB.load()
     w, h = imRGB.size
 
-    # Collect isolated green pixels
-    isolated_coords = []
-    for y in range(h):
-        for x in range(w):
-            if px[x,y] == GREEN and not has_green_neighbor(imRGB, x, y, isolation_radius):
-                isolated_coords.append((x,y))
+    # Collect target green pixels
+    coords = []
+    if remove_all_green:
+        for y in range(h):
+            for x in range(w):
+                if px[x, y] == GREEN:
+                    coords.append((x, y))
+    else:
+        for y in range(h):
+            for x in range(w):
+                if px[x, y] == GREEN and not has_green_neighbor(imRGB, x, y, isolation_radius):
+                    coords.append((x, y))
 
-    if not isolated_coords:
+    if not coords:
         return 0
 
     outP = imP.copy()
@@ -152,7 +161,12 @@ def fix_green_in_image(path: str, isolation_radius: int, search_radius: int, max
     if mag_idx   != -1: banned_indices.add(mag_idx)
 
     changed = 0
-    for (x,y) in isolated_coords:
+    for (x,y) in coords:
+        if remove_all_green and mag_idx != -1:
+            out_px[x, y] = mag_idx
+            changed += 1
+            continue
+
         picked_index = None
 
         # 1) Most frequent neighbor index (expand search out to max_radius if needed)
@@ -179,7 +193,10 @@ def fix_green_in_image(path: str, isolation_radius: int, search_radius: int, max
         outP.putpalette(pal)   # keep palette exactly the same
         outP.save(path, format='PCX')
         if verbose:
-            print(f"[fixed] {path}: {changed} isolated green px")
+            if remove_all_green:
+                print(f"[fixed] {path}: {changed} green px")
+            else:
+                print(f"[fixed] {path}: {changed} isolated green px")
     else:
         if verbose:
             print(f"[ok]    {path}: no isolated green px")
@@ -206,7 +223,7 @@ def has_corresponding_lights(dirpath: str, fname: str) -> bool:
 
 def walk_and_fix(data_dir: str, noon_folder: str,
                  isolation_radius: int, search_radius: int, max_radius: int,
-                 only_hour: int=None, verbose: bool=False) -> None:
+                 remove_all_green: bool, only_hour: int=None, verbose: bool=False) -> None:
     noon_abs = os.path.normpath(os.path.join(data_dir, noon_folder))
     targets = []
 
@@ -233,22 +250,29 @@ def walk_and_fix(data_dir: str, noon_folder: str,
                 if not has_corresponding_lights(dirpath, fname):
                     continue
                 path = os.path.join(dirpath, fname)
-                total_changed += fix_green_in_image(path, isolation_radius, search_radius, max_radius, verbose=verbose)
+                total_changed += fix_green_in_image(
+                    path, isolation_radius, search_radius, max_radius,
+                    remove_all_green, verbose=verbose
+                )
 
     print(f"Done. Total isolated green pixels fixed: {total_changed}")
 
 def main():
-    ap = argparse.ArgumentParser(description="Remove *isolated* #00ff00 pixels from PCX outputs (only files with a matching _lights.pcx).")
+    ap = argparse.ArgumentParser(description="Remove #00ff00 pixels from PCX outputs (only files with a matching _lights.pcx).")
     ap.add_argument("--data", required=True, help="Path to Data root (contains noon + hour folders).")
     ap.add_argument("--noon", default="1200", help="Name of noon folder to SKIP. Default: 1200")
     ap.add_argument("--only-hour", type=int, help="Restrict to a single hour folder (e.g., 2400)")
     ap.add_argument("--isolation-radius", type=int, default=1, help="Green is 'isolated' if no other green is found within this Chebyshev radius. Default: 1 (8-neighborhood)")
     ap.add_argument("--search-radius", type=int, default=3, help="Neighbor radius (pixels) for index voting. Default: 3")
     ap.add_argument("--max-radius", type=int, default=5, help="Max expansion radius if no neighbor found. Default: 5")
+    ap.add_argument("--remove-all-green", action="store_true", help="Replace all #00ff00 pixels (default: only isolated).")
     ap.add_argument("--verbose", action="store_true", help="Print per-file changes.")
     args = ap.parse_args()
 
-    walk_and_fix(args.data, args.noon, args.isolation_radius, args.search_radius, args.max_radius, args.only_hour, verbose=args.verbose)
+    walk_and_fix(
+        args.data, args.noon, args.isolation_radius, args.search_radius, args.max_radius,
+        args.remove_all_green, args.only_hour, verbose=args.verbose
+    )
 
 if __name__ == "__main__":
     main()

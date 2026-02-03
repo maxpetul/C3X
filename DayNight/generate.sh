@@ -171,6 +171,7 @@ process_art_set() {
     --data "$data_dir"
     --noon "$NOON_SUBFOLDER"
     --verbose
+    --remove-all-green
   )
 
   if [[ -n "${ONLY_HOUR}" ]]; then
