@@ -220,6 +220,7 @@ bool __fastcall patch_Unit_can_pillage (Unit * this, int edx, int tile_x, int ti
 bool __fastcall patch_City_has_resource (City * this, int edx, int resource_id);
 bool __fastcall patch_Leader_can_build_city_improvement (Leader * this, int edx, int i_improv, bool param_2);
 char __fastcall patch_Leader_can_do_worker_job (Leader * this, int edx, enum Worker_Jobs job, int tile_x, int tile_y, int ask_if_replacing);
+void __fastcall patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible, byte param_2, byte param_3, byte param_4, byte param_5, byte param_6, byte param_7);
 bool can_build_district_on_tile (Tile * tile, int district_id, int civ_id);
 bool city_can_build_district (City * city, int district_id);
 bool leader_can_build_district (Leader * leader, int district_id);
@@ -14418,6 +14419,46 @@ handle_district_destroyed_by_attack (Tile * tile, int tile_x, int tile_y, bool l
 					tile->vtable->m56_Set_Tile_Flags (tile, __, 0, TILE_FLAG_MINE, tile_x, tile_y);
 				return;
 			}
+		}
+		if (district_id == BRIDGE_DISTRICT_ID || district_id == CANAL_DISTRICT_ID) {
+			enum UnitTypeClasses target_class = (district_id == BRIDGE_DISTRICT_ID) ? UTC_Land : UTC_Sea;
+			clear_memo ();
+			FOR_UNITS_ON (uti, tile) {
+				Unit * unit = uti.unit;
+				if (unit == NULL)
+					continue;
+				int unit_type_id = unit->Body.UnitTypeID;
+				if ((unit_type_id < 0) || (unit_type_id >= p_bic_data->UnitTypeCount))
+					continue;
+				UnitType * type = &p_bic_data->UnitTypes[unit_type_id];
+				bool matches = (type->Unit_Class == target_class);
+				if (! matches && unit->Body.Container_Unit >= 0) {
+					Unit * container = get_unit_ptr (unit->Body.Container_Unit);
+					if (container != NULL) {
+						int container_type_id = container->Body.UnitTypeID;
+						if ((container_type_id >= 0) && (container_type_id < p_bic_data->UnitTypeCount)) {
+							UnitType * container_type = &p_bic_data->UnitTypes[container_type_id];
+							matches = (container_type->Unit_Class == target_class);
+						}
+					}
+				}
+				if (matches) {
+					bool already = false;
+					for (int n = 0; n < is->memo_len; n++)
+						if (is->memo[n] == unit->Body.ID) {
+							already = true;
+							break;
+						}
+					if (! already)
+						memoize (unit->Body.ID);
+				}
+			}
+			for (int n = 0; n < is->memo_len; n++) {
+				Unit * to_despawn = get_unit_ptr (is->memo[n]);
+				if (to_despawn != NULL)
+					patch_Unit_despawn (to_despawn, __, 0, 1, 0, 0, 0, 0, 0);
+			}
+			clear_memo ();
 		}
 		handle_district_removed (tile, district_id, tile_x, tile_y, leave_ruins);
 	}
