@@ -330,7 +330,7 @@ happiness_bonus        = 0
 #District
 name                   = Wonder District
 tooltip                = Build Wonder District
-buildable_on           = desert,plains,grassland,tundra,floodplain,hills,coast
+buildable_on           = desert,plains,grassland,tundra,floodplain,hills,coast,mountains
 advance_prereqs        = 
 defense_bonus_percent  = 0
 allow_multiple         = 1

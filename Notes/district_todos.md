@@ -2,6 +2,14 @@
     - Municipal District (ZergMazter doing art)
     - Central Rail Hub   (ZergMazter doing art)
   - Light annotations
+    - Offshore Extraction Zone
+    - Data Center
+    - Great Wall
+    - Water Park
+    - Holy Site (mideast)
+    - Commercial Hub (modern, left)
+    - Municipal District
+    - Central Rail Hub
 
 ## To ask Flintlock
   - Naval units can't enter canals

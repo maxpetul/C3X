@@ -31864,6 +31864,7 @@ align_variant_and_pixel_offsets_with_coastline (Tile * tile, int * out_variant, 
 			else if (*out_variant == SE && anchor == DIR_W && (anchor_sprite_index == 18))  { *out_pixel_x += 6;  *out_pixel_y += 4; }
 			else if (*out_variant == NE && anchor == DIR_SW && (anchor_sprite_index == 51)) { *out_pixel_x += 20; *out_pixel_y -= 20; }
 			else if (*out_variant == SW && anchor == DIR_NE && (anchor_sprite_index == 0))  { *out_pixel_x -= 4;  *out_pixel_y += 4; }
+			else if (*out_variant == NW && anchor == DIR_SE && (anchor_sprite_index == 44)) { *out_pixel_x -= 8;  *out_pixel_y -= 12; }
 		}
 		// Sheet 1
 		else if (anchor_sheet_index == 1) {
