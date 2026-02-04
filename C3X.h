@@ -297,6 +297,8 @@ struct c3x_config {
 	bool allow_unload_from_army;
 	enum land_transport_rules land_transport_rules;
 	bool allow_adjacent_resources_of_different_types;
+	bool allow_corruption_in_capital;
+	int special_capital_decorruption_effect;
 	int luxury_randomized_appearance_rate_percent;
 	int tiles_per_non_luxury_resource;
 	bool no_land_anti_air_from_inside_naval_transport;

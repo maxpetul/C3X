@@ -869,6 +869,8 @@ define,	   0x4B90D6,	0x4C0743,	0x4B9166,	"CITY_M22_TO_SPAWN_UNIT_IF_DONE_RETURN"
 inlead,	   0x5B6CE0,	0x5C5670,	0x5B69F0,	"Unit_do_capture_units",			"bool (__fastcall *) (Unit * this, int edx, int tile_x, int tile_y, int owner_civ_id)"
 define,	   0xA38C18,	0xA5B418,	0xA38BD8,	"p_advisor_internal_form",			"Advisor_Internal_Form *"
 repl call, 0x51DC54,	0x527A41,	0x51DCF4,	"PCX_Image_process_dom_adv_turn_count_text",	""
+define,	   0x4B1205,	0x4B81B5,	0x4B1295,	"ADDR_CORRUPTION_CAPITAL_CHECK",		"byte *"
+define,	   0x4B12C0,	0x4B8272,	0x4B1350,	"ADDR_ADD_CAPITAL_CORRUPTION_BUILDING_EFFECT",	"byte *"
 
 ignore,	   0x5FC710,	0x0,		0x0,		"PCX_Image_create_and_init_jgl_image",		"int (__fastcall *) (PCX_Image * this, int edx, int width, int height, int bit_depth, int param_4, int param_5, int param_6)"
 ignore,	   0x5FCC50,	0x0,		0x0,		"PCX_Image_draw_region_to_location",		"void (__fastcall *) (PCX_Image * this, int edx, PCX_Image * canvas, int src_x, int src_y, int dest_x, int dest_y, int width, int height)"

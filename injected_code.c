@@ -10151,6 +10151,15 @@ apply_machine_code_edits (struct c3x_config const * cfg, bool at_program_start)
 
 	// Disable a jump that skips playing victory animations for air units if they've been configured to have a victory anim
 	set_nopification (cfg->aircraft_victory_animation != NULL, ADDR_SKIP_VICTORY_ANIM_IF_AIR, 6);
+
+	// Bypass capital check to return zero corruption
+	// replacing 0x75 (= jnz) with 0xEB (= uncond. jump)
+	WITH_MEM_PROTECTION (ADDR_CORRUPTION_CAPITAL_CHECK, 1, PAGE_EXECUTE_READWRITE)
+		*ADDR_CORRUPTION_CAPITAL_CHECK = cfg->allow_corruption_in_capital ? 0xEB : 0x75;
+
+	// Insert amount added to building decorruption effect just for the capital
+	WITH_MEM_PROTECTION (ADDR_ADD_CAPITAL_CORRUPTION_BUILDING_EFFECT, 3, PAGE_EXECUTE_READWRITE)
+		*(ADDR_ADD_CAPITAL_CORRUPTION_BUILDING_EFFECT + 2) = clamp (0, 100, cfg->special_capital_decorruption_effect);
 }
 
 Sprite* 
@@ -11083,6 +11092,7 @@ patch_init_floating_point ()
 		{"no_land_anti_air_from_inside_naval_transport"          , false, offsetof (struct c3x_config, no_land_anti_air_from_inside_naval_transport)},
 		{"prevent_enslaving_by_bombardment"                      , false, offsetof (struct c3x_config, prevent_enslaving_by_bombardment)},
 		{"allow_adjacent_resources_of_different_types"           , false, offsetof (struct c3x_config, allow_adjacent_resources_of_different_types)},
+		{"allow_corruption_in_capital"                           , false, offsetof (struct c3x_config, allow_corruption_in_capital)},
 		{"allow_sale_of_small_wonders"                           , false, offsetof (struct c3x_config, allow_sale_of_small_wonders)},
 	};
 
@@ -11113,6 +11123,7 @@ patch_init_floating_point ()
 		{"tourism_time_scale_percent"                    ,   100, offsetof (struct c3x_config, tourism_time_scale_percent)},
 		{"luxury_randomized_appearance_rate_percent"    ,   100, offsetof (struct c3x_config, luxury_randomized_appearance_rate_percent)},
 		{"tiles_per_non_luxury_resource"                ,    32, offsetof (struct c3x_config, tiles_per_non_luxury_resource)},
+		{"special_capital_decorruption_effect"           ,    10, offsetof (struct c3x_config, special_capital_decorruption_effect)},
 		{"city_limit"                                    ,  2048, offsetof (struct c3x_config, city_limit)},
 		{"maximum_pop_before_neighborhood_needed"        ,     8, offsetof (struct c3x_config, maximum_pop_before_neighborhood_needed)},
 		{"per_neighborhood_pop_growth_enabled"			 ,     2, offsetof (struct c3x_config, per_neighborhood_pop_growth_enabled)},

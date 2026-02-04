@@ -12,6 +12,9 @@
 - Option show_armies_performing_defensive_bombard that fixes defensive bombard animations being skipped when the bombarding unit is in an army
 - Improve readability of turns remaining on city builds displayed on the domestic advisor screen
   - Option named reformat_turns_remaining_on_domestic_advisor_screen
+- Options to modify the special corruption rules for capital cities
+  - allow_corruption_in_capital removes the rule fixing corruption at zero
+  - special_capital_decorruption_effect sets the building-like decorruption bonus
 - aggressively_penalize_bankruptcy now alternates between selling buildings or disbanding units first for bankrupt AI players and every third turn cuts their research spending
 - Fix crash caused by failure to find default option for popup asking player to select new build in city that completed its previous one
 - Except nuclear weapons from disallow_useless_bombard_vs_airfields
