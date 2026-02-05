@@ -1662,10 +1662,12 @@ bool
 read_retreat_rules (struct string_slice const * s, int * out_val)
 {
 	struct string_slice trimmed = trim_string_slice (s, 1);
-	if      (slice_matches_str (&trimmed, "standard" )) { *out_val = RR_STANDARD;  return true; }
-	else if (slice_matches_str (&trimmed, "none"     )) { *out_val = RR_NONE;      return true; }
-	else if (slice_matches_str (&trimmed, "all-units")) { *out_val = RR_ALL_UNITS; return true; }
-	else if (slice_matches_str (&trimmed, "if-faster")) { *out_val = RR_IF_FASTER; return true; }
+	if      (slice_matches_str (&trimmed, "standard"              )) { *out_val = RR_STANDARD;               return true; }
+	else if (slice_matches_str (&trimmed, "none"                  )) { *out_val = RR_NONE;                   return true; }
+	else if (slice_matches_str (&trimmed, "all-units"             )) { *out_val = RR_ALL_UNITS;              return true; }
+	else if (slice_matches_str (&trimmed, "if-faster"             )) { *out_val = RR_IF_FASTER;              return true; }
+	else if (slice_matches_str (&trimmed, "if-not-slower"         )) { *out_val = RR_IF_NOT_SLOWER;          return true; }
+	else if (slice_matches_str (&trimmed, "if-fast-and-not-slower")) { *out_val = RR_IF_FAST_AND_NOT_SLOWER; return true; }
 	else
 		return false;
 }
@@ -16894,6 +16896,8 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 	if ((this->defender != NULL) && ((class == UTC_Land) || (class == UTC_Sea))) {
 		enum retreat_rules retreat_rules = (class == UTC_Land) ? is->current_config.land_retreat_rules : is->current_config.sea_retreat_rules;
 		if (retreat_rules != RR_STANDARD) {
+			int attacker_max_mp = patch_Unit_get_max_move_points (this->attacker),
+			    defender_max_mp = patch_Unit_get_max_move_points (this->defender);
 			if (retreat_rules == RR_NONE)
 				this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 0;
 			else if (retreat_rules == RR_ALL_UNITS) {
@@ -16902,9 +16906,14 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 				if (! UnitType_has_ability (&p_bic_data->UnitTypes[this->defender->Body.UnitTypeID], __, UTA_Immobile))
 					this->defender_eligible_to_retreat = 1;
 			} else if (retreat_rules == RR_IF_FASTER) {
-				int diff = patch_Unit_get_max_move_points (this->attacker) - patch_Unit_get_max_move_points (this->defender);
-				this->attacker_eligible_to_retreat = diff > 0;
-				this->defender_eligible_to_retreat = diff < 0;
+				this->attacker_eligible_to_retreat = attacker_max_mp > defender_max_mp;
+				this->defender_eligible_to_retreat = defender_max_mp > attacker_max_mp;
+			} else if (retreat_rules == RR_IF_NOT_SLOWER) {
+				this->attacker_eligible_to_retreat = attacker_max_mp >= defender_max_mp;
+				this->defender_eligible_to_retreat = defender_max_mp >= attacker_max_mp;
+			} else if (retreat_rules == RR_IF_FAST_AND_NOT_SLOWER) {
+				this->attacker_eligible_to_retreat = attacker_max_mp >= defender_max_mp && attacker_max_mp > p_bic_data->General.RoadsMovementRate;
+				this->defender_eligible_to_retreat = defender_max_mp >= attacker_max_mp && defender_max_mp > p_bic_data->General.RoadsMovementRate;
 			}
 			this->defender_eligible_to_retreat &= city_at (this->defender_location_x, this->defender_location_y) == NULL;
 		}

@@ -85,7 +85,9 @@ enum retreat_rules {
 	RR_STANDARD = 0,
 	RR_NONE,
 	RR_ALL_UNITS,
-	RR_IF_FASTER
+	RR_IF_FASTER,
+	RR_IF_NOT_SLOWER,
+	RR_IF_FAST_AND_NOT_SLOWER,
 };
 
 enum line_drawing_override {
