@@ -28,10 +28,11 @@
   ;  - wonder_prereqs                  : Comma-separated wonder names. District cannot be built unless all Wonders are built by same civ.
   ;  - natural_wonder_prereqs          : Comma-separated natural wonder names. District cannot be built unless all Natural Wonders are within civ's territory.
   ;  - buildable_on                    : Comma-separated square types: desert, plains, grassland, tundra, floodplain, hills, mountains, volcano,
-                                                                       coast, sea, ocean, snow-forest, snow-mountains, snow-volcano, lake.
-  ;  - buildable_on_overlays           : Comma-separated overlays: irrigation, mine, fortress, barricade, outpost, radar-tower, jungle, forest, swamp, river.
+  ;                                                                    coast, sea, ocean, snow-forest, snow-mountains, snow-volcano, lake. (Tile *must* be one of these)                                                                        
+  ;  - buildable_on_overlays           : Comma-separated overlays: jungle, forest, swamp. (Optional; Tile *may* be one of these, workers don't need to remove them).
+  ;  - buildable_only_on_overlays      : Comma-separated overlays: irrigation, mine, fortress, barricade, jungle, forest, swamp, river. (Optional; Tile *must* be one of these)
   ;  - buildable_adjacent_to           : Same as buildable_on, plus "city".
-  ;  - buildable_adjacent_to_overlays  : Same as buildable_on_overlays.
+  ;  - buildable_adjacent_to_overlays  : Same as buildable_only_on_overlays.
   ;  - buildable_on_districts          : Comma-separated district names (tile must already have a completed district of any of these types, which it would replace).
   ;  - buildable_adjacent_to_districts : Comma-separated district names (adjacent tile must have a completed district of any of these types).
   ;  - buildable_by_civs               : Comma-separated civ names (e.g., Romans, Egyptians).
@@ -235,7 +236,7 @@ vary_img_by_era        = 1
 vary_img_by_culture    = 0
 advance_prereqs        = Engineering
 dependent_improvs      = 
-buildable_on_overlays  = forest
+buildable_only_on_overlays = forest
 defense_bonus_percent  = 0
 allow_multiple         = 1
 culture_bonus          = 2
@@ -475,7 +476,7 @@ btn_tile_sheet_column  = 9
 tooltip                = Build Great Wall
 obsoleted_by           = Metallurgy
 wonder_prereqs         = "The Great Wall"
-buildable_on           = desert,plains,grassland,tundra,floodplain,mountains,hills
+buildable_on           = desert,plains,grassland,tundra,floodplain,mountains,hills,volcano
 buildable_on_overlays  = forest,swamp,jungle
 draw_over_resources    = 1
 defense_bonus_percent  = 50

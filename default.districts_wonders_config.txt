@@ -8,21 +8,22 @@
 
 [
   ;  Wonder config fields (each Wonder block begins with "#Wonder")
-  ;  - name                         : Text (required). Must match the in-game Wonder improvement name.
-  ;  - buildable_on                 : Comma-separated square types: desert, plains, grassland, tundra, floodplain, hills, mountains, volcano,
+  ;  - name                           : Text (required). Must match the in-game Wonder improvement name.
+  ;  - buildable_on                   : Comma-separated square types: desert, plains, grassland, tundra, floodplain, hills, mountains, volcano,
                                                                     coast, sea, ocean, snow-forest, snow-mountains, snow-volcano, any.
-  ;  - buildable_on_overlays        : Comma-separated overlays: irrigation, mine, fortress, barricade, outpost, radar-tower, jungle, forest, swamp, river.
-  ;  - buildable_adjacent_to_overlays : Same as buildable_on_overlays.
-  ;  - img_path                     : Text. PCX filename (under Art/Districts/1200/). Defaults to Wonders.pcx if omitted.
-  ;  - img_construct_row            : Number (required). Row index in the PCX for the "under construction" wonder art (0-based).
-  ;  - img_construct_column         : Number (required). Column index in the PCX for the "under construction" wonder art (0-based).
-  ;  - img_row                      : Number (required). Row index in the PCX for the completed wonder art (0-based).
-  ;  - img_column                   : Number (required). Column index in the PCX for the completed wonder art (0-based).
-  ;  - enable_img_alt_dir           : 0 or 1. If 1, use alternate art when river/city direction implies a flip (see img_alt_dir_* fields).
-  ;  - img_alt_dir_construct_row    : Number. Row index for alternate "under construction" art (0-based).
-  ;  - img_alt_dir_construct_column : Number. Column index for alternate "under construction" art (0-based).
-  ;  - img_alt_dir_row              : Number. Row index for alternate completed art (0-based).
-  ;  - img_alt_dir_column           : Number. Column index for alternate completed art (0-based).
+  ;  - buildable_only_on_overlays     : Overlays list for wonders only supports "river". Wonder can only be built if tile has river.
+  ;  - buildable_adjacent_to          : Same as buildable_on, plus "city".
+  ;  - buildable_adjacent_to_overlays : Same as buildable_only_on_overlays.
+  ;  - img_path                       : Text. PCX filename (under Art/Districts/1200/). Defaults to Wonders.pcx if omitted.
+  ;  - img_construct_row              : Number (required). Row index in the PCX for the "under construction" wonder art (0-based).
+  ;  - img_construct_column           : Number (required). Column index in the PCX for the "under construction" wonder art (0-based).
+  ;  - img_row                        : Number (required). Row index in the PCX for the completed wonder art (0-based).
+  ;  - img_column                     : Number (required). Column index in the PCX for the completed wonder art (0-based).
+  ;  - enable_img_alt_dir             : 0 or 1. If 1, use alternate art when river/city direction implies a flip (see img_alt_dir_* fields).
+  ;  - img_alt_dir_construct_row      : Number. Row index for alternate "under construction" art (0-based).
+  ;  - img_alt_dir_construct_column   : Number. Column index for alternate "under construction" art (0-based).
+  ;  - img_alt_dir_row                : Number. Row index for alternate completed art (0-based).
+  ;  - img_alt_dir_column             : Number. Column index for alternate completed art (0-based).
 ]
 
 #Wonder
@@ -157,7 +158,7 @@ img_alt_dir_column   = 3
 #Wonder
 name                  = Hoover Dam
 buildable_on          = mountains
-buildable_on_overlays = river
+buildable_only_on_overlays = river
 enable_img_alt_dir    = 1
 img_path              = Wonders_3.pcx
 img_construct_row     = 0

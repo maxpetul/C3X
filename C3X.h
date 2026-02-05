@@ -715,6 +715,7 @@ struct district_config {
 	unsigned int buildable_square_types_mask;
 	unsigned int buildable_adjacent_to_square_types_mask;
 	unsigned int buildable_on_overlays_mask;
+	unsigned int buildable_only_on_overlays_mask;
 	unsigned int buildable_adjacent_to_overlays_mask;
 	bool buildable_adjacent_to_allows_city;
 	bool allow_multiple;
@@ -769,6 +770,7 @@ struct district_config {
 	bool has_buildable_adjacent_to;
 	bool has_buildable_adjacent_to_districts;
 	bool has_buildable_on_overlays;
+	bool has_buildable_only_on_overlays;
 	bool has_buildable_adjacent_to_overlays;
 	char const * buildable_by_civs[32];
 	int buildable_by_civ_count;
@@ -799,11 +801,14 @@ struct wonder_district_config {
 		img_alt_dir_row,
 		img_alt_dir_column;
 	unsigned int buildable_square_types_mask;
-	unsigned int buildable_on_overlays_mask;
+	unsigned int buildable_only_on_overlays_mask;
+	unsigned int buildable_adjacent_to_square_types_mask;
 	unsigned int buildable_adjacent_to_overlays_mask;
+	bool buildable_adjacent_to_allows_city;
 	bool enable_img_alt_dir;
 	bool is_dynamic;
-	bool has_buildable_on_overlays;
+	bool has_buildable_only_on_overlays;
+	bool has_buildable_adjacent_to;
 	bool has_buildable_adjacent_to_overlays;
 };
 
@@ -825,7 +830,8 @@ enum district_overlay_mask_bits {
 	DOM_JUNGLE      = 1u << 6,
 	DOM_FOREST      = 1u << 7,
 	DOM_SWAMP       = 1u << 8,
-	DOM_RIVER       = 1u << 9
+	DOM_RIVER       = 1u << 9,
+	DOM_AIRFIELD    = 1u << 10
 };
 
 struct natural_wonder_district_config {
@@ -960,7 +966,7 @@ const struct district_config special_district_defaults[USED_SPECIAL_DISTRICT_TYP
 		.command = UCV_Build_GreatWall, .name = "Great Wall", .tooltip = "Build Great Wall", .display_name = "Great Wall",
 		.advance_prereqs = {0}, .advance_prereq_count = 0, .obsoleted_by = "Metallurgy", .resource_prereqs = {0}, .resource_prereq_on_tile = NULL, .allow_multiple = true, .vary_img_by_era = false, .vary_img_by_culture = false, .is_dynamic = false, .resource_prereq_count = 0, .dependent_improvement_max_index = 0,
 		.img_paths = {"GreatWall.pcx"}, .dependent_improvements = {0}, .custom_height = 88, .wonder_prereqs = {"The Great Wall"}, .wonder_prereq_count = 1,
-		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Mountains) | (1 << SQ_Forest) | (1 << SQ_Swamp) | (1 << SQ_Jungle)), .draw_over_resources = true,
+		.buildable_square_types_mask = (unsigned int)(DEFAULT_DISTRICT_BUILDABLE_MASK | (1 << SQ_Mountains) | (1 << SQ_Forest) | (1 << SQ_Swamp) | (1 << SQ_Jungle) | (1 << SQ_Volcano)), .draw_over_resources = true,
 		.img_path_count = 1, .img_column_count = 9, .btn_tile_sheet_column = 9, .btn_tile_sheet_row = 0,
 		.culture_bonus = 0, .science_bonus = 0, .food_bonus = 0, .gold_bonus = 0, .shield_bonus = 0, .happiness_bonus = 0, .defense_bonus_percent = 50,
 		.generated_resource = NULL, .generated_resource_id = -1, .generated_resource_flags = 0
@@ -1024,6 +1030,7 @@ struct parsed_district_definition {
 	unsigned int buildable_square_types_mask;
 	unsigned int buildable_adjacent_to_square_types_mask;
 	unsigned int buildable_on_overlays_mask;
+	unsigned int buildable_only_on_overlays_mask;
 	unsigned int buildable_adjacent_to_overlays_mask;
 	bool buildable_adjacent_to_allows_city;
 	char * buildable_by_civs[32];
@@ -1065,6 +1072,7 @@ struct parsed_district_definition {
 	bool has_buildable_on;
 	bool has_buildable_adjacent_to;
 	bool has_buildable_on_overlays;
+	bool has_buildable_only_on_overlays;
 	bool has_buildable_adjacent_to_overlays;
 	bool has_resource_prereq_on_tile;
 	bool has_buildable_by_civs;
@@ -1108,8 +1116,10 @@ struct parsed_wonder_definition {
 	int img_alt_dir_column;
 	bool enable_img_alt_dir;
 	unsigned int buildable_square_types_mask;
-	unsigned int buildable_on_overlays_mask;
+	unsigned int buildable_only_on_overlays_mask;
+	unsigned int buildable_adjacent_to_square_types_mask;
 	unsigned int buildable_adjacent_to_overlays_mask;
+	bool buildable_adjacent_to_allows_city;
 	bool has_name;
 	bool has_img_path;
 	bool has_img_row;
@@ -1122,7 +1132,8 @@ struct parsed_wonder_definition {
 	bool has_img_alt_dir_column;
 	bool has_enable_img_alt_dir;
 	bool has_buildable_on;
-	bool has_buildable_on_overlays;
+	bool has_buildable_only_on_overlays;
+	bool has_buildable_adjacent_to;
 	bool has_buildable_adjacent_to_overlays;
 };
 
