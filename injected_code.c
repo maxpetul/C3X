@@ -1974,7 +1974,7 @@ load_config (char const * file_path, int path_is_relative_to_mod_dir)
 			free (full_path);
 			return;
 		}
-		text = utf8_to_windows1252 (utf8_text);
+		text = convert_from_utf8 (utf8_text, *p_code_page);
 		free (utf8_text);
 		if (text == NULL) {
 			snprintf (err_msg, sizeof err_msg, "Failed to re-encode contents of \"%s\". This file must contain UTF-8 text and only characters usable by Civ 3.", full_path);

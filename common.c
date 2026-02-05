@@ -818,9 +818,9 @@ err_in_CreateFileA:
 	return NULL;
 }
 
-// Re-encodes a text buffer from UTF-8 to Windows-1252, a single-byte encoding used internally by Civ 3.
+// Re-encodes a text buffer from UTF-8 to a different encoding.
 char *
-utf8_to_windows1252 (char const * text)
+convert_from_utf8 (char const * text, unsigned encoding)
 {
 	// Skip the UTF-8 byte order mark, if present
 	if (0 == strncmp (text, "\xEF\xBB\xBF", 3))
@@ -837,7 +837,7 @@ utf8_to_windows1252 (char const * text)
 	}
 
 	void * tr = malloc (text_len + 1);
-	int bytes_written = WideCharToMultiByte (1252, 0, wide_text, -1, tr, text_len + 1, NULL, NULL);
+	int bytes_written = WideCharToMultiByte (encoding, 0, wide_text, -1, tr, text_len + 1, NULL, NULL);
 	if (bytes_written == 0) { // Error
 		free (tr);
 		free (wide_text);
