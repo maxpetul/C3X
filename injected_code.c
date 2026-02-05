@@ -16898,14 +16898,12 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 		if (retreat_rules != RR_STANDARD) {
 			int attacker_max_mp = patch_Unit_get_max_move_points (this->attacker),
 			    defender_max_mp = patch_Unit_get_max_move_points (this->defender);
+
 			if (retreat_rules == RR_NONE)
 				this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 0;
-			else if (retreat_rules == RR_ALL_UNITS) {
-				if (! UnitType_has_ability (&p_bic_data->UnitTypes[this->attacker->Body.UnitTypeID], __, UTA_Immobile))
-					this->attacker_eligible_to_retreat = 1;
-				if (! UnitType_has_ability (&p_bic_data->UnitTypes[this->defender->Body.UnitTypeID], __, UTA_Immobile))
-					this->defender_eligible_to_retreat = 1;
-			} else if (retreat_rules == RR_IF_FASTER) {
+			else if (retreat_rules == RR_ALL_UNITS)
+				this->attacker_eligible_to_retreat = this->defender_eligible_to_retreat = 1;
+			else if (retreat_rules == RR_IF_FASTER) {
 				this->attacker_eligible_to_retreat = attacker_max_mp > defender_max_mp;
 				this->defender_eligible_to_retreat = defender_max_mp > attacker_max_mp;
 			} else if (retreat_rules == RR_IF_NOT_SLOWER) {
@@ -16915,6 +16913,12 @@ patch_Fighter_begin (Fighter * this, int edx, Unit * attacker, int attack_direct
 				this->attacker_eligible_to_retreat = attacker_max_mp >= defender_max_mp && attacker_max_mp > p_bic_data->General.RoadsMovementRate;
 				this->defender_eligible_to_retreat = defender_max_mp >= attacker_max_mp && defender_max_mp > p_bic_data->General.RoadsMovementRate;
 			}
+
+			// Prevent immobile units from retreating
+			this->attacker_eligible_to_retreat &= ! UnitType_has_ability (&p_bic_data->UnitTypes[this->attacker->Body.UnitTypeID], __, UTA_Immobile);
+			this->defender_eligible_to_retreat &= ! UnitType_has_ability (&p_bic_data->UnitTypes[this->defender->Body.UnitTypeID], __, UTA_Immobile);
+
+			// Prevent defender from retreating if in a city
 			this->defender_eligible_to_retreat &= city_at (this->defender_location_x, this->defender_location_y) == NULL;
 		}
 	}

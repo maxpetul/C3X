@@ -22,6 +22,7 @@
 - aggressively_penalize_bankruptcy now alternates between selling buildings or disbanding units first for bankrupt AI players and every third turn cuts their research spending
 - Fix crash caused by failure to find default option for popup asking player to select new build in city that completed its previous one
 - Except nuclear weapons from disallow_useless_bombard_vs_airfields
+- Prevent immobile units from retreating when any non-standard retreat rule is set
 
 * RELEASE 26
 - Add some options to make land transports viable, controlled by land_transport_rules setting
