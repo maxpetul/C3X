@@ -717,6 +717,7 @@ struct district_config {
 	unsigned int buildable_on_overlays_mask;
 	unsigned int buildable_only_on_overlays_mask;
 	unsigned int buildable_adjacent_to_overlays_mask;
+	bool buildable_only_on_rivers;
 	bool buildable_adjacent_to_allows_city;
 	bool allow_multiple;
 	bool vary_img_by_era;
@@ -772,6 +773,7 @@ struct district_config {
 	bool has_buildable_on_overlays;
 	bool has_buildable_only_on_overlays;
 	bool has_buildable_adjacent_to_overlays;
+	bool has_buildable_only_on_rivers;
 	char const * buildable_by_civs[32];
 	int buildable_by_civ_count;
 	bool has_buildable_by_civs;
@@ -801,13 +803,12 @@ struct wonder_district_config {
 		img_alt_dir_row,
 		img_alt_dir_column;
 	unsigned int buildable_square_types_mask;
-	unsigned int buildable_only_on_overlays_mask;
 	unsigned int buildable_adjacent_to_square_types_mask;
 	unsigned int buildable_adjacent_to_overlays_mask;
+	bool buildable_only_on_rivers;
 	bool buildable_adjacent_to_allows_city;
 	bool enable_img_alt_dir;
 	bool is_dynamic;
-	bool has_buildable_only_on_overlays;
 	bool has_buildable_adjacent_to;
 	bool has_buildable_adjacent_to_overlays;
 };
@@ -1032,6 +1033,7 @@ struct parsed_district_definition {
 	unsigned int buildable_on_overlays_mask;
 	unsigned int buildable_only_on_overlays_mask;
 	unsigned int buildable_adjacent_to_overlays_mask;
+	bool buildable_only_on_rivers;
 	bool buildable_adjacent_to_allows_city;
 	char * buildable_by_civs[32];
 	int buildable_by_civ_count;
@@ -1074,6 +1076,7 @@ struct parsed_district_definition {
 	bool has_buildable_on_overlays;
 	bool has_buildable_only_on_overlays;
 	bool has_buildable_adjacent_to_overlays;
+	bool has_buildable_only_on_rivers;
 	bool has_resource_prereq_on_tile;
 	bool has_buildable_by_civs;
 	bool has_buildable_by_war_allies;
@@ -1116,9 +1119,9 @@ struct parsed_wonder_definition {
 	int img_alt_dir_column;
 	bool enable_img_alt_dir;
 	unsigned int buildable_square_types_mask;
-	unsigned int buildable_only_on_overlays_mask;
 	unsigned int buildable_adjacent_to_square_types_mask;
 	unsigned int buildable_adjacent_to_overlays_mask;
+	bool buildable_only_on_rivers;
 	bool buildable_adjacent_to_allows_city;
 	bool has_name;
 	bool has_img_path;
@@ -1132,9 +1135,9 @@ struct parsed_wonder_definition {
 	bool has_img_alt_dir_column;
 	bool has_enable_img_alt_dir;
 	bool has_buildable_on;
-	bool has_buildable_only_on_overlays;
 	bool has_buildable_adjacent_to;
 	bool has_buildable_adjacent_to_overlays;
+	bool has_buildable_only_on_rivers;
 };
 
 struct parsed_natural_wonder_definition {

@@ -28,9 +28,10 @@
   ;  - wonder_prereqs                  : Comma-separated wonder names. District cannot be built unless all Wonders are built by same civ.
   ;  - natural_wonder_prereqs          : Comma-separated natural wonder names. District cannot be built unless all Natural Wonders are within civ's territory.
   ;  - buildable_on                    : Comma-separated square types: desert, plains, grassland, tundra, floodplain, hills, mountains, volcano,
-  ;                                                                    coast, sea, ocean, snow-forest, snow-mountains, snow-volcano, lake. (Tile *must* be one of these)                                                                        
-  ;  - buildable_on_overlays           : Comma-separated overlays: jungle, forest, swamp. (Optional; Tile *may* be one of these, workers don't need to remove them).
-  ;  - buildable_only_on_overlays      : Comma-separated overlays: irrigation, mine, fortress, barricade, jungle, forest, swamp, river. (Optional; Tile *must* be one of these)
+  ;                                                                    coast, sea, ocean, snow-forest, snow-mountains, snow-volcano, lake. (tile must be one of these)                                                                        
+  ;  - buildable_on_overlays           : Comma-separated overlays: jungle, forest, swamp. (optional; tile *may* be one of these, workers don't need to remove them first).
+  ;  - buildable_only_on_overlays      : Comma-separated overlays: irrigation, mine, fortress, barricade, jungle, forest, swamp, airfield. (optional; tile must be one of these)
+  ;  - buildable_only_on_rivers        : 0 or 1. If 1, district tile must be on a river.
   ;  - buildable_adjacent_to           : Same as buildable_on, plus "city".
   ;  - buildable_adjacent_to_overlays  : Same as buildable_only_on_overlays.
   ;  - buildable_on_districts          : Comma-separated district names (tile must already have a completed district of any of these types, which it would replace).
@@ -227,24 +228,24 @@ shield_bonus           = 2
 happiness_bonus        = 0
 
 #District
-name                   = Park
-tooltip                = Build Park
-img_paths              = Park.pcx
-btn_tile_sheet_row     = 1
-btn_tile_sheet_column  = 8
-vary_img_by_era        = 1
-vary_img_by_culture    = 0
-advance_prereqs        = Engineering
-dependent_improvs      = 
+name                       = Park
+tooltip                    = Build Park
+img_paths                  = Park.pcx
+btn_tile_sheet_row         = 1
+btn_tile_sheet_column      = 8
+vary_img_by_era            = 1
+vary_img_by_culture        = 0
+advance_prereqs            = Engineering
+dependent_improvs          = 
 buildable_only_on_overlays = forest
-defense_bonus_percent  = 0
-allow_multiple         = 1
-culture_bonus          = 2
-science_bonus          = 0
-food_bonus             = 0
-gold_bonus             = 0
-shield_bonus           = 0
-happiness_bonus        = 2
+defense_bonus_percent      = 0
+allow_multiple             = 1
+culture_bonus              = 2
+science_bonus              = 0
+food_bonus                 = 0
+gold_bonus                 = 0
+shield_bonus               = 0
+happiness_bonus            = 2
 
 #District
 name                   = Ski Resort

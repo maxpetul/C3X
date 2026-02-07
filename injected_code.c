@@ -3828,6 +3828,8 @@ district_is_buildable_on_square_type (struct district_config const * cfg, Tile *
 		if (! overlay_required)
 			return false;
 	}
+	if (cfg->buildable_only_on_rivers && (tile->vtable->m37_Get_River_Code (tile) == 0))
+		return false;
 
 	if (! square_matches && ! overlay_allowed && ! overlay_required)
 		return false;
@@ -5858,10 +5860,8 @@ wonder_is_buildable_on_square_type (struct wonder_district_config const * cfg, T
 	if (! tile_matches_square_type_mask (tile, wonder_buildable_square_type_mask (cfg)))
 		return false;
 
-	if (cfg->has_buildable_only_on_overlays) {
-		if (! tile_matches_overlay_mask (tile, cfg->buildable_only_on_overlays_mask))
-			return false;
-	}
+	if (cfg->buildable_only_on_rivers && (tile->vtable->m37_Get_River_Code (tile) == 0))
+		return false;
 
 	if (cfg->has_buildable_adjacent_to) {
 		int tile_x, tile_y;
@@ -7384,6 +7384,7 @@ init_parsed_district_definition (struct parsed_district_definition * def)
 	def->buildable_on_overlays_mask = 0;
 	def->buildable_only_on_overlays_mask = 0;
 	def->buildable_adjacent_to_overlays_mask = 0;
+	def->buildable_only_on_rivers = false;
 	def->buildable_adjacent_to_allows_city = false;
 }
 
@@ -7777,6 +7778,8 @@ parse_buildable_overlay_mask (struct string_slice const * value,
 		key_name = "buildable_on_overlays";
 	if (strcmp (key_name, "buildable_on_overlays") == 0)
 		allowed_mask = (DOM_JUNGLE | DOM_FOREST | DOM_SWAMP);
+	else if (strcmp (key_name, "buildable_only_on_overlays") == 0)
+		allowed_mask &= ~DOM_RIVER;
 
 	if (value_text != NULL) {
 		char * cursor = value_text;
@@ -8311,6 +8314,8 @@ override_special_district_from_definition (struct parsed_district_definition * d
 		cfg->buildable_only_on_overlays_mask = def->buildable_only_on_overlays_mask;
 		cfg->has_buildable_only_on_overlays = true;
 	}
+	if (def->has_buildable_only_on_rivers)
+		cfg->buildable_only_on_rivers = def->buildable_only_on_rivers;
 	if (def->has_buildable_adjacent_to_overlays) {
 		cfg->buildable_adjacent_to_overlays_mask = def->buildable_adjacent_to_overlays_mask;
 		cfg->has_buildable_adjacent_to_overlays = true;
@@ -8576,6 +8581,7 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.has_buildable_only_on_overlays = def->has_buildable_only_on_overlays;
 	new_cfg.buildable_adjacent_to_overlays_mask = def->has_buildable_adjacent_to_overlays ? def->buildable_adjacent_to_overlays_mask : 0;
 	new_cfg.has_buildable_adjacent_to_overlays = def->has_buildable_adjacent_to_overlays;
+	new_cfg.buildable_only_on_rivers = def->has_buildable_only_on_rivers ? def->buildable_only_on_rivers : false;
 
 	if (def->has_culture_bonus)
 		move_bonus_entry_list (&new_cfg.culture_bonus_extras, &def->culture_bonus_extras);
@@ -9088,6 +9094,15 @@ handle_district_definition_key (struct parsed_district_definition * def,
 			def->has_buildable_only_on_overlays = false;
 		}
 
+	} else if (slice_matches_str (key, "buildable_only_on_rivers")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->buildable_only_on_rivers = (ival != 0);
+			def->has_buildable_only_on_rivers = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
 	} else if (slice_matches_str (key, "buildable_adjacent_to")) {
 		unsigned int mask;
 		def->buildable_adjacent_to_allows_city = false;
@@ -9539,9 +9554,9 @@ init_parsed_wonder_definition (struct parsed_wonder_definition * def)
 {
 	memset (def, 0, sizeof *def);
 	def->buildable_square_types_mask = district_default_buildable_mask ();
-	def->buildable_only_on_overlays_mask = 0;
 	def->buildable_adjacent_to_square_types_mask = 0;
 	def->buildable_adjacent_to_overlays_mask = 0;
+	def->buildable_only_on_rivers = false;
 	def->buildable_adjacent_to_allows_city = false;
 }
 
@@ -9593,9 +9608,8 @@ add_dynamic_wonder_from_definition (struct parsed_wonder_definition * def, int s
 	new_cfg.img_alt_dir_column = def->img_alt_dir_column;
 	new_cfg.enable_img_alt_dir = def->enable_img_alt_dir;
 	new_cfg.buildable_square_types_mask = def->has_buildable_on ? def->buildable_square_types_mask : district_default_buildable_mask ();
-	new_cfg.buildable_only_on_overlays_mask = def->has_buildable_only_on_overlays ? def->buildable_only_on_overlays_mask : 0;
+	new_cfg.buildable_only_on_rivers = def->has_buildable_only_on_rivers ? def->buildable_only_on_rivers : false;
 	new_cfg.buildable_adjacent_to_overlays_mask = def->has_buildable_adjacent_to_overlays ? def->buildable_adjacent_to_overlays_mask : 0;
-	new_cfg.has_buildable_only_on_overlays = def->has_buildable_only_on_overlays;
 	new_cfg.buildable_adjacent_to_square_types_mask = def->has_buildable_adjacent_to ? def->buildable_adjacent_to_square_types_mask : 0;
 	new_cfg.buildable_adjacent_to_allows_city = def->has_buildable_adjacent_to ? def->buildable_adjacent_to_allows_city : false;
 	new_cfg.has_buildable_adjacent_to = def->has_buildable_adjacent_to;
@@ -9860,18 +9874,15 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_buildable_on = false;
 		}
 
-	} else if (slice_matches_str (key, "buildable_only_on_overlays")) {
-		unsigned int mask;
-		if (parse_buildable_overlay_mask (value, &mask, parse_errors, line_number, "buildable_only_on_overlays")) {
-			if (mask != DOM_RIVER) {
-				add_key_parse_error (parse_errors, line_number, key, value, "(only \"river\" is allowed for wonders)");
-				def->has_buildable_only_on_overlays = false;
-			} else {
-				def->buildable_only_on_overlays_mask = mask;
-				def->has_buildable_only_on_overlays = true;
-			}
+	} else if (slice_matches_str (key, "buildable_only_on_rivers")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->buildable_only_on_rivers = (ival != 0);
+			def->has_buildable_only_on_rivers = true;
 		} else {
-			def->has_buildable_only_on_overlays = false;
+			def->has_buildable_only_on_rivers = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
 	} else if (slice_matches_str (key, "buildable_adjacent_to")) {
@@ -31738,7 +31749,7 @@ wonder_allows_river (struct wonder_district_config const * cfg)
 		build_mask = district_default_buildable_mask ();
 	if ((build_mask & square_type_mask_bit (SQ_RIVER)) != 0)
 		return true;
-	if (cfg->has_buildable_only_on_overlays && ((cfg->buildable_only_on_overlays_mask & DOM_RIVER) != 0))
+	if (cfg->buildable_only_on_rivers)
 		return true;
 	return false;
 }
@@ -32162,7 +32173,7 @@ district_allows_river (struct district_config const * cfg)
 		build_mask = district_default_buildable_mask ();
 	if ((build_mask & square_type_mask_bit (SQ_RIVER)) != 0)
 		return true;
-	if (cfg->has_buildable_on_overlays && ((cfg->buildable_on_overlays_mask & DOM_RIVER) != 0))
+	if (cfg->buildable_only_on_rivers)
 		return true;
 	return false;
 }
@@ -32696,43 +32707,46 @@ draw_district_on_tile (Map_Renderer * this, Tile * tile, struct district_instanc
 				int construct_windex = -1;
 				Sprite * wsprite = NULL;
 
+				struct wonder_district_config * wcfg   = NULL;
+				struct wonder_district_image_set * set = NULL;
+
 				// Completed
                 if (info->state == WDS_COMPLETED) {
 					int windex = info->wonder_index;
 					if ((windex < 0) || (windex >= is->wonder_district_count))
 						return;
-
-					struct wonder_district_config * wcfg   = &is->wonder_district_configs[windex];
-					struct wonder_district_image_set * set = &is->wonder_district_img_sets[windex];
-
-					if (wonder_allows_river(wcfg))
-						align_district_with_river (tile, &draw_pixel_x, &draw_pixel_y, &river_dir);
-						
-					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id, wcfg);
-					wsprite = (use_alt_dir && (set->alt_dir_img.vtable != NULL)) ? &set->alt_dir_img : &set->img;
-
-					draw_district_on_map_or_canvas(wsprite, map_renderer, offset_x, offset_y);
-					return;
-
+					wcfg = &is->wonder_district_configs[windex];
+					set  = &is->wonder_district_img_sets[windex];
 				// Under construction
                 } else if (wonder_district_tile_under_construction (tile, tile_x, tile_y, &construct_windex) && (construct_windex >= 0)) {
 					if (construct_windex >= is->wonder_district_count)
 						return;
-
-					struct wonder_district_config * wcfg   = &is->wonder_district_configs[construct_windex];
-					struct wonder_district_image_set * set = &is->wonder_district_img_sets[construct_windex];
-					bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id, wcfg);
-                    wsprite = (use_alt_dir && (set->alt_dir_construct_img.vtable != NULL)) ? &set->alt_dir_construct_img : &set->construct_img;
-
-					draw_district_on_map_or_canvas(wsprite, map_renderer, offset_x, offset_y);
-					return;
-
+					wcfg = &is->wonder_district_configs[construct_windex];
+					set  = &is->wonder_district_img_sets[construct_windex];
 				// Unused
-                } else {
+				} else {
 					draw_district_on_map_or_canvas(&sprites[variant][era][buildings], map_renderer, draw_x, draw_y);
 					return;
 				}
-                break;
+
+				if (wonder_allows_river(wcfg))
+					align_district_with_river (tile, &draw_pixel_x, &draw_pixel_y, &river_dir);
+
+				int wonder_width    = (wcfg->custom_width > 0) ? wcfg->custom_width : 128;
+				int wonder_height   = (wcfg->custom_height > 0) ? wcfg->custom_height : 64;
+				int wonder_offset_x = draw_pixel_x + cfg->x_offset;
+				int wonder_offset_y = draw_pixel_y + cfg->y_offset;
+				int wonder_draw_x   = wonder_offset_x - ((wonder_width - 128) / 2);
+				int wonder_draw_y   = wonder_offset_y - (wonder_height - 64);
+
+				bool use_alt_dir = wcfg->enable_img_alt_dir && wonder_should_use_alternative_direction_image (tile_x, tile_y, territory_owner_id, wcfg);
+				if (info->state == WDS_COMPLETED)
+					wsprite = (use_alt_dir && (set->alt_dir_img.vtable != NULL)) ? &set->alt_dir_img : &set->img;
+				else
+					wsprite = (use_alt_dir && (set->alt_dir_construct_img.vtable != NULL)) ? &set->alt_dir_construct_img : &set->construct_img;
+
+				draw_district_on_map_or_canvas(wsprite, map_renderer, wonder_draw_x, wonder_draw_y);
+				return;
             }
             case NEIGHBORHOOD_DISTRICT_ID:
             {

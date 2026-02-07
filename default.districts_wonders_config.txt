@@ -10,10 +10,10 @@
   ;  Wonder config fields (each Wonder block begins with "#Wonder")
   ;  - name                           : Text (required). Must match the in-game Wonder improvement name.
   ;  - buildable_on                   : Comma-separated square types: desert, plains, grassland, tundra, floodplain, hills, mountains, volcano,
-                                                                    coast, sea, ocean, snow-forest, snow-mountains, snow-volcano, any.
-  ;  - buildable_only_on_overlays     : Overlays list for wonders only supports "river". Wonder can only be built if tile has river.
+                                                                      coast, sea, ocean, snow-forest, snow-mountains, snow-volcano, lake.
+  ;  - buildable_only_on_rivers       : 0 or 1. If 1, Wonder can only be built if tile has river.
   ;  - buildable_adjacent_to          : Same as buildable_on, plus "city".
-  ;  - buildable_adjacent_to_overlays : Same as buildable_only_on_overlays.
+  ;  - buildable_adjacent_to_overlays : Same overlay list as districts.
   ;  - img_path                       : Text. PCX filename (under Art/Districts/1200/). Defaults to Wonders.pcx if omitted.
   ;  - img_construct_row              : Number (required). Row index in the PCX for the "under construction" wonder art (0-based).
   ;  - img_construct_column           : Number (required). Column index in the PCX for the "under construction" wonder art (0-based).
@@ -142,33 +142,33 @@ img_row              = 2
 img_column           = 3
 
 #Wonder
-name                 = The Colossus
-buildable_on         = coast
-enable_img_alt_dir   = 1
-img_path             = Wonders_2.pcx
-img_construct_row    = 3
-img_construct_column = 0
-img_row              = 3
-img_column           = 1
+name                         = The Colossus
+buildable_on                 = coast
+enable_img_alt_dir           = 1
+img_path                     = Wonders_2.pcx
+img_construct_row            = 3
+img_construct_column         = 0
+img_row                      = 3
+img_column                   = 1
 img_alt_dir_construct_row    = 3
 img_alt_dir_construct_column = 2
-img_alt_dir_row      = 3
-img_alt_dir_column   = 3
+img_alt_dir_row              = 3
+img_alt_dir_column           = 3
 
 #Wonder
-name                  = Hoover Dam
-buildable_on          = mountains
-buildable_only_on_overlays = river
-enable_img_alt_dir    = 1
-img_path              = Wonders_3.pcx
-img_construct_row     = 0
-img_construct_column  = 0
-img_row               = 0
-img_column            = 1
+name                         = Hoover Dam
+buildable_on                 = mountains
+buildable_only_on_rivers     = 1
+enable_img_alt_dir           = 1
+img_path                     = Wonders_3.pcx
+img_construct_row            = 0
+img_construct_column         = 0
+img_row                      = 0
+img_column                   = 1
 img_alt_dir_construct_row    = 0
 img_alt_dir_construct_column = 2
-img_alt_dir_row       = 0
-img_alt_dir_column    = 3
+img_alt_dir_row              = 0
+img_alt_dir_column           = 3
 
 #Wonder
 name                 = Apollo Program
