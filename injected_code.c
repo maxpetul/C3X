@@ -9606,6 +9606,8 @@ add_dynamic_wonder_from_definition (struct parsed_wonder_definition * def, int s
 	new_cfg.img_alt_dir_construct_column = def->img_alt_dir_construct_column;
 	new_cfg.img_alt_dir_row = def->img_alt_dir_row;
 	new_cfg.img_alt_dir_column = def->img_alt_dir_column;
+	new_cfg.custom_width = def->has_custom_width ? def->custom_width : 0;
+	new_cfg.custom_height = def->has_custom_height ? def->custom_height : 0;
 	new_cfg.enable_img_alt_dir = def->enable_img_alt_dir;
 	new_cfg.buildable_square_types_mask = def->has_buildable_on ? def->buildable_square_types_mask : district_default_buildable_mask ();
 	new_cfg.buildable_only_on_rivers = def->has_buildable_only_on_rivers ? def->buildable_only_on_rivers : false;
@@ -9851,6 +9853,28 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 			def->has_img_alt_dir_column = true;
 		} else {
 			def->has_img_alt_dir_column = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "custom_width")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->custom_width = ival;
+			def->has_custom_width = true;
+		} else {
+			def->has_custom_width = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "custom_height")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->custom_height = ival;
+			def->has_custom_height = true;
+		} else {
+			def->has_custom_height = false;
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
@@ -31619,6 +31643,8 @@ init_district_images ()
 			char const * img_path = cfg->img_path;
 			if (img_path == NULL)
 				img_path = "Wonders.pcx";
+			int sprite_width  = (cfg->custom_width > 0) ? cfg->custom_width : 128;
+			int sprite_height = (cfg->custom_height > 0) ? cfg->custom_height : 64;
 
 			// Load new image file if different from previous
 			if ((last_img_path == NULL) || (strcmp (img_path, last_img_path) != 0)) {
@@ -31647,25 +31673,25 @@ init_district_images ()
 			struct wonder_district_image_set * set = &is->wonder_district_img_sets[wi];
 
 			Sprite_construct (&set->img);
-			int x = 128 * cfg->img_column;
-			int y =  64 * cfg->img_row;
-			Sprite_slice_pcx (&set->img, __, &wpcx, x, y, 128, 64, 1, 1);
+			int x = sprite_width * cfg->img_column;
+			int y = sprite_height * cfg->img_row;
+			Sprite_slice_pcx (&set->img, __, &wpcx, x, y, sprite_width, sprite_height, 1, 1);
 
 			Sprite_construct (&set->construct_img);
-			int cx = 128 * cfg->img_construct_column;
-			int cy =  64 * cfg->img_construct_row;
-			Sprite_slice_pcx (&set->construct_img, __, &wpcx, cx, cy, 128, 64, 1, 1);
+			int cx = sprite_width * cfg->img_construct_column;
+			int cy = sprite_height * cfg->img_construct_row;
+			Sprite_slice_pcx (&set->construct_img, __, &wpcx, cx, cy, sprite_width, sprite_height, 1, 1);
 
 			if (cfg->enable_img_alt_dir) {
 				Sprite_construct (&set->alt_dir_img);
-				int ax = 128 * cfg->img_alt_dir_column;
-				int ay =  64 * cfg->img_alt_dir_row;
-				Sprite_slice_pcx (&set->alt_dir_img, __, &wpcx, ax, ay, 128, 64, 1, 1);
+				int ax = sprite_width * cfg->img_alt_dir_column;
+				int ay = sprite_height * cfg->img_alt_dir_row;
+				Sprite_slice_pcx (&set->alt_dir_img, __, &wpcx, ax, ay, sprite_width, sprite_height, 1, 1);
 
 				Sprite_construct (&set->alt_dir_construct_img);
-				int acx = 128 * cfg->img_alt_dir_construct_column;
-				int acy =  64 * cfg->img_alt_dir_construct_row;
-				Sprite_slice_pcx (&set->alt_dir_construct_img, __, &wpcx, acx, acy, 128, 64, 1, 1);
+				int acx = sprite_width * cfg->img_alt_dir_construct_column;
+				int acy = sprite_height * cfg->img_alt_dir_construct_row;
+				Sprite_slice_pcx (&set->alt_dir_construct_img, __, &wpcx, acx, acy, sprite_width, sprite_height, 1, 1);
 			}
 		}
 

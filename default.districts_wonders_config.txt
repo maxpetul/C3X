@@ -24,6 +24,8 @@
   ;  - img_alt_dir_construct_column   : Number. Column index for alternate "under construction" art (0-based).
   ;  - img_alt_dir_row                : Number. Row index for alternate completed art (0-based).
   ;  - img_alt_dir_column             : Number. Column index for alternate completed art (0-based).
+  ;  - custom_width                   : Number (pixels). Override wonder sprite width. (default: 128)
+  ;  - custom_height                  : Number (pixels). Override wonder sprite height. (default: 64)
 ]
 
 #Wonder

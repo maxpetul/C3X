@@ -801,7 +801,9 @@ struct wonder_district_config {
 		img_alt_dir_construct_row,
 		img_alt_dir_construct_column,
 		img_alt_dir_row,
-		img_alt_dir_column;
+		img_alt_dir_column,
+		custom_width,
+		custom_height;
 	unsigned int buildable_square_types_mask;
 	unsigned int buildable_adjacent_to_square_types_mask;
 	unsigned int buildable_adjacent_to_overlays_mask;
@@ -1117,6 +1119,8 @@ struct parsed_wonder_definition {
 	int img_alt_dir_construct_column;
 	int img_alt_dir_row;
 	int img_alt_dir_column;
+	int custom_width;
+	int custom_height;
 	bool enable_img_alt_dir;
 	unsigned int buildable_square_types_mask;
 	unsigned int buildable_adjacent_to_square_types_mask;
@@ -1133,6 +1137,8 @@ struct parsed_wonder_definition {
 	bool has_img_alt_dir_construct_column;
 	bool has_img_alt_dir_row;
 	bool has_img_alt_dir_column;
+	bool has_custom_width;
+	bool has_custom_height;
 	bool has_enable_img_alt_dir;
 	bool has_buildable_on;
 	bool has_buildable_adjacent_to;
