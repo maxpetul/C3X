@@ -14,6 +14,10 @@
   ;  - buildable_only_on_rivers       : 0 or 1. If 1, Wonder can only be built if tile has river.
   ;  - buildable_adjacent_to          : Same as buildable_on, plus "city".
   ;  - buildable_adjacent_to_overlays : Same overlay list as districts.
+  ;  - buildable_by_civs              : Comma-separated civ names (e.g., Romans, Egyptians).
+  ;  - buildable_by_civ_traits        : Comma-separated trait names (e.g., Commercial, Militaristic).
+  ;  - buildable_by_civ_govs          : Comma-separated government names (e.g., Republic, Monarchy).
+  ;  - buildable_by_civ_cultures      : Comma-separated culture names (e.g., EURO, ASIAN).
   ;  - img_path                       : Text. PCX filename (under Art/Districts/1200/). Defaults to Wonders.pcx if omitted.
   ;  - img_construct_row              : Number (required). Row index in the PCX for the "under construction" wonder art (0-based).
   ;  - img_construct_column           : Number (required). Column index in the PCX for the "under construction" wonder art (0-based).

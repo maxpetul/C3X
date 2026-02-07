@@ -809,6 +809,18 @@ struct wonder_district_config {
 	unsigned int buildable_adjacent_to_overlays_mask;
 	bool buildable_only_on_rivers;
 	bool buildable_adjacent_to_allows_city;
+	char const * buildable_by_civs[32];
+	int buildable_by_civ_count;
+	bool has_buildable_by_civs;
+	int buildable_by_civ_traits_ids[8];
+	int buildable_by_civ_traits_id_count;
+	bool has_buildable_by_civ_traits;
+	int buildable_by_civ_govs_ids[5];
+	int buildable_by_civ_govs_id_count;
+	bool has_buildable_by_civ_govs;
+	int buildable_by_civ_cultures_ids[5];
+	int buildable_by_civ_cultures_id_count;
+	bool has_buildable_by_civ_cultures;
 	bool enable_img_alt_dir;
 	bool is_dynamic;
 	bool has_buildable_adjacent_to;
@@ -1127,6 +1139,20 @@ struct parsed_wonder_definition {
 	unsigned int buildable_adjacent_to_overlays_mask;
 	bool buildable_only_on_rivers;
 	bool buildable_adjacent_to_allows_city;
+	char * buildable_by_civs[32];
+	int buildable_by_civ_count;
+	char * buildable_by_civ_traits[10];
+	int buildable_by_civ_traits_count;
+	int buildable_by_civ_traits_ids[10];
+	int buildable_by_civ_traits_id_count;
+	char * buildable_by_civ_govs[10];
+	int buildable_by_civ_govs_count;
+	int buildable_by_civ_govs_ids[32];
+	int buildable_by_civ_govs_id_count;
+	char * buildable_by_civ_cultures[5];
+	int buildable_by_civ_cultures_count;
+	int buildable_by_civ_cultures_ids[5];
+	int buildable_by_civ_cultures_id_count;
 	bool has_name;
 	bool has_img_path;
 	bool has_img_row;
@@ -1144,6 +1170,10 @@ struct parsed_wonder_definition {
 	bool has_buildable_adjacent_to;
 	bool has_buildable_adjacent_to_overlays;
 	bool has_buildable_only_on_rivers;
+	bool has_buildable_by_civs;
+	bool has_buildable_by_civ_traits;
+	bool has_buildable_by_civ_govs;
+	bool has_buildable_by_civ_cultures;
 };
 
 struct parsed_natural_wonder_definition {

@@ -225,6 +225,7 @@ void __fastcall patch_Unit_despawn (Unit * this, int edx, int civ_id_responsible
 bool can_build_district_on_tile (Tile * tile, int district_id, int civ_id);
 bool city_can_build_district (City * city, int district_id);
 bool leader_can_build_district (Leader * leader, int district_id);
+bool wonder_is_buildable_by_civ (int wonder_improv_id, int civ_id);
 bool find_civ_trait_id_by_name (struct string_slice const * name, int * out_id);
 bool find_civ_culture_id_by_name (struct string_slice const * name, int * out_id);
 Tile * find_tile_for_district (City * city, int district_id, int * out_x, int * out_y);
@@ -5923,6 +5924,100 @@ wonder_is_buildable_on_tile (Tile * tile, int wonder_improv_id)
 	return wonder_is_buildable_on_square_type (&is->wonder_district_configs[windex], tile);
 }
 
+bool
+wonder_is_buildable_by_civ (int wonder_improv_id, int civ_id)
+{
+	if ((wonder_improv_id < 0) || (wonder_improv_id >= p_bic_data->ImprovementsCount))
+		return false;
+	if ((civ_id < 0) || (civ_id >= 32))
+		return false;
+
+	int windex = find_wonder_config_index_by_improvement_id (wonder_improv_id);
+	if (windex < 0)
+		return true;
+
+	struct wonder_district_config const * cfg = &is->wonder_district_configs[windex];
+	Leader * leader = &leaders[civ_id];
+
+	if (cfg->has_buildable_by_civs) {
+		bool civ_match = false;
+		if (cfg->buildable_by_civ_count > 0) {
+			Race * race = (leader->RaceID >= 0 && leader->RaceID < p_bic_data->RacesCount)
+				? &p_bic_data->Races[leader->RaceID]
+				: NULL;
+			if (race == NULL)
+				return false;
+			for (int i = 0; i < cfg->buildable_by_civ_count; i++) {
+				char const * civ_name = cfg->buildable_by_civs[i];
+				if ((civ_name == NULL) || (civ_name[0] == '\0')) continue;
+				if ((race->CountryName != NULL) && (strcmp (civ_name, race->CountryName) == 0))     civ_match = true; break;
+				if ((race->SingularName != NULL) && (strcmp (civ_name, race->SingularName) == 0))   civ_match = true; break;
+				if ((race->AdjectiveName != NULL) && (strcmp (civ_name, race->AdjectiveName) == 0)) civ_match = true; break;
+				if ((race->LeaderName != NULL) && (strcmp (civ_name, race->LeaderName) == 0))       civ_match = true; break;
+			}
+		}
+		if (! civ_match)
+			return false;
+	}
+
+	if (cfg->has_buildable_by_civ_traits) {
+		if (cfg->buildable_by_civ_traits_id_count <= 0)
+			return false;
+		Race * race = (leader->RaceID >= 0 && leader->RaceID < p_bic_data->RacesCount)
+			? &p_bic_data->Races[leader->RaceID]
+			: NULL;
+		if (race == NULL || race->vtable == NULL)
+			return false;
+		bool trait_match = false;
+		for (int i = 0; i < cfg->buildable_by_civ_traits_id_count; i++) {
+			int trait_id = cfg->buildable_by_civ_traits_ids[i];
+			if (trait_id >= 0 && race->vtable->CheckBonus (race, __, trait_id)) {
+				trait_match = true;
+				break;
+			}
+		}
+		if (! trait_match)
+			return false;
+	}
+
+	if (cfg->has_buildable_by_civ_govs) {
+		if (cfg->buildable_by_civ_govs_id_count <= 0)
+			return false;
+		int gov_id = leader->GovernmentType;
+		bool gov_match = false;
+		for (int i = 0; i < cfg->buildable_by_civ_govs_id_count; i++) {
+			if (cfg->buildable_by_civ_govs_ids[i] == gov_id) {
+				gov_match = true;
+				break;
+			}
+		}
+		if (! gov_match)
+			return false;
+	}
+
+	if (cfg->has_buildable_by_civ_cultures) {
+		if (cfg->buildable_by_civ_cultures_id_count <= 0)
+			return false;
+		Race * race = (leader->RaceID >= 0 && leader->RaceID < p_bic_data->RacesCount)
+			? &p_bic_data->Races[leader->RaceID]
+			: NULL;
+		if (race == NULL)
+			return false;
+		int culture_id = race->CultureGroupID;
+		bool culture_match = false;
+		for (int i = 0; i < cfg->buildable_by_civ_cultures_id_count; i++) {
+			if (cfg->buildable_by_civ_cultures_ids[i] == culture_id) {
+				culture_match = true;
+				break;
+			}
+		}
+		if (! culture_match)
+			return false;
+	}
+
+	return true;
+}
+
 int
 get_wonder_improvement_id_from_index (int windex)
 {
@@ -7129,6 +7224,27 @@ free_dynamic_wonder_config (struct wonder_district_config * cfg)
 		free ((void *)cfg->img_path);
 		cfg->img_path = NULL;
 	}
+
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civs); i++) {
+		if (cfg->buildable_by_civs[i] != NULL) {
+			free ((void *)cfg->buildable_by_civs[i]);
+			cfg->buildable_by_civs[i] = NULL;
+		}
+	}
+	cfg->buildable_by_civ_count = 0;
+	cfg->has_buildable_by_civs = false;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_traits_ids); i++)
+		cfg->buildable_by_civ_traits_ids[i] = -1;
+	cfg->buildable_by_civ_traits_id_count = 0;
+	cfg->has_buildable_by_civ_traits = false;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_govs_ids); i++)
+		cfg->buildable_by_civ_govs_ids[i] = -1;
+	cfg->buildable_by_civ_govs_id_count = 0;
+	cfg->has_buildable_by_civ_govs = false;
+	for (int i = 0; i < ARRAY_LEN (cfg->buildable_by_civ_cultures_ids); i++)
+		cfg->buildable_by_civ_cultures_ids[i] = -1;
+	cfg->buildable_by_civ_cultures_id_count = 0;
+	cfg->has_buildable_by_civ_cultures = false;
 
 	memset (cfg, 0, sizeof *cfg);
 }
@@ -9558,6 +9674,12 @@ init_parsed_wonder_definition (struct parsed_wonder_definition * def)
 	def->buildable_adjacent_to_overlays_mask = 0;
 	def->buildable_only_on_rivers = false;
 	def->buildable_adjacent_to_allows_city = false;
+	for (int i = 0; i < ARRAY_LEN (def->buildable_by_civ_traits_ids); i++)
+		def->buildable_by_civ_traits_ids[i] = -1;
+	for (int i = 0; i < ARRAY_LEN (def->buildable_by_civ_govs_ids); i++)
+		def->buildable_by_civ_govs_ids[i] = -1;
+	for (int i = 0; i < ARRAY_LEN (def->buildable_by_civ_cultures_ids); i++)
+		def->buildable_by_civ_cultures_ids[i] = -1;
 }
 
 void
@@ -9572,6 +9694,38 @@ free_parsed_wonder_definition (struct parsed_wonder_definition * def)
 		free (def->img_path);
 		def->img_path = NULL;
 	}
+
+	for (int i = 0; i < def->buildable_by_civ_count; i++) {
+		if (def->buildable_by_civs[i] != NULL) {
+			free (def->buildable_by_civs[i]);
+			def->buildable_by_civs[i] = NULL;
+		}
+	}
+	def->buildable_by_civ_count = 0;
+	for (int i = 0; i < def->buildable_by_civ_traits_count; i++) {
+		if (def->buildable_by_civ_traits[i] != NULL) {
+			free (def->buildable_by_civ_traits[i]);
+			def->buildable_by_civ_traits[i] = NULL;
+		}
+	}
+	def->buildable_by_civ_traits_count = 0;
+	def->buildable_by_civ_traits_id_count = 0;
+	for (int i = 0; i < def->buildable_by_civ_govs_count; i++) {
+		if (def->buildable_by_civ_govs[i] != NULL) {
+			free (def->buildable_by_civ_govs[i]);
+			def->buildable_by_civ_govs[i] = NULL;
+		}
+	}
+	def->buildable_by_civ_govs_count = 0;
+	def->buildable_by_civ_govs_id_count = 0;
+	for (int i = 0; i < def->buildable_by_civ_cultures_count; i++) {
+		if (def->buildable_by_civ_cultures[i] != NULL) {
+			free (def->buildable_by_civ_cultures[i]);
+			def->buildable_by_civ_cultures[i] = NULL;
+		}
+	}
+	def->buildable_by_civ_cultures_count = 0;
+	def->buildable_by_civ_cultures_id_count = 0;
 
 	init_parsed_wonder_definition (def);
 }
@@ -9614,6 +9768,36 @@ add_dynamic_wonder_from_definition (struct parsed_wonder_definition * def, int s
 	new_cfg.buildable_adjacent_to_overlays_mask = def->has_buildable_adjacent_to_overlays ? def->buildable_adjacent_to_overlays_mask : 0;
 	new_cfg.buildable_adjacent_to_square_types_mask = def->has_buildable_adjacent_to ? def->buildable_adjacent_to_square_types_mask : 0;
 	new_cfg.buildable_adjacent_to_allows_city = def->has_buildable_adjacent_to ? def->buildable_adjacent_to_allows_city : false;
+	new_cfg.buildable_by_civ_count = def->has_buildable_by_civs ? def->buildable_by_civ_count : 0;
+	const int max_civ_names = ARRAY_LEN (new_cfg.buildable_by_civs);
+	if (new_cfg.buildable_by_civ_count > max_civ_names)
+		new_cfg.buildable_by_civ_count = max_civ_names;
+	for (int i = 0; i < new_cfg.buildable_by_civ_count; i++) {
+		new_cfg.buildable_by_civs[i] = def->buildable_by_civs[i];
+		def->buildable_by_civs[i] = NULL;
+	}
+	new_cfg.has_buildable_by_civs = def->has_buildable_by_civs;
+	new_cfg.buildable_by_civ_traits_id_count = def->has_buildable_by_civ_traits ? def->buildable_by_civ_traits_id_count : 0;
+	const int max_trait_entries = ARRAY_LEN (new_cfg.buildable_by_civ_traits_ids);
+	if (new_cfg.buildable_by_civ_traits_id_count > max_trait_entries)
+		new_cfg.buildable_by_civ_traits_id_count = max_trait_entries;
+	for (int i = 0; i < new_cfg.buildable_by_civ_traits_id_count; i++)
+		new_cfg.buildable_by_civ_traits_ids[i] = def->buildable_by_civ_traits_ids[i];
+	new_cfg.has_buildable_by_civ_traits = def->has_buildable_by_civ_traits;
+	new_cfg.buildable_by_civ_govs_id_count = def->has_buildable_by_civ_govs ? def->buildable_by_civ_govs_id_count : 0;
+	const int max_gov_entries = ARRAY_LEN (new_cfg.buildable_by_civ_govs_ids);
+	if (new_cfg.buildable_by_civ_govs_id_count > max_gov_entries)
+		new_cfg.buildable_by_civ_govs_id_count = max_gov_entries;
+	for (int i = 0; i < new_cfg.buildable_by_civ_govs_id_count; i++)
+		new_cfg.buildable_by_civ_govs_ids[i] = def->buildable_by_civ_govs_ids[i];
+	new_cfg.has_buildable_by_civ_govs = def->has_buildable_by_civ_govs;
+	new_cfg.buildable_by_civ_cultures_id_count = def->has_buildable_by_civ_cultures ? def->buildable_by_civ_cultures_id_count : 0;
+	const int max_culture_entries = ARRAY_LEN (new_cfg.buildable_by_civ_cultures_ids);
+	if (new_cfg.buildable_by_civ_cultures_id_count > max_culture_entries)
+		new_cfg.buildable_by_civ_cultures_id_count = max_culture_entries;
+	for (int i = 0; i < new_cfg.buildable_by_civ_cultures_id_count; i++)
+		new_cfg.buildable_by_civ_cultures_ids[i] = def->buildable_by_civ_cultures_ids[i];
+	new_cfg.has_buildable_by_civ_cultures = def->has_buildable_by_civ_cultures;
 	new_cfg.has_buildable_adjacent_to = def->has_buildable_adjacent_to;
 	new_cfg.has_buildable_adjacent_to_overlays = def->has_buildable_adjacent_to_overlays;
 
@@ -9927,6 +10111,174 @@ handle_wonder_definition_key (struct parsed_wonder_definition * def,
 		} else {
 			def->has_buildable_adjacent_to_overlays = false;
 		}
+
+	} else if (slice_matches_str (key, "buildable_by_civs")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_by_civs,
+					      ARRAY_LEN (def->buildable_by_civs),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					      "buildable_by_civs")) {
+			def->buildable_by_civ_count = list_count;
+			def->has_buildable_by_civs = true;
+		} else {
+			def->buildable_by_civ_count = 0;
+			def->has_buildable_by_civs = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_by_civ_traits")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_by_civ_traits,
+					      ARRAY_LEN (def->buildable_by_civ_traits),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					      "buildable_by_civ_traits")) {
+			def->buildable_by_civ_traits_count = list_count;
+			def->buildable_by_civ_traits_id_count = 0;
+			for (int i = 0; i < def->buildable_by_civ_traits_count; i++) {
+				char const * trait_name = def->buildable_by_civ_traits[i];
+				if ((trait_name == NULL) || (trait_name[0] == '\0'))
+					continue;
+				int trait_id = -1;
+				struct string_slice trait_slice = { .str = (char *)trait_name, .len = (int)strlen (trait_name) };
+				if (find_civ_trait_id_by_name (&trait_slice, &trait_id)) {
+					bool already_listed = false;
+					for (int k = 0; k < def->buildable_by_civ_traits_id_count; k++) {
+						if (def->buildable_by_civ_traits_ids[k] == trait_id) {
+							already_listed = true;
+							break;
+						}
+					}
+					if ((! already_listed) && (def->buildable_by_civ_traits_id_count < ARRAY_LEN (def->buildable_by_civ_traits_ids)))
+						def->buildable_by_civ_traits_ids[def->buildable_by_civ_traits_id_count++] = trait_id;
+				} else {
+					struct error_line * err = add_error_line (parse_errors);
+					snprintf (err->text, sizeof err->text, "^  Line %d: buildable_by_civ_traits entry \"%.*s\" not found", line_number, trait_slice.len, trait_slice.str);
+					err->text[(sizeof err->text) - 1] = '\0';
+				}
+			}
+
+			for (int i = 0; i < def->buildable_by_civ_traits_count; i++) {
+				if (def->buildable_by_civ_traits[i] != NULL) {
+					free (def->buildable_by_civ_traits[i]);
+					def->buildable_by_civ_traits[i] = NULL;
+				}
+			}
+			def->buildable_by_civ_traits_count = 0;
+			def->has_buildable_by_civ_traits = true;
+		} else {
+			def->buildable_by_civ_traits_count = 0;
+			def->buildable_by_civ_traits_id_count = 0;
+			def->has_buildable_by_civ_traits = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_by_civ_govs")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_by_civ_govs,
+					      ARRAY_LEN (def->buildable_by_civ_govs),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					      "buildable_by_civ_govs")) {
+			def->buildable_by_civ_govs_count = list_count;
+			def->buildable_by_civ_govs_id_count = 0;
+			for (int i = 0; i < def->buildable_by_civ_govs_count; i++) {
+				char const * gov_name = def->buildable_by_civ_govs[i];
+				if ((gov_name == NULL) || (gov_name[0] == '\0'))
+					continue;
+				int gov_id = -1;
+				struct string_slice gov_slice = { .str = (char *)gov_name, .len = (int)strlen (gov_name) };
+				if (find_game_object_id_by_name (GOK_GOVERNMENT, &gov_slice, 0, &gov_id)) {
+					bool already_listed = false;
+					for (int k = 0; k < def->buildable_by_civ_govs_id_count; k++) {
+						if (def->buildable_by_civ_govs_ids[k] == gov_id) {
+							already_listed = true;
+							break;
+						}
+					}
+					if ((! already_listed) && (def->buildable_by_civ_govs_id_count < ARRAY_LEN (def->buildable_by_civ_govs_ids)))
+						def->buildable_by_civ_govs_ids[def->buildable_by_civ_govs_id_count++] = gov_id;
+				} else {
+					struct error_line * err = add_error_line (parse_errors);
+					snprintf (err->text, sizeof err->text, "^  Line %d: buildable_by_civ_govs entry \"%.*s\" not found", line_number, gov_slice.len, gov_slice.str);
+					err->text[(sizeof err->text) - 1] = '\0';
+				}
+			}
+
+			for (int i = 0; i < def->buildable_by_civ_govs_count; i++) {
+				if (def->buildable_by_civ_govs[i] != NULL) {
+					free (def->buildable_by_civ_govs[i]);
+					def->buildable_by_civ_govs[i] = NULL;
+				}
+			}
+			def->buildable_by_civ_govs_count = 0;
+			def->has_buildable_by_civ_govs = true;
+		} else {
+			def->buildable_by_civ_govs_count = 0;
+			def->buildable_by_civ_govs_id_count = 0;
+			def->has_buildable_by_civ_govs = false;
+		}
+		free (value_text);
+
+	} else if (slice_matches_str (key, "buildable_by_civ_cultures")) {
+		char * value_text = trim_and_extract_slice (value, 0);
+		int list_count = 0;
+		if (parse_config_string_list (value_text,
+					      def->buildable_by_civ_cultures,
+					      ARRAY_LEN (def->buildable_by_civ_cultures),
+					      &list_count,
+					      parse_errors,
+					      line_number,
+					      "buildable_by_civ_cultures")) {
+			def->buildable_by_civ_cultures_count = list_count;
+			def->buildable_by_civ_cultures_id_count = 0;
+			for (int i = 0; i < def->buildable_by_civ_cultures_count; i++) {
+				char const * culture_name = def->buildable_by_civ_cultures[i];
+				if ((culture_name == NULL) || (culture_name[0] == '\0'))
+					continue;
+				int culture_id = -1;
+				struct string_slice culture_slice = { .str = (char *)culture_name, .len = (int)strlen (culture_name) };
+				if (find_civ_culture_id_by_name (&culture_slice, &culture_id)) {
+					bool already_listed = false;
+					for (int k = 0; k < def->buildable_by_civ_cultures_id_count; k++) {
+						if (def->buildable_by_civ_cultures_ids[k] == culture_id) {
+							already_listed = true;
+							break;
+						}
+					}
+					if ((! already_listed) && (def->buildable_by_civ_cultures_id_count < ARRAY_LEN (def->buildable_by_civ_cultures_ids)))
+						def->buildable_by_civ_cultures_ids[def->buildable_by_civ_cultures_id_count++] = culture_id;
+				} else {
+					struct error_line * err = add_error_line (parse_errors);
+					snprintf (err->text, sizeof err->text, "^  Line %d: buildable_by_civ_cultures entry \"%.*s\" not found", line_number, culture_slice.len, culture_slice.str);
+					err->text[(sizeof err->text) - 1] = '\0';
+				}
+			}
+
+			for (int i = 0; i < def->buildable_by_civ_cultures_count; i++) {
+				if (def->buildable_by_civ_cultures[i] != NULL) {
+					free (def->buildable_by_civ_cultures[i]);
+					def->buildable_by_civ_cultures[i] = NULL;
+				}
+			}
+			def->buildable_by_civ_cultures_count = 0;
+			def->has_buildable_by_civ_cultures = true;
+		} else {
+			def->buildable_by_civ_cultures_count = 0;
+			def->buildable_by_civ_cultures_id_count = 0;
+			def->has_buildable_by_civ_cultures = false;
+		}
+		free (value_text);
 
 	} else
 		add_unrecognized_key_error (unrecognized_keys, line_number, key);
@@ -13555,6 +13907,8 @@ city_has_wonder_district_with_no_completed_wonder (City * city, int wonder_impro
 {
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
 		return false;
+	if ((wonder_improv_id >= 0) && ! wonder_is_buildable_by_civ (wonder_improv_id, city->Body.CivID))
+		return false;
 
 	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
 		Tile * candidate = wai.tile;
@@ -14226,6 +14580,11 @@ city_requires_district_for_improvement (City * city, int improv_id, int * out_di
 	if (is->current_config.enable_wonder_districts &&
 	    district_building_prereq_list_contains (prereq_list, WONDER_DISTRICT_ID)) {
 		is_wonder = true;
+		if (! wonder_is_buildable_by_civ (improv_id, city->Body.CivID)) {
+			if (out_district_id != NULL)
+				*out_district_id = -1;
+			return false;
+		}
 		if (requires_river) {
 			bool has_river_wonder_district = false;
 			FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, true) {
@@ -14388,6 +14747,8 @@ city_has_assigned_wonder_district (City * city, Tile * ignore_tile, int wonder_i
 {
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
 		return false;
+	if ((wonder_improv_id >= 0) && ! wonder_is_buildable_by_civ (wonder_improv_id, city->Body.CivID))
+		return false;
 
 	FOR_DISTRICTS_AROUND (wai, city->Body.X, city->Body.Y, false) {
 		int x = wai.tile_x, y = wai.tile_y;
@@ -14455,6 +14816,8 @@ bool
 reserve_wonder_district_for_city (City * city, int wonder_improv_id)
 {
 	if (! is->current_config.enable_wonder_districts || (city == NULL))
+		return false;
+	if ((wonder_improv_id >= 0) && ! wonder_is_buildable_by_civ (wonder_improv_id, city->Body.CivID))
 		return false;
 
 	if (city_has_assigned_wonder_district (city, NULL, wonder_improv_id))
@@ -21441,6 +21804,10 @@ city_meets_district_prereqs_to_build_improvement (City * city, int i_improv, boo
 	bool is_human = (*p_human_player_bits & (1 << city->Body.CivID)) != 0;
 
 	Improvement * improv = &p_bic_data->Improvements[i_improv];
+	bool is_wonder = is->current_config.enable_wonder_districts && (improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder));
+	if (is_wonder && ! wonder_is_buildable_by_civ (i_improv, city->Body.CivID))
+		return false;
+
 	bool requires_river = (improv->ImprovementFlags & ITF_Must_Be_Near_River) != 0;
 
 	// Check if the improvement requires a district
@@ -21471,8 +21838,6 @@ city_meets_district_prereqs_to_build_improvement (City * city, int i_improv, boo
 	}
 	if (! has_buildable_candidate)
 		return false;
-
-	bool is_wonder = is->current_config.enable_wonder_districts && improv->Characteristics & (ITC_Wonder | ITC_Small_Wonder);
 
 	// Check that we have the necessary terrain
 	bool has_terrain_for_district = false;
