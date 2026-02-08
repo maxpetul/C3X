@@ -760,6 +760,8 @@ struct district_config {
 	struct district_bonus_list defense_bonus_extras;
 	int defense_bonus_percent;
 	bool heal_units_in_one_turn;
+	bool impassible;
+	bool impassible_to_wheeled;
 	char const * generated_resource;
 	int generated_resource_id;
 	short generated_resource_flags;
@@ -864,6 +866,8 @@ struct natural_wonder_district_config {
 	int gold_bonus;
 	int shield_bonus;
 	int happiness_bonus;
+	bool impassible;
+	bool impassible_to_wheeled;
 	bool is_dynamic;
 };
 
@@ -1021,6 +1025,8 @@ struct parsed_district_definition {
 	bool allow_irrigation_from;
 	bool auto_add_road;
 	bool auto_add_railroad;
+	bool impassible;
+	bool impassible_to_wheeled;
 	int custom_width;
 	int custom_height;
 	int x_offset;
@@ -1118,6 +1124,8 @@ struct parsed_district_definition {
 	bool has_allow_irrigation_from;
 	bool has_auto_add_road;
 	bool has_auto_add_railroad;
+	bool has_impassible;
+	bool has_impassible_to_wheeled;
 };
 
 struct parsed_wonder_definition {
@@ -1190,6 +1198,8 @@ struct parsed_natural_wonder_definition {
 	int gold_bonus;
 	int shield_bonus;
 	int happiness_bonus;
+	bool impassible;
+	bool impassible_to_wheeled;
 	bool has_name;
 	bool has_img_path;
 	bool has_img_row;
@@ -1203,6 +1213,8 @@ struct parsed_natural_wonder_definition {
 	bool has_gold_bonus;
 	bool has_shield_bonus;
 	bool has_happiness_bonus;
+	bool has_impassible;
+	bool has_impassible_to_wheeled;
 };
 
 struct scenario_district_entry {

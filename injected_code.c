@@ -8411,6 +8411,10 @@ override_special_district_from_definition (struct parsed_district_definition * d
 	}
 	if (def->has_heal_units_in_one_turn)
 		cfg->heal_units_in_one_turn = def->heal_units_in_one_turn;
+	if (def->has_impassible)
+		cfg->impassible = def->impassible;
+	if (def->has_impassible_to_wheeled)
+		cfg->impassible_to_wheeled = def->impassible_to_wheeled;
 	if (def->has_culture_bonus) {
 		cfg->culture_bonus = def->culture_bonus;
 		free_bonus_entry_list_override (&cfg->culture_bonus_extras, &defaults->culture_bonus_extras);
@@ -8707,6 +8711,8 @@ add_dynamic_district_from_definition (struct parsed_district_definition * def, i
 	new_cfg.btn_tile_sheet_row = def->has_btn_tile_sheet_row ? def->btn_tile_sheet_row : 0;
 	new_cfg.defense_bonus_percent = def->has_defense_bonus_percent ? def->defense_bonus_percent : 0;
 	new_cfg.heal_units_in_one_turn = def->has_heal_units_in_one_turn ? def->heal_units_in_one_turn : false;
+	new_cfg.impassible = def->has_impassible ? def->impassible : false;
+	new_cfg.impassible_to_wheeled = def->has_impassible_to_wheeled ? def->impassible_to_wheeled : false;
 	new_cfg.culture_bonus = def->has_culture_bonus ? def->culture_bonus : 0;
 	new_cfg.science_bonus = def->has_science_bonus ? def->science_bonus : 0;
 	new_cfg.food_bonus = def->has_food_bonus ? def->food_bonus : 0;
@@ -9367,6 +9373,24 @@ handle_district_definition_key (struct parsed_district_definition * def,
 		if (read_int (&val_slice, &ival)) {
 			def->auto_add_railroad = (ival != 0);
 			def->has_auto_add_railroad = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "impassible")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->impassible = (ival != 0);
+			def->has_impassible = true;
+		} else
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+
+	} else if (slice_matches_str (key, "impassible_to_wheeled")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->impassible_to_wheeled = (ival != 0);
+			def->has_impassible_to_wheeled = true;
 		} else
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 
@@ -10529,6 +10553,8 @@ add_natural_wonder_from_definition (struct parsed_natural_wonder_definition * de
 	new_cfg.gold_bonus = def->has_gold_bonus ? def->gold_bonus : 0;
 	new_cfg.shield_bonus = def->has_shield_bonus ? def->shield_bonus : 0;
 	new_cfg.happiness_bonus = def->has_happiness_bonus ? def->happiness_bonus : 0;
+	new_cfg.impassible = def->has_impassible ? def->impassible : false;
+	new_cfg.impassible_to_wheeled = def->has_impassible_to_wheeled ? def->impassible_to_wheeled : false;
 
 	if (has_existing) {
 		struct natural_wonder_district_config * cfg = &is->natural_wonder_configs[existing_index];
@@ -10756,6 +10782,28 @@ handle_natural_wonder_definition_key (struct parsed_natural_wonder_definition * 
 			def->has_happiness_bonus = true;
 		} else {
 			def->has_happiness_bonus = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "impassible")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->impassible = (ival != 0);
+			def->has_impassible = true;
+		} else {
+			def->has_impassible = false;
+			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
+		}
+
+	} else if (slice_matches_str (key, "impassible_to_wheeled")) {
+		struct string_slice val_slice = *value;
+		int ival;
+		if (read_int (&val_slice, &ival)) {
+			def->impassible_to_wheeled = (ival != 0);
+			def->has_impassible_to_wheeled = true;
+		} else {
+			def->has_impassible_to_wheeled = false;
 			add_key_parse_error (parse_errors, line_number, key, value, "(expected integer)");
 		}
 
@@ -20304,6 +20352,48 @@ is_allowed_to_trespass (Unit * unit)
 		return false;
 }
 
+bool
+get_tile_district_impassibility (Tile * tile, bool * out_impassible, bool * out_impassible_to_wheeled)
+{
+	if (out_impassible != NULL)
+		*out_impassible = false;
+	if (out_impassible_to_wheeled != NULL)
+		*out_impassible_to_wheeled = false;
+
+	if ((tile == NULL) || (tile == p_null_tile))
+		return false;
+
+	struct district_instance * inst = get_district_instance (tile);
+	if (inst == NULL)
+		return false;
+	if (! district_is_complete (tile, inst->district_id))
+		return false;
+
+	if (inst->district_id == NATURAL_WONDER_DISTRICT_ID) {
+		if (! is->current_config.enable_natural_wonders)
+			return false;
+		int natural_id = inst->natural_wonder_info.natural_wonder_id;
+		if ((natural_id < 0) || (natural_id >= is->natural_wonder_count))
+			return false;
+		if (out_impassible != NULL)
+			*out_impassible = is->natural_wonder_configs[natural_id].impassible;
+		if (out_impassible_to_wheeled != NULL)
+			*out_impassible_to_wheeled = is->natural_wonder_configs[natural_id].impassible_to_wheeled;
+		return true;
+	}
+
+	if (! is->current_config.enable_districts)
+		return false;
+	if ((inst->district_id < 0) || (inst->district_id >= is->district_count))
+		return false;
+
+	if (out_impassible != NULL)
+		*out_impassible = is->district_configs[inst->district_id].impassible;
+	if (out_impassible_to_wheeled != NULL)
+		*out_impassible_to_wheeled = is->district_configs[inst->district_id].impassible_to_wheeled;
+	return true;
+}
+
 AdjacentMoveValidity __fastcall
 patch_Unit_can_move_to_adjacent_tile (Unit * this, int edx, int neighbor_index, int param_2)
 {
@@ -20418,92 +20508,97 @@ patch_Trade_Net_get_movement_cost (Trade_Net * this, int edx, int from_x, int fr
 	if (is->is_computing_city_connections && // if this call came while rebuilding the trade network AND
 	    (is->tnx_init_state == IS_OK) && (is->tnx_cache != NULL) && // Trade Net X is set up AND
 	    (unit == NULL) && ((flags == 0x1009) || (flags == 0x9))) // this call can be accelerated by TNX
-	    return is->get_move_cost_for_sea_trade (this, is->tnx_cache, from_x, from_y, to_x, to_y, civ_id, flags, neighbor_index, dist_info);
+		    return is->get_move_cost_for_sea_trade (this, is->tnx_cache, from_x, from_y, to_x, to_y, civ_id, flags, neighbor_index, dist_info);
 
 	int base_cost = Trade_Net_get_movement_cost (this, __, from_x, from_y, to_x, to_y, unit, civ_id, flags, neighbor_index, dist_info);
 
-	if ((unit != NULL) && great_wall_blocks_civ (tile_at (to_x, to_y), unit->Body.CivID))
-		return -1;
-
-	// Let the pathfinder consider coastal tiles reachable for workers when the config flag is on
-	if (is->current_config.enable_districts && is->current_config.workers_can_enter_coast &&
-	    (base_cost < 0) && (unit != NULL) && is_worker (unit)) {
-		Tile * dest = tile_at (to_x, to_y);
-		if ((dest != NULL) &&
-		    dest->vtable->m35_Check_Is_Water (dest) &&
-		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast))
-			base_cost = Unit_get_max_move_points (unit);
-	}
-
-	// Let the pathfinder consider bridge tiles reachable for land units
-	if (is->current_config.enable_districts &&
-	    is->current_config.enable_bridge_districts &&
-	    (base_cost < 0) && (unit != NULL) &&
-	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Land)) {
-		Tile * dest = tile_at (to_x, to_y);
-		if ((dest != NULL) && (dest != p_null_tile)) {
-			struct district_instance * inst = get_district_instance (dest);
-			if ((inst != NULL) &&
-			    (inst->district_id == BRIDGE_DISTRICT_ID) &&
-			    district_is_complete (dest, inst->district_id)) {
-				base_cost = Unit_get_max_move_points (unit);
-			}
-		}
-	}
-
-	// Let the pathfinder consider canal tiles reachable for naval units
-	if (is->current_config.enable_districts &&
-	    is->current_config.enable_canal_districts &&
-	    (base_cost < 0) && (unit != NULL) &&
-	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
-		Tile * dest = tile_at (to_x, to_y);
-		if ((dest != NULL) && (dest != p_null_tile)) {
-			struct district_instance * inst = get_district_instance (dest);
-			if ((inst != NULL) &&
-			    (inst->district_id == CANAL_DISTRICT_ID) &&
-			    district_is_complete (dest, inst->district_id)) {
-				base_cost = Unit_get_max_move_points (unit);
-			}
-		}
-	}
-
-	// Treat roads/rails on bridge districts like land roads/rails for movement cost.
-	if ((unit != NULL) &&
-	    is->current_config.enable_districts &&
-	    is->current_config.enable_bridge_districts &&
-	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Land)) {
-		Tile * from = tile_at (from_x, from_y);
+	bool districts_enabled = is->current_config.enable_districts;
+	if (districts_enabled) {
 		Tile * to = tile_at (to_x, to_y);
-		if ((from != NULL) && (from != p_null_tile) && (to != NULL) && (to != p_null_tile)) {
-			struct district_instance * from_inst = get_district_instance (from);
-			struct district_instance * to_inst = get_district_instance (to);
-			bool from_bridge = (from_inst != NULL) &&
-					   (from_inst->district_id == BRIDGE_DISTRICT_ID) &&
-					   district_is_complete (from, from_inst->district_id);
-			bool to_bridge = (to_inst != NULL) &&
-					 (to_inst->district_id == BRIDGE_DISTRICT_ID) &&
-					 district_is_complete (to, to_inst->district_id);
-			if (from_bridge || to_bridge) {
-				bool from_rail = from->vtable->m23_Check_Railroads (from, __, 0) != 0;
-				bool to_rail = to->vtable->m23_Check_Railroads (to, __, 0) != 0;
-				bool from_road = from->vtable->m25_Check_Roads (from, __, 0) != 0;
-				bool to_road = to->vtable->m25_Check_Roads (to, __, 0) != 0;
-				if (from_rail && to_rail)
-					base_cost = 0;
-				else if (from_road && to_road)
-					base_cost = 1;
+		bool to_valid = (to != NULL) && (to != p_null_tile);
+		struct district_instance * to_inst = NULL;
+		bool to_inst_complete = false;
+		if (to_valid) {
+			to_inst = get_district_instance (to);
+			if (to_inst != NULL)
+				to_inst_complete = district_is_complete (to, to_inst->district_id);
+		}
+
+		if ((unit != NULL) && great_wall_blocks_civ (to, unit->Body.CivID))
+			return -1;
+		if ((unit != NULL) && to_valid) {
+			bool impassible = false;
+			bool impassible_to_wheeled = false;
+			if (get_tile_district_impassibility (to, &impassible, &impassible_to_wheeled)) {
+				if (impassible)
+					return -1;
+				if (impassible_to_wheeled && Unit_has_ability (unit, __, UTA_Wheeled)) {
+					Tile * from = tile_at (from_x, from_y);
+					bool connected_by_road = (from != NULL) && (to != NULL) &&
+					                         (from->vtable->m25_Check_Roads (from, __, 0) != 0) &&
+					                         (to->vtable->m25_Check_Roads (to, __, 0) != 0);
+					if (! connected_by_road)
+						return -1;
+				}
 			}
 		}
-	}
 
-	if ((unit != NULL) &&
-	    (base_cost >= 0) &&
-	    is->current_config.enable_districts &&
-	    is->current_config.enable_port_districts &&
-	    is->current_config.naval_units_use_port_districts_not_cities &&
-	    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
-		Tile * dest = tile_at (to_x, to_y);
-		if ((dest != NULL) && (dest != p_null_tile) && Tile_has_city (dest))
+		// Let the pathfinder consider coastal tiles reachable for workers when the config flag is on
+		if (is->current_config.workers_can_enter_coast &&
+		    (base_cost < 0) && (unit != NULL) && is_worker (unit) &&
+		    to_valid &&
+		    to->vtable->m35_Check_Is_Water (to) &&
+		    (to->vtable->m50_Get_Square_BaseType (to) == SQ_Coast))
+			base_cost = Unit_get_max_move_points (unit);
+
+		// Let the pathfinder consider bridge tiles reachable for land units
+		if (is->current_config.enable_bridge_districts &&
+		    (base_cost < 0) && (unit != NULL) &&
+		    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Land) &&
+		    (to_inst != NULL) && to_inst_complete &&
+		    (to_inst->district_id == BRIDGE_DISTRICT_ID))
+			base_cost = Unit_get_max_move_points (unit);
+
+		// Let the pathfinder consider canal tiles reachable for naval units
+		if (is->current_config.enable_canal_districts &&
+		    (base_cost < 0) && (unit != NULL) &&
+		    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Sea) &&
+		    (to_inst != NULL) && to_inst_complete &&
+		    (to_inst->district_id == CANAL_DISTRICT_ID))
+			base_cost = Unit_get_max_move_points (unit);
+
+		// Treat roads/rails on bridge districts like land roads/rails for movement cost.
+		if ((unit != NULL) &&
+		    is->current_config.enable_bridge_districts &&
+		    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Land)) {
+			Tile * from = tile_at (from_x, from_y);
+			if ((from != NULL) && (from != p_null_tile) && to_valid) {
+				struct district_instance * from_inst = get_district_instance (from);
+				bool from_bridge = (from_inst != NULL) &&
+						   (from_inst->district_id == BRIDGE_DISTRICT_ID) &&
+						   district_is_complete (from, from_inst->district_id);
+				bool to_bridge = (to_inst != NULL) &&
+						 to_inst_complete &&
+						 (to_inst->district_id == BRIDGE_DISTRICT_ID);
+				if (from_bridge || to_bridge) {
+					bool from_rail = from->vtable->m23_Check_Railroads (from, __, 0) != 0;
+					bool to_rail = to->vtable->m23_Check_Railroads (to, __, 0) != 0;
+					bool from_road = from->vtable->m25_Check_Roads (from, __, 0) != 0;
+					bool to_road = to->vtable->m25_Check_Roads (to, __, 0) != 0;
+					if (from_rail && to_rail)
+						base_cost = 0;
+					else if (from_road && to_road)
+						base_cost = 1;
+				}
+			}
+		}
+
+		if ((unit != NULL) &&
+		    (base_cost >= 0) &&
+		    is->current_config.enable_port_districts &&
+		    is->current_config.naval_units_use_port_districts_not_cities &&
+		    (p_bic_data->UnitTypes[unit->Body.UnitTypeID].Unit_Class == UTC_Sea) &&
+		    to_valid && Tile_has_city (to))
 			return -1;
 	}
 
@@ -34652,62 +34747,72 @@ patch_Unit_can_pass_between (Unit * this, int edx, int from_x, int from_y, int t
 {
 	PassBetweenValidity base = Unit_can_pass_between (this, __, from_x, from_y, to_x, to_y, param_5);
 
-	if (great_wall_blocks_civ (tile_at (to_x, to_y), this->Body.CivID))
-		return PBV_GENERIC_INVALID_MOVE;
+	if (is->current_config.enable_districts) {
+		Tile * to = tile_at (to_x, to_y);
+		bool to_valid = (to != NULL) && (to != p_null_tile);
+		struct district_instance * to_inst = NULL;
+		bool to_inst_complete = false;
+		if (to_valid) {
+			to_inst = get_district_instance (to);
+			if (to_inst != NULL)
+				to_inst_complete = district_is_complete (to, to_inst->district_id);
+		}
+		if (great_wall_blocks_civ (to, this->Body.CivID))
+			return PBV_GENERIC_INVALID_MOVE;
+		if (to_valid) {
+			bool impassible = false;
+			bool impassible_to_wheeled = false;
+			if (get_tile_district_impassibility (to, &impassible, &impassible_to_wheeled)) {
+				if (impassible)
+					return PBV_GENERIC_INVALID_MOVE;
+				if (impassible_to_wheeled && Unit_has_ability (this, __, UTA_Wheeled)) {
+					Tile * from = tile_at (from_x, from_y);
+					bool connected_by_road = (from != NULL) && (to != NULL) &&
+					                         (from->vtable->m25_Check_Roads (from, __, 0) != 0) &&
+					                         (to->vtable->m25_Check_Roads (to, __, 0) != 0);
+					if (! connected_by_road)
+						return PBV_REQUIRES_ROAD;
+				}
+			}
+		}
 
-	if (is->current_config.enable_districts && is->current_config.workers_can_enter_coast &&
-		base != PBV_OK && is_worker(this)) {
-		Tile * source = tile_at (from_x, from_y);
-		if (source != NULL &&
-		    source->vtable->m35_Check_Is_Water (source) &&
-		    (source->vtable->m50_Get_Square_BaseType (source) == SQ_Coast))
+		if (is->current_config.workers_can_enter_coast &&
+			base != PBV_OK && is_worker(this)) {
+			Tile * source = tile_at (from_x, from_y);
+			if (source != NULL &&
+			    source->vtable->m35_Check_Is_Water (source) &&
+			    (source->vtable->m50_Get_Square_BaseType (source) == SQ_Coast))
+				return PBV_OK;
+
+			if (to_valid &&
+			    to->vtable->m35_Check_Is_Water (to) &&
+			    (to->vtable->m50_Get_Square_BaseType (to) == SQ_Coast)) {
+				bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
+
+				// If human, okay to enter coast tile
+				if (is_human)
+					return PBV_OK;
+
+				struct district_worker_record * rec = get_tracked_worker_record (this);
+				struct pending_district_request * req = (rec != NULL) ? rec->pending_req : NULL;
+				if (req != NULL)
+					return PBV_OK;
+			}
+		}
+
+		if (is->current_config.enable_bridge_districts &&
+			base != PBV_OK &&
+			(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land) &&
+			(to_inst != NULL) && to_inst_complete &&
+			(to_inst->district_id == BRIDGE_DISTRICT_ID))
 			return PBV_OK;
 
-		Tile * dest = tile_at (to_x, to_y);
-		if ((dest != NULL) &&
-		    dest->vtable->m35_Check_Is_Water (dest) &&
-		    (dest->vtable->m50_Get_Square_BaseType (dest) == SQ_Coast)) {
-			bool is_human = (*p_human_player_bits & (1 << this->Body.CivID)) != 0;
-
-			// If human, okay to enter coast tile
-			if (is_human)
-				return PBV_OK;
-
-			struct district_worker_record * rec = get_tracked_worker_record (this);
-			struct pending_district_request * req = (rec != NULL) ? rec->pending_req : NULL;
-			if (req != NULL)
-				return PBV_OK;
-		}
-	}
-
-	if (is->current_config.enable_districts &&
-		is->current_config.enable_bridge_districts &&
-		base != PBV_OK &&
-		(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Land)) {
-		Tile * dest = tile_at (to_x, to_y);
-		if ((dest != NULL) && (dest != p_null_tile)) {
-			struct district_instance * inst = get_district_instance (dest);
-			if ((inst != NULL) &&
-			    (inst->district_id == BRIDGE_DISTRICT_ID) &&
-			    district_is_complete (dest, inst->district_id)) {
-				return PBV_OK;
-			}
-		}
-	}
-
-	if (is->current_config.enable_districts &&
-		is->current_config.enable_canal_districts &&
-		base != PBV_OK &&
-		(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea)) {
-		Tile * dest = tile_at (to_x, to_y);
-		if ((dest != NULL) && (dest != p_null_tile)) {
-			struct district_instance * inst = get_district_instance (dest);
-			if ((inst != NULL) &&
-			    (inst->district_id == CANAL_DISTRICT_ID) &&
-			    district_is_complete (dest, inst->district_id)) {
-				return PBV_OK;
-			}
-		}
+		if (is->current_config.enable_canal_districts &&
+			base != PBV_OK &&
+			(p_bic_data->UnitTypes[this->Body.UnitTypeID].Unit_Class == UTC_Sea) &&
+			(to_inst != NULL) && to_inst_complete &&
+			(to_inst->district_id == CANAL_DISTRICT_ID))
+			return PBV_OK;
 	}
 
 	return base;

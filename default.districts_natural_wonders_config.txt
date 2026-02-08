@@ -8,20 +8,22 @@
 
 [
   ;  Natural Wonder config fields (each Wonder block begins with "#Wonder")
-  ;  - name            : Text (required). Internal natural wonder name; must be unique.
-  ;  - terrain_type    : Text (required). Base terrain: desert, plains, grassland, jungle, tundra, floodplain, swamp, hill, mountain,
-                                                        forest, volcano, snow-forest, snow-mountain, snow-volcano, coast, sea, ocean.
-  ;  - adjacent_to     : Text. Optional adjacency requirement: same list as buildable square types plus river, any (no requirement).
-  ;  - adjacency_dir   : Text. Optional direction filter for adjacent_to (northeast, east, southeast, south, southwest, west, northwest, north).
-  ;  - img_path        : Text (required). PCX filename (under Art/Districts/1200/).
-  ;  - img_row         : Number (required). Row index in the PCX (0-based).
-  ;  - img_column      : Number (required). Column index in the PCX (0-based).
-  ;  - culture_bonus   : Number. Culture yield bonus when worked.
-  ;  - science_bonus   : Number. Science yield bonus when worked.
-  ;  - food_bonus      : Number. Food yield bonus when worked.
-  ;  - gold_bonus      : Number. Gold yield bonus when worked.
-  ;  - shield_bonus    : Number. Shield yield bonus when worked.
-  ;  - happiness_bonus : Number. Happiness bonus when worked.
+  ;  - name                  : Text (required). Internal natural wonder name; must be unique.
+  ;  - terrain_type          : Text (required). Base terrain: desert, plains, grassland, jungle, tundra, floodplain, swamp, hill, mountain,
+                                                              forest, volcano, snow-forest, snow-mountain, snow-volcano, coast, sea, ocean.
+  ;  - adjacent_to           : Text. Optional adjacency requirement: same list as buildable square types plus river, any (no requirement).
+  ;  - adjacency_dir         : Text. Optional direction filter for adjacent_to (northeast, east, southeast, south, southwest, west, northwest, north).
+  ;  - img_path              : Text (required). PCX filename (under Art/Districts/1200/).
+  ;  - img_row               : Number (required). Row index in the PCX (0-based).
+  ;  - img_column            : Number (required). Column index in the PCX (0-based).
+  ;  - culture_bonus         : Number. Culture yield bonus when worked.
+  ;  - science_bonus         : Number. Science yield bonus when worked.
+  ;  - food_bonus            : Number. Food yield bonus when worked.
+  ;  - gold_bonus            : Number. Gold yield bonus when worked.
+  ;  - shield_bonus          : Number. Shield yield bonus when worked.
+  ;  - happiness_bonus       : Number. Happiness bonus when worked.
+  ;  - impassible            : 0 or 1. If 1, completed natural wonder tile is impassible to units. (default: 0)
+  ;  - impassible_to_wheeled : 0 or 1. If 1, completed natural wonder tile is impassible to wheeled units unless connected by road. (default: 0)
 ]
 
 #Wonder

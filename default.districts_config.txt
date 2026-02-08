@@ -57,6 +57,8 @@
   ;  - align_to_coast                  : 0 or 1. Aligns art to coastline, slightly adjusting x & y pixels. (default: 0)
   ;  - auto_add_road                   : 0 or 1. Auto-add road on completion. (default: 0)
   ;  - auto_add_railroad               : 0 or 1. Auto-add railroad on completion. (default: 0)
+  ;  - impassible                      : 0 or 1. If 1, completed district tile is impassible to units. (default: 0)
+  ;  - impassible_to_wheeled           : 0 or 1. If 1, completed district tile is impassible to wheeled units unless connected by road. (default: 0)
   ;  - allow_irrigation_from           : 0 or 1. District can act as an irrigation source. (default: 0)
   ;  - allow_multiple                  : 0 or 1. If 1, multiple copies can exist per city. (default: 0)
   ;  - heal_units_in_one_turn          : 0 or 1. Friendly units fully heal when ending turn here. (default: 0)
