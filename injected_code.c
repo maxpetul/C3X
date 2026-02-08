@@ -1804,22 +1804,40 @@ read_square_type_value (struct string_slice const * s, enum SquareTypes * out_ty
 		int value;
 	} const entries[] = {
 		{"desert",         SQ_Desert},
+		{"deserts",        SQ_Desert},
+		{"plain",          SQ_Plains},
 		{"plains",         SQ_Plains},
 		{"grassland",      SQ_Grassland},
+		{"grasslands",     SQ_Grassland},
 		{"tundra",         SQ_Tundra},
+		{"tundras",        SQ_Tundra},
 		{"floodplain",     SQ_FloodPlain},
+		{"floodplains",    SQ_FloodPlain},
+		{"hill",           SQ_Hills},
 		{"hills",          SQ_Hills},
+		{"mountain",       SQ_Mountains},
 		{"mountains",      SQ_Mountains},
 		{"forest",         SQ_Forest},
+		{"forests",        SQ_Forest},
 		{"jungle",         SQ_Jungle},
+		{"jungles",        SQ_Jungle},
 		{"swamp",          SQ_Swamp},
+		{"swamps",         SQ_Swamp},
 		{"volcano",        SQ_Volcano},
+		{"volcanos",       SQ_Volcano},
 		{"coast",          SQ_Coast},
+		{"coasts",         SQ_Coast},
 		{"sea",            SQ_Sea},
+		{"seas",           SQ_Sea},
 		{"ocean",          SQ_Ocean},
+		{"oceans",         SQ_Ocean},
 		{"river",          SQ_RIVER},
+		{"rivers",         SQ_RIVER},
 		{"snow-volcano",   SQ_SNOW_VOLCANO},
+		{"snow-volcanos",  SQ_SNOW_VOLCANO},
 		{"snow-forest",    SQ_SNOW_FOREST},
+		{"snow-forests",   SQ_SNOW_FOREST},
+		{"snow-mountain",  SQ_SNOW_MOUNTAIN},
 		{"snow-mountains", SQ_SNOW_MOUNTAIN},
 		{"any",            SQ_INVALID}
 	};
@@ -7930,11 +7948,19 @@ parse_buildable_overlay_mask (struct string_slice const * value,
 					bit = DOM_AIRFIELD;
 				} else if (slice_matches_str (&item_slice, "jungle")) {
 					bit = DOM_JUNGLE;
+				} else if (slice_matches_str (&item_slice, "jungles")) {
+					bit = DOM_JUNGLE;
 				} else if (slice_matches_str (&item_slice, "forest")) {
+					bit = DOM_FOREST;
+				} else if (slice_matches_str (&item_slice, "forests")) {
 					bit = DOM_FOREST;
 				} else if (slice_matches_str (&item_slice, "swamp")) {
 					bit = DOM_SWAMP;
+				} else if (slice_matches_str (&item_slice, "swamps")) {
+					bit = DOM_SWAMP;
 				} else if (slice_matches_str (&item_slice, "river")) {
+					bit = DOM_RIVER;
+				} else if (slice_matches_str (&item_slice, "rivers")) {
 					bit = DOM_RIVER;
 				}
 
